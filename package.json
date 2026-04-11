@@ -16,6 +16,8 @@
     "start": "tsx src/cli/index.ts",
     "start:local": "node --env-file=.env.local --import tsx src/cli/index.ts",
     "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "biome lint src business",
     "format": "biome format --write src business",
     "check": "biome check --write src business",
@@ -34,6 +36,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.10.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^3.2.4"
   }
 }
