@@ -1,0 +1,55 @@
+# Role-based Tool Permissions
+
+tools:
+  bash:
+    description: "Execute shell commands"
+    schema:
+      type: object
+      properties:
+        command:
+          type: string
+          description: "Shell command to run"
+      required:
+        - command
+    permissions:
+      - role: admin
+        allowed: true
+      - role: analyst
+        denied_patterns:
+          - "rm -rf"
+          - "sudo"
+          - "^passwd"
+      - role: guest
+        allowed: false
+
+  read_file:
+    description: "Read files from the project"
+    permissions:
+      - role: analyst
+        allowed: true
+      - match: "**/*.env"
+        denied: true
+      - match: "**/*.secret"
+        denied: true
+
+  write_file:
+    description: "Write/modify files"
+    permissions:
+      - role: admin
+        allowed: true
+      - role: analyst
+        denied_patterns:
+          - "src/core/**"
+          - "business/**"
+
+  web_search:
+    description: "Search the internet"
+    permissions:
+      - role: analyst
+        rateLimit: "5 per hour"
+      - role: guest
+        rateLimit: "1 per hour"
+
+default_permissions:
+  allow: false  # Deny by default, allow explicitly
+  log_decisions: true

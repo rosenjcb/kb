@@ -1,0 +1,130 @@
+/**
+ * Unified type definitions for the agent harness
+ * Works across all LLM providers
+ */
+
+// ─── Message Types ───────────────────────────────────────────────
+
+export interface Message {
+  role: 'user' | 'assistant'
+  content: string | ToolResultBlock[]
+  metadata?: {
+    timestamp: number
+    tokenCount?: number
+    model?: string
+  }
+}
+
+export interface ToolResultBlock {
+  type: 'tool_result'
+  toolUseId: string
+  toolName: string
+  result: unknown
+  isError?: boolean
+}
+
+// ─── Tool Definition ─────────────────────────────────────────────
+
+export interface ToolDefinition {
+  name: string
+  description: string
+  schema: Record<string, unknown> // JSON Schema
+  metadata?: {
+    permissions?: {
+      role: string
+      allowed?: boolean
+      denied_patterns?: string[]
+      rateLimit?: string
+    }[]
+    timeout?: number
+    maxTokens?: number
+  }
+}
+
+// ─── LLM Provider Interface ──────────────────────────────────────
+
+export interface LLMResponse {
+  text: string
+  stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'error'
+  toolUses: Array<{
+    id: string
+    name: string
+    input: Record<string, unknown>
+  }>
+  usage: {
+    inputTokens: number
+    outputTokens: number
+  }
+}
+
+export interface LLMStreamChunk {
+  type: 'text_delta' | 'tool_use_start' | 'tool_use_input_delta' | 'done'
+  content?: string
+  toolUseId?: string
+  toolName?: string
+}
+
+export interface LLMProvider {
+  readonly name: string
+  readonly supportsStreaming: boolean
+
+  call(params: LLMCallParams): Promise<LLMResponse>
+  callStream?(params: LLMCallParams): AsyncGenerator<LLMStreamChunk>
+}
+
+export interface LLMCallParams {
+  messages: Message[]
+  tools?: ToolDefinition[]
+  maxTokens?: number
+  temperature?: number
+}
+
+// ─── Session State ──────────────────────────────────────────────
+
+export interface Session {
+  id: string
+  created: number
+  updated: number
+  messages: Message[]
+  config: {
+    model: string
+    provider: string
+    endpoint?: string
+  }
+  metadata?: {
+    title?: string
+    userRole?: string
+    tags?: string[]
+  }
+}
+
+// ─── Decision Log ───────────────────────────────────────────────
+
+export interface Decision {
+  timestamp: number
+  category:
+    | 'permission'
+    | 'tool_execution'
+    | 'early_termination'
+    | 'tool_rejection'
+    | 'model_selection'
+  context: {
+    userRole?: string
+    toolName?: string
+    reason?: string
+    modelName?: string
+  }
+  decision: 'allow' | 'deny' | 'defer' | 'timeout'
+  evidence?: string[]
+}
+
+// ─── Agent Loop Events ──────────────────────────────────────────
+
+export type AgentEvent =
+  | { type: 'text'; content: string }
+  | { type: 'tool_start'; toolName: string; toolUseId: string }
+  | { type: 'tool_result'; toolUseId: string; result: unknown; isError: boolean }
+  | { type: 'decision'; decision: Decision }
+  | { type: 'done'; reason: string }
+  | { type: 'error'; error: Error }
+  | { type: 'metadata'; usage: { inputTokens: number; outputTokens: number } }
