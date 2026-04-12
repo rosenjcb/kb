@@ -13,7 +13,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 
 ## Summary
 
-- Total files: 46 (45 tickets + this index)
+- Total files: 47 (46 tickets + this index)
 - Branch: feat/kb-ticket-backlog
 
 ## Foundation
@@ -69,6 +69,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [032 Define audit report output schema](tickets/linear/032-audit-report-shape-spec.md)
 - [041 Define check caching strategy](tickets/linear/041-docsync-check-caching-strategy.md)
 - [042 Define audit parallelism and token budgets](tickets/linear/042-audit-parallelism-and-budgeting.md)
+- [046 Define validation vs deep_validation tool semantics](tickets/linear/046-validation-vs-deep-validation-tool-semantics.md)
 
 ## Reliability
 
