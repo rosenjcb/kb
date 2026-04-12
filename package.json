@@ -8,17 +8,20 @@
     "node": ">=20.0.0"
   },
   "bin": {
-    "kb": "bin/kb"
+    "kb": "dist/bin/kb.js"
   },
   "scripts": {
     "dev": "tsx src/cli/index.ts",
     "dev:local": "node --env-file=.env.local --import tsx src/cli/index.ts",
     "start": "tsx src/cli/index.ts",
     "start:local": "node --env-file=.env.local --import tsx src/cli/index.ts",
-    "build": "tsc",
+    "build": "tsc && npm run build:cli",
+    "build:cli": "node scripts/build-cli.mjs",
+    "link:global": "npm run build && npm link",
+    "unlink:global": "npm unlink -g kb-agent-harness",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:functional": "node --env-file=.env.local --import tsx tests/functional-test.ts",
+    "test:functional": "bash tests/functional-test.sh",
     "test:cli": "bash tests/cli-integration.sh",
     "lint": "biome lint src business",
     "format": "biome format --write src business",
@@ -35,6 +38,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.8.0",
+    "esbuild": "^0.25.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.10.0",
     "tsx": "^4.7.0",

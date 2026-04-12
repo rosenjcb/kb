@@ -10,6 +10,24 @@ import { createProvider } from '../core/llm-provider'
 import { agentLoop } from '../core/agent-loop'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
 
+function loadLocalEnvFiles() {
+  const processWithEnvLoader = process as typeof process & {
+    loadEnvFile?: (path?: string) => void
+  }
+
+  if (!processWithEnvLoader.loadEnvFile) {
+    return
+  }
+
+  if (fs.existsSync('.env.local')) {
+    processWithEnvLoader.loadEnvFile('.env.local')
+  }
+
+  if (fs.existsSync('.env')) {
+    processWithEnvLoader.loadEnvFile('.env')
+  }
+}
+
 function resolveProviderFromEnv():
   | 'anthropic'
   | 'openai'
@@ -34,6 +52,7 @@ function resolveProviderFromEnv():
 }
 
 async function main() {
+  loadLocalEnvFiles()
   console.log('🤖 KB Agent Harness\n')
 
   // Parse arguments: [sessionFile?] query...
@@ -47,12 +66,13 @@ async function main() {
   let sessionContent = ''
   let query = ''
 
-  // Check if first arg is a file path
+  // Treat first arg as a session file when it looks like markdown and a query follows.
   const firstArg = args[0]
-  if (firstArg.endsWith('.md') && fs.existsSync(firstArg)) {
-    // First arg is a session file
+  if (firstArg.endsWith('.md') && args.length > 1) {
     sessionFile = firstArg
-    sessionContent = fs.readFileSync(sessionFile, 'utf-8')
+    if (fs.existsSync(sessionFile)) {
+      sessionContent = fs.readFileSync(sessionFile, 'utf-8')
+    }
     query = args.slice(1).join(' ')
   } else {
     // All args are the query
