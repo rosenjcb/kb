@@ -18,3 +18,5 @@ These components contribute significantly to the system's development and operat
 - Workspace policy updated: dogfood defaults to intent-first workflows. Agents should query existing docs first, then submit updates to existing targets, and use freeform only by explicit user request or intent-command limitations. This policy is now codified in AGENTS.md and spike-ticket-workflow skill guidance. (source: consumer)
 
 - Fact check: We do not currently use SQLite as the KB document store. Current persistent store is local markdown documents under sessions/namespaces/<namespace>/documents (or sessions/documents by default). SQLite is only a potential future backend direction. (source: consumer)
+
+- Ticket 062 SPIKE planning completed and closed: defined nvm-style CLI base selection commands (kb use <base>, kb default <base>), deterministic precedence order (override then env then persisted default then fallback), config shape, and error model while preserving KB_NAMESPACE and KB_BASE_DIR compatibility. (source: consumer)
