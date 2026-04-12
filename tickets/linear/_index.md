@@ -13,7 +13,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 
 ## Summary
 
-- Total files: 53 (52 tickets + this index)
+- Total files: 57 (56 tickets + this index)
 - Branch: feat/kb-ticket-backlog
 
 ## Foundation
@@ -44,6 +44,10 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [051 Implement merge_documents tool](tickets/linear/051-implement-merge-documents-tool.md)
 - [052 Implement prune_document tool](tickets/linear/052-implement-prune-document-tool.md)
 - [053 Wire specialized tools registry and test matrix](tickets/linear/053-specialized-tools-registry-and-test-matrix.md)
+- [054 Define consumer-intent API contract](tickets/linear/054-consumer-intent-api-contract.md)
+- [055 Define intent router and internal-tool boundary](tickets/linear/055-intent-router-and-internal-tool-boundary.md)
+- [056 Specify fact validation and dispute contract](tickets/linear/056-fact-validation-and-dispute-contract.md)
+- [057 Specify consumer CLI intent UX and command set](tickets/linear/057-consumer-cli-intent-ux-and-commands.md)
 - [039 Define permission policy evaluation order](tickets/linear/039-permission-policy-evaluation-order.md)
 - [040 Define document ID stability rules](tickets/linear/040-kb-doc-id-stability-rules.md)
 
