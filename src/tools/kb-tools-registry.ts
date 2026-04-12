@@ -9,7 +9,13 @@ import { createToolRegistry } from '../core/tool-registry'
 import type { ToolDefinition } from '../core/types'
 import { MarkdownMDWriterTool } from './markdown-md-writer-tool'
 import { MarkdownDocumentReader, type QueryDocumentsInput, type QueryResponse } from './markdown-document-reader'
-import type { WriteDocumentInput } from './document-writer'
+import {
+  executeWriteDocumentTool,
+  type AppendToDocumentInput,
+  type MergeDocumentsInput,
+  type PruneDocumentInput,
+  type UpdateDocumentInput,
+} from './document-writer'
 
 /**
  * Factory: create KB tools registry with write + read
@@ -25,7 +31,7 @@ export function createKBToolsRegistry(baseDir?: string): ToolExecutor {
   // Register write_document tool
   const writeToolDef: ToolDefinition = {
     name: 'write_document',
-    description: 'Write or append a document to the KB',
+    description: 'Create or overwrite a document in the KB',
     schema: {
       type: 'object',
       properties: {
@@ -42,6 +48,11 @@ export function createKBToolsRegistry(baseDir?: string): ToolExecutor {
           items: { type: 'string' },
           description: 'Optional tags for categorization',
         },
+        type: {
+          type: 'string',
+          enum: ['architecture', 'decision', 'checklist', 'runbook', 'reference'],
+          description: 'Optional document type',
+        },
         documentId: {
           type: 'string',
           description: 'Optional custom ID (auto-slugified if omitted)',
@@ -56,7 +67,7 @@ export function createKBToolsRegistry(baseDir?: string): ToolExecutor {
   }
 
   registry.register('write_document', writeToolDef, async (input) => {
-    return await writer.writeDocument(input as unknown as WriteDocumentInput)
+    return await executeWriteDocumentTool(input, writer)
   })
 
   // Register read_documents tool
@@ -80,6 +91,11 @@ export function createKBToolsRegistry(baseDir?: string): ToolExecutor {
           items: { type: 'string' },
           description: 'Filter by tags (must have ALL to match)',
         },
+        type: {
+          type: 'string',
+          enum: ['architecture', 'decision', 'checklist', 'runbook', 'reference'],
+          description: 'Optional document type filter',
+        },
         limit: {
           type: 'number',
           description: 'Max results to return (default: 10)',
@@ -94,6 +110,89 @@ export function createKBToolsRegistry(baseDir?: string): ToolExecutor {
 
   registry.register('read_documents', readToolDef, async (input) => {
     return await reader.queryDocuments(input as QueryDocumentsInput)
+  })
+
+  // append_to_document
+  const appendToolDef: ToolDefinition = {
+    name: 'append_to_document',
+    description: 'Append markdown content to an existing document',
+    schema: {
+      type: 'object',
+      properties: {
+        documentId: { type: 'string', description: 'Existing document ID' },
+        content: { type: 'string', description: 'Markdown content to append' },
+        position: {
+          type: 'string',
+          enum: ['top', 'bottom'],
+          description: 'Optional append position (default: bottom)',
+        },
+      },
+      required: ['documentId', 'content'],
+      additionalProperties: false,
+    },
+  }
+  registry.register('append_to_document', appendToolDef, async (input) => {
+    return await writer.appendToDocument(input as unknown as AppendToDocumentInput)
+  })
+
+  // update_document
+  const updateToolDef: ToolDefinition = {
+    name: 'update_document',
+    description: 'Replace the full content of an existing document',
+    schema: {
+      type: 'object',
+      properties: {
+        documentId: { type: 'string', description: 'Existing document ID' },
+        content: { type: 'string', description: 'New full markdown content' },
+        title: { type: 'string', description: 'Optional new title' },
+      },
+      required: ['documentId', 'content'],
+      additionalProperties: false,
+    },
+  }
+  registry.register('update_document', updateToolDef, async (input) => {
+    return await writer.updateDocument(input as unknown as UpdateDocumentInput)
+  })
+
+  // prune_document
+  const pruneToolDef: ToolDefinition = {
+    name: 'prune_document',
+    description: 'Remove a document section by heading/pattern',
+    schema: {
+      type: 'object',
+      properties: {
+        documentId: { type: 'string', description: 'Existing document ID' },
+        prunePattern: { type: 'string', description: 'Section heading/pattern to remove' },
+      },
+      required: ['documentId', 'prunePattern'],
+      additionalProperties: false,
+    },
+  }
+  registry.register('prune_document', pruneToolDef, async (input) => {
+    return await writer.pruneDocument(input as unknown as PruneDocumentInput)
+  })
+
+  // merge_documents
+  const mergeToolDef: ToolDefinition = {
+    name: 'merge_documents',
+    description: 'Merge two documents with auto or user-decides mode',
+    schema: {
+      type: 'object',
+      properties: {
+        sourceDocId: { type: 'string', description: 'Source document ID' },
+        targetDocId: { type: 'string', description: 'Target document ID' },
+        mergeMode: {
+          type: 'string',
+          enum: ['auto', 'user-decides'],
+          description: 'Merge mode behavior',
+        },
+      },
+      required: ['sourceDocId', 'targetDocId', 'mergeMode'],
+      additionalProperties: false,
+    },
+  }
+  registry.register('merge_documents', mergeToolDef, async (input) => {
+    return await writer.mergeDocuments(input as unknown as MergeDocumentsInput)
   })
 
   return registry

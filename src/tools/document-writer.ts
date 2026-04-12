@@ -4,8 +4,52 @@ export interface WriteDocumentInput {
   title: string
   content: string
   tags?: string[]
+  type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
   documentId?: string
   overwrite?: boolean
+}
+
+// ─── Specialized Document Operation Types ───────────────────────
+// Following separation-of-concerns pattern: one tool per operation
+
+export interface AppendToDocumentInput {
+  documentId: string
+  content: string
+  position?: 'top' | 'bottom' // Defaults to 'bottom'
+}
+
+export interface UpdateDocumentInput {
+  documentId: string
+  content: string
+  title?: string // Optional: update title if provided
+}
+
+export interface MergeDocumentsInput {
+  sourceDocId: string
+  targetDocId: string
+  mergeMode: 'auto' | 'user-decides'
+}
+
+export interface MergeDocumentsResult {
+  targetDocId: string
+  sourceDocIds: string[]
+  status: 'merged' | 'merge-pending-approval'
+  note?: string
+}
+
+export interface PruneDocumentInput {
+  documentId: string
+  prunePattern: string // Section name or regex pattern to remove
+}
+
+// ─── Extended DocumentWriter Interface ───────────────────────
+// Storage implementations should support these new operations
+
+export interface DocumentWriterExtended extends DocumentWriter {
+  appendToDocument?(input: AppendToDocumentInput): Promise<WriteDocumentResult>
+  updateDocument?(input: UpdateDocumentInput): Promise<WriteDocumentResult>
+  mergeDocuments?(input: MergeDocumentsInput): Promise<MergeDocumentsResult>
+  pruneDocument?(input: PruneDocumentInput): Promise<WriteDocumentResult>
 }
 
 export interface WriteDocumentResult {
@@ -43,6 +87,11 @@ export const writeDocumentTool: ToolDefinition = {
         items: { type: 'string' },
         description: 'Optional tags for indexing and retrieval.',
       },
+      type: {
+        type: 'string',
+        enum: ['architecture', 'decision', 'checklist', 'runbook', 'reference'],
+        description: 'Optional document type for operation semantics and filtering.',
+      },
       documentId: {
         type: 'string',
         description: 'Optional stable id/slug. If omitted, generated from title.',
@@ -74,6 +123,7 @@ function parseWriteDocumentInput(input: unknown): WriteDocumentInput {
   const title = asNonEmptyString(candidate.title, 'title')
   const content = asString(candidate.content, 'content')
   const tags = parseTags(candidate.tags)
+  const type = parseOptionalType(candidate.type)
   const documentId = parseOptionalString(candidate.documentId)
   const overwrite = parseOptionalBoolean(candidate.overwrite)
 
@@ -81,6 +131,7 @@ function parseWriteDocumentInput(input: unknown): WriteDocumentInput {
     title,
     content,
     tags,
+    type,
     documentId,
     overwrite,
   }
@@ -125,4 +176,29 @@ function parseTags(value: unknown): string[] | undefined {
 
   const normalized = value.map(tag => tag.trim()).filter(Boolean)
   return normalized.length ? normalized : undefined
+}
+
+function parseOptionalType(
+  value: unknown,
+): WriteDocumentInput['type'] | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') {
+    throw new Error('write_document: type must be a string when provided')
+  }
+
+  const allowed = new Set([
+    'architecture',
+    'decision',
+    'checklist',
+    'runbook',
+    'reference',
+  ])
+
+  if (!allowed.has(value)) {
+    throw new Error(
+      'write_document: type must be one of architecture, decision, checklist, runbook, reference',
+    )
+  }
+
+  return value as WriteDocumentInput['type']
 }

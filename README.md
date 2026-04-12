@@ -65,6 +65,15 @@ This keeps the tool layer compatible with a future MCP server where Notion is th
 - Format: `pnpm run format`
 - Type check: `pnpm run type-check`
 
+### Tool Design
+
+All tools follow **separation of concerns** principle:
+- Each tool has exactly one responsibility
+- Tool names document intent (e.g., `merge_documents`, not `write_document` with mode parameter)
+- See [Tool Design Conventions](src/tools/TOOL_CONVENTIONS.md) for guidelines and examples
+
+This pattern is informed by production code in `claude-code`: FileReadTool vs FileEditTool vs FileWriteTool, not polymorphic FileOperationTool.
+
 ## Global CLI Setup
 
 Install `kb` as a global utility from this repository:

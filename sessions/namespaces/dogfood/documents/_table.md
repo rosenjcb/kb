@@ -21,3 +21,11 @@
 | decision-log-dayjs-time-standard | Decision Log - Dayjs Time Standard | sessions/namespaces/dogfood/documents/decision-log-dayjs-time-standard.md | 2026-04-12T14:15:00.179Z |
 
 | skill-added-create-pr-description | Skill Added - create-pr-description | sessions/namespaces/dogfood/documents/skill-added-create-pr-description.md | 2026-04-12T14:20:50.398Z |
+
+| ticket-047-closed | Ticket 047 Closed - Document Operations and Specialized Tools | sessions/namespaces/dogfood/documents/ticket-047-closed.md | 2026-04-12T14:36:18.999Z |
+
+| ticket-047-phase2-subtickets | Ticket 047 Phase 2 Decomposed Into Sub-Tickets | sessions/namespaces/dogfood/documents/ticket-047-phase2-subtickets.md | 2026-04-12T14:47:37.700Z |
+
+| ticket-047-phase2-implementation-checkpoint | Ticket 047 Phase 2 Implementation Checkpoint | sessions/namespaces/dogfood/documents/ticket-047-phase2-implementation-checkpoint.md | 2026-04-12T14:52:54.560Z |
+
+| ticket-047-fully-implemented-closed | Ticket 047 Fully Implemented and Closed | sessions/namespaces/dogfood/documents/ticket-047-fully-implemented-closed.md | 2026-04-12T14:56:04.426Z |
