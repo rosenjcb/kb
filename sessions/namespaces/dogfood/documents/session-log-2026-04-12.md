@@ -26,3 +26,7 @@ These components contribute significantly to the system's development and operat
 - Migration complete: implemented kb use and kb default commands, switched storage selection to KB_BASE and KB_BASE_DIR precedence, removed KB_NAMESPACE references from source/tests/docs, and moved default fallback to sessions/namespaces/default/documents. (source: consumer)
 
 - Decision update for ticket 062: keep ~/.kb/configuration.yml schema minimal for now (defaultBase and updatedAt), add future keys like API access references later, and treat .env.local as CI/CD-dependent override surface instead of primary local configuration. (source: consumer)
+
+- Verification checkpoint 2026-04-12: Vitest suite passes after precedence refactor (9 files, 40 tests). (source: verification)
+
+- Docs sync checkpoint: README now documents base resolution as session use -> saved default -> KB_BASE fallback, and CLI/tests were updated to match this exact order. (source: docs-sync)

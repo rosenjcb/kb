@@ -16,3 +16,5 @@ Tags: inventory, codebase, dogfood
 
 - **Build scripts**: Responsible for compiling the application, setting up the executable environment, and managing dependencies.
 - **Runtime scripts**: Ensure the application runs smoothly, handling tasks such as session management, environment configuration, and error handling.
+
+- Codebase inventory update: base-selection module now includes writeSessionBase, writeDefaultBase, and resolveEffectiveBaseDir with explicit no-fallback error when no base is configured. (source: code-audit)

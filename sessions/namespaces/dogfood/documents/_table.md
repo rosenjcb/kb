@@ -2,15 +2,15 @@
 
 | id | title | path | updated_at |
 | --- | --- | --- | --- |
-| kb-architecture-overview | KB Architecture Overview | sessions/namespaces/dogfood/documents/kb-architecture-overview.md | 2026-04-12T13:55:02.584Z |
+| kb-architecture-overview | KB Architecture Overview | sessions/namespaces/dogfood/documents/kb-architecture-overview.md | 2026-04-12T16:03:44.602Z |
 
-| kb-cli-evolution-apr-2026 | KB CLI Evolution (April 2026) | sessions/namespaces/dogfood/documents/kb-cli-evolution-apr-2026.md | 2026-04-12T13:55:32.275Z |
+| kb-cli-evolution-apr-2026 | KB CLI Evolution (April 2026) | sessions/namespaces/dogfood/documents/kb-cli-evolution-apr-2026.md | 2026-04-12T16:13:45.060Z |
 
 | kb-test-isolation-persistence-policy | Test Isolation and Persistence Policy | sessions/namespaces/dogfood/documents/kb-test-isolation-persistence-policy.md | 2026-04-12T13:55:58.286Z |
 
-| session-log-2026-04-12 | Session Log - April 12 2026 | sessions/namespaces/dogfood/documents/session-log-2026-04-12.md | 2026-04-12T15:52:39.073Z |
+| session-log-2026-04-12 | Session Log - April 12 2026 | sessions/namespaces/dogfood/documents/session-log-2026-04-12.md | 2026-04-12T16:04:43.727Z |
 
-| codebase-inventory-snapshot | Codebase Inventory Snapshot | sessions/namespaces/dogfood/documents/codebase-inventory-snapshot.md | 2026-04-12T13:56:41.082Z |
+| codebase-inventory-snapshot | Codebase Inventory Snapshot | sessions/namespaces/dogfood/documents/codebase-inventory-snapshot.md | 2026-04-12T16:03:44.703Z |
 
 | next-ticket-008-naming-collision-policy | Next Ticket Selection - 008 Naming Collision Policy | sessions/namespaces/dogfood/documents/next-ticket-008-naming-collision-policy.md | 2026-04-12T14:05:29.486Z |
 
@@ -33,3 +33,5 @@
 | tickets-054-057-planned-closed | Tickets 054-057 Planned and Closed; 058-061 Created | sessions/namespaces/dogfood/documents/tickets-054-057-planned-closed.md | 2026-04-12T15:06:35.899Z |
 
 | tickets-058-061-implementation-checkpoint | tickets-058-061-implementation-checkpoint | sessions/namespaces/dogfood/documents/tickets-058-061-implementation-checkpoint.md | 2026-04-12T15:12:22.431Z |
+
+| cli-facts | cli facts | sessions/namespaces/dogfood/documents/cli-facts.md | 2026-04-12T16:08:52.929Z |

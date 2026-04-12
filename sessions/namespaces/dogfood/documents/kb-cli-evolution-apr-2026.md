@@ -10,3 +10,9 @@ In April 2026, several significant changes were made to the KB CLI to enhance it
 3. **.env Auto-loading**: Automatic loading of `.env` files was implemented to simplify environment variable management across different development stages.
 4. **Namespace-aware Storage Resolution**: The storage resolution mechanism became namespace-aware, allowing for more precise and context-sensitive data handling.
 5. **Session-file Handling**: Enhanced handling of session files for new or nonexistent markdown files to prevent data loss and ensure better session continuity.
+
+- Precedence update now enforced in CLI base resolution: 1) kb use sessionBase, 2) saved defaultBase, 3) KB_BASE environment fallback; there is no implicit default namespace fallback in resolveEffectiveBaseDir. (source: code-audit)
+
+- kb use <base> now writes a sessionBase into ~/.kb/config.json so immediate subsequent invocations use that base without requiring shell export commands. (source: code-audit)
+
+- CLI change: kb query --output human now returns consumer-facing evidence text with snippets and provenance IDs instead of status diagnostics. JSON output remains unchanged. (source: implementation)

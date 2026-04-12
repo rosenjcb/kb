@@ -32,6 +32,60 @@ describe('intent-cli parsing', () => {
     )
     expect(output).toContain('"status": "valid"')
   })
+
+  it('Given read_documents result in human mode, then formatter returns structured summary with doc locations', () => {
+    const output = formatIntentResult(
+      {
+        status: 'accepted',
+        confidence: 0.8,
+        explanation: 'query intent maps directly to read_documents',
+        recommendedAction: 'read_documents',
+        data: {
+          results: [
+            {
+              metadata: {
+                id: 'cli-facts',
+                title: 'CLI Facts',
+                filePath: '/tmp/cli-facts.md',
+              },
+              content: '# CLI Facts\n\nCreated: 2026-04-12\n\n## Base Selection\nKB base precedence order: 1) kb use, 2) kb default, 3) KB_BASE.',
+            },
+          ],
+          total: 1,
+        },
+      },
+      'human',
+    )
+
+    expect(output).toContain('Summary: Found 1 matching KB document')
+    expect(output).toContain('Status: accepted')
+    expect(output).toContain('Confidence: 0.80')
+    expect(output).toContain('Relevant Docs:')
+    expect(output).toContain('location=/tmp/cli-facts.md')
+    expect(output).toContain('uri=file:///tmp/cli-facts.md')
+    expect(output).toContain('highlights=[base-selection] KB base precedence order')
+    expect(output).toContain('Provenance: cli-facts')
+    expect(output).toContain('KB base precedence order')
+  })
+
+  it('Given read_documents with no results in human mode, then formatter returns structured no-match response', () => {
+    const output = formatIntentResult(
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        data: {
+          results: [],
+          total: 0,
+        },
+      },
+      'human',
+    )
+
+    expect(output).toContain('Summary: No matching KB documents were found for this query.')
+    expect(output).toContain('Matches: 0')
+    expect(output).toContain('Relevant Docs: none')
+    expect(output).toContain('Hint: Try a broader phrase')
+  })
 })
 
 describe('intent-cli execution', () => {
