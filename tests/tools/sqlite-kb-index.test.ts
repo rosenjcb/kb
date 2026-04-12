@@ -115,4 +115,127 @@ describe('SQLite KB index integration', () => {
 
     indexer.close()
   })
+
+  it('Given repeated miss events with candidates, then should persist miss clusters and accumulate ranking hints', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    indexer.recordRetrievalMissEvent({
+      queryFingerprint: 'fp:project-about',
+      rawQuery: 'what is this project about',
+      stage: 'lexical_recovery',
+      missReason: 'low_confidence',
+      topCandidates: [
+        { id: 'ticket-047', score: 0.4 },
+        { id: 'general-facts', score: 0.38 },
+      ],
+      surface: 'reader',
+    })
+
+    indexer.recordRetrievalMissEvent({
+      queryFingerprint: 'fp:project-about',
+      rawQuery: 'what is this project about',
+      stage: 'query_rewrite_retry',
+      missReason: 'low_confidence',
+      topCandidates: [
+        { id: 'ticket-047', score: 0.51 },
+      ],
+      surface: 'chat',
+    })
+
+    indexer.recordRetrievalMissEvent({
+      queryFingerprint: 'fp:project-about',
+      rawQuery: 'what is this project about',
+      stage: 'query_rewrite_retry',
+      missReason: 'low_confidence',
+      topCandidates: [
+        { id: 'ticket-047', score: 0.52 },
+      ],
+      surface: 'intent-query',
+    })
+
+    const clusters = indexer.listRetrievalMissClusters(10)
+    const topCluster = clusters[0]
+    expect(topCluster.queryFingerprint).toBe('fp:project-about')
+    expect(topCluster.missReason).toBe('low_confidence')
+    expect(topCluster.occurrences).toBe(3)
+
+    const hints = indexer.getRetrievalRankingHints('fp:project-about', 3)
+    expect(hints.length).toBe(1)
+    expect(hints[0].docId).toBe('ticket-047')
+    expect(hints[0].occurrences).toBe(3)
+    expect(hints[0].hintScore).toBeGreaterThan(0.2)
+
+    indexer.close()
+  })
+
+  it('Given checkpoint event traces, then should compute stage metrics and promote rollout when thresholds are met', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    const events = Array.from({ length: 30 }, (_, idx) => ({
+      queryFingerprint: `fp-${idx}`,
+      stage: 'hybrid_primary',
+      status: idx < 24 ? 'hit' as const : 'miss' as const,
+      nextAction: idx < 24 ? 'return' as const : 'advance' as const,
+      confidence: idx < 24 ? 0.86 : 0.2,
+      method: 'hybrid' as const,
+      detail: 'fts+vector-rerank',
+      surface: 'reader' as const,
+    }))
+
+    indexer.recordRetrievalCheckpointEvents(events)
+
+    const metrics = indexer.getRetrievalStageMetrics(48)
+    expect(metrics.length).toBeGreaterThan(0)
+    expect(metrics[0].stage).toBe('hybrid_primary')
+    expect(metrics[0].totalCount).toBe(30)
+    expect(metrics[0].hitCount).toBe(24)
+
+    const assessment = indexer.evaluateRetrievalRollout({
+      minSampleSize: 20,
+      minOverallSuccessRate: 0.7,
+      maxOverallMissRate: 0.3,
+      maxHybridFallbackRate: 0.25,
+    }, 48)
+
+    expect(assessment.decision).toBe('promote')
+    expect(assessment.sampleSize).toBe(30)
+    expect(assessment.reasons).toContain('thresholds-met')
+
+    indexer.close()
+  })
+
+  it('Given poor checkpoint outcomes, then rollout assessment should rollback', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    const badEvents = Array.from({ length: 20 }, (_, idx) => ({
+      queryFingerprint: `bad-fp-${idx}`,
+      stage: 'hybrid_primary',
+      status: idx < 6 ? 'hit' as const : 'miss' as const,
+      nextAction: idx < 6 ? 'return' as const : 'advance' as const,
+      confidence: idx < 6 ? 0.7 : 0.15,
+      method: 'hybrid' as const,
+      detail: 'fts+vector-rerank',
+      surface: 'reader' as const,
+    }))
+
+    indexer.recordRetrievalCheckpointEvents(badEvents)
+
+    const assessment = indexer.evaluateRetrievalRollout({
+      minSampleSize: 20,
+      minOverallSuccessRate: 0.7,
+      maxOverallMissRate: 0.25,
+      maxHybridFallbackRate: 0.5,
+    }, 48)
+
+    expect(assessment.decision).toBe('rollback')
+    expect(assessment.reasons.some(reason => reason.includes('hybrid-fallback-rate-too-high'))).toBe(true)
+
+    indexer.close()
+  })
 })

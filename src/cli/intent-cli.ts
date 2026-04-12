@@ -174,6 +174,12 @@ interface ReadDocumentsResultData {
   retrieval?: {
     method?: string
     detail?: string
+    checkpoints?: Array<{
+      stage?: string
+      status?: string
+      nextAction?: string
+      confidence?: number
+    }>
   }
 }
 
@@ -257,6 +263,18 @@ function formatReadDocumentsHumanResult(result: IntentResult): string {
   if (data.retrieval?.method) {
     const detail = data.retrieval.detail ? ` (${data.retrieval.detail})` : ''
     lines.push(`Retrieval: ${data.retrieval.method}${detail}`)
+  }
+
+  if (Array.isArray(data.retrieval?.checkpoints) && data.retrieval.checkpoints.length > 0) {
+    const trace = data.retrieval.checkpoints
+      .map(checkpoint => {
+        const stage = checkpoint.stage ?? 'unknown-stage'
+        const status = checkpoint.status ?? 'unknown-status'
+        const next = checkpoint.nextAction ?? 'unknown-action'
+        return `${stage}:${status}->${next}`
+      })
+      .join(' | ')
+    lines.push(`Checkpoints: ${trace}`)
   }
 
   lines.push(`Matches: ${results.length}`)

@@ -34,7 +34,20 @@ interface ReadDocumentsResult {
   retrieval?: {
     method?: string
     detail?: string
+    checkpoints?: Array<{
+      stage?: string
+      status?: string
+      nextAction?: string
+      confidence?: number
+    }>
   }
+}
+
+type ReadDocumentsCheckpoint = {
+  stage?: string
+  status?: string
+  nextAction?: string
+  confidence?: number
 }
 
 const HELP_TEXT = [
@@ -83,7 +96,25 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
           },
         })
 
-        const retrieval = normalizeReadResult(readResult)
+        let retrieval = normalizeReadResult(readResult)
+
+        if (shouldAttemptRecoveryQuery(retrieval)) {
+          const recoveryQuery = buildRecoveryQuery(input)
+          if (recoveryQuery) {
+            const recoveryResult = await deps.toolExecutor.execute({
+              id: `chat-read-recovery-${Date.now()}`,
+              name: 'read_documents',
+              input: {
+                query: recoveryQuery,
+                includeContent: true,
+                limit: retrievalLimit,
+              },
+            })
+
+            retrieval = mergeReadResults(retrieval, normalizeReadResult(recoveryResult), 'chat-recovery-retry')
+          }
+        }
+
         const retrievalWithFallback = await augmentRetrievalWithWorkspaceFallback(
           input,
           retrieval,
@@ -104,6 +135,10 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
         const answer = completion.text.trim() || 'I do not have enough evidence to answer that yet.'
         io.write(`assistant> ${answer}`)
         io.write(`retrieval> ${formatRetrievalMode(retrievalWithFallback.retrieval)}`)
+        const checkpointTrace = formatCheckpointTrace(retrievalWithFallback.retrieval)
+        if (checkpointTrace) {
+          io.write(`checkpoints> ${checkpointTrace}`)
+        }
         io.write(`sources> ${formatSourceIds(retrievalWithFallback.results).join(', ') || 'none'}`)
 
         history.push({ user: input, assistant: answer })
@@ -163,7 +198,7 @@ async function augmentRetrievalWithWorkspaceFallback(
   retrieval: ReadDocumentsResult,
   workspaceDir: string,
 ): Promise<ReadDocumentsResult> {
-  if (!shouldUseWorkspaceFallback(question, retrieval.results)) {
+  if (!shouldUseWorkspaceFallback(question, retrieval)) {
     return retrieval
   }
 
@@ -178,19 +213,27 @@ async function augmentRetrievalWithWorkspaceFallback(
     retrieval: {
       method: retrieval.retrieval?.method ?? 'lexical',
       detail: appendDetail(retrieval.retrieval?.detail, 'workspace-fallback'),
+      checkpoints: retrieval.retrieval?.checkpoints,
     },
   }
 }
 
 function shouldUseWorkspaceFallback(
   question: string,
-  results: ReadDocumentsResult['results'],
+  retrieval: ReadDocumentsResult,
 ): boolean {
   if (!isBroadProjectQuestion(question)) {
     return false
   }
 
+  const results = retrieval.results
+
   if (!results || results.length === 0) {
+    return true
+  }
+
+  const confidence = getFinalCheckpointConfidence(retrieval)
+  if (typeof confidence === 'number' && confidence < 0.72) {
     return true
   }
 
@@ -199,7 +242,13 @@ function shouldUseWorkspaceFallback(
     return true
   }
 
-  return ids.every(id => id.startsWith('ticket-'))
+  return ids.every(isLowSignalSourceId)
+}
+
+function isLowSignalSourceId(id: string): boolean {
+  return id.startsWith('ticket-')
+    || id.startsWith('session-log-')
+    || id === 'general-facts'
 }
 
 function isBroadProjectQuestion(question: string): boolean {
@@ -239,10 +288,109 @@ function appendDetail(base: string | undefined, suffix: string): string {
   return `${base};${suffix}`
 }
 
+function shouldAttemptRecoveryQuery(retrieval: ReadDocumentsResult): boolean {
+  const finalCheckpoint = getFinalCheckpoint(retrieval)
+  if (!finalCheckpoint) {
+    return !retrieval.results || retrieval.results.length === 0
+  }
+
+  if (finalCheckpoint.nextAction === 'advance') return true
+  if (finalCheckpoint.status === 'error' || finalCheckpoint.status === 'miss') return true
+  if (typeof finalCheckpoint.confidence === 'number' && finalCheckpoint.confidence < 0.45) {
+    return true
+  }
+
+  return false
+}
+
+function buildRecoveryQuery(input: string): string | undefined {
+  const normalized = input
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return undefined
+
+  const tokens = normalized
+    .split(' ')
+    .filter(token => token.length >= 3)
+    .slice(0, 8)
+
+  if (tokens.length === 0) return undefined
+  return tokens.join(' ')
+}
+
+function mergeReadResults(
+  primary: ReadDocumentsResult,
+  secondary: ReadDocumentsResult,
+  detailSuffix: string,
+): ReadDocumentsResult {
+  const mergedMap = new Map<string, { metadata?: { id?: string }; content?: string }>()
+
+  for (const result of primary.results ?? []) {
+    const id = result.metadata?.id ?? `primary-${mergedMap.size}`
+    mergedMap.set(id, result)
+  }
+
+  for (const result of secondary.results ?? []) {
+    const id = result.metadata?.id ?? `secondary-${mergedMap.size}`
+    if (!mergedMap.has(id)) {
+      mergedMap.set(id, result)
+    }
+  }
+
+  const checkpoints = [
+    ...(primary.retrieval?.checkpoints ?? []),
+    ...(secondary.retrieval?.checkpoints ?? []),
+  ]
+
+  return {
+    results: [...mergedMap.values()].slice(0, 8),
+    retrieval: {
+      method: secondary.retrieval?.method ?? primary.retrieval?.method,
+      detail: appendDetail(
+        secondary.retrieval?.detail ?? primary.retrieval?.detail,
+        detailSuffix,
+      ),
+      checkpoints,
+    },
+  }
+}
+
+function getFinalCheckpoint(
+  retrieval: ReadDocumentsResult,
+): ReadDocumentsCheckpoint | undefined {
+  const checkpoints = retrieval.retrieval?.checkpoints
+  if (!Array.isArray(checkpoints) || checkpoints.length === 0) return undefined
+  return checkpoints[checkpoints.length - 1]
+}
+
+function getFinalCheckpointConfidence(retrieval: ReadDocumentsResult): number | undefined {
+  const checkpoint = getFinalCheckpoint(retrieval)
+  return checkpoint?.confidence
+}
+
 function formatRetrievalMode(retrieval: ReadDocumentsResult['retrieval']): string {
   const method = retrieval?.method ?? 'unknown'
   const detail = retrieval?.detail ? ` (${retrieval.detail})` : ''
   return `${method}${detail}`
+}
+
+function formatCheckpointTrace(retrieval: ReadDocumentsResult['retrieval']): string | undefined {
+  const checkpoints = retrieval?.checkpoints
+  if (!Array.isArray(checkpoints) || checkpoints.length === 0) {
+    return undefined
+  }
+
+  return checkpoints
+    .map(checkpoint => {
+      const stage = checkpoint.stage ?? 'unknown-stage'
+      const status = checkpoint.status ?? 'unknown-status'
+      const action = checkpoint.nextAction ?? 'unknown-action'
+      return `${stage}:${status}->${action}`
+    })
+    .join(' | ')
 }
 
 function formatSourceIds(results: ReadDocumentsResult['results']): string[] {

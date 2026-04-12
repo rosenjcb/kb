@@ -62,3 +62,19 @@ These components contribute significantly to the system's development and operat
 - Ticket 068 prototype implemented: added kb chat REPL command with per-turn read_documents grounding, LLM answers, retrieval mode/detail + sources output, and stable /exit/Ctrl+C handling; validated with focused tests, type-check, and runtime smoke. (source: implementation)
 
 - Chat usefulness hardening shipped in current merge scope: upgraded shared markdown reader ranking for all read_documents consumers, added keyword broadening retry, and added chat workspace fallback evidence (README/GAMEPLAN) for broad project-purpose questions when KB hits are sparse or ticket-only; validated with tests + type-check + smoke chat run. (source: implementation)
+
+- Created ticket 071 to plan retrieval decision checkpoints and miss-learning loop across all read_documents consumers (chat and intent/tool paths), with escalation stages, miss schema, rollout safety, and validation criteria; updated linear backlog index counts and links. (source: planning)
+
+- Created and switched to feature branch feat/071-retrieval-decision-checkpoints-miss-learning with ticket 071/index/session-log changes in working tree; ready for implementation/build instructions. (source: planning)
+
+- Closed SPIKE ticket 071 with implementation plan: defined deterministic retrieval checkpoint stages, miss-learning schema, and rollout/evaluation strategy; created follow-up implementation tickets 072, 073, and 074 before closure per phase-clarity policy; updated backlog index counts and links. (source: planning)
+
+- Started ticket 072 implementation: added shared retrieval checkpoint orchestrator with deterministic stages and stop/go decisions, wired stage trace metadata into markdown reader query responses, and surfaced checkpoint traces in chat + intent human output; added orchestrator/reader/chat/intent tests and validated with focused passing suites plus type-check. (source: implementation)
+
+- Implemented ticket 073 core miss-learning runtime: added sqlite schema/tables for retrieval_miss_events and retrieval_ranking_hints, added indexer APIs for recording miss events/listing miss clusters/reading ranking hints, integrated markdown reader with flag-gated miss capture and flag-gated ranking-hint boosts for hybrid ranking, and added tests for schema persistence + guardrails; focused suites and type-check passing. (source: implementation)
+
+- Implemented ticket 074 rollout guardrails and observability: added retrieval_checkpoint_events schema, per-stage metrics API, promote/hold/rollback evaluator with explicit thresholds, reader checkpoint persistence path, and executable evaluation tests for promotion/rollback + stage observability. (source: implementation)
+
+- Patched chat fallback policy for broad project-overview prompts: low-signal source detection now forces workspace fallback augmentation, added low-confidence recovery retry path, and preserved checkpoint trace metadata through fallback responses; validated via chat-cli tests + type-check + live kb chat dogfood run. (source: implementation)
+
+- README dogfood checkpoint: added KB overview, base precedence order, and daily workflow guidance into general-facts for retrieval context. (source: readme)

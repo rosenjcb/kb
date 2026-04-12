@@ -17,6 +17,79 @@ export interface SqliteKbIndexerOptions {
   vectorDimensions?: number
 }
 
+export interface RetrievalMissEventInput {
+  queryFingerprint: string
+  rawQuery: string
+  stage: string
+  missReason:
+    | 'no_candidates'
+    | 'low_confidence'
+    | 'conflicting_sources'
+    | 'latency_budget_exceeded'
+    | 'provider_error'
+  topCandidates: Array<{ id: string; score: number }>
+  surface: 'chat' | 'intent-query' | 'intent-explain' | 'validator' | 'reader'
+}
+
+export interface RetrievalMissCluster {
+  queryFingerprint: string
+  missReason: string
+  occurrences: number
+  lastSeenAt: string
+}
+
+export interface RetrievalRankingHint {
+  docId: string
+  hintScore: number
+  occurrences: number
+}
+
+export interface RetrievalCheckpointEventInput {
+  queryFingerprint: string
+  stage: string
+  status: 'hit' | 'miss' | 'error'
+  nextAction: 'return' | 'advance'
+  confidence: number
+  method: 'hybrid' | 'lexical' | 'lexical-fallback'
+  detail?: string
+  surface: 'chat' | 'intent-query' | 'intent-explain' | 'validator' | 'reader'
+}
+
+export interface RetrievalStageMetrics {
+  stage: string
+  totalCount: number
+  hitCount: number
+  missCount: number
+  errorCount: number
+  advanceCount: number
+  returnCount: number
+  successRate: number
+  fallbackRate: number
+}
+
+export interface RetrievalRolloutThresholds {
+  minSampleSize: number
+  minOverallSuccessRate: number
+  maxOverallMissRate: number
+  maxHybridFallbackRate: number
+}
+
+export interface RetrievalRolloutAssessment {
+  decision: 'promote' | 'hold' | 'rollback'
+  sampleSize: number
+  overallSuccessRate: number
+  overallMissRate: number
+  hybridFallbackRate: number
+  reasons: string[]
+}
+
+const DEFAULT_ROLLOUT_THRESHOLDS: RetrievalRolloutThresholds = {
+  minSampleSize: 20,
+  minOverallSuccessRate: 0.7,
+  maxOverallMissRate: 0.25,
+  maxHybridFallbackRate: 0.5,
+}
+
 export class SqliteKbIndexer {
   private readonly db: Database.Database
   private readonly modelId: string
@@ -149,6 +222,283 @@ export class SqliteKbIndexer {
     tx()
   }
 
+  recordRetrievalMissEvent(input: RetrievalMissEventInput): void {
+    const now = dayjs().toISOString()
+
+    const insertMissEvent = this.db.prepare(`
+      INSERT INTO retrieval_miss_events (
+        query_fingerprint,
+        raw_query,
+        stage,
+        miss_reason,
+        top_candidates_json,
+        surface,
+        created_at
+      )
+      VALUES (@queryFingerprint, @rawQuery, @stage, @missReason, @topCandidatesJson, @surface, @createdAt)
+    `)
+
+    const upsertHint = this.db.prepare(`
+      INSERT INTO retrieval_ranking_hints (
+        query_fingerprint,
+        doc_id,
+        occurrences,
+        hint_score,
+        updated_at
+      )
+      VALUES (@queryFingerprint, @docId, 1, @initialHintScore, @updatedAt)
+      ON CONFLICT(query_fingerprint, doc_id) DO UPDATE SET
+        occurrences = retrieval_ranking_hints.occurrences + 1,
+        hint_score = MIN(1.0, retrieval_ranking_hints.hint_score + 0.1),
+        updated_at = excluded.updated_at
+    `)
+
+    const tx = this.db.transaction(() => {
+      insertMissEvent.run({
+        queryFingerprint: input.queryFingerprint,
+        rawQuery: input.rawQuery,
+        stage: input.stage,
+        missReason: input.missReason,
+        topCandidatesJson: JSON.stringify(input.topCandidates),
+        surface: input.surface,
+        createdAt: now,
+      })
+
+      // Feedback loop: we only learn candidate affinity, and serving remains flag-gated.
+      for (const candidate of input.topCandidates.slice(0, 5)) {
+        upsertHint.run({
+          queryFingerprint: input.queryFingerprint,
+          docId: candidate.id,
+          initialHintScore: 0.1,
+          updatedAt: now,
+        })
+      }
+    })
+
+    tx()
+  }
+
+  listRetrievalMissClusters(limit = 20): RetrievalMissCluster[] {
+    const rows = this.db
+      .prepare(`
+        SELECT
+          query_fingerprint AS queryFingerprint,
+          miss_reason AS missReason,
+          COUNT(*) AS occurrences,
+          MAX(created_at) AS lastSeenAt
+        FROM retrieval_miss_events
+        GROUP BY query_fingerprint, miss_reason
+        ORDER BY occurrences DESC, lastSeenAt DESC
+        LIMIT ?
+      `)
+      .all(limit) as RetrievalMissCluster[]
+
+    return rows
+  }
+
+  getRetrievalRankingHints(
+    queryFingerprint: string,
+    minOccurrences = 3,
+  ): RetrievalRankingHint[] {
+    const rows = this.db
+      .prepare(`
+        SELECT
+          doc_id AS docId,
+          hint_score AS hintScore,
+          occurrences AS occurrences
+        FROM retrieval_ranking_hints
+        WHERE query_fingerprint = ?
+          AND occurrences >= ?
+        ORDER BY hint_score DESC, occurrences DESC
+        LIMIT 25
+      `)
+      .all(queryFingerprint, minOccurrences) as RetrievalRankingHint[]
+
+    return rows
+  }
+
+  recordRetrievalCheckpointEvents(events: RetrievalCheckpointEventInput[]): void {
+    if (events.length === 0) return
+
+    const insertCheckpoint = this.db.prepare(`
+      INSERT INTO retrieval_checkpoint_events (
+        query_fingerprint,
+        stage,
+        status,
+        next_action,
+        confidence,
+        method,
+        detail,
+        surface,
+        created_at
+      )
+      VALUES (
+        @queryFingerprint,
+        @stage,
+        @status,
+        @nextAction,
+        @confidence,
+        @method,
+        @detail,
+        @surface,
+        @createdAt
+      )
+    `)
+
+    const now = dayjs().toISOString()
+    const tx = this.db.transaction(() => {
+      for (const event of events) {
+        insertCheckpoint.run({
+          queryFingerprint: event.queryFingerprint,
+          stage: event.stage,
+          status: event.status,
+          nextAction: event.nextAction,
+          confidence: event.confidence,
+          method: event.method,
+          detail: event.detail ?? null,
+          surface: event.surface,
+          createdAt: now,
+        })
+      }
+    })
+
+    tx()
+  }
+
+  getRetrievalStageMetrics(windowHours = 24): RetrievalStageMetrics[] {
+    const since = dayjs().subtract(windowHours, 'hour').toISOString()
+    const rows = this.db
+      .prepare(`
+        SELECT
+          stage AS stage,
+          COUNT(*) AS totalCount,
+          SUM(CASE WHEN status = 'hit' THEN 1 ELSE 0 END) AS hitCount,
+          SUM(CASE WHEN status = 'miss' THEN 1 ELSE 0 END) AS missCount,
+          SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errorCount,
+          SUM(CASE WHEN next_action = 'advance' THEN 1 ELSE 0 END) AS advanceCount,
+          SUM(CASE WHEN next_action = 'return' THEN 1 ELSE 0 END) AS returnCount
+        FROM retrieval_checkpoint_events
+        WHERE created_at >= ?
+        GROUP BY stage
+        ORDER BY totalCount DESC
+      `)
+      .all(since) as Array<{
+        stage: string
+        totalCount: number
+        hitCount: number
+        missCount: number
+        errorCount: number
+        advanceCount: number
+        returnCount: number
+      }>
+
+    return rows.map(row => ({
+      ...row,
+      successRate: row.totalCount > 0 ? row.hitCount / row.totalCount : 0,
+      fallbackRate: row.totalCount > 0 ? row.advanceCount / row.totalCount : 0,
+    }))
+  }
+
+  evaluateRetrievalRollout(
+    thresholds: Partial<RetrievalRolloutThresholds> = {},
+    windowHours = 24,
+  ): RetrievalRolloutAssessment {
+    const config: RetrievalRolloutThresholds = {
+      ...DEFAULT_ROLLOUT_THRESHOLDS,
+      ...thresholds,
+    }
+
+    const since = dayjs().subtract(windowHours, 'hour').toISOString()
+
+    const aggregate = this.db
+      .prepare(`
+        SELECT
+          COUNT(*) AS sampleSize,
+          SUM(CASE WHEN status = 'hit' AND next_action = 'return' THEN 1 ELSE 0 END) AS successCount,
+          SUM(CASE WHEN status != 'hit' AND next_action = 'return' THEN 1 ELSE 0 END) AS missCount
+        FROM retrieval_checkpoint_events
+        WHERE created_at >= ?
+      `)
+      .get(since) as {
+        sampleSize: number
+        successCount: number
+        missCount: number
+      }
+
+    const hybrid = this.db
+      .prepare(`
+        SELECT
+          COUNT(*) AS total,
+          SUM(CASE WHEN next_action = 'advance' THEN 1 ELSE 0 END) AS fallbackCount
+        FROM retrieval_checkpoint_events
+        WHERE stage = 'hybrid_primary' AND created_at >= ?
+      `)
+      .get(since) as {
+        total: number
+        fallbackCount: number
+      }
+
+    const sampleSize = aggregate.sampleSize ?? 0
+    const overallSuccessRate = sampleSize > 0 ? (aggregate.successCount ?? 0) / sampleSize : 0
+    const overallMissRate = sampleSize > 0 ? (aggregate.missCount ?? 0) / sampleSize : 0
+    const hybridFallbackRate = (hybrid.total ?? 0) > 0
+      ? (hybrid.fallbackCount ?? 0) / hybrid.total
+      : 0
+
+    const reasons: string[] = []
+
+    if (sampleSize < config.minSampleSize) {
+      reasons.push(`sample-size-below-threshold:${sampleSize}<${config.minSampleSize}`)
+      return {
+        decision: 'hold',
+        sampleSize,
+        overallSuccessRate,
+        overallMissRate,
+        hybridFallbackRate,
+        reasons,
+      }
+    }
+
+    if (overallMissRate > config.maxOverallMissRate) {
+      reasons.push(`overall-miss-rate-too-high:${overallMissRate.toFixed(2)}>${config.maxOverallMissRate}`)
+    }
+
+    if (hybridFallbackRate > config.maxHybridFallbackRate) {
+      reasons.push(`hybrid-fallback-rate-too-high:${hybridFallbackRate.toFixed(2)}>${config.maxHybridFallbackRate}`)
+    }
+
+    if (reasons.length > 0) {
+      return {
+        decision: 'rollback',
+        sampleSize,
+        overallSuccessRate,
+        overallMissRate,
+        hybridFallbackRate,
+        reasons,
+      }
+    }
+
+    if (overallSuccessRate >= config.minOverallSuccessRate) {
+      return {
+        decision: 'promote',
+        sampleSize,
+        overallSuccessRate,
+        overallMissRate,
+        hybridFallbackRate,
+        reasons: ['thresholds-met'],
+      }
+    }
+
+    return {
+      decision: 'hold',
+      sampleSize,
+      overallSuccessRate,
+      overallMissRate,
+      hybridFallbackRate,
+      reasons: [`overall-success-rate-below-threshold:${overallSuccessRate.toFixed(2)}<${config.minOverallSuccessRate}`],
+    }
+  }
+
   close(): void {
     this.db.close()
   }
@@ -199,6 +549,51 @@ export class SqliteKbIndexer {
         value TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS retrieval_miss_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query_fingerprint TEXT NOT NULL,
+        raw_query TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        miss_reason TEXT NOT NULL,
+        top_candidates_json TEXT NOT NULL,
+        surface TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_miss_events_fingerprint
+        ON retrieval_miss_events(query_fingerprint, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS retrieval_ranking_hints (
+        query_fingerprint TEXT NOT NULL,
+        doc_id TEXT NOT NULL,
+        occurrences INTEGER NOT NULL DEFAULT 0,
+        hint_score REAL NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (query_fingerprint, doc_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_ranking_hints_fingerprint
+        ON retrieval_ranking_hints(query_fingerprint, hint_score DESC);
+
+      CREATE TABLE IF NOT EXISTS retrieval_checkpoint_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query_fingerprint TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        status TEXT NOT NULL,
+        next_action TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        method TEXT NOT NULL,
+        detail TEXT,
+        surface TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_checkpoint_events_stage
+        ON retrieval_checkpoint_events(stage, created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_checkpoint_events_fingerprint
+        ON retrieval_checkpoint_events(query_fingerprint, created_at DESC);
     `)
   }
 }
