@@ -10,9 +10,9 @@ echo "================================\n"
 
 # Setup
 RUN_ID="$(date +%s)"
-TEST_NAMESPACE="ci-integration-${RUN_ID}"
+TEST_BASE="ci-integration-${RUN_ID}"
 TEST_SESSION="/tmp/kb-cli-test-${RUN_ID}.md"
-TEST_DIR="/Users/rosenjcb/kb/sessions/namespaces/${TEST_NAMESPACE}/documents"
+TEST_DIR="/Users/rosenjcb/kb/sessions/namespaces/${TEST_BASE}/documents"
 TS_TITLE="TypeScript Guide ${RUN_ID}"
 PY_TITLE="Python Basics ${RUN_ID}"
 GO_TITLE="Go Language ${RUN_ID}"
@@ -43,7 +43,7 @@ run_test() {
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   
   # Run the built CLI artifact
-  output=$(KB_NAMESPACE="$TEST_NAMESPACE" node dist/bin/kb.js "$TEST_SESSION" "$query" 2>&1)
+  output=$(KB_BASE_DIR="$TEST_DIR" node dist/bin/kb.js "$TEST_SESSION" "$query" 2>&1)
   
   # Check for expected text in output
   if echo "$output" | grep -q "$expect_text"; then

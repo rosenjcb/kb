@@ -181,17 +181,17 @@ node dist/bin/kb.js "What tools are available?"
 
 ### Namespace Rules
 
-- Dogfood knowledge: `KB_NAMESPACE=dogfood`
-- CI / disposable test traffic: `KB_NAMESPACE=ci-*` or `KB_NAMESPACE=test-*`
+- Dogfood knowledge: `KB_BASE=dogfood`
+- CI / disposable test traffic: `KB_BASE=ci-*` or `KB_BASE=test-*`
 - Explicit storage override when needed: `KB_BASE_DIR=/custom/path`
 
 Examples:
 
 ```bash
-export KB_NAMESPACE=dogfood
+export KB_BASE=dogfood
 kb "Document today's implementation changes"
 
-export KB_NAMESPACE=ci-123
+export KB_BASE=ci-123
 kb "Run test-only documentation flow"
 ```
 

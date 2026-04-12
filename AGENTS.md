@@ -15,8 +15,8 @@ This is mandatory and does not depend on skill invocation.
    - npm run which:kb
 2. Use KB docs during execution, not only at the end.
 3. Keep test data isolated from persistent docs:
-   - Persistent work: set KB_NAMESPACE=dogfood
-   - Disposable automation: KB_NAMESPACE=ci-* or KB_NAMESPACE=test-*
+   - Persistent work: set KB_BASE=dogfood (or `kb default dogfood`)
+   - Disposable automation: KB_BASE=ci-* or KB_BASE=test-*
 4. Treat persistence as part of completion:
    - git add sessions/
    - git commit -m "kb: checkpoint knowledge base"
@@ -37,8 +37,8 @@ For this workspace, dogfood usage defaults to intent-first behavior.
    - Do not directly invoke internal `*_document` tool names from consumer-facing workflows.
 
 Recommended dogfood sequence:
-1. `KB_NAMESPACE=dogfood kb query "<topic>" --limit 5 --output json`
-2. `KB_NAMESPACE=dogfood kb submit "<new fact or checkpoint>" --target <existing-doc-id>`
+1. `KB_BASE=dogfood kb query "<topic>" --limit 5 --output json`
+2. `KB_BASE=dogfood kb submit "<new fact or checkpoint>" --target <existing-doc-id>`
 3. If no suitable target exists, create a new record via `submit` without `--target`.
 
 ## Open-Question Gate (Mandatory)

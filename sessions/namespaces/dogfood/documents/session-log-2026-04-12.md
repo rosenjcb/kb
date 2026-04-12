@@ -19,6 +19,8 @@ These components contribute significantly to the system's development and operat
 
 - Fact check: We do not currently use SQLite as the KB document store. Current persistent store is local markdown documents under sessions/namespaces/<namespace>/documents (or sessions/documents by default). SQLite is only a potential future backend direction. (source: consumer)
 
-- Ticket 062 SPIKE planning completed and closed: defined nvm-style CLI base selection commands (kb use <base>, kb default <base>), deterministic precedence order (override then env then persisted default then fallback), config shape, and error model while preserving KB_NAMESPACE and KB_BASE_DIR compatibility. (source: consumer)
+- Ticket 062 SPIKE planning completed and closed: defined nvm-style CLI base selection commands (kb use <base>, kb default <base>), deterministic precedence order (override then env then persisted default then fallback), config shape, and error model while preserving KB_BASE_DIR compatibility. (source: consumer)
 
 - CLI UX update: running kb with no args now prints a built-in help screen, and kb --help/-h shows the same usage guidance with intent command examples. (source: consumer)
+
+- Migration complete: implemented kb use and kb default commands, switched storage selection to KB_BASE and KB_BASE_DIR precedence, removed KB_NAMESPACE references from source/tests/docs, and moved default fallback to sessions/namespaces/default/documents. (source: consumer)

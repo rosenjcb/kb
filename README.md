@@ -97,28 +97,36 @@ npm run build:cli
 node dist/bin/kb.js "What tools are available?"
 ```
 
-## KB Namespace Strategy
+## KB Base Selection Strategy
 
-To avoid test data interfering with real documentation, use namespaces.
+To avoid test data interfering with real documentation, use base selection.
 
-- `KB_NAMESPACE=dogfood`: persistent team knowledge you intend to keep.
-- `KB_NAMESPACE=ci-*` or `KB_NAMESPACE=test-*`: disposable automated test data.
-- `KB_BASE_DIR=/custom/path`: explicit override when needed.
+- `kb use <base>`: choose a base alias for the current shell session (prints export guidance).
+- `kb default <base>`: persist a preferred base alias for future invocations.
+- `KB_BASE=<base>`: environment override for base alias.
+- `KB_BASE_DIR=/custom/path`: explicit path override (highest precedence).
 
-Default behavior (no namespace configured) writes to `sessions/documents`.
+Default behavior (when no env override and no saved default exists) uses `sessions/namespaces/default/documents`.
 
 Example (macOS/Linux):
 
 ```bash
-export KB_NAMESPACE=dogfood
+export KB_BASE=dogfood
 kb "Document the latest architecture decision"
 ```
 
 Example (PowerShell):
 
 ```powershell
-$env:KB_NAMESPACE = "dogfood"
+$env:KB_BASE = "dogfood"
 kb "Document the latest architecture decision"
+```
+
+You can also use command-based selection:
+
+```bash
+kb use dogfood
+kb default dogfood
 ```
 
 ## Prevent Data Loss
@@ -128,8 +136,8 @@ Dogfood KB content must be committed and pushed to GitHub regularly.
 Recommended backup loop:
 
 ```bash
-# 1) Work in persistent namespace
-export KB_NAMESPACE=dogfood
+# 1) Work in persistent base
+export KB_BASE=dogfood
 
 # 2) Use kb normally
 kb "Capture today's implementation notes"

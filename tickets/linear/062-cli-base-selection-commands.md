@@ -8,7 +8,7 @@ local-kb
 
 ## Problem
 
-Users currently rely on environment variables (`KB_NAMESPACE`, `KB_BASE_DIR`) and shell state to choose KB storage context. This is friction-heavy and easy to misconfigure across sessions.
+Users currently rely on environment variables (`KB_BASE_DIR`) and shell state to choose KB storage context. This is friction-heavy and easy to misconfigure across sessions.
 
 ## Scope
 - Define user-facing commands to select active KB base context.
@@ -22,7 +22,7 @@ Users currently rely on environment variables (`KB_NAMESPACE`, `KB_BASE_DIR`) an
 - CLI contract for `use` and `default` is documented with examples.
 - Resolution order is explicit and deterministic.
 - Error behavior is specified for unknown/invalid bases.
-- Backward compatibility with existing `KB_NAMESPACE` and `KB_BASE_DIR` flows is preserved.
+- Backward compatibility with existing `KB_BASE_DIR` flows is preserved.
 
 ## Dependencies
 006,010,038,057
@@ -48,7 +48,7 @@ HIGH
 The current configuration model depends on process-level environment variables, which is reliable for automation but awkward for day-to-day interactive usage. We need an nvm-like experience where users can quickly switch KB context and persist a preferred default.
 
 #### Approach
-Add two intent-first CLI utility commands that manage a lightweight base-selection config while preserving existing environment-variable behavior. `kb use <base>` resolves and applies a base context for the current shell session by printing export instructions (or shell eval output mode), and `kb default <base>` updates persisted user-level defaults for future invocations. Runtime storage resolution remains deterministic through a strict precedence order: explicit CLI override -> environment variables -> persisted default -> existing built-in fallback.
+Add two intent-first CLI utility commands that manage a lightweight base-selection config while preserving explicit path override behavior. `kb use <base>` resolves and applies a base context for the current shell session by printing export instructions, and `kb default <base>` updates persisted user-level defaults for future invocations. Runtime storage resolution remains deterministic through a strict precedence order: explicit path override -> base alias env -> persisted default -> existing built-in fallback.
 
 #### Examples / Specifications
 ```bash
@@ -67,9 +67,9 @@ kb default --show
 Resolution precedence (highest to lowest):
 1) explicit runtime override (future: --base)
 2) KB_BASE_DIR (if set)
-3) KB_NAMESPACE (if set)
+3) KB_BASE (if set)
 4) persisted default from ~/.kb/config.json
-5) legacy fallback: <repo>/sessions/documents
+5) fallback: <repo>/sessions/namespaces/default/documents
 ```
 
 ```json
