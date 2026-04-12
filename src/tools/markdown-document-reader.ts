@@ -7,9 +7,15 @@ import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
 
+const STOP_WORDS = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'do', 'for', 'from', 'how',
+  'i', 'in', 'is', 'it', 'of', 'on', 'or', 'our', 'that', 'the', 'this', 'to',
+  'was', 'we', 'what', 'when', 'where', 'who', 'why', 'with', 'you', 'your',
+])
+
 export interface QueryDocumentsInput {
   query?: string
-  mode?: 'id' | 'title' | 'tags'
+  mode?: 'id' | 'title' | 'tags' | 'content'
   tags?: string[]
   type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
   limit?: number
@@ -34,6 +40,30 @@ export interface QueryResult {
 export interface QueryResponse {
   results: QueryResult[]
   total: number
+}
+
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token.length > 2 && !STOP_WORDS.has(token))
+}
+
+function hasTokenOverlap(query: string, content: string): boolean {
+  const queryTokens = new Set(tokenize(query))
+  if (queryTokens.size === 0) return false
+
+  const contentTokens = new Set(tokenize(content))
+  let overlapCount = 0
+  for (const token of queryTokens) {
+    if (contentTokens.has(token)) {
+      overlapCount += 1
+    }
+  }
+
+  const minOverlap = queryTokens.size >= 4 ? 2 : 1
+  return overlapCount >= minOverlap
 }
 
 /**
@@ -120,6 +150,16 @@ export class MarkdownDocumentReader {
               content: input.includeContent ? content : undefined,
             })
           }
+        } else if (input.query && input.mode === 'content') {
+          if (
+            content.toLowerCase().includes(input.query.toLowerCase())
+            || hasTokenOverlap(input.query, content)
+          ) {
+            results.push({
+              metadata,
+              content: input.includeContent ? content : undefined,
+            })
+          }
         } else if (input.tags?.length) {
           // AND logic: all provided tags must be in document
           const hasAllTags = input.tags.every(tag =>
@@ -138,13 +178,21 @@ export class MarkdownDocumentReader {
             content: input.includeContent ? content : undefined,
           })
         } else if (input.query && !input.mode) {
-          // Auto-mode: try ID first, then title
+          // Auto-mode: try ID first, then title, then content match.
           if (metadata.id === input.query) {
             results.push({
               metadata,
               content: input.includeContent ? content : undefined,
             })
           } else if (metadata.title.toLowerCase().includes(input.query.toLowerCase())) {
+            results.push({
+              metadata,
+              content: input.includeContent ? content : undefined,
+            })
+          } else if (
+            content.toLowerCase().includes(input.query.toLowerCase())
+            || hasTokenOverlap(input.query, content)
+          ) {
             results.push({
               metadata,
               content: input.includeContent ? content : undefined,
