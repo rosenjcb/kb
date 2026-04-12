@@ -11,6 +11,7 @@ export interface QueryDocumentsInput {
   query?: string
   mode?: 'id' | 'title' | 'tags'
   tags?: string[]
+  type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
   limit?: number
   includeContent?: boolean
 }
@@ -22,6 +23,7 @@ export interface DocumentMetadata {
   createdAt: string
   updatedAt: string
   tags?: string[]
+  type?: QueryDocumentsInput['type']
 }
 
 export interface QueryResult {
@@ -52,6 +54,7 @@ function parseDocumentMetadata(filePath: string, content: string): DocumentMetad
   let createdAt = dayjs().toISOString()
   let updatedAt = dayjs().toISOString()
   let tags: string[] | undefined
+  let type: QueryDocumentsInput['type']
   
   for (let i = 1; i < Math.min(10, lines.length); i++) {
     const line = lines[i].trim()
@@ -62,6 +65,12 @@ function parseDocumentMetadata(filePath: string, content: string): DocumentMetad
       const tagsStr = line.replace('Tags:', '').trim()
       tags = tagsStr.split(',').map(t => t.trim()).filter(Boolean)
     }
+    if (line.startsWith('Type:')) {
+      const parsedType = line.replace('Type:', '').trim()
+      if (['architecture', 'decision', 'checklist', 'runbook', 'reference'].includes(parsedType)) {
+        type = parsedType as QueryDocumentsInput['type']
+      }
+    }
   }
   
   return {
@@ -71,6 +80,7 @@ function parseDocumentMetadata(filePath: string, content: string): DocumentMetad
     createdAt,
     updatedAt,
     tags,
+    type,
   }
 }
 
@@ -91,6 +101,9 @@ export class MarkdownDocumentReader {
         const metadata = parseDocumentMetadata(filePath, content)
 
         if (!metadata) continue
+
+        const matchesType = !input.type || metadata.type === input.type
+        if (!matchesType) continue
 
         // Filter by query and mode
         if (input.query && input.mode === 'id') {

@@ -1,7 +1,22 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
-import type { DocumentWriter, WriteDocumentInput, WriteDocumentResult } from './document-writer'
+import type {
+  AppendToDocumentInput,
+  DocumentWriterExtended,
+  MergeDocumentsInput,
+  MergeDocumentsResult,
+  PruneDocumentInput,
+  UpdateDocumentInput,
+  WriteDocumentInput,
+  WriteDocumentResult,
+} from './document-writer'
+import {
+  appendToDocument as appendToDocumentImpl,
+  mergeDocuments as mergeDocumentsImpl,
+  pruneDocument as pruneDocumentImpl,
+  updateDocument as updateDocumentImpl,
+} from './specialized-document-tools'
 
 const INDEX_FILE_NAME = '_table.md'
 
@@ -13,7 +28,7 @@ export interface MarkdownMDWriterToolOptions {
  * Markdown-backed document writer.
  * Persists one document per file and keeps a tiny markdown index table.
  */
-export class MarkdownMDWriterTool implements DocumentWriter {
+export class MarkdownMDWriterTool implements DocumentWriterExtended {
   private readonly baseDir: string
 
   constructor(options: MarkdownMDWriterToolOptions = {}) {
@@ -56,11 +71,38 @@ export class MarkdownMDWriterTool implements DocumentWriter {
     return result
   }
 
+  async appendToDocument(input: AppendToDocumentInput): Promise<WriteDocumentResult> {
+    await mkdir(this.baseDir, { recursive: true })
+    const result = await appendToDocumentImpl(input, this.baseDir)
+    await this.upsertIndex(result)
+    return result
+  }
+
+  async updateDocument(input: UpdateDocumentInput): Promise<WriteDocumentResult> {
+    await mkdir(this.baseDir, { recursive: true })
+    const result = await updateDocumentImpl(input, this.baseDir)
+    await this.upsertIndex(result)
+    return result
+  }
+
+  async pruneDocument(input: PruneDocumentInput): Promise<WriteDocumentResult> {
+    await mkdir(this.baseDir, { recursive: true })
+    const result = await pruneDocumentImpl(input, this.baseDir)
+    await this.upsertIndex(result)
+    return result
+  }
+
+  async mergeDocuments(input: MergeDocumentsInput): Promise<MergeDocumentsResult> {
+    await mkdir(this.baseDir, { recursive: true })
+    return mergeDocumentsImpl(this, input)
+  }
+
   private renderDocument(input: WriteDocumentInput, now: string): string {
+    const type = input.type ? `\nType: ${input.type}` : ''
     const tags = input.tags?.length ? `\nTags: ${input.tags.join(', ')}` : ''
     const body = input.content.endsWith('\n') ? input.content : `${input.content}\n`
 
-    return `# ${input.title}\n\nCreated: ${now}${tags}\n\n${body}`
+    return `# ${input.title}\n\nCreated: ${now}${type}${tags}\n\n${body}`
   }
 
   private async upsertIndex(result: WriteDocumentResult): Promise<void> {

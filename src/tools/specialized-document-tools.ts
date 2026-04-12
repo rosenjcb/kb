@@ -21,7 +21,6 @@ import type {
  * Append content to existing document (bottom by default)
  */
 export async function appendToDocument(
-  writer: MarkdownMDWriterTool,
   input: AppendToDocumentInput,
   baseDir: string,
 ): Promise<WriteDocumentResult> {
@@ -61,7 +60,6 @@ export async function appendToDocument(
  * Update (full replace) content of existing document
  */
 export async function updateDocument(
-  writer: MarkdownMDWriterTool,
   input: UpdateDocumentInput,
   baseDir: string,
 ): Promise<WriteDocumentResult> {
@@ -78,10 +76,17 @@ export async function updateDocument(
   const title = input.title ?? extractTitle(oldContent)
   const now = dayjs().toISOString()
   const createdAt = getCreatedAtSync(oldContent)
+  const typeLine = getMetadataLine(oldContent, 'Type')
+  const tagsLine = getMetadataLine(oldContent, 'Tags')
 
   const body =
     input.content.endsWith('\n') ? input.content : `${input.content}\n`
-  const newContent = `# ${title}\n\nCreated: ${createdAt}\n\n${body}`
+  const metadataLines = [
+    `Created: ${createdAt}`,
+    ...(typeLine ? [typeLine] : []),
+    ...(tagsLine ? [tagsLine] : []),
+  ]
+  const newContent = `# ${title}\n\n${metadataLines.join('\n')}\n\n${body}`
 
   await writeFile(filePath, newContent, 'utf8')
 
@@ -100,7 +105,6 @@ export async function updateDocument(
  * Remove a section from document by pattern (case-insensitive heading match)
  */
 export async function pruneDocument(
-  writer: MarkdownMDWriterTool,
   input: PruneDocumentInput,
   baseDir: string,
 ): Promise<WriteDocumentResult> {
@@ -116,7 +120,7 @@ export async function pruneDocument(
 
   // Find and remove section: matches "### SectionName" headers and everything until next header
   const pattern = input.prunePattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const regex = new RegExp(`^### ${pattern}\\s*$[\\s\\S]*?(?=^### |^## |$)`, 'im')
+  const regex = new RegExp(`(^### ${pattern}\\s*\\n)[\\s\\S]*?(?=\\n### |\\n## |$)`, 'im')
   const prunedContent = content.replace(regex, '').trim()
 
   if (prunedContent === content.trim()) {
@@ -149,7 +153,6 @@ export async function pruneDocument(
 export async function mergeDocuments(
   _writer: MarkdownMDWriterTool,
   input: MergeDocumentsInput,
-  baseDir: string,
 ): Promise<MergeDocumentsResult> {
   const targetId = sanitizeId(input.targetDocId)
   const sourceId = sanitizeId(input.sourceDocId)
@@ -192,6 +195,12 @@ function extractTitle(content: string): string {
 function getCreatedAtSync(content: string): string {
   const match = content.match(/^Created: (.+)$/m)
   return match ? match[1] : dayjs().toISOString()
+}
+
+function getMetadataLine(content: string, key: string): string | undefined {
+  const regex = new RegExp(`^${key}: .+$`, 'm')
+  const match = content.match(regex)
+  return match ? match[0] : undefined
 }
 
 export { sanitizeId }

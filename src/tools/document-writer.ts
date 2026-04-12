@@ -4,6 +4,7 @@ export interface WriteDocumentInput {
   title: string
   content: string
   tags?: string[]
+  type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
   documentId?: string
   overwrite?: boolean
 }
@@ -86,6 +87,11 @@ export const writeDocumentTool: ToolDefinition = {
         items: { type: 'string' },
         description: 'Optional tags for indexing and retrieval.',
       },
+      type: {
+        type: 'string',
+        enum: ['architecture', 'decision', 'checklist', 'runbook', 'reference'],
+        description: 'Optional document type for operation semantics and filtering.',
+      },
       documentId: {
         type: 'string',
         description: 'Optional stable id/slug. If omitted, generated from title.',
@@ -117,6 +123,7 @@ function parseWriteDocumentInput(input: unknown): WriteDocumentInput {
   const title = asNonEmptyString(candidate.title, 'title')
   const content = asString(candidate.content, 'content')
   const tags = parseTags(candidate.tags)
+  const type = parseOptionalType(candidate.type)
   const documentId = parseOptionalString(candidate.documentId)
   const overwrite = parseOptionalBoolean(candidate.overwrite)
 
@@ -124,6 +131,7 @@ function parseWriteDocumentInput(input: unknown): WriteDocumentInput {
     title,
     content,
     tags,
+    type,
     documentId,
     overwrite,
   }
@@ -168,4 +176,29 @@ function parseTags(value: unknown): string[] | undefined {
 
   const normalized = value.map(tag => tag.trim()).filter(Boolean)
   return normalized.length ? normalized : undefined
+}
+
+function parseOptionalType(
+  value: unknown,
+): WriteDocumentInput['type'] | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') {
+    throw new Error('write_document: type must be a string when provided')
+  }
+
+  const allowed = new Set([
+    'architecture',
+    'decision',
+    'checklist',
+    'runbook',
+    'reference',
+  ])
+
+  if (!allowed.has(value)) {
+    throw new Error(
+      'write_document: type must be one of architecture, decision, checklist, runbook, reference',
+    )
+  }
+
+  return value as WriteDocumentInput['type']
 }

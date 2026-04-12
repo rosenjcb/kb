@@ -57,4 +57,40 @@ describe('executeWriteDocumentTool', () => {
       )
     ).rejects.toThrow('write_document: tags must be an array of strings when provided')
   })
+
+  it('Given valid document type, then should pass parsed type to writer', async () => {
+    const writer: DocumentWriter = {
+      writeDocument: vi.fn(async input => ({
+        id: input.documentId ?? 'doc-type',
+        title: input.title,
+        filePath: '/tmp/doc-type.md',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      })),
+    }
+
+    await executeWriteDocumentTool(
+      { title: 'Arch', content: 'Body', type: 'architecture' },
+      writer
+    )
+
+    expect(writer.writeDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'architecture' })
+    )
+  })
+
+  it('Given invalid document type, then should throw validation error', async () => {
+    const writer: DocumentWriter = {
+      writeDocument: vi.fn(),
+    }
+
+    await expect(
+      executeWriteDocumentTool(
+        { title: 'Doc', content: 'Body', type: 'invalid-type' },
+        writer
+      )
+    ).rejects.toThrow(
+      'write_document: type must be one of architecture, decision, checklist, runbook, reference'
+    )
+  })
 })
