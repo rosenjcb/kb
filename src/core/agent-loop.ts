@@ -5,6 +5,7 @@
 
 import type { AgentEvent, Message, ToolDefinition, LLMProvider } from './types'
 import type { ToolExecutor } from './tool-registry'
+import dayjs from 'dayjs'
 
 export interface AgentLoopConfig {
   maxTurns?: number
@@ -26,7 +27,7 @@ export async function* agentLoop(
     {
       role: 'user',
       content: userQuery,
-      metadata: { timestamp: Date.now() },
+      metadata: { timestamp: dayjs().valueOf() },
     },
   ]
 
@@ -115,7 +116,7 @@ export async function* agentLoop(
     messages.push({
       role: 'assistant',
       content: response.text,
-      metadata: { timestamp: Date.now() },
+      metadata: { timestamp: dayjs().valueOf() },
     })
 
     messages.push({
@@ -127,7 +128,7 @@ export async function* agentLoop(
         result: r.result,
         isError: r.isError,
       })),
-      metadata: { timestamp: Date.now() },
+      metadata: { timestamp: dayjs().valueOf() },
     })
   }
 

@@ -9,6 +9,7 @@ import type {
   LLMStreamChunk,
   LLMCallParams,
 } from './types'
+import dayjs from 'dayjs'
 
 type JsonRecord = Record<string, unknown>
 
@@ -153,7 +154,7 @@ export class AnthropicProvider implements LLMProvider {
       .map(item => asRecord(item))
       .filter(c => c.type === 'tool_use')
       .map(c => ({
-        id: typeof c.id === 'string' ? c.id : `${Date.now()}-tool`,
+        id: typeof c.id === 'string' ? c.id : `${dayjs().valueOf()}-tool`,
         name: typeof c.name === 'string' ? c.name : 'unknown_tool',
         input: asRecord(c.input),
       }))
@@ -223,7 +224,7 @@ export class OpenAIProvider implements LLMProvider {
         const toolCall = asRecord(call)
         const fn = asRecord(toolCall.function)
         return {
-          id: typeof toolCall.id === 'string' ? toolCall.id : `${Date.now()}-tool`,
+          id: typeof toolCall.id === 'string' ? toolCall.id : `${dayjs().valueOf()}-tool`,
           name: typeof fn.name === 'string' ? fn.name : 'unknown_tool',
           input:
             typeof fn.arguments === 'string'
@@ -361,9 +362,9 @@ export class GeminiProvider implements LLMProvider {
         .map(p => {
           const call = asRecord(p.functionCall)
           return {
-          id: `${Date.now()}-${Math.random()}`,
-          name: typeof call.name === 'string' ? call.name : 'unknown_tool',
-          input: asRecord(call.args),
+            id: `${dayjs().valueOf()}-${Math.random()}`,
+            name: typeof call.name === 'string' ? call.name : 'unknown_tool',
+            input: asRecord(call.args),
           }
         }),
       usage: {

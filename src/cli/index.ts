@@ -7,6 +7,7 @@
 
 import fs from 'fs'
 import path from 'path'
+import dayjs from 'dayjs'
 import { createProvider } from '../core/llm-provider'
 import { agentLoop } from '../core/agent-loop'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
@@ -112,7 +113,7 @@ async function main() {
   console.log(`🗂️ KB Storage: ${kbStorageDir}\n`)
 
   // Create provider
-  let llmProvider
+  let llmProvider: ReturnType<typeof createProvider> | undefined
   try {
     switch (provider) {
       case 'anthropic':
@@ -143,6 +144,11 @@ async function main() {
     }
   } catch (error) {
     console.error('❌ Provider setup failed:', error)
+    process.exit(1)
+  }
+
+  if (!llmProvider) {
+    console.error('❌ Provider setup failed: provider was not initialized')
     process.exit(1)
   }
 
@@ -195,7 +201,7 @@ async function main() {
 
     // If session file, append the result and query to it
     if (sessionFile && fullResponse) {
-      const timestamp = new Date().toISOString()
+      const timestamp = dayjs().toISOString()
       const sessionUpdate = `\n## Query (${timestamp})\n${query}\n\n## Response\n${fullResponse}\n`
       fs.appendFileSync(sessionFile, sessionUpdate)
       console.log(`\n✅ Session updated: ${sessionFile}`)

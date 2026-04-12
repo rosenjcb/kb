@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import dayjs from 'dayjs'
 import type { DocumentWriter, WriteDocumentInput, WriteDocumentResult } from './document-writer'
 
 const INDEX_FILE_NAME = '_table.md'
@@ -22,7 +23,7 @@ export class MarkdownMDWriterTool implements DocumentWriter {
   async writeDocument(input: WriteDocumentInput): Promise<WriteDocumentResult> {
     await mkdir(this.baseDir, { recursive: true })
 
-    const now = new Date().toISOString()
+    const now = dayjs().toISOString()
     const id = sanitizeId(input.documentId ?? input.title)
     const filePath = path.join(this.baseDir, `${id}.md`)
     let writtenPath = filePath
@@ -36,7 +37,7 @@ export class MarkdownMDWriterTool implements DocumentWriter {
           throw err
         }
 
-        const suffix = Date.now().toString(36)
+        const suffix = dayjs().valueOf().toString(36)
         const uniquePath = path.join(this.baseDir, `${id}-${suffix}.md`)
         await writeFile(uniquePath, content, 'utf8')
         writtenPath = uniquePath

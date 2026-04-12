@@ -5,6 +5,7 @@
  */
 
 import type { ToolUseRequest, ToolResultEnvelope } from '../core/types'
+import dayjs from 'dayjs'
 
 export interface ExecutableTool {
   name: string
@@ -56,7 +57,7 @@ export class ToolExecutorImpl implements ToolExecutor {
     options?: ToolExecutorOptions
   ): Promise<ToolResultEnvelope> {
     const opts = { ...this.defaultOptions, ...options }
-    const startTime = new Date().toISOString()
+    const startTime = dayjs().toISOString()
     const startMs = performance.now()
 
     // 1. Check tool exists

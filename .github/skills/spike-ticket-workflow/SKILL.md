@@ -47,6 +47,17 @@ Add a new section at the bottom (after `## Priority`) called `## Implementation 
 
 End with: **"Ticket [NUMBER] is now closed."**
 
+Important closure gate:
+
+- If any `❓ Open question` remains unresolved, ask the user directly before closure.
+- Only close when the user has either:
+   1. provided a decision, or
+   2. explicitly approved deferral with a time-box/follow-up ticket.
+- Prefer multiple-choice prompts when options are known:
+   1. Provide 2-5 concrete options.
+   2. Mark a recommended default.
+   3. Accept freeform override.
+
 ## Implementation Plan Template
 
 ```markdown
@@ -72,6 +83,12 @@ End with: **"Ticket [NUMBER] is now closed."**
 - ✅ Decided: [key decision 1] → Rationale: [why]
 - ✅ Decided: [key decision 2] → Rationale: [why]
 - ❓ Open question: [thing we're punting] → Time-box: [v1.1 / future]
+
+#### User Decision Checkpoint (Required if any open question exists)
+- Decision requested from user: [question]
+- Options presented: [A/B/C... with recommended default]
+- User response: [decision or explicit deferral]
+- Follow-up: [ticket/time-box if deferred]
 
 #### Integration Points
 [How does this connect to other tickets or systems? What's next?]
@@ -199,6 +216,11 @@ Treat KB checkpointing as part of task completion for significant work.
 **Bad:** Adding "Implementation Plan" but also saying "TODO: Also do X, Y, Z" → ticket isn't actually closed.
 
 **Good:** "Ticket is closed. Ticket 012 covers X; Ticket 013 covers Y; Ticket 014 covers Z."
+
+### ❌ Closing With Unasked Open Questions
+**Bad:** Leaving `❓ Open question` in the plan and still writing "Ticket is now closed" without asking the user.
+
+**Good:** Ask the user, record the decision (or explicit deferral), then close.
 
 ### ❌ Writing the Plan After All Code
 **Bad:** Code is done, then you write a confusing plan that doesn't match the code.
