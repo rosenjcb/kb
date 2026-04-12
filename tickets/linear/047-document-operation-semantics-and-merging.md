@@ -474,7 +474,9 @@ All decisions now finalized and recorded above.
 
 #### Validation & Closure
 
-**This Implementation Plan satisfies all acceptance criteria:**
+**Phase 1 (Planning): COMPLETE** ✅
+
+This Implementation Plan satisfies all planning acceptance criteria:
 
 - ✅ Document operation intent taxonomy is defined (create, append, merge, replace, prune with use cases)
 - ✅ Document type system is designed (frontmatter YAML with enum + tags)
@@ -487,6 +489,18 @@ All decisions now finalized and recorded above.
 - ✅ Tool design conventions codified in [src/tools/TOOL_CONVENTIONS.md](../../src/tools/TOOL_CONVENTIONS.md)
 - ✅ Deprecation policy documented in [AGENTS.md](../../AGENTS.md#deprecation-and-cleanup-policy)
 
-**All user decisions recorded and finalized. Zero unresolved questions remain.**
+**Phase 2 (Implementation): IN PROGRESS** 🚀
 
-**Ticket 047 is now closed.**
+Tools to implement (following specialized pattern from TOOL_CONVENTIONS.md):
+- [ ] `write_document`: Create new document (existing, refactor for new schema)
+- [ ] `append_to_document`: Add content to existing (decision logs, notes)
+- [ ] `update_document`: Replace content wholly (reference docs, runbooks)
+- [ ] `merge_documents`: Consolidate with auto/user-decide modes
+- [ ] `prune_document`: Remove sections via pattern matching
+- [ ] `query_documents`: Add type filters for semantic queries
+- [ ] Tests: Unit + integration for all tools
+- [ ] LLM-based semantic similarity for merge detection
+
+**Phase 1 → Phase 2 Transition**: All user decisions finalized. Ready to code.
+
+**Ticket 047 Phase 1 is now closed. Phase 2 (code + tests) in progress.**

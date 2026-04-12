@@ -57,6 +57,32 @@ If global kb is unavailable in the environment:
 
 If a task is completed without KB documentation for significant architectural, behavioral, or process changes, the task should be considered incomplete until KB docs are updated.
 
+## Phase Clarity for SPIKE Tickets (Mandatory)
+
+SPIKE tickets often span multiple phases: **Plan → Code → Validation**. Enforce clarity:
+
+1. **SPIKE (Planning only)** → Ends with Implementation Plan + decision checkpoints. Acceptable for PR if user approves.
+2. **SPIKE (Plan + Code)** → Implementation Plan + working code + tests. More complete, ready to merge.
+
+**Requirement**: Implementation Plan MUST explicitly state which phase is "In Scope" and which is "Deferred":
+
+```markdown
+#### Scope of This Work (Phase Clarity)
+- ✅ Phase 1 (Planning): Complete in this ticket/PR
+  - Specialized tools design (Option B)
+  - Tool conventions codified
+  - User decisions finalized
+  
+- ⏳ Phase 2 (Implementation): Deferred to ticket 048, 049, etc.
+  - Implement write_document, append_to_document, etc.
+  - Tests + validation
+  - **Blocking tickets**: 048 (write_document), 049 (append_to_document), etc.
+```
+
+**Enforcement**: If Implementation Plan says code is deferred, create explicit follow-up tickets **before** marking SPIKE closed. Link them in Integration Points.
+
+**User override**: User can explicitly approve "planning-only" SPIKE closure if they accept deferred work.
+
 ## Deprecation and Cleanup Policy
 
 When design decisions change or scenarios become obsolete:
