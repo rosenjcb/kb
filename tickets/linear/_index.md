@@ -13,7 +13,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 
 ## Summary
 
-- Total files: 66 (65 tickets + this index)
+- Total files: 70 (69 tickets + this index)
 - Branch: feat/kb-ticket-backlog
 
 ## Foundation
@@ -51,6 +51,9 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [058 Implement consumer-intent API and IntentRouter runtime](tickets/linear/058-implement-consumer-intent-api-and-router.md)
 - [059 Implement intent-first CLI commands](tickets/linear/059-implement-intent-first-cli-commands.md)
 - [062 Add CLI base-selection commands for KB context](tickets/linear/062-cli-base-selection-commands.md)
+- [067 Add kb chat interactive CLI session mode](tickets/linear/067-kb-chat-cli-session-mode.md)
+- [068 Implement kb chat interactive REPL command](tickets/linear/068-implement-kb-chat-repl-command.md)
+- [069 Add chat session controls and transcript persistence](tickets/linear/069-chat-session-controls-and-transcript-persistence.md)
 - [039 Define permission policy evaluation order](tickets/linear/039-permission-policy-evaluation-order.md)
 - [040 Define document ID stability rules](tickets/linear/040-kb-doc-id-stability-rules.md)
 
@@ -99,4 +102,5 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [045 Define schema/version migration policy](tickets/linear/045-versioning-and-migration-policy.md)
 - [061 Enforce internal tool access policy for consumer-facing flows](tickets/linear/061-enforce-internal-tool-access-policy.md)
 - [066 Add tests, rollout controls, and latency guardrails for hybrid search](tickets/linear/066-test-rollout-and-latency-guardrails-for-hybrid-search.md)
+- [070 Validate kb chat mode and harden context-rot handling](tickets/linear/070-chat-mode-validation-and-context-rot-hardening.md)
 

@@ -63,9 +63,13 @@ function tokenize(text: string): string[] {
     .filter(token => token.length > 2 && !STOP_WORDS.has(token))
 }
 
-function hasTokenOverlap(query: string, content: string): boolean {
+function normalizeText(text: string): string {
+  return text.toLowerCase().trim()
+}
+
+function tokenOverlapCount(query: string, content: string): number {
   const queryTokens = new Set(tokenize(query))
-  if (queryTokens.size === 0) return false
+  if (queryTokens.size === 0) return 0
 
   const contentTokens = new Set(tokenize(content))
   let overlapCount = 0
@@ -75,8 +79,32 @@ function hasTokenOverlap(query: string, content: string): boolean {
     }
   }
 
-  const minOverlap = queryTokens.size >= 4 ? 2 : 1
-  return overlapCount >= minOverlap
+  return overlapCount
+}
+
+function contentMatchScore(query: string, content: string): number {
+  const normalizedQuery = normalizeText(query)
+  const normalizedContent = normalizeText(content)
+  const queryTokens = tokenize(query)
+  const overlapCount = tokenOverlapCount(query, content)
+  const overlapRatio = queryTokens.length > 0 ? overlapCount / queryTokens.length : 0
+
+  if (!normalizedQuery) return 0
+
+  if (normalizedContent.includes(normalizedQuery)) {
+    return 70 + overlapRatio * 25
+  }
+
+  if (overlapCount > 0) {
+    return 40 + overlapRatio * 35
+  }
+
+  return 0
+}
+
+interface MatchEvaluation {
+  matched: boolean
+  score: number
 }
 
 /**
@@ -158,16 +186,43 @@ export class MarkdownDocumentReader {
         }
       }
 
-      return this.queryDocumentsLexical(input, {
+      return this.queryDocumentsLexicalWithRecovery(input, {
         method: 'lexical-fallback',
         detail: hybridAttempt.fallbackReason ?? 'hybrid-unavailable',
       })
     }
 
-    return this.queryDocumentsLexical(input, {
+    return this.queryDocumentsLexicalWithRecovery(input, {
       method: 'lexical',
       detail: 'hybrid-not-attempted',
     })
+  }
+
+  private async queryDocumentsLexicalWithRecovery(
+    input: QueryDocumentsInput,
+    retrieval: QueryResponse['retrieval'],
+  ): Promise<QueryResponse> {
+    const primary = await this.queryDocumentsLexical(input, retrieval)
+    if (!this.shouldAttemptKeywordRecovery(input, primary.total)) {
+      return primary
+    }
+
+    const broadenedQuery = buildKeywordQuery(input.query ?? '')
+    if (!broadenedQuery || broadenedQuery === normalizeText(input.query ?? '')) {
+      return primary
+    }
+
+    return this.queryDocumentsLexical(
+      {
+        ...input,
+        query: broadenedQuery,
+        mode: 'content',
+      },
+      {
+        method: retrieval.method,
+        detail: appendRetrievalDetail(retrieval.detail, 'keyword-broadened'),
+      },
+    )
   }
 
   private async queryDocumentsLexical(
@@ -175,7 +230,7 @@ export class MarkdownDocumentReader {
     retrieval: QueryResponse['retrieval'],
   ): Promise<QueryResponse> {
     const limit = input.limit ?? 10
-    let results: QueryResult[] = []
+    const matches: Array<{ result: QueryResult; score: number }> = []
 
     try {
       const files = await readdir(this.baseDir)
@@ -191,83 +246,47 @@ export class MarkdownDocumentReader {
         const matchesType = !input.type || metadata.type === input.type
         if (!matchesType) continue
 
-        // Filter by query and mode
-        if (input.query && input.mode === 'id') {
-          if (metadata.id === input.query) {
-            results.push({
-              metadata,
-              content: input.includeContent ? content : undefined,
-            })
-          }
-        } else if (input.query && input.mode === 'title') {
-          if (metadata.title.toLowerCase().includes(input.query.toLowerCase())) {
-            results.push({
-              metadata,
-              content: input.includeContent ? content : undefined,
-            })
-          }
-        } else if (input.query && input.mode === 'content') {
-          if (
-            content.toLowerCase().includes(input.query.toLowerCase())
-            || hasTokenOverlap(input.query, content)
-          ) {
-            results.push({
-              metadata,
-              content: input.includeContent ? content : undefined,
-            })
-          }
-        } else if (input.tags?.length) {
-          // AND logic: all provided tags must be in document
-          const hasAllTags = input.tags.every(tag =>
-            metadata.tags?.some(t => t.toLowerCase() === tag.toLowerCase())
-          )
-          if (hasAllTags) {
-            results.push({
-              metadata,
-              content: input.includeContent ? content : undefined,
-            })
-          }
-        } else if (!input.query && !input.tags?.length) {
-          // No filter: return all (recent first)
-          results.push({
+        const evaluation = evaluateDocumentMatch(input, metadata, content)
+        if (!evaluation.matched) continue
+
+        matches.push({
+          score: evaluation.score,
+          result: {
             metadata,
             content: input.includeContent ? content : undefined,
-          })
-        } else if (input.query && !input.mode) {
-          // Auto-mode: try ID first, then title, then content match.
-          if (metadata.id === input.query) {
-            results.push({
-              metadata,
-              content: input.includeContent ? content : undefined,
-            })
-          } else if (metadata.title.toLowerCase().includes(input.query.toLowerCase())) {
-            results.push({
-              metadata,
-              content: input.includeContent ? content : undefined,
-            })
-          } else if (
-            content.toLowerCase().includes(input.query.toLowerCase())
-            || hasTokenOverlap(input.query, content)
-          ) {
-            results.push({
-              metadata,
-              content: input.includeContent ? content : undefined,
-            })
-          }
-        }
-
-        if (results.length >= limit) break
+          },
+        })
       }
     } catch {
       // KB directory doesn't exist or is empty; return empty results
       return { results: [], total: 0, retrieval }
     }
 
+    matches.sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score
+      }
+
+      const aUpdated = dayjs(a.result.metadata.updatedAt).valueOf()
+      const bUpdated = dayjs(b.result.metadata.updatedAt).valueOf()
+      return bUpdated - aUpdated
+    })
+
+    const results = matches.slice(0, limit).map(match => match.result)
+
     return {
-      results: results.slice(0, limit),
-      total: results.length,
+      results,
+      total: matches.length,
       retrieval,
     }
+  }
+
+  private shouldAttemptKeywordRecovery(input: QueryDocumentsInput, total: number): boolean {
+    if (total > 0) return false
+    if (!input.query?.trim()) return false
+    if (input.tags?.length) return false
+
+    return input.mode === 'content' || input.mode === undefined
   }
 
   private shouldUseHybrid(input: QueryDocumentsInput): boolean {
@@ -282,6 +301,10 @@ export class MarkdownDocumentReader {
     response?: QueryResponse
     fallbackReason?: string
   }> {
+    if (this.hybridMaxMs <= 0) {
+      return { fallbackReason: 'latency-budget-exceeded' }
+    }
+
     const startTime = Date.now()
 
     try {
@@ -445,6 +468,75 @@ export class MarkdownDocumentReader {
       return heuristicVectorScore(query, chunkText)
     }
   }
+}
+
+function evaluateDocumentMatch(
+  input: QueryDocumentsInput,
+  metadata: DocumentMetadata,
+  content: string,
+): MatchEvaluation {
+  if (!input.query && !input.tags?.length) {
+    return { matched: true, score: 10 }
+  }
+
+  if (input.tags?.length) {
+    const hasAllTags = input.tags.every(tag =>
+      metadata.tags?.some(t => t.toLowerCase() === tag.toLowerCase()),
+    )
+
+    return {
+      matched: hasAllTags,
+      score: hasAllTags ? 60 + input.tags.length : 0,
+    }
+  }
+
+  const query = input.query ?? ''
+  const normalizedQuery = normalizeText(query)
+  const normalizedId = normalizeText(metadata.id)
+  const normalizedTitle = normalizeText(metadata.title)
+
+  if (input.mode === 'id') {
+    const matched = normalizedId === normalizedQuery
+    return { matched, score: matched ? 100 : 0 }
+  }
+
+  if (input.mode === 'title') {
+    const matched = normalizedTitle.includes(normalizedQuery)
+    return { matched, score: matched ? 80 + tokenOverlapCount(query, metadata.title) : 0 }
+  }
+
+  if (input.mode === 'content') {
+    const score = contentMatchScore(query, content)
+    return { matched: score > 0, score }
+  }
+
+  if (normalizedId === normalizedQuery) {
+    return { matched: true, score: 100 }
+  }
+
+  if (normalizedTitle.includes(normalizedQuery)) {
+    return { matched: true, score: 85 + tokenOverlapCount(query, metadata.title) }
+  }
+
+  const contentScore = contentMatchScore(query, content)
+  return { matched: contentScore > 0, score: contentScore }
+}
+
+function buildKeywordQuery(query: string): string | undefined {
+  const tokens = tokenize(query)
+  if (tokens.length === 0) return undefined
+
+  const ranked = [...new Set(tokens)]
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 6)
+
+  if (ranked.length === 0) return undefined
+  return ranked.join(' ')
+}
+
+function appendRetrievalDetail(base: string | undefined, suffix: string): string {
+  if (!base) return suffix
+  return `${base};${suffix}`
 }
 
 function parseTagsJson(raw: string | undefined): string[] | undefined {

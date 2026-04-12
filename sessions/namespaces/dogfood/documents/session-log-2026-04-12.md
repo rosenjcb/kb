@@ -52,3 +52,13 @@ These components contribute significantly to the system's development and operat
 - Applied hybrid/vector-capable retrieval logic across intent surfaces where it makes sense: explain now uses id-first with semantic fallback (auto mode), validate/dispute results now include retrieval metadata visibility, and formatter keeps direct Answer + Retrieval in human output. (source: implementation)
 
 - Intent command responses now use LLM-driven answer synthesis for read_documents paths (query/explain): CLI enriches read_documents results with provider-generated answer text and falls back to heuristic extraction only on provider failure or disable flag. (source: implementation)
+
+- Created ticket 067 for kb chat interactive CLI session mode, updated linear backlog index, and branched to feat/067-kb-chat-cli-session-mode from main. (source: planning)
+
+- Ticket 067 SPIKE closed with user-selected Option 1 (prompt/system-driven kb chat loop); context-rot hardening explicitly deferred by user; created follow-up tickets 068 (REPL), 069 (session controls/transcripts), and 070 (validation/context-rot mitigation). (source: planning)
+
+- Ticket 068 implementation plan added: initial kb chat prototype prioritized (Option 1), includes per-turn evidence grounding and retrieval mode/provenance output, with advanced controls/context-rot deferred to tickets 069/070. (source: planning)
+
+- Ticket 068 prototype implemented: added kb chat REPL command with per-turn read_documents grounding, LLM answers, retrieval mode/detail + sources output, and stable /exit/Ctrl+C handling; validated with focused tests, type-check, and runtime smoke. (source: implementation)
+
+- Chat usefulness hardening shipped in current merge scope: upgraded shared markdown reader ranking for all read_documents consumers, added keyword broadening retry, and added chat workspace fallback evidence (README/GAMEPLAN) for broad project-purpose questions when KB hits are sparse or ticket-only; validated with tests + type-check + smoke chat run. (source: implementation)
