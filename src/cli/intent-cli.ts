@@ -197,7 +197,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
   if (results.length === 0) return result
 
   const question = getIntentQuestion(parsed)
-  const evidence = buildEvidence(results)
+  const evidence = buildEvidence(results, question)
   if (!question || !evidence) return result
 
   try {
@@ -345,18 +345,103 @@ function getIntentQuestion(parsed: ParsedIntentCommand): string {
   return fromQuery || fromFact || fromChange
 }
 
-function buildEvidence(results: ReadDocumentsResultItem[]): string {
-  const sections = results.slice(0, 3).map((item, index) => {
+function buildEvidence(results: ReadDocumentsResultItem[], query: string): string {
+  const sections = results.slice(0, 5).map((item, index) => {
     const id = item.metadata?.id ?? `doc-${index + 1}`
     const title = item.metadata?.title ?? id
-    const content = (item.content ?? '').trim()
-    if (!content) return ''
-
-    const clipped = content.length > 1200 ? `${content.slice(0, 1200)}...` : content
-    return `Document ${index + 1}: ${title} (id=${id})\n${clipped}`
+    const snippets = extractRelevantEvidenceSnippets(item.content, query)
+    if (snippets.length === 0) return ''
+    return `Document ${index + 1}: ${title} (id=${id})\n${snippets.join('\n')}`
   })
 
   return sections.filter(Boolean).join('\n\n')
+}
+
+function extractRelevantEvidenceSnippets(content: string | undefined, query: string): string[] {
+  if (!content?.trim()) return []
+
+  const queryTokens = tokenizeForEvidence(query)
+  const lines = content
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line =>
+      line.length > 0
+      && !line.startsWith('#')
+      && !line.startsWith('Created:')
+      && !line.startsWith('Tags:')
+      && !line.startsWith('Type:'),
+    )
+
+  if (lines.length === 0) return []
+
+  const scored = lines
+    .map((line, index) => ({
+      line,
+      index,
+      score: scoreEvidenceLine(line, queryTokens),
+    }))
+    .filter(entry => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+
+  const exploredWindows: string[] = []
+  const usedLineIndexes = new Set<number>()
+
+  for (const hit of scored) {
+    const windowStart = Math.max(0, hit.index - 1)
+    const windowEnd = Math.min(lines.length - 1, hit.index + 1)
+    const windowLines: string[] = []
+
+    for (let i = windowStart; i <= windowEnd; i += 1) {
+      const candidate = lines[i]
+      if (candidate.length < 20) continue
+      if (usedLineIndexes.has(i)) continue
+      usedLineIndexes.add(i)
+      windowLines.push(candidate)
+    }
+
+    if (windowLines.length > 0) {
+      exploredWindows.push(`- ${windowLines.join(' | ')}`)
+    }
+  }
+
+  if (exploredWindows.length > 0) {
+    return exploredWindows
+  }
+
+  return lines
+    .filter(line => line.length >= 30)
+    .slice(0, 2)
+    .map(line => `- ${line}`)
+}
+
+function tokenizeForEvidence(input: string): string[] {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token.length > 2)
+}
+
+function scoreEvidenceLine(line: string, queryTokens: string[]): number {
+  const normalized = line.toLowerCase()
+  let score = 0
+
+  for (const token of queryTokens) {
+    if (normalized.includes(token)) {
+      score += 2
+    }
+  }
+
+  if (/(kb|cli|command|query|submit|validate|dispute|explain|chat|help)/i.test(line)) {
+    score += 3
+  }
+
+  if (line.length > 35 && line.length < 260) {
+    score += 1
+  }
+
+  return score
 }
 
 function collectCandidateLines(items: ReadDocumentsResultItem[]): string[] {

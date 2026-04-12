@@ -12,6 +12,13 @@ import {
   buildCheckpointRecord,
   type RetrievalCheckpointRecord,
 } from './retrieval-checkpoint-orchestrator'
+import {
+  classifyDocumentLane,
+  laneFitnessBoost,
+  routeQueryToLanes,
+  type LaneRoutingDecision,
+  type RetrievalLane,
+} from './retrieval-lane-router'
 
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'do', 'for', 'from', 'how',
@@ -49,6 +56,11 @@ export interface QueryResponse {
   retrieval: {
     method: 'hybrid' | 'lexical' | 'lexical-fallback'
     detail?: string
+    laneRouting?: {
+      lanes: RetrievalLane[]
+      reason: string
+      usedFallback: boolean
+    }
     checkpoints?: RetrievalCheckpointRecord[]
   }
 }
@@ -59,6 +71,7 @@ export interface MarkdownDocumentReaderOptions {
   hybridCandidateLimit?: number
   hybridAlpha?: number
   hybridMaxMs?: number
+  laneRoutingEnabled?: boolean
   missLearningEnabled?: boolean
   rankingHintsEnabled?: boolean
   rankingHintMinOccurrences?: number
@@ -171,6 +184,7 @@ export class MarkdownDocumentReader {
   private readonly hybridCandidateLimit: number
   private readonly hybridAlpha: number
   private readonly hybridMaxMs: number
+  private readonly laneRoutingEnabled: boolean
   private readonly missLearningEnabled: boolean
   private readonly rankingHintsEnabled: boolean
   private readonly rankingHintMinOccurrences: number
@@ -185,6 +199,7 @@ export class MarkdownDocumentReader {
     this.hybridCandidateLimit = options.hybridCandidateLimit ?? parsePositiveInt(process.env.KB_HYBRID_QUERY_CANDIDATES, 40)
     this.hybridAlpha = options.hybridAlpha ?? parseBoundedNumber(process.env.KB_HYBRID_QUERY_ALPHA, 0.45)
     this.hybridMaxMs = options.hybridMaxMs ?? parsePositiveInt(process.env.KB_HYBRID_QUERY_MAX_MS, 120)
+    this.laneRoutingEnabled = options.laneRoutingEnabled ?? process.env.KB_LANE_ROUTING_ENABLED !== 'false'
     this.missLearningEnabled = options.missLearningEnabled ?? process.env.KB_MISS_LEARNING_ENABLED === 'true'
     this.rankingHintsEnabled = options.rankingHintsEnabled ?? process.env.KB_MISS_HINTS_ENABLED === 'true'
     this.rankingHintMinOccurrences = options.rankingHintMinOccurrences
@@ -199,13 +214,7 @@ export class MarkdownDocumentReader {
     if (this.shouldUseHybrid(input)) {
       const hybridAttempt = await this.tryHybridQuery(input)
       if (hybridAttempt.response) {
-        const hybridResponse: QueryResponse = {
-          ...hybridAttempt.response,
-          retrieval: {
-            method: 'hybrid',
-            detail: 'fts+vector-rerank',
-          },
-        }
+        const hybridResponse: QueryResponse = hybridAttempt.response
 
         checkpoints.push(buildCheckpointRecord({
           stage: 'hybrid_primary',
@@ -216,20 +225,23 @@ export class MarkdownDocumentReader {
         }))
 
         if (checkpoints.at(-1)?.nextAction === 'return') {
-          const response = withCheckpoints(hybridResponse, checkpoints)
+          const response = this.ensureLaneRoutingMetadata(
+            input,
+            withCheckpoints(hybridResponse, checkpoints),
+          )
           this.maybeRecordMissLearning(input, response)
           this.maybeRecordCheckpointEvents(input, response)
           return response
         }
 
-        const response = await this.runLexicalCheckpointPipeline(
+        const response = this.ensureLaneRoutingMetadata(input, await this.runLexicalCheckpointPipeline(
           input,
           {
             method: 'lexical-fallback',
             detail: 'hybrid-low-confidence',
           },
           checkpoints,
-        )
+        ))
         this.maybeRecordMissLearning(input, response)
         this.maybeRecordCheckpointEvents(input, response)
         return response
@@ -244,19 +256,19 @@ export class MarkdownDocumentReader {
         status: 'error',
       }))
 
-      const response = await this.runLexicalCheckpointPipeline(input, {
+      const response = this.ensureLaneRoutingMetadata(input, await this.runLexicalCheckpointPipeline(input, {
         method: 'lexical-fallback',
         detail: hybridAttempt.fallbackReason ?? 'hybrid-unavailable',
-      }, checkpoints)
+      }, checkpoints))
       this.maybeRecordMissLearning(input, response)
       this.maybeRecordCheckpointEvents(input, response)
       return response
     }
 
-    const response = await this.runLexicalCheckpointPipeline(input, {
+    const response = this.ensureLaneRoutingMetadata(input, await this.runLexicalCheckpointPipeline(input, {
       method: 'lexical',
       detail: 'hybrid-not-attempted',
-    }, checkpoints)
+    }, checkpoints))
     this.maybeRecordMissLearning(input, response)
     this.maybeRecordCheckpointEvents(input, response)
     return response
@@ -318,9 +330,12 @@ export class MarkdownDocumentReader {
     retrieval: QueryResponse['retrieval'],
   ): Promise<QueryResponse> {
     const limit = input.limit ?? 10
-    const matches: Array<{ result: QueryResult; score: number }> = []
+    const laneRoute = this.resolveLaneRouting(input)
+    const primaryLanes = laneRoute?.lanes ?? []
 
-    try {
+    const collectMatches = async (laneFilter?: RetrievalLane[]) => {
+      const collected: Array<{ result: QueryResult; score: number }> = []
+
       const files = await readdir(this.baseDir)
       const mdFiles = files.filter(f => f.endsWith('.md') && f !== '_table.md')
 
@@ -331,13 +346,26 @@ export class MarkdownDocumentReader {
 
         if (!metadata) continue
 
+        if (laneFilter?.length) {
+          const lane = classifyDocumentLane(
+            metadata.id,
+            metadata.title,
+            metadata.type ?? null,
+            metadata.tags ?? [],
+            metadata.filePath,
+          )
+          if (!laneFilter.includes(lane)) {
+            continue
+          }
+        }
+
         const matchesType = !input.type || metadata.type === input.type
         if (!matchesType) continue
 
         const evaluation = evaluateDocumentMatch(input, metadata, content)
         if (!evaluation.matched) continue
 
-        matches.push({
+        collected.push({
           score: evaluation.score,
           result: {
             metadata,
@@ -345,10 +373,64 @@ export class MarkdownDocumentReader {
           },
         })
       }
-    } catch {
-      // KB directory doesn't exist or is empty; return empty results
-      return { results: [], total: 0, retrieval }
+
+      return collected
     }
+
+    let matches: Array<{ result: QueryResult; score: number }> = []
+    let activeLanes = primaryLanes
+    let usedLaneFallback = false
+    let usedSessionLogLastResort = false
+
+    try {
+      matches = await collectMatches(activeLanes.length > 0 ? activeLanes : undefined)
+
+      if (laneRoute && matches.length === 0 && laneRoute.fallbackLanes.length > 0) {
+        activeLanes = laneRoute.fallbackLanes
+        usedLaneFallback = true
+        matches = await collectMatches(activeLanes)
+      }
+
+      if (laneRoute && matches.length === 0 && (laneRoute.lastResortLanes?.length ?? 0) > 0) {
+        activeLanes = laneRoute.lastResortLanes ?? []
+        usedLaneFallback = true
+        usedSessionLogLastResort = activeLanes.includes('session-log')
+        matches = await collectMatches(activeLanes)
+      }
+    } catch {
+      const lexicalRetrieval: QueryResponse['retrieval'] = laneRoute
+        ? {
+          ...retrieval,
+          detail: appendRetrievalDetail(
+            retrieval.detail,
+            `lane-router:${laneRoute.reason};lanes:${activeLanes.join(',')}${usedSessionLogLastResort ? ';session-log-last-resort' : ''}`,
+          ),
+          laneRouting: {
+            lanes: activeLanes,
+            reason: laneRoute.reason,
+            usedFallback: usedLaneFallback,
+          },
+        }
+        : retrieval
+
+      // KB directory doesn't exist or is empty; return empty results
+      return { results: [], total: 0, retrieval: lexicalRetrieval }
+    }
+
+    const lexicalRetrieval: QueryResponse['retrieval'] = laneRoute
+      ? {
+        ...retrieval,
+        detail: appendRetrievalDetail(
+          retrieval.detail,
+          `lane-router:${laneRoute.reason};lanes:${activeLanes.join(',')}${usedLaneFallback ? ';lane-broadened' : ''}${usedSessionLogLastResort ? ';session-log-last-resort' : ''}`,
+        ),
+        laneRouting: {
+          lanes: activeLanes,
+          reason: laneRoute.reason,
+          usedFallback: usedLaneFallback,
+        },
+      }
+      : retrieval
 
     matches.sort((a, b) => {
       if (b.score !== a.score) {
@@ -365,7 +447,7 @@ export class MarkdownDocumentReader {
     return {
       results,
       total: matches.length,
-      retrieval,
+      retrieval: lexicalRetrieval,
     }
   }
 
@@ -405,19 +487,26 @@ export class MarkdownDocumentReader {
           return { fallbackReason: 'query-tokenization-empty' }
         }
 
+        const laneRoute = this.resolveLaneRouting(input)
+        let activeLanes = laneRoute?.lanes
+        let usedLaneFallback = false
+        let usedSessionLogLastResort = false
+
         const ftsExpression = queryTokens.join(' OR ')
-        const candidateRows = db
-          .prepare(`
-            SELECT chunk_id, doc_id, bm25(chunks_fts) AS lexical_rank
-            FROM chunks_fts
-            WHERE chunks_fts MATCH ?
-            LIMIT ?
-          `)
-          .all(ftsExpression, this.hybridCandidateLimit) as Array<{
-            chunk_id: string
-            doc_id: string
-            lexical_rank: number
-          }>
+        let candidateRows = this.fetchHybridCandidates(db, ftsExpression, activeLanes)
+
+        if (candidateRows.length === 0 && laneRoute?.fallbackLanes.length) {
+          activeLanes = laneRoute.fallbackLanes
+          usedLaneFallback = true
+          candidateRows = this.fetchHybridCandidates(db, ftsExpression, activeLanes)
+        }
+
+        if (candidateRows.length === 0 && (laneRoute?.lastResortLanes?.length ?? 0) > 0) {
+          activeLanes = laneRoute?.lastResortLanes
+          usedLaneFallback = true
+          usedSessionLogLastResort = (activeLanes ?? []).includes('session-log')
+          candidateRows = this.fetchHybridCandidates(db, ftsExpression, activeLanes)
+        }
 
         const hintBoosts = this.rankingHintsEnabled
           ? this.loadRankingHintBoosts(db, query)
@@ -432,10 +521,15 @@ export class MarkdownDocumentReader {
           'SELECT vector_json, dimensions FROM chunk_embeddings WHERE chunk_id = ?',
         )
         const getDocument = db.prepare(
-          'SELECT id, title, file_path, created_at, updated_at, tags_json, doc_type FROM documents WHERE id = ?',
+          'SELECT id, title, file_path, created_at, updated_at, tags_json, doc_type, lane FROM documents WHERE id = ?',
         )
 
-        const docScores = new Map<string, { score: number; bestChunk: string; lexical: number }>()
+        const docScores = new Map<string, {
+          score: number
+          bestChunk: string
+          lexical: number
+          lane?: RetrievalLane
+        }>()
 
         for (const candidate of candidateRows) {
           if (Date.now() - startTime > this.hybridMaxMs) {
@@ -453,7 +547,8 @@ export class MarkdownDocumentReader {
           const vectorScore = this.computeVectorScore(query, chunkText, embRow)
           const baseCombined = this.hybridAlpha * lexicalScore + (1 - this.hybridAlpha) * vectorScore
           const hintBoost = hintBoosts.get(candidate.doc_id) ?? 0
-          const combined = Math.min(1, baseCombined + hintBoost)
+          const laneBoost = laneFitnessBoost(candidate.lane, activeLanes ?? [])
+          const combined = Math.min(1, baseCombined + hintBoost + laneBoost)
 
           const current = docScores.get(candidate.doc_id)
           if (!current || combined > current.score) {
@@ -461,6 +556,7 @@ export class MarkdownDocumentReader {
               score: combined,
               bestChunk: chunkText,
               lexical: lexicalScore,
+              lane: candidate.lane,
             })
           }
         }
@@ -487,6 +583,7 @@ export class MarkdownDocumentReader {
               updated_at: string
               tags_json?: string
               doc_type?: QueryDocumentsInput['type']
+              lane?: RetrievalLane
             }
             | undefined
           if (!doc) continue
@@ -524,7 +621,20 @@ export class MarkdownDocumentReader {
             total: filtered.length,
             retrieval: {
               method: 'hybrid',
-              detail: 'fts+vector-rerank',
+              detail: this.buildHybridRetrievalDetail(
+                'fts+vector-rerank',
+                laneRoute,
+                activeLanes,
+                usedLaneFallback,
+                usedSessionLogLastResort,
+              ),
+              laneRouting: laneRoute
+                ? {
+                  lanes: activeLanes ?? laneRoute.lanes,
+                  reason: laneRoute.reason,
+                  usedFallback: usedLaneFallback,
+                }
+                : undefined,
             },
           },
         }
@@ -535,6 +645,104 @@ export class MarkdownDocumentReader {
       const message = error instanceof Error ? error.message : String(error)
       console.warn(`[kb-hybrid] query unavailable, using lexical fallback: ${message}`)
       return { fallbackReason: `hybrid-error:${message}` }
+    }
+  }
+
+  private fetchHybridCandidates(
+    db: Database.Database,
+    ftsExpression: string,
+    lanes?: RetrievalLane[],
+  ): Array<{ chunk_id: string; doc_id: string; lexical_rank: number; lane?: RetrievalLane }> {
+    if (!lanes?.length) {
+      return db
+        .prepare(`
+          SELECT chunk_id, doc_id, bm25(chunks_fts) AS lexical_rank
+          FROM chunks_fts
+          WHERE chunks_fts MATCH ?
+          LIMIT ?
+        `)
+        .all(ftsExpression, this.hybridCandidateLimit) as Array<{
+          chunk_id: string
+          doc_id: string
+          lexical_rank: number
+          lane?: RetrievalLane
+        }>
+    }
+
+    const placeholders = lanes.map(() => '?').join(', ')
+    return db
+      .prepare(`
+        SELECT chunks_fts.chunk_id AS chunk_id, chunks_fts.doc_id AS doc_id, bm25(chunks_fts) AS lexical_rank, c.lane AS lane
+        FROM chunks_fts
+        JOIN chunks AS c ON c.chunk_id = chunks_fts.chunk_id
+        WHERE chunks_fts MATCH ?
+          AND c.lane IN (${placeholders})
+        LIMIT ?
+      `)
+      .all(ftsExpression, ...lanes, this.hybridCandidateLimit) as Array<{
+        chunk_id: string
+        doc_id: string
+        lexical_rank: number
+        lane?: RetrievalLane
+      }>
+  }
+
+  private resolveLaneRouting(input: QueryDocumentsInput): LaneRoutingDecision | undefined {
+    if (!this.shouldApplyLaneRouting(input)) {
+      return undefined
+    }
+
+    return routeQueryToLanes(input.query ?? '')
+  }
+
+  private shouldApplyLaneRouting(input: QueryDocumentsInput): boolean {
+    if (!this.laneRoutingEnabled) return false
+    if (!input.query?.trim()) return false
+    if (input.tags?.length) return false
+
+    return input.mode === 'content' || input.mode === undefined
+  }
+
+  private buildHybridRetrievalDetail(
+    base: string,
+    laneRoute: LaneRoutingDecision | undefined,
+    activeLanes: RetrievalLane[] | undefined,
+    usedLaneFallback: boolean,
+    usedSessionLogLastResort: boolean,
+  ): string {
+    if (!laneRoute) return base
+
+    const lanes = activeLanes ?? laneRoute.lanes
+    let detail = `${base};lane-router:${laneRoute.reason};lanes:${lanes.join(',')}`
+    if (usedLaneFallback) {
+      detail = appendRetrievalDetail(detail, 'lane-broadened')
+    }
+    if (usedSessionLogLastResort) {
+      detail = appendRetrievalDetail(detail, 'session-log-last-resort')
+    }
+    return detail
+  }
+
+  private ensureLaneRoutingMetadata(input: QueryDocumentsInput, response: QueryResponse): QueryResponse {
+    if (response.retrieval.laneRouting) {
+      return response
+    }
+
+    const laneRoute = this.resolveLaneRouting(input)
+    if (!laneRoute) {
+      return response
+    }
+
+    return {
+      ...response,
+      retrieval: {
+        ...response.retrieval,
+        laneRouting: {
+          lanes: laneRoute.lanes,
+          reason: laneRoute.reason,
+          usedFallback: false,
+        },
+      },
     }
   }
 
@@ -685,6 +893,7 @@ export class MarkdownDocumentReader {
     let db: Database.Database | undefined
     try {
       db = new Database(this.sqliteDbPath)
+      const database = db
       const insertCheckpoint = db.prepare(`
         INSERT INTO retrieval_checkpoint_events (
           query_fingerprint,
@@ -700,7 +909,7 @@ export class MarkdownDocumentReader {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
 
-      const tx = db.transaction(() => {
+      const tx = database.transaction(() => {
         for (const checkpoint of checkpoints) {
           insertCheckpoint.run(
             fingerprint,
@@ -710,6 +919,37 @@ export class MarkdownDocumentReader {
             checkpoint.confidence,
             checkpoint.method,
             checkpoint.detail ?? null,
+            'reader',
+            now,
+          )
+        }
+
+        const laneRouting = response.retrieval.laneRouting
+        const finalCheckpoint = checkpoints.at(-1)
+        if (laneRouting && finalCheckpoint && laneRouting.lanes.length > 0) {
+          database.prepare(`
+            INSERT INTO retrieval_lane_routing_events (
+              query_fingerprint,
+              primary_lane,
+              routed_lanes_json,
+              route_reason,
+              used_fallback,
+              status,
+              next_action,
+              confidence,
+              surface,
+              created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            fingerprint,
+            laneRouting.lanes[0],
+            JSON.stringify(laneRouting.lanes),
+            laneRouting.reason,
+            laneRouting.usedFallback ? 1 : 0,
+            finalCheckpoint.status,
+            finalCheckpoint.nextAction,
+            finalCheckpoint.confidence,
             'reader',
             now,
           )

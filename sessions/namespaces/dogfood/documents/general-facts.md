@@ -21,3 +21,7 @@ Tags: general, fact
 - README precedence: effective KB base resolution order is 1) kb use session base, 2) kb default saved base, 3) KB_BASE environment fallback. (source: readme)
 
 - README workflow: keep KB docs close to code and checkpoint durable knowledge via git add sessions/, commit, and push. (source: readme)
+
+- CLI testing fact: Lane-routing verification should be done with an on/off A/B using KB_LANE_ROUTING_ENABLED and identical prompts, then compared via retrieval metadata in kb chat or kb query --output json. (source: consumer)
+
+- CLI quick-reference: kb --help; kb use dogfood; kb default dogfood; kb submit/query/validate/dispute/explain with --output json; KB_BASE=dogfood kb chat for interactive mode; use KB_LANE_ROUTING_ENABLED=false for retrieval A/B checks. (source: consumer)
