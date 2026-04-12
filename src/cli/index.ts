@@ -25,6 +25,7 @@ import {
   resolveBaseToDir,
   resolveEffectiveBaseDir,
   writeDefaultBase,
+  writeSessionBase,
 } from './base-selection'
 
 function printCliHelp(): string {
@@ -45,7 +46,7 @@ function printCliHelp(): string {
     '  kb use --show',
     '  kb default dogfood',
     '  kb default --show',
-    '  KB_BASE=dogfood kb submit "Fact text" --target session-log-2026-04-12',
+    '  kb submit "Fact text" --target session-log-2026-04-12',
     '',
     'Flags:',
     '  -h, --help    Show this help message',
@@ -109,18 +110,32 @@ async function main() {
   if (firstArg === 'use') {
     const base = args[1]
     if (base === '--show' || !base) {
-      const effective = await resolveEffectiveBaseDir()
       const configured = await readBaseConfig()
+      let effective: Awaited<ReturnType<typeof resolveEffectiveBaseDir>> | null = null
+      try {
+        effective = await resolveEffectiveBaseDir()
+      } catch {
+        // No active base configured yet.
+      }
+
       console.log('KB base configuration')
-      console.log(`Source: ${effective.source}`)
-      console.log(`Base: ${effective.baseName ?? '(path override)'}`)
-      console.log(`Resolved path: ${effective.baseDir}`)
+      if (effective) {
+        console.log(`Source: ${effective.source}`)
+        console.log(`Base: ${effective.baseName}`)
+        console.log(`Resolved path: ${effective.baseDir}`)
+      } else {
+        console.log('No active base configured.')
+      }
       if (configured.defaultBase) {
         console.log(`Saved default: ${configured.defaultBase}`)
+      }
+      if (configured.sessionBase) {
+        console.log(`Session base: ${configured.sessionBase}`)
       }
       return
     }
 
+    await writeSessionBase(base)
     const resolved = resolveBaseToDir(base)
     console.log(formatUseCommandHelp(base, resolved))
     return

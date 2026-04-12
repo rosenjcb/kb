@@ -101,24 +101,27 @@ node dist/bin/kb.js "What tools are available?"
 
 To avoid test data interfering with real documentation, use base selection.
 
-- `kb use <base>`: choose a base alias for the current shell session (prints export guidance).
+- `kb use <base>`: set a session base for immediate invocations.
 - `kb default <base>`: persist a preferred base alias for future invocations.
-- `KB_BASE=<base>`: environment override for base alias.
-- `KB_BASE_DIR=/custom/path`: explicit path override (highest precedence).
+- `KB_BASE=<base>`: environment fallback when no session/default base is set.
 
-Default behavior (when no env override and no saved default exists) uses `sessions/namespaces/default/documents`.
+Current invocation precedence:
+
+1. `kb use` session base
+2. `kb default` saved default base
+3. `KB_BASE` environment fallback
 
 Example (macOS/Linux):
 
 ```bash
-export KB_BASE=dogfood
+kb use dogfood
 kb "Document the latest architecture decision"
 ```
 
 Example (PowerShell):
 
 ```powershell
-$env:KB_BASE = "dogfood"
+kb use dogfood
 kb "Document the latest architecture decision"
 ```
 

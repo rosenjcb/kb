@@ -20,3 +20,5 @@ The knowledge-base system is designed around a robust architecture that facilita
 
 ## CLI Flow
 From the initial parsing of the query to the selection of the appropriate provider and tool execution, the CLI manages these steps seamlessly. Each session also includes behavior to append data or logs to ensure all interactions are recorded for future reference.
+
+- KB architecture note: consumer intent commands still route through DefaultIntentRouter while direct internal tool invocation remains blocked by policy unless KB_ALLOW_INTERNAL_TOOLS=true. (source: code-audit)

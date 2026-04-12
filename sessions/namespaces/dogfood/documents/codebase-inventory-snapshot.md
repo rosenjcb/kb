@@ -16,3 +16,7 @@ Tags: inventory, codebase, dogfood
 
 - **Build scripts**: Responsible for compiling the application, setting up the executable environment, and managing dependencies.
 - **Runtime scripts**: Ensure the application runs smoothly, handling tasks such as session management, environment configuration, and error handling.
+
+- Codebase inventory update: base-selection module now includes writeSessionBase, writeDefaultBase, and resolveEffectiveBaseDir with explicit no-fallback error when no base is configured. (source: code-audit)
+
+- Docs drift note: README Current Status still frames write_document as the first/primary scaffold, but createKBToolsRegistry currently registers write_document, read_documents, append_to_document, update_document, prune_document, and merge_documents. Evidence: src/tools/kb-tools-registry.ts. (source: code-audit)

@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import dayjs from 'dayjs'
 
 export interface BaseSelectionConfig {
+  sessionBase?: string
   defaultBase?: string
   updatedAt?: string
 }
@@ -50,8 +51,22 @@ export async function readBaseConfig(): Promise<BaseSelectionConfig> {
 }
 
 export async function writeDefaultBase(base: string): Promise<BaseSelectionConfig> {
+  const existing = await readBaseConfig()
   const payload: BaseSelectionConfig = {
+    ...existing,
     defaultBase: base,
+    updatedAt: dayjs().toISOString(),
+  }
+  await mkdir(CONFIG_DIR, { recursive: true })
+  await writeFile(CONFIG_FILE, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
+  return payload
+}
+
+export async function writeSessionBase(base: string): Promise<BaseSelectionConfig> {
+  const existing = await readBaseConfig()
+  const payload: BaseSelectionConfig = {
+    ...existing,
+    sessionBase: base,
     updatedAt: dayjs().toISOString(),
   }
   await mkdir(CONFIG_DIR, { recursive: true })
@@ -61,7 +76,7 @@ export async function writeDefaultBase(base: string): Promise<BaseSelectionConfi
 
 export interface EffectiveBaseResolution {
   baseDir: string
-  source: 'env.KB_BASE_DIR' | 'env.KB_BASE' | 'config.defaultBase' | 'fallback'
+  source: 'config.sessionBase' | 'config.defaultBase' | 'env.KB_BASE'
   baseName?: string
 }
 
@@ -69,13 +84,21 @@ export async function resolveEffectiveBaseDir(
   cwd: string = process.cwd(),
   configOverride?: BaseSelectionConfig,
 ): Promise<EffectiveBaseResolution> {
-  const explicitBaseDir = (process.env.KB_BASE_DIR || '').trim()
-  if (explicitBaseDir) {
+  const config = configOverride ?? await readBaseConfig()
+
+  if (config.sessionBase) {
     return {
-      baseDir: path.isAbsolute(explicitBaseDir)
-        ? explicitBaseDir
-        : path.resolve(cwd, explicitBaseDir),
-      source: 'env.KB_BASE_DIR',
+      baseDir: resolveBaseToDir(config.sessionBase, cwd),
+      source: 'config.sessionBase',
+      baseName: config.sessionBase,
+    }
+  }
+
+  if (config.defaultBase) {
+    return {
+      baseDir: resolveBaseToDir(config.defaultBase, cwd),
+      source: 'config.defaultBase',
+      baseName: config.defaultBase,
     }
   }
 
@@ -88,21 +111,7 @@ export async function resolveEffectiveBaseDir(
     }
   }
 
-  const config = configOverride ?? await readBaseConfig()
-  if (config.defaultBase) {
-    return {
-      baseDir: resolveBaseToDir(config.defaultBase, cwd),
-      source: 'config.defaultBase',
-      baseName: config.defaultBase,
-    }
-  }
-
-  const fallbackBase = 'default'
-  return {
-    baseDir: resolveBaseToDir(fallbackBase, cwd),
-    source: 'fallback',
-    baseName: fallbackBase,
-  }
+  throw new Error('No KB base configured. Set one with `kb use <base>` or `kb default <base>`, or set KB_BASE.')
 }
 
 export function formatUseCommandHelp(base: string, resolvedPath: string): string {
@@ -110,11 +119,12 @@ export function formatUseCommandHelp(base: string, resolvedPath: string): string
     `Using base: ${base}`,
     `Resolved path: ${resolvedPath}`,
     '',
-    'To apply for current shell session:',
-    `  export KB_BASE="${base}"`,
-    '',
-    'To persist for future invocations:',
+    'Saved as session base for immediate invocations.',
+    'To persist for future invocations across sessions:',
     `  kb default ${base}`,
+    '',
+    'Environment fallback (only if no session/default is set):',
+    `  KB_BASE=${base}`,
   ].join('\n')
 }
 
@@ -124,9 +134,8 @@ export function formatDefaultCommandHelp(base: string, resolvedPath: string): st
     `Resolved path: ${resolvedPath}`,
     '',
     'Current invocation precedence:',
-    '  1) KB_BASE_DIR',
-    '  2) KB_BASE',
-    '  3) saved default base',
-    '  4) fallback: default',
+    '  1) kb use session base',
+    '  2) saved default base',
+    '  3) KB_BASE',
   ].join('\n')
 }
