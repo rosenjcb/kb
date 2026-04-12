@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ToolExecutor } from '../../src/core/tool-registry'
+import type { LLMProvider } from '../../src/core/types'
 import {
+  enrichReadDocumentsAnswerWithLLM,
   formatIntentResult,
   isIntentCommand,
   parseIntentCommand,
@@ -41,6 +43,7 @@ describe('intent-cli parsing', () => {
         explanation: 'query intent maps directly to read_documents',
         recommendedAction: 'read_documents',
         data: {
+          answer: 'The KB uses session base first, then default, then KB_BASE fallback.',
           retrieval: {
             method: 'hybrid',
             detail: 'fts+vector-rerank',
@@ -62,6 +65,8 @@ describe('intent-cli parsing', () => {
     )
 
     expect(output).toContain('Summary: Found 1 matching KB document')
+    expect(output).toContain('Answer: The KB uses session base first, then default, then KB_BASE fallback.')
+    expect(output).toContain('Answer:')
     expect(output).toContain('Status: accepted')
     expect(output).toContain('Confidence: 0.80')
     expect(output).toContain('Retrieval: hybrid (fts+vector-rerank)')
@@ -91,10 +96,43 @@ describe('intent-cli parsing', () => {
     )
 
     expect(output).toContain('Summary: No matching KB documents were found for this query.')
+    expect(output).toContain('Answer: I could not find enough evidence to answer directly from KB documents.')
     expect(output).toContain('Retrieval: lexical-fallback (hybrid-error:no-index)')
     expect(output).toContain('Matches: 0')
     expect(output).toContain('Relevant Docs: none')
     expect(output).toContain('Hint: Try a broader phrase')
+  })
+
+  it('Given read_documents result and llm provider, then enrichReadDocumentsAnswerWithLLM injects LLM answer', async () => {
+    const parsed = parseIntentCommand(['query', 'What is precedence order?'])
+    const result = {
+      status: 'accepted' as const,
+      recommendedAction: 'read_documents',
+      data: {
+        results: [
+          {
+            metadata: { id: 'cli-facts', title: 'CLI Facts' },
+            content: '# CLI Facts\n\nKB base precedence order: session, default, env fallback.',
+          },
+        ],
+        total: 1,
+      },
+    }
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'Precedence is session base, then default base, then KB_BASE fallback.',
+        stopReason: 'end_turn',
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
+    const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
+    const data = enriched.data as { answer?: string }
+    expect(data.answer).toContain('Precedence is session base')
   })
 })
 

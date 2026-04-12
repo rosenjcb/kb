@@ -48,3 +48,7 @@ These components contribute significantly to the system's development and operat
 - README updated to .env.local-first onboarding: provider/base/hybrid flags now documented in .env.local with explicit local-context commands (dev:local/start:local). (source: docs-sync)
 
 - Added explicit retrieval method telemetry in query responses: read_documents now returns retrieval metadata (hybrid|lexical|lexical-fallback + detail), and human formatter prints Retrieval line for visibility. (source: implementation)
+
+- Applied hybrid/vector-capable retrieval logic across intent surfaces where it makes sense: explain now uses id-first with semantic fallback (auto mode), validate/dispute results now include retrieval metadata visibility, and formatter keeps direct Answer + Retrieval in human output. (source: implementation)
+
+- Intent command responses now use LLM-driven answer synthesis for read_documents paths (query/explain): CLI enriches read_documents results with provider-generated answer text and falls back to heuristic extraction only on provider failure or disable flag. (source: implementation)

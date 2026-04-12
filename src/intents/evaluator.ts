@@ -30,16 +30,24 @@ export async function validateFact(
     }),
   )
 
-  const results = ((response as { results?: Array<{ content?: string; metadata?: { id?: string } }> })
+  const typedResponse = response as {
+    results?: Array<{ content?: string; metadata?: { id?: string } }>
+    retrieval?: { method?: string; detail?: string }
+  }
+  const retrieval = typedResponse.retrieval
+  const retrievalText = describeRetrieval(retrieval)
+
+  const results = ((typedResponse)
     .results ?? [])
 
   if (results.length === 0) {
     return {
       status: 'uncertain',
       confidence: 0.2,
-      explanation: 'No supporting documents found for this fact.',
+      explanation: `No supporting documents found for this fact. ${retrievalText}`,
       recommendedAction: 'submit_fact',
       provenance: [],
+      data: { retrieval },
     }
   }
 
@@ -48,9 +56,10 @@ export async function validateFact(
     return {
       status: 'invalid',
       confidence: 0.8,
-      explanation: 'Relevant documents found but none support the stated fact.',
+      explanation: `Relevant documents found but none support the stated fact. ${retrievalText}`,
       recommendedAction: 'dispute_fact',
       provenance: results.map(r => r.metadata?.id).filter(Boolean) as string[],
+      data: { retrieval },
     }
   }
 
@@ -58,9 +67,10 @@ export async function validateFact(
   return {
     status: 'valid',
     confidence,
-    explanation: 'Fact appears in relevant documents.',
+    explanation: `Fact appears in relevant documents. ${retrievalText}`,
     recommendedAction: 'none',
     provenance: supporting.map(r => r.metadata?.id).filter(Boolean) as string[],
+    data: { retrieval },
   }
 }
 
@@ -109,4 +119,12 @@ export async function disputeFact(
     provenance: [writeResult.id ?? 'unknown-dispute-record'],
     confidence: 0.6,
   }
+}
+
+function describeRetrieval(
+  retrieval: { method?: string; detail?: string } | undefined,
+): string {
+  if (!retrieval?.method) return 'Retrieval method: unknown.'
+  if (!retrieval.detail) return `Retrieval method: ${retrieval.method}.`
+  return `Retrieval method: ${retrieval.method} (${retrieval.detail}).`
 }

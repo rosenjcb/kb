@@ -89,4 +89,22 @@ describe('DefaultIntentRouter', () => {
     expect(result.status).toBe('error')
     expect(result.errorCode).toBe('INVALID_PAYLOAD')
   })
+
+  it('Given explain_change with natural language prompt, then routes to read_documents auto mode with semantic fallback', async () => {
+    const executor = createExecutorMock()
+    const router = new DefaultIntentRouter(executor)
+
+    const decision = await router.route({
+      intent: 'explain_change',
+      payload: {
+        fact: 'how vector search works with doc retrieval in kb',
+      },
+    })
+
+    expect(decision.selectedOperation).toBe('read_documents')
+    expect(decision.operationInput.query).toBe('how vector search works with doc retrieval in kb')
+    expect(decision.operationInput.includeContent).toBe(true)
+    expect(decision.operationInput.limit).toBe(3)
+    expect(decision.operationInput.mode).toBeUndefined()
+  })
 })

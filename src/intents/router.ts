@@ -99,11 +99,11 @@ export class DefaultIntentRouter implements IntentRouter {
           selectedOperation: 'read_documents',
           operationInput: {
             query: payload.changeId ?? payload.fact ?? '',
-            mode: 'id',
+            // Auto mode allows ID-first lookup with semantic/content fallback.
             includeContent: true,
-            limit: 1,
+            limit: 3,
           },
-          policyReason: 'explain intent reads change/fact record and returns context',
+          policyReason: 'explain intent reads change/fact context with id-first + semantic fallback',
         }
 
       default:
