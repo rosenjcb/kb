@@ -28,6 +28,7 @@ import {
   writeDefaultBase,
   writeSessionBase,
 } from './base-selection'
+import { runChatSession } from './chat-cli'
 
 function printCliHelp(): string {
   return [
@@ -36,6 +37,7 @@ function printCliHelp(): string {
     'Usage:',
     '  kb <query>',
     '  kb <sessionFile.md> <query>',
+    '  kb chat',
     '  kb <intent-command> [options]',
     '',
     printIntentHelp(),
@@ -47,6 +49,7 @@ function printCliHelp(): string {
     '  kb use --show',
     '  kb default dogfood',
     '  kb default --show',
+    '  kb chat',
     '  kb submit "Fact text" --target session-log-2026-04-12',
     '',
     'Flags:',
@@ -93,6 +96,38 @@ function resolveProviderFromEnv():
 
   // Fallback for local dev
   return 'ollama'
+}
+
+function tryCreateLlmProvider(
+  provider: 'anthropic' | 'openai' | 'gemini' | 'ollama',
+): ReturnType<typeof createProvider> | undefined {
+  try {
+    switch (provider) {
+      case 'anthropic':
+        return createProvider({
+          provider: 'anthropic',
+          apiKey: process.env.ANTHROPIC_API_KEY,
+        })
+      case 'openai':
+        return createProvider({
+          provider: 'openai',
+          apiKey: process.env.OPENAI_API_KEY,
+        })
+      case 'gemini':
+        return createProvider({
+          provider: 'gemini',
+          apiKey: process.env.GEMINI_API_KEY,
+        })
+      case 'ollama':
+      default:
+        return createProvider({
+          provider: 'ollama',
+          endpoint: process.env.OLLAMA_ENDPOINT || 'http://localhost:11434',
+        })
+    }
+  } catch {
+    return undefined
+  }
 }
 
 async function main() {
@@ -163,6 +198,24 @@ async function main() {
     return
   }
 
+  if (firstArg === 'chat') {
+    const provider = resolveProviderFromEnv()
+    const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
+    const llmProvider = tryCreateLlmProvider(provider)
+
+    if (!llmProvider) {
+      console.error('❌ Provider setup failed: provider was not initialized')
+      process.exit(1)
+    }
+
+    const toolExecutor = createKBToolsRegistry(kbStorageDir)
+    console.log(`🔌 Provider: ${provider}`)
+    console.log(`🗂️ KB Storage: ${kbStorageDir}`)
+    console.log('')
+    await runChatSession({ llmProvider, toolExecutor })
+    return
+  }
+
   let sessionFile: string | null = null
   let sessionContent = ''
   let query = ''
@@ -188,43 +241,13 @@ async function main() {
 
   let llmProvider: ReturnType<typeof createProvider> | undefined
 
-  function tryCreateLlmProvider() {
-    try {
-      switch (provider) {
-        case 'anthropic':
-          return createProvider({
-            provider: 'anthropic',
-            apiKey: process.env.ANTHROPIC_API_KEY,
-          })
-        case 'openai':
-          return createProvider({
-            provider: 'openai',
-            apiKey: process.env.OPENAI_API_KEY,
-          })
-        case 'gemini':
-          return createProvider({
-            provider: 'gemini',
-            apiKey: process.env.GEMINI_API_KEY,
-          })
-        case 'ollama':
-        default:
-          return createProvider({
-            provider: 'ollama',
-            endpoint: process.env.OLLAMA_ENDPOINT || 'http://localhost:11434',
-          })
-      }
-    } catch {
-      return undefined
-    }
-  }
-
   // Consumer-intent command mode (bypasses LLM loop, routes intents directly)
   if (isIntentCommand(firstArg)) {
     try {
       const parsed = parseIntentCommand(args)
       const toolExecutor = createKBToolsRegistry(kbStorageDir)
       const result = await executeIntentCommand(parsed, toolExecutor)
-      llmProvider = tryCreateLlmProvider()
+      llmProvider = tryCreateLlmProvider(provider)
       const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, llmProvider)
       console.log(formatIntentResult(enriched, parsed.output))
       return
@@ -255,7 +278,7 @@ async function main() {
 
   // Create provider
   try {
-    llmProvider = tryCreateLlmProvider()
+    llmProvider = tryCreateLlmProvider(provider)
   } catch (error) {
     console.error('❌ Provider setup failed:', error)
     process.exit(1)

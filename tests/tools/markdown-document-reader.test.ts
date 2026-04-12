@@ -185,4 +185,57 @@ describe('MarkdownDocumentReader', () => {
     expect(response.retrieval.detail).toBe('latency-budget-exceeded')
     expect(response.results[0]?.metadata.id).toBe('latency-guardrail')
   })
+
+  it('Given multiple lexical matches, then should rank strongest document first instead of stopping early', async () => {
+    const baseDir = await createTempDir()
+
+    await writeFile(
+      path.join(baseDir, 'weak-match.md'),
+      '# Weak Match\n\nCreated: 2026-01-01\nType: reference\n\nThis mentions retrieval once.\n',
+      'utf8'
+    )
+
+    await writeFile(
+      path.join(baseDir, 'strong-match.md'),
+      '# Strong Match\n\nCreated: 2026-01-02\nType: reference\n\nHybrid retrieval uses sqlite fts and vector rerank retrieval behavior for query quality.\n',
+      'utf8'
+    )
+
+    const reader = new MarkdownDocumentReader(baseDir)
+    const response = await reader.queryDocuments({
+      query: 'hybrid retrieval sqlite vector rerank behavior',
+      mode: 'content',
+      includeContent: true,
+      limit: 1,
+    })
+
+    expect(response.total).toBe(2)
+    expect(response.results[0]?.metadata.id).toBe('strong-match')
+  })
+
+  it('Given natural-language query with no direct phrase match, then keyword broadening should recover relevant content', async () => {
+    const baseDir = await createTempDir()
+
+    await writeFile(
+      path.join(baseDir, 'project-overview.md'),
+      '# Project Overview\n\nCreated: 2026-01-01\nType: reference\n\nThis repository is a local knowledge-base agent harness for intent-first CLI workflows and document tooling.\n',
+      'utf8'
+    )
+
+    const reader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: false,
+    })
+
+    const response = await reader.queryDocuments({
+      query: 'What is this project about and what does this system do overall?',
+      mode: 'content',
+      includeContent: true,
+      limit: 5,
+    })
+
+    expect(response.total).toBe(1)
+    expect(response.results[0]?.metadata.id).toBe('project-overview')
+    expect(response.retrieval.method).toBe('lexical')
+    expect(response.retrieval.detail).toContain('hybrid-not-attempted')
+  })
 })
