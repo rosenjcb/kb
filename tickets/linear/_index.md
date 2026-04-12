@@ -13,7 +13,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 
 ## Summary
 
-- Total files: 80 (79 tickets + this index)
+- Total files: 81 (80 tickets + this index)
 - Branch: feat/kb-ticket-backlog
 
 ## Foundation
@@ -75,6 +75,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [025 Define Notion rate limit and backoff behavior](tickets/linear/025-notion-rate-limit-backoff-plan.md)
 - [026 Write Notion auth and access runbook](tickets/linear/026-notion-auth-and-page-access-runbook.md)
 - [043 Define markdown and Notion coexistence mode](tickets/linear/043-notion-markdown-coexistence-mode.md)
+- [080 Publish markdown KB to Notion with AI workspace restructuring flow](tickets/linear/080-publish-markdown-kb-to-notion-with-ai-restructure-flow.md)
 
 ## Intelligence
 

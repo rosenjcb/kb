@@ -104,3 +104,5 @@ These components contribute significantly to the system's development and operat
 - Dogfood validation for ticket 079 reconciliation: refreshed global CLI, dry-run and live submit with --replace-from/--replace-to both returned reconcile_facts report; session-log remained skipped by default; index-assisted+full-crawl discovery reported deterministic counts; post-run query showed only replacement token in non-session docs. (source: consumer)
 
 - Cross-tool evidence policy updated: validate now runs shallow->deep promotion on empty or inconclusive shallow evidence, query/explain auto-enable high-recall deep routing for exact-token lookups, and chat enforces exact-token fallback matching with explicit actionable guidance when grounded evidence is missing; dogfood verified with CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION across query/validate/explain/chat. (source: implementation)
+
+- Drafted ticket 080 for Notion publish flow: package markdown to zip, import to Archive staging, and run two-pass Notion AI restructure/quality prompts with provenance and rollback safeguards. (source: planning)
