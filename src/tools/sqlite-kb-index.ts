@@ -2,10 +2,12 @@ import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import dayjs from 'dayjs'
 import Database from 'better-sqlite3'
+import { classifyDocumentLane, type RetrievalLane } from './retrieval-lane-router'
 
 interface ChunkRecord {
   chunkId: string
   chunkIndex: number
+  lane: RetrievalLane
   headingPath: string
   chunkText: string
   tokenCount: number
@@ -44,6 +46,14 @@ export interface RetrievalRankingHint {
   occurrences: number
 }
 
+interface LaneBackfillRow {
+  id: string
+  title: string
+  file_path: string
+  doc_type: string | null
+  tags_json: string | null
+}
+
 export interface RetrievalCheckpointEventInput {
   queryFingerprint: string
   stage: string
@@ -53,6 +63,44 @@ export interface RetrievalCheckpointEventInput {
   method: 'hybrid' | 'lexical' | 'lexical-fallback'
   detail?: string
   surface: 'chat' | 'intent-query' | 'intent-explain' | 'validator' | 'reader'
+}
+
+export interface LaneRoutingEventInput {
+  queryFingerprint: string
+  primaryLane: RetrievalLane
+  routedLanes: RetrievalLane[]
+  routeReason: string
+  usedFallback: boolean
+  status: 'hit' | 'miss' | 'error'
+  nextAction: 'return' | 'advance'
+  confidence: number
+  surface: 'chat' | 'intent-query' | 'intent-explain' | 'validator' | 'reader'
+}
+
+export interface LaneRoutingMetrics {
+  lane: RetrievalLane
+  totalCount: number
+  hitCount: number
+  missCount: number
+  errorCount: number
+  fallbackCount: number
+  successRate: number
+  fallbackRate: number
+}
+
+export interface LaneRoutingRolloutThresholds {
+  minSampleSize: number
+  minLaneSuccessRate: number
+  maxLaneFallbackRate: number
+  maxLowPrecisionLanes: number
+}
+
+export interface LaneRoutingRolloutAssessment {
+  decision: 'promote' | 'hold' | 'rollback'
+  sampleSize: number
+  lowPrecisionLanes: RetrievalLane[]
+  highFallbackLanes: RetrievalLane[]
+  reasons: string[]
 }
 
 export interface RetrievalStageMetrics {
@@ -90,6 +138,13 @@ const DEFAULT_ROLLOUT_THRESHOLDS: RetrievalRolloutThresholds = {
   maxHybridFallbackRate: 0.5,
 }
 
+const DEFAULT_LANE_ROUTING_THRESHOLDS: LaneRoutingRolloutThresholds = {
+  minSampleSize: 20,
+  minLaneSuccessRate: 0.55,
+  maxLaneFallbackRate: 0.45,
+  maxLowPrecisionLanes: 1,
+}
+
 export class SqliteKbIndexer {
   private readonly db: Database.Database
   private readonly modelId: string
@@ -109,16 +164,17 @@ export class SqliteKbIndexer {
     if (!parsed) return
 
     const now = dayjs().toISOString()
-    const chunks = buildChunks(parsed.id, parsed.contentBody)
+    const chunks = buildChunks(parsed.id, parsed.contentBody, parsed.lane)
     const contentHash = sha256(content)
 
     const upsertDocument = this.db.prepare(`
-      INSERT INTO documents (id, title, file_path, doc_type, tags_json, content_hash, created_at, updated_at, indexed_at)
-      VALUES (@id, @title, @filePath, @docType, @tagsJson, @contentHash, @createdAt, @updatedAt, @indexedAt)
+      INSERT INTO documents (id, title, file_path, doc_type, lane, tags_json, content_hash, created_at, updated_at, indexed_at)
+      VALUES (@id, @title, @filePath, @docType, @lane, @tagsJson, @contentHash, @createdAt, @updatedAt, @indexedAt)
       ON CONFLICT(id) DO UPDATE SET
         title=excluded.title,
         file_path=excluded.file_path,
         doc_type=excluded.doc_type,
+        lane=excluded.lane,
         tags_json=excluded.tags_json,
         content_hash=excluded.content_hash,
         updated_at=excluded.updated_at,
@@ -127,8 +183,8 @@ export class SqliteKbIndexer {
 
     const deleteChunks = this.db.prepare('DELETE FROM chunks WHERE doc_id = ?')
     const insertChunk = this.db.prepare(`
-      INSERT INTO chunks (chunk_id, doc_id, chunk_index, heading_path, chunk_text, token_count)
-      VALUES (@chunkId, @docId, @chunkIndex, @headingPath, @chunkText, @tokenCount)
+      INSERT INTO chunks (chunk_id, doc_id, chunk_index, lane, heading_path, chunk_text, token_count)
+      VALUES (@chunkId, @docId, @chunkIndex, @lane, @headingPath, @chunkText, @tokenCount)
     `)
     const insertFts = this.db.prepare(`
       INSERT INTO chunks_fts (chunk_id, doc_id, chunk_text)
@@ -153,6 +209,7 @@ export class SqliteKbIndexer {
         title: parsed.title,
         filePath,
         docType: parsed.docType,
+        lane: parsed.lane,
         tagsJson: JSON.stringify(parsed.tags),
         contentHash,
         createdAt: parsed.createdAt,
@@ -167,6 +224,7 @@ export class SqliteKbIndexer {
           chunkId: chunk.chunkId,
           docId: parsed.id,
           chunkIndex: chunk.chunkIndex,
+          lane: chunk.lane,
           headingPath: chunk.headingPath,
           chunkText: chunk.chunkText,
           tokenCount: chunk.tokenCount,
@@ -191,6 +249,33 @@ export class SqliteKbIndexer {
     })
 
     tx()
+  }
+
+  backfillDocumentLanes(): number {
+    const rows = this.db
+      .prepare('SELECT id, title, file_path, doc_type, tags_json FROM documents')
+      .all() as LaneBackfillRow[]
+
+    const updateDocumentLane = this.db.prepare('UPDATE documents SET lane = ? WHERE id = ?')
+    const updateChunkLane = this.db.prepare('UPDATE chunks SET lane = ? WHERE doc_id = ?')
+
+    const tx = this.db.transaction(() => {
+      for (const row of rows) {
+        const lane = classifyDocumentLane(
+          row.id,
+          row.title,
+          row.doc_type,
+          parseTagsJsonSafe(row.tags_json),
+          row.file_path,
+        )
+
+        updateDocumentLane.run(lane, row.id)
+        updateChunkLane.run(lane, row.id)
+      }
+    })
+
+    tx()
+    return rows.length
   }
 
   isDocumentStale(filePath: string, content: string): boolean {
@@ -365,6 +450,139 @@ export class SqliteKbIndexer {
     tx()
   }
 
+  recordLaneRoutingEvent(input: LaneRoutingEventInput): void {
+    const now = dayjs().toISOString()
+
+    this.db.prepare(`
+      INSERT INTO retrieval_lane_routing_events (
+        query_fingerprint,
+        primary_lane,
+        routed_lanes_json,
+        route_reason,
+        used_fallback,
+        status,
+        next_action,
+        confidence,
+        surface,
+        created_at
+      )
+      VALUES (
+        @queryFingerprint,
+        @primaryLane,
+        @routedLanesJson,
+        @routeReason,
+        @usedFallback,
+        @status,
+        @nextAction,
+        @confidence,
+        @surface,
+        @createdAt
+      )
+    `).run({
+      queryFingerprint: input.queryFingerprint,
+      primaryLane: input.primaryLane,
+      routedLanesJson: JSON.stringify(input.routedLanes),
+      routeReason: input.routeReason,
+      usedFallback: input.usedFallback ? 1 : 0,
+      status: input.status,
+      nextAction: input.nextAction,
+      confidence: input.confidence,
+      surface: input.surface,
+      createdAt: now,
+    })
+  }
+
+  getLaneRoutingMetrics(windowHours = 24): LaneRoutingMetrics[] {
+    const since = dayjs().subtract(windowHours, 'hour').toISOString()
+    const rows = this.db
+      .prepare(`
+        SELECT
+          primary_lane AS lane,
+          COUNT(*) AS totalCount,
+          SUM(CASE WHEN status = 'hit' THEN 1 ELSE 0 END) AS hitCount,
+          SUM(CASE WHEN status = 'miss' THEN 1 ELSE 0 END) AS missCount,
+          SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errorCount,
+          SUM(CASE WHEN used_fallback = 1 THEN 1 ELSE 0 END) AS fallbackCount
+        FROM retrieval_lane_routing_events
+        WHERE created_at >= ?
+        GROUP BY primary_lane
+        ORDER BY totalCount DESC
+      `)
+      .all(since) as Array<{
+        lane: RetrievalLane
+        totalCount: number
+        hitCount: number
+        missCount: number
+        errorCount: number
+        fallbackCount: number
+      }>
+
+    return rows.map(row => ({
+      ...row,
+      successRate: row.totalCount > 0 ? row.hitCount / row.totalCount : 0,
+      fallbackRate: row.totalCount > 0 ? row.fallbackCount / row.totalCount : 0,
+    }))
+  }
+
+  evaluateLaneRoutingRollout(
+    thresholds: Partial<LaneRoutingRolloutThresholds> = {},
+    windowHours = 24,
+  ): LaneRoutingRolloutAssessment {
+    const config: LaneRoutingRolloutThresholds = {
+      ...DEFAULT_LANE_ROUTING_THRESHOLDS,
+      ...thresholds,
+    }
+
+    const metrics = this.getLaneRoutingMetrics(windowHours)
+    const sampleSize = metrics.reduce((sum, metric) => sum + metric.totalCount, 0)
+    const reasons: string[] = []
+
+    if (sampleSize < config.minSampleSize) {
+      reasons.push(`sample-size-below-threshold:${sampleSize}<${config.minSampleSize}`)
+      return {
+        decision: 'hold',
+        sampleSize,
+        lowPrecisionLanes: [],
+        highFallbackLanes: [],
+        reasons,
+      }
+    }
+
+    const lowPrecisionLanes = metrics
+      .filter(metric => metric.successRate < config.minLaneSuccessRate)
+      .map(metric => metric.lane)
+
+    const highFallbackLanes = metrics
+      .filter(metric => metric.fallbackRate > config.maxLaneFallbackRate)
+      .map(metric => metric.lane)
+
+    if (lowPrecisionLanes.length > config.maxLowPrecisionLanes) {
+      reasons.push(`too-many-low-precision-lanes:${lowPrecisionLanes.length}>${config.maxLowPrecisionLanes}`)
+    }
+
+    if (highFallbackLanes.length > 0) {
+      reasons.push(`lane-fallback-rate-too-high:${highFallbackLanes.join(',')}`)
+    }
+
+    if (reasons.length > 0) {
+      return {
+        decision: 'rollback',
+        sampleSize,
+        lowPrecisionLanes,
+        highFallbackLanes,
+        reasons,
+      }
+    }
+
+    return {
+      decision: 'promote',
+      sampleSize,
+      lowPrecisionLanes,
+      highFallbackLanes,
+      reasons: ['lane-thresholds-met'],
+    }
+  }
+
   getRetrievalStageMetrics(windowHours = 24): RetrievalStageMetrics[] {
     const since = dayjs().subtract(windowHours, 'hour').toISOString()
     const rows = this.db
@@ -510,6 +728,7 @@ export class SqliteKbIndexer {
         title TEXT NOT NULL,
         file_path TEXT NOT NULL UNIQUE,
         doc_type TEXT,
+        lane TEXT,
         tags_json TEXT,
         content_hash TEXT NOT NULL,
         created_at TEXT NOT NULL,
@@ -521,6 +740,7 @@ export class SqliteKbIndexer {
         chunk_id TEXT PRIMARY KEY,
         doc_id TEXT NOT NULL,
         chunk_index INTEGER NOT NULL,
+        lane TEXT,
         heading_path TEXT,
         chunk_text TEXT NOT NULL,
         token_count INTEGER NOT NULL,
@@ -594,7 +814,39 @@ export class SqliteKbIndexer {
 
       CREATE INDEX IF NOT EXISTS idx_retrieval_checkpoint_events_fingerprint
         ON retrieval_checkpoint_events(query_fingerprint, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS retrieval_lane_routing_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query_fingerprint TEXT NOT NULL,
+        primary_lane TEXT NOT NULL,
+        routed_lanes_json TEXT NOT NULL,
+        route_reason TEXT NOT NULL,
+        used_fallback INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        next_action TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        surface TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_lane_routing_events_lane
+        ON retrieval_lane_routing_events(primary_lane, created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_lane_routing_events_fingerprint
+        ON retrieval_lane_routing_events(query_fingerprint, created_at DESC);
     `)
+
+    // Migration-safe lane columns for existing databases.
+    this.ensureColumn('documents', 'lane', 'TEXT')
+    this.ensureColumn('chunks', 'lane', 'TEXT')
+  }
+
+  private ensureColumn(table: string, column: string, type: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
+    if (columns.some(col => col.name === column)) {
+      return
+    }
+    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
   }
 }
 
@@ -605,6 +857,7 @@ interface ParsedDocument {
   updatedAt: string
   tags: string[]
   docType: string | null
+  lane: RetrievalLane
   contentBody: string
 }
 
@@ -620,6 +873,7 @@ function parseDocument(filePath: string, content: string): ParsedDocument | null
   const tags = tagsRaw
     ? tagsRaw.split(',').map(tag => tag.trim()).filter(Boolean)
     : []
+  const lane = classifyDocumentLane(id, title, docType, tags, filePath)
 
   const metadataBlockEnd = findMetadataBlockEnd(lines)
   const bodyLines = lines.slice(metadataBlockEnd)
@@ -632,6 +886,7 @@ function parseDocument(filePath: string, content: string): ParsedDocument | null
     updatedAt: dayjs().toISOString(),
     tags,
     docType,
+    lane,
     contentBody,
   }
 }
@@ -659,7 +914,7 @@ function findMetadataBlockEnd(lines: string[]): number {
   return lines.length
 }
 
-function buildChunks(documentId: string, body: string): ChunkRecord[] {
+function buildChunks(documentId: string, body: string, lane: RetrievalLane): ChunkRecord[] {
   const fallbackText = body.trim() || 'No body content provided.'
   const sections = splitByHeading(fallbackText)
 
@@ -674,6 +929,7 @@ function buildChunks(documentId: string, body: string): ChunkRecord[] {
       chunks.push({
         chunkId: `${documentId}:${chunkIndex}`,
         chunkIndex,
+        lane,
         headingPath: section.heading,
         chunkText: text,
         tokenCount: text.split(/\s+/).filter(Boolean).length,
@@ -686,6 +942,7 @@ function buildChunks(documentId: string, body: string): ChunkRecord[] {
     chunks.push({
       chunkId: `${documentId}:0`,
       chunkIndex: 0,
+      lane,
       headingPath: 'document',
       chunkText: fallbackText,
       tokenCount: fallbackText.split(/\s+/).filter(Boolean).length,
@@ -693,6 +950,17 @@ function buildChunks(documentId: string, body: string): ChunkRecord[] {
   }
 
   return chunks
+}
+
+function parseTagsJsonSafe(raw: string | null): string[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(tag => typeof tag === 'string') as string[]
+  } catch {
+    return []
+  }
 }
 
 function splitByHeading(body: string): Array<{ heading: string; text: string }> {

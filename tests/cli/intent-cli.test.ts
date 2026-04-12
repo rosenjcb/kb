@@ -143,6 +143,102 @@ describe('intent-cli parsing', () => {
     const data = enriched.data as { answer?: string }
     expect(data.answer).toContain('Precedence is session base')
   })
+
+  it('Given relevant lines later in long content, enrichment should still send matched CLI snippets to LLM', async () => {
+    const parsed = parseIntentCommand(['query', 'how do i use kb cli commands'])
+    const result = {
+      status: 'accepted' as const,
+      recommendedAction: 'read_documents',
+      data: {
+        results: [
+          {
+            metadata: { id: 'general-facts', title: 'general facts' },
+            content: [
+              '# general facts',
+              '',
+              'Created: 2026-04-12',
+              'Type: reference',
+              'Tags: general, fact',
+              '',
+              '- SQLite hybrid search enabled for this workspace.',
+              '- SQLite index probe write to confirm db creation.',
+              '- sqlite probe via refreshed global kb.',
+              '- lots of unrelated setup details first.',
+              '- more unrelated details.',
+              '- even more unrelated details.',
+              '- CLI quick-reference: kb --help; kb use dogfood; kb default dogfood; kb submit/query/validate/dispute/explain with --output json; KB_BASE=dogfood kb chat.',
+            ].join('\n'),
+          },
+        ],
+        total: 1,
+      },
+    }
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      supportsStreaming: false,
+      call: vi.fn(async ({ messages }) => {
+        const content = typeof messages[0]?.content === 'string' ? messages[0].content : ''
+        expect(content).toContain('CLI quick-reference: kb --help')
+        expect(content).toContain('kb submit/query/validate/dispute/explain')
+
+        return {
+          text: 'Use kb --help, then kb query, submit, validate, dispute, explain, or kb chat.',
+          stopReason: 'end_turn' as const,
+          toolUses: [],
+          usage: { inputTokens: 1, outputTokens: 1 },
+        }
+      }),
+    }
+
+    const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
+    const data = enriched.data as { answer?: string }
+    expect(data.answer).toContain('Use kb --help')
+  })
+
+  it('Given matched landing line, enrichment should include nearby context lines in evidence windows', async () => {
+    const parsed = parseIntentCommand(['query', 'kb query output json'])
+    const result = {
+      status: 'accepted' as const,
+      recommendedAction: 'read_documents',
+      data: {
+        results: [
+          {
+            metadata: { id: 'cli-ref', title: 'CLI Ref' },
+            content: [
+              '# CLI Ref',
+              '',
+              'Created: 2026-04-12',
+              '',
+              'Use kb --help for command discovery.',
+              'For direct retrieval use kb query "<topic>" --output json.',
+              'Use kb validate "<claim>" --output json for fact validation.',
+            ].join('\n'),
+          },
+        ],
+      },
+    }
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      supportsStreaming: false,
+      call: vi.fn(async ({ messages }) => {
+        const content = typeof messages[0]?.content === 'string' ? messages[0].content : ''
+        expect(content).toContain('Use kb --help for command discovery.')
+        expect(content).toContain('kb query "<topic>" --output json')
+        expect(content).toContain('kb validate "<claim>" --output json')
+
+        return {
+          text: 'Use kb query with --output json and related intent commands.',
+          stopReason: 'end_turn' as const,
+          toolUses: [],
+          usage: { inputTokens: 1, outputTokens: 1 },
+        }
+      }),
+    }
+
+    await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
+  })
 })
 
 describe('intent-cli execution', () => {

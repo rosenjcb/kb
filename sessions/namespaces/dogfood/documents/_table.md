@@ -8,7 +8,7 @@
 
 | kb-test-isolation-persistence-policy | Test Isolation and Persistence Policy | sessions/namespaces/dogfood/documents/kb-test-isolation-persistence-policy.md | 2026-04-12T13:55:58.286Z |
 
-| session-log-2026-04-12 | Session Log - April 12 2026 | sessions/namespaces/dogfood/documents/session-log-2026-04-12.md | 2026-04-12T18:26:59.406Z |
+| session-log-2026-04-12 | Session Log - April 12 2026 | sessions/namespaces/dogfood/documents/session-log-2026-04-12.md | 2026-04-12T18:56:14.144Z |
 
 | codebase-inventory-snapshot | Codebase Inventory Snapshot | sessions/namespaces/dogfood/documents/codebase-inventory-snapshot.md | 2026-04-12T16:21:20.504Z |
 
@@ -36,7 +36,7 @@
 
 | cli-facts | cli facts | sessions/namespaces/dogfood/documents/cli-facts.md | 2026-04-12T16:21:20.329Z |
 
-| general-facts | general facts | sessions/namespaces/dogfood/documents/general-facts.md | 2026-04-12T18:26:37.620Z |
+| general-facts | general facts | sessions/namespaces/dogfood/documents/general-facts.md | 2026-04-12T18:52:25.967Z |
 
 | readme-facts | readme facts | sessions/namespaces/dogfood/documents/readme-facts.md | 2026-04-12T18:27:18.688Z |
 

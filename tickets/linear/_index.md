@@ -13,7 +13,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 
 ## Summary
 
-- Total files: 74 (73 tickets + this index)
+- Total files: 78 (77 tickets + this index)
 - Branch: feat/kb-ticket-backlog
 
 ## Foundation
@@ -94,6 +94,9 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [071 Add retrieval decision checkpoints and miss-learning loop across tool surfaces](tickets/linear/071-retrieval-decision-checkpoints-and-miss-learning-loop.md)
 - [072 Implement retrieval decision-checkpoint orchestrator across read_documents consumers](tickets/linear/072-implement-retrieval-decision-checkpoint-orchestrator.md)
 - [073 Implement retrieval miss-learning schema and feedback loop](tickets/linear/073-implement-retrieval-miss-learning-schema-and-feedback-loop.md)
+- [075 Implement typed-lane indexing and runtime relevance-routed retrieval](tickets/linear/075-typed-lane-indexing-and-runtime-relevance-routing.md)
+- [076 Implement retrieval lane schema and index migration](tickets/linear/076-implement-lane-schema-and-index-migration.md)
+- [077 Implement runtime lane router and lane-aware retrieval pipeline](tickets/linear/077-implement-runtime-lane-router-and-lane-aware-retrieval.md)
 
 ## Reliability
 
@@ -107,4 +110,5 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [066 Add tests, rollout controls, and latency guardrails for hybrid search](tickets/linear/066-test-rollout-and-latency-guardrails-for-hybrid-search.md)
 - [070 Validate kb chat mode and harden context-rot handling](tickets/linear/070-chat-mode-validation-and-context-rot-hardening.md)
 - [074 Add retrieval checkpoint evaluation and rollout guardrails](tickets/linear/074-add-retrieval-checkpoint-evaluation-and-rollout-guardrails.md)
+- [078 Add lane-routing evaluation fixtures and rollout guardrails](tickets/linear/078-add-lane-routing-evaluation-fixtures-and-rollout-guardrails.md)
 

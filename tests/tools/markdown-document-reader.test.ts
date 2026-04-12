@@ -189,7 +189,7 @@ describe('MarkdownDocumentReader', () => {
 
     expect(response.total).toBe(1)
     expect(response.retrieval.method).toBe('lexical-fallback')
-    expect(response.retrieval.detail).toBe('latency-budget-exceeded')
+    expect(response.retrieval.detail).toContain('latency-budget-exceeded')
     expect(response.results[0]?.metadata.id).toBe('latency-guardrail')
   })
 
@@ -375,5 +375,212 @@ describe('MarkdownDocumentReader', () => {
     db.close()
 
     expect(checkpointCount.count).toBeGreaterThan(0)
+  })
+
+  it('Given broad project and operational queries, then lane routing should choose different lane sets', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    const writer = new MarkdownMDWriterTool({
+      baseDir,
+      enableSqliteIndex: true,
+      sqliteDbPath: dbPath,
+    })
+
+    await writer.writeDocument({
+      title: 'Project Overview',
+      content: 'This project is an intent-first knowledge base CLI with retrieval tooling.',
+      documentId: 'project-overview',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    await writer.writeDocument({
+      title: 'Incident Runbook',
+      content: 'When production error spikes, restart the service and check logs.',
+      documentId: 'incident-runbook',
+      overwrite: true,
+      type: 'runbook',
+    })
+
+    const reader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: true,
+      sqliteDbPath: dbPath,
+      laneRoutingEnabled: true,
+    })
+
+    const broad = await reader.queryDocuments({
+      query: 'what is this project about overall',
+      mode: 'content',
+      limit: 5,
+    })
+
+    const operational = await reader.queryDocuments({
+      query: 'how do we handle a production incident error quickly',
+      mode: 'content',
+      limit: 5,
+    })
+
+    expect(broad.retrieval.laneRouting?.lanes).toEqual(['fact', 'architecture', 'workflow'])
+    expect(operational.retrieval.laneRouting?.lanes).toEqual(['error-runbook', 'fact', 'policy'])
+  })
+
+  it('Given mixed-lane corpus, lane routing should improve top-result precision over mixed baseline fixture', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    const writer = new MarkdownMDWriterTool({
+      baseDir,
+      enableSqliteIndex: true,
+      sqliteDbPath: dbPath,
+    })
+
+    await writer.writeDocument({
+      title: 'Session Log Retrieval Notes',
+      content: 'Today we discussed what this project is about in a noisy transcript with repeated chatter.',
+      documentId: 'session-log-2026-04-12',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    await writer.writeDocument({
+      title: 'General Facts',
+      content: 'This project provides an intent-first CLI for a markdown-backed knowledge base.',
+      documentId: 'general-facts',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    const mixedReader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: true,
+      sqliteDbPath: dbPath,
+      laneRoutingEnabled: false,
+    })
+
+    const laneReader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: true,
+      sqliteDbPath: dbPath,
+      laneRoutingEnabled: true,
+    })
+
+    const query = 'what is this project about'
+    const mixed = await mixedReader.queryDocuments({ query, mode: 'content', limit: 1 })
+    const routed = await laneReader.queryDocuments({ query, mode: 'content', limit: 1 })
+
+    expect(mixed.total).toBeGreaterThan(0)
+    expect(routed.total).toBeGreaterThan(0)
+    expect(routed.results[0]?.metadata.id).toBe('general-facts')
+    expect(routed.retrieval.laneRouting?.lanes).toEqual(['fact', 'architecture', 'workflow'])
+  })
+
+  it('Given structured docs and session logs, default query should prefer structured lanes and exclude session logs initially', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    const writer = new MarkdownMDWriterTool({
+      baseDir,
+      enableSqliteIndex: true,
+      sqliteDbPath: dbPath,
+    })
+
+    await writer.writeDocument({
+      title: 'General Facts',
+      content: 'KB CLI supports query, submit, validate, dispute, explain, and chat commands.',
+      documentId: 'general-facts',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    await writer.writeDocument({
+      title: 'Session Log - April 12',
+      content: 'Random session chatter and temporary notes not meant for primary retrieval.',
+      documentId: 'session-log-2026-04-12',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    const reader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: true,
+      sqliteDbPath: dbPath,
+      laneRoutingEnabled: true,
+    })
+
+    const response = await reader.queryDocuments({
+      query: 'how do i use the kb cli commands',
+      mode: 'content',
+      limit: 3,
+    })
+
+    expect(response.total).toBeGreaterThan(0)
+    expect(response.results[0]?.metadata.id).toBe('general-facts')
+    expect(response.retrieval.detail ?? '').not.toContain('session-log-last-resort')
+    expect(response.retrieval.laneRouting?.lanes).toEqual(['fact', 'architecture', 'workflow'])
+  })
+
+  it('Given only session logs, default query should use session-log lane as last resort fallback', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    const writer = new MarkdownMDWriterTool({
+      baseDir,
+      enableSqliteIndex: true,
+      sqliteDbPath: dbPath,
+    })
+
+    await writer.writeDocument({
+      title: 'Session Log - April 12',
+      content: 'This temporary note contains ad hoc discussion about CLI usage.',
+      documentId: 'session-log-2026-04-12',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    const reader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: true,
+      sqliteDbPath: dbPath,
+      laneRoutingEnabled: true,
+    })
+
+    const response = await reader.queryDocuments({
+      query: 'how do i use kb cli commands',
+      mode: 'content',
+      limit: 3,
+    })
+
+    expect(response.total).toBe(1)
+    expect(response.results[0]?.metadata.id).toBe('session-log-2026-04-12')
+    expect(response.retrieval.detail ?? '').toContain('session-log-last-resort')
+    expect(response.retrieval.laneRouting?.usedFallback).toBe(true)
+    expect(response.retrieval.laneRouting?.lanes).toEqual(['session-log'])
+  })
+
+  it('Given explicit change-diff query, lane router should target session logs directly', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    const writer = new MarkdownMDWriterTool({
+      baseDir,
+      enableSqliteIndex: true,
+      sqliteDbPath: dbPath,
+    })
+
+    await writer.writeDocument({
+      title: 'Session Log - April 12',
+      content: 'Change diff: retrieval lane routing was introduced today.',
+      documentId: 'session-log-2026-04-12',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    const reader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: true,
+      sqliteDbPath: dbPath,
+      laneRoutingEnabled: true,
+    })
+
+    const response = await reader.queryDocuments({
+      query: 'what changed today show me change diff',
+      mode: 'content',
+      limit: 3,
+    })
+
+    expect(response.total).toBe(1)
+    expect(response.retrieval.laneRouting?.lanes).toEqual(['session-log', 'workflow', 'fact'])
+    expect(response.retrieval.detail ?? '').toContain('lane-router:change-diff-signals')
   })
 })

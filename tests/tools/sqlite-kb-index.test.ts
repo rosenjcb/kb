@@ -41,10 +41,14 @@ describe('SQLite KB index integration', () => {
     const docCount = db.prepare('SELECT count(*) AS count FROM documents').get() as { count: number }
     const chunkCount = db.prepare('SELECT count(*) AS count FROM chunks').get() as { count: number }
     const embeddingCount = db.prepare('SELECT count(*) AS count FROM chunk_embeddings').get() as { count: number }
+    const laneRow = db
+      .prepare('SELECT lane FROM documents WHERE id = ?')
+      .get('sqlite-index-plan') as { lane: string }
 
     expect(docCount.count).toBe(1)
     expect(chunkCount.count).toBeGreaterThan(0)
     expect(embeddingCount.count).toBeGreaterThan(0)
+    expect(laneRow.lane).toBe('architecture')
     db.close()
   })
 
@@ -235,6 +239,136 @@ describe('SQLite KB index integration', () => {
 
     expect(assessment.decision).toBe('rollback')
     expect(assessment.reasons.some(reason => reason.includes('hybrid-fallback-rate-too-high'))).toBe(true)
+
+    indexer.close()
+  })
+
+  it('Given legacy rows without lane values, then backfillDocumentLanes should populate document and chunk lanes deterministically', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    const filePath = path.join(baseDir, 'incident-runbook.md')
+    const content = [
+      '# Incident Runbook',
+      '',
+      'Created: 2026-04-12T00:00:00.000Z',
+      'Type: runbook',
+      'Tags: ops, incident',
+      '',
+      'Restart service and verify health checks.',
+    ].join('\n')
+
+    indexer.upsertDocumentFromContent(filePath, content)
+
+    const db = new Database(dbPath)
+    db.prepare('UPDATE documents SET lane = NULL WHERE id = ?').run('incident-runbook')
+    db.prepare('UPDATE chunks SET lane = NULL WHERE doc_id = ?').run('incident-runbook')
+    db.close()
+
+    const updated = indexer.backfillDocumentLanes()
+    expect(updated).toBeGreaterThan(0)
+
+    const verify = new Database(dbPath, { readonly: true })
+    const docLane = verify
+      .prepare('SELECT lane FROM documents WHERE id = ?')
+      .get('incident-runbook') as { lane: string }
+    const chunkLane = verify
+      .prepare('SELECT DISTINCT lane FROM chunks WHERE doc_id = ?')
+      .all('incident-runbook') as Array<{ lane: string }>
+    verify.close()
+
+    expect(docLane.lane).toBe('error-runbook')
+    expect(chunkLane.length).toBe(1)
+    expect(chunkLane[0].lane).toBe('error-runbook')
+
+    indexer.close()
+  })
+
+  it('Given lane routing events, then should report lane-level precision and fallback indicators', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    indexer.recordLaneRoutingEvent({
+      queryFingerprint: 'lane-fp-1',
+      primaryLane: 'fact',
+      routedLanes: ['fact', 'architecture', 'workflow'],
+      routeReason: 'project-overview-signals',
+      usedFallback: false,
+      status: 'hit',
+      nextAction: 'return',
+      confidence: 0.82,
+      surface: 'reader',
+    })
+
+    indexer.recordLaneRoutingEvent({
+      queryFingerprint: 'lane-fp-2',
+      primaryLane: 'fact',
+      routedLanes: ['fact', 'architecture', 'workflow'],
+      routeReason: 'default-general-signals',
+      usedFallback: true,
+      status: 'miss',
+      nextAction: 'advance',
+      confidence: 0.25,
+      surface: 'reader',
+    })
+
+    const laneMetrics = indexer.getLaneRoutingMetrics(48)
+    expect(laneMetrics.length).toBe(1)
+    expect(laneMetrics[0].lane).toBe('fact')
+    expect(laneMetrics[0].totalCount).toBe(2)
+    expect(laneMetrics[0].hitCount).toBe(1)
+    expect(laneMetrics[0].fallbackCount).toBe(1)
+    expect(laneMetrics[0].successRate).toBe(0.5)
+    expect(laneMetrics[0].fallbackRate).toBe(0.5)
+
+    indexer.close()
+  })
+
+  it('Given weak lane-routing metrics, then lane rollout assessment should rollback', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    for (let i = 0; i < 12; i += 1) {
+      indexer.recordLaneRoutingEvent({
+        queryFingerprint: `lane-bad-${i}`,
+        primaryLane: 'error-runbook',
+        routedLanes: ['error-runbook', 'fact', 'policy'],
+        routeReason: 'operational-signals',
+        usedFallback: true,
+        status: i < 3 ? 'hit' : 'miss',
+        nextAction: i < 3 ? 'return' : 'advance',
+        confidence: i < 3 ? 0.75 : 0.2,
+        surface: 'reader',
+      })
+    }
+
+    for (let i = 0; i < 12; i += 1) {
+      indexer.recordLaneRoutingEvent({
+        queryFingerprint: `lane-good-${i}`,
+        primaryLane: 'fact',
+        routedLanes: ['fact', 'architecture', 'workflow'],
+        routeReason: 'default-general-signals',
+        usedFallback: false,
+        status: i < 10 ? 'hit' : 'miss',
+        nextAction: i < 10 ? 'return' : 'advance',
+        confidence: i < 10 ? 0.8 : 0.3,
+        surface: 'reader',
+      })
+    }
+
+    const assessment = indexer.evaluateLaneRoutingRollout({
+      minSampleSize: 20,
+      minLaneSuccessRate: 0.55,
+      maxLaneFallbackRate: 0.4,
+      maxLowPrecisionLanes: 0,
+    }, 48)
+
+    expect(assessment.decision).toBe('rollback')
+    expect(assessment.lowPrecisionLanes).toContain('error-runbook')
+    expect(assessment.highFallbackLanes).toContain('error-runbook')
 
     indexer.close()
   })

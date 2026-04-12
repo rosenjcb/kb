@@ -78,3 +78,21 @@ These components contribute significantly to the system's development and operat
 - Patched chat fallback policy for broad project-overview prompts: low-signal source detection now forces workspace fallback augmentation, added low-confidence recovery retry path, and preserved checkpoint trace metadata through fallback responses; validated via chat-cli tests + type-check + live kb chat dogfood run. (source: implementation)
 
 - README dogfood checkpoint: added KB overview, base precedence order, and daily workflow guidance into general-facts for retrieval context. (source: readme)
+
+- Decision checkpoint: keep checkpoint + miss-learning control plane as shipped in this branch; defer typed lane indexing and reconciliation-weighted ranking design to follow-up planning ticket. (source: decision)
+
+- Prepared next task as ticket 075 (typed-lane indexing + runtime relevance routing), created feature branch feat/075-typed-lane-indexing-runtime-routing, and moved current unstaged main changes into this branch; environment verified and ready for build instructions. (source: planning)
+
+- Closed SPIKE ticket 075 with planning-only implementation plan: defined typed-lane taxonomy, runtime lane-routing policy, and lane-aware ranking priorities with low title influence; created follow-up implementation tickets 076, 077, and 078 and updated backlog index counts/links. (source: planning)
+
+- Started ticket 076 implementation: added typed retrieval lane taxonomy, persisted lane metadata in documents/chunks with migration-safe column backfill, implemented deterministic lane classifier and backfillDocumentLanes API, and added sqlite tests for lane persistence and backfill behavior; type-check and focused tests passing. (source: implementation)
+
+- Implemented tickets 077 and 078: added shared runtime lane router and lane-fitness weighting in reader; lane-filtered hybrid candidates with controlled lane broadening fallback; lane-routing metadata surfaced in retrieval outputs; added retrieval_lane_routing_events schema plus lane-level metrics and rollout assessment APIs; added tests for lane selection, mixed-vs-lane-routed fixture precision, and lane guardrail rollback logic; validated with type-check and focused suites (reader/sqlite/chat) all passing. (source: consumer)
+
+- Knowledge gap identified: CLI users are unclear how to validate lane-routing behavior in practice. Canonical dogfood flow: (1) KB_BASE=dogfood kb chat for default lane-routed behavior, (2) run same prompt with KB_LANE_ROUTING_ENABLED=false for A/B, (3) use kb query --output json to compare retrieval detail/checkpoints/lane-routing metadata, and (4) compare broad project vs operational incident prompts to verify different routed lane sets. (source: consumer)
+
+- Documentation gap closure: added canonical CLI usage quick-reference with help/base-selection/core intents/chat/A-B retrieval checks so operators can run kb without reading source code. (source: consumer)
+
+- Documentation checkpoint: added canonical CLI usage guidance and A/B retrieval toggle instructions into dogfood facts for discoverability. (source: consumer)
+
+- Retrieval policy update: structured/organized stores are now queried first, with session-log lane treated as last-resort fallback for general queries; explicit change-diff/history queries route directly to session-log lane. Also fixed hybrid response metadata preservation so lane-routing details are not overwritten at the top-level response. (source: consumer)
