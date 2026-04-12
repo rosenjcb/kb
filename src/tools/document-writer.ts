@@ -8,6 +8,49 @@ export interface WriteDocumentInput {
   overwrite?: boolean
 }
 
+// ─── Specialized Document Operation Types ───────────────────────
+// Following separation-of-concerns pattern: one tool per operation
+
+export interface AppendToDocumentInput {
+  documentId: string
+  content: string
+  position?: 'top' | 'bottom' // Defaults to 'bottom'
+}
+
+export interface UpdateDocumentInput {
+  documentId: string
+  content: string
+  title?: string // Optional: update title if provided
+}
+
+export interface MergeDocumentsInput {
+  sourceDocId: string
+  targetDocId: string
+  mergeMode: 'auto' | 'user-decides'
+}
+
+export interface MergeDocumentsResult {
+  targetDocId: string
+  sourceDocIds: string[]
+  status: 'merged' | 'merge-pending-approval'
+  note?: string
+}
+
+export interface PruneDocumentInput {
+  documentId: string
+  prunePattern: string // Section name or regex pattern to remove
+}
+
+// ─── Extended DocumentWriter Interface ───────────────────────
+// Storage implementations should support these new operations
+
+export interface DocumentWriterExtended extends DocumentWriter {
+  appendToDocument?(input: AppendToDocumentInput): Promise<WriteDocumentResult>
+  updateDocument?(input: UpdateDocumentInput): Promise<WriteDocumentResult>
+  mergeDocuments?(input: MergeDocumentsInput): Promise<MergeDocumentsResult>
+  pruneDocument?(input: PruneDocumentInput): Promise<WriteDocumentResult>
+}
+
 export interface WriteDocumentResult {
   id: string
   title: string
