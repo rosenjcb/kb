@@ -13,7 +13,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 
 ## Summary
 
-- Total files: 62 (61 tickets + this index)
+- Total files: 66 (65 tickets + this index)
 - Branch: feat/kb-ticket-backlog
 
 ## Foundation
@@ -85,6 +85,9 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [042 Define audit parallelism and token budgets](tickets/linear/042-audit-parallelism-and-budgeting.md)
 - [046 Define validation vs deep_validation tool semantics](tickets/linear/046-validation-vs-deep-validation-tool-semantics.md)
 - [060 Implement fact validation and dispute evaluator](tickets/linear/060-implement-fact-validation-and-dispute-evaluator.md)
+- [063 Add SQLite vector search index for KB query retrieval](tickets/linear/063-sqlite-vector-search-index-for-kb-query.md)
+- [064 Implement SQLite index schema and document indexer](tickets/linear/064-implement-sqlite-index-schema-and-indexer.md)
+- [065 Implement hybrid FTS + vector query runtime](tickets/linear/065-implement-hybrid-fts-vector-query-runtime.md)
 
 ## Reliability
 
@@ -95,4 +98,5 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [044 Write operational incident response runbook](tickets/linear/044-incident-response-runbook.md)
 - [045 Define schema/version migration policy](tickets/linear/045-versioning-and-migration-policy.md)
 - [061 Enforce internal tool access policy for consumer-facing flows](tickets/linear/061-enforce-internal-tool-access-policy.md)
+- [066 Add tests, rollout controls, and latency guardrails for hybrid search](tickets/linear/066-test-rollout-and-latency-guardrails-for-hybrid-search.md)
 

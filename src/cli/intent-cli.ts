@@ -1,5 +1,6 @@
 import dayjs from 'dayjs'
 import type { ToolExecutor } from '../core/tool-registry'
+import type { LLMProvider } from '../core/types'
 import { assertConsumerSafeCommand } from '../intents/policy'
 import { DefaultIntentRouter } from '../intents/router'
 import type { ConsumerIntent, ConsumerIntentEnvelope, IntentResult } from '../intents/types'
@@ -169,6 +170,63 @@ interface ReadDocumentsResultItem {
 interface ReadDocumentsResultData {
   results?: ReadDocumentsResultItem[]
   total?: number
+  answer?: string
+  retrieval?: {
+    method?: string
+    detail?: string
+  }
+}
+
+export async function enrichReadDocumentsAnswerWithLLM(
+  parsed: ParsedIntentCommand,
+  result: IntentResult,
+  llmProvider?: LLMProvider,
+): Promise<IntentResult> {
+  if (!llmProvider) return result
+  if (!isReadDocumentsResult(result)) return result
+  if (process.env.KB_INTENT_LLM_ANSWER === 'false') return result
+
+  const data = (result.data ?? {}) as ReadDocumentsResultData
+  const results = Array.isArray(data.results) ? data.results : []
+  if (results.length === 0) return result
+
+  const question = getIntentQuestion(parsed)
+  const evidence = buildEvidence(results)
+  if (!question || !evidence) return result
+
+  try {
+    const completion = await llmProvider.call({
+      messages: [
+        {
+          role: 'user',
+          content: [
+            'You answer using only the provided KB evidence.',
+            'Return a concise, direct answer in 1-2 sentences.',
+            'If evidence is insufficient, explicitly say so.',
+            '',
+            `Question: ${question}`,
+            '',
+            `Evidence:\n${evidence}`,
+          ].join('\n'),
+        },
+      ],
+      temperature: 0.1,
+      maxTokens: 180,
+    })
+
+    const answer = completion.text.trim()
+    if (!answer) return result
+
+    return {
+      ...result,
+      data: {
+        ...data,
+        answer,
+      },
+    }
+  } catch {
+    return result
+  }
 }
 
 function isReadDocumentsResult(result: IntentResult): boolean {
@@ -180,6 +238,7 @@ function formatReadDocumentsHumanResult(result: IntentResult): string {
   const results = Array.isArray(data.results) ? data.results : []
 
   const lines: string[] = []
+  lines.push(`Answer: ${data.answer?.trim() || buildAnswer(results)}`)
   lines.push(`Summary: ${buildSummary(results)}`)
   lines.push(`Status: ${result.status}`)
 
@@ -193,6 +252,11 @@ function formatReadDocumentsHumanResult(result: IntentResult): string {
 
   if (result.recommendedAction) {
     lines.push(`Next: ${result.recommendedAction}`)
+  }
+
+  if (data.retrieval?.method) {
+    const detail = data.retrieval.detail ? ` (${data.retrieval.detail})` : ''
+    lines.push(`Retrieval: ${data.retrieval.method}${detail}`)
   }
 
   lines.push(`Matches: ${results.length}`)
@@ -232,6 +296,91 @@ function formatReadDocumentsHumanResult(result: IntentResult): string {
   }
 
   return lines.join('\n')
+}
+
+function buildAnswer(results: ReadDocumentsResultItem[]): string {
+  if (results.length === 0) {
+    return 'I could not find enough evidence to answer directly from KB documents.'
+  }
+
+  const candidateLines = collectCandidateLines(results.slice(0, 3))
+  if (candidateLines.length === 0) {
+    return 'I found matching documents, but they do not contain a clear extractable answer line.'
+  }
+
+  const precedenceLine = candidateLines.find(line =>
+    /(precedence|order|fallback|1\)|2\)|3\)|->)/i.test(line),
+  )
+
+  if (precedenceLine) {
+    return precedenceLine
+  }
+
+  return candidateLines[0]
+}
+
+function getIntentQuestion(parsed: ParsedIntentCommand): string {
+  const payload = parsed.envelope.payload
+  const fromQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
+  const fromFact = typeof payload.fact === 'string' ? payload.fact.trim() : ''
+  const fromChange = typeof payload.changeId === 'string' ? payload.changeId.trim() : ''
+  return fromQuery || fromFact || fromChange
+}
+
+function buildEvidence(results: ReadDocumentsResultItem[]): string {
+  const sections = results.slice(0, 3).map((item, index) => {
+    const id = item.metadata?.id ?? `doc-${index + 1}`
+    const title = item.metadata?.title ?? id
+    const content = (item.content ?? '').trim()
+    if (!content) return ''
+
+    const clipped = content.length > 1200 ? `${content.slice(0, 1200)}...` : content
+    return `Document ${index + 1}: ${title} (id=${id})\n${clipped}`
+  })
+
+  return sections.filter(Boolean).join('\n\n')
+}
+
+function collectCandidateLines(items: ReadDocumentsResultItem[]): string[] {
+  const candidates: string[] = []
+
+  for (const item of items) {
+    const content = item.content ?? ''
+    if (!content) continue
+
+    const lines = content
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line =>
+        line.length > 0
+        && !line.startsWith('#')
+        && !line.startsWith('Created:')
+        && !line.startsWith('Tags:')
+        && !line.startsWith('Type:'),
+      )
+
+    for (const line of lines) {
+      const normalized = line.replace(/^[-*]\s+/, '').trim()
+      if (normalized.length < 20) continue
+      candidates.push(normalized)
+      if (candidates.length >= 80) return prioritizeCandidates(candidates)
+    }
+  }
+
+  return prioritizeCandidates(candidates)
+}
+
+function prioritizeCandidates(candidates: string[]): string[] {
+  return [...candidates].sort((a, b) => scoreCandidate(b) - scoreCandidate(a))
+}
+
+function scoreCandidate(line: string): number {
+  let score = 0
+  if (/(precedence|order|fallback)/i.test(line)) score += 6
+  if (/(1\)|2\)|3\)|->)/i.test(line)) score += 5
+  if (/^(kb|cli|query|hybrid|sqlite)/i.test(line)) score += 2
+  if (line.length > 40 && line.length < 220) score += 1
+  return score
 }
 
 function buildSummary(results: ReadDocumentsResultItem[]): string {

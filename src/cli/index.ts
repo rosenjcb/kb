@@ -11,6 +11,7 @@ import { createProvider } from '../core/llm-provider'
 import { agentLoop } from '../core/agent-loop'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
 import {
+  enrichReadDocumentsAnswerWithLLM,
   executeIntentCommand,
   formatIntentResult,
   isIntentCommand,
@@ -185,13 +186,47 @@ async function main() {
   const provider = resolveProviderFromEnv()
   const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
 
+  let llmProvider: ReturnType<typeof createProvider> | undefined
+
+  function tryCreateLlmProvider() {
+    try {
+      switch (provider) {
+        case 'anthropic':
+          return createProvider({
+            provider: 'anthropic',
+            apiKey: process.env.ANTHROPIC_API_KEY,
+          })
+        case 'openai':
+          return createProvider({
+            provider: 'openai',
+            apiKey: process.env.OPENAI_API_KEY,
+          })
+        case 'gemini':
+          return createProvider({
+            provider: 'gemini',
+            apiKey: process.env.GEMINI_API_KEY,
+          })
+        case 'ollama':
+        default:
+          return createProvider({
+            provider: 'ollama',
+            endpoint: process.env.OLLAMA_ENDPOINT || 'http://localhost:11434',
+          })
+      }
+    } catch {
+      return undefined
+    }
+  }
+
   // Consumer-intent command mode (bypasses LLM loop, routes intents directly)
   if (isIntentCommand(firstArg)) {
     try {
       const parsed = parseIntentCommand(args)
       const toolExecutor = createKBToolsRegistry(kbStorageDir)
       const result = await executeIntentCommand(parsed, toolExecutor)
-      console.log(formatIntentResult(result, parsed.output))
+      llmProvider = tryCreateLlmProvider()
+      const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, llmProvider)
+      console.log(formatIntentResult(enriched, parsed.output))
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -219,35 +254,8 @@ async function main() {
   console.log(`🗂️ KB Storage: ${kbStorageDir}\n`)
 
   // Create provider
-  let llmProvider: ReturnType<typeof createProvider> | undefined
   try {
-    switch (provider) {
-      case 'anthropic':
-        llmProvider = createProvider({
-          provider: 'anthropic',
-          apiKey: process.env.ANTHROPIC_API_KEY,
-        })
-        break
-      case 'openai':
-        llmProvider = createProvider({
-          provider: 'openai',
-          apiKey: process.env.OPENAI_API_KEY,
-        })
-        break
-      case 'gemini':
-        llmProvider = createProvider({
-          provider: 'gemini',
-          apiKey: process.env.GEMINI_API_KEY,
-        })
-        break
-      case 'ollama':
-      default:
-        llmProvider = createProvider({
-          provider: 'ollama',
-          endpoint: process.env.OLLAMA_ENDPOINT || 'http://localhost:11434',
-        })
-        break
-    }
+    llmProvider = tryCreateLlmProvider()
   } catch (error) {
     console.error('❌ Provider setup failed:', error)
     process.exit(1)

@@ -1,164 +1,144 @@
-# KB: Knowledge Base For Your Agent
+# KB
 
-KB is a TypeScript harness for building a knowledge base your agent can read from and write to.
+KB is a local-first knowledge system for AI workflows.
 
-Today it includes a provider-agnostic agent loop and a first document-writing tool that stores markdown documents locally. The direction is to add a Notion-backed implementation and evolve toward a DocSync-style MCP server.
+It gives you a CLI and runtime that can:
+- store durable markdown knowledge,
+- query that knowledge through intent commands,
+- optionally use SQLite hybrid retrieval (FTS + vector-style ranking) for better search quality as your corpus grows.
 
-## Mission
+## Generalized Use Case
 
-- Build a reliable knowledge layer for agents.
-- Keep documentation close to real code behavior.
-- Make storage backends swappable (local markdown now, Notion next).
+Use KB when you want a repeatable way to capture, validate, dispute, and retrieve project knowledge during development.
 
-## Current Status
-
-- Provider abstraction for Anthropic, OpenAI, Gemini, and Ollama.
-- Unified event-driven `agentLoop`.
-- CLI runner for quick local testing.
-- First tool scaffold: `write_document` with a markdown storage implementation.
+Typical flow:
+1. Record facts and decisions while you work.
+2. Query prior context before making new changes.
+3. Keep docs close to code and version them in Git.
 
 ## Quick Start
 
+### 1) Install and verify
+
 ```bash
-# Install dependencies
 pnpm install
-
-# Run checks
 pnpm run check
-
-# Run with environment from .env.local (recommended)
-pnpm run dev:local "hello"
-```
-
-If you do not use `.env.local`, run with exported environment variables and `pnpm run dev`.
-
-## Project Structure
-
-```text
-kb/
-├── src/
-│   ├── core/    # Agent loop, LLM providers, types
-│   ├── tools/   # Tool contracts + implementations (markdown today, Notion later)
-│   ├── state/   # Session and decision persistence (in progress)
-│   └── cli/     # CLI entrypoint
-├── business/
-│   ├── decisions.md
-│   └── permissions.yaml
-├── sessions/
-│   └── documents/ # Local markdown docs created by writer tools
-└── GAMEPLAN.md
-```
-
-## Doc Writer Tool Direction
-
-The first tool is intentionally interface-first:
-
-- `DocumentWriter` interface defines the write contract.
-- `MarkdownMDWriterTool` is the initial implementation.
-- A future `NotionDocumentWriter` can be added without changing callers.
-
-This keeps the tool layer compatible with a future MCP server where Notion is the source of truth.
-
-## Development
-
-- Lint: `pnpm run lint`
-- Format: `pnpm run format`
-- Type check: `pnpm run type-check`
-
-### Tool Design
-
-All tools follow **separation of concerns** principle:
-- Each tool has exactly one responsibility
-- Tool names document intent (e.g., `merge_documents`, not `write_document` with mode parameter)
-- See [Tool Design Conventions](src/tools/TOOL_CONVENTIONS.md) for guidelines and examples
-
-This pattern is informed by production code in `claude-code`: FileReadTool vs FileEditTool vs FileWriteTool, not polymorphic FileOperationTool.
-
-## Global CLI Setup
-
-Install `kb` as a global utility from this repository:
-
-```bash
-npm run install:global
-kb "What tools are available?"
-```
-
-Refresh to the latest local code after changes:
-
-```bash
 npm run refresh:global
 npm run which:kb
 ```
 
-If global install is unavailable, run the built executable directly:
+### 2) Configure `.env.local` (recommended)
+
+Create `.env.local` at the repository root and keep provider/runtime settings there.
+
+Example:
 
 ```bash
-npm run build:cli
-node dist/bin/kb.js "What tools are available?"
+cat > .env.local <<'EOF'
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your_key
+KB_BASE=dogfood
+EOF
 ```
 
-## KB Base Selection Strategy
+Other supported providers: `anthropic`, `gemini`, `ollama`.
 
-To avoid test data interfering with real documentation, use base selection.
-
-- `kb use <base>`: set a session base for immediate invocations.
-- `kb default <base>`: persist a preferred base alias for future invocations.
-- `KB_BASE=<base>`: environment fallback when no session/default base is set.
-
-Current invocation precedence:
-
-1. `kb use` session base
-2. `kb default` saved default base
-3. `KB_BASE` environment fallback
-
-Example (macOS/Linux):
+Use local-env commands when you want explicit `.env.local` context:
 
 ```bash
-kb use dogfood
-kb "Document the latest architecture decision"
+pnpm run dev:local "What tools are available?"
+pnpm run start:local "hello"
 ```
 
-Example (PowerShell):
-
-```powershell
-kb use dogfood
-kb "Document the latest architecture decision"
-```
-
-You can also use command-based selection:
+### 3) Select your KB base
 
 ```bash
 kb use dogfood
 kb default dogfood
+kb use --show
 ```
 
-## Prevent Data Loss
+Precedence order:
+1. `kb use` session base
+2. `kb default` saved default
+3. `KB_BASE` environment fallback
 
-Dogfood KB content must be committed and pushed to GitHub regularly.
-
-Recommended backup loop:
+### 4) Start using intent commands
 
 ```bash
-# 1) Work in persistent base
-export KB_BASE=dogfood
+kb submit "Document writer now supports sqlite index sync" --source implementation
+kb query "sqlite index sync behavior" --limit 5 --output human
+kb validate "KB_BASE overrides kb use"
+kb dispute "KB_BASE overrides kb use" --because "Current precedence is session, default, then env fallback"
+```
 
-# 2) Use kb normally
-kb "Capture today's implementation notes"
+## Optional: SQLite Hybrid Search
 
-# 3) Commit KB changes
+Enable this when your knowledge corpus gets larger and semantic retrieval quality matters.
+
+### 1) Enable native SQLite dependency (if needed)
+
+```bash
+pnpm approve-builds --all
+pnpm rebuild better-sqlite3
+```
+
+### 2) Turn on indexing and hybrid query in `.env.local`
+
+```bash
+cat >> .env.local <<'EOF'
+KB_SQLITE_INDEX=true
+KB_HYBRID_QUERY=true
+EOF
+```
+
+Optional tuning:
+
+```bash
+cat >> .env.local <<'EOF'
+KB_HYBRID_QUERY_CANDIDATES=40
+KB_HYBRID_QUERY_ALPHA=0.45
+KB_HYBRID_QUERY_MAX_MS=120
+EOF
+```
+
+### 3) Verify
+
+```bash
+kb submit "SQLite hybrid search enabled for this workspace" --source setup
+kb query "hybrid sqlite retrieval" --limit 5 --output human
+```
+
+If hybrid retrieval is unavailable or exceeds latency budget, KB automatically falls back to lexical markdown query.
+
+## Daily Workflow
+
+```bash
+# work
+kb query "topic"
+kb submit "new fact" --target <doc-id>
+
+# checkpoint durable docs
 git add sessions/
 git commit -m "kb: checkpoint knowledge base"
-
-# 4) Push off machine
 git push
 ```
 
-Notes:
+## Development Commands
 
-- `.gitignore` excludes `sessions/namespaces/ci-*` and `sessions/namespaces/test-*` only.
-- Persistent KB docs are intended to be versioned in Git.
-- If storage backend changes later (for example SQLite or Notion), keep the same checkpoint habit for any local artifacts until remote persistence is fully in place.
+```bash
+pnpm run test
+pnpm run type-check
+pnpm run lint
+pnpm run build
+```
 
-## Roadmap
+## Project Map
 
-See [GAMEPLAN.md](GAMEPLAN.md) for the full roadmap and phased implementation plan.
+```text
+src/core   - provider abstraction, agent loop, runtime types
+src/cli    - CLI entrypoint, intent command parsing, base selection
+src/tools  - write/query tools, markdown + sqlite index integration
+sessions/  - persisted knowledge documents by namespace
+tickets/   - planning/spec workflow
+```
