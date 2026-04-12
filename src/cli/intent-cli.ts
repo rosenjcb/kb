@@ -135,6 +135,21 @@ export function formatIntentResult(result: IntentResult, output: CliOutputMode):
     lines.push(`Provenance: ${result.provenance.join(', ')}`)
   }
 
+  const data = result.data as { results?: Array<{ metadata?: { id?: string } }> } | undefined
+  const results = data?.results
+  if (Array.isArray(results)) {
+    lines.push(`Matches: ${results.length}`)
+    if (results.length > 0) {
+      const ids = results
+        .map(item => item.metadata?.id)
+        .filter(Boolean)
+        .slice(0, 5) as string[]
+      if (ids.length > 0) {
+        lines.push(`Match IDs: ${ids.join(', ')}`)
+      }
+    }
+  }
+
   return lines.join('\n')
 }
 

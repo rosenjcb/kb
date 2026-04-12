@@ -66,4 +66,19 @@ describe('MarkdownDocumentReader', () => {
     expect(response.total).toBe(1)
     expect(response.results[0]?.metadata.id).toBe('decision-1')
   })
+
+    it('Given natural-language question, when querying content mode, then matches by token overlap', async () => {
+      const baseDir = await createTempDir()
+      await writeFile(path.join(baseDir, 'future-plan.md'), `# Storage Direction\n\nCreated: 2026-01-01\nType: reference\n\nThe current persistent store is markdown files. SQLite is a potential future backend direction.\n`)
+
+      const reader = new MarkdownDocumentReader(baseDir)
+      const response = await reader.queryDocuments({
+        query: 'What is the future plan for our document store?',
+        mode: 'content',
+        includeContent: true,
+      })
+
+      expect(response.total).toBe(1)
+      expect(response.results[0]?.metadata.id).toBe('future-plan')
+    })
 })

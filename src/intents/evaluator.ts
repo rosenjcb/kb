@@ -24,7 +24,7 @@ export async function validateFact(
   const response = await toolExecutor.execute(
     createToolUse('read_documents', {
       query,
-      mode: 'title',
+      mode: 'content',
       includeContent: true,
       limit: 5,
     }),

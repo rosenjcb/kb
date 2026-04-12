@@ -86,7 +86,7 @@ export class DefaultIntentRouter implements IntentRouter {
           selectedOperation: 'read_documents',
           operationInput: {
             query: payload.topic ?? payload.query ?? '',
-            mode: 'title',
+            mode: 'content',
             includeContent: true,
             limit: payload.limit ?? 5,
             type: payload.type,
