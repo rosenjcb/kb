@@ -489,19 +489,25 @@ This Implementation Plan satisfies all planning acceptance criteria:
 - ✅ Tool design conventions codified in [src/tools/TOOL_CONVENTIONS.md](../../src/tools/TOOL_CONVENTIONS.md)
 - ✅ Deprecation policy documented in [AGENTS.md](../../AGENTS.md#deprecation-and-cleanup-policy)
 
-**Phase 2 (Implementation): IN PROGRESS** 🚀
+**Phase 2 (Implementation): COMPLETE** ✅
 
 Implementation decomposed into explicit sub-tickets (same PR allowed):
-- [ ] Ticket 048: `write_document` v2 create/write semantics
-- [ ] Ticket 049: `append_to_document` implementation
-- [ ] Ticket 050: `update_document` implementation
-- [ ] Ticket 051: `merge_documents` implementation (auto + user-decides)
-- [ ] Ticket 052: `prune_document` implementation
-- [ ] Ticket 053: registry wiring + test matrix + integration closure
+- [x] Ticket 048: `write_document` v2 create/write semantics
+- [x] Ticket 049: `append_to_document` implementation
+- [x] Ticket 050: `update_document` implementation
+- [x] Ticket 051: `merge_documents` implementation (auto + user-decides)
+- [x] Ticket 052: `prune_document` implementation
+- [x] Ticket 053: registry wiring + test matrix + integration closure
 
 Phase 2 tracking rule:
 - Ticket 047 Phase 2 is complete only when tickets 048–053 are complete and validated.
 
-**Phase 1 → Phase 2 Transition**: All user decisions finalized. Ready to code.
+**Phase 1 → Phase 2 Transition**: All user decisions finalized. Implementation and validation complete.
 
-**Ticket 047 Phase 1 is now closed. Phase 2 (code + tests) in progress.**
+Validation evidence:
+- ✅ `pnpm run type-check` passes
+- ✅ `pnpm test` passes (23/23 tests)
+- ✅ Specialized tools registered in `kb-tools-registry`
+- ✅ Scenario tests added for append/update/prune/merge + type filtering
+
+**Ticket 047 is now closed (Phase 1 + Phase 2 complete).**

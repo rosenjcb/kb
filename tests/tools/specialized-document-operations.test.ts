@@ -120,6 +120,19 @@ describe('MarkdownMDWriterTool specialized operations', () => {
     const baseDir = await createTempDir()
     const writer = new MarkdownMDWriterTool({ baseDir })
 
+    await writer.writeDocument({
+      title: 'Auth V1',
+      content: 'JWT auth with refresh tokens',
+      documentId: 'auth-v1',
+      overwrite: true,
+    })
+    await writer.writeDocument({
+      title: 'Auth V2',
+      content: 'JWT auth with refresh tokens and rotation',
+      documentId: 'auth-v2',
+      overwrite: true,
+    })
+
     const result = await writer.mergeDocuments({
       sourceDocId: 'auth-v2',
       targetDocId: 'auth-v1',
@@ -134,6 +147,19 @@ describe('MarkdownMDWriterTool specialized operations', () => {
     const baseDir = await createTempDir()
     const writer = new MarkdownMDWriterTool({ baseDir })
 
+    await writer.writeDocument({
+      title: 'Auth V1',
+      content: 'JWT auth with refresh tokens',
+      documentId: 'auth-v1',
+      overwrite: true,
+    })
+    await writer.writeDocument({
+      title: 'Auth V2',
+      content: 'JWT auth with refresh tokens and rotation',
+      documentId: 'auth-v2',
+      overwrite: true,
+    })
+
     const result = await writer.mergeDocuments({
       sourceDocId: 'auth-v2',
       targetDocId: 'auth-v1',
@@ -141,5 +167,9 @@ describe('MarkdownMDWriterTool specialized operations', () => {
     })
 
     expect(result.status).toBe('merged')
+
+    const mergedPath = path.join(baseDir, 'auth-v1.md')
+    const merged = await readFile(mergedPath, 'utf8')
+    expect(merged).toContain('## Merged Notes (auth-v2)')
   })
 })

@@ -7,7 +7,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
-import type { MarkdownMDWriterTool } from './markdown-md-writer-tool'
 import type {
   AppendToDocumentInput,
   UpdateDocumentInput,
@@ -151,11 +150,30 @@ export async function pruneDocument(
  * Full merge logic deferred to future implementation
  */
 export async function mergeDocuments(
-  _writer: MarkdownMDWriterTool,
   input: MergeDocumentsInput,
+  baseDir: string,
 ): Promise<MergeDocumentsResult> {
   const targetId = sanitizeId(input.targetDocId)
   const sourceId = sanitizeId(input.sourceDocId)
+
+  const targetPath = path.join(baseDir, `${targetId}.md`)
+  const sourcePath = path.join(baseDir, `${sourceId}.md`)
+
+  const [targetContent, sourceContent] = await Promise.all([
+    readFile(targetPath, 'utf8').catch(() => {
+      throw new Error(`Target document not found: ${input.targetDocId}`)
+    }),
+    readFile(sourcePath, 'utf8').catch(() => {
+      throw new Error(`Source document not found: ${input.sourceDocId}`)
+    }),
+  ])
+
+  const similarity = await computeSemanticSimilarity(
+    normalizeContentForSimilarity(targetContent),
+    normalizeContentForSimilarity(sourceContent),
+  )
+
+  const threshold = 0.6
 
   // In auto mode, merge would execute deterministically
   // In user-decides mode, return pending status
@@ -164,16 +182,33 @@ export async function mergeDocuments(
       targetDocId: `${targetId}`,
       sourceDocIds: [sourceId],
       status: 'merge-pending-approval',
-      note: `Merge candidate: ${sourceId} → ${targetId}. Manual approval required.`,
+      note: `Merge candidate: ${sourceId} -> ${targetId}. Similarity=${similarity.toFixed(2)}. Manual approval required.`,
     }
   }
 
-  // Auto-merge: full implementation deferred (needs semantic similarity, conflict detection, etc)
+  if (similarity < threshold) {
+    return {
+      targetDocId: `${targetId}`,
+      sourceDocIds: [sourceId],
+      status: 'merge-pending-approval',
+      note: `Similarity ${similarity.toFixed(2)} below auto-merge threshold ${threshold.toFixed(2)}.`,
+    }
+  }
+
+  // Deterministic resolution: newer-by-length heuristic (longer becomes primary body)
+  const [primary, secondary] =
+    targetContent.length >= sourceContent.length
+      ? [targetContent, sourceContent]
+      : [sourceContent, targetContent]
+
+  const mergedBody = mergeContentDeterministically(primary, secondary, sourceId)
+  await writeFile(targetPath, mergedBody, 'utf8')
+
   return {
     targetDocId: `${targetId}`,
     sourceDocIds: [sourceId],
     status: 'merged',
-    note: 'Auto-merge feature deferred to Phase 2, ticket 048+',
+    note: `Auto-merged with semantic similarity ${similarity.toFixed(2)} using deterministic content merge.`,
   }
 }
 
@@ -201,6 +236,88 @@ function getMetadataLine(content: string, key: string): string | undefined {
   const regex = new RegExp(`^${key}: .+$`, 'm')
   const match = content.match(regex)
   return match ? match[0] : undefined
+}
+
+function normalizeContentForSimilarity(content: string): string {
+  return content
+    .replace(/^# .+$/gm, '')
+    .replace(/^Created: .+$/gm, '')
+    .replace(/^Tags: .+$/gm, '')
+    .replace(/^Type: .+$/gm, '')
+    .toLowerCase()
+    .trim()
+}
+
+async function computeSemanticSimilarity(a: string, b: string): Promise<number> {
+  const viaLLM = await tryLLMSimilarity(a, b)
+  if (viaLLM !== null) return viaLLM
+  return tokenJaccardSimilarity(a, b)
+}
+
+async function tryLLMSimilarity(a: string, b: string): Promise<number | null> {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) return null
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+        temperature: 0,
+        max_tokens: 20,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Return only a decimal between 0 and 1 representing semantic similarity between two texts.',
+          },
+          {
+            role: 'user',
+            content: `TEXT_A:\n${a}\n\nTEXT_B:\n${b}`,
+          },
+        ],
+      }),
+    })
+
+    if (!response.ok) return null
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>
+    }
+    const raw = payload.choices?.[0]?.message?.content?.trim() ?? ''
+    const parsed = Number.parseFloat(raw)
+    if (Number.isNaN(parsed)) return null
+    return Math.max(0, Math.min(1, parsed))
+  } catch {
+    return null
+  }
+}
+
+function tokenJaccardSimilarity(a: string, b: string): number {
+  const setA = new Set(a.split(/\W+/).filter(Boolean))
+  const setB = new Set(b.split(/\W+/).filter(Boolean))
+  if (setA.size === 0 && setB.size === 0) return 1
+
+  let intersection = 0
+  for (const token of setA) {
+    if (setB.has(token)) intersection += 1
+  }
+
+  const union = setA.size + setB.size - intersection
+  return union === 0 ? 0 : intersection / union
+}
+
+function mergeContentDeterministically(
+  primary: string,
+  secondary: string,
+  sourceId: string,
+): string {
+  const cleanPrimary = primary.endsWith('\n') ? primary : `${primary}\n`
+  const cleanSecondary = secondary.trim()
+  return `${cleanPrimary}\n## Merged Notes (${sourceId})\n\n${cleanSecondary}\n`
 }
 
 export { sanitizeId }

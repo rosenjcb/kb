@@ -94,7 +94,7 @@ export class MarkdownMDWriterTool implements DocumentWriterExtended {
 
   async mergeDocuments(input: MergeDocumentsInput): Promise<MergeDocumentsResult> {
     await mkdir(this.baseDir, { recursive: true })
-    return mergeDocumentsImpl(this, input)
+    return mergeDocumentsImpl(input, this.baseDir)
   }
 
   private renderDocument(input: WriteDocumentInput, now: string): string {
