@@ -35,3 +35,32 @@ M
 
 ## Priority
 HIGH
+
+---
+
+## Implementation Summary
+
+### Outcome
+Implemented consumer-intent routing runtime with a dedicated `IntentRouter` and end-to-end execution path through existing tool infrastructure.
+
+### Delivered
+- Added intent runtime module set:
+	- `src/intents/types.ts`
+	- `src/intents/router.ts`
+	- `src/intents/index.ts`
+- Implemented `DefaultIntentRouter` with:
+	- Route decision logic for `submit_fact`, `validate_fact`, `dispute_fact`, `query_truth`, `explain_change`
+	- Policy rationale per route (`policyReason`)
+	- Execution path from intent to internal operation via tool executor
+- Added router tests: `tests/intents/router.test.ts`
+
+### Validation
+- Type-check passes.
+- Unit tests pass including new router coverage.
+
+### Integration Notes
+- Router is currently invoked from CLI intent mode (ticket 059 implementation).
+- Internal operation selection stays centralized in router logic.
+
+**Ticket 058 is now closed.**
+

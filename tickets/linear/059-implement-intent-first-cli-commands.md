@@ -35,3 +35,32 @@ M
 
 ## Priority
 HIGH
+
+---
+
+## Implementation Summary
+
+### Outcome
+Implemented intent-first CLI command handling with human/json output modes and router-based execution.
+
+### Delivered
+- Added CLI intent command runtime: `src/cli/intent-cli.ts`
+	- Commands: `submit`, `validate`, `dispute`, `query`, `explain`
+	- Parsing for options (`--domain`, `--source`, `--because`, `--limit`, `--type`, `--output`)
+	- Output modes: `human` and `json`
+	- Command help rendering
+- Wired intent command fast-path into `src/cli/index.ts`
+	- Intent commands bypass LLM loop and execute through router
+	- Existing freeform query behavior remains available
+- Added CLI intent tests: `tests/cli/intent-cli.test.ts`
+
+### Validation
+- Type-check passes.
+- Unit tests pass including new CLI intent coverage.
+
+### Integration Notes
+- CLI commands map to ticket 054 intent contract through router (ticket 058).
+- Internal tool names are not required for consumer command usage.
+
+**Ticket 059 is now closed.**
+

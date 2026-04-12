@@ -35,3 +35,31 @@ M
 
 ## Priority
 HIGH
+
+---
+
+## Implementation Summary
+
+### Outcome
+Implemented validation/dispute evaluator runtime used by intent router.
+
+### Delivered
+- Added evaluator module: `src/intents/evaluator.ts`
+	- `validateFact(...)`: returns `valid|invalid|uncertain` with confidence/explanation/provenance
+	- `disputeFact(...)`: accepts dispute context, records dispute note, returns recommended action
+- Evaluation behavior:
+	- Uses `read_documents` to gather relevant evidence
+	- Derives status based on evidence support/conflict
+	- Emits provenance IDs from matching records
+- Integrated evaluator calls into router execution path for `validate_fact` and `dispute_fact`.
+
+### Validation
+- Type-check passes.
+- Router tests cover validate/dispute execution paths.
+
+### Integration Notes
+- Current evaluator is deterministic and tool-driven.
+- Can be expanded later with richer scoring/prompt-based evidence adjudication without contract changes.
+
+**Ticket 060 is now closed.**
+

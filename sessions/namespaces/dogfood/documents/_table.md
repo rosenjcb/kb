@@ -31,3 +31,5 @@
 | ticket-047-fully-implemented-closed | Ticket 047 Fully Implemented and Closed | sessions/namespaces/dogfood/documents/ticket-047-fully-implemented-closed.md | 2026-04-12T14:56:04.426Z |
 
 | tickets-054-057-planned-closed | Tickets 054-057 Planned and Closed; 058-061 Created | sessions/namespaces/dogfood/documents/tickets-054-057-planned-closed.md | 2026-04-12T15:06:35.899Z |
+
+| tickets-058-061-implementation-checkpoint | tickets-058-061-implementation-checkpoint | sessions/namespaces/dogfood/documents/tickets-058-061-implementation-checkpoint.md | 2026-04-12T15:12:22.431Z |

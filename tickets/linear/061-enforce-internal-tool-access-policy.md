@@ -35,3 +35,30 @@ S
 
 ## Priority
 HIGH
+
+---
+
+## Implementation Summary
+
+### Outcome
+Implemented consumer-facing policy gate that blocks direct internal tool invocation by default.
+
+### Delivered
+- Added policy module: `src/intents/policy.ts`
+	- Internal operation denylist (`write_document`, `append_to_document`, `update_document`, `merge_documents`, `prune_document`, `read_documents`)
+	- Guard: `assertConsumerSafeCommand(...)`
+	- Explicit override: `KB_ALLOW_INTERNAL_TOOLS=true`
+- Enforcement points:
+	- CLI main flow (`src/cli/index.ts`) denies direct internal tool command attempts
+	- Intent parser path (`src/cli/intent-cli.ts`) applies same safety guard
+
+### Validation
+- Type-check passes.
+- CLI intent tests include command classification and behavior checks.
+
+### Integration Notes
+- Policy is focused on consumer command boundary.
+- Internal tools remain usable by router/orchestrator runtime.
+
+**Ticket 061 is now closed.**
+
