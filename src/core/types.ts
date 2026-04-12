@@ -41,6 +41,31 @@ export interface ToolDefinition {
   }
 }
 
+// ─── Tool Invocation & Results (Ticket 004) ──────────────────────
+
+export interface ToolUseRequest {
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
+export interface ToolExecutionMetrics {
+  startTime: string
+  durationMs: number
+  permissionCheckDurationMs?: number
+  preHookDurationMs?: number
+  resultSizeBytes: number
+}
+
+export interface ToolResultEnvelope {
+  toolUseId: string
+  toolName: string
+  success: boolean
+  content?: unknown
+  error?: string
+  metrics: ToolExecutionMetrics
+}
+
 // ─── LLM Provider Interface ──────────────────────────────────────
 
 export interface LLMResponse {

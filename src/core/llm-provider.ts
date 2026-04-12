@@ -10,6 +10,35 @@ import type {
   LLMCallParams,
 } from './types'
 
+type JsonRecord = Record<string, unknown>
+
+function asRecord(value: unknown): JsonRecord {
+  if (value && typeof value === 'object') {
+    return value as JsonRecord
+  }
+  return {}
+}
+
+function readApiErrorMessage(data: unknown, fallback: string): string {
+  const payload = asRecord(data)
+  const directError = payload.error
+
+  if (typeof directError === 'string') {
+    return directError
+  }
+
+  const nested = asRecord(directError)
+  if (typeof nested.message === 'string') {
+    return nested.message
+  }
+
+  if (typeof payload.message === 'string') {
+    return payload.message
+  }
+
+  return fallback
+}
+
 // ─── Anthropic Claude ────────────────────────────────────────────
 
 export class AnthropicProvider implements LLMProvider {
@@ -46,15 +75,27 @@ export class AnthropicProvider implements LLMProvider {
       body: JSON.stringify(body),
     })
 
-    const data = (await response.json()) as any
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(
+        `[anthropic] API request failed (${response.status}): ${readApiErrorMessage(
+          data,
+          response.statusText
+        )}`
+      )
+    }
+
+    const payload = asRecord(data)
+    const usage = asRecord(payload.usage)
+    const content = Array.isArray(payload.content) ? payload.content : []
 
     return {
-      text: this.extractText(data.content),
-      stopReason: data.stop_reason === 'tool_use' ? 'tool_use' : 'end_turn',
-      toolUses: this.extractToolUses(data.content),
+      text: this.extractText(content),
+      stopReason: payload.stop_reason === 'tool_use' ? 'tool_use' : 'end_turn',
+      toolUses: this.extractToolUses(content),
       usage: {
-        inputTokens: data.usage.input_tokens,
-        outputTokens: data.usage.output_tokens,
+        inputTokens: typeof usage.input_tokens === 'number' ? usage.input_tokens : 0,
+        outputTokens: typeof usage.output_tokens === 'number' ? usage.output_tokens : 0,
       },
     }
   }
@@ -99,20 +140,22 @@ export class AnthropicProvider implements LLMProvider {
     }
   }
 
-  private extractText(content: any[]): string {
+  private extractText(content: unknown[]): string {
     return content
+      .map(item => asRecord(item))
       .filter(c => c.type === 'text')
-      .map(c => c.text)
+      .map(c => (typeof c.text === 'string' ? c.text : ''))
       .join('')
   }
 
-  private extractToolUses(content: any[]) {
+  private extractToolUses(content: unknown[]) {
     return content
+      .map(item => asRecord(item))
       .filter(c => c.type === 'tool_use')
       .map(c => ({
-        id: c.id,
-        name: c.name,
-        input: c.input,
+        id: typeof c.id === 'string' ? c.id : `${Date.now()}-tool`,
+        name: typeof c.name === 'string' ? c.name : 'unknown_tool',
+        input: asRecord(c.input),
       }))
   }
 }
@@ -156,20 +199,41 @@ export class OpenAIProvider implements LLMProvider {
       body: JSON.stringify(body),
     })
 
-    const data = (await response.json()) as any
-    const message = data.choices[0].message
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(
+        `[openai] API request failed (${response.status}): ${readApiErrorMessage(
+          data,
+          response.statusText
+        )}`
+      )
+    }
+
+    const payload = asRecord(data)
+    const choices = Array.isArray(payload.choices) ? payload.choices : []
+    const firstChoice = asRecord(choices[0])
+    const message = asRecord(firstChoice.message)
+    const usage = asRecord(payload.usage)
+    const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : []
 
     return {
-      text: message.content || '',
-      stopReason: message.tool_calls ? 'tool_use' : 'end_turn',
-      toolUses: (message.tool_calls || []).map(call => ({
-        id: call.id,
-        name: call.function.name,
-        input: JSON.parse(call.function.arguments),
-      })),
+      text: typeof message.content === 'string' ? message.content : '',
+      stopReason: toolCalls.length > 0 ? 'tool_use' : 'end_turn',
+      toolUses: toolCalls.map((call: unknown) => {
+        const toolCall = asRecord(call)
+        const fn = asRecord(toolCall.function)
+        return {
+          id: typeof toolCall.id === 'string' ? toolCall.id : `${Date.now()}-tool`,
+          name: typeof fn.name === 'string' ? fn.name : 'unknown_tool',
+          input:
+            typeof fn.arguments === 'string'
+              ? (JSON.parse(fn.arguments) as Record<string, unknown>)
+              : {},
+        }
+      }),
       usage: {
-        inputTokens: data.usage.prompt_tokens,
-        outputTokens: data.usage.completion_tokens,
+        inputTokens: typeof usage.prompt_tokens === 'number' ? usage.prompt_tokens : 0,
+        outputTokens: typeof usage.completion_tokens === 'number' ? usage.completion_tokens : 0,
       },
     }
   }
@@ -267,25 +331,45 @@ export class GeminiProvider implements LLMProvider {
       }
     )
 
-    const data = (await response.json()) as any
-    const content = data.candidates?.[0]?.content?.parts || []
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(
+        `[gemini] API request failed (${response.status}): ${readApiErrorMessage(
+          data,
+          response.statusText
+        )}`
+      )
+    }
+
+    const payload = asRecord(data)
+    const candidates = Array.isArray(payload.candidates) ? payload.candidates : []
+    const first = asRecord(candidates[0])
+    const contentRecord = asRecord(first.content)
+    const content = Array.isArray(contentRecord.parts) ? contentRecord.parts : []
+    const usage = asRecord(payload.usageMetadata)
 
     return {
       text: content
-        .filter(p => p.text)
-        .map(p => p.text)
+        .map((p: unknown) => asRecord(p))
+        .filter(p => typeof p.text === 'string' && p.text.length > 0)
+        .map(p => String(p.text))
         .join(''),
-      stopReason: content.some(p => p.functionCall) ? 'tool_use' : 'end_turn',
+      stopReason: content.some((p: unknown) => asRecord(p).functionCall) ? 'tool_use' : 'end_turn',
       toolUses: content
+        .map((p: unknown) => asRecord(p))
         .filter(p => p.functionCall)
-        .map(p => ({
+        .map(p => {
+          const call = asRecord(p.functionCall)
+          return {
           id: `${Date.now()}-${Math.random()}`,
-          name: p.functionCall.name,
-          input: p.functionCall.args || {},
-        })),
+          name: typeof call.name === 'string' ? call.name : 'unknown_tool',
+          input: asRecord(call.args),
+          }
+        }),
       usage: {
-        inputTokens: data.usageMetadata?.promptTokenCount || 0,
-        outputTokens: data.usageMetadata?.candidatesTokenCount || 0,
+        inputTokens: typeof usage.promptTokenCount === 'number' ? usage.promptTokenCount : 0,
+        outputTokens:
+          typeof usage.candidatesTokenCount === 'number' ? usage.candidatesTokenCount : 0,
       },
     }
   }
@@ -318,10 +402,21 @@ export class OllamaProvider implements LLMProvider {
       }),
     })
 
-    const data = (await response.json()) as any
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(
+        `[ollama] API request failed (${response.status}): ${readApiErrorMessage(
+          data,
+          response.statusText
+        )}`
+      )
+    }
+
+    const payload = asRecord(data)
+    const message = asRecord(payload.message)
 
     return {
-      text: data.message.content,
+      text: typeof message.content === 'string' ? message.content : '',
       stopReason: 'end_turn',
       toolUses: [],
       usage: {

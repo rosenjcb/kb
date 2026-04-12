@@ -25,6 +25,7 @@ export class MarkdownMDWriterTool implements DocumentWriter {
     const now = new Date().toISOString()
     const id = sanitizeId(input.documentId ?? input.title)
     const filePath = path.join(this.baseDir, `${id}.md`)
+    let writtenPath = filePath
 
     const content = this.renderDocument(input, now)
     if (input.overwrite ?? false) {
@@ -38,14 +39,14 @@ export class MarkdownMDWriterTool implements DocumentWriter {
         const suffix = Date.now().toString(36)
         const uniquePath = path.join(this.baseDir, `${id}-${suffix}.md`)
         await writeFile(uniquePath, content, 'utf8')
+        writtenPath = uniquePath
       })
     }
 
-    const finalPath = await resolveFinalPath(this.baseDir, id)
     const result: WriteDocumentResult = {
-      id: path.basename(finalPath, '.md'),
+      id: path.basename(writtenPath, '.md'),
       title: input.title,
-      filePath: finalPath,
+      filePath: writtenPath,
       createdAt: now,
       updatedAt: now,
     }
@@ -101,27 +102,4 @@ function sanitizeId(value: string): string {
 
 function escapeMdCell(value: string): string {
   return value.replace(/\|/g, '\\|')
-}
-
-async function resolveFinalPath(baseDir: string, id: string): Promise<string> {
-  const primaryPath = path.join(baseDir, `${id}.md`)
-
-  try {
-    await readFile(primaryPath, 'utf8')
-    return primaryPath
-  } catch {
-    const suffixPattern = new RegExp(`^${id}-[a-z0-9]+\\.md$`)
-    const { readdir } = await import('node:fs/promises')
-    const files = await readdir(baseDir)
-    const latest = files
-      .filter(name => suffixPattern.test(name))
-      .sort()
-      .at(-1)
-
-    if (!latest) {
-      return primaryPath
-    }
-
-    return path.join(baseDir, latest)
-  }
 }

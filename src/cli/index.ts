@@ -5,8 +5,29 @@
  * Quick demo runner
  */
 
+import fs from 'fs'
+import path from 'path'
 import { createProvider } from '../core/llm-provider'
 import { agentLoop } from '../core/agent-loop'
+import { createKBToolsRegistry } from '../tools/kb-tools-registry'
+
+function loadLocalEnvFiles() {
+  const processWithEnvLoader = process as typeof process & {
+    loadEnvFile?: (path?: string) => void
+  }
+
+  if (!processWithEnvLoader.loadEnvFile) {
+    return
+  }
+
+  if (fs.existsSync('.env.local')) {
+    processWithEnvLoader.loadEnvFile('.env.local')
+  }
+
+  if (fs.existsSync('.env')) {
+    processWithEnvLoader.loadEnvFile('.env')
+  }
+}
 
 function resolveProviderFromEnv():
   | 'anthropic'
@@ -31,15 +52,64 @@ function resolveProviderFromEnv():
   return 'ollama'
 }
 
+function resolveKbStorageDir(): string {
+  const configuredBaseDir = (process.env.KB_BASE_DIR || '').trim()
+  if (configuredBaseDir) {
+    return path.isAbsolute(configuredBaseDir)
+      ? configuredBaseDir
+      : path.join(process.cwd(), configuredBaseDir)
+  }
+
+  const namespace = (process.env.KB_NAMESPACE || '').trim()
+  if (namespace) {
+    const safeNamespace = namespace.replace(/[^a-zA-Z0-9._-]/g, '-').toLowerCase()
+    return path.join(process.cwd(), 'sessions', 'namespaces', safeNamespace, 'documents')
+  }
+
+  return path.join(process.cwd(), 'sessions', 'documents')
+}
+
 async function main() {
+  loadLocalEnvFiles()
   console.log('🤖 KB Agent Harness\n')
 
-  // Get args
-  const query = process.argv.slice(2).join(' ') || 'Hello! What can you do?'
+  // Parse arguments: [sessionFile?] query...
+  const args = process.argv.slice(2)
+  if (args.length === 0) {
+    console.error('Usage: kb <query> or kb <sessionFile> <query>')
+    process.exit(1)
+  }
+
+  let sessionFile: string | null = null
+  let sessionContent = ''
+  let query = ''
+
+  // Treat first arg as a session file when it looks like markdown and a query follows.
+  const firstArg = args[0]
+  if (firstArg.endsWith('.md') && args.length > 1) {
+    sessionFile = firstArg
+    if (fs.existsSync(sessionFile)) {
+      sessionContent = fs.readFileSync(sessionFile, 'utf-8')
+    }
+    query = args.slice(1).join(' ')
+  } else {
+    // All args are the query
+    query = args.join(' ')
+  }
+
+  if (!query) {
+    query = 'Hello! What can you do?'
+  }
+
   const provider = resolveProviderFromEnv()
+  const kbStorageDir = resolveKbStorageDir()
 
   console.log(`📝 Query: ${query}`)
+  if (sessionFile) {
+    console.log(`📁 Session: ${sessionFile}`)
+  }
   console.log(`🔌 Provider: ${provider}\n`)
+  console.log(`🗂️ KB Storage: ${kbStorageDir}\n`)
 
   // Create provider
   let llmProvider
@@ -80,13 +150,24 @@ async function main() {
   try {
     console.log('⏳ Running agent...\n')
     let eventCount = 0
+    let fullResponse = ''
 
-    for await (const event of agentLoop(query, llmProvider, [])) {
+    // If session file exists, prepend context to query
+    let contextualQuery = query
+    if (sessionFile && sessionContent) {
+      contextualQuery = `Context from session:\n\`\`\`\n${sessionContent}\n\`\`\`\n\nNew query: ${query}`
+    }
+
+    // Create KB tools registry
+    const toolExecutor = createKBToolsRegistry(kbStorageDir)
+
+    for await (const event of agentLoop(contextualQuery, llmProvider, toolExecutor)) {
       eventCount++
 
       switch (event.type) {
         case 'text':
           console.log(`💬 ${event.content}`)
+          fullResponse += event.content
           break
         case 'tool_start':
           console.log(`🔨 Tool: ${event.toolName} (${event.toolUseId})`)
@@ -111,6 +192,14 @@ async function main() {
     }
 
     console.log(`\n📈 Total events: ${eventCount}`)
+
+    // If session file, append the result and query to it
+    if (sessionFile && fullResponse) {
+      const timestamp = new Date().toISOString()
+      const sessionUpdate = `\n## Query (${timestamp})\n${query}\n\n## Response\n${fullResponse}\n`
+      fs.appendFileSync(sessionFile, sessionUpdate)
+      console.log(`\n✅ Session updated: ${sessionFile}`)
+    }
   } catch (error) {
     const err = error as { cause?: { code?: string } }
     if (provider === 'ollama' && err?.cause?.code === 'ECONNREFUSED') {
