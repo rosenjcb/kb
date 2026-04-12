@@ -41,6 +41,10 @@ describe('intent-cli parsing', () => {
         explanation: 'query intent maps directly to read_documents',
         recommendedAction: 'read_documents',
         data: {
+          retrieval: {
+            method: 'hybrid',
+            detail: 'fts+vector-rerank',
+          },
           results: [
             {
               metadata: {
@@ -60,6 +64,7 @@ describe('intent-cli parsing', () => {
     expect(output).toContain('Summary: Found 1 matching KB document')
     expect(output).toContain('Status: accepted')
     expect(output).toContain('Confidence: 0.80')
+    expect(output).toContain('Retrieval: hybrid (fts+vector-rerank)')
     expect(output).toContain('Relevant Docs:')
     expect(output).toContain('location=/tmp/cli-facts.md')
     expect(output).toContain('uri=file:///tmp/cli-facts.md')
@@ -74,6 +79,10 @@ describe('intent-cli parsing', () => {
         status: 'accepted',
         recommendedAction: 'read_documents',
         data: {
+          retrieval: {
+            method: 'lexical-fallback',
+            detail: 'hybrid-error:no-index',
+          },
           results: [],
           total: 0,
         },
@@ -82,6 +91,7 @@ describe('intent-cli parsing', () => {
     )
 
     expect(output).toContain('Summary: No matching KB documents were found for this query.')
+    expect(output).toContain('Retrieval: lexical-fallback (hybrid-error:no-index)')
     expect(output).toContain('Matches: 0')
     expect(output).toContain('Relevant Docs: none')
     expect(output).toContain('Hint: Try a broader phrase')

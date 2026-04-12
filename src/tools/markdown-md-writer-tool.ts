@@ -17,11 +17,14 @@ import {
   pruneDocument as pruneDocumentImpl,
   updateDocument as updateDocumentImpl,
 } from './specialized-document-tools'
+import { SqliteKbIndexer } from './sqlite-kb-index'
 
 const INDEX_FILE_NAME = '_table.md'
 
 export interface MarkdownMDWriterToolOptions {
   baseDir?: string
+  enableSqliteIndex?: boolean
+  sqliteDbPath?: string
 }
 
 /**
@@ -30,9 +33,16 @@ export interface MarkdownMDWriterToolOptions {
  */
 export class MarkdownMDWriterTool implements DocumentWriterExtended {
   private readonly baseDir: string
+  private readonly sqliteIndexer?: SqliteKbIndexer
 
   constructor(options: MarkdownMDWriterToolOptions = {}) {
     this.baseDir = options.baseDir ?? path.join(process.cwd(), 'sessions', 'documents')
+    const sqliteEnabled = options.enableSqliteIndex ?? process.env.KB_SQLITE_INDEX === 'true'
+
+    if (sqliteEnabled) {
+      const sqliteDbPath = options.sqliteDbPath ?? path.join(this.baseDir, '.kb-index.sqlite')
+      this.sqliteIndexer = new SqliteKbIndexer({ dbPath: sqliteDbPath })
+    }
   }
 
   async writeDocument(input: WriteDocumentInput): Promise<WriteDocumentResult> {
@@ -68,6 +78,7 @@ export class MarkdownMDWriterTool implements DocumentWriterExtended {
     }
 
     await this.upsertIndex(result)
+    await this.syncSqliteIndex(result)
     return result
   }
 
@@ -75,6 +86,7 @@ export class MarkdownMDWriterTool implements DocumentWriterExtended {
     await mkdir(this.baseDir, { recursive: true })
     const result = await appendToDocumentImpl(input, this.baseDir)
     await this.upsertIndex(result)
+    await this.syncSqliteIndex(result)
     return result
   }
 
@@ -82,6 +94,7 @@ export class MarkdownMDWriterTool implements DocumentWriterExtended {
     await mkdir(this.baseDir, { recursive: true })
     const result = await updateDocumentImpl(input, this.baseDir)
     await this.upsertIndex(result)
+    await this.syncSqliteIndex(result)
     return result
   }
 
@@ -89,12 +102,19 @@ export class MarkdownMDWriterTool implements DocumentWriterExtended {
     await mkdir(this.baseDir, { recursive: true })
     const result = await pruneDocumentImpl(input, this.baseDir)
     await this.upsertIndex(result)
+    await this.syncSqliteIndex(result)
     return result
   }
 
   async mergeDocuments(input: MergeDocumentsInput): Promise<MergeDocumentsResult> {
     await mkdir(this.baseDir, { recursive: true })
-    return mergeDocumentsImpl(input, this.baseDir)
+    const result = await mergeDocumentsImpl(input, this.baseDir)
+
+    if (result.status === 'merged') {
+      await this.syncSqliteIndexByDocumentId(input.targetDocId)
+    }
+
+    return result
   }
 
   private renderDocument(input: WriteDocumentInput, now: string): string {
@@ -132,6 +152,31 @@ export class MarkdownMDWriterTool implements DocumentWriterExtended {
     }
 
     await writeFile(indexPath, `${lines.join('\n').replace(/\n*$/u, '')}\n`, 'utf8')
+  }
+
+  private async syncSqliteIndex(result: WriteDocumentResult): Promise<void> {
+    if (!this.sqliteIndexer) return
+
+    try {
+      const content = await readFile(result.filePath, 'utf8')
+      this.sqliteIndexer.upsertDocumentFromContent(result.filePath, content)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn(`[kb-index] sqlite sync skipped for ${result.id}: ${message}`)
+    }
+  }
+
+  private async syncSqliteIndexByDocumentId(documentId: string): Promise<void> {
+    if (!this.sqliteIndexer) return
+
+    const filePath = path.join(this.baseDir, `${sanitizeId(documentId)}.md`)
+    try {
+      const content = await readFile(filePath, 'utf8')
+      this.sqliteIndexer.upsertDocumentFromContent(filePath, content)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn(`[kb-index] sqlite merge sync skipped for ${documentId}: ${message}`)
+    }
   }
 }
 

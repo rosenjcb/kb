@@ -169,6 +169,10 @@ interface ReadDocumentsResultItem {
 interface ReadDocumentsResultData {
   results?: ReadDocumentsResultItem[]
   total?: number
+  retrieval?: {
+    method?: string
+    detail?: string
+  }
 }
 
 function isReadDocumentsResult(result: IntentResult): boolean {
@@ -193,6 +197,11 @@ function formatReadDocumentsHumanResult(result: IntentResult): string {
 
   if (result.recommendedAction) {
     lines.push(`Next: ${result.recommendedAction}`)
+  }
+
+  if (data.retrieval?.method) {
+    const detail = data.retrieval.detail ? ` (${data.retrieval.detail})` : ''
+    lines.push(`Retrieval: ${data.retrieval.method}${detail}`)
   }
 
   lines.push(`Matches: ${results.length}`)

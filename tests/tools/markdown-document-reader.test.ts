@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MarkdownDocumentReader } from '../../src/tools/markdown-document-reader'
+import { MarkdownMDWriterTool } from '../../src/tools/markdown-md-writer-tool'
 
 const tempDirs: string[] = []
 
@@ -37,6 +38,7 @@ describe('MarkdownDocumentReader', () => {
     const response = await reader.queryDocuments({ type: 'architecture' })
 
     expect(response.total).toBe(1)
+    expect(response.retrieval.method).toBe('lexical')
     expect(response.results[0]?.metadata.id).toBe('arch')
     expect(response.results[0]?.metadata.type).toBe('architecture')
   })
@@ -81,4 +83,106 @@ describe('MarkdownDocumentReader', () => {
       expect(response.total).toBe(1)
       expect(response.results[0]?.metadata.id).toBe('future-plan')
     })
+
+  it('Given hybrid query enabled with SQLite index, then should rank and return indexed documents', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    const writer = new MarkdownMDWriterTool({
+      baseDir,
+      enableSqliteIndex: true,
+      sqliteDbPath: dbPath,
+    })
+
+    await writer.writeDocument({
+      title: 'Vector Search Notes',
+      content: 'Hybrid retrieval combines FTS and vector reranking for semantic matches.',
+      documentId: 'vector-search-notes',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    await writer.writeDocument({
+      title: 'Unrelated Topic',
+      content: 'This document discusses gardening and compost only.',
+      documentId: 'unrelated-topic',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    const reader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: true,
+      sqliteDbPath: dbPath,
+      hybridCandidateLimit: 20,
+    })
+
+    const response = await reader.queryDocuments({
+      query: 'semantic vector reranking retrieval',
+      mode: 'content',
+      includeContent: true,
+      limit: 5,
+    })
+
+    expect(response.total).toBeGreaterThan(0)
+    expect(response.retrieval.method).toBe('hybrid')
+    expect(response.results[0]?.metadata.id).toBe('vector-search-notes')
+  })
+
+  it('Given hybrid enabled but missing SQLite index, then should fallback to lexical search', async () => {
+    const baseDir = await createTempDir()
+    await writeFile(
+      path.join(baseDir, 'fallback-doc.md'),
+      '# Fallback Doc\n\nCreated: 2026-01-01\nType: reference\n\nLexical fallback should still find this content.\n',
+      'utf8'
+    )
+
+    const reader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: true,
+      sqliteDbPath: path.join(baseDir, 'missing.sqlite'),
+    })
+
+    const response = await reader.queryDocuments({
+      query: 'fallback find this content',
+      mode: 'content',
+      includeContent: true,
+    })
+
+    expect(response.total).toBe(1)
+    expect(response.retrieval.method).toBe('lexical-fallback')
+    expect(response.results[0]?.metadata.id).toBe('fallback-doc')
+  })
+
+  it('Given very small hybrid latency budget, then should fallback to lexical path', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    const writer = new MarkdownMDWriterTool({
+      baseDir,
+      enableSqliteIndex: true,
+      sqliteDbPath: dbPath,
+    })
+
+    await writer.writeDocument({
+      title: 'Latency Guardrail',
+      content: 'Hybrid query latency budget fallback validation content.',
+      documentId: 'latency-guardrail',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    const reader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: true,
+      sqliteDbPath: dbPath,
+      hybridMaxMs: 0,
+    })
+
+    const response = await reader.queryDocuments({
+      query: 'latency budget fallback validation',
+      mode: 'content',
+      includeContent: true,
+    })
+
+    expect(response.total).toBe(1)
+    expect(response.retrieval.method).toBe('lexical-fallback')
+    expect(response.retrieval.detail).toBe('latency-budget-exceeded')
+    expect(response.results[0]?.metadata.id).toBe('latency-guardrail')
+  })
 })

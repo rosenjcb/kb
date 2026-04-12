@@ -32,3 +32,19 @@ These components contribute significantly to the system's development and operat
 - Docs sync checkpoint: README now documents base resolution as session use -> saved default -> KB_BASE fallback, and CLI/tests were updated to match this exact order. (source: docs-sync)
 
 - Correction (2026-04-12 code audit): CLI base resolution precedence is 1) config.sessionBase (kb use), 2) config.defaultBase (kb default), 3) env.KB_BASE fallback. If none are set, resolveEffectiveBaseDir throws an explicit error. Evidence: src/cli/base-selection.ts and src/cli/index.ts. (source: code-audit)
+
+- Kickoff checkpoint: created ticket 063 (SQLite vector search index for KB query retrieval), updated tickets/linear/_index.md, and created branch feat/063-sqlite-vector-search-index for implementation. (source: planning)
+
+- Ticket 063 SPIKE closed with implementation plan: decided v1 embedding strategy = Ollama local embeddings; created follow-up tickets 064 (SQLite schema/indexer), 065 (hybrid FTS+vector runtime), and 066 (tests/rollout guardrails); updated linear index accordingly. (source: planning)
+
+- Ticket 064 implementation checkpoint: added SqliteKbIndexer schema bootstrap (documents/chunks/chunks_fts/chunk_embeddings/index_state), wired MarkdownMDWriterTool index sync on write/append/update/prune/merge(target), added content-hash stale detection API, and validated with sqlite-kb-index tests + type-check. (source: implementation)
+
+- Tickets 065 and 066 completed: hybrid FTS+vector query runtime added behind rollout flags, explicit lexical fallback behavior implemented, latency guardrail enforcement added, and reliability tests expanded for hybrid/missing-index/budget fallback scenarios. (source: implementation)
+
+- README updated with Getting Started with SQLite Hybrid Search section, including native dependency setup, KB_SQLITE_INDEX/KB_HYBRID_QUERY flags, tuning knobs, and verification flow with fallback behavior. (source: docs-sync)
+
+- README was rewritten to a generalized onboarding guide: concise use case, quick start, provider setup, base selection, intent command examples, optional SQLite hybrid setup, daily workflow, and core dev commands. (source: docs-sync)
+
+- README updated to .env.local-first onboarding: provider/base/hybrid flags now documented in .env.local with explicit local-context commands (dev:local/start:local). (source: docs-sync)
+
+- Added explicit retrieval method telemetry in query responses: read_documents now returns retrieval metadata (hybrid|lexical|lexical-fallback + detail), and human formatter prints Retrieval line for visibility. (source: implementation)
