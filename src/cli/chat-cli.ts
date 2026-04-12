@@ -34,6 +34,12 @@ interface ReadDocumentsResult {
   retrieval?: {
     method?: string
     detail?: string
+    checkpoints?: Array<{
+      stage?: string
+      status?: string
+      nextAction?: string
+      confidence?: number
+    }>
   }
 }
 
@@ -104,6 +110,10 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
         const answer = completion.text.trim() || 'I do not have enough evidence to answer that yet.'
         io.write(`assistant> ${answer}`)
         io.write(`retrieval> ${formatRetrievalMode(retrievalWithFallback.retrieval)}`)
+        const checkpointTrace = formatCheckpointTrace(retrievalWithFallback.retrieval)
+        if (checkpointTrace) {
+          io.write(`checkpoints> ${checkpointTrace}`)
+        }
         io.write(`sources> ${formatSourceIds(retrievalWithFallback.results).join(', ') || 'none'}`)
 
         history.push({ user: input, assistant: answer })
@@ -243,6 +253,22 @@ function formatRetrievalMode(retrieval: ReadDocumentsResult['retrieval']): strin
   const method = retrieval?.method ?? 'unknown'
   const detail = retrieval?.detail ? ` (${retrieval.detail})` : ''
   return `${method}${detail}`
+}
+
+function formatCheckpointTrace(retrieval: ReadDocumentsResult['retrieval']): string | undefined {
+  const checkpoints = retrieval?.checkpoints
+  if (!Array.isArray(checkpoints) || checkpoints.length === 0) {
+    return undefined
+  }
+
+  return checkpoints
+    .map(checkpoint => {
+      const stage = checkpoint.stage ?? 'unknown-stage'
+      const status = checkpoint.status ?? 'unknown-status'
+      const action = checkpoint.nextAction ?? 'unknown-action'
+      return `${stage}:${status}->${action}`
+    })
+    .join(' | ')
 }
 
 function formatSourceIds(results: ReadDocumentsResult['results']): string[] {

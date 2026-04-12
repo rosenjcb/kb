@@ -47,6 +47,14 @@ describe('intent-cli parsing', () => {
           retrieval: {
             method: 'hybrid',
             detail: 'fts+vector-rerank',
+            checkpoints: [
+              {
+                stage: 'hybrid_primary',
+                status: 'hit',
+                nextAction: 'return',
+                confidence: 0.86,
+              },
+            ],
           },
           results: [
             {
@@ -70,6 +78,7 @@ describe('intent-cli parsing', () => {
     expect(output).toContain('Status: accepted')
     expect(output).toContain('Confidence: 0.80')
     expect(output).toContain('Retrieval: hybrid (fts+vector-rerank)')
+    expect(output).toContain('Checkpoints: hybrid_primary:hit->return')
     expect(output).toContain('Relevant Docs:')
     expect(output).toContain('location=/tmp/cli-facts.md')
     expect(output).toContain('uri=file:///tmp/cli-facts.md')

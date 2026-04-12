@@ -13,7 +13,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 
 ## Summary
 
-- Total files: 70 (69 tickets + this index)
+- Total files: 74 (73 tickets + this index)
 - Branch: feat/kb-ticket-backlog
 
 ## Foundation
@@ -91,6 +91,9 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [063 Add SQLite vector search index for KB query retrieval](tickets/linear/063-sqlite-vector-search-index-for-kb-query.md)
 - [064 Implement SQLite index schema and document indexer](tickets/linear/064-implement-sqlite-index-schema-and-indexer.md)
 - [065 Implement hybrid FTS + vector query runtime](tickets/linear/065-implement-hybrid-fts-vector-query-runtime.md)
+- [071 Add retrieval decision checkpoints and miss-learning loop across tool surfaces](tickets/linear/071-retrieval-decision-checkpoints-and-miss-learning-loop.md)
+- [072 Implement retrieval decision-checkpoint orchestrator across read_documents consumers](tickets/linear/072-implement-retrieval-decision-checkpoint-orchestrator.md)
+- [073 Implement retrieval miss-learning schema and feedback loop](tickets/linear/073-implement-retrieval-miss-learning-schema-and-feedback-loop.md)
 
 ## Reliability
 
@@ -103,4 +106,5 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [061 Enforce internal tool access policy for consumer-facing flows](tickets/linear/061-enforce-internal-tool-access-policy.md)
 - [066 Add tests, rollout controls, and latency guardrails for hybrid search](tickets/linear/066-test-rollout-and-latency-guardrails-for-hybrid-search.md)
 - [070 Validate kb chat mode and harden context-rot handling](tickets/linear/070-chat-mode-validation-and-context-rot-hardening.md)
+- [074 Add retrieval checkpoint evaluation and rollout guardrails](tickets/linear/074-add-retrieval-checkpoint-evaluation-and-rollout-guardrails.md)
 

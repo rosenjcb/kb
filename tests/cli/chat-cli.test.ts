@@ -84,7 +84,18 @@ describe('chat-cli session loop', () => {
       register: vi.fn(),
       getTools: vi.fn(() => []),
       execute: vi.fn(async () => ({
-        retrieval: { method: 'hybrid', detail: 'fts+vector-rerank' },
+        retrieval: {
+          method: 'hybrid',
+          detail: 'fts+vector-rerank',
+          checkpoints: [
+            {
+              stage: 'hybrid_primary',
+              status: 'hit',
+              nextAction: 'return',
+              confidence: 0.86,
+            },
+          ],
+        },
         results: [
           { metadata: { id: 'session-log-2026-04-12' }, content: 'Hybrid retrieval details.' },
         ],
@@ -116,6 +127,7 @@ describe('chat-cli session loop', () => {
     expect(provider.call).toHaveBeenCalledTimes(1)
     expect(io.outputs.join('\n')).toContain('assistant> The KB uses a hybrid path with lexical fallback.')
     expect(io.outputs.join('\n')).toContain('retrieval> hybrid (fts+vector-rerank)')
+    expect(io.outputs.join('\n')).toContain('checkpoints> hybrid_primary:hit->return')
     expect(io.outputs.join('\n')).toContain('sources> session-log-2026-04-12')
   })
 

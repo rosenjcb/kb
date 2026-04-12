@@ -4,9 +4,14 @@
  */
 
 import { readdir, readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import Database from 'better-sqlite3'
+import {
+  buildCheckpointRecord,
+  type RetrievalCheckpointRecord,
+} from './retrieval-checkpoint-orchestrator'
 
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'do', 'for', 'from', 'how',
@@ -44,6 +49,7 @@ export interface QueryResponse {
   retrieval: {
     method: 'hybrid' | 'lexical' | 'lexical-fallback'
     detail?: string
+    checkpoints?: RetrievalCheckpointRecord[]
   }
 }
 
@@ -53,6 +59,10 @@ export interface MarkdownDocumentReaderOptions {
   hybridCandidateLimit?: number
   hybridAlpha?: number
   hybridMaxMs?: number
+  missLearningEnabled?: boolean
+  rankingHintsEnabled?: boolean
+  rankingHintMinOccurrences?: number
+  checkpointObservabilityEnabled?: boolean
 }
 
 function tokenize(text: string): string[] {
@@ -161,6 +171,10 @@ export class MarkdownDocumentReader {
   private readonly hybridCandidateLimit: number
   private readonly hybridAlpha: number
   private readonly hybridMaxMs: number
+  private readonly missLearningEnabled: boolean
+  private readonly rankingHintsEnabled: boolean
+  private readonly rankingHintMinOccurrences: number
+  private readonly checkpointObservabilityEnabled: boolean
 
   constructor(
     private baseDir: string,
@@ -171,48 +185,112 @@ export class MarkdownDocumentReader {
     this.hybridCandidateLimit = options.hybridCandidateLimit ?? parsePositiveInt(process.env.KB_HYBRID_QUERY_CANDIDATES, 40)
     this.hybridAlpha = options.hybridAlpha ?? parseBoundedNumber(process.env.KB_HYBRID_QUERY_ALPHA, 0.45)
     this.hybridMaxMs = options.hybridMaxMs ?? parsePositiveInt(process.env.KB_HYBRID_QUERY_MAX_MS, 120)
+    this.missLearningEnabled = options.missLearningEnabled ?? process.env.KB_MISS_LEARNING_ENABLED === 'true'
+    this.rankingHintsEnabled = options.rankingHintsEnabled ?? process.env.KB_MISS_HINTS_ENABLED === 'true'
+    this.rankingHintMinOccurrences = options.rankingHintMinOccurrences
+      ?? parsePositiveInt(process.env.KB_MISS_HINT_MIN_OCCURRENCES, 3)
+    this.checkpointObservabilityEnabled = options.checkpointObservabilityEnabled
+      ?? process.env.KB_CHECKPOINT_OBSERVABILITY_ENABLED !== 'false'
   }
 
   async queryDocuments(input: QueryDocumentsInput): Promise<QueryResponse> {
+    const checkpoints: RetrievalCheckpointRecord[] = []
+
     if (this.shouldUseHybrid(input)) {
       const hybridAttempt = await this.tryHybridQuery(input)
       if (hybridAttempt.response) {
-        return {
+        const hybridResponse: QueryResponse = {
           ...hybridAttempt.response,
           retrieval: {
             method: 'hybrid',
             detail: 'fts+vector-rerank',
           },
         }
+
+        checkpoints.push(buildCheckpointRecord({
+          stage: 'hybrid_primary',
+          totalResults: hybridResponse.total,
+          method: hybridResponse.retrieval.method,
+          detail: hybridResponse.retrieval.detail,
+          reason: 'hybrid-stage-complete',
+        }))
+
+        if (checkpoints.at(-1)?.nextAction === 'return') {
+          const response = withCheckpoints(hybridResponse, checkpoints)
+          this.maybeRecordMissLearning(input, response)
+          this.maybeRecordCheckpointEvents(input, response)
+          return response
+        }
+
+        const response = await this.runLexicalCheckpointPipeline(
+          input,
+          {
+            method: 'lexical-fallback',
+            detail: 'hybrid-low-confidence',
+          },
+          checkpoints,
+        )
+        this.maybeRecordMissLearning(input, response)
+        this.maybeRecordCheckpointEvents(input, response)
+        return response
       }
 
-      return this.queryDocumentsLexicalWithRecovery(input, {
+      checkpoints.push(buildCheckpointRecord({
+        stage: 'hybrid_primary',
+        totalResults: 0,
+        method: 'hybrid',
+        detail: hybridAttempt.fallbackReason,
+        reason: hybridAttempt.fallbackReason ?? 'hybrid-unavailable',
+        status: 'error',
+      }))
+
+      const response = await this.runLexicalCheckpointPipeline(input, {
         method: 'lexical-fallback',
         detail: hybridAttempt.fallbackReason ?? 'hybrid-unavailable',
-      })
+      }, checkpoints)
+      this.maybeRecordMissLearning(input, response)
+      this.maybeRecordCheckpointEvents(input, response)
+      return response
     }
 
-    return this.queryDocumentsLexicalWithRecovery(input, {
+    const response = await this.runLexicalCheckpointPipeline(input, {
       method: 'lexical',
       detail: 'hybrid-not-attempted',
-    })
+    }, checkpoints)
+    this.maybeRecordMissLearning(input, response)
+    this.maybeRecordCheckpointEvents(input, response)
+    return response
   }
 
-  private async queryDocumentsLexicalWithRecovery(
+  private async runLexicalCheckpointPipeline(
     input: QueryDocumentsInput,
     retrieval: QueryResponse['retrieval'],
+    checkpoints: RetrievalCheckpointRecord[],
   ): Promise<QueryResponse> {
     const primary = await this.queryDocumentsLexical(input, retrieval)
+    checkpoints.push(buildCheckpointRecord({
+      stage: 'lexical_recovery',
+      totalResults: primary.total,
+      method: primary.retrieval.method,
+      detail: primary.retrieval.detail,
+      reason: 'lexical-stage-complete',
+    }))
+
+    const lexicalDecision = checkpoints.at(-1)
+    if (lexicalDecision?.nextAction === 'return') {
+      return withCheckpoints(primary, checkpoints)
+    }
+
     if (!this.shouldAttemptKeywordRecovery(input, primary.total)) {
-      return primary
+      return withCheckpoints(primary, checkpoints)
     }
 
     const broadenedQuery = buildKeywordQuery(input.query ?? '')
     if (!broadenedQuery || broadenedQuery === normalizeText(input.query ?? '')) {
-      return primary
+      return withCheckpoints(primary, checkpoints)
     }
 
-    return this.queryDocumentsLexical(
+    const retry = await this.queryDocumentsLexical(
       {
         ...input,
         query: broadenedQuery,
@@ -223,6 +301,16 @@ export class MarkdownDocumentReader {
         detail: appendRetrievalDetail(retrieval.detail, 'keyword-broadened'),
       },
     )
+
+    checkpoints.push(buildCheckpointRecord({
+      stage: 'query_rewrite_retry',
+      totalResults: retry.total,
+      method: retry.retrieval.method,
+      detail: retry.retrieval.detail,
+      reason: 'keyword-broadened',
+    }))
+
+    return withCheckpoints(retry, checkpoints)
   }
 
   private async queryDocumentsLexical(
@@ -331,6 +419,10 @@ export class MarkdownDocumentReader {
             lexical_rank: number
           }>
 
+        const hintBoosts = this.rankingHintsEnabled
+          ? this.loadRankingHintBoosts(db, query)
+          : new Map<string, number>()
+
         if (candidateRows.length === 0) {
           return { fallbackReason: 'fts-no-candidates' }
         }
@@ -359,7 +451,9 @@ export class MarkdownDocumentReader {
           const chunkText = chunkRow?.chunk_text ?? ''
           const lexicalScore = toLexicalScore(candidate.lexical_rank)
           const vectorScore = this.computeVectorScore(query, chunkText, embRow)
-          const combined = this.hybridAlpha * lexicalScore + (1 - this.hybridAlpha) * vectorScore
+          const baseCombined = this.hybridAlpha * lexicalScore + (1 - this.hybridAlpha) * vectorScore
+          const hintBoost = hintBoosts.get(candidate.doc_id) ?? 0
+          const combined = Math.min(1, baseCombined + hintBoost)
 
           const current = docScores.get(candidate.doc_id)
           if (!current || combined > current.score) {
@@ -468,6 +562,167 @@ export class MarkdownDocumentReader {
       return heuristicVectorScore(query, chunkText)
     }
   }
+
+  private loadRankingHintBoosts(db: Database.Database, query: string): Map<string, number> {
+    try {
+      const fingerprint = buildQueryFingerprint(query)
+      const rows = db
+        .prepare(`
+          SELECT doc_id, hint_score, occurrences
+          FROM retrieval_ranking_hints
+          WHERE query_fingerprint = ?
+            AND occurrences >= ?
+          ORDER BY hint_score DESC, occurrences DESC
+          LIMIT 25
+        `)
+        .all(fingerprint, this.rankingHintMinOccurrences) as Array<{
+          doc_id: string
+          hint_score: number
+          occurrences: number
+        }>
+
+      const boosts = new Map<string, number>()
+      for (const row of rows) {
+        const boundedBoost = Math.max(0, Math.min(0.2, row.hint_score * 0.2))
+        boosts.set(row.doc_id, boundedBoost)
+      }
+      return boosts
+    } catch {
+      return new Map<string, number>()
+    }
+  }
+
+  private maybeRecordMissLearning(input: QueryDocumentsInput, response: QueryResponse): void {
+    if (!this.missLearningEnabled) return
+    if (!input.query?.trim()) return
+
+    const checkpoints = response.retrieval.checkpoints ?? []
+    const finalCheckpoint = checkpoints.at(-1)
+    const confidence = finalCheckpoint?.confidence ?? 0
+
+    let missReason: 'no_candidates' | 'low_confidence' | null = null
+    if (response.total === 0) {
+      missReason = 'no_candidates'
+    } else if (confidence < 0.45) {
+      missReason = 'low_confidence'
+    }
+
+    if (!missReason) return
+
+    const stage = finalCheckpoint?.stage ?? 'lexical_recovery'
+    const topCandidates = response.results
+      .slice(0, 5)
+      .map((result, index) => ({
+        id: result.metadata.id,
+        score: Math.max(0.1, 1 - index * 0.1),
+      }))
+
+    const now = dayjs().toISOString()
+    const fingerprint = buildQueryFingerprint(input.query)
+
+    let db: Database.Database | undefined
+    try {
+      db = new Database(this.sqliteDbPath)
+
+      db.prepare(`
+        INSERT INTO retrieval_miss_events (
+          query_fingerprint,
+          raw_query,
+          stage,
+          miss_reason,
+          top_candidates_json,
+          surface,
+          created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        fingerprint,
+        input.query,
+        stage,
+        missReason,
+        JSON.stringify(topCandidates),
+        'reader',
+        now,
+      )
+
+      if (topCandidates.length === 0) return
+
+      const upsertHint = db.prepare(`
+        INSERT INTO retrieval_ranking_hints (
+          query_fingerprint,
+          doc_id,
+          occurrences,
+          hint_score,
+          updated_at
+        )
+        VALUES (?, ?, 1, 0.1, ?)
+        ON CONFLICT(query_fingerprint, doc_id) DO UPDATE SET
+          occurrences = retrieval_ranking_hints.occurrences + 1,
+          hint_score = MIN(1.0, retrieval_ranking_hints.hint_score + 0.1),
+          updated_at = excluded.updated_at
+      `)
+
+      for (const candidate of topCandidates) {
+        upsertHint.run(fingerprint, candidate.id, now)
+      }
+    } catch {
+      // Miss-learning is best-effort and should not affect retrieval responses.
+    } finally {
+      db?.close()
+    }
+  }
+
+  private maybeRecordCheckpointEvents(input: QueryDocumentsInput, response: QueryResponse): void {
+    if (!this.checkpointObservabilityEnabled) return
+    if (!input.query?.trim()) return
+
+    const checkpoints = response.retrieval.checkpoints ?? []
+    if (checkpoints.length === 0) return
+
+    const fingerprint = buildQueryFingerprint(input.query)
+    const now = dayjs().toISOString()
+
+    let db: Database.Database | undefined
+    try {
+      db = new Database(this.sqliteDbPath)
+      const insertCheckpoint = db.prepare(`
+        INSERT INTO retrieval_checkpoint_events (
+          query_fingerprint,
+          stage,
+          status,
+          next_action,
+          confidence,
+          method,
+          detail,
+          surface,
+          created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+
+      const tx = db.transaction(() => {
+        for (const checkpoint of checkpoints) {
+          insertCheckpoint.run(
+            fingerprint,
+            checkpoint.stage,
+            checkpoint.status,
+            checkpoint.nextAction,
+            checkpoint.confidence,
+            checkpoint.method,
+            checkpoint.detail ?? null,
+            'reader',
+            now,
+          )
+        }
+      })
+
+      tx()
+    } catch {
+      // Observability writes are best-effort and should not affect serving path.
+    } finally {
+      db?.close()
+    }
+  }
 }
 
 function evaluateDocumentMatch(
@@ -537,6 +792,28 @@ function buildKeywordQuery(query: string): string | undefined {
 function appendRetrievalDetail(base: string | undefined, suffix: string): string {
   if (!base) return suffix
   return `${base};${suffix}`
+}
+
+function buildQueryFingerprint(query: string): string {
+  const normalized = query
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return createHash('sha256').update(normalized).digest('hex')
+}
+
+function withCheckpoints(
+  response: QueryResponse,
+  checkpoints: RetrievalCheckpointRecord[],
+): QueryResponse {
+  return {
+    ...response,
+    retrieval: {
+      ...response.retrieval,
+      checkpoints,
+    },
+  }
 }
 
 function parseTagsJson(raw: string | undefined): string[] | undefined {

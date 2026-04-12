@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import Database from 'better-sqlite3'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MarkdownDocumentReader } from '../../src/tools/markdown-document-reader'
 import { MarkdownMDWriterTool } from '../../src/tools/markdown-md-writer-tool'
@@ -149,6 +150,12 @@ describe('MarkdownDocumentReader', () => {
     expect(response.total).toBe(1)
     expect(response.retrieval.method).toBe('lexical-fallback')
     expect(response.results[0]?.metadata.id).toBe('fallback-doc')
+    expect(response.retrieval.checkpoints?.map(c => c.stage)).toEqual([
+      'hybrid_primary',
+      'lexical_recovery',
+    ])
+    expect(response.retrieval.checkpoints?.[0]?.nextAction).toBe('advance')
+    expect(response.retrieval.checkpoints?.[1]?.nextAction).toBe('return')
   })
 
   it('Given very small hybrid latency budget, then should fallback to lexical path', async () => {
@@ -237,5 +244,136 @@ describe('MarkdownDocumentReader', () => {
     expect(response.results[0]?.metadata.id).toBe('project-overview')
     expect(response.retrieval.method).toBe('lexical')
     expect(response.retrieval.detail).toContain('hybrid-not-attempted')
+    const stages = response.retrieval.checkpoints?.map(c => c.stage) ?? []
+    expect(stages[0]).toBe('lexical_recovery')
+    expect(['lexical_recovery', 'query_rewrite_retry']).toContain(stages.at(-1))
+    expect(response.retrieval.checkpoints?.at(-1)?.nextAction).toBe('return')
+  })
+
+  it('Given miss-learning enabled and no results, then should persist miss event in sqlite schema', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+
+    const writer = new MarkdownMDWriterTool({
+      baseDir,
+      enableSqliteIndex: true,
+      sqliteDbPath: dbPath,
+    })
+
+    await writer.writeDocument({
+      title: 'Known Doc',
+      content: 'This document is about release checklists.',
+      documentId: 'known-doc',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    const reader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: false,
+      missLearningEnabled: true,
+      sqliteDbPath: dbPath,
+    })
+
+    const response = await reader.queryDocuments({
+      query: 'zxqv unmatched gibberish topic',
+      mode: 'content',
+      includeContent: true,
+      limit: 5,
+    })
+
+    expect(response.total).toBe(0)
+
+    const db = new Database(dbPath, { readonly: true })
+    const missRows = db
+      .prepare('SELECT miss_reason AS missReason FROM retrieval_miss_events')
+      .all() as Array<{ missReason: string }>
+    db.close()
+
+    expect(missRows.length).toBe(1)
+    expect(missRows[0].missReason).toBe('no_candidates')
+  })
+
+  it('Given miss-learning disabled and no results, then should not persist miss events', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+
+    const writer = new MarkdownMDWriterTool({
+      baseDir,
+      enableSqliteIndex: true,
+      sqliteDbPath: dbPath,
+    })
+
+    await writer.writeDocument({
+      title: 'Known Doc',
+      content: 'This document is about release checklists.',
+      documentId: 'known-doc',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    const reader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: false,
+      missLearningEnabled: false,
+      sqliteDbPath: dbPath,
+    })
+
+    const response = await reader.queryDocuments({
+      query: 'zxqv unmatched gibberish topic',
+      mode: 'content',
+      includeContent: true,
+      limit: 5,
+    })
+
+    expect(response.total).toBe(0)
+
+    const db = new Database(dbPath, { readonly: true })
+    const missCount = db
+      .prepare('SELECT count(*) AS count FROM retrieval_miss_events')
+      .get() as { count: number }
+    db.close()
+
+    expect(missCount.count).toBe(0)
+  })
+
+  it('Given checkpoint-enabled query, then should persist stage events for observability metrics', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+
+    const writer = new MarkdownMDWriterTool({
+      baseDir,
+      enableSqliteIndex: true,
+      sqliteDbPath: dbPath,
+    })
+
+    await writer.writeDocument({
+      title: 'Hybrid Retrieval Notes',
+      content: 'Hybrid retrieval combines lexical and vector ranking.',
+      documentId: 'hybrid-notes',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    const reader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: true,
+      sqliteDbPath: dbPath,
+      checkpointObservabilityEnabled: true,
+    })
+
+    const response = await reader.queryDocuments({
+      query: 'hybrid lexical vector ranking',
+      mode: 'content',
+      includeContent: true,
+      limit: 5,
+    })
+
+    expect(response.total).toBeGreaterThan(0)
+
+    const db = new Database(dbPath, { readonly: true })
+    const checkpointCount = db
+      .prepare('SELECT count(*) AS count FROM retrieval_checkpoint_events')
+      .get() as { count: number }
+    db.close()
+
+    expect(checkpointCount.count).toBeGreaterThan(0)
   })
 })
