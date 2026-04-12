@@ -33,5 +33,8 @@ sessions/*.json
 sessions/namespaces/ci-*/
 sessions/namespaces/test-*/
 
+# Temporary output files
+.tmp/
+
 # Node runtime
 .node-gyp/

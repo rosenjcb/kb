@@ -19,3 +19,5 @@
 | policy-update-multiple-choice-decision-prompts | Policy Update - Multiple Choice Decision Prompts | sessions/namespaces/dogfood/documents/policy-update-multiple-choice-decision-prompts.md | 2026-04-12T14:11:01.309Z |
 
 | decision-log-dayjs-time-standard | Decision Log - Dayjs Time Standard | sessions/namespaces/dogfood/documents/decision-log-dayjs-time-standard.md | 2026-04-12T14:15:00.179Z |
+
+| skill-added-create-pr-description | Skill Added - create-pr-description | sessions/namespaces/dogfood/documents/skill-added-create-pr-description.md | 2026-04-12T14:20:50.398Z |
