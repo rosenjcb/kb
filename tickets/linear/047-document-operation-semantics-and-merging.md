@@ -491,15 +491,16 @@ This Implementation Plan satisfies all planning acceptance criteria:
 
 **Phase 2 (Implementation): IN PROGRESS** 🚀
 
-Tools to implement (following specialized pattern from TOOL_CONVENTIONS.md):
-- [ ] `write_document`: Create new document (existing, refactor for new schema)
-- [ ] `append_to_document`: Add content to existing (decision logs, notes)
-- [ ] `update_document`: Replace content wholly (reference docs, runbooks)
-- [ ] `merge_documents`: Consolidate with auto/user-decide modes
-- [ ] `prune_document`: Remove sections via pattern matching
-- [ ] `query_documents`: Add type filters for semantic queries
-- [ ] Tests: Unit + integration for all tools
-- [ ] LLM-based semantic similarity for merge detection
+Implementation decomposed into explicit sub-tickets (same PR allowed):
+- [ ] Ticket 048: `write_document` v2 create/write semantics
+- [ ] Ticket 049: `append_to_document` implementation
+- [ ] Ticket 050: `update_document` implementation
+- [ ] Ticket 051: `merge_documents` implementation (auto + user-decides)
+- [ ] Ticket 052: `prune_document` implementation
+- [ ] Ticket 053: registry wiring + test matrix + integration closure
+
+Phase 2 tracking rule:
+- Ticket 047 Phase 2 is complete only when tickets 048–053 are complete and validated.
 
 **Phase 1 → Phase 2 Transition**: All user decisions finalized. Ready to code.
 
