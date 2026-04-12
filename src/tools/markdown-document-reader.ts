@@ -29,6 +29,7 @@ const STOP_WORDS = new Set([
 export interface QueryDocumentsInput {
   query?: string
   mode?: 'id' | 'title' | 'tags' | 'content'
+  discoveryDepth?: 'shallow' | 'deep'
   tags?: string[]
   type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
   limit?: number
@@ -467,6 +468,10 @@ export class MarkdownDocumentReader {
     return input.mode === 'content' || input.mode === undefined
   }
 
+  private isDeepDiscovery(input: QueryDocumentsInput): boolean {
+    return input.discoveryDepth === 'deep'
+  }
+
   private async tryHybridQuery(input: QueryDocumentsInput): Promise<{
     response?: QueryResponse
     fallbackReason?: string
@@ -493,19 +498,22 @@ export class MarkdownDocumentReader {
         let usedSessionLogLastResort = false
 
         const ftsExpression = queryTokens.join(' OR ')
-        let candidateRows = this.fetchHybridCandidates(db, ftsExpression, activeLanes)
+        const candidateLimit = this.isDeepDiscovery(input)
+          ? Math.max(this.hybridCandidateLimit, 200)
+          : this.hybridCandidateLimit
+        let candidateRows = this.fetchHybridCandidates(db, ftsExpression, activeLanes, candidateLimit)
 
         if (candidateRows.length === 0 && laneRoute?.fallbackLanes.length) {
           activeLanes = laneRoute.fallbackLanes
           usedLaneFallback = true
-          candidateRows = this.fetchHybridCandidates(db, ftsExpression, activeLanes)
+          candidateRows = this.fetchHybridCandidates(db, ftsExpression, activeLanes, candidateLimit)
         }
 
         if (candidateRows.length === 0 && (laneRoute?.lastResortLanes?.length ?? 0) > 0) {
           activeLanes = laneRoute?.lastResortLanes
           usedLaneFallback = true
           usedSessionLogLastResort = (activeLanes ?? []).includes('session-log')
-          candidateRows = this.fetchHybridCandidates(db, ftsExpression, activeLanes)
+          candidateRows = this.fetchHybridCandidates(db, ftsExpression, activeLanes, candidateLimit)
         }
 
         const hintBoosts = this.rankingHintsEnabled
@@ -652,7 +660,9 @@ export class MarkdownDocumentReader {
     db: Database.Database,
     ftsExpression: string,
     lanes?: RetrievalLane[],
+    candidateLimit?: number,
   ): Array<{ chunk_id: string; doc_id: string; lexical_rank: number; lane?: RetrievalLane }> {
+    const limit = candidateLimit ?? this.hybridCandidateLimit
     if (!lanes?.length) {
       return db
         .prepare(`
@@ -661,7 +671,7 @@ export class MarkdownDocumentReader {
           WHERE chunks_fts MATCH ?
           LIMIT ?
         `)
-        .all(ftsExpression, this.hybridCandidateLimit) as Array<{
+        .all(ftsExpression, limit) as Array<{
           chunk_id: string
           doc_id: string
           lexical_rank: number
@@ -679,7 +689,7 @@ export class MarkdownDocumentReader {
           AND c.lane IN (${placeholders})
         LIMIT ?
       `)
-      .all(ftsExpression, ...lanes, this.hybridCandidateLimit) as Array<{
+      .all(ftsExpression, ...lanes, limit) as Array<{
         chunk_id: string
         doc_id: string
         lexical_rank: number
@@ -697,6 +707,7 @@ export class MarkdownDocumentReader {
 
   private shouldApplyLaneRouting(input: QueryDocumentsInput): boolean {
     if (!this.laneRoutingEnabled) return false
+    if (this.isDeepDiscovery(input)) return false
     if (!input.query?.trim()) return false
     if (input.tags?.length) return false
 

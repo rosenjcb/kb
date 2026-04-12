@@ -17,6 +17,29 @@ describe('intent-cli parsing', () => {
     expect(parsed.envelope.payload.domain).toBe('ops')
   })
 
+  it('Given submit with include-session-logs flag, then parses submit payload fields', () => {
+    const parsed = parseIntentCommand([
+      'submit',
+      'Rename canonical identifier.',
+      '--include-session-logs',
+    ])
+
+    expect(parsed.envelope.payload.includeSessionLogs).toBe(true)
+    expect(parsed.envelope.payload.targetDocumentId).toBeUndefined()
+  })
+
+  it('Given query with deep discovery option, then parses discoveryDepth in payload', () => {
+    const parsed = parseIntentCommand([
+      'query',
+      'env local strategy',
+      '--discovery',
+      'deep',
+    ])
+
+    expect(parsed.envelope.intent).toBe('query_truth')
+    expect(parsed.envelope.payload.discoveryDepth).toBe('deep')
+  })
+
   it('Given dispute without because, then throws validation error', () => {
     expect(() => parseIntentCommand(['dispute', 'Fact only'])).toThrow(
       'dispute requires --because "<counter evidence>"',
@@ -238,6 +261,43 @@ describe('intent-cli parsing', () => {
     }
 
     await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
+  })
+
+  it('Given LLM insufficiency boilerplate and exact token evidence present, enrichment should replace answer with grounded fallback', async () => {
+    const parsed = parseIntentCommand(['query', 'CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION'])
+    const result = {
+      status: 'accepted' as const,
+      recommendedAction: 'read_documents',
+      data: {
+        results: [
+          {
+            metadata: { id: 'retrieval-facts', title: 'retrieval facts' },
+            content: [
+              '# retrieval facts',
+              '',
+              '- CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION (source: consumer)',
+            ].join('\n'),
+          },
+        ],
+        total: 1,
+      },
+    }
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'The evidence provided does not contain any information about this token.',
+        stopReason: 'end_turn',
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
+    const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
+    const data = enriched.data as { answer?: string }
+    expect(data.answer).toContain('CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION')
+    expect(data.answer).toContain('(source: retrieval-facts)')
   })
 })
 

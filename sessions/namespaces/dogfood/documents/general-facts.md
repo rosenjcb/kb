@@ -25,3 +25,8 @@ Tags: general, fact
 - CLI testing fact: Lane-routing verification should be done with an on/off A/B using KB_LANE_ROUTING_ENABLED and identical prompts, then compared via retrieval metadata in kb chat or kb query --output json. (source: consumer)
 
 - CLI quick-reference: kb --help; kb use dogfood; kb default dogfood; kb submit/query/validate/dispute/explain with --output json; KB_BASE=dogfood kb chat for interactive mode; use KB_LANE_ROUTING_ENABLED=false for retrieval A/B checks. (source: consumer)
+
+
+- Rollout strategy is immediate. (source: consumer)
+
+- FINAL_CONSISTENCY_CHECKPOINT_20260412 (source: consumer)

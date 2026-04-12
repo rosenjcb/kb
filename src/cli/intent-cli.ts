@@ -40,6 +40,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
             domain: readOption(rest, '--domain'),
             source: readOption(rest, '--source'),
             targetDocumentId: readOption(rest, '--target'),
+            includeSessionLogs: readFlag(rest, '--include-session-logs'),
           },
         },
         output,
@@ -86,6 +87,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
             query: readPositional(rest, 0, 'query requires a topic/query string'),
             limit: parseLimit(readOption(rest, '--limit')),
             type: readOption(rest, '--type'),
+            discoveryDepth: parseDiscoveryDepth(readOption(rest, '--discovery')),
           },
         },
         output,
@@ -125,6 +127,10 @@ export function formatIntentResult(result: IntentResult, output: CliOutputMode):
     return formatReadDocumentsHumanResult(result)
   }
 
+  if (isReconciliationReviewResult(result)) {
+    return formatReconciliationReviewHumanResult(result)
+  }
+
   const lines: string[] = []
   lines.push(`Status: ${result.status}`)
   if (typeof result.confidence === 'number') {
@@ -156,6 +162,27 @@ export function formatIntentResult(result: IntentResult, output: CliOutputMode):
   }
 
   return lines.join('\n')
+}
+
+interface ReconciliationDiffPreview {
+  documentId?: string
+  filePath?: string
+  replacements?: number
+  diff?: string
+}
+
+interface ReconciliationPreviewData {
+  changedDocs?: number
+  totalReplacements?: number
+  proposedDiffs?: ReconciliationDiffPreview[]
+}
+
+interface ReconciliationReviewResultData {
+  reconciliationPreview?: ReconciliationPreviewData
+  decisionOptions?: {
+    acceptFlag?: string
+    passFlag?: string
+  }
 }
 
 interface ReadDocumentsResultItem {
@@ -220,8 +247,14 @@ export async function enrichReadDocumentsAnswerWithLLM(
       maxTokens: 180,
     })
 
-    const answer = completion.text.trim()
+    let answer = completion.text.trim()
     if (!answer) return result
+
+    if (looksLikeInsufficientEvidenceAnswer(answer)) {
+      const fallback = buildDeterministicIntentAnswer(question, results)
+      answer = fallback
+        ?? 'I do not have enough grounded evidence yet. Next step: run kb query "<your fact>" --discovery deep --output json, then kb submit "<fact>" if evidence is missing.'
+    }
 
     return {
       ...result,
@@ -235,8 +268,123 @@ export async function enrichReadDocumentsAnswerWithLLM(
   }
 }
 
+function looksLikeInsufficientEvidenceAnswer(text: string): boolean {
+  const normalized = text.toLowerCase()
+  return (
+    normalized.includes('evidence provided does not contain')
+    || normalized.includes('retrieved documents do not provide specific information')
+    || normalized.includes('does not provide specific information')
+    || normalized.includes('do not provide specific information')
+    || normalized.includes('does not contain specific information')
+    || normalized.includes('do not contain specific information')
+    || normalized.includes('do not contain specific details')
+    || normalized.includes('does not provide specific details')
+    || normalized.includes('do not provide specific details')
+    || normalized.includes('do not contain any information about')
+    || normalized.includes('does not contain any information about')
+    || normalized.includes('cannot provide an answer based on the available evidence')
+    || normalized.includes('evidence is insufficient')
+    || normalized.includes('do not have enough evidence')
+    || normalized.includes('need additional information')
+  )
+}
+
+function buildDeterministicIntentAnswer(
+  question: string,
+  results: ReadDocumentsResultItem[],
+): string | undefined {
+  const normalizedQuestion = question.toLowerCase().trim()
+  const highRecall = requiresHighRecallQuery(normalizedQuestion)
+
+  for (const item of results.slice(0, 10)) {
+    const docId = item.metadata?.id ?? 'unknown-doc'
+    const lines = (item.content ?? '')
+      .split('\n')
+      .map(line => line.trim().replace(/^[-*]\s+/, ''))
+      .filter(line =>
+        line.length > 0
+        && !line.startsWith('#')
+        && !line.startsWith('Created:')
+        && !line.startsWith('Tags:')
+        && !line.startsWith('Type:'),
+      )
+
+    const exact = lines.find(line => line.toLowerCase().includes(normalizedQuestion))
+    if (exact) {
+      return `${exact} (source: ${docId})`
+    }
+
+    if (!highRecall) {
+      const fallback = lines.find(line => line.length >= 25)
+      if (fallback) {
+        return `${fallback} (source: ${docId})`
+      }
+    }
+  }
+
+  return undefined
+}
+
+function requiresHighRecallQuery(query: string): boolean {
+  const trimmed = query.trim()
+  if (!trimmed) return false
+
+  const tokenLike = /^[a-z0-9._-]{16,}$/.test(trimmed)
+  if (tokenLike) return true
+
+  if (trimmed.length >= 20 && (trimmed.includes('_') || trimmed.includes('-'))) {
+    return true
+  }
+
+  return false
+}
+
 function isReadDocumentsResult(result: IntentResult): boolean {
   return result.recommendedAction === 'read_documents' && result.status === 'accepted'
+}
+
+function isReconciliationReviewResult(result: IntentResult): boolean {
+  return result.status === 'pending_review' && result.recommendedAction === 'review_reconciliation_diff'
+}
+
+function formatReconciliationReviewHumanResult(result: IntentResult): string {
+  const data = (result.data ?? {}) as ReconciliationReviewResultData
+  const preview = data.reconciliationPreview
+  const diffs = Array.isArray(preview?.proposedDiffs) ? preview?.proposedDiffs : []
+  const acceptFlag = data.decisionOptions?.acceptFlag ?? '--accept-reconcile'
+  const passFlag = data.decisionOptions?.passFlag ?? '--pass-reconcile'
+
+  const lines: string[] = []
+  lines.push('Status: pending_review')
+  if (result.explanation) {
+    lines.push(`Why: ${result.explanation}`)
+  }
+  lines.push(`Reconciliation Preview: ${preview?.changedDocs ?? 0} docs, ${preview?.totalReplacements ?? 0} replacements`)
+  lines.push(`Decision: re-run submit with ${acceptFlag} to apply changes, or ${passFlag} to skip propagation.`)
+
+  if (diffs.length === 0) {
+    lines.push('Diffs: none')
+    return lines.join('\n')
+  }
+
+  lines.push('Proposed Diffs:')
+  for (const entry of diffs.slice(0, 5)) {
+    const label = entry.documentId ?? 'unknown-doc'
+    const replacementCount = typeof entry.replacements === 'number' ? entry.replacements : 0
+    const diffText = typeof entry.diff === 'string' ? entry.diff : ''
+    const trimmedDiff = diffText
+      .split('\n')
+      .slice(0, 40)
+      .join('\n')
+    lines.push(`--- ${label} (${replacementCount} replacements) ---`)
+    lines.push(trimmedDiff || '(no diff preview available)')
+  }
+
+  if (diffs.length > 5) {
+    lines.push(`Showing 5 of ${diffs.length} diff previews.`)
+  }
+
+  return lines.join('\n')
 }
 
 function formatReadDocumentsHumanResult(result: IntentResult): string {
@@ -562,10 +710,10 @@ function extractHighlights(content: string | undefined): HighlightRef[] {
 export function printIntentHelp(): string {
   return [
     'Intent commands:',
-    '  kb submit "<fact>" [--domain ops] [--source runbook] [--target doc-id] [--output human|json]',
+    '  kb submit "<fact>" [--domain ops] [--source runbook] [--target doc-id] [--include-session-logs] [--output human|json]',
     '  kb validate "<fact>" [--domain ops] [--output human|json]',
     '  kb dispute "<fact>" --because "<counter evidence>" [--domain ops] [--output human|json]',
-    '  kb query "<topic>" [--limit 5] [--type decision] [--output human|json]',
+    '  kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]',
     '  kb explain "<change id|fact>" [--output human|json]',
   ].join('\n')
 }
@@ -586,6 +734,12 @@ function parseLimit(value: string | undefined): number | undefined {
   return parsed
 }
 
+function parseDiscoveryDepth(value: string | undefined): 'shallow' | 'deep' | undefined {
+  if (!value) return undefined
+  if (value === 'shallow' || value === 'deep') return value
+  throw new Error('--discovery must be one of: shallow, deep')
+}
+
 function readPositional(args: string[], index: number, errorMessage: string): string {
   const positional = args.filter(arg => !arg.startsWith('--'))
   const value = positional[index]
@@ -603,6 +757,10 @@ function readOption(args: string[], option: string): string | undefined {
     throw new Error(`${option} requires a value`)
   }
   return value
+}
+
+function readFlag(args: string[], option: string): boolean {
+  return args.includes(option)
 }
 
 export function toIntentName(command: string): ConsumerIntent {
