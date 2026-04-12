@@ -223,4 +223,20 @@ describe('DefaultIntentRouter', () => {
     expect(decision.operationInput.limit).toBe(3)
     expect(decision.operationInput.mode).toBeUndefined()
   })
+
+  it('Given query_truth with discoveryDepth deep, then routes to read_documents with discovery depth', async () => {
+    const executor = createExecutorMock()
+    const router = new DefaultIntentRouter(executor)
+
+    const decision = await router.route({
+      intent: 'query_truth',
+      payload: {
+        query: 'env local commit policy',
+        discoveryDepth: 'deep',
+      },
+    })
+
+    expect(decision.selectedOperation).toBe('read_documents')
+    expect(decision.operationInput.discoveryDepth).toBe('deep')
+  })
 })

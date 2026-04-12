@@ -28,6 +28,18 @@ describe('intent-cli parsing', () => {
     expect(parsed.envelope.payload.targetDocumentId).toBeUndefined()
   })
 
+  it('Given query with deep discovery option, then parses discoveryDepth in payload', () => {
+    const parsed = parseIntentCommand([
+      'query',
+      'env local strategy',
+      '--discovery',
+      'deep',
+    ])
+
+    expect(parsed.envelope.intent).toBe('query_truth')
+    expect(parsed.envelope.payload.discoveryDepth).toBe('deep')
+  })
+
   it('Given dispute without because, then throws validation error', () => {
     expect(() => parseIntentCommand(['dispute', 'Fact only'])).toThrow(
       'dispute requires --because "<counter evidence>"',

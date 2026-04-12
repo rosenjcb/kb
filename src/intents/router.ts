@@ -91,6 +91,7 @@ export class DefaultIntentRouter implements IntentRouter {
             includeContent: true,
             limit: payload.limit ?? 5,
             type: payload.type,
+            discoveryDepth: payload.discoveryDepth,
           },
           policyReason: 'query intent maps directly to read_documents',
         }

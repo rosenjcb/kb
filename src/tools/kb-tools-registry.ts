@@ -88,6 +88,11 @@ export function createKBToolsRegistry(baseDir?: string): ToolExecutor {
           enum: ['id', 'title', 'tags'],
           description: 'Search mode: id (exact ID), title (substring), tags (AND logic)',
         },
+        discoveryDepth: {
+          type: 'string',
+          enum: ['shallow', 'deep'],
+          description: 'Discovery strategy: shallow (fast primary pass) or deep (broader exhaustive pass)',
+        },
         tags: {
           type: 'array',
           items: { type: 'string' },

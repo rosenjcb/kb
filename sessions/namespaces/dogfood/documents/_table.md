@@ -44,10 +44,10 @@
 
 | readme-facts-mnw3iuq9 | readme facts | sessions/namespaces/dogfood/documents/readme-facts-mnw3iuq9.md | 2026-04-12T18:27:19.952Z |
 
-| reconcile-probe-facts | reconcile-probe facts | sessions/namespaces/dogfood/documents/reconcile-probe-facts.md | 2026-04-12T19:14:52.310Z |
 
-| reconcile-probe-facts-mnw58077 | reconcile-probe facts | sessions/namespaces/dogfood/documents/reconcile-probe-facts-mnw58077.md | 2026-04-12T19:14:53.058Z |
 
-| reconcile-probe-facts-mnw58bq0 | reconcile-probe facts | sessions/namespaces/dogfood/documents/reconcile-probe-facts-mnw58bq0.md | 2026-04-12T19:15:07.991Z |
 
-| reconcile-probe-facts-mnw58bug | reconcile-probe facts | sessions/namespaces/dogfood/documents/reconcile-probe-facts-mnw58bug.md | 2026-04-12T19:15:08.151Z |
+
+| config-facts | config facts | sessions/namespaces/dogfood/documents/config-facts.md | 2026-04-12T19:50:25.242Z |
+
+| verification-facts | verification facts | sessions/namespaces/dogfood/documents/verification-facts.md | 2026-04-12T20:00:21.465Z |

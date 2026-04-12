@@ -120,9 +120,10 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
           retrieval,
           deps.workspaceDir ?? process.cwd(),
         )
+        let retrievalForOutput = retrievalWithFallback
         const prompt = buildChatPrompt({
           question: input,
-          retrieval: retrievalWithFallback,
+          retrieval: retrievalForOutput,
           history,
         })
 
@@ -132,14 +133,67 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
           maxTokens: 320,
         })
 
-        const answer = completion.text.trim() || 'I do not have enough evidence to answer that yet.'
+        const llmAnswer = completion.text.trim()
+        let answer = chooseChatAnswer(
+          llmAnswer,
+          buildDeterministicFallbackAnswer(input, retrievalWithFallback.results),
+        )
+
+        if (looksLikeInsufficientEvidenceAnswer(answer)) {
+          const deepResult = await deps.toolExecutor.execute({
+            id: `chat-read-deep-${Date.now()}`,
+            name: 'read_documents',
+            input: {
+              query: input,
+              mode: 'content',
+              discoveryDepth: 'deep',
+              includeContent: true,
+              limit: Math.max(retrievalLimit * 3, 12),
+            },
+          })
+
+          const deepRetrieval = normalizeReadResult(deepResult)
+          retrievalForOutput = mergeReadResults(
+            retrievalForOutput,
+            deepRetrieval,
+            'chat-deep-discovery-promotion',
+          )
+
+          const deepFallback = buildDeterministicFallbackAnswer(input, deepRetrieval.results)
+          if (deepFallback) {
+            answer = deepFallback
+          }
+        }
+
+        if (looksLikeInsufficientEvidenceAnswer(answer)) {
+          const focusedQuery = buildFocusedEvidenceQuery(input)
+          if (focusedQuery) {
+            const focusedResult = await deps.toolExecutor.execute({
+              id: `chat-read-focused-${Date.now()}`,
+              name: 'read_documents',
+              input: {
+                query: focusedQuery,
+                includeContent: true,
+                limit: retrievalLimit,
+              },
+            })
+
+            const focused = normalizeReadResult(focusedResult)
+            const focusedFallback = buildDeterministicFallbackAnswer(input, focused.results)
+            if (focusedFallback) {
+              answer = focusedFallback
+              retrievalForOutput = mergeReadResults(retrievalForOutput, focused, 'chat-post-answer-recovery')
+            }
+          }
+        }
+
         io.write(`assistant> ${answer}`)
-        io.write(`retrieval> ${formatRetrievalMode(retrievalWithFallback.retrieval)}`)
-        const checkpointTrace = formatCheckpointTrace(retrievalWithFallback.retrieval)
+        io.write(`retrieval> ${formatRetrievalMode(retrievalForOutput.retrieval)}`)
+        const checkpointTrace = formatCheckpointTrace(retrievalForOutput.retrieval)
         if (checkpointTrace) {
           io.write(`checkpoints> ${checkpointTrace}`)
         }
-        io.write(`sources> ${formatSourceIds(retrievalWithFallback.results).join(', ') || 'none'}`)
+        io.write(`sources> ${formatSourceIds(retrievalForOutput.results).join(', ') || 'none'}`)
 
         history.push({ user: input, assistant: answer })
         if (history.length > maxHistoryTurns) {
@@ -170,7 +224,8 @@ export function buildChatPrompt(input: {
   return [
     'You are a KB assistant.',
     'Answer only with support from the evidence below.',
-    'If evidence is weak or missing, say that explicitly and suggest what to query next.',
+    'Prefer direct factual statements from retrieved evidence when available.',
+    'If evidence is weak or missing after checking the retrieved lines, say that explicitly and suggest what to query next.',
     '',
     `Conversation history:\n${historyText}`,
     '',
@@ -178,6 +233,170 @@ export function buildChatPrompt(input: {
     '',
     `Current user question: ${input.question}`,
   ].join('\n')
+}
+
+function chooseChatAnswer(llmAnswer: string, fallbackAnswer: string | undefined): string {
+  if (!llmAnswer) {
+    return fallbackAnswer ?? 'I do not have enough evidence to answer that yet.'
+  }
+
+  if (fallbackAnswer && looksLikeInsufficientEvidenceAnswer(llmAnswer)) {
+    return fallbackAnswer
+  }
+
+  return llmAnswer
+}
+
+function looksLikeInsufficientEvidenceAnswer(text: string): boolean {
+  const normalized = text.toLowerCase()
+  return (
+    normalized.includes('evidence provided does not contain')
+    || normalized.includes('retrieved documents do not provide specific information')
+    || normalized.includes('does not provide specific information')
+    || normalized.includes('do not provide specific information')
+    || normalized.includes('does not contain specific information')
+    || normalized.includes('do not contain specific information')
+    || normalized.includes('do not contain specific details')
+    || normalized.includes('does not provide specific details')
+    || normalized.includes('do not provide specific details')
+    || normalized.includes('evidence is insufficient')
+    || normalized.includes('do not have enough evidence')
+    || normalized.includes('need additional information')
+    || normalized.includes('would need additional information')
+    || normalized.includes('further specific queries')
+  )
+}
+
+function buildFocusedEvidenceQuery(question: string): string | undefined {
+  const tokens = tokenizeQuestion(question)
+  if (tokens.length === 0) return undefined
+
+  const isCliQuestion = tokens.some(token =>
+    ['kb', 'cli', 'command', 'commands', 'tool', 'tools', 'submit', 'query', 'validate', 'dispute', 'chat', 'help'].includes(token),
+  )
+
+  if (isCliQuestion) {
+    const preferredOrder = ['kb', 'cli', 'command', 'commands', 'query', 'submit', 'validate', 'dispute', 'chat', 'help']
+    const preferred = preferredOrder.filter(token => tokens.includes(token))
+    if (preferred.length >= 2) {
+      return preferred.slice(0, 4).join(' ')
+    }
+  }
+
+  const phrase = extractQuestionPhrases(tokens)[0]
+  if (phrase) {
+    return phrase
+  }
+
+  return tokens.slice(0, 4).join(' ')
+}
+
+function buildDeterministicFallbackAnswer(
+  question: string,
+  results: ReadDocumentsResult['results'],
+): string | undefined {
+  const candidate = extractBestEvidenceLine(question, results)
+  if (!candidate) return undefined
+  return `${candidate.line} (source: ${candidate.docId})`
+}
+
+function extractBestEvidenceLine(
+  question: string,
+  results: ReadDocumentsResult['results'],
+): { line: string; docId: string } | undefined {
+  if (!Array.isArray(results) || results.length === 0) return undefined
+
+  const tokens = tokenizeQuestion(question)
+  const phrases = extractQuestionPhrases(tokens)
+  let best: { line: string; docId: string; score: number } | undefined
+
+  for (const result of results.slice(0, 5)) {
+    const docId = result.metadata?.id ?? 'unknown-doc'
+    const lines = (result.content ?? '')
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line =>
+        line.length > 0
+        && !line.startsWith('#')
+        && !line.startsWith('Created:')
+        && !line.startsWith('Tags:')
+        && !line.startsWith('Type:'),
+      )
+
+    for (const line of lines) {
+      const cleanLine = line.replace(/^[-*]\s+/, '').trim()
+      if (!cleanLine) continue
+
+      const score = scoreLineForQuestion(cleanLine, tokens, phrases)
+      if (score < 2) continue
+
+      if (!best || score > best.score) {
+        best = { line: cleanLine, docId, score }
+      }
+    }
+  }
+
+  if (!best) return undefined
+  return { line: best.line, docId: best.docId }
+}
+
+function tokenizeQuestion(question: string): string[] {
+  const stopwords = new Set([
+    'what', 'which', 'when', 'where', 'who', 'why', 'how',
+    'current', 'there', 'any', 'still', 'present', 'cite',
+    'document', 'documents', 'used', 'older', 'older', 'older',
+    'and', 'the', 'that', 'this', 'with', 'from', 'into', 'about',
+  ])
+
+  return question
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token.length > 1)
+    .filter(token => !stopwords.has(token))
+}
+
+function extractQuestionPhrases(tokens: string[]): string[] {
+  const phrases: string[] = []
+  for (let i = 0; i < tokens.length - 1; i += 1) {
+    phrases.push(`${tokens[i]} ${tokens[i + 1]}`)
+  }
+  return phrases
+}
+
+function scoreLineForQuestion(line: string, tokens: string[], phrases: string[]): number {
+  const normalized = line.toLowerCase()
+  let score = 0
+
+  const isCliQuestion = tokens.some(token =>
+    ['kb', 'cli', 'command', 'commands', 'tool', 'tools', 'submit', 'query', 'validate', 'dispute', 'chat', 'help'].includes(token),
+  )
+
+  for (const token of tokens) {
+    if (normalized.includes(token)) score += 1
+  }
+
+  for (const phrase of phrases) {
+    if (normalized.includes(phrase)) score += 4
+  }
+
+  if (/\b(is|are|requires|uses|must|should|cannot|does not)\b/.test(normalized)) {
+    score += 1
+  }
+
+  if (isCliQuestion && /(kb\s+--help|kb\s+query|kb\s+submit|kb\s+validate|kb\s+dispute|kb\s+explain|kb\s+chat|cli quick-reference)/.test(normalized)) {
+    score += 4
+  }
+
+  if (isCliQuestion && /(submit\/query\/validate\/dispute\/explain)/.test(normalized)) {
+    score += 3
+  }
+
+  if (/(kb|cli|query|chat|lane-routing|sqlite)/.test(normalized) && !tokens.some(token => ['kb', 'cli', 'query', 'chat', 'sqlite'].includes(token))) {
+    score -= 1
+  }
+
+  return score
 }
 
 function normalizeReadResult(value: unknown): ReadDocumentsResult {

@@ -87,6 +87,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
             query: readPositional(rest, 0, 'query requires a topic/query string'),
             limit: parseLimit(readOption(rest, '--limit')),
             type: readOption(rest, '--type'),
+            discoveryDepth: parseDiscoveryDepth(readOption(rest, '--discovery')),
           },
         },
         output,
@@ -635,7 +636,7 @@ export function printIntentHelp(): string {
     '  kb submit "<fact>" [--domain ops] [--source runbook] [--target doc-id] [--include-session-logs] [--output human|json]',
     '  kb validate "<fact>" [--domain ops] [--output human|json]',
     '  kb dispute "<fact>" --because "<counter evidence>" [--domain ops] [--output human|json]',
-    '  kb query "<topic>" [--limit 5] [--type decision] [--output human|json]',
+    '  kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]',
     '  kb explain "<change id|fact>" [--output human|json]',
   ].join('\n')
 }
@@ -654,6 +655,12 @@ function parseLimit(value: string | undefined): number | undefined {
     throw new Error('--limit must be a positive integer')
   }
   return parsed
+}
+
+function parseDiscoveryDepth(value: string | undefined): 'shallow' | 'deep' | undefined {
+  if (!value) return undefined
+  if (value === 'shallow' || value === 'deep') return value
+  throw new Error('--discovery must be one of: shallow, deep')
 }
 
 function readPositional(args: string[], index: number, errorMessage: string): string {
