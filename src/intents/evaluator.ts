@@ -15,18 +15,52 @@ function containsFact(text: string, fact: string): boolean {
   return text.toLowerCase().includes(fact.toLowerCase())
 }
 
-export async function validateFact(
+function tokenize(text: string): string[] {
+  const stopwords = new Set([
+    'the', 'a', 'an', 'and', 'or', 'to', 'of', 'in', 'on', 'for', 'with', 'by', 'is', 'are',
+    'was', 'were', 'be', 'being', 'been', 'that', 'this', 'it', 'as', 'at', 'from', 'our',
+    'your', 'their', 'fact', 'facts', 'about',
+  ])
+
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s._-]/g, ' ')
+    .split(/\s+/)
+    .map(token => token.trim())
+    .filter(token => token.length >= 3)
+    .filter(token => !stopwords.has(token))
+}
+
+function hasSemanticSupport(text: string, fact: string): boolean {
+  const factTokens = tokenize(fact)
+  if (factTokens.length === 0) return false
+
+  const textTokenSet = new Set(tokenize(text))
+  let overlap = 0
+  for (const token of factTokens) {
+    if (textTokenSet.has(token)) overlap += 1
+  }
+
+  const ratio = overlap / factTokens.length
+  return overlap >= 3 || ratio >= 0.5
+}
+
+async function readFactEvidence(
   toolExecutor: ToolExecutor,
-  fact: string,
-  domain?: string,
-): Promise<IntentResult> {
-  const query = domain ? `${domain} ${fact}` : fact
+  query: string,
+  discoveryDepth: 'shallow' | 'deep',
+  limit: number,
+): Promise<{
+    results: Array<{ content?: string; metadata?: { id?: string } }>
+    retrieval?: { method?: string; detail?: string }
+  }> {
   const response = await toolExecutor.execute(
     createToolUse('read_documents', {
       query,
       mode: 'content',
       includeContent: true,
-      limit: 5,
+      limit,
+      discoveryDepth,
     }),
   )
 
@@ -34,32 +68,78 @@ export async function validateFact(
     results?: Array<{ content?: string; metadata?: { id?: string } }>
     retrieval?: { method?: string; detail?: string }
   }
-  const retrieval = typedResponse.retrieval
-  const retrievalText = describeRetrieval(retrieval)
 
-  const results = ((typedResponse)
-    .results ?? [])
+  return {
+    results: typedResponse.results ?? [],
+    retrieval: typedResponse.retrieval,
+  }
+}
 
-  if (results.length === 0) {
+export async function validateFact(
+  toolExecutor: ToolExecutor,
+  fact: string,
+  domain?: string,
+): Promise<IntentResult> {
+  const query = domain ? `${domain} ${fact}` : fact
+  const shallow = await readFactEvidence(toolExecutor, query, 'shallow', 5)
+  let effectiveResults = shallow.results
+  let effectiveRetrieval = shallow.retrieval
+  let deepUsed = false
+
+  const shallowSupporting = shallow.results.filter(r => {
+    const content = r.content ?? ''
+    return containsFact(content, fact) || hasSemanticSupport(content, fact)
+  })
+
+  if (shallow.results.length === 0 || shallowSupporting.length === 0) {
+    const deep = await readFactEvidence(toolExecutor, query, 'deep', 12)
+    if (deep.results.length > 0) {
+      effectiveResults = deep.results
+      effectiveRetrieval = deep.retrieval
+      deepUsed = true
+    }
+  }
+
+  const retrievalText = describeRetrieval(effectiveRetrieval)
+
+  if (effectiveResults.length === 0) {
     return {
       status: 'uncertain',
       confidence: 0.2,
       explanation: `No supporting documents found for this fact. ${retrievalText}`,
       recommendedAction: 'submit_fact',
       provenance: [],
-      data: { retrieval },
+      data: {
+        retrieval: effectiveRetrieval,
+        evidencePolicy: {
+          shallowCount: shallow.results.length,
+          deepUsed,
+          finalCount: effectiveResults.length,
+        },
+      },
     }
   }
 
-  const supporting = results.filter(r => containsFact(r.content ?? '', fact))
+  const supporting = effectiveResults.filter(r => {
+    const content = r.content ?? ''
+    return containsFact(content, fact) || hasSemanticSupport(content, fact)
+  })
+
   if (supporting.length === 0) {
     return {
-      status: 'invalid',
-      confidence: 0.8,
-      explanation: `Relevant documents found but none support the stated fact. ${retrievalText}`,
-      recommendedAction: 'dispute_fact',
-      provenance: results.map(r => r.metadata?.id).filter(Boolean) as string[],
-      data: { retrieval },
+      status: 'uncertain',
+      confidence: 0.45,
+      explanation: `Relevant documents were found, but support is inconclusive after evidence discovery. ${retrievalText}`,
+      recommendedAction: 'query_truth',
+      provenance: effectiveResults.map(r => r.metadata?.id).filter(Boolean) as string[],
+      data: {
+        retrieval: effectiveRetrieval,
+        evidencePolicy: {
+          shallowCount: shallow.results.length,
+          deepUsed,
+          finalCount: effectiveResults.length,
+        },
+      },
     }
   }
 
@@ -67,10 +147,17 @@ export async function validateFact(
   return {
     status: 'valid',
     confidence,
-    explanation: `Fact appears in relevant documents. ${retrievalText}`,
+    explanation: `${deepUsed ? 'Fact support confirmed after deep evidence discovery. ' : 'Fact appears in relevant documents. '}${retrievalText}`,
     recommendedAction: 'none',
     provenance: supporting.map(r => r.metadata?.id).filter(Boolean) as string[],
-    data: { retrieval },
+    data: {
+      retrieval: effectiveRetrieval,
+      evidencePolicy: {
+        shallowCount: shallow.results.length,
+        deepUsed,
+        finalCount: effectiveResults.length,
+      },
+    },
   }
 }
 

@@ -239,4 +239,36 @@ describe('DefaultIntentRouter', () => {
     expect(decision.selectedOperation).toBe('read_documents')
     expect(decision.operationInput.discoveryDepth).toBe('deep')
   })
+
+  it('Given query_truth with high-recall token query, then auto-promotes to deep discovery and wider limit', async () => {
+    const executor = createExecutorMock()
+    const router = new DefaultIntentRouter(executor)
+
+    const decision = await router.route({
+      intent: 'query_truth',
+      payload: {
+        query: 'CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION',
+      },
+    })
+
+    expect(decision.selectedOperation).toBe('read_documents')
+    expect(decision.operationInput.discoveryDepth).toBe('deep')
+    expect(decision.operationInput.limit).toBe(12)
+  })
+
+  it('Given explain_change with high-recall token query, then routes with deep discovery', async () => {
+    const executor = createExecutorMock()
+    const router = new DefaultIntentRouter(executor)
+
+    const decision = await router.route({
+      intent: 'explain_change',
+      payload: {
+        fact: 'CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION',
+      },
+    })
+
+    expect(decision.selectedOperation).toBe('read_documents')
+    expect(decision.operationInput.discoveryDepth).toBe('deep')
+    expect(decision.operationInput.limit).toBe(8)
+  })
 })

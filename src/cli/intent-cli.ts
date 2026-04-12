@@ -247,8 +247,14 @@ export async function enrichReadDocumentsAnswerWithLLM(
       maxTokens: 180,
     })
 
-    const answer = completion.text.trim()
+    let answer = completion.text.trim()
     if (!answer) return result
+
+    if (looksLikeInsufficientEvidenceAnswer(answer)) {
+      const fallback = buildDeterministicIntentAnswer(question, results)
+      answer = fallback
+        ?? 'I do not have enough grounded evidence yet. Next step: run kb query "<your fact>" --discovery deep --output json, then kb submit "<fact>" if evidence is missing.'
+    }
 
     return {
       ...result,
@@ -260,6 +266,77 @@ export async function enrichReadDocumentsAnswerWithLLM(
   } catch {
     return result
   }
+}
+
+function looksLikeInsufficientEvidenceAnswer(text: string): boolean {
+  const normalized = text.toLowerCase()
+  return (
+    normalized.includes('evidence provided does not contain')
+    || normalized.includes('retrieved documents do not provide specific information')
+    || normalized.includes('does not provide specific information')
+    || normalized.includes('do not provide specific information')
+    || normalized.includes('does not contain specific information')
+    || normalized.includes('do not contain specific information')
+    || normalized.includes('do not contain specific details')
+    || normalized.includes('does not provide specific details')
+    || normalized.includes('do not provide specific details')
+    || normalized.includes('do not contain any information about')
+    || normalized.includes('does not contain any information about')
+    || normalized.includes('cannot provide an answer based on the available evidence')
+    || normalized.includes('evidence is insufficient')
+    || normalized.includes('do not have enough evidence')
+    || normalized.includes('need additional information')
+  )
+}
+
+function buildDeterministicIntentAnswer(
+  question: string,
+  results: ReadDocumentsResultItem[],
+): string | undefined {
+  const normalizedQuestion = question.toLowerCase().trim()
+  const highRecall = requiresHighRecallQuery(normalizedQuestion)
+
+  for (const item of results.slice(0, 10)) {
+    const docId = item.metadata?.id ?? 'unknown-doc'
+    const lines = (item.content ?? '')
+      .split('\n')
+      .map(line => line.trim().replace(/^[-*]\s+/, ''))
+      .filter(line =>
+        line.length > 0
+        && !line.startsWith('#')
+        && !line.startsWith('Created:')
+        && !line.startsWith('Tags:')
+        && !line.startsWith('Type:'),
+      )
+
+    const exact = lines.find(line => line.toLowerCase().includes(normalizedQuestion))
+    if (exact) {
+      return `${exact} (source: ${docId})`
+    }
+
+    if (!highRecall) {
+      const fallback = lines.find(line => line.length >= 25)
+      if (fallback) {
+        return `${fallback} (source: ${docId})`
+      }
+    }
+  }
+
+  return undefined
+}
+
+function requiresHighRecallQuery(query: string): boolean {
+  const trimmed = query.trim()
+  if (!trimmed) return false
+
+  const tokenLike = /^[a-z0-9._-]{16,}$/.test(trimmed)
+  if (tokenLike) return true
+
+  if (trimmed.length >= 20 && (trimmed.includes('_') || trimmed.includes('-'))) {
+    return true
+  }
+
+  return false
 }
 
 function isReadDocumentsResult(result: IntentResult): boolean {

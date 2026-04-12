@@ -446,6 +446,137 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('assistant> CLI quick-reference: kb --help; kb submit/query/validate/dispute/explain with --output json. (source: general-facts)')
   })
 
+  it('Given high-recall token question, then initial retrieval uses deep discovery policy', async () => {
+    const io = new ScriptedIO(['CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION', '/exit'])
+
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi.fn(async () => ({
+        retrieval: {
+          method: 'hybrid',
+          detail: 'fts+vector-rerank',
+        },
+        results: [
+          {
+            metadata: { id: 'retrieval-facts' },
+            content: '# retrieval facts\n\n- CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION\n',
+          },
+        ],
+      })),
+    }
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'Token exists in retrieval facts.',
+        stopReason: 'end_turn',
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
+    await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
+
+    const firstCall = (executor.execute as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(firstCall?.name).toBe('read_documents')
+    expect(firstCall?.input?.discoveryDepth).toBe('deep')
+    expect(firstCall?.input?.limit).toBe(12)
+  })
+
+  it('Given high-recall token question without exact evidence line, then chat returns actionable uncertainty instead of unrelated fallback', async () => {
+    const io = new ScriptedIO(['CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION', '/exit'])
+
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi
+        .fn()
+        .mockResolvedValue({
+          retrieval: {
+            method: 'hybrid',
+            detail: 'fts+vector-rerank',
+          },
+          results: [
+            {
+              metadata: { id: 'general-facts' },
+              content: '# general facts\n\n- CLI quick-reference: kb --help; kb query --output json.\n',
+            },
+          ],
+        }),
+    }
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'The retrieved documents do not contain any information about this token.',
+        stopReason: 'end_turn',
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
+    await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
+
+    const output = io.outputs.join('\n')
+    expect(output).toContain('I do not have enough grounded evidence yet.')
+    expect(output).toContain('kb query "<your fact>" --discovery deep --output json')
+    expect(output).not.toContain('assistant> CLI quick-reference')
+  })
+
+  it('Given insufficiency wording "does not contain any information about", then deep fallback recovers deterministic answer', async () => {
+    const io = new ScriptedIO(['What is the rollout strategy?', '/exit'])
+
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi
+        .fn()
+        .mockResolvedValueOnce({
+          retrieval: {
+            method: 'hybrid',
+            detail: 'fts+vector-rerank',
+          },
+          results: [
+            {
+              metadata: { id: 'general-facts' },
+              content: '# general facts\n\n- lane checks only.\n',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          retrieval: {
+            method: 'hybrid',
+            detail: 'deep-discovery',
+          },
+          results: [
+            {
+              metadata: { id: 'general-facts' },
+              content: '# general facts\n\n- Rollout strategy is immediate.\n',
+            },
+          ],
+        }),
+    }
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'The retrieved documents do not contain any information about rollout strategy.',
+        stopReason: 'end_turn',
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
+    await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
+
+    expect(executor.execute).toHaveBeenCalledTimes(2)
+    expect(io.outputs.join('\n')).toContain('assistant> Rollout strategy is immediate. (source: general-facts)')
+  })
+
   it('Given non-CLI question about .env.local, then fallback prefers env line over CLI quick-reference', async () => {
     const io = new ScriptedIO(['explain the .env.local situation', '/exit'])
 

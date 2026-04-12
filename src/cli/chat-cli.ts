@@ -85,14 +85,16 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
       }
 
       try {
+        const highRecall = requiresHighRecallQuestion(input)
         const readResult = await deps.toolExecutor.execute({
           id: `chat-read-${Date.now()}`,
           name: 'read_documents',
           input: {
             query: input,
             mode: 'content',
+            discoveryDepth: highRecall ? 'deep' : 'shallow',
             includeContent: true,
-            limit: retrievalLimit,
+            limit: highRecall ? Math.max(retrievalLimit * 2, 12) : retrievalLimit,
           },
         })
 
@@ -187,6 +189,10 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
           }
         }
 
+        if (looksLikeInsufficientEvidenceAnswer(answer)) {
+          answer = 'I do not have enough grounded evidence yet. Try: kb query "<your fact>" --discovery deep --output json and then kb submit "<fact>" if it is missing.'
+        }
+
         io.write(`assistant> ${answer}`)
         io.write(`retrieval> ${formatRetrievalMode(retrievalForOutput.retrieval)}`)
         const checkpointTrace = formatCheckpointTrace(retrievalForOutput.retrieval)
@@ -259,12 +265,29 @@ function looksLikeInsufficientEvidenceAnswer(text: string): boolean {
     || normalized.includes('do not contain specific details')
     || normalized.includes('does not provide specific details')
     || normalized.includes('do not provide specific details')
+    || normalized.includes('do not contain any information about')
+    || normalized.includes('does not contain any information about')
+    || normalized.includes('cannot provide an answer based on the available evidence')
     || normalized.includes('evidence is insufficient')
     || normalized.includes('do not have enough evidence')
     || normalized.includes('need additional information')
     || normalized.includes('would need additional information')
     || normalized.includes('further specific queries')
   )
+}
+
+function requiresHighRecallQuestion(question: string): boolean {
+  const trimmed = question.trim()
+  if (!trimmed) return false
+
+  const tokenLike = /^[A-Z0-9._-]{16,}$/.test(trimmed)
+  if (tokenLike) return true
+
+  if (trimmed.length >= 20 && (trimmed.includes('_') || trimmed.includes('-'))) {
+    return true
+  }
+
+  return false
 }
 
 function buildFocusedEvidenceQuery(question: string): string | undefined {
@@ -308,6 +331,8 @@ function extractBestEvidenceLine(
 
   const tokens = tokenizeQuestion(question)
   const phrases = extractQuestionPhrases(tokens)
+  const normalizedQuestion = question.toLowerCase().trim()
+  const highRecall = requiresHighRecallQuestion(question)
   let best: { line: string; docId: string; score: number } | undefined
 
   for (const result of results.slice(0, 5)) {
@@ -326,6 +351,10 @@ function extractBestEvidenceLine(
     for (const line of lines) {
       const cleanLine = line.replace(/^[-*]\s+/, '').trim()
       if (!cleanLine) continue
+
+      if (highRecall && !cleanLine.toLowerCase().includes(normalizedQuestion)) {
+        continue
+      }
 
       const score = scoreLineForQuestion(cleanLine, tokens, phrases)
       if (score < 2) continue
@@ -619,7 +648,7 @@ function formatSourceIds(results: ReadDocumentsResult['results']): string[] {
     .map(result => result.metadata?.id)
     .filter((value): value is string => Boolean(value))
 
-  return [...new Set(ids)].slice(0, 5)
+  return [...new Set(ids)].slice(0, 10)
 }
 
 function buildEvidence(results: ReadDocumentsResult['results']): string {

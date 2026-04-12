@@ -83,30 +83,47 @@ export class DefaultIntentRouter implements IntentRouter {
         }
 
       case 'query_truth':
+        {
+          const queryText = String(payload.topic ?? payload.query ?? '')
+          const highRecall = requiresHighRecallQuery(queryText)
+          const requestedLimit = typeof payload.limit === 'number' ? payload.limit : 5
+          const effectiveLimit = highRecall ? Math.max(requestedLimit, 12) : requestedLimit
+          const effectiveDiscoveryDepth = payload.discoveryDepth ?? (highRecall ? 'deep' : 'shallow')
+
         return {
           selectedOperation: 'read_documents',
           operationInput: {
-            query: payload.topic ?? payload.query ?? '',
+            query: queryText,
             mode: 'content',
             includeContent: true,
-            limit: payload.limit ?? 5,
+            limit: effectiveLimit,
             type: payload.type,
-            discoveryDepth: payload.discoveryDepth,
+            discoveryDepth: effectiveDiscoveryDepth,
           },
-          policyReason: 'query intent maps directly to read_documents',
+          policyReason: highRecall
+            ? 'query intent maps to read_documents with high-recall evidence policy'
+            : 'query intent maps directly to read_documents',
         }
+      }
 
       case 'explain_change':
+        {
+          const queryText = String(payload.changeId ?? payload.fact ?? '')
+          const highRecall = requiresHighRecallQuery(queryText)
         return {
           selectedOperation: 'read_documents',
           operationInput: {
-            query: payload.changeId ?? payload.fact ?? '',
+            query: queryText,
             // Auto mode allows ID-first lookup with semantic/content fallback.
             includeContent: true,
-            limit: 3,
+            limit: highRecall ? 8 : 3,
+            discoveryDepth: highRecall ? 'deep' : 'shallow',
           },
-          policyReason: 'explain intent reads change/fact context with id-first + semantic fallback',
+          policyReason: highRecall
+            ? 'explain intent uses high-recall evidence policy for exact-token lookup'
+            : 'explain intent reads change/fact context with id-first + semantic fallback',
         }
+      }
 
       default:
         return {
@@ -333,6 +350,20 @@ function asOptionalString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
   return trimmed ? trimmed : undefined
+}
+
+function requiresHighRecallQuery(query: string): boolean {
+  const trimmed = query.trim()
+  if (!trimmed) return false
+
+  const tokenLike = /^[A-Z0-9._-]{16,}$/.test(trimmed)
+  if (tokenLike) return true
+
+  if (trimmed.length >= 20 && (trimmed.includes('_') || trimmed.includes('-'))) {
+    return true
+  }
+
+  return false
 }
 
 function extractProvenance(result: unknown): string[] {

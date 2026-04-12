@@ -28,3 +28,5 @@ Tags: general, fact
 
 
 - Rollout strategy is immediate. (source: consumer)
+
+- FINAL_CONSISTENCY_CHECKPOINT_20260412 (source: consumer)

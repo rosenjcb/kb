@@ -262,6 +262,43 @@ describe('intent-cli parsing', () => {
 
     await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
   })
+
+  it('Given LLM insufficiency boilerplate and exact token evidence present, enrichment should replace answer with grounded fallback', async () => {
+    const parsed = parseIntentCommand(['query', 'CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION'])
+    const result = {
+      status: 'accepted' as const,
+      recommendedAction: 'read_documents',
+      data: {
+        results: [
+          {
+            metadata: { id: 'retrieval-facts', title: 'retrieval facts' },
+            content: [
+              '# retrieval facts',
+              '',
+              '- CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION (source: consumer)',
+            ].join('\n'),
+          },
+        ],
+        total: 1,
+      },
+    }
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'The evidence provided does not contain any information about this token.',
+        stopReason: 'end_turn',
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
+    const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
+    const data = enriched.data as { answer?: string }
+    expect(data.answer).toContain('CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION')
+    expect(data.answer).toContain('(source: retrieval-facts)')
+  })
 })
 
 describe('intent-cli execution', () => {
