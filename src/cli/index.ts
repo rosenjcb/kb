@@ -6,7 +6,6 @@
  */
 
 import fs from 'fs'
-import path from 'path'
 import dayjs from 'dayjs'
 import { createProvider } from '../core/llm-provider'
 import { agentLoop } from '../core/agent-loop'
@@ -19,6 +18,39 @@ import {
   printIntentHelp,
 } from './intent-cli'
 import { assertConsumerSafeCommand } from '../intents/policy'
+import {
+  formatDefaultCommandHelp,
+  formatUseCommandHelp,
+  readBaseConfig,
+  resolveBaseToDir,
+  resolveEffectiveBaseDir,
+  writeDefaultBase,
+} from './base-selection'
+
+function printCliHelp(): string {
+  return [
+    'KB Agent Harness',
+    '',
+    'Usage:',
+    '  kb <query>',
+    '  kb <sessionFile.md> <query>',
+    '  kb <intent-command> [options]',
+    '',
+    printIntentHelp(),
+    '',
+    'Examples:',
+    '  kb "What tools are available?"',
+    '  kb query "document store plan" --limit 5 --output json',
+    '  kb use dogfood',
+    '  kb use --show',
+    '  kb default dogfood',
+    '  kb default --show',
+    '  KB_BASE=dogfood kb submit "Fact text" --target session-log-2026-04-12',
+    '',
+    'Flags:',
+    '  -h, --help    Show this help message',
+  ].join('\n')
+}
 
 function loadLocalEnvFiles() {
   const processWithEnvLoader = process as typeof process & {
@@ -61,32 +93,58 @@ function resolveProviderFromEnv():
   return 'ollama'
 }
 
-function resolveKbStorageDir(): string {
-  const configuredBaseDir = (process.env.KB_BASE_DIR || '').trim()
-  if (configuredBaseDir) {
-    return path.isAbsolute(configuredBaseDir)
-      ? configuredBaseDir
-      : path.join(process.cwd(), configuredBaseDir)
-  }
-
-  const namespace = (process.env.KB_NAMESPACE || '').trim()
-  if (namespace) {
-    const safeNamespace = namespace.replace(/[^a-zA-Z0-9._-]/g, '-').toLowerCase()
-    return path.join(process.cwd(), 'sessions', 'namespaces', safeNamespace, 'documents')
-  }
-
-  return path.join(process.cwd(), 'sessions', 'documents')
-}
-
 async function main() {
   loadLocalEnvFiles()
   console.log('🤖 KB Agent Harness\n')
 
   // Parse arguments: [sessionFile?] query...
   const args = process.argv.slice(2)
-  if (args.length === 0) {
-    console.error('Usage: kb <query> or kb <sessionFile> <query>')
-    process.exit(1)
+  const firstArg = args[0]
+
+  if (args.length === 0 || firstArg === '--help' || firstArg === '-h' || firstArg === 'help') {
+    console.log(printCliHelp())
+    return
+  }
+
+  if (firstArg === 'use') {
+    const base = args[1]
+    if (base === '--show' || !base) {
+      const effective = await resolveEffectiveBaseDir()
+      const configured = await readBaseConfig()
+      console.log('KB base configuration')
+      console.log(`Source: ${effective.source}`)
+      console.log(`Base: ${effective.baseName ?? '(path override)'}`)
+      console.log(`Resolved path: ${effective.baseDir}`)
+      if (configured.defaultBase) {
+        console.log(`Saved default: ${configured.defaultBase}`)
+      }
+      return
+    }
+
+    const resolved = resolveBaseToDir(base)
+    console.log(formatUseCommandHelp(base, resolved))
+    return
+  }
+
+  if (firstArg === 'default') {
+    const base = args[1]
+    if (base === '--show' || !base) {
+      const configured = await readBaseConfig()
+      if (!configured.defaultBase) {
+        console.log('No default base configured. Use: kb default <base>')
+        return
+      }
+      const resolved = resolveBaseToDir(configured.defaultBase)
+      console.log(`Default base: ${configured.defaultBase}`)
+      console.log(`Resolved path: ${resolved}`)
+      console.log('Use `kb default <base>` to change it.')
+      return
+    }
+
+    const saved = await writeDefaultBase(base)
+    const resolved = resolveBaseToDir(saved.defaultBase ?? base)
+    console.log(formatDefaultCommandHelp(saved.defaultBase ?? base, resolved))
+    return
   }
 
   let sessionFile: string | null = null
@@ -94,7 +152,6 @@ async function main() {
   let query = ''
 
   // Treat first arg as a session file when it looks like markdown and a query follows.
-  const firstArg = args[0]
   if (firstArg.endsWith('.md') && args.length > 1) {
     sessionFile = firstArg
     if (fs.existsSync(sessionFile)) {
@@ -111,7 +168,7 @@ async function main() {
   }
 
   const provider = resolveProviderFromEnv()
-  const kbStorageDir = resolveKbStorageDir()
+  const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
 
   // Consumer-intent command mode (bypasses LLM loop, routes intents directly)
   if (isIntentCommand(firstArg)) {

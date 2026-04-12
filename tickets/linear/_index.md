@@ -13,7 +13,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 
 ## Summary
 
-- Total files: 61 (60 tickets + this index)
+- Total files: 62 (61 tickets + this index)
 - Branch: feat/kb-ticket-backlog
 
 ## Foundation
@@ -50,6 +50,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [057 Specify consumer CLI intent UX and command set](tickets/linear/057-consumer-cli-intent-ux-and-commands.md)
 - [058 Implement consumer-intent API and IntentRouter runtime](tickets/linear/058-implement-consumer-intent-api-and-router.md)
 - [059 Implement intent-first CLI commands](tickets/linear/059-implement-intent-first-cli-commands.md)
+- [062 Add CLI base-selection commands for KB context](tickets/linear/062-cli-base-selection-commands.md)
 - [039 Define permission policy evaluation order](tickets/linear/039-permission-policy-evaluation-order.md)
 - [040 Define document ID stability rules](tickets/linear/040-kb-doc-id-stability-rules.md)
 

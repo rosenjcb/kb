@@ -17,7 +17,7 @@ const ConfigSchema = z.object({
   ollamaEndpoint: z.string().url().optional().default('http://localhost:11434'),
 
   // KB Storage
-  kbBaseDir: z.string().default('./kb/sessions/documents'),
+  kbBaseDir: z.string().default('./sessions/namespaces/default/documents'),
 
   // Agent Loop Tuning
   maxAgentTurns: z.number().int().min(1).default(10),
