@@ -5,6 +5,7 @@
 
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
+import dayjs from 'dayjs'
 
 export interface QueryDocumentsInput {
   query?: string
@@ -48,8 +49,8 @@ function parseDocumentMetadata(filePath: string, content: string): DocumentMetad
   const id = path.basename(filePath, '.md')
   
   // Parse Created timestamp (should be in first few lines)
-  let createdAt = new Date().toISOString()
-  let updatedAt = new Date().toISOString()
+  let createdAt = dayjs().toISOString()
+  let updatedAt = dayjs().toISOString()
   let tags: string[] | undefined
   
   for (let i = 1; i < Math.min(10, lines.length); i++) {

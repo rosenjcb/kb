@@ -22,6 +22,25 @@ This is mandatory and does not depend on skill invocation.
    - git commit -m "kb: checkpoint knowledge base"
    - git push
 
+## Open-Question Gate (Mandatory)
+
+When a ticket implementation plan contains any unresolved/open question, the agent must explicitly ask the user for a decision before closing the ticket.
+
+Allowed outcomes before closure:
+
+1. User provides a decision and the ticket is updated accordingly.
+2. User explicitly approves deferral with a time-box and follow-up ticket reference.
+
+If neither happened, do not mark the ticket closed.
+
+When practical, ask unresolved decisions as multiple-choice prompts:
+
+1. Present 2-5 concrete options.
+2. Mark one recommended default.
+3. Allow user freeform override.
+
+This is preferred for speed, consistency, and easier agent handoff.
+
 ## CLI Fallback
 
 If global kb is unavailable in the environment:
