@@ -20,6 +20,27 @@ import {
 } from './intent-cli'
 import { assertConsumerSafeCommand } from '../intents/policy'
 
+function printCliHelp(): string {
+  return [
+    'KB Agent Harness',
+    '',
+    'Usage:',
+    '  kb <query>',
+    '  kb <sessionFile.md> <query>',
+    '  kb <intent-command> [options]',
+    '',
+    printIntentHelp(),
+    '',
+    'Examples:',
+    '  kb "What tools are available?"',
+    '  kb query "document store plan" --limit 5 --output json',
+    '  KB_NAMESPACE=dogfood kb submit "Fact text" --target session-log-2026-04-12',
+    '',
+    'Flags:',
+    '  -h, --help    Show this help message',
+  ].join('\n')
+}
+
 function loadLocalEnvFiles() {
   const processWithEnvLoader = process as typeof process & {
     loadEnvFile?: (path?: string) => void
@@ -84,9 +105,11 @@ async function main() {
 
   // Parse arguments: [sessionFile?] query...
   const args = process.argv.slice(2)
-  if (args.length === 0) {
-    console.error('Usage: kb <query> or kb <sessionFile> <query>')
-    process.exit(1)
+  const firstArg = args[0]
+
+  if (args.length === 0 || firstArg === '--help' || firstArg === '-h' || firstArg === 'help') {
+    console.log(printCliHelp())
+    return
   }
 
   let sessionFile: string | null = null
@@ -94,7 +117,6 @@ async function main() {
   let query = ''
 
   // Treat first arg as a session file when it looks like markdown and a query follows.
-  const firstArg = args[0]
   if (firstArg.endsWith('.md') && args.length > 1) {
     sessionFile = firstArg
     if (fs.existsSync(sessionFile)) {
