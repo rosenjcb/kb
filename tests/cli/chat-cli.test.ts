@@ -167,10 +167,38 @@ describe('chat-cli session loop', () => {
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
-      execute: vi.fn(async () => ({
-        retrieval: { method: 'lexical-fallback', detail: 'fts-no-candidates' },
-        results: [{ metadata: { id: 'ticket-047-phase2-implementation-checkpoint' }, content: 'Ticket status notes.' }],
-      })),
+      execute: vi
+        .fn()
+        .mockResolvedValueOnce({
+          retrieval: {
+            method: 'hybrid',
+            detail: 'fts+vector-rerank',
+            checkpoints: [
+              {
+                stage: 'hybrid_primary',
+                status: 'hit',
+                nextAction: 'return',
+                confidence: 0.55,
+              },
+            ],
+          },
+          results: [{ metadata: { id: 'session-log-2026-04-12' }, content: 'Session notes only.' }],
+        })
+        .mockResolvedValueOnce({
+          retrieval: {
+            method: 'lexical-fallback',
+            detail: 'keyword-broadened',
+            checkpoints: [
+              {
+                stage: 'lexical_recovery',
+                status: 'hit',
+                nextAction: 'return',
+                confidence: 0.55,
+              },
+            ],
+          },
+          results: [{ metadata: { id: 'session-log-2026-04-12' }, content: 'Session notes only.' }],
+        }),
     }
 
     const provider: LLMProvider = {
@@ -186,13 +214,73 @@ describe('chat-cli session loop', () => {
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor, workspaceDir }, io)
 
+    expect(executor.execute).toHaveBeenCalledTimes(1)
     expect(provider.call).toHaveBeenCalledTimes(1)
     const callInput = (provider.call as { mock: { calls: Array<[any]> } }).mock.calls[0][0]
     const message = callInput.messages[0]?.content
     expect(message).toContain('workspace-readme')
     expect(message).toContain('intent-first local KB CLI')
-    expect(io.outputs.join('\n')).toContain('retrieval> lexical-fallback (fts-no-candidates;workspace-fallback)')
-    expect(io.outputs.join('\n')).toContain('sources> ticket-047-phase2-implementation-checkpoint, workspace-readme')
+    expect(io.outputs.join('\n')).toContain('retrieval> hybrid (fts+vector-rerank;workspace-fallback)')
+    expect(io.outputs.join('\n')).toContain('sources> session-log-2026-04-12, workspace-readme')
+  })
+
+  it('Given low-confidence advance checkpoint, then chat performs recovery retrieval attempt', async () => {
+    const io = new ScriptedIO(['What should I do for unknown runtime warning?', '/exit'])
+
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi
+        .fn()
+        .mockResolvedValueOnce({
+          retrieval: {
+            method: 'lexical-fallback',
+            detail: 'fts-no-candidates',
+            checkpoints: [
+              {
+                stage: 'lexical_recovery',
+                status: 'miss',
+                nextAction: 'advance',
+                confidence: 0,
+              },
+            ],
+          },
+          results: [],
+        })
+        .mockResolvedValueOnce({
+          retrieval: {
+            method: 'lexical',
+            detail: 'hybrid-not-attempted',
+            checkpoints: [
+              {
+                stage: 'query_rewrite_retry',
+                status: 'hit',
+                nextAction: 'return',
+                confidence: 0.55,
+              },
+            ],
+          },
+          results: [{ metadata: { id: 'known-runbook' }, content: 'Known runbook recovery content.' }],
+        }),
+    }
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'Try the known runbook recovery steps first.',
+        stopReason: 'end_turn',
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
+    await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
+
+    expect(executor.execute).toHaveBeenCalledTimes(2)
+    expect(io.outputs.join('\n')).toContain('assistant> Try the known runbook recovery steps first.')
+    expect(io.outputs.join('\n')).toContain('retrieval> lexical (hybrid-not-attempted;chat-recovery-retry)')
+    expect(io.outputs.join('\n')).toContain('sources> known-runbook')
   })
 })
 

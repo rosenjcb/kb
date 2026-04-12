@@ -74,3 +74,7 @@ These components contribute significantly to the system's development and operat
 - Implemented ticket 073 core miss-learning runtime: added sqlite schema/tables for retrieval_miss_events and retrieval_ranking_hints, added indexer APIs for recording miss events/listing miss clusters/reading ranking hints, integrated markdown reader with flag-gated miss capture and flag-gated ranking-hint boosts for hybrid ranking, and added tests for schema persistence + guardrails; focused suites and type-check passing. (source: implementation)
 
 - Implemented ticket 074 rollout guardrails and observability: added retrieval_checkpoint_events schema, per-stage metrics API, promote/hold/rollback evaluator with explicit thresholds, reader checkpoint persistence path, and executable evaluation tests for promotion/rollback + stage observability. (source: implementation)
+
+- Patched chat fallback policy for broad project-overview prompts: low-signal source detection now forces workspace fallback augmentation, added low-confidence recovery retry path, and preserved checkpoint trace metadata through fallback responses; validated via chat-cli tests + type-check + live kb chat dogfood run. (source: implementation)
+
+- README dogfood checkpoint: added KB overview, base precedence order, and daily workflow guidance into general-facts for retrieval context. (source: readme)
