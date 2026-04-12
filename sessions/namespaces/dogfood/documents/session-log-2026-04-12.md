@@ -96,3 +96,9 @@ These components contribute significantly to the system's development and operat
 - Documentation checkpoint: added canonical CLI usage guidance and A/B retrieval toggle instructions into dogfood facts for discoverability. (source: consumer)
 
 - Retrieval policy update: structured/organized stores are now queried first, with session-log lane treated as last-resort fallback for general queries; explicit change-diff/history queries route directly to session-log lane. Also fixed hybrid response metadata preservation so lane-routing details are not overwritten at the top-level response. (source: consumer)
+
+- Planning checkpoint: created ticket 079 for fact-wide reconciliation/global rewrite propagation (exclude session-log by default, index-assisted candidate discovery with crawl fallback, deterministic reconciliation report), and created branch feat/079-fact-reconciliation-propagation from main for implementation. (source: consumer)
+
+- Implemented ticket 079: added submit-driven fact-wide reconciliation with --replace-from/--replace-to, default session-log exclusion, optional include-session-logs and dry-run flags, index-assisted candidate prioritization with full-crawl fallback, deterministic reconciliation report, and focused passing tests across intent parser/router and specialized document operations. (source: consumer)
+
+- Dogfood validation for ticket 079 reconciliation: refreshed global CLI, dry-run and live submit with --replace-from/--replace-to both returned reconcile_facts report; session-log remained skipped by default; index-assisted+full-crawl discovery reported deterministic counts; post-run query showed only replacement token in non-session docs. (source: consumer)

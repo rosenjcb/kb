@@ -7,6 +7,10 @@ import type {
   MergeDocumentsInput,
   MergeDocumentsResult,
   PruneDocumentInput,
+  ReconcileContradictionsInput,
+  ReconcileContradictionsResult,
+  ReconcileFactsInput,
+  ReconcileFactsResult,
   UpdateDocumentInput,
   WriteDocumentInput,
   WriteDocumentResult,
@@ -15,6 +19,8 @@ import {
   appendToDocument as appendToDocumentImpl,
   mergeDocuments as mergeDocumentsImpl,
   pruneDocument as pruneDocumentImpl,
+  reconcileContradictions as reconcileContradictionsImpl,
+  reconcileFacts as reconcileFactsImpl,
   updateDocument as updateDocumentImpl,
 } from './specialized-document-tools'
 import { SqliteKbIndexer } from './sqlite-kb-index'
@@ -112,6 +118,32 @@ export class MarkdownMDWriterTool implements DocumentWriterExtended {
 
     if (result.status === 'merged') {
       await this.syncSqliteIndexByDocumentId(input.targetDocId)
+    }
+
+    return result
+  }
+
+  async reconcileFacts(input: ReconcileFactsInput): Promise<ReconcileFactsResult> {
+    await mkdir(this.baseDir, { recursive: true })
+    const result = await reconcileFactsImpl(input, this.baseDir)
+
+    if (!input.dryRun && this.sqliteIndexer && result.changedDocumentIds.length > 0) {
+      for (const documentId of result.changedDocumentIds) {
+        await this.syncSqliteIndexByDocumentId(documentId)
+      }
+    }
+
+    return result
+  }
+
+  async reconcileContradictions(input: ReconcileContradictionsInput): Promise<ReconcileContradictionsResult> {
+    await mkdir(this.baseDir, { recursive: true })
+    const result = await reconcileContradictionsImpl(input, this.baseDir)
+
+    if (!input.dryRun && this.sqliteIndexer && result.changedDocumentIds.length > 0) {
+      for (const documentId of result.changedDocumentIds) {
+        await this.syncSqliteIndexByDocumentId(documentId)
+      }
     }
 
     return result

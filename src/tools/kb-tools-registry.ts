@@ -14,6 +14,8 @@ import {
   type AppendToDocumentInput,
   type MergeDocumentsInput,
   type PruneDocumentInput,
+  type ReconcileContradictionsInput,
+  type ReconcileFactsInput,
   type UpdateDocumentInput,
 } from './document-writer'
 
@@ -193,6 +195,57 @@ export function createKBToolsRegistry(baseDir?: string): ToolExecutor {
   }
   registry.register('merge_documents', mergeToolDef, async (input) => {
     return await writer.mergeDocuments(input as unknown as MergeDocumentsInput)
+  })
+
+  // reconcile_facts
+  const reconcileFactsToolDef: ToolDefinition = {
+    name: 'reconcile_facts',
+    description: 'Replace outdated fact references across documents with lane-aware exclusion rules',
+    schema: {
+      type: 'object',
+      properties: {
+        replaceFrom: { type: 'string', description: 'Old canonical term/value to replace' },
+        replaceTo: { type: 'string', description: 'New canonical term/value' },
+        includeSessionLogs: {
+          type: 'boolean',
+          description: 'When true, include session-log docs in reconciliation (default: false)',
+        },
+        dryRun: {
+          type: 'boolean',
+          description: 'When true, report changes without writing files',
+        },
+      },
+      required: ['replaceFrom', 'replaceTo'],
+      additionalProperties: false,
+    },
+  }
+  registry.register('reconcile_facts', reconcileFactsToolDef, async (input) => {
+    return await writer.reconcileFacts(input as unknown as ReconcileFactsInput)
+  })
+
+  const reconcileContradictionsToolDef: ToolDefinition = {
+    name: 'reconcile_contradictions',
+    description: 'Detect and remove contradictory fact lines based on a newly submitted fact',
+    schema: {
+      type: 'object',
+      properties: {
+        newFact: { type: 'string', description: 'Newly submitted fact text used as canonical claim' },
+        domain: { type: 'string', description: 'Optional domain scope for contradiction cleanup' },
+        includeSessionLogs: {
+          type: 'boolean',
+          description: 'When true, include session-log docs in contradiction cleanup (default: false)',
+        },
+        dryRun: {
+          type: 'boolean',
+          description: 'When true, report cleanup plan without writing files',
+        },
+      },
+      required: ['newFact'],
+      additionalProperties: false,
+    },
+  }
+  registry.register('reconcile_contradictions', reconcileContradictionsToolDef, async (input) => {
+    return await writer.reconcileContradictions(input as unknown as ReconcileContradictionsInput)
   })
 
   return registry

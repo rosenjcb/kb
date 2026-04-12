@@ -42,6 +42,55 @@ export interface PruneDocumentInput {
   prunePattern: string // Section name or regex pattern to remove
 }
 
+export interface ReconcileFactsInput {
+  replaceFrom: string
+  replaceTo: string
+  includeSessionLogs?: boolean
+  dryRun?: boolean
+}
+
+export interface ReconcileContradictionsInput {
+  newFact: string
+  domain?: string
+  includeSessionLogs?: boolean
+  dryRun?: boolean
+}
+
+export interface ReconcileFactsDiffPreview {
+  documentId: string
+  filePath: string
+  replacements: number
+  diff: string
+}
+
+export interface ReconcileFactsResult {
+  replaceFrom: string
+  replaceTo: string
+  dryRun: boolean
+  scannedDocs: number
+  changedDocs: number
+  skippedDocs: number
+  totalReplacements: number
+  changedDocumentIds: string[]
+  skippedDocumentIds: string[]
+  proposedDiffs: ReconcileFactsDiffPreview[]
+  discovery: {
+    strategy: 'index-assisted+full-crawl' | 'full-crawl'
+    indexCandidateCount: number
+  }
+}
+
+export interface ReconcileContradictionsResult {
+  newFact: string
+  domain: string
+  dryRun: boolean
+  scannedDocs: number
+  changedDocs: number
+  removedFacts: number
+  changedDocumentIds: string[]
+  proposedDiffs: ReconcileFactsDiffPreview[]
+}
+
 // ─── Extended DocumentWriter Interface ───────────────────────
 // Storage implementations should support these new operations
 
@@ -50,6 +99,8 @@ export interface DocumentWriterExtended extends DocumentWriter {
   updateDocument?(input: UpdateDocumentInput): Promise<WriteDocumentResult>
   mergeDocuments?(input: MergeDocumentsInput): Promise<MergeDocumentsResult>
   pruneDocument?(input: PruneDocumentInput): Promise<WriteDocumentResult>
+  reconcileFacts?(input: ReconcileFactsInput): Promise<ReconcileFactsResult>
+  reconcileContradictions?(input: ReconcileContradictionsInput): Promise<ReconcileContradictionsResult>
 }
 
 export interface WriteDocumentResult {

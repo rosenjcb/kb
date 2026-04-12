@@ -172,4 +172,73 @@ describe('MarkdownMDWriterTool specialized operations', () => {
     const merged = await readFile(mergedPath, 'utf8')
     expect(merged).toContain('## Merged Notes (auth-v2)')
   })
+
+  it('Given reconcileFacts default policy, then replaces in non-session docs and skips session-log docs', async () => {
+    const baseDir = await createTempDir()
+    const writer = new MarkdownMDWriterTool({ baseDir })
+
+    await writer.writeDocument({
+      title: 'General Facts',
+      content: 'Canonical mapping uses foo in production docs.',
+      documentId: 'general-facts',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    await writer.writeDocument({
+      title: 'Session Log - April 12',
+      content: 'Temporary note: foo appeared in this session note.',
+      documentId: 'session-log-2026-04-12',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    const result = await writer.reconcileFacts({
+      replaceFrom: 'foo',
+      replaceTo: 'bar',
+    })
+
+    expect(result.changedDocs).toBe(1)
+    expect(result.skippedDocs).toBe(1)
+    expect(result.changedDocumentIds).toContain('general-facts')
+    expect(result.skippedDocumentIds).toContain('session-log-2026-04-12')
+    expect(result.proposedDiffs.length).toBe(1)
+    expect(result.proposedDiffs[0]?.documentId).toBe('general-facts')
+    expect(result.proposedDiffs[0]?.diff).toContain('--- a/')
+    expect(result.proposedDiffs[0]?.diff).toContain('+++ b/')
+    expect(result.proposedDiffs[0]?.diff).toContain('-Canonical mapping uses foo in production docs.')
+    expect(result.proposedDiffs[0]?.diff).toContain('+Canonical mapping uses bar in production docs.')
+
+    const generalContent = await readFile(path.join(baseDir, 'general-facts.md'), 'utf8')
+    const sessionContent = await readFile(path.join(baseDir, 'session-log-2026-04-12.md'), 'utf8')
+    expect(generalContent).toContain('bar')
+    expect(generalContent).not.toContain('foo')
+    expect(sessionContent).toContain('foo')
+  })
+
+  it('Given reconcileFacts with includeSessionLogs true, then updates session-log documents too', async () => {
+    const baseDir = await createTempDir()
+    const writer = new MarkdownMDWriterTool({ baseDir })
+
+    await writer.writeDocument({
+      title: 'Session Log - April 12',
+      content: 'Temporary note: foo appeared in this session note.',
+      documentId: 'session-log-2026-04-12',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    const result = await writer.reconcileFacts({
+      replaceFrom: 'foo',
+      replaceTo: 'bar',
+      includeSessionLogs: true,
+    })
+
+    expect(result.changedDocs).toBe(1)
+    expect(result.skippedDocs).toBe(0)
+    expect(result.proposedDiffs.length).toBe(1)
+    const sessionContent = await readFile(path.join(baseDir, 'session-log-2026-04-12.md'), 'utf8')
+    expect(sessionContent).toContain('bar')
+    expect(sessionContent).not.toContain('foo')
+  })
 })

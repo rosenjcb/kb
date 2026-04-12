@@ -40,6 +40,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
             domain: readOption(rest, '--domain'),
             source: readOption(rest, '--source'),
             targetDocumentId: readOption(rest, '--target'),
+            includeSessionLogs: readFlag(rest, '--include-session-logs'),
           },
         },
         output,
@@ -125,6 +126,10 @@ export function formatIntentResult(result: IntentResult, output: CliOutputMode):
     return formatReadDocumentsHumanResult(result)
   }
 
+  if (isReconciliationReviewResult(result)) {
+    return formatReconciliationReviewHumanResult(result)
+  }
+
   const lines: string[] = []
   lines.push(`Status: ${result.status}`)
   if (typeof result.confidence === 'number') {
@@ -156,6 +161,27 @@ export function formatIntentResult(result: IntentResult, output: CliOutputMode):
   }
 
   return lines.join('\n')
+}
+
+interface ReconciliationDiffPreview {
+  documentId?: string
+  filePath?: string
+  replacements?: number
+  diff?: string
+}
+
+interface ReconciliationPreviewData {
+  changedDocs?: number
+  totalReplacements?: number
+  proposedDiffs?: ReconciliationDiffPreview[]
+}
+
+interface ReconciliationReviewResultData {
+  reconciliationPreview?: ReconciliationPreviewData
+  decisionOptions?: {
+    acceptFlag?: string
+    passFlag?: string
+  }
 }
 
 interface ReadDocumentsResultItem {
@@ -237,6 +263,50 @@ export async function enrichReadDocumentsAnswerWithLLM(
 
 function isReadDocumentsResult(result: IntentResult): boolean {
   return result.recommendedAction === 'read_documents' && result.status === 'accepted'
+}
+
+function isReconciliationReviewResult(result: IntentResult): boolean {
+  return result.status === 'pending_review' && result.recommendedAction === 'review_reconciliation_diff'
+}
+
+function formatReconciliationReviewHumanResult(result: IntentResult): string {
+  const data = (result.data ?? {}) as ReconciliationReviewResultData
+  const preview = data.reconciliationPreview
+  const diffs = Array.isArray(preview?.proposedDiffs) ? preview?.proposedDiffs : []
+  const acceptFlag = data.decisionOptions?.acceptFlag ?? '--accept-reconcile'
+  const passFlag = data.decisionOptions?.passFlag ?? '--pass-reconcile'
+
+  const lines: string[] = []
+  lines.push('Status: pending_review')
+  if (result.explanation) {
+    lines.push(`Why: ${result.explanation}`)
+  }
+  lines.push(`Reconciliation Preview: ${preview?.changedDocs ?? 0} docs, ${preview?.totalReplacements ?? 0} replacements`)
+  lines.push(`Decision: re-run submit with ${acceptFlag} to apply changes, or ${passFlag} to skip propagation.`)
+
+  if (diffs.length === 0) {
+    lines.push('Diffs: none')
+    return lines.join('\n')
+  }
+
+  lines.push('Proposed Diffs:')
+  for (const entry of diffs.slice(0, 5)) {
+    const label = entry.documentId ?? 'unknown-doc'
+    const replacementCount = typeof entry.replacements === 'number' ? entry.replacements : 0
+    const diffText = typeof entry.diff === 'string' ? entry.diff : ''
+    const trimmedDiff = diffText
+      .split('\n')
+      .slice(0, 40)
+      .join('\n')
+    lines.push(`--- ${label} (${replacementCount} replacements) ---`)
+    lines.push(trimmedDiff || '(no diff preview available)')
+  }
+
+  if (diffs.length > 5) {
+    lines.push(`Showing 5 of ${diffs.length} diff previews.`)
+  }
+
+  return lines.join('\n')
 }
 
 function formatReadDocumentsHumanResult(result: IntentResult): string {
@@ -562,7 +632,7 @@ function extractHighlights(content: string | undefined): HighlightRef[] {
 export function printIntentHelp(): string {
   return [
     'Intent commands:',
-    '  kb submit "<fact>" [--domain ops] [--source runbook] [--target doc-id] [--output human|json]',
+    '  kb submit "<fact>" [--domain ops] [--source runbook] [--target doc-id] [--include-session-logs] [--output human|json]',
     '  kb validate "<fact>" [--domain ops] [--output human|json]',
     '  kb dispute "<fact>" --because "<counter evidence>" [--domain ops] [--output human|json]',
     '  kb query "<topic>" [--limit 5] [--type decision] [--output human|json]',
@@ -603,6 +673,10 @@ function readOption(args: string[], option: string): string | undefined {
     throw new Error(`${option} requires a value`)
   }
   return value
+}
+
+function readFlag(args: string[], option: string): boolean {
+  return args.includes(option)
 }
 
 export function toIntentName(command: string): ConsumerIntent {

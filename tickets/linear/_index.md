@@ -13,7 +13,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 
 ## Summary
 
-- Total files: 78 (77 tickets + this index)
+- Total files: 80 (79 tickets + this index)
 - Branch: feat/kb-ticket-backlog
 
 ## Foundation
@@ -97,6 +97,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [075 Implement typed-lane indexing and runtime relevance-routed retrieval](tickets/linear/075-typed-lane-indexing-and-runtime-relevance-routing.md)
 - [076 Implement retrieval lane schema and index migration](tickets/linear/076-implement-lane-schema-and-index-migration.md)
 - [077 Implement runtime lane router and lane-aware retrieval pipeline](tickets/linear/077-implement-runtime-lane-router-and-lane-aware-retrieval.md)
+- [079 Implement fact-wide reconciliation and global rewrite propagation](tickets/linear/079-implement-fact-wide-reconciliation-and-global-rewrite-propagation.md)
 
 ## Reliability
 

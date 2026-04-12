@@ -8,7 +8,7 @@
 
 | kb-test-isolation-persistence-policy | Test Isolation and Persistence Policy | sessions/namespaces/dogfood/documents/kb-test-isolation-persistence-policy.md | 2026-04-12T13:55:58.286Z |
 
-| session-log-2026-04-12 | Session Log - April 12 2026 | sessions/namespaces/dogfood/documents/session-log-2026-04-12.md | 2026-04-12T18:56:14.144Z |
+| session-log-2026-04-12 | Session Log - April 12 2026 | sessions/namespaces/dogfood/documents/session-log-2026-04-12.md | 2026-04-12T19:15:28.204Z |
 
 | codebase-inventory-snapshot | Codebase Inventory Snapshot | sessions/namespaces/dogfood/documents/codebase-inventory-snapshot.md | 2026-04-12T16:21:20.504Z |
 
@@ -36,10 +36,18 @@
 
 | cli-facts | cli facts | sessions/namespaces/dogfood/documents/cli-facts.md | 2026-04-12T16:21:20.329Z |
 
-| general-facts | general facts | sessions/namespaces/dogfood/documents/general-facts.md | 2026-04-12T18:52:25.967Z |
+| general-facts | general facts | sessions/namespaces/dogfood/documents/general-facts.md | 2026-04-12T19:29:24.497Z |
 
 | readme-facts | readme facts | sessions/namespaces/dogfood/documents/readme-facts.md | 2026-04-12T18:27:18.688Z |
 
 | readme-facts-mnw3iu8s | readme facts | sessions/namespaces/dogfood/documents/readme-facts-mnw3iu8s.md | 2026-04-12T18:27:19.323Z |
 
 | readme-facts-mnw3iuq9 | readme facts | sessions/namespaces/dogfood/documents/readme-facts-mnw3iuq9.md | 2026-04-12T18:27:19.952Z |
+
+| reconcile-probe-facts | reconcile-probe facts | sessions/namespaces/dogfood/documents/reconcile-probe-facts.md | 2026-04-12T19:14:52.310Z |
+
+| reconcile-probe-facts-mnw58077 | reconcile-probe facts | sessions/namespaces/dogfood/documents/reconcile-probe-facts-mnw58077.md | 2026-04-12T19:14:53.058Z |
+
+| reconcile-probe-facts-mnw58bq0 | reconcile-probe facts | sessions/namespaces/dogfood/documents/reconcile-probe-facts-mnw58bq0.md | 2026-04-12T19:15:07.991Z |
+
+| reconcile-probe-facts-mnw58bug | reconcile-probe facts | sessions/namespaces/dogfood/documents/reconcile-probe-facts-mnw58bug.md | 2026-04-12T19:15:08.151Z |

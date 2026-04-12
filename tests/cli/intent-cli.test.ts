@@ -17,6 +17,17 @@ describe('intent-cli parsing', () => {
     expect(parsed.envelope.payload.domain).toBe('ops')
   })
 
+  it('Given submit with include-session-logs flag, then parses submit payload fields', () => {
+    const parsed = parseIntentCommand([
+      'submit',
+      'Rename canonical identifier.',
+      '--include-session-logs',
+    ])
+
+    expect(parsed.envelope.payload.includeSessionLogs).toBe(true)
+    expect(parsed.envelope.payload.targetDocumentId).toBeUndefined()
+  })
+
   it('Given dispute without because, then throws validation error', () => {
     expect(() => parseIntentCommand(['dispute', 'Fact only'])).toThrow(
       'dispute requires --because "<counter evidence>"',
