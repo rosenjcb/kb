@@ -6,6 +6,7 @@
  */
 
 import fs from 'fs'
+import path from 'path'
 import { createProvider } from '../core/llm-provider'
 import { agentLoop } from '../core/agent-loop'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
@@ -51,6 +52,23 @@ function resolveProviderFromEnv():
   return 'ollama'
 }
 
+function resolveKbStorageDir(): string {
+  const configuredBaseDir = (process.env.KB_BASE_DIR || '').trim()
+  if (configuredBaseDir) {
+    return path.isAbsolute(configuredBaseDir)
+      ? configuredBaseDir
+      : path.join(process.cwd(), configuredBaseDir)
+  }
+
+  const namespace = (process.env.KB_NAMESPACE || '').trim()
+  if (namespace) {
+    const safeNamespace = namespace.replace(/[^a-zA-Z0-9._-]/g, '-').toLowerCase()
+    return path.join(process.cwd(), 'sessions', 'namespaces', safeNamespace, 'documents')
+  }
+
+  return path.join(process.cwd(), 'sessions', 'documents')
+}
+
 async function main() {
   loadLocalEnvFiles()
   console.log('🤖 KB Agent Harness\n')
@@ -84,12 +102,14 @@ async function main() {
   }
 
   const provider = resolveProviderFromEnv()
+  const kbStorageDir = resolveKbStorageDir()
 
   console.log(`📝 Query: ${query}`)
   if (sessionFile) {
     console.log(`📁 Session: ${sessionFile}`)
   }
   console.log(`🔌 Provider: ${provider}\n`)
+  console.log(`🗂️ KB Storage: ${kbStorageDir}\n`)
 
   // Create provider
   let llmProvider
@@ -139,7 +159,7 @@ async function main() {
     }
 
     // Create KB tools registry
-    const toolExecutor = createKBToolsRegistry()
+    const toolExecutor = createKBToolsRegistry(kbStorageDir)
 
     for await (const event of agentLoop(contextualQuery, llmProvider, toolExecutor)) {
       eventCount++

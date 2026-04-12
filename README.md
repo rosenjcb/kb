@@ -65,6 +65,57 @@ This keeps the tool layer compatible with a future MCP server where Notion is th
 - Format: `pnpm run format`
 - Type check: `pnpm run type-check`
 
+## KB Namespace Strategy
+
+To avoid test data interfering with real documentation, use namespaces.
+
+- `KB_NAMESPACE=dogfood`: persistent team knowledge you intend to keep.
+- `KB_NAMESPACE=ci-*` or `KB_NAMESPACE=test-*`: disposable automated test data.
+- `KB_BASE_DIR=/custom/path`: explicit override when needed.
+
+Default behavior (no namespace configured) writes to `sessions/documents`.
+
+Example (macOS/Linux):
+
+```bash
+export KB_NAMESPACE=dogfood
+kb "Document the latest architecture decision"
+```
+
+Example (PowerShell):
+
+```powershell
+$env:KB_NAMESPACE = "dogfood"
+kb "Document the latest architecture decision"
+```
+
+## Prevent Data Loss
+
+Dogfood KB content must be committed and pushed to GitHub regularly.
+
+Recommended backup loop:
+
+```bash
+# 1) Work in persistent namespace
+export KB_NAMESPACE=dogfood
+
+# 2) Use kb normally
+kb "Capture today's implementation notes"
+
+# 3) Commit KB changes
+git add sessions/
+git commit -m "kb: checkpoint knowledge base"
+
+# 4) Push off machine
+git push
+```
+
+Notes:
+
+- `.gitignore` excludes `sessions/namespaces/ci-*` and `sessions/namespaces/test-*` only.
+- Persistent KB docs are intended to be versioned in Git.
+- If storage backend changes later (for example SQLite or Notion), keep the same checkpoint habit for any local artifacts until remote persistence is fully in place.
+
 ## Roadmap
 
 See [GAMEPLAN.md](GAMEPLAN.md) for the full roadmap and phased implementation plan.

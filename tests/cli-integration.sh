@@ -10,8 +10,9 @@ echo "================================\n"
 
 # Setup
 RUN_ID="$(date +%s)"
+TEST_NAMESPACE="ci-integration-${RUN_ID}"
 TEST_SESSION="/tmp/kb-cli-test-${RUN_ID}.md"
-TEST_DIR="/Users/rosenjcb/kb/sessions/documents"
+TEST_DIR="/Users/rosenjcb/kb/sessions/namespaces/${TEST_NAMESPACE}/documents"
 TS_TITLE="TypeScript Guide ${RUN_ID}"
 PY_TITLE="Python Basics ${RUN_ID}"
 GO_TITLE="Go Language ${RUN_ID}"
@@ -27,6 +28,7 @@ npm run build:cli >/dev/null
 cleanup() {
   echo "\n🧹 Cleaning up test session: $TEST_SESSION"
   rm -f "$TEST_SESSION" 2>/dev/null || true
+  rm -rf "$TEST_DIR" 2>/dev/null || true
 }
 
 trap cleanup EXIT
@@ -41,7 +43,7 @@ run_test() {
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   
   # Run the built CLI artifact
-  output=$(node dist/bin/kb.js "$TEST_SESSION" "$query" 2>&1)
+  output=$(KB_NAMESPACE="$TEST_NAMESPACE" node dist/bin/kb.js "$TEST_SESSION" "$query" 2>&1)
   
   # Check for expected text in output
   if echo "$output" | grep -q "$expect_text"; then

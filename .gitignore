@@ -30,7 +30,8 @@ pnpm-debug.log*
 
 # Sessions (transient)
 sessions/*.json
-sessions/documents/
+sessions/namespaces/ci-*/
+sessions/namespaces/test-*/
 
 # Node runtime
 .node-gyp/
