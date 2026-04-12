@@ -65,6 +65,29 @@ This keeps the tool layer compatible with a future MCP server where Notion is th
 - Format: `pnpm run format`
 - Type check: `pnpm run type-check`
 
+## Global CLI Setup
+
+Install `kb` as a global utility from this repository:
+
+```bash
+npm run install:global
+kb "What tools are available?"
+```
+
+Refresh to the latest local code after changes:
+
+```bash
+npm run refresh:global
+npm run which:kb
+```
+
+If global install is unavailable, run the built executable directly:
+
+```bash
+npm run build:cli
+node dist/bin/kb.js "What tools are available?"
+```
+
 ## KB Namespace Strategy
 
 To avoid test data interfering with real documentation, use namespaces.

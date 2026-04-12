@@ -106,6 +106,65 @@ This implementation plan establishes:
 - If you find existing code that contradicts the plan, **either update the plan or file a separate ticket** to reconcile.
 - Mark open questions honestly—"We could use embeddings or BM25; we'll revisit if latency > 200ms" is more useful than "we haven't decided."
 
+## Dogfood Requirement (Mandatory)
+
+For this repository, all meaningful development work must be documented in the KB using the CLI as part of the workflow.
+
+Canonical source: `AGENTS.md` contains the always-on repository policy. If there is any mismatch, follow `AGENTS.md`.
+
+### Required Behavior
+
+1. Before major implementation work, confirm `kb` is available.
+2. If `kb` is missing or stale, refresh the global tool from the current repo.
+3. During work, write/update KB docs for architecture, decisions, and outcomes.
+4. Keep test data isolated from dogfood knowledge using namespaces.
+5. Commit and push persistent KB docs so context survives machine loss.
+
+### CLI Freshness Commands
+
+Use these from the repo root:
+
+```bash
+npm run refresh:global
+npm run which:kb
+kb "What tools are available?"
+```
+
+If global install is not desired in a given environment, use the built executable directly:
+
+```bash
+npm run build:cli
+node dist/bin/kb.js "What tools are available?"
+```
+
+### Namespace Rules
+
+- Dogfood knowledge: `KB_NAMESPACE=dogfood`
+- CI / disposable test traffic: `KB_NAMESPACE=ci-*` or `KB_NAMESPACE=test-*`
+- Explicit storage override when needed: `KB_BASE_DIR=/custom/path`
+
+Examples:
+
+```bash
+export KB_NAMESPACE=dogfood
+kb "Document today's implementation changes"
+
+export KB_NAMESPACE=ci-123
+kb "Run test-only documentation flow"
+```
+
+### Persistence Rules
+
+Persistent dogfood docs are expected to be tracked in git and pushed.
+
+```bash
+git add sessions/
+git commit -m "kb: checkpoint knowledge base"
+git push
+```
+
+Treat KB checkpointing as part of task completion for significant work.
+
 ## Example: Ticket 001 (KB Mission and Scope)
 
 **Acceptance Criteria:**
