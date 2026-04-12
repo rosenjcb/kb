@@ -30,3 +30,5 @@ These components contribute significantly to the system's development and operat
 - Verification checkpoint 2026-04-12: Vitest suite passes after precedence refactor (9 files, 40 tests). (source: verification)
 
 - Docs sync checkpoint: README now documents base resolution as session use -> saved default -> KB_BASE fallback, and CLI/tests were updated to match this exact order. (source: docs-sync)
+
+- Correction (2026-04-12 code audit): CLI base resolution precedence is 1) config.sessionBase (kb use), 2) config.defaultBase (kb default), 3) env.KB_BASE fallback. If none are set, resolveEffectiveBaseDir throws an explicit error. Evidence: src/cli/base-selection.ts and src/cli/index.ts. (source: code-audit)
