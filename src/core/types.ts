@@ -25,6 +25,23 @@ export interface ToolResultBlock {
 
 // ─── Tool Definition ─────────────────────────────────────────────
 
+/**
+ * Tool Definition Contract
+ *
+ * Design Principle: Each tool has exactly ONE responsibility.
+ * Tool names document intent. Separatate tools by action, not mode.
+ *
+ * ✅ Do this:
+ *   - merge_documents: consolidate two docs
+ *   - append_to_document: add content
+ *   - update_document: replace content
+ *
+ * ❌ Don't do this:
+ *   - write_document with operationMode=merge|append|replace
+ *
+ * Rationale: Intent is self-documenting; fewer parameters; easier testing.
+ * See src/tools/TOOL_CONVENTIONS.md for full guidelines.
+ */
 export interface ToolDefinition {
   name: string
   description: string

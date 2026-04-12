@@ -100,7 +100,20 @@ This implementation plan establishes:
 - ✅ [Acceptance criterion 3 is satisfied]
 
 **Ticket [NUMBER] is now closed.**
-```
+
+---
+
+### Note: Handling Deprecated Content
+
+If your implementation plan involves replacing a previous design or approach:
+
+1. **Mark old content as DEPRECATED** with clear explanation of why
+2. **Move to companion file** if section is large: `TICKET_NUMBER-DEPRECATED.md`
+3. **Link to new approach**: "Old method archived in [FILE]; new approach uses [TOOL/PATTERN]"
+4. **Preserve for learning**: Deprecated docs explain "why not X" and provide context for future decisions
+
+See [Deprecation and Cleanup Policy](../../AGENTS.md#deprecation-and-cleanup-policy) for full guidelines.
+
 
 ## Workflow: Plan → Code → Spec → Iterate
 
@@ -221,6 +234,13 @@ Treat KB checkpointing as part of task completion for significant work.
 **Bad:** Leaving `❓ Open question` in the plan and still writing "Ticket is now closed" without asking the user.
 
 **Good:** Ask the user, record the decision (or explicit deferral), then close.
+
+### ❌ Ignoring Deprecated Content
+**Bad:** Deleting old scenarios or decisions without explanation or trace.
+
+**Good:** Move to `TICKET_NUMBER-DEPRECATED.md` with clear explanation of why it's deprecated and what replaced it.
+
+Example: "Scenario A was designed for Option A (unified operationMode). Deprecated in favor of Option B (specialized tools). See ticket 047-DEPRECATED_SCENARIOS.md."
 
 ### ❌ Writing the Plan After All Code
 **Bad:** Code is done, then you write a confusing plan that doesn't match the code.

@@ -56,3 +56,36 @@ If global kb is unavailable in the environment:
 ## Enforcement Intent
 
 If a task is completed without KB documentation for significant architectural, behavioral, or process changes, the task should be considered incomplete until KB docs are updated.
+
+## Deprecation and Cleanup Policy
+
+When design decisions change or scenarios become obsolete:
+
+1. **Mark clearly**: Use `DEPRECATED` label in section headers or filename prefix.
+2. **Provide reason**: Always explain *why* something was deprecated (e.g., "Chosen Option B instead; see ticket 047 for rationale").
+3. **Archive strategically**:
+   - Small deprecated sections → Keep in original file with `## DEPRECATED` header
+   - Large deprecated scenarios → Move to companion `{FILENAME}-DEPRECATED.md` file
+   - Entire deprecated tickets → Mark as archived in _index.md with deprecation note
+4. **Link forward**: Document what replaced the deprecated approach (new tool, pattern, decision).
+5. **Preserve for learning**: Deprecated docs help future agents understand "why not X" and provide context for architectural trade-offs.
+
+**Example:**
+
+```markdown
+## DEPRECATED: Scenario D (Option A Design)
+
+This scenario was designed for Option A (unified write_document with operationMode).
+It was deprecated in favor of Option B (specialized tools) because [reason].
+
+See [047-DEPRECATED_SCENARIOS.md](047-DEPRECATED_SCENARIOS.md) for archived details.
+New implementation uses [merge_documents](src/tools/MergeDocumentsTool.ts) instead.
+```
+
+**When to deprecate:**
+- Design decisions are reversed or overridden (user approval, new learning)
+- Code patterns are replaced with better alternatives
+- Specification sections become obsolete due to refactoring
+- Tools or approaches are superseded by new tools
+
+Treat deprecation as part of code quality: stale guidance is worse than no guidance.

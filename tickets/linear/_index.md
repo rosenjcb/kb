@@ -37,6 +37,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [013 Specify CLI update document flow](tickets/linear/013-cli-update-document-flow-spec.md)
 - [014 Specify single file check flow](tickets/linear/014-cli-check-single-file-flow-spec.md)
 - [015 Create local smoke test checklist](tickets/linear/015-local-smoke-test-checklist.md)
+- [047 Design document operation semantics and merging strategy](tickets/linear/047-document-operation-semantics-and-merging.md)
 - [039 Define permission policy evaluation order](tickets/linear/039-permission-policy-evaluation-order.md)
 - [040 Define document ID stability rules](tickets/linear/040-kb-doc-id-stability-rules.md)
 
