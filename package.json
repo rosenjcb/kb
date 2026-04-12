@@ -8,7 +8,7 @@
     "node": ">=20.0.0"
   },
   "bin": {
-    "kb": "src/cli/index.ts"
+    "kb": "bin/kb"
   },
   "scripts": {
     "dev": "tsx src/cli/index.ts",
@@ -18,6 +18,8 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:functional": "node --env-file=.env.local --import tsx tests/functional-test.ts",
+    "test:cli": "bash tests/cli-integration.sh",
     "lint": "biome lint src business",
     "format": "biome format --write src business",
     "check": "biome check --write src business",

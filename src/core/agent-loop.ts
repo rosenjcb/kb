@@ -4,6 +4,7 @@
  */
 
 import type { AgentEvent, Message, ToolDefinition, LLMProvider } from './types'
+import type { ToolExecutor } from './tool-registry'
 
 export interface AgentLoopConfig {
   maxTurns?: number
@@ -18,7 +19,7 @@ export interface AgentLoopConfig {
 export async function* agentLoop(
   userQuery: string,
   provider: LLMProvider,
-  tools: ToolDefinition[],
+  toolExecutor?: ToolExecutor,
   config: AgentLoopConfig = {}
 ): AsyncGenerator<AgentEvent> {
   const messages: Message[] = [
@@ -29,6 +30,7 @@ export async function* agentLoop(
     },
   ]
 
+  const tools: ToolDefinition[] = toolExecutor?.getTools() ?? []
   const maxTurns = config.maxTurns ?? 10
   let turnCount = 0
 
@@ -70,20 +72,25 @@ export async function* agentLoop(
       yield { type: 'tool_start', toolName: toolUse.name, toolUseId: toolUse.id }
 
       try {
-        // In real harness, this would dispatch to tool executor
-        // For now, simulate:
-        const mockResult = { status: 'executed', tool: toolUse.name }
+        let result: unknown
+        if (toolExecutor) {
+          result = await toolExecutor.execute(toolUse)
+        } else {
+          // Fallback mock for testing
+          result = { status: 'executed', tool: toolUse.name }
+        }
+
         toolResults.push({
           toolUseId: toolUse.id,
           toolName: toolUse.name,
-          result: mockResult,
+          result,
           isError: false,
         })
 
         yield {
           type: 'tool_result',
           toolUseId: toolUse.id,
-          result: mockResult,
+          result,
           isError: false,
         }
       } catch (error) {
@@ -136,12 +143,12 @@ export async function* agentLoop(
 export async function runAgent(
   userQuery: string,
   provider: LLMProvider,
-  tools: ToolDefinition[],
+  toolExecutor?: ToolExecutor,
   config?: AgentLoopConfig
 ): Promise<AgentEvent[]> {
   const events: AgentEvent[] = []
 
-  for await (const event of agentLoop(userQuery, provider, tools, config)) {
+  for await (const event of agentLoop(userQuery, provider, toolExecutor, config)) {
     events.push(event)
   }
 

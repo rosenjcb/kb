@@ -10,3 +10,10 @@ export {
   MarkdownMDWriterTool,
   type MarkdownMDWriterToolOptions,
 } from './markdown-md-writer-tool'
+
+export {
+  createKBToolsRegistry,
+  MarkdownDocumentReader,
+  type QueryResponse,
+  type QueryDocumentsInput,
+} from './kb-tools-registry'

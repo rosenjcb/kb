@@ -29,7 +29,7 @@ describe('agentLoop', () => {
     ])
 
     const events = []
-    for await (const event of agentLoop('hi', provider, [])) {
+    for await (const event of agentLoop('hi', provider, undefined)) {
       events.push(event)
     }
 
@@ -48,8 +48,7 @@ describe('agentLoop', () => {
     ])
 
     const events = []
-    const tools: ToolDefinition[] = []
-    for await (const event of agentLoop('write a doc', provider, tools, { maxTurns: 1 })) {
+    for await (const event of agentLoop('write a doc', provider, undefined, { maxTurns: 1 })) {
       events.push(event)
     }
 
@@ -74,7 +73,7 @@ describe('agentLoop', () => {
       },
     ])
 
-    const events = await runAgent('hello', provider, [])
+    const events = await runAgent('hello', provider, undefined)
     expect(events.length).toBe(3)
     expect(events[2]).toEqual({ type: 'done', reason: 'no_tool_calls' })
   })
