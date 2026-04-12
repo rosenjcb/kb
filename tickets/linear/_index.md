@@ -13,7 +13,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 
 ## Summary
 
-- Total files: 57 (56 tickets + this index)
+- Total files: 61 (60 tickets + this index)
 - Branch: feat/kb-ticket-backlog
 
 ## Foundation
@@ -48,6 +48,8 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [055 Define intent router and internal-tool boundary](tickets/linear/055-intent-router-and-internal-tool-boundary.md)
 - [056 Specify fact validation and dispute contract](tickets/linear/056-fact-validation-and-dispute-contract.md)
 - [057 Specify consumer CLI intent UX and command set](tickets/linear/057-consumer-cli-intent-ux-and-commands.md)
+- [058 Implement consumer-intent API and IntentRouter runtime](tickets/linear/058-implement-consumer-intent-api-and-router.md)
+- [059 Implement intent-first CLI commands](tickets/linear/059-implement-intent-first-cli-commands.md)
 - [039 Define permission policy evaluation order](tickets/linear/039-permission-policy-evaluation-order.md)
 - [040 Define document ID stability rules](tickets/linear/040-kb-doc-id-stability-rules.md)
 
@@ -81,6 +83,7 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [041 Define check caching strategy](tickets/linear/041-docsync-check-caching-strategy.md)
 - [042 Define audit parallelism and token budgets](tickets/linear/042-audit-parallelism-and-budgeting.md)
 - [046 Define validation vs deep_validation tool semantics](tickets/linear/046-validation-vs-deep-validation-tool-semantics.md)
+- [060 Implement fact validation and dispute evaluator](tickets/linear/060-implement-fact-validation-and-dispute-evaluator.md)
 
 ## Reliability
 
@@ -90,4 +93,5 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [036 Create release readiness checklist](tickets/linear/036-release-readiness-checklist.md)
 - [044 Write operational incident response runbook](tickets/linear/044-incident-response-runbook.md)
 - [045 Define schema/version migration policy](tickets/linear/045-versioning-and-migration-policy.md)
+- [061 Enforce internal tool access policy for consumer-facing flows](tickets/linear/061-enforce-internal-tool-access-policy.md)
 

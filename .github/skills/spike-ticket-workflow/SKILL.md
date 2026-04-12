@@ -150,6 +150,18 @@ Canonical source: `AGENTS.md` contains the always-on repository policy. If there
 4. Keep test data isolated from dogfood knowledge using namespaces.
 5. Commit and push persistent KB docs so context survives machine loss.
 
+### Intent-First Dogfood (Workspace Policy)
+
+For this repository, dogfood operations should default to intent commands.
+
+1. Prefer:
+   - `kb query ...` to discover existing docs.
+   - `kb submit ... --target <doc-id>` to append checkpoint updates.
+2. Only create a new document when query results show no suitable existing target.
+3. Use freeform (`kb "..."`) only when:
+   - user explicitly requests freeform, or
+   - intent commands cannot express the operation.
+
 ### CLI Freshness Commands
 
 Use these from the repo root:

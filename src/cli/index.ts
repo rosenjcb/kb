@@ -11,6 +11,14 @@ import dayjs from 'dayjs'
 import { createProvider } from '../core/llm-provider'
 import { agentLoop } from '../core/agent-loop'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
+import {
+  executeIntentCommand,
+  formatIntentResult,
+  isIntentCommand,
+  parseIntentCommand,
+  printIntentHelp,
+} from './intent-cli'
+import { assertConsumerSafeCommand } from '../intents/policy'
 
 function loadLocalEnvFiles() {
   const processWithEnvLoader = process as typeof process & {
@@ -104,6 +112,32 @@ async function main() {
 
   const provider = resolveProviderFromEnv()
   const kbStorageDir = resolveKbStorageDir()
+
+  // Consumer-intent command mode (bypasses LLM loop, routes intents directly)
+  if (isIntentCommand(firstArg)) {
+    try {
+      const parsed = parseIntentCommand(args)
+      const toolExecutor = createKBToolsRegistry(kbStorageDir)
+      const result = await executeIntentCommand(parsed, toolExecutor)
+      console.log(formatIntentResult(result, parsed.output))
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`❌ ${message}`)
+      console.error('')
+      console.error(printIntentHelp())
+      process.exit(1)
+    }
+  }
+
+  // Enforce consumer-safe boundary for direct internal tool command attempts.
+  try {
+    assertConsumerSafeCommand(firstArg)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`❌ ${message}`)
+    process.exit(1)
+  }
 
   console.log(`📝 Query: ${query}`)
   if (sessionFile) {

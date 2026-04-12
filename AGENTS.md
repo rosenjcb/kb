@@ -22,6 +22,25 @@ This is mandatory and does not depend on skill invocation.
    - git commit -m "kb: checkpoint knowledge base"
    - git push
 
+## Dogfood Interaction Mode (Workspace Default)
+
+For this workspace, dogfood usage defaults to intent-first behavior.
+
+1. Default mode for KB dogfood operations:
+   - Use intent commands (`submit`, `validate`, `dispute`, `query`, `explain`) instead of freeform prompts.
+2. Update-first policy:
+   - Query for related docs first.
+   - If a matching doc exists, append/update that doc before creating a new document.
+3. Freeform exceptions:
+   - Use freeform only when user explicitly requests freeform, or when intent commands cannot express the requested operation.
+4. Internal tool boundary remains in effect:
+   - Do not directly invoke internal `*_document` tool names from consumer-facing workflows.
+
+Recommended dogfood sequence:
+1. `KB_NAMESPACE=dogfood kb query "<topic>" --limit 5 --output json`
+2. `KB_NAMESPACE=dogfood kb submit "<new fact or checkpoint>" --target <existing-doc-id>`
+3. If no suitable target exists, create a new record via `submit` without `--target`.
+
 ## Open-Question Gate (Mandatory)
 
 When a ticket implementation plan contains any unresolved/open question, the agent must explicitly ask the user for a decision before closing the ticket.

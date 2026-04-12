@@ -14,3 +14,5 @@ This document summarizes the working session on April 12, 2026, focusing on seve
 - **Cleanup of Old Functional-Test Documents**: Systematic removal of outdated and deprecated functional-test documents to maintain a clean and efficient documentation environment.
 
 These components contribute significantly to the system's development and operational efficiency, ensuring a robust and scalable platform.
+
+- Workspace policy updated: dogfood defaults to intent-first workflows. Agents should query existing docs first, then submit updates to existing targets, and use freeform only by explicit user request or intent-command limitations. This policy is now codified in AGENTS.md and spike-ticket-workflow skill guidance. (source: consumer)
