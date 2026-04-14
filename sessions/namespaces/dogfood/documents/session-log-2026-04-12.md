@@ -106,3 +106,15 @@ These components contribute significantly to the system's development and operat
 - Cross-tool evidence policy updated: validate now runs shallow->deep promotion on empty or inconclusive shallow evidence, query/explain auto-enable high-recall deep routing for exact-token lookups, and chat enforces exact-token fallback matching with explicit actionable guidance when grounded evidence is missing; dogfood verified with CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION across query/validate/explain/chat. (source: implementation)
 
 - Drafted ticket 080 for Notion publish flow: package markdown to zip, import to Archive staging, and run two-pass Notion AI restructure/quality prompts with provenance and rollback safeguards. (source: planning)
+
+- Ticket 080 decision: Notion is default provider for kb publish in v1, and kb notion publish compatibility alias is explicitly out of scope until separately implemented. (source: decision)
+
+- Closed ticket 080 as SPIKE planning with user decisions captured (semi-automated + two-pass + fixed archive default with override). Created ticket 081 to implement kb publish Notion runtime with config-backed credentials and phase orchestration. (source: planning)
+
+- Implemented v1 kb publish integration: added top-level kb publish command with package/import/restructure phases, JSON-config Notion auth support (from ~/.kb/config.json with env fallback), zip artifact + manifest generation, Notion staging import path for apply mode, and operator prompt-pack output for Notion AI restructure. (source: implementation)
+
+- Updated tickets 080/081 to remove explicit kb notion publish references; plan now consistently refers to kb publish as the single v1 command surface. (source: docs-sync)
+
+- kb publish --apply failed with Notion 404 object_not_found for parent page 340c0829-0aac-806b-a611-d4274498ddc5; Notion API indicates the page is not visible to integration 'Test'. Next step: share target parent page with the integration or set parentPageId to a page already shared. (source: verification)
+
+- Attempted root-level Notion publish for kb publish; Notion API rejects workspace-root page creation for internal integrations. Added explicit actionable error message instructing use of notion.parentPageId. (source: implementation)

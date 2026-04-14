@@ -28,6 +28,7 @@ import {
   writeDefaultBase,
   writeSessionBase,
 } from './base-selection'
+import { parsePublishCommand, runPublishCommand } from './publish-cli'
 import { runChatSession } from './chat-cli'
 
 function printCliHelp(): string {
@@ -38,6 +39,7 @@ function printCliHelp(): string {
     '  kb <query>',
     '  kb <sessionFile.md> <query>',
     '  kb chat',
+    '  kb publish [options]',
     '  kb <intent-command> [options]',
     '',
     printIntentHelp(),
@@ -50,6 +52,7 @@ function printCliHelp(): string {
     '  kb default dogfood',
     '  kb default --show',
     '  kb chat',
+    '  kb publish --base dogfood --dry-run',
     '  kb submit "Fact text" --target session-log-2026-04-12',
     '',
     'Flags:',
@@ -214,6 +217,19 @@ async function main() {
     console.log('')
     await runChatSession({ llmProvider, toolExecutor })
     return
+  }
+
+  if (firstArg === 'publish') {
+    try {
+      const parsed = parsePublishCommand(args.slice(1))
+      const result = await runPublishCommand(parsed)
+      console.log(JSON.stringify(result, null, 2))
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`❌ ${message}`)
+      process.exit(1)
+    }
   }
 
   let sessionFile: string | null = null

@@ -15,6 +15,7 @@ Current KB markdown documents are optimized for internal, terse, agent-readable 
 - Define a guided Notion AI transformation step that rewrites and reorganizes content quality-first (not file-structure-first).
 - Define required prompts/instructions for repeatable Notion AI outcomes.
 - Define validation checks to verify readability, hierarchy quality, and source traceability after import.
+- Define first-class CLI UX via `kb publish` (with Notion as v1 provider) so the workflow is easy to run end-to-end.
 
 ## Non-Goals
 - Building full bidirectional sync between markdown and Notion.
@@ -26,6 +27,12 @@ Current KB markdown documents are optimized for internal, terse, agent-readable 
   1. Zip markdown payload (with manifest + metadata).
   2. Import payload into a predictable Notion staging location.
   3. Trigger guided AI restructuring prompt sequence for human-readable workspace output.
+- CLI supports top-level publish command shape:
+  - `kb publish --base <base> --dry-run`
+  - `kb publish --base <base> --apply`
+  - optional `--phase package|import|restructure|all`
+  - optional `--provider notion` (default `notion` in v1)
+  - single command surface in v1 (`kb publish`)
 - Publish output includes deterministic artifact metadata:
   - source base
   - included/excluded file counts
@@ -83,18 +90,43 @@ High
 - Move approved pages into final workspace sections.
 - Keep raw import and AI-transformed version for diff/audit in first iteration.
 
+## CLI UX Scope (v1)
+
+Primary command:
+
+```bash
+kb publish --base dogfood --dry-run
+kb publish --base dogfood --apply
+```
+
+Optional controls:
+
+```bash
+kb publish --base dogfood --phase package
+kb publish --base dogfood --phase import --apply
+kb publish --base dogfood --phase restructure --apply
+kb publish --base dogfood --provider notion
+kb publish --base dogfood --archive-path "Knowledge base/Archive/Zip Imports"
+kb publish --base dogfood --prompt-pack notion-v1
+```
+
+Behavior notes:
+- `--dry-run` computes and prints planned artifact/import actions without mutating Notion.
+- `--phase restructure` is operator-assisted in v1: CLI outputs exact prompt text and target page context for Notion AI execution.
+- `kb publish` is the only command surface in v1 for publishing workflows.
+
 ## Suggested CLI Contract (for follow-up build ticket)
 
 ```bash
-kb notion publish \
+kb publish \
   --base dogfood \
-  --stage-path "Knowledge base/Archive/Zip Imports" \
+  --archive-path "Knowledge base/Archive/Zip Imports" \
   --zip-out .tmp/notion-publish/dogfood-2026-04-12.zip \
   --dry-run
 
-kb notion publish \
+kb publish \
   --base dogfood \
-  --stage-path "Knowledge base/Archive/Zip Imports" \
+  --archive-path "Knowledge base/Archive/Zip Imports" \
   --apply
 ```
 
@@ -113,7 +145,12 @@ Return payload sketch:
     "stagePageId": "...",
     "stagePageUrl": "..."
   },
-  "nextAction": "run_notion_ai_prompt_pack"
+  "nextAction": "run_notion_ai_prompt_pack",
+  "operatorPrompt": {
+    "pack": "notion-v1",
+    "targetPage": "Knowledge base / Archive / Zip Imports / ...",
+    "instructions": "Paste Prompt 1 then Prompt 2 in Notion AI"
+  }
 }
 ```
 
@@ -181,3 +218,97 @@ Required checks:
 - Default mode: semi-automated for v1 (more controllable while Notion AI behavior is variable).
 - Prompt mode: two-pass (structure first, quality second).
 - Stage path: fixed default under Archive with override flag.
+
+---
+
+## Implementation Plan
+
+### SPIKE Plan for `kb publish` Notion Integration (v1)
+
+#### Scope of This Work (Phase Clarity)
+- ✅ Phase 1 (Planning): Complete in this ticket/PR
+  - Canonical CLI UX defined as `kb publish` (Notion default provider)
+  - End-to-end publish flow specified (package, import, restructure, review)
+  - Prompt pack and validation rubric defined for repeatable Notion AI outcomes
+- ⏳ Phase 2 (Implementation): Deferred to follow-up ticket
+  - Implement `kb publish` command runtime and Notion API adapter wiring
+  - Add zip manifest generation and staging import execution
+  - Add tests and operator runbook validation
+  - **Blocking ticket**: 081 (implement `kb publish` Notion runtime)
+
+#### Background
+The team wants a reliable way to publish terse internal markdown docs into a human-friendly Notion workspace without relying on brittle ad-hoc manual steps. Current manual Notion AI behavior is inconsistent and often preserves file shells instead of restructuring content meaningfully.
+
+#### Approach
+Ship a planning-first SPIKE that defines deterministic publish semantics and a constrained operator loop for Notion AI. The CLI entry point is `kb publish` with Notion as the default provider in v1. The runtime is split into explicit phases so operators can run dry-run previews and execute only needed steps. Restructure remains operator-assisted in v1, with CLI printing exact prompts and target context. The plan includes auditability requirements (artifact metadata, staging location, provenance) so the workflow is reviewable before broad automation.
+
+#### Examples / Specifications
+
+Canonical command examples:
+
+```bash
+kb publish --base dogfood --dry-run
+kb publish --base dogfood --apply
+
+kb publish --base dogfood --phase package
+kb publish --base dogfood --phase import --apply
+kb publish --base dogfood --phase restructure --apply
+```
+
+Execution pipeline (v1):
+
+```text
+kb publish
+  -> phase: package (zip + manifest)
+  -> phase: import (Notion Archive staging page)
+  -> phase: restructure (operator-assisted prompt output)
+  -> phase: review/promote (human gate)
+```
+
+Validation script guidance for follow-up implementation:
+
+```bash
+npm run build:cli
+node dist/bin/kb.js publish --base dogfood --dry-run
+```
+
+#### Error Conditions / Edge Cases
+- Missing Notion credentials in config: fail with explicit setup instructions and required keys.
+- Archive path not found or inaccessible: fail with path diagnostics and permission hint.
+- Zip creation succeeds but import fails: preserve artifact and emit retry-safe import command.
+- Notion AI output low quality: keep Raw Import untouched and require human promote gate.
+- Provider mismatch (`--provider` unsupported): fail fast with supported-provider list.
+
+#### Decisions Made
+- ✅ Decided: Canonical command is `kb publish` only in v1. -> Rationale: simpler UX and avoids unimplemented compatibility surface.
+- ✅ Decided: Default provider is Notion in v1. -> Rationale: this ticket targets Notion-first publish workflow.
+- ✅ Decided: Restructure is operator-assisted in v1. -> Rationale: Notion AI behavior variability still requires human control.
+- ✅ Decided: Archive staging is mandatory before promote. -> Rationale: protects existing workspace IA and enables rollback.
+- ✅ Decided: Default execution mode is semi-automated with two-pass prompting. -> Rationale: user selected option A for controllability and quality.
+- ✅ Decided: Archive path policy is fixed default with override flag. -> Rationale: user selected option A for consistency with escape hatch.
+
+#### User Decision Checkpoint (Required)
+- Decision requested from user: finalize operational defaults before implementation ticket kickoff.
+- Options presented:
+  - A (recommended): default to semi-automated + two-pass prompts + fixed archive default with override flag.
+  - B: default to fully automated where possible + two-pass prompts + fixed archive path.
+  - C: default to package-only dry-run mode, require explicit per-phase apply for every run.
+- User response: selected **A** for execution mode and **A** for archive-path policy.
+- Follow-up: ticket 081 implementation should use selected defaults.
+
+#### Integration Points
+- `src/cli/index.ts`: add `publish` command surface and phase orchestration.
+- `src/cli/base-selection.ts`: reuse configured base resolution for source path selection.
+- `src/tools/`: add Notion publish runtime module(s) for zip, import, prompt-output contract.
+- `scripts/build-cli.mjs`: use existing build path as validation script for manual dry-run checks.
+- Follow-up ticket: `tickets/linear/081-implement-kb-publish-notion-runtime.md`.
+
+#### Validation & Closure
+This implementation plan establishes:
+- ✅ Acceptance criteria are mapped to concrete phases and CLI behavior.
+- ✅ Notion-first defaults and command boundaries are explicit.
+- ✅ Risk controls (staging, raw import preservation, human promote gate) are codified.
+- ✅ User decisions captured for execution defaults and archive-path policy.
+- ✅ Follow-up implementation ticket created for deferred phase-2 runtime work.
+
+**Ticket 080 is now closed.**
