@@ -10,12 +10,12 @@ notion
 Current KB markdown documents are optimized for internal, terse, agent-readable workflows. When imported manually into Notion, the result is usually a flat or low-quality structure. Notion AI often reformats file shells instead of truly reimagining and reorganizing content into a human-readable workspace.
 
 ## Scope
-- Define a publish flow that exports current markdown docs into a deterministic zip bundle.
-- Define an import target strategy in Notion (initial landing zone under Archive for safe staging).
-- Define a guided Notion AI transformation step that rewrites and reorganizes content quality-first (not file-structure-first).
-- Define required prompts/instructions for repeatable Notion AI outcomes.
-- Define validation checks to verify readability, hierarchy quality, and source traceability after import.
-- Define first-class CLI UX via `kb publish` (with Notion as v1 provider) so the workflow is easy to run end-to-end.
+- Define a publish flow that always:
+  - Imports all markdown files as-is into a 'Raw Import' section/page in Notion (serving as a source index, like an appendix).
+  - In the same publish run, creates a reorganized, human-friendly wiki structure (Overview, Getting Started, Policies, etc.) as sibling pages, with citations to the raw files.
+- The reorganizer mechanic is implemented in Node.js as part of the CLI, not via Notion AI.
+- Citations to raw files are included in each wiki page (e.g., 'Source: [filename.md]').
+- Section topics, grouping heuristics, and LLM-based rewriting can be refined in future tickets.
 
 ## Non-Goals
 - Building full bidirectional sync between markdown and Notion.
@@ -23,10 +23,10 @@ Current KB markdown documents are optimized for internal, terse, agent-readable 
 - Automatic irreversible cleanup or deletions in existing Notion spaces.
 
 ## Acceptance Criteria
-- A CLI-capable publish spec exists for three phases:
-  1. Zip markdown payload (with manifest + metadata).
-  2. Import payload into a predictable Notion staging location.
-  3. Trigger guided AI restructuring prompt sequence for human-readable workspace output.
+- A CLI-capable publish spec exists for two outputs:
+  1. Raw Import: All markdown files imported as-is under a 'Raw Import' parent page in Notion.
+  2. Reorganized Wiki: New, human-friendly wiki structure created as sibling pages, with citations to the raw files.
+  3. (Optional/future) Operator prompt for Notion AI, if further restructuring is desired.
 - CLI supports top-level publish command shape:
   - `kb publish --base <base> --dry-run`
   - `kb publish --base <base> --apply`
@@ -55,7 +55,8 @@ Current KB markdown documents are optimized for internal, terse, agent-readable 
 
 ## Deliverables
 - Final ticket spec in this file.
-- Prompt pack (primary + fallback) embedded in this ticket for operator reuse.
+- Node.js reorganizer mechanic as part of CLI publish flow.
+- Prompt pack (primary + fallback) embedded in this ticket for operator reuse (optional/future).
 - Suggested CLI contract for follow-up implementation ticket.
 
 ## Estimate

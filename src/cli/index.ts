@@ -53,6 +53,8 @@ function printCliHelp(): string {
     '  kb default --show',
     '  kb chat',
     '  kb publish --base dogfood --dry-run',
+    '  kb publish --base dogfood --apply --stop-after pass2',
+    '  kb publish --base dogfood --apply --resume-from .tmp/notion-publish/dogfood-latest.checkpoint.json',
     '  kb submit "Fact text" --target session-log-2026-04-12',
     '',
     'Flags:',
