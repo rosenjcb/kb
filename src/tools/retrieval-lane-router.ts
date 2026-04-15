@@ -7,6 +7,7 @@ export type RetrievalLane =
   | 'workflow'
 
 const OPERATIONAL_PATTERN = /(error|incident|outage|runbook|alert|failure|failed|exception|stack|debug|fix|restart|recovery|sev[0-9])/
+const INSTALL_SETUP_PATTERN = /(install|installation|setup|set\s+up|configure|configuration|get\s+started|quickstart|bootstrap)/
 const POLICY_PATTERN = /(policy|permission|allow|deny|rule|rules|compliance|guardrail|required|must|forbid)/
 const ARCHITECTURE_PATTERN = /(architecture|design|schema|index|migration|runtime|component|system\s+design|how\s+it\s+works)/
 const PROJECT_OVERVIEW_PATTERN = /(project\s+about|what\s+is\s+this\s+project|what\s+does\s+this\s+project|overview|high\s+level|overall)/
@@ -66,6 +67,15 @@ export function routeQueryToLanes(query: string): LaneRoutingDecision {
     }
   }
 
+  if (INSTALL_SETUP_PATTERN.test(normalized)) {
+    return {
+      lanes: ['error-runbook', 'workflow', 'fact'],
+      fallbackLanes: ['policy', 'architecture'],
+      lastResortLanes: ['session-log'],
+      reason: 'install-setup-signals',
+    }
+  }
+
   if (ARCHITECTURE_PATTERN.test(normalized)) {
     return {
       lanes: ['architecture', 'fact', 'workflow'],
@@ -78,7 +88,7 @@ export function routeQueryToLanes(query: string): LaneRoutingDecision {
   if (PROJECT_OVERVIEW_PATTERN.test(normalized)) {
     return {
       lanes: ['fact', 'architecture', 'workflow'],
-      fallbackLanes: ['policy'],
+      fallbackLanes: ['policy', 'error-runbook'],
       lastResortLanes: ['session-log'],
       reason: 'project-overview-signals',
     }
@@ -86,7 +96,7 @@ export function routeQueryToLanes(query: string): LaneRoutingDecision {
 
   return {
     lanes: ['fact', 'architecture', 'workflow'],
-    fallbackLanes: ['policy'],
+    fallbackLanes: ['policy', 'error-runbook'],
     lastResortLanes: ['session-log'],
     reason: 'default-general-signals',
   }

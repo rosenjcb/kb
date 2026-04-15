@@ -180,6 +180,7 @@ function parseDocumentMetadata(filePath: string, content: string): DocumentMetad
 }
 
 export class MarkdownDocumentReader {
+  private readonly baseDir: string
   private readonly hybridEnabled: boolean
   private readonly sqliteDbPath: string
   private readonly hybridCandidateLimit: number
@@ -192,9 +193,10 @@ export class MarkdownDocumentReader {
   private readonly checkpointObservabilityEnabled: boolean
 
   constructor(
-    private baseDir: string,
+    baseDir: string,
     options: MarkdownDocumentReaderOptions = {},
   ) {
+    this.baseDir = baseDir
     this.hybridEnabled = options.hybridEnabled ?? process.env.KB_HYBRID_QUERY === 'true'
     this.sqliteDbPath = options.sqliteDbPath ?? path.join(baseDir, '.kb-index.sqlite')
     this.hybridCandidateLimit = options.hybridCandidateLimit ?? parsePositiveInt(process.env.KB_HYBRID_QUERY_CANDIDATES, 40)
@@ -336,41 +338,38 @@ export class MarkdownDocumentReader {
 
     const collectMatches = async (laneFilter?: RetrievalLane[]) => {
       const collected: Array<{ result: QueryResult; score: number }> = []
+      const rows = await this.loadLexicalDocuments()
 
-      const files = await readdir(this.baseDir)
-      const mdFiles = files.filter(f => f.endsWith('.md') && f !== '_table.md')
+      for (const row of rows) {
+        const tags = row.tags
+        const lane = (row.lane ?? classifyDocumentLane(row.id, row.title, row.doc_type ?? null, tags, '')) as RetrievalLane
 
-      for (const file of mdFiles) {
-        const filePath = path.join(this.baseDir, file)
-        const content = await readFile(filePath, 'utf8')
-        const metadata = parseDocumentMetadata(filePath, content)
+        if (laneFilter?.length && !laneFilter.includes(lane)) continue
 
-        if (!metadata) continue
+        const type = (['architecture', 'decision', 'checklist', 'runbook', 'reference'] as const)
+          .find(t => t === row.doc_type)
 
-        if (laneFilter?.length) {
-          const lane = classifyDocumentLane(
-            metadata.id,
-            metadata.title,
-            metadata.type ?? null,
-            metadata.tags ?? [],
-            metadata.filePath,
-          )
-          if (!laneFilter.includes(lane)) {
-            continue
-          }
-        }
-
-        const matchesType = !input.type || metadata.type === input.type
+        const matchesType = !input.type || type === input.type
         if (!matchesType) continue
 
-        const evaluation = evaluateDocumentMatch(input, metadata, content)
+        const metadata: DocumentMetadata = {
+          id: row.id,
+          title: row.title,
+          filePath: row.file_path,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          tags,
+          type,
+        }
+
+        const evaluation = evaluateDocumentMatch(input, metadata, row.content)
         if (!evaluation.matched) continue
 
         collected.push({
           score: evaluation.score,
           result: {
             metadata,
-            content: input.includeContent ? content : undefined,
+            content: input.includeContent ? row.content : undefined,
           },
         })
       }
@@ -449,6 +448,104 @@ export class MarkdownDocumentReader {
       results,
       total: matches.length,
       retrieval: lexicalRetrieval,
+    }
+  }
+
+  private async loadLexicalDocuments(): Promise<Array<{
+    id: string
+    title: string
+    content: string
+    file_path: string
+    doc_type: string | null
+    lane: string | null
+    tags: string[]
+    created_at: string
+    updated_at: string
+  }>> {
+    const sqliteRows = this.loadLexicalDocumentsFromSqlite()
+    if (sqliteRows) {
+      return sqliteRows
+    }
+
+    return this.loadLexicalDocumentsFromFilesystem()
+  }
+
+  private loadLexicalDocumentsFromSqlite(): Array<{
+    id: string
+    title: string
+    content: string
+    file_path: string
+    doc_type: string | null
+    lane: string | null
+    tags: string[]
+    created_at: string
+    updated_at: string
+  }> | null {
+    let db: Database.Database | undefined
+
+    try {
+      db = new Database(this.sqliteDbPath, { readonly: true })
+      const rows = db.prepare(
+        'SELECT id, title, content, file_path, doc_type, lane, tags_json, created_at, updated_at FROM documents ORDER BY updated_at DESC',
+      ).all() as Array<{
+        id: string
+        title: string
+        content: string
+        file_path: string
+        doc_type: string | null
+        lane: string | null
+        tags_json: string | null
+        created_at: string
+        updated_at: string
+      }>
+
+      return rows.map(row => ({
+        ...row,
+        tags: parseTagsJson(row.tags_json) ?? [],
+      }))
+    } catch {
+      return null
+    } finally {
+      db?.close()
+    }
+  }
+
+  private async loadLexicalDocumentsFromFilesystem(): Promise<Array<{
+    id: string
+    title: string
+    content: string
+    file_path: string
+    doc_type: string | null
+    lane: string | null
+    tags: string[]
+    created_at: string
+    updated_at: string
+  }>> {
+    try {
+      const files = await readdir(this.baseDir)
+      const mdFiles = files.filter(file => file.endsWith('.md') && file !== '_table.md')
+      const rows = await Promise.all(mdFiles.map(async file => {
+        const filePath = path.join(this.baseDir, file)
+        const content = await readFile(filePath, 'utf8')
+        const metadata = parseDocumentMetadata(filePath, content)
+        if (!metadata) return null
+
+        return {
+          id: metadata.id,
+          title: metadata.title,
+          content,
+          file_path: metadata.filePath,
+          doc_type: metadata.type ?? null,
+          lane: null,
+          tags: metadata.tags ?? [],
+          created_at: metadata.createdAt,
+          updated_at: metadata.updatedAt,
+        }
+      }))
+
+      return rows.filter((row): row is NonNullable<typeof row> => row !== null)
+    } catch {
+      return []
     }
   }
 
@@ -602,11 +699,8 @@ export class MarkdownDocumentReader {
 
           let content: string | undefined
           if (input.includeContent) {
-            try {
-              content = await readFile(doc.file_path, 'utf8')
-            } catch {
-              content = row.bestChunk
-            }
+            const docRow = db.prepare('SELECT content FROM documents WHERE id = ?').get(doc.id) as { content?: string } | undefined
+            content = docRow?.content ?? row.bestChunk
           }
 
           filtered.push({
@@ -1067,7 +1161,7 @@ function withCheckpoints(
   }
 }
 
-function parseTagsJson(raw: string | undefined): string[] | undefined {
+function parseTagsJson(raw: string | null | undefined): string[] | undefined {
   if (!raw) return undefined
 
   try {

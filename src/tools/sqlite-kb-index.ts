@@ -77,6 +77,45 @@ export interface LaneRoutingEventInput {
   surface: 'chat' | 'intent-query' | 'intent-explain' | 'validator' | 'reader'
 }
 
+export interface SessionEntryInput {
+  sessionDate: string
+  base: string
+  eventType:
+    | 'submit'
+    | 'validate'
+    | 'dispute'
+    | 'query'
+    | 'chat'
+    | 'publish'
+    | 'init'
+    | 'tool-call'
+    | 'system'
+  summary: string
+  metadata?: Record<string, unknown>
+}
+
+export interface SqliteDocumentRow {
+  id: string
+  title: string
+  content: string
+  file_path: string
+  doc_type: string | null
+  lane: string | null
+  tags_json: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DocumentUpsertInput {
+  id: string
+  title: string
+  content: string
+  docType?: string | null
+  lane: RetrievalLane
+  tags?: string[]
+  createdAt?: string
+}
+
 export interface LaneRoutingMetrics {
   lane: RetrievalLane
   totalCount: number
@@ -168,10 +207,11 @@ export class SqliteKbIndexer {
     const contentHash = sha256(content)
 
     const upsertDocument = this.db.prepare(`
-      INSERT INTO documents (id, title, file_path, doc_type, lane, tags_json, content_hash, created_at, updated_at, indexed_at)
-      VALUES (@id, @title, @filePath, @docType, @lane, @tagsJson, @contentHash, @createdAt, @updatedAt, @indexedAt)
+      INSERT INTO documents (id, title, content, file_path, doc_type, lane, tags_json, content_hash, created_at, updated_at, indexed_at)
+      VALUES (@id, @title, @content, @filePath, @docType, @lane, @tagsJson, @contentHash, @createdAt, @updatedAt, @indexedAt)
       ON CONFLICT(id) DO UPDATE SET
         title=excluded.title,
+        content=excluded.content,
         file_path=excluded.file_path,
         doc_type=excluded.doc_type,
         lane=excluded.lane,
@@ -207,6 +247,7 @@ export class SqliteKbIndexer {
       upsertDocument.run({
         id: parsed.id,
         title: parsed.title,
+        content,
         filePath,
         docType: parsed.docType,
         lane: parsed.lane,
@@ -834,11 +875,143 @@ export class SqliteKbIndexer {
 
       CREATE INDEX IF NOT EXISTS idx_retrieval_lane_routing_events_fingerprint
         ON retrieval_lane_routing_events(query_fingerprint, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS session_entries (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_date  TEXT NOT NULL,
+        base          TEXT NOT NULL,
+        event_type    TEXT NOT NULL,
+        summary       TEXT NOT NULL,
+        metadata_json TEXT,
+        created_at    TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_session_entries_date
+        ON session_entries(session_date DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_session_entries_base
+        ON session_entries(base, session_date DESC);
     `)
 
-    // Migration-safe lane columns for existing databases.
+    // Migration-safe columns for existing databases.
     this.ensureColumn('documents', 'lane', 'TEXT')
     this.ensureColumn('chunks', 'lane', 'TEXT')
+    this.ensureColumn('documents', 'content', "TEXT NOT NULL DEFAULT ''")
+  }
+
+  // ─── Session Entry API ───────────────────────────────────────────
+
+  insertSessionEntry(entry: SessionEntryInput): void {
+    const now = dayjs().toISOString()
+    this.db.prepare(`
+      INSERT INTO session_entries (session_date, base, event_type, summary, metadata_json, created_at)
+      VALUES (@sessionDate, @base, @eventType, @summary, @metadataJson, @createdAt)
+    `).run({
+      sessionDate: entry.sessionDate,
+      base: entry.base,
+      eventType: entry.eventType,
+      summary: entry.summary,
+      metadataJson: entry.metadata ? JSON.stringify(entry.metadata) : null,
+      createdAt: now,
+    })
+  }
+
+  // ─── Document Content API (SQLite-exclusive read path) ───────────
+
+  getAllDocumentsForLexical(): SqliteDocumentRow[] {
+    return this.db.prepare(`
+      SELECT id, title, content, file_path, doc_type, lane, tags_json, created_at, updated_at
+      FROM documents
+      ORDER BY updated_at DESC
+    `).all() as SqliteDocumentRow[]
+  }
+
+  getDocumentContent(id: string): string | undefined {
+    const row = this.db.prepare(
+      'SELECT content FROM documents WHERE id = ?'
+    ).get(id) as { content?: string } | undefined
+    return row?.content
+  }
+
+  upsertDocumentWithContent(input: DocumentUpsertInput): void {
+    const now = dayjs().toISOString()
+    const chunks = buildChunks(input.id, input.content, input.lane)
+    const contentHash = sha256(input.content)
+
+    const upsertDoc = this.db.prepare(`
+      INSERT INTO documents (id, title, content, file_path, doc_type, lane, tags_json, content_hash, created_at, updated_at, indexed_at)
+      VALUES (@id, @title, @content, @filePath, @docType, @lane, @tagsJson, @contentHash, @createdAt, @updatedAt, @indexedAt)
+      ON CONFLICT(id) DO UPDATE SET
+        title=excluded.title,
+        content=excluded.content,
+        file_path=excluded.file_path,
+        doc_type=excluded.doc_type,
+        lane=excluded.lane,
+        tags_json=excluded.tags_json,
+        content_hash=excluded.content_hash,
+        updated_at=excluded.updated_at,
+        indexed_at=excluded.indexed_at
+    `)
+
+    const deleteChunks = this.db.prepare('DELETE FROM chunks WHERE doc_id = ?')
+    const insertChunk = this.db.prepare(`
+      INSERT INTO chunks (chunk_id, doc_id, chunk_index, lane, heading_path, chunk_text, token_count)
+      VALUES (@chunkId, @docId, @chunkIndex, @lane, @headingPath, @chunkText, @tokenCount)
+    `)
+    const insertFts = this.db.prepare(`
+      INSERT INTO chunks_fts (chunk_id, doc_id, chunk_text)
+      VALUES (@chunkId, @docId, @chunkText)
+    `)
+    const insertEmbedding = this.db.prepare(`
+      INSERT INTO chunk_embeddings (chunk_id, model_id, dimensions, vector_json, embedded_at)
+      VALUES (@chunkId, @modelId, @dimensions, @vectorJson, @embeddedAt)
+    `)
+
+    const tx = this.db.transaction(() => {
+      upsertDoc.run({
+        id: input.id,
+        title: input.title,
+        content: input.content,
+        filePath: input.id,
+        docType: input.docType ?? null,
+        lane: input.lane,
+        tagsJson: JSON.stringify(input.tags ?? []),
+        contentHash,
+        createdAt: input.createdAt ?? now,
+        updatedAt: now,
+        indexedAt: now,
+      })
+
+      deleteChunks.run(input.id)
+
+      for (const chunk of chunks) {
+        insertChunk.run({
+          chunkId: chunk.chunkId,
+          docId: input.id,
+          chunkIndex: chunk.chunkIndex,
+          lane: chunk.lane,
+          headingPath: chunk.headingPath,
+          chunkText: chunk.chunkText,
+          tokenCount: chunk.tokenCount,
+        })
+        insertFts.run({
+          chunkId: chunk.chunkId,
+          docId: input.id,
+          chunkText: chunk.chunkText,
+        })
+
+        const vector = buildDeterministicVector(chunk.chunkText, this.vectorDimensions)
+        insertEmbedding.run({
+          chunkId: chunk.chunkId,
+          modelId: this.modelId,
+          dimensions: this.vectorDimensions,
+          vectorJson: JSON.stringify(Array.from(vector)),
+          embeddedAt: now,
+        })
+      }
+    })
+
+    tx()
   }
 
   private ensureColumn(table: string, column: string, type: string): void {

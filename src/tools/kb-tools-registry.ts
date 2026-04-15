@@ -7,7 +7,7 @@ import path from 'path'
 import type { ToolExecutor } from '../core/tool-registry'
 import { createToolRegistry } from '../core/tool-registry'
 import type { ToolDefinition } from '../core/types'
-import { MarkdownMDWriterTool } from './markdown-md-writer-tool'
+import { SqliteDocumentWriter } from './sqlite-document-writer'
 import { MarkdownDocumentReader, type QueryDocumentsInput, type QueryResponse } from './markdown-document-reader'
 import {
   executeWriteDocumentTool,
@@ -27,7 +27,7 @@ export function createKBToolsRegistry(baseDir?: string): ToolExecutor {
   const storageDir = baseDir ?? path.join(process.cwd(), 'sessions', 'documents')
 
   // Initialize storage implementations
-  const writer = new MarkdownMDWriterTool({ baseDir: storageDir })
+  const writer = new SqliteDocumentWriter({ baseDir: storageDir })
   const reader = new MarkdownDocumentReader(storageDir)
 
   // Register write_document tool
