@@ -10,6 +10,7 @@ export type CliOutputMode = 'human' | 'json'
 export interface ParsedIntentCommand {
   envelope: ConsumerIntentEnvelope
   output: CliOutputMode
+  base?: string
 }
 
 const INTENT_COMMANDS = new Set(['submit', 'validate', 'dispute', 'query', 'explain'])
@@ -28,6 +29,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
   assertConsumerSafeCommand(command)
 
   const output = parseOutput(rest)
+  const base = readOption(rest, '--base')
 
   switch (command) {
     case 'submit':
@@ -44,6 +46,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
           },
         },
         output,
+        base,
       }
 
     case 'validate':
@@ -57,6 +60,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
           },
         },
         output,
+        base,
       }
 
     case 'dispute': {
@@ -75,6 +79,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
           },
         },
         output,
+        base,
       }
     }
 
@@ -91,6 +96,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
           },
         },
         output,
+        base,
       }
 
     case 'explain':
@@ -103,6 +109,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
           },
         },
         output,
+        base,
       }
 
     default:
@@ -710,11 +717,11 @@ function extractHighlights(content: string | undefined): HighlightRef[] {
 export function printIntentHelp(): string {
   return [
     'Intent commands:',
-    '  kb submit "<fact>" [--domain ops] [--source runbook] [--target doc-id] [--include-session-logs] [--output human|json]',
-    '  kb validate "<fact>" [--domain ops] [--output human|json]',
-    '  kb dispute "<fact>" --because "<counter evidence>" [--domain ops] [--output human|json]',
-    '  kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]',
-    '  kb explain "<change id|fact>" [--output human|json]',
+    '  kb submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--target doc-id] [--include-session-logs] [--output human|json]',
+    '  kb validate "<fact>" [--base <name>] [--domain ops] [--output human|json]',
+    '  kb dispute "<fact>" --because "<counter evidence>" [--base <name>] [--domain ops] [--output human|json]',
+    '  kb query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]',
+    '  kb explain "<change id|fact>" [--base <name>] [--output human|json]',
   ].join('\n')
 }
 
