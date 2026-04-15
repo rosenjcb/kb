@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import { createProvider } from '../core/llm-provider'
 
 export interface KbConfig {
+  selectedBase?: string
   defaultBase?: string
   sessionBase?: string
   notion?: {
@@ -41,6 +42,7 @@ export const KB_CONFIG_DIR = path.join(os.homedir(), '.kb')
 export const KB_CONFIG_FILE = path.join(KB_CONFIG_DIR, 'config.json')
 
 const SUPPORTED_CONFIG_PATHS = [
+  'selectedBase',
   'defaultBase',
   'notion',
   'notion.token',
@@ -127,7 +129,8 @@ export function getConfigValue(config: KbConfig, keyPath?: string): unknown {
   const normalized = normalizeKbConfig(config)
 
   switch (keyPath) {
-    case 'defaultBase': return requireConfigValue(normalized.defaultBase, keyPath)
+    case 'selectedBase': return requireConfigValue(normalized.selectedBase, keyPath)
+    case 'defaultBase': return requireConfigValue(normalized.selectedBase, keyPath)
     case 'notion': return requireConfigValue(normalized.notion, keyPath)
     case 'notion.token': return requireConfigValue(normalized.notion?.token, keyPath)
     case 'notion.parentPageId': return requireConfigValue(normalized.notion?.parentPageId, keyPath)
@@ -161,8 +164,11 @@ export function setConfigValue(config: KbConfig, keyPath: string, value: string)
 
   const next = normalizeKbConfig(config)
   switch (keyPath) {
+    case 'selectedBase':
+      next.selectedBase = value
+      break
     case 'defaultBase':
-      next.defaultBase = value
+      next.selectedBase = value
       break
     case 'notion':
       throw new Error('INVALID_CONFIG_WRITE: notion requires a nested key such as notion.token')
@@ -243,7 +249,8 @@ export function unsetConfigValue(config: KbConfig, keyPath: string): KbConfig {
 
   const next = normalizeKbConfig(config)
   switch (keyPath) {
-    case 'defaultBase': delete next.defaultBase; break
+    case 'selectedBase': delete next.selectedBase; break
+    case 'defaultBase': delete next.selectedBase; break
     case 'notion': delete next.notion; break
     case 'notion.token': if (next.notion) delete next.notion.token; break
     case 'notion.parentPageId': if (next.notion) delete next.notion.parentPageId; break
@@ -407,8 +414,16 @@ export function resolveNotionToken(config: KbConfig): string | undefined {
 export function normalizeKbConfig(input: KbConfig): KbConfig {
   const normalized: KbConfig = {}
 
-  if (typeof input.defaultBase === 'string' && input.defaultBase.trim()) {
-    normalized.defaultBase = input.defaultBase.trim()
+  const selectedBase = typeof input.selectedBase === 'string' && input.selectedBase.trim()
+    ? input.selectedBase.trim()
+    : typeof input.sessionBase === 'string' && input.sessionBase.trim()
+      ? input.sessionBase.trim()
+      : typeof input.defaultBase === 'string' && input.defaultBase.trim()
+        ? input.defaultBase.trim()
+        : undefined
+
+  if (selectedBase) {
+    normalized.selectedBase = selectedBase
   }
 
   const notion = {
