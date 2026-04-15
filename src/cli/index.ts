@@ -6,20 +6,17 @@
  */
 
 import fs from 'fs'
-import dayjs from 'dayjs'
 import { createProvider } from '../core/llm-provider'
-import { agentLoop } from '../core/agent-loop'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
+import { runIntentLoop } from '../core/intent-loop'
 import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import {
   enrichReadDocumentsAnswerWithLLM,
-  executeIntentCommand,
   formatIntentResult,
   isIntentCommand,
   parseIntentCommand,
   printIntentHelp,
 } from './intent-cli'
-import { assertConsumerSafeCommand } from '../intents/policy'
 import {
   formatDefaultCommandHelp,
   formatUseCommandHelp,
@@ -379,32 +376,9 @@ async function main() {
     }
   }
 
-  let sessionFile: string | null = null
-  let sessionContent = ''
-  let query = ''
-
-  // Treat first arg as a session file when it looks like markdown and a query follows.
-  if (firstArg.endsWith('.md') && args.length > 1) {
-    sessionFile = firstArg
-    if (fs.existsSync(sessionFile)) {
-      sessionContent = fs.readFileSync(sessionFile, 'utf-8')
-    }
-    query = args.slice(1).join(' ')
-  } else {
-    // All args are the query
-    query = args.join(' ')
-  }
-
-  if (!query) {
-    query = 'Hello! What can you do?'
-  }
-
   const provider = resolveProviderFromEnv()
   const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
 
-  let llmProvider: ReturnType<typeof createProvider> | undefined
-
-  // Consumer-intent command mode (bypasses LLM loop, routes intents directly)
   if (isIntentCommand(firstArg)) {
     try {
       const parsed = parseIntentCommand(args)
@@ -412,8 +386,8 @@ async function main() {
         ? resolveBaseToDir(parsed.base)
         : kbStorageDir
       const toolExecutor = createKBToolsRegistry(intentBaseDir)
-      const result = await executeIntentCommand(parsed, toolExecutor)
-      llmProvider = tryCreateLlmProvider(provider)
+      const llmProvider = tryCreateLlmProvider(provider)
+      const { result } = await runIntentLoop(parsed.envelope, toolExecutor, { provider: llmProvider })
       const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, llmProvider)
       console.log(formatIntentResult(enriched, parsed.output))
       return
@@ -426,101 +400,10 @@ async function main() {
     }
   }
 
-  // Enforce consumer-safe boundary for direct internal tool command attempts.
-  try {
-    assertConsumerSafeCommand(firstArg)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    console.error(`❌ ${message}`)
-    process.exit(1)
-  }
-
-  console.log(`📝 Query: ${query}`)
-  if (sessionFile) {
-    console.log(`📁 Session: ${sessionFile}`)
-  }
-  console.log(`🔌 Provider: ${provider}\n`)
-  console.log(`🗂️ KB Storage: ${kbStorageDir}\n`)
-
-  // Create provider
-  try {
-    llmProvider = tryCreateLlmProvider(provider)
-  } catch (error) {
-    console.error('❌ Provider setup failed:', error)
-    process.exit(1)
-  }
-
-  if (!llmProvider) {
-    console.error('❌ Provider setup failed: provider was not initialized')
-    process.exit(1)
-  }
-
-  // Run agent loop
-  try {
-    console.log('⏳ Running agent...\n')
-    let eventCount = 0
-    let fullResponse = ''
-
-    // If session file exists, prepend context to query
-    let contextualQuery = query
-    if (sessionFile && sessionContent) {
-      contextualQuery = `Context from session:\n\`\`\`\n${sessionContent}\n\`\`\`\n\nNew query: ${query}`
-    }
-
-    // Create KB tools registry
-    const toolExecutor = createKBToolsRegistry(kbStorageDir)
-
-    for await (const event of agentLoop(contextualQuery, llmProvider, toolExecutor)) {
-      eventCount++
-
-      switch (event.type) {
-        case 'text':
-          console.log(`💬 ${event.content}`)
-          fullResponse += event.content
-          break
-        case 'tool_start':
-          console.log(`🔨 Tool: ${event.toolName} (${event.toolUseId})`)
-          break
-        case 'tool_result':
-          console.log(
-            `✅ Result: ${JSON.stringify(event.result).slice(0, 100)}...`
-          )
-          break
-        case 'metadata':
-          console.log(
-            `📊 Usage: ${event.usage.inputTokens} in, ${event.usage.outputTokens} out`
-          )
-          break
-        case 'done':
-          console.log(`\n✨ Done: ${event.reason}`)
-          break
-        case 'error':
-          console.error(`❌ Error: ${event.error.message}`)
-          break
-      }
-    }
-
-    console.log(`\n📈 Total events: ${eventCount}`)
-
-    // If session file, append the result and query to it
-    if (sessionFile && fullResponse) {
-      const timestamp = dayjs().toISOString()
-      const sessionUpdate = `\n## Query (${timestamp})\n${query}\n\n## Response\n${fullResponse}\n`
-      fs.appendFileSync(sessionFile, sessionUpdate)
-      console.log(`\n✅ Session updated: ${sessionFile}`)
-    }
-  } catch (error) {
-    const err = error as { cause?: { code?: string } }
-    if (provider === 'ollama' && err?.cause?.code === 'ECONNREFUSED') {
-      console.error('❌ Could not connect to Ollama at http://localhost:11434')
-      console.error('   Use a hosted provider instead by setting a provider-specific API key:')
-      console.error('   export OPENAI_API_KEY=your_key')
-      console.error('   pnpm run dev "hello"')
-    } else {
-      console.error('❌ Agent loop failed:', error)
-    }
-    process.exit(1)
-  }
+  console.error(`❌ Unrecognized command: ${firstArg}`)
+  console.error('')
+  console.log(printCliHelp())
+  process.exit(1)
 }
 
 main().catch(console.error)
