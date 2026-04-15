@@ -292,6 +292,10 @@ export class SqliteKbIndexer {
     tx()
   }
 
+  close(): void {
+    this.db.close()
+  }
+
   backfillDocumentLanes(): number {
     const rows = this.db
       .prepare('SELECT id, title, file_path, doc_type, tags_json FROM documents')
@@ -756,10 +760,6 @@ export class SqliteKbIndexer {
       hybridFallbackRate,
       reasons: [`overall-success-rate-below-threshold:${overallSuccessRate.toFixed(2)}<${config.minOverallSuccessRate}`],
     }
-  }
-
-  close(): void {
-    this.db.close()
   }
 
   private initSchema(): void {

@@ -10,6 +10,7 @@ import dayjs from 'dayjs'
 import { createProvider } from '../core/llm-provider'
 import { agentLoop } from '../core/agent-loop'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
+import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import {
   enrichReadDocumentsAnswerWithLLM,
   executeIntentCommand,
@@ -32,6 +33,13 @@ import { printConfigHelp, runConfigCommand } from './config-cli'
 import { parsePublishCommand, runPublishCommand } from './publish-cli'
 import { parseInitCommand, runKbInit } from './init-cli'
 import { runChatSession } from './chat-cli'
+import {
+  printListHelp,
+  printViewHelp,
+  runListCommand,
+  runViewCommand,
+  ViewCommandError,
+} from './view-cli'
 
 function printCliHelp(): string {
   return [
@@ -41,6 +49,8 @@ function printCliHelp(): string {
     '  kb <query>',
     '  kb <sessionFile.md> <query>',
     '  kb chat',
+    '  kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run]',
+    '  kb docs <list|view> [options]',
     '  kb init --base <name> [--apply | --dry-run]',
     '  kb config <get|set|unset> [options]',
     '  kb publish [options]',
@@ -49,6 +59,10 @@ function printCliHelp(): string {
     printIntentHelp(),
     '',
     printConfigHelp(),
+    '',
+    printListHelp(),
+    '',
+    printViewHelp(),
     '',
     'Examples:',
     '  kb "What tools are available?"',
@@ -60,6 +74,10 @@ function printCliHelp(): string {
     '  kb config get',
     '  kb config get defaultBase',
     '  kb config set defaultBase dogfood',
+    '  kb invalidate "We deploy to GCP" "We deploy to AWS" --apply',
+    '  kb docs list --base dogfood --limit 20',
+    '  kb docs view kb-base-selection-and-usage',
+    '  kb docs view --title "KB Base Selection and Usage"',
     '  kb chat',
     '  kb publish --base dogfood --dry-run',
     '  kb publish --base dogfood --apply --stop-after pass2',
@@ -94,16 +112,6 @@ function resolveProviderFromEnv():
   | 'openai'
   | 'gemini'
   | 'ollama' {
-  const raw = (process.env.LLM_PROVIDER || '').trim().toLowerCase()
-
-  // Common typo/alias
-  if (raw === 'openapi') return 'openai'
-
-  if (raw === 'anthropic' || raw === 'openai' || raw === 'gemini' || raw === 'ollama') {
-    return raw
-  }
-
-  // Auto-pick provider based on available credentials when not explicitly set.
   if (process.env.OPENAI_API_KEY) return 'openai'
   if (process.env.ANTHROPIC_API_KEY) return 'anthropic'
   if (process.env.GEMINI_API_KEY) return 'gemini'
@@ -151,6 +159,35 @@ async function main() {
   // Parse arguments: [sessionFile?] query...
   const args = process.argv.slice(2)
   const firstArg = args[0]
+
+  // kb invalidate <old-fact> [<replacement-fact>] [--preview|--apply|--dry-run]
+  if (firstArg === 'invalidate') {
+    const oldFact = args[1]
+    const replacementFact = args[2] && !args[2].startsWith('--') ? args[2] : undefined
+    const preview = args.includes('--preview') || !args.includes('--apply')
+    const dryRun = args.includes('--dry-run')
+
+    if (!oldFact) {
+      console.error('❌ Usage: kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run]')
+      process.exit(1)
+    }
+
+    const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
+    const result = await invalidateFactTool(
+      { oldFact, replacementFact, preview, dryRun, includeSessionLogs: true },
+      kbStorageDir,
+    )
+
+    for (const change of result.changes) {
+      console.log(`\nDocument: ${change.documentId} (${change.title})\nReplaced: ${change.replaced}\nDiff:\n${change.diff}`)
+    }
+    console.log(`\n${result.summary}`)
+    if (result.error) {
+      console.error(`❌ ${result.error}`)
+      process.exit(1)
+    }
+    return
+  }
 
   if (args.length === 0 || firstArg === '--help' || firstArg === '-h' || firstArg === 'help') {
     console.log(printCliHelp())
@@ -253,6 +290,80 @@ async function main() {
       console.error(`❌ ${message}`)
       process.exit(1)
     }
+  }
+
+  if (firstArg === 'docs') {
+    const docsAction = args[1]
+
+    if (!docsAction || docsAction === '--help' || docsAction === '-h' || docsAction === 'help') {
+      console.log([
+        'kb docs commands',
+        '',
+        'Usage:',
+        '  kb docs list [options]',
+        '  kb docs view <document-id> [options]',
+        '',
+        printListHelp(),
+        '',
+        printViewHelp(),
+      ].join('\n'))
+      return
+    }
+
+    if (docsAction === 'view') {
+      try {
+        const result = await runViewCommand(args.slice(2))
+        process.stdout.write(result.output)
+        return
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        const exitCode = error instanceof ViewCommandError ? error.exitCode : 1
+        if (exitCode === 0) {
+          console.log(message)
+          return
+        }
+        console.error(`❌ ${message}`)
+        process.exit(exitCode)
+      }
+    }
+
+    if (docsAction === 'list') {
+      try {
+        const result = await runListCommand(args.slice(2))
+        process.stdout.write(result.output)
+        return
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        const exitCode = error instanceof ViewCommandError ? error.exitCode : 1
+        if (exitCode === 0) {
+          console.log(message)
+          return
+        }
+        console.error(`❌ ${message}`)
+        process.exit(exitCode)
+      }
+    }
+
+    console.error(`❌ Unknown docs action: ${docsAction}`)
+    console.error('')
+    console.error([
+      'kb docs commands',
+      '',
+      'Usage:',
+      '  kb docs list [options]',
+      '  kb docs view <document-id> [options]',
+    ].join('\n'))
+    process.exit(1)
+  }
+
+  if (firstArg === 'view') {
+    console.error('❌ `kb view` has moved to `kb docs view`.')
+    process.exit(1)
+  }
+
+  if (firstArg === 'list') {
+    console.error('❌ `kb list` has moved to `kb docs list`.')
+    process.exit(1)
   }
 
   if (firstArg === 'init') {
@@ -399,8 +510,7 @@ async function main() {
     const err = error as { cause?: { code?: string } }
     if (provider === 'ollama' && err?.cause?.code === 'ECONNREFUSED') {
       console.error('❌ Could not connect to Ollama at http://localhost:11434')
-      console.error('   Use OpenAI instead:')
-      console.error('   export LLM_PROVIDER=openai')
+      console.error('   Use a hosted provider instead by setting a provider-specific API key:')
       console.error('   export OPENAI_API_KEY=your_key')
       console.error('   pnpm run dev "hello"')
     } else {

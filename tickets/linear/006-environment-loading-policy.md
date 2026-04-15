@@ -54,7 +54,7 @@ Use standard TypeScript environment loading patterns: read configuration at star
 # .env.local (git-ignored, local development only)
 
 # ─── LLM Provider Configuration ───
-LLM_PROVIDER=anthropic                    # or openai, gemini, ollama
+OPENAI_API_KEY=your_key                   # or ANTHROPIC_API_KEY / GEMINI_API_KEY
 ANTHROPIC_API_KEY=sk-ant-...              # Only if provider=anthropic
 OPENAI_API_KEY=sk-...                     # Only if provider=openai
 GEMINI_API_KEY=...                        # Only if provider=gemini
@@ -123,7 +123,6 @@ config({ path: '.env.local' })
 // 2. Parse and validate
 function loadConfig(): Config {
   const raw = {
-    llmProvider: process.env.LLM_PROVIDER,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     openaiApiKey: process.env.OPENAI_API_KEY,
     geminiApiKey: process.env.GEMINI_API_KEY,
@@ -140,13 +139,13 @@ function loadConfig(): Config {
 
   // 3. Apply provider-specific validation
   if (raw.llmProvider === 'anthropic' && !raw.anthropicApiKey) {
-    throw new Error('ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic')
+    throw new Error('ANTHROPIC_API_KEY is required when using Anthropic')
   }
   if (raw.llmProvider === 'openai' && !raw.openaiApiKey) {
-    throw new Error('OPENAI_API_KEY is required when LLM_PROVIDER=openai')
+    throw new Error('OPENAI_API_KEY is required when using OpenAI')
   }
   if (raw.llmProvider === 'gemini' && !raw.geminiApiKey) {
-    throw new Error('GEMINI_API_KEY is required when LLM_PROVIDER=gemini')
+    throw new Error('GEMINI_API_KEY is required when using Gemini')
   }
 
   // 4. Validate schema
@@ -167,7 +166,7 @@ export function getConfig(): Config {
 // 6. Call at app startup
 try {
   const config = getConfig()
-  console.log(`✓ Config loaded: LLM_PROVIDER=${config.llmProvider}, LOG_LEVEL=${config.logLevel}`)
+  console.log(`✓ Config loaded: provider auto-selected, LOG_LEVEL=${config.logLevel}`)
 } catch (error) {
   console.error('✗ Config validation failed:', error.message)
   process.exit(1)  // Fail fast
@@ -178,7 +177,7 @@ try {
 
 ```
 1. Process environment variables (process.env)
-   - Set via CLI: LLM_PROVIDER=openai node src/cli/index.ts
+   - Set via CLI: OPENAI_API_KEY=your_key node src/cli/index.ts
    - Set in shell: export OPENAI_API_KEY=...; npm run start
 2. .env.local file (if present)
    - Loaded via dotenv.config({ path: '.env.local' })
@@ -188,7 +187,7 @@ try {
    - LOG_LEVEL defaults to 'info'
    - OLLAMA_ENDPOINT defaults to http://localhost:11434
 4. No fallback → Error
-   - LLM_PROVIDER is required; must be set
+   - Provider is inferred from available API keys; explicit provider env is not required
    - API key for chosen provider is required
 ```
 
@@ -196,12 +195,12 @@ try {
 
 ```typescript
 // Shell setup
-$ export LLM_PROVIDER=anthropic
+$ export ANTHROPIC_API_KEY=your_key
 $ export ANTHROPIC_API_KEY=sk-ant-abc123def456
 $ npm run dev
 
 // app.ts startup
-// 1. dotenv loads .env.local → finds LLM_PROVIDER=anthropic (already in process.env, no override)
+// 1. dotenv loads .env.local → finds provider-specific API keys (already in process.env, no override)
 // 2. Schema validation:
 //    - llmProvider: 'anthropic' ✓
 //    - anthropicApiKey: 'sk-ant-...' ✓
@@ -216,9 +215,9 @@ $ npm run dev
 | Scenario | Behavior | Exit Code |
 |----------|----------|-----------|
 | All required vars set | Load success, use config | 0 |
-| Missing LLM_PROVIDER | Error: "LLM_PROVIDER is required" | 1 |
-| LLM_PROVIDER=anthropic but no key | Error: "ANTHROPIC_API_KEY is required..." | 1 |
-| Invalid LLM_PROVIDER value | Error: "llmProvider must be one of..." | 1 |
+| No provider-specific API keys | Fallback to local Ollama endpoint | 0/connection-dependent |
+| Anthropic selected by key but no valid key | Provider client fails to initialize | 1 |
+| OpenAI selected by key but no valid key | Provider client fails to initialize | 1 |
 | MAX_AGENT_TURNS not a number | Error: "maxAgentTurns must be an integer" | 1 |
 | All optional flags omitted | Use defaults; no error | 0 |
 
@@ -245,7 +244,7 @@ config({ path: envFile })  // Load environment-specific file
 ```dockerfile
 # Dockerfile
 ENV ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}  # Injected at build time
-ENV LLM_PROVIDER=anthropic
+ENV OPENAI_API_KEY=your_key
 ENV ENVIRONMENT=production
 ```
 
@@ -271,7 +270,7 @@ ENV ENVIRONMENT=production
 - ✅ **Load at startup**: Singleton config object, fail fast on validation error
 - ✅ **Schema validation**: Zod for type-safe config with provider-specific rules
 - ✅ **Precedence**: CLI env > process.env > .env.local > defaults
-- ✅ **Required values**: LLM_PROVIDER and provider-specific API key required
+- ✅ **Credential-driven defaults**: provider inferred from available credentials
 - ✅ **Gitignore `.env.local`**: Safe for local development secrets
 - ✅ **Fail fast**: Exit(1) immediately on config error; don't defer
 - ✅ **Future-proof**: Support `.env.dev`, `.env.prod` later via NODE_ENV
