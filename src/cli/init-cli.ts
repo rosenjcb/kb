@@ -22,7 +22,7 @@ import path from 'node:path'
 import dayjs from 'dayjs'
 import type { LLMProvider } from '../core/types'
 import { readKbConfig, createLLMProviderFromConfig } from './kb-config'
-import { resolveBaseToDir } from './base-selection'
+import { resolveBaseToDir, resolveEffectiveBaseDir } from './base-selection'
 import {
   assessTopicCoverage,
   buildTopicCoverageGaps,
@@ -49,9 +49,7 @@ export type InitTopic =
 export type TopicCoverageStatus = 'sufficient' | 'needs-follow-up' | 'inferred-only' | 'unresolved'
 
 export interface InitOptions {
-  base: string
-  apply: boolean
-  dryRun: boolean
+  base?: string
   nonInteractive: boolean
   detach?: boolean
   resume?: boolean
@@ -66,7 +64,6 @@ export interface InitOptions {
 export interface InitResult {
   status: 'accepted' | 'paused'
   base: string
-  apply: boolean
   completedCycles: InitCycle[]
   writtenDocIds?: string[]
   checkpointFile?: string
@@ -199,13 +196,23 @@ const SOURCE_FILE_CANDIDATES = [
 const MAX_SOURCE_SIZE = 20_000
 const MAX_TOTAL_QUESTIONS = 10
 const MAX_FOLLOW_UP_QUESTIONS = 4
+const INIT_MODEL_MAX_TOKENS = 4096
+const INIT_PROMPT_SAFETY_TOKENS = 256
+const INIT_OUTPUT_TOKENS = {
+  synthesis: 1200,
+  refinement: 1000,
+  quality: 900,
+  enrich: 700,
+  consolidate: 1200,
+} as const
 
 export function parseInitCommand(args: string[]): InitOptions {
-  const base = readOption(args, '--base') ?? 'default'
+  const base = readOption(args, '--base') ?? undefined
 
-  const hasApply = readFlag(args, '--apply')
   const hasDryRun = readFlag(args, '--dry-run')
-  if (hasApply && hasDryRun) throw new Error('Use either --apply or --dry-run, not both')
+  if (hasDryRun) {
+    throw new Error('Unsupported init flag. Use `--stop-after <cycle>`, `--detach`, or `--resume` to control the lifecycle.')
+  }
 
   const stopAfter = readOption(args, '--stop-after') as InitCycle | undefined
   const validCycles: InitCycle[] = ['read-inputs', 'pass1', 'pass2', 'pass-enrich', 'pass-consolidate', 'pass3', 'write']
@@ -215,8 +222,6 @@ export function parseInitCommand(args: string[]): InitOptions {
 
   return {
     base,
-    apply: hasApply,
-    dryRun: hasDryRun || !hasApply,
     nonInteractive: readFlag(args, '--non-interactive'),
     detach: readFlag(args, '--detach'),
     resume: readFlag(args, '--resume'),
@@ -234,19 +239,20 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
     options = { ...options, nonInteractive: true }
   }
 
+  const questionIO = options.questionIO ?? createReadlineQuestionIO()
   const cwd = options.cwd ?? process.cwd()
-  const baseDir = resolveBaseToDir(options.base, cwd)
-  const checkpointFile = resolveCheckpointPath(options, cwd)
+  const base = await resolveInitBaseName(options, cwd, questionIO)
+  const baseDir = resolveBaseToDir(base, cwd)
+  const checkpointFile = resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = await readCheckpoint(checkpointFile)
 
   const progress = new InitProgressReporter(7)
   const provider = options.provider ?? await resolveProvider()
-  const questionIO = options.questionIO ?? createReadlineQuestionIO()
 
   let checkpoint: InitCheckpoint = resumedCheckpoint ?? {
     version: 2,
     updatedAt: dayjs().toISOString(),
-    baseName: options.base,
+    baseName: base,
     workingDir: cwd,
     completedCycles: [],
     interviewRounds: [],
@@ -334,7 +340,7 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
       if (!provider) {
         throw new Error('No LLM provider available. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY.')
       }
-      candidateDocs = await runSynthesisPass(provider, context, options.base)
+      candidateDocs = await runSynthesisPass(provider, context, base)
       topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
       await persist({
         candidateDocs,
@@ -465,10 +471,8 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
     }
 
     if (!checkpoint.completedCycles.includes('write')) {
-      progress.start('write', options.dryRun ? '(dry-run)' : baseDir)
-      const writtenDocIds = options.dryRun
-        ? candidateDocs.map(doc => slugify(doc.title))
-        : await writeDocs(candidateDocs, baseDir, options.base)
+      progress.start('write', baseDir)
+      const writtenDocIds = await writeDocs(candidateDocs, baseDir, base)
       const finalCoverageSummary = checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
       await persist({
         completedCycles: ['write'],
@@ -477,8 +481,7 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
       progress.finish('write', `${writtenDocIds.length} docs written`)
       return {
         status: 'accepted',
-        base: options.base,
-        apply: options.apply,
+        base,
         completedCycles: checkpoint.completedCycles,
         writtenDocIds,
         checkpointFile,
@@ -500,8 +503,7 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
 
   return {
     status: paused ? 'paused' : 'accepted',
-    base: options.base,
-    apply: options.apply,
+    base,
     completedCycles: checkpoint.completedCycles,
     checkpointFile,
     resumedFrom: resumedCheckpoint ? checkpointFile : undefined,
@@ -713,26 +715,25 @@ async function runSynthesisPass(
   context: InitContext,
   baseName: string,
 ): Promise<CandidateDoc[]> {
-  const sourceSection = Object.entries(context.sourceFiles)
-    .map(([file, content]) => `### ${file}\n${content}`)
-    .join('\n\n---\n\n')
+  const { prompt, maxTokens } = buildBudgetedPrompt({
+    intro: `You are a knowledge base architect. Your job is to extract structured, retrieval-ready fact documents from project documentation.
 
-  const qaSection = context.userAnswers.length > 0
-    ? context.userAnswers.map(({ question, answer }) => `Q: ${question}\nA: ${answer}`).join('\n\n')
-    : '(No Q&A collected)'
-
-  const prompt = `You are a knowledge base architect. Your job is to extract structured, retrieval-ready fact documents from project documentation.
-
-You are initialising a knowledge base for the project base "${baseName}".
-
-## Source Files
-${sourceSection}
-
-## User Q&A
-${qaSection}
-
-## Instructions
-Produce 5-15 focused documents. Each document should be atomic and retrieval-optimised. Avoid duplicating facts.
+You are initialising a knowledge base for the project base "${baseName}".`,
+    sections: [
+      {
+        heading: 'Source Files',
+        content: formatSourceFilesForPrompt(context.sourceFiles),
+        priority: 3,
+        minTokens: 500,
+      },
+      {
+        heading: 'User Q&A',
+        content: formatQuestionAnswersForPrompt(context.userAnswers, '(No Q&A collected)'),
+        priority: 1,
+        minTokens: 120,
+      },
+    ],
+    instructions: `Produce 5-15 focused documents. Each document should be atomic and retrieval-optimised. Avoid duplicating facts.
 
 Return a JSON array with this shape:
 [
@@ -750,11 +751,13 @@ Required document categories:
 - 1 configuration reference (type: reference) if applicable
 - Fact documents for key decisions, architecture components, policies
 
-Return ONLY the JSON array, no prose.`
+Return ONLY the JSON array, no prose.`,
+    requestedMaxTokens: INIT_OUTPUT_TOKENS.synthesis,
+  })
 
   const response = await provider.call({
     messages: [{ role: 'user', content: prompt }],
-    maxTokens: 4000,
+    maxTokens,
     temperature: 0.2,
   })
 
@@ -766,26 +769,35 @@ async function runRefinementPass(
   context: InitContext,
   docs: CandidateDoc[],
 ): Promise<CandidateDoc[]> {
-  const prompt = `You are refining a set of KB documents for quality and completeness.
-
-## Current documents
-${JSON.stringify(docs, null, 2)}
-
-## Additional user context
-${context.userAnswers.map(({ question, answer }) => `Q: ${question}\nA: ${answer}`).join('\n\n') || '(none)'}
-
-## Instructions
-1. Merge documents that clearly cover the same topic (avoid duplicates).
+  const { prompt, maxTokens } = buildBudgetedPrompt({
+    intro: 'You are refining a set of KB documents for quality and completeness.',
+    sections: [
+      {
+        heading: 'Current documents',
+        content: formatDocsForPrompt(docs),
+        priority: 3,
+        minTokens: 500,
+      },
+      {
+        heading: 'Additional user context',
+        content: formatQuestionAnswersForPrompt(context.userAnswers, '(none)'),
+        priority: 1,
+        minTokens: 100,
+      },
+    ],
+    instructions: `1. Merge documents that clearly cover the same topic (avoid duplicates).
 2. Split any document that covers 2+ unrelated topics.
 3. Ensure each document has a concise, specific title.
 4. Fill in any obvious gaps — if an important topic is missing based on the user answers, add a document for it.
 5. Remove content that is vague, redundant, or not factual.
 
-Return the refined JSON array in the same shape. Return ONLY the JSON array.`
+Return the refined JSON array in the same shape. Return ONLY the JSON array.`,
+    requestedMaxTokens: INIT_OUTPUT_TOKENS.refinement,
+  })
 
   const response = await provider.call({
     messages: [{ role: 'user', content: prompt }],
-    maxTokens: 4000,
+    maxTokens,
     temperature: 0.1,
   })
 
@@ -796,24 +808,30 @@ async function runQualityPass(
   provider: LLMProvider,
   docs: CandidateDoc[],
 ): Promise<CandidateDoc[]> {
-  const prompt = `You are doing a final quality pass on KB documents before they are written to storage.
-
-## Documents
-${JSON.stringify(docs, null, 2)}
-
-## Checks to apply
-1. Every document must have a non-empty title and content.
+  const { prompt, maxTokens } = buildBudgetedPrompt({
+    intro: 'You are doing a final quality pass on KB documents before they are written to storage.',
+    sections: [
+      {
+        heading: 'Documents',
+        content: formatDocsForPrompt(docs),
+        priority: 1,
+        minTokens: 600,
+      },
+    ],
+    instructions: `1. Every document must have a non-empty title and content.
 2. Content should start with a 1-sentence summary.
 3. Tags should be lowercase, hyphenated slugs relevant to the content.
 4. Type must be one of: architecture, decision, reference, runbook, checklist.
 5. Remove any document with fewer than 20 words of content.
 6. Ensure titles are unique.
 
-Return the final JSON array. Return ONLY the JSON array.`
+Return the final JSON array. Return ONLY the JSON array.`,
+    requestedMaxTokens: INIT_OUTPUT_TOKENS.quality,
+  })
 
   const response = await provider.call({
     messages: [{ role: 'user', content: prompt }],
-    maxTokens: 4000,
+    maxTokens,
     temperature: 0.0,
   })
 
@@ -830,40 +848,44 @@ async function runPerDocEnrichmentPass(
   context: InitContext,
   docs: CandidateDoc[],
 ): Promise<CandidateDoc[]> {
-  const sourceSection = Object.entries(context.sourceFiles)
-    .map(([file, content]) => `### ${file}\n${content.slice(0, 3000)}`)
-    .join('\n\n---\n\n')
-
-  const qaSection = context.userAnswers.length > 0
-    ? context.userAnswers.map(({ question, answer }) => `Q: ${question}\nA: ${answer}`).join('\n\n')
-    : '(none)'
-
   const enriched = await Promise.all(
     docs.map(async (doc): Promise<CandidateDoc> => {
-      const prompt = `You are enriching a single KB document to make it more specific, complete, and actionable.
-
-## Document
-${JSON.stringify(doc, null, 2)}
-
-## Available source context
-${sourceSection}
-
-## User Q&A
-${qaSection}
-
-## Instructions
-1. Fill in obvious gaps using the source context and Q&A — add facts, commands, config keys, or examples that belong here.
+      const { prompt, maxTokens } = buildBudgetedPrompt({
+        intro: 'You are enriching a single KB document to make it more specific, complete, and actionable.',
+        sections: [
+          {
+            heading: 'Document',
+            content: formatDocsForPrompt([doc], 1400),
+            priority: 2,
+            minTokens: 180,
+          },
+          {
+            heading: 'Available source context',
+            content: formatSourceFilesForPrompt(context.sourceFiles, 2200),
+            priority: 2,
+            minTokens: 280,
+          },
+          {
+            heading: 'User Q&A',
+            content: formatQuestionAnswersForPrompt(context.userAnswers, '(none)'),
+            priority: 1,
+            minTokens: 100,
+          },
+        ],
+        instructions: `1. Fill in obvious gaps using the source context and Q&A — add facts, commands, config keys, or examples that belong here.
 2. Make vague statements concrete and specific.
 3. Remove internal redundancy — each fact should appear once.
 4. Keep the document focused on its single topic; do not pull in unrelated content.
 5. Content must start with a 1-sentence summary of the document's purpose.
 
 Return the enriched document as a single JSON object with the same shape (title, type, tags, content).
-Return ONLY the JSON object, no prose.`
+Return ONLY the JSON object, no prose.`,
+        requestedMaxTokens: INIT_OUTPUT_TOKENS.enrich,
+      })
 
       const response = await provider.call({
         messages: [{ role: 'user', content: prompt }],
-        maxTokens: 2000,
+        maxTokens,
         temperature: 0.15,
       })
 
@@ -893,25 +915,31 @@ async function runConsolidationPass(
   provider: LLMProvider,
   docs: CandidateDoc[],
 ): Promise<CandidateDoc[]> {
-  const prompt = `You are a knowledge base architect doing a consolidation pass.
-Review all documents for content overlap and merge where appropriate.
-
-## Documents
-${JSON.stringify(docs, null, 2)}
-
-## Instructions
-1. Identify pairs (or groups) of documents that cover the same or very similar topic — more than ~40% content overlap, or clearly the same subject with different framing.
+  const { prompt, maxTokens } = buildBudgetedPrompt({
+    intro: `You are a knowledge base architect doing a consolidation pass.
+Review all documents for content overlap and merge where appropriate.`,
+    sections: [
+      {
+        heading: 'Documents',
+        content: formatDocsForPrompt(docs, 1000),
+        priority: 1,
+        minTokens: 700,
+      },
+    ],
+    instructions: `1. Identify pairs (or groups) of documents that cover the same or very similar topic — more than ~40% content overlap, or clearly the same subject with different framing.
 2. For each overlapping group: merge into a single document. Use the most specific, accurate title. Combine unique facts from all source docs; remove duplicates. Maintain clear structure with bullet facts or short paragraphs.
 3. Documents covering genuinely distinct topics must remain separate — do not merge just because they share a few terms.
 4. After merging, every remaining document must still start with a 1-sentence summary.
 5. Do not lose any unique facts in the merge — consolidation should only remove redundancy, never information.
 
 Return the consolidated set as a JSON array in the same shape (title, type, tags, content).
-Return ONLY the JSON array, no prose.`
+Return ONLY the JSON array, no prose.`,
+    requestedMaxTokens: INIT_OUTPUT_TOKENS.consolidate,
+  })
 
   const response = await provider.call({
     messages: [{ role: 'user', content: prompt }],
-    maxTokens: 6000,
+    maxTokens,
     temperature: 0.1,
   })
 
@@ -977,6 +1005,125 @@ function fallbackDocs(context: InitContext, baseName: string): CandidateDoc[] {
   }]
 }
 
+function buildBudgetedPrompt(options: {
+  intro: string
+  sections: Array<{
+    heading: string
+    content: string
+    priority: number
+    minTokens?: number
+  }>
+  instructions: string
+  requestedMaxTokens: number
+}): { prompt: string; maxTokens: number } {
+  const maxTokens = clampInitOutputTokens(options.requestedMaxTokens)
+  const inputBudget = Math.max(INIT_MODEL_MAX_TOKENS - maxTokens - INIT_PROMPT_SAFETY_TOKENS, 400)
+
+  const header = options.intro.trim()
+  const instructions = `## Instructions\n${options.instructions.trim()}`
+  const sectionHeaders = options.sections.map(section => `## ${section.heading}`)
+  const fixedTokens = approximateTokenCount([
+    header,
+    ...sectionHeaders,
+    instructions,
+  ].join('\n\n'))
+
+  const contentBudget = Math.max(inputBudget - fixedTokens, 200)
+  const totalPriority = options.sections.reduce((sum, section) => sum + Math.max(section.priority, 1), 0)
+
+  const initialBudgets = options.sections.map(section => {
+    const weightedBudget = Math.floor((contentBudget * Math.max(section.priority, 1)) / Math.max(totalPriority, 1))
+    return Math.max(section.minTokens ?? 80, weightedBudget)
+  })
+
+  let allocated = initialBudgets.reduce((sum, value) => sum + value, 0)
+  if (allocated > contentBudget) {
+    let overflow = allocated - contentBudget
+    for (let index = initialBudgets.length - 1; index >= 0 && overflow > 0; index -= 1) {
+      const floor = options.sections[index].minTokens ?? 80
+      const reducible = Math.max(initialBudgets[index] - floor, 0)
+      const reduction = Math.min(reducible, overflow)
+      initialBudgets[index] -= reduction
+      overflow -= reduction
+    }
+    allocated = initialBudgets.reduce((sum, value) => sum + value, 0)
+  }
+
+  const render = (budgets: number[]) => [
+    header,
+    ...options.sections.map((section, index) => `## ${section.heading}\n${trimToTokenBudget(section.content, budgets[index])}`),
+    instructions,
+  ].join('\n\n')
+
+  let prompt = render(initialBudgets)
+  let promptTokens = approximateTokenCount(prompt)
+
+  if (promptTokens > inputBudget) {
+    let budgets = [...initialBudgets]
+    let guard = 0
+    while (promptTokens > inputBudget && guard < 20) {
+      const largestIndex = budgets.reduce((best, budget, index, all) => budget > all[best] ? index : best, 0)
+      const floor = options.sections[largestIndex].minTokens ?? 40
+      if (budgets[largestIndex] <= floor) {
+        break
+      }
+      budgets[largestIndex] = Math.max(floor, budgets[largestIndex] - 60)
+      prompt = render(budgets)
+      promptTokens = approximateTokenCount(prompt)
+      guard += 1
+    }
+  }
+
+  return { prompt, maxTokens }
+}
+
+function clampInitOutputTokens(requested: number): number {
+  return Math.max(256, Math.min(requested, INIT_MODEL_MAX_TOKENS - INIT_PROMPT_SAFETY_TOKENS))
+}
+
+function approximateTokenCount(text: string): number {
+  return Math.ceil(text.length / 4)
+}
+
+function trimToTokenBudget(text: string, tokenBudget: number): string {
+  if (tokenBudget <= 0) return ''
+  const charBudget = Math.max(tokenBudget * 4, 32)
+  if (text.length <= charBudget) return text
+  if (charBudget < 80) return `${text.slice(0, charBudget)}…`
+  const head = Math.floor(charBudget * 0.75)
+  const tail = Math.max(charBudget - head - 24, 0)
+  return `${text.slice(0, head)}\n\n…[truncated for token budget]…\n\n${tail > 0 ? text.slice(-tail) : ''}`
+}
+
+function formatSourceFilesForPrompt(sourceFiles: Record<string, string>, perFileCharLimit: number = 3500): string {
+  const entries = Object.entries(sourceFiles)
+  if (entries.length === 0) return '(No source files collected)'
+  return entries
+    .map(([file, content]) => `### ${file}\n${trimToTokenBudget(content, approximateTokenCount(content.slice(0, perFileCharLimit)))}`)
+    .join('\n\n---\n\n')
+}
+
+function formatQuestionAnswersForPrompt(
+  userAnswers: InitUserAnswer[],
+  emptyFallback: string,
+): string {
+  if (userAnswers.length === 0) return emptyFallback
+  return userAnswers
+    .map(({ question, answer }) => `Q: ${trimToTokenBudget(question, 80)}\nA: ${trimToTokenBudget(answer, 140)}`)
+    .join('\n\n')
+}
+
+function formatDocsForPrompt(docs: CandidateDoc[], contentCharLimit: number = 900): string {
+  return JSON.stringify(
+    docs.map(doc => ({
+      ...doc,
+      content: trimToTokenBudget(doc.content, approximateTokenCount(doc.content.slice(0, contentCharLimit))),
+    })),
+    null,
+    2,
+  )
+}
+
 function createReadlineQuestionIO(): InitQuestionIO {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
   return {
@@ -992,6 +1139,50 @@ function createReadlineQuestionIO(): InitQuestionIO {
       rl.close()
     },
   }
+}
+
+async function resolveInitBaseName(
+  options: InitOptions,
+  cwd: string,
+  questionIO: InitQuestionIO,
+): Promise<string> {
+  if (options.base?.trim()) {
+    return options.base.trim()
+  }
+
+  const suggestedBase = await resolveSuggestedInitBase(cwd)
+
+  if (options.nonInteractive) {
+    if (suggestedBase) {
+      return suggestedBase
+    }
+    throw new Error('No KB base configured. Use `kb init --base <name>` or set one with `kb use <base>` / `kb default <base>`.')
+  }
+
+  questionIO.write?.('\n[kb init] Choose a knowledge base name for this run.\n\n')
+  const prompt = suggestedBase
+    ? `  > Knowledge base name [${suggestedBase}]\n    `
+    : '  > Knowledge base name\n    '
+  const answer = (await questionIO.askQuestion(prompt)).trim()
+  const resolved = answer || suggestedBase
+  if (!resolved) {
+    throw new Error('A knowledge base name is required. Use `kb init --base <name>` or enter one when prompted.')
+  }
+  return resolved
+}
+
+async function resolveSuggestedInitBase(cwd: string): Promise<string | undefined> {
+  try {
+    const resolved = await resolveEffectiveBaseDir(cwd)
+    if (resolved.baseName?.trim()) {
+      return resolved.baseName.trim()
+    }
+  } catch {
+    // No active base configured; fall back to cwd name.
+  }
+
+  const fallback = path.basename(cwd).trim()
+  return fallback ? slugify(fallback) : undefined
 }
 
 function buildInterviewQuestion(
@@ -1054,10 +1245,14 @@ function resolveCheckpointPath(options: InitOptions, cwd: string): string {
   if (options.resumeFrom || options.checkpointFile) {
     return path.resolve(cwd, options.resumeFrom ?? options.checkpointFile!)
   }
-  if (options.resume) {
-    return path.join(cwd, '.tmp', 'kb-init', `${slugify(options.base)}-latest.checkpoint.json`)
+  const base = options.base?.trim()
+  if (!base) {
+    throw new Error('Base value is required to resolve kb init checkpoints')
   }
-  return path.join(cwd, '.tmp', 'kb-init', `${slugify(options.base)}-latest.checkpoint.json`)
+  if (options.resume) {
+    return path.join(cwd, '.tmp', 'kb-init', `${slugify(base)}-latest.checkpoint.json`)
+  }
+  return path.join(cwd, '.tmp', 'kb-init', `${slugify(base)}-latest.checkpoint.json`)
 }
 
 async function readCheckpoint(filePath: string): Promise<InitCheckpoint | undefined> {
