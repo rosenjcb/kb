@@ -30,3 +30,7 @@ Tags: general, fact
 - Rollout strategy is immediate. (source: consumer)
 
 - FINAL_CONSISTENCY_CHECKPOINT_20260412 (source: consumer)
+
+- ticket-081-publish-runtime-closed (source: consumer)
+
+- publish-section-outline-finalization (source: consumer)
