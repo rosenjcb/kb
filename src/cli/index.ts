@@ -47,7 +47,7 @@ function printCliHelp(): string {
     '  kb chat',
     '  kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run]',
     '  kb docs <list|view> [options]',
-    '  kb init [--base <name>] [--apply | --dry-run] [--detach | --resume]',
+    '  kb init [--base <name>] [--detach | --resume] [--stop-after <cycle>]',
     '  kb config <get|set|unset> [options]',
     '  kb publish [options]',
     '  kb <intent-command> [options]',

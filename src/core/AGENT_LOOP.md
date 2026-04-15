@@ -185,7 +185,7 @@ Use `agentLoop` when you need fully autonomous, open-ended tool orchestration an
 3. Persist checkpoint before advancing each cycle
 4. Skip already-completed cycles: `if (!checkpoint.completedCycles.includes(cycle))`
 5. Throw a `PausedError` instead of returning when pausing mid-run
-6. Support `--stop-after`, `--resume`, `--dry-run`, `--non-interactive`
+6. Support `--stop-after`, `--resume`, `--detach`, `--non-interactive`
 7. Log progress to stderr: `[init] [====----] 2/5 pass1 12 candidate docs`
 8. Use decreasing temperature: 0.2 (draft) → 0.1 (refine) → 0.0 (validate)
 

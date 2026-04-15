@@ -55,7 +55,7 @@ The KB system has three compounding issues that undermine reliability and correc
 - `sessions/namespaces/{base}/documents/` directory is absent (or empty) after migration; no new files are written there.
 - `session_entries` table captures all session activity that was previously written to `session-log-*.md`.
 - `kb init --base <name>` bootstraps a new SQLite DB at the standard path, runs 5 cycles, and outputs a summary of written facts.
-- `kb init` accepts `--dry-run` (prints what would be asked/written, no mutations) and `--apply` (full run).
+- `kb init` should support pausing and inspection with `--stop-after`, `--detach`, and `--resume`; lifecycle control should be explicit instead of implying a no-op mode.
 - `kb init --resume-from <checkpoint>` is supported to restart after a failed or interrupted run.
 - All existing tests pass; new tests cover the SQLite write path and `kb init` happy path.
 
@@ -195,7 +195,7 @@ Reuses the multi-cycle orchestration pattern from `publish-cli.ts` (`pass1`–`p
 ### Command surface
 
 ```bash
-kb init --base <name> [--apply | --dry-run] [--stop-after <cycle>] [--resume-from <checkpoint>]
+kb init [--base <name>] [--stop-after <cycle>] [--detach | --resume] [--resume-from <checkpoint>]
 ```
 
 ### Cycle definitions
@@ -285,7 +285,7 @@ Ship in two sequential sub-phases:
 4. Implement cycles 2–4 as LLM passes over accumulated context (reuse `createProvider` + message loop pattern).
 5. Implement cycle 5: batch upsert to `documents` and `session_entries` via `SqliteDocumentWriter`.
 6. Wire `kb init` in `src/cli/index.ts`.
-7. Add `--dry-run`, `--apply`, `--stop-after`, `--resume-from` flags matching publish-cli conventions.
+7. Add `--stop-after`, `--detach`, and `--resume-from` controls for lifecycle inspection and recovery.
 
 #### Integration Points
 
