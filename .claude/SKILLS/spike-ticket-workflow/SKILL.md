@@ -162,7 +162,7 @@ The following are the actual, user-facing CLI commands as of April 2026. Do not 
 
 ### Notes
 
-- `kb invalidate` does **not** exist as a command.
+- `kb invalidate` exists and is scoped to KB-only cleanup of the active SQLite knowledge store.
 - `kb explain` is valid and maps to the explain intent.
 - Typing `kb` or `kb --help` shows the help message.
 - Internal tool names (e.g., write_document) are distinct from consumer CLI commands.

@@ -1,3 +1,4 @@
+export { invalidateFactTool } from './invalidate-fact-tool'
 export {
   writeDocumentTool,
   executeWriteDocumentTool,

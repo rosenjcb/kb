@@ -19,7 +19,7 @@ The immediate need is a simple CLI surface that prints the full document to the 
 - Define error behavior for missing documents, ambiguous selectors, and unsupported output modes.
 - Clarify how this command relates to `kb query` results and how users move from retrieval to full-document viewing.
 - Capture forward-compatible design constraints for a future Ink/TUI document viewer, without implementing the TUI in this ticket.
-- **Note:** The canonical CLI contract is now `kb docs list` and `kb docs view`. Do not reference legacy `kb view` or `kb invalidate` commands. `kb explain` is valid.
+- **Note:** The canonical document-browsing CLI contract is now `kb docs list` and `kb docs view`. Do not reference legacy `kb view`. `kb explain` and `kb invalidate` are valid commands, but they are separate concepts.
 
 ## Acceptance Criteria
 

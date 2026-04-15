@@ -119,10 +119,14 @@ kb publish [options]
 
 ### Notes
 
-- `kb invalidate` does **not** exist as a command.
+- `kb invalidate` is now available as a KB-only cleanup command for pruning/replacing facts inside the active SQLite knowledge base. See [invalidate-fact skill](.github/skills/invalidate-fact/SKILL.md).
 - `kb explain` is a valid intent command for explaining a change or fact.
 - Typing `kb` or `kb --help` shows this help message.
 - Internal tool names may differ from CLI commands.
+
+### See Also
+- [invalidate-fact skill](.github/skills/invalidate-fact/SKILL.md)
+- [089-implement-kb-invalidate-skill.md](tickets/linear/089-implement-kb-invalidate-skill.md)
 
 ## Optional: SQLite Hybrid Search
 

@@ -10,6 +10,7 @@ import dayjs from 'dayjs'
 import { createProvider } from '../core/llm-provider'
 import { agentLoop } from '../core/agent-loop'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
+import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import {
   enrichReadDocumentsAnswerWithLLM,
   executeIntentCommand,
@@ -48,6 +49,7 @@ function printCliHelp(): string {
     '  kb <query>',
     '  kb <sessionFile.md> <query>',
     '  kb chat',
+    '  kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run]',
     '  kb docs <list|view> [options]',
     '  kb init --base <name> [--apply | --dry-run]',
     '  kb config <get|set|unset> [options]',
@@ -72,6 +74,7 @@ function printCliHelp(): string {
     '  kb config get',
     '  kb config get defaultBase',
     '  kb config set defaultBase dogfood',
+    '  kb invalidate "We deploy to GCP" "We deploy to AWS" --apply',
     '  kb docs list --base dogfood --limit 20',
     '  kb docs view kb-base-selection-and-usage',
     '  kb docs view --title "KB Base Selection and Usage"',
@@ -156,6 +159,35 @@ async function main() {
   // Parse arguments: [sessionFile?] query...
   const args = process.argv.slice(2)
   const firstArg = args[0]
+
+  // kb invalidate <old-fact> [<replacement-fact>] [--preview|--apply|--dry-run]
+  if (firstArg === 'invalidate') {
+    const oldFact = args[1]
+    const replacementFact = args[2] && !args[2].startsWith('--') ? args[2] : undefined
+    const preview = args.includes('--preview') || !args.includes('--apply')
+    const dryRun = args.includes('--dry-run')
+
+    if (!oldFact) {
+      console.error('❌ Usage: kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run]')
+      process.exit(1)
+    }
+
+    const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
+    const result = await invalidateFactTool(
+      { oldFact, replacementFact, preview, dryRun, includeSessionLogs: true },
+      kbStorageDir,
+    )
+
+    for (const change of result.changes) {
+      console.log(`\nDocument: ${change.documentId} (${change.title})\nReplaced: ${change.replaced}\nDiff:\n${change.diff}`)
+    }
+    console.log(`\n${result.summary}`)
+    if (result.error) {
+      console.error(`❌ ${result.error}`)
+      process.exit(1)
+    }
+    return
+  }
 
   if (args.length === 0 || firstArg === '--help' || firstArg === '-h' || firstArg === 'help') {
     console.log(printCliHelp())
