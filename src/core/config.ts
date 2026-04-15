@@ -7,10 +7,7 @@
 import { z } from 'zod'
 
 const ConfigSchema = z.object({
-  // LLM Provider (required)
-  llmProvider: z.enum(['anthropic', 'openai', 'gemini', 'ollama']),
-
-  // API Keys (required per provider)
+  // API Keys / provider discovery
   anthropicApiKey: z.string().optional(),
   openaiApiKey: z.string().optional(),
   geminiApiKey: z.string().optional(),
@@ -44,7 +41,6 @@ export type Config = z.infer<typeof ConfigSchema>
  */
 export function loadConfig(): Config {
   const raw = {
-    llmProvider: process.env.LLM_PROVIDER,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     openaiApiKey: process.env.OPENAI_API_KEY,
     geminiApiKey: process.env.GEMINI_API_KEY,
@@ -65,25 +61,6 @@ export function loadConfig(): Config {
     environment: process.env.ENVIRONMENT,
     nodeEnv: process.env.NODE_ENV,
   }
-
-  // Provider-specific validation
-  if (!raw.llmProvider) {
-    throw new Error('LLM_PROVIDER is required (anthropic, openai, gemini, or ollama)')
-  }
-
-  if (raw.llmProvider === 'anthropic' && !raw.anthropicApiKey) {
-    throw new Error('ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic')
-  }
-
-  if (raw.llmProvider === 'openai' && !raw.openaiApiKey) {
-    throw new Error('OPENAI_API_KEY is required when LLM_PROVIDER=openai')
-  }
-
-  if (raw.llmProvider === 'gemini' && !raw.geminiApiKey) {
-    throw new Error('GEMINI_API_KEY is required when LLM_PROVIDER=gemini')
-  }
-
-  // Ollama doesn't require an API key
 
   try {
     return ConfigSchema.parse(raw)
@@ -113,8 +90,13 @@ export function getConfig(): Config {
  */
 export function initializeConfig(): Config {
   const config = getConfig()
+  const provider =
+    config.openaiApiKey ? 'openai'
+      : config.anthropicApiKey ? 'anthropic'
+        : config.geminiApiKey ? 'gemini'
+          : 'ollama'
   console.log(`✓ Config loaded:`)
-  console.log(`  provider=${config.llmProvider}`)
+  console.log(`  provider=${provider}`)
   console.log(`  kbBaseDir=${config.kbBaseDir}`)
   console.log(`  maxAgentTurns=${config.maxAgentTurns}`)
   console.log(`  logLevel=${config.logLevel}`)

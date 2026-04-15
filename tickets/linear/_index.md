@@ -13,8 +13,8 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 
 ## Summary
 
-- Total files: 86 (85 tickets + this index)
-- Branch: feat/083-kb-config-cli
+- Total files: 89 (88 tickets + this index)
+- Branch: feat/086-kb-document-view-cli
 
 ## Foundation
 
@@ -57,6 +57,9 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [083 Define unified `kb config` CLI and config schema](tickets/linear/083-unified-kb-config-cli-and-schema.md)
 - [084 Implement `kb config` runtime and shared config service](tickets/linear/084-implement-kb-config-runtime-and-shared-service.md)
 - [085 Migrate base selection and publish flows to unified config model](tickets/linear/085-migrate-base-selection-and-publish-to-unified-config-model.md)
+- [086 Add CLI document view command for full document display](tickets/linear/086-add-cli-document-view-command.md)
+- [087 Implement `kb view` CLI command](tickets/linear/087-implement-kb-view-cli-command.md)
+- [088 Add interactive document browser TUI on top of `kb view`](tickets/linear/088-add-interactive-document-browser-tui.md)
 - [039 Define permission policy evaluation order](tickets/linear/039-permission-policy-evaluation-order.md)
 - [040 Define document ID stability rules](tickets/linear/040-kb-doc-id-stability-rules.md)
 

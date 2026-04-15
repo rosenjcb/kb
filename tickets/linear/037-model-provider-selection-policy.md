@@ -119,7 +119,7 @@ const provider = createProvider({
 # .env.local
 
 # Provider selection (required)
-LLM_PROVIDER=anthropic              # or openai, gemini, ollama
+OPENAI_API_KEY=your_key             # or ANTHROPIC_API_KEY / GEMINI_API_KEY
 
 # Optional: override default model
 LLM_MODEL=claude-3-opus-20250805    # If not set, use default for provider
@@ -142,7 +142,13 @@ const ModelConfigSchema = z.object({
 
 // Load from env + validate
 function loadModelConfig(): ModelConfig {
-  const provider = process.env.LLM_PROVIDER as SupportedProvider
+  const provider = process.env.OPENAI_API_KEY
+    ? 'openai'
+    : process.env.ANTHROPIC_API_KEY
+      ? 'anthropic'
+      : process.env.GEMINI_API_KEY
+        ? 'gemini'
+        : 'ollama'
   const overrideModel = process.env.LLM_MODEL
   const maxTokens = process.env.LLM_MAX_TOKENS ? parseInt(process.env.LLM_MAX_TOKENS, 10) : undefined
   const temperature = process.env.LLM_TEMPERATURE ? parseFloat(process.env.LLM_TEMPERATURE) : undefined
@@ -169,10 +175,10 @@ console.log(`  maxTokens=${modelConfig.maxTokens}, temperature=${modelConfig.tem
 
 | Scenario | Config | Result |
 |----------|--------|--------|
-| `LLM_PROVIDER=anthropic` | Use defaults | claude-3-5-sonnet, max 4096 tokens |
-| `LLM_PROVIDER=anthropic LLM_MODEL=claude-3-opus-...` | Override model | claude-3-opus, max 4096 tokens |
-| `LLM_PROVIDER=openai` | Use defaults | gpt-4-turbo, max 4096 tokens |
-| `LLM_PROVIDER=ollama LLM_MAX_TOKENS=2048` | Tune tokens | mistral, max 2048 tokens |
+| `ANTHROPIC_API_KEY=...` | Use Anthropic defaults | claude-3-5-sonnet, max 4096 tokens |
+| `ANTHROPIC_API_KEY=... LLM_MODEL=claude-3-opus-...` | Override model | claude-3-opus, max 4096 tokens |
+| `OPENAI_API_KEY=...` | Use OpenAI defaults | gpt-4-turbo, max 4096 tokens |
+| `OLLAMA_ENDPOINT=... LLM_MAX_TOKENS=2048` | Tune local fallback | mistral, max 2048 tokens |
 
 #### Context-Aware Model Selection (V2 - Future)
 
@@ -235,7 +241,7 @@ interface ModelPerContext {
 #### Decisions Made
 
 - ✅ **V1 single model**: One model drives all KB agent tasks
-- ✅ **Env-var configured**: LLM_PROVIDER + optional LLM_MODEL override
+- ✅ **Credential-driven selection**: provider inferred from available API keys + optional LLM_MODEL override
 - ✅ **Sensible defaults**: Per-provider defaults, no hardcoding needed
 - ✅ **Startup validation**: Fail fast if model config invalid (Ticket 005)
 - ✅ **Future-proof architecture**: Easy to add context-aware selection later

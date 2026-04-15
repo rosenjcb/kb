@@ -6,7 +6,6 @@ import { parsePublishCommand, runPublishCommand } from '../../src/cli/publish-cl
 
 const originalNotionToken = process.env.NOTION_TOKEN
 const originalNotionApiKey = process.env.NOTION_API_KEY
-const originalLlmProvider = process.env.LLM_PROVIDER
 const originalOpenAiApiKey = process.env.OPENAI_API_KEY
 const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
 const originalGeminiApiKey = process.env.GEMINI_API_KEY
@@ -23,12 +22,6 @@ afterEach(() => {
     delete process.env.NOTION_API_KEY
   } else {
     process.env.NOTION_API_KEY = originalNotionApiKey
-  }
-
-  if (originalLlmProvider === undefined) {
-    delete process.env.LLM_PROVIDER
-  } else {
-    process.env.LLM_PROVIDER = originalLlmProvider
   }
 
   if (originalOpenAiApiKey === undefined) {
@@ -99,7 +92,6 @@ describe('publish-cli dry run', () => {
     const baseDir = path.join(tempRoot, 'docs')
 
     try {
-      delete process.env.LLM_PROVIDER
       delete process.env.OPENAI_API_KEY
       delete process.env.ANTHROPIC_API_KEY
       delete process.env.GEMINI_API_KEY
@@ -135,7 +127,6 @@ describe('publish-cli apply', () => {
 
     try {
       process.env.NOTION_TOKEN = 'test-token'
-      delete process.env.LLM_PROVIDER
       delete process.env.OPENAI_API_KEY
       delete process.env.ANTHROPIC_API_KEY
       delete process.env.GEMINI_API_KEY
@@ -163,7 +154,6 @@ describe('publish-cli apply', () => {
 
     try {
       process.env.NOTION_TOKEN = 'test-token'
-      delete process.env.LLM_PROVIDER
       delete process.env.OPENAI_API_KEY
       delete process.env.ANTHROPIC_API_KEY
       delete process.env.GEMINI_API_KEY
@@ -225,7 +215,6 @@ describe('publish-cli apply', () => {
     const checkpointFile = path.join(tempRoot, 'publish.checkpoint.json')
 
     try {
-      delete process.env.LLM_PROVIDER
       delete process.env.OPENAI_API_KEY
       delete process.env.ANTHROPIC_API_KEY
       delete process.env.GEMINI_API_KEY

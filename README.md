@@ -29,18 +29,17 @@ npm run which:kb
 
 ### 2) Configure `.env.local` (recommended)
 
-Create `.env.local` at the repository root and keep provider/runtime settings there.
+Create `.env.local` at the repository root and keep runtime settings there.
 
 Example:
 
 ```bash
 cat > .env.local <<'EOF'
-LLM_PROVIDER=openai
 OPENAI_API_KEY=your_key
 EOF
 ```
 
-Other supported providers: `anthropic`, `gemini`, `ollama`.
+Provider selection is automatic from available credentials in this order: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, then local `OLLAMA_ENDPOINT`.
 
 Use local-env commands when you want explicit `.env.local` context:
 
