@@ -37,7 +37,6 @@ Example:
 cat > .env.local <<'EOF'
 LLM_PROVIDER=openai
 OPENAI_API_KEY=your_key
-KB_BASE=dogfood
 EOF
 ```
 
@@ -61,15 +60,14 @@ kb use --show
 Precedence order:
 1. `kb use` session base
 2. `kb default` saved default
-3. `KB_BASE` environment fallback
 
 ### 4) Start using intent commands
 
 ```bash
 kb submit "Document writer now supports sqlite index sync" --source implementation
 kb query "sqlite index sync behavior" --limit 5 --output human
-kb validate "KB_BASE overrides kb use"
-kb dispute "KB_BASE overrides kb use" --because "Current precedence is session, default, then env fallback"
+kb validate "kb default persists the active base"
+kb dispute "kb use should persist across sessions" --because "Only kb default should change durable base config"
 ```
 
 ## Optional: SQLite Hybrid Search

@@ -8,7 +8,7 @@ local-kb
 
 ## Problem
 
-Users currently rely on environment variables (`KB_BASE`, `KB_BASE_DIR`) and shell state to choose KB storage context. This is friction-heavy and easy to misconfigure across sessions.
+Users currently rely on `KB_BASE_DIR` and shell state to choose KB storage context. This is friction-heavy and easy to misconfigure across sessions.
 
 ## Scope
 - Define user-facing commands to select active KB base context.
@@ -68,7 +68,7 @@ Resolution precedence (highest to lowest):
 1) explicit runtime override (future: --base)
 2) KB_BASE_DIR (if set)
 3) persisted default from ~/.kb/configuration.yml
-4) KB_BASE / KB_BASE_DIR from process env or loaded `.env` as backup only
+4) KB_BASE_DIR from process env or loaded `.env` as backup only
 5) fallback: <repo>/sessions/namespaces/default/documents
 ```
 

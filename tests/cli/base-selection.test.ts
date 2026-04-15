@@ -6,10 +6,7 @@ import {
 } from '../../src/cli/base-selection'
 
 describe('base-selection', () => {
-  const env = process.env
-
   afterEach(() => {
-    process.env = { ...env }
     vi.restoreAllMocks()
   })
 
@@ -24,8 +21,6 @@ describe('base-selection', () => {
   })
 
   it('Given sessionBase set, then effective resolution uses it first', async () => {
-    process.env.KB_BASE = 'dogfood'
-
     const result = await resolveEffectiveBaseDir('/repo', {
       sessionBase: 'session-base',
       defaultBase: 'default-base',
@@ -36,8 +31,6 @@ describe('base-selection', () => {
   })
 
   it('Given defaultBase set and no sessionBase, then effective resolution uses default', async () => {
-    delete process.env.KB_BASE
-
     const result = await resolveEffectiveBaseDir('/repo', {
       defaultBase: 'dogfood',
     })
@@ -46,18 +39,7 @@ describe('base-selection', () => {
     expect(result.baseDir).toBe('/repo/sessions/namespaces/dogfood/documents')
   })
 
-  it('Given KB_BASE set and no configured bases, then effective resolution uses alias mapping', async () => {
-    process.env.KB_BASE = 'dogfood'
-
-    const result = await resolveEffectiveBaseDir('/repo', {})
-
-    expect(result.source).toBe('env.KB_BASE')
-    expect(result.baseDir).toBe('/repo/sessions/namespaces/dogfood/documents')
-  })
-
-  it('Given no session/default/env base, then resolution throws explicit error', async () => {
-    delete process.env.KB_BASE
-
+  it('Given no session/default base, then resolution throws explicit error', async () => {
     await expect(resolveEffectiveBaseDir('/repo', {})).rejects.toThrow(
       'No KB base configured',
     )
@@ -66,6 +48,6 @@ describe('base-selection', () => {
   it('Given use command output, then includes session and fallback guidance', () => {
     const text = formatUseCommandHelp('dogfood', '/repo/sessions/namespaces/dogfood/documents')
     expect(text).toContain('Saved as session base for immediate invocations.')
-    expect(text).toContain('KB_BASE=dogfood')
+    expect(text).toContain('kb default dogfood')
   })
 })

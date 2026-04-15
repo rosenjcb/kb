@@ -1,9 +1,8 @@
-import os from 'node:os'
 import path from 'node:path'
-import { readFile } from 'node:fs/promises'
 import dayjs from 'dayjs'
 import Database from 'better-sqlite3'
 import { resolveBaseToDir, resolveEffectiveBaseDir } from './base-selection'
+import { readKbConfig, resolveNotionToken } from './kb-config'
 
 export type PublishPhase = 'all'
 export type PublishStopPoint = 'package' | 'import'
@@ -17,15 +16,6 @@ export interface PublishOptions {
   checkpointFile?: string
   resumeFrom?: string
   stopAfter?: PublishStopPoint
-}
-
-interface KbJsonConfig {
-  defaultBase?: string
-  sessionBase?: string
-  notion?: {
-    token?: string
-    parentPageId?: string
-  }
 }
 
 interface SqliteDocumentRow {
@@ -107,7 +97,7 @@ export async function runPublishCommand(
   options: PublishOptions,
   cwd: string = process.cwd(),
 ): Promise<PublishResult> {
-  const config = await readKbJsonConfig()
+  const config = await readKbConfig()
   const baseResolution = await resolvePublishBase(options.base, cwd)
   const warnings: string[] = []
 
@@ -302,26 +292,6 @@ async function resolvePublishBase(
     baseName: resolved.baseName ?? 'default',
     baseDir: resolved.baseDir,
   }
-}
-
-async function readKbJsonConfig(): Promise<KbJsonConfig> {
-  const configPath = path.join(os.homedir(), '.kb', 'config.json')
-  try {
-    const raw = await readFile(configPath, 'utf8')
-    const parsed = JSON.parse(raw) as KbJsonConfig
-    if (parsed && typeof parsed === 'object') return parsed
-    return {}
-  } catch {
-    return {}
-  }
-}
-
-function resolveNotionToken(config: KbJsonConfig): string | undefined {
-  return (
-    config.notion?.token?.trim() ||
-    process.env.NOTION_TOKEN?.trim() ||
-    process.env.NOTION_API_KEY?.trim()
-  )
 }
 
 // ─── Arg parsing helpers ──────────────────────────────────────────────────────

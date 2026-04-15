@@ -42,7 +42,7 @@ describe('chat-cli prompt', () => {
         results: [
           {
             metadata: { id: 'general-facts' },
-            content: 'KB base precedence: session base, default base, KB_BASE fallback.',
+            content: 'KB base precedence: session base, default base.',
           },
         ],
       },
@@ -343,7 +343,7 @@ describe('chat-cli session loop', () => {
               '# general facts',
               '',
               '- SQLite hybrid search enabled for this workspace.',
-              '- CLI quick-reference: kb --help; kb use dogfood; kb default dogfood; kb submit/query/validate/dispute/explain with --output json; KB_BASE=dogfood kb chat.',
+              '- CLI quick-reference: kb --help; kb use dogfood; kb default dogfood; kb submit/query/validate/dispute/explain with --output json; kb chat.',
             ].join('\n'),
           },
         ],
@@ -363,7 +363,7 @@ describe('chat-cli session loop', () => {
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
-    expect(io.outputs.join('\n')).toContain('assistant> CLI quick-reference: kb --help; kb use dogfood; kb default dogfood; kb submit/query/validate/dispute/explain with --output json; KB_BASE=dogfood kb chat. (source: general-facts)')
+    expect(io.outputs.join('\n')).toContain('assistant> CLI quick-reference: kb --help; kb use dogfood; kb default dogfood; kb submit/query/validate/dispute/explain with --output json; kb chat. (source: general-facts)')
   })
 
   it('Given CLI question and "does not provide specific details" wording, then fallback still returns CLI evidence', async () => {

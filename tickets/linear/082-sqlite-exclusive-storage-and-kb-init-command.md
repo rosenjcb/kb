@@ -320,7 +320,7 @@ This ticket is closed when:
 - ✅ `kb query` returns correct results from SQLite content column (not filesystem).
 - ✅ `kb init --base test --apply` completes end-to-end (5 cycles, 13 docs written, verified).
 - ✅ `kb init --base dogfood --apply` rebuilds dogfood base; old empty-content legacy rows removed.
-- ✅ `KB_BASE` env var fallback removed — config is the only base authority.
+- ✅ Legacy environment-variable base fallback removed — config is the only base authority.
 
 **Decisions made during implementation:**
 - `file_path` column retained but populated with the doc `id` (not a real path) to satisfy existing UNIQUE constraint without a table rebuild.

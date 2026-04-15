@@ -113,9 +113,6 @@ export function formatUseCommandHelp(base: string, resolvedPath: string): string
     'Saved as session base for immediate invocations.',
     'To persist for future invocations across sessions:',
     `  kb default ${base}`,
-    '',
-    'Environment fallback (only if no session/default is set):',
-    `  KB_BASE=${base}`,
   ].join('\n')
 }
 
@@ -127,6 +124,5 @@ export function formatDefaultCommandHelp(base: string, resolvedPath: string): st
     'Current invocation precedence:',
     '  1) kb use session base',
     '  2) saved default base',
-    '  3) KB_BASE',
   ].join('\n')
 }

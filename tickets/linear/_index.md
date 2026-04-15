@@ -13,8 +13,8 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 
 ## Summary
 
-- Total files: 83 (82 tickets + this index)
-- Branch: feat/kb-ticket-backlog
+- Total files: 86 (85 tickets + this index)
+- Branch: feat/083-kb-config-cli
 
 ## Foundation
 
@@ -54,6 +54,9 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [067 Add kb chat interactive CLI session mode](tickets/linear/067-kb-chat-cli-session-mode.md)
 - [068 Implement kb chat interactive REPL command](tickets/linear/068-implement-kb-chat-repl-command.md)
 - [069 Add chat session controls and transcript persistence](tickets/linear/069-chat-session-controls-and-transcript-persistence.md)
+- [083 Define unified `kb config` CLI and config schema](tickets/linear/083-unified-kb-config-cli-and-schema.md)
+- [084 Implement `kb config` runtime and shared config service](tickets/linear/084-implement-kb-config-runtime-and-shared-service.md)
+- [085 Migrate base selection and publish flows to unified config model](tickets/linear/085-migrate-base-selection-and-publish-to-unified-config-model.md)
 - [039 Define permission policy evaluation order](tickets/linear/039-permission-policy-evaluation-order.md)
 - [040 Define document ID stability rules](tickets/linear/040-kb-doc-id-stability-rules.md)
 
@@ -115,4 +118,3 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [070 Validate kb chat mode and harden context-rot handling](tickets/linear/070-chat-mode-validation-and-context-rot-hardening.md)
 - [074 Add retrieval checkpoint evaluation and rollout guardrails](tickets/linear/074-add-retrieval-checkpoint-evaluation-and-rollout-guardrails.md)
 - [078 Add lane-routing evaluation fixtures and rollout guardrails](tickets/linear/078-add-lane-routing-evaluation-fixtures-and-rollout-guardrails.md)
-
