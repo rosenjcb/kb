@@ -9,6 +9,8 @@ import { createToolRegistry } from '../core/tool-registry'
 import type { ToolDefinition } from '../core/types'
 import { SqliteDocumentWriter } from './sqlite-document-writer'
 import { MarkdownDocumentReader, type QueryDocumentsInput, type QueryResponse } from './markdown-document-reader'
+import type { KbConfig } from '../cli/kb-config'
+import { resolveFeatureFlags } from '../cli/kb-config'
 import {
   executeWriteDocumentTool,
   type AppendToDocumentInput,
@@ -22,13 +24,24 @@ import {
 /**
  * Factory: create KB tools registry with write + read
  */
-export function createKBToolsRegistry(baseDir?: string): ToolExecutor {
+export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): ToolExecutor {
   const registry = createToolRegistry()
   const storageDir = baseDir ?? path.join(process.cwd(), 'sessions', 'documents')
 
   // Initialize storage implementations
   const writer = new SqliteDocumentWriter({ baseDir: storageDir })
-  const reader = new MarkdownDocumentReader(storageDir)
+  const flags = config ? resolveFeatureFlags(config) : undefined
+  const reader = new MarkdownDocumentReader(storageDir, flags ? {
+    hybridEnabled: flags.hybridQuery,
+    hybridCandidateLimit: flags.hybridQueryCandidates,
+    hybridAlpha: flags.hybridQueryAlpha,
+    hybridMaxMs: flags.hybridQueryMaxMs,
+    checkpointObservabilityEnabled: flags.checkpointObservability,
+    missLearningEnabled: flags.missLearning,
+    rankingHintsEnabled: flags.missHints,
+    rankingHintMinOccurrences: flags.missHintMinOccurrences,
+    laneRoutingEnabled: flags.laneRouting,
+  } : {})
 
   // Register write_document tool
   const writeToolDef: ToolDefinition = {

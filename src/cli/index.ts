@@ -5,9 +5,8 @@
  * Quick demo runner
  */
 
-import fs from 'fs'
-import { createProvider } from '../core/llm-provider'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
+import { readKbConfig, applyConfigToEnv, createLLMProviderFromConfig } from './kb-config'
 import { runIntentLoop } from '../core/intent-loop'
 import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import {
@@ -48,7 +47,7 @@ function printCliHelp(): string {
     '  kb chat',
     '  kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run]',
     '  kb docs <list|view> [options]',
-    '  kb init --base <name> [--apply | --dry-run] [--detach | --resume]',
+    '  kb init [--base <name>] [--apply | --dry-run] [--detach | --resume]',
     '  kb config <get|set|unset> [options]',
     '  kb publish [options]',
     '  kb <intent-command> [options]',
@@ -86,71 +85,10 @@ function printCliHelp(): string {
   ].join('\n')
 }
 
-function loadLocalEnvFiles() {
-  const processWithEnvLoader = process as typeof process & {
-    loadEnvFile?: (path?: string) => void
-  }
-
-  if (!processWithEnvLoader.loadEnvFile) {
-    return
-  }
-
-  if (fs.existsSync('.env.local')) {
-    processWithEnvLoader.loadEnvFile('.env.local')
-  }
-
-  if (fs.existsSync('.env')) {
-    processWithEnvLoader.loadEnvFile('.env')
-  }
-}
-
-function resolveProviderFromEnv():
-  | 'anthropic'
-  | 'openai'
-  | 'gemini'
-  | 'ollama' {
-  if (process.env.OPENAI_API_KEY) return 'openai'
-  if (process.env.ANTHROPIC_API_KEY) return 'anthropic'
-  if (process.env.GEMINI_API_KEY) return 'gemini'
-
-  // Fallback for local dev
-  return 'ollama'
-}
-
-function tryCreateLlmProvider(
-  provider: 'anthropic' | 'openai' | 'gemini' | 'ollama',
-): ReturnType<typeof createProvider> | undefined {
-  try {
-    switch (provider) {
-      case 'anthropic':
-        return createProvider({
-          provider: 'anthropic',
-          apiKey: process.env.ANTHROPIC_API_KEY,
-        })
-      case 'openai':
-        return createProvider({
-          provider: 'openai',
-          apiKey: process.env.OPENAI_API_KEY,
-        })
-      case 'gemini':
-        return createProvider({
-          provider: 'gemini',
-          apiKey: process.env.GEMINI_API_KEY,
-        })
-      case 'ollama':
-      default:
-        return createProvider({
-          provider: 'ollama',
-          endpoint: process.env.OLLAMA_ENDPOINT || 'http://localhost:11434',
-        })
-    }
-  } catch {
-    return undefined
-  }
-}
 
 async function main() {
-  loadLocalEnvFiles()
+  const kbConfig = await readKbConfig()
+  applyConfigToEnv(kbConfig)
   console.log('🤖 KB Agent Harness\n')
 
   // Parse arguments: [sessionFile?] query...
@@ -247,17 +185,15 @@ async function main() {
   }
 
   if (firstArg === 'chat') {
-    const provider = resolveProviderFromEnv()
     const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
-    const llmProvider = tryCreateLlmProvider(provider)
+    const llmProvider = createLLMProviderFromConfig(kbConfig)
 
     if (!llmProvider) {
-      console.error('❌ Provider setup failed: provider was not initialized')
+      console.error('❌ Provider setup failed: no LLM credentials found in ~/.kb/config.json or environment')
       process.exit(1)
     }
 
-    const toolExecutor = createKBToolsRegistry(kbStorageDir)
-    console.log(`🔌 Provider: ${provider}`)
+    const toolExecutor = createKBToolsRegistry(kbStorageDir, kbConfig)
     console.log(`🗂️ KB Storage: ${kbStorageDir}`)
     console.log('')
     await runChatSession({ llmProvider, toolExecutor })
@@ -376,7 +312,6 @@ async function main() {
     }
   }
 
-  const provider = resolveProviderFromEnv()
   const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
 
   if (isIntentCommand(firstArg)) {
@@ -385,8 +320,8 @@ async function main() {
       const intentBaseDir = parsed.base
         ? resolveBaseToDir(parsed.base)
         : kbStorageDir
-      const toolExecutor = createKBToolsRegistry(intentBaseDir)
-      const llmProvider = tryCreateLlmProvider(provider)
+      const toolExecutor = createKBToolsRegistry(intentBaseDir, kbConfig)
+      const llmProvider = createLLMProviderFromConfig(kbConfig)
       const { result } = await runIntentLoop(parsed.envelope, toolExecutor, { provider: llmProvider })
       const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, llmProvider)
       console.log(formatIntentResult(enriched, parsed.output))
