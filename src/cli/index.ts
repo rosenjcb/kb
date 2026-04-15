@@ -68,8 +68,8 @@ function printCliHelp(): string {
     '  kb default dogfood',
     '  kb default --show',
     '  kb config get',
-    '  kb config get defaultBase',
-    '  kb config set defaultBase dogfood',
+    '  kb config get selectedBase',
+    '  kb config set selectedBase dogfood',
     '  kb invalidate "We deploy to GCP" "We deploy to AWS" --apply',
     '  kb docs list --base dogfood --limit 20',
     '  kb docs view kb-base-selection-and-usage',
@@ -148,11 +148,8 @@ async function main() {
       } else {
         console.log('No active base configured.')
       }
-      if (configured.defaultBase) {
-        console.log(`Saved default: ${configured.defaultBase}`)
-      }
-      if (configured.sessionBase) {
-        console.log(`Session base: ${configured.sessionBase}`)
+      if (configured.selectedBase) {
+        console.log(`Selected base: ${configured.selectedBase}`)
       }
       return
     }
@@ -167,20 +164,20 @@ async function main() {
     const base = args[1]
     if (base === '--show' || !base) {
       const configured = await readBaseConfig()
-      if (!configured.defaultBase) {
-        console.log('No default base configured. Use: kb default <base>')
+      if (!configured.selectedBase) {
+        console.log('No base configured. Use: kb default <base>')
         return
       }
-      const resolved = resolveBaseToDir(configured.defaultBase)
-      console.log(`Default base: ${configured.defaultBase}`)
+      const resolved = resolveBaseToDir(configured.selectedBase)
+      console.log(`Selected base: ${configured.selectedBase}`)
       console.log(`Resolved path: ${resolved}`)
-      console.log('Use `kb default <base>` to change it.')
+      console.log('Use `kb default <base>` or `kb use <base>` to change it.')
       return
     }
 
     const saved = await writeDefaultBase(base)
-    const resolved = resolveBaseToDir(saved.defaultBase ?? base)
-    console.log(formatDefaultCommandHelp(saved.defaultBase ?? base, resolved))
+    const resolved = resolveBaseToDir(saved.selectedBase ?? base)
+    console.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved))
     return
   }
 

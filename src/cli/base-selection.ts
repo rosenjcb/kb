@@ -1,16 +1,11 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import dayjs from 'dayjs'
+import { readKbConfig, writeKbConfig, type KbConfig } from './kb-config'
 
 export interface BaseSelectionConfig {
-  sessionBase?: string
-  defaultBase?: string
+  selectedBase?: string
   updatedAt?: string
 }
-
-const CONFIG_DIR = path.join(os.homedir(), '.kb')
-const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
 
 function isPathLike(base: string): boolean {
   return base.startsWith('/') || base.startsWith('.') || base.startsWith('~')
@@ -41,64 +36,55 @@ export function resolveBaseToDir(base: string, cwd: string = process.cwd()): str
 }
 
 export async function readBaseConfig(): Promise<BaseSelectionConfig> {
-  try {
-    const raw = await readFile(CONFIG_FILE, 'utf8')
-    const parsed = JSON.parse(raw) as BaseSelectionConfig
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch {
-    return {}
+  const config = await readKbConfig()
+  return {
+    selectedBase: config.selectedBase,
+    updatedAt: config.updatedAt,
+  }
+}
+
+export async function writeSelectedBase(base: string): Promise<BaseSelectionConfig> {
+  const config = await readKbConfig()
+  const saved = await writeKbConfig({
+    ...config,
+    selectedBase: base,
+  })
+  return {
+    selectedBase: saved.selectedBase,
+    updatedAt: saved.updatedAt,
   }
 }
 
 export async function writeDefaultBase(base: string): Promise<BaseSelectionConfig> {
-  const existing = await readBaseConfig()
-  const payload: BaseSelectionConfig = {
-    ...existing,
-    defaultBase: base,
-    updatedAt: dayjs().toISOString(),
-  }
-  await mkdir(CONFIG_DIR, { recursive: true })
-  await writeFile(CONFIG_FILE, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
-  return payload
+  return writeSelectedBase(base)
 }
 
 export async function writeSessionBase(base: string): Promise<BaseSelectionConfig> {
-  const existing = await readBaseConfig()
-  const payload: BaseSelectionConfig = {
-    ...existing,
-    sessionBase: base,
-    updatedAt: dayjs().toISOString(),
-  }
-  await mkdir(CONFIG_DIR, { recursive: true })
-  await writeFile(CONFIG_FILE, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
-  return payload
+  return writeSelectedBase(base)
 }
 
 export interface EffectiveBaseResolution {
   baseDir: string
-  source: 'config.sessionBase' | 'config.defaultBase'
+  source: 'config.selectedBase'
   baseName?: string
 }
 
 export async function resolveEffectiveBaseDir(
   cwd: string = process.cwd(),
-  configOverride?: BaseSelectionConfig,
+  configOverride?: BaseSelectionConfig | KbConfig,
 ): Promise<EffectiveBaseResolution> {
-  const config = configOverride ?? await readBaseConfig()
-
-  if (config.sessionBase) {
-    return {
-      baseDir: resolveBaseToDir(config.sessionBase, cwd),
-      source: 'config.sessionBase',
-      baseName: config.sessionBase,
+  const config = configOverride
+    ? {
+      selectedBase: 'selectedBase' in configOverride ? configOverride.selectedBase : undefined,
+      updatedAt: configOverride.updatedAt,
     }
-  }
+    : await readBaseConfig()
 
-  if (config.defaultBase) {
+  if (config.selectedBase) {
     return {
-      baseDir: resolveBaseToDir(config.defaultBase, cwd),
-      source: 'config.defaultBase',
-      baseName: config.defaultBase,
+      baseDir: resolveBaseToDir(config.selectedBase, cwd),
+      source: 'config.selectedBase',
+      baseName: config.selectedBase,
     }
   }
 
@@ -107,22 +93,20 @@ export async function resolveEffectiveBaseDir(
 
 export function formatUseCommandHelp(base: string, resolvedPath: string): string {
   return [
-    `Using base: ${base}`,
+    `Selected base: ${base}`,
     `Resolved path: ${resolvedPath}`,
     '',
-    'Saved as session base for immediate invocations.',
-    'To persist for future invocations across sessions:',
-    `  kb default ${base}`,
+    'Saved as the active base for future invocations.',
+    'Use `kb default <base>` or `kb use <base>` interchangeably.',
   ].join('\n')
 }
 
 export function formatDefaultCommandHelp(base: string, resolvedPath: string): string {
   return [
-    `Default base saved: ${base}`,
+    `Selected base: ${base}`,
     `Resolved path: ${resolvedPath}`,
     '',
-    'Current invocation precedence:',
-    '  1) kb use session base',
-    '  2) saved default base',
+    'Saved as the active base for future invocations.',
+    'Use `kb use <base>` or `kb default <base>` interchangeably.',
   ].join('\n')
 }

@@ -32,25 +32,36 @@ describe('config-cli', () => {
 
     const result = await runConfigCommand(['get'], { configFile })
 
-    expect(result.output).toContain('"defaultBase": "dogfood"')
+    expect(result.output).toContain('"selectedBase": "old-session"')
     expect(result.output).toContain('"parentPageId": "abc123"')
-    expect(result.output).not.toContain('sessionBase')
+    expect(result.output).not.toContain('defaultBase')
   })
 
-  it('Given set defaultBase, then writes config and drops deprecated sessionBase', async () => {
+  it('Given set selectedBase, then writes config and drops deprecated legacy base fields', async () => {
     const configFile = await createConfigFile({
       sessionBase: 'legacy-session',
       notion: { token: 'secret' },
     })
 
-    const result = await runConfigCommand(['set', 'defaultBase', 'dogfood'], { configFile })
+    const result = await runConfigCommand(['set', 'selectedBase', 'dogfood'], { configFile })
     const saved = await readKbConfig(configFile)
 
-    expect(result.output).toContain('Set defaultBase')
-    expect(saved.defaultBase).toBe('dogfood')
+    expect(result.output).toContain('Set selectedBase')
+    expect(saved.selectedBase).toBe('dogfood')
     expect(saved.notion?.token).toBe('secret')
     expect(saved.sessionBase).toBeUndefined()
+    expect(saved.defaultBase).toBeUndefined()
     expect(saved.updatedAt).toBeTruthy()
+  })
+
+  it('Given legacy defaultBase alias, then config set still writes selectedBase canonically', async () => {
+    const configFile = await createConfigFile({})
+
+    await runConfigCommand(['set', 'defaultBase', 'dogfood'], { configFile })
+    const saved = await readKbConfig(configFile)
+
+    expect(saved.selectedBase).toBe('dogfood')
+    expect(saved.defaultBase).toBeUndefined()
   })
 
   it('Given nested notion key, then get returns scalar and unset prunes empty object', async () => {
@@ -79,7 +90,7 @@ describe('config-cli', () => {
   it('Given supported but unset key, then get returns explicit not-set error', async () => {
     const configFile = await createConfigFile({})
 
-    await expect(runConfigCommand(['get', 'defaultBase'], { configFile })).rejects.toThrow(
+    await expect(runConfigCommand(['get', 'selectedBase'], { configFile })).rejects.toThrow(
       'CONFIG_VALUE_NOT_SET',
     )
   })
