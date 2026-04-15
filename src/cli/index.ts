@@ -29,6 +29,7 @@ import {
   writeSessionBase,
 } from './base-selection'
 import { parsePublishCommand, runPublishCommand } from './publish-cli'
+import { parseInitCommand, runKbInit } from './init-cli'
 import { runChatSession } from './chat-cli'
 
 function printCliHelp(): string {
@@ -39,6 +40,7 @@ function printCliHelp(): string {
     '  kb <query>',
     '  kb <sessionFile.md> <query>',
     '  kb chat',
+    '  kb init --base <name> [--apply | --dry-run]',
     '  kb publish [options]',
     '  kb <intent-command> [options]',
     '',
@@ -225,6 +227,19 @@ async function main() {
     try {
       const parsed = parsePublishCommand(args.slice(1))
       const result = await runPublishCommand(parsed)
+      console.log(JSON.stringify(result, null, 2))
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`❌ ${message}`)
+      process.exit(1)
+    }
+  }
+
+  if (firstArg === 'init') {
+    try {
+      const parsed = parseInitCommand(args.slice(1))
+      const result = await runKbInit(parsed)
       console.log(JSON.stringify(result, null, 2))
       return
     } catch (error) {

@@ -3,7 +3,6 @@
  * See: Ticket 008 - Query Documents Tool Contract
  */
 
-import { readdir, readFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import dayjs from 'dayjs'
@@ -192,7 +191,7 @@ export class MarkdownDocumentReader {
   private readonly checkpointObservabilityEnabled: boolean
 
   constructor(
-    private baseDir: string,
+    baseDir: string,
     options: MarkdownDocumentReaderOptions = {},
   ) {
     this.hybridEnabled = options.hybridEnabled ?? process.env.KB_HYBRID_QUERY === 'true'
@@ -334,43 +333,58 @@ export class MarkdownDocumentReader {
     const laneRoute = this.resolveLaneRouting(input)
     const primaryLanes = laneRoute?.lanes ?? []
 
-    const collectMatches = async (laneFilter?: RetrievalLane[]) => {
+    const collectMatches = (laneFilter?: RetrievalLane[]) => {
       const collected: Array<{ result: QueryResult; score: number }> = []
 
-      const files = await readdir(this.baseDir)
-      const mdFiles = files.filter(f => f.endsWith('.md') && f !== '_table.md')
+      let db: Database.Database | undefined
+      let rows: Array<{
+        id: string; title: string; content: string; file_path: string;
+        doc_type: string | null; lane: string | null; tags_json: string | null;
+        created_at: string; updated_at: string
+      }> = []
 
-      for (const file of mdFiles) {
-        const filePath = path.join(this.baseDir, file)
-        const content = await readFile(filePath, 'utf8')
-        const metadata = parseDocumentMetadata(filePath, content)
+      try {
+        db = new Database(this.sqliteDbPath, { readonly: true })
+        rows = db.prepare(
+          'SELECT id, title, content, file_path, doc_type, lane, tags_json, created_at, updated_at FROM documents ORDER BY updated_at DESC'
+        ).all() as typeof rows
+      } catch {
+        // DB not yet initialised — return empty
+        return collected
+      } finally {
+        db?.close()
+      }
 
-        if (!metadata) continue
+      for (const row of rows) {
+        const tags = parseTagsJson(row.tags_json) ?? []
+        const lane = (row.lane ?? classifyDocumentLane(row.id, row.title, row.doc_type ?? null, tags, '')) as RetrievalLane
 
-        if (laneFilter?.length) {
-          const lane = classifyDocumentLane(
-            metadata.id,
-            metadata.title,
-            metadata.type ?? null,
-            metadata.tags ?? [],
-            metadata.filePath,
-          )
-          if (!laneFilter.includes(lane)) {
-            continue
-          }
-        }
+        if (laneFilter?.length && !laneFilter.includes(lane)) continue
 
-        const matchesType = !input.type || metadata.type === input.type
+        const type = (['architecture', 'decision', 'checklist', 'runbook', 'reference'] as const)
+          .find(t => t === row.doc_type)
+
+        const matchesType = !input.type || type === input.type
         if (!matchesType) continue
 
-        const evaluation = evaluateDocumentMatch(input, metadata, content)
+        const metadata: DocumentMetadata = {
+          id: row.id,
+          title: row.title,
+          filePath: row.file_path,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          tags,
+          type,
+        }
+
+        const evaluation = evaluateDocumentMatch(input, metadata, row.content)
         if (!evaluation.matched) continue
 
         collected.push({
           score: evaluation.score,
           result: {
             metadata,
-            content: input.includeContent ? content : undefined,
+            content: input.includeContent ? row.content : undefined,
           },
         })
       }
@@ -384,19 +398,19 @@ export class MarkdownDocumentReader {
     let usedSessionLogLastResort = false
 
     try {
-      matches = await collectMatches(activeLanes.length > 0 ? activeLanes : undefined)
+      matches = collectMatches(activeLanes.length > 0 ? activeLanes : undefined)
 
       if (laneRoute && matches.length === 0 && laneRoute.fallbackLanes.length > 0) {
         activeLanes = laneRoute.fallbackLanes
         usedLaneFallback = true
-        matches = await collectMatches(activeLanes)
+        matches = collectMatches(activeLanes)
       }
 
       if (laneRoute && matches.length === 0 && (laneRoute.lastResortLanes?.length ?? 0) > 0) {
         activeLanes = laneRoute.lastResortLanes ?? []
         usedLaneFallback = true
         usedSessionLogLastResort = activeLanes.includes('session-log')
-        matches = await collectMatches(activeLanes)
+        matches = collectMatches(activeLanes)
       }
     } catch {
       const lexicalRetrieval: QueryResponse['retrieval'] = laneRoute
@@ -602,11 +616,8 @@ export class MarkdownDocumentReader {
 
           let content: string | undefined
           if (input.includeContent) {
-            try {
-              content = await readFile(doc.file_path, 'utf8')
-            } catch {
-              content = row.bestChunk
-            }
+            const docRow = db.prepare('SELECT content FROM documents WHERE id = ?').get(doc.id) as { content?: string } | undefined
+            content = docRow?.content ?? row.bestChunk
           }
 
           filtered.push({

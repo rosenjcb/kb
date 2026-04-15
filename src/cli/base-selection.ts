@@ -76,7 +76,7 @@ export async function writeSessionBase(base: string): Promise<BaseSelectionConfi
 
 export interface EffectiveBaseResolution {
   baseDir: string
-  source: 'config.sessionBase' | 'config.defaultBase' | 'env.KB_BASE'
+  source: 'config.sessionBase' | 'config.defaultBase'
   baseName?: string
 }
 
@@ -102,16 +102,7 @@ export async function resolveEffectiveBaseDir(
     }
   }
 
-  const envBase = (process.env.KB_BASE || '').trim()
-  if (envBase) {
-    return {
-      baseDir: resolveBaseToDir(envBase, cwd),
-      source: 'env.KB_BASE',
-      baseName: envBase,
-    }
-  }
-
-  throw new Error('No KB base configured. Set one with `kb use <base>` or `kb default <base>`, or set KB_BASE.')
+  throw new Error('No KB base configured. Set one with `kb use <base>` or `kb default <base>`.')
 }
 
 export function formatUseCommandHelp(base: string, resolvedPath: string): string {

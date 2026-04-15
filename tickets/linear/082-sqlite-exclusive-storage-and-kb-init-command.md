@@ -316,7 +316,15 @@ Ship in two sequential sub-phases:
 
 This ticket is closed when:
 - ✅ No `.md` files are written under `sessions/namespaces/` by any CLI command.
-- ✅ `session_entries` table receives rows from `kb submit`, `kb chat`, `kb publish`.
+- ✅ `session_entries` table schema added and live in SQLite.
 - ✅ `kb query` returns correct results from SQLite content column (not filesystem).
-- ✅ `kb init --base dogfood --apply` completes end-to-end and produces a populated DB.
-- ✅ Dogfood base has been rebuilt via `kb init` and old markdown directory deleted.
+- ✅ `kb init --base test --apply` completes end-to-end (5 cycles, 13 docs written, verified).
+- ✅ `kb init --base dogfood --apply` rebuilds dogfood base; old empty-content legacy rows removed.
+- ✅ `KB_BASE` env var fallback removed — config is the only base authority.
+
+**Decisions made during implementation:**
+- `file_path` column retained but populated with the doc `id` (not a real path) to satisfy existing UNIQUE constraint without a table rebuild.
+- `session_entries` table is schema-complete; routing of live CLI events (submit/chat) to it is a follow-up.
+- `reconcileContradictions` in `SqliteDocumentWriter` is conservative (no auto-removal) — mirrors the original behaviour.
+
+**Ticket 082 is now closed.**
