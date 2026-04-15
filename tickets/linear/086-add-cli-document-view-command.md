@@ -12,7 +12,6 @@ KB can retrieve document summaries and answer questions, but it does not yet off
 
 The immediate need is a simple CLI surface that prints the full document to the terminal. Longer term, this should become the retrieval/display layer for a richer Ink-based TUI with modal navigation and document browsing behavior.
 
-## Scope
 
 - Define a user-facing CLI command for displaying a full document by ID or other clear selector.
 - Specify the MVP terminal behavior where documents are printed directly to stdout.
@@ -20,6 +19,7 @@ The immediate need is a simple CLI surface that prints the full document to the 
 - Define error behavior for missing documents, ambiguous selectors, and unsupported output modes.
 - Clarify how this command relates to `kb query` results and how users move from retrieval to full-document viewing.
 - Capture forward-compatible design constraints for a future Ink/TUI document viewer, without implementing the TUI in this ticket.
+- **Note:** The canonical CLI contract is now `kb docs list` and `kb docs view`. Do not reference legacy `kb view` or `kb invalidate` commands. `kb explain` is valid.
 
 ## Acceptance Criteria
 

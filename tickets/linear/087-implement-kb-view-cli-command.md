@@ -10,7 +10,6 @@ local-kb / cli-ux
 
 Ticket 086 defines the `kb docs` browsing contract, but the runtime does not yet exist. Users still cannot list available documents or open a full document directly from the CLI after discovery.
 
-## Scope
 
 - Add `kb docs list` and `kb docs view` argument parsing and help text to the CLI.
 - Implement exact document ID lookup and `--title` lookup using the shared reader.
@@ -19,6 +18,7 @@ Ticket 086 defines the `kb docs` browsing contract, but the runtime does not yet
 - Add `--output json` support for machine-readable document output.
 - Implement exit/error behavior for missing, ambiguous, and invalid invocations.
 - Add focused tests for parser behavior, output format, and error handling.
+- **Note:** The canonical CLI contract is now `kb docs list` and `kb docs view`. Do not reference legacy `kb view` or `kb invalidate` commands. `kb explain` is valid.
 
 ## Acceptance Criteria
 

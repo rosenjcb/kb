@@ -136,6 +136,37 @@ See [Deprecation and Cleanup Policy](../../AGENTS.md#deprecation-and-cleanup-pol
 - If you find existing code that contradicts the plan, **either update the plan or file a separate ticket** to reconcile.
 - Mark open questions honestly—"We could use embeddings or BM25; we'll revisit if latency > 200ms" is more useful than "we haven't decided."
 
+
+## Current CLI Surface (2026-04)
+
+The following are the actual, user-facing CLI commands as of April 2026. Do not invent or reference commands not present in the codebase or help output.
+
+### Top-level commands
+
+* kb chat
+* kb docs list
+* kb docs view
+* kb init
+* kb config get|set|unset
+* kb publish
+* kb use
+* kb default
+
+### Intent commands
+
+* kb submit
+* kb validate
+* kb dispute
+* kb query
+* kb explain
+
+### Notes
+
+- `kb invalidate` does **not** exist as a command.
+- `kb explain` is valid and maps to the explain intent.
+- Typing `kb` or `kb --help` shows the help message.
+- Internal tool names (e.g., write_document) are distinct from consumer CLI commands.
+
 ## Dogfood Requirement (Mandatory)
 
 For this repository, all meaningful development work must be documented in the KB using the CLI as part of the workflow.
