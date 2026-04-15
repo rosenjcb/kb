@@ -207,10 +207,11 @@ export class SqliteKbIndexer {
     const contentHash = sha256(content)
 
     const upsertDocument = this.db.prepare(`
-      INSERT INTO documents (id, title, file_path, doc_type, lane, tags_json, content_hash, created_at, updated_at, indexed_at)
-      VALUES (@id, @title, @filePath, @docType, @lane, @tagsJson, @contentHash, @createdAt, @updatedAt, @indexedAt)
+      INSERT INTO documents (id, title, content, file_path, doc_type, lane, tags_json, content_hash, created_at, updated_at, indexed_at)
+      VALUES (@id, @title, @content, @filePath, @docType, @lane, @tagsJson, @contentHash, @createdAt, @updatedAt, @indexedAt)
       ON CONFLICT(id) DO UPDATE SET
         title=excluded.title,
+        content=excluded.content,
         file_path=excluded.file_path,
         doc_type=excluded.doc_type,
         lane=excluded.lane,
@@ -246,6 +247,7 @@ export class SqliteKbIndexer {
       upsertDocument.run({
         id: parsed.id,
         title: parsed.title,
+        content,
         filePath,
         docType: parsed.docType,
         lane: parsed.lane,

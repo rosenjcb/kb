@@ -420,8 +420,15 @@ describe('MarkdownDocumentReader', () => {
       limit: 5,
     })
 
+    const install = await reader.queryDocuments({
+      query: 'how do i install and configure this project',
+      mode: 'content',
+      limit: 5,
+    })
+
     expect(broad.retrieval.laneRouting?.lanes).toEqual(['fact', 'architecture', 'workflow'])
     expect(operational.retrieval.laneRouting?.lanes).toEqual(['error-runbook', 'fact', 'policy'])
+    expect(install.retrieval.laneRouting?.lanes).toEqual(['error-runbook', 'workflow', 'fact'])
   })
 
   it('Given mixed-lane corpus, lane routing should improve top-result precision over mixed baseline fixture', async () => {
@@ -548,6 +555,43 @@ describe('MarkdownDocumentReader', () => {
     expect(response.retrieval.detail ?? '').toContain('session-log-last-resort')
     expect(response.retrieval.laneRouting?.usedFallback).toBe(true)
     expect(response.retrieval.laneRouting?.lanes).toEqual(['session-log'])
+  })
+
+  it('Given install guidance stored in error-runbook lane, install query should route there directly', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    const writer = new MarkdownMDWriterTool({
+      baseDir,
+      enableSqliteIndex: true,
+      sqliteDbPath: dbPath,
+    })
+
+    await writer.writeDocument({
+      title: 'Installation and Configuration',
+      content: 'Install KB by running npm install and then kb init --base dogfood --apply.',
+      documentId: 'installation-and-configuration',
+      overwrite: true,
+      type: 'runbook',
+      tags: ['install', 'configuration', 'ops'],
+    })
+
+    const reader = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: true,
+      sqliteDbPath: dbPath,
+      laneRoutingEnabled: true,
+    })
+
+    const response = await reader.queryDocuments({
+      query: 'how do i install kb',
+      mode: 'content',
+      limit: 3,
+    })
+
+    expect(response.total).toBeGreaterThan(0)
+    expect(response.results[0]?.metadata.id).toBe('installation-and-configuration')
+    expect(response.retrieval.laneRouting?.usedFallback).toBe(false)
+    expect(response.retrieval.laneRouting?.lanes).toEqual(['error-runbook', 'workflow', 'fact'])
+    expect(response.retrieval.detail ?? '').toContain('lane-router:install-setup-signals')
   })
 
   it('Given explicit change-diff query, lane router should target session logs directly', async () => {

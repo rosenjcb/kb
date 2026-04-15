@@ -15,7 +15,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { createProvider } from '../core/llm-provider'
-import type { LLMProvider, Message } from '../core/types'
+import type { LLMProvider } from '../core/types'
 import { resolveBaseToDir } from './base-selection'
 import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
 import type { WriteDocumentInput } from '../tools/document-writer'
@@ -398,13 +398,12 @@ Required document categories:
 - 1 configuration reference (type: reference) if applicable
 - Fact documents for key decisions, architecture components, policies
 
-Return ONLY the JSON array, no prose.`
+  Return ONLY the JSON array, no prose.`
 
   const response = await provider.call({
-    messages: [{ role: 'user', content: userPrompt }],
+    messages: [{ role: 'user', content: `${systemPrompt}\n\n${userPrompt}` }],
     maxTokens: 4000,
     temperature: 0.2,
-    system: systemPrompt,
   })
 
   return parseDocArray(response.text) ?? fallbackDocs(context, baseName)

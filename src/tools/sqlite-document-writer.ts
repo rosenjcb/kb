@@ -335,8 +335,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
       // Simple heuristic: remove lines that directly contradict the new fact
       // (look for lines containing the subject of the fact with different predicates)
       const lines = row.content.split('\n')
-      const filteredLines = lines.filter(line => {
-        const lower = line.toLowerCase()
+      const filteredLines = lines.filter(() => {
         // Keep lines that don't look like direct contradictions
         // A contradiction would share key nouns with the fact but assert something different
         return true // Conservative: don't auto-remove; flag for review
