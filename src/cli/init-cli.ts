@@ -1,28 +1,47 @@
 /**
- * kb init — 5-cycle knowledge base bootstrap command.
+ * kb init — knowledge base bootstrap command.
  *
  * Cycle 1 (read-inputs):  Discover README/CLAUDE.md in working dir,
- *                          ask user up to 10 targeted questions via stdin.
- * Cycles 2-4 (pass1-3):  LLM synthesis + refinement passes.
- * Cycle 5 (write):        Upsert all candidate documents to SQLite.
+ *                          ask an initial interview round via stdin.
+ * Cycles 2-4 (pass1-3):  Draft docs, assess topic coverage, ask follow-ups,
+ *                          refine docs, then run a final quality pass.
+ * Cycle 5 (write):       Upsert all candidate documents to SQLite.
  *
  * Reuses progress reporting and checkpoint patterns from publish-cli.ts.
  */
 
 import readline from 'node:readline'
-import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises'
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { createProvider } from '../core/llm-provider'
 import type { LLMProvider } from '../core/types'
 import { resolveBaseToDir } from './base-selection'
-import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
+import {
+  assessTopicCoverage,
+  buildTopicCoverageGaps,
+  getTopicDefinition,
+  inferTopicFromQuestion,
+  INIT_TOPIC_DEFINITIONS,
+  markUnaskedTopicsAsInferred,
+  summariseCoverage,
+} from './init-topic-coverage'
 import type { WriteDocumentInput } from '../tools/document-writer'
-
-// ─── Types ───────────────────────────────────────────────────────
+import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
 
 export type InitCycle = 'read-inputs' | 'pass1' | 'pass2' | 'pass3' | 'write'
+export type InitTopic =
+  | 'project-overview'
+  | 'install-setup'
+  | 'core-workflows'
+  | 'architecture'
+  | 'configuration'
+  | 'testing'
+  | 'deployment-release'
+  | 'constraints-gotchas'
+
+export type TopicCoverageStatus = 'sufficient' | 'needs-follow-up' | 'inferred-only' | 'unresolved'
 
 export interface InitOptions {
   base: string
@@ -33,6 +52,8 @@ export interface InitOptions {
   resumeFrom?: string
   checkpointFile?: string
   cwd?: string
+  provider?: LLMProvider
+  questionIO?: InitQuestionIO
 }
 
 export interface InitResult {
@@ -43,6 +64,56 @@ export interface InitResult {
   writtenDocIds?: string[]
   checkpointFile?: string
   resumedFrom?: string
+  coverageSummary?: InitCoverageSummary
+}
+
+export interface InitUserAnswer {
+  question: string
+  answer: string
+  topic?: InitTopic
+}
+
+export interface InitContext {
+  sourceFiles: Record<string, string>
+  userAnswers: InitUserAnswer[]
+}
+
+export interface InitInterviewQuestion {
+  id: string
+  round: number
+  topic: InitTopic
+  reason: 'missing-topic' | 'low-confidence' | 'contradiction' | 'needs-example'
+  question: string
+  answer?: string
+  askedAt?: string
+  answeredAt?: string
+}
+
+export interface InitInterviewRound {
+  round: number
+  questions: InitInterviewQuestion[]
+}
+
+export interface TopicCoverageAssessment {
+  topic: InitTopic
+  confidence: 'high' | 'medium' | 'low'
+  status: TopicCoverageStatus
+  evidenceSources: Array<'source-doc' | 'user-answer' | 'model-inference'>
+  keyEvidence: string[]
+  missingFields: string[]
+  enoughContext: boolean
+  stopReason?:
+    | 'enough-grounded-evidence'
+    | 'user-confirmed'
+    | 'question-budget-exhausted'
+    | 'non-interactive-mode'
+    | 'still-ambiguous'
+}
+
+export interface InitCoverageSummary {
+  coveredTopics: InitTopic[]
+  inferredTopics: InitTopic[]
+  unresolvedTopics: InitTopic[]
 }
 
 interface CandidateDoc {
@@ -53,12 +124,7 @@ interface CandidateDoc {
   tags?: string[]
 }
 
-interface InitContext {
-  sourceFiles: Record<string, string>   // filename → content
-  userAnswers: Array<{ question: string; answer: string }>
-}
-
-interface InitCheckpoint {
+interface InitCheckpointV1 {
   version: 1
   updatedAt: string
   baseName: string
@@ -68,15 +134,44 @@ interface InitCheckpoint {
   candidateDocs?: CandidateDoc[]
 }
 
-// ─── Progress Reporter (same style as publish-cli) ───────────────
+export interface InitCheckpoint {
+  version: 2
+  updatedAt: string
+  baseName: string
+  workingDir: string
+  completedCycles: InitCycle[]
+  context?: InitContext
+  candidateDocs?: CandidateDoc[]
+  interviewRounds?: InitInterviewRound[]
+  topicCoverage?: TopicCoverageAssessment[]
+  finalCoverageSummary?: InitCoverageSummary
+}
+
+type StoredInitCheckpoint = InitCheckpointV1 | InitCheckpoint
+
+export interface InitQuestionIO {
+  write?: (message: string) => void
+  askQuestion: (question: string) => Promise<string>
+  close?: () => Promise<void> | void
+}
 
 class InitProgressReporter {
   private completed = 0
+
   constructor(private total: number) {}
 
-  start(label: string, detail?: string) { this.render(label, detail) }
-  finish(label: string, detail?: string) { this.completed++; this.render(label, detail) }
-  update(label: string, detail?: string) { this.render(label, detail) }
+  start(label: string, detail?: string) {
+    this.render(label, detail)
+  }
+
+  finish(label: string, detail?: string) {
+    this.completed += 1
+    this.render(label, detail)
+  }
+
+  update(label: string, detail?: string) {
+    this.render(label, detail)
+  }
 
   private render(label: string, detail?: string) {
     const width = 24
@@ -87,7 +182,16 @@ class InitProgressReporter {
   }
 }
 
-// ─── CLI Parsing ─────────────────────────────────────────────────
+const SOURCE_FILE_CANDIDATES = [
+  'README.md', 'README.txt', 'readme.md',
+  'CLAUDE.md', 'AGENTS.md',
+  'CONTRIBUTING.md', 'ARCHITECTURE.md',
+  'docs/README.md', 'docs/overview.md', 'docs/architecture.md',
+]
+
+const MAX_SOURCE_SIZE = 20_000
+const MAX_TOTAL_QUESTIONS = 10
+const MAX_FOLLOW_UP_QUESTIONS = 4
 
 export function parseInitCommand(args: string[]): InitOptions {
   const base = readOption(args, '--base')
@@ -114,8 +218,6 @@ export function parseInitCommand(args: string[]): InitOptions {
   }
 }
 
-// ─── Main Entry Point ────────────────────────────────────────────
-
 export async function runKbInit(options: InitOptions): Promise<InitResult> {
   const cwd = options.cwd ?? process.cwd()
   const baseDir = resolveBaseToDir(options.base, cwd)
@@ -123,14 +225,17 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
   const resumedCheckpoint = await readCheckpoint(checkpointFile)
 
   const progress = new InitProgressReporter(5)
-  const provider = resolveProvider()
+  const provider = options.provider ?? resolveProvider()
+  const questionIO = options.questionIO ?? createReadlineQuestionIO()
 
   let checkpoint: InitCheckpoint = resumedCheckpoint ?? {
-    version: 1,
+    version: 2,
     updatedAt: dayjs().toISOString(),
     baseName: options.base,
     workingDir: cwd,
     completedCycles: [],
+    interviewRounds: [],
+    topicCoverage: [],
   }
 
   if (resumedCheckpoint) {
@@ -143,6 +248,9 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
       ...updates,
       updatedAt: dayjs().toISOString(),
       completedCycles: dedup([...(checkpoint.completedCycles ?? []), ...(updates.completedCycles ?? [])]),
+      interviewRounds: updates.interviewRounds ?? checkpoint.interviewRounds ?? [],
+      topicCoverage: updates.topicCoverage ?? checkpoint.topicCoverage ?? [],
+      finalCoverageSummary: updates.finalCoverageSummary ?? checkpoint.finalCoverageSummary,
     }
     await writeCheckpoint(checkpointFile, checkpoint)
   }
@@ -150,13 +258,33 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
   let paused = false
 
   try {
-    // ── Cycle 1: read-inputs ──────────────────────────────────────
     let context = checkpoint.context
+    let candidateDocs = checkpoint.candidateDocs
+    let interviewRounds = checkpoint.interviewRounds ?? []
+    let topicCoverage = checkpoint.topicCoverage ?? []
+
     if (!checkpoint.completedCycles.includes('read-inputs')) {
       progress.start('read-inputs', 'discovering docs…')
-      context = await runReadInputsCycle(cwd, options.nonInteractive)
-      await persist({ context, completedCycles: ['read-inputs'] })
-      progress.finish('read-inputs', `${Object.keys(context.sourceFiles).length} files, ${context.userAnswers.length} answers`)
+      const readResult = await runReadInputsCycle({
+        cwd,
+        nonInteractive: options.nonInteractive,
+        questionIO,
+        startingRound: interviewRounds.length + 1,
+        maxQuestions: remainingQuestionBudget(interviewRounds),
+      })
+      context = readResult.context
+      interviewRounds = appendRoundIfPresent(interviewRounds, readResult.interviewRound)
+      topicCoverage = readResult.topicCoverage
+      await persist({
+        context,
+        interviewRounds,
+        topicCoverage,
+        completedCycles: ['read-inputs'],
+      })
+      progress.finish(
+        'read-inputs',
+        `${Object.keys(context.sourceFiles).length} files, ${context.userAnswers.length} answers`,
+      )
       if (options.stopAfter === 'read-inputs') throw new InitPausedError('read-inputs')
     } else {
       progress.finish('read-inputs', 'reused from checkpoint')
@@ -164,13 +292,18 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
 
     if (!context) throw new Error('read-inputs context missing')
 
-    // ── Cycle 2: pass1 ───────────────────────────────────────────
-    let candidateDocs = checkpoint.candidateDocs
     if (!checkpoint.completedCycles.includes('pass1')) {
-      progress.start('pass1', 'synthesising facts…')
-      if (!provider) throw new Error('No LLM provider available. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY.')
+      progress.start('pass1', 'drafting docs + coverage…')
+      if (!provider) {
+        throw new Error('No LLM provider available. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY.')
+      }
       candidateDocs = await runSynthesisPass(provider, context, options.base)
-      await persist({ candidateDocs, completedCycles: ['pass1'] })
+      topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
+      await persist({
+        candidateDocs,
+        topicCoverage,
+        completedCycles: ['pass1'],
+      })
       progress.finish('pass1', `${candidateDocs.length} candidate docs`)
       if (options.stopAfter === 'pass1') throw new InitPausedError('pass1')
     } else {
@@ -179,39 +312,75 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
 
     if (!candidateDocs) throw new Error('pass1 candidateDocs missing')
 
-    // ── Cycle 3: pass2 ───────────────────────────────────────────
     if (!checkpoint.completedCycles.includes('pass2')) {
-      progress.start('pass2', 'refining docs…')
+      progress.start('pass2', 'follow-up + refining docs…')
+
+      if (!options.nonInteractive) {
+        const followUpQuestions = planFollowUpQuestions({
+          topicCoverage,
+          existingRounds: interviewRounds,
+          round: interviewRounds.length + 1,
+          maxQuestions: Math.min(remainingQuestionBudget(interviewRounds), MAX_FOLLOW_UP_QUESTIONS),
+        })
+
+        if (followUpQuestions.length > 0) {
+          const followUpRound = await askQuestions({
+            heading: '\n[kb init] Follow-up questions for weak topics:\n\n',
+            questions: followUpQuestions,
+            questionIO,
+          })
+          interviewRounds = appendRoundIfPresent(interviewRounds, followUpRound)
+          context = mergeInterviewAnswersIntoContext(context, followUpRound)
+        }
+      } else {
+        topicCoverage = markUnaskedTopicsAsInferred(topicCoverage, 'non-interactive-mode')
+      }
+
       if (!provider) throw new Error('No LLM provider available.')
       candidateDocs = await runRefinementPass(provider, context, candidateDocs)
-      await persist({ candidateDocs, completedCycles: ['pass2'] })
+      topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
+      await persist({
+        context,
+        candidateDocs,
+        interviewRounds,
+        topicCoverage,
+        completedCycles: ['pass2'],
+      })
       progress.finish('pass2', `${candidateDocs.length} docs after refinement`)
       if (options.stopAfter === 'pass2') throw new InitPausedError('pass2')
     } else {
       progress.finish('pass2', 'reused from checkpoint')
     }
 
-    // ── Cycle 4: pass3 ───────────────────────────────────────────
     if (!checkpoint.completedCycles.includes('pass3')) {
       progress.start('pass3', 'quality pass…')
       if (!provider) throw new Error('No LLM provider available.')
       candidateDocs = await runQualityPass(provider, candidateDocs)
-      await persist({ candidateDocs, completedCycles: ['pass3'] })
+      topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
+      const finalCoverageSummary = summariseCoverage(topicCoverage)
+      await persist({
+        candidateDocs,
+        topicCoverage,
+        finalCoverageSummary,
+        completedCycles: ['pass3'],
+      })
       progress.finish('pass3', `${candidateDocs.length} docs finalised`)
       if (options.stopAfter === 'pass3') throw new InitPausedError('pass3')
     } else {
       progress.finish('pass3', 'reused from checkpoint')
     }
 
-    // ── Cycle 5: write ───────────────────────────────────────────
     if (!checkpoint.completedCycles.includes('write')) {
       progress.start('write', options.dryRun ? '(dry-run)' : baseDir)
       const writtenDocIds = options.dryRun
-        ? candidateDocs.map(d => slugify(d.title))
+        ? candidateDocs.map(doc => slugify(doc.title))
         : await writeDocs(candidateDocs, baseDir, options.base)
-      await persist({ completedCycles: ['write'] })
+      const finalCoverageSummary = checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
+      await persist({
+        completedCycles: ['write'],
+        finalCoverageSummary,
+      })
       progress.finish('write', `${writtenDocIds.length} docs written`)
-
       return {
         status: 'accepted',
         base: options.base,
@@ -220,17 +389,19 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
         writtenDocIds,
         checkpointFile,
         resumedFrom: resumedCheckpoint ? checkpointFile : undefined,
+        coverageSummary: finalCoverageSummary,
       }
     }
 
     progress.finish('write', 'reused from checkpoint')
-
-  } catch (err) {
-    if (err instanceof InitPausedError) {
+  } catch (error) {
+    if (error instanceof InitPausedError) {
       paused = true
     } else {
-      throw err
+      throw error
     }
+  } finally {
+    await questionIO.close?.()
   }
 
   return {
@@ -240,118 +411,169 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
     completedCycles: checkpoint.completedCycles,
     checkpointFile,
     resumedFrom: resumedCheckpoint ? checkpointFile : undefined,
+    coverageSummary: checkpoint.finalCoverageSummary ?? summariseCoverage(checkpoint.topicCoverage ?? []),
   }
 }
 
-// ─── Cycle Implementations ────────────────────────────────────────
+async function runReadInputsCycle(options: {
+  cwd: string
+  nonInteractive: boolean
+  questionIO: InitQuestionIO
+  startingRound: number
+  maxQuestions: number
+}): Promise<{
+  context: InitContext
+  interviewRound?: InitInterviewRound
+  topicCoverage: TopicCoverageAssessment[]
+}> {
+  const sourceFiles = await collectSourceFiles(options.cwd)
+  const context: InitContext = {
+    sourceFiles,
+    userAnswers: [],
+  }
 
-const SOURCE_FILE_CANDIDATES = [
-  'README.md', 'README.txt', 'readme.md',
-  'CLAUDE.md', 'AGENTS.md',
-  'CONTRIBUTING.md', 'ARCHITECTURE.md',
-  'docs/README.md', 'docs/overview.md', 'docs/architecture.md',
-]
-
-const MAX_SOURCE_SIZE = 20_000 // chars per file
-const MAX_QUESTIONS = 10
-
-async function runReadInputsCycle(
-  cwd: string,
-  nonInteractive: boolean,
-): Promise<InitContext> {
-  // 1. Collect source files
-  const sourceFiles: Record<string, string> = {}
-  for (const candidate of SOURCE_FILE_CANDIDATES) {
-    const full = path.join(cwd, candidate)
-    if (existsSync(full)) {
-      const content = await readFile(full, 'utf8')
-      sourceFiles[candidate] = content.slice(0, MAX_SOURCE_SIZE)
+  if (options.nonInteractive) {
+    return {
+      context,
+      topicCoverage: assessTopicCoverage(context, undefined, true),
     }
   }
 
-  // Also scan for any top-level .md files we might have missed
+  const initialQuestions = planInitialQuestions(sourceFiles, options.startingRound, options.maxQuestions)
+  if (initialQuestions.length === 0) {
+    return {
+      context,
+      topicCoverage: assessTopicCoverage(context, undefined, false),
+    }
+  }
+
+  const heading = Object.keys(sourceFiles).length > 0
+    ? '\n[kb init] A few quick questions to fill in gaps (press Enter to skip):\n\n'
+    : '\n[kb init] No README found. Answering these questions will seed your KB:\n\n'
+
+  const interviewRound = await askQuestions({
+    heading,
+    questions: initialQuestions,
+    questionIO: options.questionIO,
+  })
+  const mergedContext = mergeInterviewAnswersIntoContext(context, interviewRound)
+
+  return {
+    context: mergedContext,
+    interviewRound,
+    topicCoverage: assessTopicCoverage(mergedContext, undefined, false),
+  }
+}
+
+async function collectSourceFiles(cwd: string): Promise<Record<string, string>> {
+  const sourceFiles: Record<string, string> = {}
+
+  for (const candidate of SOURCE_FILE_CANDIDATES) {
+    const fullPath = path.join(cwd, candidate)
+    if (!existsSync(fullPath)) continue
+    const content = await readFile(fullPath, 'utf8')
+    sourceFiles[candidate] = content.slice(0, MAX_SOURCE_SIZE)
+  }
+
   try {
     const topLevel = await readdir(cwd)
     for (const file of topLevel) {
-      if (file.endsWith('.md') && !sourceFiles[file] && Object.keys(sourceFiles).length < 8) {
-        const content = await readFile(path.join(cwd, file), 'utf8')
-        sourceFiles[file] = content.slice(0, MAX_SOURCE_SIZE)
-      }
+      if (!file.endsWith('.md') || sourceFiles[file] || Object.keys(sourceFiles).length >= 8) continue
+      const content = await readFile(path.join(cwd, file), 'utf8')
+      sourceFiles[file] = content.slice(0, MAX_SOURCE_SIZE)
     }
-  } catch { /* ignore */ }
-
-  // 2. Generate + ask questions
-  const userAnswers: Array<{ question: string; answer: string }> = []
-
-  if (!nonInteractive && Object.keys(sourceFiles).length > 0) {
-    const questions = generateInitialQuestions(sourceFiles)
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-    const ask = (q: string): Promise<string> =>
-      new Promise(resolve => rl.question(q, answer => resolve(answer.trim())))
-
-    process.stdout.write('\n[kb init] A few quick questions to fill in gaps (press Enter to skip):\n\n')
-
-    for (const question of questions.slice(0, MAX_QUESTIONS)) {
-      const answer = await ask(`  > ${question}\n    `)
-      if (answer) userAnswers.push({ question, answer })
-    }
-
-    rl.close()
-    process.stdout.write('\n')
-  } else if (!nonInteractive && Object.keys(sourceFiles).length === 0) {
-    // No source files found — ask a few foundational questions
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-    const ask = (q: string): Promise<string> =>
-      new Promise(resolve => rl.question(q, answer => resolve(answer.trim())))
-
-    const fallbackQuestions = [
-      'What is this project? (1-2 sentences)',
-      'What are the main commands or entry points?',
-      'What problem does it solve?',
-      'What are the key architectural components?',
-      'Who is the intended user?',
-    ]
-
-    process.stdout.write('\n[kb init] No README found. Answering these questions will seed your KB:\n\n')
-    for (const q of fallbackQuestions) {
-      const answer = await ask(`  > ${q}\n    `)
-      if (answer) userAnswers.push({ question: q, answer })
-    }
-
-    rl.close()
-    process.stdout.write('\n')
+  } catch {
+    // Ignore directory listing failures.
   }
 
-  return { sourceFiles, userAnswers }
+  return sourceFiles
 }
 
-function generateInitialQuestions(sourceFiles: Record<string, string>): string[] {
-  const content = Object.values(sourceFiles).join('\n').toLowerCase()
+function planInitialQuestions(
+  sourceFiles: Record<string, string>,
+  round: number,
+  maxQuestions: number,
+): InitInterviewQuestion[] {
+  const combined = Object.values(sourceFiles).join('\n').toLowerCase()
+  const topicsToAsk = INIT_TOPIC_DEFINITIONS.filter(definition => {
+    if (Object.keys(sourceFiles).length === 0) return true
+    return !definition.keywords.some(keyword => combined.includes(keyword))
+  }).slice(0, maxQuestions)
 
-  const questions: string[] = []
+  return topicsToAsk.map(definition => buildInterviewQuestion(
+    definition.topic,
+    definition.initialQuestion,
+    round,
+    'missing-topic',
+  ))
+}
 
-  if (!content.includes('install') && !content.includes('setup')) {
-    questions.push('How do you install or set up this project?')
+function planFollowUpQuestions(options: {
+  topicCoverage: TopicCoverageAssessment[]
+  existingRounds: InitInterviewRound[]
+  round: number
+  maxQuestions: number
+}): InitInterviewQuestion[] {
+  if (options.maxQuestions <= 0) {
+    return []
   }
-  if (!content.includes('usage') && !content.includes('example')) {
-    questions.push('What are the most common usage examples or commands?')
-  }
-  if (!content.includes('architecture') && !content.includes('design')) {
-    questions.push('What is the high-level architecture? (key components and how they relate)')
-  }
-  if (!content.includes('config') && !content.includes('configuration')) {
-    questions.push('How is the project configured? (env vars, config files, etc.)')
-  }
-  if (!content.includes('test')) {
-    questions.push('How do you run tests?')
-  }
-  if (!content.includes('deploy') && !content.includes('release')) {
-    questions.push('How is this project deployed or released?')
-  }
-  questions.push('Are there any important decisions or constraints not obvious from the README?')
-  questions.push('What are the most common gotchas or things new contributors get wrong?')
 
-  return questions
+  const alreadyAskedTopics = new Set(
+    options.existingRounds.flatMap(round => round.questions.map(question => `${question.topic}:${question.reason}`)),
+  )
+
+  const candidates = buildTopicCoverageGaps(options.topicCoverage)
+    .filter(topic => !alreadyAskedTopics.has(`${topic.topic}:${topic.reason}`))
+    .slice(0, options.maxQuestions)
+
+  return candidates.map(topic => {
+    const definition = getTopicDefinition(topic.topic)
+    return buildInterviewQuestion(topic.topic, definition.followUpQuestion, options.round, topic.reason)
+  })
+}
+
+async function askQuestions(options: {
+  heading: string
+  questions: InitInterviewQuestion[]
+  questionIO: InitQuestionIO
+}): Promise<InitInterviewRound> {
+  options.questionIO.write?.(options.heading)
+
+  const questions = await Promise.all(options.questions.map(async question => {
+    const askedAt = dayjs().toISOString()
+    const answer = (await options.questionIO.askQuestion(`  > ${question.question}\n    `)).trim()
+    return {
+      ...question,
+      askedAt,
+      answer: answer.length > 0 ? answer : undefined,
+      answeredAt: answer.length > 0 ? dayjs().toISOString() : undefined,
+    }
+  }))
+
+  options.questionIO.write?.('\n')
+
+  return {
+    round: options.questions[0]?.round ?? 1,
+    questions,
+  }
+}
+
+function mergeInterviewAnswersIntoContext(context: InitContext, round: InitInterviewRound): InitContext {
+  const userAnswers = [
+    ...context.userAnswers,
+    ...round.questions
+      .filter(question => question.answer)
+      .map(question => ({
+        question: question.question,
+        answer: question.answer!,
+        topic: question.topic,
+      })),
+  ]
+
+  return {
+    ...context,
+    userAnswers,
+  }
 }
 
 async function runSynthesisPass(
@@ -367,11 +589,9 @@ async function runSynthesisPass(
     ? context.userAnswers.map(({ question, answer }) => `Q: ${question}\nA: ${answer}`).join('\n\n')
     : '(No Q&A collected)'
 
-  const systemPrompt = `You are a knowledge base architect. Your job is to extract structured, retrieval-ready fact documents from project documentation.`
+  const prompt = `You are a knowledge base architect. Your job is to extract structured, retrieval-ready fact documents from project documentation.
 
-  const userPrompt = `You are initialising a knowledge base for the project base "${baseName}".
-
-Below is the source documentation and user Q&A answers. Your task is to produce a set of structured fact documents that will be stored in the KB for future AI-assisted retrieval.
+You are initialising a knowledge base for the project base "${baseName}".
 
 ## Source Files
 ${sourceSection}
@@ -398,10 +618,10 @@ Required document categories:
 - 1 configuration reference (type: reference) if applicable
 - Fact documents for key decisions, architecture components, policies
 
-  Return ONLY the JSON array, no prose.`
+Return ONLY the JSON array, no prose.`
 
   const response = await provider.call({
-    messages: [{ role: 'user', content: `${systemPrompt}\n\n${userPrompt}` }],
+    messages: [{ role: 'user', content: prompt }],
     maxTokens: 4000,
     temperature: 0.2,
   })
@@ -414,12 +634,10 @@ async function runRefinementPass(
   context: InitContext,
   docs: CandidateDoc[],
 ): Promise<CandidateDoc[]> {
-  const docsJson = JSON.stringify(docs, null, 2)
-
   const prompt = `You are refining a set of KB documents for quality and completeness.
 
 ## Current documents
-${docsJson}
+${JSON.stringify(docs, null, 2)}
 
 ## Additional user context
 ${context.userAnswers.map(({ question, answer }) => `Q: ${question}\nA: ${answer}`).join('\n\n') || '(none)'}
@@ -446,12 +664,10 @@ async function runQualityPass(
   provider: LLMProvider,
   docs: CandidateDoc[],
 ): Promise<CandidateDoc[]> {
-  const docsJson = JSON.stringify(docs, null, 2)
-
   const prompt = `You are doing a final quality pass on KB documents before they are written to storage.
 
 ## Documents
-${docsJson}
+${JSON.stringify(docs, null, 2)}
 
 ## Checks to apply
 1. Every document must have a non-empty title and content.
@@ -495,10 +711,7 @@ async function writeDocs(
   return writtenIds
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────
-
 function parseDocArray(text: string): CandidateDoc[] | null {
-  // Extract JSON array from LLM response (may have surrounding prose)
   const match = text.match(/\[\s*\{[\s\S]*\}\s*\]/)
   if (!match) return null
   try {
@@ -506,7 +719,8 @@ function parseDocArray(text: string): CandidateDoc[] | null {
     if (!Array.isArray(parsed)) return null
     const docs = parsed.filter(
       (item): item is CandidateDoc =>
-        typeof item === 'object' && item !== null &&
+        typeof item === 'object' &&
+        item !== null &&
         typeof (item as CandidateDoc).title === 'string' &&
         typeof (item as CandidateDoc).content === 'string',
     )
@@ -518,7 +732,7 @@ function parseDocArray(text: string): CandidateDoc[] | null {
 
 function fallbackDocs(context: InitContext, baseName: string): CandidateDoc[] {
   const content = Object.entries(context.sourceFiles)
-    .map(([f, c]) => `## ${f}\n${c}`)
+    .map(([file, value]) => `## ${file}\n${value}`)
     .join('\n\n')
 
   const qaContent = context.userAnswers
@@ -533,8 +747,57 @@ function fallbackDocs(context: InitContext, baseName: string): CandidateDoc[] {
   }]
 }
 
+function createReadlineQuestionIO(): InitQuestionIO {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  return {
+    write(message: string) {
+      process.stdout.write(message)
+    },
+    askQuestion(question: string) {
+      return new Promise(resolve => {
+        rl.question(question, answer => resolve(answer))
+      })
+    },
+    close() {
+      rl.close()
+    },
+  }
+}
+
+function buildInterviewQuestion(
+  topic: InitTopic,
+  question: string,
+  round: number,
+  reason: InitInterviewQuestion['reason'],
+): InitInterviewQuestion {
+  return {
+    id: `${topic}-${reason}-${round}`,
+    round,
+    topic,
+    reason,
+    question,
+  }
+}
+
+function remainingQuestionBudget(rounds: InitInterviewRound[]): number {
+  const askedQuestions = rounds.reduce((total, round) => total + round.questions.length, 0)
+  return Math.max(MAX_TOTAL_QUESTIONS - askedQuestions, 0)
+}
+
+function appendRoundIfPresent(
+  rounds: InitInterviewRound[],
+  round: InitInterviewRound | undefined,
+): InitInterviewRound[] {
+  if (!round) return rounds
+  return [...rounds, round]
+}
+
 function slugify(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'document'
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'document'
 }
 
 function resolveProvider(): LLMProvider | undefined {
@@ -556,7 +819,7 @@ function resolveProvider(): LLMProvider | undefined {
 
 function resolveCheckpointPath(options: InitOptions, cwd: string): string {
   if (options.resumeFrom || options.checkpointFile) {
-    return path.resolve(cwd, (options.resumeFrom ?? options.checkpointFile)!)
+    return path.resolve(cwd, options.resumeFrom ?? options.checkpointFile!)
   }
   return path.join(cwd, '.tmp', 'kb-init', `${slugify(options.base)}-latest.checkpoint.json`)
 }
@@ -564,11 +827,62 @@ function resolveCheckpointPath(options: InitOptions, cwd: string): string {
 async function readCheckpoint(filePath: string): Promise<InitCheckpoint | undefined> {
   try {
     const raw = await readFile(filePath, 'utf8')
-    const parsed = JSON.parse(raw) as InitCheckpoint
-    return parsed?.version === 1 ? parsed : undefined
+    return migrateCheckpoint(JSON.parse(raw) as StoredInitCheckpoint)
   } catch {
     return undefined
   }
+}
+
+function migrateCheckpoint(checkpoint: StoredInitCheckpoint): InitCheckpoint | undefined {
+  if (!checkpoint || typeof checkpoint !== 'object') return undefined
+  if ('version' in checkpoint && checkpoint.version === 2) {
+    return checkpoint
+  }
+  if ('version' in checkpoint && checkpoint.version === 1) {
+    return {
+      version: 2,
+      updatedAt: checkpoint.updatedAt,
+      baseName: checkpoint.baseName,
+      workingDir: checkpoint.workingDir,
+      completedCycles: checkpoint.completedCycles,
+      context: checkpoint.context
+        ? {
+          sourceFiles: checkpoint.context.sourceFiles ?? {},
+          userAnswers: (checkpoint.context.userAnswers ?? []).map(answer => ({
+            question: answer.question,
+            answer: answer.answer,
+            topic: inferTopicFromQuestion(answer.question),
+          })),
+        }
+        : undefined,
+      candidateDocs: checkpoint.candidateDocs,
+      interviewRounds: checkpoint.context?.userAnswers?.length
+        ? [{
+          round: 1,
+          questions: checkpoint.context.userAnswers.map((answer, index) => ({
+            id: `migrated-${index}`,
+            round: 1,
+            topic: inferTopicFromQuestion(answer.question) ?? 'project-overview',
+            reason: 'missing-topic',
+            question: answer.question,
+            answer: answer.answer,
+            askedAt: checkpoint.updatedAt,
+            answeredAt: checkpoint.updatedAt,
+          })),
+        }]
+        : [],
+      topicCoverage: assessTopicCoverage({
+        sourceFiles: checkpoint.context?.sourceFiles ?? {},
+        userAnswers: (checkpoint.context?.userAnswers ?? []).map(answer => ({
+          question: answer.question,
+          answer: answer.answer,
+          topic: inferTopicFromQuestion(answer.question),
+        })),
+      }, checkpoint.candidateDocs, false),
+      finalCoverageSummary: undefined,
+    }
+  }
+  return undefined
 }
 
 async function writeCheckpoint(filePath: string, checkpoint: InitCheckpoint): Promise<void> {
@@ -576,17 +890,17 @@ async function writeCheckpoint(filePath: string, checkpoint: InitCheckpoint): Pr
   await writeFile(filePath, `${JSON.stringify(checkpoint, null, 2)}\n`, 'utf8')
 }
 
-function dedup<T>(arr: T[]): T[] {
-  return Array.from(new Set(arr))
-}
-
 function readOption(args: string[], flag: string): string | undefined {
-  const idx = args.indexOf(flag)
-  return idx !== -1 && idx + 1 < args.length ? args[idx + 1] : undefined
+  const index = args.indexOf(flag)
+  return index !== -1 && index + 1 < args.length ? args[index + 1] : undefined
 }
 
 function readFlag(args: string[], flag: string): boolean {
   return args.includes(flag)
+}
+
+function dedup<T>(values: T[]): T[] {
+  return Array.from(new Set(values))
 }
 
 class InitPausedError extends Error {

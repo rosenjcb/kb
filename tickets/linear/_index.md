@@ -13,8 +13,8 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 
 ## Summary
 
-- Total files: 93 (92 tickets + this index)
-- Branch: feat/086-kb-document-view-cli
+- Total files: 97 (96 tickets + this index)
+- Branch: feat/090-kb-init-interview-loops
 
 ## Foundation
 
@@ -61,6 +61,10 @@ This folder contains discrete ticket drafts as one markdown file per ticket.
 - [087 Implement `kb docs` CLI command family](tickets/linear/087-implement-kb-view-cli-command.md)
 - [088 Add interactive document browser TUI on top of `kb docs`](tickets/linear/088-add-interactive-document-browser-tui.md)
 - [089 Implement `kb invalidate` skill](tickets/linear/089-implement-kb-invalidate-skill.md)
+- [090 Improve `kb init` iterative interview and question loops](tickets/linear/090-improve-kb-init-iterative-interview-and-question-loops.md)
+- [091 Implement `kb init` interview state machine and checkpoint schema](tickets/linear/091-implement-kb-init-interview-state-machine-and-checkpoints.md)
+- [092 Implement `kb init` topic coverage and gap analysis](tickets/linear/092-implement-kb-init-topic-coverage-and-gap-analysis.md)
+- [093 Implement `kb init` follow-up question rounds and coverage reporting](tickets/linear/093-implement-kb-init-follow-up-question-rounds-and-reporting.md)
 - [039 Define permission policy evaluation order](tickets/linear/039-permission-policy-evaluation-order.md)
 - [040 Define document ID stability rules](tickets/linear/040-kb-doc-id-stability-rules.md)
 
