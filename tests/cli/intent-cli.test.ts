@@ -63,10 +63,10 @@ describe('intent-cli parsing', () => {
       {
         status: 'accepted',
         confidence: 0.8,
-        explanation: 'query intent maps directly to read_documents',
-        recommendedAction: 'read_documents',
+          explanation: 'query intent maps directly to read_documents',
+          recommendedAction: 'read_documents',
         data: {
-          answer: 'The KB uses session base first, then default, then KB_BASE fallback.',
+          answer: 'The KB uses session base first, then default base.',
           retrieval: {
             method: 'hybrid',
             detail: 'fts+vector-rerank',
@@ -86,7 +86,7 @@ describe('intent-cli parsing', () => {
                 title: 'CLI Facts',
                 filePath: '/tmp/cli-facts.md',
               },
-              content: '# CLI Facts\n\nCreated: 2026-04-12\n\n## Base Selection\nKB base precedence order: 1) kb use, 2) kb default, 3) KB_BASE.',
+              content: '# CLI Facts\n\nCreated: 2026-04-12\n\n## Base Selection\nKB base precedence order: 1) kb use, 2) kb default.',
             },
           ],
           total: 1,
@@ -96,7 +96,7 @@ describe('intent-cli parsing', () => {
     )
 
     expect(output).toContain('Summary: Found 1 matching KB document')
-    expect(output).toContain('Answer: The KB uses session base first, then default, then KB_BASE fallback.')
+    expect(output).toContain('Answer: The KB uses session base first, then default base.')
     expect(output).toContain('Answer:')
     expect(output).toContain('Status: accepted')
     expect(output).toContain('Confidence: 0.80')
@@ -144,7 +144,7 @@ describe('intent-cli parsing', () => {
         results: [
           {
             metadata: { id: 'cli-facts', title: 'CLI Facts' },
-            content: '# CLI Facts\n\nKB base precedence order: session, default, env fallback.',
+            content: '# CLI Facts\n\nKB base precedence order: session, default.',
           },
         ],
         total: 1,
@@ -155,7 +155,7 @@ describe('intent-cli parsing', () => {
       name: 'test-provider',
       supportsStreaming: false,
       call: vi.fn(async () => ({
-        text: 'Precedence is session base, then default base, then KB_BASE fallback.',
+        text: 'Precedence is session base, then default base.',
         stopReason: 'end_turn',
         toolUses: [],
         usage: { inputTokens: 1, outputTokens: 1 },
@@ -189,7 +189,7 @@ describe('intent-cli parsing', () => {
               '- lots of unrelated setup details first.',
               '- more unrelated details.',
               '- even more unrelated details.',
-              '- CLI quick-reference: kb --help; kb use dogfood; kb default dogfood; kb submit/query/validate/dispute/explain with --output json; KB_BASE=dogfood kb chat.',
+              '- CLI quick-reference: kb --help; kb use dogfood; kb default dogfood; kb submit/query/validate/dispute/explain with --output json; kb chat.',
             ].join('\n'),
           },
         ],

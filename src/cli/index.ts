@@ -28,6 +28,7 @@ import {
   writeDefaultBase,
   writeSessionBase,
 } from './base-selection'
+import { printConfigHelp, runConfigCommand } from './config-cli'
 import { parsePublishCommand, runPublishCommand } from './publish-cli'
 import { parseInitCommand, runKbInit } from './init-cli'
 import { runChatSession } from './chat-cli'
@@ -41,10 +42,13 @@ function printCliHelp(): string {
     '  kb <sessionFile.md> <query>',
     '  kb chat',
     '  kb init --base <name> [--apply | --dry-run]',
+    '  kb config <get|set|unset> [options]',
     '  kb publish [options]',
     '  kb <intent-command> [options]',
     '',
     printIntentHelp(),
+    '',
+    printConfigHelp(),
     '',
     'Examples:',
     '  kb "What tools are available?"',
@@ -53,6 +57,9 @@ function printCliHelp(): string {
     '  kb use --show',
     '  kb default dogfood',
     '  kb default --show',
+    '  kb config get',
+    '  kb config get defaultBase',
+    '  kb config set defaultBase dogfood',
     '  kb chat',
     '  kb publish --base dogfood --dry-run',
     '  kb publish --base dogfood --apply --stop-after pass2',
@@ -221,6 +228,18 @@ async function main() {
     console.log('')
     await runChatSession({ llmProvider, toolExecutor })
     return
+  }
+
+  if (firstArg === 'config') {
+    try {
+      const result = await runConfigCommand(args.slice(1))
+      console.log(result.output)
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`❌ ${message}`)
+      process.exit(1)
+    }
   }
 
   if (firstArg === 'publish') {
