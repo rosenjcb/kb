@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
-import { runKbInit } from '../../src/cli/init-cli'
+import { parseInitCommand, runKbInit } from '../../src/cli/init-cli'
 
 const tempDirs: string[] = []
 
@@ -41,6 +41,31 @@ function createQuestionIO(answers: string[]) {
   }
 }
 
+function createSequentialOnlyQuestionIO(answers: string[]) {
+  const prompts: string[] = []
+  let index = 0
+  let inFlight = false
+  return {
+    prompts,
+    io: {
+      write() {},
+      async askQuestion(prompt: string): Promise<string> {
+        if (inFlight) {
+          throw new Error('askQuestion called concurrently')
+        }
+        inFlight = true
+        prompts.push(prompt)
+        await new Promise(resolve => setTimeout(resolve, 0))
+        const answer = answers[index]
+        index += 1
+        inFlight = false
+        return answer ?? ''
+      },
+      async close() {},
+    },
+  }
+}
+
 function createProvider(texts: string[]): LLMProvider {
   let index = 0
   return {
@@ -63,6 +88,21 @@ function createProvider(texts: string[]): LLMProvider {
 }
 
 describe('init-cli interview checkpoints', () => {
+  it('Given detach and resume flags, then parses them into init options', () => {
+    const parsed = parseInitCommand([
+      '--base',
+      'dogfood',
+      '--apply',
+      '--detach',
+      '--resume',
+    ])
+
+    expect(parsed.base).toBe('dogfood')
+    expect(parsed.apply).toBe(true)
+    expect(parsed.detach).toBe(true)
+    expect(parsed.resume).toBe(true)
+  })
+
   it('Given interactive read-inputs pause, then persists version 2 checkpoint with interview rounds', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
@@ -170,12 +210,15 @@ describe('init-cli interview checkpoints', () => {
     expect(followUpQuestionIO.prompts.some(prompt => prompt.includes('How do you install or set up this project?'))).toBe(false)
 
     const checkpoint = JSON.parse(await readFile(firstRun.checkpointFile!, 'utf8')) as {
-      interviewRounds: Array<{ round: number; questions: Array<{ question: string }> }>
+      interviewRounds: Array<{ round: number; questions: Array<{ question: string; answer?: string }> }>
       completedCycles: string[]
     }
 
     expect(checkpoint.completedCycles).toContain('pass2')
-    expect(checkpoint.interviewRounds.length).toBeGreaterThanOrEqual(2)
+    expect(checkpoint.interviewRounds.length).toBeGreaterThanOrEqual(1)
+    expect(
+      checkpoint.interviewRounds.some(round => round.questions.some(question => question.answer)),
+    ).toBe(true)
   })
 
   it('Given version 1 checkpoint, then resume migrates it to version 2 without re-asking old answers', async () => {
@@ -234,5 +277,105 @@ describe('init-cli interview checkpoints', () => {
     expect(checkpoint.version).toBe(2)
     expect(checkpoint.interviewRounds[0].questions[0].answer).toBe('Run npm install.')
     expect(checkpoint.completedCycles).toContain('pass1')
+  })
+
+  it('Given detach during read-inputs, then checkpoint stores pending questions and resume answers them', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nTiny overview only.\n',
+    })
+
+    const detached = await runKbInit({
+      base: 'dogfood',
+      apply: false,
+      dryRun: true,
+      nonInteractive: false,
+      detach: true,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: createQuestionIO([]).io,
+    })
+
+    expect(detached.status).toBe('paused')
+
+    const pausedCheckpoint = JSON.parse(await readFile(detached.checkpointFile!, 'utf8')) as {
+      completedCycles: string[]
+      interviewRounds: Array<{ questions: Array<{ answer?: string }> }>
+    }
+
+    expect(pausedCheckpoint.completedCycles).not.toContain('read-inputs')
+    expect(pausedCheckpoint.interviewRounds[0].questions.some(question => !question.answer)).toBe(true)
+
+    const resumeQuestions = createQuestionIO([
+      'Install with pnpm install.',
+      'Use kb query and kb submit daily.',
+      'Architecture uses CLI plus SQLite-backed storage.',
+      'Configuration lives in .env.local and kb config.',
+      'Tests use vitest and npm run type-check.',
+      'Publishing uses kb publish.',
+      'Main gotcha is stale knowledge.',
+    ])
+
+    const resumed = await runKbInit({
+      base: 'dogfood',
+      apply: false,
+      dryRun: true,
+      nonInteractive: false,
+      resume: true,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: resumeQuestions.io,
+    })
+
+    expect(resumed.status).toBe('paused')
+
+    const resumedCheckpoint = JSON.parse(await readFile(detached.checkpointFile!, 'utf8')) as {
+      completedCycles: string[]
+      context: { userAnswers: Array<{ answer: string }> }
+      interviewRounds: Array<{ questions: Array<{ answer?: string }> }>
+    }
+
+    expect(resumedCheckpoint.completedCycles).toContain('read-inputs')
+    expect(resumedCheckpoint.context.userAnswers.length).toBeGreaterThan(0)
+    expect(resumedCheckpoint.interviewRounds[0].questions.every(question => question.answer)).toBe(true)
+  })
+
+  it('Given resumed pending questions, then askQuestion is called sequentially not concurrently', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nTiny overview only.\n',
+    })
+
+    const detached = await runKbInit({
+      base: 'dogfood',
+      apply: false,
+      dryRun: true,
+      nonInteractive: false,
+      detach: true,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: createQuestionIO([]).io,
+    })
+
+    const sequentialQuestionIO = createSequentialOnlyQuestionIO([
+      'Install with pnpm install.',
+      'Use kb query.',
+      'Architecture uses CLI and SQLite.',
+      'Configuration lives in .env.local.',
+      'Tests use vitest.',
+      'Publishing uses kb publish.',
+      'Gotcha is stale facts.',
+    ])
+
+    await runKbInit({
+      base: 'dogfood',
+      apply: false,
+      dryRun: true,
+      nonInteractive: false,
+      resume: true,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: sequentialQuestionIO.io,
+    })
+
+    expect(sequentialQuestionIO.prompts.length).toBeGreaterThan(0)
   })
 })

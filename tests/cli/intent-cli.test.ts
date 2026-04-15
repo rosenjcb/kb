@@ -40,6 +40,21 @@ describe('intent-cli parsing', () => {
     expect(parsed.envelope.payload.discoveryDepth).toBe('deep')
   })
 
+  it('Given intent command with base option, then parses base separately from payload', () => {
+    const parsed = parseIntentCommand([
+      'query',
+      'how do i install kb',
+      '--base',
+      'test-init-noninteractive',
+      '--limit',
+      '3',
+    ])
+
+    expect(parsed.base).toBe('test-init-noninteractive')
+    expect(parsed.envelope.payload.query).toBe('how do i install kb')
+    expect(parsed.envelope.payload.limit).toBe(3)
+  })
+
   it('Given dispute without because, then throws validation error', () => {
     expect(() => parseIntentCommand(['dispute', 'Fact only'])).toThrow(
       'dispute requires --because "<counter evidence>"',

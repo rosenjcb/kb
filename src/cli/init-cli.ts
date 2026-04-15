@@ -48,6 +48,8 @@ export interface InitOptions {
   apply: boolean
   dryRun: boolean
   nonInteractive: boolean
+  detach?: boolean
+  resume?: boolean
   stopAfter?: InitCycle
   resumeFrom?: string
   checkpointFile?: string
@@ -212,6 +214,8 @@ export function parseInitCommand(args: string[]): InitOptions {
     apply: hasApply,
     dryRun: hasDryRun || !hasApply,
     nonInteractive: readFlag(args, '--non-interactive'),
+    detach: readFlag(args, '--detach'),
+    resume: readFlag(args, '--resume'),
     stopAfter,
     resumeFrom: readOption(args, '--resume-from'),
     checkpointFile: readOption(args, '--checkpoint-file'),
@@ -219,6 +223,13 @@ export function parseInitCommand(args: string[]): InitOptions {
 }
 
 export async function runKbInit(options: InitOptions): Promise<InitResult> {
+  // When using real readline (no injected questionIO) and stdin is not a TTY
+  // (e.g. CI, background process, piped input), force non-interactive mode so
+  // readline doesn't throw "readline was closed".
+  if (!options.questionIO && !process.stdin.isTTY) {
+    options = { ...options, nonInteractive: true }
+  }
+
   const cwd = options.cwd ?? process.cwd()
   const baseDir = resolveBaseToDir(options.base, cwd)
   const checkpointFile = resolveCheckpointPath(options, cwd)
@@ -265,16 +276,38 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
 
     if (!checkpoint.completedCycles.includes('read-inputs')) {
       progress.start('read-inputs', 'discovering docs…')
-      const readResult = await runReadInputsCycle({
-        cwd,
-        nonInteractive: options.nonInteractive,
-        questionIO,
-        startingRound: interviewRounds.length + 1,
-        maxQuestions: remainingQuestionBudget(interviewRounds),
-      })
-      context = readResult.context
-      interviewRounds = appendRoundIfPresent(interviewRounds, readResult.interviewRound)
-      topicCoverage = readResult.topicCoverage
+      if (context && hasPendingQuestions(interviewRounds)) {
+        const pendingRound = latestPendingRound(interviewRounds)
+        if (!pendingRound) throw new Error('Pending read-inputs interview round missing')
+        const answeredRound = await answerPendingQuestions({
+          heading: '\n[kb init] Resuming pending questions:\n\n',
+          round: pendingRound,
+          questionIO,
+        })
+        interviewRounds = replaceInterviewRound(interviewRounds, answeredRound)
+        context = mergeInterviewAnswersIntoContext(context, answeredRound)
+        topicCoverage = assessTopicCoverage(context, undefined, false)
+      } else {
+        const readResult = await runReadInputsCycle({
+          cwd,
+          nonInteractive: options.nonInteractive,
+          detach: options.detach,
+          questionIO,
+          startingRound: interviewRounds.length + 1,
+          maxQuestions: remainingQuestionBudget(interviewRounds),
+        })
+        context = readResult.context
+        interviewRounds = appendRoundIfPresent(interviewRounds, readResult.interviewRound)
+        topicCoverage = readResult.topicCoverage
+        if (readResult.paused) {
+          await persist({
+            context,
+            interviewRounds,
+            topicCoverage,
+          })
+          throw new InitPausedError('read-inputs')
+        }
+      }
       await persist({
         context,
         interviewRounds,
@@ -316,21 +349,46 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
       progress.start('pass2', 'follow-up + refining docs…')
 
       if (!options.nonInteractive) {
-        const followUpQuestions = planFollowUpQuestions({
-          topicCoverage,
-          existingRounds: interviewRounds,
-          round: interviewRounds.length + 1,
-          maxQuestions: Math.min(remainingQuestionBudget(interviewRounds), MAX_FOLLOW_UP_QUESTIONS),
-        })
-
-        if (followUpQuestions.length > 0) {
-          const followUpRound = await askQuestions({
-            heading: '\n[kb init] Follow-up questions for weak topics:\n\n',
-            questions: followUpQuestions,
+        const pendingFollowUp = latestPendingRound(interviewRounds)
+        if (pendingFollowUp && checkpoint.completedCycles.includes('pass1')) {
+          const answeredRound = await answerPendingQuestions({
+            heading: '\n[kb init] Resuming pending follow-up questions:\n\n',
+            round: pendingFollowUp,
             questionIO,
           })
-          interviewRounds = appendRoundIfPresent(interviewRounds, followUpRound)
-          context = mergeInterviewAnswersIntoContext(context, followUpRound)
+          interviewRounds = replaceInterviewRound(interviewRounds, answeredRound)
+          context = mergeInterviewAnswersIntoContext(context, answeredRound)
+        } else {
+          const followUpQuestions = planFollowUpQuestions({
+            topicCoverage,
+            existingRounds: interviewRounds,
+            round: interviewRounds.length + 1,
+            maxQuestions: Math.min(remainingQuestionBudget(interviewRounds), MAX_FOLLOW_UP_QUESTIONS),
+          })
+
+          if (followUpQuestions.length > 0) {
+            if (options.detach) {
+              interviewRounds = appendRoundIfPresent(interviewRounds, {
+                round: followUpQuestions[0].round,
+                questions: followUpQuestions,
+              })
+              await persist({
+                context,
+                candidateDocs,
+                interviewRounds,
+                topicCoverage,
+              })
+              throw new InitPausedError('pass2')
+            }
+
+            const followUpRound = await askQuestions({
+              heading: '\n[kb init] Follow-up questions for weak topics:\n\n',
+              questions: followUpQuestions,
+              questionIO,
+            })
+            interviewRounds = appendRoundIfPresent(interviewRounds, followUpRound)
+            context = mergeInterviewAnswersIntoContext(context, followUpRound)
+          }
         }
       } else {
         topicCoverage = markUnaskedTopicsAsInferred(topicCoverage, 'non-interactive-mode')
@@ -418,6 +476,7 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
 async function runReadInputsCycle(options: {
   cwd: string
   nonInteractive: boolean
+  detach?: boolean
   questionIO: InitQuestionIO
   startingRound: number
   maxQuestions: number
@@ -425,6 +484,7 @@ async function runReadInputsCycle(options: {
   context: InitContext
   interviewRound?: InitInterviewRound
   topicCoverage: TopicCoverageAssessment[]
+  paused?: boolean
 }> {
   const sourceFiles = await collectSourceFiles(options.cwd)
   const context: InitContext = {
@@ -450,6 +510,18 @@ async function runReadInputsCycle(options: {
   const heading = Object.keys(sourceFiles).length > 0
     ? '\n[kb init] A few quick questions to fill in gaps (press Enter to skip):\n\n'
     : '\n[kb init] No README found. Answering these questions will seed your KB:\n\n'
+
+  if (options.detach) {
+    return {
+      context,
+      interviewRound: {
+        round: initialQuestions[0]?.round ?? options.startingRound,
+        questions: initialQuestions,
+      },
+      topicCoverage: assessTopicCoverage(context, undefined, false),
+      paused: true,
+    }
+  }
 
   const interviewRound = await askQuestions({
     heading,
@@ -532,6 +604,29 @@ function planFollowUpQuestions(options: {
   })
 }
 
+async function answerPendingQuestions(options: {
+  heading: string
+  round: InitInterviewRound
+  questionIO: InitQuestionIO
+}): Promise<InitInterviewRound> {
+  const unanswered = options.round.questions.filter(question => !question.answer)
+  if (unanswered.length === 0) {
+    return options.round
+  }
+
+  const answeredRound = await askQuestions({
+    heading: options.heading,
+    questions: unanswered,
+    questionIO: options.questionIO,
+  })
+
+  const answeredById = new Map(answeredRound.questions.map(question => [question.id, question]))
+  return {
+    round: options.round.round,
+    questions: options.round.questions.map(question => answeredById.get(question.id) ?? question),
+  }
+}
+
 async function askQuestions(options: {
   heading: string
   questions: InitInterviewQuestion[]
@@ -539,16 +634,17 @@ async function askQuestions(options: {
 }): Promise<InitInterviewRound> {
   options.questionIO.write?.(options.heading)
 
-  const questions = await Promise.all(options.questions.map(async question => {
+  const questions: InitInterviewQuestion[] = []
+  for (const question of options.questions) {
     const askedAt = dayjs().toISOString()
     const answer = (await options.questionIO.askQuestion(`  > ${question.question}\n    `)).trim()
-    return {
+    questions.push({
       ...question,
       askedAt,
       answer: answer.length > 0 ? answer : undefined,
       answeredAt: answer.length > 0 ? dayjs().toISOString() : undefined,
-    }
-  }))
+    })
+  }
 
   options.questionIO.write?.('\n')
 
@@ -792,6 +888,21 @@ function appendRoundIfPresent(
   return [...rounds, round]
 }
 
+function replaceInterviewRound(
+  rounds: InitInterviewRound[],
+  round: InitInterviewRound,
+): InitInterviewRound[] {
+  return rounds.map(existing => existing.round === round.round ? round : existing)
+}
+
+function hasPendingQuestions(rounds: InitInterviewRound[]): boolean {
+  return rounds.some(round => round.questions.some(question => !question.answer))
+}
+
+function latestPendingRound(rounds: InitInterviewRound[]): InitInterviewRound | undefined {
+  return [...rounds].reverse().find(round => round.questions.some(question => !question.answer))
+}
+
 function slugify(value: string): string {
   return value
     .toLowerCase()
@@ -820,6 +931,9 @@ function resolveProvider(): LLMProvider | undefined {
 function resolveCheckpointPath(options: InitOptions, cwd: string): string {
   if (options.resumeFrom || options.checkpointFile) {
     return path.resolve(cwd, options.resumeFrom ?? options.checkpointFile!)
+  }
+  if (options.resume) {
+    return path.join(cwd, '.tmp', 'kb-init', `${slugify(options.base)}-latest.checkpoint.json`)
   }
   return path.join(cwd, '.tmp', 'kb-init', `${slugify(options.base)}-latest.checkpoint.json`)
 }

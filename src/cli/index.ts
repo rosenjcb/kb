@@ -51,7 +51,7 @@ function printCliHelp(): string {
     '  kb chat',
     '  kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run]',
     '  kb docs <list|view> [options]',
-    '  kb init --base <name> [--apply | --dry-run]',
+    '  kb init --base <name> [--apply | --dry-run] [--detach | --resume]',
     '  kb config <get|set|unset> [options]',
     '  kb publish [options]',
     '  kb <intent-command> [options]',
@@ -408,7 +408,10 @@ async function main() {
   if (isIntentCommand(firstArg)) {
     try {
       const parsed = parseIntentCommand(args)
-      const toolExecutor = createKBToolsRegistry(kbStorageDir)
+      const intentBaseDir = parsed.base
+        ? resolveBaseToDir(parsed.base)
+        : kbStorageDir
+      const toolExecutor = createKBToolsRegistry(intentBaseDir)
       const result = await executeIntentCommand(parsed, toolExecutor)
       llmProvider = tryCreateLlmProvider(provider)
       const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, llmProvider)
