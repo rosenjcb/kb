@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   resolveBaseToDir,
   resolveEffectiveBaseDir,
+  formatDefaultCommandHelp,
   formatUseCommandHelp,
 } from '../../src/cli/base-selection'
 
@@ -49,5 +50,21 @@ describe('base-selection', () => {
     const text = formatUseCommandHelp('dogfood', '/repo/sessions/namespaces/dogfood/documents')
     expect(text).toContain('Saved as session base for immediate invocations.')
     expect(text).toContain('kb default dogfood')
+  })
+
+  it('Given default command output, then it states default also becomes active immediately', () => {
+    const text = formatDefaultCommandHelp('catalog', '/repo/sessions/namespaces/catalog/documents')
+    expect(text).toContain('Saved as the active base for immediate invocations too.')
+  })
+
+  it('Given defaultBase updates current base too, then stale sessionBase no longer overrides it', async () => {
+    const result = await resolveEffectiveBaseDir('/repo', {
+      defaultBase: 'catalog',
+      sessionBase: 'catalog',
+    })
+
+    expect(result.source).toBe('config.sessionBase')
+    expect(result.baseName).toBe('catalog')
+    expect(result.baseDir).toBe('/repo/sessions/namespaces/catalog/documents')
   })
 })

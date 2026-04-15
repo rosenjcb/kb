@@ -55,6 +55,7 @@ export async function writeDefaultBase(base: string): Promise<BaseSelectionConfi
   const payload: BaseSelectionConfig = {
     ...existing,
     defaultBase: base,
+    sessionBase: base,
     updatedAt: dayjs().toISOString(),
   }
   await mkdir(CONFIG_DIR, { recursive: true })
@@ -121,8 +122,7 @@ export function formatDefaultCommandHelp(base: string, resolvedPath: string): st
     `Default base saved: ${base}`,
     `Resolved path: ${resolvedPath}`,
     '',
-    'Current invocation precedence:',
-    '  1) kb use session base',
-    '  2) saved default base',
+    'Saved as the active base for immediate invocations too.',
+    'Use `kb use <base>` to switch just the current active base later.',
   ].join('\n')
 }
