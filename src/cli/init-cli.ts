@@ -1,11 +1,16 @@
 /**
  * kb init — knowledge base bootstrap command.
  *
- * Cycle 1 (read-inputs):  Discover README/CLAUDE.md in working dir,
- *                          ask an initial interview round via stdin.
- * Cycles 2-4 (pass1-3):  Draft docs, assess topic coverage, ask follow-ups,
- *                          refine docs, then run a final quality pass.
- * Cycle 5 (write):       Upsert all candidate documents to SQLite.
+ * Cycle 1 (read-inputs):     Discover README/CLAUDE.md in working dir,
+ *                             ask an initial interview round via stdin.
+ * Cycle 2 (pass1):           Draft 5-15 candidate docs from source files + Q&A.
+ * Cycle 3 (pass2):           Follow-up questions for weak topics, LLM refinement.
+ * Cycle 4 (pass-enrich):     Per-document enrichment — each doc gets a dedicated
+ *                             LLM pass to deepen coverage and add concrete detail.
+ * Cycle 5 (pass-consolidate):Consolidation agent — merges docs with overlapping
+ *                             content so each document covers exactly one topic.
+ * Cycle 6 (pass3):           Final quality pass — validate, dedupe, remove stubs.
+ * Cycle 7 (write):           Upsert all candidate documents to SQLite.
  *
  * Reuses progress reporting and checkpoint patterns from publish-cli.ts.
  */
@@ -15,8 +20,8 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import dayjs from 'dayjs'
-import { createProvider } from '../core/llm-provider'
 import type { LLMProvider } from '../core/types'
+import { readKbConfig, createLLMProviderFromConfig } from './kb-config'
 import { resolveBaseToDir } from './base-selection'
 import {
   assessTopicCoverage,
@@ -30,7 +35,7 @@ import {
 import type { WriteDocumentInput } from '../tools/document-writer'
 import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
 
-export type InitCycle = 'read-inputs' | 'pass1' | 'pass2' | 'pass3' | 'write'
+export type InitCycle = 'read-inputs' | 'pass1' | 'pass2' | 'pass-enrich' | 'pass-consolidate' | 'pass3' | 'write'
 export type InitTopic =
   | 'project-overview'
   | 'install-setup'
@@ -196,15 +201,14 @@ const MAX_TOTAL_QUESTIONS = 10
 const MAX_FOLLOW_UP_QUESTIONS = 4
 
 export function parseInitCommand(args: string[]): InitOptions {
-  const base = readOption(args, '--base')
-  if (!base) throw new Error('kb init requires --base <name>')
+  const base = readOption(args, '--base') ?? 'default'
 
   const hasApply = readFlag(args, '--apply')
   const hasDryRun = readFlag(args, '--dry-run')
   if (hasApply && hasDryRun) throw new Error('Use either --apply or --dry-run, not both')
 
   const stopAfter = readOption(args, '--stop-after') as InitCycle | undefined
-  const validCycles: InitCycle[] = ['read-inputs', 'pass1', 'pass2', 'pass3', 'write']
+  const validCycles: InitCycle[] = ['read-inputs', 'pass1', 'pass2', 'pass-enrich', 'pass-consolidate', 'pass3', 'write']
   if (stopAfter && !validCycles.includes(stopAfter)) {
     throw new Error(`Invalid --stop-after. Use: ${validCycles.join('|')}`)
   }
@@ -235,8 +239,8 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
   const checkpointFile = resolveCheckpointPath(options, cwd)
   const resumedCheckpoint = await readCheckpoint(checkpointFile)
 
-  const progress = new InitProgressReporter(5)
-  const provider = options.provider ?? resolveProvider()
+  const progress = new InitProgressReporter(7)
+  const provider = options.provider ?? await resolveProvider()
   const questionIO = options.questionIO ?? createReadlineQuestionIO()
 
   let checkpoint: InitCheckpoint = resumedCheckpoint ?? {
@@ -408,6 +412,38 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
       if (options.stopAfter === 'pass2') throw new InitPausedError('pass2')
     } else {
       progress.finish('pass2', 'reused from checkpoint')
+    }
+
+    if (!candidateDocs) throw new Error('pass2 candidateDocs missing')
+
+    if (!checkpoint.completedCycles.includes('pass-enrich')) {
+      progress.start('pass-enrich', `enriching ${candidateDocs.length} docs…`)
+      if (!provider) throw new Error('No LLM provider available.')
+      candidateDocs = await runPerDocEnrichmentPass(provider, context, candidateDocs)
+      await persist({
+        candidateDocs,
+        completedCycles: ['pass-enrich'],
+      })
+      progress.finish('pass-enrich', `${candidateDocs.length} docs enriched`)
+      if (options.stopAfter === 'pass-enrich') throw new InitPausedError('pass-enrich')
+    } else {
+      progress.finish('pass-enrich', 'reused from checkpoint')
+    }
+
+    if (!checkpoint.completedCycles.includes('pass-consolidate')) {
+      progress.start('pass-consolidate', 'merging overlapping docs…')
+      if (!provider) throw new Error('No LLM provider available.')
+      const beforeCount = candidateDocs.length
+      candidateDocs = await runConsolidationPass(provider, candidateDocs)
+      await persist({
+        candidateDocs,
+        completedCycles: ['pass-consolidate'],
+      })
+      const merged = beforeCount - candidateDocs.length
+      progress.finish('pass-consolidate', merged > 0 ? `${merged} docs merged → ${candidateDocs.length} total` : `no merges needed, ${candidateDocs.length} docs`)
+      if (options.stopAfter === 'pass-consolidate') throw new InitPausedError('pass-consolidate')
+    } else {
+      progress.finish('pass-consolidate', 'reused from checkpoint')
     }
 
     if (!checkpoint.completedCycles.includes('pass3')) {
@@ -784,6 +820,104 @@ Return the final JSON array. Return ONLY the JSON array.`
   return parseDocArray(response.text) ?? docs
 }
 
+/**
+ * Pass-enrich: each candidate doc gets a dedicated LLM pass to deepen its
+ * coverage, add concrete detail, and remove internal redundancy.
+ * Docs are processed in parallel since they are independent.
+ */
+async function runPerDocEnrichmentPass(
+  provider: LLMProvider,
+  context: InitContext,
+  docs: CandidateDoc[],
+): Promise<CandidateDoc[]> {
+  const sourceSection = Object.entries(context.sourceFiles)
+    .map(([file, content]) => `### ${file}\n${content.slice(0, 3000)}`)
+    .join('\n\n---\n\n')
+
+  const qaSection = context.userAnswers.length > 0
+    ? context.userAnswers.map(({ question, answer }) => `Q: ${question}\nA: ${answer}`).join('\n\n')
+    : '(none)'
+
+  const enriched = await Promise.all(
+    docs.map(async (doc): Promise<CandidateDoc> => {
+      const prompt = `You are enriching a single KB document to make it more specific, complete, and actionable.
+
+## Document
+${JSON.stringify(doc, null, 2)}
+
+## Available source context
+${sourceSection}
+
+## User Q&A
+${qaSection}
+
+## Instructions
+1. Fill in obvious gaps using the source context and Q&A — add facts, commands, config keys, or examples that belong here.
+2. Make vague statements concrete and specific.
+3. Remove internal redundancy — each fact should appear once.
+4. Keep the document focused on its single topic; do not pull in unrelated content.
+5. Content must start with a 1-sentence summary of the document's purpose.
+
+Return the enriched document as a single JSON object with the same shape (title, type, tags, content).
+Return ONLY the JSON object, no prose.`
+
+      const response = await provider.call({
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens: 2000,
+        temperature: 0.15,
+      })
+
+      const match = response.text.match(/\{[\s\S]*\}/)
+      if (!match) return doc
+      try {
+        const parsed = JSON.parse(match[0]) as Partial<CandidateDoc>
+        if (typeof parsed.title === 'string' && typeof parsed.content === 'string') {
+          return { ...doc, ...parsed }
+        }
+      } catch {
+        // fall through
+      }
+      return doc
+    }),
+  )
+
+  return enriched
+}
+
+/**
+ * Pass-consolidate: a single LLM agent pass that reviews all enriched docs,
+ * identifies overlapping content, and merges documents that cover the same topic.
+ * Documents covering distinct topics are left untouched.
+ */
+async function runConsolidationPass(
+  provider: LLMProvider,
+  docs: CandidateDoc[],
+): Promise<CandidateDoc[]> {
+  const prompt = `You are a knowledge base architect doing a consolidation pass.
+Review all documents for content overlap and merge where appropriate.
+
+## Documents
+${JSON.stringify(docs, null, 2)}
+
+## Instructions
+1. Identify pairs (or groups) of documents that cover the same or very similar topic — more than ~40% content overlap, or clearly the same subject with different framing.
+2. For each overlapping group: merge into a single document. Use the most specific, accurate title. Combine unique facts from all source docs; remove duplicates. Maintain clear structure with bullet facts or short paragraphs.
+3. Documents covering genuinely distinct topics must remain separate — do not merge just because they share a few terms.
+4. After merging, every remaining document must still start with a 1-sentence summary.
+5. Do not lose any unique facts in the merge — consolidation should only remove redundancy, never information.
+
+Return the consolidated set as a JSON array in the same shape (title, type, tags, content).
+Return ONLY the JSON array, no prose.`
+
+  const response = await provider.call({
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 6000,
+    temperature: 0.1,
+  })
+
+  return parseDocArray(response.text) ?? docs
+}
+
 async function writeDocs(
   docs: CandidateDoc[],
   baseDir: string,
@@ -911,21 +1045,9 @@ function slugify(value: string): string {
     .slice(0, 80) || 'document'
 }
 
-function resolveProvider(): LLMProvider | undefined {
-  try {
-    if (process.env.ANTHROPIC_API_KEY) {
-      return createProvider({ provider: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY })
-    }
-    if (process.env.OPENAI_API_KEY) {
-      return createProvider({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY })
-    }
-    if (process.env.GEMINI_API_KEY) {
-      return createProvider({ provider: 'gemini', apiKey: process.env.GEMINI_API_KEY })
-    }
-    return createProvider({ provider: 'ollama', endpoint: process.env.OLLAMA_ENDPOINT || 'http://localhost:11434' })
-  } catch {
-    return undefined
-  }
+async function resolveProvider(): Promise<LLMProvider | undefined> {
+  const config = await readKbConfig()
+  return createLLMProviderFromConfig(config)
 }
 
 function resolveCheckpointPath(options: InitOptions, cwd: string): string {
