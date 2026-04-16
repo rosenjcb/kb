@@ -38,3 +38,7 @@ sessions/namespaces/test-*/
 
 # Node runtime
 .node-gyp/
+
+# Skills directories
+.claude/**
+.github/**
