@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import Database from 'better-sqlite3'
+import { emitDiagnostic } from '../core/diagnostics'
 import {
   buildCheckpointRecord,
   type RetrievalCheckpointRecord,
@@ -656,7 +657,7 @@ export class MarkdownDocumentReader {
 
         for (const candidate of candidateRows) {
           if (Date.now() - startTime > this.hybridMaxMs) {
-            console.warn('[kb-hybrid] latency budget exceeded; falling back to lexical query path')
+            emitDiagnostic('warn', '[kb-hybrid] latency budget exceeded; falling back to lexical query path')
             return { fallbackReason: 'latency-budget-exceeded' }
           }
 
@@ -781,7 +782,7 @@ export class MarkdownDocumentReader {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      console.warn(`[kb-hybrid] query unavailable, using lexical fallback: ${message}`)
+      emitDiagnostic('warn', `[kb-hybrid] query unavailable, using lexical fallback: ${message}`)
       return { fallbackReason: `hybrid-error:${message}` }
     }
   }

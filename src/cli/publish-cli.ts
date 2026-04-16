@@ -16,6 +16,7 @@ export interface PublishOptions {
   checkpointFile?: string
   resumeFrom?: string
   stopAfter?: PublishStopPoint
+  progressSink?: (line: string) => void
 }
 
 interface SqliteDocumentRow {
@@ -45,7 +46,10 @@ const NOTION_VERSION = '2022-06-28'
 class PublishProgressReporter {
   private completed = 0
 
-  constructor(private total: number) {}
+  constructor(
+    private total: number,
+    private sink: (line: string) => void = line => process.stderr.write(line),
+  ) {}
 
   start(label: string, detail?: string) {
     this.render(label, detail)
@@ -65,7 +69,7 @@ class PublishProgressReporter {
     const filled = Math.round((this.completed / Math.max(this.total, 1)) * width)
     const bar = `${'='.repeat(filled)}${'-'.repeat(Math.max(width - filled, 0))}`
     const suffix = detail ? ` ${detail}` : ''
-    process.stderr.write(`[publish] [${bar}] ${this.completed}/${this.total} ${label}${suffix}\n`)
+    this.sink(`[publish] [${bar}] ${this.completed}/${this.total} ${label}${suffix}\n`)
   }
 }
 
@@ -126,7 +130,7 @@ export async function runPublishCommand(
     warnings.push('No documents found in SQLite database. Run `kb init` to populate.')
   }
 
-  const progress = new PublishProgressReporter(docs.length)
+  const progress = new PublishProgressReporter(docs.length, options.progressSink)
   progress.start('reading docs', `${docs.length} documents`)
 
   const publishedPages: PublishResult['publishedPages'] = []

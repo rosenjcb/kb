@@ -21,6 +21,7 @@ export interface KbConfig {
     anthropicApiKey?: string
     openaiApiKey?: string
     geminiApiKey?: string
+    geminiModel?: string
     ollamaEndpoint?: string
     ollamaEmbedModel?: string
     openaiModel?: string
@@ -64,6 +65,7 @@ const SUPPORTED_CONFIG_PATHS = [
   'llm.anthropicApiKey',
   'llm.openaiApiKey',
   'llm.geminiApiKey',
+  'llm.geminiModel',
   'llm.ollamaEndpoint',
   'llm.ollamaEmbedModel',
   'llm.openaiModel',
@@ -140,6 +142,7 @@ export function getConfigValue(config: KbConfig, keyPath?: string): unknown {
     case 'llm.anthropicApiKey': return requireConfigValue(normalized.llm?.anthropicApiKey, keyPath)
     case 'llm.openaiApiKey': return requireConfigValue(normalized.llm?.openaiApiKey, keyPath)
     case 'llm.geminiApiKey': return requireConfigValue(normalized.llm?.geminiApiKey, keyPath)
+    case 'llm.geminiModel': return requireConfigValue(normalized.llm?.geminiModel, keyPath)
     case 'llm.ollamaEndpoint': return requireConfigValue(normalized.llm?.ollamaEndpoint, keyPath)
     case 'llm.ollamaEmbedModel': return requireConfigValue(normalized.llm?.ollamaEmbedModel, keyPath)
     case 'llm.openaiModel': return requireConfigValue(normalized.llm?.openaiModel, keyPath)
@@ -184,6 +187,9 @@ export function setConfigValue(config: KbConfig, keyPath: string, value: string)
     case 'llm.geminiApiKey':
       next.llm = { ...next.llm, geminiApiKey: value }
       break
+    case 'llm.geminiModel':
+      next.llm = { ...next.llm, geminiModel: value }
+      break
     case 'llm.ollamaEndpoint':
       next.llm = { ...next.llm, ollamaEndpoint: value }
       break
@@ -216,6 +222,7 @@ export function unsetConfigValue(config: KbConfig, keyPath: string): KbConfig {
     case 'llm.anthropicApiKey': if (next.llm) delete next.llm.anthropicApiKey; break
     case 'llm.openaiApiKey': if (next.llm) delete next.llm.openaiApiKey; break
     case 'llm.geminiApiKey': if (next.llm) delete next.llm.geminiApiKey; break
+    case 'llm.geminiModel': if (next.llm) delete next.llm.geminiModel; break
     case 'llm.ollamaEndpoint': if (next.llm) delete next.llm.ollamaEndpoint; break
     case 'llm.ollamaEmbedModel': if (next.llm) delete next.llm.ollamaEmbedModel; break
     case 'llm.openaiModel': if (next.llm) delete next.llm.openaiModel; break
@@ -231,6 +238,7 @@ export interface ResolvedLLM {
   provider: 'anthropic' | 'openai' | 'gemini' | 'ollama'
   apiKey?: string
   endpoint?: string
+  model?: string
 }
 
 /**
@@ -245,7 +253,7 @@ export function resolveLLMProvider(config: KbConfig): ResolvedLLM {
     switch (llm.provider) {
       case 'anthropic': return { provider: 'anthropic', apiKey: llm.anthropicApiKey }
       case 'openai': return { provider: 'openai', apiKey: llm.openaiApiKey }
-      case 'gemini': return { provider: 'gemini', apiKey: llm.geminiApiKey }
+      case 'gemini': return { provider: 'gemini', apiKey: llm.geminiApiKey, model: llm.geminiModel }
       case 'ollama': return { provider: 'ollama', endpoint: llm.ollamaEndpoint ?? 'http://localhost:11434' }
     }
   }
@@ -253,7 +261,7 @@ export function resolveLLMProvider(config: KbConfig): ResolvedLLM {
   // Auto-detect from whichever key is present in config
   if (llm?.anthropicApiKey) return { provider: 'anthropic', apiKey: llm.anthropicApiKey }
   if (llm?.openaiApiKey) return { provider: 'openai', apiKey: llm.openaiApiKey }
-  if (llm?.geminiApiKey) return { provider: 'gemini', apiKey: llm.geminiApiKey }
+  if (llm?.geminiApiKey) return { provider: 'gemini', apiKey: llm.geminiApiKey, model: llm.geminiModel }
 
   // Env var fallback (legacy / CI override)
   if (process.env.ANTHROPIC_API_KEY) return { provider: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY }
@@ -269,12 +277,12 @@ export function resolveLLMProvider(config: KbConfig): ResolvedLLM {
  */
 export function createLLMProviderFromConfig(config: KbConfig): ReturnType<typeof createProvider> | undefined {
   try {
-    const { provider, apiKey, endpoint } = resolveLLMProvider(config)
+    const { provider, apiKey, endpoint, model } = resolveLLMProvider(config)
     switch (provider) {
-      case 'anthropic': return createProvider({ provider, apiKey })
-      case 'openai': return createProvider({ provider, apiKey })
-      case 'gemini': return createProvider({ provider, apiKey })
-      case 'ollama': return createProvider({ provider, endpoint: endpoint ?? 'http://localhost:11434' })
+      case 'anthropic': return createProvider({ provider, apiKey, model })
+      case 'openai': return createProvider({ provider, apiKey, model })
+      case 'gemini': return createProvider({ provider, apiKey, model })
+      case 'ollama': return createProvider({ provider, endpoint: endpoint ?? 'http://localhost:11434', model })
     }
   } catch {
     return undefined
@@ -342,6 +350,7 @@ export function applyConfigToEnv(config: KbConfig): void {
   if (llm?.anthropicApiKey && !process.env.ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = llm.anthropicApiKey
   if (llm?.openaiApiKey && !process.env.OPENAI_API_KEY) process.env.OPENAI_API_KEY = llm.openaiApiKey
   if (llm?.geminiApiKey && !process.env.GEMINI_API_KEY) process.env.GEMINI_API_KEY = llm.geminiApiKey
+  if (llm?.geminiModel && !process.env.GEMINI_MODEL) process.env.GEMINI_MODEL = llm.geminiModel
   if (llm?.ollamaEndpoint && !process.env.OLLAMA_ENDPOINT) process.env.OLLAMA_ENDPOINT = llm.ollamaEndpoint
   if (llm?.ollamaEmbedModel && !process.env.OLLAMA_EMBED_MODEL) process.env.OLLAMA_EMBED_MODEL = llm.ollamaEmbedModel
   if (llm?.openaiModel && !process.env.OPENAI_MODEL) process.env.OPENAI_MODEL = llm.openaiModel
@@ -406,6 +415,7 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
     if (input.llm.anthropicApiKey?.trim()) llm.anthropicApiKey = input.llm.anthropicApiKey.trim()
     if (input.llm.openaiApiKey?.trim()) llm.openaiApiKey = input.llm.openaiApiKey.trim()
     if (input.llm.geminiApiKey?.trim()) llm.geminiApiKey = input.llm.geminiApiKey.trim()
+    if (input.llm.geminiModel?.trim()) llm.geminiModel = input.llm.geminiModel.trim()
     if (input.llm.ollamaEndpoint?.trim()) llm.ollamaEndpoint = input.llm.ollamaEndpoint.trim()
     if (input.llm.ollamaEmbedModel?.trim()) llm.ollamaEmbedModel = input.llm.ollamaEmbedModel.trim()
     if (input.llm.openaiModel?.trim()) llm.openaiModel = input.llm.openaiModel.trim()

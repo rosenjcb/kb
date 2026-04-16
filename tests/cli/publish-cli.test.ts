@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import Database from 'better-sqlite3'
 import { parsePublishCommand, runPublishCommand } from '../../src/cli/publish-cli'
 
 const originalNotionToken = process.env.NOTION_TOKEN
@@ -261,6 +262,51 @@ describe('publish-cli apply', () => {
       expect(resumed.resumedFrom).toBe(checkpointFile)
       expect(resumed.artifact?.includedCount).toBe(1)
       expect(resumed.notion?.stagePageId).toBe('dry-run-stage-page-id')
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('Given a custom progress sink, then publish progress avoids direct stderr writes', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'kb-publish-test-'))
+    const baseDir = path.join(tempRoot, 'docs')
+    const progressLines: string[] = []
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    try {
+      delete process.env.OPENAI_API_KEY
+      delete process.env.ANTHROPIC_API_KEY
+      delete process.env.GEMINI_API_KEY
+      await mkdir(baseDir, { recursive: true })
+      await writeFile(path.join(baseDir, 'overview.md'), '# Overview\n\nHello world\n', 'utf8')
+      const db = new Database(path.join(baseDir, '.kb-index.sqlite'))
+      db.exec(`
+        CREATE TABLE documents (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          doc_type TEXT,
+          lane TEXT,
+          tags_json TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `)
+      db.prepare(`
+        INSERT INTO documents (id, title, content, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run('overview', 'Overview', '# Overview\n\nHello world\n', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')
+      db.close()
+
+      await runPublishCommand({
+        ...parsePublishCommand(['--base', baseDir, '--dry-run']),
+        progressSink(line) {
+          progressLines.push(line.trim())
+        },
+      })
+
+      expect(progressLines.some(line => line.startsWith('[publish]'))).toBe(true)
+      expect(stderrSpy).not.toHaveBeenCalled()
     } finally {
       await rm(tempRoot, { recursive: true, force: true })
     }

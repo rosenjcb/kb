@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   AnthropicProvider,
+  GeminiProvider,
   OpenAIProvider,
   createProvider,
 } from '../../src/core/llm-provider'
@@ -56,6 +57,66 @@ describe('llm-provider', () => {
     expect(result.text).toBe('')
     expect(result.toolUses).toEqual([])
     expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0 })
+
+    fetchMock.mockRestore()
+  })
+
+  it('Given a custom Gemini model, then provider calls the matching model endpoint', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({
+          candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+          usageMetadata: {},
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+
+    const provider = new GeminiProvider('test-key', 'gemini-flash-latest')
+    await provider.call({
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/models/gemini-flash-latest:generateContent?key=test-key'),
+      expect.any(Object),
+    )
+
+    fetchMock.mockRestore()
+  })
+
+  it('Given Gemini preview uses the first small token budget on thoughts only, then provider retries once with a larger budget and returns visible text', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          candidates: [{ content: {}, finishReason: 'MAX_TOKENS' }],
+          usageMetadata: { promptTokenCount: 8, candidatesTokenCount: 0 },
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          candidates: [{ content: { parts: [{ text: 'GEMINI_OK' }] }, finishReason: 'STOP' }],
+          usageMetadata: { promptTokenCount: 8, candidatesTokenCount: 4 },
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+
+    const provider = new GeminiProvider('test-key', 'gemini-flash-latest')
+    const result = await provider.call({
+      messages: [{ role: 'user', content: 'hello' }],
+      maxTokens: 16,
+    })
+
+    expect(result.text).toBe('GEMINI_OK')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
 
     fetchMock.mockRestore()
   })

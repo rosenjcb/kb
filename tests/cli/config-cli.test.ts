@@ -3,7 +3,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { printConfigHelp, runConfigCommand } from '../../src/cli/config-cli'
-import { getKbConfigFile, listSupportedConfigPaths, readKbConfig, resolveGraphEnabled } from '../../src/cli/kb-config'
+import {
+  createLLMProviderFromConfig,
+  getKbConfigFile,
+  listSupportedConfigPaths,
+  readKbConfig,
+  resolveGraphEnabled,
+  resolveLLMProvider,
+} from '../../src/cli/kb-config'
 
 const tempDirs: string[] = []
 let kbHomeDir: string
@@ -126,5 +133,28 @@ describe('config-cli', () => {
     expect(resolveGraphEnabled({ graph: { enabled: true } })).toBe(false)
 
     delete process.env.KB_GRAPH
+  })
+
+  it('Given gemini config with a model override, then provider resolution preserves the selected model', () => {
+    const resolved = resolveLLMProvider({
+      llm: {
+        provider: 'gemini',
+        geminiApiKey: 'test-key',
+        geminiModel: 'gemini-flash-latest',
+      },
+    })
+
+    expect(resolved.provider).toBe('gemini')
+    expect(resolved.model).toBe('gemini-flash-latest')
+
+    const provider = createLLMProviderFromConfig({
+      llm: {
+        provider: 'gemini',
+        geminiApiKey: 'test-key',
+        geminiModel: 'gemini-flash-latest',
+      },
+    })
+
+    expect(provider?.name).toBe('gemini')
   })
 })

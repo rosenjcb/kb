@@ -303,6 +303,40 @@ export class GeminiProvider implements LLMProvider {
   ) {}
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
+    const initialBudget = params.maxTokens ?? 4096
+    let parsed = await this.generateContent(params, initialBudget)
+
+    if (
+      !parsed.text
+      && parsed.finishReason === 'MAX_TOKENS'
+      && initialBudget < 128
+    ) {
+      parsed = await this.generateContent(params, Math.max(initialBudget * 2, 128))
+    }
+
+    return {
+      text: parsed.text,
+      stopReason: parsed.stopReason,
+      toolUses: parsed.toolUses,
+      usage: parsed.usage,
+    }
+  }
+
+  async *callStream(_params: LLMCallParams): AsyncGenerator<LLMStreamChunk> {
+    // Gemini streaming endpoint - similar pattern
+    yield { type: 'done' }
+  }
+
+  private async generateContent(
+    params: LLMCallParams,
+    maxOutputTokens: number,
+  ): Promise<{
+    text: string
+    stopReason: 'tool_use' | 'end_turn'
+    toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }>
+    usage: { inputTokens: number; outputTokens: number }
+    finishReason?: string
+  }> {
     const body = {
       contents: params.messages.map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
@@ -318,7 +352,7 @@ export class GeminiProvider implements LLMProvider {
         ],
       })),
       generationConfig: {
-        maxOutputTokens: params.maxTokens ?? 4096,
+        maxOutputTokens,
         temperature: params.temperature ?? 0.7,
       },
     }
@@ -372,12 +406,8 @@ export class GeminiProvider implements LLMProvider {
         outputTokens:
           typeof usage.candidatesTokenCount === 'number' ? usage.candidatesTokenCount : 0,
       },
+      finishReason: typeof first.finishReason === 'string' ? first.finishReason : undefined,
     }
-  }
-
-  async *callStream(_params: LLMCallParams): AsyncGenerator<LLMStreamChunk> {
-    // Gemini streaming endpoint - similar pattern
-    yield { type: 'done' }
   }
 }
 
