@@ -6,7 +6,7 @@
  */
 
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
-import { readKbConfig, applyConfigToEnv, createLLMProviderFromConfig } from './kb-config'
+import { readKbConfig, applyConfigToEnv, createLLMProviderFromConfig, resolveGraphEnabled } from './kb-config'
 import { runIntentLoop } from '../core/intent-loop'
 import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import {
@@ -30,6 +30,7 @@ import { parsePublishCommand, runPublishCommand } from './publish-cli'
 import { parseInitCommand, runKbInit } from './init-cli'
 import { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { extractGraph } from '../tools/graph-entity-extractor'
+import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
 import { printChatHelp, runChatSession } from './chat-cli'
 import {
@@ -259,7 +260,9 @@ async function main() {
     }
 
     const toolExecutor = createKBToolsRegistry(kbStorageDir, kbConfig)
-    const chatGraphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(kbStorageDir))
+    const chatGraphWriter = resolveGraphEnabled(kbConfig)
+      ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(kbStorageDir))
+      : undefined
     console.log(`🗂️ KB Storage: ${kbStorageDir}`)
     console.log('')
     await runChatSession({ llmProvider, toolExecutor, graphWriter: chatGraphWriter })
@@ -400,12 +403,29 @@ async function main() {
       const intentBaseDir = parsed.base
         ? await ensureOperationalBaseDir(parsed.base)
         : kbStorageDir
+      if (parsed.envelope.intent === 'query_truth' && resolveGraphEnabled(kbConfig)) {
+        const payload = parsed.envelope.payload as { query?: string }
+        const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
+        if (originalQuery) {
+          const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(intentBaseDir))
+          try {
+            payload.query = await expandQueryWithGraph(originalQuery, graphWriter)
+          } finally {
+            graphWriter.close()
+          }
+        }
+      }
       const toolExecutor = createKBToolsRegistry(intentBaseDir, kbConfig)
       const llmProvider = createLLMProviderFromConfig(kbConfig)
       const { result } = await runIntentLoop(parsed.envelope, toolExecutor, { provider: llmProvider })
 
       // Synchronous graph extraction for submit_fact
-      if (parsed.envelope.intent === 'submit_fact' && result.status === 'accepted' && llmProvider) {
+      if (
+        parsed.envelope.intent === 'submit_fact' &&
+        result.status === 'accepted' &&
+        llmProvider &&
+        resolveGraphEnabled(kbConfig)
+      ) {
         const fact = String(parsed.envelope.payload.fact ?? '').trim()
         if (fact) {
           try {

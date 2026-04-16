@@ -18,6 +18,11 @@ As you build up your knowledge base, the graph gives you a structural view of ho
 
 The graph lives at `<base-dir>/.kb-graph.duckdb` — a DuckDB database file next to the SQLite document index.
 
+Graph mode is enabled by default. You can disable graph extraction and graph-augmented lookup with either:
+
+- `graph.enabled: false` in `~/.kb/config.json`
+- `KB_GRAPH=false` as a one-off environment override
+
 Schema:
 
 ```sql
@@ -50,7 +55,7 @@ kb graph --format json            # Export full graph as JSON to stdout
 
 ## Graph-augmented query
 
-When a query is run (`kb query`), the graph is consulted before the document index:
+When a graph-enabled lookup runs (`kb query` and `kb chat`), the graph is consulted before the document index:
 
 1. The query terms are slugified and looked up as entity IDs.
 2. Direct neighbors (outgoing + incoming, depth 1) are added as expansion terms.

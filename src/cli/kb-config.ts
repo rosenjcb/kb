@@ -8,6 +8,9 @@ export interface KbConfig {
   selectedBase?: string
   defaultBase?: string
   sessionBase?: string
+  graph?: {
+    enabled?: boolean
+  }
   notion?: {
     token?: string
     parentPageId?: string
@@ -51,6 +54,8 @@ export const KB_CONFIG_DIR = getKbConfigDir()
 export const KB_CONFIG_FILE = getKbConfigFile()
 
 const SUPPORTED_CONFIG_PATHS = [
+  'graph',
+  'graph.enabled',
   'notion',
   'notion.token',
   'notion.parentPageId',
@@ -125,6 +130,8 @@ export function getConfigValue(config: KbConfig, keyPath?: string): unknown {
   const normalized = normalizeKbConfig(config)
 
   switch (keyPath) {
+    case 'graph': return requireConfigValue(normalized.graph, keyPath)
+    case 'graph.enabled': return requireConfigValue(normalized.graph?.enabled, keyPath)
     case 'notion': return requireConfigValue(normalized.notion, keyPath)
     case 'notion.token': return requireConfigValue(normalized.notion?.token, keyPath)
     case 'notion.parentPageId': return requireConfigValue(normalized.notion?.parentPageId, keyPath)
@@ -147,6 +154,11 @@ export function setConfigValue(config: KbConfig, keyPath: string, value: string)
 
   const next = normalizeKbConfig(config)
   switch (keyPath) {
+    case 'graph':
+      throw new Error('INVALID_CONFIG_WRITE: graph requires a nested key such as graph.enabled')
+    case 'graph.enabled':
+      next.graph = { ...next.graph, enabled: parseBooleanConfigValue(keyPath, value) }
+      break
     case 'notion':
       throw new Error('INVALID_CONFIG_WRITE: notion requires a nested key such as notion.token')
     case 'notion.token':
@@ -194,6 +206,8 @@ export function unsetConfigValue(config: KbConfig, keyPath: string): KbConfig {
 
   const next = normalizeKbConfig(config)
   switch (keyPath) {
+    case 'graph': delete next.graph; break
+    case 'graph.enabled': if (next.graph) delete next.graph.enabled; break
     case 'notion': delete next.notion; break
     case 'notion.token': if (next.notion) delete next.notion.token; break
     case 'notion.parentPageId': if (next.notion) delete next.notion.parentPageId; break
@@ -283,6 +297,18 @@ export interface ResolvedFeatureFlags {
   laneRouting: boolean
 }
 
+export function resolveGraphEnabled(config: KbConfig): boolean {
+  if (process.env.KB_GRAPH !== undefined) {
+    return parseBooleanEnv(process.env.KB_GRAPH, true)
+  }
+
+  if (config.graph?.enabled !== undefined) {
+    return config.graph.enabled
+  }
+
+  return true
+}
+
 /**
  * Resolve feature flags from config, falling back to env vars for any unset flags.
  * Config values always win over env vars.
@@ -310,6 +336,8 @@ export function resolveFeatureFlags(config: KbConfig): ResolvedFeatureFlags {
  * Config values only override env vars that are not already set.
  */
 export function applyConfigToEnv(config: KbConfig): void {
+  if (config.graph?.enabled !== undefined && !process.env.KB_GRAPH) process.env.KB_GRAPH = String(config.graph.enabled)
+
   const llm = config.llm
   if (llm?.anthropicApiKey && !process.env.ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = llm.anthropicApiKey
   if (llm?.openaiApiKey && !process.env.OPENAI_API_KEY) process.env.OPENAI_API_KEY = llm.openaiApiKey
@@ -356,6 +384,10 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
 
   if (selectedBase) {
     normalized.selectedBase = selectedBase
+  }
+
+  if (input.graph && typeof input.graph === 'object' && input.graph.enabled !== undefined) {
+    normalized.graph = { enabled: Boolean(input.graph.enabled) }
   }
 
   const notion = {
@@ -426,4 +458,19 @@ function parseEnvFloat(value: string | undefined, fallback: number): number {
   if (!value) return fallback
   const n = parseFloat(value)
   return Number.isNaN(n) ? fallback : n
+}
+
+function parseBooleanConfigValue(keyPath: string, value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false
+  throw new Error(`${keyPath} must be true or false`)
+}
+
+function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) return fallback
+  const normalized = value.trim().toLowerCase()
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false
+  return fallback
 }

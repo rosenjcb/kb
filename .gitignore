@@ -35,6 +35,7 @@ sessions/namespaces/test-*/
 
 # Temporary output files
 .tmp/
+tmp/
 
 # Node runtime
 .node-gyp/

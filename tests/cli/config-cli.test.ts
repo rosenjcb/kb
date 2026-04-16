@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { printConfigHelp, runConfigCommand } from '../../src/cli/config-cli'
-import { getKbConfigFile, listSupportedConfigPaths, readKbConfig } from '../../src/cli/kb-config'
+import { getKbConfigFile, listSupportedConfigPaths, readKbConfig, resolveGraphEnabled } from '../../src/cli/kb-config'
 
 const tempDirs: string[] = []
 let kbHomeDir: string
@@ -92,6 +92,7 @@ describe('config-cli', () => {
     expect(help).not.toContain('selectedBase')
     expect(help).not.toContain('defaultBase')
     expect(help).not.toContain('features.')
+    expect(help).toContain('graph.enabled')
     expect(help).toContain('notion.parentPageId')
     expect(help).toContain('llm.openaiApiKey')
   })
@@ -101,7 +102,29 @@ describe('config-cli', () => {
     expect(keys).not.toContain('selectedBase')
     expect(keys).not.toContain('defaultBase')
     expect(keys).not.toContain('features')
+    expect(keys).toContain('graph')
+    expect(keys).toContain('graph.enabled')
     expect(keys).toContain('notion')
     expect(keys).toContain('llm')
+  })
+
+  it('Given graph.enabled key, then config set/get/unset round-trips the boolean flag', async () => {
+    const configFile = await createConfigFile()
+
+    await runConfigCommand(['set', 'graph.enabled', 'false'], { configFile })
+    const value = await runConfigCommand(['get', 'graph.enabled'], { configFile })
+    await runConfigCommand(['unset', 'graph.enabled'], { configFile })
+    const saved = await readKbConfig(configFile)
+
+    expect(value.output).toBe('false\n')
+    expect(saved.graph).toBeUndefined()
+  })
+
+  it('Given KB_GRAPH env override, then it wins over config graph.enabled', () => {
+    process.env.KB_GRAPH = 'false'
+
+    expect(resolveGraphEnabled({ graph: { enabled: true } })).toBe(false)
+
+    delete process.env.KB_GRAPH
   })
 })

@@ -4,6 +4,7 @@ import path from 'node:path'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider } from '../core/types'
 import type { DuckGraphWriter } from '../tools/duck-graph-writer'
+import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 
 export interface ChatSessionDeps {
   llmProvider: LLMProvider
@@ -388,30 +389,6 @@ function extractBestEvidenceLine(
 
   if (!best) return undefined
   return { line: best.line, docId: best.docId }
-}
-
-async function expandQueryWithGraph(query: string, graphWriter: DuckGraphWriter): Promise<string> {
-  try {
-    const slugs = query
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter(t => t.length > 2)
-      .map(t => t.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))
-      .filter(Boolean)
-      .slice(0, 8) // cap to avoid huge IN clauses
-
-    if (slugs.length === 0) return query
-
-    const neighbors = await graphWriter.expandQuery(slugs)
-    if (neighbors.length === 0) return query
-
-    // Append neighbor names as extra context terms (cap at 5 to avoid noise)
-    const extra = neighbors.slice(0, 5).join(' ')
-    return `${query} ${extra}`
-  } catch {
-    return query
-  }
 }
 
 function tokenizeQuestion(question: string): string[] {

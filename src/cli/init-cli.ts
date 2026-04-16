@@ -21,7 +21,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import type { LLMProvider } from '../core/types'
-import { readKbConfig, createLLMProviderFromConfig } from './kb-config'
+import { readKbConfig, createLLMProviderFromConfig, resolveGraphEnabled } from './kb-config'
 import { ensureOperationalBaseDir, getKbHomeDir, resolveEffectiveBaseDir } from './base-selection'
 import {
   assessTopicCoverage,
@@ -251,6 +251,8 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
 
   const progress = new InitProgressReporter(8)
   const provider = options.provider ?? await resolveProvider()
+  const kbConfig = await readKbConfig()
+  const graphEnabled = resolveGraphEnabled(kbConfig)
 
   let checkpoint: InitCheckpoint = resumedCheckpoint ?? {
     version: 2,
@@ -490,7 +492,10 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
 
     if (!checkpoint.completedCycles.includes('pass-graph')) {
       progress.start('pass-graph', 'extracting knowledge graph…')
-      if (provider) {
+      if (!graphEnabled) {
+        progress.finish('pass-graph', 'skipped (graph disabled)')
+        await persist({ completedCycles: ['pass-graph'] })
+      } else if (provider) {
         try {
           await runGraphExtractionPass(provider, baseDir)
           await persist({ completedCycles: ['pass-graph'] })
