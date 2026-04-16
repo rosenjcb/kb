@@ -396,7 +396,7 @@ export async function runMainWithOutput(
     try {
       const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
       const opts = parseGraphCommand(args.slice(1))
-      await runGraphCommand(kbStorageDir, opts)
+      await runGraphCommand(kbStorageDir, opts, out)
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)

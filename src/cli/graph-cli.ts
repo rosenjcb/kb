@@ -72,22 +72,44 @@ export function parseGraphCommand(args: string[]): GraphCommandOptions {
   return opts
 }
 
-export async function runGraphCommand(baseDir: string, opts: GraphCommandOptions): Promise<void> {
-  const graphPath = DuckGraphWriter.dbPathForBase(baseDir)
-  const writer = new DuckGraphWriter(graphPath)
+// Minimal output interface — compatible with CliOutput from index.ts (duck-typed)
+export interface GraphOut {
+  log(message: string): void
+}
+
+// Minimal writer interface used by runGraphCommand — lets tests inject a stub
+export interface GraphWriter {
+  open(): Promise<void>
+  close(): void
+  getSummary(): Promise<{ totalEntities: number; totalRelationships: number; topEntities: Array<{ name: string; type: string; connections: number }> }>
+  exportDot(): Promise<string>
+  exportJson(): Promise<unknown>
+  findPath(from: string, to: string): Promise<{ hops: number; nodes: string[] } | null>
+  getNeighbors(entity: string): Promise<{ entity: { name: string; type: string }; outgoing: Array<{ rel: string; target: { name: string; type: string } }>; incoming: Array<{ rel: string; source: { name: string; type: string } }> } | null>
+}
+
+const defaultGraphOut: GraphOut = { log: console.log }
+
+export async function runGraphCommand(
+  baseDir: string,
+  opts: GraphCommandOptions,
+  out: GraphOut = defaultGraphOut,
+  writerOverride?: GraphWriter,
+): Promise<void> {
+  const writer: GraphWriter = writerOverride ?? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(baseDir))
 
   try {
     await writer.open()
 
     // --format dot
     if (opts.format === 'dot') {
-      console.log(await writer.exportDot())
+      out.log(await writer.exportDot())
       return
     }
 
     // --format json
     if (opts.format === 'json') {
-      console.log(JSON.stringify(await writer.exportJson(), null, 2))
+      out.log(JSON.stringify(await writer.exportJson(), null, 2))
       return
     }
 
@@ -95,10 +117,10 @@ export async function runGraphCommand(baseDir: string, opts: GraphCommandOptions
     if (opts.pathFrom && opts.pathTo) {
       const result = await writer.findPath(opts.pathFrom, opts.pathTo)
       if (!result) {
-        console.log(`No path found between "${opts.pathFrom}" and "${opts.pathTo}".`)
+        out.log(`No path found between "${opts.pathFrom}" and "${opts.pathTo}".`)
       } else {
-        console.log(`Path (${result.hops} hop${result.hops === 1 ? '' : 's'}):`)
-        console.log(`  ${result.nodes.join(' → ')}`)
+        out.log(`Path (${result.hops} hop${result.hops === 1 ? '' : 's'}):`)
+        out.log(`  ${result.nodes.join(' → ')}`)
       }
       return
     }
@@ -107,37 +129,37 @@ export async function runGraphCommand(baseDir: string, opts: GraphCommandOptions
     if (opts.entity) {
       const result = await writer.getNeighbors(opts.entity)
       if (!result) {
-        console.log(`Entity "${opts.entity}" not found in the graph.`)
+        out.log(`Entity "${opts.entity}" not found in the graph.`)
         return
       }
-      console.log(`Entity: ${result.entity.name} [${result.entity.type}]`)
+      out.log(`Entity: ${result.entity.name} [${result.entity.type}]`)
       if (result.outgoing.length > 0) {
-        console.log('\nOutgoing:')
+        out.log('\nOutgoing:')
         for (const edge of result.outgoing) {
-          console.log(`  -[${edge.rel}]→ ${edge.target.name} [${edge.target.type}]`)
+          out.log(`  -[${edge.rel}]→ ${edge.target.name} [${edge.target.type}]`)
         }
       }
       if (result.incoming.length > 0) {
-        console.log('\nIncoming:')
+        out.log('\nIncoming:')
         for (const edge of result.incoming) {
-          console.log(`  ←[${edge.rel}]- ${edge.source.name} [${edge.source.type}]`)
+          out.log(`  ←[${edge.rel}]- ${edge.source.name} [${edge.source.type}]`)
         }
       }
       if (result.outgoing.length === 0 && result.incoming.length === 0) {
-        console.log('(no connections)')
+        out.log('(no connections)')
       }
       return
     }
 
     // Default: summary
     const summary = await writer.getSummary()
-    console.log(`Knowledge graph summary`)
-    console.log(`  Entities:      ${summary.totalEntities}`)
-    console.log(`  Relationships: ${summary.totalRelationships}`)
+    out.log('Knowledge graph summary')
+    out.log(`  Entities:      ${summary.totalEntities}`)
+    out.log(`  Relationships: ${summary.totalRelationships}`)
     if (summary.topEntities.length > 0) {
-      console.log('\nTop entities by connections:')
+      out.log('\nTop entities by connections:')
       for (const e of summary.topEntities.slice(0, 10)) {
-        console.log(`  ${e.name} [${e.type}] — ${e.connections} connection${e.connections === 1 ? '' : 's'}`)
+        out.log(`  ${e.name} [${e.type}] — ${e.connections} connection${e.connections === 1 ? '' : 's'}`)
       }
     }
   } finally {

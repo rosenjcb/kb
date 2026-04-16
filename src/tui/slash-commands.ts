@@ -30,11 +30,14 @@ const CHAT_COMMANDS: SlashCommand[] = [
 ]
 
 export function getSlashCommands(mode: TuiMode): SlashCommand[] {
-  return mode === 'chat' ? CHAT_COMMANDS : SHELL_COMMANDS
+  if (mode === 'chat') return CHAT_COMMANDS
+  if (mode === 'init') return []
+  return SHELL_COMMANDS
 }
 
 export function getSlashCommandSuggestions(value: string, mode: TuiMode): SlashCommand[] {
   if (!value.startsWith('/')) return []
+  if (mode === 'init') return []
 
   const normalized = value.trim().toLowerCase()
   return getSlashCommands(mode).filter(({ command }) => command.startsWith(normalized))

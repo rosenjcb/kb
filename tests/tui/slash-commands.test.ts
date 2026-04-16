@@ -67,4 +67,24 @@ describe('slash command helpers', () => {
     expect(startIndex).toBe(2)
     expect(visible.map(item => item.command)).toEqual(['/query', '/submit', '/validate', '/dispute'])
   })
+
+  it('includes /init in shell command list', () => {
+    const commands = getSlashCommands('shell')
+    expect(commands.some(c => c.command === '/init')).toBe(true)
+  })
+
+  it('does not include /init in chat command list', () => {
+    const commands = getSlashCommands('chat')
+    expect(commands.some(c => c.command === '/init')).toBe(false)
+  })
+
+  it('suggests /init when typing /in in shell mode', () => {
+    const suggestions = getSlashCommandSuggestions('/in', 'shell')
+    expect(suggestions.some(s => s.command === '/init')).toBe(true)
+  })
+
+  it('returns no suggestions in init mode regardless of input', () => {
+    // init mode has no slash commands — input bar is for answering questions
+    expect(getSlashCommandSuggestions('/help', 'init')).toEqual([])
+  })
 })
