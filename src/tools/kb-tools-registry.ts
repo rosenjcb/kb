@@ -10,7 +10,7 @@ import type { ToolDefinition } from '../core/types'
 import { SqliteDocumentWriter } from './sqlite-document-writer'
 import { MarkdownDocumentReader, type QueryDocumentsInput, type QueryResponse } from './markdown-document-reader'
 import type { KbConfig } from '../cli/kb-config'
-import { resolveFeatureFlags } from '../cli/kb-config'
+import { resolveFeatureFlags, resolveGraphEnabled } from '../cli/kb-config'
 import { getKbHomeDir } from '../cli/base-selection'
 import {
   executeWriteDocumentTool,
@@ -34,6 +34,7 @@ export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): Tool
   const flags = config ? resolveFeatureFlags(config) : undefined
   const reader = new MarkdownDocumentReader(storageDir, flags ? {
     hybridEnabled: flags.hybridQuery,
+    graphRankingEnabled: config ? resolveGraphEnabled(config) : undefined,
     hybridCandidateLimit: flags.hybridQueryCandidates,
     hybridAlpha: flags.hybridQueryAlpha,
     hybridMaxMs: flags.hybridQueryMaxMs,

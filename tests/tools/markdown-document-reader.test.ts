@@ -5,6 +5,7 @@ import Database from 'better-sqlite3'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MarkdownDocumentReader } from '../../src/tools/markdown-document-reader'
 import { MarkdownMDWriterTool } from '../../src/tools/markdown-md-writer-tool'
+import { DuckGraphWriter } from '../../src/tools/duck-graph-writer'
 
 const tempDirs: string[] = []
 
@@ -126,6 +127,73 @@ describe('MarkdownDocumentReader', () => {
     expect(response.total).toBeGreaterThan(0)
     expect(response.retrieval.method).toBe('hybrid')
     expect(response.results[0]?.metadata.id).toBe('vector-search-notes')
+  })
+
+  it('Given graph-aware ranking enabled, then hybrid retrieval can promote graph-linked docs over lexical-only matches', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    const writer = new MarkdownMDWriterTool({
+      baseDir,
+      enableSqliteIndex: true,
+      sqliteDbPath: dbPath,
+    })
+
+    await writer.writeDocument({
+      title: 'SQLite Storage Notes',
+      content: 'SQLite powers storage and indexing for internal metadata.',
+      documentId: 'sqlite-storage-notes',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    await writer.writeDocument({
+      title: 'DuckDB Graph Traversal',
+      content: 'DuckDB powers traversal export for the property graph pipeline.',
+      documentId: 'duckdb-graph-traversal',
+      overwrite: true,
+      type: 'reference',
+    })
+
+    const graphWriter = new DuckGraphWriter(path.join(baseDir, '.kb-graph.duckdb'))
+    await graphWriter.open()
+    await graphWriter.upsertEntities([
+      { id: 'sqlite', name: 'SQLite', type: 'system', docId: 'duckdb-graph-traversal' },
+      { id: 'duckdb', name: 'DuckDB', type: 'system', docId: 'duckdb-graph-traversal' },
+    ])
+    await graphWriter.upsertRelationships([
+      { fromId: 'sqlite', toId: 'duckdb', type: 'related_to', docId: 'duckdb-graph-traversal' },
+    ])
+    graphWriter.close()
+
+    const withoutGraph = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: true,
+      sqliteDbPath: dbPath,
+      graphRankingEnabled: false,
+      hybridCandidateLimit: 20,
+    })
+
+    const withGraph = new MarkdownDocumentReader(baseDir, {
+      hybridEnabled: true,
+      sqliteDbPath: dbPath,
+      graphRankingEnabled: true,
+      graphRankingWeight: 0.25,
+      graphRankingMaxBoost: 0.3,
+      hybridCandidateLimit: 20,
+    })
+
+    const query = {
+      query: 'sqlite storage traversal',
+      mode: 'content' as const,
+      includeContent: true,
+      limit: 2,
+    }
+
+    const responseWithoutGraph = await withoutGraph.queryDocuments(query)
+    const responseWithGraph = await withGraph.queryDocuments(query)
+
+    expect(responseWithoutGraph.results[0]?.metadata.id).toBe('sqlite-storage-notes')
+    expect(responseWithGraph.results[0]?.metadata.id).toBe('duckdb-graph-traversal')
+    expect(responseWithGraph.retrieval.detail).toContain('graph-rerank')
   })
 
   it('Given hybrid enabled but missing SQLite index, then should fallback to lexical search', async () => {
