@@ -1,4 +1,4 @@
-import { Box, useApp } from 'ink'
+import { Box, useApp, useInput } from 'ink'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { KbConfig } from '../cli/kb-config.js'
 import type { ChatIO } from '../cli/chat-cli.js'
@@ -11,6 +11,14 @@ import { runCommandForTui, parseShellArgs, printCliHelp } from './runner.js'
 import { StatusBar } from './components/StatusBar.js'
 import { HistoryPane } from './components/HistoryPane.js'
 import { InputBar } from './components/InputBar.js'
+import { SuggestionsBar } from './components/SuggestionsBar.js'
+import {
+  applySelectedSuggestion,
+  clampSuggestionIndex,
+  getSlashCommandSuggestions,
+  normalizeSlashCommandArgs,
+  sanitizeSlashInput,
+} from './slash-commands.js'
 import type { HistoryEntry, TuiMode } from './types.js'
 
 interface Props {
@@ -22,11 +30,12 @@ export function App({ config }: Props) {
 
   const [mode, setMode] = useState<TuiMode>('shell')
   const [history, setHistory] = useState<HistoryEntry[]>([
-    { id: 'welcome', type: 'info', content: '  KB Agent — type a command or /help' },
+    { id: 'welcome', type: 'banner', content: '' },
   ])
   const [inputValue, setInputValue] = useState('')
   const [isRunning, setIsRunning] = useState(false)
   const [baseName, setBaseName] = useState('…')
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
 
   const chatInputResolverRef = useRef<((v: string | null) => void) | null>(null)
   const storageDirRef = useRef<string>('')
@@ -105,6 +114,14 @@ export function App({ config }: Props) {
 
       // ── Chat mode: relay input to the running session ──
       if (mode === 'chat') {
+        if (trimmed === '/help') {
+          addEntry({ type: 'info', content: 'Chat mode commands: /help, /clear, /exit' })
+          return
+        }
+        if (trimmed === '/clear') {
+          setHistory([{ id: 'welcome', type: 'banner', content: '' }])
+          return
+        }
         addEntry({ type: 'chat-you', content: trimmed })
         const resolver = chatInputResolverRef.current
         if (resolver) {
@@ -118,25 +135,25 @@ export function App({ config }: Props) {
       // ── Shell mode ──
       if (isRunning) return
 
-      const args = parseShellArgs(trimmed)
+      const args = normalizeSlashCommandArgs(parseShellArgs(trimmed))
       if (args.length === 0) return
 
       const firstArg = args[0]
 
       // Built-in TUI commands
-      if (firstArg === '/exit' || firstArg === 'exit' || firstArg === 'quit') {
+      if (firstArg === 'exit' || firstArg === 'quit') {
         exit()
         return
       }
 
-      if (firstArg === '/clear' || firstArg === 'clear') {
-        setHistory([])
+      if (firstArg === 'clear') {
+        setHistory([{ id: 'welcome', type: 'banner', content: '' }])
         return
       }
 
       addEntry({ type: 'command', content: `kb> ${trimmed}` })
 
-      if (firstArg === '/help' || firstArg === 'help' || firstArg === '--help') {
+      if (firstArg === 'help' || firstArg === '--help') {
         addEntry({ type: 'info', content: printCliHelp() })
         return
       }
@@ -176,16 +193,61 @@ export function App({ config }: Props) {
     [mode, isRunning, config, addEntry, updateEntry, startChatSession, exit],
   )
 
+  const slashSuggestions = getSlashCommandSuggestions(inputValue, mode)
+
+  useEffect(() => {
+    setSelectedSuggestionIndex(current => {
+      if (slashSuggestions.length === 0) return 0
+      if (current >= slashSuggestions.length) return 0
+      return current
+    })
+  }, [slashSuggestions])
+
+  useInput(
+    (_input, key) => {
+      if (slashSuggestions.length === 0) return
+
+      if (key.downArrow) {
+        setSelectedSuggestionIndex(current => clampSuggestionIndex(current + 1, slashSuggestions))
+        return
+      }
+
+      if (key.upArrow) {
+        setSelectedSuggestionIndex(current => clampSuggestionIndex(current - 1, slashSuggestions))
+        return
+      }
+
+      if (key.tab) {
+        const suggestion = slashSuggestions[selectedSuggestionIndex] ?? slashSuggestions[0]
+        if (!suggestion) return
+        setInputValue(applySelectedSuggestion(suggestion))
+      }
+    },
+    { isActive: slashSuggestions.length > 0 },
+  )
+
+  const handleInputChange = useCallback(
+    (nextValue: string) => {
+      setInputValue(sanitizeSlashInput(nextValue))
+    },
+    [],
+  )
+
   return (
     <Box flexDirection="column">
       <StatusBar baseName={baseName} mode={mode} />
       <HistoryPane entries={history} />
       <InputBar
         value={inputValue}
-        onChange={setInputValue}
+        onChange={handleInputChange}
         onSubmit={handleSubmit}
         mode={mode}
         isRunning={isRunning}
+      />
+      <SuggestionsBar
+        suggestions={slashSuggestions}
+        mode={mode}
+        selectedIndex={selectedSuggestionIndex}
       />
     </Box>
   )

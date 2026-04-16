@@ -2,6 +2,7 @@ import { Text } from 'ink'
 import { BLUE, ORANGE } from '../theme.js'
 import type { HistoryEntry } from '../types.js'
 import { LoadingSpinner } from './LoadingSpinner.js'
+import { WelcomeBanner } from './WelcomeBanner.js'
 
 interface Props {
   entry: HistoryEntry
@@ -13,6 +14,9 @@ export function HistoryEntryRow({ entry }: Props) {
   }
 
   switch (entry.type) {
+    case 'banner':
+      return <WelcomeBanner />
+
     case 'command':
       return <Text color={ORANGE}>{entry.content}</Text>
 

@@ -1,6 +1,7 @@
 export type TuiMode = 'shell' | 'chat'
 
 export type EntryType =
+  | 'banner'
   | 'command'
   | 'result'
   | 'error'
