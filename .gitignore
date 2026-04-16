@@ -44,3 +44,7 @@ tmp/
 .claude/**
 .github/**
 AGENTS.md
+
+
+# Misc
+tickets/
