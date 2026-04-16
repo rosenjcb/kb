@@ -1,5 +1,5 @@
 import { MarkdownDocumentReader, type QueryResult } from '../tools/markdown-document-reader'
-import { resolveBaseToDir, resolveEffectiveBaseDir } from './base-selection'
+import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
 
 export type ViewOutputMode = 'human' | 'json'
 
@@ -68,7 +68,7 @@ export async function runViewCommand(
   const cwd = options.cwd ?? process.cwd()
 
   const baseDir = parsed.base
-    ? resolveBaseToDir(parsed.base, cwd)
+    ? await ensureOperationalBaseDir(parsed.base, cwd)
     : (await resolveEffectiveBaseDir(cwd)).baseDir
 
   const reader = new MarkdownDocumentReader(baseDir)
@@ -90,7 +90,7 @@ export async function runListCommand(
   const parsed = parseListCommand(args)
   const cwd = options.cwd ?? process.cwd()
   const baseDir = parsed.base
-    ? resolveBaseToDir(parsed.base, cwd)
+    ? await ensureOperationalBaseDir(parsed.base, cwd)
     : (await resolveEffectiveBaseDir(cwd)).baseDir
 
   const reader = new MarkdownDocumentReader(baseDir)

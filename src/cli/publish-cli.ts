@@ -1,7 +1,7 @@
 import path from 'node:path'
 import dayjs from 'dayjs'
 import Database from 'better-sqlite3'
-import { resolveBaseToDir, resolveEffectiveBaseDir } from './base-selection'
+import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
 import { readKbConfig, resolveNotionToken } from './kb-config'
 
 export type PublishPhase = 'all'
@@ -283,7 +283,7 @@ async function resolvePublishBase(
   if (base?.trim()) {
     return {
       baseName: base.trim(),
-      baseDir: resolveBaseToDir(base.trim(), cwd),
+      baseDir: await ensureOperationalBaseDir(base.trim(), cwd),
     }
   }
 

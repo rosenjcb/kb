@@ -22,7 +22,7 @@ import path from 'node:path'
 import dayjs from 'dayjs'
 import type { LLMProvider } from '../core/types'
 import { readKbConfig, createLLMProviderFromConfig } from './kb-config'
-import { resolveBaseToDir, resolveEffectiveBaseDir } from './base-selection'
+import { ensureOperationalBaseDir, getKbHomeDir, resolveEffectiveBaseDir } from './base-selection'
 import {
   assessTopicCoverage,
   buildTopicCoverageGaps,
@@ -242,8 +242,8 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
   const questionIO = options.questionIO ?? createReadlineQuestionIO()
   const cwd = options.cwd ?? process.cwd()
   const base = await resolveInitBaseName(options, cwd, questionIO)
-  const baseDir = resolveBaseToDir(base, cwd)
-  const checkpointFile = resolveCheckpointPath({ ...options, base }, cwd)
+  const baseDir = await ensureOperationalBaseDir(base, cwd)
+  const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = await readCheckpoint(checkpointFile)
 
   const progress = new InitProgressReporter(7)
@@ -1241,7 +1241,7 @@ async function resolveProvider(): Promise<LLMProvider | undefined> {
   return createLLMProviderFromConfig(config)
 }
 
-function resolveCheckpointPath(options: InitOptions, cwd: string): string {
+async function resolveCheckpointPath(options: InitOptions, cwd: string): Promise<string> {
   if (options.resumeFrom || options.checkpointFile) {
     return path.resolve(cwd, options.resumeFrom ?? options.checkpointFile!)
   }
@@ -1249,10 +1249,15 @@ function resolveCheckpointPath(options: InitOptions, cwd: string): string {
   if (!base) {
     throw new Error('Base value is required to resolve kb init checkpoints')
   }
-  if (options.resume) {
-    return path.join(cwd, '.tmp', 'kb-init', `${slugify(base)}-latest.checkpoint.json`)
+  const checkpointPath = path.join(getKbHomeDir(), slugify(base), 'checkpoints', 'init-latest.checkpoint.json')
+  const legacyCheckpointPath = path.join(cwd, '.tmp', 'kb-init', `${slugify(base)}-latest.checkpoint.json`)
+  if (!await pathExists(checkpointPath)) {
+    await mkdir(path.dirname(checkpointPath), { recursive: true })
+    if (await pathExists(legacyCheckpointPath)) {
+      await writeFile(checkpointPath, await readFile(legacyCheckpointPath, 'utf8'), 'utf8')
+    }
   }
-  return path.join(cwd, '.tmp', 'kb-init', `${slugify(base)}-latest.checkpoint.json`)
+  return checkpointPath
 }
 
 async function readCheckpoint(filePath: string): Promise<InitCheckpoint | undefined> {
@@ -1319,6 +1324,15 @@ function migrateCheckpoint(checkpoint: StoredInitCheckpoint): InitCheckpoint | u
 async function writeCheckpoint(filePath: string, checkpoint: InitCheckpoint): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true })
   await writeFile(filePath, `${JSON.stringify(checkpoint, null, 2)}\n`, 'utf8')
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await readFile(targetPath)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function readOption(args: string[], flag: string): string | undefined {

@@ -11,6 +11,7 @@ import { SqliteDocumentWriter } from './sqlite-document-writer'
 import { MarkdownDocumentReader, type QueryDocumentsInput, type QueryResponse } from './markdown-document-reader'
 import type { KbConfig } from '../cli/kb-config'
 import { resolveFeatureFlags } from '../cli/kb-config'
+import { getKbHomeDir } from '../cli/base-selection'
 import {
   executeWriteDocumentTool,
   type AppendToDocumentInput,
@@ -26,7 +27,7 @@ import {
  */
 export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): ToolExecutor {
   const registry = createToolRegistry()
-  const storageDir = baseDir ?? path.join(process.cwd(), 'sessions', 'documents')
+  const storageDir = baseDir ?? path.join(getKbHomeDir(), 'sessions', 'default')
 
   // Initialize storage implementations
   const writer = new SqliteDocumentWriter({ baseDir: storageDir })

@@ -102,7 +102,7 @@ Some commands implement their own deterministic loops over named **cycles**. LLM
 | `pass3` | Final quality pass — validate titles, remove stubs, ensure uniqueness (temperature 0.0) | Final `CandidateDoc[]` |
 | `write` | Upsert to SQLite | Written document IDs |
 
-Each cycle writes a checkpoint to `.tmp/kb-init/<base>-latest.checkpoint.json`. Supports `--resume`, `--detach`, `--stop-after`, `--non-interactive`.
+Each cycle writes a checkpoint to `~/.kb/<base>/checkpoints/init-latest.checkpoint.json`. Supports `--resume`, `--detach`, `--stop-after`, `--non-interactive`.
 
 Interview question budget: max 10 total, max 4 follow-ups. Topics: `project-overview`, `install-setup`, `core-workflows`, `architecture`, `configuration`, `testing`, `deployment-release`, `constraints-gotchas`.
 

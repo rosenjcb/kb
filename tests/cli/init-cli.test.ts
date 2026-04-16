@@ -1,14 +1,24 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
 import { parseInitCommand, runKbInit } from '../../src/cli/init-cli'
 
 const tempDirs: string[] = []
+let kbHomeDir: string
+
+beforeEach(async () => {
+  kbHomeDir = await mkdtemp(path.join(os.tmpdir(), 'kb-home-'))
+  process.env.KB_HOME = kbHomeDir
+})
 
 afterEach(async () => {
+  delete process.env.KB_HOME
   await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
+  if (kbHomeDir) {
+    await rm(kbHomeDir, { recursive: true, force: true })
+  }
 })
 
 async function createTempProject(files: Record<string, string>): Promise<string> {
@@ -136,7 +146,7 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.base).toBe('fresh-base')
     expect(questionIO.prompts[0]).toContain('Knowledge base name')
-    expect(result.checkpointFile).toContain('fresh-base-latest.checkpoint.json')
+    expect(result.checkpointFile).toBe(path.join(kbHomeDir, 'fresh-base', 'checkpoints', 'init-latest.checkpoint.json'))
   })
 
   it('Given detach and resume flags, then parses them into init options', () => {
@@ -323,7 +333,7 @@ describe('init-cli interview checkpoints', () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nSimple overview.\n',
     })
-    const checkpointFile = path.join(cwd, '.tmp', 'kb-init', 'dogfood-latest.checkpoint.json')
+    const checkpointFile = path.join(kbHomeDir, 'dogfood', 'checkpoints', 'init-latest.checkpoint.json')
     await mkdir(path.dirname(checkpointFile), { recursive: true })
     await writeFile(checkpointFile, `${JSON.stringify({
       version: 1,
@@ -429,6 +439,48 @@ describe('init-cli interview checkpoints', () => {
     expect(resumedCheckpoint.completedCycles).toContain('read-inputs')
     expect(resumedCheckpoint.context.userAnswers.length).toBeGreaterThan(0)
     expect(resumedCheckpoint.interviewRounds[0].questions.every(question => question.answer)).toBe(true)
+  })
+
+  it('Given legacy tmp checkpoint path, then init migrates it into KB home checkpoints', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nSimple overview.\n',
+    })
+    const legacyCheckpointFile = path.join(cwd, '.tmp', 'kb-init', 'dogfood-latest.checkpoint.json')
+    await mkdir(path.dirname(legacyCheckpointFile), { recursive: true })
+    await writeFile(legacyCheckpointFile, `${JSON.stringify({
+      version: 1,
+      updatedAt: '2026-04-15T00:00:00.000Z',
+      baseName: 'dogfood',
+      workingDir: cwd,
+      completedCycles: ['read-inputs'],
+      context: {
+        sourceFiles: { 'README.md': '# Project\n' },
+        userAnswers: [],
+      },
+    }, null, 2)}\n`, 'utf8')
+
+    const provider = createProvider([
+      JSON.stringify([
+        {
+          title: 'Project Overview',
+          type: 'architecture',
+          tags: ['overview'],
+          content: 'Project overview summary with enough detail to satisfy quality gates and explain the system structure.',
+        },
+      ]),
+    ])
+
+    const result = await runKbInit({
+      base: 'dogfood',
+      nonInteractive: true,
+      stopAfter: 'pass1',
+      cwd,
+      provider,
+    })
+
+    expect(result.checkpointFile).toBe(path.join(kbHomeDir, 'dogfood', 'checkpoints', 'init-latest.checkpoint.json'))
+    const migrated = JSON.parse(await readFile(result.checkpointFile!, 'utf8')) as { version: number }
+    expect(migrated.version).toBe(2)
   })
 
   it('Given resumed pending questions, then askQuestion is called sequentially not concurrently', async () => {

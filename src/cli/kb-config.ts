@@ -38,8 +38,17 @@ export interface KbConfig {
   updatedAt?: string
 }
 
-export const KB_CONFIG_DIR = path.join(os.homedir(), '.kb')
-export const KB_CONFIG_FILE = path.join(KB_CONFIG_DIR, 'config.json')
+export function getKbConfigDir(): string {
+  const override = process.env.KB_HOME?.trim()
+  return override ? path.resolve(override) : path.join(os.homedir(), '.kb')
+}
+
+export function getKbConfigFile(): string {
+  return path.join(getKbConfigDir(), 'config.json')
+}
+
+export const KB_CONFIG_DIR = getKbConfigDir()
+export const KB_CONFIG_FILE = getKbConfigFile()
 
 const SUPPORTED_CONFIG_PATHS = [
   'selectedBase',
@@ -89,7 +98,7 @@ export class ConfigValueNotSetError extends Error {
   }
 }
 
-export async function readKbConfig(configFile: string = KB_CONFIG_FILE): Promise<KbConfig> {
+export async function readKbConfig(configFile: string = getKbConfigFile()): Promise<KbConfig> {
   try {
     const raw = await readFile(configFile, 'utf8')
     const parsed = JSON.parse(raw) as KbConfig
@@ -104,7 +113,7 @@ export async function readKbConfig(configFile: string = KB_CONFIG_FILE): Promise
 
 export async function writeKbConfig(
   config: KbConfig,
-  configFile: string = KB_CONFIG_FILE,
+  configFile: string = getKbConfigFile(),
 ): Promise<KbConfig> {
   const normalized = normalizeKbConfig({
     ...config,

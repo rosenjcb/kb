@@ -57,8 +57,11 @@ kb use --show
 ```
 
 Precedence order:
-1. `kb use` session base
-2. `kb default` saved default
+1. `--base <name>` explicit override
+2. `kb use` current session base
+3. `kb default` saved default
+
+Named bases store their SQLite data under `~/.kb/sessions/<base>/`. `kb init` checkpoints live under `~/.kb/<base>/checkpoints/`, and user config stays in `~/.kb/config.json`.
 
 ### 4) Start using intent commands
 

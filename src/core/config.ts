@@ -4,7 +4,11 @@
  * See: Ticket 006 - Environment Loading Policy
  */
 
+import os from 'node:os'
+import path from 'node:path'
 import { z } from 'zod'
+
+const DEFAULT_KB_BASE_DIR = path.join(os.homedir(), '.kb', 'sessions', 'default')
 
 const ConfigSchema = z.object({
   // API Keys / provider discovery
@@ -14,7 +18,7 @@ const ConfigSchema = z.object({
   ollamaEndpoint: z.string().url().optional().default('http://localhost:11434'),
 
   // KB Storage
-  kbBaseDir: z.string().default('./sessions/namespaces/default/documents'),
+  kbBaseDir: z.string().default(DEFAULT_KB_BASE_DIR),
 
   // Agent Loop Tuning
   maxAgentTurns: z.number().int().min(1).default(10),

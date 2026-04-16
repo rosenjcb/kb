@@ -17,13 +17,12 @@ import {
   printIntentHelp,
 } from './intent-cli'
 import {
+  ensureOperationalBaseDir,
   formatDefaultCommandHelp,
   formatUseCommandHelp,
   readBaseConfig,
-  resolveBaseToDir,
   resolveEffectiveBaseDir,
   writeDefaultBase,
-  writeSessionBase,
 } from './base-selection'
 import { printConfigHelp, runConfigCommand } from './config-cli'
 import { parsePublishCommand, runPublishCommand } from './publish-cli'
@@ -133,30 +132,23 @@ async function main() {
     const base = args[1]
     if (base === '--show' || !base) {
       const configured = await readBaseConfig()
-      let effective: Awaited<ReturnType<typeof resolveEffectiveBaseDir>> | null = null
-      try {
-        effective = await resolveEffectiveBaseDir()
-      } catch {
-        // No active base configured yet.
-      }
-
+      const envBase = process.env.KB_BASE?.trim()
       console.log('KB base configuration')
-      if (effective) {
-        console.log(`Source: ${effective.source}`)
-        console.log(`Base: ${effective.baseName}`)
-        console.log(`Resolved path: ${effective.baseDir}`)
-      } else {
-        console.log('No active base configured.')
+      if (envBase) {
+        console.log(`Active (KB_BASE): ${envBase}`)
       }
       if (configured.selectedBase) {
-        console.log(`Selected base: ${configured.selectedBase}`)
+        console.log(`Default (config): ${configured.selectedBase}`)
+      }
+      if (!envBase && !configured.selectedBase) {
+        console.log('No base configured.')
+        console.log('  Set a default:          kb default <base>')
+        console.log('  Set for this session:   export KB_BASE=<base>')
       }
       return
     }
 
-    await writeSessionBase(base)
-    const resolved = resolveBaseToDir(base)
-    console.log(formatUseCommandHelp(base, resolved))
+    console.log(formatUseCommandHelp(base))
     return
   }
 
@@ -165,18 +157,19 @@ async function main() {
     if (base === '--show' || !base) {
       const configured = await readBaseConfig()
       if (!configured.selectedBase) {
-        console.log('No base configured. Use: kb default <base>')
+        console.log('No default base configured.')
+        console.log('  Set one with: kb default <base>')
         return
       }
-      const resolved = resolveBaseToDir(configured.selectedBase)
-      console.log(`Selected base: ${configured.selectedBase}`)
+      const resolved = await ensureOperationalBaseDir(configured.selectedBase)
+      console.log(`Default base: ${configured.selectedBase}`)
       console.log(`Resolved path: ${resolved}`)
-      console.log('Use `kb default <base>` or `kb use <base>` to change it.')
+      console.log('To override for this session only: export KB_BASE=<base>')
       return
     }
 
     const saved = await writeDefaultBase(base)
-    const resolved = resolveBaseToDir(saved.selectedBase ?? base)
+    const resolved = await ensureOperationalBaseDir(saved.selectedBase ?? base)
     console.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved))
     return
   }
@@ -315,7 +308,7 @@ async function main() {
     try {
       const parsed = parseIntentCommand(args)
       const intentBaseDir = parsed.base
-        ? resolveBaseToDir(parsed.base)
+        ? await ensureOperationalBaseDir(parsed.base)
         : kbStorageDir
       const toolExecutor = createKBToolsRegistry(intentBaseDir, kbConfig)
       const llmProvider = createLLMProviderFromConfig(kbConfig)
