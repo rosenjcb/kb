@@ -1,6 +1,6 @@
 import {
   type KbConfig,
-  KB_CONFIG_FILE,
+  getKbConfigFile,
   getConfigValue,
   listSupportedConfigPaths,
   readKbConfig,
@@ -41,7 +41,7 @@ export async function runConfigCommand(
   options: RunConfigCommandOptions = {},
 ): Promise<ConfigCommandResult> {
   const command = parseConfigCommand(args)
-  const configFile = options.configFile ?? KB_CONFIG_FILE
+  const configFile = options.configFile ?? getKbConfigFile()
   const config = await readKbConfig(configFile)
 
   switch (command.action) {

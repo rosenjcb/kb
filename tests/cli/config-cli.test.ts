@@ -1,14 +1,24 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runConfigCommand } from '../../src/cli/config-cli'
-import { readKbConfig } from '../../src/cli/kb-config'
+import { getKbConfigFile, readKbConfig } from '../../src/cli/kb-config'
 
 const tempDirs: string[] = []
+let kbHomeDir: string
+
+beforeEach(async () => {
+  kbHomeDir = await mkdtemp(path.join(os.tmpdir(), 'kb-home-'))
+  process.env.KB_HOME = kbHomeDir
+})
 
 afterEach(async () => {
+  delete process.env.KB_HOME
   await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
+  if (kbHomeDir) {
+    await rm(kbHomeDir, { recursive: true, force: true })
+  }
 })
 
 async function createConfigFile(initial?: unknown): Promise<string> {
@@ -93,5 +103,14 @@ describe('config-cli', () => {
     await expect(runConfigCommand(['get', 'selectedBase'], { configFile })).rejects.toThrow(
       'CONFIG_VALUE_NOT_SET',
     )
+  })
+
+  it('Given KB_HOME override and no explicit config file, then config commands use the overridden home config path', async () => {
+    await runConfigCommand(['set', 'selectedBase', 'catalog'])
+
+    const saved = await readKbConfig(getKbConfigFile())
+
+    expect(saved.selectedBase).toBe('catalog')
+    expect(getKbConfigFile()).toBe(path.join(kbHomeDir, 'config.json'))
   })
 })
