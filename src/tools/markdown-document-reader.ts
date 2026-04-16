@@ -51,6 +51,10 @@ export interface DocumentMetadata {
 export interface QueryResult {
   metadata: DocumentMetadata
   content?: string
+  /** Graph-reranking contribution for this result (0 when graph is off or no match). */
+  graphBoost?: number
+  /** Entity names that triggered the graph boost (empty when no boost). */
+  graphEvidence?: string[]
 }
 
 export interface QueryResponse {
@@ -742,6 +746,8 @@ export class MarkdownDocumentReader {
               type: doc.doc_type,
             },
             content,
+            graphBoost: row.graphBoost > 0 ? row.graphBoost : undefined,
+            graphEvidence: row.graphEvidence.length > 0 ? row.graphEvidence : undefined,
           })
         }
 
