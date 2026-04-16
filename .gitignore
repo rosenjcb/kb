@@ -42,3 +42,4 @@ sessions/namespaces/test-*/
 # Skills directories
 .claude/**
 .github/**
+AGENTS.md
