@@ -5,6 +5,13 @@ import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider } from '../core/types'
 import type { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
+import {
+  createInitialConversationState,
+  resolveConversationalChatTurn,
+  updateConversationState,
+  type ChatConversationState,
+  type ChatConversationTurn,
+} from './chat-conversation'
 
 export interface ChatSessionDeps {
   llmProvider: LLMProvider
@@ -13,6 +20,8 @@ export interface ChatSessionDeps {
   retrievalLimit?: number
   maxHistoryTurns?: number
   workspaceDir?: string
+  conversationalRetrieval?: boolean
+  onTurnComplete?: (turn: ChatTurnTrace) => void
 }
 
 export interface ChatIO {
@@ -20,11 +29,6 @@ export interface ChatIO {
   write(line: string): void
   error(line: string): void
   close?(): void
-}
-
-interface ChatTurn {
-  user: string
-  assistant: string
 }
 
 interface ReadDocumentsResult {
@@ -53,6 +57,14 @@ type ReadDocumentsCheckpoint = {
   confidence?: number
 }
 
+export interface ChatTurnTrace {
+  input: string
+  resolvedQuery: string
+  sourceIds: string[]
+  answer: string
+  retrievalMethod: string
+}
+
 const HELP_TEXT = [
   'assistant> Commands:',
   'assistant>   /help  Show chat commands',
@@ -78,7 +90,7 @@ export function printChatHelp(): string {
 export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createTerminalChatIO()): Promise<void> {
   const retrievalLimit = deps.retrievalLimit ?? 5
   const maxHistoryTurns = deps.maxHistoryTurns ?? 4
-  const history: ChatTurn[] = []
+  let conversationState = createInitialConversationState()
 
   io.write('assistant> Chat mode started. Type /help for commands.')
 
@@ -104,10 +116,20 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
       }
 
       try {
-        const highRecall = requiresHighRecallQuestion(input)
+        const resolvedTurn = deps.conversationalRetrieval
+          ? resolveConversationalChatTurn(input, conversationState)
+          : {
+              type: 'fresh-query' as const,
+              input,
+              retrievalQuery: input,
+              answerFocus: input,
+              topic: input,
+              goal: 'answer user question',
+            }
+        const highRecall = requiresHighRecallQuestion(resolvedTurn.retrievalQuery)
         const expandedQuery = deps.graphWriter
-          ? await expandQueryWithGraph(input, deps.graphWriter)
-          : input
+          ? await expandQueryWithGraph(resolvedTurn.retrievalQuery, deps.graphWriter)
+          : resolvedTurn.retrievalQuery
         const readResult = await deps.toolExecutor.execute({
           id: `chat-read-${Date.now()}`,
           name: 'read_documents',
@@ -123,7 +145,7 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
         let retrieval = normalizeReadResult(readResult)
 
         if (shouldAttemptRecoveryQuery(retrieval)) {
-          const recoveryQuery = buildRecoveryQuery(input)
+          const recoveryQuery = buildRecoveryQuery(resolvedTurn.retrievalQuery)
           if (recoveryQuery) {
             const recoveryResult = await deps.toolExecutor.execute({
               id: `chat-read-recovery-${Date.now()}`,
@@ -140,15 +162,17 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
         }
 
         const retrievalWithFallback = await augmentRetrievalWithWorkspaceFallback(
-          input,
+          resolvedTurn.retrievalQuery,
           retrieval,
           deps.workspaceDir ?? process.cwd(),
         )
         let retrievalForOutput = retrievalWithFallback
         const prompt = buildChatPrompt({
           question: input,
+          resolvedQuestion: resolvedTurn.retrievalQuery !== input ? resolvedTurn.retrievalQuery : undefined,
           retrieval: retrievalForOutput,
-          history,
+          history: conversationState.recentTurns,
+          conversationState,
         })
 
         const completion = await deps.llmProvider.call({
@@ -160,7 +184,7 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
         const llmAnswer = completion.text.trim()
         let answer = chooseChatAnswer(
           llmAnswer,
-          buildDeterministicFallbackAnswer(input, retrievalWithFallback.results),
+          buildDeterministicFallbackAnswer(resolvedTurn.answerFocus, retrievalWithFallback.results),
         )
 
         if (looksLikeInsufficientEvidenceAnswer(answer)) {
@@ -168,7 +192,7 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
             id: `chat-read-deep-${Date.now()}`,
             name: 'read_documents',
             input: {
-              query: input,
+              query: resolvedTurn.retrievalQuery,
               mode: 'content',
               discoveryDepth: 'deep',
               includeContent: true,
@@ -183,14 +207,14 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
             'chat-deep-discovery-promotion',
           )
 
-          const deepFallback = buildDeterministicFallbackAnswer(input, deepRetrieval.results)
+          const deepFallback = buildDeterministicFallbackAnswer(resolvedTurn.answerFocus, deepRetrieval.results)
           if (deepFallback) {
             answer = deepFallback
           }
         }
 
         if (looksLikeInsufficientEvidenceAnswer(answer)) {
-          const focusedQuery = buildFocusedEvidenceQuery(input)
+          const focusedQuery = buildFocusedEvidenceQuery(resolvedTurn.answerFocus)
           if (focusedQuery) {
             const focusedResult = await deps.toolExecutor.execute({
               id: `chat-read-focused-${Date.now()}`,
@@ -203,7 +227,7 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
             })
 
             const focused = normalizeReadResult(focusedResult)
-            const focusedFallback = buildDeterministicFallbackAnswer(input, focused.results)
+            const focusedFallback = buildDeterministicFallbackAnswer(resolvedTurn.answerFocus, focused.results)
             if (focusedFallback) {
               answer = focusedFallback
               retrievalForOutput = mergeReadResults(retrievalForOutput, focused, 'chat-post-answer-recovery')
@@ -221,12 +245,25 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
         if (checkpointTrace) {
           io.write(`checkpoints> ${checkpointTrace}`)
         }
-        io.write(`sources> ${formatSourceIds(retrievalForOutput.results).join(', ') || 'none'}`)
+        const sourceIds = formatSourceIds(retrievalForOutput.results)
+        io.write(`sources> ${sourceIds.join(', ') || 'none'}`)
+        deps.onTurnComplete?.({
+          input,
+          resolvedQuery: resolvedTurn.retrievalQuery,
+          sourceIds,
+          answer,
+          retrievalMethod: formatRetrievalMode(retrievalForOutput.retrieval),
+        })
 
-        history.push({ user: input, assistant: answer })
-        if (history.length > maxHistoryTurns) {
-          history.splice(0, history.length - maxHistoryTurns)
-        }
+        conversationState = updateConversationState(
+          conversationState,
+          resolvedTurn,
+          {
+            answer,
+            retrievedDocIds: sourceIds,
+          },
+          maxHistoryTurns,
+        )
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         io.error(`error> Chat turn failed: ${message}`)
@@ -240,7 +277,9 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
 export function buildChatPrompt(input: {
   question: string
   retrieval: ReadDocumentsResult
-  history: ChatTurn[]
+  history: ChatConversationTurn[]
+  resolvedQuestion?: string
+  conversationState?: ChatConversationState
 }): string {
   const evidence = buildEvidence(input.retrieval.results)
   const historyText = input.history.length
@@ -255,11 +294,16 @@ export function buildChatPrompt(input: {
     'Prefer direct factual statements from retrieved evidence when available.',
     'If evidence is weak or missing after checking the retrieved lines, say that explicitly and suggest what to query next.',
     '',
+    input.conversationState?.activeTopic ? `Active topic: ${input.conversationState.activeTopic}` : 'Active topic: none yet.',
+    input.conversationState?.lastUserGoal ? `Last user goal: ${input.conversationState.lastUserGoal}` : 'Last user goal: none yet.',
+    input.conversationState?.pendingFollowUp ? `Pending follow-up: ${input.conversationState.pendingFollowUp.query}` : 'Pending follow-up: none.',
+    '',
     `Conversation history:\n${historyText}`,
     '',
     `Retrieved evidence:\n${evidence}`,
     '',
     `Current user question: ${input.question}`,
+    input.resolvedQuestion ? `Resolved retrieval query: ${input.resolvedQuestion}` : '',
   ].join('\n')
 }
 
@@ -280,10 +324,18 @@ function looksLikeInsufficientEvidenceAnswer(text: string): boolean {
   return (
     normalized.includes('evidence provided does not contain')
     || normalized.includes('retrieved documents do not provide specific information')
+    || normalized.includes('retrieved document does not provide information')
+    || normalized.includes('retrieved document does not provide specific information')
+    || normalized.includes('retrieved evidence does not contain information')
+    || normalized.includes('retrieved evidence does not contain specific information')
     || normalized.includes('does not provide specific information')
     || normalized.includes('do not provide specific information')
+    || normalized.includes('does not provide information')
+    || normalized.includes('do not provide information')
     || normalized.includes('does not contain specific information')
     || normalized.includes('do not contain specific information')
+    || normalized.includes('does not contain information')
+    || normalized.includes('do not contain information')
     || normalized.includes('do not contain specific details')
     || normalized.includes('does not provide specific details')
     || normalized.includes('do not provide specific details')

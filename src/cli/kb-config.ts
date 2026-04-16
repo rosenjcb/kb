@@ -11,6 +11,9 @@ export interface KbConfig {
   graph?: {
     enabled?: boolean
   }
+  chat?: {
+    experimentalConversationalRetrieval?: boolean
+  }
   notion?: {
     token?: string
     parentPageId?: string
@@ -309,6 +312,18 @@ export function resolveGraphEnabled(config: KbConfig): boolean {
   return true
 }
 
+export function resolveConversationalChatEnabled(config: KbConfig): boolean {
+  if (process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL !== undefined) {
+    return parseBooleanEnv(process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL, false)
+  }
+
+  if (config.chat?.experimentalConversationalRetrieval !== undefined) {
+    return config.chat.experimentalConversationalRetrieval
+  }
+
+  return false
+}
+
 /**
  * Resolve feature flags from config, falling back to env vars for any unset flags.
  * Config values always win over env vars.
@@ -337,6 +352,9 @@ export function resolveFeatureFlags(config: KbConfig): ResolvedFeatureFlags {
  */
 export function applyConfigToEnv(config: KbConfig): void {
   if (config.graph?.enabled !== undefined && !process.env.KB_GRAPH) process.env.KB_GRAPH = String(config.graph.enabled)
+  if (config.chat?.experimentalConversationalRetrieval !== undefined && !process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL) {
+    process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL = String(config.chat.experimentalConversationalRetrieval)
+  }
 
   const llm = config.llm
   if (llm?.anthropicApiKey && !process.env.ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = llm.anthropicApiKey
@@ -388,6 +406,12 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
 
   if (input.graph && typeof input.graph === 'object' && input.graph.enabled !== undefined) {
     normalized.graph = { enabled: Boolean(input.graph.enabled) }
+  }
+
+  if (input.chat && typeof input.chat === 'object' && input.chat.experimentalConversationalRetrieval !== undefined) {
+    normalized.chat = {
+      experimentalConversationalRetrieval: Boolean(input.chat.experimentalConversationalRetrieval),
+    }
   }
 
   const notion = {

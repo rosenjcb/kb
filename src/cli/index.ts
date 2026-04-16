@@ -5,7 +5,13 @@
  */
 
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
-import { readKbConfig, applyConfigToEnv, createLLMProviderFromConfig, resolveGraphEnabled } from './kb-config'
+import {
+  readKbConfig,
+  applyConfigToEnv,
+  createLLMProviderFromConfig,
+  resolveConversationalChatEnabled,
+  resolveGraphEnabled,
+} from './kb-config'
 import type { KbConfig } from './kb-config'
 import { runIntentLoop } from '../core/intent-loop'
 import { invalidateFactTool } from '../tools/invalidate-fact-tool'
@@ -282,7 +288,12 @@ export async function runMainWithOutput(
       : undefined
     out.log(`🗂️ KB Storage: ${kbStorageDir}`)
     out.log('')
-    await runChatSession({ llmProvider, toolExecutor, graphWriter: chatGraphWriter })
+    await runChatSession({
+      llmProvider,
+      toolExecutor,
+      graphWriter: chatGraphWriter,
+      conversationalRetrieval: resolveConversationalChatEnabled(config),
+    })
     return
   }
 
