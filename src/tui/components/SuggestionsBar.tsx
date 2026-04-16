@@ -13,8 +13,8 @@ interface Props {
 export function SuggestionsBar({ suggestions, mode, selectedIndex }: Props) {
   const accent = mode === 'chat' ? ORANGE : BLUE
   const { visible: visibleSuggestions, startIndex } = getSuggestionWindow(suggestions, selectedIndex, 4)
-  const reservedRows = visibleSuggestions.length === 0 ? 1 : visibleSuggestions.length
-  const emptyRows = Math.max(0, 4 - reservedRows)
+
+  if (visibleSuggestions.length === 0) return null
 
   return (
     <Box flexDirection="column" paddingX={1} marginBottom={1}>
@@ -35,12 +35,6 @@ export function SuggestionsBar({ suggestions, mode, selectedIndex }: Props) {
             </Text>
           )
         })}
-        {visibleSuggestions.length === 0 ? (
-          <Text color="gray">  Type `/` to browse available commands</Text>
-        ) : null}
-        {Array.from({ length: emptyRows }, (_, index) => (
-          <Text key={`empty-row-${index}`}>{' '}</Text>
-        ))}
       </Box>
     </Box>
   )

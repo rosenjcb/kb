@@ -40,6 +40,9 @@ export function HistoryEntryRow({ entry }: Props) {
         </Text>
       )
 
+    case 'chat-meta':
+      return <Text color="gray" dimColor>{entry.content}</Text>
+
     case 'error':
       return <Text color="red">{entry.content}</Text>
 

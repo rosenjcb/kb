@@ -1,4 +1,4 @@
-export type TuiMode = 'shell' | 'chat'
+export type TuiMode = 'shell' | 'chat' | 'init'
 
 export type EntryType =
   | 'banner'
@@ -8,6 +8,7 @@ export type EntryType =
   | 'info'
   | 'chat-you'
   | 'chat-assistant'
+  | 'chat-meta'
 
 export interface HistoryEntry {
   id: string

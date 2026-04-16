@@ -2,10 +2,12 @@ import { Box, useApp, useInput } from 'ink'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { KbConfig } from '../cli/kb-config.js'
 import type { ChatIO } from '../cli/chat-cli.js'
+import type { InitQuestionIO } from '../cli/init-cli.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
 import { createLLMProviderFromConfig, resolveGraphEnabled } from '../cli/kb-config.js'
 import { resolveEffectiveBaseDir } from '../cli/base-selection.js'
 import { runChatSession } from '../cli/chat-cli.js'
+import { parseInitCommand, runKbInit } from '../cli/init-cli.js'
 import { DuckGraphWriter } from '../tools/duck-graph-writer.js'
 import { runCommandForTui, parseShellArgs, printCliHelp } from './runner.js'
 import { StatusBar } from './components/StatusBar.js'
@@ -38,6 +40,7 @@ export function App({ config }: Props) {
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
 
   const chatInputResolverRef = useRef<((v: string | null) => void) | null>(null)
+  const initInputResolverRef = useRef<((v: string) => void) | null>(null)
   const storageDirRef = useRef<string>('')
   const entryCounterRef = useRef(0)
 
@@ -88,7 +91,19 @@ export function App({ config }: Props) {
         })
       },
       write(line: string) {
-        addEntry({ type: 'chat-assistant', content: line })
+        // Drop checkpoint noise
+        if (line.startsWith('checkpoints>')) return
+
+        // Route metadata lines to dim display
+        if (line.startsWith('retrieval>') || line.startsWith('sources>')) {
+          addEntry({ type: 'chat-meta', content: line })
+          return
+        }
+
+        // Strip the "assistant> " prefix that chat-cli prepends
+        const clean = line.startsWith('assistant> ') ? line.slice('assistant> '.length) : line
+        if (!clean.trim()) return
+        addEntry({ type: 'chat-assistant', content: clean })
       },
       error(line: string) {
         addEntry({ type: 'error', content: line })
@@ -106,11 +121,63 @@ export function App({ config }: Props) {
       })
   }, [config, addEntry])
 
+  const startInitSession = useCallback((extraArgs: string[]) => {
+    const questionIO: InitQuestionIO = {
+      write(message: string) {
+        for (const line of message.split('\n')) {
+          if (line.trim()) addEntry({ type: 'info', content: line })
+        }
+      },
+      async askQuestion(question: string): Promise<string> {
+        addEntry({ type: 'info', content: question.trim() })
+        return new Promise<string>(resolve => {
+          initInputResolverRef.current = resolve
+        })
+      },
+    }
+
+    let parsed
+    try {
+      parsed = parseInitCommand(extraArgs)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      addEntry({ type: 'error', content: `❌ ${message}` })
+      setMode('shell')
+      return
+    }
+
+    runKbInit({ ...parsed, questionIO })
+      .then(result => {
+        const docCount = result.writtenDocIds?.length ?? 0
+        addEntry({
+          type: 'result',
+          content: `✅ Init complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
+        })
+        setMode('shell')
+      })
+      .catch(err => {
+        const message = err instanceof Error ? err.message : String(err)
+        addEntry({ type: 'error', content: `Init error: ${message}` })
+        setMode('shell')
+      })
+  }, [addEntry])
+
   const handleSubmit = useCallback(
     async (value: string) => {
       const trimmed = value.trim()
       if (!trimmed) return
       setInputValue('')
+
+      // ── Init mode: relay answers to the running init session ──
+      if (mode === 'init') {
+        addEntry({ type: 'chat-you', content: trimmed })
+        const resolver = initInputResolverRef.current
+        if (resolver) {
+          initInputResolverRef.current = null
+          resolver(trimmed)
+        }
+        return
+      }
 
       // ── Chat mode: relay input to the running session ──
       if (mode === 'chat') {
@@ -165,6 +232,13 @@ export function App({ config }: Props) {
         return
       }
 
+      if (firstArg === 'init') {
+        setMode('init')
+        addEntry({ type: 'info', content: 'Initializing KB — press Enter to skip any question.' })
+        startInitSession(args.slice(1))
+        return
+      }
+
       // Dispatch to existing CLI logic
       setIsRunning(true)
       const resultId = addEntry({ type: 'result', content: '', loading: true })
@@ -190,7 +264,7 @@ export function App({ config }: Props) {
         setIsRunning(false)
       }
     },
-    [mode, isRunning, config, addEntry, updateEntry, startChatSession, exit],
+    [mode, isRunning, config, addEntry, updateEntry, startChatSession, startInitSession, exit],
   )
 
   const slashSuggestions = getSlashCommandSuggestions(inputValue, mode)
