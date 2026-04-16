@@ -2,11 +2,11 @@
 
 /**
  * KB Agent Harness CLI
- * Quick demo runner
  */
 
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
 import { readKbConfig, applyConfigToEnv, createLLMProviderFromConfig, resolveGraphEnabled } from './kb-config'
+import type { KbConfig } from './kb-config'
 import { runIntentLoop } from '../core/intent-loop'
 import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import {
@@ -41,7 +41,27 @@ import {
   ViewCommandError,
 } from './view-cli'
 
-function printCliHelp(): string {
+// ---------------------------------------------------------------------------
+// Output abstraction — lets the TUI capture output without monkey-patching
+// ---------------------------------------------------------------------------
+
+export interface CliOutput {
+  log(message: string): void
+  error(message: string): void
+  write(chunk: string): void
+}
+
+const defaultCliOutput: CliOutput = {
+  log: msg => console.log(msg),
+  error: msg => console.error(msg),
+  write: chunk => process.stdout.write(chunk),
+}
+
+// ---------------------------------------------------------------------------
+// Help printers
+// ---------------------------------------------------------------------------
+
+export function printCliHelp(): string {
   return [
     'KB Agent Harness',
     '',
@@ -69,6 +89,11 @@ function printCliHelp(): string {
     'Intent commands:',
     '  submit, validate, dispute, query, explain',
     '  Run `kb query --help` or `kb submit --help` for intent usage.',
+    '',
+    'TUI shortcuts (interactive mode only):',
+    '  /help   Show this help',
+    '  /clear  Clear history',
+    '  /exit   Quit',
     '',
     'Examples:',
     '  kb use dogfood',
@@ -110,17 +135,18 @@ function printDocsHelp(): string {
   ].join('\n')
 }
 
+// ---------------------------------------------------------------------------
+// Main dispatch — accepts an output writer so the TUI can capture results
+// ---------------------------------------------------------------------------
 
-async function main() {
-  const kbConfig = await readKbConfig()
-  applyConfigToEnv(kbConfig)
-  console.log('🤖 KB Agent Harness\n')
-
-  // Parse arguments: [sessionFile?] query...
-  const args = process.argv.slice(2)
+export async function runMainWithOutput(
+  args: string[],
+  out: CliOutput,
+  config: KbConfig,
+): Promise<void> {
   const firstArg = args[0]
 
-  // kb invalidate <old-fact> [<replacement-fact>] [--preview|--apply|--dry-run]
+  // kb invalidate
   if (firstArg === 'invalidate') {
     const oldFact = args[1]
     const replacementFact = args[2] && !args[2].startsWith('--') ? args[2] : undefined
@@ -128,8 +154,8 @@ async function main() {
     const dryRun = args.includes('--dry-run')
 
     if (!oldFact) {
-      console.error('❌ Usage: kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run]')
-      process.exit(1)
+      out.error('❌ Usage: kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run]')
+      return
     }
 
     const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
@@ -139,15 +165,13 @@ async function main() {
     )
 
     for (const change of result.changes) {
-      console.log(`\nDocument: ${change.documentId} (${change.title})\nReplaced: ${change.replaced}\nDiff:\n${change.diff}`)
+      out.log(`\nDocument: ${change.documentId} (${change.title})\nReplaced: ${change.replaced}\nDiff:\n${change.diff}`)
     }
-    console.log(`\n${result.summary}`)
+    out.log(`\n${result.summary}`)
     if (result.error) {
-      console.error(`❌ ${result.error}`)
-      process.exit(1)
+      out.error(`❌ ${result.error}`)
     }
 
-    // Soft-delete graph edges for affected documents when actually applying changes
     if (!preview && !dryRun && result.changes.length > 0) {
       try {
         const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(kbStorageDir))
@@ -160,12 +184,11 @@ async function main() {
         // Graph soft-delete failure must not surface to the user
       }
     }
-
     return
   }
 
   if (args.length === 0 || firstArg === '--help' || firstArg === '-h' || firstArg === 'help') {
-    console.log(printCliHelp())
+    out.log(printCliHelp())
     return
   }
 
@@ -173,12 +196,10 @@ async function main() {
     const show = args.includes('--show')
     const makeDefault = args.includes('--default')
     const help = args.includes('--help') || args.includes('-h') || args[1] === 'help'
-    const base = args.find((token, index) =>
-      index > 0 && !token.startsWith('--'),
-    )
+    const base = args.find((token, index) => index > 0 && !token.startsWith('--'))
 
     if (help) {
-      console.log(printUseHelp())
+      out.log(printUseHelp())
       return
     }
 
@@ -190,19 +211,19 @@ async function main() {
       } catch {
         // No active base configured yet.
       }
-      console.log('KB base configuration')
+      out.log('KB base configuration')
       if (effective) {
-        console.log(`Source: ${effective.source}`)
-        console.log(`Base: ${effective.baseName}`)
-        console.log(`Resolved path: ${effective.baseDir}`)
+        out.log(`Source: ${effective.source}`)
+        out.log(`Base: ${effective.baseName}`)
+        out.log(`Resolved path: ${effective.baseDir}`)
       } else {
-        console.log('No active base configured.')
+        out.log('No active base configured.')
       }
       if (configured.activeBase) {
-        console.log(`Session base: ${configured.activeBase}`)
+        out.log(`Session base: ${configured.activeBase}`)
       }
       if (configured.selectedBase) {
-        console.log(`Default base: ${configured.selectedBase}`)
+        out.log(`Default base: ${configured.selectedBase}`)
       }
       return
     }
@@ -210,13 +231,13 @@ async function main() {
     if (makeDefault) {
       const saved = await writeDefaultBase(base)
       const resolved = await ensureOperationalBaseDir(saved.selectedBase ?? base)
-      console.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved))
+      out.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved))
       return
     }
 
     await writeSessionBase(base)
     const resolved = await ensureOperationalBaseDir(base)
-    console.log(formatUseCommandHelp(base, resolved))
+    out.log(formatUseCommandHelp(base, resolved))
     return
   }
 
@@ -225,46 +246,46 @@ async function main() {
     if (base === '--show' || !base) {
       const configured = await readBaseConfig()
       if (!configured.selectedBase) {
-        console.log('No default base configured.')
-        console.log('  Set one with: kb use --default <base>')
+        out.log('No default base configured.')
+        out.log('  Set one with: kb use --default <base>')
         return
       }
       const resolved = await ensureOperationalBaseDir(configured.selectedBase)
-      console.log(`Default base: ${configured.selectedBase}`)
-      console.log(`Resolved path: ${resolved}`)
+      out.log(`Default base: ${configured.selectedBase}`)
+      out.log(`Resolved path: ${resolved}`)
       if (configured.activeBase) {
-        console.log(`Current session base: ${configured.activeBase}`)
+        out.log(`Current session base: ${configured.activeBase}`)
       }
-      console.log('Use `kb use <base>` to switch the active base without changing the saved default.')
+      out.log('Use `kb use <base>` to switch the active base without changing the saved default.')
       return
     }
 
     const saved = await writeDefaultBase(base)
     const resolved = await ensureOperationalBaseDir(saved.selectedBase ?? base)
-    console.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved))
+    out.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved))
     return
   }
 
   if (firstArg === 'chat') {
     if (args.includes('--help') || args.includes('-h') || args[1] === 'help') {
-      console.log(printChatHelp())
+      out.log(printChatHelp())
       return
     }
 
     const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
-    const llmProvider = createLLMProviderFromConfig(kbConfig)
+    const llmProvider = createLLMProviderFromConfig(config)
 
     if (!llmProvider) {
-      console.error('❌ Provider setup failed: no LLM credentials found in ~/.kb/config.json or environment')
-      process.exit(1)
+      out.error('❌ Provider setup failed: no LLM credentials found in ~/.kb/config.json or environment')
+      return
     }
 
-    const toolExecutor = createKBToolsRegistry(kbStorageDir, kbConfig)
-    const chatGraphWriter = resolveGraphEnabled(kbConfig)
+    const toolExecutor = createKBToolsRegistry(kbStorageDir, config)
+    const chatGraphWriter = resolveGraphEnabled(config)
       ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(kbStorageDir))
       : undefined
-    console.log(`🗂️ KB Storage: ${kbStorageDir}`)
-    console.log('')
+    out.log(`🗂️ KB Storage: ${kbStorageDir}`)
+    out.log('')
     await runChatSession({ llmProvider, toolExecutor, graphWriter: chatGraphWriter })
     return
   }
@@ -272,107 +293,107 @@ async function main() {
   if (firstArg === 'config') {
     try {
       const result = await runConfigCommand(args.slice(1))
-      console.log(result.output)
+      out.log(result.output)
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (message.startsWith('kb config commands')) {
-        console.log(message)
+        out.log(message)
         return
       }
-      console.error(`❌ ${message}`)
-      process.exit(1)
+      out.error(`❌ ${message}`)
     }
+    return
   }
 
   if (firstArg === 'publish') {
     try {
       const parsed = parsePublishCommand(args.slice(1))
       const result = await runPublishCommand(parsed)
-      console.log(JSON.stringify(result, null, 2))
+      out.log(JSON.stringify(result, null, 2))
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      console.error(`❌ ${message}`)
-      process.exit(1)
+      out.error(`❌ ${message}`)
     }
+    return
   }
 
   if (firstArg === 'docs') {
     const docsAction = args[1]
 
     if (!docsAction || docsAction === '--help' || docsAction === '-h' || docsAction === 'help') {
-      console.log(printDocsHelp())
+      out.log(printDocsHelp())
       return
     }
 
     if (docsAction === 'view') {
       try {
         const result = await runViewCommand(args.slice(2))
-        process.stdout.write(result.output)
+        out.write(result.output)
         return
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         const exitCode = error instanceof ViewCommandError ? error.exitCode : 1
         if (exitCode === 0) {
-          console.log(message)
+          out.log(message)
           return
         }
-        console.error(`❌ ${message}`)
-        process.exit(exitCode)
+        out.error(`❌ ${message}`)
       }
+      return
     }
 
     if (docsAction === 'list') {
       try {
         const result = await runListCommand(args.slice(2))
-        process.stdout.write(result.output)
+        out.write(result.output)
         return
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         const exitCode = error instanceof ViewCommandError ? error.exitCode : 1
         if (exitCode === 0) {
-          console.log(message)
+          out.log(message)
           return
         }
-        console.error(`❌ ${message}`)
-        process.exit(exitCode)
+        out.error(`❌ ${message}`)
       }
+      return
     }
 
-    console.error(`❌ Unknown docs action: ${docsAction}`)
-    console.error('')
-    console.error([
+    out.error(`❌ Unknown docs action: ${docsAction}`)
+    out.error('')
+    out.error([
       'kb docs commands',
       '',
       'Usage:',
       '  kb docs list [options]',
       '  kb docs view <document-id> [options]',
     ].join('\n'))
-    process.exit(1)
+    return
   }
 
   if (firstArg === 'view') {
-    console.error('❌ `kb view` has moved to `kb docs view`.')
-    process.exit(1)
+    out.error('❌ `kb view` has moved to `kb docs view`.')
+    return
   }
 
   if (firstArg === 'list') {
-    console.error('❌ `kb list` has moved to `kb docs list`.')
-    process.exit(1)
+    out.error('❌ `kb list` has moved to `kb docs list`.')
+    return
   }
 
   if (firstArg === 'init') {
     try {
       const parsed = parseInitCommand(args.slice(1))
       const result = await runKbInit(parsed)
-      console.log(JSON.stringify(result, null, 2))
+      out.log(JSON.stringify(result, null, 2))
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      console.error(`❌ ${message}`)
-      process.exit(1)
+      out.error(`❌ ${message}`)
     }
+    return
   }
 
   if (firstArg === 'graph') {
@@ -384,16 +405,16 @@ async function main() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (error instanceof GraphCommandError && error.exitCode === 0) {
-        console.log(message)
+        out.log(message)
         return
       }
-      console.error(`❌ ${message}`)
+      out.error(`❌ ${message}`)
       if (!(error instanceof GraphCommandError)) {
-        console.error('')
-        console.error(printGraphHelp())
+        out.error('')
+        out.error(printGraphHelp())
       }
-      process.exit(1)
     }
+    return
   }
 
   if (isIntentCommand(firstArg)) {
@@ -403,7 +424,7 @@ async function main() {
       const intentBaseDir = parsed.base
         ? await ensureOperationalBaseDir(parsed.base)
         : kbStorageDir
-      if (parsed.envelope.intent === 'query_truth' && resolveGraphEnabled(kbConfig)) {
+      if (parsed.envelope.intent === 'query_truth' && resolveGraphEnabled(config)) {
         const payload = parsed.envelope.payload as { query?: string }
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
         if (originalQuery) {
@@ -415,16 +436,15 @@ async function main() {
           }
         }
       }
-      const toolExecutor = createKBToolsRegistry(intentBaseDir, kbConfig)
-      const llmProvider = createLLMProviderFromConfig(kbConfig)
+      const toolExecutor = createKBToolsRegistry(intentBaseDir, config)
+      const llmProvider = createLLMProviderFromConfig(config)
       const { result } = await runIntentLoop(parsed.envelope, toolExecutor, { provider: llmProvider })
 
-      // Synchronous graph extraction for submit_fact
       if (
         parsed.envelope.intent === 'submit_fact' &&
         result.status === 'accepted' &&
         llmProvider &&
-        resolveGraphEnabled(kbConfig)
+        resolveGraphEnabled(config)
       ) {
         const fact = String(parsed.envelope.payload.fact ?? '').trim()
         const submittedDocId = (result.data as { submission?: { id?: string } } | undefined)?.submission?.id
@@ -445,21 +465,45 @@ async function main() {
       }
 
       const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, llmProvider)
-      console.log(formatIntentResult(enriched, parsed.output))
+      out.log(formatIntentResult(enriched, parsed.output))
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      console.error(`❌ ${message}`)
-      console.error('')
-      console.error(printIntentHelp())
-      process.exit(1)
+      out.error(`❌ ${message}`)
+      out.error('')
+      out.error(printIntentHelp())
     }
+    return
   }
 
-  console.error(`❌ Unrecognized command: ${firstArg}`)
-  console.error('')
-  console.log(printCliHelp())
-  process.exit(1)
+  out.error(`❌ Unrecognized command: ${firstArg}`)
+  out.error('')
+  out.log(printCliHelp())
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+async function main() {
+  const kbConfig = await readKbConfig()
+  applyConfigToEnv(kbConfig)
+
+  const args = process.argv.slice(2)
+  const isTTY = Boolean(process.stdout.isTTY)
+  const noTui = args.includes('--no-tui') || process.env['KB_NO_TUI'] === 'true'
+
+  // Launch TUI when invoked interactively with no arguments
+  if (isTTY && args.length === 0 && !noTui) {
+    const { launchTui } = await import('../tui/index.js')
+    await launchTui(kbConfig)
+    return
+  }
+
+  // One-shot CLI path (unchanged behavior for scripting / CI)
+  const filteredArgs = args.filter(a => a !== '--no-tui')
+  console.log('🤖 KB Agent Harness\n')
+  await runMainWithOutput(filteredArgs, defaultCliOutput, kbConfig)
 }
 
 main().catch(console.error)

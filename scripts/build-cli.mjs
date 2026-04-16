@@ -16,6 +16,8 @@ await build({
   target: 'node20',
   sourcemap: true,
   packages: 'external',
+  jsx: 'automatic',
+  jsxImportSource: 'react',
 })
 
 if (process.platform !== 'win32') {

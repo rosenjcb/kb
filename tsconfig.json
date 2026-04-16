@@ -22,6 +22,8 @@
     "noFallthroughCasesInSwitch": true,
     "isolatedModules": true,
     "allowSyntheticDefaultImports": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
