@@ -2,8 +2,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runConfigCommand } from '../../src/cli/config-cli'
-import { getKbConfigFile, readKbConfig } from '../../src/cli/kb-config'
+import { printConfigHelp, runConfigCommand } from '../../src/cli/config-cli'
+import { getKbConfigFile, listSupportedConfigPaths, readKbConfig } from '../../src/cli/kb-config'
 
 const tempDirs: string[] = []
 let kbHomeDir: string
@@ -47,33 +47,6 @@ describe('config-cli', () => {
     expect(result.output).not.toContain('defaultBase')
   })
 
-  it('Given set selectedBase, then writes config and drops deprecated legacy base fields', async () => {
-    const configFile = await createConfigFile({
-      sessionBase: 'legacy-session',
-      notion: { token: 'secret' },
-    })
-
-    const result = await runConfigCommand(['set', 'selectedBase', 'dogfood'], { configFile })
-    const saved = await readKbConfig(configFile)
-
-    expect(result.output).toContain('Set selectedBase')
-    expect(saved.selectedBase).toBe('dogfood')
-    expect(saved.notion?.token).toBe('secret')
-    expect(saved.sessionBase).toBeUndefined()
-    expect(saved.defaultBase).toBeUndefined()
-    expect(saved.updatedAt).toBeTruthy()
-  })
-
-  it('Given legacy defaultBase alias, then config set still writes selectedBase canonically', async () => {
-    const configFile = await createConfigFile({})
-
-    await runConfigCommand(['set', 'defaultBase', 'dogfood'], { configFile })
-    const saved = await readKbConfig(configFile)
-
-    expect(saved.selectedBase).toBe('dogfood')
-    expect(saved.defaultBase).toBeUndefined()
-  })
-
   it('Given nested notion key, then get returns scalar and unset prunes empty object', async () => {
     const configFile = await createConfigFile()
 
@@ -101,16 +74,34 @@ describe('config-cli', () => {
     const configFile = await createConfigFile({})
 
     await expect(runConfigCommand(['get', 'selectedBase'], { configFile })).rejects.toThrow(
-      'CONFIG_VALUE_NOT_SET',
+      'UNKNOWN_CONFIG_KEY',
     )
   })
 
   it('Given KB_HOME override and no explicit config file, then config commands use the overridden home config path', async () => {
-    await runConfigCommand(['set', 'selectedBase', 'catalog'])
+    await runConfigCommand(['set', 'notion.parentPageId', 'catalog-root'])
 
     const saved = await readKbConfig(getKbConfigFile())
 
-    expect(saved.selectedBase).toBe('catalog')
+    expect(saved.notion?.parentPageId).toBe('catalog-root')
     expect(getKbConfigFile()).toBe(path.join(kbHomeDir, 'config.json'))
+  })
+
+  it('Given config help, then it excludes base keys and generated feature keys', () => {
+    const help = printConfigHelp()
+    expect(help).not.toContain('selectedBase')
+    expect(help).not.toContain('defaultBase')
+    expect(help).not.toContain('features.')
+    expect(help).toContain('notion.parentPageId')
+    expect(help).toContain('llm.openaiApiKey')
+  })
+
+  it('Given supported config paths, then they omit base-selection and feature keys', () => {
+    const keys = listSupportedConfigPaths()
+    expect(keys).not.toContain('selectedBase')
+    expect(keys).not.toContain('defaultBase')
+    expect(keys).not.toContain('features')
+    expect(keys).toContain('notion')
+    expect(keys).toContain('llm')
   })
 })

@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { ToolExecutor } from '../../src/core/tool-registry'
 import type { LLMProvider } from '../../src/core/types'
-import { buildChatPrompt, runChatSession } from '../../src/cli/chat-cli'
+import { buildChatPrompt, printChatHelp, runChatSession } from '../../src/cli/chat-cli'
 
 class ScriptedIO {
   public readonly outputs: string[] = []
@@ -34,6 +34,14 @@ async function createTempDir(): Promise<string> {
 }
 
 describe('chat-cli prompt', () => {
+  it('Given chat help printer, then returns grouped usage and interactive commands', () => {
+    const help = printChatHelp()
+    expect(help).toContain('kb chat')
+    expect(help).toContain('Usage:')
+    expect(help).toContain('/help')
+    expect(help).toContain('/exit')
+  })
+
   it('Given history and evidence, then prompt includes both context blocks', () => {
     const prompt = buildChatPrompt({
       question: 'How does base precedence work?',

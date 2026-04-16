@@ -1,9 +1,10 @@
 import os from 'node:os'
 import path from 'node:path'
-import { copyFile, mkdir, stat } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { readKbConfig, writeKbConfig, type KbConfig } from './kb-config'
 
 export interface BaseSelectionConfig {
+  activeBase?: string
   selectedBase?: string
   updatedAt?: string
 }
@@ -24,6 +25,10 @@ function expandTilde(inputPath: string): string {
 export function getKbHomeDir(): string {
   const override = process.env.KB_HOME?.trim()
   return override ? path.resolve(override) : path.join(os.homedir(), '.kb')
+}
+
+function getKbSessionStateFile(): string {
+  return path.join(getKbHomeDir(), 'session.json')
 }
 
 export function resolveBaseToDir(base: string, cwd: string = process.cwd()): string {
@@ -60,7 +65,9 @@ export async function ensureOperationalBaseDir(base: string, cwd: string = proce
 
 export async function readBaseConfig(): Promise<BaseSelectionConfig> {
   const config = await readKbConfig()
+  const session = await readBaseSession()
   return {
+    activeBase: session.activeBase,
     selectedBase: config.selectedBase,
     updatedAt: config.updatedAt,
   }
@@ -69,15 +76,29 @@ export async function readBaseConfig(): Promise<BaseSelectionConfig> {
 export async function writeDefaultBase(base: string): Promise<BaseSelectionConfig> {
   const config = await readKbConfig()
   const saved = await writeKbConfig({ ...config, selectedBase: base })
+  const session = await readBaseSession()
   return {
+    activeBase: session.activeBase,
     selectedBase: saved.selectedBase,
     updatedAt: saved.updatedAt,
   }
 }
 
+export async function writeSessionBase(base: string): Promise<BaseSelectionConfig> {
+  const session: BaseSelectionConfig = { activeBase: base }
+  await mkdir(path.dirname(getKbSessionStateFile()), { recursive: true })
+  await writeFile(getKbSessionStateFile(), `${JSON.stringify(session, null, 2)}\n`, 'utf8')
+  const config = await readKbConfig()
+  return {
+    activeBase: base,
+    selectedBase: config.selectedBase,
+    updatedAt: config.updatedAt,
+  }
+}
+
 export interface EffectiveBaseResolution {
   baseDir: string
-  source: 'env.KB_BASE' | 'config.selectedBase'
+  source: 'session.activeBase' | 'config.selectedBase'
   baseName: string
 }
 
@@ -85,22 +106,24 @@ export interface EffectiveBaseResolution {
  * Resolve which base to use.
  *
  * Priority:
- *   1. KB_BASE env var  — session-scoped; set with `export KB_BASE=<base>` in the shell.
- *                         Clears automatically when the terminal is closed.
- *   2. config.selectedBase — persistent default saved by `kb default <base>`.
+ *   1. session.activeBase — session-scoped selection written by `kb use <base>`.
+ *   2. config.selectedBase — persistent default saved by `kb use --default <base>`.
  *
  * configOverride is accepted only for testing — real callers omit it.
  */
 export async function resolveEffectiveBaseDir(
   cwd: string = process.cwd(),
-  configOverride?: Pick<BaseSelectionConfig, 'selectedBase'> | KbConfig,
+  configOverride?: Pick<BaseSelectionConfig, 'activeBase' | 'selectedBase'> | KbConfig,
 ): Promise<EffectiveBaseResolution> {
-  const envBase = process.env.KB_BASE?.trim()
-  if (envBase) {
+  const activeBase = configOverride !== undefined
+    ? ('activeBase' in configOverride ? configOverride.activeBase : undefined)
+    : (await readBaseConfig()).activeBase
+
+  if (activeBase) {
     return {
-      baseDir: await ensureOperationalBaseDir(envBase, cwd),
-      source: 'env.KB_BASE',
-      baseName: envBase,
+      baseDir: await ensureOperationalBaseDir(activeBase, cwd),
+      source: 'session.activeBase',
+      baseName: activeBase,
     }
   }
 
@@ -117,23 +140,20 @@ export async function resolveEffectiveBaseDir(
   }
 
   throw new Error(
-    'No KB base configured. Run `kb default <base>` to set a persistent default, ' +
-    'or run `export KB_BASE=<base>` to set one for this shell session only.',
+    'No KB base configured. Use `kb use <base>` for the current session or `kb use --default <base>` to save a default.',
   )
 }
 
 /**
  * Format the output for `kb use <base>`.
- * We can't write to the parent shell's environment, so we print the export line instead.
  */
-export function formatUseCommandHelp(base: string): string {
+export function formatUseCommandHelp(base: string, resolvedPath: string): string {
   return [
-    `To activate "${base}" for this shell session, run:`,
+    `Using base: ${base}`,
+    `Resolved path: ${resolvedPath}`,
     '',
-    `  export KB_BASE=${base}`,
-    '',
-    'This is scoped to the current terminal and cleared when you close it.',
-    'To save a persistent default instead: kb default <base>',
+    'Switched the active base for this session.',
+    'Use `kb use --default <base>` to save the preferred base for future runs.',
   ].join('\n')
 }
 
@@ -142,9 +162,26 @@ export function formatDefaultCommandHelp(base: string, resolvedPath: string): st
     `Default base: ${base}`,
     `Resolved path: ${resolvedPath}`,
     '',
-    'Saved as the persistent default for all future runs.',
-    'To override for this session only: export KB_BASE=<base>',
+    'Saved as the preferred base for future runs.',
+    'Use `kb use <base>` when you want to switch bases temporarily.',
   ].join('\n')
+}
+
+async function readBaseSession(): Promise<BaseSelectionConfig> {
+  try {
+    const raw = await readFile(getKbSessionStateFile(), 'utf8')
+    const parsed = JSON.parse(raw) as BaseSelectionConfig
+    if (!parsed || typeof parsed !== 'object') {
+      return {}
+    }
+    return {
+      activeBase: typeof parsed.activeBase === 'string' && parsed.activeBase.trim()
+        ? parsed.activeBase.trim()
+        : undefined,
+    }
+  } catch {
+    return {}
+  }
 }
 
 async function pathExists(targetPath: string): Promise<boolean> {

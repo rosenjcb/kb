@@ -3,10 +3,12 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider } from '../core/types'
+import type { DuckGraphWriter } from '../tools/duck-graph-writer'
 
 export interface ChatSessionDeps {
   llmProvider: LLMProvider
   toolExecutor: ToolExecutor
+  graphWriter?: DuckGraphWriter
   retrievalLimit?: number
   maxHistoryTurns?: number
   workspaceDir?: string
@@ -56,6 +58,22 @@ const HELP_TEXT = [
   'assistant>   /exit  Exit chat mode',
 ].join('\n')
 
+export function printChatHelp(): string {
+  return [
+    'kb chat',
+    '',
+    'Usage:',
+    '  kb chat',
+    '',
+    'Interactive commands:',
+    '  /help  Show chat commands',
+    '  /exit  Exit chat mode',
+    '',
+    'Examples:',
+    '  kb chat',
+  ].join('\n')
+}
+
 export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createTerminalChatIO()): Promise<void> {
   const retrievalLimit = deps.retrievalLimit ?? 5
   const maxHistoryTurns = deps.maxHistoryTurns ?? 4
@@ -86,11 +104,14 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
 
       try {
         const highRecall = requiresHighRecallQuestion(input)
+        const expandedQuery = deps.graphWriter
+          ? await expandQueryWithGraph(input, deps.graphWriter)
+          : input
         const readResult = await deps.toolExecutor.execute({
           id: `chat-read-${Date.now()}`,
           name: 'read_documents',
           input: {
-            query: input,
+            query: expandedQuery,
             mode: 'content',
             discoveryDepth: highRecall ? 'deep' : 'shallow',
             includeContent: true,
@@ -367,6 +388,30 @@ function extractBestEvidenceLine(
 
   if (!best) return undefined
   return { line: best.line, docId: best.docId }
+}
+
+async function expandQueryWithGraph(query: string, graphWriter: DuckGraphWriter): Promise<string> {
+  try {
+    const slugs = query
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(t => t.length > 2)
+      .map(t => t.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))
+      .filter(Boolean)
+      .slice(0, 8) // cap to avoid huge IN clauses
+
+    if (slugs.length === 0) return query
+
+    const neighbors = await graphWriter.expandQuery(slugs)
+    if (neighbors.length === 0) return query
+
+    // Append neighbor names as extra context terms (cap at 5 to avoid noise)
+    const extra = neighbors.slice(0, 5).join(' ')
+    return `${query} ${extra}`
+  } catch {
+    return query
+  }
 }
 
 function tokenizeQuestion(question: string): string[] {

@@ -26,6 +26,10 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
     throw new Error('Intent command is required')
   }
 
+  if (rest.includes('--help') || rest.includes('-h') || rest[0] === 'help') {
+    throw new Error(printIntentHelp())
+  }
+
   assertConsumerSafeCommand(command)
 
   const output = parseOutput(rest)

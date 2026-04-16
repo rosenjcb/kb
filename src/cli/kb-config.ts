@@ -51,8 +51,6 @@ export const KB_CONFIG_DIR = getKbConfigDir()
 export const KB_CONFIG_FILE = getKbConfigFile()
 
 const SUPPORTED_CONFIG_PATHS = [
-  'selectedBase',
-  'defaultBase',
   'notion',
   'notion.token',
   'notion.parentPageId',
@@ -64,17 +62,6 @@ const SUPPORTED_CONFIG_PATHS = [
   'llm.ollamaEndpoint',
   'llm.ollamaEmbedModel',
   'llm.openaiModel',
-  'features',
-  'features.sqliteIndex',
-  'features.hybridQuery',
-  'features.hybridQueryCandidates',
-  'features.hybridQueryAlpha',
-  'features.hybridQueryMaxMs',
-  'features.checkpointObservability',
-  'features.missLearning',
-  'features.missHints',
-  'features.laneRouting',
-  'features.intentLlmAnswer',
   'updatedAt',
 ] as const
 
@@ -138,8 +125,6 @@ export function getConfigValue(config: KbConfig, keyPath?: string): unknown {
   const normalized = normalizeKbConfig(config)
 
   switch (keyPath) {
-    case 'selectedBase': return requireConfigValue(normalized.selectedBase, keyPath)
-    case 'defaultBase': return requireConfigValue(normalized.selectedBase, keyPath)
     case 'notion': return requireConfigValue(normalized.notion, keyPath)
     case 'notion.token': return requireConfigValue(normalized.notion?.token, keyPath)
     case 'notion.parentPageId': return requireConfigValue(normalized.notion?.parentPageId, keyPath)
@@ -151,17 +136,6 @@ export function getConfigValue(config: KbConfig, keyPath?: string): unknown {
     case 'llm.ollamaEndpoint': return requireConfigValue(normalized.llm?.ollamaEndpoint, keyPath)
     case 'llm.ollamaEmbedModel': return requireConfigValue(normalized.llm?.ollamaEmbedModel, keyPath)
     case 'llm.openaiModel': return requireConfigValue(normalized.llm?.openaiModel, keyPath)
-    case 'features': return requireConfigValue(normalized.features, keyPath)
-    case 'features.sqliteIndex': return requireConfigValue(normalized.features?.sqliteIndex, keyPath)
-    case 'features.hybridQuery': return requireConfigValue(normalized.features?.hybridQuery, keyPath)
-    case 'features.hybridQueryCandidates': return requireConfigValue(normalized.features?.hybridQueryCandidates, keyPath)
-    case 'features.hybridQueryAlpha': return requireConfigValue(normalized.features?.hybridQueryAlpha, keyPath)
-    case 'features.hybridQueryMaxMs': return requireConfigValue(normalized.features?.hybridQueryMaxMs, keyPath)
-    case 'features.checkpointObservability': return requireConfigValue(normalized.features?.checkpointObservability, keyPath)
-    case 'features.missLearning': return requireConfigValue(normalized.features?.missLearning, keyPath)
-    case 'features.missHints': return requireConfigValue(normalized.features?.missHints, keyPath)
-    case 'features.laneRouting': return requireConfigValue(normalized.features?.laneRouting, keyPath)
-    case 'features.intentLlmAnswer': return requireConfigValue(normalized.features?.intentLlmAnswer, keyPath)
     case 'updatedAt': return requireConfigValue(normalized.updatedAt, keyPath)
     default: throw new UnknownConfigKeyError(keyPath)
   }
@@ -173,12 +147,6 @@ export function setConfigValue(config: KbConfig, keyPath: string, value: string)
 
   const next = normalizeKbConfig(config)
   switch (keyPath) {
-    case 'selectedBase':
-      next.selectedBase = value
-      break
-    case 'defaultBase':
-      next.selectedBase = value
-      break
     case 'notion':
       throw new Error('INVALID_CONFIG_WRITE: notion requires a nested key such as notion.token')
     case 'notion.token':
@@ -213,38 +181,6 @@ export function setConfigValue(config: KbConfig, keyPath: string, value: string)
     case 'llm.openaiModel':
       next.llm = { ...next.llm, openaiModel: value }
       break
-    case 'features':
-      throw new Error('INVALID_CONFIG_WRITE: features requires a nested key such as features.hybridQuery')
-    case 'features.sqliteIndex':
-      next.features = { ...next.features, sqliteIndex: value === 'true' }
-      break
-    case 'features.hybridQuery':
-      next.features = { ...next.features, hybridQuery: value === 'true' }
-      break
-    case 'features.hybridQueryCandidates':
-      next.features = { ...next.features, hybridQueryCandidates: Number(value) }
-      break
-    case 'features.hybridQueryAlpha':
-      next.features = { ...next.features, hybridQueryAlpha: Number(value) }
-      break
-    case 'features.hybridQueryMaxMs':
-      next.features = { ...next.features, hybridQueryMaxMs: Number(value) }
-      break
-    case 'features.checkpointObservability':
-      next.features = { ...next.features, checkpointObservability: value === 'true' }
-      break
-    case 'features.missLearning':
-      next.features = { ...next.features, missLearning: value === 'true' }
-      break
-    case 'features.missHints':
-      next.features = { ...next.features, missHints: value === 'true' }
-      break
-    case 'features.laneRouting':
-      next.features = { ...next.features, laneRouting: value === 'true' }
-      break
-    case 'features.intentLlmAnswer':
-      next.features = { ...next.features, intentLlmAnswer: value === 'true' }
-      break
     default:
       throw new UnknownConfigKeyError(keyPath)
   }
@@ -258,8 +194,6 @@ export function unsetConfigValue(config: KbConfig, keyPath: string): KbConfig {
 
   const next = normalizeKbConfig(config)
   switch (keyPath) {
-    case 'selectedBase': delete next.selectedBase; break
-    case 'defaultBase': delete next.selectedBase; break
     case 'notion': delete next.notion; break
     case 'notion.token': if (next.notion) delete next.notion.token; break
     case 'notion.parentPageId': if (next.notion) delete next.notion.parentPageId; break
@@ -271,17 +205,6 @@ export function unsetConfigValue(config: KbConfig, keyPath: string): KbConfig {
     case 'llm.ollamaEndpoint': if (next.llm) delete next.llm.ollamaEndpoint; break
     case 'llm.ollamaEmbedModel': if (next.llm) delete next.llm.ollamaEmbedModel; break
     case 'llm.openaiModel': if (next.llm) delete next.llm.openaiModel; break
-    case 'features': delete next.features; break
-    case 'features.sqliteIndex': if (next.features) delete next.features.sqliteIndex; break
-    case 'features.hybridQuery': if (next.features) delete next.features.hybridQuery; break
-    case 'features.hybridQueryCandidates': if (next.features) delete next.features.hybridQueryCandidates; break
-    case 'features.hybridQueryAlpha': if (next.features) delete next.features.hybridQueryAlpha; break
-    case 'features.hybridQueryMaxMs': if (next.features) delete next.features.hybridQueryMaxMs; break
-    case 'features.checkpointObservability': if (next.features) delete next.features.checkpointObservability; break
-    case 'features.missLearning': if (next.features) delete next.features.missLearning; break
-    case 'features.missHints': if (next.features) delete next.features.missHints; break
-    case 'features.laneRouting': if (next.features) delete next.features.laneRouting; break
-    case 'features.intentLlmAnswer': if (next.features) delete next.features.intentLlmAnswer; break
     default: throw new UnknownConfigKeyError(keyPath)
   }
 

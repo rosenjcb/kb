@@ -30,7 +30,7 @@ npm run which:kb
 
 ### 2) Configure `~/.kb/config.json`
 
-All configuration lives in `~/.kb/config.json`. Set your LLM credentials and feature flags there:
+Use config for durable user settings like LLM credentials and Notion details:
 
 ```bash
 kb config set llm.openaiApiKey sk-...
@@ -44,24 +44,17 @@ Provider is auto-detected from whichever key is present. To set one explicitly:
 kb config set llm.provider openai
 ```
 
-Feature flags (optional):
-
-```bash
-kb config set features.hybridQuery true
-kb config set features.sqliteIndex true
-```
-
 ### 3) Set your KB base
 
 ```bash
-kb default dogfood        # save a persistent default
-export KB_BASE=dogfood    # override for this shell session only
+kb use dogfood            # switch the active base for this session
+kb use --default dogfood  # save a persistent default
 kb use --show             # show active base and config default
 ```
 
 Base resolution order:
-1. `KB_BASE` env var — session-scoped, cleared when the terminal closes
-2. `defaultBase` in `~/.kb/config.json` — persistent default set by `kb default`
+1. `kb use` active session base in `~/.kb/session.json`
+2. `selectedBase` in `~/.kb/config.json` — persistent default set by `kb use --default`
 
 Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
 
@@ -70,8 +63,8 @@ Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
 ```bash
 kb submit "Document writer now supports sqlite index sync"
 kb query "sqlite index sync behavior" --limit 5
-kb validate "kb default persists the active base"
-kb dispute "kb use should persist across sessions" --because "kb use prints an export instruction; only kb default changes durable config"
+kb validate "kb use sets the active session base"
+kb dispute "kb use should persist across sessions" --because "kb use is session-scoped while kb use --default writes the saved default"
 ```
 
 ## CLI Reference
@@ -97,10 +90,9 @@ kb docs view --title "<exact title>" [--base <name>]
 ### Other commands
 
 ```
-kb use <base>             — print export KB_BASE=<base> for the current shell
+kb use <base>             — switch the active base for the current session
+kb use --default <base>   — save persistent default to ~/.kb/config.json
 kb use --show             — show active base and config default
-kb default <base>         — save persistent default to ~/.kb/config.json
-kb default --show
 kb config get
 kb config set <key> <value>
 kb config unset <key>
@@ -112,7 +104,8 @@ kb chat
 
 ### Notes
 
-- `kb use <base>` does **not** write to disk — it prints `export KB_BASE=<base>` for you to run in your shell. This keeps session overrides truly session-scoped.
+- `kb use <base>` writes the active session base to `~/.kb/session.json`, so future `kb` commands keep using that base until you switch again.
+- `kb use --default <base>` writes the saved default base to `~/.kb/config.json`.
 - `kb init` defaults to base `default` if `--base` is omitted.
 - Typing `kb --help` shows the full help message.
 
@@ -127,22 +120,7 @@ pnpm approve-builds --all
 pnpm rebuild better-sqlite3
 ```
 
-### 2) Turn on indexing and hybrid query
-
-```bash
-kb config set features.sqliteIndex true
-kb config set features.hybridQuery true
-```
-
-Optional tuning:
-
-```bash
-kb config set features.hybridQueryCandidates 40
-kb config set features.hybridQueryAlpha 0.45
-kb config set features.hybridQueryMaxMs 120
-```
-
-### 3) Verify
+### 2) Verify
 
 ```bash
 kb submit "SQLite hybrid search enabled for this workspace"
