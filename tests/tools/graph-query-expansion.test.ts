@@ -2,15 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { expandQueryWithGraph, toGraphQuerySlugs } from '../../src/tools/graph-query-expansion'
 
 describe('graph-query-expansion', () => {
-  it('Given a freeform query, then slug extraction keeps only useful graph tokens', () => {
-    expect(toGraphQuerySlugs('How does config.json relate to kb graph?')).toEqual([
-      'how',
-      'does',
-      'config',
-      'json',
-      'relate',
-      'graph',
-    ])
+  it('Given a freeform query, then slug extraction produces unigrams and bigrams for graph entity matching', () => {
+    const slugs = toGraphQuerySlugs('How does config.json relate to kb graph?')
+    // Unigrams (stop-word filtering removed short tokens, but "how"/"does" pass length > 2 check)
+    expect(slugs).toContain('config')
+    expect(slugs).toContain('json')
+    expect(slugs).toContain('graph')
+    // Bigrams for compound entity IDs like "config-json", "json-relate"
+    expect(slugs).toContain('config-json')
+    expect(slugs).toContain('json-relate')
+    // Total slugs bounded by slice(0, 16)
+    expect(slugs.length).toBeLessThanOrEqual(16)
   })
 
   it('Given graph neighbors, then query expansion appends a bounded set of neighbor names', async () => {

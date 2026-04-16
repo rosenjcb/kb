@@ -427,10 +427,11 @@ async function main() {
         resolveGraphEnabled(kbConfig)
       ) {
         const fact = String(parsed.envelope.payload.fact ?? '').trim()
+        const submittedDocId = (result.data as { submission?: { id?: string } } | undefined)?.submission?.id
         if (fact) {
           try {
             const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(intentBaseDir))
-            const { entities, relationships } = await extractGraph(fact, llmProvider)
+            const { entities, relationships } = await extractGraph(fact, llmProvider, submittedDocId)
             if (entities.length > 0 || relationships.length > 0) {
               await graphWriter.open()
               if (entities.length > 0) await graphWriter.upsertEntities(entities)

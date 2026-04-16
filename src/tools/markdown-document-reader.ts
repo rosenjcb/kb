@@ -19,6 +19,8 @@ import {
   type LaneRoutingDecision,
   type RetrievalLane,
 } from './retrieval-lane-router'
+import { DuckGraphWriter, type GraphDocumentAffinity } from './duck-graph-writer'
+import { toGraphQuerySlugs } from './graph-query-expansion'
 
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'do', 'for', 'from', 'how',
@@ -49,6 +51,10 @@ export interface DocumentMetadata {
 export interface QueryResult {
   metadata: DocumentMetadata
   content?: string
+  /** Graph-reranking contribution for this result (0 when graph is off or no match). */
+  graphBoost?: number
+  /** Entity names that triggered the graph boost (empty when no boost). */
+  graphEvidence?: string[]
 }
 
 export interface QueryResponse {
@@ -69,9 +75,13 @@ export interface QueryResponse {
 export interface MarkdownDocumentReaderOptions {
   hybridEnabled?: boolean
   sqliteDbPath?: string
+  graphDbPath?: string
   hybridCandidateLimit?: number
   hybridAlpha?: number
   hybridMaxMs?: number
+  graphRankingEnabled?: boolean
+  graphRankingWeight?: number
+  graphRankingMaxBoost?: number
   laneRoutingEnabled?: boolean
   missLearningEnabled?: boolean
   rankingHintsEnabled?: boolean
@@ -183,9 +193,13 @@ export class MarkdownDocumentReader {
   private readonly baseDir: string
   private readonly hybridEnabled: boolean
   private readonly sqliteDbPath: string
+  private readonly graphDbPath: string
   private readonly hybridCandidateLimit: number
   private readonly hybridAlpha: number
   private readonly hybridMaxMs: number
+  private readonly graphRankingEnabled: boolean
+  private readonly graphRankingWeight: number
+  private readonly graphRankingMaxBoost: number
   private readonly laneRoutingEnabled: boolean
   private readonly missLearningEnabled: boolean
   private readonly rankingHintsEnabled: boolean
@@ -199,9 +213,13 @@ export class MarkdownDocumentReader {
     this.baseDir = baseDir
     this.hybridEnabled = options.hybridEnabled ?? process.env.KB_HYBRID_QUERY === 'true'
     this.sqliteDbPath = options.sqliteDbPath ?? path.join(baseDir, '.kb-index.sqlite')
+    this.graphDbPath = options.graphDbPath ?? path.join(baseDir, '.kb-graph.duckdb')
     this.hybridCandidateLimit = options.hybridCandidateLimit ?? parsePositiveInt(process.env.KB_HYBRID_QUERY_CANDIDATES, 40)
     this.hybridAlpha = options.hybridAlpha ?? parseBoundedNumber(process.env.KB_HYBRID_QUERY_ALPHA, 0.45)
     this.hybridMaxMs = options.hybridMaxMs ?? parsePositiveInt(process.env.KB_HYBRID_QUERY_MAX_MS, 120)
+    this.graphRankingEnabled = options.graphRankingEnabled ?? process.env.KB_GRAPH !== 'false'
+    this.graphRankingWeight = options.graphRankingWeight ?? parseBoundedNumber(process.env.KB_GRAPH_RANKING_WEIGHT, 0.2)
+    this.graphRankingMaxBoost = options.graphRankingMaxBoost ?? parseBoundedNumber(process.env.KB_GRAPH_RANKING_MAX_BOOST, 0.25)
     this.laneRoutingEnabled = options.laneRoutingEnabled ?? process.env.KB_LANE_ROUTING_ENABLED !== 'false'
     this.missLearningEnabled = options.missLearningEnabled ?? process.env.KB_MISS_LEARNING_ENABLED === 'true'
     this.rankingHintsEnabled = options.rankingHintsEnabled ?? process.env.KB_MISS_HINTS_ENABLED === 'true'
@@ -671,12 +689,26 @@ export class MarkdownDocumentReader {
             docId,
             ...scoreInfo,
           }))
-          .sort((a, b) => b.score - a.score)
+        const graphBoosts = await this.loadGraphBoosts(query, ranked.map(row => row.docId))
+        const graphBoosted = ranked
+          .map(row => {
+            const graphAffinity = graphBoosts.get(row.docId)
+            const graphBoost = graphAffinity
+              ? Math.min(this.graphRankingMaxBoost, graphAffinity.boost * this.graphRankingWeight)
+              : 0
+            return {
+              ...row,
+              graphBoost,
+              graphEvidence: graphAffinity?.evidence ?? [],
+              finalScore: Math.min(1, row.score + graphBoost),
+            }
+          })
+          .sort((a, b) => b.finalScore - a.finalScore)
 
         const limit = input.limit ?? 10
         const filtered: QueryResult[] = []
 
-        for (const row of ranked) {
+        for (const row of graphBoosted) {
           if (filtered.length >= limit) break
 
           const doc = getDocument.get(row.docId) as
@@ -714,6 +746,8 @@ export class MarkdownDocumentReader {
               type: doc.doc_type,
             },
             content,
+            graphBoost: row.graphBoost > 0 ? row.graphBoost : undefined,
+            graphEvidence: row.graphEvidence.length > 0 ? row.graphEvidence : undefined,
           })
         }
 
@@ -724,7 +758,9 @@ export class MarkdownDocumentReader {
             retrieval: {
               method: 'hybrid',
               detail: this.buildHybridRetrievalDetail(
-                'fts+vector-rerank',
+                graphBoosted.some(row => row.graphBoost > 0)
+                  ? 'fts+vector-rerank+graph-rerank'
+                  : 'fts+vector-rerank',
                 laneRoute,
                 activeLanes,
                 usedLaneFallback,
@@ -902,6 +938,25 @@ export class MarkdownDocumentReader {
       return boosts
     } catch {
       return new Map<string, number>()
+    }
+  }
+
+  private async loadGraphBoosts(
+    query: string,
+    docIds: string[],
+  ): Promise<Map<string, GraphDocumentAffinity>> {
+    if (!this.graphRankingEnabled || docIds.length === 0) return new Map()
+
+    const slugs = toGraphQuerySlugs(query)
+    if (slugs.length === 0) return new Map()
+
+    const writer = new DuckGraphWriter(this.graphDbPath)
+    try {
+      return await writer.scoreDocumentsForQuery(slugs, docIds)
+    } catch {
+      return new Map()
+    } finally {
+      writer.close()
     }
   }
 

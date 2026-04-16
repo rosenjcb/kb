@@ -47,6 +47,11 @@ export interface GraphSummary {
   topEntities: Array<{ id: string; name: string; type: string; connections: number }>
 }
 
+export interface GraphDocumentAffinity {
+  boost: number
+  evidence: string[]
+}
+
 export class DuckGraphWriter {
   private instance: DuckDBInstance | null = null
   private conn: DuckDBConnection | null = null
@@ -321,6 +326,73 @@ export class DuckGraphWriter {
 
     const neighborNames = rows.getRows().map(row => String(row[0]))
     return neighborNames.filter(name => !slugs.includes(slugify(name)))
+  }
+
+  async scoreDocumentsForQuery(slugs: string[], docIds: string[]): Promise<Map<string, GraphDocumentAffinity>> {
+    if (!this.ready) await this.open()
+    if (slugs.length === 0 || docIds.length === 0) return new Map()
+
+    const slugPlaceholders = slugs.map(() => '?').join(', ')
+    const docPlaceholders = docIds.map(() => '?').join(', ')
+
+    const directRows = await this.conn!.runAndReadAll(`
+      SELECT doc_id, name
+      FROM entities
+      WHERE id IN (${slugPlaceholders})
+        AND doc_id IN (${docPlaceholders})
+    `, [...slugs, ...docIds])
+
+    const oneHopRows = await this.conn!.runAndReadAll(`
+      SELECT DISTINCT
+        COALESCE(target.doc_id, r.doc_id) AS doc_id,
+        source.name AS source_name,
+        target.name AS target_name
+      FROM relationships r
+      JOIN entities source ON source.id = r.from_id
+      JOIN entities target ON target.id = r.to_id
+      WHERE r.weight > 0
+        AND (
+          (source.id IN (${slugPlaceholders}) AND COALESCE(target.doc_id, r.doc_id) IN (${docPlaceholders}))
+          OR
+          (target.id IN (${slugPlaceholders}) AND COALESCE(source.doc_id, r.doc_id) IN (${docPlaceholders}))
+        )
+    `, [...slugs, ...docIds, ...slugs, ...docIds])
+
+    const affinities = new Map<string, GraphDocumentAffinity>()
+
+    for (const row of directRows.getRows()) {
+      const docId = String(row[0] ?? '')
+      if (!docId) continue
+      affinities.set(docId, {
+        boost: 1,
+        evidence: [`direct:${String(row[1] ?? '')}`],
+      })
+    }
+
+    for (const row of oneHopRows.getRows()) {
+      const docId = String(row[0] ?? '')
+      if (!docId) continue
+      const current = affinities.get(docId)
+      const evidence = `one-hop:${String(row[1] ?? '')}->${String(row[2] ?? '')}`
+      if (!current) {
+        affinities.set(docId, {
+          boost: 0.6,
+          evidence: [evidence],
+        })
+        continue
+      }
+
+      const mergedEvidence = current.evidence.includes(evidence)
+        ? current.evidence
+        : [...current.evidence, evidence]
+      const boundedBoost = Math.min(1, Math.max(current.boost, 0.6) + (mergedEvidence.length > current.evidence.length ? 0.1 : 0))
+      affinities.set(docId, {
+        boost: boundedBoost,
+        evidence: mergedEvidence,
+      })
+    }
+
+    return affinities
   }
 
   async exportDot(): Promise<string> {
