@@ -122,6 +122,7 @@ export function App({ config }: Props) {
   }, [config, addEntry])
 
   const startInitSession = useCallback((extraArgs: string[]) => {
+    const progressEntryId = addEntry({ type: 'info', content: '[init] starting…' })
     const questionIO: InitQuestionIO = {
       write(message: string) {
         for (const line of message.split('\n')) {
@@ -146,7 +147,13 @@ export function App({ config }: Props) {
       return
     }
 
-    runKbInit({ ...parsed, questionIO })
+    runKbInit({
+      ...parsed,
+      questionIO,
+      progressSink(line) {
+        updateEntry(progressEntryId, { content: line.trimEnd() })
+      },
+    })
       .then(result => {
         const docCount = result.writtenDocIds?.length ?? 0
         addEntry({
@@ -160,7 +167,7 @@ export function App({ config }: Props) {
         addEntry({ type: 'error', content: `Init error: ${message}` })
         setMode('shell')
       })
-  }, [addEntry])
+  }, [addEntry, updateEntry])
 
   const handleSubmit = useCallback(
     async (value: string) => {

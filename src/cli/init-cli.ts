@@ -62,6 +62,7 @@ export interface InitOptions {
   cwd?: string
   provider?: LLMProvider
   questionIO?: InitQuestionIO
+  progressSink?: (line: string) => void
 }
 
 export interface InitResult {
@@ -165,7 +166,10 @@ export interface InitQuestionIO {
 class InitProgressReporter {
   private completed = 0
 
-  constructor(private total: number) {}
+  constructor(
+    private total: number,
+    private sink: (line: string) => void = line => process.stderr.write(line),
+  ) {}
 
   start(label: string, detail?: string) {
     this.render(label, detail)
@@ -185,7 +189,7 @@ class InitProgressReporter {
     const filled = Math.round((this.completed / Math.max(this.total, 1)) * width)
     const bar = `${'='.repeat(filled)}${'-'.repeat(Math.max(width - filled, 0))}`
     const suffix = detail ? ` ${detail}` : ''
-    process.stderr.write(`[init] [${bar}] ${this.completed}/${this.total} ${label}${suffix}\n`)
+    this.sink(`[init] [${bar}] ${this.completed}/${this.total} ${label}${suffix}\n`)
   }
 }
 
@@ -249,7 +253,7 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = await readCheckpoint(checkpointFile)
 
-  const progress = new InitProgressReporter(8)
+  const progress = new InitProgressReporter(8, options.progressSink)
   const provider = options.provider ?? await resolveProvider()
   const kbConfig = await readKbConfig()
   const graphEnabled = resolveGraphEnabled(kbConfig)

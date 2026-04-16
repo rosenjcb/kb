@@ -305,7 +305,10 @@ export async function runMainWithOutput(
   if (firstArg === 'publish') {
     try {
       const parsed = parsePublishCommand(args.slice(1))
-      const result = await runPublishCommand(parsed)
+      const result = await runPublishCommand({
+        ...parsed,
+        progressSink: line => out.log(line.trimEnd()),
+      })
       out.log(JSON.stringify(result, null, 2))
       return
     } catch (error) {
@@ -396,7 +399,7 @@ export async function runMainWithOutput(
     try {
       const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
       const opts = parseGraphCommand(args.slice(1))
-      await runGraphCommand(kbStorageDir, opts)
+      await runGraphCommand(kbStorageDir, opts, out)
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)

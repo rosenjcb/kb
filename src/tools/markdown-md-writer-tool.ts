@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
+import { emitDiagnostic } from '../core/diagnostics'
 import type {
   AppendToDocumentInput,
   DocumentWriterExtended,
@@ -194,7 +195,7 @@ export class MarkdownMDWriterTool implements DocumentWriterExtended {
       this.sqliteIndexer.upsertDocumentFromContent(result.filePath, content)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      console.warn(`[kb-index] sqlite sync skipped for ${result.id}: ${message}`)
+      emitDiagnostic('warn', `[kb-index] sqlite sync skipped for ${result.id}: ${message}`)
     }
   }
 
@@ -207,7 +208,7 @@ export class MarkdownMDWriterTool implements DocumentWriterExtended {
       this.sqliteIndexer.upsertDocumentFromContent(filePath, content)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      console.warn(`[kb-index] sqlite merge sync skipped for ${documentId}: ${message}`)
+      emitDiagnostic('warn', `[kb-index] sqlite merge sync skipped for ${documentId}: ${message}`)
     }
   }
 }
