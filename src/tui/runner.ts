@@ -10,6 +10,8 @@ export { printCliHelp }
 export async function runCommandForTui(args: string[], config: KbConfig): Promise<string> {
   const chunks: string[] = []
 
+  const effectiveArgs = args
+
   const out = {
     log: (msg: string) => {
       chunks.push(msg)
@@ -23,7 +25,7 @@ export async function runCommandForTui(args: string[], config: KbConfig): Promis
   }
 
   try {
-    await runMainWithOutput(args, out, config)
+    await runMainWithOutput(effectiveArgs, out, config)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     chunks.push(message)

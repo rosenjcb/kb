@@ -13,9 +13,10 @@ interface Props {
 
 export function InputBar({ value, onChange, onSubmit, mode, isRunning }: Props) {
   const isChat = mode === 'chat'
-  const borderColor = isRunning ? 'gray' : isChat ? ORANGE : BLUE
-  const promptColor = isChat ? ORANGE : BLUE
-  const prompt = isChat ? 'you' : 'kb'
+  const isInit = mode === 'init'
+  const borderColor = isRunning ? 'gray' : (isChat || isInit) ? ORANGE : BLUE
+  const promptColor = (isChat || isInit) ? ORANGE : BLUE
+  const prompt = isChat ? 'you' : isInit ? 'ans' : 'kb'
 
   return (
     <Box borderStyle="single" borderColor={borderColor} paddingX={1}>
