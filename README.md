@@ -28,71 +28,58 @@ npm run refresh:global
 npm run which:kb
 ```
 
-### 2) Configure `.env.local` (recommended)
+### 2) Configure `~/.kb/config.json`
 
-Create `.env.local` at the repository root and keep runtime settings there.
-
-Example:
+All configuration lives in `~/.kb/config.json`. Set your LLM credentials and feature flags there:
 
 ```bash
-cat > .env.local <<'EOF'
-OPENAI_API_KEY=your_key
-EOF
+kb config set llm.openaiApiKey sk-...
+# or
+kb config set llm.anthropicApiKey sk-ant-...
 ```
 
-Provider selection is automatic from available credentials in this order: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, then local `OLLAMA_ENDPOINT`.
-
-Use local-env commands when you want explicit `.env.local` context:
+Provider is auto-detected from whichever key is present. To set one explicitly:
 
 ```bash
-pnpm run dev:local "hello"
+kb config set llm.provider openai
 ```
 
-### 3) Select your KB base
+Feature flags (optional):
 
 ```bash
-kb use dogfood
-kb default dogfood
-kb use --show
+kb config set features.hybridQuery true
+kb config set features.sqliteIndex true
 ```
 
-Precedence order:
-1. `--base <name>` explicit override
-2. `kb use` current session base
-3. `kb default` saved default
+### 3) Set your KB base
 
-Named bases store their SQLite data under `~/.kb/sessions/<base>/`. `kb init` checkpoints live under `~/.kb/<base>/checkpoints/`, and user config stays in `~/.kb/config.json`.
+```bash
+kb default dogfood        # save a persistent default
+export KB_BASE=dogfood    # override for this shell session only
+kb use --show             # show active base and config default
+```
+
+Base resolution order:
+1. `KB_BASE` env var — session-scoped, cleared when the terminal closes
+2. `defaultBase` in `~/.kb/config.json` — persistent default set by `kb default`
+
+Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
 
 ### 4) Start using intent commands
 
 ```bash
-kb submit "Document writer now supports sqlite index sync" --source implementation
-kb query "sqlite index sync behavior" --limit 5 --output human
+kb submit "Document writer now supports sqlite index sync"
+kb query "sqlite index sync behavior" --limit 5
 kb validate "kb default persists the active base"
-kb dispute "kb use should persist across sessions" --because "Only kb default should change durable base config"
+kb dispute "kb use should persist across sessions" --because "kb use prints an export instruction; only kb default changes durable config"
 ```
 
 ## CLI Reference
 
-### Top-level commands
-
-```
-kb <query>
-kb <sessionFile.md> <query>
-kb chat
-kb docs <list|view> [options]
-kb init [--base <name>] [--detach | --resume] [--stop-after <cycle>]
-kb config <get|set|unset> [options]
-kb publish [options]
-kb <intent-command> [options]
-kb use <base>
-kb default <base>
-```
-
 ### Intent commands
 
 ```
-kb submit "<fact>" [--domain ops] [--source runbook] [--target doc-id] [--include-session-logs] [--output human|json]
+kb submit "<fact>" [--domain ops] [--source runbook] [--target doc-id] [--output human|json]
 kb validate "<fact>" [--domain ops] [--output human|json]
 kb dispute "<fact>" --because "<counter evidence>" [--domain ops] [--output human|json]
 kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]
@@ -103,37 +90,35 @@ kb explain "<change id|fact>" [--output human|json]
 
 ```
 kb docs list [--base <name>] [--limit <n>] [--output human|json]
-kb docs view <document-id> [--base <name>] [--output human|json]
-kb docs view --title "<exact title>" [--base <name>] [--output human|json]
+kb docs view <document-id> [--base <name>]
+kb docs view --title "<exact title>" [--base <name>]
 ```
 
 ### Other commands
 
 ```
-kb use <base>
-kb use --show
-kb default <base>
+kb use <base>             — print export KB_BASE=<base> for the current shell
+kb use --show             — show active base and config default
+kb default <base>         — save persistent default to ~/.kb/config.json
 kb default --show
 kb config get
 kb config set <key> <value>
 kb config unset <key>
+kb init [--base <name>] [--detach | --resume] [--stop-after <cycle>]
+kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply]
 kb publish [options]
+kb chat
 ```
 
 ### Notes
 
-- `kb invalidate` is now available as a KB-only cleanup command for pruning/replacing facts inside the active SQLite knowledge base. See [invalidate-fact skill](.github/skills/invalidate-fact/SKILL.md).
-- `kb explain` is a valid intent command for explaining a change or fact.
-- Typing `kb` or `kb --help` shows this help message.
-- Internal tool names may differ from CLI commands.
-
-### See Also
-- [invalidate-fact skill](.github/skills/invalidate-fact/SKILL.md)
-- [089-implement-kb-invalidate-skill.md](tickets/linear/089-implement-kb-invalidate-skill.md)
+- `kb use <base>` does **not** write to disk — it prints `export KB_BASE=<base>` for you to run in your shell. This keeps session overrides truly session-scoped.
+- `kb init` defaults to base `default` if `--base` is omitted.
+- Typing `kb --help` shows the full help message.
 
 ## Optional: SQLite Hybrid Search
 
-Enable this when your knowledge corpus gets larger and semantic retrieval quality matters.
+Enable when your knowledge corpus grows and lexical search isn't enough.
 
 ### 1) Enable native SQLite dependency (if needed)
 
@@ -142,45 +127,36 @@ pnpm approve-builds --all
 pnpm rebuild better-sqlite3
 ```
 
-### 2) Turn on indexing and hybrid query in `.env.local`
+### 2) Turn on indexing and hybrid query
 
 ```bash
-cat >> .env.local <<'EOF'
-KB_SQLITE_INDEX=true
-KB_HYBRID_QUERY=true
-EOF
+kb config set features.sqliteIndex true
+kb config set features.hybridQuery true
 ```
 
 Optional tuning:
 
 ```bash
-cat >> .env.local <<'EOF'
-KB_HYBRID_QUERY_CANDIDATES=40
-KB_HYBRID_QUERY_ALPHA=0.45
-KB_HYBRID_QUERY_MAX_MS=120
-EOF
+kb config set features.hybridQueryCandidates 40
+kb config set features.hybridQueryAlpha 0.45
+kb config set features.hybridQueryMaxMs 120
 ```
 
 ### 3) Verify
 
 ```bash
-kb submit "SQLite hybrid search enabled for this workspace" --source setup
-kb query "hybrid sqlite retrieval" --limit 5 --output human
+kb submit "SQLite hybrid search enabled for this workspace"
+kb query "hybrid sqlite retrieval" --limit 5
 ```
 
-If hybrid retrieval is unavailable or exceeds latency budget, KB automatically falls back to lexical markdown query.
+If hybrid retrieval is unavailable or exceeds the latency budget, KB automatically falls back to lexical markdown query.
 
 ## Daily Workflow
 
 ```bash
-# work
 kb query "topic"
 kb submit "new fact" --target <doc-id>
-
-# checkpoint durable docs
-git add sessions/
-git commit -m "kb: checkpoint knowledge base"
-git push
+kb validate "assumption I want to check"
 ```
 
 ## Development Commands
@@ -195,9 +171,7 @@ pnpm run build
 ## Project Map
 
 ```text
-src/core   - provider abstraction, agent loop, runtime types
-src/cli    - CLI entrypoint, intent command parsing, base selection
-src/tools  - write/query tools, markdown + sqlite index integration
-sessions/  - persisted knowledge documents by namespace
-tickets/   - planning/spec workflow
+src/core   — provider abstraction, intent loop, agent loop, runtime types
+src/cli    — CLI entrypoint, intent command parsing, base selection, kb init
+src/tools  — write/query tools, markdown + sqlite index integration
 ```
