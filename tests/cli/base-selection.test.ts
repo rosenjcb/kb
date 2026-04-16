@@ -11,6 +11,7 @@ import {
   resolveBaseToDir,
   resolveEffectiveBaseDir,
   writeDefaultBase,
+  writeSessionBase,
 } from '../../src/cli/base-selection'
 
 describe('base-selection', () => {
@@ -19,12 +20,10 @@ describe('base-selection', () => {
   beforeEach(async () => {
     tempKbHome = await mkdtemp(path.join(os.tmpdir(), 'kb-home-'))
     process.env.KB_HOME = tempKbHome
-    delete process.env.KB_BASE
   })
 
   afterEach(async () => {
     delete process.env.KB_HOME
-    delete process.env.KB_BASE
     await rm(tempKbHome, { recursive: true, force: true })
   })
 
@@ -43,26 +42,18 @@ describe('base-selection', () => {
     expect(resolveBaseToDir('/data/kb', '/repo')).toBe('/data/kb')
   })
 
-  // ─── resolveEffectiveBaseDir — env.KB_BASE ────────────────────────────────
+  // ─── resolveEffectiveBaseDir — session/config precedence ──────────────────
 
-  it('KB_BASE env var is respected and wins over config', async () => {
-    process.env.KB_BASE = 'env-base'
-    const result = await resolveEffectiveBaseDir('/repo', { selectedBase: 'config-base' })
+  it('active session base wins over config.selectedBase', async () => {
+    const result = await resolveEffectiveBaseDir('/repo', {
+      activeBase: 'session-base',
+      selectedBase: 'config-base',
+    })
 
-    expect(result.source).toBe('env.KB_BASE')
-    expect(result.baseName).toBe('env-base')
-    expect(result.baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'env-base'))
+    expect(result.source).toBe('session.activeBase')
+    expect(result.baseName).toBe('session-base')
+    expect(result.baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'session-base'))
   })
-
-  it('KB_BASE env var with no config still resolves', async () => {
-    process.env.KB_BASE = 'env-only'
-    const result = await resolveEffectiveBaseDir('/repo', {})
-
-    expect(result.source).toBe('env.KB_BASE')
-    expect(result.baseName).toBe('env-only')
-  })
-
-  // ─── resolveEffectiveBaseDir — config.selectedBase ───────────────────────
 
   it('config.selectedBase is used when KB_BASE is not set', async () => {
     const result = await resolveEffectiveBaseDir('/repo', { selectedBase: 'catalog' })
@@ -72,13 +63,13 @@ describe('base-selection', () => {
     expect(result.baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'catalog'))
   })
 
-  it('throws when neither KB_BASE nor config.selectedBase is set', async () => {
+  it('throws when neither activeBase nor config.selectedBase is set', async () => {
     await expect(resolveEffectiveBaseDir('/repo', {})).rejects.toThrow(
       'No KB base configured',
     )
   })
 
-  // ─── writeDefaultBase / readBaseConfig ───────────────────────────────────
+  // ─── writeDefaultBase / writeSessionBase / readBaseConfig ────────────────
 
   it('writeDefaultBase persists to config and readBaseConfig reads it back', async () => {
     await writeDefaultBase('dogfood')
@@ -93,15 +84,14 @@ describe('base-selection', () => {
     expect(config.selectedBase).toBe('my-project')
   })
 
-  // ─── session isolation ────────────────────────────────────────────────────
+  it('writeSessionBase persists the active base separately from the default', async () => {
+    await writeDefaultBase('dogfood')
+    await writeSessionBase('catalog')
 
-  it('KB_BASE in one env does not bleed into another (env is cleaned up)', async () => {
-    process.env.KB_BASE = 'session-a'
-    const first = await resolveEffectiveBaseDir('/repo', {})
-    expect(first.baseName).toBe('session-a')
+    const config = await readBaseConfig()
 
-    delete process.env.KB_BASE
-    await expect(resolveEffectiveBaseDir('/repo', {})).rejects.toThrow('No KB base configured')
+    expect(config.selectedBase).toBe('dogfood')
+    expect(config.activeBase).toBe('catalog')
   })
 
   // ─── legacy sqlite migration ──────────────────────────────────────────────
@@ -122,15 +112,15 @@ describe('base-selection', () => {
 
   // ─── format helpers ───────────────────────────────────────────────────────
 
-  it('formatUseCommandHelp shows export instruction', () => {
-    const text = formatUseCommandHelp('catalog')
-    expect(text).toContain('export KB_BASE=catalog')
-    expect(text).toContain('cleared when you close it')
+  it('formatUseCommandHelp shows active session switching', () => {
+    const text = formatUseCommandHelp('catalog', path.join(getKbHomeDir(), 'sessions', 'catalog'))
+    expect(text).toContain('Using base: catalog')
+    expect(text).toContain('Switched the active base for this session')
   })
 
   it('formatDefaultCommandHelp shows persistent default messaging', () => {
     const text = formatDefaultCommandHelp('catalog', path.join(getKbHomeDir(), 'sessions', 'catalog'))
     expect(text).toContain('Default base: catalog')
-    expect(text).toContain('persistent default')
+    expect(text).toContain('preferred base')
   })
 })

@@ -55,6 +55,10 @@ describe('intent-cli parsing', () => {
     expect(parsed.envelope.payload.limit).toBe(3)
   })
 
+  it('Given intent help flag, then parser returns shared intent help text', () => {
+    expect(() => parseIntentCommand(['query', '--help'])).toThrow('Intent commands:')
+  })
+
   it('Given dispute without because, then throws validation error', () => {
     expect(() => parseIntentCommand(['dispute', 'Fact only'])).toThrow(
       'dispute requires --because "<counter evidence>"',

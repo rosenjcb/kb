@@ -6,7 +6,7 @@
  */
 
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
-import { readKbConfig, applyConfigToEnv, createLLMProviderFromConfig } from './kb-config'
+import { readKbConfig, applyConfigToEnv, createLLMProviderFromConfig, resolveGraphEnabled } from './kb-config'
 import { runIntentLoop } from '../core/intent-loop'
 import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import {
@@ -23,11 +23,16 @@ import {
   readBaseConfig,
   resolveEffectiveBaseDir,
   writeDefaultBase,
+  writeSessionBase,
 } from './base-selection'
-import { printConfigHelp, runConfigCommand } from './config-cli'
+import { runConfigCommand } from './config-cli'
 import { parsePublishCommand, runPublishCommand } from './publish-cli'
 import { parseInitCommand, runKbInit } from './init-cli'
-import { runChatSession } from './chat-cli'
+import { DuckGraphWriter } from '../tools/duck-graph-writer'
+import { extractGraph } from '../tools/graph-entity-extractor'
+import { expandQueryWithGraph } from '../tools/graph-query-expansion'
+import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
+import { printChatHelp, runChatSession } from './chat-cli'
 import {
   printListHelp,
   printViewHelp,
@@ -41,46 +46,67 @@ function printCliHelp(): string {
     'KB Agent Harness',
     '',
     'Usage:',
-    '  kb <query>',
-    '  kb <sessionFile.md> <query>',
+    '  kb <intent-command> [options]',
+    '  kb docs <command> [options]',
+    '  kb use [<base>] [--show] [--default]',
+    '  kb config <command> [options]',
+    '  kb init [options]',
+    '  kb graph [options]',
+    '  kb publish [options]',
     '  kb chat',
     '  kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run]',
-    '  kb docs <list|view> [options]',
-    '  kb init [--base <name>] [--detach | --resume] [--stop-after <cycle>]',
-    '  kb config <get|set|unset> [options]',
-    '  kb publish [options]',
-    '  kb <intent-command> [options]',
     '',
-    printIntentHelp(),
+    'Commands:',
+    '  docs      Browse KB documents (`kb docs --help`)',
+    '  use       Switch or inspect the active/default base (`kb use --help`)',
+    '  config    Manage persistent config (`kb config --help`)',
+    '  init      Build a KB from project docs (`kb init --help`)',
+    '  graph     Inspect the knowledge graph (`kb graph --help`)',
+    '  publish   Publish KB docs (`kb publish --help`)',
+    '  chat      Start an interactive KB chat session (`kb chat --help`)',
+    '  invalidate  Remove or replace stale KB facts',
     '',
-    printConfigHelp(),
+    'Intent commands:',
+    '  submit, validate, dispute, query, explain',
+    '  Run `kb query --help` or `kb submit --help` for intent usage.',
+    '',
+    'Examples:',
+    '  kb use dogfood',
+    '  kb use --default dogfood',
+    '  kb docs --help',
+    '  kb query "document store plan" --limit 5 --output json',
+    '  kb docs list --base dogfood --limit 20',
+    '  kb docs view kb-base-selection-and-usage',
+  ].join('\n')
+}
+
+function printUseHelp(): string {
+  return [
+    'kb use commands',
+    '',
+    'Usage:',
+    '  kb use <base>',
+    '  kb use --default <base>',
+    '  kb use --show',
+    '',
+    'Examples:',
+    '  kb use dogfood',
+    '  kb use --default dogfood',
+    '  kb use --show',
+  ].join('\n')
+}
+
+function printDocsHelp(): string {
+  return [
+    'kb docs commands',
+    '',
+    'Usage:',
+    '  kb docs list [options]',
+    '  kb docs view <document-id> [options]',
     '',
     printListHelp(),
     '',
     printViewHelp(),
-    '',
-    'Examples:',
-    '  kb "What tools are available?"',
-    '  kb query "document store plan" --limit 5 --output json',
-    '  kb use dogfood',
-    '  kb use --show',
-    '  kb default dogfood',
-    '  kb default --show',
-    '  kb config get',
-    '  kb config get selectedBase',
-    '  kb config set selectedBase dogfood',
-    '  kb invalidate "We deploy to GCP" "We deploy to AWS" --apply',
-    '  kb docs list --base dogfood --limit 20',
-    '  kb docs view kb-base-selection-and-usage',
-    '  kb docs view --title "KB Base Selection and Usage"',
-    '  kb chat',
-    '  kb publish --base dogfood --dry-run',
-    '  kb publish --base dogfood --apply --stop-after pass2',
-    '  kb publish --base dogfood --apply --resume-from .tmp/notion-publish/dogfood-latest.checkpoint.json',
-    '  kb submit "Fact text" --target session-log-2026-04-12',
-    '',
-    'Flags:',
-    '  -h, --help    Show this help message',
   ].join('\n')
 }
 
@@ -120,6 +146,21 @@ async function main() {
       console.error(`❌ ${result.error}`)
       process.exit(1)
     }
+
+    // Soft-delete graph edges for affected documents when actually applying changes
+    if (!preview && !dryRun && result.changes.length > 0) {
+      try {
+        const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(kbStorageDir))
+        await graphWriter.open()
+        for (const change of result.changes) {
+          await graphWriter.softDeleteByDocId(change.documentId)
+        }
+        graphWriter.close()
+      } catch {
+        // Graph soft-delete failure must not surface to the user
+      }
+    }
+
     return
   }
 
@@ -129,26 +170,53 @@ async function main() {
   }
 
   if (firstArg === 'use') {
-    const base = args[1]
-    if (base === '--show' || !base) {
+    const show = args.includes('--show')
+    const makeDefault = args.includes('--default')
+    const help = args.includes('--help') || args.includes('-h') || args[1] === 'help'
+    const base = args.find((token, index) =>
+      index > 0 && !token.startsWith('--'),
+    )
+
+    if (help) {
+      console.log(printUseHelp())
+      return
+    }
+
+    if (show || !base) {
       const configured = await readBaseConfig()
-      const envBase = process.env.KB_BASE?.trim()
+      let effective: Awaited<ReturnType<typeof resolveEffectiveBaseDir>> | null = null
+      try {
+        effective = await resolveEffectiveBaseDir()
+      } catch {
+        // No active base configured yet.
+      }
       console.log('KB base configuration')
-      if (envBase) {
-        console.log(`Active (KB_BASE): ${envBase}`)
+      if (effective) {
+        console.log(`Source: ${effective.source}`)
+        console.log(`Base: ${effective.baseName}`)
+        console.log(`Resolved path: ${effective.baseDir}`)
+      } else {
+        console.log('No active base configured.')
+      }
+      if (configured.activeBase) {
+        console.log(`Session base: ${configured.activeBase}`)
       }
       if (configured.selectedBase) {
-        console.log(`Default (config): ${configured.selectedBase}`)
-      }
-      if (!envBase && !configured.selectedBase) {
-        console.log('No base configured.')
-        console.log('  Set a default:          kb default <base>')
-        console.log('  Set for this session:   export KB_BASE=<base>')
+        console.log(`Default base: ${configured.selectedBase}`)
       }
       return
     }
 
-    console.log(formatUseCommandHelp(base))
+    if (makeDefault) {
+      const saved = await writeDefaultBase(base)
+      const resolved = await ensureOperationalBaseDir(saved.selectedBase ?? base)
+      console.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved))
+      return
+    }
+
+    await writeSessionBase(base)
+    const resolved = await ensureOperationalBaseDir(base)
+    console.log(formatUseCommandHelp(base, resolved))
     return
   }
 
@@ -158,13 +226,16 @@ async function main() {
       const configured = await readBaseConfig()
       if (!configured.selectedBase) {
         console.log('No default base configured.')
-        console.log('  Set one with: kb default <base>')
+        console.log('  Set one with: kb use --default <base>')
         return
       }
       const resolved = await ensureOperationalBaseDir(configured.selectedBase)
       console.log(`Default base: ${configured.selectedBase}`)
       console.log(`Resolved path: ${resolved}`)
-      console.log('To override for this session only: export KB_BASE=<base>')
+      if (configured.activeBase) {
+        console.log(`Current session base: ${configured.activeBase}`)
+      }
+      console.log('Use `kb use <base>` to switch the active base without changing the saved default.')
       return
     }
 
@@ -175,6 +246,11 @@ async function main() {
   }
 
   if (firstArg === 'chat') {
+    if (args.includes('--help') || args.includes('-h') || args[1] === 'help') {
+      console.log(printChatHelp())
+      return
+    }
+
     const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
     const llmProvider = createLLMProviderFromConfig(kbConfig)
 
@@ -184,9 +260,12 @@ async function main() {
     }
 
     const toolExecutor = createKBToolsRegistry(kbStorageDir, kbConfig)
+    const chatGraphWriter = resolveGraphEnabled(kbConfig)
+      ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(kbStorageDir))
+      : undefined
     console.log(`🗂️ KB Storage: ${kbStorageDir}`)
     console.log('')
-    await runChatSession({ llmProvider, toolExecutor })
+    await runChatSession({ llmProvider, toolExecutor, graphWriter: chatGraphWriter })
     return
   }
 
@@ -197,6 +276,10 @@ async function main() {
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
+      if (message.startsWith('kb config commands')) {
+        console.log(message)
+        return
+      }
       console.error(`❌ ${message}`)
       process.exit(1)
     }
@@ -219,17 +302,7 @@ async function main() {
     const docsAction = args[1]
 
     if (!docsAction || docsAction === '--help' || docsAction === '-h' || docsAction === 'help') {
-      console.log([
-        'kb docs commands',
-        '',
-        'Usage:',
-        '  kb docs list [options]',
-        '  kb docs view <document-id> [options]',
-        '',
-        printListHelp(),
-        '',
-        printViewHelp(),
-      ].join('\n'))
+      console.log(printDocsHelp())
       return
     }
 
@@ -302,17 +375,74 @@ async function main() {
     }
   }
 
-  const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
+  if (firstArg === 'graph') {
+    try {
+      const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
+      const opts = parseGraphCommand(args.slice(1))
+      await runGraphCommand(kbStorageDir, opts)
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (error instanceof GraphCommandError && error.exitCode === 0) {
+        console.log(message)
+        return
+      }
+      console.error(`❌ ${message}`)
+      if (!(error instanceof GraphCommandError)) {
+        console.error('')
+        console.error(printGraphHelp())
+      }
+      process.exit(1)
+    }
+  }
 
   if (isIntentCommand(firstArg)) {
     try {
+      const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
       const parsed = parseIntentCommand(args)
       const intentBaseDir = parsed.base
         ? await ensureOperationalBaseDir(parsed.base)
         : kbStorageDir
+      if (parsed.envelope.intent === 'query_truth' && resolveGraphEnabled(kbConfig)) {
+        const payload = parsed.envelope.payload as { query?: string }
+        const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
+        if (originalQuery) {
+          const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(intentBaseDir))
+          try {
+            payload.query = await expandQueryWithGraph(originalQuery, graphWriter)
+          } finally {
+            graphWriter.close()
+          }
+        }
+      }
       const toolExecutor = createKBToolsRegistry(intentBaseDir, kbConfig)
       const llmProvider = createLLMProviderFromConfig(kbConfig)
       const { result } = await runIntentLoop(parsed.envelope, toolExecutor, { provider: llmProvider })
+
+      // Synchronous graph extraction for submit_fact
+      if (
+        parsed.envelope.intent === 'submit_fact' &&
+        result.status === 'accepted' &&
+        llmProvider &&
+        resolveGraphEnabled(kbConfig)
+      ) {
+        const fact = String(parsed.envelope.payload.fact ?? '').trim()
+        if (fact) {
+          try {
+            const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(intentBaseDir))
+            const { entities, relationships } = await extractGraph(fact, llmProvider)
+            if (entities.length > 0 || relationships.length > 0) {
+              await graphWriter.open()
+              if (entities.length > 0) await graphWriter.upsertEntities(entities)
+              if (relationships.length > 0) await graphWriter.upsertRelationships(relationships)
+              graphWriter.close()
+            }
+          } catch {
+            // Graph extraction failure must not surface to the user
+          }
+        }
+      }
+
       const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, llmProvider)
       console.log(formatIntentResult(enriched, parsed.output))
       return

@@ -8,6 +8,9 @@ export interface KbConfig {
   selectedBase?: string
   defaultBase?: string
   sessionBase?: string
+  graph?: {
+    enabled?: boolean
+  }
   notion?: {
     token?: string
     parentPageId?: string
@@ -51,8 +54,8 @@ export const KB_CONFIG_DIR = getKbConfigDir()
 export const KB_CONFIG_FILE = getKbConfigFile()
 
 const SUPPORTED_CONFIG_PATHS = [
-  'selectedBase',
-  'defaultBase',
+  'graph',
+  'graph.enabled',
   'notion',
   'notion.token',
   'notion.parentPageId',
@@ -64,17 +67,6 @@ const SUPPORTED_CONFIG_PATHS = [
   'llm.ollamaEndpoint',
   'llm.ollamaEmbedModel',
   'llm.openaiModel',
-  'features',
-  'features.sqliteIndex',
-  'features.hybridQuery',
-  'features.hybridQueryCandidates',
-  'features.hybridQueryAlpha',
-  'features.hybridQueryMaxMs',
-  'features.checkpointObservability',
-  'features.missLearning',
-  'features.missHints',
-  'features.laneRouting',
-  'features.intentLlmAnswer',
   'updatedAt',
 ] as const
 
@@ -138,8 +130,8 @@ export function getConfigValue(config: KbConfig, keyPath?: string): unknown {
   const normalized = normalizeKbConfig(config)
 
   switch (keyPath) {
-    case 'selectedBase': return requireConfigValue(normalized.selectedBase, keyPath)
-    case 'defaultBase': return requireConfigValue(normalized.selectedBase, keyPath)
+    case 'graph': return requireConfigValue(normalized.graph, keyPath)
+    case 'graph.enabled': return requireConfigValue(normalized.graph?.enabled, keyPath)
     case 'notion': return requireConfigValue(normalized.notion, keyPath)
     case 'notion.token': return requireConfigValue(normalized.notion?.token, keyPath)
     case 'notion.parentPageId': return requireConfigValue(normalized.notion?.parentPageId, keyPath)
@@ -151,17 +143,6 @@ export function getConfigValue(config: KbConfig, keyPath?: string): unknown {
     case 'llm.ollamaEndpoint': return requireConfigValue(normalized.llm?.ollamaEndpoint, keyPath)
     case 'llm.ollamaEmbedModel': return requireConfigValue(normalized.llm?.ollamaEmbedModel, keyPath)
     case 'llm.openaiModel': return requireConfigValue(normalized.llm?.openaiModel, keyPath)
-    case 'features': return requireConfigValue(normalized.features, keyPath)
-    case 'features.sqliteIndex': return requireConfigValue(normalized.features?.sqliteIndex, keyPath)
-    case 'features.hybridQuery': return requireConfigValue(normalized.features?.hybridQuery, keyPath)
-    case 'features.hybridQueryCandidates': return requireConfigValue(normalized.features?.hybridQueryCandidates, keyPath)
-    case 'features.hybridQueryAlpha': return requireConfigValue(normalized.features?.hybridQueryAlpha, keyPath)
-    case 'features.hybridQueryMaxMs': return requireConfigValue(normalized.features?.hybridQueryMaxMs, keyPath)
-    case 'features.checkpointObservability': return requireConfigValue(normalized.features?.checkpointObservability, keyPath)
-    case 'features.missLearning': return requireConfigValue(normalized.features?.missLearning, keyPath)
-    case 'features.missHints': return requireConfigValue(normalized.features?.missHints, keyPath)
-    case 'features.laneRouting': return requireConfigValue(normalized.features?.laneRouting, keyPath)
-    case 'features.intentLlmAnswer': return requireConfigValue(normalized.features?.intentLlmAnswer, keyPath)
     case 'updatedAt': return requireConfigValue(normalized.updatedAt, keyPath)
     default: throw new UnknownConfigKeyError(keyPath)
   }
@@ -173,11 +154,10 @@ export function setConfigValue(config: KbConfig, keyPath: string, value: string)
 
   const next = normalizeKbConfig(config)
   switch (keyPath) {
-    case 'selectedBase':
-      next.selectedBase = value
-      break
-    case 'defaultBase':
-      next.selectedBase = value
+    case 'graph':
+      throw new Error('INVALID_CONFIG_WRITE: graph requires a nested key such as graph.enabled')
+    case 'graph.enabled':
+      next.graph = { ...next.graph, enabled: parseBooleanConfigValue(keyPath, value) }
       break
     case 'notion':
       throw new Error('INVALID_CONFIG_WRITE: notion requires a nested key such as notion.token')
@@ -213,38 +193,6 @@ export function setConfigValue(config: KbConfig, keyPath: string, value: string)
     case 'llm.openaiModel':
       next.llm = { ...next.llm, openaiModel: value }
       break
-    case 'features':
-      throw new Error('INVALID_CONFIG_WRITE: features requires a nested key such as features.hybridQuery')
-    case 'features.sqliteIndex':
-      next.features = { ...next.features, sqliteIndex: value === 'true' }
-      break
-    case 'features.hybridQuery':
-      next.features = { ...next.features, hybridQuery: value === 'true' }
-      break
-    case 'features.hybridQueryCandidates':
-      next.features = { ...next.features, hybridQueryCandidates: Number(value) }
-      break
-    case 'features.hybridQueryAlpha':
-      next.features = { ...next.features, hybridQueryAlpha: Number(value) }
-      break
-    case 'features.hybridQueryMaxMs':
-      next.features = { ...next.features, hybridQueryMaxMs: Number(value) }
-      break
-    case 'features.checkpointObservability':
-      next.features = { ...next.features, checkpointObservability: value === 'true' }
-      break
-    case 'features.missLearning':
-      next.features = { ...next.features, missLearning: value === 'true' }
-      break
-    case 'features.missHints':
-      next.features = { ...next.features, missHints: value === 'true' }
-      break
-    case 'features.laneRouting':
-      next.features = { ...next.features, laneRouting: value === 'true' }
-      break
-    case 'features.intentLlmAnswer':
-      next.features = { ...next.features, intentLlmAnswer: value === 'true' }
-      break
     default:
       throw new UnknownConfigKeyError(keyPath)
   }
@@ -258,8 +206,8 @@ export function unsetConfigValue(config: KbConfig, keyPath: string): KbConfig {
 
   const next = normalizeKbConfig(config)
   switch (keyPath) {
-    case 'selectedBase': delete next.selectedBase; break
-    case 'defaultBase': delete next.selectedBase; break
+    case 'graph': delete next.graph; break
+    case 'graph.enabled': if (next.graph) delete next.graph.enabled; break
     case 'notion': delete next.notion; break
     case 'notion.token': if (next.notion) delete next.notion.token; break
     case 'notion.parentPageId': if (next.notion) delete next.notion.parentPageId; break
@@ -271,17 +219,6 @@ export function unsetConfigValue(config: KbConfig, keyPath: string): KbConfig {
     case 'llm.ollamaEndpoint': if (next.llm) delete next.llm.ollamaEndpoint; break
     case 'llm.ollamaEmbedModel': if (next.llm) delete next.llm.ollamaEmbedModel; break
     case 'llm.openaiModel': if (next.llm) delete next.llm.openaiModel; break
-    case 'features': delete next.features; break
-    case 'features.sqliteIndex': if (next.features) delete next.features.sqliteIndex; break
-    case 'features.hybridQuery': if (next.features) delete next.features.hybridQuery; break
-    case 'features.hybridQueryCandidates': if (next.features) delete next.features.hybridQueryCandidates; break
-    case 'features.hybridQueryAlpha': if (next.features) delete next.features.hybridQueryAlpha; break
-    case 'features.hybridQueryMaxMs': if (next.features) delete next.features.hybridQueryMaxMs; break
-    case 'features.checkpointObservability': if (next.features) delete next.features.checkpointObservability; break
-    case 'features.missLearning': if (next.features) delete next.features.missLearning; break
-    case 'features.missHints': if (next.features) delete next.features.missHints; break
-    case 'features.laneRouting': if (next.features) delete next.features.laneRouting; break
-    case 'features.intentLlmAnswer': if (next.features) delete next.features.intentLlmAnswer; break
     default: throw new UnknownConfigKeyError(keyPath)
   }
 
@@ -360,6 +297,18 @@ export interface ResolvedFeatureFlags {
   laneRouting: boolean
 }
 
+export function resolveGraphEnabled(config: KbConfig): boolean {
+  if (process.env.KB_GRAPH !== undefined) {
+    return parseBooleanEnv(process.env.KB_GRAPH, true)
+  }
+
+  if (config.graph?.enabled !== undefined) {
+    return config.graph.enabled
+  }
+
+  return true
+}
+
 /**
  * Resolve feature flags from config, falling back to env vars for any unset flags.
  * Config values always win over env vars.
@@ -387,6 +336,8 @@ export function resolveFeatureFlags(config: KbConfig): ResolvedFeatureFlags {
  * Config values only override env vars that are not already set.
  */
 export function applyConfigToEnv(config: KbConfig): void {
+  if (config.graph?.enabled !== undefined && !process.env.KB_GRAPH) process.env.KB_GRAPH = String(config.graph.enabled)
+
   const llm = config.llm
   if (llm?.anthropicApiKey && !process.env.ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = llm.anthropicApiKey
   if (llm?.openaiApiKey && !process.env.OPENAI_API_KEY) process.env.OPENAI_API_KEY = llm.openaiApiKey
@@ -433,6 +384,10 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
 
   if (selectedBase) {
     normalized.selectedBase = selectedBase
+  }
+
+  if (input.graph && typeof input.graph === 'object' && input.graph.enabled !== undefined) {
+    normalized.graph = { enabled: Boolean(input.graph.enabled) }
   }
 
   const notion = {
@@ -503,4 +458,19 @@ function parseEnvFloat(value: string | undefined, fallback: number): number {
   if (!value) return fallback
   const n = parseFloat(value)
   return Number.isNaN(n) ? fallback : n
+}
+
+function parseBooleanConfigValue(keyPath: string, value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false
+  throw new Error(`${keyPath} must be true or false`)
+}
+
+function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) return fallback
+  const normalized = value.trim().toLowerCase()
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false
+  return fallback
 }

@@ -21,7 +21,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import type { LLMProvider } from '../core/types'
-import { readKbConfig, createLLMProviderFromConfig } from './kb-config'
+import { readKbConfig, createLLMProviderFromConfig, resolveGraphEnabled } from './kb-config'
 import { ensureOperationalBaseDir, getKbHomeDir, resolveEffectiveBaseDir } from './base-selection'
 import {
   assessTopicCoverage,
@@ -34,8 +34,11 @@ import {
 } from './init-topic-coverage'
 import type { WriteDocumentInput } from '../tools/document-writer'
 import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
+import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
+import { DuckGraphWriter } from '../tools/duck-graph-writer'
+import { extractGraphBatch } from '../tools/graph-entity-extractor'
 
-export type InitCycle = 'read-inputs' | 'pass1' | 'pass2' | 'pass-enrich' | 'pass-consolidate' | 'pass3' | 'write'
+export type InitCycle = 'read-inputs' | 'pass1' | 'pass2' | 'pass-enrich' | 'pass-consolidate' | 'pass3' | 'write' | 'pass-graph'
 export type InitTopic =
   | 'project-overview'
   | 'install-setup'
@@ -215,7 +218,7 @@ export function parseInitCommand(args: string[]): InitOptions {
   }
 
   const stopAfter = readOption(args, '--stop-after') as InitCycle | undefined
-  const validCycles: InitCycle[] = ['read-inputs', 'pass1', 'pass2', 'pass-enrich', 'pass-consolidate', 'pass3', 'write']
+  const validCycles: InitCycle[] = ['read-inputs', 'pass1', 'pass2', 'pass-enrich', 'pass-consolidate', 'pass3', 'write', 'pass-graph']
   if (stopAfter && !validCycles.includes(stopAfter)) {
     throw new Error(`Invalid --stop-after. Use: ${validCycles.join('|')}`)
   }
@@ -246,8 +249,10 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = await readCheckpoint(checkpointFile)
 
-  const progress = new InitProgressReporter(7)
+  const progress = new InitProgressReporter(8)
   const provider = options.provider ?? await resolveProvider()
+  const kbConfig = await readKbConfig()
+  const graphEnabled = resolveGraphEnabled(kbConfig)
 
   let checkpoint: InitCheckpoint = resumedCheckpoint ?? {
     version: 2,
@@ -470,27 +475,55 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
       progress.finish('pass3', 'reused from checkpoint')
     }
 
+    let writtenDocIds: string[] | undefined
     if (!checkpoint.completedCycles.includes('write')) {
       progress.start('write', baseDir)
-      const writtenDocIds = await writeDocs(candidateDocs, baseDir, base)
+      writtenDocIds = await writeDocs(candidateDocs, baseDir, base)
       const finalCoverageSummary = checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
       await persist({
         completedCycles: ['write'],
         finalCoverageSummary,
       })
       progress.finish('write', `${writtenDocIds.length} docs written`)
-      return {
-        status: 'accepted',
-        base,
-        completedCycles: checkpoint.completedCycles,
-        writtenDocIds,
-        checkpointFile,
-        resumedFrom: resumedCheckpoint ? checkpointFile : undefined,
-        coverageSummary: finalCoverageSummary,
-      }
+      if (options.stopAfter === 'write') throw new InitPausedError('write')
+    } else {
+      progress.finish('write', 'reused from checkpoint')
     }
 
-    progress.finish('write', 'reused from checkpoint')
+    if (!checkpoint.completedCycles.includes('pass-graph')) {
+      progress.start('pass-graph', 'extracting knowledge graph…')
+      if (!graphEnabled) {
+        progress.finish('pass-graph', 'skipped (graph disabled)')
+        await persist({ completedCycles: ['pass-graph'] })
+      } else if (provider) {
+        try {
+          await runGraphExtractionPass(provider, baseDir)
+          await persist({ completedCycles: ['pass-graph'] })
+          progress.finish('pass-graph', 'graph written to .kb-graph.duckdb')
+        } catch {
+          // Graph extraction failure must not abort a successful init
+          progress.finish('pass-graph', 'skipped (error)')
+          await persist({ completedCycles: ['pass-graph'] })
+        }
+      } else {
+        progress.finish('pass-graph', 'skipped (no provider)')
+        await persist({ completedCycles: ['pass-graph'] })
+      }
+      if (options.stopAfter === 'pass-graph') throw new InitPausedError('pass-graph')
+    } else {
+      progress.finish('pass-graph', 'reused from checkpoint')
+    }
+
+    const finalCoverageSummary = checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
+    return {
+      status: 'accepted',
+      base,
+      completedCycles: checkpoint.completedCycles,
+      writtenDocIds,
+      checkpointFile,
+      resumedFrom: resumedCheckpoint ? checkpointFile : undefined,
+      coverageSummary: finalCoverageSummary,
+    }
   } catch (error) {
     if (error instanceof InitPausedError) {
       paused = true
@@ -946,6 +979,33 @@ Return ONLY the JSON array, no prose.`,
   return parseDocArray(response.text) ?? docs
 }
 
+async function runGraphExtractionPass(provider: LLMProvider, baseDir: string): Promise<void> {
+  const dbPath = path.join(baseDir, '.kb-index.sqlite')
+  const indexer = new SqliteKbIndexer({ dbPath })
+  let docs: Array<{ id: string; text: string }>
+  try {
+    docs = indexer.getAllDocumentsForLexical().map(row => ({
+      id: row.id,
+      text: `${row.title}\n\n${row.content}`,
+    }))
+  } finally {
+    indexer.close()
+  }
+
+  if (docs.length === 0) return
+
+  const graphPath = DuckGraphWriter.dbPathForBase(baseDir)
+  const writer = new DuckGraphWriter(graphPath)
+  try {
+    await writer.open()
+    const { entities, relationships } = await extractGraphBatch(docs, provider)
+    if (entities.length > 0) await writer.upsertEntities(entities)
+    if (relationships.length > 0) await writer.upsertRelationships(relationships)
+  } finally {
+    writer.close()
+  }
+}
+
 async function writeDocs(
   docs: CandidateDoc[],
   baseDir: string,
@@ -1156,7 +1216,7 @@ async function resolveInitBaseName(
     if (suggestedBase) {
       return suggestedBase
     }
-    throw new Error('No KB base configured. Use `kb init --base <name>` or set one with `kb use <base>` / `kb default <base>`.')
+    throw new Error('No KB base configured. Use `kb init --base <name>` or set one with `kb use <base>` / `kb use --default <base>`.')
   }
 
   questionIO.write?.('\n[kb init] Choose a knowledge base name for this run.\n\n')

@@ -217,6 +217,44 @@ describe('init-cli interview checkpoints', () => {
     }
   })
 
+  it('Given graph.enabled false, then init skips graph extraction and does not write a graph db', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nThis project has a CLI.\n',
+    })
+    await writeFile(path.join(kbHomeDir, 'config.json'), JSON.stringify({
+      graph: { enabled: false },
+    }, null, 2))
+
+    const provider = createProvider([
+      JSON.stringify([
+        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Summary.\n\nDetails.' },
+      ]),
+      JSON.stringify([
+        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Summary.\n\nDetails.' },
+      ]),
+      JSON.stringify({ title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Summary.\n\nDetails.' }),
+      JSON.stringify([
+        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Summary.\n\nDetails.' },
+      ]),
+      JSON.stringify([
+        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Summary.\n\nDetails.' },
+      ]),
+    ])
+
+    const result = await runKbInit({
+      base: 'graph-disabled-test',
+      nonInteractive: true,
+      cwd,
+      provider,
+    })
+
+    expect(result.status).toBe('accepted')
+    expect(result.completedCycles).toContain('pass-graph')
+    await expect(
+      readFile(path.join(kbHomeDir, 'sessions', 'graph-disabled-test', '.kb-graph.duckdb'), 'utf8'),
+    ).rejects.toThrow()
+  })
+
   it('Given interactive read-inputs pause, then persists version 2 checkpoint with interview rounds', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',

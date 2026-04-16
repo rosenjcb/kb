@@ -3,10 +3,13 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider } from '../core/types'
+import type { DuckGraphWriter } from '../tools/duck-graph-writer'
+import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 
 export interface ChatSessionDeps {
   llmProvider: LLMProvider
   toolExecutor: ToolExecutor
+  graphWriter?: DuckGraphWriter
   retrievalLimit?: number
   maxHistoryTurns?: number
   workspaceDir?: string
@@ -56,6 +59,22 @@ const HELP_TEXT = [
   'assistant>   /exit  Exit chat mode',
 ].join('\n')
 
+export function printChatHelp(): string {
+  return [
+    'kb chat',
+    '',
+    'Usage:',
+    '  kb chat',
+    '',
+    'Interactive commands:',
+    '  /help  Show chat commands',
+    '  /exit  Exit chat mode',
+    '',
+    'Examples:',
+    '  kb chat',
+  ].join('\n')
+}
+
 export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createTerminalChatIO()): Promise<void> {
   const retrievalLimit = deps.retrievalLimit ?? 5
   const maxHistoryTurns = deps.maxHistoryTurns ?? 4
@@ -86,11 +105,14 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
 
       try {
         const highRecall = requiresHighRecallQuestion(input)
+        const expandedQuery = deps.graphWriter
+          ? await expandQueryWithGraph(input, deps.graphWriter)
+          : input
         const readResult = await deps.toolExecutor.execute({
           id: `chat-read-${Date.now()}`,
           name: 'read_documents',
           input: {
-            query: input,
+            query: expandedQuery,
             mode: 'content',
             discoveryDepth: highRecall ? 'deep' : 'shallow',
             includeContent: true,
