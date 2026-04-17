@@ -8,6 +8,7 @@ import { createKBToolsRegistry } from '../tools/kb-tools-registry'
 import { readKbConfig, applyConfigToEnv, createLLMProviderFromConfig, resolveGraphEnabled } from './kb-config'
 import type { KbConfig } from './kb-config'
 import { runIntentLoop } from '../core/intent-loop'
+import { RunCollector, ReportWriter, defaultLogsDir, TokenCountingProvider, estimateCost } from '../core/telemetry'
 import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import {
   enrichReadDocumentsAnswerWithLLM,
@@ -33,6 +34,7 @@ import { extractGraph } from '../tools/graph-entity-extractor'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
 import { printChatHelp, runChatSession } from './chat-cli'
+import { printLogsHelp, runLogsCommand } from './logs-cli'
 import {
   printListHelp,
   printViewHelp,
@@ -77,6 +79,7 @@ export function printCliHelp(): string {
     '  config      Inspect or update persistent config',
     '  init        Build a KB from project docs',
     '  graph       Inspect the knowledge graph',
+  '  logs        Browse and compare run reports',
     '  publish     Publish KB docs',
     '  chat        Start an interactive KB chat session',
     '  invalidate  Remove or replace stale KB facts',
@@ -148,37 +151,50 @@ export async function runMainWithOutput(
     const replacementFact = args[2] && !args[2].startsWith('--') ? args[2] : undefined
     const preview = args.includes('--preview') || !args.includes('--apply')
     const dryRun = args.includes('--dry-run')
+    const debug = args.includes('--debug')
 
     if (!oldFact) {
-      out.error('❌ Usage: kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run]')
+      out.error('❌ Usage: kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run] [--debug]')
       return
     }
 
-    const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
-    const result = await invalidateFactTool(
-      { oldFact, replacementFact, preview, dryRun, includeSessionLogs: true },
-      kbStorageDir,
-    )
+    const reporter = new ReportWriter(defaultLogsDir())
+    const collector = new RunCollector('invalidate', { debug })
+    const endInvalidate = collector.startStage('invalidate', 'none', 'none')
+    try {
+      const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
+      const result = await invalidateFactTool(
+        { oldFact, replacementFact, preview, dryRun, includeSessionLogs: true },
+        kbStorageDir,
+      )
+      endInvalidate({ inputTokens: 0, outputTokens: 0 })
 
-    for (const change of result.changes) {
-      out.log(`\nDocument: ${change.documentId} (${change.title})\nReplaced: ${change.replaced}\nDiff:\n${change.diff}`)
-    }
-    out.log(`\n${result.summary}`)
-    if (result.error) {
-      out.error(`❌ ${result.error}`)
-    }
-
-    if (!preview && !dryRun && result.changes.length > 0) {
-      try {
-        const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(kbStorageDir))
-        await graphWriter.open()
-        for (const change of result.changes) {
-          await graphWriter.softDeleteByDocId(change.documentId)
-        }
-        graphWriter.close()
-      } catch {
-        // Graph soft-delete failure must not surface to the user
+      for (const change of result.changes) {
+        out.log(`\nDocument: ${change.documentId} (${change.title})\nReplaced: ${change.replaced}\nDiff:\n${change.diff}`)
       }
+      out.log(`\n${result.summary}`)
+      if (result.error) {
+        out.error(`❌ ${result.error}`)
+      }
+
+      if (!preview && !dryRun && result.changes.length > 0) {
+        try {
+          const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(kbStorageDir))
+          await graphWriter.open()
+          for (const change of result.changes) {
+            await graphWriter.softDeleteByDocId(change.documentId)
+          }
+          graphWriter.close()
+        } catch {
+          // Graph soft-delete failure must not surface to the user
+        }
+      }
+      await reporter.append(collector.finish('success'))
+    } catch (error) {
+      endInvalidate({ inputTokens: 0, outputTokens: 0 })
+      const message = error instanceof Error ? error.message : String(error)
+      await reporter.append(collector.finish('error', message))
+      out.error(`❌ ${message}`)
     }
     return
   }
@@ -383,14 +399,35 @@ export async function runMainWithOutput(
   }
 
   if (firstArg === 'init') {
+    const reporter = new ReportWriter(defaultLogsDir())
+    const collector = new RunCollector('init')
     try {
       const parsed = parseInitCommand(args.slice(1))
-      const result = await runKbInit(parsed)
+      const initCollector = new RunCollector('init', { debug: parsed.debug })
+      const result = await runKbInit({ ...parsed, collector: initCollector })
       out.log(JSON.stringify(result, null, 2))
+      await reporter.append(initCollector.finish('success'))
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
+      await reporter.append(collector.finish('error', message))
       out.error(`❌ ${message}`)
+    }
+    return
+  }
+
+  if (firstArg === 'logs') {
+    try {
+      out.log(await runLogsCommand(args.slice(1)))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.startsWith('kb logs')) {
+        out.log(message)
+        return
+      }
+      out.error(`❌ ${message}`)
+      out.error('')
+      out.log(printLogsHelp())
     }
     return
   }
@@ -417,9 +454,12 @@ export async function runMainWithOutput(
   }
 
   if (isIntentCommand(firstArg)) {
+    const reporter = new ReportWriter(defaultLogsDir())
+    let collector = new RunCollector(firstArg)
     try {
       const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
       const parsed = parseIntentCommand(args)
+      collector = new RunCollector(firstArg, { debug: parsed.debug })
       const intentBaseDir = parsed.base
         ? await ensureOperationalBaseDir(parsed.base)
         : kbStorageDir
@@ -436,8 +476,13 @@ export async function runMainWithOutput(
         }
       }
       const toolExecutor = createKBToolsRegistry(intentBaseDir, config)
-      const llmProvider = createLLMProviderFromConfig(config)
-      const { result } = await runIntentLoop(parsed.envelope, toolExecutor, { provider: llmProvider })
+      const rawLlmProvider = createLLMProviderFromConfig(config)
+      const llmCounter = rawLlmProvider ? new TokenCountingProvider(rawLlmProvider) : undefined
+      const llmProvider = llmCounter ?? rawLlmProvider
+      const { result } = await runIntentLoop(parsed.envelope, toolExecutor, {
+        provider: llmProvider ?? undefined,
+        collector: collector,
+      })
 
       if (
         parsed.envelope.intent === 'submit_fact' &&
@@ -463,11 +508,48 @@ export async function runMainWithOutput(
         }
       }
 
-      const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, llmProvider)
+      // Flush any tokens accumulated during the intent loop (e.g. LLM validation reasoning)
+      if (llmCounter) {
+        const loopTokens = llmCounter.getAndReset()
+        if (loopTokens.inputTokens > 0 || loopTokens.outputTokens > 0) {
+          collector.addStage({
+            stage: `${parsed.envelope.intent}:llm`,
+            startedAt: new Date().toISOString(),
+            durationMs: 0,
+            inputTokens: loopTokens.inputTokens,
+            outputTokens: loopTokens.outputTokens,
+            estimatedCostUsd: llmProvider ? estimateCost(llmProvider.name, llmProvider.model, loopTokens.inputTokens, loopTokens.outputTokens) : 0,
+            provider: llmProvider?.name ?? 'unknown',
+            model: llmProvider?.model ?? 'unknown',
+          })
+        }
+      }
+
+      const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, llmProvider ?? undefined)
+
+      // Capture tokens from the answer-enrichment LLM call (query path)
+      if (llmCounter) {
+        const enrichTokens = llmCounter.getAndReset()
+        if (enrichTokens.inputTokens > 0 || enrichTokens.outputTokens > 0) {
+          collector.addStage({
+            stage: `${parsed.envelope.intent}:answer-enrichment`,
+            startedAt: new Date().toISOString(),
+            durationMs: 0,
+            inputTokens: enrichTokens.inputTokens,
+            outputTokens: enrichTokens.outputTokens,
+            estimatedCostUsd: llmProvider ? estimateCost(llmProvider.name, llmProvider.model, enrichTokens.inputTokens, enrichTokens.outputTokens) : 0,
+            provider: llmProvider?.name ?? 'unknown',
+            model: llmProvider?.model ?? 'unknown',
+          })
+        }
+      }
+
       out.log(formatIntentResult(enriched, parsed.output))
+      await reporter.append(collector.finish('success'))
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
+      await reporter.append(collector.finish('error', message))
       out.error(`❌ ${message}`)
       out.error('')
       out.error(printIntentHelp())

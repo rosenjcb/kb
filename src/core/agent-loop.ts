@@ -5,12 +5,14 @@
 
 import type { AgentEvent, Message, ToolDefinition, LLMProvider } from './types'
 import type { ToolExecutor } from './tool-registry'
+import type { RunCollector } from './telemetry'
 import dayjs from 'dayjs'
 
 export interface AgentLoopConfig {
   maxTurns?: number
   maxTokens?: number
   temperature?: number
+  collector?: RunCollector
 }
 
 /**
@@ -39,12 +41,15 @@ export async function* agentLoop(
     turnCount++
 
     // Call LLM
+    const turnStartMs = Date.now()
+    const turnStartedAt = dayjs().toISOString()
     const response = await provider.call({
       messages,
       tools,
       maxTokens: config.maxTokens,
       temperature: config.temperature,
     })
+    const turnDurationMs = Date.now() - turnStartMs
 
     // Yield text response
     if (response.text) {
@@ -58,6 +63,21 @@ export async function* agentLoop(
         inputTokens: response.usage.inputTokens,
         outputTokens: response.usage.outputTokens,
       },
+    }
+
+    // Record telemetry for this turn
+    if (config.collector) {
+      const { estimateCost } = await import('./telemetry')
+      config.collector.addStage({
+        stage: `agentLoop:turn${turnCount}`,
+        startedAt: turnStartedAt,
+        durationMs: turnDurationMs,
+        inputTokens: response.usage.inputTokens,
+        outputTokens: response.usage.outputTokens,
+        estimatedCostUsd: estimateCost(provider.name, provider.model, response.usage.inputTokens, response.usage.outputTokens),
+        provider: provider.name,
+        model: provider.model,
+      })
     }
 
     // Check for tool calls

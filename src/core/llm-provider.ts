@@ -45,11 +45,14 @@ function readApiErrorMessage(data: unknown, fallback: string): string {
 export class AnthropicProvider implements LLMProvider {
   readonly name = 'anthropic'
   readonly supportsStreaming = true
+  readonly model: string
 
   constructor(
     private apiKey: string,
-    private model: string = 'claude-3-5-sonnet-20241022'
-  ) {}
+    model: string = 'claude-3-5-sonnet-20241022'
+  ) {
+    this.model = model
+  }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
     const body = {
@@ -166,11 +169,14 @@ export class AnthropicProvider implements LLMProvider {
 export class OpenAIProvider implements LLMProvider {
   readonly name = 'openai'
   readonly supportsStreaming = true
+  readonly model: string
 
   constructor(
     private apiKey: string,
-    private model: string = 'gpt-4-turbo'
-  ) {}
+    model: string = 'gpt-4-turbo'
+  ) {
+    this.model = model
+  }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
     const body = {
@@ -296,11 +302,14 @@ export class OpenAIProvider implements LLMProvider {
 export class GeminiProvider implements LLMProvider {
   readonly name = 'gemini'
   readonly supportsStreaming = true
+  readonly model: string
 
   constructor(
     private apiKey: string,
-    private model: string = 'gemini-2.0-flash'
-  ) {}
+    model: string = 'gemini-2.0-flash'
+  ) {
+    this.model = model
+  }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
     const initialBudget = params.maxTokens ?? 4096
@@ -416,11 +425,14 @@ export class GeminiProvider implements LLMProvider {
 export class OllamaProvider implements LLMProvider {
   readonly name = 'ollama'
   readonly supportsStreaming = true
+  readonly model: string
 
   constructor(
     private endpoint: string = 'http://localhost:11434',
-    private model: string = 'mistral'
-  ) {}
+    model: string = 'mistral'
+  ) {
+    this.model = model
+  }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
     const response = await fetch(`${this.endpoint}/api/chat`, {
