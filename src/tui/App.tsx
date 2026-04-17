@@ -13,7 +13,9 @@ import { runCommandForTui, parseShellArgs, printCliHelp } from './runner.js'
 import { StatusBar } from './components/StatusBar.js'
 import { HistoryPane } from './components/HistoryPane.js'
 import { InputBar } from './components/InputBar.js'
+import { InitStatusPanel } from './components/InitStatusPanel.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
+import { parseInitOutput } from './init-status.js'
 import {
   applySelectedSuggestion,
   clampSuggestionIndex,
@@ -38,6 +40,7 @@ export function App({ config }: Props) {
   const [isRunning, setIsRunning] = useState(false)
   const [baseName, setBaseName] = useState('…')
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
+  const [initStatus, setInitStatus] = useState<{ message?: string; progressLine?: string }>({})
 
   const chatInputResolverRef = useRef<((v: string | null) => void) | null>(null)
   const initInputResolverRef = useRef<((v: string) => void) | null>(null)
@@ -122,11 +125,19 @@ export function App({ config }: Props) {
   }, [config, addEntry])
 
   const startInitSession = useCallback((extraArgs: string[]) => {
-    const progressEntryId = addEntry({ type: 'info', content: '[init] starting…' })
+    setInitStatus({
+      message: 'Initializing KB — press Enter to skip any question.',
+      progressLine: '[init] starting…',
+    })
+
     const questionIO: InitQuestionIO = {
       write(message: string) {
-        for (const line of message.split('\n')) {
-          if (line.trim()) addEntry({ type: 'info', content: line })
+        const parsed = parseInitOutput(message)
+        for (const line of parsed.historyLines) {
+          addEntry({ type: 'info', content: line })
+        }
+        if (parsed.progressLine) {
+          setInitStatus(current => ({ ...current, progressLine: parsed.progressLine }))
         }
       },
       async askQuestion(question: string): Promise<string> {
@@ -151,11 +162,12 @@ export function App({ config }: Props) {
       ...parsed,
       questionIO,
       progressSink(line) {
-        updateEntry(progressEntryId, { content: line.trimEnd() })
+        setInitStatus(current => ({ ...current, progressLine: line.trimEnd() }))
       },
     })
       .then(result => {
         const docCount = result.writtenDocIds?.length ?? 0
+        setInitStatus({})
         addEntry({
           type: 'result',
           content: `✅ Init complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
@@ -164,10 +176,11 @@ export function App({ config }: Props) {
       })
       .catch(err => {
         const message = err instanceof Error ? err.message : String(err)
+        setInitStatus({})
         addEntry({ type: 'error', content: `Init error: ${message}` })
         setMode('shell')
       })
-  }, [addEntry, updateEntry])
+  }, [addEntry])
 
   const handleSubmit = useCallback(
     async (value: string) => {
@@ -241,7 +254,6 @@ export function App({ config }: Props) {
 
       if (firstArg === 'init') {
         setMode('init')
-        addEntry({ type: 'info', content: 'Initializing KB — press Enter to skip any question.' })
         startInitSession(args.slice(1))
         return
       }
@@ -325,6 +337,7 @@ export function App({ config }: Props) {
         mode={mode}
         isRunning={isRunning}
       />
+      <InitStatusPanel status={initStatus} visible={mode === 'init'} />
       <SuggestionsBar
         suggestions={slashSuggestions}
         mode={mode}
