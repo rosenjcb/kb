@@ -11,6 +11,7 @@ export interface ParsedIntentCommand {
   envelope: ConsumerIntentEnvelope
   output: CliOutputMode
   base?: string
+  debug?: boolean
 }
 
 const INTENT_COMMANDS = new Set(['submit', 'validate', 'dispute', 'query', 'explain'])
@@ -34,91 +35,81 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
 
   const output = parseOutput(rest)
   const base = readOption(rest, '--base')
+  const debug = readFlag(rest, '--debug')
+
+  let envelope: ConsumerIntentEnvelope
 
   switch (command) {
     case 'submit':
-      return {
-        envelope: {
-          intent: 'submit_fact',
-          requestId: `req-${dayjs().valueOf()}`,
-          payload: {
-            fact: readPositional(rest, 0, 'submit requires a fact string'),
-            domain: readOption(rest, '--domain'),
-            source: readOption(rest, '--source'),
-            targetDocumentId: readOption(rest, '--target'),
-            includeSessionLogs: readFlag(rest, '--include-session-logs'),
-          },
+      envelope = {
+        intent: 'submit_fact',
+        requestId: `req-${dayjs().valueOf()}`,
+        payload: {
+          fact: readPositional(rest, 0, 'submit requires a fact string'),
+          domain: readOption(rest, '--domain'),
+          source: readOption(rest, '--source'),
+          targetDocumentId: readOption(rest, '--target'),
+          includeSessionLogs: readFlag(rest, '--include-session-logs'),
         },
-        output,
-        base,
       }
+      break
 
     case 'validate':
-      return {
-        envelope: {
-          intent: 'validate_fact',
-          requestId: `req-${dayjs().valueOf()}`,
-          payload: {
-            fact: readPositional(rest, 0, 'validate requires a fact string'),
-            domain: readOption(rest, '--domain'),
-          },
+      envelope = {
+        intent: 'validate_fact',
+        requestId: `req-${dayjs().valueOf()}`,
+        payload: {
+          fact: readPositional(rest, 0, 'validate requires a fact string'),
+          domain: readOption(rest, '--domain'),
         },
-        output,
-        base,
       }
+      break
 
     case 'dispute': {
       const because = readOption(rest, '--because')
       if (!because) {
         throw new Error('dispute requires --because "<counter evidence>"')
       }
-      return {
-        envelope: {
-          intent: 'dispute_fact',
-          requestId: `req-${dayjs().valueOf()}`,
-          payload: {
-            fact: readPositional(rest, 0, 'dispute requires a fact string'),
-            because,
-            domain: readOption(rest, '--domain'),
-          },
+      envelope = {
+        intent: 'dispute_fact',
+        requestId: `req-${dayjs().valueOf()}`,
+        payload: {
+          fact: readPositional(rest, 0, 'dispute requires a fact string'),
+          because,
+          domain: readOption(rest, '--domain'),
         },
-        output,
-        base,
       }
+      break
     }
 
     case 'query':
-      return {
-        envelope: {
-          intent: 'query_truth',
-          requestId: `req-${dayjs().valueOf()}`,
-          payload: {
-            query: readPositional(rest, 0, 'query requires a topic/query string'),
-            limit: parseLimit(readOption(rest, '--limit')),
-            type: readOption(rest, '--type'),
-            discoveryDepth: parseDiscoveryDepth(readOption(rest, '--discovery')),
-          },
+      envelope = {
+        intent: 'query_truth',
+        requestId: `req-${dayjs().valueOf()}`,
+        payload: {
+          query: readPositional(rest, 0, 'query requires a topic/query string'),
+          limit: parseLimit(readOption(rest, '--limit')),
+          type: readOption(rest, '--type'),
+          discoveryDepth: parseDiscoveryDepth(readOption(rest, '--discovery')),
         },
-        output,
-        base,
       }
+      break
 
     case 'explain':
-      return {
-        envelope: {
-          intent: 'explain_change',
-          requestId: `req-${dayjs().valueOf()}`,
-          payload: {
-            fact: readPositional(rest, 0, 'explain requires a change id or fact'),
-          },
+      envelope = {
+        intent: 'explain_change',
+        requestId: `req-${dayjs().valueOf()}`,
+        payload: {
+          fact: readPositional(rest, 0, 'explain requires a change id or fact'),
         },
-        output,
-        base,
       }
+      break
 
     default:
       throw new Error(`Unsupported intent command: ${command}`)
   }
+
+  return { envelope, output, base, debug }
 }
 
 export async function executeIntentCommand(

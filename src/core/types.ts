@@ -108,6 +108,7 @@ export interface LLMStreamChunk {
 
 export interface LLMProvider {
   readonly name: string
+  readonly model: string
   readonly supportsStreaming: boolean
 
   call(params: LLMCallParams): Promise<LLMResponse>

@@ -12,6 +12,8 @@
 import dayjs from 'dayjs'
 import type { LLMProvider } from './types'
 import type { ToolExecutor } from './tool-registry'
+import type { RunCollector } from './telemetry'
+import { estimateCost } from './telemetry'
 import type { ConsumerIntentEnvelope, IntentResult } from '../intents/types'
 import { DefaultIntentRouter } from '../intents/router'
 
@@ -22,6 +24,8 @@ export interface IntentLoopConfig {
   confidenceThreshold?: number
   /** Enables LLM semantic reasoning pass for uncertain validate results. */
   provider?: LLMProvider
+  /** Telemetry collector — records per-iteration StageMetrics. */
+  collector?: RunCollector
 }
 
 export interface IntentLoopResult {
@@ -41,8 +45,35 @@ export async function runIntentLoop(
   const confidenceThreshold = config.confidenceThreshold ?? 0.7
   const router = new DefaultIntentRouter(toolExecutor)
 
+  const { collector } = config
+  const providerName = config.provider?.name ?? 'gemini'
+  const providerModel = config.provider?.model ?? 'unknown'
+
+  const executeWithTelemetry = async (env: ConsumerIntentEnvelope, stageSuffix: string): Promise<IntentResult> => {
+    const startMs = Date.now()
+    const startedAt = dayjs().toISOString()
+    const res = await router.execute(env)
+    const durationMs = Date.now() - startMs
+
+    if (collector) {
+      const usage = extractUsageFromResult(res)
+      collector.addStage({
+        stage: `${env.intent}:${stageSuffix}`,
+        startedAt,
+        durationMs,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        estimatedCostUsd: estimateCost(providerName, providerModel, usage.inputTokens, usage.outputTokens),
+        provider: providerName,
+        model: providerModel,
+      })
+    }
+
+    return res
+  }
+
   let currentEnvelope = envelope
-  let result = await router.execute(currentEnvelope)
+  let result = await executeWithTelemetry(currentEnvelope, 'iter1')
   let iterations = 1
   let escalated = false
 
@@ -61,6 +92,8 @@ export async function runIntentLoop(
     if (intent === 'validate_fact') {
       // Docs found but token-overlap inconclusive → try LLM semantic reasoning
       if (result.status === 'uncertain' && result.confidence === 0.45 && config.provider) {
+        const llmStartMs = Date.now()
+        const llmStartedAt = dayjs().toISOString()
         const llmResult = await applyLLMValidationReasoning(
           toolExecutor,
           String(envelope.payload.fact ?? ''),
@@ -70,6 +103,19 @@ export async function runIntentLoop(
           result = llmResult
           iterations++
           escalated = true
+          if (collector) {
+            const usage = extractUsageFromResult(llmResult)
+            collector.addStage({
+              stage: `${intent}:llm-reasoning`,
+              startedAt: llmStartedAt,
+              durationMs: Date.now() - llmStartMs,
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              estimatedCostUsd: estimateCost(providerName, providerModel, usage.inputTokens, usage.outputTokens),
+              provider: providerName,
+              model: providerModel,
+            })
+          }
         }
         break
       }
@@ -86,8 +132,8 @@ export async function runIntentLoop(
 
       currentEnvelope = refined
       escalated = true
-      result = await router.execute(currentEnvelope)
       iterations++
+      result = await executeWithTelemetry(currentEnvelope, `iter${iterations}`)
       continue
     }
 
@@ -95,6 +141,16 @@ export async function runIntentLoop(
   }
 
   return { result, iterations, escalated }
+}
+
+// ─── Usage extraction ─────────────────────────────────────────────────────────
+
+function extractUsageFromResult(result: IntentResult): { inputTokens: number; outputTokens: number } {
+  const data = result.data as { usage?: { inputTokens?: number; outputTokens?: number } } | undefined
+  return {
+    inputTokens: data?.usage?.inputTokens ?? 0,
+    outputTokens: data?.usage?.outputTokens ?? 0,
+  }
 }
 
 // ─── Retrieval quality ────────────────────────────────────────────────────────
