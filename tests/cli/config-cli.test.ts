@@ -169,3 +169,44 @@ describe('config-cli', () => {
     expect(provider?.name).toBe('gemini')
   })
 })
+
+describe('config llm subcommand', () => {
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.OPENAI_API_KEY
+    delete process.env.GEMINI_API_KEY
+  })
+
+  afterEach(() => {
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.OPENAI_API_KEY
+    delete process.env.GEMINI_API_KEY
+  })
+
+  it('Given kb config llm --show with no keys set, then output warns about missing keys', async () => {
+    const configFile = await createConfigFile()
+    const result = await runConfigCommand(['llm', '--show'], { configFile })
+    expect(result.output).toContain('ANTHROPIC_API_KEY')
+    expect(result.output).toContain('not set')
+  })
+
+  it('Given kb config llm --show with a key set, then output shows it as set', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test'
+    const configFile = await createConfigFile({ llm: { provider: 'anthropic' } })
+    const result = await runConfigCommand(['llm', '--show'], { configFile })
+    expect(result.output).toContain('ANTHROPIC_API_KEY')
+    expect(result.output).toMatch(/✓\s*set/)
+  })
+
+  it('Given kb config llm in non-TTY mode, then it falls back to show without prompting', async () => {
+    const configFile = await createConfigFile()
+    const result = await runConfigCommand(['llm'], { configFile, isTTY: false })
+    expect(result.output).toContain('ANTHROPIC_API_KEY')
+  })
+
+  it('Given kb config llm --show, then provider from config is displayed', async () => {
+    const configFile = await createConfigFile({ llm: { provider: 'gemini' } })
+    const result = await runConfigCommand(['llm', '--show'], { configFile })
+    expect(result.output).toContain('gemini')
+  })
+})

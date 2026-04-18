@@ -8,6 +8,7 @@ import {
   unsetConfigValue,
   writeKbConfig,
 } from './kb-config'
+import { runLLMSetupWizard, showLLMStatus } from './llm-setup-wizard'
 
 export interface ConfigCommandResult {
   output: string
@@ -15,12 +16,14 @@ export interface ConfigCommandResult {
 
 export interface RunConfigCommandOptions {
   configFile?: string
+  isTTY?: boolean
 }
 
 type ConfigCommand =
   | { action: 'get'; keyPath?: string }
   | { action: 'set'; keyPath: string; value: string }
   | { action: 'unset'; keyPath: string }
+  | { action: 'llm' }
 
 export function printConfigHelp(): string {
   return [
@@ -31,6 +34,8 @@ export function printConfigHelp(): string {
     '  kb config get <key>',
     '  kb config set <key> <value>',
     '  kb config unset <key>',
+    '  kb config llm              Set up LLM provider (interactive wizard)',
+    '  kb config llm --show       Show current LLM configuration',
     '',
     `Supported keys: ${listSupportedConfigPaths().join(', ')}`,
   ].join('\n')
@@ -42,6 +47,26 @@ export async function runConfigCommand(
 ): Promise<ConfigCommandResult> {
   const command = parseConfigCommand(args)
   const configFile = options.configFile ?? getKbConfigFile()
+
+  if (command.action === 'llm') {
+    const lines: string[] = []
+    const print = (msg: string) => lines.push(msg)
+
+    if (args[1] === '--show') {
+      await showLLMStatus({ configFile, output: print })
+    } else {
+      const isTTY = options.isTTY ?? Boolean(process.stdout.isTTY)
+      if (!isTTY) {
+        await showLLMStatus({ configFile, output: print })
+        lines.push('Run `kb config llm` in an interactive terminal to configure.')
+      } else {
+        await runLLMSetupWizard({ configFile, output: print })
+      }
+    }
+
+    return { output: lines.join('\n') }
+  }
+
   const config = await readKbConfig(configFile)
 
   switch (command.action) {
@@ -71,6 +96,10 @@ function parseConfigCommand(args: string[]): ConfigCommand {
 
   if (!action || action === '--help' || action === '-h' || action === 'help') {
     throw new Error(printConfigHelp())
+  }
+
+  if (action === 'llm') {
+    return { action: 'llm' }
   }
 
   if (action === 'get') {

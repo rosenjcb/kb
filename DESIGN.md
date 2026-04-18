@@ -37,8 +37,7 @@ In chat mode the InputBar border turns orange and the prompt becomes `you>`.
 ## TUI vs One-Shot
 
 - `kb` (no args, TTY) → launches TUI
-- `kb <command> [args]` → existing one-shot CLI (unchanged, no TUI)
-- `KB_NO_TUI=true kb` or `kb --no-tui` → force one-shot
+- `kb <command> [args]` → one-shot CLI (non-interactive by default)
 
 ## Interactive Commands
 

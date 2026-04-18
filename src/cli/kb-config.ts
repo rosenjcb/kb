@@ -19,8 +19,9 @@ export interface KbConfig {
     parentPageId?: string
   }
   llm?: {
-    /** Explicit provider to use. If omitted, auto-detected from whichever key is present. */
+    /** Explicit provider to use. Auto-detected from env vars when omitted. */
     provider?: 'anthropic' | 'openai' | 'gemini' | 'ollama'
+    // Legacy: keys stored in config are migrated to env vars at startup. Use env vars going forward.
     anthropicApiKey?: string
     openaiApiKey?: string
     geminiApiKey?: string
@@ -42,6 +43,7 @@ export interface KbConfig {
     intentLlmAnswer?: boolean
     laneRouting?: boolean
   }
+  createdAt?: string
   updatedAt?: string
 }
 
@@ -95,6 +97,20 @@ export class ConfigValueNotSetError extends Error {
   }
 }
 
+export const DEFAULT_FEATURES: Required<NonNullable<KbConfig['features']>> = {
+  sqliteIndex: true,
+  hybridQuery: true,
+  hybridQueryCandidates: 40,
+  hybridQueryAlpha: 0.45,
+  hybridQueryMaxMs: 120,
+  checkpointObservability: true,
+  missLearning: true,
+  missHints: true,
+  missHintMinOccurrences: 3,
+  intentLlmAnswer: true,
+  laneRouting: true,
+}
+
 export async function readKbConfig(configFile: string = getKbConfigFile()): Promise<KbConfig> {
   try {
     const raw = await readFile(configFile, 'utf8')
@@ -105,6 +121,119 @@ export async function readKbConfig(configFile: string = getKbConfigFile()): Prom
     return normalizeKbConfig(parsed)
   } catch {
     return {}
+  }
+}
+
+/**
+ * Write a minimum viable config for first-time users.
+ * All feature flags are enabled by default; notion/llm keys come from env vars.
+ */
+export async function writeDefaultConfig(
+  configFile: string = getKbConfigFile(),
+): Promise<KbConfig> {
+  const now = dayjs().toISOString()
+  const defaults: KbConfig = {
+    features: { ...DEFAULT_FEATURES },
+    createdAt: now,
+    updatedAt: now,
+  }
+  await mkdir(path.dirname(configFile), { recursive: true })
+  await writeFile(configFile, `${JSON.stringify(defaults, null, 2)}\n`, 'utf8')
+  return defaults
+}
+
+/**
+ * Merge default feature flags into an existing config without overwriting user-set values.
+ * Preserves all existing config; fills in only missing feature keys.
+ */
+export async function ensureDefaultConfig(
+  configFile: string = getKbConfigFile(),
+): Promise<KbConfig> {
+  const existing = await readKbConfig(configFile)
+  const isNew = Object.keys(existing).length === 0
+
+  if (isNew) {
+    return writeDefaultConfig(configFile)
+  }
+
+  const mergedFeatures: KbConfig['features'] = { ...DEFAULT_FEATURES, ...existing.features }
+  const next: KbConfig = { ...existing, features: mergedFeatures }
+  if (!existing.createdAt) next.createdAt = existing.updatedAt ?? dayjs().toISOString()
+
+  await writeKbConfig(next, configFile)
+  return next
+}
+
+/** Returns true if at least one LLM key is present in env (after applyConfigToEnv has run). */
+export function isLLMConfigured(): boolean {
+  return Boolean(
+    process.env.ANTHROPIC_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.GEMINI_API_KEY ||
+    process.env.OLLAMA_ENDPOINT,
+  )
+}
+
+/**
+ * Throws a human-readable error if the resolved LLM provider has no key available.
+ * Call this at the top of any command that requires LLM access.
+ */
+export function assertLLMKeyAvailable(provider?: string): void {
+  const p = provider ?? resolveDetectedProvider()
+  switch (p) {
+    case 'anthropic':
+      if (!process.env.ANTHROPIC_API_KEY) {
+        throw new LLMKeyMissingError('anthropic', 'ANTHROPIC_API_KEY')
+      }
+      break
+    case 'openai':
+      if (!process.env.OPENAI_API_KEY) {
+        throw new LLMKeyMissingError('openai', 'OPENAI_API_KEY')
+      }
+      break
+    case 'gemini':
+      if (!process.env.GEMINI_API_KEY) {
+        throw new LLMKeyMissingError('gemini', 'GEMINI_API_KEY')
+      }
+      break
+    case 'ollama':
+      break
+    default:
+      if (!isLLMConfigured()) {
+        throw new Error(
+          'No LLM provider configured.\n\n' +
+          'Set one of the following environment variables and restart kb:\n' +
+          '  export ANTHROPIC_API_KEY=<your-key>   # Anthropic Claude\n' +
+          '  export OPENAI_API_KEY=<your-key>       # OpenAI\n' +
+          '  export GEMINI_API_KEY=<your-key>       # Google Gemini\n\n' +
+          'Then run `kb config llm` to set your preferred provider.',
+        )
+      }
+  }
+}
+
+function resolveDetectedProvider(): string {
+  if (process.env.ANTHROPIC_API_KEY) return 'anthropic'
+  if (process.env.OPENAI_API_KEY) return 'openai'
+  if (process.env.GEMINI_API_KEY) return 'gemini'
+  if (process.env.OLLAMA_ENDPOINT) return 'ollama'
+  return 'none'
+}
+
+export class LLMKeyMissingError extends Error {
+  constructor(provider: string, envVar: string) {
+    const providerName = provider === 'anthropic' ? 'Anthropic Claude'
+      : provider === 'openai' ? 'OpenAI'
+      : provider === 'gemini' ? 'Google Gemini'
+      : provider
+    super(
+      `${envVar} is not set.\n\n` +
+      `${providerName} is configured as your LLM provider but the API key is missing.\n\n` +
+      `Fix it:\n` +
+      `  export ${envVar}=<your-key>\n\n` +
+      `Then restart kb, or run \`kb config llm\` to switch providers.`,
+    )
+    this.name = 'LLMKeyMissingError'
   }
 }
 
@@ -246,30 +375,41 @@ export interface ResolvedLLM {
 
 /**
  * Resolve which LLM provider and credentials to use.
- * Priority: explicit config.llm.provider → auto-detect from key presence → env var fallback → ollama.
+ * Priority: env vars (primary) → config file keys (legacy migration) → ollama fallback.
+ * Explicit config.llm.provider is used as a hint for which env var to prefer.
  */
 export function resolveLLMProvider(config: KbConfig): ResolvedLLM {
   const llm = config.llm
 
-  // Explicit provider declared — use its matching key
+  // Explicit provider declared — check its env var first, then config key (migration path)
   if (llm?.provider) {
     switch (llm.provider) {
-      case 'anthropic': return { provider: 'anthropic', apiKey: llm.anthropicApiKey }
-      case 'openai': return { provider: 'openai', apiKey: llm.openaiApiKey }
-      case 'gemini': return { provider: 'gemini', apiKey: llm.geminiApiKey, model: llm.geminiModel }
-      case 'ollama': return { provider: 'ollama', endpoint: llm.ollamaEndpoint ?? 'http://localhost:11434' }
+      case 'anthropic': {
+        const key = process.env.ANTHROPIC_API_KEY || llm.anthropicApiKey
+        return { provider: 'anthropic', apiKey: key }
+      }
+      case 'openai': {
+        const key = process.env.OPENAI_API_KEY || llm.openaiApiKey
+        return { provider: 'openai', apiKey: key }
+      }
+      case 'gemini': {
+        const key = process.env.GEMINI_API_KEY || llm.geminiApiKey
+        return { provider: 'gemini', apiKey: key, model: llm.geminiModel }
+      }
+      case 'ollama':
+        return { provider: 'ollama', endpoint: llm.ollamaEndpoint ?? process.env.OLLAMA_ENDPOINT ?? 'http://localhost:11434' }
     }
   }
 
-  // Auto-detect from whichever key is present in config
+  // Auto-detect from env vars (preferred)
+  if (process.env.ANTHROPIC_API_KEY) return { provider: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY }
+  if (process.env.OPENAI_API_KEY) return { provider: 'openai', apiKey: process.env.OPENAI_API_KEY }
+  if (process.env.GEMINI_API_KEY) return { provider: 'gemini', apiKey: process.env.GEMINI_API_KEY, model: llm?.geminiModel }
+
+  // Legacy: fall back to config file keys for migration
   if (llm?.anthropicApiKey) return { provider: 'anthropic', apiKey: llm.anthropicApiKey }
   if (llm?.openaiApiKey) return { provider: 'openai', apiKey: llm.openaiApiKey }
   if (llm?.geminiApiKey) return { provider: 'gemini', apiKey: llm.geminiApiKey, model: llm.geminiModel }
-
-  // Env var fallback (legacy / CI override)
-  if (process.env.ANTHROPIC_API_KEY) return { provider: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY }
-  if (process.env.OPENAI_API_KEY) return { provider: 'openai', apiKey: process.env.OPENAI_API_KEY }
-  if (process.env.GEMINI_API_KEY) return { provider: 'gemini', apiKey: process.env.GEMINI_API_KEY }
 
   return { provider: 'ollama', endpoint: llm?.ollamaEndpoint ?? process.env.OLLAMA_ENDPOINT ?? 'http://localhost:11434' }
 }
@@ -460,6 +600,10 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
     if (input.features.intentLlmAnswer !== undefined) f.intentLlmAnswer = Boolean(input.features.intentLlmAnswer)
     if (input.features.laneRouting !== undefined) f.laneRouting = Boolean(input.features.laneRouting)
     if (Object.keys(f).length > 0) normalized.features = f
+  }
+
+  if (typeof input.createdAt === 'string' && input.createdAt.trim()) {
+    normalized.createdAt = input.createdAt
   }
 
   if (typeof input.updatedAt === 'string' && input.updatedAt.trim()) {

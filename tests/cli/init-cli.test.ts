@@ -597,3 +597,27 @@ describe('init-cli interview checkpoints', () => {
     expect(sequentialQuestionIO.prompts.length).toBeGreaterThan(0)
   })
 })
+
+describe('init-cli consolidation pass', () => {
+  it('Given init run, then pass-consolidate does not appear in completedCycles', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nThis is a test project.\n',
+    })
+
+    const docJson = JSON.stringify([
+      { title: 'Overview', type: 'overview', tags: ['overview'], content: 'Overview content.' },
+    ])
+
+    const result = await runKbInit({
+      base: 'consolidation-test',
+      nonInteractive: true,
+      stopAfter: 'pass1',
+      cwd,
+      provider: createProvider([docJson]),
+      questionIO: createQuestionIO([]).io,
+    })
+
+    expect(result.completedCycles).not.toContain('pass-consolidate')
+    expect(result.status).toBe('paused')
+  })
+})

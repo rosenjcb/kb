@@ -6,8 +6,8 @@
 
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
 import {
-  readKbConfig,
   applyConfigToEnv,
+  ensureDefaultConfig,
   createLLMProviderFromConfig,
   resolveConversationalChatEnabled,
   resolveGraphEnabled,
@@ -73,8 +73,8 @@ const defaultCliOutput: CliOutput = {
 
 export function printCliHelp(): string {
   return [
-    'Starts the interactive TUI by default when you run `kb` with no arguments.',
-    'Pass a command for one-shot CLI mode, or use `--no-tui` to stay in plain CLI mode.',
+    'Starts the interactive TUI when run with no arguments (in a TTY).',
+    'Pass a command for one-shot CLI mode.',
     '',
     'Usage:',
     '  kb',
@@ -87,7 +87,7 @@ export function printCliHelp(): string {
     '  config      Inspect or update persistent config',
     '  init        Build a KB from project docs',
     '  graph       Inspect the knowledge graph',
-  '  logs        Browse and compare run reports',
+    '  logs        Browse and compare run reports',
     '  publish     Publish KB docs',
     '  chat        Start an interactive KB chat session',
     '  invalidate  Remove or replace stale KB facts',
@@ -103,7 +103,6 @@ export function printCliHelp(): string {
     '',
     'Examples:',
     '  kb',
-    '  kb --no-tui query "document store plan" --limit 5',
     '  kb use dogfood',
     '  kb use --default dogfood',
     '  kb docs list --base dogfood --limit 20',
@@ -320,7 +319,7 @@ export async function runMainWithOutput(
 
   if (firstArg === 'config') {
     try {
-      const result = await runConfigCommand(args.slice(1))
+      const result = await runConfigCommand(args.slice(1), { isTTY: Boolean(process.stdout.isTTY) })
       out.log(result.output)
       return
     } catch (error) {
@@ -585,24 +584,22 @@ export async function runMainWithOutput(
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const kbConfig = await readKbConfig()
+  const kbConfig = await ensureDefaultConfig()
   applyConfigToEnv(kbConfig)
 
   const args = process.argv.slice(2)
   const isTTY = Boolean(process.stdout.isTTY)
-  const noTui = args.includes('--no-tui') || process.env['KB_NO_TUI'] === 'true'
 
   // Launch TUI when invoked interactively with no arguments
-  if (isTTY && args.length === 0 && !noTui) {
+  if (isTTY && args.length === 0) {
     const { launchTui } = await import('../tui/index.js')
     await launchTui(kbConfig)
     return
   }
 
-  // One-shot CLI path (unchanged behavior for scripting / CI)
-  const filteredArgs = args.filter(a => a !== '--no-tui')
+  // One-shot CLI path
   console.log('🤖 KB Agent Harness\n')
-  await runMainWithOutput(filteredArgs, defaultCliOutput, kbConfig)
+  await runMainWithOutput(args, defaultCliOutput, kbConfig)
 }
 
 main().catch(console.error)

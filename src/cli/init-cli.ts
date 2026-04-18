@@ -24,6 +24,7 @@ import type { LLMProvider } from '../core/types'
 import type { RunCollector } from '../core/telemetry'
 import { estimateCost, TokenCountingProvider } from '../core/telemetry'
 import { readKbConfig, createLLMProviderFromConfig, resolveGraphEnabled } from './kb-config'
+import { runLLMSetupWizard } from './llm-setup-wizard'
 import { ensureOperationalBaseDir, getKbHomeDir, resolveEffectiveBaseDir } from './base-selection'
 import {
   assessTopicCoverage,
@@ -40,7 +41,8 @@ import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { extractGraphBatch } from '../tools/graph-entity-extractor'
 
-export type InitCycle = 'read-inputs' | 'pass1' | 'pass2' | 'pass-enrich' | 'pass-consolidate' | 'pass3' | 'write' | 'pass-graph'
+// pass-consolidate is temporarily disabled — too aggressive; needs smarter merge strategy before re-enabling
+export type InitCycle = 'read-inputs' | 'pass1' | 'pass2' | 'pass-enrich' | 'pass3' | 'write' | 'pass-graph'
 export type InitTopic =
   | 'project-overview'
   | 'install-setup'
@@ -226,7 +228,7 @@ export function parseInitCommand(args: string[]): InitOptions {
   }
 
   const stopAfter = readOption(args, '--stop-after') as InitCycle | undefined
-  const validCycles: InitCycle[] = ['read-inputs', 'pass1', 'pass2', 'pass-enrich', 'pass-consolidate', 'pass3', 'write', 'pass-graph']
+  const validCycles: InitCycle[] = ['read-inputs', 'pass1', 'pass2', 'pass-enrich', 'pass3', 'write', 'pass-graph']
   if (stopAfter && !validCycles.includes(stopAfter)) {
     throw new Error(`Invalid --stop-after. Use: ${validCycles.join('|')}`)
   }
@@ -285,9 +287,9 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
   const resumedCheckpoint = await readCheckpoint(checkpointFile)
 
   const progress = new InitProgressReporter(8, options.progressSink)
-  const rawProvider = options.provider ?? await resolveProvider()
-  const counter = rawProvider && options.collector ? new TokenCountingProvider(rawProvider) : undefined
-  const provider = counter ?? rawProvider
+  let rawProvider = options.provider ?? await resolveProvider()
+  let counter = rawProvider && options.collector ? new TokenCountingProvider(rawProvider) : undefined
+  let provider = counter ?? rawProvider
   const kbConfig = await readKbConfig()
   const graphEnabled = resolveGraphEnabled(kbConfig)
 
@@ -380,7 +382,33 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
     if (!checkpoint.completedCycles.includes('pass1')) {
       progress.start('pass1', 'drafting docs + coverage…')
       if (!provider) {
-        throw new Error('No LLM provider available. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY.')
+        if (!options.nonInteractive && process.stdin.isTTY) {
+          console.log('\n⚙️  No LLM provider configured. Let\'s set one up before running kb init.\n')
+          const wizardResult = await runLLMSetupWizard()
+          if (!wizardResult.configured) {
+            throw new Error(
+              'LLM setup incomplete. Set the required environment variable and re-run `kb init`.',
+            )
+          }
+          // Re-resolve provider after wizard (e.g. ollama chosen — no key needed)
+          rawProvider = await resolveProvider()
+          counter = rawProvider && options.collector ? new TokenCountingProvider(rawProvider) : undefined
+          provider = counter ?? rawProvider
+          if (!provider) {
+            throw new Error(
+              'Provider configuration saved. Please restart kb to apply your LLM settings.',
+            )
+          }
+        } else {
+          throw new Error(
+            'No LLM provider configured.\n\n' +
+            'Set one of the following environment variables:\n' +
+            '  export ANTHROPIC_API_KEY=<your-key>\n' +
+            '  export OPENAI_API_KEY=<your-key>\n' +
+            '  export GEMINI_API_KEY=<your-key>\n\n' +
+            'Or run `kb config llm` to configure interactively.',
+          )
+        }
       }
       const endPass1 = makeCycleTimer('pass1', provider, options.collector, counter)
       candidateDocs = await runSynthesisPass(provider, context, base)
@@ -484,23 +512,22 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
       progress.finish('pass-enrich', 'reused from checkpoint')
     }
 
-    if (!checkpoint.completedCycles.includes('pass-consolidate')) {
-      progress.start('pass-consolidate', 'merging overlapping docs…')
-      if (!provider) throw new Error('No LLM provider available.')
-      const beforeCount = candidateDocs.length
-      const endPassConsolidate = makeCycleTimer('pass-consolidate', provider, options.collector, counter)
-      candidateDocs = await runConsolidationPass(provider, candidateDocs)
-      endPassConsolidate()
-      await persist({
-        candidateDocs,
-        completedCycles: ['pass-consolidate'],
-      })
-      const merged = beforeCount - candidateDocs.length
-      progress.finish('pass-consolidate', merged > 0 ? `${merged} docs merged → ${candidateDocs.length} total` : `no merges needed, ${candidateDocs.length} docs`)
-      if (options.stopAfter === 'pass-consolidate') throw new InitPausedError('pass-consolidate')
-    } else {
-      progress.finish('pass-consolidate', 'reused from checkpoint')
-    }
+    // pass-consolidate is disabled — the LLM-driven merge was too aggressive and dropped content.
+    // TODO: re-enable with improved merge strategy (similarity threshold + human review step).
+    // if (!checkpoint.completedCycles.includes('pass-consolidate')) {
+    //   progress.start('pass-consolidate', 'merging overlapping docs…')
+    //   if (!provider) throw new Error('No LLM provider available.')
+    //   const beforeCount = candidateDocs.length
+    //   const endPassConsolidate = makeCycleTimer('pass-consolidate', provider, options.collector, counter)
+    //   candidateDocs = await runConsolidationPass(provider, candidateDocs)
+    //   endPassConsolidate()
+    //   await persist({ candidateDocs, completedCycles: ['pass-consolidate'] })
+    //   const merged = beforeCount - candidateDocs.length
+    //   progress.finish('pass-consolidate', merged > 0 ? `${merged} docs merged → ${candidateDocs.length} total` : `no merges needed, ${candidateDocs.length} docs`)
+    //   if (options.stopAfter === 'pass-consolidate') throw new InitPausedError('pass-consolidate')
+    // } else {
+    //   progress.finish('pass-consolidate', 'reused from checkpoint')
+    // }
 
     if (!checkpoint.completedCycles.includes('pass3')) {
       progress.start('pass3', 'quality pass…')
@@ -988,45 +1015,24 @@ Return ONLY the JSON object, no prose.`,
   return enriched
 }
 
-/**
- * Pass-consolidate: a single LLM agent pass that reviews all enriched docs,
- * identifies overlapping content, and merges documents that cover the same topic.
- * Documents covering distinct topics are left untouched.
- */
-async function runConsolidationPass(
-  provider: LLMProvider,
-  docs: CandidateDoc[],
-): Promise<CandidateDoc[]> {
-  const { prompt, maxTokens } = buildBudgetedPrompt({
-    intro: `You are a knowledge base architect doing a consolidation pass.
-Review all documents for content overlap and merge where appropriate.`,
-    sections: [
-      {
-        heading: 'Documents',
-        content: formatDocsForPrompt(docs, 1000),
-        priority: 1,
-        minTokens: 700,
-      },
-    ],
-    instructions: `1. Identify pairs (or groups) of documents that cover the same or very similar topic — more than ~40% content overlap, or clearly the same subject with different framing.
-2. For each overlapping group: merge into a single document. Use the most specific, accurate title. Combine unique facts from all source docs; remove duplicates. Maintain clear structure with bullet facts or short paragraphs.
-3. Documents covering genuinely distinct topics must remain separate — do not merge just because they share a few terms.
-4. After merging, every remaining document must still start with a 1-sentence summary.
-5. Do not lose any unique facts in the merge — consolidation should only remove redundancy, never information.
-
-Return the consolidated set as a JSON array in the same shape (title, type, tags, content).
-Return ONLY the JSON array, no prose.`,
-    requestedMaxTokens: INIT_OUTPUT_TOKENS.consolidate,
-  })
-
-  const response = await provider.call({
-    messages: [{ role: 'user', content: prompt }],
-    maxTokens,
-    temperature: 0.1,
-  })
-
-  return parseDocArray(response.text) ?? docs
-}
+// runConsolidationPass is disabled — too aggressive, drops content under LLM merge.
+// TODO: re-enable with improved merge strategy (similarity threshold + human review step).
+// async function runConsolidationPass(
+//   provider: LLMProvider,
+//   docs: CandidateDoc[],
+// ): Promise<CandidateDoc[]> {
+//   const { prompt, maxTokens } = buildBudgetedPrompt({
+//     intro: `You are a knowledge base architect doing a consolidation pass.
+// Review all documents for content overlap and merge where appropriate.`,
+//     sections: [{ heading: 'Documents', content: formatDocsForPrompt(docs, 1000), priority: 1, minTokens: 700 }],
+//     instructions: `1. Identify pairs (or groups) of documents that cover the same or very similar topic...
+// Return the consolidated set as a JSON array in the same shape (title, type, tags, content).
+// Return ONLY the JSON array, no prose.`,
+//     requestedMaxTokens: INIT_OUTPUT_TOKENS.consolidate,
+//   })
+//   const response = await provider.call({ messages: [{ role: 'user', content: prompt }], maxTokens, temperature: 0.1 })
+//   return parseDocArray(response.text) ?? docs
+// }
 
 async function runGraphExtractionPass(provider: LLMProvider, baseDir: string): Promise<void> {
   const dbPath = path.join(baseDir, '.kb-index.sqlite')

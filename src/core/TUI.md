@@ -33,15 +33,13 @@ Examples:
 - Prefer entrypoint-driven behavior:
   - bare `kb` => interactive shell
   - `kb <command>` => one-shot non-interactive command
-- Reserve `--non-interactive` for commands that otherwise prompt the user during their own command flow.
-- Treat `--no-tui` as legacy top-level behavior, not a pattern to copy into new commands.
+- Reserve `--non-interactive` for commands that otherwise prompt the user during their own command flow (e.g. `kb init`).
 - Before renaming or removing any existing flag, verify current semantics, help output, scripts, tests, and TUI dispatch paths.
 
 Current repo guidance:
 
-- The `--no-tui` versus `--non-interactive` split is inconsistent and should be considered active standards debt.
-- Standardization should start from behavior, not naming. Since subcommands are already one-shot by default, many new `--non-interactive` flags would be redundant.
-- Any future cleanup should likely reduce mode flags, not multiply them.
+- Subcommands are already one-shot by default; adding `--non-interactive` to them is redundant.
+- Mode flags should be reduced, not multiplied.
 
 ## Validation Checklist
 
@@ -59,4 +57,3 @@ For high-risk CLI changes, keep the repository rule from `AGENTS.md`: run end-to
 ## Known Gaps to Watch
 
 - `kb init --help` should behave like help, not kick off or resume init work.
-- Top-level docs currently mention `--no-tui` while `kb init` uses `--non-interactive`; do not encode that mismatch as the desired long-term standard.
