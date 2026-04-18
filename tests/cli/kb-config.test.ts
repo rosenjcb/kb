@@ -11,6 +11,7 @@ import {
   normalizeKbConfig,
   readKbConfig,
   resolveLLMProvider,
+  persistInferredLLMProvider,
   writeDefaultConfig,
   writeKbConfig,
 } from '../../src/cli/kb-config'
@@ -62,7 +63,7 @@ describe('readKbConfig', () => {
   })
 
   it('normalizes config on read', async () => {
-    const file = await tempConfig({ defaultBase: 'dogfood', llm: { provider: 'gemini' } })
+    const file = await tempConfig({ selectedBase: 'dogfood', llm: { provider: 'gemini' } })
     const result = await readKbConfig(file)
     expect(result.selectedBase).toBe('dogfood')
     expect(result.llm?.provider).toBe('gemini')
@@ -222,6 +223,35 @@ describe('resolveLLMProvider', () => {
   it('falls back to ollama when nothing is configured', () => {
     const resolved = resolveLLMProvider({})
     expect(resolved.provider).toBe('ollama')
+  })
+})
+
+// ─── persistInferredLLMProvider ───────────────────────────────────────────────
+
+describe('persistInferredLLMProvider', () => {
+  it('persists inferred provider when llm.provider is unset and env key exists', async () => {
+    process.env.OPENAI_API_KEY = 'openai-env'
+    const file = await tempConfig({ features: {} })
+
+    const config = await readKbConfig(file)
+    const result = await persistInferredLLMProvider({ config, configFile: file })
+
+    expect(result.config.llm?.provider).toBe('openai')
+    expect(result.notice).toContain('Auto-selected LLM provider: openai')
+
+    const readBack = await readKbConfig(file)
+    expect(readBack.llm?.provider).toBe('openai')
+  })
+
+  it('does not persist when llm.provider is already set', async () => {
+    process.env.OPENAI_API_KEY = 'openai-env'
+    const file = await tempConfig({ llm: { provider: 'gemini' } })
+    const config = await readKbConfig(file)
+
+    const result = await persistInferredLLMProvider({ config, configFile: file })
+
+    expect(result.notice).toBeUndefined()
+    expect(result.config.llm?.provider).toBe('gemini')
   })
 })
 

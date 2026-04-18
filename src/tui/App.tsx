@@ -5,7 +5,7 @@ import type { ChatIO } from '../cli/chat-cli.js'
 import type { InitQuestionIO } from '../cli/init-cli.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
 import { createLLMProviderFromConfig, resolveConversationalChatEnabled, resolveGraphEnabled } from '../cli/kb-config.js'
-import { resolveEffectiveBaseDir } from '../cli/base-selection.js'
+import { readBaseConfig, resolveEffectiveBaseDir } from '../cli/base-selection.js'
 import { runChatSession } from '../cli/chat-cli.js'
 import { parseInitCommand, runKbInit } from '../cli/init-cli.js'
 import { DuckGraphWriter } from '../tools/duck-graph-writer.js'
@@ -27,9 +27,10 @@ import type { HistoryEntry, TuiMode } from './types.js'
 
 interface Props {
   config: KbConfig
+  startupNotices?: string[]
 }
 
-export function App({ config }: Props) {
+export function App({ config, startupNotices = [] }: Props) {
   const { exit } = useApp()
 
   const [mode, setMode] = useState<TuiMode>('shell')
@@ -54,19 +55,33 @@ export function App({ config }: Props) {
     return id
   }, [])
 
+  useEffect(() => {
+    if (startupNotices.length === 0) return
+    for (const notice of startupNotices) {
+      addEntry({ type: 'info', content: notice })
+    }
+  }, [startupNotices, addEntry])
+
   const updateEntry = useCallback((id: string, patch: Partial<Omit<HistoryEntry, 'id'>>) => {
     setHistory(prev => prev.map(e => (e.id === id ? { ...e, ...patch } : e)))
   }, [])
 
   // Resolve base dir on mount
   useEffect(() => {
-    resolveEffectiveBaseDir()
-      .then(({ baseDir, baseName: name }) => {
-        storageDirRef.current = baseDir
-        setBaseName(name)
+    readBaseConfig()
+      .then(configured => {
+        setBaseName(configured.selectedBase ?? '')
       })
       .catch(() => {
-        setBaseName('default')
+        setBaseName('')
+      })
+
+    resolveEffectiveBaseDir()
+      .then(({ baseDir }) => {
+        storageDirRef.current = baseDir
+      })
+      .catch(() => {
+        storageDirRef.current = ''
       })
   }, [])
 
@@ -272,10 +287,14 @@ export function App({ config }: Props) {
 
         // Refresh base name after use/default commands
         if (firstArg === 'use' || firstArg === 'default') {
+          readBaseConfig()
+            .then(configured => {
+              setBaseName(configured.selectedBase ?? '')
+            })
+            .catch(() => {})
           resolveEffectiveBaseDir()
-            .then(({ baseDir, baseName: newBase }) => {
+            .then(({ baseDir }) => {
               storageDirRef.current = baseDir
-              setBaseName(newBase)
             })
             .catch(() => {})
         }

@@ -25,7 +25,7 @@ import type { RunCollector } from '../core/telemetry'
 import { estimateCost, TokenCountingProvider } from '../core/telemetry'
 import { readKbConfig, createLLMProviderFromConfig, resolveGraphEnabled } from './kb-config'
 import { runLLMSetupWizard } from './llm-setup-wizard'
-import { ensureOperationalBaseDir, getKbHomeDir, resolveEffectiveBaseDir } from './base-selection'
+import { ensureOperationalBaseDir, getKbHomeDir, readBaseConfig } from './base-selection'
 import {
   assessTopicCoverage,
   buildTopicCoverageGaps,
@@ -1286,18 +1286,12 @@ async function resolveInitBaseName(
   return resolved
 }
 
-async function resolveSuggestedInitBase(cwd: string): Promise<string | undefined> {
-  try {
-    const resolved = await resolveEffectiveBaseDir(cwd)
-    if (resolved.baseName?.trim()) {
-      return resolved.baseName.trim()
-    }
-  } catch {
-    // No active base configured; fall back to cwd name.
+async function resolveSuggestedInitBase(_cwd: string): Promise<string | undefined> {
+  const configured = await readBaseConfig()
+  if (configured.selectedBase?.trim()) {
+    return configured.selectedBase.trim()
   }
-
-  const fallback = path.basename(cwd).trim()
-  return fallback ? slugify(fallback) : undefined
+  return 'default'
 }
 
 function buildInterviewQuestion(
@@ -1364,7 +1358,7 @@ async function resolveCheckpointPath(options: InitOptions, cwd: string): Promise
   if (!base) {
     throw new Error('Base value is required to resolve kb init checkpoints')
   }
-  const checkpointPath = path.join(getKbHomeDir(), slugify(base), 'checkpoints', 'init-latest.checkpoint.json')
+  const checkpointPath = path.join(getKbHomeDir(), 'sessions', slugify(base), 'checkpoints', 'init-latest.checkpoint.json')
   const legacyCheckpointPath = path.join(cwd, '.tmp', 'kb-init', `${slugify(base)}-latest.checkpoint.json`)
   if (!await pathExists(checkpointPath)) {
     await mkdir(path.dirname(checkpointPath), { recursive: true })

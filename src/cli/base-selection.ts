@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { readKbConfig, writeKbConfig, type KbConfig } from './kb-config'
 
 export interface BaseSelectionConfig {
@@ -53,6 +53,7 @@ export async function ensureOperationalBaseDir(base: string, cwd: string = proce
   }
 
   await mkdir(resolved, { recursive: true })
+  await migrateLegacyBaseDir(base, resolved)
   const sqlitePath = path.join(resolved, '.kb-index.sqlite')
   const legacySqlitePath = path.join(cwd, 'sessions', 'namespaces', normalizeAlias(base), 'documents', '.kb-index.sqlite')
   if (!(await pathExists(sqlitePath))) {
@@ -190,5 +191,40 @@ async function pathExists(targetPath: string): Promise<boolean> {
     return true
   } catch {
     return false
+  }
+}
+
+async function migrateLegacyBaseDir(base: string, resolved: string): Promise<void> {
+  const alias = normalizeAlias(base)
+  if (!alias || alias === 'sessions') {
+    return
+  }
+
+  const legacyRoot = path.join(getKbHomeDir(), alias)
+  if (legacyRoot === resolved || !(await pathExists(legacyRoot))) {
+    return
+  }
+
+  const entries = await readdir(legacyRoot)
+  for (const entry of entries) {
+    const source = path.join(legacyRoot, entry)
+    const destination = path.join(resolved, entry)
+    if (await pathExists(destination)) {
+      continue
+    }
+    await movePath(source, destination)
+  }
+
+  await rm(legacyRoot, { recursive: true, force: true })
+}
+
+async function movePath(source: string, destination: string): Promise<void> {
+  await mkdir(path.dirname(destination), { recursive: true })
+  try {
+    await rename(source, destination)
+    return
+  } catch {
+    await cp(source, destination, { recursive: true, force: false })
+    await rm(source, { recursive: true, force: true })
   }
 }

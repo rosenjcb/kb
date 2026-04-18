@@ -123,7 +123,40 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.base).toBe('fresh-base')
     expect(questionIO.prompts[0]).toContain('Knowledge base name')
-    expect(result.checkpointFile).toBe(path.join(kbHomeDir, 'fresh-base', 'checkpoints', 'init-latest.checkpoint.json'))
+    expect(questionIO.prompts[0]).toContain('[default]')
+    expect(result.checkpointFile).toBe(path.join(kbHomeDir, 'sessions', 'fresh-base', 'checkpoints', 'init-latest.checkpoint.json'))
+  })
+
+  it('Given no selectedBase but an active session base, then init still suggests hardcoded default', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nThis project has a CLI.\n',
+    })
+    await writeFile(
+      path.join(kbHomeDir, 'session.json'),
+      `${JSON.stringify({ activeBase: 'dogfood' }, null, 2)}\n`,
+      'utf8',
+    )
+    const questionIO = createQuestionIO([
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ])
+
+    const result = await runKbInit({
+      nonInteractive: false,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: questionIO.io,
+    })
+
+    expect(questionIO.prompts[0]).toContain('[default]')
+    expect(result.base).toBe('default')
+    expect(result.checkpointFile).toBe(path.join(kbHomeDir, 'sessions', 'default', 'checkpoints', 'init-latest.checkpoint.json'))
   })
 
   it('Given detach and resume flags, then parses them into init options', () => {
@@ -339,7 +372,7 @@ describe('init-cli interview checkpoints', () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nSimple overview.\n',
     })
-    const checkpointFile = path.join(kbHomeDir, 'dogfood', 'checkpoints', 'init-latest.checkpoint.json')
+    const checkpointFile = path.join(kbHomeDir, 'sessions', 'dogfood', 'checkpoints', 'init-latest.checkpoint.json')
     await mkdir(path.dirname(checkpointFile), { recursive: true })
     await writeFile(checkpointFile, `${JSON.stringify({
       version: 1,
@@ -484,7 +517,7 @@ describe('init-cli interview checkpoints', () => {
       provider,
     })
 
-    expect(result.checkpointFile).toBe(path.join(kbHomeDir, 'dogfood', 'checkpoints', 'init-latest.checkpoint.json'))
+    expect(result.checkpointFile).toBe(path.join(kbHomeDir, 'sessions', 'dogfood', 'checkpoints', 'init-latest.checkpoint.json'))
     const migrated = JSON.parse(await readFile(result.checkpointFile!, 'utf8')) as { version: number }
     expect(migrated.version).toBe(2)
   })

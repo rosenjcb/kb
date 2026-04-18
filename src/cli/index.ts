@@ -9,6 +9,7 @@ import {
   applyConfigToEnv,
   ensureDefaultConfig,
   createLLMProviderFromConfig,
+  persistInferredLLMProvider,
   resolveConversationalChatEnabled,
   resolveGraphEnabled,
 } from './kb-config'
@@ -578,7 +579,9 @@ export async function runMainWithOutput(
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const kbConfig = await ensureDefaultConfig()
+  let kbConfig = await ensureDefaultConfig()
+  const inferred = await persistInferredLLMProvider({ config: kbConfig })
+  kbConfig = inferred.config
   applyConfigToEnv(kbConfig)
 
   const args = process.argv.slice(2)
@@ -587,12 +590,16 @@ async function main() {
   // Launch TUI when invoked interactively with no arguments
   if (isTTY && args.length === 0) {
     const { launchTui } = await import('../tui/index.js')
-    await launchTui(kbConfig)
+    await launchTui(kbConfig, { startupNotices: inferred.notice ? [inferred.notice] : [] })
     return
   }
 
   // One-shot CLI path
   console.log('🤖 KB Agent Harness\n')
+  if (inferred.notice) {
+    console.log(inferred.notice)
+    console.log('')
+  }
   await runMainWithOutput(args, defaultCliOutput, kbConfig)
 }
 

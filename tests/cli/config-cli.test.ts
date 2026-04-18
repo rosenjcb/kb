@@ -42,17 +42,17 @@ async function createConfigFile(initial?: unknown): Promise<string> {
 describe('config-cli', () => {
   it('Given get with no key, then returns normalized full config JSON', async () => {
     const configFile = await createConfigFile({
-      defaultBase: 'dogfood',
-      sessionBase: 'old-session',
+      selectedBase: 'dogfood',
       notion: { parentPageId: 'abc123' },
       updatedAt: '2026-04-15T00:00:00.000Z',
     })
 
     const result = await runConfigCommand(['get'], { configFile })
 
-    expect(result.output).toContain('"selectedBase": "old-session"')
+    expect(result.output).toContain('"selectedBase": "dogfood"')
     expect(result.output).toContain('"parentPageId": "abc123"')
     expect(result.output).not.toContain('defaultBase')
+    expect(result.output).not.toContain('sessionBase')
   })
 
   it('Given nested notion key, then get returns scalar and unset prunes empty object', async () => {
@@ -102,7 +102,7 @@ describe('config-cli', () => {
     expect(help).not.toContain('features.')
     expect(help).toContain('graph.enabled')
     expect(help).toContain('notion.parentPageId')
-    expect(help).toContain('llm.openaiApiKey')
+    expect(help).toContain('llm.provider')
   })
 
   it('Given supported config paths, then they omit base-selection and feature keys', () => {
@@ -150,7 +150,6 @@ describe('config-cli', () => {
     const resolved = resolveLLMProvider({
       llm: {
         provider: 'gemini',
-        geminiApiKey: 'test-key',
         geminiModel: 'gemini-flash-latest',
       },
     })
@@ -161,7 +160,6 @@ describe('config-cli', () => {
     const provider = createLLMProviderFromConfig({
       llm: {
         provider: 'gemini',
-        geminiApiKey: 'test-key',
         geminiModel: 'gemini-flash-latest',
       },
     })

@@ -6,8 +6,6 @@ import { createProvider } from '../core/llm-provider'
 
 export interface KbConfig {
   selectedBase?: string
-  defaultBase?: string
-  sessionBase?: string
   graph?: {
     enabled?: boolean
   }
@@ -293,7 +291,7 @@ export function setConfigValue(config: KbConfig, keyPath: string, value: string)
       next.notion = { ...next.notion, parentPageId: value }
       break
     case 'llm':
-      throw new Error('INVALID_CONFIG_WRITE: llm requires a nested key such as llm.openaiApiKey')
+      throw new Error('INVALID_CONFIG_WRITE: llm requires a nested key such as llm.provider')
     case 'llm.provider':
       if (!['anthropic', 'openai', 'gemini', 'ollama'].includes(value)) {
         throw new Error('llm.provider must be one of: anthropic, openai, gemini, ollama')
@@ -353,13 +351,13 @@ export interface ResolvedLLM {
 
 /**
  * Resolve which LLM provider and credentials to use.
- * Priority: env vars (primary) → config file keys (legacy migration) → ollama fallback.
+ * Priority: env vars (primary) → ollama fallback.
  * Explicit config.llm.provider is used as a hint for which env var to prefer.
  */
 export function resolveLLMProvider(config: KbConfig): ResolvedLLM {
   const llm = config.llm
 
-  // Explicit provider declared — check its env var first, then config key (migration path)
+  // Explicit provider declared — check its env var first.
   if (llm?.provider) {
     switch (llm.provider) {
       case 'anthropic': {
@@ -402,6 +400,57 @@ export function createLLMProviderFromConfig(config: KbConfig): ReturnType<typeof
     }
   } catch {
     return undefined
+  }
+}
+
+export interface PersistedLLMProviderResult {
+  config: KbConfig
+  notice?: string
+}
+
+/**
+ * If config.llm.provider is unset but we can infer a provider from environment keys,
+ * persist that inferred provider into the config file and return a user-facing notice.
+ *
+ * This makes implicit provider selection explicit and durable across commands/surfaces.
+ */
+export async function persistInferredLLMProvider(options: {
+  config: KbConfig
+  configFile?: string
+}): Promise<PersistedLLMProviderResult> {
+  const configFile = options.configFile ?? getKbConfigFile()
+  const current = options.config.llm?.provider
+  if (current) {
+    return { config: options.config }
+  }
+
+  const inferred =
+    process.env.ANTHROPIC_API_KEY ? 'anthropic'
+      : process.env.OPENAI_API_KEY ? 'openai'
+        : process.env.GEMINI_API_KEY ? 'gemini'
+          : process.env.OLLAMA_ENDPOINT ? 'ollama'
+            : undefined
+
+  if (!inferred) {
+    return { config: options.config }
+  }
+
+  const next: KbConfig = {
+    ...options.config,
+    llm: { ...options.config.llm, provider: inferred },
+  }
+
+  const saved = await writeKbConfig(next, configFile)
+
+  const envVar = inferred === 'anthropic' ? 'ANTHROPIC_API_KEY'
+    : inferred === 'openai' ? 'OPENAI_API_KEY'
+      : inferred === 'gemini' ? 'GEMINI_API_KEY'
+        : undefined
+
+  const because = envVar ? ` (detected ${envVar})` : ' (detected OLLAMA_ENDPOINT)'
+  return {
+    config: saved,
+    notice: `ℹ Auto-selected LLM provider: ${inferred}${because}. Saved to ${configFile}.`,
   }
 }
 
@@ -513,11 +562,7 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
 
   const selectedBase = typeof input.selectedBase === 'string' && input.selectedBase.trim()
     ? input.selectedBase.trim()
-    : typeof input.sessionBase === 'string' && input.sessionBase.trim()
-      ? input.sessionBase.trim()
-      : typeof input.defaultBase === 'string' && input.defaultBase.trim()
-        ? input.defaultBase.trim()
-        : undefined
+    : undefined
 
   if (selectedBase) {
     normalized.selectedBase = selectedBase
