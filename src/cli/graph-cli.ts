@@ -141,11 +141,7 @@ export interface GraphOut {
 export interface GraphWriter {
   open(): Promise<void>
   close(): void
-  getSummary(): Promise<{
-    totalEntities: number
-    totalRelationships: number
-    topEntities: Array<{ name: string; type: string; connections: number }>
-  }>
+  getSummary(): Promise<GraphSummary>
   exportDot(): Promise<string>
   exportJson(): Promise<unknown>
   findPath(from: string, to: string): Promise<{ hops: number; nodes: string[] } | null>

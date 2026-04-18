@@ -14,7 +14,7 @@ import type { GraphWriter } from '../../src/cli/graph-cli'
 const mockSummary = {
   totalEntities: 3,
   totalRelationships: 2,
-  topEntities: [{ name: 'KB', type: 'system', connections: 5 }],
+  topEntities: [{ id: 'kb', name: 'KB', type: 'system', connections: 5 }],
 }
 
 function makeMockWriter(overrides: Partial<GraphWriter> = {}): GraphWriter {
