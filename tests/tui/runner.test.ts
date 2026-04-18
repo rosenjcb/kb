@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseShellArgs, runCommandForTui } from '../../src/tui/runner.js'
 
 // ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ describe('runCommandForTui', () => {
       ['docs', 'list', '--limit', '5'],
       expect.any(Object),
       expect.any(Object),
-      'tui',
+      'tui'
     )
   })
 })

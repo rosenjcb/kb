@@ -1,12 +1,16 @@
 import process from 'node:process'
-import { readKbConfig, createLLMProviderFromConfig, resolveGraphEnabled } from '../src/cli/kb-config.js'
-import { runKbInit } from '../src/cli/init-cli.js'
 import { ensureOperationalBaseDir } from '../src/cli/base-selection.js'
-import { runChatSession, type ChatIO, type ChatTurnTrace } from '../src/cli/chat-cli.js'
-import { createKBToolsRegistry } from '../src/tools/kb-tools-registry.js'
-import { DuckGraphWriter } from '../src/tools/duck-graph-writer.js'
+import { type ChatIO, type ChatTurnTrace, runChatSession } from '../src/cli/chat-cli.js'
+import { runKbInit } from '../src/cli/init-cli.js'
+import {
+  createLLMProviderFromConfig,
+  readKbConfig,
+  resolveGraphEnabled,
+} from '../src/cli/kb-config.js'
 import { DefaultIntentRouter } from '../src/intents/router.js'
+import { DuckGraphWriter } from '../src/tools/duck-graph-writer.js'
 import { invalidateFactTool } from '../src/tools/invalidate-fact-tool.js'
+import { createKBToolsRegistry } from '../src/tools/kb-tools-registry.js'
 
 interface EvalVariant {
   label: string
@@ -58,7 +62,9 @@ async function main(): Promise<void> {
   const config = await readKbConfig()
   const llmProvider = createLLMProviderFromConfig(config)
   if (!llmProvider) {
-    throw new Error('No configured LLM provider found. Set credentials in ~/.kb/config.json or env before running this eval.')
+    throw new Error(
+      'No configured LLM provider found. Set credentials in ~/.kb/config.json or env before running this eval.'
+    )
   }
 
   for (const base of [baseA, baseB]) {
@@ -76,41 +82,59 @@ async function main(): Promise<void> {
     { label: 'conversational-b', base: baseB, conversationalRetrieval: true },
   ]
 
-  const report = await Promise.all(variants.map(variant => runVariant(variant, config, llmProvider, cwd)))
+  const report = await Promise.all(
+    variants.map(variant => runVariant(variant, config, llmProvider, cwd))
+  )
 
   const followUp = compareScenario(report, 'follow-up-search')
   const submit = compareScenario(report, 'submit-propagation')
   const invalidate = compareScenario(report, 'invalidate-propagation')
 
-  console.log(JSON.stringify({
-    cwd,
-    initializedBases: [baseA, baseB],
-    comparison: {
-      followUp,
-      submit,
-      invalidate,
-      sameBaseA: {
-        followUp: comparePair(report, 'follow-up-search', 'baseline-a', 'conversational-a'),
-        submit: comparePair(report, 'submit-propagation', 'baseline-a', 'conversational-a'),
-        invalidate: comparePair(report, 'invalidate-propagation', 'baseline-a', 'conversational-a'),
+  console.log(
+    JSON.stringify(
+      {
+        cwd,
+        initializedBases: [baseA, baseB],
+        comparison: {
+          followUp,
+          submit,
+          invalidate,
+          sameBaseA: {
+            followUp: comparePair(report, 'follow-up-search', 'baseline-a', 'conversational-a'),
+            submit: comparePair(report, 'submit-propagation', 'baseline-a', 'conversational-a'),
+            invalidate: comparePair(
+              report,
+              'invalidate-propagation',
+              'baseline-a',
+              'conversational-a'
+            ),
+          },
+          totalScoreByVariant: Object.fromEntries(
+            report.map(variant => [
+              variant.label,
+              variant.results.reduce((total, result) => total + result.score, 0),
+            ])
+          ),
+        },
+        variants: report,
       },
-      totalScoreByVariant: Object.fromEntries(
-        report.map(variant => [
-          variant.label,
-          variant.results.reduce((total, result) => total + result.score, 0),
-        ]),
-      ),
-    },
-    variants: report,
-  }, null, 2))
+      null,
+      2
+    )
+  )
 }
 
 async function runVariant(
   variant: EvalVariant,
   config: Awaited<ReturnType<typeof readKbConfig>>,
   llmProvider: NonNullable<ReturnType<typeof createLLMProviderFromConfig>>,
-  cwd: string,
-): Promise<{ label: string; base: string; conversationalRetrieval: boolean; results: ScenarioResult[] }> {
+  cwd: string
+): Promise<{
+  label: string
+  base: string
+  conversationalRetrieval: boolean
+  results: ScenarioResult[]
+}> {
   const baseDir = await ensureOperationalBaseDir(variant.base, cwd)
   const toolExecutor = createKBToolsRegistry(baseDir, config)
   const graphWriter = resolveGraphEnabled(config)
@@ -136,9 +160,7 @@ async function runVariant(
 
       return {
         score,
-        notes: [
-          `final resolved query: ${lastTrace?.resolvedQuery ?? 'n/a'}`,
-        ],
+        notes: [`final resolved query: ${lastTrace?.resolvedQuery ?? 'n/a'}`],
       }
     },
   })
@@ -170,11 +192,14 @@ async function runVariant(
     },
   })
 
-  await invalidateFactTool({
-    oldFact: 'Release process uses GitHub Actions.',
-    replacementFact: 'Release process uses Buildkite.',
-    preview: false,
-  }, baseDir)
+  await invalidateFactTool(
+    {
+      oldFact: 'Release process uses GitHub Actions.',
+      replacementFact: 'Release process uses Buildkite.',
+      preview: false,
+    },
+    baseDir
+  )
 
   const invalidateResult = await runScenario({
     name: 'invalidate-propagation',
@@ -211,18 +236,24 @@ async function runScenario(input: {
   graphWriter: DuckGraphWriter | undefined
   llmProvider: NonNullable<ReturnType<typeof createLLMProviderFromConfig>>
   conversationalRetrieval: boolean
-  scorer: (result: { traces: ChatTurnTrace[]; outputs: string[] }) => { score: number; notes: string[] }
+  scorer: (result: { traces: ChatTurnTrace[]; outputs: string[] }) => {
+    score: number
+    notes: string[]
+  }
 }): Promise<ScenarioResult> {
   const traces: ChatTurnTrace[] = []
   const io = new ScriptedChatIO([...input.prompts, '/exit'])
 
-  await runChatSession({
-    llmProvider: input.llmProvider,
-    toolExecutor: input.toolExecutor,
-    graphWriter: input.graphWriter,
-    conversationalRetrieval: input.conversationalRetrieval,
-    onTurnComplete: turn => traces.push(turn),
-  }, io)
+  await runChatSession(
+    {
+      llmProvider: input.llmProvider,
+      toolExecutor: input.toolExecutor,
+      graphWriter: input.graphWriter,
+      conversationalRetrieval: input.conversationalRetrieval,
+      onTurnComplete: turn => traces.push(turn),
+    },
+    io
+  )
 
   const scored = input.scorer({ traces, outputs: io.outputs })
   return {
@@ -237,12 +268,14 @@ async function runScenario(input: {
 
 function compareScenario(
   report: Array<{ label: string; results: ScenarioResult[] }>,
-  scenario: string,
+  scenario: string
 ): { winner: string; scores: Record<string, number> } {
-  const scores = Object.fromEntries(report.map(variant => [
-    variant.label,
-    variant.results.find(result => result.scenario === scenario)?.score ?? 0,
-  ]))
+  const scores = Object.fromEntries(
+    report.map(variant => [
+      variant.label,
+      variant.results.find(result => result.scenario === scenario)?.score ?? 0,
+    ])
+  )
 
   const entries = Object.entries(scores).sort((left, right) => right[1] - left[1])
   const winner = entries[0]?.[1] === entries[1]?.[1] ? 'tie' : (entries[0]?.[0] ?? 'unknown')
@@ -253,22 +286,29 @@ function comparePair(
   report: Array<{ label: string; results: ScenarioResult[] }>,
   scenario: string,
   leftLabel: string,
-  rightLabel: string,
+  rightLabel: string
 ): { winner: string; scores: Record<string, number> } {
   const scores = {
-    [leftLabel]: report.find(variant => variant.label === leftLabel)?.results.find(result => result.scenario === scenario)?.score ?? 0,
-    [rightLabel]: report.find(variant => variant.label === rightLabel)?.results.find(result => result.scenario === scenario)?.score ?? 0,
+    [leftLabel]:
+      report
+        .find(variant => variant.label === leftLabel)
+        ?.results.find(result => result.scenario === scenario)?.score ?? 0,
+    [rightLabel]:
+      report
+        .find(variant => variant.label === rightLabel)
+        ?.results.find(result => result.scenario === scenario)?.score ?? 0,
   }
-  const winner = scores[leftLabel] === scores[rightLabel]
-    ? 'tie'
-    : scores[leftLabel] > scores[rightLabel]
-      ? leftLabel
-      : rightLabel
+  const winner =
+    scores[leftLabel] === scores[rightLabel]
+      ? 'tie'
+      : scores[leftLabel] > scores[rightLabel]
+        ? leftLabel
+        : rightLabel
   return { winner, scores }
 }
 
 main().catch(error => {
-  const message = error instanceof Error ? error.stack ?? error.message : String(error)
+  const message = error instanceof Error ? (error.stack ?? error.message) : String(error)
   console.error(message)
   process.exitCode = 1
 })

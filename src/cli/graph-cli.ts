@@ -9,7 +9,8 @@
  *   kb graph --format json          Export full graph as JSON
  */
 
-import { DuckGraphWriter } from '../tools/duck-graph-writer'
+import { existsSync } from 'node:fs'
+import { DuckGraphWriter, type GraphSummary } from '../tools/duck-graph-writer'
 import { type CmdMode, cmd } from './cmd-ref'
 
 export interface GraphCommandOptions {
@@ -17,6 +18,61 @@ export interface GraphCommandOptions {
   pathFrom?: string
   pathTo?: string
   format?: 'dot' | 'json'
+}
+
+/** Compact JSON for init / tooling (counts + top nodes by degree, not full `exportJson`). */
+export interface KnowledgeGraphInitSummaryJson {
+  entities: number
+  relationships: number
+  topEntities: Array<{ id: string; name: string; type: string; connections: number }>
+}
+
+export function formatKnowledgeGraphHumanSummary(summary: GraphSummary): string {
+  const lines: string[] = [
+    'Knowledge graph summary',
+    `  Entities:      ${summary.totalEntities}`,
+    `  Relationships: ${summary.totalRelationships}`,
+  ]
+  if (summary.topEntities.length > 0) {
+    lines.push('')
+    lines.push('Top entities by connections:')
+    for (const e of summary.topEntities.slice(0, 10)) {
+      lines.push(
+        `  ${e.name} [${e.type}] — ${e.connections} connection${e.connections === 1 ? '' : 's'}`
+      )
+    }
+  }
+  return lines.join('\n')
+}
+
+/**
+ * Read the same summary `kb graph` prints, plus a small JSON object (subset of `kb graph --format json`).
+ * Returns null if the graph database file does not exist yet.
+ */
+export async function readKnowledgeGraphInitSummary(
+  baseDir: string
+): Promise<{ human: string; json: KnowledgeGraphInitSummaryJson } | null> {
+  const dbPath = DuckGraphWriter.dbPathForBase(baseDir)
+  if (!existsSync(dbPath)) return null
+
+  const writer = new DuckGraphWriter(dbPath)
+  try {
+    await writer.open()
+    const summary = await writer.getSummary()
+    const json: KnowledgeGraphInitSummaryJson = {
+      entities: summary.totalEntities,
+      relationships: summary.totalRelationships,
+      topEntities: summary.topEntities.slice(0, 10).map(e => ({
+        id: e.id,
+        name: e.name,
+        type: e.type,
+        connections: e.connections,
+      })),
+    }
+    return { human: formatKnowledgeGraphHumanSummary(summary), json }
+  } finally {
+    writer.close()
+  }
 }
 
 export class GraphCommandError extends Error {
@@ -85,11 +141,7 @@ export interface GraphOut {
 export interface GraphWriter {
   open(): Promise<void>
   close(): void
-  getSummary(): Promise<{
-    totalEntities: number
-    totalRelationships: number
-    topEntities: Array<{ name: string; type: string; connections: number }>
-  }>
+  getSummary(): Promise<GraphSummary>
   exportDot(): Promise<string>
   exportJson(): Promise<unknown>
   findPath(from: string, to: string): Promise<{ hops: number; nodes: string[] } | null>
@@ -166,16 +218,8 @@ export async function runGraphCommand(
 
     // Default: summary
     const summary = await writer.getSummary()
-    out.log('Knowledge graph summary')
-    out.log(`  Entities:      ${summary.totalEntities}`)
-    out.log(`  Relationships: ${summary.totalRelationships}`)
-    if (summary.topEntities.length > 0) {
-      out.log('\nTop entities by connections:')
-      for (const e of summary.topEntities.slice(0, 10)) {
-        out.log(
-          `  ${e.name} [${e.type}] — ${e.connections} connection${e.connections === 1 ? '' : 's'}`
-        )
-      }
+    for (const line of formatKnowledgeGraphHumanSummary(summary).split('\n')) {
+      out.log(line)
     }
   } finally {
     writer.close()

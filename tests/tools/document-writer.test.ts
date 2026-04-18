@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  executeWriteDocumentTool,
-  type DocumentWriter,
-} from '../../src/tools/document-writer'
+import { type DocumentWriter, executeWriteDocumentTool } from '../../src/tools/document-writer'
 
 describe('executeWriteDocumentTool', () => {
   it('Given valid write_document input, then should return the writer result', async () => {
@@ -51,10 +48,7 @@ describe('executeWriteDocumentTool', () => {
     }
 
     await expect(
-      executeWriteDocumentTool(
-        { title: 'Doc', content: 'Body', tags: ['ok', 42] },
-        writer
-      )
+      executeWriteDocumentTool({ title: 'Doc', content: 'Body', tags: ['ok', 42] }, writer)
     ).rejects.toThrow('write_document: tags must be an array of strings when provided')
   })
 
@@ -69,10 +63,7 @@ describe('executeWriteDocumentTool', () => {
       })),
     }
 
-    await executeWriteDocumentTool(
-      { title: 'Arch', content: 'Body', type: 'architecture' },
-      writer
-    )
+    await executeWriteDocumentTool({ title: 'Arch', content: 'Body', type: 'architecture' }, writer)
 
     expect(writer.writeDocument).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'architecture' })
@@ -85,10 +76,7 @@ describe('executeWriteDocumentTool', () => {
     }
 
     await expect(
-      executeWriteDocumentTool(
-        { title: 'Doc', content: 'Body', type: 'invalid-type' },
-        writer
-      )
+      executeWriteDocumentTool({ title: 'Doc', content: 'Body', type: 'invalid-type' }, writer)
     ).rejects.toThrow(
       'write_document: type must be one of architecture, decision, checklist, runbook, reference'
     )

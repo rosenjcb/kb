@@ -3,11 +3,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  ViewCommandError,
   parseListCommand,
   parseViewCommand,
   runListCommand,
   runViewCommand,
-  ViewCommandError,
 } from '../../src/cli/view-cli'
 import { SqliteDocumentWriter } from '../../src/tools/sqlite-document-writer'
 
@@ -31,7 +31,7 @@ async function seedDocument(
     content: string
     type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
     tags?: string[]
-  },
+  }
 ): Promise<void> {
   const writer = new SqliteDocumentWriter({ baseDir })
   await writer.writeDocument({
@@ -74,13 +74,13 @@ describe('view-cli parsing', () => {
 
   it('Given id and title selectors together, then throws explicit error', () => {
     expect(() => parseViewCommand(['doc-id', '--title', 'Title'])).toThrow(
-      'kb docs view accepts either <document-id> or --title, not both.',
+      'kb docs view accepts either <document-id> or --title, not both.'
     )
   })
 
   it('Given unsupported output, then throws explicit error', () => {
     expect(() => parseViewCommand(['doc-id', '--output', 'yaml'])).toThrow(
-      'Unsupported output mode: yaml. Use human or json.',
+      'Unsupported output mode: yaml. Use human or json.'
     )
   })
 })
@@ -102,7 +102,9 @@ describe('list-cli parsing', () => {
   })
 
   it('Given positional arg, then throws explicit error', () => {
-    expect(() => parseListCommand(['extra'])).toThrow('kb docs list does not accept positional arguments.')
+    expect(() => parseListCommand(['extra'])).toThrow(
+      'kb docs list does not accept positional arguments.'
+    )
   })
 })
 
@@ -154,7 +156,7 @@ describe('view-cli runtime', () => {
     const baseDir = await createTempBase()
 
     await expect(runViewCommand(['missing-doc', '--base', baseDir])).rejects.toThrow(
-      'Document not found: missing-doc',
+      'Document not found: missing-doc'
     )
   })
 
@@ -209,7 +211,9 @@ describe('list-cli runtime', () => {
     expect(result.output).toContain('# KB Documents')
     expect(result.output).toContain('Count: 2')
     expect(result.output).toContain('- cli-facts (title="CLI Facts"; type=reference; tags=cli;')
-    expect(result.output).toContain('- architecture-notes (title="Architecture Notes"; type=architecture;')
+    expect(result.output).toContain(
+      '- architecture-notes (title="Architecture Notes"; type=architecture;'
+    )
   })
 
   it('Given json output, then returns metadata-only document list', async () => {

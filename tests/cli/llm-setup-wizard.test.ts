@@ -1,13 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import path from 'node:path'
 import os from 'node:os'
+import path from 'node:path'
 import { Readable } from 'node:stream'
-import { runLLMSetupWizard, showLLMStatus } from '../../src/cli/llm-setup-wizard'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readKbConfig } from '../../src/cli/kb-config'
+import { runLLMSetupWizard, showLLMStatus } from '../../src/cli/llm-setup-wizard'
 
 function makeInput(lines: string[]): Readable {
-  return Readable.from(lines.map(l => l + '\n'))
+  return Readable.from(lines.map(l => `${l}\n`))
 }
 
 function createQuestionIO(answers: string[]) {

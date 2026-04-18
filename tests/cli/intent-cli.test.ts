@@ -2,17 +2,17 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ToolExecutor } from '../../src/core/tool-registry'
-import type { LLMProvider } from '../../src/core/types'
 import {
   augmentIntentResultWithWorkspaceFallback,
   enrichReadDocumentsAnswerWithLLM,
+  executeIntentCommand,
   formatIntentResult,
   isIntentCommand,
   parseIntentCommand,
   rewriteIntentInputWithSessionContext,
-  executeIntentCommand,
 } from '../../src/cli/intent-cli'
+import type { ToolExecutor } from '../../src/core/tool-registry'
+import type { LLMProvider } from '../../src/core/types'
 
 const tempDirs: string[] = []
 
@@ -42,12 +42,7 @@ describe('intent-cli parsing', () => {
   })
 
   it('Given query with deep discovery option, then parses discoveryDepth in payload', () => {
-    const parsed = parseIntentCommand([
-      'query',
-      'env local strategy',
-      '--discovery',
-      'deep',
-    ])
+    const parsed = parseIntentCommand(['query', 'env local strategy', '--discovery', 'deep'])
 
     expect(parsed.envelope.intent).toBe('query_truth')
     expect(parsed.envelope.payload.discoveryDepth).toBe('deep')
@@ -74,7 +69,7 @@ describe('intent-cli parsing', () => {
 
   it('Given dispute without because, then throws validation error', () => {
     expect(() => parseIntentCommand(['dispute', 'Fact only'])).toThrow(
-      'dispute requires --because "<counter evidence>"',
+      'dispute requires --because "<counter evidence>"'
     )
   })
 
@@ -85,7 +80,7 @@ describe('intent-cli parsing', () => {
   it('Given json output mode, then formatter returns JSON string', () => {
     const output = formatIntentResult(
       { status: 'valid', explanation: 'ok', confidence: 0.9 },
-      'json',
+      'json'
     )
     expect(output).toContain('"status": "valid"')
   })
@@ -95,8 +90,8 @@ describe('intent-cli parsing', () => {
       {
         status: 'accepted',
         confidence: 0.8,
-          explanation: 'query intent maps directly to read_documents',
-          recommendedAction: 'read_documents',
+        explanation: 'query intent maps directly to read_documents',
+        recommendedAction: 'read_documents',
         data: {
           answer: 'The KB uses session base first, then default base.',
           retrieval: {
@@ -118,13 +113,14 @@ describe('intent-cli parsing', () => {
                 title: 'CLI Facts',
                 filePath: '/tmp/cli-facts.md',
               },
-              content: '# CLI Facts\n\nCreated: 2026-04-12\n\n## Base Selection\nKB base precedence order: 1) kb use, 2) kb default.',
+              content:
+                '# CLI Facts\n\nCreated: 2026-04-12\n\n## Base Selection\nKB base precedence order: 1) kb use, 2) kb default.',
             },
           ],
           total: 1,
         },
       },
-      'human',
+      'human'
     )
 
     expect(output).toContain('Summary: Found 1 matching KB document')
@@ -156,11 +152,13 @@ describe('intent-cli parsing', () => {
           total: 0,
         },
       },
-      'human',
+      'human'
     )
 
     expect(output).toContain('Summary: No matching KB documents were found for this query.')
-    expect(output).toContain('Answer: I could not find enough evidence to answer directly from KB documents.')
+    expect(output).toContain(
+      'Answer: I could not find enough evidence to answer directly from KB documents.'
+    )
     expect(output).toContain('Retrieval: lexical-fallback (hybrid-error:no-index)')
     expect(output).toContain('Matches: 0')
     expect(output).toContain('Relevant Docs: none')
@@ -196,9 +194,11 @@ describe('intent-cli parsing', () => {
 
     const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
     const data = enriched.data as { answer?: string }
-    expect(provider.call).toHaveBeenCalledWith(expect.objectContaining({
-      maxTokens: 4096,
-    }))
+    expect(provider.call).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxTokens: 4096,
+      })
+    )
     expect(data.answer).toContain('Precedence is session base')
   })
 
@@ -216,7 +216,7 @@ describe('intent-cli parsing', () => {
         ],
         updatedAt: Date.now(),
       }),
-      'utf8',
+      'utf8'
     )
 
     const parsed = parseIntentCommand(['query', 'What about the implementation files?'])
@@ -242,7 +242,7 @@ describe('intent-cli parsing', () => {
     await writeFile(
       path.join(workspaceDir, 'README.md'),
       '# KB Agent Harness\n\nThis project is a local-first knowledge system for AI workflows.\n',
-      'utf8',
+      'utf8'
     )
 
     const parsed = parseIntentCommand(['query', 'What is this project for?'])
@@ -272,7 +272,10 @@ describe('intent-cli parsing', () => {
     }
 
     const augmented = await augmentIntentResultWithWorkspaceFallback(parsed, result, workspaceDir)
-    const data = augmented.data as { results?: Array<{ metadata?: { id?: string } }>; retrieval?: { detail?: string } }
+    const data = augmented.data as {
+      results?: Array<{ metadata?: { id?: string } }>
+      retrieval?: { detail?: string }
+    }
 
     expect(data.retrieval?.detail).toContain('workspace-fallback')
     expect(data.results?.some(item => item.metadata?.id === 'workspace-readme')).toBe(true)
@@ -328,15 +331,17 @@ describe('intent-cli parsing', () => {
 
     const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
     const data = enriched.data as { answer?: string }
-    expect(provider.call).toHaveBeenCalledWith(expect.objectContaining({
-      maxTokens: 4096,
-      messages: expect.arrayContaining([
-        expect.objectContaining({
-          role: 'user',
-          content: expect.stringContaining('a few solid paragraphs are acceptable'),
-        }),
-      ]),
-    }))
+    expect(provider.call).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxTokens: 4096,
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.stringContaining('a few solid paragraphs are acceptable'),
+          }),
+        ]),
+      })
+    )
     expect(data.answer).toContain('Use kb --help')
   })
 
@@ -385,7 +390,10 @@ describe('intent-cli parsing', () => {
   })
 
   it('Given LLM insufficiency boilerplate and exact token evidence present, enrichment should replace answer with grounded fallback', async () => {
-    const parsed = parseIntentCommand(['query', 'CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION'])
+    const parsed = parseIntentCommand([
+      'query',
+      'CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION',
+    ])
     const result = {
       status: 'accepted' as const,
       recommendedAction: 'read_documents',

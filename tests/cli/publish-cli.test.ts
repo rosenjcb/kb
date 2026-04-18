@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import Database from 'better-sqlite3'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parsePublishCommand, runPublishCommand } from '../../src/cli/publish-cli'
 
 const originalNotionToken = process.env.NOTION_TOKEN
@@ -65,7 +65,7 @@ describe('publish-cli parser', () => {
 
   it('Given unsupported provider, then throws explicit error', () => {
     expect(() => parsePublishCommand(['--provider', 'other'])).toThrow(
-      'Only --provider notion is supported in v1',
+      'Only --provider notion is supported in v1'
     )
   })
 
@@ -88,13 +88,21 @@ describe('publish-cli parser', () => {
 })
 
 describe('publish-cli dry run', () => {
-  it.todo('Given markdown base directory, then returns package/import/restructure dry-run result — needs new publish architecture implementation')
+  it.todo(
+    'Given markdown base directory, then returns package/import/restructure dry-run result — needs new publish architecture implementation'
+  )
 })
 
 describe('publish-cli apply', () => {
-  it.todo('Given restructure apply without stage page id, then validates required input — needs phase-aware publish architecture')
-  it.todo('Given apply all, then publishes markdown pages for raw import and generated wiki — needs phase-aware publish architecture')
-  it.todo('Given stop-after package, then writes checkpoint and resume continues from it — needs checkpoint/resume publish architecture')
+  it.todo(
+    'Given restructure apply without stage page id, then validates required input — needs phase-aware publish architecture'
+  )
+  it.todo(
+    'Given apply all, then publishes markdown pages for raw import and generated wiki — needs phase-aware publish architecture'
+  )
+  it.todo(
+    'Given stop-after package, then writes checkpoint and resume continues from it — needs checkpoint/resume publish architecture'
+  )
 
   it('Given a custom progress sink, then publish progress avoids direct stderr writes', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'kb-publish-test-'))
@@ -124,7 +132,13 @@ describe('publish-cli apply', () => {
       db.prepare(`
         INSERT INTO documents (id, title, content, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?)
-      `).run('overview', 'Overview', '# Overview\n\nHello world\n', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')
+      `).run(
+        'overview',
+        'Overview',
+        '# Overview\n\nHello world\n',
+        '2026-01-01T00:00:00.000Z',
+        '2026-01-01T00:00:00.000Z'
+      )
       db.close()
 
       await runPublishCommand({

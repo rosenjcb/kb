@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { agentLoop, runAgent } from '../../src/core/agent-loop'
 import { RunCollector } from '../../src/core/telemetry'
-import type { LLMProvider, LLMResponse } from '../../src/core/types'
+import { createToolRegistry } from '../../src/core/tool-registry'
+import type { LLMProvider, LLMResponse, ToolDefinition } from '../../src/core/types'
 
 class FakeProvider implements LLMProvider {
   readonly name = 'fake'
@@ -37,6 +38,53 @@ describe('agentLoop', () => {
 
     expect(events.map(e => e.type)).toEqual(['text', 'metadata', 'done'])
     expect(events[0]).toEqual({ type: 'text', content: 'hello' })
+  })
+
+  it('Given two slow tools in one turn and parallelToolCalls true, then overlap execution', async () => {
+    const def: ToolDefinition = {
+      name: 'noop',
+      description: 'noop',
+      schema: { type: 'object' },
+    }
+    let concurrent = 0
+    let maxConcurrent = 0
+    const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
+    const registry = createToolRegistry()
+    registry.register('slow_a', def, async () => {
+      concurrent += 1
+      maxConcurrent = Math.max(maxConcurrent, concurrent)
+      await delay(25)
+      concurrent -= 1
+      return 'a'
+    })
+    registry.register('slow_b', def, async () => {
+      concurrent += 1
+      maxConcurrent = Math.max(maxConcurrent, concurrent)
+      await delay(25)
+      concurrent -= 1
+      return 'b'
+    })
+
+    const provider = new FakeProvider([
+      {
+        text: 'parallel',
+        stopReason: 'tool_use',
+        toolUses: [
+          { id: '1', name: 'slow_a', input: {} },
+          { id: '2', name: 'slow_b', input: {} },
+        ],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      },
+      {
+        text: 'done',
+        stopReason: 'end_turn',
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      },
+    ])
+
+    await runAgent('go', provider, registry, { maxTurns: 3, parallelToolCalls: true })
+    expect(maxConcurrent).toBe(2)
   })
 
   it('Given a provider response with tool calls and maxTurns one, then should emit tool events and max-turn termination', async () => {
@@ -82,7 +130,12 @@ describe('agentLoop', () => {
 
   it('Given a collector, then records a stage per LLM turn with correct token counts', async () => {
     const provider = new FakeProvider([
-      { text: 'hi', stopReason: 'end_turn', toolUses: [], usage: { inputTokens: 42, outputTokens: 17 } },
+      {
+        text: 'hi',
+        stopReason: 'end_turn',
+        toolUses: [],
+        usage: { inputTokens: 42, outputTokens: 17 },
+      },
     ])
     const collector = new RunCollector('chat')
     const events = await runAgent('hello', provider, undefined, { collector })

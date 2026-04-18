@@ -3,9 +3,9 @@ import os from 'node:os'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import { afterEach, describe, expect, it } from 'vitest'
+import { DuckGraphWriter } from '../../src/tools/duck-graph-writer'
 import { MarkdownDocumentReader } from '../../src/tools/markdown-document-reader'
 import { MarkdownMDWriterTool } from '../../src/tools/markdown-md-writer-tool'
-import { DuckGraphWriter } from '../../src/tools/duck-graph-writer'
 
 const tempDirs: string[] = []
 
@@ -71,20 +71,23 @@ describe('MarkdownDocumentReader', () => {
     expect(response.results[0]?.metadata.id).toBe('decision-1')
   })
 
-    it('Given natural-language question, when querying content mode, then matches by token overlap', async () => {
-      const baseDir = await createTempDir()
-      await writeFile(path.join(baseDir, 'future-plan.md'), `# Storage Direction\n\nCreated: 2026-01-01\nType: reference\n\nThe current persistent store is markdown files. SQLite is a potential future backend direction.\n`)
+  it('Given natural-language question, when querying content mode, then matches by token overlap', async () => {
+    const baseDir = await createTempDir()
+    await writeFile(
+      path.join(baseDir, 'future-plan.md'),
+      '# Storage Direction\n\nCreated: 2026-01-01\nType: reference\n\nThe current persistent store is markdown files. SQLite is a potential future backend direction.\n'
+    )
 
-      const reader = new MarkdownDocumentReader(baseDir)
-      const response = await reader.queryDocuments({
-        query: 'What is the future plan for our document store?',
-        mode: 'content',
-        includeContent: true,
-      })
-
-      expect(response.total).toBe(1)
-      expect(response.results[0]?.metadata.id).toBe('future-plan')
+    const reader = new MarkdownDocumentReader(baseDir)
+    const response = await reader.queryDocuments({
+      query: 'What is the future plan for our document store?',
+      mode: 'content',
+      includeContent: true,
     })
+
+    expect(response.total).toBe(1)
+    expect(response.results[0]?.metadata.id).toBe('future-plan')
+  })
 
   it('Given hybrid query enabled with SQLite index, then should rank and return indexed documents', async () => {
     const baseDir = await createTempDir()
@@ -395,9 +398,9 @@ describe('MarkdownDocumentReader', () => {
     expect(response.total).toBe(0)
 
     const db = new Database(dbPath, { readonly: true })
-    const missCount = db
-      .prepare('SELECT count(*) AS count FROM retrieval_miss_events')
-      .get() as { count: number }
+    const missCount = db.prepare('SELECT count(*) AS count FROM retrieval_miss_events').get() as {
+      count: number
+    }
     db.close()
 
     expect(missCount.count).toBe(0)
@@ -510,7 +513,8 @@ describe('MarkdownDocumentReader', () => {
 
     await writer.writeDocument({
       title: 'Session Log Retrieval Notes',
-      content: 'Today we discussed what this project is about in a noisy transcript with repeated chatter.',
+      content:
+        'Today we discussed what this project is about in a noisy transcript with repeated chatter.',
       documentId: 'session-log-2026-04-12',
       overwrite: true,
       type: 'reference',

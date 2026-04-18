@@ -108,7 +108,7 @@ export function App({ config, startupNotices = [] }: Props) {
     }
 
     const storageDir = storageDirRef.current
-    const toolExecutor = createKBToolsRegistry(storageDir, config)
+    const toolExecutor = createKBToolsRegistry(storageDir, config, { taskProvider: llmProvider })
     const graphWriter = resolveGraphEnabled(config)
       ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(storageDir))
       : undefined
