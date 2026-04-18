@@ -6,19 +6,19 @@ export interface SlashCommand {
 }
 
 const SHELL_COMMANDS: SlashCommand[] = [
-  { command: '/help', description: 'show kb CLI and TUI help' },
-  { command: '/chat', description: 'start interactive chat mode' },
+  { command: '/init', description: 'initialize a knowledge base' },
+  { command: '/use', description: 'switch the active knowledge base' },
   { command: '/query', description: 'search the knowledge base' },
   { command: '/submit', description: 'store a new fact or checkpoint' },
   { command: '/validate', description: 'check whether a fact is supported' },
   { command: '/dispute', description: 'record counter-evidence for a fact' },
   { command: '/explain', description: 'explain a fact or change id' },
+  { command: '/chat', description: 'start interactive chat mode' },
   { command: '/docs', description: 'list or view knowledge base documents' },
   { command: '/graph', description: 'inspect the graph store' },
-  { command: '/init', description: 'initialize a knowledge base' },
   { command: '/publish', description: 'publish docs to the external sink' },
-  { command: '/use', description: 'switch the active knowledge base' },
   { command: '/config', description: 'inspect or update config values' },
+  { command: '/help', description: 'show kb CLI and TUI help' },
   { command: '/clear', description: 'clear the visible session history' },
   { command: '/exit', description: 'quit the TUI' },
 ]
