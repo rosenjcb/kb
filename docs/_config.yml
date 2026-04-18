@@ -1,7 +1,7 @@
 title: KB
 description: A local-first knowledge system for AI workflows — store, query, and validate project knowledge from the command line.
-baseurl: ""
-url: ""
+baseurl: "/kb"
+url: "https://rosenjcb.github.io"
 
 remote_theme: pages-themes/architect@v0.2.0
 
