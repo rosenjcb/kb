@@ -4,15 +4,9 @@
  * No filesystem writes. Replaces MarkdownMDWriterTool as the default writer.
  */
 
-import path from 'node:path'
 import { mkdirSync } from 'node:fs'
+import path from 'node:path'
 import dayjs from 'dayjs'
-import {
-  SqliteKbIndexer,
-  type DocumentUpsertInput,
-  type SessionEntryInput,
-} from './sqlite-kb-index'
-import { classifyDocumentLane } from './retrieval-lane-router'
 import type {
   AppendToDocumentInput,
   DocumentWriterExtended,
@@ -27,6 +21,12 @@ import type {
   WriteDocumentInput,
   WriteDocumentResult,
 } from './document-writer'
+import { classifyDocumentLane } from './retrieval-lane-router'
+import {
+  type DocumentUpsertInput,
+  type SessionEntryInput,
+  SqliteKbIndexer,
+} from './sqlite-kb-index'
 
 export interface SqliteDocumentWriterOptions {
   /** Path to the directory that contains (or will contain) the .kb-index.sqlite file. */
@@ -36,11 +36,13 @@ export interface SqliteDocumentWriterOptions {
 }
 
 function sanitizeId(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'document'
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'document'
+  )
 }
 
 /**
@@ -71,7 +73,11 @@ function extractCreatedAtFromContent(content: string): string {
 function extractTagsFromContent(content: string): string[] {
   for (const line of content.split('\n').slice(0, 10)) {
     if (line.startsWith('Tags:')) {
-      return line.slice('Tags:'.length).split(',').map(t => t.trim()).filter(Boolean)
+      return line
+        .slice('Tags:'.length)
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean)
     }
   }
   return []
@@ -95,7 +101,10 @@ function buildDiff(id: string, before: string, after: string): string {
     const a = afterLines[i]
     if (b !== undefined && a === undefined) diffLines.push(`-${b}`)
     else if (b === undefined && a !== undefined) diffLines.push(`+${a}`)
-    else if (b !== a) { diffLines.push(`-${b}`); diffLines.push(`+${a}`) }
+    else if (b !== a) {
+      diffLines.push(`-${b}`)
+      diffLines.push(`+${a}`)
+    }
   }
   return diffLines.join('\n')
 }
@@ -131,13 +140,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     }
 
     const content = renderDocumentContent(input, now)
-    const lane = classifyDocumentLane(
-      id,
-      input.title,
-      input.type ?? null,
-      input.tags ?? [],
-      '',
-    )
+    const lane = classifyDocumentLane(id, input.title, input.type ?? null, input.tags ?? [], '')
 
     const upsert: DocumentUpsertInput = {
       id,
@@ -162,9 +165,8 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     if (!existing) throw new Error(`Document not found: ${input.documentId}`)
 
     const appendText = input.content.endsWith('\n') ? input.content : `${input.content}\n`
-    const updated = input.position === 'top'
-      ? appendText + '\n' + existing
-      : existing + '\n' + appendText
+    const updated =
+      input.position === 'top' ? `${appendText}\n${existing}` : `${existing}\n${appendText}`
 
     return this.writeUpdatedContent(id, updated)
   }
@@ -181,7 +183,11 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     const typeLine = extractTypeFromContent(existing)
     const tagsRaw = extractTagsFromContent(existing)
     const body = input.content.endsWith('\n') ? input.content : `${input.content}\n`
-    const metaLines = [`Created: ${createdAt}`, ...(typeLine ? [`Type: ${typeLine}`] : []), ...(tagsRaw.length ? [`Tags: ${tagsRaw.join(', ')}`] : [])]
+    const metaLines = [
+      `Created: ${createdAt}`,
+      ...(typeLine ? [`Type: ${typeLine}`] : []),
+      ...(tagsRaw.length ? [`Tags: ${tagsRaw.join(', ')}`] : []),
+    ]
     const newContent = `# ${title}\n\n${metaLines.join('\n')}\n\n${body}`
 
     return this.writeUpdatedContent(id, newContent)
@@ -202,7 +208,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
       throw new Error(`No section found matching pattern: "${input.prunePattern}"`)
     }
 
-    return this.writeUpdatedContent(id, pruned + '\n')
+    return this.writeUpdatedContent(id, `${pruned}\n`)
   }
 
   // ─── Merge ──────────────────────────────────────────────────────
@@ -228,18 +234,17 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
 
     const targetLen = targetContent.length
     const sourceLen = sourceContent.length
-    const [primary, secondary] = targetLen >= sourceLen
-      ? [targetContent, sourceContent]
-      : [sourceContent, targetContent]
+    const [primary, secondary] =
+      targetLen >= sourceLen ? [targetContent, sourceContent] : [sourceContent, targetContent]
 
-    const mergedBody = primary.trimEnd() + '\n\n---\n\n' + secondary.trimStart()
+    const mergedBody = `${primary.trimEnd()}\n\n---\n\n${secondary.trimStart()}`
     await this.writeUpdatedContent(targetId, mergedBody)
 
     return {
       targetDocId: targetId,
       sourceDocIds: [sourceId],
       status: 'merged',
-      note: `Auto-merged using deterministic content merge.`,
+      note: 'Auto-merged using deterministic content merge.',
     }
   }
 
@@ -267,7 +272,9 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     let totalReplacements = 0
 
     for (const row of rows) {
-      const lane = row.lane ?? classifyDocumentLane(row.id, row.title, row.doc_type, JSON.parse(row.tags_json ?? '[]'), '')
+      const lane =
+        row.lane ??
+        classifyDocumentLane(row.id, row.title, row.doc_type, JSON.parse(row.tags_json ?? '[]'), '')
       if (!includeSessionLogs && lane === 'session-log') {
         skippedDocumentIds.push(row.id)
         continue
@@ -301,24 +308,41 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     }
 
     return {
-      replaceFrom, replaceTo, dryRun,
-      scannedDocs, changedDocs: changedDocumentIds.length,
-      skippedDocs: skippedDocumentIds.length, totalReplacements,
-      changedDocumentIds, skippedDocumentIds, proposedDiffs,
+      replaceFrom,
+      replaceTo,
+      dryRun,
+      scannedDocs,
+      changedDocs: changedDocumentIds.length,
+      skippedDocs: skippedDocumentIds.length,
+      totalReplacements,
+      changedDocumentIds,
+      skippedDocumentIds,
+      proposedDiffs,
       discovery: { strategy: 'full-crawl', indexCandidateCount: 0 },
     }
   }
 
   // ─── Reconcile Contradictions ────────────────────────────────────
 
-  async reconcileContradictions(input: ReconcileContradictionsInput): Promise<ReconcileContradictionsResult> {
+  async reconcileContradictions(
+    input: ReconcileContradictionsInput
+  ): Promise<ReconcileContradictionsResult> {
     const newFact = input.newFact.trim()
     const domain = input.domain ?? 'general'
     const includeSessionLogs = input.includeSessionLogs ?? false
     const dryRun = input.dryRun ?? false
 
     if (!newFact) {
-      return { newFact, domain, dryRun, scannedDocs: 0, changedDocs: 0, removedFacts: 0, changedDocumentIds: [], proposedDiffs: [] }
+      return {
+        newFact,
+        domain,
+        dryRun,
+        scannedDocs: 0,
+        changedDocs: 0,
+        removedFacts: 0,
+        changedDocumentIds: [],
+        proposedDiffs: [],
+      }
     }
 
     const rows = this.indexer.getAllDocumentsForLexical()
@@ -328,7 +352,9 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     let removedFacts = 0
 
     for (const row of rows) {
-      const lane = row.lane ?? classifyDocumentLane(row.id, row.title, row.doc_type, JSON.parse(row.tags_json ?? '[]'), '')
+      const lane =
+        row.lane ??
+        classifyDocumentLane(row.id, row.title, row.doc_type, JSON.parse(row.tags_json ?? '[]'), '')
       if (!includeSessionLogs && lane === 'session-log') continue
 
       scannedDocs++
@@ -366,7 +392,16 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
       }
     }
 
-    return { newFact, domain, dryRun, scannedDocs, changedDocs: changedDocumentIds.length, removedFacts, changedDocumentIds, proposedDiffs }
+    return {
+      newFact,
+      domain,
+      dryRun,
+      scannedDocs,
+      changedDocs: changedDocumentIds.length,
+      removedFacts,
+      changedDocumentIds,
+      proposedDiffs,
+    }
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────
@@ -384,11 +419,22 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     return { id, title, filePath: '', createdAt, updatedAt: now }
   }
 
-  private emptyReconcileFactsResult(replaceFrom: string, replaceTo: string, dryRun: boolean): ReconcileFactsResult {
+  private emptyReconcileFactsResult(
+    replaceFrom: string,
+    replaceTo: string,
+    dryRun: boolean
+  ): ReconcileFactsResult {
     return {
-      replaceFrom, replaceTo, dryRun,
-      scannedDocs: 0, changedDocs: 0, skippedDocs: 0, totalReplacements: 0,
-      changedDocumentIds: [], skippedDocumentIds: [], proposedDiffs: [],
+      replaceFrom,
+      replaceTo,
+      dryRun,
+      scannedDocs: 0,
+      changedDocs: 0,
+      skippedDocs: 0,
+      totalReplacements: 0,
+      changedDocumentIds: [],
+      skippedDocumentIds: [],
+      proposedDiffs: [],
       discovery: { strategy: 'full-crawl', indexCandidateCount: 0 },
     }
   }

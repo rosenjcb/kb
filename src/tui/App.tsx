@@ -1,21 +1,30 @@
 import { Box, useApp, useInput } from 'ink'
-import { useState, useEffect, useRef, useCallback } from 'react'
-import type { KbConfig } from '../cli/kb-config.js'
-import type { ChatIO } from '../cli/chat-cli.js'
-import type { InitQuestionIO } from '../cli/init-cli.js'
-import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
-import { createLLMProviderFromConfig, resolveConversationalChatEnabled, resolveGraphEnabled } from '../cli/kb-config.js'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { resolveEffectiveBaseDir } from '../cli/base-selection.js'
+import type { ChatIO } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
+import {
+  CLI_ERROR_NO_KB_BASE,
+  CLI_ERROR_NO_LLM_PROVIDER,
+  formatPrerequisiteError,
+} from '../cli/cli-prerequisites.js'
+import type { InitOptions, InitQuestionIO } from '../cli/init-cli.js'
 import { parseInitCommand, runKbInit } from '../cli/init-cli.js'
+import type { KbConfig } from '../cli/kb-config.js'
+import {
+  createLLMProviderFromConfig,
+  resolveConversationalChatEnabled,
+  resolveGraphEnabled,
+} from '../cli/kb-config.js'
 import { DuckGraphWriter } from '../tools/duck-graph-writer.js'
-import { runCommandForTui, parseShellArgs, printCliHelp } from './runner.js'
-import { StatusBar } from './components/StatusBar.js'
+import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
 import { HistoryPane } from './components/HistoryPane.js'
-import { InputBar } from './components/InputBar.js'
 import { InitStatusPanel } from './components/InitStatusPanel.js'
+import { InputBar } from './components/InputBar.js'
+import { StatusBar } from './components/StatusBar.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
 import { parseInitOutput } from './init-status.js'
+import { parseShellArgs, printCliHelp, runCommandForTui } from './runner.js'
 import {
   applySelectedSuggestion,
   clampSuggestionIndex,
@@ -27,9 +36,10 @@ import type { HistoryEntry, TuiMode } from './types.js'
 
 interface Props {
   config: KbConfig
+  startupNotices?: string[]
 }
 
-export function App({ config }: Props) {
+export function App({ config, startupNotices = [] }: Props) {
   const { exit } = useApp()
 
   const [mode, setMode] = useState<TuiMode>('shell')
@@ -54,28 +64,44 @@ export function App({ config }: Props) {
     return id
   }, [])
 
+  useEffect(() => {
+    if (startupNotices.length === 0) return
+    for (const notice of startupNotices) {
+      addEntry({ type: 'info', content: notice })
+    }
+  }, [startupNotices, addEntry])
+
   const updateEntry = useCallback((id: string, patch: Partial<Omit<HistoryEntry, 'id'>>) => {
     setHistory(prev => prev.map(e => (e.id === id ? { ...e, ...patch } : e)))
   }, [])
 
-  // Resolve base dir on mount
+  // Resolve base dir on mount (effective base: activeBase, else selectedBase)
   useEffect(() => {
     resolveEffectiveBaseDir()
-      .then(({ baseDir, baseName: name }) => {
+      .then(({ baseDir, baseName: effectiveBaseName }) => {
         storageDirRef.current = baseDir
-        setBaseName(name)
+        setBaseName(effectiveBaseName)
       })
       .catch(() => {
-        setBaseName('default')
+        storageDirRef.current = ''
+        setBaseName('')
       })
   }, [])
 
   const startChatSession = useCallback(() => {
-    const llmProvider = createLLMProviderFromConfig(config)
-    if (!llmProvider || !storageDirRef.current) {
+    if (!storageDirRef.current) {
       addEntry({
         type: 'error',
-        content: '❌ Cannot start chat: no LLM provider or storage dir configured.',
+        content: formatPrerequisiteError(CLI_ERROR_NO_KB_BASE),
+      })
+      setMode('shell')
+      return
+    }
+    const llmProvider = createLLMProviderFromConfig(config)
+    if (!llmProvider) {
+      addEntry({
+        type: 'error',
+        content: formatPrerequisiteError(CLI_ERROR_NO_LLM_PROVIDER),
       })
       setMode('shell')
       return
@@ -113,12 +139,15 @@ export function App({ config }: Props) {
       },
     }
 
-    runChatSession({
-      llmProvider,
-      toolExecutor,
-      graphWriter,
-      conversationalRetrieval: resolveConversationalChatEnabled(config),
-    }, chatIO)
+    runChatSession(
+      {
+        llmProvider,
+        toolExecutor,
+        graphWriter,
+        conversationalRetrieval: resolveConversationalChatEnabled(config),
+      },
+      chatIO
+    )
       .then(() => {
         setMode('shell')
       })
@@ -129,63 +158,66 @@ export function App({ config }: Props) {
       })
   }, [config, addEntry])
 
-  const startInitSession = useCallback((extraArgs: string[]) => {
-    setInitStatus({
-      message: 'Initializing KB — press Enter to skip any question.',
-      progressLine: '[init] starting…',
-    })
-
-    const questionIO: InitQuestionIO = {
-      write(message: string) {
-        const parsed = parseInitOutput(message)
-        for (const line of parsed.historyLines) {
-          addEntry({ type: 'info', content: line })
-        }
-        if (parsed.progressLine) {
-          setInitStatus(current => ({ ...current, progressLine: parsed.progressLine }))
-        }
-      },
-      async askQuestion(question: string): Promise<string> {
-        addEntry({ type: 'info', content: question.trim() })
-        return new Promise<string>(resolve => {
-          initInputResolverRef.current = resolve
-        })
-      },
-    }
-
-    let parsed
-    try {
-      parsed = parseInitCommand(extraArgs)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      addEntry({ type: 'error', content: `❌ ${message}` })
-      setMode('shell')
-      return
-    }
-
-    runKbInit({
-      ...parsed,
-      questionIO,
-      progressSink(line) {
-        setInitStatus(current => ({ ...current, progressLine: line.trimEnd() }))
-      },
-    })
-      .then(result => {
-        const docCount = result.writtenDocIds?.length ?? 0
-        setInitStatus({})
-        addEntry({
-          type: 'result',
-          content: `✅ Init complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
-        })
-        setMode('shell')
+  const startInitSession = useCallback(
+    (extraArgs: string[]) => {
+      setInitStatus({
+        message: 'Initializing KB — press Enter to skip any question.',
+        progressLine: '[init] starting…',
       })
-      .catch(err => {
+
+      const questionIO: InitQuestionIO = {
+        write(message: string) {
+          const parsed = parseInitOutput(message)
+          for (const line of parsed.historyLines) {
+            addEntry({ type: 'info', content: line })
+          }
+          if (parsed.progressLine) {
+            setInitStatus(current => ({ ...current, progressLine: parsed.progressLine }))
+          }
+        },
+        async askQuestion(question: string): Promise<string> {
+          addEntry({ type: 'info', content: question.trim() })
+          return new Promise<string>(resolve => {
+            initInputResolverRef.current = resolve
+          })
+        },
+      }
+
+      let parsed: InitOptions
+      try {
+        parsed = parseInitCommand(extraArgs)
+      } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        setInitStatus({})
-        addEntry({ type: 'error', content: `Init error: ${message}` })
+        addEntry({ type: 'error', content: `❌ ${message}` })
         setMode('shell')
+        return
+      }
+
+      runKbInit({
+        ...parsed,
+        questionIO,
+        progressSink(line) {
+          setInitStatus(current => ({ ...current, progressLine: line.trimEnd() }))
+        },
       })
-  }, [addEntry])
+        .then(result => {
+          const docCount = result.writtenDocIds?.length ?? 0
+          setInitStatus({})
+          addEntry({
+            type: 'result',
+            content: `✅ Init complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
+          })
+          setMode('shell')
+        })
+        .catch(err => {
+          const message = err instanceof Error ? err.message : String(err)
+          setInitStatus({})
+          addEntry({ type: 'error', content: `Init error: ${message}` })
+          setMode('shell')
+        })
+    },
+    [addEntry]
+  )
 
   const handleSubmit = useCallback(
     async (value: string) => {
@@ -246,7 +278,7 @@ export function App({ config }: Props) {
       addEntry({ type: 'command', content: `kb> ${trimmed}` })
 
       if (firstArg === 'help' || firstArg === '--help') {
-        addEntry({ type: 'info', content: printCliHelp() })
+        addEntry({ type: 'info', content: printCliHelp('tui') })
         return
       }
 
@@ -273,11 +305,14 @@ export function App({ config }: Props) {
         // Refresh base name after use/default commands
         if (firstArg === 'use' || firstArg === 'default') {
           resolveEffectiveBaseDir()
-            .then(({ baseDir, baseName: newBase }) => {
+            .then(({ baseDir, baseName: effectiveBaseName }) => {
               storageDirRef.current = baseDir
-              setBaseName(newBase)
+              setBaseName(effectiveBaseName)
             })
-            .catch(() => {})
+            .catch(() => {
+              storageDirRef.current = ''
+              setBaseName('')
+            })
         }
 
         updateEntry(resultId, { content: output, loading: false })
@@ -288,7 +323,7 @@ export function App({ config }: Props) {
         setIsRunning(false)
       }
     },
-    [mode, isRunning, config, addEntry, updateEntry, startChatSession, startInitSession, exit],
+    [mode, isRunning, config, addEntry, updateEntry, startChatSession, startInitSession, exit]
   )
 
   const slashSuggestions = getSlashCommandSuggestions(inputValue, mode)
@@ -321,15 +356,12 @@ export function App({ config }: Props) {
         setInputValue(applySelectedSuggestion(suggestion))
       }
     },
-    { isActive: slashSuggestions.length > 0 },
+    { isActive: slashSuggestions.length > 0 }
   )
 
-  const handleInputChange = useCallback(
-    (nextValue: string) => {
-      setInputValue(sanitizeSlashInput(nextValue))
-    },
-    [],
-  )
+  const handleInputChange = useCallback((nextValue: string) => {
+    setInputValue(sanitizeSlashInput(nextValue))
+  }, [])
 
   return (
     <Box flexDirection="column">

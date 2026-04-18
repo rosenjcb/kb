@@ -11,10 +11,6 @@ import { z } from 'zod'
 const DEFAULT_KB_BASE_DIR = path.join(os.homedir(), '.kb', 'sessions', 'default')
 
 const ConfigSchema = z.object({
-  // API Keys / provider discovery
-  anthropicApiKey: z.string().optional(),
-  openaiApiKey: z.string().optional(),
-  geminiApiKey: z.string().optional(),
   ollamaEndpoint: z.string().url().optional().default('http://localhost:11434'),
 
   // KB Storage
@@ -45,19 +41,16 @@ export type Config = z.infer<typeof ConfigSchema>
  */
 export function loadConfig(): Config {
   const raw = {
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-    openaiApiKey: process.env.OPENAI_API_KEY,
-    geminiApiKey: process.env.GEMINI_API_KEY,
     ollamaEndpoint: process.env.OLLAMA_ENDPOINT,
     kbBaseDir: process.env.KB_BASE_DIR,
     maxAgentTurns: process.env.MAX_AGENT_TURNS
-      ? parseInt(process.env.MAX_AGENT_TURNS, 10)
+      ? Number.parseInt(process.env.MAX_AGENT_TURNS, 10)
       : undefined,
     agentTimeoutMs: process.env.AGENT_TIMEOUT_MS
-      ? parseInt(process.env.AGENT_TIMEOUT_MS, 10)
+      ? Number.parseInt(process.env.AGENT_TIMEOUT_MS, 10)
       : undefined,
     toolTimeoutMs: process.env.TOOL_TIMEOUT_MS
-      ? parseInt(process.env.TOOL_TIMEOUT_MS, 10)
+      ? Number.parseInt(process.env.TOOL_TIMEOUT_MS, 10)
       : undefined,
     logLevel: process.env.LOG_LEVEL,
     enableSemanticSearch: process.env.ENABLE_SEMANTIC_SEARCH === 'true',
@@ -94,12 +87,14 @@ export function getConfig(): Config {
  */
 export function initializeConfig(): Config {
   const config = getConfig()
-  const provider =
-    config.openaiApiKey ? 'openai'
-      : config.anthropicApiKey ? 'anthropic'
-        : config.geminiApiKey ? 'gemini'
-          : 'ollama'
-  console.log(`✓ Config loaded:`)
+  const provider = process.env.OPENAI_API_KEY
+    ? 'openai'
+    : process.env.ANTHROPIC_API_KEY
+      ? 'anthropic'
+      : process.env.GEMINI_API_KEY
+        ? 'gemini'
+        : 'ollama'
+  console.log('✓ Config loaded:')
   console.log(`  provider=${provider}`)
   console.log(`  kbBaseDir=${config.kbBaseDir}`)
   console.log(`  maxAgentTurns=${config.maxAgentTurns}`)

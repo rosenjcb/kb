@@ -40,17 +40,49 @@ export interface ChatTurnOutcome {
   retrievedDocIds: string[]
 }
 
-const CONFIRMATION_PATTERN = /^(yes|yeah|yep|sure|ok|okay|please do|do that|do it|search it|search that|let['’]?s do (it|that|the search)|go ahead)$/i
-const CONFIRMATION_WITH_CONTEXT_PATTERN = /^(yes|yeah|yep|sure|ok|okay)\b.*\b(do|search|go ahead|look up|find)\b/i
+const CONFIRMATION_PATTERN =
+  /^(yes|yeah|yep|sure|ok|okay|please do|do that|do it|search it|search that|let['’]?s do (it|that|the search)|go ahead)$/i
+const CONFIRMATION_WITH_CONTEXT_PATTERN =
+  /^(yes|yeah|yep|sure|ok|okay)\b.*\b(do|search|go ahead|look up|find)\b/i
 const ACTION_REQUEST_PATTERN = /\b(search|look up|find|check|query|search for)\b/i
-const CLARIFICATION_PATTERN = /\b(explain (it|that|this)?\s*more|be more concrete|go deeper|which files|what files|how is it implemented|how do we implement it)\b/i
-const FOLLOW_UP_PATTERN = /^(what about|how about|and what about|and how about|what about that|what about that one|that one|it|this|that)\b/i
-const SEARCH_REQUESTED_PATTERN = /(let me know if you would like me to perform this search|would need to search|please let me know if you would like me to search|try: kb query)/i
+const CLARIFICATION_PATTERN =
+  /\b(explain (it|that|this)?\s*more|be more concrete|go deeper|which files|what files|how is it implemented|how do we implement it)\b/i
+const FOLLOW_UP_PATTERN =
+  /^(what about|how about|and what about|and how about|what about that|what about that one|that one|it|this|that)\b/i
+const SEARCH_REQUESTED_PATTERN =
+  /(let me know if you would like me to perform this search|would need to search|please let me know if you would like me to search|try: kb query)/i
 
 const GENERIC_FOLLOW_UP_TERMS = new Set([
-  'again', 'be', 'concrete', 'deeper', 'do', 'does', 'explain', 'find', 'for', 'go',
-  'help', 'how', 'implement', 'implemented', 'it', 'let', 'lets', 'look', 'more', 'please',
-  'search', 'show', 'that', 'the', 'this', 'up', 'what', 'which', 'yeah', 'yes',
+  'again',
+  'be',
+  'concrete',
+  'deeper',
+  'do',
+  'does',
+  'explain',
+  'find',
+  'for',
+  'go',
+  'help',
+  'how',
+  'implement',
+  'implemented',
+  'it',
+  'let',
+  'lets',
+  'look',
+  'more',
+  'please',
+  'search',
+  'show',
+  'that',
+  'the',
+  'this',
+  'up',
+  'what',
+  'which',
+  'yeah',
+  'yes',
 ])
 
 export function createInitialConversationState(): ChatConversationState {
@@ -62,7 +94,7 @@ export function createInitialConversationState(): ChatConversationState {
 
 export function resolveConversationalChatTurn(
   input: string,
-  state: ChatConversationState,
+  state: ChatConversationState
 ): ResolvedChatTurn {
   const normalized = input.trim()
   const turnType = classifyChatTurn(normalized, state)
@@ -74,19 +106,26 @@ export function resolveConversationalChatTurn(
   let retrievalQuery = normalized
   if (turnType === 'confirmation' && previousQuery) {
     retrievalQuery = previousQuery
-  } else if ((turnType === 'follow-up' || turnType === 'clarification') && explicitTopic && isStandaloneExplicitTopic(normalized, explicitTopic)) {
+  } else if (
+    (turnType === 'follow-up' || turnType === 'clarification') &&
+    explicitTopic &&
+    isStandaloneExplicitTopic(normalized, explicitTopic)
+  ) {
     retrievalQuery = explicitTopic
-  } else if ((turnType === 'follow-up' || turnType === 'clarification' || turnType === 'action-request') && activeTopic) {
-    const suffix = topicalTerms.filter(term => !activeTopic.toLowerCase().includes(term.toLowerCase())).join(' ').trim()
+  } else if (
+    (turnType === 'follow-up' || turnType === 'clarification' || turnType === 'action-request') &&
+    activeTopic
+  ) {
+    const suffix = topicalTerms
+      .filter(term => !activeTopic.toLowerCase().includes(term.toLowerCase()))
+      .join(' ')
+      .trim()
     retrievalQuery = suffix ? `${activeTopic} ${suffix}` : activeTopic
   } else if (turnType === 'action-request' && previousQuery) {
     retrievalQuery = previousQuery
   }
 
-  const topic = explicitTopic
-    || buildTopicFromQuery(retrievalQuery)
-    || activeTopic
-    || normalized
+  const topic = explicitTopic || buildTopicFromQuery(retrievalQuery) || activeTopic || normalized
 
   return {
     type: turnType,
@@ -102,9 +141,12 @@ export function updateConversationState(
   state: ChatConversationState,
   resolvedTurn: ResolvedChatTurn,
   outcome: ChatTurnOutcome,
-  maxHistoryTurns: number,
+  maxHistoryTurns: number
 ): ChatConversationState {
-  const recentTurns = [...state.recentTurns, { user: resolvedTurn.input, assistant: outcome.answer }]
+  const recentTurns = [
+    ...state.recentTurns,
+    { user: resolvedTurn.input, assistant: outcome.answer },
+  ]
   if (recentTurns.length > maxHistoryTurns) {
     recentTurns.splice(0, recentTurns.length - maxHistoryTurns)
   }
@@ -133,7 +175,10 @@ export function classifyChatTurn(input: string, state: ChatConversationState): C
   const trimmed = input.trim()
   if (!trimmed) return 'fresh-query'
 
-  if ((CONFIRMATION_PATTERN.test(trimmed) || CONFIRMATION_WITH_CONTEXT_PATTERN.test(trimmed)) && (state.pendingFollowUp || state.lastRetrievalQuery)) {
+  if (
+    (CONFIRMATION_PATTERN.test(trimmed) || CONFIRMATION_WITH_CONTEXT_PATTERN.test(trimmed)) &&
+    (state.pendingFollowUp || state.lastRetrievalQuery)
+  ) {
     return 'confirmation'
   }
 
@@ -145,7 +190,10 @@ export function classifyChatTurn(input: string, state: ChatConversationState): C
     return 'follow-up'
   }
 
-  if (ACTION_REQUEST_PATTERN.test(trimmed) && (state.activeTopic || state.pendingFollowUp || state.lastRetrievalQuery)) {
+  if (
+    ACTION_REQUEST_PATTERN.test(trimmed) &&
+    (state.activeTopic || state.pendingFollowUp || state.lastRetrievalQuery)
+  ) {
     return 'action-request'
   }
 
@@ -203,12 +251,17 @@ function extractExplicitTopic(input: string): string | undefined {
 }
 
 function isStandaloneExplicitTopic(input: string, explicitTopic: string): boolean {
-  const normalized = input.trim().toLowerCase().replace(/[?.!]+$/, '')
+  const normalized = input
+    .trim()
+    .toLowerCase()
+    .replace(/[?.!]+$/, '')
   const topic = explicitTopic.trim().toLowerCase()
-  return normalized === `what about ${topic}`
-    || normalized === `how about ${topic}`
-    || normalized === `and what about ${topic}`
-    || normalized === `and how about ${topic}`
+  return (
+    normalized === `what about ${topic}` ||
+    normalized === `how about ${topic}` ||
+    normalized === `and what about ${topic}` ||
+    normalized === `and how about ${topic}`
+  )
 }
 
 function extractTopicalTerms(input: string): string[] {

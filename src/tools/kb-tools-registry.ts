@@ -3,24 +3,28 @@
  * Creates and registers write_document and read_documents tools
  */
 
-import path from 'path'
+import path from 'node:path'
+import { getKbHomeDir } from '../cli/base-selection'
+import type { KbConfig } from '../cli/kb-config'
+import { resolveFeatureFlags, resolveGraphEnabled } from '../cli/kb-config'
 import type { ToolExecutor } from '../core/tool-registry'
 import { createToolRegistry } from '../core/tool-registry'
 import type { ToolDefinition } from '../core/types'
-import { SqliteDocumentWriter } from './sqlite-document-writer'
-import { MarkdownDocumentReader, type QueryDocumentsInput, type QueryResponse } from './markdown-document-reader'
-import type { KbConfig } from '../cli/kb-config'
-import { resolveFeatureFlags, resolveGraphEnabled } from '../cli/kb-config'
-import { getKbHomeDir } from '../cli/base-selection'
 import {
-  executeWriteDocumentTool,
   type AppendToDocumentInput,
   type MergeDocumentsInput,
   type PruneDocumentInput,
   type ReconcileContradictionsInput,
   type ReconcileFactsInput,
   type UpdateDocumentInput,
+  executeWriteDocumentTool,
 } from './document-writer'
+import {
+  MarkdownDocumentReader,
+  type QueryDocumentsInput,
+  type QueryResponse,
+} from './markdown-document-reader'
+import { SqliteDocumentWriter } from './sqlite-document-writer'
 
 /**
  * Factory: create KB tools registry with write + read
@@ -32,18 +36,23 @@ export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): Tool
   // Initialize storage implementations
   const writer = new SqliteDocumentWriter({ baseDir: storageDir })
   const flags = config ? resolveFeatureFlags(config) : undefined
-  const reader = new MarkdownDocumentReader(storageDir, flags ? {
-    hybridEnabled: flags.hybridQuery,
-    graphRankingEnabled: config ? resolveGraphEnabled(config) : undefined,
-    hybridCandidateLimit: flags.hybridQueryCandidates,
-    hybridAlpha: flags.hybridQueryAlpha,
-    hybridMaxMs: flags.hybridQueryMaxMs,
-    checkpointObservabilityEnabled: flags.checkpointObservability,
-    missLearningEnabled: flags.missLearning,
-    rankingHintsEnabled: flags.missHints,
-    rankingHintMinOccurrences: flags.missHintMinOccurrences,
-    laneRoutingEnabled: flags.laneRouting,
-  } : {})
+  const reader = new MarkdownDocumentReader(
+    storageDir,
+    flags
+      ? {
+          hybridEnabled: flags.hybridQuery,
+          graphRankingEnabled: config ? resolveGraphEnabled(config) : undefined,
+          hybridCandidateLimit: flags.hybridQueryCandidates,
+          hybridAlpha: flags.hybridQueryAlpha,
+          hybridMaxMs: flags.hybridQueryMaxMs,
+          checkpointObservabilityEnabled: flags.checkpointObservability,
+          missLearningEnabled: flags.missLearning,
+          rankingHintsEnabled: flags.missHints,
+          rankingHintMinOccurrences: flags.missHintMinOccurrences,
+          laneRoutingEnabled: flags.laneRouting,
+        }
+      : {}
+  )
 
   // Register write_document tool
   const writeToolDef: ToolDefinition = {
@@ -83,7 +92,7 @@ export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): Tool
     },
   }
 
-  registry.register('write_document', writeToolDef, async (input) => {
+  registry.register('write_document', writeToolDef, async input => {
     return await executeWriteDocumentTool(input, writer)
   })
 
@@ -106,7 +115,8 @@ export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): Tool
         discoveryDepth: {
           type: 'string',
           enum: ['shallow', 'deep'],
-          description: 'Discovery strategy: shallow (fast primary pass) or deep (broader exhaustive pass)',
+          description:
+            'Discovery strategy: shallow (fast primary pass) or deep (broader exhaustive pass)',
         },
         tags: {
           type: 'array',
@@ -130,7 +140,7 @@ export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): Tool
     },
   }
 
-  registry.register('read_documents', readToolDef, async (input) => {
+  registry.register('read_documents', readToolDef, async input => {
     return await reader.queryDocuments(input as QueryDocumentsInput)
   })
 
@@ -153,7 +163,7 @@ export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): Tool
       additionalProperties: false,
     },
   }
-  registry.register('append_to_document', appendToolDef, async (input) => {
+  registry.register('append_to_document', appendToolDef, async input => {
     return await writer.appendToDocument(input as unknown as AppendToDocumentInput)
   })
 
@@ -172,7 +182,7 @@ export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): Tool
       additionalProperties: false,
     },
   }
-  registry.register('update_document', updateToolDef, async (input) => {
+  registry.register('update_document', updateToolDef, async input => {
     return await writer.updateDocument(input as unknown as UpdateDocumentInput)
   })
 
@@ -190,7 +200,7 @@ export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): Tool
       additionalProperties: false,
     },
   }
-  registry.register('prune_document', pruneToolDef, async (input) => {
+  registry.register('prune_document', pruneToolDef, async input => {
     return await writer.pruneDocument(input as unknown as PruneDocumentInput)
   })
 
@@ -213,14 +223,15 @@ export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): Tool
       additionalProperties: false,
     },
   }
-  registry.register('merge_documents', mergeToolDef, async (input) => {
+  registry.register('merge_documents', mergeToolDef, async input => {
     return await writer.mergeDocuments(input as unknown as MergeDocumentsInput)
   })
 
   // reconcile_facts
   const reconcileFactsToolDef: ToolDefinition = {
     name: 'reconcile_facts',
-    description: 'Replace outdated fact references across documents with lane-aware exclusion rules',
+    description:
+      'Replace outdated fact references across documents with lane-aware exclusion rules',
     schema: {
       type: 'object',
       properties: {
@@ -239,7 +250,7 @@ export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): Tool
       additionalProperties: false,
     },
   }
-  registry.register('reconcile_facts', reconcileFactsToolDef, async (input) => {
+  registry.register('reconcile_facts', reconcileFactsToolDef, async input => {
     return await writer.reconcileFacts(input as unknown as ReconcileFactsInput)
   })
 
@@ -249,11 +260,15 @@ export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): Tool
     schema: {
       type: 'object',
       properties: {
-        newFact: { type: 'string', description: 'Newly submitted fact text used as canonical claim' },
+        newFact: {
+          type: 'string',
+          description: 'Newly submitted fact text used as canonical claim',
+        },
         domain: { type: 'string', description: 'Optional domain scope for contradiction cleanup' },
         includeSessionLogs: {
           type: 'boolean',
-          description: 'When true, include session-log docs in contradiction cleanup (default: false)',
+          description:
+            'When true, include session-log docs in contradiction cleanup (default: false)',
         },
         dryRun: {
           type: 'boolean',
@@ -264,7 +279,7 @@ export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): Tool
       additionalProperties: false,
     },
   }
-  registry.register('reconcile_contradictions', reconcileContradictionsToolDef, async (input) => {
+  registry.register('reconcile_contradictions', reconcileContradictionsToolDef, async input => {
     return await writer.reconcileContradictions(input as unknown as ReconcileContradictionsInput)
   })
 

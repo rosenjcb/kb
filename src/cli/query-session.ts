@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Message } from '../core/types'
 
@@ -37,7 +37,11 @@ export async function loadQuerySessionMessages(baseDir: string): Promise<Message
   }
 }
 
-export async function appendQuerySession(baseDir: string, question: string, answer: string): Promise<void> {
+export async function appendQuerySession(
+  baseDir: string,
+  question: string,
+  answer: string
+): Promise<void> {
   try {
     await mkdir(baseDir, { recursive: true })
     const sessionPath = path.join(baseDir, SESSION_FILE)

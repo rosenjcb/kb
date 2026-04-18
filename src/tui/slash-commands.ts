@@ -73,7 +73,7 @@ export function normalizeSlashCommandArgs(args: string[]): string[] {
 export function getSuggestionWindow(
   suggestions: SlashCommand[],
   selectedIndex: number,
-  maxVisible: number,
+  maxVisible: number
 ): { visible: SlashCommand[]; startIndex: number } {
   if (suggestions.length === 0 || maxVisible <= 0) {
     return { visible: [], startIndex: 0 }

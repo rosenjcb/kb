@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { classifyDocumentLane, type RetrievalLane } from './retrieval-lane-router'
+import { type RetrievalLane, classifyDocumentLane } from './retrieval-lane-router'
 import { SqliteKbIndexer } from './sqlite-kb-index'
 
 export interface InvalidateFactInput {
@@ -29,7 +29,7 @@ export interface InvalidateFactResult {
  */
 export async function invalidateFactTool(
   input: InvalidateFactInput,
-  baseDir: string,
+  baseDir: string
 ): Promise<InvalidateFactResult> {
   const {
     oldFact,
@@ -64,13 +64,8 @@ export async function invalidateFactTool(
 
     for (const row of rows) {
       const tags = parseTags(row.tags_json)
-      const lane = (row.lane ?? classifyDocumentLane(
-        row.id,
-        row.title,
-        row.doc_type,
-        tags,
-        row.file_path,
-      )) as RetrievalLane
+      const lane = (row.lane ??
+        classifyDocumentLane(row.id, row.title, row.doc_type, tags, row.file_path)) as RetrievalLane
 
       if (!includeSessionLogs && lane === 'session-log') {
         continue

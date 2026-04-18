@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
-import dayjs from 'dayjs'
 import Database from 'better-sqlite3'
-import { classifyDocumentLane, type RetrievalLane } from './retrieval-lane-router'
+import dayjs from 'dayjs'
+import { type RetrievalLane, classifyDocumentLane } from './retrieval-lane-router'
 
 interface ChunkRecord {
   chunkId: string
@@ -311,7 +311,7 @@ export class SqliteKbIndexer {
           row.title,
           row.doc_type,
           parseTagsJsonSafe(row.tags_json),
-          row.file_path,
+          row.file_path
         )
 
         updateDocumentLane.run(lane, row.id)
@@ -325,9 +325,9 @@ export class SqliteKbIndexer {
 
   isDocumentStale(filePath: string, content: string): boolean {
     const id = basename(filePath, '.md')
-    const row = this.db
-      .prepare('SELECT content_hash FROM documents WHERE id = ?')
-      .get(id) as { content_hash?: string } | undefined
+    const row = this.db.prepare('SELECT content_hash FROM documents WHERE id = ?').get(id) as
+      | { content_hash?: string }
+      | undefined
 
     if (!row?.content_hash) return true
     return row.content_hash !== sha256(content)
@@ -426,10 +426,7 @@ export class SqliteKbIndexer {
     return rows
   }
 
-  getRetrievalRankingHints(
-    queryFingerprint: string,
-    minOccurrences = 3,
-  ): RetrievalRankingHint[] {
+  getRetrievalRankingHints(queryFingerprint: string, minOccurrences = 3): RetrievalRankingHint[] {
     const rows = this.db
       .prepare(`
         SELECT
@@ -498,7 +495,8 @@ export class SqliteKbIndexer {
   recordLaneRoutingEvent(input: LaneRoutingEventInput): void {
     const now = dayjs().toISOString()
 
-    this.db.prepare(`
+    this.db
+      .prepare(`
       INSERT INTO retrieval_lane_routing_events (
         query_fingerprint,
         primary_lane,
@@ -523,18 +521,19 @@ export class SqliteKbIndexer {
         @surface,
         @createdAt
       )
-    `).run({
-      queryFingerprint: input.queryFingerprint,
-      primaryLane: input.primaryLane,
-      routedLanesJson: JSON.stringify(input.routedLanes),
-      routeReason: input.routeReason,
-      usedFallback: input.usedFallback ? 1 : 0,
-      status: input.status,
-      nextAction: input.nextAction,
-      confidence: input.confidence,
-      surface: input.surface,
-      createdAt: now,
-    })
+    `)
+      .run({
+        queryFingerprint: input.queryFingerprint,
+        primaryLane: input.primaryLane,
+        routedLanesJson: JSON.stringify(input.routedLanes),
+        routeReason: input.routeReason,
+        usedFallback: input.usedFallback ? 1 : 0,
+        status: input.status,
+        nextAction: input.nextAction,
+        confidence: input.confidence,
+        surface: input.surface,
+        createdAt: now,
+      })
   }
 
   getLaneRoutingMetrics(windowHours = 24): LaneRoutingMetrics[] {
@@ -554,13 +553,13 @@ export class SqliteKbIndexer {
         ORDER BY totalCount DESC
       `)
       .all(since) as Array<{
-        lane: RetrievalLane
-        totalCount: number
-        hitCount: number
-        missCount: number
-        errorCount: number
-        fallbackCount: number
-      }>
+      lane: RetrievalLane
+      totalCount: number
+      hitCount: number
+      missCount: number
+      errorCount: number
+      fallbackCount: number
+    }>
 
     return rows.map(row => ({
       ...row,
@@ -571,7 +570,7 @@ export class SqliteKbIndexer {
 
   evaluateLaneRoutingRollout(
     thresholds: Partial<LaneRoutingRolloutThresholds> = {},
-    windowHours = 24,
+    windowHours = 24
   ): LaneRoutingRolloutAssessment {
     const config: LaneRoutingRolloutThresholds = {
       ...DEFAULT_LANE_ROUTING_THRESHOLDS,
@@ -602,7 +601,9 @@ export class SqliteKbIndexer {
       .map(metric => metric.lane)
 
     if (lowPrecisionLanes.length > config.maxLowPrecisionLanes) {
-      reasons.push(`too-many-low-precision-lanes:${lowPrecisionLanes.length}>${config.maxLowPrecisionLanes}`)
+      reasons.push(
+        `too-many-low-precision-lanes:${lowPrecisionLanes.length}>${config.maxLowPrecisionLanes}`
+      )
     }
 
     if (highFallbackLanes.length > 0) {
@@ -646,14 +647,14 @@ export class SqliteKbIndexer {
         ORDER BY totalCount DESC
       `)
       .all(since) as Array<{
-        stage: string
-        totalCount: number
-        hitCount: number
-        missCount: number
-        errorCount: number
-        advanceCount: number
-        returnCount: number
-      }>
+      stage: string
+      totalCount: number
+      hitCount: number
+      missCount: number
+      errorCount: number
+      advanceCount: number
+      returnCount: number
+    }>
 
     return rows.map(row => ({
       ...row,
@@ -664,7 +665,7 @@ export class SqliteKbIndexer {
 
   evaluateRetrievalRollout(
     thresholds: Partial<RetrievalRolloutThresholds> = {},
-    windowHours = 24,
+    windowHours = 24
   ): RetrievalRolloutAssessment {
     const config: RetrievalRolloutThresholds = {
       ...DEFAULT_ROLLOUT_THRESHOLDS,
@@ -683,10 +684,10 @@ export class SqliteKbIndexer {
         WHERE created_at >= ?
       `)
       .get(since) as {
-        sampleSize: number
-        successCount: number
-        missCount: number
-      }
+      sampleSize: number
+      successCount: number
+      missCount: number
+    }
 
     const hybrid = this.db
       .prepare(`
@@ -697,16 +698,15 @@ export class SqliteKbIndexer {
         WHERE stage = 'hybrid_primary' AND created_at >= ?
       `)
       .get(since) as {
-        total: number
-        fallbackCount: number
-      }
+      total: number
+      fallbackCount: number
+    }
 
     const sampleSize = aggregate.sampleSize ?? 0
     const overallSuccessRate = sampleSize > 0 ? (aggregate.successCount ?? 0) / sampleSize : 0
     const overallMissRate = sampleSize > 0 ? (aggregate.missCount ?? 0) / sampleSize : 0
-    const hybridFallbackRate = (hybrid.total ?? 0) > 0
-      ? (hybrid.fallbackCount ?? 0) / hybrid.total
-      : 0
+    const hybridFallbackRate =
+      (hybrid.total ?? 0) > 0 ? (hybrid.fallbackCount ?? 0) / hybrid.total : 0
 
     const reasons: string[] = []
 
@@ -723,11 +723,15 @@ export class SqliteKbIndexer {
     }
 
     if (overallMissRate > config.maxOverallMissRate) {
-      reasons.push(`overall-miss-rate-too-high:${overallMissRate.toFixed(2)}>${config.maxOverallMissRate}`)
+      reasons.push(
+        `overall-miss-rate-too-high:${overallMissRate.toFixed(2)}>${config.maxOverallMissRate}`
+      )
     }
 
     if (hybridFallbackRate > config.maxHybridFallbackRate) {
-      reasons.push(`hybrid-fallback-rate-too-high:${hybridFallbackRate.toFixed(2)}>${config.maxHybridFallbackRate}`)
+      reasons.push(
+        `hybrid-fallback-rate-too-high:${hybridFallbackRate.toFixed(2)}>${config.maxHybridFallbackRate}`
+      )
     }
 
     if (reasons.length > 0) {
@@ -758,7 +762,9 @@ export class SqliteKbIndexer {
       overallSuccessRate,
       overallMissRate,
       hybridFallbackRate,
-      reasons: [`overall-success-rate-below-threshold:${overallSuccessRate.toFixed(2)}<${config.minOverallSuccessRate}`],
+      reasons: [
+        `overall-success-rate-below-threshold:${overallSuccessRate.toFixed(2)}<${config.minOverallSuccessRate}`,
+      ],
     }
   }
 
@@ -903,33 +909,37 @@ export class SqliteKbIndexer {
 
   insertSessionEntry(entry: SessionEntryInput): void {
     const now = dayjs().toISOString()
-    this.db.prepare(`
+    this.db
+      .prepare(`
       INSERT INTO session_entries (session_date, base, event_type, summary, metadata_json, created_at)
       VALUES (@sessionDate, @base, @eventType, @summary, @metadataJson, @createdAt)
-    `).run({
-      sessionDate: entry.sessionDate,
-      base: entry.base,
-      eventType: entry.eventType,
-      summary: entry.summary,
-      metadataJson: entry.metadata ? JSON.stringify(entry.metadata) : null,
-      createdAt: now,
-    })
+    `)
+      .run({
+        sessionDate: entry.sessionDate,
+        base: entry.base,
+        eventType: entry.eventType,
+        summary: entry.summary,
+        metadataJson: entry.metadata ? JSON.stringify(entry.metadata) : null,
+        createdAt: now,
+      })
   }
 
   // ─── Document Content API (SQLite-exclusive read path) ───────────
 
   getAllDocumentsForLexical(): SqliteDocumentRow[] {
-    return this.db.prepare(`
+    return this.db
+      .prepare(`
       SELECT id, title, content, file_path, doc_type, lane, tags_json, created_at, updated_at
       FROM documents
       ORDER BY updated_at DESC
-    `).all() as SqliteDocumentRow[]
+    `)
+      .all() as SqliteDocumentRow[]
   }
 
   getDocumentContent(id: string): string | undefined {
-    const row = this.db.prepare(
-      'SELECT content FROM documents WHERE id = ?'
-    ).get(id) as { content?: string } | undefined
+    const row = this.db.prepare('SELECT content FROM documents WHERE id = ?').get(id) as
+      | { content?: string }
+      | undefined
     return row?.content
   }
 
@@ -1044,7 +1054,10 @@ function parseDocument(filePath: string, content: string): ParsedDocument | null
   const docType = extractMetadata(lines, 'Type') ?? null
   const tagsRaw = extractMetadata(lines, 'Tags')
   const tags = tagsRaw
-    ? tagsRaw.split(',').map(tag => tag.trim()).filter(Boolean)
+    ? tagsRaw
+        .split(',')
+        .map(tag => tag.trim())
+        .filter(Boolean)
     : []
   const lane = classifyDocumentLane(id, title, docType, tags, filePath)
 

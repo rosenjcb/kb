@@ -10,13 +10,7 @@
     "rules": {
       "recommended": true,
       "style": {
-        "useNamingConvention": {
-          "level": "warn",
-          "options": {
-            "strictCase": false,
-            "enumMemberCase": "PascalCase"
-          }
-        }
+        "useNamingConvention": "off"
       },
       "correctness": {
         "noConstAssign": "error",
@@ -47,7 +41,7 @@
       "bracketSameLine": false,
       "quoteStyle": "single",
       "semicolons": "asNeeded",
-      "trailingComma": "es5",
+      "trailingCommas": "es5",
       "jsxQuoteStyle": "double"
     }
   },
@@ -56,6 +50,16 @@
       "include": ["**/*.json"],
       "formatter": {
         "indentWidth": 2
+      }
+    },
+    {
+      "include": ["tests/**/*.ts", "tests/**/*.tsx"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noDelete": "off"
+          }
+        }
       }
     }
   ]

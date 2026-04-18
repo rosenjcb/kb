@@ -3,9 +3,13 @@ import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message } from '../core/types'
 import { assertConsumerSafeCommand } from '../intents/policy'
 import { DefaultIntentRouter } from '../intents/router'
-import { loadQuerySessionMessages, appendQuerySession } from './query-session'
-import { augmentReadDocumentsWithWorkspaceFallback, formatReadDocumentSourceIds } from './retrieval-fallback'
 import type { ConsumerIntent, ConsumerIntentEnvelope, IntentResult } from '../intents/types'
+import { type CmdMode, cmd } from './cmd-ref'
+import { appendQuerySession, loadQuerySessionMessages } from './query-session'
+import {
+  augmentReadDocumentsWithWorkspaceFallback,
+  formatReadDocumentSourceIds,
+} from './retrieval-fallback'
 
 export type CliOutputMode = 'human' | 'json'
 
@@ -117,7 +121,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
 
 export async function executeIntentCommand(
   parsed: ParsedIntentCommand,
-  toolExecutor: ToolExecutor,
+  toolExecutor: ToolExecutor
 ): Promise<IntentResult> {
   const router = new DefaultIntentRouter(toolExecutor)
   return router.execute(parsed.envelope)
@@ -220,7 +224,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
   result: IntentResult,
   llmProvider?: LLMProvider,
   sessionDir?: string,
-  priorMessages?: Message[],
+  priorMessages?: Message[]
 ): Promise<IntentResult> {
   if (!llmProvider) return result
   if (!isReadDocumentsResult(result)) return result
@@ -235,9 +239,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
   if (!question || !evidence) return result
 
   try {
-    const sessionTurns: Message[] = sessionDir
-      ? await loadQuerySessionMessages(sessionDir)
-      : []
+    const sessionTurns: Message[] = sessionDir ? await loadQuerySessionMessages(sessionDir) : []
 
     const contextMessages: Message[] = priorMessages ?? sessionTurns
 
@@ -254,10 +256,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
     ].join('\n')
 
     const completion = await llmProvider.call({
-      messages: [
-        ...contextMessages,
-        { role: 'user', content: userContent },
-      ],
+      messages: [...contextMessages, { role: 'user', content: userContent }],
       temperature: 0.1,
       maxTokens: INTENT_LLM_MAX_OUTPUT_TOKENS,
     })
@@ -267,8 +266,9 @@ export async function enrichReadDocumentsAnswerWithLLM(
 
     if (looksLikeInsufficientEvidenceAnswer(answer)) {
       const fallback = buildDeterministicIntentAnswer(question, results)
-      answer = fallback
-        ?? 'I do not have enough grounded evidence yet. Next step: run kb query "<your fact>" --discovery deep --output json, then kb submit "<fact>" if evidence is missing.'
+      answer =
+        fallback ??
+        'I do not have enough grounded evidence yet. Next step: run kb query "<your fact>" --discovery deep --output json, then kb submit "<fact>" if evidence is missing.'
     }
 
     if (sessionDir) {
@@ -290,7 +290,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
 export async function rewriteIntentInputWithSessionContext(
   parsed: ParsedIntentCommand,
   llmProvider?: LLMProvider,
-  sessionDir?: string,
+  sessionDir?: string
 ): Promise<ParsedIntentCommand> {
   if (!llmProvider || !sessionDir) return parsed
   if (parsed.envelope.intent !== 'query_truth' && parsed.envelope.intent !== 'explain_change') {
@@ -353,7 +353,7 @@ export async function rewriteIntentInputWithSessionContext(
 export async function augmentIntentResultWithWorkspaceFallback(
   parsed: ParsedIntentCommand,
   result: IntentResult,
-  workspaceDir: string,
+  workspaceDir: string
 ): Promise<IntentResult> {
   if (!isReadDocumentsResult(result)) return result
   if (parsed.envelope.intent !== 'query_truth' && parsed.envelope.intent !== 'explain_change') {
@@ -381,27 +381,27 @@ export async function augmentIntentResultWithWorkspaceFallback(
 function looksLikeInsufficientEvidenceAnswer(text: string): boolean {
   const normalized = text.toLowerCase()
   return (
-    normalized.includes('evidence provided does not contain')
-    || normalized.includes('retrieved documents do not provide specific information')
-    || normalized.includes('does not provide specific information')
-    || normalized.includes('do not provide specific information')
-    || normalized.includes('does not contain specific information')
-    || normalized.includes('do not contain specific information')
-    || normalized.includes('do not contain specific details')
-    || normalized.includes('does not provide specific details')
-    || normalized.includes('do not provide specific details')
-    || normalized.includes('do not contain any information about')
-    || normalized.includes('does not contain any information about')
-    || normalized.includes('cannot provide an answer based on the available evidence')
-    || normalized.includes('evidence is insufficient')
-    || normalized.includes('do not have enough evidence')
-    || normalized.includes('need additional information')
+    normalized.includes('evidence provided does not contain') ||
+    normalized.includes('retrieved documents do not provide specific information') ||
+    normalized.includes('does not provide specific information') ||
+    normalized.includes('do not provide specific information') ||
+    normalized.includes('does not contain specific information') ||
+    normalized.includes('do not contain specific information') ||
+    normalized.includes('do not contain specific details') ||
+    normalized.includes('does not provide specific details') ||
+    normalized.includes('do not provide specific details') ||
+    normalized.includes('do not contain any information about') ||
+    normalized.includes('does not contain any information about') ||
+    normalized.includes('cannot provide an answer based on the available evidence') ||
+    normalized.includes('evidence is insufficient') ||
+    normalized.includes('do not have enough evidence') ||
+    normalized.includes('need additional information')
   )
 }
 
 function buildDeterministicIntentAnswer(
   question: string,
-  results: ReadDocumentsResultItem[],
+  results: ReadDocumentsResultItem[]
 ): string | undefined {
   const normalizedQuestion = question.toLowerCase().trim()
   const highRecall = requiresHighRecallQuery(normalizedQuestion)
@@ -411,12 +411,13 @@ function buildDeterministicIntentAnswer(
     const lines = (item.content ?? '')
       .split('\n')
       .map(line => line.trim().replace(/^[-*]\s+/, ''))
-      .filter(line =>
-        line.length > 0
-        && !line.startsWith('#')
-        && !line.startsWith('Created:')
-        && !line.startsWith('Tags:')
-        && !line.startsWith('Type:'),
+      .filter(
+        line =>
+          line.length > 0 &&
+          !line.startsWith('#') &&
+          !line.startsWith('Created:') &&
+          !line.startsWith('Tags:') &&
+          !line.startsWith('Type:')
       )
 
     const exact = lines.find(line => line.toLowerCase().includes(normalizedQuestion))
@@ -454,7 +455,9 @@ function isReadDocumentsResult(result: IntentResult): boolean {
 }
 
 function isReconciliationReviewResult(result: IntentResult): boolean {
-  return result.status === 'pending_review' && result.recommendedAction === 'review_reconciliation_diff'
+  return (
+    result.status === 'pending_review' && result.recommendedAction === 'review_reconciliation_diff'
+  )
 }
 
 function formatReconciliationReviewHumanResult(result: IntentResult): string {
@@ -469,8 +472,12 @@ function formatReconciliationReviewHumanResult(result: IntentResult): string {
   if (result.explanation) {
     lines.push(`Why: ${result.explanation}`)
   }
-  lines.push(`Reconciliation Preview: ${preview?.changedDocs ?? 0} docs, ${preview?.totalReplacements ?? 0} replacements`)
-  lines.push(`Decision: re-run submit with ${acceptFlag} to apply changes, or ${passFlag} to skip propagation.`)
+  lines.push(
+    `Reconciliation Preview: ${preview?.changedDocs ?? 0} docs, ${preview?.totalReplacements ?? 0} replacements`
+  )
+  lines.push(
+    `Decision: re-run submit with ${acceptFlag} to apply changes, or ${passFlag} to skip propagation.`
+  )
 
   if (diffs.length === 0) {
     lines.push('Diffs: none')
@@ -482,10 +489,7 @@ function formatReconciliationReviewHumanResult(result: IntentResult): string {
     const label = entry.documentId ?? 'unknown-doc'
     const replacementCount = typeof entry.replacements === 'number' ? entry.replacements : 0
     const diffText = typeof entry.diff === 'string' ? entry.diff : ''
-    const trimmedDiff = diffText
-      .split('\n')
-      .slice(0, 40)
-      .join('\n')
+    const trimmedDiff = diffText.split('\n').slice(0, 40).join('\n')
     lines.push(`--- ${label} (${replacementCount} replacements) ---`)
     lines.push(trimmedDiff || '(no diff preview available)')
   }
@@ -539,7 +543,9 @@ function formatReadDocumentsHumanResult(result: IntentResult): string {
 
   if (results.length === 0) {
     lines.push('Relevant Docs: none')
-    lines.push('Hint: Try a broader phrase, fewer keywords, or run with --output json for full retrieval details.')
+    lines.push(
+      'Hint: Try a broader phrase, fewer keywords, or run with --output json for full retrieval details.'
+    )
     return lines.join('\n')
   }
 
@@ -552,10 +558,13 @@ function formatReadDocumentsHumanResult(result: IntentResult): string {
     const uri = filePath.startsWith('/') ? `file://${filePath}` : filePath
     const snippet = extractSnippet(item.content)
     const highlights = extractHighlights(item.content)
-    const highlightText = highlights.length > 0
-      ? highlights.map(h => `[${h.section}] ${h.excerpt}`).join(' | ')
-      : 'none'
-    lines.push(`- id=${id}; title=${title}; location=${filePath}; uri=${uri}; snippet=${snippet}; highlights=${highlightText}`)
+    const highlightText =
+      highlights.length > 0
+        ? highlights.map(h => `[${h.section}] ${h.excerpt}`).join(' | ')
+        : 'none'
+    lines.push(
+      `- id=${id}; title=${title}; location=${filePath}; uri=${uri}; snippet=${snippet}; highlights=${highlightText}`
+    )
   }
 
   if (results.length > 5) {
@@ -585,7 +594,7 @@ function buildAnswer(results: ReadDocumentsResultItem[]): string {
   }
 
   const precedenceLine = candidateLines.find(line =>
-    /(precedence|order|fallback|1\)|2\)|3\)|->)/i.test(line),
+    /(precedence|order|fallback|1\)|2\)|3\)|->)/i.test(line)
   )
 
   if (precedenceLine) {
@@ -597,8 +606,10 @@ function buildAnswer(results: ReadDocumentsResultItem[]): string {
 
 function getIntentQuestion(parsed: ParsedIntentCommand): string {
   const payload = parsed.envelope.payload
-  const fromOriginalQuery = typeof payload.originalQuery === 'string' ? payload.originalQuery.trim() : ''
-  const fromOriginalFact = typeof payload.originalFact === 'string' ? payload.originalFact.trim() : ''
+  const fromOriginalQuery =
+    typeof payload.originalQuery === 'string' ? payload.originalQuery.trim() : ''
+  const fromOriginalFact =
+    typeof payload.originalFact === 'string' ? payload.originalFact.trim() : ''
   const fromQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
   const fromFact = typeof payload.fact === 'string' ? payload.fact.trim() : ''
   const fromChange = typeof payload.changeId === 'string' ? payload.changeId.trim() : ''
@@ -624,12 +635,13 @@ function extractRelevantEvidenceSnippets(content: string | undefined, query: str
   const lines = content
     .split('\n')
     .map(line => line.trim())
-    .filter(line =>
-      line.length > 0
-      && !line.startsWith('#')
-      && !line.startsWith('Created:')
-      && !line.startsWith('Tags:')
-      && !line.startsWith('Type:'),
+    .filter(
+      line =>
+        line.length > 0 &&
+        !line.startsWith('#') &&
+        !line.startsWith('Created:') &&
+        !line.startsWith('Tags:') &&
+        !line.startsWith('Type:')
     )
 
   if (lines.length === 0) return []
@@ -714,12 +726,13 @@ function collectCandidateLines(items: ReadDocumentsResultItem[]): string[] {
     const lines = content
       .split('\n')
       .map(line => line.trim())
-      .filter(line =>
-        line.length > 0
-        && !line.startsWith('#')
-        && !line.startsWith('Created:')
-        && !line.startsWith('Tags:')
-        && !line.startsWith('Type:'),
+      .filter(
+        line =>
+          line.length > 0 &&
+          !line.startsWith('#') &&
+          !line.startsWith('Created:') &&
+          !line.startsWith('Tags:') &&
+          !line.startsWith('Type:')
       )
 
     for (const line of lines) {
@@ -764,12 +777,13 @@ function extractSnippet(content: string | undefined): string {
   const normalized = content
     .split('\n')
     .map(line => line.trim())
-    .filter(line =>
-      line.length > 0
-      && !line.startsWith('#')
-      && !line.startsWith('Created:')
-      && !line.startsWith('Tags:')
-      && !line.startsWith('Type:'),
+    .filter(
+      line =>
+        line.length > 0 &&
+        !line.startsWith('#') &&
+        !line.startsWith('Created:') &&
+        !line.startsWith('Tags:') &&
+        !line.startsWith('Type:')
     )
     .join(' ')
     .replace(/\s+/g, ' ')
@@ -803,10 +817,10 @@ function extractHighlights(content: string | undefined): HighlightRef[] {
     }
 
     if (
-      line.startsWith('#')
-      || line.startsWith('Created:')
-      || line.startsWith('Tags:')
-      || line.startsWith('Type:')
+      line.startsWith('#') ||
+      line.startsWith('Created:') ||
+      line.startsWith('Tags:') ||
+      line.startsWith('Type:')
     ) {
       continue
     }
@@ -819,14 +833,14 @@ function extractHighlights(content: string | undefined): HighlightRef[] {
   return highlights
 }
 
-export function printIntentHelp(): string {
+export function printIntentHelp(mode: CmdMode = 'cli'): string {
   return [
     'Intent commands:',
-    '  kb submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--target doc-id] [--include-session-logs] [--output human|json]',
-    '  kb validate "<fact>" [--base <name>] [--domain ops] [--output human|json]',
-    '  kb dispute "<fact>" --because "<counter evidence>" [--base <name>] [--domain ops] [--output human|json]',
-    '  kb query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]',
-    '  kb explain "<change id|fact>" [--base <name>] [--output human|json]',
+    `  ${cmd('submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--target doc-id] [--include-session-logs] [--output human|json]', mode)}`,
+    `  ${cmd('validate "<fact>" [--base <name>] [--domain ops] [--output human|json]', mode)}`,
+    `  ${cmd('dispute "<fact>" --because "<counter evidence>" [--base <name>] [--domain ops] [--output human|json]', mode)}`,
+    `  ${cmd('query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]', mode)}`,
+    `  ${cmd('explain "<change id|fact>" [--base <name>] [--output human|json]', mode)}`,
   ].join('\n')
 }
 

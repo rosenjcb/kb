@@ -100,7 +100,9 @@ export interface DocumentWriterExtended extends DocumentWriter {
   mergeDocuments?(input: MergeDocumentsInput): Promise<MergeDocumentsResult>
   pruneDocument?(input: PruneDocumentInput): Promise<WriteDocumentResult>
   reconcileFacts?(input: ReconcileFactsInput): Promise<ReconcileFactsResult>
-  reconcileContradictions?(input: ReconcileContradictionsInput): Promise<ReconcileContradictionsResult>
+  reconcileContradictions?(
+    input: ReconcileContradictionsInput
+  ): Promise<ReconcileContradictionsResult>
 }
 
 export interface WriteDocumentResult {
@@ -229,25 +231,17 @@ function parseTags(value: unknown): string[] | undefined {
   return normalized.length ? normalized : undefined
 }
 
-function parseOptionalType(
-  value: unknown,
-): WriteDocumentInput['type'] | undefined {
+function parseOptionalType(value: unknown): WriteDocumentInput['type'] | undefined {
   if (value === undefined) return undefined
   if (typeof value !== 'string') {
     throw new Error('write_document: type must be a string when provided')
   }
 
-  const allowed = new Set([
-    'architecture',
-    'decision',
-    'checklist',
-    'runbook',
-    'reference',
-  ])
+  const allowed = new Set(['architecture', 'decision', 'checklist', 'runbook', 'reference'])
 
   if (!allowed.has(value)) {
     throw new Error(
-      'write_document: type must be one of architecture, decision, checklist, runbook, reference',
+      'write_document: type must be one of architecture, decision, checklist, runbook, reference'
     )
   }
 

@@ -1,5 +1,5 @@
+import { printCliHelp, runMainWithOutput } from '../cli/index.js'
 import type { KbConfig } from '../cli/kb-config.js'
-import { runMainWithOutput, printCliHelp } from '../cli/index.js'
 
 export { printCliHelp }
 
@@ -25,7 +25,7 @@ export async function runCommandForTui(args: string[], config: KbConfig): Promis
   }
 
   try {
-    await runMainWithOutput(effectiveArgs, out, config)
+    await runMainWithOutput(effectiveArgs, out, config, 'tui')
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     chunks.push(message)

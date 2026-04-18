@@ -1,12 +1,11 @@
 import { MarkdownDocumentReader, type QueryResult } from '../tools/markdown-document-reader'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
+import { type CmdMode, cmd } from './cmd-ref'
 
 export type ViewOutputMode = 'human' | 'json'
 
 export interface ParsedViewCommand {
-  selector:
-    | { mode: 'id'; value: string }
-    | { mode: 'title'; value: string }
+  selector: { mode: 'id'; value: string } | { mode: 'title'; value: string }
   output: ViewOutputMode
   base?: string
 }
@@ -24,45 +23,45 @@ export interface ParsedListCommand {
 export class ViewCommandError extends Error {
   exitCode: number
 
-  constructor(message: string, exitCode: number = 1) {
+  constructor(message: string, exitCode = 1) {
     super(message)
     this.name = 'ViewCommandError'
     this.exitCode = exitCode
   }
 }
 
-export function printViewHelp(): string {
+export function printViewHelp(mode: CmdMode = 'cli'): string {
   return [
-    'kb docs view commands',
+    `${cmd('docs view', mode)} commands`,
     '',
     'Usage:',
-    '  kb docs view <document-id> [--base <name>] [--output human|json]',
-    '  kb docs view --title "<exact title>" [--base <name>] [--output human|json]',
+    `  ${cmd('docs view <document-id> [--base <name>] [--output human|json]', mode)}`,
+    `  ${cmd('docs view --title "<exact title>" [--base <name>] [--output human|json]', mode)}`,
     '',
     'Examples:',
-    '  kb docs view kb-base-selection-and-usage',
-    '  kb docs view --title "KB Base Selection and Usage"',
-    '  kb docs view kb-base-selection-and-usage --output json',
+    `  ${cmd('docs view kb-base-selection-and-usage', mode)}`,
+    `  ${cmd('docs view --title "KB Base Selection and Usage"', mode)}`,
+    `  ${cmd('docs view kb-base-selection-and-usage --output json', mode)}`,
   ].join('\n')
 }
 
-export function printListHelp(): string {
+export function printListHelp(mode: CmdMode = 'cli'): string {
   return [
-    'kb docs list commands',
+    `${cmd('docs list', mode)} commands`,
     '',
     'Usage:',
-    '  kb docs list [--base <name>] [--limit <n>] [--output human|json]',
+    `  ${cmd('docs list [--base <name>] [--limit <n>] [--output human|json]', mode)}`,
     '',
     'Examples:',
-    '  kb docs list',
-    '  kb docs list --base dogfood --limit 20',
-    '  kb docs list --output json',
+    `  ${cmd('docs list', mode)}`,
+    `  ${cmd('docs list --base dogfood --limit 20', mode)}`,
+    `  ${cmd('docs list --output json', mode)}`,
   ].join('\n')
 }
 
 export async function runViewCommand(
   args: string[],
-  options: { cwd?: string } = {},
+  options: { cwd?: string } = {}
 ): Promise<ViewCommandResult> {
   const parsed = parseViewCommand(args)
   const cwd = options.cwd ?? process.cwd()
@@ -72,20 +71,20 @@ export async function runViewCommand(
     : (await resolveEffectiveBaseDir(cwd)).baseDir
 
   const reader = new MarkdownDocumentReader(baseDir)
-  const document = parsed.selector.mode === 'id'
-    ? await readDocumentById(reader, parsed.selector.value)
-    : await readDocumentByTitle(reader, parsed.selector.value)
+  const document =
+    parsed.selector.mode === 'id'
+      ? await readDocumentById(reader, parsed.selector.value)
+      : await readDocumentByTitle(reader, parsed.selector.value)
 
   return {
-    output: parsed.output === 'json'
-      ? formatViewJson(document)
-      : formatViewHuman(document, parsed.base),
+    output:
+      parsed.output === 'json' ? formatViewJson(document) : formatViewHuman(document, parsed.base),
   }
 }
 
 export async function runListCommand(
   args: string[],
-  options: { cwd?: string } = {},
+  options: { cwd?: string } = {}
 ): Promise<ViewCommandResult> {
   const parsed = parseListCommand(args)
   const cwd = options.cwd ?? process.cwd()
@@ -99,9 +98,10 @@ export async function runListCommand(
   })
 
   return {
-    output: parsed.output === 'json'
-      ? formatListJson(response.results)
-      : formatListHuman(response.results, parsed.base),
+    output:
+      parsed.output === 'json'
+        ? formatListJson(response.results)
+        : formatListHuman(response.results, parsed.base),
   }
 }
 
@@ -207,7 +207,9 @@ export function parseListCommand(args: string[]): ParsedListCommand {
       continue
     }
 
-    throw new ViewCommandError(`kb docs list does not accept positional arguments.\n\n${printListHelp()}`)
+    throw new ViewCommandError(
+      `kb docs list does not accept positional arguments.\n\n${printListHelp()}`
+    )
   }
 
   return { output, base, limit }
@@ -215,7 +217,7 @@ export function parseListCommand(args: string[]): ParsedListCommand {
 
 async function readDocumentById(
   reader: MarkdownDocumentReader,
-  documentId: string,
+  documentId: string
 ): Promise<QueryResult> {
   const response = await reader.queryDocuments({
     query: documentId,
@@ -234,7 +236,7 @@ async function readDocumentById(
 
 async function readDocumentByTitle(
   reader: MarkdownDocumentReader,
-  title: string,
+  title: string
 ): Promise<QueryResult> {
   const response = await reader.queryDocuments({
     query: title,
@@ -243,8 +245,8 @@ async function readDocumentByTitle(
     includeContent: true,
   })
 
-  const exactMatches = response.results.filter(result =>
-    normalizeTitle(result.metadata.title) === normalizeTitle(title),
+  const exactMatches = response.results.filter(
+    result => normalizeTitle(result.metadata.title) === normalizeTitle(title)
   )
 
   if (exactMatches.length === 0) {
@@ -262,10 +264,7 @@ async function readDocumentByTitle(
 }
 
 function formatViewHuman(document: QueryResult, base?: string): string {
-  const lines = [
-    `# ${document.metadata.title}`,
-    `ID: ${document.metadata.id}`,
-  ]
+  const lines = [`# ${document.metadata.title}`, `ID: ${document.metadata.id}`]
 
   if (document.metadata.type) {
     lines.push(`Type: ${document.metadata.type}`)
@@ -328,11 +327,13 @@ function normalizeTitle(value: string): string {
 }
 
 function sanitizeId(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'document'
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'document'
+  )
 }
 
 function stripCanonicalDocumentPreamble(content: string): string {
@@ -359,11 +360,7 @@ function stripCanonicalDocumentPreamble(content: string): string {
 }
 
 function isCanonicalMetadataLine(line: string): boolean {
-  return (
-    line.startsWith('Created:')
-    || line.startsWith('Type:')
-    || line.startsWith('Tags:')
-  )
+  return line.startsWith('Created:') || line.startsWith('Type:') || line.startsWith('Tags:')
 }
 
 function readRequiredValue(args: string[], index: number, flag: string): string {

@@ -3,6 +3,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import dayjs from 'dayjs'
 import type { LLMProvider, LLMResponse, LLMCallParams } from '../../src/core/types'
 import {
   estimateCost,
@@ -233,7 +234,7 @@ describe('ReportWriter', () => {
     const report = c.finish('success')
     await writer.append(report)
 
-    const today = new Date().toISOString().slice(0, 10)
+    const today = dayjs().format('YYYY-MM-DD')
     const filePath = path.join(logsDir, `${today}.jsonl`)
     expect(existsSync(filePath)).toBe(true)
     const contents = await readFile(filePath, 'utf-8')
@@ -250,7 +251,7 @@ describe('ReportWriter', () => {
     await writer.append(new RunCollector('query').finish('success'))
     await writer.append(new RunCollector('submit').finish('success'))
 
-    const today = new Date().toISOString().slice(0, 10)
+    const today = dayjs().format('YYYY-MM-DD')
     const contents = await readFile(path.join(logsDir, `${today}.jsonl`), 'utf-8')
     const lines = contents.trim().split('\n').filter(Boolean)
     expect(lines).toHaveLength(2)

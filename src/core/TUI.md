@@ -20,6 +20,7 @@ Do not treat the TUI path as extra polish. It is part of the product surface.
 - `kb <command> ...` should be non-interactive by default unless that command intentionally runs an interview or session flow.
 - `kb <command> --help` should print help and exit without starting real work.
 - If a command is exposed inside the TUI, the slash path should mirror the CLI path closely enough that the same feature can be exercised both ways.
+- Success or follow-up copy in the TUI transcript (e.g. after `/use` or `/use --default`) should use **slash form** (`/use …`), not `kb …`, so users are not told to leave the Ink shell. Shared formatters take `CmdMode` and build hints via `cmd()` in `src/cli/cmd-ref.ts`.
 
 Examples:
 
@@ -33,15 +34,13 @@ Examples:
 - Prefer entrypoint-driven behavior:
   - bare `kb` => interactive shell
   - `kb <command>` => one-shot non-interactive command
-- Reserve `--non-interactive` for commands that otherwise prompt the user during their own command flow.
-- Treat `--no-tui` as legacy top-level behavior, not a pattern to copy into new commands.
+- Reserve `--non-interactive` for commands that otherwise prompt the user during their own command flow (e.g. `kb init`).
 - Before renaming or removing any existing flag, verify current semantics, help output, scripts, tests, and TUI dispatch paths.
 
 Current repo guidance:
 
-- The `--no-tui` versus `--non-interactive` split is inconsistent and should be considered active standards debt.
-- Standardization should start from behavior, not naming. Since subcommands are already one-shot by default, many new `--non-interactive` flags would be redundant.
-- Any future cleanup should likely reduce mode flags, not multiply them.
+- Subcommands are already one-shot by default; adding `--non-interactive` to them is redundant.
+- Mode flags should be reduced, not multiplied.
 
 ## Validation Checklist
 
@@ -59,4 +58,14 @@ For high-risk CLI changes, keep the repository rule from `AGENTS.md`: run end-to
 ## Known Gaps to Watch
 
 - `kb init --help` should behave like help, not kick off or resume init work.
-- Top-level docs currently mention `--no-tui` while `kb init` uses `--non-interactive`; do not encode that mismatch as the desired long-term standard.
+
+## Prerequisites and errors (DRY)
+
+Many commands need **exactly one** of these at a time, and errors must name the missing prerequisite clearly (never “A or B” when both matter):
+
+1. **Knowledge base** — an effective base (`config.activeBase` or `config.selectedBase`), or an explicit `--base <name>` on commands that support it.
+2. **LLM** — a constructible provider from `~/.kb/config.json` + environment keys (`kb config llm`).
+
+Canonical user-facing strings live in `src/cli/cli-prerequisites.ts` (`CLI_ERROR_NO_KB_BASE`, `CLI_ERROR_NO_LLM_PROVIDER`, etc.). CLI and TUI should reuse them so `/query` and `kb query` behave the same as bare `kb` + slash commands.
+
+When a command needs both (e.g. `kb chat`), check **base first**, then **LLM**, and surface **one** error at a time.

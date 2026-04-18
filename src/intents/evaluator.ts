@@ -17,9 +17,37 @@ function containsFact(text: string, fact: string): boolean {
 
 function tokenize(text: string): string[] {
   const stopwords = new Set([
-    'the', 'a', 'an', 'and', 'or', 'to', 'of', 'in', 'on', 'for', 'with', 'by', 'is', 'are',
-    'was', 'were', 'be', 'being', 'been', 'that', 'this', 'it', 'as', 'at', 'from', 'our',
-    'your', 'their', 'fact', 'facts', 'about',
+    'the',
+    'a',
+    'an',
+    'and',
+    'or',
+    'to',
+    'of',
+    'in',
+    'on',
+    'for',
+    'with',
+    'by',
+    'is',
+    'are',
+    'was',
+    'were',
+    'be',
+    'being',
+    'been',
+    'that',
+    'this',
+    'it',
+    'as',
+    'at',
+    'from',
+    'our',
+    'your',
+    'their',
+    'fact',
+    'facts',
+    'about',
   ])
 
   return text
@@ -49,11 +77,11 @@ async function readFactEvidence(
   toolExecutor: ToolExecutor,
   query: string,
   discoveryDepth: 'shallow' | 'deep',
-  limit: number,
+  limit: number
 ): Promise<{
-    results: Array<{ content?: string; metadata?: { id?: string } }>
-    retrieval?: { method?: string; detail?: string }
-  }> {
+  results: Array<{ content?: string; metadata?: { id?: string } }>
+  retrieval?: { method?: string; detail?: string }
+}> {
   const response = await toolExecutor.execute(
     createToolUse('read_documents', {
       query,
@@ -61,7 +89,7 @@ async function readFactEvidence(
       includeContent: true,
       limit,
       discoveryDepth,
-    }),
+    })
   )
 
   const typedResponse = response as {
@@ -78,7 +106,7 @@ async function readFactEvidence(
 export async function validateFact(
   toolExecutor: ToolExecutor,
   fact: string,
-  domain?: string,
+  domain?: string
 ): Promise<IntentResult> {
   const query = domain ? `${domain} ${fact}` : fact
   const shallow = await readFactEvidence(toolExecutor, query, 'shallow', 5)
@@ -165,7 +193,7 @@ export async function disputeFact(
   toolExecutor: ToolExecutor,
   fact: string,
   because: string,
-  domain?: string,
+  domain?: string
 ): Promise<IntentResult> {
   const validateResult = await validateFact(toolExecutor, fact, domain)
 
@@ -190,14 +218,14 @@ export async function disputeFact(
     .filter(Boolean)
     .join('\n')
 
-  const writeResult = await toolExecutor.execute(
+  const writeResult = (await toolExecutor.execute(
     createToolUse('write_document', {
       title,
       content,
       tags: ['dispute', 'fact-check'],
       type: 'reference',
-    }),
-  ) as { id?: string }
+    })
+  )) as { id?: string }
 
   return {
     status: 'accepted',
@@ -208,9 +236,7 @@ export async function disputeFact(
   }
 }
 
-function describeRetrieval(
-  retrieval: { method?: string; detail?: string } | undefined,
-): string {
+function describeRetrieval(retrieval: { method?: string; detail?: string } | undefined): string {
   if (!retrieval?.method) return 'Retrieval method: unknown.'
   if (!retrieval.detail) return `Retrieval method: ${retrieval.method}.`
   return `Retrieval method: ${retrieval.method} (${retrieval.detail}).`

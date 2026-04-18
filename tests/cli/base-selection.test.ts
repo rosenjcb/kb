@@ -13,6 +13,7 @@ import {
   writeDefaultBase,
   writeSessionBase,
 } from '../../src/cli/base-selection'
+import { CLI_ERROR_NO_KB_BASE } from '../../src/cli/cli-prerequisites'
 
 describe('base-selection', () => {
   let tempKbHome: string
@@ -44,13 +45,13 @@ describe('base-selection', () => {
 
   // ─── resolveEffectiveBaseDir — session/config precedence ──────────────────
 
-  it('active session base wins over config.selectedBase', async () => {
+  it('active base in config wins over selectedBase', async () => {
     const result = await resolveEffectiveBaseDir('/repo', {
       activeBase: 'session-base',
       selectedBase: 'config-base',
     })
 
-    expect(result.source).toBe('session.activeBase')
+    expect(result.source).toBe('config.activeBase')
     expect(result.baseName).toBe('session-base')
     expect(result.baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'session-base'))
   })
@@ -65,7 +66,7 @@ describe('base-selection', () => {
 
   it('throws when neither activeBase nor config.selectedBase is set', async () => {
     await expect(resolveEffectiveBaseDir('/repo', {})).rejects.toThrow(
-      'No KB base configured',
+      CLI_ERROR_NO_KB_BASE,
     )
   })
 
@@ -92,6 +93,23 @@ describe('base-selection', () => {
 
     expect(config.selectedBase).toBe('dogfood')
     expect(config.activeBase).toBe('catalog')
+    const raw = JSON.parse(await readFile(path.join(getKbHomeDir(), 'config.json'), 'utf8')) as {
+      activeBase?: string
+      selectedBase?: string
+    }
+    expect(raw.activeBase).toBe('catalog')
+    expect(raw.selectedBase).toBe('dogfood')
+  })
+
+  it('migrates legacy session.json into config.json and removes session.json', async () => {
+    await writeFile(
+      path.join(getKbHomeDir(), 'session.json'),
+      `${JSON.stringify({ activeBase: 'legacy-base' }, null, 2)}\n`,
+      'utf8',
+    )
+    const config = await readBaseConfig()
+    expect(config.activeBase).toBe('legacy-base')
+    await expect(readFile(path.join(getKbHomeDir(), 'session.json'), 'utf8')).rejects.toThrow()
   })
 
   // ─── legacy sqlite migration ──────────────────────────────────────────────
@@ -110,17 +128,45 @@ describe('base-selection', () => {
     await rm(cwd, { recursive: true, force: true })
   })
 
+  it('ensureOperationalBaseDir migrates legacy KB home base directory into sessions namespace', async () => {
+    const legacyBaseDir = path.join(getKbHomeDir(), 'dogfood')
+    await mkdir(path.join(legacyBaseDir, 'checkpoints'), { recursive: true })
+    await writeFile(path.join(legacyBaseDir, '.kb-index.sqlite'), 'sqlite-bytes', 'utf8')
+    await writeFile(path.join(legacyBaseDir, '.kb-graph.duckdb'), 'duckdb-bytes', 'utf8')
+    await writeFile(path.join(legacyBaseDir, 'checkpoints', 'init-latest.checkpoint.json'), '{"version":2}\n', 'utf8')
+
+    const resolved = await ensureOperationalBaseDir('dogfood')
+
+    expect(resolved).toBe(path.join(getKbHomeDir(), 'sessions', 'dogfood'))
+    expect(await readFile(path.join(resolved, '.kb-index.sqlite'), 'utf8')).toBe('sqlite-bytes')
+    expect(await readFile(path.join(resolved, '.kb-graph.duckdb'), 'utf8')).toBe('duckdb-bytes')
+    expect(await readFile(path.join(resolved, 'checkpoints', 'init-latest.checkpoint.json'), 'utf8')).toContain('"version":2')
+    await expect(readFile(path.join(getKbHomeDir(), 'dogfood', '.kb-index.sqlite'), 'utf8')).rejects.toThrow()
+  })
+
   // ─── format helpers ───────────────────────────────────────────────────────
 
   it('formatUseCommandHelp shows active session switching', () => {
     const text = formatUseCommandHelp('catalog', path.join(getKbHomeDir(), 'sessions', 'catalog'))
     expect(text).toContain('Using base: catalog')
     expect(text).toContain('Switched the active base for this session')
+    expect(text).toContain('`kb use --default <base>`')
   })
 
   it('formatDefaultCommandHelp shows persistent default messaging', () => {
     const text = formatDefaultCommandHelp('catalog', path.join(getKbHomeDir(), 'sessions', 'catalog'))
     expect(text).toContain('Default base: catalog')
     expect(text).toContain('preferred base')
+    expect(text).toContain('`kb use <base>`')
+  })
+
+  it('formatUseCommandHelp uses slash hints in TUI mode', () => {
+    const text = formatUseCommandHelp('catalog', path.join(getKbHomeDir(), 'sessions', 'catalog'), 'tui')
+    expect(text).toContain('`/use --default <base>`')
+  })
+
+  it('formatDefaultCommandHelp uses slash hints in TUI mode', () => {
+    const text = formatDefaultCommandHelp('catalog', path.join(getKbHomeDir(), 'sessions', 'catalog'), 'tui')
+    expect(text).toContain('`/use <base>`')
   })
 })

@@ -10,6 +10,7 @@
  */
 
 import { DuckGraphWriter } from '../tools/duck-graph-writer'
+import { type CmdMode, cmd } from './cmd-ref'
 
 export interface GraphCommandOptions {
   entity?: string
@@ -19,33 +20,36 @@ export interface GraphCommandOptions {
 }
 
 export class GraphCommandError extends Error {
-  constructor(message: string, readonly exitCode = 1) {
+  constructor(
+    message: string,
+    readonly exitCode = 1
+  ) {
     super(message)
     this.name = 'GraphCommandError'
   }
 }
 
-export function printGraphHelp(): string {
+export function printGraphHelp(mode: CmdMode = 'cli'): string {
   return [
-    'kb graph commands',
+    `${cmd('graph', mode)} commands`,
     '',
     'Usage:',
-    '  kb graph',
-    '  kb graph --entity <name>',
-    '  kb graph --path <from> <to>',
-    '  kb graph --format dot|json',
+    `  ${cmd('graph', mode)}`,
+    `  ${cmd('graph --entity <name>', mode)}`,
+    `  ${cmd('graph --path <from> <to>', mode)}`,
+    `  ${cmd('graph --format dot|json', mode)}`,
     '',
     'Examples:',
-    '  kb graph',
-    '  kb graph --entity "KB"',
-    '  kb graph --path "KB" "SQLite"',
-    '  kb graph --format json',
+    `  ${cmd('graph', mode)}`,
+    `  ${cmd('graph --entity "KB"', mode)}`,
+    `  ${cmd('graph --path "KB" "SQLite"', mode)}`,
+    `  ${cmd('graph --format json', mode)}`,
   ].join('\n')
 }
 
-export function parseGraphCommand(args: string[]): GraphCommandOptions {
+export function parseGraphCommand(args: string[], mode: CmdMode = 'cli'): GraphCommandOptions {
   if (args.includes('--help') || args.includes('-h') || args.includes('help')) {
-    throw new GraphCommandError(printGraphHelp(), 0)
+    throw new GraphCommandError(printGraphHelp(mode), 0)
   }
 
   const opts: GraphCommandOptions = {}
@@ -81,11 +85,19 @@ export interface GraphOut {
 export interface GraphWriter {
   open(): Promise<void>
   close(): void
-  getSummary(): Promise<{ totalEntities: number; totalRelationships: number; topEntities: Array<{ name: string; type: string; connections: number }> }>
+  getSummary(): Promise<{
+    totalEntities: number
+    totalRelationships: number
+    topEntities: Array<{ name: string; type: string; connections: number }>
+  }>
   exportDot(): Promise<string>
   exportJson(): Promise<unknown>
   findPath(from: string, to: string): Promise<{ hops: number; nodes: string[] } | null>
-  getNeighbors(entity: string): Promise<{ entity: { name: string; type: string }; outgoing: Array<{ rel: string; target: { name: string; type: string } }>; incoming: Array<{ rel: string; source: { name: string; type: string } }> } | null>
+  getNeighbors(entity: string): Promise<{
+    entity: { name: string; type: string }
+    outgoing: Array<{ rel: string; target: { name: string; type: string } }>
+    incoming: Array<{ rel: string; source: { name: string; type: string } }>
+  } | null>
 }
 
 const defaultGraphOut: GraphOut = { log: console.log }
@@ -94,9 +106,10 @@ export async function runGraphCommand(
   baseDir: string,
   opts: GraphCommandOptions,
   out: GraphOut = defaultGraphOut,
-  writerOverride?: GraphWriter,
+  writerOverride?: GraphWriter
 ): Promise<void> {
-  const writer: GraphWriter = writerOverride ?? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(baseDir))
+  const writer: GraphWriter =
+    writerOverride ?? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(baseDir))
 
   try {
     await writer.open()
@@ -159,7 +172,9 @@ export async function runGraphCommand(
     if (summary.topEntities.length > 0) {
       out.log('\nTop entities by connections:')
       for (const e of summary.topEntities.slice(0, 10)) {
-        out.log(`  ${e.name} [${e.type}] — ${e.connections} connection${e.connections === 1 ? '' : 's'}`)
+        out.log(
+          `  ${e.name} [${e.type}] — ${e.connections} connection${e.connections === 1 ? '' : 's'}`
+        )
       }
     }
   } finally {

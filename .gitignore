@@ -40,9 +40,9 @@ tmp/
 # Node runtime
 .node-gyp/
 
-# Skills directories
+# Skills directories (keep workflows tracked)
 .claude/**
-.github/**
+.github/SKILLS
 AGENTS.md
 
 # Misc

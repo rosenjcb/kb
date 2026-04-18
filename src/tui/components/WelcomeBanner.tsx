@@ -2,7 +2,13 @@ import { Box, Text } from 'ink'
 import { useEffect, useState } from 'react'
 import { BLUE, ORANGE } from '../theme.js'
 
-const BANNER_LINES = ['██╗  ██╗██████╗', '██║ ██╔╝██╔══██╗', '█████╔╝ ██████╔╝', '██╔═██╗ ██╔══██╗', '██║  ██╗██████╔╝']
+const BANNER_LINES = [
+  '██╗  ██╗██████╗',
+  '██║ ██╔╝██╔══██╗',
+  '█████╔╝ ██████╔╝',
+  '██╔═██╗ ██╔══██╗',
+  '██║  ██╗██████╔╝',
+]
 
 export function WelcomeBanner() {
   const [cursorOn, setCursorOn] = useState(true)
@@ -17,10 +23,10 @@ export function WelcomeBanner() {
 
   return (
     <Box flexDirection="column" marginBottom={1}>
-      {BANNER_LINES.map((line, index) => (
-        <Text key={`banner-line-${index}`} color={BLUE} bold>
+      {BANNER_LINES.map(line => (
+        <Text key={line} color={BLUE} bold>
           {line}
-          {index === 2 ? (
+          {line === BANNER_LINES[2] ? (
             <Text color={ORANGE}>{cursorOn ? '  [█]' : '  [ ]'}</Text>
           ) : null}
         </Text>

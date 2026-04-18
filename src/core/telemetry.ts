@@ -47,12 +47,12 @@ interface PriceRow {
 
 const PRICE_TABLE: Record<string, Record<string, PriceRow>> = {
   gemini: {
-    'gemini-2.0-flash': { inputPer1M: 0.075, outputPer1M: 0.30 },
+    'gemini-2.0-flash': { inputPer1M: 0.075, outputPer1M: 0.3 },
     'gemini-2.0-flash-lite': { inputPer1M: 0.0375, outputPer1M: 0.15 },
-    'gemini-1.5-flash': { inputPer1M: 0.075, outputPer1M: 0.30 },
-    'gemini-1.5-pro': { inputPer1M: 1.25, outputPer1M: 5.00 },
-    'gemini-2.5-pro': { inputPer1M: 1.25, outputPer1M: 10.00 },
-    _default: { inputPer1M: 0.075, outputPer1M: 0.30 },
+    'gemini-1.5-flash': { inputPer1M: 0.075, outputPer1M: 0.3 },
+    'gemini-1.5-pro': { inputPer1M: 1.25, outputPer1M: 5.0 },
+    'gemini-2.5-pro': { inputPer1M: 1.25, outputPer1M: 10.0 },
+    _default: { inputPer1M: 0.075, outputPer1M: 0.3 },
   },
   anthropic: {
     // Stubs — fill in when anthropic pricing is needed
@@ -71,10 +71,10 @@ export function estimateCost(
   provider: string,
   model: string,
   inputTokens: number,
-  outputTokens: number,
+  outputTokens: number
 ): number {
   const providerTable = PRICE_TABLE[provider] ?? { _default: { inputPer1M: 0, outputPer1M: 0 } }
-  const row = providerTable[model] ?? providerTable['_default'] ?? { inputPer1M: 0, outputPer1M: 0 }
+  const row = providerTable[model] ?? providerTable._default ?? { inputPer1M: 0, outputPer1M: 0 }
   return (inputTokens / 1_000_000) * row.inputPer1M + (outputTokens / 1_000_000) * row.outputPer1M
 }
 
@@ -91,7 +91,7 @@ export class RunCollector {
 
   constructor(
     readonly command: string,
-    opts: { debug?: boolean } = {},
+    opts: { debug?: boolean } = {}
   ) {
     this.runId = `run-${dayjs().valueOf()}-${Math.random().toString(36).slice(2, 6)}`
     this.startedAt = dayjs().toISOString()
@@ -104,11 +104,10 @@ export class RunCollector {
   addStage(metrics: StageMetrics): void {
     this.stages.push(metrics)
     if (this.debug) {
-      const cost = metrics.estimatedCostUsd > 0
-        ? `$${metrics.estimatedCostUsd.toFixed(5)}`
-        : '$0.00000'
+      const cost =
+        metrics.estimatedCostUsd > 0 ? `$${metrics.estimatedCostUsd.toFixed(5)}` : '$0.00000'
       process.stderr.write(
-        `[kb:debug] ${metrics.stage.padEnd(24)} ${String(metrics.durationMs).padStart(6)}ms  in=${metrics.inputTokens} out=${metrics.outputTokens}  ${cost}  ${metrics.provider}/${metrics.model}\n`,
+        `[kb:debug] ${metrics.stage.padEnd(24)} ${String(metrics.durationMs).padStart(6)}ms  in=${metrics.inputTokens} out=${metrics.outputTokens}  ${cost}  ${metrics.provider}/${metrics.model}\n`
       )
     }
   }
@@ -116,10 +115,14 @@ export class RunCollector {
   /**
    * Start timing a stage. Returns a function to stop and record it.
    */
-  startStage(stage: string, provider: string, model: string): (tokens: { inputTokens: number; outputTokens: number }) => void {
+  startStage(
+    stage: string,
+    provider: string,
+    model: string
+  ): (tokens: { inputTokens: number; outputTokens: number }) => void {
     const startMs = Date.now()
     const startedAt = dayjs().toISOString()
-    return (tokens) => {
+    return tokens => {
       const durationMs = Date.now() - startMs
       this.addStage({
         stage,
@@ -150,8 +153,7 @@ export class RunCollector {
 
     if (this.debug) {
       process.stderr.write(
-        `[kb:debug] ─────────────────────────────────────────────────────────────\n` +
-        `[kb:debug] Total: ${totalDurationMs}ms  in=${totalInputTokens} out=${totalOutputTokens}  $${totalEstimatedCostUsd.toFixed(5)}\n`,
+        `[kb:debug] ─────────────────────────────────────────────────────────────\n[kb:debug] Total: ${totalDurationMs}ms  in=${totalInputTokens} out=${totalOutputTokens}  $${totalEstimatedCostUsd.toFixed(5)}\n`
       )
     }
 
@@ -185,9 +187,11 @@ export class ReportWriter {
       await mkdir(this.logsDir, { recursive: true })
       const date = dayjs(report.startedAt).format('YYYY-MM-DD')
       const file = path.join(this.logsDir, `${date}.jsonl`)
-      await appendFile(file, JSON.stringify(report) + '\n', 'utf-8')
+      await appendFile(file, `${JSON.stringify(report)}\n`, 'utf-8')
     } catch (err) {
-      process.stderr.write(`[kb] Warning: could not write run report: ${err instanceof Error ? err.message : String(err)}\n`)
+      process.stderr.write(
+        `[kb] Warning: could not write run report: ${err instanceof Error ? err.message : String(err)}\n`
+      )
     }
   }
 }
@@ -200,7 +204,7 @@ export function defaultLogsDir(): string {
 
 // ─── TokenCountingProvider ────────────────────────────────────────
 
-import type { LLMProvider, LLMResponse, LLMStreamChunk, LLMCallParams } from './types'
+import type { LLMCallParams, LLMProvider, LLMResponse, LLMStreamChunk } from './types'
 
 /**
  * Wraps any LLMProvider and accumulates token usage across all .call() invocations.
@@ -212,9 +216,15 @@ export class TokenCountingProvider implements LLMProvider {
 
   constructor(private inner: LLMProvider) {}
 
-  get name(): string { return this.inner.name }
-  get model(): string { return this.inner.model }
-  get supportsStreaming(): boolean { return this.inner.supportsStreaming }
+  get name(): string {
+    return this.inner.name
+  }
+  get model(): string {
+    return this.inner.model
+  }
+  get supportsStreaming(): boolean {
+    return this.inner.supportsStreaming
+  }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
     const response = await this.inner.call(params)

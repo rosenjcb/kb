@@ -4,16 +4,17 @@ import type { LLMProvider, Message } from '../core/types'
 import type { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import {
+  type ChatConversationState,
+  createInitialConversationState,
+  resolveConversationalChatTurn,
+  updateConversationState,
+} from './chat-conversation'
+import { type CmdMode, cmd } from './cmd-ref'
+import {
   appendRetrievalDetail,
   augmentReadDocumentsWithWorkspaceFallback,
   formatReadDocumentSourceIds,
 } from './retrieval-fallback'
-import {
-  createInitialConversationState,
-  resolveConversationalChatTurn,
-  updateConversationState,
-  type ChatConversationState,
-} from './chat-conversation'
 
 export interface ChatSessionDeps {
   llmProvider: LLMProvider
@@ -75,25 +76,25 @@ const HELP_TEXT = [
 
 const CHAT_MAX_OUTPUT_TOKENS = 4096
 
-export function printChatHelp(): string {
+export function printChatHelp(mode: CmdMode = 'cli'): string {
   return [
-    'kb chat',
+    `${cmd('chat', mode)}`,
     '',
     'Usage:',
-    '  kb chat',
+    `  ${cmd('chat', mode)}`,
     '',
     'Interactive commands:',
     '  /help  Show chat commands',
     '  /exit  Exit chat mode',
     '',
     'Examples:',
-    '  kb chat',
+    `  ${cmd('chat', mode)}`,
   ].join('\n')
 }
 
 const CHAT_SYSTEM_PROMPT = [
   'You are KB, a knowledge base assistant.',
-  'Answer the user\'s question directly and clearly.',
+  "Answer the user's question directly and clearly.",
   'Default to a substantive answer, and use as much space as needed when the question benefits from depth.',
   'For broad "why should I care?" or "what are the benefits?" questions, it is fine to answer in several rich paragraphs.',
   'Use the retrieved evidence provided in each message. Synthesize across multiple documents if needed.',
@@ -101,7 +102,10 @@ const CHAT_SYSTEM_PROMPT = [
   'If the evidence is genuinely insufficient, say so in one sentence and suggest a follow-up query.',
 ].join('\n')
 
-export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createTerminalChatIO()): Promise<void> {
+export async function runChatSession(
+  deps: ChatSessionDeps,
+  io: ChatIO = createTerminalChatIO()
+): Promise<void> {
   const retrievalLimit = deps.retrievalLimit ?? 5
   const maxHistoryTurns = deps.maxHistoryTurns ?? 8
   let conversationState = createInitialConversationState()
@@ -174,14 +178,18 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
               },
             })
 
-            retrieval = mergeReadResults(retrieval, normalizeReadResult(recoveryResult), 'chat-recovery-retry')
+            retrieval = mergeReadResults(
+              retrieval,
+              normalizeReadResult(recoveryResult),
+              'chat-recovery-retry'
+            )
           }
         }
 
         const retrievalWithFallback = await augmentReadDocumentsWithWorkspaceFallback(
           resolvedTurn.retrievalQuery,
           retrieval,
-          deps.workspaceDir ?? process.cwd(),
+          deps.workspaceDir ?? process.cwd()
         )
         let retrievalForOutput = retrievalWithFallback
 
@@ -189,7 +197,8 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
         // History is carried natively via the messages array — no embedding needed.
         const userContent = buildChatTurnContent({
           question: input,
-          resolvedQuestion: resolvedTurn.retrievalQuery !== input ? resolvedTurn.retrievalQuery : undefined,
+          resolvedQuestion:
+            resolvedTurn.retrievalQuery !== input ? resolvedTurn.retrievalQuery : undefined,
           retrieval: retrievalForOutput,
           conversationState,
         })
@@ -224,19 +233,17 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
           retrievalForOutput = mergeReadResults(
             retrievalForOutput,
             deepRetrieval,
-            'chat-deep-discovery-promotion',
+            'chat-deep-discovery-promotion'
           )
 
           const deepContent = buildChatTurnContent({
             question: input,
-            resolvedQuestion: resolvedTurn.retrievalQuery !== input ? resolvedTurn.retrievalQuery : undefined,
+            resolvedQuestion:
+              resolvedTurn.retrievalQuery !== input ? resolvedTurn.retrievalQuery : undefined,
             retrieval: retrievalForOutput,
             conversationState,
           })
-          const deepMessages: Message[] = [
-            ...messages,
-            { role: 'user', content: deepContent },
-          ]
+          const deepMessages: Message[] = [...messages, { role: 'user', content: deepContent }]
           const deepCompletion = await deps.llmProvider.call({
             messages: trimMessageHistory(deepMessages, maxHistoryTurns),
             systemPrompt: CHAT_SYSTEM_PROMPT,
@@ -248,7 +255,8 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
         }
 
         if (!answer) {
-          answer = 'I don\'t have enough information to answer that. Try: kb query "<your question>"'
+          answer =
+            'I don\'t have enough information to answer that. Try: kb query "<your question>"'
         }
 
         // Append both sides to the message history so the next turn sees the full context.
@@ -278,7 +286,7 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
             answer,
             retrievedDocIds: sourceIds,
           },
-          maxHistoryTurns,
+          maxHistoryTurns
         )
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -319,37 +327,39 @@ export function buildChatTurnContent(input: {
     '',
     `User question: ${input.question}`,
     input.resolvedQuestion ? `(retrieval query used: ${input.resolvedQuestion})` : '',
-  ].filter(Boolean).join('\n')
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 function looksLikeInsufficientEvidenceAnswer(text: string): boolean {
   const normalized = text.toLowerCase()
   return (
-    normalized.includes('evidence provided does not contain')
-    || normalized.includes('retrieved documents do not provide specific information')
-    || normalized.includes('retrieved document does not provide information')
-    || normalized.includes('retrieved document does not provide specific information')
-    || normalized.includes('retrieved evidence does not contain information')
-    || normalized.includes('retrieved evidence does not contain specific information')
-    || normalized.includes('does not provide specific information')
-    || normalized.includes('do not provide specific information')
-    || normalized.includes('does not provide information')
-    || normalized.includes('do not provide information')
-    || normalized.includes('does not contain specific information')
-    || normalized.includes('do not contain specific information')
-    || normalized.includes('does not contain information')
-    || normalized.includes('do not contain information')
-    || normalized.includes('do not contain specific details')
-    || normalized.includes('does not provide specific details')
-    || normalized.includes('do not provide specific details')
-    || normalized.includes('do not contain any information about')
-    || normalized.includes('does not contain any information about')
-    || normalized.includes('cannot provide an answer based on the available evidence')
-    || normalized.includes('evidence is insufficient')
-    || normalized.includes('do not have enough evidence')
-    || normalized.includes('need additional information')
-    || normalized.includes('would need additional information')
-    || normalized.includes('further specific queries')
+    normalized.includes('evidence provided does not contain') ||
+    normalized.includes('retrieved documents do not provide specific information') ||
+    normalized.includes('retrieved document does not provide information') ||
+    normalized.includes('retrieved document does not provide specific information') ||
+    normalized.includes('retrieved evidence does not contain information') ||
+    normalized.includes('retrieved evidence does not contain specific information') ||
+    normalized.includes('does not provide specific information') ||
+    normalized.includes('do not provide specific information') ||
+    normalized.includes('does not provide information') ||
+    normalized.includes('do not provide information') ||
+    normalized.includes('does not contain specific information') ||
+    normalized.includes('do not contain specific information') ||
+    normalized.includes('does not contain information') ||
+    normalized.includes('do not contain information') ||
+    normalized.includes('do not contain specific details') ||
+    normalized.includes('does not provide specific details') ||
+    normalized.includes('do not provide specific details') ||
+    normalized.includes('do not contain any information about') ||
+    normalized.includes('does not contain any information about') ||
+    normalized.includes('cannot provide an answer based on the available evidence') ||
+    normalized.includes('evidence is insufficient') ||
+    normalized.includes('do not have enough evidence') ||
+    normalized.includes('need additional information') ||
+    normalized.includes('would need additional information') ||
+    normalized.includes('further specific queries')
   )
 }
 
@@ -416,7 +426,7 @@ function buildRecoveryQuery(input: string): string | undefined {
 function mergeReadResults(
   primary: ReadDocumentsResult,
   secondary: ReadDocumentsResult,
-  detailSuffix: string,
+  detailSuffix: string
 ): ReadDocumentsResult {
   const mergedMap = new Map<string, { metadata?: { id?: string }; content?: string }>()
 
@@ -443,16 +453,14 @@ function mergeReadResults(
       method: secondary.retrieval?.method ?? primary.retrieval?.method,
       detail: appendRetrievalDetail(
         secondary.retrieval?.detail ?? primary.retrieval?.detail,
-        detailSuffix,
+        detailSuffix
       ),
       checkpoints,
     },
   }
 }
 
-function getFinalCheckpoint(
-  retrieval: ReadDocumentsResult,
-): ReadDocumentsCheckpoint | undefined {
+function getFinalCheckpoint(retrieval: ReadDocumentsResult): ReadDocumentsCheckpoint | undefined {
   const checkpoints = retrieval.retrieval?.checkpoints
   if (!Array.isArray(checkpoints) || checkpoints.length === 0) return undefined
   return checkpoints[checkpoints.length - 1]

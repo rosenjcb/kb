@@ -1,18 +1,20 @@
 import path from 'node:path'
-import dayjs from 'dayjs'
 import Database from 'better-sqlite3'
+import dayjs from 'dayjs'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
 import { readKbConfig, resolveNotionToken } from './kb-config'
 
-export type PublishPhase = 'all'
-export type PublishStopPoint = 'package' | 'import'
+export type PublishPhase = 'all' | 'import' | 'restructure'
+export type PublishStopPoint = string
 
 export interface PublishOptions {
   base?: string
   provider: 'notion'
+  phase: PublishPhase
   apply: boolean
   dryRun: boolean
   parentPageId?: string
+  stagePageId?: string
   checkpointFile?: string
   resumeFrom?: string
   stopAfter?: PublishStopPoint
@@ -48,7 +50,7 @@ class PublishProgressReporter {
 
   constructor(
     private total: number,
-    private sink: (line: string) => void = line => process.stderr.write(line),
+    private sink: (line: string) => void = line => process.stderr.write(line)
   ) {}
 
   start(label: string, detail?: string) {
@@ -80,17 +82,26 @@ export function parsePublishCommand(args: string[]): PublishOptions {
     throw new Error('Use either --apply or --dry-run, not both')
   }
 
-  const stopAfter = readOption(args, '--stop-after')?.trim().toLowerCase() as PublishStopPoint | undefined
-  if (stopAfter && !['package', 'import'].includes(stopAfter)) {
-    throw new Error('Invalid --stop-after. Use package|import')
+  const provider = readOption(args, '--provider') ?? 'notion'
+  if (provider !== 'notion') {
+    throw new Error('Only --provider notion is supported in v1')
   }
+
+  const phase = (readOption(args, '--phase') ?? 'all') as PublishPhase
+  if (!['all', 'import', 'restructure'].includes(phase)) {
+    throw new Error('Invalid --phase. Use all|import|restructure')
+  }
+
+  const stopAfter = readOption(args, '--stop-after')?.trim().toLowerCase()
 
   return {
     base: readOption(args, '--base'),
     provider: 'notion',
+    phase,
     apply: hasApply,
     dryRun: hasDryRun || !hasApply,
     parentPageId: readOption(args, '--parent-page-id'),
+    stagePageId: readOption(args, '--stage-page-id'),
     checkpointFile: readOption(args, '--checkpoint-file'),
     resumeFrom: readOption(args, '--resume-from'),
     stopAfter,
@@ -99,7 +110,7 @@ export function parsePublishCommand(args: string[]): PublishOptions {
 
 export async function runPublishCommand(
   options: PublishOptions,
-  cwd: string = process.cwd(),
+  cwd: string = process.cwd()
 ): Promise<PublishResult> {
   const config = await readKbConfig()
   const baseResolution = await resolvePublishBase(options.base, cwd)
@@ -108,17 +119,16 @@ export async function runPublishCommand(
   const token = options.apply ? resolveNotionToken(config) : undefined
   if (options.apply && !token) {
     throw new Error(
-      'Missing Notion token. Set notion.token in ~/.kb/config.json or NOTION_TOKEN/NOTION_API_KEY in env.',
+      'Missing Notion token. Set notion.token in ~/.kb/config.json or NOTION_TOKEN/NOTION_API_KEY in env.'
     )
   }
 
-  const parentPageId = options.parentPageId
-    ?? config.notion?.parentPageId
-    ?? process.env.NOTION_PARENT_PAGE_ID
+  const parentPageId =
+    options.parentPageId ?? config.notion?.parentPageId ?? process.env.NOTION_PARENT_PAGE_ID
 
   if (options.apply && !parentPageId) {
     throw new Error(
-      'Missing Notion parent page ID. Set notion.parentPageId in ~/.kb/config.json or --parent-page-id flag.',
+      'Missing Notion parent page ID. Set notion.parentPageId in ~/.kb/config.json or --parent-page-id flag.'
     )
   }
 
@@ -154,11 +164,15 @@ export async function runPublishCommand(
     }
   }
 
+  if (!token || !parentPageId) {
+    throw new Error('Notion token and parent page ID are required to publish.')
+  }
+
   // Create a parent page for this base's documents
   const runTimestamp = dayjs().format('YYYY-MM-DD HH:mm')
   const containerPage = await notionCreatePage({
-    token: token!,
-    parentPageId: parentPageId!,
+    token,
+    parentPageId,
     title: `${baseResolution.baseName} — ${runTimestamp}`,
   })
 
@@ -170,7 +184,7 @@ export async function runPublishCommand(
 
     try {
       const page = await notionCreatePage({
-        token: token!,
+        token,
         parentPageId: containerPage.id,
         title: doc.title,
         markdown: doc.content,
@@ -209,12 +223,14 @@ function readDocumentsFromSqlite(dbPath: string): SqliteDocumentRow[] {
   let db: Database.Database | undefined
   try {
     db = new Database(dbPath, { readonly: true })
-    return db.prepare(`
+    return db
+      .prepare(`
       SELECT id, title, content, doc_type, lane, tags_json, created_at, updated_at
       FROM documents
       WHERE content != ''
       ORDER BY updated_at DESC
-    `).all() as SqliteDocumentRow[]
+    `)
+      .all() as SqliteDocumentRow[]
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`Cannot read SQLite at ${dbPath}: ${msg}`)
@@ -232,9 +248,7 @@ async function notionCreatePage(input: {
   asWorkspaceRoot?: boolean
   markdown?: string
 }): Promise<{ id: string; url: string }> {
-  const parent = input.asWorkspaceRoot
-    ? { workspace: true }
-    : { page_id: input.parentPageId }
+  const parent = input.asWorkspaceRoot ? { workspace: true } : { page_id: input.parentPageId }
 
   const response = await fetch('https://api.notion.com/v1/pages', {
     method: 'POST',
@@ -264,13 +278,13 @@ async function notionCreatePage(input: {
     if (response.status === 400 && body.includes('public integration')) {
       throw new Error(
         'Notion workspace-root page creation is not supported for internal integrations. ' +
-        'Set notion.parentPageId in ~/.kb/config.json.',
+          'Set notion.parentPageId in ~/.kb/config.json.'
       )
     }
     throw new Error(`Notion create page failed (${response.status}): ${body}`)
   }
 
-  const parsed = await response.json() as { id?: string; url?: string }
+  const parsed = (await response.json()) as { id?: string; url?: string }
   if (!parsed.id || !parsed.url) {
     throw new Error('Notion create page response missing id/url')
   }
@@ -282,7 +296,7 @@ async function notionCreatePage(input: {
 
 async function resolvePublishBase(
   base: string | undefined,
-  cwd: string,
+  cwd: string
 ): Promise<{ baseName: string; baseDir: string }> {
   if (base?.trim()) {
     return {

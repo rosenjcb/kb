@@ -42,17 +42,17 @@ async function createConfigFile(initial?: unknown): Promise<string> {
 describe('config-cli', () => {
   it('Given get with no key, then returns normalized full config JSON', async () => {
     const configFile = await createConfigFile({
-      defaultBase: 'dogfood',
-      sessionBase: 'old-session',
+      selectedBase: 'dogfood',
       notion: { parentPageId: 'abc123' },
       updatedAt: '2026-04-15T00:00:00.000Z',
     })
 
     const result = await runConfigCommand(['get'], { configFile })
 
-    expect(result.output).toContain('"selectedBase": "old-session"')
+    expect(result.output).toContain('"selectedBase": "dogfood"')
     expect(result.output).toContain('"parentPageId": "abc123"')
     expect(result.output).not.toContain('defaultBase')
+    expect(result.output).not.toContain('sessionBase')
   })
 
   it('Given nested notion key, then get returns scalar and unset prunes empty object', async () => {
@@ -102,7 +102,7 @@ describe('config-cli', () => {
     expect(help).not.toContain('features.')
     expect(help).toContain('graph.enabled')
     expect(help).toContain('notion.parentPageId')
-    expect(help).toContain('llm.openaiApiKey')
+    expect(help).toContain('llm.provider')
   })
 
   it('Given supported config paths, then they omit base-selection and feature keys', () => {
@@ -147,25 +147,69 @@ describe('config-cli', () => {
   })
 
   it('Given gemini config with a model override, then provider resolution preserves the selected model', () => {
-    const resolved = resolveLLMProvider({
-      llm: {
-        provider: 'gemini',
-        geminiApiKey: 'test-key',
-        geminiModel: 'gemini-flash-latest',
-      },
-    })
+    process.env.GEMINI_API_KEY = 'test-gemini-key'
+    try {
+      const resolved = resolveLLMProvider({
+        llm: {
+          provider: 'gemini',
+          geminiModel: 'gemini-flash-latest',
+        },
+      })
 
-    expect(resolved.provider).toBe('gemini')
-    expect(resolved.model).toBe('gemini-flash-latest')
+      expect(resolved.provider).toBe('gemini')
+      expect(resolved.model).toBe('gemini-flash-latest')
 
-    const provider = createLLMProviderFromConfig({
-      llm: {
-        provider: 'gemini',
-        geminiApiKey: 'test-key',
-        geminiModel: 'gemini-flash-latest',
-      },
-    })
+      const provider = createLLMProviderFromConfig({
+        llm: {
+          provider: 'gemini',
+          geminiModel: 'gemini-flash-latest',
+        },
+      })
 
-    expect(provider?.name).toBe('gemini')
+      expect(provider?.name).toBe('gemini')
+    } finally {
+      delete process.env.GEMINI_API_KEY
+    }
+  })
+})
+
+describe('config llm subcommand', () => {
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.OPENAI_API_KEY
+    delete process.env.GEMINI_API_KEY
+  })
+
+  afterEach(() => {
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.OPENAI_API_KEY
+    delete process.env.GEMINI_API_KEY
+  })
+
+  it('Given kb config llm --show with no keys set, then output warns about missing keys', async () => {
+    const configFile = await createConfigFile()
+    const result = await runConfigCommand(['llm', '--show'], { configFile })
+    expect(result.output).toContain('ANTHROPIC_API_KEY')
+    expect(result.output).toContain('not set')
+  })
+
+  it('Given kb config llm --show with a key set, then output shows it as set', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test'
+    const configFile = await createConfigFile({ llm: { provider: 'anthropic' } })
+    const result = await runConfigCommand(['llm', '--show'], { configFile })
+    expect(result.output).toContain('ANTHROPIC_API_KEY')
+    expect(result.output).toMatch(/✓\s*set/)
+  })
+
+  it('Given kb config llm in non-TTY mode, then it falls back to show without prompting', async () => {
+    const configFile = await createConfigFile()
+    const result = await runConfigCommand(['llm'], { configFile, isTTY: false })
+    expect(result.output).toContain('ANTHROPIC_API_KEY')
+  })
+
+  it('Given kb config llm --show, then provider from config is displayed', async () => {
+    const configFile = await createConfigFile({ llm: { provider: 'gemini' } })
+    const result = await runConfigCommand(['llm', '--show'], { configFile })
+    expect(result.output).toContain('gemini')
   })
 })
