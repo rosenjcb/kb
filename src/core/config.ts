@@ -44,13 +44,13 @@ export function loadConfig(): Config {
     ollamaEndpoint: process.env.OLLAMA_ENDPOINT,
     kbBaseDir: process.env.KB_BASE_DIR,
     maxAgentTurns: process.env.MAX_AGENT_TURNS
-      ? parseInt(process.env.MAX_AGENT_TURNS, 10)
+      ? Number.parseInt(process.env.MAX_AGENT_TURNS, 10)
       : undefined,
     agentTimeoutMs: process.env.AGENT_TIMEOUT_MS
-      ? parseInt(process.env.AGENT_TIMEOUT_MS, 10)
+      ? Number.parseInt(process.env.AGENT_TIMEOUT_MS, 10)
       : undefined,
     toolTimeoutMs: process.env.TOOL_TIMEOUT_MS
-      ? parseInt(process.env.TOOL_TIMEOUT_MS, 10)
+      ? Number.parseInt(process.env.TOOL_TIMEOUT_MS, 10)
       : undefined,
     logLevel: process.env.LOG_LEVEL,
     enableSemanticSearch: process.env.ENABLE_SEMANTIC_SEARCH === 'true',
@@ -87,12 +87,14 @@ export function getConfig(): Config {
  */
 export function initializeConfig(): Config {
   const config = getConfig()
-  const provider =
-    process.env.OPENAI_API_KEY ? 'openai'
-      : process.env.ANTHROPIC_API_KEY ? 'anthropic'
-        : process.env.GEMINI_API_KEY ? 'gemini'
-          : 'ollama'
-  console.log(`✓ Config loaded:`)
+  const provider = process.env.OPENAI_API_KEY
+    ? 'openai'
+    : process.env.ANTHROPIC_API_KEY
+      ? 'anthropic'
+      : process.env.GEMINI_API_KEY
+        ? 'gemini'
+        : 'ollama'
+  console.log('✓ Config loaded:')
   console.log(`  provider=${provider}`)
   console.log(`  kbBaseDir=${config.kbBaseDir}`)
   console.log(`  maxAgentTurns=${config.maxAgentTurns}`)

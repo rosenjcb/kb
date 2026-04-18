@@ -6,12 +6,18 @@ export type RetrievalLane =
   | 'session-log'
   | 'workflow'
 
-const OPERATIONAL_PATTERN = /(error|incident|outage|runbook|alert|failure|failed|exception|stack|debug|fix|restart|recovery|sev[0-9])/
-const INSTALL_SETUP_PATTERN = /(install|installation|setup|set\s+up|configure|configuration|get\s+started|quickstart|bootstrap)/
-const POLICY_PATTERN = /(policy|permission|allow|deny|rule|rules|compliance|guardrail|required|must|forbid)/
-const ARCHITECTURE_PATTERN = /(architecture|design|schema|index|migration|runtime|component|system\s+design|how\s+it\s+works)/
-const PROJECT_OVERVIEW_PATTERN = /(project\s+about|what\s+is\s+this\s+project|what\s+does\s+this\s+project|overview|high\s+level|overall)/
-const CHANGE_DIFF_PATTERN = /(change\s+diff|what\s+changed|diff|changelog|session\s+log|history|timeline)/
+const OPERATIONAL_PATTERN =
+  /(error|incident|outage|runbook|alert|failure|failed|exception|stack|debug|fix|restart|recovery|sev[0-9])/
+const INSTALL_SETUP_PATTERN =
+  /(install|installation|setup|set\s+up|configure|configuration|get\s+started|quickstart|bootstrap)/
+const POLICY_PATTERN =
+  /(policy|permission|allow|deny|rule|rules|compliance|guardrail|required|must|forbid)/
+const ARCHITECTURE_PATTERN =
+  /(architecture|design|schema|index|migration|runtime|component|system\s+design|how\s+it\s+works)/
+const PROJECT_OVERVIEW_PATTERN =
+  /(project\s+about|what\s+is\s+this\s+project|what\s+does\s+this\s+project|overview|high\s+level|overall)/
+const CHANGE_DIFF_PATTERN =
+  /(change\s+diff|what\s+changed|diff|changelog|session\s+log|history|timeline)/
 
 export interface LaneRoutingDecision {
   lanes: RetrievalLane[]
@@ -25,7 +31,7 @@ export function classifyDocumentLane(
   title: string,
   docType: string | null,
   tags: string[],
-  filePath: string,
+  filePath: string
 ): RetrievalLane {
   const normalized = `${id} ${title} ${docType ?? ''} ${tags.join(' ')} ${filePath}`.toLowerCase()
 

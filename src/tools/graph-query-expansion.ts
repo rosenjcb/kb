@@ -19,7 +19,10 @@ export function toGraphQuerySlugs(query: string): string[] {
   return [...new Set([...tokens, ...bigrams])].slice(0, 16)
 }
 
-export async function expandQueryWithGraph(query: string, graphWriter: DuckGraphWriter): Promise<string> {
+export async function expandQueryWithGraph(
+  query: string,
+  graphWriter: DuckGraphWriter
+): Promise<string> {
   try {
     const slugs = toGraphQuerySlugs(query)
     if (slugs.length === 0) return query

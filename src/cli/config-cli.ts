@@ -1,7 +1,8 @@
+import { type CmdMode, cmd } from './cmd-ref'
 import {
   type KbConfig,
-  getKbConfigFile,
   getConfigValue,
+  getKbConfigFile,
   listSupportedConfigPaths,
   readKbConfig,
   setConfigValue,
@@ -9,7 +10,6 @@ import {
   writeKbConfig,
 } from './kb-config'
 import { runLLMSetupWizard, showLLMStatus } from './llm-setup-wizard'
-import { type CmdMode, cmd } from './cmd-ref'
 
 export interface ConfigCommandResult {
   output: string
@@ -45,7 +45,7 @@ export function printConfigHelp(mode: CmdMode = 'cli'): string {
 
 export async function runConfigCommand(
   args: string[],
-  options: RunConfigCommandOptions = {},
+  options: RunConfigCommandOptions = {}
 ): Promise<ConfigCommandResult> {
   const mode = options.mode ?? 'cli'
   const command = parseConfigCommand(args, mode)
@@ -142,8 +142,5 @@ function formatConfigValue(value: unknown, keyPath?: string): string {
 }
 
 function formatConfigWriteResult(verb: 'Set' | 'Unset', keyPath: string, config: KbConfig): string {
-  return [
-    `${verb} ${keyPath}`,
-    `${JSON.stringify(config, null, 2)}`,
-  ].join('\n')
+  return [`${verb} ${keyPath}`, `${JSON.stringify(config, null, 2)}`].join('\n')
 }

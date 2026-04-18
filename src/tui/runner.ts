@@ -1,5 +1,5 @@
+import { printCliHelp, runMainWithOutput } from '../cli/index.js'
 import type { KbConfig } from '../cli/kb-config.js'
-import { runMainWithOutput, printCliHelp } from '../cli/index.js'
 
 export { printCliHelp }
 

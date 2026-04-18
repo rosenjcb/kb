@@ -25,7 +25,7 @@ export interface ReadDocumentsLikeResult {
 export async function augmentReadDocumentsWithWorkspaceFallback(
   question: string,
   retrieval: ReadDocumentsLikeResult,
-  workspaceDir: string,
+  workspaceDir: string
 ): Promise<ReadDocumentsLikeResult> {
   if (!shouldUseWorkspaceFallback(question, retrieval)) {
     return retrieval
@@ -62,10 +62,7 @@ export function formatReadDocumentSourceIds(results: ReadDocumentsLikeResult['re
   return [...new Set(ids)].slice(0, 10)
 }
 
-function shouldUseWorkspaceFallback(
-  question: string,
-  retrieval: ReadDocumentsLikeResult,
-): boolean {
+function shouldUseWorkspaceFallback(question: string, retrieval: ReadDocumentsLikeResult): boolean {
   if (!isBroadProjectQuestion(question)) {
     return false
   }
@@ -89,18 +86,18 @@ function shouldUseWorkspaceFallback(
 }
 
 function isLowSignalSourceId(id: string): boolean {
-  return id.startsWith('ticket-')
-    || id.startsWith('session-log-')
-    || id === 'general-facts'
+  return id.startsWith('ticket-') || id.startsWith('session-log-') || id === 'general-facts'
 }
 
 function isBroadProjectQuestion(question: string): boolean {
   const text = question.toLowerCase()
-  return /(what is this project|what is this repo|project about|purpose|goal|mission|scope)/.test(text)
+  return /(what is this project|what is this repo|project about|purpose|goal|mission|scope)/.test(
+    text
+  )
 }
 
 async function loadWorkspaceFallbackResults(
-  workspaceDir: string,
+  workspaceDir: string
 ): Promise<NonNullable<ReadDocumentsLikeResult['results']>> {
   const docs = [
     { id: 'workspace-readme', fileName: 'README.md' },

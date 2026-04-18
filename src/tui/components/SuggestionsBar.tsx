@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink'
 import { getSuggestionWindow } from '../slash-commands.js'
-import { BLUE, ORANGE } from '../theme.js'
 import type { SlashCommand } from '../slash-commands.js'
+import { BLUE, ORANGE } from '../theme.js'
 import type { TuiMode } from '../types.js'
 
 interface Props {
@@ -12,7 +12,11 @@ interface Props {
 
 export function SuggestionsBar({ suggestions, mode, selectedIndex }: Props) {
   const accent = mode === 'chat' ? ORANGE : BLUE
-  const { visible: visibleSuggestions, startIndex } = getSuggestionWindow(suggestions, selectedIndex, 4)
+  const { visible: visibleSuggestions, startIndex } = getSuggestionWindow(
+    suggestions,
+    selectedIndex,
+    4
+  )
 
   if (visibleSuggestions.length === 0) return null
 
@@ -29,7 +33,7 @@ export function SuggestionsBar({ suggestions, mode, selectedIndex }: Props) {
                 {isSelected ? '› ' : '  '}
               </Text>
               <Text color={isSelected ? 'black' : accent} bold>
-              {suggestion.command}
+                {suggestion.command}
               </Text>
               <Text color={isSelected ? 'black' : 'gray'}> — {suggestion.description}</Text>
             </Text>

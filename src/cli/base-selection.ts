@@ -1,9 +1,9 @@
+import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
-import { readKbConfig, writeKbConfig, type KbConfig } from './kb-config'
 import { CLI_ERROR_NO_KB_BASE } from './cli-prerequisites'
-import { cmd, type CmdMode } from './cmd-ref'
+import { type CmdMode, cmd } from './cmd-ref'
+import { type KbConfig, readKbConfig, writeKbConfig } from './kb-config'
 
 export interface BaseSelectionConfig {
   activeBase?: string
@@ -53,7 +53,9 @@ export async function migrateLegacyKbSessionJson(): Promise<void> {
   }
 
   const legacyActive =
-    parsed && typeof parsed === 'object' && 'activeBase' in parsed &&
+    parsed &&
+    typeof parsed === 'object' &&
+    'activeBase' in parsed &&
     typeof (parsed as { activeBase?: unknown }).activeBase === 'string'
       ? (parsed as { activeBase: string }).activeBase.trim()
       : undefined
@@ -81,7 +83,10 @@ export function resolveBaseToDir(base: string, cwd: string = process.cwd()): str
   return path.join(getKbHomeDir(), 'sessions', alias)
 }
 
-export async function ensureOperationalBaseDir(base: string, cwd: string = process.cwd()): Promise<string> {
+export async function ensureOperationalBaseDir(
+  base: string,
+  cwd: string = process.cwd()
+): Promise<string> {
   const resolved = resolveBaseToDir(base, cwd)
   if (isPathLike(base.trim())) {
     return resolved
@@ -90,7 +95,14 @@ export async function ensureOperationalBaseDir(base: string, cwd: string = proce
   await mkdir(resolved, { recursive: true })
   await migrateLegacyBaseDir(base, resolved)
   const sqlitePath = path.join(resolved, '.kb-index.sqlite')
-  const legacySqlitePath = path.join(cwd, 'sessions', 'namespaces', normalizeAlias(base), 'documents', '.kb-index.sqlite')
+  const legacySqlitePath = path.join(
+    cwd,
+    'sessions',
+    'namespaces',
+    normalizeAlias(base),
+    'documents',
+    '.kb-index.sqlite'
+  )
   if (!(await pathExists(sqlitePath))) {
     if (await pathExists(legacySqlitePath)) {
       await copyFile(legacySqlitePath, sqlitePath)
@@ -146,11 +158,14 @@ export interface EffectiveBaseResolution {
  */
 export async function resolveEffectiveBaseDir(
   cwd: string = process.cwd(),
-  configOverride?: Pick<BaseSelectionConfig, 'activeBase' | 'selectedBase'> | KbConfig,
+  configOverride?: Pick<BaseSelectionConfig, 'activeBase' | 'selectedBase'> | KbConfig
 ): Promise<EffectiveBaseResolution> {
-  const activeBase = configOverride !== undefined
-    ? ('activeBase' in configOverride ? configOverride.activeBase : undefined)
-    : (await readBaseConfig()).activeBase
+  const activeBase =
+    configOverride !== undefined
+      ? 'activeBase' in configOverride
+        ? configOverride.activeBase
+        : undefined
+      : (await readBaseConfig()).activeBase
 
   if (activeBase) {
     return {
@@ -160,9 +175,12 @@ export async function resolveEffectiveBaseDir(
     }
   }
 
-  const selected = configOverride !== undefined
-    ? ('selectedBase' in configOverride ? configOverride.selectedBase : undefined)
-    : (await readBaseConfig()).selectedBase
+  const selected =
+    configOverride !== undefined
+      ? 'selectedBase' in configOverride
+        ? configOverride.selectedBase
+        : undefined
+      : (await readBaseConfig()).selectedBase
 
   if (selected) {
     return {
@@ -178,7 +196,11 @@ export async function resolveEffectiveBaseDir(
 /**
  * Format the output after `use <base>` (CLI: `kb use`, TUI: `/use`).
  */
-export function formatUseCommandHelp(base: string, resolvedPath: string, mode: CmdMode = 'cli'): string {
+export function formatUseCommandHelp(
+  base: string,
+  resolvedPath: string,
+  mode: CmdMode = 'cli'
+): string {
   return [
     `Using base: ${base}`,
     `Resolved path: ${resolvedPath}`,
@@ -189,7 +211,11 @@ export function formatUseCommandHelp(base: string, resolvedPath: string, mode: C
 }
 
 /** Format the output after `use --default` / `default` (CLI vs TUI via `mode`). */
-export function formatDefaultCommandHelp(base: string, resolvedPath: string, mode: CmdMode = 'cli'): string {
+export function formatDefaultCommandHelp(
+  base: string,
+  resolvedPath: string,
+  mode: CmdMode = 'cli'
+): string {
   return [
     `Default base: ${base}`,
     `Resolved path: ${resolvedPath}`,

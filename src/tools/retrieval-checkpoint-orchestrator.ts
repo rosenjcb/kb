@@ -1,7 +1,4 @@
-export type RetrievalCheckpointStage =
-  | 'hybrid_primary'
-  | 'lexical_recovery'
-  | 'query_rewrite_retry'
+export type RetrievalCheckpointStage = 'hybrid_primary' | 'lexical_recovery' | 'query_rewrite_retry'
 
 export type RetrievalCheckpointStatus = 'hit' | 'miss' | 'error'
 
@@ -65,7 +62,7 @@ function decideNextAction(
   stage: RetrievalCheckpointStage,
   status: RetrievalCheckpointStatus,
   confidence: number,
-  config: RetrievalCheckpointConfig,
+  config: RetrievalCheckpointConfig
 ): 'return' | 'advance' {
   if (stage === 'query_rewrite_retry') {
     return 'return'

@@ -137,7 +137,9 @@ export class MarkdownMDWriterTool implements DocumentWriterExtended {
     return result
   }
 
-  async reconcileContradictions(input: ReconcileContradictionsInput): Promise<ReconcileContradictionsResult> {
+  async reconcileContradictions(
+    input: ReconcileContradictionsInput
+  ): Promise<ReconcileContradictionsResult> {
     await mkdir(this.baseDir, { recursive: true })
     const result = await reconcileContradictionsImpl(input, this.baseDir)
 
@@ -214,11 +216,13 @@ export class MarkdownMDWriterTool implements DocumentWriterExtended {
 }
 
 function sanitizeId(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'document'
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'document'
+  )
 }
 
 function escapeMdCell(value: string): string {

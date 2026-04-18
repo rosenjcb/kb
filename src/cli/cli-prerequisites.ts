@@ -12,8 +12,7 @@ export const CLI_ERROR_NO_LLM_PROVIDER =
   'No LLM provider available. Set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` in your environment, or run `kb config llm`.'
 
 /** Non-interactive `kb init` without `--base` and without a saved default path. */
-export const CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE =
-  `${CLI_ERROR_NO_KB_BASE} For non-interactive init, pass \`kb init --base <name>\`.`
+export const CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE = `${CLI_ERROR_NO_KB_BASE} For non-interactive init, pass \`kb init --base <name>\`.`
 
 export function formatPrerequisiteError(message: string): string {
   return `❌ ${message}`

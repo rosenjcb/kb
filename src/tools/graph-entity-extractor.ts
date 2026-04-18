@@ -8,7 +8,12 @@
  */
 
 import type { LLMProvider } from '../core/types'
-import type { GraphEntity, GraphRelationship, EntityType, RelationshipType } from './duck-graph-writer'
+import type {
+  EntityType,
+  GraphEntity,
+  GraphRelationship,
+  RelationshipType,
+} from './duck-graph-writer'
 
 export interface ExtractedGraph {
   entities: GraphEntity[]
@@ -16,7 +21,14 @@ export interface ExtractedGraph {
 }
 
 const VALID_ENTITY_TYPES = new Set<string>(['concept', 'system', 'tool', 'decision', 'person'])
-const VALID_REL_TYPES = new Set<string>(['depends_on', 'contradicts', 'related_to', 'replaces', 'implements', 'uses'])
+const VALID_REL_TYPES = new Set<string>([
+  'depends_on',
+  'contradicts',
+  'related_to',
+  'replaces',
+  'implements',
+  'uses',
+])
 
 const EXTRACTION_SYSTEM_PROMPT = `You are a knowledge graph extractor. Given a passage of text, extract:
 1. Entities: named concepts, systems, tools, decisions, or people.
@@ -46,7 +58,7 @@ Rules:
 export async function extractGraph(
   text: string,
   provider: LLMProvider,
-  docId?: string,
+  docId?: string
 ): Promise<ExtractedGraph> {
   if (!text.trim()) return { entities: [], relationships: [] }
 
@@ -76,7 +88,7 @@ export async function extractGraph(
  */
 export async function extractGraphBatch(
   docs: Array<{ id: string; text: string }>,
-  provider: LLMProvider,
+  provider: LLMProvider
 ): Promise<ExtractedGraph> {
   const allEntities: GraphEntity[] = []
   const allRelationships: GraphRelationship[] = []

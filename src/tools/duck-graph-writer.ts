@@ -9,11 +9,17 @@
  * Soft-delete on invalidate: weight set to 0, not removed.
  */
 
-import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api'
 import path from 'node:path'
+import { type DuckDBConnection, DuckDBInstance } from '@duckdb/node-api'
 
 export type EntityType = 'concept' | 'system' | 'tool' | 'decision' | 'person'
-export type RelationshipType = 'depends_on' | 'contradicts' | 'related_to' | 'replaces' | 'implements' | 'uses'
+export type RelationshipType =
+  | 'depends_on'
+  | 'contradicts'
+  | 'related_to'
+  | 'replaces'
+  | 'implements'
+  | 'uses'
 
 export interface GraphEntity {
   id: string
@@ -68,17 +74,25 @@ export class DuckGraphWriter {
     this.ready = true
   }
 
+  private requireConn(): DuckDBConnection {
+    const c = this.conn
+    if (!c) {
+      throw new Error('DuckGraphWriter must be opened before use')
+    }
+    return c
+  }
+
   private async setupExtension(): Promise<void> {
     try {
-      await this.conn!.run('INSTALL duckpgq FROM community')
-      await this.conn!.run('LOAD duckpgq')
+      await this.conn?.run('INSTALL duckpgq FROM community')
+      await this.conn?.run('LOAD duckpgq')
     } catch {
       // Extension not available — graph queries fall back to recursive CTEs
     }
   }
 
   private async setupSchema(): Promise<void> {
-    const c = this.conn!
+    const c = this.requireConn()
     await c.run(`
       CREATE TABLE IF NOT EXISTS entities (
         id         TEXT PRIMARY KEY,
@@ -121,22 +135,28 @@ export class DuckGraphWriter {
     for (const e of entities) {
       const id = slugify(e.id || e.name)
       if (e.docId) {
-        await this.conn!.run(`
+        await this.conn?.run(
+          `
           INSERT INTO entities (id, name, type, doc_id, created_at)
           VALUES (?, ?, ?, ?, ?)
           ON CONFLICT (id) DO UPDATE SET
             name = EXCLUDED.name,
             type = EXCLUDED.type,
             doc_id = EXCLUDED.doc_id
-        `, [id, e.name, e.type, e.docId, now])
+        `,
+          [id, e.name, e.type, e.docId, now]
+        )
       } else {
-        await this.conn!.run(`
+        await this.conn?.run(
+          `
           INSERT INTO entities (id, name, type, created_at)
           VALUES (?, ?, ?, ?)
           ON CONFLICT (id) DO UPDATE SET
             name = EXCLUDED.name,
             type = EXCLUDED.type
-        `, [id, e.name, e.type, now])
+        `,
+          [id, e.name, e.type, now]
+        )
       }
     }
   }
@@ -150,32 +170,44 @@ export class DuckGraphWriter {
       const id = `${fromId}__${r.type}__${toId}`
       // Ensure both endpoints exist as stub entities before inserting edge
       // Stub endpoints — only insert, never update (ON CONFLICT DO NOTHING)
-      await this.conn!.run(`
+      await this.conn?.run(
+        `
         INSERT INTO entities (id, name, type, created_at)
         VALUES (?, ?, 'concept', ?)
         ON CONFLICT (id) DO NOTHING
-      `, [fromId, fromId, now])
-      await this.conn!.run(`
+      `,
+        [fromId, fromId, now]
+      )
+      await this.conn?.run(
+        `
         INSERT INTO entities (id, name, type, created_at)
         VALUES (?, ?, 'concept', ?)
         ON CONFLICT (id) DO NOTHING
-      `, [toId, toId, now])
+      `,
+        [toId, toId, now]
+      )
       // Edge upsert — avoid null parameters
       if (r.docId) {
-        await this.conn!.run(`
+        await this.conn?.run(
+          `
           INSERT INTO relationships (id, from_id, to_id, type, doc_id, weight, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT (id) DO UPDATE SET
             weight = GREATEST(relationships.weight, EXCLUDED.weight),
             doc_id = EXCLUDED.doc_id
-        `, [id, fromId, toId, r.type, r.docId, r.weight ?? 1.0, now])
+        `,
+          [id, fromId, toId, r.type, r.docId, r.weight ?? 1.0, now]
+        )
       } else {
-        await this.conn!.run(`
+        await this.conn?.run(
+          `
           INSERT INTO relationships (id, from_id, to_id, type, weight, created_at)
           VALUES (?, ?, ?, ?, ?, ?)
           ON CONFLICT (id) DO UPDATE SET
             weight = GREATEST(relationships.weight, EXCLUDED.weight)
-        `, [id, fromId, toId, r.type, r.weight ?? 1.0, now])
+        `,
+          [id, fromId, toId, r.type, r.weight ?? 1.0, now]
+        )
       }
     }
   }
@@ -183,13 +215,10 @@ export class DuckGraphWriter {
   /** Soft-delete all edges originating from a document (e.g. on kb invalidate). */
   async softDeleteByDocId(docId: string): Promise<number> {
     if (!this.ready) await this.open()
-    await this.conn!.run(
-      `UPDATE relationships SET weight = 0 WHERE doc_id = ?`,
-      [docId],
-    )
-    const result = await this.conn!.runAndReadAll(
-      `SELECT COUNT(*) AS n FROM relationships WHERE doc_id = ? AND weight = 0`,
-      [docId],
+    await this.conn?.run('UPDATE relationships SET weight = 0 WHERE doc_id = ?', [docId])
+    const result = await this.conn?.runAndReadAll(
+      'SELECT COUNT(*) AS n FROM relationships WHERE doc_id = ? AND weight = 0',
+      [docId]
     )
     const rows = result.getRows()
     return Number(rows[0]?.[0] ?? 0)
@@ -197,14 +226,10 @@ export class DuckGraphWriter {
 
   async getSummary(): Promise<GraphSummary> {
     if (!this.ready) await this.open()
-    const c = this.conn!
+    const c = this.requireConn()
 
-    const totalE = await c.runAndReadAll(
-      `SELECT COUNT(*) FROM entities`,
-    )
-    const totalR = await c.runAndReadAll(
-      `SELECT COUNT(*) FROM relationships WHERE weight > 0`,
-    )
+    const totalE = await c.runAndReadAll('SELECT COUNT(*) FROM entities')
+    const totalR = await c.runAndReadAll('SELECT COUNT(*) FROM relationships WHERE weight > 0')
 
     const top = await c.runAndReadAll(`
       SELECT e.id, e.name, e.type, COUNT(*) AS connections
@@ -233,11 +258,12 @@ export class DuckGraphWriter {
 
   async getNeighbors(entityId: string): Promise<GraphNeighbors | null> {
     if (!this.ready) await this.open()
-    const c = this.conn!
+    const c = this.requireConn()
     const id = slugify(entityId)
 
     const entityRows = await c.runAndReadAll(
-      `SELECT id, name, type, doc_id FROM entities WHERE id = ?`, [id],
+      'SELECT id, name, type, doc_id FROM entities WHERE id = ?',
+      [id]
     )
     const eRow = entityRows.getRows()[0]
     if (!eRow) return null
@@ -249,19 +275,25 @@ export class DuckGraphWriter {
       docId: eRow[3] ? String(eRow[3]) : undefined,
     }
 
-    const outRows = await c.runAndReadAll(`
+    const outRows = await c.runAndReadAll(
+      `
       SELECT r.type, e.id, e.name, e.type
       FROM relationships r
       JOIN entities e ON r.to_id = e.id
       WHERE r.from_id = ? AND r.weight > 0
-    `, [id])
+    `,
+      [id]
+    )
 
-    const inRows = await c.runAndReadAll(`
+    const inRows = await c.runAndReadAll(
+      `
       SELECT r.type, e.id, e.name, e.type
       FROM relationships r
       JOIN entities e ON r.from_id = e.id
       WHERE r.to_id = ? AND r.weight > 0
-    `, [id])
+    `,
+      [id]
+    )
 
     return {
       entity,
@@ -281,7 +313,8 @@ export class DuckGraphWriter {
     const from = slugify(fromId)
     const to = slugify(toId)
 
-    const result = await this.conn!.runAndReadAll(`
+    const result = await this.conn?.runAndReadAll(
+      `
       WITH RECURSIVE reach(node, path, depth) AS (
         SELECT ?, [?], 0
         UNION ALL
@@ -293,7 +326,9 @@ export class DuckGraphWriter {
           AND NOT list_contains(rc.path, r.to_id)
       )
       SELECT path, depth FROM reach WHERE node = ? LIMIT 1
-    `, [from, from, maxDepth, to])
+    `,
+      [from, from, maxDepth, to]
+    )
 
     const rows = result.getRows()
     if (rows.length === 0) return null
@@ -313,7 +348,8 @@ export class DuckGraphWriter {
     if (slugs.length === 0) return []
 
     const placeholders = slugs.map(() => '?').join(', ')
-    const rows = await this.conn!.runAndReadAll(`
+    const rows = await this.conn?.runAndReadAll(
+      `
       SELECT DISTINCT e.name
       FROM relationships r
       JOIN entities e ON (
@@ -322,27 +358,36 @@ export class DuckGraphWriter {
         (r.to_id IN (${placeholders}) AND r.from_id = e.id)
       )
       WHERE r.weight > 0
-    `, [...slugs, ...slugs])
+    `,
+      [...slugs, ...slugs]
+    )
 
     const neighborNames = rows.getRows().map(row => String(row[0]))
     return neighborNames.filter(name => !slugs.includes(slugify(name)))
   }
 
-  async scoreDocumentsForQuery(slugs: string[], docIds: string[]): Promise<Map<string, GraphDocumentAffinity>> {
+  async scoreDocumentsForQuery(
+    slugs: string[],
+    docIds: string[]
+  ): Promise<Map<string, GraphDocumentAffinity>> {
     if (!this.ready) await this.open()
     if (slugs.length === 0 || docIds.length === 0) return new Map()
 
     const slugPlaceholders = slugs.map(() => '?').join(', ')
     const docPlaceholders = docIds.map(() => '?').join(', ')
 
-    const directRows = await this.conn!.runAndReadAll(`
+    const directRows = await this.conn?.runAndReadAll(
+      `
       SELECT doc_id, name
       FROM entities
       WHERE id IN (${slugPlaceholders})
         AND doc_id IN (${docPlaceholders})
-    `, [...slugs, ...docIds])
+    `,
+      [...slugs, ...docIds]
+    )
 
-    const oneHopRows = await this.conn!.runAndReadAll(`
+    const oneHopRows = await this.conn?.runAndReadAll(
+      `
       SELECT DISTINCT
         COALESCE(target.doc_id, r.doc_id) AS doc_id,
         source.name AS source_name,
@@ -356,7 +401,9 @@ export class DuckGraphWriter {
           OR
           (target.id IN (${slugPlaceholders}) AND COALESCE(source.doc_id, r.doc_id) IN (${docPlaceholders}))
         )
-    `, [...slugs, ...docIds, ...slugs, ...docIds])
+    `,
+      [...slugs, ...docIds, ...slugs, ...docIds]
+    )
 
     const affinities = new Map<string, GraphDocumentAffinity>()
 
@@ -385,7 +432,10 @@ export class DuckGraphWriter {
       const mergedEvidence = current.evidence.includes(evidence)
         ? current.evidence
         : [...current.evidence, evidence]
-      const boundedBoost = Math.min(1, Math.max(current.boost, 0.6) + (mergedEvidence.length > current.evidence.length ? 0.1 : 0))
+      const boundedBoost = Math.min(
+        1,
+        Math.max(current.boost, 0.6) + (mergedEvidence.length > current.evidence.length ? 0.1 : 0)
+      )
       affinities.set(docId, {
         boost: boundedBoost,
         evidence: mergedEvidence,
@@ -397,7 +447,7 @@ export class DuckGraphWriter {
 
   async exportDot(): Promise<string> {
     if (!this.ready) await this.open()
-    const result = await this.conn!.runAndReadAll(`
+    const result = await this.conn?.runAndReadAll(`
       SELECT e1.name, r.type, e2.name
       FROM relationships r
       JOIN entities e1 ON r.from_id = e1.id
@@ -417,11 +467,11 @@ export class DuckGraphWriter {
 
   async exportJson(): Promise<{ entities: GraphEntity[]; relationships: GraphRelationship[] }> {
     if (!this.ready) await this.open()
-    const c = this.conn!
+    const c = this.requireConn()
 
-    const eRows = await c.runAndReadAll(`SELECT id, name, type, doc_id FROM entities`)
+    const eRows = await c.runAndReadAll('SELECT id, name, type, doc_id FROM entities')
     const rRows = await c.runAndReadAll(
-      `SELECT from_id, to_id, type, doc_id, weight FROM relationships WHERE weight > 0`,
+      'SELECT from_id, to_id, type, doc_id, weight FROM relationships WHERE weight > 0'
     )
 
     return {

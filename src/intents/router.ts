@@ -2,11 +2,7 @@ import dayjs from 'dayjs'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { ToolUseRequest } from '../core/types'
 import { disputeFact, validateFact } from './evaluator'
-import type {
-  ConsumerIntentEnvelope,
-  IntentResult,
-  RouteDecision,
-} from './types'
+import type { ConsumerIntentEnvelope, IntentResult, RouteDecision } from './types'
 
 export interface IntentRouter {
   route(intent: ConsumerIntentEnvelope): Promise<RouteDecision>
@@ -32,9 +28,8 @@ export class DefaultIntentRouter implements IntentRouter {
         const fact = String(payload.fact ?? '').trim()
         const domain = resolveFactDomain(payload.domain, fact)
         const source = String(payload.source ?? 'consumer')
-        const targetDocumentId = typeof payload.targetDocumentId === 'string'
-          ? payload.targetDocumentId
-          : undefined
+        const targetDocumentId =
+          typeof payload.targetDocumentId === 'string' ? payload.targetDocumentId : undefined
 
         if (!fact) {
           return {
@@ -82,13 +77,12 @@ export class DefaultIntentRouter implements IntentRouter {
           policyReason: 'dispute intent requires dispute evaluator logic',
         }
 
-      case 'query_truth':
-        {
-          const queryText = String(payload.topic ?? payload.query ?? '')
-          const highRecall = requiresHighRecallQuery(queryText)
-          const requestedLimit = typeof payload.limit === 'number' ? payload.limit : 5
-          const effectiveLimit = highRecall ? Math.max(requestedLimit, 12) : requestedLimit
-          const effectiveDiscoveryDepth = payload.discoveryDepth ?? (highRecall ? 'deep' : 'shallow')
+      case 'query_truth': {
+        const queryText = String(payload.topic ?? payload.query ?? '')
+        const highRecall = requiresHighRecallQuery(queryText)
+        const requestedLimit = typeof payload.limit === 'number' ? payload.limit : 5
+        const effectiveLimit = highRecall ? Math.max(requestedLimit, 12) : requestedLimit
+        const effectiveDiscoveryDepth = payload.discoveryDepth ?? (highRecall ? 'deep' : 'shallow')
 
         return {
           selectedOperation: 'read_documents',
@@ -106,10 +100,9 @@ export class DefaultIntentRouter implements IntentRouter {
         }
       }
 
-      case 'explain_change':
-        {
-          const queryText = String(payload.changeId ?? payload.fact ?? '')
-          const highRecall = requiresHighRecallQuery(queryText)
+      case 'explain_change': {
+        const queryText = String(payload.changeId ?? payload.fact ?? '')
+        const highRecall = requiresHighRecallQuery(queryText)
         return {
           selectedOperation: 'read_documents',
           operationInput: {
@@ -185,7 +178,7 @@ export class DefaultIntentRouter implements IntentRouter {
           createToolUse('append_to_document', {
             documentId,
             content,
-          }),
+          })
         )
       } catch {
         toolResult = await this.toolExecutor.execute(
@@ -196,7 +189,7 @@ export class DefaultIntentRouter implements IntentRouter {
             tags,
             type,
             overwrite: true,
-          }),
+          })
         )
       }
 
@@ -205,7 +198,7 @@ export class DefaultIntentRouter implements IntentRouter {
           this.toolExecutor,
           payload,
           decision.policyReason,
-          toolResult,
+          toolResult
         )
         if (reconciliationOutcome) {
           return reconciliationOutcome
@@ -223,7 +216,7 @@ export class DefaultIntentRouter implements IntentRouter {
     }
 
     const toolResult = await this.toolExecutor.execute(
-      createToolUse(decision.selectedOperation, decision.operationInput),
+      createToolUse(decision.selectedOperation, decision.operationInput)
     )
 
     if (intentEnvelope.intent === 'submit_fact') {
@@ -231,7 +224,7 @@ export class DefaultIntentRouter implements IntentRouter {
         this.toolExecutor,
         payload,
         decision.policyReason,
-        toolResult,
+        toolResult
       )
       if (reconciliationOutcome) {
         return reconciliationOutcome
@@ -253,29 +246,28 @@ async function maybeHandleSubmitContradictions(
   toolExecutor: ToolExecutor,
   payload: Record<string, unknown>,
   policyReason: string,
-  submissionResult: unknown,
+  submissionResult: unknown
 ): Promise<IntentResult | null> {
   const fact = typeof payload.fact === 'string' ? payload.fact.trim() : ''
   if (!fact) return null
 
   const domain = resolveFactDomain(payload.domain, fact)
   const includeSessionLogs = payload.includeSessionLogs === true
-  const reconciliationResult = await toolExecutor.execute(
+  const reconciliationResult = (await toolExecutor.execute(
     createToolUse('reconcile_contradictions', {
       newFact: fact,
       domain,
       includeSessionLogs,
       dryRun: false,
-    }),
-  ) as { changedDocumentIds?: string[]; removedFacts?: number }
+    })
+  )) as { changedDocumentIds?: string[]; removedFacts?: number }
 
   const changedDocumentIds = Array.isArray(reconciliationResult.changedDocumentIds)
     ? reconciliationResult.changedDocumentIds
     : []
 
-  const removedFacts = typeof reconciliationResult.removedFacts === 'number'
-    ? reconciliationResult.removedFacts
-    : 0
+  const removedFacts =
+    typeof reconciliationResult.removedFacts === 'number' ? reconciliationResult.removedFacts : 0
 
   return {
     status: 'accepted',
@@ -304,10 +296,22 @@ function resolveFactDomain(domainValue: unknown, fact: string): string {
 
   const builtIn: Array<{ domain: string; pattern: RegExp }> = [
     { domain: 'cicd', pattern: /(cicd|pipeline|github actions|workflow|build|deploy|release)/ },
-    { domain: 'security', pattern: /(security|vulnerability|auth|authentication|authorization|token|secret|oauth|rbac)/ },
-    { domain: 'infra', pattern: /(kubernetes|k8s|docker|terraform|infrastructure|cluster|helm|container)/ },
-    { domain: 'observability', pattern: /(monitoring|metrics|alerts|incident|on-call|pager|slo|sla|logs)/ },
-    { domain: 'retrieval', pattern: /(retrieval|search|vector|embedding|index|rerank|fts|lane routing)/ },
+    {
+      domain: 'security',
+      pattern: /(security|vulnerability|auth|authentication|authorization|token|secret|oauth|rbac)/,
+    },
+    {
+      domain: 'infra',
+      pattern: /(kubernetes|k8s|docker|terraform|infrastructure|cluster|helm|container)/,
+    },
+    {
+      domain: 'observability',
+      pattern: /(monitoring|metrics|alerts|incident|on-call|pager|slo|sla|logs)/,
+    },
+    {
+      domain: 'retrieval',
+      pattern: /(retrieval|search|vector|embedding|index|rerank|fts|lane routing)/,
+    },
   ]
 
   const matched = builtIn.find(entry => entry.pattern.test(normalizedFact))
@@ -339,11 +343,13 @@ function matchCustomDomain(normalizedFact: string): string | undefined {
 }
 
 function normalizeDomain(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'general'
+  return (
+    input
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'general'
+  )
 }
 
 function asOptionalString(value: unknown): string | undefined {

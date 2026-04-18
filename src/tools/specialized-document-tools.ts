@@ -4,10 +4,10 @@
  * One tool per responsibility (append, update, merge, prune, query)
  */
 
-import { readdir, readFile, writeFile } from 'node:fs/promises'
+import { readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import dayjs from 'dayjs'
 import Database from 'better-sqlite3'
+import dayjs from 'dayjs'
 import type {
   AppendToDocumentInput,
   MergeDocumentsInput,
@@ -27,7 +27,7 @@ import { classifyDocumentLane } from './retrieval-lane-router'
  */
 export async function appendToDocument(
   input: AppendToDocumentInput,
-  baseDir: string,
+  baseDir: string
 ): Promise<WriteDocumentResult> {
   const id = sanitizeId(input.documentId)
   const filePath = path.join(baseDir, `${id}.md`)
@@ -41,7 +41,7 @@ export async function appendToDocument(
 
   const appendContent = input.content.endsWith('\n') ? input.content : `${input.content}\n`
   const updatedContent =
-    input.position === 'top' ? appendContent + '\n' + content : content + '\n' + appendContent
+    input.position === 'top' ? `${appendContent}\n${content}` : `${content}\n${appendContent}`
 
   const now = dayjs().toISOString()
   await writeFile(filePath, updatedContent, 'utf8')
@@ -66,7 +66,7 @@ export async function appendToDocument(
  */
 export async function updateDocument(
   input: UpdateDocumentInput,
-  baseDir: string,
+  baseDir: string
 ): Promise<WriteDocumentResult> {
   const id = sanitizeId(input.documentId)
   const filePath = path.join(baseDir, `${id}.md`)
@@ -84,8 +84,7 @@ export async function updateDocument(
   const typeLine = getMetadataLine(oldContent, 'Type')
   const tagsLine = getMetadataLine(oldContent, 'Tags')
 
-  const body =
-    input.content.endsWith('\n') ? input.content : `${input.content}\n`
+  const body = input.content.endsWith('\n') ? input.content : `${input.content}\n`
   const metadataLines = [
     `Created: ${createdAt}`,
     ...(typeLine ? [typeLine] : []),
@@ -111,7 +110,7 @@ export async function updateDocument(
  */
 export async function pruneDocument(
   input: PruneDocumentInput,
-  baseDir: string,
+  baseDir: string
 ): Promise<WriteDocumentResult> {
   const id = sanitizeId(input.documentId)
   const filePath = path.join(baseDir, `${id}.md`)
@@ -130,12 +129,12 @@ export async function pruneDocument(
 
   if (prunedContent === content.trim()) {
     throw new Error(
-      `No section found matching pattern: "${input.prunePattern}". Available sections not documented yet.`,
+      `No section found matching pattern: "${input.prunePattern}". Available sections not documented yet.`
     )
   }
 
   const now = dayjs().toISOString()
-  await writeFile(filePath, prunedContent + '\n', 'utf8')
+  await writeFile(filePath, `${prunedContent}\n`, 'utf8')
 
   const title = extractTitle(prunedContent)
   const createdAt = getCreatedAtSync(prunedContent)
@@ -157,7 +156,7 @@ export async function pruneDocument(
  */
 export async function mergeDocuments(
   input: MergeDocumentsInput,
-  baseDir: string,
+  baseDir: string
 ): Promise<MergeDocumentsResult> {
   const targetId = sanitizeId(input.targetDocId)
   const sourceId = sanitizeId(input.sourceDocId)
@@ -176,7 +175,7 @@ export async function mergeDocuments(
 
   const similarity = await computeSemanticSimilarity(
     normalizeContentForSimilarity(targetContent),
-    normalizeContentForSimilarity(sourceContent),
+    normalizeContentForSimilarity(sourceContent)
   )
 
   const threshold = 0.6
@@ -220,7 +219,7 @@ export async function mergeDocuments(
 
 export async function reconcileFacts(
   input: ReconcileFactsInput,
-  baseDir: string,
+  baseDir: string
 ): Promise<ReconcileFactsResult> {
   const replaceFrom = input.replaceFrom.trim()
   const replaceTo = input.replaceTo.trim()
@@ -281,7 +280,7 @@ export async function reconcileFacts(
       metadata.title,
       metadata.type,
       metadata.tags,
-      metadata.filePath,
+      metadata.filePath
     )
 
     if (!includeSessionLogs && lane === 'session-log') {
@@ -329,7 +328,7 @@ export async function reconcileFacts(
 
 export async function reconcileContradictions(
   input: ReconcileContradictionsInput,
-  baseDir: string,
+  baseDir: string
 ): Promise<ReconcileContradictionsResult> {
   const newFact = input.newFact.trim()
   const domain = sanitizeId(input.domain ?? 'general') || 'general'
@@ -374,7 +373,7 @@ export async function reconcileContradictions(
       metadata.title,
       metadata.type,
       metadata.tags,
-      metadata.filePath,
+      metadata.filePath
     )
 
     if (!includeSessionLogs && lane === 'session-log') continue
@@ -413,14 +412,19 @@ export async function reconcileContradictions(
 // ─── Helper Functions ───────────────────────────────────────────
 
 function sanitizeId(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'document'
+  return (
+    input
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'document'
+  )
 }
 
-function parseMetadataForLane(filePath: string, content: string): {
+function parseMetadataForLane(
+  filePath: string,
+  content: string
+): {
   id: string
   title: string
   type: string | null
@@ -452,7 +456,11 @@ function parseMetadataForLane(filePath: string, content: string): {
   return { id, title, type, tags, filePath }
 }
 
-function replaceTermInContent(content: string, replaceFrom: string, replaceTo: string): {
+function replaceTermInContent(
+  content: string,
+  replaceFrom: string,
+  replaceTo: string
+): {
   content: string
   count: number
 } {
@@ -480,15 +488,12 @@ function buildUnifiedReplaceDiff(
   filePath: string,
   content: string,
   replaceFrom: string,
-  replaceTo: string,
+  replaceTo: string
 ): string {
   const regex = buildReplaceRegex(replaceFrom)
   const lines = content.split('\n')
   const relativePath = path.relative(process.cwd(), filePath).replace(/\\/g, '/')
-  const diffLines: string[] = [
-    `--- a/${relativePath}`,
-    `+++ b/${relativePath}`,
-  ]
+  const diffLines: string[] = [`--- a/${relativePath}`, `+++ b/${relativePath}`]
 
   let emitted = 0
   for (let i = 0; i < lines.length; i += 1) {
@@ -520,13 +525,10 @@ function buildUnifiedReplaceDiff(
 
 function buildUnifiedRemoveDiff(
   filePath: string,
-  removedLines: Array<{ lineNumber: number; line: string }>,
+  removedLines: Array<{ lineNumber: number; line: string }>
 ): string {
   const relativePath = path.relative(process.cwd(), filePath).replace(/\\/g, '/')
-  const diffLines: string[] = [
-    `--- a/${relativePath}`,
-    `+++ b/${relativePath}`,
-  ]
+  const diffLines: string[] = [`--- a/${relativePath}`, `+++ b/${relativePath}`]
 
   for (const entry of removedLines.slice(0, 12)) {
     diffLines.push(`@@ -${entry.lineNumber},1 +${entry.lineNumber},0 @@`)
@@ -546,7 +548,9 @@ function parseFactClaim(fact: string): { subject: string; predicate: string } | 
     .replace(/\(source:[^)]+\)/gi, '')
     .trim()
 
-  const match = cleaned.match(/^(.*?)\s+(is|are|uses|use|requires|must|should|can|cannot|does not|do not)\s+(.+)$/i)
+  const match = cleaned.match(
+    /^(.*?)\s+(is|are|uses|use|requires|must|should|can|cannot|does not|do not)\s+(.+)$/i
+  )
   if (!match) return null
 
   const subject = normalizeClaimToken(match[1])
@@ -564,10 +568,7 @@ function normalizeClaimToken(value: string): string {
     .trim()
 }
 
-function isDomainRelevant(
-  metadata: { id: string; tags: string[] },
-  domain: string,
-): boolean {
+function isDomainRelevant(metadata: { id: string; tags: string[] }, domain: string): boolean {
   if (domain === 'general') return true
   if (metadata.id.startsWith(`${domain}-`)) return true
   return metadata.tags.map(tag => sanitizeId(tag)).includes(domain)
@@ -575,7 +576,7 @@ function isDomainRelevant(
 
 function removeContradictoryFactLines(
   content: string,
-  claim: { subject: string; predicate: string },
+  claim: { subject: string; predicate: string }
 ): {
   content: string
   removedCount: number
@@ -740,7 +741,7 @@ function tokenJaccardSimilarity(a: string, b: string): number {
 function mergeContentDeterministically(
   primary: string,
   secondary: string,
-  sourceId: string,
+  sourceId: string
 ): string {
   const cleanPrimary = primary.endsWith('\n') ? primary : `${primary}\n`
   const cleanSecondary = secondary.trim()

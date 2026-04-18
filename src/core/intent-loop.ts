@@ -10,12 +10,12 @@
  */
 
 import dayjs from 'dayjs'
-import type { LLMProvider } from './types'
-import type { ToolExecutor } from './tool-registry'
+import { DefaultIntentRouter } from '../intents/router'
+import type { ConsumerIntentEnvelope, IntentResult } from '../intents/types'
 import type { RunCollector } from './telemetry'
 import { estimateCost } from './telemetry'
-import type { ConsumerIntentEnvelope, IntentResult } from '../intents/types'
-import { DefaultIntentRouter } from '../intents/router'
+import type { ToolExecutor } from './tool-registry'
+import type { LLMProvider } from './types'
 
 export interface IntentLoopConfig {
   /** Maximum number of iterations. Default: 3. */
@@ -39,7 +39,7 @@ export interface IntentLoopResult {
 export async function runIntentLoop(
   envelope: ConsumerIntentEnvelope,
   toolExecutor: ToolExecutor,
-  config: IntentLoopConfig = {},
+  config: IntentLoopConfig = {}
 ): Promise<IntentLoopResult> {
   const maxIterations = config.maxIterations ?? 3
   const confidenceThreshold = config.confidenceThreshold ?? 0.7
@@ -49,7 +49,10 @@ export async function runIntentLoop(
   const providerName = config.provider?.name ?? 'gemini'
   const providerModel = config.provider?.model ?? 'unknown'
 
-  const executeWithTelemetry = async (env: ConsumerIntentEnvelope, stageSuffix: string): Promise<IntentResult> => {
+  const executeWithTelemetry = async (
+    env: ConsumerIntentEnvelope,
+    stageSuffix: string
+  ): Promise<IntentResult> => {
     const startMs = Date.now()
     const startedAt = dayjs().toISOString()
     const res = await router.execute(env)
@@ -63,7 +66,12 @@ export async function runIntentLoop(
         durationMs,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
-        estimatedCostUsd: estimateCost(providerName, providerModel, usage.inputTokens, usage.outputTokens),
+        estimatedCostUsd: estimateCost(
+          providerName,
+          providerModel,
+          usage.inputTokens,
+          usage.outputTokens
+        ),
         provider: providerName,
         model: providerModel,
       })
@@ -97,7 +105,7 @@ export async function runIntentLoop(
         const llmResult = await applyLLMValidationReasoning(
           toolExecutor,
           String(envelope.payload.fact ?? ''),
-          config.provider,
+          config.provider
         )
         if (llmResult) {
           result = llmResult
@@ -111,7 +119,12 @@ export async function runIntentLoop(
               durationMs: Date.now() - llmStartMs,
               inputTokens: usage.inputTokens,
               outputTokens: usage.outputTokens,
-              estimatedCostUsd: estimateCost(providerName, providerModel, usage.inputTokens, usage.outputTokens),
+              estimatedCostUsd: estimateCost(
+                providerName,
+                providerModel,
+                usage.inputTokens,
+                usage.outputTokens
+              ),
               provider: providerName,
               model: providerModel,
             })
@@ -145,8 +158,13 @@ export async function runIntentLoop(
 
 // ─── Usage extraction ─────────────────────────────────────────────────────────
 
-function extractUsageFromResult(result: IntentResult): { inputTokens: number; outputTokens: number } {
-  const data = result.data as { usage?: { inputTokens?: number; outputTokens?: number } } | undefined
+function extractUsageFromResult(result: IntentResult): {
+  inputTokens: number
+  outputTokens: number
+} {
+  const data = result.data as
+    | { usage?: { inputTokens?: number; outputTokens?: number } }
+    | undefined
   return {
     inputTokens: data?.usage?.inputTokens ?? 0,
     outputTokens: data?.usage?.outputTokens ?? 0,
@@ -156,10 +174,12 @@ function extractUsageFromResult(result: IntentResult): { inputTokens: number; ou
 // ─── Retrieval quality ────────────────────────────────────────────────────────
 
 function hasWeakRetrieval(result: IntentResult): boolean {
-  const data = result.data as {
-    results?: unknown[]
-    retrieval?: { checkpoints?: Array<{ status?: string }> }
-  } | undefined
+  const data = result.data as
+    | {
+        results?: unknown[]
+        retrieval?: { checkpoints?: Array<{ status?: string }> }
+      }
+    | undefined
 
   if (!data) return true
 
@@ -200,10 +220,10 @@ function escalateQueryEnvelope(envelope: ConsumerIntentEnvelope): ConsumerIntent
 async function applyLLMValidationReasoning(
   toolExecutor: ToolExecutor,
   fact: string,
-  provider: LLMProvider,
+  provider: LLMProvider
 ): Promise<IntentResult | null> {
   try {
-    const response = await toolExecutor.execute({
+    const response = (await toolExecutor.execute({
       id: `intent-loop-validate-${dayjs().valueOf()}`,
       name: 'read_documents',
       input: {
@@ -213,7 +233,10 @@ async function applyLLMValidationReasoning(
         limit: 8,
         discoveryDepth: 'deep',
       },
-    }) as { results?: Array<{ content?: string; metadata?: { id?: string } }>; retrieval?: unknown }
+    })) as {
+      results?: Array<{ content?: string; metadata?: { id?: string } }>
+      retrieval?: unknown
+    }
 
     const results = Array.isArray(response.results) ? response.results : []
     if (results.length === 0) return null

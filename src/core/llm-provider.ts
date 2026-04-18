@@ -3,13 +3,8 @@
  * Normalizes different LLM APIs to a common interface
  */
 
-import type {
-  LLMProvider,
-  LLMResponse,
-  LLMStreamChunk,
-  LLMCallParams,
-} from './types'
 import dayjs from 'dayjs'
+import type { LLMCallParams, LLMProvider, LLMResponse, LLMStreamChunk } from './types'
 
 type JsonRecord = Record<string, unknown>
 
@@ -49,7 +44,7 @@ export class AnthropicProvider implements LLMProvider {
 
   constructor(
     private apiKey: string,
-    model: string = 'claude-3-5-sonnet-20241022'
+    model = 'claude-3-5-sonnet-20241022'
   ) {
     this.model = model
   }
@@ -177,7 +172,7 @@ export class OpenAIProvider implements LLMProvider {
 
   constructor(
     private apiKey: string,
-    model: string = 'gpt-4-turbo'
+    model = 'gpt-4-turbo'
   ) {
     this.model = model
   }
@@ -317,7 +312,7 @@ export class GeminiProvider implements LLMProvider {
 
   constructor(
     private apiKey: string,
-    model: string = 'gemini-2.0-flash'
+    model = 'gemini-2.0-flash'
   ) {
     this.model = model
   }
@@ -326,11 +321,7 @@ export class GeminiProvider implements LLMProvider {
     const initialBudget = params.maxTokens ?? 4096
     let parsed = await this.generateContent(params, initialBudget)
 
-    if (
-      !parsed.text
-      && parsed.finishReason === 'MAX_TOKENS'
-      && initialBudget < 128
-    ) {
+    if (!parsed.text && parsed.finishReason === 'MAX_TOKENS' && initialBudget < 128) {
       parsed = await this.generateContent(params, Math.max(initialBudget * 2, 128))
     }
 
@@ -349,7 +340,7 @@ export class GeminiProvider implements LLMProvider {
 
   private async generateContent(
     params: LLMCallParams,
-    maxOutputTokens: number,
+    maxOutputTokens: number
   ): Promise<{
     text: string
     stopReason: 'tool_use' | 'end_turn'
@@ -446,8 +437,8 @@ export class OllamaProvider implements LLMProvider {
   readonly model: string
 
   constructor(
-    private endpoint: string = 'http://localhost:11434',
-    model: string = 'mistral'
+    private endpoint = 'http://localhost:11434',
+    model = 'mistral'
   ) {
     this.model = model
   }
@@ -527,12 +518,21 @@ export function createProvider(config: {
   model?: string
 }): LLMProvider {
   switch (config.provider) {
-    case 'anthropic':
-      return new AnthropicProvider(config.apiKey!, config.model)
-    case 'openai':
-      return new OpenAIProvider(config.apiKey!, config.model)
-    case 'gemini':
-      return new GeminiProvider(config.apiKey!, config.model)
+    case 'anthropic': {
+      const key = config.apiKey
+      if (!key) throw new Error('Anthropic provider requires apiKey')
+      return new AnthropicProvider(key, config.model)
+    }
+    case 'openai': {
+      const key = config.apiKey
+      if (!key) throw new Error('OpenAI provider requires apiKey')
+      return new OpenAIProvider(key, config.model)
+    }
+    case 'gemini': {
+      const key = config.apiKey
+      if (!key) throw new Error('Gemini provider requires apiKey')
+      return new GeminiProvider(key, config.model)
+    }
     case 'ollama':
       return new OllamaProvider(config.endpoint, config.model)
     default:

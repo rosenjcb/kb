@@ -1,4 +1,11 @@
-import type { InitContext, InitCoverageSummary, InitTopic, InitUserAnswer, TopicCoverageAssessment, TopicCoverageStatus } from './init-cli'
+import type {
+  InitContext,
+  InitCoverageSummary,
+  InitTopic,
+  InitUserAnswer,
+  TopicCoverageAssessment,
+  TopicCoverageStatus,
+} from './init-cli'
 
 export interface TopicDefinition {
   topic: InitTopic
@@ -31,21 +38,24 @@ export const INIT_TOPIC_DEFINITIONS: TopicDefinition[] = [
     topic: 'project-overview',
     keywords: ['overview', 'purpose', 'project', 'mission', 'goal'],
     initialQuestion: 'What is this project for, and who is it for?',
-    followUpQuestion: 'What should a newcomer understand first about the project purpose or audience?',
+    followUpQuestion:
+      'What should a newcomer understand first about the project purpose or audience?',
     missingFields: ['purpose', 'audience'],
   },
   {
     topic: 'install-setup',
     keywords: ['install', 'setup', 'bootstrap', 'getting started'],
     initialQuestion: 'How do you install or set up this project?',
-    followUpQuestion: 'What setup details or prerequisites would block a new user if they were missing?',
+    followUpQuestion:
+      'What setup details or prerequisites would block a new user if they were missing?',
     missingFields: ['installation steps', 'prerequisites'],
   },
   {
     topic: 'core-workflows',
     keywords: ['usage', 'command', 'workflow', 'example', 'cli'],
     initialQuestion: 'What are the most common workflows, commands, or day-to-day tasks?',
-    followUpQuestion: 'Which workflow or command sequence is most important to explain more concretely?',
+    followUpQuestion:
+      'Which workflow or command sequence is most important to explain more concretely?',
     missingFields: ['common commands', 'usage examples'],
   },
   {
@@ -59,14 +69,16 @@ export const INIT_TOPIC_DEFINITIONS: TopicDefinition[] = [
     topic: 'configuration',
     keywords: ['config', 'configuration', 'env', '.env', 'settings'],
     initialQuestion: 'How is the project configured? Include env vars or config files.',
-    followUpQuestion: 'What configuration detail is easiest to miss or most important to document clearly?',
+    followUpQuestion:
+      'What configuration detail is easiest to miss or most important to document clearly?',
     missingFields: ['config sources', 'required settings'],
   },
   {
     topic: 'testing',
     keywords: ['test', 'vitest', 'jest', 'coverage', 'spec'],
     initialQuestion: 'How do you run tests, and what test flows matter most?',
-    followUpQuestion: 'What testing detail or expected workflow should be spelled out more explicitly?',
+    followUpQuestion:
+      'What testing detail or expected workflow should be spelled out more explicitly?',
     missingFields: ['test commands', 'test expectations'],
   },
   {
@@ -90,21 +102,26 @@ export const INIT_TOPIC_DEFINITIONS: TopicDefinition[] = [
 ]
 
 export function getTopicDefinition(topic: InitTopic): TopicDefinition {
-  return INIT_TOPIC_DEFINITIONS.find(definition => definition.topic === topic)!
+  const found = INIT_TOPIC_DEFINITIONS.find(definition => definition.topic === topic)
+  if (!found) {
+    throw new Error(`Unknown init topic: ${topic}`)
+  }
+  return found
 }
 
 export function inferTopicFromQuestion(question: string): InitTopic | undefined {
   const lower = question.toLowerCase()
-  return INIT_TOPIC_DEFINITIONS.find(definition =>
-    definition.keywords.some(keyword => lower.includes(keyword)) ||
-    lower.includes(definition.topic.split('-')[0]),
+  return INIT_TOPIC_DEFINITIONS.find(
+    definition =>
+      definition.keywords.some(keyword => lower.includes(keyword)) ||
+      lower.includes(definition.topic.split('-')[0])
   )?.topic
 }
 
 export function assessTopicCoverage(
   context: InitContext,
   candidateDocs: CandidateDocShape[] | undefined,
-  nonInteractive: boolean,
+  nonInteractive: boolean
 ): TopicCoverageAssessment[] {
   const sourceText = Object.values(context.sourceFiles).join('\n').toLowerCase()
   const docCorpus = (candidateDocs ?? []).map(doc => `${doc.title}\n${doc.content}`.toLowerCase())
@@ -114,9 +131,10 @@ export function assessTopicCoverage(
     const sourceHit = definition.keywords.some(keyword => sourceText.includes(keyword))
     const topicAnswers = answersByTopic.get(definition.topic) ?? []
     const answerText = topicAnswers.map(answer => answer.answer.toLowerCase()).join('\n')
-    const docMatches = docCorpus.filter(doc =>
-      definition.keywords.some(keyword => doc.includes(keyword)) ||
-      doc.includes(definition.topic.split('-')[0]),
+    const docMatches = docCorpus.filter(
+      doc =>
+        definition.keywords.some(keyword => doc.includes(keyword)) ||
+        doc.includes(definition.topic.split('-')[0])
     )
 
     const contradictorySignals = detectContradictions({
@@ -145,7 +163,8 @@ export function assessTopicCoverage(
       keyEvidence.push(`contradictory signals: ${contradictorySignals.join(', ')}`)
     }
 
-    const score = (sourceHit ? 1 : 0) + (topicAnswers.length > 0 ? 2 : 0) + (docMatches.length > 0 ? 1 : 0)
+    const score =
+      (sourceHit ? 1 : 0) + (topicAnswers.length > 0 ? 2 : 0) + (docMatches.length > 0 ? 1 : 0)
     const groundedEvidenceCount = (sourceHit ? 1 : 0) + (topicAnswers.length > 0 ? 1 : 0)
 
     let confidence: TopicCoverageAssessment['confidence'] = 'low'
@@ -170,7 +189,12 @@ export function assessTopicCoverage(
       stopReason = topicAnswers.length > 0 ? 'user-confirmed' : 'enough-grounded-evidence'
     } else if (score === 2) {
       confidence = 'medium'
-      status = topicAnswers.length > 0 ? 'needs-follow-up' : nonInteractive ? 'inferred-only' : 'needs-follow-up'
+      status =
+        topicAnswers.length > 0
+          ? 'needs-follow-up'
+          : nonInteractive
+            ? 'inferred-only'
+            : 'needs-follow-up'
       enoughContext = false
       stopReason = nonInteractive ? 'non-interactive-mode' : undefined
     } else if (score === 1) {
@@ -218,7 +242,7 @@ export function buildTopicCoverageGaps(coverage: TopicCoverageAssessment[]): Top
 
 export function markUnaskedTopicsAsInferred(
   coverage: TopicCoverageAssessment[],
-  stopReason: TopicCoverageAssessment['stopReason'],
+  stopReason: TopicCoverageAssessment['stopReason']
 ): TopicCoverageAssessment[] {
   return coverage.map(topic => {
     if (topic.enoughContext) return topic
@@ -231,8 +255,12 @@ export function markUnaskedTopicsAsInferred(
 
 export function summariseCoverage(coverage: TopicCoverageAssessment[]): InitCoverageSummary {
   return {
-    coveredTopics: coverage.filter(topic => topic.status === 'sufficient').map(topic => topic.topic),
-    inferredTopics: coverage.filter(topic => topic.status === 'inferred-only').map(topic => topic.topic),
+    coveredTopics: coverage
+      .filter(topic => topic.status === 'sufficient')
+      .map(topic => topic.topic),
+    inferredTopics: coverage
+      .filter(topic => topic.status === 'inferred-only')
+      .map(topic => topic.topic),
     unresolvedTopics: coverage
       .filter(topic => topic.status === 'needs-follow-up' || topic.status === 'unresolved')
       .map(topic => topic.topic),
@@ -275,7 +303,10 @@ function determineGapReason(topic: TopicCoverageAssessment): TopicCoverageGap['r
   if (topic.evidenceSources.length === 0) {
     return 'missing-topic'
   }
-  if (topic.evidenceSources.includes('user-answer') && !topic.evidenceSources.includes('source-doc')) {
+  if (
+    topic.evidenceSources.includes('user-answer') &&
+    !topic.evidenceSources.includes('source-doc')
+  ) {
     return 'needs-example'
   }
   return 'low-confidence'

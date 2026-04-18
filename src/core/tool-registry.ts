@@ -6,9 +6,7 @@
 
 import type { ToolDefinition, ToolUseRequest } from './types'
 
-export interface ToolImplementation {
-  (input: Record<string, unknown>): Promise<unknown>
-}
+export type ToolImplementation = (input: Record<string, unknown>) => Promise<unknown>
 
 export interface ToolExecutor {
   register(name: string, def: ToolDefinition, impl: ToolImplementation): void

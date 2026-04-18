@@ -4,28 +4,19 @@
  * KB Agent Harness CLI
  */
 
-import { createKBToolsRegistry } from '../tools/kb-tools-registry'
-import {
-  applyConfigToEnv,
-  ensureDefaultConfig,
-  createLLMProviderFromConfig,
-  persistInferredLLMProvider,
-  resolveConversationalChatEnabled,
-  resolveGraphEnabled,
-} from './kb-config'
-import type { KbConfig } from './kb-config'
 import { runIntentLoop } from '../core/intent-loop'
-import { RunCollector, ReportWriter, defaultLogsDir, TokenCountingProvider, estimateCost } from '../core/telemetry'
-import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import {
-  augmentIntentResultWithWorkspaceFallback,
-  enrichReadDocumentsAnswerWithLLM,
-  formatIntentResult,
-  isIntentCommand,
-  parseIntentCommand,
-  printIntentHelp,
-  rewriteIntentInputWithSessionContext,
-} from './intent-cli'
+  ReportWriter,
+  RunCollector,
+  TokenCountingProvider,
+  defaultLogsDir,
+  estimateCost,
+} from '../core/telemetry'
+import { DuckGraphWriter } from '../tools/duck-graph-writer'
+import { extractGraph } from '../tools/graph-entity-extractor'
+import { expandQueryWithGraph } from '../tools/graph-query-expansion'
+import { invalidateFactTool } from '../tools/invalidate-fact-tool'
+import { createKBToolsRegistry } from '../tools/kb-tools-registry'
 import {
   ensureOperationalBaseDir,
   formatDefaultCommandHelp,
@@ -36,27 +27,42 @@ import {
   writeDefaultBase,
   writeSessionBase,
 } from './base-selection'
+import { printChatHelp, runChatSession } from './chat-cli'
 import {
   CLI_ERROR_NO_KB_BASE,
   CLI_ERROR_NO_LLM_PROVIDER,
   formatPrerequisiteError,
 } from './cli-prerequisites'
-import { runConfigCommand, printConfigHelp } from './config-cli'
-import { parsePublishCommand, runPublishCommand } from './publish-cli'
-import { parseInitCommand, runKbInit } from './init-cli'
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from './cmd-ref'
-import { DuckGraphWriter } from '../tools/duck-graph-writer'
-import { extractGraph } from '../tools/graph-entity-extractor'
-import { expandQueryWithGraph } from '../tools/graph-query-expansion'
+import { printConfigHelp, runConfigCommand } from './config-cli'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
-import { printChatHelp, runChatSession } from './chat-cli'
-import { printLogsHelp, runLogsCommand } from './logs-cli'
+import { parseInitCommand, runKbInit } from './init-cli'
 import {
+  augmentIntentResultWithWorkspaceFallback,
+  enrichReadDocumentsAnswerWithLLM,
+  formatIntentResult,
+  isIntentCommand,
+  parseIntentCommand,
+  printIntentHelp,
+  rewriteIntentInputWithSessionContext,
+} from './intent-cli'
+import {
+  applyConfigToEnv,
+  createLLMProviderFromConfig,
+  ensureDefaultConfig,
+  persistInferredLLMProvider,
+  resolveConversationalChatEnabled,
+  resolveGraphEnabled,
+} from './kb-config'
+import type { KbConfig } from './kb-config'
+import { printLogsHelp, runLogsCommand } from './logs-cli'
+import { parsePublishCommand, runPublishCommand } from './publish-cli'
+import {
+  ViewCommandError,
   printListHelp,
   printViewHelp,
   runListCommand,
   runViewCommand,
-  ViewCommandError,
 } from './view-cli'
 
 // ---------------------------------------------------------------------------
@@ -84,7 +90,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     cmdIntro(mode),
     '',
     'Usage:',
-    `  kb`,
+    '  kb',
     `  ${cmd('<command>', mode)} [options]`,
     `  ${cmd('<intent-command>', mode)} "<input>" [options]`,
     '',
@@ -155,7 +161,7 @@ export async function runMainWithOutput(
   args: string[],
   out: CliOutput,
   config: KbConfig,
-  mode: CmdMode = 'cli',
+  mode: CmdMode = 'cli'
 ): Promise<void> {
   const firstArg = args[0]
 
@@ -168,7 +174,9 @@ export async function runMainWithOutput(
     const debug = args.includes('--debug')
 
     if (!oldFact) {
-      out.error(`❌ Usage: ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run] [--debug]', mode)}`)
+      out.error(
+        `❌ Usage: ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run] [--debug]', mode)}`
+      )
       return
     }
 
@@ -179,12 +187,14 @@ export async function runMainWithOutput(
       const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
       const result = await invalidateFactTool(
         { oldFact, replacementFact, preview, dryRun, includeSessionLogs: true },
-        kbStorageDir,
+        kbStorageDir
       )
       endInvalidate({ inputTokens: 0, outputTokens: 0 })
 
       for (const change of result.changes) {
-        out.log(`\nDocument: ${change.documentId} (${change.title})\nReplaced: ${change.replaced}\nDiff:\n${change.diff}`)
+        out.log(
+          `\nDocument: ${change.documentId} (${change.title})\nReplaced: ${change.replaced}\nDiff:\n${change.diff}`
+        )
       }
       out.log(`\n${result.summary}`)
       if (result.error) {
@@ -282,7 +292,9 @@ export async function runMainWithOutput(
       if (configured.activeBase) {
         out.log(`Current active base: ${configured.activeBase}`)
       }
-      out.log(`Use \`${cmd('use <base>', mode)}\` to switch the active base without changing the saved default.`)
+      out.log(
+        `Use \`${cmd('use <base>', mode)}\` to switch the active base without changing the saved default.`
+      )
       return
     }
 
@@ -332,7 +344,10 @@ export async function runMainWithOutput(
 
   if (firstArg === 'config') {
     try {
-      const result = await runConfigCommand(args.slice(1), { isTTY: Boolean(process.stdout.isTTY), mode })
+      const result = await runConfigCommand(args.slice(1), {
+        isTTY: Boolean(process.stdout.isTTY),
+        mode,
+      })
       out.log(result.output)
       return
     } catch (error) {
@@ -496,7 +511,11 @@ export async function runMainWithOutput(
       const rawLlmProvider = createLLMProviderFromConfig(config)
       const llmCounter = rawLlmProvider ? new TokenCountingProvider(rawLlmProvider) : undefined
       const llmProvider = llmCounter ?? rawLlmProvider
-      parsed = await rewriteIntentInputWithSessionContext(parsed, llmProvider ?? undefined, intentBaseDir)
+      parsed = await rewriteIntentInputWithSessionContext(
+        parsed,
+        llmProvider ?? undefined,
+        intentBaseDir
+      )
       if (parsed.envelope.intent === 'query_truth' && resolveGraphEnabled(config)) {
         const payload = parsed.envelope.payload as { query?: string }
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
@@ -522,11 +541,16 @@ export async function runMainWithOutput(
         resolveGraphEnabled(config)
       ) {
         const fact = String(parsed.envelope.payload.fact ?? '').trim()
-        const submittedDocId = (result.data as { submission?: { id?: string } } | undefined)?.submission?.id
+        const submittedDocId = (result.data as { submission?: { id?: string } } | undefined)
+          ?.submission?.id
         if (fact) {
           try {
             const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(intentBaseDir))
-            const { entities, relationships } = await extractGraph(fact, llmProvider, submittedDocId)
+            const { entities, relationships } = await extractGraph(
+              fact,
+              llmProvider,
+              submittedDocId
+            )
             if (entities.length > 0 || relationships.length > 0) {
               await graphWriter.open()
               if (entities.length > 0) await graphWriter.upsertEntities(entities)
@@ -549,7 +573,14 @@ export async function runMainWithOutput(
             durationMs: 0,
             inputTokens: loopTokens.inputTokens,
             outputTokens: loopTokens.outputTokens,
-            estimatedCostUsd: llmProvider ? estimateCost(llmProvider.name, llmProvider.model, loopTokens.inputTokens, loopTokens.outputTokens) : 0,
+            estimatedCostUsd: llmProvider
+              ? estimateCost(
+                  llmProvider.name,
+                  llmProvider.model,
+                  loopTokens.inputTokens,
+                  loopTokens.outputTokens
+                )
+              : 0,
             provider: llmProvider?.name ?? 'unknown',
             model: llmProvider?.model ?? 'unknown',
           })
@@ -557,7 +588,12 @@ export async function runMainWithOutput(
       }
 
       const aligned = await augmentIntentResultWithWorkspaceFallback(parsed, result, process.cwd())
-      const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, aligned, llmProvider ?? undefined, intentBaseDir)
+      const enriched = await enrichReadDocumentsAnswerWithLLM(
+        parsed,
+        aligned,
+        llmProvider ?? undefined,
+        intentBaseDir
+      )
 
       // Capture tokens from the answer-enrichment LLM call (query path)
       if (llmCounter) {
@@ -569,7 +605,14 @@ export async function runMainWithOutput(
             durationMs: 0,
             inputTokens: enrichTokens.inputTokens,
             outputTokens: enrichTokens.outputTokens,
-            estimatedCostUsd: llmProvider ? estimateCost(llmProvider.name, llmProvider.model, enrichTokens.inputTokens, enrichTokens.outputTokens) : 0,
+            estimatedCostUsd: llmProvider
+              ? estimateCost(
+                  llmProvider.name,
+                  llmProvider.model,
+                  enrichTokens.inputTokens,
+                  enrichTokens.outputTokens
+                )
+              : 0,
             provider: llmProvider?.name ?? 'unknown',
             model: llmProvider?.model ?? 'unknown',
           })

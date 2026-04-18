@@ -7,8 +7,8 @@
  *   kb logs compare [<runIdA> <runIdB>] [--command <cmd>] [--since <date>]
  */
 
-import { readdir, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import type { RunReport, StageMetrics } from '../core/telemetry'
@@ -59,7 +59,7 @@ async function runLogsList(args: string[], logsDir: string): Promise<string> {
     return 'No run reports found. Run a kb command with --debug or just run it — reports are always written.'
   }
 
-  const header = padR('Run ID', 26) + padR('Command', 12) + padR('Started', 22) + padR('Duration', 10) + padR('In tok', 8) + padR('Out tok', 8) + 'Cost'
+  const header = `${padR('Run ID', 26) + padR('Command', 12) + padR('Started', 22) + padR('Duration', 10) + padR('In tok', 8) + padR('Out tok', 8)}Cost`
   const divider = '─'.repeat(header.length)
   const rows = recent.map(r => {
     const started = dayjs(r.startedAt).format('YYYY-MM-DD HH:mm:ss')
@@ -98,7 +98,9 @@ function formatSingleReport(report: RunReport): string {
   lines.push(`Duration: ${formatDuration(report.totalDurationMs)}`)
   lines.push(`Status:   ${report.status}${report.errorMessage ? ` — ${report.errorMessage}` : ''}`)
   lines.push(`Tokens:   in=${report.totalInputTokens}  out=${report.totalOutputTokens}`)
-  lines.push(`Cost:     ${report.totalEstimatedCostUsd > 0 ? `$${report.totalEstimatedCostUsd.toFixed(5)}` : '$0'}`)
+  lines.push(
+    `Cost:     ${report.totalEstimatedCostUsd > 0 ? `$${report.totalEstimatedCostUsd.toFixed(5)}` : '$0'}`
+  )
   lines.push('')
 
   if (report.stages.length === 0) {
@@ -106,17 +108,30 @@ function formatSingleReport(report: RunReport): string {
     return lines.join('\n')
   }
 
-  const stageHeader = padR('Stage', 28) + padR('Duration', 10) + padR('In tok', 8) + padR('Out tok', 8) + 'Cost'
+  const stageHeader = `${padR('Stage', 28) + padR('Duration', 10) + padR('In tok', 8) + padR('Out tok', 8)}Cost`
   const stageDivider = '─'.repeat(stageHeader.length)
   lines.push(stageHeader)
   lines.push(stageDivider)
   for (const s of report.stages) {
     const cost = s.estimatedCostUsd > 0 ? `$${s.estimatedCostUsd.toFixed(5)}` : '-'
-    lines.push(padR(s.stage, 28) + padR(formatDuration(s.durationMs), 10) + padR(String(s.inputTokens), 8) + padR(String(s.outputTokens), 8) + cost)
+    lines.push(
+      padR(s.stage, 28) +
+        padR(formatDuration(s.durationMs), 10) +
+        padR(String(s.inputTokens), 8) +
+        padR(String(s.outputTokens), 8) +
+        cost
+    )
   }
   lines.push(stageDivider)
-  const totalCost = report.totalEstimatedCostUsd > 0 ? `$${report.totalEstimatedCostUsd.toFixed(5)}` : '-'
-  lines.push(padR('Total', 28) + padR(formatDuration(report.totalDurationMs), 10) + padR(String(report.totalInputTokens), 8) + padR(String(report.totalOutputTokens), 8) + totalCost)
+  const totalCost =
+    report.totalEstimatedCostUsd > 0 ? `$${report.totalEstimatedCostUsd.toFixed(5)}` : '-'
+  lines.push(
+    padR('Total', 28) +
+      padR(formatDuration(report.totalDurationMs), 10) +
+      padR(String(report.totalInputTokens), 8) +
+      padR(String(report.totalOutputTokens), 8) +
+      totalCost
+  )
 
   return lines.join('\n')
 }
@@ -133,8 +148,12 @@ async function runLogsCompare(args: string[], logsDir: string): Promise<string> 
 
   if (cleanPositionals.length >= 2) {
     const reports = await loadReports(logsDir, {})
-    const a = reports.find(r => r.runId === cleanPositionals[0] || r.runId.startsWith(cleanPositionals[0]))
-    const b = reports.find(r => r.runId === cleanPositionals[1] || r.runId.startsWith(cleanPositionals[1]))
+    const a = reports.find(
+      r => r.runId === cleanPositionals[0] || r.runId.startsWith(cleanPositionals[0])
+    )
+    const b = reports.find(
+      r => r.runId === cleanPositionals[1] || r.runId.startsWith(cleanPositionals[1])
+    )
     if (!a) throw new Error(`Run not found: ${cleanPositionals[0]}`)
     if (!b) throw new Error(`Run not found: ${cleanPositionals[1]}`)
     reportA = a
@@ -143,7 +162,9 @@ async function runLogsCompare(args: string[], logsDir: string): Promise<string> 
     // Default: last two runs, optionally filtered by command/since
     const reports = await loadReports(logsDir, { command, since })
     if (reports.length < 2) {
-      throw new Error(`Need at least 2 runs to compare${command ? ` for command "${command}"` : ''}. Found ${reports.length}.`)
+      throw new Error(
+        `Need at least 2 runs to compare${command ? ` for command "${command}"` : ''}. Found ${reports.length}.`
+      )
     }
     reportA = reports[reports.length - 2]
     reportB = reports[reports.length - 1]
@@ -156,8 +177,12 @@ function formatCompare(a: RunReport, b: RunReport): string {
   const lines: string[] = []
 
   lines.push('Comparing:')
-  lines.push(`  A: ${a.runId}  kb ${a.command}  ${dayjs(a.startedAt).format('YYYY-MM-DD HH:mm:ss')}`)
-  lines.push(`  B: ${b.runId}  kb ${b.command}  ${dayjs(b.startedAt).format('YYYY-MM-DD HH:mm:ss')}`)
+  lines.push(
+    `  A: ${a.runId}  kb ${a.command}  ${dayjs(a.startedAt).format('YYYY-MM-DD HH:mm:ss')}`
+  )
+  lines.push(
+    `  B: ${b.runId}  kb ${b.command}  ${dayjs(b.startedAt).format('YYYY-MM-DD HH:mm:ss')}`
+  )
   lines.push('')
 
   // Union all stage names, preserving order of first appearance
@@ -167,10 +192,18 @@ function formatCompare(a: RunReport, b: RunReport): string {
   const numCol = 10
   const header =
     padR('Stage', stageCol) +
-    padL('A ms', numCol) + padL('B ms', numCol) + padL('Δms', numCol) +
-    padL('A in', numCol) + padL('B in', numCol) + padL('Δin', numCol) +
-    padL('A out', numCol) + padL('B out', numCol) + padL('Δout', numCol) +
-    padL('A $', 10) + padL('B $', 10) + padL('Δ$', 10)
+    padL('A ms', numCol) +
+    padL('B ms', numCol) +
+    padL('Δms', numCol) +
+    padL('A in', numCol) +
+    padL('B in', numCol) +
+    padL('Δin', numCol) +
+    padL('A out', numCol) +
+    padL('B out', numCol) +
+    padL('Δout', numCol) +
+    padL('A $', 10) +
+    padL('B $', 10) +
+    padL('Δ$', 10)
 
   const divider = '─'.repeat(header.length)
   lines.push(header)
@@ -192,18 +225,18 @@ function formatCompare(a: RunReport, b: RunReport): string {
 
   lines.push(
     padR('Total', stageCol) +
-    padL(String(a.totalDurationMs), numCol) +
-    padL(String(b.totalDurationMs), numCol) +
-    padL(signedNum(dMs), numCol) +
-    padL(String(a.totalInputTokens), numCol) +
-    padL(String(b.totalInputTokens), numCol) +
-    padL(signedNum(dIn), numCol) +
-    padL(String(a.totalOutputTokens), numCol) +
-    padL(String(b.totalOutputTokens), numCol) +
-    padL(signedNum(dOut), numCol) +
-    padL(formatCost(a.totalEstimatedCostUsd), 10) +
-    padL(formatCost(b.totalEstimatedCostUsd), 10) +
-    padL(signedCost(dCost), 10),
+      padL(String(a.totalDurationMs), numCol) +
+      padL(String(b.totalDurationMs), numCol) +
+      padL(signedNum(dMs), numCol) +
+      padL(String(a.totalInputTokens), numCol) +
+      padL(String(b.totalInputTokens), numCol) +
+      padL(signedNum(dIn), numCol) +
+      padL(String(a.totalOutputTokens), numCol) +
+      padL(String(b.totalOutputTokens), numCol) +
+      padL(signedNum(dOut), numCol) +
+      padL(formatCost(a.totalEstimatedCostUsd), 10) +
+      padL(formatCost(b.totalEstimatedCostUsd), 10) +
+      padL(signedCost(dCost), 10)
   )
 
   return lines.join('\n')
@@ -214,7 +247,7 @@ function formatCompareRow(
   a: StageMetrics | undefined,
   b: StageMetrics | undefined,
   stageCol: number,
-  numCol: number,
+  numCol: number
 ): string {
   const aMs = a?.durationMs ?? 0
   const bMs = b?.durationMs ?? 0
@@ -246,13 +279,11 @@ function formatCompareRow(
 
 async function loadReports(
   logsDir: string,
-  filters: { command?: string; since?: string },
+  filters: { command?: string; since?: string }
 ): Promise<RunReport[]> {
   if (!existsSync(logsDir)) return []
 
-  const files = (await readdir(logsDir))
-    .filter(f => f.endsWith('.jsonl'))
-    .sort()
+  const files = (await readdir(logsDir)).filter(f => f.endsWith('.jsonl')).sort()
 
   const sinceMs = filters.since ? parseSince(filters.since) : 0
 
@@ -261,7 +292,8 @@ async function loadReports(
     // Skip files whose date is before --since
     if (sinceMs > 0) {
       const fileDate = dayjs(file.replace('.jsonl', ''))
-      if (fileDate.isValid() && fileDate.valueOf() < dayjs(filters.since).startOf('day').valueOf()) continue
+      if (fileDate.isValid() && fileDate.valueOf() < dayjs(filters.since).startOf('day').valueOf())
+        continue
     }
 
     const text = await readFile(path.join(logsDir, file), 'utf-8')
@@ -344,11 +376,11 @@ function signedCost(n: number): string {
 }
 
 function padR(s: string, width: number): string {
-  return s.length >= width ? s.slice(0, width - 1) + ' ' : s.padEnd(width)
+  return s.length >= width ? `${s.slice(0, width - 1)} ` : s.padEnd(width)
 }
 
 function padL(s: string, width: number): string {
-  return s.length >= width ? s.slice(0, width - 1) + ' ' : s.padStart(width)
+  return s.length >= width ? `${s.slice(0, width - 1)} ` : s.padStart(width)
 }
 
 function parseLimit(value: string | undefined): number | undefined {

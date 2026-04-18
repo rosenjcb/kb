@@ -3,30 +3,61 @@
  * See: Ticket 008 - Query Documents Tool Contract
  */
 
-import { readdir, readFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
+import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
-import dayjs from 'dayjs'
 import Database from 'better-sqlite3'
+import dayjs from 'dayjs'
 import { emitDiagnostic } from '../core/diagnostics'
+import { DuckGraphWriter, type GraphDocumentAffinity } from './duck-graph-writer'
+import { toGraphQuerySlugs } from './graph-query-expansion'
 import {
-  buildCheckpointRecord,
   type RetrievalCheckpointRecord,
+  buildCheckpointRecord,
 } from './retrieval-checkpoint-orchestrator'
 import {
+  type LaneRoutingDecision,
+  type RetrievalLane,
   classifyDocumentLane,
   laneFitnessBoost,
   routeQueryToLanes,
-  type LaneRoutingDecision,
-  type RetrievalLane,
 } from './retrieval-lane-router'
-import { DuckGraphWriter, type GraphDocumentAffinity } from './duck-graph-writer'
-import { toGraphQuerySlugs } from './graph-query-expansion'
 
 const STOP_WORDS = new Set([
-  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'do', 'for', 'from', 'how',
-  'i', 'in', 'is', 'it', 'of', 'on', 'or', 'our', 'that', 'the', 'this', 'to',
-  'was', 'we', 'what', 'when', 'where', 'who', 'why', 'with', 'you', 'your',
+  'a',
+  'an',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'by',
+  'do',
+  'for',
+  'from',
+  'how',
+  'i',
+  'in',
+  'is',
+  'it',
+  'of',
+  'on',
+  'or',
+  'our',
+  'that',
+  'the',
+  'this',
+  'to',
+  'was',
+  'we',
+  'what',
+  'when',
+  'where',
+  'who',
+  'why',
+  'with',
+  'you',
+  'your',
 ])
 
 export interface QueryDocumentsInput {
@@ -147,21 +178,21 @@ interface MatchEvaluation {
  */
 function parseDocumentMetadata(filePath: string, content: string): DocumentMetadata | null {
   const lines = content.split('\n')
-  
+
   // First line must be H1 (title)
   if (!lines[0].startsWith('# ')) {
     return null
   }
-  
+
   const title = lines[0].replace(/^# /, '').trim()
   const id = path.basename(filePath, '.md')
-  
+
   // Parse Created timestamp (should be in first few lines)
   let createdAt = dayjs().toISOString()
-  let updatedAt = dayjs().toISOString()
+  const updatedAt = dayjs().toISOString()
   let tags: string[] | undefined
   let type: QueryDocumentsInput['type']
-  
+
   for (let i = 1; i < Math.min(10, lines.length); i++) {
     const line = lines[i].trim()
     if (line.startsWith('Created:')) {
@@ -169,7 +200,10 @@ function parseDocumentMetadata(filePath: string, content: string): DocumentMetad
     }
     if (line.startsWith('Tags:')) {
       const tagsStr = line.replace('Tags:', '').trim()
-      tags = tagsStr.split(',').map(t => t.trim()).filter(Boolean)
+      tags = tagsStr
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean)
     }
     if (line.startsWith('Type:')) {
       const parsedType = line.replace('Type:', '').trim()
@@ -178,7 +212,7 @@ function parseDocumentMetadata(filePath: string, content: string): DocumentMetad
       }
     }
   }
-  
+
   return {
     id,
     title,
@@ -207,27 +241,35 @@ export class MarkdownDocumentReader {
   private readonly rankingHintMinOccurrences: number
   private readonly checkpointObservabilityEnabled: boolean
 
-  constructor(
-    baseDir: string,
-    options: MarkdownDocumentReaderOptions = {},
-  ) {
+  constructor(baseDir: string, options: MarkdownDocumentReaderOptions = {}) {
     this.baseDir = baseDir
     this.hybridEnabled = options.hybridEnabled ?? process.env.KB_HYBRID_QUERY === 'true'
     this.sqliteDbPath = options.sqliteDbPath ?? path.join(baseDir, '.kb-index.sqlite')
     this.graphDbPath = options.graphDbPath ?? path.join(baseDir, '.kb-graph.duckdb')
-    this.hybridCandidateLimit = options.hybridCandidateLimit ?? parsePositiveInt(process.env.KB_HYBRID_QUERY_CANDIDATES, 40)
-    this.hybridAlpha = options.hybridAlpha ?? parseBoundedNumber(process.env.KB_HYBRID_QUERY_ALPHA, 0.45)
-    this.hybridMaxMs = options.hybridMaxMs ?? parsePositiveInt(process.env.KB_HYBRID_QUERY_MAX_MS, 120)
+    this.hybridCandidateLimit =
+      options.hybridCandidateLimit ?? parsePositiveInt(process.env.KB_HYBRID_QUERY_CANDIDATES, 40)
+    this.hybridAlpha =
+      options.hybridAlpha ?? parseBoundedNumber(process.env.KB_HYBRID_QUERY_ALPHA, 0.45)
+    this.hybridMaxMs =
+      options.hybridMaxMs ?? parsePositiveInt(process.env.KB_HYBRID_QUERY_MAX_MS, 120)
     this.graphRankingEnabled = options.graphRankingEnabled ?? process.env.KB_GRAPH !== 'false'
-    this.graphRankingWeight = options.graphRankingWeight ?? parseBoundedNumber(process.env.KB_GRAPH_RANKING_WEIGHT, 0.2)
-    this.graphRankingMaxBoost = options.graphRankingMaxBoost ?? parseBoundedNumber(process.env.KB_GRAPH_RANKING_MAX_BOOST, 0.25)
-    this.laneRoutingEnabled = options.laneRoutingEnabled ?? process.env.KB_LANE_ROUTING_ENABLED !== 'false'
-    this.missLearningEnabled = options.missLearningEnabled ?? process.env.KB_MISS_LEARNING_ENABLED === 'true'
-    this.rankingHintsEnabled = options.rankingHintsEnabled ?? process.env.KB_MISS_HINTS_ENABLED === 'true'
-    this.rankingHintMinOccurrences = options.rankingHintMinOccurrences
-      ?? parsePositiveInt(process.env.KB_MISS_HINT_MIN_OCCURRENCES, 3)
-    this.checkpointObservabilityEnabled = options.checkpointObservabilityEnabled
-      ?? process.env.KB_CHECKPOINT_OBSERVABILITY_ENABLED !== 'false'
+    this.graphRankingWeight =
+      options.graphRankingWeight ?? parseBoundedNumber(process.env.KB_GRAPH_RANKING_WEIGHT, 0.2)
+    this.graphRankingMaxBoost =
+      options.graphRankingMaxBoost ??
+      parseBoundedNumber(process.env.KB_GRAPH_RANKING_MAX_BOOST, 0.25)
+    this.laneRoutingEnabled =
+      options.laneRoutingEnabled ?? process.env.KB_LANE_ROUTING_ENABLED !== 'false'
+    this.missLearningEnabled =
+      options.missLearningEnabled ?? process.env.KB_MISS_LEARNING_ENABLED === 'true'
+    this.rankingHintsEnabled =
+      options.rankingHintsEnabled ?? process.env.KB_MISS_HINTS_ENABLED === 'true'
+    this.rankingHintMinOccurrences =
+      options.rankingHintMinOccurrences ??
+      parsePositiveInt(process.env.KB_MISS_HINT_MIN_OCCURRENCES, 3)
+    this.checkpointObservabilityEnabled =
+      options.checkpointObservabilityEnabled ??
+      process.env.KB_CHECKPOINT_OBSERVABILITY_ENABLED !== 'false'
   }
 
   async queryDocuments(input: QueryDocumentsInput): Promise<QueryResponse> {
@@ -238,59 +280,80 @@ export class MarkdownDocumentReader {
       if (hybridAttempt.response) {
         const hybridResponse: QueryResponse = hybridAttempt.response
 
-        checkpoints.push(buildCheckpointRecord({
-          stage: 'hybrid_primary',
-          totalResults: hybridResponse.total,
-          method: hybridResponse.retrieval.method,
-          detail: hybridResponse.retrieval.detail,
-          reason: 'hybrid-stage-complete',
-        }))
+        checkpoints.push(
+          buildCheckpointRecord({
+            stage: 'hybrid_primary',
+            totalResults: hybridResponse.total,
+            method: hybridResponse.retrieval.method,
+            detail: hybridResponse.retrieval.detail,
+            reason: 'hybrid-stage-complete',
+          })
+        )
 
         if (checkpoints.at(-1)?.nextAction === 'return') {
           const response = this.ensureLaneRoutingMetadata(
             input,
-            withCheckpoints(hybridResponse, checkpoints),
+            withCheckpoints(hybridResponse, checkpoints)
           )
           this.maybeRecordMissLearning(input, response)
           this.maybeRecordCheckpointEvents(input, response)
           return response
         }
 
-        const response = this.ensureLaneRoutingMetadata(input, await this.runLexicalCheckpointPipeline(
+        const response = this.ensureLaneRoutingMetadata(
           input,
-          {
-            method: 'lexical-fallback',
-            detail: 'hybrid-low-confidence',
-          },
-          checkpoints,
-        ))
+          await this.runLexicalCheckpointPipeline(
+            input,
+            {
+              method: 'lexical-fallback',
+              detail: 'hybrid-low-confidence',
+            },
+            checkpoints
+          )
+        )
         this.maybeRecordMissLearning(input, response)
         this.maybeRecordCheckpointEvents(input, response)
         return response
       }
 
-      checkpoints.push(buildCheckpointRecord({
-        stage: 'hybrid_primary',
-        totalResults: 0,
-        method: 'hybrid',
-        detail: hybridAttempt.fallbackReason,
-        reason: hybridAttempt.fallbackReason ?? 'hybrid-unavailable',
-        status: 'error',
-      }))
+      checkpoints.push(
+        buildCheckpointRecord({
+          stage: 'hybrid_primary',
+          totalResults: 0,
+          method: 'hybrid',
+          detail: hybridAttempt.fallbackReason,
+          reason: hybridAttempt.fallbackReason ?? 'hybrid-unavailable',
+          status: 'error',
+        })
+      )
 
-      const response = this.ensureLaneRoutingMetadata(input, await this.runLexicalCheckpointPipeline(input, {
-        method: 'lexical-fallback',
-        detail: hybridAttempt.fallbackReason ?? 'hybrid-unavailable',
-      }, checkpoints))
+      const response = this.ensureLaneRoutingMetadata(
+        input,
+        await this.runLexicalCheckpointPipeline(
+          input,
+          {
+            method: 'lexical-fallback',
+            detail: hybridAttempt.fallbackReason ?? 'hybrid-unavailable',
+          },
+          checkpoints
+        )
+      )
       this.maybeRecordMissLearning(input, response)
       this.maybeRecordCheckpointEvents(input, response)
       return response
     }
 
-    const response = this.ensureLaneRoutingMetadata(input, await this.runLexicalCheckpointPipeline(input, {
-      method: 'lexical',
-      detail: 'hybrid-not-attempted',
-    }, checkpoints))
+    const response = this.ensureLaneRoutingMetadata(
+      input,
+      await this.runLexicalCheckpointPipeline(
+        input,
+        {
+          method: 'lexical',
+          detail: 'hybrid-not-attempted',
+        },
+        checkpoints
+      )
+    )
     this.maybeRecordMissLearning(input, response)
     this.maybeRecordCheckpointEvents(input, response)
     return response
@@ -299,16 +362,18 @@ export class MarkdownDocumentReader {
   private async runLexicalCheckpointPipeline(
     input: QueryDocumentsInput,
     retrieval: QueryResponse['retrieval'],
-    checkpoints: RetrievalCheckpointRecord[],
+    checkpoints: RetrievalCheckpointRecord[]
   ): Promise<QueryResponse> {
     const primary = await this.queryDocumentsLexical(input, retrieval)
-    checkpoints.push(buildCheckpointRecord({
-      stage: 'lexical_recovery',
-      totalResults: primary.total,
-      method: primary.retrieval.method,
-      detail: primary.retrieval.detail,
-      reason: 'lexical-stage-complete',
-    }))
+    checkpoints.push(
+      buildCheckpointRecord({
+        stage: 'lexical_recovery',
+        totalResults: primary.total,
+        method: primary.retrieval.method,
+        detail: primary.retrieval.detail,
+        reason: 'lexical-stage-complete',
+      })
+    )
 
     const lexicalDecision = checkpoints.at(-1)
     if (lexicalDecision?.nextAction === 'return') {
@@ -333,23 +398,25 @@ export class MarkdownDocumentReader {
       {
         method: retrieval.method,
         detail: appendRetrievalDetail(retrieval.detail, 'keyword-broadened'),
-      },
+      }
     )
 
-    checkpoints.push(buildCheckpointRecord({
-      stage: 'query_rewrite_retry',
-      totalResults: retry.total,
-      method: retry.retrieval.method,
-      detail: retry.retrieval.detail,
-      reason: 'keyword-broadened',
-    }))
+    checkpoints.push(
+      buildCheckpointRecord({
+        stage: 'query_rewrite_retry',
+        totalResults: retry.total,
+        method: retry.retrieval.method,
+        detail: retry.retrieval.detail,
+        reason: 'keyword-broadened',
+      })
+    )
 
     return withCheckpoints(retry, checkpoints)
   }
 
   private async queryDocumentsLexical(
     input: QueryDocumentsInput,
-    retrieval: QueryResponse['retrieval'],
+    retrieval: QueryResponse['retrieval']
   ): Promise<QueryResponse> {
     const limit = input.limit ?? 10
     const laneRoute = this.resolveLaneRouting(input)
@@ -361,12 +428,14 @@ export class MarkdownDocumentReader {
 
       for (const row of rows) {
         const tags = row.tags
-        const lane = (row.lane ?? classifyDocumentLane(row.id, row.title, row.doc_type ?? null, tags, '')) as RetrievalLane
+        const lane = (row.lane ??
+          classifyDocumentLane(row.id, row.title, row.doc_type ?? null, tags, '')) as RetrievalLane
 
         if (laneFilter?.length && !laneFilter.includes(lane)) continue
 
-        const type = (['architecture', 'decision', 'checklist', 'runbook', 'reference'] as const)
-          .find(t => t === row.doc_type)
+        const type = (
+          ['architecture', 'decision', 'checklist', 'runbook', 'reference'] as const
+        ).find(t => t === row.doc_type)
 
         const matchesType = !input.type || type === input.type
         if (!matchesType) continue
@@ -419,17 +488,17 @@ export class MarkdownDocumentReader {
     } catch {
       const lexicalRetrieval: QueryResponse['retrieval'] = laneRoute
         ? {
-          ...retrieval,
-          detail: appendRetrievalDetail(
-            retrieval.detail,
-            `lane-router:${laneRoute.reason};lanes:${activeLanes.join(',')}${usedSessionLogLastResort ? ';session-log-last-resort' : ''}`,
-          ),
-          laneRouting: {
-            lanes: activeLanes,
-            reason: laneRoute.reason,
-            usedFallback: usedLaneFallback,
-          },
-        }
+            ...retrieval,
+            detail: appendRetrievalDetail(
+              retrieval.detail,
+              `lane-router:${laneRoute.reason};lanes:${activeLanes.join(',')}${usedSessionLogLastResort ? ';session-log-last-resort' : ''}`
+            ),
+            laneRouting: {
+              lanes: activeLanes,
+              reason: laneRoute.reason,
+              usedFallback: usedLaneFallback,
+            },
+          }
         : retrieval
 
       // KB directory doesn't exist or is empty; return empty results
@@ -438,17 +507,17 @@ export class MarkdownDocumentReader {
 
     const lexicalRetrieval: QueryResponse['retrieval'] = laneRoute
       ? {
-        ...retrieval,
-        detail: appendRetrievalDetail(
-          retrieval.detail,
-          `lane-router:${laneRoute.reason};lanes:${activeLanes.join(',')}${usedLaneFallback ? ';lane-broadened' : ''}${usedSessionLogLastResort ? ';session-log-last-resort' : ''}`,
-        ),
-        laneRouting: {
-          lanes: activeLanes,
-          reason: laneRoute.reason,
-          usedFallback: usedLaneFallback,
-        },
-      }
+          ...retrieval,
+          detail: appendRetrievalDetail(
+            retrieval.detail,
+            `lane-router:${laneRoute.reason};lanes:${activeLanes.join(',')}${usedLaneFallback ? ';lane-broadened' : ''}${usedSessionLogLastResort ? ';session-log-last-resort' : ''}`
+          ),
+          laneRouting: {
+            lanes: activeLanes,
+            reason: laneRoute.reason,
+            usedFallback: usedLaneFallback,
+          },
+        }
       : retrieval
 
     matches.sort((a, b) => {
@@ -470,17 +539,19 @@ export class MarkdownDocumentReader {
     }
   }
 
-  private async loadLexicalDocuments(): Promise<Array<{
-    id: string
-    title: string
-    content: string
-    file_path: string
-    doc_type: string | null
-    lane: string | null
-    tags: string[]
-    created_at: string
-    updated_at: string
-  }>> {
+  private async loadLexicalDocuments(): Promise<
+    Array<{
+      id: string
+      title: string
+      content: string
+      file_path: string
+      doc_type: string | null
+      lane: string | null
+      tags: string[]
+      created_at: string
+      updated_at: string
+    }>
+  > {
     const sqliteRows = this.loadLexicalDocumentsFromSqlite()
     if (sqliteRows) {
       return sqliteRows
@@ -504,9 +575,11 @@ export class MarkdownDocumentReader {
 
     try {
       db = new Database(this.sqliteDbPath, { readonly: true })
-      const rows = db.prepare(
-        'SELECT id, title, content, file_path, doc_type, lane, tags_json, created_at, updated_at FROM documents ORDER BY updated_at DESC',
-      ).all() as Array<{
+      const rows = db
+        .prepare(
+          'SELECT id, title, content, file_path, doc_type, lane, tags_json, created_at, updated_at FROM documents ORDER BY updated_at DESC'
+        )
+        .all() as Array<{
         id: string
         title: string
         content: string
@@ -529,38 +602,42 @@ export class MarkdownDocumentReader {
     }
   }
 
-  private async loadLexicalDocumentsFromFilesystem(): Promise<Array<{
-    id: string
-    title: string
-    content: string
-    file_path: string
-    doc_type: string | null
-    lane: string | null
-    tags: string[]
-    created_at: string
-    updated_at: string
-  }>> {
+  private async loadLexicalDocumentsFromFilesystem(): Promise<
+    Array<{
+      id: string
+      title: string
+      content: string
+      file_path: string
+      doc_type: string | null
+      lane: string | null
+      tags: string[]
+      created_at: string
+      updated_at: string
+    }>
+  > {
     try {
       const files = await readdir(this.baseDir)
       const mdFiles = files.filter(file => file.endsWith('.md') && file !== '_table.md')
-      const rows = await Promise.all(mdFiles.map(async file => {
-        const filePath = path.join(this.baseDir, file)
-        const content = await readFile(filePath, 'utf8')
-        const metadata = parseDocumentMetadata(filePath, content)
-        if (!metadata) return null
+      const rows = await Promise.all(
+        mdFiles.map(async file => {
+          const filePath = path.join(this.baseDir, file)
+          const content = await readFile(filePath, 'utf8')
+          const metadata = parseDocumentMetadata(filePath, content)
+          if (!metadata) return null
 
-        return {
-          id: metadata.id,
-          title: metadata.title,
-          content,
-          file_path: metadata.filePath,
-          doc_type: metadata.type ?? null,
-          lane: null,
-          tags: metadata.tags ?? [],
-          created_at: metadata.createdAt,
-          updated_at: metadata.updatedAt,
-        }
-      }))
+          return {
+            id: metadata.id,
+            title: metadata.title,
+            content,
+            file_path: metadata.filePath,
+            doc_type: metadata.type ?? null,
+            lane: null,
+            tags: metadata.tags ?? [],
+            created_at: metadata.createdAt,
+            updated_at: metadata.updatedAt,
+          }
+        })
+      )
 
       return rows.filter((row): row is NonNullable<typeof row> => row !== null)
     } catch {
@@ -617,7 +694,12 @@ export class MarkdownDocumentReader {
         const candidateLimit = this.isDeepDiscovery(input)
           ? Math.max(this.hybridCandidateLimit, 200)
           : this.hybridCandidateLimit
-        let candidateRows = this.fetchHybridCandidates(db, ftsExpression, activeLanes, candidateLimit)
+        let candidateRows = this.fetchHybridCandidates(
+          db,
+          ftsExpression,
+          activeLanes,
+          candidateLimit
+        )
 
         if (candidateRows.length === 0 && laneRoute?.fallbackLanes.length) {
           activeLanes = laneRoute.fallbackLanes
@@ -642,22 +724,28 @@ export class MarkdownDocumentReader {
 
         const getChunk = db.prepare('SELECT chunk_text FROM chunks WHERE chunk_id = ?')
         const getEmbedding = db.prepare(
-          'SELECT vector_json, dimensions FROM chunk_embeddings WHERE chunk_id = ?',
+          'SELECT vector_json, dimensions FROM chunk_embeddings WHERE chunk_id = ?'
         )
         const getDocument = db.prepare(
-          'SELECT id, title, file_path, created_at, updated_at, tags_json, doc_type, lane FROM documents WHERE id = ?',
+          'SELECT id, title, file_path, created_at, updated_at, tags_json, doc_type, lane FROM documents WHERE id = ?'
         )
 
-        const docScores = new Map<string, {
-          score: number
-          bestChunk: string
-          lexical: number
-          lane?: RetrievalLane
-        }>()
+        const docScores = new Map<
+          string,
+          {
+            score: number
+            bestChunk: string
+            lexical: number
+            lane?: RetrievalLane
+          }
+        >()
 
         for (const candidate of candidateRows) {
           if (Date.now() - startTime > this.hybridMaxMs) {
-            emitDiagnostic('warn', '[kb-hybrid] latency budget exceeded; falling back to lexical query path')
+            emitDiagnostic(
+              'warn',
+              '[kb-hybrid] latency budget exceeded; falling back to lexical query path'
+            )
             return { fallbackReason: 'latency-budget-exceeded' }
           }
 
@@ -669,7 +757,8 @@ export class MarkdownDocumentReader {
           const chunkText = chunkRow?.chunk_text ?? ''
           const lexicalScore = toLexicalScore(candidate.lexical_rank)
           const vectorScore = this.computeVectorScore(query, chunkText, embRow)
-          const baseCombined = this.hybridAlpha * lexicalScore + (1 - this.hybridAlpha) * vectorScore
+          const baseCombined =
+            this.hybridAlpha * lexicalScore + (1 - this.hybridAlpha) * vectorScore
           const hintBoost = hintBoosts.get(candidate.doc_id) ?? 0
           const laneBoost = laneFitnessBoost(candidate.lane, activeLanes ?? [])
           const combined = Math.min(1, baseCombined + hintBoost + laneBoost)
@@ -685,12 +774,14 @@ export class MarkdownDocumentReader {
           }
         }
 
-        const ranked = [...docScores.entries()]
-          .map(([docId, scoreInfo]) => ({
-            docId,
-            ...scoreInfo,
-          }))
-        const graphBoosts = await this.loadGraphBoosts(query, ranked.map(row => row.docId))
+        const ranked = [...docScores.entries()].map(([docId, scoreInfo]) => ({
+          docId,
+          ...scoreInfo,
+        }))
+        const graphBoosts = await this.loadGraphBoosts(
+          query,
+          ranked.map(row => row.docId)
+        )
         const graphBoosted = ranked
           .map(row => {
             const graphAffinity = graphBoosts.get(row.docId)
@@ -714,15 +805,15 @@ export class MarkdownDocumentReader {
 
           const doc = getDocument.get(row.docId) as
             | {
-              id: string
-              title: string
-              file_path: string
-              created_at: string
-              updated_at: string
-              tags_json?: string
-              doc_type?: QueryDocumentsInput['type']
-              lane?: RetrievalLane
-            }
+                id: string
+                title: string
+                file_path: string
+                created_at: string
+                updated_at: string
+                tags_json?: string
+                doc_type?: QueryDocumentsInput['type']
+                lane?: RetrievalLane
+              }
             | undefined
           if (!doc) continue
 
@@ -732,7 +823,9 @@ export class MarkdownDocumentReader {
 
           let content: string | undefined
           if (input.includeContent) {
-            const docRow = db.prepare('SELECT content FROM documents WHERE id = ?').get(doc.id) as { content?: string } | undefined
+            const docRow = db.prepare('SELECT content FROM documents WHERE id = ?').get(doc.id) as
+              | { content?: string }
+              | undefined
             content = docRow?.content ?? row.bestChunk
           }
 
@@ -765,14 +858,14 @@ export class MarkdownDocumentReader {
                 laneRoute,
                 activeLanes,
                 usedLaneFallback,
-                usedSessionLogLastResort,
+                usedSessionLogLastResort
               ),
               laneRouting: laneRoute
                 ? {
-                  lanes: activeLanes ?? laneRoute.lanes,
-                  reason: laneRoute.reason,
-                  usedFallback: usedLaneFallback,
-                }
+                    lanes: activeLanes ?? laneRoute.lanes,
+                    reason: laneRoute.reason,
+                    usedFallback: usedLaneFallback,
+                  }
                 : undefined,
             },
           },
@@ -791,7 +884,7 @@ export class MarkdownDocumentReader {
     db: Database.Database,
     ftsExpression: string,
     lanes?: RetrievalLane[],
-    candidateLimit?: number,
+    candidateLimit?: number
   ): Array<{ chunk_id: string; doc_id: string; lexical_rank: number; lane?: RetrievalLane }> {
     const limit = candidateLimit ?? this.hybridCandidateLimit
     if (!lanes?.length) {
@@ -803,11 +896,11 @@ export class MarkdownDocumentReader {
           LIMIT ?
         `)
         .all(ftsExpression, limit) as Array<{
-          chunk_id: string
-          doc_id: string
-          lexical_rank: number
-          lane?: RetrievalLane
-        }>
+        chunk_id: string
+        doc_id: string
+        lexical_rank: number
+        lane?: RetrievalLane
+      }>
     }
 
     const placeholders = lanes.map(() => '?').join(', ')
@@ -821,11 +914,11 @@ export class MarkdownDocumentReader {
         LIMIT ?
       `)
       .all(ftsExpression, ...lanes, limit) as Array<{
-        chunk_id: string
-        doc_id: string
-        lexical_rank: number
-        lane?: RetrievalLane
-      }>
+      chunk_id: string
+      doc_id: string
+      lexical_rank: number
+      lane?: RetrievalLane
+    }>
   }
 
   private resolveLaneRouting(input: QueryDocumentsInput): LaneRoutingDecision | undefined {
@@ -850,7 +943,7 @@ export class MarkdownDocumentReader {
     laneRoute: LaneRoutingDecision | undefined,
     activeLanes: RetrievalLane[] | undefined,
     usedLaneFallback: boolean,
-    usedSessionLogLastResort: boolean,
+    usedSessionLogLastResort: boolean
   ): string {
     if (!laneRoute) return base
 
@@ -865,7 +958,10 @@ export class MarkdownDocumentReader {
     return detail
   }
 
-  private ensureLaneRoutingMetadata(input: QueryDocumentsInput, response: QueryResponse): QueryResponse {
+  private ensureLaneRoutingMetadata(
+    input: QueryDocumentsInput,
+    response: QueryResponse
+  ): QueryResponse {
     if (response.retrieval.laneRouting) {
       return response
     }
@@ -891,7 +987,7 @@ export class MarkdownDocumentReader {
   private computeVectorScore(
     query: string,
     chunkText: string,
-    embRow: { vector_json?: string; dimensions?: number } | undefined,
+    embRow: { vector_json?: string; dimensions?: number } | undefined
   ): number {
     if (!chunkText) return 0
 
@@ -926,10 +1022,10 @@ export class MarkdownDocumentReader {
           LIMIT 25
         `)
         .all(fingerprint, this.rankingHintMinOccurrences) as Array<{
-          doc_id: string
-          hint_score: number
-          occurrences: number
-        }>
+        doc_id: string
+        hint_score: number
+        occurrences: number
+      }>
 
       const boosts = new Map<string, number>()
       for (const row of rows) {
@@ -944,7 +1040,7 @@ export class MarkdownDocumentReader {
 
   private async loadGraphBoosts(
     query: string,
-    docIds: string[],
+    docIds: string[]
   ): Promise<Map<string, GraphDocumentAffinity>> {
     if (!this.graphRankingEnabled || docIds.length === 0) return new Map()
 
@@ -979,12 +1075,10 @@ export class MarkdownDocumentReader {
     if (!missReason) return
 
     const stage = finalCheckpoint?.stage ?? 'lexical_recovery'
-    const topCandidates = response.results
-      .slice(0, 5)
-      .map((result, index) => ({
-        id: result.metadata.id,
-        score: Math.max(0.1, 1 - index * 0.1),
-      }))
+    const topCandidates = response.results.slice(0, 5).map((result, index) => ({
+      id: result.metadata.id,
+      score: Math.max(0.1, 1 - index * 0.1),
+    }))
 
     const now = dayjs().toISOString()
     const fingerprint = buildQueryFingerprint(input.query)
@@ -1011,7 +1105,7 @@ export class MarkdownDocumentReader {
         missReason,
         JSON.stringify(topCandidates),
         'reader',
-        now,
+        now
       )
 
       if (topCandidates.length === 0) return
@@ -1081,14 +1175,15 @@ export class MarkdownDocumentReader {
             checkpoint.method,
             checkpoint.detail ?? null,
             'reader',
-            now,
+            now
           )
         }
 
         const laneRouting = response.retrieval.laneRouting
         const finalCheckpoint = checkpoints.at(-1)
         if (laneRouting && finalCheckpoint && laneRouting.lanes.length > 0) {
-          database.prepare(`
+          database
+            .prepare(`
             INSERT INTO retrieval_lane_routing_events (
               query_fingerprint,
               primary_lane,
@@ -1102,18 +1197,19 @@ export class MarkdownDocumentReader {
               created_at
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            fingerprint,
-            laneRouting.lanes[0],
-            JSON.stringify(laneRouting.lanes),
-            laneRouting.reason,
-            laneRouting.usedFallback ? 1 : 0,
-            finalCheckpoint.status,
-            finalCheckpoint.nextAction,
-            finalCheckpoint.confidence,
-            'reader',
-            now,
-          )
+          `)
+            .run(
+              fingerprint,
+              laneRouting.lanes[0],
+              JSON.stringify(laneRouting.lanes),
+              laneRouting.reason,
+              laneRouting.usedFallback ? 1 : 0,
+              finalCheckpoint.status,
+              finalCheckpoint.nextAction,
+              finalCheckpoint.confidence,
+              'reader',
+              now
+            )
         }
       })
 
@@ -1129,7 +1225,7 @@ export class MarkdownDocumentReader {
 function evaluateDocumentMatch(
   input: QueryDocumentsInput,
   metadata: DocumentMetadata,
-  content: string,
+  content: string
 ): MatchEvaluation {
   if (!input.query && !input.tags?.length) {
     return { matched: true, score: 10 }
@@ -1137,7 +1233,7 @@ function evaluateDocumentMatch(
 
   if (input.tags?.length) {
     const hasAllTags = input.tags.every(tag =>
-      metadata.tags?.some(t => t.toLowerCase() === tag.toLowerCase()),
+      metadata.tags?.some(t => t.toLowerCase() === tag.toLowerCase())
     )
 
     return {
@@ -1182,9 +1278,7 @@ function buildKeywordQuery(query: string): string | undefined {
   const tokens = tokenize(query)
   if (tokens.length === 0) return undefined
 
-  const ranked = [...new Set(tokens)]
-    .sort((a, b) => b.length - a.length)
-    .slice(0, 6)
+  const ranked = [...new Set(tokens)].sort((a, b) => b.length - a.length).slice(0, 6)
 
   if (ranked.length === 0) return undefined
   return ranked.join(' ')
@@ -1196,17 +1290,14 @@ function appendRetrievalDetail(base: string | undefined, suffix: string): string
 }
 
 function buildQueryFingerprint(query: string): string {
-  const normalized = query
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim()
+  const normalized = query.toLowerCase().replace(/\s+/g, ' ').trim()
 
   return createHash('sha256').update(normalized).digest('hex')
 }
 
 function withCheckpoints(
   response: QueryResponse,
-  checkpoints: RetrievalCheckpointRecord[],
+  checkpoints: RetrievalCheckpointRecord[]
 ): QueryResponse {
   return {
     ...response,

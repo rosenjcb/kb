@@ -10,7 +10,7 @@
 
 import readline from 'node:readline'
 import type { KbConfig } from './kb-config'
-import { readKbConfig, writeKbConfig, isLLMConfigured, getKbConfigFile } from './kb-config'
+import { getKbConfigFile, isLLMConfigured, readKbConfig, writeKbConfig } from './kb-config'
 
 export type LLMProvider = 'anthropic' | 'openai' | 'gemini' | 'ollama'
 
@@ -59,19 +59,23 @@ function createReadlineQuestionIO(options: {
  * Run the interactive LLM setup wizard.
  * Returns the chosen provider and whether a key is now available.
  */
-export async function runLLMSetupWizard(options: {
-  configFile?: string
-  output?: (msg: string) => void
-  input?: NodeJS.ReadableStream
-  outputStream?: NodeJS.WritableStream
-  questionIO?: LLMQuestionIO
-} = {}): Promise<LLMWizardResult> {
+export async function runLLMSetupWizard(
+  options: {
+    configFile?: string
+    output?: (msg: string) => void
+    input?: NodeJS.ReadableStream
+    outputStream?: NodeJS.WritableStream
+    questionIO?: LLMQuestionIO
+  } = {}
+): Promise<LLMWizardResult> {
   const configFile = options.configFile ?? getKbConfigFile()
-  const print = options.output ?? ((msg: string) => process.stdout.write(msg + '\n'))
-  const questionIO = options.questionIO ?? createReadlineQuestionIO({
-    input: options.input,
-    outputStream: options.outputStream,
-  })
+  const print = options.output ?? ((msg: string) => process.stdout.write(`${msg}\n`))
+  const questionIO =
+    options.questionIO ??
+    createReadlineQuestionIO({
+      input: options.input,
+      outputStream: options.outputStream,
+    })
 
   try {
     print('')
@@ -82,17 +86,15 @@ export async function runLLMSetupWizard(options: {
     print('kb needs an LLM to do its work. Choose your provider:')
     print('')
     PROVIDERS.forEach((p, i) => {
-      const keyStatus = p.envVar
-        ? (process.env[p.envVar] ? '  ✓ key detected' : '')
-        : ''
+      const keyStatus = p.envVar ? (process.env[p.envVar] ? '  ✓ key detected' : '') : ''
       print(`  [${i + 1}] ${p.label}${keyStatus}`)
     })
     print('')
 
-    let chosenProvider: typeof PROVIDERS[number] | undefined
+    let chosenProvider: (typeof PROVIDERS)[number] | undefined
     while (!chosenProvider) {
       const raw = await questionIO.askQuestion('Enter number (1-4): ')
-      const n = parseInt(raw.trim(), 10)
+      const n = Number.parseInt(raw.trim(), 10)
       if (n >= 1 && n <= PROVIDERS.length) {
         chosenProvider = PROVIDERS[n - 1]
       } else {
@@ -116,11 +118,11 @@ export async function runLLMSetupWizard(options: {
       } else {
         print('')
         print(`You need to set ${envVar} in your shell environment.`)
-        print(`Add this to your ~/.zshrc or ~/.bashrc and restart your shell:`)
+        print('Add this to your ~/.zshrc or ~/.bashrc and restart your shell:')
         print('')
         print(`  export ${envVar}=<your-api-key>`)
         print('')
-        print(`Then restart kb. Your provider preference will be saved now.`)
+        print('Then restart kb. Your provider preference will be saved now.')
       }
     }
 
@@ -136,9 +138,10 @@ export async function runLLMSetupWizard(options: {
     print(`✓ Provider saved: ${chosenProvider.id}`)
     print('')
 
-    const configured = chosenProvider.id === 'ollama'
-      ? true
-      : Boolean(chosenProvider.envVar && process.env[chosenProvider.envVar])
+    const configured =
+      chosenProvider.id === 'ollama'
+        ? true
+        : Boolean(chosenProvider.envVar && process.env[chosenProvider.envVar])
 
     return { provider: chosenProvider.id, configured }
   } finally {
@@ -150,12 +153,14 @@ export async function runLLMSetupWizard(options: {
  * Non-interactive version: shows status of current LLM config without prompting.
  * Used by `kb config llm --show`.
  */
-export async function showLLMStatus(options: {
-  configFile?: string
-  output?: (msg: string) => void
-} = {}): Promise<void> {
+export async function showLLMStatus(
+  options: {
+    configFile?: string
+    output?: (msg: string) => void
+  } = {}
+): Promise<void> {
   const configFile = options.configFile ?? getKbConfigFile()
-  const print = options.output ?? ((msg: string) => process.stdout.write(msg + '\n'))
+  const print = options.output ?? ((msg: string) => process.stdout.write(`${msg}\n`))
   const config = await readKbConfig(configFile)
 
   print('')

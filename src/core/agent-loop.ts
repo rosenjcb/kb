@@ -3,10 +3,10 @@
  * Works with any LLM provider
  */
 
-import type { AgentEvent, Message, ToolDefinition, LLMProvider } from './types'
-import type { ToolExecutor } from './tool-registry'
-import type { RunCollector } from './telemetry'
 import dayjs from 'dayjs'
+import type { RunCollector } from './telemetry'
+import type { ToolExecutor } from './tool-registry'
+import type { AgentEvent, LLMProvider, Message, ToolDefinition } from './types'
 
 export interface AgentLoopConfig {
   maxTurns?: number
@@ -74,7 +74,12 @@ export async function* agentLoop(
         durationMs: turnDurationMs,
         inputTokens: response.usage.inputTokens,
         outputTokens: response.usage.outputTokens,
-        estimatedCostUsd: estimateCost(provider.name, provider.model, response.usage.inputTokens, response.usage.outputTokens),
+        estimatedCostUsd: estimateCost(
+          provider.name,
+          provider.model,
+          response.usage.inputTokens,
+          response.usage.outputTokens
+        ),
         provider: provider.name,
         model: provider.model,
       })
@@ -87,7 +92,12 @@ export async function* agentLoop(
     }
 
     // Execute tools and collect results
-    const toolResults: Array<{ toolUseId: string; toolName: string; result: unknown; isError: boolean }> = []
+    const toolResults: Array<{
+      toolUseId: string
+      toolName: string
+      result: unknown
+      isError: boolean
+    }> = []
 
     for (const toolUse of response.toolUses) {
       yield { type: 'tool_start', toolName: toolUse.name, toolUseId: toolUse.id }
