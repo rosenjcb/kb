@@ -26,7 +26,9 @@ export function WelcomeBanner() {
       {BANNER_LINES.map(line => (
         <Text key={line} color={BLUE} bold>
           {line}
-          {line === BANNER_LINES[2] ? <Text color={ORANGE}>{cursorOn ? '  [█]' : '  [ ]'}</Text> : null}
+          {line === BANNER_LINES[2] ? (
+            <Text color={ORANGE}>{cursorOn ? '  [█]' : '  [ ]'}</Text>
+          ) : null}
         </Text>
       ))}
       <Text color="gray">Knowledge Base TUI — type a command or `/help`</Text>

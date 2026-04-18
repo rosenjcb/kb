@@ -93,9 +93,7 @@ export interface GraphWriter {
   exportDot(): Promise<string>
   exportJson(): Promise<unknown>
   findPath(from: string, to: string): Promise<{ hops: number; nodes: string[] } | null>
-  getNeighbors(
-    entity: string
-  ): Promise<{
+  getNeighbors(entity: string): Promise<{
     entity: { name: string; type: string }
     outgoing: Array<{ rel: string; target: { name: string; type: string } }>
     incoming: Array<{ rel: string; source: { name: string; type: string } }>
