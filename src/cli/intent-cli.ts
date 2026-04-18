@@ -16,6 +16,7 @@ export interface ParsedIntentCommand {
 }
 
 const INTENT_COMMANDS = new Set(['submit', 'validate', 'dispute', 'query', 'explain'])
+const INTENT_LLM_MAX_OUTPUT_TOKENS = 4096
 
 export function isIntentCommand(command: string): boolean {
   return INTENT_COMMANDS.has(command)
@@ -241,7 +242,9 @@ export async function enrichReadDocumentsAnswerWithLLM(
 
     const userContent = [
       'You answer using only the provided KB evidence.',
-      'Return a concise, direct answer in 1-2 sentences.',
+      'Answer directly and clearly.',
+      'Use as much space as needed to fully answer the question when the evidence supports it.',
+      'For broad questions, a few solid paragraphs are acceptable.',
       'If evidence is insufficient, explicitly say so.',
       '',
       `Question: ${question}`,
@@ -255,7 +258,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
         { role: 'user', content: userContent },
       ],
       temperature: 0.1,
-      maxTokens: 600,
+      maxTokens: INTENT_LLM_MAX_OUTPUT_TOKENS,
     })
 
     let answer = completion.text.trim()

@@ -70,6 +70,8 @@ const HELP_TEXT = [
   'assistant>   /exit  Exit chat mode',
 ].join('\n')
 
+const CHAT_MAX_OUTPUT_TOKENS = 4096
+
 export function printChatHelp(): string {
   return [
     'kb chat',
@@ -88,7 +90,9 @@ export function printChatHelp(): string {
 
 const CHAT_SYSTEM_PROMPT = [
   'You are KB, a knowledge base assistant.',
-  'Answer the user\'s question directly and concisely (2-4 sentences).',
+  'Answer the user\'s question directly and clearly.',
+  'Default to a substantive answer, and use as much space as needed when the question benefits from depth.',
+  'For broad "why should I care?" or "what are the benefits?" questions, it is fine to answer in several rich paragraphs.',
   'Use the retrieved evidence provided in each message. Synthesize across multiple documents if needed.',
   'Do NOT repeat the question. Do NOT say "based on the evidence" or "the evidence shows".',
   'If the evidence is genuinely insufficient, say so in one sentence and suggest a follow-up query.',
@@ -193,7 +197,7 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
           messages: trimMessageHistory(turnMessages, maxHistoryTurns),
           systemPrompt: CHAT_SYSTEM_PROMPT,
           temperature: 0.15,
-          maxTokens: 512,
+          maxTokens: CHAT_MAX_OUTPUT_TOKENS,
         })
 
         let answer = completion.text.trim()
@@ -234,7 +238,7 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
             messages: trimMessageHistory(deepMessages, maxHistoryTurns),
             systemPrompt: CHAT_SYSTEM_PROMPT,
             temperature: 0.15,
-            maxTokens: 512,
+            maxTokens: CHAT_MAX_OUTPUT_TOKENS,
           })
           const deepAnswer = deepCompletion.text.trim()
           if (deepAnswer) answer = deepAnswer

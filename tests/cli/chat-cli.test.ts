@@ -137,6 +137,10 @@ describe('chat-cli session loop', () => {
       }),
     }))
     expect(provider.call).toHaveBeenCalledTimes(1)
+    expect(provider.call).toHaveBeenCalledWith(expect.objectContaining({
+      maxTokens: 4096,
+      systemPrompt: expect.stringContaining('several rich paragraphs'),
+    }))
     expect(io.outputs.join('\n')).toContain('assistant> The KB uses a hybrid path with lexical fallback.')
     expect(io.outputs.join('\n')).toContain('retrieval> hybrid (fts+vector-rerank)')
     expect(io.outputs.join('\n')).toContain('checkpoints> hybrid_primary:hit->return')

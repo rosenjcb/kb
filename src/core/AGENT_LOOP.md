@@ -137,7 +137,7 @@ Each turn runs a deterministic recovery stack — no agentLoop, no intent loop:
 ```
 read_documents (shallow)
   → if confidence < 0.45: recovery query (simplified tokens)
-  → LLM completion (temperature 0.15, maxTokens 320)
+  → LLM completion (temperature 0.15, maxTokens 4096)
   → if answer looks insufficient: deep discovery promotion (3× limit)
   → if still insufficient: focused evidence query (CLI-keyword rewrite)
   → if still insufficient: surface explicit message

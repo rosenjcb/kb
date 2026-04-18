@@ -183,6 +183,9 @@ describe('intent-cli parsing', () => {
 
     const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
     const data = enriched.data as { answer?: string }
+    expect(provider.call).toHaveBeenCalledWith(expect.objectContaining({
+      maxTokens: 4096,
+    }))
     expect(data.answer).toContain('Precedence is session base')
   })
 
@@ -235,6 +238,15 @@ describe('intent-cli parsing', () => {
 
     const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
     const data = enriched.data as { answer?: string }
+    expect(provider.call).toHaveBeenCalledWith(expect.objectContaining({
+      maxTokens: 4096,
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          content: expect.stringContaining('a few solid paragraphs are acceptable'),
+        }),
+      ]),
+    }))
     expect(data.answer).toContain('Use kb --help')
   })
 
