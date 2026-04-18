@@ -88,6 +88,16 @@ describe('slash command helpers', () => {
     expect(suggestions.some(s => s.command === '/init')).toBe(true)
   })
 
+  it('includes /skill in shell command list', () => {
+    const commands = getSlashCommands('shell')
+    expect(commands.some(c => c.command === '/skill')).toBe(true)
+  })
+
+  it('suggests /skill when typing /sk in shell mode', () => {
+    const suggestions = getSlashCommandSuggestions('/sk', 'shell')
+    expect(suggestions.some(s => s.command === '/skill')).toBe(true)
+  })
+
   it('returns no suggestions in init mode regardless of input', () => {
     // init mode has no slash commands — input bar is for answering questions
     expect(getSlashCommandSuggestions('/help', 'init')).toEqual([])

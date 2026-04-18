@@ -1,5 +1,6 @@
 import { chmod, copyFile, mkdir, readdir } from 'node:fs/promises'
 import path from 'node:path'
+import { existsSync } from 'node:fs'
 import { build } from 'esbuild'
 
 const projectRoot = process.cwd()
@@ -30,6 +31,18 @@ const promptsDest = path.dirname(outFile)
 for (const file of await readdir(promptsSrc)) {
   if (file.endsWith('.md')) {
     await copyFile(path.join(promptsSrc, file), path.join(promptsDest, file))
+  }
+}
+
+// Copy skill SKILL.md files so the bundled binary can resolve them at runtime.
+// skills/<name>/SKILL.md → dist/bin/<name>.skill.md
+const skillsRoot = path.join(projectRoot, 'skills')
+if (existsSync(skillsRoot)) {
+  for (const skillName of await readdir(skillsRoot)) {
+    const skillFile = path.join(skillsRoot, skillName, 'SKILL.md')
+    if (existsSync(skillFile)) {
+      await copyFile(skillFile, path.join(path.dirname(outFile), `${skillName}.skill.md`))
+    }
   }
 }
 

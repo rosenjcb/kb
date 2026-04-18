@@ -1,0 +1,85 @@
+import path from 'node:path'
+import { discoverJekyllRoot, syncDocsToJekyll } from '../core/publish/jekyll-sync'
+import { readDocumentsFromSqlite, resolvePublishBase } from './publish-cli'
+
+export interface JekyllPublishOptions {
+  base?: string
+  dir: string
+  apply: boolean
+  dryRun: boolean
+}
+
+export interface JekyllPublishResult {
+  status: 'accepted' | 'dry-run'
+  jekyllRoot: string
+  postsDir: string
+  /** When apply mode: `_data/kb_published_posts.yml` for Jekyll "Other Pages" links (omitted in dry-run). */
+  publishedPostsData?: string
+  baseName: string
+  baseDir: string
+  totalDocs: number
+  written: Array<{ id: string; title: string; filename: string }>
+  skipped: Array<{ id: string; title: string; reason: string }>
+  warnings: string[]
+}
+
+export function parseJekyllPublishOptions(args: string[], cwd: string): JekyllPublishOptions {
+  const hasApply = readFlag(args, '--apply')
+  const hasDryRun = readFlag(args, '--dry-run')
+  if (hasApply && hasDryRun) {
+    throw new Error('Use either --apply or --dry-run, not both')
+  }
+
+  return {
+    base: readOption(args, '--base'),
+    dir: readOption(args, '--dir') ?? cwd,
+    apply: hasApply,
+    dryRun: hasDryRun || !hasApply,
+  }
+}
+
+export async function runJekyllPublish(
+  options: JekyllPublishOptions,
+  cwd: string = process.cwd()
+): Promise<JekyllPublishResult> {
+  const baseResolution = await resolvePublishBase(options.base, cwd)
+  const sqliteDbPath = path.join(baseResolution.baseDir, '.kb-index.sqlite')
+  const docs = readDocumentsFromSqlite(sqliteDbPath)
+
+  const warnings: string[] = []
+  if (docs.length === 0) {
+    warnings.push('No documents found in SQLite database. Run `kb init` to populate.')
+  }
+
+  const jekyllRoot = await discoverJekyllRoot(path.resolve(options.dir))
+  const syncResult = await syncDocsToJekyll(docs, jekyllRoot, options.dryRun)
+
+  return {
+    status: options.dryRun ? 'dry-run' : 'accepted',
+    jekyllRoot: syncResult.jekyllRoot,
+    postsDir: syncResult.postsDir,
+    publishedPostsData: options.dryRun
+      ? undefined
+      : path.join(syncResult.jekyllRoot, '_data', 'kb_published_posts.yml'),
+    baseName: baseResolution.baseName,
+    baseDir: baseResolution.baseDir,
+    totalDocs: docs.length,
+    written: syncResult.written,
+    skipped: syncResult.skipped,
+    warnings,
+  }
+}
+
+function readOption(args: string[], key: string): string | undefined {
+  const idx = args.indexOf(key)
+  if (idx === -1) return undefined
+  const value = args[idx + 1]
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${key} requires a value`)
+  }
+  return value
+}
+
+function readFlag(args: string[], key: string): boolean {
+  return args.includes(key)
+}

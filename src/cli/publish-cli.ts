@@ -9,7 +9,6 @@ export type PublishStopPoint = string
 
 export interface PublishOptions {
   base?: string
-  provider: 'notion'
   phase: PublishPhase
   apply: boolean
   dryRun: boolean
@@ -21,7 +20,7 @@ export interface PublishOptions {
   progressSink?: (line: string) => void
 }
 
-interface SqliteDocumentRow {
+export interface SqliteDocumentRow {
   id: string
   title: string
   content: string
@@ -35,7 +34,6 @@ interface SqliteDocumentRow {
 export interface PublishResult {
   status: 'accepted' | 'dry-run'
   apply: boolean
-  provider: 'notion'
   baseName: string
   baseDir: string
   totalDocs: number
@@ -82,11 +80,6 @@ export function parsePublishCommand(args: string[]): PublishOptions {
     throw new Error('Use either --apply or --dry-run, not both')
   }
 
-  const provider = readOption(args, '--provider') ?? 'notion'
-  if (provider !== 'notion') {
-    throw new Error('Only --provider notion is supported in v1')
-  }
-
   const phase = (readOption(args, '--phase') ?? 'all') as PublishPhase
   if (!['all', 'import', 'restructure'].includes(phase)) {
     throw new Error('Invalid --phase. Use all|import|restructure')
@@ -96,7 +89,6 @@ export function parsePublishCommand(args: string[]): PublishOptions {
 
   return {
     base: readOption(args, '--base'),
-    provider: 'notion',
     phase,
     apply: hasApply,
     dryRun: hasDryRun || !hasApply,
@@ -155,7 +147,7 @@ export async function runPublishCommand(
     return {
       status: 'dry-run',
       apply: false,
-      provider: 'notion',
+
       baseName: baseResolution.baseName,
       baseDir: baseResolution.baseDir,
       totalDocs: docs.length,
@@ -208,7 +200,6 @@ export async function runPublishCommand(
   return {
     status: 'accepted',
     apply: true,
-    provider: 'notion',
     baseName: baseResolution.baseName,
     baseDir: baseResolution.baseDir,
     totalDocs: docs.length,
@@ -219,7 +210,7 @@ export async function runPublishCommand(
 
 // ─── SQLite read ────────────────────────────────────────────────────────────
 
-function readDocumentsFromSqlite(dbPath: string): SqliteDocumentRow[] {
+export function readDocumentsFromSqlite(dbPath: string): SqliteDocumentRow[] {
   let db: Database.Database | undefined
   try {
     db = new Database(dbPath, { readonly: true })
@@ -294,7 +285,7 @@ async function notionCreatePage(input: {
 
 // ─── Config & resolution helpers ─────────────────────────────────────────────
 
-async function resolvePublishBase(
+export async function resolvePublishBase(
   base: string | undefined,
   cwd: string
 ): Promise<{ baseName: string; baseDir: string }> {

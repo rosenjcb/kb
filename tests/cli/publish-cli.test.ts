@@ -45,11 +45,10 @@ afterEach(() => {
 })
 
 describe('publish-cli parser', () => {
-  it('Given no apply flag, then defaults to dry-run notion all phase', () => {
+  it('Given no apply flag, then defaults to dry-run all phase', () => {
     const parsed = parsePublishCommand(['--base', 'dogfood'])
 
     expect(parsed.base).toBe('dogfood')
-    expect(parsed.provider).toBe('notion')
     expect(parsed.phase).toBe('all')
     expect(parsed.dryRun).toBe(true)
     expect(parsed.apply).toBe(false)
@@ -61,12 +60,6 @@ describe('publish-cli parser', () => {
     expect(parsed.phase).toBe('import')
     expect(parsed.apply).toBe(true)
     expect(parsed.dryRun).toBe(false)
-  })
-
-  it('Given unsupported provider, then throws explicit error', () => {
-    expect(() => parsePublishCommand(['--provider', 'other'])).toThrow(
-      'Only --provider notion is supported in v1'
-    )
   })
 
   it('Given checkpoint and stop flags, then parses resume options', () => {

@@ -57,6 +57,12 @@ import {
 import type { KbConfig } from './kb-config'
 import { printLogsHelp, runLogsCommand } from './logs-cli'
 import { parsePublishCommand, runPublishCommand } from './publish-cli'
+import { parseJekyllPublishOptions, runJekyllPublish } from './publish-jekyll'
+import {
+  formatSkillInstallReport,
+  installSkillIntoProject,
+  installSkillsGlobally,
+} from './skill-installer'
 import {
   ViewCommandError,
   printListHelp,
@@ -102,6 +108,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  graph       Inspect the knowledge graph',
     '  logs        Browse and compare run reports',
     '  publish     Publish KB docs',
+    '  skill       Manage agent skills',
     '  chat        Start an interactive KB chat session',
     '  invalidate  Remove or replace stale KB facts',
     '',
@@ -362,14 +369,26 @@ export async function runMainWithOutput(
   }
 
   if (firstArg === 'publish') {
-    try {
-      const parsed = parsePublishCommand(args.slice(1))
-      const result = await runPublishCommand({
-        ...parsed,
-        progressSink: line => out.log(line.trimEnd()),
-      })
-      out.log(JSON.stringify(result, null, 2))
+    const provider = args[1]
+    if (!provider || provider.startsWith('--')) {
+      out.error('Usage: kb publish <notion|jekyll> [options]')
       return
+    }
+    try {
+      if (provider === 'notion') {
+        const parsed = parsePublishCommand(args.slice(2))
+        const result = await runPublishCommand({
+          ...parsed,
+          progressSink: line => out.log(line.trimEnd()),
+        })
+        out.log(JSON.stringify(result, null, 2))
+      } else if (provider === 'jekyll') {
+        const parsed = parseJekyllPublishOptions(args.slice(2), process.cwd())
+        const result = await runJekyllPublish(parsed, process.cwd())
+        out.log(JSON.stringify(result, null, 2))
+      } else {
+        out.error(`Unknown provider "${provider}". Usage: kb publish <notion|jekyll> [options]`)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       out.error(`❌ ${message}`)
@@ -486,6 +505,31 @@ export async function runMainWithOutput(
         out.error('')
         out.error(printGraphHelp(mode))
       }
+    }
+    return
+  }
+
+  if (firstArg === 'skill') {
+    const subcommand = args[1]
+    if (subcommand === 'install') {
+      try {
+        const results = await installSkillIntoProject(process.cwd())
+        const report = formatSkillInstallReport(results)
+        if (report) out.log(report)
+        else out.log('No changes made.')
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        out.error(`❌ ${message}`)
+      }
+    } else {
+      out.log(
+        [
+          'Usage: kb skill <subcommand>',
+          '',
+          'Subcommands:',
+          '  install   Inject a KB skill reference into CLAUDE.md or AGENTS.md in the current directory',
+        ].join('\n')
+      )
     }
     return
   }
@@ -645,6 +689,7 @@ export async function runMainWithOutput(
 
 async function main() {
   await migrateLegacyKbSessionJson()
+  installSkillsGlobally().catch(() => {}) // fire and forget — never block startup
   let kbConfig = await ensureDefaultConfig()
   const inferred = await persistInferredLLMProvider({ config: kbConfig })
   kbConfig = inferred.config

@@ -1,0 +1,175 @@
+---
+layout: default
+title: ci-eval-20260418-106-compare — AGENTS.md
+date: '2026-04-18 09:17:09'
+kb_id: ci-eval-20260418-106-compare-agents-md
+tags:
+  - source-excerpt
+  - agents-md
+  - ci-eval-20260418-106-compare
+categories:
+  - reference
+---
+
+# AGENTS.md
+
+Repository excerpt captured during init (split from a single synthesis document).
+
+# AGENTS
+
+Repository-level operating rules for coding agents in this workspace.
+
+## Always-On Dogfood Requirement
+
+For all meaningful development work, agents must document decisions and outcomes in the KB using the CLI.
+
+This is mandatory and does not depend on skill invocation.
+
+## Required Agent Workflow
+
+1. Ensure fresh CLI access before significant work:
+   - npm run refresh:global
+   - npm run which:kb
+2. Use KB docs during execution, not only at the end.
+3. Keep test data isolated from persistent docs:
+   - Persistent work: use `kb default dogfood` (or pass `--base dogfood` explicitly)
+   - Disposable automation: use explicit `--base ci-*` or `--base test-*`
+4. Treat persistence as part of completion:
+   - git add sessions/
+   - git commit -m "kb: checkpoint knowledge base"
+   - git push
+
+## Dogfood Interaction Mode (Workspace Default)
+
+For this workspace, dogfood usage defaults to intent-first behavior.
+
+1. Default mode for KB dogfood operations:
+   - Use intent commands (`submit`, `validate`, `dispute`, `query`, `explain`) instead of freeform prompts.
+2. Update-first policy:
+   - Query for related docs first.
+   - If a matching doc exists, append/update that doc before creating a new document.
+3. Freeform exceptions:
+   - Use freeform only when user explicitly requests freeform, or when intent commands cannot express the requested operation.
+4. Internal tool boundary remains in effect:
+   - Do not directly invoke internal `*_document` tool names from consumer-facing workflows.
+
+Recommended dogfood sequence:
+1. `kb query "<topic>" --base dogfood --limit 5 --output json`
+2. `kb submit "<new fact or checkpoint>" --base dogfood --target <existing-doc-id>`
+3. If no suitable target exists, create a new record via `submit` without `--target`.
+
+## Open-Question Gate (Mandatory)
+
+When a ticket implementation plan contains any unresolved/open question, the agent must explicitly ask the user for a decision before closing the ticket.
+
+Allowed outcomes before closure:
+
+1. User provides a decision and the ticket is updated accordingly.
+2. User explicitly approves deferral with a time-box and follow-up ticket reference.
+
+If neither happened, do not mark the ticket closed.
+
+When practical, ask unresolved decisions as multiple-choice prompts:
+
+1. Present 2-5 concrete options.
+2. Mark one recommended default.
+3. Allow user freeform override.
+
+This is preferred for speed, consistency, and easier agent handoff.
+
+## E2E Validation Requirement
+
+After implementing fundamental changes to the `kb` CLI (new commands, new flags, core loop changes, telemetry, storage changes), always run an end-to-end validation using `kb init` before reporting work complete.
+
+**Default e2e pattern:**
+```bash
+mkdir -p /tmp/kb-e2e-test && echo "# Test" > /tmp/kb-e2e-test/README.md
+cd /tmp/kb-e2e-test && kb init --base ci-e2e-test --non-interactive --debug
+```
+
+Use a `--base ci-*` namespace so the test data is disposable and does not pollute dogfood.
+
+For higher-risk changes (storage schema, provider switching, auth), also run interactively (`kb init` without `--non-interactive`) to exercise the full Q&A path.
+
+For lower-risk changes (output formatting, flag parsing, help text), a targeted `kb query "..."` or `kb submit "..."` smoke test is sufficient.
+
+## CLI Fallback
+
+If global kb is unavailable in the environment:
+
+- npm run build:cli
+- node dist/bin/kb.js query "What tools are available?"
+
+## Storage Intent
+
+- Dogfood docs are expected to be durable and Git-tracked.
+- CI/test namespaces are disposable and should not pollute persistent KB context.
+
+## Enforcement Intent
+
+If a task is completed without KB documentation for significant architectural, behavioral, or process changes, the task should be considered incomplete until KB docs are updated.
+
+## Phase Clarity for SPIKE Tickets (Mandatory)
+
+SPIKE tickets often span multiple phases: **Plan → Code → Validation**. Enforce clarity:
+
+1. **SPIKE (Planning only)** → Ends with Implementation Plan + decision checkpoints. Acceptable for PR if user approves.
+2. **SPIKE (Plan + Code)** → Implementation Plan + working code + tests. More complete, ready to merge.
+
+**Requirement**: Implementation Plan MUST explicitly state which phase is "In Scope" and which is "Deferred":
+
+```markdown
+#### Scope of This Work (Phase Clarity)
+- ✅ Phase 1 (Planning): Complete in this ticket/PR
+  - Specialized tools design (Option B)
+  - Tool conventions codified
+  - User decisions finalized
+  
+- ⏳ Phase 2 (Implementation): Deferred to ticket 048, 049, etc.
+  - Implement write_document, append_to_document, etc.
+  - Tests + validation
+  - **Blocking tickets**: 048 (write_document), 049 (append_to_document), etc.
+```
+
+**Enforcement**: If Implementation Plan says code is deferred, create explicit follow-up tickets **before** marking SPIKE closed. Link them in Integration Points.
+
+**User override**: User can explicitly approve "planning-only" SPIKE closure if they accept deferred work.
+
+## Deprecation and Cleanup Policy
+
+When design decisions change or scenarios become obsolete:
+
+1. **Mark clearly**: Use `DEPRECATED` label in section headers or filename prefix.
+2. **Provide reason**: Always explain *why* something was deprecated (e.g., "Chosen Option B instead; see ticket 047 for rationale").
+3. **Archive strategically**:
+   - Small deprecated sections → Keep in original file with `## DEPRECATED` header
+   - Large deprecated scenarios → Move to companion `{FILENAME}-DEPRECATED.md` file
+   - Entire deprecated tickets → Mark as archived in _index.md with deprecation note
+4. **Link forward**: Document what replaced the deprecated approach (new tool, pattern, decision).
+5. **Preserve for learning**: Deprecated docs help future agents understand "why not X" and provide context for architectural trade-offs.
+
+**Example:**
+
+```markdown
+## DEPRECATED: Scenario D (Option A Design)
+
+This scenario was designed for Option A (unified write_document with operationMode).
+It was deprecated in favor of Option B (specialized tools) because [reason].
+
+See [047-DEPRECATED_SCENARIOS.md](047-DEPRECATED_SCENARIOS.md) for archived details.
+New implementation uses [merge_documents](src/tools/MergeDocumentsTool.ts) instead.
+```
+
+**When to deprecate:**
+- Design decisions are reversed or overridden (user approval, new learning)
+- Code patterns are replaced with better alternatives
+- Specification sections become obsolete due to refactoring
+- Tools or approaches are superseded by new tools
+
+Treat deprecation as part of code quality: stale guidance is worse than no guidance.
+
+## Test Conventions
+
+- **Use `dayjs` for all date/time in tests**, never `new Date()`. `dayjs()` is timezone-consistent with the production code. `new Date().toISOString()` returns UTC which can differ from local time and cause flaky file-name assertions (e.g. `YYYY-MM-DD.jsonl` filenames).
+- Import `dayjs` from the `dayjs` package (already a project dependency). Use `dayjs().format('YYYY-MM-DD')` instead of `new Date().toISOString().slice(0, 10)`.
+

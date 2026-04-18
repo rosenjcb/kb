@@ -42,6 +42,23 @@ Current repo guidance:
 - Subcommands are already one-shot by default; adding `--non-interactive` to them is redundant.
 - Mode flags should be reduced, not multiplied.
 
+## Mutation Safety Guidance
+
+For commands that can mutate durable KB state or external systems, prefer a consistent safety contract:
+
+- Default to a non-mutating mode unless the user explicitly opts into writes.
+- Use `--apply` as the shared opt-in flag for real writes.
+- Use `--dry-run` for non-mutating execution when the command can simulate full results.
+- Use `preview` language only when the command is specifically showing a human-oriented diff or reconciliation view rather than a full dry-run execution.
+- If a command supports both `--apply` and `--dry-run`, they should be mutually exclusive.
+- Help text and success output should make the default clear so users are not surprised when a command previews instead of writing.
+
+Current repo direction:
+
+- `kb publish ...` should remain dry-run by default and only write on `--apply`.
+- Commands like `kb invalidate` may still expose preview-specific UX, but should align around the same `--apply` commit step.
+- Avoid inventing command-specific synonyms for "really do it" when `--apply` already fits.
+
 ## Validation Checklist
 
 For any new or changed user-facing command, verify the relevant subset of:

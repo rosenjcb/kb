@@ -92,8 +92,32 @@ kb validate "the queue is eventually consistent"
 
 ## Next Steps
 
-- [CLI Reference](cli-reference) — full command reference
-- [Knowledge Graph](knowledge-graph) — entity/relationship extraction and traversal
-- [Interactive Shell (TUI)](tui) — the `kb` interactive shell
-- [Architecture](architecture) — how KB works internally
-- [Agent Integration](agent-integration) — use KB inside Cursor, Claude Code, or any AI agent
+Handbook pages (from `_data/kb_handbook_pages.yml` — checked in for now; later `kb publish jekyll` may overwrite this list). Links use each page’s real Jekyll `url`.
+
+<ul>
+  {% for entry in site.data.kb_handbook_pages.pages %}
+  {% assign pg = site.pages | where: "name", entry.name | first %}
+  {% if pg %}
+  <li><a href="{{ pg.url | relative_url }}">{{ entry.title }}</a> — {{ entry.description }}</li>
+  {% endif %}
+  {% endfor %}
+</ul>
+
+## Other Pages
+
+KB documents synced into `_posts/` by `kb publish jekyll` get stable URLs (`/:year/:month/:day/:slug.html` under `baseurl`). Links below are regenerated into `_data/kb_published_posts.yml` on each publish so you do not have to guess paths from titles (which may contain spaces or punctuation that break naive links).
+
+{% if site.data.kb_published_posts %}
+{% assign kb_count = site.data.kb_published_posts.posts | size %}
+{% else %}
+{% assign kb_count = 0 %}
+{% endif %}
+{% if kb_count > 0 %}
+<ul>
+  {% for p in site.data.kb_published_posts.posts %}
+  <li><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p><em>No published KB posts yet. Run <code>kb publish jekyll</code> from the repo root (or your Jekyll root) to populate this list.</em></p>
+{% endif %}
