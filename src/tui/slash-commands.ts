@@ -17,6 +17,7 @@ const SHELL_COMMANDS: SlashCommand[] = [
   { command: '/docs', description: 'list or view knowledge base documents' },
   { command: '/graph', description: 'inspect the graph store' },
   { command: '/publish', description: 'publish docs to the external sink' },
+  { command: '/skill', description: 'manage agent skills' },
   { command: '/config', description: 'inspect or update config values' },
   { command: '/help', description: 'show kb CLI and TUI help' },
   { command: '/clear', description: 'clear the visible session history' },

@@ -84,6 +84,6 @@ Run from the **project working directory** unless you pass **`--base`** explicit
 - Do not pass secrets into `kb submit` / `kb query` strings.
 - **`kb invalidate --apply`** mutates stored knowledge—use **`--preview`** when the user should confirm.
 
-## Relationship to this repository
+## Installation
 
-This file ships as a **template** under `examples/agent-skills/kb-dev-workflow/SKILL.md`. For Cursor, copy the folder into **`.cursor/skills/kb-dev-workflow/`** in the target repo (same leaf name `SKILL.md`). Other agents: paste the body or map it to their rules/skills format until an automated installer exists.
+This skill lives at `skills/kb-dev-workflow/SKILL.md` and is auto-installed to global agent paths (Claude, Cursor, Codex, GitHub) each time `kb` runs. Run `kb skill install` to inject a short reference into the current project's `AGENTS.md` or `CLAUDE.md`.
