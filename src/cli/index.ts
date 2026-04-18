@@ -70,6 +70,24 @@ import {
   runListCommand,
   runViewCommand,
 } from './view-cli'
+import {
+  DocsMergeError,
+  parseDocsMergeCommand,
+  printDocsMergeHelp,
+  runDocsMerge,
+} from './docs-merge-cli'
+import {
+  DocsRenameError,
+  parseDocsRenameCommand,
+  printDocsRenameHelp,
+  runDocsRename,
+} from './docs-rename-cli'
+import {
+  DocsDeleteError,
+  parseDocsDeleteCommand,
+  printDocsDeleteHelp,
+  runDocsDelete,
+} from './docs-delete-cli'
 
 // ---------------------------------------------------------------------------
 // Output abstraction — lets the TUI capture output without monkey-patching
@@ -101,16 +119,15 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('<intent-command>', mode)} "<input>" [options]`,
     '',
     'Core commands:',
-    '  docs        Browse KB documents',
     '  use         Switch the active base or save a default',
     '  config      Inspect or update persistent config',
     '  init        Build a KB from project docs',
     '  graph       Inspect the knowledge graph',
-    '  logs        Browse and compare run reports',
-    '  publish     Publish KB docs',
-    '  skill       Manage agent skills',
+    '  docs        Browse KB documents',
     '  chat        Start an interactive KB chat session',
-    '  invalidate  Remove or replace stale KB facts',
+    '  publish     Publish KB docs',
+    '  logs        Browse and compare run reports',
+    '  skill       Manage agent skills',
     '',
     'Intent commands:',
     '  query       Search the knowledge base',
@@ -118,6 +135,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  validate    Check whether a fact is supported',
     '  dispute     Record counter-evidence for a fact',
     '  explain     Explain a fact or change id',
+    '  invalidate  Remove or replace stale KB facts',
     '',
     cmdHelpHint(mode),
     '',
@@ -153,10 +171,19 @@ function printDocsHelp(mode: CmdMode = 'cli'): string {
     'Usage:',
     `  ${cmd('docs list', mode)} [options]`,
     `  ${cmd('docs view <document-id>', mode)} [options]`,
+    `  ${cmd('docs merge <targetDocId> <sourceDocId> [...]', mode)} [options]`,
+    `  ${cmd('docs rename <documentId> "<new title>"', mode)} [options]`,
+    `  ${cmd('docs delete <documentId>', mode)} [options]`,
     '',
     printListHelp(mode),
     '',
     printViewHelp(mode),
+    '',
+    printDocsMergeHelp(mode),
+    '',
+    printDocsRenameHelp(mode),
+    '',
+    printDocsDeleteHelp(mode),
   ].join('\n')
 }
 
@@ -429,6 +456,68 @@ export async function runMainWithOutput(
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         const exitCode = error instanceof ViewCommandError ? error.exitCode : 1
+        if (exitCode === 0) {
+          out.log(message)
+          return
+        }
+        out.error(`❌ ${message}`)
+      }
+      return
+    }
+
+    if (docsAction === 'merge') {
+      try {
+        const parsed = parseDocsMergeCommand(args.slice(2))
+        const mergeBaseDir = parsed.base
+          ? await ensureOperationalBaseDir(parsed.base)
+          : (await resolveEffectiveBaseDir()).baseDir
+        const mergeLlmProvider = createLLMProviderFromConfig(config)
+        if (!mergeLlmProvider) {
+          out.error(formatPrerequisiteError(CLI_ERROR_NO_LLM_PROVIDER))
+          return
+        }
+        await runDocsMerge(parsed, mergeBaseDir, mergeLlmProvider, out)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        const exitCode = error instanceof DocsMergeError ? error.exitCode : 1
+        if (exitCode === 0) {
+          out.log(message)
+          return
+        }
+        out.error(`❌ ${message}`)
+      }
+      return
+    }
+
+    if (docsAction === 'delete') {
+      try {
+        const parsed = parseDocsDeleteCommand(args.slice(2))
+        const deleteBaseDir = parsed.base
+          ? await ensureOperationalBaseDir(parsed.base)
+          : (await resolveEffectiveBaseDir()).baseDir
+        await runDocsDelete(parsed, deleteBaseDir, out)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        const exitCode = error instanceof DocsDeleteError ? error.exitCode : 1
+        if (exitCode === 0) {
+          out.log(message)
+          return
+        }
+        out.error(`❌ ${message}`)
+      }
+      return
+    }
+
+    if (docsAction === 'rename') {
+      try {
+        const parsed = parseDocsRenameCommand(args.slice(2))
+        const renameBaseDir = parsed.base
+          ? await ensureOperationalBaseDir(parsed.base)
+          : (await resolveEffectiveBaseDir()).baseDir
+        await runDocsRename(parsed, renameBaseDir, out)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        const exitCode = error instanceof DocsRenameError ? error.exitCode : 1
         if (exitCode === 0) {
           out.log(message)
           return

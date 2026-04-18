@@ -1474,7 +1474,7 @@ function expandSingleDocIntoSourceShards(
     const clipped = body.slice(0, INIT_SOURCE_SHARD_MAX_CHARS)
     const tail = body.length > INIT_SOURCE_SHARD_MAX_CHARS ? '\n\n…(truncated during init split)…' : ''
     shards.push({
-      title: `${baseName} — ${safeName}`,
+      title: safeName,
       type: 'reference',
       tags: ['source-excerpt', slugify(safeName), baseName],
       content: `# ${safeName}\n\nRepository excerpt captured during init (split from a single synthesis document).\n\n${clipped}${tail}\n`,
