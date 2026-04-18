@@ -3,6 +3,7 @@ import path from 'node:path'
 import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
 import { readKbConfig, writeKbConfig, type KbConfig } from './kb-config'
 import { CLI_ERROR_NO_KB_BASE } from './cli-prerequisites'
+import { cmd, type CmdMode } from './cmd-ref'
 
 export interface BaseSelectionConfig {
   activeBase?: string
@@ -175,25 +176,26 @@ export async function resolveEffectiveBaseDir(
 }
 
 /**
- * Format the output for `kb use <base>`.
+ * Format the output after `use <base>` (CLI: `kb use`, TUI: `/use`).
  */
-export function formatUseCommandHelp(base: string, resolvedPath: string): string {
+export function formatUseCommandHelp(base: string, resolvedPath: string, mode: CmdMode = 'cli'): string {
   return [
     `Using base: ${base}`,
     `Resolved path: ${resolvedPath}`,
     '',
     'Switched the active base for this session.',
-    'Use `kb use --default <base>` to save the preferred base for future runs.',
+    `Use \`${cmd('use --default <base>', mode)}\` to save the preferred base for future runs.`,
   ].join('\n')
 }
 
-export function formatDefaultCommandHelp(base: string, resolvedPath: string): string {
+/** Format the output after `use --default` / `default` (CLI vs TUI via `mode`). */
+export function formatDefaultCommandHelp(base: string, resolvedPath: string, mode: CmdMode = 'cli'): string {
   return [
     `Default base: ${base}`,
     `Resolved path: ${resolvedPath}`,
     '',
     'Saved as the preferred base for future runs.',
-    'Use `kb use <base>` when you want to switch bases temporarily.',
+    `Use \`${cmd('use <base>', mode)}\` when you want to switch bases temporarily.`,
   ].join('\n')
 }
 

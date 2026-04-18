@@ -150,11 +150,23 @@ describe('base-selection', () => {
     const text = formatUseCommandHelp('catalog', path.join(getKbHomeDir(), 'sessions', 'catalog'))
     expect(text).toContain('Using base: catalog')
     expect(text).toContain('Switched the active base for this session')
+    expect(text).toContain('`kb use --default <base>`')
   })
 
   it('formatDefaultCommandHelp shows persistent default messaging', () => {
     const text = formatDefaultCommandHelp('catalog', path.join(getKbHomeDir(), 'sessions', 'catalog'))
     expect(text).toContain('Default base: catalog')
     expect(text).toContain('preferred base')
+    expect(text).toContain('`kb use <base>`')
+  })
+
+  it('formatUseCommandHelp uses slash hints in TUI mode', () => {
+    const text = formatUseCommandHelp('catalog', path.join(getKbHomeDir(), 'sessions', 'catalog'), 'tui')
+    expect(text).toContain('`/use --default <base>`')
+  })
+
+  it('formatDefaultCommandHelp uses slash hints in TUI mode', () => {
+    const text = formatDefaultCommandHelp('catalog', path.join(getKbHomeDir(), 'sessions', 'catalog'), 'tui')
+    expect(text).toContain('`/use <base>`')
   })
 })

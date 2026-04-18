@@ -257,13 +257,13 @@ export async function runMainWithOutput(
     if (makeDefault) {
       const saved = await writeDefaultBase(base)
       const resolved = await ensureOperationalBaseDir(saved.selectedBase ?? base)
-      out.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved))
+      out.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved, mode))
       return
     }
 
     await writeSessionBase(base)
     const resolved = await ensureOperationalBaseDir(base)
-    out.log(formatUseCommandHelp(base, resolved))
+    out.log(formatUseCommandHelp(base, resolved, mode))
     return
   }
 
@@ -288,7 +288,7 @@ export async function runMainWithOutput(
 
     const saved = await writeDefaultBase(base)
     const resolved = await ensureOperationalBaseDir(saved.selectedBase ?? base)
-    out.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved))
+    out.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved, mode))
     return
   }
 
