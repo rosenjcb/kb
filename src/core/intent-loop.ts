@@ -242,7 +242,7 @@ async function applyLLMValidationReasoning(
         },
       ],
       temperature: 0.0,
-      maxTokens: 120,
+      maxTokens: 512,
     })
 
     const text = completion.text.trim()

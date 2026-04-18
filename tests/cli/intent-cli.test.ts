@@ -1,13 +1,26 @@
-import { describe, expect, it, vi } from 'vitest'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ToolExecutor } from '../../src/core/tool-registry'
 import type { LLMProvider } from '../../src/core/types'
 import {
+  augmentIntentResultWithWorkspaceFallback,
   enrichReadDocumentsAnswerWithLLM,
   formatIntentResult,
   isIntentCommand,
   parseIntentCommand,
+  rewriteIntentInputWithSessionContext,
   executeIntentCommand,
 } from '../../src/cli/intent-cli'
+
+const tempDirs: string[] = []
+
+async function createTempDir(): Promise<string> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-intent-'))
+  tempDirs.push(dir)
+  return dir
+}
 
 describe('intent-cli parsing', () => {
   it('Given submit command, then parses submit_fact envelope', () => {
@@ -183,7 +196,87 @@ describe('intent-cli parsing', () => {
 
     const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
     const data = enriched.data as { answer?: string }
+    expect(provider.call).toHaveBeenCalledWith(expect.objectContaining({
+      maxTokens: 4096,
+    }))
     expect(data.answer).toContain('Precedence is session base')
+  })
+
+  it('Given query session context and a follow-up query, then rewriteIntentInputWithSessionContext rewrites retrieval input but preserves the original question', async () => {
+    const sessionDir = await createTempDir()
+    await writeFile(
+      path.join(sessionDir, 'query-session.json'),
+      JSON.stringify({
+        turns: [
+          {
+            question: 'What is TUI and how do we implement it?',
+            answer: 'TUI is the terminal UI layer.',
+            timestamp: Date.now(),
+          },
+        ],
+        updatedAt: Date.now(),
+      }),
+      'utf8',
+    )
+
+    const parsed = parseIntentCommand(['query', 'What about the implementation files?'])
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      model: 'test-model',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'TUI implementation files',
+        stopReason: 'end_turn',
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
+    const rewritten = await rewriteIntentInputWithSessionContext(parsed, provider, sessionDir)
+    expect(rewritten.envelope.payload.query).toBe('TUI implementation files')
+    expect(rewritten.envelope.payload.originalQuery).toBe('What about the implementation files?')
+  })
+
+  it('Given a broad project query with weak results, then augmentIntentResultWithWorkspaceFallback adds workspace fallback evidence like chat does', async () => {
+    const workspaceDir = await createTempDir()
+    await writeFile(
+      path.join(workspaceDir, 'README.md'),
+      '# KB Agent Harness\n\nThis project is a local-first knowledge system for AI workflows.\n',
+      'utf8',
+    )
+
+    const parsed = parseIntentCommand(['query', 'What is this project for?'])
+    const result = {
+      status: 'accepted' as const,
+      recommendedAction: 'read_documents',
+      data: {
+        retrieval: {
+          method: 'hybrid',
+          detail: 'fts+vector-rerank',
+          checkpoints: [
+            {
+              stage: 'hybrid_primary',
+              status: 'hit',
+              nextAction: 'return',
+              confidence: 0.55,
+            },
+          ],
+        },
+        results: [
+          {
+            metadata: { id: 'session-log-2026-04-12', title: 'session log' },
+            content: 'Low-signal session note.',
+          },
+        ],
+      },
+    }
+
+    const augmented = await augmentIntentResultWithWorkspaceFallback(parsed, result, workspaceDir)
+    const data = augmented.data as { results?: Array<{ metadata?: { id?: string } }>; retrieval?: { detail?: string } }
+
+    expect(data.retrieval?.detail).toContain('workspace-fallback')
+    expect(data.results?.some(item => item.metadata?.id === 'workspace-readme')).toBe(true)
+    expect(augmented.provenance).toContain('workspace-readme')
   })
 
   it('Given relevant lines later in long content, enrichment should still send matched CLI snippets to LLM', async () => {
@@ -235,6 +328,15 @@ describe('intent-cli parsing', () => {
 
     const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
     const data = enriched.data as { answer?: string }
+    expect(provider.call).toHaveBeenCalledWith(expect.objectContaining({
+      maxTokens: 4096,
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          content: expect.stringContaining('a few solid paragraphs are acceptable'),
+        }),
+      ]),
+    }))
     expect(data.answer).toContain('Use kb --help')
   })
 
@@ -333,4 +435,8 @@ describe('intent-cli execution', () => {
 
     expect(result.status).toBe('accepted')
   })
+})
+
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
 })

@@ -5,17 +5,25 @@
  */
 
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
-import { readKbConfig, applyConfigToEnv, createLLMProviderFromConfig, resolveGraphEnabled } from './kb-config'
+import {
+  readKbConfig,
+  applyConfigToEnv,
+  createLLMProviderFromConfig,
+  resolveConversationalChatEnabled,
+  resolveGraphEnabled,
+} from './kb-config'
 import type { KbConfig } from './kb-config'
 import { runIntentLoop } from '../core/intent-loop'
 import { RunCollector, ReportWriter, defaultLogsDir, TokenCountingProvider, estimateCost } from '../core/telemetry'
 import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import {
+  augmentIntentResultWithWorkspaceFallback,
   enrichReadDocumentsAnswerWithLLM,
   formatIntentResult,
   isIntentCommand,
   parseIntentCommand,
   printIntentHelp,
+  rewriteIntentInputWithSessionContext,
 } from './intent-cli'
 import {
   ensureOperationalBaseDir,
@@ -284,7 +292,10 @@ export async function runMainWithOutput(
       return
     }
 
-    const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
+    const chatBaseFlag = args[args.indexOf('--base') + 1] ?? undefined
+    const kbStorageDir = chatBaseFlag
+      ? await ensureOperationalBaseDir(chatBaseFlag)
+      : (await resolveEffectiveBaseDir()).baseDir
     const llmProvider = createLLMProviderFromConfig(config)
 
     if (!llmProvider) {
@@ -298,7 +309,12 @@ export async function runMainWithOutput(
       : undefined
     out.log(`🗂️ KB Storage: ${kbStorageDir}`)
     out.log('')
-    await runChatSession({ llmProvider, toolExecutor, graphWriter: chatGraphWriter })
+    await runChatSession({
+      llmProvider,
+      toolExecutor,
+      graphWriter: chatGraphWriter,
+      conversationalRetrieval: resolveConversationalChatEnabled(config),
+    })
     return
   }
 
@@ -458,11 +474,15 @@ export async function runMainWithOutput(
     let collector = new RunCollector(firstArg)
     try {
       const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
-      const parsed = parseIntentCommand(args)
+      let parsed = parseIntentCommand(args)
       collector = new RunCollector(firstArg, { debug: parsed.debug })
       const intentBaseDir = parsed.base
         ? await ensureOperationalBaseDir(parsed.base)
         : kbStorageDir
+      const rawLlmProvider = createLLMProviderFromConfig(config)
+      const llmCounter = rawLlmProvider ? new TokenCountingProvider(rawLlmProvider) : undefined
+      const llmProvider = llmCounter ?? rawLlmProvider
+      parsed = await rewriteIntentInputWithSessionContext(parsed, llmProvider ?? undefined, intentBaseDir)
       if (parsed.envelope.intent === 'query_truth' && resolveGraphEnabled(config)) {
         const payload = parsed.envelope.payload as { query?: string }
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
@@ -476,9 +496,6 @@ export async function runMainWithOutput(
         }
       }
       const toolExecutor = createKBToolsRegistry(intentBaseDir, config)
-      const rawLlmProvider = createLLMProviderFromConfig(config)
-      const llmCounter = rawLlmProvider ? new TokenCountingProvider(rawLlmProvider) : undefined
-      const llmProvider = llmCounter ?? rawLlmProvider
       const { result } = await runIntentLoop(parsed.envelope, toolExecutor, {
         provider: llmProvider ?? undefined,
         collector: collector,
@@ -525,7 +542,8 @@ export async function runMainWithOutput(
         }
       }
 
-      const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, llmProvider ?? undefined)
+      const aligned = await augmentIntentResultWithWorkspaceFallback(parsed, result, process.cwd())
+      const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, aligned, llmProvider ?? undefined, intentBaseDir)
 
       // Capture tokens from the answer-enrichment LLM call (query path)
       if (llmCounter) {

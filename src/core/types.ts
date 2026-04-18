@@ -120,6 +120,7 @@ export interface LLMCallParams {
   tools?: ToolDefinition[]
   maxTokens?: number
   temperature?: number
+  systemPrompt?: string
 }
 
 // ─── Session State ──────────────────────────────────────────────

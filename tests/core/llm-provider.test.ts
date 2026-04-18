@@ -87,6 +87,37 @@ describe('llm-provider', () => {
     fetchMock.mockRestore()
   })
 
+  it('Given a Gemini system prompt and assistant history, then provider sends system_instruction and model-role contents', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({
+          candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+          usageMetadata: {},
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+
+    const provider = new GeminiProvider('test-key', 'gemini-flash-latest')
+    await provider.call({
+      systemPrompt: 'You are KB.',
+      messages: [
+        { role: 'user', content: 'hello' },
+        { role: 'assistant', content: 'hi there' },
+      ],
+    })
+
+    const [, init] = fetchMock.mock.calls[0] ?? []
+    const body = JSON.parse(String((init as RequestInit | undefined)?.body ?? '{}'))
+    expect(body.system_instruction?.parts?.[0]?.text).toBe('You are KB.')
+    expect(body.contents?.[0]?.role).toBe('user')
+    expect(body.contents?.[1]?.role).toBe('model')
+
+    fetchMock.mockRestore()
+  })
+
   it('Given Gemini preview uses the first small token budget on thoughts only, then provider retries once with a larger budget and returns visible text', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

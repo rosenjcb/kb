@@ -1,8 +1,10 @@
 import dayjs from 'dayjs'
 import type { ToolExecutor } from '../core/tool-registry'
-import type { LLMProvider } from '../core/types'
+import type { LLMProvider, Message } from '../core/types'
 import { assertConsumerSafeCommand } from '../intents/policy'
 import { DefaultIntentRouter } from '../intents/router'
+import { loadQuerySessionMessages, appendQuerySession } from './query-session'
+import { augmentReadDocumentsWithWorkspaceFallback, formatReadDocumentSourceIds } from './retrieval-fallback'
 import type { ConsumerIntent, ConsumerIntentEnvelope, IntentResult } from '../intents/types'
 
 export type CliOutputMode = 'human' | 'json'
@@ -15,6 +17,7 @@ export interface ParsedIntentCommand {
 }
 
 const INTENT_COMMANDS = new Set(['submit', 'validate', 'dispute', 'query', 'explain'])
+const INTENT_LLM_MAX_OUTPUT_TOKENS = 4096
 
 export function isIntentCommand(command: string): boolean {
   return INTENT_COMMANDS.has(command)
@@ -216,6 +219,8 @@ export async function enrichReadDocumentsAnswerWithLLM(
   parsed: ParsedIntentCommand,
   result: IntentResult,
   llmProvider?: LLMProvider,
+  sessionDir?: string,
+  priorMessages?: Message[],
 ): Promise<IntentResult> {
   if (!llmProvider) return result
   if (!isReadDocumentsResult(result)) return result
@@ -230,23 +235,31 @@ export async function enrichReadDocumentsAnswerWithLLM(
   if (!question || !evidence) return result
 
   try {
+    const sessionTurns: Message[] = sessionDir
+      ? await loadQuerySessionMessages(sessionDir)
+      : []
+
+    const contextMessages: Message[] = priorMessages ?? sessionTurns
+
+    const userContent = [
+      'You answer using only the provided KB evidence.',
+      'Answer directly and clearly.',
+      'Use as much space as needed to fully answer the question when the evidence supports it.',
+      'For broad questions, a few solid paragraphs are acceptable.',
+      'If evidence is insufficient, explicitly say so.',
+      '',
+      `Question: ${question}`,
+      '',
+      `Evidence:\n${evidence}`,
+    ].join('\n')
+
     const completion = await llmProvider.call({
       messages: [
-        {
-          role: 'user',
-          content: [
-            'You answer using only the provided KB evidence.',
-            'Return a concise, direct answer in 1-2 sentences.',
-            'If evidence is insufficient, explicitly say so.',
-            '',
-            `Question: ${question}`,
-            '',
-            `Evidence:\n${evidence}`,
-          ].join('\n'),
-        },
+        ...contextMessages,
+        { role: 'user', content: userContent },
       ],
       temperature: 0.1,
-      maxTokens: 180,
+      maxTokens: INTENT_LLM_MAX_OUTPUT_TOKENS,
     })
 
     let answer = completion.text.trim()
@@ -258,6 +271,10 @@ export async function enrichReadDocumentsAnswerWithLLM(
         ?? 'I do not have enough grounded evidence yet. Next step: run kb query "<your fact>" --discovery deep --output json, then kb submit "<fact>" if evidence is missing.'
     }
 
+    if (sessionDir) {
+      void appendQuerySession(sessionDir, question, answer)
+    }
+
     return {
       ...result,
       data: {
@@ -267,6 +284,97 @@ export async function enrichReadDocumentsAnswerWithLLM(
     }
   } catch {
     return result
+  }
+}
+
+export async function rewriteIntentInputWithSessionContext(
+  parsed: ParsedIntentCommand,
+  llmProvider?: LLMProvider,
+  sessionDir?: string,
+): Promise<ParsedIntentCommand> {
+  if (!llmProvider || !sessionDir) return parsed
+  if (parsed.envelope.intent !== 'query_truth' && parsed.envelope.intent !== 'explain_change') {
+    return parsed
+  }
+
+  const latestInput = getIntentQuestion(parsed)
+  if (!latestInput) return parsed
+
+  const sessionTurns = await loadQuerySessionMessages(sessionDir)
+  if (sessionTurns.length === 0) return parsed
+
+  try {
+    const completion = await llmProvider.call({
+      messages: [
+        ...sessionTurns,
+        {
+          role: 'user',
+          content: [
+            'Rewrite the latest KB CLI request as a standalone retrieval query using the prior conversation only when needed.',
+            'If the latest request is already standalone, return it unchanged.',
+            'Return only the rewritten standalone query text. No quotes, no explanation.',
+            '',
+            `Latest request: ${latestInput}`,
+          ].join('\n'),
+        },
+      ],
+      temperature: 0.0,
+      maxTokens: 128,
+    })
+
+    const rewritten = completion.text.trim().replace(/^["']|["']$/g, '')
+    if (!rewritten || rewritten.toLowerCase() === latestInput.toLowerCase()) {
+      return parsed
+    }
+
+    const payload = { ...parsed.envelope.payload }
+    if (typeof payload.query === 'string') {
+      payload.originalQuery = payload.query
+      payload.query = rewritten
+    } else if (typeof payload.fact === 'string') {
+      payload.originalFact = payload.fact
+      payload.fact = rewritten
+    } else {
+      return parsed
+    }
+
+    return {
+      ...parsed,
+      envelope: {
+        ...parsed.envelope,
+        payload,
+      },
+    }
+  } catch {
+    return parsed
+  }
+}
+
+export async function augmentIntentResultWithWorkspaceFallback(
+  parsed: ParsedIntentCommand,
+  result: IntentResult,
+  workspaceDir: string,
+): Promise<IntentResult> {
+  if (!isReadDocumentsResult(result)) return result
+  if (parsed.envelope.intent !== 'query_truth' && parsed.envelope.intent !== 'explain_change') {
+    return result
+  }
+
+  const question = getIntentQuestion(parsed)
+  if (!question) return result
+
+  const data = (result.data ?? {}) as ReadDocumentsResultData
+  const augmented = await augmentReadDocumentsWithWorkspaceFallback(question, data, workspaceDir)
+  const results = Array.isArray(augmented.results) ? augmented.results : []
+
+  return {
+    ...result,
+    provenance: results.length > 0 ? formatReadDocumentSourceIds(results) : result.provenance,
+    data: {
+      ...data,
+      ...augmented,
+      total: results.length,
+    },
   }
 }
 
@@ -489,10 +597,12 @@ function buildAnswer(results: ReadDocumentsResultItem[]): string {
 
 function getIntentQuestion(parsed: ParsedIntentCommand): string {
   const payload = parsed.envelope.payload
+  const fromOriginalQuery = typeof payload.originalQuery === 'string' ? payload.originalQuery.trim() : ''
+  const fromOriginalFact = typeof payload.originalFact === 'string' ? payload.originalFact.trim() : ''
   const fromQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
   const fromFact = typeof payload.fact === 'string' ? payload.fact.trim() : ''
   const fromChange = typeof payload.changeId === 'string' ? payload.changeId.trim() : ''
-  return fromQuery || fromFact || fromChange
+  return fromOriginalQuery || fromOriginalFact || fromQuery || fromFact || fromChange
 }
 
 function buildEvidence(results: ReadDocumentsResultItem[], query: string): string {

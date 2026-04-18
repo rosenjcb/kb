@@ -4,7 +4,7 @@ import type { KbConfig } from '../cli/kb-config.js'
 import type { ChatIO } from '../cli/chat-cli.js'
 import type { InitQuestionIO } from '../cli/init-cli.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
-import { createLLMProviderFromConfig, resolveGraphEnabled } from '../cli/kb-config.js'
+import { createLLMProviderFromConfig, resolveConversationalChatEnabled, resolveGraphEnabled } from '../cli/kb-config.js'
 import { resolveEffectiveBaseDir } from '../cli/base-selection.js'
 import { runChatSession } from '../cli/chat-cli.js'
 import { parseInitCommand, runKbInit } from '../cli/init-cli.js'
@@ -113,7 +113,12 @@ export function App({ config }: Props) {
       },
     }
 
-    runChatSession({ llmProvider, toolExecutor, graphWriter }, chatIO)
+    runChatSession({
+      llmProvider,
+      toolExecutor,
+      graphWriter,
+      conversationalRetrieval: resolveConversationalChatEnabled(config),
+    }, chatIO)
       .then(() => {
         setMode('shell')
       })

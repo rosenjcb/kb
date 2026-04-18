@@ -55,7 +55,7 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
-    const body = {
+    const body: Record<string, unknown> = {
       model: this.model,
       max_tokens: params.maxTokens ?? 4096,
       messages: params.messages.map(m => ({
@@ -67,6 +67,10 @@ export class AnthropicProvider implements LLMProvider {
         description: t.description,
         input_schema: t.schema,
       })),
+    }
+
+    if (params.systemPrompt) {
+      body.system = params.systemPrompt
     }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -179,14 +183,21 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
+    const systemMessages = params.systemPrompt
+      ? [{ role: 'system' as const, content: params.systemPrompt }]
+      : []
+
     const body = {
       model: this.model,
       max_tokens: params.maxTokens ?? 4096,
       temperature: params.temperature ?? 0.7,
-      messages: params.messages.map(m => ({
-        role: m.role,
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-      })),
+      messages: [
+        ...systemMessages,
+        ...params.messages.map(m => ({
+          role: m.role,
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        })),
+      ],
       tools: params.tools?.map(t => ({
         type: 'function',
         function: {
@@ -351,6 +362,13 @@ export class GeminiProvider implements LLMProvider {
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }],
       })),
+      ...(params.systemPrompt
+        ? {
+            system_instruction: {
+              parts: [{ text: params.systemPrompt }],
+            },
+          }
+        : {}),
       tools: params.tools?.map(t => ({
         functionDeclarations: [
           {

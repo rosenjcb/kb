@@ -8,6 +8,7 @@ import {
   getKbConfigFile,
   listSupportedConfigPaths,
   readKbConfig,
+  resolveConversationalChatEnabled,
   resolveGraphEnabled,
   resolveLLMProvider,
 } from '../../src/cli/kb-config'
@@ -109,6 +110,8 @@ describe('config-cli', () => {
     expect(keys).not.toContain('selectedBase')
     expect(keys).not.toContain('defaultBase')
     expect(keys).not.toContain('features')
+    expect(keys).not.toContain('chat')
+    expect(keys).not.toContain('chat.experimentalConversationalRetrieval')
     expect(keys).toContain('graph')
     expect(keys).toContain('graph.enabled')
     expect(keys).toContain('notion')
@@ -133,6 +136,14 @@ describe('config-cli', () => {
     expect(resolveGraphEnabled({ graph: { enabled: true } })).toBe(false)
 
     delete process.env.KB_GRAPH
+  })
+
+  it('Given internal chat config or env override, then conversational chat flag resolves without becoming a public config key', () => {
+    expect(resolveConversationalChatEnabled({ chat: { experimentalConversationalRetrieval: true } })).toBe(true)
+
+    process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL = 'false'
+    expect(resolveConversationalChatEnabled({ chat: { experimentalConversationalRetrieval: true } })).toBe(false)
+    delete process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL
   })
 
   it('Given gemini config with a model override, then provider resolution preserves the selected model', () => {

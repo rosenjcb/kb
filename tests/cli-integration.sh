@@ -43,7 +43,7 @@ run_test() {
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   
   # Run the built CLI artifact
-  output=$(KB_BASE_DIR="$TEST_DIR" node dist/bin/kb.js "$TEST_SESSION" "$query" 2>&1)
+  output=$(KB_BASE_DIR="$TEST_DIR" node dist/bin/kb.js query "$query" 2>&1)
   
   # Check for expected text in output
   if echo "$output" | grep -q "$expect_text"; then
