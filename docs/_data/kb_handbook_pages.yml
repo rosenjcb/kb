@@ -1,5 +1,5 @@
 # Handbook / “Next Steps” (hand-maintained; future `kb publish jekyll` may regenerate).
-# `name` must match the source filename in docs/ (Jekyll resolves the real output URL).
+# `name` must match the document filename under `docs/_handbook/` (Jekyll resolves the real output URL).
 pages:
   - title: CLI Reference
     name: cli-reference.md

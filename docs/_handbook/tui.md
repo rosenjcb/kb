@@ -1,6 +1,7 @@
 ---
 layout: default
 title: Interactive Shell
+nav_order: 30
 ---
 
 # Interactive Shell (TUI)
