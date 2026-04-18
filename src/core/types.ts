@@ -108,6 +108,7 @@ export interface LLMStreamChunk {
 
 export interface LLMProvider {
   readonly name: string
+  readonly model: string
   readonly supportsStreaming: boolean
 
   call(params: LLMCallParams): Promise<LLMResponse>
@@ -119,6 +120,7 @@ export interface LLMCallParams {
   tools?: ToolDefinition[]
   maxTokens?: number
   temperature?: number
+  systemPrompt?: string
 }
 
 // ─── Session State ──────────────────────────────────────────────

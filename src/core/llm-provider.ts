@@ -45,14 +45,17 @@ function readApiErrorMessage(data: unknown, fallback: string): string {
 export class AnthropicProvider implements LLMProvider {
   readonly name = 'anthropic'
   readonly supportsStreaming = true
+  readonly model: string
 
   constructor(
     private apiKey: string,
-    private model: string = 'claude-3-5-sonnet-20241022'
-  ) {}
+    model: string = 'claude-3-5-sonnet-20241022'
+  ) {
+    this.model = model
+  }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
-    const body = {
+    const body: Record<string, unknown> = {
       model: this.model,
       max_tokens: params.maxTokens ?? 4096,
       messages: params.messages.map(m => ({
@@ -64,6 +67,10 @@ export class AnthropicProvider implements LLMProvider {
         description: t.description,
         input_schema: t.schema,
       })),
+    }
+
+    if (params.systemPrompt) {
+      body.system = params.systemPrompt
     }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -166,21 +173,31 @@ export class AnthropicProvider implements LLMProvider {
 export class OpenAIProvider implements LLMProvider {
   readonly name = 'openai'
   readonly supportsStreaming = true
+  readonly model: string
 
   constructor(
     private apiKey: string,
-    private model: string = 'gpt-4-turbo'
-  ) {}
+    model: string = 'gpt-4-turbo'
+  ) {
+    this.model = model
+  }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
+    const systemMessages = params.systemPrompt
+      ? [{ role: 'system' as const, content: params.systemPrompt }]
+      : []
+
     const body = {
       model: this.model,
       max_tokens: params.maxTokens ?? 4096,
       temperature: params.temperature ?? 0.7,
-      messages: params.messages.map(m => ({
-        role: m.role,
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-      })),
+      messages: [
+        ...systemMessages,
+        ...params.messages.map(m => ({
+          role: m.role,
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        })),
+      ],
       tools: params.tools?.map(t => ({
         type: 'function',
         function: {
@@ -296,13 +313,50 @@ export class OpenAIProvider implements LLMProvider {
 export class GeminiProvider implements LLMProvider {
   readonly name = 'gemini'
   readonly supportsStreaming = true
+  readonly model: string
 
   constructor(
     private apiKey: string,
-    private model: string = 'gemini-2.0-flash'
-  ) {}
+    model: string = 'gemini-2.0-flash'
+  ) {
+    this.model = model
+  }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
+    const initialBudget = params.maxTokens ?? 4096
+    let parsed = await this.generateContent(params, initialBudget)
+
+    if (
+      !parsed.text
+      && parsed.finishReason === 'MAX_TOKENS'
+      && initialBudget < 128
+    ) {
+      parsed = await this.generateContent(params, Math.max(initialBudget * 2, 128))
+    }
+
+    return {
+      text: parsed.text,
+      stopReason: parsed.stopReason,
+      toolUses: parsed.toolUses,
+      usage: parsed.usage,
+    }
+  }
+
+  async *callStream(_params: LLMCallParams): AsyncGenerator<LLMStreamChunk> {
+    // Gemini streaming endpoint - similar pattern
+    yield { type: 'done' }
+  }
+
+  private async generateContent(
+    params: LLMCallParams,
+    maxOutputTokens: number,
+  ): Promise<{
+    text: string
+    stopReason: 'tool_use' | 'end_turn'
+    toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }>
+    usage: { inputTokens: number; outputTokens: number }
+    finishReason?: string
+  }> {
     const body = {
       contents: params.messages.map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
@@ -318,7 +372,7 @@ export class GeminiProvider implements LLMProvider {
         ],
       })),
       generationConfig: {
-        maxOutputTokens: params.maxTokens ?? 4096,
+        maxOutputTokens,
         temperature: params.temperature ?? 0.7,
       },
     }
@@ -372,12 +426,8 @@ export class GeminiProvider implements LLMProvider {
         outputTokens:
           typeof usage.candidatesTokenCount === 'number' ? usage.candidatesTokenCount : 0,
       },
+      finishReason: typeof first.finishReason === 'string' ? first.finishReason : undefined,
     }
-  }
-
-  async *callStream(_params: LLMCallParams): AsyncGenerator<LLMStreamChunk> {
-    // Gemini streaming endpoint - similar pattern
-    yield { type: 'done' }
   }
 }
 
@@ -386,11 +436,14 @@ export class GeminiProvider implements LLMProvider {
 export class OllamaProvider implements LLMProvider {
   readonly name = 'ollama'
   readonly supportsStreaming = true
+  readonly model: string
 
   constructor(
     private endpoint: string = 'http://localhost:11434',
-    private model: string = 'mistral'
-  ) {}
+    model: string = 'mistral'
+  ) {
+    this.model = model
+  }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
     const response = await fetch(`${this.endpoint}/api/chat`, {

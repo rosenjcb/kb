@@ -21,6 +21,8 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import type { LLMProvider } from '../core/types'
+import type { RunCollector } from '../core/telemetry'
+import { estimateCost, TokenCountingProvider } from '../core/telemetry'
 import { readKbConfig, createLLMProviderFromConfig, resolveGraphEnabled } from './kb-config'
 import { ensureOperationalBaseDir, getKbHomeDir, resolveEffectiveBaseDir } from './base-selection'
 import {
@@ -62,6 +64,9 @@ export interface InitOptions {
   cwd?: string
   provider?: LLMProvider
   questionIO?: InitQuestionIO
+  progressSink?: (line: string) => void
+  collector?: RunCollector
+  debug?: boolean
 }
 
 export interface InitResult {
@@ -165,7 +170,10 @@ export interface InitQuestionIO {
 class InitProgressReporter {
   private completed = 0
 
-  constructor(private total: number) {}
+  constructor(
+    private total: number,
+    private sink: (line: string) => void = line => process.stderr.write(line),
+  ) {}
 
   start(label: string, detail?: string) {
     this.render(label, detail)
@@ -185,7 +193,7 @@ class InitProgressReporter {
     const filled = Math.round((this.completed / Math.max(this.total, 1)) * width)
     const bar = `${'='.repeat(filled)}${'-'.repeat(Math.max(width - filled, 0))}`
     const suffix = detail ? ` ${detail}` : ''
-    process.stderr.write(`[init] [${bar}] ${this.completed}/${this.total} ${label}${suffix}\n`)
+    this.sink(`[init] [${bar}] ${this.completed}/${this.total} ${label}${suffix}\n`)
   }
 }
 
@@ -231,6 +239,33 @@ export function parseInitCommand(args: string[]): InitOptions {
     stopAfter,
     resumeFrom: readOption(args, '--resume-from'),
     checkpointFile: readOption(args, '--checkpoint-file'),
+    debug: readFlag(args, '--debug'),
+  }
+}
+
+function makeCycleTimer(
+  cycle: InitCycle,
+  provider: LLMProvider | undefined,
+  collector: RunCollector | undefined,
+  counter?: TokenCountingProvider,
+): () => void {
+  if (!collector) return () => {}
+  const startMs = Date.now()
+  const startedAt = new Date().toISOString()
+  const providerName = provider?.name ?? 'unknown'
+  const model = provider?.model ?? 'unknown'
+  return () => {
+    const { inputTokens, outputTokens } = counter?.getAndReset() ?? { inputTokens: 0, outputTokens: 0 }
+    collector.addStage({
+      stage: cycle,
+      startedAt,
+      durationMs: Date.now() - startMs,
+      inputTokens,
+      outputTokens,
+      estimatedCostUsd: estimateCost(providerName, model, inputTokens, outputTokens),
+      provider: providerName,
+      model,
+    })
   }
 }
 
@@ -249,8 +284,10 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = await readCheckpoint(checkpointFile)
 
-  const progress = new InitProgressReporter(8)
-  const provider = options.provider ?? await resolveProvider()
+  const progress = new InitProgressReporter(8, options.progressSink)
+  const rawProvider = options.provider ?? await resolveProvider()
+  const counter = rawProvider && options.collector ? new TokenCountingProvider(rawProvider) : undefined
+  const provider = counter ?? rawProvider
   const kbConfig = await readKbConfig()
   const graphEnabled = resolveGraphEnabled(kbConfig)
 
@@ -345,7 +382,9 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
       if (!provider) {
         throw new Error('No LLM provider available. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY.')
       }
+      const endPass1 = makeCycleTimer('pass1', provider, options.collector, counter)
       candidateDocs = await runSynthesisPass(provider, context, base)
+      endPass1()
       topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
       await persist({
         candidateDocs,
@@ -410,7 +449,9 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
       }
 
       if (!provider) throw new Error('No LLM provider available.')
+      const endPass2 = makeCycleTimer('pass2', provider, options.collector, counter)
       candidateDocs = await runRefinementPass(provider, context, candidateDocs)
+      endPass2()
       topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
       await persist({
         context,
@@ -430,7 +471,9 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
     if (!checkpoint.completedCycles.includes('pass-enrich')) {
       progress.start('pass-enrich', `enriching ${candidateDocs.length} docs…`)
       if (!provider) throw new Error('No LLM provider available.')
+      const endPassEnrich = makeCycleTimer('pass-enrich', provider, options.collector, counter)
       candidateDocs = await runPerDocEnrichmentPass(provider, context, candidateDocs)
+      endPassEnrich()
       await persist({
         candidateDocs,
         completedCycles: ['pass-enrich'],
@@ -445,7 +488,9 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
       progress.start('pass-consolidate', 'merging overlapping docs…')
       if (!provider) throw new Error('No LLM provider available.')
       const beforeCount = candidateDocs.length
+      const endPassConsolidate = makeCycleTimer('pass-consolidate', provider, options.collector, counter)
       candidateDocs = await runConsolidationPass(provider, candidateDocs)
+      endPassConsolidate()
       await persist({
         candidateDocs,
         completedCycles: ['pass-consolidate'],
@@ -460,7 +505,9 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
     if (!checkpoint.completedCycles.includes('pass3')) {
       progress.start('pass3', 'quality pass…')
       if (!provider) throw new Error('No LLM provider available.')
+      const endPass3 = makeCycleTimer('pass3', provider, options.collector, counter)
       candidateDocs = await runQualityPass(provider, candidateDocs)
+      endPass3()
       topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
       const finalCoverageSummary = summariseCoverage(topicCoverage)
       await persist({
@@ -497,7 +544,9 @@ export async function runKbInit(options: InitOptions): Promise<InitResult> {
         await persist({ completedCycles: ['pass-graph'] })
       } else if (provider) {
         try {
+          const endPassGraph = makeCycleTimer('pass-graph', provider, options.collector, counter)
           await runGraphExtractionPass(provider, baseDir)
+          endPassGraph()
           await persist({ completedCycles: ['pass-graph'] })
           progress.finish('pass-graph', 'graph written to .kb-graph.duckdb')
         } catch {

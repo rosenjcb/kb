@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
 import { parseInitCommand, runKbInit } from '../../src/cli/init-cli'
 
@@ -253,6 +253,46 @@ describe('init-cli interview checkpoints', () => {
     await expect(
       readFile(path.join(kbHomeDir, 'sessions', 'graph-disabled-test', '.kb-graph.duckdb'), 'utf8'),
     ).rejects.toThrow()
+  })
+
+  it('Given a custom progress sink, then init progress updates route there instead of writing directly to stderr', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nCLI docs.\n',
+    })
+
+    const provider = createProvider([
+      JSON.stringify([
+        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Overview content' },
+      ]),
+      JSON.stringify([
+        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Overview content' },
+      ]),
+      JSON.stringify({ title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Overview content' }),
+      JSON.stringify([
+        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Overview content' },
+      ]),
+      JSON.stringify([
+        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Overview content' },
+      ]),
+    ])
+
+    const lines: string[] = []
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const result = await runKbInit({
+      base: 'progress-sink-test',
+      nonInteractive: true,
+      cwd,
+      provider,
+      progressSink(line) {
+        lines.push(line)
+      },
+    })
+
+    expect(result.status).toBe('accepted')
+    expect(lines.some(line => line.includes('[init]'))).toBe(true)
+    expect(stderrSpy).not.toHaveBeenCalled()
+    stderrSpy.mockRestore()
   })
 
   it('Given interactive read-inputs pause, then persists version 2 checkpoint with interview rounds', async () => {

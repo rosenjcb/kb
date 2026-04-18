@@ -2,7 +2,7 @@ import { createInterface } from 'node:readline/promises'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { ToolExecutor } from '../core/tool-registry'
-import type { LLMProvider } from '../core/types'
+import type { LLMProvider, Message } from '../core/types'
 import type { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import {
@@ -10,7 +10,6 @@ import {
   resolveConversationalChatTurn,
   updateConversationState,
   type ChatConversationState,
-  type ChatConversationTurn,
 } from './chat-conversation'
 
 export interface ChatSessionDeps {
@@ -87,10 +86,21 @@ export function printChatHelp(): string {
   ].join('\n')
 }
 
+const CHAT_SYSTEM_PROMPT = [
+  'You are KB, a knowledge base assistant.',
+  'Answer the user\'s question directly and concisely (2-4 sentences).',
+  'Use the retrieved evidence provided in each message. Synthesize across multiple documents if needed.',
+  'Do NOT repeat the question. Do NOT say "based on the evidence" or "the evidence shows".',
+  'If the evidence is genuinely insufficient, say so in one sentence and suggest a follow-up query.',
+].join('\n')
+
 export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createTerminalChatIO()): Promise<void> {
   const retrievalLimit = deps.retrievalLimit ?? 5
-  const maxHistoryTurns = deps.maxHistoryTurns ?? 4
+  const maxHistoryTurns = deps.maxHistoryTurns ?? 8
   let conversationState = createInitialConversationState()
+  // Accumulated multi-turn message history — grows each turn like Claude Code does.
+  // The LLM sees native assistant/user pairs rather than embedded-text history.
+  const messages: Message[] = []
 
   io.write('assistant> Chat mode started. Type /help for commands.')
 
@@ -167,16 +177,21 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
           deps.workspaceDir ?? process.cwd(),
         )
         let retrievalForOutput = retrievalWithFallback
-        const prompt = buildChatPrompt({
+
+        // Build the per-turn user content: evidence + question.
+        // History is carried natively via the messages array — no embedding needed.
+        const userContent = buildChatTurnContent({
           question: input,
           resolvedQuestion: resolvedTurn.retrievalQuery !== input ? resolvedTurn.retrievalQuery : undefined,
           retrieval: retrievalForOutput,
-          history: conversationState.recentTurns,
           conversationState,
         })
 
+        const turnMessages: Message[] = [...messages, { role: 'user', content: userContent }]
+
         const completion = await deps.llmProvider.call({
-          messages: [{ role: 'user', content: prompt }],
+          messages: trimMessageHistory(turnMessages, maxHistoryTurns),
+          systemPrompt: CHAT_SYSTEM_PROMPT,
           temperature: 0.15,
           maxTokens: 512,
         })
@@ -205,15 +220,19 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
             'chat-deep-discovery-promotion',
           )
 
-          const deepPrompt = buildChatPrompt({
+          const deepContent = buildChatTurnContent({
             question: input,
             resolvedQuestion: resolvedTurn.retrievalQuery !== input ? resolvedTurn.retrievalQuery : undefined,
             retrieval: retrievalForOutput,
-            history: conversationState.recentTurns,
             conversationState,
           })
+          const deepMessages: Message[] = [
+            ...messages,
+            { role: 'user', content: deepContent },
+          ]
           const deepCompletion = await deps.llmProvider.call({
-            messages: [{ role: 'user', content: deepPrompt }],
+            messages: trimMessageHistory(deepMessages, maxHistoryTurns),
+            systemPrompt: CHAT_SYSTEM_PROMPT,
             temperature: 0.15,
             maxTokens: 512,
           })
@@ -224,6 +243,10 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
         if (!answer) {
           answer = 'I don\'t have enough information to answer that. Try: kb query "<your question>"'
         }
+
+        // Append both sides to the message history so the next turn sees the full context.
+        messages.push({ role: 'user', content: userContent })
+        messages.push({ role: 'assistant', content: answer })
 
         io.write(`assistant> ${answer}`)
         io.write(`retrieval> ${formatRetrievalMode(retrievalForOutput.retrieval)}`)
@@ -260,46 +283,36 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
   }
 }
 
-export function buildChatPrompt(input: {
+function trimMessageHistory(messages: Message[], maxTurns: number): Message[] {
+  // Each turn = 1 user + 1 assistant message. Keep at most maxTurns pairs.
+  const maxMessages = maxTurns * 2
+  if (messages.length <= maxMessages) return messages
+  return messages.slice(messages.length - maxMessages)
+}
+
+export function buildChatTurnContent(input: {
   question: string
   retrieval: ReadDocumentsResult
-  history: ChatConversationTurn[]
   resolvedQuestion?: string
   conversationState?: ChatConversationState
 }): string {
   const evidence = buildEvidence(input.retrieval.results)
-  const historyText = input.history.length
-    ? input.history
-      .map((turn, index) => `Turn ${index + 1} user: ${turn.user}\nTurn ${index + 1} assistant: ${turn.assistant}`)
-      .join('\n\n')
-    : 'No prior turns.'
 
   const contextLines: string[] = []
   if (input.conversationState?.activeTopic) {
     contextLines.push(`Active topic: ${input.conversationState.activeTopic}`)
-  }
-  if (input.conversationState?.lastUserGoal) {
-    contextLines.push(`Last user goal: ${input.conversationState.lastUserGoal}`)
   }
   if (input.conversationState?.pendingFollowUp) {
     contextLines.push(`Pending follow-up: ${input.conversationState.pendingFollowUp.query}`)
   }
 
   return [
-    'You are KB, a knowledge base assistant.',
-    'Answer the user\'s question directly and concisely (2-4 sentences).',
-    'Use the retrieved evidence below. Synthesize across multiple documents if needed.',
-    'Do NOT repeat the question. Do NOT say "based on the evidence" or "the evidence shows".',
-    'If the evidence is genuinely insufficient, say so in one sentence and suggest a follow-up query.',
-    '',
     ...(contextLines.length > 0 ? [...contextLines, ''] : []),
-    input.history.length > 0 ? `Conversation history:\n${historyText}` : '',
-    '',
     `Retrieved evidence:\n${evidence}`,
     '',
     `User question: ${input.question}`,
     input.resolvedQuestion ? `(retrieval query used: ${input.resolvedQuestion})` : '',
-  ].filter(l => l !== null).join('\n')
+  ].filter(Boolean).join('\n')
 }
 
 function looksLikeInsufficientEvidenceAnswer(text: string): boolean {

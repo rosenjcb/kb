@@ -4,11 +4,13 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { printConfigHelp, runConfigCommand } from '../../src/cli/config-cli'
 import {
+  createLLMProviderFromConfig,
   getKbConfigFile,
   listSupportedConfigPaths,
   readKbConfig,
   resolveConversationalChatEnabled,
   resolveGraphEnabled,
+  resolveLLMProvider,
 } from '../../src/cli/kb-config'
 
 const tempDirs: string[] = []
@@ -142,5 +144,28 @@ describe('config-cli', () => {
     process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL = 'false'
     expect(resolveConversationalChatEnabled({ chat: { experimentalConversationalRetrieval: true } })).toBe(false)
     delete process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL
+  })
+
+  it('Given gemini config with a model override, then provider resolution preserves the selected model', () => {
+    const resolved = resolveLLMProvider({
+      llm: {
+        provider: 'gemini',
+        geminiApiKey: 'test-key',
+        geminiModel: 'gemini-flash-latest',
+      },
+    })
+
+    expect(resolved.provider).toBe('gemini')
+    expect(resolved.model).toBe('gemini-flash-latest')
+
+    const provider = createLLMProviderFromConfig({
+      llm: {
+        provider: 'gemini',
+        geminiApiKey: 'test-key',
+        geminiModel: 'gemini-flash-latest',
+      },
+    })
+
+    expect(provider?.name).toBe('gemini')
   })
 })

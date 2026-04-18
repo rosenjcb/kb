@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { ToolExecutor } from '../../src/core/tool-registry'
 import type { LLMProvider } from '../../src/core/types'
-import { buildChatPrompt, printChatHelp, runChatSession } from '../../src/cli/chat-cli'
+import { buildChatTurnContent, printChatHelp, runChatSession } from '../../src/cli/chat-cli'
 import { createKBToolsRegistry } from '../../src/tools/kb-tools-registry'
 import { DefaultIntentRouter } from '../../src/intents/router'
 import { invalidateFactTool } from '../../src/tools/invalidate-fact-tool'
@@ -45,10 +45,9 @@ describe('chat-cli prompt', () => {
     expect(help).toContain('/exit')
   })
 
-  it('Given history and evidence, then prompt includes both context blocks', () => {
-    const prompt = buildChatPrompt({
+  it('Given evidence and question, then turn content includes evidence block and question without embedded history', () => {
+    const content = buildChatTurnContent({
       question: 'How does base precedence work?',
-      history: [{ user: 'What controls base?', assistant: 'Session, then default.' }],
       retrieval: {
         results: [
           {
@@ -59,10 +58,10 @@ describe('chat-cli prompt', () => {
       },
     })
 
-    expect(prompt).toContain('Conversation history:')
-    expect(prompt).toContain('Retrieved evidence:')
-    expect(prompt).toContain('general-facts')
-    expect(prompt).toContain('Current user question: How does base precedence work?')
+    expect(content).toContain('Retrieved evidence:')
+    expect(content).toContain('general-facts')
+    expect(content).toContain('User question: How does base precedence work?')
+    expect(content).not.toContain('Conversation history:')
   })
 })
 
@@ -76,6 +75,7 @@ describe('chat-cli session loop', () => {
     }
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
       call: vi.fn(),
     }
@@ -115,6 +115,7 @@ describe('chat-cli session loop', () => {
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
       call: vi.fn(async () => ({
         text: 'The KB uses a hybrid path with lexical fallback.',
@@ -153,6 +154,7 @@ describe('chat-cli session loop', () => {
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
       call: vi.fn(async () => {
         throw new Error('provider offline')
@@ -165,40 +167,40 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('Exiting chat')
   })
 
-  it('Given strong retrieved fact and LLM insufficiency wording, then chat uses deterministic evidence-backed fallback answer', async () => {
+  it('Given LLM insufficiency on first call, then chat triggers deep retry and uses the retry LLM answer', async () => {
     const io = new ScriptedIO(['What is the rollout strategy?', '/exit'])
 
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
       execute: vi.fn(async () => ({
-        retrieval: {
-          method: 'hybrid',
-          detail: 'fts+vector-rerank',
-        },
+        retrieval: { method: 'hybrid', detail: 'fts+vector-rerank' },
         results: [
-          {
-            metadata: { id: 'general-facts' },
-            content: '# general facts\n\n- Rollout strategy is immediate.\n',
-          },
+          { metadata: { id: 'general-facts' }, content: '# general facts\n\n- Rollout strategy is immediate.\n' },
         ],
       })),
     }
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'The evidence provided does not contain specific information about rollout strategy.',
-        stopReason: 'end_turn',
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
+      call: vi.fn()
+        .mockResolvedValueOnce({
+          text: 'The evidence provided does not contain specific information about rollout strategy.',
+          stopReason: 'end_turn', toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        .mockResolvedValueOnce({
+          text: 'Rollout strategy is immediate.',
+          stopReason: 'end_turn', toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        }),
     }
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
-    expect(io.outputs.join('\n')).toContain('assistant> Rollout strategy is immediate. (source: general-facts)')
+    expect(provider.call).toHaveBeenCalledTimes(2)
+    expect(io.outputs.join('\n')).toContain('assistant> Rollout strategy is immediate.')
+    expect(io.outputs.join('\n')).toContain('chat-deep-discovery-promotion')
     expect(io.outputs.join('\n')).toContain('sources> general-facts')
   })
 
@@ -251,6 +253,7 @@ describe('chat-cli session loop', () => {
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
       call: vi.fn(async () => ({
         text: 'This project is an intent-first local KB CLI with retrieval and writing tools.',
@@ -272,89 +275,58 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('sources> session-log-2026-04-12, workspace-readme')
   })
 
-  it('Given insufficient LLM answer and no direct line in initial retrieval, then chat runs focused recovery and answers from recovered evidence', async () => {
+  it('Given insufficient LLM answer, then chat runs deep retry and uses the deep LLM answer', async () => {
     const io = new ScriptedIO(['What is the rollout strategy?', '/exit'])
 
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
-      execute: vi
-        .fn()
-        .mockResolvedValueOnce({
-          retrieval: {
-            method: 'hybrid',
-            detail: 'fts+vector-rerank',
-          },
-          results: [
-            {
-              metadata: { id: 'general-facts' },
-              content: '# general facts\n\n- CLI testing fact: lane checks only.\n',
-            },
-          ],
-        })
-        .mockResolvedValueOnce({
-          retrieval: {
-            method: 'lexical-fallback',
-            detail: 'deep-discovery',
-          },
-          results: [
-            {
-              metadata: { id: 'general-facts' },
-              content: '# general facts\n\n- Rollout strategy is immediate.\n',
-            },
-          ],
-        })
-        .mockResolvedValueOnce({
-          retrieval: {
-            method: 'hybrid',
-            detail: 'focused-query',
-          },
-          results: [
-            {
-              metadata: { id: 'general-facts' },
-              content: '# general facts\n\n- Rollout strategy is immediate.\n',
-            },
-          ],
-        }),
+      execute: vi.fn(async () => ({
+        retrieval: { method: 'hybrid', detail: 'fts+vector-rerank' },
+        results: [
+          { metadata: { id: 'general-facts' }, content: '# general facts\n\n- CLI testing fact: lane checks only.\n' },
+        ],
+      })),
     }
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'The retrieved documents do not provide specific details about rollout strategy.',
-        stopReason: 'end_turn',
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
+      call: vi.fn()
+        .mockResolvedValueOnce({
+          text: 'The retrieved documents do not provide specific details about rollout strategy.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        .mockResolvedValueOnce({
+          text: 'Rollout strategy is immediate.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        }),
     }
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
+    expect(provider.call).toHaveBeenCalledTimes(2)
     expect(executor.execute).toHaveBeenCalledTimes(2)
-    expect(io.outputs.join('\n')).toContain('assistant> Rollout strategy is immediate. (source: general-facts)')
+    expect(io.outputs.join('\n')).toContain('assistant> Rollout strategy is immediate.')
     expect(io.outputs.join('\n')).toContain('chat-deep-discovery-promotion')
   })
 
-  it('Given CLI question and insufficiency LLM answer, then chat returns CLI quick-reference evidence line', async () => {
+  it('Given CLI question and insufficiency LLM answer, then deep retry is triggered and returns real answer', async () => {
     const io = new ScriptedIO(['how does the kb cli work', '/exit'])
 
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
       execute: vi.fn(async () => ({
-        retrieval: {
-          method: 'hybrid',
-          detail: 'fts+vector-rerank',
-        },
+        retrieval: { method: 'hybrid', detail: 'fts+vector-rerank' },
         results: [
           {
             metadata: { id: 'general-facts' },
             content: [
               '# general facts',
               '',
-              '- SQLite hybrid search enabled for this workspace.',
-              '- CLI quick-reference: kb --help; kb use dogfood; kb default dogfood; kb submit/query/validate/dispute/explain with --output json; kb chat.',
+              '- CLI quick-reference: kb --help; kb use dogfood; kb submit/query/validate/dispute/explain.',
             ].join('\n'),
           },
         ],
@@ -363,39 +335,38 @@ describe('chat-cli session loop', () => {
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'The retrieved evidence does not provide specific information on how the KB CLI works.',
-        stopReason: 'end_turn',
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
+      call: vi.fn()
+        .mockResolvedValueOnce({
+          text: 'The retrieved evidence does not provide specific information on how the KB CLI works.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        .mockResolvedValueOnce({
+          text: 'Use kb --help for a full list of commands.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        }),
     }
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
-    expect(io.outputs.join('\n')).toContain('assistant> CLI quick-reference: kb --help; kb use dogfood; kb default dogfood; kb submit/query/validate/dispute/explain with --output json; kb chat. (source: general-facts)')
+    expect(provider.call).toHaveBeenCalledTimes(2)
+    expect(io.outputs.join('\n')).toContain('assistant> Use kb --help for a full list of commands.')
+    expect(io.outputs.join('\n')).toContain('chat-deep-discovery-promotion')
   })
 
-  it('Given CLI question and "does not provide specific details" wording, then fallback still returns CLI evidence', async () => {
+  it('Given "does not provide specific details" wording, then deep retry is triggered', async () => {
     const io = new ScriptedIO(['explain the cli', '/exit'])
 
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
       execute: vi.fn(async () => ({
-        retrieval: {
-          method: 'hybrid',
-          detail: 'fts+vector-rerank',
-        },
+        retrieval: { method: 'hybrid', detail: 'fts+vector-rerank' },
         results: [
           {
             metadata: { id: 'general-facts' },
-            content: [
-              '# general facts',
-              '',
-              '- CLI quick-reference: kb --help; kb submit/query/validate/dispute/explain with --output json.',
-            ].join('\n'),
+            content: '# general facts\n\n- CLI quick-reference: kb --help; kb submit.',
           },
         ],
       })),
@@ -403,39 +374,37 @@ describe('chat-cli session loop', () => {
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'The retrieved evidence does not provide specific details on how the CLI works.',
-        stopReason: 'end_turn',
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
+      call: vi.fn()
+        .mockResolvedValueOnce({
+          text: 'The retrieved evidence does not provide specific details on how the CLI works.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        .mockResolvedValueOnce({
+          text: 'The CLI starts with kb --help.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        }),
     }
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
-    expect(io.outputs.join('\n')).toContain('assistant> CLI quick-reference: kb --help; kb submit/query/validate/dispute/explain with --output json. (source: general-facts)')
+    expect(provider.call).toHaveBeenCalledTimes(2)
+    expect(io.outputs.join('\n')).toContain('assistant> The CLI starts with kb --help.')
   })
 
-  it('Given CLI question and "does not contain specific information" wording, then fallback still returns CLI evidence', async () => {
+  it('Given "does not contain specific information" wording, then deep retry is triggered', async () => {
     const io = new ScriptedIO(['explain the cli', '/exit'])
 
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
       execute: vi.fn(async () => ({
-        retrieval: {
-          method: 'hybrid',
-          detail: 'fts+vector-rerank',
-        },
+        retrieval: { method: 'hybrid', detail: 'fts+vector-rerank' },
         results: [
           {
             metadata: { id: 'general-facts' },
-            content: [
-              '# general facts',
-              '',
-              '- CLI quick-reference: kb --help; kb submit/query/validate/dispute/explain with --output json.',
-            ].join('\n'),
+            content: '# general facts\n\n- CLI quick-reference: kb --help.',
           },
         ],
       })),
@@ -443,18 +412,23 @@ describe('chat-cli session loop', () => {
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'The retrieved evidence does not contain specific information about the command-line interface (CLI).',
-        stopReason: 'end_turn',
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
+      call: vi.fn()
+        .mockResolvedValueOnce({
+          text: 'The retrieved evidence does not contain specific information about the CLI.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        .mockResolvedValueOnce({
+          text: 'The CLI uses kb --help to show all commands.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        }),
     }
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
-    expect(io.outputs.join('\n')).toContain('assistant> CLI quick-reference: kb --help; kb submit/query/validate/dispute/explain with --output json. (source: general-facts)')
+    expect(provider.call).toHaveBeenCalledTimes(2)
+    expect(io.outputs.join('\n')).toContain('assistant> The CLI uses kb --help to show all commands.')
   })
 
   it('Given high-recall token question, then initial retrieval uses deep discovery policy', async () => {
@@ -479,6 +453,7 @@ describe('chat-cli session loop', () => {
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
       call: vi.fn(async () => ({
         text: 'Token exists in retrieval facts.',
@@ -496,48 +471,49 @@ describe('chat-cli session loop', () => {
     expect(firstCall?.input?.limit).toBe(12)
   })
 
-  it('Given high-recall token question without exact evidence line, then chat returns actionable uncertainty instead of unrelated fallback', async () => {
+  it('Given high-recall token question without matching evidence, then deep retry is triggered and LLM answer used', async () => {
     const io = new ScriptedIO(['CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION', '/exit'])
 
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
-      execute: vi
-        .fn()
-        .mockResolvedValue({
-          retrieval: {
-            method: 'hybrid',
-            detail: 'fts+vector-rerank',
+      execute: vi.fn().mockResolvedValue({
+        retrieval: { method: 'hybrid', detail: 'fts+vector-rerank' },
+        results: [
+          {
+            metadata: { id: 'general-facts' },
+            content: '# general facts\n\n- CLI quick-reference: kb --help; kb query --output json.\n',
           },
-          results: [
-            {
-              metadata: { id: 'general-facts' },
-              content: '# general facts\n\n- CLI quick-reference: kb --help; kb query --output json.\n',
-            },
-          ],
-        }),
+        ],
+      }),
     }
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'The retrieved documents do not contain any information about this token.',
-        stopReason: 'end_turn',
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
+      call: vi.fn()
+        .mockResolvedValueOnce({
+          text: 'The retrieved documents do not contain any information about this token.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        .mockResolvedValueOnce({
+          text: 'The retrieved documents do not contain any information about this token.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        }),
     }
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
+    // Deep retry should be triggered (2 LLM calls) because the first answer looks insufficient
+    expect(provider.call).toHaveBeenCalledTimes(2)
+    // The output should use the LLM answer (not extract CLI quick-reference line)
     const output = io.outputs.join('\n')
-    expect(output).toContain('I do not have enough grounded evidence yet.')
-    expect(output).toContain('kb query "<your fact>" --discovery deep --output json')
+    expect(output).toContain('assistant> The retrieved documents do not contain any information about this token.')
     expect(output).not.toContain('assistant> CLI quick-reference')
   })
 
-  it('Given insufficiency wording "does not contain any information about", then deep fallback recovers deterministic answer', async () => {
+  it('Given "does not contain any information about" wording, then deep retry is triggered and deep LLM answer used', async () => {
     const io = new ScriptedIO(['What is the rollout strategy?', '/exit'])
 
     const executor: ToolExecutor = {
@@ -546,59 +522,45 @@ describe('chat-cli session loop', () => {
       execute: vi
         .fn()
         .mockResolvedValueOnce({
-          retrieval: {
-            method: 'hybrid',
-            detail: 'fts+vector-rerank',
-          },
-          results: [
-            {
-              metadata: { id: 'general-facts' },
-              content: '# general facts\n\n- lane checks only.\n',
-            },
-          ],
+          retrieval: { method: 'hybrid', detail: 'fts+vector-rerank' },
+          results: [{ metadata: { id: 'general-facts' }, content: '# general facts\n\n- lane checks only.\n' }],
         })
         .mockResolvedValueOnce({
-          retrieval: {
-            method: 'hybrid',
-            detail: 'deep-discovery',
-          },
-          results: [
-            {
-              metadata: { id: 'general-facts' },
-              content: '# general facts\n\n- Rollout strategy is immediate.\n',
-            },
-          ],
+          retrieval: { method: 'hybrid', detail: 'deep-discovery' },
+          results: [{ metadata: { id: 'general-facts' }, content: '# general facts\n\n- Rollout strategy is immediate.\n' }],
         }),
     }
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'The retrieved documents do not contain any information about rollout strategy.',
-        stopReason: 'end_turn',
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
+      call: vi.fn()
+        .mockResolvedValueOnce({
+          text: 'The retrieved documents do not contain any information about rollout strategy.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        .mockResolvedValueOnce({
+          text: 'Rollout strategy is immediate.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        }),
     }
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
     expect(executor.execute).toHaveBeenCalledTimes(2)
-    expect(io.outputs.join('\n')).toContain('assistant> Rollout strategy is immediate. (source: general-facts)')
+    expect(provider.call).toHaveBeenCalledTimes(2)
+    expect(io.outputs.join('\n')).toContain('assistant> Rollout strategy is immediate.')
   })
 
-  it('Given non-CLI question about .env.local, then fallback prefers env line over CLI quick-reference', async () => {
+  it('Given question about .env.local and insufficient LLM answer, then deep retry is triggered and specific answer used', async () => {
     const io = new ScriptedIO(['explain the .env.local situation', '/exit'])
 
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
       execute: vi.fn(async () => ({
-        retrieval: {
-          method: 'hybrid',
-          detail: 'fts+vector-rerank',
-        },
+        retrieval: { method: 'hybrid', detail: 'fts+vector-rerank' },
         results: [
           {
             metadata: { id: 'general-facts' },
@@ -615,18 +577,23 @@ describe('chat-cli session loop', () => {
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'The retrieved evidence does not contain specific information about .env.local.',
-        stopReason: 'end_turn',
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
+      call: vi.fn()
+        .mockResolvedValueOnce({
+          text: 'The retrieved evidence does not contain specific information about .env.local.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        .mockResolvedValueOnce({
+          text: 'Environment loading order: .env.local is loaded before .env.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        }),
     }
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
-    expect(io.outputs.join('\n')).toContain('assistant> Environment loading order: .env.local is loaded before .env. (source: general-facts)')
+    expect(provider.call).toHaveBeenCalledTimes(2)
+    expect(io.outputs.join('\n')).toContain('assistant> Environment loading order: .env.local is loaded before .env.')
     expect(io.outputs.join('\n')).not.toContain('assistant> CLI quick-reference:')
   })
 
@@ -666,18 +633,22 @@ describe('chat-cli session loop', () => {
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'The retrieved document does not provide information about the release process.',
-        stopReason: 'end_turn',
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
+      call: vi.fn()
+        .mockResolvedValueOnce({
+          text: 'The retrieved document does not provide information about the release process.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        .mockResolvedValueOnce({
+          text: 'Release process uses GitHub Actions.',
+          stopReason: 'end_turn' as const, toolUses: [], usage: { inputTokens: 1, outputTokens: 1 },
+        }),
     }
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor, conversationalRetrieval: true }, io)
 
-    expect(io.outputs.join('\n')).toContain('assistant> Release process uses GitHub Actions. (source: ops-facts)')
+    expect(io.outputs.join('\n')).toContain('assistant> Release process uses GitHub Actions.')
     expect(io.outputs.join('\n')).toContain('chat-deep-discovery-promotion')
   })
 
@@ -723,6 +694,7 @@ describe('chat-cli session loop', () => {
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
       call: vi.fn(async () => ({
         text: 'Try the known runbook recovery steps first.',
@@ -766,6 +738,7 @@ describe('chat-cli session loop', () => {
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
       call: vi
         .fn()
@@ -812,6 +785,7 @@ describe('chat-cli session loop', () => {
 
     const provider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
       call: vi.fn(async () => ({
         text: 'I can continue if you want me to search the KB for TUI implementation details. Please let me know if you would like me to perform this search.',
@@ -845,11 +819,12 @@ describe('chat-cli session loop', () => {
       },
     })
 
-    const provider: LLMProvider = {
+    const firstProvider: LLMProvider = {
       name: 'test-provider',
+      model: 'test-model',
       supportsStreaming: false,
       call: vi.fn(async () => ({
-        text: 'The retrieved documents do not provide specific information about the release process.',
+        text: 'Release process uses GitHub Actions.',
         stopReason: 'end_turn',
         toolUses: [],
         usage: { inputTokens: 1, outputTokens: 1 },
@@ -858,7 +833,7 @@ describe('chat-cli session loop', () => {
 
     const firstIo = new ScriptedIO(['What is the release process?', '/exit'])
     await runChatSession(
-      { llmProvider: provider, toolExecutor, conversationalRetrieval: true, graphWriter: undefined },
+      { llmProvider: firstProvider, toolExecutor, conversationalRetrieval: true, graphWriter: undefined },
       firstIo,
     )
     expect(firstIo.outputs.join('\n')).toContain('GitHub Actions')
@@ -869,9 +844,21 @@ describe('chat-cli session loop', () => {
       preview: false,
     }, baseDir)
 
+    const secondProvider: LLMProvider = {
+      name: 'test-provider',
+      model: 'test-model',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'Release process uses Buildkite.',
+        stopReason: 'end_turn' as const,
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
     const secondIo = new ScriptedIO(['What is the release process?', 'Explain it more.', '/exit'])
     await runChatSession(
-      { llmProvider: provider, toolExecutor, conversationalRetrieval: true, graphWriter: undefined },
+      { llmProvider: secondProvider, toolExecutor, conversationalRetrieval: true, graphWriter: undefined },
       secondIo,
     )
 
