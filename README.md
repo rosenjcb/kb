@@ -29,15 +29,6 @@ npm run which:kb
 ```
 
 ### 2) Configure `~/.kb/config.json`
-
-Use config for durable user settings like LLM credentials and Notion details:
-
-```bash
-kb config set llm.openaiApiKey sk-...
-# or
-kb config set llm.anthropicApiKey sk-ant-...
-```
-
 Provider is auto-detected from whichever key is present. To set one explicitly:
 
 ```bash

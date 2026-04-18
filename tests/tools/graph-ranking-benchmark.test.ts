@@ -65,7 +65,7 @@ const DOCS = [
   {
     id: 'llm-api-key-setup',
     title: 'LLM API Key Setup',
-    content: 'API keys for LLM providers are stored in ~/.kb/config.json under the llm section. Set openaiApiKey or anthropicApiKey. The provider is auto-detected from whichever key is present.',
+    content: 'API keys for LLM providers are stored as ENVIRONMENT variables.',
     type: 'runbook' as const,
   },
   {

@@ -9,6 +9,7 @@ import {
   writeKbConfig,
 } from './kb-config'
 import { runLLMSetupWizard, showLLMStatus } from './llm-setup-wizard'
+import { type CmdMode, cmd } from './cmd-ref'
 
 export interface ConfigCommandResult {
   output: string
@@ -17,6 +18,7 @@ export interface ConfigCommandResult {
 export interface RunConfigCommandOptions {
   configFile?: string
   isTTY?: boolean
+  mode?: CmdMode
 }
 
 type ConfigCommand =
@@ -25,17 +27,17 @@ type ConfigCommand =
   | { action: 'unset'; keyPath: string }
   | { action: 'llm' }
 
-export function printConfigHelp(): string {
+export function printConfigHelp(mode: CmdMode = 'cli'): string {
   return [
-    'kb config commands',
+    `${cmd('config', mode)} commands`,
     '',
     'Usage:',
-    '  kb config get',
-    '  kb config get <key>',
-    '  kb config set <key> <value>',
-    '  kb config unset <key>',
-    '  kb config llm              Set up LLM provider (interactive wizard)',
-    '  kb config llm --show       Show current LLM configuration',
+    `  ${cmd('config get', mode)}`,
+    `  ${cmd('config get <key>', mode)}`,
+    `  ${cmd('config set <key> <value>', mode)}`,
+    `  ${cmd('config unset <key>', mode)}`,
+    `  ${cmd('config llm', mode)}              Set up LLM provider (interactive wizard)`,
+    `  ${cmd('config llm --show', mode)}       Show current LLM configuration`,
     '',
     `Supported keys: ${listSupportedConfigPaths().join(', ')}`,
   ].join('\n')
@@ -45,7 +47,8 @@ export async function runConfigCommand(
   args: string[],
   options: RunConfigCommandOptions = {},
 ): Promise<ConfigCommandResult> {
-  const command = parseConfigCommand(args)
+  const mode = options.mode ?? 'cli'
+  const command = parseConfigCommand(args, mode)
   const configFile = options.configFile ?? getKbConfigFile()
 
   if (command.action === 'llm') {
@@ -58,7 +61,7 @@ export async function runConfigCommand(
       const isTTY = options.isTTY ?? Boolean(process.stdout.isTTY)
       if (!isTTY) {
         await showLLMStatus({ configFile, output: print })
-        lines.push('Run `kb config llm` in an interactive terminal to configure.')
+        lines.push(`Run \`${cmd('config llm', mode)}\` in an interactive terminal to configure.`)
       } else {
         await runLLMSetupWizard({ configFile, output: print })
       }
@@ -91,11 +94,11 @@ export async function runConfigCommand(
   }
 }
 
-function parseConfigCommand(args: string[]): ConfigCommand {
+function parseConfigCommand(args: string[], mode: CmdMode = 'cli'): ConfigCommand {
   const action = args[0]
 
   if (!action || action === '--help' || action === '-h' || action === 'help') {
-    throw new Error(printConfigHelp())
+    throw new Error(printConfigHelp(mode))
   }
 
   if (action === 'llm') {
@@ -104,26 +107,26 @@ function parseConfigCommand(args: string[]): ConfigCommand {
 
   if (action === 'get') {
     if (args.length > 2) {
-      throw new Error('kb config get accepts at most one key')
+      throw new Error(`${cmd('config get', mode)} accepts at most one key`)
     }
     return { action: 'get', keyPath: args[1] }
   }
 
   if (action === 'set') {
     if (args.length < 3) {
-      throw new Error('kb config set requires <key> <value>')
+      throw new Error(`${cmd('config set', mode)} requires <key> <value>`)
     }
     return { action: 'set', keyPath: args[1], value: args.slice(2).join(' ') }
   }
 
   if (action === 'unset') {
     if (args.length !== 2) {
-      throw new Error('kb config unset requires <key>')
+      throw new Error(`${cmd('config unset', mode)} requires <key>`)
     }
     return { action: 'unset', keyPath: args[1] }
   }
 
-  throw new Error(`Unknown config action: ${action}\n\n${printConfigHelp()}`)
+  throw new Error(`Unknown config action: ${action}\n\n${printConfigHelp(mode)}`)
 }
 
 function formatConfigValue(value: unknown, keyPath?: string): string {

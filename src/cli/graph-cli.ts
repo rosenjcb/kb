@@ -10,6 +10,7 @@
  */
 
 import { DuckGraphWriter } from '../tools/duck-graph-writer'
+import { type CmdMode, cmd } from './cmd-ref'
 
 export interface GraphCommandOptions {
   entity?: string
@@ -25,27 +26,27 @@ export class GraphCommandError extends Error {
   }
 }
 
-export function printGraphHelp(): string {
+export function printGraphHelp(mode: CmdMode = 'cli'): string {
   return [
-    'kb graph commands',
+    `${cmd('graph', mode)} commands`,
     '',
     'Usage:',
-    '  kb graph',
-    '  kb graph --entity <name>',
-    '  kb graph --path <from> <to>',
-    '  kb graph --format dot|json',
+    `  ${cmd('graph', mode)}`,
+    `  ${cmd('graph --entity <name>', mode)}`,
+    `  ${cmd('graph --path <from> <to>', mode)}`,
+    `  ${cmd('graph --format dot|json', mode)}`,
     '',
     'Examples:',
-    '  kb graph',
-    '  kb graph --entity "KB"',
-    '  kb graph --path "KB" "SQLite"',
-    '  kb graph --format json',
+    `  ${cmd('graph', mode)}`,
+    `  ${cmd('graph --entity "KB"', mode)}`,
+    `  ${cmd('graph --path "KB" "SQLite"', mode)}`,
+    `  ${cmd('graph --format json', mode)}`,
   ].join('\n')
 }
 
-export function parseGraphCommand(args: string[]): GraphCommandOptions {
+export function parseGraphCommand(args: string[], mode: CmdMode = 'cli'): GraphCommandOptions {
   if (args.includes('--help') || args.includes('-h') || args.includes('help')) {
-    throw new GraphCommandError(printGraphHelp(), 0)
+    throw new GraphCommandError(printGraphHelp(mode), 0)
   }
 
   const opts: GraphCommandOptions = {}

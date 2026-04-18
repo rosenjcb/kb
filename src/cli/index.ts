@@ -34,9 +34,10 @@ import {
   writeDefaultBase,
   writeSessionBase,
 } from './base-selection'
-import { runConfigCommand } from './config-cli'
+import { runConfigCommand, printConfigHelp } from './config-cli'
 import { parsePublishCommand, runPublishCommand } from './publish-cli'
 import { parseInitCommand, runKbInit } from './init-cli'
+import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from './cmd-ref'
 import { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { extractGraph } from '../tools/graph-entity-extractor'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
@@ -71,15 +72,14 @@ const defaultCliOutput: CliOutput = {
 // Help printers
 // ---------------------------------------------------------------------------
 
-export function printCliHelp(): string {
+export function printCliHelp(mode: CmdMode = 'cli'): string {
   return [
-    'Starts the interactive TUI when run with no arguments (in a TTY).',
-    'Pass a command for one-shot CLI mode.',
+    cmdIntro(mode),
     '',
     'Usage:',
-    '  kb',
-    '  kb <command> [options]',
-    '  kb <intent-command> "<input>" [options]',
+    `  kb`,
+    `  ${cmd('<command>', mode)} [options]`,
+    `  ${cmd('<intent-command>', mode)} "<input>" [options]`,
     '',
     'Core commands:',
     '  docs        Browse KB documents',
@@ -99,45 +99,44 @@ export function printCliHelp(): string {
     '  dispute     Record counter-evidence for a fact',
     '  explain     Explain a fact or change id',
     '',
-    'Run `kb <command> --help` for detailed usage.',
+    cmdHelpHint(mode),
     '',
     'Examples:',
-    '  kb',
-    '  kb use dogfood',
-    '  kb use --default dogfood',
-    '  kb docs list --base dogfood --limit 20',
-    '  kb docs view kb-base-selection-and-usage',
-    '  kb submit "SQLite hybrid search is enabled in dogfood"',
+    `  ${cmd('use dogfood', mode)}`,
+    `  ${cmd('use --default dogfood', mode)}`,
+    `  ${cmd('docs list --base dogfood --limit 20', mode)}`,
+    `  ${cmd('docs view kb-base-selection-and-usage', mode)}`,
+    `  ${cmd('submit "SQLite hybrid search is enabled in dogfood"', mode)}`,
   ].join('\n')
 }
 
-function printUseHelp(): string {
+function printUseHelp(mode: CmdMode = 'cli'): string {
   return [
-    'kb use commands',
+    `${cmd('use', mode)} commands`,
     '',
     'Usage:',
-    '  kb use <base>',
-    '  kb use --default <base>',
-    '  kb use --show',
+    `  ${cmd('use <base>', mode)}`,
+    `  ${cmd('use --default <base>', mode)}`,
+    `  ${cmd('use --show', mode)}`,
     '',
     'Examples:',
-    '  kb use dogfood',
-    '  kb use --default dogfood',
-    '  kb use --show',
+    `  ${cmd('use dogfood', mode)}`,
+    `  ${cmd('use --default dogfood', mode)}`,
+    `  ${cmd('use --show', mode)}`,
   ].join('\n')
 }
 
-function printDocsHelp(): string {
+function printDocsHelp(mode: CmdMode = 'cli'): string {
   return [
-    'kb docs commands',
+    `${cmd('docs', mode)} commands`,
     '',
     'Usage:',
-    '  kb docs list [options]',
-    '  kb docs view <document-id> [options]',
+    `  ${cmd('docs list', mode)} [options]`,
+    `  ${cmd('docs view <document-id>', mode)} [options]`,
     '',
-    printListHelp(),
+    printListHelp(mode),
     '',
-    printViewHelp(),
+    printViewHelp(mode),
   ].join('\n')
 }
 
@@ -149,6 +148,7 @@ export async function runMainWithOutput(
   args: string[],
   out: CliOutput,
   config: KbConfig,
+  mode: CmdMode = 'cli',
 ): Promise<void> {
   const firstArg = args[0]
 
@@ -161,7 +161,7 @@ export async function runMainWithOutput(
     const debug = args.includes('--debug')
 
     if (!oldFact) {
-      out.error('❌ Usage: kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run] [--debug]')
+      out.error(`❌ Usage: ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run] [--debug]', mode)}`)
       return
     }
 
@@ -207,7 +207,7 @@ export async function runMainWithOutput(
   }
 
   if (args.length === 0 || firstArg === '--help' || firstArg === '-h' || firstArg === 'help') {
-    out.log(printCliHelp())
+    out.log(printCliHelp(mode))
     return
   }
 
@@ -218,7 +218,7 @@ export async function runMainWithOutput(
     const base = args.find((token, index) => index > 0 && !token.startsWith('--'))
 
     if (help) {
-      out.log(printUseHelp())
+      out.log(printUseHelp(mode))
       return
     }
 
@@ -266,7 +266,7 @@ export async function runMainWithOutput(
       const configured = await readBaseConfig()
       if (!configured.selectedBase) {
         out.log('No default base configured.')
-        out.log('  Set one with: kb use --default <base>')
+        out.log(`  Set one with: ${cmd('use --default <base>', mode)}`)
         return
       }
       const resolved = await ensureOperationalBaseDir(configured.selectedBase)
@@ -275,7 +275,7 @@ export async function runMainWithOutput(
       if (configured.activeBase) {
         out.log(`Current session base: ${configured.activeBase}`)
       }
-      out.log('Use `kb use <base>` to switch the active base without changing the saved default.')
+      out.log(`Use \`${cmd('use <base>', mode)}\` to switch the active base without changing the saved default.`)
       return
     }
 
@@ -287,7 +287,7 @@ export async function runMainWithOutput(
 
   if (firstArg === 'chat') {
     if (args.includes('--help') || args.includes('-h') || args[1] === 'help') {
-      out.log(printChatHelp())
+      out.log(printChatHelp(mode))
       return
     }
 
@@ -319,12 +319,12 @@ export async function runMainWithOutput(
 
   if (firstArg === 'config') {
     try {
-      const result = await runConfigCommand(args.slice(1), { isTTY: Boolean(process.stdout.isTTY) })
+      const result = await runConfigCommand(args.slice(1), { isTTY: Boolean(process.stdout.isTTY), mode })
       out.log(result.output)
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      if (message.startsWith('kb config commands')) {
+      if (message.startsWith(printConfigHelp(mode).split('\n')[0])) {
         out.log(message)
         return
       }
@@ -353,7 +353,7 @@ export async function runMainWithOutput(
     const docsAction = args[1]
 
     if (!docsAction || docsAction === '--help' || docsAction === '-h' || docsAction === 'help') {
-      out.log(printDocsHelp())
+      out.log(printDocsHelp(mode))
       return
     }
 
@@ -393,23 +393,17 @@ export async function runMainWithOutput(
 
     out.error(`❌ Unknown docs action: ${docsAction}`)
     out.error('')
-    out.error([
-      'kb docs commands',
-      '',
-      'Usage:',
-      '  kb docs list [options]',
-      '  kb docs view <document-id> [options]',
-    ].join('\n'))
+    out.error(printDocsHelp(mode))
     return
   }
 
   if (firstArg === 'view') {
-    out.error('❌ `kb view` has moved to `kb docs view`.')
+    out.error(`❌ \`${cmd('view', mode)}\` has moved to \`${cmd('docs view', mode)}\`.`)
     return
   }
 
   if (firstArg === 'list') {
-    out.error('❌ `kb list` has moved to `kb docs list`.')
+    out.error(`❌ \`${cmd('list', mode)}\` has moved to \`${cmd('docs list', mode)}\`.`)
     return
   }
 
@@ -442,7 +436,7 @@ export async function runMainWithOutput(
       }
       out.error(`❌ ${message}`)
       out.error('')
-      out.log(printLogsHelp())
+      out.log(printLogsHelp(mode))
     }
     return
   }
@@ -450,7 +444,7 @@ export async function runMainWithOutput(
   if (firstArg === 'graph') {
     try {
       const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
-      const opts = parseGraphCommand(args.slice(1))
+      const opts = parseGraphCommand(args.slice(1), mode)
       await runGraphCommand(kbStorageDir, opts, out)
       return
     } catch (error) {
@@ -462,7 +456,7 @@ export async function runMainWithOutput(
       out.error(`❌ ${message}`)
       if (!(error instanceof GraphCommandError)) {
         out.error('')
-        out.error(printGraphHelp())
+        out.error(printGraphHelp(mode))
       }
     }
     return
@@ -569,14 +563,14 @@ export async function runMainWithOutput(
       await reporter.append(collector.finish('error', message))
       out.error(`❌ ${message}`)
       out.error('')
-      out.error(printIntentHelp())
+      out.error(printIntentHelp(mode))
     }
     return
   }
 
   out.error(`❌ Unrecognized command: ${firstArg}`)
   out.error('')
-  out.log(printCliHelp())
+  out.log(printCliHelp(mode))
 }
 
 // ---------------------------------------------------------------------------

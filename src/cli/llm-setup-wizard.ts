@@ -19,6 +19,11 @@ export interface LLMWizardResult {
   configured: boolean
 }
 
+export interface LLMQuestionIO {
+  askQuestion: (question: string) => Promise<string>
+  close?: () => void
+}
+
 const PROVIDERS: Array<{ id: LLMProvider; label: string; envVar: string }> = [
   { id: 'anthropic', label: 'Anthropic Claude', envVar: 'ANTHROPIC_API_KEY' },
   { id: 'openai', label: 'OpenAI', envVar: 'OPENAI_API_KEY' },
@@ -30,6 +35,26 @@ function ask(rl: readline.Interface, question: string): Promise<string> {
   return new Promise(resolve => rl.question(question, resolve))
 }
 
+function createReadlineQuestionIO(options: {
+  input?: NodeJS.ReadableStream
+  outputStream?: NodeJS.WritableStream
+}): LLMQuestionIO {
+  const rl = readline.createInterface({
+    input: options.input ?? process.stdin,
+    output: options.outputStream ?? process.stdout,
+    terminal: false,
+  })
+
+  return {
+    askQuestion(question: string) {
+      return ask(rl, question)
+    },
+    close() {
+      rl.close()
+    },
+  }
+}
+
 /**
  * Run the interactive LLM setup wizard.
  * Returns the chosen provider and whether a key is now available.
@@ -39,14 +64,13 @@ export async function runLLMSetupWizard(options: {
   output?: (msg: string) => void
   input?: NodeJS.ReadableStream
   outputStream?: NodeJS.WritableStream
+  questionIO?: LLMQuestionIO
 } = {}): Promise<LLMWizardResult> {
   const configFile = options.configFile ?? getKbConfigFile()
   const print = options.output ?? ((msg: string) => process.stdout.write(msg + '\n'))
-
-  const rl = readline.createInterface({
-    input: options.input ?? process.stdin,
-    output: options.outputStream ?? process.stdout,
-    terminal: false,
+  const questionIO = options.questionIO ?? createReadlineQuestionIO({
+    input: options.input,
+    outputStream: options.outputStream,
   })
 
   try {
@@ -67,7 +91,7 @@ export async function runLLMSetupWizard(options: {
 
     let chosenProvider: typeof PROVIDERS[number] | undefined
     while (!chosenProvider) {
-      const raw = await ask(rl, 'Enter number (1-4): ')
+      const raw = await questionIO.askQuestion('Enter number (1-4): ')
       const n = parseInt(raw.trim(), 10)
       if (n >= 1 && n <= PROVIDERS.length) {
         chosenProvider = PROVIDERS[n - 1]
@@ -118,7 +142,7 @@ export async function runLLMSetupWizard(options: {
 
     return { provider: chosenProvider.id, configured }
   } finally {
-    rl.close()
+    questionIO.close?.()
   }
 }
 

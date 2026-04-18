@@ -3,6 +3,7 @@ import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message } from '../core/types'
 import type { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
+import { type CmdMode, cmd } from './cmd-ref'
 import {
   appendRetrievalDetail,
   augmentReadDocumentsWithWorkspaceFallback,
@@ -75,19 +76,19 @@ const HELP_TEXT = [
 
 const CHAT_MAX_OUTPUT_TOKENS = 4096
 
-export function printChatHelp(): string {
+export function printChatHelp(mode: CmdMode = 'cli'): string {
   return [
-    'kb chat',
+    `${cmd('chat', mode)}`,
     '',
     'Usage:',
-    '  kb chat',
+    `  ${cmd('chat', mode)}`,
     '',
     'Interactive commands:',
     '  /help  Show chat commands',
     '  /exit  Exit chat mode',
     '',
     'Examples:',
-    '  kb chat',
+    `  ${cmd('chat', mode)}`,
   ].join('\n')
 }
 

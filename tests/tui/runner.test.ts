@@ -106,6 +106,7 @@ describe('runCommandForTui', () => {
       ['docs', 'list', '--limit', '5'],
       expect.any(Object),
       expect.any(Object),
+      'tui',
     )
   })
 })

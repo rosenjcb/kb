@@ -246,7 +246,7 @@ export function App({ config }: Props) {
       addEntry({ type: 'command', content: `kb> ${trimmed}` })
 
       if (firstArg === 'help' || firstArg === '--help') {
-        addEntry({ type: 'info', content: printCliHelp() })
+        addEntry({ type: 'info', content: printCliHelp('tui') })
         return
       }
 

@@ -1,5 +1,6 @@
 import { MarkdownDocumentReader, type QueryResult } from '../tools/markdown-document-reader'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
+import { type CmdMode, cmd } from './cmd-ref'
 
 export type ViewOutputMode = 'human' | 'json'
 
@@ -31,32 +32,32 @@ export class ViewCommandError extends Error {
   }
 }
 
-export function printViewHelp(): string {
+export function printViewHelp(mode: CmdMode = 'cli'): string {
   return [
-    'kb docs view commands',
+    `${cmd('docs view', mode)} commands`,
     '',
     'Usage:',
-    '  kb docs view <document-id> [--base <name>] [--output human|json]',
-    '  kb docs view --title "<exact title>" [--base <name>] [--output human|json]',
+    `  ${cmd('docs view <document-id> [--base <name>] [--output human|json]', mode)}`,
+    `  ${cmd('docs view --title "<exact title>" [--base <name>] [--output human|json]', mode)}`,
     '',
     'Examples:',
-    '  kb docs view kb-base-selection-and-usage',
-    '  kb docs view --title "KB Base Selection and Usage"',
-    '  kb docs view kb-base-selection-and-usage --output json',
+    `  ${cmd('docs view kb-base-selection-and-usage', mode)}`,
+    `  ${cmd('docs view --title "KB Base Selection and Usage"', mode)}`,
+    `  ${cmd('docs view kb-base-selection-and-usage --output json', mode)}`,
   ].join('\n')
 }
 
-export function printListHelp(): string {
+export function printListHelp(mode: CmdMode = 'cli'): string {
   return [
-    'kb docs list commands',
+    `${cmd('docs list', mode)} commands`,
     '',
     'Usage:',
-    '  kb docs list [--base <name>] [--limit <n>] [--output human|json]',
+    `  ${cmd('docs list [--base <name>] [--limit <n>] [--output human|json]', mode)}`,
     '',
     'Examples:',
-    '  kb docs list',
-    '  kb docs list --base dogfood --limit 20',
-    '  kb docs list --output json',
+    `  ${cmd('docs list', mode)}`,
+    `  ${cmd('docs list --base dogfood --limit 20', mode)}`,
+    `  ${cmd('docs list --output json', mode)}`,
   ].join('\n')
 }
 

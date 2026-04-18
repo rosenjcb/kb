@@ -21,10 +21,6 @@ export interface KbConfig {
   llm?: {
     /** Explicit provider to use. Auto-detected from env vars when omitted. */
     provider?: 'anthropic' | 'openai' | 'gemini' | 'ollama'
-    // Legacy: keys stored in config are migrated to env vars at startup. Use env vars going forward.
-    anthropicApiKey?: string
-    openaiApiKey?: string
-    geminiApiKey?: string
     geminiModel?: string
     ollamaEndpoint?: string
     ollamaEmbedModel?: string
@@ -67,9 +63,6 @@ const SUPPORTED_CONFIG_PATHS = [
   'notion.parentPageId',
   'llm',
   'llm.provider',
-  'llm.anthropicApiKey',
-  'llm.openaiApiKey',
-  'llm.geminiApiKey',
   'llm.geminiModel',
   'llm.ollamaEndpoint',
   'llm.ollamaEmbedModel',
@@ -271,9 +264,6 @@ export function getConfigValue(config: KbConfig, keyPath?: string): unknown {
     case 'notion.parentPageId': return requireConfigValue(normalized.notion?.parentPageId, keyPath)
     case 'llm': return requireConfigValue(normalized.llm, keyPath)
     case 'llm.provider': return requireConfigValue(normalized.llm?.provider, keyPath)
-    case 'llm.anthropicApiKey': return requireConfigValue(normalized.llm?.anthropicApiKey, keyPath)
-    case 'llm.openaiApiKey': return requireConfigValue(normalized.llm?.openaiApiKey, keyPath)
-    case 'llm.geminiApiKey': return requireConfigValue(normalized.llm?.geminiApiKey, keyPath)
     case 'llm.geminiModel': return requireConfigValue(normalized.llm?.geminiModel, keyPath)
     case 'llm.ollamaEndpoint': return requireConfigValue(normalized.llm?.ollamaEndpoint, keyPath)
     case 'llm.ollamaEmbedModel': return requireConfigValue(normalized.llm?.ollamaEmbedModel, keyPath)
@@ -310,15 +300,6 @@ export function setConfigValue(config: KbConfig, keyPath: string, value: string)
       }
       next.llm = { ...next.llm, provider: value as NonNullable<KbConfig['llm']>['provider'] }
       break
-    case 'llm.anthropicApiKey':
-      next.llm = { ...next.llm, anthropicApiKey: value }
-      break
-    case 'llm.openaiApiKey':
-      next.llm = { ...next.llm, openaiApiKey: value }
-      break
-    case 'llm.geminiApiKey':
-      next.llm = { ...next.llm, geminiApiKey: value }
-      break
     case 'llm.geminiModel':
       next.llm = { ...next.llm, geminiModel: value }
       break
@@ -351,9 +332,6 @@ export function unsetConfigValue(config: KbConfig, keyPath: string): KbConfig {
     case 'notion.parentPageId': if (next.notion) delete next.notion.parentPageId; break
     case 'llm': delete next.llm; break
     case 'llm.provider': if (next.llm) delete next.llm.provider; break
-    case 'llm.anthropicApiKey': if (next.llm) delete next.llm.anthropicApiKey; break
-    case 'llm.openaiApiKey': if (next.llm) delete next.llm.openaiApiKey; break
-    case 'llm.geminiApiKey': if (next.llm) delete next.llm.geminiApiKey; break
     case 'llm.geminiModel': if (next.llm) delete next.llm.geminiModel; break
     case 'llm.ollamaEndpoint': if (next.llm) delete next.llm.ollamaEndpoint; break
     case 'llm.ollamaEmbedModel': if (next.llm) delete next.llm.ollamaEmbedModel; break
@@ -385,15 +363,15 @@ export function resolveLLMProvider(config: KbConfig): ResolvedLLM {
   if (llm?.provider) {
     switch (llm.provider) {
       case 'anthropic': {
-        const key = process.env.ANTHROPIC_API_KEY || llm.anthropicApiKey
+        const key = process.env.ANTHROPIC_API_KEY
         return { provider: 'anthropic', apiKey: key }
       }
       case 'openai': {
-        const key = process.env.OPENAI_API_KEY || llm.openaiApiKey
+        const key = process.env.OPENAI_API_KEY
         return { provider: 'openai', apiKey: key }
       }
       case 'gemini': {
-        const key = process.env.GEMINI_API_KEY || llm.geminiApiKey
+        const key = process.env.GEMINI_API_KEY
         return { provider: 'gemini', apiKey: key, model: llm.geminiModel }
       }
       case 'ollama':
@@ -405,11 +383,6 @@ export function resolveLLMProvider(config: KbConfig): ResolvedLLM {
   if (process.env.ANTHROPIC_API_KEY) return { provider: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY }
   if (process.env.OPENAI_API_KEY) return { provider: 'openai', apiKey: process.env.OPENAI_API_KEY }
   if (process.env.GEMINI_API_KEY) return { provider: 'gemini', apiKey: process.env.GEMINI_API_KEY, model: llm?.geminiModel }
-
-  // Legacy: fall back to config file keys for migration
-  if (llm?.anthropicApiKey) return { provider: 'anthropic', apiKey: llm.anthropicApiKey }
-  if (llm?.openaiApiKey) return { provider: 'openai', apiKey: llm.openaiApiKey }
-  if (llm?.geminiApiKey) return { provider: 'gemini', apiKey: llm.geminiApiKey, model: llm.geminiModel }
 
   return { provider: 'ollama', endpoint: llm?.ollamaEndpoint ?? process.env.OLLAMA_ENDPOINT ?? 'http://localhost:11434' }
 }
@@ -505,9 +478,6 @@ export function applyConfigToEnv(config: KbConfig): void {
   }
 
   const llm = config.llm
-  if (llm?.anthropicApiKey && !process.env.ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = llm.anthropicApiKey
-  if (llm?.openaiApiKey && !process.env.OPENAI_API_KEY) process.env.OPENAI_API_KEY = llm.openaiApiKey
-  if (llm?.geminiApiKey && !process.env.GEMINI_API_KEY) process.env.GEMINI_API_KEY = llm.geminiApiKey
   if (llm?.geminiModel && !process.env.GEMINI_MODEL) process.env.GEMINI_MODEL = llm.geminiModel
   if (llm?.ollamaEndpoint && !process.env.OLLAMA_ENDPOINT) process.env.OLLAMA_ENDPOINT = llm.ollamaEndpoint
   if (llm?.ollamaEmbedModel && !process.env.OLLAMA_EMBED_MODEL) process.env.OLLAMA_EMBED_MODEL = llm.ollamaEmbedModel
@@ -576,9 +546,6 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
   if (input.llm && typeof input.llm === 'object') {
     const llm: KbConfig['llm'] = {}
     if (input.llm.provider) llm.provider = input.llm.provider
-    if (input.llm.anthropicApiKey?.trim()) llm.anthropicApiKey = input.llm.anthropicApiKey.trim()
-    if (input.llm.openaiApiKey?.trim()) llm.openaiApiKey = input.llm.openaiApiKey.trim()
-    if (input.llm.geminiApiKey?.trim()) llm.geminiApiKey = input.llm.geminiApiKey.trim()
     if (input.llm.geminiModel?.trim()) llm.geminiModel = input.llm.geminiModel.trim()
     if (input.llm.ollamaEndpoint?.trim()) llm.ollamaEndpoint = input.llm.ollamaEndpoint.trim()
     if (input.llm.ollamaEmbedModel?.trim()) llm.ollamaEmbedModel = input.llm.ollamaEmbedModel.trim()

@@ -4,15 +4,17 @@ import Database from 'better-sqlite3'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
 import { readKbConfig, resolveNotionToken } from './kb-config'
 
-export type PublishPhase = 'all'
-export type PublishStopPoint = 'package' | 'import'
+export type PublishPhase = 'all' | 'import' | 'restructure'
+export type PublishStopPoint = string
 
 export interface PublishOptions {
   base?: string
   provider: 'notion'
+  phase: PublishPhase
   apply: boolean
   dryRun: boolean
   parentPageId?: string
+  stagePageId?: string
   checkpointFile?: string
   resumeFrom?: string
   stopAfter?: PublishStopPoint
@@ -80,17 +82,26 @@ export function parsePublishCommand(args: string[]): PublishOptions {
     throw new Error('Use either --apply or --dry-run, not both')
   }
 
-  const stopAfter = readOption(args, '--stop-after')?.trim().toLowerCase() as PublishStopPoint | undefined
-  if (stopAfter && !['package', 'import'].includes(stopAfter)) {
-    throw new Error('Invalid --stop-after. Use package|import')
+  const provider = readOption(args, '--provider') ?? 'notion'
+  if (provider !== 'notion') {
+    throw new Error('Only --provider notion is supported in v1')
   }
+
+  const phase = (readOption(args, '--phase') ?? 'all') as PublishPhase
+  if (!['all', 'import', 'restructure'].includes(phase)) {
+    throw new Error('Invalid --phase. Use all|import|restructure')
+  }
+
+  const stopAfter = readOption(args, '--stop-after')?.trim().toLowerCase()
 
   return {
     base: readOption(args, '--base'),
     provider: 'notion',
+    phase,
     apply: hasApply,
     dryRun: hasDryRun || !hasApply,
     parentPageId: readOption(args, '--parent-page-id'),
+    stagePageId: readOption(args, '--stage-page-id'),
     checkpointFile: readOption(args, '--checkpoint-file'),
     resumeFrom: readOption(args, '--resume-from'),
     stopAfter,

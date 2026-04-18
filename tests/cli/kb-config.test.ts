@@ -193,18 +193,10 @@ describe('resolveLLMProvider', () => {
   it('prefers env var over config file key when provider is declared', () => {
     process.env.ANTHROPIC_API_KEY = 'env-key'
     const resolved = resolveLLMProvider({
-      llm: { provider: 'anthropic', anthropicApiKey: 'config-key' },
+      llm: { provider: 'anthropic', },
     })
     expect(resolved.provider).toBe('anthropic')
     expect(resolved.apiKey).toBe('env-key')
-  })
-
-  it('falls back to config file key when env var is absent (migration path)', () => {
-    const resolved = resolveLLMProvider({
-      llm: { provider: 'anthropic', anthropicApiKey: 'config-key' },
-    })
-    expect(resolved.provider).toBe('anthropic')
-    expect(resolved.apiKey).toBe('config-key')
   })
 
   it('auto-detects provider from env vars when no provider is declared', () => {

@@ -13,6 +13,7 @@ import path from 'node:path'
 import dayjs from 'dayjs'
 import type { RunReport, StageMetrics } from '../core/telemetry'
 import { defaultLogsDir } from '../core/telemetry'
+import { type CmdMode, cmd } from './cmd-ref'
 
 // ─── Public entry ─────────────────────────────────────────────────
 
@@ -365,20 +366,20 @@ function readOption(args: string[], flag: string): string | undefined {
   return val
 }
 
-export function printLogsHelp(): string {
+export function printLogsHelp(mode: CmdMode = 'cli'): string {
   return [
-    'kb logs — browse and compare run reports',
+    `${cmd('logs', mode)} — browse and compare run reports`,
     '',
     'Usage:',
-    '  kb logs list [--command <cmd>] [--since <1h|7d|YYYY-MM-DD>] [--limit <n>]',
-    '  kb logs show <runId>',
-    '  kb logs compare [<runIdA> <runIdB>] [--command <cmd>] [--since <period>]',
+    `  ${cmd('logs list [--command <cmd>] [--since <1h|7d|YYYY-MM-DD>] [--limit <n>]', mode)}`,
+    `  ${cmd('logs show <runId>', mode)}`,
+    `  ${cmd('logs compare [<runIdA> <runIdB>] [--command <cmd>] [--since <period>]', mode)}`,
     '',
     'Examples:',
-    '  kb logs list',
-    '  kb logs list --command init --since 7d',
-    '  kb logs compare                        # last two runs',
-    '  kb logs compare --command init         # last two init runs',
-    '  kb logs compare run-abc123 run-def456  # specific runs',
+    `  ${cmd('logs list', mode)}`,
+    `  ${cmd('logs list --command init --since 7d', mode)}`,
+    `  ${cmd('logs compare', mode)}                        # last two runs`,
+    `  ${cmd('logs compare --command init', mode)}         # last two init runs`,
+    `  ${cmd('logs compare run-abc123 run-def456', mode)}  # specific runs`,
   ].join('\n')
 }

@@ -6,6 +6,7 @@ import { DefaultIntentRouter } from '../intents/router'
 import { loadQuerySessionMessages, appendQuerySession } from './query-session'
 import { augmentReadDocumentsWithWorkspaceFallback, formatReadDocumentSourceIds } from './retrieval-fallback'
 import type { ConsumerIntent, ConsumerIntentEnvelope, IntentResult } from '../intents/types'
+import { type CmdMode, cmd } from './cmd-ref'
 
 export type CliOutputMode = 'human' | 'json'
 
@@ -819,14 +820,14 @@ function extractHighlights(content: string | undefined): HighlightRef[] {
   return highlights
 }
 
-export function printIntentHelp(): string {
+export function printIntentHelp(mode: CmdMode = 'cli'): string {
   return [
     'Intent commands:',
-    '  kb submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--target doc-id] [--include-session-logs] [--output human|json]',
-    '  kb validate "<fact>" [--base <name>] [--domain ops] [--output human|json]',
-    '  kb dispute "<fact>" --because "<counter evidence>" [--base <name>] [--domain ops] [--output human|json]',
-    '  kb query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]',
-    '  kb explain "<change id|fact>" [--base <name>] [--output human|json]',
+    `  ${cmd('submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--target doc-id] [--include-session-logs] [--output human|json]', mode)}`,
+    `  ${cmd('validate "<fact>" [--base <name>] [--domain ops] [--output human|json]', mode)}`,
+    `  ${cmd('dispute "<fact>" --because "<counter evidence>" [--base <name>] [--domain ops] [--output human|json]', mode)}`,
+    `  ${cmd('query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]', mode)}`,
+    `  ${cmd('explain "<change id|fact>" [--base <name>] [--output human|json]', mode)}`,
   ].join('\n')
 }
 
