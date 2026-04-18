@@ -28,10 +28,12 @@
     "test:cli": "bash tests/cli-integration.sh",
     "lint": "biome lint src",
     "lint:fix": "biome lint --write src",
+    "lint:fix:unsafe": "biome lint --write --unsafe src",
     "lint:fix:staged": "biome lint --write --staged --no-errors-on-unmatched src",
     "format": "biome format --write src",
     "check": "biome check --write src",
     "type-check": "tsc --noEmit",
+    "precommit": "npm run lint:fix:staged && npm test",
     "prepare": "husky"
   },
   "dependencies": {

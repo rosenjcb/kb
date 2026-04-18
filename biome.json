@@ -51,6 +51,16 @@
       "formatter": {
         "indentWidth": 2
       }
+    },
+    {
+      "include": ["tests/**/*.ts", "tests/**/*.tsx"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noDelete": "off"
+          }
+        }
+      }
     }
   ]
 }

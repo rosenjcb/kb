@@ -147,24 +147,29 @@ describe('config-cli', () => {
   })
 
   it('Given gemini config with a model override, then provider resolution preserves the selected model', () => {
-    const resolved = resolveLLMProvider({
-      llm: {
-        provider: 'gemini',
-        geminiModel: 'gemini-flash-latest',
-      },
-    })
+    process.env.GEMINI_API_KEY = 'test-gemini-key'
+    try {
+      const resolved = resolveLLMProvider({
+        llm: {
+          provider: 'gemini',
+          geminiModel: 'gemini-flash-latest',
+        },
+      })
 
-    expect(resolved.provider).toBe('gemini')
-    expect(resolved.model).toBe('gemini-flash-latest')
+      expect(resolved.provider).toBe('gemini')
+      expect(resolved.model).toBe('gemini-flash-latest')
 
-    const provider = createLLMProviderFromConfig({
-      llm: {
-        provider: 'gemini',
-        geminiModel: 'gemini-flash-latest',
-      },
-    })
+      const provider = createLLMProviderFromConfig({
+        llm: {
+          provider: 'gemini',
+          geminiModel: 'gemini-flash-latest',
+        },
+      })
 
-    expect(provider?.name).toBe('gemini')
+      expect(provider?.name).toBe('gemini')
+    } finally {
+      delete process.env.GEMINI_API_KEY
+    }
   })
 })
 
