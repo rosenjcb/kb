@@ -57,3 +57,14 @@ For high-risk CLI changes, keep the repository rule from `AGENTS.md`: run end-to
 ## Known Gaps to Watch
 
 - `kb init --help` should behave like help, not kick off or resume init work.
+
+## Prerequisites and errors (DRY)
+
+Many commands need **exactly one** of these at a time, and errors must name the missing prerequisite clearly (never “A or B” when both matter):
+
+1. **Knowledge base** — an effective base (`config.activeBase` or `config.selectedBase`), or an explicit `--base <name>` on commands that support it.
+2. **LLM** — a constructible provider from `~/.kb/config.json` + environment keys (`kb config llm`).
+
+Canonical user-facing strings live in `src/cli/cli-prerequisites.ts` (`CLI_ERROR_NO_KB_BASE`, `CLI_ERROR_NO_LLM_PROVIDER`, etc.). CLI and TUI should reuse them so `/query` and `kb query` behave the same as bare `kb` + slash commands.
+
+When a command needs both (e.g. `kb chat`), check **base first**, then **LLM**, and surface **one** error at a time.

@@ -2,6 +2,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
 import { readKbConfig, writeKbConfig, type KbConfig } from './kb-config'
+import { CLI_ERROR_NO_KB_BASE } from './cli-prerequisites'
 
 export interface BaseSelectionConfig {
   activeBase?: string
@@ -170,9 +171,7 @@ export async function resolveEffectiveBaseDir(
     }
   }
 
-  throw new Error(
-    'No KB base configured. Use `kb use <base>` for the current session or `kb use --default <base>` to save a default.',
-  )
+  throw new Error(CLI_ERROR_NO_KB_BASE)
 }
 
 /**

@@ -6,6 +6,11 @@ import type { InitQuestionIO } from '../cli/init-cli.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
 import { createLLMProviderFromConfig, resolveConversationalChatEnabled, resolveGraphEnabled } from '../cli/kb-config.js'
 import { resolveEffectiveBaseDir } from '../cli/base-selection.js'
+import {
+  CLI_ERROR_NO_KB_BASE,
+  CLI_ERROR_NO_LLM_PROVIDER,
+  formatPrerequisiteError,
+} from '../cli/cli-prerequisites.js'
 import { runChatSession } from '../cli/chat-cli.js'
 import { parseInitCommand, runKbInit } from '../cli/init-cli.js'
 import { DuckGraphWriter } from '../tools/duck-graph-writer.js'
@@ -80,11 +85,19 @@ export function App({ config, startupNotices = [] }: Props) {
   }, [])
 
   const startChatSession = useCallback(() => {
-    const llmProvider = createLLMProviderFromConfig(config)
-    if (!llmProvider || !storageDirRef.current) {
+    if (!storageDirRef.current) {
       addEntry({
         type: 'error',
-        content: '❌ Cannot start chat: no LLM provider or storage dir configured.',
+        content: formatPrerequisiteError(CLI_ERROR_NO_KB_BASE),
+      })
+      setMode('shell')
+      return
+    }
+    const llmProvider = createLLMProviderFromConfig(config)
+    if (!llmProvider) {
+      addEntry({
+        type: 'error',
+        content: formatPrerequisiteError(CLI_ERROR_NO_LLM_PROVIDER),
       })
       setMode('shell')
       return

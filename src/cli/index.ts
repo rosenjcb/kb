@@ -36,6 +36,11 @@ import {
   writeDefaultBase,
   writeSessionBase,
 } from './base-selection'
+import {
+  CLI_ERROR_NO_KB_BASE,
+  CLI_ERROR_NO_LLM_PROVIDER,
+  formatPrerequisiteError,
+} from './cli-prerequisites'
 import { runConfigCommand, printConfigHelp } from './config-cli'
 import { parsePublishCommand, runPublishCommand } from './publish-cli'
 import { parseInitCommand, runKbInit } from './init-cli'
@@ -238,7 +243,7 @@ export async function runMainWithOutput(
         out.log(`Base: ${effective.baseName}`)
         out.log(`Resolved path: ${effective.baseDir}`)
       } else {
-        out.log('No active base configured.')
+        out.log(CLI_ERROR_NO_KB_BASE)
       }
       if (configured.activeBase) {
         out.log(`Active base: ${configured.activeBase}`)
@@ -294,13 +299,19 @@ export async function runMainWithOutput(
     }
 
     const chatBaseFlag = args[args.indexOf('--base') + 1] ?? undefined
-    const kbStorageDir = chatBaseFlag
-      ? await ensureOperationalBaseDir(chatBaseFlag)
-      : (await resolveEffectiveBaseDir()).baseDir
+    let kbStorageDir: string
+    try {
+      kbStorageDir = chatBaseFlag
+        ? await ensureOperationalBaseDir(chatBaseFlag)
+        : (await resolveEffectiveBaseDir()).baseDir
+    } catch {
+      out.error(formatPrerequisiteError(CLI_ERROR_NO_KB_BASE))
+      return
+    }
     const llmProvider = createLLMProviderFromConfig(config)
 
     if (!llmProvider) {
-      out.error('❌ Provider setup failed: no LLM credentials found in ~/.kb/config.json or environment')
+      out.error(formatPrerequisiteError(CLI_ERROR_NO_LLM_PROVIDER))
       return
     }
 
@@ -468,12 +479,20 @@ export async function runMainWithOutput(
     const reporter = new ReportWriter(defaultLogsDir())
     let collector = new RunCollector(firstArg)
     try {
-      const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
       let parsed = parseIntentCommand(args)
       collector = new RunCollector(firstArg, { debug: parsed.debug })
-      const intentBaseDir = parsed.base
-        ? await ensureOperationalBaseDir(parsed.base)
-        : kbStorageDir
+      let intentBaseDir: string
+      try {
+        intentBaseDir = parsed.base
+          ? await ensureOperationalBaseDir(parsed.base)
+          : (await resolveEffectiveBaseDir()).baseDir
+      } catch {
+        out.error(formatPrerequisiteError(CLI_ERROR_NO_KB_BASE))
+        out.error('')
+        out.error(printIntentHelp(mode))
+        await reporter.append(collector.finish('error', CLI_ERROR_NO_KB_BASE))
+        return
+      }
       const rawLlmProvider = createLLMProviderFromConfig(config)
       const llmCounter = rawLlmProvider ? new TokenCountingProvider(rawLlmProvider) : undefined
       const llmProvider = llmCounter ?? rawLlmProvider

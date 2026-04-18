@@ -13,6 +13,7 @@ import {
   writeDefaultBase,
   writeSessionBase,
 } from '../../src/cli/base-selection'
+import { CLI_ERROR_NO_KB_BASE } from '../../src/cli/cli-prerequisites'
 
 describe('base-selection', () => {
   let tempKbHome: string
@@ -65,7 +66,7 @@ describe('base-selection', () => {
 
   it('throws when neither activeBase nor config.selectedBase is set', async () => {
     await expect(resolveEffectiveBaseDir('/repo', {})).rejects.toThrow(
-      'No KB base configured',
+      CLI_ERROR_NO_KB_BASE,
     )
   })
 

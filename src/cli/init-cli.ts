@@ -26,6 +26,7 @@ import { estimateCost, TokenCountingProvider } from '../core/telemetry'
 import { readKbConfig, createLLMProviderFromConfig, resolveGraphEnabled } from './kb-config'
 import { runLLMSetupWizard } from './llm-setup-wizard'
 import { ensureOperationalBaseDir, getKbHomeDir, readBaseConfig } from './base-selection'
+import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from './cli-prerequisites'
 import {
   assessTopicCoverage,
   buildTopicCoverageGaps,
@@ -1271,7 +1272,7 @@ async function resolveInitBaseName(
     if (suggestedBase) {
       return suggestedBase
     }
-    throw new Error('No KB base configured. Use `kb init --base <name>` or set one with `kb use <base>` / `kb use --default <base>`.')
+    throw new Error(CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE)
   }
 
   questionIO.write?.('\n[kb init] Choose a knowledge base name for this run.\n\n')

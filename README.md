@@ -43,11 +43,13 @@ kb use --default dogfood  # save a persistent default
 kb use --show             # show active base and config default
 ```
 
-Base resolution order:
-1. `kb use` active session base in `~/.kb/session.json`
-2. `selectedBase` in `~/.kb/config.json` — persistent default set by `kb use --default`
+Base resolution order (both live in `~/.kb/config.json`):
+1. `activeBase` — current working base from `kb use <base>`
+2. `selectedBase` — persistent default from `kb use --default <base>` (or `kb default <base>`)
 
 Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
+
+Prerequisites are validated separately: if no base is configured you get a **knowledge base** error; if no LLM credentials/provider are available you get an **LLM** error (never combined as either/or). Canonical copy lives in `src/cli/cli-prerequisites.ts`.
 
 ### 4) Start using intent commands
 
@@ -95,8 +97,8 @@ kb chat
 
 ### Notes
 
-- `kb use <base>` writes the active session base to `~/.kb/session.json`, so future `kb` commands keep using that base until you switch again.
-- `kb use --default <base>` writes the saved default base to `~/.kb/config.json`.
+- `kb use <base>` writes `activeBase` to `~/.kb/config.json` so future `kb` commands keep using that base until you switch again.
+- `kb use --default <base>` writes `selectedBase` to `~/.kb/config.json`.
 - `kb init` defaults to base `default` if `--base` is omitted.
 - Typing `kb --help` shows the full help message.
 
