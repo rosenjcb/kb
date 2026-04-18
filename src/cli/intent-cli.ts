@@ -218,6 +218,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
   result: IntentResult,
   llmProvider?: LLMProvider,
   sessionDir?: string,
+  priorMessages?: Message[],
 ): Promise<IntentResult> {
   if (!llmProvider) return result
   if (!isReadDocumentsResult(result)) return result
@@ -232,9 +233,11 @@ export async function enrichReadDocumentsAnswerWithLLM(
   if (!question || !evidence) return result
 
   try {
-    const priorTurns: Message[] = sessionDir
+    const sessionTurns: Message[] = sessionDir
       ? await loadQuerySessionMessages(sessionDir)
       : []
+
+    const contextMessages: Message[] = priorMessages ?? sessionTurns
 
     const userContent = [
       'You answer using only the provided KB evidence.',
@@ -248,7 +251,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
 
     const completion = await llmProvider.call({
       messages: [
-        ...priorTurns,
+        ...contextMessages,
         { role: 'user', content: userContent },
       ],
       temperature: 0.1,
