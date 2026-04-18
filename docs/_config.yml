@@ -3,6 +3,16 @@ description: A local-first knowledge system for AI workflows — store, query, a
 baseurl: "/kb"
 url: "https://rosenjcb.github.io"
 
+# Post URLs only (do not set global `permalink` — it would break top-level handbook *.md pages).
+# Must stay in sync with `filenameToPostUrlPath` in `src/core/publish/jekyll-sync.ts`.
+defaults:
+  - scope:
+      path: ""
+      type: "posts"
+    values:
+      layout: default
+      permalink: /:year/:month/:day/:title.html
+
 remote_theme: pages-themes/architect@v0.2.0
 
 plugins:

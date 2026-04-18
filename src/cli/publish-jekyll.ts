@@ -13,6 +13,8 @@ export interface JekyllPublishResult {
   status: 'accepted' | 'dry-run'
   jekyllRoot: string
   postsDir: string
+  /** When apply mode: `_data/kb_published_posts.yml` for Jekyll "Other Pages" links (omitted in dry-run). */
+  publishedPostsData?: string
   baseName: string
   baseDir: string
   totalDocs: number
@@ -56,6 +58,9 @@ export async function runJekyllPublish(
     status: options.dryRun ? 'dry-run' : 'accepted',
     jekyllRoot: syncResult.jekyllRoot,
     postsDir: syncResult.postsDir,
+    publishedPostsData: options.dryRun
+      ? undefined
+      : path.join(syncResult.jekyllRoot, '_data', 'kb_published_posts.yml'),
     baseName: baseResolution.baseName,
     baseDir: baseResolution.baseDir,
     totalDocs: docs.length,

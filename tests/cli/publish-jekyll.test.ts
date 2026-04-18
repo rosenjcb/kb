@@ -88,6 +88,7 @@ describe('runJekyllPublish dry-run', () => {
     expect(result.totalDocs).toBe(1)
     expect(result.written).toHaveLength(1)
     expect(result.written[0].title).toBe('Hello World')
+    expect(result.publishedPostsData).toBeUndefined()
     // no _posts dir written
     await expect(readdir(path.join(siteDir, '_posts'))).rejects.toThrow()
   })
@@ -113,6 +114,7 @@ describe('runJekyllPublish apply', () => {
     expect(result.status).toBe('accepted')
     expect(result.totalDocs).toBe(2)
     expect(result.written).toHaveLength(2)
+    expect(result.publishedPostsData).toBe(path.join(siteDir, '_data', 'kb_published_posts.yml'))
 
     const files = await readdir(path.join(siteDir, '_posts'))
     expect(files).toHaveLength(2)

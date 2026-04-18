@@ -6,6 +6,7 @@ import {
   buildJekyllFile,
   discoverJekyllRoot,
   docToFilename,
+  filenameToPostUrlPath,
   mapToJekyllFrontMatter,
   slugify,
   stripKbMetadataHeader,
@@ -53,6 +54,16 @@ describe('slugify', () => {
   })
 })
 
+describe('filenameToPostUrlPath', () => {
+  it('Given a standard post filename, then returns Jekyll date permalink path', () => {
+    expect(filenameToPostUrlPath('2026-01-15-my-test-document.md')).toBe('/2026/01/15/my-test-document.html')
+  })
+
+  it('Given a deduplicated filename, then slug includes numeric suffix', () => {
+    expect(filenameToPostUrlPath('2026-01-15-my-test-document-2.md')).toBe('/2026/01/15/my-test-document-2.html')
+  })
+})
+
 describe('docToFilename', () => {
   it('Given a doc with title and created_at, then returns YYYY-MM-DD-slug.md', () => {
     const doc = makeDoc()
@@ -92,8 +103,9 @@ describe('stripKbMetadataHeader', () => {
 })
 
 describe('mapToJekyllFrontMatter', () => {
-  it('Given a full doc, then maps title, date, kb_id, tags, categories', () => {
+  it('Given a full doc, then maps layout, title, date, kb_id, tags, categories', () => {
     const fm = mapToJekyllFrontMatter(makeDoc())
+    expect(fm.layout).toBe('default')
     expect(fm.title).toBe('My Test Document')
     expect(fm.date).toBe('2026-01-15 10:00:00')
     expect(fm.kb_id).toBe('doc-1')
@@ -117,6 +129,7 @@ describe('buildJekyllFile', () => {
     const output = buildJekyllFile(makeDoc())
     expect(output.startsWith('---\n')).toBe(true)
     expect(output).toContain('\n---\n')
+    expect(output).toContain('layout: default')
     expect(output).toContain('title: My Test Document')
   })
 
@@ -176,6 +189,11 @@ describe('syncDocsToJekyll', () => {
 
     const files = await readdir(path.join(jekyllRoot, '_posts'))
     expect(files).toContain('2026-01-15-my-test-document.md')
+
+    const dataPath = path.join(jekyllRoot, '_data', 'kb_published_posts.yml')
+    const dataYaml = await readFile(dataPath, 'utf8')
+    expect(dataYaml).toContain('url: /2026/01/15/my-test-document.html')
+    expect(dataYaml).toContain('title: My Test Document')
   })
 
   it('Given existing _posts files, then clears them before writing', async () => {
@@ -213,6 +231,7 @@ describe('syncDocsToJekyll', () => {
       path.join(jekyllRoot, '_posts', '2026-01-15-my-test-document.md'),
       'utf8'
     )
+    expect(content).toContain('layout: default')
     expect(content).toContain('title: My Test Document')
     expect(content).toContain('## Body')
   })
