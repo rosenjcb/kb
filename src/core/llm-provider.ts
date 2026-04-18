@@ -362,6 +362,13 @@ export class GeminiProvider implements LLMProvider {
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }],
       })),
+      ...(params.systemPrompt
+        ? {
+            system_instruction: {
+              parts: [{ text: params.systemPrompt }],
+            },
+          }
+        : {}),
       tools: params.tools?.map(t => ({
         functionDeclarations: [
           {

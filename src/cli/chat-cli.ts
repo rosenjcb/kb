@@ -1,10 +1,13 @@
 import { createInterface } from 'node:readline/promises'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message } from '../core/types'
 import type { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
+import {
+  appendRetrievalDetail,
+  augmentReadDocumentsWithWorkspaceFallback,
+  formatReadDocumentSourceIds,
+} from './retrieval-fallback'
 import {
   createInitialConversationState,
   resolveConversationalChatTurn,
@@ -175,7 +178,7 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
           }
         }
 
-        const retrievalWithFallback = await augmentRetrievalWithWorkspaceFallback(
+        const retrievalWithFallback = await augmentReadDocumentsWithWorkspaceFallback(
           resolvedTurn.retrievalQuery,
           retrieval,
           deps.workspaceDir ?? process.cwd(),
@@ -258,7 +261,7 @@ export async function runChatSession(deps: ChatSessionDeps, io: ChatIO = createT
         if (checkpointTrace) {
           io.write(`checkpoints> ${checkpointTrace}`)
         }
-        const sourceIds = formatSourceIds(retrievalForOutput.results)
+        const sourceIds = formatReadDocumentSourceIds(retrievalForOutput.results)
         io.write(`sources> ${sourceIds.join(', ') || 'none'}`)
         deps.onTurnComplete?.({
           input,
@@ -377,101 +380,6 @@ function normalizeReadResult(value: unknown): ReadDocumentsResult {
   }
 }
 
-async function augmentRetrievalWithWorkspaceFallback(
-  question: string,
-  retrieval: ReadDocumentsResult,
-  workspaceDir: string,
-): Promise<ReadDocumentsResult> {
-  if (!shouldUseWorkspaceFallback(question, retrieval)) {
-    return retrieval
-  }
-
-  const fallbackResults = await loadWorkspaceFallbackResults(workspaceDir)
-  if (fallbackResults.length === 0) {
-    return retrieval
-  }
-
-  return {
-    ...retrieval,
-    results: [...(retrieval.results ?? []), ...fallbackResults].slice(0, 8),
-    retrieval: {
-      method: retrieval.retrieval?.method ?? 'lexical',
-      detail: appendDetail(retrieval.retrieval?.detail, 'workspace-fallback'),
-      checkpoints: retrieval.retrieval?.checkpoints,
-    },
-  }
-}
-
-function shouldUseWorkspaceFallback(
-  question: string,
-  retrieval: ReadDocumentsResult,
-): boolean {
-  if (!isBroadProjectQuestion(question)) {
-    return false
-  }
-
-  const results = retrieval.results
-
-  if (!results || results.length === 0) {
-    return true
-  }
-
-  const confidence = getFinalCheckpointConfidence(retrieval)
-  if (typeof confidence === 'number' && confidence < 0.72) {
-    return true
-  }
-
-  const ids = formatSourceIds(results)
-  if (ids.length === 0) {
-    return true
-  }
-
-  return ids.every(isLowSignalSourceId)
-}
-
-function isLowSignalSourceId(id: string): boolean {
-  return id.startsWith('ticket-')
-    || id.startsWith('session-log-')
-    || id === 'general-facts'
-}
-
-function isBroadProjectQuestion(question: string): boolean {
-  const text = question.toLowerCase()
-  return /(what is this project|what is this repo|project about|purpose|goal|mission|scope)/.test(text)
-}
-
-async function loadWorkspaceFallbackResults(
-  workspaceDir: string,
-): Promise<NonNullable<ReadDocumentsResult['results']>> {
-  const docs = [
-    { id: 'workspace-readme', fileName: 'README.md' },
-    { id: 'workspace-gameplan', fileName: 'GAMEPLAN.md' },
-  ]
-
-  const results: NonNullable<ReadDocumentsResult['results']> = []
-
-  for (const doc of docs) {
-    try {
-      const filePath = path.join(workspaceDir, doc.fileName)
-      const content = await readFile(filePath, 'utf8')
-      const clipped = content.length > 1800 ? `${content.slice(0, 1800)}...` : content
-      results.push({
-        metadata: { id: doc.id },
-        content: clipped,
-      })
-    } catch {
-      // Best-effort fallback: skip missing files.
-    }
-  }
-
-  return results
-}
-
-function appendDetail(base: string | undefined, suffix: string): string {
-  if (!base) return suffix
-  return `${base};${suffix}`
-}
-
 function shouldAttemptRecoveryQuery(retrieval: ReadDocumentsResult): boolean {
   const finalCheckpoint = getFinalCheckpoint(retrieval)
   if (!finalCheckpoint) {
@@ -533,7 +441,7 @@ function mergeReadResults(
     results: [...mergedMap.values()].slice(0, 8),
     retrieval: {
       method: secondary.retrieval?.method ?? primary.retrieval?.method,
-      detail: appendDetail(
+      detail: appendRetrievalDetail(
         secondary.retrieval?.detail ?? primary.retrieval?.detail,
         detailSuffix,
       ),
@@ -548,11 +456,6 @@ function getFinalCheckpoint(
   const checkpoints = retrieval.retrieval?.checkpoints
   if (!Array.isArray(checkpoints) || checkpoints.length === 0) return undefined
   return checkpoints[checkpoints.length - 1]
-}
-
-function getFinalCheckpointConfidence(retrieval: ReadDocumentsResult): number | undefined {
-  const checkpoint = getFinalCheckpoint(retrieval)
-  return checkpoint?.confidence
 }
 
 function formatRetrievalMode(retrieval: ReadDocumentsResult['retrieval']): string {
@@ -575,16 +478,6 @@ function formatCheckpointTrace(retrieval: ReadDocumentsResult['retrieval']): str
       return `${stage}:${status}->${action}`
     })
     .join(' | ')
-}
-
-function formatSourceIds(results: ReadDocumentsResult['results']): string[] {
-  if (!Array.isArray(results) || results.length === 0) return []
-
-  const ids = results
-    .map(result => result.metadata?.id)
-    .filter((value): value is string => Boolean(value))
-
-  return [...new Set(ids)].slice(0, 10)
 }
 
 function buildEvidence(results: ReadDocumentsResult['results']): string {
