@@ -9,6 +9,10 @@ import { resolveAgentProfile } from '../core/agents/agent-registry'
 import type { StreamManager } from '../core/runtime/stream-manager'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { AgentEvent, LLMProvider, SubagentTaskResult, ToolUseRequest } from '../core/types'
+import {
+  readSubagentEvalScenarioFromEnv,
+  subagentLoopTuning,
+} from './subagent-eval-scenario'
 
 export interface ExecuteSubagentTaskParams {
   parentRegistry: ToolExecutor
@@ -66,14 +70,23 @@ export async function executeSubagentTask(
     }
   }
 
-  const profile = resolveAgentProfile(
-    typeof input.agent_profile_id === 'string' ? input.agent_profile_id : undefined
-  )
+  const scenario = readSubagentEvalScenarioFromEnv()
+  const tuning = subagentLoopTuning(scenario)
 
-  const maxTurns =
+  const explicitProfileId =
+    typeof input.agent_profile_id === 'string' ? input.agent_profile_id.trim() : undefined
+  const profileIdForResolve =
+    explicitProfileId ??
+    (tuning.defaultProfileIdWhenUnspecified === 'research' ? 'research' : undefined)
+  const profile = resolveAgentProfile(profileIdForResolve)
+
+  let maxTurns =
     typeof input.max_turns === 'number' && Number.isFinite(input.max_turns)
       ? Math.min(Math.max(1, Math.floor(input.max_turns)), 20)
       : profile.defaultMaxTurns
+  if (tuning.maxTurnsCap !== undefined) {
+    maxTurns = Math.min(maxTurns, tuning.maxTurnsCap)
+  }
 
   const fromProfile = profile.defaultAllowedTools
   const allowedNames = Array.isArray(input.allowed_tools)
@@ -115,7 +128,7 @@ export async function executeSubagentTask(
     for await (const event of agentLoop(prompt, provider, childExecutor, {
       maxTurns,
       systemPrompt,
-      parallelToolCalls: true,
+      parallelToolCalls: tuning.parallelToolCalls,
     })) {
       collected.push(event)
       streamManager?.push(channelId, event)
