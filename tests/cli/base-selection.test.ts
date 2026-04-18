@@ -44,13 +44,13 @@ describe('base-selection', () => {
 
   // ─── resolveEffectiveBaseDir — session/config precedence ──────────────────
 
-  it('active session base wins over config.selectedBase', async () => {
+  it('active base in config wins over selectedBase', async () => {
     const result = await resolveEffectiveBaseDir('/repo', {
       activeBase: 'session-base',
       selectedBase: 'config-base',
     })
 
-    expect(result.source).toBe('session.activeBase')
+    expect(result.source).toBe('config.activeBase')
     expect(result.baseName).toBe('session-base')
     expect(result.baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'session-base'))
   })
@@ -92,6 +92,23 @@ describe('base-selection', () => {
 
     expect(config.selectedBase).toBe('dogfood')
     expect(config.activeBase).toBe('catalog')
+    const raw = JSON.parse(await readFile(path.join(getKbHomeDir(), 'config.json'), 'utf8')) as {
+      activeBase?: string
+      selectedBase?: string
+    }
+    expect(raw.activeBase).toBe('catalog')
+    expect(raw.selectedBase).toBe('dogfood')
+  })
+
+  it('migrates legacy session.json into config.json and removes session.json', async () => {
+    await writeFile(
+      path.join(getKbHomeDir(), 'session.json'),
+      `${JSON.stringify({ activeBase: 'legacy-base' }, null, 2)}\n`,
+      'utf8',
+    )
+    const config = await readBaseConfig()
+    expect(config.activeBase).toBe('legacy-base')
+    await expect(readFile(path.join(getKbHomeDir(), 'session.json'), 'utf8')).rejects.toThrow()
   })
 
   // ─── legacy sqlite migration ──────────────────────────────────────────────

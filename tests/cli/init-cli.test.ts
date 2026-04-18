@@ -132,7 +132,7 @@ describe('init-cli interview checkpoints', () => {
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
     await writeFile(
-      path.join(kbHomeDir, 'session.json'),
+      path.join(kbHomeDir, 'config.json'),
       `${JSON.stringify({ activeBase: 'dogfood' }, null, 2)}\n`,
       'utf8',
     )

@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import { createProvider } from '../core/llm-provider'
 
 export interface KbConfig {
+  activeBase?: string
   selectedBase?: string
   graph?: {
     enabled?: boolean
@@ -559,6 +560,13 @@ export function resolveNotionToken(config: KbConfig): string | undefined {
 
 export function normalizeKbConfig(input: KbConfig): KbConfig {
   const normalized: KbConfig = {}
+
+  const activeBase = typeof input.activeBase === 'string' && input.activeBase.trim()
+    ? input.activeBase.trim()
+    : undefined
+  if (activeBase) {
+    normalized.activeBase = activeBase
+  }
 
   const selectedBase = typeof input.selectedBase === 'string' && input.selectedBase.trim()
     ? input.selectedBase.trim()

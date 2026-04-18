@@ -30,6 +30,7 @@ import {
   ensureOperationalBaseDir,
   formatDefaultCommandHelp,
   formatUseCommandHelp,
+  migrateLegacyKbSessionJson,
   readBaseConfig,
   resolveEffectiveBaseDir,
   writeDefaultBase,
@@ -240,7 +241,7 @@ export async function runMainWithOutput(
         out.log('No active base configured.')
       }
       if (configured.activeBase) {
-        out.log(`Session base: ${configured.activeBase}`)
+        out.log(`Active base: ${configured.activeBase}`)
       }
       if (configured.selectedBase) {
         out.log(`Default base: ${configured.selectedBase}`)
@@ -274,7 +275,7 @@ export async function runMainWithOutput(
       out.log(`Default base: ${configured.selectedBase}`)
       out.log(`Resolved path: ${resolved}`)
       if (configured.activeBase) {
-        out.log(`Current session base: ${configured.activeBase}`)
+        out.log(`Current active base: ${configured.activeBase}`)
       }
       out.log(`Use \`${cmd('use <base>', mode)}\` to switch the active base without changing the saved default.`)
       return
@@ -579,6 +580,7 @@ export async function runMainWithOutput(
 // ---------------------------------------------------------------------------
 
 async function main() {
+  await migrateLegacyKbSessionJson()
   let kbConfig = await ensureDefaultConfig()
   const inferred = await persistInferredLLMProvider({ config: kbConfig })
   kbConfig = inferred.config

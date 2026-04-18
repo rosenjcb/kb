@@ -5,7 +5,7 @@ import type { ChatIO } from '../cli/chat-cli.js'
 import type { InitQuestionIO } from '../cli/init-cli.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
 import { createLLMProviderFromConfig, resolveConversationalChatEnabled, resolveGraphEnabled } from '../cli/kb-config.js'
-import { readBaseConfig, resolveEffectiveBaseDir } from '../cli/base-selection.js'
+import { resolveEffectiveBaseDir } from '../cli/base-selection.js'
 import { runChatSession } from '../cli/chat-cli.js'
 import { parseInitCommand, runKbInit } from '../cli/init-cli.js'
 import { DuckGraphWriter } from '../tools/duck-graph-writer.js'
@@ -66,22 +66,16 @@ export function App({ config, startupNotices = [] }: Props) {
     setHistory(prev => prev.map(e => (e.id === id ? { ...e, ...patch } : e)))
   }, [])
 
-  // Resolve base dir on mount
+  // Resolve base dir on mount (effective base: activeBase, else selectedBase)
   useEffect(() => {
-    readBaseConfig()
-      .then(configured => {
-        setBaseName(configured.selectedBase ?? '')
-      })
-      .catch(() => {
-        setBaseName('')
-      })
-
     resolveEffectiveBaseDir()
-      .then(({ baseDir }) => {
+      .then(({ baseDir, baseName: effectiveBaseName }) => {
         storageDirRef.current = baseDir
+        setBaseName(effectiveBaseName)
       })
       .catch(() => {
         storageDirRef.current = ''
+        setBaseName('')
       })
   }, [])
 
@@ -287,16 +281,15 @@ export function App({ config, startupNotices = [] }: Props) {
 
         // Refresh base name after use/default commands
         if (firstArg === 'use' || firstArg === 'default') {
-          readBaseConfig()
-            .then(configured => {
-              setBaseName(configured.selectedBase ?? '')
-            })
-            .catch(() => {})
           resolveEffectiveBaseDir()
-            .then(({ baseDir }) => {
+            .then(({ baseDir, baseName: effectiveBaseName }) => {
               storageDirRef.current = baseDir
+              setBaseName(effectiveBaseName)
             })
-            .catch(() => {})
+            .catch(() => {
+              storageDirRef.current = ''
+              setBaseName('')
+            })
         }
 
         updateEntry(resultId, { content: output, loading: false })
