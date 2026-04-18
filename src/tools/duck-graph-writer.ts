@@ -215,8 +215,9 @@ export class DuckGraphWriter {
   /** Soft-delete all edges originating from a document (e.g. on kb invalidate). */
   async softDeleteByDocId(docId: string): Promise<number> {
     if (!this.ready) await this.open()
-    await this.conn?.run('UPDATE relationships SET weight = 0 WHERE doc_id = ?', [docId])
-    const result = await this.conn?.runAndReadAll(
+    const c = this.requireConn()
+    await c.run('UPDATE relationships SET weight = 0 WHERE doc_id = ?', [docId])
+    const result = await c.runAndReadAll(
       'SELECT COUNT(*) AS n FROM relationships WHERE doc_id = ? AND weight = 0',
       [docId]
     )
@@ -310,10 +311,11 @@ export class DuckGraphWriter {
 
   async findPath(fromId: string, toId: string, maxDepth = 6): Promise<GraphPath | null> {
     if (!this.ready) await this.open()
+    const c = this.requireConn()
     const from = slugify(fromId)
     const to = slugify(toId)
 
-    const result = await this.conn?.runAndReadAll(
+    const result = await c.runAndReadAll(
       `
       WITH RECURSIVE reach(node, path, depth) AS (
         SELECT ?, [?], 0
@@ -347,8 +349,9 @@ export class DuckGraphWriter {
     if (!this.ready) await this.open()
     if (slugs.length === 0) return []
 
+    const c = this.requireConn()
     const placeholders = slugs.map(() => '?').join(', ')
-    const rows = await this.conn?.runAndReadAll(
+    const rows = await c.runAndReadAll(
       `
       SELECT DISTINCT e.name
       FROM relationships r
@@ -373,10 +376,11 @@ export class DuckGraphWriter {
     if (!this.ready) await this.open()
     if (slugs.length === 0 || docIds.length === 0) return new Map()
 
+    const c = this.requireConn()
     const slugPlaceholders = slugs.map(() => '?').join(', ')
     const docPlaceholders = docIds.map(() => '?').join(', ')
 
-    const directRows = await this.conn?.runAndReadAll(
+    const directRows = await c.runAndReadAll(
       `
       SELECT doc_id, name
       FROM entities
@@ -386,7 +390,7 @@ export class DuckGraphWriter {
       [...slugs, ...docIds]
     )
 
-    const oneHopRows = await this.conn?.runAndReadAll(
+    const oneHopRows = await c.runAndReadAll(
       `
       SELECT DISTINCT
         COALESCE(target.doc_id, r.doc_id) AS doc_id,
@@ -447,7 +451,8 @@ export class DuckGraphWriter {
 
   async exportDot(): Promise<string> {
     if (!this.ready) await this.open()
-    const result = await this.conn?.runAndReadAll(`
+    const c = this.requireConn()
+    const result = await c.runAndReadAll(`
       SELECT e1.name, r.type, e2.name
       FROM relationships r
       JOIN entities e1 ON r.from_id = e1.id
