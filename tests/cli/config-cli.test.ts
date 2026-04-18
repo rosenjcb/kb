@@ -71,10 +71,10 @@ describe('config-cli', () => {
     const configFile = await createConfigFile()
 
     await expect(runConfigCommand(['set', 'updatedAt', '123'], { configFile })).rejects.toThrow(
-      'READ_ONLY_CONFIG_KEY',
+      'READ_ONLY_CONFIG_KEY'
     )
     await expect(runConfigCommand(['get', 'foo.bar'], { configFile })).rejects.toThrow(
-      'UNKNOWN_CONFIG_KEY',
+      'UNKNOWN_CONFIG_KEY'
     )
   })
 
@@ -82,7 +82,7 @@ describe('config-cli', () => {
     const configFile = await createConfigFile({})
 
     await expect(runConfigCommand(['get', 'selectedBase'], { configFile })).rejects.toThrow(
-      'UNKNOWN_CONFIG_KEY',
+      'UNKNOWN_CONFIG_KEY'
     )
   })
 
@@ -139,10 +139,14 @@ describe('config-cli', () => {
   })
 
   it('Given internal chat config or env override, then conversational chat flag resolves without becoming a public config key', () => {
-    expect(resolveConversationalChatEnabled({ chat: { experimentalConversationalRetrieval: true } })).toBe(true)
+    expect(
+      resolveConversationalChatEnabled({ chat: { experimentalConversationalRetrieval: true } })
+    ).toBe(true)
 
     process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL = 'false'
-    expect(resolveConversationalChatEnabled({ chat: { experimentalConversationalRetrieval: true } })).toBe(false)
+    expect(
+      resolveConversationalChatEnabled({ chat: { experimentalConversationalRetrieval: true } })
+    ).toBe(false)
     delete process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL
   })
 

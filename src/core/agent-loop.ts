@@ -13,6 +13,13 @@ export interface AgentLoopConfig {
   maxTokens?: number
   temperature?: number
   collector?: RunCollector
+  /** Optional system prompt forwarded to the provider (subagent / custom harness). */
+  systemPrompt?: string
+  /**
+   * When true (default), tool calls returned in a single assistant turn are executed concurrently.
+   * Order of `tool_start` / `tool_result` events remains aligned with the model's tool list.
+   */
+  parallelToolCalls?: boolean
 }
 
 /**
@@ -35,6 +42,7 @@ export async function* agentLoop(
 
   const tools: ToolDefinition[] = toolExecutor?.getTools() ?? []
   const maxTurns = config.maxTurns ?? 10
+  const parallelToolCalls = config.parallelToolCalls !== false
   let turnCount = 0
 
   while (turnCount < maxTurns) {
@@ -48,6 +56,7 @@ export async function* agentLoop(
       tools,
       maxTokens: config.maxTokens,
       temperature: config.temperature,
+      systemPrompt: config.systemPrompt,
     })
     const turnDurationMs = Date.now() - turnStartMs
 
@@ -91,54 +100,54 @@ export async function* agentLoop(
       break
     }
 
-    // Execute tools and collect results
-    const toolResults: Array<{
-      toolUseId: string
-      toolName: string
-      result: unknown
-      isError: boolean
-    }> = []
-
-    for (const toolUse of response.toolUses) {
+    // Execute tools and collect results (parallel by default; preserve tool order)
+    const toolUses = response.toolUses
+    for (const toolUse of toolUses) {
       yield { type: 'tool_start', toolName: toolUse.name, toolUseId: toolUse.id }
+    }
 
+    const runOne = async (toolUse: (typeof toolUses)[number]) => {
       try {
         let result: unknown
         if (toolExecutor) {
           result = await toolExecutor.execute(toolUse)
         } else {
-          // Fallback mock for testing
           result = { status: 'executed', tool: toolUse.name }
         }
-
-        toolResults.push({
+        return {
           toolUseId: toolUse.id,
           toolName: toolUse.name,
           result,
-          isError: false,
-        })
-
-        yield {
-          type: 'tool_result',
-          toolUseId: toolUse.id,
-          result,
-          isError: false,
+          isError: false as const,
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error)
-        toolResults.push({
+        return {
           toolUseId: toolUse.id,
           toolName: toolUse.name,
           result: errorMsg,
-          isError: true,
-        })
-
-        yield {
-          type: 'tool_result',
-          toolUseId: toolUse.id,
-          result: errorMsg,
-          isError: true,
+          isError: true as const,
         }
+      }
+    }
+
+    let toolResults: Awaited<ReturnType<typeof runOne>>[]
+    if (parallelToolCalls) {
+      toolResults = await Promise.all(toolUses.map(tu => runOne(tu)))
+    } else {
+      toolResults = []
+      for (const tu of toolUses) {
+        toolResults.push(await runOne(tu))
+      }
+    }
+
+    for (const tr of toolResults) {
+      yield {
+        type: 'tool_result',
+        toolUseId: tr.toolUseId,
+        toolName: tr.toolName,
+        result: tr.result,
+        isError: tr.isError,
       }
     }
 

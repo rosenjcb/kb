@@ -61,10 +61,11 @@ describe('chat-conversation', () => {
       state,
       resolved,
       {
-        answer: 'The retrieved documents do not provide information yet. Please let me know if you would like me to perform this search.',
+        answer:
+          'The retrieved documents do not provide information yet. Please let me know if you would like me to perform this search.',
         retrievedDocIds: ['kb-system-overview'],
       },
-      4,
+      4
     )
 
     expect(answerNeedsSearch(next.recentTurns[0]?.assistant ?? '')).toBe(true)

@@ -206,8 +206,12 @@ describe('MarkdownMDWriterTool specialized operations', () => {
     expect(result.proposedDiffs[0]?.documentId).toBe('general-facts')
     expect(result.proposedDiffs[0]?.diff).toContain('--- a/')
     expect(result.proposedDiffs[0]?.diff).toContain('+++ b/')
-    expect(result.proposedDiffs[0]?.diff).toContain('-Canonical mapping uses foo in production docs.')
-    expect(result.proposedDiffs[0]?.diff).toContain('+Canonical mapping uses bar in production docs.')
+    expect(result.proposedDiffs[0]?.diff).toContain(
+      '-Canonical mapping uses foo in production docs.'
+    )
+    expect(result.proposedDiffs[0]?.diff).toContain(
+      '+Canonical mapping uses bar in production docs.'
+    )
 
     const generalContent = await readFile(path.join(baseDir, 'general-facts.md'), 'utf8')
     const sessionContent = await readFile(path.join(baseDir, 'session-log-2026-04-12.md'), 'utf8')

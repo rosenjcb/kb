@@ -305,6 +305,11 @@ export class OpenAIProvider implements LLMProvider {
 
 // ─── Google Gemini ──────────────────────────────────────────────
 
+/** Gemini 2.5+ REST API accepts thinkingConfig.thinkingBudget (0 disables thinking). */
+function geminiModelSupportsThinkingBudget(model: string): boolean {
+  return /gemini-2\.5|gemini-3|gemini-exp/i.test(model)
+}
+
 export class GeminiProvider implements LLMProvider {
   readonly name = 'gemini'
   readonly supportsStreaming = true
@@ -312,7 +317,7 @@ export class GeminiProvider implements LLMProvider {
 
   constructor(
     private apiKey: string,
-    model = 'gemini-2.0-flash'
+    model = 'gemini-2.5-flash'
   ) {
     this.model = model
   }
@@ -372,6 +377,9 @@ export class GeminiProvider implements LLMProvider {
       generationConfig: {
         maxOutputTokens,
         temperature: params.temperature ?? 0.7,
+        ...(params.thinkingBudget !== undefined && geminiModelSupportsThinkingBudget(this.model)
+          ? { thinkingConfig: { thinkingBudget: params.thinkingBudget } }
+          : {}),
       },
     }
 
@@ -405,6 +413,8 @@ export class GeminiProvider implements LLMProvider {
       text: content
         .map((p: unknown) => asRecord(p))
         .filter(p => typeof p.text === 'string' && p.text.length > 0)
+        // Gemini 2.5+ may emit reasoning in separate parts with thought: true.
+        .filter(p => p.thought !== true)
         .map(p => String(p.text))
         .join(''),
       stopReason: content.some((p: unknown) => asRecord(p).functionCall) ? 'tool_use' : 'end_turn',
@@ -450,6 +460,7 @@ export class OllamaProvider implements LLMProvider {
       body: JSON.stringify({
         model: this.model,
         messages: params.messages,
+        ...(params.systemPrompt ? { system: params.systemPrompt } : {}),
         stream: false,
       }),
     })

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { runLogsCommand, printLogsHelp } from '../../src/cli/logs-cli'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { printLogsHelp, runLogsCommand } from '../../src/cli/logs-cli'
 import type { RunReport } from '../../src/core/telemetry'
 
 // ─── Fixtures ─────────────────────────────────────────────────────
@@ -29,8 +29,26 @@ const initReportA = makeReport({
   totalOutputTokens: 900,
   totalEstimatedCostUsd: 0.00044,
   stages: [
-    { stage: 'pass1', startedAt: '2026-04-17T09:00:00.000Z', durationMs: 7000, inputTokens: 300, outputTokens: 200, estimatedCostUsd: 0.00009, provider: 'gemini', model: 'gemini-2.0-flash' },
-    { stage: 'pass2', startedAt: '2026-04-17T09:00:07.000Z', durationMs: 5000, inputTokens: 250, outputTokens: 150, estimatedCostUsd: 0.00007, provider: 'gemini', model: 'gemini-2.0-flash' },
+    {
+      stage: 'pass1',
+      startedAt: '2026-04-17T09:00:00.000Z',
+      durationMs: 7000,
+      inputTokens: 300,
+      outputTokens: 200,
+      estimatedCostUsd: 0.00009,
+      provider: 'gemini',
+      model: 'gemini-2.0-flash',
+    },
+    {
+      stage: 'pass2',
+      startedAt: '2026-04-17T09:00:07.000Z',
+      durationMs: 5000,
+      inputTokens: 250,
+      outputTokens: 150,
+      estimatedCostUsd: 0.00007,
+      provider: 'gemini',
+      model: 'gemini-2.0-flash',
+    },
   ],
 })
 
@@ -43,8 +61,26 @@ const initReportB = makeReport({
   totalOutputTokens: 850,
   totalEstimatedCostUsd: 0.00038,
   stages: [
-    { stage: 'pass1', startedAt: '2026-04-17T09:05:00.000Z', durationMs: 6000, inputTokens: 280, outputTokens: 190, estimatedCostUsd: 0.00008, provider: 'gemini', model: 'gemini-2.0-flash' },
-    { stage: 'pass2', startedAt: '2026-04-17T09:05:06.000Z', durationMs: 4500, inputTokens: 240, outputTokens: 140, estimatedCostUsd: 0.00006, provider: 'gemini', model: 'gemini-2.0-flash' },
+    {
+      stage: 'pass1',
+      startedAt: '2026-04-17T09:05:00.000Z',
+      durationMs: 6000,
+      inputTokens: 280,
+      outputTokens: 190,
+      estimatedCostUsd: 0.00008,
+      provider: 'gemini',
+      model: 'gemini-2.0-flash',
+    },
+    {
+      stage: 'pass2',
+      startedAt: '2026-04-17T09:05:06.000Z',
+      durationMs: 4500,
+      inputTokens: 240,
+      outputTokens: 140,
+      estimatedCostUsd: 0.00006,
+      provider: 'gemini',
+      model: 'gemini-2.0-flash',
+    },
   ],
 })
 
@@ -61,8 +97,8 @@ const queryReport = makeReport({
 // ─── Mock filesystem ──────────────────────────────────────────────
 
 function mockLogsDir(reports: RunReport[]) {
-  const ndjson = reports.map(r => JSON.stringify(r)).join('\n') + '\n'
-  vi.doMock('node:fs/promises', async (importOriginal) => {
+  const ndjson = `${reports.map(r => JSON.stringify(r)).join('\n')}\n`
+  vi.doMock('node:fs/promises', async importOriginal => {
     const actual = await importOriginal<typeof import('node:fs/promises')>()
     return {
       ...actual,
@@ -70,7 +106,7 @@ function mockLogsDir(reports: RunReport[]) {
       readFile: vi.fn().mockResolvedValue(ndjson),
     }
   })
-  vi.doMock('node:fs', async (importOriginal) => {
+  vi.doMock('node:fs', async importOriginal => {
     const actual = await importOriginal<typeof import('node:fs')>()
     return { ...actual, existsSync: vi.fn().mockReturnValue(true) }
   })
@@ -99,7 +135,7 @@ describe('printLogsHelp', () => {
 
 describe('runLogsCommand list', () => {
   it('Given no reports, then returns empty message', async () => {
-    vi.doMock('node:fs', async (importOriginal) => {
+    vi.doMock('node:fs', async importOriginal => {
       const actual = await importOriginal<typeof import('node:fs')>()
       return { ...actual, existsSync: vi.fn().mockReturnValue(false) }
     })
@@ -134,7 +170,7 @@ describe('runLogsCommand list', () => {
     const { runLogsCommand: run } = await import('../../src/cli/logs-cli')
     const output = await run(['list', '--limit', '1'])
     // Most recent first, so queryReport (last) should appear
-    const runIdMatches = (output.match(/run-\d+-[a-z]+/g) ?? [])
+    const runIdMatches = output.match(/run-\d+-[a-z]+/g) ?? []
     expect(runIdMatches).toHaveLength(1)
     vi.resetModules()
   })
@@ -223,7 +259,16 @@ describe('runLogsCommand compare', () => {
       runId: 'run-200-bbbb',
       stages: [
         ...initReportB.stages,
-        { stage: 'pass-enrich', startedAt: '2026-04-17T09:05:10.000Z', durationMs: 3000, inputTokens: 350, outputTokens: 20, estimatedCostUsd: 0.00003, provider: 'gemini', model: 'gemini-2.0-flash' },
+        {
+          stage: 'pass-enrich',
+          startedAt: '2026-04-17T09:05:10.000Z',
+          durationMs: 3000,
+          inputTokens: 350,
+          outputTokens: 20,
+          estimatedCostUsd: 0.00003,
+          provider: 'gemini',
+          model: 'gemini-2.0-flash',
+        },
       ],
     })
     mockLogsDir([initReportA, withExtraStage])

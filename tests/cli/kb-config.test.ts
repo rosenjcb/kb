@@ -9,9 +9,9 @@ import {
   ensureDefaultConfig,
   isLLMConfigured,
   normalizeKbConfig,
+  persistInferredLLMProvider,
   readKbConfig,
   resolveLLMProvider,
-  persistInferredLLMProvider,
   writeDefaultConfig,
   writeKbConfig,
 } from '../../src/cli/kb-config'
@@ -194,7 +194,7 @@ describe('resolveLLMProvider', () => {
   it('prefers env var over config file key when provider is declared', () => {
     process.env.ANTHROPIC_API_KEY = 'env-key'
     const resolved = resolveLLMProvider({
-      llm: { provider: 'anthropic', },
+      llm: { provider: 'anthropic' },
     })
     expect(resolved.provider).toBe('anthropic')
     expect(resolved.apiKey).toBe('env-key')
@@ -216,7 +216,9 @@ describe('resolveLLMProvider', () => {
 
   it('preserves geminiModel from config when provider is gemini', () => {
     process.env.GEMINI_API_KEY = 'gem-key'
-    const resolved = resolveLLMProvider({ llm: { provider: 'gemini', geminiModel: 'gemini-flash-latest' } })
+    const resolved = resolveLLMProvider({
+      llm: { provider: 'gemini', geminiModel: 'gemini-flash-latest' },
+    })
     expect(resolved.model).toBe('gemini-flash-latest')
   })
 
@@ -279,7 +281,10 @@ describe('normalizeKbConfig', () => {
 describe('writeKbConfig', () => {
   it('stamps updatedAt and preserves createdAt', async () => {
     const file = await tempConfig()
-    const saved = await writeKbConfig({ createdAt: '2025-01-01T00:00:00.000Z', llm: { provider: 'openai' } }, file)
+    const saved = await writeKbConfig(
+      { createdAt: '2025-01-01T00:00:00.000Z', llm: { provider: 'openai' } },
+      file
+    )
     expect(saved.createdAt).toBe('2025-01-01T00:00:00.000Z')
     expect(saved.updatedAt).toBeDefined()
     expect(saved.llm?.provider).toBe('openai')

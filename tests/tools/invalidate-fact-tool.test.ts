@@ -20,7 +20,12 @@ async function createTempBase(): Promise<string> {
 
 async function seedDocument(
   baseDir: string,
-  input: { title: string; documentId: string; content: string; type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference' },
+  input: {
+    title: string
+    documentId: string
+    content: string
+    type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
+  }
 ): Promise<void> {
   const writer = new SqliteDocumentWriter({ baseDir })
   await writer.writeDocument({
@@ -50,12 +55,15 @@ describe('invalidateFactTool', () => {
       type: 'reference',
     })
 
-    const result = await invalidateFactTool({
-      oldFact: 'We deploy to GCP',
-      replacementFact: 'We deploy to AWS',
-      preview: false,
-      dryRun: false,
-    }, baseDir)
+    const result = await invalidateFactTool(
+      {
+        oldFact: 'We deploy to GCP',
+        replacementFact: 'We deploy to AWS',
+        preview: false,
+        dryRun: false,
+      },
+      baseDir
+    )
 
     const updated = await readDocumentContent(baseDir, 'deployment-facts')
     expect(updated).toContain('We deploy to AWS')
@@ -73,11 +81,14 @@ describe('invalidateFactTool', () => {
       type: 'reference',
     })
 
-    const result = await invalidateFactTool({
-      oldFact: 'We deploy to GCP',
-      preview: false,
-      dryRun: false,
-    }, baseDir)
+    const result = await invalidateFactTool(
+      {
+        oldFact: 'We deploy to GCP',
+        preview: false,
+        dryRun: false,
+      },
+      baseDir
+    )
 
     const updated = await readDocumentContent(baseDir, 'deployment-facts')
     expect(updated).not.toContain('We deploy to GCP')
@@ -95,12 +106,15 @@ describe('invalidateFactTool', () => {
       type: 'reference',
     })
 
-    await invalidateFactTool({
-      oldFact: 'We deploy to GCP',
-      replacementFact: 'We deploy to AWS',
-      preview: false,
-      dryRun: false,
-    }, baseDir)
+    await invalidateFactTool(
+      {
+        oldFact: 'We deploy to GCP',
+        replacementFact: 'We deploy to AWS',
+        preview: false,
+        dryRun: false,
+      },
+      baseDir
+    )
 
     const unrelatedContent = await fs.readFile(unrelatedFile, 'utf8')
     expect(unrelatedContent).toContain('We deploy to GCP')
@@ -115,11 +129,14 @@ describe('invalidateFactTool', () => {
       type: 'reference',
     })
 
-    const result = await invalidateFactTool({
-      oldFact: 'No such fact',
-      preview: true,
-      dryRun: true,
-    }, baseDir)
+    const result = await invalidateFactTool(
+      {
+        oldFact: 'No such fact',
+        preview: true,
+        dryRun: true,
+      },
+      baseDir
+    )
 
     expect(result.error).toBe('No matches found in KB documents.')
     expect(result.changes.length).toBe(0)

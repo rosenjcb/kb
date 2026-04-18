@@ -327,7 +327,7 @@ export async function runMainWithOutput(
       return
     }
 
-    const toolExecutor = createKBToolsRegistry(kbStorageDir, config)
+    const toolExecutor = createKBToolsRegistry(kbStorageDir, config, { taskProvider: llmProvider })
     const chatGraphWriter = resolveGraphEnabled(config)
       ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(kbStorageDir))
       : undefined
@@ -528,7 +528,9 @@ export async function runMainWithOutput(
           }
         }
       }
-      const toolExecutor = createKBToolsRegistry(intentBaseDir, config)
+      const toolExecutor = createKBToolsRegistry(intentBaseDir, config, {
+        taskProvider: llmProvider ?? undefined,
+      })
       const { result } = await runIntentLoop(parsed.envelope, toolExecutor, {
         provider: llmProvider ?? undefined,
         collector: collector,

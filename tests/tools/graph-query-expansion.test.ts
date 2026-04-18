@@ -32,6 +32,8 @@ describe('graph-query-expansion', () => {
       },
     } as const
 
-    await expect(expandQueryWithGraph('config json', graphWriter as never)).resolves.toBe('config json')
+    await expect(expandQueryWithGraph('config json', graphWriter as never)).resolves.toBe(
+      'config json'
+    )
   })
 })

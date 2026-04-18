@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   applySelectedSuggestion,
   clampSuggestionIndex,
-  getSlashCommands,
   getSlashCommandSuggestions,
+  getSlashCommands,
   getSuggestionWindow,
   normalizeSlashCommandArgs,
   sanitizeSlashInput,
@@ -65,7 +65,12 @@ describe('slash command helpers', () => {
     const suggestions = getSlashCommands('shell')
     const { visible, startIndex } = getSuggestionWindow(suggestions, 4, 4)
     expect(startIndex).toBe(2)
-    expect(visible.map(item => item.command)).toEqual(['/query', '/submit', '/validate', '/dispute'])
+    expect(visible.map(item => item.command)).toEqual([
+      '/query',
+      '/submit',
+      '/validate',
+      '/dispute',
+    ])
   })
 
   it('includes /init in shell command list', () => {

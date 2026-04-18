@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { LLMProvider, LLMResponse } from '../../src/core/types'
 import { parseInitCommand, runKbInit } from '../../src/cli/init-cli'
+import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
 
 const tempDirs: string[] = []
 let kbHomeDir: string
@@ -28,7 +28,7 @@ async function createTempProject(files: Record<string, string>): Promise<string>
     Object.entries(files).map(async ([file, content]) => {
       const fullPath = path.join(dir, file)
       await writeFile(fullPath, content, 'utf8')
-    }),
+    })
   )
   return dir
 }
@@ -97,7 +97,6 @@ function createProvider(texts: string[]): LLMProvider {
   }
 }
 
-
 describe('init-cli interview checkpoints', () => {
   it('Given init without --base, then it prompts for a base name and uses the answer', async () => {
     const cwd = await createTempProject({
@@ -124,7 +123,9 @@ describe('init-cli interview checkpoints', () => {
     expect(result.base).toBe('fresh-base')
     expect(questionIO.prompts[0]).toContain('Knowledge base name')
     expect(questionIO.prompts[0]).toContain('[default]')
-    expect(result.checkpointFile).toBe(path.join(kbHomeDir, 'sessions', 'fresh-base', 'checkpoints', 'init-latest.checkpoint.json'))
+    expect(result.checkpointFile).toBe(
+      path.join(kbHomeDir, 'sessions', 'fresh-base', 'checkpoints', 'init-latest.checkpoint.json')
+    )
   })
 
   it('Given no selectedBase but an active session base, then init still suggests hardcoded default', async () => {
@@ -134,18 +135,9 @@ describe('init-cli interview checkpoints', () => {
     await writeFile(
       path.join(kbHomeDir, 'config.json'),
       `${JSON.stringify({ activeBase: 'dogfood' }, null, 2)}\n`,
-      'utf8',
+      'utf8'
     )
-    const questionIO = createQuestionIO([
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ])
+    const questionIO = createQuestionIO(['', '', '', '', '', '', '', ''])
 
     const result = await runKbInit({
       nonInteractive: false,
@@ -156,16 +148,13 @@ describe('init-cli interview checkpoints', () => {
 
     expect(questionIO.prompts[0]).toContain('[default]')
     expect(result.base).toBe('default')
-    expect(result.checkpointFile).toBe(path.join(kbHomeDir, 'sessions', 'default', 'checkpoints', 'init-latest.checkpoint.json'))
+    expect(result.checkpointFile).toBe(
+      path.join(kbHomeDir, 'sessions', 'default', 'checkpoints', 'init-latest.checkpoint.json')
+    )
   })
 
   it('Given detach and resume flags, then parses them into init options', () => {
-    const parsed = parseInitCommand([
-      '--base',
-      'dogfood',
-      '--detach',
-      '--resume',
-    ])
+    const parsed = parseInitCommand(['--base', 'dogfood', '--detach', '--resume'])
 
     expect(parsed.base).toBe('dogfood')
     expect(parsed.detach).toBe(true)
@@ -176,29 +165,63 @@ describe('init-cli interview checkpoints', () => {
     expect(() => parseInitCommand(['--dry-run'])).toThrow('Unsupported init flag')
   })
 
-  it.todo('Given oversized init context, then every LLM phase stays within the 4096-token budget — token budget constraints relaxed to support richer agent prompts')
+  it.todo(
+    'Given oversized init context, then every LLM phase stays within the 4096-token budget — token budget constraints relaxed to support richer agent prompts'
+  )
 
   it('Given graph.enabled false, then init skips graph extraction and does not write a graph db', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
-    await writeFile(path.join(kbHomeDir, 'config.json'), JSON.stringify({
-      graph: { enabled: false },
-    }, null, 2))
+    await writeFile(
+      path.join(kbHomeDir, 'config.json'),
+      JSON.stringify(
+        {
+          graph: { enabled: false },
+        },
+        null,
+        2
+      )
+    )
 
     const provider = createProvider([
       JSON.stringify([
-        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Summary.\n\nDetails.' },
+        {
+          title: 'Project Overview',
+          type: 'architecture',
+          tags: ['overview'],
+          content: 'Summary.\n\nDetails.',
+        },
       ]),
       JSON.stringify([
-        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Summary.\n\nDetails.' },
+        {
+          title: 'Project Overview',
+          type: 'architecture',
+          tags: ['overview'],
+          content: 'Summary.\n\nDetails.',
+        },
       ]),
-      JSON.stringify({ title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Summary.\n\nDetails.' }),
+      JSON.stringify({
+        title: 'Project Overview',
+        type: 'architecture',
+        tags: ['overview'],
+        content: 'Summary.\n\nDetails.',
+      }),
       JSON.stringify([
-        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Summary.\n\nDetails.' },
+        {
+          title: 'Project Overview',
+          type: 'architecture',
+          tags: ['overview'],
+          content: 'Summary.\n\nDetails.',
+        },
       ]),
       JSON.stringify([
-        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Summary.\n\nDetails.' },
+        {
+          title: 'Project Overview',
+          type: 'architecture',
+          tags: ['overview'],
+          content: 'Summary.\n\nDetails.',
+        },
       ]),
     ])
 
@@ -212,7 +235,7 @@ describe('init-cli interview checkpoints', () => {
     expect(result.status).toBe('accepted')
     expect(result.completedCycles).toContain('pass-graph')
     await expect(
-      readFile(path.join(kbHomeDir, 'sessions', 'graph-disabled-test', '.kb-graph.duckdb'), 'utf8'),
+      readFile(path.join(kbHomeDir, 'sessions', 'graph-disabled-test', '.kb-graph.duckdb'), 'utf8')
     ).rejects.toThrow()
   })
 
@@ -223,17 +246,42 @@ describe('init-cli interview checkpoints', () => {
 
     const provider = createProvider([
       JSON.stringify([
-        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Overview content' },
+        {
+          title: 'Project Overview',
+          type: 'architecture',
+          tags: ['overview'],
+          content: 'Overview content',
+        },
       ]),
       JSON.stringify([
-        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Overview content' },
+        {
+          title: 'Project Overview',
+          type: 'architecture',
+          tags: ['overview'],
+          content: 'Overview content',
+        },
       ]),
-      JSON.stringify({ title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Overview content' }),
+      JSON.stringify({
+        title: 'Project Overview',
+        type: 'architecture',
+        tags: ['overview'],
+        content: 'Overview content',
+      }),
       JSON.stringify([
-        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Overview content' },
+        {
+          title: 'Project Overview',
+          type: 'architecture',
+          tags: ['overview'],
+          content: 'Overview content',
+        },
       ]),
       JSON.stringify([
-        { title: 'Project Overview', type: 'architecture', tags: ['overview'], content: 'Overview content' },
+        {
+          title: 'Project Overview',
+          type: 'architecture',
+          tags: ['overview'],
+          content: 'Overview content',
+        },
       ]),
     ])
 
@@ -280,8 +328,9 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.status).toBe('paused')
     expect(result.checkpointFile).toBeTruthy()
-
-    const checkpoint = JSON.parse(await readFile(result.checkpointFile!, 'utf8')) as {
+    const checkpointPath = result.checkpointFile
+    if (!checkpointPath) throw new Error('expected checkpointFile')
+    const checkpoint = JSON.parse(await readFile(checkpointPath, 'utf8')) as {
       version: number
       interviewRounds: Array<{ round: number; questions: Array<{ answer?: string }> }>
       context: { userAnswers: Array<{ answer: string }> }
@@ -313,7 +362,8 @@ describe('init-cli interview checkpoints', () => {
           title: 'Project Overview',
           type: 'architecture',
           tags: ['overview'],
-          content: 'Project overview summary with enough detail to satisfy quality gates and explain the system structure.',
+          content:
+            'Project overview summary with enough detail to satisfy quality gates and explain the system structure.',
         },
       ]),
       JSON.stringify([
@@ -321,7 +371,8 @@ describe('init-cli interview checkpoints', () => {
           title: 'Project Overview',
           type: 'architecture',
           tags: ['overview'],
-          content: 'Project overview summary with enough detail to satisfy quality gates and explain the system structure plus refined workflow notes.',
+          content:
+            'Project overview summary with enough detail to satisfy quality gates and explain the system structure plus refined workflow notes.',
         },
       ]),
     ])
@@ -354,17 +405,26 @@ describe('init-cli interview checkpoints', () => {
 
     expect(resumedRun.status).toBe('paused')
     expect(followUpQuestionIO.prompts.length).toBeGreaterThan(0)
-    expect(followUpQuestionIO.prompts.some(prompt => prompt.includes('How do you install or set up this project?'))).toBe(false)
+    expect(
+      followUpQuestionIO.prompts.some(prompt =>
+        prompt.includes('How do you install or set up this project?')
+      )
+    ).toBe(false)
 
-    const checkpoint = JSON.parse(await readFile(firstRun.checkpointFile!, 'utf8')) as {
-      interviewRounds: Array<{ round: number; questions: Array<{ question: string; answer?: string }> }>
+    const firstCp = firstRun.checkpointFile
+    if (!firstCp) throw new Error('expected checkpointFile')
+    const checkpoint = JSON.parse(await readFile(firstCp, 'utf8')) as {
+      interviewRounds: Array<{
+        round: number
+        questions: Array<{ question: string; answer?: string }>
+      }>
       completedCycles: string[]
     }
 
     expect(checkpoint.completedCycles).toContain('pass2')
     expect(checkpoint.interviewRounds.length).toBeGreaterThanOrEqual(1)
     expect(
-      checkpoint.interviewRounds.some(round => round.questions.some(question => question.answer)),
+      checkpoint.interviewRounds.some(round => round.questions.some(question => question.answer))
     ).toBe(true)
   })
 
@@ -372,21 +432,38 @@ describe('init-cli interview checkpoints', () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nSimple overview.\n',
     })
-    const checkpointFile = path.join(kbHomeDir, 'sessions', 'dogfood', 'checkpoints', 'init-latest.checkpoint.json')
+    const checkpointFile = path.join(
+      kbHomeDir,
+      'sessions',
+      'dogfood',
+      'checkpoints',
+      'init-latest.checkpoint.json'
+    )
     await mkdir(path.dirname(checkpointFile), { recursive: true })
-    await writeFile(checkpointFile, `${JSON.stringify({
-      version: 1,
-      updatedAt: '2026-04-15T00:00:00.000Z',
-      baseName: 'dogfood',
-      workingDir: cwd,
-      completedCycles: ['read-inputs'],
-      context: {
-        sourceFiles: { 'README.md': '# Project\n' },
-        userAnswers: [
-          { question: 'How do you install or set up this project?', answer: 'Run npm install.' },
-        ],
-      },
-    }, null, 2)}\n`, 'utf8')
+    await writeFile(
+      checkpointFile,
+      `${JSON.stringify(
+        {
+          version: 1,
+          updatedAt: '2026-04-15T00:00:00.000Z',
+          baseName: 'dogfood',
+          workingDir: cwd,
+          completedCycles: ['read-inputs'],
+          context: {
+            sourceFiles: { 'README.md': '# Project\n' },
+            userAnswers: [
+              {
+                question: 'How do you install or set up this project?',
+                answer: 'Run npm install.',
+              },
+            ],
+          },
+        },
+        null,
+        2
+      )}\n`,
+      'utf8'
+    )
 
     const questionIO = createQuestionIO([])
     const provider = createProvider([
@@ -395,7 +472,8 @@ describe('init-cli interview checkpoints', () => {
           title: 'Project Overview',
           type: 'architecture',
           tags: ['overview'],
-          content: 'Project overview summary with enough detail to satisfy quality gates and explain the system structure.',
+          content:
+            'Project overview summary with enough detail to satisfy quality gates and explain the system structure.',
         },
       ]),
     ])
@@ -439,14 +517,17 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(detached.status).toBe('paused')
-
-    const pausedCheckpoint = JSON.parse(await readFile(detached.checkpointFile!, 'utf8')) as {
+    const detachedCp = detached.checkpointFile
+    if (!detachedCp) throw new Error('expected checkpointFile')
+    const pausedCheckpoint = JSON.parse(await readFile(detachedCp, 'utf8')) as {
       completedCycles: string[]
       interviewRounds: Array<{ questions: Array<{ answer?: string }> }>
     }
 
     expect(pausedCheckpoint.completedCycles).not.toContain('read-inputs')
-    expect(pausedCheckpoint.interviewRounds[0].questions.some(question => !question.answer)).toBe(true)
+    expect(pausedCheckpoint.interviewRounds[0].questions.some(question => !question.answer)).toBe(
+      true
+    )
 
     const resumeQuestions = createQuestionIO([
       'Install with pnpm install.',
@@ -469,7 +550,7 @@ describe('init-cli interview checkpoints', () => {
 
     expect(resumed.status).toBe('paused')
 
-    const resumedCheckpoint = JSON.parse(await readFile(detached.checkpointFile!, 'utf8')) as {
+    const resumedCheckpoint = JSON.parse(await readFile(detachedCp, 'utf8')) as {
       completedCycles: string[]
       context: { userAnswers: Array<{ answer: string }> }
       interviewRounds: Array<{ questions: Array<{ answer?: string }> }>
@@ -477,7 +558,9 @@ describe('init-cli interview checkpoints', () => {
 
     expect(resumedCheckpoint.completedCycles).toContain('read-inputs')
     expect(resumedCheckpoint.context.userAnswers.length).toBeGreaterThan(0)
-    expect(resumedCheckpoint.interviewRounds[0].questions.every(question => question.answer)).toBe(true)
+    expect(resumedCheckpoint.interviewRounds[0].questions.every(question => question.answer)).toBe(
+      true
+    )
   })
 
   it('Given legacy tmp checkpoint path, then init migrates it into KB home checkpoints', async () => {
@@ -486,17 +569,25 @@ describe('init-cli interview checkpoints', () => {
     })
     const legacyCheckpointFile = path.join(cwd, '.tmp', 'kb-init', 'dogfood-latest.checkpoint.json')
     await mkdir(path.dirname(legacyCheckpointFile), { recursive: true })
-    await writeFile(legacyCheckpointFile, `${JSON.stringify({
-      version: 1,
-      updatedAt: '2026-04-15T00:00:00.000Z',
-      baseName: 'dogfood',
-      workingDir: cwd,
-      completedCycles: ['read-inputs'],
-      context: {
-        sourceFiles: { 'README.md': '# Project\n' },
-        userAnswers: [],
-      },
-    }, null, 2)}\n`, 'utf8')
+    await writeFile(
+      legacyCheckpointFile,
+      `${JSON.stringify(
+        {
+          version: 1,
+          updatedAt: '2026-04-15T00:00:00.000Z',
+          baseName: 'dogfood',
+          workingDir: cwd,
+          completedCycles: ['read-inputs'],
+          context: {
+            sourceFiles: { 'README.md': '# Project\n' },
+            userAnswers: [],
+          },
+        },
+        null,
+        2
+      )}\n`,
+      'utf8'
+    )
 
     const provider = createProvider([
       JSON.stringify([
@@ -504,7 +595,8 @@ describe('init-cli interview checkpoints', () => {
           title: 'Project Overview',
           type: 'architecture',
           tags: ['overview'],
-          content: 'Project overview summary with enough detail to satisfy quality gates and explain the system structure.',
+          content:
+            'Project overview summary with enough detail to satisfy quality gates and explain the system structure.',
         },
       ]),
     ])
@@ -517,8 +609,14 @@ describe('init-cli interview checkpoints', () => {
       provider,
     })
 
-    expect(result.checkpointFile).toBe(path.join(kbHomeDir, 'sessions', 'dogfood', 'checkpoints', 'init-latest.checkpoint.json'))
-    const migrated = JSON.parse(await readFile(result.checkpointFile!, 'utf8')) as { version: number }
+    expect(result.checkpointFile).toBe(
+      path.join(kbHomeDir, 'sessions', 'dogfood', 'checkpoints', 'init-latest.checkpoint.json')
+    )
+    const migratedPath = result.checkpointFile
+    if (!migratedPath) throw new Error('expected checkpointFile')
+    const migrated = JSON.parse(await readFile(migratedPath, 'utf8')) as {
+      version: number
+    }
     expect(migrated.version).toBe(2)
   })
 
@@ -527,7 +625,7 @@ describe('init-cli interview checkpoints', () => {
       'README.md': '# Project\n\nTiny overview only.\n',
     })
 
-    const detached = await runKbInit({
+    const _detached = await runKbInit({
       base: 'dogfood',
       nonInteractive: false,
       detach: true,

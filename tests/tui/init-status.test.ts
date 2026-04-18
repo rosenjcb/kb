@@ -9,7 +9,9 @@ Initializing KB — press Enter to skip any question.
 `)
 
     expect(parsed.historyLines).toEqual(['Initializing KB — press Enter to skip any question.'])
-    expect(parsed.progressLine).toBe('[init] [====--------------------] 2/8 pass2 follow-up + refining docs…')
+    expect(parsed.progressLine).toBe(
+      '[init] [====--------------------] 2/8 pass2 follow-up + refining docs…'
+    )
   })
 
   it('keeps kb init questions in the main transcript history', () => {
@@ -32,6 +34,8 @@ Initializing KB — press Enter to skip any question.
 `)
 
     expect(parsed.historyLines).toEqual([])
-    expect(parsed.progressLine).toBe('[init] [======------------------] 2/8 pass2 follow-up + refining docs…')
+    expect(parsed.progressLine).toBe(
+      '[init] [======------------------] 2/8 pass2 follow-up + refining docs…'
+    )
   })
 })

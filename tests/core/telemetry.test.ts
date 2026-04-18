@@ -1,16 +1,16 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { mkdtemp, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import path from 'node:path'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import os from 'node:os'
+import path from 'node:path'
 import dayjs from 'dayjs'
-import type { LLMProvider, LLMResponse, LLMCallParams } from '../../src/core/types'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  estimateCost,
-  RunCollector,
   ReportWriter,
+  RunCollector,
   TokenCountingProvider,
+  estimateCost,
 } from '../../src/core/telemetry'
+import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
 
 // ─── estimateCost ─────────────────────────────────────────────────
 
@@ -69,8 +69,26 @@ describe('RunCollector', () => {
 
   it('Given added stages, then totals accumulate correctly', () => {
     const c = new RunCollector('init')
-    c.addStage({ stage: 'pass1', startedAt: new Date().toISOString(), durationMs: 1000, inputTokens: 300, outputTokens: 200, estimatedCostUsd: 0.00005, provider: 'gemini', model: 'gemini-2.0-flash' })
-    c.addStage({ stage: 'pass2', startedAt: new Date().toISOString(), durationMs: 800, inputTokens: 250, outputTokens: 150, estimatedCostUsd: 0.00004, provider: 'gemini', model: 'gemini-2.0-flash' })
+    c.addStage({
+      stage: 'pass1',
+      startedAt: new Date().toISOString(),
+      durationMs: 1000,
+      inputTokens: 300,
+      outputTokens: 200,
+      estimatedCostUsd: 0.00005,
+      provider: 'gemini',
+      model: 'gemini-2.0-flash',
+    })
+    c.addStage({
+      stage: 'pass2',
+      startedAt: new Date().toISOString(),
+      durationMs: 800,
+      inputTokens: 250,
+      outputTokens: 150,
+      estimatedCostUsd: 0.00004,
+      provider: 'gemini',
+      model: 'gemini-2.0-flash',
+    })
     const report = c.finish('success')
     expect(report.totalInputTokens).toBe(550)
     expect(report.totalOutputTokens).toBe(350)
@@ -98,7 +116,16 @@ describe('RunCollector', () => {
   it('Given debug mode, then addStage writes to stderr', () => {
     const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     const c = new RunCollector('query', { debug: true })
-    c.addStage({ stage: 'query_truth:iter1', startedAt: new Date().toISOString(), durationMs: 70, inputTokens: 100, outputTokens: 5, estimatedCostUsd: 0.00001, provider: 'gemini', model: 'gemini-2.0-flash' })
+    c.addStage({
+      stage: 'query_truth:iter1',
+      startedAt: new Date().toISOString(),
+      durationMs: 70,
+      inputTokens: 100,
+      outputTokens: 5,
+      estimatedCostUsd: 0.00001,
+      provider: 'gemini',
+      model: 'gemini-2.0-flash',
+    })
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('[kb:debug]'))
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('query_truth:iter1'))
     spy.mockRestore()
@@ -116,7 +143,16 @@ describe('RunCollector', () => {
   it('Given no debug mode, then addStage does not write to stderr', () => {
     const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     const c = new RunCollector('query')
-    c.addStage({ stage: 'pass1', startedAt: new Date().toISOString(), durationMs: 100, inputTokens: 10, outputTokens: 5, estimatedCostUsd: 0, provider: 'gemini', model: 'gemini-2.0-flash' })
+    c.addStage({
+      stage: 'pass1',
+      startedAt: new Date().toISOString(),
+      durationMs: 100,
+      inputTokens: 10,
+      outputTokens: 5,
+      estimatedCostUsd: 0,
+      provider: 'gemini',
+      model: 'gemini-2.0-flash',
+    })
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()
   })
@@ -131,7 +167,9 @@ describe('RunCollector', () => {
     const c = new RunCollector('query')
     const report = c.finish('success')
     expect(new Date(report.startedAt).getTime()).toBeGreaterThan(0)
-    expect(new Date(report.finishedAt).getTime()).toBeGreaterThanOrEqual(new Date(report.startedAt).getTime())
+    expect(new Date(report.finishedAt).getTime()).toBeGreaterThanOrEqual(
+      new Date(report.startedAt).getTime()
+    )
   })
 })
 
@@ -143,7 +181,12 @@ function makeFakeProvider(inputTokens: number, outputTokens: number): LLMProvide
     model: 'fake-model',
     supportsStreaming: false,
     async call(_params: LLMCallParams): Promise<LLMResponse> {
-      return { text: 'ok', stopReason: 'end_turn', toolUses: [], usage: { inputTokens, outputTokens } }
+      return {
+        text: 'ok',
+        stopReason: 'end_turn',
+        toolUses: [],
+        usage: { inputTokens, outputTokens },
+      }
     },
   }
 }
@@ -157,9 +200,16 @@ describe('TokenCountingProvider', () => {
 
   it('Given multiple calls, then peek accumulates across all calls', async () => {
     const inner = {
-      name: 'fake', model: 'fake-model', supportsStreaming: false,
+      name: 'fake',
+      model: 'fake-model',
+      supportsStreaming: false,
       async call(_p: LLMCallParams): Promise<LLMResponse> {
-        return { text: '', stopReason: 'end_turn', toolUses: [], usage: { inputTokens: 100, outputTokens: 50 } }
+        return {
+          text: '',
+          stopReason: 'end_turn',
+          toolUses: [],
+          usage: { inputTokens: 100, outputTokens: 50 },
+        }
       },
     }
     const counter = new TokenCountingProvider(inner)
@@ -187,11 +237,18 @@ describe('TokenCountingProvider', () => {
   it('Given two cycles using getAndReset between them, then each cycle is counted independently', async () => {
     let callCount = 0
     const inner = {
-      name: 'fake', model: 'fake-model', supportsStreaming: false,
+      name: 'fake',
+      model: 'fake-model',
+      supportsStreaming: false,
       async call(_p: LLMCallParams): Promise<LLMResponse> {
         callCount++
         const tokens = callCount <= 2 ? 100 : 200
-        return { text: '', stopReason: 'end_turn', toolUses: [], usage: { inputTokens: tokens, outputTokens: tokens } }
+        return {
+          text: '',
+          stopReason: 'end_turn',
+          toolUses: [],
+          usage: { inputTokens: tokens, outputTokens: tokens },
+        }
       },
     }
     const counter = new TokenCountingProvider(inner)
@@ -207,8 +264,20 @@ describe('TokenCountingProvider', () => {
   })
 
   it('Given delegated call, then response is passed through unmodified', async () => {
-    const expected: LLMResponse = { text: 'hello world', stopReason: 'end_turn', toolUses: [], usage: { inputTokens: 5, outputTokens: 3 } }
-    const inner = { name: 'fake', model: 'fake-model', supportsStreaming: false, async call(_p: LLMCallParams) { return expected } }
+    const expected: LLMResponse = {
+      text: 'hello world',
+      stopReason: 'end_turn',
+      toolUses: [],
+      usage: { inputTokens: 5, outputTokens: 3 },
+    }
+    const inner = {
+      name: 'fake',
+      model: 'fake-model',
+      supportsStreaming: false,
+      async call(_p: LLMCallParams) {
+        return expected
+      },
+    }
     const counter = new TokenCountingProvider(inner)
     const result = await counter.call({ messages: [] })
     expect(result).toEqual(expected)
@@ -230,7 +299,16 @@ describe('ReportWriter', () => {
     const logsDir = await mkdtemp(path.join(os.tmpdir(), 'kb-logs-test-'))
     const writer = new ReportWriter(logsDir)
     const c = new RunCollector('query')
-    c.addStage({ stage: 'query_truth:iter1', startedAt: new Date().toISOString(), durationMs: 70, inputTokens: 100, outputTokens: 5, estimatedCostUsd: 0.00001, provider: 'gemini', model: 'gemini-2.0-flash' })
+    c.addStage({
+      stage: 'query_truth:iter1',
+      startedAt: new Date().toISOString(),
+      durationMs: 70,
+      inputTokens: 100,
+      outputTokens: 5,
+      estimatedCostUsd: 0.00001,
+      provider: 'gemini',
+      model: 'gemini-2.0-flash',
+    })
     const report = c.finish('success')
     await writer.append(report)
 

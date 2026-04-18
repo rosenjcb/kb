@@ -7,9 +7,10 @@ import path from 'node:path'
 import { getKbHomeDir } from '../cli/base-selection'
 import type { KbConfig } from '../cli/kb-config'
 import { resolveFeatureFlags, resolveGraphEnabled } from '../cli/kb-config'
+import type { StreamManager } from '../core/runtime/stream-manager'
 import type { ToolExecutor } from '../core/tool-registry'
 import { createToolRegistry } from '../core/tool-registry'
-import type { ToolDefinition } from '../core/types'
+import type { LLMProvider, ToolDefinition } from '../core/types'
 import {
   type AppendToDocumentInput,
   type MergeDocumentsInput,
@@ -25,11 +26,21 @@ import {
   type QueryResponse,
 } from './markdown-document-reader'
 import { SqliteDocumentWriter } from './sqlite-document-writer'
+import { executeSubagentTask } from './task'
+
+export interface KBToolsOrchestratorOptions {
+  taskProvider?: LLMProvider
+  streamManager?: StreamManager
+}
 
 /**
  * Factory: create KB tools registry with write + read
  */
-export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): ToolExecutor {
+export function createKBToolsRegistry(
+  baseDir?: string,
+  config?: KbConfig,
+  orchestrator?: KBToolsOrchestratorOptions
+): ToolExecutor {
   const registry = createToolRegistry()
   const storageDir = baseDir ?? path.join(getKbHomeDir(), 'sessions', 'default')
 
@@ -282,6 +293,51 @@ export function createKBToolsRegistry(baseDir?: string, config?: KbConfig): Tool
   registry.register('reconcile_contradictions', reconcileContradictionsToolDef, async input => {
     return await writer.reconcileContradictions(input as unknown as ReconcileContradictionsInput)
   })
+
+  if (orchestrator?.taskProvider) {
+    const taskToolDef: ToolDefinition = {
+      name: 'task',
+      description:
+        'Delegate a focused sub-instruction to a worker subagent with a restricted tool set. Returns structured output for the parent model.',
+      schema: {
+        type: 'object',
+        properties: {
+          prompt: { type: 'string', description: 'Instruction for the worker agent' },
+          agent_profile_id: {
+            type: 'string',
+            description:
+              'Optional profile id registered in the agent registry (e.g. default, research)',
+          },
+          max_turns: { type: 'number', description: 'Maximum subagent turns (1–20)' },
+          allowed_tools: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Tool names the subagent may invoke; recursive task calls are never allowed',
+          },
+          isolation: {
+            type: 'string',
+            enum: ['shared_storage', 'forked_message_thread'],
+            description:
+              'Logical isolation strategy (v1 uses a fresh message thread; storage stays shared)',
+          },
+        },
+        required: ['prompt'],
+      },
+    }
+
+    registry.register('task', taskToolDef, async input => {
+      if (!orchestrator.taskProvider) {
+        throw new Error('orchestrator.taskProvider is undefined');
+      }
+      return executeSubagentTask({
+        parentRegistry: registry,
+        provider: orchestrator.taskProvider,
+        input,
+        streamManager: orchestrator.streamManager,
+      })
+    })
+  }
 
   return registry
 }

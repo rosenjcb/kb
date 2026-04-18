@@ -62,24 +62,47 @@ export async function extractGraph(
 ): Promise<ExtractedGraph> {
   if (!text.trim()) return { entities: [], relationships: [] }
 
-  let raw: string
-  try {
+  const callModel = async (maxTokens: number): Promise<string> => {
     const response = await provider.call({
       messages: [
         {
           role: 'user',
-          content: `${EXTRACTION_SYSTEM_PROMPT}\n\nText to extract from:\n\n${text}`,
+          content: `Text to extract from:\n\n${text}`,
         },
       ],
-      maxTokens: 2048,
+      systemPrompt: EXTRACTION_SYSTEM_PROMPT,
+      maxTokens,
       temperature: 0,
+      // Gemini 2.5 otherwise spends the output budget on "thinking" and returns no JSON.
+      thinkingBudget: 0,
     })
-    raw = response.text.trim()
+    return response.text.trim()
+  }
+
+  let raw: string
+  try {
+    // Large init docs can exceed 2k output tokens of JSON; truncation yields empty parses.
+    raw = await callModel(8192)
   } catch {
     return { entities: [], relationships: [] }
   }
 
-  return parseExtractorOutput(raw, docId)
+  let parsed = parseExtractorOutput(raw, docId)
+  if (
+    parsed.entities.length === 0 &&
+    parsed.relationships.length === 0 &&
+    raw.includes('{') &&
+    raw.length > 400
+  ) {
+    try {
+      raw = await callModel(16_384)
+      parsed = parseExtractorOutput(raw, docId)
+    } catch {
+      /* keep first parse result */
+    }
+  }
+
+  return parsed
 }
 
 /**
@@ -119,6 +142,45 @@ export async function extractGraphBatch(
   return { entities: allEntities, relationships: allRelationships }
 }
 
+/**
+ * When models wrap JSON in prose, find the outermost `{ ... }` object by brace depth
+ * (string-aware) so we can still parse valid extractor payloads.
+ */
+export function extractBalancedJsonObject(source: string): string | null {
+  const start = source.indexOf('{')
+  if (start === -1) return null
+  let depth = 0
+  let inStr = false
+  let esc = false
+  for (let i = start; i < source.length; i++) {
+    const ch = source[i]
+    if (esc) {
+      esc = false
+      continue
+    }
+    if (ch === '\\' && inStr) {
+      esc = true
+      continue
+    }
+    if (ch === '"') {
+      inStr = !inStr
+      continue
+    }
+    if (inStr) continue
+    if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) return source.slice(start, i + 1)
+    }
+  }
+  return null
+}
+
+/** Exported for unit tests — parses raw LLM output into graph shapes. */
+export function parseGraphExtractorJson(raw: string, docId?: string): ExtractedGraph {
+  return parseExtractorOutput(raw, docId)
+}
+
 function parseExtractorOutput(raw: string, docId?: string): ExtractedGraph {
   // Strip markdown code fences if present
   const cleaned = raw
@@ -130,7 +192,13 @@ function parseExtractorOutput(raw: string, docId?: string): ExtractedGraph {
   try {
     parsed = JSON.parse(cleaned)
   } catch {
-    return { entities: [], relationships: [] }
+    const slice = extractBalancedJsonObject(cleaned)
+    if (!slice) return { entities: [], relationships: [] }
+    try {
+      parsed = JSON.parse(slice)
+    } catch {
+      return { entities: [], relationships: [] }
+    }
   }
 
   if (!parsed || typeof parsed !== 'object') {

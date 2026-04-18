@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from '../../src/cli/graph-cli'
+import {
+  GraphCommandError,
+  parseGraphCommand,
+  printGraphHelp,
+  runGraphCommand,
+} from '../../src/cli/graph-cli'
 import type { GraphWriter } from '../../src/cli/graph-cli'
 
 // ---------------------------------------------------------------------------

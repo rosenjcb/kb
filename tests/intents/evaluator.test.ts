@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ToolExecutor } from '../../src/core/tool-registry'
 import { validateFact } from '../../src/intents/evaluator'
 
-function createExecutorWithRetrieval(
-  retrieval: { method?: string; detail?: string },
-): ToolExecutor {
+function createExecutorWithRetrieval(retrieval: {
+  method?: string
+  detail?: string
+}): ToolExecutor {
   return {
     register: vi.fn(),
     getTools: vi.fn(() => []),

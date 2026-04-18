@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import type { InitContext } from '../../src/cli/init-cli'
 import {
   assessTopicCoverage,
   buildTopicCoverageGaps,
   summariseCoverage,
 } from '../../src/cli/init-topic-coverage'
-import type { InitContext } from '../../src/cli/init-cli'
 
 describe('init topic coverage', () => {
   it('Given grounded source, user answers, and draft docs, then marks topic sufficient', () => {
@@ -21,12 +21,16 @@ describe('init topic coverage', () => {
       ],
     }
 
-    const coverage = assessTopicCoverage(context, [
-      {
-        title: 'Installation and Configuration',
-        content: 'Install with npm install and configure via .env.local before first run.',
-      },
-    ], false)
+    const coverage = assessTopicCoverage(
+      context,
+      [
+        {
+          title: 'Installation and Configuration',
+          content: 'Install with npm install and configure via .env.local before first run.',
+        },
+      ],
+      false
+    )
 
     const installTopic = coverage.find(topic => topic.topic === 'install-setup')
     expect(installTopic?.status).toBe('sufficient')
@@ -48,12 +52,16 @@ describe('init topic coverage', () => {
       ],
     }
 
-    const coverage = assessTopicCoverage(context, [
-      {
-        title: 'Release Flow',
-        content: 'The project ships automatically using cloud deployment jobs.',
-      },
-    ], false)
+    const coverage = assessTopicCoverage(
+      context,
+      [
+        {
+          title: 'Release Flow',
+          content: 'The project ships automatically using cloud deployment jobs.',
+        },
+      ],
+      false
+    )
 
     const deploymentTopic = coverage.find(topic => topic.topic === 'deployment-release')
     expect(deploymentTopic?.status).toBe('unresolved')
@@ -72,12 +80,16 @@ describe('init topic coverage', () => {
       userAnswers: [],
     }
 
-    const coverage = assessTopicCoverage(context, [
-      {
-        title: 'CLI Basics',
-        content: 'The CLI can query the KB and submit facts.',
-      },
-    ], true)
+    const coverage = assessTopicCoverage(
+      context,
+      [
+        {
+          title: 'CLI Basics',
+          content: 'The CLI can query the KB and submit facts.',
+        },
+      ],
+      true
+    )
 
     const workflowTopic = coverage.find(topic => topic.topic === 'core-workflows')
     expect(workflowTopic?.status).toBe('inferred-only')

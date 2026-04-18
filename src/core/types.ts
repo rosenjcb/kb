@@ -121,6 +121,11 @@ export interface LLMCallParams {
   maxTokens?: number
   temperature?: number
   systemPrompt?: string
+  /**
+   * Gemini 2.5+ only: `thinkingBudget: 0` turns off internal reasoning so output
+   * tokens are available for the model reply (needed for strict JSON extractors).
+   */
+  thinkingBudget?: number
 }
 
 // ─── Session State ──────────────────────────────────────────────
@@ -167,8 +172,34 @@ export interface Decision {
 export type AgentEvent =
   | { type: 'text'; content: string }
   | { type: 'tool_start'; toolName: string; toolUseId: string }
-  | { type: 'tool_result'; toolUseId: string; result: unknown; isError: boolean }
+  | { type: 'tool_result'; toolUseId: string; toolName: string; result: unknown; isError: boolean }
   | { type: 'decision'; decision: Decision }
   | { type: 'done'; reason: string }
   | { type: 'error'; error: Error }
   | { type: 'metadata'; usage: { inputTokens: number; outputTokens: number } }
+
+// ─── Subagent orchestration (Ticket 105) ───────────────────────
+
+/** How the subagent relates to parent storage (v1: logical thread only). */
+export type SubagentIsolationStrategy = 'shared_storage' | 'forked_message_thread'
+
+/** Boss → worker delegation envelope consumed by the `task` tool. */
+export interface SubagentTaskSpec {
+  prompt: string
+  agentProfileId?: string
+  maxTurns?: number
+  allowedTools?: string[]
+  isolation?: SubagentIsolationStrategy
+}
+
+/** Structured result returned to the parent model as `task` tool output. */
+export interface SubagentTaskResult {
+  status: 'success' | 'error'
+  subagentId: string
+  profileId?: string
+  isolation: SubagentIsolationStrategy
+  textSegments: string[]
+  toolCalls: Array<{ name: string; toolUseId: string; ok: boolean }>
+  usage: { inputTokens: number; outputTokens: number }
+  error?: string
+}

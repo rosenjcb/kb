@@ -17,15 +17,13 @@ describe('llm-provider', () => {
   })
 
   it('Given an anthropic non-ok response, then should throw a readable api error instead of crashing on undefined content', async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify({ error: { message: 'invalid key' } }), {
-          status: 401,
-          statusText: 'Unauthorized',
-          headers: { 'content-type': 'application/json' },
-        })
-      )
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: 'invalid key' } }), {
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: { 'content-type': 'application/json' },
+      })
+    )
 
     const provider = new AnthropicProvider('bad-key')
 
@@ -39,14 +37,12 @@ describe('llm-provider', () => {
   })
 
   it('Given an openai malformed but successful payload, then should return safe defaults rather than throw', async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      )
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    )
 
     const provider = new OpenAIProvider('test-key')
 
@@ -62,17 +58,18 @@ describe('llm-provider', () => {
   })
 
   it('Given a custom Gemini model, then provider calls the matching model endpoint', async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify({
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
           candidates: [{ content: { parts: [{ text: 'ok' }] } }],
           usageMetadata: {},
-        }), {
+        }),
+        {
           status: 200,
           headers: { 'content-type': 'application/json' },
-        })
+        }
       )
+    )
 
     const provider = new GeminiProvider('test-key', 'gemini-flash-latest')
     await provider.call({
@@ -81,24 +78,25 @@ describe('llm-provider', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/models/gemini-flash-latest:generateContent?key=test-key'),
-      expect.any(Object),
+      expect.any(Object)
     )
 
     fetchMock.mockRestore()
   })
 
   it('Given a Gemini system prompt and assistant history, then provider sends system_instruction and model-role contents', async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify({
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
           candidates: [{ content: { parts: [{ text: 'ok' }] } }],
           usageMetadata: {},
-        }), {
+        }),
+        {
           status: 200,
           headers: { 'content-type': 'application/json' },
-        })
+        }
       )
+    )
 
     const provider = new GeminiProvider('test-key', 'gemini-flash-latest')
     await provider.call({
@@ -118,26 +116,92 @@ describe('llm-provider', () => {
     fetchMock.mockRestore()
   })
 
+  it('Given thinkingBudget 0 on a Gemini 2.5 model, then generationConfig includes thinkingConfig', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          candidates: [{ content: { parts: [{ text: '{}' }] } }],
+          usageMetadata: {},
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }
+      )
+    )
+
+    const provider = new GeminiProvider('test-key', 'gemini-2.5-flash')
+    await provider.call({
+      messages: [{ role: 'user', content: 'x' }],
+      thinkingBudget: 0,
+    })
+
+    const [, init] = fetchMock.mock.calls[0] ?? []
+    const body = JSON.parse(String((init as RequestInit | undefined)?.body ?? '{}'))
+    expect(body.generationConfig?.thinkingConfig?.thinkingBudget).toBe(0)
+
+    fetchMock.mockRestore()
+  })
+
+  it('Given Gemini parts with thought true, then visible text excludes reasoning parts', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  { text: 'internal reasoning', thought: true },
+                  { text: 'ANSWER' },
+                ],
+              },
+            },
+          ],
+          usageMetadata: {},
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }
+      )
+    )
+
+    const provider = new GeminiProvider('test-key', 'gemini-2.5-flash')
+    const result = await provider.call({
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+
+    expect(result.text).toBe('ANSWER')
+
+    fetchMock.mockRestore()
+  })
+
   it('Given Gemini preview uses the first small token budget on thoughts only, then provider retries once with a larger budget and returns visible text', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({
-          candidates: [{ content: {}, finishReason: 'MAX_TOKENS' }],
-          usageMetadata: { promptTokenCount: 8, candidatesTokenCount: 0 },
-        }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
+        new Response(
+          JSON.stringify({
+            candidates: [{ content: {}, finishReason: 'MAX_TOKENS' }],
+            usageMetadata: { promptTokenCount: 8, candidatesTokenCount: 0 },
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }
+        )
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({
-          candidates: [{ content: { parts: [{ text: 'GEMINI_OK' }] }, finishReason: 'STOP' }],
-          usageMetadata: { promptTokenCount: 8, candidatesTokenCount: 4 },
-        }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
+        new Response(
+          JSON.stringify({
+            candidates: [{ content: { parts: [{ text: 'GEMINI_OK' }] }, finishReason: 'STOP' }],
+            usageMetadata: { promptTokenCount: 8, candidatesTokenCount: 4 },
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }
+        )
       )
 
     const provider = new GeminiProvider('test-key', 'gemini-flash-latest')

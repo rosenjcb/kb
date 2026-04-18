@@ -19,9 +19,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { DuckGraphWriter } from '../../src/tools/duck-graph-writer'
 import { MarkdownDocumentReader } from '../../src/tools/markdown-document-reader'
 import { MarkdownMDWriterTool } from '../../src/tools/markdown-md-writer-tool'
-import { DuckGraphWriter } from '../../src/tools/duck-graph-writer'
 
 // ─── Fixture setup ───────────────────────────────────────────────────────────
 
@@ -39,26 +39,30 @@ const DOCS = [
   {
     id: 'bm25-ranking-internals',
     title: 'BM25 Ranking Internals',
-    content: 'BM25 is the term-frequency ranking function used in the retrieval pipeline. It scores documents by term saturation and inverse document frequency. The retrieval subsystem uses BM25 for the lexical stage of hybrid search.',
+    content:
+      'BM25 is the term-frequency ranking function used in the retrieval pipeline. It scores documents by term saturation and inverse document frequency. The retrieval subsystem uses BM25 for the lexical stage of hybrid search.',
     type: 'architecture' as const,
   },
   {
     id: 'vector-similarity-ranking',
     title: 'Vector Similarity Ranking',
-    content: 'Vector similarity ranking uses cosine distance over dense embeddings. Embeddings are generated with text-embedding-3-small at 1536 dimensions. The retrieval pipeline blends vector scores with BM25 via alpha mixing.',
+    content:
+      'Vector similarity ranking uses cosine distance over dense embeddings. Embeddings are generated with text-embedding-3-small at 1536 dimensions. The retrieval pipeline blends vector scores with BM25 via alpha mixing.',
     type: 'architecture' as const,
   },
   // Cluster B: graph storage — both docs mention "graph" and "storage"
   {
     id: 'duckdb-graph-schema',
     title: 'DuckDB Graph Schema',
-    content: 'DuckDB is the storage backend for the knowledge graph. The graph schema has two tables: entities and relationships. Weights enable soft-delete without removing rows. DuckPGQ extensions add property graph query syntax.',
+    content:
+      'DuckDB is the storage backend for the knowledge graph. The graph schema has two tables: entities and relationships. Weights enable soft-delete without removing rows. DuckPGQ extensions add property graph query syntax.',
     type: 'architecture' as const,
   },
   {
     id: 'sqlite-document-store',
     title: 'SQLite Document Store',
-    content: 'SQLite is the storage backend for KB documents. The document store holds markdown content, FTS5 indexes, and metadata. All KB intent commands read from the SQLite store.',
+    content:
+      'SQLite is the storage backend for KB documents. The document store holds markdown content, FTS5 indexes, and metadata. All KB intent commands read from the SQLite store.',
     type: 'architecture' as const,
   },
   // Cluster C: credentials — both docs mention "config" and "key"
@@ -71,7 +75,8 @@ const DOCS = [
   {
     id: 'kb-feature-flags',
     title: 'KB Feature Flag Reference',
-    content: 'Feature flags are stored in config.json under the features section. Flags include sqliteIndex, hybridQuery, graphRankingEnabled, and laneRouting. All flags have env var overrides.',
+    content:
+      'Feature flags are stored in config.json under the features section. Flags include sqliteIndex, hybridQuery, graphRankingEnabled, and laneRouting. All flags have env var overrides.',
     type: 'reference' as const,
   },
 ]
@@ -80,24 +85,59 @@ const DOCS = [
 const GRAPH_ENTITIES = [
   // Cluster A: BM25 entity pinned to bm25-ranking-internals
   { id: 'bm25', name: 'BM25', type: 'concept' as const, docId: 'bm25-ranking-internals' },
-  { id: 'vector-similarity', name: 'Vector Similarity', type: 'concept' as const, docId: 'vector-similarity-ranking' },
-  { id: 'text-embedding', name: 'text-embedding-3-small', type: 'tool' as const, docId: 'vector-similarity-ranking' },
+  {
+    id: 'vector-similarity',
+    name: 'Vector Similarity',
+    type: 'concept' as const,
+    docId: 'vector-similarity-ranking',
+  },
+  {
+    id: 'text-embedding',
+    name: 'text-embedding-3-small',
+    type: 'tool' as const,
+    docId: 'vector-similarity-ranking',
+  },
   // Cluster B: DuckDB entity pinned to duckdb-graph-schema
   { id: 'duckdb', name: 'DuckDB', type: 'system' as const, docId: 'duckdb-graph-schema' },
   { id: 'duckpgq', name: 'DuckPGQ', type: 'tool' as const, docId: 'duckdb-graph-schema' },
   { id: 'sqlite', name: 'SQLite', type: 'system' as const, docId: 'sqlite-document-store' },
   // Cluster C: api-key entity pinned to llm-api-key-setup
   { id: 'api-key', name: 'API Key', type: 'concept' as const, docId: 'llm-api-key-setup' },
-  { id: 'llm-provider', name: 'LLM Provider', type: 'concept' as const, docId: 'llm-api-key-setup' },
+  {
+    id: 'llm-provider',
+    name: 'LLM Provider',
+    type: 'concept' as const,
+    docId: 'llm-api-key-setup',
+  },
   { id: 'feature-flag', name: 'Feature Flag', type: 'concept' as const, docId: 'kb-feature-flags' },
 ]
 
 const GRAPH_RELATIONSHIPS = [
-  { fromId: 'bm25', toId: 'vector-similarity', type: 'related_to' as const, docId: 'bm25-ranking-internals' },
-  { fromId: 'vector-similarity', toId: 'text-embedding', type: 'uses' as const, docId: 'vector-similarity-ranking' },
+  {
+    fromId: 'bm25',
+    toId: 'vector-similarity',
+    type: 'related_to' as const,
+    docId: 'bm25-ranking-internals',
+  },
+  {
+    fromId: 'vector-similarity',
+    toId: 'text-embedding',
+    type: 'uses' as const,
+    docId: 'vector-similarity-ranking',
+  },
   { fromId: 'duckdb', toId: 'duckpgq', type: 'uses' as const, docId: 'duckdb-graph-schema' },
-  { fromId: 'api-key', toId: 'llm-provider', type: 'related_to' as const, docId: 'llm-api-key-setup' },
-  { fromId: 'feature-flag', toId: 'api-key', type: 'related_to' as const, docId: 'kb-feature-flags' },
+  {
+    fromId: 'api-key',
+    toId: 'llm-provider',
+    type: 'related_to' as const,
+    docId: 'llm-api-key-setup',
+  },
+  {
+    fromId: 'feature-flag',
+    toId: 'api-key',
+    type: 'related_to' as const,
+    docId: 'kb-feature-flags',
+  },
 ]
 
 // ─── Benchmark queries ────────────────────────────────────────────────────────
@@ -147,7 +187,11 @@ async function buildFixtureBase(): Promise<string> {
   tempDirs.push(baseDir)
 
   const dbPath = path.join(baseDir, '.kb-index.sqlite')
-  const writer = new MarkdownMDWriterTool({ baseDir, enableSqliteIndex: true, sqliteDbPath: dbPath })
+  const writer = new MarkdownMDWriterTool({
+    baseDir,
+    enableSqliteIndex: true,
+    sqliteDbPath: dbPath,
+  })
 
   for (const doc of DOCS) {
     await writer.writeDocument({
@@ -228,7 +272,7 @@ describe('Graph-aware retrieval benchmark', () => {
       expect(r.graphBoost).toBeGreaterThan(0)
       expect(r.graphBoost).toBeLessThanOrEqual(0.5) // bounded by graphRankingMaxBoost=0.5 in test reader
       expect(Array.isArray(r.graphEvidence)).toBe(true)
-      expect(r.graphEvidence!.length).toBeGreaterThan(0)
+      expect(r.graphEvidence?.length).toBeGreaterThan(0)
     }
   })
 

@@ -47,6 +47,7 @@ interface PriceRow {
 
 const PRICE_TABLE: Record<string, Record<string, PriceRow>> = {
   gemini: {
+    'gemini-2.5-flash': { inputPer1M: 0.075, outputPer1M: 0.3 },
     'gemini-2.0-flash': { inputPer1M: 0.075, outputPer1M: 0.3 },
     'gemini-2.0-flash-lite': { inputPer1M: 0.0375, outputPer1M: 0.15 },
     'gemini-1.5-flash': { inputPer1M: 0.075, outputPer1M: 0.3 },

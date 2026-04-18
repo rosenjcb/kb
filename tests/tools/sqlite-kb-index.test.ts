@@ -38,9 +38,13 @@ describe('SQLite KB index integration', () => {
     })
 
     const db = new Database(dbPath, { readonly: true })
-    const docCount = db.prepare('SELECT count(*) AS count FROM documents').get() as { count: number }
+    const docCount = db.prepare('SELECT count(*) AS count FROM documents').get() as {
+      count: number
+    }
     const chunkCount = db.prepare('SELECT count(*) AS count FROM chunks').get() as { count: number }
-    const embeddingCount = db.prepare('SELECT count(*) AS count FROM chunk_embeddings').get() as { count: number }
+    const embeddingCount = db.prepare('SELECT count(*) AS count FROM chunk_embeddings').get() as {
+      count: number
+    }
     const laneRow = db
       .prepare('SELECT lane FROM documents WHERE id = ?')
       .get('sqlite-index-plan') as { lane: string }
@@ -85,7 +89,9 @@ describe('SQLite KB index integration', () => {
     })
 
     const db = new Database(dbPath, { readonly: true })
-    const title = db.prepare('SELECT title FROM documents WHERE id = ?').get('ops-runbook') as { title: string }
+    const title = db.prepare('SELECT title FROM documents WHERE id = ?').get('ops-runbook') as {
+      title: string
+    }
     const chunkRows = db
       .prepare('SELECT chunk_text FROM chunks WHERE doc_id = ? ORDER BY chunk_index')
       .all('ops-runbook') as Array<{ chunk_text: string }>
@@ -142,9 +148,7 @@ describe('SQLite KB index integration', () => {
       rawQuery: 'what is this project about',
       stage: 'query_rewrite_retry',
       missReason: 'low_confidence',
-      topCandidates: [
-        { id: 'ticket-047', score: 0.51 },
-      ],
+      topCandidates: [{ id: 'ticket-047', score: 0.51 }],
       surface: 'chat',
     })
 
@@ -153,9 +157,7 @@ describe('SQLite KB index integration', () => {
       rawQuery: 'what is this project about',
       stage: 'query_rewrite_retry',
       missReason: 'low_confidence',
-      topCandidates: [
-        { id: 'ticket-047', score: 0.52 },
-      ],
+      topCandidates: [{ id: 'ticket-047', score: 0.52 }],
       surface: 'intent-query',
     })
 
@@ -182,8 +184,8 @@ describe('SQLite KB index integration', () => {
     const events = Array.from({ length: 30 }, (_, idx) => ({
       queryFingerprint: `fp-${idx}`,
       stage: 'hybrid_primary',
-      status: idx < 24 ? 'hit' as const : 'miss' as const,
-      nextAction: idx < 24 ? 'return' as const : 'advance' as const,
+      status: idx < 24 ? ('hit' as const) : ('miss' as const),
+      nextAction: idx < 24 ? ('return' as const) : ('advance' as const),
       confidence: idx < 24 ? 0.86 : 0.2,
       method: 'hybrid' as const,
       detail: 'fts+vector-rerank',
@@ -198,12 +200,15 @@ describe('SQLite KB index integration', () => {
     expect(metrics[0].totalCount).toBe(30)
     expect(metrics[0].hitCount).toBe(24)
 
-    const assessment = indexer.evaluateRetrievalRollout({
-      minSampleSize: 20,
-      minOverallSuccessRate: 0.7,
-      maxOverallMissRate: 0.3,
-      maxHybridFallbackRate: 0.25,
-    }, 48)
+    const assessment = indexer.evaluateRetrievalRollout(
+      {
+        minSampleSize: 20,
+        minOverallSuccessRate: 0.7,
+        maxOverallMissRate: 0.3,
+        maxHybridFallbackRate: 0.25,
+      },
+      48
+    )
 
     expect(assessment.decision).toBe('promote')
     expect(assessment.sampleSize).toBe(30)
@@ -220,8 +225,8 @@ describe('SQLite KB index integration', () => {
     const badEvents = Array.from({ length: 20 }, (_, idx) => ({
       queryFingerprint: `bad-fp-${idx}`,
       stage: 'hybrid_primary',
-      status: idx < 6 ? 'hit' as const : 'miss' as const,
-      nextAction: idx < 6 ? 'return' as const : 'advance' as const,
+      status: idx < 6 ? ('hit' as const) : ('miss' as const),
+      nextAction: idx < 6 ? ('return' as const) : ('advance' as const),
       confidence: idx < 6 ? 0.7 : 0.15,
       method: 'hybrid' as const,
       detail: 'fts+vector-rerank',
@@ -230,15 +235,20 @@ describe('SQLite KB index integration', () => {
 
     indexer.recordRetrievalCheckpointEvents(badEvents)
 
-    const assessment = indexer.evaluateRetrievalRollout({
-      minSampleSize: 20,
-      minOverallSuccessRate: 0.7,
-      maxOverallMissRate: 0.25,
-      maxHybridFallbackRate: 0.5,
-    }, 48)
+    const assessment = indexer.evaluateRetrievalRollout(
+      {
+        minSampleSize: 20,
+        minOverallSuccessRate: 0.7,
+        maxOverallMissRate: 0.25,
+        maxHybridFallbackRate: 0.5,
+      },
+      48
+    )
 
     expect(assessment.decision).toBe('rollback')
-    expect(assessment.reasons.some(reason => reason.includes('hybrid-fallback-rate-too-high'))).toBe(true)
+    expect(
+      assessment.reasons.some(reason => reason.includes('hybrid-fallback-rate-too-high'))
+    ).toBe(true)
 
     indexer.close()
   })
@@ -359,12 +369,15 @@ describe('SQLite KB index integration', () => {
       })
     }
 
-    const assessment = indexer.evaluateLaneRoutingRollout({
-      minSampleSize: 20,
-      minLaneSuccessRate: 0.55,
-      maxLaneFallbackRate: 0.4,
-      maxLowPrecisionLanes: 0,
-    }, 48)
+    const assessment = indexer.evaluateLaneRoutingRollout(
+      {
+        minSampleSize: 20,
+        minLaneSuccessRate: 0.55,
+        maxLaneFallbackRate: 0.4,
+        maxLowPrecisionLanes: 0,
+      },
+      48
+    )
 
     expect(assessment.decision).toBe('rollback')
     expect(assessment.lowPrecisionLanes).toContain('error-runbook')

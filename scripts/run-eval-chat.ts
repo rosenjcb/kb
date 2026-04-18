@@ -1,9 +1,14 @@
 import process from 'node:process'
-import { readKbConfig, createLLMProviderFromConfig, resolveConversationalChatEnabled, resolveGraphEnabled } from '../src/cli/kb-config.js'
-import { runChatSession } from '../src/cli/chat-cli.js'
-import { createKBToolsRegistry } from '../src/tools/kb-tools-registry.js'
 import { ensureOperationalBaseDir } from '../src/cli/base-selection.js'
+import { runChatSession } from '../src/cli/chat-cli.js'
+import {
+  createLLMProviderFromConfig,
+  readKbConfig,
+  resolveConversationalChatEnabled,
+  resolveGraphEnabled,
+} from '../src/cli/kb-config.js'
 import { DuckGraphWriter } from '../src/tools/duck-graph-writer.js'
+import { createKBToolsRegistry } from '../src/tools/kb-tools-registry.js'
 
 const QUESTIONS = [
   'What is this project for, and what are the main things kb can do?',
@@ -38,28 +43,33 @@ async function main(): Promise<void> {
   let inputIdx = 0
 
   const io = {
-    async read(): Promise<string | null> { return inputs[inputIdx++] ?? null },
+    async read(): Promise<string | null> {
+      return inputs[inputIdx++] ?? null
+    },
     write(line: string): void {
       process.stderr.write(`  ${line}\n`)
       results.push(line)
     },
     error(line: string): void {
       process.stderr.write(`  ERROR: ${line}\n`)
-      results.push('ERROR: ' + line)
+      results.push(`ERROR: ${line}`)
     },
   }
 
-  await runChatSession({
-    llmProvider,
-    toolExecutor,
-    graphWriter,
-    conversationalRetrieval: resolveConversationalChatEnabled(config),
-  }, io)
+  await runChatSession(
+    {
+      llmProvider,
+      toolExecutor,
+      graphWriter,
+      conversationalRetrieval: resolveConversationalChatEnabled(config),
+    },
+    io
+  )
 
-  process.stdout.write(JSON.stringify(results, null, 2) + '\n')
+  process.stdout.write(`${JSON.stringify(results, null, 2)}\n`)
 }
 
 main().catch(err => {
-  process.stderr.write(String(err) + '\n')
+  process.stderr.write(`${String(err)}\n`)
   process.exit(1)
 })

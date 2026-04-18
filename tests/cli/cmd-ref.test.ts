@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { cmd, cmdIntro, cmdHelpHint, type CmdMode } from '../../src/cli/cmd-ref'
+import { describe, expect, it } from 'vitest'
+import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from '../../src/cli/cmd-ref'
 
 describe('cmd', () => {
   it('returns /name in tui mode', () => {
