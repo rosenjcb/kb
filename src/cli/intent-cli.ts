@@ -1,8 +1,9 @@
 import dayjs from 'dayjs'
 import type { ToolExecutor } from '../core/tool-registry'
-import type { LLMProvider } from '../core/types'
+import type { LLMProvider, Message } from '../core/types'
 import { assertConsumerSafeCommand } from '../intents/policy'
 import { DefaultIntentRouter } from '../intents/router'
+import { loadQuerySessionMessages, appendQuerySession } from './query-session'
 import type { ConsumerIntent, ConsumerIntentEnvelope, IntentResult } from '../intents/types'
 
 export type CliOutputMode = 'human' | 'json'
@@ -216,6 +217,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
   parsed: ParsedIntentCommand,
   result: IntentResult,
   llmProvider?: LLMProvider,
+  sessionDir?: string,
 ): Promise<IntentResult> {
   if (!llmProvider) return result
   if (!isReadDocumentsResult(result)) return result
@@ -230,20 +232,24 @@ export async function enrichReadDocumentsAnswerWithLLM(
   if (!question || !evidence) return result
 
   try {
+    const priorTurns: Message[] = sessionDir
+      ? await loadQuerySessionMessages(sessionDir)
+      : []
+
+    const userContent = [
+      'You answer using only the provided KB evidence.',
+      'Return a concise, direct answer in 1-2 sentences.',
+      'If evidence is insufficient, explicitly say so.',
+      '',
+      `Question: ${question}`,
+      '',
+      `Evidence:\n${evidence}`,
+    ].join('\n')
+
     const completion = await llmProvider.call({
       messages: [
-        {
-          role: 'user',
-          content: [
-            'You answer using only the provided KB evidence.',
-            'Return a concise, direct answer in 1-2 sentences.',
-            'If evidence is insufficient, explicitly say so.',
-            '',
-            `Question: ${question}`,
-            '',
-            `Evidence:\n${evidence}`,
-          ].join('\n'),
-        },
+        ...priorTurns,
+        { role: 'user', content: userContent },
       ],
       temperature: 0.1,
       maxTokens: 180,
@@ -256,6 +262,10 @@ export async function enrichReadDocumentsAnswerWithLLM(
       const fallback = buildDeterministicIntentAnswer(question, results)
       answer = fallback
         ?? 'I do not have enough grounded evidence yet. Next step: run kb query "<your fact>" --discovery deep --output json, then kb submit "<fact>" if evidence is missing.'
+    }
+
+    if (sessionDir) {
+      void appendQuerySession(sessionDir, question, answer)
     }
 
     return {

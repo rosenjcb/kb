@@ -536,7 +536,7 @@ export async function runMainWithOutput(
         }
       }
 
-      const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, llmProvider ?? undefined)
+      const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, llmProvider ?? undefined, intentBaseDir)
 
       // Capture tokens from the answer-enrichment LLM call (query path)
       if (llmCounter) {
