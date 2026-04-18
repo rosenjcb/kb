@@ -16,6 +16,7 @@
 
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { loadPromptParts } from '../prompts/loader'
 import path from 'node:path'
 import readline from 'node:readline'
 import dayjs from 'dayjs'
@@ -890,10 +891,9 @@ async function runSynthesisPass(
   context: InitContext,
   baseName: string
 ): Promise<CandidateDoc[]> {
+  const synthesisParts = loadPromptParts('init-synthesis.md')
   const { prompt, maxTokens } = buildBudgetedPrompt({
-    intro: `You are a knowledge base architect. Your job is to extract structured, retrieval-ready fact documents from project documentation.
-
-You are initialising a knowledge base for the project base "${baseName}".`,
+    intro: synthesisParts.intro.replace('{{baseName}}', baseName),
     sections: [
       {
         heading: 'Source Files',
@@ -908,26 +908,7 @@ You are initialising a knowledge base for the project base "${baseName}".`,
         minTokens: 120,
       },
     ],
-    instructions: `Produce **5–15** focused documents. Each document should be atomic and retrieval-optimised. Avoid duplicating facts.
-Unless the repository is literally a single tiny file, return **at least 4** separate documents (different titles).
-
-Return a JSON array with this shape:
-[
-  {
-    "title": "string (concise noun phrase)",
-    "type": "architecture" | "decision" | "reference" | "runbook" | "checklist",
-    "tags": ["tag1", "tag2"],
-    "content": "Markdown body. Start with a brief 1-sentence summary, then bullet facts or short paragraphs."
-  }
-]
-
-Required document categories:
-- 1 overall project overview (type: architecture)
-- 1 CLI/usage reference (type: reference) if applicable
-- 1 configuration reference (type: reference) if applicable
-- Fact documents for key decisions, architecture components, policies
-
-Return ONLY the JSON array, no prose.`,
+    instructions: synthesisParts.instructions,
     requestedMaxTokens: INIT_OUTPUT_TOKENS.synthesis,
   })
 
@@ -945,8 +926,9 @@ async function runRefinementPass(
   context: InitContext,
   docs: CandidateDoc[]
 ): Promise<CandidateDoc[]> {
+  const refinementParts = loadPromptParts('init-refinement.md')
   const { prompt, maxTokens } = buildBudgetedPrompt({
-    intro: 'You are refining a set of KB documents for quality and completeness.',
+    intro: refinementParts.intro,
     sections: [
       {
         heading: 'Current documents',
@@ -961,14 +943,7 @@ async function runRefinementPass(
         minTokens: 100,
       },
     ],
-    instructions: `1. Do **not** collapse the whole corpus into a single overview document. Keep **at least as many documents as you were given** unless two entries are obvious duplicates (same narrow topic and redundant facts only).
-2. Only merge when two documents have the same intent **and** repeating the same facts — never merge distinct topics (CLI vs config vs testing, etc.).
-3. Split any document that covers 2+ unrelated topics.
-4. Ensure each document has a concise, specific title.
-5. Fill in obvious gaps — if an important topic is missing based on the user answers, add a document for it.
-6. Remove content that is vague, redundant, or not factual.
-
-Return the refined JSON array in the same shape. Return ONLY the JSON array.`,
+    instructions: refinementParts.instructions,
     requestedMaxTokens: INIT_OUTPUT_TOKENS.refinement,
   })
 
@@ -987,8 +962,9 @@ async function runQualityPass(
   provider: LLMProvider,
   docs: CandidateDoc[]
 ): Promise<CandidateDoc[]> {
+  const qualityParts = loadPromptParts('init-quality.md')
   const { prompt, maxTokens } = buildBudgetedPrompt({
-    intro: 'You are doing a final quality pass on KB documents before they are written to storage.',
+    intro: qualityParts.intro,
     sections: [
       {
         heading: 'Documents',
@@ -997,15 +973,7 @@ async function runQualityPass(
         minTokens: 600,
       },
     ],
-    instructions: `1. Every document must have a non-empty title and content.
-2. Content should start with a 1-sentence summary.
-3. Tags should be lowercase, hyphenated slugs relevant to the content.
-4. Type must be one of: architecture, decision, reference, runbook, checklist.
-5. Remove any document with fewer than 20 words of content.
-6. Ensure titles are unique.
-7. Do **not** merge everything into one document — preserve multiple documents unless a pair is a true duplicate.
-
-Return the final JSON array. Return ONLY the JSON array.`,
+    instructions: qualityParts.instructions,
     requestedMaxTokens: INIT_OUTPUT_TOKENS.quality,
   })
 
@@ -1032,9 +1000,9 @@ async function runPerDocEnrichmentPass(
 ): Promise<CandidateDoc[]> {
   const enriched = await Promise.all(
     docs.map(async (doc): Promise<CandidateDoc> => {
+      const enrichmentParts = loadPromptParts('init-enrichment.md')
       const { prompt, maxTokens } = buildBudgetedPrompt({
-        intro:
-          'You are enriching a single KB document to make it more specific, complete, and actionable.',
+        intro: enrichmentParts.intro,
         sections: [
           {
             heading: 'Document',
@@ -1055,14 +1023,7 @@ async function runPerDocEnrichmentPass(
             minTokens: 100,
           },
         ],
-        instructions: `1. Fill in obvious gaps using the source context and Q&A — add facts, commands, config keys, or examples that belong here.
-2. Make vague statements concrete and specific.
-3. Remove internal redundancy — each fact should appear once.
-4. Keep the document focused on its single topic; do not pull in unrelated content.
-5. Content must start with a 1-sentence summary of the document's purpose.
-
-Return the enriched document as a single JSON object with the same shape (title, type, tags, content).
-Return ONLY the JSON object, no prose.`,
+        instructions: enrichmentParts.instructions,
         requestedMaxTokens: INIT_OUTPUT_TOKENS.enrich,
       })
 

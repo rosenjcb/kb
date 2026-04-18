@@ -1,4 +1,5 @@
 import { createInterface } from 'node:readline/promises'
+import { loadPrompt } from '../prompts/loader'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message } from '../core/types'
 import type { DuckGraphWriter } from '../tools/duck-graph-writer'
@@ -92,15 +93,7 @@ export function printChatHelp(mode: CmdMode = 'cli'): string {
   ].join('\n')
 }
 
-const CHAT_SYSTEM_PROMPT = [
-  'You are KB, a knowledge base assistant.',
-  "Answer the user's question directly and clearly.",
-  'Default to a substantive answer, and use as much space as needed when the question benefits from depth.',
-  'For broad "why should I care?" or "what are the benefits?" questions, it is fine to answer in several rich paragraphs.',
-  'Use the retrieved evidence provided in each message. Synthesize across multiple documents if needed.',
-  'Do NOT repeat the question. Do NOT say "based on the evidence" or "the evidence shows".',
-  'If the evidence is genuinely insufficient, say so in one sentence and suggest a follow-up query.',
-].join('\n')
+const CHAT_SYSTEM_PROMPT = loadPrompt('chat-system.md')
 
 export async function runChatSession(
   deps: ChatSessionDeps,

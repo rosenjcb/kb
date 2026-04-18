@@ -1,4 +1,4 @@
-import { chmod, mkdir } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { build } from 'esbuild'
 
@@ -22,6 +22,15 @@ await build({
 
 if (process.platform !== 'win32') {
   await chmod(outFile, 0o755)
+}
+
+// Copy prompt .md files so the bundled binary can resolve them at runtime.
+const promptsSrc = path.join(projectRoot, 'src', 'prompts')
+const promptsDest = path.dirname(outFile)
+for (const file of await readdir(promptsSrc)) {
+  if (file.endsWith('.md')) {
+    await copyFile(path.join(promptsSrc, file), path.join(promptsDest, file))
+  }
 }
 
 console.log(`Built CLI executable: ${outFile}`)

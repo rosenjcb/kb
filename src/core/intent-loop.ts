@@ -10,6 +10,7 @@
  */
 
 import dayjs from 'dayjs'
+import { loadPrompt } from '../prompts/loader'
 import { DefaultIntentRouter } from '../intents/router'
 import type { ConsumerIntentEnvelope, IntentResult } from '../intents/types'
 import type { RunCollector } from './telemetry'
@@ -253,15 +254,9 @@ async function applyLLMValidationReasoning(
       messages: [
         {
           role: 'user',
-          content: [
-            'You are a fact-checker. Given KB evidence, determine if the following fact is supported.',
-            'Reply with exactly one of: SUPPORTED, NOT_SUPPORTED, or UNCERTAIN.',
-            'Follow it with a one-sentence explanation.',
-            '',
-            `Fact: ${fact}`,
-            '',
-            `Evidence:\n${evidence}`,
-          ].join('\n'),
+          content: loadPrompt('fact-checker.md')
+            .replace('{{fact}}', fact)
+            .replace('{{evidence}}', evidence),
         },
       ],
       temperature: 0.0,
