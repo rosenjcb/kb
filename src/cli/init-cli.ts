@@ -7,8 +7,7 @@
  * Cycle 3 (pass2):           Follow-up questions for weak topics, LLM refinement.
  * Cycle 4 (pass-enrich):     Per-document enrichment — each doc gets a dedicated
  *                             LLM pass to deepen coverage and add concrete detail.
- * Cycle 5 (pass-consolidate):Consolidation agent — merges docs with overlapping
- *                             content so each document covers exactly one topic.
+ * Cycle 5 (pass-consolidate):Consolidation agent — (currently disabled) merges overlapping docs.
  * Cycle 6 (pass3):           Final quality pass — validate, dedupe, remove stubs.
  * Cycle 7 (write):           Upsert all candidate documents to SQLite.
  *
@@ -39,6 +38,7 @@ import {
   markUnaskedTopicsAsInferred,
   summariseCoverage,
 } from './init-topic-coverage'
+import { readKnowledgeGraphInitSummary } from './graph-cli'
 import { createLLMProviderFromConfig, readKbConfig, resolveGraphEnabled } from './kb-config'
 import { runLLMSetupWizard } from './llm-setup-wizard'
 
@@ -445,6 +445,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       }
       const endPass1 = makeCycleTimer('pass1', provider, options.collector, counter)
       candidateDocs = await runSynthesisPass(provider, context, base)
+      candidateDocs = maybeExpandSingleDocCorpus(candidateDocs, context, base)
       endPass1()
       topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
       await persist({
@@ -461,6 +462,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     if (!candidateDocs) throw new Error('pass1 candidateDocs missing')
 
     if (!checkpoint.completedCycles.includes('pass2')) {
+      candidateDocs = maybeExpandSingleDocCorpus(candidateDocs, context, base)
       progress.start('pass2', 'follow-up + refining docs…')
 
       if (!options.nonInteractive) {
@@ -601,9 +603,11 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.finish('write', 'reused from checkpoint')
     }
 
+    let graphPassOutcome: GraphPassOutcome = 'reused'
     if (!checkpoint.completedCycles.includes('pass-graph')) {
       progress.start('pass-graph', 'extracting knowledge graph…')
       if (!graphEnabled) {
+        graphPassOutcome = 'disabled'
         progress.finish('pass-graph', 'skipped (graph disabled)')
         await persist({ completedCycles: ['pass-graph'] })
       } else if (provider) {
@@ -611,14 +615,17 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           const endPassGraph = makeCycleTimer('pass-graph', provider, options.collector, counter)
           await runGraphExtractionPass(provider, baseDir)
           endPassGraph()
+          graphPassOutcome = 'extracted'
           await persist({ completedCycles: ['pass-graph'] })
           progress.finish('pass-graph', 'graph written to .kb-graph.duckdb')
         } catch {
           // Graph extraction failure must not abort a successful init
+          graphPassOutcome = 'error'
           progress.finish('pass-graph', 'skipped (error)')
           await persist({ completedCycles: ['pass-graph'] })
         }
       } else {
+        graphPassOutcome = 'no-provider'
         progress.finish('pass-graph', 'skipped (no provider)')
         await persist({ completedCycles: ['pass-graph'] })
       }
@@ -626,6 +633,12 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     } else {
       progress.finish('pass-graph', 'reused from checkpoint')
     }
+
+    await emitPostInitGraphOverview({
+      baseDir,
+      graphPassOutcome,
+      questionIO,
+    })
 
     const finalCoverageSummary = checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
     return {
@@ -895,7 +908,8 @@ You are initialising a knowledge base for the project base "${baseName}".`,
         minTokens: 120,
       },
     ],
-    instructions: `Produce 5-15 focused documents. Each document should be atomic and retrieval-optimised. Avoid duplicating facts.
+    instructions: `Produce **5–15** focused documents. Each document should be atomic and retrieval-optimised. Avoid duplicating facts.
+Unless the repository is literally a single tiny file, return **at least 4** separate documents (different titles).
 
 Return a JSON array with this shape:
 [
@@ -947,11 +961,12 @@ async function runRefinementPass(
         minTokens: 100,
       },
     ],
-    instructions: `1. Merge documents that clearly cover the same topic (avoid duplicates).
-2. Split any document that covers 2+ unrelated topics.
-3. Ensure each document has a concise, specific title.
-4. Fill in any obvious gaps — if an important topic is missing based on the user answers, add a document for it.
-5. Remove content that is vague, redundant, or not factual.
+    instructions: `1. Do **not** collapse the whole corpus into a single overview document. Keep **at least as many documents as you were given** unless two entries are obvious duplicates (same narrow topic and redundant facts only).
+2. Only merge when two documents have the same intent **and** repeating the same facts — never merge distinct topics (CLI vs config vs testing, etc.).
+3. Split any document that covers 2+ unrelated topics.
+4. Ensure each document has a concise, specific title.
+5. Fill in obvious gaps — if an important topic is missing based on the user answers, add a document for it.
+6. Remove content that is vague, redundant, or not factual.
 
 Return the refined JSON array in the same shape. Return ONLY the JSON array.`,
     requestedMaxTokens: INIT_OUTPUT_TOKENS.refinement,
@@ -963,7 +978,9 @@ Return the refined JSON array in the same shape. Return ONLY the JSON array.`,
     temperature: 0.1,
   })
 
-  return parseDocArray(response.text) ?? docs
+  const parsed = parseDocArray(response.text)
+  const next = parsed ?? docs
+  return preventInitDocCollapse(docs, next)
 }
 
 async function runQualityPass(
@@ -986,6 +1003,7 @@ async function runQualityPass(
 4. Type must be one of: architecture, decision, reference, runbook, checklist.
 5. Remove any document with fewer than 20 words of content.
 6. Ensure titles are unique.
+7. Do **not** merge everything into one document — preserve multiple documents unless a pair is a true duplicate.
 
 Return the final JSON array. Return ONLY the JSON array.`,
     requestedMaxTokens: INIT_OUTPUT_TOKENS.quality,
@@ -997,7 +1015,9 @@ Return the final JSON array. Return ONLY the JSON array.`,
     temperature: 0.0,
   })
 
-  return parseDocArray(response.text) ?? docs
+  const parsed = parseDocArray(response.text)
+  const next = parsed ?? docs
+  return preventInitDocCollapse(docs, next)
 }
 
 /**
@@ -1087,6 +1107,42 @@ Return ONLY the JSON object, no prose.`,
 //   const response = await provider.call({ messages: [{ role: 'user', content: prompt }], maxTokens, temperature: 0.1 })
 //   return parseDocArray(response.text) ?? docs
 // }
+
+type GraphPassOutcome = 'extracted' | 'disabled' | 'error' | 'no-provider' | 'reused'
+
+async function emitPostInitGraphOverview(options: {
+  baseDir: string
+  graphPassOutcome: GraphPassOutcome
+  questionIO: InitQuestionIO
+}): Promise<void> {
+  const write = options.questionIO.write
+  if (!write) return
+
+  const banner =
+    '\n--- Graph store (same text as `kb graph`; JSON is counts + top nodes, subset of `kb graph --format json`) ---\n'
+
+  try {
+    if (options.graphPassOutcome === 'disabled') {
+      write(`${banner}Knowledge graph: skipped (disabled in kb config).\n`)
+      return
+    }
+    if (options.graphPassOutcome === 'no-provider') {
+      write(`${banner}Knowledge graph: skipped (no LLM provider for extraction).\n`)
+      return
+    }
+
+    const payload = await readKnowledgeGraphInitSummary(options.baseDir)
+    if (!payload) {
+      write(`${banner}Knowledge graph: no store file on disk yet.\n`)
+      return
+    }
+
+    write(`${banner}${payload.human}\n\n${JSON.stringify(payload.json)}\n`)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    write(`\n--- Graph store ---\nCould not read graph summary: ${msg}\n`)
+  }
+}
 
 async function runGraphExtractionPass(provider: LLMProvider, baseDir: string): Promise<void> {
   const dbPath = path.join(baseDir, '.kb-index.sqlite')
@@ -1419,6 +1475,57 @@ function slugify(value: string): string {
       .replace(/^-+|-+$/g, '')
       .slice(0, 80) || 'document'
   )
+}
+
+/** When synthesis collapses to one doc but we have several source files, split into overview + per-file reference shards (baseline until a proper grouping pass exists). */
+const INIT_SOURCE_SHARD_MAX_FILES = 12
+const INIT_SOURCE_SHARD_MAX_CHARS = 8000
+
+function maybeExpandSingleDocCorpus(
+  docs: CandidateDoc[],
+  context: InitContext,
+  baseName: string
+): CandidateDoc[] {
+  if (docs.length !== 1) return docs
+  const paths = Object.keys(context.sourceFiles).filter(
+    key => (context.sourceFiles[key] ?? '').trim().length > 0
+  )
+  if (paths.length <= 1) return docs
+  return expandSingleDocIntoSourceShards(docs[0], context, baseName)
+}
+
+function expandSingleDocIntoSourceShards(
+  lone: CandidateDoc,
+  context: InitContext,
+  baseName: string
+): CandidateDoc[] {
+  const overview: CandidateDoc = {
+    title: `${baseName} project overview`,
+    type: 'architecture',
+    tags: ['overview', baseName],
+    content: lone.content,
+  }
+  const shards: CandidateDoc[] = []
+  for (const filePath of Object.keys(context.sourceFiles).slice(0, INIT_SOURCE_SHARD_MAX_FILES)) {
+    const body = context.sourceFiles[filePath]
+    if (typeof body !== 'string' || !body.trim()) continue
+    const safeName = filePath.replace(/\\/g, '/')
+    const clipped = body.slice(0, INIT_SOURCE_SHARD_MAX_CHARS)
+    const tail = body.length > INIT_SOURCE_SHARD_MAX_CHARS ? '\n\n…(truncated during init split)…' : ''
+    shards.push({
+      title: `${baseName} — ${safeName}`,
+      type: 'reference',
+      tags: ['source-excerpt', slugify(safeName), baseName],
+      content: `# ${safeName}\n\nRepository excerpt captured during init (split from a single synthesis document).\n\n${clipped}${tail}\n`,
+    })
+  }
+  return [overview, ...shards]
+}
+
+/** If the LLM returns one document but we had several, keep the prior corpus (refine/quality passes). */
+function preventInitDocCollapse(previous: CandidateDoc[], next: CandidateDoc[]): CandidateDoc[] {
+  if (previous.length > 1 && next.length === 1) return previous
+  return next
 }
 
 async function resolveProvider(): Promise<LLMProvider | undefined> {
