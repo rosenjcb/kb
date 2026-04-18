@@ -130,6 +130,18 @@ kb submit "new fact" --target <doc-id>
 kb validate "assumption I want to check"
 ```
 
+## Agent skill: use KB while you develop
+
+Shipped as a real Cursor-style skill (YAML frontmatter + full instructions):
+
+- **Template:** [`examples/agent-skills/kb-dev-workflow/SKILL.md`](examples/agent-skills/kb-dev-workflow/SKILL.md)
+
+**Install (Cursor):** copy that directory into your repo as `.cursor/skills/kb-dev-workflow/` (so the path ends in `.cursor/skills/kb-dev-workflow/SKILL.md`). Other agents: import the same markdown body into whatever “rules” or “skills” format your tool expects.
+
+The skill is self-contained (workflow + full command shapes). The [CLI Reference](#cli-reference) section above stays the in-repo quick reference for humans.
+
+**Roadmap:** We intend to ship a `kb` command (or installer flow) that drops or syncs this skill—and the closest equivalent hooks for each ecosystem—into supported agents automatically (for example Cursor, Claude Code, and other common coding agents), so manual copying is optional rather than required.
+
 ## Development Commands
 
 ```bash
