@@ -252,7 +252,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
         { role: 'user', content: userContent },
       ],
       temperature: 0.1,
-      maxTokens: 180,
+      maxTokens: 600,
     })
 
     let answer = completion.text.trim()

@@ -290,7 +290,10 @@ export async function runMainWithOutput(
       return
     }
 
-    const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
+    const chatBaseFlag = args[args.indexOf('--base') + 1] ?? undefined
+    const kbStorageDir = chatBaseFlag
+      ? await ensureOperationalBaseDir(chatBaseFlag)
+      : (await resolveEffectiveBaseDir()).baseDir
     const llmProvider = createLLMProviderFromConfig(config)
 
     if (!llmProvider) {

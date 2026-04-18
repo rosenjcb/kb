@@ -601,10 +601,11 @@ function buildEvidence(results: ReadDocumentsResult['results']): string {
 }
 
 export function createTerminalChatIO(): ChatIO {
+  const isTTY = process.stdin.isTTY === true
   const rl = createInterface({
     input: process.stdin,
-    output: process.stdout,
-    terminal: true,
+    output: isTTY ? process.stdout : undefined,
+    terminal: isTTY,
   })
 
   let interrupted = false
