@@ -83,6 +83,8 @@ Questions should span:
 
 Each question/surface pair gets a rubric score.
 
+For the automated harvest (`npm run eval:kb-proper`), you can either pass **`--scores-file`** with a hand-written JSON array of eight score objects, or **`--auto-score`** / **`--auto-score-file <path>`** to run a single-shot LLM judge over the eight `kb query` JSON outputs (requires `GEMINI_API_KEY` or `OPENAI_API_KEY` in the environment). See `scripts/eval-kb-proper.mjs --help`. Auto scores are a convenience, not a substitute for spot-checking weak answers.
+
 ## Canonical Question Set
 
 Use these questions unless there is a strong reason to revise the suite. If revised, copy the old suite forward and record the change in the artifact.

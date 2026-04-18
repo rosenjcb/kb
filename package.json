@@ -18,6 +18,7 @@
     "build": "tsc && npm run build:cli",
     "build:cli": "node scripts/build-cli.mjs",
     "eval:kb-proper": "node scripts/eval-kb-proper.mjs",
+    "eval:orchestrator-scenarios": "node scripts/eval-orchestrator-scenarios.mjs",
     "install:global": "npm run build && npm install -g .",
     "refresh:global": "npm run install:global",
     "which:kb": "command -v kb || where kb",

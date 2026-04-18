@@ -205,3 +205,22 @@ flowchart LR
 ## Notes
 
 - **Isolation**: v1 uses a **forked message thread** and **shared storage**; nested `~/.kb/sessions/.../subagents/...` on-disk forks are not implemented here.
+
+---
+
+## Eval scenarios (Ticket 106)
+
+Optional env for nested `task` / `agentLoop` A/B (does not change KB storage `--base` flags):
+
+| `KB_SUBAGENT_SCENARIO` | Effect |
+| ---------------------- | ------ |
+| *(unset)* or any other value | Normal subagent loop: parallel tool calls; `agent_profile_id` or worker **`default`** profile. |
+| `s1` | Sequential execution of tools returned in a single assistant turn. |
+| `s2` | Hard cap of **3** `agentLoop` turns for this subagent run (after `max_turns` clamp 1–20). |
+| `s3` | If `agent_profile_id` is omitted, default to the **`research`** profile. |
+
+Implementation: `src/tools/subagent-eval-scenario.ts` and `executeSubagentTask` in `src/tools/task.ts`.
+
+**Matrix artifact:** `npm run eval:orchestrator-scenarios` runs vitest and writes `evaluation/runs/<date>-orchestrator-scenario-matrix.json` (three rows `s1`–`s3`; only when the script sets `WRITE_ORCHESTRATOR_MATRIX=1`).
+
+**`eval:kb-proper`:** still the path for init + `kb query` artifacts under `evaluation/runs/` (see `EVALUATION.md`). That flow does not call `task` today. The matrix above is only subagent loop tuning.
