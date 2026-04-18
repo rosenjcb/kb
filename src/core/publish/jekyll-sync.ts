@@ -138,7 +138,7 @@ export function buildJekyllFile(doc: KbDocRow): string {
 export function mapToJekyllFrontMatter(doc: KbDocRow): Record<string, unknown> {
   const tags = parseTags(doc.tags_json)
   const fm: Record<string, unknown> = {
-    // Same as docs/*.md so GitHub Pages + jekyll-remote-theme (architect) wrap content in site chrome/CSS.
+    // Same as handbook posts in `docs/_handbook/` so GitHub Pages + jekyll-vitepress-theme wrap content in site chrome.
     layout: 'default',
     title: doc.title,
     date: doc.created_at.slice(0, 19).replace('T', ' '),

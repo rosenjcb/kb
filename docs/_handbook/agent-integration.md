@@ -1,6 +1,7 @@
 ---
 layout: default
 title: Agent Integration
+nav_order: 50
 ---
 
 # Agent Integration

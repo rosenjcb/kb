@@ -1,6 +1,7 @@
 ---
 layout: default
 title: Knowledge Graph
+nav_order: 20
 ---
 
 # Knowledge Graph

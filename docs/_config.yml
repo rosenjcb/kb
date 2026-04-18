@@ -3,7 +3,18 @@ description: A local-first knowledge system for AI workflows — store, query, a
 baseurl: "/kb"
 url: "https://rosenjcb.github.io"
 
-# Post URLs only (do not set global `permalink` — it would break top-level handbook *.md pages).
+markdown: kramdown
+kramdown:
+  input: GFM
+
+theme: jekyll-vitepress-theme
+
+collections:
+  handbook:
+    output: true
+    permalink: /:name.html
+
+# Post URLs only (no global `permalink` — keeps handbook URLs stable).
 # Must stay in sync with `filenameToPostUrlPath` in `src/core/publish/jekyll-sync.ts`.
 defaults:
   - scope:
@@ -12,20 +23,39 @@ defaults:
     values:
       layout: default
       permalink: /:year/:month/:day/:title.html
-
-remote_theme: pages-themes/architect@v0.2.0
+  - scope:
+      path: ""
+      type: "handbook"
+    values:
+      layout: default
 
 plugins:
-  - jekyll-remote-theme
+  - jekyll-vitepress-theme
 
-header_pages:
-  - cli-reference.md
-  - knowledge-graph.md
-  - tui.md
-  - architecture.md
-  - agent-integration.md
+jekyll_vitepress:
+  branding:
+    site_title: KB
+  syntax:
+    light_theme: github
+    dark_theme: github.dark
+  footer:
+    enabled: true
+    show_on_docs: true
+  doc_footer:
+    enabled: true
+    edit_link:
+      enabled: true
+      pattern: "https://github.com/rosenjcb/kb/edit/main/docs/:path"
+  github_star:
+    enabled: true
+    repository: rosenjcb/kb
+    text: Star
+    show_count: true
 
 exclude:
   - Gemfile
   - Gemfile.lock
   - vendor/
+  - node_modules/
+  - .sass-cache/
+  - .jekyll-cache/

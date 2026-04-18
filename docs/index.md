@@ -92,11 +92,11 @@ kb validate "the queue is eventually consistent"
 
 ## Next Steps
 
-Handbook pages (from `_data/kb_handbook_pages.yml` — checked in for now; later `kb publish jekyll` may overwrite this list). Links use each page’s real Jekyll `url`.
+Handbook pages (from `_data/kb_handbook_pages.yml` — checked in for now; later `kb publish jekyll` may overwrite this list). Sources live in `_handbook/`; links use each document’s real Jekyll `url`.
 
 <ul>
   {% for entry in site.data.kb_handbook_pages.pages %}
-  {% assign pg = site.pages | where: "name", entry.name | first %}
+  {% assign pg = site.handbook | where: "name", entry.name | first %}
   {% if pg %}
   <li><a href="{{ pg.url | relative_url }}">{{ entry.title }}</a> — {{ entry.description }}</li>
   {% endif %}
