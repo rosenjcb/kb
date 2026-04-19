@@ -27,7 +27,17 @@ After building a KB from scratch for the evaluation target repository, can `kb` 
 
 Reasons: mature, well-documented, not kb itself (avoids evaluator familiarity bias), rich graph structure, stable across runs.
 
-Do **not** run evaluation init against the `kb` repo itself. Use `--base dogfood` for kb's own knowledge and `ci-*` bases only for disposable test traffic within the kb repo.
+Do **not** run evaluation init against the `kb` repo itself. Use `--base dogfood` for kb's own knowledge.
+
+### Base naming convention
+
+| Base | Purpose | Lifetime |
+|------|---------|----------|
+| `ci-raylib-YYYYMMDD` | Disposable init/query quality runs — thrown away after each eval | Ephemeral |
+| `raylib` | Persistent agent comparison base — accumulates across tasks, never wiped | Permanent |
+| `dogfood` | kb's own architectural knowledge | Permanent |
+
+The `raylib` base is the KB that a KB-backed agent would actually use during real development on `~/raylib/`. It grows with each task. Do not use `ci-*` names for it — the compounding hypothesis requires the same base to persist across multiple task sessions.
 
 ### Published docs location
 
@@ -385,3 +395,81 @@ The first tracked raylib baseline is:
 - Query pass rate: 0.50 (5/8 hybrid retrieval; 1 tokenization-empty miss on install/build query)
 
 That artifact is the reference point for the next comparison run.
+
+---
+
+## Eval Type 2: Agent Token Efficiency Comparison
+
+This is a separate evaluation from the init/query quality eval above. It tests whether having a KB *actually reduces token usage* during real implementation work.
+
+### Hypothesis
+
+A KB-backed agent uses fewer tokens per task than a raw agent — and that advantage **compounds** over a task sequence. Each task the KB-backed agent completes deposits new facts into the `raylib` base. Future tasks find those facts via `kb query` instead of re-reading source files. Per-task token cost decreases as the base densifies.
+
+### Base
+
+Use `--base raylib` (the persistent base, not `ci-*`). This base must survive across task sessions. The compounding effect only manifests when the same base is reused.
+
+```bash
+kb use --default raylib    # set once before the task sequence begins
+```
+
+### Task sequence (canonical)
+
+Run these in order against `~/raylib/`. Both agents work on the same task; the agent cannot reuse prior-task code between runs.
+
+1. Implement a flappy bird game in `~/raylib/examples/games/flappy_bird.c`
+2. Add parallax scrolling background to the flappy bird game
+3. Add a high score counter that persists between runs
+4. Add sound effects using raylib's audio API
+
+Each task is self-contained enough to run independently (agent starts fresh each time) but thematically connected so KB submissions from earlier tasks are useful to later ones.
+
+### Protocol
+
+**Agent A (raw)**:
+- No `kb` access
+- Discovers context by reading `~/raylib/src/`, headers, examples, docs directly
+- No submissions after the task
+
+**Agent B (KB-backed)**:
+- Has `kb query` available, base `raylib`
+- Required to run at least one `kb query` before writing code
+- Required to `kb submit` at least one fact discovered during the task before finishing
+- May read source files too, but should prefer KB for known facts
+
+### Measurement
+
+Use `codeburn` to capture per-session token counts:
+
+```bash
+codeburn report --provider claude --format json > /tmp/codeburn-task-N.json
+```
+
+Capture before and after each task. The metric is **tokens consumed per task**, not total.
+
+### Artifact
+
+Store results under `evaluation/runs/agent-compare/YYYY-MM-DD-task-N-<agent>.json`.
+
+Each artifact records:
+
+- `task_id`: 1–4
+- `agent`: `raw` or `kb-backed`
+- `base`: `null` or `raylib`
+- `kb_queries_made`: count (0 for raw agent)
+- `kb_submissions_made`: count (0 for raw agent)
+- `codeburn_input_tokens`: from codeburn report
+- `codeburn_output_tokens`: from codeburn report
+- `codeburn_cost_usd`: from codeburn report
+- `task_completed`: boolean
+- `notes`: free text
+
+### Success criteria
+
+The KB-backed agent hypothesis is supported if:
+- Agent B's per-task token cost is lower than Agent A's by task 3 or 4
+- Agent B's token cost curve slopes downward across the 4-task sequence
+- Agent A's token cost curve is flat or rising
+
+A single session with better task 1 performance does not confirm the hypothesis — the compounding effect is the signal.
