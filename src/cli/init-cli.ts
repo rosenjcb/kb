@@ -24,6 +24,7 @@ import type { RunCollector } from '../core/telemetry'
 import { TokenCountingProvider, estimateCost } from '../core/telemetry'
 import type { LLMProvider } from '../core/types'
 import type { WriteDocumentInput } from '../tools/document-writer'
+import { basenameTitle } from '../core/string-utils'
 import { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { extractGraphBatch } from '../tools/graph-entity-extractor'
 import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
@@ -98,6 +99,8 @@ export interface InitUserAnswer {
 
 export interface InitContext {
   sourceFiles: Record<string, string>
+  /** Lightweight source-code index: file path → first N chars of content. Feeds synthesis passes. */
+  codeFiles: Record<string, string>
   userAnswers: InitUserAnswer[]
 }
 
@@ -225,10 +228,10 @@ const SOURCE_FILE_CANDIDATES = [
 const MAX_SOURCE_SIZE = 20_000
 const MAX_TOTAL_QUESTIONS = 10
 const MAX_FOLLOW_UP_QUESTIONS = 4
-const INIT_MODEL_MAX_TOKENS = 4096
+const INIT_MODEL_MAX_TOKENS = 32768
 const INIT_PROMPT_SAFETY_TOKENS = 256
 const INIT_OUTPUT_TOKENS = {
-  synthesis: 1200,
+  synthesis: 3000,
   refinement: 1000,
   quality: 900,
   enrich: 700,
@@ -687,8 +690,10 @@ async function runReadInputsCycle(options: {
   paused?: boolean
 }> {
   const sourceFiles = await collectSourceFiles(options.cwd)
+  const codeFiles = await crawlSourceCode(options.cwd)
   const context: InitContext = {
     sourceFiles,
+    codeFiles,
     userAnswers: [],
   }
 
@@ -765,6 +770,63 @@ async function collectSourceFiles(cwd: string): Promise<Record<string, string>> 
   }
 
   return sourceFiles
+}
+
+export const SOURCE_CODE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.py', '.go', '.rb', '.java', '.rs', '.swift', '.kt']
+export const SOURCE_CODE_EXCLUDE_DIRS = new Set(['node_modules', 'dist', 'build', '_site', '.git', 'vendor', 'coverage', '.next', 'out', '.cache', '__pycache__', '.turbo'])
+const SOURCE_CODE_MAX_FILES = 200
+export const SOURCE_CODE_PER_FILE_CHARS = 400
+const SOURCE_CODE_MAX_TOTAL_CHARS = 60_000
+
+/**
+ * Crawl the repo for source code files and return a lightweight index:
+ * file path → first N chars of content (enough to see exports/signatures).
+ * This feeds the synthesis passes so the LLM can reason about code structure,
+ * not just documentation.
+ */
+export async function crawlSourceCode(cwd: string): Promise<Record<string, string>> {
+  const result: Record<string, string> = {}
+  let totalChars = 0
+
+  async function walk(dir: string): Promise<void> {
+    if (totalChars >= SOURCE_CODE_MAX_TOTAL_CHARS) return
+    if (Object.keys(result).length >= SOURCE_CODE_MAX_FILES) return
+
+    let entries: { name: string; isDir: boolean }[]
+    try {
+      const raw = await readdir(dir, { withFileTypes: true })
+      entries = raw.map(e => ({ name: e.name, isDir: e.isDirectory() }))
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      if (totalChars >= SOURCE_CODE_MAX_TOTAL_CHARS) break
+      if (Object.keys(result).length >= SOURCE_CODE_MAX_FILES) break
+      if (entry.name.startsWith('.')) continue
+
+      if (entry.isDir) {
+        if (SOURCE_CODE_EXCLUDE_DIRS.has(entry.name)) continue
+        await walk(path.join(dir, entry.name))
+      } else {
+        const ext = path.extname(entry.name).toLowerCase()
+        if (!SOURCE_CODE_EXTENSIONS.includes(ext)) continue
+        const fullPath = path.join(dir, entry.name)
+        try {
+          const content = await readFile(fullPath, 'utf8')
+          const snippet = content.slice(0, SOURCE_CODE_PER_FILE_CHARS)
+          const relPath = path.relative(cwd, fullPath)
+          result[relPath] = snippet
+          totalChars += snippet.length
+        } catch {
+          // unreadable — skip
+        }
+      }
+    }
+  }
+
+  await walk(cwd)
+  return result
 }
 
 function planInitialQuestions(
@@ -893,14 +955,25 @@ async function runSynthesisPass(
   baseName: string
 ): Promise<CandidateDoc[]> {
   const synthesisParts = loadPromptParts('init-synthesis.md')
+  const topicList = INIT_TOPIC_DEFINITIONS.map(
+    d => `- **${d.topic}**: ${d.initialQuestion}`
+  ).join('\n')
   const { prompt, maxTokens } = buildBudgetedPrompt({
-    intro: synthesisParts.intro.replace('{{baseName}}', baseName),
+    intro: synthesisParts.intro
+      .replace('{{baseName}}', baseName)
+      .replace('{{topicList}}', topicList),
     sections: [
       {
-        heading: 'Source Files',
+        heading: 'Documentation Files',
         content: formatSourceFilesForPrompt(context.sourceFiles),
         priority: 3,
         minTokens: 500,
+      },
+      {
+        heading: 'Source Code Index',
+        content: formatCodeFilesForPrompt(context.codeFiles),
+        priority: 2,
+        minTokens: 300,
       },
       {
         heading: 'User Q&A',
@@ -1016,6 +1089,12 @@ async function runPerDocEnrichmentPass(
             content: formatSourceFilesForPrompt(context.sourceFiles, 2200),
             priority: 2,
             minTokens: 280,
+          },
+          {
+            heading: 'Source code index',
+            content: formatCodeFilesForPrompt(context.codeFiles),
+            priority: 1,
+            minTokens: 150,
           },
           {
             heading: 'User Q&A',
@@ -1289,6 +1368,22 @@ function trimToTokenBudget(text: string, tokenBudget: number): string {
   return `${text.slice(0, head)}\n\n…[truncated for token budget]…\n\n${tail > 0 ? text.slice(-tail) : ''}`
 }
 
+function formatCodeFilesForPrompt(codeFiles: Record<string, string>): string {
+  const entries = Object.entries(codeFiles)
+  if (entries.length === 0) return '(No source code collected)'
+  // Group by top-level directory for readability
+  const byDir = new Map<string, string[]>()
+  for (const [file] of entries) {
+    const dir = file.includes('/') ? file.split('/')[0] : '(root)'
+    if (!byDir.has(dir)) byDir.set(dir, [])
+    byDir.get(dir)?.push(file)
+  }
+  const dirSummary = [...byDir.entries()]
+    .map(([dir, files]) => `${dir}/  (${files.length} files)\n  ${files.join('\n  ')}`)
+    .join('\n\n')
+  return `${entries.length} source files across ${byDir.size} directories:\n\n${dirSummary}`
+}
+
 function formatSourceFilesForPrompt(
   sourceFiles: Record<string, string>,
   perFileCharLimit = 3500
@@ -1463,7 +1558,7 @@ function expandSingleDocIntoSourceShards(
   baseName: string
 ): CandidateDoc[] {
   const overview: CandidateDoc = {
-    title: `${baseName} project overview`,
+    title: 'Project Overview',
     type: 'architecture',
     tags: ['overview', baseName],
     content: lone.content,
@@ -1473,13 +1568,16 @@ function expandSingleDocIntoSourceShards(
     const body = context.sourceFiles[filePath]
     if (typeof body !== 'string' || !body.trim()) continue
     const safeName = filePath.replace(/\\/g, '/')
+    // README is the site homepage — exclude it from original_docs sidebar entries
+    if (/^readme\.md$/i.test(safeName.split('/').pop() ?? '')) continue
+    const humanTitle = basenameTitle(safeName)
     const clipped = body.slice(0, INIT_SOURCE_SHARD_MAX_CHARS)
     const tail = body.length > INIT_SOURCE_SHARD_MAX_CHARS ? '\n\n…(truncated during init split)…' : ''
     shards.push({
-      title: safeName,
+      title: humanTitle,
       type: 'reference',
       tags: ['source-excerpt', slugify(safeName), baseName],
-      content: `# ${safeName}\n\nRepository excerpt captured during init (split from a single synthesis document).\n\n${clipped}${tail}\n`,
+      content: `# ${humanTitle}\n\nRepository excerpt captured during init (split from a single synthesis document).\n\n${clipped}${tail}\n`,
       isOriginal: true,
     })
   }
@@ -1552,6 +1650,7 @@ function migrateCheckpoint(checkpoint: StoredInitCheckpoint): InitCheckpoint | u
       context: checkpoint.context
         ? {
             sourceFiles: checkpoint.context.sourceFiles ?? {},
+            codeFiles: {},
             userAnswers: (checkpoint.context.userAnswers ?? []).map(answer => ({
               question: answer.question,
               answer: answer.answer,
@@ -1580,6 +1679,7 @@ function migrateCheckpoint(checkpoint: StoredInitCheckpoint): InitCheckpoint | u
       topicCoverage: assessTopicCoverage(
         {
           sourceFiles: checkpoint.context?.sourceFiles ?? {},
+          codeFiles: {},
           userAnswers: (checkpoint.context?.userAnswers ?? []).map(answer => ({
             question: answer.question,
             answer: answer.answer,
