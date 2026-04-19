@@ -88,19 +88,19 @@ Do **not** retry:
 
 Some commands implement their own deterministic loops over named **cycles**. LLM is called directly via `provider.call()` — not via the intent loop — because the orchestration is owned by the command, not delegated to the model.
 
-### `kb init` — 7-cycle interview + enrichment loop
+### `kb init` — interview + multi-pass synthesis loop
 
 **File:** `src/cli/init-cli.ts`
 
 | Cycle | What happens | Output |
 |---|---|---|
 | `read-inputs` | Scan source files, ask user interview questions | `InitContext` |
-| `pass1` | LLM drafts 5–15 candidate docs from source files + Q&A (temperature 0.2) | `CandidateDoc[]` |
+| `pass1` | One LLM call per coverage topic in parallel from sources + Q&A (temperature 0.2) | `CandidateDoc[]` |
 | `pass2` | Coverage gap analysis, follow-up questions, LLM refinement (temperature 0.1) | Updated `CandidateDoc[]` |
 | `pass-enrich` | **Per-document enrichment** — each doc gets its own LLM pass in parallel (temperature 0.15) | Enriched `CandidateDoc[]` |
-| `pass-consolidate` | **Consolidation agent** — single LLM pass merges docs with >40% overlap (temperature 0.1) | Deduplicated `CandidateDoc[]` |
 | `pass3` | Final quality pass — validate titles, remove stubs, ensure uniqueness (temperature 0.0) | Final `CandidateDoc[]` |
 | `write` | Upsert to SQLite | Written document IDs |
+| `pass-graph` | Extract entities and relationships into DuckDB (skipped if graph disabled) | Graph store on disk |
 
 Each cycle writes a checkpoint to `~/.kb/<base>/checkpoints/init-latest.checkpoint.json`. Supports `--resume`, `--detach`, `--stop-after`, `--non-interactive`.
 
@@ -116,17 +116,6 @@ After synthesis and follow-up refinement, each candidate document is independent
 4. Keeps the document focused on its single topic (does not pull in unrelated content)
 
 This is distinct from `pass2` (which refines all docs together with a holistic view) — `pass-enrich` gives each doc undivided attention with the full source context available.
-
-#### Consolidation agent (`pass-consolidate`)
-
-A single LLM call receives **all** enriched docs and identifies overlapping groups. The consolidation agent:
-
-1. Finds pairs/groups with >40% content overlap or the same subject framed differently
-2. Merges overlapping groups into one document — combines unique facts, removes duplicates, picks the most specific title
-3. Leaves genuinely distinct docs untouched
-4. Preserves all unique facts — consolidation removes redundancy, not information
-
-The before/after count is reported in the progress bar (e.g. `3 docs merged → 9 total`).
 
 ### `kb chat` — tiered retrieval loop
 

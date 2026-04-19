@@ -182,7 +182,7 @@ export class OpenAIProvider implements LLMProvider {
       ? [{ role: 'system' as const, content: params.systemPrompt }]
       : []
 
-    const body = {
+    const body: Record<string, unknown> = {
       model: this.model,
       max_tokens: params.maxTokens ?? 4096,
       temperature: params.temperature ?? 0.7,
@@ -201,6 +201,18 @@ export class OpenAIProvider implements LLMProvider {
           parameters: t.schema,
         },
       })),
+    }
+
+    if (params.structuredJson?.openai) {
+      const { name, schema } = params.structuredJson.openai
+      body.response_format = {
+        type: 'json_schema',
+        json_schema: {
+          name,
+          strict: true,
+          schema,
+        },
+      }
     }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -379,6 +391,12 @@ export class GeminiProvider implements LLMProvider {
         temperature: params.temperature ?? 0.7,
         ...(params.thinkingBudget !== undefined && geminiModelSupportsThinkingBudget(this.model)
           ? { thinkingConfig: { thinkingBudget: params.thinkingBudget } }
+          : {}),
+        ...(params.structuredJson?.gemini
+          ? {
+              responseMimeType: 'application/json',
+              responseSchema: params.structuredJson.gemini,
+            }
           : {}),
       },
     }

@@ -115,6 +115,14 @@ export interface LLMProvider {
   callStream?(params: LLMCallParams): AsyncGenerator<LLMStreamChunk>
 }
 
+/** Native structured JSON when the provider supports it (see `OpenAIProvider`, `GeminiProvider`). */
+export interface LLMStructuredJsonRequest {
+  /** OpenAI Chat Completions `response_format.type: json_schema` (strict). */
+  openai?: { name: string; schema: Record<string, unknown> }
+  /** Gemini `generationConfig.responseSchema` + `responseMimeType: application/json`. */
+  gemini?: Record<string, unknown>
+}
+
 export interface LLMCallParams {
   messages: Message[]
   tools?: ToolDefinition[]
@@ -126,6 +134,8 @@ export interface LLMCallParams {
    * tokens are available for the model reply (needed for strict JSON extractors).
    */
   thinkingBudget?: number
+  /** Prefer native JSON outputs over prose when the active provider implements this. */
+  structuredJson?: LLMStructuredJsonRequest
 }
 
 // ─── Session State ──────────────────────────────────────────────

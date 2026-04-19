@@ -1,7 +1,7 @@
 ---
 layout: default
 title: TUI
-date: '2026-04-19 03:40:47'
+date: '2026-04-18'
 kb_id: src-core-tui-md
 tags:
   - source-excerpt

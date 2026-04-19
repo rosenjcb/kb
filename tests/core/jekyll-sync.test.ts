@@ -7,6 +7,7 @@ import {
   discoverJekyllRoot,
   docToCollectionFilename,
   filenameToCollectionUrlPath,
+  formatJekyllPublishSnapshotDate,
   mapToJekyllFrontMatter,
   slugify,
   stripKbMetadataHeader,
@@ -34,6 +35,13 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
+})
+
+describe('formatJekyllPublishSnapshotDate', () => {
+  it('Given a local calendar instant, then formats YYYY-MM-DD only (no clock)', () => {
+    const ms = new Date(2026, 1, 10, 23, 59, 59).getTime() // Feb 10 2026 local
+    expect(formatJekyllPublishSnapshotDate(ms)).toBe('2026-02-10')
+  })
 })
 
 describe('slugify', () => {
@@ -114,38 +122,51 @@ describe('stripKbMetadataHeader', () => {
 })
 
 describe('mapToJekyllFrontMatter', () => {
+  const publishedAtMs = new Date(2026, 5, 1, 12, 0, 0).getTime() // June 1 2026 local
+
   it('Given a full doc, then maps layout, title, date, kb_id, tags, categories', () => {
-    const fm = mapToJekyllFrontMatter(makeDoc())
+    const fm = mapToJekyllFrontMatter(makeDoc(), { publishedAtMs })
     expect(fm.layout).toBe('default')
     expect(fm.title).toBe('My Test Document')
-    expect(fm.date).toBe('2026-01-15 10:00:00')
+    expect(fm.date).toBe('2026-06-01')
     expect(fm.kb_id).toBe('doc-1')
     expect(fm.tags).toEqual(['a', 'b'])
     expect(fm.categories).toEqual(['architecture'])
   })
 
+  it('Given SQLite created_at differs from publish time, then date still uses publish snapshot', () => {
+    const fm = mapToJekyllFrontMatter(
+      makeDoc({ created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T00:00:00.000Z' }),
+      { publishedAtMs }
+    )
+    expect(fm.date).toBe('2026-06-01')
+  })
+
   it('Given a doc with no tags, then omits tags field', () => {
-    const fm = mapToJekyllFrontMatter(makeDoc({ tags_json: null }))
+    const fm = mapToJekyllFrontMatter(makeDoc({ tags_json: null }), { publishedAtMs })
     expect(fm.tags).toBeUndefined()
   })
 
   it('Given a doc with no doc_type, then omits categories field', () => {
-    const fm = mapToJekyllFrontMatter(makeDoc({ doc_type: null }))
+    const fm = mapToJekyllFrontMatter(makeDoc({ doc_type: null }), { publishedAtMs })
     expect(fm.categories).toBeUndefined()
   })
 })
 
 describe('buildJekyllFile', () => {
+  const publishedAtMs = new Date(2026, 5, 1, 12, 0, 0).getTime()
+
   it('Given a doc, then output starts with YAML front matter block', () => {
-    const output = buildJekyllFile(makeDoc())
+    const output = buildJekyllFile(makeDoc(), { publishedAtMs })
     expect(output.startsWith('---\n')).toBe(true)
     expect(output).toContain('\n---\n')
     expect(output).toContain('layout: default')
     expect(output).toContain('title: My Test Document')
+    expect(output).toContain('date: \'2026-06-01\'')
   })
 
   it('Given a doc, then body content appears after front matter', () => {
-    const output = buildJekyllFile(makeDoc())
+    const output = buildJekyllFile(makeDoc(), { publishedAtMs })
     const afterFrontMatter = output.split('---\n').slice(2).join('---\n')
     expect(afterFrontMatter).toContain('## Body')
     expect(afterFrontMatter).toContain('Hello world.')

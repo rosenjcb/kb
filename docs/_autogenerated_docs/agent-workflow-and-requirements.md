@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Agent Workflow and Requirements
-date: '2026-04-15 04:49:46'
+date: '2026-04-18'
 kb_id: agent-workflow-and-requirements
 tags:
   - agents

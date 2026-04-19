@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Testing
-date: '2026-04-19 03:40:47'
+date: '2026-04-18'
 kb_id: testing-md
 tags:
   - source-excerpt

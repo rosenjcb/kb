@@ -2,6 +2,8 @@ title: KB
 description: A local-first knowledge system for AI workflows — store, query, and validate project knowledge from the command line.
 baseurl: "/kb"
 url: "https://rosenjcb.github.io"
+# KB publish uses date-only front matter; keep enabled so odd TZ edges never suppress writes.
+future: true
 
 markdown: kramdown
 kramdown:
