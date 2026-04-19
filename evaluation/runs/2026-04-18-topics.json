@@ -1,0 +1,630 @@
+{
+  "schema_version": 1,
+  "evaluation_plan": "EVALUATION.md",
+  "run_label": "topics",
+  "status": "partial",
+  "created_at": "2026-04-19T04:32:22.545Z",
+  "repository": {
+    "name": "kb",
+    "branch": "feat/collecting-readmes",
+    "commit": "30668e17f69f0ca00cacae6538138e591348bbec"
+  },
+  "hypothesis": "Automated EVALUATION.md harvest: non-interactive init + canonical kb query suite on disposable base.",
+  "run": {
+    "base": "ci-eval-20260418-topics",
+    "mode": "non_interactive_cli_init",
+    "commands": [
+      "npm run build:cli",
+      "node dist/bin/kb.js init --base ci-eval-20260418-topics --non-interactive --debug",
+      "node dist/bin/kb.js default ci-eval-20260418-topics",
+      "node dist/bin/kb.js docs list --base ci-eval-20260418-topics --output json",
+      "node dist/bin/kb.js graph",
+      "node dist/bin/kb.js logs list --command init --limit 3",
+      "node dist/bin/kb.js query \"<each canonical question>\" --base ci-eval-20260418-topics --output json"
+    ],
+    "workdir": "/tmp/kb-eval-topics",
+    "init_result": {
+      "status": "accepted",
+      "written_docs": 6,
+      "written_doc_ids": [
+        "project-overview",
+        "claude-md",
+        "agents-md",
+        "design-md",
+        "evaluation-md",
+        "testing-md"
+      ],
+      "init_run_id": "run-1776572995632-m3kp",
+      "init_run_id_note": null,
+      "docs_list": {
+        "documents": [
+          {
+            "id": "testing-md",
+            "title": "TESTING.md",
+            "filePath": "testing-md",
+            "createdAt": "2026-04-19T04:30:22.143Z",
+            "updatedAt": "2026-04-19T04:30:22.143Z",
+            "tags": [
+              "source-excerpt",
+              "testing-md",
+              "ci-eval-20260418-topics"
+            ],
+            "type": "reference"
+          },
+          {
+            "id": "evaluation-md",
+            "title": "EVALUATION.md",
+            "filePath": "evaluation-md",
+            "createdAt": "2026-04-19T04:30:22.141Z",
+            "updatedAt": "2026-04-19T04:30:22.141Z",
+            "tags": [
+              "source-excerpt",
+              "evaluation-md",
+              "ci-eval-20260418-topics"
+            ],
+            "type": "reference"
+          },
+          {
+            "id": "design-md",
+            "title": "DESIGN.md",
+            "filePath": "design-md",
+            "createdAt": "2026-04-19T04:30:22.139Z",
+            "updatedAt": "2026-04-19T04:30:22.139Z",
+            "tags": [
+              "source-excerpt",
+              "design-md",
+              "ci-eval-20260418-topics"
+            ],
+            "type": "reference"
+          },
+          {
+            "id": "agents-md",
+            "title": "AGENTS.md",
+            "filePath": "agents-md",
+            "createdAt": "2026-04-19T04:30:22.138Z",
+            "updatedAt": "2026-04-19T04:30:22.138Z",
+            "tags": [
+              "source-excerpt",
+              "agents-md",
+              "ci-eval-20260418-topics"
+            ],
+            "type": "reference"
+          },
+          {
+            "id": "claude-md",
+            "title": "CLAUDE.md",
+            "filePath": "claude-md",
+            "createdAt": "2026-04-19T04:30:22.137Z",
+            "updatedAt": "2026-04-19T04:30:22.137Z",
+            "tags": [
+              "source-excerpt",
+              "claude-md",
+              "ci-eval-20260418-topics"
+            ],
+            "type": "reference"
+          },
+          {
+            "id": "project-overview",
+            "title": "Project Overview",
+            "filePath": "project-overview",
+            "createdAt": "2026-04-19T04:30:22.121Z",
+            "updatedAt": "2026-04-19T04:30:22.121Z",
+            "tags": [
+              "overview",
+              "ci-eval-20260418-topics"
+            ],
+            "type": "architecture"
+          }
+        ]
+      },
+      "graph_summary": {
+        "entities": 185,
+        "relationships": 215
+      }
+    }
+  },
+  "question_set": [
+    "What is this project for, and what are the main things kb can do?",
+    "How does kb init work at a high level, including the major passes?",
+    "Where do KB documents live, and how are active/default bases selected?",
+    "How does retrieval work, including hybrid retrieval and graph involvement?",
+    "What does kb chat do when retrieval is weak or incomplete?",
+    "What commands should a contributor use during normal dogfood development in this repo?",
+    "What special repo rules apply to KB documentation and persistence?",
+    "How can someone inspect the graph and run telemetry/log comparisons?"
+  ],
+  "query_scoring": null,
+  "query_evaluation": [
+    {
+      "question_id": 1,
+      "question": "What is this project for, and what are the main things kb can do?",
+      "result_count": 2,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:project-overview-signals;lanes:fact,architecture,workflow;workspace-fallback",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "This project is a local-first knowledge system designed for AI workflows. Its core hypothesis is to produce better systems faster, with lower token cost, better requirement capture, and better recall of project knowledge, rather than relying solely on a primary coding agent's tra",
+      "provenance": [
+        "project-overview",
+        "workspace-readme"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 2,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:project-overview-signals;lanes:fact,architecture,workflow;workspace-fallback",
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.55,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:project-overview-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "This project is a local-first knowledge system designed for AI workflows. Its core hypothesis is to produce better systems faster, with lower token cost, better requirement capture, and better recall of project knowledge, rather than relying solely on a primary coding agent's transient context. The project aims to build a knowledge base that can accurately and usefully answer important questions about a project, justifying the extra maintenance work.\n\nThe main things `kb` can do include:\n*   Pro",
+        "provenance": [
+          "project-overview",
+          "workspace-readme"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — use EVALUATION.md, --scores-file, or --auto-score."
+    },
+    {
+      "question_id": 2,
+      "question": "How does kb init work at a high level, including the major passes?",
+      "result_count": 5,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.86
+      },
+      "answer_excerpt": "Based on the provided evidence, `kb init` is a command used to initialize a usable knowledge base from a repository. It is noted that `kb init` captures repository excerpts, which are then split from a single synthesis document. The evidence also shows an example of `kb init` bei",
+      "provenance": [
+        "claude-md",
+        "testing-md",
+        "evaluation-md",
+        "project-overview",
+        "agents-md"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 5,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+          "laneRouting": {
+            "lanes": [
+              "fact",
+              "architecture",
+              "workflow"
+            ],
+            "reason": "default-general-signals",
+            "usedFallback": false
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.86,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "Based on the provided evidence, `kb init` is a command used to initialize a usable knowledge base from a repository. It is noted that `kb init` captures repository excerpts, which are then split from a single synthesis document. The evidence also shows an example of `kb init` being used with options such as `--base ci-e2e`, `--non-interactive`, and `--debug`.\n\nHowever, the provided documents do not describe *how* `kb init` works at a high level or detail its major passes. The question \"How does ",
+        "provenance": [
+          "claude-md",
+          "testing-md",
+          "evaluation-md",
+          "project-overview",
+          "agents-md"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — use EVALUATION.md, --scores-file, or --auto-score."
+    },
+    {
+      "question_id": 3,
+      "question": "Where do KB documents live, and how are active/default bases selected?",
+      "result_count": 2,
+      "retrieval": {
+        "method": "lexical-fallback",
+        "detail": "query-tokenization-empty;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0
+      },
+      "answer_excerpt": "3. Where do KB documents live, and how are active/default bases selected? (source: evaluation-md)",
+      "provenance": [
+        "evaluation-md",
+        "project-overview"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 2,
+        "retrieval": {
+          "method": "lexical-fallback",
+          "detail": "query-tokenization-empty;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+          "laneRouting": {
+            "lanes": [
+              "fact",
+              "architecture",
+              "workflow"
+            ],
+            "reason": "default-general-signals",
+            "usedFallback": false
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "error",
+              "confidence": 0,
+              "reason": "query-tokenization-empty",
+              "nextAction": "advance",
+              "method": "hybrid",
+              "detail": "query-tokenization-empty"
+            },
+            {
+              "stage": "lexical_recovery",
+              "status": "hit",
+              "confidence": 0.72,
+              "reason": "lexical-stage-complete",
+              "nextAction": "return",
+              "method": "lexical-fallback",
+              "detail": "query-tokenization-empty;lane-router:default-general-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "3. Where do KB documents live, and how are active/default bases selected? (source: evaluation-md)",
+        "provenance": [
+          "evaluation-md",
+          "project-overview"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — use EVALUATION.md, --scores-file, or --auto-score."
+    },
+    {
+      "question_id": 4,
+      "question": "How does retrieval work, including hybrid retrieval and graph involvement?",
+      "result_count": 5,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.86
+      },
+      "answer_excerpt": "Based on the provided evidence:\n\nRetrieval in `kb` involves \"Hybrid search,\" which \"combines BM25 + vector rerank.\" This is explicitly stated in the context of how hybrid search works.\n\nRegarding graph involvement, the project aims for the \"resulting graph store [to be] populated",
+      "provenance": [
+        "project-overview",
+        "evaluation-md",
+        "claude-md",
+        "agents-md",
+        "design-md"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 5,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+          "laneRouting": {
+            "lanes": [
+              "fact",
+              "architecture",
+              "workflow"
+            ],
+            "reason": "default-general-signals",
+            "usedFallback": false
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.86,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "Based on the provided evidence:\n\nRetrieval in `kb` involves \"Hybrid search,\" which \"combines BM25 + vector rerank.\" This is explicitly stated in the context of how hybrid search works.\n\nRegarding graph involvement, the project aims for the \"resulting graph store [to be] populated enough to plausibly improve retrieval and follow-up questioning.\" However, the provided evidence does not detail *how* the graph store is involved in the retrieval process or its specific mechanism for improving it. It ",
+        "provenance": [
+          "project-overview",
+          "evaluation-md",
+          "claude-md",
+          "agents-md",
+          "design-md"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — use EVALUATION.md, --scores-file, or --auto-score."
+    },
+    {
+      "question_id": 5,
+      "question": "What does kb chat do when retrieval is weak or incomplete?",
+      "result_count": 3,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.86
+      },
+      "answer_excerpt": "Repository excerpt captured during init (split from a single synthesis document). (source: evaluation-md)",
+      "provenance": [
+        "evaluation-md",
+        "project-overview",
+        "design-md"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 3,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+          "laneRouting": {
+            "lanes": [
+              "fact",
+              "architecture",
+              "workflow"
+            ],
+            "reason": "default-general-signals",
+            "usedFallback": false
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.86,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "Repository excerpt captured during init (split from a single synthesis document). (source: evaluation-md)",
+        "provenance": [
+          "evaluation-md",
+          "project-overview",
+          "design-md"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — use EVALUATION.md, --scores-file, or --auto-score."
+    },
+    {
+      "question_id": 6,
+      "question": "What commands should a contributor use during normal dogfood development in this repo?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "The provided evidence lists \"What commands should a contributor use during normal dogfood development in this repo?\" as a question the project aims to answer, indicating that a comprehensive list is not present.\n\nHowever, the evidence does provide two specific commands related to",
+      "provenance": [
+        "project-overview"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 1,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+          "laneRouting": {
+            "lanes": [
+              "fact",
+              "architecture",
+              "workflow"
+            ],
+            "reason": "default-general-signals",
+            "usedFallback": false
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.55,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "The provided evidence lists \"What commands should a contributor use during normal dogfood development in this repo?\" as a question the project aims to answer, indicating that a comprehensive list is not present.\n\nHowever, the evidence does provide two specific commands related to using a \"dogfood\" base:\n*   `kb use dogfood`: This command is used to switch the active knowledge base to \"dogfood\" for the current session.\n*   `kb use --default dogfood`: This command is used to save \"dogfood\" as the ",
+        "provenance": [
+          "project-overview"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — use EVALUATION.md, --scores-file, or --auto-score."
+    },
+    {
+      "question_id": 7,
+      "question": "What special repo rules apply to KB documentation and persistence?",
+      "result_count": 4,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:policy-signals;lanes:policy,fact",
+        "confidence": 0.86
+      },
+      "answer_excerpt": "The repository uses its own `kb` CLI to record architectural decisions. After committing to a solution, these decisions are recorded using the `kb` CLI.\n\nRegarding documentation and persistence, the following rules apply:\n*   Runtime prompts should be placed in `src/prompts/*.md`",
+      "provenance": [
+        "testing-md",
+        "evaluation-md",
+        "claude-md",
+        "agents-md"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 4,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:policy-signals;lanes:policy,fact",
+          "laneRouting": {
+            "lanes": [
+              "policy",
+              "fact"
+            ],
+            "reason": "policy-signals",
+            "usedFallback": false
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.86,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:policy-signals;lanes:policy,fact"
+            }
+          ]
+        },
+        "answer_preview": "The repository uses its own `kb` CLI to record architectural decisions. After committing to a solution, these decisions are recorded using the `kb` CLI.\n\nRegarding documentation and persistence, the following rules apply:\n*   Runtime prompts should be placed in `src/prompts/*.md`.\n*   Agent skills should be placed in `skills/<name>/SKILL.md`.\n*   These prompts and skills should not be inlined as TypeScript strings or template literals. Instead, they must be loaded from disk using the loader util",
+        "provenance": [
+          "testing-md",
+          "evaluation-md",
+          "claude-md",
+          "agents-md"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — use EVALUATION.md, --scores-file, or --auto-score."
+    },
+    {
+      "question_id": 8,
+      "question": "How can someone inspect the graph and run telemetry/log comparisons?",
+      "result_count": 2,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.72
+      },
+      "answer_excerpt": "The provided evidence explicitly lists \"How can someone inspect the graph and run telemetry/log comparisons?\" as a question the project aims to answer. However, the evidence does not provide any specific instructions, commands, or methods for how to perform these actions.\n\nThe ev",
+      "provenance": [
+        "project-overview",
+        "evaluation-md"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 2,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+          "laneRouting": {
+            "lanes": [
+              "fact",
+              "architecture",
+              "workflow"
+            ],
+            "reason": "default-general-signals",
+            "usedFallback": false
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.72,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "The provided evidence explicitly lists \"How can someone inspect the graph and run telemetry/log comparisons?\" as a question the project aims to answer. However, the evidence does not provide any specific instructions, commands, or methods for how to perform these actions.\n\nThe evidence does mention commands related to *scoring* and *evaluating* answers to questions, such as `npm run eval:kb-proper` with options like `--scores-file` or `--auto-score` to run an LLM judge over `kb query` JSON outpu",
+        "provenance": [
+          "project-overview",
+          "evaluation-md"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — use EVALUATION.md, --scores-file, or --auto-score."
+    }
+  ],
+  "chat_evaluation": {
+    "status": "not_captured",
+    "notes": "Batch automation: kb chat transcripts not captured. Follow EVALUATION.md Phase 3 for interactive chat when a complete run is required."
+  },
+  "aggregate_scores": {
+    "query": {
+      "mean_correctness": 0,
+      "mean_usefulness": 0,
+      "mean_specificity": 0,
+      "mean_evidence_handling": 0,
+      "pass_rate_correctness_and_usefulness_at_least_3": 0
+    },
+    "chat": {
+      "mean_correctness": 0,
+      "mean_usefulness": 0,
+      "mean_specificity": 0,
+      "mean_evidence_handling": 0,
+      "pass_rate_correctness_and_usefulness_at_least_3": 0
+    },
+    "combined": {
+      "mean_correctness": 0,
+      "mean_usefulness": 0,
+      "mean_specificity": 0,
+      "mean_evidence_handling": 0,
+      "pass_rate_correctness_and_usefulness_at_least_3": 0
+    }
+  },
+  "qualitative_findings": [
+    "Query scores unset — pass --scores-file, --auto-score, or --auto-score-file.",
+    "Scratch JSON under /tmp/kb-eval-topics (safe to delete after archiving the artifact)."
+  ],
+  "next_improvement_areas": [
+    "Optional: multi-pass or second-judge audit for auto-scores (reduce rubric drift).",
+    "Optional: extend script to ingest kb chat logs for status=complete.",
+    "Optional: read init token totals from ~/.kb/logs for init_result telemetry fields."
+  ]
+}

@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "evaluation_plan": "EVALUATION.md",
+  "run_label": "main-baseline",
+  "status": "partial",
+  "created_at": "2026-04-17T17:10:00-07:00",
+  "repository": {
+    "name": "kb",
+    "branch": "main",
+    "commit": "fd53833de6be13adf50512f8f75d885fefbdc11d"
+  },
+  "hypothesis": "A reusable KB built from the repo should materially improve correctness and usefulness of codebase Q&A, and later comparison runs can test whether a dedicated KB-maintenance agent improves those outcomes further.",
+  "baseline_run": {
+    "base": "ci-eval-20260417-main-baseline",
+    "mode": "interactive_tui_init",
+    "commands": [
+      "kb",
+      "/init --base ci-eval-20260417-main-baseline",
+      "kb docs list --base ci-eval-20260417-main-baseline --output json",
+      "kb docs view ci-eval-20260417-main-baseline-project-overview --base ci-eval-20260417-main-baseline",
+      "kb query <question> --base ci-eval-20260417-main-baseline --output json",
+      "kb graph"
+    ],
+    "init_result": {
+      "status": "accepted",
+      "written_docs": 1,
+      "written_doc_ids": [
+        "ci-eval-20260417-main-baseline-project-overview"
+      ],
+      "init_run_id": null,
+      "init_run_id_note": "The interactive TUI /init run completed successfully, but a corresponding init run report was not captured via kb logs during this baseline harvest.",
+      "docs_list": {
+        "documents": [
+          {
+            "id": "ci-eval-20260417-main-baseline-project-overview",
+            "title": "ci-eval-20260417-main-baseline project overview",
+            "type": "architecture",
+            "tags": [
+              "overview",
+              "ci-eval-20260417-main-baseline"
+            ],
+            "createdAt": "2026-04-17T23:59:48.960Z",
+            "updatedAt": "2026-04-17T23:59:48.960Z"
+          }
+        ]
+      },
+      "graph_summary": {
+        "entities": 0,
+        "relationships": 0
+      }
+    }
+  },
+  "question_set": [
+    "What is this project for, and what are the main things kb can do?",
+    "How does kb init work at a high level, including the major passes?",
+    "Where do KB documents live, and how are active/default bases selected?",
+    "How does retrieval work, including hybrid retrieval and graph involvement?",
+    "What does kb chat do when retrieval is weak or incomplete?",
+    "What commands should a contributor use during normal dogfood development in this repo?",
+    "What special repo rules apply to KB documentation and persistence?",
+    "How can someone inspect the graph and run telemetry/log comparisons?"
+  ],
+  "query_evaluation": [
+    {
+      "question_id": 1,
+      "question": "What is this project for, and what are the main things kb can do?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:project-overview-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "This project is a ...",
+      "provenance": [
+        "ci-eval-20260417-main-baseline-project-overview"
+      ],
+      "scores": {
+        "correctness": 3,
+        "usefulness": 3,
+        "specificity": 2,
+        "evidence_handling": 4
+      },
+      "notes": "Reasonably answers the overview question from the single surviving overview doc."
+    },
+    {
+      "question_id": 2,
+      "question": "How does kb init work at a high level, including the major passes?",
+      "result_count": 0,
+      "retrieval": {
+        "method": "lexical-fallback",
+        "detail": "fts-no-candidates;keyword-broadened;lane-router:default-general-signals;lanes:session-log;lane-broadened;session-log-last-resort",
+        "confidence": 0
+      },
+      "answer_excerpt": null,
+      "provenance": [],
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 4
+      },
+      "notes": "Hard miss. Important because init-specific behavior is central to this evaluation."
+    },
+    {
+      "question_id": 3,
+      "question": "Where do KB documents live, and how are active/default bases selected?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "The provided evidence states ...",
+      "provenance": [
+        "ci-eval-20260417-main-baseline-project-overview"
+      ],
+      "scores": {
+        "correctness": 1,
+        "usefulness": 1,
+        "specificity": 1,
+        "evidence_handling": 3
+      },
+      "notes": "Retrieved the generic overview doc but did not answer the base-selection/storage question with repo-specific detail."
+    },
+    {
+      "question_id": 4,
+      "question": "How does retrieval work, including hybrid retrieval and graph involvement?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "Retrieval works through intent command ...",
+      "provenance": [
+        "ci-eval-20260417-main-baseline-project-overview"
+      ],
+      "scores": {
+        "correctness": 2,
+        "usefulness": 2,
+        "specificity": 2,
+        "evidence_handling": 3
+      },
+      "notes": "Partially useful because the document mentions hybrid retrieval, but graph behavior is absent and the answer is thin."
+    },
+    {
+      "question_id": 5,
+      "question": "What does kb chat do when retrieval is weak or incomplete?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "KB is a local-first knowledge system for AI workflows ...",
+      "provenance": [
+        "ci-eval-20260417-main-baseline-project-overview"
+      ],
+      "scores": {
+        "correctness": 1,
+        "usefulness": 1,
+        "specificity": 1,
+        "evidence_handling": 3
+      },
+      "notes": "Did not answer the weak-retrieval recovery behavior at all."
+    },
+    {
+      "question_id": 6,
+      "question": "What commands should a contributor use during normal dogfood development in this repo?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "KB is a local-first knowledge system for AI workflows ...",
+      "provenance": [
+        "ci-eval-20260417-main-baseline-project-overview"
+      ],
+      "scores": {
+        "correctness": 1,
+        "usefulness": 1,
+        "specificity": 1,
+        "evidence_handling": 3
+      },
+      "notes": "Missed the repo-specific dogfood workflow entirely."
+    },
+    {
+      "question_id": 7,
+      "question": "What special repo rules apply to KB documentation and persistence?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:policy-signals;lanes:architecture,workflow;lane-broadened",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "KB documentation must be versioned ...",
+      "provenance": [
+        "ci-eval-20260417-main-baseline-project-overview"
+      ],
+      "scores": {
+        "correctness": 2,
+        "usefulness": 2,
+        "specificity": 2,
+        "evidence_handling": 3
+      },
+      "notes": "Closest non-overview hit because the surviving doc mentions versioning in Git, but it still misses most AGENTS.md policy detail."
+    },
+    {
+      "question_id": 8,
+      "question": "How can someone inspect the graph and run telemetry/log comparisons?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "KB is a local-first knowledge system for AI workflows ...",
+      "provenance": [
+        "ci-eval-20260417-main-baseline-project-overview"
+      ],
+      "scores": {
+        "correctness": 1,
+        "usefulness": 1,
+        "specificity": 1,
+        "evidence_handling": 3
+      },
+      "notes": "Missed graph inspection and logs commands."
+    }
+  ],
+  "chat_evaluation": {
+    "status": "not_captured",
+    "notes": "A kb chat session was started against the baseline base, but the conversational transcript was not harvested into this artifact. Query evaluation is complete; chat evaluation remains a follow-up."
+  },
+  "aggregate_scores": {
+    "query_only": {
+      "mean_correctness": 1.375,
+      "mean_usefulness": 1.375,
+      "mean_specificity": 1.25,
+      "mean_evidence_handling": 3.25,
+      "pass_rate_correctness_and_usefulness_at_least_3": 0.125
+    }
+  },
+  "qualitative_findings": [
+    "The baseline init run completed successfully end to end, so the core interactive workflow is operational.",
+    "The resulting KB was extremely shallow: 1 document and an empty graph.",
+    "The surviving document answered only the broadest project-overview question well.",
+    "The main failure mode was topic collapse: architecture, workflow, policy, and command detail were not preserved as separate retrieval units.",
+    "This artifact is still useful as a lower-bound baseline for future comparison runs and ticket-driven improvements."
+  ],
+  "next_improvement_areas": [
+    "Broaden init source discovery beyond the current narrow markdown shortlist.",
+    "Add doc-count and graph-population assertions to evaluation gates.",
+    "Reduce over-consolidation by preserving a minimum number of topic-separated documents.",
+    "Capture chat transcripts automatically into future evaluation artifacts."
+  ]
+}

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: DocSync Toolset and Violation Types
-date: '2026-04-18'
+date: '2026-04-19'
 kb_id: docsync-toolset-and-violation-types
 tags:
   - docsync

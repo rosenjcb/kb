@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Deprecation and Cleanup Policy
-date: '2026-04-18'
+date: '2026-04-19'
 kb_id: deprecation-and-cleanup-policy
 tags:
   - deprecation

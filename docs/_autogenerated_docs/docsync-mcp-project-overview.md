@@ -1,7 +1,7 @@
 ---
 layout: default
 title: DocSync MCP Project Overview
-date: '2026-04-18'
+date: '2026-04-19'
 kb_id: docsync-mcp-project-overview
 tags:
   - docsync

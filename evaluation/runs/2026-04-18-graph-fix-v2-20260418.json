@@ -1,0 +1,521 @@
+{
+  "schema_version": 1,
+  "evaluation_plan": "EVALUATION.md",
+  "run_label": "graph-fix-v2-20260418",
+  "status": "partial",
+  "created_at": "2026-04-18T08:29:26.934Z",
+  "repository": {
+    "name": "kb",
+    "branch": "feature/105-orchestrator",
+    "commit": "47a690598bd6e299e764477e673ef86b820bd41d"
+  },
+  "hypothesis": "Graph extraction: Gemini thinkingBudget 0, higher output cap, optional retry on truncated JSON.",
+  "run": {
+    "base": "ci-eval-20260418-graphfix2",
+    "mode": "non_interactive_cli_init",
+    "commands": [
+      "npm run build:cli",
+      "node dist/bin/kb.js init --base ci-eval-20260418-graphfix2 --non-interactive --debug",
+      "node dist/bin/kb.js default ci-eval-20260418-graphfix2",
+      "node dist/bin/kb.js docs list --base ci-eval-20260418-graphfix2 --output json",
+      "node dist/bin/kb.js graph",
+      "node dist/bin/kb.js logs list --command init --limit 3",
+      "node dist/bin/kb.js query \"<each canonical question>\" --base ci-eval-20260418-graphfix2 --output json"
+    ],
+    "workdir": "/tmp/kb-eval-graphfix2-20260418",
+    "init_result": {
+      "status": "accepted",
+      "written_docs": 1,
+      "written_doc_ids": [
+        "ci-eval-20260418-graphfix2-project-overview"
+      ],
+      "init_run_id": "run-1776500883760-6zss",
+      "init_run_id_note": null,
+      "docs_list": {
+        "documents": [
+          {
+            "id": "ci-eval-20260418-graphfix2-project-overview",
+            "title": "ci-eval-20260418-graphfix2 project overview",
+            "filePath": "ci-eval-20260418-graphfix2-project-overview",
+            "createdAt": "2026-04-18T08:28:24.036Z",
+            "updatedAt": "2026-04-18T08:28:24.037Z",
+            "tags": [
+              "overview",
+              "ci-eval-20260418-graphfix2"
+            ],
+            "type": "architecture"
+          }
+        ]
+      },
+      "graph_summary": {
+        "entities": 76,
+        "relationships": 69
+      }
+    }
+  },
+  "question_set": [
+    "What is this project for, and what are the main things kb can do?",
+    "How does kb init work at a high level, including the major passes?",
+    "Where do KB documents live, and how are active/default bases selected?",
+    "How does retrieval work, including hybrid retrieval and graph involvement?",
+    "What does kb chat do when retrieval is weak or incomplete?",
+    "What commands should a contributor use during normal dogfood development in this repo?",
+    "What special repo rules apply to KB documentation and persistence?",
+    "How can someone inspect the graph and run telemetry/log comparisons?"
+  ],
+  "query_evaluation": [
+    {
+      "question_id": 1,
+      "question": "What is this project for, and what are the main things kb can do?",
+      "result_count": 2,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:project-overview-signals;lanes:fact,architecture,workflow;workspace-fallback",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "This project is for developing a local-first knowledge system for AI workflows, named KB. The core hypothesis behind it is that such a system can produce better systems faster, with lower token cost, better requirement capture, and better recall of project knowledge, compared to ",
+      "provenance": [
+        "ci-eval-20260418-graphfix2-project-overview",
+        "workspace-readme"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 2,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:project-overview-signals;lanes:fact,architecture,workflow;workspace-fallback",
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.55,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:project-overview-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "This project is for developing a local-first knowledge system for AI workflows, named KB. The core hypothesis behind it is that such a system can produce better systems faster, with lower token cost, better requirement capture, and better recall of project knowledge, compared to relying solely on a primary coding agent's transient context. The project aims to determine if, after building a knowledge base from scratch for a repository, `kb` can answer important questions about the project accurat",
+        "provenance": [
+          "ci-eval-20260418-graphfix2-project-overview",
+          "workspace-readme"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — fill manually per EVALUATION.md (or re-run with --scores-file)."
+    },
+    {
+      "question_id": 2,
+      "question": "How does kb init work at a high level, including the major passes?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "Auto-generated from project documentation. (source: ci-eval-20260418-graphfix2-project-overview)",
+      "provenance": [
+        "ci-eval-20260418-graphfix2-project-overview"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 1,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+          "laneRouting": {
+            "lanes": [
+              "fact",
+              "architecture",
+              "workflow"
+            ],
+            "reason": "default-general-signals",
+            "usedFallback": false
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.55,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "Auto-generated from project documentation. (source: ci-eval-20260418-graphfix2-project-overview)",
+        "provenance": [
+          "ci-eval-20260418-graphfix2-project-overview"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — fill manually per EVALUATION.md (or re-run with --scores-file)."
+    },
+    {
+      "question_id": 3,
+      "question": "Where do KB documents live, and how are active/default bases selected?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "The evidence provided is insufficient to answer where KB documents live.\n\nHowever, the evidence does explain how active and default bases are selected:\n*   An active knowledge base for a session can be selected using `kb use`.\n*   A persistent default knowledge base can be saved ",
+      "provenance": [
+        "ci-eval-20260418-graphfix2-project-overview"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 1,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+          "laneRouting": {
+            "lanes": [
+              "fact",
+              "architecture",
+              "workflow"
+            ],
+            "reason": "default-general-signals",
+            "usedFallback": false
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.55,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "The evidence provided is insufficient to answer where KB documents live.\n\nHowever, the evidence does explain how active and default bases are selected:\n*   An active knowledge base for a session can be selected using `kb use`.\n*   A persistent default knowledge base can be saved using `kb use --default <base>`. This default is stored in `~/.kb/config.json`.\n*   The active base and the configured default can be shown using `kb use --show`.",
+        "provenance": [
+          "ci-eval-20260418-graphfix2-project-overview"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — fill manually per EVALUATION.md (or re-run with --scores-file)."
+    },
+    {
+      "question_id": 4,
+      "question": "How does retrieval work, including hybrid retrieval and graph involvement?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "Hybrid search, as implemented in `kb`, combines BM25 with vector reranking.\n\nRegarding graph involvement, the project aims for the resulting graph store to be populated enough to plausibly improve retrieval and follow-up questioning. However, the provided evidence does not detail",
+      "provenance": [
+        "ci-eval-20260418-graphfix2-project-overview"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 1,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+          "laneRouting": {
+            "lanes": [
+              "fact",
+              "architecture",
+              "workflow"
+            ],
+            "reason": "default-general-signals",
+            "usedFallback": false
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.55,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "Hybrid search, as implemented in `kb`, combines BM25 with vector reranking.\n\nRegarding graph involvement, the project aims for the resulting graph store to be populated enough to plausibly improve retrieval and follow-up questioning. However, the provided evidence does not detail the specific mechanisms by which the graph is involved in the retrieval process.",
+        "provenance": [
+          "ci-eval-20260418-graphfix2-project-overview"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — fill manually per EVALUATION.md (or re-run with --scores-file)."
+    },
+    {
+      "question_id": 5,
+      "question": "What does kb chat do when retrieval is weak or incomplete?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "The evidence provided is insufficient to answer what `kb chat` does when retrieval is weak or incomplete. While the question itself is listed as a topic within the project overview, the details of its behavior under those specific conditions are not present in the provided text.",
+      "provenance": [
+        "ci-eval-20260418-graphfix2-project-overview"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 1,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+          "laneRouting": {
+            "lanes": [
+              "fact",
+              "architecture",
+              "workflow"
+            ],
+            "reason": "default-general-signals",
+            "usedFallback": false
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.55,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "The evidence provided is insufficient to answer what `kb chat` does when retrieval is weak or incomplete. While the question itself is listed as a topic within the project overview, the details of its behavior under those specific conditions are not present in the provided text.",
+        "provenance": [
+          "ci-eval-20260418-graphfix2-project-overview"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — fill manually per EVALUATION.md (or re-run with --scores-file)."
+    },
+    {
+      "question_id": 6,
+      "question": "What commands should a contributor use during normal dogfood development in this repo?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "During normal dogfood development in this repo, a contributor should use the following commands to manage their active and default knowledge bases:\n\n*   `kb use dogfood`: This command switches the active knowledge base for the current session to \"dogfood.\"\n*   `kb use --default d",
+      "provenance": [
+        "ci-eval-20260418-graphfix2-project-overview"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 1,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+          "laneRouting": {
+            "lanes": [
+              "fact",
+              "architecture",
+              "workflow"
+            ],
+            "reason": "default-general-signals",
+            "usedFallback": false
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.55,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "During normal dogfood development in this repo, a contributor should use the following commands to manage their active and default knowledge bases:\n\n*   `kb use dogfood`: This command switches the active knowledge base for the current session to \"dogfood.\"\n*   `kb use --default dogfood`: This command saves \"dogfood\" as the persistent default knowledge base.",
+        "provenance": [
+          "ci-eval-20260418-graphfix2-project-overview"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — fill manually per EVALUATION.md (or re-run with --scores-file)."
+    },
+    {
+      "question_id": 7,
+      "question": "What special repo rules apply to KB documentation and persistence?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:policy-signals;lanes:architecture,workflow;lane-broadened",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "7. What special repo rules apply to KB documentation and persistence? (source: ci-eval-20260418-graphfix2-project-overview)",
+      "provenance": [
+        "ci-eval-20260418-graphfix2-project-overview"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 1,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:policy-signals;lanes:architecture,workflow;lane-broadened",
+          "laneRouting": {
+            "lanes": [
+              "architecture",
+              "workflow"
+            ],
+            "reason": "policy-signals",
+            "usedFallback": true
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.55,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:policy-signals;lanes:architecture,workflow;lane-broadened"
+            }
+          ]
+        },
+        "answer_preview": "7. What special repo rules apply to KB documentation and persistence? (source: ci-eval-20260418-graphfix2-project-overview)",
+        "provenance": [
+          "ci-eval-20260418-graphfix2-project-overview"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — fill manually per EVALUATION.md (or re-run with --scores-file)."
+    },
+    {
+      "question_id": 8,
+      "question": "How can someone inspect the graph and run telemetry/log comparisons?",
+      "result_count": 1,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+        "confidence": 0.55
+      },
+      "answer_excerpt": "8. How can someone inspect the graph and run telemetry/log comparisons? (source: ci-eval-20260418-graphfix2-project-overview)",
+      "provenance": [
+        "ci-eval-20260418-graphfix2-project-overview"
+      ],
+      "raw_query_output": {
+        "status": "accepted",
+        "result_count": 1,
+        "retrieval": {
+          "method": "hybrid",
+          "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow",
+          "laneRouting": {
+            "lanes": [
+              "fact",
+              "architecture",
+              "workflow"
+            ],
+            "reason": "default-general-signals",
+            "usedFallback": false
+          },
+          "checkpoints": [
+            {
+              "stage": "hybrid_primary",
+              "status": "hit",
+              "confidence": 0.55,
+              "reason": "hybrid-stage-complete",
+              "nextAction": "return",
+              "method": "hybrid",
+              "detail": "fts+vector-rerank;lane-router:default-general-signals;lanes:fact,architecture,workflow"
+            }
+          ]
+        },
+        "answer_preview": "8. How can someone inspect the graph and run telemetry/log comparisons? (source: ci-eval-20260418-graphfix2-project-overview)",
+        "provenance": [
+          "ci-eval-20260418-graphfix2-project-overview"
+        ]
+      },
+      "scores": {
+        "correctness": 0,
+        "usefulness": 0,
+        "specificity": 0,
+        "evidence_handling": 0
+      },
+      "notes": "Rubric scores not supplied — fill manually per EVALUATION.md (or re-run with --scores-file)."
+    }
+  ],
+  "chat_evaluation": {
+    "status": "not_captured",
+    "notes": "Batch automation: kb chat transcripts not captured. Follow EVALUATION.md Phase 3 for interactive chat when a complete run is required."
+  },
+  "aggregate_scores": {
+    "query": {
+      "mean_correctness": 0,
+      "mean_usefulness": 0,
+      "mean_specificity": 0,
+      "mean_evidence_handling": 0,
+      "pass_rate_correctness_and_usefulness_at_least_3": 0
+    },
+    "chat": {
+      "mean_correctness": 0,
+      "mean_usefulness": 0,
+      "mean_specificity": 0,
+      "mean_evidence_handling": 0,
+      "pass_rate_correctness_and_usefulness_at_least_3": 0
+    },
+    "combined": {
+      "mean_correctness": 0,
+      "mean_usefulness": 0,
+      "mean_specificity": 0,
+      "mean_evidence_handling": 0,
+      "pass_rate_correctness_and_usefulness_at_least_3": 0
+    }
+  },
+  "qualitative_findings": [
+    "Scores left at zero placeholder until manual rubric or --scores-file.",
+    "Scratch JSON under /tmp/kb-eval-graphfix2-20260418 (safe to delete after archiving the artifact).",
+    "Graph regression fix: pass-graph now populates DuckDB (this run graph_summary 76 entities / 69 relationships vs 0/0 in 2026-04-17-main-baseline.json and vs Apr 18 pre-fix disposable runs).",
+    "Code changes: (1) Gemini — generationConfig.thinkingConfig.thinkingBudget when callers pass thinkingBudget; graph extractor passes 0. (2) Gemini — ignore response parts with thought===true when assembling text. (3) Graph extractor — raise maxTokens to 8192 and retry once at 16384 when parse yields empty but raw output looks truncated (2048 cap previously produced invalid JSON on large init docs)."
+  ],
+  "next_improvement_areas": [
+    "Optional: extend script to ingest kb chat logs for status=complete.",
+    "Optional: read init token totals from ~/.kb/logs for init_result telemetry fields."
+  ]
+}

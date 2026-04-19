@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Design
-date: '2026-04-18'
+date: '2026-04-19'
 kb_id: design-md
 tags:
   - source-excerpt
