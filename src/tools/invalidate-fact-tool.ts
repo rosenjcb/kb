@@ -94,6 +94,7 @@ export async function invalidateFactTool(
           lane,
           tags,
           createdAt: row.created_at,
+          isOriginal: row.is_original === 1,
         })
       }
     }

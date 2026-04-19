@@ -19,7 +19,10 @@ function makeJekyllSite(root: string) {
   return writeFile(path.join(root, '_config.yml'), 'title: Test Site\n', 'utf8')
 }
 
-async function makeSqliteDb(baseDir: string, docs: Array<{ id: string; title: string; content: string }>) {
+async function makeSqliteDb(
+  baseDir: string,
+  docs: Array<{ id: string; title: string; content: string; is_original?: number }>
+) {
   const db = new Database(path.join(baseDir, '.kb-index.sqlite'))
   db.exec(`
     CREATE TABLE documents (
@@ -30,14 +33,15 @@ async function makeSqliteDb(baseDir: string, docs: Array<{ id: string; title: st
       lane TEXT,
       tags_json TEXT,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      is_original INTEGER NOT NULL DEFAULT 0
     );
   `)
   const insert = db.prepare(
-    'INSERT INTO documents (id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO documents (id, title, content, created_at, updated_at, is_original) VALUES (?, ?, ?, ?, ?, ?)'
   )
   for (const doc of docs) {
-    insert.run(doc.id, doc.title, doc.content, '2026-01-15T10:00:00.000Z', '2026-01-15T10:00:00.000Z')
+    insert.run(doc.id, doc.title, doc.content, '2026-01-15T10:00:00.000Z', '2026-01-15T10:00:00.000Z', doc.is_original ?? 0)
   }
   db.close()
 }

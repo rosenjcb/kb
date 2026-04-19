@@ -1,6 +1,7 @@
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import dayjs from 'dayjs'
+import { runMigrations } from '../core/db-migrations'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
 import { readKbConfig, resolveNotionToken } from './kb-config'
 
@@ -29,6 +30,7 @@ export interface SqliteDocumentRow {
   tags_json: string | null
   created_at: string
   updated_at: string
+  is_original: number
 }
 
 export interface PublishResult {
@@ -213,10 +215,13 @@ export async function runPublishCommand(
 export function readDocumentsFromSqlite(dbPath: string): SqliteDocumentRow[] {
   let db: Database.Database | undefined
   try {
-    db = new Database(dbPath, { readonly: true })
+    // Open writable so migrations run before we query.
+    db = new Database(dbPath)
+    db.pragma('journal_mode = WAL')
+    runMigrations(db)
     return db
       .prepare(`
-      SELECT id, title, content, doc_type, lane, tags_json, created_at, updated_at
+      SELECT id, title, content, doc_type, lane, tags_json, created_at, updated_at, is_original
       FROM documents
       WHERE content != ''
       ORDER BY updated_at DESC
@@ -229,6 +234,7 @@ export function readDocumentsFromSqlite(dbPath: string): SqliteDocumentRow[] {
     db?.close()
   }
 }
+
 
 // ─── Notion API ─────────────────────────────────────────────────────────────
 

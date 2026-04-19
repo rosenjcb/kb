@@ -1,4 +1,5 @@
-- title: Handbook
+- title: Original Documentation
   url: /cli-reference.html
   collections:
     - handbook
+    - posts

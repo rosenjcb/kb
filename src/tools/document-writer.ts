@@ -7,6 +7,7 @@ export interface WriteDocumentInput {
   type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
   documentId?: string
   overwrite?: boolean
+  isOriginal?: boolean
 }
 
 // ─── Specialized Document Operation Types ───────────────────────

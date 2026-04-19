@@ -145,6 +145,7 @@ interface CandidateDoc {
   content: string
   type?: WriteDocumentInput['type']
   tags?: string[]
+  isOriginal?: boolean
 }
 
 interface InitCheckpointV1 {
@@ -1144,6 +1145,7 @@ async function writeDocs(docs: CandidateDoc[], baseDir: string, base: string): P
       tags: doc.tags,
       documentId: doc.id ?? slugify(doc.title),
       overwrite: true,
+      isOriginal: doc.isOriginal ?? false,
     })
     writtenIds.push(result.id)
   }
@@ -1478,6 +1480,7 @@ function expandSingleDocIntoSourceShards(
       type: 'reference',
       tags: ['source-excerpt', slugify(safeName), baseName],
       content: `# ${safeName}\n\nRepository excerpt captured during init (split from a single synthesis document).\n\n${clipped}${tail}\n`,
+      isOriginal: true,
     })
   }
   return [overview, ...shards]

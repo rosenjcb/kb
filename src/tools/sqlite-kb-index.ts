@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import Database from 'better-sqlite3'
 import dayjs from 'dayjs'
+import { runMigrations } from '../core/db-migrations'
 import { type RetrievalLane, classifyDocumentLane } from './retrieval-lane-router'
 
 interface ChunkRecord {
@@ -104,6 +105,7 @@ export interface SqliteDocumentRow {
   tags_json: string | null
   created_at: string
   updated_at: string
+  is_original: number
 }
 
 export interface DocumentUpsertInput {
@@ -114,6 +116,7 @@ export interface DocumentUpsertInput {
   lane: RetrievalLane
   tags?: string[]
   createdAt?: string
+  isOriginal?: boolean
 }
 
 export interface LaneRoutingMetrics {
@@ -195,7 +198,7 @@ export class SqliteKbIndexer {
     this.vectorDimensions = options.vectorDimensions ?? 64
     this.db.pragma('journal_mode = WAL')
     this.db.pragma('foreign_keys = ON')
-    this.initSchema()
+    runMigrations(this.db)
   }
 
   upsertDocumentFromContent(filePath: string, content: string): void {
@@ -768,143 +771,6 @@ export class SqliteKbIndexer {
     }
   }
 
-  private initSchema(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS documents (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        file_path TEXT NOT NULL UNIQUE,
-        doc_type TEXT,
-        lane TEXT,
-        tags_json TEXT,
-        content_hash TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        indexed_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS chunks (
-        chunk_id TEXT PRIMARY KEY,
-        doc_id TEXT NOT NULL,
-        chunk_index INTEGER NOT NULL,
-        lane TEXT,
-        heading_path TEXT,
-        chunk_text TEXT NOT NULL,
-        token_count INTEGER NOT NULL,
-        FOREIGN KEY (doc_id) REFERENCES documents(id) ON DELETE CASCADE,
-        UNIQUE (doc_id, chunk_index)
-      );
-
-      CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
-        chunk_id,
-        doc_id,
-        chunk_text,
-        tokenize='porter unicode61'
-      );
-
-      CREATE TABLE IF NOT EXISTS chunk_embeddings (
-        chunk_id TEXT PRIMARY KEY,
-        model_id TEXT NOT NULL,
-        dimensions INTEGER NOT NULL,
-        vector_json TEXT NOT NULL,
-        embedded_at TEXT NOT NULL,
-        FOREIGN KEY (chunk_id) REFERENCES chunks(chunk_id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS index_state (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS retrieval_miss_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        query_fingerprint TEXT NOT NULL,
-        raw_query TEXT NOT NULL,
-        stage TEXT NOT NULL,
-        miss_reason TEXT NOT NULL,
-        top_candidates_json TEXT NOT NULL,
-        surface TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_retrieval_miss_events_fingerprint
-        ON retrieval_miss_events(query_fingerprint, created_at DESC);
-
-      CREATE TABLE IF NOT EXISTS retrieval_ranking_hints (
-        query_fingerprint TEXT NOT NULL,
-        doc_id TEXT NOT NULL,
-        occurrences INTEGER NOT NULL DEFAULT 0,
-        hint_score REAL NOT NULL DEFAULT 0,
-        updated_at TEXT NOT NULL,
-        PRIMARY KEY (query_fingerprint, doc_id)
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_retrieval_ranking_hints_fingerprint
-        ON retrieval_ranking_hints(query_fingerprint, hint_score DESC);
-
-      CREATE TABLE IF NOT EXISTS retrieval_checkpoint_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        query_fingerprint TEXT NOT NULL,
-        stage TEXT NOT NULL,
-        status TEXT NOT NULL,
-        next_action TEXT NOT NULL,
-        confidence REAL NOT NULL,
-        method TEXT NOT NULL,
-        detail TEXT,
-        surface TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_retrieval_checkpoint_events_stage
-        ON retrieval_checkpoint_events(stage, created_at DESC);
-
-      CREATE INDEX IF NOT EXISTS idx_retrieval_checkpoint_events_fingerprint
-        ON retrieval_checkpoint_events(query_fingerprint, created_at DESC);
-
-      CREATE TABLE IF NOT EXISTS retrieval_lane_routing_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        query_fingerprint TEXT NOT NULL,
-        primary_lane TEXT NOT NULL,
-        routed_lanes_json TEXT NOT NULL,
-        route_reason TEXT NOT NULL,
-        used_fallback INTEGER NOT NULL,
-        status TEXT NOT NULL,
-        next_action TEXT NOT NULL,
-        confidence REAL NOT NULL,
-        surface TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_retrieval_lane_routing_events_lane
-        ON retrieval_lane_routing_events(primary_lane, created_at DESC);
-
-      CREATE INDEX IF NOT EXISTS idx_retrieval_lane_routing_events_fingerprint
-        ON retrieval_lane_routing_events(query_fingerprint, created_at DESC);
-
-      CREATE TABLE IF NOT EXISTS session_entries (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_date  TEXT NOT NULL,
-        base          TEXT NOT NULL,
-        event_type    TEXT NOT NULL,
-        summary       TEXT NOT NULL,
-        metadata_json TEXT,
-        created_at    TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_session_entries_date
-        ON session_entries(session_date DESC);
-
-      CREATE INDEX IF NOT EXISTS idx_session_entries_base
-        ON session_entries(base, session_date DESC);
-    `)
-
-    // Migration-safe columns for existing databases.
-    this.ensureColumn('documents', 'lane', 'TEXT')
-    this.ensureColumn('chunks', 'lane', 'TEXT')
-    this.ensureColumn('documents', 'content', "TEXT NOT NULL DEFAULT ''")
-  }
-
   // ─── Session Entry API ───────────────────────────────────────────
 
   insertSessionEntry(entry: SessionEntryInput): void {
@@ -929,11 +795,18 @@ export class SqliteKbIndexer {
   getAllDocumentsForLexical(): SqliteDocumentRow[] {
     return this.db
       .prepare(`
-      SELECT id, title, content, file_path, doc_type, lane, tags_json, created_at, updated_at
+      SELECT id, title, content, file_path, doc_type, lane, tags_json, created_at, updated_at, is_original
       FROM documents
       ORDER BY updated_at DESC
     `)
       .all() as SqliteDocumentRow[]
+  }
+
+  getDocumentIsOriginal(id: string): boolean {
+    const row = this.db.prepare('SELECT is_original FROM documents WHERE id = ?').get(id) as
+      | { is_original?: number }
+      | undefined
+    return (row?.is_original ?? 0) === 1
   }
 
   getDocumentContent(id: string): string | undefined {
@@ -949,8 +822,8 @@ export class SqliteKbIndexer {
     const contentHash = sha256(input.content)
 
     const upsertDoc = this.db.prepare(`
-      INSERT INTO documents (id, title, content, file_path, doc_type, lane, tags_json, content_hash, created_at, updated_at, indexed_at)
-      VALUES (@id, @title, @content, @filePath, @docType, @lane, @tagsJson, @contentHash, @createdAt, @updatedAt, @indexedAt)
+      INSERT INTO documents (id, title, content, file_path, doc_type, lane, tags_json, content_hash, created_at, updated_at, indexed_at, is_original)
+      VALUES (@id, @title, @content, @filePath, @docType, @lane, @tagsJson, @contentHash, @createdAt, @updatedAt, @indexedAt, @isOriginal)
       ON CONFLICT(id) DO UPDATE SET
         title=excluded.title,
         content=excluded.content,
@@ -960,7 +833,8 @@ export class SqliteKbIndexer {
         tags_json=excluded.tags_json,
         content_hash=excluded.content_hash,
         updated_at=excluded.updated_at,
-        indexed_at=excluded.indexed_at
+        indexed_at=excluded.indexed_at,
+        is_original=excluded.is_original
     `)
 
     const deleteChunks = this.db.prepare('DELETE FROM chunks WHERE doc_id = ?')
@@ -990,6 +864,7 @@ export class SqliteKbIndexer {
         createdAt: input.createdAt ?? now,
         updatedAt: now,
         indexedAt: now,
+        isOriginal: input.isOriginal ? 1 : 0,
       })
 
       deleteChunks.run(input.id)
@@ -1024,13 +899,6 @@ export class SqliteKbIndexer {
     tx()
   }
 
-  private ensureColumn(table: string, column: string, type: string): void {
-    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
-    if (columns.some(col => col.name === column)) {
-      return
-    }
-    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
-  }
 }
 
 interface ParsedDocument {
