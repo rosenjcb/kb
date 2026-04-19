@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Dogfood Interaction Mode
-date: '2026-04-15 04:49:46'
+date: '2026-04-18'
 kb_id: dogfood-interaction-mode
 tags:
   - dogfood

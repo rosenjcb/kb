@@ -119,18 +119,20 @@ describe('publish-cli apply', () => {
           lane TEXT,
           tags_json TEXT,
           created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
+          updated_at TEXT NOT NULL,
+          is_original INTEGER NOT NULL DEFAULT 0
         );
       `)
       db.prepare(`
-        INSERT INTO documents (id, title, content, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO documents (id, title, content, created_at, updated_at, is_original)
+        VALUES (?, ?, ?, ?, ?, ?)
       `).run(
         'overview',
         'Overview',
         '# Overview\n\nHello world\n',
         '2026-01-01T00:00:00.000Z',
-        '2026-01-01T00:00:00.000Z'
+        '2026-01-01T00:00:00.000Z',
+        0
       )
       db.close()
 

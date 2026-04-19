@@ -31,7 +31,7 @@ export function WelcomeBanner() {
           ) : null}
         </Text>
       ))}
-      <Text color="gray">Knowledge Base TUI — type a command or `/help`</Text>
+      <Text color="gray">A Knowledge Base for your Agent — type a command or `/help`</Text>
     </Box>
   )
 }

@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseInitCommand, runKbInit } from '../../src/cli/init-cli'
+import { INIT_TOPIC_DEFINITIONS } from '../../src/cli/init-topic-coverage'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
 
 const tempDirs: string[] = []
@@ -655,28 +656,43 @@ describe('init-cli interview checkpoints', () => {
 
     expect(sequentialQuestionIO.prompts.length).toBeGreaterThan(0)
   })
-})
 
-describe('init-cli consolidation pass', () => {
-  it('Given init run, then pass-consolidate does not appear in completedCycles', async () => {
+  it('Given per-topic synthesis and several repo markdown files, then pass1 checkpoint includes frozen originals beside autogen', async () => {
     const cwd = await createTempProject({
-      'README.md': '# Project\n\nThis is a test project.\n',
+      'README.md': '# Project\n\nOverview.\n',
+      'AGENTS.md': '# Agents\n\nAgent rules.\n',
+      'CLAUDE.md': '# Claude\n\nWorkflow hints.\n',
     })
-
-    const docJson = JSON.stringify([
-      { title: 'Overview', type: 'overview', tags: ['overview'], content: 'Overview content.' },
-    ])
+    const provider = createProvider(
+      INIT_TOPIC_DEFINITIONS.map(def =>
+        JSON.stringify({
+          title: `Synthesis ${def.topic}`,
+          type: 'architecture',
+          tags: [def.topic],
+          content: `Substantive content for ${def.topic}. `.repeat(15),
+        })
+      )
+    )
 
     const result = await runKbInit({
-      base: 'consolidation-test',
+      base: 'multi-source-init',
       nonInteractive: true,
       stopAfter: 'pass1',
       cwd,
-      provider: createProvider([docJson]),
-      questionIO: createQuestionIO([]).io,
+      provider,
     })
 
-    expect(result.completedCycles).not.toContain('pass-consolidate')
     expect(result.status).toBe('paused')
+    const cpPath = result.checkpointFile
+    if (!cpPath) throw new Error('expected checkpointFile')
+    const checkpoint = JSON.parse(await readFile(cpPath, 'utf8')) as {
+      candidateDocs?: Array<{ title: string; isOriginal?: boolean }>
+    }
+    const originals = checkpoint.candidateDocs?.filter(d => d.isOriginal) ?? []
+    expect(originals.length).toBeGreaterThanOrEqual(2)
+    const titles = originals.map(d => d.title).sort()
+    expect(titles).toContain('AGENTS.md')
+    expect(titles).toContain('CLAUDE.md')
   })
 })
+

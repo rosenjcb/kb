@@ -3,26 +3,31 @@
  *
  * Cycle 1 (read-inputs):     Discover README/CLAUDE.md in working dir,
  *                             ask an initial interview round via stdin.
- * Cycle 2 (pass1):           Draft 5-15 candidate docs from source files + Q&A.
+ * Cycle 2 (pass1):           One LLM call per init topic (in parallel) from sources + Q&A.
  * Cycle 3 (pass2):           Follow-up questions for weak topics, LLM refinement.
  * Cycle 4 (pass-enrich):     Per-document enrichment — each doc gets a dedicated
  *                             LLM pass to deepen coverage and add concrete detail.
- * Cycle 5 (pass-consolidate):Consolidation agent — (currently disabled) merges overlapping docs.
- * Cycle 6 (pass3):           Final quality pass — validate, dedupe, remove stubs.
- * Cycle 7 (write):           Upsert all candidate documents to SQLite.
+ * Cycle 5 (pass3):           Final quality pass — validate, dedupe, remove stubs.
+ * Cycle 6 (write):           Upsert all candidate documents to SQLite.
+ * Cycle 7 (pass-graph):      Extract knowledge graph entities and relationships.
  *
  * Reuses progress reporting and checkpoint patterns from publish-cli.ts.
  */
 
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
-import { loadPromptParts } from '../prompts/loader'
 import path from 'node:path'
 import readline from 'node:readline'
 import dayjs from 'dayjs'
+import {
+  INIT_SYNTHESIS_GEMINI_RESPONSE_SCHEMA,
+  INIT_SYNTHESIS_OPENAI_JSON_SCHEMA,
+  parseInitSynthesisObject,
+} from '../core/init-synthesis-json'
 import type { RunCollector } from '../core/telemetry'
 import { TokenCountingProvider, estimateCost } from '../core/telemetry'
-import type { LLMProvider } from '../core/types'
+import type { LLMProvider, LLMStructuredJsonRequest } from '../core/types'
+import { loadPromptParts } from '../prompts/loader'
 import type { WriteDocumentInput } from '../tools/document-writer'
 import { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { extractGraphBatch } from '../tools/graph-entity-extractor'
@@ -30,6 +35,13 @@ import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { ensureOperationalBaseDir, getKbHomeDir, readBaseConfig } from './base-selection'
 import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from './cli-prerequisites'
+import { readKnowledgeGraphInitSummary } from './graph-cli'
+import {
+  INIT_SOURCE_SNAPSHOT_MAX_FILES,
+  appendFrozenSourceSnapshots,
+  buildFrozenSourceSnapshotDoc,
+  isInitReadmeHomePath,
+} from './init-source-snapshots'
 import {
   INIT_TOPIC_DEFINITIONS,
   assessTopicCoverage,
@@ -39,11 +51,9 @@ import {
   markUnaskedTopicsAsInferred,
   summariseCoverage,
 } from './init-topic-coverage'
-import { readKnowledgeGraphInitSummary } from './graph-cli'
 import { createLLMProviderFromConfig, readKbConfig, resolveGraphEnabled } from './kb-config'
 import { runLLMSetupWizard } from './llm-setup-wizard'
 
-// pass-consolidate is temporarily disabled — too aggressive; needs smarter merge strategy before re-enabling
 export type InitCycle =
   | 'read-inputs'
   | 'pass1'
@@ -98,6 +108,8 @@ export interface InitUserAnswer {
 
 export interface InitContext {
   sourceFiles: Record<string, string>
+  /** Lightweight source-code index: file path → first N chars of content. Feeds synthesis passes. */
+  codeFiles: Record<string, string>
   userAnswers: InitUserAnswer[]
 }
 
@@ -145,6 +157,7 @@ interface CandidateDoc {
   content: string
   type?: WriteDocumentInput['type']
   tags?: string[]
+  isOriginal?: boolean
 }
 
 interface InitCheckpointV1 {
@@ -224,14 +237,13 @@ const SOURCE_FILE_CANDIDATES = [
 const MAX_SOURCE_SIZE = 20_000
 const MAX_TOTAL_QUESTIONS = 10
 const MAX_FOLLOW_UP_QUESTIONS = 4
-const INIT_MODEL_MAX_TOKENS = 4096
+const INIT_MODEL_MAX_TOKENS = 32768
 const INIT_PROMPT_SAFETY_TOKENS = 256
 const INIT_OUTPUT_TOKENS = {
-  synthesis: 1200,
+  synthesisPerTopic: 1200,
   refinement: 1000,
   quality: 900,
   enrich: 700,
-  consolidate: 1200,
 } as const
 
 export function parseInitCommand(args: string[]): InitOptions {
@@ -315,7 +327,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = await readCheckpoint(checkpointFile)
 
-  const progress = new InitProgressReporter(8, options.progressSink)
+  const progress = new InitProgressReporter(7, options.progressSink)
   let rawProvider = options.provider ?? (await resolveProvider())
   let counter =
     rawProvider && options.collector ? new TokenCountingProvider(rawProvider) : undefined
@@ -446,7 +458,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       }
       const endPass1 = makeCycleTimer('pass1', provider, options.collector, counter)
       candidateDocs = await runSynthesisPass(provider, context, base)
-      candidateDocs = maybeExpandSingleDocCorpus(candidateDocs, context, base)
+      candidateDocs = materializeInitSourceCorpus(candidateDocs, context, base)
       endPass1()
       topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
       await persist({
@@ -463,7 +475,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     if (!candidateDocs) throw new Error('pass1 candidateDocs missing')
 
     if (!checkpoint.completedCycles.includes('pass2')) {
-      candidateDocs = maybeExpandSingleDocCorpus(candidateDocs, context, base)
+      candidateDocs = materializeInitSourceCorpus(candidateDocs, context, base)
       progress.start('pass2', 'follow-up + refining docs…')
 
       if (!options.nonInteractive) {
@@ -550,23 +562,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     } else {
       progress.finish('pass-enrich', 'reused from checkpoint')
     }
-
-    // pass-consolidate is disabled — the LLM-driven merge was too aggressive and dropped content.
-    // TODO: re-enable with improved merge strategy (similarity threshold + human review step).
-    // if (!checkpoint.completedCycles.includes('pass-consolidate')) {
-    //   progress.start('pass-consolidate', 'merging overlapping docs…')
-    //   if (!provider) throw new Error('No LLM provider available.')
-    //   const beforeCount = candidateDocs.length
-    //   const endPassConsolidate = makeCycleTimer('pass-consolidate', provider, options.collector, counter)
-    //   candidateDocs = await runConsolidationPass(provider, candidateDocs)
-    //   endPassConsolidate()
-    //   await persist({ candidateDocs, completedCycles: ['pass-consolidate'] })
-    //   const merged = beforeCount - candidateDocs.length
-    //   progress.finish('pass-consolidate', merged > 0 ? `${merged} docs merged → ${candidateDocs.length} total` : `no merges needed, ${candidateDocs.length} docs`)
-    //   if (options.stopAfter === 'pass-consolidate') throw new InitPausedError('pass-consolidate')
-    // } else {
-    //   progress.finish('pass-consolidate', 'reused from checkpoint')
-    // }
 
     if (!checkpoint.completedCycles.includes('pass3')) {
       progress.start('pass3', 'quality pass…')
@@ -686,8 +681,10 @@ async function runReadInputsCycle(options: {
   paused?: boolean
 }> {
   const sourceFiles = await collectSourceFiles(options.cwd)
+  const codeFiles = await crawlSourceCode(options.cwd)
   const context: InitContext = {
     sourceFiles,
+    codeFiles,
     userAnswers: [],
   }
 
@@ -764,6 +761,63 @@ async function collectSourceFiles(cwd: string): Promise<Record<string, string>> 
   }
 
   return sourceFiles
+}
+
+export const SOURCE_CODE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.py', '.go', '.rb', '.java', '.rs', '.swift', '.kt']
+export const SOURCE_CODE_EXCLUDE_DIRS = new Set(['node_modules', 'dist', 'build', '_site', '.git', 'vendor', 'coverage', '.next', 'out', '.cache', '__pycache__', '.turbo'])
+const SOURCE_CODE_MAX_FILES = 200
+export const SOURCE_CODE_PER_FILE_CHARS = 400
+const SOURCE_CODE_MAX_TOTAL_CHARS = 60_000
+
+/**
+ * Crawl the repo for source code files and return a lightweight index:
+ * file path → first N chars of content (enough to see exports/signatures).
+ * This feeds the synthesis passes so the LLM can reason about code structure,
+ * not just documentation.
+ */
+export async function crawlSourceCode(cwd: string): Promise<Record<string, string>> {
+  const result: Record<string, string> = {}
+  let totalChars = 0
+
+  async function walk(dir: string): Promise<void> {
+    if (totalChars >= SOURCE_CODE_MAX_TOTAL_CHARS) return
+    if (Object.keys(result).length >= SOURCE_CODE_MAX_FILES) return
+
+    let entries: { name: string; isDir: boolean }[]
+    try {
+      const raw = await readdir(dir, { withFileTypes: true })
+      entries = raw.map(e => ({ name: e.name, isDir: e.isDirectory() }))
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      if (totalChars >= SOURCE_CODE_MAX_TOTAL_CHARS) break
+      if (Object.keys(result).length >= SOURCE_CODE_MAX_FILES) break
+      if (entry.name.startsWith('.')) continue
+
+      if (entry.isDir) {
+        if (SOURCE_CODE_EXCLUDE_DIRS.has(entry.name)) continue
+        await walk(path.join(dir, entry.name))
+      } else {
+        const ext = path.extname(entry.name).toLowerCase()
+        if (!SOURCE_CODE_EXTENSIONS.includes(ext)) continue
+        const fullPath = path.join(dir, entry.name)
+        try {
+          const content = await readFile(fullPath, 'utf8')
+          const snippet = content.slice(0, SOURCE_CODE_PER_FILE_CHARS)
+          const relPath = path.relative(cwd, fullPath)
+          result[relPath] = snippet
+          totalChars += snippet.length
+        } catch {
+          // unreadable — skip
+        }
+      }
+    }
+  }
+
+  await walk(cwd)
+  return result
 }
 
 function planInitialQuestions(
@@ -886,39 +940,115 @@ function mergeInterviewAnswersIntoContext(
   }
 }
 
+function titleFromTopicSlug(slug: string): string {
+  return slug
+    .split('-')
+    .map(part => (part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(' ')
+}
+
+function synthesisPlaceholderDoc(
+  def: (typeof INIT_TOPIC_DEFINITIONS)[number],
+  baseName: string
+): CandidateDoc {
+  return {
+    title: titleFromTopicSlug(def.topic),
+    type: 'reference',
+    tags: [def.topic, baseName],
+    isOriginal: false,
+    content: [
+      'Pass1 did not return valid JSON for this topic.',
+      '',
+      `**Focus:** ${def.initialQuestion}`,
+      '',
+      'Re-run `kb init` or pull facts manually from the repository sources.',
+    ].join('\n'),
+  }
+}
+
 async function runSynthesisPass(
   provider: LLMProvider,
   context: InitContext,
   baseName: string
 ): Promise<CandidateDoc[]> {
   const synthesisParts = loadPromptParts('init-synthesis.md')
-  const { prompt, maxTokens } = buildBudgetedPrompt({
-    intro: synthesisParts.intro.replace('{{baseName}}', baseName),
-    sections: [
-      {
-        heading: 'Source Files',
-        content: formatSourceFilesForPrompt(context.sourceFiles),
-        priority: 3,
-        minTokens: 500,
-      },
-      {
-        heading: 'User Q&A',
-        content: formatQuestionAnswersForPrompt(context.userAnswers, '(No Q&A collected)'),
-        priority: 1,
-        minTokens: 120,
-      },
-    ],
-    instructions: synthesisParts.instructions,
-    requestedMaxTokens: INIT_OUTPUT_TOKENS.synthesis,
-  })
+  const perTopicMax = clampInitOutputTokens(INIT_OUTPUT_TOKENS.synthesisPerTopic)
 
-  const response = await provider.call({
-    messages: [{ role: 'user', content: prompt }],
-    maxTokens,
-    temperature: 0.2,
-  })
+  const sectionsTemplate = [
+    {
+      heading: 'Documentation Files',
+      content: formatSourceFilesForPrompt(context.sourceFiles),
+      priority: 3,
+      minTokens: 500,
+    },
+    {
+      heading: 'Source Code Index',
+      content: formatCodeFilesForPrompt(context.codeFiles),
+      priority: 2,
+      minTokens: 300,
+    },
+    {
+      heading: 'User Q&A',
+      content: formatQuestionAnswersForPrompt(context.userAnswers, '(No Q&A collected)'),
+      priority: 1,
+      minTokens: 120,
+    },
+  ] as const
 
-  return parseDocArray(response.text) ?? fallbackDocs(context, baseName)
+  const topicResults = await Promise.all(
+    INIT_TOPIC_DEFINITIONS.map(async def => {
+      const topicQuestion = `**${def.topic}** — ${def.initialQuestion}`
+      const intro = synthesisParts.intro
+        .replace(/\{\{baseName\}\}/g, baseName)
+        .replace(/\{\{topicQuestion\}\}/g, topicQuestion)
+
+      const { prompt, maxTokens } = buildBudgetedPrompt({
+        intro,
+        sections: [...sectionsTemplate],
+        instructions: synthesisParts.instructions,
+        requestedMaxTokens: perTopicMax,
+      })
+
+      const structuredJson: LLMStructuredJsonRequest | undefined =
+        provider.name === 'openai'
+          ? {
+              openai: {
+                name: 'init_synthesis_doc',
+                schema: INIT_SYNTHESIS_OPENAI_JSON_SCHEMA,
+              },
+            }
+          : provider.name === 'gemini'
+            ? { gemini: INIT_SYNTHESIS_GEMINI_RESPONSE_SCHEMA }
+            : undefined
+
+      const response = await provider.call({
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens,
+        temperature: 0.2,
+        ...(provider.name === 'gemini' ? { thinkingBudget: 0 } : {}),
+        ...(structuredJson ? { structuredJson } : {}),
+      })
+
+      const parsed = parseInitSynthesisObject(response.text)
+      if (!parsed) {
+        return {
+          succeeded: false,
+          doc: synthesisPlaceholderDoc(def, baseName),
+        }
+      }
+      const tags = [...new Set([...(parsed.tags ?? []), def.topic])]
+      return {
+        succeeded: true,
+        doc: { ...parsed, tags, isOriginal: false } satisfies CandidateDoc,
+      }
+    })
+  )
+
+  if (!topicResults.some(r => r.succeeded)) {
+    return INIT_TOPIC_DEFINITIONS.map(def => synthesisPlaceholderDoc(def, baseName))
+  }
+
+  return topicResults.map(r => ({ ...r.doc, isOriginal: false }))
 }
 
 async function runRefinementPass(
@@ -954,7 +1084,10 @@ async function runRefinementPass(
   })
 
   const parsed = parseDocArray(response.text)
-  const next = parsed ?? docs
+  let next = parsed ?? docs
+  if (parsed && docs.length >= 4 && next.length < docs.length) {
+    next = docs
+  }
   return preventInitDocCollapse(docs, next)
 }
 
@@ -1017,6 +1150,12 @@ async function runPerDocEnrichmentPass(
             minTokens: 280,
           },
           {
+            heading: 'Source code index',
+            content: formatCodeFilesForPrompt(context.codeFiles),
+            priority: 1,
+            minTokens: 150,
+          },
+          {
             heading: 'User Q&A',
             content: formatQuestionAnswersForPrompt(context.userAnswers, '(none)'),
             priority: 1,
@@ -1049,25 +1188,6 @@ async function runPerDocEnrichmentPass(
 
   return enriched
 }
-
-// runConsolidationPass is disabled — too aggressive, drops content under LLM merge.
-// TODO: re-enable with improved merge strategy (similarity threshold + human review step).
-// async function runConsolidationPass(
-//   provider: LLMProvider,
-//   docs: CandidateDoc[],
-// ): Promise<CandidateDoc[]> {
-//   const { prompt, maxTokens } = buildBudgetedPrompt({
-//     intro: `You are a knowledge base architect doing a consolidation pass.
-// Review all documents for content overlap and merge where appropriate.`,
-//     sections: [{ heading: 'Documents', content: formatDocsForPrompt(docs, 1000), priority: 1, minTokens: 700 }],
-//     instructions: `1. Identify pairs (or groups) of documents that cover the same or very similar topic...
-// Return the consolidated set as a JSON array in the same shape (title, type, tags, content).
-// Return ONLY the JSON array, no prose.`,
-//     requestedMaxTokens: INIT_OUTPUT_TOKENS.consolidate,
-//   })
-//   const response = await provider.call({ messages: [{ role: 'user', content: prompt }], maxTokens, temperature: 0.1 })
-//   return parseDocArray(response.text) ?? docs
-// }
 
 type GraphPassOutcome = 'extracted' | 'disabled' | 'error' | 'no-provider' | 'reused'
 
@@ -1144,6 +1264,7 @@ async function writeDocs(docs: CandidateDoc[], baseDir: string, base: string): P
       tags: doc.tags,
       documentId: doc.id ?? slugify(doc.title),
       overwrite: true,
+      isOriginal: doc.isOriginal ?? false,
     })
     writtenIds.push(result.id)
   }
@@ -1168,25 +1289,6 @@ function parseDocArray(text: string): CandidateDoc[] | null {
   } catch {
     return null
   }
-}
-
-function fallbackDocs(context: InitContext, baseName: string): CandidateDoc[] {
-  const content = Object.entries(context.sourceFiles)
-    .map(([file, value]) => `## ${file}\n${value}`)
-    .join('\n\n')
-
-  const qaContent = context.userAnswers
-    .map(({ question, answer }) => `- **${question}** ${answer}`)
-    .join('\n')
-
-  return [
-    {
-      title: `${baseName} project overview`,
-      type: 'architecture',
-      tags: ['overview', baseName],
-      content: `# ${baseName} project overview\n\nAuto-generated from project documentation.\n\n${content}\n\n${qaContent}`,
-    },
-  ]
 }
 
 function buildBudgetedPrompt(options: {
@@ -1285,6 +1387,22 @@ function trimToTokenBudget(text: string, tokenBudget: number): string {
   const head = Math.floor(charBudget * 0.75)
   const tail = Math.max(charBudget - head - 24, 0)
   return `${text.slice(0, head)}\n\n…[truncated for token budget]…\n\n${tail > 0 ? text.slice(-tail) : ''}`
+}
+
+function formatCodeFilesForPrompt(codeFiles: Record<string, string>): string {
+  const entries = Object.entries(codeFiles)
+  if (entries.length === 0) return '(No source code collected)'
+  // Group by top-level directory for readability
+  const byDir = new Map<string, string[]>()
+  for (const [file] of entries) {
+    const dir = file.includes('/') ? file.split('/')[0] : '(root)'
+    if (!byDir.has(dir)) byDir.set(dir, [])
+    byDir.get(dir)?.push(file)
+  }
+  const dirSummary = [...byDir.entries()]
+    .map(([dir, files]) => `${dir}/  (${files.length} files)\n  ${files.join('\n  ')}`)
+    .join('\n\n')
+  return `${entries.length} source files across ${byDir.size} directories:\n\n${dirSummary}`
 }
 
 function formatSourceFilesForPrompt(
@@ -1438,10 +1556,17 @@ function slugify(value: string): string {
   )
 }
 
-/** When synthesis collapses to one doc but we have several source files, split into overview + per-file reference shards (baseline until a proper grouping pass exists). */
-const INIT_SOURCE_SHARD_MAX_FILES = 12
-const INIT_SOURCE_SHARD_MAX_CHARS = 8000
+/** Single-doc expansion plus frozen per-file snapshots (idempotent). */
+function materializeInitSourceCorpus(
+  docs: CandidateDoc[],
+  context: InitContext,
+  baseName: string
+): CandidateDoc[] {
+  const expanded = maybeExpandSingleDocCorpus(docs, context, baseName)
+  return appendFrozenSourceSnapshots(expanded, context.sourceFiles, baseName)
+}
 
+/** When synthesis collapses to one doc but we have several source files, split into overview + per-file reference shards (baseline until a proper grouping pass exists). */
 function maybeExpandSingleDocCorpus(
   docs: CandidateDoc[],
   context: InitContext,
@@ -1461,24 +1586,19 @@ function expandSingleDocIntoSourceShards(
   baseName: string
 ): CandidateDoc[] {
   const overview: CandidateDoc = {
-    title: `${baseName} project overview`,
+    title: 'Project Overview',
     type: 'architecture',
     tags: ['overview', baseName],
     content: lone.content,
+    isOriginal: false,
   }
   const shards: CandidateDoc[] = []
-  for (const filePath of Object.keys(context.sourceFiles).slice(0, INIT_SOURCE_SHARD_MAX_FILES)) {
+  for (const filePath of Object.keys(context.sourceFiles).slice(0, INIT_SOURCE_SNAPSHOT_MAX_FILES)) {
     const body = context.sourceFiles[filePath]
     if (typeof body !== 'string' || !body.trim()) continue
-    const safeName = filePath.replace(/\\/g, '/')
-    const clipped = body.slice(0, INIT_SOURCE_SHARD_MAX_CHARS)
-    const tail = body.length > INIT_SOURCE_SHARD_MAX_CHARS ? '\n\n…(truncated during init split)…' : ''
-    shards.push({
-      title: safeName,
-      type: 'reference',
-      tags: ['source-excerpt', slugify(safeName), baseName],
-      content: `# ${safeName}\n\nRepository excerpt captured during init (split from a single synthesis document).\n\n${clipped}${tail}\n`,
-    })
+    // README is the site homepage — exclude it from original_docs sidebar entries
+    if (isInitReadmeHomePath(filePath)) continue
+    shards.push(buildFrozenSourceSnapshotDoc(filePath, body, baseName, 'split-from-single'))
   }
   return [overview, ...shards]
 }
@@ -1549,6 +1669,7 @@ function migrateCheckpoint(checkpoint: StoredInitCheckpoint): InitCheckpoint | u
       context: checkpoint.context
         ? {
             sourceFiles: checkpoint.context.sourceFiles ?? {},
+            codeFiles: {},
             userAnswers: (checkpoint.context.userAnswers ?? []).map(answer => ({
               question: answer.question,
               answer: answer.answer,
@@ -1577,6 +1698,7 @@ function migrateCheckpoint(checkpoint: StoredInitCheckpoint): InitCheckpoint | u
       topicCoverage: assessTopicCoverage(
         {
           sourceFiles: checkpoint.context?.sourceFiles ?? {},
+          codeFiles: {},
           userAnswers: (checkpoint.context?.userAnswers ?? []).map(answer => ({
             question: answer.question,
             answer: answer.answer,

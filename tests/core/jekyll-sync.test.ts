@@ -5,8 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   buildJekyllFile,
   discoverJekyllRoot,
-  docToFilename,
-  filenameToPostUrlPath,
+  docToCollectionFilename,
+  filenameToCollectionUrlPath,
+  formatJekyllPublishSnapshotDate,
   mapToJekyllFrontMatter,
   slugify,
   stripKbMetadataHeader,
@@ -22,6 +23,7 @@ const makeDoc = (overrides: Partial<KbDocRow> = {}): KbDocRow => ({
   tags_json: '["a","b"]',
   created_at: '2026-01-15T10:00:00.000Z',
   updated_at: '2026-01-15T10:00:00.000Z',
+  is_original: 0,
   ...overrides,
 })
 
@@ -33,6 +35,13 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
+})
+
+describe('formatJekyllPublishSnapshotDate', () => {
+  it('Given a local calendar instant, then formats YYYY-MM-DD only (no clock)', () => {
+    const ms = new Date(2026, 1, 10, 23, 59, 59).getTime() // Feb 10 2026 local
+    expect(formatJekyllPublishSnapshotDate(ms)).toBe('2026-02-10')
+  })
 })
 
 describe('slugify', () => {
@@ -54,25 +63,35 @@ describe('slugify', () => {
   })
 })
 
-describe('filenameToPostUrlPath', () => {
-  it('Given a standard post filename, then returns Jekyll date permalink path', () => {
-    expect(filenameToPostUrlPath('2026-01-15-my-test-document.md')).toBe('/2026/01/15/my-test-document.html')
+describe('filenameToCollectionUrlPath', () => {
+  it('Given a slug filename, then returns html URL path', () => {
+    expect(filenameToCollectionUrlPath('my-test-document.md')).toBe('/my-test-document.html')
   })
 
   it('Given a deduplicated filename, then slug includes numeric suffix', () => {
-    expect(filenameToPostUrlPath('2026-01-15-my-test-document-2.md')).toBe('/2026/01/15/my-test-document-2.html')
+    expect(filenameToCollectionUrlPath('my-test-document-2.md')).toBe('/my-test-document-2.html')
   })
 })
 
-describe('docToFilename', () => {
-  it('Given a doc with title and created_at, then returns YYYY-MM-DD-slug.md', () => {
+describe('docToCollectionFilename', () => {
+  it('Given a simple title, then returns slug.md', () => {
     const doc = makeDoc()
-    expect(docToFilename(doc)).toBe('2026-01-15-my-test-document.md')
+    expect(docToCollectionFilename(doc)).toBe('my-test-document.md')
   })
 
   it('Given a title with special chars, then slug is clean', () => {
     const doc = makeDoc({ title: 'API & Auth: The Reckoning' })
-    expect(docToFilename(doc)).toBe('2026-01-15-api-auth-the-reckoning.md')
+    expect(docToCollectionFilename(doc)).toBe('api-auth-the-reckoning.md')
+  })
+
+  it('Given a path-style title, then uses only the basename', () => {
+    const doc = makeDoc({ title: 'src/core/AGENT_LOOP.md' })
+    expect(docToCollectionFilename(doc)).toBe('agent-loop.md')
+  })
+
+  it('Given a title ending in .md, then strips extension before slugifying', () => {
+    const doc = makeDoc({ title: 'README.md' })
+    expect(docToCollectionFilename(doc)).toBe('readme.md')
   })
 })
 
@@ -103,38 +122,51 @@ describe('stripKbMetadataHeader', () => {
 })
 
 describe('mapToJekyllFrontMatter', () => {
+  const publishedAtMs = new Date(2026, 5, 1, 12, 0, 0).getTime() // June 1 2026 local
+
   it('Given a full doc, then maps layout, title, date, kb_id, tags, categories', () => {
-    const fm = mapToJekyllFrontMatter(makeDoc())
+    const fm = mapToJekyllFrontMatter(makeDoc(), { publishedAtMs })
     expect(fm.layout).toBe('default')
     expect(fm.title).toBe('My Test Document')
-    expect(fm.date).toBe('2026-01-15 10:00:00')
+    expect(fm.date).toBe('2026-06-01')
     expect(fm.kb_id).toBe('doc-1')
     expect(fm.tags).toEqual(['a', 'b'])
     expect(fm.categories).toEqual(['architecture'])
   })
 
+  it('Given SQLite created_at differs from publish time, then date still uses publish snapshot', () => {
+    const fm = mapToJekyllFrontMatter(
+      makeDoc({ created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T00:00:00.000Z' }),
+      { publishedAtMs }
+    )
+    expect(fm.date).toBe('2026-06-01')
+  })
+
   it('Given a doc with no tags, then omits tags field', () => {
-    const fm = mapToJekyllFrontMatter(makeDoc({ tags_json: null }))
+    const fm = mapToJekyllFrontMatter(makeDoc({ tags_json: null }), { publishedAtMs })
     expect(fm.tags).toBeUndefined()
   })
 
   it('Given a doc with no doc_type, then omits categories field', () => {
-    const fm = mapToJekyllFrontMatter(makeDoc({ doc_type: null }))
+    const fm = mapToJekyllFrontMatter(makeDoc({ doc_type: null }), { publishedAtMs })
     expect(fm.categories).toBeUndefined()
   })
 })
 
 describe('buildJekyllFile', () => {
+  const publishedAtMs = new Date(2026, 5, 1, 12, 0, 0).getTime()
+
   it('Given a doc, then output starts with YAML front matter block', () => {
-    const output = buildJekyllFile(makeDoc())
+    const output = buildJekyllFile(makeDoc(), { publishedAtMs })
     expect(output.startsWith('---\n')).toBe(true)
     expect(output).toContain('\n---\n')
     expect(output).toContain('layout: default')
     expect(output).toContain('title: My Test Document')
+    expect(output).toContain('date: \'2026-06-01\'')
   })
 
   it('Given a doc, then body content appears after front matter', () => {
-    const output = buildJekyllFile(makeDoc())
+    const output = buildJekyllFile(makeDoc(), { publishedAtMs })
     const afterFrontMatter = output.split('---\n').slice(2).join('---\n')
     expect(afterFrontMatter).toContain('## Body')
     expect(afterFrontMatter).toContain('Hello world.')
@@ -176,35 +208,51 @@ describe('syncDocsToJekyll', () => {
 
     expect(result.written).toHaveLength(2)
     expect(result.skipped).toHaveLength(0)
-    // no _posts dir created in dry-run
-    await expect(readdir(path.join(jekyllRoot, '_posts'))).rejects.toThrow()
+    await expect(readdir(path.join(jekyllRoot, '_autogenerated_docs'))).rejects.toThrow()
   })
 
-  it('Given docs in apply mode, then writes .md files to _posts', async () => {
+  it('Given autogenerated docs in apply mode, then writes to _autogenerated_docs', async () => {
     const docs = [makeDoc()]
     const result = await syncDocsToJekyll(docs, jekyllRoot, false)
 
     expect(result.written).toHaveLength(1)
-    expect(result.written[0].filename).toBe('2026-01-15-my-test-document.md')
+    expect(result.written[0].filename).toBe('my-test-document.md')
 
-    const files = await readdir(path.join(jekyllRoot, '_posts'))
-    expect(files).toContain('2026-01-15-my-test-document.md')
+    const files = await readdir(path.join(jekyllRoot, '_autogenerated_docs'))
+    expect(files).toContain('my-test-document.md')
 
-    const dataPath = path.join(jekyllRoot, '_data', 'kb_published_posts.yml')
-    const dataYaml = await readFile(dataPath, 'utf8')
-    expect(dataYaml).toContain('url: /2026/01/15/my-test-document.html')
+    const dataYaml = await readFile(
+      path.join(jekyllRoot, '_data', 'kb_autogenerated_docs.yml'),
+      'utf8'
+    )
+    expect(dataYaml).toContain('url: /my-test-document.html')
     expect(dataYaml).toContain('title: My Test Document')
   })
 
-  it('Given existing _posts files, then clears them before writing', async () => {
-    const postsDir = path.join(jekyllRoot, '_posts')
-    await mkdir(postsDir)
-    await writeFile(path.join(postsDir, 'old-post.md'), 'stale', 'utf8')
+  it('Given is_original docs, then routes them to _original_docs', async () => {
+    const docs = [makeDoc({ is_original: 1 })]
+    const result = await syncDocsToJekyll(docs, jekyllRoot, false)
+
+    expect(result.written).toHaveLength(1)
+    const files = await readdir(path.join(jekyllRoot, '_original_docs'))
+    expect(files).toContain('my-test-document.md')
+
+    const dataYaml = await readFile(
+      path.join(jekyllRoot, '_data', 'kb_original_docs.yml'),
+      'utf8'
+    )
+    expect(dataYaml).toContain('title: My Test Document')
+  })
+
+  it('Given existing files, then clears them before writing', async () => {
+    const autogenDir = path.join(jekyllRoot, '_autogenerated_docs')
+    await mkdir(autogenDir)
+    await writeFile(path.join(autogenDir, 'old-doc.md'), 'stale', 'utf8')
 
     await syncDocsToJekyll([makeDoc()], jekyllRoot, false)
 
-    const files = await readdir(postsDir)
-    expect(files).not.toContain('old-post.md')
+    const files = await readdir(autogenDir)
+    expect(files).not.toContain('old-doc.md')
   })
 
   it('Given a doc with no title, then skips it with reason', async () => {
@@ -215,20 +263,20 @@ describe('syncDocsToJekyll', () => {
     expect(result.skipped[0].reason).toBe('no title')
   })
 
-  it('Given two docs with same date and title, then deduplicates filenames', async () => {
+  it('Given two docs with the same title, then deduplicates filenames', async () => {
     const docs = [makeDoc(), makeDoc({ id: 'doc-2' })]
     const result = await syncDocsToJekyll(docs, jekyllRoot, false)
 
     const filenames = result.written.map(w => w.filename)
     expect(new Set(filenames).size).toBe(2)
-    expect(filenames[1]).toBe('2026-01-15-my-test-document-2.md')
+    expect(filenames[1]).toBe('my-test-document-2.md')
   })
 
   it('Given docs, then written file contains valid YAML front matter and body', async () => {
     await syncDocsToJekyll([makeDoc()], jekyllRoot, false)
 
     const content = await readFile(
-      path.join(jekyllRoot, '_posts', '2026-01-15-my-test-document.md'),
+      path.join(jekyllRoot, '_autogenerated_docs', 'my-test-document.md'),
       'utf8'
     )
     expect(content).toContain('layout: default')

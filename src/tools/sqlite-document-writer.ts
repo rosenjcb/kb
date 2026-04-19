@@ -150,6 +150,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
       lane,
       tags: input.tags ?? [],
       createdAt: now,
+      isOriginal: input.isOriginal ?? false,
     }
 
     this.indexer.upsertDocumentWithContent(upsert)
@@ -303,6 +304,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
           lane: lane as ReturnType<typeof classifyDocumentLane>,
           tags: JSON.parse(row.tags_json ?? '[]'),
           createdAt: row.created_at,
+          isOriginal: row.is_original === 1,
         })
       }
     }
@@ -388,6 +390,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
           lane: lane as ReturnType<typeof classifyDocumentLane>,
           tags: JSON.parse(row.tags_json ?? '[]'),
           createdAt: row.created_at,
+          isOriginal: row.is_original === 1,
         })
       }
     }
@@ -413,8 +416,9 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     const createdAt = extractCreatedAtFromContent(content)
     const now = dayjs().toISOString()
     const lane = classifyDocumentLane(id, title, docType, tags, '')
+    const isOriginal = this.indexer.getDocumentIsOriginal(id)
 
-    this.indexer.upsertDocumentWithContent({ id, title, content, docType, lane, tags, createdAt })
+    this.indexer.upsertDocumentWithContent({ id, title, content, docType, lane, tags, createdAt, isOriginal })
 
     return { id, title, filePath: '', createdAt, updatedAt: now }
   }
