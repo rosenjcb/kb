@@ -11,6 +11,7 @@ import dayjs from 'dayjs'
 import { emitDiagnostic } from '../core/diagnostics'
 import { DuckGraphWriter, type GraphDocumentAffinity } from './duck-graph-writer'
 import { toGraphQuerySlugs } from './graph-query-expansion'
+import { QueryResearchOrchestrator } from './query-research-orchestrator'
 import {
   type RetrievalCheckpointRecord,
   buildCheckpointRecord,
@@ -102,6 +103,13 @@ export interface QueryResponse {
     }
     checkpoints?: RetrievalCheckpointRecord[]
   }
+}
+
+export interface ProbeResult {
+  docId: string
+  score: number
+  title: string
+  tags?: string[]
 }
 
 export interface MarkdownDocumentReaderOptions {
@@ -273,6 +281,15 @@ export class MarkdownDocumentReader {
   }
 
   async queryDocuments(input: QueryDocumentsInput): Promise<QueryResponse> {
+    if (input.discoveryDepth === 'deep') {
+      const orchestrator = new QueryResearchOrchestrator(
+        this,
+        this.sqliteDbPath,
+        this.checkpointObservabilityEnabled
+      )
+      return orchestrator.run(input)
+    }
+
     const checkpoints: RetrievalCheckpointRecord[] = []
 
     if (this.shouldUseHybrid(input)) {
@@ -1055,6 +1072,172 @@ export class MarkdownDocumentReader {
     } finally {
       writer.close()
     }
+  }
+
+  async probeHybrid(
+    query: string,
+    lanes: RetrievalLane[] | undefined,
+    limit: number
+  ): Promise<ProbeResult[]> {
+    if (!this.hybridEnabled || !query.trim()) {
+      return this.probeLexical(query, lanes, limit)
+    }
+
+    try {
+      const db = new Database(this.sqliteDbPath, { readonly: true })
+      try {
+        const queryTokens = tokenize(query)
+        if (queryTokens.length === 0) return []
+
+        const ftsExpression = queryTokens.join(' OR ')
+        const candidateRows = this.fetchHybridCandidates(db, ftsExpression, lanes, limit * 3)
+        if (candidateRows.length === 0) return []
+
+        const hintBoosts = this.rankingHintsEnabled
+          ? this.loadRankingHintBoosts(db, query)
+          : new Map<string, number>()
+
+        const getChunk = db.prepare('SELECT chunk_text FROM chunks WHERE chunk_id = ?')
+        const getEmbedding = db.prepare(
+          'SELECT vector_json, dimensions FROM chunk_embeddings WHERE chunk_id = ?'
+        )
+
+        const docScores = new Map<string, number>()
+        for (const candidate of candidateRows) {
+          const chunkRow = getChunk.get(candidate.chunk_id) as { chunk_text?: string } | undefined
+          const embRow = getEmbedding.get(candidate.chunk_id) as
+            | { vector_json?: string; dimensions?: number }
+            | undefined
+          const chunkText = chunkRow?.chunk_text ?? ''
+          const lexicalScore = toLexicalScore(candidate.lexical_rank)
+          const vectorScore = this.computeVectorScore(query, chunkText, embRow)
+          const baseCombined = this.hybridAlpha * lexicalScore + (1 - this.hybridAlpha) * vectorScore
+          const hintBoost = hintBoosts.get(candidate.doc_id) ?? 0
+          const laneBoost = laneFitnessBoost(candidate.lane, lanes ?? [])
+          const combined = Math.min(1, baseCombined + hintBoost + laneBoost)
+          const current = docScores.get(candidate.doc_id) ?? 0
+          if (combined > current) docScores.set(candidate.doc_id, combined)
+        }
+
+        const ranked = [...docScores.entries()]
+          .map(([docId, score]) => ({ docId, score }))
+          .sort((a, b) => b.score - a.score)
+
+        const graphBoosts = await this.loadGraphBoosts(
+          query,
+          ranked.map(r => r.docId)
+        )
+
+        const graphBoosted = ranked
+          .map(r => {
+            const aff = graphBoosts.get(r.docId)
+            const gBoost = aff
+              ? Math.min(this.graphRankingMaxBoost, aff.boost * this.graphRankingWeight)
+              : 0
+            return { docId: r.docId, finalScore: Math.min(1, r.score + gBoost) }
+          })
+          .sort((a, b) => b.finalScore - a.finalScore)
+          .slice(0, limit)
+
+        const getDoc = db.prepare(
+          'SELECT title, tags_json FROM documents WHERE id = ?'
+        )
+        return graphBoosted.map(r => {
+          const doc = getDoc.get(r.docId) as
+            | { title?: string; tags_json?: string }
+            | undefined
+          return {
+            docId: r.docId,
+            score: r.finalScore,
+            title: doc?.title ?? r.docId,
+            tags: parseTagsJson(doc?.tags_json),
+          }
+        })
+      } finally {
+        db.close()
+      }
+    } catch {
+      return this.probeLexical(query, lanes, limit)
+    }
+  }
+
+  async probeLexical(
+    query: string,
+    lanes: RetrievalLane[] | undefined,
+    limit: number
+  ): Promise<ProbeResult[]> {
+    if (!query.trim()) return []
+
+    try {
+      const rows = await this.loadLexicalDocuments()
+      const results: ProbeResult[] = []
+
+      for (const row of rows) {
+        if (lanes?.length) {
+          const docLane = (row.lane ??
+            classifyDocumentLane(
+              row.id,
+              row.title,
+              row.doc_type ?? null,
+              row.tags,
+              ''
+            )) as RetrievalLane
+          if (!lanes.includes(docLane)) continue
+        }
+
+        const rawScore = contentMatchScore(query, row.content)
+        if (rawScore <= 0) continue
+
+        results.push({
+          docId: row.id,
+          score: rawScore / 100,
+          title: row.title,
+          tags: row.tags,
+        })
+      }
+
+      return results.sort((a, b) => b.score - a.score).slice(0, limit)
+    } catch {
+      return []
+    }
+  }
+
+  async fetchDocHeadings(docId: string): Promise<string[]> {
+    try {
+      const db = new Database(this.sqliteDbPath, { readonly: true })
+      try {
+        const row = db.prepare('SELECT content FROM documents WHERE id = ?').get(docId) as
+          | { content?: string }
+          | undefined
+        if (!row?.content) return []
+        return row.content
+          .split('\n')
+          .filter(line => /^#{1,4}\s/.test(line))
+          .map(line => line.replace(/^#+\s*/, '').trim())
+          .filter(Boolean)
+      } finally {
+        db.close()
+      }
+    } catch {
+      return []
+    }
+  }
+
+  async expandGraphNeighbors(docIds: string[]): Promise<string[]> {
+    if (!this.graphRankingEnabled || docIds.length === 0) return []
+    const writer = new DuckGraphWriter(this.graphDbPath)
+    try {
+      return await writer.expandQuery(docIds.slice(0, 8))
+    } catch {
+      return []
+    } finally {
+      writer.close()
+    }
+  }
+
+  resolveLanesForQuery(query: string): RetrievalLane[] | undefined {
+    if (!this.laneRoutingEnabled || !query.trim()) return undefined
+    return routeQueryToLanes(query)?.lanes
   }
 
   private maybeRecordMissLearning(input: QueryDocumentsInput, response: QueryResponse): void {

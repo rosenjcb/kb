@@ -150,6 +150,47 @@ const MIGRATIONS: Migration[] = [
     name: 'add_is_original_column',
     sql: 'ALTER TABLE documents ADD COLUMN is_original INTEGER NOT NULL DEFAULT 0;',
   },
+  {
+    version: 4,
+    name: 'add_retrieval_runs',
+    sql: `
+      CREATE TABLE IF NOT EXISTS retrieval_runs (
+        run_id TEXT PRIMARY KEY,
+        query_fingerprint TEXT NOT NULL,
+        raw_query TEXT NOT NULL,
+        total_iterations INTEGER NOT NULL,
+        hypotheses_count INTEGER NOT NULL,
+        final_coverage_score REAL NOT NULL,
+        winning_branch_id TEXT,
+        surface TEXT NOT NULL,
+        elapsed_ms INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_runs_fingerprint
+        ON retrieval_runs(query_fingerprint, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS retrieval_hypotheses (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        parent_id TEXT,
+        query TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        lanes_json TEXT,
+        source TEXT NOT NULL,
+        depth INTEGER NOT NULL,
+        result_count INTEGER,
+        best_score REAL,
+        novelty REAL,
+        pruned INTEGER NOT NULL DEFAULT 0,
+        prune_reason TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_hypotheses_run
+        ON retrieval_hypotheses(run_id);
+    `,
+  },
 ]
 
 /**

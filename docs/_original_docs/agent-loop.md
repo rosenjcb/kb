@@ -13,7 +13,7 @@ tags:
 
 KB uses two loop patterns:
 
-1. **`runIntentLoop`** — the primary harness. Wraps every intent command (`query`, `submit`, `validate`, `dispute`, `explain`) with retry, discovery escalation, and optional LLM reasoning. This is what the CLI uses.
+1. **`runIntentLoop`** — the primary harness. Wraps every intent command (`query`, `submit`, `validate`, `explain`) with retry, discovery escalation, and optional LLM reasoning. This is what the CLI uses.
 2. **Domain-specific cycle loops** — deterministic multi-pass orchestration for commands with a fixed, known lifecycle (`kb init`, `kb publish`).
 3. **`agentLoop`** — low-level async generator for autonomous tool-calling. Available for programmatic / SDK use; not used by the CLI.
 
@@ -57,7 +57,6 @@ interface IntentLoopResult {
 | `explain_change` | Yes, up to `maxIterations` | Same as query |
 | `validate_fact` | One extra pass | If `uncertain/0.45` (docs found, token-overlap inconclusive): runs LLM semantic reasoning pass |
 | `submit_fact` | No | Single pass — retrying a submit has idempotency risks |
-| `dispute_fact` | No | Single pass |
 
 **"Weak retrieval"** for query/explain means: zero results, fewer than 2 results, or the final retrieval checkpoint has `status: 'miss'` or `'error'`.
 
@@ -88,7 +87,7 @@ Add a new iteration strategy when:
 - You need carryover from one intent to seed a follow-up (e.g., validated doc IDs passed to submit)
 
 Do **not** retry:
-- Mutation intents (`submit`, `dispute`) — idempotency
+- Mutation intents (`submit`) — idempotency
 - Intents that already escalate internally (`validate` already does shallow→deep in the evaluator)
 
 ---
@@ -179,7 +178,7 @@ Use `agentLoop` when you need fully autonomous, open-ended tool orchestration an
 
 | Situation | Use |
 |---|---|
-| Any intent command (`query`, `submit`, `validate`, `dispute`, `explain`) | `runIntentLoop` |
+| Any intent command (`query`, `submit`, `validate`, `explain`) | `runIntentLoop` |
 | Fixed sequence of LLM passes with known inputs/outputs | Cycle loop (`kb init` pattern) |
 | User interaction between LLM calls (interview, confirmation) | Cycle loop |
 | Autonomous open-ended tool use in SDK/programmatic context | `agentLoop` |

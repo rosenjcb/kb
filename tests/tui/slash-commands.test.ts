@@ -69,7 +69,7 @@ describe('slash command helpers', () => {
       '/query',
       '/submit',
       '/validate',
-      '/dispute',
+      '/explain',
     ])
   })
 

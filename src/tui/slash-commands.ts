@@ -11,7 +11,6 @@ const SHELL_COMMANDS: SlashCommand[] = [
   { command: '/query', description: 'search the knowledge base' },
   { command: '/submit', description: 'store a new fact or checkpoint' },
   { command: '/validate', description: 'check whether a fact is supported' },
-  { command: '/dispute', description: 'record counter-evidence for a fact' },
   { command: '/explain', description: 'explain a fact or change id' },
   { command: '/chat', description: 'start interactive chat mode' },
   { command: '/docs', description: 'list or view knowledge base documents' },

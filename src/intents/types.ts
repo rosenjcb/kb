@@ -1,7 +1,6 @@
 export type ConsumerIntent =
   | 'submit_fact'
   | 'validate_fact'
-  | 'dispute_fact'
   | 'query_truth'
   | 'explain_change'
 

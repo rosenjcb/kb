@@ -133,7 +133,6 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  query       Search the knowledge base',
     '  submit      Store a fact or checkpoint',
     '  validate    Check whether a fact is supported',
-    '  dispute     Record counter-evidence for a fact',
     '  explain     Explain a fact or change id',
     '  invalidate  Remove or replace stale KB facts',
     '',

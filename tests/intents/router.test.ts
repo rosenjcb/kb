@@ -61,7 +61,7 @@ describe('DefaultIntentRouter', () => {
     expect(decision.selectedOperation).toBe('append_to_document')
   })
 
-  it('Given submit_fact without targetDocumentId, then routes to upsert_fact_document', async () => {
+  it('Given submit_fact without targetDocumentId, then routes to submit_orchestrator', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -73,11 +73,10 @@ describe('DefaultIntentRouter', () => {
       },
     })
 
-    expect(decision.selectedOperation).toBe('upsert_fact_document')
-    expect(decision.operationInput.documentId).toBe('operations-facts')
+    expect(decision.selectedOperation).toBe('submit_orchestrator')
   })
 
-  it('Given submit_fact without explicit domain and CI/CD wording, then infers cicd domain', async () => {
+  it('Given submit_fact without explicit domain and CI/CD wording, then routes to submit_orchestrator', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -88,13 +87,10 @@ describe('DefaultIntentRouter', () => {
       },
     })
 
-    expect(decision.selectedOperation).toBe('upsert_fact_document')
-    expect(decision.operationInput.documentId).toBe('cicd-facts')
-    expect(decision.operationInput.title).toBe('cicd facts')
-    expect(decision.operationInput.tags).toEqual(['cicd', 'fact'])
+    expect(decision.selectedOperation).toBe('submit_orchestrator')
   })
 
-  it('Given custom classifier mapping, then submit_fact infers custom domain', async () => {
+  it('Given custom classifier mapping, then submit_fact routes to submit_orchestrator', async () => {
     process.env.KB_DOMAIN_CLASSIFIER = JSON.stringify({
       platform: ['platform api', 'control-plane'],
     })
@@ -109,10 +105,7 @@ describe('DefaultIntentRouter', () => {
       },
     })
 
-    expect(decision.selectedOperation).toBe('upsert_fact_document')
-    expect(decision.operationInput.documentId).toBe('platform-facts')
-    expect(decision.operationInput.title).toBe('platform facts')
-    expect(decision.operationInput.tags).toEqual(['platform', 'fact'])
+    expect(decision.selectedOperation).toBe('submit_orchestrator')
 
     delete process.env.KB_DOMAIN_CLASSIFIER
   })
@@ -148,6 +141,10 @@ describe('DefaultIntentRouter', () => {
       register: vi.fn(),
       getTools: vi.fn(() => []),
       execute: vi.fn(async toolUse => {
+        if (toolUse.name === 'read_documents') {
+          // No hybrid hit → orchestrator falls through to domain fallback
+          return { results: [], retrieval: { method: 'lexical-fallback' } }
+        }
         if (toolUse.name === 'append_to_document') {
           throw new Error('Document not found: operations-facts')
         }
@@ -172,41 +169,37 @@ describe('DefaultIntentRouter', () => {
     expect(result.recommendedAction).toBe('reconcile_contradictions')
 
     const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
-    expect(calls[0][0]?.name).toBe('append_to_document')
-    expect(calls[1][0]?.name).toBe('write_document')
+    const names = calls.map((c: unknown[]) => (c[0] as { name?: string })?.name)
+    expect(names).toContain('write_document')
+    expect(names.indexOf('append_to_document')).toBeLessThan(names.indexOf('write_document'))
   })
 
-  it('Given validate_fact, then returns valid status with provenance', async () => {
+  it('Given validate_fact, then routes to validate_orchestrator', async () => {
+    const executor = createExecutorMock()
+    const router = new DefaultIntentRouter(executor)
+
+    const decision = await router.route({
+      intent: 'validate_fact',
+      payload: { fact: 'feature flag X' },
+    })
+
+    expect(decision.selectedOperation).toBe('validate_orchestrator')
+  })
+
+  it('Given validate_fact execute, then returns valid status with provenance via orchestrator', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
     const result = await router.execute({
       intent: 'validate_fact',
-      payload: {
-        fact: 'feature flag X',
-      },
+      payload: { fact: 'feature flag X' },
     })
 
     expect(result.status).toBe('valid')
     expect(result.provenance).toContain('ops-facts')
   })
 
-  it('Given dispute_fact missing because, then returns invalid payload error', async () => {
-    const executor = createExecutorMock()
-    const router = new DefaultIntentRouter(executor)
-
-    const result = await router.execute({
-      intent: 'dispute_fact',
-      payload: {
-        fact: 'feature flag X',
-      },
-    })
-
-    expect(result.status).toBe('error')
-    expect(result.errorCode).toBe('INVALID_PAYLOAD')
-  })
-
-  it('Given explain_change with natural language prompt, then routes to read_documents auto mode with semantic fallback', async () => {
+  it('Given explain_change with natural language prompt, then routes to explain_orchestrator', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -217,11 +210,7 @@ describe('DefaultIntentRouter', () => {
       },
     })
 
-    expect(decision.selectedOperation).toBe('read_documents')
-    expect(decision.operationInput.query).toBe('how vector search works with doc retrieval in kb')
-    expect(decision.operationInput.includeContent).toBe(true)
-    expect(decision.operationInput.limit).toBe(3)
-    expect(decision.operationInput.mode).toBeUndefined()
+    expect(decision.selectedOperation).toBe('explain_orchestrator')
   })
 
   it('Given query_truth with discoveryDepth deep, then routes to read_documents with discovery depth', async () => {
@@ -256,7 +245,7 @@ describe('DefaultIntentRouter', () => {
     expect(decision.operationInput.limit).toBe(12)
   })
 
-  it('Given explain_change with high-recall token query, then routes with deep discovery', async () => {
+  it('Given explain_change with high-recall token query, then routes to explain_orchestrator', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -267,8 +256,6 @@ describe('DefaultIntentRouter', () => {
       },
     })
 
-    expect(decision.selectedOperation).toBe('read_documents')
-    expect(decision.operationInput.discoveryDepth).toBe('deep')
-    expect(decision.operationInput.limit).toBe(8)
+    expect(decision.selectedOperation).toBe('explain_orchestrator')
   })
 })

@@ -2,8 +2,8 @@
 name: kb-dev-workflow
 description: >-
   Use the kb CLI during implementation and review: query before big changes,
-  submit durable facts, invalidate stale knowledge, validate or dispute
-  assumptions, and keep the active KB base aligned. Use when the repo uses KB
+  submit durable facts, invalidate stale knowledge, validate assumptions,
+  and keep the active KB base aligned. Use when the repo uses KB
   (local-first knowledge) or when the user expects durable project memory.
 ---
 
@@ -28,7 +28,7 @@ Use `kb use --show` when you are unsure which base is active.
 1. **Discover** — Before large refactors or design choices, run **`kb query "<concise topic>"`** (raise `--limit` if needed). Optionally **`kb docs list --output json`** to see document ids for `--target`.
 2. **Record** — After you establish something durable (API contract, invariant, rollout step, ADR-style decision, “why we did X”), run **`kb submit "<one clear fact>"`**. Prefer **`--target <doc-id>`** when the fact belongs in a specific doc; use **`--domain` / `--source`** if the project uses them.
 3. **Correct** — If the KB is wrong or superseded, run **`kb invalidate "<old fact>"`**; add a replacement string when you have one. Use **`--preview`** or **`--dry-run`** first if you want to show impact before **`--apply`**.
-4. **Challenge** — If a statement might be wrong or contested, run **`kb validate "<fact>"`** or **`kb dispute "<fact>" --because "<evidence from code or docs>"`** instead of arguing only in chat.
+4. **Challenge** — If a statement might be wrong or contested, run **`kb validate "<fact>"`** to check evidence, or **`kb invalidate "<old-fact>" "<replacement>"`** to correct it.
 5. **Explain** — Use **`kb explain "<change id or fact reference>"`** when the user asks *why* something in the KB says what it says, when that command is available for their version.
 
 Prefer **`--output json`** when you need structured provenance or limits for downstream reasoning; use human output for quick scans.
@@ -40,9 +40,9 @@ Prefer **`--output json`** when you need structured provenance or limits for dow
 ```text
 kb submit "<fact>" [--domain ops] [--source runbook] [--target doc-id] [--output human|json]
 kb validate "<fact>" [--domain ops] [--output human|json]
-kb dispute "<fact>" --because "<counter evidence>" [--domain ops] [--output human|json]
 kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]
 kb explain "<change id|fact>" [--output human|json]
+kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply]
 ```
 
 ### Document browsing
