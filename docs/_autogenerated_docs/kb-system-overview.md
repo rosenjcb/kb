@@ -1,7 +1,7 @@
 ---
 layout: default
 title: KB System Overview
-date: '2026-04-19'
+date: '2026-04-20'
 kb_id: kb-system-overview
 tags:
   - knowledge-base
