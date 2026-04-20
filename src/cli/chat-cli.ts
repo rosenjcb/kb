@@ -11,6 +11,7 @@ import {
   updateConversationState,
 } from './chat-conversation'
 import { type CmdMode, cmd } from './cmd-ref'
+import { createPrinter } from '../ui/printer'
 import {
   augmentReadDocumentsWithWorkspaceFallback,
   formatReadDocumentSourceIds,
@@ -19,6 +20,7 @@ import {
 export interface ChatSessionDeps {
   llmProvider: LLMProvider
   toolExecutor: ToolExecutor
+  mode?: CmdMode
   graphWriter?: DuckGraphWriter
   retrievalLimit?: number
   maxHistoryTurns?: number
@@ -62,12 +64,6 @@ export interface ChatTurnTrace {
   retrievalMethod: string
 }
 
-const HELP_TEXT = [
-  'assistant> Commands:',
-  'assistant>   /help  Show chat commands',
-  'assistant>   /exit  Exit chat mode',
-].join('\n')
-
 const CHAT_MAX_OUTPUT_TOKENS = 4096
 
 export function printChatHelp(mode: CmdMode = 'cli'): string {
@@ -92,6 +88,14 @@ export async function runChatSession(
   deps: ChatSessionDeps,
   io: ChatIO = createTerminalChatIO()
 ): Promise<void> {
+  const printer = createPrinter(
+    {
+      log: line => io.write(line),
+      write: line => io.write(line),
+      error: line => io.error(line),
+    },
+    deps.mode ?? 'cli'
+  )
   const retrievalLimit = deps.retrievalLimit ?? 5
   const maxHistoryTurns = deps.maxHistoryTurns ?? 8
   let conversationState = createInitialConversationState()
@@ -99,13 +103,13 @@ export async function runChatSession(
   // The LLM sees native assistant/user pairs rather than embedded-text history.
   const messages: Message[] = []
 
-  io.write('assistant> Chat mode started. Type /help for commands.')
+  printer.chatAssistant('Chat mode started. Type /help for commands.')
 
   try {
     while (true) {
       const rawInput = await io.read('you> ')
       if (rawInput === null) {
-        io.write('assistant> Exiting chat.')
+        printer.chatAssistant('Exiting chat.')
         break
       }
 
@@ -113,12 +117,14 @@ export async function runChatSession(
       if (!input) continue
 
       if (input === '/help') {
-        io.write(HELP_TEXT)
+        printer.chatAssistant('Commands:')
+        printer.chatAssistant('  /help  Show chat commands')
+        printer.chatAssistant('  /exit  Exit chat mode')
         continue
       }
 
       if (input === '/exit') {
-        io.write('assistant> Exiting chat.')
+        printer.chatAssistant('Exiting chat.')
         break
       }
 
@@ -165,12 +171,17 @@ export async function runChatSession(
 
         const turnMessages: Message[] = [...messages, { role: 'user', content: userContent }]
 
-        const completion = await deps.llmProvider.call({
-          messages: trimMessageHistory(turnMessages, maxHistoryTurns),
-          systemPrompt: CHAT_SYSTEM_PROMPT,
-          temperature: 0.15,
-          maxTokens: CHAT_MAX_OUTPUT_TOKENS,
-        })
+        printer.startSpinner('thinking...')
+        const completion = await deps.llmProvider
+          .call({
+            messages: trimMessageHistory(turnMessages, maxHistoryTurns),
+            systemPrompt: CHAT_SYSTEM_PROMPT,
+            temperature: 0.15,
+            maxTokens: CHAT_MAX_OUTPUT_TOKENS,
+          })
+          .finally(() => {
+            printer.stopSpinner()
+          })
 
         const answer =
           completion.text.trim() ||
@@ -180,14 +191,14 @@ export async function runChatSession(
         messages.push({ role: 'user', content: userContent })
         messages.push({ role: 'assistant', content: answer })
 
-        io.write(`assistant> ${answer}`)
-        io.write(`retrieval> ${formatRetrievalMode(retrievalForOutput.retrieval)}`)
+        printer.chatAssistant(answer)
+        printer.chatMeta('retrieval', formatRetrievalMode(retrievalForOutput.retrieval))
         const checkpointTrace = formatCheckpointTrace(retrievalForOutput.retrieval)
         if (checkpointTrace) {
-          io.write(`checkpoints> ${checkpointTrace}`)
+          printer.thought(`Thinking: ${checkpointTrace}`)
         }
         const sourceIds = formatReadDocumentSourceIds(retrievalForOutput.results)
-        io.write(`sources> ${sourceIds.join(', ') || 'none'}`)
+        printer.chatMeta('sources', sourceIds.join(', ') || 'none')
         deps.onTurnComplete?.({
           input,
           resolvedQuery: resolvedTurn.retrievalQuery,

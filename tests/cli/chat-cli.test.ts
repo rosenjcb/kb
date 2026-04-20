@@ -148,9 +148,9 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain(
       'assistant> The KB uses a hybrid path with lexical fallback.'
     )
-    expect(io.outputs.join('\n')).toContain('retrieval> hybrid (fts+vector-rerank)')
-    expect(io.outputs.join('\n')).toContain('checkpoints> hybrid_primary:hit->return')
-    expect(io.outputs.join('\n')).toContain('sources> session-log-2026-04-12')
+    expect(io.outputs.join('\n')).toContain('Retrieval: hybrid (fts+vector-rerank)')
+    expect(io.outputs.join('\n')).toContain('(Thinking: hybrid_primary:hit->return)')
+    expect(io.outputs.join('\n')).toContain('Sources: session-log-2026-04-12')
   })
 
   it('Given provider failure, then loop reports error and remains interactive', async () => {
@@ -211,7 +211,7 @@ describe('chat-cli session loop', () => {
     expect(executor.execute).toHaveBeenCalledTimes(1)
     expect(provider.call).toHaveBeenCalledTimes(1)
     expect(io.outputs.join('\n')).toContain('assistant> Rollout strategy is immediate.')
-    expect(io.outputs.join('\n')).toContain('sources> general-facts')
+    expect(io.outputs.join('\n')).toContain('Sources: general-facts')
   })
 
   it('Given broad project question with ticket-only retrieval, then workspace fallback evidence is included', async () => {
@@ -282,9 +282,9 @@ describe('chat-cli session loop', () => {
     expect(message).toContain('workspace-readme')
     expect(message).toContain('intent-first local KB CLI')
     expect(io.outputs.join('\n')).toContain(
-      'retrieval> hybrid (fts+vector-rerank;workspace-fallback)'
+      'Retrieval: hybrid (fts+vector-rerank;workspace-fallback)'
     )
-    expect(io.outputs.join('\n')).toContain('sources> session-log-2026-04-12, workspace-readme')
+    expect(io.outputs.join('\n')).toContain('Sources: session-log-2026-04-12, workspace-readme')
   })
 
   it('Given deep retrieval, then chat uses one execute call and surfaces the LLM answer', async () => {
@@ -638,7 +638,7 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain(
       'assistant> Try the known runbook recovery steps first.'
     )
-    expect(io.outputs.join('\n')).toContain('sources> known-runbook')
+    expect(io.outputs.join('\n')).toContain('Sources: known-runbook')
   })
 
   it('Given conversational retrieval enabled, then a confirmation turn reuses the pending search query instead of querying the literal confirmation text', async () => {

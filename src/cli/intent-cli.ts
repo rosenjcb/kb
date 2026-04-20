@@ -10,6 +10,7 @@ import {
   augmentReadDocumentsWithWorkspaceFallback,
   formatReadDocumentSourceIds,
 } from './retrieval-fallback'
+import type { Printer } from '../ui/printer'
 
 export type CliOutputMode = 'human' | 'json'
 
@@ -154,6 +155,56 @@ export function formatIntentResult(result: IntentResult, output: CliOutputMode):
   }
 
   return lines.join('\n')
+}
+
+export function printIntentResult(
+  result: IntentResult,
+  output: CliOutputMode,
+  printer: Printer
+): void {
+  if (output === 'json') {
+    printer.content(JSON.stringify(result, null, 2))
+    return
+  }
+
+  if (isReadDocumentsResult(result)) {
+    printReadDocumentsHumanResult(result, printer)
+    return
+  }
+
+  if (isReconciliationReviewResult(result)) {
+    printer.content(formatReconciliationReviewHumanResult(result))
+    return
+  }
+
+  printer.metadata('Status', result.status)
+  if (typeof result.confidence === 'number') {
+    printer.metadata('Confidence', result.confidence.toFixed(2))
+  }
+  if (result.explanation) {
+    printer.metadata('Why', result.explanation)
+  }
+  if (result.recommendedAction) {
+    printer.metadata('Next', result.recommendedAction)
+  }
+  if (result.provenance?.length) {
+    printer.metadata('Provenance', result.provenance.join(', '))
+  }
+
+  const data = result.data as { results?: Array<{ metadata?: { id?: string } }> } | undefined
+  const results = data?.results
+  if (Array.isArray(results)) {
+    printer.metadata('Matches', String(results.length))
+    if (results.length > 0) {
+      const ids = results
+        .map(item => item.metadata?.id)
+        .filter(Boolean)
+        .slice(0, 5) as string[]
+      if (ids.length > 0) {
+        printer.metadata('Match IDs', ids.join(', '))
+      }
+    }
+  }
 }
 
 interface ReconciliationDiffPreview {
@@ -564,6 +615,80 @@ function formatReadDocumentsHumanResult(result: IntentResult): string {
   }
 
   return lines.join('\n')
+}
+
+function printReadDocumentsHumanResult(result: IntentResult, printer: Printer): void {
+  const data = (result.data ?? {}) as ReadDocumentsResultData
+  const results = Array.isArray(data.results) ? data.results : []
+
+  printer.content(data.answer?.trim() || buildAnswer(results))
+  printer.separator()
+  printer.metadata('Summary', buildSummary(results))
+  printer.metadata('Status', result.status)
+
+  if (typeof result.confidence === 'number') {
+    printer.metadata('Confidence', result.confidence.toFixed(2))
+  }
+  if (result.explanation) {
+    printer.metadata('Why', result.explanation)
+  }
+  if (result.recommendedAction) {
+    printer.metadata('Next', result.recommendedAction)
+  }
+  if (data.retrieval?.method) {
+    const detail = data.retrieval.detail ? ` (${data.retrieval.detail})` : ''
+    printer.metadata('Retrieval', `${data.retrieval.method}${detail}`)
+  }
+
+  if (Array.isArray(data.retrieval?.checkpoints) && data.retrieval.checkpoints.length > 0) {
+    const trace = data.retrieval.checkpoints
+      .map(checkpoint => {
+        const stage = checkpoint.stage ?? 'unknown-stage'
+        const status = checkpoint.status ?? 'unknown-status'
+        const next = checkpoint.nextAction ?? 'unknown-action'
+        return `${stage}:${status}->${next}`
+      })
+      .join(' | ')
+    printer.thought(`Thinking: ${trace}`)
+  }
+
+  printer.metadata('Matches', String(results.length))
+  if (results.length === 0) {
+    printer.metadata('Relevant Docs', 'none')
+    printer.thought(
+      'Hint: Try a broader phrase, fewer keywords, or run with --output json for full retrieval details.'
+    )
+    return
+  }
+
+  printer.metadata('Relevant Docs', '')
+  for (const item of results.slice(0, 5)) {
+    const id = item.metadata?.id ?? 'unknown-id'
+    const title = item.metadata?.title?.trim() || id
+    const filePath = item.metadata?.filePath ?? 'unknown-path'
+    const uri = filePath.startsWith('/') ? `file://${filePath}` : filePath
+    const snippet = extractSnippet(item.content)
+    const highlights = extractHighlights(item.content)
+    const highlightText =
+      highlights.length > 0
+        ? highlights.map(h => `[${h.section}] ${h.excerpt}`).join(' | ')
+        : 'none'
+    printer.source(
+      `id=${id}; title=${title}; location=${filePath}; uri=${uri}; snippet=${snippet}; highlights=${highlightText}`
+    )
+  }
+
+  if (results.length > 5) {
+    printer.thought(`Showing 5 of ${results.length} matches. Use --limit to adjust.`)
+  }
+
+  const ids = results
+    .map(item => item.metadata?.id)
+    .filter(Boolean)
+    .slice(0, 10) as string[]
+  if (ids.length > 0) {
+    printer.metadata('Provenance', ids.join(', '))
+  }
 }
 
 function buildAnswer(results: ReadDocumentsResultItem[]): string {
