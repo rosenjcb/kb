@@ -76,7 +76,20 @@ async function runLogsList(args: string[], logsDir: string): Promise<string> {
     )
   })
 
-  return [header, divider, ...rows].join('\n')
+  const totalInput = recent.reduce((sum, report) => sum + report.totalInputTokens, 0)
+  const totalOutput = recent.reduce((sum, report) => sum + report.totalOutputTokens, 0)
+  const totalDuration = recent.reduce((sum, report) => sum + report.totalDurationMs, 0)
+  const totalCost = recent.reduce((sum, report) => sum + report.totalEstimatedCostUsd, 0)
+  const totalRow =
+    padR('Total', 26) +
+    padR(`${recent.length} run(s)`, 12) +
+    padR('-', 22) +
+    padR(formatDuration(totalDuration), 10) +
+    padR(String(totalInput), 8) +
+    padR(String(totalOutput), 8) +
+    (totalCost > 0 ? `$${totalCost.toFixed(5)}` : '-')
+
+  return [header, divider, ...rows, divider, totalRow].join('\n')
 }
 
 // ─── show ─────────────────────────────────────────────────────────

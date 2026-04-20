@@ -33,6 +33,10 @@ import { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { extractGraphBatch } from '../tools/graph-entity-extractor'
 import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
+import {
+  runRescanApplyOrchestrator,
+  type RunRescanApplyOrchestratorResult,
+} from '../tools/rescan-apply-orchestrator'
 import { ensureOperationalBaseDir, getKbHomeDir, readBaseConfig } from './base-selection'
 import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from './cli-prerequisites'
 import { readKnowledgeGraphInitSummary } from './graph-cli'
@@ -77,6 +81,13 @@ export type TopicCoverageStatus = 'sufficient' | 'needs-follow-up' | 'inferred-o
 export interface InitOptions {
   base?: string
   nonInteractive: boolean
+  rescan?: boolean
+  apply?: boolean
+  dryRun?: boolean
+  rescanStageTimeoutMs?: number
+  rescanMaxClaims?: number
+  rescanMaxEvidenceDocs?: number
+  rescanMaxMutations?: number
   detach?: boolean
   resume?: boolean
   stopAfter?: InitCycle
@@ -249,12 +260,7 @@ const INIT_OUTPUT_TOKENS = {
 export function parseInitCommand(args: string[]): InitOptions {
   const base = readOption(args, '--base') ?? undefined
 
-  const hasDryRun = readFlag(args, '--dry-run')
-  if (hasDryRun) {
-    throw new Error(
-      'Unsupported init flag. Use `--stop-after <cycle>`, `--detach`, or `--resume` to control the lifecycle.'
-    )
-  }
+  const dryRun = readFlag(args, '--dry-run')
 
   const stopAfter = readOption(args, '--stop-after') as InitCycle | undefined
   const validCycles: InitCycle[] = [
@@ -270,11 +276,41 @@ export function parseInitCommand(args: string[]): InitOptions {
     throw new Error(`Invalid --stop-after. Use: ${validCycles.join('|')}`)
   }
 
+  const rescan = readFlag(args, '--rescan')
+  const apply = readFlag(args, '--apply')
+  const resume = readFlag(args, '--resume')
+  if (rescan && resume) {
+    throw new Error('Invalid flags: --rescan cannot be combined with --resume.')
+  }
+  if (apply && !rescan) {
+    throw new Error('Invalid flags: --apply requires --rescan.')
+  }
+  if (dryRun && !rescan) {
+    throw new Error('Invalid flags: --dry-run is currently supported only with --rescan.')
+  }
+  if (dryRun && apply) {
+    throw new Error('Invalid flags: --dry-run cannot be combined with --apply.')
+  }
+
+  const rescanStageTimeoutMs = parseOptionalPositiveInt(readOption(args, '--rescan-stage-timeout-ms'))
+  const rescanMaxClaims = parseOptionalPositiveInt(readOption(args, '--rescan-max-claims'))
+  const rescanMaxEvidenceDocs = parseOptionalPositiveInt(
+    readOption(args, '--rescan-max-evidence-docs')
+  )
+  const rescanMaxMutations = parseOptionalPositiveInt(readOption(args, '--rescan-max-mutations'))
+
   return {
     base,
     nonInteractive: readFlag(args, '--non-interactive'),
+    rescan,
+    apply,
+    dryRun,
+    rescanStageTimeoutMs,
+    rescanMaxClaims,
+    rescanMaxEvidenceDocs,
+    rescanMaxMutations,
     detach: readFlag(args, '--detach'),
-    resume: readFlag(args, '--resume'),
+    resume,
     stopAfter,
     resumeFrom: readOption(args, '--resume-from'),
     checkpointFile: readOption(args, '--checkpoint-file'),
@@ -325,7 +361,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const base = await resolveInitBaseName(options, cwd, questionIO)
   const baseDir = await ensureOperationalBaseDir(base, cwd)
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
-  const resumedCheckpoint = await readCheckpoint(checkpointFile)
+  const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
   const progress = new InitProgressReporter(7, options.progressSink)
   let rawProvider = options.provider ?? (await resolveProvider())
@@ -389,6 +425,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       } else {
         const readResult = await runReadInputsCycle({
           cwd,
+          baseDir,
+          baseName: base,
+          rescan: options.rescan === true,
           nonInteractive: options.nonInteractive,
           detach: options.detach,
           questionIO,
@@ -478,7 +517,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       candidateDocs = materializeInitSourceCorpus(candidateDocs, context, base)
       progress.start('pass2', 'follow-up + refining docs…')
 
-      if (!options.nonInteractive) {
+      if (!options.nonInteractive && !options.rescan) {
         const pendingFollowUp = latestPendingRound(interviewRounds)
         if (pendingFollowUp && checkpoint.completedCycles.includes('pass1')) {
           const answeredRound = await answerPendingQuestions({
@@ -586,7 +625,55 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     let writtenDocIds: string[] | undefined
     if (!checkpoint.completedCycles.includes('write')) {
       progress.start('write', baseDir)
-      writtenDocIds = await writeDocs(candidateDocs, baseDir, base)
+      if (options.rescan) {
+        const planResult = await runRescanApplyOrchestrator({
+          base,
+          baseDir,
+          cwd,
+          dryRun: true,
+          sourceFiles: context.sourceFiles,
+          candidateDocs,
+          stageTimeoutMs: options.rescanStageTimeoutMs,
+          maxClaims: options.rescanMaxClaims,
+          maxEvidenceDocs: options.rescanMaxEvidenceDocs,
+          maxMutations: options.rescanMaxMutations,
+        })
+        writtenDocIds = []
+        questionIO.write?.(
+          `[kb init] rescan plan: ${planResult.plan.mutations.length} actions (${planResult.plan.apply.noopMutations} noop) [plan-only].\n`
+        )
+        questionIO.write?.(`[kb init] rescan plan preview:\n${planResult.previewDiff}\n`)
+        const safeguards = planResult.plan.safeguards?.triggered ?? []
+        if (safeguards.length > 0) {
+          questionIO.write?.(`[kb init] rescan safeguards triggered: ${safeguards.join(', ')}\n`)
+        }
+        if (!options.apply) {
+          questionIO.write?.(
+            '[kb init] rescan apply is disabled by default. Re-run with --rescan --apply to execute planned mutations.\n'
+          )
+        } else if (options.nonInteractive || (await confirmRescanApply(questionIO, planResult))) {
+          const applyResult = await runRescanApplyOrchestrator({
+            base,
+            baseDir,
+            cwd,
+            dryRun: false,
+            sourceFiles: context.sourceFiles,
+            candidateDocs,
+            stageTimeoutMs: options.rescanStageTimeoutMs,
+            maxClaims: options.rescanMaxClaims,
+            maxEvidenceDocs: options.rescanMaxEvidenceDocs,
+            maxMutations: options.rescanMaxMutations,
+          })
+          writtenDocIds = applyResult.writtenDocIds
+          questionIO.write?.(
+            `[kb init] rescan apply: ${applyResult.plan.apply.appliedMutations} actions applied (${applyResult.plan.apply.noopMutations} noop).\n`
+          )
+        } else {
+          questionIO.write?.('[kb init] rescan apply canceled by user; no mutations executed.\n')
+        }
+      } else {
+        writtenDocIds = await writeDocs(candidateDocs, baseDir, base)
+      }
       const finalCoverageSummary =
         checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
       await persist({
@@ -602,7 +689,11 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     let graphPassOutcome: GraphPassOutcome = 'reused'
     if (!checkpoint.completedCycles.includes('pass-graph')) {
       progress.start('pass-graph', 'extracting knowledge graph…')
-      if (!graphEnabled) {
+      if (options.dryRun || (options.rescan && options.apply !== true)) {
+        graphPassOutcome = 'dry-run'
+        progress.finish('pass-graph', 'skipped (dry-run)')
+        await persist({ completedCycles: ['pass-graph'] })
+      } else if (!graphEnabled) {
         graphPassOutcome = 'disabled'
         progress.finish('pass-graph', 'skipped (graph disabled)')
         await persist({ completedCycles: ['pass-graph'] })
@@ -669,6 +760,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
 
 async function runReadInputsCycle(options: {
   cwd: string
+  baseDir: string
+  baseName: string
+  rescan: boolean
   nonInteractive: boolean
   detach?: boolean
   questionIO: InitQuestionIO
@@ -680,7 +774,14 @@ async function runReadInputsCycle(options: {
   topicCoverage: TopicCoverageAssessment[]
   paused?: boolean
 }> {
-  const sourceFiles = await collectSourceFiles(options.cwd)
+  const sourceFiles = options.rescan
+    ? await collectRescanSourceFiles({
+        cwd: options.cwd,
+        baseDir: options.baseDir,
+        baseName: options.baseName,
+        questionIO: options.questionIO,
+      })
+    : await collectSourceFiles(options.cwd)
   const codeFiles = await crawlSourceCode(options.cwd)
   const context: InitContext = {
     sourceFiles,
@@ -688,7 +789,7 @@ async function runReadInputsCycle(options: {
     userAnswers: [],
   }
 
-  if (options.nonInteractive) {
+  if (options.nonInteractive || options.rescan) {
     return {
       context,
       topicCoverage: assessTopicCoverage(context, undefined, true),
@@ -740,27 +841,106 @@ async function runReadInputsCycle(options: {
 
 async function collectSourceFiles(cwd: string): Promise<Record<string, string>> {
   const sourceFiles: Record<string, string> = {}
+  const seenPaths = new Set<string>()
+
+  const addSourceFile = async (relativePath: string): Promise<void> => {
+    const fullPath = path.join(cwd, relativePath)
+    if (!existsSync(fullPath)) return
+    const normalizedKey = relativePath.replace(/\\/g, '/').toLowerCase()
+    if (seenPaths.has(normalizedKey)) return
+    const content = await readFile(fullPath, 'utf8')
+    sourceFiles[relativePath] = content.slice(0, MAX_SOURCE_SIZE)
+    seenPaths.add(normalizedKey)
+  }
 
   for (const candidate of SOURCE_FILE_CANDIDATES) {
-    const fullPath = path.join(cwd, candidate)
-    if (!existsSync(fullPath)) continue
-    const content = await readFile(fullPath, 'utf8')
-    sourceFiles[candidate] = content.slice(0, MAX_SOURCE_SIZE)
+    await addSourceFile(candidate)
   }
 
   try {
     const topLevel = await readdir(cwd)
     for (const file of topLevel) {
-      if (!file.endsWith('.md') || sourceFiles[file] || Object.keys(sourceFiles).length >= 8)
+      if (
+        !file.endsWith('.md') ||
+        sourceFiles[file] ||
+        seenPaths.has(file.toLowerCase()) ||
+        Object.keys(sourceFiles).length >= 8
+      )
         continue
-      const content = await readFile(path.join(cwd, file), 'utf8')
-      sourceFiles[file] = content.slice(0, MAX_SOURCE_SIZE)
+      await addSourceFile(file)
     }
   } catch {
     // Ignore directory listing failures.
   }
 
   return sourceFiles
+}
+
+const README_PATH_PATTERN = /(^|\/)readme\.(md|markdown|txt)$/i
+
+async function collectRescanSourceFiles(options: {
+  cwd: string
+  baseDir: string
+  baseName: string
+  questionIO: InitQuestionIO
+}): Promise<Record<string, string>> {
+  const allSourceFiles = await collectSourceFiles(options.cwd)
+  const readmeEntries = Object.entries(allSourceFiles).filter(([filePath]) =>
+    README_PATH_PATTERN.test(filePath.replace(/\\/g, '/'))
+  )
+
+  if (readmeEntries.length === 0) {
+    options.questionIO.write?.(
+      '[kb init] --rescan found no README-like files; continuing with an empty source delta.\n'
+    )
+    return {}
+  }
+
+  const unchangedFingerprints = readRescanSnapshotFingerprints(options.baseDir)
+  if (unchangedFingerprints.size === 0) {
+    options.questionIO.write?.(
+      `[kb init] --rescan found no prior source snapshots for "${options.baseName}"; treating ${readmeEntries.length} README file(s) as new.\n`
+    )
+    return Object.fromEntries(readmeEntries)
+  }
+
+  const changedOrNew = readmeEntries.filter(([filePath, body]) => {
+    const snapshot = buildFrozenSourceSnapshotDoc(
+      filePath,
+      body,
+      options.baseName,
+      'collected-on-init'
+    )
+    const fingerprint = `${snapshot.title}\u0000${snapshot.content.trimEnd()}`
+    return !unchangedFingerprints.has(fingerprint)
+  })
+  options.questionIO.write?.(
+    `[kb init] --rescan picked ${changedOrNew.length}/${readmeEntries.length} changed/new README file(s).\n`
+  )
+  return Object.fromEntries(changedOrNew)
+}
+
+function readRescanSnapshotFingerprints(baseDir: string): Set<string> {
+  const dbPath = path.join(baseDir, '.kb-index.sqlite')
+  if (!existsSync(dbPath)) return new Set()
+  const indexer = new SqliteKbIndexer({ dbPath })
+  try {
+    const fingerprints = new Set<string>()
+    for (const row of indexer.getAllDocumentsForLexical()) {
+      if (row.is_original !== 1) continue
+      if (!row.tags_json?.includes('source-excerpt')) continue
+      fingerprints.add(`${row.title}\u0000${extractStoredDocumentBody(row.content)}`)
+    }
+    return fingerprints
+  } finally {
+    indexer.close()
+  }
+}
+
+function extractStoredDocumentBody(content: string): string {
+  const sections = content.split('\n\n')
+  if (sections.length < 3) return content.trimEnd()
+  return sections.slice(2).join('\n\n').trimEnd()
 }
 
 export const SOURCE_CODE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.py', '.go', '.rb', '.java', '.rs', '.swift', '.kt']
@@ -1189,7 +1369,7 @@ async function runPerDocEnrichmentPass(
   return enriched
 }
 
-type GraphPassOutcome = 'extracted' | 'disabled' | 'error' | 'no-provider' | 'reused'
+type GraphPassOutcome = 'extracted' | 'disabled' | 'dry-run' | 'error' | 'no-provider' | 'reused'
 
 async function emitPostInitGraphOverview(options: {
   baseDir: string
@@ -1205,6 +1385,10 @@ async function emitPostInitGraphOverview(options: {
   try {
     if (options.graphPassOutcome === 'disabled') {
       write(`${banner}Knowledge graph: skipped (disabled in kb config).\n`)
+      return
+    }
+    if (options.graphPassOutcome === 'dry-run') {
+      write(`${banner}Knowledge graph: skipped (dry-run mode).\n`)
       return
     }
     if (options.graphPassOutcome === 'no-provider') {
@@ -1735,6 +1919,26 @@ function readOption(args: string[], flag: string): string | undefined {
 
 function readFlag(args: string[], flag: string): boolean {
   return args.includes(flag)
+}
+
+function parseOptionalPositiveInt(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Expected a positive integer, received: ${value}`)
+  }
+  return parsed
+}
+
+async function confirmRescanApply(
+  questionIO: InitQuestionIO,
+  planResult: RunRescanApplyOrchestratorResult
+): Promise<boolean> {
+  questionIO.write?.(
+    `[kb init] Apply ${planResult.plan.mutations.length} planned rescan action(s)? [y/N]\n`
+  )
+  const answer = (await questionIO.askQuestion('  > ')).trim().toLowerCase()
+  return answer === 'y' || answer === 'yes'
 }
 
 function dedup<T>(values: T[]): T[] {

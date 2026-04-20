@@ -205,6 +205,7 @@ flowchart LR
 ## Notes
 
 - **Isolation**: v1 uses a **forked message thread** and **shared storage**; nested `~/.kb/sessions/.../subagents/...` on-disk forks are not implemented here.
+- **Rescan apply strategy**: Incremental `kb init --rescan` reconciliation strategy (claim extraction, evidence checks, mutation planning, apply/verify) is documented in ticket `108` at `tickets/linear/108-rescan-apply-orchestrator.md`.
 
 ---
 

@@ -540,6 +540,20 @@ export async function runMainWithOutput(
   }
 
   if (firstArg === 'list') {
+    const treatAsLogsList = args.slice(1).some(arg =>
+      ['--since', '--command', '--limit'].includes(arg)
+    )
+    if (treatAsLogsList) {
+      try {
+        out.log(await runLogsCommand(['list', ...args.slice(1)]))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        out.error(`❌ ${message}`)
+        out.error('')
+        out.log(printLogsHelp(mode))
+      }
+      return
+    }
     out.error(`❌ \`${cmd('list', mode)}\` has moved to \`${cmd('docs list', mode)}\`.`)
     return
   }
