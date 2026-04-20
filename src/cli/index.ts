@@ -345,6 +345,12 @@ export async function runMainWithOutput(
 
       const force = deleteArgs.includes('--force') || deleteArgs.includes('-f')
       if (!force) {
+        if (mode === 'tui') {
+          out.log(
+            `Pass --force to confirm deletion in the TUI: /base delete ${base} --force`
+          )
+          return
+        }
         const confirmed = await promptBaseDeleteConfirm(base)
         if (!confirmed) {
           out.log('Aborted.')

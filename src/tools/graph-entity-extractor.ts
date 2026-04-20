@@ -91,6 +91,8 @@ export async function extractGraph(
  * Extract from multiple documents in batch. Each document is processed separately
  * so a single LLM error doesn't abort the whole corpus.
  */
+const GRAPH_BATCH_CONCURRENCY = 5
+
 export async function extractGraphBatch(
   docs: Array<{ id: string; text: string }>,
   provider: LLMProvider
@@ -100,23 +102,26 @@ export async function extractGraphBatch(
   const seenEntityIds = new Set<string>()
   const seenRelIds = new Set<string>()
 
-  for (const doc of docs) {
-    if (!doc.text.trim()) continue
+  const filtered = docs.filter(d => d.text.trim())
 
-    const result = await extractGraph(doc.text, provider, doc.id)
+  // Process in parallel batches to avoid sequential LLM calls on large corpora
+  for (let i = 0; i < filtered.length; i += GRAPH_BATCH_CONCURRENCY) {
+    const batch = filtered.slice(i, i + GRAPH_BATCH_CONCURRENCY)
+    const results = await Promise.all(batch.map(doc => extractGraph(doc.text, provider, doc.id)))
 
-    for (const e of result.entities) {
-      if (!seenEntityIds.has(e.id)) {
-        seenEntityIds.add(e.id)
-        allEntities.push(e)
+    for (const result of results) {
+      for (const e of result.entities) {
+        if (!seenEntityIds.has(e.id)) {
+          seenEntityIds.add(e.id)
+          allEntities.push(e)
+        }
       }
-    }
-
-    for (const r of result.relationships) {
-      const relId = `${r.fromId}__${r.type}__${r.toId}`
-      if (!seenRelIds.has(relId)) {
-        seenRelIds.add(relId)
-        allRelationships.push(r)
+      for (const r of result.relationships) {
+        const relId = `${r.fromId}__${r.type}__${r.toId}`
+        if (!seenRelIds.has(relId)) {
+          seenRelIds.add(relId)
+          allRelationships.push(r)
+        }
       }
     }
   }

@@ -1,6 +1,6 @@
 import { Box, useApp, useInput } from 'ink'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { resolveEffectiveBaseDir } from '../cli/base-selection.js'
+import { deleteBase, formatDeleteBaseResult, resolveEffectiveBaseDir } from '../cli/base-selection.js'
 import type { ChatIO } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
 import {
@@ -52,6 +52,11 @@ export function App({ config, startupNotices = [] }: Props) {
   const [baseName, setBaseName] = useState('…')
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
   const [initStatus, setInitStatus] = useState<{ message?: string; progressLine?: string }>({})
+
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    question: string
+    onConfirm: () => Promise<void>
+  } | null>(null)
 
   const chatInputResolverRef = useRef<((v: string | null) => void) | null>(null)
   const initInputResolverRef = useRef<((v: string) => void) | null>(null)
@@ -290,6 +295,29 @@ export function App({ config, startupNotices = [] }: Props) {
         return
       }
 
+      // ── Pending confirmation ──
+      if (pendingConfirm) {
+        addEntry({ type: 'chat-you', content: trimmed })
+        const { onConfirm } = pendingConfirm
+        setPendingConfirm(null)
+        if (trimmed.toLowerCase() === 'y' || trimmed.toLowerCase() === 'yes') {
+          setIsRunning(true)
+          const resultId = addEntry({ type: 'result', content: '', loading: true })
+          try {
+            await onConfirm()
+            updateEntry(resultId, { content: 'Done.', loading: false })
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            updateEntry(resultId, { type: 'error', content: message, loading: false })
+          } finally {
+            setIsRunning(false)
+          }
+        } else {
+          addEntry({ type: 'info', content: 'Aborted.' })
+        }
+        return
+      }
+
       // ── Shell mode ──
       if (isRunning) return
 
@@ -329,6 +357,39 @@ export function App({ config, startupNotices = [] }: Props) {
         return
       }
 
+      // Intercept `base delete <name>` without --force: show confirmation prompt
+      if (
+        (firstArg === 'base' && args[1] === 'delete') &&
+        !args.includes('--force') && !args.includes('-f')
+      ) {
+        const base = args.slice(2).find(t => !t.startsWith('--'))
+        if (base) {
+          addEntry({
+            type: 'info',
+            content: `Delete base "${base}" and all its data? This cannot be undone. [y/N]`,
+          })
+          setPendingConfirm({
+            question: `Delete base "${base}"?`,
+            onConfirm: async () => {
+              const result = await deleteBase(base)
+              const msg = formatDeleteBaseResult(base, result, 'tui')
+              addEntry({ type: 'result', content: msg })
+              // Refresh base name if we deleted the active base
+              resolveEffectiveBaseDir()
+                .then(({ baseDir, baseName: n }) => {
+                  storageDirRef.current = baseDir
+                  setBaseName(n)
+                })
+                .catch(() => {
+                  storageDirRef.current = ''
+                  setBaseName('')
+                })
+            },
+          })
+          return
+        }
+      }
+
       // Dispatch to existing CLI logic
       setIsRunning(true)
       const resultId = addEntry({ type: 'result', content: '', loading: true })
@@ -336,8 +397,8 @@ export function App({ config, startupNotices = [] }: Props) {
       try {
         const output = await runCommandForTui(args, config)
 
-        // Refresh base name after use/default commands
-        if (firstArg === 'use' || firstArg === 'default') {
+        // Refresh base name after base use / use / default commands
+        if (firstArg === 'base' || firstArg === 'use' || firstArg === 'default') {
           resolveEffectiveBaseDir()
             .then(({ baseDir, baseName: effectiveBaseName }) => {
               storageDirRef.current = baseDir
@@ -360,6 +421,7 @@ export function App({ config, startupNotices = [] }: Props) {
     [
       mode,
       isRunning,
+      pendingConfirm,
       config,
       addEntry,
       updateEntry,

@@ -687,6 +687,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     }
 
     let graphPassOutcome: GraphPassOutcome = 'reused'
+    let graphError: string | undefined
     if (!checkpoint.completedCycles.includes('pass-graph')) {
       progress.start('pass-graph', 'extracting knowledge graph…')
       if (options.dryRun || (options.rescan && options.apply !== true)) {
@@ -705,12 +706,14 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           graphPassOutcome = 'extracted'
           await persist({ completedCycles: ['pass-graph'] })
           progress.finish('pass-graph', 'graph written to .kb-graph.duckdb')
-        } catch {
-          // Graph extraction failure must not abort a successful init.
-          // Do NOT persist pass-graph here — leave it incomplete so the next
-          // kb init (or --resume) retries rather than skipping a bad graph.
-          graphPassOutcome = 'error'
-          progress.finish('pass-graph', 'skipped (error)')
+        } catch (err) {
+          // Graph extraction failed. The DuckDB transaction was rolled back, so
+          // the DB is clean. Mark pass-graph complete so plain `kb init` does not
+          // retry endlessly; the user can force a retry with `kb init --rescan`.
+          graphError = err instanceof Error ? err.message : String(err)
+          graphPassOutcome = 'failed'
+          await persist({ completedCycles: ['pass-graph'] })
+          progress.finish('pass-graph', `failed (${graphError ?? 'unknown error'})`)
         }
       } else {
         graphPassOutcome = 'no-provider'
@@ -726,6 +729,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       baseDir,
       graphPassOutcome,
       questionIO,
+      graphError,
     })
 
     const finalCoverageSummary = checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
@@ -1370,12 +1374,19 @@ async function runPerDocEnrichmentPass(
   return enriched
 }
 
-type GraphPassOutcome = 'extracted' | 'disabled' | 'dry-run' | 'error' | 'no-provider' | 'reused'
+type GraphPassOutcome =
+  | 'extracted'
+  | 'disabled'
+  | 'dry-run'
+  | 'failed'
+  | 'no-provider'
+  | 'reused'
 
 async function emitPostInitGraphOverview(options: {
   baseDir: string
   graphPassOutcome: GraphPassOutcome
   questionIO: InitQuestionIO
+  graphError?: string
 }): Promise<void> {
   const write = options.questionIO.write
   if (!write) return
@@ -1394,6 +1405,13 @@ async function emitPostInitGraphOverview(options: {
     }
     if (options.graphPassOutcome === 'no-provider') {
       write(`${banner}Knowledge graph: skipped (no LLM provider for extraction).\n`)
+      return
+    }
+    if (options.graphPassOutcome === 'failed') {
+      const reason = options.graphError ? `: ${options.graphError}` : ''
+      write(
+        `${banner}Knowledge graph: extraction failed${reason}.\nThe graph is empty. Run \`kb init --rescan\` to retry graph extraction.\n`
+      )
       return
     }
 

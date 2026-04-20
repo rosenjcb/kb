@@ -273,11 +273,13 @@ export function printBaseDeleteHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('base delete <base> [--force]', mode)}`,
     '',
     'Removes the session directory and clears the base from config.',
-    'Prompts for confirmation unless --force is passed.',
+    mode === 'tui'
+      ? '--force is required in the TUI (stdin is owned by the shell).'
+      : 'Prompts for confirmation unless --force is passed.',
     '',
     'Examples:',
     `  ${cmd('base delete ci-test --force', mode)}`,
-    `  ${cmd('base delete old-project', mode)}`,
+    ...(mode === 'cli' ? [`  ${cmd('base delete old-project', mode)}`] : []),
   ].join('\n')
 }
 
