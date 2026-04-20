@@ -1,5 +1,9 @@
 import path from 'node:path'
-import { renderDiffBundle, renderNewFileDiff, renderTextDiff } from '../core/git-diff-preview'
+import { renderDiffBundle, renderTextDiff } from '../core/git-diff-preview'
+import type { ToolExecutor } from '../core/tool-registry'
+import type { ToolUseRequest } from '../core/types'
+import { DefaultIntentRouter } from '../intents/router'
+import type { ConsumerIntentEnvelope } from '../intents/types'
 import { invalidateFactTool } from './invalidate-fact-tool'
 import { SqliteDocumentWriter } from './sqlite-document-writer'
 import { SqliteKbIndexer } from './sqlite-kb-index'
@@ -228,10 +232,10 @@ function gatherEvidence(
         if (overlap >= 0.6) {
           supportDocs.push(row.id)
         }
-        if (overlap >= 0.5 && hasNegationConflict(claimNorm, contentNorm)) {
+        if (overlap >= 0.8 && hasNegationConflict(claimNorm, contentNorm)) {
           contradictionDocs.push(row.id)
-          const firstLine = row.content.split('\n').find(line => line.trim().length > 0) ?? row.content
-          contradictionFacts.push(firstLine.trim().slice(0, 240))
+          const candidateFact = pickContradictionFact(row.content, claimNorm)
+          contradictionFacts.push(candidateFact.slice(0, 240))
         }
       }
       const evidenceScore = clamp(
@@ -266,18 +270,26 @@ function planMutations(
     if (!e) {
       return {
         claimId: claim.claimId,
-        action: 'submit',
-        submitFact: claim.text,
-        rationale: 'No evidence found for this claim; adding as new fact.',
-        expectedPostcondition: 'A retrieval query should find this claim in at least one KB document.',
+        action: 'noop',
+        rationale: 'No evidence found and no safe insertion target identified; skipped conservatively.',
+        expectedPostcondition: 'No KB mutation should be required without a clear target document.',
       }
     }
+    const targetDocId = pickTargetDocumentId(e)
     if (e.equivalentDocs.length > 0 && e.contradictionDocs.length === 0) {
       if (claim.text.length > 180) {
+        if (!targetDocId) {
+          return {
+            claimId: claim.claimId,
+            action: 'noop',
+            rationale: 'Equivalent evidence exists but no safe target doc was resolved for insertion.',
+            expectedPostcondition: 'No KB mutation should be required.',
+          }
+        }
         return {
           claimId: claim.claimId,
           action: 'append_existing',
-          targetDocId: e.equivalentDocs[0],
+          targetDocId,
           submitFact: claim.text,
           rationale: 'Equivalent evidence exists, but claim carries additional detail to append.',
           expectedPostcondition: 'Target document contains appended detail for this fact family.',
@@ -290,22 +302,62 @@ function planMutations(
         expectedPostcondition: 'No KB mutation should be required.',
       }
     }
-    if (e.contradictionDocs.length > 0 && claim.confidence >= 0.6 && e.evidenceScore >= 0.45) {
+    if (e.supportDocs.length >= 2 && e.evidenceScore >= 0.2 && e.contradictionDocs.length === 0) {
+      return {
+        claimId: claim.claimId,
+        action: 'noop',
+        rationale: 'Related supporting evidence already exists; skipping low-value duplicate mutation.',
+        expectedPostcondition: 'No KB mutation should be required.',
+      }
+    }
+    const contradictionFact = e.contradictionFacts[0]
+    if (
+      e.contradictionDocs.length > 0 &&
+      claim.confidence >= 0.6 &&
+      e.evidenceScore >= 0.45 &&
+      isSafeInvalidationFact(contradictionFact)
+    ) {
+      if (!targetDocId) {
+        return {
+          claimId: claim.claimId,
+          action: 'noop',
+          rationale: 'Contradiction detected, but no safe target doc was resolved for replacement insertion.',
+          expectedPostcondition: 'No KB mutation should be required without a clear target document.',
+        }
+      }
       return {
         claimId: claim.claimId,
         action: 'invalidate_then_submit',
-        invalidateFact: e.contradictionFacts[0] ?? claim.text,
+        targetDocId,
+        invalidateFact: contradictionFact,
         submitFact: claim.text,
         rationale: 'Contradicting evidence exists and new claim confidence/evidence pass threshold.',
         expectedPostcondition: 'Contradicting statement is removed/replaced and new claim is retrievable.',
       }
     }
+    if (claim.confidence < 0.65) {
+      return {
+        claimId: claim.claimId,
+        action: 'noop',
+        rationale: 'Claim confidence is below submit threshold and does not justify a write.',
+        expectedPostcondition: 'No KB mutation should be required.',
+      }
+    }
+    if (!targetDocId) {
+      return {
+        claimId: claim.claimId,
+        action: 'noop',
+        rationale: 'No safe insertion target was resolved; skipped to avoid creating synthetic files.',
+        expectedPostcondition: 'No KB mutation should be required.',
+      }
+    }
     return {
       claimId: claim.claimId,
-      action: 'submit',
+      action: 'append_existing',
+      targetDocId,
       submitFact: claim.text,
-      rationale: 'No strong equivalent and contradiction threshold not met.',
-      expectedPostcondition: 'Submitted fact appears in retrieval results.',
+      rationale: 'No strong equivalent found; append claim into best supporting document.',
+      expectedPostcondition: 'Target document contains inserted fact and retrieval should surface it.',
     }
   })
 }
@@ -328,72 +380,61 @@ async function applyMutations(input: {
   let timedOut = false
   const claimById = new Map(input.claims.map(claim => [claim.claimId, claim]))
   const writer = new SqliteDocumentWriter({ baseDir: input.baseDir, base: input.base })
+  const indexer = new SqliteKbIndexer({ dbPath: path.join(input.baseDir, '.kb-index.sqlite') })
+  const intentExecutor = createRescanIntentExecutor(writer, indexer)
+  const intentRouter = new DefaultIntentRouter(intentExecutor)
   const writtenDocIds: string[] = []
   const errors: string[] = []
   let appliedMutations = 0
   let noopMutations = 0
 
-  for (const mutation of input.mutations) {
-    if (Date.now() - startedAt > input.stageTimeoutMs) {
-      timedOut = true
-      errors.push(`apply stage timed out after ${input.stageTimeoutMs}ms`)
-      break
-    }
-    const claim = claimById.get(mutation.claimId)
-    if (!claim) continue
-    if (mutation.action === 'noop') {
-      noopMutations += 1
-      continue
-    }
-    if (input.dryRun) continue
-    try {
-      if (mutation.action === 'append_existing' && mutation.targetDocId && mutation.submitFact) {
-        const result = await writer.appendToDocument?.({
-          documentId: mutation.targetDocId,
-          content: `\n- ${mutation.submitFact}`,
-          position: 'bottom',
-        })
-        if (result?.id) writtenDocIds.push(result.id)
-        appliedMutations += 1
+  try {
+    for (const mutation of input.mutations) {
+      if (Date.now() - startedAt > input.stageTimeoutMs) {
+        timedOut = true
+        errors.push(`apply stage timed out after ${input.stageTimeoutMs}ms`)
+        break
+      }
+      const claim = claimById.get(mutation.claimId)
+      if (!claim) continue
+      if (mutation.action === 'noop') {
+        noopMutations += 1
         continue
       }
-      if (mutation.action === 'invalidate_then_submit' && mutation.invalidateFact) {
-        await invalidateFactTool(
-          {
-            oldFact: mutation.invalidateFact,
-            replacementFact: '',
-            preview: false,
-            dryRun: false,
-            includeSessionLogs: false,
-          },
-          input.baseDir
-        )
+      if (input.dryRun) continue
+      try {
+        if (mutation.action === 'invalidate_then_submit' && mutation.invalidateFact) {
+          await invalidateFactTool(
+            {
+              oldFact: mutation.invalidateFact,
+              replacementFact: '',
+              preview: false,
+              dryRun: false,
+              includeSessionLogs: false,
+            },
+            input.baseDir
+          )
+        }
+        if (mutation.submitFact) {
+          const result = await submitViaIntentRouter({
+            router: intentRouter,
+            fact: mutation.submitFact,
+            targetDocumentId: mutation.targetDocId,
+          })
+          const id = extractResultId(result)
+          if (id) writtenDocIds.push(id)
+        }
+        appliedMutations += 1
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        errors.push(`${mutation.claimId}: ${message}`)
       }
-      if (mutation.submitFact) {
-        const writeResult = await writer.writeDocument({
-          title: buildSubmitTitle(claim),
-          content: `Rescan claim:\n\n${mutation.submitFact}`,
-          tags: ['rescan-claim', claim.topic, input.base],
-          type: 'reference',
-          overwrite: true,
-          documentId: `rescan-${claim.claimId.slice(0, 16)}`,
-          isOriginal: false,
-        })
-        writtenDocIds.push(writeResult.id)
-      }
-      appliedMutations += 1
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      errors.push(`${mutation.claimId}: ${message}`)
     }
+  } finally {
+    indexer.close()
   }
 
   return { writtenDocIds, appliedMutations, noopMutations, errors, timedOut }
-}
-
-function buildSubmitTitle(claim: RescanCandidateClaim): string {
-  const topic = claim.topic.replace(/[-_]+/g, ' ')
-  return `Rescan ${topic}: ${claim.text.slice(0, 52)}`
 }
 
 function claimFingerprint(value: string): string {
@@ -426,6 +467,38 @@ function hasNegationConflict(claimNorm: string, contentNorm: string): boolean {
   return claimNeg !== contentNeg
 }
 
+function pickContradictionFact(content: string, claimNorm: string): string {
+  const lines = content
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 20)
+    .filter(line => !/^type:\s*\w+/i.test(line))
+  if (lines.length === 0) return content.trim()
+  let best = lines[0]
+  let bestScore = -1
+  for (const line of lines) {
+    const normalized = normalizeText(line)
+    const score = keywordOverlap(claimNorm, normalized)
+    if (score > bestScore) {
+      best = line
+      bestScore = score
+    }
+  }
+  return best
+}
+
+function isSafeInvalidationFact(value: string | undefined): value is string {
+  if (!value) return false
+  const trimmed = value.trim()
+  if (trimmed.length < 60 || trimmed.length > 320) return false
+  if (!/[a-z]/i.test(trimmed)) return false
+  if (/^\W/.test(trimmed)) return false
+  if (!/[.!?]$/.test(trimmed)) return false
+  if (/[,;:]\s*$/.test(trimmed)) return false
+  if (/\s{2,}/.test(trimmed)) return false
+  return true
+}
+
 function estimateConfidence(text: string): number {
   const tokenCount = text.split(/\s+/).filter(Boolean).length
   if (tokenCount < 8) return 0.35
@@ -455,11 +528,12 @@ function extractClaimSnippets(content: string): string[] {
 
 function sanitizeMarkdownLine(line: string): string {
   return line
-    .replace(/`[^`]+`/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/^[#>\-\d.\s]+/, '')
+    .replace(/^[#>*+\-\d.\s]+/, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -483,11 +557,15 @@ function isClaimCandidate(value: string): boolean {
   if (!/[a-z]/i.test(value)) return false
   if (!/\s/.test(value)) return false
   if (/[{}[\]|]/.test(value)) return false
+  if (/\btype:\s*\w+/i.test(value)) return false
+  if (/[,:]\s*[,:]/.test(value)) return false
   const lower = value.toLowerCase()
   if (lower.startsWith('rescan ')) return false
   if (lower.includes(' run `') || lower.includes(' use `')) return false
+  if (/(^|\s)\*+\s*:/.test(lower)) return false
   const words = lower.split(/\s+/).filter(Boolean)
-  return words.length >= 8
+  const longWords = words.filter(word => /[a-z]/.test(word) && word.length > 2).length
+  return words.length >= 8 && longWords >= 6
 }
 
 function slugify(value: string): string {
@@ -510,6 +588,110 @@ function clampPositiveInt(value: number | undefined, fallback: number): number {
   return Math.max(1, Math.floor(value))
 }
 
+function pickTargetDocumentId(evidence: RescanEvidenceResult): string | undefined {
+  return evidence.equivalentDocs[0] ?? evidence.supportDocs[0] ?? evidence.contradictionDocs[0]
+}
+
+function createRescanIntentExecutor(
+  writer: SqliteDocumentWriter,
+  indexer: SqliteKbIndexer
+): ToolExecutor {
+  return {
+    register() {},
+    getTools() {
+      return []
+    },
+    async execute(toolUse: ToolUseRequest): Promise<unknown> {
+      if (toolUse.name === 'append_to_document') {
+        const documentId = String(toolUse.input.documentId ?? '').trim()
+        const content = String(toolUse.input.content ?? '')
+        return writer.appendToDocument?.({
+          documentId,
+          content: content.startsWith('\n') ? content : `\n${content}`,
+          position: 'bottom',
+        })
+      }
+      if (toolUse.name === 'write_document') {
+        const type = asWriteDocType(toolUse.input.type)
+        return writer.writeDocument({
+          documentId: String(toolUse.input.documentId ?? '').trim(),
+          title: String(toolUse.input.title ?? '').trim() || 'rescan facts',
+          content: String(toolUse.input.content ?? ''),
+          tags: Array.isArray(toolUse.input.tags)
+            ? toolUse.input.tags.filter((tag): tag is string => typeof tag === 'string')
+            : undefined,
+          type,
+          overwrite: toolUse.input.overwrite !== false,
+          isOriginal: false,
+        })
+      }
+      if (toolUse.name === 'read_documents') {
+        const query = normalizeText(String(toolUse.input.query ?? ''))
+        const rows = indexer.getAllDocumentsForLexical()
+        const ranked = rows
+          .map(row => ({ row, score: keywordOverlap(query, normalizeText(row.content)) }))
+          .filter(item => item.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, Math.max(1, Number(toolUse.input.limit ?? 3)))
+        return {
+          retrieval: { method: 'hybrid' },
+          results: ranked.map(item => ({ metadata: { id: item.row.id } })),
+        }
+      }
+      if (toolUse.name === 'reconcile_contradictions') {
+        return { changedDocumentIds: [], removedFacts: 0 }
+      }
+      throw new Error(`Unsupported rescan intent tool: ${toolUse.name}`)
+    },
+  }
+}
+
+function asWriteDocType(value: unknown):
+  | 'architecture'
+  | 'decision'
+  | 'checklist'
+  | 'runbook'
+  | 'reference' {
+  return value === 'architecture' ||
+    value === 'decision' ||
+    value === 'checklist' ||
+    value === 'runbook' ||
+    value === 'reference'
+    ? value
+    : 'reference'
+}
+
+async function submitViaIntentRouter(input: {
+  router: DefaultIntentRouter
+  fact: string
+  targetDocumentId?: string
+}): Promise<unknown> {
+  const envelope: ConsumerIntentEnvelope = {
+    intent: 'submit_fact',
+    payload: {
+      fact: input.fact,
+      source: 'rescan',
+      ...(input.targetDocumentId ? { targetDocumentId: input.targetDocumentId } : {}),
+    },
+  }
+  const result = await input.router.execute(envelope)
+  if (result.status === 'error') {
+    throw new Error(result.explanation ?? 'submit_fact intent failed')
+  }
+  return result.data
+}
+
+function extractResultId(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const record = value as Record<string, unknown>
+  if (typeof record.id === 'string') return record.id
+  if (record.submission && typeof record.submission === 'object') {
+    const nested = record.submission as Record<string, unknown>
+    if (typeof nested.id === 'string') return nested.id
+  }
+  return undefined
+}
+
 async function buildPlanDiff(input: {
   base: string
   baseDir: string
@@ -530,7 +712,7 @@ async function buildPlanDiff(input: {
 
       if (mutation.action === 'append_existing' && mutation.targetDocId && mutation.submitFact) {
         const before = indexer.getDocumentContent(mutation.targetDocId) ?? ''
-        const after = `${before}${before.endsWith('\n') ? '' : '\n'}- ${mutation.submitFact}\n`
+        const after = `${before}${before.endsWith('\n') ? '' : '\n'}- ${mutation.submitFact} (source: rescan)\n`
         sections.push(renderTextDiff(`docs/${mutation.targetDocId}.md`, before, after))
         continue
       }
@@ -551,10 +733,10 @@ async function buildPlanDiff(input: {
         }
       }
 
-      if (mutation.submitFact) {
-        const nextId = `rescan-${claim.claimId.slice(0, 16)}`
-        const newBody = `# ${buildSubmitTitle(claim)}\n\nRescan claim:\n\n${mutation.submitFact}\n`
-        sections.push(renderNewFileDiff(`docs/${nextId}.md`, newBody))
+      if (mutation.submitFact && mutation.targetDocId) {
+        const before = indexer.getDocumentContent(mutation.targetDocId) ?? ''
+        const after = `${before}${before.endsWith('\n') ? '' : '\n'}- ${mutation.submitFact} (source: rescan)\n`
+        sections.push(renderTextDiff(`docs/${mutation.targetDocId}.md`, before, after))
       }
     }
 

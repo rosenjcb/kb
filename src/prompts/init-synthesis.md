@@ -17,5 +17,9 @@ Rules:
 - If the sources have no evidence for this topic, write a brief note explaining the gap.
 - Title uses Cap Every Word (e.g. "Core Workflows", "Installation And Setup").
 - Keep statements self-contained so they can be interpreted as standalone facts in downstream planning.
+- Never emit placeholder text or incomplete command mentions (for example: `* :`, `using and`, `set in`, empty backticks, or sentences with missing command names/flags).
+- Do not emit metadata lines as facts (for example: `Type: reference`, `Tags: ...`, frontmatter keys).
+- Do not include list markers as content text (no leading `*`, `-`, or numbered marker without sentence text).
+- Every sentence must name the subject explicitly and include at least one concrete noun (command, file, config key, component, or workflow step).
 - Return ONLY the JSON object, no prose, no array wrapper.
 - When the API enforces structured JSON, return the object alone (no markdown fences).

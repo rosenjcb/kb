@@ -10,6 +10,15 @@ Every user-facing feature must work both as `kb <command>` (one-shot CLI) and `/
 
 Do not inline prompt or skill text as TypeScript strings or template literals. Put runtime prompts in `src/prompts/*.md` and agent skills in `skills/<name>/SKILL.md`. Load them from disk via the loader utilities (`src/prompts/loader.ts`, `src/skills/loader.ts`).
 
+## Composability first
+
+Prefer reusing existing orchestrators, intent routes, and shared utilities over one-off logic.
+
+- Before adding a new flow, search for an existing component that already captures the behavior (`SubmitOrchestrator`, intent router, shared diff/render helpers, etc.).
+- Extend shared abstractions where possible; avoid duplicating near-identical algorithms in command-specific code.
+- Keep policy decisions centralized in orchestrators/intent layers; keep CLI and TUI adapters thin.
+- If temporary duplication is unavoidable, document the reason and add a follow-up to converge.
+
 ## Testing
 
 All non-trivial logic needs unit tests before a PR merges. See [TESTING.md](TESTING.md) for naming conventions, file layout, and what to cover.

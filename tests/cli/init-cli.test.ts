@@ -39,11 +39,15 @@ async function createTempProject(files: Record<string, string>): Promise<string>
 
 function createQuestionIO(answers: string[]) {
   const prompts: string[] = []
+  const writes: string[] = []
   let index = 0
   return {
     prompts,
+    writes,
     io: {
-      write() {},
+      write(message: string) {
+        writes.push(message)
+      },
       async askQuestion(prompt: string): Promise<string> {
         prompts.push(prompt)
         const answer = answers[index]
@@ -57,12 +61,16 @@ function createQuestionIO(answers: string[]) {
 
 function createSequentialOnlyQuestionIO(answers: string[]) {
   const prompts: string[] = []
+  const writes: string[] = []
   let index = 0
   let inFlight = false
   return {
     prompts,
+    writes,
     io: {
-      write() {},
+      write(message: string) {
+        writes.push(message)
+      },
       async askQuestion(prompt: string): Promise<string> {
         if (inFlight) {
           throw new Error('askQuestion called concurrently')
@@ -853,6 +861,37 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.status).toBe('accepted')
     expect((result.writtenDocIds ?? []).length).toBe(0)
+  })
+
+  it('Given --rescan plan preview, then it does not propose synthetic rescan files', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nKB provides CLI + intent commands for project knowledge.\n',
+      'docs/README.md': '# Docs\n\nUse kb submit and kb invalidate to manage facts.\n',
+    })
+    const provider = createProvider(
+      INIT_TOPIC_DEFINITIONS.map(def =>
+        JSON.stringify({
+          title: `Synthesis ${def.topic}`,
+          type: 'reference',
+          tags: [def.topic],
+          content: `KB ${def.topic} details for rescan planning and command behavior. `.repeat(8),
+        })
+      )
+    )
+    const questionIO = createQuestionIO([])
+    const result = await runKbInit({
+      base: 'rescan-preview-append-style',
+      nonInteractive: true,
+      rescan: true,
+      cwd,
+      provider,
+      questionIO: questionIO.io,
+    })
+
+    expect(result.status).toBe('accepted')
+    const output = questionIO.writes.join('\n')
+    expect(output).toContain('rescan plan preview')
+    expect(output).not.toContain('diff --git a/docs/rescan-')
   })
 
   it('Given interactive --rescan, then read-inputs does not ask initial interview questions', async () => {
