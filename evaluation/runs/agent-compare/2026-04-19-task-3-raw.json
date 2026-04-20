@@ -1,0 +1,22 @@
+{
+  "task_id": 3,
+  "agent": "raw",
+  "base": null,
+  "kb_queries_made": 0,
+  "kb_submissions_made": 0,
+  "codeburn_input_tokens_delta": 8,
+  "codeburn_output_tokens_delta": 2598,
+  "codeburn_cost_usd_delta": 0.16,
+  "codeburn_snapshot_before": {
+    "cost": 113.36,
+    "input": 38161,
+    "output": 1158752
+  },
+  "codeburn_snapshot_after": {
+    "cost": 113.52,
+    "input": 38169,
+    "output": 1161350
+  },
+  "task_completed": true,
+  "notes": "Added persistent high score using raylib's FileExists/LoadFileText/UnloadFileText/SaveFileText and TextToInteger. Loaded score on init, saved on death when score > highScore. Displayed best score with DrawText. Had to check raylib.h for file I/O API signatures and TextToInteger. Used HIGHSCORE_FILE constant pointing to flappy_highscore.txt in working directory."
+}

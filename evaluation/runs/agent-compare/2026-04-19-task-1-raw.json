@@ -1,0 +1,22 @@
+{
+  "task_id": 1,
+  "agent": "raw",
+  "base": null,
+  "kb_queries_made": 0,
+  "kb_submissions_made": 0,
+  "codeburn_input_tokens_delta": 4,
+  "codeburn_output_tokens_delta": 2536,
+  "codeburn_cost_usd_delta": 0.10,
+  "codeburn_snapshot_before": {
+    "cost": 113.11,
+    "input": 38151,
+    "output": 1151978
+  },
+  "codeburn_snapshot_after": {
+    "cost": 113.21,
+    "input": 38155,
+    "output": 1154514
+  },
+  "task_completed": true,
+  "notes": "Implemented flappy_bird.c from scratch. Read raylib.h directly for API: InitWindow, SetTargetFPS, BeginDrawing/EndDrawing, DrawCircle, DrawRectangle, CheckCollisionCircleRec, IsKeyPressed, GetFrameTime, GetRandomValue. Read core_basic_window.c example for coding style. Discovered CheckCollisionCircleRec for bird vs pipe collision. No KB access — all context from source files."
+}

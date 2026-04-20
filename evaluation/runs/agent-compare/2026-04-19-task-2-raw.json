@@ -1,0 +1,22 @@
+{
+  "task_id": 2,
+  "agent": "raw",
+  "base": null,
+  "kb_queries_made": 0,
+  "kb_submissions_made": 0,
+  "codeburn_input_tokens_delta": 6,
+  "codeburn_output_tokens_delta": 4238,
+  "codeburn_cost_usd_delta": 0.15,
+  "codeburn_snapshot_before": {
+    "cost": 113.21,
+    "input": 38155,
+    "output": 1154514
+  },
+  "codeburn_snapshot_after": {
+    "cost": 113.36,
+    "input": 38161,
+    "output": 1158752
+  },
+  "task_completed": true,
+  "notes": "Added parallax scrolling background with 3 layers: sky (static SKYBLUE), far clouds (0.2x speed, procedural DrawCircle clusters), mid hills (0.5x speed, custom filled half-ellipse). No textures needed — all procedural. Had to read textures_background_scrolling.c example to understand double-draw tiling technique (draw layer at X and X+tileWidth). Had to check raylib.h for DrawCircle/DrawRectangle signatures. No sqrtf lookup needed — included via raylib.h's math deps."
+}
