@@ -207,7 +207,7 @@ async function buildFixtureBase(): Promise<string> {
   await graphWriter.open()
   await graphWriter.upsertEntities(GRAPH_ENTITIES)
   await graphWriter.upsertRelationships(GRAPH_RELATIONSHIPS)
-  graphWriter.close()
+  await graphWriter.close()
 
   return baseDir
 }

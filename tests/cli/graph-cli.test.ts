@@ -20,7 +20,7 @@ const mockSummary = {
 function makeMockWriter(overrides: Partial<GraphWriter> = {}): GraphWriter {
   return {
     open: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn(),
+    close: vi.fn().mockResolvedValue(undefined),
     getSummary: vi.fn().mockResolvedValue(mockSummary),
     exportDot: vi.fn().mockResolvedValue('digraph {}'),
     exportJson: vi.fn().mockResolvedValue({ entities: [], relationships: [] }),

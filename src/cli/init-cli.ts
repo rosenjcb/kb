@@ -706,10 +706,11 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           await persist({ completedCycles: ['pass-graph'] })
           progress.finish('pass-graph', 'graph written to .kb-graph.duckdb')
         } catch {
-          // Graph extraction failure must not abort a successful init
+          // Graph extraction failure must not abort a successful init.
+          // Do NOT persist pass-graph here — leave it incomplete so the next
+          // kb init (or --resume) retries rather than skipping a bad graph.
           graphPassOutcome = 'error'
           progress.finish('pass-graph', 'skipped (error)')
-          await persist({ completedCycles: ['pass-graph'] })
         }
       } else {
         graphPassOutcome = 'no-provider'
@@ -1429,10 +1430,17 @@ async function runGraphExtractionPass(provider: LLMProvider, baseDir: string): P
   try {
     await writer.open()
     const { entities, relationships } = await extractGraphBatch(docs, provider)
-    if (entities.length > 0) await writer.upsertEntities(entities)
-    if (relationships.length > 0) await writer.upsertRelationships(relationships)
+    await writer.beginTransaction()
+    try {
+      if (entities.length > 0) await writer.upsertEntities(entities)
+      if (relationships.length > 0) await writer.upsertRelationships(relationships)
+      await writer.commit()
+    } catch (err) {
+      await writer.rollback()
+      throw err
+    }
   } finally {
-    writer.close()
+    await writer.close()
   }
 }
 

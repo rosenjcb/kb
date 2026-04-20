@@ -242,7 +242,7 @@ export async function runMainWithOutput(
           for (const change of result.changes) {
             await graphWriter.softDeleteByDocId(change.documentId)
           }
-          graphWriter.close()
+          await graphWriter.close()
         } catch {
           // Graph soft-delete failure must not surface to the user
         }
@@ -678,7 +678,7 @@ export async function runMainWithOutput(
           try {
             payload.query = await expandQueryWithGraph(originalQuery, graphWriter)
           } finally {
-            graphWriter.close()
+            await graphWriter.close()
           }
         }
       }
@@ -714,7 +714,7 @@ export async function runMainWithOutput(
               await graphWriter.open()
               if (entities.length > 0) await graphWriter.upsertEntities(entities)
               if (relationships.length > 0) await graphWriter.upsertRelationships(relationships)
-              graphWriter.close()
+              await graphWriter.close()
             }
           } catch {
             // Graph extraction failure must not surface to the user

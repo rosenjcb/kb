@@ -166,7 +166,7 @@ describe('MarkdownDocumentReader', () => {
     await graphWriter.upsertRelationships([
       { fromId: 'sqlite', toId: 'duckdb', type: 'related_to', docId: 'duckdb-graph-traversal' },
     ])
-    graphWriter.close()
+    await graphWriter.close()
 
     const withoutGraph = new MarkdownDocumentReader(baseDir, {
       hybridEnabled: true,

@@ -71,7 +71,7 @@ export async function readKnowledgeGraphInitSummary(
     }
     return { human: formatKnowledgeGraphHumanSummary(summary), json }
   } finally {
-    writer.close()
+    await writer.close()
   }
 }
 
@@ -140,7 +140,7 @@ export interface GraphOut {
 // Minimal writer interface used by runGraphCommand — lets tests inject a stub
 export interface GraphWriter {
   open(): Promise<void>
-  close(): void
+  close(): Promise<void>
   getSummary(): Promise<GraphSummary>
   exportDot(): Promise<string>
   exportJson(): Promise<unknown>
@@ -222,6 +222,6 @@ export async function runGraphCommand(
       out.log(line)
     }
   } finally {
-    writer.close()
+    await writer.close()
   }
 }

@@ -496,8 +496,27 @@ export class DuckGraphWriter {
     }
   }
 
-  close(): void {
-    this.conn?.disconnect()
+  async beginTransaction(): Promise<void> {
+    await this.requireConn().run('BEGIN TRANSACTION')
+  }
+
+  async commit(): Promise<void> {
+    await this.requireConn().run('COMMIT')
+  }
+
+  async rollback(): Promise<void> {
+    await this.requireConn().run('ROLLBACK')
+  }
+
+  async close(): Promise<void> {
+    if (this.conn) {
+      try {
+        await this.conn.run('CHECKPOINT')
+      } catch {
+        // Best-effort flush; safe to ignore if already committed
+      }
+      this.conn.disconnect()
+    }
     this.conn = null
     this.instance = null
     this.ready = false

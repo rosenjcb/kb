@@ -1070,7 +1070,7 @@ export class MarkdownDocumentReader {
     } catch {
       return new Map()
     } finally {
-      writer.close()
+      await writer.close()
     }
   }
 
@@ -1231,7 +1231,7 @@ export class MarkdownDocumentReader {
     } catch {
       return []
     } finally {
-      writer.close()
+      await writer.close()
     }
   }
 
