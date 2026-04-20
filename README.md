@@ -7,6 +7,15 @@ It gives you a CLI and runtime that can:
 - query that knowledge through intent commands,
 - optionally use SQLite hybrid retrieval (FTS + vector-style ranking) for better search quality as your corpus grows.
 
+## Engineering Philosophy
+
+KB follows a composability-first approach:
+
+- Reuse existing intent routes, orchestrators, and shared utilities before creating new command-specific logic.
+- Keep behavior/policy centralized (for example in intent and orchestration layers) and keep CLI/TUI surfaces thin.
+- Prefer general building blocks that can be shared across `init`, `submit`, `invalidate`, chat, and future workflows.
+- When duplication is temporarily necessary, document it and plan convergence back to shared components.
+
 ## Generalized Use Case
 
 Use KB when you want a repeatable way to capture, validate, and retrieve project knowledge during development.

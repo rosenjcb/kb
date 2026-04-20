@@ -153,6 +153,7 @@ describe('runLogsCommand list', () => {
     expect(output).toContain('init')
     expect(output).toContain('run-300-cccc')
     expect(output).toContain('query')
+    expect(output).toContain('Total')
     vi.resetModules()
   })
 

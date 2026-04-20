@@ -3,8 +3,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseInitCommand, runKbInit } from '../../src/cli/init-cli'
+import { buildFrozenSourceSnapshotDoc } from '../../src/cli/init-source-snapshots'
 import { INIT_TOPIC_DEFINITIONS } from '../../src/cli/init-topic-coverage'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
+import { SqliteDocumentWriter } from '../../src/tools/sqlite-document-writer'
 
 const tempDirs: string[] = []
 let kbHomeDir: string
@@ -28,6 +30,7 @@ async function createTempProject(files: Record<string, string>): Promise<string>
   await Promise.all(
     Object.entries(files).map(async ([file, content]) => {
       const fullPath = path.join(dir, file)
+      await mkdir(path.dirname(fullPath), { recursive: true })
       await writeFile(fullPath, content, 'utf8')
     })
   )
@@ -36,11 +39,15 @@ async function createTempProject(files: Record<string, string>): Promise<string>
 
 function createQuestionIO(answers: string[]) {
   const prompts: string[] = []
+  const writes: string[] = []
   let index = 0
   return {
     prompts,
+    writes,
     io: {
-      write() {},
+      write(message: string) {
+        writes.push(message)
+      },
       async askQuestion(prompt: string): Promise<string> {
         prompts.push(prompt)
         const answer = answers[index]
@@ -54,12 +61,16 @@ function createQuestionIO(answers: string[]) {
 
 function createSequentialOnlyQuestionIO(answers: string[]) {
   const prompts: string[] = []
+  const writes: string[] = []
   let index = 0
   let inFlight = false
   return {
     prompts,
+    writes,
     io: {
-      write() {},
+      write(message: string) {
+        writes.push(message)
+      },
       async askQuestion(prompt: string): Promise<string> {
         if (inFlight) {
           throw new Error('askQuestion called concurrently')
@@ -162,8 +173,61 @@ describe('init-cli interview checkpoints', () => {
     expect(parsed.resume).toBe(true)
   })
 
-  it('Given an unsupported lifecycle flag, then parsing points users to stop-after and resume controls', () => {
-    expect(() => parseInitCommand(['--dry-run'])).toThrow('Unsupported init flag')
+  it('Given rescan flag, then parses it into init options', () => {
+    const parsed = parseInitCommand(['--base', 'dogfood', '--rescan'])
+
+    expect(parsed.base).toBe('dogfood')
+    expect(parsed.rescan).toBe(true)
+  })
+
+  it('Given rescan with resume, then parsing rejects incompatible lifecycle flags', () => {
+    expect(() => parseInitCommand(['--base', 'dogfood', '--rescan', '--resume'])).toThrow(
+      '--rescan cannot be combined with --resume'
+    )
+  })
+
+  it('Given dry-run without rescan, then parsing rejects unsupported combination', () => {
+    expect(() => parseInitCommand(['--dry-run'])).toThrow(
+      '--dry-run is currently supported only with --rescan'
+    )
+  })
+
+  it('Given rescan with dry-run, then parsing enables both flags', () => {
+    const parsed = parseInitCommand(['--base', 'dogfood', '--rescan', '--dry-run'])
+    expect(parsed.rescan).toBe(true)
+    expect(parsed.dryRun).toBe(true)
+  })
+
+  it('Given --apply without --rescan, then parsing rejects invalid combination', () => {
+    expect(() => parseInitCommand(['--base', 'dogfood', '--apply'])).toThrow(
+      '--apply requires --rescan'
+    )
+  })
+
+  it('Given --dry-run with --apply, then parsing rejects invalid combination', () => {
+    expect(() => parseInitCommand(['--base', 'dogfood', '--rescan', '--dry-run', '--apply'])).toThrow(
+      '--dry-run cannot be combined with --apply'
+    )
+  })
+
+  it('Given rescan safeguard flags, then parsing stores timeout and caps', () => {
+    const parsed = parseInitCommand([
+      '--base',
+      'dogfood',
+      '--rescan',
+      '--rescan-stage-timeout-ms',
+      '15000',
+      '--rescan-max-claims',
+      '25',
+      '--rescan-max-evidence-docs',
+      '120',
+      '--rescan-max-mutations',
+      '30',
+    ])
+    expect(parsed.rescanStageTimeoutMs).toBe(15000)
+    expect(parsed.rescanMaxClaims).toBe(25)
+    expect(parsed.rescanMaxEvidenceDocs).toBe(120)
+    expect(parsed.rescanMaxMutations).toBe(30)
   })
 
   it.todo(
@@ -693,6 +757,191 @@ describe('init-cli interview checkpoints', () => {
     const titles = originals.map(d => d.title).sort()
     expect(titles).toContain('AGENTS.md')
     expect(titles).toContain('CLAUDE.md')
+  })
+
+  it('Given --rescan and existing source snapshots, then read-inputs keeps only changed/new README files', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nStable root README content.\n',
+      'docs/README.md': '# Docs\n\nThis README changed recently.\n',
+      'AGENTS.md': '# Agents\n\nThis file should be ignored during rescan.\n',
+    })
+    const base = 'dogfood-rescan'
+    const baseDir = path.join(kbHomeDir, 'sessions', base)
+    await mkdir(baseDir, { recursive: true })
+
+    const writer = new SqliteDocumentWriter({ baseDir, base })
+    const previousRoot = buildFrozenSourceSnapshotDoc(
+      'README.md',
+      '# Project\n\nStable root README content.\n',
+      base,
+      'collected-on-init'
+    )
+    await writer.writeDocument({
+      documentId: 'readme-md',
+      title: previousRoot.title,
+      content: previousRoot.content,
+      type: previousRoot.type,
+      tags: previousRoot.tags,
+      isOriginal: true,
+      overwrite: true,
+    })
+
+    const result = await runKbInit({
+      base,
+      nonInteractive: true,
+      rescan: true,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: createQuestionIO([]).io,
+    })
+
+    expect(result.status).toBe('paused')
+    const cpPath = result.checkpointFile
+    if (!cpPath) throw new Error('expected checkpointFile')
+    const checkpoint = JSON.parse(await readFile(cpPath, 'utf8')) as {
+      context?: { sourceFiles?: Record<string, string> }
+    }
+    const sourceFileKeys = Object.keys(checkpoint.context?.sourceFiles ?? {}).sort()
+    expect(sourceFileKeys).toEqual(['docs/README.md'])
+  })
+
+  it('Given --rescan --dry-run, then write cycle prints plan diff and performs no mutations', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nStable root README content.\n',
+      'docs/README.md': '# Docs\n\nThis README changed recently.\n',
+    })
+    const provider = createProvider(
+      INIT_TOPIC_DEFINITIONS.map(def =>
+        JSON.stringify({
+          title: `Synthesis ${def.topic}`,
+          type: 'reference',
+          tags: [def.topic],
+          content: `Key statement for ${def.topic}. `.repeat(12),
+        })
+      )
+    )
+
+    const result = await runKbInit({
+      base: 'rescan-dry-run',
+      nonInteractive: true,
+      rescan: true,
+      dryRun: true,
+      cwd,
+      provider,
+      questionIO: createQuestionIO([]).io,
+    })
+
+    expect(result.status).toBe('accepted')
+    expect((result.writtenDocIds ?? []).length).toBe(0)
+  })
+
+  it('Given --rescan without --apply, then run stays plan-only and writes no documents', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nStable root README content.\n',
+      'docs/README.md': '# Docs\n\nThis README changed recently.\n',
+    })
+    const provider = createProvider(
+      INIT_TOPIC_DEFINITIONS.map(def =>
+        JSON.stringify({
+          title: `Synthesis ${def.topic}`,
+          type: 'reference',
+          tags: [def.topic],
+          content: `Rescan candidate for ${def.topic}. `.repeat(10),
+        })
+      )
+    )
+
+    const result = await runKbInit({
+      base: 'rescan-plan-only',
+      nonInteractive: true,
+      rescan: true,
+      cwd,
+      provider,
+    })
+
+    expect(result.status).toBe('accepted')
+    expect((result.writtenDocIds ?? []).length).toBe(0)
+  })
+
+  it('Given --rescan plan preview, then it does not propose synthetic rescan files', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nKB provides CLI + intent commands for project knowledge.\n',
+      'docs/README.md': '# Docs\n\nUse kb submit and kb invalidate to manage facts.\n',
+    })
+    const provider = createProvider(
+      INIT_TOPIC_DEFINITIONS.map(def =>
+        JSON.stringify({
+          title: `Synthesis ${def.topic}`,
+          type: 'reference',
+          tags: [def.topic],
+          content: `KB ${def.topic} details for rescan planning and command behavior. `.repeat(8),
+        })
+      )
+    )
+    const questionIO = createQuestionIO([])
+    const result = await runKbInit({
+      base: 'rescan-preview-append-style',
+      nonInteractive: true,
+      rescan: true,
+      cwd,
+      provider,
+      questionIO: questionIO.io,
+    })
+
+    expect(result.status).toBe('accepted')
+    const output = questionIO.writes.join('\n')
+    expect(output).toContain('rescan plan preview')
+    expect(output).not.toContain('diff --git a/docs/rescan-')
+  })
+
+  it('Given interactive --rescan, then read-inputs does not ask initial interview questions', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nThis project has docs.\n',
+    })
+    const questionIO = createQuestionIO(['dogfood'])
+
+    const result = await runKbInit({
+      base: 'rescan-no-questions',
+      nonInteractive: false,
+      rescan: true,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: questionIO.io,
+    })
+
+    expect(result.status).toBe('paused')
+    expect(questionIO.prompts).toHaveLength(0)
+  })
+
+  it('Given interactive --rescan through pass2, then follow-up interview questions are skipped', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nThis project has docs.\n',
+    })
+    await mkdir(path.join(cwd, 'evaluation', 'runs'), { recursive: true })
+    const provider = createProvider(
+      INIT_TOPIC_DEFINITIONS.map(def =>
+        JSON.stringify({
+          title: `Synthesis ${def.topic}`,
+          type: 'reference',
+          tags: [def.topic],
+          content: `Rescan candidate for ${def.topic}. `.repeat(10),
+        })
+      )
+    )
+    const questionIO = createQuestionIO([])
+
+    const result = await runKbInit({
+      base: 'rescan-no-followups',
+      nonInteractive: false,
+      rescan: true,
+      stopAfter: 'pass2',
+      cwd,
+      provider,
+      questionIO: questionIO.io,
+    })
+
+    expect(result.status).toBe('paused')
+    expect(questionIO.prompts).toHaveLength(0)
   })
 })
 

@@ -8,5 +8,9 @@ You are refining a set of KB documents for quality and completeness.
 4. Ensure each document has a concise, specific title.
 5. Fill in obvious gaps — if an important topic is missing based on the user answers, add a document for it.
 6. Remove content that is vague, redundant, or not factual.
+7. Normalize fact statements into plain declarative sentences; avoid markdown emphasis artifacts, inline HTML, and command-only fragments.
+8. Delete malformed or placeholder statements instead of "fixing" them with guesses. Remove lines like `* : ...`, `Type: ...`, empty command references, or sentences with missing nouns/verbs.
+9. Keep command references explicit and complete when present (include the actual command or config key, not blanks).
+10. Do not introduce `rescan`-prefixed document titles unless the source evidence itself is specifically about rescan behavior.
 
 Return the refined JSON array in the same shape. Return ONLY the JSON array.

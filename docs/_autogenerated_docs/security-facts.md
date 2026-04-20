@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Security Facts
-date: '2026-04-19'
+date: '2026-04-20'
 kb_id: security-facts
 tags:
   - security

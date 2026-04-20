@@ -9,12 +9,17 @@ Return a single JSON object (not an array):
   "title": "string — concise noun phrase, Cap Every Word, no file extensions",
   "type": "architecture" | "decision" | "reference" | "runbook" | "checklist",
   "tags": ["tag1", "tag2"],
-  "content": "Markdown body. Start with a 1-sentence summary. Then bullet facts or short paragraphs. Be concrete and specific — use actual names, commands, and values from the sources."
+  "content": "Markdown body. Start with a 1-sentence summary. Then short factual paragraphs or concise bullets. Use plain declarative sentences, avoid decorative markdown/HTML, and avoid standalone command fragments without context."
 }
 
 Rules:
 - Cover ONLY the specified topic — do not include facts from other topics.
 - If the sources have no evidence for this topic, write a brief note explaining the gap.
 - Title uses Cap Every Word (e.g. "Core Workflows", "Installation And Setup").
+- Keep statements self-contained so they can be interpreted as standalone facts in downstream planning.
+- Never emit placeholder text or incomplete command mentions (for example: `* :`, `using and`, `set in`, empty backticks, or sentences with missing command names/flags).
+- Do not emit metadata lines as facts (for example: `Type: reference`, `Tags: ...`, frontmatter keys).
+- Do not include list markers as content text (no leading `*`, `-`, or numbered marker without sentence text).
+- Every sentence must name the subject explicitly and include at least one concrete noun (command, file, config key, component, or workflow step).
 - Return ONLY the JSON object, no prose, no array wrapper.
 - When the API enforces structured JSON, return the object alone (no markdown fences).

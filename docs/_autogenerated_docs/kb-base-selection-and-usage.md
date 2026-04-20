@@ -1,7 +1,7 @@
 ---
 layout: default
 title: KB Base Selection and Usage
-date: '2026-04-19'
+date: '2026-04-20'
 kb_id: kb-base-selection-and-usage
 tags:
   - cli

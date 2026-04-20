@@ -23,6 +23,7 @@ import { InitStatusPanel } from './components/InitStatusPanel.js'
 import { InputBar } from './components/InputBar.js'
 import { StatusBar } from './components/StatusBar.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
+import { ensureInitBaseArg } from './init-args.js'
 import { parseInitOutput } from './init-status.js'
 import { parseShellArgs, printCliHelp, runCommandForTui } from './runner.js'
 import {
@@ -211,7 +212,8 @@ export function App({ config, startupNotices = [] }: Props) {
 
       let parsed: InitOptions
       try {
-        parsed = parseInitCommand(extraArgs)
+        const initArgs = ensureInitBaseArg(extraArgs, baseName)
+        parsed = parseInitCommand(initArgs)
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         addEntry({ type: 'error', content: `❌ ${message}` })
@@ -242,7 +244,7 @@ export function App({ config, startupNotices = [] }: Props) {
           setMode('shell')
         })
     },
-    [addEntry]
+    [addEntry, baseName]
   )
 
   const handleSubmit = useCallback(

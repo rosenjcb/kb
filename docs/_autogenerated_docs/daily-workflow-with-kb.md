@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Daily Workflow with KB
-date: '2026-04-19'
+date: '2026-04-20'
 kb_id: daily-workflow-with-kb
 tags:
   - workflow
