@@ -54,6 +54,7 @@ export function App({ config, startupNotices = [] }: Props) {
 
   const chatInputResolverRef = useRef<((v: string | null) => void) | null>(null)
   const initInputResolverRef = useRef<((v: string) => void) | null>(null)
+  const chatPendingEntryIdRef = useRef<string | null>(null)
   const storageDirRef = useRef<string>('')
   const entryCounterRef = useRef(0)
 
@@ -74,6 +75,26 @@ export function App({ config, startupNotices = [] }: Props) {
   const updateEntry = useCallback((id: string, patch: Partial<Omit<HistoryEntry, 'id'>>) => {
     setHistory(prev => prev.map(e => (e.id === id ? { ...e, ...patch } : e)))
   }, [])
+
+  const removeEntry = useCallback((id: string) => {
+    setHistory(prev => prev.filter(e => e.id !== id))
+  }, [])
+
+  const startChatPending = useCallback(() => {
+    if (chatPendingEntryIdRef.current) return
+    chatPendingEntryIdRef.current = addEntry({
+      type: 'chat-meta',
+      content: 'thinking...',
+      loading: true,
+    })
+  }, [addEntry])
+
+  const stopChatPending = useCallback(() => {
+    const pendingId = chatPendingEntryIdRef.current
+    if (!pendingId) return
+    chatPendingEntryIdRef.current = null
+    removeEntry(pendingId)
+  }, [removeEntry])
 
   // Resolve base dir on mount (effective base: activeBase, else selectedBase)
   useEffect(() => {
@@ -120,6 +141,7 @@ export function App({ config, startupNotices = [] }: Props) {
         })
       },
       write(line: string) {
+        stopChatPending()
         // Drop checkpoint noise
         if (line.startsWith('checkpoints>')) return
 
@@ -135,6 +157,7 @@ export function App({ config, startupNotices = [] }: Props) {
         addEntry({ type: 'chat-assistant', content: clean })
       },
       error(line: string) {
+        stopChatPending()
         addEntry({ type: 'error', content: line })
       },
     }
@@ -143,20 +166,23 @@ export function App({ config, startupNotices = [] }: Props) {
       {
         llmProvider,
         toolExecutor,
+        mode: 'tui',
         graphWriter,
         conversationalRetrieval: resolveConversationalChatEnabled(config),
       },
       chatIO
     )
       .then(() => {
+        stopChatPending()
         setMode('shell')
       })
       .catch(err => {
+        stopChatPending()
         const message = err instanceof Error ? err.message : String(err)
         addEntry({ type: 'error', content: `Chat error: ${message}` })
         setMode('shell')
       })
-  }, [config, addEntry])
+  }, [config, addEntry, stopChatPending])
 
   const startInitSession = useCallback(
     (extraArgs: string[]) => {
@@ -247,12 +273,18 @@ export function App({ config, startupNotices = [] }: Props) {
           return
         }
         addEntry({ type: 'chat-you', content: trimmed })
+        if (trimmed !== '/exit') {
+          startChatPending()
+        }
         const resolver = chatInputResolverRef.current
         if (resolver) {
           chatInputResolverRef.current = null
           resolver(trimmed === '/exit' ? null : trimmed)
         }
-        if (trimmed === '/exit') setMode('shell')
+        if (trimmed === '/exit') {
+          stopChatPending()
+          setMode('shell')
+        }
         return
       }
 
@@ -323,7 +355,18 @@ export function App({ config, startupNotices = [] }: Props) {
         setIsRunning(false)
       }
     },
-    [mode, isRunning, config, addEntry, updateEntry, startChatSession, startInitSession, exit]
+    [
+      mode,
+      isRunning,
+      config,
+      addEntry,
+      updateEntry,
+      startChatSession,
+      startInitSession,
+      startChatPending,
+      stopChatPending,
+      exit,
+    ]
   )
 
   const slashSuggestions = getSlashCommandSuggestions(inputValue, mode)

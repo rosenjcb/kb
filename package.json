@@ -1,5 +1,5 @@
 {
-  "name": "kb-agent-harness",
+  "name": "kb",
   "version": "0.1.0",
   "description": "TypeScript-based agent harness with LLM provider abstraction",
   "type": "module",
@@ -22,10 +22,9 @@
     "eval:snap": "tsx scripts/eval-snapshot.ts",
     "eval:artifact": "tsx scripts/eval-task-artifact.ts",
     "install:global": "npm run build && npm install -g .",
-    "refresh:global": "npm run install:global",
     "which:kb": "command -v kb || where kb",
     "link:global": "npm run build && npm link",
-    "unlink:global": "npm unlink -g kb-agent-harness",
+    "unlink:global": "npm unlink -g kb",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:functional": "bash tests/functional-test.sh",
@@ -53,6 +52,7 @@
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",
     "js-yaml": "^4.1.0",
+    "ora": "^8.2.0",
     "react": "^18.3.1",
     "zod": "^3.22.0"
   },

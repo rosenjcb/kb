@@ -9,8 +9,10 @@ import {
   formatIntentResult,
   isIntentCommand,
   parseIntentCommand,
+  printIntentResult,
   rewriteIntentInputWithSessionContext,
 } from '../../src/cli/intent-cli'
+import { createPrinter } from '../../src/ui/printer'
 import type { ToolExecutor } from '../../src/core/tool-registry'
 import type { LLMProvider } from '../../src/core/types'
 
@@ -163,6 +165,50 @@ describe('intent-cli parsing', () => {
     expect(output).toContain('Matches: 0')
     expect(output).toContain('Relevant Docs: none')
     expect(output).toContain('Hint: Try a broader phrase')
+  })
+
+  it('Given read_documents result, printIntentResult emits structured metadata and thinking trace', () => {
+    const lines: string[] = []
+    const printer = createPrinter(
+      {
+        log: line => lines.push(line),
+        write: line => lines.push(line),
+        error: line => lines.push(line),
+      },
+      'tui'
+    )
+
+    printIntentResult(
+      {
+        status: 'accepted',
+        confidence: 0.8,
+        explanation: 'query intent maps directly to read_documents',
+        recommendedAction: 'read_documents',
+        data: {
+          answer: 'The KB uses session base first, then default base.',
+          retrieval: {
+            method: 'hybrid',
+            detail: 'fts+vector-rerank',
+            checkpoints: [
+              {
+                stage: 'hybrid_primary',
+                status: 'hit',
+                nextAction: 'return',
+              },
+            ],
+          },
+          results: [{ metadata: { id: 'cli-facts', title: 'CLI Facts', filePath: '/tmp/cli-facts.md' } }],
+        },
+      },
+      'human',
+      printer
+    )
+
+    const output = lines.join('\n')
+    expect(output).toContain('Summary:')
+    expect(output).toContain('Retrieval: hybrid (fts+vector-rerank)')
+    expect(output).toContain('(Thinking: hybrid_primary:hit->return)')
+    expect(output).toContain('Provenance: cli-facts')
   })
 
   it('Given read_documents result and llm provider, then enrichReadDocumentsAnswerWithLLM injects LLM answer', async () => {

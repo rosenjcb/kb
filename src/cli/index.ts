@@ -40,12 +40,13 @@ import { parseInitCommand, runKbInit } from './init-cli'
 import {
   augmentIntentResultWithWorkspaceFallback,
   enrichReadDocumentsAnswerWithLLM,
-  formatIntentResult,
   isIntentCommand,
   parseIntentCommand,
+  printIntentResult,
   printIntentHelp,
   rewriteIntentInputWithSessionContext,
 } from './intent-cli'
+import { createPrinter } from '../ui/printer'
 import {
   applyConfigToEnv,
   createLLMProviderFromConfig,
@@ -369,6 +370,7 @@ export async function runMainWithOutput(
     await runChatSession({
       llmProvider,
       toolExecutor,
+      mode,
       graphWriter: chatGraphWriter,
       conversationalRetrieval: resolveConversationalChatEnabled(config),
     })
@@ -625,6 +627,7 @@ export async function runMainWithOutput(
   if (isIntentCommand(firstArg)) {
     const reporter = new ReportWriter(defaultLogsDir())
     let collector = new RunCollector(firstArg)
+    const printer = createPrinter(out, mode)
     try {
       let parsed = parseIntentCommand(args)
       collector = new RunCollector(firstArg, { debug: parsed.debug })
@@ -643,11 +646,16 @@ export async function runMainWithOutput(
       const rawLlmProvider = createLLMProviderFromConfig(config)
       const llmCounter = rawLlmProvider ? new TokenCountingProvider(rawLlmProvider) : undefined
       const llmProvider = llmCounter ?? rawLlmProvider
-      parsed = await rewriteIntentInputWithSessionContext(
-        parsed,
-        llmProvider ?? undefined,
-        intentBaseDir
-      )
+      printer.startSpinner('running intent rewrite...')
+      try {
+        parsed = await rewriteIntentInputWithSessionContext(
+          parsed,
+          llmProvider ?? undefined,
+          intentBaseDir
+        )
+      } finally {
+        printer.stopSpinner()
+      }
       if (parsed.envelope.intent === 'query_truth' && resolveGraphEnabled(config)) {
         const payload = parsed.envelope.payload as { query?: string }
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
@@ -663,9 +671,12 @@ export async function runMainWithOutput(
       const toolExecutor = createKBToolsRegistry(intentBaseDir, config, {
         taskProvider: llmProvider ?? undefined,
       })
+      printer.startSpinner('running intent loop...')
       const { result } = await runIntentLoop(parsed.envelope, toolExecutor, {
         provider: llmProvider ?? undefined,
         collector: collector,
+      }).finally(() => {
+        printer.stopSpinner()
       })
 
       if (
@@ -722,12 +733,15 @@ export async function runMainWithOutput(
       }
 
       const aligned = await augmentIntentResultWithWorkspaceFallback(parsed, result, process.cwd())
+      printer.startSpinner('drafting final answer...')
       const enriched = await enrichReadDocumentsAnswerWithLLM(
         parsed,
         aligned,
         llmProvider ?? undefined,
         intentBaseDir
-      )
+      ).finally(() => {
+        printer.stopSpinner()
+      })
 
       // Capture tokens from the answer-enrichment LLM call (query path)
       if (llmCounter) {
@@ -753,7 +767,7 @@ export async function runMainWithOutput(
         }
       }
 
-      out.log(formatIntentResult(enriched, parsed.output))
+      printIntentResult(enriched, parsed.output, printer)
       await reporter.append(collector.finish('success'))
       return
     } catch (error) {
