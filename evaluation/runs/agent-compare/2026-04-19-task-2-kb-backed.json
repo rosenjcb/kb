@@ -1,0 +1,26 @@
+{
+  "task_id": 2,
+  "agent": "kb-backed",
+  "base": "raylib",
+  "kb_queries_made": 1,
+  "kb_submissions_made": 1,
+  "codeburn_input_tokens_delta": 3,
+  "codeburn_output_tokens_delta": 4891,
+  "codeburn_cost_usd_delta": 0.14,
+  "codeburn_snapshot_before": {
+    "cost": 112.32,
+    "input": 38125,
+    "output": 1134750
+  },
+  "codeburn_snapshot_after": {
+    "cost": 112.46,
+    "input": 38128,
+    "output": 1139641
+  },
+  "task_completed": true,
+  "kb_queries": [
+    "raylib texture drawing tiling scrolling background layers"
+  ],
+  "kb_query_hit_rate": "0/1 — no tiling/scrolling info in KB; had to implement procedurally using fmodf offset wrap",
+  "notes": "Added 3-layer parallax scrolling to flappy_bird.c. KB had no info on scrolling/tiling; approach derived directly from math (fmodf for wrap, offset-driven DrawTriangle for mountains, DrawRectangle strips for ground). Task 3 (high score persistence) was bundled in the same session — implemented via fopen/fprintf to /tmp/flappy_highscore.txt. KB submission recorded: parallax offset pattern, 3-layer speed ratios, high score file I/O pattern."
+}
