@@ -206,11 +206,11 @@ export function formatUseCommandHelp(
     `Resolved path: ${resolvedPath}`,
     '',
     'Switched the active base for this session.',
-    `Use \`${cmd('use --default <base>', mode)}\` to save the preferred base for future runs.`,
+    `Use \`${cmd('base use --default <base>', mode)}\` to save the preferred base for future runs.`,
   ].join('\n')
 }
 
-/** Format the output after `use --default` / `default` (CLI vs TUI via `mode`). */
+/** Format the output after `base use --default` / `default` (CLI vs TUI via `mode`). */
 export function formatDefaultCommandHelp(
   base: string,
   resolvedPath: string,
@@ -221,8 +221,76 @@ export function formatDefaultCommandHelp(
     `Resolved path: ${resolvedPath}`,
     '',
     'Saved as the preferred base for future runs.',
-    `Use \`${cmd('use <base>', mode)}\` when you want to switch bases temporarily.`,
+    `Use \`${cmd('base use <base>', mode)}\` when you want to switch bases temporarily.`,
   ].join('\n')
+}
+
+export interface DeleteBaseResult {
+  basePath: string
+  clearedActive: boolean
+  clearedSelected: boolean
+}
+
+/**
+ * Delete a named base: removes its session directory and clears any config
+ * references to it. Only works for alias-style bases (not path-like).
+ */
+export async function deleteBase(base: string): Promise<DeleteBaseResult> {
+  const trimmed = base.trim()
+  if (!trimmed) throw new Error('Base name is required')
+  if (isPathLike(trimmed)) {
+    throw new Error(
+      'kb base delete only works with named bases, not path-like references. Remove the directory manually.'
+    )
+  }
+
+  const basePath = resolveBaseToDir(trimmed)
+
+  if (await pathExists(basePath)) {
+    await rm(basePath, { recursive: true, force: true })
+  }
+
+  const config = await readKbConfig()
+  const clearedActive = config.activeBase === trimmed
+  const clearedSelected = config.selectedBase === trimmed
+
+  if (clearedActive || clearedSelected) {
+    await writeKbConfig({
+      ...config,
+      activeBase: clearedActive ? undefined : config.activeBase,
+      selectedBase: clearedSelected ? undefined : config.selectedBase,
+    })
+  }
+
+  return { basePath, clearedActive, clearedSelected }
+}
+
+export function printBaseDeleteHelp(mode: CmdMode = 'cli'): string {
+  return [
+    `${cmd('base delete', mode)} — delete a base and all its data`,
+    '',
+    'Usage:',
+    `  ${cmd('base delete <base> [--force]', mode)}`,
+    '',
+    'Removes the session directory and clears the base from config.',
+    'Prompts for confirmation unless --force is passed.',
+    '',
+    'Examples:',
+    `  ${cmd('base delete ci-test --force', mode)}`,
+    `  ${cmd('base delete old-project', mode)}`,
+  ].join('\n')
+}
+
+export function formatDeleteBaseResult(
+  base: string,
+  result: DeleteBaseResult,
+  mode: CmdMode = 'cli'
+): string {
+  const lines = [`Deleted base: ${base}`, `Removed path: ${result.basePath}`]
+  if (result.clearedActive) lines.push('Cleared from active base (config.activeBase).')
+  if (result.clearedSelected) lines.push('Cleared from default base (config.selectedBase).')
+  lines.push('', `Use \`${cmd('base use <base>', mode)}\` to start a new base.`)
+  return lines.join('\n')
 }
 
 async function pathExists(targetPath: string): Promise<boolean> {

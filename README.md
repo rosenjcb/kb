@@ -47,14 +47,15 @@ kb config set llm.provider openai
 ### 3) Set your KB base
 
 ```bash
-kb use dogfood            # switch the active base for this session
-kb use --default dogfood  # save a persistent default
-kb use --show             # show active base and config default
+kb base use dogfood            # switch the active base for this session
+kb base use --default dogfood  # save a persistent default
+kb base use --show             # show active base and config default
+kb base delete ci-test --force # delete a base and all its data
 ```
 
 Base resolution order (both live in `~/.kb/config.json`):
-1. `activeBase` — current working base from `kb use <base>`
-2. `selectedBase` — persistent default from `kb use --default <base>` (or `kb default <base>`)
+1. `activeBase` — current working base from `kb base use <base>`
+2. `selectedBase` — persistent default from `kb base use --default <base>` (or `kb default <base>`)
 
 Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
 
@@ -65,8 +66,8 @@ Prerequisites are validated separately: if no base is configured you get a **kno
 ```bash
 kb submit "Document writer now supports sqlite index sync"
 kb query "sqlite index sync behavior" --limit 5
-kb validate "kb use sets the active session base"
-kb invalidate "kb use should persist across sessions" "kb use is session-scoped; use kb use --default to write a persistent default"
+kb validate "kb base use sets the active session base"
+kb invalidate "kb use should persist across sessions" "kb base use is session-scoped; use kb base use --default to write a persistent default"
 ```
 
 ## CLI Reference
@@ -92,9 +93,10 @@ kb docs view --title "<exact title>" [--base <name>]
 ### Other commands
 
 ```
-kb use <base>             — switch the active base for the current session
-kb use --default <base>   — save persistent default to ~/.kb/config.json
-kb use --show             — show active base and config default
+kb base use <base>             — switch the active base for the current session
+kb base use --default <base>   — save persistent default to ~/.kb/config.json
+kb base use --show             — show active base and config default
+kb base delete <base>          — delete a base and all its data (prompts unless --force)
 kb config get
 kb config set <key> <value>
 kb config unset <key>
@@ -105,8 +107,10 @@ kb chat
 
 ### Notes
 
-- `kb use <base>` writes `activeBase` to `~/.kb/config.json` so future `kb` commands keep using that base until you switch again.
-- `kb use --default <base>` writes `selectedBase` to `~/.kb/config.json`.
+- `kb base use <base>` writes `activeBase` to `~/.kb/config.json` so future `kb` commands keep using that base until you switch again.
+- `kb base use --default <base>` writes `selectedBase` to `~/.kb/config.json`.
+- `kb base delete <base>` removes `~/.kb/sessions/<base>/` and clears it from config. Use `--force` to skip confirmation.
+- `kb use <base>` still works as a backward-compatible alias for `kb base use <base>`.
 - `kb init` defaults to base `default` if `--base` is omitted.
 - Typing `kb --help` shows the full help message.
 

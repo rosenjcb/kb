@@ -7,7 +7,7 @@ export interface SlashCommand {
 
 const SHELL_COMMANDS: SlashCommand[] = [
   { command: '/init', description: 'initialize a knowledge base' },
-  { command: '/use', description: 'switch the active knowledge base' },
+  { command: '/base', description: 'manage KB bases (use, delete)' },
   { command: '/query', description: 'search the knowledge base' },
   { command: '/submit', description: 'store a new fact or checkpoint' },
   { command: '/validate', description: 'check whether a fact is supported' },

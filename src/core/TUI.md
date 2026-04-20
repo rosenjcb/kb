@@ -20,11 +20,12 @@ Do not treat the TUI path as extra polish. It is part of the product surface.
 - `kb <command> ...` should be non-interactive by default unless that command intentionally runs an interview or session flow.
 - `kb <command> --help` should print help and exit without starting real work.
 - If a command is exposed inside the TUI, the slash path should mirror the CLI path closely enough that the same feature can be exercised both ways.
-- Success or follow-up copy in the TUI transcript (e.g. after `/use` or `/use --default`) should use **slash form** (`/use …`), not `kb …`, so users are not told to leave the Ink shell. Shared formatters take `CmdMode` and build hints via `cmd()` in `src/cli/cmd-ref.ts`.
+- Success or follow-up copy in the TUI transcript (e.g. after `/base use` or `/base use --default`) should use **slash form** (`/base use …`), not `kb …`, so users are not told to leave the Ink shell. Shared formatters take `CmdMode` and build hints via `cmd()` in `src/cli/cmd-ref.ts`.
 
 Examples:
 
 - `kb init` must support both its command-line path and the TUI `/init` path.
+- `kb base use` / `kb base delete` must work as both `kb base …` (CLI) and `/base use …` / `/base delete …` (TUI).
 - A help flag should work from both `kb --help` and `kb init --help`.
 - A normal intent command like `kb query "topic"` is already non-interactive by shape and should not need an extra mode flag.
 

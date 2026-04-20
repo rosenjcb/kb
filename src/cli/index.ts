@@ -18,10 +18,13 @@ import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
 import {
+  deleteBase,
   ensureOperationalBaseDir,
   formatDefaultCommandHelp,
+  formatDeleteBaseResult,
   formatUseCommandHelp,
   migrateLegacyKbSessionJson,
+  printBaseDeleteHelp,
   readBaseConfig,
   resolveEffectiveBaseDir,
   writeDefaultBase,
@@ -120,7 +123,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('<intent-command>', mode)} "<input>" [options]`,
     '',
     'Core commands:',
-    '  use         Switch the active base or save a default',
+    '  base        Manage KB bases (use, delete)',
     '  config      Inspect or update persistent config',
     '  init        Build a KB from project docs',
     '  graph       Inspect the knowledge graph',
@@ -140,27 +143,30 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     cmdHelpHint(mode),
     '',
     'Examples:',
-    `  ${cmd('use dogfood', mode)}`,
-    `  ${cmd('use --default dogfood', mode)}`,
+    `  ${cmd('base use dogfood', mode)}`,
+    `  ${cmd('base use --default dogfood', mode)}`,
+    `  ${cmd('base delete ci-test --force', mode)}`,
     `  ${cmd('docs list --base dogfood --limit 20', mode)}`,
     `  ${cmd('docs view kb-base-selection-and-usage', mode)}`,
     `  ${cmd('submit "SQLite hybrid search is enabled in dogfood"', mode)}`,
   ].join('\n')
 }
 
-function printUseHelp(mode: CmdMode = 'cli'): string {
+function printBaseHelp(mode: CmdMode = 'cli'): string {
   return [
-    `${cmd('use', mode)} commands`,
+    `${cmd('base', mode)} commands`,
     '',
     'Usage:',
-    `  ${cmd('use <base>', mode)}`,
-    `  ${cmd('use --default <base>', mode)}`,
-    `  ${cmd('use --show', mode)}`,
+    `  ${cmd('base use <base>', mode)}`,
+    `  ${cmd('base use --default <base>', mode)}`,
+    `  ${cmd('base use --show', mode)}`,
+    `  ${cmd('base delete <base> [--force]', mode)}`,
     '',
     'Examples:',
-    `  ${cmd('use dogfood', mode)}`,
-    `  ${cmd('use --default dogfood', mode)}`,
-    `  ${cmd('use --show', mode)}`,
+    `  ${cmd('base use dogfood', mode)}`,
+    `  ${cmd('base use --default dogfood', mode)}`,
+    `  ${cmd('base use --show', mode)}`,
+    `  ${cmd('base delete ci-test --force', mode)}`,
   ].join('\n')
 }
 
@@ -262,52 +268,96 @@ export async function runMainWithOutput(
     return
   }
 
-  if (firstArg === 'use') {
-    const show = args.includes('--show')
-    const makeDefault = args.includes('--default')
-    const help = args.includes('--help') || args.includes('-h') || args[1] === 'help'
-    const base = args.find((token, index) => index > 0 && !token.startsWith('--'))
+  if (firstArg === 'base' || firstArg === 'use') {
+    // `kb use ...` is a deprecated alias for `kb base use ...`
+    // Normalize: if the user typed `kb use <args>`, treat it as `kb base use <args>`
+    const subArgs = firstArg === 'use' ? ['use', ...args.slice(1)] : args.slice(1)
+    const subCmd = subArgs[0]
 
-    if (help) {
-      out.log(printUseHelp(mode))
+    if (!subCmd || subCmd === '--help' || subCmd === '-h' || subCmd === 'help') {
+      out.log(printBaseHelp(mode))
       return
     }
 
-    if (show || !base) {
-      const configured = await readBaseConfig()
-      let effective: Awaited<ReturnType<typeof resolveEffectiveBaseDir>> | null = null
-      try {
-        effective = await resolveEffectiveBaseDir()
-      } catch {
-        // No active base configured yet.
+    if (subCmd === 'use') {
+      const useArgs = subArgs.slice(1)
+      const show = useArgs.includes('--show')
+      const makeDefault = useArgs.includes('--default')
+      const help = useArgs.includes('--help') || useArgs.includes('-h') || useArgs[0] === 'help'
+      const base = useArgs.find((token, index) => index >= 0 && !token.startsWith('--'))
+
+      if (help) {
+        out.log(printBaseHelp(mode))
+        return
       }
-      out.log('KB base configuration')
-      if (effective) {
-        out.log(`Source: ${effective.source}`)
-        out.log(`Base: ${effective.baseName}`)
-        out.log(`Resolved path: ${effective.baseDir}`)
-      } else {
-        out.log(CLI_ERROR_NO_KB_BASE)
+
+      if (show || !base) {
+        const configured = await readBaseConfig()
+        let effective: Awaited<ReturnType<typeof resolveEffectiveBaseDir>> | null = null
+        try {
+          effective = await resolveEffectiveBaseDir()
+        } catch {
+          // No active base configured yet.
+        }
+        out.log('KB base configuration')
+        if (effective) {
+          out.log(`Source: ${effective.source}`)
+          out.log(`Base: ${effective.baseName}`)
+          out.log(`Resolved path: ${effective.baseDir}`)
+        } else {
+          out.log(CLI_ERROR_NO_KB_BASE)
+        }
+        if (configured.activeBase) {
+          out.log(`Active base: ${configured.activeBase}`)
+        }
+        if (configured.selectedBase) {
+          out.log(`Default base: ${configured.selectedBase}`)
+        }
+        return
       }
-      if (configured.activeBase) {
-        out.log(`Active base: ${configured.activeBase}`)
+
+      if (makeDefault) {
+        const saved = await writeDefaultBase(base)
+        const resolved = await ensureOperationalBaseDir(saved.selectedBase ?? base)
+        out.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved, mode))
+        return
       }
-      if (configured.selectedBase) {
-        out.log(`Default base: ${configured.selectedBase}`)
-      }
+
+      await writeSessionBase(base)
+      const resolved = await ensureOperationalBaseDir(base)
+      out.log(formatUseCommandHelp(base, resolved, mode))
       return
     }
 
-    if (makeDefault) {
-      const saved = await writeDefaultBase(base)
-      const resolved = await ensureOperationalBaseDir(saved.selectedBase ?? base)
-      out.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved, mode))
+    if (subCmd === 'delete') {
+      const deleteArgs = subArgs.slice(1)
+      const help = deleteArgs.includes('--help') || deleteArgs.includes('-h') || deleteArgs[0] === 'help'
+      if (help) {
+        out.log(printBaseDeleteHelp(mode))
+        return
+      }
+
+      const base = deleteArgs.find(token => !token.startsWith('--'))
+      if (!base) {
+        out.error(printBaseDeleteHelp(mode))
+        return
+      }
+
+      const force = deleteArgs.includes('--force') || deleteArgs.includes('-f')
+      if (!force) {
+        const confirmed = await promptBaseDeleteConfirm(base)
+        if (!confirmed) {
+          out.log('Aborted.')
+          return
+        }
+      }
+
+      const result = await deleteBase(base)
+      out.log(formatDeleteBaseResult(base, result, mode))
       return
     }
 
-    await writeSessionBase(base)
-    const resolved = await ensureOperationalBaseDir(base)
-    out.log(formatUseCommandHelp(base, resolved, mode))
+    out.error(`Unknown base subcommand: ${subCmd}\n\n${printBaseHelp(mode)}`)
     return
   }
 
@@ -317,7 +367,7 @@ export async function runMainWithOutput(
       const configured = await readBaseConfig()
       if (!configured.selectedBase) {
         out.log('No default base configured.')
-        out.log(`  Set one with: ${cmd('use --default <base>', mode)}`)
+        out.log(`  Set one with: ${cmd('base use --default <base>', mode)}`)
         return
       }
       const resolved = await ensureOperationalBaseDir(configured.selectedBase)
@@ -327,7 +377,7 @@ export async function runMainWithOutput(
         out.log(`Current active base: ${configured.activeBase}`)
       }
       out.log(
-        `Use \`${cmd('use <base>', mode)}\` to switch the active base without changing the saved default.`
+        `Use \`${cmd('base use <base>', mode)}\` to switch the active base without changing the saved default.`
       )
       return
     }
@@ -797,6 +847,21 @@ export async function runMainWithOutput(
   out.error(`❌ Unrecognized command: ${firstArg}`)
   out.error('')
   out.log(printCliHelp(mode))
+}
+
+async function promptBaseDeleteConfirm(base: string): Promise<boolean> {
+  if (!process.stdin.isTTY) return false
+  const { createInterface } = await import('node:readline')
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  return new Promise(resolve => {
+    rl.question(
+      `Delete base "${base}" and all its data? This cannot be undone. [y/N]: `,
+      answer => {
+        rl.close()
+        resolve(answer.trim().toLowerCase() === 'y')
+      }
+    )
+  })
 }
 
 // ---------------------------------------------------------------------------

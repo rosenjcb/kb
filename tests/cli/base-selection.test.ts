@@ -3,10 +3,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  deleteBase,
   ensureOperationalBaseDir,
   formatDefaultCommandHelp,
+  formatDeleteBaseResult,
   formatUseCommandHelp,
   getKbHomeDir,
+  printBaseDeleteHelp,
   readBaseConfig,
   resolveBaseToDir,
   resolveEffectiveBaseDir,
@@ -156,7 +159,7 @@ describe('base-selection', () => {
     const text = formatUseCommandHelp('catalog', path.join(getKbHomeDir(), 'sessions', 'catalog'))
     expect(text).toContain('Using base: catalog')
     expect(text).toContain('Switched the active base for this session')
-    expect(text).toContain('`kb use --default <base>`')
+    expect(text).toContain('`kb base use --default <base>`')
   })
 
   it('formatDefaultCommandHelp shows persistent default messaging', () => {
@@ -166,7 +169,7 @@ describe('base-selection', () => {
     )
     expect(text).toContain('Default base: catalog')
     expect(text).toContain('preferred base')
-    expect(text).toContain('`kb use <base>`')
+    expect(text).toContain('`kb base use <base>`')
   })
 
   it('formatUseCommandHelp uses slash hints in TUI mode', () => {
@@ -175,7 +178,7 @@ describe('base-selection', () => {
       path.join(getKbHomeDir(), 'sessions', 'catalog'),
       'tui'
     )
-    expect(text).toContain('`/use --default <base>`')
+    expect(text).toContain('`/base use --default <base>`')
   })
 
   it('formatDefaultCommandHelp uses slash hints in TUI mode', () => {
@@ -184,6 +187,97 @@ describe('base-selection', () => {
       path.join(getKbHomeDir(), 'sessions', 'catalog'),
       'tui'
     )
-    expect(text).toContain('`/use <base>`')
+    expect(text).toContain('`/base use <base>`')
+  })
+})
+
+describe('deleteBase', () => {
+  let tempKbHome: string
+
+  beforeEach(async () => {
+    tempKbHome = await mkdtemp(path.join(os.tmpdir(), 'kb-home-del-'))
+    process.env.KB_HOME = tempKbHome
+  })
+
+  afterEach(async () => {
+    delete process.env.KB_HOME
+    await rm(tempKbHome, { recursive: true, force: true })
+  })
+
+  it('Given an existing named base, then deletes its session directory', async () => {
+    const baseDir = await ensureOperationalBaseDir('to-delete')
+    await writeFile(path.join(baseDir, 'marker.txt'), 'data')
+
+    const result = await deleteBase('to-delete')
+
+    expect(result.basePath).toContain('to-delete')
+    await expect(readFile(path.join(baseDir, 'marker.txt'), 'utf8')).rejects.toThrow()
+  })
+
+  it('Given the base is the active base, then clears it from config', async () => {
+    await ensureOperationalBaseDir('active-base')
+    await writeSessionBase('active-base')
+
+    const before = await readBaseConfig()
+    expect(before.activeBase).toBe('active-base')
+
+    const result = await deleteBase('active-base')
+
+    expect(result.clearedActive).toBe(true)
+    const after = await readBaseConfig()
+    expect(after.activeBase).toBeUndefined()
+  })
+
+  it('Given the base is the selected (default) base, then clears it from config', async () => {
+    await ensureOperationalBaseDir('default-base')
+    await writeDefaultBase('default-base')
+
+    const result = await deleteBase('default-base')
+
+    expect(result.clearedSelected).toBe(true)
+    const after = await readBaseConfig()
+    expect(after.selectedBase).toBeUndefined()
+  })
+
+  it('Given the base does not exist on disk, then succeeds without error', async () => {
+    await expect(deleteBase('nonexistent-base')).resolves.toBeDefined()
+  })
+
+  it('Given a path-like base, then throws rather than deleting arbitrary paths', async () => {
+    await expect(deleteBase('/tmp/some-dir')).rejects.toThrow('named bases')
+  })
+})
+
+describe('printBaseDeleteHelp', () => {
+  it('includes base delete usage in CLI mode', () => {
+    const text = printBaseDeleteHelp('cli')
+    expect(text).toContain('kb base delete')
+    expect(text).toContain('--force')
+  })
+
+  it('includes base delete usage in TUI mode', () => {
+    const text = printBaseDeleteHelp('tui')
+    expect(text).toContain('/base delete')
+  })
+})
+
+describe('formatDeleteBaseResult', () => {
+  it('includes the base name and path in output', () => {
+    const result = { basePath: '/tmp/sessions/test', clearedActive: false, clearedSelected: false }
+    const text = formatDeleteBaseResult('test', result)
+    expect(text).toContain('Deleted base: test')
+    expect(text).toContain('/tmp/sessions/test')
+  })
+
+  it('mentions cleared active base when applicable', () => {
+    const result = { basePath: '/tmp/sessions/test', clearedActive: true, clearedSelected: false }
+    const text = formatDeleteBaseResult('test', result)
+    expect(text).toContain('activeBase')
+  })
+
+  it('mentions cleared default base when applicable', () => {
+    const result = { basePath: '/tmp/sessions/test', clearedActive: false, clearedSelected: true }
+    const text = formatDeleteBaseResult('test', result)
+    expect(text).toContain('selectedBase')
   })
 })
