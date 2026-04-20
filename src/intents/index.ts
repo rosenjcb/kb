@@ -6,4 +6,3 @@ export {
   isDirectInternalToolInvocation,
   shouldAllowDirectInternalTools,
 } from './policy'
-export { validateFact, disputeFact } from './evaluator'

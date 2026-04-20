@@ -21,7 +21,7 @@ Every project accumulates decisions, constraints, and tribal knowledge that live
 
 **Store durable facts** — not ephemeral chat history. Facts are versioned in Git alongside your code.
 
-**Query by intent** — `kb query`, `kb validate`, `kb dispute` understand what you're asking, not just what words you typed.
+**Query by intent** — `kb query`, `kb validate`, `kb explain` understand what you're asking, not just what words you typed.
 
 **Hybrid retrieval** — SQLite full-text search + vector-style ranking returns relevant docs even when phrasing differs between the query and the stored fact.
 
@@ -70,7 +70,7 @@ kb init
 kb query "how does authentication work?"
 kb submit "OAuth tokens are short-lived; use the refresh endpoint after 15 min"
 kb validate "the refresh token flow is described in the auth runbook"
-kb dispute "passwords are hashed with MD5" --because "we use bcrypt, not MD5"
+kb invalidate "passwords are hashed with MD5" "passwords are hashed with bcrypt"
 ```
 
 ---

@@ -1,7 +1,9 @@
 import dayjs from 'dayjs'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { ToolUseRequest } from '../core/types'
-import { disputeFact, validateFact } from './evaluator'
+import { ValidateOrchestrator } from '../tools/validate-orchestrator'
+import { ExplainOrchestrator } from '../tools/explain-orchestrator'
+import { SubmitOrchestrator, inferDomainFromFact } from '../tools/submit-orchestrator'
 import type { ConsumerIntentEnvelope, IntentResult, RouteDecision } from './types'
 
 export interface IntentRouter {
@@ -26,7 +28,6 @@ export class DefaultIntentRouter implements IntentRouter {
     switch (intentEnvelope.intent) {
       case 'submit_fact': {
         const fact = String(payload.fact ?? '').trim()
-        const domain = resolveFactDomain(payload.domain, fact)
         const source = String(payload.source ?? 'consumer')
         const targetDocumentId =
           typeof payload.targetDocumentId === 'string' ? payload.targetDocumentId : undefined
@@ -51,30 +52,17 @@ export class DefaultIntentRouter implements IntentRouter {
         }
 
         return {
-          selectedOperation: 'upsert_fact_document',
-          operationInput: {
-            documentId: `${domain}-facts`,
-            title: `${domain} facts`,
-            content: `- ${fact} (source: ${source})`,
-            tags: [domain, 'fact'],
-            type: 'reference',
-          },
-          policyReason: 'no targetDocumentId; upsert into inferred domain fact document',
+          selectedOperation: 'submit_orchestrator',
+          operationInput: { fact, source },
+          policyReason: 'no targetDocumentId; discover best target via submit orchestrator',
         }
       }
 
       case 'validate_fact':
         return {
-          selectedOperation: 'validate_fact_evaluator',
+          selectedOperation: 'validate_orchestrator',
           operationInput: payload,
-          policyReason: 'validation intent requires fact evaluator logic',
-        }
-
-      case 'dispute_fact':
-        return {
-          selectedOperation: 'dispute_fact_evaluator',
-          operationInput: payload,
-          policyReason: 'dispute intent requires dispute evaluator logic',
+          policyReason: 'validate intent; discover evidence via validate orchestrator',
         }
 
       case 'query_truth': {
@@ -100,23 +88,12 @@ export class DefaultIntentRouter implements IntentRouter {
         }
       }
 
-      case 'explain_change': {
-        const queryText = String(payload.changeId ?? payload.fact ?? '')
-        const highRecall = requiresHighRecallQuery(queryText)
+      case 'explain_change':
         return {
-          selectedOperation: 'read_documents',
-          operationInput: {
-            query: queryText,
-            // Auto mode allows ID-first lookup with semantic/content fallback.
-            includeContent: true,
-            limit: highRecall ? 8 : 3,
-            discoveryDepth: highRecall ? 'deep' : 'shallow',
-          },
-          policyReason: highRecall
-            ? 'explain intent uses high-recall evidence policy for exact-token lookup'
-            : 'explain intent reads change/fact context with id-first + semantic fallback',
+          selectedOperation: 'explain_orchestrator',
+          operationInput: payload,
+          policyReason: 'explain intent; id-first then semantic fallback via explain orchestrator',
         }
-      }
 
       default:
         return {
@@ -139,7 +116,7 @@ export class DefaultIntentRouter implements IntentRouter {
       }
     }
 
-    if (decision.selectedOperation === 'validate_fact_evaluator') {
+    if (decision.selectedOperation === 'validate_orchestrator') {
       const fact = String(payload.fact ?? '').trim()
       if (!fact) {
         return {
@@ -148,20 +125,55 @@ export class DefaultIntentRouter implements IntentRouter {
           explanation: 'validate_fact requires payload.fact',
         }
       }
-      return validateFact(this.toolExecutor, fact, asOptionalString(payload.domain))
+      const orchestrator = new ValidateOrchestrator(this.toolExecutor)
+      return orchestrator.run({ fact, domain: asOptionalString(payload.domain) })
     }
 
-    if (decision.selectedOperation === 'dispute_fact_evaluator') {
-      const fact = String(payload.fact ?? '').trim()
-      const because = String(payload.because ?? '').trim()
-      if (!fact || !because) {
+    if (decision.selectedOperation === 'explain_orchestrator') {
+      const changeId = String(payload.changeId ?? payload.fact ?? '').trim()
+      if (!changeId) {
         return {
           status: 'error',
           errorCode: 'INVALID_PAYLOAD',
-          explanation: 'dispute_fact requires payload.fact and payload.because',
+          explanation: 'explain_change requires payload.changeId or payload.fact',
         }
       }
-      return disputeFact(this.toolExecutor, fact, because, asOptionalString(payload.domain))
+      const orchestrator = new ExplainOrchestrator(this.toolExecutor)
+      const result = await orchestrator.run({ changeId })
+      return {
+        status: 'accepted',
+        explanation: decision.policyReason,
+        recommendedAction: 'read_documents',
+        data: result,
+        provenance: result.results.map(r => r.metadata?.id).filter(Boolean) as string[],
+        confidence: result.results.length > 0 ? 0.8 : 0.2,
+      }
+    }
+
+    if (decision.selectedOperation === 'submit_orchestrator') {
+      const fact = String(payload.fact ?? '').trim()
+      const source = String(payload.source ?? 'consumer')
+      const orchestrator = new SubmitOrchestrator(this.toolExecutor)
+      const orchestratorResult = await orchestrator.run({ fact, source })
+
+      if (intentEnvelope.intent === 'submit_fact') {
+        const reconciliationOutcome = await maybeHandleSubmitContradictions(
+          this.toolExecutor,
+          payload,
+          `${decision.policyReason}; routed to ${orchestratorResult.targetDocId} (discovered=${orchestratorResult.discoveredTarget})`,
+          orchestratorResult.result
+        )
+        if (reconciliationOutcome) return reconciliationOutcome
+      }
+
+      return {
+        status: 'accepted',
+        explanation: `${decision.policyReason}; routed to ${orchestratorResult.targetDocId} (discovered=${orchestratorResult.discoveredTarget})`,
+        recommendedAction: orchestratorResult.operation,
+        data: orchestratorResult.result,
+        provenance: extractProvenance(orchestratorResult.result),
+        confidence: 0.8,
+      }
     }
 
     if (decision.selectedOperation === 'upsert_fact_document') {
@@ -175,21 +187,11 @@ export class DefaultIntentRouter implements IntentRouter {
       let toolResult: unknown
       try {
         toolResult = await this.toolExecutor.execute(
-          createToolUse('append_to_document', {
-            documentId,
-            content,
-          })
+          createToolUse('append_to_document', { documentId, content })
         )
       } catch {
         toolResult = await this.toolExecutor.execute(
-          createToolUse('write_document', {
-            documentId,
-            title,
-            content,
-            tags,
-            type,
-            overwrite: true,
-          })
+          createToolUse('write_document', { documentId, title, content, tags, type, overwrite: true })
         )
       }
 
@@ -200,9 +202,7 @@ export class DefaultIntentRouter implements IntentRouter {
           decision.policyReason,
           toolResult
         )
-        if (reconciliationOutcome) {
-          return reconciliationOutcome
-        }
+        if (reconciliationOutcome) return reconciliationOutcome
       }
 
       return {
@@ -226,9 +226,7 @@ export class DefaultIntentRouter implements IntentRouter {
         decision.policyReason,
         toolResult
       )
-      if (reconciliationOutcome) {
-        return reconciliationOutcome
-      }
+      if (reconciliationOutcome) return reconciliationOutcome
     }
 
     return {
@@ -251,7 +249,7 @@ async function maybeHandleSubmitContradictions(
   const fact = typeof payload.fact === 'string' ? payload.fact.trim() : ''
   if (!fact) return null
 
-  const domain = resolveFactDomain(payload.domain, fact)
+  const domain = inferDomainFromFact(fact)
   const includeSessionLogs = payload.includeSessionLogs === true
   const reconciliationResult = (await toolExecutor.execute(
     createToolUse('reconcile_contradictions', {
@@ -265,7 +263,6 @@ async function maybeHandleSubmitContradictions(
   const changedDocumentIds = Array.isArray(reconciliationResult.changedDocumentIds)
     ? reconciliationResult.changedDocumentIds
     : []
-
   const removedFacts =
     typeof reconciliationResult.removedFacts === 'number' ? reconciliationResult.removedFacts : 0
 
@@ -282,76 +279,6 @@ async function maybeHandleSubmitContradictions(
   }
 }
 
-function resolveFactDomain(domainValue: unknown, fact: string): string {
-  if (typeof domainValue === 'string' && domainValue.trim()) {
-    return normalizeDomain(domainValue)
-  }
-
-  const normalizedFact = fact.toLowerCase()
-
-  const customDomain = matchCustomDomain(normalizedFact)
-  if (customDomain) {
-    return customDomain
-  }
-
-  const builtIn: Array<{ domain: string; pattern: RegExp }> = [
-    { domain: 'cicd', pattern: /(cicd|pipeline|github actions|workflow|build|deploy|release)/ },
-    {
-      domain: 'security',
-      pattern: /(security|vulnerability|auth|authentication|authorization|token|secret|oauth|rbac)/,
-    },
-    {
-      domain: 'infra',
-      pattern: /(kubernetes|k8s|docker|terraform|infrastructure|cluster|helm|container)/,
-    },
-    {
-      domain: 'observability',
-      pattern: /(monitoring|metrics|alerts|incident|on-call|pager|slo|sla|logs)/,
-    },
-    {
-      domain: 'retrieval',
-      pattern: /(retrieval|search|vector|embedding|index|rerank|fts|lane routing)/,
-    },
-  ]
-
-  const matched = builtIn.find(entry => entry.pattern.test(normalizedFact))
-  return matched?.domain ?? 'general'
-}
-
-function matchCustomDomain(normalizedFact: string): string | undefined {
-  const raw = process.env.KB_DOMAIN_CLASSIFIER
-  if (!raw) return undefined
-
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>
-    for (const [domain, keywords] of Object.entries(parsed)) {
-      if (!Array.isArray(keywords)) continue
-      const tokens = keywords
-        .filter(keyword => typeof keyword === 'string')
-        .map(keyword => keyword.toLowerCase().trim())
-        .filter(Boolean)
-
-      if (tokens.some(token => normalizedFact.includes(token))) {
-        return normalizeDomain(domain)
-      }
-    }
-  } catch {
-    return undefined
-  }
-
-  return undefined
-}
-
-function normalizeDomain(input: string): string {
-  return (
-    input
-      .toLowerCase()
-      .replace(/[^a-z0-9._-]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'general'
-  )
-}
-
 function asOptionalString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
@@ -361,14 +288,8 @@ function asOptionalString(value: unknown): string | undefined {
 function requiresHighRecallQuery(query: string): boolean {
   const trimmed = query.trim()
   if (!trimmed) return false
-
-  const tokenLike = /^[A-Z0-9._-]{16,}$/.test(trimmed)
-  if (tokenLike) return true
-
-  if (trimmed.length >= 20 && (trimmed.includes('_') || trimmed.includes('-'))) {
-    return true
-  }
-
+  if (/^[A-Z0-9._-]{16,}$/.test(trimmed)) return true
+  if (trimmed.length >= 20 && (trimmed.includes('_') || trimmed.includes('-'))) return true
   return false
 }
 

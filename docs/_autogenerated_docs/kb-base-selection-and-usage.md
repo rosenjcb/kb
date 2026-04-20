@@ -1,7 +1,7 @@
 ---
 layout: default
 title: KB Base Selection and Usage
-date: '2026-04-18'
+date: '2026-04-19'
 kb_id: kb-base-selection-and-usage
 tags:
   - cli
@@ -11,7 +11,7 @@ categories:
   - reference
 ---
 
-Use the `kb use` command to select a session base, or `kb default` to save a default base. Base selection is driven by CLI state and persisted config, not an environment-variable fallback. Commands like `kb submit`, `kb query`, `kb validate`, and `kb dispute` are used to interact with the knowledge base.
+Use the `kb use` command to select a session base, or `kb default` to save a default base. Base selection is driven by CLI state and persisted config, not an environment-variable fallback. Commands like `kb submit`, `kb query`, `kb validate`, and `kb invalidate` are used to interact with the knowledge base.
 
 - Created ticket 083 on branch feat/083-kb-config-cli to design a unified kb config CLI and persisted config schema. Scope covers kb config get/set/unset behavior, nested keys like notion.parentPageId, migration from current ~/.kb/config.json shape, and an explicit decision on whether sessionBase should be removed in favor of defaultBase-only semantics. (source: consumer)
 
@@ -37,7 +37,7 @@ Use the `kb use` command to select a session base, or `kb default` to save a def
 
 - Completed the LLM_PROVIDER cleanup. The repo no longer references the explicit LLM_PROVIDER environment variable in runtime code, README, .env.local, tests, or the old environment/model-selection ticket docs. Provider selection now defaults by available credentials in this order: OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, then local Ollama fallback. Validation confirmed no literal LLM_PROVIDER matches via ripgrep, type-check passed, and CLI help/docs-listing still work; the current publish-cli test failures remain pre-existing branch drift unrelated to this cleanup. (source: consumer)
 
-- CLI Reference and skill docs updated to match actual CLI surface as of April 2026. Canonical commands: kb chat, kb docs list, kb docs view, kb init, kb config get|set|unset, kb publish, kb use, kb default, and intent commands (submit, validate, dispute, query, explain). kb invalidate exists as a KB-only cleanup command for replacing or removing stale facts in the active SQLite-backed knowledge base. kb explain is valid. README, skill docs, and tickets 086/087/088 now reflect this. Typing kb or kb --help shows the help message. Internal tool names are distinct from CLI commands. (source: consumer)
+- CLI Reference and skill docs updated to match actual CLI surface as of April 2026. Canonical commands: kb chat, kb docs list, kb docs view, kb init, kb config get|set|unset, kb publish, kb use, kb default, and intent commands (submit, validate, query, explain, invalidate). kb invalidate exists as a KB-only cleanup command for replacing or removing stale facts in the active SQLite-backed knowledge base. kb explain is valid. README, skill docs, and tickets 086/087/088 now reflect this. Typing kb or kb --help shows the help message. Internal tool names are distinct from CLI commands. (source: consumer)
 
 - Implemented kb invalidate as a KB-only cleanup action. The command now operates exclusively on the active SQLite-backed knowledge base, replacing or removing exact fact references across stored KB documents and reindexing updates through the KB storage layer. It no longer scans or edits arbitrary repo files, and the tool/docs now explicitly describe invalidate as a knowledge-base cleanup command rather than a source-code refactor. (source: consumer)
 
@@ -128,3 +128,9 @@ Use the `kb use` command to select a session base, or `kb default` to save a def
 - Validated the installable-skill / publish-jekyll branch surface on 2026-04-18. Fixed a regression by restoring src/skills/kb-dev-workflow.ts as a compatibility export for tests after the skill source moved to skills/kb-dev-workflow/SKILL.md. Then passed npm test, npm run build, a temp-project kb skill install smoke, a disposable kb init --base ci-skill-branch --non-interactive --debug e2e run, and a kb publish jekyll --base ci-skill-branch --dir /tmp/kb-jekyll-smoke --dry-run smoke using the repo's Node 20 binary. (source: consumer)
 
 - Added mutation-safety guidance to src/core/TUI.md on 2026-04-18. Repo standards now say commands that mutate durable KB state or external systems should default to a non-mutating mode, use --apply as the shared write opt-in, prefer --dry-run for full non-mutating execution, reserve preview wording for diff-style UX, keep --apply and --dry-run mutually exclusive, and make the default clear in help/output. kb publish is explicitly documented as dry-run by default. (source: consumer)
+
+- The intent command surface as of 2026-04 is: kb submit, kb validate, kb query, kb explain, kb invalidate. kb dispute no longer exists. (source: consumer)
+
+- All KB intent commands now use orchestrators: query_truth uses QueryResearchOrchestrator, submit_fact uses SubmitOrchestrator (discovery-first), validate_fact uses ValidateOrchestrator (shallow→deep escalation), explain_change uses ExplainOrchestrator (ID-first→semantic fallback). (source: consumer)
+
+- SubmitOrchestrator does discovery-first writes: it probes read_documents (limit 3) before writing. If retrieval.method === 'hybrid', appends to the top matched doc. Otherwise falls back to domain-inferred document name (e.g. ops-facts, retrieval-facts). (source: consumer)

@@ -67,9 +67,9 @@ describe('intent-cli parsing', () => {
     expect(() => parseIntentCommand(['query', '--help'])).toThrow('Intent commands:')
   })
 
-  it('Given dispute without because, then throws validation error', () => {
-    expect(() => parseIntentCommand(['dispute', 'Fact only'])).toThrow(
-      'dispute requires --because "<counter evidence>"'
+  it('Given dispute command, then throws unsupported intent error', () => {
+    expect(() => parseIntentCommand(['dispute', 'Fact only', '--because', 'reason'])).toThrow(
+      'Unsupported intent command: dispute'
     )
   })
 
@@ -186,7 +186,7 @@ describe('intent-cli parsing', () => {
       supportsStreaming: false,
       call: vi.fn(async () => ({
         text: 'Precedence is session base, then default base.',
-        stopReason: 'end_turn',
+        stopReason: 'end_turn' as const,
         toolUses: [],
         usage: { inputTokens: 1, outputTokens: 1 },
       })),
@@ -226,7 +226,7 @@ describe('intent-cli parsing', () => {
       supportsStreaming: false,
       call: vi.fn(async () => ({
         text: 'TUI implementation files',
-        stopReason: 'end_turn',
+        stopReason: 'end_turn' as const,
         toolUses: [],
         usage: { inputTokens: 1, outputTokens: 1 },
       })),
@@ -417,7 +417,7 @@ describe('intent-cli parsing', () => {
       supportsStreaming: false,
       call: vi.fn(async () => ({
         text: 'The evidence provided does not contain any information about this token.',
-        stopReason: 'end_turn',
+        stopReason: 'end_turn' as const,
         toolUses: [],
         usage: { inputTokens: 1, outputTokens: 1 },
       })),

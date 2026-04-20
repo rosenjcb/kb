@@ -6,7 +6,7 @@
  *   - LLM semantic reasoning for validate when token-overlap is inconclusive
  *   - Carryover of confidence, provenance, and retrieval depth across iterations
  *
- * submit_fact and dispute_fact are single-pass — no retry logic applies.
+ * submit_fact is single-pass — no retry logic applies.
  */
 
 import dayjs from 'dayjs'
@@ -90,7 +90,7 @@ export async function runIntentLoop(
     const intent = envelope.intent
 
     // Single-pass intents — no retry
-    if (intent === 'submit_fact' || intent === 'dispute_fact') break
+    if (intent === 'submit_fact') break
 
     // Already good enough
     if ((result.confidence ?? 0) >= confidenceThreshold) break

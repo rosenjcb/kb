@@ -11,7 +11,7 @@ The core hypothesis is that this produces better systems faster, with lower toke
 
 ## Primary Question
 
-After building a KB from scratch for this repository, can `kb` answer important questions about the project accurately and usefully enough to justify the extra maintenance work?
+After building a KB from scratch for the evaluation target repository, can `kb` answer important questions about the project accurately and usefully enough to justify the extra maintenance work?
 
 ## Secondary Questions
 
@@ -20,6 +20,34 @@ After building a KB from scratch for this repository, can `kb` answer important 
 3. Is the resulting graph store populated enough to plausibly improve retrieval and follow-up questioning?
 4. What is the cost of producing this KB in time, tokens, and operator effort?
 5. In a later comparison run, does a dedicated KB-maintenance agent improve outcomes versus a single-agent baseline?
+
+## Evaluation Target
+
+**The canonical evaluation target is `~/raylib/`** — the [raylib C library](https://github.com/raysan5/raylib).
+
+Reasons: mature, well-documented, not kb itself (avoids evaluator familiarity bias), rich graph structure, stable across runs.
+
+Do **not** run evaluation init against the `kb` repo itself. Use `--base dogfood` for kb's own knowledge.
+
+### Base naming convention
+
+| Base | Purpose | Lifetime |
+|------|---------|----------|
+| `ci-raylib-YYYYMMDD` | Disposable init/query quality runs — thrown away after each eval | Ephemeral |
+| `raylib` | Persistent agent comparison base — accumulates across tasks, never wiped | Permanent |
+| `dogfood` | kb's own architectural knowledge | Permanent |
+
+The `raylib` base is the KB that a KB-backed agent would actually use during real development on `~/raylib/`. It grows with each task. Do not use `ci-*` names for it — the compounding hypothesis requires the same base to persist across multiple task sessions.
+
+### Published docs location
+
+Raylib eval docs publish to `~/raylib-kb-docs/` — a standalone Jekyll site separate from `kb/docs/`.
+
+```bash
+kb publish jekyll --base ci-raylib-<date> --dir ~/raylib-kb-docs/ --apply
+```
+
+Do **not** publish eval output to `kb/docs/` — that site tracks the kb dogfood base only.
 
 ## Evaluation Design
 
@@ -36,21 +64,21 @@ This evaluation should be run at least twice against the same codebase snapshot 
 
 ### Phase 1: Initialize a Fresh KB
 
-From the repo root:
+From `~/raylib/`:
 
-1. Start the TUI with `kb`.
-2. Run interactive `/init --base <ci-base-name>`.
+1. Run: `kb init --base ci-raylib-YYYYMMDD --non-interactive`
+2. Or interactively: start `kb`, then `/init --base ci-raylib-YYYYMMDD`
 3. Let `kb init` complete all passes through `pass-graph`.
-4. Save the resulting run metadata and transcript notes.
+4. Save the resulting run metadata.
 
-Use a disposable base name like `ci-eval-YYYYMMDD-<label>` so results do not pollute dogfood data.
+Use a disposable base name like `ci-raylib-YYYYMMDD-<label>`.
 
 ### Phase 2: Capture Build Metrics
 
 Collect:
 
 - Base name
-- Git branch and commit
+- Git branch and commit of `~/raylib/`
 - Start/end timestamps
 - `kb init` run ID from `kb logs`
 - Total init duration
@@ -63,42 +91,35 @@ Collect:
 
 ### Phase 3: Evaluate Answer Quality
 
-Run a fixed question set through both surfaces:
+Run a fixed question set:
 
-- `kb query "<question>" --base <ci-base> --output json`
-- `kb chat` against the same base
+- `kb query "<question>" --base ci-raylib-<date> --output json`
+- `kb chat` against the same base (optional, mark `not_captured` if skipped)
 
-Questions should span:
-
-1. Project overview / mission
-2. Architecture
-3. User workflow / CLI usage
-4. Configuration / environment
-5. Retrieval / graph / indexing internals
-6. Testing / validation
-7. Operational caveats / gotchas
-8. Recent design decisions or repo-specific conventions
+Questions adapted for raylib (see Canonical Question Set below).
 
 ### Phase 4: Score the Results
 
-Each question/surface pair gets a rubric score.
+Each question gets a rubric score on four axes. Use `--auto-score` with the eval runner when available.
 
-For the automated harvest (`npm run eval:kb-proper`), you can either pass **`--scores-file`** with a hand-written JSON array of eight score objects, or **`--auto-score`** / **`--auto-score-file <path>`** to run a single-shot LLM judge over the eight `kb query` JSON outputs (requires `GEMINI_API_KEY` or `OPENAI_API_KEY` in the environment). See `scripts/eval-kb-proper.mjs --help`. Auto scores are a convenience, not a substitute for spot-checking weak answers.
+### Phase 5: Publish
+
+```bash
+kb publish jekyll --base ci-raylib-<date> --dir ~/raylib-kb-docs/ --apply
+```
 
 ## Canonical Question Set
 
-Use these questions unless there is a strong reason to revise the suite. If revised, copy the old suite forward and record the change in the artifact.
+Use these raylib-adapted questions for all runs. If revised, copy the old suite forward and record the change in the artifact.
 
-1. What is this project for, and what are the main things `kb` can do?
-2. How does `kb init` work at a high level, including the major passes?
-3. Where do KB documents live, and how are active/default bases selected?
-4. How does retrieval work, including hybrid retrieval and graph involvement?
-5. What does `kb chat` do when retrieval is weak or incomplete?
-6. What commands should a contributor use during normal dogfood development in this repo?
-7. What special repo rules apply to KB documentation and persistence?
-8. How can someone inspect the graph and run telemetry/log comparisons?
-
-These questions intentionally mix broad and specific knowledge. A future expansion can add task-oriented prompts like "How do I debug retrieval misses?" or "How do I add a new CLI command safely?"
+1. What is raylib for, and what are its main capabilities?
+2. How does raylib's architecture work, including modules and platform support?
+3. How do I install and build raylib, including dependencies and build systems?
+4. What configuration options and compile flags does raylib support?
+5. How does raylib handle graphics backends and platform-specific rendering?
+6. What are the coding conventions and style guidelines for contributing to raylib?
+7. What are the main gotchas, constraints, and known limitations of raylib?
+8. What does the raylib roadmap say about future plans, and what is the recent version history?
 
 ## Scoring Rubric
 
@@ -165,13 +186,15 @@ Treat the two-agent theory as supported only if the comparison run beats the bas
 
 without causing a meaningful regression in the other categories.
 
+## Artifact Storage
+
+Artifacts are tracked in git under `evaluation/runs/` (not gitignored). Every run — even weak or partial ones — must produce an artifact.
+
+Filename convention: `evaluation/runs/YYYY-MM-DD-<label>.json`
+
+Reference baseline: `evaluation/runs/2026-04-19-raylib-baseline.json`
+
 ## Artifact Format
-
-Store each run as JSON under `evaluation/runs/`.
-
-Recommended filename:
-
-- `evaluation/runs/YYYY-MM-DD-<label>.json`
 
 Each artifact should include:
 
@@ -180,7 +203,7 @@ Each artifact should include:
 - KB state summary
 - Full question set used
 - Raw `kb query` outputs
-- Raw `kb chat` outputs
+- Raw `kb chat` outputs (or `not_captured`)
 - Manual rubric scores
 - Aggregate scores
 - Qualitative notes
@@ -210,7 +233,7 @@ Future agents should treat the JSON shape below as the canonical artifact format
 
 - `schema_version`: integer schema version, starting at `1`
 - `evaluation_plan`: string path, usually `EVALUATION.md`
-- `run_label`: short label like `main-baseline` or `worker-agent-b`
+- `run_label`: short label like `raylib-baseline` or `raylib-compare-agent-b`
 - `status`: `complete` or `partial`
 - `created_at`: ISO-8601 timestamp
 - `repository`: object with `name`, `branch`, `commit`
@@ -279,21 +302,22 @@ These may be omitted only if the artifact is marked `partial`.
 {
   "schema_version": 1,
   "evaluation_plan": "EVALUATION.md",
-  "run_label": "main-baseline",
+  "run_label": "raylib-baseline",
   "status": "complete",
-  "created_at": "2026-04-17T17:10:00-07:00",
+  "created_at": "2026-04-19T15:00:00-07:00",
   "repository": {
-    "name": "kb",
-    "branch": "main",
+    "name": "raylib",
+    "branch": "master",
     "commit": "<git-sha>"
   },
   "hypothesis": "<what this run is testing>",
   "run": {
-    "base": "ci-eval-20260417-main-baseline",
-    "mode": "interactive_tui_init",
+    "base": "ci-raylib-20260419",
+    "mode": "non_interactive_init",
     "commands": [
-      "kb",
-      "/init --base ci-eval-20260417-main-baseline"
+      "kb init --base ci-raylib-20260419 --non-interactive",
+      "kb query '<question>' --base ci-raylib-20260419 --output json (x8)",
+      "kb publish jekyll --base ci-raylib-20260419 --dir ~/raylib-kb-docs/ --apply"
     ],
     "init_result": {
       "status": "accepted",
@@ -301,63 +325,13 @@ These may be omitted only if the artifact is marked `partial`.
       "written_doc_ids": [],
       "init_run_id": null,
       "init_run_id_note": null,
-      "docs_list": {
-        "documents": []
-      },
-      "graph_summary": {
-        "entities": 0,
-        "relationships": 0
-      }
+      "docs_list": { "documents": [] },
+      "graph_summary": { "entities": 0, "relationships": 0 }
     }
   },
-  "question_set": [
-    "<question 1>",
-    "<question 2>"
-  ],
-  "query_evaluation": [
-    {
-      "question_id": 1,
-      "question": "<question 1>",
-      "result_count": 0,
-      "retrieval": {
-        "method": null,
-        "detail": null,
-        "confidence": null
-      },
-      "answer_excerpt": null,
-      "provenance": [],
-      "raw_query_output": {},
-      "scores": {
-        "correctness": 0,
-        "usefulness": 0,
-        "specificity": 0,
-        "evidence_handling": 0
-      },
-      "notes": ""
-    }
-  ],
-  "chat_evaluation": [
-    {
-      "question_id": 1,
-      "question": "<question 1>",
-      "result_count": 0,
-      "retrieval": {
-        "method": null,
-        "detail": null,
-        "confidence": null
-      },
-      "answer_excerpt": null,
-      "provenance": [],
-      "raw_chat_output": {},
-      "scores": {
-        "correctness": 0,
-        "usefulness": 0,
-        "specificity": 0,
-        "evidence_handling": 0
-      },
-      "notes": ""
-    }
-  ],
+  "question_set": [],
+  "query_evaluation": [],
+  "chat_evaluation": { "status": "not_captured", "notes": "" },
   "aggregate_scores": {
     "query": {
       "mean_correctness": 0,
@@ -367,11 +341,11 @@ These may be omitted only if the artifact is marked `partial`.
       "pass_rate_correctness_and_usefulness_at_least_3": 0
     },
     "chat": {
-      "mean_correctness": 0,
-      "mean_usefulness": 0,
-      "mean_specificity": 0,
-      "mean_evidence_handling": 0,
-      "pass_rate_correctness_and_usefulness_at_least_3": 0
+      "mean_correctness": null,
+      "mean_usefulness": null,
+      "mean_specificity": null,
+      "mean_evidence_handling": null,
+      "pass_rate_correctness_and_usefulness_at_least_3": null
     },
     "combined": {
       "mean_correctness": 0,
@@ -398,8 +372,8 @@ Agents should not invent their own artifact shape for future runs. If the schema
 
 When comparing two runs:
 
-1. Keep the repo state as close as possible.
-2. Use fresh `ci-*` bases for both runs.
+1. Keep `~/raylib/` at the same git commit for both runs.
+2. Use fresh `ci-raylib-*` bases for both runs.
 3. Reuse the same question set and scoring rubric.
 4. Prefer the same evaluator, or multiple evaluators with normalized scoring notes.
 5. Compare both machine metrics and human judgment.
@@ -412,10 +386,90 @@ When comparing two runs:
 - A single run can overfit to a lucky or unlucky `init`.
 - Query quality may differ from chat quality; both must be measured separately.
 
-## Current Baseline Execution
+## Current Baseline
 
-The first tracked baseline for this plan is the main-branch run captured in:
+The first tracked raylib baseline is:
 
-- `evaluation/runs/2026-04-17-main-baseline.json`
+- `evaluation/runs/2026-04-19-raylib-baseline.json`
+- Init: 14 docs, 404 entities, 470 relationships, $0.025, 170s
+- Query pass rate: 0.50 (5/8 hybrid retrieval; 1 tokenization-empty miss on install/build query)
 
-That artifact should be treated as the reference point for the next comparison run.
+That artifact is the reference point for the next comparison run.
+
+---
+
+## Eval Type 2: Agent Token Efficiency Comparison
+
+This is a separate evaluation from the init/query quality eval above. It tests whether having a KB *actually reduces token usage* during real implementation work.
+
+### Hypothesis
+
+A KB-backed agent uses fewer tokens per task than a raw agent — and that advantage **compounds** over a task sequence. Each task the KB-backed agent completes deposits new facts into the `raylib` base. Future tasks find those facts via `kb query` instead of re-reading source files. Per-task token cost decreases as the base densifies.
+
+### Base
+
+Use `--base raylib` (the persistent base, not `ci-*`). This base must survive across task sessions. The compounding effect only manifests when the same base is reused.
+
+```bash
+kb use --default raylib    # set once before the task sequence begins
+```
+
+### Task sequence (canonical)
+
+Run these in order against `~/raylib/`. Both agents work on the same task; the agent cannot reuse prior-task code between runs.
+
+1. Implement a flappy bird game in `~/raylib/examples/games/flappy_bird.c`
+2. Add parallax scrolling background to the flappy bird game
+3. Add a high score counter that persists between runs
+4. Add sound effects using raylib's audio API
+
+Each task is self-contained enough to run independently (agent starts fresh each time) but thematically connected so KB submissions from earlier tasks are useful to later ones.
+
+### Protocol
+
+**Agent A (raw)**:
+- No `kb` access
+- Discovers context by reading `~/raylib/src/`, headers, examples, docs directly
+- No submissions after the task
+
+**Agent B (KB-backed)**:
+- Has `kb query` available, base `raylib`
+- Required to run at least one `kb query` before writing code
+- Required to `kb submit` at least one fact discovered during the task before finishing
+- May read source files too, but should prefer KB for known facts
+
+### Measurement
+
+Use `codeburn` to capture per-session token counts:
+
+```bash
+codeburn report --provider claude --format json > /tmp/codeburn-task-N.json
+```
+
+Capture before and after each task. The metric is **tokens consumed per task**, not total.
+
+### Artifact
+
+Store results under `evaluation/runs/agent-compare/YYYY-MM-DD-task-N-<agent>.json`.
+
+Each artifact records:
+
+- `task_id`: 1–4
+- `agent`: `raw` or `kb-backed`
+- `base`: `null` or `raylib`
+- `kb_queries_made`: count (0 for raw agent)
+- `kb_submissions_made`: count (0 for raw agent)
+- `codeburn_input_tokens`: from codeburn report
+- `codeburn_output_tokens`: from codeburn report
+- `codeburn_cost_usd`: from codeburn report
+- `task_completed`: boolean
+- `notes`: free text
+
+### Success criteria
+
+The KB-backed agent hypothesis is supported if:
+- Agent B's per-task token cost is lower than Agent A's by task 3 or 4
+- Agent B's token cost curve slopes downward across the 4-task sequence
+- Agent A's token cost curve is flat or rising
+
+A single session with better task 1 performance does not confirm the hypothesis — the compounding effect is the signal.

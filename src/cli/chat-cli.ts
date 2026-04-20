@@ -12,7 +12,6 @@ import {
 } from './chat-conversation'
 import { type CmdMode, cmd } from './cmd-ref'
 import {
-  appendRetrievalDetail,
   augmentReadDocumentsWithWorkspaceFallback,
   formatReadDocumentSourceIds,
 } from './retrieval-fallback'
@@ -54,12 +53,6 @@ interface ReadDocumentsResult {
   }
 }
 
-type ReadDocumentsCheckpoint = {
-  stage?: string
-  status?: string
-  nextAction?: string
-  confidence?: number
-}
 
 export interface ChatTurnTrace {
   input: string
@@ -140,7 +133,6 @@ export async function runChatSession(
               topic: input,
               goal: 'answer user question',
             }
-        const highRecall = requiresHighRecallQuestion(resolvedTurn.retrievalQuery)
         const expandedQuery = deps.graphWriter
           ? await expandQueryWithGraph(resolvedTurn.retrievalQuery, deps.graphWriter)
           : resolvedTurn.retrievalQuery
@@ -150,44 +142,19 @@ export async function runChatSession(
           input: {
             query: expandedQuery,
             mode: 'content',
-            discoveryDepth: highRecall ? 'deep' : 'shallow',
+            discoveryDepth: 'deep',
             includeContent: true,
-            limit: highRecall ? Math.max(retrievalLimit * 2, 12) : retrievalLimit,
+            limit: retrievalLimit,
           },
         })
 
-        let retrieval = normalizeReadResult(readResult)
-
-        if (shouldAttemptRecoveryQuery(retrieval)) {
-          const recoveryQuery = buildRecoveryQuery(resolvedTurn.retrievalQuery)
-          if (recoveryQuery) {
-            const recoveryResult = await deps.toolExecutor.execute({
-              id: `chat-read-recovery-${Date.now()}`,
-              name: 'read_documents',
-              input: {
-                query: recoveryQuery,
-                includeContent: true,
-                limit: retrievalLimit,
-              },
-            })
-
-            retrieval = mergeReadResults(
-              retrieval,
-              normalizeReadResult(recoveryResult),
-              'chat-recovery-retry'
-            )
-          }
-        }
-
-        const retrievalWithFallback = await augmentReadDocumentsWithWorkspaceFallback(
+        const retrieval = normalizeReadResult(readResult)
+        const retrievalForOutput = await augmentReadDocumentsWithWorkspaceFallback(
           resolvedTurn.retrievalQuery,
           retrieval,
           deps.workspaceDir ?? process.cwd()
         )
-        let retrievalForOutput = retrievalWithFallback
 
-        // Build the per-turn user content: evidence + question.
-        // History is carried natively via the messages array — no embedding needed.
         const userContent = buildChatTurnContent({
           question: input,
           resolvedQuestion:
@@ -205,52 +172,9 @@ export async function runChatSession(
           maxTokens: CHAT_MAX_OUTPUT_TOKENS,
         })
 
-        let answer = completion.text.trim()
-
-        // If the first pass looks weak, try again with a deeper retrieval pass and
-        // re-prompt the LLM — do NOT override with deterministic line extracts.
-        if (looksLikeInsufficientEvidenceAnswer(answer)) {
-          const deepResult = await deps.toolExecutor.execute({
-            id: `chat-read-deep-${Date.now()}`,
-            name: 'read_documents',
-            input: {
-              query: resolvedTurn.retrievalQuery,
-              mode: 'content',
-              discoveryDepth: 'deep',
-              includeContent: true,
-              limit: Math.max(retrievalLimit * 3, 12),
-            },
-          })
-
-          const deepRetrieval = normalizeReadResult(deepResult)
-          retrievalForOutput = mergeReadResults(
-            retrievalForOutput,
-            deepRetrieval,
-            'chat-deep-discovery-promotion'
-          )
-
-          const deepContent = buildChatTurnContent({
-            question: input,
-            resolvedQuestion:
-              resolvedTurn.retrievalQuery !== input ? resolvedTurn.retrievalQuery : undefined,
-            retrieval: retrievalForOutput,
-            conversationState,
-          })
-          const deepMessages: Message[] = [...messages, { role: 'user', content: deepContent }]
-          const deepCompletion = await deps.llmProvider.call({
-            messages: trimMessageHistory(deepMessages, maxHistoryTurns),
-            systemPrompt: CHAT_SYSTEM_PROMPT,
-            temperature: 0.15,
-            maxTokens: CHAT_MAX_OUTPUT_TOKENS,
-          })
-          const deepAnswer = deepCompletion.text.trim()
-          if (deepAnswer) answer = deepAnswer
-        }
-
-        if (!answer) {
-          answer =
-            'I don\'t have enough information to answer that. Try: kb query "<your question>"'
-        }
+        const answer =
+          completion.text.trim() ||
+          'I don\'t have enough information to answer that. Try: kb query "<your question>"'
 
         // Append both sides to the message history so the next turn sees the full context.
         messages.push({ role: 'user', content: userContent })
@@ -325,51 +249,6 @@ export function buildChatTurnContent(input: {
     .join('\n')
 }
 
-function looksLikeInsufficientEvidenceAnswer(text: string): boolean {
-  const normalized = text.toLowerCase()
-  return (
-    normalized.includes('evidence provided does not contain') ||
-    normalized.includes('retrieved documents do not provide specific information') ||
-    normalized.includes('retrieved document does not provide information') ||
-    normalized.includes('retrieved document does not provide specific information') ||
-    normalized.includes('retrieved evidence does not contain information') ||
-    normalized.includes('retrieved evidence does not contain specific information') ||
-    normalized.includes('does not provide specific information') ||
-    normalized.includes('do not provide specific information') ||
-    normalized.includes('does not provide information') ||
-    normalized.includes('do not provide information') ||
-    normalized.includes('does not contain specific information') ||
-    normalized.includes('do not contain specific information') ||
-    normalized.includes('does not contain information') ||
-    normalized.includes('do not contain information') ||
-    normalized.includes('do not contain specific details') ||
-    normalized.includes('does not provide specific details') ||
-    normalized.includes('do not provide specific details') ||
-    normalized.includes('do not contain any information about') ||
-    normalized.includes('does not contain any information about') ||
-    normalized.includes('cannot provide an answer based on the available evidence') ||
-    normalized.includes('evidence is insufficient') ||
-    normalized.includes('do not have enough evidence') ||
-    normalized.includes('need additional information') ||
-    normalized.includes('would need additional information') ||
-    normalized.includes('further specific queries')
-  )
-}
-
-function requiresHighRecallQuestion(question: string): boolean {
-  const trimmed = question.trim()
-  if (!trimmed) return false
-
-  const tokenLike = /^[A-Z0-9._-]{16,}$/.test(trimmed)
-  if (tokenLike) return true
-
-  if (trimmed.length >= 20 && (trimmed.includes('_') || trimmed.includes('-'))) {
-    return true
-  }
-
-  return false
-}
-
 function normalizeReadResult(value: unknown): ReadDocumentsResult {
   if (!value || typeof value !== 'object') {
     return { results: [] }
@@ -381,82 +260,6 @@ function normalizeReadResult(value: unknown): ReadDocumentsResult {
     results,
     retrieval: candidate.retrieval,
   }
-}
-
-function shouldAttemptRecoveryQuery(retrieval: ReadDocumentsResult): boolean {
-  const finalCheckpoint = getFinalCheckpoint(retrieval)
-  if (!finalCheckpoint) {
-    return !retrieval.results || retrieval.results.length === 0
-  }
-
-  if (finalCheckpoint.nextAction === 'advance') return true
-  if (finalCheckpoint.status === 'error' || finalCheckpoint.status === 'miss') return true
-  if (typeof finalCheckpoint.confidence === 'number' && finalCheckpoint.confidence < 0.45) {
-    return true
-  }
-
-  return false
-}
-
-function buildRecoveryQuery(input: string): string | undefined {
-  const normalized = input
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  if (!normalized) return undefined
-
-  const tokens = normalized
-    .split(' ')
-    .filter(token => token.length >= 3)
-    .slice(0, 8)
-
-  if (tokens.length === 0) return undefined
-  return tokens.join(' ')
-}
-
-function mergeReadResults(
-  primary: ReadDocumentsResult,
-  secondary: ReadDocumentsResult,
-  detailSuffix: string
-): ReadDocumentsResult {
-  const mergedMap = new Map<string, { metadata?: { id?: string }; content?: string }>()
-
-  for (const result of primary.results ?? []) {
-    const id = result.metadata?.id ?? `primary-${mergedMap.size}`
-    mergedMap.set(id, result)
-  }
-
-  for (const result of secondary.results ?? []) {
-    const id = result.metadata?.id ?? `secondary-${mergedMap.size}`
-    if (!mergedMap.has(id)) {
-      mergedMap.set(id, result)
-    }
-  }
-
-  const checkpoints = [
-    ...(primary.retrieval?.checkpoints ?? []),
-    ...(secondary.retrieval?.checkpoints ?? []),
-  ]
-
-  return {
-    results: [...mergedMap.values()].slice(0, 8),
-    retrieval: {
-      method: secondary.retrieval?.method ?? primary.retrieval?.method,
-      detail: appendRetrievalDetail(
-        secondary.retrieval?.detail ?? primary.retrieval?.detail,
-        detailSuffix
-      ),
-      checkpoints,
-    },
-  }
-}
-
-function getFinalCheckpoint(retrieval: ReadDocumentsResult): ReadDocumentsCheckpoint | undefined {
-  const checkpoints = retrieval.retrieval?.checkpoints
-  if (!Array.isArray(checkpoints) || checkpoints.length === 0) return undefined
-  return checkpoints[checkpoints.length - 1]
 }
 
 function formatRetrievalMode(retrieval: ReadDocumentsResult['retrieval']): string {

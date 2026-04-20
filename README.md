@@ -9,7 +9,7 @@ It gives you a CLI and runtime that can:
 
 ## Generalized Use Case
 
-Use KB when you want a repeatable way to capture, validate, dispute, and retrieve project knowledge during development.
+Use KB when you want a repeatable way to capture, validate, and retrieve project knowledge during development.
 
 Typical flow:
 1. Record facts and decisions while you work.
@@ -57,7 +57,7 @@ Prerequisites are validated separately: if no base is configured you get a **kno
 kb submit "Document writer now supports sqlite index sync"
 kb query "sqlite index sync behavior" --limit 5
 kb validate "kb use sets the active session base"
-kb dispute "kb use should persist across sessions" --because "kb use is session-scoped while kb use --default writes the saved default"
+kb invalidate "kb use should persist across sessions" "kb use is session-scoped; use kb use --default to write a persistent default"
 ```
 
 ## CLI Reference
@@ -67,9 +67,9 @@ kb dispute "kb use should persist across sessions" --because "kb use is session-
 ```
 kb submit "<fact>" [--domain ops] [--source runbook] [--target doc-id] [--output human|json]
 kb validate "<fact>" [--domain ops] [--output human|json]
-kb dispute "<fact>" --because "<counter evidence>" [--domain ops] [--output human|json]
 kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]
 kb explain "<change id|fact>" [--output human|json]
+kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply]
 ```
 
 ### Document browsing
@@ -90,7 +90,6 @@ kb config get
 kb config set <key> <value>
 kb config unset <key>
 kb init [--base <name>] [--detach | --resume] [--stop-after <cycle>]
-kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply]
 kb publish [options]
 kb chat
 ```

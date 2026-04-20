@@ -20,7 +20,7 @@ export interface ParsedIntentCommand {
   debug?: boolean
 }
 
-const INTENT_COMMANDS = new Set(['submit', 'validate', 'dispute', 'query', 'explain'])
+const INTENT_COMMANDS = new Set(['submit', 'validate', 'query', 'explain'])
 const INTENT_LLM_MAX_OUTPUT_TOKENS = 4096
 
 export function isIntentCommand(command: string): boolean {
@@ -71,23 +71,6 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
         },
       }
       break
-
-    case 'dispute': {
-      const because = readOption(rest, '--because')
-      if (!because) {
-        throw new Error('dispute requires --because "<counter evidence>"')
-      }
-      envelope = {
-        intent: 'dispute_fact',
-        requestId: `req-${dayjs().valueOf()}`,
-        payload: {
-          fact: readPositional(rest, 0, 'dispute requires a fact string'),
-          because,
-          domain: readOption(rest, '--domain'),
-        },
-      }
-      break
-    }
 
     case 'query':
       envelope = {
@@ -838,7 +821,6 @@ export function printIntentHelp(mode: CmdMode = 'cli'): string {
     'Intent commands:',
     `  ${cmd('submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--target doc-id] [--include-session-logs] [--output human|json]', mode)}`,
     `  ${cmd('validate "<fact>" [--base <name>] [--domain ops] [--output human|json]', mode)}`,
-    `  ${cmd('dispute "<fact>" --because "<counter evidence>" [--base <name>] [--domain ops] [--output human|json]', mode)}`,
     `  ${cmd('query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]', mode)}`,
     `  ${cmd('explain "<change id|fact>" [--base <name>] [--output human|json]', mode)}`,
   ].join('\n')
@@ -895,8 +877,6 @@ export function toIntentName(command: string): ConsumerIntent {
       return 'submit_fact'
     case 'validate':
       return 'validate_fact'
-    case 'dispute':
-      return 'dispute_fact'
     case 'query':
       return 'query_truth'
     case 'explain':

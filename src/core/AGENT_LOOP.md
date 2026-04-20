@@ -2,11 +2,22 @@
 
 ## Overview
 
-KB uses two loop patterns:
+KB uses three loop patterns:
 
-1. **`runIntentLoop`** — the primary harness. Wraps every intent command (`query`, `submit`, `validate`, `dispute`, `explain`) with retry, discovery escalation, and optional LLM reasoning. This is what the CLI uses.
+1. **`runIntentLoop`** — the primary harness. Wraps every intent command (`query`, `submit`, `validate`, `explain`) with retry, discovery escalation, and optional LLM reasoning. This is what the CLI uses.
 2. **Domain-specific cycle loops** — deterministic multi-pass orchestration for commands with a fixed, known lifecycle (`kb init`, `kb publish`).
 3. **`agentLoop`** — low-level async generator for autonomous tool-calling. Available for programmatic / SDK use; not used by the CLI.
+
+Intent commands delegate their core logic to **orchestrators** — each command has its own agent that runs the multi-step work inside the loop:
+
+| Intent | Orchestrator | Location |
+|--------|-------------|----------|
+| `query_truth` | `QueryResearchOrchestrator` | `src/tools/query-research-orchestrator.ts` |
+| `explain_change` | `ExplainOrchestrator` | `src/tools/explain-orchestrator.ts` |
+| `submit_fact` (no `--target`) | `SubmitOrchestrator` | `src/tools/submit-orchestrator.ts` |
+| `validate_fact` | `ValidateOrchestrator` | `src/tools/validate-orchestrator.ts` |
+
+This is the **composition principle**: `intent command → orchestrator → tools`. `runIntentLoop` owns retry policy; orchestrators own the per-turn multi-step logic.
 
 ---
 
@@ -48,7 +59,6 @@ interface IntentLoopResult {
 | `explain_change` | Yes, up to `maxIterations` | Same as query |
 | `validate_fact` | One extra pass | If `uncertain/0.45` (docs found, token-overlap inconclusive): runs LLM semantic reasoning pass |
 | `submit_fact` | No | Single pass — retrying a submit has idempotency risks |
-| `dispute_fact` | No | Single pass |
 
 **"Weak retrieval"** for query/explain means: zero results, fewer than 2 results, or the final retrieval checkpoint has `status: 'miss'` or `'error'`.
 
@@ -79,8 +89,8 @@ Add a new iteration strategy when:
 - You need carryover from one intent to seed a follow-up (e.g., validated doc IDs passed to submit)
 
 Do **not** retry:
-- Mutation intents (`submit`, `dispute`) — idempotency
-- Intents that already escalate internally (`validate` already does shallow→deep in the evaluator)
+- Mutation intents (`submit`) — idempotency
+- Intents that already escalate internally (`validate` escalates shallow→deep inside `ValidateOrchestrator`)
 
 ---
 
@@ -159,7 +169,7 @@ Use `agentLoop` when you need fully autonomous, open-ended tool orchestration an
 
 | Situation | Use |
 |---|---|
-| Any intent command (`query`, `submit`, `validate`, `dispute`, `explain`) | `runIntentLoop` |
+| Any intent command (`query`, `submit`, `validate`, `explain`) | `runIntentLoop` |
 | Fixed sequence of LLM passes with known inputs/outputs | Cycle loop (`kb init` pattern) |
 | User interaction between LLM calls (interview, confirmation) | Cycle loop |
 | Autonomous open-ended tool use in SDK/programmatic context | `agentLoop` |
@@ -186,7 +196,12 @@ Use `agentLoop` when you need fully autonomous, open-ended tool orchestration an
 - `src/core/agent-loop.ts` — low-level async generator
 - `src/cli/index.ts` — CLI wiring for all commands
 - `src/cli/init-cli.ts` — reference cycle loop
-- `src/cli/chat-cli.ts` — tiered retrieval loop
+- `src/cli/chat-cli.ts` — chat session loop (delegates retrieval to `QueryResearchOrchestrator`)
+- `src/tools/query-research-orchestrator.ts` — hypothesis-driven deep retrieval
+- `src/tools/submit-orchestrator.ts` — discovery-first KB write agent
+- `src/tools/validate-orchestrator.ts` — shallow→deep fact validation
+- `src/tools/explain-orchestrator.ts` — ID-first then semantic explain retrieval
+- `src/core/CHAT.md` — future vision for chat as intent dispatcher
 - `src/tools/TOOL_CONVENTIONS.md` — tool design patterns
 - `src/core/types.ts` — `AgentEvent`, `LLMProvider`, `Message` types
 - `src/intents/router.ts` — `DefaultIntentRouter` used by the intent loop

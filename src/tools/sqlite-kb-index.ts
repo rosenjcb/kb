@@ -84,7 +84,6 @@ export interface SessionEntryInput {
   eventType:
     | 'submit'
     | 'validate'
-    | 'dispute'
     | 'query'
     | 'chat'
     | 'publish'

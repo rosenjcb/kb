@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Agent Loop
-date: '2026-04-18'
+date: '2026-04-19'
 kb_id: src-core-agent-loop-md
 tags:
   - source-excerpt
