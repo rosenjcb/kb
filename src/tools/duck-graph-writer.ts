@@ -389,6 +389,34 @@ export class DuckGraphWriter {
     }
   }
 
+  /** Display name for a canonical entity id (falls back to the id string). */
+  async getEntityNameById(entityId: string): Promise<string> {
+    if (!this.ready) await this.open()
+    const c = this.requireConn()
+    const id = (await this.resolveEntityRef(entityId)) ?? slugify(entityId)
+    const rows = await c.runAndReadAll('SELECT name FROM entities WHERE id = ?', [id])
+    const row = rows.getRows()[0]
+    return row ? String(row[0]) : entityId
+  }
+
+  /** Distinct relationship types on active edges from `fromId` to `toId` (directional). */
+  async getDirectedEdgeLabelsBetween(fromId: string, toId: string): Promise<string[]> {
+    if (!this.ready) await this.open()
+    const c = this.requireConn()
+    const from = (await this.resolveEntityRef(fromId)) ?? slugify(fromId)
+    const to = (await this.resolveEntityRef(toId)) ?? slugify(toId)
+    const rows = await c.runAndReadAll(
+      `
+      SELECT DISTINCT type
+      FROM relationships
+      WHERE from_id = ? AND to_id = ? AND weight > 0
+      ORDER BY type
+    `,
+      [from, to]
+    )
+    return rows.getRows().map(r => String(r[0]))
+  }
+
   async findPath(fromId: string, toId: string, maxDepth = 6): Promise<GraphPath | null> {
     if (!this.ready) await this.open()
     const c = this.requireConn()
@@ -422,8 +450,9 @@ export class DuckGraphWriter {
   }
 
   /**
-   * Given a set of entity slugs (query terms), return the names of their direct
-   * neighbors. Used for graph-augmented query expansion before retrieval.
+   * Graph-backed query expansion: semantic **triplets** (subject / predicate / object) plus
+   * adjacent entity names and standalone predicate labels. Used before lexical/hybrid retrieval
+   * so queries can match documentation that states relationships explicitly or uses edge verbs.
    */
   async expandQuery(slugs: string[]): Promise<string[]> {
     if (!this.ready) await this.open()
@@ -431,7 +460,21 @@ export class DuckGraphWriter {
 
     const c = this.requireConn()
     const placeholders = slugs.map(() => '?').join(', ')
-    const rows = await c.runAndReadAll(
+    const slugParams = [...slugs, ...slugs]
+
+    const tripletRows = await c.runAndReadAll(
+      `
+      SELECT DISTINCT sf.name AS from_name, r.type AS rel_type, st.name AS to_name
+      FROM relationships r
+      JOIN entities sf ON sf.id = r.from_id
+      JOIN entities st ON st.id = r.to_id
+      WHERE r.weight > 0
+        AND (sf.id IN (${placeholders}) OR st.id IN (${placeholders}))
+    `,
+      slugParams
+    )
+
+    const neighborRows = await c.runAndReadAll(
       `
       SELECT DISTINCT e.name
       FROM relationships r
@@ -442,11 +485,40 @@ export class DuckGraphWriter {
       )
       WHERE r.weight > 0
     `,
-      [...slugs, ...slugs]
+      slugParams
     )
 
-    const neighborNames = rows.getRows().map(row => String(row[0]))
-    return neighborNames.filter(name => !slugs.includes(slugify(name)))
+    const seen = new Set<string>()
+    const out: string[] = []
+
+    const add = (token: string) => {
+      const t = token.trim()
+      if (!t) return
+      const key = t.toLowerCase()
+      if (seen.has(key)) return
+      seen.add(key)
+      out.push(t)
+    }
+
+    for (const row of tripletRows.getRows()) {
+      const fromName = String(row[0] ?? '').trim()
+      const rel = String(row[1] ?? '').trim()
+      const toName = String(row[2] ?? '').trim()
+      if (!fromName || !rel || !toName) continue
+      const predPhrase = rel.replace(/_/g, ' ')
+      add(`${fromName} ${predPhrase} ${toName}`)
+      add(rel)
+      if (predPhrase !== rel) add(predPhrase)
+    }
+
+    for (const row of neighborRows.getRows()) {
+      const name = String(row[0] ?? '').trim()
+      if (!name) continue
+      if (slugs.includes(slugify(name))) continue
+      add(name)
+    }
+
+    return out.slice(0, 40)
   }
 
   async scoreDocumentsForQuery(
@@ -475,6 +547,7 @@ export class DuckGraphWriter {
       SELECT DISTINCT
         COALESCE(target.doc_id, r.doc_id) AS doc_id,
         source.name AS source_name,
+        r.type AS rel_type,
         target.name AS target_name
       FROM relationships r
       JOIN entities source ON source.id = r.from_id
@@ -504,7 +577,7 @@ export class DuckGraphWriter {
       const docId = String(row[0] ?? '')
       if (!docId) continue
       const current = affinities.get(docId)
-      const evidence = `one-hop:${String(row[1] ?? '')}->${String(row[2] ?? '')}`
+      const evidence = `one-hop:${String(row[1] ?? '')}-[${String(row[2] ?? '')}]->${String(row[3] ?? '')}`
       if (!current) {
         affinities.set(docId, {
           boost: 0.6,

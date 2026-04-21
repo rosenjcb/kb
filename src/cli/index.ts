@@ -15,8 +15,10 @@ import {
 import { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { extractGraph } from '../tools/graph-entity-extractor'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
+import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
 import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
+import { createPrinter } from '../ui/printer'
 import {
   deleteBase,
   ensureOperationalBaseDir,
@@ -40,6 +42,24 @@ import {
 } from './cli-prerequisites'
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from './cmd-ref'
 import { printConfigHelp, runConfigCommand } from './config-cli'
+import {
+  DocsDeleteError,
+  parseDocsDeleteCommand,
+  printDocsDeleteHelp,
+  runDocsDelete,
+} from './docs-delete-cli'
+import {
+  DocsMergeError,
+  parseDocsMergeCommand,
+  printDocsMergeHelp,
+  runDocsMerge,
+} from './docs-merge-cli'
+import {
+  DocsRenameError,
+  parseDocsRenameCommand,
+  printDocsRenameHelp,
+  runDocsRename,
+} from './docs-rename-cli'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
 import { parseInitCommand, runKbInit } from './init-cli'
 import {
@@ -47,11 +67,10 @@ import {
   enrichReadDocumentsAnswerWithLLM,
   isIntentCommand,
   parseIntentCommand,
-  printIntentResult,
   printIntentHelp,
+  printIntentResult,
   rewriteIntentInputWithSessionContext,
 } from './intent-cli'
-import { createPrinter } from '../ui/printer'
 import {
   applyConfigToEnv,
   createLLMProviderFromConfig,
@@ -76,24 +95,6 @@ import {
   runListCommand,
   runViewCommand,
 } from './view-cli'
-import {
-  DocsMergeError,
-  parseDocsMergeCommand,
-  printDocsMergeHelp,
-  runDocsMerge,
-} from './docs-merge-cli'
-import {
-  DocsRenameError,
-  parseDocsRenameCommand,
-  printDocsRenameHelp,
-  runDocsRename,
-} from './docs-rename-cli'
-import {
-  DocsDeleteError,
-  parseDocsDeleteCommand,
-  printDocsDeleteHelp,
-  runDocsDelete,
-} from './docs-delete-cli'
 
 // ---------------------------------------------------------------------------
 // Output abstraction — lets the TUI capture output without monkey-patching
@@ -343,7 +344,8 @@ export async function runMainWithOutput(
 
     if (subCmd === 'delete') {
       const deleteArgs = subArgs.slice(1)
-      const help = deleteArgs.includes('--help') || deleteArgs.includes('-h') || deleteArgs[0] === 'help'
+      const help =
+        deleteArgs.includes('--help') || deleteArgs.includes('-h') || deleteArgs[0] === 'help'
       if (help) {
         out.log(printBaseDeleteHelp(mode))
         return
@@ -358,9 +360,7 @@ export async function runMainWithOutput(
       const force = deleteArgs.includes('--force') || deleteArgs.includes('-f')
       if (!force) {
         if (mode === 'tui') {
-          out.log(
-            `Pass --force to confirm deletion in the TUI: /base delete ${base} --force`
-          )
+          out.log(`Pass --force to confirm deletion in the TUI: /base delete ${base} --force`)
           return
         }
         const confirmed = await promptBaseDeleteConfirm(base)
@@ -606,9 +606,9 @@ export async function runMainWithOutput(
   }
 
   if (firstArg === 'list') {
-    const treatAsLogsList = args.slice(1).some(arg =>
-      ['--since', '--command', '--limit'].includes(arg)
-    )
+    const treatAsLogsList = args
+      .slice(1)
+      .some(arg => ['--since', '--command', '--limit'].includes(arg))
     if (treatAsLogsList) {
       try {
         out.log(await runLogsCommand(['list', ...args.slice(1)]))
@@ -733,6 +733,12 @@ export async function runMainWithOutput(
       const rawLlmProvider = createLLMProviderFromConfig(config)
       const llmCounter = rawLlmProvider ? new TokenCountingProvider(rawLlmProvider) : undefined
       const llmProvider = llmCounter ?? rawLlmProvider
+      const preRewritePayload = parsed.envelope.payload as { query?: string }
+      const preRewriteQueryTruth =
+        parsed.envelope.intent === 'query_truth' && typeof preRewritePayload.query === 'string'
+          ? preRewritePayload.query.trim()
+          : ''
+      let graphRelationContext: string | undefined
       printer.startSpinner('running intent rewrite...')
       try {
         parsed = await rewriteIntentInputWithSessionContext(
@@ -748,8 +754,21 @@ export async function runMainWithOutput(
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
         if (originalQuery) {
           const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(intentBaseDir))
+          await graphWriter.open()
           try {
             payload.query = await expandQueryWithGraph(originalQuery, graphWriter)
+            for (const qRel of [preRewriteQueryTruth, originalQuery]) {
+              if (!qRel) continue
+              try {
+                const block = await formatGraphRelationBlockFromQuestion(graphWriter, qRel)
+                if (block) {
+                  graphRelationContext = block
+                  break
+                }
+              } catch {
+                // Relational graph context is optional; never block query.
+              }
+            }
           } finally {
             await graphWriter.close()
           }
@@ -825,7 +844,9 @@ export async function runMainWithOutput(
         parsed,
         aligned,
         llmProvider ?? undefined,
-        intentBaseDir
+        intentBaseDir,
+        undefined,
+        graphRelationContext ? { graphRelationContext } : undefined
       ).finally(() => {
         printer.stopSpinner()
       })

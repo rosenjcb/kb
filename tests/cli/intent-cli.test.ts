@@ -248,6 +248,80 @@ describe('intent-cli parsing', () => {
     expect(data.answer).toContain('Precedence is session base')
   })
 
+  it('Given read_documents results carry graphEvidence, then enrichment prompt includes typed edge hints', async () => {
+    const parsed = parseIntentCommand(['query', 'How does retrieval connect to storage?'])
+    const result = {
+      status: 'accepted' as const,
+      recommendedAction: 'read_documents',
+      data: {
+        results: [
+          {
+            metadata: { id: 'doc-a', title: 'Architecture' },
+            content:
+              '# Architecture\n\nThe KB uses SQLite for markdown documents and DuckDB for the property graph.',
+            graphEvidence: ['one-hop:kb-query-[retrieves_via]->MarkdownDocumentReader'],
+          },
+        ],
+        total: 1,
+      },
+    }
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'Stub answer.',
+        stopReason: 'end_turn' as const,
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
+    await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
+    const callMock = provider.call as ReturnType<typeof vi.fn>
+    const callArg = callMock.mock.calls[0]?.[0] as { messages?: Array<{ role: string; content: string }> }
+    const userMsg = callArg?.messages?.find(m => m.role === 'user')?.content
+    expect(String(userMsg)).toContain('Graph linkage hints')
+    expect(String(userMsg)).toContain('retrieves_via')
+  })
+
+  it('Given graphRelationContext option, then enrichment user message includes structured graph path section', async () => {
+    const parsed = parseIntentCommand(['query', 'How does retrieval relate to storage?'])
+    const result = {
+      status: 'accepted' as const,
+      recommendedAction: 'read_documents',
+      data: {
+        results: [
+          {
+            metadata: { id: 'doc-a', title: 'Architecture' },
+            content: '# Architecture\n\nRetrieval reads markdown from disk.',
+          },
+        ],
+        total: 1,
+      },
+    }
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'Stub answer.',
+        stopReason: 'end_turn' as const,
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
+    await enrichReadDocumentsAnswerWithLLM(parsed, result, provider, undefined, undefined, {
+      graphRelationContext: 'Shortest directed path (1 hop): A → B',
+    })
+    const callMock = provider.call as ReturnType<typeof vi.fn>
+    const callArg = callMock.mock.calls[0]?.[0] as { messages?: Array<{ role: string; content: string }> }
+    const userMsg = callArg?.messages?.find(m => m.role === 'user')?.content
+    expect(String(userMsg)).toContain('Structured graph path')
+    expect(String(userMsg)).toContain('Shortest directed path (1 hop): A → B')
+  })
+
   it('Given query session context and a follow-up query, then rewriteIntentInputWithSessionContext rewrites retrieval input but preserves the original question', async () => {
     const sessionDir = await createTempDir()
     await writeFile(

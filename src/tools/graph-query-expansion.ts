@@ -19,6 +19,9 @@ export function toGraphQuerySlugs(query: string): string[] {
   return [...new Set([...tokens, ...bigrams])].slice(0, 16)
 }
 
+/** Max expansion phrases appended to the raw query (triplets + verbs + neighbor names). */
+const MAX_GRAPH_EXPANSION_PHRASES = 18
+
 export async function expandQueryWithGraph(
   query: string,
   graphWriter: DuckGraphWriter
@@ -27,10 +30,10 @@ export async function expandQueryWithGraph(
     const slugs = toGraphQuerySlugs(query)
     if (slugs.length === 0) return query
 
-    const neighbors = await graphWriter.expandQuery(slugs)
-    if (neighbors.length === 0) return query
+    const terms = await graphWriter.expandQuery(slugs)
+    if (terms.length === 0) return query
 
-    return `${query} ${neighbors.slice(0, 5).join(' ')}`
+    return `${query} ${terms.slice(0, MAX_GRAPH_EXPANSION_PHRASES).join(' ')}`
   } catch {
     return query
   }

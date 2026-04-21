@@ -4,13 +4,13 @@ import type { LLMProvider, Message } from '../core/types'
 import { assertConsumerSafeCommand } from '../intents/policy'
 import { DefaultIntentRouter } from '../intents/router'
 import type { ConsumerIntent, ConsumerIntentEnvelope, IntentResult } from '../intents/types'
+import type { Printer } from '../ui/printer'
 import { type CmdMode, cmd } from './cmd-ref'
 import { appendQuerySession, loadQuerySessionMessages } from './query-session'
 import {
   augmentReadDocumentsWithWorkspaceFallback,
   formatReadDocumentSourceIds,
 } from './retrieval-fallback'
-import type { Printer } from '../ui/printer'
 
 export type CliOutputMode = 'human' | 'json'
 
@@ -235,6 +235,8 @@ interface ReadDocumentsResultItem {
     filePath?: string
   }
   content?: string
+  /** Graph rerank hints from DuckDB (includes relationship type labels). */
+  graphEvidence?: string[]
 }
 
 interface ReadDocumentsResultData {
@@ -258,7 +260,8 @@ export async function enrichReadDocumentsAnswerWithLLM(
   result: IntentResult,
   llmProvider?: LLMProvider,
   sessionDir?: string,
-  priorMessages?: Message[]
+  priorMessages?: Message[],
+  options?: { graphRelationContext?: string }
 ): Promise<IntentResult> {
   if (!llmProvider) return result
   if (!isReadDocumentsResult(result)) return result
@@ -277,6 +280,14 @@ export async function enrichReadDocumentsAnswerWithLLM(
 
     const contextMessages: Message[] = priorMessages ?? sessionTurns
 
+    const graphSection = options?.graphRelationContext?.trim()
+      ? [
+          '',
+          'Structured graph path (shortest directed path in the KB graph when the question is relational; must agree with document evidence, not override it):',
+          options.graphRelationContext.trim(),
+        ].join('\n')
+      : ''
+
     const userContent = [
       'You answer using only the provided KB evidence.',
       'Answer directly and clearly.',
@@ -285,6 +296,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
       'If evidence is insufficient, explicitly say so.',
       '',
       `Question: ${question}`,
+      graphSection,
       '',
       `Evidence:\n${evidence}`,
     ].join('\n')
@@ -733,7 +745,18 @@ function buildEvidence(results: ReadDocumentsResultItem[], query: string): strin
     return `Document ${index + 1}: ${title} (id=${id})\n${snippets.join('\n')}`
   })
 
-  return sections.filter(Boolean).join('\n\n')
+  const graphHints = new Set<string>()
+  for (const item of results.slice(0, 5)) {
+    for (const line of item.graphEvidence ?? []) {
+      if (line.trim()) graphHints.add(line.trim())
+    }
+  }
+  const graphBlock =
+    graphHints.size > 0
+      ? `\n\nGraph linkage hints (typed edges in the KB graph; must agree with document text above):\n${[...graphHints].map(h => `- ${h}`).join('\n')}`
+      : ''
+
+  return sections.filter(Boolean).join('\n\n') + graphBlock
 }
 
 function extractRelevantEvidenceSnippets(content: string | undefined, query: string): string[] {

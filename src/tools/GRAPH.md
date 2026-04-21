@@ -68,8 +68,9 @@ kb graph edge remove --from ... --to ... --verb ... [--apply]
 When a graph-enabled lookup runs (`kb query` and `kb chat`), the graph is consulted before the document index:
 
 1. The query terms are slugified and looked up as entity IDs.
-2. Direct neighbors (outgoing + incoming, depth 1) are added as expansion terms.
-3. The expanded term set is used alongside the original query in full-text and hybrid retrieval.
+2. For every live edge touching those entities, expansion adds **semantic triplets** as natural-language phrases (`Subject <predicate phrase> Object`, plus the stored predicate slug and a spaced variant, e.g. `retrieves_via` and `retrieves via`) and then **neighbor entity names** (same star neighborhood as before).
+3. The expanded term set is capped and concatenated to the original query for full-text and hybrid retrieval.
+4. On **hybrid** hits, graph reranking attaches **typed edge hints** (entity names plus stored relationship `type`, e.g. `one-hop:kb-query-[retrieves_via]->MarkdownDocumentReader`) to top results; query/chat **answer enrichment** includes those hints in the LLM context so prose answers can reflect real edges when they align with document text.
 
 This means a query for "DuckGraphWriter" will also surface documents mentioning "DuckDB" or "property graph" if those edges exist in the graph — even if those terms don't appear literally in the query.
 
