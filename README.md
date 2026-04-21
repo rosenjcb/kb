@@ -14,9 +14,9 @@ It gives you a CLI and runtime that capture what your project learns over time�
 
 Instead of re-deriving the same answers, KB lets you:
 
-Record decisions and facts as you work
-Query past context before making changes
-Validate assumptions against what’s already known
+* Record decisions and facts as you work
+* Query past context before making changes
+* Validate assumptions against what’s already known
 
 All of it lives alongside your code, versioned in Git, and queryable like a lightweight memory system.
 
