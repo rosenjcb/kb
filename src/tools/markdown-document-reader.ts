@@ -248,6 +248,7 @@ export class MarkdownDocumentReader {
   private readonly rankingHintsEnabled: boolean
   private readonly rankingHintMinOccurrences: number
   private readonly checkpointObservabilityEnabled: boolean
+  private graphFailureWarned = false
 
   constructor(baseDir: string, options: MarkdownDocumentReaderOptions = {}) {
     this.baseDir = baseDir
@@ -1067,7 +1068,8 @@ export class MarkdownDocumentReader {
     const writer = new DuckGraphWriter(this.graphDbPath)
     try {
       return await writer.scoreDocumentsForQuery(slugs, docIds)
-    } catch {
+    } catch (error) {
+      this.warnGraphUnavailable('graph ranking unavailable', error)
       return new Map()
     } finally {
       await writer.close()
@@ -1228,11 +1230,19 @@ export class MarkdownDocumentReader {
     const writer = new DuckGraphWriter(this.graphDbPath)
     try {
       return await writer.expandQuery(docIds.slice(0, 8))
-    } catch {
+    } catch (error) {
+      this.warnGraphUnavailable('graph query expansion unavailable', error)
       return []
     } finally {
       await writer.close()
     }
+  }
+
+  private warnGraphUnavailable(prefix: string, error: unknown): void {
+    if (this.graphFailureWarned) return
+    this.graphFailureWarned = true
+    const message = error instanceof Error ? error.message : String(error)
+    emitDiagnostic('warn', `[kb-graph] ${prefix}: ${message}`)
   }
 
   resolveLanesForQuery(query: string): RetrievalLane[] | undefined {

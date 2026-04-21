@@ -116,8 +116,9 @@ export async function runChatSession(
   if (deps.graphWriter) {
     try {
       await deps.graphWriter.open()
-    } catch {
-      // Graph is optional; chat must work without it.
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      io.error(`[kb-graph] chat graph unavailable: ${message}`)
     }
   }
 
