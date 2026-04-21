@@ -14,6 +14,10 @@ As you build up your knowledge base, the graph gives you a structural view of ho
 
 **Export:** The full graph can be dumped as Graphviz DOT (for visualisation tools like Gephi or Mermaid) or JSON (for your own analysis).
 
+**Manual curation:** You can add nodes, descriptions, and directed edges from the CLI (dry-run by default, `--apply` to commit). Automated extraction from `kb submit` / `kb init` merges with hand-authored graph data in the same DuckDB file.
+
+**Session override:** Pass `--base <name>` on `kb graph` (same as other KB commands) to target a specific session without switching your active base.
+
 ## Storage
 
 The graph lives at `<base-dir>/.kb-graph.duckdb` — a DuckDB database file next to the SQLite document index.
@@ -26,12 +30,12 @@ Graph mode is enabled by default. You can disable graph extraction and graph-aug
 Schema:
 
 ```sql
-entities       — id, name, type, doc_id, created_at
+entities       — id, name, type, doc_id, description, created_at
 relationships  — id, from_id, to_id, type, doc_id, weight, created_at
 ```
 
 - `type` on entities: `concept | system | tool | decision | person`
-- `type` on relationships: `depends_on | contradicts | related_to | replaces | implements | uses`
+- `type` on relationships: canonical extractor labels (`depends_on`, `contradicts`, `related_to`, `replaces`, `implements`, `uses`) **or** any snake_case label you set via `kb graph edge add --verb` (free text is normalized to snake_case for storage)
 - `weight`: 1.0 for live edges, 0 for soft-deleted edges (set by `kb invalidate`)
 - DuckPGQ property graph (`kb_graph`) is created on open when the extension is available; recursive CTEs handle traversal as a fallback.
 
@@ -51,6 +55,12 @@ kb graph --entity <name>          # Outgoing + incoming edges for a named entity
 kb graph --path <from> <to>       # Shortest path between two entities (max 6 hops)
 kb graph --format dot             # Export as Graphviz DOT to stdout
 kb graph --format json            # Export full graph as JSON to stdout
+
+# Edits (dry-run until you add --apply — see TUI.md / AGENTS.md mutation safety)
+kb graph node add --name "..." [--id ...] [--type concept|system|tool|decision|person] [--description "..."] [--doc-id ...] [--apply]
+kb graph node set --entity <id-or-name> [--name "..."] [--description "..."] [--type ...] [--apply]
+kb graph edge add --from <id-or-name> --to <id-or-name> --verb "<label>" [--doc-id ...] [--apply]
+kb graph edge remove --from ... --to ... --verb ... [--apply]
 ```
 
 ## Graph-augmented query
@@ -58,8 +68,9 @@ kb graph --format json            # Export full graph as JSON to stdout
 When a graph-enabled lookup runs (`kb query` and `kb chat`), the graph is consulted before the document index:
 
 1. The query terms are slugified and looked up as entity IDs.
-2. Direct neighbors (outgoing + incoming, depth 1) are added as expansion terms.
-3. The expanded term set is used alongside the original query in full-text and hybrid retrieval.
+2. For every live edge touching those entities, expansion adds **semantic triplets** as natural-language phrases (`Subject <predicate phrase> Object`, plus the stored predicate slug and a spaced variant, e.g. `retrieves_via` and `retrieves via`) and then **neighbor entity names** (same star neighborhood as before).
+3. The expanded term set is capped and concatenated to the original query for full-text and hybrid retrieval.
+4. On **hybrid** hits, graph reranking attaches **typed edge hints** (entity names plus stored relationship `type`, e.g. `one-hop:kb-query-[retrieves_via]->MarkdownDocumentReader`) to top results; query/chat **answer enrichment** includes those hints in the LLM context so prose answers can reflect real edges when they align with document text.
 
 This means a query for "DuckGraphWriter" will also surface documents mentioning "DuckDB" or "property graph" if those edges exist in the graph — even if those terms don't appear literally in the query.
 

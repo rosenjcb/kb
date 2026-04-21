@@ -57,13 +57,61 @@ describe('graph-cli parsing', () => {
   it('Given graph format flag, then parser returns export format option', () => {
     expect(parseGraphCommand(['--format', 'json'])).toEqual({ format: 'json' })
   })
+
+  it('Given graph node add flags, then parser returns a node-add mutation plan', () => {
+    const opts = parseGraphCommand([
+      'node',
+      'add',
+      '--name',
+      'My API',
+      '--type',
+      'tool',
+      '--description',
+      'Handles auth',
+      '--doc-id',
+      'doc-1',
+    ])
+    expect(opts.mutation).toEqual({
+      op: 'node-add',
+      name: 'My API',
+      entityType: 'tool',
+      description: 'Handles auth',
+      docId: 'doc-1',
+      apply: false,
+    })
+  })
+
+  it('Given graph edge add with --apply, then parser records apply', () => {
+    const opts = parseGraphCommand([
+      'edge',
+      'add',
+      '--from',
+      'a',
+      '--to',
+      'b',
+      '--verb',
+      'depends on',
+      '--apply',
+    ])
+    expect(opts.mutation).toEqual({
+      op: 'edge-add',
+      fromRef: 'a',
+      toRef: 'b',
+      verb: 'depends on',
+      apply: true,
+    })
+  })
+
+  it('Given node add without --name, then parser throws', () => {
+    expect(() => parseGraphCommand(['node', 'add', '--type', 'concept'])).toThrow(GraphCommandError)
+  })
 })
 
 describe('graph-cli help', () => {
   it('prints grouped graph usage and examples', () => {
     const help = printGraphHelp()
     expect(help).toContain('kb graph commands')
-    expect(help).toContain('Usage:')
+    expect(help).toContain('Inspect:')
     expect(help).toContain('Examples:')
   })
 })

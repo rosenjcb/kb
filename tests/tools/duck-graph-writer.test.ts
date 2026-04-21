@@ -95,3 +95,60 @@ describe('DuckGraphWriter.dbPathForBase', () => {
     expect(DuckGraphWriter.dbPathForBase('/some/base')).toBe('/some/base/.kb-graph.duckdb')
   })
 })
+
+describe('DuckGraphWriter.expandQuery', () => {
+  it('Given edges touching slugged entities, then expansion includes triplet phrases and verbs', async () => {
+    await writer.upsertEntities([
+      { id: 'alpha', name: 'Alpha Node', type: 'concept' },
+      { id: 'beta', name: 'Beta Node', type: 'concept' },
+    ])
+    await writer.upsertRelationships([{ fromId: 'alpha', toId: 'beta', type: 'feeds_into' }])
+
+    const terms = await writer.expandQuery(['alpha'])
+    expect(terms.some(t => t.includes('Alpha Node') && t.includes('feeds into') && t.includes('Beta Node'))).toBe(
+      true
+    )
+    expect(terms).toContain('feeds_into')
+    expect(terms).toContain('feeds into')
+  })
+})
+
+describe('DuckGraphWriter entity resolution and manual edges', () => {
+  it('Given entity stored by id, then resolveEntityRef finds it by display name', async () => {
+    await writer.upsertEntities([{ id: 'auth-svc', name: 'Auth service', type: 'system' }])
+    await expect(writer.resolveEntityRef('Auth service')).resolves.toBe('auth-svc')
+    await expect(writer.resolveEntityRef('auth-svc')).resolves.toBe('auth-svc')
+  })
+
+  it('Given a live edge, then softDeleteEdge retires it from the active count', async () => {
+    await writer.upsertEntities([{ id: 'x', name: 'x', type: 'concept' }])
+    await writer.upsertEntities([{ id: 'y', name: 'y', type: 'concept' }])
+    await writer.upsertRelationships([{ fromId: 'x', toId: 'y', type: 'uses' }])
+    expect(await writer.softDeleteEdge('x', 'y', 'uses')).toBe(1)
+    const summary = await writer.getSummary()
+    expect(summary.totalRelationships).toBe(0)
+  })
+
+  it('Given a free-text verb, then relationship type is normalized to snake_case', async () => {
+    await writer.upsertEntities([{ id: 'a', name: 'a', type: 'concept' }])
+    await writer.upsertEntities([{ id: 'b', name: 'b', type: 'concept' }])
+    await writer.upsertRelationships([{ fromId: 'a', toId: 'b', type: 'Powers Index' }])
+    const exported = await writer.exportJson()
+    expect(exported.relationships[0]?.type).toBe('powers_index')
+  })
+
+  it('getEntityNameById returns display name for canonical id', async () => {
+    await writer.upsertEntities([{ id: 'svc-1', name: 'My Service', type: 'system' }])
+    await expect(writer.getEntityNameById('svc-1')).resolves.toBe('My Service')
+  })
+
+  it('getDirectedEdgeLabelsBetween returns active edge types in order', async () => {
+    await writer.upsertEntities([
+      { id: 'n1', name: 'n1', type: 'concept' },
+      { id: 'n2', name: 'n2', type: 'concept' },
+    ])
+    await writer.upsertRelationships([{ fromId: 'n1', toId: 'n2', type: 'depends_on' }])
+    await expect(writer.getDirectedEdgeLabelsBetween('n1', 'n2')).resolves.toEqual(['depends_on'])
+    await expect(writer.getDirectedEdgeLabelsBetween('n2', 'n1')).resolves.toEqual([])
+  })
+})

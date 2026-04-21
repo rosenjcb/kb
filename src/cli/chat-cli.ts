@@ -1,9 +1,11 @@
 import { createInterface } from 'node:readline/promises'
-import { loadPrompt } from '../prompts/loader'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message } from '../core/types'
+import { loadPrompt } from '../prompts/loader'
 import type { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
+import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
+import { createPrinter } from '../ui/printer'
 import {
   type ChatConversationState,
   createInitialConversationState,
@@ -11,7 +13,6 @@ import {
   updateConversationState,
 } from './chat-conversation'
 import { type CmdMode, cmd } from './cmd-ref'
-import { createPrinter } from '../ui/printer'
 import {
   augmentReadDocumentsWithWorkspaceFallback,
   formatReadDocumentSourceIds,
@@ -42,6 +43,7 @@ interface ReadDocumentsResult {
       id?: string
     }
     content?: string
+    graphEvidence?: string[]
   }>
   retrieval?: {
     method?: string
@@ -54,7 +56,6 @@ interface ReadDocumentsResult {
     }>
   }
 }
-
 
 export interface ChatTurnTrace {
   input: string
@@ -105,6 +106,14 @@ export async function runChatSession(
 
   printer.chatAssistant('Chat mode started. Type /help for commands.')
 
+  if (deps.graphWriter) {
+    try {
+      await deps.graphWriter.open()
+    } catch {
+      // Graph is optional; chat must work without it.
+    }
+  }
+
   try {
     while (true) {
       const rawInput = await io.read('you> ')
@@ -142,6 +151,16 @@ export async function runChatSession(
         const expandedQuery = deps.graphWriter
           ? await expandQueryWithGraph(resolvedTurn.retrievalQuery, deps.graphWriter)
           : resolvedTurn.retrievalQuery
+
+        let graphRelationBlock: string | undefined
+        if (deps.graphWriter) {
+          try {
+            const block = await formatGraphRelationBlockFromQuestion(deps.graphWriter, input)
+            if (block) graphRelationBlock = block
+          } catch {
+            // Optional relational graph context only.
+          }
+        }
         const readResult = await deps.toolExecutor.execute({
           id: `chat-read-${Date.now()}`,
           name: 'read_documents',
@@ -167,6 +186,7 @@ export async function runChatSession(
             resolvedTurn.retrievalQuery !== input ? resolvedTurn.retrievalQuery : undefined,
           retrieval: retrievalForOutput,
           conversationState,
+          graphRelationBlock,
         })
 
         const turnMessages: Message[] = [...messages, { role: 'user', content: userContent }]
@@ -222,6 +242,9 @@ export async function runChatSession(
       }
     }
   } finally {
+    if (deps.graphWriter) {
+      await deps.graphWriter.close().catch(() => {})
+    }
     io.close?.()
   }
 }
@@ -238,6 +261,7 @@ export function buildChatTurnContent(input: {
   retrieval: ReadDocumentsResult
   resolvedQuestion?: string
   conversationState?: ChatConversationState
+  graphRelationBlock?: string
 }): string {
   const evidence = buildEvidence(input.retrieval.results)
 
@@ -249,8 +273,17 @@ export function buildChatTurnContent(input: {
     contextLines.push(`Pending follow-up: ${input.conversationState.pendingFollowUp.query}`)
   }
 
+  const graphSection = input.graphRelationBlock?.trim()
+    ? [
+        'Structured graph path (shortest directed path when the user question is relational; verify against evidence):',
+        input.graphRelationBlock.trim(),
+        '',
+      ].join('\n')
+    : ''
+
   return [
     ...(contextLines.length > 0 ? [...contextLines, ''] : []),
+    graphSection,
     `Retrieved evidence:\n${evidence}`,
     '',
     `User question: ${input.question}`,
@@ -307,6 +340,18 @@ function buildEvidence(results: ReadDocumentsResult['results']): string {
     const content = (result.content ?? '').trim()
     const snippet = content.length > 900 ? `${content.slice(0, 900)}...` : content
     sections.push(`Document ${index + 1} (${docId}):\n${snippet || 'No content available.'}`)
+  }
+
+  const graphHints = new Set<string>()
+  for (const result of results.slice(0, 4)) {
+    for (const line of result.graphEvidence ?? []) {
+      if (line.trim()) graphHints.add(line.trim())
+    }
+  }
+  if (graphHints.size > 0) {
+    sections.push(
+      `Graph linkage hints (typed edges; must agree with document text above):\n${[...graphHints].map(h => `- ${h}`).join('\n')}`
+    )
   }
 
   return sections.join('\n\n')

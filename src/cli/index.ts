@@ -15,8 +15,10 @@ import {
 import { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { extractGraph } from '../tools/graph-entity-extractor'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
+import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
 import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
+import { createPrinter } from '../ui/printer'
 import {
   deleteBase,
   ensureOperationalBaseDir,
@@ -27,6 +29,8 @@ import {
   printBaseDeleteHelp,
   readBaseConfig,
   resolveEffectiveBaseDir,
+  resolveKbStorageDirFromArgs,
+  stripCliFlagWithValue,
   writeDefaultBase,
   writeSessionBase,
 } from './base-selection'
@@ -38,6 +42,24 @@ import {
 } from './cli-prerequisites'
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from './cmd-ref'
 import { printConfigHelp, runConfigCommand } from './config-cli'
+import {
+  DocsDeleteError,
+  parseDocsDeleteCommand,
+  printDocsDeleteHelp,
+  runDocsDelete,
+} from './docs-delete-cli'
+import {
+  DocsMergeError,
+  parseDocsMergeCommand,
+  printDocsMergeHelp,
+  runDocsMerge,
+} from './docs-merge-cli'
+import {
+  DocsRenameError,
+  parseDocsRenameCommand,
+  printDocsRenameHelp,
+  runDocsRename,
+} from './docs-rename-cli'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
 import { parseInitCommand, runKbInit } from './init-cli'
 import {
@@ -45,11 +67,10 @@ import {
   enrichReadDocumentsAnswerWithLLM,
   isIntentCommand,
   parseIntentCommand,
-  printIntentResult,
   printIntentHelp,
+  printIntentResult,
   rewriteIntentInputWithSessionContext,
 } from './intent-cli'
-import { createPrinter } from '../ui/printer'
 import {
   applyConfigToEnv,
   createLLMProviderFromConfig,
@@ -74,24 +95,6 @@ import {
   runListCommand,
   runViewCommand,
 } from './view-cli'
-import {
-  DocsMergeError,
-  parseDocsMergeCommand,
-  printDocsMergeHelp,
-  runDocsMerge,
-} from './docs-merge-cli'
-import {
-  DocsRenameError,
-  parseDocsRenameCommand,
-  printDocsRenameHelp,
-  runDocsRename,
-} from './docs-rename-cli'
-import {
-  DocsDeleteError,
-  parseDocsDeleteCommand,
-  printDocsDeleteHelp,
-  runDocsDelete,
-} from './docs-delete-cli'
 
 // ---------------------------------------------------------------------------
 // Output abstraction — lets the TUI capture output without monkey-patching
@@ -126,7 +129,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  base        Manage KB bases (use, delete)',
     '  config      Inspect or update persistent config',
     '  init        Build a KB from project docs',
-    '  graph       Inspect the knowledge graph',
+    '  graph       Inspect or edit the knowledge graph',
     '  docs        Browse KB documents',
     '  chat        Start an interactive KB chat session',
     '  publish     Publish KB docs',
@@ -207,15 +210,26 @@ export async function runMainWithOutput(
 
   // kb invalidate
   if (firstArg === 'invalidate') {
-    const oldFact = args[1]
-    const replacementFact = args[2] && !args[2].startsWith('--') ? args[2] : undefined
-    const preview = args.includes('--preview') || !args.includes('--apply')
-    const dryRun = args.includes('--dry-run')
-    const debug = args.includes('--debug')
+    const invTail = args.slice(1)
+    let kbStorageDir: string
+    try {
+      kbStorageDir = await resolveKbStorageDirFromArgs(invTail)
+    } catch {
+      out.error(formatPrerequisiteError(CLI_ERROR_NO_KB_BASE))
+      return
+    }
+
+    const stripped = stripCliFlagWithValue(invTail, '--base')
+    const preview = stripped.includes('--preview') || !stripped.includes('--apply')
+    const dryRun = stripped.includes('--dry-run')
+    const debug = stripped.includes('--debug')
+    const positionals = stripped.filter(t => !t.startsWith('--'))
+    const oldFact = positionals[0]
+    const replacementFact = positionals[1]
 
     if (!oldFact) {
       out.error(
-        `❌ Usage: ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run] [--debug]', mode)}`
+        `❌ Usage: ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--preview|--apply|--dry-run] [--debug]', mode)}`
       )
       return
     }
@@ -224,7 +238,6 @@ export async function runMainWithOutput(
     const collector = new RunCollector('invalidate', { debug })
     const endInvalidate = collector.startStage('invalidate', 'none', 'none')
     try {
-      const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
       const result = await invalidateFactTool(
         { oldFact, replacementFact, preview, dryRun, includeSessionLogs: true },
         kbStorageDir
@@ -331,7 +344,8 @@ export async function runMainWithOutput(
 
     if (subCmd === 'delete') {
       const deleteArgs = subArgs.slice(1)
-      const help = deleteArgs.includes('--help') || deleteArgs.includes('-h') || deleteArgs[0] === 'help'
+      const help =
+        deleteArgs.includes('--help') || deleteArgs.includes('-h') || deleteArgs[0] === 'help'
       if (help) {
         out.log(printBaseDeleteHelp(mode))
         return
@@ -346,9 +360,7 @@ export async function runMainWithOutput(
       const force = deleteArgs.includes('--force') || deleteArgs.includes('-f')
       if (!force) {
         if (mode === 'tui') {
-          out.log(
-            `Pass --force to confirm deletion in the TUI: /base delete ${base} --force`
-          )
+          out.log(`Pass --force to confirm deletion in the TUI: /base delete ${base} --force`)
           return
         }
         const confirmed = await promptBaseDeleteConfirm(base)
@@ -400,12 +412,10 @@ export async function runMainWithOutput(
       return
     }
 
-    const chatBaseFlag = args[args.indexOf('--base') + 1] ?? undefined
+    const chatTail = args.slice(1)
     let kbStorageDir: string
     try {
-      kbStorageDir = chatBaseFlag
-        ? await ensureOperationalBaseDir(chatBaseFlag)
-        : (await resolveEffectiveBaseDir()).baseDir
+      kbStorageDir = await resolveKbStorageDirFromArgs(chatTail)
     } catch {
       out.error(formatPrerequisiteError(CLI_ERROR_NO_KB_BASE))
       return
@@ -596,9 +606,9 @@ export async function runMainWithOutput(
   }
 
   if (firstArg === 'list') {
-    const treatAsLogsList = args.slice(1).some(arg =>
-      ['--since', '--command', '--limit'].includes(arg)
-    )
+    const treatAsLogsList = args
+      .slice(1)
+      .some(arg => ['--since', '--command', '--limit'].includes(arg))
     if (treatAsLogsList) {
       try {
         out.log(await runLogsCommand(['list', ...args.slice(1)]))
@@ -650,9 +660,16 @@ export async function runMainWithOutput(
 
   if (firstArg === 'graph') {
     try {
-      const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
-      const opts = parseGraphCommand(args.slice(1), mode)
-      await runGraphCommand(kbStorageDir, opts, out)
+      const graphTail = args.slice(1)
+      let kbStorageDir: string
+      try {
+        kbStorageDir = await resolveKbStorageDirFromArgs(graphTail)
+      } catch {
+        out.error(formatPrerequisiteError(CLI_ERROR_NO_KB_BASE))
+        return
+      }
+      const opts = parseGraphCommand(stripCliFlagWithValue(graphTail, '--base'), mode)
+      await runGraphCommand(kbStorageDir, opts, out, undefined, mode)
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -716,6 +733,12 @@ export async function runMainWithOutput(
       const rawLlmProvider = createLLMProviderFromConfig(config)
       const llmCounter = rawLlmProvider ? new TokenCountingProvider(rawLlmProvider) : undefined
       const llmProvider = llmCounter ?? rawLlmProvider
+      const preRewritePayload = parsed.envelope.payload as { query?: string }
+      const preRewriteQueryTruth =
+        parsed.envelope.intent === 'query_truth' && typeof preRewritePayload.query === 'string'
+          ? preRewritePayload.query.trim()
+          : ''
+      let graphRelationContext: string | undefined
       printer.startSpinner('running intent rewrite...')
       try {
         parsed = await rewriteIntentInputWithSessionContext(
@@ -731,8 +754,21 @@ export async function runMainWithOutput(
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
         if (originalQuery) {
           const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(intentBaseDir))
+          await graphWriter.open()
           try {
             payload.query = await expandQueryWithGraph(originalQuery, graphWriter)
+            for (const qRel of [preRewriteQueryTruth, originalQuery]) {
+              if (!qRel) continue
+              try {
+                const block = await formatGraphRelationBlockFromQuestion(graphWriter, qRel)
+                if (block) {
+                  graphRelationContext = block
+                  break
+                }
+              } catch {
+                // Relational graph context is optional; never block query.
+              }
+            }
           } finally {
             await graphWriter.close()
           }
@@ -808,7 +844,9 @@ export async function runMainWithOutput(
         parsed,
         aligned,
         llmProvider ?? undefined,
-        intentBaseDir
+        intentBaseDir,
+        undefined,
+        graphRelationContext ? { graphRelationContext } : undefined
       ).finally(() => {
         printer.stopSpinner()
       })

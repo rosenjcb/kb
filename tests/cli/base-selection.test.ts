@@ -11,8 +11,11 @@ import {
   getKbHomeDir,
   printBaseDeleteHelp,
   readBaseConfig,
+  readOptionalCliValue,
   resolveBaseToDir,
   resolveEffectiveBaseDir,
+  resolveKbStorageDirFromArgs,
+  stripCliFlagWithValue,
   writeDefaultBase,
   writeSessionBase,
 } from '../../src/cli/base-selection'
@@ -279,5 +282,55 @@ describe('formatDeleteBaseResult', () => {
     const result = { basePath: '/tmp/sessions/test', clearedActive: false, clearedSelected: true }
     const text = formatDeleteBaseResult('test', result)
     expect(text).toContain('selectedBase')
+  })
+})
+
+describe('CLI argv helpers (--base)', () => {
+  let tempKbHome: string
+
+  beforeEach(async () => {
+    tempKbHome = await mkdtemp(path.join(os.tmpdir(), 'kb-home-cli-'))
+    process.env.KB_HOME = tempKbHome
+  })
+
+  afterEach(async () => {
+    delete process.env.KB_HOME
+    await rm(tempKbHome, { recursive: true, force: true })
+  })
+
+  it('readOptionalCliValue returns the following token', () => {
+    expect(readOptionalCliValue(['--base', 'dogfood', 'x'], '--base')).toBe('dogfood')
+    expect(readOptionalCliValue(['x', '--base', 'b'], '--base')).toBe('b')
+  })
+
+  it('readOptionalCliValue returns undefined when flag or value is missing', () => {
+    expect(readOptionalCliValue(['--other'], '--base')).toBeUndefined()
+    expect(readOptionalCliValue(['--base'], '--base')).toBeUndefined()
+    expect(readOptionalCliValue(['--base', '--apply'], '--base')).toBeUndefined()
+  })
+
+  it('stripCliFlagWithValue removes --base and its value', () => {
+    expect(stripCliFlagWithValue(['graph', '--base', 'dogfood', '--entity', 'KB'], '--base')).toEqual([
+      'graph',
+      '--entity',
+      'KB',
+    ])
+  })
+
+  it('resolveKbStorageDirFromArgs honors --base over active session', async () => {
+    await ensureOperationalBaseDir('session-a')
+    await ensureOperationalBaseDir('session-b')
+    await writeSessionBase('session-a')
+
+    const dir = await resolveKbStorageDirFromArgs(['--base', 'session-b', '--format', 'json'])
+    expect(dir).toBe(path.join(tempKbHome, 'sessions', 'session-b'))
+  })
+
+  it('resolveKbStorageDirFromArgs falls back to effective base when --base omitted', async () => {
+    await ensureOperationalBaseDir('only-one')
+    await writeSessionBase('only-one')
+
+    const dir = await resolveKbStorageDirFromArgs(['graph', '--format', 'json'])
+    expect(dir).toBe(path.join(tempKbHome, 'sessions', 'only-one'))
   })
 })

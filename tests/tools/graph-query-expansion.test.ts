@@ -15,14 +15,37 @@ describe('graph-query-expansion', () => {
     expect(slugs.length).toBeLessThanOrEqual(16)
   })
 
-  it('Given graph neighbors, then query expansion appends a bounded set of neighbor names', async () => {
+  it('Given graph expansion terms, then query expansion appends a bounded set including triplets', async () => {
     const graphWriter = {
-      expandQuery: async () => ['SQLite', 'DuckDB', 'Property Graph', 'CLI', 'Config', 'Ignored'],
+      expandQuery: async () => [
+        'kb query retrieves via MarkdownDocumentReader',
+        'retrieves_via',
+        'retrieves via',
+        'SQLite',
+        'DuckDB',
+        'Property Graph',
+        'CLI',
+        'Config',
+        'Extra1',
+        'Extra2',
+        'Extra3',
+        'Extra4',
+        'Extra5',
+        'Extra6',
+        'Extra7',
+        'Extra8',
+        'Extra9',
+        'Extra10',
+        'Extra11',
+        'Extra12',
+      ],
     } as const
 
     const expanded = await expandQueryWithGraph('config json', graphWriter as never)
 
-    expect(expanded).toBe('config json SQLite DuckDB Property Graph CLI Config')
+    expect(expanded).toBe(
+      'config json kb query retrieves via MarkdownDocumentReader retrieves_via retrieves via SQLite DuckDB Property Graph CLI Config Extra1 Extra2 Extra3 Extra4 Extra5 Extra6 Extra7 Extra8 Extra9 Extra10'
+    )
   })
 
   it('Given graph lookup failure, then expansion falls back to the original query', async () => {
