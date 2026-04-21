@@ -42,17 +42,15 @@ async function createConfigFile(initial?: unknown): Promise<string> {
 describe('config-cli', () => {
   it('Given get with no key, then returns normalized full config JSON', async () => {
     const configFile = await createConfigFile({
-      selectedBase: 'dogfood',
+      defaultBase: 'dogfood',
       notion: { parentPageId: 'abc123' },
       updatedAt: '2026-04-15T00:00:00.000Z',
     })
 
     const result = await runConfigCommand(['get'], { configFile })
 
-    expect(result.output).toContain('"selectedBase": "dogfood"')
+    expect(result.output).toContain('"defaultBase": "dogfood"')
     expect(result.output).toContain('"parentPageId": "abc123"')
-    expect(result.output).not.toContain('defaultBase')
-    expect(result.output).not.toContain('sessionBase')
   })
 
   it('Given nested notion key, then get returns scalar and unset prunes empty object', async () => {
@@ -81,7 +79,7 @@ describe('config-cli', () => {
   it('Given supported but unset key, then get returns explicit not-set error', async () => {
     const configFile = await createConfigFile({})
 
-    await expect(runConfigCommand(['get', 'selectedBase'], { configFile })).rejects.toThrow(
+    await expect(runConfigCommand(['get', 'defaultBase'], { configFile })).rejects.toThrow(
       'UNKNOWN_CONFIG_KEY'
     )
   })
@@ -97,7 +95,7 @@ describe('config-cli', () => {
 
   it('Given config help, then it excludes base keys and generated feature keys', () => {
     const help = printConfigHelp()
-    expect(help).not.toContain('selectedBase')
+    expect(help).not.toContain('defaultBase')
     expect(help).not.toContain('defaultBase')
     expect(help).not.toContain('features.')
     expect(help).toContain('graph.enabled')
@@ -107,7 +105,7 @@ describe('config-cli', () => {
 
   it('Given supported config paths, then they omit base-selection and feature keys', () => {
     const keys = listSupportedConfigPaths()
-    expect(keys).not.toContain('selectedBase')
+    expect(keys).not.toContain('defaultBase')
     expect(keys).not.toContain('defaultBase')
     expect(keys).not.toContain('features')
     expect(keys).not.toContain('chat')

@@ -6,7 +6,7 @@ import { createProvider } from '../core/llm-provider'
 
 export interface KbConfig {
   activeBase?: string
-  selectedBase?: string
+  defaultBase?: string
   graph?: {
     enabled?: boolean
   }
@@ -647,13 +647,13 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
     normalized.activeBase = activeBase
   }
 
-  const selectedBase =
-    typeof input.selectedBase === 'string' && input.selectedBase.trim()
-      ? input.selectedBase.trim()
+  const defaultBase =
+    typeof input.defaultBase === 'string' && input.defaultBase.trim()
+      ? input.defaultBase.trim()
       : undefined
 
-  if (selectedBase) {
-    normalized.selectedBase = selectedBase
+  if (defaultBase) {
+    normalized.defaultBase = defaultBase
   }
 
   if (input.graph && typeof input.graph === 'object' && input.graph.enabled !== undefined) {

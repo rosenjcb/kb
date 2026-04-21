@@ -46,7 +46,7 @@ The `kb query` command uses semantic search to find related documents in the kno
 
 ## KB Base Management
 
-The `kb use <base>` command no longer writes to a `session.json` file. Instead, it prints an `export KB_BASE=<base>` instruction for the user to run, making `KB_BASE` an environment variable the session override mechanism. The KB base resolution priority is: (1) the `KB_BASE` environment variable (session-scoped, cleared on terminal close); (2) `config.selectedBase` in `~/.kb/config.json` (a persistent default set by `kb default`); (3) if neither is set, an error is thrown. The `session.json` file has been removed, and any references to the `writeSessionBase` function are now dead code.
+The `kb use <base>` command no longer writes to a `session.json` file. Instead, it prints an `export KB_BASE=<base>` instruction for the user to run, making `KB_BASE` an environment variable the session override mechanism. The KB base resolution priority is: (1) the `KB_BASE` environment variable (session-scoped, cleared on terminal close); (2) `config.defaultBase` in `~/.kb/config.json` (a persistent default set by `kb default`); (3) if neither is set, an error is thrown. The `session.json` file has been removed, and any references to the `writeSessionBase` function are now dead code.
 
 ## KB User Interface (TUI)
 

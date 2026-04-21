@@ -102,7 +102,7 @@ export function App({ config, startupNotices = [] }: Props) {
     removeEntry(pendingId)
   }, [removeEntry])
 
-  // Resolve base dir on mount (effective base: activeBase, else selectedBase)
+  // Resolve base dir on mount (effective base: activeBase, else defaultBase)
   useEffect(() => {
     resolveEffectiveBaseDir()
       .then(({ baseDir, baseName: effectiveBaseName }) => {

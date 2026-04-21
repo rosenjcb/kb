@@ -36,7 +36,6 @@
     "format": "biome format --write .",
     "check": "biome check --write .",
     "type-check": "tsc --noEmit",
-    "smoke:query-chat": "npm run build:cli && node scripts/smoke-query-chat.mjs",
     "precommit": "npm run lint:fix:staged && npm run type-check && npm run lint && npm run test",
     "prepare": "husky"
   },

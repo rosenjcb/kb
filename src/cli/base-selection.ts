@@ -7,7 +7,7 @@ import { type KbConfig, readKbConfig, writeKbConfig } from './kb-config'
 
 export interface BaseSelectionConfig {
   activeBase?: string
-  selectedBase?: string
+  defaultBase?: string
   updatedAt?: string
 }
 
@@ -116,17 +116,17 @@ export async function readBaseConfig(): Promise<BaseSelectionConfig> {
   const config = await readKbConfig()
   return {
     activeBase: config.activeBase,
-    selectedBase: config.selectedBase,
+    defaultBase: config.defaultBase,
     updatedAt: config.updatedAt,
   }
 }
 
 export async function writeDefaultBase(base: string): Promise<BaseSelectionConfig> {
   const config = await readKbConfig()
-  const saved = await writeKbConfig({ ...config, selectedBase: base })
+  const saved = await writeKbConfig({ ...config, defaultBase: base })
   return {
     activeBase: saved.activeBase,
-    selectedBase: saved.selectedBase,
+    defaultBase: saved.defaultBase,
     updatedAt: saved.updatedAt,
   }
 }
@@ -136,14 +136,14 @@ export async function writeSessionBase(base: string): Promise<BaseSelectionConfi
   const saved = await writeKbConfig({ ...config, activeBase: base })
   return {
     activeBase: saved.activeBase,
-    selectedBase: saved.selectedBase,
+    defaultBase: saved.defaultBase,
     updatedAt: saved.updatedAt,
   }
 }
 
 export interface EffectiveBaseResolution {
   baseDir: string
-  source: 'config.activeBase' | 'config.selectedBase'
+  source: 'config.activeBase' | 'config.defaultBase'
   baseName: string
 }
 
@@ -152,13 +152,13 @@ export interface EffectiveBaseResolution {
  *
  * Priority:
  *   1. config.activeBase — current working base from `kb use <base>` (persisted in ~/.kb/config.json).
- *   2. config.selectedBase — default from `kb use --default <base>` / `kb default <base>`.
+ *   2. config.defaultBase — default from `kb use --default <base>` / `kb default <base>`.
  *
  * configOverride is accepted only for testing — real callers omit it.
  */
 export async function resolveEffectiveBaseDir(
   cwd: string = process.cwd(),
-  configOverride?: Pick<BaseSelectionConfig, 'activeBase' | 'selectedBase'> | KbConfig
+  configOverride?: Pick<BaseSelectionConfig, 'activeBase' | 'defaultBase'> | KbConfig
 ): Promise<EffectiveBaseResolution> {
   const activeBase =
     configOverride !== undefined
@@ -177,15 +177,15 @@ export async function resolveEffectiveBaseDir(
 
   const selected =
     configOverride !== undefined
-      ? 'selectedBase' in configOverride
-        ? configOverride.selectedBase
+      ? 'defaultBase' in configOverride
+        ? configOverride.defaultBase
         : undefined
-      : (await readBaseConfig()).selectedBase
+      : (await readBaseConfig()).defaultBase
 
   if (selected) {
     return {
       baseDir: await ensureOperationalBaseDir(selected, cwd),
-      source: 'config.selectedBase',
+      source: 'config.defaultBase',
       baseName: selected,
     }
   }
@@ -252,13 +252,13 @@ export async function deleteBase(base: string): Promise<DeleteBaseResult> {
 
   const config = await readKbConfig()
   const clearedActive = config.activeBase === trimmed
-  const clearedSelected = config.selectedBase === trimmed
+  const clearedSelected = config.defaultBase === trimmed
 
   if (clearedActive || clearedSelected) {
     await writeKbConfig({
       ...config,
       activeBase: clearedActive ? undefined : config.activeBase,
-      selectedBase: clearedSelected ? undefined : config.selectedBase,
+      defaultBase: clearedSelected ? undefined : config.defaultBase,
     })
   }
 
@@ -290,7 +290,7 @@ export function formatDeleteBaseResult(
 ): string {
   const lines = [`Deleted base: ${base}`, `Removed path: ${result.basePath}`]
   if (result.clearedActive) lines.push('Cleared from active base (config.activeBase).')
-  if (result.clearedSelected) lines.push('Cleared from default base (config.selectedBase).')
+  if (result.clearedSelected) lines.push('Cleared from default base (config.defaultBase).')
   lines.push('', `Use \`${cmd('base use <base>', mode)}\` to start a new base.`)
   return lines.join('\n')
 }

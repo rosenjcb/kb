@@ -323,16 +323,16 @@ export async function runMainWithOutput(
         if (configured.activeBase) {
           out.log(`Active base: ${configured.activeBase}`)
         }
-        if (configured.selectedBase) {
-          out.log(`Default base: ${configured.selectedBase}`)
+        if (configured.defaultBase) {
+          out.log(`Default base: ${configured.defaultBase}`)
         }
         return
       }
 
       if (makeDefault) {
         const saved = await writeDefaultBase(base)
-        const resolved = await ensureOperationalBaseDir(saved.selectedBase ?? base)
-        out.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved, mode))
+        const resolved = await ensureOperationalBaseDir(saved.defaultBase ?? base)
+        out.log(formatDefaultCommandHelp(saved.defaultBase ?? base, resolved, mode))
         return
       }
 
@@ -383,13 +383,13 @@ export async function runMainWithOutput(
     const base = args[1]
     if (base === '--show' || !base) {
       const configured = await readBaseConfig()
-      if (!configured.selectedBase) {
+      if (!configured.defaultBase) {
         out.log('No default base configured.')
         out.log(`  Set one with: ${cmd('base use --default <base>', mode)}`)
         return
       }
-      const resolved = await ensureOperationalBaseDir(configured.selectedBase)
-      out.log(`Default base: ${configured.selectedBase}`)
+      const resolved = await ensureOperationalBaseDir(configured.defaultBase)
+      out.log(`Default base: ${configured.defaultBase}`)
       out.log(`Resolved path: ${resolved}`)
       if (configured.activeBase) {
         out.log(`Current active base: ${configured.activeBase}`)
@@ -401,8 +401,8 @@ export async function runMainWithOutput(
     }
 
     const saved = await writeDefaultBase(base)
-    const resolved = await ensureOperationalBaseDir(saved.selectedBase ?? base)
-    out.log(formatDefaultCommandHelp(saved.selectedBase ?? base, resolved, mode))
+    const resolved = await ensureOperationalBaseDir(saved.defaultBase ?? base)
+    out.log(formatDefaultCommandHelp(saved.defaultBase ?? base, resolved, mode))
     return
   }
 

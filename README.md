@@ -1,30 +1,24 @@
 # KB
 
-KB is a local-first knowledge system for AI workflows.
+KB is a local-first knowledge layer for development workflows.
 
-It gives you a CLI and runtime that can:
-- store durable markdown knowledge,
-- query that knowledge through intent commands,
-- optionally use SQLite hybrid retrieval (FTS + vector-style ranking) for better search quality as your corpus grows.
+It gives you a CLI and runtime that capture what your project learns over time—so decisions, fixes, and context don’t disappear into chat history or PR threads.
 
-## Engineering Philosophy
+Instead of re-deriving the same answers, KB lets you:
 
-KB follows a composability-first approach:
+Record decisions and facts as you work
+Query past context before making changes
+Validate assumptions against what’s already known
 
-- Reuse existing intent routes, orchestrators, and shared utilities before creating new command-specific logic.
-- Keep behavior/policy centralized (for example in intent and orchestration layers) and keep CLI/TUI surfaces thin.
-- Prefer general building blocks that can be shared across `init`, `submit`, `invalidate`, chat, and future workflows.
-- When duplication is temporarily necessary, document it and plan convergence back to shared components.
+All of it lives alongside your code, versioned in Git, and queryable like a lightweight memory system.
 
-## Generalized Use Case
+## What it actually does
 
-Use KB when you want a repeatable way to capture, validate, and retrieve project knowledge during development.
+KB turns day-to-day development into a feedback loop:
 
-Typical flow:
-1. Record facts and decisions while you work.
-2. Query prior context before making new changes.
-3. Keep docs close to code and version them in Git.
-
+* Capture — Save facts, decisions, and discoveries as you go
+* Recall — Query relevant context when you need it
+* Verify — Check assumptions before they turn into bugs
 
 ## Quick Start
 
@@ -55,7 +49,7 @@ kb base delete ci-test --force # delete a base and all its data
 
 Base resolution order (both live in `~/.kb/config.json`):
 1. `activeBase` — current working base from `kb base use <base>`
-2. `selectedBase` — persistent default from `kb base use --default <base>` (or `kb default <base>`)
+2. `defaultBase` — persistent default from `kb base use --default <base>` (or `kb default <base>`)
 
 Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
 
@@ -108,7 +102,7 @@ kb chat
 ### Notes
 
 - `kb base use <base>` writes `activeBase` to `~/.kb/config.json` so future `kb` commands keep using that base until you switch again.
-- `kb base use --default <base>` writes `selectedBase` to `~/.kb/config.json`.
+- `kb base use --default <base>` writes `defaultBase` to `~/.kb/config.json`.
 - `kb base delete <base>` removes `~/.kb/sessions/<base>/` and clears it from config. Use `--force` to skip confirmation.
 - `kb use <base>` still works as a backward-compatible alias for `kb base use <base>`.
 - `kb init` defaults to base `default` if `--base` is omitted.
@@ -146,13 +140,9 @@ kb validate "assumption I want to check"
 
 Shipped as a real Cursor-style skill (YAML frontmatter + full instructions):
 
-- **Template:** [`examples/agent-skills/kb-dev-workflow/SKILL.md`](examples/agent-skills/kb-dev-workflow/SKILL.md)
-
-**Install (Cursor):** copy that directory into your repo as `.cursor/skills/kb-dev-workflow/` (so the path ends in `.cursor/skills/kb-dev-workflow/SKILL.md`). Other agents: import the same markdown body into whatever “rules” or “skills” format your tool expects.
+- **Template:** [`skills/kb-dev-workflow/SKILL.md`](skills/kb-dev-workflow/SKILL.md)
 
 The skill is self-contained (workflow + full command shapes). The [CLI Reference](#cli-reference) section above stays the in-repo quick reference for humans.
-
-**Roadmap:** We intend to ship a `kb` command (or installer flow) that drops or syncs this skill—and the closest equivalent hooks for each ecosystem—into supported agents automatically (for example Cursor, Claude Code, and other common coding agents), so manual copying is optional rather than required.
 
 ## Development Commands
 

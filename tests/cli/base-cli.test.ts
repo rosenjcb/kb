@@ -38,12 +38,12 @@ describe('kb base use', () => {
     expect(lines.join('\n')).toContain('mybase')
   })
 
-  it('Given kb base use --default <base>, then sets selectedBase', async () => {
+  it('Given kb base use --default <base>, then sets defaultBase', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'use', '--default', 'mydefault'], out, {} as never)
     expect(lines.join('\n')).toContain('Default base: mydefault')
     const config = await readKbConfig()
-    expect(config.selectedBase).toBe('mydefault')
+    expect(config.defaultBase).toBe('mydefault')
   })
 
   it('Given kb base use --show, then prints current base config', async () => {
@@ -78,13 +78,13 @@ describe('kb base delete', () => {
     expect(config.activeBase).toBeUndefined()
   })
 
-  it('Given --force and base is selectedBase, then clears it from config', async () => {
+  it('Given --force and base is defaultBase, then clears it from config', async () => {
     await ensureOperationalBaseDir('selected')
     await writeDefaultBase('selected')
     const { out } = makeOut()
     await runMainWithOutput(['base', 'delete', 'selected', '--force'], out, {} as never)
     const config = await readKbConfig()
-    expect(config.selectedBase).toBeUndefined()
+    expect(config.defaultBase).toBeUndefined()
   })
 
   it('Given no --force in TUI mode, then does NOT hang — returns prompt to use --force', async () => {

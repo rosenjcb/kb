@@ -57,7 +57,7 @@ kb docs view --title "<exact title>" [--base <name>]
 
 ```text
 kb use <base>              — active base for this session (~/.kb/config.json activeBase)
-kb use --default <base>    — persistent default (selectedBase)
+kb use --default <base>    — persistent default (defaultBase)
 kb use --show
 kb default <base>          — alias for default base selection where supported
 kb config get
@@ -83,7 +83,3 @@ Run from the **project working directory** unless you pass **`--base`** explicit
 
 - Do not pass secrets into `kb submit` / `kb query` strings.
 - **`kb invalidate --apply`** mutates stored knowledge—use **`--preview`** when the user should confirm.
-
-## Installation
-
-This skill lives at `skills/kb-dev-workflow/SKILL.md` and is auto-installed to global agent paths (Claude, Cursor, Codex, GitHub) each time `kb` runs. Run `kb skill install` to inject a short reference into the current project's `AGENTS.md` or `CLAUDE.md`.

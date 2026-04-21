@@ -51,10 +51,10 @@ describe('base-selection', () => {
 
   // ─── resolveEffectiveBaseDir — session/config precedence ──────────────────
 
-  it('active base in config wins over selectedBase', async () => {
+  it('active base in config wins over defaultBase', async () => {
     const result = await resolveEffectiveBaseDir('/repo', {
       activeBase: 'session-base',
-      selectedBase: 'config-base',
+      defaultBase: 'config-base',
     })
 
     expect(result.source).toBe('config.activeBase')
@@ -62,15 +62,15 @@ describe('base-selection', () => {
     expect(result.baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'session-base'))
   })
 
-  it('config.selectedBase is used when KB_BASE is not set', async () => {
-    const result = await resolveEffectiveBaseDir('/repo', { selectedBase: 'catalog' })
+  it('config.defaultBase is used when KB_BASE is not set', async () => {
+    const result = await resolveEffectiveBaseDir('/repo', { defaultBase: 'catalog' })
 
-    expect(result.source).toBe('config.selectedBase')
+    expect(result.source).toBe('config.defaultBase')
     expect(result.baseName).toBe('catalog')
     expect(result.baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'catalog'))
   })
 
-  it('throws when neither activeBase nor config.selectedBase is set', async () => {
+  it('throws when neither activeBase nor config.defaultBase is set', async () => {
     await expect(resolveEffectiveBaseDir('/repo', {})).rejects.toThrow(CLI_ERROR_NO_KB_BASE)
   })
 
@@ -79,14 +79,14 @@ describe('base-selection', () => {
   it('writeDefaultBase persists to config and readBaseConfig reads it back', async () => {
     await writeDefaultBase('dogfood')
     const config = await readBaseConfig()
-    expect(config.selectedBase).toBe('dogfood')
+    expect(config.defaultBase).toBe('dogfood')
   })
 
   it('writeDefaultBase overwrites a prior default', async () => {
     await writeDefaultBase('dogfood')
     await writeDefaultBase('my-project')
     const config = await readBaseConfig()
-    expect(config.selectedBase).toBe('my-project')
+    expect(config.defaultBase).toBe('my-project')
   })
 
   it('writeSessionBase persists the active base separately from the default', async () => {
@@ -95,14 +95,14 @@ describe('base-selection', () => {
 
     const config = await readBaseConfig()
 
-    expect(config.selectedBase).toBe('dogfood')
+    expect(config.defaultBase).toBe('dogfood')
     expect(config.activeBase).toBe('catalog')
     const raw = JSON.parse(await readFile(path.join(getKbHomeDir(), 'config.json'), 'utf8')) as {
       activeBase?: string
-      selectedBase?: string
+      defaultBase?: string
     }
     expect(raw.activeBase).toBe('catalog')
-    expect(raw.selectedBase).toBe('dogfood')
+    expect(raw.defaultBase).toBe('dogfood')
   })
 
   it('migrates legacy session.json into config.json and removes session.json', async () => {
@@ -239,7 +239,7 @@ describe('deleteBase', () => {
 
     expect(result.clearedSelected).toBe(true)
     const after = await readBaseConfig()
-    expect(after.selectedBase).toBeUndefined()
+    expect(after.defaultBase).toBeUndefined()
   })
 
   it('Given the base does not exist on disk, then succeeds without error', async () => {
@@ -281,7 +281,7 @@ describe('formatDeleteBaseResult', () => {
   it('mentions cleared default base when applicable', () => {
     const result = { basePath: '/tmp/sessions/test', clearedActive: false, clearedSelected: true }
     const text = formatDeleteBaseResult('test', result)
-    expect(text).toContain('selectedBase')
+    expect(text).toContain('defaultBase')
   })
 })
 

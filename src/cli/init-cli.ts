@@ -1707,8 +1707,8 @@ async function resolveInitBaseName(
 
 async function resolveSuggestedInitBase(_cwd: string): Promise<string | undefined> {
   const configured = await readBaseConfig()
-  if (configured.selectedBase?.trim()) {
-    return configured.selectedBase.trim()
+  if (configured.defaultBase?.trim()) {
+    return configured.defaultBase.trim()
   }
   return 'default'
 }

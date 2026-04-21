@@ -63,9 +63,9 @@ describe('readKbConfig', () => {
   })
 
   it('normalizes config on read', async () => {
-    const file = await tempConfig({ selectedBase: 'dogfood', llm: { provider: 'gemini' } })
+    const file = await tempConfig({ defaultBase: 'dogfood', llm: { provider: 'gemini' } })
     const result = await readKbConfig(file)
-    expect(result.selectedBase).toBe('dogfood')
+    expect(result.defaultBase).toBe('dogfood')
     expect(result.llm?.provider).toBe('gemini')
   })
 })

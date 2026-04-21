@@ -140,7 +140,7 @@ describe('init-cli interview checkpoints', () => {
     )
   })
 
-  it('Given no selectedBase but an active session base, then init still suggests hardcoded default', async () => {
+  it('Given no defaultBase but an active session base, then init still suggests hardcoded default', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
