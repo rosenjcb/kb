@@ -1,4 +1,15 @@
-# KB
+
+<p align="center">
+  <img src="assets/kb-logo.png" alt="KB Logo" width="340" />
+</p>
+
+<p align="center">
+  <a href="#"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="license" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg" alt="node version" /></a>
+</p>
+
+<h1 align="center">KB</h1>
+<p align="center">A Knowledge Base for your Agent – see where your AI coding tokens go.</p>
 
 KB is a local-first knowledge layer for development workflows.
 
