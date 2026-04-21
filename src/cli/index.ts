@@ -261,8 +261,9 @@ export async function runMainWithOutput(
             await graphWriter.softDeleteByDocId(change.documentId)
           }
           await graphWriter.close()
-        } catch {
-          // Graph soft-delete failure must not surface to the user
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          out.error(`[kb-graph] invalidate graph sync unavailable: ${message}`)
         }
       }
       await reporter.append(collector.finish('success'))
@@ -762,24 +763,29 @@ export async function runMainWithOutput(
         const payload = parsed.envelope.payload as { query?: string }
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
         if (originalQuery) {
-          const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(intentBaseDir))
-          await graphWriter.open()
           try {
-            payload.query = await expandQueryWithGraph(originalQuery, graphWriter)
-            for (const qRel of [preRewriteQueryTruth, originalQuery]) {
-              if (!qRel) continue
-              try {
-                const block = await formatGraphRelationBlockFromQuestion(graphWriter, qRel)
-                if (block) {
-                  graphRelationContext = block
-                  break
+            const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(intentBaseDir))
+            await graphWriter.open()
+            try {
+              payload.query = await expandQueryWithGraph(originalQuery, graphWriter)
+              for (const qRel of [preRewriteQueryTruth, originalQuery]) {
+                if (!qRel) continue
+                try {
+                  const block = await formatGraphRelationBlockFromQuestion(graphWriter, qRel)
+                  if (block) {
+                    graphRelationContext = block
+                    break
+                  }
+                } catch {
+                  // Relational graph context is optional; never block query.
                 }
-              } catch {
-                // Relational graph context is optional; never block query.
               }
+            } finally {
+              await graphWriter.close()
             }
-          } finally {
-            await graphWriter.close()
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            out.error(`[kb-graph] query augmentation unavailable: ${message}`)
           }
         }
       }
@@ -820,8 +826,9 @@ export async function runMainWithOutput(
               if (relationships.length > 0) await graphWriter.upsertRelationships(relationships)
               await graphWriter.close()
             }
-          } catch {
-            // Graph extraction failure must not surface to the user
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            out.error(`[kb-graph] submit graph sync unavailable: ${message}`)
           }
         }
       }

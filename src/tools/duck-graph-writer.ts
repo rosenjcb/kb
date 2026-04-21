@@ -1,11 +1,11 @@
 /**
- * DuckGraphWriter — knowledge graph storage using DuckDB + DuckPGQ.
+ * DuckGraphWriter — knowledge graph storage using DuckDB.
  *
  * Schema:
  *   entities      — nodes (concepts, systems, tools, decisions)
  *   relationships — directed edges between entities
  *
- * The property graph (kb_graph) is created once and queried with SQL/PGQ.
+ * Traversal/query helpers use table queries and recursive CTEs only.
  * Soft-delete on invalidate: weight set to 0, not removed.
  */
 
@@ -62,7 +62,6 @@ export interface GraphDocumentAffinity {
 }
 
 export class DuckGraphWriter {
-  private instance: DuckDBInstance | null = null
   private conn: DuckDBConnection | null = null
   private ready = false
 
@@ -70,11 +69,22 @@ export class DuckGraphWriter {
 
   async open(): Promise<void> {
     if (this.ready) return
-    this.instance = await DuckDBInstance.create(this.dbPath)
-    this.conn = await this.instance.connect()
-    await this.setupExtension()
-    await this.setupSchema()
-    this.ready = true
+    const instance = await DuckDBInstance.create(this.dbPath)
+    const conn = await instance.connect()
+    try {
+      this.conn = conn
+      await this.setupSchema()
+      this.ready = true
+    } catch (error) {
+      try {
+        conn.disconnect()
+      } catch {
+        // Best-effort cleanup after failed open.
+      }
+      this.conn = null
+      this.ready = false
+      throw error
+    }
   }
 
   private requireConn(): DuckDBConnection {
@@ -83,15 +93,6 @@ export class DuckGraphWriter {
       throw new Error('DuckGraphWriter must be opened before use')
     }
     return c
-  }
-
-  private async setupExtension(): Promise<void> {
-    try {
-      await this.conn?.run('INSTALL duckpgq FROM community')
-      await this.conn?.run('LOAD duckpgq')
-    } catch {
-      // Extension not available — graph queries fall back to recursive CTEs
-    }
   }
 
   private async setupSchema(): Promise<void> {
@@ -116,21 +117,6 @@ export class DuckGraphWriter {
         created_at TEXT NOT NULL
       )
     `)
-    // Try to create property graph — only works if duckpgq loaded
-    try {
-      await c.run(`
-        CREATE OR REPLACE PROPERTY GRAPH kb_graph
-          VERTEX TABLES (entities)
-          EDGE TABLES (
-            relationships
-              SOURCE KEY (from_id) REFERENCES entities (id)
-              DESTINATION KEY (to_id) REFERENCES entities (id)
-          )
-      `)
-    } catch {
-      // Silently skip — recursive CTEs handle all traversal without it
-    }
-
     try {
       await c.run('ALTER TABLE entities ADD COLUMN IF NOT EXISTS description VARCHAR')
     } catch {
@@ -669,10 +655,13 @@ export class DuckGraphWriter {
       } catch {
         // Best-effort flush; safe to ignore if already committed
       }
-      this.conn.disconnect()
+      try {
+        this.conn.disconnect()
+      } catch {
+        // Best-effort disconnect.
+      }
     }
     this.conn = null
-    this.instance = null
     this.ready = false
   }
 
