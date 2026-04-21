@@ -8,9 +8,6 @@
   <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg" alt="node version" /></a>
 </p>
 
-<h1 align="center">KB</h1>
-<p align="center">A Knowledge Base for your Agent – see where your AI coding tokens go.</p>
-
 KB is a local-first knowledge layer for development workflows.
 
 It gives you a CLI and runtime that capture what your project learns over time—so decisions, fixes, and context don’t disappear into chat history or PR threads.
@@ -49,22 +46,14 @@ Provider is auto-detected from whichever key is present. To set one explicitly:
 kb config set llm.provider openai
 ```
 
-### 3) Set your KB base
+### 3) Initialize your KB base
+
+Walk through the chat-based wizard to create your knowledge base. 
 
 ```bash
-kb base use dogfood            # switch the active base for this session
-kb base use --default dogfood  # save a persistent default
-kb base use --show             # show active base and config default
-kb base delete ci-test --force # delete a base and all its data
+cd ~/{{YOUR_AWESOME_REPO}}
+kb && /init
 ```
-
-Base resolution order (both live in `~/.kb/config.json`):
-1. `activeBase` — current working base from `kb base use <base>`
-2. `defaultBase` — persistent default from `kb base use --default <base>` (or `kb default <base>`)
-
-Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
-
-Prerequisites are validated separately: if no base is configured you get a **knowledge base** error; if no LLM credentials/provider are available you get an **LLM** error (never combined as either/or). Canonical copy lives in `src/cli/cli-prerequisites.ts`.
 
 ### 4) Start using intent commands
 
@@ -110,22 +99,6 @@ kb publish [options]
 kb chat [--verbose] [--debug] [--base <name>]
 ```
 
-### Notes
-
-- `kb base use <base>` writes `activeBase` to `~/.kb/config.json` so future `kb` commands keep using that base until you switch again.
-- `kb base use --default <base>` writes `defaultBase` to `~/.kb/config.json`.
-- `kb base delete <base>` removes `~/.kb/sessions/<base>/` and clears it from config. Use `--force` to skip confirmation.
-- `kb use <base>` still works as a backward-compatible alias for `kb base use <base>`.
-- `kb init` defaults to base `default` if `--base` is omitted.
-- Typing `kb --help` shows the full help message.
-- **`kb query`** uses **deep** retrieval by default (same research path as **`kb chat`** QUERY turns); pass **`--discovery shallow`** for a lighter first pass when you need it.
-- **`--session`** on **`kb query`** / **`kb explain`** opts into **`query-session.json`** under the active base (follow-up rewrite + enrichment context + append). Omit it for standalone questions so behavior matches chat (no silent LLM rewrite of your retrieval string).
-- In **human** output, `kb query` and `kb chat` print a slim orchestration footer after the answer: **`retrieval>`**, **`matches>`**, then a single **`sources>`** line listing every matched document by **title** (or id if there is no title). Pass **`--verbose`** on the same invocation (before a chat session starts) to also print **`summary>`**, **`status>`**, and **`confidence>`**. Pass **`--debug`** for one detailed **`source>`** line per document (paths, snippets, highlights). **`--output json`** is unchanged. In the TUI shell, use `query "…" --verbose`, `chat --verbose`, `query "…" --debug`, or `chat --debug` as needed.
-
-## Optional: SQLite Hybrid Search
-
-Enable when your knowledge corpus grows and lexical search isn't enough.
-
 ### 1) Enable native SQLite dependency (if needed)
 
 ```bash
@@ -152,11 +125,25 @@ kb validate "assumption I want to check"
 
 ## Agent skill: use KB while you develop
 
-Shipped as a real Cursor-style skill (YAML frontmatter + full instructions):
 
-- **Template:** [`skills/kb-dev-workflow/SKILL.md`](skills/kb-dev-workflow/SKILL.md)
+- **Found here:** [`skills/kb-dev-workflow/SKILL.md`](skills/kb-dev-workflow/SKILL.md)
 
 The skill is self-contained (workflow + full command shapes). The [CLI Reference](#cli-reference) section above stays the in-repo quick reference for humans.
+
+## Swapping and deleting bases
+
+```bash
+kb base use foo            # switch the active base for this session
+kb base use --default foo  # save a persistent default
+kb base use --show             # show active base and config default
+kb base delete bar --force # delete a base and all its data
+```
+
+Base resolution order (both live in `~/.kb/config.json`):
+1. `activeBase` — current working base from `kb base use <base>`
+2. `defaultBase` — persistent default from `kb base use --default <base>` (or `kb default <base>`)
+
+Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
 
 ## Development Commands
 
