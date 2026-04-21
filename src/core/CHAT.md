@@ -1,72 +1,76 @@
-# Chat Architecture
+# Chat (`kb chat`) — design and roadmap
 
-## What `kb chat` Does Today
+This doc is the **source of truth** for how chat relates to `kb query` today and how we expect it
+to grow. Update it when behavior changes.
 
-`kb chat` is a conversational loop that issues one `read_documents` call per turn and streams
-a synthesized answer back to the user. Each turn:
+## Today: one dumb orchestrator, one “tool”
 
-1. The user's message is optionally rewritten into a standalone retrieval query (session-aware
-   rewrite via `src/cli/chat-cli.ts`).
-2. That query is routed through the intent pipeline (`query_truth` intent →
-   `DefaultIntentRouter` → `read_documents` tool).
-3. `read_documents` calls `MarkdownDocumentReader.queryDocuments()` with `discoveryDepth:
-   'shallow'` (the default).
-4. The resulting documents are passed to an LLM to generate a conversational reply.
+Chat is intentionally minimal:
 
-`kb chat` is therefore a thin interface around the same retrieval stack that `kb query` uses.
-It adds session context (previous turns rewrite follow-up messages into standalone queries) but
-does not decide *which* intent to invoke — it always queries.
+1. **Resolve the turn** — conversational mode may rewrite follow-ups into a standalone retrieval
+   query (`src/cli/chat-conversation.ts`).
+2. **Optional graph expansion** — same helpers as CLI query when graph is enabled
+   (`expandQueryWithGraph`, relation block for the LLM prompt).
+3. **Run retrieval exactly like `kb query`** — both call **`runQueryTruthRetrieval()`** in
+   `src/cli/query-truth-retrieval.ts`: `runIntentLoop` (same **`query_truth`** envelope the CLI
+   builds after optional graph expansion and **only** optional **`--session`** rewrite — default
+   CLI query uses the literal topic string, like chat) → router → `read_documents`, then
+   **`augmentIntentResultWithWorkspaceFallback()`**. `DefaultIntentRouter` defaults **`query_truth`**
+   to **`discoveryDepth: 'deep'`** when `--discovery` is omitted, so chat and CLI get the same
+   research-style retrieval; chat passes **`discoveryDepth: 'deep'`** explicitly plus the chat
+   retrieval limit.
+4. **Conversational answer** — evidence from step 3 is passed to the chat system prompt + LLM
+   (`src/cli/chat-cli.ts`, `src/prompts/chat-system.md`).
+5. **Orchestration output** — `printReadDocumentsOrchestrationFooter()` prints the same minimal
+   wire rows as `kb query` human mode: `retrieval>`, `matches>`, then a single **`sources>`** line
+   with all hit **titles** (ids as fallback). With **`--debug`** / **`chat --debug`**, it instead
+   prints one full provenance **`source>`** line per document (same shape as legacy query output).
+   **`summary>`**, **`status>`**, and **`confidence>`** are only included when the user passed
+   **`--verbose`** on **`kb chat`** (CLI) or **`chat --verbose`** in the TUI shell *before* the
+   session starts; there is no mid-session toggle. Router fields like `explanation` / `provenance`
+   stay on `IntentResult` for JSON and telemetry but are not duplicated in the human footer by
+   default.
 
-## The Future: Chat as an Agent Harness
+**`query-session.json`:** only when **`kb query --session`** / **`kb explain --session`** (not chat).
 
-The intended direction is for `kb chat` to become its own agent harness: a loop that *decides*
-which intent function to call based on the incoming message, then executes it and returns the
-result conversationally.
+So today’s “orchestrator” is **trivial**: always call **`runQueryTruthRetrieval()`** (not a second
+router shortcut), then the LLM, then the shared footer. Subprocess `kb query` is **not** spawned;
+in-process reuse keeps config, base, and telemetry aligned.
 
-The intent functions that could be dispatched:
+## Why not shell out to `kb query`?
 
-| Intent | Trigger | Effect |
-|--------|---------|--------|
-| `query` (`read_documents`) | Factual or exploratory question | Returns relevant docs; answers with evidence |
-| `submit` (`write_document`) | "Remember that X", "Record that Y" | Persists new or updated KB doc |
-| `invalidate` | "That's no longer true", "Remove X" | Removes or replaces a fact |
-| `validate` | "Is X still accurate?" | Scores an existing doc against current knowledge |
-| `explain` | "What does this doc mean?", "Explain X" | Deep-reads a single doc and paraphrases it |
+Calling the CLI in a loop would duplicate process startup, env, base resolution, and error
+surfaces. The orchestrator module is the **same contract** as query without a fork/exec boundary.
 
-The harness would work like this:
+## Near future: richer chat orchestrator
 
-```
-User message
-  → intent classifier  (lightweight LLM call: query / submit / invalidate / validate / explain)
-  → dispatch to intent handler
-  → intent handler runs (may call read_documents with deep discovery, or write_document, etc.)
-  → synthesize conversational reply from handler output
-  → append to session context
-```
+The next step is a small **turn router** in front of the loop:
 
-Key design principles for the future harness:
+- Classify (rules + optional lightweight LLM): QUERY vs SUBMIT vs INVALIDATE vs DOCS vs GRAPH …
+- **QUERY** → keep calling **`runQueryTruthRetrieval()`** (via `executeChatQueryTruthRetrieval()`’s
+  thin envelope builder).
+- Other intents → dispatch to the same handlers the CLI already uses, then summarize for chat.
 
-- **One owner per turn.** The classifier decides intent once; the handler executes. No blending.
-- **Narrow workers.** Each intent handler (query, submit, etc.) only does its one thing. The
-  harness does not let a worker also classify or route.
-- **Discovery depth from intent.** Exploratory questions (`query`) should pass `discoveryDepth:
-  'deep'` to use the research orchestrator. Quick lookups use `'shallow'`.
-- **Session context flows forward.** The harness accumulates turn history so each new message
-  can be rewritten into a standalone intent before dispatch.
+Principles:
 
-## Research Orchestrator and Chat
+- **One owner per turn** — pick an intent once, run it, render with shared printers.
+- **Reuse CLI intent paths** — avoid a second implementation of submit/validate/… for chat.
+- **Orchestration lines stay wire-format** — `key> value` rows only from `Printer` / shared
+  formatters so TUI and piped CLI stay consistent (`src/ui/orchestration-meta.ts`).
 
-`QueryResearchOrchestrator` (see `src/tools/query-research-orchestrator.ts`) is activated by
-`discoveryDepth: 'deep'`. Once the chat harness lands, the classifier should set `deep` for
-multi-step, exploratory, or ambiguous questions — i.e., most non-trivial chat turns.
+## Historical note
 
-The shallow path (current default) remains the right choice for quick follow-ups, clarifications,
-or when the user is asking about a specific doc they already know about.
+Older revisions called `read_documents` directly from chat with hand-built inputs; that drifted
+from `kb query` (different limits, router `explanation` / `confidence` not shown in the default human
+footer, different augment order). The orchestrator + footer alignment fixes that; use **`--verbose`**
+when you want those extra human rows to match an explicit `kb query --verbose` session.
 
-## See Also
+## See also
 
-- `src/core/TUI.md` — command surface and interaction contract
-- `src/tools/query-research-orchestrator.ts` — deep discovery research loop
-- `src/tools/markdown-document-reader.ts` — shallow retrieval pipeline
-- `src/core/AGENT_LOOP.md` — intent loop, retry, and subagent harness
-- `src/core/ORCHESTRATOR.md` — multi-pass init orchestration (different concern)
+- `src/cli/query-truth-retrieval.ts` — shared **`runQueryTruthRetrieval()`** for CLI `kb query` and chat
+- `src/cli/chat-query-orchestrator.ts` — builds chat **`query_truth`** envelope, delegates to shared retrieval
+- `src/cli/intent-cli.ts` — `printReadDocumentsOrchestrationFooter`, augment helpers
+- `src/intents/router.ts` — `query_truth` → `read_documents` routing
+- `src/core/TUI.md` — TUI command surface
+- `src/core/AGENT_LOOP.md` — full intent loop (retries, escalation); chat may adopt more of this
+  later for QUERY turns

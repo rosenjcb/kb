@@ -13,10 +13,9 @@ import {
   updateConversationState,
 } from './chat-conversation'
 import { type CmdMode, cmd } from './cmd-ref'
-import {
-  augmentReadDocumentsWithWorkspaceFallback,
-  formatReadDocumentSourceIds,
-} from './retrieval-fallback'
+import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
+import { isReadDocumentsResult, printReadDocumentsOrchestrationFooter } from './intent-cli.js'
+import { formatReadDocumentSourceIds } from './retrieval-fallback'
 
 export interface ChatSessionDeps {
   llmProvider: LLMProvider
@@ -27,6 +26,10 @@ export interface ChatSessionDeps {
   maxHistoryTurns?: number
   workspaceDir?: string
   conversationalRetrieval?: boolean
+  /** When true, human orchestration matches `kb query --verbose` (summary, status, confidence rows). */
+  verbose?: boolean
+  /** When true, human footer uses one detailed `source>` line per hit (same as `kb query --debug`). */
+  debug?: boolean
   onTurnComplete?: (turn: ChatTurnTrace) => void
 }
 
@@ -72,7 +75,11 @@ export function printChatHelp(mode: CmdMode = 'cli'): string {
     `${cmd('chat', mode)}`,
     '',
     'Usage:',
-    `  ${cmd('chat', mode)}`,
+    `  ${cmd('chat', mode)} [--verbose] [--debug] [--base <name>]`,
+    '',
+    'Flags:',
+    '  --verbose   After each answer, also print summary / status / confidence orchestration rows (same as kb query --verbose). Must be passed before the session starts (CLI or TUI shell: chat --verbose).',
+    '  --debug     After each answer, print one full provenance `source>` line per retrieved document (ids, paths, snippets). Combine with --verbose if you want both. TUI: chat --debug before the session starts.',
     '',
     'Interactive commands:',
     '  /help  Show chat commands',
@@ -161,24 +168,24 @@ export async function runChatSession(
             // Optional relational graph context only.
           }
         }
-        const readResult = await deps.toolExecutor.execute({
-          id: `chat-read-${Date.now()}`,
-          name: 'read_documents',
-          input: {
-            query: expandedQuery,
-            mode: 'content',
-            discoveryDepth: 'deep',
-            includeContent: true,
-            limit: retrievalLimit,
-          },
+        const intentResult = await executeChatQueryTruthRetrieval({
+          toolExecutor: deps.toolExecutor,
+          expandedQuery,
+          retrievalLimit,
+          workspaceDir: deps.workspaceDir ?? process.cwd(),
         })
 
-        const retrieval = normalizeReadResult(readResult)
-        const retrievalForOutput = await augmentReadDocumentsWithWorkspaceFallback(
-          resolvedTurn.retrievalQuery,
-          retrieval,
-          deps.workspaceDir ?? process.cwd()
-        )
+        if (!isReadDocumentsResult(intentResult)) {
+          const detail =
+            intentResult.explanation ??
+            intentResult.errorCode ??
+            intentResult.status ??
+            'retrieval failed'
+          io.error(`error> ${detail}`)
+          continue
+        }
+
+        const retrievalForOutput = normalizeReadResult(intentResult.data)
 
         const userContent = buildChatTurnContent({
           question: input,
@@ -212,13 +219,12 @@ export async function runChatSession(
         messages.push({ role: 'assistant', content: answer })
 
         printer.chatAssistant(answer)
-        printer.chatMeta('retrieval', formatRetrievalMode(retrievalForOutput.retrieval))
-        const checkpointTrace = formatCheckpointTrace(retrievalForOutput.retrieval)
-        if (checkpointTrace) {
-          printer.thought(`Thinking: ${checkpointTrace}`)
-        }
+        printer.separator()
+        printReadDocumentsOrchestrationFooter(printer, intentResult, {
+          verbose: deps.verbose,
+          debug: deps.debug,
+        })
         const sourceIds = formatReadDocumentSourceIds(retrievalForOutput.results)
-        printer.chatMeta('sources', sourceIds.join(', ') || 'none')
         deps.onTurnComplete?.({
           input,
           resolvedQuery: resolvedTurn.retrievalQuery,
@@ -310,22 +316,6 @@ function formatRetrievalMode(retrieval: ReadDocumentsResult['retrieval']): strin
   const method = retrieval?.method ?? 'unknown'
   const detail = retrieval?.detail ? ` (${retrieval.detail})` : ''
   return `${method}${detail}`
-}
-
-function formatCheckpointTrace(retrieval: ReadDocumentsResult['retrieval']): string | undefined {
-  const checkpoints = retrieval?.checkpoints
-  if (!Array.isArray(checkpoints) || checkpoints.length === 0) {
-    return undefined
-  }
-
-  return checkpoints
-    .map(checkpoint => {
-      const stage = checkpoint.stage ?? 'unknown-stage'
-      const status = checkpoint.status ?? 'unknown-status'
-      const action = checkpoint.nextAction ?? 'unknown-action'
-      return `${stage}:${status}->${action}`
-    })
-    .join(' | ')
 }
 
 function buildEvidence(results: ReadDocumentsResult['results']): string {

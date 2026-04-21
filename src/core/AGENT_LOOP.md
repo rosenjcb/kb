@@ -55,7 +55,7 @@ interface IntentLoopResult {
 
 | Intent | Retry? | Strategy |
 |---|---|---|
-| `query_truth` | Yes, up to `maxIterations` | Escalates `discoveryDepth` shallow→deep, doubles `limit` (max 20), on weak retrieval |
+| `query_truth` | Yes, up to `maxIterations` | Router defaults to **deep** discovery; on weak retrieval doubles `limit` (max 20). Use `--discovery shallow` to start shallow and allow escalation to deep. |
 | `explain_change` | Yes, up to `maxIterations` | Same as query |
 | `validate_fact` | One extra pass | If `uncertain/0.45` (docs found, token-overlap inconclusive): runs LLM semantic reasoning pass |
 | `submit_fact` | No | Single pass — retrying a submit has idempotency risks |

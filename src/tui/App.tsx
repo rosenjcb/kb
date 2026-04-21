@@ -18,12 +18,14 @@ import {
 } from '../cli/kb-config.js'
 import { DuckGraphWriter } from '../tools/duck-graph-writer.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
+import { isOrchestrationMetaLine } from '../ui/orchestration-meta.js'
 import { HistoryPane } from './components/HistoryPane.js'
 import { InitStatusPanel } from './components/InitStatusPanel.js'
 import { InputBar } from './components/InputBar.js'
 import { StatusBar } from './components/StatusBar.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
 import { ensureInitBaseArg } from './init-args.js'
+import { partitionShellOutputForTui } from './partition-shell-output.js'
 import { parseInitOutput } from './init-status.js'
 import { parseShellArgs, printCliHelp, runCommandForTui } from './runner.js'
 import {
@@ -115,7 +117,9 @@ export function App({ config, startupNotices = [] }: Props) {
       })
   }, [])
 
-  const startChatSession = useCallback(() => {
+  const startChatSession = useCallback((opts: { verbose?: boolean; debug?: boolean } = {}) => {
+    const verbose = opts.verbose === true
+    const debug = opts.debug === true
     if (!storageDirRef.current) {
       addEntry({
         type: 'error',
@@ -148,16 +152,11 @@ export function App({ config, startupNotices = [] }: Props) {
       },
       write(line: string) {
         stopChatPending()
-        // Drop checkpoint noise
-        if (line.startsWith('checkpoints>')) return
-
-        // Route metadata lines to dim display
-        if (line.startsWith('retrieval>') || line.startsWith('sources>')) {
+        if (isOrchestrationMetaLine(line)) {
           addEntry({ type: 'chat-meta', content: line })
           return
         }
 
-        // Strip the "assistant> " prefix that chat-cli prepends
         const clean = line.startsWith('assistant> ') ? line.slice('assistant> '.length) : line
         if (!clean.trim()) return
         addEntry({ type: 'chat-assistant', content: clean })
@@ -175,6 +174,8 @@ export function App({ config, startupNotices = [] }: Props) {
         mode: 'tui',
         graphWriter,
         conversationalRetrieval: resolveConversationalChatEnabled(config),
+        verbose,
+        debug,
       },
       chatIO
     )
@@ -346,8 +347,19 @@ export function App({ config, startupNotices = [] }: Props) {
 
       if (firstArg === 'chat') {
         setMode('chat')
-        addEntry({ type: 'info', content: 'Chat mode — type /exit to return to shell.' })
-        startChatSession()
+        const chatVerbose = args.includes('--verbose')
+        const chatDebug = args.includes('--debug')
+        let chatBanner = 'Chat mode — type /exit to return to shell.'
+        if (chatVerbose && chatDebug) {
+          chatBanner =
+            'Chat mode (verbose + debug orchestration) — type /exit to return to shell.'
+        } else if (chatVerbose) {
+          chatBanner = 'Chat mode (verbose orchestration) — type /exit to return to shell.'
+        } else if (chatDebug) {
+          chatBanner = 'Chat mode (debug source lines) — type /exit to return to shell.'
+        }
+        addEntry({ type: 'info', content: chatBanner })
+        startChatSession({ verbose: chatVerbose, debug: chatDebug })
         return
       }
 
@@ -410,7 +422,21 @@ export function App({ config, startupNotices = [] }: Props) {
             })
         }
 
-        updateEntry(resultId, { content: output, loading: false })
+        const { segments, emptyPrimaryContent } = partitionShellOutputForTui(output)
+        let filledPrimary = false
+        for (const seg of segments) {
+          if (seg.kind === 'meta') {
+            addEntry({ type: 'chat-meta', content: seg.line })
+          } else if (!filledPrimary) {
+            updateEntry(resultId, { content: seg.text, loading: false })
+            filledPrimary = true
+          } else {
+            addEntry({ type: 'result', content: seg.text })
+          }
+        }
+        if (!filledPrimary) {
+          updateEntry(resultId, { content: emptyPrimaryContent, loading: false })
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         updateEntry(resultId, { type: 'error', content: message, loading: false })

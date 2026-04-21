@@ -31,7 +31,7 @@ Use `kb use --show` when you are unsure which base is active.
 4. **Challenge** — If a statement might be wrong or contested, run **`kb validate "<fact>"`** to check evidence, or **`kb invalidate "<old-fact>" "<replacement>"`** to correct it.
 5. **Explain** — Use **`kb explain "<change id or fact reference>"`** when the user asks *why* something in the KB says what it says, when that command is available for their version.
 
-Prefer **`--output json`** when you need structured provenance or limits for downstream reasoning; use human output for quick scans.
+Prefer **`--output json`** when you need structured provenance or limits for downstream reasoning; use human output for quick scans. **`kb query`** uses **deep** retrieval by default (aligned with **`kb chat`**); pass **`--discovery shallow`** when you want the lighter path. Use **`--session`** only for intentional multi-turn **`kb query`** / **`kb explain`** (reads/writes `query-session.json`); without it, retrieval matches chat (no session rewrite of the query string). For human **`kb query`** / **`kb chat`**, default orchestration lines are slim (`retrieval>`, `matches>`, **`sources>`** titles for all hits); add **`--verbose`** (TUI: `chat --verbose` before chat starts) for **`summary>`** / **`status>`** / **`confidence>`**, or **`--debug`** for one detailed **`source>`** line per document.
 
 ## Command reference (copy-paste shapes)
 
@@ -40,8 +40,8 @@ Prefer **`--output json`** when you need structured provenance or limits for dow
 ```text
 kb submit "<fact>" [--domain ops] [--source runbook] [--target doc-id] [--output human|json]
 kb validate "<fact>" [--domain ops] [--output human|json]
-kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]
-kb explain "<change id|fact>" [--output human|json]
+kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]
+kb explain "<change id|fact>" [--base <name>] [--session] [--output human|json]
 kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply]
 ```
 
@@ -67,7 +67,7 @@ kb init [--base <name>] [--non-interactive] [--detach | --resume] [--stop-after 
 kb graph [--format dot|json] [--entity <name>] [--path <from> <to>]
 kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run]
 kb publish [options]
-kb chat
+kb chat [--verbose] [--debug] [--base <name>]
 kb logs list [--command init] [--limit <n>]
 ```
 

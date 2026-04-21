@@ -2,6 +2,7 @@ import chalk from 'chalk'
 import ora, { type Ora } from 'ora'
 import type { CliOutput } from '../cli/index.js'
 import type { CmdMode } from '../cli/cmd-ref.js'
+import { formatOrchestrationMetaLine } from './orchestration-meta.js'
 
 // ---------------------------------------------------------------------------
 // Printer — centralized output layer for all kb CLI commands
@@ -27,64 +28,59 @@ export class Printer {
     this.out.log(text)
   }
 
-  // Agent internality: checkpoint traces, planning steps, thinking states
-  // TTY: dim italic wrapped in parens
-  // Plain: same text, no styling
+  // Agent internality: checkpoint traces, hints — same wire line family as orchestrationMeta
   thought(text: string): void {
     const normalized = text.trim()
     if (!normalized) return
+    const line = formatOrchestrationMetaLine('thinking', normalized)
     if (this.tty) {
-      this.out.log(chalk.dim.italic(`(${normalized})`))
+      this.out.log(chalk.dim(line))
     } else {
-      this.out.log(`(${normalized})`)
+      this.out.log(line)
     }
   }
 
-  // Structured metadata line below the answer separator
-  // TTY: bold cyan label + dim value
-  // Plain: "Label: value"
+  /**
+   * Intent-loop / tool orchestration metadata (retrieval, status, sources, …).
+   * Always `wire_key> value` so TUI and piped CLI see the same structure.
+   */
+  orchestrationMeta(label: string, value: string): void {
+    const line = formatOrchestrationMetaLine(label, value)
+    if (this.tty) {
+      this.out.log(chalk.dim(line))
+    } else {
+      this.out.log(line)
+    }
+  }
+
+  /** @deprecated Prefer orchestrationMeta; kept for call sites that still say "metadata". */
   metadata(label: string, value: string): void {
-    const key = normalizeLabel(label)
-    if (this.tty) {
-      this.out.log(`${chalk.bold.cyan(`${key}:`)} ${chalk.dim(value)}`)
-    } else {
-      this.out.log(`${key}: ${value}`)
-    }
+    this.orchestrationMeta(label, value)
   }
 
-  // Chat-mode metadata: preserves the "retrieval> / sources>" prefix protocol
-  // that App.tsx uses to route lines to chat-meta (dim gray) entries in the TUI.
-  // TTY CLI: styled same as metadata()
+  /** Same wire format as orchestrationMeta (chat historically used this name). */
   chatMeta(label: string, value: string): void {
-    if (this.mode === 'tui') {
-      this.out.write(`${label.toLowerCase()}> ${value}`)
-    } else {
-      this.metadata(label, value)
-    }
+    this.orchestrationMeta(label, value)
   }
 
   chatAssistant(text: string): void {
     const normalized = text.trim()
     if (!normalized) return
     if (this.mode === 'tui') {
-      this.out.write(`assistant> ${normalized}`)
+      this.out.log(formatOrchestrationMetaLine('assistant', normalized))
       return
     }
     if (this.tty) {
       this.content(normalized)
       return
     }
-    this.out.write(`assistant> ${normalized}`)
+    this.out.log(formatOrchestrationMetaLine('assistant', normalized))
   }
 
-  // Source provenance line
+  // Retrieved doc / provenance line (orchestration, not primary answer text)
   source(id: string, title?: string): void {
     const display = title ? `${id} — ${title}` : id
-    if (this.tty) {
-      this.out.log(`  ${chalk.dim(display)}`)
-    } else {
-      this.out.log(`  ${display}`)
-    }
+    this.orchestrationMeta('source', display)
   }
 
   // Horizontal rule between content and metadata
@@ -146,14 +142,4 @@ export class Printer {
 
 export function createPrinter(out: CliOutput, mode: CmdMode): Printer {
   return new Printer(out, mode)
-}
-
-function normalizeLabel(s: string): string {
-  if (!s) return s
-  return s
-    .trim()
-    .replace(/[_-]+/g, ' ')
-    .split(/\s+/)
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ')
 }

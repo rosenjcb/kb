@@ -10,8 +10,10 @@ import {
   isIntentCommand,
   parseIntentCommand,
   printIntentResult,
+  printReadDocumentsOrchestrationFooter,
   rewriteIntentInputWithSessionContext,
 } from '../../src/cli/intent-cli'
+import { isOrchestrationMetaLine } from '../../src/ui/orchestration-meta'
 import { createPrinter } from '../../src/ui/printer'
 import type { ToolExecutor } from '../../src/core/tool-registry'
 import type { LLMProvider } from '../../src/core/types'
@@ -48,6 +50,29 @@ describe('intent-cli parsing', () => {
 
     expect(parsed.envelope.intent).toBe('query_truth')
     expect(parsed.envelope.payload.discoveryDepth).toBe('deep')
+  })
+
+  it('Given query with --verbose, then parses verbose flag', () => {
+    const parsed = parseIntentCommand(['query', 'topic', '--verbose'])
+    expect(parsed.verbose).toBe(true)
+    expect(parsed.envelope.payload.query).toBe('topic')
+  })
+
+  it('Given query with --debug, then parses debug flag', () => {
+    const parsed = parseIntentCommand(['query', 'topic', '--debug'])
+    expect(parsed.debug).toBe(true)
+    expect(parsed.envelope.payload.query).toBe('topic')
+  })
+
+  it('Given query without --session, then useQuerySession is false', () => {
+    const parsed = parseIntentCommand(['query', 'what is kb'])
+    expect(parsed.useQuerySession).toBe(false)
+  })
+
+  it('Given query with --session, then useQuerySession is true', () => {
+    const parsed = parseIntentCommand(['query', 'follow up', '--session'])
+    expect(parsed.useQuerySession).toBe(true)
+    expect(parsed.envelope.payload.query).toBe('follow up')
   })
 
   it('Given intent command with base option, then parses base separately from payload', () => {
@@ -125,19 +150,91 @@ describe('intent-cli parsing', () => {
       'human'
     )
 
-    expect(output).toContain('Summary: Found 1 matching KB document')
-    expect(output).toContain('Answer: The KB uses session base first, then default base.')
-    expect(output).toContain('Answer:')
-    expect(output).toContain('Status: accepted')
-    expect(output).toContain('Confidence: 0.80')
-    expect(output).toContain('Retrieval: hybrid (fts+vector-rerank)')
-    expect(output).toContain('Checkpoints: hybrid_primary:hit->return')
-    expect(output).toContain('Relevant Docs:')
-    expect(output).toContain('location=/tmp/cli-facts.md')
-    expect(output).toContain('uri=file:///tmp/cli-facts.md')
-    expect(output).toContain('highlights=[base-selection] KB base precedence order')
-    expect(output).toContain('Provenance: cli-facts')
-    expect(output).toContain('KB base precedence order')
+    expect(output).toContain('The KB uses session base first, then default base.')
+    expect(output).toContain('---')
+    expect(output).toContain('retrieval> hybrid (fts+vector-rerank)')
+    expect(output).toContain('matches> 1')
+    expect(output).toContain('sources> CLI Facts')
+    expect(output).not.toContain('location=/tmp/cli-facts.md')
+    expect(output).not.toContain('source> id=')
+    expect(output).not.toContain('summary>')
+    expect(output).not.toContain('status> accepted')
+    expect(output).not.toContain('confidence>')
+
+    const verboseOut = formatIntentResult(
+      {
+        status: 'accepted',
+        confidence: 0.8,
+        explanation: 'query intent maps directly to read_documents',
+        recommendedAction: 'read_documents',
+        data: {
+          answer: 'The KB uses session base first, then default base.',
+          retrieval: {
+            method: 'hybrid',
+            detail: 'fts+vector-rerank',
+            checkpoints: [
+              {
+                stage: 'hybrid_primary',
+                status: 'hit',
+                nextAction: 'return',
+                confidence: 0.86,
+              },
+            ],
+          },
+          results: [
+            {
+              metadata: {
+                id: 'cli-facts',
+                title: 'CLI Facts',
+                filePath: '/tmp/cli-facts.md',
+              },
+              content:
+                '# CLI Facts\n\nCreated: 2026-04-12\n\n## Base Selection\nKB base precedence order: 1) kb use, 2) kb default.',
+            },
+          ],
+          total: 1,
+        },
+      },
+      'human',
+      true
+    )
+    expect(verboseOut).toContain('summary>')
+    expect(verboseOut).toContain('status> accepted')
+    expect(verboseOut).toContain('confidence> 0.80')
+    expect(verboseOut).toContain('sources> CLI Facts')
+
+    const debugOut = formatIntentResult(
+      {
+        status: 'accepted',
+        confidence: 0.8,
+        explanation: 'query intent maps directly to read_documents',
+        recommendedAction: 'read_documents',
+        data: {
+          answer: 'The KB uses session base first, then default base.',
+          retrieval: {
+            method: 'hybrid',
+            detail: 'fts+vector-rerank',
+          },
+          results: [
+            {
+              metadata: {
+                id: 'cli-facts',
+                title: 'CLI Facts',
+                filePath: '/tmp/cli-facts.md',
+              },
+              content:
+                '# CLI Facts\n\nCreated: 2026-04-12\n\n## Base Selection\nKB base precedence order: 1) kb use, 2) kb default.',
+            },
+          ],
+          total: 1,
+        },
+      },
+      'human',
+      { debug: true }
+    )
+    expect(debugOut).toContain('source> id=cli-facts')
+    expect(debugOut).toContain('location=/tmp/cli-facts.md')
+    expect(debugOut).not.toContain('sources> CLI Facts')
   })
 
   it('Given read_documents with no results in human mode, then formatter returns structured no-match response', () => {
@@ -157,14 +254,12 @@ describe('intent-cli parsing', () => {
       'human'
     )
 
-    expect(output).toContain('Summary: No matching KB documents were found for this query.')
     expect(output).toContain(
-      'Answer: I could not find enough evidence to answer directly from KB documents.'
+      'I could not find enough evidence to answer directly from KB documents.'
     )
-    expect(output).toContain('Retrieval: lexical-fallback (hybrid-error:no-index)')
-    expect(output).toContain('Matches: 0')
-    expect(output).toContain('Relevant Docs: none')
-    expect(output).toContain('Hint: Try a broader phrase')
+    expect(output).toContain('retrieval> lexical-fallback (hybrid-error:no-index)')
+    expect(output).toContain('matches> 0')
+    expect(output).toContain('sources> (none)')
   })
 
   it('Given read_documents result, printIntentResult emits structured metadata and thinking trace', () => {
@@ -205,10 +300,89 @@ describe('intent-cli parsing', () => {
     )
 
     const output = lines.join('\n')
-    expect(output).toContain('Summary:')
-    expect(output).toContain('Retrieval: hybrid (fts+vector-rerank)')
-    expect(output).toContain('(Thinking: hybrid_primary:hit->return)')
-    expect(output).toContain('Provenance: cli-facts')
+    expect(output).toContain('retrieval> hybrid (fts+vector-rerank)')
+    expect(output).toContain('matches> 1')
+    expect(output).toContain('sources> CLI Facts')
+    expect(output).not.toContain('summary>')
+  })
+
+  it('Given printReadDocumentsOrchestrationFooter, then every emitted line is a wire orchestration row (TUI routing)', () => {
+    const lines: string[] = []
+    const printer = createPrinter(
+      {
+        log: line => lines.push(line),
+        write: line => lines.push(line),
+        error: line => lines.push(line),
+      },
+      'tui'
+    )
+    printReadDocumentsOrchestrationFooter(printer, {
+      status: 'accepted',
+      confidence: 0.9,
+      recommendedAction: 'read_documents',
+      data: {
+        results: [{ metadata: { id: 'doc-a', title: 'A' }, content: '# A\n\nbody' }],
+        retrieval: { method: 'hybrid', detail: 'x' },
+      },
+    })
+    for (const line of lines) {
+      expect(isOrchestrationMetaLine(line), line).toBe(true)
+    }
+    expect(lines.some(l => l.startsWith('matches>'))).toBe(true)
+    expect(lines.some(l => l.startsWith('sources>'))).toBe(true)
+    expect(lines.some(l => l.startsWith('source>'))).toBe(false)
+    expect(lines.some(l => l.startsWith('summary>'))).toBe(false)
+    expect(lines.some(l => l.startsWith('confidence>'))).toBe(false)
+
+    const verboseLines: string[] = []
+    const verbosePrinter = createPrinter(
+      {
+        log: line => verboseLines.push(line),
+        write: line => verboseLines.push(line),
+        error: line => verboseLines.push(line),
+      },
+      'tui'
+    )
+    printReadDocumentsOrchestrationFooter(
+      verbosePrinter,
+      {
+        status: 'accepted',
+        confidence: 0.9,
+        recommendedAction: 'read_documents',
+        data: {
+          results: [{ metadata: { id: 'doc-a', title: 'A' }, content: '# A\n\nbody' }],
+          retrieval: { method: 'hybrid', detail: 'x' },
+        },
+      },
+      { verbose: true }
+    )
+    expect(verboseLines.some(l => l.startsWith('summary>'))).toBe(true)
+    expect(verboseLines.some(l => l.startsWith('status>'))).toBe(true)
+    expect(verboseLines.some(l => l.startsWith('confidence>'))).toBe(true)
+
+    const debugLines: string[] = []
+    const debugPrinter = createPrinter(
+      {
+        log: line => debugLines.push(line),
+        write: line => debugLines.push(line),
+        error: line => debugLines.push(line),
+      },
+      'tui'
+    )
+    printReadDocumentsOrchestrationFooter(
+      debugPrinter,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        data: {
+          results: [{ metadata: { id: 'doc-a', title: 'A' }, content: '# A\n\nbody' }],
+          retrieval: { method: 'hybrid', detail: 'x' },
+        },
+      },
+      { debug: true }
+    )
+    expect(debugLines.some(l => l.startsWith('source> id=doc-a'))).toBe(true)
+    expect(debugLines.some(l => l.startsWith('sources>'))).toBe(false)
   })
 
   it('Given read_documents result and llm provider, then enrichReadDocumentsAnswerWithLLM injects LLM answer', async () => {
@@ -457,7 +631,7 @@ describe('intent-cli parsing', () => {
         messages: expect.arrayContaining([
           expect.objectContaining({
             role: 'user',
-            content: expect.stringContaining('a few solid paragraphs are acceptable'),
+            content: expect.stringContaining('Answer using only the evidence below'),
           }),
         ]),
       })

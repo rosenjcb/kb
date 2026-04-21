@@ -70,7 +70,9 @@ export class DefaultIntentRouter implements IntentRouter {
         const highRecall = requiresHighRecallQuery(queryText)
         const requestedLimit = typeof payload.limit === 'number' ? payload.limit : 5
         const effectiveLimit = highRecall ? Math.max(requestedLimit, 12) : requestedLimit
-        const effectiveDiscoveryDepth = payload.discoveryDepth ?? (highRecall ? 'deep' : 'shallow')
+        // Default deep so `kb query` matches chat QUERY retrieval (research orchestrator path).
+        // Use `--discovery shallow` to opt into the lighter lane when latency matters.
+        const effectiveDiscoveryDepth = payload.discoveryDepth ?? 'deep'
 
         return {
           selectedOperation: 'read_documents',

@@ -71,7 +71,7 @@ kb invalidate "kb use should persist across sessions" "kb base use is session-sc
 ```
 kb submit "<fact>" [--domain ops] [--source runbook] [--target doc-id] [--output human|json]
 kb validate "<fact>" [--domain ops] [--output human|json]
-kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]
+kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]
 kb explain "<change id|fact>" [--output human|json]
 kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply]
 ```
@@ -96,7 +96,7 @@ kb config set <key> <value>
 kb config unset <key>
 kb init [--base <name>] [--detach | --resume] [--stop-after <cycle>]
 kb publish [options]
-kb chat
+kb chat [--verbose] [--debug] [--base <name>]
 ```
 
 ### Notes
@@ -107,6 +107,9 @@ kb chat
 - `kb use <base>` still works as a backward-compatible alias for `kb base use <base>`.
 - `kb init` defaults to base `default` if `--base` is omitted.
 - Typing `kb --help` shows the full help message.
+- **`kb query`** uses **deep** retrieval by default (same research path as **`kb chat`** QUERY turns); pass **`--discovery shallow`** for a lighter first pass when you need it.
+- **`--session`** on **`kb query`** / **`kb explain`** opts into **`query-session.json`** under the active base (follow-up rewrite + enrichment context + append). Omit it for standalone questions so behavior matches chat (no silent LLM rewrite of your retrieval string).
+- In **human** output, `kb query` and `kb chat` print a slim orchestration footer after the answer: **`retrieval>`**, **`matches>`**, then a single **`sources>`** line listing every matched document by **title** (or id if there is no title). Pass **`--verbose`** on the same invocation (before a chat session starts) to also print **`summary>`**, **`status>`**, and **`confidence>`**. Pass **`--debug`** for one detailed **`source>`** line per document (paths, snippets, highlights). **`--output json`** is unchanged. In the TUI shell, use `query "…" --verbose`, `chat --verbose`, `query "…" --debug`, or `chat --debug` as needed.
 
 ## Optional: SQLite Hybrid Search
 

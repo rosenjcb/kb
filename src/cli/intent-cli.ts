@@ -4,6 +4,7 @@ import type { LLMProvider, Message } from '../core/types'
 import { assertConsumerSafeCommand } from '../intents/policy'
 import { DefaultIntentRouter } from '../intents/router'
 import type { ConsumerIntent, ConsumerIntentEnvelope, IntentResult } from '../intents/types'
+import { formatOrchestrationMetaLine } from '../ui/orchestration-meta.js'
 import type { Printer } from '../ui/printer'
 import { type CmdMode, cmd } from './cmd-ref'
 import { appendQuerySession, loadQuerySessionMessages } from './query-session'
@@ -18,6 +19,21 @@ export interface ParsedIntentCommand {
   envelope: ConsumerIntentEnvelope
   output: CliOutputMode
   base?: string
+  debug?: boolean
+  /** Extra human orchestration rows (summary, status, confidence) for query/chat. */
+  verbose?: boolean
+  /**
+   * When true (`kb query` / `kb explain` with `--session`), use `query-session.json` under the
+   * active base for follow-up rewrite + enrichment context + append. Default false matches chat
+   * (no silent session mutation of the retrieval query).
+   */
+  useQuerySession?: boolean
+}
+
+/** Human read_documents footer: default minimal; verbose adds summary/status/confidence; debug expands sources. */
+export interface ReadDocumentsHumanOutputOptions {
+  verbose?: boolean
+  /** When true, emit one `source>` line per hit with id, path, uri, snippet, highlights (default is a single `sources>` titles line). */
   debug?: boolean
 }
 
@@ -44,6 +60,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
   const output = parseOutput(rest)
   const base = readOption(rest, '--base')
   const debug = readFlag(rest, '--debug')
+  const verbose = readFlag(rest, '--verbose')
 
   let envelope: ConsumerIntentEnvelope
 
@@ -100,7 +117,10 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
       throw new Error(`Unsupported intent command: ${command}`)
   }
 
-  return { envelope, output, base, debug }
+  const useQuerySession =
+    (command === 'query' || command === 'explain') && readFlag(rest, '--session')
+
+  return { envelope, output, base, debug, verbose, useQuerySession }
 }
 
 export async function executeIntentCommand(
@@ -111,13 +131,28 @@ export async function executeIntentCommand(
   return router.execute(parsed.envelope)
 }
 
-export function formatIntentResult(result: IntentResult, output: CliOutputMode): string {
+function normalizeReadDocumentsHumanOptions(
+  options?: ReadDocumentsHumanOutputOptions | boolean
+): ReadDocumentsHumanOutputOptions {
+  if (typeof options === 'boolean') {
+    return { verbose: options }
+  }
+  return options ?? {}
+}
+
+export function formatIntentResult(
+  result: IntentResult,
+  output: CliOutputMode,
+  options?: ReadDocumentsHumanOutputOptions | boolean
+): string {
+  const readDocsOpts = normalizeReadDocumentsHumanOptions(options)
+
   if (output === 'json') {
     return JSON.stringify(result, null, 2)
   }
 
   if (isReadDocumentsResult(result)) {
-    return formatReadDocumentsHumanResult(result)
+    return formatReadDocumentsHumanResult(result, readDocsOpts)
   }
 
   if (isReconciliationReviewResult(result)) {
@@ -125,33 +160,18 @@ export function formatIntentResult(result: IntentResult, output: CliOutputMode):
   }
 
   const lines: string[] = []
-  lines.push(`Status: ${result.status}`)
+  lines.push(formatOrchestrationMetaLine('status', result.status))
   if (typeof result.confidence === 'number') {
-    lines.push(`Confidence: ${result.confidence.toFixed(2)}`)
-  }
-  if (result.explanation) {
-    lines.push(`Why: ${result.explanation}`)
+    lines.push(formatOrchestrationMetaLine('confidence', result.confidence.toFixed(2)))
   }
   if (result.recommendedAction) {
-    lines.push(`Next: ${result.recommendedAction}`)
-  }
-  if (result.provenance?.length) {
-    lines.push(`Provenance: ${result.provenance.join(', ')}`)
+    lines.push(formatOrchestrationMetaLine('next', result.recommendedAction))
   }
 
   const data = result.data as { results?: Array<{ metadata?: { id?: string } }> } | undefined
   const results = data?.results
   if (Array.isArray(results)) {
-    lines.push(`Matches: ${results.length}`)
-    if (results.length > 0) {
-      const ids = results
-        .map(item => item.metadata?.id)
-        .filter(Boolean)
-        .slice(0, 5) as string[]
-      if (ids.length > 0) {
-        lines.push(`Match IDs: ${ids.join(', ')}`)
-      }
-    }
+    lines.push(formatOrchestrationMetaLine('matches', String(results.length)))
   }
 
   return lines.join('\n')
@@ -160,7 +180,8 @@ export function formatIntentResult(result: IntentResult, output: CliOutputMode):
 export function printIntentResult(
   result: IntentResult,
   output: CliOutputMode,
-  printer: Printer
+  printer: Printer,
+  options?: ReadDocumentsHumanOutputOptions
 ): void {
   if (output === 'json') {
     printer.content(JSON.stringify(result, null, 2))
@@ -168,7 +189,7 @@ export function printIntentResult(
   }
 
   if (isReadDocumentsResult(result)) {
-    printReadDocumentsHumanResult(result, printer)
+    printReadDocumentsHumanResult(result, printer, options)
     return
   }
 
@@ -181,29 +202,14 @@ export function printIntentResult(
   if (typeof result.confidence === 'number') {
     printer.metadata('Confidence', result.confidence.toFixed(2))
   }
-  if (result.explanation) {
-    printer.metadata('Why', result.explanation)
-  }
   if (result.recommendedAction) {
     printer.metadata('Next', result.recommendedAction)
-  }
-  if (result.provenance?.length) {
-    printer.metadata('Provenance', result.provenance.join(', '))
   }
 
   const data = result.data as { results?: Array<{ metadata?: { id?: string } }> } | undefined
   const results = data?.results
   if (Array.isArray(results)) {
     printer.metadata('Matches', String(results.length))
-    if (results.length > 0) {
-      const ids = results
-        .map(item => item.metadata?.id)
-        .filter(Boolean)
-        .slice(0, 5) as string[]
-      if (ids.length > 0) {
-        printer.metadata('Match IDs', ids.join(', '))
-      }
-    }
   }
 }
 
@@ -239,7 +245,7 @@ interface ReadDocumentsResultItem {
   graphEvidence?: string[]
 }
 
-interface ReadDocumentsResultData {
+export interface ReadDocumentsResultData {
   results?: ReadDocumentsResultItem[]
   total?: number
   answer?: string
@@ -253,6 +259,90 @@ interface ReadDocumentsResultData {
       confidence?: number
     }>
   }
+}
+
+function documentDisplayTitle(item: ReadDocumentsResultItem): string {
+  const id = item.metadata?.id ?? 'unknown-id'
+  return item.metadata?.title?.trim() || id
+}
+
+function formatReadDocumentsFullSourceValue(item: ReadDocumentsResultItem): string {
+  const id = item.metadata?.id ?? 'unknown-id'
+  const title = item.metadata?.title?.trim() || id
+  const filePath = item.metadata?.filePath ?? 'unknown-path'
+  const uri = filePath.startsWith('/') ? `file://${filePath}` : filePath
+  const snippet = extractSnippet(item.content)
+  const highlights = extractHighlights(item.content)
+  const highlightText =
+    highlights.length > 0
+      ? highlights.map(h => `[${h.section}] ${h.excerpt}`).join(' | ')
+      : 'none'
+  return `id=${id}; title=${title}; location=${filePath}; uri=${uri}; snippet=${snippet}; highlights=${highlightText}`
+}
+
+function appendReadDocumentsSourcesToLines(
+  lines: string[],
+  results: ReadDocumentsResultItem[],
+  options?: ReadDocumentsHumanOutputOptions
+): void {
+  const debug = options?.debug === true
+  if (results.length === 0) {
+    lines.push(formatOrchestrationMetaLine('sources', '(none)'))
+    return
+  }
+  if (debug) {
+    for (const item of results) {
+      lines.push(formatOrchestrationMetaLine('source', formatReadDocumentsFullSourceValue(item)))
+    }
+  } else {
+    lines.push(formatOrchestrationMetaLine('sources', results.map(documentDisplayTitle).join('; ')))
+  }
+}
+
+function printReadDocumentsSourcesBlock(
+  printer: Printer,
+  results: ReadDocumentsResultItem[],
+  options?: ReadDocumentsHumanOutputOptions
+): void {
+  const debug = options?.debug === true
+  if (results.length === 0) {
+    printer.metadata('Sources', '(none)')
+    return
+  }
+  if (debug) {
+    for (const item of results) {
+      printer.metadata('Source', formatReadDocumentsFullSourceValue(item))
+    }
+  } else {
+    printer.metadata('Sources', results.map(documentDisplayTitle).join('; '))
+  }
+}
+
+/** Same orchestration block as `kb query` human output (after the answer + ---). */
+export function printReadDocumentsOrchestrationFooter(
+  printer: Printer,
+  result: IntentResult,
+  options?: ReadDocumentsHumanOutputOptions
+): void {
+  const data = (result.data ?? {}) as ReadDocumentsResultData
+  const results = Array.isArray(data.results) ? data.results : []
+  const verbose = options?.verbose === true
+
+  if (verbose) {
+    printer.metadata('Summary', buildSummary(results))
+    printer.metadata('Status', result.status)
+    if (typeof result.confidence === 'number') {
+      printer.metadata('Confidence', result.confidence.toFixed(2))
+    }
+  }
+
+  if (data.retrieval?.method) {
+    const detail = data.retrieval.detail ? ` (${data.retrieval.detail})` : ''
+    printer.metadata('Retrieval', `${data.retrieval.method}${detail}`)
+  }
+
+  printer.metadata('Matches', String(results.length))
+  printReadDocumentsSourcesBlock(printer, results, options)
 }
 
 export async function enrichReadDocumentsAnswerWithLLM(
@@ -289,11 +379,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
       : ''
 
     const userContent = [
-      'You answer using only the provided KB evidence.',
-      'Answer directly and clearly.',
-      'Use as much space as needed to fully answer the question when the evidence supports it.',
-      'For broad questions, a few solid paragraphs are acceptable.',
-      'If evidence is insufficient, explicitly say so.',
+      'Answer using only the evidence below. Be direct; if evidence is insufficient, say so.',
       '',
       `Question: ${question}`,
       graphSection,
@@ -496,7 +582,7 @@ function requiresHighRecallQuery(query: string): boolean {
   return false
 }
 
-function isReadDocumentsResult(result: IntentResult): boolean {
+export function isReadDocumentsResult(result: IntentResult): boolean {
   return result.recommendedAction === 'read_documents' && result.status === 'accepted'
 }
 
@@ -547,160 +633,60 @@ function formatReconciliationReviewHumanResult(result: IntentResult): string {
   return lines.join('\n')
 }
 
-function formatReadDocumentsHumanResult(result: IntentResult): string {
+function formatReadDocumentsHumanResult(
+  result: IntentResult,
+  options?: ReadDocumentsHumanOutputOptions
+): string {
   const data = (result.data ?? {}) as ReadDocumentsResultData
   const results = Array.isArray(data.results) ? data.results : []
+  const verbose = options?.verbose === true
 
   const lines: string[] = []
-  lines.push(`Answer: ${data.answer?.trim() || buildAnswer(results)}`)
-  lines.push(`Summary: ${buildSummary(results)}`)
-  lines.push(`Status: ${result.status}`)
+  lines.push(data.answer?.trim() || buildAnswer(results))
+  lines.push('---')
 
-  if (typeof result.confidence === 'number') {
-    lines.push(`Confidence: ${result.confidence.toFixed(2)}`)
-  }
-
-  if (result.explanation) {
-    lines.push(`Why: ${result.explanation}`)
-  }
-
-  if (result.recommendedAction) {
-    lines.push(`Next: ${result.recommendedAction}`)
+  if (verbose) {
+    lines.push(formatOrchestrationMetaLine('summary', buildSummary(results)))
+    lines.push(formatOrchestrationMetaLine('status', result.status))
+    if (typeof result.confidence === 'number') {
+      lines.push(formatOrchestrationMetaLine('confidence', result.confidence.toFixed(2)))
+    }
   }
 
   if (data.retrieval?.method) {
     const detail = data.retrieval.detail ? ` (${data.retrieval.detail})` : ''
-    lines.push(`Retrieval: ${data.retrieval.method}${detail}`)
+    lines.push(formatOrchestrationMetaLine('retrieval', `${data.retrieval.method}${detail}`))
   }
 
-  if (Array.isArray(data.retrieval?.checkpoints) && data.retrieval.checkpoints.length > 0) {
-    const trace = data.retrieval.checkpoints
-      .map(checkpoint => {
-        const stage = checkpoint.stage ?? 'unknown-stage'
-        const status = checkpoint.status ?? 'unknown-status'
-        const next = checkpoint.nextAction ?? 'unknown-action'
-        return `${stage}:${status}->${next}`
-      })
-      .join(' | ')
-    lines.push(`Checkpoints: ${trace}`)
-  }
-
-  lines.push(`Matches: ${results.length}`)
-
-  if (results.length === 0) {
-    lines.push('Relevant Docs: none')
-    lines.push(
-      'Hint: Try a broader phrase, fewer keywords, or run with --output json for full retrieval details.'
-    )
-    return lines.join('\n')
-  }
-
-  lines.push('Relevant Docs:')
-
-  for (const item of results.slice(0, 5)) {
-    const id = item.metadata?.id ?? 'unknown-id'
-    const title = item.metadata?.title?.trim() || id
-    const filePath = item.metadata?.filePath ?? 'unknown-path'
-    const uri = filePath.startsWith('/') ? `file://${filePath}` : filePath
-    const snippet = extractSnippet(item.content)
-    const highlights = extractHighlights(item.content)
-    const highlightText =
-      highlights.length > 0
-        ? highlights.map(h => `[${h.section}] ${h.excerpt}`).join(' | ')
-        : 'none'
-    lines.push(
-      `- id=${id}; title=${title}; location=${filePath}; uri=${uri}; snippet=${snippet}; highlights=${highlightText}`
-    )
-  }
-
-  if (results.length > 5) {
-    lines.push(`Showing 5 of ${results.length} matches. Use --limit to adjust.`)
-  }
-
-  const ids = results
-    .map(item => item.metadata?.id)
-    .filter(Boolean)
-    .slice(0, 10) as string[]
-
-  if (ids.length > 0) {
-    lines.push(`Provenance: ${ids.join(', ')}`)
-  }
+  lines.push(formatOrchestrationMetaLine('matches', String(results.length)))
+  appendReadDocumentsSourcesToLines(lines, results, options)
 
   return lines.join('\n')
 }
 
-function printReadDocumentsHumanResult(result: IntentResult, printer: Printer): void {
+function printReadDocumentsHumanResult(
+  result: IntentResult,
+  printer: Printer,
+  options?: ReadDocumentsHumanOutputOptions
+): void {
   const data = (result.data ?? {}) as ReadDocumentsResultData
   const results = Array.isArray(data.results) ? data.results : []
 
   printer.content(data.answer?.trim() || buildAnswer(results))
   printer.separator()
-  printer.metadata('Summary', buildSummary(results))
-  printer.metadata('Status', result.status)
+  printReadDocumentsOrchestrationFooter(printer, result, options)
+}
 
-  if (typeof result.confidence === 'number') {
-    printer.metadata('Confidence', result.confidence.toFixed(2))
-  }
-  if (result.explanation) {
-    printer.metadata('Why', result.explanation)
-  }
-  if (result.recommendedAction) {
-    printer.metadata('Next', result.recommendedAction)
-  }
-  if (data.retrieval?.method) {
-    const detail = data.retrieval.detail ? ` (${data.retrieval.detail})` : ''
-    printer.metadata('Retrieval', `${data.retrieval.method}${detail}`)
-  }
-
-  if (Array.isArray(data.retrieval?.checkpoints) && data.retrieval.checkpoints.length > 0) {
-    const trace = data.retrieval.checkpoints
-      .map(checkpoint => {
-        const stage = checkpoint.stage ?? 'unknown-stage'
-        const status = checkpoint.status ?? 'unknown-status'
-        const next = checkpoint.nextAction ?? 'unknown-action'
-        return `${stage}:${status}->${next}`
-      })
-      .join(' | ')
-    printer.thought(`Thinking: ${trace}`)
-  }
-
-  printer.metadata('Matches', String(results.length))
+function buildSummary(results: ReadDocumentsResultItem[]): string {
   if (results.length === 0) {
-    printer.metadata('Relevant Docs', 'none')
-    printer.thought(
-      'Hint: Try a broader phrase, fewer keywords, or run with --output json for full retrieval details.'
-    )
-    return
+    return 'No matching KB documents were found for this query.'
   }
 
-  printer.metadata('Relevant Docs', '')
-  for (const item of results.slice(0, 5)) {
-    const id = item.metadata?.id ?? 'unknown-id'
-    const title = item.metadata?.title?.trim() || id
-    const filePath = item.metadata?.filePath ?? 'unknown-path'
-    const uri = filePath.startsWith('/') ? `file://${filePath}` : filePath
-    const snippet = extractSnippet(item.content)
-    const highlights = extractHighlights(item.content)
-    const highlightText =
-      highlights.length > 0
-        ? highlights.map(h => `[${h.section}] ${h.excerpt}`).join(' | ')
-        : 'none'
-    printer.source(
-      `id=${id}; title=${title}; location=${filePath}; uri=${uri}; snippet=${snippet}; highlights=${highlightText}`
-    )
-  }
+  const lead = results[0]
+  const leadTitle = lead.metadata?.title?.trim() || lead.metadata?.id || 'the top matching document'
+  const leadSnippet = extractSnippet(lead.content)
 
-  if (results.length > 5) {
-    printer.thought(`Showing 5 of ${results.length} matches. Use --limit to adjust.`)
-  }
-
-  const ids = results
-    .map(item => item.metadata?.id)
-    .filter(Boolean)
-    .slice(0, 10) as string[]
-  if (ids.length > 0) {
-    printer.metadata('Provenance', ids.join(', '))
-  }
+  return `Found ${results.length} matching KB document${results.length === 1 ? '' : 's'}; strongest signal comes from ${leadTitle}: ${leadSnippet}`
 }
 
 function buildAnswer(results: ReadDocumentsResultItem[]): string {
@@ -890,18 +876,6 @@ function scoreCandidate(line: string): number {
   return score
 }
 
-function buildSummary(results: ReadDocumentsResultItem[]): string {
-  if (results.length === 0) {
-    return 'No matching KB documents were found for this query.'
-  }
-
-  const lead = results[0]
-  const leadTitle = lead.metadata?.title?.trim() || lead.metadata?.id || 'the top matching document'
-  const leadSnippet = extractSnippet(lead.content)
-
-  return `Found ${results.length} matching KB document${results.length === 1 ? '' : 's'}; strongest signal comes from ${leadTitle}: ${leadSnippet}`
-}
-
 function extractSnippet(content: string | undefined): string {
   if (!content) return 'No content preview available.'
 
@@ -969,8 +943,8 @@ export function printIntentHelp(mode: CmdMode = 'cli'): string {
     'Intent commands:',
     `  ${cmd('submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--target doc-id] [--include-session-logs] [--output human|json]', mode)}`,
     `  ${cmd('validate "<fact>" [--base <name>] [--domain ops] [--output human|json]', mode)}`,
-    `  ${cmd('query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--output human|json]', mode)}`,
-    `  ${cmd('explain "<change id|fact>" [--base <name>] [--output human|json]', mode)}`,
+    `  ${cmd('query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]', mode)}`,
+    `  ${cmd('explain "<change id|fact>" [--base <name>] [--session] [--output human|json]', mode)}`,
   ].join('\n')
 }
 

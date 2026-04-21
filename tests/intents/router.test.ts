@@ -213,6 +213,37 @@ describe('DefaultIntentRouter', () => {
     expect(decision.selectedOperation).toBe('explain_orchestrator')
   })
 
+  it('Given query_truth with discoveryDepth shallow, then respects explicit shallow', async () => {
+    const executor = createExecutorMock()
+    const router = new DefaultIntentRouter(executor)
+
+    const decision = await router.route({
+      intent: 'query_truth',
+      payload: {
+        query: 'env local commit policy',
+        discoveryDepth: 'shallow',
+      },
+    })
+
+    expect(decision.selectedOperation).toBe('read_documents')
+    expect(decision.operationInput.discoveryDepth).toBe('shallow')
+  })
+
+  it('Given query_truth without discoveryDepth, then defaults to deep discovery like chat', async () => {
+    const executor = createExecutorMock()
+    const router = new DefaultIntentRouter(executor)
+
+    const decision = await router.route({
+      intent: 'query_truth',
+      payload: {
+        query: 'how does hybrid retrieval work in kb',
+      },
+    })
+
+    expect(decision.selectedOperation).toBe('read_documents')
+    expect(decision.operationInput.discoveryDepth).toBe('deep')
+  })
+
   it('Given query_truth with discoveryDepth deep, then routes to read_documents with discovery depth', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)

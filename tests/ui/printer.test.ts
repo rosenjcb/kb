@@ -20,7 +20,7 @@ describe('ui/printer', () => {
     expect(lines).toEqual(['assistant> hello', 'retrieval> hybrid', 'sources> doc-1'])
   })
 
-  it('Given cli mode without tty, metadata uses normalized labels', () => {
+  it('Given cli mode without tty, metadata uses orchestration wire lines', () => {
     const lines: string[] = []
     const printer = createPrinter(
       {
@@ -32,9 +32,9 @@ describe('ui/printer', () => {
     )
 
     printer.metadata('match_ids', 'doc-a, doc-b')
-    printer.thought('Thinking: stage:hit->return')
+    printer.thought('stage:hit->return')
 
-    expect(lines[0]).toContain('Match Ids: doc-a, doc-b')
-    expect(lines[1]).toContain('(Thinking: stage:hit->return)')
+    expect(lines[0]).toBe('match_ids> doc-a, doc-b')
+    expect(lines[1]).toBe('thinking> stage:hit->return')
   })
 })

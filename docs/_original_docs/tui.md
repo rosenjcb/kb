@@ -36,6 +36,7 @@ Examples:
 - `kb init` must support both its command-line path and the TUI `/init` path.
 - A help flag should work from both `kb --help` and `kb init --help`.
 - A normal intent command like `kb query "topic"` is already non-interactive by shape and should not need an extra mode flag.
+- **`--verbose`** / **`--debug`** on **`kb query`** / **`kb chat`** adjust human orchestration only (`--verbose`: `summary>` / `status>` / `confidence>`; `--debug`: full per-doc **`source>`** lines instead of the compact **`sources>`** titles line). They do not apply retroactively—e.g. in the TUI shell you start chat with **`chat --verbose`** or **`chat --debug`** before the session begins.
 
 ## Flag Standardization Guidance
 

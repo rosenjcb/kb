@@ -4,7 +4,7 @@
  * KB Agent Harness CLI
  */
 
-import { runIntentLoop } from '../core/intent-loop'
+import { runQueryTruthRetrieval } from './query-truth-retrieval'
 import {
   ReportWriter,
   RunCollector,
@@ -63,7 +63,6 @@ import {
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
 import { parseInitCommand, runKbInit } from './init-cli'
 import {
-  augmentIntentResultWithWorkspaceFallback,
   enrichReadDocumentsAnswerWithLLM,
   isIntentCommand,
   parseIntentCommand,
@@ -131,7 +130,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  init        Build a KB from project docs',
     '  graph       Inspect or edit the knowledge graph',
     '  docs        Browse KB documents',
-    '  chat        Start an interactive KB chat session',
+    '  chat        Start an interactive KB chat session (--verbose / --debug for human orchestration)',
     '  publish     Publish KB docs',
     '  logs        Browse and compare run reports',
     '  skill       Manage agent skills',
@@ -413,6 +412,8 @@ export async function runMainWithOutput(
     }
 
     const chatTail = args.slice(1)
+    const chatVerbose = chatTail.includes('--verbose')
+    const chatDebug = chatTail.includes('--debug')
     let kbStorageDir: string
     try {
       kbStorageDir = await resolveKbStorageDirFromArgs(chatTail)
@@ -439,6 +440,8 @@ export async function runMainWithOutput(
       mode,
       graphWriter: chatGraphWriter,
       conversationalRetrieval: resolveConversationalChatEnabled(config),
+      verbose: chatVerbose,
+      debug: chatDebug,
     })
     return
   }
@@ -739,12 +742,18 @@ export async function runMainWithOutput(
           ? preRewritePayload.query.trim()
           : ''
       let graphRelationContext: string | undefined
+      /** Chat never reads `query-session.json`; default `kb query` must not either (poisoned rewrites). */
+      const querySessionDir =
+        parsed.useQuerySession === true &&
+        (parsed.envelope.intent === 'query_truth' || parsed.envelope.intent === 'explain_change')
+          ? intentBaseDir
+          : undefined
       printer.startSpinner('running intent rewrite...')
       try {
         parsed = await rewriteIntentInputWithSessionContext(
           parsed,
           llmProvider ?? undefined,
-          intentBaseDir
+          querySessionDir
         )
       } finally {
         printer.stopSpinner()
@@ -778,21 +787,24 @@ export async function runMainWithOutput(
         taskProvider: llmProvider ?? undefined,
       })
       printer.startSpinner('running intent loop...')
-      const { result } = await runIntentLoop(parsed.envelope, toolExecutor, {
-        provider: llmProvider ?? undefined,
-        collector: collector,
+      const aligned = await runQueryTruthRetrieval({
+        parsed,
+        toolExecutor,
+        workspaceDir: process.cwd(),
+        llmProvider: llmProvider ?? undefined,
+        collector,
       }).finally(() => {
         printer.stopSpinner()
       })
 
       if (
         parsed.envelope.intent === 'submit_fact' &&
-        result.status === 'accepted' &&
+        aligned.status === 'accepted' &&
         llmProvider &&
         resolveGraphEnabled(config)
       ) {
         const fact = String(parsed.envelope.payload.fact ?? '').trim()
-        const submittedDocId = (result.data as { submission?: { id?: string } } | undefined)
+        const submittedDocId = (aligned.data as { submission?: { id?: string } } | undefined)
           ?.submission?.id
         if (fact) {
           try {
@@ -838,13 +850,12 @@ export async function runMainWithOutput(
         }
       }
 
-      const aligned = await augmentIntentResultWithWorkspaceFallback(parsed, result, process.cwd())
       printer.startSpinner('drafting final answer...')
       const enriched = await enrichReadDocumentsAnswerWithLLM(
         parsed,
         aligned,
         llmProvider ?? undefined,
-        intentBaseDir,
+        querySessionDir,
         undefined,
         graphRelationContext ? { graphRelationContext } : undefined
       ).finally(() => {
@@ -875,7 +886,10 @@ export async function runMainWithOutput(
         }
       }
 
-      printIntentResult(enriched, parsed.output, printer)
+      printIntentResult(enriched, parsed.output, printer, {
+        verbose: parsed.verbose,
+        debug: parsed.debug,
+      })
       await reporter.append(collector.finish('success'))
       return
     } catch (error) {
