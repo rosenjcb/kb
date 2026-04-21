@@ -26,20 +26,23 @@ export interface GraphEntity {
   name: string
   type: EntityType
   docId?: string
+  /** Optional human-readable notes; manual `kb graph node` edits and future extractors may set this. */
+  description?: string | null
 }
 
+/** Stored on edges; may be any slug-safe label (well-known set below + custom verbs from `kb graph edge`). */
 export interface GraphRelationship {
   fromId: string
   toId: string
-  type: RelationshipType
+  type: string
   docId?: string
   weight?: number
 }
 
 export interface GraphNeighbors {
   entity: GraphEntity
-  outgoing: Array<{ rel: RelationshipType; target: GraphEntity }>
-  incoming: Array<{ rel: RelationshipType; source: GraphEntity }>
+  outgoing: Array<{ rel: string; target: GraphEntity }>
+  incoming: Array<{ rel: string; source: GraphEntity }>
 }
 
 export interface GraphPath {
@@ -127,6 +130,12 @@ export class DuckGraphWriter {
     } catch {
       // Silently skip — recursive CTEs handle all traversal without it
     }
+
+    try {
+      await c.run('ALTER TABLE entities ADD COLUMN IF NOT EXISTS description VARCHAR')
+    } catch {
+      // Best-effort schema upgrade for older graph files
+    }
   }
 
   async upsertEntities(entities: GraphEntity[]): Promise<void> {
@@ -134,30 +143,22 @@ export class DuckGraphWriter {
     const now = new Date().toISOString()
     for (const e of entities) {
       const id = slugify(e.id || e.name)
-      if (e.docId) {
-        await this.conn?.run(
-          `
-          INSERT INTO entities (id, name, type, doc_id, created_at)
-          VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT (id) DO UPDATE SET
-            name = EXCLUDED.name,
-            type = EXCLUDED.type,
-            doc_id = EXCLUDED.doc_id
-        `,
-          [id, e.name, e.type, e.docId, now]
-        )
-      } else {
-        await this.conn?.run(
-          `
-          INSERT INTO entities (id, name, type, created_at)
-          VALUES (?, ?, ?, ?)
-          ON CONFLICT (id) DO UPDATE SET
-            name = EXCLUDED.name,
-            type = EXCLUDED.type
-        `,
-          [id, e.name, e.type, now]
-        )
-      }
+      // DuckDB node-api rejects JS null binds — use empty string + NULLIF for optional columns.
+      const docBinding = (e.docId?.trim() ?? '') || ''
+      const descBinding =
+        e.description === undefined || e.description === null ? '' : String(e.description)
+      await this.conn?.run(
+        `
+        INSERT INTO entities (id, name, type, doc_id, description, created_at)
+        VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?)
+        ON CONFLICT (id) DO UPDATE SET
+          name = EXCLUDED.name,
+          type = EXCLUDED.type,
+          doc_id = COALESCE(NULLIF(EXCLUDED.doc_id, ''), entities.doc_id),
+          description = COALESCE(EXCLUDED.description, entities.description)
+      `,
+        [id, e.name, e.type, docBinding, descBinding, now]
+      )
     }
   }
 
@@ -165,9 +166,10 @@ export class DuckGraphWriter {
     if (!this.ready) await this.open()
     const now = new Date().toISOString()
     for (const r of relationships) {
-      const fromId = slugify(r.fromId)
-      const toId = slugify(r.toId)
-      const id = `${fromId}__${r.type}__${toId}`
+      const fromId = (await this.resolveEntityRef(r.fromId)) ?? slugify(r.fromId)
+      const toId = (await this.resolveEntityRef(r.toId)) ?? slugify(r.toId)
+      const relType = normalizeRelationshipTypeLabel(r.type)
+      const id = `${fromId}__${relType}__${toId}`
       // Ensure both endpoints exist as stub entities before inserting edge
       // Stub endpoints — only insert, never update (ON CONFLICT DO NOTHING)
       await this.conn?.run(
@@ -196,7 +198,7 @@ export class DuckGraphWriter {
             weight = GREATEST(relationships.weight, EXCLUDED.weight),
             doc_id = EXCLUDED.doc_id
         `,
-          [id, fromId, toId, r.type, r.docId, r.weight ?? 1.0, now]
+          [id, fromId, toId, relType, r.docId, r.weight ?? 1.0, now]
         )
       } else {
         await this.conn?.run(
@@ -206,7 +208,7 @@ export class DuckGraphWriter {
           ON CONFLICT (id) DO UPDATE SET
             weight = GREATEST(relationships.weight, EXCLUDED.weight)
         `,
-          [id, fromId, toId, r.type, r.weight ?? 1.0, now]
+          [id, fromId, toId, relType, r.weight ?? 1.0, now]
         )
       }
     }
@@ -223,6 +225,83 @@ export class DuckGraphWriter {
     )
     const rows = result.getRows()
     return Number(rows[0]?.[0] ?? 0)
+  }
+
+  /**
+   * Resolve a human reference (entity id slug, or display name) to canonical entity id.
+   */
+  async resolveEntityRef(ref: string): Promise<string | null> {
+    if (!this.ready) await this.open()
+    const c = this.requireConn()
+    const trimmed = ref.trim()
+    if (!trimmed) return null
+
+    const slug = slugify(trimmed)
+    if (slug) {
+      const byId = await c.runAndReadAll('SELECT id FROM entities WHERE id = ?', [slug])
+      const idRow = byId.getRows()[0]
+      if (idRow) return String(idRow[0])
+    }
+
+    const byName = await c.runAndReadAll(
+      'SELECT id FROM entities WHERE lower(name) = lower(?) LIMIT 1',
+      [trimmed]
+    )
+    const nameRow = byName.getRows()[0]
+    return nameRow ? String(nameRow[0]) : null
+  }
+
+  /**
+   * Patch fields on an entity resolved by id or display name. Returns false if the entity does not exist.
+   */
+  async updateEntityByRef(
+    entityRef: string,
+    patch: { name?: string; description?: string | null; type?: EntityType }
+  ): Promise<boolean> {
+    if (!this.ready) await this.open()
+    const id = await this.resolveEntityRef(entityRef)
+    if (!id) return false
+
+    const sets: string[] = []
+    const values: unknown[] = []
+    if (patch.name !== undefined) {
+      sets.push('name = ?')
+      values.push(patch.name)
+    }
+    if (patch.description !== undefined) {
+      sets.push(`description = NULLIF(?, '')`)
+      values.push(patch.description === null ? '' : String(patch.description))
+    }
+    if (patch.type !== undefined) {
+      sets.push('type = ?')
+      values.push(patch.type)
+    }
+    if (sets.length === 0) return true
+
+    values.push(id)
+    const c = this.requireConn()
+    await c.run(`UPDATE entities SET ${sets.join(', ')} WHERE id = ?`, values as string[])
+    return true
+  }
+
+  /** Soft-delete a single directed edge (same semantics as invalidate-driven doc-level deletes). */
+  async softDeleteEdge(fromId: string, toId: string, relType: string): Promise<number> {
+    if (!this.ready) await this.open()
+    const c = this.requireConn()
+    const from = (await this.resolveEntityRef(fromId)) ?? slugify(fromId)
+    const to = (await this.resolveEntityRef(toId)) ?? slugify(toId)
+    const type = normalizeRelationshipTypeLabel(relType)
+    const before = await c.runAndReadAll(
+      'SELECT COUNT(*) FROM relationships WHERE from_id = ? AND to_id = ? AND type = ? AND weight > 0',
+      [from, to, type]
+    )
+    const n = Number(before.getRows()[0]?.[0] ?? 0)
+    if (n === 0) return 0
+    await c.run(
+      'UPDATE relationships SET weight = 0 WHERE from_id = ? AND to_id = ? AND type = ? AND weight > 0',
+      [from, to, type]
+    )
+    return n
   }
 
   async getSummary(): Promise<GraphSummary> {
@@ -260,10 +339,10 @@ export class DuckGraphWriter {
   async getNeighbors(entityId: string): Promise<GraphNeighbors | null> {
     if (!this.ready) await this.open()
     const c = this.requireConn()
-    const id = slugify(entityId)
+    const id = (await this.resolveEntityRef(entityId)) ?? slugify(entityId)
 
     const entityRows = await c.runAndReadAll(
-      'SELECT id, name, type, doc_id FROM entities WHERE id = ?',
+      'SELECT id, name, type, doc_id, description FROM entities WHERE id = ?',
       [id]
     )
     const eRow = entityRows.getRows()[0]
@@ -274,6 +353,7 @@ export class DuckGraphWriter {
       name: String(eRow[1]),
       type: eRow[2] as EntityType,
       docId: eRow[3] ? String(eRow[3]) : undefined,
+      description: eRow[4] != null ? String(eRow[4]) : undefined,
     }
 
     const outRows = await c.runAndReadAll(
@@ -299,11 +379,11 @@ export class DuckGraphWriter {
     return {
       entity,
       outgoing: outRows.getRows().map(r => ({
-        rel: String(r[0]) as RelationshipType,
+        rel: String(r[0]),
         target: { id: String(r[1]), name: String(r[2]), type: r[3] as EntityType },
       })),
       incoming: inRows.getRows().map(r => ({
-        rel: String(r[0]) as RelationshipType,
+        rel: String(r[0]),
         source: { id: String(r[1]), name: String(r[2]), type: r[3] as EntityType },
       })),
     }
@@ -312,8 +392,8 @@ export class DuckGraphWriter {
   async findPath(fromId: string, toId: string, maxDepth = 6): Promise<GraphPath | null> {
     if (!this.ready) await this.open()
     const c = this.requireConn()
-    const from = slugify(fromId)
-    const to = slugify(toId)
+    const from = (await this.resolveEntityRef(fromId)) ?? slugify(fromId)
+    const to = (await this.resolveEntityRef(toId)) ?? slugify(toId)
 
     const result = await c.runAndReadAll(
       `
@@ -474,7 +554,7 @@ export class DuckGraphWriter {
     if (!this.ready) await this.open()
     const c = this.requireConn()
 
-    const eRows = await c.runAndReadAll('SELECT id, name, type, doc_id FROM entities')
+    const eRows = await c.runAndReadAll('SELECT id, name, type, doc_id, description FROM entities')
     const rRows = await c.runAndReadAll(
       'SELECT from_id, to_id, type, doc_id, weight FROM relationships WHERE weight > 0'
     )
@@ -485,11 +565,12 @@ export class DuckGraphWriter {
         name: String(r[1]),
         type: r[2] as EntityType,
         docId: r[3] ? String(r[3]) : undefined,
+        description: r[4] != null ? String(r[4]) : undefined,
       })),
       relationships: rRows.getRows().map(r => ({
         fromId: String(r[0]),
         toId: String(r[1]),
-        type: r[2] as RelationshipType,
+        type: String(r[2]),
         docId: r[3] ? String(r[3]) : undefined,
         weight: Number(r[4]),
       })),
@@ -533,4 +614,19 @@ function slugify(text: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 100)
+}
+
+/** Canonical entity id slug (same rules as stored `entities.id`). */
+export function kbGraphEntityIdKey(text: string): string {
+  return slugify(text)
+}
+
+/** Edge labels in the DB use snake_case (extractors + `kb graph edge`). */
+function normalizeRelationshipTypeLabel(input: string): string {
+  const t = input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return (t.length > 0 ? t : 'related_to').slice(0, 64)
 }

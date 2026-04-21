@@ -338,3 +338,41 @@ async function movePath(source: string, destination: string): Promise<void> {
     await rm(source, { recursive: true, force: true })
   }
 }
+
+/** Read `--flag <value>` when present; returns undefined if the flag or value is missing (does not throw). */
+export function readOptionalCliValue(args: string[], flag: string): string | undefined {
+  const i = args.indexOf(flag)
+  if (i < 0) return undefined
+  const v = args[i + 1]
+  if (!v || v.startsWith('--')) return undefined
+  return v
+}
+
+/** Remove `--flag <value>` pairs from argv (skips a single following token when it is not another flag). */
+export function stripCliFlagWithValue(args: string[], flag: string): string[] {
+  const out: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    const tok = args[i]
+    if (tok === undefined) continue
+    if (tok === flag) {
+      const v = args[i + 1]
+      if (v && !v.startsWith('--')) i++
+      continue
+    }
+    out.push(tok)
+  }
+  return out
+}
+
+/**
+ * Resolve the KB session directory from optional `--base <name>` in argv,
+ * otherwise the active / effective base (same rules as intent commands).
+ */
+export async function resolveKbStorageDirFromArgs(
+  args: string[],
+  cwd: string = process.cwd()
+): Promise<string> {
+  const base = readOptionalCliValue(args, '--base')
+  if (base) return ensureOperationalBaseDir(base, cwd)
+  return (await resolveEffectiveBaseDir(cwd)).baseDir
+}

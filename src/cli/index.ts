@@ -27,6 +27,8 @@ import {
   printBaseDeleteHelp,
   readBaseConfig,
   resolveEffectiveBaseDir,
+  resolveKbStorageDirFromArgs,
+  stripCliFlagWithValue,
   writeDefaultBase,
   writeSessionBase,
 } from './base-selection'
@@ -126,7 +128,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  base        Manage KB bases (use, delete)',
     '  config      Inspect or update persistent config',
     '  init        Build a KB from project docs',
-    '  graph       Inspect the knowledge graph',
+    '  graph       Inspect or edit the knowledge graph',
     '  docs        Browse KB documents',
     '  chat        Start an interactive KB chat session',
     '  publish     Publish KB docs',
@@ -207,15 +209,26 @@ export async function runMainWithOutput(
 
   // kb invalidate
   if (firstArg === 'invalidate') {
-    const oldFact = args[1]
-    const replacementFact = args[2] && !args[2].startsWith('--') ? args[2] : undefined
-    const preview = args.includes('--preview') || !args.includes('--apply')
-    const dryRun = args.includes('--dry-run')
-    const debug = args.includes('--debug')
+    const invTail = args.slice(1)
+    let kbStorageDir: string
+    try {
+      kbStorageDir = await resolveKbStorageDirFromArgs(invTail)
+    } catch {
+      out.error(formatPrerequisiteError(CLI_ERROR_NO_KB_BASE))
+      return
+    }
+
+    const stripped = stripCliFlagWithValue(invTail, '--base')
+    const preview = stripped.includes('--preview') || !stripped.includes('--apply')
+    const dryRun = stripped.includes('--dry-run')
+    const debug = stripped.includes('--debug')
+    const positionals = stripped.filter(t => !t.startsWith('--'))
+    const oldFact = positionals[0]
+    const replacementFact = positionals[1]
 
     if (!oldFact) {
       out.error(
-        `❌ Usage: ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply|--dry-run] [--debug]', mode)}`
+        `❌ Usage: ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--preview|--apply|--dry-run] [--debug]', mode)}`
       )
       return
     }
@@ -224,7 +237,6 @@ export async function runMainWithOutput(
     const collector = new RunCollector('invalidate', { debug })
     const endInvalidate = collector.startStage('invalidate', 'none', 'none')
     try {
-      const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
       const result = await invalidateFactTool(
         { oldFact, replacementFact, preview, dryRun, includeSessionLogs: true },
         kbStorageDir
@@ -400,12 +412,10 @@ export async function runMainWithOutput(
       return
     }
 
-    const chatBaseFlag = args[args.indexOf('--base') + 1] ?? undefined
+    const chatTail = args.slice(1)
     let kbStorageDir: string
     try {
-      kbStorageDir = chatBaseFlag
-        ? await ensureOperationalBaseDir(chatBaseFlag)
-        : (await resolveEffectiveBaseDir()).baseDir
+      kbStorageDir = await resolveKbStorageDirFromArgs(chatTail)
     } catch {
       out.error(formatPrerequisiteError(CLI_ERROR_NO_KB_BASE))
       return
@@ -650,9 +660,16 @@ export async function runMainWithOutput(
 
   if (firstArg === 'graph') {
     try {
-      const kbStorageDir = (await resolveEffectiveBaseDir()).baseDir
-      const opts = parseGraphCommand(args.slice(1), mode)
-      await runGraphCommand(kbStorageDir, opts, out)
+      const graphTail = args.slice(1)
+      let kbStorageDir: string
+      try {
+        kbStorageDir = await resolveKbStorageDirFromArgs(graphTail)
+      } catch {
+        out.error(formatPrerequisiteError(CLI_ERROR_NO_KB_BASE))
+        return
+      }
+      const opts = parseGraphCommand(stripCliFlagWithValue(graphTail, '--base'), mode)
+      await runGraphCommand(kbStorageDir, opts, out, undefined, mode)
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)

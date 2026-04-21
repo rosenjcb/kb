@@ -95,3 +95,28 @@ describe('DuckGraphWriter.dbPathForBase', () => {
     expect(DuckGraphWriter.dbPathForBase('/some/base')).toBe('/some/base/.kb-graph.duckdb')
   })
 })
+
+describe('DuckGraphWriter entity resolution and manual edges', () => {
+  it('Given entity stored by id, then resolveEntityRef finds it by display name', async () => {
+    await writer.upsertEntities([{ id: 'auth-svc', name: 'Auth service', type: 'system' }])
+    await expect(writer.resolveEntityRef('Auth service')).resolves.toBe('auth-svc')
+    await expect(writer.resolveEntityRef('auth-svc')).resolves.toBe('auth-svc')
+  })
+
+  it('Given a live edge, then softDeleteEdge retires it from the active count', async () => {
+    await writer.upsertEntities([{ id: 'x', name: 'x', type: 'concept' }])
+    await writer.upsertEntities([{ id: 'y', name: 'y', type: 'concept' }])
+    await writer.upsertRelationships([{ fromId: 'x', toId: 'y', type: 'uses' }])
+    expect(await writer.softDeleteEdge('x', 'y', 'uses')).toBe(1)
+    const summary = await writer.getSummary()
+    expect(summary.totalRelationships).toBe(0)
+  })
+
+  it('Given a free-text verb, then relationship type is normalized to snake_case', async () => {
+    await writer.upsertEntities([{ id: 'a', name: 'a', type: 'concept' }])
+    await writer.upsertEntities([{ id: 'b', name: 'b', type: 'concept' }])
+    await writer.upsertRelationships([{ fromId: 'a', toId: 'b', type: 'Powers Index' }])
+    const exported = await writer.exportJson()
+    expect(exported.relationships[0]?.type).toBe('powers_index')
+  })
+})

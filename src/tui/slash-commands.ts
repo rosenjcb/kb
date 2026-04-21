@@ -14,7 +14,7 @@ const SHELL_COMMANDS: SlashCommand[] = [
   { command: '/explain', description: 'explain a fact or change id' },
   { command: '/chat', description: 'start interactive chat mode' },
   { command: '/docs', description: 'list or view knowledge base documents' },
-  { command: '/graph', description: 'inspect the graph store' },
+  { command: '/graph', description: 'inspect or edit the knowledge graph (see kb graph --help)' },
   { command: '/publish', description: 'publish docs to the external sink' },
   { command: '/skill', description: 'manage agent skills' },
   { command: '/config', description: 'inspect or update config values' },
