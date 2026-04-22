@@ -152,3 +152,29 @@ describe('DuckGraphWriter entity resolution and manual edges', () => {
     await expect(writer.getDirectedEdgeLabelsBetween('n2', 'n1')).resolves.toEqual([])
   })
 })
+
+describe('DuckGraphWriter concurrent writes', () => {
+  it('Given parallel writers for the same db, then writes are serialized and both succeed', async () => {
+    const writerA = new DuckGraphWriter(dbPath)
+    const writerB = new DuckGraphWriter(dbPath)
+
+    try {
+      await Promise.all([
+        writerA.upsertEntities([{ id: 'parallel-a', name: 'Parallel A', type: 'concept' }]),
+        writerB.upsertEntities([{ id: 'parallel-b', name: 'Parallel B', type: 'concept' }]),
+      ])
+
+      const reader = new DuckGraphWriter(dbPath)
+      try {
+        const exported = await reader.exportJson()
+        expect(exported.entities.some(entity => entity.id === 'parallel-a')).toBe(true)
+        expect(exported.entities.some(entity => entity.id === 'parallel-b')).toBe(true)
+      } finally {
+        await reader.close()
+      }
+    } finally {
+      await writerA.close().catch(() => {})
+      await writerB.close().catch(() => {})
+    }
+  })
+})

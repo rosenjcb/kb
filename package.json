@@ -8,23 +8,17 @@
     "node": ">=20.0.0"
   },
   "bin": {
-    "kb": "dist/bin/kb.js"
+    "kb": "dist/bin/kb"
   },
   "scripts": {
     "dev": "tsx src/cli/index.ts",
     "dev:local": "node --env-file=.env.local --import tsx src/cli/index.ts",
-    "start": "tsx src/cli/index.ts",
-    "start:local": "node --env-file=.env.local --import tsx src/cli/index.ts",
-    "build": "tsc && npm run build:cli",
-    "build:cli": "node scripts/build-cli.mjs",
+    "build": "tsc && node scripts/build-cli.mjs",
+    "refresh:global": "pnpm run build && npm link",
     "eval:kb-proper": "node scripts/eval-kb-proper.mjs",
     "eval:orchestrator-scenarios": "node scripts/eval-orchestrator-scenarios.mjs",
     "eval:snap": "tsx scripts/eval-snapshot.ts",
     "eval:artifact": "tsx scripts/eval-task-artifact.ts",
-    "install:global": "npm run build && npm install -g .",
-    "which:kb": "command -v kb || where kb",
-    "link:global": "npm run build && npm link",
-    "unlink:global": "npm unlink -g kb",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:functional": "bash tests/functional-test.sh",

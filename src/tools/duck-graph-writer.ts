@@ -10,6 +10,7 @@
  */
 
 import path from 'node:path'
+import { mkdir, rmdir } from 'node:fs/promises'
 import { type DuckDBConnection, DuckDBInstance } from '@duckdb/node-api'
 
 export type EntityType = 'concept' | 'system' | 'tool' | 'decision' | 'person'
@@ -62,12 +63,26 @@ export interface GraphDocumentAffinity {
 }
 
 export class DuckGraphWriter {
+  private static readonly writeQueueByPath = new Map<string, Promise<void>>()
+
   private conn: DuckDBConnection | null = null
   private ready = false
+  private transactionLockRelease: (() => Promise<void>) | null = null
 
   constructor(private readonly dbPath: string) {}
 
   async open(): Promise<void> {
+    if (this.ready) return
+    if (!this.transactionLockRelease) {
+      await this.withWriteLease(async () => {
+        if (!this.ready) await this.openUnlocked()
+      })
+      return
+    }
+    await this.openUnlocked()
+  }
+
+  private async openUnlocked(): Promise<void> {
     if (this.ready) return
     const instance = await DuckDBInstance.create(this.dbPath)
     const conn = await instance.connect()
@@ -125,92 +140,95 @@ export class DuckGraphWriter {
   }
 
   async upsertEntities(entities: GraphEntity[]): Promise<void> {
-    if (!this.ready) await this.open()
-    const now = new Date().toISOString()
-    for (const e of entities) {
-      const id = slugify(e.id || e.name)
-      // DuckDB node-api rejects JS null binds — use empty string + NULLIF for optional columns.
-      const docBinding = (e.docId?.trim() ?? '') || ''
-      const descBinding =
-        e.description === undefined || e.description === null ? '' : String(e.description)
-      await this.conn?.run(
-        `
-        INSERT INTO entities (id, name, type, doc_id, description, created_at)
-        VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?)
-        ON CONFLICT (id) DO UPDATE SET
-          name = EXCLUDED.name,
-          type = EXCLUDED.type,
-          doc_id = COALESCE(NULLIF(EXCLUDED.doc_id, ''), entities.doc_id),
-          description = COALESCE(EXCLUDED.description, entities.description)
-      `,
-        [id, e.name, e.type, docBinding, descBinding, now]
-      )
-    }
+    await this.runWrite(async () => {
+      const now = new Date().toISOString()
+      for (const e of entities) {
+        const id = slugify(e.id || e.name)
+        // DuckDB node-api rejects JS null binds — use empty string + NULLIF for optional columns.
+        const docBinding = (e.docId?.trim() ?? '') || ''
+        const descBinding =
+          e.description === undefined || e.description === null ? '' : String(e.description)
+        await this.conn?.run(
+          `
+          INSERT INTO entities (id, name, type, doc_id, description, created_at)
+          VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?)
+          ON CONFLICT (id) DO UPDATE SET
+            name = EXCLUDED.name,
+            type = EXCLUDED.type,
+            doc_id = COALESCE(NULLIF(EXCLUDED.doc_id, ''), entities.doc_id),
+            description = COALESCE(EXCLUDED.description, entities.description)
+        `,
+          [id, e.name, e.type, docBinding, descBinding, now]
+        )
+      }
+    })
   }
 
   async upsertRelationships(relationships: GraphRelationship[]): Promise<void> {
-    if (!this.ready) await this.open()
-    const now = new Date().toISOString()
-    for (const r of relationships) {
-      const fromId = (await this.resolveEntityRef(r.fromId)) ?? slugify(r.fromId)
-      const toId = (await this.resolveEntityRef(r.toId)) ?? slugify(r.toId)
-      const relType = normalizeRelationshipTypeLabel(r.type)
-      const id = `${fromId}__${relType}__${toId}`
-      // Ensure both endpoints exist as stub entities before inserting edge
-      // Stub endpoints — only insert, never update (ON CONFLICT DO NOTHING)
-      await this.conn?.run(
-        `
-        INSERT INTO entities (id, name, type, created_at)
-        VALUES (?, ?, 'concept', ?)
-        ON CONFLICT (id) DO NOTHING
-      `,
-        [fromId, fromId, now]
-      )
-      await this.conn?.run(
-        `
-        INSERT INTO entities (id, name, type, created_at)
-        VALUES (?, ?, 'concept', ?)
-        ON CONFLICT (id) DO NOTHING
-      `,
-        [toId, toId, now]
-      )
-      // Edge upsert — avoid null parameters
-      if (r.docId) {
+    await this.runWrite(async () => {
+      const now = new Date().toISOString()
+      for (const r of relationships) {
+        const fromId = (await this.resolveEntityRef(r.fromId)) ?? slugify(r.fromId)
+        const toId = (await this.resolveEntityRef(r.toId)) ?? slugify(r.toId)
+        const relType = normalizeRelationshipTypeLabel(r.type)
+        const id = `${fromId}__${relType}__${toId}`
+        // Ensure both endpoints exist as stub entities before inserting edge
+        // Stub endpoints — only insert, never update (ON CONFLICT DO NOTHING)
         await this.conn?.run(
           `
-          INSERT INTO relationships (id, from_id, to_id, type, doc_id, weight, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT (id) DO UPDATE SET
-            weight = GREATEST(relationships.weight, EXCLUDED.weight),
-            doc_id = EXCLUDED.doc_id
+          INSERT INTO entities (id, name, type, created_at)
+          VALUES (?, ?, 'concept', ?)
+          ON CONFLICT (id) DO NOTHING
         `,
-          [id, fromId, toId, relType, r.docId, r.weight ?? 1.0, now]
+          [fromId, fromId, now]
         )
-      } else {
         await this.conn?.run(
           `
-          INSERT INTO relationships (id, from_id, to_id, type, weight, created_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-          ON CONFLICT (id) DO UPDATE SET
-            weight = GREATEST(relationships.weight, EXCLUDED.weight)
+          INSERT INTO entities (id, name, type, created_at)
+          VALUES (?, ?, 'concept', ?)
+          ON CONFLICT (id) DO NOTHING
         `,
-          [id, fromId, toId, relType, r.weight ?? 1.0, now]
+          [toId, toId, now]
         )
+        // Edge upsert — avoid null parameters
+        if (r.docId) {
+          await this.conn?.run(
+            `
+            INSERT INTO relationships (id, from_id, to_id, type, doc_id, weight, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (id) DO UPDATE SET
+              weight = GREATEST(relationships.weight, EXCLUDED.weight),
+              doc_id = EXCLUDED.doc_id
+          `,
+            [id, fromId, toId, relType, r.docId, r.weight ?? 1.0, now]
+          )
+        } else {
+          await this.conn?.run(
+            `
+            INSERT INTO relationships (id, from_id, to_id, type, weight, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (id) DO UPDATE SET
+              weight = GREATEST(relationships.weight, EXCLUDED.weight)
+          `,
+            [id, fromId, toId, relType, r.weight ?? 1.0, now]
+          )
+        }
       }
-    }
+    })
   }
 
   /** Soft-delete all edges originating from a document (e.g. on kb invalidate). */
   async softDeleteByDocId(docId: string): Promise<number> {
-    if (!this.ready) await this.open()
-    const c = this.requireConn()
-    await c.run('UPDATE relationships SET weight = 0 WHERE doc_id = ?', [docId])
-    const result = await c.runAndReadAll(
-      'SELECT COUNT(*) AS n FROM relationships WHERE doc_id = ? AND weight = 0',
-      [docId]
-    )
-    const rows = result.getRows()
-    return Number(rows[0]?.[0] ?? 0)
+    return this.runWrite(async () => {
+      const c = this.requireConn()
+      await c.run('UPDATE relationships SET weight = 0 WHERE doc_id = ?', [docId])
+      const result = await c.runAndReadAll(
+        'SELECT COUNT(*) AS n FROM relationships WHERE doc_id = ? AND weight = 0',
+        [docId]
+      )
+      const rows = result.getRows()
+      return Number(rows[0]?.[0] ?? 0)
+    })
   }
 
   /**
@@ -272,22 +290,23 @@ export class DuckGraphWriter {
 
   /** Soft-delete a single directed edge (same semantics as invalidate-driven doc-level deletes). */
   async softDeleteEdge(fromId: string, toId: string, relType: string): Promise<number> {
-    if (!this.ready) await this.open()
-    const c = this.requireConn()
-    const from = (await this.resolveEntityRef(fromId)) ?? slugify(fromId)
-    const to = (await this.resolveEntityRef(toId)) ?? slugify(toId)
-    const type = normalizeRelationshipTypeLabel(relType)
-    const before = await c.runAndReadAll(
-      'SELECT COUNT(*) FROM relationships WHERE from_id = ? AND to_id = ? AND type = ? AND weight > 0',
-      [from, to, type]
-    )
-    const n = Number(before.getRows()[0]?.[0] ?? 0)
-    if (n === 0) return 0
-    await c.run(
-      'UPDATE relationships SET weight = 0 WHERE from_id = ? AND to_id = ? AND type = ? AND weight > 0',
-      [from, to, type]
-    )
-    return n
+    return this.runWrite(async () => {
+      const c = this.requireConn()
+      const from = (await this.resolveEntityRef(fromId)) ?? slugify(fromId)
+      const to = (await this.resolveEntityRef(toId)) ?? slugify(toId)
+      const type = normalizeRelationshipTypeLabel(relType)
+      const before = await c.runAndReadAll(
+        'SELECT COUNT(*) FROM relationships WHERE from_id = ? AND to_id = ? AND type = ? AND weight > 0',
+        [from, to, type]
+      )
+      const n = Number(before.getRows()[0]?.[0] ?? 0)
+      if (n === 0) return 0
+      await c.run(
+        'UPDATE relationships SET weight = 0 WHERE from_id = ? AND to_id = ? AND type = ? AND weight > 0',
+        [from, to, type]
+      )
+      return n
+    })
   }
 
   async getSummary(): Promise<GraphSummary> {
@@ -637,19 +656,39 @@ export class DuckGraphWriter {
   }
 
   async beginTransaction(): Promise<void> {
+    if (this.transactionLockRelease) {
+      throw new Error('DuckGraphWriter transaction already in progress')
+    }
+    this.transactionLockRelease = await this.acquireWriteLease()
+    if (!this.ready) await this.openUnlocked()
     await this.requireConn().run('BEGIN TRANSACTION')
   }
 
   async commit(): Promise<void> {
-    await this.requireConn().run('COMMIT')
+    try {
+      await this.requireConn().run('COMMIT')
+    } finally {
+      await this.releaseTransactionLock()
+    }
   }
 
   async rollback(): Promise<void> {
-    await this.requireConn().run('ROLLBACK')
+    try {
+      await this.requireConn().run('ROLLBACK')
+    } finally {
+      await this.releaseTransactionLock()
+    }
   }
 
   async close(): Promise<void> {
     if (this.conn) {
+      if (this.transactionLockRelease) {
+        try {
+          await this.conn.run('ROLLBACK')
+        } catch {
+          // Best-effort cleanup for abandoned transactions.
+        }
+      }
       try {
         await this.conn.run('CHECKPOINT')
       } catch {
@@ -663,11 +702,108 @@ export class DuckGraphWriter {
     }
     this.conn = null
     this.ready = false
+    await this.releaseTransactionLock()
   }
 
   static dbPathForBase(baseDir: string): string {
     return path.join(baseDir, '.kb-graph.duckdb')
   }
+
+  private async runWrite<T>(action: () => Promise<T>): Promise<T> {
+    if (this.transactionLockRelease) {
+      if (!this.ready) await this.openUnlocked()
+      return action()
+    }
+    return this.withWriteLease(async () => {
+      if (!this.ready) await this.openUnlocked()
+      return action()
+    })
+  }
+
+  private async withWriteLease<T>(action: () => Promise<T>): Promise<T> {
+    const release = await this.acquireWriteLease()
+    try {
+      return await action()
+    } finally {
+      await release()
+    }
+  }
+
+  private async acquireWriteLease(): Promise<() => Promise<void>> {
+    const queueKey = this.dbPath
+    const previous = DuckGraphWriter.writeQueueByPath.get(queueKey) ?? Promise.resolve()
+    let releaseQueue!: () => void
+    const current = new Promise<void>(resolve => {
+      releaseQueue = resolve
+    })
+    DuckGraphWriter.writeQueueByPath.set(queueKey, previous.then(() => current, () => current))
+
+    await previous.catch(() => {})
+    const releaseFileLock = await acquireFilesystemWriteLock(this.dbPath)
+
+    return async () => {
+      try {
+        await releaseFileLock()
+      } finally {
+        releaseQueue()
+        if (DuckGraphWriter.writeQueueByPath.get(queueKey) === current) {
+          DuckGraphWriter.writeQueueByPath.delete(queueKey)
+        }
+      }
+    }
+  }
+
+  private async releaseTransactionLock(): Promise<void> {
+    const release = this.transactionLockRelease
+    this.transactionLockRelease = null
+    if (release) {
+      await release()
+    }
+  }
+}
+
+const WRITE_LOCK_TIMEOUT_MS = 10_000
+const WRITE_LOCK_RETRY_DELAYS_MS = [15, 30, 60, 120, 250, 500]
+
+async function acquireFilesystemWriteLock(dbPath: string): Promise<() => Promise<void>> {
+  const lockPath = `${dbPath}.lock`
+  const startedAt = Date.now()
+  let attempt = 0
+
+  while (true) {
+    try {
+      await mkdir(lockPath)
+      return async () => {
+        await rmdir(lockPath).catch(() => {})
+      }
+    } catch (error) {
+      if (!isAlreadyExistsError(error)) {
+        throw error
+      }
+      if (Date.now() - startedAt >= WRITE_LOCK_TIMEOUT_MS) {
+        throw new Error(
+          `Timed out waiting for DuckDB graph writer lock at ${lockPath}. Another graph write may still be running.`
+        )
+      }
+      const delayMs =
+        WRITE_LOCK_RETRY_DELAYS_MS[Math.min(attempt, WRITE_LOCK_RETRY_DELAYS_MS.length - 1)] ?? 500
+      attempt += 1
+      await sleep(delayMs)
+    }
+  }
+}
+
+function isAlreadyExistsError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    typeof (error as { code?: unknown }).code === 'string' &&
+    (error as { code: string }).code === 'EEXIST'
+  )
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, ms))
 }
 
 function slugify(text: string): string {

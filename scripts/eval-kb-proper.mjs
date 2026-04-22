@@ -4,7 +4,7 @@
  * canonical kb query x8, metrics + artifact under evaluation/runs/.
  *
  * Usage (repo root):
- *   npm run build:cli
+ *   pnpm run build
  *   npm run eval:kb-proper -- --base ci-eval-20260418-my-run [--label my-run] [--hypothesis "..."] [--workdir /tmp/kb-eval-xyz]
  *
  * --scores-file optional JSON: [ { "correctness", "usefulness", "specificity", "evidence_handling", "notes" }, ... x8 ]
@@ -407,7 +407,7 @@ async function main() {
 
   const kbBin = path.join(REPO, 'dist/bin/kb.js')
   if (!fs.existsSync(kbBin)) {
-    console.error('Missing dist/bin/kb.js — run: npm run build:cli')
+    console.error('Missing dist/bin/kb.js — run: pnpm run build')
     process.exit(1)
   }
 
@@ -571,7 +571,7 @@ async function main() {
       base,
       mode: 'non_interactive_cli_init',
       commands: [
-        'npm run build:cli',
+        'pnpm run build',
         `node dist/bin/kb.js init --base ${base} --non-interactive --debug`,
         `node dist/bin/kb.js default ${base}`,
         `node dist/bin/kb.js docs list --base ${base} --output json`,

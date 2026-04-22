@@ -23,7 +23,7 @@ PASSED=0
 FAILED=0
 
 cd /Users/rosenjcb/kb
-npm run build:cli >/dev/null
+pnpm run build >/dev/null
 
 cleanup() {
   echo "\n🧹 Cleaning up test session: $TEST_SESSION"

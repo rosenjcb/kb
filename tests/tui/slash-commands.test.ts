@@ -76,6 +76,7 @@ describe('slash command helpers', () => {
   it('includes /init in shell command list', () => {
     const commands = getSlashCommands('shell')
     expect(commands.some(c => c.command === '/init')).toBe(true)
+    expect(commands.find(c => c.command === '/init')?.description).toContain('rescan')
   })
 
   it('does not include /init in chat command list', () => {
@@ -91,6 +92,11 @@ describe('slash command helpers', () => {
   it('includes /skill in shell command list', () => {
     const commands = getSlashCommands('shell')
     expect(commands.some(c => c.command === '/skill')).toBe(true)
+  })
+
+  it('includes /sync in shell command list', () => {
+    const commands = getSlashCommands('shell')
+    expect(commands.some(c => c.command === '/sync')).toBe(true)
   })
 
   it('suggests /skill when typing /sk in shell mode', () => {
