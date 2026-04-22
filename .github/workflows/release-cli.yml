@@ -1,0 +1,87 @@
+name: Release CLI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build And Publish CLI Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify
+        run: |
+          pnpm run type-check
+          pnpm run build
+
+      - name: Pack npm artifact
+        run: npm pack
+
+      - name: Rename release package
+        run: |
+          PACKAGE="$(ls kb-*.tgz | head -n 1)"
+          mv "$PACKAGE" kb-cli-node20.tgz
+
+      - name: Compute release metadata
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+            RELEASE_NAME="KB CLI ${TAG_NAME}"
+            PRERELEASE="false"
+          else
+            SHORT_SHA="${GITHUB_SHA::7}"
+            TAG_NAME="main-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+            RELEASE_NAME="KB CLI main build ${SHORT_SHA}"
+            PRERELEASE="true"
+          fi
+
+          {
+            echo "tag_name=${TAG_NAME}"
+            echo "release_name=${RELEASE_NAME}"
+            echo "prerelease=${PRERELEASE}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kb-cli-node20
+          path: kb-cli-node20.tgz
+
+      - name: Publish GitHub release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: ${{ steps.meta.outputs.release_name }}
+          files: kb-cli-node20.tgz
+          generate_release_notes: true
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          target_commitish: ${{ github.sha }}
+          body: |
+            CI-built KB CLI package for Node 20+.
+
+            Install globally with:
+            `npm install -g ./kb-cli-node20.tgz`

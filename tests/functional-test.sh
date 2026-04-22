@@ -19,7 +19,7 @@ trap cleanup EXIT
 
 cd "$ROOT_DIR"
 
-npm run build:cli >/dev/null
+pnpm run build >/dev/null
 
 KB_RUN=(node dist/bin/kb.js)
 

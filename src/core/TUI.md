@@ -25,7 +25,9 @@ Do not treat the TUI path as extra polish. It is part of the product surface.
 Examples:
 
 - `kb init` must support both its command-line path and the TUI `/init` path.
+- `kb init --rescan` must support both its command-line path and the TUI `/init --rescan` path.
 - `kb base use` / `kb base delete` must work as both `kb base …` (CLI) and `/base use …` / `/base delete …` (TUI).
+- `kb sync` must work as both `kb sync` (CLI) and `/sync` (TUI) when repo-maintenance commands are exposed.
 - A help flag should work from both `kb --help` and `kb init --help`.
 - A normal intent command like `kb query "topic"` is already non-interactive by shape and should not need an extra mode flag.
 - **`--verbose`** on **`kb query`** / **`kb chat`** adds human rows **`summary>`** / **`status>`** / **`confidence>`**. **`--debug`** switches the default **`sources>`** (titles-only) footer to one detailed **`source>`** line per hit. Use these on that invocation (TUI shell: **`chat --verbose`**, **`chat --debug`**) before a chat session starts—there is no mid-session toggle.

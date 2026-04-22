@@ -125,3 +125,34 @@ describe('kb use (backward-compat alias)', () => {
     expect(lines.join('\n')).toContain('Using base: aliasbase')
   })
 })
+
+describe('kb init help', () => {
+  it('Given kb init --help, then prints rescan usage and examples', async () => {
+    const { out, lines } = makeOut()
+    await runMainWithOutput(['init', '--help'], out, {} as never)
+
+    const text = lines.join('\n')
+    expect(text).toContain('kb init command')
+    expect(text).toContain('--rescan')
+    expect(text).toContain('kb init --base dogfood --rescan --apply')
+  })
+
+  it('Given kb --help, then prints init rescan examples', async () => {
+    const { out, lines } = makeOut()
+    await runMainWithOutput(['--help'], out, {} as never)
+
+    const text = lines.join('\n')
+    expect(text).toContain('kb init --rescan')
+    expect(text).toContain('kb init --rescan --apply')
+    expect(text).toContain('kb sync')
+  })
+
+  it('Given /init --help in TUI mode, then prints slash-form rescan guidance', async () => {
+    const { out, lines } = makeOut()
+    await runMainWithOutput(['init', '--help'], out, {} as never, 'tui')
+
+    const text = lines.join('\n')
+    expect(text).toContain('/init --base dogfood --rescan')
+    expect(text).toContain('/base use <base>')
+  })
+})

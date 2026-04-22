@@ -87,6 +87,7 @@ import {
   installSkillIntoProject,
   installSkillsGlobally,
 } from './skill-installer'
+import { printSyncHelp, runSyncCommand } from './sync-cli'
 import {
   ViewCommandError,
   printListHelp,
@@ -132,6 +133,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  docs        Browse KB documents',
     '  chat        Start an interactive KB chat session (--verbose / --debug for human orchestration)',
     '  publish     Publish KB docs',
+    '  sync        Fast-forward main, rebuild, and refresh the global kb link',
     '  logs        Browse and compare run reports',
     '  skill       Manage agent skills',
     '',
@@ -145,12 +147,52 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     cmdHelpHint(mode),
     '',
     'Examples:',
+    `  ${cmd('init --base dogfood', mode)}`,
+    `  ${cmd('init --rescan', mode)}`,
+    `  ${cmd('init --rescan --apply', mode)}`,
+    `  ${cmd('sync', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
     `  ${cmd('base use --default dogfood', mode)}`,
     `  ${cmd('base delete ci-test --force', mode)}`,
     `  ${cmd('docs list --base dogfood --limit 20', mode)}`,
     `  ${cmd('docs view kb-base-selection-and-usage', mode)}`,
     `  ${cmd('submit "SQLite hybrid search is enabled in dogfood"', mode)}`,
+  ].join('\n')
+}
+
+function printInitHelp(mode: CmdMode = 'cli'): string {
+  return [
+    `${cmd('init', mode)} command`,
+    '',
+    'Usage:',
+    `  ${cmd('init', mode)} [--base <name>] [--detach | --resume] [--stop-after <cycle>]`,
+    `  ${cmd('init', mode)} [--base <name>] --rescan [--dry-run | --apply]`,
+    '',
+    'Flags:',
+    '  --base <name>                   Choose the KB base to initialize or rescan',
+    '  --non-interactive              Skip interview prompts when possible',
+    '  --detach                       Pause after the current cycle and save a checkpoint',
+    '  --resume                       Resume from the latest init checkpoint',
+    '  --stop-after <cycle>           Stop after read-inputs|pass1|pass2|pass-enrich|pass3|write|pass-graph',
+    '  --rescan                       Re-read changed README-like sources and plan KB updates',
+    '  --dry-run                      Preview the rescan plan without applying mutations',
+    '  --apply                        Apply planned rescan mutations',
+    '  --rescan-stage-timeout-ms <n>  Override the per-stage timeout used by rescan safeguards',
+    '  --rescan-max-claims <n>        Cap extracted claims during rescan planning',
+    '  --rescan-max-evidence-docs <n> Cap evidence documents considered during rescan planning',
+    '  --rescan-max-mutations <n>     Cap planned mutations during rescan planning',
+    '  --debug                        Emit debug logging and telemetry details',
+    '',
+    'Notes:',
+    '  Rescan is plan-only by default. Re-run with --rescan --apply to execute the planned updates.',
+    '  In the TUI, use `/init --rescan` after selecting a base with `/base use <base>`.',
+    '',
+    'Examples:',
+    `  ${cmd('init --base dogfood', mode)}`,
+    `  ${cmd('init --base dogfood --detach', mode)}`,
+    `  ${cmd('init --base dogfood --resume', mode)}`,
+    `  ${cmd('init --base dogfood --rescan', mode)}`,
+    `  ${cmd('init --base dogfood --rescan --apply', mode)}`,
   ].join('\n')
 }
 
@@ -629,6 +671,10 @@ export async function runMainWithOutput(
   }
 
   if (firstArg === 'init') {
+    if (args.includes('--help') || args.includes('-h') || args[1] === 'help') {
+      out.log(printInitHelp(mode))
+      return
+    }
     const reporter = new ReportWriter(defaultLogsDir())
     const collector = new RunCollector('init')
     try {
@@ -658,6 +704,22 @@ export async function runMainWithOutput(
       out.error(`❌ ${message}`)
       out.error('')
       out.log(printLogsHelp(mode))
+    }
+    return
+  }
+
+  if (firstArg === 'sync') {
+    try {
+      out.log(await runSyncCommand(args.slice(1), { mode }))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.startsWith(`${cmd('sync', mode)} command`)) {
+        out.log(message)
+        return
+      }
+      out.error(`❌ ${message}`)
+      out.error('')
+      out.log(printSyncHelp(mode))
     }
     return
   }
@@ -934,22 +996,34 @@ async function promptBaseDeleteConfirm(base: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 async function main() {
+  const args = process.argv.slice(2)
+  const isTTY = Boolean(process.stdout.isTTY)
+
   await migrateLegacyKbSessionJson()
+
+  // Launch TUI when invoked interactively with no arguments
+  if (isTTY && args.length === 0) {
+    installSkillsGlobally().catch(() => {}) // fire and forget — never block startup
+    let kbConfig = await ensureDefaultConfig()
+    const inferred = await persistInferredLLMProvider({ config: kbConfig })
+    kbConfig = inferred.config
+    applyConfigToEnv(kbConfig)
+    const { launchTui } = await import('../tui/index.js')
+    await launchTui(kbConfig, { startupNotices: inferred.notice ? [inferred.notice] : [] })
+    return
+  }
+
+  if (isHelpOnlyInvocation(args)) {
+    console.log('🤖 KB Agent Harness\n')
+    await runMainWithOutput(args, defaultCliOutput, {} as KbConfig)
+    return
+  }
+
   installSkillsGlobally().catch(() => {}) // fire and forget — never block startup
   let kbConfig = await ensureDefaultConfig()
   const inferred = await persistInferredLLMProvider({ config: kbConfig })
   kbConfig = inferred.config
   applyConfigToEnv(kbConfig)
-
-  const args = process.argv.slice(2)
-  const isTTY = Boolean(process.stdout.isTTY)
-
-  // Launch TUI when invoked interactively with no arguments
-  if (isTTY && args.length === 0) {
-    const { launchTui } = await import('../tui/index.js')
-    await launchTui(kbConfig, { startupNotices: inferred.notice ? [inferred.notice] : [] })
-    return
-  }
 
   // One-shot CLI path
   console.log('🤖 KB Agent Harness\n')
@@ -958,6 +1032,11 @@ async function main() {
     console.log('')
   }
   await runMainWithOutput(args, defaultCliOutput, kbConfig)
+}
+
+function isHelpOnlyInvocation(args: string[]): boolean {
+  if (args.length === 0) return false
+  return args.includes('--help') || args.includes('-h') || args[0] === 'help' || args[1] === 'help'
 }
 
 main().catch(console.error)

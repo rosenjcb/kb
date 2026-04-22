@@ -1,12 +1,14 @@
-import { chmod, copyFile, mkdir, readdir } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { existsSync } from 'node:fs'
 import { build } from 'esbuild'
 
 const projectRoot = process.cwd()
-const outFile = path.join(projectRoot, 'dist', 'bin', 'kb.js')
+const binDir = path.join(projectRoot, 'dist', 'bin')
+const outFile = path.join(binDir, 'kb.js')
+const launcherFile = path.join(binDir, 'kb')
 
-await mkdir(path.dirname(outFile), { recursive: true })
+await mkdir(binDir, { recursive: true })
 
 await build({
   entryPoints: [path.join(projectRoot, 'src', 'cli', 'index.ts')],
@@ -23,6 +25,16 @@ await build({
 
 if (process.platform !== 'win32') {
   await chmod(outFile, 0o755)
+}
+
+const launcher = `#!/usr/bin/env node
+import './kb.js'
+`
+
+await writeFile(launcherFile, launcher, 'utf8')
+
+if (process.platform !== 'win32') {
+  await chmod(launcherFile, 0o755)
 }
 
 // Copy prompt .md files so the bundled binary can resolve them at runtime.
@@ -46,4 +58,4 @@ if (existsSync(skillsRoot)) {
   }
 }
 
-console.log(`Built CLI executable: ${outFile}`)
+console.log(`Built CLI executable: ${launcherFile}`)

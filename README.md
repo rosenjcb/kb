@@ -36,7 +36,15 @@ KB turns day-to-day development into a feedback loop:
 pnpm install
 pnpm run check
 npm run refresh:global
-npm run which:kb
+command -v kb
+```
+
+KB expects `Node 20+` in the shell that runs `kb`.
+
+For installed clients, the supported release path is GitHub Releases. CI builds a fresh `kb-cli-node20.tgz` package for every push to `main` right now, and you can install or upgrade it with:
+
+```bash
+npm install -g ./kb-cli-node20.tgz
 ```
 
 ### 2) Configure `~/.kb/config.json`
@@ -52,7 +60,16 @@ Walk through the chat-based wizard to create your knowledge base.
 
 ```bash
 cd ~/{{YOUR_AWESOME_REPO}}
-kb && /init
+kb && /init --base dogfood
+```
+
+Refresh an existing base after README or docs changes:
+
+```bash
+kb init --base dogfood --rescan
+kb init --base dogfood --rescan --apply
+kb && /base use dogfood
+kb && /init --rescan --apply
 ```
 
 ### 4) Start using intent commands
@@ -95,9 +112,21 @@ kb config get
 kb config set <key> <value>
 kb config unset <key>
 kb init [--base <name>] [--detach | --resume] [--stop-after <cycle>]
+kb init [--base <name>] --rescan [--dry-run | --apply]
+kb sync [--no-pull] [--no-build] [--no-link]
 kb publish [options]
 kb chat [--verbose] [--debug] [--base <name>]
 ```
+
+### Keeping `kb` up to date
+
+```bash
+kb sync
+```
+
+`kb sync` does not use your current project directory. It keeps a managed clone of `https://github.com/rosenjcb/kb.git` under `~/.kb/sources/kb`, fast-forwards `main`, runs `pnpm install --frozen-lockfile`, rebuilds the CLI, and refreshes the global `kb` link. It will complain early if the current shell is not running `Node 20+`.
+
+If you just want the supported shipped client, prefer installing the latest CI-built release package from GitHub Releases instead of using `kb sync`.
 
 ### 1) Enable native SQLite dependency (if needed)
 
@@ -137,6 +166,13 @@ kb base use foo            # switch the active base for this session
 kb base use --default foo  # save a persistent default
 kb base use --show             # show active base and config default
 kb base delete bar --force # delete a base and all its data
+kb init --base foo --rescan        # preview KB updates from changed README-like files
+kb init --base foo --rescan --apply # apply planned rescan updates
+kb sync                           # update from github.com/rosenjcb/kb and relink globally
+kb sync --no-pull                 # rebuild/relink the managed clone without fetching
+kb && /base use foo
+kb && /init --rescan --apply
+kb && /sync
 ```
 
 Base resolution order (both live in `~/.kb/config.json`):
