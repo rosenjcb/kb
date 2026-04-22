@@ -57,5 +57,3 @@ if (existsSync(skillsRoot)) {
     }
   }
 }
-
-console.log(`Built CLI executable: ${launcherFile}`)
