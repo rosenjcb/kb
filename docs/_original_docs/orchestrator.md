@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Orchestrator
-date: '2026-04-20'
+date: '2026-04-21'
 kb_id: src-core-orchestrator-md
 tags:
   - source-excerpt

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: TUI
-date: '2026-04-20'
+date: '2026-04-21'
 kb_id: src-core-tui-md
 tags:
   - source-excerpt
@@ -36,7 +36,6 @@ Examples:
 - `kb init` must support both its command-line path and the TUI `/init` path.
 - A help flag should work from both `kb --help` and `kb init --help`.
 - A normal intent command like `kb query "topic"` is already non-interactive by shape and should not need an extra mode flag.
-- **`--verbose`** / **`--debug`** on **`kb query`** / **`kb chat`** adjust human orchestration only (`--verbose`: `summary>` / `status>` / `confidence>`; `--debug`: full per-doc **`source>`** lines instead of the compact **`sources>`** titles line). They do not apply retroactively—e.g. in the TUI shell you start chat with **`chat --verbose`** or **`chat --debug`** before the session begins.
 
 ## Flag Standardization Guidance
 
@@ -90,7 +89,7 @@ For high-risk CLI changes, keep the repository rule from `AGENTS.md`: run end-to
 
 Many commands need **exactly one** of these at a time, and errors must name the missing prerequisite clearly (never “A or B” when both matter):
 
-1. **Knowledge base** — an effective base (`config.activeBase` or `config.defaultBase`), or an explicit `--base <name>` on commands that support it.
+1. **Knowledge base** — an effective base (`config.activeBase` or `config.selectedBase`), or an explicit `--base <name>` on commands that support it.
 2. **LLM** — a constructible provider from `~/.kb/config.json` + environment keys (`kb config llm`).
 
 Canonical user-facing strings live in `src/cli/cli-prerequisites.ts` (`CLI_ERROR_NO_KB_BASE`, `CLI_ERROR_NO_LLM_PROVIDER`, etc.). CLI and TUI should reuse them so `/query` and `kb query` behave the same as bare `kb` + slash commands.

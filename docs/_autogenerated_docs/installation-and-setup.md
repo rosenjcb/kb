@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Installation And Setup
-date: '2026-04-20'
+date: '2026-04-21'
 kb_id: installation-and-setup
 tags:
   - installation

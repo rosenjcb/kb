@@ -1,7 +1,7 @@
 ---
 layout: default
 title: High-Level Architecture
-date: '2026-04-20'
+date: '2026-04-21'
 kb_id: high-level-architecture
 tags:
   - architecture

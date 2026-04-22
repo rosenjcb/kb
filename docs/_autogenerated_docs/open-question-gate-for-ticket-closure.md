@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Open-Question Gate for Ticket Closure
-date: '2026-04-20'
+date: '2026-04-21'
 kb_id: open-question-gate-for-ticket-closure
 tags:
   - tickets

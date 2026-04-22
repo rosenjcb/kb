@@ -1,7 +1,7 @@
 ---
 layout: default
 title: SQLite Hybrid Search Configuration
-date: '2026-04-20'
+date: '2026-04-21'
 kb_id: sqlite-hybrid-search-configuration
 tags:
   - sqlite
@@ -20,3 +20,5 @@ Enable SQLite hybrid search by setting `KB_SQLITE_INDEX` and `KB_HYBRID_QUERY` t
 - KB configuration lives in ~/.kb/config.json (set via kb config set / kb default), NOT in .env.local. The sqlite-hybrid-search-configuration doc is outdated on this point. Environment variables like KB_SQLITE_INDEX and KB_HYBRID_QUERY are supported but the canonical config path is ~/.kb/config.json. (source: consumer)
 
 - kb dispute command has been removed from the CLI. Use kb invalidate to replace or remove stale facts, and kb validate to check if a fact is supported by evidence. (source: consumer)
+
+- kb base use replaces kb use as the primary command; kb use still works as a backward-compatible alias. kb base delete <name> deletes the session directory and clears the base from config (activeBase/selectedBase). TUI uses /base instead of /use. (source: consumer)

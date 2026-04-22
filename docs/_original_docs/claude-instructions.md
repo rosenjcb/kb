@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Claude Instructions
-date: '2026-04-20'
+date: '2026-04-21'
 kb_id: claude-md
 tags:
   - source-excerpt

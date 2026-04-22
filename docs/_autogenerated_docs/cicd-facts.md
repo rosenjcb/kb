@@ -1,7 +1,7 @@
 ---
 layout: default
 title: cicd facts
-date: '2026-04-20'
+date: '2026-04-21'
 kb_id: cicd-facts
 tags:
   - cicd
