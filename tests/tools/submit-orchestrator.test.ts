@@ -13,6 +13,9 @@ function makeExecutor(overrides?: Partial<Record<string, unknown>>): ToolExecuto
       }
       if (toolUse.name === 'append_to_document') return { id: 'appended-doc' }
       if (toolUse.name === 'write_document') return { id: 'new-doc' }
+      if (toolUse.name === 'upsert_graph_from_text') {
+        return { enabled: true, entities: 1, relationships: 1 }
+      }
       return { ok: true }
     }),
   }
@@ -36,11 +39,17 @@ describe('SubmitOrchestrator', () => {
     expect(result.discoveredTarget).toBe(true)
     expect(result.targetDocId).toBe('query-research-orchestrator')
     expect(result.operation).toBe('appended')
+    expect((result.result as { graphSync?: { entities?: number } }).graphSync?.entities).toBe(1)
 
     const appendCall = (executor.execute as ReturnType<typeof vi.fn>).mock.calls.find(
       (c: [{ name: string }]) => c[0].name === 'append_to_document'
     )
     expect(appendCall?.[0].input.documentId).toBe('query-research-orchestrator')
+    expect(
+      (executor.execute as ReturnType<typeof vi.fn>).mock.calls.some(
+        (c: [{ name: string }]) => c[0].name === 'upsert_graph_from_text'
+      )
+    ).toBe(true)
   })
 
   it('Given lexical-fallback result, then falls back to domain-facts instead', async () => {

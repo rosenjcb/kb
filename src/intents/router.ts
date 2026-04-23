@@ -1,8 +1,7 @@
 import dayjs from 'dayjs'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { ToolUseRequest } from '../core/types'
-import { ValidateOrchestrator } from '../tools/validate-orchestrator'
-import { ExplainOrchestrator } from '../tools/explain-orchestrator'
+import { InvalidateOrchestrator } from '../tools/invalidate-orchestrator'
 import { SubmitOrchestrator, inferDomainFromFact } from '../tools/submit-orchestrator'
 import type { ConsumerIntentEnvelope, IntentResult, RouteDecision } from './types'
 
@@ -29,8 +28,6 @@ export class DefaultIntentRouter implements IntentRouter {
       case 'submit_fact': {
         const fact = String(payload.fact ?? '').trim()
         const source = String(payload.source ?? 'consumer')
-        const targetDocumentId =
-          typeof payload.targetDocumentId === 'string' ? payload.targetDocumentId : undefined
 
         if (!fact) {
           return {
@@ -40,29 +37,18 @@ export class DefaultIntentRouter implements IntentRouter {
           }
         }
 
-        if (targetDocumentId) {
-          return {
-            selectedOperation: 'append_to_document',
-            operationInput: {
-              documentId: targetDocumentId,
-              content: `- ${fact} (source: ${source})`,
-            },
-            policyReason: 'targetDocumentId provided; append to existing document',
-          }
-        }
-
         return {
           selectedOperation: 'submit_orchestrator',
           operationInput: { fact, source },
-          policyReason: 'no targetDocumentId; discover best target via submit orchestrator',
+          policyReason: 'submit intent; discover best KB target via submit orchestrator',
         }
       }
 
-      case 'validate_fact':
+      case 'invalidate_fact':
         return {
-          selectedOperation: 'validate_orchestrator',
+          selectedOperation: 'invalidate_orchestrator',
           operationInput: payload,
-          policyReason: 'validate intent; discover evidence via validate orchestrator',
+          policyReason: 'invalidate intent; preview/apply KB mutation via invalidate orchestrator',
         }
 
       case 'query_truth': {
@@ -70,8 +56,6 @@ export class DefaultIntentRouter implements IntentRouter {
         const highRecall = requiresHighRecallQuery(queryText)
         const requestedLimit = typeof payload.limit === 'number' ? payload.limit : 5
         const effectiveLimit = highRecall ? Math.max(requestedLimit, 12) : requestedLimit
-        // Default deep so `kb query` matches chat QUERY retrieval (research orchestrator path).
-        // Use `--discovery shallow` to opt into the lighter lane when latency matters.
         const effectiveDiscoveryDepth = payload.discoveryDepth ?? 'deep'
 
         return {
@@ -89,13 +73,6 @@ export class DefaultIntentRouter implements IntentRouter {
             : 'query intent maps directly to read_documents',
         }
       }
-
-      case 'explain_change':
-        return {
-          selectedOperation: 'explain_orchestrator',
-          operationInput: payload,
-          policyReason: 'explain intent; id-first then semantic fallback via explain orchestrator',
-        }
 
       default:
         return {
@@ -118,55 +95,19 @@ export class DefaultIntentRouter implements IntentRouter {
       }
     }
 
-    if (decision.selectedOperation === 'validate_orchestrator') {
-      const fact = String(payload.fact ?? '').trim()
-      if (!fact) {
-        return {
-          status: 'error',
-          errorCode: 'INVALID_PAYLOAD',
-          explanation: 'validate_fact requires payload.fact',
-        }
-      }
-      const orchestrator = new ValidateOrchestrator(this.toolExecutor)
-      return orchestrator.run({ fact, domain: asOptionalString(payload.domain) })
-    }
-
-    if (decision.selectedOperation === 'explain_orchestrator') {
-      const changeId = String(payload.changeId ?? payload.fact ?? '').trim()
-      if (!changeId) {
-        return {
-          status: 'error',
-          errorCode: 'INVALID_PAYLOAD',
-          explanation: 'explain_change requires payload.changeId or payload.fact',
-        }
-      }
-      const orchestrator = new ExplainOrchestrator(this.toolExecutor)
-      const result = await orchestrator.run({ changeId })
-      return {
-        status: 'accepted',
-        explanation: decision.policyReason,
-        recommendedAction: 'read_documents',
-        data: result,
-        provenance: result.results.map(r => r.metadata?.id).filter(Boolean) as string[],
-        confidence: result.results.length > 0 ? 0.8 : 0.2,
-      }
-    }
-
     if (decision.selectedOperation === 'submit_orchestrator') {
       const fact = String(payload.fact ?? '').trim()
       const source = String(payload.source ?? 'consumer')
       const orchestrator = new SubmitOrchestrator(this.toolExecutor)
       const orchestratorResult = await orchestrator.run({ fact, source })
 
-      if (intentEnvelope.intent === 'submit_fact') {
-        const reconciliationOutcome = await maybeHandleSubmitContradictions(
-          this.toolExecutor,
-          payload,
-          `${decision.policyReason}; routed to ${orchestratorResult.targetDocId} (discovered=${orchestratorResult.discoveredTarget})`,
-          orchestratorResult.result
-        )
-        if (reconciliationOutcome) return reconciliationOutcome
-      }
+      const reconciliationOutcome = await maybeHandleSubmitContradictions(
+        this.toolExecutor,
+        payload,
+        `${decision.policyReason}; routed to ${orchestratorResult.targetDocId} (discovered=${orchestratorResult.discoveredTarget})`,
+        orchestratorResult.result
+      )
+      if (reconciliationOutcome) return reconciliationOutcome
 
       return {
         status: 'accepted',
@@ -178,58 +119,29 @@ export class DefaultIntentRouter implements IntentRouter {
       }
     }
 
-    if (decision.selectedOperation === 'upsert_fact_document') {
-      const opInput = decision.operationInput
-      const documentId = String(opInput.documentId ?? '').trim()
-      const content = String(opInput.content ?? '').trim()
-      const title = String(opInput.title ?? '').trim() || `${documentId} facts`
-      const tags = Array.isArray(opInput.tags) ? opInput.tags : undefined
-      const type = typeof opInput.type === 'string' ? opInput.type : undefined
-
-      let toolResult: unknown
-      try {
-        toolResult = await this.toolExecutor.execute(
-          createToolUse('append_to_document', { documentId, content })
-        )
-      } catch {
-        toolResult = await this.toolExecutor.execute(
-          createToolUse('write_document', { documentId, title, content, tags, type, overwrite: true })
-        )
+    if (decision.selectedOperation === 'invalidate_orchestrator') {
+      const oldFact = String(payload.oldFact ?? payload.fact ?? '').trim()
+      if (!oldFact) {
+        return {
+          status: 'error',
+          errorCode: 'INVALID_PAYLOAD',
+          explanation: 'invalidate_fact requires payload.oldFact or payload.fact',
+        }
       }
 
-      if (intentEnvelope.intent === 'submit_fact') {
-        const reconciliationOutcome = await maybeHandleSubmitContradictions(
-          this.toolExecutor,
-          payload,
-          decision.policyReason,
-          toolResult
-        )
-        if (reconciliationOutcome) return reconciliationOutcome
-      }
-
-      return {
-        status: 'accepted',
-        explanation: decision.policyReason,
-        recommendedAction: 'upsert_fact_document',
-        data: toolResult,
-        provenance: extractProvenance(toolResult),
-        confidence: 0.8,
-      }
+      const orchestrator = new InvalidateOrchestrator(this.toolExecutor)
+      return orchestrator.run({
+        oldFact,
+        replacementFact: asOptionalString(payload.replacementFact),
+        preview: payload.preview !== false && payload.apply !== true,
+        dryRun: payload.dryRun === true,
+        includeSessionLogs: payload.includeSessionLogs !== false,
+      })
     }
 
     const toolResult = await this.toolExecutor.execute(
       createToolUse(decision.selectedOperation, decision.operationInput)
     )
-
-    if (intentEnvelope.intent === 'submit_fact') {
-      const reconciliationOutcome = await maybeHandleSubmitContradictions(
-        this.toolExecutor,
-        payload,
-        decision.policyReason,
-        toolResult
-      )
-      if (reconciliationOutcome) return reconciliationOutcome
-    }
 
     return {
       status: 'accepted',

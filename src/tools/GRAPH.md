@@ -41,9 +41,19 @@ relationships  — id, from_id, to_id, type, doc_id, weight, created_at
 
 ## How it stays up to date
 
+```mermaid
+flowchart LR
+  I["kb init"] --> IG["pass-graph batch extraction"]
+  S["kb submit"] --> SW["SubmitOrchestrator writes KB fact"]
+  SW --> SG["extract + upsert graph provenance"]
+  Q["kb query"] --> QG["graph expansion + rerank\nread-only"]
+  N["kb invalidate"] --> NW["InvalidateOrchestrator mutates KB docs"]
+  NW --> NG["soft-delete graph relationships by doc_id"]
+```
+
 | Trigger | What happens |
 |---|---|
-| `kb submit "<fact>"` | LLM extracts entities + relationships from the fact text; upserted synchronously |
+| `kb submit "<fact>"` | `SubmitOrchestrator` writes the KB fact, then extracts and upserts graph entities + relationships when graph mode is enabled |
 | `kb invalidate "<old>"` | All edges whose `doc_id` matches the affected documents are soft-deleted (weight → 0) |
 | `kb init` — `pass-graph` cycle | LLM runs batch extraction over all finalized documents written to SQLite |
 
@@ -74,6 +84,17 @@ When a graph-enabled lookup runs (`kb query` and `kb chat`), the graph is consul
 
 This means a query for "DuckGraphWriter" will also surface documents mentioning "DuckDB" or "property graph" if those edges exist in the graph — even if those terms don't appear literally in the query.
 
+## Surface ownership
+
+```mermaid
+flowchart TB
+  Intent["Intent commands"] --> Query["kb query / /query\nread-only retrieval"]
+  Intent --> Submit["kb submit / /submit\nKB write + internal graph sync"]
+  Intent --> Invalidate["kb invalidate / /invalidate\nKB mutation + internal graph invalidation"]
+  Docs["kb docs"] --> DocsView["explicit document inspection"]
+  Graph["kb graph"] --> GraphView["explicit graph inspection / manual graph edits"]
+```
+
 ## Implementation
 
 | File | Role |
@@ -81,5 +102,6 @@ This means a query for "DuckGraphWriter" will also surface documents mentioning 
 | `src/tools/duck-graph-writer.ts` | DuckDB schema, upsert, soft-delete, traversal, export |
 | `src/tools/graph-entity-extractor.ts` | LLM-based entity + relationship extraction from text |
 | `src/cli/graph-cli.ts` | `kb graph` command parsing and output formatting |
-| `src/cli/index.ts` | Wires graph extraction into `submit_fact` and `invalidate` |
+| `src/tools/submit-orchestrator.ts` | KB write orchestration plus graph extraction/upsert |
+| `src/tools/invalidate-orchestrator.ts` | KB invalidation orchestration plus graph provenance cleanup |
 | `src/cli/init-cli.ts` | `pass-graph` cycle in `kb init` |

@@ -22,7 +22,7 @@ export function assertConsumerSafeCommand(firstArg: string): void {
 
   if (isDirectInternalToolInvocation(firstArg)) {
     throw new Error(
-      `Direct internal tool invocation is blocked in consumer mode: ${firstArg}. Use intent commands (submit|validate|query|explain|invalidate).`
+      `Direct internal tool invocation is blocked in consumer mode: ${firstArg}. Use intent commands (submit|query|invalidate).`
     )
   }
 }

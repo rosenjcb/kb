@@ -21,40 +21,62 @@ export class SubmitOrchestrator {
     const bulletLine = `- ${fact} (source: ${source})`
 
     const candidate = await this.discoverTarget(fact)
+    let targetDocId: string
+    let discoveredTarget: boolean
+    let operation: SubmitOrchestratorResult['operation']
+    let submission: unknown
 
     if (candidate) {
-      const result = await this.toolExecutor.execute(
+      targetDocId = candidate.docId
+      discoveredTarget = true
+      operation = 'appended'
+      submission = await this.toolExecutor.execute(
         createToolUse('append_to_document', {
           documentId: candidate.docId,
           content: bulletLine,
         })
       )
-      return { operation: 'appended', targetDocId: candidate.docId, discoveredTarget: true, result }
+    } else {
+      const domain = inferDomainFromFact(fact)
+      const docId = `${domain}-facts`
+      targetDocId = docId
+      discoveredTarget = false
+      operation = 'upserted'
+
+      try {
+        submission = await this.toolExecutor.execute(
+          createToolUse('append_to_document', { documentId: docId, content: bulletLine })
+        )
+      } catch {
+        submission = await this.toolExecutor.execute(
+          createToolUse('write_document', {
+            documentId: docId,
+            title: `${domain} facts`,
+            content: bulletLine,
+            tags: [domain, 'fact'],
+            type: 'reference',
+            overwrite: true,
+          })
+        )
+      }
     }
 
-    // Fallback: domain-inferred fact document
-    const domain = inferDomainFromFact(fact)
-    const docId = `${domain}-facts`
-    let result: unknown
+    const graphSync = await this.toolExecutor.execute(
+      createToolUse('upsert_graph_from_text', {
+        text: fact,
+        documentId: targetDocId,
+      })
+    )
 
-    try {
-      result = await this.toolExecutor.execute(
-        createToolUse('append_to_document', { documentId: docId, content: bulletLine })
-      )
-    } catch {
-      result = await this.toolExecutor.execute(
-        createToolUse('write_document', {
-          documentId: docId,
-          title: `${domain} facts`,
-          content: bulletLine,
-          tags: [domain, 'fact'],
-          type: 'reference',
-          overwrite: true,
-        })
-      )
+    return {
+      operation,
+      targetDocId,
+      discoveredTarget,
+      result: {
+        submission,
+        graphSync,
+      },
     }
-
-    return { operation: 'upserted', targetDocId: docId, discoveredTarget: false, result }
   }
 
   private async discoverTarget(fact: string): Promise<{ docId: string } | null> {

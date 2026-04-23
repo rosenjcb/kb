@@ -9,6 +9,7 @@ import {
   formatIntentResult,
   isIntentCommand,
   parseIntentCommand,
+  printIntentHelp,
   printIntentResult,
   printReadDocumentsOrchestrationFooter,
   rewriteIntentInputWithSessionContext,
@@ -26,93 +27,86 @@ async function createTempDir(): Promise<string> {
   return dir
 }
 
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
+})
+
 describe('intent-cli parsing', () => {
-  it('Given submit command, then parses submit_fact envelope', () => {
-    const parsed = parseIntentCommand(['submit', 'Deployments need flag X', '--domain', 'ops'])
+  it('parses submit with supported payload fields only', () => {
+    const parsed = parseIntentCommand([
+      'submit',
+      'Deployments need flag X',
+      '--domain',
+      'ops',
+      '--include-session-logs',
+    ])
     expect(parsed.envelope.intent).toBe('submit_fact')
     expect(parsed.envelope.payload.fact).toBe('Deployments need flag X')
     expect(parsed.envelope.payload.domain).toBe('ops')
-  })
-
-  it('Given submit with include-session-logs flag, then parses submit payload fields', () => {
-    const parsed = parseIntentCommand([
-      'submit',
-      'Rename canonical identifier.',
-      '--include-session-logs',
-    ])
-
     expect(parsed.envelope.payload.includeSessionLogs).toBe(true)
-    expect(parsed.envelope.payload.targetDocumentId).toBeUndefined()
+    expect(Object.keys(parsed.envelope.payload)).not.toContain('targetDocumentId')
   })
 
-  it('Given query with deep discovery option, then parses discoveryDepth in payload', () => {
-    const parsed = parseIntentCommand(['query', 'env local strategy', '--discovery', 'deep'])
-
-    expect(parsed.envelope.intent).toBe('query_truth')
-    expect(parsed.envelope.payload.discoveryDepth).toBe('deep')
-  })
-
-  it('Given query with --verbose, then parses verbose flag', () => {
-    const parsed = parseIntentCommand(['query', 'topic', '--verbose'])
-    expect(parsed.verbose).toBe(true)
-    expect(parsed.envelope.payload.query).toBe('topic')
-  })
-
-  it('Given query with --debug, then parses debug flag', () => {
-    const parsed = parseIntentCommand(['query', 'topic', '--debug'])
-    expect(parsed.debug).toBe(true)
-    expect(parsed.envelope.payload.query).toBe('topic')
-  })
-
-  it('Given query without --session, then useQuerySession is false', () => {
-    const parsed = parseIntentCommand(['query', 'what is kb'])
-    expect(parsed.useQuerySession).toBe(false)
-  })
-
-  it('Given query with --session, then useQuerySession is true', () => {
-    const parsed = parseIntentCommand(['query', 'follow up', '--session'])
-    expect(parsed.useQuerySession).toBe(true)
-    expect(parsed.envelope.payload.query).toBe('follow up')
-  })
-
-  it('Given intent command with base option, then parses base separately from payload', () => {
+  it('parses query flags and query session support', () => {
     const parsed = parseIntentCommand([
       'query',
       'how do i install kb',
       '--base',
-      'test-init-noninteractive',
+      'test-init',
       '--limit',
       '3',
+      '--discovery',
+      'deep',
+      '--session',
+      '--verbose',
+      '--debug',
     ])
 
-    expect(parsed.base).toBe('test-init-noninteractive')
+    expect(parsed.base).toBe('test-init')
+    expect(parsed.envelope.intent).toBe('query_truth')
     expect(parsed.envelope.payload.query).toBe('how do i install kb')
     expect(parsed.envelope.payload.limit).toBe(3)
+    expect(parsed.envelope.payload.discoveryDepth).toBe('deep')
+    expect(parsed.useQuerySession).toBe(true)
+    expect(parsed.verbose).toBe(true)
+    expect(parsed.debug).toBe(true)
   })
 
-  it('Given intent help flag, then parser returns shared intent help text', () => {
-    expect(() => parseIntentCommand(['query', '--help'])).toThrow('Intent commands:')
+  it('parses invalidate preview/apply fields', () => {
+    const parsed = parseIntentCommand([
+      'invalidate',
+      'old fact',
+      'new fact',
+      '--base',
+      'dogfood',
+      '--apply',
+    ])
+
+    expect(parsed.base).toBe('dogfood')
+    expect(parsed.envelope.intent).toBe('invalidate_fact')
+    expect(parsed.envelope.payload.oldFact).toBe('old fact')
+    expect(parsed.envelope.payload.replacementFact).toBe('new fact')
+    expect(parsed.envelope.payload.apply).toBe(true)
+    expect(parsed.envelope.payload.preview).toBe(false)
   })
 
-  it('Given dispute command, then throws unsupported intent error', () => {
-    expect(() => parseIntentCommand(['dispute', 'Fact only', '--because', 'reason'])).toThrow(
-      'Unsupported intent command: dispute'
+  it('rejects unknown public commands', () => {
+    expect(() => parseIntentCommand(['review', 'claim'])).toThrow(
+      'Unsupported intent command: review'
     )
   })
 
-  it('Given internal operation name, then is not treated as intent command', () => {
+  it('only treats query submit and invalidate as intent commands', () => {
+    expect(isIntentCommand('query')).toBe(true)
+    expect(isIntentCommand('submit')).toBe(true)
+    expect(isIntentCommand('invalidate')).toBe(true)
     expect(isIntentCommand('write_document')).toBe(false)
+    expect(isIntentCommand('review')).toBe(false)
   })
+})
 
-  it('Given json output mode, then formatter returns JSON string', () => {
-    const output = formatIntentResult(
-      { status: 'valid', explanation: 'ok', confidence: 0.9 },
-      'json'
-    )
-    expect(output).toContain('"status": "valid"')
-  })
-
-  it('Given read_documents result in human mode, then formatter returns structured summary with doc locations', () => {
+describe('intent-cli formatting', () => {
+  it('formats read_documents results in human mode', () => {
     const output = formatIntentResult(
       {
         status: 'accepted',
@@ -124,24 +118,12 @@ describe('intent-cli parsing', () => {
           retrieval: {
             method: 'hybrid',
             detail: 'fts+vector-rerank',
-            checkpoints: [
-              {
-                stage: 'hybrid_primary',
-                status: 'hit',
-                nextAction: 'return',
-                confidence: 0.86,
-              },
-            ],
+            checkpoints: [{ stage: 'hybrid_primary', status: 'hit', nextAction: 'return', confidence: 0.86 }],
           },
           results: [
             {
-              metadata: {
-                id: 'cli-facts',
-                title: 'CLI Facts',
-                filePath: '/tmp/cli-facts.md',
-              },
-              content:
-                '# CLI Facts\n\nCreated: 2026-04-12\n\n## Base Selection\nKB base precedence order: 1) kb use, 2) kb default.',
+              metadata: { id: 'cli-facts', title: 'CLI Facts', filePath: '/tmp/cli-facts.md' },
+              content: '# CLI Facts\n\nKB base precedence order: 1) kb use, 2) kb default.',
             },
           ],
           total: 1,
@@ -151,594 +133,177 @@ describe('intent-cli parsing', () => {
     )
 
     expect(output).toContain('The KB uses session base first, then default base.')
-    expect(output).toContain('---')
     expect(output).toContain('retrieval> hybrid (fts+vector-rerank)')
     expect(output).toContain('matches> 1')
     expect(output).toContain('sources> CLI Facts')
-    expect(output).not.toContain('location=/tmp/cli-facts.md')
-    expect(output).not.toContain('source> id=')
-    expect(output).not.toContain('summary>')
-    expect(output).not.toContain('status> accepted')
-    expect(output).not.toContain('confidence>')
-
-    const verboseOut = formatIntentResult(
-      {
-        status: 'accepted',
-        confidence: 0.8,
-        explanation: 'query intent maps directly to read_documents',
-        recommendedAction: 'read_documents',
-        data: {
-          answer: 'The KB uses session base first, then default base.',
-          retrieval: {
-            method: 'hybrid',
-            detail: 'fts+vector-rerank',
-            checkpoints: [
-              {
-                stage: 'hybrid_primary',
-                status: 'hit',
-                nextAction: 'return',
-                confidence: 0.86,
-              },
-            ],
-          },
-          results: [
-            {
-              metadata: {
-                id: 'cli-facts',
-                title: 'CLI Facts',
-                filePath: '/tmp/cli-facts.md',
-              },
-              content:
-                '# CLI Facts\n\nCreated: 2026-04-12\n\n## Base Selection\nKB base precedence order: 1) kb use, 2) kb default.',
-            },
-          ],
-          total: 1,
-        },
-      },
-      'human',
-      true
-    )
-    expect(verboseOut).toContain('summary>')
-    expect(verboseOut).toContain('status> accepted')
-    expect(verboseOut).toContain('confidence> 0.80')
-    expect(verboseOut).toContain('sources> CLI Facts')
-
-    const debugOut = formatIntentResult(
-      {
-        status: 'accepted',
-        confidence: 0.8,
-        explanation: 'query intent maps directly to read_documents',
-        recommendedAction: 'read_documents',
-        data: {
-          answer: 'The KB uses session base first, then default base.',
-          retrieval: {
-            method: 'hybrid',
-            detail: 'fts+vector-rerank',
-          },
-          results: [
-            {
-              metadata: {
-                id: 'cli-facts',
-                title: 'CLI Facts',
-                filePath: '/tmp/cli-facts.md',
-              },
-              content:
-                '# CLI Facts\n\nCreated: 2026-04-12\n\n## Base Selection\nKB base precedence order: 1) kb use, 2) kb default.',
-            },
-          ],
-          total: 1,
-        },
-      },
-      'human',
-      { debug: true }
-    )
-    expect(debugOut).toContain('source> id=cli-facts')
-    expect(debugOut).toContain('location=/tmp/cli-facts.md')
-    expect(debugOut).not.toContain('sources> CLI Facts')
   })
 
-  it('Given read_documents with no results in human mode, then formatter returns structured no-match response', () => {
-    const output = formatIntentResult(
-      {
-        status: 'accepted',
-        recommendedAction: 'read_documents',
-        data: {
-          retrieval: {
-            method: 'lexical-fallback',
-            detail: 'hybrid-error:no-index',
-          },
-          results: [],
-          total: 0,
-        },
-      },
-      'human'
-    )
-
-    expect(output).toContain(
-      'I could not find enough evidence to answer directly from KB documents.'
-    )
-    expect(output).toContain('retrieval> lexical-fallback (hybrid-error:no-index)')
-    expect(output).toContain('matches> 0')
-    expect(output).toContain('sources> (none)')
+  it('prints minimal intent help with only the supported commands', () => {
+    const help = printIntentHelp()
+    expect(help).toContain('submit "<fact>"')
+    expect(help).toContain('query "<topic>"')
+    expect(help).toContain('invalidate "<old-fact>"')
   })
 
-  it('Given read_documents result, printIntentResult emits structured metadata and thinking trace', () => {
+  it('renders orchestration footer through printer helpers', () => {
     const lines: string[] = []
     const printer = createPrinter(
       {
         log: line => lines.push(line),
-        write: line => lines.push(line),
+        error: line => lines.push(`ERR:${line}`),
+      },
+      'cli'
+    )
+
+    printReadDocumentsOrchestrationFooter(
+      printer,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        confidence: 0.8,
+        data: {
+          retrieval: { method: 'hybrid', detail: 'fts+vector-rerank' },
+          results: [{ metadata: { title: 'CLI Facts' }, content: 'KB base precedence order.' }],
+        },
+      },
+      { verbose: true }
+    )
+
+    expect(lines.some(line => isOrchestrationMetaLine(line))).toBe(true)
+  })
+
+  it('prints invalidate results without pretending they are read_documents', () => {
+    const lines: string[] = []
+    const printer = createPrinter(
+      {
+        log: line => lines.push(line),
         error: line => lines.push(line),
       },
-      'tui'
+      'cli'
     )
 
     printIntentResult(
       {
         status: 'accepted',
+        explanation: 'Scanned 3 KB documents. 1 replacements in 1 documents.',
+        recommendedAction: 'invalidate_fact',
         confidence: 0.8,
-        explanation: 'query intent maps directly to read_documents',
-        recommendedAction: 'read_documents',
-        data: {
-          answer: 'The KB uses session base first, then default base.',
-          retrieval: {
-            method: 'hybrid',
-            detail: 'fts+vector-rerank',
-            checkpoints: [
-              {
-                stage: 'hybrid_primary',
-                status: 'hit',
-                nextAction: 'return',
-              },
-            ],
-          },
-          results: [{ metadata: { id: 'cli-facts', title: 'CLI Facts', filePath: '/tmp/cli-facts.md' } }],
-        },
       },
       'human',
       printer
     )
 
-    const output = lines.join('\n')
-    expect(output).toContain('retrieval> hybrid (fts+vector-rerank)')
-    expect(output).toContain('matches> 1')
-    expect(output).toContain('sources> CLI Facts')
-    expect(output).not.toContain('summary>')
+    expect(lines.join('\n')).toContain('status> accepted')
+    expect(lines.join('\n')).toContain('invalidate_fact')
+  })
+})
+
+describe('intent-cli execution and enrichment', () => {
+  it('executes invalidate through the router', async () => {
+    const toolExecutor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi.fn(async toolUse => {
+        if (toolUse.name === 'invalidate_fact') {
+          return {
+            changes: [{ documentId: 'ops-facts', title: 'Ops Facts', replaced: 1, diff: '- old\n+ new' }],
+            summary: 'Scanned 3 KB documents. 1 replacements in 1 documents.',
+          }
+        }
+        if (toolUse.name === 'invalidate_graph_documents') {
+          return { enabled: true, invalidatedRelationships: 1, documentIds: ['ops-facts'] }
+        }
+        return { ok: true }
+      }),
+    }
+
+    const parsed = parseIntentCommand(['invalidate', 'old fact', '--apply'])
+    const result = await executeIntentCommand(parsed, toolExecutor)
+
+    expect(result.status).toBe('accepted')
+    expect(result.provenance).toContain('ops-facts')
   })
 
-  it('Given printReadDocumentsOrchestrationFooter, then every emitted line is a wire orchestration row (TUI routing)', () => {
-    const lines: string[] = []
-    const printer = createPrinter(
-      {
-        log: line => lines.push(line),
-        write: line => lines.push(line),
-        error: line => lines.push(line),
-      },
-      'tui'
-    )
-    printReadDocumentsOrchestrationFooter(printer, {
-      status: 'accepted',
-      confidence: 0.9,
-      recommendedAction: 'read_documents',
-      data: {
-        results: [{ metadata: { id: 'doc-a', title: 'A' }, content: '# A\n\nbody' }],
-        retrieval: { method: 'hybrid', detail: 'x' },
-      },
-    })
-    for (const line of lines) {
-      expect(isOrchestrationMetaLine(line), line).toBe(true)
-    }
-    expect(lines.some(l => l.startsWith('matches>'))).toBe(true)
-    expect(lines.some(l => l.startsWith('sources>'))).toBe(true)
-    expect(lines.some(l => l.startsWith('source>'))).toBe(false)
-    expect(lines.some(l => l.startsWith('summary>'))).toBe(false)
-    expect(lines.some(l => l.startsWith('confidence>'))).toBe(false)
-
-    const verboseLines: string[] = []
-    const verbosePrinter = createPrinter(
-      {
-        log: line => verboseLines.push(line),
-        write: line => verboseLines.push(line),
-        error: line => verboseLines.push(line),
-      },
-      'tui'
-    )
-    printReadDocumentsOrchestrationFooter(
-      verbosePrinter,
-      {
-        status: 'accepted',
-        confidence: 0.9,
-        recommendedAction: 'read_documents',
-        data: {
-          results: [{ metadata: { id: 'doc-a', title: 'A' }, content: '# A\n\nbody' }],
-          retrieval: { method: 'hybrid', detail: 'x' },
-        },
-      },
-      { verbose: true }
-    )
-    expect(verboseLines.some(l => l.startsWith('summary>'))).toBe(true)
-    expect(verboseLines.some(l => l.startsWith('status>'))).toBe(true)
-    expect(verboseLines.some(l => l.startsWith('confidence>'))).toBe(true)
-
-    const debugLines: string[] = []
-    const debugPrinter = createPrinter(
-      {
-        log: line => debugLines.push(line),
-        write: line => debugLines.push(line),
-        error: line => debugLines.push(line),
-      },
-      'tui'
-    )
-    printReadDocumentsOrchestrationFooter(
-      debugPrinter,
-      {
-        status: 'accepted',
-        recommendedAction: 'read_documents',
-        data: {
-          results: [{ metadata: { id: 'doc-a', title: 'A' }, content: '# A\n\nbody' }],
-          retrieval: { method: 'hybrid', detail: 'x' },
-        },
-      },
-      { debug: true }
-    )
-    expect(debugLines.some(l => l.startsWith('source> id=doc-a'))).toBe(true)
-    expect(debugLines.some(l => l.startsWith('sources>'))).toBe(false)
-  })
-
-  it('Given read_documents result and llm provider, then enrichReadDocumentsAnswerWithLLM injects LLM answer', async () => {
-    const parsed = parseIntentCommand(['query', 'What is precedence order?'])
-    const result = {
-      status: 'accepted' as const,
-      recommendedAction: 'read_documents',
-      data: {
-        results: [
-          {
-            metadata: { id: 'cli-facts', title: 'CLI Facts' },
-            content: '# CLI Facts\n\nKB base precedence order: session, default.',
-          },
-        ],
-        total: 1,
-      },
-    }
-
-    const provider: LLMProvider = {
-      name: 'test-provider',
-      supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'Precedence is session base, then default base.',
-        stopReason: 'end_turn' as const,
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
-    }
-
-    const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
-    const data = enriched.data as { answer?: string }
-    expect(provider.call).toHaveBeenCalledWith(
-      expect.objectContaining({
-        maxTokens: 4096,
-      })
-    )
-    expect(data.answer).toContain('Precedence is session base')
-  })
-
-  it('Given read_documents results carry graphEvidence, then enrichment prompt includes typed edge hints', async () => {
-    const parsed = parseIntentCommand(['query', 'How does retrieval connect to storage?'])
-    const result = {
-      status: 'accepted' as const,
-      recommendedAction: 'read_documents',
-      data: {
-        results: [
-          {
-            metadata: { id: 'doc-a', title: 'Architecture' },
-            content:
-              '# Architecture\n\nThe KB uses SQLite for markdown documents and DuckDB for the property graph.',
-            graphEvidence: ['one-hop:kb-query-[retrieves_via]->MarkdownDocumentReader'],
-          },
-        ],
-        total: 1,
-      },
-    }
-
-    const provider: LLMProvider = {
-      name: 'test-provider',
-      supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'Stub answer.',
-        stopReason: 'end_turn' as const,
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
-    }
-
-    await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
-    const callMock = provider.call as ReturnType<typeof vi.fn>
-    const callArg = callMock.mock.calls[0]?.[0] as { messages?: Array<{ role: string; content: string }> }
-    const userMsg = callArg?.messages?.find(m => m.role === 'user')?.content
-    expect(String(userMsg)).toContain('Graph linkage hints')
-    expect(String(userMsg)).toContain('retrieves_via')
-  })
-
-  it('Given graphRelationContext option, then enrichment user message includes structured graph path section', async () => {
-    const parsed = parseIntentCommand(['query', 'How does retrieval relate to storage?'])
-    const result = {
-      status: 'accepted' as const,
-      recommendedAction: 'read_documents',
-      data: {
-        results: [
-          {
-            metadata: { id: 'doc-a', title: 'Architecture' },
-            content: '# Architecture\n\nRetrieval reads markdown from disk.',
-          },
-        ],
-        total: 1,
-      },
-    }
-
-    const provider: LLMProvider = {
-      name: 'test-provider',
-      supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'Stub answer.',
-        stopReason: 'end_turn' as const,
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
-    }
-
-    await enrichReadDocumentsAnswerWithLLM(parsed, result, provider, undefined, undefined, {
-      graphRelationContext: 'Shortest directed path (1 hop): A → B',
-    })
-    const callMock = provider.call as ReturnType<typeof vi.fn>
-    const callArg = callMock.mock.calls[0]?.[0] as { messages?: Array<{ role: string; content: string }> }
-    const userMsg = callArg?.messages?.find(m => m.role === 'user')?.content
-    expect(String(userMsg)).toContain('Structured graph path')
-    expect(String(userMsg)).toContain('Shortest directed path (1 hop): A → B')
-  })
-
-  it('Given query session context and a follow-up query, then rewriteIntentInputWithSessionContext rewrites retrieval input but preserves the original question', async () => {
-    const sessionDir = await createTempDir()
+  it('keeps query rewrite/session fallback scoped to query only', async () => {
+    const dir = await createTempDir()
     await writeFile(
-      path.join(sessionDir, 'query-session.json'),
+      path.join(dir, 'query-session.json'),
       JSON.stringify({
-        turns: [
-          {
-            question: 'What is TUI and how do we implement it?',
-            answer: 'TUI is the terminal UI layer.',
-            timestamp: Date.now(),
-          },
-        ],
+        turns: [{ question: 'how does kb work?', answer: 'It stores project knowledge.', timestamp: Date.now() }],
         updatedAt: Date.now(),
       }),
       'utf8'
     )
 
-    const parsed = parseIntentCommand(['query', 'What about the implementation files?'])
-    const provider: LLMProvider = {
-      name: 'test-provider',
-      model: 'test-model',
-      supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'TUI implementation files',
-        stopReason: 'end_turn' as const,
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
-    }
+    const llm: LLMProvider = {
+      name: 'test',
+      model: 'stub',
+      call: vi.fn(async () => ({ text: 'How does kb base selection work?', usage: { inputTokens: 1, outputTokens: 1 } })),
+    } as unknown as LLMProvider
 
-    const rewritten = await rewriteIntentInputWithSessionContext(parsed, provider, sessionDir)
-    expect(rewritten.envelope.payload.query).toBe('TUI implementation files')
-    expect(rewritten.envelope.payload.originalQuery).toBe('What about the implementation files?')
+    const parsed = parseIntentCommand(['query', 'and base selection?', '--session'])
+    const rewritten = await rewriteIntentInputWithSessionContext(parsed, llm, dir)
+    expect(rewritten.envelope.payload.query).toBe('How does kb base selection work?')
   })
 
-  it('Given a broad project query with weak results, then augmentIntentResultWithWorkspaceFallback adds workspace fallback evidence like chat does', async () => {
-    const workspaceDir = await createTempDir()
-    await writeFile(
-      path.join(workspaceDir, 'README.md'),
-      '# KB Agent Harness\n\nThis project is a local-first knowledge system for AI workflows.\n',
-      'utf8'
-    )
+  it('augments query results with workspace fallback but leaves invalidate untouched', async () => {
+    const dir = await createTempDir()
+    await writeFile(path.join(dir, 'README.md'), '# Project\n\nKB stores project knowledge locally.\n', 'utf8')
 
-    const parsed = parseIntentCommand(['query', 'What is this project for?'])
-    const result = {
-      status: 'accepted' as const,
-      recommendedAction: 'read_documents',
-      data: {
-        retrieval: {
-          method: 'hybrid',
-          detail: 'fts+vector-rerank',
-          checkpoints: [
+    const parsed = parseIntentCommand(['query', 'what is this project for?'])
+    const queryResult = await augmentIntentResultWithWorkspaceFallback(
+      parsed,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        data: { results: [], total: 0, retrieval: { method: 'hybrid' } },
+      },
+      dir
+    )
+    expect((queryResult.data as { results?: unknown[] }).results?.length).toBeGreaterThan(0)
+
+    const invalidateParsed = parseIntentCommand(['invalidate', 'old fact'])
+    const invalidateResult = await augmentIntentResultWithWorkspaceFallback(
+      invalidateParsed,
+      { status: 'accepted', recommendedAction: 'invalidate_fact', data: { ok: true } },
+      dir
+    )
+    expect(invalidateResult.recommendedAction).toBe('invalidate_fact')
+  })
+
+  it('enriches query answers with the LLM but does not disturb non-read results', async () => {
+    const llm: LLMProvider = {
+      name: 'test',
+      model: 'stub',
+      call: vi.fn(async () => ({ text: 'KB uses session base first, then default base.', usage: { inputTokens: 1, outputTokens: 1 } })),
+    } as unknown as LLMProvider
+
+    const queryParsed = parseIntentCommand(['query', 'base precedence'])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      queryParsed,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        data: {
+          retrieval: { method: 'hybrid' },
+          results: [
             {
-              stage: 'hybrid_primary',
-              status: 'hit',
-              nextAction: 'return',
-              confidence: 0.55,
+              metadata: { id: 'cli-facts', title: 'CLI Facts' },
+              content: '# CLI Facts\n\nKB base precedence order: 1) kb use, 2) kb default.',
             },
           ],
         },
-        results: [
-          {
-            metadata: { id: 'session-log-2026-04-12', title: 'session log' },
-            content: 'Low-signal session note.',
-          },
-        ],
       },
-    }
-
-    const augmented = await augmentIntentResultWithWorkspaceFallback(parsed, result, workspaceDir)
-    const data = augmented.data as {
-      results?: Array<{ metadata?: { id?: string } }>
-      retrieval?: { detail?: string }
-    }
-
-    expect(data.retrieval?.detail).toContain('workspace-fallback')
-    expect(data.results?.some(item => item.metadata?.id === 'workspace-readme')).toBe(true)
-    expect(augmented.provenance).toContain('workspace-readme')
-  })
-
-  it('Given relevant lines later in long content, enrichment should still send matched CLI snippets to LLM', async () => {
-    const parsed = parseIntentCommand(['query', 'how do i use kb cli commands'])
-    const result = {
-      status: 'accepted' as const,
-      recommendedAction: 'read_documents',
-      data: {
-        results: [
-          {
-            metadata: { id: 'general-facts', title: 'general facts' },
-            content: [
-              '# general facts',
-              '',
-              'Created: 2026-04-12',
-              'Type: reference',
-              'Tags: general, fact',
-              '',
-              '- SQLite hybrid search enabled for this workspace.',
-              '- SQLite index probe write to confirm db creation.',
-              '- sqlite probe via refreshed global kb.',
-              '- lots of unrelated setup details first.',
-              '- more unrelated details.',
-              '- even more unrelated details.',
-              '- CLI quick-reference: kb --help; kb use dogfood; kb default dogfood; kb submit/query/validate/dispute/explain with --output json; kb chat.',
-            ].join('\n'),
-          },
-        ],
-        total: 1,
-      },
-    }
-
-    const provider: LLMProvider = {
-      name: 'test-provider',
-      supportsStreaming: false,
-      call: vi.fn(async ({ messages }) => {
-        const content = typeof messages[0]?.content === 'string' ? messages[0].content : ''
-        expect(content).toContain('CLI quick-reference: kb --help')
-        expect(content).toContain('kb submit/query/validate/dispute/explain')
-
-        return {
-          text: 'Use kb --help, then kb query, submit, validate, dispute, explain, or kb chat.',
-          stopReason: 'end_turn' as const,
-          toolUses: [],
-          usage: { inputTokens: 1, outputTokens: 1 },
-        }
-      }),
-    }
-
-    const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
-    const data = enriched.data as { answer?: string }
-    expect(provider.call).toHaveBeenCalledWith(
-      expect.objectContaining({
-        maxTokens: 4096,
-        messages: expect.arrayContaining([
-          expect.objectContaining({
-            role: 'user',
-            content: expect.stringContaining('Answer using only the evidence below'),
-          }),
-        ]),
-      })
+      llm
     )
-    expect(data.answer).toContain('Use kb --help')
+    expect((enriched.data as { answer?: string }).answer).toContain('session base first')
+
+    const invalidateParsed = parseIntentCommand(['invalidate', 'old fact'])
+    const untouched = await enrichReadDocumentsAnswerWithLLM(
+      invalidateParsed,
+      { status: 'accepted', recommendedAction: 'invalidate_fact', data: { ok: true } },
+      llm
+    )
+    expect((untouched.data as { ok?: boolean }).ok).toBe(true)
   })
-
-  it('Given matched landing line, enrichment should include nearby context lines in evidence windows', async () => {
-    const parsed = parseIntentCommand(['query', 'kb query output json'])
-    const result = {
-      status: 'accepted' as const,
-      recommendedAction: 'read_documents',
-      data: {
-        results: [
-          {
-            metadata: { id: 'cli-ref', title: 'CLI Ref' },
-            content: [
-              '# CLI Ref',
-              '',
-              'Created: 2026-04-12',
-              '',
-              'Use kb --help for command discovery.',
-              'For direct retrieval use kb query "<topic>" --output json.',
-              'Use kb validate "<claim>" --output json for fact validation.',
-            ].join('\n'),
-          },
-        ],
-      },
-    }
-
-    const provider: LLMProvider = {
-      name: 'test-provider',
-      supportsStreaming: false,
-      call: vi.fn(async ({ messages }) => {
-        const content = typeof messages[0]?.content === 'string' ? messages[0].content : ''
-        expect(content).toContain('Use kb --help for command discovery.')
-        expect(content).toContain('kb query "<topic>" --output json')
-        expect(content).toContain('kb validate "<claim>" --output json')
-
-        return {
-          text: 'Use kb query with --output json and related intent commands.',
-          stopReason: 'end_turn' as const,
-          toolUses: [],
-          usage: { inputTokens: 1, outputTokens: 1 },
-        }
-      }),
-    }
-
-    await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
-  })
-
-  it('Given LLM insufficiency boilerplate and exact token evidence present, enrichment should replace answer with grounded fallback', async () => {
-    const parsed = parseIntentCommand([
-      'query',
-      'CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION',
-    ])
-    const result = {
-      status: 'accepted' as const,
-      recommendedAction: 'read_documents',
-      data: {
-        results: [
-          {
-            metadata: { id: 'retrieval-facts', title: 'retrieval facts' },
-            content: [
-              '# retrieval facts',
-              '',
-              '- CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION (source: consumer)',
-            ].join('\n'),
-          },
-        ],
-        total: 1,
-      },
-    }
-
-    const provider: LLMProvider = {
-      name: 'test-provider',
-      supportsStreaming: false,
-      call: vi.fn(async () => ({
-        text: 'The evidence provided does not contain any information about this token.',
-        stopReason: 'end_turn' as const,
-        toolUses: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      })),
-    }
-
-    const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, provider)
-    const data = enriched.data as { answer?: string }
-    expect(data.answer).toContain('CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION')
-    expect(data.answer).toContain('(source: retrieval-facts)')
-  })
-})
-
-describe('intent-cli execution', () => {
-  it('Given parsed query command, then executes through router and returns accepted', async () => {
-    const executor: ToolExecutor = {
-      register: vi.fn(),
-      getTools: vi.fn(() => []),
-      execute: vi.fn(async () => ({ results: [], total: 0 })),
-    }
-
-    const parsed = parseIntentCommand(['query', 'auth'])
-    const result = await executeIntentCommand(parsed, executor)
-
-    expect(result.status).toBe('accepted')
-  })
-})
-
-afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
 })

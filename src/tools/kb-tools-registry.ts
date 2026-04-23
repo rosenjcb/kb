@@ -20,6 +20,9 @@ import {
   type UpdateDocumentInput,
   executeWriteDocumentTool,
 } from './document-writer'
+import { DuckGraphWriter } from './duck-graph-writer'
+import { extractGraph } from './graph-entity-extractor'
+import { invalidateFactTool } from './invalidate-fact-tool'
 import {
   MarkdownDocumentReader,
   type QueryDocumentsInput,
@@ -292,6 +295,118 @@ export function createKBToolsRegistry(
   }
   registry.register('reconcile_contradictions', reconcileContradictionsToolDef, async input => {
     return await writer.reconcileContradictions(input as unknown as ReconcileContradictionsInput)
+  })
+
+  const invalidateFactToolDef: ToolDefinition = {
+    name: 'invalidate_fact',
+    description: 'Preview or apply KB-only fact invalidation across stored documents',
+    schema: {
+      type: 'object',
+      properties: {
+        oldFact: { type: 'string', description: 'Existing fact text to remove or replace' },
+        replacementFact: { type: 'string', description: 'Optional replacement fact text' },
+        preview: { type: 'boolean', description: 'When true, report changes without applying' },
+        dryRun: { type: 'boolean', description: 'When true, simulate writes without applying' },
+        includeSessionLogs: {
+          type: 'boolean',
+          description: 'When true, include session-log documents in the invalidation scan',
+        },
+      },
+      required: ['oldFact'],
+      additionalProperties: false,
+    },
+  }
+  registry.register('invalidate_fact', invalidateFactToolDef, async input => {
+    return await invalidateFactTool(input as never, storageDir)
+  })
+
+  const upsertGraphFromTextToolDef: ToolDefinition = {
+    name: 'upsert_graph_from_text',
+    description: 'Extract graph entities/relationships from text and upsert them into DuckDB',
+    schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Submitted fact or content to extract graph data from' },
+        documentId: { type: 'string', description: 'Document provenance id for extracted graph items' },
+      },
+      required: ['text'],
+      additionalProperties: false,
+    },
+  }
+  registry.register('upsert_graph_from_text', upsertGraphFromTextToolDef, async input => {
+    if (!orchestrator?.taskProvider || !resolveGraphEnabled(config ?? {})) {
+      return { enabled: false, entities: 0, relationships: 0 }
+    }
+
+    const text =
+      typeof (input as { text?: unknown }).text === 'string' ? (input as { text: string }).text : ''
+    const documentId =
+      typeof (input as { documentId?: unknown }).documentId === 'string'
+        ? (input as { documentId: string }).documentId
+        : undefined
+
+    const { entities, relationships } = await extractGraph(text, orchestrator.taskProvider, documentId)
+    if (entities.length === 0 && relationships.length === 0) {
+      return { enabled: true, entities: 0, relationships: 0 }
+    }
+
+    const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(storageDir))
+    await graphWriter.open()
+    try {
+      if (entities.length > 0) await graphWriter.upsertEntities(entities)
+      if (relationships.length > 0) await graphWriter.upsertRelationships(relationships)
+    } finally {
+      await graphWriter.close()
+    }
+
+    return { enabled: true, entities: entities.length, relationships: relationships.length }
+  })
+
+  const invalidateGraphDocumentsToolDef: ToolDefinition = {
+    name: 'invalidate_graph_documents',
+    description: 'Soft-delete graph relationships for affected document provenance ids',
+    schema: {
+      type: 'object',
+      properties: {
+        documentIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Document ids whose graph relationships should be soft-deleted',
+        },
+      },
+      required: ['documentIds'],
+      additionalProperties: false,
+    },
+  }
+  registry.register('invalidate_graph_documents', invalidateGraphDocumentsToolDef, async input => {
+    if (!resolveGraphEnabled(config ?? {})) {
+      return { enabled: false, invalidatedRelationships: 0, documentIds: [] as string[] }
+    }
+
+    const rawIds = Array.isArray((input as { documentIds?: unknown[] }).documentIds)
+      ? ((input as { documentIds: unknown[] }).documentIds as unknown[])
+      : []
+    const documentIds = rawIds
+      .filter((value): value is string => typeof value === 'string')
+      .map(value => value.trim())
+      .filter(Boolean)
+
+    if (documentIds.length === 0) {
+      return { enabled: true, invalidatedRelationships: 0, documentIds: [] as string[] }
+    }
+
+    const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(storageDir))
+    let invalidatedRelationships = 0
+    await graphWriter.open()
+    try {
+      for (const documentId of documentIds) {
+        invalidatedRelationships += await graphWriter.softDeleteByDocId(documentId)
+      }
+    } finally {
+      await graphWriter.close()
+    }
+
+    return { enabled: true, invalidatedRelationships, documentIds }
   })
 
   if (orchestrator?.taskProvider) {

@@ -68,8 +68,8 @@ describe('slash command helpers', () => {
     expect(visible.map(item => item.command)).toEqual([
       '/query',
       '/submit',
-      '/validate',
-      '/explain',
+      '/invalidate',
+      '/chat',
     ])
   })
 

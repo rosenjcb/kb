@@ -10,7 +10,7 @@ KB is a local-first knowledge system built for AI-assisted development. It gives
 ```bash
 kb submit "Auth tokens expire after 15 minutes, not 24 hours"
 kb query "token expiry policy"
-kb validate "refresh tokens are session-scoped"
+kb invalidate "Auth tokens expire after 24 hours" "Auth tokens expire after 15 minutes, not 24 hours"
 ```
 
 ---
@@ -21,7 +21,7 @@ Every project accumulates decisions, constraints, and tribal knowledge that live
 
 **Store durable facts** — not ephemeral chat history. Facts are versioned in Git alongside your code.
 
-**Query by intent** — `kb query`, `kb validate`, `kb explain` understand what you're asking, not just what words you typed.
+**Query by intent** — `kb query` understands what you're asking, not just what words you typed.
 
 **Hybrid retrieval** — SQLite full-text search + vector-style ranking returns relevant docs even when phrasing differs between the query and the stored fact.
 
@@ -69,7 +69,6 @@ kb init
 ```bash
 kb query "how does authentication work?"
 kb submit "OAuth tokens are short-lived; use the refresh endpoint after 15 min"
-kb validate "the refresh token flow is described in the auth runbook"
 kb invalidate "passwords are hashed with MD5" "passwords are hashed with bcrypt"
 ```
 
@@ -84,8 +83,8 @@ kb query "topic I'm about to touch"
 # After a decision — record it
 kb submit "we chose option B because option A required a schema migration"
 
-# Sanity-check an assumption
-kb validate "the queue is eventually consistent"
+# Repair stale knowledge
+kb invalidate "the queue is strongly consistent" "the queue is eventually consistent"
 ```
 
 ---

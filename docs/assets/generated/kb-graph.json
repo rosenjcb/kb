@@ -613,12 +613,6 @@
       "docId": "retrieval-facts"
     },
     {
-      "id": "submit-invalidate-scenarios",
-      "name": "Submit Invalidate Scenarios",
-      "type": "concept",
-      "docId": "retrieval-facts"
-    },
-    {
       "id": "kb-telemetry-e2e-test",
       "name": "KB telemetry e2e test",
       "type": "concept",
@@ -1051,12 +1045,6 @@
       "docId": "docsync-toolset-and-violation-types"
     },
     {
-      "id": "kb-invalidate",
-      "name": "kb-invalidate",
-      "type": "system",
-      "docId": "docsync-toolset-and-violation-types"
-    },
-    {
       "id": "intent-classifier",
       "name": "intent classifier",
       "type": "concept",
@@ -1345,18 +1333,6 @@
       "docId": "agent-workflow-and-requirements"
     },
     {
-      "id": "kb-dispute",
-      "name": "kb dispute",
-      "type": "tool",
-      "docId": "kb-base-selection-and-usage"
-    },
-    {
-      "id": "kb-validate",
-      "name": "kb validate",
-      "type": "tool",
-      "docId": "core-workflows"
-    },
-    {
       "id": "stale-facts",
       "name": "stale facts",
       "type": "concept",
@@ -1381,12 +1357,6 @@
       "docId": "kb-base-selection-and-usage"
     },
     {
-      "id": "kb-explain",
-      "name": "kb explain",
-      "type": "tool",
-      "docId": "core-workflows"
-    },
-    {
       "id": "kb-intent-commands",
       "name": "KB intent commands",
       "type": "concept",
@@ -1403,30 +1373,6 @@
       "name": "query_truth",
       "type": "concept",
       "docId": "kb-base-selection-and-usage"
-    },
-    {
-      "id": "validate-fact",
-      "name": "validate_fact",
-      "type": "concept",
-      "docId": "kb-base-selection-and-usage"
-    },
-    {
-      "id": "validate-orchestrator",
-      "name": "ValidateOrchestrator",
-      "type": "system",
-      "docId": "kb-base-selection-and-usage"
-    },
-    {
-      "id": "explain-change",
-      "name": "explain_change",
-      "type": "concept",
-      "docId": "kb-base-selection-and-usage"
-    },
-    {
-      "id": "explain-orchestrator",
-      "name": "explain-orchestrator",
-      "type": "tool",
-      "docId": "testing-workflow"
     },
     {
       "id": "submitorchestrator",
@@ -1459,12 +1405,6 @@
       "docId": "kb-base-selection-and-usage"
     },
     {
-      "id": "validateorchestrator",
-      "name": "ValidateOrchestrator",
-      "type": "system",
-      "docId": "dogfood-interaction-mode"
-    },
-    {
       "id": "fact-validation",
       "name": "fact validation",
       "type": "concept",
@@ -1487,12 +1427,6 @@
       "name": "token-overlap",
       "type": "concept",
       "docId": "dogfood-interaction-mode"
-    },
-    {
-      "id": "explainorchestrator",
-      "name": "ExplainOrchestrator",
-      "type": "system",
-      "docId": "agent-workflow-and-requirements"
     },
     {
       "id": "id-first-lookup",
@@ -1819,12 +1753,6 @@
       "docId": "core-workflows"
     },
     {
-      "id": "explaining-changes",
-      "name": "Explaining Changes",
-      "type": "concept",
-      "docId": "core-workflows"
-    },
-    {
       "id": "listing-documents",
       "name": "Listing Documents",
       "type": "concept",
@@ -1921,12 +1849,6 @@
       "docId": "agent-workflow-and-requirements"
     },
     {
-      "id": "explain-orchestrator-ts",
-      "name": "explain-orchestrator.ts",
-      "type": "system",
-      "docId": "agent-workflow-and-requirements"
-    },
-    {
       "id": "dogfood-interaction-mode",
       "name": "Dogfood Interaction Mode",
       "type": "decision",
@@ -1951,26 +1873,8 @@
       "docId": "dogfood-interaction-mode"
     },
     {
-      "id": "validate",
-      "name": "validate",
-      "type": "tool",
-      "docId": "dogfood-interaction-mode"
-    },
-    {
       "id": "query",
       "name": "query",
-      "type": "tool",
-      "docId": "dogfood-interaction-mode"
-    },
-    {
-      "id": "explain",
-      "name": "explain",
-      "type": "tool",
-      "docId": "dogfood-interaction-mode"
-    },
-    {
-      "id": "invalidate",
-      "name": "invalidate",
       "type": "tool",
       "docId": "dogfood-interaction-mode"
     },
@@ -2467,12 +2371,6 @@
       "docId": "sqlite-hybrid-search-configuration"
     },
     {
-      "id": "kb-dispute-command",
-      "name": "kb dispute command",
-      "type": "tool",
-      "docId": "sqlite-hybrid-search-configuration"
-    },
-    {
       "id": "discovery-depth-deep",
       "name": "discoveryDepth 'deep'",
       "type": "concept",
@@ -2617,24 +2515,6 @@
       "docId": "security-facts"
     },
     {
-      "id": "validate-command",
-      "name": "validate",
-      "type": "tool",
-      "docId": "security-facts"
-    },
-    {
-      "id": "dispute-command",
-      "name": "dispute",
-      "type": "tool",
-      "docId": "security-facts"
-    },
-    {
-      "id": "explain-command",
-      "name": "explain",
-      "type": "tool",
-      "docId": "security-facts"
-    },
-    {
       "id": "init-command",
       "name": "init",
       "type": "tool",
@@ -2680,12 +2560,6 @@
       "id": "debug-flag",
       "name": "--debug flag",
       "type": "concept",
-      "docId": "security-facts"
-    },
-    {
-      "id": "invalidate-command",
-      "name": "invalidate",
-      "type": "tool",
       "docId": "security-facts"
     },
     {
@@ -2767,12 +2641,6 @@
       "docId": "src-core-agent-loop-md"
     },
     {
-      "id": "dispute",
-      "name": "dispute",
-      "type": "concept",
-      "docId": "src-core-agent-loop-md"
-    },
-    {
       "id": "llm-reasoning",
       "name": "LLM reasoning",
       "type": "concept",
@@ -2811,12 +2679,6 @@
     {
       "id": "intent-loop-result",
       "name": "IntentLoopResult",
-      "type": "concept",
-      "docId": "src-core-agent-loop-md"
-    },
-    {
-      "id": "dispute-fact",
-      "name": "dispute_fact",
       "type": "concept",
       "docId": "src-core-agent-loop-md"
     },
@@ -4516,13 +4378,6 @@
       "weight": 1
     },
     {
-      "fromId": "conversational-kb-chat",
-      "toId": "submit-invalidate-scenarios",
-      "type": "related_to",
-      "docId": "retrieval-facts",
-      "weight": 1
-    },
-    {
       "fromId": "kb-telemetry-e2e-test",
       "toId": "token-counting",
       "type": "uses",
@@ -5013,38 +4868,10 @@
       "weight": 1
     },
     {
-      "fromId": "kb-invalidate",
-      "toId": "kb-dispute",
-      "type": "replaces",
-      "docId": "sqlite-hybrid-search-configuration",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-invalidate",
-      "toId": "stale-facts",
-      "type": "uses",
-      "docId": "sqlite-hybrid-search-configuration",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-validate",
-      "toId": "fact-support",
-      "type": "uses",
-      "docId": "sqlite-hybrid-search-configuration",
-      "weight": 1
-    },
-    {
       "fromId": "fact-support",
       "toId": "evidence",
       "type": "depends_on",
       "docId": "sqlite-hybrid-search-configuration",
-      "weight": 1
-    },
-    {
-      "fromId": "validateorchestrator",
-      "toId": "fact-validation",
-      "type": "implements",
-      "docId": "dogfood-interaction-mode",
       "weight": 1
     },
     {
@@ -5066,27 +4893,6 @@
       "toId": "token-overlap",
       "type": "uses",
       "docId": "dogfood-interaction-mode",
-      "weight": 1
-    },
-    {
-      "fromId": "explainorchestrator",
-      "toId": "id-first-lookup",
-      "type": "uses",
-      "docId": "agent-workflow-and-requirements",
-      "weight": 1
-    },
-    {
-      "fromId": "explainorchestrator",
-      "toId": "shallow-content-search",
-      "type": "uses",
-      "docId": "agent-workflow-and-requirements",
-      "weight": 1
-    },
-    {
-      "fromId": "explainorchestrator",
-      "toId": "deep-content-search",
-      "type": "uses",
-      "docId": "agent-workflow-and-requirements",
       "weight": 1
     },
     {
@@ -5322,13 +5128,6 @@
     },
     {
       "fromId": "tools-orchestrators",
-      "toId": "explain-orchestrator",
-      "type": "related_to",
-      "docId": "testing-workflow",
-      "weight": 1
-    },
-    {
-      "fromId": "tools-orchestrators",
       "toId": "submit-orchestrator",
       "type": "related_to",
       "docId": "testing-workflow",
@@ -5421,27 +5220,6 @@
     {
       "fromId": "querying-prior-context",
       "toId": "kb-query",
-      "type": "uses",
-      "docId": "core-workflows",
-      "weight": 1
-    },
-    {
-      "fromId": "validating-knowledge",
-      "toId": "kb-validate",
-      "type": "uses",
-      "docId": "core-workflows",
-      "weight": 1
-    },
-    {
-      "fromId": "invalidating-knowledge",
-      "toId": "kb-invalidate",
-      "type": "uses",
-      "docId": "core-workflows",
-      "weight": 1
-    },
-    {
-      "fromId": "explaining-changes",
-      "toId": "kb-explain",
       "type": "uses",
       "docId": "core-workflows",
       "weight": 1
@@ -5657,13 +5435,6 @@
       "weight": 1
     },
     {
-      "fromId": "explainorchestrator",
-      "toId": "explain-orchestrator-ts",
-      "type": "implements",
-      "docId": "agent-workflow-and-requirements",
-      "weight": 1
-    },
-    {
       "fromId": "dogfood-interaction-mode",
       "toId": "dogfood-workspace",
       "type": "related_to",
@@ -5686,28 +5457,7 @@
     },
     {
       "fromId": "intent-first",
-      "toId": "validate",
-      "type": "uses",
-      "docId": "dogfood-interaction-mode",
-      "weight": 1
-    },
-    {
-      "fromId": "intent-first",
       "toId": "query",
-      "type": "uses",
-      "docId": "dogfood-interaction-mode",
-      "weight": 1
-    },
-    {
-      "fromId": "intent-first",
-      "toId": "explain",
-      "type": "uses",
-      "docId": "dogfood-interaction-mode",
-      "weight": 1
-    },
-    {
-      "fromId": "intent-first",
-      "toId": "invalidate",
       "type": "uses",
       "docId": "dogfood-interaction-mode",
       "weight": 1
@@ -5716,13 +5466,6 @@
       "fromId": "dogfood-workspace",
       "toId": "freeform-interactions",
       "type": "contradicts",
-      "docId": "dogfood-interaction-mode",
-      "weight": 1
-    },
-    {
-      "fromId": "validateorchestrator",
-      "toId": "shallow-probe",
-      "type": "uses",
       "docId": "dogfood-interaction-mode",
       "weight": 1
     },
@@ -5870,20 +5613,6 @@
       "fromId": "sqlite-hybrid-search-configuration-doc",
       "toId": "kb-configuration",
       "type": "contradicts",
-      "docId": "sqlite-hybrid-search-configuration",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-dispute-command",
-      "toId": "kb-invalidate",
-      "type": "replaces",
-      "docId": "sqlite-hybrid-search-configuration",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-dispute-command",
-      "toId": "kb-validate",
-      "type": "replaces",
       "docId": "sqlite-hybrid-search-configuration",
       "weight": 1
     },
@@ -6112,27 +5841,6 @@
       "weight": 1
     },
     {
-      "fromId": "validate-command",
-      "toId": "kb-command",
-      "type": "related_to",
-      "docId": "security-facts",
-      "weight": 1
-    },
-    {
-      "fromId": "dispute-command",
-      "toId": "kb-command",
-      "type": "related_to",
-      "docId": "security-facts",
-      "weight": 1
-    },
-    {
-      "fromId": "explain-command",
-      "toId": "kb-command",
-      "type": "related_to",
-      "docId": "security-facts",
-      "weight": 1
-    },
-    {
       "fromId": "init-command",
       "toId": "kb-command",
       "type": "related_to",
@@ -6178,13 +5886,6 @@
       "fromId": "kb-run-telemetry",
       "toId": "debug-flag",
       "type": "uses",
-      "docId": "security-facts",
-      "weight": 1
-    },
-    {
-      "fromId": "invalidate-command",
-      "toId": "kb-command",
-      "type": "related_to",
       "docId": "security-facts",
       "weight": 1
     },
@@ -6268,27 +5969,6 @@
     {
       "fromId": "intent-command",
       "toId": "submit",
-      "type": "related_to",
-      "docId": "src-core-agent-loop-md",
-      "weight": 1
-    },
-    {
-      "fromId": "intent-command",
-      "toId": "validate",
-      "type": "related_to",
-      "docId": "src-core-agent-loop-md",
-      "weight": 1
-    },
-    {
-      "fromId": "intent-command",
-      "toId": "dispute",
-      "type": "related_to",
-      "docId": "src-core-agent-loop-md",
-      "weight": 1
-    },
-    {
-      "fromId": "intent-command",
-      "toId": "explain",
       "type": "related_to",
       "docId": "src-core-agent-loop-md",
       "weight": 1
@@ -6379,28 +6059,7 @@
     },
     {
       "fromId": "run-intent-loop",
-      "toId": "explain-change",
-      "type": "implements",
-      "docId": "src-core-agent-loop-md",
-      "weight": 1
-    },
-    {
-      "fromId": "run-intent-loop",
-      "toId": "validate-fact",
-      "type": "implements",
-      "docId": "src-core-agent-loop-md",
-      "weight": 1
-    },
-    {
-      "fromId": "run-intent-loop",
       "toId": "submit-fact",
-      "type": "implements",
-      "docId": "src-core-agent-loop-md",
-      "weight": 1
-    },
-    {
-      "fromId": "run-intent-loop",
-      "toId": "dispute-fact",
       "type": "implements",
       "docId": "src-core-agent-loop-md",
       "weight": 1
@@ -6940,13 +6599,6 @@
     {
       "fromId": "kb-publish",
       "toId": "dry-run-flag",
-      "type": "uses",
-      "docId": "src-core-tui-md",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-invalidate",
-      "toId": "apply-flag",
       "type": "uses",
       "docId": "src-core-tui-md",
       "weight": 1
@@ -8380,18 +8032,6 @@
       "fromId": "graph-extraction",
       "toId": "duckdb",
       "type": "upserts_into",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-invalidate",
-      "toId": "sqlite",
-      "type": "updates_documents_in",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-invalidate",
-      "toId": "duckdb",
-      "type": "soft_deletes_edges_in",
       "weight": 1
     }
   ]

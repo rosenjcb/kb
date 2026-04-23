@@ -23,7 +23,7 @@ export interface ParsedIntentCommand {
   /** Extra human orchestration rows (summary, status, confidence) for query/chat. */
   verbose?: boolean
   /**
-   * When true (`kb query` / `kb explain` with `--session`), use `query-session.json` under the
+   * When true (`kb query --session`), use `query-session.json` under the
    * active base for follow-up rewrite + enrichment context + append. Default false matches chat
    * (no silent session mutation of the retrieval query).
    */
@@ -37,7 +37,7 @@ export interface ReadDocumentsHumanOutputOptions {
   debug?: boolean
 }
 
-const INTENT_COMMANDS = new Set(['submit', 'validate', 'query', 'explain'])
+const INTENT_COMMANDS = new Set(['submit', 'query', 'invalidate'])
 const INTENT_LLM_MAX_OUTPUT_TOKENS = 4096
 
 export function isIntentCommand(command: string): boolean {
@@ -73,19 +73,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
           fact: readPositional(rest, 0, 'submit requires a fact string'),
           domain: readOption(rest, '--domain'),
           source: readOption(rest, '--source'),
-          targetDocumentId: readOption(rest, '--target'),
           includeSessionLogs: readFlag(rest, '--include-session-logs'),
-        },
-      }
-      break
-
-    case 'validate':
-      envelope = {
-        intent: 'validate_fact',
-        requestId: `req-${dayjs().valueOf()}`,
-        payload: {
-          fact: readPositional(rest, 0, 'validate requires a fact string'),
-          domain: readOption(rest, '--domain'),
         },
       }
       break
@@ -103,12 +91,17 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
       }
       break
 
-    case 'explain':
+    case 'invalidate':
       envelope = {
-        intent: 'explain_change',
+        intent: 'invalidate_fact',
         requestId: `req-${dayjs().valueOf()}`,
         payload: {
-          fact: readPositional(rest, 0, 'explain requires a change id or fact'),
+          oldFact: readPositional(rest, 0, 'invalidate requires an old fact string'),
+          replacementFact: readOptionalPositional(rest, 1),
+          preview: readFlag(rest, '--preview') || !readFlag(rest, '--apply'),
+          apply: readFlag(rest, '--apply'),
+          dryRun: readFlag(rest, '--dry-run'),
+          includeSessionLogs: true,
         },
       }
       break
@@ -117,8 +110,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
       throw new Error(`Unsupported intent command: ${command}`)
   }
 
-  const useQuerySession =
-    (command === 'query' || command === 'explain') && readFlag(rest, '--session')
+  const useQuerySession = command === 'query' && readFlag(rest, '--session')
 
   return { envelope, output, base, debug, verbose, useQuerySession }
 }
@@ -425,7 +417,7 @@ export async function rewriteIntentInputWithSessionContext(
   sessionDir?: string
 ): Promise<ParsedIntentCommand> {
   if (!llmProvider || !sessionDir) return parsed
-  if (parsed.envelope.intent !== 'query_truth' && parsed.envelope.intent !== 'explain_change') {
+  if (parsed.envelope.intent !== 'query_truth') {
     return parsed
   }
 
@@ -488,7 +480,7 @@ export async function augmentIntentResultWithWorkspaceFallback(
   workspaceDir: string
 ): Promise<IntentResult> {
   if (!isReadDocumentsResult(result)) return result
-  if (parsed.envelope.intent !== 'query_truth' && parsed.envelope.intent !== 'explain_change') {
+  if (parsed.envelope.intent !== 'query_truth') {
     return result
   }
 
@@ -822,7 +814,7 @@ function scoreEvidenceLine(line: string, queryTokens: string[]): number {
     }
   }
 
-  if (/(kb|cli|command|query|submit|validate|dispute|explain|chat|help)/i.test(line)) {
+  if (/(kb|cli|command|query|submit|invalidate|chat|help)/i.test(line)) {
     score += 3
   }
 
@@ -941,10 +933,9 @@ function extractHighlights(content: string | undefined): HighlightRef[] {
 export function printIntentHelp(mode: CmdMode = 'cli'): string {
   return [
     'Intent commands:',
-    `  ${cmd('submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--target doc-id] [--include-session-logs] [--output human|json]', mode)}`,
-    `  ${cmd('validate "<fact>" [--base <name>] [--domain ops] [--output human|json]', mode)}`,
+    `  ${cmd('submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--include-session-logs] [--output human|json]', mode)}`,
     `  ${cmd('query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]', mode)}`,
-    `  ${cmd('explain "<change id|fact>" [--base <name>] [--session] [--output human|json]', mode)}`,
+    `  ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--preview|--apply|--dry-run] [--output human|json]', mode)}`,
   ].join('\n')
 }
 
@@ -979,6 +970,12 @@ function readPositional(args: string[], index: number, errorMessage: string): st
   return value
 }
 
+function readOptionalPositional(args: string[], index: number): string | undefined {
+  const positional = args.filter(arg => !arg.startsWith('--'))
+  const value = positional[index]
+  return value || undefined
+}
+
 function readOption(args: string[], option: string): string | undefined {
   const index = args.indexOf(option)
   if (index < 0) return undefined
@@ -997,12 +994,10 @@ export function toIntentName(command: string): ConsumerIntent {
   switch (command) {
     case 'submit':
       return 'submit_fact'
-    case 'validate':
-      return 'validate_fact'
     case 'query':
       return 'query_truth'
-    case 'explain':
-      return 'explain_change'
+    case 'invalidate':
+      return 'invalidate_fact'
     default:
       throw new Error(`Unsupported command: ${command}`)
   }

@@ -561,7 +561,7 @@ describe('MarkdownDocumentReader', () => {
 
     await writer.writeDocument({
       title: 'General Facts',
-      content: 'KB CLI supports query, submit, validate, dispute, explain, and chat commands.',
+      content: 'KB CLI supports query, submit, invalidate, and chat commands.',
       documentId: 'general-facts',
       overwrite: true,
       type: 'reference',

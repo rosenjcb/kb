@@ -4,28 +4,43 @@
 
 KB uses three loop patterns:
 
-1. **`runIntentLoop`** — the primary harness. Wraps every intent command (`query`, `submit`, `validate`, `explain`) with retry, discovery escalation, and optional LLM reasoning. This is what the CLI uses.
-2. **Domain-specific cycle loops** — deterministic multi-pass orchestration for commands with a fixed, known lifecycle (`kb init`, `kb publish`).
+1. **`runIntentLoop`** — the primary harness for the public KB intents: one read intent (`query`) and two mutation intents (`submit`, `invalidate`).
+2. **Domain-specific cycle loops** — deterministic multi-pass orchestration for commands with a fixed lifecycle such as `kb init` and `kb publish`.
 3. **`agentLoop`** — low-level async generator for autonomous tool-calling. Available for programmatic / SDK use; not used by the CLI.
 
-Intent commands delegate their core logic to **orchestrators** — each command has its own agent that runs the multi-step work inside the loop:
+The public KB intents delegate their core logic to orchestrators:
 
 | Intent | Orchestrator | Location |
-|--------|-------------|----------|
-| `query_truth` | `QueryResearchOrchestrator` | `src/tools/query-research-orchestrator.ts` |
-| `explain_change` | `ExplainOrchestrator` | `src/tools/explain-orchestrator.ts` |
-| `submit_fact` (no `--target`) | `SubmitOrchestrator` | `src/tools/submit-orchestrator.ts` |
-| `validate_fact` | `ValidateOrchestrator` | `src/tools/validate-orchestrator.ts` |
+|---|---|---|
+| `query_truth` | Router-owned retrieval path | `src/intents/router.ts` |
+| `submit_fact` | `SubmitOrchestrator` | `src/tools/submit-orchestrator.ts` |
+| `invalidate_fact` | `InvalidateOrchestrator` | `src/tools/invalidate-orchestrator.ts` |
 
-This is the **composition principle**: `intent command → orchestrator → tools`. `runIntentLoop` owns retry policy; orchestrators own the per-turn multi-step logic.
+This is the composition principle: `intent → orchestrator → tools`. `runIntentLoop` owns retry policy; orchestrators own multi-step behavior; CLI/TUI adapters stay thin.
 
----
+## Intent Surface
 
-## Part 1: Intent Loop (primary pattern)
+```mermaid
+flowchart LR
+  Q["kb query / /query"] --> R["read_documents\nlexical + hybrid retrieval"]
+  R --> G["graph expansion + rerank\nread-only augmentation"]
+  G --> A["grounded answer"]
+
+  S["kb submit / /submit"] --> SO["SubmitOrchestrator"]
+  SO --> W["discover target + write KB"]
+  W --> C["reconcile contradictions"]
+  C --> SG["extract + upsert graph"]
+
+  I["kb invalidate / /invalidate"] --> IO["InvalidateOrchestrator"]
+  IO --> P["preview/apply KB mutation"]
+  P --> IG["soft-delete graph provenance"]
+```
+
+## Part 1: Intent Loop
 
 **File:** `src/core/intent-loop.ts`
 
-`runIntentLoop` is the single entry point for all five intent commands. It calls `DefaultIntentRouter.execute()` and, when the result is weak, iterates with a refined strategy before returning.
+`runIntentLoop` is the entry point for the full public KB intent surface: one read intent plus two mutation intents.
 
 ### Signature
 
@@ -39,15 +54,15 @@ runIntentLoop(
 
 ```typescript
 interface IntentLoopConfig {
-  maxIterations?: number        // default 3
-  confidenceThreshold?: number  // default 0.7 — stop early when reached
-  provider?: LLMProvider        // enables LLM semantic reasoning for validate
+  maxIterations?: number
+  confidenceThreshold?: number
+  provider?: LLMProvider
 }
 
 interface IntentLoopResult {
   result: IntentResult
-  iterations: number   // how many router.execute() calls were made
-  escalated: boolean   // true if depth was escalated or LLM reasoning ran
+  iterations: number
+  escalated: boolean
 }
 ```
 
@@ -55,153 +70,66 @@ interface IntentLoopResult {
 
 | Intent | Retry? | Strategy |
 |---|---|---|
-| `query_truth` | Yes, up to `maxIterations` | Router defaults to **deep** discovery; on weak retrieval doubles `limit` (max 20). Use `--discovery shallow` to start shallow and allow escalation to deep. |
-| `explain_change` | Yes, up to `maxIterations` | Same as query |
-| `validate_fact` | One extra pass | If `uncertain/0.45` (docs found, token-overlap inconclusive): runs LLM semantic reasoning pass |
-| `submit_fact` | No | Single pass — retrying a submit has idempotency risks |
+| `query_truth` | Yes, up to `maxIterations` | Router defaults to deep discovery; weak retrieval escalates to deep with a wider limit. |
+| `submit_fact` | No | Single pass — mutation flow is orchestrator-owned and graph sync happens inside `SubmitOrchestrator`. |
+| `invalidate_fact` | No | Single pass — preview/apply and graph invalidation are orchestrator-owned. |
 
-**"Weak retrieval"** for query/explain means: zero results, fewer than 2 results, or the final retrieval checkpoint has `status: 'miss'` or `'error'`.
+Weak retrieval for query means zero results, fewer than two results, or a final retrieval checkpoint with `status: 'miss'` or `'error'`.
 
-**LLM validation reasoning** (validate only, confidence 0.45):
-1. Re-fetches evidence with `discoveryDepth: 'deep'`, limit 8
-2. Calls LLM: `"SUPPORTED / NOT_SUPPORTED / UNCERTAIN + one-sentence explanation"`
-3. `SUPPORTED` → `status: 'valid'`, confidence 0.72
-4. `NOT_SUPPORTED` → `status: 'uncertain'`, confidence 0.3, suggests `kb submit`
-5. `UNCERTAIN` → keeps original result, no override
+### Query sequence
 
-### CLI wiring (`src/cli/index.ts`)
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as CLI / TUI
+  participant L as runIntentLoop
+  participant R as DefaultIntentRouter
+  participant D as read_documents
+  participant G as Graph augmentation
 
-All intent commands go through the loop:
-
-```typescript
-const { result } = await runIntentLoop(parsed.envelope, toolExecutor, { provider: llmProvider })
-const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, result, llmProvider)
-console.log(formatIntentResult(enriched, parsed.output))
+  U->>L: query_truth envelope
+  L->>R: execute(query_truth)
+  R->>D: read_documents(query, discoveryDepth, limit)
+  D->>G: expand/rerank when graph enabled
+  G-->>R: grounded retrieval results
+  R-->>L: IntentResult
+  L-->>U: answer-ready result
 ```
 
-LLM answer enrichment (`enrichReadDocumentsAnswerWithLLM`) runs **after** the loop on the final result — it generates a prose answer for `query`/`explain` from retrieved evidence.
+### CLI wiring
 
-### When to extend the intent loop
-
-Add a new iteration strategy when:
-- A new intent returns a result quality signal that isn't captured by `confidence` alone
-- An intent could benefit from query reformulation (e.g., stripping domain prefix on retry)
-- You need carryover from one intent to seed a follow-up (e.g., validated doc IDs passed to submit)
-
-Do **not** retry:
-- Mutation intents (`submit`) — idempotency
-- Intents that already escalate internally (`validate` escalates shallow→deep inside `ValidateOrchestrator`)
-
----
+All KB intents go through the same loop. Query-specific answer enrichment runs afterward only for the read intent.
 
 ## Part 2: Domain-Specific Cycle Loops
 
-Some commands implement their own deterministic loops over named **cycles**. LLM is called directly via `provider.call()` — not via the intent loop — because the orchestration is owned by the command, not delegated to the model.
+Some commands implement deterministic loops over named cycles. LLM is called directly via `provider.call()` because the command owns the orchestration.
 
-### `kb init` — interview + multi-pass synthesis loop
-
-**File:** `src/cli/init-cli.ts`
+### `kb init`
 
 | Cycle | What happens | Output |
 |---|---|---|
 | `read-inputs` | Scan source files, ask user interview questions | `InitContext` |
-| `pass1` | One LLM call per coverage topic in parallel from sources + Q&A (temperature 0.2) | `CandidateDoc[]` |
-| `pass2` | Coverage gap analysis, follow-up questions, LLM refinement (temperature 0.1) | Updated `CandidateDoc[]` |
-| `pass-enrich` | **Per-document enrichment** — each doc gets its own LLM pass in parallel (temperature 0.15) | Enriched `CandidateDoc[]` |
-| `pass3` | Final quality pass — validate titles, remove stubs, ensure uniqueness (temperature 0.0) | Final `CandidateDoc[]` |
+| `pass1` | One LLM call per coverage topic in parallel | `CandidateDoc[]` |
+| `pass2` | Coverage gap analysis, follow-up questions, refinement | Updated `CandidateDoc[]` |
+| `pass-enrich` | Per-document enrichment in parallel | Enriched `CandidateDoc[]` |
+| `pass3` | Final quality pass | Final `CandidateDoc[]` |
 | `write` | Upsert to SQLite | Written document IDs |
-| `pass-graph` | Extract entities and relationships into DuckDB (skipped if graph disabled) | Graph store on disk |
+| `pass-graph` | Extract entities and relationships into DuckDB | Graph store on disk |
 
-Each cycle writes a checkpoint to `~/.kb/<base>/checkpoints/init-latest.checkpoint.json`. Supports `--resume`, `--detach`, `--stop-after`, `--non-interactive`.
-
-Interview question budget: max 10 total, max 4 follow-ups. Topics: `project-overview`, `install-setup`, `core-workflows`, `architecture`, `configuration`, `testing`, `deployment-release`, `constraints-gotchas`.
-
-#### Per-document enrichment (`pass-enrich`)
-
-After synthesis and follow-up refinement, each candidate document is independently enriched by a dedicated LLM call. All docs are processed **in parallel** (`Promise.all`) since they are independent. Each call:
-
-1. Receives the full source file context + Q&A alongside the single doc
-2. Fills gaps with concrete facts, commands, config keys, or examples from context
-3. Removes internal redundancy — each fact appears once within the document
-4. Keeps the document focused on its single topic (does not pull in unrelated content)
-
-This is distinct from `pass2` (which refines all docs together with a holistic view) — `pass-enrich` gives each doc undivided attention with the full source context available.
-
-### `kb chat` — tiered retrieval loop
-
-**File:** `src/cli/chat-cli.ts`
-
-Each turn runs a deterministic recovery stack — no agentLoop, no intent loop:
-
-```
-read_documents (shallow)
-  → if confidence < 0.45: recovery query (simplified tokens)
-  → LLM completion (temperature 0.15, maxTokens 4096)
-  → if answer looks insufficient: deep discovery promotion (3× limit)
-  → if still insufficient: focused evidence query (CLI-keyword rewrite)
-  → if still insufficient: surface explicit message
-```
-
----
-
-## Part 3: Core `agentLoop` (programmatic use)
-
-**File:** `src/core/agent-loop.ts`
-
-A low-level `AsyncGenerator<AgentEvent>` for autonomous LLM tool-calling. The LLM decides which tools to call and for how many turns. **Not used by the CLI** — available for SDK consumers and testing.
-
-```typescript
-for await (const event of agentLoop(query, provider, toolExecutor, { maxTurns: 5 })) {
-  if (event.type === 'text') process.stdout.write(event.content)
-  if (event.type === 'done') break
-}
-```
-
-Event types: `text`, `tool_start`, `tool_result`, `metadata`, `done`.
-
-Config: `maxTurns` (default 10), `maxTokens`, `temperature`.
-
-Use `agentLoop` when you need fully autonomous, open-ended tool orchestration and are building outside the intent command system. For anything in the KB CLI, use `runIntentLoop` or a cycle loop instead.
-
----
-
-## Part 4: Choosing a Pattern
+## Part 3: Choosing a Pattern
 
 | Situation | Use |
 |---|---|
-| Any intent command (`query`, `submit`, `validate`, `explain`) | `runIntentLoop` |
-| Fixed sequence of LLM passes with known inputs/outputs | Cycle loop (`kb init` pattern) |
-| User interaction between LLM calls (interview, confirmation) | Cycle loop |
+| Public KB intent (`query`, `submit`, `invalidate`) | `runIntentLoop` |
+| Fixed sequence of LLM passes with known inputs/outputs | Cycle loop |
+| User interaction between LLM calls | Cycle loop |
 | Autonomous open-ended tool use in SDK/programmatic context | `agentLoop` |
 | Single LLM completion, no tools | `provider.call()` directly |
-
----
-
-## Part 5: Implementing a New Cycle Loop
-
-1. Define cycles as a union type: `type MyCycle = 'read' | 'draft' | 'write'`
-2. Define a versioned checkpoint interface with `completedCycles: MyCycle[]`
-3. Persist checkpoint before advancing each cycle
-4. Skip already-completed cycles: `if (!checkpoint.completedCycles.includes(cycle))`
-5. Throw a `PausedError` instead of returning when pausing mid-run
-6. Support `--stop-after`, `--resume`, `--detach`, `--non-interactive`
-7. Log progress to stderr: `[init] [====----] 2/5 pass1 12 candidate docs`
-8. Use decreasing temperature: 0.2 (draft) → 0.1 (refine) → 0.0 (validate)
-
----
 
 ## See Also
 
 - `src/core/intent-loop.ts` — primary intent harness
-- `src/core/agent-loop.ts` — low-level async generator
-- `src/cli/index.ts` — CLI wiring for all commands
-- `src/cli/init-cli.ts` — reference cycle loop
-- `src/cli/chat-cli.ts` — chat session loop (delegates retrieval to `QueryResearchOrchestrator`)
-- `src/tools/query-research-orchestrator.ts` — hypothesis-driven deep retrieval
-- `src/tools/submit-orchestrator.ts` — discovery-first KB write agent
-- `src/tools/validate-orchestrator.ts` — shallow→deep fact validation
-- `src/tools/explain-orchestrator.ts` — ID-first then semantic explain retrieval
-- `src/core/CHAT.md` — future vision for chat as intent dispatcher
-- `src/tools/TOOL_CONVENTIONS.md` — tool design patterns
-- `src/core/types.ts` — `AgentEvent`, `LLMProvider`, `Message` types
-- `src/intents/router.ts` — `DefaultIntentRouter` used by the intent loop
+- `src/cli/intent-cli.ts` — public intent parsing and formatting
+- `src/tools/submit-orchestrator.ts` — KB write + graph sync
+- `src/tools/invalidate-orchestrator.ts` — KB invalidation + graph cleanup
+- `src/tools/GRAPH.md` — graph lifecycle and read/write semantics

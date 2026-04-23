@@ -380,7 +380,7 @@ describe('chat-cli session loop', () => {
             content: [
               '# general facts',
               '',
-              '- CLI quick-reference: kb --help; kb use dogfood; kb submit/query/validate/dispute/explain.',
+              '- CLI quick-reference: kb --help; kb use dogfood; kb submit/query/invalidate.',
             ].join('\n'),
           },
         ],

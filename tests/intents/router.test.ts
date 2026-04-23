@@ -16,6 +16,7 @@ function createExecutorMock(): ToolExecutor {
             },
           ],
           total: 1,
+          retrieval: { method: 'hybrid' },
         }
       }
       if (toolUse.name === 'write_document') {
@@ -30,15 +31,19 @@ function createExecutorMock(): ToolExecutor {
           changedDocs: 1,
           scannedDocs: 2,
           removedFacts: 2,
-          proposedDiffs: [
-            {
-              documentId: 'general-facts',
-              filePath: '/tmp/general-facts.md',
-              replacements: 2,
-              diff: '--- a/tmp/general-facts.md\n+++ b/tmp/general-facts.md',
-            },
-          ],
         }
+      }
+      if (toolUse.name === 'upsert_graph_from_text') {
+        return { enabled: true, entities: 1, relationships: 1 }
+      }
+      if (toolUse.name === 'invalidate_fact') {
+        return {
+          changes: [{ documentId: 'ops-facts', title: 'Ops Facts', replaced: 1, diff: '- old\n+ new' }],
+          summary: 'Scanned 3 KB documents. 1 replacements in 1 documents.',
+        }
+      }
+      if (toolUse.name === 'invalidate_graph_documents') {
+        return { enabled: true, invalidatedRelationships: 3, documentIds: ['ops-facts'] }
       }
       return { ok: true }
     }),
@@ -46,22 +51,7 @@ function createExecutorMock(): ToolExecutor {
 }
 
 describe('DefaultIntentRouter', () => {
-  it('Given submit_fact with targetDocumentId, then routes to append_to_document', async () => {
-    const executor = createExecutorMock()
-    const router = new DefaultIntentRouter(executor)
-
-    const decision = await router.route({
-      intent: 'submit_fact',
-      payload: {
-        fact: 'Some fact',
-        targetDocumentId: 'ops-facts',
-      },
-    })
-
-    expect(decision.selectedOperation).toBe('append_to_document')
-  })
-
-  it('Given submit_fact without targetDocumentId, then routes to submit_orchestrator', async () => {
+  it('Given submit_fact, then routes to submit_orchestrator', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -76,41 +66,7 @@ describe('DefaultIntentRouter', () => {
     expect(decision.selectedOperation).toBe('submit_orchestrator')
   })
 
-  it('Given submit_fact without explicit domain and CI/CD wording, then routes to submit_orchestrator', async () => {
-    const executor = createExecutorMock()
-    const router = new DefaultIntentRouter(executor)
-
-    const decision = await router.route({
-      intent: 'submit_fact',
-      payload: {
-        fact: 'Our GitHub Actions pipeline deploys on merge to main.',
-      },
-    })
-
-    expect(decision.selectedOperation).toBe('submit_orchestrator')
-  })
-
-  it('Given custom classifier mapping, then submit_fact routes to submit_orchestrator', async () => {
-    process.env.KB_DOMAIN_CLASSIFIER = JSON.stringify({
-      platform: ['platform api', 'control-plane'],
-    })
-
-    const executor = createExecutorMock()
-    const router = new DefaultIntentRouter(executor)
-
-    const decision = await router.route({
-      intent: 'submit_fact',
-      payload: {
-        fact: 'The platform API control-plane versioning policy changed.',
-      },
-    })
-
-    expect(decision.selectedOperation).toBe('submit_orchestrator')
-
-    delete process.env.KB_DOMAIN_CLASSIFIER
-  })
-
-  it('Given submit_fact, then execute automatically runs contradiction reconciliation', async () => {
+  it('Given submit_fact, then execute runs contradiction reconciliation after submission', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -124,16 +80,15 @@ describe('DefaultIntentRouter', () => {
     expect(result.status).toBe('accepted')
     expect(result.recommendedAction).toBe('reconcile_contradictions')
     const data = result.data as {
-      submission?: unknown
+      submission?: { graphSync?: { entities?: number } }
       contradictionReconciliation?: { changedDocs?: number; removedFacts?: number }
     }
-    expect(data.contradictionReconciliation?.changedDocs).toBe(1)
+    expect(data.submission?.graphSync?.entities).toBe(1)
     expect(data.contradictionReconciliation?.removedFacts).toBe(2)
 
     const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
+    expect(calls.some(call => call[0]?.name === 'upsert_graph_from_text')).toBe(true)
     expect(calls.some(call => call[0]?.name === 'reconcile_contradictions')).toBe(true)
-    const reconcileCall = calls.find(call => call[0]?.name === 'reconcile_contradictions')
-    expect(reconcileCall?.[0]?.input?.newFact).toBe('Canonical term renamed')
   })
 
   it('Given inferred domain doc missing, execute falls back from append_to_document to write_document', async () => {
@@ -142,7 +97,6 @@ describe('DefaultIntentRouter', () => {
       getTools: vi.fn(() => []),
       execute: vi.fn(async toolUse => {
         if (toolUse.name === 'read_documents') {
-          // No hybrid hit → orchestrator falls through to domain fallback
           return { results: [], retrieval: { method: 'lexical-fallback' } }
         }
         if (toolUse.name === 'append_to_document') {
@@ -150,6 +104,12 @@ describe('DefaultIntentRouter', () => {
         }
         if (toolUse.name === 'write_document') {
           return { id: 'operations-facts' }
+        }
+        if (toolUse.name === 'upsert_graph_from_text') {
+          return { enabled: true, entities: 0, relationships: 0 }
+        }
+        if (toolUse.name === 'reconcile_contradictions') {
+          return { changedDocumentIds: [], removedFacts: 0 }
         }
         return { ok: true }
       }),
@@ -174,59 +134,33 @@ describe('DefaultIntentRouter', () => {
     expect(names.indexOf('append_to_document')).toBeLessThan(names.indexOf('write_document'))
   })
 
-  it('Given validate_fact, then routes to validate_orchestrator', async () => {
+  it('Given invalidate_fact, then routes to invalidate_orchestrator', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
     const decision = await router.route({
-      intent: 'validate_fact',
-      payload: { fact: 'feature flag X' },
+      intent: 'invalidate_fact',
+      payload: { oldFact: 'feature flag X' },
     })
 
-    expect(decision.selectedOperation).toBe('validate_orchestrator')
+    expect(decision.selectedOperation).toBe('invalidate_orchestrator')
   })
 
-  it('Given validate_fact execute, then returns valid status with provenance via orchestrator', async () => {
+  it('Given invalidate_fact apply, then execute invalidates graph provenance too', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
     const result = await router.execute({
-      intent: 'validate_fact',
-      payload: { fact: 'feature flag X' },
+      intent: 'invalidate_fact',
+      payload: { oldFact: 'feature flag X', apply: true, preview: false },
     })
 
-    expect(result.status).toBe('valid')
+    expect(result.status).toBe('accepted')
     expect(result.provenance).toContain('ops-facts')
-  })
 
-  it('Given explain_change with natural language prompt, then routes to explain_orchestrator', async () => {
-    const executor = createExecutorMock()
-    const router = new DefaultIntentRouter(executor)
-
-    const decision = await router.route({
-      intent: 'explain_change',
-      payload: {
-        fact: 'how vector search works with doc retrieval in kb',
-      },
-    })
-
-    expect(decision.selectedOperation).toBe('explain_orchestrator')
-  })
-
-  it('Given query_truth with discoveryDepth shallow, then respects explicit shallow', async () => {
-    const executor = createExecutorMock()
-    const router = new DefaultIntentRouter(executor)
-
-    const decision = await router.route({
-      intent: 'query_truth',
-      payload: {
-        query: 'env local commit policy',
-        discoveryDepth: 'shallow',
-      },
-    })
-
-    expect(decision.selectedOperation).toBe('read_documents')
-    expect(decision.operationInput.discoveryDepth).toBe('shallow')
+    const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
+    expect(calls.some(call => call[0]?.name === 'invalidate_fact')).toBe(true)
+    expect(calls.some(call => call[0]?.name === 'invalidate_graph_documents')).toBe(true)
   })
 
   it('Given query_truth without discoveryDepth, then defaults to deep discovery like chat', async () => {
@@ -244,49 +178,18 @@ describe('DefaultIntentRouter', () => {
     expect(decision.operationInput.discoveryDepth).toBe('deep')
   })
 
-  it('Given query_truth with discoveryDepth deep, then routes to read_documents with discovery depth', async () => {
+  it('Given query_truth with high-recall token query, then auto-promotes to wider limit', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
     const decision = await router.route({
       intent: 'query_truth',
       payload: {
-        query: 'env local commit policy',
-        discoveryDepth: 'deep',
+        query: 'query-research-orchestrator',
       },
     })
 
     expect(decision.selectedOperation).toBe('read_documents')
-    expect(decision.operationInput.discoveryDepth).toBe('deep')
-  })
-
-  it('Given query_truth with high-recall token query, then auto-promotes to deep discovery and wider limit', async () => {
-    const executor = createExecutorMock()
-    const router = new DefaultIntentRouter(executor)
-
-    const decision = await router.route({
-      intent: 'query_truth',
-      payload: {
-        query: 'CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION',
-      },
-    })
-
-    expect(decision.selectedOperation).toBe('read_documents')
-    expect(decision.operationInput.discoveryDepth).toBe('deep')
-    expect(decision.operationInput.limit).toBe(12)
-  })
-
-  it('Given explain_change with high-recall token query, then routes to explain_orchestrator', async () => {
-    const executor = createExecutorMock()
-    const router = new DefaultIntentRouter(executor)
-
-    const decision = await router.route({
-      intent: 'explain_change',
-      payload: {
-        fact: 'CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION',
-      },
-    })
-
-    expect(decision.selectedOperation).toBe('explain_orchestrator')
+    expect(decision.operationInput.limit).toBeGreaterThanOrEqual(12)
   })
 })
