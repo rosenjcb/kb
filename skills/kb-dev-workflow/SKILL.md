@@ -13,8 +13,15 @@ description: >-
 
 When a user gives you **any coding task**, use the `kb` CLI to develop an understanding of the project (and your task) before **ever** doing any exploration of the codebase. That means always invoking a `kb` investigation before grep, sed, awk, reading the whole file, etc. 
 
+
+**DO NOT EXCESSIVELY READ FILES**
+**ONLY SEARCH FOR THE BARE MINIMUM BEFORE WORKING**
+**KEEP CHIT CHAT TO A MINIMUM - NO TALKY**
+
 - One read intent: `kb query`
 - Two mutation intents: `kb submit` and `kb invalidate`
+
+Also, as a final backup, we have commands to search our graph (very useful) and markdown collection: `kb graph` and `kb docs`.
 
 As the task is progressing, use the mutation commands to update the knowledge store with new facts about the system. Do not prematurely insert facts - only when decisions are made and committed to in code.
 
