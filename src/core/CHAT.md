@@ -31,7 +31,7 @@ Chat is intentionally minimal:
    stay on `IntentResult` for JSON and telemetry but are not duplicated in the human footer by
    default.
 
-**`query-session.json`:** only when **`kb query --session`** / **`kb explain --session`** (not chat).
+**`query-session.json`:** only when **`kb query --session`** (not chat).
 
 So today’s “orchestrator” is **trivial**: always call **`runQueryTruthRetrieval()`** (not a second
 router shortcut), then the LLM, then the shared footer. Subprocess `kb query` is **not** spawned;
@@ -54,7 +54,7 @@ The next step is a small **turn router** in front of the loop:
 Principles:
 
 - **One owner per turn** — pick an intent once, run it, render with shared printers.
-- **Reuse CLI intent paths** — avoid a second implementation of submit/validate/… for chat.
+- **Reuse CLI intent paths** — avoid a second implementation of query/submit/invalidate for chat.
 - **Orchestration lines stay wire-format** — `key> value` rows only from `Printer` / shared
   formatters so TUI and piped CLI stay consistent (`src/ui/orchestration-meta.ts`).
 

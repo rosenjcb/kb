@@ -8,7 +8,6 @@ LLM prompts used by the KB CLI, stored as plain Markdown files so they can be re
 |---|---|---|
 | `chat-system.md` | `chat-cli.ts` — `CHAT_SYSTEM_PROMPT` | single-part |
 | `graph-extraction.md` | `graph-entity-extractor.ts` — `EXTRACTION_SYSTEM_PROMPT` | single-part |
-| `fact-checker.md` | `intent-loop.ts` — LLM validate reasoning pass | single-part with placeholders |
 | `init-synthesis.md` | `init-cli.ts` — `runSynthesisPass` | two-part (intro + instructions) |
 | `init-refinement.md` | `init-cli.ts` — `runRefinementPass` | two-part (intro + instructions) |
 | `init-quality.md` | `init-cli.ts` — `runQualityPass` | two-part (intro + instructions) |

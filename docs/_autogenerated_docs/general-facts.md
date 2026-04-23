@@ -16,7 +16,6 @@ The core `agentLoop` is an `AsyncGenerator<AgentEvent>` in `src/core/agent-loop.
 
 For comparison, a cycle loop (like `kb init` or `kb chat`) is used when the sequence of LLM calls is known ahead of time, while `provider.call()` is used directly for single LLM completions with no tools. The `AGENT_LOOP.md` document details these two primary loop patterns: the generic `agentLoop` for autonomous tool-calling, and domain-specific cycle loops. This document serves as a counterpart to `src/tools/TOOL_CONVENTIONS.md` for agent orchestration patterns.
 
-`runIntentLoop` in `src/core/intent-loop.ts` is the primary harness for all KB CLI intent commands (query, submit, validate, dispute, explain). It wraps `DefaultIntentRouter.execute()` with retry, discovery escalation, and LLM semantic reasoning. All CLI intent commands are routed through `runIntentLoop`, not directly through `executeIntentCommand`.
 
 ## KB Init Process
 
@@ -60,6 +59,5 @@ The TUI's entry point is `src/tui/index.tsx`, which renders `App.tsx` via Ink. T
 
 ## Telemetry and Evaluation
 
-The KB features a comprehensive telemetry and run reporting architecture. `RunCollector` and `ReportWriter` are located in `src/core/telemetry.ts`. Every `kb` command (init, query, submit, validate, dispute, explain, invalidate) creates a `RunCollector`, which tracks execution details and appends a `RunReport` to `~/.kb/logs/<YYYY-MM-DD>.jsonl` (NDJSON) upon exit. These reports are always written, regardless of the `--debug` flag. The `--debug` flag, when used per-subcommand, prints live per-stage lines to stderr without affecting stdout.
 
 A `TokenCountingProvider` wraps any `LLMProvider` to accumulate `inputTokens` and `outputTokens` across all `.call()` invocations, with counts retrievable via `getAndReset()` per cycle. For `kb init`, a single counting provider is used and reset between each `InitCycle` (e.g., pass1 to pass-graph). For intent commands, the provider is wrapped in `index.ts`, and tokens from LLM calls for graph-extraction (during `submit`) and answer-enrichment (during `query`) are flushed

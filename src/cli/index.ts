@@ -13,10 +13,8 @@ import {
   estimateCost,
 } from '../core/telemetry'
 import { DuckGraphWriter } from '../tools/duck-graph-writer'
-import { extractGraph } from '../tools/graph-entity-extractor'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
-import { invalidateFactTool } from '../tools/invalidate-fact-tool'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
 import { createPrinter } from '../ui/printer'
 import {
@@ -140,8 +138,6 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     'Intent commands:',
     '  query       Search the knowledge base',
     '  submit      Store a fact or checkpoint',
-    '  validate    Check whether a fact is supported',
-    '  explain     Explain a fact or change id',
     '  invalidate  Remove or replace stale KB facts',
     '',
     cmdHelpHint(mode),
@@ -248,75 +244,6 @@ export async function runMainWithOutput(
   mode: CmdMode = 'cli'
 ): Promise<void> {
   const firstArg = args[0]
-
-  // kb invalidate
-  if (firstArg === 'invalidate') {
-    const invTail = args.slice(1)
-    let kbStorageDir: string
-    try {
-      kbStorageDir = await resolveKbStorageDirFromArgs(invTail)
-    } catch {
-      out.error(formatPrerequisiteError(CLI_ERROR_NO_KB_BASE))
-      return
-    }
-
-    const stripped = stripCliFlagWithValue(invTail, '--base')
-    const preview = stripped.includes('--preview') || !stripped.includes('--apply')
-    const dryRun = stripped.includes('--dry-run')
-    const debug = stripped.includes('--debug')
-    const positionals = stripped.filter(t => !t.startsWith('--'))
-    const oldFact = positionals[0]
-    const replacementFact = positionals[1]
-
-    if (!oldFact) {
-      out.error(
-        `❌ Usage: ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--preview|--apply|--dry-run] [--debug]', mode)}`
-      )
-      return
-    }
-
-    const reporter = new ReportWriter(defaultLogsDir())
-    const collector = new RunCollector('invalidate', { debug })
-    const endInvalidate = collector.startStage('invalidate', 'none', 'none')
-    try {
-      const result = await invalidateFactTool(
-        { oldFact, replacementFact, preview, dryRun, includeSessionLogs: true },
-        kbStorageDir
-      )
-      endInvalidate({ inputTokens: 0, outputTokens: 0 })
-
-      for (const change of result.changes) {
-        out.log(
-          `\nDocument: ${change.documentId} (${change.title})\nReplaced: ${change.replaced}\nDiff:\n${change.diff}`
-        )
-      }
-      out.log(`\n${result.summary}`)
-      if (result.error) {
-        out.error(`❌ ${result.error}`)
-      }
-
-      if (!preview && !dryRun && result.changes.length > 0) {
-        try {
-          const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(kbStorageDir))
-          await graphWriter.open()
-          for (const change of result.changes) {
-            await graphWriter.softDeleteByDocId(change.documentId)
-          }
-          await graphWriter.close()
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          out.error(`[kb-graph] invalidate graph sync unavailable: ${message}`)
-        }
-      }
-      await reporter.append(collector.finish('success'))
-    } catch (error) {
-      endInvalidate({ inputTokens: 0, outputTokens: 0 })
-      const message = error instanceof Error ? error.message : String(error)
-      await reporter.append(collector.finish('error', message))
-      out.error(`❌ ${message}`)
-    }
-    return
-  }
 
   if (args.length === 0 || firstArg === '--help' || firstArg === '-h' || firstArg === 'help') {
     out.log(printCliHelp(mode))
@@ -807,8 +734,7 @@ export async function runMainWithOutput(
       let graphRelationContext: string | undefined
       /** Chat never reads `query-session.json`; default `kb query` must not either (poisoned rewrites). */
       const querySessionDir =
-        parsed.useQuerySession === true &&
-        (parsed.envelope.intent === 'query_truth' || parsed.envelope.intent === 'explain_change')
+        parsed.useQuerySession === true && parsed.envelope.intent === 'query_truth'
           ? intentBaseDir
           : undefined
       printer.startSpinner('running intent rewrite...')
@@ -865,37 +791,7 @@ export async function runMainWithOutput(
         printer.stopSpinner()
       })
 
-      if (
-        parsed.envelope.intent === 'submit_fact' &&
-        aligned.status === 'accepted' &&
-        llmProvider &&
-        resolveGraphEnabled(config)
-      ) {
-        const fact = String(parsed.envelope.payload.fact ?? '').trim()
-        const submittedDocId = (aligned.data as { submission?: { id?: string } } | undefined)
-          ?.submission?.id
-        if (fact) {
-          try {
-            const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(intentBaseDir))
-            const { entities, relationships } = await extractGraph(
-              fact,
-              llmProvider,
-              submittedDocId
-            )
-            if (entities.length > 0 || relationships.length > 0) {
-              await graphWriter.open()
-              if (entities.length > 0) await graphWriter.upsertEntities(entities)
-              if (relationships.length > 0) await graphWriter.upsertRelationships(relationships)
-              await graphWriter.close()
-            }
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
-            out.error(`[kb-graph] submit graph sync unavailable: ${message}`)
-          }
-        }
-      }
-
-      // Flush any tokens accumulated during the intent loop (e.g. LLM validation reasoning)
+      // Flush any tokens accumulated during the intent loop and graph extraction.
       if (llmCounter) {
         const loopTokens = llmCounter.getAndReset()
         if (loopTokens.inputTokens > 0 || loopTokens.outputTokens > 0) {

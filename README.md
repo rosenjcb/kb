@@ -16,7 +16,7 @@ Instead of re-deriving the same answers, KB lets you:
 
 * Record decisions and facts as you work
 * Query past context before making changes
-* Validate assumptions against what’s already known
+* Invalidate stale facts before they mislead future work
 
 All of it lives alongside your code, versioned in Git, and queryable like a lightweight memory system.
 
@@ -26,7 +26,7 @@ KB turns day-to-day development into a feedback loop:
 
 * Capture — Save facts, decisions, and discoveries as you go
 * Recall — Query relevant context when you need it
-* Verify — Check assumptions before they turn into bugs
+* Repair — Replace or remove stale knowledge before it drifts
 
 ## Quick Start
 
@@ -72,24 +72,28 @@ kb && /base use dogfood
 kb && /init --rescan --apply
 ```
 
-### 4) Start using intent commands
+### 4) Start using KB intents
 
 ```bash
 kb submit "Document writer now supports sqlite index sync"
 kb query "sqlite index sync behavior" --limit 5
-kb validate "kb base use sets the active session base"
 kb invalidate "kb use should persist across sessions" "kb base use is session-scoped; use kb base use --default to write a persistent default"
 ```
 
 ## CLI Reference
 
-### Intent commands
+### KB intents
+
+One read intent:
 
 ```
-kb submit "<fact>" [--domain ops] [--source runbook] [--target doc-id] [--output human|json]
-kb validate "<fact>" [--domain ops] [--output human|json]
 kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]
-kb explain "<change id|fact>" [--output human|json]
+```
+
+Two mutation intents:
+
+```
+kb submit "<fact>" [--domain ops] [--source runbook] [--output human|json]
 kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply]
 ```
 
@@ -148,8 +152,8 @@ If hybrid retrieval is unavailable or exceeds the latency budget, KB automatical
 
 ```bash
 kb query "topic"
-kb submit "new fact" --target <doc-id>
-kb validate "assumption I want to check"
+kb submit "new fact"
+kb invalidate "old fact" "replacement fact"
 ```
 
 ## Agent skill: use KB while you develop
@@ -194,6 +198,6 @@ pnpm run build
 
 ```text
 src/core   — provider abstraction, intent loop, agent loop, runtime types
-src/cli    — CLI entrypoint, intent command parsing, base selection, kb init
+src/cli    — CLI entrypoint, KB intent parsing, base selection, kb init
 src/tools  — write/query tools, markdown + sqlite index integration
 ```

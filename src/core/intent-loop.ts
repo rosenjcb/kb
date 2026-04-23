@@ -1,16 +1,14 @@
 /**
- * Intent Loop — generic multi-iteration harness for all intent commands.
+ * Intent Loop — generic multi-iteration harness for KB intent commands.
  *
  * Wraps DefaultIntentRouter.execute() with:
- *   - Discovery escalation for query/explain (shallow → deep on weak retrieval)
- *   - LLM semantic reasoning for validate when token-overlap is inconclusive
+ *   - Discovery escalation for query (shallow → deep on weak retrieval)
  *   - Carryover of confidence, provenance, and retrieval depth across iterations
  *
- * submit_fact is single-pass — no retry logic applies.
+ * submit_fact and invalidate_fact are single-pass — no retry logic applies.
  */
 
 import dayjs from 'dayjs'
-import { loadPrompt } from '../prompts/loader'
 import { DefaultIntentRouter } from '../intents/router'
 import type { ConsumerIntentEnvelope, IntentResult } from '../intents/types'
 import type { RunCollector } from './telemetry'
@@ -23,7 +21,7 @@ export interface IntentLoopConfig {
   maxIterations?: number
   /** Stop early when confidence reaches this threshold. Default: 0.7. */
   confidenceThreshold?: number
-  /** Enables LLM semantic reasoning pass for uncertain validate results. */
+  /** Optional provider used by callers that also collect token telemetry. */
   provider?: LLMProvider
   /** Telemetry collector — records per-iteration StageMetrics. */
   collector?: RunCollector
@@ -33,7 +31,7 @@ export interface IntentLoopResult {
   result: IntentResult
   /** Number of router.execute() calls made. */
   iterations: number
-  /** True if any iteration escalated discovery depth or applied LLM reasoning. */
+  /** True if any iteration escalated discovery depth. */
   escalated: boolean
 }
 
@@ -89,60 +87,15 @@ export async function runIntentLoop(
   while (iterations < maxIterations) {
     const intent = envelope.intent
 
-    // Single-pass intents — no retry
-    if (intent === 'submit_fact') break
-
-    // Already good enough
+    if (intent === 'submit_fact' || intent === 'invalidate_fact') break
     if ((result.confidence ?? 0) >= confidenceThreshold) break
-
-    // Errors are terminal
     if (result.status === 'error') break
 
-    if (intent === 'validate_fact') {
-      // Docs found but token-overlap inconclusive → try LLM semantic reasoning
-      if (result.status === 'uncertain' && result.confidence === 0.45 && config.provider) {
-        const llmStartMs = Date.now()
-        const llmStartedAt = dayjs().toISOString()
-        const llmResult = await applyLLMValidationReasoning(
-          toolExecutor,
-          String(envelope.payload.fact ?? ''),
-          config.provider
-        )
-        if (llmResult) {
-          result = llmResult
-          iterations++
-          escalated = true
-          if (collector) {
-            const usage = extractUsageFromResult(llmResult)
-            collector.addStage({
-              stage: `${intent}:llm-reasoning`,
-              startedAt: llmStartedAt,
-              durationMs: Date.now() - llmStartMs,
-              inputTokens: usage.inputTokens,
-              outputTokens: usage.outputTokens,
-              estimatedCostUsd: estimateCost(
-                providerName,
-                providerModel,
-                usage.inputTokens,
-                usage.outputTokens
-              ),
-              provider: providerName,
-              model: providerModel,
-            })
-          }
-        }
-        break
-      }
-
-      // No docs at all (confidence 0.2) — nothing to reason over, stop
-      break
-    }
-
-    if (intent === 'query_truth' || intent === 'explain_change') {
+    if (intent === 'query_truth') {
       if (!hasWeakRetrieval(result)) break
 
       const refined = escalateQueryEnvelope(currentEnvelope)
-      if (refined === currentEnvelope) break // already at deep, can't escalate further
+      if (refined === currentEnvelope) break
 
       currentEnvelope = refined
       escalated = true
@@ -157,8 +110,6 @@ export async function runIntentLoop(
   return { result, iterations, escalated }
 }
 
-// ─── Usage extraction ─────────────────────────────────────────────────────────
-
 function extractUsageFromResult(result: IntentResult): {
   inputTokens: number
   outputTokens: number
@@ -171,8 +122,6 @@ function extractUsageFromResult(result: IntentResult): {
     outputTokens: data?.usage?.outputTokens ?? 0,
   }
 }
-
-// ─── Retrieval quality ────────────────────────────────────────────────────────
 
 function hasWeakRetrieval(result: IntentResult): boolean {
   const data = result.data as
@@ -197,7 +146,7 @@ function hasWeakRetrieval(result: IntentResult): boolean {
 }
 
 function escalateQueryEnvelope(envelope: ConsumerIntentEnvelope): ConsumerIntentEnvelope {
-  if (envelope.payload.discoveryDepth === 'deep') return envelope // already maxed
+  if (envelope.payload.discoveryDepth === 'deep') return envelope
 
   const currentLimit = typeof envelope.payload.limit === 'number' ? envelope.payload.limit : 5
   return {
@@ -208,101 +157,4 @@ function escalateQueryEnvelope(envelope: ConsumerIntentEnvelope): ConsumerIntent
       limit: Math.min(currentLimit * 2, 20),
     },
   }
-}
-
-// ─── LLM validation reasoning ─────────────────────────────────────────────────
-
-/**
- * Called when validate returns uncertain/0.45: docs exist but token-overlap failed.
- * Re-fetches evidence with deep discovery and asks the LLM for a semantic judgment.
- * Returns null if the LLM is uncertain or the call fails, so the caller keeps the
- * original result.
- */
-async function applyLLMValidationReasoning(
-  toolExecutor: ToolExecutor,
-  fact: string,
-  provider: LLMProvider
-): Promise<IntentResult | null> {
-  try {
-    const response = (await toolExecutor.execute({
-      id: `intent-loop-validate-${dayjs().valueOf()}`,
-      name: 'read_documents',
-      input: {
-        query: fact,
-        mode: 'content',
-        includeContent: true,
-        limit: 8,
-        discoveryDepth: 'deep',
-      },
-    })) as {
-      results?: Array<{ content?: string; metadata?: { id?: string } }>
-      retrieval?: unknown
-    }
-
-    const results = Array.isArray(response.results) ? response.results : []
-    if (results.length === 0) return null
-
-    const evidence = results
-      .slice(0, 4)
-      .map((r, i) => {
-        const id = r.metadata?.id ?? `doc-${i + 1}`
-        return `Document ${i + 1} (${id}):\n${(r.content ?? '').slice(0, 600)}`
-      })
-      .join('\n\n')
-
-    const completion = await provider.call({
-      messages: [
-        {
-          role: 'user',
-          content: loadPrompt('fact-checker.md')
-            .replace('{{fact}}', fact)
-            .replace('{{evidence}}', evidence),
-        },
-      ],
-      temperature: 0.0,
-      maxTokens: 512,
-    })
-
-    const text = completion.text.trim()
-    const upper = text.toUpperCase()
-    const provenance = results.map(r => r.metadata?.id).filter(Boolean) as string[]
-    const explanation = extractExplanationLine(text)
-
-    if (upper.startsWith('SUPPORTED')) {
-      return {
-        status: 'valid',
-        confidence: 0.72,
-        explanation: `Fact validated via LLM semantic reasoning over ${results.length} KB documents.${explanation ? ` ${explanation}` : ''}`,
-        recommendedAction: 'none',
-        provenance,
-        data: { retrieval: response.retrieval, llmReasoning: true },
-      }
-    }
-
-    if (upper.startsWith('NOT_SUPPORTED')) {
-      return {
-        status: 'uncertain',
-        confidence: 0.3,
-        explanation: `LLM reasoning found no KB support for this fact.${explanation ? ` ${explanation}` : ''} Consider: kb submit "<fact>".`,
-        recommendedAction: 'submit_fact',
-        provenance,
-        data: { retrieval: response.retrieval, llmReasoning: true },
-      }
-    }
-
-    // UNCERTAIN — preserve the original result
-    return null
-  } catch {
-    return null
-  }
-}
-
-function extractExplanationLine(text: string): string {
-  const verdict = /^(SUPPORTED|NOT_SUPPORTED|UNCERTAIN)\b/i
-  const line = text
-    .split('\n')
-    .map(l => l.trim())
-    .filter(Boolean)
-    .find(l => !verdict.test(l))
-  return line ?? ''
 }

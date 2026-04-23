@@ -1,8 +1,7 @@
 export type ConsumerIntent =
   | 'submit_fact'
-  | 'validate_fact'
   | 'query_truth'
-  | 'explain_change'
+  | 'invalidate_fact'
 
 export interface ConsumerIntentEnvelope {
   intent: ConsumerIntent

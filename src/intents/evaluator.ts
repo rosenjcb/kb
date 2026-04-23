@@ -1,3 +1,3 @@
 // evaluator.ts — retained only for external callers during migration.
-// ValidateOrchestrator (src/tools/validate-orchestrator.ts) is now the canonical implementation.
+// Intent evaluation is handled by the active three-command router/orchestrator flow.
 // This file will be removed once all callers are updated.

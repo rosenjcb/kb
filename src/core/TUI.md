@@ -30,6 +30,7 @@ Examples:
 - `kb sync` must work as both `kb sync` (CLI) and `/sync` (TUI) when repo-maintenance commands are exposed.
 - A help flag should work from both `kb --help` and `kb init --help`.
 - A normal intent command like `kb query "topic"` is already non-interactive by shape and should not need an extra mode flag.
+- The public intent surface is exactly `kb query`, `kb submit`, and `kb invalidate`, mirrored by `/query`, `/submit`, and `/invalidate` in the TUI shell.
 - **`--verbose`** on **`kb query`** / **`kb chat`** adds human rows **`summary>`** / **`status>`** / **`confidence>`**. **`--debug`** switches the default **`sources>`** (titles-only) footer to one detailed **`source>`** line per hit. Use these on that invocation (TUI shell: **`chat --verbose`**, **`chat --debug`**) before a chat session starts—there is no mid-session toggle.
 
 ## Flag Standardization Guidance
