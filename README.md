@@ -94,7 +94,7 @@ Two mutation intents:
 
 ```
 kb submit "<fact>" [--domain ops] [--source runbook] [--output human|json]
-kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--apply]
+kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--dry-run]
 ```
 
 ### Document browsing

@@ -146,13 +146,13 @@ describe('DefaultIntentRouter', () => {
     expect(decision.selectedOperation).toBe('invalidate_orchestrator')
   })
 
-  it('Given invalidate_fact apply, then execute invalidates graph provenance too', async () => {
+  it('Given invalidate_fact without preview, then execute invalidates graph provenance too', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
     const result = await router.execute({
       intent: 'invalidate_fact',
-      payload: { oldFact: 'feature flag X', apply: true, preview: false },
+      payload: { oldFact: 'feature flag X' },
     })
 
     expect(result.status).toBe('accepted')

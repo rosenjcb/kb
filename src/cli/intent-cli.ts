@@ -91,20 +91,25 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
       }
       break
 
-    case 'invalidate':
+    case 'invalidate': {
+      if (readFlag(rest, '--apply')) {
+        throw new Error(
+          'Invalid flag: kb invalidate does not accept --apply; mutations apply by default. Use --preview or --dry-run to skip writes.'
+        )
+      }
       envelope = {
         intent: 'invalidate_fact',
         requestId: `req-${dayjs().valueOf()}`,
         payload: {
           oldFact: readPositional(rest, 0, 'invalidate requires an old fact string'),
           replacementFact: readOptionalPositional(rest, 1),
-          preview: readFlag(rest, '--preview') || !readFlag(rest, '--apply'),
-          apply: readFlag(rest, '--apply'),
+          preview: readFlag(rest, '--preview'),
           dryRun: readFlag(rest, '--dry-run'),
           includeSessionLogs: true,
         },
       }
       break
+    }
 
     default:
       throw new Error(`Unsupported intent command: ${command}`)
@@ -935,7 +940,7 @@ export function printIntentHelp(mode: CmdMode = 'cli'): string {
     'Intent commands:',
     `  ${cmd('submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--include-session-logs] [--output human|json]', mode)}`,
     `  ${cmd('query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]', mode)}`,
-    `  ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--preview|--apply|--dry-run] [--output human|json]', mode)}`,
+    `  ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--preview|--dry-run] [--output human|json]', mode)}`,
   ].join('\n')
 }
 

@@ -63,7 +63,7 @@ Mutation intents:
 
 ```text
 kb submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--include-session-logs] [--output human|json]
-kb invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--preview|--apply|--dry-run] [--output human|json]
+kb invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--preview|--dry-run] [--output human|json]
 ```
 
 ### Document browsing
@@ -101,5 +101,5 @@ Run from the **project working directory** unless you pass `--base` explicitly.
 ## Safety
 
 - Do not pass secrets into `kb submit` or `kb query`.
-- `kb invalidate --apply` mutates stored knowledge — use `--preview` when the user should confirm impact first.
+- `kb invalidate` mutates stored knowledge by default — use `--preview` or `--dry-run` when the user should confirm impact first.
 - Use `ci-*` bases for disposable verification so you do not pollute dogfood knowledge with throwaway experiments.

@@ -72,22 +72,23 @@ describe('intent-cli parsing', () => {
     expect(parsed.debug).toBe(true)
   })
 
-  it('parses invalidate preview/apply fields', () => {
-    const parsed = parseIntentCommand([
-      'invalidate',
-      'old fact',
-      'new fact',
-      '--base',
-      'dogfood',
-      '--apply',
-    ])
+  it('parses invalidate as apply-by-default with optional preview/dry-run', () => {
+    const applied = parseIntentCommand(['invalidate', 'old fact', 'new fact', '--base', 'dogfood'])
 
-    expect(parsed.base).toBe('dogfood')
-    expect(parsed.envelope.intent).toBe('invalidate_fact')
-    expect(parsed.envelope.payload.oldFact).toBe('old fact')
-    expect(parsed.envelope.payload.replacementFact).toBe('new fact')
-    expect(parsed.envelope.payload.apply).toBe(true)
-    expect(parsed.envelope.payload.preview).toBe(false)
+    expect(applied.base).toBe('dogfood')
+    expect(applied.envelope.intent).toBe('invalidate_fact')
+    expect(applied.envelope.payload.oldFact).toBe('old fact')
+    expect(applied.envelope.payload.replacementFact).toBe('new fact')
+    expect(applied.envelope.payload.preview).toBe(false)
+    expect(applied.envelope.payload.dryRun).toBe(false)
+    expect(applied.envelope.payload).not.toHaveProperty('apply')
+
+    const preview = parseIntentCommand(['invalidate', 'old fact', '--preview'])
+    expect(preview.envelope.payload.preview).toBe(true)
+
+    expect(() => parseIntentCommand(['invalidate', 'old fact', '--apply'])).toThrow(
+      'kb invalidate does not accept --apply'
+    )
   })
 
   it('rejects unknown public commands', () => {
@@ -217,7 +218,7 @@ describe('intent-cli execution and enrichment', () => {
       }),
     }
 
-    const parsed = parseIntentCommand(['invalidate', 'old fact', '--apply'])
+    const parsed = parseIntentCommand(['invalidate', 'old fact'])
     const result = await executeIntentCommand(parsed, toolExecutor)
 
     expect(result.status).toBe('accepted')
