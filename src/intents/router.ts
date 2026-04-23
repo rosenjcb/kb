@@ -48,7 +48,7 @@ export class DefaultIntentRouter implements IntentRouter {
         return {
           selectedOperation: 'invalidate_orchestrator',
           operationInput: payload,
-          policyReason: 'invalidate intent; preview/apply KB mutation via invalidate orchestrator',
+          policyReason: 'invalidate intent; KB mutation via invalidate orchestrator (preview opt-in)',
         }
 
       case 'query_truth': {
@@ -133,7 +133,7 @@ export class DefaultIntentRouter implements IntentRouter {
       return orchestrator.run({
         oldFact,
         replacementFact: asOptionalString(payload.replacementFact),
-        preview: payload.preview !== false && payload.apply !== true,
+        preview: payload.preview === true,
         dryRun: payload.dryRun === true,
         includeSessionLogs: payload.includeSessionLogs !== false,
       })

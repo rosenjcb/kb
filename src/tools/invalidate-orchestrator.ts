@@ -20,7 +20,7 @@ export class InvalidateOrchestrator {
   constructor(private readonly toolExecutor: ToolExecutor) {}
 
   async run(input: InvalidateOrchestratorInput): Promise<IntentResult> {
-    const preview = input.preview !== false
+    const preview = input.preview === true
     const dryRun = input.dryRun === true
 
     const result = (await this.toolExecutor.execute(
