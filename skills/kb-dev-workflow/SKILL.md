@@ -19,5 +19,3 @@ When a user gives you **any coding task**, use the `kb` CLI to develop an unders
 As the task is progressing, use the mutation commands to update the knowledge store with new facts about the system. Do not prematurely insert facts - only when decisions are made and committed to in code.
 
 If `kb` is missing or the user has no base/LLM configured, say so once and continue without pretending you ran commands.
-
-
