@@ -146,13 +146,13 @@ describe('DefaultIntentRouter', () => {
     expect(decision.selectedOperation).toBe('invalidate_orchestrator')
   })
 
-  it('Given invalidate_fact apply, then execute invalidates graph provenance too', async () => {
+  it('Given invalidate_fact without preview, then execute invalidates graph provenance too', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
     const result = await router.execute({
       intent: 'invalidate_fact',
-      payload: { oldFact: 'feature flag X', apply: true, preview: false },
+      payload: { oldFact: 'feature flag X' },
     })
 
     expect(result.status).toBe('accepted')
@@ -161,6 +161,23 @@ describe('DefaultIntentRouter', () => {
     const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
     expect(calls.some(call => call[0]?.name === 'invalidate_fact')).toBe(true)
     expect(calls.some(call => call[0]?.name === 'invalidate_graph_documents')).toBe(true)
+  })
+
+  it('Given invalidate_fact with preview, then skips graph invalidation', async () => {
+    const executor = createExecutorMock()
+    const router = new DefaultIntentRouter(executor)
+
+    const result = await router.execute({
+      intent: 'invalidate_fact',
+      payload: { oldFact: 'feature flag X', preview: true },
+    })
+
+    expect(result.status).toBe('accepted')
+    expect(result.recommendedAction).toBe('preview_invalidation')
+
+    const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
+    expect(calls.some(call => call[0]?.name === 'invalidate_fact')).toBe(true)
+    expect(calls.every(call => call[0]?.name !== 'invalidate_graph_documents')).toBe(true)
   })
 
   it('Given query_truth without discoveryDepth, then defaults to deep discovery like chat', async () => {

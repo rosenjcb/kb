@@ -61,7 +61,7 @@ For commands that can mutate durable KB state or external systems, prefer a cons
 Current repo direction:
 
 - `kb publish ...` should remain dry-run by default and only write on `--apply`.
-- Commands like `kb invalidate` may still expose preview-specific UX, but should align around the same `--apply` commit step.
+- `kb invalidate` applies KB document updates by default; use `--preview` for plan-only. Other mutating flows (for example `kb init --rescan`, `kb publish`) keep `--apply` as the write opt-in per the bullets above.
 - Avoid inventing command-specific synonyms for "really do it" when `--apply` already fits.
 
 ## Validation Checklist
