@@ -23,7 +23,6 @@ function buildChatQueryTruthParsed(
       payload: {
         query: expandedQuery,
         limit: retrievalLimit,
-        discoveryDepth: 'deep',
       },
     },
     output: 'human',

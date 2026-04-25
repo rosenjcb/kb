@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -234,20 +235,11 @@ describe('init-cli interview checkpoints', () => {
     'Given oversized init context, then every LLM phase stays within the 4096-token budget — token budget constraints relaxed to support richer agent prompts'
   )
 
-  it('Given graph.enabled false, then init skips graph extraction and does not write a graph db', async () => {
+  it('Given provider during init, then pass-graph writes DuckDB graph store', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
-    await writeFile(
-      path.join(kbHomeDir, 'config.json'),
-      JSON.stringify(
-        {
-          graph: { enabled: false },
-        },
-        null,
-        2
-      )
-    )
+    await writeFile(path.join(kbHomeDir, 'config.json'), JSON.stringify({}, null, 2))
 
     const provider = createProvider([
       JSON.stringify([
@@ -291,7 +283,7 @@ describe('init-cli interview checkpoints', () => {
     ])
 
     const result = await runKbInit({
-      base: 'graph-disabled-test',
+      base: 'graph-enabled-test',
       nonInteractive: true,
       cwd,
       provider,
@@ -299,9 +291,9 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.status).toBe('accepted')
     expect(result.completedCycles).toContain('pass-graph')
-    await expect(
-      readFile(path.join(kbHomeDir, 'sessions', 'graph-disabled-test', '.kb-graph.duckdb'), 'utf8')
-    ).rejects.toThrow()
+    expect(
+      existsSync(path.join(kbHomeDir, 'sessions', 'graph-enabled-test', '.kb-graph.duckdb'))
+    ).toBe(true)
   })
 
   it('Given a custom progress sink, then init progress updates route there instead of writing directly to stderr', async () => {

@@ -5,7 +5,6 @@ import { runKbInit } from '../src/cli/init-cli.js'
 import {
   createLLMProviderFromConfig,
   readKbConfig,
-  resolveGraphEnabled,
 } from '../src/cli/kb-config.js'
 import { DefaultIntentRouter } from '../src/intents/router.js'
 import { DuckGraphWriter } from '../src/tools/duck-graph-writer.js'
@@ -137,9 +136,7 @@ async function runVariant(
 }> {
   const baseDir = await ensureOperationalBaseDir(variant.base, cwd)
   const toolExecutor = createKBToolsRegistry(baseDir, config)
-  const graphWriter = resolveGraphEnabled(config)
-    ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(baseDir))
-    : undefined
+  const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(baseDir))
 
   const router = new DefaultIntentRouter(toolExecutor)
 

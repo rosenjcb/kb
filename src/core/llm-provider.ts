@@ -4,6 +4,10 @@
  */
 
 import dayjs from 'dayjs'
+import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { LLMCallParams, LLMProvider, LLMResponse, LLMStreamChunk } from './types'
 
 type JsonRecord = Record<string, unknown>
@@ -540,31 +544,110 @@ export class OllamaProvider implements LLMProvider {
 
 // ─── Factory ────────────────────────────────────────────────────
 
+class OmpSessionProvider implements LLMProvider {
+  readonly supportsStreaming = false
+
+  constructor(
+    readonly name: 'anthropic' | 'openai' | 'gemini' | 'ollama',
+    readonly model: string,
+    private readonly apiKey?: string,
+    private readonly endpoint?: string
+  ) {}
+
+  async call(params: LLMCallParams): Promise<LLMResponse> {
+    const text = await runPromptViaBun({
+      cwd: process.cwd(),
+      provider: this.name,
+      model: this.model,
+      apiKey: this.apiKey,
+      endpoint: this.endpoint,
+      systemPrompt: params.systemPrompt,
+      messages: params.messages.map(message => ({
+        role: message.role,
+        content:
+          typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+      })),
+      maxTokens: params.maxTokens,
+      temperature: params.temperature,
+    })
+    return {
+      text,
+      stopReason: 'end_turn',
+      toolUses: [],
+      usage: { inputTokens: 0, outputTokens: 0 },
+    }
+  }
+}
+
+async function runPromptViaBun(options: {
+  cwd: string
+  provider: 'anthropic' | 'openai' | 'gemini' | 'ollama'
+  model: string
+  apiKey?: string
+  endpoint?: string
+  systemPrompt?: string
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>
+  maxTokens?: number
+  temperature?: number
+}): Promise<string> {
+  const payload = JSON.stringify(options)
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  const candidatePaths = [
+    path.join(here, 'omp-bun-bridge.ts'),
+    path.join(here, '../../src/core/omp-bun-bridge.ts'),
+  ]
+  const bridgePath = candidatePaths.find(p => existsSync(p))
+  if (!bridgePath) {
+    throw new Error(`OMP Bun bridge not found (checked: ${candidatePaths.join(', ')})`)
+  }
+  const proc = spawn('bun', [bridgePath], { cwd: options.cwd, stdio: 'pipe' })
+
+  let stdout = ''
+  let stderr = ''
+  proc.stdout.on('data', chunk => {
+    stdout += String(chunk)
+  })
+  proc.stderr.on('data', chunk => {
+    stderr += String(chunk)
+  })
+  proc.stdin.write(payload)
+  proc.stdin.end()
+
+  const exitCode = await new Promise<number>((resolve, reject) => {
+    proc.on('error', reject)
+    proc.on('close', code => resolve(code ?? 1))
+  })
+  if (exitCode !== 0) {
+    throw new Error(`OMP Bun bridge failed: ${stderr.trim() || `exit code ${exitCode}`}`)
+  }
+  const parsed = JSON.parse(stdout) as { text?: string }
+  return parsed.text ?? ''
+}
+
 export function createProvider(config: {
   provider: 'anthropic' | 'openai' | 'gemini' | 'ollama'
   apiKey?: string
   endpoint?: string
   model?: string
 }): LLMProvider {
-  switch (config.provider) {
-    case 'anthropic': {
-      const key = config.apiKey
-      if (!key) throw new Error('Anthropic provider requires apiKey')
-      return new AnthropicProvider(key, config.model)
-    }
-    case 'openai': {
-      const key = config.apiKey
-      if (!key) throw new Error('OpenAI provider requires apiKey')
-      return new OpenAIProvider(key, config.model)
-    }
-    case 'gemini': {
-      const key = config.apiKey
-      if (!key) throw new Error('Gemini provider requires apiKey')
-      return new GeminiProvider(key, config.model)
-    }
-    case 'ollama':
-      return new OllamaProvider(config.endpoint, config.model)
-    default:
-      throw new Error(`Unknown provider: ${config.provider}`)
+  if (config.provider === 'anthropic') {
+    const key = config.apiKey
+    if (!key) throw new Error('Anthropic provider requires apiKey')
+    return new OmpSessionProvider('anthropic', config.model ?? 'claude-3-5-sonnet', key)
   }
+  if (config.provider === 'openai') {
+    const key = config.apiKey
+    if (!key) throw new Error('OpenAI provider requires apiKey')
+    return new OmpSessionProvider('openai', config.model ?? 'gpt-4o', key)
+  }
+  if (config.provider === 'gemini') {
+    const key = config.apiKey
+    if (!key) throw new Error('Gemini provider requires apiKey')
+    return new OmpSessionProvider('gemini', config.model ?? 'gemini-2.5-flash', key)
+  }
+  if (config.provider === 'ollama') {
+    const endpoint = config.endpoint ?? 'http://localhost:11434'
+    return new OmpSessionProvider('ollama', config.model ?? 'qwen3:8b', undefined, endpoint)
+  }
+  throw new Error(`Unknown provider: ${config.provider}`)
 }

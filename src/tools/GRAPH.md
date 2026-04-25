@@ -22,10 +22,7 @@ As you build up your knowledge base, the graph gives you a structural view of ho
 
 The graph lives at `<base-dir>/.kb-graph.duckdb` — a DuckDB database file next to the SQLite document index.
 
-Graph mode is enabled by default. You can disable graph extraction and graph-augmented lookup with either:
-
-- `graph.enabled: false` in `~/.kb/config.json`
-- `KB_GRAPH=false` as a one-off environment override
+Graph extraction, query expansion, and retrieval-time graph ranking are always on when the DuckDB graph file exists (created by `kb init` pass-graph or graph tools). Optional tuning env vars (`KB_GRAPH_RANKING_WEIGHT`, `KB_GRAPH_RANKING_MAX_BOOST`) only adjust ranking weights, not whether the graph participates.
 
 Schema:
 

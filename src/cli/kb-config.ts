@@ -7,9 +7,6 @@ import { createProvider } from '../core/llm-provider'
 export interface KbConfig {
   activeBase?: string
   defaultBase?: string
-  graph?: {
-    enabled?: boolean
-  }
   chat?: {
     experimentalConversationalRetrieval?: boolean
   }
@@ -55,8 +52,6 @@ export const KB_CONFIG_DIR = getKbConfigDir()
 export const KB_CONFIG_FILE = getKbConfigFile()
 
 const SUPPORTED_CONFIG_PATHS = [
-  'graph',
-  'graph.enabled',
   'notion',
   'notion.token',
   'notion.parentPageId',
@@ -97,10 +92,10 @@ export const DEFAULT_FEATURES: Required<NonNullable<KbConfig['features']>> = {
   hybridQueryMaxMs: 120,
   checkpointObservability: true,
   missLearning: true,
-  missHints: true,
+  missHints: false,
   missHintMinOccurrences: 3,
   intentLlmAnswer: true,
-  laneRouting: true,
+  laneRouting: false,
 }
 
 export async function readKbConfig(configFile: string = getKbConfigFile()): Promise<KbConfig> {
@@ -256,10 +251,6 @@ export function getConfigValue(config: KbConfig, keyPath?: string): unknown {
   const normalized = normalizeKbConfig(config)
 
   switch (keyPath) {
-    case 'graph':
-      return requireConfigValue(normalized.graph, keyPath)
-    case 'graph.enabled':
-      return requireConfigValue(normalized.graph?.enabled, keyPath)
     case 'notion':
       return requireConfigValue(normalized.notion, keyPath)
     case 'notion.token':
@@ -291,11 +282,6 @@ export function setConfigValue(config: KbConfig, keyPath: string, value: string)
 
   const next = normalizeKbConfig(config)
   switch (keyPath) {
-    case 'graph':
-      throw new Error('INVALID_CONFIG_WRITE: graph requires a nested key such as graph.enabled')
-    case 'graph.enabled':
-      next.graph = { ...next.graph, enabled: parseBooleanConfigValue(keyPath, value) }
-      break
     case 'notion':
       throw new Error('INVALID_CONFIG_WRITE: notion requires a nested key such as notion.token')
     case 'notion.token':
@@ -337,12 +323,6 @@ export function unsetConfigValue(config: KbConfig, keyPath: string): KbConfig {
 
   const next = normalizeKbConfig(config)
   switch (keyPath) {
-    case 'graph':
-      next.graph = undefined
-      break
-    case 'graph.enabled':
-      if (next.graph) next.graph.enabled = undefined
-      break
     case 'notion':
       next.notion = undefined
       break
@@ -528,18 +508,6 @@ export interface ResolvedFeatureFlags {
   laneRouting: boolean
 }
 
-export function resolveGraphEnabled(config: KbConfig): boolean {
-  if (process.env.KB_GRAPH !== undefined) {
-    return parseBooleanEnv(process.env.KB_GRAPH, true)
-  }
-
-  if (config.graph?.enabled !== undefined) {
-    return config.graph.enabled
-  }
-
-  return true
-}
-
 export function resolveConversationalChatEnabled(config: KbConfig): boolean {
   if (process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL !== undefined) {
     return parseBooleanEnv(process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL, false)
@@ -568,11 +536,11 @@ export function resolveFeatureFlags(config: KbConfig): ResolvedFeatureFlags {
     checkpointObservability:
       f.checkpointObservability ?? process.env.KB_CHECKPOINT_OBSERVABILITY_ENABLED !== 'false',
     missLearning: f.missLearning ?? process.env.KB_MISS_LEARNING_ENABLED === 'true',
-    missHints: f.missHints ?? process.env.KB_MISS_HINTS_ENABLED === 'true',
+    missHints: process.env.KB_MISS_HINTS_ENABLED === 'true' && (f.missHints ?? true),
     missHintMinOccurrences:
       f.missHintMinOccurrences ?? parseEnvInt(process.env.KB_MISS_HINT_MIN_OCCURRENCES, 3),
     intentLlmAnswer: f.intentLlmAnswer ?? process.env.KB_INTENT_LLM_ANSWER !== 'false',
-    laneRouting: f.laneRouting ?? process.env.KB_LANE_ROUTING_ENABLED !== 'false',
+    laneRouting: process.env.KB_LANE_ROUTING_ENABLED === 'true' && (f.laneRouting ?? true),
   }
 }
 
@@ -582,8 +550,6 @@ export function resolveFeatureFlags(config: KbConfig): ResolvedFeatureFlags {
  * Config values only override env vars that are not already set.
  */
 export function applyConfigToEnv(config: KbConfig): void {
-  if (config.graph?.enabled !== undefined && !process.env.KB_GRAPH)
-    process.env.KB_GRAPH = String(config.graph.enabled)
   if (
     config.chat?.experimentalConversationalRetrieval !== undefined &&
     !process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL
@@ -616,10 +582,8 @@ export function applyConfigToEnv(config: KbConfig): void {
     process.env.KB_CHECKPOINT_OBSERVABILITY_ENABLED = String(f.checkpointObservability)
   if (f?.missLearning !== undefined && !process.env.KB_MISS_LEARNING_ENABLED)
     process.env.KB_MISS_LEARNING_ENABLED = String(f.missLearning)
-  if (f?.missHints !== undefined && !process.env.KB_MISS_HINTS_ENABLED)
-    process.env.KB_MISS_HINTS_ENABLED = String(f.missHints)
-  if (f?.laneRouting !== undefined && !process.env.KB_LANE_ROUTING_ENABLED)
-    process.env.KB_LANE_ROUTING_ENABLED = String(f.laneRouting)
+  // Experimental retrieval features are opt-in via explicit env vars only.
+  // Do not auto-seed from persisted config to avoid surprising behavior drift.
   if (f?.intentLlmAnswer !== undefined && !process.env.KB_INTENT_LLM_ANSWER)
     process.env.KB_INTENT_LLM_ANSWER = String(f.intentLlmAnswer)
 }
@@ -654,10 +618,6 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
 
   if (defaultBase) {
     normalized.defaultBase = defaultBase
-  }
-
-  if (input.graph && typeof input.graph === 'object' && input.graph.enabled !== undefined) {
-    normalized.graph = { enabled: Boolean(input.graph.enabled) }
   }
 
   if (
@@ -752,13 +712,6 @@ function parseEnvFloat(value: string | undefined, fallback: number): number {
   if (!value) return fallback
   const n = Number.parseFloat(value)
   return Number.isNaN(n) ? fallback : n
-}
-
-function parseBooleanConfigValue(keyPath: string, value: string): boolean {
-  const normalized = value.trim().toLowerCase()
-  if (['true', '1', 'yes', 'on'].includes(normalized)) return true
-  if (['false', '0', 'no', 'off'].includes(normalized)) return false
-  throw new Error(`${keyPath} must be true or false`)
 }
 
 function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {

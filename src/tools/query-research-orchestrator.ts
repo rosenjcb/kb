@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import Database from '../core/sqlite'
+type SqliteDb = InstanceType<typeof Database>
+
 import dayjs from 'dayjs'
 import type {
   MarkdownDocumentReader,
@@ -388,7 +390,7 @@ export class QueryResearchOrchestrator {
           response.results.some(r => scratchpad.branchDocIds.get(h.id)?.has(r.metadata.id))
       )?.id ?? null
 
-    let db: Database.Database | undefined
+    let db: SqliteDb | undefined
     try {
       db = new Database(this.sqliteDbPath)
       db.prepare(`

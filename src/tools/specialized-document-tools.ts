@@ -6,7 +6,7 @@
 
 import { readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import Database from '../core/sqlite'
 import dayjs from 'dayjs'
 import type {
   AppendToDocumentInput,

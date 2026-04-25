@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import Database from '../../src/core/sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parsePublishCommand, runPublishCommand } from '../../src/cli/publish-cli'
 

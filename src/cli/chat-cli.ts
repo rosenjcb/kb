@@ -1,7 +1,6 @@
 import { createInterface } from 'node:readline/promises'
 import type { ToolExecutor } from '../core/tool-registry'
-import type { LLMProvider, Message } from '../core/types'
-import { loadPrompt } from '../prompts/loader'
+import type { LLMProvider } from '../core/types'
 import type { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
@@ -14,7 +13,11 @@ import {
 } from './chat-conversation'
 import { type CmdMode, cmd } from './cmd-ref'
 import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
-import { isReadDocumentsResult, printReadDocumentsOrchestrationFooter } from './intent-cli.js'
+import {
+  isReadDocumentsResult,
+  printReadDocumentsOrchestrationFooter,
+  resolveReadDocumentsAnswer,
+} from './intent-cli.js'
 import { formatReadDocumentSourceIds } from './retrieval-fallback'
 
 export interface ChatSessionDeps {
@@ -68,8 +71,6 @@ export interface ChatTurnTrace {
   retrievalMethod: string
 }
 
-const CHAT_MAX_OUTPUT_TOKENS = 4096
-
 export function printChatHelp(mode: CmdMode = 'cli'): string {
   return [
     `${cmd('chat', mode)}`,
@@ -90,8 +91,6 @@ export function printChatHelp(mode: CmdMode = 'cli'): string {
   ].join('\n')
 }
 
-const CHAT_SYSTEM_PROMPT = loadPrompt('chat-system.md')
-
 export async function runChatSession(
   deps: ChatSessionDeps,
   io: ChatIO = createTerminalChatIO()
@@ -105,11 +104,7 @@ export async function runChatSession(
     deps.mode ?? 'cli'
   )
   const retrievalLimit = deps.retrievalLimit ?? 5
-  const maxHistoryTurns = deps.maxHistoryTurns ?? 8
   let conversationState = createInitialConversationState()
-  // Accumulated multi-turn message history — grows each turn like Claude Code does.
-  // The LLM sees native assistant/user pairs rather than embedded-text history.
-  const messages: Message[] = []
 
   printer.chatAssistant('Chat mode started. Type /help for commands.')
 
@@ -160,11 +155,9 @@ export async function runChatSession(
           ? await expandQueryWithGraph(resolvedTurn.retrievalQuery, deps.graphWriter)
           : resolvedTurn.retrievalQuery
 
-        let graphRelationBlock: string | undefined
         if (deps.graphWriter) {
           try {
-            const block = await formatGraphRelationBlockFromQuestion(deps.graphWriter, input)
-            if (block) graphRelationBlock = block
+            await formatGraphRelationBlockFromQuestion(deps.graphWriter, input)
           } catch {
             // Optional relational graph context only.
           }
@@ -188,36 +181,9 @@ export async function runChatSession(
 
         const retrievalForOutput = normalizeReadResult(intentResult.data)
 
-        const userContent = buildChatTurnContent({
-          question: input,
-          resolvedQuestion:
-            resolvedTurn.retrievalQuery !== input ? resolvedTurn.retrievalQuery : undefined,
-          retrieval: retrievalForOutput,
-          conversationState,
-          graphRelationBlock,
-        })
-
-        const turnMessages: Message[] = [...messages, { role: 'user', content: userContent }]
-
-        printer.startSpinner('thinking...')
-        const completion = await deps.llmProvider
-          .call({
-            messages: trimMessageHistory(turnMessages, maxHistoryTurns),
-            systemPrompt: CHAT_SYSTEM_PROMPT,
-            temperature: 0.15,
-            maxTokens: CHAT_MAX_OUTPUT_TOKENS,
-          })
-          .finally(() => {
-            printer.stopSpinner()
-          })
-
         const answer =
-          completion.text.trim() ||
+          resolveReadDocumentsAnswer(intentResult) ??
           'I don\'t have enough information to answer that. Try: kb query "<your question>"'
-
-        // Append both sides to the message history so the next turn sees the full context.
-        messages.push({ role: 'user', content: userContent })
-        messages.push({ role: 'assistant', content: answer })
 
         printer.chatAssistant(answer)
         printer.separator()
@@ -241,7 +207,7 @@ export async function runChatSession(
             answer,
             retrievedDocIds: sourceIds,
           },
-          maxHistoryTurns
+          deps.maxHistoryTurns ?? 8
         )
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -254,13 +220,6 @@ export async function runChatSession(
     }
     io.close?.()
   }
-}
-
-function trimMessageHistory(messages: Message[], maxTurns: number): Message[] {
-  // Each turn = 1 user + 1 assistant message. Keep at most maxTurns pairs.
-  const maxMessages = maxTurns * 2
-  if (messages.length <= maxMessages) return messages
-  return messages.slice(messages.length - maxMessages)
 }
 
 export function buildChatTurnContent(input: {

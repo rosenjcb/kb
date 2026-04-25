@@ -3,7 +3,12 @@ import type { RunCollector } from '../core/telemetry.js'
 import type { ToolExecutor } from '../core/tool-registry.js'
 import type { LLMProvider } from '../core/types.js'
 import type { IntentResult } from '../intents/types.js'
-import { augmentIntentResultWithWorkspaceFallback, type ParsedIntentCommand } from './intent-cli.js'
+import {
+  augmentIntentResultWithWorkspaceFallback,
+  isReadDocumentsResult,
+  resolveReadDocumentsAnswerForQuestion,
+  type ParsedIntentCommand,
+} from './intent-cli.js'
 
 export interface RunQueryTruthRetrievalInput {
   /** Parsed intent after any session rewrite / graph expansion; envelope must be `query_truth`. */
@@ -19,7 +24,7 @@ export interface RunQueryTruthRetrievalInput {
  * Single retrieval pipeline for **`query_truth`**: `runIntentLoop` (router → `read_documents`,
  * including shallow→deep **limit** escalation when retrieval is weak) then
  * `augmentIntentResultWithWorkspaceFallback`. Router defaults **`discoveryDepth`** to **deep**
- * unless the envelope sets **`--discovery shallow`**.
+ * unless the envelope sets **`--discovery shallow`** via CLI flags.
  *
  * **`kb query`** and **`kb chat`** QUERY turns must call this only — no parallel `router.execute`
  * shortcuts — so limits, discovery escalation, and augment behavior cannot drift.
@@ -34,5 +39,24 @@ export async function runQueryTruthRetrieval(
     provider: input.llmProvider,
     collector: input.collector,
   })
-  return augmentIntentResultWithWorkspaceFallback(input.parsed, result, input.workspaceDir)
+  const augmented = await augmentIntentResultWithWorkspaceFallback(input.parsed, result, input.workspaceDir)
+  if (!isReadDocumentsResult(augmented)) return augmented
+
+  const payload = input.parsed.envelope.payload
+  const question =
+    (typeof payload.originalQuery === 'string' ? payload.originalQuery : undefined) ??
+    (typeof payload.query === 'string' ? payload.query : undefined) ??
+    ''
+  if (!question.trim()) return augmented
+
+  const answer = resolveReadDocumentsAnswerForQuestion(augmented, question)
+  if (!answer) return augmented
+
+  return {
+    ...augmented,
+    data: {
+      ...(augmented.data ?? {}),
+      answer,
+    },
+  }
 }

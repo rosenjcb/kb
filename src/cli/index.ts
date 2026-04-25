@@ -4,6 +4,8 @@
  * KB Agent Harness CLI
  */
 
+import { runIntentLoop } from '../core/intent-loop'
+import type { IntentResult } from '../intents/types'
 import { runQueryTruthRetrieval } from './query-truth-retrieval'
 import {
   ReportWriter,
@@ -74,7 +76,6 @@ import {
   ensureDefaultConfig,
   persistInferredLLMProvider,
   resolveConversationalChatEnabled,
-  resolveGraphEnabled,
 } from './kb-config'
 import type { KbConfig } from './kb-config'
 import { printLogsHelp, runLogsCommand } from './logs-cli'
@@ -399,9 +400,7 @@ export async function runMainWithOutput(
     }
 
     const toolExecutor = createKBToolsRegistry(kbStorageDir, config, { taskProvider: llmProvider })
-    const chatGraphWriter = resolveGraphEnabled(config)
-      ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(kbStorageDir))
-      : undefined
+    const chatGraphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(kbStorageDir))
     out.log(`🗂️ KB Storage: ${kbStorageDir}`)
     out.log('')
     await runChatSession({
@@ -726,17 +725,18 @@ export async function runMainWithOutput(
       const rawLlmProvider = createLLMProviderFromConfig(config)
       const llmCounter = rawLlmProvider ? new TokenCountingProvider(rawLlmProvider) : undefined
       const llmProvider = llmCounter ?? rawLlmProvider
+
       const preRewritePayload = parsed.envelope.payload as { query?: string }
       const preRewriteQueryTruth =
         parsed.envelope.intent === 'query_truth' && typeof preRewritePayload.query === 'string'
           ? preRewritePayload.query.trim()
           : ''
-      let graphRelationContext: string | undefined
       /** Chat never reads `query-session.json`; default `kb query` must not either (poisoned rewrites). */
       const querySessionDir =
         parsed.useQuerySession === true && parsed.envelope.intent === 'query_truth'
           ? intentBaseDir
           : undefined
+
       printer.startSpinner('running intent rewrite...')
       try {
         parsed = await rewriteIntentInputWithSessionContext(
@@ -747,7 +747,9 @@ export async function runMainWithOutput(
       } finally {
         printer.stopSpinner()
       }
-      if (parsed.envelope.intent === 'query_truth' && resolveGraphEnabled(config)) {
+
+      let graphRelationContext: string | undefined
+      if (parsed.envelope.intent === 'query_truth') {
         const payload = parsed.envelope.payload as { query?: string }
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
         if (originalQuery) {
@@ -777,19 +779,32 @@ export async function runMainWithOutput(
           }
         }
       }
+
       const toolExecutor = createKBToolsRegistry(intentBaseDir, config, {
         taskProvider: llmProvider ?? undefined,
       })
+
       printer.startSpinner('running intent loop...')
-      const aligned = await runQueryTruthRetrieval({
-        parsed,
-        toolExecutor,
-        workspaceDir: process.cwd(),
-        llmProvider: llmProvider ?? undefined,
-        collector,
-      }).finally(() => {
+      let aligned: IntentResult
+      try {
+        if (parsed.envelope.intent === 'query_truth') {
+          aligned = await runQueryTruthRetrieval({
+            parsed,
+            toolExecutor,
+            workspaceDir: process.cwd(),
+            llmProvider: llmProvider ?? undefined,
+            collector,
+          })
+        } else {
+          const { result } = await runIntentLoop(parsed.envelope, toolExecutor, {
+            provider: llmProvider ?? undefined,
+            collector,
+          })
+          aligned = result
+        }
+      } finally {
         printer.stopSpinner()
-      })
+      }
 
       // Flush any tokens accumulated during the intent loop and graph extraction.
       if (llmCounter) {
@@ -815,20 +830,23 @@ export async function runMainWithOutput(
         }
       }
 
-      printer.startSpinner('drafting final answer...')
-      const enriched = await enrichReadDocumentsAnswerWithLLM(
-        parsed,
-        aligned,
-        llmProvider ?? undefined,
-        querySessionDir,
-        undefined,
-        graphRelationContext ? { graphRelationContext } : undefined
-      ).finally(() => {
-        printer.stopSpinner()
-      })
+      let enriched = aligned
+      if (parsed.envelope.intent === 'query_truth') {
+        printer.startSpinner('drafting final answer...')
+        enriched = await enrichReadDocumentsAnswerWithLLM(
+          parsed,
+          aligned,
+          llmProvider ?? undefined,
+          querySessionDir,
+          undefined,
+          graphRelationContext ? { graphRelationContext } : undefined
+        ).finally(() => {
+          printer.stopSpinner()
+        })
+      }
 
-      // Capture tokens from the answer-enrichment LLM call (query path)
-      if (llmCounter) {
+      // Capture tokens from the answer-enrichment LLM call (query path only)
+      if (parsed.envelope.intent === 'query_truth' && llmCounter) {
         const enrichTokens = llmCounter.getAndReset()
         if (enrichTokens.inputTokens > 0 || enrichTokens.outputTokens > 0) {
           collector.addStage({

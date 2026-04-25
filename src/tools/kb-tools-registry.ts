@@ -6,7 +6,7 @@
 import path from 'node:path'
 import { getKbHomeDir } from '../cli/base-selection'
 import type { KbConfig } from '../cli/kb-config'
-import { resolveFeatureFlags, resolveGraphEnabled } from '../cli/kb-config'
+import { resolveFeatureFlags } from '../cli/kb-config'
 import type { StreamManager } from '../core/runtime/stream-manager'
 import type { ToolExecutor } from '../core/tool-registry'
 import { createToolRegistry } from '../core/tool-registry'
@@ -55,7 +55,7 @@ export function createKBToolsRegistry(
     flags
       ? {
           hybridEnabled: flags.hybridQuery,
-          graphRankingEnabled: config ? resolveGraphEnabled(config) : undefined,
+          graphRankingEnabled: true,
           hybridCandidateLimit: flags.hybridQueryCandidates,
           hybridAlpha: flags.hybridQueryAlpha,
           hybridMaxMs: flags.hybridQueryMaxMs,
@@ -334,7 +334,7 @@ export function createKBToolsRegistry(
     },
   }
   registry.register('upsert_graph_from_text', upsertGraphFromTextToolDef, async input => {
-    if (!orchestrator?.taskProvider || !resolveGraphEnabled(config ?? {})) {
+    if (!orchestrator?.taskProvider) {
       return { enabled: false, entities: 0, relationships: 0 }
     }
 
@@ -379,10 +379,6 @@ export function createKBToolsRegistry(
     },
   }
   registry.register('invalidate_graph_documents', invalidateGraphDocumentsToolDef, async input => {
-    if (!resolveGraphEnabled(config ?? {})) {
-      return { enabled: false, invalidatedRelationships: 0, documentIds: [] as string[] }
-    }
-
     const rawIds = Array.isArray((input as { documentIds?: unknown[] }).documentIds)
       ? ((input as { documentIds: unknown[] }).documentIds as unknown[])
       : []

@@ -46,6 +46,12 @@ for (const file of await readdir(promptsSrc)) {
   }
 }
 
+// Copy Bun bridge used for OMP subprocess execution from Node runtime.
+const ompBridgeSrc = path.join(projectRoot, 'src', 'core', 'omp-bun-bridge.ts')
+if (existsSync(ompBridgeSrc)) {
+  await copyFile(ompBridgeSrc, path.join(path.dirname(outFile), 'omp-bun-bridge.ts'))
+}
+
 // Copy skill SKILL.md files so the bundled binary can resolve them at runtime.
 // skills/<name>/SKILL.md → dist/bin/<name>.skill.md
 const skillsRoot = path.join(projectRoot, 'skills')

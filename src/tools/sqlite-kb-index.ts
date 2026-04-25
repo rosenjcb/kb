@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
-import Database from 'better-sqlite3'
+import Database from '../core/sqlite'
 import dayjs from 'dayjs'
 import { runMigrations } from '../core/db-migrations'
 import { type RetrievalLane, classifyDocumentLane } from './retrieval-lane-router'
@@ -187,7 +187,7 @@ const DEFAULT_LANE_ROUTING_THRESHOLDS: LaneRoutingRolloutThresholds = {
 }
 
 export class SqliteKbIndexer {
-  private readonly db: Database.Database
+  private readonly db: InstanceType<typeof Database>
   private readonly modelId: string
   private readonly vectorDimensions: number
 
@@ -195,8 +195,8 @@ export class SqliteKbIndexer {
     this.db = new Database(options.dbPath)
     this.modelId = options.modelId ?? process.env.OLLAMA_EMBED_MODEL ?? 'nomic-embed-text'
     this.vectorDimensions = options.vectorDimensions ?? 64
-    this.db.pragma('journal_mode = WAL')
-    this.db.pragma('foreign_keys = ON')
+    this.db.pragma?.('journal_mode = WAL')
+    this.db.pragma?.('foreign_keys = ON')
     runMigrations(this.db)
   }
 

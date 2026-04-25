@@ -14,7 +14,6 @@ import type { KbConfig } from '../cli/kb-config.js'
 import {
   createLLMProviderFromConfig,
   resolveConversationalChatEnabled,
-  resolveGraphEnabled,
 } from '../cli/kb-config.js'
 import { DuckGraphWriter } from '../tools/duck-graph-writer.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
@@ -140,9 +139,7 @@ export function App({ config, startupNotices = [] }: Props) {
 
     const storageDir = storageDirRef.current
     const toolExecutor = createKBToolsRegistry(storageDir, config, { taskProvider: llmProvider })
-    const graphWriter = resolveGraphEnabled(config)
-      ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(storageDir))
-      : undefined
+    const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(storageDir))
 
     const chatIO: ChatIO = {
       async read(_prompt: string): Promise<string | null> {

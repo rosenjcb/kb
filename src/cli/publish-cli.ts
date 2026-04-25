@@ -1,5 +1,5 @@
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import Database from '../core/sqlite'
 import dayjs from 'dayjs'
 import { runMigrations } from '../core/db-migrations'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
@@ -213,11 +213,11 @@ export async function runPublishCommand(
 // ─── SQLite read ────────────────────────────────────────────────────────────
 
 export function readDocumentsFromSqlite(dbPath: string): SqliteDocumentRow[] {
-  let db: Database.Database | undefined
+  let db: InstanceType<typeof Database> | undefined
   try {
     // Open writable so migrations run before we query.
     db = new Database(dbPath)
-    db.pragma('journal_mode = WAL')
+    db.pragma?.('journal_mode = WAL')
     runMigrations(db)
     return db
       .prepare(`

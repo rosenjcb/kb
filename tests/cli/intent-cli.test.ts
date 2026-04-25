@@ -294,7 +294,10 @@ describe('intent-cli execution and enrichment', () => {
     const llm: LLMProvider = {
       name: 'test',
       model: 'stub',
-      call: vi.fn(async () => ({ text: 'KB uses session base first, then default base.', usage: { inputTokens: 1, outputTokens: 1 } })),
+      call: vi.fn(async () => ({
+        text: '{"evidence":"sufficient","answer":"KB uses session base first, then default base."}',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
     } as unknown as LLMProvider
 
     const queryParsed = parseIntentCommand(['query', 'base precedence'])
@@ -324,5 +327,69 @@ describe('intent-cli execution and enrichment', () => {
       llm
     )
     expect((untouched.data as { ok?: boolean }).ok).toBe(true)
+  })
+
+  it('enrichment JSON with insufficient evidence falls back when answer is empty', async () => {
+    const llm: LLMProvider = {
+      name: 'test',
+      model: 'stub',
+      call: vi.fn(async () => ({
+        text: '{"evidence":"insufficient","answer":""}',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    } as unknown as LLMProvider
+
+    const queryParsed = parseIntentCommand(['query', 'KB base precedence'])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      queryParsed,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        data: {
+          retrieval: { method: 'hybrid' },
+          results: [
+            {
+              metadata: { id: 'cli-facts', title: 'CLI Facts' },
+              content: '# CLI Facts\n\nKB base precedence order: 1) kb use, 2) kb default.\n',
+            },
+          ],
+        },
+      },
+      llm
+    )
+    const answer = (enriched.data as { answer?: string }).answer ?? ''
+    expect(answer.length).toBeGreaterThan(10)
+    expect(answer.toLowerCase()).toMatch(/base|precedence|kb/)
+  })
+
+  it('enrichment accepts legacy prose when JSON parse fails', async () => {
+    const llm: LLMProvider = {
+      name: 'test',
+      model: 'stub',
+      call: vi.fn(async () => ({
+        text: 'Plain prose answer without JSON.',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    } as unknown as LLMProvider
+
+    const queryParsed = parseIntentCommand(['query', 'topic'])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      queryParsed,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        data: {
+          retrieval: { method: 'hybrid' },
+          results: [
+            {
+              metadata: { id: 'd', title: 'D' },
+              content: '# D\n\nSome fact line about widgets for the user.\n',
+            },
+          ],
+        },
+      },
+      llm
+    )
+    expect((enriched.data as { answer?: string }).answer).toBe('Plain prose answer without JSON.')
   })
 })

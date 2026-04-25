@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import Database from '../../src/core/sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MarkdownMDWriterTool } from '../../src/tools/markdown-md-writer-tool'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'

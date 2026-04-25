@@ -55,7 +55,7 @@ import {
   markUnaskedTopicsAsInferred,
   summariseCoverage,
 } from './init-topic-coverage'
-import { createLLMProviderFromConfig, readKbConfig, resolveGraphEnabled } from './kb-config'
+import { createLLMProviderFromConfig, readKbConfig } from './kb-config'
 import { runLLMSetupWizard } from './llm-setup-wizard'
 
 export type InitCycle =
@@ -368,9 +368,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   let counter =
     rawProvider && options.collector ? new TokenCountingProvider(rawProvider) : undefined
   let provider = counter ?? rawProvider
-  const kbConfig = await readKbConfig()
-  const graphEnabled = resolveGraphEnabled(kbConfig)
-
   let checkpoint: InitCheckpoint = resumedCheckpoint ?? {
     version: 2,
     updatedAt: dayjs().toISOString(),
@@ -693,10 +690,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       if (options.dryRun || (options.rescan && options.apply !== true)) {
         graphPassOutcome = 'dry-run'
         progress.finish('pass-graph', 'skipped (dry-run)')
-        await persist({ completedCycles: ['pass-graph'] })
-      } else if (!graphEnabled) {
-        graphPassOutcome = 'disabled'
-        progress.finish('pass-graph', 'skipped (graph disabled)')
         await persist({ completedCycles: ['pass-graph'] })
       } else if (provider) {
         try {
@@ -1374,13 +1367,7 @@ async function runPerDocEnrichmentPass(
   return enriched
 }
 
-type GraphPassOutcome =
-  | 'extracted'
-  | 'disabled'
-  | 'dry-run'
-  | 'failed'
-  | 'no-provider'
-  | 'reused'
+type GraphPassOutcome = 'extracted' | 'dry-run' | 'failed' | 'no-provider' | 'reused'
 
 async function emitPostInitGraphOverview(options: {
   baseDir: string
@@ -1395,10 +1382,6 @@ async function emitPostInitGraphOverview(options: {
     '\n--- Graph store (same text as `kb graph`; JSON is counts + top nodes, subset of `kb graph --format json`) ---\n'
 
   try {
-    if (options.graphPassOutcome === 'disabled') {
-      write(`${banner}Knowledge graph: skipped (disabled in kb config).\n`)
-      return
-    }
     if (options.graphPassOutcome === 'dry-run') {
       write(`${banner}Knowledge graph: skipped (dry-run mode).\n`)
       return

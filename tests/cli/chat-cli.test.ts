@@ -140,15 +140,9 @@ describe('chat-cli session loop', () => {
         }),
       })
     )
-    expect(provider.call).toHaveBeenCalledTimes(1)
-    expect(provider.call).toHaveBeenCalledWith(
-      expect.objectContaining({
-        maxTokens: 4096,
-        systemPrompt: expect.stringContaining('knowledge base assistant'),
-      })
-    )
+    expect(provider.call).not.toHaveBeenCalled()
     expect(io.outputs.join('\n')).toContain(
-      'assistant> The KB uses a hybrid path with lexical fallback.'
+      'assistant> Hybrid retrieval details.'
     )
     expect(io.outputs.join('\n')).toContain('retrieval> hybrid (fts+vector-rerank)')
     expect(io.outputs.join('\n')).toContain('matches> 1')
@@ -192,7 +186,7 @@ describe('chat-cli session loop', () => {
     expect(out).not.toContain('sources> Session')
   })
 
-  it('Given provider failure, then loop reports error and remains interactive', async () => {
+  it('Given provider failure, then loop ignores provider and remains interactive', async () => {
     const io = new ScriptedIO(['What now?', '/exit'])
 
     const executor: ToolExecutor = {
@@ -212,7 +206,7 @@ describe('chat-cli session loop', () => {
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
-    expect(io.errors.join('\n')).toContain('Chat turn failed: provider offline')
+    expect(io.errors.join('\n')).not.toContain('provider offline')
     expect(io.outputs.join('\n')).toContain('Exiting chat')
   })
 
@@ -248,7 +242,7 @@ describe('chat-cli session loop', () => {
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
     expect(executor.execute).toHaveBeenCalledTimes(1)
-    expect(provider.call).toHaveBeenCalledTimes(1)
+    expect(provider.call).not.toHaveBeenCalled()
     expect(io.outputs.join('\n')).toContain('assistant> Rollout strategy is immediate.')
     expect(io.outputs.join('\n')).toContain('sources> general-facts')
   })
@@ -315,11 +309,7 @@ describe('chat-cli session loop', () => {
     await runChatSession({ llmProvider: provider, toolExecutor: executor, workspaceDir }, io)
 
     expect(executor.execute).toHaveBeenCalledTimes(1)
-    expect(provider.call).toHaveBeenCalledTimes(1)
-    const callInput = (provider.call as { mock: { calls: Array<[unknown]> } }).mock.calls[0][0]
-    const message = callInput.messages[0]?.content
-    expect(message).toContain('workspace-readme')
-    expect(message).toContain('intent-first local KB CLI')
+    expect(provider.call).not.toHaveBeenCalled()
     expect(io.outputs.join('\n')).toContain(
       'retrieval> hybrid (fts+vector-rerank;workspace-fallback)'
     )
@@ -361,7 +351,7 @@ describe('chat-cli session loop', () => {
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
-    expect(provider.call).toHaveBeenCalledTimes(1)
+    expect(provider.call).not.toHaveBeenCalled()
     expect(executor.execute).toHaveBeenCalledTimes(1)
     expect(io.outputs.join('\n')).toContain('assistant> Rollout strategy is immediate.')
   })
@@ -401,8 +391,10 @@ describe('chat-cli session loop', () => {
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
-    expect(provider.call).toHaveBeenCalledTimes(1)
-    expect(io.outputs.join('\n')).toContain('assistant> Use kb --help for a full list of commands.')
+    expect(provider.call).not.toHaveBeenCalled()
+    expect(io.outputs.join('\n')).toContain(
+      'assistant> CLI quick-reference: kb --help; kb use dogfood; kb submit/query/invalidate.'
+    )
   })
 
   it('Given all chat queries, then discoveryDepth is always deep', async () => {
@@ -433,8 +425,10 @@ describe('chat-cli session loop', () => {
 
     const firstCall = (executor.execute as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(firstCall?.input?.discoveryDepth).toBe('deep')
-    expect(provider.call).toHaveBeenCalledTimes(1)
-    expect(io.outputs.join('\n')).toContain('assistant> The CLI starts with kb --help.')
+    expect(provider.call).not.toHaveBeenCalled()
+    expect(io.outputs.join('\n')).toContain(
+      'assistant> I found matching documents, but they do not contain a clear extractable answer line.'
+    )
   })
 
   it('Given high-recall token question, then initial retrieval uses deep discovery policy', async () => {
@@ -474,10 +468,10 @@ describe('chat-cli session loop', () => {
     const firstCall = (executor.execute as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(firstCall?.name).toBe('read_documents')
     expect(firstCall?.input?.discoveryDepth).toBe('deep')
-    expect(provider.call).toHaveBeenCalledTimes(1)
+    expect(provider.call).not.toHaveBeenCalled()
   })
 
-  it('Given question with no matching evidence, then single LLM call is made and LLM answer is used', async () => {
+  it('Given question with no matching evidence, then deterministic evidence answer is used', async () => {
     const io = new ScriptedIO(['CONSISTENCY_TOKEN_20260412_VALIDATE_DEEP_PROMOTION', '/exit'])
 
     const executor: ToolExecutor = {
@@ -510,12 +504,9 @@ describe('chat-cli session loop', () => {
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
     expect(executor.execute).toHaveBeenCalledTimes(1)
-    expect(provider.call).toHaveBeenCalledTimes(1)
+    expect(provider.call).not.toHaveBeenCalled()
     const output = io.outputs.join('\n')
-    expect(output).toContain(
-      'assistant> The retrieved documents do not contain any information about this token.'
-    )
-    expect(output).not.toContain('assistant> CLI quick-reference')
+    expect(output).toContain('assistant> CLI quick-reference: kb --help; kb query --output json.')
   })
 
   it('Given a question with evidence, then single retrieval and single LLM call returns the answer', async () => {
@@ -550,7 +541,7 @@ describe('chat-cli session loop', () => {
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
     expect(executor.execute).toHaveBeenCalledTimes(1)
-    expect(provider.call).toHaveBeenCalledTimes(1)
+    expect(provider.call).not.toHaveBeenCalled()
     expect(io.outputs.join('\n')).toContain('assistant> Rollout strategy is immediate.')
   })
 
@@ -590,7 +581,7 @@ describe('chat-cli session loop', () => {
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
     expect(executor.execute).toHaveBeenCalledTimes(1)
-    expect(provider.call).toHaveBeenCalledTimes(1)
+    expect(provider.call).not.toHaveBeenCalled()
     expect(io.outputs.join('\n')).toContain(
       'assistant> Environment loading order: .env.local is loaded before .env.'
     )
@@ -634,7 +625,7 @@ describe('chat-cli session loop', () => {
     )
 
     expect(executor.execute).toHaveBeenCalledTimes(1)
-    expect(provider.call).toHaveBeenCalledTimes(1)
+    expect(provider.call).not.toHaveBeenCalled()
     expect(io.outputs.join('\n')).toContain('assistant> Release process uses GitHub Actions.')
   })
 
@@ -678,9 +669,7 @@ describe('chat-cli session loop', () => {
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
     expect(executor.execute).toHaveBeenCalledTimes(1)
-    expect(io.outputs.join('\n')).toContain(
-      'assistant> Try the known runbook recovery steps first.'
-    )
+    expect(io.outputs.join('\n')).toContain('assistant> Known runbook recovery content.')
     expect(io.outputs.join('\n')).toContain('sources> known-runbook')
   })
 

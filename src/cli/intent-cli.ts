@@ -347,6 +347,37 @@ export function printReadDocumentsOrchestrationFooter(
   printReadDocumentsSourcesBlock(printer, results, options)
 }
 
+const INTENT_ENRICHMENT_JSON_INSTRUCTION = [
+  'Respond with a single JSON object only (no markdown code fences, no text before or after the JSON).',
+  'Schema: {"evidence":"sufficient"|"insufficient","answer":"<string>"}',
+  'Use evidence "insufficient" only when the evidence block cannot support a correct, grounded answer to the question.',
+  'When evidence is "sufficient", "answer" must be the full user-facing reply, using only the evidence.',
+  'When evidence is "insufficient", "answer" should briefly explain the gap (still as plain text inside the JSON string).',
+].join(' ')
+
+function stripMarkdownJsonFence(text: string): string {
+  const trimmed = text.trim()
+  const fence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/im)
+  if (fence) return fence[1].trim()
+  return trimmed
+}
+
+function parseIntentEnrichmentJson(
+  text: string
+): { evidence: 'sufficient' | 'insufficient'; answer: string } | undefined {
+  const raw = stripMarkdownJsonFence(text)
+  try {
+    const obj = JSON.parse(raw) as Record<string, unknown>
+    const evidence = obj.evidence
+    const answer = obj.answer
+    if (evidence !== 'sufficient' && evidence !== 'insufficient') return undefined
+    if (typeof answer !== 'string') return undefined
+    return { evidence, answer: answer.trim() }
+  } catch {
+    return undefined
+  }
+}
+
 export async function enrichReadDocumentsAnswerWithLLM(
   parsed: ParsedIntentCommand,
   result: IntentResult,
@@ -381,29 +412,37 @@ export async function enrichReadDocumentsAnswerWithLLM(
       : ''
 
     const userContent = [
-      'Answer using only the evidence below. Be direct; if evidence is insufficient, say so.',
+      'Ground yourself only in the evidence below.',
       '',
       `Question: ${question}`,
       graphSection,
       '',
       `Evidence:\n${evidence}`,
+      '',
+      INTENT_ENRICHMENT_JSON_INSTRUCTION,
     ].join('\n')
 
     const completion = await llmProvider.call({
+      systemPrompt:
+        'You answer KB queries strictly from supplied evidence. Follow the JSON output contract in the user message.',
       messages: [...contextMessages, { role: 'user', content: userContent }],
       temperature: 0.1,
       maxTokens: INTENT_LLM_MAX_OUTPUT_TOKENS,
     })
 
-    let answer = completion.text.trim()
-    if (!answer) return result
+    const rawCompletion = completion.text.trim()
+    if (!rawCompletion) return result
 
-    if (looksLikeInsufficientEvidenceAnswer(answer)) {
-      const fallback = buildDeterministicIntentAnswer(question, results)
-      answer =
-        fallback ??
-        'I do not have enough grounded evidence yet. Next step: run kb query "<your fact>" --discovery deep --output json, then kb submit "<fact>" if evidence is missing.'
-    }
+    const deterministicFallback =
+      buildDeterministicIntentAnswer(question, results) ??
+      'I do not have enough grounded evidence yet. Next step: run kb query "<your fact>" --discovery deep --output json, then kb submit "<fact>" if evidence is missing.'
+
+    const structured = parseIntentEnrichmentJson(rawCompletion)
+    const answer = structured
+      ? structured.answer.trim() || deterministicFallback
+      : rawCompletion
+
+    if (!answer.trim()) return result
 
     if (sessionDir) {
       void appendQuerySession(sessionDir, question, answer)
@@ -512,62 +551,90 @@ export async function augmentIntentResultWithWorkspaceFallback(
   }
 }
 
-function looksLikeInsufficientEvidenceAnswer(text: string): boolean {
-  const normalized = text.toLowerCase()
-  return (
-    normalized.includes('evidence provided does not contain') ||
-    normalized.includes('retrieved documents do not provide specific information') ||
-    normalized.includes('does not provide specific information') ||
-    normalized.includes('do not provide specific information') ||
-    normalized.includes('does not contain specific information') ||
-    normalized.includes('do not contain specific information') ||
-    normalized.includes('do not contain specific details') ||
-    normalized.includes('does not provide specific details') ||
-    normalized.includes('do not provide specific details') ||
-    normalized.includes('do not contain any information about') ||
-    normalized.includes('does not contain any information about') ||
-    normalized.includes('cannot provide an answer based on the available evidence') ||
-    normalized.includes('evidence is insufficient') ||
-    normalized.includes('do not have enough evidence') ||
-    normalized.includes('need additional information')
-  )
-}
-
 function buildDeterministicIntentAnswer(
   question: string,
   results: ReadDocumentsResultItem[]
 ): string | undefined {
   const normalizedQuestion = question.toLowerCase().trim()
   const highRecall = requiresHighRecallQuery(normalizedQuestion)
+  const queryTokens = tokenizeForEvidence(question)
+  const broadQuestion = queryTokens.length <= 5 && /^(what|how|why)\b/i.test(question.trim())
+
+  let best:
+    | {
+        line: string
+        sourceId: string
+        score: number
+      }
+    | undefined
 
   for (const item of results.slice(0, 10)) {
-    const docId = item.metadata?.id ?? 'unknown-doc'
+    const sourceId = item.metadata?.id ?? 'unknown-doc'
+    const sourceTitle = item.metadata?.title ?? ''
+    const sourceText = `${sourceId} ${sourceTitle}`.toLowerCase()
+    const significantTokens = queryTokens.filter(token => token.length >= 4)
+    const sourceMatchCount = significantTokens.reduce(
+      (count, token) => count + (sourceText.includes(token) ? 1 : 0),
+      0
+    )
+    const sourceBoost = sourceMatchCount >= 2 ? sourceMatchCount * 2 : 0
     const lines = (item.content ?? '')
       .split('\n')
       .map(line => line.trim().replace(/^[-*]\s+/, ''))
       .filter(
         line =>
-          line.length > 0 &&
-          !line.startsWith('#') &&
+          line.length >= 20 &&
+          line.length <= 260 &&
+          !/^#\s/.test(line) &&
           !line.startsWith('Created:') &&
           !line.startsWith('Tags:') &&
-          !line.startsWith('Type:')
+          !line.startsWith('Type:') &&
+          !line.includes('->') &&
+          !/\|".*"\|/.test(line) &&
+          !/<\/?[a-z][^>]*>/i.test(line)
       )
 
-    const exact = lines.find(line => line.toLowerCase().includes(normalizedQuestion))
-    if (exact) {
-      return `${exact} (source: ${docId})`
-    }
+    for (const line of lines) {
+      const normalizedLine = line.toLowerCase()
+      const lineTokenMatches = queryTokens.reduce(
+        (count, token) => count + (normalizedLine.includes(token) ? 1 : 0),
+        0
+      )
+      if (normalizedLine.includes(normalizedQuestion)) {
+        return `${line} (source: ${sourceId})`
+      }
+      if (lineTokenMatches === 0 && sourceMatchCount === 0) {
+        continue
+      }
 
-    if (!highRecall) {
-      const fallback = lines.find(line => line.length >= 25)
-      if (fallback) {
-        return `${fallback} (source: ${docId})`
+      let score = scoreEvidenceLine(line, queryTokens) + sourceBoost
+      if (
+        /(help cleanup|regression tests|unknown-command fallback|--help now prints|smoke runs)/i.test(
+          line
+        )
+      ) {
+        score -= 4
+      }
+      if (/(<li>|<\/li>|<ul>|<\/ul>)/i.test(line)) {
+        score -= 4
+      }
+      if (broadQuestion && /^(kb|cli)\b/i.test(line)) {
+        score += 2
+      }
+      if (line.length > 35 && line.length < 220) {
+        score += 1
+      }
+
+      if (!best || score > best.score) {
+        best = { line, sourceId, score }
       }
     }
   }
 
-  return undefined
+  if (!best) return undefined
+  if (highRecall && best.score < 4) return undefined
+  if (best.score <= 0) return undefined
+  return `${best.line} (source: ${best.sourceId})`
 }
 
 function requiresHighRecallQuery(query: string): boolean {
@@ -700,16 +767,24 @@ function buildAnswer(results: ReadDocumentsResultItem[]): string {
   if (candidateLines.length === 0) {
     return 'I found matching documents, but they do not contain a clear extractable answer line.'
   }
-
-  const precedenceLine = candidateLines.find(line =>
-    /(precedence|order|fallback|1\)|2\)|3\)|->)/i.test(line)
-  )
-
-  if (precedenceLine) {
-    return precedenceLine
-  }
-
   return candidateLines[0]
+}
+
+export function resolveReadDocumentsAnswer(result: IntentResult): string | undefined {
+  if (!isReadDocumentsResult(result)) return undefined
+  const data = (result.data ?? {}) as ReadDocumentsResultData
+  const results = Array.isArray(data.results) ? data.results : []
+  return data.answer?.trim() || buildAnswer(results)
+}
+
+export function resolveReadDocumentsAnswerForQuestion(
+  result: IntentResult,
+  question: string
+): string | undefined {
+  if (!isReadDocumentsResult(result)) return undefined
+  const data = (result.data ?? {}) as ReadDocumentsResultData
+  const results = Array.isArray(data.results) ? data.results : []
+  return data.answer?.trim() || buildDeterministicIntentAnswer(question, results) || buildAnswer(results)
 }
 
 function getIntentQuestion(parsed: ParsedIntentCommand): string {
@@ -824,8 +899,10 @@ function scoreEvidenceLine(line: string, queryTokens: string[]): number {
     }
   }
 
-  if (/(kb|cli|command|query|submit|invalidate|chat|help)/i.test(line)) {
-    score += 3
+  const commandWords = ['kb', 'cli', 'command', 'query', 'submit', 'invalidate', 'chat', 'help']
+  const queryHasCommandWord = commandWords.some(token => queryTokens.includes(token))
+  if (queryHasCommandWord && /(kb|cli|command|query|submit|invalidate|chat|help)/i.test(line)) {
+    score += 1
   }
 
   if (line.length > 35 && line.length < 260) {
@@ -848,10 +925,12 @@ function collectCandidateLines(items: ReadDocumentsResultItem[]): string[] {
       .filter(
         line =>
           line.length > 0 &&
-          !line.startsWith('#') &&
+          !/^#\s/.test(line) &&
           !line.startsWith('Created:') &&
           !line.startsWith('Tags:') &&
-          !line.startsWith('Type:')
+          !line.startsWith('Type:') &&
+          !line.includes('->') &&
+          !/\|".*"\|/.test(line)
       )
 
     for (const line of lines) {
@@ -871,9 +950,12 @@ function prioritizeCandidates(candidates: string[]): string[] {
 
 function scoreCandidate(line: string): number {
   let score = 0
-  if (/(precedence|order|fallback)/i.test(line)) score += 6
+  if (/(precedence|order)/i.test(line)) score += 3
   if (/(1\)|2\)|3\)|->)/i.test(line)) score += 5
   if (/^(kb|cli|query|hybrid|sqlite)/i.test(line)) score += 2
+  if (/(help cleanup|regression tests|unknown-command fallback|--help now prints|smoke runs)/i.test(line))
+    score -= 6
+  if (line.includes('--help')) score -= 3
   if (line.length > 40 && line.length < 220) score += 1
   return score
 }
@@ -887,7 +969,7 @@ function extractSnippet(content: string | undefined): string {
     .filter(
       line =>
         line.length > 0 &&
-        !line.startsWith('#') &&
+          !/^#\s/.test(line) &&
         !line.startsWith('Created:') &&
         !line.startsWith('Tags:') &&
         !line.startsWith('Type:')

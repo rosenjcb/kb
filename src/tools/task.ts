@@ -6,9 +6,10 @@
 import { randomUUID } from 'node:crypto'
 import { agentLoop } from '../core/agent-loop'
 import { resolveAgentProfile } from '../core/agents/agent-registry'
+import { createInMemoryOmpSession } from '../core/omp-runtime'
 import type { StreamManager } from '../core/runtime/stream-manager'
 import type { ToolExecutor } from '../core/tool-registry'
-import type { AgentEvent, LLMProvider, SubagentTaskResult, ToolUseRequest } from '../core/types'
+import type { LLMProvider, SubagentTaskResult, ToolUseRequest } from '../core/types'
 import {
   readSubagentEvalScenarioFromEnv,
   subagentLoopTuning,
@@ -40,11 +41,13 @@ function createFilteredToolExecutor(parent: ToolExecutor, allowed: Set<string>):
   }
 }
 
-function summarizeUsage(events: AgentEvent[]): { inputTokens: number; outputTokens: number } {
+function summarizeUsage(
+  events: Array<{ type: string; usage?: { inputTokens: number; outputTokens: number } }>
+): { inputTokens: number; outputTokens: number } {
   let inputTokens = 0
   let outputTokens = 0
   for (const ev of events) {
-    if (ev.type === 'metadata') {
+    if (ev.type === 'metadata' && ev.usage) {
       inputTokens += ev.usage.inputTokens
       outputTokens += ev.usage.outputTokens
     }
@@ -122,29 +125,90 @@ export async function executeSubagentTask(
 
   const textSegments: string[] = []
   const toolCalls: SubagentTaskResult['toolCalls'] = []
-  const collected: AgentEvent[] = []
+  const collected: Array<{ type: string; usage?: { inputTokens: number; outputTokens: number } }> =
+    []
 
   try {
-    for await (const event of agentLoop(prompt, provider, childExecutor, {
-      maxTurns,
-      systemPrompt,
-      parallelToolCalls: tuning.parallelToolCalls,
-    })) {
-      collected.push(event)
-      streamManager?.push(channelId, event)
-      if (event.type === 'text' && event.content) {
-        textSegments.push(event.content)
+    const customTools = childExecutor.getTools().map(tool => ({
+      name: tool.name,
+      label: tool.name,
+      description: tool.description,
+      parameters: tool.schema as Record<string, unknown>,
+      execute: async (toolCallId: string, toolParams: unknown) => {
+        try {
+          const result = await childExecutor.execute({
+            id: toolCallId,
+            name: tool.name,
+            input: toolParams as Record<string, unknown>,
+          })
+          toolCalls.push({ name: tool.name, toolUseId: toolCallId, ok: true })
+          streamManager?.push(channelId, {
+            type: 'tool_result',
+            toolName: tool.name,
+            toolUseId: toolCallId,
+            isError: false,
+            result,
+          })
+          return { content: [{ type: 'text', text: JSON.stringify(result) }] }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          toolCalls.push({ name: tool.name, toolUseId: toolCallId, ok: false })
+          streamManager?.push(channelId, {
+            type: 'tool_result',
+            toolName: tool.name,
+            toolUseId: toolCallId,
+            isError: true,
+            result: message,
+          })
+          return { content: [{ type: 'text', text: message }], isError: true }
+        }
+      },
+    }))
+
+    try {
+      const model = { provider: provider.name, id: provider.model } as never
+      const { session } = await createInMemoryOmpSession({
+        cwd: process.cwd(),
+        model,
+        customTools,
+        enableMCP: false,
+        enableLsp: false,
+        systemPrompt,
+      })
+      try {
+        await session.prompt(prompt, { attribution: 'agent' })
+        await session.waitForIdle()
+        const last = session.getLastAssistantMessage()
+        const answerContent = (last as { content?: unknown } | undefined)?.content
+        const answer = typeof answerContent === 'string' ? answerContent.trim() : ''
+        if (answer) {
+          textSegments.push(answer)
+          streamManager?.push(channelId, { type: 'text', content: answer })
+        }
+      } finally {
+        await session.dispose()
       }
-      if (event.type === 'tool_result') {
-        toolCalls.push({
-          name: event.toolName,
-          toolUseId: event.toolUseId,
-          ok: !event.isError,
-        })
+    } catch {
+      for await (const event of agentLoop(prompt, provider, childExecutor, {
+        maxTurns,
+        systemPrompt,
+        parallelToolCalls: tuning.parallelToolCalls,
+      })) {
+        collected.push(event)
+        streamManager?.push(channelId, event)
+        if (event.type === 'text' && event.content) {
+          textSegments.push(event.content)
+        }
+        if (event.type === 'tool_result') {
+          toolCalls.push({
+            name: event.toolName,
+            toolUseId: event.toolUseId,
+            ok: !event.isError,
+          })
+        }
       }
     }
 
-    const usage = summarizeUsage(collected)
     return {
       status: 'success',
       subagentId,
@@ -152,11 +216,10 @@ export async function executeSubagentTask(
       isolation,
       textSegments,
       toolCalls,
-      usage,
+      usage: summarizeUsage(collected),
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const usage = summarizeUsage(collected)
     return {
       status: 'error',
       subagentId,
@@ -164,7 +227,7 @@ export async function executeSubagentTask(
       isolation,
       textSegments,
       toolCalls,
-      usage,
+      usage: { inputTokens: 0, outputTokens: 0 },
       error: message,
     }
   }

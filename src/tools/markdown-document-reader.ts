@@ -6,7 +6,9 @@
 import { createHash } from 'node:crypto'
 import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import Database from '../core/sqlite'
+type SqliteDb = InstanceType<typeof Database>
+
 import dayjs from 'dayjs'
 import { emitDiagnostic } from '../core/diagnostics'
 import { DuckGraphWriter, type GraphDocumentAffinity } from './duck-graph-writer'
@@ -137,6 +139,29 @@ function tokenize(text: string): string[] {
     .filter(token => token.length > 2 && !STOP_WORDS.has(token))
 }
 
+function queryPhraseBoost(query: string, chunkText: string): number {
+  const terms = query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token.length > 2 && !STOP_WORDS.has(token))
+
+  if (terms.length < 2) return 0
+
+  const normalizedChunk = chunkText.toLowerCase()
+  let hits = 0
+  for (let i = 0; i < terms.length - 1; i++) {
+    const phrase = `${terms[i]} ${terms[i + 1]}`
+    const hyphenated = `${terms[i]}-${terms[i + 1]}`
+    if (normalizedChunk.includes(phrase) || normalizedChunk.includes(hyphenated)) {
+      hits += 1
+    }
+  }
+
+  if (hits === 0) return 0
+  return Math.min(0.3, hits * 0.12)
+}
+
 function normalizeText(text: string): string {
   return text.toLowerCase().trim()
 }
@@ -261,14 +286,14 @@ export class MarkdownDocumentReader {
       options.hybridAlpha ?? parseBoundedNumber(process.env.KB_HYBRID_QUERY_ALPHA, 0.45)
     this.hybridMaxMs =
       options.hybridMaxMs ?? parsePositiveInt(process.env.KB_HYBRID_QUERY_MAX_MS, 120)
-    this.graphRankingEnabled = options.graphRankingEnabled ?? process.env.KB_GRAPH !== 'false'
+    this.graphRankingEnabled = options.graphRankingEnabled ?? true
     this.graphRankingWeight =
       options.graphRankingWeight ?? parseBoundedNumber(process.env.KB_GRAPH_RANKING_WEIGHT, 0.2)
     this.graphRankingMaxBoost =
       options.graphRankingMaxBoost ??
       parseBoundedNumber(process.env.KB_GRAPH_RANKING_MAX_BOOST, 0.25)
     this.laneRoutingEnabled =
-      options.laneRoutingEnabled ?? process.env.KB_LANE_ROUTING_ENABLED !== 'false'
+      options.laneRoutingEnabled ?? process.env.KB_LANE_ROUTING_ENABLED === 'true'
     this.missLearningEnabled =
       options.missLearningEnabled ?? process.env.KB_MISS_LEARNING_ENABLED === 'true'
     this.rankingHintsEnabled =
@@ -589,7 +614,7 @@ export class MarkdownDocumentReader {
     created_at: string
     updated_at: string
   }> | null {
-    let db: Database.Database | undefined
+    let db: SqliteDb | undefined
 
     try {
       db = new Database(this.sqliteDbPath, { readonly: true })
@@ -777,9 +802,10 @@ export class MarkdownDocumentReader {
           const vectorScore = this.computeVectorScore(query, chunkText, embRow)
           const baseCombined =
             this.hybridAlpha * lexicalScore + (1 - this.hybridAlpha) * vectorScore
+          const phraseBoost = queryPhraseBoost(query, chunkText)
           const hintBoost = hintBoosts.get(candidate.doc_id) ?? 0
           const laneBoost = laneFitnessBoost(candidate.lane, activeLanes ?? [])
-          const combined = Math.min(1, baseCombined + hintBoost + laneBoost)
+          const combined = Math.min(1, baseCombined + phraseBoost + hintBoost + laneBoost)
 
           const current = docScores.get(candidate.doc_id)
           if (!current || combined > current.score) {
@@ -899,7 +925,7 @@ export class MarkdownDocumentReader {
   }
 
   private fetchHybridCandidates(
-    db: Database.Database,
+    db: SqliteDb,
     ftsExpression: string,
     lanes?: RetrievalLane[],
     candidateLimit?: number
@@ -1027,7 +1053,7 @@ export class MarkdownDocumentReader {
     }
   }
 
-  private loadRankingHintBoosts(db: Database.Database, query: string): Map<string, number> {
+  private loadRankingHintBoosts(db: SqliteDb, query: string): Map<string, number> {
     try {
       const fingerprint = buildQueryFingerprint(query)
       const rows = db
@@ -1114,9 +1140,10 @@ export class MarkdownDocumentReader {
           const lexicalScore = toLexicalScore(candidate.lexical_rank)
           const vectorScore = this.computeVectorScore(query, chunkText, embRow)
           const baseCombined = this.hybridAlpha * lexicalScore + (1 - this.hybridAlpha) * vectorScore
+          const phraseBoost = queryPhraseBoost(query, chunkText)
           const hintBoost = hintBoosts.get(candidate.doc_id) ?? 0
           const laneBoost = laneFitnessBoost(candidate.lane, lanes ?? [])
-          const combined = Math.min(1, baseCombined + hintBoost + laneBoost)
+          const combined = Math.min(1, baseCombined + phraseBoost + hintBoost + laneBoost)
           const current = docScores.get(candidate.doc_id) ?? 0
           if (combined > current) docScores.set(candidate.doc_id, combined)
         }
@@ -1276,7 +1303,7 @@ export class MarkdownDocumentReader {
     const now = dayjs().toISOString()
     const fingerprint = buildQueryFingerprint(input.query)
 
-    let db: Database.Database | undefined
+    let db: SqliteDb | undefined
     try {
       db = new Database(this.sqliteDbPath)
 
@@ -1338,7 +1365,7 @@ export class MarkdownDocumentReader {
     const fingerprint = buildQueryFingerprint(input.query)
     const now = dayjs().toISOString()
 
-    let db: Database.Database | undefined
+    let db: SqliteDb | undefined
     try {
       db = new Database(this.sqliteDbPath)
       const database = db

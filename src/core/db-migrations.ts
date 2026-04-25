@@ -1,4 +1,10 @@
-import type Database from 'better-sqlite3'
+interface MigrationDb {
+  exec(sql: string): void
+  prepare(sql: string): {
+    all(): unknown[]
+    run(...params: unknown[]): void
+  }
+}
 
 interface Migration {
   version: number
@@ -197,7 +203,7 @@ const MIGRATIONS: Migration[] = [
  * Apply any unapplied migrations to the database in order.
  * Safe to call on every open — already-applied migrations are skipped.
  */
-export function runMigrations(db: Database.Database): void {
+export function runMigrations(db: MigrationDb): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version   INTEGER PRIMARY KEY,
@@ -207,9 +213,11 @@ export function runMigrations(db: Database.Database): void {
   `)
 
   const applied = new Set(
-    (db.prepare('SELECT version FROM schema_migrations').all() as Array<{ version: number }>).map(
-      r => r.version
-    )
+    db
+      .prepare('SELECT version FROM schema_migrations')
+      .all()
+      .map(row => Number((row as { version?: unknown }).version))
+      .filter(value => Number.isFinite(value))
   )
 
   const insert = db.prepare(
