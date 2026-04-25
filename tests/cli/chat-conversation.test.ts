@@ -53,6 +53,32 @@ describe('chat-conversation', () => {
     expect(resolved.topic).toBe('TUI')
   })
 
+  it('Given insufficient evidence from enrichment, then state keeps a clarify follow-up for the next turn', () => {
+    const state = createInitialConversationState()
+    const resolved = resolveConversationalChatTurn('What is the meaning of life?', state)
+
+    const next = updateConversationState(
+      state,
+      resolved,
+      {
+        answer: 'The KB does not define that. Do you mean within this repo, or a general question?',
+        retrievedDocIds: ['general-facts'],
+        answerEvidence: 'insufficient',
+      },
+      4
+    )
+
+    expect(next.pendingFollowUp?.kind).toBe('clarify')
+    if (next.pendingFollowUp?.kind === 'clarify') {
+      expect(next.pendingFollowUp.priorUserInput).toBe('What is the meaning of life?')
+      expect(next.pendingFollowUp.priorRetrievalQuery).toBe(resolved.retrievalQuery)
+    }
+
+    const follow = resolveConversationalChatTurn('I meant hybrid retrieval in kb', next)
+    expect(follow.retrievalQuery).toContain('What is the meaning of life?')
+    expect(follow.retrievalQuery).toContain('I meant hybrid retrieval')
+  })
+
   it('Given an answer that asks the user to search, then state keeps a pending follow-up for the next turn', () => {
     const state = createInitialConversationState()
     const resolved = resolveConversationalChatTurn('What is TUI and how do we implement it?', state)
@@ -69,7 +95,10 @@ describe('chat-conversation', () => {
     )
 
     expect(answerNeedsSearch(next.recentTurns[0]?.assistant ?? '')).toBe(true)
-    expect(next.pendingFollowUp?.query).toBe(resolved.retrievalQuery)
+    expect(next.pendingFollowUp?.kind).toBe('search')
+    if (next.pendingFollowUp?.kind === 'search') {
+      expect(next.pendingFollowUp.query).toBe(resolved.retrievalQuery)
+    }
     expect(next.needsSearch).toBe(true)
     expect(next.lastRetrievedDocIds).toEqual(['kb-system-overview'])
   })

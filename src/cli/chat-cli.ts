@@ -11,9 +11,14 @@ import {
   resolveConversationalChatTurn,
   updateConversationState,
 } from './chat-conversation'
-import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
+import {
+  buildChatQueryTruthParsed,
+  executeChatQueryTruthRetrieval,
+} from './chat-query-orchestrator.js'
 import { type CmdMode, cmd } from './cmd-ref'
 import {
+  type ReadDocumentsResultData,
+  enrichReadDocumentsAnswerWithLLM,
   isReadDocumentsResult,
   printReadDocumentsOrchestrationFooter,
   resolveReadDocumentsAnswer,
@@ -141,16 +146,17 @@ export async function runChatSession(
       }
 
       try {
-        const resolvedTurn = deps.conversationalRetrieval
-          ? resolveConversationalChatTurn(input, conversationState)
-          : {
-              type: 'fresh-query' as const,
-              input,
-              retrievalQuery: input,
-              answerFocus: input,
-              topic: input,
-              goal: 'answer user question',
-            }
+        const resolvedTurn =
+          deps.conversationalRetrieval || conversationState.pendingFollowUp?.kind === 'clarify'
+            ? resolveConversationalChatTurn(input, conversationState)
+            : {
+                type: 'fresh-query' as const,
+                input,
+                retrievalQuery: input,
+                answerFocus: input,
+                topic: input,
+                goal: 'answer user question',
+              }
         const expandedQuery = deps.graphWriter
           ? await expandQueryWithGraph(resolvedTurn.retrievalQuery, deps.graphWriter)
           : resolvedTurn.retrievalQuery
@@ -168,6 +174,7 @@ export async function runChatSession(
           retrievalLimit,
           workspaceDir: deps.workspaceDir ?? process.cwd(),
           llmProvider: deps.llmProvider,
+          userQuestion: resolvedTurn.input,
         })
 
         if (!isReadDocumentsResult(intentResult)) {
@@ -180,15 +187,45 @@ export async function runChatSession(
           continue
         }
 
-        const retrievalForOutput = normalizeReadResult(intentResult.data)
+        let graphRelationContext: string | undefined
+        if (deps.graphWriter) {
+          try {
+            graphRelationContext =
+              (await formatGraphRelationBlockFromQuestion(
+                deps.graphWriter,
+                resolvedTurn.retrievalQuery
+              )) ?? undefined
+          } catch {
+            graphRelationContext = undefined
+          }
+        }
+
+        const parsedForEnrich = buildChatQueryTruthParsed(
+          expandedQuery,
+          retrievalLimit,
+          resolvedTurn.input
+        )
+        const enrichedResult = await enrichReadDocumentsAnswerWithLLM(
+          parsedForEnrich,
+          intentResult,
+          deps.llmProvider,
+          undefined,
+          undefined,
+          graphRelationContext ? { graphRelationContext } : undefined
+        )
+
+        const retrievalForOutput = normalizeReadResult(enrichedResult.data)
 
         const answer =
-          resolveReadDocumentsAnswer(intentResult) ??
+          resolveReadDocumentsAnswer(enrichedResult) ??
           'I don\'t have enough information to answer that. Try: kb query "<your question>"'
+
+        const answerEvidence = (enrichedResult.data as ReadDocumentsResultData | undefined)
+          ?.answerEvidence
 
         printer.chatAssistant(answer)
         printer.separator()
-        printReadDocumentsOrchestrationFooter(printer, intentResult, {
+        printReadDocumentsOrchestrationFooter(printer, enrichedResult, {
           verbose: deps.verbose,
           debug: deps.debug,
         })
@@ -207,6 +244,7 @@ export async function runChatSession(
           {
             answer,
             retrievedDocIds: sourceIds,
+            answerEvidence,
           },
           deps.maxHistoryTurns ?? 8
         )
@@ -236,8 +274,13 @@ export function buildChatTurnContent(input: {
   if (input.conversationState?.activeTopic) {
     contextLines.push(`Active topic: ${input.conversationState.activeTopic}`)
   }
-  if (input.conversationState?.pendingFollowUp) {
-    contextLines.push(`Pending follow-up: ${input.conversationState.pendingFollowUp.query}`)
+  const pending = input.conversationState?.pendingFollowUp
+  if (pending) {
+    contextLines.push(
+      pending.kind === 'search'
+        ? `Pending follow-up: ${pending.query}`
+        : `Pending clarification after: ${pending.priorUserInput}`
+    )
   }
 
   const graphSection = input.graphRelationBlock?.trim()

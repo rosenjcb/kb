@@ -251,6 +251,8 @@ export interface ReadDocumentsResultData {
   results?: ReadDocumentsResultItem[]
   total?: number
   answer?: string
+  /** Set by **`enrichReadDocumentsAnswerWithLLM`** when the model returns structured JSON. */
+  answerEvidence?: 'sufficient' | 'insufficient'
   retrieval?: {
     method?: string
     detail?: string
@@ -276,9 +278,7 @@ function formatReadDocumentsFullSourceValue(item: ReadDocumentsResultItem): stri
   const snippet = extractSnippet(item.content)
   const highlights = extractHighlights(item.content)
   const highlightText =
-    highlights.length > 0
-      ? highlights.map(h => `[${h.section}] ${h.excerpt}`).join(' | ')
-      : 'none'
+    highlights.length > 0 ? highlights.map(h => `[${h.section}] ${h.excerpt}`).join(' | ') : 'none'
   return `id=${id}; title=${title}; location=${filePath}; uri=${uri}; snippet=${snippet}; highlights=${highlightText}`
 }
 
@@ -352,7 +352,8 @@ const INTENT_ENRICHMENT_JSON_INSTRUCTION = [
   'Schema: {"evidence":"sufficient"|"insufficient","answer":"<string>"}',
   'Use evidence "insufficient" only when the evidence block cannot support a correct, grounded answer to the question.',
   'When evidence is "sufficient", "answer" must be the full user-facing reply, using only the evidence.',
-  'When evidence is "insufficient", "answer" should briefly explain the gap (still as plain text inside the JSON string).',
+  'When evidence is "insufficient", "answer" must briefly explain the gap, then ask one or two short questions that narrow scope',
+  '(e.g. whether they mean this project KB vs a general question, or which subsystem). Do not invent facts to fill the gap.',
 ].join(' ')
 
 function stripMarkdownJsonFence(text: string): string {
@@ -438,9 +439,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
       'I do not have enough grounded evidence yet. Next step: run kb query "<your fact>" --discovery deep --output json, then kb submit "<fact>" if evidence is missing.'
 
     const structured = parseIntentEnrichmentJson(rawCompletion)
-    const answer = structured
-      ? structured.answer.trim() || deterministicFallback
-      : rawCompletion
+    const answer = structured ? structured.answer.trim() || deterministicFallback : rawCompletion
 
     if (!answer.trim()) return result
 
@@ -453,6 +452,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
       data: {
         ...data,
         answer,
+        ...(structured ? { answerEvidence: structured.evidence } : {}),
       },
     }
   } catch {
@@ -784,7 +784,9 @@ export function resolveReadDocumentsAnswerForQuestion(
   if (!isReadDocumentsResult(result)) return undefined
   const data = (result.data ?? {}) as ReadDocumentsResultData
   const results = Array.isArray(data.results) ? data.results : []
-  return data.answer?.trim() || buildDeterministicIntentAnswer(question, results) || buildAnswer(results)
+  return (
+    data.answer?.trim() || buildDeterministicIntentAnswer(question, results) || buildAnswer(results)
+  )
 }
 
 function getIntentQuestion(parsed: ParsedIntentCommand): string {
@@ -953,7 +955,11 @@ function scoreCandidate(line: string): number {
   if (/(precedence|order)/i.test(line)) score += 3
   if (/(1\)|2\)|3\)|->)/i.test(line)) score += 5
   if (/^(kb|cli|query|hybrid|sqlite)/i.test(line)) score += 2
-  if (/(help cleanup|regression tests|unknown-command fallback|--help now prints|smoke runs)/i.test(line))
+  if (
+    /(help cleanup|regression tests|unknown-command fallback|--help now prints|smoke runs)/i.test(
+      line
+    )
+  )
     score -= 6
   if (line.includes('--help')) score -= 3
   if (line.length > 40 && line.length < 220) score += 1
@@ -969,7 +975,7 @@ function extractSnippet(content: string | undefined): string {
     .filter(
       line =>
         line.length > 0 &&
-          !/^#\s/.test(line) &&
+        !/^#\s/.test(line) &&
         !line.startsWith('Created:') &&
         !line.startsWith('Tags:') &&
         !line.startsWith('Type:')

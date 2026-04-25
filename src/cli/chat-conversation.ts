@@ -3,11 +3,18 @@ export interface ChatConversationTurn {
   assistant: string
 }
 
-export interface ChatPendingFollowUp {
-  kind: 'search'
-  query: string
-  reason: string
-}
+export type ChatPendingFollowUp =
+  | {
+      kind: 'search'
+      query: string
+      reason: string
+    }
+  | {
+      kind: 'clarify'
+      priorUserInput: string
+      priorRetrievalQuery: string
+      reason: string
+    }
 
 export interface ChatConversationState {
   recentTurns: ChatConversationTurn[]
@@ -38,6 +45,8 @@ export interface ResolvedChatTurn {
 export interface ChatTurnOutcome {
   answer: string
   retrievedDocIds: string[]
+  /** From answer enrichment JSON when the model marks evidence insufficient. */
+  answerEvidence?: 'sufficient' | 'insufficient'
 }
 
 const CONFIRMATION_PATTERN =
@@ -97,11 +106,31 @@ export function resolveConversationalChatTurn(
   state: ChatConversationState
 ): ResolvedChatTurn {
   const normalized = input.trim()
+  const clarifyPending =
+    state.pendingFollowUp?.kind === 'clarify' ? state.pendingFollowUp : undefined
+  if (clarifyPending && normalized) {
+    const looksBareConfirmation =
+      CONFIRMATION_PATTERN.test(normalized) || CONFIRMATION_WITH_CONTEXT_PATTERN.test(normalized)
+    if (!looksBareConfirmation) {
+      const merged = `${normalized} (${clarifyPending.priorUserInput})`
+      const topic = buildTopicFromQuery(normalized) ?? clarifyPending.priorUserInput
+      return {
+        type: 'follow-up',
+        input: normalized,
+        retrievalQuery: merged,
+        answerFocus: normalized,
+        topic,
+        goal: 'answer after assistant asked for clarification',
+      }
+    }
+  }
+
   const turnType = classifyChatTurn(normalized, state)
   const explicitTopic = extractExplicitTopic(normalized)
   const topicalTerms = extractTopicalTerms(normalized)
   const activeTopic = state.activeTopic?.trim()
-  const previousQuery = state.pendingFollowUp?.query?.trim() || state.lastRetrievalQuery?.trim()
+  const searchPending = state.pendingFollowUp?.kind === 'search' ? state.pendingFollowUp : undefined
+  const previousQuery = searchPending?.query?.trim() || state.lastRetrievalQuery?.trim()
 
   let retrievalQuery = normalized
   if (turnType === 'confirmation' && previousQuery) {
@@ -152,13 +181,21 @@ export function updateConversationState(
   }
 
   const needsSearch = answerNeedsSearch(outcome.answer)
-  const pendingFollowUp = needsSearch
-    ? {
-        kind: 'search' as const,
-        query: resolvedTurn.retrievalQuery,
-        reason: 'assistant-requested-search',
-      }
-    : undefined
+  const pendingFollowUp =
+    outcome.answerEvidence === 'insufficient'
+      ? {
+          kind: 'clarify' as const,
+          priorUserInput: resolvedTurn.input,
+          priorRetrievalQuery: resolvedTurn.retrievalQuery,
+          reason: 'insufficient-grounded-evidence',
+        }
+      : needsSearch
+        ? {
+            kind: 'search' as const,
+            query: resolvedTurn.retrievalQuery,
+            reason: 'assistant-requested-search',
+          }
+        : undefined
 
   return {
     recentTurns,
@@ -177,7 +214,8 @@ export function classifyChatTurn(input: string, state: ChatConversationState): C
 
   if (
     (CONFIRMATION_PATTERN.test(trimmed) || CONFIRMATION_WITH_CONTEXT_PATTERN.test(trimmed)) &&
-    (state.pendingFollowUp || state.lastRetrievalQuery)
+    (state.pendingFollowUp?.kind === 'search' ||
+      (!state.pendingFollowUp && state.lastRetrievalQuery))
   ) {
     return 'confirmation'
   }

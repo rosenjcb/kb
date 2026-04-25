@@ -12,12 +12,20 @@ export interface ChatQueryTruthInput {
   retrievalLimit: number
   workspaceDir: string
   llmProvider?: LLMProvider
+  /**
+   * Raw user text for this turn (before graph expansion). Passed as **`originalQuery`** so
+   * answer enrichment snippets and phrasing track what the user actually asked.
+   */
+  userQuestion?: string
 }
 
-function buildChatQueryTruthParsed(
+/** Exported for chat session answer enrichment (same envelope shape as retrieval). */
+export function buildChatQueryTruthParsed(
   expandedQuery: string,
-  retrievalLimit: number
+  retrievalLimit: number,
+  userQuestion?: string
 ): ParsedIntentCommand {
+  const originalQuery = userQuestion?.trim()
   return {
     envelope: {
       intent: 'query_truth',
@@ -25,6 +33,7 @@ function buildChatQueryTruthParsed(
       payload: {
         query: expandedQuery,
         limit: retrievalLimit,
+        ...(originalQuery ? { originalQuery } : {}),
       },
     },
     output: 'human',
@@ -38,7 +47,11 @@ function buildChatQueryTruthParsed(
 export async function executeChatQueryTruthRetrieval(
   input: ChatQueryTruthInput
 ): Promise<IntentResult> {
-  const parsed = buildChatQueryTruthParsed(input.expandedQuery, input.retrievalLimit)
+  const parsed = buildChatQueryTruthParsed(
+    input.expandedQuery,
+    input.retrievalLimit,
+    input.userQuestion
+  )
   return runQueryTruthRetrieval({
     parsed,
     toolExecutor: input.toolExecutor,
