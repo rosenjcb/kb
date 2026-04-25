@@ -11,8 +11,8 @@ import {
   resolveConversationalChatTurn,
   updateConversationState,
 } from './chat-conversation'
-import { type CmdMode, cmd } from './cmd-ref'
 import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
+import { type CmdMode, cmd } from './cmd-ref'
 import {
   isReadDocumentsResult,
   printReadDocumentsOrchestrationFooter,
@@ -167,6 +167,7 @@ export async function runChatSession(
           expandedQuery,
           retrievalLimit,
           workspaceDir: deps.workspaceDir ?? process.cwd(),
+          llmProvider: deps.llmProvider,
         })
 
         if (!isReadDocumentsResult(intentResult)) {

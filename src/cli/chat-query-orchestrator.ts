@@ -1,5 +1,6 @@
 import dayjs from 'dayjs'
 import type { ToolExecutor } from '../core/tool-registry.js'
+import type { LLMProvider } from '../core/types.js'
 import type { IntentResult } from '../intents/types.js'
 import type { ParsedIntentCommand } from './intent-cli.js'
 import { runQueryTruthRetrieval } from './query-truth-retrieval.js'
@@ -10,6 +11,7 @@ export interface ChatQueryTruthInput {
   expandedQuery: string
   retrievalLimit: number
   workspaceDir: string
+  llmProvider?: LLMProvider
 }
 
 function buildChatQueryTruthParsed(
@@ -41,5 +43,6 @@ export async function executeChatQueryTruthRetrieval(
     parsed,
     toolExecutor: input.toolExecutor,
     workspaceDir: input.workspaceDir,
+    llmProvider: input.llmProvider,
   })
 }
