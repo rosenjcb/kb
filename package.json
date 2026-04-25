@@ -20,6 +20,7 @@
     "eval:orchestrator-scenarios": "node scripts/eval-orchestrator-scenarios.mjs",
     "eval:snap": "tsx scripts/eval-snapshot.ts",
     "eval:artifact": "tsx scripts/eval-task-artifact.ts",
+    "chat:clarify-smoke": "tsx scripts/chat-clarify-smoke.ts",
     "test": "node ./node_modules/vitest/vitest.mjs run",
     "test:watch": "node ./node_modules/vitest/vitest.mjs",
     "test:functional": "bash tests/functional-test.sh",
