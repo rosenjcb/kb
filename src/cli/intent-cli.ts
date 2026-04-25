@@ -354,6 +354,31 @@ const INTENT_ENRICHMENT_JSON_INSTRUCTION = [
   'When evidence is "sufficient", "answer" must be the full user-facing reply, using only the evidence.',
   'When evidence is "insufficient", "answer" must briefly explain the gap, then ask one or two short questions that narrow scope',
   '(e.g. whether they mean this project KB vs a general question, or which subsystem). Do not invent facts to fill the gap.',
+  'If the question is clearly general philosophy or existential (meaning of life, purpose of the universe, why we exist) and the evidence is only technical project docs, evidence MUST be "insufficient".',
+].join(' ')
+
+/** Broad questions not scoped to this repo; KB hits are usually irrelevant — force clarify path. */
+function queryLikelyOutsideProjectKb(question: string): boolean {
+  const q = question.trim().toLowerCase()
+  if (q.length < 8) return false
+
+  const kbScoped =
+    /\b(kb\s|knowledge\s+base|this\s+repo|this\s+project|the\s+cli|codebase|\.kb\b|sqlite|hybrid\s+retrieval|intent\s+command)\b/i.test(
+      question
+    )
+  if (kbScoped) return false
+
+  return (
+    /\b(purpose|meaning)\s+of\s+(life|existence|the\s+universe|everything)\b/.test(q) ||
+    /\bwhat\s+is\s+the\s+(purpose|meaning)\s+of\s+life\b/.test(q) ||
+    /\bwhy\s+(are|do)\s+we\s+(exist|here)\b/.test(q)
+  )
+}
+
+const PHILOSOPHY_GATE_FALLBACK_ANSWER = [
+  'Those KB documents describe this project’s CLI and tooling — they do not answer broad existential questions.',
+  'Do you mean something inside this repository (e.g. hybrid retrieval, `kb query`, or init)?',
+  'Or were you asking a general question outside this KB?',
 ].join(' ')
 
 function stripMarkdownJsonFence(text: string): string {
@@ -439,7 +464,26 @@ export async function enrichReadDocumentsAnswerWithLLM(
       'I do not have enough grounded evidence yet. Next step: run kb query "<your fact>" --discovery deep --output json, then kb submit "<fact>" if evidence is missing.'
 
     const structured = parseIntentEnrichmentJson(rawCompletion)
-    const answer = structured ? structured.answer.trim() || deterministicFallback : rawCompletion
+    const outsideKb = queryLikelyOutsideProjectKb(question)
+
+    let answer: string
+    let answerEvidence: 'sufficient' | 'insufficient' | undefined
+
+    if (outsideKb) {
+      answerEvidence = 'insufficient'
+      if (
+        structured?.evidence === 'insufficient' &&
+        structured.answer.trim().length > 12 &&
+        structured.answer.includes('?')
+      ) {
+        answer = structured.answer.trim()
+      } else {
+        answer = PHILOSOPHY_GATE_FALLBACK_ANSWER
+      }
+    } else {
+      answerEvidence = structured?.evidence
+      answer = structured ? structured.answer.trim() || deterministicFallback : rawCompletion
+    }
 
     if (!answer.trim()) return result
 
@@ -452,7 +496,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
       data: {
         ...data,
         answer,
-        ...(structured ? { answerEvidence: structured.evidence } : {}),
+        ...(answerEvidence ? { answerEvidence } : {}),
       },
     }
   } catch {

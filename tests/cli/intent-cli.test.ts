@@ -14,10 +14,10 @@ import {
   printReadDocumentsOrchestrationFooter,
   rewriteIntentInputWithSessionContext,
 } from '../../src/cli/intent-cli'
-import { isOrchestrationMetaLine } from '../../src/ui/orchestration-meta'
-import { createPrinter } from '../../src/ui/printer'
 import type { ToolExecutor } from '../../src/core/tool-registry'
 import type { LLMProvider } from '../../src/core/types'
+import { isOrchestrationMetaLine } from '../../src/ui/orchestration-meta'
+import { createPrinter } from '../../src/ui/printer'
 
 const tempDirs: string[] = []
 
@@ -104,9 +104,9 @@ describe('intent-cli parsing', () => {
   })
 
   it('rejects invalidate --preview with --dry-run', () => {
-    expect(() =>
-      parseIntentCommand(['invalidate', 'old fact', '--preview', '--dry-run'])
-    ).toThrow('--preview cannot be combined with --dry-run')
+    expect(() => parseIntentCommand(['invalidate', 'old fact', '--preview', '--dry-run'])).toThrow(
+      '--preview cannot be combined with --dry-run'
+    )
   })
 
   it('rejects unknown public commands', () => {
@@ -137,7 +137,9 @@ describe('intent-cli formatting', () => {
           retrieval: {
             method: 'hybrid',
             detail: 'fts+vector-rerank',
-            checkpoints: [{ stage: 'hybrid_primary', status: 'hit', nextAction: 'return', confidence: 0.86 }],
+            checkpoints: [
+              { stage: 'hybrid_primary', status: 'hit', nextAction: 'return', confidence: 0.86 },
+            ],
           },
           results: [
             {
@@ -225,7 +227,9 @@ describe('intent-cli execution and enrichment', () => {
       execute: vi.fn(async toolUse => {
         if (toolUse.name === 'invalidate_fact') {
           return {
-            changes: [{ documentId: 'ops-facts', title: 'Ops Facts', replaced: 1, diff: '- old\n+ new' }],
+            changes: [
+              { documentId: 'ops-facts', title: 'Ops Facts', replaced: 1, diff: '- old\n+ new' },
+            ],
             summary: 'Scanned 3 KB documents. 1 replacements in 1 documents.',
           }
         }
@@ -248,7 +252,13 @@ describe('intent-cli execution and enrichment', () => {
     await writeFile(
       path.join(dir, 'query-session.json'),
       JSON.stringify({
-        turns: [{ question: 'how does kb work?', answer: 'It stores project knowledge.', timestamp: Date.now() }],
+        turns: [
+          {
+            question: 'how does kb work?',
+            answer: 'It stores project knowledge.',
+            timestamp: Date.now(),
+          },
+        ],
         updatedAt: Date.now(),
       }),
       'utf8'
@@ -257,7 +267,10 @@ describe('intent-cli execution and enrichment', () => {
     const llm: LLMProvider = {
       name: 'test',
       model: 'stub',
-      call: vi.fn(async () => ({ text: 'How does kb base selection work?', usage: { inputTokens: 1, outputTokens: 1 } })),
+      call: vi.fn(async () => ({
+        text: 'How does kb base selection work?',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
     } as unknown as LLMProvider
 
     const parsed = parseIntentCommand(['query', 'and base selection?', '--session'])
@@ -267,7 +280,11 @@ describe('intent-cli execution and enrichment', () => {
 
   it('augments query results with workspace fallback but leaves invalidate untouched', async () => {
     const dir = await createTempDir()
-    await writeFile(path.join(dir, 'README.md'), '# Project\n\nKB stores project knowledge locally.\n', 'utf8')
+    await writeFile(
+      path.join(dir, 'README.md'),
+      '# Project\n\nKB stores project knowledge locally.\n',
+      'utf8'
+    )
 
     const parsed = parseIntentCommand(['query', 'what is this project for?'])
     const queryResult = await augmentIntentResultWithWorkspaceFallback(
@@ -360,6 +377,74 @@ describe('intent-cli execution and enrichment', () => {
     const answer = (enriched.data as { answer?: string }).answer ?? ''
     expect(answer.length).toBeGreaterThan(10)
     expect(answer.toLowerCase()).toMatch(/base|precedence|kb/)
+  })
+
+  it('Given philosophy-shaped query, then enrichment forces insufficient even if model says sufficient', async () => {
+    const llm: LLMProvider = {
+      name: 'test',
+      model: 'stub',
+      call: vi.fn(async () => ({
+        text: '{"evidence":"sufficient","answer":"kb dispute was removed; use kb invalidate."}',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    } as unknown as LLMProvider
+
+    const queryParsed = parseIntentCommand(['query', 'What is the purpose of life?'])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      queryParsed,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        data: {
+          retrieval: { method: 'hybrid' },
+          results: [
+            {
+              metadata: { id: 'sqlite-hybrid-search-configuration', title: 'SQLite Hybrid' },
+              content: '# SQLite Hybrid\n\nkb dispute command has been removed from the CLI.\n',
+            },
+          ],
+        },
+      },
+      llm
+    )
+    expect((enriched.data as { answerEvidence?: string }).answerEvidence).toBe('insufficient')
+    expect((enriched.data as { answer?: string }).answer).not.toContain('kb dispute')
+    expect((enriched.data as { answer?: string }).answer).toMatch(/\?/)
+  })
+
+  it('Given philosophy query scoped to this project, then enrichment does not force the philosophy gate', async () => {
+    const llm: LLMProvider = {
+      name: 'test',
+      model: 'stub',
+      call: vi.fn(async () => ({
+        text: '{"evidence":"sufficient","answer":"Hybrid retrieval combines FTS and vectors in this repo."}',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    } as unknown as LLMProvider
+
+    const queryParsed = parseIntentCommand([
+      'query',
+      'What is the purpose of life in this project (only hybrid retrieval)?',
+    ])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      queryParsed,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        data: {
+          retrieval: { method: 'hybrid' },
+          results: [
+            {
+              metadata: { id: 'kb-system-overview', title: 'Overview' },
+              content: '# Overview\n\nHybrid retrieval combines FTS and vectors.\n',
+            },
+          ],
+        },
+      },
+      llm
+    )
+    expect((enriched.data as { answerEvidence?: string }).answerEvidence).toBe('sufficient')
+    expect((enriched.data as { answer?: string }).answer).toContain('Hybrid retrieval')
   })
 
   it('enrichment accepts legacy prose when JSON parse fails', async () => {
