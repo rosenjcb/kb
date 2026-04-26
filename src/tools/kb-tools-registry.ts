@@ -21,14 +21,12 @@ import {
   executeWriteDocumentTool,
 } from './document-writer'
 import { DuckGraphWriter } from './duck-graph-writer'
+import { FactsDocumentReader } from './facts-document-reader'
 import { extractGraph } from './graph-entity-extractor'
 import { invalidateFactTool } from './invalidate-fact-tool'
-import {
-  MarkdownDocumentReader,
-  type QueryDocumentsInput,
-  type QueryResponse,
-} from './markdown-document-reader'
+import type { QueryDocumentsInput, QueryResponse } from './facts-document-reader'
 import { SqliteDocumentWriter } from './sqlite-document-writer'
+import { SqliteKbIndexer } from './sqlite-kb-index'
 import { executeSubagentTask } from './task'
 
 export interface KBToolsOrchestratorOptions {
@@ -49,24 +47,9 @@ export function createKBToolsRegistry(
 
   // Initialize storage implementations
   const writer = new SqliteDocumentWriter({ baseDir: storageDir })
-  const flags = config ? resolveFeatureFlags(config) : undefined
-  const reader = new MarkdownDocumentReader(
-    storageDir,
-    flags
-      ? {
-          hybridEnabled: flags.hybridQuery,
-          graphRankingEnabled: config ? resolveGraphEnabled(config) : undefined,
-          hybridCandidateLimit: flags.hybridQueryCandidates,
-          hybridAlpha: flags.hybridQueryAlpha,
-          hybridMaxMs: flags.hybridQueryMaxMs,
-          checkpointObservabilityEnabled: flags.checkpointObservability,
-          missLearningEnabled: flags.missLearning,
-          rankingHintsEnabled: flags.missHints,
-          rankingHintMinOccurrences: flags.missHintMinOccurrences,
-          laneRoutingEnabled: flags.laneRouting,
-        }
-      : {}
-  )
+  if (config) resolveFeatureFlags(config)
+  const indexer = new SqliteKbIndexer({ dbPath: path.join(storageDir, '.kb-index.sqlite') })
+  const reader = new FactsDocumentReader(path.join(storageDir, '.kb-index.sqlite'))
 
   // Register write_document tool
   const writeToolDef: ToolDefinition = {
@@ -156,6 +139,68 @@ export function createKBToolsRegistry(
 
   registry.register('read_documents', readToolDef, async input => {
     return await reader.queryDocuments(input as QueryDocumentsInput)
+  })
+
+  const upsertFactToolDef: ToolDefinition = {
+    name: 'upsert_fact',
+    description: 'Insert or update a canonical fact in the facts store',
+    schema: {
+      type: 'object',
+      properties: {
+        factText: { type: 'string', description: 'Atomic fact statement text' },
+        sourceKind: {
+          type: 'string',
+          enum: ['submit', 'init_readme', 'import', 'system'],
+          description: 'Source channel for this fact',
+        },
+        sourceRef: { type: 'string', description: 'Optional source provenance' },
+        confidence: { type: 'number', description: 'Optional confidence between 0 and 1' },
+      },
+      required: ['factText', 'sourceKind'],
+      additionalProperties: false,
+    },
+  }
+  registry.register('upsert_fact', upsertFactToolDef, async input => {
+    const payload = input as { factText: string; sourceKind: 'submit' | 'init_readme' | 'import' | 'system'; sourceRef?: string; confidence?: number }
+    return indexer.upsertFact(payload)
+  })
+
+  const generateDocToolDef: ToolDefinition = {
+    name: 'generate_document_from_facts',
+    description: 'Generate a derived markdown document from retrieved facts',
+    schema: {
+      type: 'object',
+      properties: {
+        instruction: { type: 'string', description: 'User instruction for generated document' },
+        title: { type: 'string', description: 'Output document title' },
+        limit: { type: 'number', description: 'Fact retrieval limit (default: 20)' },
+      },
+      required: ['instruction', 'title'],
+      additionalProperties: false,
+    },
+  }
+  registry.register('generate_document_from_facts', generateDocToolDef, async input => {
+    const payload = input as { instruction: string; title: string; limit?: number }
+    const factRows = indexer.searchFacts(payload.instruction, payload.limit ?? 20)
+    const markdownLines = [`# ${payload.title}`, '', `Instruction: ${payload.instruction}`, '', '## Evidence']
+    for (const row of factRows) {
+      markdownLines.push(`- ${row.fact_text}`)
+    }
+    if (factRows.length === 0) {
+      markdownLines.push('- No supporting facts found.')
+    }
+    const id = slugify(payload.title)
+    indexer.upsertDerivedDoc({
+      id,
+      title: payload.title,
+      instruction: payload.instruction,
+      markdown: `${markdownLines.join('\n')}\n`,
+      sourceFactIds: factRows.map(row => row.id),
+      status: 'active',
+      tags: ['derived'],
+      docType: 'reference',
+    })
+    return { id, title: payload.title, sourceFactCount: factRows.length }
   })
 
   // append_to_document
@@ -467,5 +512,14 @@ export function createKBToolsRegistry(
   return registry
 }
 
-export { MarkdownDocumentReader }
 export type { QueryResponse, QueryDocumentsInput }
+
+function slugify(input: string): string {
+  return (
+    input
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'generated-doc'
+  )
+}

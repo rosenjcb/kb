@@ -19,7 +19,7 @@ async function createTempDir(): Promise<string> {
 }
 
 describe('SQLite KB index integration', () => {
-  it('Given write_document with sqlite indexing enabled, then should upsert document and chunk records', async () => {
+  it('Given write_document with sqlite indexing enabled, then should upsert original_docs record', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const writer = new MarkdownMDWriterTool({
@@ -38,25 +38,20 @@ describe('SQLite KB index integration', () => {
     })
 
     const db = new Database(dbPath, { readonly: true })
-    const docCount = db.prepare('SELECT count(*) AS count FROM documents').get() as {
+    const docCount = db.prepare('SELECT count(*) AS count FROM original_docs').get() as {
       count: number
     }
-    const chunkCount = db.prepare('SELECT count(*) AS count FROM chunks').get() as { count: number }
-    const embeddingCount = db.prepare('SELECT count(*) AS count FROM chunk_embeddings').get() as {
-      count: number
-    }
-    const laneRow = db
-      .prepare('SELECT lane FROM documents WHERE id = ?')
-      .get('sqlite-index-plan') as { lane: string }
+    const row = db
+      .prepare('SELECT title, markdown FROM original_docs WHERE id = ?')
+      .get('sqlite-index-plan') as { title: string; markdown: string }
 
     expect(docCount.count).toBe(1)
-    expect(chunkCount.count).toBeGreaterThan(0)
-    expect(embeddingCount.count).toBeGreaterThan(0)
-    expect(laneRow.lane).toBe('architecture')
+    expect(row.title).toBe('SQLite Index Plan')
+    expect(row.markdown).toContain('hybrid retrieval')
     db.close()
   })
 
-  it('Given append/update/prune mutations, then should keep sqlite index synchronized', async () => {
+  it('Given append/update/prune mutations, then should keep original_docs markdown synchronized', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const writer = new MarkdownMDWriterTool({
@@ -89,17 +84,13 @@ describe('SQLite KB index integration', () => {
     })
 
     const db = new Database(dbPath, { readonly: true })
-    const title = db.prepare('SELECT title FROM documents WHERE id = ?').get('ops-runbook') as {
-      title: string
-    }
-    const chunkRows = db
-      .prepare('SELECT chunk_text FROM chunks WHERE doc_id = ? ORDER BY chunk_index')
-      .all('ops-runbook') as Array<{ chunk_text: string }>
+    const row = db
+      .prepare('SELECT title, markdown FROM original_docs WHERE id = ?')
+      .get('ops-runbook') as { title: string; markdown: string }
 
-    expect(title.title).toBe('Ops Runbook V2')
-    const joined = chunkRows.map(row => row.chunk_text).join('\n')
-    expect(joined).toContain('Updated step')
-    expect(joined).not.toContain('Deprecated step')
+    expect(row.title).toBe('Ops Runbook V2')
+    expect(row.markdown).toContain('Updated step')
+    expect(row.markdown).not.toContain('Deprecated step')
     db.close()
   })
 
@@ -253,7 +244,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('Given legacy rows without lane values, then backfillDocumentLanes should populate document and chunk lanes deterministically', async () => {
+  it('Given facts-first schema, then backfillDocumentLanes is a no-op', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -271,26 +262,33 @@ describe('SQLite KB index integration', () => {
 
     indexer.upsertDocumentFromContent(filePath, content)
 
-    const db = new Database(dbPath)
-    db.prepare('UPDATE documents SET lane = NULL WHERE id = ?').run('incident-runbook')
-    db.prepare('UPDATE chunks SET lane = NULL WHERE doc_id = ?').run('incident-runbook')
-    db.close()
-
     const updated = indexer.backfillDocumentLanes()
-    expect(updated).toBeGreaterThan(0)
+    expect(updated).toBe(0)
 
-    const verify = new Database(dbPath, { readonly: true })
-    const docLane = verify
-      .prepare('SELECT lane FROM documents WHERE id = ?')
-      .get('incident-runbook') as { lane: string }
-    const chunkLane = verify
-      .prepare('SELECT DISTINCT lane FROM chunks WHERE doc_id = ?')
-      .all('incident-runbook') as Array<{ lane: string }>
-    verify.close()
+    indexer.close()
+  })
 
-    expect(docLane.lane).toBe('error-runbook')
-    expect(chunkLane.length).toBe(1)
-    expect(chunkLane[0].lane).toBe('error-runbook')
+  it('Given natural language query, searchFacts should match token-level evidence', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    indexer.upsertFact({
+      factText: 'raylib is a C library focused on simple game development workflows',
+      sourceKind: 'submit',
+      sourceRef: 'test',
+      confidence: 0.9,
+    })
+    indexer.upsertFact({
+      factText: 'raylib provides rendering, input handling, and audio capabilities',
+      sourceKind: 'submit',
+      sourceRef: 'test',
+      confidence: 0.9,
+    })
+
+    const rows = indexer.searchFacts('What is raylib for, and what are its main capabilities?', 5)
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.some(row => row.fact_text.includes('raylib'))).toBe(true)
 
     indexer.close()
   })

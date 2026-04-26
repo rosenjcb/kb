@@ -1,4 +1,4 @@
-import { MarkdownDocumentReader, type QueryResult } from '../tools/markdown-document-reader'
+import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
 import { type CmdMode, cmd } from './cmd-ref'
 
@@ -70,11 +70,11 @@ export async function runViewCommand(
     ? await ensureOperationalBaseDir(parsed.base, cwd)
     : (await resolveEffectiveBaseDir(cwd)).baseDir
 
-  const reader = new MarkdownDocumentReader(baseDir)
+  const indexer = new SqliteKbIndexer({ dbPath: `${baseDir}/.kb-index.sqlite` })
   const document =
     parsed.selector.mode === 'id'
-      ? await readDocumentById(reader, parsed.selector.value)
-      : await readDocumentByTitle(reader, parsed.selector.value)
+      ? await readDocumentById(indexer, parsed.selector.value)
+      : await readDocumentByTitle(indexer, parsed.selector.value)
 
   return {
     output:
@@ -92,16 +92,14 @@ export async function runListCommand(
     ? await ensureOperationalBaseDir(parsed.base, cwd)
     : (await resolveEffectiveBaseDir(cwd)).baseDir
 
-  const reader = new MarkdownDocumentReader(baseDir)
-  const response = await reader.queryDocuments({
-    limit: parsed.limit,
-  })
+  const indexer = new SqliteKbIndexer({ dbPath: `${baseDir}/.kb-index.sqlite` })
+  const response = indexer.listDocsForView(parsed.limit).map(row => toQueryResult(row))
 
   return {
     output:
       parsed.output === 'json'
-        ? formatListJson(response.results)
-        : formatListHuman(response.results, parsed.base),
+        ? formatListJson(response)
+        : formatListHuman(response, parsed.base),
   }
 }
 
@@ -216,17 +214,11 @@ export function parseListCommand(args: string[]): ParsedListCommand {
 }
 
 async function readDocumentById(
-  reader: MarkdownDocumentReader,
+  indexer: SqliteKbIndexer,
   documentId: string
 ): Promise<QueryResult> {
-  const response = await reader.queryDocuments({
-    query: documentId,
-    mode: 'id',
-    limit: 1,
-    includeContent: true,
-  })
-
-  const document = response.results[0]
+  const row = indexer.getDocById(documentId)
+  const document = row ? toQueryResult(row) : undefined
   if (!document) {
     throw new ViewCommandError(`Document not found: ${documentId}`)
   }
@@ -235,17 +227,13 @@ async function readDocumentById(
 }
 
 async function readDocumentByTitle(
-  reader: MarkdownDocumentReader,
+  indexer: SqliteKbIndexer,
   title: string
 ): Promise<QueryResult> {
-  const response = await reader.queryDocuments({
-    query: title,
-    mode: 'title',
-    limit: 50,
-    includeContent: true,
-  })
-
-  const exactMatches = response.results.filter(
+  const exactMatches = indexer
+    .listDocsForView(200)
+    .map(row => toQueryResult(row))
+    .filter(
     result => normalizeTitle(result.metadata.title) === normalizeTitle(title)
   )
 
@@ -261,6 +249,54 @@ async function readDocumentByTitle(
   }
 
   return exactMatches[0]
+}
+
+type QueryResult = {
+  metadata: {
+    id: string
+    title: string
+    filePath: string
+    createdAt: string
+    updatedAt: string
+    tags?: string[]
+    type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
+  }
+  content?: string
+}
+
+function toQueryResult(row: {
+  id: string
+  title: string
+  content: string
+  file_path: string
+  doc_type: string | null
+  tags_json: string | null
+  created_at: string
+  updated_at: string
+}): QueryResult {
+  return {
+    metadata: {
+      id: row.id,
+      title: row.title,
+      filePath: row.file_path,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      tags: parseTags(row.tags_json),
+      type: (row.doc_type as QueryResult['metadata']['type']) ?? undefined,
+    },
+    content: row.content,
+  }
+}
+
+function parseTags(raw: string | null): string[] | undefined {
+  if (!raw) return undefined
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return undefined
+    return parsed.filter(v => typeof v === 'string') as string[]
+  } catch {
+    return undefined
+  }
 }
 
 function formatViewHuman(document: QueryResult, base?: string): string {

@@ -39,7 +39,7 @@ function createExecutorMock(): ToolExecutor {
       if (toolUse.name === 'invalidate_fact') {
         return {
           changes: [
-            { documentId: 'ops-facts', title: 'Ops Facts', replaced: 1, diff: '- old\n+ new' },
+            { factId: 'ops-facts', title: 'Ops Facts', replaced: 1, diff: '- old\n+ new' },
           ],
           summary: 'Scanned 3 KB documents. 1 replacements in 1 documents.',
         }
@@ -93,19 +93,13 @@ describe('DefaultIntentRouter', () => {
     expect(calls.some(call => call[0]?.name === 'reconcile_contradictions')).toBe(true)
   })
 
-  it('Given inferred domain doc missing, execute falls back from append_to_document to write_document', async () => {
+  it('Given inferred domain doc missing, execute still upserts fact via submit orchestrator', async () => {
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
       execute: vi.fn(async toolUse => {
-        if (toolUse.name === 'read_documents') {
-          return { results: [], retrieval: { method: 'lexical-fallback' } }
-        }
-        if (toolUse.name === 'append_to_document') {
-          throw new Error('Document not found: operations-facts')
-        }
-        if (toolUse.name === 'write_document') {
-          return { id: 'operations-facts' }
+        if (toolUse.name === 'upsert_fact') {
+          return { id: 'operations-facts', operation: 'inserted' }
         }
         if (toolUse.name === 'upsert_graph_from_text') {
           return { enabled: true, entities: 0, relationships: 0 }
@@ -132,8 +126,9 @@ describe('DefaultIntentRouter', () => {
 
     const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
     const names = calls.map((c: unknown[]) => (c[0] as { name?: string })?.name)
-    expect(names).toContain('write_document')
-    expect(names.indexOf('append_to_document')).toBeLessThan(names.indexOf('write_document'))
+    expect(names).toContain('upsert_fact')
+    expect(names).not.toContain('append_to_document')
+    expect(names).not.toContain('write_document')
   })
 
   it('Given invalidate_fact, then routes to invalidate_orchestrator', async () => {

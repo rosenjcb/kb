@@ -8,11 +8,7 @@ function makeExecutor(overrides?: Partial<Record<string, unknown>>): ToolExecuto
     getTools: vi.fn(() => []),
     execute: vi.fn(async (toolUse: { name: string }) => {
       if (overrides && toolUse.name in overrides) return overrides[toolUse.name]
-      if (toolUse.name === 'read_documents') {
-        return { results: [], retrieval: { method: 'lexical-fallback' } }
-      }
-      if (toolUse.name === 'append_to_document') return { id: 'appended-doc' }
-      if (toolUse.name === 'write_document') return { id: 'new-doc' }
+      if (toolUse.name === 'upsert_fact') return { id: 'fact-1234', operation: 'inserted' }
       if (toolUse.name === 'upsert_graph_from_text') {
         return { enabled: true, entities: 1, relationships: 1 }
       }
@@ -22,13 +18,8 @@ function makeExecutor(overrides?: Partial<Record<string, unknown>>): ToolExecuto
 }
 
 describe('SubmitOrchestrator', () => {
-  it('Given hybrid read_documents hit, then appends to the discovered doc', async () => {
-    const executor = makeExecutor({
-      read_documents: {
-        results: [{ metadata: { id: 'query-research-orchestrator' } }],
-        retrieval: { method: 'hybrid' },
-      },
-    })
+  it('Given submitted fact, then upserts canonical fact and syncs graph', async () => {
+    const executor = makeExecutor()
 
     const orchestrator = new SubmitOrchestrator(executor)
     const result = await orchestrator.run({
@@ -36,29 +27,25 @@ describe('SubmitOrchestrator', () => {
       source: 'consumer',
     })
 
-    expect(result.discoveredTarget).toBe(true)
-    expect(result.targetDocId).toBe('query-research-orchestrator')
-    expect(result.operation).toBe('appended')
+    expect(result.discoveredTarget).toBe(false)
+    expect(result.targetDocId).toBe('fact-1234')
+    expect(result.operation).toBe('fact_upserted')
     expect((result.result as { graphSync?: { entities?: number } }).graphSync?.entities).toBe(1)
 
-    const appendCall = (executor.execute as ReturnType<typeof vi.fn>).mock.calls.find(
-      (c: [{ name: string }]) => c[0].name === 'append_to_document'
+    const upsertCall = (executor.execute as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: unknown[]) => (c[0] as { name?: string })?.name === 'upsert_fact'
     )
-    expect(appendCall?.[0].input.documentId).toBe('query-research-orchestrator')
+    expect(upsertCall?.[0].input.sourceKind).toBe('submit')
+    expect(upsertCall?.[0].input.factText).toContain('QueryResearchOrchestrator')
     expect(
       (executor.execute as ReturnType<typeof vi.fn>).mock.calls.some(
-        (c: [{ name: string }]) => c[0].name === 'upsert_graph_from_text'
+        (c: unknown[]) => (c[0] as { name?: string })?.name === 'upsert_graph_from_text'
       )
     ).toBe(true)
   })
 
-  it('Given lexical-fallback result, then falls back to domain-facts instead', async () => {
-    const executor = makeExecutor({
-      read_documents: {
-        results: [{ metadata: { id: 'some-doc' } }],
-        retrieval: { method: 'lexical-fallback' },
-      },
-    })
+  it('Given domain-like fact, then graph source id is fact id', async () => {
+    const executor = makeExecutor({ upsert_fact: { id: 'retrieval-fact', operation: 'inserted' } })
 
     const orchestrator = new SubmitOrchestrator(executor)
     const result = await orchestrator.run({
@@ -66,14 +53,11 @@ describe('SubmitOrchestrator', () => {
       source: 'consumer',
     })
 
-    expect(result.discoveredTarget).toBe(false)
-    expect(result.targetDocId).toBe('retrieval-facts')
+    expect(result.targetDocId).toBe('retrieval-fact')
   })
 
-  it('Given no read_documents results, then falls back to domain-inferred doc', async () => {
-    const executor = makeExecutor({
-      read_documents: { results: [], retrieval: { method: 'hybrid' } },
-    })
+  it('Given no special executor behavior, then still returns fact_upserted result', async () => {
+    const executor = makeExecutor()
 
     const orchestrator = new SubmitOrchestrator(executor)
     const result = await orchestrator.run({
@@ -82,37 +66,16 @@ describe('SubmitOrchestrator', () => {
     })
 
     expect(result.discoveredTarget).toBe(false)
-    expect(result.targetDocId).toBe('cicd-facts')
+    expect(result.operation).toBe('fact_upserted')
   })
 
-  it('Given read_documents throws, then falls back to domain-inferred doc without throwing', async () => {
+  it('Given graph sync still runs after upsert_fact', async () => {
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
       execute: vi.fn(async (toolUse: { name: string }) => {
-        if (toolUse.name === 'read_documents') throw new Error('network error')
-        if (toolUse.name === 'append_to_document') return { id: 'general-facts' }
-        return { id: 'general-facts' }
-      }),
-    }
-
-    const orchestrator = new SubmitOrchestrator(executor)
-    const result = await orchestrator.run({ fact: 'some new fact', source: 'consumer' })
-
-    expect(result.discoveredTarget).toBe(false)
-    expect(result.targetDocId).toBe('general-facts')
-  })
-
-  it('Given append_to_document throws on fallback, then write_document is used', async () => {
-    const executor: ToolExecutor = {
-      register: vi.fn(),
-      getTools: vi.fn(() => []),
-      execute: vi.fn(async (toolUse: { name: string }) => {
-        if (toolUse.name === 'read_documents') {
-          return { results: [], retrieval: { method: 'lexical-fallback' } }
-        }
-        if (toolUse.name === 'append_to_document') throw new Error('doc not found')
-        if (toolUse.name === 'write_document') return { id: 'general-facts' }
+        if (toolUse.name === 'upsert_fact') return { id: 'general-fact' }
+        if (toolUse.name === 'upsert_graph_from_text') return { enabled: true, entities: 2 }
         return {}
       }),
     }
@@ -120,11 +83,8 @@ describe('SubmitOrchestrator', () => {
     const orchestrator = new SubmitOrchestrator(executor)
     const result = await orchestrator.run({ fact: 'some new fact', source: 'consumer' })
 
-    expect(result.operation).toBe('upserted')
-    const writeCall = (executor.execute as ReturnType<typeof vi.fn>).mock.calls.find(
-      (c: [{ name: string }]) => c[0].name === 'write_document'
-    )
-    expect(writeCall).toBeDefined()
+    expect(result.targetDocId).toBe('general-fact')
+    expect((result.result as { graphSync?: { entities?: number } }).graphSync?.entities).toBe(2)
   })
 })
 

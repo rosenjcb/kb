@@ -228,7 +228,7 @@ describe('intent-cli execution and enrichment', () => {
         if (toolUse.name === 'invalidate_fact') {
           return {
             changes: [
-              { documentId: 'ops-facts', title: 'Ops Facts', replaced: 1, diff: '- old\n+ new' },
+              { factId: 'ops-facts', title: 'Ops Facts', replaced: 1, diff: '- old\n+ new' },
             ],
             summary: 'Scanned 3 KB documents. 1 replacements in 1 documents.',
           }

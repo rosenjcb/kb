@@ -154,6 +154,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     }
 
     this.indexer.upsertDocumentWithContent(upsert)
+    this.indexFactsFromContent(input.content, input.isOriginal === true ? 'init_readme' : 'system', id)
 
     return { id, title: input.title, filePath: '', createdAt: now, updatedAt: now }
   }
@@ -449,6 +450,33 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
       skippedDocumentIds: [],
       proposedDiffs: [],
       discovery: { strategy: 'full-crawl', indexCandidateCount: 0 },
+    }
+  }
+
+  private indexFactsFromContent(
+    content: string,
+    sourceKind: 'init_readme' | 'system',
+    sourceRef: string
+  ): void {
+    const lines = content
+      .split('\n')
+      .map(line => line.trim().replace(/^[-*]\s+/, ''))
+      .filter(
+        line =>
+          line.length > 24 &&
+          !line.startsWith('#') &&
+          !line.startsWith('Created:') &&
+          !line.startsWith('Type:') &&
+          !line.startsWith('Tags:')
+      )
+      .slice(0, 40)
+    for (const factText of lines) {
+      this.indexer.upsertFact({
+        factText,
+        sourceKind,
+        sourceRef,
+        confidence: 0.6,
+      })
     }
   }
 }

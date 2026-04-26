@@ -5,15 +5,6 @@ import dayjs from 'dayjs'
 import { runMigrations } from '../core/db-migrations'
 import { type RetrievalLane, classifyDocumentLane } from './retrieval-lane-router'
 
-interface ChunkRecord {
-  chunkId: string
-  chunkIndex: number
-  lane: RetrievalLane
-  headingPath: string
-  chunkText: string
-  tokenCount: number
-}
-
 export interface SqliteKbIndexerOptions {
   dbPath: string
   modelId?: string
@@ -110,6 +101,47 @@ export interface DocumentUpsertInput {
   isOriginal?: boolean
 }
 
+export interface FactUpsertInput {
+  factText: string
+  sourceKind: 'submit' | 'init_readme' | 'import' | 'system'
+  sourceRef?: string
+  confidence?: number
+  supersedesFactId?: string
+}
+
+export interface FactRow {
+  id: string
+  fact_text: string
+  normalized_text: string
+  source_kind: string
+  source_ref: string | null
+  confidence: number
+  supersedes_fact_id: string | null
+  tombstoned_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DerivedDocUpsertInput {
+  id: string
+  title: string
+  instruction: string
+  markdown: string
+  sourceFactIds: string[]
+  status?: 'active' | 'archived'
+  tags?: string[]
+  docType?: string | null
+}
+
+export interface OriginalDocUpsertInput {
+  id: string
+  title: string
+  markdown: string
+  sourceRef?: string
+  tags?: string[]
+  docType?: string | null
+}
+
 export interface LaneRoutingMetrics {
   lane: RetrievalLane
   totalCount: number
@@ -192,98 +224,319 @@ export class SqliteKbIndexer {
     runMigrations(this.db)
   }
 
+  upsertFact(input: FactUpsertInput): { id: string; operation: 'inserted' | 'updated' } {
+    const now = dayjs().toISOString()
+    const normalized = normalizeFactText(input.factText)
+    const existing = this.db
+      .prepare('SELECT id FROM facts WHERE normalized_text = ? AND tombstoned_at IS NULL')
+      .get(normalized) as { id: string } | undefined
+
+    if (existing) {
+      this.db
+        .prepare(
+          `
+          UPDATE facts
+          SET fact_text = ?, source_kind = ?, source_ref = ?, confidence = ?, updated_at = ?
+          WHERE id = ?
+        `
+        )
+        .run(
+          input.factText.trim(),
+          input.sourceKind,
+          input.sourceRef ?? null,
+          input.confidence ?? 0.8,
+          now,
+          existing.id
+        )
+      this.rebuildFactIndexes(existing.id, input.factText.trim(), now)
+      return { id: existing.id, operation: 'updated' }
+    }
+
+    const id = `fact-${sha256(`${normalized}:${now}`).slice(0, 16)}`
+    this.db
+      .prepare(
+        `
+        INSERT INTO facts (
+          id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+      `
+      )
+      .run(
+        id,
+        input.factText.trim(),
+        normalized,
+        input.sourceKind,
+        input.sourceRef ?? null,
+        input.confidence ?? 0.8,
+        input.supersedesFactId ?? null,
+        now,
+        now
+      )
+    this.rebuildFactIndexes(id, input.factText.trim(), now)
+    return { id, operation: 'inserted' }
+  }
+
+  listFactsForQuery(limit = 20): FactRow[] {
+    return this.db
+      .prepare(
+        `
+        SELECT id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at
+        FROM facts
+        WHERE tombstoned_at IS NULL
+        ORDER BY updated_at DESC
+        LIMIT ?
+      `
+      )
+      .all(limit) as FactRow[]
+  }
+
+  searchFacts(query: string, limit = 10): FactRow[] {
+    const trimmed = query.trim()
+    if (!trimmed) return this.listFactsForQuery(limit)
+    const tokens = tokenizeQuery(trimmed)
+    const ftsQuery = tokens.length > 0 ? tokens.join(' OR ') : trimmed
+
+    try {
+      const rows = this.db
+        .prepare(
+          `
+          SELECT f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at
+          FROM facts_fts fts
+          JOIN facts f ON f.id = fts.fact_id
+          WHERE facts_fts MATCH ?
+            AND f.tombstoned_at IS NULL
+          ORDER BY f.updated_at DESC
+          LIMIT ?
+        `
+        )
+        .all(ftsQuery, limit) as FactRow[]
+      if (rows.length > 0) return rows
+    } catch {
+      // fallback below
+    }
+
+    if (tokens.length === 0) {
+      const like = `%${trimmed.toLowerCase()}%`
+      return this.db
+        .prepare(
+          `
+          SELECT id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at
+          FROM facts
+          WHERE tombstoned_at IS NULL
+            AND lower(fact_text) LIKE ?
+          ORDER BY updated_at DESC
+          LIMIT ?
+        `
+        )
+        .all(like, limit) as FactRow[]
+    }
+
+    const where = tokens.map(() => 'lower(fact_text) LIKE ?').join(' OR ')
+    const likeValues = tokens.map(token => `%${token}%`)
+    return this.db
+      .prepare(
+        `
+        SELECT id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at
+        FROM facts
+        WHERE tombstoned_at IS NULL
+          AND (${where})
+        ORDER BY updated_at DESC
+        LIMIT ?
+      `
+      )
+      .all(...likeValues, limit) as FactRow[]
+  }
+
+  invalidateFact(oldFact: string, replacementFact?: string): { changed: number; replacementId?: string } {
+    const normalized = normalizeFactText(oldFact)
+    const now = dayjs().toISOString()
+    const row = this.db
+      .prepare('SELECT id FROM facts WHERE normalized_text = ? AND tombstoned_at IS NULL')
+      .get(normalized) as { id: string } | undefined
+    if (!row) return { changed: 0 }
+
+    this.db
+      .prepare('UPDATE facts SET tombstoned_at = ?, updated_at = ? WHERE id = ?')
+      .run(now, now, row.id)
+
+    this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?').run(row.id)
+    this.db.prepare('DELETE FROM fact_embeddings WHERE fact_id = ?').run(row.id)
+
+    if (!replacementFact?.trim()) {
+      return { changed: 1 }
+    }
+
+    const replacement = this.upsertFact({
+      factText: replacementFact,
+      sourceKind: 'system',
+      sourceRef: `invalidate:${row.id}`,
+      supersedesFactId: row.id,
+    })
+    return { changed: 1, replacementId: replacement.id }
+  }
+
+  upsertDerivedDoc(input: DerivedDocUpsertInput): void {
+    const now = dayjs().toISOString()
+    this.db
+      .prepare(
+        `
+        INSERT INTO derived_docs (id, title, instruction, markdown, source_fact_ids_json, status, tags_json, doc_type, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          instruction = excluded.instruction,
+          markdown = excluded.markdown,
+          source_fact_ids_json = excluded.source_fact_ids_json,
+          status = excluded.status,
+          tags_json = excluded.tags_json,
+          doc_type = excluded.doc_type,
+          updated_at = excluded.updated_at
+      `
+      )
+      .run(
+        input.id,
+        input.title,
+        input.instruction,
+        input.markdown,
+        JSON.stringify(input.sourceFactIds ?? []),
+        input.status ?? 'active',
+        JSON.stringify(input.tags ?? []),
+        input.docType ?? null,
+        now,
+        now
+      )
+  }
+
+  upsertOriginalDoc(input: OriginalDocUpsertInput): void {
+    const now = dayjs().toISOString()
+    this.db
+      .prepare(
+        `
+        INSERT INTO original_docs (id, title, markdown, source_ref, tags_json, doc_type, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          markdown = excluded.markdown,
+          source_ref = excluded.source_ref,
+          tags_json = excluded.tags_json,
+          doc_type = excluded.doc_type,
+          updated_at = excluded.updated_at
+      `
+      )
+      .run(
+        input.id,
+        input.title,
+        input.markdown,
+        input.sourceRef ?? null,
+        JSON.stringify(input.tags ?? []),
+        input.docType ?? null,
+        now,
+        now
+      )
+  }
+
+  listDocsForView(limit = 20): SqliteDocumentRow[] {
+    const derived = this.db
+      .prepare(
+        `
+        SELECT id, title, markdown AS content, id AS file_path, doc_type, NULL AS lane, tags_json, created_at, updated_at, 0 AS is_original
+        FROM derived_docs
+        WHERE status = 'active'
+        ORDER BY updated_at DESC
+        LIMIT ?
+      `
+      )
+      .all(limit) as SqliteDocumentRow[]
+    const original = this.db
+      .prepare(
+        `
+        SELECT id, title, markdown AS content, source_ref AS file_path, doc_type, NULL AS lane, tags_json, created_at, updated_at, 1 AS is_original
+        FROM original_docs
+        ORDER BY updated_at DESC
+        LIMIT ?
+      `
+      )
+      .all(limit) as SqliteDocumentRow[]
+    return [...derived, ...original].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, limit)
+  }
+
+  getDocById(id: string): SqliteDocumentRow | undefined {
+    const derived = this.db
+      .prepare(
+        `
+        SELECT id, title, markdown AS content, id AS file_path, doc_type, NULL AS lane, tags_json, created_at, updated_at, 0 AS is_original
+        FROM derived_docs
+        WHERE id = ?
+      `
+      )
+      .get(id) as SqliteDocumentRow | undefined
+    if (derived) return derived
+    return this.db
+      .prepare(
+        `
+        SELECT id, title, markdown AS content, source_ref AS file_path, doc_type, NULL AS lane, tags_json, created_at, updated_at, 1 AS is_original
+        FROM original_docs
+        WHERE id = ?
+      `
+      )
+      .get(id) as SqliteDocumentRow | undefined
+  }
+
+  listPublishableDocs(): SqliteDocumentRow[] {
+    const derived = this.db
+      .prepare(
+        `
+        SELECT id, title, markdown AS content, id AS file_path, doc_type, NULL AS lane, tags_json, created_at, updated_at, 0 AS is_original
+        FROM derived_docs
+        WHERE status = 'active'
+      `
+      )
+      .all() as SqliteDocumentRow[]
+    const original = this.db
+      .prepare(
+        `
+        SELECT id, title, markdown AS content, source_ref AS file_path, doc_type, NULL AS lane, tags_json, created_at, updated_at, 1 AS is_original
+        FROM original_docs
+      `
+      )
+      .all() as SqliteDocumentRow[]
+    return [...derived, ...original].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+  }
+
+  private rebuildFactIndexes(factId: string, factText: string, now: string): void {
+    this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?').run(factId)
+    this.db
+      .prepare('INSERT INTO facts_fts (fact_id, fact_text) VALUES (?, ?)')
+      .run(factId, factText)
+
+    const vector = buildDeterministicVector(factText, this.vectorDimensions)
+    this.db
+      .prepare(
+        `
+        INSERT INTO fact_embeddings (fact_id, model_id, dimensions, vector_json, embedded_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(fact_id) DO UPDATE SET
+          model_id = excluded.model_id,
+          dimensions = excluded.dimensions,
+          vector_json = excluded.vector_json,
+          embedded_at = excluded.embedded_at
+      `
+      )
+      .run(factId, this.modelId, this.vectorDimensions, JSON.stringify(vector), now)
+  }
+
   upsertDocumentFromContent(filePath: string, content: string): void {
     const parsed = parseDocument(filePath, content)
     if (!parsed) return
-
-    const now = dayjs().toISOString()
-    const chunks = buildChunks(parsed.id, parsed.contentBody, parsed.lane)
-    const contentHash = sha256(content)
-
-    const upsertDocument = this.db.prepare(`
-      INSERT INTO documents (id, title, content, file_path, doc_type, lane, tags_json, content_hash, created_at, updated_at, indexed_at)
-      VALUES (@id, @title, @content, @filePath, @docType, @lane, @tagsJson, @contentHash, @createdAt, @updatedAt, @indexedAt)
-      ON CONFLICT(id) DO UPDATE SET
-        title=excluded.title,
-        content=excluded.content,
-        file_path=excluded.file_path,
-        doc_type=excluded.doc_type,
-        lane=excluded.lane,
-        tags_json=excluded.tags_json,
-        content_hash=excluded.content_hash,
-        updated_at=excluded.updated_at,
-        indexed_at=excluded.indexed_at
-    `)
-
-    const deleteChunks = this.db.prepare('DELETE FROM chunks WHERE doc_id = ?')
-    const insertChunk = this.db.prepare(`
-      INSERT INTO chunks (chunk_id, doc_id, chunk_index, lane, heading_path, chunk_text, token_count)
-      VALUES (@chunkId, @docId, @chunkIndex, @lane, @headingPath, @chunkText, @tokenCount)
-    `)
-    const insertFts = this.db.prepare(`
-      INSERT INTO chunks_fts (chunk_id, doc_id, chunk_text)
-      VALUES (@chunkId, @docId, @chunkText)
-    `)
-    const insertEmbedding = this.db.prepare(`
-      INSERT INTO chunk_embeddings (chunk_id, model_id, dimensions, vector_json, embedded_at)
-      VALUES (@chunkId, @modelId, @dimensions, @vectorJson, @embeddedAt)
-    `)
-
-    const upsertIndexState = this.db.prepare(`
-      INSERT INTO index_state (key, value, updated_at)
-      VALUES ('last_indexed_at', @value, @updatedAt)
-      ON CONFLICT(key) DO UPDATE SET
-        value=excluded.value,
-        updated_at=excluded.updated_at
-    `)
-
-    const tx = this.db.transaction(() => {
-      upsertDocument.run({
-        id: parsed.id,
-        title: parsed.title,
-        content,
-        filePath,
-        docType: parsed.docType,
-        lane: parsed.lane,
-        tagsJson: JSON.stringify(parsed.tags),
-        contentHash,
-        createdAt: parsed.createdAt,
-        updatedAt: parsed.updatedAt,
-        indexedAt: now,
-      })
-
-      deleteChunks.run(parsed.id)
-
-      for (const chunk of chunks) {
-        insertChunk.run({
-          chunkId: chunk.chunkId,
-          docId: parsed.id,
-          chunkIndex: chunk.chunkIndex,
-          lane: chunk.lane,
-          headingPath: chunk.headingPath,
-          chunkText: chunk.chunkText,
-          tokenCount: chunk.tokenCount,
-        })
-        insertFts.run({
-          chunkId: chunk.chunkId,
-          docId: parsed.id,
-          chunkText: chunk.chunkText,
-        })
-
-        const vector = buildDeterministicVector(chunk.chunkText, this.vectorDimensions)
-        insertEmbedding.run({
-          chunkId: chunk.chunkId,
-          modelId: this.modelId,
-          dimensions: this.vectorDimensions,
-          vectorJson: JSON.stringify(vector),
-          embeddedAt: now,
-        })
-      }
-
-      upsertIndexState.run({ value: now, updatedAt: now })
+    this.upsertOriginalDoc({
+      id: parsed.id,
+      title: parsed.title,
+      markdown: content,
+      sourceRef: filePath,
+      tags: parsed.tags,
+      docType: parsed.docType,
     })
-
-    tx()
   }
 
   close(): void {
@@ -319,16 +572,19 @@ export class SqliteKbIndexer {
 
   isDocumentStale(filePath: string, content: string): boolean {
     const id = basename(filePath, '.md')
-    const row = this.db.prepare('SELECT content_hash FROM documents WHERE id = ?').get(id) as
-      | { content_hash?: string }
+    const row = this.db
+      .prepare('SELECT markdown FROM original_docs WHERE id = ?')
+      .get(id) as
+      | { markdown?: string }
       | undefined
 
-    if (!row?.content_hash) return true
-    return row.content_hash !== sha256(content)
+    if (!row?.markdown) return true
+    return sha256(row.markdown) !== sha256(content)
   }
 
   removeDocument(documentId: string): void {
-    const deleteDocument = this.db.prepare('DELETE FROM documents WHERE id = ?')
+    const deleteDerived = this.db.prepare('DELETE FROM derived_docs WHERE id = ?')
+    const deleteOriginal = this.db.prepare('DELETE FROM original_docs WHERE id = ?')
     const now = dayjs().toISOString()
     const upsertIndexState = this.db.prepare(`
       INSERT INTO index_state (key, value, updated_at)
@@ -339,7 +595,8 @@ export class SqliteKbIndexer {
     `)
 
     const tx = this.db.transaction(() => {
-      deleteDocument.run(documentId)
+      deleteDerived.run(documentId)
+      deleteOriginal.run(documentId)
       upsertIndexState.run({ value: now, updatedAt: now })
     })
 
@@ -784,110 +1041,61 @@ export class SqliteKbIndexer {
   // ─── Document Content API (SQLite-exclusive read path) ───────────
 
   getAllDocumentsForLexical(): SqliteDocumentRow[] {
-    return this.db
-      .prepare(`
-      SELECT id, title, content, file_path, doc_type, lane, tags_json, created_at, updated_at, is_original
-      FROM documents
-      ORDER BY updated_at DESC
-    `)
-      .all() as SqliteDocumentRow[]
+    return this.listPublishableDocs()
   }
 
   getDocumentIsOriginal(id: string): boolean {
-    const row = this.db.prepare('SELECT is_original FROM documents WHERE id = ?').get(id) as
-      | { is_original?: number }
+    const row = this.db.prepare('SELECT 1 AS found FROM original_docs WHERE id = ?').get(id) as
+      | { found?: number }
       | undefined
-    return (row?.is_original ?? 0) === 1
+    return (row?.found ?? 0) === 1
   }
 
   getDocumentContent(id: string): string | undefined {
-    const row = this.db.prepare('SELECT content FROM documents WHERE id = ?').get(id) as
-      | { content?: string }
+    const derived = this.db.prepare('SELECT markdown FROM derived_docs WHERE id = ?').get(id) as
+      | { markdown?: string }
       | undefined
-    return row?.content
+    if (derived?.markdown) return derived.markdown
+    const original = this.db.prepare('SELECT markdown FROM original_docs WHERE id = ?').get(id) as
+      | { markdown?: string }
+      | undefined
+    return original?.markdown
   }
 
   upsertDocumentWithContent(input: DocumentUpsertInput): void {
     const now = dayjs().toISOString()
-    const chunks = buildChunks(input.id, input.content, input.lane)
-    const contentHash = sha256(input.content)
-
-    const upsertDoc = this.db.prepare(`
-      INSERT INTO documents (id, title, content, file_path, doc_type, lane, tags_json, content_hash, created_at, updated_at, indexed_at, is_original)
-      VALUES (@id, @title, @content, @filePath, @docType, @lane, @tagsJson, @contentHash, @createdAt, @updatedAt, @indexedAt, @isOriginal)
-      ON CONFLICT(id) DO UPDATE SET
-        title=excluded.title,
-        content=excluded.content,
-        file_path=excluded.file_path,
-        doc_type=excluded.doc_type,
-        lane=excluded.lane,
-        tags_json=excluded.tags_json,
-        content_hash=excluded.content_hash,
-        updated_at=excluded.updated_at,
-        indexed_at=excluded.indexed_at,
-        is_original=excluded.is_original
-    `)
-
-    const deleteChunks = this.db.prepare('DELETE FROM chunks WHERE doc_id = ?')
-    const insertChunk = this.db.prepare(`
-      INSERT INTO chunks (chunk_id, doc_id, chunk_index, lane, heading_path, chunk_text, token_count)
-      VALUES (@chunkId, @docId, @chunkIndex, @lane, @headingPath, @chunkText, @tokenCount)
-    `)
-    const insertFts = this.db.prepare(`
-      INSERT INTO chunks_fts (chunk_id, doc_id, chunk_text)
-      VALUES (@chunkId, @docId, @chunkText)
-    `)
-    const insertEmbedding = this.db.prepare(`
-      INSERT INTO chunk_embeddings (chunk_id, model_id, dimensions, vector_json, embedded_at)
-      VALUES (@chunkId, @modelId, @dimensions, @vectorJson, @embeddedAt)
-    `)
-
-    const tx = this.db.transaction(() => {
-      upsertDoc.run({
+    if (input.isOriginal) {
+      this.upsertOriginalDoc({
         id: input.id,
         title: input.title,
-        content: input.content,
-        filePath: input.id,
+        markdown: input.content,
+        sourceRef: input.id,
+        tags: input.tags ?? [],
         docType: input.docType ?? null,
-        lane: input.lane,
-        tagsJson: JSON.stringify(input.tags ?? []),
-        contentHash,
-        createdAt: input.createdAt ?? now,
-        updatedAt: now,
-        indexedAt: now,
-        isOriginal: input.isOriginal ? 1 : 0,
       })
+      return
+    }
 
-      deleteChunks.run(input.id)
-
-      for (const chunk of chunks) {
-        insertChunk.run({
-          chunkId: chunk.chunkId,
-          docId: input.id,
-          chunkIndex: chunk.chunkIndex,
-          lane: chunk.lane,
-          headingPath: chunk.headingPath,
-          chunkText: chunk.chunkText,
-          tokenCount: chunk.tokenCount,
-        })
-        insertFts.run({
-          chunkId: chunk.chunkId,
-          docId: input.id,
-          chunkText: chunk.chunkText,
-        })
-
-        const vector = buildDeterministicVector(chunk.chunkText, this.vectorDimensions)
-        insertEmbedding.run({
-          chunkId: chunk.chunkId,
-          modelId: this.modelId,
-          dimensions: this.vectorDimensions,
-          vectorJson: JSON.stringify(Array.from(vector)),
-          embeddedAt: now,
-        })
-      }
+    this.upsertDerivedDoc({
+      id: input.id,
+      title: input.title,
+      instruction: `legacy-write:${input.id}`,
+      markdown: input.content,
+      sourceFactIds: [],
+      status: 'active',
+      tags: input.tags ?? [],
+      docType: input.docType ?? null,
     })
 
-    tx()
+    this.db
+      .prepare(`
+      INSERT INTO index_state (key, value, updated_at)
+      VALUES ('last_indexed_at', @value, @updatedAt)
+      ON CONFLICT(key) DO UPDATE SET
+        value=excluded.value,
+        updated_at=excluded.updated_at
+    `)
+      .run({ value: now, updatedAt: now })
   }
 }
 
@@ -898,8 +1106,6 @@ interface ParsedDocument {
   updatedAt: string
   tags: string[]
   docType: string | null
-  lane: RetrievalLane
-  contentBody: string
 }
 
 function parseDocument(filePath: string, content: string): ParsedDocument | null {
@@ -917,12 +1123,6 @@ function parseDocument(filePath: string, content: string): ParsedDocument | null
         .map(tag => tag.trim())
         .filter(Boolean)
     : []
-  const lane = classifyDocumentLane(id, title, docType, tags, filePath)
-
-  const metadataBlockEnd = findMetadataBlockEnd(lines)
-  const bodyLines = lines.slice(metadataBlockEnd)
-  const contentBody = bodyLines.join('\n').trim()
-
   return {
     id,
     title,
@@ -930,8 +1130,6 @@ function parseDocument(filePath: string, content: string): ParsedDocument | null
     updatedAt: dayjs().toISOString(),
     tags,
     docType,
-    lane,
-    contentBody,
   }
 }
 
@@ -946,56 +1144,6 @@ function extractMetadata(lines: string[], key: string): string | undefined {
   return undefined
 }
 
-function findMetadataBlockEnd(lines: string[]): number {
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim()
-    if (!line) continue
-    if (line.startsWith('Created:') || line.startsWith('Type:') || line.startsWith('Tags:')) {
-      continue
-    }
-    return i
-  }
-  return lines.length
-}
-
-function buildChunks(documentId: string, body: string, lane: RetrievalLane): ChunkRecord[] {
-  const fallbackText = body.trim() || 'No body content provided.'
-  const sections = splitByHeading(fallbackText)
-
-  const chunks: ChunkRecord[] = []
-  let chunkIndex = 0
-
-  for (const section of sections) {
-    const slices = splitLongSection(section.text, 900)
-    for (const slice of slices) {
-      const text = slice.trim()
-      if (!text) continue
-      chunks.push({
-        chunkId: `${documentId}:${chunkIndex}`,
-        chunkIndex,
-        lane,
-        headingPath: section.heading,
-        chunkText: text,
-        tokenCount: text.split(/\s+/).filter(Boolean).length,
-      })
-      chunkIndex += 1
-    }
-  }
-
-  if (chunks.length === 0) {
-    chunks.push({
-      chunkId: `${documentId}:0`,
-      chunkIndex: 0,
-      lane,
-      headingPath: 'document',
-      chunkText: fallbackText,
-      tokenCount: fallbackText.split(/\s+/).filter(Boolean).length,
-    })
-  }
-
-  return chunks
-}
-
 function parseTagsJsonSafe(raw: string | null): string[] {
   if (!raw) return []
   try {
@@ -1005,69 +1153,6 @@ function parseTagsJsonSafe(raw: string | null): string[] {
   } catch {
     return []
   }
-}
-
-function splitByHeading(body: string): Array<{ heading: string; text: string }> {
-  const lines = body.split('\n')
-  const sections: Array<{ heading: string; text: string }> = []
-
-  let heading = 'document'
-  let buffer: string[] = []
-
-  for (const rawLine of lines) {
-    const line = rawLine.trimEnd()
-    const headingMatch = line.match(/^#{2,6}\s+(.+)$/)
-    if (headingMatch) {
-      if (buffer.join('\n').trim()) {
-        sections.push({ heading, text: buffer.join('\n').trim() })
-      }
-      heading = headingMatch[1].trim().toLowerCase().replace(/\s+/g, '-')
-      buffer = []
-      continue
-    }
-    buffer.push(line)
-  }
-
-  if (buffer.join('\n').trim()) {
-    sections.push({ heading, text: buffer.join('\n').trim() })
-  }
-
-  if (sections.length === 0) {
-    sections.push({ heading: 'document', text: body })
-  }
-
-  return sections
-}
-
-function splitLongSection(text: string, maxChars: number): string[] {
-  if (text.length <= maxChars) return [text]
-
-  const paragraphs = text.split(/\n\s*\n/)
-  const chunks: string[] = []
-  let current = ''
-
-  for (const paragraph of paragraphs) {
-    const candidate = current ? `${current}\n\n${paragraph}` : paragraph
-    if (candidate.length <= maxChars) {
-      current = candidate
-      continue
-    }
-
-    if (current) chunks.push(current)
-
-    if (paragraph.length <= maxChars) {
-      current = paragraph
-      continue
-    }
-
-    for (let i = 0; i < paragraph.length; i += maxChars) {
-      chunks.push(paragraph.slice(i, i + maxChars))
-    }
-    current = ''
-  }
-
-  if (current) chunks.push(current)
-  return chunks.length ? chunks : [text]
 }
 
 function sha256(input: string): string {
@@ -1090,4 +1175,12 @@ function normalize(values: number[]): number[] {
   const magnitude = Math.sqrt(values.reduce((acc, value) => acc + value * value, 0))
   if (magnitude === 0) return values
   return values.map(value => value / magnitude)
+}
+
+function normalizeFactText(input: string): string {
+  return input.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+function tokenizeQuery(input: string): string[] {
+  return [...new Set(input.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t.length > 2))].slice(0, 10)
 }

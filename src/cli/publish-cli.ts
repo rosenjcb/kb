@@ -1,7 +1,6 @@
 import path from 'node:path'
-import Database from 'better-sqlite3'
 import dayjs from 'dayjs'
-import { runMigrations } from '../core/db-migrations'
+import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
 import { readKbConfig, resolveNotionToken } from './kb-config'
 
@@ -213,25 +212,14 @@ export async function runPublishCommand(
 // ─── SQLite read ────────────────────────────────────────────────────────────
 
 export function readDocumentsFromSqlite(dbPath: string): SqliteDocumentRow[] {
-  let db: Database.Database | undefined
   try {
-    // Open writable so migrations run before we query.
-    db = new Database(dbPath)
-    db.pragma('journal_mode = WAL')
-    runMigrations(db)
-    return db
-      .prepare(`
-      SELECT id, title, content, doc_type, lane, tags_json, created_at, updated_at, is_original
-      FROM documents
-      WHERE content != ''
-      ORDER BY updated_at DESC
-    `)
-      .all() as SqliteDocumentRow[]
+    const indexer = new SqliteKbIndexer({ dbPath })
+    const docs = indexer.listPublishableDocs()
+    indexer.close()
+    return docs
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`Cannot read SQLite at ${dbPath}: ${msg}`)
-  } finally {
-    db?.close()
   }
 }
 

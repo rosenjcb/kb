@@ -7,9 +7,9 @@ export interface SubmitOrchestratorInput {
 }
 
 export interface SubmitOrchestratorResult {
-  operation: 'appended' | 'upserted'
+  operation: 'fact_upserted'
   targetDocId: string
-  discoveredTarget: boolean
+  discoveredTarget: false
   result: unknown
 }
 
@@ -18,100 +18,36 @@ export class SubmitOrchestrator {
 
   async run(input: SubmitOrchestratorInput): Promise<SubmitOrchestratorResult> {
     const { fact, source } = input
-    const bulletLine = `- ${fact} (source: ${source})`
-
-    const candidate = await this.discoverTarget(fact)
-    let targetDocId: string
-    let discoveredTarget: boolean
-    let operation: SubmitOrchestratorResult['operation']
-    let submission: unknown
-
-    if (candidate) {
-      targetDocId = candidate.docId
-      discoveredTarget = true
-      operation = 'appended'
-      submission = await this.toolExecutor.execute(
-        createToolUse('append_to_document', {
-          documentId: candidate.docId,
-          content: bulletLine,
-        })
-      )
-    } else {
-      const domain = inferDomainFromFact(fact)
-      const docId = `${domain}-facts`
-      targetDocId = docId
-      discoveredTarget = false
-      operation = 'upserted'
-
-      try {
-        submission = await this.toolExecutor.execute(
-          createToolUse('append_to_document', { documentId: docId, content: bulletLine })
-        )
-      } catch {
-        submission = await this.toolExecutor.execute(
-          createToolUse('write_document', {
-            documentId: docId,
-            title: `${domain} facts`,
-            content: bulletLine,
-            tags: [domain, 'fact'],
-            type: 'reference',
-            overwrite: true,
-          })
-        )
-      }
-    }
+    const domain = inferDomainFromFact(fact)
+    const submission = await this.toolExecutor.execute(
+      createToolUse('upsert_fact', {
+        factText: fact,
+        sourceKind: 'submit',
+        sourceRef: source,
+        confidence: 0.8,
+      })
+    )
+    const factId =
+      typeof (submission as { id?: unknown }).id === 'string'
+        ? (submission as { id: string }).id
+        : `${domain}-fact`
 
     const graphSync = await this.toolExecutor.execute(
       createToolUse('upsert_graph_from_text', {
         text: fact,
-        documentId: targetDocId,
+        documentId: factId,
       })
     )
 
     return {
-      operation,
-      targetDocId,
-      discoveredTarget,
+      operation: 'fact_upserted',
+      targetDocId: factId,
+      discoveredTarget: false,
       result: {
         submission,
         graphSync,
       },
     }
-  }
-
-  private async discoverTarget(fact: string): Promise<{ docId: string } | null> {
-    // Use the first 300 chars as the discovery query — key terms lead
-    const discoveryQuery = fact.slice(0, 300)
-
-    let response: {
-      results?: Array<{ metadata?: { id?: string } }>
-      retrieval?: { method?: string }
-    }
-
-    try {
-      response = (await this.toolExecutor.execute(
-        createToolUse('read_documents', {
-          query: discoveryQuery,
-          mode: 'content',
-          discoveryDepth: 'shallow',
-          includeContent: false,
-          limit: 3,
-        })
-      )) as typeof response
-    } catch {
-      return null
-    }
-
-    const results = response.results ?? []
-    const method = response.retrieval?.method
-
-    // Only trust hybrid matches — lexical-fallback hits are too loose for write targeting
-    if (method === 'hybrid' && results.length > 0) {
-      const docId = results[0].metadata?.id
-      if (docId) return { docId }
-    }
-
-    return null
   }
 }
 

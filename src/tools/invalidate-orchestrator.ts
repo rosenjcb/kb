@@ -11,7 +11,7 @@ export interface InvalidateOrchestratorInput {
 }
 
 interface InvalidateToolResult {
-  changes?: Array<{ documentId?: string }>
+  changes?: Array<{ factId?: string }>
   summary?: string
   error?: string
 }
@@ -35,7 +35,7 @@ export class InvalidateOrchestrator {
 
     const changedDocIds = Array.isArray(result.changes)
       ? result.changes
-          .map(change => (typeof change.documentId === 'string' ? change.documentId.trim() : ''))
+          .map(change => (typeof change.factId === 'string' ? change.factId.trim() : ''))
           .filter(Boolean)
       : []
 
@@ -50,7 +50,7 @@ export class InvalidateOrchestrator {
     const summary = result.summary ?? 'No KB documents changed.'
     const suffix =
       !preview && !dryRun && changedDocIds.length > 0
-        ? ` Graph invalidation applied to ${changedDocIds.length} document provenance entr${changedDocIds.length === 1 ? 'y' : 'ies'}.`
+        ? ` Graph invalidation applied to ${changedDocIds.length} fact provenance entr${changedDocIds.length === 1 ? 'y' : 'ies'}.`
         : ''
 
     return {

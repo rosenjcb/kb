@@ -735,7 +735,13 @@ async function buildPlanDiff(input: {
           input.baseDir
         )
         for (const change of preview.changes.slice(0, 3)) {
-          sections.push(renderTextDiff(`docs/${change.documentId}.md`, change.before, change.after))
+          sections.push(
+            renderTextDiff(
+              `facts/${change.factId}.md`,
+              change.before,
+              change.after ?? change.before
+            )
+          )
         }
       }
 
