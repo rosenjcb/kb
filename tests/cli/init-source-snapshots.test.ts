@@ -33,11 +33,12 @@ describe('init-source-snapshots', () => {
       'base',
       'split-from-single'
     )
-    const docs = [
-      { title: 'Overview', content: 'x', isOriginal: false },
-      shard,
-    ]
-    const merged = appendFrozenSourceSnapshots(docs, { 'AGENTS.md': '# New body', 'NOTE.md': 'N' }, 'base')
+    const docs = [{ title: 'Overview', content: 'x', isOriginal: false }, shard]
+    const merged = appendFrozenSourceSnapshots(
+      docs,
+      { 'AGENTS.md': '# New body', 'NOTE.md': 'N' },
+      'base'
+    )
     const agents = merged.filter(d => d.title === 'AGENTS.md')
     expect(agents).toHaveLength(1)
     expect(merged.some(d => d.title === 'NOTE.md')).toBe(true)

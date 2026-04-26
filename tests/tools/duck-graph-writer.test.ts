@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DuckGraphWriter } from '../../src/tools/duck-graph-writer'
 
 let tmpDir: string
@@ -105,9 +105,11 @@ describe('DuckGraphWriter.expandQuery', () => {
     await writer.upsertRelationships([{ fromId: 'alpha', toId: 'beta', type: 'feeds_into' }])
 
     const terms = await writer.expandQuery(['alpha'])
-    expect(terms.some(t => t.includes('Alpha Node') && t.includes('feeds into') && t.includes('Beta Node'))).toBe(
-      true
-    )
+    expect(
+      terms.some(
+        t => t.includes('Alpha Node') && t.includes('feeds into') && t.includes('Beta Node')
+      )
+    ).toBe(true)
     expect(terms).toContain('feeds_into')
     expect(terms).toContain('feeds into')
   })

@@ -1,6 +1,6 @@
 import path from 'node:path'
-import { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { discoverJekyllRoot, syncDocsToJekyll } from '../core/publish/jekyll-sync'
+import { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { readDocumentsFromSqlite, resolvePublishBase } from './publish-cli'
 
 export interface JekyllPublishOptions {

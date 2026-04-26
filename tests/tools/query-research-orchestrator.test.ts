@@ -3,9 +3,9 @@ import os from 'node:os'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { runMigrations } from '../../src/core/db-migrations'
 import { MarkdownDocumentReader, type ProbeResult } from '../../src/tools/markdown-document-reader'
 import { QueryResearchOrchestrator } from '../../src/tools/query-research-orchestrator'
-import { runMigrations } from '../../src/core/db-migrations'
 
 const tempDirs: string[] = []
 
@@ -106,7 +106,11 @@ describe('QueryResearchOrchestrator unit', () => {
   it('seedHypotheses produces at least 3 seeds with distinct sources', async () => {
     const baseDir = await createTempDir()
     const reader = makeReader(baseDir)
-    const orchestrator = new QueryResearchOrchestrator(reader, path.join(baseDir, '.kb-index.sqlite'), false)
+    const orchestrator = new QueryResearchOrchestrator(
+      reader,
+      path.join(baseDir, '.kb-index.sqlite'),
+      false
+    )
 
     // Access via run() — we verify the behavior through the probe mocks
     const probeHybridSpy = vi.spyOn(reader, 'probeHybrid').mockResolvedValue([])
@@ -125,14 +129,11 @@ describe('QueryResearchOrchestrator unit', () => {
     const reader = makeReaderWithSqlite(baseDir)
 
     // Mock probes: iteration 1 returns 2 strong hits from 2 branches
-    vi.spyOn(reader, 'probeHybrid').mockImplementation(async (query) => {
+    vi.spyOn(reader, 'probeHybrid').mockImplementation(async query => {
       if (query.includes('hybrid')) {
-        return [
-          makeProbeResult('doc-a', 0.85),
-          makeProbeResult('doc-b', 0.80),
-        ]
+        return [makeProbeResult('doc-a', 0.85), makeProbeResult('doc-b', 0.8)]
       }
-      return [makeProbeResult('doc-a', 0.75), makeProbeResult('doc-c', 0.70)]
+      return [makeProbeResult('doc-a', 0.75), makeProbeResult('doc-c', 0.7)]
     })
     vi.spyOn(reader, 'probeLexical').mockResolvedValue([])
     vi.spyOn(reader, 'expandGraphNeighbors').mockResolvedValue([])
@@ -144,11 +145,23 @@ describe('QueryResearchOrchestrator unit', () => {
     // Insert docs so fetchResults can find them
     const db = new Database(dbPath)
     db.prepare(`INSERT OR IGNORE INTO documents (id, title, file_path, doc_type, lane, tags_json, content_hash, content, created_at, updated_at, indexed_at)
-      VALUES (?, ?, ?, NULL, NULL, NULL, 'x', '', '2026-01-01', '2026-01-01', '2026-01-01')`).run('doc-a', 'Doc A', '/doc-a.md')
+      VALUES (?, ?, ?, NULL, NULL, NULL, 'x', '', '2026-01-01', '2026-01-01', '2026-01-01')`).run(
+      'doc-a',
+      'Doc A',
+      '/doc-a.md'
+    )
     db.prepare(`INSERT OR IGNORE INTO documents (id, title, file_path, doc_type, lane, tags_json, content_hash, content, created_at, updated_at, indexed_at)
-      VALUES (?, ?, ?, NULL, NULL, NULL, 'x', '', '2026-01-01', '2026-01-01', '2026-01-01')`).run('doc-b', 'Doc B', '/doc-b.md')
+      VALUES (?, ?, ?, NULL, NULL, NULL, 'x', '', '2026-01-01', '2026-01-01', '2026-01-01')`).run(
+      'doc-b',
+      'Doc B',
+      '/doc-b.md'
+    )
     db.prepare(`INSERT OR IGNORE INTO documents (id, title, file_path, doc_type, lane, tags_json, content_hash, content, created_at, updated_at, indexed_at)
-      VALUES (?, ?, ?, NULL, NULL, NULL, 'x', '', '2026-01-01', '2026-01-01', '2026-01-01')`).run('doc-c', 'Doc C', '/doc-c.md')
+      VALUES (?, ?, ?, NULL, NULL, NULL, 'x', '', '2026-01-01', '2026-01-01', '2026-01-01')`).run(
+      'doc-c',
+      'Doc C',
+      '/doc-c.md'
+    )
     db.close()
 
     const response = await orchestrator.run({
@@ -165,13 +178,13 @@ describe('QueryResearchOrchestrator unit', () => {
     const reader = makeReaderWithSqlite(baseDir)
 
     vi.spyOn(reader, 'probeHybrid').mockResolvedValue([
-      makeProbeResult('doc-a', 0.90),
+      makeProbeResult('doc-a', 0.9),
       makeProbeResult('doc-b', 0.85),
-      makeProbeResult('doc-c', 0.80),
+      makeProbeResult('doc-c', 0.8),
     ])
     vi.spyOn(reader, 'probeLexical').mockResolvedValue([])
     vi.spyOn(reader, 'expandGraphNeighbors').mockResolvedValue([])
-    vi.spyOn(reader, 'fetchDocHeadings').mockImplementation(async (id) => {
+    vi.spyOn(reader, 'fetchDocHeadings').mockImplementation(async id => {
       // doc-a and doc-b share all headings; doc-c is different
       if (id === 'doc-a' || id === 'doc-b') return ['Overview', 'Design', 'Implementation']
       return ['Background', 'Usage']
@@ -179,9 +192,17 @@ describe('QueryResearchOrchestrator unit', () => {
 
     const dbPath = path.join(baseDir, '.kb-index.sqlite')
     const db = new Database(dbPath)
-    for (const [id, title] of [['doc-a', 'Doc A'], ['doc-b', 'Doc B'], ['doc-c', 'Doc C']]) {
+    for (const [id, title] of [
+      ['doc-a', 'Doc A'],
+      ['doc-b', 'Doc B'],
+      ['doc-c', 'Doc C'],
+    ]) {
       db.prepare(`INSERT OR IGNORE INTO documents (id, title, file_path, doc_type, lane, tags_json, content_hash, content, created_at, updated_at, indexed_at)
-        VALUES (?, ?, ?, NULL, NULL, NULL, 'x', '', '2026-01-01', '2026-01-01', '2026-01-01')`).run(id, title, `/${id}.md`)
+        VALUES (?, ?, ?, NULL, NULL, NULL, 'x', '', '2026-01-01', '2026-01-01', '2026-01-01')`).run(
+        id,
+        title,
+        `/${id}.md`
+      )
     }
     db.close()
 
@@ -206,7 +227,11 @@ describe('QueryResearchOrchestrator unit', () => {
     vi.spyOn(reader, 'probeLexical').mockResolvedValue([])
     vi.spyOn(reader, 'expandGraphNeighbors').mockResolvedValue([])
 
-    const orchestrator = new QueryResearchOrchestrator(reader, path.join(baseDir, '.kb-index.sqlite'), false)
+    const orchestrator = new QueryResearchOrchestrator(
+      reader,
+      path.join(baseDir, '.kb-index.sqlite'),
+      false
+    )
     const response = await orchestrator.run({ query: 'anything', discoveryDepth: 'deep' })
 
     // Should not throw; exhaustive fallback covers the gap

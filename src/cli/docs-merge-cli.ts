@@ -1,10 +1,10 @@
-import { createInterface } from 'node:readline'
 import path from 'node:path'
-import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
-import { classifyDocumentLane } from '../tools/retrieval-lane-router'
+import { createInterface } from 'node:readline'
 import type { LLMProvider } from '../core/types'
-import type { CliOutput } from './index'
+import { classifyDocumentLane } from '../tools/retrieval-lane-router'
+import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { type CmdMode, cmd } from './cmd-ref'
+import type { CliOutput } from './index'
 
 export interface ParsedDocsMergeCommand {
   targetDocId: string
@@ -128,7 +128,13 @@ export async function runDocsMerge(
     title: targetTitle,
     content: newContent,
     docType: existingMeta.type,
-    lane: classifyDocumentLane(parsed.targetDocId, targetTitle, existingMeta.type, existingMeta.tags, ''),
+    lane: classifyDocumentLane(
+      parsed.targetDocId,
+      targetTitle,
+      existingMeta.type,
+      existingMeta.tags,
+      ''
+    ),
     tags: existingMeta.tags,
     createdAt: existingMeta.createdAt || now,
   })
@@ -198,13 +204,10 @@ async function promptForInstructions(): Promise<string> {
 
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   return new Promise(resolve => {
-    rl.question(
-      'Any details or instructions for the merge? (press Enter to skip): ',
-      answer => {
-        rl.close()
-        resolve(answer.trim())
-      }
-    )
+    rl.question('Any details or instructions for the merge? (press Enter to skip): ', answer => {
+      rl.close()
+      resolve(answer.trim())
+    })
   })
 }
 

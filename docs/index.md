@@ -36,7 +36,6 @@ Every project accumulates decisions, constraints, and tribal knowledge that live
 ```bash
 pnpm install
 npm run refresh:global
-npm run which:kb   # should print the kb binary path
 ```
 
 ### 2. Configure your LLM

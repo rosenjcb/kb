@@ -12,8 +12,8 @@ import {
   resolveConversationalChatTurn,
   updateConversationState,
 } from './chat-conversation'
-import { type CmdMode, cmd } from './cmd-ref'
 import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
+import { type CmdMode, cmd } from './cmd-ref'
 import { isReadDocumentsResult, printReadDocumentsOrchestrationFooter } from './intent-cli.js'
 import { formatReadDocumentSourceIds } from './retrieval-fallback'
 

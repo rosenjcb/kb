@@ -240,7 +240,9 @@ function parseJsonObjectFromLLM(text) {
     o = tryParse(trimmed.slice(i, j + 1))
     if (o && typeof o === 'object') return o
   }
-  throw new Error(`[eval] Auto-score: could not parse JSON from model (prefix): ${trimmed.slice(0, 500)}`)
+  throw new Error(
+    `[eval] Auto-score: could not parse JSON from model (prefix): ${trimmed.slice(0, 500)}`
+  )
 }
 
 async function callGeminiJudgeJson({ apiKey, model, systemInstruction, userText }) {
@@ -378,7 +380,9 @@ async function runAutoScoreFile({ workdir, questions, outScoresPath }) {
 
   fs.mkdirSync(path.dirname(path.resolve(outScoresPath)), { recursive: true })
   fs.writeFileSync(path.resolve(outScoresPath), `${JSON.stringify(normalized, null, 2)}\n`, 'utf8')
-  console.error(`[eval] auto-score wrote ${path.resolve(outScoresPath)} (${providerUsed}/${modelUsed})`)
+  console.error(
+    `[eval] auto-score wrote ${path.resolve(outScoresPath)} (${providerUsed}/${modelUsed})`
+  )
 
   return { normalized, providerUsed, modelUsed, outScoresPath: path.resolve(outScoresPath) }
 }

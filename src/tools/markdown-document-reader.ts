@@ -1113,7 +1113,8 @@ export class MarkdownDocumentReader {
           const chunkText = chunkRow?.chunk_text ?? ''
           const lexicalScore = toLexicalScore(candidate.lexical_rank)
           const vectorScore = this.computeVectorScore(query, chunkText, embRow)
-          const baseCombined = this.hybridAlpha * lexicalScore + (1 - this.hybridAlpha) * vectorScore
+          const baseCombined =
+            this.hybridAlpha * lexicalScore + (1 - this.hybridAlpha) * vectorScore
           const hintBoost = hintBoosts.get(candidate.doc_id) ?? 0
           const laneBoost = laneFitnessBoost(candidate.lane, lanes ?? [])
           const combined = Math.min(1, baseCombined + hintBoost + laneBoost)
@@ -1141,13 +1142,9 @@ export class MarkdownDocumentReader {
           .sort((a, b) => b.finalScore - a.finalScore)
           .slice(0, limit)
 
-        const getDoc = db.prepare(
-          'SELECT title, tags_json FROM documents WHERE id = ?'
-        )
+        const getDoc = db.prepare('SELECT title, tags_json FROM documents WHERE id = ?')
         return graphBoosted.map(r => {
-          const doc = getDoc.get(r.docId) as
-            | { title?: string; tags_json?: string }
-            | undefined
+          const doc = getDoc.get(r.docId) as { title?: string; tags_json?: string } | undefined
           return {
             docId: r.docId,
             score: r.finalScore,

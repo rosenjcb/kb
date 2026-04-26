@@ -88,9 +88,7 @@ export function appendFrozenSourceSnapshots<T extends { title: string; isOrigina
     const key = normalizeSnapshotTitle(humanTitle)
     if (seenOriginalTitles.has(key)) continue
     seenOriginalTitles.add(key)
-    additions.push(
-      buildFrozenSourceSnapshotDoc(filePath, body, baseName, 'collected-on-init')
-    )
+    additions.push(buildFrozenSourceSnapshotDoc(filePath, body, baseName, 'collected-on-init'))
   }
   return [...docs, ...(additions as unknown as T[])]
 }

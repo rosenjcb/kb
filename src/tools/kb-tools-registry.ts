@@ -326,8 +326,14 @@ export function createKBToolsRegistry(
     schema: {
       type: 'object',
       properties: {
-        text: { type: 'string', description: 'Submitted fact or content to extract graph data from' },
-        documentId: { type: 'string', description: 'Document provenance id for extracted graph items' },
+        text: {
+          type: 'string',
+          description: 'Submitted fact or content to extract graph data from',
+        },
+        documentId: {
+          type: 'string',
+          description: 'Document provenance id for extracted graph items',
+        },
       },
       required: ['text'],
       additionalProperties: false,
@@ -345,7 +351,11 @@ export function createKBToolsRegistry(
         ? (input as { documentId: string }).documentId
         : undefined
 
-    const { entities, relationships } = await extractGraph(text, orchestrator.taskProvider, documentId)
+    const { entities, relationships } = await extractGraph(
+      text,
+      orchestrator.taskProvider,
+      documentId
+    )
     if (entities.length === 0 && relationships.length === 0) {
       return { enabled: true, entities: 0, relationships: 0 }
     }
@@ -443,7 +453,7 @@ export function createKBToolsRegistry(
 
     registry.register('task', taskToolDef, async input => {
       if (!orchestrator.taskProvider) {
-        throw new Error('orchestrator.taskProvider is undefined');
+        throw new Error('orchestrator.taskProvider is undefined')
       }
       return executeSubagentTask({
         parentRegistry: registry,

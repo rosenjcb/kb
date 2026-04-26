@@ -4,7 +4,6 @@
  * KB Agent Harness CLI
  */
 
-import { runQueryTruthRetrieval } from './query-truth-retrieval'
 import {
   ReportWriter,
   RunCollector,
@@ -80,6 +79,7 @@ import type { KbConfig } from './kb-config'
 import { printLogsHelp, runLogsCommand } from './logs-cli'
 import { parsePublishCommand, runPublishCommand } from './publish-cli'
 import { parseJekyllPublishOptions, runJekyllPublish } from './publish-jekyll'
+import { runQueryTruthRetrieval } from './query-truth-retrieval'
 import {
   formatSkillInstallReport,
   installSkillIntoProject,

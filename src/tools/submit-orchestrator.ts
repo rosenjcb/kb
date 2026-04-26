@@ -125,8 +125,7 @@ export function inferDomainFromFact(fact: string): string {
     { domain: 'cicd', pattern: /(cicd|pipeline|github actions|workflow|build|deploy|release)/ },
     {
       domain: 'security',
-      pattern:
-        /(security|vulnerability|auth|authentication|authorization|token|secret|oauth|rbac)/,
+      pattern: /(security|vulnerability|auth|authentication|authorization|token|secret|oauth|rbac)/,
     },
     {
       domain: 'infra',

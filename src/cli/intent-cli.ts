@@ -276,9 +276,7 @@ function formatReadDocumentsFullSourceValue(item: ReadDocumentsResultItem): stri
   const snippet = extractSnippet(item.content)
   const highlights = extractHighlights(item.content)
   const highlightText =
-    highlights.length > 0
-      ? highlights.map(h => `[${h.section}] ${h.excerpt}`).join(' | ')
-      : 'none'
+    highlights.length > 0 ? highlights.map(h => `[${h.section}] ${h.excerpt}`).join(' | ') : 'none'
   return `id=${id}; title=${title}; location=${filePath}; uri=${uri}; snippet=${snippet}; highlights=${highlightText}`
 }
 

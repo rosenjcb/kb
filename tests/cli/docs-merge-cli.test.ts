@@ -2,14 +2,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import {
-  DocsMergeError,
-  parseDocsMergeCommand,
-  runDocsMerge,
-} from '../../src/cli/docs-merge-cli'
+import { DocsMergeError, parseDocsMergeCommand, runDocsMerge } from '../../src/cli/docs-merge-cli'
+import type { LLMProvider } from '../../src/core/types'
 import { SqliteDocumentWriter } from '../../src/tools/sqlite-document-writer'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
-import type { LLMProvider } from '../../src/core/types'
 
 const tempDirs: string[] = []
 
@@ -53,7 +49,11 @@ function makeFakeLLM(): LLMProvider {
 function makeOut() {
   const lines: string[] = []
   return {
-    out: { log: (m: string) => lines.push(m), error: (m: string) => lines.push(m), write: (m: string) => lines.push(m) },
+    out: {
+      log: (m: string) => lines.push(m),
+      error: (m: string) => lines.push(m),
+      write: (m: string) => lines.push(m),
+    },
     lines,
   }
 }

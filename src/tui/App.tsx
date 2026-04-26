@@ -1,6 +1,10 @@
 import { Box, useApp, useInput } from 'ink'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { deleteBase, formatDeleteBaseResult, resolveEffectiveBaseDir } from '../cli/base-selection.js'
+import {
+  deleteBase,
+  formatDeleteBaseResult,
+  resolveEffectiveBaseDir,
+} from '../cli/base-selection.js'
 import type { ChatIO } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
 import {
@@ -25,9 +29,9 @@ import { InputBar } from './components/InputBar.js'
 import { StatusBar } from './components/StatusBar.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
 import { ensureInitBaseArg } from './init-args.js'
-import { partitionShellOutputForTui } from './partition-shell-output.js'
 import type { InitStatusState } from './init-status.js'
 import { parseInitOutput } from './init-status.js'
+import { partitionShellOutputForTui } from './partition-shell-output.js'
 import { parseShellArgs, printCliHelp, runCommandForTui } from './runner.js'
 import {
   applySelectedSuggestion,
@@ -118,79 +122,82 @@ export function App({ config, startupNotices = [] }: Props) {
       })
   }, [])
 
-  const startChatSession = useCallback((opts: { verbose?: boolean; debug?: boolean } = {}) => {
-    const verbose = opts.verbose === true
-    const debug = opts.debug === true
-    if (!storageDirRef.current) {
-      addEntry({
-        type: 'error',
-        content: formatPrerequisiteError(CLI_ERROR_NO_KB_BASE),
-      })
-      setMode('shell')
-      return
-    }
-    const llmProvider = createLLMProviderFromConfig(config)
-    if (!llmProvider) {
-      addEntry({
-        type: 'error',
-        content: formatPrerequisiteError(CLI_ERROR_NO_LLM_PROVIDER),
-      })
-      setMode('shell')
-      return
-    }
-
-    const storageDir = storageDirRef.current
-    const toolExecutor = createKBToolsRegistry(storageDir, config, { taskProvider: llmProvider })
-    const graphWriter = resolveGraphEnabled(config)
-      ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(storageDir))
-      : undefined
-
-    const chatIO: ChatIO = {
-      async read(_prompt: string): Promise<string | null> {
-        return new Promise<string | null>(resolve => {
-          chatInputResolverRef.current = resolve
+  const startChatSession = useCallback(
+    (opts: { verbose?: boolean; debug?: boolean } = {}) => {
+      const verbose = opts.verbose === true
+      const debug = opts.debug === true
+      if (!storageDirRef.current) {
+        addEntry({
+          type: 'error',
+          content: formatPrerequisiteError(CLI_ERROR_NO_KB_BASE),
         })
-      },
-      write(line: string) {
-        stopChatPending()
-        if (isOrchestrationMetaLine(line)) {
-          addEntry({ type: 'chat-meta', content: line })
-          return
-        }
-
-        const clean = line.startsWith('assistant> ') ? line.slice('assistant> '.length) : line
-        if (!clean.trim()) return
-        addEntry({ type: 'chat-assistant', content: clean })
-      },
-      error(line: string) {
-        stopChatPending()
-        addEntry({ type: 'error', content: line })
-      },
-    }
-
-    runChatSession(
-      {
-        llmProvider,
-        toolExecutor,
-        mode: 'tui',
-        graphWriter,
-        conversationalRetrieval: resolveConversationalChatEnabled(config),
-        verbose,
-        debug,
-      },
-      chatIO
-    )
-      .then(() => {
-        stopChatPending()
         setMode('shell')
-      })
-      .catch(err => {
-        stopChatPending()
-        const message = err instanceof Error ? err.message : String(err)
-        addEntry({ type: 'error', content: `Chat error: ${message}` })
+        return
+      }
+      const llmProvider = createLLMProviderFromConfig(config)
+      if (!llmProvider) {
+        addEntry({
+          type: 'error',
+          content: formatPrerequisiteError(CLI_ERROR_NO_LLM_PROVIDER),
+        })
         setMode('shell')
-      })
-  }, [config, addEntry, stopChatPending])
+        return
+      }
+
+      const storageDir = storageDirRef.current
+      const toolExecutor = createKBToolsRegistry(storageDir, config, { taskProvider: llmProvider })
+      const graphWriter = resolveGraphEnabled(config)
+        ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(storageDir))
+        : undefined
+
+      const chatIO: ChatIO = {
+        async read(_prompt: string): Promise<string | null> {
+          return new Promise<string | null>(resolve => {
+            chatInputResolverRef.current = resolve
+          })
+        },
+        write(line: string) {
+          stopChatPending()
+          if (isOrchestrationMetaLine(line)) {
+            addEntry({ type: 'chat-meta', content: line })
+            return
+          }
+
+          const clean = line.startsWith('assistant> ') ? line.slice('assistant> '.length) : line
+          if (!clean.trim()) return
+          addEntry({ type: 'chat-assistant', content: clean })
+        },
+        error(line: string) {
+          stopChatPending()
+          addEntry({ type: 'error', content: line })
+        },
+      }
+
+      runChatSession(
+        {
+          llmProvider,
+          toolExecutor,
+          mode: 'tui',
+          graphWriter,
+          conversationalRetrieval: resolveConversationalChatEnabled(config),
+          verbose,
+          debug,
+        },
+        chatIO
+      )
+        .then(() => {
+          stopChatPending()
+          setMode('shell')
+        })
+        .catch(err => {
+          stopChatPending()
+          const message = err instanceof Error ? err.message : String(err)
+          addEntry({ type: 'error', content: `Chat error: ${message}` })
+          setMode('shell')
+        })
+    },
+    [config, addEntry, stopChatPending]
+  )
 
   const startInitSession = useCallback(
     (extraArgs: string[]) => {
@@ -362,8 +369,7 @@ export function App({ config, startupNotices = [] }: Props) {
         const chatDebug = args.includes('--debug')
         let chatBanner = 'Chat mode — type /exit to return to shell.'
         if (chatVerbose && chatDebug) {
-          chatBanner =
-            'Chat mode (verbose + debug orchestration) — type /exit to return to shell.'
+          chatBanner = 'Chat mode (verbose + debug orchestration) — type /exit to return to shell.'
         } else if (chatVerbose) {
           chatBanner = 'Chat mode (verbose orchestration) — type /exit to return to shell.'
         } else if (chatDebug) {
@@ -382,8 +388,10 @@ export function App({ config, startupNotices = [] }: Props) {
 
       // Intercept `base delete <name>` without --force: show confirmation prompt
       if (
-        (firstArg === 'base' && args[1] === 'delete') &&
-        !args.includes('--force') && !args.includes('-f')
+        firstArg === 'base' &&
+        args[1] === 'delete' &&
+        !args.includes('--force') &&
+        !args.includes('-f')
       ) {
         const base = args.slice(2).find(t => !t.startsWith('--'))
         if (base) {

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import dayjs from 'dayjs'
+import { toGraphQuerySlugs } from './graph-query-expansion'
 import type {
   MarkdownDocumentReader,
   ProbeResult,
@@ -11,17 +12,46 @@ import type {
   QueryResult,
 } from './markdown-document-reader'
 import type { RetrievalLane } from './retrieval-lane-router'
-import { toGraphQuerySlugs } from './graph-query-expansion'
 
 const STOP_WORDS = new Set([
-  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'do', 'for', 'from',
-  'how', 'i', 'in', 'is', 'it', 'of', 'on', 'or', 'our', 'that', 'the',
-  'this', 'to', 'was', 'we', 'what', 'when', 'where', 'who', 'why', 'with',
-  'you', 'your',
+  'a',
+  'an',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'by',
+  'do',
+  'for',
+  'from',
+  'how',
+  'i',
+  'in',
+  'is',
+  'it',
+  'of',
+  'on',
+  'or',
+  'our',
+  'that',
+  'the',
+  'this',
+  'to',
+  'was',
+  'we',
+  'what',
+  'when',
+  'where',
+  'who',
+  'why',
+  'with',
+  'you',
+  'your',
 ])
 
 const RESEARCH_MAX_MS = 3000
-const COVERAGE_THRESHOLD = 0.60
+const COVERAGE_THRESHOLD = 0.6
 const MIN_DOCS_TO_ANSWER = 2
 const MAX_HYPOTHESES = 12
 const QUERY_RESEARCH_MAX_ITERS = parseEnvInt('KB_QUERY_RESEARCH_MAX_ITERS', 3)
@@ -34,6 +64,7 @@ type ExpansionSource =
   | 'keyword'
   | 'graph-slugs'
   | 'heading-hop'
+  | 'question-pack'
 
 interface SearchHypothesis {
   id: string
@@ -141,6 +172,20 @@ export class QueryResearchOrchestrator {
       )
     }
 
+    for (const scopedQuery of buildCanonicalQuestionBoostQueries(query)) {
+      if (scopedQuery && scopedQuery !== query && scopedQuery !== keywordQuery && scopedQuery !== slugQuery) {
+        seeds.push(
+          makeHypothesis({
+            query: scopedQuery,
+            mode: 'content',
+            lanes: undefined,
+            source: 'question-pack',
+            depth: 0,
+          })
+        )
+      }
+    }
+
     return seeds
   }
 
@@ -189,7 +234,14 @@ export class QueryResearchOrchestrator {
     const termQuery = [...newTerms].slice(0, 5).join(' ')
     if (termQuery) {
       children.push(
-        makeHypothesis({ query: termQuery, mode: 'content', lanes: undefined, source: 'heading-hop', depth: 1, parentId })
+        makeHypothesis({
+          query: termQuery,
+          mode: 'content',
+          lanes: undefined,
+          source: 'heading-hop',
+          depth: 1,
+          parentId,
+        })
       )
     }
 
@@ -197,7 +249,14 @@ export class QueryResearchOrchestrator {
     if (neighbors.length > 0) {
       const neighborQuery = neighbors.slice(0, 4).join(' ')
       children.push(
-        makeHypothesis({ query: neighborQuery, mode: 'content', lanes: undefined, source: 'heading-hop', depth: 1, parentId })
+        makeHypothesis({
+          query: neighborQuery,
+          mode: 'content',
+          lanes: undefined,
+          source: 'heading-hop',
+          depth: 1,
+          parentId,
+        })
       )
     }
 
@@ -268,7 +327,10 @@ export class QueryResearchOrchestrator {
       return {
         results: fullResults,
         total: Math.max(scratchpad.seenDocIds.size, fullResults.length),
-        retrieval: { method: 'lexical-fallback', detail: 'research-orchestrator;exhaustive-fallback' },
+        retrieval: {
+          method: 'lexical-fallback',
+          detail: 'research-orchestrator;exhaustive-fallback',
+        },
       }
     }
 
@@ -398,9 +460,16 @@ export class QueryResearchOrchestrator {
           (run_id, query_fingerprint, raw_query, total_iterations, hypotheses_count, final_coverage_score, winning_branch_id, surface, elapsed_ms, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        runId, fingerprint, query,
-        scratchpad.iterationsRun, frontier.length, scratchpad.coverageScore,
-        winningBranchId, 'reader', elapsedMs, now
+        runId,
+        fingerprint,
+        query,
+        scratchpad.iterationsRun,
+        frontier.length,
+        scratchpad.coverageScore,
+        winningBranchId,
+        'reader',
+        elapsedMs,
+        now
       )
 
       const insertHyp = db.prepare(`
@@ -415,9 +484,14 @@ export class QueryResearchOrchestrator {
           ? Math.max(0, ...[...branchDocs].map(id => scratchpad.docScores.get(id) ?? 0))
           : null
         insertHyp.run(
-          h.id, runId, h.parentId ?? null, h.query, h.mode,
+          h.id,
+          runId,
+          h.parentId ?? null,
+          h.query,
+          h.mode,
           h.lanes ? JSON.stringify(h.lanes) : null,
-          h.source, h.depth,
+          h.source,
+          h.depth,
           branchDocs?.size ?? null,
           bestScore,
           null,
@@ -497,9 +571,7 @@ function computeCoverageScore(scratchpad: ResearchScratchpad): void {
   const noveltyFraction = totalBranchDocs > 0 ? seenDocIds.size / totalBranchDocs : 0
 
   scratchpad.coverageScore =
-    0.4 * Math.min(1, topScore) +
-    0.3 * agreementFraction +
-    0.2 * Math.min(1, noveltyFraction)
+    0.4 * Math.min(1, topScore) + 0.3 * agreementFraction + 0.2 * Math.min(1, noveltyFraction)
 }
 
 function canAnswer(scratchpad: ResearchScratchpad): boolean {
@@ -540,6 +612,39 @@ function makeHypothesis(params: {
   }
 }
 
+function buildCanonicalQuestionBoostQueries(query: string): string[] {
+  const normalized = query.toLowerCase()
+  const boosts: string[] = []
+
+  // Q3: install/build answers are weak unless build-system docs are forced into search.
+  if (
+    normalized.includes('install') ||
+    normalized.includes('build') ||
+    normalized.includes('dependencies') ||
+    normalized.includes('build systems')
+  ) {
+    boosts.push(
+      'installation setup dependencies build make cmake compile',
+      'readme build instructions makefile cmakelists'
+    )
+  }
+
+  // Q8: roadmap/history often underused even when docs exist.
+  if (
+    normalized.includes('roadmap') ||
+    normalized.includes('future plans') ||
+    normalized.includes('version history') ||
+    normalized.includes('recent version')
+  ) {
+    boosts.push(
+      'roadmap history release version changelog',
+      'roadmap.md history.md release notes'
+    )
+  }
+
+  return boosts
+}
+
 function buildKeywordQuery(query: string): string | undefined {
   const tokens = query
     .toLowerCase()
@@ -553,9 +658,7 @@ function buildKeywordQuery(query: string): string | undefined {
 }
 
 function buildQueryFingerprint(query: string): string {
-  return createHash('sha256')
-    .update(query.toLowerCase().replace(/\s+/g, ' ').trim())
-    .digest('hex')
+  return createHash('sha256').update(query.toLowerCase().replace(/\s+/g, ' ').trim()).digest('hex')
 }
 
 function parseTagsJson(raw: string | null | undefined): string[] | undefined {

@@ -1,8 +1,6 @@
 import { isOrchestrationMetaLine } from '../ui/orchestration-meta.js'
 
-export type ShellTuiSegment =
-  | { kind: 'body'; text: string }
-  | { kind: 'meta'; line: string }
+export type ShellTuiSegment = { kind: 'body'; text: string } | { kind: 'meta'; line: string }
 
 /**
  * Split captured `kb …` stdout for TUI shell history: primary prose vs orchestration `key> value` rows.

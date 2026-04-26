@@ -10,10 +10,7 @@ import type { StreamManager } from '../core/runtime/stream-manager'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { AgentEvent, LLMProvider, SubagentTaskResult, ToolUseRequest } from '../core/types'
 import { loadPrompt } from '../prompts/loader'
-import {
-  readSubagentEvalScenarioFromEnv,
-  subagentLoopTuning,
-} from './subagent-eval-scenario'
+import { readSubagentEvalScenarioFromEnv, subagentLoopTuning } from './subagent-eval-scenario'
 
 export interface ExecuteSubagentTaskParams {
   parentRegistry: ToolExecutor
@@ -116,11 +113,7 @@ export async function executeSubagentTask(
   const childExecutor = createFilteredToolExecutor(parentRegistry, allowed)
   const channelId = `${parentChannelId}:${subagentId}`
 
-  const systemPrompt = [
-    profile.systemPrompt,
-    '',
-    SUBAGENT_DELEGATION_PROMPT,
-  ].join('\n')
+  const systemPrompt = [profile.systemPrompt, '', SUBAGENT_DELEGATION_PROMPT].join('\n')
 
   const textSegments: string[] = []
   const toolCalls: SubagentTaskResult['toolCalls'] = []

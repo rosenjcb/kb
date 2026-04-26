@@ -43,7 +43,12 @@ describe('CLI --base override', () => {
     await writeSessionBase('base-a')
 
     const { out, lines } = makeOut()
-    await runMainWithOutput(['graph', '--format', 'json', '--base', 'base-b'], out, {} as never, 'cli')
+    await runMainWithOutput(
+      ['graph', '--format', 'json', '--base', 'base-b'],
+      out,
+      {} as never,
+      'cli'
+    )
 
     const text = lines.join('\n')
     const i = text.indexOf('{')

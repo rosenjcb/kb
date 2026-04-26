@@ -1789,12 +1789,6 @@
       "docId": "installation-and-setup"
     },
     {
-      "id": "npm-run-which-kb",
-      "name": "npm run which:kb",
-      "type": "tool",
-      "docId": "installation-and-setup"
-    },
-    {
       "id": "kb-use-show",
       "name": "kb use --show",
       "type": "tool",
@@ -5289,13 +5283,6 @@
     },
     {
       "fromId": "npm-run-refresh-global",
-      "toId": "project-dependencies",
-      "type": "uses",
-      "docId": "installation-and-setup",
-      "weight": 1
-    },
-    {
-      "fromId": "npm-run-which-kb",
       "toId": "project-dependencies",
       "type": "uses",
       "docId": "installation-and-setup",

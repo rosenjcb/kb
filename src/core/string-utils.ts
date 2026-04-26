@@ -11,8 +11,8 @@
  */
 export function toTitleCase(raw: string): string {
   return raw
-    .replace(/\.[^.]+$/, '')      // strip file extension
-    .replace(/[/_-]+/g, ' ')      // replace separators with spaces
+    .replace(/\.[^.]+$/, '') // strip file extension
+    .replace(/[/_-]+/g, ' ') // replace separators with spaces
     .trim()
     .toLowerCase()
     .replace(/\b\w/g, c => c.toUpperCase())
@@ -25,7 +25,7 @@ export function toTitleCase(raw: string): string {
  *   "CLAUDE.md"              → "CLAUDE.md"
  */
 export function basenameTitle(filePath: string): string {
-  return (filePath.replace(/\\/g, '/').split('/').pop() ?? filePath)
+  return filePath.replace(/\\/g, '/').split('/').pop() ?? filePath
 }
 
 /**

@@ -271,7 +271,8 @@ function planMutations(
       return {
         claimId: claim.claimId,
         action: 'noop',
-        rationale: 'No evidence found and no safe insertion target identified; skipped conservatively.',
+        rationale:
+          'No evidence found and no safe insertion target identified; skipped conservatively.',
         expectedPostcondition: 'No KB mutation should be required without a clear target document.',
       }
     }
@@ -282,7 +283,8 @@ function planMutations(
           return {
             claimId: claim.claimId,
             action: 'noop',
-            rationale: 'Equivalent evidence exists but no safe target doc was resolved for insertion.',
+            rationale:
+              'Equivalent evidence exists but no safe target doc was resolved for insertion.',
             expectedPostcondition: 'No KB mutation should be required.',
           }
         }
@@ -306,7 +308,8 @@ function planMutations(
       return {
         claimId: claim.claimId,
         action: 'noop',
-        rationale: 'Related supporting evidence already exists; skipping low-value duplicate mutation.',
+        rationale:
+          'Related supporting evidence already exists; skipping low-value duplicate mutation.',
         expectedPostcondition: 'No KB mutation should be required.',
       }
     }
@@ -321,8 +324,10 @@ function planMutations(
         return {
           claimId: claim.claimId,
           action: 'noop',
-          rationale: 'Contradiction detected, but no safe target doc was resolved for replacement insertion.',
-          expectedPostcondition: 'No KB mutation should be required without a clear target document.',
+          rationale:
+            'Contradiction detected, but no safe target doc was resolved for replacement insertion.',
+          expectedPostcondition:
+            'No KB mutation should be required without a clear target document.',
         }
       }
       return {
@@ -331,8 +336,10 @@ function planMutations(
         targetDocId,
         invalidateFact: contradictionFact,
         submitFact: claim.text,
-        rationale: 'Contradicting evidence exists and new claim confidence/evidence pass threshold.',
-        expectedPostcondition: 'Contradicting statement is removed/replaced and new claim is retrievable.',
+        rationale:
+          'Contradicting evidence exists and new claim confidence/evidence pass threshold.',
+        expectedPostcondition:
+          'Contradicting statement is removed/replaced and new claim is retrievable.',
       }
     }
     if (claim.confidence < 0.65) {
@@ -347,7 +354,8 @@ function planMutations(
       return {
         claimId: claim.claimId,
         action: 'noop',
-        rationale: 'No safe insertion target was resolved; skipped to avoid creating synthetic files.',
+        rationale:
+          'No safe insertion target was resolved; skipped to avoid creating synthetic files.',
         expectedPostcondition: 'No KB mutation should be required.',
       }
     }
@@ -357,7 +365,8 @@ function planMutations(
       targetDocId,
       submitFact: claim.text,
       rationale: 'No strong equivalent found; append claim into best supporting document.',
-      expectedPostcondition: 'Target document contains inserted fact and retrieval should surface it.',
+      expectedPostcondition:
+        'Target document contains inserted fact and retrieval should surface it.',
     }
   })
 }
@@ -646,12 +655,9 @@ function createRescanIntentExecutor(
   }
 }
 
-function asWriteDocType(value: unknown):
-  | 'architecture'
-  | 'decision'
-  | 'checklist'
-  | 'runbook'
-  | 'reference' {
+function asWriteDocType(
+  value: unknown
+): 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference' {
   return value === 'architecture' ||
     value === 'decision' ||
     value === 'checklist' ||

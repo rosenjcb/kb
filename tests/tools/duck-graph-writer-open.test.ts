@@ -32,7 +32,9 @@ describe('DuckGraphWriter.open', () => {
       true
     )
     expect(
-      executedSql.some(sql => sql.includes('ALTER TABLE entities ADD COLUMN IF NOT EXISTS description'))
+      executedSql.some(sql =>
+        sql.includes('ALTER TABLE entities ADD COLUMN IF NOT EXISTS description')
+      )
     ).toBe(true)
     expect(executedSql.some(sql => sql.includes('INSTALL duckpgq'))).toBe(false)
     expect(executedSql.some(sql => sql.includes('LOAD duckpgq'))).toBe(false)

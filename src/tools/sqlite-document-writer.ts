@@ -418,7 +418,16 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     const lane = classifyDocumentLane(id, title, docType, tags, '')
     const isOriginal = this.indexer.getDocumentIsOriginal(id)
 
-    this.indexer.upsertDocumentWithContent({ id, title, content, docType, lane, tags, createdAt, isOriginal })
+    this.indexer.upsertDocumentWithContent({
+      id,
+      title,
+      content,
+      docType,
+      lane,
+      tags,
+      createdAt,
+      isOriginal,
+    })
 
     return { id, title, filePath: '', createdAt, updatedAt: now }
   }

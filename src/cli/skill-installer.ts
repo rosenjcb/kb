@@ -68,10 +68,7 @@ function buildInstallContent(rawSkill: string, format: AgentTarget['format']): s
 
   if (format === 'mdc') {
     // Cursor MDC: ensure alwaysApply front matter is present alongside the existing name/description
-    const withCursorFrontmatter = rawSkill.replace(
-      /^---\n/,
-      '---\nalwaysApply: true\n'
-    )
+    const withCursorFrontmatter = rawSkill.replace(/^---\n/, '---\nalwaysApply: true\n')
     return header + withCursorFrontmatter
   }
 
@@ -126,9 +123,7 @@ export interface ProjectInstallResult {
   action: 'injected' | 'already-present' | 'created' | 'skipped'
 }
 
-export async function installSkillIntoProject(
-  cwd: string
-): Promise<ProjectInstallResult[]> {
+export async function installSkillIntoProject(cwd: string): Promise<ProjectInstallResult[]> {
   const results: ProjectInstallResult[] = []
 
   for (const target of PROJECT_SKILL_TARGETS) {

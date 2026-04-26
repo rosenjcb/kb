@@ -205,9 +205,9 @@ describe('init-cli interview checkpoints', () => {
   })
 
   it('Given --dry-run with --apply, then parsing rejects invalid combination', () => {
-    expect(() => parseInitCommand(['--base', 'dogfood', '--rescan', '--dry-run', '--apply'])).toThrow(
-      '--dry-run cannot be combined with --apply'
-    )
+    expect(() =>
+      parseInitCommand(['--base', 'dogfood', '--rescan', '--dry-run', '--apply'])
+    ).toThrow('--dry-run cannot be combined with --apply')
   })
 
   it('Given rescan safeguard flags, then parsing stores timeout and caps', () => {
@@ -944,4 +944,3 @@ describe('init-cli interview checkpoints', () => {
     expect(questionIO.prompts).toHaveLength(0)
   })
 })
-

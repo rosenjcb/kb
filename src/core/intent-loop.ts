@@ -47,8 +47,7 @@ export async function runIntentLoop(
   config: IntentLoopConfig = {}
 ): Promise<IntentLoopResult> {
   const maxIterations = config.maxIterations ?? DEFAULT_INTENT_LOOP_MAX_ITERATIONS
-  const confidenceThreshold =
-    config.confidenceThreshold ?? DEFAULT_INTENT_LOOP_CONFIDENCE_THRESHOLD
+  const confidenceThreshold = config.confidenceThreshold ?? DEFAULT_INTENT_LOOP_CONFIDENCE_THRESHOLD
   const router = new DefaultIntentRouter(toolExecutor)
 
   const { collector } = config

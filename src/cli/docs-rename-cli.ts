@@ -1,8 +1,8 @@
 import path from 'node:path'
 import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
-import type { CliOutput } from './index'
 import { type CmdMode, cmd } from './cmd-ref'
+import type { CliOutput } from './index'
 
 export interface ParsedDocsRenameCommand {
   documentId: string

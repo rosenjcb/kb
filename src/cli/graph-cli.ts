@@ -388,7 +388,8 @@ async function executeGraphMutation(
       out.log('Dry run (no changes). Pass --apply to write.')
       out.log(`  Would update entity matching ${JSON.stringify(plan.target)}`)
       if (plan.name !== undefined) out.log(`  name → ${JSON.stringify(plan.name)}`)
-      if (plan.description !== undefined) out.log(`  description → ${JSON.stringify(plan.description)}`)
+      if (plan.description !== undefined)
+        out.log(`  description → ${JSON.stringify(plan.description)}`)
       if (plan.entityType !== undefined) out.log(`  type → ${plan.entityType}`)
       return
     }

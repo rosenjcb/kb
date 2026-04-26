@@ -65,12 +65,7 @@ describe('slash command helpers', () => {
     const suggestions = getSlashCommands('shell')
     const { visible, startIndex } = getSuggestionWindow(suggestions, 4, 4)
     expect(startIndex).toBe(2)
-    expect(visible.map(item => item.command)).toEqual([
-      '/query',
-      '/submit',
-      '/invalidate',
-      '/chat',
-    ])
+    expect(visible.map(item => item.command)).toEqual(['/query', '/submit', '/invalidate', '/chat'])
   })
 
   it('includes /init in shell command list', () => {

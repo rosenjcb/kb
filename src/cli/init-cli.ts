@@ -31,12 +31,12 @@ import { loadPromptParts } from '../prompts/loader'
 import type { WriteDocumentInput } from '../tools/document-writer'
 import { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { extractGraphBatch } from '../tools/graph-entity-extractor'
+import {
+  type RunRescanApplyOrchestratorResult,
+  runRescanApplyOrchestrator,
+} from '../tools/rescan-apply-orchestrator'
 import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
-import {
-  runRescanApplyOrchestrator,
-  type RunRescanApplyOrchestratorResult,
-} from '../tools/rescan-apply-orchestrator'
 import { ensureOperationalBaseDir, getKbHomeDir, readBaseConfig } from './base-selection'
 import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from './cli-prerequisites'
 import { readKnowledgeGraphInitSummary } from './graph-cli'
@@ -300,7 +300,9 @@ export function parseInitCommand(args: string[]): InitOptions {
     throw new Error('Invalid flags: --dry-run cannot be combined with --apply.')
   }
 
-  const rescanStageTimeoutMs = parseOptionalPositiveInt(readOption(args, '--rescan-stage-timeout-ms'))
+  const rescanStageTimeoutMs = parseOptionalPositiveInt(
+    readOption(args, '--rescan-stage-timeout-ms')
+  )
   const rescanMaxClaims = parseOptionalPositiveInt(readOption(args, '--rescan-max-claims'))
   const rescanMaxEvidenceDocs = parseOptionalPositiveInt(
     readOption(args, '--rescan-max-evidence-docs')
@@ -966,8 +968,34 @@ function extractStoredDocumentBody(content: string): string {
   return sections.slice(2).join('\n\n').trimEnd()
 }
 
-export const SOURCE_CODE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.py', '.go', '.rb', '.java', '.rs', '.swift', '.kt']
-export const SOURCE_CODE_EXCLUDE_DIRS = new Set(['node_modules', 'dist', 'build', '_site', '.git', 'vendor', 'coverage', '.next', 'out', '.cache', '__pycache__', '.turbo'])
+export const SOURCE_CODE_EXTENSIONS = [
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.py',
+  '.go',
+  '.rb',
+  '.java',
+  '.rs',
+  '.swift',
+  '.kt',
+]
+export const SOURCE_CODE_EXCLUDE_DIRS = new Set([
+  'node_modules',
+  'dist',
+  'build',
+  '_site',
+  '.git',
+  'vendor',
+  'coverage',
+  '.next',
+  'out',
+  '.cache',
+  '__pycache__',
+  '.turbo',
+])
 const SOURCE_CODE_MAX_FILES = 200
 export const SOURCE_CODE_PER_FILE_CHARS = 400
 const SOURCE_CODE_MAX_TOTAL_CHARS = 60_000
@@ -1351,13 +1379,7 @@ async function runPerDocEnrichmentPass(
   })
 }
 
-type GraphPassOutcome =
-  | 'extracted'
-  | 'disabled'
-  | 'dry-run'
-  | 'failed'
-  | 'no-provider'
-  | 'reused'
+type GraphPassOutcome = 'extracted' | 'disabled' | 'dry-run' | 'failed' | 'no-provider' | 'reused'
 
 async function emitPostInitGraphOverview(options: {
   baseDir: string
@@ -1761,7 +1783,10 @@ function expandSingleDocIntoSourceShards(
     isOriginal: false,
   }
   const shards: CandidateDoc[] = []
-  for (const filePath of Object.keys(context.sourceFiles).slice(0, INIT_SOURCE_SNAPSHOT_MAX_FILES)) {
+  for (const filePath of Object.keys(context.sourceFiles).slice(
+    0,
+    INIT_SOURCE_SNAPSHOT_MAX_FILES
+  )) {
     const body = context.sourceFiles[filePath]
     if (typeof body !== 'string' || !body.trim()) continue
     // README is the site homepage — exclude it from original_docs sidebar entries
@@ -1777,7 +1802,10 @@ function preventInitDocCollapse(previous: CandidateDoc[], next: CandidateDoc[]):
   return next
 }
 
-function runDeterministicRefinementPass(docs: CandidateDoc[], context: InitContext): CandidateDoc[] {
+function runDeterministicRefinementPass(
+  docs: CandidateDoc[],
+  context: InitContext
+): CandidateDoc[] {
   let next = normalizeInitDocs(docs, { fallback: docs })
   next = splitMultiTopicDocs(next)
   next = mergeLikelyDuplicateDocs(next)
@@ -1820,7 +1848,7 @@ function normalizeInitDocs(
     return normalizeInitDocs(options.fallback, { minWords: 0 })
   }
 
-  return normalized.length > 0 ? normalized : options.fallback ?? []
+  return normalized.length > 0 ? normalized : (options.fallback ?? [])
 }
 
 function normalizeInitDoc(doc: CandidateDoc, minWords: number): CandidateDoc | null {
@@ -1830,7 +1858,9 @@ function normalizeInitDoc(doc: CandidateDoc, minWords: number): CandidateDoc | n
   if (countWords(content) < minWords) return null
 
   const tags = normalizeTags(doc.tags)
-  const type = VALID_DOC_TYPES.has(doc.type ?? 'reference') ? doc.type ?? 'reference' : 'reference'
+  const type = VALID_DOC_TYPES.has(doc.type ?? 'reference')
+    ? (doc.type ?? 'reference')
+    : 'reference'
 
   return {
     ...doc,
@@ -1842,10 +1872,7 @@ function normalizeInitDoc(doc: CandidateDoc, minWords: number): CandidateDoc | n
 }
 
 function normalizeTitle(value: string): string {
-  return value
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 120)
+  return value.replace(/\s+/g, ' ').trim().slice(0, 120)
 }
 
 function normalizeContent(value: string): string {
@@ -1970,7 +1997,7 @@ function areLikelyDuplicateDocs(a: CandidateDoc, b: CandidateDoc): boolean {
 
 function mergeTwoDocs(a: CandidateDoc, b: CandidateDoc): CandidateDoc {
   const title = a.title.length <= b.title.length ? a.title : b.title
-  const type = a.type === b.type ? a.type : a.type ?? b.type ?? 'reference'
+  const type = a.type === b.type ? a.type : (a.type ?? b.type ?? 'reference')
   const tags = normalizeTags([...(a.tags ?? []), ...(b.tags ?? [])])
   const content = dedupLines(`${a.content}\n${b.content}`)
   return {
@@ -2003,7 +2030,7 @@ function dedupLines(content: string): string {
 }
 
 function appendCoveragePlaceholders(docs: CandidateDoc[], context: InitContext): CandidateDoc[] {
-  const existingTopics = new Set((docs.flatMap(doc => doc.tags ?? [])).map(tag => tag.toLowerCase()))
+  const existingTopics = new Set(docs.flatMap(doc => doc.tags ?? []).map(tag => tag.toLowerCase()))
   const missing = INIT_TOPIC_DEFINITIONS.filter(def => !existingTopics.has(def.topic))
   if (missing.length === 0) return docs
 
