@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
-import path from 'node:path'
-import { access, mkdir } from 'node:fs/promises'
 import { constants as fsConstants } from 'node:fs'
+import { access, mkdir } from 'node:fs/promises'
+import path from 'node:path'
 import { getKbHomeDir } from './base-selection'
 import { type CmdMode, cmd } from './cmd-ref'
 

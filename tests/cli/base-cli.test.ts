@@ -2,9 +2,13 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ensureOperationalBaseDir, writeDefaultBase, writeSessionBase } from '../../src/cli/base-selection'
-import { readKbConfig } from '../../src/cli/kb-config'
+import {
+  ensureOperationalBaseDir,
+  writeDefaultBase,
+  writeSessionBase,
+} from '../../src/cli/base-selection'
 import { runMainWithOutput } from '../../src/cli/index'
+import { readKbConfig } from '../../src/cli/kb-config'
 
 let kbHomeDir: string
 

@@ -86,7 +86,11 @@ describe('installSkillsGlobally', () => {
 
 describe('installSkillIntoProject', () => {
   it('Given CLAUDE.md exists without KB section, then injects blurb', async () => {
-    await writeFile(path.join(tempDir, 'CLAUDE.md'), '# Project Instructions\n\nSome rules.\n', 'utf8')
+    await writeFile(
+      path.join(tempDir, 'CLAUDE.md'),
+      '# Project Instructions\n\nSome rules.\n',
+      'utf8'
+    )
 
     const results = await installSkillIntoProject(tempDir)
     const claude = results.find(r => r.file === 'CLAUDE.md')
@@ -127,7 +131,11 @@ describe('installSkillIntoProject', () => {
   })
 
   it('Given both CLAUDE.md and AGENTS.md exist, then only injects into whichever lacks the section', async () => {
-    await writeFile(path.join(tempDir, 'CLAUDE.md'), '# Project\n\n## KB (knowledge base)\n\nPresent.\n', 'utf8')
+    await writeFile(
+      path.join(tempDir, 'CLAUDE.md'),
+      '# Project\n\n## KB (knowledge base)\n\nPresent.\n',
+      'utf8'
+    )
     await writeFile(path.join(tempDir, 'AGENTS.md'), '# Agents\n\nMissing.\n', 'utf8')
 
     const results = await installSkillIntoProject(tempDir)

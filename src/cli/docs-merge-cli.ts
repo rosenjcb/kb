@@ -1,11 +1,10 @@
-import { createInterface } from 'node:readline'
 import path from 'node:path'
-import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
-import { classifyDocumentLane } from '../tools/retrieval-lane-router'
-import { loadPrompt } from '../prompts/loader'
+import { createInterface } from 'node:readline'
 import type { LLMProvider } from '../core/types'
-import type { CliOutput } from './index'
+import { classifyDocumentLane } from '../tools/retrieval-lane-router'
+import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { type CmdMode, cmd } from './cmd-ref'
+import type { CliOutput } from './index'
 
 export interface ParsedDocsMergeCommand {
   targetDocId: string
@@ -79,7 +78,7 @@ export function parseDocsMergeCommand(args: string[]): ParsedDocsMergeCommand {
 export async function runDocsMerge(
   parsed: ParsedDocsMergeCommand,
   baseDir: string,
-  llmProvider: LLMProvider,
+  _llmProvider: LLMProvider,
   out: CliOutput
 ): Promise<void> {
   const dbPath = path.join(baseDir, '.kb-index.sqlite')
@@ -106,26 +105,13 @@ export async function runDocsMerge(
     `\nMerging ${sourceDocs.length} source doc(s) into "${targetTitle}" (${parsed.targetDocId})...`
   )
 
-  const sourcesBlock = sourceDocs
-    .map(({ id, content }) => `--- ${id} ---\n${stripPreamble(content)}`)
-    .join('\n\n')
-
-  const promptTemplate = loadPrompt('docs-merge.md')
-  const prompt = promptTemplate
-    .replace('{{TARGET_ID}}', parsed.targetDocId)
-    .replace('{{TARGET_TITLE}}', targetTitle)
-    .replace('{{TARGET_CONTENT}}', stripPreamble(targetContent))
-    .replace('{{SOURCES}}', sourcesBlock)
-    .replace('{{USER_INSTRUCTIONS}}', userInstructions || 'None')
-
-  const response = await llmProvider.call({
-    messages: [{ role: 'user', content: prompt }],
-    maxTokens: 8192,
+  const mergedBody = deterministicMergeBodies({
+    targetBody: stripPreamble(targetContent),
+    sourceBodies: sourceDocs.map(doc => stripPreamble(doc.content)),
+    userInstructions,
   })
-
-  const mergedBody = response.text.trim()
   if (!mergedBody) {
-    throw new DocsMergeError('LLM returned empty merged content')
+    throw new DocsMergeError('Deterministic merge produced empty content')
   }
 
   const existingMeta = extractMeta(targetContent)
@@ -142,7 +128,13 @@ export async function runDocsMerge(
     title: targetTitle,
     content: newContent,
     docType: existingMeta.type,
-    lane: classifyDocumentLane(parsed.targetDocId, targetTitle, existingMeta.type, existingMeta.tags, ''),
+    lane: classifyDocumentLane(
+      parsed.targetDocId,
+      targetTitle,
+      existingMeta.type,
+      existingMeta.tags,
+      ''
+    ),
     tags: existingMeta.tags,
     createdAt: existingMeta.createdAt || now,
   })
@@ -156,18 +148,66 @@ export async function runDocsMerge(
   out.log('\nMerge complete.')
 }
 
+function deterministicMergeBodies(input: {
+  targetBody: string
+  sourceBodies: string[]
+  userInstructions: string
+}): string {
+  const blocks: string[] = []
+  const seen = new Set<string>()
+
+  const appendBlock = (raw: string) => {
+    const cleaned = sanitizeBlock(raw)
+    if (!cleaned) return
+    const key = canonicalizeBlock(cleaned)
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    blocks.push(cleaned)
+  }
+
+  splitIntoBlocks(input.targetBody).forEach(appendBlock)
+  input.sourceBodies.flatMap(splitIntoBlocks).forEach(appendBlock)
+
+  if (input.userInstructions.trim()) {
+    appendBlock(`Merge note: ${input.userInstructions.trim()}`)
+  }
+
+  return blocks.join('\n\n').trim()
+}
+
+function splitIntoBlocks(content: string): string[] {
+  return content
+    .split(/\n\s*\n/g)
+    .map(block => block.trim())
+    .filter(Boolean)
+}
+
+function sanitizeBlock(block: string): string {
+  return block
+    .replace(/^\s*#+\s+/gm, '')
+    .replace(/^\s*(Created:|Type:|Tags:).*/gim, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function canonicalizeBlock(block: string): string {
+  return block
+    .toLowerCase()
+    .replace(/`/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 async function promptForInstructions(): Promise<string> {
   if (!process.stdin.isTTY) return ''
 
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   return new Promise(resolve => {
-    rl.question(
-      'Any details or instructions for the merge? (press Enter to skip): ',
-      answer => {
-        rl.close()
-        resolve(answer.trim())
-      }
-    )
+    rl.question('Any details or instructions for the merge? (press Enter to skip): ', answer => {
+      rl.close()
+      resolve(answer.trim())
+    })
   })
 }
 

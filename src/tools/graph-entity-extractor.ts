@@ -32,6 +32,8 @@ const VALID_REL_TYPES = new Set<string>([
 ])
 
 const EXTRACTION_SYSTEM_PROMPT = loadPrompt('graph-extraction.md')
+const GRAPH_EXTRACT_MAX_TOKENS_INITIAL = parseEnvInt('KB_GRAPH_EXTRACT_MAX_TOKENS_INITIAL', 8192)
+const GRAPH_EXTRACT_MAX_TOKENS_RETRY = parseEnvInt('KB_GRAPH_EXTRACT_MAX_TOKENS_RETRY', 16_384)
 
 /**
  * Extract entities and relationships from a single text passage.
@@ -64,7 +66,7 @@ export async function extractGraph(
   let raw: string
   try {
     // Large init docs can exceed 2k output tokens of JSON; truncation yields empty parses.
-    raw = await callModel(8192)
+    raw = await callModel(GRAPH_EXTRACT_MAX_TOKENS_INITIAL)
   } catch {
     return { entities: [], relationships: [] }
   }
@@ -77,7 +79,7 @@ export async function extractGraph(
     raw.length > 400
   ) {
     try {
-      raw = await callModel(16_384)
+      raw = await callModel(GRAPH_EXTRACT_MAX_TOKENS_RETRY)
       parsed = parseExtractorOutput(raw, docId)
     } catch {
       /* keep first parse result */
@@ -239,3 +241,11 @@ function parseExtractorOutput(raw: string, docId?: string): ExtractedGraph {
 }
 
 export { EXTRACTION_SYSTEM_PROMPT }
+
+function parseEnvInt(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed < 256) return fallback
+  return parsed
+}

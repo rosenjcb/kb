@@ -1,6 +1,6 @@
+import { existsSync } from 'node:fs'
 import { chmod, copyFile, mkdir, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { existsSync } from 'node:fs'
 import { build } from 'esbuild'
 
 const projectRoot = process.cwd()

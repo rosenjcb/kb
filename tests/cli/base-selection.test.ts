@@ -310,11 +310,9 @@ describe('CLI argv helpers (--base)', () => {
   })
 
   it('stripCliFlagWithValue removes --base and its value', () => {
-    expect(stripCliFlagWithValue(['graph', '--base', 'dogfood', '--entity', 'KB'], '--base')).toEqual([
-      'graph',
-      '--entity',
-      'KB',
-    ])
+    expect(
+      stripCliFlagWithValue(['graph', '--base', 'dogfood', '--entity', 'KB'], '--base')
+    ).toEqual(['graph', '--entity', 'KB'])
   })
 
   it('resolveKbStorageDirFromArgs honors --base over active session', async () => {

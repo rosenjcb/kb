@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { join, dirname } from 'node:path'
 
 const promptsDir = dirname(fileURLToPath(import.meta.url))
 
@@ -21,7 +21,9 @@ export function loadPromptParts(name: string): { intro: string; instructions: st
   const text = loadPrompt(name)
   const idx = text.indexOf('\n---\n')
   if (idx === -1) {
-    throw new Error(`Prompt file "${name}" is missing the \\n---\\n divider between intro and instructions.`)
+    throw new Error(
+      `Prompt file "${name}" is missing the \\n---\\n divider between intro and instructions.`
+    )
   }
   return {
     intro: text.slice(0, idx).trim(),

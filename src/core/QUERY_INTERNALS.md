@@ -29,6 +29,22 @@ Lane routing (`classifyDocumentLane`) restricts each stage to relevant document 
 
 After retrieval, `enrichReadDocumentsAnswerWithLLM` generates a prose answer from the final evidence set.
 
+## Research-Orchestrator Coverage Recovery
+
+`QueryResearchOrchestrator` (`src/tools/query-research-orchestrator.ts`) applies deterministic coverage recovery before final result selection.
+
+- Extract salient query terms.
+- Compare query terms against tokens observed in retrieved titles/tags/headings.
+- If terms are missing from evidence, issue bounded recovery probes using batched missing-term queries.
+
+Recovery stays generic and domain-agnostic; no project-specific question branches are embedded in code.
+
+Environment knobs:
+
+- `KB_QUERY_RESEARCH_MAX_ITERS` (default `3`)
+- `KB_QUERY_RESEARCH_BATCH_SIZE` (default `3`)
+- `KB_QUERY_RESEARCH_FACET_RECOVERY_MAX_QUERIES` (default `2`)
+
 ## Crawl (init-time only)
 
 "Crawl" refers to source-file discovery during `kb init` (`src/cli/init-cli.ts`). It is **not** involved in query time.

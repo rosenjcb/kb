@@ -1,15 +1,11 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  DocsMergeError,
-  parseDocsMergeCommand,
-  runDocsMerge,
-} from '../../src/cli/docs-merge-cli'
+import { afterEach, describe, expect, it } from 'vitest'
+import { DocsMergeError, parseDocsMergeCommand, runDocsMerge } from '../../src/cli/docs-merge-cli'
+import type { LLMProvider } from '../../src/core/types'
 import { SqliteDocumentWriter } from '../../src/tools/sqlite-document-writer'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
-import type { LLMProvider, LLMResponse } from '../../src/core/types'
 
 const tempDirs: string[] = []
 
@@ -36,24 +32,28 @@ async function seedDocument(
   })
 }
 
-function makeFakeLLM(mergedBody: string): LLMProvider {
+function makeFakeLLM(): LLMProvider {
   return {
     name: 'fake',
     model: 'fake-model',
     supportsStreaming: false,
-    call: vi.fn().mockResolvedValue({
-      text: mergedBody,
+    call: async () => ({
+      text: '',
       stopReason: 'end_turn',
       toolUses: [],
       usage: { inputTokens: 0, outputTokens: 0 },
-    } satisfies LLMResponse),
+    }),
   }
 }
 
 function makeOut() {
   const lines: string[] = []
   return {
-    out: { log: (m: string) => lines.push(m), error: (m: string) => lines.push(m), write: (m: string) => lines.push(m) },
+    out: {
+      log: (m: string) => lines.push(m),
+      error: (m: string) => lines.push(m),
+      write: (m: string) => lines.push(m),
+    },
     lines,
   }
 }
@@ -128,7 +128,7 @@ describe('runDocsMerge', () => {
       content: 'Source body content.',
     })
 
-    const llm = makeFakeLLM('## Merged\n\nCombined content from both documents.')
+    const llm = makeFakeLLM()
     const { out } = makeOut()
 
     await runDocsMerge(
@@ -142,8 +142,8 @@ describe('runDocsMerge', () => {
     const indexer = new SqliteKbIndexer({ dbPath })
 
     const targetContent = indexer.getDocumentContent('target-doc')
-    expect(targetContent).toContain('## Merged')
-    expect(targetContent).toContain('Combined content from both documents.')
+    expect(targetContent).toContain('Target body content.')
+    expect(targetContent).toContain('Source body content.')
     expect(targetContent).toContain('# Target Doc')
 
     expect(indexer.getDocumentContent('source-doc')).toBeUndefined()
@@ -155,7 +155,7 @@ describe('runDocsMerge', () => {
     await seedDocument(baseDir, { title: 'Source A', documentId: 'source-a', content: 'A body.' })
     await seedDocument(baseDir, { title: 'Source B', documentId: 'source-b', content: 'B body.' })
 
-    const llm = makeFakeLLM('Merged body.')
+    const llm = makeFakeLLM()
     const { out } = makeOut()
 
     await runDocsMerge(
@@ -175,7 +175,7 @@ describe('runDocsMerge', () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, { title: 'Source', documentId: 'source', content: 'body' })
 
-    const llm = makeFakeLLM('merged')
+    const llm = makeFakeLLM()
     const { out } = makeOut()
 
     await expect(
@@ -187,7 +187,7 @@ describe('runDocsMerge', () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, { title: 'Target', documentId: 'target', content: 'body' })
 
-    const llm = makeFakeLLM('merged')
+    const llm = makeFakeLLM()
     const { out } = makeOut()
 
     await expect(
@@ -195,12 +195,12 @@ describe('runDocsMerge', () => {
     ).rejects.toThrow(DocsMergeError)
   })
 
-  it('Given LLM returns empty content, then throws DocsMergeError', async () => {
+  it('Given deterministic merge yields empty content, then throws DocsMergeError', async () => {
     const baseDir = await createTempBase()
-    await seedDocument(baseDir, { title: 'Target', documentId: 'target', content: 'body' })
-    await seedDocument(baseDir, { title: 'Source', documentId: 'source', content: 'body' })
+    await seedDocument(baseDir, { title: 'Target', documentId: 'target', content: '' })
+    await seedDocument(baseDir, { title: 'Source', documentId: 'source', content: '' })
 
-    const llm = makeFakeLLM('   ')
+    const llm = makeFakeLLM()
     const { out } = makeOut()
 
     await expect(
@@ -208,20 +208,20 @@ describe('runDocsMerge', () => {
     ).rejects.toThrow(DocsMergeError)
   })
 
-  it('Given merge succeeds, then LLM receives prompt containing both doc contents', async () => {
+  it('Given merge succeeds, then duplicate blocks are deduplicated', async () => {
     const baseDir = await createTempBase()
-    await seedDocument(baseDir, { title: 'Target', documentId: 'target', content: 'Target fact.' })
-    await seedDocument(baseDir, { title: 'Source', documentId: 'source', content: 'Source fact.' })
+    await seedDocument(baseDir, { title: 'Target', documentId: 'target', content: 'Shared fact.' })
+    await seedDocument(baseDir, { title: 'Source', documentId: 'source', content: 'Shared fact.' })
 
-    const llm = makeFakeLLM('merged body')
+    const llm = makeFakeLLM()
     const { out } = makeOut()
 
     await runDocsMerge({ targetDocId: 'target', sourceDocIds: ['source'] }, baseDir, llm, out)
 
-    const callArgs = (llm.call as ReturnType<typeof vi.fn>).mock.calls[0][0]
-    const prompt = callArgs.messages[0].content as string
-    expect(prompt).toContain('Target fact.')
-    expect(prompt).toContain('Source fact.')
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+    const content = indexer.getDocumentContent('target') ?? ''
+    expect(content.match(/Shared fact\./g)?.length ?? 0).toBe(1)
   })
 
   it('Given merge succeeds, then target metadata (tags, createdAt) is preserved', async () => {
@@ -234,7 +234,7 @@ describe('runDocsMerge', () => {
     })
     await seedDocument(baseDir, { title: 'Source', documentId: 'source', content: 'body' })
 
-    const llm = makeFakeLLM('merged body')
+    const llm = makeFakeLLM()
     const { out } = makeOut()
 
     await runDocsMerge({ targetDocId: 'target', sourceDocIds: ['source'] }, baseDir, llm, out)

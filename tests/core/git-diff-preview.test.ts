@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { renderDiffBundle, renderNewFileDiff, renderTextDiff } from '../../src/core/git-diff-preview'
+import {
+  renderDiffBundle,
+  renderNewFileDiff,
+  renderTextDiff,
+} from '../../src/core/git-diff-preview'
 
 describe('git-diff-preview', () => {
   it('renders a new file diff section', () => {
@@ -10,7 +14,11 @@ describe('git-diff-preview', () => {
   })
 
   it('renders a unified text diff section', () => {
-    const diff = renderTextDiff('docs/existing.md', 'line one\nline two\n', 'line one\nline changed\n')
+    const diff = renderTextDiff(
+      'docs/existing.md',
+      'line one\nline two\n',
+      'line one\nline changed\n'
+    )
     expect(diff).toContain('--- a/docs/existing.md')
     expect(diff).toContain('+++ b/docs/existing.md')
     expect(diff).toContain('-line two')

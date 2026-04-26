@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -18,7 +18,8 @@ import type { JekyllGraphPayload, KbDocRow } from '../../src/core/publish/jekyll
 const makeDoc = (overrides: Partial<KbDocRow> = {}): KbDocRow => ({
   id: 'doc-1',
   title: 'My Test Document',
-  content: '# My Test Document\n\nCreated: 2026-01-01T00:00:00.000Z\nType: architecture\nTags: a, b\n\n## Body\n\nHello world.',
+  content:
+    '# My Test Document\n\nCreated: 2026-01-01T00:00:00.000Z\nType: architecture\nTags: a, b\n\n## Body\n\nHello world.',
   doc_type: 'architecture',
   tags_json: '["a","b"]',
   created_at: '2026-01-15T10:00:00.000Z',
@@ -162,7 +163,7 @@ describe('buildJekyllFile', () => {
     expect(output).toContain('\n---\n')
     expect(output).toContain('layout: default')
     expect(output).toContain('title: My Test Document')
-    expect(output).toContain('date: \'2026-06-01\'')
+    expect(output).toContain("date: '2026-06-01'")
   })
 
   it('Given a doc, then body content appears after front matter', () => {
@@ -241,7 +242,10 @@ describe('syncDocsToJekyll', () => {
     expect(graphPage).toContain('Cytoscape.js')
     expect(graphPage).toContain('/assets/generated/kb-graph.json')
 
-    const graphJson = await readFile(path.join(jekyllRoot, 'assets', 'generated', 'kb-graph.json'), 'utf8')
+    const graphJson = await readFile(
+      path.join(jekyllRoot, 'assets', 'generated', 'kb-graph.json'),
+      'utf8'
+    )
     expect(graphJson).toContain('"id": "kb"')
   })
 
@@ -253,10 +257,7 @@ describe('syncDocsToJekyll', () => {
     const files = await readdir(path.join(jekyllRoot, '_original_docs'))
     expect(files).toContain('my-test-document.md')
 
-    const dataYaml = await readFile(
-      path.join(jekyllRoot, '_data', 'kb_original_docs.yml'),
-      'utf8'
-    )
+    const dataYaml = await readFile(path.join(jekyllRoot, '_data', 'kb_original_docs.yml'), 'utf8')
     expect(dataYaml).toContain('title: My Test Document')
   })
 

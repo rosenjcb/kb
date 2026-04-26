@@ -16,6 +16,12 @@ import { estimateCost } from './telemetry'
 import type { ToolExecutor } from './tool-registry'
 import type { LLMProvider } from './types'
 
+const DEFAULT_INTENT_LOOP_MAX_ITERATIONS = parseEnvInt('KB_INTENT_LOOP_MAX_ITERATIONS', 3)
+const DEFAULT_INTENT_LOOP_CONFIDENCE_THRESHOLD = parseEnvFloat(
+  'KB_INTENT_LOOP_CONFIDENCE_THRESHOLD',
+  0.7
+)
+
 export interface IntentLoopConfig {
   /** Maximum number of iterations. Default: 3. */
   maxIterations?: number
@@ -40,8 +46,8 @@ export async function runIntentLoop(
   toolExecutor: ToolExecutor,
   config: IntentLoopConfig = {}
 ): Promise<IntentLoopResult> {
-  const maxIterations = config.maxIterations ?? 3
-  const confidenceThreshold = config.confidenceThreshold ?? 0.7
+  const maxIterations = config.maxIterations ?? DEFAULT_INTENT_LOOP_MAX_ITERATIONS
+  const confidenceThreshold = config.confidenceThreshold ?? DEFAULT_INTENT_LOOP_CONFIDENCE_THRESHOLD
   const router = new DefaultIntentRouter(toolExecutor)
 
   const { collector } = config
@@ -108,6 +114,22 @@ export async function runIntentLoop(
   }
 
   return { result, iterations, escalated }
+}
+
+function parseEnvInt(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback
+  return parsed
+}
+
+function parseEnvFloat(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const parsed = Number.parseFloat(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) return fallback
+  return parsed
 }
 
 function extractUsageFromResult(result: IntentResult): {

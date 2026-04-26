@@ -235,7 +235,6 @@ export function readDocumentsFromSqlite(dbPath: string): SqliteDocumentRow[] {
   }
 }
 
-
 // ─── Notion API ─────────────────────────────────────────────────────────────
 
 async function notionCreatePage(input: {

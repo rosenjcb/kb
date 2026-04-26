@@ -81,15 +81,7 @@ export interface LaneRoutingEventInput {
 export interface SessionEntryInput {
   sessionDate: string
   base: string
-  eventType:
-    | 'submit'
-    | 'validate'
-    | 'query'
-    | 'chat'
-    | 'publish'
-    | 'init'
-    | 'tool-call'
-    | 'system'
+  eventType: 'submit' | 'validate' | 'query' | 'chat' | 'publish' | 'init' | 'tool-call' | 'system'
   summary: string
   metadata?: Record<string, unknown>
 }
@@ -897,7 +889,6 @@ export class SqliteKbIndexer {
 
     tx()
   }
-
 }
 
 interface ParsedDocument {

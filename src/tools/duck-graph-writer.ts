@@ -9,8 +9,8 @@
  * Soft-delete on invalidate: weight set to 0, not removed.
  */
 
-import path from 'node:path'
 import { mkdir, rmdir } from 'node:fs/promises'
+import path from 'node:path'
 import { type DuckDBConnection, DuckDBInstance } from '@duckdb/node-api'
 
 export type EntityType = 'concept' | 'system' | 'tool' | 'decision' | 'person'
@@ -736,7 +736,13 @@ export class DuckGraphWriter {
     const current = new Promise<void>(resolve => {
       releaseQueue = resolve
     })
-    DuckGraphWriter.writeQueueByPath.set(queueKey, previous.then(() => current, () => current))
+    DuckGraphWriter.writeQueueByPath.set(
+      queueKey,
+      previous.then(
+        () => current,
+        () => current
+      )
+    )
 
     await previous.catch(() => {})
     const releaseFileLock = await acquireFilesystemWriteLock(this.dbPath)

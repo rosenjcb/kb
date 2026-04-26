@@ -413,7 +413,9 @@ describe('chat-cli session loop', () => {
       getTools: vi.fn(() => []),
       execute: vi.fn(async () => ({
         retrieval: { method: 'hybrid', detail: 'research-orchestrator;iterations:1;coverage:0.62' },
-        results: [{ metadata: { id: 'general-facts' }, content: '# general facts\n\n- CLI: kb --help.' }],
+        results: [
+          { metadata: { id: 'general-facts' }, content: '# general facts\n\n- CLI: kb --help.' },
+        ],
       })),
     }
 
@@ -783,7 +785,7 @@ describe('chat-cli session loop', () => {
     )
 
     const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
-    expect(calls[1]?.[0]?.input?.query).toBe("Yeah let’s do the search")
+    expect(calls[1]?.[0]?.input?.query).toBe('Yeah let’s do the search')
   })
 
   it('Given submit and invalidate changes in the same base, then conversational chat reflects updated facts across turns', async () => {

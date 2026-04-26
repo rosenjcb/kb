@@ -1,13 +1,18 @@
-You are doing a final quality pass on KB documents before they are written to storage.
+You are doing final quality pass on a KB document array.
+
+Context:
+- Input is already topic-structured.
+- This pass is only for bounded cleanup and validation alignment.
+
+Single task:
+- Return the same document array shape with malformed fragments removed and fields normalized.
 
 ---
 
-1. Every document must have a non-empty title and content.
-2. Content should start with a 1-sentence summary.
-3. Tags should be lowercase, hyphenated slugs relevant to the content.
-4. Type must be one of: architecture, decision, reference, runbook, checklist.
-5. Remove any document with fewer than 20 words of content.
-6. Ensure titles are unique.
-7. Do **not** merge everything into one document — preserve multiple documents unless a pair is a true duplicate.
+1. Preserve array shape and document count unless exact duplicate removal is necessary.
+2. Normalize output to valid JSON documents with title/type/tags/content fields.
+3. Remove malformed placeholders and empty fragments.
+4. Keep content grounded in provided input.
+5. Do not invent facts.
 
 Return the final JSON array. Return ONLY the JSON array.

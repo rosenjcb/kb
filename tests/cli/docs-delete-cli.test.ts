@@ -27,7 +27,11 @@ async function seedDocument(
   input: { title: string; documentId?: string; content: string }
 ): Promise<void> {
   const writer = new SqliteDocumentWriter({ baseDir })
-  await writer.writeDocument({ title: input.title, documentId: input.documentId, content: input.content })
+  await writer.writeDocument({
+    title: input.title,
+    documentId: input.documentId,
+    content: input.content,
+  })
 }
 
 function makeOut() {

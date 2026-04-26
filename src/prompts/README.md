@@ -2,6 +2,13 @@
 
 LLM prompts used by the KB CLI, stored as plain Markdown files so they can be read and edited without touching TypeScript.
 
+## Design rule
+
+- One prompt = one operation or one decision.
+- Orchestration, retries, branching, and multi-step policy live in TypeScript code.
+- Prompt text should define output contract and minimal task scope only.
+- Keep prompt context rich enough for accuracy (inputs, boundaries, failure behavior), but keep operation count to one.
+
 ## Files
 
 | File | Used by | Kind |
@@ -12,6 +19,9 @@ LLM prompts used by the KB CLI, stored as plain Markdown files so they can be re
 | `init-refinement.md` | `init-cli.ts` — `runRefinementPass` | two-part (intro + instructions) |
 | `init-quality.md` | `init-cli.ts` — `runQualityPass` | two-part (intro + instructions) |
 | `init-enrichment.md` | `init-cli.ts` — `runPerDocEnrichmentPass` | two-part (intro + instructions) |
+| `agent-default.md` | `agent-registry.ts` — default delegated worker profile | single-part |
+| `agent-research.md` | `agent-registry.ts` — research delegated worker profile | single-part |
+| `subagent-delegation.md` | `task.ts` — delegated subagent execution instructions | single-part |
 
 ## Prompt formats
 

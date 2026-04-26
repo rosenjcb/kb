@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
-import type { CliOutput } from './index'
 import { type CmdMode, cmd } from './cmd-ref'
+import type { CliOutput } from './index'
 
 export interface ParsedDocsDeleteCommand {
   documentId: string
@@ -64,9 +64,7 @@ export function parseDocsDeleteCommand(args: string[]): ParsedDocsDeleteCommand 
   }
 
   if (positional.length === 0) {
-    throw new DocsDeleteError(
-      `docs delete requires a document id.\n\n${printDocsDeleteHelp()}`
-    )
+    throw new DocsDeleteError(`docs delete requires a document id.\n\n${printDocsDeleteHelp()}`)
   }
 
   if (positional.length > 1) {

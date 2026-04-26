@@ -48,7 +48,8 @@ export class DefaultIntentRouter implements IntentRouter {
         return {
           selectedOperation: 'invalidate_orchestrator',
           operationInput: payload,
-          policyReason: 'invalidate intent; KB mutation via invalidate orchestrator (preview opt-in)',
+          policyReason:
+            'invalidate intent; KB mutation via invalidate orchestrator (preview opt-in)',
         }
 
       case 'query_truth': {

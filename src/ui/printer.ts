@@ -1,7 +1,7 @@
 import chalk from 'chalk'
 import ora, { type Ora } from 'ora'
-import type { CliOutput } from '../cli/index.js'
 import type { CmdMode } from '../cli/cmd-ref.js'
+import type { CliOutput } from '../cli/index.js'
 import { formatOrchestrationMetaLine } from './orchestration-meta.js'
 
 // ---------------------------------------------------------------------------

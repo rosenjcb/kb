@@ -150,10 +150,7 @@ describe('llm-provider', () => {
           candidates: [
             {
               content: {
-                parts: [
-                  { text: 'internal reasoning', thought: true },
-                  { text: 'ANSWER' },
-                ],
+                parts: [{ text: 'internal reasoning', thought: true }, { text: 'ANSWER' }],
               },
             },
           ],

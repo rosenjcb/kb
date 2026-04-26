@@ -14,10 +14,10 @@ import {
   printReadDocumentsOrchestrationFooter,
   rewriteIntentInputWithSessionContext,
 } from '../../src/cli/intent-cli'
-import { isOrchestrationMetaLine } from '../../src/ui/orchestration-meta'
-import { createPrinter } from '../../src/ui/printer'
 import type { ToolExecutor } from '../../src/core/tool-registry'
 import type { LLMProvider } from '../../src/core/types'
+import { isOrchestrationMetaLine } from '../../src/ui/orchestration-meta'
+import { createPrinter } from '../../src/ui/printer'
 
 const tempDirs: string[] = []
 
@@ -104,9 +104,9 @@ describe('intent-cli parsing', () => {
   })
 
   it('rejects invalidate --preview with --dry-run', () => {
-    expect(() =>
-      parseIntentCommand(['invalidate', 'old fact', '--preview', '--dry-run'])
-    ).toThrow('--preview cannot be combined with --dry-run')
+    expect(() => parseIntentCommand(['invalidate', 'old fact', '--preview', '--dry-run'])).toThrow(
+      '--preview cannot be combined with --dry-run'
+    )
   })
 
   it('rejects unknown public commands', () => {
@@ -137,7 +137,9 @@ describe('intent-cli formatting', () => {
           retrieval: {
             method: 'hybrid',
             detail: 'fts+vector-rerank',
-            checkpoints: [{ stage: 'hybrid_primary', status: 'hit', nextAction: 'return', confidence: 0.86 }],
+            checkpoints: [
+              { stage: 'hybrid_primary', status: 'hit', nextAction: 'return', confidence: 0.86 },
+            ],
           },
           results: [
             {
@@ -225,7 +227,9 @@ describe('intent-cli execution and enrichment', () => {
       execute: vi.fn(async toolUse => {
         if (toolUse.name === 'invalidate_fact') {
           return {
-            changes: [{ documentId: 'ops-facts', title: 'Ops Facts', replaced: 1, diff: '- old\n+ new' }],
+            changes: [
+              { documentId: 'ops-facts', title: 'Ops Facts', replaced: 1, diff: '- old\n+ new' },
+            ],
             summary: 'Scanned 3 KB documents. 1 replacements in 1 documents.',
           }
         }
@@ -248,7 +252,13 @@ describe('intent-cli execution and enrichment', () => {
     await writeFile(
       path.join(dir, 'query-session.json'),
       JSON.stringify({
-        turns: [{ question: 'how does kb work?', answer: 'It stores project knowledge.', timestamp: Date.now() }],
+        turns: [
+          {
+            question: 'how does kb work?',
+            answer: 'It stores project knowledge.',
+            timestamp: Date.now(),
+          },
+        ],
         updatedAt: Date.now(),
       }),
       'utf8'
@@ -257,7 +267,10 @@ describe('intent-cli execution and enrichment', () => {
     const llm: LLMProvider = {
       name: 'test',
       model: 'stub',
-      call: vi.fn(async () => ({ text: 'How does kb base selection work?', usage: { inputTokens: 1, outputTokens: 1 } })),
+      call: vi.fn(async () => ({
+        text: 'How does kb base selection work?',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
     } as unknown as LLMProvider
 
     const parsed = parseIntentCommand(['query', 'and base selection?', '--session'])
@@ -267,7 +280,11 @@ describe('intent-cli execution and enrichment', () => {
 
   it('augments query results with workspace fallback but leaves invalidate untouched', async () => {
     const dir = await createTempDir()
-    await writeFile(path.join(dir, 'README.md'), '# Project\n\nKB stores project knowledge locally.\n', 'utf8')
+    await writeFile(
+      path.join(dir, 'README.md'),
+      '# Project\n\nKB stores project knowledge locally.\n',
+      'utf8'
+    )
 
     const parsed = parseIntentCommand(['query', 'what is this project for?'])
     const queryResult = await augmentIntentResultWithWorkspaceFallback(
@@ -294,7 +311,10 @@ describe('intent-cli execution and enrichment', () => {
     const llm: LLMProvider = {
       name: 'test',
       model: 'stub',
-      call: vi.fn(async () => ({ text: 'KB uses session base first, then default base.', usage: { inputTokens: 1, outputTokens: 1 } })),
+      call: vi.fn(async () => ({
+        text: 'KB uses session base first, then default base.',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
     } as unknown as LLMProvider
 
     const queryParsed = parseIntentCommand(['query', 'base precedence'])
@@ -324,5 +344,78 @@ describe('intent-cli execution and enrichment', () => {
       llm
     )
     expect((untouched.data as { ok?: boolean }).ok).toBe(true)
+  })
+
+  it('replaces insufficient LLM answer with generic coverage summary', async () => {
+    const llm: LLMProvider = {
+      name: 'test',
+      model: 'stub',
+      call: vi.fn(async () => ({
+        text: 'I do not have enough evidence to answer.',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    } as unknown as LLMProvider
+
+    const parsed = parseIntentCommand(['query', 'roadmap version history support policy'])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      parsed,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        data: {
+          retrieval: { method: 'hybrid' },
+          results: [
+            {
+              metadata: { id: 'roadmap', title: 'Roadmap' },
+              content: '# Roadmap\n\nRoadmap includes future platform backend milestones.',
+            },
+            {
+              metadata: { id: 'history', title: 'History' },
+              content: '# History\n\nVersion history includes release sequence and support policy updates.',
+            },
+          ],
+        },
+      },
+      llm
+    )
+
+    const answer = (enriched.data as { answer?: string }).answer ?? ''
+    expect(answer).toContain('Evidence-backed coverage summary:')
+    expect(answer).toContain('source: roadmap')
+    expect(answer).toContain('source: history')
+  })
+
+  it('keeps long sufficient LLM answer unchanged', async () => {
+    const llmText =
+      'Raylib roadmap lists planned backend improvements and milestone items, while version history captures release sequence and policy changes across versions with specific chronology and context for support expectations.'
+    const llm: LLMProvider = {
+      name: 'test',
+      model: 'stub',
+      call: vi.fn(async () => ({
+        text: llmText,
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    } as unknown as LLMProvider
+
+    const parsed = parseIntentCommand(['query', 'roadmap version history support policy'])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      parsed,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        data: {
+          retrieval: { method: 'hybrid' },
+          results: [
+            {
+              metadata: { id: 'roadmap', title: 'Roadmap' },
+              content: '# Roadmap\n\nRoadmap includes future platform backend milestones.',
+            },
+          ],
+        },
+      },
+      llm
+    )
+
+    expect((enriched.data as { answer?: string }).answer).toBe(llmText)
   })
 })

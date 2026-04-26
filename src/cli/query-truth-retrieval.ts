@@ -3,7 +3,7 @@ import type { RunCollector } from '../core/telemetry.js'
 import type { ToolExecutor } from '../core/tool-registry.js'
 import type { LLMProvider } from '../core/types.js'
 import type { IntentResult } from '../intents/types.js'
-import { augmentIntentResultWithWorkspaceFallback, type ParsedIntentCommand } from './intent-cli.js'
+import { type ParsedIntentCommand, augmentIntentResultWithWorkspaceFallback } from './intent-cli.js'
 
 export interface RunQueryTruthRetrievalInput {
   /** Parsed intent after any session rewrite / graph expansion; envelope must be `query_truth`. */
