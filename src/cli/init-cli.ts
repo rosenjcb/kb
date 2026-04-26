@@ -171,6 +171,14 @@ interface CandidateDoc {
   isOriginal?: boolean
 }
 
+const VALID_DOC_TYPES = new Set<NonNullable<CandidateDoc['type']>>([
+  'architecture',
+  'decision',
+  'reference',
+  'runbook',
+  'checklist',
+])
+
 interface InitCheckpointV1 {
   version: 1
   updatedAt: string
@@ -364,6 +372,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
   const progress = new InitProgressReporter(7, options.progressSink)
+  const emitInitAction = (label: string, detail: string) => {
+    options.progressSink?.(`[init:action] ${label} — ${detail}\n`)
+  }
   let rawProvider = options.provider ?? (await resolveProvider())
   let counter =
     rawProvider && options.collector ? new TokenCountingProvider(rawProvider) : undefined
@@ -568,6 +579,10 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
 
       if (!provider) throw new Error('No LLM provider available.')
       const endPass2 = makeCycleTimer('pass2', provider, options.collector, counter)
+      emitInitAction('pass2', 'normalize docs')
+      emitInitAction('pass2', 'split multi-topic docs')
+      emitInitAction('pass2', 'merge likely duplicates')
+      emitInitAction('pass2', 'enforce schema + coverage placeholders')
       candidateDocs = await runRefinementPass(provider, context, candidateDocs)
       endPass2()
       topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
@@ -606,6 +621,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.start('pass3', 'quality pass…')
       if (!provider) throw new Error('No LLM provider available.')
       const endPass3 = makeCycleTimer('pass3', provider, options.collector, counter)
+      emitInitAction('pass3', 'dedup lines + docs')
+      emitInitAction('pass3', 'enforce min content + unique titles')
+      emitInitAction('pass3', 'final schema normalization')
       candidateDocs = await runQualityPass(provider, candidateDocs)
       endPass3()
       topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
@@ -1230,80 +1248,36 @@ async function runSynthesisPass(
   )
 
   if (!topicResults.some(r => r.succeeded)) {
-    return INIT_TOPIC_DEFINITIONS.map(def => synthesisPlaceholderDoc(def, baseName))
+    return normalizeInitDocs(
+      INIT_TOPIC_DEFINITIONS.map(def => synthesisPlaceholderDoc(def, baseName))
+    )
   }
 
-  return topicResults.map(r => ({ ...r.doc, isOriginal: false }))
+  return normalizeInitDocs(topicResults.map(r => ({ ...r.doc, isOriginal: false })))
 }
 
 async function runRefinementPass(
-  provider: LLMProvider,
+  _provider: LLMProvider,
   context: InitContext,
   docs: CandidateDoc[]
 ): Promise<CandidateDoc[]> {
-  const refinementParts = loadPromptParts('init-refinement.md')
-  const { prompt, maxTokens } = buildBudgetedPrompt({
-    intro: refinementParts.intro,
-    sections: [
-      {
-        heading: 'Current documents',
-        content: formatDocsForPrompt(docs),
-        priority: 3,
-        minTokens: 500,
-      },
-      {
-        heading: 'Additional user context',
-        content: formatQuestionAnswersForPrompt(context.userAnswers, '(none)'),
-        priority: 1,
-        minTokens: 100,
-      },
-    ],
-    instructions: refinementParts.instructions,
-    requestedMaxTokens: INIT_OUTPUT_TOKENS.refinement,
+  const next = runDeterministicRefinementPass(docs, context)
+  return normalizeInitDocs(preventInitDocCollapse(docs, next), {
+    fallback: docs,
+    preserveMinimumCount: docs.length,
   })
-
-  const response = await provider.call({
-    messages: [{ role: 'user', content: prompt }],
-    maxTokens,
-    temperature: 0.1,
-  })
-
-  const parsed = parseDocArray(response.text)
-  let next = parsed ?? docs
-  if (parsed && docs.length >= 4 && next.length < docs.length) {
-    next = docs
-  }
-  return preventInitDocCollapse(docs, next)
 }
 
 async function runQualityPass(
-  provider: LLMProvider,
+  _provider: LLMProvider,
   docs: CandidateDoc[]
 ): Promise<CandidateDoc[]> {
-  const qualityParts = loadPromptParts('init-quality.md')
-  const { prompt, maxTokens } = buildBudgetedPrompt({
-    intro: qualityParts.intro,
-    sections: [
-      {
-        heading: 'Documents',
-        content: formatDocsForPrompt(docs),
-        priority: 1,
-        minTokens: 600,
-      },
-    ],
-    instructions: qualityParts.instructions,
-    requestedMaxTokens: INIT_OUTPUT_TOKENS.quality,
+  const next = runDeterministicQualityPass(docs)
+  return normalizeInitDocs(preventInitDocCollapse(docs, next), {
+    fallback: docs,
+    preserveMinimumCount: docs.length,
+    minWords: 20,
   })
-
-  const response = await provider.call({
-    messages: [{ role: 'user', content: prompt }],
-    maxTokens,
-    temperature: 0.0,
-  })
-
-  const parsed = parseDocArray(response.text)
-  const next = parsed ?? docs
-  return preventInitDocCollapse(docs, next)
 }
 
 /**
@@ -1371,7 +1345,10 @@ async function runPerDocEnrichmentPass(
     })
   )
 
-  return enriched
+  return normalizeInitDocs(enriched, {
+    fallback: docs,
+    preserveMinimumCount: docs.length,
+  })
 }
 
 type GraphPassOutcome =
@@ -1480,25 +1457,6 @@ async function writeDocs(docs: CandidateDoc[], baseDir: string, base: string): P
   }
 
   return writtenIds
-}
-
-function parseDocArray(text: string): CandidateDoc[] | null {
-  const match = text.match(/\[\s*\{[\s\S]*\}\s*\]/)
-  if (!match) return null
-  try {
-    const parsed = JSON.parse(match[0]) as unknown[]
-    if (!Array.isArray(parsed)) return null
-    const docs = parsed.filter(
-      (item): item is CandidateDoc =>
-        typeof item === 'object' &&
-        item !== null &&
-        typeof (item as CandidateDoc).title === 'string' &&
-        typeof (item as CandidateDoc).content === 'string'
-    )
-    return docs.length > 0 ? docs : null
-  } catch {
-    return null
-  }
 }
 
 function buildBudgetedPrompt(options: {
@@ -1817,6 +1775,277 @@ function expandSingleDocIntoSourceShards(
 function preventInitDocCollapse(previous: CandidateDoc[], next: CandidateDoc[]): CandidateDoc[] {
   if (previous.length > 1 && next.length === 1) return previous
   return next
+}
+
+function runDeterministicRefinementPass(docs: CandidateDoc[], context: InitContext): CandidateDoc[] {
+  let next = normalizeInitDocs(docs, { fallback: docs })
+  next = splitMultiTopicDocs(next)
+  next = mergeLikelyDuplicateDocs(next)
+  next = appendCoveragePlaceholders(next, context)
+  return next
+}
+
+function runDeterministicQualityPass(docs: CandidateDoc[]): CandidateDoc[] {
+  let next = normalizeInitDocs(docs, { fallback: docs })
+  next = dedupWithinDocs(next)
+  next = mergeLikelyDuplicateDocs(next)
+  next = normalizeInitDocs(next, { fallback: docs, minWords: 20 })
+  return next
+}
+
+function normalizeInitDocs(
+  docs: CandidateDoc[],
+  options: {
+    fallback?: CandidateDoc[]
+    preserveMinimumCount?: number
+    minWords?: number
+  } = {}
+): CandidateDoc[] {
+  const normalized: CandidateDoc[] = []
+  const seenTitles = new Set<string>()
+
+  for (const raw of docs) {
+    const cleaned = normalizeInitDoc(raw, options.minWords ?? 0)
+    if (!cleaned) continue
+    const title = ensureUniqueTitle(cleaned.title, seenTitles)
+    seenTitles.add(title.toLowerCase())
+    normalized.push({ ...cleaned, title })
+  }
+
+  if (
+    options.fallback &&
+    typeof options.preserveMinimumCount === 'number' &&
+    normalized.length < options.preserveMinimumCount
+  ) {
+    return normalizeInitDocs(options.fallback, { minWords: 0 })
+  }
+
+  return normalized.length > 0 ? normalized : options.fallback ?? []
+}
+
+function normalizeInitDoc(doc: CandidateDoc, minWords: number): CandidateDoc | null {
+  const title = normalizeTitle(doc.title)
+  const content = normalizeContent(doc.content)
+  if (!title || !content) return null
+  if (countWords(content) < minWords) return null
+
+  const tags = normalizeTags(doc.tags)
+  const type = VALID_DOC_TYPES.has(doc.type ?? 'reference') ? doc.type ?? 'reference' : 'reference'
+
+  return {
+    ...doc,
+    title,
+    type,
+    tags,
+    content: ensureSummaryLead(content),
+  }
+}
+
+function normalizeTitle(value: string): string {
+  return value
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120)
+}
+
+function normalizeContent(value: string): string {
+  const lines = value
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .filter(line => !/^type:\s*/i.test(line))
+    .filter(line => !/^tags:\s*/i.test(line))
+    .filter(line => !/^created:\s*/i.test(line))
+    .filter(line => !/^\*+\s*:/.test(line))
+    .filter(line => !/^[-*]\s*$/.test(line))
+    .filter(line => line !== '```')
+  return lines.join('\n').trim()
+}
+
+function normalizeTags(tags: string[] | undefined): string[] {
+  const cleaned = (tags ?? [])
+    .map(tag =>
+      tag
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+    )
+    .filter(Boolean)
+  return cleaned.length > 0 ? [...new Set(cleaned)] : ['general']
+}
+
+function ensureSummaryLead(content: string): string {
+  const lines = content.split('\n').filter(Boolean)
+  if (lines.length === 0) return content
+  const first = lines[0]
+  if (/[.!?]$/.test(first)) return lines.join('\n')
+  lines[0] = `${first}.`
+  return lines.join('\n')
+}
+
+function countWords(content: string): number {
+  return content.split(/\s+/).filter(Boolean).length
+}
+
+function ensureUniqueTitle(title: string, seenLowerTitles: Set<string>): string {
+  if (!seenLowerTitles.has(title.toLowerCase())) return title
+  let attempt = 2
+  while (seenLowerTitles.has(`${title} ${attempt}`.toLowerCase())) {
+    attempt += 1
+  }
+  return `${title} ${attempt}`
+}
+
+function splitMultiTopicDocs(docs: CandidateDoc[]): CandidateDoc[] {
+  const expanded: CandidateDoc[] = []
+  for (const doc of docs) {
+    const parts = splitDocByHeadings(doc)
+    if (parts.length <= 1) {
+      expanded.push(doc)
+      continue
+    }
+    expanded.push(...parts)
+  }
+  return expanded
+}
+
+function splitDocByHeadings(doc: CandidateDoc): CandidateDoc[] {
+  const lines = doc.content.split('\n')
+  const sections: string[] = []
+  let current: string[] = []
+  for (const line of lines) {
+    if (/^##\s+/.test(line) && current.length > 0) {
+      sections.push(current.join('\n').trim())
+      current = [line]
+      continue
+    }
+    current.push(line)
+  }
+  if (current.length > 0) sections.push(current.join('\n').trim())
+  if (sections.length <= 1) return [doc]
+
+  return sections
+    .map((content, index) => {
+      const heading = content.match(/^##\s+(.+)$/m)?.[1]?.trim()
+      return {
+        ...doc,
+        title: heading ? `${doc.title} - ${heading}` : `${doc.title} Part ${index + 1}`,
+        content,
+      }
+    })
+    .filter(section => countWords(section.content) >= 20)
+}
+
+function mergeLikelyDuplicateDocs(docs: CandidateDoc[]): CandidateDoc[] {
+  const merged: CandidateDoc[] = []
+  const used = new Set<number>()
+
+  for (let i = 0; i < docs.length; i++) {
+    if (used.has(i)) continue
+    let base = docs[i]
+
+    for (let j = i + 1; j < docs.length; j++) {
+      if (used.has(j)) continue
+      if (!areLikelyDuplicateDocs(base, docs[j])) continue
+      base = mergeTwoDocs(base, docs[j])
+      used.add(j)
+    }
+
+    merged.push(base)
+  }
+
+  return merged
+}
+
+function areLikelyDuplicateDocs(a: CandidateDoc, b: CandidateDoc): boolean {
+  const titleA = normalizeTitleTokenSet(a.title)
+  const titleB = normalizeTitleTokenSet(b.title)
+  const titleOverlap = overlapRatio(titleA, titleB)
+  if (titleOverlap >= 0.75) return true
+
+  const contentA = normalizeContentTokenSet(a.content)
+  const contentB = normalizeContentTokenSet(b.content)
+  return overlapRatio(contentA, contentB) >= 0.72
+}
+
+function mergeTwoDocs(a: CandidateDoc, b: CandidateDoc): CandidateDoc {
+  const title = a.title.length <= b.title.length ? a.title : b.title
+  const type = a.type === b.type ? a.type : a.type ?? b.type ?? 'reference'
+  const tags = normalizeTags([...(a.tags ?? []), ...(b.tags ?? [])])
+  const content = dedupLines(`${a.content}\n${b.content}`)
+  return {
+    ...a,
+    title,
+    type,
+    tags,
+    content,
+  }
+}
+
+function dedupWithinDocs(docs: CandidateDoc[]): CandidateDoc[] {
+  return docs.map(doc => ({
+    ...doc,
+    content: dedupLines(doc.content),
+  }))
+}
+
+function dedupLines(content: string): string {
+  const seen = new Set<string>()
+  const output: string[] = []
+  for (const line of content.split('\n')) {
+    const key = line.toLowerCase().replace(/\s+/g, ' ').trim()
+    if (!key) continue
+    if (seen.has(key)) continue
+    seen.add(key)
+    output.push(line.trim())
+  }
+  return output.join('\n').trim()
+}
+
+function appendCoveragePlaceholders(docs: CandidateDoc[], context: InitContext): CandidateDoc[] {
+  const existingTopics = new Set((docs.flatMap(doc => doc.tags ?? [])).map(tag => tag.toLowerCase()))
+  const missing = INIT_TOPIC_DEFINITIONS.filter(def => !existingTopics.has(def.topic))
+  if (missing.length === 0) return docs
+
+  const placeholders = missing.map(def => ({
+    title: titleFromTopicSlug(def.topic),
+    type: 'reference' as const,
+    tags: [def.topic],
+    content: `Coverage gap for topic ${def.topic}. Source evidence currently insufficient in init inputs.`,
+    isOriginal: false,
+  }))
+
+  if (context.userAnswers.length === 0 && docs.length > 0) return docs
+  return [...docs, ...placeholders]
+}
+
+function normalizeTitleTokenSet(value: string): Set<string> {
+  return new Set(
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(token => token.length > 2)
+  )
+}
+
+function normalizeContentTokenSet(value: string): Set<string> {
+  return new Set(
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(token => token.length > 4)
+  )
+}
+
+function overlapRatio(left: Set<string>, right: Set<string>): number {
+  if (left.size === 0 || right.size === 0) return 0
+  let overlap = 0
+  for (const item of left) {
+    if (right.has(item)) overlap += 1
+  }
+  return overlap / Math.max(Math.min(left.size, right.size), 1)
 }
 
 async function resolveProvider(): Promise<LLMProvider | undefined> {

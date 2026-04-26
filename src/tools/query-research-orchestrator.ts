@@ -24,6 +24,8 @@ const RESEARCH_MAX_MS = 3000
 const COVERAGE_THRESHOLD = 0.60
 const MIN_DOCS_TO_ANSWER = 2
 const MAX_HYPOTHESES = 12
+const QUERY_RESEARCH_MAX_ITERS = parseEnvInt('KB_QUERY_RESEARCH_MAX_ITERS', 3)
+const QUERY_RESEARCH_BATCH_SIZE = parseEnvInt('KB_QUERY_RESEARCH_BATCH_SIZE', 3)
 
 type ExpansionSource =
   | 'original'
@@ -68,11 +70,11 @@ export class QueryResearchOrchestrator {
     const frontier = this.seedHypotheses(input)
     const scratchpad = createScratchpad(startTime)
 
-    for (let iter = 0; iter < 3; iter++) {
+    for (let iter = 0; iter < QUERY_RESEARCH_MAX_ITERS; iter++) {
       if (Date.now() - startTime > RESEARCH_MAX_MS) break
 
       scratchpad.iterationsRun++
-      const batch = selectFrontier(frontier, 3)
+      const batch = selectFrontier(frontier, QUERY_RESEARCH_BATCH_SIZE)
       if (batch.length === 0) break
 
       const batchResults = await Promise.all(batch.map(h => this.probeHypothesis(h)))
@@ -91,7 +93,7 @@ export class QueryResearchOrchestrator {
         return response
       }
 
-      if (iter < 2 && frontier.length < MAX_HYPOTHESES) {
+      if (iter < QUERY_RESEARCH_MAX_ITERS - 1 && frontier.length < MAX_HYPOTHESES) {
         const newHypotheses = await this.refineHypotheses(scratchpad, batch, batchResults)
         frontier.push(...newHypotheses)
       }
@@ -565,4 +567,12 @@ function parseTagsJson(raw: string | null | undefined): string[] | undefined {
   } catch {
     return undefined
   }
+}
+
+function parseEnvInt(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback
+  return parsed
 }

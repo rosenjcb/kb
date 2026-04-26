@@ -2,6 +2,8 @@
  * Agent profiles for delegated `task` / subagent runs (Ticket 105).
  */
 
+import { loadPrompt } from '../../prompts/loader'
+
 export interface AgentProfile {
   id: string
   label: string
@@ -34,8 +36,7 @@ export function resolveAgentProfile(id?: string): AgentProfile {
 const defaultProfile: AgentProfile = {
   id: 'default',
   label: 'Default worker',
-  systemPrompt:
-    'You are a focused worker agent with access only to the tools provided. Prefer evidence-backed answers.',
+  systemPrompt: loadPrompt('agent-default.md'),
   defaultMaxTurns: 6,
   defaultAllowedTools: ['read_documents'],
 }
@@ -43,8 +44,7 @@ const defaultProfile: AgentProfile = {
 const researchProfile: AgentProfile = {
   id: 'research',
   label: 'Research worker',
-  systemPrompt:
-    'You specialize in locating and summarizing KB evidence. Prefer read_documents; cite document IDs when possible.',
+  systemPrompt: loadPrompt('agent-research.md'),
   defaultMaxTurns: 8,
   defaultAllowedTools: ['read_documents'],
 }

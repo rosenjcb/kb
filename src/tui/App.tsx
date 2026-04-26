@@ -26,6 +26,7 @@ import { StatusBar } from './components/StatusBar.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
 import { ensureInitBaseArg } from './init-args.js'
 import { partitionShellOutputForTui } from './partition-shell-output.js'
+import type { InitStatusState } from './init-status.js'
 import { parseInitOutput } from './init-status.js'
 import { parseShellArgs, printCliHelp, runCommandForTui } from './runner.js'
 import {
@@ -53,7 +54,7 @@ export function App({ config, startupNotices = [] }: Props) {
   const [isRunning, setIsRunning] = useState(false)
   const [baseName, setBaseName] = useState('…')
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
-  const [initStatus, setInitStatus] = useState<{ message?: string; progressLine?: string }>({})
+  const [initStatus, setInitStatus] = useState<InitStatusState>({})
 
   const [pendingConfirm, setPendingConfirm] = useState<{
     question: string
@@ -196,6 +197,7 @@ export function App({ config, startupNotices = [] }: Props) {
       setInitStatus({
         message: 'Initializing KB — press Enter to skip any question.',
         progressLine: '[init] starting…',
+        actionLine: '[init:action] waiting for first step…',
       })
 
       const questionIO: InitQuestionIO = {
@@ -206,6 +208,9 @@ export function App({ config, startupNotices = [] }: Props) {
           }
           if (parsed.progressLine) {
             setInitStatus(current => ({ ...current, progressLine: parsed.progressLine }))
+          }
+          if (parsed.actionLine) {
+            setInitStatus(current => ({ ...current, actionLine: parsed.actionLine }))
           }
         },
         async askQuestion(question: string): Promise<string> {
@@ -231,7 +236,13 @@ export function App({ config, startupNotices = [] }: Props) {
         ...parsed,
         questionIO,
         progressSink(line) {
-          setInitStatus(current => ({ ...current, progressLine: line.trimEnd() }))
+          const parsedProgress = parseInitOutput(line)
+          if (parsedProgress.progressLine) {
+            setInitStatus(current => ({ ...current, progressLine: parsedProgress.progressLine }))
+          }
+          if (parsedProgress.actionLine) {
+            setInitStatus(current => ({ ...current, actionLine: parsedProgress.actionLine }))
+          }
         },
       })
         .then(result => {

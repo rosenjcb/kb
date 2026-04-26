@@ -9,6 +9,7 @@ import { resolveAgentProfile } from '../core/agents/agent-registry'
 import type { StreamManager } from '../core/runtime/stream-manager'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { AgentEvent, LLMProvider, SubagentTaskResult, ToolUseRequest } from '../core/types'
+import { loadPrompt } from '../prompts/loader'
 import {
   readSubagentEvalScenarioFromEnv,
   subagentLoopTuning,
@@ -22,6 +23,8 @@ export interface ExecuteSubagentTaskParams {
   /** Logical channel prefix (e.g. session id) for stream fan-in */
   parentChannelId?: string
 }
+
+const SUBAGENT_DELEGATION_PROMPT = loadPrompt('subagent-delegation.md')
 
 function createFilteredToolExecutor(parent: ToolExecutor, allowed: Set<string>): ToolExecutor {
   return {
@@ -116,8 +119,7 @@ export async function executeSubagentTask(
   const systemPrompt = [
     profile.systemPrompt,
     '',
-    'You are running as a delegated subagent. Complete the instruction using your tools.',
-    'Be concise; the parent agent integrates your output.',
+    SUBAGENT_DELEGATION_PROMPT,
   ].join('\n')
 
   const textSegments: string[] = []
