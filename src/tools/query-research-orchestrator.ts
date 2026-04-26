@@ -56,6 +56,7 @@ const MIN_DOCS_TO_ANSWER = 2
 const MAX_HYPOTHESES = 12
 const QUERY_RESEARCH_MAX_ITERS = parseEnvInt('KB_QUERY_RESEARCH_MAX_ITERS', 3)
 const QUERY_RESEARCH_BATCH_SIZE = parseEnvInt('KB_QUERY_RESEARCH_BATCH_SIZE', 3)
+const FACET_RECOVERY_MAX_QUERIES = parseEnvInt('KB_QUERY_RESEARCH_FACET_RECOVERY_MAX_QUERIES', 2)
 
 type ExpansionSource =
   | 'original'
@@ -64,7 +65,7 @@ type ExpansionSource =
   | 'keyword'
   | 'graph-slugs'
   | 'heading-hop'
-  | 'question-pack'
+  | 'coverage-recovery'
 
 interface SearchHypothesis {
   id: string
@@ -119,6 +120,7 @@ export class QueryResearchOrchestrator {
 
       if (canAnswer(scratchpad)) {
         await this.loadHeadingsForTopDocs(scratchpad)
+        await this.runFacetRecovery(input, scratchpad, frontier)
         const response = await this.buildResponse(input, scratchpad)
         this.maybeRecordRun(input, frontier, scratchpad, response, startTime)
         return response
@@ -133,6 +135,44 @@ export class QueryResearchOrchestrator {
     const response = await this.exhaustiveFallback(input, scratchpad)
     this.maybeRecordRun(input, frontier, scratchpad, response, startTime)
     return response
+  }
+
+  private async runFacetRecovery(
+    input: QueryDocumentsInput,
+    scratchpad: ResearchScratchpad,
+    frontier: SearchHypothesis[]
+  ): Promise<void> {
+    const query = input.query?.trim()
+    if (!query) return
+
+    const recoveryQueries = buildCoverageRecoveryQueries(
+      query,
+      collectScratchpadEvidenceTokens(scratchpad)
+    ).slice(
+      0,
+      FACET_RECOVERY_MAX_QUERIES
+    )
+    if (recoveryQueries.length === 0) return
+
+    for (const recoveryQuery of recoveryQueries) {
+      if (frontier.length >= MAX_HYPOTHESES) break
+
+      const hypothesis = makeHypothesis({
+        query: recoveryQuery,
+        mode: 'content',
+        lanes: this.reader.resolveLanesForQuery(query),
+        source: 'coverage-recovery',
+        depth: 1,
+      })
+      frontier.push(hypothesis)
+
+      const results = await this.probeHypothesis(hypothesis)
+      hypothesis.probed = true
+      updateScratchpad(scratchpad, hypothesis, results)
+    }
+
+    computeCoverageScore(scratchpad)
+    await this.loadHeadingsForTopDocs(scratchpad)
   }
 
   private seedHypotheses(input: QueryDocumentsInput): SearchHypothesis[] {
@@ -172,14 +212,14 @@ export class QueryResearchOrchestrator {
       )
     }
 
-    for (const scopedQuery of buildCanonicalQuestionBoostQueries(query)) {
+    for (const scopedQuery of buildCoverageRecoveryQueries(query, new Set())) {
       if (scopedQuery && scopedQuery !== query && scopedQuery !== keywordQuery && scopedQuery !== slugQuery) {
         seeds.push(
           makeHypothesis({
             query: scopedQuery,
             mode: 'content',
             lanes: undefined,
-            source: 'question-pack',
+            source: 'coverage-recovery',
             depth: 0,
           })
         )
@@ -612,37 +652,56 @@ function makeHypothesis(params: {
   }
 }
 
-function buildCanonicalQuestionBoostQueries(query: string): string[] {
-  const normalized = query.toLowerCase()
-  const boosts: string[] = []
+function buildCoverageRecoveryQueries(query: string, evidenceTokens: Set<string>): string[] {
+  const queryTokens = tokenizeQueryTerms(query)
+  const recoveryQueries: string[] = []
+  if (queryTokens.length === 0) return recoveryQueries
+  const missingTokens = queryTokens.filter(token => !evidenceTokens.has(token))
+  if (missingTokens.length === 0) return recoveryQueries
+  const first = missingTokens.slice(0, 4)
+  const second = missingTokens.slice(4, 8)
+  if (first.length > 0) recoveryQueries.push(first.join(' '))
+  if (second.length > 0) recoveryQueries.push(second.join(' '))
 
-  // Q3: install/build answers are weak unless build-system docs are forced into search.
-  if (
-    normalized.includes('install') ||
-    normalized.includes('build') ||
-    normalized.includes('dependencies') ||
-    normalized.includes('build systems')
-  ) {
-    boosts.push(
-      'installation setup dependencies build make cmake compile',
-      'readme build instructions makefile cmakelists'
-    )
+  return recoveryQueries
+}
+
+function collectScratchpadEvidenceTokens(scratchpad: ResearchScratchpad): Set<string> {
+  const tokens = new Set<string>()
+
+  const collect = (value: string): void => {
+    const normalized = value.toLowerCase()
+    for (const token of normalized.split(/[^a-z0-9]+/)) {
+      if (token.length >= 3 && !STOP_WORDS.has(token)) {
+        tokens.add(token)
+      }
+    }
   }
 
-  // Q8: roadmap/history often underused even when docs exist.
-  if (
-    normalized.includes('roadmap') ||
-    normalized.includes('future plans') ||
-    normalized.includes('version history') ||
-    normalized.includes('recent version')
-  ) {
-    boosts.push(
-      'roadmap history release version changelog',
-      'roadmap.md history.md release notes'
-    )
+  for (const title of scratchpad.docTitles.values()) {
+    collect(title)
+  }
+  for (const tags of scratchpad.docTags.values()) {
+    for (const tag of tags) {
+      collect(tag)
+    }
+  }
+  for (const headings of scratchpad.docHeadings.values()) {
+    for (const heading of headings) {
+      collect(heading)
+    }
   }
 
-  return boosts
+  return tokens
+}
+
+function tokenizeQueryTerms(query: string): string[] {
+  const normalized = query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token.length > 3 && !STOP_WORDS.has(token))
+  return [...new Set(normalized)].slice(0, 12)
 }
 
 function buildKeywordQuery(query: string): string | undefined {

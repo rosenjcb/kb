@@ -238,4 +238,43 @@ describe('QueryResearchOrchestrator unit', () => {
     expect(response).toBeDefined()
     expect(Array.isArray(response.results)).toBe(true)
   })
+
+  it('adds generic coverage-recovery probes from missing query terms', async () => {
+    const baseDir = await createTempDir()
+    const reader = makeReaderWithSqlite(baseDir)
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+
+    const db = new Database(dbPath)
+    db.prepare(`INSERT OR IGNORE INTO documents (id, title, file_path, doc_type, lane, tags_json, content_hash, content, created_at, updated_at, indexed_at)
+      VALUES (?, ?, ?, NULL, NULL, NULL, 'x', '', '2026-01-01', '2026-01-01', '2026-01-01')`).run(
+      'doc-a',
+      'Doc A',
+      '/doc-a.md'
+    )
+    db.prepare(`INSERT OR IGNORE INTO documents (id, title, file_path, doc_type, lane, tags_json, content_hash, content, created_at, updated_at, indexed_at)
+      VALUES (?, ?, ?, NULL, NULL, NULL, 'x', '', '2026-01-01', '2026-01-01', '2026-01-01')`).run(
+      'doc-b',
+      'Doc B',
+      '/doc-b.md'
+    )
+    db.close()
+
+    const probeHybrid = vi.spyOn(reader, 'probeHybrid').mockImplementation(async query => {
+      if (query === 'alpha beta gamma delta epsilon zeta') {
+        return [makeProbeResult('doc-a', 0.9), makeProbeResult('doc-b', 0.85)]
+      }
+      // Coverage recovery probes should execute but yield nothing.
+      return []
+    })
+    vi.spyOn(reader, 'probeLexical').mockResolvedValue([])
+    vi.spyOn(reader, 'expandGraphNeighbors').mockResolvedValue([])
+    vi.spyOn(reader, 'fetchDocHeadings').mockResolvedValue([])
+
+    const orchestrator = new QueryResearchOrchestrator(reader, dbPath, false)
+    await orchestrator.run({ query: 'alpha beta gamma delta epsilon zeta', discoveryDepth: 'deep' })
+
+    const probedQueries = probeHybrid.mock.calls.map(call => String(call[0]))
+    expect(probedQueries).toContain('alpha beta gamma delta')
+    expect(probedQueries).toContain('epsilon zeta')
+  })
 })

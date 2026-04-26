@@ -402,6 +402,10 @@ export async function enrichReadDocumentsAnswerWithLLM(
         fallback ??
         'I do not have enough grounded evidence yet. Next step: run kb query "<your fact>" --discovery deep --output json, then kb submit "<fact>" if evidence is missing.'
     }
+    const coverageFallback = buildCoverageFacetAnswer(question, results)
+    if (coverageFallback && answerNeedsCoverageRecovery(question, answer)) {
+      answer = coverageFallback
+    }
 
     if (sessionDir) {
       void appendQuerySession(sessionDir, question, answer)
@@ -566,6 +570,100 @@ function buildDeterministicIntentAnswer(
   }
 
   return undefined
+}
+
+function buildCoverageFacetAnswer(
+  question: string,
+  results: ReadDocumentsResultItem[]
+): string | undefined {
+  const facets = deriveQuestionFacets(question)
+  if (facets.length === 0) return undefined
+  const sections: string[] = []
+  for (const facet of facets) {
+    const evidence = findEvidenceLine(results, [facet])
+    if (!evidence) continue
+    sections.push(`- ${facet}: ${evidence.line} (source: ${evidence.docId})`)
+  }
+  if (sections.length < 2) return undefined
+  return ['Evidence-backed coverage summary:', ...sections].join('\n')
+}
+
+function answerNeedsCoverageRecovery(question: string, answer: string): boolean {
+  const normalizedAnswer = answer.toLowerCase()
+
+  if (looksLikeInsufficientEvidenceAnswer(normalizedAnswer)) {
+    return true
+  }
+  const facets = deriveQuestionFacets(question)
+  if (facets.length === 0) return false
+  const covered = facets.filter(facet => normalizedAnswer.includes(facet)).length
+  const minimumCoverage = Math.max(1, Math.ceil(facets.length * 0.25))
+  return normalizedAnswer.length < 220 && covered < minimumCoverage
+}
+
+function findEvidenceLine(
+  results: ReadDocumentsResultItem[],
+  keywords: string[]
+): { line: string; docId: string } | undefined {
+  for (const item of results.slice(0, 10)) {
+    const docId = item.metadata?.id ?? 'unknown-doc'
+    const lines = (item.content ?? '')
+      .split('\n')
+      .map(line => line.trim().replace(/^[-*]\s+/, ''))
+      .filter(
+        line =>
+          line.length >= 24 &&
+          !line.startsWith('#') &&
+          !line.startsWith('Created:') &&
+          !line.startsWith('Tags:') &&
+          !line.startsWith('Type:')
+      )
+    for (const line of lines) {
+      const normalized = line.toLowerCase()
+      if (keywords.some(keyword => normalized.includes(keyword))) {
+        return { line, docId }
+      }
+    }
+  }
+  return undefined
+}
+
+function deriveQuestionFacets(question: string): string[] {
+  const stopWords = new Set([
+    'what',
+    'where',
+    'when',
+    'which',
+    'who',
+    'why',
+    'how',
+    'does',
+    'do',
+    'did',
+    'the',
+    'and',
+    'for',
+    'with',
+    'from',
+    'into',
+    'about',
+    'that',
+    'this',
+    'these',
+    'those',
+    'main',
+    'including',
+    'recent',
+    'someone',
+    'project',
+    'repo',
+  ])
+  const tokens = question
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token.length > 3 && !stopWords.has(token))
+  return [...new Set(tokens)].slice(0, 8)
 }
 
 function requiresHighRecallQuery(query: string): boolean {

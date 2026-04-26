@@ -345,4 +345,77 @@ describe('intent-cli execution and enrichment', () => {
     )
     expect((untouched.data as { ok?: boolean }).ok).toBe(true)
   })
+
+  it('replaces insufficient LLM answer with generic coverage summary', async () => {
+    const llm: LLMProvider = {
+      name: 'test',
+      model: 'stub',
+      call: vi.fn(async () => ({
+        text: 'I do not have enough evidence to answer.',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    } as unknown as LLMProvider
+
+    const parsed = parseIntentCommand(['query', 'roadmap version history support policy'])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      parsed,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        data: {
+          retrieval: { method: 'hybrid' },
+          results: [
+            {
+              metadata: { id: 'roadmap', title: 'Roadmap' },
+              content: '# Roadmap\n\nRoadmap includes future platform backend milestones.',
+            },
+            {
+              metadata: { id: 'history', title: 'History' },
+              content: '# History\n\nVersion history includes release sequence and support policy updates.',
+            },
+          ],
+        },
+      },
+      llm
+    )
+
+    const answer = (enriched.data as { answer?: string }).answer ?? ''
+    expect(answer).toContain('Evidence-backed coverage summary:')
+    expect(answer).toContain('source: roadmap')
+    expect(answer).toContain('source: history')
+  })
+
+  it('keeps long sufficient LLM answer unchanged', async () => {
+    const llmText =
+      'Raylib roadmap lists planned backend improvements and milestone items, while version history captures release sequence and policy changes across versions with specific chronology and context for support expectations.'
+    const llm: LLMProvider = {
+      name: 'test',
+      model: 'stub',
+      call: vi.fn(async () => ({
+        text: llmText,
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    } as unknown as LLMProvider
+
+    const parsed = parseIntentCommand(['query', 'roadmap version history support policy'])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      parsed,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        data: {
+          retrieval: { method: 'hybrid' },
+          results: [
+            {
+              metadata: { id: 'roadmap', title: 'Roadmap' },
+              content: '# Roadmap\n\nRoadmap includes future platform backend milestones.',
+            },
+          ],
+        },
+      },
+      llm
+    )
+
+    expect((enriched.data as { answer?: string }).answer).toBe(llmText)
+  })
 })
