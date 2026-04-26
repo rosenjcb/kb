@@ -355,7 +355,8 @@ export function createTerminalChatIO(): ChatIO {
   const isTTY = process.stdin.isTTY === true
   const rl = createInterface({
     input: process.stdin,
-    output: isTTY ? process.stdout : undefined,
+    /** Always bind stdout so `readline.question` works when stdin is piped (non-TTY). */
+    output: process.stdout,
     terminal: isTTY,
   })
 
