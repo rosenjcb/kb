@@ -53,15 +53,34 @@ export class FactsQueryResearchOrchestrator {
     let graphHops = 0
     let sufficiency: SufficiencyDecision = { decision: 'not_answerable_yet', reason: 'insufficient-facts' }
     let clarificationQuestion: string | undefined
+    const loopTrace: string[] = []
 
     for (let iter = 0; iter < maxIterations; iter++) {
       const lexicalRows = this.indexer.searchFacts(input.query, perIterationLimit)
+      const frontierConcepts = [...new Set([...activeConcepts, ...queryTokens])].slice(0, 24)
+      const frontierRows =
+        frontierConcepts.length > 0
+          ? this.indexer.searchFactsByConceptFrontier(frontierConcepts, perIterationLimit)
+          : []
       const conceptRows =
         activeConcepts.length > 0 ? this.indexer.searchFactsByConcepts(activeConcepts, perIterationLimit) : []
-      const merged = mergeUniqueFacts([...lexicalRows, ...conceptRows], seenFactIds)
+      const merged = mergeUniqueFacts([...lexicalRows, ...frontierRows, ...conceptRows], seenFactIds)
+      const semanticScores = this.indexer.semanticFactScores(
+        input.query,
+        merged.map(row => row.id)
+      )
+      loopTrace.push(
+        `i${iter + 1}:lex=${lexicalRows.length},frontier=${frontierRows.length},concept=${conceptRows.length},merged=${merged.length},sem=${semanticScores.size},c=${frontierConcepts.length}`
+      )
       if (merged.length === 0) break
 
-      this.scoreIterationFacts(input.query, merged, scoredFacts)
+      this.scoreIterationFacts(
+        input.query,
+        merged,
+        scoredFacts,
+        new Set(frontierRows.map(row => row.id)),
+        semanticScores
+      )
       const topRows = [...scoredFacts.values()]
         .sort((a, b) => b.score - a.score)
         .slice(0, perIterationLimit)
@@ -79,6 +98,7 @@ export class FactsQueryResearchOrchestrator {
           iterations: iter + 1,
           graphHops,
           sufficiencyReason: sufficiency.reason,
+          loopTrace,
         })
       }
 
@@ -99,6 +119,7 @@ export class FactsQueryResearchOrchestrator {
       graphHops,
       sufficiencyReason: sufficiency.reason,
       clarificationQuestion,
+      loopTrace,
     })
   }
 
@@ -127,7 +148,9 @@ export class FactsQueryResearchOrchestrator {
   private scoreIterationFacts(
     query: string,
     rows: FactRow[],
-    scores: Map<string, { row: FactRow; score: number }>
+    scores: Map<string, { row: FactRow; score: number }>,
+    frontierFactIds: Set<string>,
+    semanticScores: Map<string, number>
   ): void {
     const queryTokens = tokenizeQuery(query)
     for (const row of rows) {
@@ -135,7 +158,16 @@ export class FactsQueryResearchOrchestrator {
       const overlap = textTokens.filter(token => queryTokens.includes(token)).length
       const overlapScore = queryTokens.length > 0 ? overlap / queryTokens.length : 0
       const recencyBias = row.source_kind === 'submit' ? 0.08 : 0
-      const score = Math.min(1, overlapScore + recencyBias + row.confidence * 0.35)
+      const frontierBoost = frontierFactIds.has(row.id) ? 0.06 : 0
+      const semanticScore = semanticScores.get(row.id) ?? 0
+      const score = Math.min(
+        1,
+        overlapScore * 0.45 +
+          semanticScore * 0.35 +
+          row.confidence * 0.2 +
+          recencyBias +
+          frontierBoost
+      )
       const current = scores.get(row.id)
       if (!current || score > current.score) {
         scores.set(row.id, { row, score })
@@ -150,6 +182,7 @@ export class FactsQueryResearchOrchestrator {
     graphHops: number
     sufficiencyReason: string
     clarificationQuestion?: string
+    loopTrace?: string[]
   }): QueryResponse {
     const ranked = [...input.scoredFacts.values()]
       .sort((a, b) => b.score - a.score)
@@ -171,7 +204,11 @@ export class FactsQueryResearchOrchestrator {
       `iterations:${input.iterations}`,
       `graph_hops:${input.graphHops}`,
       `sufficiency:${input.sufficiencyReason}`,
-    ].join(';')
+      'semantic:on',
+      input.loopTrace?.length ? `trace:${input.loopTrace.join('|')}` : null,
+    ]
+      .filter(Boolean)
+      .join(';')
     return {
       results,
       total: results.length,

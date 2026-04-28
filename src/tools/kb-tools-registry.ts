@@ -150,7 +150,7 @@ export function createKBToolsRegistry(
         factText: { type: 'string', description: 'Atomic fact statement text' },
         sourceKind: {
           type: 'string',
-          enum: ['submit', 'init_readme', 'import', 'system'],
+          enum: ['submit', 'import_doc'],
           description: 'Source channel for this fact',
         },
         sourceRef: { type: 'string', description: 'Optional source provenance' },
@@ -161,7 +161,12 @@ export function createKBToolsRegistry(
     },
   }
   registry.register('upsert_fact', upsertFactToolDef, async input => {
-    const payload = input as { factText: string; sourceKind: 'submit' | 'init_readme' | 'import' | 'system'; sourceRef?: string; confidence?: number }
+    const payload = input as {
+      factText: string
+      sourceKind: 'submit' | 'import_doc'
+      sourceRef?: string
+      confidence?: number
+    }
     return indexer.upsertFact(payload)
   })
 

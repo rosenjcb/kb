@@ -103,7 +103,7 @@ export interface DocumentUpsertInput {
 
 export interface FactUpsertInput {
   factText: string
-  sourceKind: 'submit' | 'init_readme' | 'import' | 'system'
+  sourceKind: 'submit' | 'import_doc'
   sourceRef?: string
   confidence?: number
   supersedesFactId?: string
@@ -218,6 +218,13 @@ const DEFAULT_LANE_ROUTING_THRESHOLDS: LaneRoutingRolloutThresholds = {
   maxLowPrecisionLanes: 1,
 }
 
+/** `facts` row projection — keep aligned with `FactRow`. */
+const FACT_ROW_SELECT =
+  'id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at'
+
+const FACT_ROW_SELECT_F =
+  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at'
+
 export class SqliteKbIndexer {
   private readonly db: Database.Database
   private readonly modelId: string
@@ -291,7 +298,7 @@ export class SqliteKbIndexer {
     return this.db
       .prepare(
         `
-        SELECT id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at
+        SELECT ${FACT_ROW_SELECT}
         FROM facts
         WHERE tombstoned_at IS NULL
         ORDER BY updated_at DESC
@@ -311,7 +318,7 @@ export class SqliteKbIndexer {
       const rows = this.db
         .prepare(
           `
-          SELECT f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at
+          SELECT ${FACT_ROW_SELECT_F}
           FROM facts_fts fts
           JOIN facts f ON f.id = fts.fact_id
           WHERE facts_fts MATCH ?
@@ -331,7 +338,7 @@ export class SqliteKbIndexer {
       return this.db
         .prepare(
           `
-          SELECT id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at
+          SELECT ${FACT_ROW_SELECT}
           FROM facts
           WHERE tombstoned_at IS NULL
             AND lower(fact_text) LIKE ?
@@ -375,6 +382,64 @@ export class SqliteKbIndexer {
       `
       )
       .all(...normalized, limit) as FactRow[]
+  }
+
+  /**
+   * Query-closure retrieval: union all facts touching any concept in frontier,
+   * ranked by concept match strength first, then confidence/recency.
+   */
+  searchFactsByConceptFrontier(conceptIds: string[], limit = 20): FactRow[] {
+    const normalized = [...new Set(conceptIds.map(id => normalizeConceptId(id)).filter(Boolean))]
+    if (normalized.length === 0) return []
+    const placeholders = normalized.map(() => '?').join(', ')
+    return this.db
+      .prepare(
+        `
+        SELECT ${FACT_ROW_SELECT_F}
+        FROM facts f
+        JOIN (
+          SELECT
+            fc.fact_id,
+            COUNT(DISTINCT fc.concept_id) AS match_count
+          FROM fact_concepts fc
+          WHERE fc.concept_id IN (${placeholders})
+          GROUP BY fc.fact_id
+        ) m ON m.fact_id = f.id
+        WHERE f.tombstoned_at IS NULL
+        ORDER BY m.match_count DESC, f.confidence DESC, f.updated_at DESC
+        LIMIT ?
+      `
+      )
+      .all(...normalized, limit) as FactRow[]
+  }
+
+  semanticFactScores(query: string, factIds: string[]): Map<string, number> {
+    const ids = [...new Set(factIds.map(id => id.trim()).filter(Boolean))]
+    const out = new Map<string, number>()
+    if (!query.trim() || ids.length === 0) return out
+    const placeholders = ids.map(() => '?').join(', ')
+    const rows = this.db
+      .prepare(
+        `
+        SELECT fact_id, vector_json, dimensions
+        FROM fact_embeddings
+        WHERE fact_id IN (${placeholders})
+      `
+      )
+      .all(...ids) as Array<{ fact_id: string; vector_json?: string; dimensions?: number }>
+    for (const row of rows) {
+      if (!row.vector_json || !row.dimensions) continue
+      try {
+        const stored = JSON.parse(row.vector_json) as number[]
+        if (!Array.isArray(stored) || stored.length !== row.dimensions) continue
+        const queryVec = buildDeterministicVector(query, row.dimensions)
+        const cosine = cosineSimilarity(queryVec, stored)
+        out.set(row.fact_id, (cosine + 1) / 2)
+      } catch {
+        // ignore malformed embedding rows
+      }
+    }
+    return out
   }
 
   listFactConcepts(factIds: string[]): FactConceptRow[] {
@@ -449,7 +514,7 @@ export class SqliteKbIndexer {
 
     const replacement = this.upsertFact({
       factText: replacementFact,
-      sourceKind: 'system',
+      sourceKind: 'submit',
       sourceRef: `invalidate:${row.id}`,
       supersedesFactId: row.id,
     })
@@ -1303,6 +1368,20 @@ function normalize(values: number[]): number[] {
   const magnitude = Math.sqrt(values.reduce((acc, value) => acc + value * value, 0))
   if (magnitude === 0) return values
   return values.map(value => value / magnitude)
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length === 0 || b.length === 0 || a.length !== b.length) return 0
+  let dot = 0
+  let magA = 0
+  let magB = 0
+  for (let i = 0; i < a.length; i += 1) {
+    dot += a[i] * b[i]
+    magA += a[i] * a[i]
+    magB += b[i] * b[i]
+  }
+  if (magA === 0 || magB === 0) return 0
+  return dot / Math.sqrt(magA * magB)
 }
 
 function normalizeFactText(input: string): string {

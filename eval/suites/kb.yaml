@@ -2,6 +2,7 @@
 schema_version: 1
 id: kb
 display_name: kb
+repo_url: https://github.com/rosenjcb/kb.git
 rubric_focus: the **kb** local-first knowledge CLI/repo
 graph_with_base: false
 questions:

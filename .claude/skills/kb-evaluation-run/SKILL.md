@@ -1,6 +1,6 @@
 ---
 name: kb-evaluation-run
-description: "Use when: running the reusable KB evaluation scenario (canonical raylib, kb dogfood self-check, or any repo via `--repo`), scoring `kb query`, optional Jekyll publish, and writing artifacts under `~/.kb/evaluations/<run-name>/` per `EVALUATION.md`."
+description: "Use when: running the reusable KB evaluation scenario (canonical raylib, kb dogfood self-check, or any repo via suite `repo_url`/`--repo`), scoring `kb query`, and writing artifacts under `~/.kb/evaluations/<run-name>/` per `EVALUATION.md`."
 ---
 
 # KB Evaluation Run
@@ -13,15 +13,15 @@ Do not invent a new scenario or JSON shape. Follow `EVALUATION.md` as the source
 
 ## Evaluation target
 
-**Primary external benchmark:** raylib upstream via `--repo` + suite `raylib` (or `npm run eval:raylib`).
+**Primary external benchmark:** suite `raylib` (repo resolves from suite YAML `repo_url`; optional `--repo` override).
 
-**Kb self-check:** suite `kb` + `--repo` on this repo (or `npm run eval:kb-proper`). Different questions from raylib.
+**Kb self-check:** suite `kb` (repo resolves from suite YAML `repo_url`; optional `--repo` override). Different questions from raylib.
 
 **Any other upstream:** suite `generic` + `--repo <git-url>`.
 
 - Default disposable **KB base** = **run folder basename** (`<repo-leaf>-YYYY-MM-DD-HHmm`, e.g. `raylib-2026-04-27-1303`); same as `~/.kb/evaluations/<run-name>/`. Override with `--base`.
-- `kb init` cwd = snapshot clone under `~/.kb/evaluations/repos/<run-name>/`
-- Jekyll publish: `<clone>/.docs/` (never `kb/docs/` for eval traffic)
+- `kb init` cwd = snapshot clone under `~/.kb/evaluations/<run-name>/repo/`
+- No publish step inside eval-run (artifacts only)
 - Artifact: `~/.kb/evaluations/<run-name>/artifact.json` by default
 
 ## Canonical question set (raylib)
@@ -43,19 +43,19 @@ From kb repo root (`pnpm run build` first):
 
 ```bash
 # Canonical raylib disposable run + optional auto-score
-npm run eval:raylib [--auto-score]
+npm run eval:all -- --suite raylib [--auto-score]
 
 # Re-query only (existing base; no init)
-npm run eval:query -- --suite raylib --base <base> --repo https://github.com/raysan5/raylib.git [--auto-score]
+npm run eval:query -- --suite raylib --base <base> [--auto-score]
 
 # Kb repo dogfood questions (not the raylib benchmark)
-npm run eval:kb-proper [--auto-score]
+npm run eval:all -- --suite kb [--auto-score]
 
 # Any git URL → shallow clone → init → generic eight questions
 npm run eval:all -- --suite generic --repo https://github.com/org/repo.git [--auto-score]
 ```
 
-Implementation: `scripts/eval-run.mjs` (modes `all` | `query`, suites `raylib` | `kb` | `generic`). Shims `eval-raylib.mjs` / `eval-kb-proper.mjs` delegate here.
+Implementation: `scripts/eval-run.mjs` (modes `all` | `query`, suites `raylib` | `kb` | `generic`). Repo URL resolves from suite YAML `repo_url`, with `--repo` as explicit override.
 
 Flags: `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`, `--run-dir`, `--out`, `--scores-file`, `--auto-score`, `--skip-init`, `--hypothesis`, `--label`. See `EVALUATION.md` § Automated harvest.
 
@@ -97,7 +97,7 @@ Use the schema in `EVALUATION.md`. Minimum:
 
 ## Jekyll publish
 
-After capturing query results (raylib suite), publish to the dedicated raylib docs site (`--publish-jekyll` or default when `~/raylib-kb-docs/` exists). Do **not** publish eval output to `kb/docs/`.
+Not part of eval-run. Keep eval artifacts only; publish flows run separately.
 
 ## Output paths
 

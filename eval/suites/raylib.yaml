@@ -3,6 +3,7 @@
 schema_version: 1
 id: raylib
 display_name: raylib
+repo_url: https://github.com/raysan5/raylib.git
 rubric_focus: the **raylib** C library knowledge base (facts + docs in SQLite)
 graph_with_base: true
 questions:

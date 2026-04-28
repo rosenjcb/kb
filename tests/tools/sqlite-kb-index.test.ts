@@ -292,6 +292,16 @@ describe('SQLite KB index integration', () => {
     const conceptMatches = indexer.searchFactsByConcepts(['opengl'], 10)
     expect(conceptMatches.length).toBeGreaterThan(0)
 
+    const frontierMatches = indexer.searchFactsByConceptFrontier(['raylib', 'opengl'], 10)
+    expect(frontierMatches.length).toBeGreaterThan(0)
+    expect(frontierMatches[0]?.id).toBe(factA.id)
+
+    const semanticScores = indexer.semanticFactScores('raylib opengl rendering', [
+      factA.id,
+      frontierMatches[1]?.id ?? '',
+    ])
+    expect(semanticScores.has(factA.id)).toBe(true)
+
     const neighbors = indexer.expandNeighborConcepts(['raylib'], 2, 20)
     expect(neighbors).toContain('opengl')
 

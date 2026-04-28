@@ -23,11 +23,11 @@ After building a KB from scratch for the evaluation target repository, can `kb` 
 
 ## Evaluation Target
 
-**Canonical external benchmark:** the [raylib C library](https://github.com/raysan5/raylib) — use suite `raylib` and `--repo https://github.com/raysan5/raylib.git` (or `npm run eval:raylib`, which injects that URL).
+**Canonical external benchmark:** the [raylib C library](https://github.com/raysan5/raylib) — use suite `raylib` (its `repo_url` is defined in `eval/suites/raylib.yaml`; override with `--repo` only when needed).
 
 Reasons: mature, well-documented, not kb itself (avoids evaluator familiarity bias), rich graph structure, stable upstream.
 
-**Kb self-check:** suite `kb` + `--repo` pointing at this kb repo (or `npm run eval:kb-proper`, which defaults to `git remote get-url origin`). That is a product smoke test, not the primary raylib benchmark.
+**Kb self-check:** suite `kb` (its `repo_url` is defined in `eval/suites/kb.yaml`; override with `--repo` only when needed). That is a product smoke test, not the primary raylib benchmark.
 
 For day-to-day kb architecture work on your checkout, use `--base dogfood` (separate from disposable eval bases).
 
@@ -43,24 +43,24 @@ The `raylib` base is the KB that a KB-backed agent would actually use during rea
 
 ### Published docs location
 
-Eval `all` runs `kb publish jekyll` into **`<clone-root>/.docs/`** (inside the snapshot clone under `~/.kb/evaluations/repos/<run-name>/`). That site is for the disposable base only — do not publish eval traffic to `kb/docs/` (dogfood site).
+Eval runs do **not** publish Jekyll output. We only capture init/query evidence artifacts.
 
 ## Automated harvest (`scripts/eval-run.mjs`)
 
-One runner drives all disposable-base harvests. **No local target directory:** pass **`--repo <git-url>`** only. Each run does a **fresh snapshot clone** under `~/.kb/evaluations/repos/<run-name>/`; scratch JSON and the default artifact live under `~/.kb/evaluations/<run-name>/`. **Default `--base`** for `all` equals **`<run-name>`** (e.g. `raylib-2026-04-27-1303` = repo leaf + date + `HHmm`; same-minute collision adds `-2`, `-3`, …).
+One runner drives all disposable-base harvests. **No local target directory:** repo URL resolves from suite YAML `repo_url`, with optional `--repo` override. Each run does a **fresh snapshot clone** under `~/.kb/evaluations/<run-name>/repo/`; scratch JSON and the default artifact live under `~/.kb/evaluations/<run-name>/`. **Default `--base`** for `all` equals **`<run-name>`** (e.g. `raylib-2026-04-27-1303` = repo leaf + date + `HHmm`; same-minute collision adds `-2`, `-3`, …).
 
 From the kb repo root (after `pnpm run build`):
 
 | npm script | Maps to |
 |------------|---------|
-| `npm run eval:raylib` | `all --suite raylib` with default raylib GitHub URL |
-| `npm run eval:kb-proper` | `all --suite kb` with default repo URL (`origin` of kb checkout) |
-| `npm run eval:all -- --suite generic --repo <git-url> …` | Shallow clone (default), init, queries |
-| `npm run eval:query -- --suite raylib --base <existing> --repo <git-url> …` | No init: docs + graph + logs + 8× `kb query` (still clones repo for cwd) |
+| `npm run eval:all -- --suite raylib …` | Clone suite `repo_url`, init, queries |
+| `npm run eval:all -- --suite kb …` | Clone suite `repo_url`, init, queries |
+| `npm run eval:all -- --suite generic --repo <git-url> …` | Generic suite requires explicit repo override, then clone/init/queries |
+| `npm run eval:query -- --suite raylib --base <existing> …` | No init: docs + graph + logs + 8× `kb query` (still clones repo for cwd) |
 
 **Modes**
 
-- `all` — Fresh clone → `kb init --non-interactive`, then metrics + eight queries + `kb publish jekyll` → `<clone>/.docs/`.
+- `all` — Fresh clone → `kb init --non-interactive`, then metrics + eight queries.
 - `query` — Fresh clone → same capture minus init; requires `--base` for an already-populated KB session.
 
 **Suites (`--suite`)**
@@ -85,7 +85,7 @@ Options: `--clone-branch main`, `--clone-depth 1` (default shallow; use `0` for 
 **Artifacts**
 
 - Default path: **`~/.kb/evaluations/<run-name>/artifact.json`**. Override with `--out`.
-- Rebuild artifact from existing scratch: `--skip-init --run-dir ~/.kb/evaluations/<run-name>/` (expects matching clone at `~/.kb/evaluations/repos/<run-name>/`).
+- Rebuild artifact from existing scratch: `--skip-init --run-dir ~/.kb/evaluations/<run-name>/` (expects matching clone at `~/.kb/evaluations/<run-name>/repo/`).
 - Automated artifacts may include extra `run` fields for traceability. Tools should treat unknown keys as forward-compatible metadata.
 
 ## Evaluation Design

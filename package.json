@@ -17,8 +17,6 @@
     "refresh:global": "pnpm run build && npm link",
     "eval:all": "node scripts/eval-run.mjs all",
     "eval:query": "node scripts/eval-run.mjs query",
-    "eval:kb-proper": "node scripts/eval-kb-proper.mjs",
-    "eval:raylib": "node scripts/eval-raylib.mjs",
     "eval:orchestrator-scenarios": "node scripts/eval-orchestrator-scenarios.mjs",
     "eval:snap": "tsx scripts/eval-snapshot.ts",
     "eval:artifact": "tsx scripts/eval-task-artifact.ts",

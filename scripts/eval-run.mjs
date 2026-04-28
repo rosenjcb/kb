@@ -1,18 +1,19 @@
 #!/usr/bin/env node
 /**
  * Unified kb eval harvest: **git URL only** (no local target cwd). Fresh clone per run = snapshot.
- * Layout: clone `~/.kb/evaluations/repos/<run-name>/`, scratch + default artifact `~/.kb/evaluations/<run-name>/`.
+ * Layout: run folder `~/.kb/evaluations/<run-name>/` contains `repo/` clone + run artifacts.
  * Default KB base for `all` == `<run-name>` (e.g. `raylib-2026-04-27-1303`); override with `--base`.
- * `all` (init + metrics + 8×query + jekyll publish) vs `query` (existing base only; still clones repo for cwd).
+ * `all` (init + metrics + 8×query) vs `query` (existing base only; still clones repo for cwd).
  *
  * Usage (kb repo root, after `pnpm run build`):
- *   node scripts/eval-run.mjs all --suite raylib --repo https://github.com/raysan5/raylib.git [--auto-score]
+ *   node scripts/eval-run.mjs all --suite raylib [--auto-score]
+ *   node scripts/eval-run.mjs all --suite kb
  *   node scripts/eval-run.mjs all --suite generic --repo https://github.com/org/repo.git
- *   node scripts/eval-run.mjs query --suite raylib --base dogfood --repo https://github.com/raysan5/raylib.git
+ *   node scripts/eval-run.mjs query --suite raylib --base dogfood
  *
  * Suites: vendor id → `eval/suites/<id>.yaml` (raylib, kb, generic). `--suite-yaml PATH` for custom pack.
- * Clone: --repo URL (required unless --skip-init), [--clone-branch BR] [--clone-depth N default 1].
- * `all` runs `kb publish jekyll` into `<clone>/.docs/`.
+ * Clone: --repo URL (optional when suite YAML has repo_url), [--clone-branch BR] [--clone-depth N default 1].
+ * Eval run does not publish docs.
  */
 
 import { execSync, spawnSync } from 'node:child_process'
@@ -36,7 +37,7 @@ function listSuiteIds() {
 }
 
 /**
- * @returns {{ id: string, questions: string[], rubricPhrase: string, graphWithBase: boolean, sourceFile: string }}
+ * @returns {{ id: string, questions: string[], rubricPhrase: string, graphWithBase: boolean, sourceFile: string, repoUrl: string | null }}
  */
 function normalizeSuiteDoc(raw, sourceFile) {
   if (!raw || typeof raw !== 'object') {
@@ -55,21 +56,20 @@ function normalizeSuiteDoc(raw, sourceFile) {
       ? raw.id.trim()
       : path.basename(sourceFile).replace(/\.(yaml|yml)$/i, '')
   const graphWithBase = raw.graph_with_base !== false
+  const repoUrl =
+    typeof raw.repo_url === 'string' && raw.repo_url.trim() ? raw.repo_url.trim() : null
   return {
     id,
     questions: qs.map(s => s.trim()),
     rubricPhrase: rubric.trim(),
     graphWithBase,
     sourceFile,
+    repoUrl,
   }
 }
 
 function evaluationsRoot() {
   return path.join(os.homedir(), '.kb', 'evaluations')
-}
-
-function reposEvalRoot() {
-  return path.join(evaluationsRoot(), 'repos')
 }
 
 function sanitizeSlugPart(s) {
@@ -115,10 +115,9 @@ function allocateRunName(repoLeaf) {
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '')
   const root = evaluationsRoot()
-  const reposRoot = reposEvalRoot()
   let name = stem
   let n = 0
-  while (fs.existsSync(path.join(root, name)) || fs.existsSync(path.join(reposRoot, name))) {
+  while (fs.existsSync(path.join(root, name))) {
     n += 1
     name = `${stem}-${n}`
   }
@@ -204,7 +203,7 @@ function assertRemovedEvalFlags(argv) {
   }
   if (removed.size) {
     throw new Error(
-      `[eval] removed flags: ${[...removed].join(', ')} — use --repo <git-url> (clone under ~/.kb/evaluations/repos/<run>/). Rebuild-only: --skip-init --run-dir ~/.kb/evaluations/<run>/`
+      `[eval] removed flags: ${[...removed].join(', ')} — use --repo <git-url> (clone under ~/.kb/evaluations/<run>/repo). Rebuild-only: --skip-init --run-dir ~/.kb/evaluations/<run>/`
     )
   }
 }
@@ -212,19 +211,19 @@ function assertRemovedEvalFlags(argv) {
 function printHelp() {
   console.log(`eval-run.mjs — unified eval harvest (EVALUATION.md schema)
 
-  node scripts/eval-run.mjs <all|query> --suite <vendor-id> --repo <git-url> [options]
+  node scripts/eval-run.mjs <all|query> --suite <vendor-id> [--repo <git-url>] [options]
   Vendor packs: eval/suites/<id>.yaml (e.g. raylib, kb, generic). Custom: --suite-yaml /path/to/pack.yaml
 
 Modes:
-  all     Fresh clone → kb init + docs + graph + logs + 8× query + jekyll → <clone>/.docs/
+  all     Fresh clone → kb init + docs + graph + logs + 8× query
   query   Fresh clone → same capture minus init; requires --base (KB session must already exist)
 
 Layout (per run, snapshot clone):
-  ~/.kb/evaluations/repos/<run-name>/   git clone
+  ~/.kb/evaluations/<run-name>/repo/    git clone
   ~/.kb/evaluations/<run-name>/         scratch (q*.json, logs) + default artifact.json
 
 Target:
-  --repo URL              Git remote (https or git@); required unless --skip-init
+  --repo URL              Git remote override (https or git@); if omitted, use suite YAML repo_url
   --clone-branch BR
   --clone-depth N         Shallow depth (default 1; use 0 for full clone)
 
@@ -236,7 +235,7 @@ Suite / questions:
 Other:
   --base NAME             Override KB base (all: default = run folder name, e.g. raylib-2026-04-27-1303; query: required)
   --label SLUG            Stored as run_label in artifact
-  --run-dir PATH          With --skip-init: existing ~/.kb/evaluations/<run>/ scratch (expects repos/<same-name>/ clone)
+  --run-dir PATH          With --skip-init: existing ~/.kb/evaluations/<run>/ (expects ./repo clone)
   --out PATH              Override artifact JSON path
   --scores-file, --auto-score, --auto-score-file, --skip-init, --hypothesis
 `)
@@ -562,7 +561,6 @@ function gitCloneSnapshot({ url, dest, branch, depth }) {
  */
 function resolveEvalPaths(args) {
   const root = evaluationsRoot()
-  const reposRoot = reposEvalRoot()
 
   if (args.skipCapture) {
     if (!args.runDir) {
@@ -572,29 +570,26 @@ function resolveEvalPaths(args) {
     }
     const runDir = path.resolve(args.runDir)
     const runName = path.basename(runDir)
-    const repoDir = path.join(reposRoot, runName)
+    const repoDir = path.join(runDir, 'repo')
     if (!fs.existsSync(runDir)) {
       throw new Error(`[eval] --run-dir not found: ${runDir}`)
     }
     if (!fs.existsSync(path.join(repoDir, '.git'))) {
-      throw new Error(
-        `[eval] expected clone at ${repoDir} (same basename as run dir) for kb commands / git metadata`
-      )
+      throw new Error(`[eval] expected clone at ${repoDir} for kb commands / git metadata`)
     }
     return { runName, runDir, repoDir, targetCwd: repoDir, repoUrl: args.repo || null }
   }
 
   if (!args.repo || !String(args.repo).trim()) {
     throw new Error(
-      '[eval] require --repo <git-url> (eval always clones under ~/.kb/evaluations/repos/<run>/)'
+      '[eval] require repo URL: pass --repo <git-url> or set repo_url in suite YAML (eval always clones under ~/.kb/evaluations/<run>/repo/)'
     )
   }
 
   const runName = allocateRunName(repoLeafNameFromUrl(args.repo))
   const runDir = path.join(root, runName)
-  const repoDir = path.join(reposRoot, runName)
+  const repoDir = path.join(runDir, 'repo')
   fs.mkdirSync(root, { recursive: true })
-  fs.mkdirSync(reposRoot, { recursive: true })
   fs.mkdirSync(runDir, { recursive: true })
 
   gitCloneSnapshot({
@@ -683,6 +678,9 @@ async function main() {
   }
 
   const suiteId = suiteConfig.id
+  if (!args.repo && suiteConfig.repoUrl) {
+    args.repo = suiteConfig.repoUrl
+  }
 
   let paths
   try {
@@ -739,9 +737,6 @@ async function main() {
     process.exit(1)
   }
 
-  const publishDir = evalMode === 'all' ? path.join(targetCwd, '.docs') : null
-  let publishNote = null
-
   if (!args.skipCapture) {
     console.error(`[eval] workdir ${workdir}`)
     console.error(`[eval] target cwd ${targetCwd}`)
@@ -780,18 +775,6 @@ async function main() {
       const out = kb(targetCwd, `query "${escaped}" --base ${base} --output json`)
       fs.writeFileSync(path.join(workdir, `q${q}.json`), out, 'utf8')
       q++
-    }
-
-    if (publishDir) {
-      console.error(`[eval] publish jekyll -> ${publishDir}`)
-      try {
-        kb(targetCwd, `publish jekyll --base ${base} --dir ${publishDir}/ --apply`, {
-          stdio: 'inherit',
-        })
-      } catch (e) {
-        publishNote = e instanceof Error ? e.message : String(e)
-        console.error(`[eval] publish failed: ${publishNote}`)
-      }
     }
   }
 
@@ -912,11 +895,9 @@ async function main() {
     repoUrl ? `repo_url=${repoUrl}` : null,
     `Scratch + artifact under ${runDir}; snapshot clone under ${repoDir}`,
   ].filter(Boolean)
-  if (publishNote) qualitative.push(`Jekyll publish note: ${publishNote}`)
-
   const initOk = evalMode === 'all' && initJson
   const status =
-    publishNote || (evalMode === 'all' && !initJson)
+    evalMode === 'all' && !initJson
       ? 'partial'
       : evalMode === 'query'
         ? 'complete'
@@ -958,11 +939,10 @@ async function main() {
         `kb ${graphCmd(base, graphWithBase)}`,
         `kb ${logsCmd(evalMode)}`,
         `kb query "<8 questions>" --base ${base} --output json`,
-        publishDir ? `kb publish jekyll --base ${base} --dir ${publishDir}/ --apply` : null, // all mode only
       ].filter(Boolean),
       workdir,
       run_dir: runDir,
-      publish_dir: publishDir || null,
+      publish_dir: null,
       init_result: {
         status:
           evalMode === 'query'

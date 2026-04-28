@@ -154,7 +154,11 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     }
 
     this.indexer.upsertDocumentWithContent(upsert)
-    this.indexFactsFromContent(input.content, input.isOriginal === true ? 'init_readme' : 'system', id)
+    this.indexFactsFromContent(
+      input.content,
+      input.isOriginal === true ? 'import_doc' : 'submit',
+      id
+    )
 
     return { id, title: input.title, filePath: '', createdAt: now, updatedAt: now }
   }
@@ -455,22 +459,31 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
 
   private indexFactsFromContent(
     content: string,
-    sourceKind: 'init_readme' | 'system',
+    sourceKind: 'import_doc' | 'submit',
     sourceRef: string
   ): void {
-    const lines = content
-      .split('\n')
-      .map(line => line.trim().replace(/^[-*]\s+/, ''))
-      .filter(
-        line =>
-          line.length > 24 &&
-          !line.startsWith('#') &&
-          !line.startsWith('Created:') &&
-          !line.startsWith('Type:') &&
-          !line.startsWith('Tags:')
+    // Facts should come from meaningful paragraphs, not single lines.
+    const paragraphs = content
+      .split(/\n\s*\n/)
+      .map(paragraph =>
+        paragraph
+          .split('\n')
+          .map(line => line.trim().replace(/^[-*]\s+/, ''))
+          .filter(
+            line =>
+              line.length > 0 &&
+              !line.startsWith('#') &&
+              !line.startsWith('Created:') &&
+              !line.startsWith('Type:') &&
+              !line.startsWith('Tags:')
+          )
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim()
       )
+      .filter(paragraph => paragraph.length > 40)
       .slice(0, 40)
-    for (const factText of lines) {
+    for (const factText of paragraphs) {
       this.indexer.upsertFact({
         factText,
         sourceKind,
