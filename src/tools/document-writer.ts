@@ -1,8 +1,10 @@
 import type { ToolDefinition } from '../core/types'
 
 /**
- * SQLite-backed markdown originals and derived docs—used by init, rescan apply, and agent orchestration.
- * Routine human knowledge flow: facts (`kb submit`) + browse (`kb docs`); a future `kb docs generate`-style entrypoint may own more doc authoring.
+ * SQLite-backed markdown originals and derived docs. **`kb init` / rescan** ingest repo files by calling
+ * `SqliteDocumentWriter` from scripted passes (first-loop pipeline), not by routing through these tool schemas.
+ * **`executeWriteDocumentTool`** is what the **agent registry** binds for `write_document` / append / etc.
+ * Routine knowledge: facts (`kb submit`) + graph tools + `kb docs` to browse corpora.
  */
 
 export interface WriteDocumentInput {

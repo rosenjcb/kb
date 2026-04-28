@@ -1,28 +1,16 @@
 ---
 layout: default
 title: Project Overview
-date: '2026-04-21'
+date: '2026-04-27'
 kb_id: project-overview
 tags:
-  - project
-  - overview
-  - purpose
-  - users
   - project-overview
+  - knowledge-base
+  - cli
+  - tui
+  - development-workflow
 categories:
   - architecture
 ---
 
-KB is a local-first knowledge system designed for AI workflows, providing a CLI and runtime for managing project knowledge.
-
-*   **Purpose**: KB aims to provide a repeatable way to capture, validate, and retrieve project knowledge during development.
-*   **Key Features**:
-    *   Stores durable markdown knowledge.
-    *   Queries knowledge through intent commands.
-    *   Optionally uses SQLite hybrid retrieval (FTS + vector-style ranking) for improved search quality.
-*   **Typical Workflow**:
-    1.  Record facts and decisions during work.
-    2.  Query prior context before making new changes.
-    3.  Keep documentation close to code and version it in Git.
-*   **Target Users**: Developers and teams who need to manage project knowledge effectively within their development workflows, especially those using AI agents.
-*   **Integration with AI Agents**: KB is designed to integrate with AI agents by providing a "skill" format that tools expect, with a roadmap to automatically drop or sync this skill into supported agents like Cursor, Claude Code, and other common coding agents.
+KB is a local-first knowledge layer designed to capture and manage project knowledge within development workflows. It provides a CLI and runtime to record decisions, facts, and context, preventing them from being lost in chat history or PR threads. The project aims to make knowledge base maintenance a side effect of daily work, rather than an overhead. KB is for developers and teams who want to record decisions and facts as they work, query past context before making changes, and invalidate stale facts before they mislead future work. All knowledge lives alongside the code, is versioned in Git, and is queryable like a lightweight memory system. The core hypothesis is that maintaining a KB can produce better systems faster, with lower token cost, better requirement capture, and improved recall of project knowledge compared to relying solely on a primary coding agent's transient context. The project's philosophy emphasizes accretion over overhead, descriptive rather than prescriptive approaches, and embracing change as the default, while providing transparency without extra effort.

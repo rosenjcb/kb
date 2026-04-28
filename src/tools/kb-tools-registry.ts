@@ -2,9 +2,10 @@
  * KB Tools Registry Factory
  *
  * **Facts** (`upsert_fact`, `read_documents` deep path) are the primary retrieval surface for `kb query` / chat.
- * **Markdown documents** (`write_document`, `append_to_document`, …) stay registered for `kb init`, rescan apply,
- * and agent-orchestrated pipelines—not the long-term human authoring path. Browse with `kb docs`; a dedicated
- * generator (e.g. `kb docs generate "…"`) is future work.
+ * **Markdown mutators** (`write_document`, `append_to_document`, …) back the same SQLite store agents may still
+ * call from tool loops. **`kb init` / rescan do not use these tool names**: they scan the repo and call
+ * `SqliteDocumentWriter` directly in scripted passes—no LLM “sees a .md file and picks write_document.” Agent
+ * decisions should bias toward facts + graph; browse corpora with `kb docs`.
  */
 
 import path from 'node:path'
@@ -58,7 +59,7 @@ export function createKBToolsRegistry(
   const writeToolDef: ToolDefinition = {
     name: 'write_document',
     description:
-      'Create or overwrite a markdown KB document (init/rescan/agent orchestration). Routine knowledge: kb submit + kb docs.',
+      'Create or overwrite a markdown KB document (agent tool surface; init uses SqliteDocumentWriter directly). Prefer kb submit + kb docs.',
     schema: {
       type: 'object',
       properties: {
@@ -215,7 +216,7 @@ export function createKBToolsRegistry(
   const appendToolDef: ToolDefinition = {
     name: 'append_to_document',
     description:
-      'Append markdown to a document (init/rescan/orchestration). Not the primary human authoring path.',
+      'Append markdown to a document (agent tool surface). Init/rescan mutate docs via SqliteDocumentWriter in code.',
     schema: {
       type: 'object',
       properties: {
@@ -238,7 +239,7 @@ export function createKBToolsRegistry(
   const updateToolDef: ToolDefinition = {
     name: 'update_document',
     description:
-      'Replace full markdown of a document (pipelines). Prefer kb submit for atomic facts; browse with kb docs.',
+      'Replace full markdown of a document (agent tool surface). Prefer kb submit for atomic facts; kb docs to browse.',
     schema: {
       type: 'object',
       properties: {
@@ -256,7 +257,7 @@ export function createKBToolsRegistry(
 
   const pruneToolDef: ToolDefinition = {
     name: 'prune_document',
-    description: 'Remove a markdown section (orchestration / maintenance tools).',
+    description: 'Remove a markdown section (agent tool surface).',
     schema: {
       type: 'object',
       properties: {
@@ -273,7 +274,7 @@ export function createKBToolsRegistry(
 
   const mergeToolDef: ToolDefinition = {
     name: 'merge_documents',
-    description: 'Merge two markdown documents (orchestration).',
+    description: 'Merge two markdown documents (agent tool surface).',
     schema: {
       type: 'object',
       properties: {

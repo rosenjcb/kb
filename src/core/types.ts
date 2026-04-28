@@ -42,8 +42,9 @@ export interface ToolResultBlock {
  * Rationale: Intent is self-documenting; fewer parameters; easier testing.
  * See src/tools/TOOL_CONVENTIONS.md for full guidelines.
  *
- * Product note: end-user recall leans on the **facts** store and `kb docs` for markdown corpora; these document
- * tools remain for orchestration (init, rescan, agents). A future `kb docs generate`-style CLI may wrap doc creation.
+ * Product note: end-user recall leans on **facts** + **graph** + `kb docs` for markdown corpora. Init/rescan
+ * populate docs via **code paths** (`SqliteDocumentWriter`); these tool names exist for **agent** loops that still
+ * mutate markdown. A future `kb docs generate`-style CLI may own more doc authoring.
  */
 export interface ToolDefinition {
   name: string

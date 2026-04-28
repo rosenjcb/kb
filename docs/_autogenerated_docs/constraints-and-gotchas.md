@@ -1,15 +1,17 @@
 ---
 layout: default
-title: Constraints And Gotchas
-date: '2026-04-21'
+title: Constraints and Gotchas
+date: '2026-04-27'
 kb_id: constraints-and-gotchas
 tags:
-  - configuration
-  - errors
-  - base management
+  - constraints
+  - gotchas
+  - cli
+  - tui
+  - development
   - constraints-gotchas
 categories:
   - checklist
 ---
 
-KB has specific constraints and potential gotchas related to base configuration and error handling that users should be aware of.<ul><li>**Base Resolution Order:** When determining the active knowledge base, KB prioritizes `activeBase` (set by `kb use <base>`) over `selectedBase` (a persistent default set by `kb use --default <base>` or `kb default <base>`). This means a temporary session base will override a persistent default.</li><li>**Error Handling Specificity:** Prerequisites are validated separately. If no base is configured, a "knowledge base" error is returned. If no LLM credentials or provider are available, an "LLM" error is returned. These errors are never combined, meaning you'll only see one specific error at a time, not an "either/or" message. The canonical copy of this logic resides in `src/cli/cli-prerequisites.ts`.</li><li>**Session-Scoped `kb use`:** The `kb use <base>` command sets the active base only for the current session. To make a base persistent across sessions, you must use `kb use --default <base>`.</li></ul>
+Several important constraints and potential gotchas are easy to miss when working with KB. KB expects Node 20+ in the shell that runs `kb`. Every user-facing feature must work both as `kb <command>` (one-shot CLI) and `/command` (TUI shell) unless there is an explicit reason not to. Prompts and instructions must stay as Markdown files and not be inlined as TypeScript strings or template literals. Policy decisions should be centralized in orchestrators/intent layers, keeping CLI and TUI adapters thin. All non-trivial logic needs unit tests before a PR merges, and `npm run precommit` must pass before pushing. For CLI changes, an e2e smoke test should be run before declaring completion. The `dogfood` base should not be polluted with throwaway data; use `--base ci-*` for disposable test traffic. The `raylib` base is intended for persistent agent comparison and should not be reused for ephemeral evaluation runs.
