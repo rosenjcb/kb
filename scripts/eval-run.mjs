@@ -124,6 +124,22 @@ function allocateRunName(repoLeaf) {
   return name
 }
 
+function resolveRepoDirInRun(runDir, repoUrl) {
+  if (repoUrl && String(repoUrl).trim()) {
+    return path.join(runDir, repoLeafNameFromUrl(repoUrl))
+  }
+  const entries = fs.existsSync(runDir)
+    ? fs.readdirSync(runDir, { withFileTypes: true }).filter(e => e.isDirectory())
+    : []
+  const gitDirs = entries
+    .map(entry => path.join(runDir, entry.name))
+    .filter(candidate => fs.existsSync(path.join(candidate, '.git')))
+  if (gitDirs.length === 1) return gitDirs[0]
+  throw new Error(
+    `[eval] could not resolve repo dir in ${runDir}; pass --repo or keep exactly one git checkout directory under the run folder`
+  )
+}
+
 function loadVendorSuite(suiteId) {
   const y = path.join(SUITES_DIR, `${suiteId}.yaml`)
   const y2 = path.join(SUITES_DIR, `${suiteId}.yml`)
@@ -219,7 +235,7 @@ Modes:
   query   Fresh clone → same capture minus init; requires --base (KB session must already exist)
 
 Layout (per run, snapshot clone):
-  ~/.kb/evaluations/<run-name>/repo/    git clone
+  ~/.kb/evaluations/<run-name>/<repo-name>/  git clone
   ~/.kb/evaluations/<run-name>/         scratch (q*.json, logs) + default artifact.json
 
 Target:
@@ -235,7 +251,7 @@ Suite / questions:
 Other:
   --base NAME             Override KB base (all: default = run folder name, e.g. raylib-2026-04-27-1303; query: required)
   --label SLUG            Stored as run_label in artifact
-  --run-dir PATH          With --skip-init: existing ~/.kb/evaluations/<run>/ (expects ./repo clone)
+  --run-dir PATH          With --skip-init: existing ~/.kb/evaluations/<run>/ (expects one git clone dir)
   --out PATH              Override artifact JSON path
   --scores-file, --auto-score, --auto-score-file, --skip-init, --hypothesis
 `)
@@ -570,7 +586,7 @@ function resolveEvalPaths(args) {
     }
     const runDir = path.resolve(args.runDir)
     const runName = path.basename(runDir)
-    const repoDir = path.join(runDir, 'repo')
+    const repoDir = resolveRepoDirInRun(runDir, args.repo || null)
     if (!fs.existsSync(runDir)) {
       throw new Error(`[eval] --run-dir not found: ${runDir}`)
     }
@@ -582,13 +598,13 @@ function resolveEvalPaths(args) {
 
   if (!args.repo || !String(args.repo).trim()) {
     throw new Error(
-      '[eval] require repo URL: pass --repo <git-url> or set repo_url in suite YAML (eval always clones under ~/.kb/evaluations/<run>/repo/)'
+      '[eval] require repo URL: pass --repo <git-url> or set repo_url in suite YAML (eval clones under ~/.kb/evaluations/<run>/<repo-name>/)'
     )
   }
 
   const runName = allocateRunName(repoLeafNameFromUrl(args.repo))
   const runDir = path.join(root, runName)
-  const repoDir = path.join(runDir, 'repo')
+  const repoDir = path.join(runDir, repoLeafNameFromUrl(args.repo))
   fs.mkdirSync(root, { recursive: true })
   fs.mkdirSync(runDir, { recursive: true })
 
