@@ -1,3 +1,4 @@
+import { DOC_TYPES, type DocType, isDocType } from '../core/doc-taxonomy'
 import type { ToolDefinition } from '../core/types'
 
 /**
@@ -11,7 +12,7 @@ export interface WriteDocumentInput {
   title: string
   content: string
   tags?: string[]
-  type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
+  type?: DocType
   documentId?: string
   overwrite?: boolean
   isOriginal?: boolean
@@ -150,7 +151,7 @@ export const writeDocumentTool: ToolDefinition = {
       },
       type: {
         type: 'string',
-        enum: ['architecture', 'decision', 'checklist', 'runbook', 'reference'],
+        enum: [...DOC_TYPES],
         description: 'Optional document type for operation semantics and filtering.',
       },
       documentId: {
@@ -245,13 +246,9 @@ function parseOptionalType(value: unknown): WriteDocumentInput['type'] | undefin
     throw new Error('write_document: type must be a string when provided')
   }
 
-  const allowed = new Set(['architecture', 'decision', 'checklist', 'runbook', 'reference'])
-
-  if (!allowed.has(value)) {
-    throw new Error(
-      'write_document: type must be one of architecture, decision, checklist, runbook, reference'
-    )
+  if (!isDocType(value)) {
+    throw new Error(`write_document: type must be one of ${DOC_TYPES.join(', ')}`)
   }
 
-  return value as WriteDocumentInput['type']
+  return value
 }

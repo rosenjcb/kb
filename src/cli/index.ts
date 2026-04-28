@@ -47,6 +47,7 @@ import {
 } from './docs-delete-cli'
 import {
   DocsGenerateError,
+  isDocsGenerateJsonOutputArgs,
   parseDocsGenerateCommand,
   printDocsGenerateHelp,
   runDocsGenerate,
@@ -223,7 +224,7 @@ function printDocsHelp(mode: CmdMode = 'cli'): string {
     'Usage:',
     `  ${cmd('docs list', mode)} [options]`,
     `  ${cmd('docs view <document-id>', mode)} [options]`,
-    `  ${cmd('docs generate "<instruction>" --title "<title>"', mode)} [options]`,
+    `  ${cmd('docs generate "<prompt>"', mode)} [options]  (see ${cmd('docs generate --help', mode)})`,
     `  ${cmd('docs merge <targetDocId> <sourceDocId> [...]', mode)} [options]`,
     `  ${cmd('docs rename <documentId> "<new title>"', mode)} [options]`,
     `  ${cmd('docs delete <documentId>', mode)} [options]`,
@@ -515,10 +516,12 @@ export async function runMainWithOutput(
     }
 
     if (docsAction === 'generate') {
+      const jsonOut = isDocsGenerateJsonOutputArgs(args)
       try {
         const parsed = parseDocsGenerateCommand(args.slice(2))
-        const generated = await runDocsGenerate(parsed)
-        out.log(JSON.stringify({ status: 'accepted', generated }, null, 2))
+        const generated = await runDocsGenerate(parsed, process.cwd(), config)
+        const payload = { status: 'accepted' as const, generated }
+        out.log(parsed.outputFormat === 'json' ? JSON.stringify(payload) : JSON.stringify(payload, null, 2))
         return
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -527,7 +530,11 @@ export async function runMainWithOutput(
           out.log(message)
           return
         }
-        out.error(`❌ ${message}`)
+        if (jsonOut) {
+          out.log(JSON.stringify({ status: 'error', message }))
+        } else {
+          out.error(`❌ ${message}`)
+        }
       }
       return
     }
@@ -948,11 +955,17 @@ async function main() {
   kbConfig = inferred.config
   applyConfigToEnv(kbConfig)
 
-  // One-shot CLI path
-  console.log('🤖 KB Agent Harness\n')
-  if (inferred.notice) {
-    console.log(inferred.notice)
-    console.log('')
+  // One-shot CLI path — skip banner when docs generate --output json (stdout must be parseable JSON only).
+  const machineJsonStdout = isDocsGenerateJsonOutputArgs(args)
+  if (!machineJsonStdout) {
+    console.log('🤖 KB Agent Harness\n')
+    if (inferred.notice) {
+      console.log(inferred.notice)
+      console.log('')
+    }
+  } else if (inferred.notice) {
+    console.error(inferred.notice)
+    console.error('')
   }
   await runMainWithOutput(args, defaultCliOutput, kbConfig)
 }

@@ -29,7 +29,7 @@ async function seedDocument(
     title: string
     documentId?: string
     content: string
-    type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
+    type?: 'howto' | 'introduction' | 'reference' | 'decision' | 'runbook'
     tags?: string[]
   }
 ): Promise<void> {
@@ -203,7 +203,7 @@ describe('list-cli runtime', () => {
       title: 'Architecture Notes',
       documentId: 'architecture-notes',
       content: 'System overview.\n',
-      type: 'architecture',
+      type: 'introduction',
     })
 
     const result = await runListCommand(['--base', baseDir, '--limit', '10'])
@@ -212,7 +212,7 @@ describe('list-cli runtime', () => {
     expect(result.output).toContain('Count: 2')
     expect(result.output).toContain('- cli-facts (title="CLI Facts"; type=reference; tags=cli;')
     expect(result.output).toContain(
-      '- architecture-notes (title="Architecture Notes"; type=architecture;'
+      '- architecture-notes (title="Architecture Notes"; type=introduction;'
     )
   })
 

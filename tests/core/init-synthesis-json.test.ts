@@ -34,11 +34,11 @@ describe('stripSynthesisJsonWrapper', () => {
 describe('parseInitSynthesisObject', () => {
   it('Given balanced JSON object, then returns doc fields', () => {
     const doc = parseInitSynthesisObject(
-      '{"title":"  Hello ","type":"architecture","tags":["a"],"content":"# Body\\n"}'
+      '{"title":"  Hello ","type":"introduction","tags":["a"],"content":"# Body\\n"}'
     )
     expect(doc).toEqual({
       title: 'Hello',
-      type: 'architecture',
+      type: 'introduction',
       tags: ['a'],
       content: '# Body\n',
     })

@@ -7,6 +7,7 @@
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import dayjs from 'dayjs'
+import { coerceDocType } from '../core/doc-taxonomy'
 import type {
   AppendToDocumentInput,
   DocumentWriterExtended,
@@ -86,7 +87,9 @@ function extractTagsFromContent(content: string): string[] {
 function extractTypeFromContent(content: string): string | null {
   for (const line of content.split('\n').slice(0, 10)) {
     if (line.startsWith('Type:')) {
-      return line.slice('Type:'.length).trim() || null
+      const raw = line.slice('Type:'.length).trim()
+      if (!raw) return null
+      return coerceDocType(raw) ?? null
     }
   }
   return null

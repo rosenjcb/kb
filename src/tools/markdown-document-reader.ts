@@ -9,6 +9,7 @@ import path from 'node:path'
 import Database from 'better-sqlite3'
 import dayjs from 'dayjs'
 import { emitDiagnostic } from '../core/diagnostics'
+import { type DocType, coerceDocType } from '../core/doc-taxonomy'
 import { DuckGraphWriter, type GraphDocumentAffinity } from './duck-graph-writer'
 import { toGraphQuerySlugs } from './graph-query-expansion'
 import { QueryResearchOrchestrator } from './query-research-orchestrator'
@@ -66,7 +67,7 @@ export interface QueryDocumentsInput {
   mode?: 'id' | 'title' | 'tags' | 'content'
   discoveryDepth?: 'shallow' | 'deep'
   tags?: string[]
-  type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
+  type?: DocType
   limit?: number
   includeContent?: boolean
 }
@@ -215,8 +216,9 @@ function parseDocumentMetadata(filePath: string, content: string): DocumentMetad
     }
     if (line.startsWith('Type:')) {
       const parsedType = line.replace('Type:', '').trim()
-      if (['architecture', 'decision', 'checklist', 'runbook', 'reference'].includes(parsedType)) {
-        type = parsedType as QueryDocumentsInput['type']
+      const coerced = coerceDocType(parsedType)
+      if (coerced) {
+        type = coerced
       }
     }
   }
@@ -451,9 +453,7 @@ export class MarkdownDocumentReader {
 
         if (laneFilter?.length && !laneFilter.includes(lane)) continue
 
-        const type = (
-          ['architecture', 'decision', 'checklist', 'runbook', 'reference'] as const
-        ).find(t => t === row.doc_type)
+        const type = coerceDocType(row.doc_type)
 
         const matchesType = !input.type || type === input.type
         if (!matchesType) continue
@@ -829,13 +829,14 @@ export class MarkdownDocumentReader {
                 created_at: string
                 updated_at: string
                 tags_json?: string
-                doc_type?: QueryDocumentsInput['type']
+                doc_type?: string
                 lane?: RetrievalLane
               }
             | undefined
           if (!doc) continue
 
-          if (input.type && doc.doc_type !== input.type) {
+          const coercedDocType = coerceDocType(doc.doc_type)
+          if (input.type && coercedDocType !== input.type) {
             continue
           }
 
@@ -855,7 +856,7 @@ export class MarkdownDocumentReader {
               createdAt: doc.created_at,
               updatedAt: doc.updated_at,
               tags: parseTagsJson(doc.tags_json),
-              type: doc.doc_type,
+              type: coercedDocType,
             },
             content,
             graphBoost: row.graphBoost > 0 ? row.graphBoost : undefined,

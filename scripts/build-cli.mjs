@@ -37,12 +37,23 @@ if (process.platform !== 'win32') {
   await chmod(launcherFile, 0o755)
 }
 
-// Copy prompt .md files so the bundled binary can resolve them at runtime.
+// Copy prompt .md files so the bundled binary can resolve them at runtime (see src/prompts/prompt-assets.ts).
 const promptsSrc = path.join(projectRoot, 'src', 'prompts')
 const promptsDest = path.dirname(outFile)
 for (const file of await readdir(promptsSrc)) {
   if (file.endsWith('.md')) {
     await copyFile(path.join(promptsSrc, file), path.join(promptsDest, file))
+  }
+}
+
+const docQuestionnairesSrc = path.join(promptsSrc, 'doc-questionnaires')
+const docQuestionnairesDest = path.join(promptsDest, 'doc-questionnaires')
+if (existsSync(docQuestionnairesSrc)) {
+  await mkdir(docQuestionnairesDest, { recursive: true })
+  for (const file of await readdir(docQuestionnairesSrc)) {
+    if (file.endsWith('.md')) {
+      await copyFile(path.join(docQuestionnairesSrc, file), path.join(docQuestionnairesDest, file))
+    }
   }
 }
 

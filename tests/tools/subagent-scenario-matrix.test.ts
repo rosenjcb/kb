@@ -1,6 +1,6 @@
 /**
  * Ticket 106: three subagent tuning rows (s1–s3), same fake LLM queue.
- * Compare `kb query` / init quality to a run from before your branch via `eval:all` / `evaluation/runs/` if needed.
+ * Compare `kb query` / init quality to a run from before your branch via `eval:init` / `evaluation/runs/` if needed.
  * Matrix file: `WRITE_ORCHESTRATOR_MATRIX=1 npx vitest run tests/tools/subagent-scenario-matrix.test.ts`
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises'

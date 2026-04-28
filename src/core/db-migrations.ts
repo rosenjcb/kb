@@ -281,6 +281,18 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_facts_lane_id ON facts(lane_id);
     `,
   },
+  {
+    version: 7,
+    name: 'doctype_redesign_remap_legacy',
+    sql: `
+      UPDATE documents     SET doc_type = 'reference' WHERE doc_type = 'architecture';
+      UPDATE documents     SET doc_type = 'runbook'   WHERE doc_type = 'checklist';
+      UPDATE derived_docs  SET doc_type = 'reference' WHERE doc_type = 'architecture';
+      UPDATE derived_docs  SET doc_type = 'runbook'   WHERE doc_type = 'checklist';
+      UPDATE original_docs SET doc_type = 'reference' WHERE doc_type = 'architecture';
+      UPDATE original_docs SET doc_type = 'runbook'   WHERE doc_type = 'checklist';
+    `,
+  },
 ]
 
 /**

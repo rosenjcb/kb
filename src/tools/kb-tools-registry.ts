@@ -12,6 +12,7 @@ import path from 'node:path'
 import { getKbHomeDir } from '../cli/base-selection'
 import type { KbConfig } from '../cli/kb-config'
 import { resolveFeatureFlags, resolveGraphEnabled } from '../cli/kb-config'
+import { DOC_TYPES } from '../core/doc-taxonomy'
 import type { StreamManager } from '../core/runtime/stream-manager'
 import type { ToolExecutor } from '../core/tool-registry'
 import { createToolRegistry } from '../core/tool-registry'
@@ -78,7 +79,7 @@ export function createKBToolsRegistry(
         },
         type: {
           type: 'string',
-          enum: ['architecture', 'decision', 'checklist', 'runbook', 'reference'],
+          enum: [...DOC_TYPES],
           description: 'Optional document type',
         },
         documentId: {
@@ -127,7 +128,7 @@ export function createKBToolsRegistry(
         },
         type: {
           type: 'string',
-          enum: ['architecture', 'decision', 'checklist', 'runbook', 'reference'],
+          enum: [...DOC_TYPES],
           description: 'Optional document type filter',
         },
         limit: {
@@ -173,44 +174,6 @@ export function createKBToolsRegistry(
       confidence?: number
     }
     return indexer.upsertFact(payload)
-  })
-
-  const generateDocToolDef: ToolDefinition = {
-    name: 'generate_document_from_facts',
-    description: 'Generate a derived markdown document from retrieved facts',
-    schema: {
-      type: 'object',
-      properties: {
-        instruction: { type: 'string', description: 'User instruction for generated document' },
-        title: { type: 'string', description: 'Output document title' },
-        limit: { type: 'number', description: 'Fact retrieval limit (default: 20)' },
-      },
-      required: ['instruction', 'title'],
-      additionalProperties: false,
-    },
-  }
-  registry.register('generate_document_from_facts', generateDocToolDef, async input => {
-    const payload = input as { instruction: string; title: string; limit?: number }
-    const factRows = indexer.searchFacts(payload.instruction, payload.limit ?? 20)
-    const markdownLines = [`# ${payload.title}`, '', `Instruction: ${payload.instruction}`, '', '## Evidence']
-    for (const row of factRows) {
-      markdownLines.push(`- ${row.fact_text}`)
-    }
-    if (factRows.length === 0) {
-      markdownLines.push('- No supporting facts found.')
-    }
-    const id = slugify(payload.title)
-    indexer.upsertDerivedDoc({
-      id,
-      title: payload.title,
-      instruction: payload.instruction,
-      markdown: `${markdownLines.join('\n')}\n`,
-      sourceFactIds: factRows.map(row => row.id),
-      status: 'active',
-      tags: ['derived'],
-      docType: 'reference',
-    })
-    return { id, title: payload.title, sourceFactCount: factRows.length }
   })
 
   const appendToolDef: ToolDefinition = {
@@ -521,13 +484,3 @@ export function createKBToolsRegistry(
 }
 
 export type { QueryResponse, QueryDocumentsInput }
-
-function slugify(input: string): string {
-  return (
-    input
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 80) || 'generated-doc'
-  )
-}

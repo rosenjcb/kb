@@ -1,3 +1,4 @@
+import { type DocType, coerceDocType } from '../core/doc-taxonomy'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
 import { type CmdMode, cmd } from './cmd-ref'
@@ -259,7 +260,7 @@ type QueryResult = {
     createdAt: string
     updatedAt: string
     tags?: string[]
-    type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
+    type?: DocType
   }
   content?: string
 }
@@ -282,7 +283,7 @@ function toQueryResult(row: {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       tags: parseTags(row.tags_json),
-      type: (row.doc_type as QueryResult['metadata']['type']) ?? undefined,
+      type: coerceDocType(row.doc_type),
     },
     content: row.content,
   }

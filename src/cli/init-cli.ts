@@ -19,6 +19,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import readline from 'node:readline'
 import dayjs from 'dayjs'
+import { DOC_TYPES } from '../core/doc-taxonomy'
 import {
   INIT_SYNTHESIS_GEMINI_RESPONSE_SCHEMA,
   INIT_SYNTHESIS_OPENAI_JSON_SCHEMA,
@@ -171,13 +172,7 @@ interface CandidateDoc {
   isOriginal?: boolean
 }
 
-const VALID_DOC_TYPES = new Set<NonNullable<CandidateDoc['type']>>([
-  'architecture',
-  'decision',
-  'reference',
-  'runbook',
-  'checklist',
-])
+const VALID_DOC_TYPES = new Set<NonNullable<CandidateDoc['type']>>(DOC_TYPES)
 
 interface InitCheckpointV1 {
   version: 1
@@ -1777,7 +1772,7 @@ function expandSingleDocIntoSourceShards(
 ): CandidateDoc[] {
   const overview: CandidateDoc = {
     title: 'Project Overview',
-    type: 'architecture',
+    type: 'introduction',
     tags: ['overview', baseName],
     content: lone.content,
     isOriginal: false,

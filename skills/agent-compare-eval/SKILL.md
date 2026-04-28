@@ -34,7 +34,7 @@ Also confirm the **run number** (e.g. `--run 3`). If not specified, inspect `eva
 For **each task**, in order:
 
 ```bash
-# From kb repo root. (Agent-compare / codeburn only — not `eval:all` / `eval:query`.)
+# From kb repo root. (Agent-compare / codeburn only — not `eval:init` / `eval:query`.)
 
 # 1. Snapshot BEFORE
 npx tsx scripts/eval-snapshot.ts /tmp/snap-before-t${TASK}.json

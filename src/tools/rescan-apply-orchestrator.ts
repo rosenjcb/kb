@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { type DocType, isDocType } from '../core/doc-taxonomy'
 import { renderDiffBundle, renderTextDiff } from '../core/git-diff-preview'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { ToolUseRequest } from '../core/types'
@@ -655,16 +656,8 @@ function createRescanIntentExecutor(
   }
 }
 
-function asWriteDocType(
-  value: unknown
-): 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference' {
-  return value === 'architecture' ||
-    value === 'decision' ||
-    value === 'checklist' ||
-    value === 'runbook' ||
-    value === 'reference'
-    ? value
-    : 'reference'
+function asWriteDocType(value: unknown): DocType {
+  return isDocType(value) ? value : 'reference'
 }
 
 async function submitViaIntentRouter(input: {
