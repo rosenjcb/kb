@@ -68,6 +68,7 @@ export class DefaultIntentRouter implements IntentRouter {
             limit: effectiveLimit,
             type: payload.type,
             discoveryDepth: effectiveDiscoveryDepth,
+            surface: payload.surface === 'chat' ? 'chat' : 'query',
           },
           policyReason: highRecall
             ? 'query intent maps to read_documents with high-recall evidence policy'

@@ -268,6 +268,36 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
+  it('Given fact concepts, indexer can search and expand through concept graph', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    const factA = indexer.upsertFact({
+      factText: 'raylib uses opengl rendering backend',
+      sourceKind: 'submit',
+      sourceRef: 'test',
+      confidence: 0.9,
+    })
+    indexer.upsertFact({
+      factText: 'opengl backend supports shader pipelines',
+      sourceKind: 'submit',
+      sourceRef: 'test',
+      confidence: 0.9,
+    })
+
+    const concepts = indexer.listFactConcepts([factA.id])
+    expect(concepts.some(c => c.concept_id === 'opengl')).toBe(true)
+
+    const conceptMatches = indexer.searchFactsByConcepts(['opengl'], 10)
+    expect(conceptMatches.length).toBeGreaterThan(0)
+
+    const neighbors = indexer.expandNeighborConcepts(['raylib'], 2, 20)
+    expect(neighbors).toContain('opengl')
+
+    indexer.close()
+  })
+
   it('Given natural language query, searchFacts should match token-level evidence', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')

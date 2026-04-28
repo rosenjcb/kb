@@ -51,6 +51,7 @@ interface ReadDocumentsResult {
   retrieval?: {
     method?: string
     detail?: string
+    clarificationQuestion?: string
     checkpoints?: Array<{
       stage?: string
       status?: string
@@ -169,12 +170,28 @@ export async function runChatSession(
             // Optional relational graph context only.
           }
         }
-        const intentResult = await executeChatQueryTruthRetrieval({
+        let activeQuery = expandedQuery
+        let intentResult = await executeChatQueryTruthRetrieval({
           toolExecutor: deps.toolExecutor,
-          expandedQuery,
+          expandedQuery: activeQuery,
           retrievalLimit,
           workspaceDir: deps.workspaceDir ?? process.cwd(),
         })
+        for (let clarifyIter = 0; clarifyIter < 2; clarifyIter += 1) {
+          if (!isReadDocumentsResult(intentResult)) break
+          const retrievalData = normalizeReadResult(intentResult.data)
+          const clarificationQuestion = retrievalData.retrieval?.clarificationQuestion?.trim()
+          if (!clarificationQuestion) break
+          const clarificationAnswer = await io.read(`clarify> ${clarificationQuestion} `)
+          if (!clarificationAnswer?.trim()) break
+          activeQuery = `${resolvedTurn.retrievalQuery}\nClarification: ${clarificationAnswer.trim()}`
+          intentResult = await executeChatQueryTruthRetrieval({
+            toolExecutor: deps.toolExecutor,
+            expandedQuery: activeQuery,
+            retrievalLimit,
+            workspaceDir: deps.workspaceDir ?? process.cwd(),
+          })
+        }
 
         if (!isReadDocumentsResult(intentResult)) {
           const detail =

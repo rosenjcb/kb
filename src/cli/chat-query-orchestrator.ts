@@ -24,6 +24,7 @@ function buildChatQueryTruthParsed(
         query: expandedQuery,
         limit: retrievalLimit,
         discoveryDepth: 'deep',
+        surface: 'chat',
       },
     },
     output: 'human',

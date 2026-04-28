@@ -1,0 +1,15 @@
+# Repo-neutral pack for arbitrary git targets. Use: --suite generic --repo <git-url>
+schema_version: 1
+id: generic
+display_name: generic
+rubric_focus: the **target software repository** knowledge base (facts + docs in SQLite)
+graph_with_base: true
+questions:
+  - What is this project for, and what are its main capabilities?
+  - How does this project's architecture work, including major modules and platform support?
+  - How do I install and build this project, including dependencies and build systems?
+  - What configuration options and compile flags or build settings does this project support?
+  - How does this project handle platform-specific behavior, IO, or rendering (if applicable)?
+  - What are the coding conventions and style guidelines for contributing?
+  - What are the main gotchas, constraints, and known limitations?
+  - What does the roadmap or changelog say about future plans and recent version history?

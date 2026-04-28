@@ -122,6 +122,14 @@ export interface FactRow {
   updated_at: string
 }
 
+export interface FactConceptRow {
+  fact_id: string
+  concept_id: string
+  role: string
+  score: number
+  created_at: string
+}
+
 export interface DerivedDocUpsertInput {
   id: string
   title: string
@@ -249,6 +257,7 @@ export class SqliteKbIndexer {
           existing.id
         )
       this.rebuildFactIndexes(existing.id, input.factText.trim(), now)
+      this.rebuildFactGraph(existing.id, input.factText.trim(), now)
       return { id: existing.id, operation: 'updated' }
     }
 
@@ -274,6 +283,7 @@ export class SqliteKbIndexer {
         now
       )
     this.rebuildFactIndexes(id, input.factText.trim(), now)
+    this.rebuildFactGraph(id, input.factText.trim(), now)
     return { id, operation: 'inserted' }
   }
 
@@ -346,6 +356,76 @@ export class SqliteKbIndexer {
       `
       )
       .all(...likeValues, limit) as FactRow[]
+  }
+
+  searchFactsByConcepts(conceptIds: string[], limit = 20): FactRow[] {
+    const normalized = [...new Set(conceptIds.map(id => normalizeConceptId(id)).filter(Boolean))]
+    if (normalized.length === 0) return []
+    const placeholders = normalized.map(() => '?').join(', ')
+    return this.db
+      .prepare(
+        `
+        SELECT f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at
+        FROM facts f
+        JOIN fact_concepts fc ON fc.fact_id = f.id
+        WHERE f.tombstoned_at IS NULL
+          AND fc.concept_id IN (${placeholders})
+        ORDER BY f.updated_at DESC
+        LIMIT ?
+      `
+      )
+      .all(...normalized, limit) as FactRow[]
+  }
+
+  listFactConcepts(factIds: string[]): FactConceptRow[] {
+    const ids = [...new Set(factIds.map(id => id.trim()).filter(Boolean))]
+    if (ids.length === 0) return []
+    const placeholders = ids.map(() => '?').join(', ')
+    return this.db
+      .prepare(
+        `
+        SELECT fact_id, concept_id, role, score, created_at
+        FROM fact_concepts
+        WHERE fact_id IN (${placeholders})
+      `
+      )
+      .all(...ids) as FactConceptRow[]
+  }
+
+  expandNeighborConcepts(conceptIds: string[], hopLimit = 1, limit = 20): string[] {
+    let frontier = [...new Set(conceptIds.map(id => normalizeConceptId(id)).filter(Boolean))]
+    if (frontier.length === 0) return []
+    const seen = new Set(frontier)
+    const boundedHopLimit = Math.max(1, Math.min(3, hopLimit))
+    const boundedLimit = Math.max(1, Math.min(100, limit))
+
+    for (let hop = 0; hop < boundedHopLimit; hop++) {
+      if (frontier.length === 0 || seen.size >= boundedLimit) break
+      const placeholders = frontier.map(() => '?').join(', ')
+      const neighbors = this.db
+        .prepare(
+          `
+          SELECT DISTINCT fc2.concept_id AS concept_id
+          FROM fact_concepts fc1
+          JOIN fact_edges fe ON (fe.from_fact_id = fc1.fact_id OR fe.to_fact_id = fc1.fact_id)
+          JOIN fact_concepts fc2 ON (fc2.fact_id = fe.from_fact_id OR fc2.fact_id = fe.to_fact_id)
+          WHERE fc1.concept_id IN (${placeholders})
+          LIMIT ?
+        `
+        )
+        .all(...frontier, boundedLimit) as Array<{ concept_id: string }>
+      const next: string[] = []
+      for (const row of neighbors) {
+        const concept = normalizeConceptId(row.concept_id)
+        if (!concept || seen.has(concept)) continue
+        seen.add(concept)
+        next.push(concept)
+        if (seen.size >= boundedLimit) break
+      }
+      frontier = next
+    }
+
+    return [...seen].slice(0, boundedLimit)
   }
 
   invalidateFact(oldFact: string, replacementFact?: string): { changed: number; replacementId?: string } {
@@ -524,6 +604,54 @@ export class SqliteKbIndexer {
       `
       )
       .run(factId, this.modelId, this.vectorDimensions, JSON.stringify(vector), now)
+  }
+
+  private rebuildFactGraph(factId: string, factText: string, now: string): void {
+    const concepts = extractConcepts(factText)
+    this.db.prepare('DELETE FROM fact_concepts WHERE fact_id = ?').run(factId)
+    this.db.prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?').run(factId, factId)
+    if (concepts.length === 0) return
+
+    const upsertConcept = this.db.prepare(
+      `
+      INSERT INTO fact_concepts (fact_id, concept_id, role, score, created_at)
+      VALUES (?, ?, 'context', 1.0, ?)
+      ON CONFLICT(fact_id, concept_id, role) DO UPDATE SET
+        score = excluded.score,
+        created_at = excluded.created_at
+    `
+    )
+    for (const concept of concepts) upsertConcept.run(factId, concept, now)
+
+    const placeholders = concepts.map(() => '?').join(', ')
+    const relatedFacts = this.db
+      .prepare(
+        `
+        SELECT DISTINCT fc.fact_id
+        FROM fact_concepts fc
+        JOIN facts f ON f.id = fc.fact_id
+        WHERE fc.concept_id IN (${placeholders})
+          AND fc.fact_id != ?
+          AND f.tombstoned_at IS NULL
+        ORDER BY f.updated_at DESC
+        LIMIT 12
+      `
+      )
+      .all(...concepts, factId) as Array<{ fact_id: string }>
+
+    const upsertEdge = this.db.prepare(
+      `
+      INSERT INTO fact_edges (from_fact_id, to_fact_id, edge_type, weight, created_at)
+      VALUES (?, ?, 'concept_overlap', ?, ?)
+      ON CONFLICT(from_fact_id, to_fact_id, edge_type) DO UPDATE SET
+        weight = excluded.weight,
+        created_at = excluded.created_at
+    `
+    )
+    for (const row of relatedFacts) {
+      upsertEdge.run(factId, row.fact_id, 1, now)
+      upsertEdge.run(row.fact_id, factId, 1, now)
+    }
   }
 
   upsertDocumentFromContent(filePath: string, content: string): void {
@@ -1183,4 +1311,41 @@ function normalizeFactText(input: string): string {
 
 function tokenizeQuery(input: string): string[] {
   return [...new Set(input.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t.length > 2))].slice(0, 10)
+}
+
+const FACT_STOP_WORDS = new Set([
+  'the',
+  'and',
+  'for',
+  'with',
+  'that',
+  'this',
+  'from',
+  'into',
+  'using',
+  'where',
+  'when',
+  'what',
+  'how',
+  'are',
+  'is',
+  'was',
+  'were',
+  'your',
+  'their',
+  'have',
+  'has',
+])
+
+function extractConcepts(input: string): string[] {
+  const tokens = input
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token.length > 2 && !FACT_STOP_WORDS.has(token))
+  return [...new Set(tokens)].slice(0, 12).map(normalizeConceptId).filter(Boolean)
+}
+
+function normalizeConceptId(input: string): string {
+  return input.toLowerCase().replace(/[^a-z0-9_-]/g, '').trim()
 }

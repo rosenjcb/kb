@@ -1,4 +1,5 @@
 import { SqliteKbIndexer, type FactRow } from './sqlite-kb-index'
+import { FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
 
 export interface QueryDocumentsInput {
   query?: string
@@ -8,6 +9,7 @@ export interface QueryDocumentsInput {
   type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
   limit?: number
   includeContent?: boolean
+  surface?: 'query' | 'chat'
 }
 
 export interface QueryResult {
@@ -27,8 +29,9 @@ export interface QueryResponse {
   results: QueryResult[]
   total: number
   retrieval: {
-    method: 'lexical'
+    method: 'lexical' | 'hybrid' | 'lexical-fallback'
     detail?: string
+    clarificationQuestion?: string
   }
 }
 
@@ -41,6 +44,15 @@ export class FactsDocumentReader {
 
   async queryDocuments(input: QueryDocumentsInput): Promise<QueryResponse> {
     const limit = input.limit ?? 10
+    if (input.discoveryDepth === 'deep') {
+      const orchestrator = new FactsQueryResearchOrchestrator(this.indexer)
+      return orchestrator.run({
+        query: input.query?.trim() ?? '',
+        limit,
+        includeContent: input.includeContent === true,
+        surface: input.surface ?? 'query',
+      })
+    }
     const rows = this.readRows(input, limit)
     const results = rows.map(row => this.toResult(row, input.includeContent === true))
     return {
