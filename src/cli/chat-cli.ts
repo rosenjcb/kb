@@ -5,7 +5,7 @@ import { loadPrompt } from '../prompts/loader'
 import type { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
-import { createPrinter } from '../ui/printer'
+import { createPrinter, type Printer } from '../ui/printer'
 import {
   type ChatConversationState,
   createInitialConversationState,
@@ -31,6 +31,10 @@ export interface ChatSessionDeps {
   /** When true, human footer uses one detailed `source>` line per hit (same as `kb query --debug`). */
   debug?: boolean
   onTurnComplete?: (turn: ChatTurnTrace) => void
+  /** Progress heartbeat cadence for long-running turn stages. Default: 8000ms. */
+  progressHeartbeatMs?: number
+  /** Emit a "still working" notice after this delay. Default: 12000ms. */
+  progressNoticeMs?: number
 }
 
 export interface ChatIO {
@@ -52,6 +56,7 @@ interface ReadDocumentsResult {
     method?: string
     detail?: string
     clarificationQuestion?: string
+    suggestRetrievalDeepen?: boolean
     checkpoints?: Array<{
       stage?: string
       status?: string
@@ -107,6 +112,8 @@ export async function runChatSession(
   )
   const retrievalLimit = deps.retrievalLimit ?? 5
   const maxHistoryTurns = deps.maxHistoryTurns ?? 8
+  const progressHeartbeatMs = Math.max(1500, deps.progressHeartbeatMs ?? 8000)
+  const progressNoticeMs = Math.max(3000, deps.progressNoticeMs ?? 12000)
   let conversationState = createInitialConversationState()
   // Accumulated multi-turn message history — grows each turn like Claude Code does.
   // The LLM sees native assistant/user pairs rather than embedded-text history.
@@ -147,6 +154,7 @@ export async function runChatSession(
       }
 
       try {
+        const turnStartedAt = Date.now()
         const resolvedTurn = deps.conversationalRetrieval
           ? resolveConversationalChatTurn(input, conversationState)
           : {
@@ -170,27 +178,44 @@ export async function runChatSession(
             // Optional relational graph context only.
           }
         }
-        let activeQuery = expandedQuery
-        let intentResult = await executeChatQueryTruthRetrieval({
-          toolExecutor: deps.toolExecutor,
-          expandedQuery: activeQuery,
-          retrievalLimit,
-          workspaceDir: deps.workspaceDir ?? process.cwd(),
-        })
-        for (let clarifyIter = 0; clarifyIter < 2; clarifyIter += 1) {
+        const initialRetrieval = await withStageProgress(
+          printer,
+          'retrieval',
+          () =>
+            executeChatQueryTruthRetrieval({
+              toolExecutor: deps.toolExecutor,
+              expandedQuery,
+              retrievalLimit,
+              workspaceDir: deps.workspaceDir ?? process.cwd(),
+            }),
+          { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
+        )
+        let retrievalMs = initialRetrieval.durationMs
+        let intentResult = initialRetrieval.result
+
+        for (let deepenPass = 0; deepenPass < 2; deepenPass += 1) {
           if (!isReadDocumentsResult(intentResult)) break
-          const retrievalData = normalizeReadResult(intentResult.data)
-          const clarificationQuestion = retrievalData.retrieval?.clarificationQuestion?.trim()
-          if (!clarificationQuestion) break
-          const clarificationAnswer = await io.read(`clarify> ${clarificationQuestion} `)
-          if (!clarificationAnswer?.trim()) break
-          activeQuery = `${resolvedTurn.retrievalQuery}\nClarification: ${clarificationAnswer.trim()}`
-          intentResult = await executeChatQueryTruthRetrieval({
-            toolExecutor: deps.toolExecutor,
-            expandedQuery: activeQuery,
-            retrievalLimit,
-            workspaceDir: deps.workspaceDir ?? process.cwd(),
-          })
+          const snapshot = normalizeReadResult(intentResult.data)
+          if (!snapshot.retrieval?.suggestRetrievalDeepen) break
+          const pass: 1 | 2 = deepenPass === 0 ? 1 : 2
+          const deepenedQuery = `${resolvedTurn.retrievalQuery}\n${buildChatAutoDeepenLine(
+            resolvedTurn.retrievalQuery,
+            pass
+          )}`
+          const deepened = await withStageProgress(
+            printer,
+            'retrieval-deepen',
+            () =>
+              executeChatQueryTruthRetrieval({
+                toolExecutor: deps.toolExecutor,
+                expandedQuery: deepenedQuery,
+                retrievalLimit,
+                workspaceDir: deps.workspaceDir ?? process.cwd(),
+              }),
+            { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
+          )
+          retrievalMs += deepened.durationMs
+          intentResult = deepened.result
         }
 
         if (!isReadDocumentsResult(intentResult)) {
@@ -216,17 +241,20 @@ export async function runChatSession(
 
         const turnMessages: Message[] = [...messages, { role: 'user', content: userContent }]
 
-        printer.startSpinner('thinking...')
-        const completion = await deps.llmProvider
-          .call({
-            messages: trimMessageHistory(turnMessages, maxHistoryTurns),
-            systemPrompt: CHAT_SYSTEM_PROMPT,
-            temperature: 0.15,
-            maxTokens: CHAT_MAX_OUTPUT_TOKENS,
-          })
-          .finally(() => {
-            printer.stopSpinner()
-          })
+        const answerRun = await withStageProgress(
+          printer,
+          'answer',
+          () =>
+            deps.llmProvider.call({
+              messages: trimMessageHistory(turnMessages, maxHistoryTurns),
+              systemPrompt: CHAT_SYSTEM_PROMPT,
+              temperature: 0.15,
+              maxTokens: CHAT_MAX_OUTPUT_TOKENS,
+            }),
+          { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
+        )
+        const completion = answerRun.result
+        const answerMs = answerRun.durationMs
 
         const answer =
           completion.text.trim() ||
@@ -242,6 +270,10 @@ export async function runChatSession(
           verbose: deps.verbose,
           debug: deps.debug,
         })
+        printer.chatMeta(
+          'timing',
+          `retrieval=${retrievalMs}ms answer=${answerMs}ms total=${Date.now() - turnStartedAt}ms`
+        )
         const sourceIds = formatReadDocumentSourceIds(retrievalForOutput.results)
         deps.onTurnComplete?.({
           input,
@@ -270,6 +302,36 @@ export async function runChatSession(
       await deps.graphWriter.close().catch(() => {})
     }
     io.close?.()
+  }
+}
+
+async function withStageProgress<T>(
+  printer: Printer,
+  stage: string,
+  run: () => Promise<T>,
+  options: { heartbeatMs: number; noticeMs: number }
+): Promise<{ result: T; durationMs: number }> {
+  const started = Date.now()
+  printer.chatMeta('stage', `${stage}:start`)
+  let noticeShown = false
+  const timer = setInterval(() => {
+    const elapsed = Date.now() - started
+    if (!noticeShown && elapsed >= options.noticeMs) {
+      printer.chatMeta('stage', `${stage}:still-working ${Math.round(elapsed / 1000)}s`)
+      noticeShown = true
+      return
+    }
+    if (noticeShown) {
+      printer.chatMeta('stage', `${stage}:progress ${Math.round(elapsed / 1000)}s`)
+    }
+  }, options.heartbeatMs)
+  try {
+    const result = await run()
+    const durationMs = Date.now() - started
+    printer.chatMeta('stage', `${stage}:done ${durationMs}ms`)
+    return { result, durationMs }
+  } finally {
+    clearInterval(timer)
   }
 }
 
@@ -315,6 +377,24 @@ export function buildChatTurnContent(input: {
   ]
     .filter(Boolean)
     .join('\n')
+}
+
+function chatDeepenFocusTokens(retrievalQuery: string): string {
+  const cleaned = retrievalQuery
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length > 2)
+  return [...new Set(cleaned)].slice(0, 8).join(', ') || 'full question scope'
+}
+
+/** Synthetic clarification (no stdin)—mirrors prior interactive clarify passes. */
+function buildChatAutoDeepenLine(retrievalQuery: string, pass: 1 | 2): string {
+  const focus = chatDeepenFocusTokens(retrievalQuery)
+  if (pass === 1) {
+    return `Clarification: Automated deepen—cover every substantive angle (${focus}); prioritize exact CLI behavior, init/submit/query flows, architecture, and KB mechanics over short UI-only summaries.`
+  }
+  return `Clarification: Automated widen—pull adjacent facts on hybrid search, config, skills, evaluation harness, and repo workflow as they relate to: ${focus}.`
 }
 
 function normalizeReadResult(value: unknown): ReadDocumentsResult {

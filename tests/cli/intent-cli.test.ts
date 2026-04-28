@@ -156,7 +156,7 @@ describe('intent-cli formatting', () => {
     expect(output).toContain('The KB uses session base first, then default base.')
     expect(output).toContain('retrieval> hybrid (fts+vector-rerank)')
     expect(output).toContain('matches> 1')
-    expect(output).toContain('sources> CLI Facts')
+    expect(output).toContain('sources> cli-facts')
   })
 
   it('prints minimal intent help with only the supported commands', () => {

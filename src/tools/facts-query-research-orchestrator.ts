@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { formatFactUri } from '../core/fact-uri'
 import { inferQueryLaneWeights } from '../core/fact-taxonomy'
 import type { QueryResponse, QueryResult } from './facts-document-reader'
 import type { FactConceptRow, FactRow, SqliteKbIndexer } from './sqlite-kb-index'
@@ -54,7 +55,6 @@ export class FactsQueryResearchOrchestrator {
     const scoredFacts = new Map<string, { row: FactRow; score: number }>()
     let graphHops = 0
     let sufficiency: SufficiencyDecision = { decision: 'not_answerable_yet', reason: 'insufficient-facts' }
-    let clarificationQuestion: string | undefined
     const loopTrace: string[] = []
 
     for (let iter = 0; iter < maxIterations; iter++) {
@@ -112,17 +112,13 @@ export class FactsQueryResearchOrchestrator {
       }
     }
 
-    if (input.surface === 'chat') {
-      clarificationQuestion = buildClarificationQuestion(queryTokens, scoredFacts.size)
-    }
-
     return this.buildResponse({
       input,
       scoredFacts,
       iterations: maxIterations,
       graphHops,
       sufficiencyReason: sufficiency.reason,
-      clarificationQuestion,
+      suggestRetrievalDeepen: input.surface === 'chat',
       loopTrace,
       queryLaneWeights,
     })
@@ -189,7 +185,7 @@ export class FactsQueryResearchOrchestrator {
     iterations: number
     graphHops: number
     sufficiencyReason: string
-    clarificationQuestion?: string
+    suggestRetrievalDeepen?: boolean
     loopTrace?: string[]
     queryLaneWeights?: Partial<Record<string, number>>
   }): QueryResponse {
@@ -200,7 +196,7 @@ export class FactsQueryResearchOrchestrator {
       metadata: {
         id: row.id,
         title: summarizeFactTitle(row.fact_text),
-        filePath: `fact://${row.id}`,
+        filePath: formatFactUri(row.id),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         tags: [row.source_kind, row.lane_id, 'fact'],
@@ -221,14 +217,17 @@ export class FactsQueryResearchOrchestrator {
     ]
       .filter(Boolean)
       .join(';')
+    const retrieval: QueryResponse['retrieval'] = {
+      method: results.length > 0 ? 'hybrid' : 'lexical-fallback',
+      detail: retrievalDetail,
+    }
+    if (input.suggestRetrievalDeepen === true) {
+      retrieval.suggestRetrievalDeepen = true
+    }
     return {
       results,
       total: results.length,
-      retrieval: {
-        method: results.length > 0 ? 'hybrid' : 'lexical-fallback',
-        detail: retrievalDetail,
-        clarificationQuestion: input.clarificationQuestion,
-      },
+      retrieval,
     }
   }
 }
@@ -248,14 +247,6 @@ function computeCoverage(queryTokens: string[], concepts: FactConceptRow[]): num
   const conceptSet = new Set(concepts.map(concept => concept.concept_id))
   const covered = queryTokens.filter(token => conceptSet.has(token)).length
   return covered / queryTokens.length
-}
-
-function buildClarificationQuestion(queryTokens: string[], evidenceCount: number): string {
-  const missing = queryTokens.slice(0, 3).join(', ')
-  if (evidenceCount === 0) {
-    return `I need one concrete context to continue. Which area should I focus on first (${missing || 'scope, component, or workflow'})?`
-  }
-  return `I found partial evidence. Which missing facet matters most (${missing || 'scope, environment, or version'})?`
 }
 
 function tokenizeQuery(input: string): string[] {

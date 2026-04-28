@@ -214,7 +214,26 @@ describe('deleteBase', () => {
     const result = await deleteBase('to-delete')
 
     expect(result.basePath).toContain('to-delete')
+    expect(result.purgedPaths.some(p => p.includes(path.join('sessions', 'to-delete')))).toBe(true)
     await expect(readFile(path.join(baseDir, 'marker.txt'), 'utf8')).rejects.toThrow()
+  })
+
+  it('Given legacy + tmp checkpoint artifacts, then purges them too', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'kb-repo-del-'))
+    const legacyBaseDir = path.join(getKbHomeDir(), 'dogfood')
+    const tmpCheckpoint = path.join(cwd, '.tmp', 'kb-init', 'dogfood-latest.checkpoint.json')
+    await mkdir(legacyBaseDir, { recursive: true })
+    await mkdir(path.dirname(tmpCheckpoint), { recursive: true })
+    await writeFile(path.join(legacyBaseDir, 'legacy.txt'), 'legacy')
+    await writeFile(tmpCheckpoint, '{"version":2}\n')
+
+    const result = await deleteBase('dogfood', cwd)
+
+    expect(result.purgedPaths).toContain(legacyBaseDir)
+    expect(result.purgedPaths).toContain(tmpCheckpoint)
+    await expect(readFile(path.join(legacyBaseDir, 'legacy.txt'), 'utf8')).rejects.toThrow()
+    await expect(readFile(tmpCheckpoint, 'utf8')).rejects.toThrow()
+    await rm(cwd, { recursive: true, force: true })
   })
 
   it('Given the base is the active base, then clears it from config', async () => {
@@ -266,20 +285,35 @@ describe('printBaseDeleteHelp', () => {
 
 describe('formatDeleteBaseResult', () => {
   it('includes the base name and path in output', () => {
-    const result = { basePath: '/tmp/sessions/test', clearedActive: false, clearedSelected: false }
+    const result = {
+      basePath: '/tmp/sessions/test',
+      clearedActive: false,
+      clearedSelected: false,
+      purgedPaths: [],
+    }
     const text = formatDeleteBaseResult('test', result)
     expect(text).toContain('Deleted base: test')
     expect(text).toContain('/tmp/sessions/test')
   })
 
   it('mentions cleared active base when applicable', () => {
-    const result = { basePath: '/tmp/sessions/test', clearedActive: true, clearedSelected: false }
+    const result = {
+      basePath: '/tmp/sessions/test',
+      clearedActive: true,
+      clearedSelected: false,
+      purgedPaths: [],
+    }
     const text = formatDeleteBaseResult('test', result)
     expect(text).toContain('activeBase')
   })
 
   it('mentions cleared default base when applicable', () => {
-    const result = { basePath: '/tmp/sessions/test', clearedActive: false, clearedSelected: true }
+    const result = {
+      basePath: '/tmp/sessions/test',
+      clearedActive: false,
+      clearedSelected: true,
+      purgedPaths: [],
+    }
     const text = formatDeleteBaseResult('test', result)
     expect(text).toContain('defaultBase')
   })

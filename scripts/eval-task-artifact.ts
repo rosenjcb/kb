@@ -2,8 +2,8 @@
 /**
  * Compute a codeburn delta, generate a per-task agent-compare artifact, and commit it.
  *
- * Usage:
- *   npm run eval:artifact -- \
+ * Usage (repo root, optional — for agent-compare artifacts only; not part of `eval:all`):
+ *   npx tsx scripts/eval-task-artifact.ts \
  *     --before  /tmp/snap-before.json \
  *     --after   /tmp/snap-after.json  \
  *     --task    1                     \

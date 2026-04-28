@@ -1,3 +1,4 @@
+import { formatFactUri } from '../core/fact-uri'
 import { SqliteKbIndexer, type FactRow } from './sqlite-kb-index'
 import { FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
 
@@ -32,6 +33,8 @@ export interface QueryResponse {
     method: 'lexical' | 'hybrid' | 'lexical-fallback'
     detail?: string
     clarificationQuestion?: string
+    /** Chat-only: first-pass facts loop wants another retrieval with synthetic clarification (no stdin). */
+    suggestRetrievalDeepen?: boolean
   }
 }
 
@@ -73,7 +76,7 @@ export class FactsDocumentReader {
       metadata: {
         id: row.id,
         title: summarizeFactTitle(row.fact_text),
-        filePath: `fact://${row.id}`,
+        filePath: formatFactUri(row.id),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         tags: [row.source_kind, row.lane_id, 'fact'],

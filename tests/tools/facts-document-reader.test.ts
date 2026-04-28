@@ -52,7 +52,7 @@ describe('FactsDocumentReader', () => {
     expect(response.total).toBeGreaterThan(0)
   })
 
-  it('emits clarification question for chat when deep loop stays insufficient', async () => {
+  it('signals automated retrieval deepen for chat when deep loop stays insufficient', async () => {
     const dbPath = await createDbPath()
     const indexer = new SqliteKbIndexer({ dbPath })
     indexer.upsertFact({
@@ -72,6 +72,30 @@ describe('FactsDocumentReader', () => {
       surface: 'chat',
     })
 
-    expect(response.retrieval.clarificationQuestion).toBeTruthy()
+    expect(response.retrieval.clarificationQuestion).toBeFalsy()
+    expect(response.retrieval.suggestRetrievalDeepen).toBe(true)
+  })
+
+  it('does not suggest retrieval deepen for query surface when loop stays insufficient', async () => {
+    const dbPath = await createDbPath()
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.upsertFact({
+      factText: 'build pipeline runs on every push',
+      sourceKind: 'submit',
+      sourceRef: 'test',
+      confidence: 0.7,
+    })
+    indexer.close()
+
+    const reader = new FactsDocumentReader(dbPath)
+    const response = await reader.queryDocuments({
+      query: 'How do we guarantee secure release signing in production?',
+      discoveryDepth: 'deep',
+      includeContent: true,
+      limit: 5,
+      surface: 'query',
+    })
+
+    expect(response.retrieval.suggestRetrievalDeepen).toBeFalsy()
   })
 })

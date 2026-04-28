@@ -1,6 +1,7 @@
 import dayjs from 'dayjs'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message } from '../core/types'
+import { formatFactUri } from '../core/fact-uri'
 import { inferQueryLaneWeights } from '../core/fact-taxonomy'
 import { assertConsumerSafeCommand } from '../intents/policy'
 import { DefaultIntentRouter } from '../intents/router'
@@ -264,11 +265,6 @@ export interface ReadDocumentsResultData {
   }
 }
 
-function documentDisplayTitle(item: ReadDocumentsResultItem): string {
-  const id = item.metadata?.id ?? 'unknown-id'
-  return item.metadata?.title?.trim() || id
-}
-
 function formatReadDocumentsFullSourceValue(item: ReadDocumentsResultItem): string {
   const id = item.metadata?.id ?? 'unknown-id'
   const title = item.metadata?.title?.trim() || id
@@ -296,7 +292,9 @@ function appendReadDocumentsSourcesToLines(
       lines.push(formatOrchestrationMetaLine('source', formatReadDocumentsFullSourceValue(item)))
     }
   } else {
-    lines.push(formatOrchestrationMetaLine('sources', results.map(documentDisplayTitle).join('; ')))
+    const sourceIds = formatReadDocumentSourceIds(results)
+    const refs = sourceIds.map(formatFactUri)
+    lines.push(formatOrchestrationMetaLine('sources', refs.length > 0 ? refs.join('; ') : '(none)'))
   }
 }
 
@@ -315,7 +313,9 @@ function printReadDocumentsSourcesBlock(
       printer.metadata('Source', formatReadDocumentsFullSourceValue(item))
     }
   } else {
-    printer.metadata('Sources', results.map(documentDisplayTitle).join('; '))
+    const sourceIds = formatReadDocumentSourceIds(results)
+    const refs = sourceIds.map(formatFactUri)
+    printer.metadata('Sources', refs.length > 0 ? refs.join('; ') : '(none)')
   }
 }
 

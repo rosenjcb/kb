@@ -229,13 +229,14 @@ export interface DeleteBaseResult {
   basePath: string
   clearedActive: boolean
   clearedSelected: boolean
+  purgedPaths: string[]
 }
 
 /**
  * Delete a named base: removes its session directory and clears any config
  * references to it. Only works for alias-style bases (not path-like).
  */
-export async function deleteBase(base: string): Promise<DeleteBaseResult> {
+export async function deleteBase(base: string, cwd: string = process.cwd()): Promise<DeleteBaseResult> {
   const trimmed = base.trim()
   if (!trimmed) throw new Error('Base name is required')
   if (isPathLike(trimmed)) {
@@ -245,9 +246,22 @@ export async function deleteBase(base: string): Promise<DeleteBaseResult> {
   }
 
   const basePath = resolveBaseToDir(trimmed)
+  const purgedPaths: string[] = []
+  const alias = normalizeAlias(trimmed)
+  const legacyBasePath = path.join(getKbHomeDir(), alias)
+  const tmpCheckpointPath = path.join(cwd, '.tmp', 'kb-init', `${alias}-latest.checkpoint.json`)
 
   if (await pathExists(basePath)) {
     await rm(basePath, { recursive: true, force: true })
+    purgedPaths.push(basePath)
+  }
+  if (legacyBasePath !== basePath && (await pathExists(legacyBasePath))) {
+    await rm(legacyBasePath, { recursive: true, force: true })
+    purgedPaths.push(legacyBasePath)
+  }
+  if (await pathExists(tmpCheckpointPath)) {
+    await rm(tmpCheckpointPath, { force: true })
+    purgedPaths.push(tmpCheckpointPath)
   }
 
   const config = await readKbConfig()
@@ -262,7 +276,7 @@ export async function deleteBase(base: string): Promise<DeleteBaseResult> {
     })
   }
 
-  return { basePath, clearedActive, clearedSelected }
+  return { basePath, clearedActive, clearedSelected, purgedPaths }
 }
 
 export function printBaseDeleteHelp(mode: CmdMode = 'cli'): string {

@@ -2893,12 +2893,6 @@
       "docId": "src-core-orchestrator-md"
     },
     {
-      "id": "eval-orchestrator-scenarios",
-      "name": "eval:orchestrator-scenarios",
-      "type": "tool",
-      "docId": "src-core-orchestrator-md"
-    },
-    {
       "id": "evaluation-runs",
       "name": "evaluation/runs/",
       "type": "concept",
@@ -6489,13 +6483,6 @@
       "fromId": "subagent-eval-scenario",
       "toId": "executesubagenttask",
       "type": "implements",
-      "docId": "src-core-orchestrator-md",
-      "weight": 1
-    },
-    {
-      "fromId": "eval-orchestrator-scenarios",
-      "toId": "evaluation-runs",
-      "type": "uses",
       "docId": "src-core-orchestrator-md",
       "weight": 1
     },

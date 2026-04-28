@@ -3,9 +3,8 @@
  * Capture a codeburn cost snapshot to a JSON file.
  * The delta between two snapshots = cost/calls consumed during one eval task.
  *
- * Usage:
- *   npm run eval:snap -- /tmp/snap-before.json
- *   tsx scripts/eval-snapshot.ts /tmp/snap-before.json
+ * Usage (repo root, optional — for agent-compare / codeburn deltas only; not part of `eval:all`):
+ *   npx tsx scripts/eval-snapshot.ts /tmp/snap-before.json
  */
 
 import { execSync } from 'node:child_process'
