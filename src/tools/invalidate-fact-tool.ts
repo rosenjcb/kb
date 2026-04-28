@@ -45,8 +45,7 @@ export async function invalidateFactTool(
 
   try {
     const changes: InvalidateFactResult['changes'] = []
-    const candidates = indexer.searchFacts(replaceFrom, 10)
-    const exact = candidates.find(row => row.normalized_text === replaceFrom.toLowerCase().trim())
+    const exact = indexer.getActiveFactByTextMatch(replaceFrom)
     if (!exact) {
       return {
         changes: [],

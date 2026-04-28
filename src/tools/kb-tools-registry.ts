@@ -1,6 +1,10 @@
 /**
  * KB Tools Registry Factory
- * Creates and registers write_document and read_documents tools
+ *
+ * **Facts** (`upsert_fact`, `read_documents` deep path) are the primary retrieval surface for `kb query` / chat.
+ * **Markdown documents** (`write_document`, `append_to_document`, …) stay registered for `kb init`, rescan apply,
+ * and agent-orchestrated pipelines—not the long-term human authoring path. Browse with `kb docs`; a dedicated
+ * generator (e.g. `kb docs generate "…"`) is future work.
  */
 
 import path from 'node:path'
@@ -51,10 +55,10 @@ export function createKBToolsRegistry(
   const indexer = new SqliteKbIndexer({ dbPath: path.join(storageDir, '.kb-index.sqlite') })
   const reader = new FactsDocumentReader(path.join(storageDir, '.kb-index.sqlite'))
 
-  // Register write_document tool
   const writeToolDef: ToolDefinition = {
     name: 'write_document',
-    description: 'Create or overwrite a document in the KB',
+    description:
+      'Create or overwrite a markdown KB document (init/rescan/agent orchestration). Routine knowledge: kb submit + kb docs.',
     schema: {
       type: 'object',
       properties: {
@@ -208,10 +212,10 @@ export function createKBToolsRegistry(
     return { id, title: payload.title, sourceFactCount: factRows.length }
   })
 
-  // append_to_document
   const appendToolDef: ToolDefinition = {
     name: 'append_to_document',
-    description: 'Append markdown content to an existing document',
+    description:
+      'Append markdown to a document (init/rescan/orchestration). Not the primary human authoring path.',
     schema: {
       type: 'object',
       properties: {
@@ -231,10 +235,10 @@ export function createKBToolsRegistry(
     return await writer.appendToDocument(input as unknown as AppendToDocumentInput)
   })
 
-  // update_document
   const updateToolDef: ToolDefinition = {
     name: 'update_document',
-    description: 'Replace the full content of an existing document',
+    description:
+      'Replace full markdown of a document (pipelines). Prefer kb submit for atomic facts; browse with kb docs.',
     schema: {
       type: 'object',
       properties: {
@@ -250,10 +254,9 @@ export function createKBToolsRegistry(
     return await writer.updateDocument(input as unknown as UpdateDocumentInput)
   })
 
-  // prune_document
   const pruneToolDef: ToolDefinition = {
     name: 'prune_document',
-    description: 'Remove a document section by heading/pattern',
+    description: 'Remove a markdown section (orchestration / maintenance tools).',
     schema: {
       type: 'object',
       properties: {
@@ -268,10 +271,9 @@ export function createKBToolsRegistry(
     return await writer.pruneDocument(input as unknown as PruneDocumentInput)
   })
 
-  // merge_documents
   const mergeToolDef: ToolDefinition = {
     name: 'merge_documents',
-    description: 'Merge two documents with auto or user-decides mode',
+    description: 'Merge two markdown documents (orchestration).',
     schema: {
       type: 'object',
       properties: {

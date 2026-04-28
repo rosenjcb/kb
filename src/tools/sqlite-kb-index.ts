@@ -300,6 +300,21 @@ export class SqliteKbIndexer {
     return { id, operation: 'inserted' }
   }
 
+  /** Resolve a fact the same way upsert/invalidate match: normalized lowercase + collapsed whitespace. */
+  getActiveFactByTextMatch(factText: string): FactRow | undefined {
+    const normalized = normalizeFactText(factText)
+    return this.db
+      .prepare(
+        `
+        SELECT ${FACT_ROW_SELECT}
+        FROM facts
+        WHERE normalized_text = ? AND tombstoned_at IS NULL
+        LIMIT 1
+      `
+      )
+      .get(normalized) as FactRow | undefined
+  }
+
   listFactsForQuery(limit = 20): FactRow[] {
     return this.db
       .prepare(
@@ -513,6 +528,8 @@ export class SqliteKbIndexer {
 
     this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?').run(row.id)
     this.db.prepare('DELETE FROM fact_embeddings WHERE fact_id = ?').run(row.id)
+    this.db.prepare('DELETE FROM fact_concepts WHERE fact_id = ?').run(row.id)
+    this.db.prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?').run(row.id, row.id)
 
     if (!replacementFact?.trim()) {
       return { changed: 1 }
@@ -1390,7 +1407,8 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / Math.sqrt(magA * magB)
 }
 
-function normalizeFactText(input: string): string {
+/** Exported for tools (invalidate, CLI) that must match `facts.normalized_text` exactly. */
+export function normalizeFactText(input: string): string {
   return input.toLowerCase().replace(/\s+/g, ' ').trim()
 }
 

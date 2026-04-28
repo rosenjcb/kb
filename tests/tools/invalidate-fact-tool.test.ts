@@ -93,6 +93,26 @@ describe('invalidateFactTool', () => {
     expect(unrelatedContent).toContain('We deploy to GCP')
   })
 
+  it('matches stored fact when oldFact has extra whitespace (same normalization as upsert)', async () => {
+    const baseDir = await createTempBase()
+    await seedFact(baseDir, 'We deploy to GCP')
+
+    const result = await invalidateFactTool(
+      {
+        oldFact: 'We   deploy   to   GCP',
+        replacementFact: 'We deploy to AWS',
+        preview: false,
+        dryRun: false,
+      },
+      baseDir
+    )
+
+    const updated = await listFactTexts(baseDir)
+    expect(updated).toContain('We deploy to AWS')
+    expect(result.error).toBeUndefined()
+    expect(result.changes).toHaveLength(1)
+  })
+
   it('returns error if no matches exist in KB documents', async () => {
     const baseDir = await createTempBase()
     await seedFact(baseDir, 'We deploy to AWS')

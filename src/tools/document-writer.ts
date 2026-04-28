@@ -1,5 +1,10 @@
 import type { ToolDefinition } from '../core/types'
 
+/**
+ * SQLite-backed markdown originals and derived docs—used by init, rescan apply, and agent orchestration.
+ * Routine human knowledge flow: facts (`kb submit`) + browse (`kb docs`); a future `kb docs generate`-style entrypoint may own more doc authoring.
+ */
+
 export interface WriteDocumentInput {
   title: string
   content: string
