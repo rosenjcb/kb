@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import Database from 'better-sqlite3'
 import dayjs from 'dayjs'
+import { classifyFactLane, type FactLaneId } from '../core/fact-taxonomy'
 import { runMigrations } from '../core/db-migrations'
 import { type RetrievalLane, classifyDocumentLane } from './retrieval-lane-router'
 
@@ -105,6 +106,7 @@ export interface FactUpsertInput {
   factText: string
   sourceKind: 'submit' | 'import_doc'
   sourceRef?: string
+  laneId?: FactLaneId
   confidence?: number
   supersedesFactId?: string
 }
@@ -115,6 +117,7 @@ export interface FactRow {
   normalized_text: string
   source_kind: string
   source_ref: string | null
+  lane_id: FactLaneId | string
   confidence: number
   supersedes_fact_id: string | null
   tombstoned_at: string | null
@@ -220,10 +223,10 @@ const DEFAULT_LANE_ROUTING_THRESHOLDS: LaneRoutingRolloutThresholds = {
 
 /** `facts` row projection — keep aligned with `FactRow`. */
 const FACT_ROW_SELECT =
-  'id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at'
+  'id, fact_text, normalized_text, source_kind, source_ref, lane_id, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at'
 
 const FACT_ROW_SELECT_F =
-  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at'
+  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.lane_id, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at'
 
 export class SqliteKbIndexer {
   private readonly db: Database.Database
@@ -242,6 +245,7 @@ export class SqliteKbIndexer {
   upsertFact(input: FactUpsertInput): { id: string; operation: 'inserted' | 'updated' } {
     const now = dayjs().toISOString()
     const normalized = normalizeFactText(input.factText)
+    const laneId = input.laneId ?? classifyFactLane(input.factText)
     const existing = this.db
       .prepare('SELECT id FROM facts WHERE normalized_text = ? AND tombstoned_at IS NULL')
       .get(normalized) as { id: string } | undefined
@@ -251,7 +255,7 @@ export class SqliteKbIndexer {
         .prepare(
           `
           UPDATE facts
-          SET fact_text = ?, source_kind = ?, source_ref = ?, confidence = ?, updated_at = ?
+          SET fact_text = ?, source_kind = ?, source_ref = ?, lane_id = ?, confidence = ?, updated_at = ?
           WHERE id = ?
         `
         )
@@ -259,6 +263,7 @@ export class SqliteKbIndexer {
           input.factText.trim(),
           input.sourceKind,
           input.sourceRef ?? null,
+          laneId,
           input.confidence ?? 0.8,
           now,
           existing.id
@@ -273,9 +278,9 @@ export class SqliteKbIndexer {
       .prepare(
         `
         INSERT INTO facts (
-          id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at
+          id, fact_text, normalized_text, source_kind, source_ref, lane_id, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
       `
       )
       .run(
@@ -284,6 +289,7 @@ export class SqliteKbIndexer {
         normalized,
         input.sourceKind,
         input.sourceRef ?? null,
+        laneId,
         input.confidence ?? 0.8,
         input.supersedesFactId ?? null,
         now,
@@ -354,7 +360,7 @@ export class SqliteKbIndexer {
     return this.db
       .prepare(
         `
-        SELECT id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at
+        SELECT ${FACT_ROW_SELECT}
         FROM facts
         WHERE tombstoned_at IS NULL
           AND (${where})
@@ -372,7 +378,7 @@ export class SqliteKbIndexer {
     return this.db
       .prepare(
         `
-        SELECT f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at
+        SELECT ${FACT_ROW_SELECT_F}
         FROM facts f
         JOIN fact_concepts fc ON fc.fact_id = f.id
         WHERE f.tombstoned_at IS NULL

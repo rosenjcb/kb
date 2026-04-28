@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Unified kb eval harvest: **git URL only** (no local target cwd). Fresh clone per run = snapshot.
- * Layout: run folder `~/.kb/evaluations/<run-name>/` contains `repo/` clone + run artifacts.
+ * Layout: run folder `~/.kb/evaluations/<run-name>/` contains `<repo-name>/` clone + run artifacts.
  * Default KB base for `all` == `<run-name>` (e.g. `raylib-2026-04-27-1303`); override with `--base`.
  * `all` (init + metrics + 8×query) vs `query` (existing base only; still clones repo for cwd).
  *
@@ -219,7 +219,7 @@ function assertRemovedEvalFlags(argv) {
   }
   if (removed.size) {
     throw new Error(
-      `[eval] removed flags: ${[...removed].join(', ')} — use --repo <git-url> (clone under ~/.kb/evaluations/<run>/repo). Rebuild-only: --skip-init --run-dir ~/.kb/evaluations/<run>/`
+      `[eval] removed flags: ${[...removed].join(', ')} — use --repo <git-url> (clone under ~/.kb/evaluations/<run>/<repo-name>/). Rebuild-only: --skip-init --run-dir ~/.kb/evaluations/<run>/`
     )
   }
 }
@@ -359,6 +359,60 @@ function summarizeRaw(parsed) {
 
 function mean(xs) {
   return xs.reduce((a, b) => a + b, 0) / xs.length
+}
+
+function deriveCoverageFacets(question) {
+  const stopWords = new Set([
+    'what',
+    'where',
+    'when',
+    'which',
+    'who',
+    'why',
+    'how',
+    'does',
+    'do',
+    'did',
+    'the',
+    'and',
+    'for',
+    'with',
+    'from',
+    'into',
+    'about',
+    'that',
+    'this',
+    'these',
+    'those',
+    'main',
+    'including',
+    'recent',
+    'someone',
+    'project',
+    'repo',
+  ])
+  const tokens = String(question)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token.length > 3 && !stopWords.has(token))
+  return [...new Set(tokens)].slice(0, 8)
+}
+
+function buildCoverageAudit(question, answer, retrievalDetail) {
+  const facets = deriveCoverageFacets(question)
+  if (facets.length === 0) {
+    return { facets: [], missing_facets: [], covered_count: 0, coverage_ratio: 1 }
+  }
+  const haystack = `${answer || ''}\n${retrievalDetail || ''}`.toLowerCase()
+  const missing = facets.filter(facet => !haystack.includes(facet))
+  const covered = facets.length - missing.length
+  return {
+    facets,
+    missing_facets: missing,
+    covered_count: covered,
+    coverage_ratio: Number((covered / facets.length).toFixed(3)),
+  }
 }
 
 function clipText(s, maxLen) {
@@ -857,6 +911,7 @@ async function main() {
         : typeof data.answer === 'string'
           ? data.answer
           : null
+    const coverageAudit = buildCoverageAudit(questions[n - 1], answer, retrieval.detail)
     const prov = Array.isArray(parsed.provenance)
       ? parsed.provenance
       : results.map(r => r.metadata?.id).filter(Boolean)
@@ -882,6 +937,7 @@ async function main() {
       answer_excerpt: answer ? answer.slice(0, 280) : null,
       provenance: prov,
       raw_query_output: summarizeRaw(parsed),
+      coverage_audit: coverageAudit,
       scores,
       notes,
     })
@@ -894,6 +950,17 @@ async function main() {
   const pr =
     query_evaluation.filter(q => q.scores.correctness >= 3 && q.scores.usefulness >= 3).length /
     query_evaluation.length
+  const coverageAuditSummary = {
+    mean_coverage_ratio: Number(
+      mean(query_evaluation.map(q => q.coverage_audit.coverage_ratio)).toFixed(3)
+    ),
+    questions_with_missing_facets: query_evaluation
+      .filter(q => q.coverage_audit.missing_facets.length > 0)
+      .map(q => ({
+        question_id: q.question_id,
+        missing_facets: q.coverage_audit.missing_facets,
+      })),
+  }
 
   const outPath = args.outFile || path.join(runDir, 'artifact.json')
 
@@ -989,6 +1056,7 @@ async function main() {
     question_set: questions,
     query_scoring: queryScoringMeta,
     query_evaluation,
+    coverage_audit: coverageAuditSummary,
     chat_evaluation: {
       status: 'not_captured',
       notes:

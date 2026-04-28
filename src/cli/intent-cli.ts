@@ -1,6 +1,7 @@
 import dayjs from 'dayjs'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message } from '../core/types'
+import { inferQueryLaneWeights } from '../core/fact-taxonomy'
 import { assertConsumerSafeCommand } from '../intents/policy'
 import { DefaultIntentRouter } from '../intents/router'
 import type { ConsumerIntent, ConsumerIntentEnvelope, IntentResult } from '../intents/types'
@@ -406,6 +407,10 @@ export async function enrichReadDocumentsAnswerWithLLM(
     if (coverageFallback && answerNeedsCoverageRecovery(question, answer)) {
       answer = coverageFallback
     }
+    const scaffolded = buildBuildConfigScaffoldAnswer(question, results)
+    if (scaffolded && answerNeedsScaffoldRecovery(question, answer)) {
+      answer = scaffolded
+    }
 
     if (sessionDir) {
       void appendQuerySession(sessionDir, question, answer)
@@ -664,6 +669,44 @@ function deriveQuestionFacets(question: string): string[] {
     .split(/\s+/)
     .filter(token => token.length > 3 && !stopWords.has(token))
   return [...new Set(tokens)].slice(0, 8)
+}
+
+function answerNeedsScaffoldRecovery(question: string, answer: string): boolean {
+  const lanes = inferQueryLaneWeights(question)
+  if (!lanes.build && !lanes.config) return false
+  const normalized = answer.toLowerCase()
+  const requiredSections = ['prerequisites', 'commands', 'flags/options', 'platform notes', 'known gotchas']
+  const present = requiredSections.filter(section => normalized.includes(section)).length
+  return present < 3
+}
+
+function buildBuildConfigScaffoldAnswer(
+  question: string,
+  results: ReadDocumentsResultItem[]
+): string | undefined {
+  const lanes = inferQueryLaneWeights(question)
+  if (!lanes.build && !lanes.config) return undefined
+
+  const sectionSpecs: Array<{ title: string; keywords: string[] }> = [
+    { title: 'Prerequisites', keywords: ['prereq', 'require', 'dependency', 'install', 'toolchain'] },
+    { title: 'Commands', keywords: ['cmake', 'make', 'build', 'compile', 'run', 'command'] },
+    { title: 'Flags/Options', keywords: ['flag', 'option', 'define', 'switch', '--', '-d'] },
+    { title: 'Platform Notes', keywords: ['linux', 'windows', 'macos', 'android', 'web', 'platform'] },
+    { title: 'Known Gotchas', keywords: ['gotcha', 'caveat', 'warning', 'limitation', 'note'] },
+  ]
+
+  const lines = ['Build/config evidence scaffold:']
+  let found = 0
+  for (const spec of sectionSpecs) {
+    const evidence = findEvidenceLine(results, spec.keywords)
+    if (evidence) {
+      lines.push(`- ${spec.title}: ${evidence.line} (source: ${evidence.docId})`)
+      found += 1
+    } else {
+      lines.push(`- ${spec.title}: no direct evidence found in current retrieval set.`)
+    }
+  }
+  return found > 0 ? lines.join('\n') : undefined
 }
 
 function requiresHighRecallQuery(query: string): boolean {

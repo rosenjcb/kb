@@ -273,6 +273,14 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 6,
+    name: 'facts_lane_id',
+    sql: `
+      ALTER TABLE facts ADD COLUMN lane_id TEXT NOT NULL DEFAULT 'general';
+      CREATE INDEX IF NOT EXISTS idx_facts_lane_id ON facts(lane_id);
+    `,
+  },
 ]
 
 /**

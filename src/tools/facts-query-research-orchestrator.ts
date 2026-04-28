@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { inferQueryLaneWeights } from '../core/fact-taxonomy'
 import type { QueryResponse, QueryResult } from './facts-document-reader'
 import type { FactConceptRow, FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
@@ -47,6 +48,7 @@ export class FactsQueryResearchOrchestrator {
     const maxGraphHops = clampInt(process.env.KB_FACTS_QUERY_MAX_HOPS, 2, 1, 3)
     const perIterationLimit = Math.max(input.limit, 8)
     const queryTokens = tokenizeQuery(input.query)
+    const queryLaneWeights = inferQueryLaneWeights(input.query)
     let activeConcepts = queryTokens.slice(0, 8)
     const seenFactIds = new Set<string>()
     const scoredFacts = new Map<string, { row: FactRow; score: number }>()
@@ -79,7 +81,8 @@ export class FactsQueryResearchOrchestrator {
         merged,
         scoredFacts,
         new Set(frontierRows.map(row => row.id)),
-        semanticScores
+        semanticScores,
+        queryLaneWeights
       )
       const topRows = [...scoredFacts.values()]
         .sort((a, b) => b.score - a.score)
@@ -99,6 +102,7 @@ export class FactsQueryResearchOrchestrator {
           graphHops,
           sufficiencyReason: sufficiency.reason,
           loopTrace,
+          queryLaneWeights,
         })
       }
 
@@ -120,6 +124,7 @@ export class FactsQueryResearchOrchestrator {
       sufficiencyReason: sufficiency.reason,
       clarificationQuestion,
       loopTrace,
+      queryLaneWeights,
     })
   }
 
@@ -150,7 +155,8 @@ export class FactsQueryResearchOrchestrator {
     rows: FactRow[],
     scores: Map<string, { row: FactRow; score: number }>,
     frontierFactIds: Set<string>,
-    semanticScores: Map<string, number>
+    semanticScores: Map<string, number>,
+    queryLaneWeights: Partial<Record<string, number>>
   ): void {
     const queryTokens = tokenizeQuery(query)
     for (const row of rows) {
@@ -159,6 +165,7 @@ export class FactsQueryResearchOrchestrator {
       const overlapScore = queryTokens.length > 0 ? overlap / queryTokens.length : 0
       const recencyBias = row.source_kind === 'submit' ? 0.08 : 0
       const frontierBoost = frontierFactIds.has(row.id) ? 0.06 : 0
+      const laneBoost = (queryLaneWeights[row.lane_id] ?? 0) * 0.12
       const semanticScore = semanticScores.get(row.id) ?? 0
       const score = Math.min(
         1,
@@ -166,7 +173,8 @@ export class FactsQueryResearchOrchestrator {
           semanticScore * 0.35 +
           row.confidence * 0.2 +
           recencyBias +
-          frontierBoost
+          frontierBoost +
+          laneBoost
       )
       const current = scores.get(row.id)
       if (!current || score > current.score) {
@@ -183,6 +191,7 @@ export class FactsQueryResearchOrchestrator {
     sufficiencyReason: string
     clarificationQuestion?: string
     loopTrace?: string[]
+    queryLaneWeights?: Partial<Record<string, number>>
   }): QueryResponse {
     const ranked = [...input.scoredFacts.values()]
       .sort((a, b) => b.score - a.score)
@@ -194,7 +203,7 @@ export class FactsQueryResearchOrchestrator {
         filePath: `fact://${row.id}`,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
-        tags: [row.source_kind, 'fact'],
+        tags: [row.source_kind, row.lane_id, 'fact'],
         type: 'reference',
       },
       content: input.input.includeContent ? row.fact_text : undefined,
@@ -205,6 +214,9 @@ export class FactsQueryResearchOrchestrator {
       `graph_hops:${input.graphHops}`,
       `sufficiency:${input.sufficiencyReason}`,
       'semantic:on',
+      input.queryLaneWeights && Object.keys(input.queryLaneWeights).length > 0
+        ? `lanes:${Object.keys(input.queryLaneWeights).join(',')}`
+        : null,
       input.loopTrace?.length ? `trace:${input.loopTrace.join('|')}` : null,
     ]
       .filter(Boolean)

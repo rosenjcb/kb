@@ -172,6 +172,7 @@ describe('intent-cli formatting', () => {
       {
         log: line => lines.push(line),
         error: line => lines.push(`ERR:${line}`),
+        write: line => lines.push(line),
       },
       'cli'
     )
@@ -199,6 +200,7 @@ describe('intent-cli formatting', () => {
       {
         log: line => lines.push(line),
         error: line => lines.push(line),
+        write: line => lines.push(line),
       },
       'cli'
     )
@@ -417,5 +419,43 @@ describe('intent-cli execution and enrichment', () => {
     )
 
     expect((enriched.data as { answer?: string }).answer).toBe(llmText)
+  })
+
+  it('forces build/config scaffold when answer lacks required sections', async () => {
+    const llm: LLMProvider = {
+      name: 'test',
+      model: 'stub',
+      call: vi.fn(async () => ({
+        text: 'Build works with standard setup.',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    } as unknown as LLMProvider
+
+    const parsed = parseIntentCommand(['query', 'build config flags for linux'])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      parsed,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_documents',
+        data: {
+          retrieval: { method: 'hybrid' },
+          results: [
+            {
+              metadata: { id: 'build-doc', title: 'Build' },
+              content:
+                '# Build\n\nInstall dependencies before build.\nRun cmake && make.\nUse -D flags for options.\nLinux platform has specific package requirements.\nWarning: static link caveat.',
+            },
+          ],
+        },
+      },
+      llm
+    )
+    const answer = (enriched.data as { answer?: string }).answer ?? ''
+    expect(answer).toContain('Build/config evidence scaffold:')
+    expect(answer).toContain('Prerequisites')
+    expect(answer).toContain('Commands')
+    expect(answer).toContain('Flags/Options')
+    expect(answer).toContain('Platform Notes')
+    expect(answer).toContain('Known Gotchas')
   })
 })

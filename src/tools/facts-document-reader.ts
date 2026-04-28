@@ -76,7 +76,7 @@ export class FactsDocumentReader {
         filePath: `fact://${row.id}`,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
-        tags: [row.source_kind, 'fact'],
+        tags: [row.source_kind, row.lane_id, 'fact'],
         type: 'reference',
       },
       content: includeContent ? row.fact_text : undefined,
