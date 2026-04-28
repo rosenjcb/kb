@@ -2096,17 +2096,8 @@ async function resolveCheckpointPath(options: InitOptions, cwd: string): Promise
     'checkpoints',
     'init-latest.checkpoint.json'
   )
-  const legacyCheckpointPath = path.join(
-    cwd,
-    '.tmp',
-    'kb-init',
-    `${slugify(base)}-latest.checkpoint.json`
-  )
   if (!(await pathExists(checkpointPath))) {
     await mkdir(path.dirname(checkpointPath), { recursive: true })
-    if (await pathExists(legacyCheckpointPath)) {
-      await writeFile(checkpointPath, await readFile(legacyCheckpointPath, 'utf8'), 'utf8')
-    }
   }
   return checkpointPath
 }

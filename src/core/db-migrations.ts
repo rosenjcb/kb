@@ -191,6 +191,96 @@ const MIGRATIONS: Migration[] = [
         ON retrieval_hypotheses(run_id);
     `,
   },
+  {
+    version: 5,
+    name: 'facts_first_schema',
+    sql: `
+      CREATE TABLE IF NOT EXISTS facts (
+        id TEXT PRIMARY KEY,
+        fact_text TEXT NOT NULL,
+        normalized_text TEXT NOT NULL,
+        source_kind TEXT NOT NULL,
+        source_ref TEXT,
+        confidence REAL NOT NULL DEFAULT 0.8,
+        supersedes_fact_id TEXT,
+        tombstoned_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_facts_normalized_live
+        ON facts(normalized_text)
+        WHERE tombstoned_at IS NULL;
+
+      CREATE TABLE IF NOT EXISTS fact_concepts (
+        fact_id TEXT NOT NULL,
+        concept_id TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'context',
+        score REAL NOT NULL DEFAULT 1.0,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (fact_id, concept_id, role),
+        FOREIGN KEY (fact_id) REFERENCES facts(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS fact_edges (
+        from_fact_id TEXT NOT NULL,
+        to_fact_id TEXT NOT NULL,
+        edge_type TEXT NOT NULL,
+        weight REAL NOT NULL DEFAULT 1.0,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (from_fact_id, to_fact_id, edge_type),
+        FOREIGN KEY (from_fact_id) REFERENCES facts(id) ON DELETE CASCADE,
+        FOREIGN KEY (to_fact_id) REFERENCES facts(id) ON DELETE CASCADE
+      );
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(
+        fact_id UNINDEXED,
+        fact_text,
+        tokenize='porter unicode61'
+      );
+
+      CREATE TABLE IF NOT EXISTS fact_embeddings (
+        fact_id TEXT PRIMARY KEY,
+        model_id TEXT NOT NULL,
+        dimensions INTEGER NOT NULL,
+        vector_json TEXT NOT NULL,
+        embedded_at TEXT NOT NULL,
+        FOREIGN KEY (fact_id) REFERENCES facts(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS derived_docs (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        instruction TEXT NOT NULL,
+        markdown TEXT NOT NULL,
+        source_fact_ids_json TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'active',
+        tags_json TEXT,
+        doc_type TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS original_docs (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        markdown TEXT NOT NULL,
+        source_ref TEXT,
+        tags_json TEXT,
+        doc_type TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `,
+  },
+  {
+    version: 6,
+    name: 'facts_lane_id',
+    sql: `
+      ALTER TABLE facts ADD COLUMN lane_id TEXT NOT NULL DEFAULT 'general';
+      CREATE INDEX IF NOT EXISTS idx_facts_lane_id ON facts(lane_id);
+    `,
+  },
 ]
 
 /**

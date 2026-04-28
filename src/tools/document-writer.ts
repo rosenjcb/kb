@@ -1,5 +1,12 @@
 import type { ToolDefinition } from '../core/types'
 
+/**
+ * SQLite-backed markdown originals and derived docs. **`kb init` / rescan** ingest repo files by calling
+ * `SqliteDocumentWriter` from scripted passes (first-loop pipeline), not by routing through these tool schemas.
+ * **`executeWriteDocumentTool`** is what the **agent registry** binds for `write_document` / append / etc.
+ * Routine knowledge: facts (`kb submit`) + graph tools + `kb docs` to browse corpora.
+ */
+
 export interface WriteDocumentInput {
   title: string
   content: string

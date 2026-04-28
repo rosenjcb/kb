@@ -23,31 +23,70 @@ After building a KB from scratch for the evaluation target repository, can `kb` 
 
 ## Evaluation Target
 
-**The canonical evaluation target is `~/raylib/`** — the [raylib C library](https://github.com/raysan5/raylib).
+**Canonical external benchmark:** the [raylib C library](https://github.com/raysan5/raylib) — use suite `raylib` (its `repo_url` is defined in `eval/suites/raylib.yaml`; override with `--repo` only when needed).
 
-Reasons: mature, well-documented, not kb itself (avoids evaluator familiarity bias), rich graph structure, stable across runs.
+Reasons: mature, well-documented, not kb itself (avoids evaluator familiarity bias), rich graph structure, stable upstream.
 
-Do **not** run evaluation init against the `kb` repo itself. Use `--base dogfood` for kb's own knowledge.
+**Kb self-check:** suite `kb` (its `repo_url` is defined in `eval/suites/kb.yaml`; override with `--repo` only when needed). That is a product smoke test, not the primary raylib benchmark.
+
+For day-to-day kb architecture work on your checkout, use `--base dogfood` (separate from disposable eval bases).
 
 ### Base naming convention
 
 | Base | Purpose | Lifetime |
 |------|---------|----------|
-| `ci-raylib-YYYYMMDD` | Disposable init/query quality runs — thrown away after each eval | Ephemeral |
+| `<repo-leaf>-YYYY-MM-DD-HHmm` | Default disposable base from `eval-run.mjs`: **same string** as `~/.kb/evaluations/<run-name>/` (override with `--base`) | Ephemeral |
 | `raylib` | Persistent agent comparison base — accumulates across tasks, never wiped | Permanent |
 | `dogfood` | kb's own architectural knowledge | Permanent |
 
-The `raylib` base is the KB that a KB-backed agent would actually use during real development on `~/raylib/`. It grows with each task. Do not use `ci-*` names for it — the compounding hypothesis requires the same base to persist across multiple task sessions.
+The `raylib` base is the KB that a KB-backed agent would actually use during real development on a long-lived raylib tree. Do not reuse ephemeral eval run names for it — the compounding hypothesis requires the same base to persist across multiple task sessions.
 
 ### Published docs location
 
-Raylib eval docs publish to `~/raylib-kb-docs/` — a standalone Jekyll site separate from `kb/docs/`.
+Eval runs do **not** publish Jekyll output. We only capture init/query evidence artifacts.
+
+## Automated harvest (`scripts/eval-run.mjs`)
+
+One runner drives all disposable-base harvests. **No local target directory:** repo URL resolves from suite YAML `repo_url`, with optional `--repo` override. Each run does a **fresh snapshot clone** under `~/.kb/evaluations/<run-name>/repo/`; scratch JSON and the default artifact live under `~/.kb/evaluations/<run-name>/`. **Default `--base`** for `all` equals **`<run-name>`** (e.g. `raylib-2026-04-27-1303` = repo leaf + date + `HHmm`; same-minute collision adds `-2`, `-3`, …).
+
+From the kb repo root (after `pnpm run build`):
+
+| npm script | Maps to |
+|------------|---------|
+| `npm run eval:all -- --suite raylib …` | Clone suite `repo_url`, init, queries |
+| `npm run eval:all -- --suite kb …` | Clone suite `repo_url`, init, queries |
+| `npm run eval:all -- --suite generic --repo <git-url> …` | Generic suite requires explicit repo override, then clone/init/queries |
+| `npm run eval:query -- --suite raylib --base <existing> …` | No init: docs + graph + logs + 8× `kb query` (still clones repo for cwd) |
+
+**Modes**
+
+- `all` — Fresh clone → `kb init --non-interactive`, then metrics + eight queries.
+- `query` — Fresh clone → same capture minus init; requires `--base` for an already-populated KB session.
+
+**Suites (`--suite`)**
+
+- `raylib` — Eight **raylib-specific** questions (this document).
+- `kb` — Eight **kb-repo / product** questions (contributor dogfood).
+- `generic` — Eight **repo-neutral** questions. Use with `--repo` for arbitrary upstreams.
+
+Override questions with `--questions-file path.json` (JSON array of exactly eight strings) to lock a custom suite without forking the script.
+
+**Example**
 
 ```bash
-kb publish jekyll --base ci-raylib-<date> --dir ~/raylib-kb-docs/ --apply
+npm run eval:all -- --suite generic \
+  --repo https://github.com/raysan5/raylib.git \
+  --label raylib-upstream-smoke \
+  --auto-score
 ```
 
-Do **not** publish eval output to `kb/docs/` — that site tracks the kb dogfood base only.
+Options: `--clone-branch main`, `--clone-depth 1` (default shallow; use `0` for full history). The artifact records `run.clone_url`, `run.target_cwd`, `run.run_dir`, `run.run_name`.
+
+**Artifacts**
+
+- Default path: **`~/.kb/evaluations/<run-name>/artifact.json`**. Override with `--out`.
+- Rebuild artifact from existing scratch: `--skip-init --run-dir ~/.kb/evaluations/<run-name>/` (expects matching clone at `~/.kb/evaluations/<run-name>/repo/`).
+- Automated artifacts may include extra `run` fields for traceability. Tools should treat unknown keys as forward-compatible metadata.
 
 ## Evaluation Design
 
@@ -64,14 +103,14 @@ This evaluation should be run at least twice against the same codebase snapshot 
 
 ### Phase 1: Initialize a Fresh KB
 
-From `~/raylib/`:
+From the target repo root (or a clone):
 
-1. Run: `kb init --base ci-raylib-YYYYMMDD --non-interactive`
-2. Or interactively: start `kb`, then `/init --base ci-raylib-YYYYMMDD`
+1. Run: `kb init --base raylib-2026-04-27-1303 --non-interactive` (pick a fresh disposable name; `eval-run.mjs` generates this pattern automatically).
+2. Or interactively: start `kb`, then `/init --base <same>`
 3. Let `kb init` complete all passes through `pass-graph`.
 4. Save the resulting run metadata.
 
-Use a disposable base name like `ci-raylib-YYYYMMDD-<label>`.
+Use a disposable base name that matches your eval run folder when using `eval-run.mjs`, or any unique name for manual runs.
 
 ### Phase 2: Capture Build Metrics
 
@@ -188,11 +227,11 @@ without causing a meaningful regression in the other categories.
 
 ## Artifact Storage
 
-Artifacts are tracked in git under `evaluation/runs/` (not gitignored). Every run — even weak or partial ones — must produce an artifact.
+Every run — even weak or partial ones — should still **emit** a JSON artifact so comparisons stay reproducible. Default layout: `evaluation/runs/YYYY-MM-DD-<label>.json`. The repo **gitignores `evaluation/`** by default, so these files are not part of normal commits unless you force-add or change ignore rules.
 
 Filename convention: `evaluation/runs/YYYY-MM-DD-<label>.json`
 
-Reference baseline: `evaluation/runs/2026-04-19-raylib-baseline.json`
+Reference baseline (historical example path): `evaluation/runs/2026-04-19-raylib-baseline.json`
 
 ## Artifact Format
 
@@ -251,9 +290,18 @@ Future agents should treat the JSON shape below as the canonical artifact format
 The `run` object should contain:
 
 - `base`
-- `mode`
+- `mode` (string describing capture style, e.g. `non_interactive_cli_init` or `query_only_harvest`)
 - `commands`
 - `init_result`
+
+Recommended for automated runs (so comparisons stay attributable):
+
+- `eval_mode`: `all` or `query` — whether `kb init` was executed in this capture
+- `suite`: `raylib` \| `kb` \| `generic` (or custom label if using `--questions-file`)
+- `target_cwd`: absolute path where `kb` commands ran
+- `clone_url`: if the target was produced by `git clone`, the URL (else `null`)
+- `publish_dir`: Jekyll site root if publish ran (else `null`)
+- `workdir`: scratch directory holding `q1.json`…`q8.json` (safe to delete after archiving)
 
 The `init_result` object should contain:
 
@@ -388,7 +436,7 @@ When comparing two runs:
 
 ## Current Baseline
 
-The first tracked raylib baseline is:
+The reference raylib baseline artifact is:
 
 - `evaluation/runs/2026-04-19-raylib-baseline.json`
 - Init: 14 docs, 404 entities, 470 relationships, $0.025, 170s

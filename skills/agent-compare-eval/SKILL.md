@@ -34,16 +34,18 @@ Also confirm the **run number** (e.g. `--run 3`). If not specified, inspect `eva
 For **each task**, in order:
 
 ```bash
+# From kb repo root. (Agent-compare / codeburn only — not `eval:all` / `eval:query`.)
+
 # 1. Snapshot BEFORE
-npm run eval:snap -- /tmp/snap-before-t${TASK}.json
+npx tsx scripts/eval-snapshot.ts /tmp/snap-before-t${TASK}.json
 
 # 2. Do the task (code, queries, source reads — whatever is needed)
 
 # 3. Snapshot AFTER
-npm run eval:snap -- /tmp/snap-after-t${TASK}.json
+npx tsx scripts/eval-snapshot.ts /tmp/snap-after-t${TASK}.json
 
 # 4. Write artifact + commit (LLM fills --notes and --queries-made)
-npm run eval:artifact -- \
+npx tsx scripts/eval-task-artifact.ts \
   --before  /tmp/snap-before-t${TASK}.json \
   --after   /tmp/snap-after-t${TASK}.json  \
   --task    ${TASK}                        \
@@ -83,11 +85,11 @@ Never use `ci-*` names for the agent-compare base.
 
 `evaluation/runs/agent-compare/YYYY-MM-DD-run<N>-task-<N>-<agent>.json`
 
-The `eval:artifact` script generates the filename automatically from today's date, `--run`, `--task`, and `--agent`.
+`scripts/eval-task-artifact.ts` generates the filename automatically from today's date, `--run`, `--task`, and `--agent`.
 
 ## Artifact schema
 
-`eval:artifact` generates this automatically from the two snapshots. The LLM only provides `--notes`, `--queries-made`, and `--submissions-made`.
+That script builds this from the two snapshots; the operator (or LLM) supplies `--notes`, `--queries-made`, and `--submissions-made`.
 
 ```json
 {

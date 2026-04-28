@@ -1,0 +1,16 @@
+# kb repo / dogfood question pack. Use: --suite kb
+schema_version: 1
+id: kb
+display_name: kb
+repo_url: https://github.com/rosenjcb/kb.git
+rubric_focus: the **kb** local-first knowledge CLI/repo
+graph_with_base: false
+questions:
+  - What is this project for, and what are the main things kb can do?
+  - How does kb init work at a high level, including the major passes?
+  - Where do KB documents live, and how are active/default bases selected?
+  - How does retrieval work, including hybrid retrieval and graph involvement?
+  - What does kb chat do when retrieval is weak or incomplete?
+  - What commands should a contributor use during normal dogfood development in this repo?
+  - What special repo rules apply to KB documentation and persistence?
+  - How can someone inspect the graph and run telemetry/log comparisons?

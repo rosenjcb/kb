@@ -26,30 +26,55 @@ async function makeSqliteDb(
 ) {
   const db = new Database(path.join(baseDir, '.kb-index.sqlite'))
   db.exec(`
-    CREATE TABLE documents (
+    CREATE TABLE derived_docs (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
-      content TEXT NOT NULL,
-      doc_type TEXT,
-      lane TEXT,
+      instruction TEXT NOT NULL,
+      markdown TEXT NOT NULL,
+      source_fact_ids_json TEXT NOT NULL,
+      status TEXT NOT NULL,
       tags_json TEXT,
+      doc_type TEXT,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      is_original INTEGER NOT NULL DEFAULT 0
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE original_docs (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      markdown TEXT NOT NULL,
+      source_ref TEXT,
+      tags_json TEXT,
+      doc_type TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );
   `)
-  const insert = db.prepare(
-    'INSERT INTO documents (id, title, content, created_at, updated_at, is_original) VALUES (?, ?, ?, ?, ?, ?)'
-  )
   for (const doc of docs) {
-    insert.run(
-      doc.id,
-      doc.title,
-      doc.content,
-      '2026-01-15T10:00:00.000Z',
-      '2026-01-15T10:00:00.000Z',
-      doc.is_original ?? 0
-    )
+    if ((doc.is_original ?? 0) === 1) {
+      db.prepare(
+        'INSERT INTO original_docs (id, title, markdown, source_ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(
+        doc.id,
+        doc.title,
+        doc.content,
+        doc.id,
+        '2026-01-15T10:00:00.000Z',
+        '2026-01-15T10:00:00.000Z'
+      )
+    } else {
+      db.prepare(
+        'INSERT INTO derived_docs (id, title, instruction, markdown, source_fact_ids_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(
+        doc.id,
+        doc.title,
+        'test instruction',
+        doc.content,
+        '[]',
+        'active',
+        '2026-01-15T10:00:00.000Z',
+        '2026-01-15T10:00:00.000Z'
+      )
+    }
   }
   db.close()
 }

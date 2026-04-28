@@ -14,7 +14,6 @@ export {
 
 export {
   createKBToolsRegistry,
-  MarkdownDocumentReader,
   type QueryResponse,
   type QueryDocumentsInput,
 } from './kb-tools-registry'

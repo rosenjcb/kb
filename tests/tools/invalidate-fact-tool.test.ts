@@ -3,7 +3,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { invalidateFactTool } from '../../src/tools/invalidate-fact-tool'
-import { SqliteDocumentWriter } from '../../src/tools/sqlite-document-writer'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
 
 const tempDirs: string[] = []
@@ -18,42 +17,28 @@ async function createTempBase(): Promise<string> {
   return dir
 }
 
-async function seedDocument(
+async function seedFact(
   baseDir: string,
-  input: {
-    title: string
-    documentId: string
-    content: string
-    type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
-  }
+  factText: string
 ): Promise<void> {
-  const writer = new SqliteDocumentWriter({ baseDir })
-  await writer.writeDocument({
-    title: input.title,
-    documentId: input.documentId,
-    content: input.content,
-    type: input.type,
-  })
+  const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+  indexer.upsertFact({ factText, sourceKind: 'submit', sourceRef: 'test' })
+  indexer.close()
 }
 
-async function readDocumentContent(baseDir: string, id: string): Promise<string | undefined> {
+async function listFactTexts(baseDir: string): Promise<string[]> {
   const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
   try {
-    return indexer.getDocumentContent(id)
+    return indexer.listFactsForQuery(20).map(row => row.fact_text)
   } finally {
     indexer.close()
   }
 }
 
 describe('invalidateFactTool', () => {
-  it('replaces all matches in KB documents with replacement', async () => {
+  it('replaces a canonical fact with replacement', async () => {
     const baseDir = await createTempBase()
-    await seedDocument(baseDir, {
-      title: 'Deployment Facts',
-      documentId: 'deployment-facts',
-      content: 'We deploy to GCP.\nThis is a test.\nWe deploy to GCP.\n',
-      type: 'reference',
-    })
+    await seedFact(baseDir, 'We deploy to GCP')
 
     const result = await invalidateFactTool(
       {
@@ -65,23 +50,17 @@ describe('invalidateFactTool', () => {
       baseDir
     )
 
-    const updated = await readDocumentContent(baseDir, 'deployment-facts')
+    const updated = await listFactTexts(baseDir)
     expect(updated).toContain('We deploy to AWS')
     expect(updated).not.toContain('We deploy to GCP')
-    expect(result.changes[0]?.documentId).toBe('deployment-facts')
-    expect(result.changes[0]?.replaced).toBe(2)
+    expect(result.changes[0]?.factId).toBeDefined()
   })
 
-  it('removes all matches in KB documents if no replacement', async () => {
+  it('removes a canonical fact if no replacement', async () => {
     const baseDir = await createTempBase()
-    await seedDocument(baseDir, {
-      title: 'Deployment Facts',
-      documentId: 'deployment-facts',
-      content: 'We deploy to GCP.\nThis is a test.\nWe deploy to GCP.\n',
-      type: 'reference',
-    })
+    await seedFact(baseDir, 'We deploy to GCP')
 
-    const result = await invalidateFactTool(
+    const _result = await invalidateFactTool(
       {
         oldFact: 'We deploy to GCP',
         preview: false,
@@ -90,21 +69,15 @@ describe('invalidateFactTool', () => {
       baseDir
     )
 
-    const updated = await readDocumentContent(baseDir, 'deployment-facts')
+    const updated = await listFactTexts(baseDir)
     expect(updated).not.toContain('We deploy to GCP')
-    expect(result.changes[0]?.replaced).toBe(2)
   })
 
   it('does not inspect or edit arbitrary repo files beside the KB store', async () => {
     const baseDir = await createTempBase()
     const unrelatedFile = path.join(baseDir, 'example.ts')
     await fs.writeFile(unrelatedFile, 'const text = "We deploy to GCP"\n', 'utf8')
-    await seedDocument(baseDir, {
-      title: 'Deployment Facts',
-      documentId: 'deployment-facts',
-      content: 'We deploy to GCP.\n',
-      type: 'reference',
-    })
+    await seedFact(baseDir, 'We deploy to GCP')
 
     await invalidateFactTool(
       {
@@ -120,14 +93,29 @@ describe('invalidateFactTool', () => {
     expect(unrelatedContent).toContain('We deploy to GCP')
   })
 
+  it('matches stored fact when oldFact has extra whitespace (same normalization as upsert)', async () => {
+    const baseDir = await createTempBase()
+    await seedFact(baseDir, 'We deploy to GCP')
+
+    const result = await invalidateFactTool(
+      {
+        oldFact: 'We   deploy   to   GCP',
+        replacementFact: 'We deploy to AWS',
+        preview: false,
+        dryRun: false,
+      },
+      baseDir
+    )
+
+    const updated = await listFactTexts(baseDir)
+    expect(updated).toContain('We deploy to AWS')
+    expect(result.error).toBeUndefined()
+    expect(result.changes).toHaveLength(1)
+  })
+
   it('returns error if no matches exist in KB documents', async () => {
     const baseDir = await createTempBase()
-    await seedDocument(baseDir, {
-      title: 'Deployment Facts',
-      documentId: 'deployment-facts',
-      content: 'We deploy to AWS.\n',
-      type: 'reference',
-    })
+    await seedFact(baseDir, 'We deploy to AWS')
 
     const result = await invalidateFactTool(
       {
@@ -138,7 +126,7 @@ describe('invalidateFactTool', () => {
       baseDir
     )
 
-    expect(result.error).toBe('No matches found in KB documents.')
+    expect(result.error).toBe('No matches found in canonical facts.')
     expect(result.changes.length).toBe(0)
   })
 })

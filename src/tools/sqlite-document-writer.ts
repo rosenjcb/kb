@@ -154,6 +154,11 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     }
 
     this.indexer.upsertDocumentWithContent(upsert)
+    this.indexFactsFromContent(
+      input.content,
+      input.isOriginal === true ? 'import_doc' : 'submit',
+      id
+    )
 
     return { id, title: input.title, filePath: '', createdAt: now, updatedAt: now }
   }
@@ -449,6 +454,42 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
       skippedDocumentIds: [],
       proposedDiffs: [],
       discovery: { strategy: 'full-crawl', indexCandidateCount: 0 },
+    }
+  }
+
+  private indexFactsFromContent(
+    content: string,
+    sourceKind: 'import_doc' | 'submit',
+    sourceRef: string
+  ): void {
+    // Facts should come from meaningful paragraphs, not single lines.
+    const paragraphs = content
+      .split(/\n\s*\n/)
+      .map(paragraph =>
+        paragraph
+          .split('\n')
+          .map(line => line.trim().replace(/^[-*]\s+/, ''))
+          .filter(
+            line =>
+              line.length > 0 &&
+              !line.startsWith('#') &&
+              !line.startsWith('Created:') &&
+              !line.startsWith('Type:') &&
+              !line.startsWith('Tags:')
+          )
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      )
+      .filter(paragraph => paragraph.length > 40)
+      .slice(0, 40)
+    for (const factText of paragraphs) {
+      this.indexer.upsertFact({
+        factText,
+        sourceKind,
+        sourceRef,
+        confidence: 0.6,
+      })
     }
   }
 }

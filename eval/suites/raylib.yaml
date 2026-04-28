@@ -1,0 +1,17 @@
+# Vendor question pack for `kb` eval harness. Use: --suite raylib
+# Schema: eval/suites/README.md (or see loadVendorSuite in scripts/eval-run.mjs)
+schema_version: 1
+id: raylib
+display_name: raylib
+repo_url: https://github.com/raysan5/raylib.git
+rubric_focus: the **raylib** C library knowledge base (facts + docs in SQLite)
+graph_with_base: true
+questions:
+  - What is raylib for, and what are its main capabilities?
+  - How does raylib's architecture work, including modules and platform support?
+  - How do I install and build raylib, including dependencies and build systems?
+  - What configuration options and compile flags does raylib support?
+  - How does raylib handle graphics backends and platform-specific rendering?
+  - What are the coding conventions and style guidelines for contributing to raylib?
+  - What are the main gotchas, constraints, and known limitations of raylib?
+  - What does the raylib roadmap say about future plans, and what is the recent version history?
