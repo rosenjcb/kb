@@ -64,6 +64,8 @@ export function App({ config, startupNotices = [] }: Props) {
     question: string
     onConfirm: () => Promise<void>
   } | null>(null)
+  /** When chat `read()` passes a non-idle prompt (e.g. docs wizard), show in history + input placeholder. */
+  const [chatInputHint, setChatInputHint] = useState('')
 
   const chatInputResolverRef = useRef<((v: string | null) => void) | null>(null)
   const initInputResolverRef = useRef<((v: string) => void) | null>(null)
@@ -150,10 +152,26 @@ export function App({ config, startupNotices = [] }: Props) {
         ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(storageDir))
         : undefined
 
+      setChatInputHint('')
+
       const chatIO: ChatIO = {
-        async read(_prompt: string): Promise<string | null> {
+        async read(prompt: string): Promise<string | null> {
+          const normalized = prompt.replace(/\r/g, '').trim()
+          const firstLine = normalized.split('\n').find(l => l.trim().length > 0)?.trim() ?? ''
+          const isIdleReadPrompt = /^you\s*>?\s*$/i.test(firstLine)
+          if (normalized.length > 0 && !isIdleReadPrompt) {
+            const oneLine = normalized.replace(/\s+/g, ' ').trim()
+            const clipped = oneLine.length > 500 ? `${oneLine.slice(0, 497)}…` : oneLine
+            addEntry({ type: 'info', content: clipped })
+            const hint = firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine
+            setChatInputHint(hint)
+          }
           return new Promise<string | null>(resolve => {
-            chatInputResolverRef.current = resolve
+            chatInputResolverRef.current = (value: string | null) => {
+              chatInputResolverRef.current = null
+              setChatInputHint('')
+              resolve(value)
+            }
           })
         },
         write(line: string) {
@@ -179,6 +197,8 @@ export function App({ config, startupNotices = [] }: Props) {
           toolExecutor,
           mode: 'tui',
           graphWriter,
+          kbStorageDir: storageDir,
+          kbConfig: config,
           conversationalRetrieval: resolveConversationalChatEnabled(config),
           verbose,
           debug,
@@ -187,10 +207,12 @@ export function App({ config, startupNotices = [] }: Props) {
       )
         .then(() => {
           stopChatPending()
+          setChatInputHint('')
           setMode('shell')
         })
         .catch(err => {
           stopChatPending()
+          setChatInputHint('')
           const message = err instanceof Error ? err.message : String(err)
           addEntry({ type: 'error', content: `Chat error: ${message}` })
           setMode('shell')
@@ -525,6 +547,7 @@ export function App({ config, startupNotices = [] }: Props) {
         onSubmit={handleSubmit}
         mode={mode}
         isRunning={isRunning}
+        chatPlaceholder={mode === 'chat' ? chatInputHint : ''}
       />
       <InitStatusPanel status={initStatus} visible={mode === 'init'} />
       <SuggestionsBar

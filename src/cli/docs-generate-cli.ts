@@ -1,27 +1,23 @@
-import path from 'node:path'
 import type { DocType } from '../core/doc-taxonomy'
-import { DOC_TYPES, isDocType } from '../core/doc-taxonomy'
-import { appendReferencesFooter } from '../core/doc-references-footer'
 import {
   applyAnswer,
   applySkip,
-  createSessionRecord,
   firstPendingAnswerIndex,
   listSessionSummaries,
   loadSession,
-  markSessionFinalized,
-  saveSession,
   type DocGenerateSession,
 } from '../core/doc-generate-session'
-import { deriveDocumentTitle } from '../core/doc-generate-title'
-import { loadQuestionnaire, parseDocTypeFlag } from '../core/doc-questionnaire'
-import { searchSupportingFacts } from '../core/doc-supporting-facts'
+import {
+  acceptDraft,
+  type DocGenerateOrchestratorDeps,
+  produceInitialDraft,
+  produceRevisedDraft,
+  startGenerationSession,
+} from '../core/doc-generate-orchestrator'
+import { parseDocTypeFlag } from '../core/doc-questionnaire'
+import { colorizeUnifiedDiff } from '../core/git-diff-preview'
 import type { KbConfig } from './kb-config'
 import { createLLMProviderFromConfig } from './kb-config'
-import { loadPrompt } from '../prompts/loader'
-import type { LLMProvider } from '../core/types'
-import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
-import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
 import { CLI_ERROR_NO_LLM_PROVIDER, formatPrerequisiteError } from './cli-prerequisites'
 import { type CmdMode, cmd } from './cmd-ref'
@@ -44,8 +40,9 @@ export type ParsedDocsGenerateCommand =
       sessionId: string
       base?: string
       factLimit?: number
-      action: 'answer' | 'skip' | 'finalize'
+      action: 'answer' | 'skip' | 'finalize' | 'accept' | 'reject'
       answer?: string
+      rejectFeedback?: string
       outputFormat: DocsGenerateOutputFormat
     }
   | { mode: 'list'; base?: string; outputFormat: DocsGenerateOutputFormat }
@@ -81,12 +78,15 @@ export function printDocsGenerateHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('docs generate --resume <session-id> --answer "<text>" [--base <name>] [--limit <n>]', mode)}`,
     `  ${cmd('docs generate --resume <session-id> --skip [--base <name>]', mode)}`,
     `  ${cmd('docs generate --resume <session-id> --finalize [--base <name>] [--limit <n>]', mode)}`,
+    `  ${cmd('docs generate --resume <session-id> --accept [--base <name>]', mode)}`,
+    `  ${cmd('docs generate --resume <session-id> --reject "<feedback>" [--base <name>] [--limit <n>]', mode)}`,
     '',
     'Inspect:',
     `  ${cmd('docs generate --list [--base <name>]', mode)}`,
     `  ${cmd('docs generate --show <session-id> [--base <name>]', mode)}`,
     '',
-    '--limit caps supporting facts appended under ## References on finalize (default 20).',
+    '--finalize drafts the document (awaiting review). --accept writes it to the KB. --reject revises the draft from your feedback (git-style diff between revisions).',
+    '--limit caps supporting facts appended under ## References on finalize / reject (default 20).',
     '',
     `${cmd('--output human|json', mode)}  (default human). Use json for stdout-only structured payloads (no harness banner).`,
   ].join('\n')
@@ -105,6 +105,8 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
   let list = false
   let finalize = false
   let skip = false
+  let accept = false
+  let rejectFeedback: string | undefined
   let answer: string | undefined
   let outputFormat: DocsGenerateOutputFormat = 'human'
   const positional: string[] = []
@@ -165,6 +167,16 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
       skip = true
       continue
     }
+    if (token === '--accept') {
+      accept = true
+      continue
+    }
+    if (token === '--reject') {
+      const { value, next } = readValue('--reject', i)
+      rejectFeedback = value
+      i = next
+      continue
+    }
     if (token === '--answer') {
       const { value, next } = readValue('--answer', i)
       answer = value
@@ -186,7 +198,9 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
     positional.push(token)
   }
 
-  const resumeActions = [finalize, skip, answer !== undefined].filter(Boolean).length
+  const resumeActions = [finalize, skip, answer !== undefined, accept, rejectFeedback !== undefined].filter(
+    Boolean
+  ).length
 
   if (list) {
     if (resumeId || showId || positional.length || resumeActions > 0 || typeFlag !== undefined) {
@@ -208,7 +222,7 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
     }
     if (resumeActions !== 1) {
       throw new DocsGenerateError(
-        `With --resume, specify exactly one of: --finalize | --skip | --answer "<text>"\n\n${printDocsGenerateHelp()}`
+        `With --resume, specify exactly one of: --finalize | --skip | --answer "<text>" | --accept | --reject "<feedback>"\n\n${printDocsGenerateHelp()}`
       )
     }
     if (finalize) {
@@ -217,12 +231,29 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
     if (skip) {
       return { mode: 'resume', sessionId: resumeId, base, factLimit, action: 'skip', outputFormat }
     }
+    if (accept) {
+      return { mode: 'resume', sessionId: resumeId, base, factLimit, action: 'accept', outputFormat }
+    }
+    if (rejectFeedback !== undefined) {
+      if (!rejectFeedback.trim()) {
+        throw new DocsGenerateError(`--reject requires non-empty feedback\n\n${printDocsGenerateHelp()}`)
+      }
+      return {
+        mode: 'resume',
+        sessionId: resumeId,
+        base,
+        factLimit,
+        action: 'reject',
+        rejectFeedback: rejectFeedback.trim(),
+        outputFormat,
+      }
+    }
     return { mode: 'resume', sessionId: resumeId, base, factLimit, action: 'answer', answer, outputFormat }
   }
 
-  if (finalize || skip || answer !== undefined) {
+  if (finalize || skip || answer !== undefined || accept || rejectFeedback !== undefined) {
     throw new DocsGenerateError(
-      `--finalize, --skip, and --answer require --resume <session-id>.\n\n${printDocsGenerateHelp()}`
+      `--finalize, --skip, --answer, --accept, and --reject require --resume <session-id>.\n\n${printDocsGenerateHelp()}`
     )
   }
 
@@ -234,8 +265,51 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
   return { mode: 'start', prompt, base, type: typeFlag, factLimit, outputFormat }
 }
 
-export interface RunDocsGenerateDeps {
-  llm?: LLMProvider
+export type RunDocsGenerateDeps = DocGenerateOrchestratorDeps
+
+/** Human-readable lines for stdout (no JSON). */
+export function formatDocsGenerateHumanOutput(generated: unknown): string {
+  const g = generated as Record<string, unknown>
+  const lines: string[] = []
+
+  if (typeof g.status === 'string') lines.push(`Status: ${g.status}`)
+  if (typeof g.sessionId === 'string') lines.push(`Session: ${g.sessionId}`)
+  if (typeof g.revision === 'number') lines.push(`Revision: ${g.revision}`)
+  if (typeof g.supportingFactCount === 'number') {
+    lines.push(`Supporting facts: ${g.supportingFactCount}`)
+  }
+  if (Array.isArray(g.nextActions)) {
+    lines.push(`Next: ${(g.nextActions as string[]).join('  |  ')}`)
+  }
+  if (typeof g.diff === 'string' && g.diff.trim()) {
+    lines.push('')
+    lines.push('--- diff (previous → current) ---')
+    lines.push(colorizeUnifiedDiff(g.diff, { color: process.stdout.isTTY }))
+  }
+  if (typeof g.content === 'string' && g.content.trim() && !g.diff) {
+    lines.push('')
+    lines.push('--- draft body ---')
+    lines.push(g.content)
+  }
+  if (typeof g.contentWithFooter === 'string' && g.contentWithFooter.trim() && !g.content) {
+    lines.push('')
+    lines.push('--- draft with references ---')
+    lines.push(g.contentWithFooter)
+  }
+  if (g.document && typeof g.document === 'object') {
+    const doc = g.document as { id?: string; title?: string }
+    lines.push('')
+    lines.push(`Document id: ${doc.id ?? '(unknown)'}`)
+    if (doc.title) lines.push(`Title: ${doc.title}`)
+  }
+  if (typeof g.question === 'string') {
+    lines.push(`Question: ${g.question}`)
+  }
+  if (typeof g.key === 'string') {
+    lines.push(`Key: ${g.key}`)
+  }
+
+  return lines.join('\n').trimEnd()
 }
 
 export async function runDocsGenerate(
@@ -275,24 +349,13 @@ async function runStart(
   config: KbConfig,
   deps: RunDocsGenerateDeps
 ): Promise<unknown> {
-  const docType = parsed.type ?? (await classifyDocType(config, deps, parsed.prompt))
-  const items = loadQuestionnaire(docType)
-  const session = createSessionRecord({
+  return startGenerationSession({
+    baseDir,
     prompt: parsed.prompt,
-    docType,
-    questions: items,
+    type: parsed.type,
+    config,
+    deps,
   })
-  await saveSession(baseDir, session)
-  const idx = firstPendingAnswerIndex(session)
-  const q = idx !== null ? session.answers[idx] : undefined
-  return {
-    status: session.status,
-    sessionId: session.id,
-    docType: session.docType,
-    questionIndex: idx,
-    question: q?.question,
-    key: q?.key,
-  }
 }
 
 async function runResume(
@@ -312,7 +375,23 @@ async function runResume(
     const session = await applySkip(baseDir, parsed.sessionId)
     return formatResumeResponse(session)
   }
-  return runFinalize(baseDir, parsed, config, deps)
+  if (parsed.action === 'accept') {
+    return acceptDraft({ baseDir, sessionId: parsed.sessionId, deps })
+  }
+  if (parsed.action === 'reject') {
+    const llm = deps.llm ?? createLLMProviderFromConfig(config)
+    if (!llm) {
+      throw new DocsGenerateError(formatPrerequisiteError(CLI_ERROR_NO_LLM_PROVIDER))
+    }
+    return produceRevisedDraft({
+      baseDir,
+      sessionId: parsed.sessionId,
+      llm,
+      feedback: parsed.rejectFeedback ?? '',
+      factLimit: parsed.factLimit,
+    })
+  }
+  return runFinalizeDraft(baseDir, parsed, config, deps)
 }
 
 function formatResumeResponse(session: DocGenerateSession): unknown {
@@ -328,7 +407,7 @@ function formatResumeResponse(session: DocGenerateSession): unknown {
   }
 }
 
-async function runFinalize(
+async function runFinalizeDraft(
   baseDir: string,
   parsed: Extract<ParsedDocsGenerateCommand, { mode: 'resume' }>,
   config: KbConfig,
@@ -349,99 +428,14 @@ async function runFinalize(
     throw new DocsGenerateError(formatPrerequisiteError(CLI_ERROR_NO_LLM_PROVIDER))
   }
 
-  const draftBody = await draftDocumentBody(llm, session)
-  const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
-  const factQuery = buildFactSearchQuery(session)
-  const facts = searchSupportingFacts(indexer, factQuery, parsed.factLimit ?? 20)
-  const fullContent = appendReferencesFooter(draftBody, facts)
-
-  const title = deriveDocumentTitle(session)
-  const writer = new SqliteDocumentWriter({ baseDir })
-  const result = await writer.writeDocument({
-    title,
-    content: fullContent,
-    type: session.docType,
-    tags: ['docs-generate'],
+  const out = await produceInitialDraft({
+    baseDir,
+    sessionId: parsed.sessionId,
+    llm,
+    factLimit: parsed.factLimit,
   })
-
-  await markSessionFinalized(baseDir, session.id, {
-    draftDocId: result.id,
-    supportingFactIds: facts.map(f => f.id),
-  })
-
   return {
-    document: result,
-    supportingFactCount: facts.length,
-    sessionId: session.id,
+    ...out,
+    docType: session.docType,
   }
-}
-
-function buildFactSearchQuery(session: DocGenerateSession): string {
-  const parts = [session.prompt]
-  for (const slot of session.answers) {
-    if (slot.answer?.trim()) {
-      parts.push(`${slot.key}: ${slot.answer}`)
-    }
-  }
-  return parts.join('\n')
-}
-
-async function classifyDocType(
-  config: KbConfig,
-  deps: RunDocsGenerateDeps,
-  prompt: string
-): Promise<DocType> {
-  const llm = deps.llm ?? createLLMProviderFromConfig(config)
-  if (!llm) {
-    throw new DocsGenerateError(formatPrerequisiteError(CLI_ERROR_NO_LLM_PROVIDER))
-  }
-  const systemPrompt = loadPrompt('doc-classify.md')
-  const res = await llm.call({
-    systemPrompt,
-    messages: [{ role: 'user', content: `User prompt:\n\n${prompt}` }],
-    maxTokens: 32,
-    temperature: 0,
-  })
-  return parseClassifierDocType(res.text)
-}
-
-function parseClassifierDocType(text: string): DocType {
-  const line = text
-    .trim()
-    .split('\n')[0]
-    .trim()
-    .replace(/[`'"]+/g, '')
-    .replace(/[.?!]+$/g, '')
-    .toLowerCase()
-  if (isDocType(line)) return line
-  const first = line.split(/\s+/)[0] ?? ''
-  if (isDocType(first)) return first
-  for (const t of DOC_TYPES) {
-    if (line.includes(t)) return t
-  }
-  return 'reference'
-}
-
-async function draftDocumentBody(llm: LLMProvider, session: DocGenerateSession): Promise<string> {
-  const systemPrompt = loadPrompt('doc-draft-system.md')
-  const lines = [
-    `Document type: ${session.docType}`,
-    '',
-    'Original user prompt:',
-    session.prompt,
-    '',
-    'Structured answers:',
-    ...session.answers.map(slot => {
-      const status = slot.skipped ? '(skipped)' : ''
-      const body = slot.skipped ? '' : slot.answer ?? ''
-      return `- **${slot.key}** ${status}: ${body}`.trimEnd()
-    }),
-  ]
-  const res = await llm.call({
-    systemPrompt,
-    messages: [{ role: 'user', content: lines.join('\n') }],
-    maxTokens: 8192,
-    temperature: 0.35,
-  })
-  return res.text.trim()
 }

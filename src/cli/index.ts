@@ -47,6 +47,7 @@ import {
 } from './docs-delete-cli'
 import {
   DocsGenerateError,
+  formatDocsGenerateHumanOutput,
   isDocsGenerateJsonOutputArgs,
   parseDocsGenerateCommand,
   printDocsGenerateHelp,
@@ -419,6 +420,8 @@ export async function runMainWithOutput(
       toolExecutor,
       mode,
       graphWriter: chatGraphWriter,
+      kbStorageDir: kbStorageDir,
+      kbConfig: config,
       conversationalRetrieval: resolveConversationalChatEnabled(config),
       verbose: chatVerbose,
       debug: chatDebug,
@@ -521,7 +524,11 @@ export async function runMainWithOutput(
         const parsed = parseDocsGenerateCommand(args.slice(2))
         const generated = await runDocsGenerate(parsed, process.cwd(), config)
         const payload = { status: 'accepted' as const, generated }
-        out.log(parsed.outputFormat === 'json' ? JSON.stringify(payload) : JSON.stringify(payload, null, 2))
+        if (parsed.outputFormat === 'json') {
+          out.log(JSON.stringify(payload))
+        } else {
+          out.log(formatDocsGenerateHumanOutput(generated))
+        }
         return
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)

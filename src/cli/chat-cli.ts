@@ -2,6 +2,10 @@ import { createInterface } from 'node:readline/promises'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message } from '../core/types'
 import { loadPrompt } from '../prompts/loader'
+import { resolveEffectiveBaseDir } from './base-selection'
+import { runDocsGenerateChatFlow } from './chat-docs-generate-flow'
+import type { KbConfig } from './kb-config'
+import { readKbConfig } from './kb-config'
 import type { DuckGraphWriter } from '../tools/duck-graph-writer'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
@@ -22,6 +26,10 @@ export interface ChatSessionDeps {
   toolExecutor: ToolExecutor
   mode?: CmdMode
   graphWriter?: DuckGraphWriter
+  /** KB storage directory (`.kb` root). Resolved from cwd when omitted. */
+  kbStorageDir?: string
+  /** When omitted, `readKbConfig()` is used on first `/docs generate`. */
+  kbConfig?: KbConfig
   retrievalLimit?: number
   maxHistoryTurns?: number
   workspaceDir?: string
@@ -89,6 +97,7 @@ export function printChatHelp(mode: CmdMode = 'cli'): string {
     '',
     'Interactive commands:',
     '  /help  Show chat commands',
+    '  /docs generate "<prompt>" …  Guided doc draft (questionnaire + review)',
     '  /exit  Exit chat mode',
     '',
     'Examples:',
@@ -141,9 +150,30 @@ export async function runChatSession(
       const input = rawInput.trim()
       if (!input) continue
 
+      const docsGen = input.match(/^\/docs\s+generate(?:\s+(.*))?$/i)
+      if (docsGen) {
+        const slashRest = docsGen[1]?.trim() ?? ''
+        const baseDir =
+          deps.kbStorageDir ??
+          (await resolveEffectiveBaseDir(deps.workspaceDir ?? process.cwd())).baseDir
+        const chatConfig = deps.kbConfig ?? (await readKbConfig())
+        await runDocsGenerateChatFlow({
+          read: prompt => io.read(prompt),
+          writeError: line => io.error(line),
+          printer,
+          llm: deps.llmProvider,
+          kbStorageDir: baseDir,
+          config: chatConfig,
+          slashRest,
+        })
+        printer.separator()
+        continue
+      }
+
       if (input === '/help') {
         printer.chatAssistant('Commands:')
         printer.chatAssistant('  /help  Show chat commands')
+        printer.chatAssistant('  /docs generate "<prompt>" …  Guided doc draft')
         printer.chatAssistant('  /exit  Exit chat mode')
         continue
       }

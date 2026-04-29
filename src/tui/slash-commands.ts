@@ -25,6 +25,7 @@ const SHELL_COMMANDS: SlashCommand[] = [
 
 const CHAT_COMMANDS: SlashCommand[] = [
   { command: '/help', description: 'show chat-mode controls' },
+  { command: '/docs', description: 'knowledge base documents (chat: /docs generate …)' },
   { command: '/clear', description: 'clear the visible session history' },
   { command: '/exit', description: 'leave chat mode' },
 ]

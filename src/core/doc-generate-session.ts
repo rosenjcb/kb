@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { createUnifiedDiff } from './git-diff-preview'
 import type { DocType } from './doc-taxonomy'
 
 export interface DocAnswerSlot {
@@ -10,7 +11,34 @@ export interface DocAnswerSlot {
   skipped?: boolean
 }
 
-export type DocGenerateSessionStatus = 'gathering' | 'ready' | 'finalized'
+export type DocGenerateSessionStatus = 'gathering' | 'ready' | 'awaiting_review' | 'finalized'
+
+/**
+ * Current draft head for a session under review. `content` is the LLM body before footer;
+ * `contentWithFooter` is the body that will be committed on accept (footer appended once
+ * by the orchestrator).
+ */
+export interface DocGenerateDraft {
+  revision: number
+  content: string
+  contentWithFooter: string
+  supportingFactIds: string[]
+  /** Reviewer feedback that produced this revision. Undefined for revision 1. */
+  feedback?: string
+  createdAt: number
+}
+
+/**
+ * Append-only patch log entry. Stores only the unified diff describing
+ * `fromRevision -> revision` (no content snapshot).
+ */
+export interface DocGenerateRevisionEntry {
+  revision: number
+  fromRevision: number
+  feedback?: string
+  diff: string
+  createdAt: number
+}
 
 export interface DocGenerateSession {
   id: string
@@ -18,6 +46,8 @@ export interface DocGenerateSession {
   docType: DocType
   answers: DocAnswerSlot[]
   status: DocGenerateSessionStatus
+  draft?: DocGenerateDraft
+  revisions?: DocGenerateRevisionEntry[]
   draftDocId?: string
   supportingFactIds?: string[]
   createdAt: number
@@ -85,7 +115,7 @@ export function allAnswerSlotsResolved(session: DocGenerateSession): boolean {
 }
 
 export function recomputeSessionStatus(session: DocGenerateSession): void {
-  if (session.status === 'finalized') return
+  if (session.status === 'finalized' || session.status === 'awaiting_review') return
   session.status = allAnswerSlotsResolved(session) ? 'ready' : 'gathering'
 }
 
@@ -100,6 +130,9 @@ export async function applyAnswer(
   }
   if (session.status === 'finalized') {
     throw new Error('doc generate: session already finalized')
+  }
+  if (session.status === 'awaiting_review') {
+    throw new Error('doc generate: session awaiting review — use --accept or --reject')
   }
   const idx = firstPendingAnswerIndex(session)
   if (idx === null) {
@@ -121,6 +154,9 @@ export async function applySkip(baseDir: string, sessionId: string): Promise<Doc
   }
   if (session.status === 'finalized') {
     throw new Error('doc generate: session already finalized')
+  }
+  if (session.status === 'awaiting_review') {
+    throw new Error('doc generate: session awaiting review — use --accept or --reject')
   }
   const idx = firstPendingAnswerIndex(session)
   if (idx === null) {
@@ -148,6 +184,79 @@ export async function markSessionFinalized(
   session.status = 'finalized'
   session.draftDocId = meta.draftDocId
   session.supportingFactIds = meta.supportingFactIds
+  await saveSession(baseDir, session)
+  return session
+}
+
+/**
+ * Replace the session draft head with `next`. If a prior draft exists, computes
+ * the unified-diff patch (prior.content -> next.content) and appends it to
+ * `revisions` so the log always reflects the chain of edits leading to head.
+ *
+ * Side effect: status moves to `awaiting_review` (unless already finalized; in
+ * which case this throws — accepted sessions are immutable).
+ */
+export async function setSessionDraft(
+  baseDir: string,
+  sessionId: string,
+  next: DocGenerateDraft
+): Promise<DocGenerateSession> {
+  const session = await loadSession(baseDir, sessionId)
+  if (!session) {
+    throw new Error(`doc generate: session not found: ${sessionId}`)
+  }
+  if (session.status === 'finalized') {
+    throw new Error('doc generate: cannot edit a finalized session')
+  }
+  const prior = session.draft
+  if (prior) {
+    if (next.revision <= prior.revision) {
+      throw new Error(
+        `doc generate: revision must increase (have=${prior.revision}, got=${next.revision})`
+      )
+    }
+    const diff = createUnifiedDiff(`doc-${session.id}.md`, prior.content, next.content)
+    const log = session.revisions ?? []
+    log.push({
+      revision: next.revision,
+      fromRevision: prior.revision,
+      feedback: next.feedback,
+      diff,
+      createdAt: next.createdAt,
+    })
+    session.revisions = log
+  } else if (!session.revisions) {
+    session.revisions = []
+  }
+  session.draft = next
+  session.status = 'awaiting_review'
+  await saveSession(baseDir, session)
+  return session
+}
+
+/**
+ * Promote the current draft head to a finalized KB document. The caller is
+ * responsible for having already written the document via the document writer
+ * and passing back the resulting `draftDocId`. Revision history is preserved.
+ */
+export async function acceptSessionDraft(
+  baseDir: string,
+  sessionId: string,
+  meta: { draftDocId: string }
+): Promise<DocGenerateSession> {
+  const session = await loadSession(baseDir, sessionId)
+  if (!session) {
+    throw new Error(`doc generate: session not found: ${sessionId}`)
+  }
+  if (session.status === 'finalized') {
+    throw new Error('doc generate: session already finalized')
+  }
+  if (!session.draft) {
+    throw new Error('doc generate: cannot accept session with no draft')
+  }
+  session.status = 'finalized'
+  session.draftDocId = meta.draftDocId
+  session.supportingFactIds = session.draft.supportingFactIds
   await saveSession(baseDir, session)
   return session
 }

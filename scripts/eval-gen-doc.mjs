@@ -4,7 +4,7 @@
  * Writes scratch + `artifact.json` under `~/.kb/evaluations/<run-name>/` (same layout family as eval-run.mjs).
  *
  * Usage (kb repo root, after `pnpm run build`):
- *   node scripts/eval-gen-doc.mjs [--base dogfood] [--label slug] [--skip-purge] [--out PATH]
+ *   node scripts/eval-gen-doc.mjs [--base dogfood] [--label slug] [--skip-purge] [--reject-once "feedback"] [--out PATH]
  */
 
 import { spawnSync } from 'node:child_process'
@@ -181,7 +181,27 @@ function runScenario(base, spec, logPath, runDir) {
   }
   const fin = kbJson(['docs', 'generate', '--resume', sessionId, '--finalize', '--base', base], logPath)
   if (fin.status !== 'accepted') throw new Error(`finalize failed: ${JSON.stringify(fin)}`)
-  const gen = fin.generated
+  const finGen = fin.generated
+  if (finGen.status !== 'awaiting_review') {
+    throw new Error(`expected awaiting_review after finalize, got: ${JSON.stringify(finGen)}`)
+  }
+
+  let lastDiff = null
+  if (spec.rejectOnce) {
+    const rej = kbJson(
+      ['docs', 'generate', '--resume', sessionId, '--reject', spec.rejectOnce, '--base', base],
+      logPath
+    )
+    if (rej.status !== 'accepted') throw new Error(`reject failed: ${JSON.stringify(rej)}`)
+    lastDiff = rej.generated?.diff ?? null
+    if (lastDiff) {
+      fs.writeFileSync(path.join(runDir, `diff-${spec.type}.txt`), lastDiff, 'utf8')
+    }
+  }
+
+  const acc = kbJson(['docs', 'generate', '--resume', sessionId, '--accept', '--base', base], logPath)
+  if (acc.status !== 'accepted') throw new Error(`accept failed: ${JSON.stringify(acc)}`)
+  const gen = acc.generated
   const docId = gen.document.id
   const viewRaw = kbSpawn(['docs', 'view', docId, '--base', base, '--output', 'json'], logPath)
   const viewObj = JSON.parse(stripCliBanner(viewRaw))
@@ -190,14 +210,16 @@ function runScenario(base, spec, logPath, runDir) {
   const content = typeof docPayload.content === 'string' ? docPayload.content : ''
   const meta = docPayload.metadata ?? {}
   const exportMarkdown = writeMarkdownExport(runDir, spec.type, docId, meta, content)
-  const score = scoreDocument(spec.type, gen, content)
+  const score = scoreDocument(spec.type, { ...gen, supportingFactCount: finGen.supportingFactCount }, content)
   return {
     scenario: spec.type,
     session_id: sessionId,
     document_id: docId,
     title: gen.document.title,
-    supporting_fact_count: gen.supportingFactCount,
-    finalize_response: gen,
+    supporting_fact_count: finGen.supportingFactCount,
+    finalize_response: finGen,
+    accept_response: gen,
+    reject_diff_file: spec.rejectOnce ? `diff-${spec.type}.txt` : null,
     export_markdown: exportMarkdown,
     score,
   }
@@ -208,6 +230,7 @@ function parseArgs(argv) {
     base: 'dogfood',
     label: null,
     skipPurge: false,
+    rejectOnceGlobal: null,
     outFile: null,
     help: false,
   }
@@ -218,6 +241,7 @@ function parseArgs(argv) {
     if (a === '--base') out.base = argv[++i]
     else if (a === '--label') out.label = argv[++i]
     else if (a === '--skip-purge') out.skipPurge = true
+    else if (a === '--reject-once') out.rejectOnceGlobal = argv[++i]
     else if (a === '--out') out.outFile = argv[++i]
     i++
   }
@@ -227,7 +251,7 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`eval-gen-doc.mjs — docs generate smoke (artifact under ~/.kb/evaluations/<run>/)
 
-  node scripts/eval-gen-doc.mjs [--base dogfood] [--label slug] [--skip-purge] [--out PATH]
+  node scripts/eval-gen-doc.mjs [--base dogfood] [--label slug] [--skip-purge] [--reject-once "feedback"] [--out PATH]
 
 Writes:
   ~/.kb/evaluations/<run>/artifact.json
@@ -265,9 +289,10 @@ function main() {
 
   const documents = []
   let failed = false
+  const rejectOnce = args.rejectOnceGlobal || undefined
   try {
-    documents.push(runScenario(args.base, INTRO, logPath, runDir))
-    documents.push(runScenario(args.base, HOWTO, logPath, runDir))
+    documents.push(runScenario(args.base, { ...INTRO, rejectOnce }, logPath, runDir))
+    documents.push(runScenario(args.base, { ...HOWTO, rejectOnce }, logPath, runDir))
   } catch (e) {
     failed = true
     fs.appendFileSync(logPath, `\nERROR: ${e instanceof Error ? e.stack || e.message : e}\n`, 'utf8')

@@ -85,17 +85,30 @@ describe('docs generate flow', () => {
     const finOut = (await runDocsGenerate(fin, baseDir, config, {
       llm: mockLlm,
     })) as {
-      document: { id: string; title: string }
+      status: string
+      revision: number
       supportingFactCount: number
     }
 
+    expect(finOut.status).toBe('awaiting_review')
+    expect(finOut.revision).toBe(1)
     expect(finOut.supportingFactCount).toBeGreaterThanOrEqual(1)
-    const content = indexer.getDocumentContent(finOut.document.id) ?? ''
+
+    const acc = parseDocsGenerateCommand(['--resume', sessionId, '--accept', '--base', baseDir])
+    const accOut = (await runDocsGenerate(acc, baseDir, config, {
+      llm: mockLlm,
+    })) as {
+      document: { id: string; title: string }
+      revision: number
+    }
+
+    const content = indexer.getDocumentContent(accOut.document.id) ?? ''
     expect(content).toContain('Type: reference')
     expect(content).toContain('Generated body line')
     expect(content).toContain('## References')
     expect(content).toContain('fact://')
 
     expect(mockLlm.call).toHaveBeenCalledTimes(1)
+    indexer.close()
   })
 })

@@ -46,6 +46,37 @@ describe('parseDocsGenerateCommand', () => {
     })
   })
 
+  it('Given --resume and --accept, then parses', () => {
+    expect(
+      parseDocsGenerateCommand(['--resume', 'sid', '--accept', '--base', 'dogfood'])
+    ).toEqual({
+      mode: 'resume',
+      sessionId: 'sid',
+      base: 'dogfood',
+      action: 'accept',
+      outputFormat: 'human',
+    })
+  })
+
+  it('Given --resume and --reject, then parses feedback', () => {
+    expect(
+      parseDocsGenerateCommand(['--resume', 'sid', '--reject', 'no dates', '--base', 'dogfood'])
+    ).toEqual({
+      mode: 'resume',
+      sessionId: 'sid',
+      base: 'dogfood',
+      action: 'reject',
+      rejectFeedback: 'no dates',
+      outputFormat: 'human',
+    })
+  })
+
+  it('Given --finalize and --accept with resume, then throws mutual exclusion', () => {
+    expect(() =>
+      parseDocsGenerateCommand(['--resume', 'x', '--finalize', '--accept'])
+    ).toThrow(DocsGenerateError)
+  })
+
   it('Given --resume without action, then throws', () => {
     expect(() => parseDocsGenerateCommand(['--resume', 'x'])).toThrow(DocsGenerateError)
   })

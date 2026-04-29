@@ -21,6 +21,7 @@ describe('slash command helpers', () => {
   it('shows chat-specific suggestions in chat mode', () => {
     expect(getSlashCommands('chat')).toEqual([
       { command: '/help', description: 'show chat-mode controls' },
+      { command: '/docs', description: 'knowledge base documents (chat: /docs generate …)' },
       { command: '/clear', description: 'clear the visible session history' },
       { command: '/exit', description: 'leave chat mode' },
     ])
