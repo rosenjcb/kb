@@ -117,7 +117,7 @@ sequenceDiagram
   participant F as Filtered ToolExecutor
   participant A as agentLoop
   participant L as LLMProvider
-  participant B as Parent registry\n(read_documents, …)
+  participant B as Parent registry\n(read_facts, …)
 
   P->>T: ToolUse task { prompt, agent_profile_id?, … }
   T->>E: executeSubagentTask(parentRegistry, provider, input)
@@ -125,10 +125,10 @@ sequenceDiagram
   E->>F: wrap parent; strip task
   E->>A: agentLoop(prompt, provider, F, config)
   A->>L: call(messages, tools, systemPrompt)
-  L-->>A: tool_use read_documents
-  A->>F: execute(read_documents)
+  L-->>A: tool_use read_facts
+  A->>F: execute(read_facts)
   F->>B: execute(same request)
-  B-->>F: doc payload
+  B-->>F: fact-shaped payload
   F-->>A: result
   A->>L: next turn (tool results in history)
   L-->>A: end_turn + summary text

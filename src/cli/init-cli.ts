@@ -3,13 +3,15 @@
  *
  * Cycle 1 (read-inputs):     Discover README/CLAUDE.md in working dir,
  *                             ask an initial interview round via stdin.
- * Cycle 2 (pass1):           One LLM call per init topic (in parallel) from sources + Q&A.
- * Cycle 3 (pass2):           Follow-up questions for weak topics, LLM refinement.
- * Cycle 4 (pass-enrich):     Per-document enrichment — each doc gets a dedicated
+ * Cycle 2 (scan-facts):     Deterministic sentence scan of source markdown → `facts` table
+ *                             (before synthesis; placeholder triplets).
+ * Cycle 3 (pass1):           One LLM call per init topic (in parallel) from sources + Q&A.
+ * Cycle 4 (pass2):           Follow-up questions for weak topics, LLM refinement.
+ * Cycle 5 (pass-enrich):     Per-document enrichment — each doc gets a dedicated
  *                             LLM pass to deepen coverage and add concrete detail.
- * Cycle 5 (pass3):           Final quality pass — validate, dedupe, remove stubs.
- * Cycle 6 (write):           Upsert all candidate documents to SQLite.
- * Cycle 7 (pass-graph):      Extract knowledge graph entities and relationships.
+ * Cycle 6 (pass3):           Final quality pass — validate, dedupe, remove stubs.
+ * Cycle 7 (write):           Upsert all candidate documents to SQLite.
+ * Cycle 8 (pass-graph):      Extract knowledge graph entities and relationships.
  *
  * Reuses progress reporting and checkpoint patterns from publish-cli.ts.
  */
@@ -25,6 +27,7 @@ import {
   INIT_SYNTHESIS_OPENAI_JSON_SCHEMA,
   parseInitSynthesisObject,
 } from '../core/init-synthesis-json'
+import { ingestSourceMarkdownFilesAsFacts } from '../core/scan-fact-ingest'
 import type { RunCollector } from '../core/telemetry'
 import { TokenCountingProvider, estimateCost } from '../core/telemetry'
 import type { LLMProvider, LLMStructuredJsonRequest } from '../core/types'
@@ -61,6 +64,7 @@ import { runLLMSetupWizard } from './llm-setup-wizard'
 
 export type InitCycle =
   | 'read-inputs'
+  | 'scan-facts'
   | 'pass1'
   | 'pass2'
   | 'pass-enrich'
@@ -268,6 +272,7 @@ export function parseInitCommand(args: string[]): InitOptions {
   const stopAfter = readOption(args, '--stop-after') as InitCycle | undefined
   const validCycles: InitCycle[] = [
     'read-inputs',
+    'scan-facts',
     'pass1',
     'pass2',
     'pass-enrich',
@@ -368,7 +373,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
-  const progress = new InitProgressReporter(7, options.progressSink)
+  const progress = new InitProgressReporter(8, options.progressSink)
   const emitInitAction = (label: string, detail: string) => {
     options.progressSink?.(`[init:action] ${label} — ${detail}\n`)
   }
@@ -470,6 +475,28 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     }
 
     if (!context) throw new Error('read-inputs context missing')
+
+    if (!checkpoint.completedCycles.includes('scan-facts')) {
+      progress.start('scan-facts', 'indexing source sentences into facts…')
+      const endScanFacts = makeCycleTimer('scan-facts', provider, options.collector, counter)
+      const scanStats = ingestSourceMarkdownFilesAsFacts({
+        baseDir,
+        files: context.sourceFiles,
+      })
+      endScanFacts()
+      await persist({
+        completedCycles: ['scan-facts'],
+      })
+      progress.finish(
+        'scan-facts',
+        `${scanStats.segmentsUpserted} segments from ${scanStats.filesScanned} files${
+          scanStats.segmentsSkippedShort > 0 ? ` (${scanStats.segmentsSkippedShort} too short)` : ''
+        }`
+      )
+      if (options.stopAfter === 'scan-facts') throw new InitPausedError('scan-facts')
+    } else {
+      progress.finish('scan-facts', 'reused from checkpoint')
+    }
 
     if (!checkpoint.completedCycles.includes('pass1')) {
       progress.start('pass1', 'drafting docs + coverage…')

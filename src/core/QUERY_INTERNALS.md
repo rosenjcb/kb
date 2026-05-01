@@ -1,66 +1,43 @@
-# Query Internals: Vector Search and Crawl
+# Query internals: facts retrieval
 
-## Ingestion
+`kb query` and chat QUERY turns share **`runQueryTruthRetrieval()`** (`src/cli/query-truth-retrieval.ts`): **`runIntentLoop`** → **`DefaultIntentRouter`** → **`read_facts`** (registry in `src/tools/kb-tools-registry.ts`). There is **no** workspace README injection and **no** markdown chunk hybrid pipeline on this path.
 
-When a document is submitted (`kb submit`), it is split into heading-bounded chunks and stored in SQLite with two parallel indexes:
+## Evidence store
 
-- **FTS index** (`chunks_fts`) — full-text search for lexical matching
-- **Vector index** (`chunk_embeddings`) — one row per chunk with a `vector_json` column
+- **`facts` / `facts_fts`** — canonical rows for Q&A (`SqliteKbIndexer.searchFacts`, concept links, optional deterministic semantic scores over fact ids).
+- **Documents** — human-facing artifacts (`kb docs`, publish). They are **not** chunked for `read_facts`.
 
-Vectors are computed **deterministically from character codes** — no external embedding service. Each chunk's text is hashed into a unit-normalized float array via `buildDeterministicVector()` in `src/tools/sqlite-kb-index.ts`.
+## Shallow vs deep discovery
 
-## Query: Hybrid Search Pipeline
+The router maps the legacy **`read_documents`**-shaped envelope to **`FactsDocumentReader.queryDocuments()`** (`src/tools/facts-document-reader.ts`).
 
-`kb query` runs a multi-stage checkpoint pipeline (see `src/tools/markdown-document-reader.ts`):
+| `discoveryDepth` | Behavior |
+|------------------|----------|
+| **`shallow`** | Lexical FTS over facts (`searchFacts`), or `listFactsForQuery` when the query string is empty. |
+| **`deep`** | **`FactsQueryResearchOrchestrator`** (`src/tools/facts-query-research-orchestrator.ts`): bounded iterations merging lexical hits, concept-frontier / concept rows, deterministic semantic rescoring, and optional concept-graph neighbor expansion until sufficiency or max iters. |
 
-1. **Hybrid retrieval** — fetches candidates using both FTS and vector similarity, then blends the scores:
-   ```
-   score = hybridAlpha × lexicalScore + (1 − hybridAlpha) × vectorScore
-   ```
-   Configured via `KB_HYBRID_QUERY_ALPHA` (default 0.5).
+## Answer enrichment
 
-2. **Confidence checkpoint** — if top results fall below a threshold, advances to recovery.
+After retrieval, **`enrichReadDocumentsAnswerWithLLM()`** (`src/cli/intent-cli.ts`) turns the final **fact-shaped** hit list into prose. The function name is historical; inputs are **`read_facts`** results (metadata title summarizes fact text; optional body is fact text when `includeContent` is enabled).
 
-3. **Lexical recovery** — broader keyword search with query token expansion.
+## Graph expansion (query string only)
 
-4. **Query rewrite retry** — strips domain prefixes / simplifies tokens and retries.
+When graph mode is enabled, **`expandQueryWithGraph`** (`src/tools/graph-query-expansion.ts`) may rewrite / widen the **query string** before the intent envelope is built. That expanded string is what **`read_facts`** searches against. See **`src/tools/GRAPH.md`** (“Graph-augmented query”).
 
-Lane routing (`classifyDocumentLane`) restricts each stage to relevant document categories, narrowing the candidate set before scoring.
+## Environment knobs (facts deep loop)
 
-After retrieval, `enrichReadDocumentsAnswerWithLLM` generates a prose answer from the final evidence set.
-
-## Research-Orchestrator Coverage Recovery
-
-`QueryResearchOrchestrator` (`src/tools/query-research-orchestrator.ts`) applies deterministic coverage recovery before final result selection.
-
-- Extract salient query terms.
-- Compare query terms against tokens observed in retrieved titles/tags/headings.
-- If terms are missing from evidence, issue bounded recovery probes using batched missing-term queries.
-
-Recovery stays generic and domain-agnostic; no project-specific question branches are embedded in code.
-
-Environment knobs:
-
-- `KB_QUERY_RESEARCH_MAX_ITERS` (default `3`)
-- `KB_QUERY_RESEARCH_BATCH_SIZE` (default `3`)
-- `KB_QUERY_RESEARCH_FACET_RECOVERY_MAX_QUERIES` (default `2`)
+- `KB_FACTS_QUERY_MAX_ITERS` (default `3`, clamped 1–6)
+- `KB_FACTS_QUERY_MAX_HOPS` (default `2`, clamped 1–3) — concept neighbor expansion between iterations
 
 ## Crawl (init-time only)
 
-"Crawl" refers to source-file discovery during `kb init` (`src/cli/init-cli.ts`). It is **not** involved in query time.
+Unchanged from the previous doc: **`crawlSourceCode()`** during **`kb init`** discovers source snippets for synthesis; it is **not** used at query time. See **`src/core/INIT.md`**.
 
-`crawlSourceCode()` walks the project directory with guardrails:
+## See also
 
-- Max 50 files, max 100 KB per file
-- Skips dotfiles; excludes `node_modules`, `.git`, `dist`, `build`
-- Extracts the first N characters of each source file (`.ts`, `.js`, `.py`, etc.)
-
-The collected snippets are fed into the `pass1`/`pass2`/`pass-enrich` LLM synthesis passes to bootstrap initial KB documents. After `kb init` completes, crawl plays no further role.
-
-## See Also
-
-- `src/tools/sqlite-kb-index.ts` — chunk storage and vector generation
-- `src/tools/markdown-document-reader.ts` — hybrid query pipeline
-- `src/tools/retrieval-checkpoint-orchestrator.ts` — checkpoint stages
-- `src/cli/init-cli.ts` — crawl and init cycle loop
-- `src/core/AGENT_LOOP.md` — intent loop and retry orchestration
+- `src/cli/query-truth-retrieval.ts` — shared retrieval entry for CLI query + chat
+- `src/tools/facts-document-reader.ts` — shallow path + deep orchestrator dispatch
+- `src/tools/facts-query-research-orchestrator.ts` — deep fact retrieval loop
+- `src/tools/sqlite-kb-index.ts` — `searchFacts`, concepts, semantic scores
+- `src/core/CHAT.md` — chat vs query alignment
+- `src/core/AGENT_LOOP.md` — intent loop wiring

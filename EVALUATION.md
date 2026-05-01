@@ -97,7 +97,7 @@ Options: `--clone-branch main`, `--clone-depth 1` (default shallow; use `0` for 
 - Each finalized doc is also written as **`export-introduction.md`** and **`export-howto.md`** (SQLite body from `docs view --output json`). Open **`README-exports.md`** in that folder for absolute paths and a one-line `open` / `xdg-open` hint.
 - Default **`--base dogfood`**. Optional **`--skip-purge`** to skip deleting prior eval-titled docs (ids derived from fixed `documentTitle` strings).
 - Exit `1` only on hard failure; artifact `status` is `complete` when automated checks pass for both scenarios.
-- Interactive parity: **`kb chat`** supports **`/docs generate "<prompt>" …`** (questionnaire + review loop); other slash-in-chat commands are not wired yet.
+- Interactive parity: **`kb chat`** supports **`/docs generate "<prompt>" …`** (questionnaire + review loop) and **`/facts`** (same surface as **`kb facts`**).
 
 ## Evaluation Design
 
