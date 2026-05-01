@@ -7,7 +7,7 @@ function createExecutorMock(): ToolExecutor {
     register: vi.fn(),
     getTools: vi.fn(() => []),
     execute: vi.fn(async toolUse => {
-      if (toolUse.name === 'read_documents') {
+      if (toolUse.name === 'read_facts') {
         return {
           results: [
             {
@@ -47,7 +47,7 @@ function createExecutorMock(): ToolExecutor {
           summary: 'Scanned 3 KB documents. 1 replacements in 1 documents.',
         }
       }
-      if (toolUse.name === 'invalidate_graph_documents') {
+      if (toolUse.name === 'invalidate_graph_for_fact') {
         return { enabled: true, invalidatedRelationships: 3, documentIds: ['ops-facts'] }
       }
       return { ok: true }
@@ -161,7 +161,7 @@ describe('DefaultIntentRouter', () => {
 
     const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
     expect(calls.some(call => call[0]?.name === 'invalidate_fact')).toBe(true)
-    expect(calls.some(call => call[0]?.name === 'invalidate_graph_documents')).toBe(true)
+    expect(calls.some(call => call[0]?.name === 'invalidate_graph_for_fact')).toBe(true)
   })
 
   it('Given invalidate_fact with preview, then skips graph invalidation', async () => {
@@ -178,7 +178,7 @@ describe('DefaultIntentRouter', () => {
 
     const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
     expect(calls.some(call => call[0]?.name === 'invalidate_fact')).toBe(true)
-    expect(calls.every(call => call[0]?.name !== 'invalidate_graph_documents')).toBe(true)
+    expect(calls.every(call => call[0]?.name !== 'invalidate_graph_for_fact')).toBe(true)
   })
 
   it('Given query_truth without discoveryDepth, then defaults to deep discovery like chat', async () => {
@@ -192,7 +192,7 @@ describe('DefaultIntentRouter', () => {
       },
     })
 
-    expect(decision.selectedOperation).toBe('read_documents')
+    expect(decision.selectedOperation).toBe('read_facts')
     expect(decision.operationInput.discoveryDepth).toBe('deep')
   })
 
@@ -207,7 +207,7 @@ describe('DefaultIntentRouter', () => {
       },
     })
 
-    expect(decision.selectedOperation).toBe('read_documents')
+    expect(decision.selectedOperation).toBe('read_facts')
     expect(decision.operationInput.limit).toBeGreaterThanOrEqual(12)
   })
 })

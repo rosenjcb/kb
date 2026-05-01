@@ -132,7 +132,7 @@ describe('chat-cli session loop', () => {
     expect(executor.execute).toHaveBeenCalledTimes(1)
     expect(executor.execute).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: 'read_documents',
+        name: 'read_facts',
         input: expect.objectContaining({
           query: 'How retrieval works?',
           mode: 'content',
@@ -478,7 +478,7 @@ describe('chat-cli session loop', () => {
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
     const firstCall = (executor.execute as ReturnType<typeof vi.fn>).mock.calls[0][0]
-    expect(firstCall?.name).toBe('read_documents')
+    expect(firstCall?.name).toBe('read_facts')
     expect(firstCall?.input?.discoveryDepth).toBe('deep')
     expect(provider.call).toHaveBeenCalledTimes(1)
   })

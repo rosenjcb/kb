@@ -94,7 +94,7 @@ export class InvalidateOrchestrator {
 
     if (!preview && !dryRun && changedDocIds.length > 0) {
       await this.toolExecutor.execute(
-        createToolUse('invalidate_graph_documents', {
+        createToolUse('invalidate_graph_for_fact', {
           documentIds: changedDocIds,
         })
       )

@@ -125,13 +125,13 @@ describe('intent-cli parsing', () => {
 })
 
 describe('intent-cli formatting', () => {
-  it('formats read_documents results in human mode', () => {
+  it('formats read_facts results in human mode', () => {
     const output = formatIntentResult(
       {
         status: 'accepted',
         confidence: 0.8,
-        explanation: 'query intent maps directly to read_documents',
-        recommendedAction: 'read_documents',
+        explanation: 'query intent maps directly to read_facts',
+        recommendedAction: 'read_facts',
         data: {
           answer: 'The KB uses session base first, then default base.',
           retrieval: {
@@ -181,7 +181,7 @@ describe('intent-cli formatting', () => {
       printer,
       {
         status: 'accepted',
-        recommendedAction: 'read_documents',
+        recommendedAction: 'read_facts',
         confidence: 0.8,
         data: {
           retrieval: { method: 'hybrid', detail: 'fts+vector-rerank' },
@@ -194,7 +194,7 @@ describe('intent-cli formatting', () => {
     expect(lines.some(line => isOrchestrationMetaLine(line))).toBe(true)
   })
 
-  it('prints invalidate results without pretending they are read_documents', () => {
+  it('prints invalidate results without pretending they are read_facts', () => {
     const lines: string[] = []
     const printer = createPrinter(
       {
@@ -235,7 +235,7 @@ describe('intent-cli execution and enrichment', () => {
             summary: 'Scanned 3 KB documents. 1 replacements in 1 documents.',
           }
         }
-        if (toolUse.name === 'invalidate_graph_documents') {
+        if (toolUse.name === 'invalidate_graph_for_fact') {
           return { enabled: true, invalidatedRelationships: 1, documentIds: ['ops-facts'] }
         }
         return { ok: true }
@@ -293,7 +293,7 @@ describe('intent-cli execution and enrichment', () => {
       parsed,
       {
         status: 'accepted',
-        recommendedAction: 'read_documents',
+        recommendedAction: 'read_facts',
         data: { results: [], total: 0, retrieval: { method: 'hybrid' } },
       },
       dir
@@ -324,7 +324,7 @@ describe('intent-cli execution and enrichment', () => {
       queryParsed,
       {
         status: 'accepted',
-        recommendedAction: 'read_documents',
+        recommendedAction: 'read_facts',
         data: {
           retrieval: { method: 'hybrid' },
           results: [
@@ -363,7 +363,7 @@ describe('intent-cli execution and enrichment', () => {
       parsed,
       {
         status: 'accepted',
-        recommendedAction: 'read_documents',
+        recommendedAction: 'read_facts',
         data: {
           retrieval: { method: 'hybrid' },
           results: [
@@ -404,7 +404,7 @@ describe('intent-cli execution and enrichment', () => {
       parsed,
       {
         status: 'accepted',
-        recommendedAction: 'read_documents',
+        recommendedAction: 'read_facts',
         data: {
           retrieval: { method: 'hybrid' },
           results: [
@@ -436,7 +436,7 @@ describe('intent-cli execution and enrichment', () => {
       parsed,
       {
         status: 'accepted',
-        recommendedAction: 'read_documents',
+        recommendedAction: 'read_facts',
         data: {
           retrieval: { method: 'hybrid' },
           results: [

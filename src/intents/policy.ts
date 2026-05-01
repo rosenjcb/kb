@@ -1,10 +1,10 @@
 export const INTERNAL_OPERATION_TOOL_NAMES = new Set([
-  'write_document',
-  'append_to_document',
-  'update_document',
-  'merge_documents',
-  'prune_document',
-  'read_documents',
+  'read_facts',
+  'upsert_fact',
+  'invalidate_fact',
+  'invalidate_graph_for_fact',
+  'upsert_graph_from_text',
+  'task',
 ])
 
 export function isDirectInternalToolInvocation(input: string): boolean {

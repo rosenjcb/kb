@@ -18,7 +18,7 @@ import {
 } from './chat-conversation'
 import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
 import { type CmdMode, cmd } from './cmd-ref'
-import { isReadDocumentsResult, printReadDocumentsOrchestrationFooter } from './intent-cli.js'
+import { isReadFactsResult, printReadDocumentsOrchestrationFooter } from './intent-cli.js'
 import { formatReadDocumentSourceIds } from './retrieval-fallback'
 
 export interface ChatSessionDeps {
@@ -277,7 +277,7 @@ export async function runChatSession(
         let intentResult = initialRetrieval.result
 
         for (let deepenPass = 0; deepenPass < 2; deepenPass += 1) {
-          if (!isReadDocumentsResult(intentResult)) break
+          if (!isReadFactsResult(intentResult)) break
           const snapshot = normalizeReadResult(intentResult.data)
           if (!snapshot.retrieval?.suggestRetrievalDeepen) break
           const pass: 1 | 2 = deepenPass === 0 ? 1 : 2
@@ -301,7 +301,7 @@ export async function runChatSession(
           intentResult = deepened.result
         }
 
-        if (!isReadDocumentsResult(intentResult)) {
+        if (!isReadFactsResult(intentResult)) {
           const detail =
             intentResult.explanation ??
             intentResult.errorCode ??

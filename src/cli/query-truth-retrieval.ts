@@ -18,7 +18,7 @@ export interface RunQueryTruthRetrievalInput {
 }
 
 /**
- * Single retrieval pipeline for **`query_truth`**: `runIntentLoop` (router → `read_documents`,
+ * Single retrieval pipeline for **`query_truth`**: `runIntentLoop` (router → `read_facts`,
  * including shallow→deep **limit** escalation when retrieval is weak) then
  * `augmentIntentResultWithWorkspaceFallback`. Router defaults **`discoveryDepth`** to **deep**
  * unless the envelope sets **`--discovery shallow`**.

@@ -32,7 +32,7 @@ export interface ParsedIntentCommand {
   useQuerySession?: boolean
 }
 
-/** Human read_documents footer: default minimal; verbose adds summary/status/confidence; debug expands sources. */
+/** Human read_facts footer: default minimal; verbose adds summary/status/confidence; debug expands sources. */
 export interface ReadDocumentsHumanOutputOptions {
   verbose?: boolean
   /** When true, emit one `source>` line per hit with id, path, uri, snippet, highlights (default is a single `sources>` titles line). */
@@ -165,7 +165,7 @@ export function formatIntentResult(
     return JSON.stringify(result, null, 2)
   }
 
-  if (isReadDocumentsResult(result)) {
+  if (isReadFactsResult(result)) {
     return formatReadDocumentsHumanResult(result, readDocsOpts)
   }
 
@@ -202,7 +202,7 @@ export function printIntentResult(
     return
   }
 
-  if (isReadDocumentsResult(result)) {
+  if (isReadFactsResult(result)) {
     printReadDocumentsHumanResult(result, printer, options)
     return
   }
@@ -365,7 +365,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
   options?: { graphRelationContext?: string }
 ): Promise<IntentResult> {
   if (!llmProvider) return result
-  if (!isReadDocumentsResult(result)) return result
+  if (!isReadFactsResult(result)) return result
   if (process.env.KB_INTENT_LLM_ANSWER === 'false') return result
 
   const data = (result.data ?? {}) as ReadDocumentsResultData
@@ -506,7 +506,7 @@ export async function augmentIntentResultWithWorkspaceFallback(
   result: IntentResult,
   workspaceDir: string
 ): Promise<IntentResult> {
-  if (!isReadDocumentsResult(result)) return result
+  if (!isReadFactsResult(result)) return result
   if (parsed.envelope.intent !== 'query_truth') {
     return result
   }
@@ -733,8 +733,8 @@ function requiresHighRecallQuery(query: string): boolean {
   return false
 }
 
-export function isReadDocumentsResult(result: IntentResult): boolean {
-  return result.recommendedAction === 'read_documents' && result.status === 'accepted'
+export function isReadFactsResult(result: IntentResult): boolean {
+  return result.recommendedAction === 'read_facts' && result.status === 'accepted'
 }
 
 function isReconciliationReviewResult(result: IntentResult): boolean {

@@ -1,11 +1,9 @@
 /**
  * KB Tools Registry Factory
  *
- * **Facts** (`upsert_fact`, `read_documents` deep path) are the primary retrieval surface for `kb query` / chat.
- * **Markdown mutators** (`write_document`, `append_to_document`, …) back the same SQLite store agents may still
- * call from tool loops. **`kb init` / rescan do not use these tool names**: they scan the repo and call
- * `SqliteDocumentWriter` directly in scripted passes—no LLM “sees a .md file and picks write_document.” Agent
- * decisions should bias toward facts + graph; browse corpora with `kb docs`.
+ * **Facts-first agent surface:** `read_facts`, `upsert_fact`, `invalidate_fact`, graph helpers, optional `task`.
+ * Markdown documents are written by **`kb init` / rescan** via `SqliteDocumentWriter` in code — not via removed
+ * write/append/merge tools. Use **`kb submit`** / **`kb docs`** for knowledge work.
  */
 
 import path from 'node:path'
@@ -18,21 +16,11 @@ import type { StreamManager } from '../core/runtime/stream-manager'
 import type { ToolExecutor } from '../core/tool-registry'
 import { createToolRegistry } from '../core/tool-registry'
 import type { LLMProvider, ToolDefinition } from '../core/types'
-import {
-  type AppendToDocumentInput,
-  type MergeDocumentsInput,
-  type PruneDocumentInput,
-  type ReconcileContradictionsInput,
-  type ReconcileFactsInput,
-  type UpdateDocumentInput,
-  executeWriteDocumentTool,
-} from './document-writer'
 import { DuckGraphWriter } from './duck-graph-writer'
 import { FactsDocumentReader } from './facts-document-reader'
 import { extractGraph } from './graph-entity-extractor'
 import { invalidateFactTool } from './invalidate-fact-tool'
 import type { QueryDocumentsInput, QueryResponse } from './facts-document-reader'
-import { SqliteDocumentWriter } from './sqlite-document-writer'
 import { SqliteKbIndexer } from './sqlite-kb-index'
 import { executeSubagentTask } from './task'
 
@@ -42,7 +30,7 @@ export interface KBToolsOrchestratorOptions {
 }
 
 /**
- * Factory: create KB tools registry with write + read
+ * Factory: KB tools for query/submit/invalidate and optional subagent `task`.
  */
 export function createKBToolsRegistry(
   baseDir?: string,
@@ -52,69 +40,26 @@ export function createKBToolsRegistry(
   const registry = createToolRegistry()
   const storageDir = baseDir ?? path.join(getKbHomeDir(), 'sessions', 'default')
 
-  // Initialize storage implementations
-  const writer = new SqliteDocumentWriter({ baseDir: storageDir })
   if (config) resolveFeatureFlags(config)
   const indexer = new SqliteKbIndexer({ dbPath: path.join(storageDir, '.kb-index.sqlite') })
   const reader = new FactsDocumentReader(path.join(storageDir, '.kb-index.sqlite'))
 
-  const writeToolDef: ToolDefinition = {
-    name: 'write_document',
-    description:
-      'Create or overwrite a markdown KB document (agent tool surface; init uses SqliteDocumentWriter directly). Prefer kb submit + kb docs.',
-    schema: {
-      type: 'object',
-      properties: {
-        title: {
-          type: 'string',
-          description: 'Document title (becomes H1)',
-        },
-        content: {
-          type: 'string',
-          description: 'Markdown body content',
-        },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Optional tags for categorization',
-        },
-        type: {
-          type: 'string',
-          enum: [...DOC_TYPES],
-          description: 'Optional document type',
-        },
-        documentId: {
-          type: 'string',
-          description: 'Optional custom ID (auto-slugified if omitted)',
-        },
-        overwrite: {
-          type: 'boolean',
-          description: 'Whether to overwrite existing document (default: false)',
-        },
-      },
-      required: ['title', 'content'],
-    },
-  }
-
-  registry.register('write_document', writeToolDef, async input => {
-    return await executeWriteDocumentTool(input, writer)
-  })
-
-  // Register read_documents tool
   const readToolDef: ToolDefinition = {
-    name: 'read_documents',
-    description: 'Query documents from the KB by title, ID, or tags',
+    name: 'read_facts',
+    description:
+      'Search and retrieve canonical facts from the KB (hybrid / deep discovery). Prefer this over guessing.',
     schema: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: 'Search text or document ID',
+          description: 'Search text or fact id',
         },
         mode: {
           type: 'string',
-          enum: ['id', 'title', 'tags'],
-          description: 'Search mode: id (exact ID), title (substring), tags (AND logic)',
+          enum: ['id', 'title', 'tags', 'content'],
+          description:
+            'Search mode: id (exact), title substring, tags (AND), content (default for intent query)',
         },
         discoveryDepth: {
           type: 'string',
@@ -138,13 +83,13 @@ export function createKBToolsRegistry(
         },
         includeContent: {
           type: 'boolean',
-          description: 'Whether to include full document content (default: false)',
+          description: 'Whether to include full fact text in hits (default: false)',
         },
       },
     },
   }
 
-  registry.register('read_documents', readToolDef, async input => {
+  registry.register('read_facts', readToolDef, async input => {
     return await reader.queryDocuments(input as QueryDocumentsInput)
   })
 
@@ -198,143 +143,6 @@ export function createKBToolsRegistry(
       sourceRef: payload.sourceRef,
       confidence: payload.confidence,
     })
-  })
-
-  const appendToolDef: ToolDefinition = {
-    name: 'append_to_document',
-    description:
-      'Append markdown to a document (agent tool surface). Init/rescan mutate docs via SqliteDocumentWriter in code.',
-    schema: {
-      type: 'object',
-      properties: {
-        documentId: { type: 'string', description: 'Existing document ID' },
-        content: { type: 'string', description: 'Markdown content to append' },
-        position: {
-          type: 'string',
-          enum: ['top', 'bottom'],
-          description: 'Optional append position (default: bottom)',
-        },
-      },
-      required: ['documentId', 'content'],
-      additionalProperties: false,
-    },
-  }
-  registry.register('append_to_document', appendToolDef, async input => {
-    return await writer.appendToDocument(input as unknown as AppendToDocumentInput)
-  })
-
-  const updateToolDef: ToolDefinition = {
-    name: 'update_document',
-    description:
-      'Replace full markdown of a document (agent tool surface). Prefer kb submit for atomic facts; kb docs to browse.',
-    schema: {
-      type: 'object',
-      properties: {
-        documentId: { type: 'string', description: 'Existing document ID' },
-        content: { type: 'string', description: 'New full markdown content' },
-        title: { type: 'string', description: 'Optional new title' },
-      },
-      required: ['documentId', 'content'],
-      additionalProperties: false,
-    },
-  }
-  registry.register('update_document', updateToolDef, async input => {
-    return await writer.updateDocument(input as unknown as UpdateDocumentInput)
-  })
-
-  const pruneToolDef: ToolDefinition = {
-    name: 'prune_document',
-    description: 'Remove a markdown section (agent tool surface).',
-    schema: {
-      type: 'object',
-      properties: {
-        documentId: { type: 'string', description: 'Existing document ID' },
-        prunePattern: { type: 'string', description: 'Section heading/pattern to remove' },
-      },
-      required: ['documentId', 'prunePattern'],
-      additionalProperties: false,
-    },
-  }
-  registry.register('prune_document', pruneToolDef, async input => {
-    return await writer.pruneDocument(input as unknown as PruneDocumentInput)
-  })
-
-  const mergeToolDef: ToolDefinition = {
-    name: 'merge_documents',
-    description: 'Merge two markdown documents (agent tool surface).',
-    schema: {
-      type: 'object',
-      properties: {
-        sourceDocId: { type: 'string', description: 'Source document ID' },
-        targetDocId: { type: 'string', description: 'Target document ID' },
-        mergeMode: {
-          type: 'string',
-          enum: ['auto', 'user-decides'],
-          description: 'Merge mode behavior',
-        },
-      },
-      required: ['sourceDocId', 'targetDocId', 'mergeMode'],
-      additionalProperties: false,
-    },
-  }
-  registry.register('merge_documents', mergeToolDef, async input => {
-    return await writer.mergeDocuments(input as unknown as MergeDocumentsInput)
-  })
-
-  // reconcile_facts
-  const reconcileFactsToolDef: ToolDefinition = {
-    name: 'reconcile_facts',
-    description:
-      'Replace outdated fact references across documents with lane-aware exclusion rules',
-    schema: {
-      type: 'object',
-      properties: {
-        replaceFrom: { type: 'string', description: 'Old canonical term/value to replace' },
-        replaceTo: { type: 'string', description: 'New canonical term/value' },
-        includeSessionLogs: {
-          type: 'boolean',
-          description: 'When true, include session-log docs in reconciliation (default: false)',
-        },
-        dryRun: {
-          type: 'boolean',
-          description: 'When true, report changes without writing files',
-        },
-      },
-      required: ['replaceFrom', 'replaceTo'],
-      additionalProperties: false,
-    },
-  }
-  registry.register('reconcile_facts', reconcileFactsToolDef, async input => {
-    return await writer.reconcileFacts(input as unknown as ReconcileFactsInput)
-  })
-
-  const reconcileContradictionsToolDef: ToolDefinition = {
-    name: 'reconcile_contradictions',
-    description: 'Detect and remove contradictory fact lines based on a newly submitted fact',
-    schema: {
-      type: 'object',
-      properties: {
-        newFact: {
-          type: 'string',
-          description: 'Newly submitted fact text used as canonical claim',
-        },
-        domain: { type: 'string', description: 'Optional domain scope for contradiction cleanup' },
-        includeSessionLogs: {
-          type: 'boolean',
-          description:
-            'When true, include session-log docs in contradiction cleanup (default: false)',
-        },
-        dryRun: {
-          type: 'boolean',
-          description: 'When true, report cleanup plan without writing files',
-        },
-      },
-      required: ['newFact'],
-      additionalProperties: false,
-    },
-  }
-  registry.register('reconcile_contradictions', reconcileContradictionsToolDef, async input => {
-    return await writer.reconcileContradictions(input as unknown as ReconcileContradictionsInput)
   })
 
   const invalidateFactToolDef: ToolDefinition = {
@@ -423,23 +231,24 @@ export function createKBToolsRegistry(
     return { enabled: true, entities: entities.length, relationships: relationships.length }
   })
 
-  const invalidateGraphDocumentsToolDef: ToolDefinition = {
-    name: 'invalidate_graph_documents',
-    description: 'Soft-delete graph relationships for affected document provenance ids',
+  const invalidateGraphForFactToolDef: ToolDefinition = {
+    name: 'invalidate_graph_for_fact',
+    description:
+      'Soft-delete graph relationships for affected fact provenance ids (same ids as upsert_graph_from_text documentId)',
     schema: {
       type: 'object',
       properties: {
         documentIds: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Document ids whose graph relationships should be soft-deleted',
+          description: 'Fact / provenance ids whose graph relationships should be soft-deleted',
         },
       },
       required: ['documentIds'],
       additionalProperties: false,
     },
   }
-  registry.register('invalidate_graph_documents', invalidateGraphDocumentsToolDef, async input => {
+  registry.register('invalidate_graph_for_fact', invalidateGraphForFactToolDef, async input => {
     if (!resolveGraphEnabled(config ?? {})) {
       return { enabled: false, invalidatedRelationships: 0, documentIds: [] as string[] }
     }

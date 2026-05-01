@@ -45,7 +45,7 @@ describe('executeSubagentTask', () => {
     }
   })
 
-  it('Given subagent read_documents turn then text turn, then succeeds with trace', async () => {
+  it('Given subagent read_facts turn then text turn, then succeeds with trace', async () => {
     const base = path.join(
       process.cwd(),
       'tmp-task-test',
@@ -60,7 +60,7 @@ describe('executeSubagentTask', () => {
           toolUses: [
             {
               id: 'tu-1',
-              name: 'read_documents',
+              name: 'read_facts',
               input: { query: 'nothing', includeContent: true, limit: 3 },
             },
           ],
@@ -87,7 +87,7 @@ describe('executeSubagentTask', () => {
       })
       expect(res.status).toBe('success')
       expect(res.profileId).toBe('research')
-      expect(res.toolCalls.some(c => c.name === 'read_documents' && c.ok)).toBe(true)
+      expect(res.toolCalls.some(c => c.name === 'read_facts' && c.ok)).toBe(true)
       expect(res.textSegments.join('')).toContain('No matching')
       expect(res.usage.inputTokens + res.usage.outputTokens).toBeGreaterThan(0)
     } finally {

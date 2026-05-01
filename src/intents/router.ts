@@ -64,7 +64,7 @@ export class DefaultIntentRouter implements IntentRouter {
         const effectiveDiscoveryDepth = payload.discoveryDepth ?? 'deep'
 
         return {
-          selectedOperation: 'read_documents',
+          selectedOperation: 'read_facts',
           operationInput: {
             query: queryText,
             mode: 'content',
@@ -75,8 +75,8 @@ export class DefaultIntentRouter implements IntentRouter {
             surface: payload.surface === 'chat' ? 'chat' : 'query',
           },
           policyReason: highRecall
-            ? 'query intent maps to read_documents with high-recall evidence policy'
-            : 'query intent maps directly to read_documents',
+            ? 'query intent maps to read_facts with high-recall evidence policy'
+            : 'query intent maps directly to read_facts',
         }
       }
 

@@ -7,7 +7,7 @@
  * runtime retrieval routing concept.
  *
  * `DocType` drives:
- *   - `write_document` / `read_documents` tool schema validation
+ *   - KB doc types align with `SqliteDocumentWriter` / publish surfaces (not agent `read_facts` schema)
  *   - `kb docs generate` questionnaire selection
  *   - Init synthesis output type
  */

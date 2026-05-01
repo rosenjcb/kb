@@ -37,7 +37,7 @@ function makeLongToolQueue(n: number): LLMResponse[] {
       toolUses: [
         {
           id: `tu-${i}`,
-          name: 'read_documents',
+          name: 'read_facts',
           input: { query: `step-${i}`, includeContent: true, limit: 2 },
         },
       ],
@@ -102,7 +102,7 @@ describe('subagent scenario matrix (106)', () => {
           streamManager: sm,
           parentChannelId: 'matrix',
         })
-        const readToolCalls = res.toolCalls.filter(c => c.name === 'read_documents' && c.ok).length
+        const readToolCalls = res.toolCalls.filter(c => c.name === 'read_facts' && c.ok).length
         rows.push({
           scenario,
           status: res.status,

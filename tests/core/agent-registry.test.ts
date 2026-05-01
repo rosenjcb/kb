@@ -20,7 +20,7 @@ describe('agent registry', () => {
   it('Given research id, then resolveAgentProfile returns research profile', () => {
     const p = resolveAgentProfile('research')
     expect(p.id).toBe('research')
-    expect(p.defaultAllowedTools).toContain('read_documents')
+    expect(p.defaultAllowedTools).toContain('read_facts')
   })
 
   it('Given getAgentProfile, then returns undefined for unknown id', () => {
