@@ -9,6 +9,7 @@
  */
 
 import path from 'node:path'
+import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
 import { getKbHomeDir } from '../cli/base-selection'
 import type { KbConfig } from '../cli/kb-config'
 import { resolveFeatureFlags, resolveGraphEnabled } from '../cli/kb-config'
@@ -154,6 +155,17 @@ export function createKBToolsRegistry(
       type: 'object',
       properties: {
         factText: { type: 'string', description: 'Atomic fact statement text' },
+        triplet: {
+          type: 'object',
+          description: 'Explicit subject–predicate–object triple (recommended for agents)',
+          properties: {
+            subject: { type: 'string' },
+            predicate: { type: 'string' },
+            object: { type: 'string' },
+          },
+          required: ['subject', 'predicate', 'object'],
+          additionalProperties: false,
+        },
         sourceKind: {
           type: 'string',
           enum: ['submit', 'import_doc'],
@@ -169,11 +181,23 @@ export function createKBToolsRegistry(
   registry.register('upsert_fact', upsertFactToolDef, async input => {
     const payload = input as {
       factText: string
+      triplet?: { subject?: string; predicate?: string; object?: string }
       sourceKind: 'submit' | 'import_doc'
       sourceRef?: string
       confidence?: number
     }
-    return indexer.upsertFact(payload)
+    const t = payload.triplet
+    const triplet =
+      t && typeof t.subject === 'string' && typeof t.predicate === 'string' && typeof t.object === 'string'
+        ? { subject: t.subject.trim(), predicate: t.predicate.trim(), object: t.object.trim() }
+        : placeholderTripletFromFactText(payload.factText)
+    return indexer.upsertFact({
+      factText: payload.factText,
+      triplet,
+      sourceKind: payload.sourceKind,
+      sourceRef: payload.sourceRef,
+      confidence: payload.confidence,
+    })
   })
 
   const appendToolDef: ToolDefinition = {
@@ -315,12 +339,23 @@ export function createKBToolsRegistry(
 
   const invalidateFactToolDef: ToolDefinition = {
     name: 'invalidate_fact',
-    description: 'Preview or apply KB-only fact invalidation across stored documents',
+    description: 'Preview or apply KB-only fact invalidation in the facts store',
     schema: {
       type: 'object',
       properties: {
         oldFact: { type: 'string', description: 'Existing fact text to remove or replace' },
         replacementFact: { type: 'string', description: 'Optional replacement fact text' },
+        replacementTriplet: {
+          type: 'object',
+          description: 'Optional explicit triple for replacement (when replacementFact is set)',
+          properties: {
+            subject: { type: 'string' },
+            predicate: { type: 'string' },
+            object: { type: 'string' },
+          },
+          required: ['subject', 'predicate', 'object'],
+          additionalProperties: false,
+        },
         preview: { type: 'boolean', description: 'When true, report changes without applying' },
         dryRun: { type: 'boolean', description: 'When true, simulate writes without applying' },
         includeSessionLogs: {

@@ -102,8 +102,16 @@ export interface DocumentUpsertInput {
   isOriginal?: boolean
 }
 
+export interface FactTriplet {
+  subject: string
+  predicate: string
+  object: string
+}
+
 export interface FactUpsertInput {
   factText: string
+  /** Omitted or partial values → deterministic placeholder triple derived from `factText`. */
+  triplet?: FactTriplet
   sourceKind: 'submit' | 'import_doc'
   sourceRef?: string
   laneId?: FactLaneId
@@ -123,6 +131,9 @@ export interface FactRow {
   tombstoned_at: string | null
   created_at: string
   updated_at: string
+  subject: string
+  predicate: string
+  object: string
 }
 
 export interface FactConceptRow {
@@ -223,10 +234,10 @@ const DEFAULT_LANE_ROUTING_THRESHOLDS: LaneRoutingRolloutThresholds = {
 
 /** `facts` row projection — keep aligned with `FactRow`. */
 const FACT_ROW_SELECT =
-  'id, fact_text, normalized_text, source_kind, source_ref, lane_id, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at'
+  'id, fact_text, normalized_text, source_kind, source_ref, lane_id, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object'
 
 const FACT_ROW_SELECT_F =
-  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.lane_id, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at'
+  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.lane_id, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at, f.subject, f.predicate, f.object'
 
 export class SqliteKbIndexer {
   private readonly db: Database.Database
@@ -246,6 +257,21 @@ export class SqliteKbIndexer {
     const now = dayjs().toISOString()
     const normalized = normalizeFactText(input.factText)
     const laneId = input.laneId ?? classifyFactLane(input.factText)
+    const raw = input.triplet
+    let subject: string
+    let predicate: string
+    let object: string
+    if (raw?.subject?.trim() && raw.predicate?.trim() && raw.object?.trim()) {
+      subject = raw.subject.trim()
+      predicate = raw.predicate.trim()
+      object = raw.object.trim()
+    } else {
+      const o =
+        input.factText.trim().replace(/\s+/g, ' ').slice(0, 400) || 'unspecified'
+      subject = 'kb'
+      predicate = 'asserts'
+      object = o
+    }
     const existing = this.db
       .prepare('SELECT id FROM facts WHERE normalized_text = ? AND tombstoned_at IS NULL')
       .get(normalized) as { id: string } | undefined
@@ -255,7 +281,7 @@ export class SqliteKbIndexer {
         .prepare(
           `
           UPDATE facts
-          SET fact_text = ?, source_kind = ?, source_ref = ?, lane_id = ?, confidence = ?, updated_at = ?
+          SET fact_text = ?, source_kind = ?, source_ref = ?, lane_id = ?, confidence = ?, updated_at = ?, subject = ?, predicate = ?, object = ?
           WHERE id = ?
         `
         )
@@ -266,6 +292,9 @@ export class SqliteKbIndexer {
           laneId,
           input.confidence ?? 0.8,
           now,
+          subject,
+          predicate,
+          object,
           existing.id
         )
       this.rebuildFactIndexes(existing.id, input.factText.trim(), now)
@@ -278,9 +307,9 @@ export class SqliteKbIndexer {
       .prepare(
         `
         INSERT INTO facts (
-          id, fact_text, normalized_text, source_kind, source_ref, lane_id, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at
+          id, fact_text, normalized_text, source_kind, source_ref, lane_id, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
       `
       )
       .run(
@@ -293,7 +322,10 @@ export class SqliteKbIndexer {
         input.confidence ?? 0.8,
         input.supersedesFactId ?? null,
         now,
-        now
+        now,
+        subject,
+        predicate,
+        object
       )
     this.rebuildFactIndexes(id, input.factText.trim(), now)
     this.rebuildFactGraph(id, input.factText.trim(), now)
@@ -313,6 +345,21 @@ export class SqliteKbIndexer {
       `
       )
       .get(normalized) as FactRow | undefined
+  }
+
+  getActiveFactById(id: string): FactRow | undefined {
+    const tid = id.trim()
+    if (!tid) return undefined
+    return this.db
+      .prepare(
+        `
+        SELECT ${FACT_ROW_SELECT}
+        FROM facts
+        WHERE id = ? AND tombstoned_at IS NULL
+        LIMIT 1
+      `
+      )
+      .get(tid) as FactRow | undefined
   }
 
   listFactsForQuery(limit = 20): FactRow[] {
@@ -514,7 +561,10 @@ export class SqliteKbIndexer {
     return [...seen].slice(0, boundedLimit)
   }
 
-  invalidateFact(oldFact: string, replacementFact?: string): { changed: number; replacementId?: string } {
+  invalidateFact(
+    oldFact: string,
+    replacement?: { factText: string; triplet: FactTriplet }
+  ): { changed: number; replacementId?: string } {
     const normalized = normalizeFactText(oldFact)
     const now = dayjs().toISOString()
     const row = this.db
@@ -531,17 +581,18 @@ export class SqliteKbIndexer {
     this.db.prepare('DELETE FROM fact_concepts WHERE fact_id = ?').run(row.id)
     this.db.prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?').run(row.id, row.id)
 
-    if (!replacementFact?.trim()) {
+    if (!replacement?.factText?.trim()) {
       return { changed: 1 }
     }
 
-    const replacement = this.upsertFact({
-      factText: replacementFact,
+    const replaced = this.upsertFact({
+      factText: replacement.factText,
+      triplet: replacement.triplet,
       sourceKind: 'submit',
       sourceRef: `invalidate:${row.id}`,
       supersedesFactId: row.id,
     })
-    return { changed: 1, replacementId: replacement.id }
+    return { changed: 1, replacementId: replaced.id }
   }
 
   upsertDerivedDoc(input: DerivedDocUpsertInput): void {

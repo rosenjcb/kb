@@ -76,6 +76,16 @@ function parseClassifierDocType(text: string): DocType {
   return 'reference'
 }
 
+function formatChatTranscriptBlock(session: DocGenerateSession): string[] {
+  const tx = session.chatTranscript?.trim()
+  if (!tx) return []
+  return [
+    '',
+    'KB chat transcript (user phrasing and constraints from before this doc run; must not contradict structured answers or invent facts):',
+    tx,
+  ]
+}
+
 async function draftDocumentBody(llm: LLMProvider, session: DocGenerateSession): Promise<string> {
   const systemPrompt = loadPrompt('doc-draft-system.md')
   const lines = [
@@ -90,6 +100,7 @@ async function draftDocumentBody(llm: LLMProvider, session: DocGenerateSession):
       const body = slot.skipped ? '' : slot.answer ?? ''
       return `- **${slot.key}** ${status}: ${body}`.trimEnd()
     }),
+    ...formatChatTranscriptBlock(session),
   ]
   const res = await llm.call({
     systemPrompt,
@@ -98,6 +109,16 @@ async function draftDocumentBody(llm: LLMProvider, session: DocGenerateSession):
     temperature: 0.35,
   })
   return res.text.trim()
+}
+
+function buildPriorReviewFeedbackLines(session: DocGenerateSession): string[] {
+  const rows = session.revisions?.map(r => r.feedback?.trim()).filter(Boolean) ?? []
+  if (rows.length === 0) return []
+  const lines = ['', 'Prior reviewer instructions (chronological; honor all that still apply; later rounds override earlier on conflict):']
+  for (let i = 0; i < rows.length; i += 1) {
+    lines.push(`${i + 1}. ${rows[i]}`)
+  }
+  return lines
 }
 
 async function draftDocumentRevision(
@@ -110,8 +131,20 @@ async function draftDocumentRevision(
   const user = [
     `Document type: ${session.docType}`,
     '',
-    'Reviewer feedback (apply exactly):',
+    'Original user prompt:',
+    session.prompt,
+    '',
+    'Structured answers:',
+    ...session.answers.map(slot => {
+      const status = slot.skipped ? '(skipped)' : ''
+      const body = slot.skipped ? '' : slot.answer ?? ''
+      return `- **${slot.key}** ${status}: ${body}`.trimEnd()
+    }),
+    ...buildPriorReviewFeedbackLines(session),
+    '',
+    'Latest reviewer instruction (apply on top of the prior list):',
     feedback,
+    ...formatChatTranscriptBlock(session),
     '',
     'Current draft body (revise in place; preserve unchanged text verbatim):',
     priorBody,
@@ -131,6 +164,8 @@ export async function startGenerationSession(input: {
   type?: DocType
   config: KbConfig
   deps?: DocGenerateOrchestratorDeps
+  /** When starting from chat, persist for draft + all revision prompts. */
+  chatTranscript?: string
 }): Promise<{
   status: DocGenerateSession['status']
   sessionId: string
@@ -147,6 +182,10 @@ export async function startGenerationSession(input: {
     docType,
     questions: items,
   })
+  const tx = input.chatTranscript?.trim()
+  if (tx) {
+    session.chatTranscript = tx
+  }
   await saveSession(input.baseDir, session)
   const idx = firstPendingAnswerIndex(session)
   const q = idx !== null ? session.answers[idx] : undefined

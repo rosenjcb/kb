@@ -109,4 +109,81 @@ describe('doc-generate-orchestrator', () => {
     expect(arg?.content).toContain('REVISED')
     expect(arg?.content).toContain('## References')
   })
+
+  it('second revise user prompt lists prior reviewer feedback before latest instruction', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-orch-rev-'))
+    tempDirs.push(baseDir)
+    const config = {} as KbConfig
+
+    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+    indexer.upsertFact({
+      factText: 'stacked feedback fact.',
+      sourceKind: 'submit',
+      sourceRef: 't',
+      confidence: 0.9,
+    })
+    indexer.close()
+
+    const mockLlm: LLMProvider = {
+      name: 'mock',
+      model: 'mock',
+      supportsStreaming: false,
+      call: vi.fn(async params => {
+        if ((params.systemPrompt ?? '').includes('You revise an existing')) {
+          return {
+            text: 'REV\n',
+            stopReason: 'end_turn' as const,
+            toolUses: [],
+            usage: { inputTokens: 1, outputTokens: 1 },
+          }
+        }
+        return {
+          text: 'INIT\n',
+          stopReason: 'end_turn' as const,
+          toolUses: [],
+          usage: { inputTokens: 2, outputTokens: 2 },
+        }
+      }),
+    }
+
+    const started = await startGenerationSession({
+      baseDir,
+      prompt: 'topic',
+      type: 'reference',
+      config,
+      deps: { llm: mockLlm },
+    })
+    const { sessionId } = started
+    const qn = loadQuestionnaire('reference').length
+    for (let i = 0; i < qn; i += 1) {
+      await answerCurrent(baseDir, sessionId, `a${i}`)
+    }
+    await produceInitialDraft({ baseDir, sessionId, llm: mockLlm, factLimit: 5 })
+    await produceRevisedDraft({
+      baseDir,
+      sessionId,
+      llm: mockLlm,
+      feedback: 'first round',
+      factLimit: 5,
+    })
+    await produceRevisedDraft({
+      baseDir,
+      sessionId,
+      llm: mockLlm,
+      feedback: 'second round',
+      factLimit: 5,
+    })
+
+    const reviseCalls = vi.mocked(mockLlm.call).mock.calls.filter(args =>
+      (args[0]?.systemPrompt ?? '').includes('You revise an existing')
+    )
+    expect(reviseCalls.length).toBe(2)
+    const firstUser = reviseCalls[0]?.[0]?.messages?.[0]?.content as string
+    const secondUser = reviseCalls[1]?.[0]?.messages?.[0]?.content as string
+    expect(firstUser).not.toContain('Prior reviewer instructions')
+    expect(secondUser).toContain('Prior reviewer instructions')
+    expect(secondUser).toContain('1. first round')
+    expect(secondUser).toContain('Latest reviewer instruction')
+    expect(secondUser).toContain('second round')
+  })
 })

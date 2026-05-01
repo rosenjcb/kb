@@ -19,6 +19,9 @@ function createExecutorMock(): ToolExecutor {
           retrieval: { method: 'hybrid' },
         }
       }
+      if (toolUse.name === 'upsert_fact') {
+        return { id: 'test-fact-id', operation: 'inserted' }
+      }
       if (toolUse.name === 'write_document') {
         return { id: 'new-doc' }
       }
@@ -68,7 +71,7 @@ describe('DefaultIntentRouter', () => {
     expect(decision.selectedOperation).toBe('submit_orchestrator')
   })
 
-  it('Given submit_fact, then execute runs contradiction reconciliation after submission', async () => {
+  it('Given submit_fact, then execute runs submit orchestrator (upsert + graph sync)', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -80,17 +83,17 @@ describe('DefaultIntentRouter', () => {
     })
 
     expect(result.status).toBe('accepted')
-    expect(result.recommendedAction).toBe('reconcile_contradictions')
+    expect(result.recommendedAction).toBe('fact_upserted')
     const data = result.data as {
-      submission?: { graphSync?: { entities?: number } }
-      contradictionReconciliation?: { changedDocs?: number; removedFacts?: number }
+      submission?: unknown
+      graphSync?: { entities?: number }
     }
-    expect(data.submission?.graphSync?.entities).toBe(1)
-    expect(data.contradictionReconciliation?.removedFacts).toBe(2)
+    expect(data.graphSync?.entities).toBe(1)
 
     const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
+    expect(calls.some(call => call[0]?.name === 'upsert_fact')).toBe(true)
     expect(calls.some(call => call[0]?.name === 'upsert_graph_from_text')).toBe(true)
-    expect(calls.some(call => call[0]?.name === 'reconcile_contradictions')).toBe(true)
+    expect(calls.every(call => call[0]?.name !== 'reconcile_contradictions')).toBe(true)
   })
 
   it('Given inferred domain doc missing, execute still upserts fact via submit orchestrator', async () => {
@@ -122,11 +125,12 @@ describe('DefaultIntentRouter', () => {
     })
 
     expect(result.status).toBe('accepted')
-    expect(result.recommendedAction).toBe('reconcile_contradictions')
+    expect(result.recommendedAction).toBe('fact_upserted')
 
     const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
     const names = calls.map((c: unknown[]) => (c[0] as { name?: string })?.name)
     expect(names).toContain('upsert_fact')
+    expect(names).not.toContain('reconcile_contradictions')
     expect(names).not.toContain('append_to_document')
     expect(names).not.toContain('write_document')
   })

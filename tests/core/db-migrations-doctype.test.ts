@@ -62,6 +62,20 @@ describe('migration v7: doctype redesign legacy remap', () => {
         ('orig-arch', 'architecture'),
         ('orig-chk',  'checklist'),
         ('orig-run',  'runbook');
+
+      CREATE TABLE facts (
+        id TEXT PRIMARY KEY,
+        fact_text TEXT NOT NULL,
+        normalized_text TEXT NOT NULL,
+        source_kind TEXT NOT NULL,
+        source_ref TEXT,
+        confidence REAL NOT NULL DEFAULT 0.8,
+        supersedes_fact_id TEXT,
+        tombstoned_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        lane_id TEXT NOT NULL DEFAULT 'general'
+      );
     `)
 
     runMigrations(db)

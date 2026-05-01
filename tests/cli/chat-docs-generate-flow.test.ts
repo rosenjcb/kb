@@ -64,9 +64,15 @@ describe('chat-docs-generate-flow', () => {
       kbStorageDir: baseDir,
       config: {} as KbConfig,
       slashRest: 'chat topic --type reference',
+      chatTranscript: 'User:\nKeep the diagram section.\n',
     })
 
     expect(logged.some(l => l.includes('Accepted.') && l.includes('Document id:'))).toBe(true)
     expect(mockLlm.call).toHaveBeenCalled()
+    const draftPayload = vi.mocked(mockLlm.call).mock.calls.find(args => {
+      const u = args[0]?.messages?.[0]?.content
+      return typeof u === 'string' && u.includes('KB chat transcript')
+    })
+    expect(draftPayload?.[0]?.messages?.[0]?.content).toContain('Keep the diagram section')
   })
 })

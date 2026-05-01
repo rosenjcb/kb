@@ -12,6 +12,8 @@ export interface RunQueryTruthRetrievalInput {
   /** Project root for workspace README / GAMEPLAN fallback (same as CLI `kb query`). */
   workspaceDir: string
   llmProvider?: LLMProvider
+  /** Active KB base dir — passed to intent router for submit triplet extract + invalidate NL locate. */
+  kbStorageDir?: string
   collector?: RunCollector
 }
 
@@ -32,6 +34,7 @@ export async function runQueryTruthRetrieval(
 ): Promise<IntentResult> {
   const { result } = await runIntentLoop(input.parsed.envelope, input.toolExecutor, {
     provider: input.llmProvider,
+    kbStorageDir: input.kbStorageDir,
     collector: input.collector,
   })
   return augmentIntentResultWithWorkspaceFallback(input.parsed, result, input.workspaceDir)

@@ -48,6 +48,11 @@ export interface DocGenerateSession {
   status: DocGenerateSessionStatus
   draft?: DocGenerateDraft
   revisions?: DocGenerateRevisionEntry[]
+  /**
+   * Optional KB-chat transcript captured when docs generate starts from chat.
+   * Included on every draft/revision LLM call so reject rounds keep user phrasing and constraints.
+   */
+  chatTranscript?: string
   draftDocId?: string
   supportingFactIds?: string[]
   createdAt: number

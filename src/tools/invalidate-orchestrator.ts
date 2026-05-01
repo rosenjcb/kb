@@ -1,6 +1,14 @@
+import path from 'node:path'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { ToolUseRequest } from '../core/types'
+import type { LLMProvider } from '../core/types'
 import type { IntentResult } from '../intents/types'
+import { assertSingleSentenceForSubmit } from '../core/sentence-split'
+import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
+import { locateFactRowFromNaturalLanguage } from './fact-locate-from-nl'
+import { extractFactTriplet } from './triplet-extractor'
+import type { FactTriplet } from './sqlite-kb-index'
+import { SqliteKbIndexer } from './sqlite-kb-index'
 
 export interface InvalidateOrchestratorInput {
   oldFact: string
@@ -17,16 +25,61 @@ interface InvalidateToolResult {
 }
 
 export class InvalidateOrchestrator {
-  constructor(private readonly toolExecutor: ToolExecutor) {}
+  constructor(
+    private readonly toolExecutor: ToolExecutor,
+    private readonly llm?: LLMProvider,
+    private readonly kbStorageDir?: string
+  ) {}
 
   async run(input: InvalidateOrchestratorInput): Promise<IntentResult> {
     const preview = input.preview === true
     const dryRun = input.dryRun === true
 
+    let canonicalOld = String(input.oldFact ?? '').trim()
+    if (!canonicalOld) {
+      return {
+        status: 'error',
+        errorCode: 'INVALID_PAYLOAD',
+        explanation: 'invalidate_fact requires payload.oldFact or payload.fact',
+      }
+    }
+
+    if (this.kbStorageDir) {
+      const indexer = new SqliteKbIndexer({ dbPath: path.join(this.kbStorageDir, '.kb-index.sqlite') })
+      try {
+        const row = await locateFactRowFromNaturalLanguage({
+          indexer,
+          userText: canonicalOld,
+          llm: this.llm,
+        })
+        if (!row) {
+          return {
+            status: 'error',
+            errorCode: 'NO_FACT_MATCH',
+            explanation:
+              'No fact matched that description. Try `kb facts search` or pass the exact fact sentence or fact id.',
+          }
+        }
+        canonicalOld = row.fact_text
+      } finally {
+        indexer.close()
+      }
+    }
+
+    let replacementTriplet: FactTriplet | undefined
+    const rep = input.replacementFact?.trim()
+    if (rep) {
+      const sentence = assertSingleSentenceForSubmit(rep)
+      replacementTriplet = this.llm
+        ? await extractFactTriplet(this.llm, sentence)
+        : placeholderTripletFromFactText(sentence)
+    }
+
     const result = (await this.toolExecutor.execute(
       createToolUse('invalidate_fact', {
-        oldFact: input.oldFact,
+        oldFact: canonicalOld,
         replacementFact: input.replacementFact,
+        replacementTriplet,
         preview,
         dryRun,
         includeSessionLogs: input.includeSessionLogs !== false,
@@ -47,7 +100,7 @@ export class InvalidateOrchestrator {
       )
     }
 
-    const summary = result.summary ?? 'No KB documents changed.'
+    const summary = result.summary ?? 'No facts changed.'
     const suffix =
       !preview && !dryRun && changedDocIds.length > 0
         ? ` Graph invalidation applied to ${changedDocIds.length} fact provenance entr${changedDocIds.length === 1 ? 'y' : 'ies'}.`

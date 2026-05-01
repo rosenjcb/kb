@@ -198,7 +198,11 @@ describe('chat-cli session loop', () => {
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
-      execute: vi.fn(async () => ({ results: [], retrieval: { method: 'lexical' } })),
+      // Non-empty hits + no confidence checkpoints → answer LLM runs (empty results would refuse before LLM).
+      execute: vi.fn(async () => ({
+        results: [{ metadata: { id: 'doc-a' }, content: 'Some KB text.' }],
+        retrieval: { method: 'lexical' },
+      })),
     }
 
     const provider: LLMProvider = {

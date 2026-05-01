@@ -52,7 +52,7 @@ export interface ChatIO {
   close?(): void
 }
 
-interface ReadDocumentsResult {
+export interface ReadDocumentsResult {
   results?: Array<{
     metadata?: {
       id?: string
@@ -100,12 +100,64 @@ export function printChatHelp(mode: CmdMode = 'cli'): string {
     '  /docs generate "<prompt>" …  Guided doc draft (questionnaire + review)',
     '  /exit  Exit chat mode',
     '',
+    'Environment:',
+    '  KB_CHAT_RETRIEVAL_MIN_CONFIDENCE  Last retrieval checkpoint must be ≥ this (0–1, default 0.45) or chat answers are skipped with an insufficient-evidence message.',
+    '',
     'Examples:',
     `  ${cmd('chat', mode)}`,
   ].join('\n')
 }
 
 const CHAT_SYSTEM_PROMPT = loadPrompt('chat-system.md')
+
+const DOC_SESSION_TRANSCRIPT_MAX_CHARS = 12000
+
+/** Shown when retrieval is empty or last checkpoint confidence is below threshold. */
+export const CHAT_WEAK_RETRIEVAL_REFUSAL =
+  'I don\'t have enough information in the retrieved KB evidence to answer that confidently. Try rephrasing, run `kb query "<topic>"`, or add facts with `kb submit`.'
+
+function chatRetrievalMinConfidence(): number {
+  const raw = process.env.KB_CHAT_RETRIEVAL_MIN_CONFIDENCE
+  if (!raw) return 0.45
+  const n = Number.parseFloat(raw)
+  if (!Number.isFinite(n) || n < 0 || n > 1) return 0.45
+  return n
+}
+
+export function lastRetrievalCheckpointConfidence(snapshot: ReadDocumentsResult): number | undefined {
+  const cps = snapshot.retrieval?.checkpoints
+  if (!Array.isArray(cps) || cps.length === 0) return undefined
+  const last = cps[cps.length - 1]
+  const c = last?.confidence
+  return typeof c === 'number' && Number.isFinite(c) ? c : undefined
+}
+
+export function shouldRefuseChatTurnOnRetrieval(snapshot: ReadDocumentsResult): boolean {
+  const n = snapshot.results?.length ?? 0
+  if (n === 0) return true
+  const conf = lastRetrievalCheckpointConfidence(snapshot)
+  if (conf === undefined) return false
+  return conf < chatRetrievalMinConfidence()
+}
+
+/** Serialize prior chat for `/docs generate` session prompts (tail-preserved, bounded). */
+export function formatChatTranscriptForDocSession(
+  messages: Message[],
+  maxChars: number = DOC_SESSION_TRANSCRIPT_MAX_CHARS
+): string {
+  const parts: string[] = []
+  for (const m of messages) {
+    if (m.role !== 'user' && m.role !== 'assistant') continue
+    const label = m.role === 'user' ? 'User' : 'Assistant'
+    parts.push(`${label}:\n${m.content}`)
+  }
+  let body = parts.join('\n\n').trim()
+  if (!body) return ''
+  if (body.length > maxChars) {
+    body = `…(earlier chat truncated)\n\n${body.slice(-(maxChars - 40))}`
+  }
+  return body
+}
 
 export async function runChatSession(
   deps: ChatSessionDeps,
@@ -165,6 +217,7 @@ export async function runChatSession(
           kbStorageDir: baseDir,
           config: chatConfig,
           slashRest,
+          chatTranscript: formatChatTranscriptForDocSession(messages),
         })
         printer.separator()
         continue
@@ -271,24 +324,36 @@ export async function runChatSession(
 
         const turnMessages: Message[] = [...messages, { role: 'user', content: userContent }]
 
-        const answerRun = await withStageProgress(
-          printer,
-          'answer',
-          () =>
-            deps.llmProvider.call({
-              messages: trimMessageHistory(turnMessages, maxHistoryTurns),
-              systemPrompt: CHAT_SYSTEM_PROMPT,
-              temperature: 0.15,
-              maxTokens: CHAT_MAX_OUTPUT_TOKENS,
-            }),
-          { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
-        )
-        const completion = answerRun.result
-        const answerMs = answerRun.durationMs
+        let answer: string
+        let answerMs: number
+        if (shouldRefuseChatTurnOnRetrieval(retrievalForOutput)) {
+          const conf = lastRetrievalCheckpointConfidence(retrievalForOutput)
+          printer.chatMeta(
+            'retrieval',
+            `refused: weak-evidence results=${retrievalForOutput.results?.length ?? 0} lastCheckpoint=${conf?.toFixed(3) ?? 'n/a'} min=${chatRetrievalMinConfidence().toFixed(3)}`
+          )
+          answer = CHAT_WEAK_RETRIEVAL_REFUSAL
+          answerMs = 0
+        } else {
+          const answerRun = await withStageProgress(
+            printer,
+            'answer',
+            () =>
+              deps.llmProvider.call({
+                messages: trimMessageHistory(turnMessages, maxHistoryTurns),
+                systemPrompt: CHAT_SYSTEM_PROMPT,
+                temperature: 0.15,
+                maxTokens: CHAT_MAX_OUTPUT_TOKENS,
+              }),
+            { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
+          )
+          const completion = answerRun.result
+          answerMs = answerRun.durationMs
 
-        const answer =
-          completion.text.trim() ||
-          'I don\'t have enough information to answer that. Try: kb query "<your question>"'
+          answer =
+            completion.text.trim() ||
+            'I don\'t have enough information to answer that. Try: kb query "<your question>"'
+        }
 
         // Append both sides to the message history so the next turn sees the full context.
         messages.push({ role: 'user', content: userContent })

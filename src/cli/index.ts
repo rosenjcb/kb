@@ -827,6 +827,7 @@ export async function runMainWithOutput(
         toolExecutor,
         workspaceDir: process.cwd(),
         llmProvider: llmProvider ?? undefined,
+        kbStorageDir: intentBaseDir,
         collector,
       }).finally(() => {
         printer.stopSpinner()

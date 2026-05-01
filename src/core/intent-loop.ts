@@ -29,6 +29,8 @@ export interface IntentLoopConfig {
   confidenceThreshold?: number
   /** Optional provider used by callers that also collect token telemetry. */
   provider?: LLMProvider
+  /** Active KB base directory (`.kb-index.sqlite` parent). Enables NL fact locate on invalidate. */
+  kbStorageDir?: string
   /** Telemetry collector — records per-iteration StageMetrics. */
   collector?: RunCollector
 }
@@ -48,7 +50,7 @@ export async function runIntentLoop(
 ): Promise<IntentLoopResult> {
   const maxIterations = config.maxIterations ?? DEFAULT_INTENT_LOOP_MAX_ITERATIONS
   const confidenceThreshold = config.confidenceThreshold ?? DEFAULT_INTENT_LOOP_CONFIDENCE_THRESHOLD
-  const router = new DefaultIntentRouter(toolExecutor)
+  const router = new DefaultIntentRouter(toolExecutor, config.provider, config.kbStorageDir)
 
   const { collector } = config
   const providerName = config.provider?.name ?? 'gemini'

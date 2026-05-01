@@ -23,6 +23,8 @@ export async function runDocsGenerateChatFlow(input: {
   config: KbConfig
   /** Text after `/docs generate ` (may be empty). */
   slashRest: string
+  /** Recent KB chat turns (bounded); persisted on session for every draft/revision prompt. */
+  chatTranscript?: string
 }): Promise<void> {
   const { read, writeError, printer, llm, kbStorageDir, config } = input
   const tail = input.slashRest.trim()
@@ -65,6 +67,7 @@ export async function runDocsGenerateChatFlow(input: {
     type: parsed.type,
     config,
     deps: { llm },
+    chatTranscript: input.chatTranscript?.trim() || undefined,
   })
   const sessionId = started.sessionId
   printer.chatAssistant(`Session ${sessionId} (${started.docType}).`)

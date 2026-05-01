@@ -293,6 +293,25 @@ const MIGRATIONS: Migration[] = [
       UPDATE original_docs SET doc_type = 'runbook'   WHERE doc_type = 'checklist';
     `,
   },
+  {
+    // Facts-first triplet schema: every fact row carries an explicit
+    // (subject, predicate, object) triple. Existing rows backfill to '' and
+    // are tombstoned by application code on next write — bases are expected
+    // to be rebuilt from scratch under the new ingest pipeline.
+    version: 8,
+    name: 'facts_triplet_columns',
+    sql: `
+      ALTER TABLE facts ADD COLUMN subject   TEXT NOT NULL DEFAULT '';
+      ALTER TABLE facts ADD COLUMN predicate TEXT NOT NULL DEFAULT '';
+      ALTER TABLE facts ADD COLUMN object    TEXT NOT NULL DEFAULT '';
+      CREATE INDEX IF NOT EXISTS idx_facts_subject_live
+        ON facts(subject) WHERE tombstoned_at IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_facts_predicate_live
+        ON facts(predicate) WHERE tombstoned_at IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_facts_object_live
+        ON facts(object) WHERE tombstoned_at IS NULL;
+    `,
+  },
 ]
 
 /**

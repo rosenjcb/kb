@@ -127,11 +127,21 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
   return { envelope, output, base, debug, verbose, useQuerySession }
 }
 
+export interface ExecuteIntentCommandOptions {
+  intentLlm?: LLMProvider
+  kbStorageDir?: string
+}
+
 export async function executeIntentCommand(
   parsed: ParsedIntentCommand,
-  toolExecutor: ToolExecutor
+  toolExecutor: ToolExecutor,
+  options?: ExecuteIntentCommandOptions
 ): Promise<IntentResult> {
-  const router = new DefaultIntentRouter(toolExecutor)
+  const router = new DefaultIntentRouter(
+    toolExecutor,
+    options?.intentLlm,
+    options?.kbStorageDir
+  )
   return router.execute(parsed.envelope)
 }
 
