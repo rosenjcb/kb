@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { searchSupportingFacts } from '../../src/core/doc-supporting-facts'
+import { buildDocgenFactContext, searchSupportingFacts } from '../../src/core/doc-supporting-facts'
 import type { FactRow } from '../../src/tools/sqlite-kb-index'
 
 const makeRow = (overrides: Partial<FactRow>): FactRow =>
@@ -49,5 +49,21 @@ describe('searchSupportingFacts', () => {
     const searchFacts = vi.fn(() => [])
     searchSupportingFacts({ searchFacts }, 'topic')
     expect(searchFacts).toHaveBeenCalledWith('topic', 20)
+  })
+})
+
+describe('buildDocgenFactContext', () => {
+  it('Given facts, then formats numbered id lines', () => {
+    const text = buildDocgenFactContext([
+      { id: 'fact-aaaaaaaaaaaaaaaa', factText: 'Alpha claim.' },
+      { id: 'fact-bbbbbbbbbbbbbbbb', factText: 'Beta\nline' },
+    ])
+    expect(text).toContain('KB facts')
+    expect(text).toContain('[fact-aaaaaaaaaaaaaaaa] Alpha claim.')
+    expect(text).toContain('[fact-bbbbbbbbbbbbbbbb] Beta line')
+  })
+
+  it('Given empty facts, then returns refusal hint block', () => {
+    expect(buildDocgenFactContext([])).toContain('none')
   })
 })

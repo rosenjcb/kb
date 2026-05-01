@@ -22,3 +22,16 @@ export function searchSupportingFacts(
   const rows = indexer.searchFacts(trimmed, limit)
   return rows.map(row => ({ id: row.id, factText: row.fact_text }))
 }
+
+/** Markdown block listing grounded facts for doc-generate LLM prompts. */
+export function buildDocgenFactContext(facts: SupportingFact[]): string {
+  if (facts.length === 0) {
+    return 'KB facts (grounding):\n(none — do not invent repository facts.)'
+  }
+  const lines = facts.map(
+    (f, i) => `${i + 1}. [${f.id}] ${f.factText.replace(/\r?\n/g, ' ').trim()}`
+  )
+  return ['KB facts (ground repository claims only with these; do not invent other facts):', ...lines].join(
+    '\n'
+  )
+}

@@ -78,6 +78,11 @@ describe('doc-generate-orchestrator', () => {
       factLimit: 5,
     })
     expect(d1.revision).toBe(1)
+    const draftCalls = vi.mocked(mockLlm.call).mock.calls.filter(
+      c => (c[0]?.systemPrompt ?? '').includes('write KB markdown')
+    )
+    expect(draftCalls[0]?.[0]?.messages?.[0]?.content as string).toContain('KB facts')
+    expect(draftCalls[0]?.[0]?.messages?.[0]?.content as string).toContain('orch fact')
 
     const d2 = await produceRevisedDraft({
       baseDir,
@@ -117,7 +122,7 @@ describe('doc-generate-orchestrator', () => {
 
     const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
     indexer.upsertFact({
-      factText: 'stacked feedback fact.',
+      factText: 'topic stacked feedback fact for revision flow.',
       sourceKind: 'submit',
       sourceRef: 't',
       confidence: 0.9,
@@ -185,5 +190,43 @@ describe('doc-generate-orchestrator', () => {
     expect(secondUser).toContain('1. first round')
     expect(secondUser).toContain('Latest reviewer instruction')
     expect(secondUser).toContain('second round')
+  })
+
+  it('Given no facts in KB, produceInitialDraft throws before calling draft LLM', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-orch-empty-'))
+    tempDirs.push(baseDir)
+    const config = {} as KbConfig
+    const ix = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+    ix.close()
+
+    const mockLlm: LLMProvider = {
+      name: 'mock',
+      model: 'mock',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'SHOULD_NOT_RUN',
+        stopReason: 'end_turn' as const,
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
+    const started = await startGenerationSession({
+      baseDir,
+      prompt: 'topic with no kb overlap zzzuniquezzz',
+      type: 'reference',
+      config,
+      deps: { llm: mockLlm },
+    })
+    const { sessionId } = started
+    const qn = loadQuestionnaire('reference').length
+    for (let i = 0; i < qn; i += 1) {
+      await answerCurrent(baseDir, sessionId, `a${i}`)
+    }
+
+    await expect(
+      produceInitialDraft({ baseDir, sessionId, llm: mockLlm, factLimit: 5 })
+    ).rejects.toThrow(/no supporting facts/)
+    expect(mockLlm.call).not.toHaveBeenCalled()
   })
 })

@@ -8,5 +8,5 @@ Rules:
 - The **`documentTitle`** answer (if present) is the canonical short title for the KB record; do not repeat it as an H1. You may echo it once in plain prose if it helps orientation.
 - Code blocks: preserve user-provided code verbatim.
 - Missing or skipped answer: write one line `_(not provided)_` for that section.
-- Do not invent facts beyond what answers state.
+- Do not invent facts beyond what answers state and the **KB facts** block in the user message (repository claims must cite that block only).
 - Do not add a References section (added separately by tooling).

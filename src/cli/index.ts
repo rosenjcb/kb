@@ -53,12 +53,7 @@ import {
   printDocsGenerateHelp,
   runDocsGenerate,
 } from './docs-generate-cli'
-import {
-  DocsMergeError,
-  parseDocsMergeCommand,
-  printDocsMergeHelp,
-  runDocsMerge,
-} from './docs-merge-cli'
+import { FactsCommandError, runFactsCommand } from './facts-cli'
 import {
   DocsRenameError,
   parseDocsRenameCommand,
@@ -137,6 +132,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  init        Build a KB from project docs',
     '  graph       Inspect or edit the knowledge graph',
     '  docs        Browse KB documents',
+    '  facts       List, search, or show KB facts',
     '  chat        Start an interactive KB chat session (--verbose / --debug for human orchestration)',
     '  publish     Publish KB docs',
     '  sync        Fast-forward main, rebuild, and refresh the global kb link',
@@ -226,7 +222,6 @@ function printDocsHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('docs list', mode)} [options]`,
     `  ${cmd('docs view <document-id>', mode)} [options]`,
     `  ${cmd('docs generate "<prompt>"', mode)} [options]  (see ${cmd('docs generate --help', mode)})`,
-    `  ${cmd('docs merge <targetDocId> <sourceDocId> [...]', mode)} [options]`,
     `  ${cmd('docs rename <documentId> "<new title>"', mode)} [options]`,
     `  ${cmd('docs delete <documentId>', mode)} [options]`,
     '',
@@ -235,8 +230,6 @@ function printDocsHelp(mode: CmdMode = 'cli'): string {
     printViewHelp(mode),
     '',
     printDocsGenerateHelp(mode),
-    '',
-    printDocsMergeHelp(mode),
     '',
     printDocsRenameHelp(mode),
     '',
@@ -476,6 +469,23 @@ export async function runMainWithOutput(
     return
   }
 
+  if (firstArg === 'facts') {
+    try {
+      const text = await runFactsCommand(args.slice(1), { cwd: process.cwd() })
+      out.log(text)
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const exitCode = error instanceof FactsCommandError ? error.exitCode : 1
+      if (exitCode === 0) {
+        out.log(message)
+        return
+      }
+      out.error(`❌ ${message}`)
+    }
+    return
+  }
+
   if (firstArg === 'docs') {
     const docsAction = args[1]
 
@@ -542,30 +552,6 @@ export async function runMainWithOutput(
         } else {
           out.error(`❌ ${message}`)
         }
-      }
-      return
-    }
-
-    if (docsAction === 'merge') {
-      try {
-        const parsed = parseDocsMergeCommand(args.slice(2))
-        const mergeBaseDir = parsed.base
-          ? await ensureOperationalBaseDir(parsed.base)
-          : (await resolveEffectiveBaseDir()).baseDir
-        const mergeLlmProvider = createLLMProviderFromConfig(config)
-        if (!mergeLlmProvider) {
-          out.error(formatPrerequisiteError(CLI_ERROR_NO_LLM_PROVIDER))
-          return
-        }
-        await runDocsMerge(parsed, mergeBaseDir, mergeLlmProvider, out)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        const exitCode = error instanceof DocsMergeError ? error.exitCode : 1
-        if (exitCode === 0) {
-          out.log(message)
-          return
-        }
-        out.error(`❌ ${message}`)
       }
       return
     }

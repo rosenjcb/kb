@@ -16,7 +16,7 @@ import {
 } from './doc-generate-session'
 import { deriveDocumentTitle } from './doc-generate-title'
 import { loadQuestionnaire } from './doc-questionnaire'
-import { searchSupportingFacts } from './doc-supporting-facts'
+import { buildDocgenFactContext, searchSupportingFacts } from './doc-supporting-facts'
 import type { KbConfig } from '../cli/kb-config.js'
 import { createLLMProviderFromConfig } from '../cli/kb-config.js'
 import { loadPrompt } from '../prompts/loader'
@@ -86,7 +86,11 @@ function formatChatTranscriptBlock(session: DocGenerateSession): string[] {
   ]
 }
 
-async function draftDocumentBody(llm: LLMProvider, session: DocGenerateSession): Promise<string> {
+async function draftDocumentBody(
+  llm: LLMProvider,
+  session: DocGenerateSession,
+  factContextMarkdown: string
+): Promise<string> {
   const systemPrompt = loadPrompt('doc-draft-system.md')
   const lines = [
     `Document type: ${session.docType}`,
@@ -101,6 +105,8 @@ async function draftDocumentBody(llm: LLMProvider, session: DocGenerateSession):
       return `- **${slot.key}** ${status}: ${body}`.trimEnd()
     }),
     ...formatChatTranscriptBlock(session),
+    '',
+    factContextMarkdown,
   ]
   const res = await llm.call({
     systemPrompt,
@@ -125,7 +131,8 @@ async function draftDocumentRevision(
   llm: LLMProvider,
   session: DocGenerateSession,
   priorBody: string,
-  feedback: string
+  feedback: string,
+  factContextMarkdown: string
 ): Promise<string> {
   const systemPrompt = loadPrompt('doc-edit-system.md')
   const user = [
@@ -145,6 +152,8 @@ async function draftDocumentRevision(
     'Latest reviewer instruction (apply on top of the prior list):',
     feedback,
     ...formatChatTranscriptBlock(session),
+    '',
+    factContextMarkdown,
     '',
     'Current draft body (revise in place; preserve unchanged text verbatim):',
     priorBody,
@@ -235,7 +244,6 @@ export async function produceInitialDraft(input: {
     )
   }
 
-  const draftBody = await draftDocumentBody(input.llm, session)
   const indexer = new SqliteKbIndexer({ dbPath: path.join(input.baseDir, '.kb-index.sqlite') })
   try {
     const facts = searchSupportingFacts(
@@ -243,6 +251,13 @@ export async function produceInitialDraft(input: {
       buildFactSearchQuery(session),
       input.factLimit ?? 20
     )
+    if (facts.length === 0) {
+      throw new Error(
+        'doc generate: no supporting facts in KB match this prompt. Submit facts with kb submit or broaden answers, then retry.'
+      )
+    }
+    const factBlock = buildDocgenFactContext(facts)
+    const draftBody = await draftDocumentBody(input.llm, session, factBlock)
     const fullContent = appendReferencesFooter(draftBody, facts)
     const now = Date.now()
     const draft: DocGenerateDraft = {
@@ -293,18 +308,25 @@ export async function produceRevisedDraft(input: {
   }
 
   const prior = session.draft
-  const nextBody = await draftDocumentRevision(
-    input.llm,
-    session,
-    prior.content,
-    input.feedback.trim()
-  )
   const indexer = new SqliteKbIndexer({ dbPath: path.join(input.baseDir, '.kb-index.sqlite') })
   try {
     const facts = searchSupportingFacts(
       indexer,
       buildFactSearchQuery(session),
       input.factLimit ?? 20
+    )
+    if (facts.length === 0) {
+      throw new Error(
+        'doc generate: no supporting facts in KB match this prompt. Submit facts with kb submit or broaden answers, then retry.'
+      )
+    }
+    const factBlock = buildDocgenFactContext(facts)
+    const nextBody = await draftDocumentRevision(
+      input.llm,
+      session,
+      prior.content,
+      input.feedback.trim(),
+      factBlock
     )
     const fullContent = appendReferencesFooter(nextBody, facts)
     const now = Date.now()
@@ -351,6 +373,11 @@ export async function acceptDraft(input: {
   if (session.status !== 'awaiting_review' || !session.draft) {
     throw new Error(
       `doc generate: nothing to accept (status=${session.status}). Use --finalize first.`
+    )
+  }
+  if (session.draft.supportingFactIds.length === 0) {
+    throw new Error(
+      'doc generate: cannot accept draft with zero supporting facts (KB grounding required).'
     )
   }
 
