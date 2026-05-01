@@ -10,10 +10,7 @@ import { formatOrchestrationMetaLine } from '../ui/orchestration-meta.js'
 import type { Printer } from '../ui/printer'
 import { type CmdMode, cmd } from './cmd-ref'
 import { appendQuerySession, loadQuerySessionMessages } from './query-session'
-import {
-  augmentReadDocumentsWithWorkspaceFallback,
-  formatReadDocumentSourceIds,
-} from './retrieval-fallback'
+import { formatReadDocumentSourceIds } from './retrieval-fallback'
 
 export type CliOutputMode = 'human' | 'json'
 
@@ -498,34 +495,6 @@ export async function rewriteIntentInputWithSessionContext(
     }
   } catch {
     return parsed
-  }
-}
-
-export async function augmentIntentResultWithWorkspaceFallback(
-  parsed: ParsedIntentCommand,
-  result: IntentResult,
-  workspaceDir: string
-): Promise<IntentResult> {
-  if (!isReadFactsResult(result)) return result
-  if (parsed.envelope.intent !== 'query_truth') {
-    return result
-  }
-
-  const question = getIntentQuestion(parsed)
-  if (!question) return result
-
-  const data = (result.data ?? {}) as ReadDocumentsResultData
-  const augmented = await augmentReadDocumentsWithWorkspaceFallback(question, data, workspaceDir)
-  const results = Array.isArray(augmented.results) ? augmented.results : []
-
-  return {
-    ...result,
-    provenance: results.length > 0 ? formatReadDocumentSourceIds(results) : result.provenance,
-    data: {
-      ...data,
-      ...augmented,
-      total: results.length,
-    },
   }
 }
 

@@ -18,7 +18,6 @@ describe('chat-query-orchestrator', () => {
       toolExecutor: executor,
       expandedQuery: 'What is up?',
       retrievalLimit: 5,
-      workspaceDir: '/tmp',
     })
 
     expect(isReadFactsResult(result)).toBe(true)

@@ -825,7 +825,6 @@ export async function runMainWithOutput(
       const aligned = await runQueryTruthRetrieval({
         parsed,
         toolExecutor,
-        workspaceDir: process.cwd(),
         llmProvider: llmProvider ?? undefined,
         kbStorageDir: intentBaseDir,
         collector,

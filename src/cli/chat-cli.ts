@@ -269,7 +269,6 @@ export async function runChatSession(
               toolExecutor: deps.toolExecutor,
               expandedQuery,
               retrievalLimit,
-              workspaceDir: deps.workspaceDir ?? process.cwd(),
             }),
           { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
         )
@@ -293,7 +292,6 @@ export async function runChatSession(
                 toolExecutor: deps.toolExecutor,
                 expandedQuery: deepenedQuery,
                 retrievalLimit,
-                workspaceDir: deps.workspaceDir ?? process.cwd(),
               }),
             { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
           )

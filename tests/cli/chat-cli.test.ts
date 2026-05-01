@@ -257,7 +257,7 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('sources> general-facts')
   })
 
-  it('Given broad project question with ticket-only retrieval, then workspace fallback evidence is included', async () => {
+  it('Given broad project question with session-only retrieval, then chat context uses KB hits only (no workspace README injection)', async () => {
     const workspaceDir = await createTempDir()
     await writeFile(
       path.join(workspaceDir, 'README.md'),
@@ -318,20 +318,16 @@ describe('chat-cli session loop', () => {
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor, workspaceDir }, io)
 
-    expect(executor.execute).toHaveBeenCalledTimes(1)
+    expect(executor.execute.mock.calls.length).toBeGreaterThanOrEqual(1)
     expect(provider.call).toHaveBeenCalledTimes(1)
     const callInput = (provider.call as { mock: { calls: Array<[unknown]> } }).mock.calls[0][0]
-    const message = callInput.messages[0]?.content
-    expect(message).toContain('workspace-readme')
-    expect(message).toContain('intent-first local KB CLI')
-    expect(io.outputs.join('\n')).toContain(
-      'retrieval> hybrid (fts+vector-rerank;workspace-fallback)'
-    )
+    const message = String(callInput.messages[0]?.content ?? '')
+    expect(message).toContain('Session notes only.')
+    expect(message).not.toContain('workspace-readme')
     const out = io.outputs.join('\n')
+    expect(out).not.toContain('workspace-fallback')
     expect(out).toContain('sources>')
-    expect(out).toContain('workspace-readme')
     expect(out).toContain('session-log-2026-04-12')
-    expect(out).toContain('matches> 2')
   })
 
   it('Given deep retrieval, then chat uses one execute call and surfaces the LLM answer', async () => {

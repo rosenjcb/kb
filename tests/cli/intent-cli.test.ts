@@ -3,7 +3,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  augmentIntentResultWithWorkspaceFallback,
   enrichReadDocumentsAnswerWithLLM,
   executeIntentCommand,
   formatIntentResult,
@@ -278,35 +277,6 @@ describe('intent-cli execution and enrichment', () => {
     const parsed = parseIntentCommand(['query', 'and base selection?', '--session'])
     const rewritten = await rewriteIntentInputWithSessionContext(parsed, llm, dir)
     expect(rewritten.envelope.payload.query).toBe('How does kb base selection work?')
-  })
-
-  it('augments query results with workspace fallback but leaves invalidate untouched', async () => {
-    const dir = await createTempDir()
-    await writeFile(
-      path.join(dir, 'README.md'),
-      '# Project\n\nKB stores project knowledge locally.\n',
-      'utf8'
-    )
-
-    const parsed = parseIntentCommand(['query', 'what is this project for?'])
-    const queryResult = await augmentIntentResultWithWorkspaceFallback(
-      parsed,
-      {
-        status: 'accepted',
-        recommendedAction: 'read_facts',
-        data: { results: [], total: 0, retrieval: { method: 'hybrid' } },
-      },
-      dir
-    )
-    expect((queryResult.data as { results?: unknown[] }).results?.length).toBeGreaterThan(0)
-
-    const invalidateParsed = parseIntentCommand(['invalidate', 'old fact'])
-    const invalidateResult = await augmentIntentResultWithWorkspaceFallback(
-      invalidateParsed,
-      { status: 'accepted', recommendedAction: 'invalidate_fact', data: { ok: true } },
-      dir
-    )
-    expect(invalidateResult.recommendedAction).toBe('invalidate_fact')
   })
 
   it('enriches query answers with the LLM but does not disturb non-read results', async () => {

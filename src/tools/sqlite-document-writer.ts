@@ -9,6 +9,7 @@ import path from 'node:path'
 import dayjs from 'dayjs'
 import { coerceDocType } from '../core/doc-taxonomy'
 import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
+import { segmentMarkdownForFacts } from '../core/sentence-split'
 import type {
   AppendToDocumentInput,
   DocumentWriterExtended,
@@ -466,28 +467,11 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     sourceKind: 'import_doc' | 'submit',
     sourceRef: string
   ): void {
-    // Facts should come from meaningful paragraphs, not single lines.
-    const paragraphs = content
-      .split(/\n\s*\n/)
-      .map(paragraph =>
-        paragraph
-          .split('\n')
-          .map(line => line.trim().replace(/^[-*]\s+/, ''))
-          .filter(
-            line =>
-              line.length > 0 &&
-              !line.startsWith('#') &&
-              !line.startsWith('Created:') &&
-              !line.startsWith('Type:') &&
-              !line.startsWith('Tags:')
-          )
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim()
-      )
-      .filter(paragraph => paragraph.length > 40)
+    const segments = segmentMarkdownForFacts(content)
+      .map(s => s.replace(/\s+/g, ' ').trim())
+      .filter(s => s.length >= 40)
       .slice(0, 40)
-    for (const factText of paragraphs) {
+    for (const factText of segments) {
       this.indexer.upsertFact({
         factText,
         triplet: placeholderTripletFromFactText(factText),

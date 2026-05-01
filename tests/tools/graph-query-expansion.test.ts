@@ -18,7 +18,7 @@ describe('graph-query-expansion', () => {
   it('Given graph expansion terms, then query expansion appends a bounded set including triplets', async () => {
     const graphWriter = {
       expandQuery: async () => [
-        'kb query retrieves via MarkdownDocumentReader',
+        'kb query retrieves via read_facts',
         'retrieves_via',
         'retrieves via',
         'SQLite',
@@ -44,7 +44,7 @@ describe('graph-query-expansion', () => {
     const expanded = await expandQueryWithGraph('config json', graphWriter as never)
 
     expect(expanded).toBe(
-      'config json kb query retrieves via MarkdownDocumentReader retrieves_via retrieves via SQLite DuckDB Property Graph CLI Config Extra1 Extra2 Extra3 Extra4 Extra5 Extra6 Extra7 Extra8 Extra9 Extra10'
+      'config json kb query retrieves via read_facts retrieves_via retrieves via SQLite DuckDB Property Graph CLI Config Extra1 Extra2 Extra3 Extra4 Extra5 Extra6 Extra7 Extra8 Extra9 Extra10'
     )
   })
 
