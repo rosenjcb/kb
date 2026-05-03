@@ -1,27 +1,21 @@
 ---
 layout: default
-title: DESIGN.md - Layout
-date: '2026-04-27'
-kb_id: design-md-layout
+title: DESIGN.md - Color Scheme
+date: '2026-05-03'
+kb_id: design-md-color-scheme
 tags:
   - source-excerpt
   - design-md
-  - dogfood
+  - kb
 categories:
   - reference
 ---
 
-## Layout.
-┌─ KB Agent │ base: dogfood │ mode: shell ──────────────────┐  ← StatusBar (blue border)
-│                                                            │
-│  KB Agent — type a command or /help                       │  ← HistoryPane
-│  kb> query "what is the project?"                         │  ← command (orange)
-│  KB is a local-first knowledge system…                    │  ← result (white)
-│    Sources: kb-system-overview                            │
-│  kb> chat                                                 │
-│  Chat mode — type /exit to return to shell.               │  ← info (gray)
-│  you> how does hybrid search work?                        │  ← chat-you (orange)
-│  kb> Hybrid search combines BM25 + vector rerank…         │  ← chat-assistant (blue)
-└────────────────────────────────────────────────────────────┘
-┌─ kb> ──────────────────────────────────────────────────────┐  ← InputBar (blue border)
-In chat mode the InputBar border turns orange and the prompt becomes `you>`.
+## Color Scheme.
+Portal-inspired (Valve). Blue is primary; orange is secondary.
+| Role      | Color     | Usage                                      |
+|-----------|-----------|--------------------------------------------|
+| Primary   | `#4FC3F7` | Status bar, shell prompt, assistant output |
+| Secondary | `#FF7043` | User input, chat you-prompt, base name     |
+| Error     | red       | Error messages                             |
+| Dim       | gray      | Info lines, separators                     |

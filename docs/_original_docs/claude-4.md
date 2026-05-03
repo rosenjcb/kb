@@ -1,12 +1,12 @@
 ---
 layout: default
 title: CLAUDE.md Part 1
-date: '2026-04-27'
+date: '2026-05-03'
 kb_id: claude-md-part-1
 tags:
   - source-excerpt
   - claude-md
-  - dogfood
+  - kb
 categories:
   - reference
 ---

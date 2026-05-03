@@ -1,12 +1,12 @@
 ---
 layout: default
 title: DESIGN.md - Interactive Commands
-date: '2026-04-27'
+date: '2026-05-03'
 kb_id: design-md-interactive-commands
 tags:
   - source-excerpt
   - design-md
-  - dogfood
+  - kb
 categories:
   - reference
 ---

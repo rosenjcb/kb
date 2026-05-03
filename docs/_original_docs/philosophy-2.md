@@ -1,12 +1,12 @@
 ---
 layout: default
 title: PHILOSOPHY.md - Change Is the Default
-date: '2026-04-27'
+date: '2026-05-03'
 kb_id: philosophy-md-change-is-the-default
 tags:
   - source-excerpt
   - philosophy-md
-  - dogfood
+  - kb
 categories:
   - reference
 ---

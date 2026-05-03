@@ -1,12 +1,12 @@
 ---
 layout: default
 title: PHILOSOPHY.md Part 1
-date: '2026-04-27'
+date: '2026-05-03'
 kb_id: philosophy-md-part-1
 tags:
   - source-excerpt
   - philosophy-md
-  - dogfood
+  - kb
 categories:
   - reference
 ---

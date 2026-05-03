@@ -1,16 +1,27 @@
 ---
 layout: default
-title: DESIGN.md - TUI vs One-Shot
-date: '2026-04-27'
-kb_id: design-md-tui-vs-one-shot
+title: DESIGN.md - Layout
+date: '2026-05-03'
+kb_id: design-md-layout
 tags:
   - source-excerpt
   - design-md
-  - dogfood
+  - kb
 categories:
   - reference
 ---
 
-## TUI vs One-Shot.
-- `kb` (no args, TTY) → launches TUI
-- `kb <command> [args]` → one-shot CLI (non-interactive by default)
+## Layout.
+┌─ KB Agent │ base: dogfood │ mode: shell ──────────────────┐  ← StatusBar (blue border)
+│                                                            │
+│  KB Agent — type a command or /help                       │  ← HistoryPane
+│  kb> query "what is the project?"                         │  ← command (orange)
+│  KB is a local-first knowledge system…                    │  ← result (white)
+│    Sources: kb-system-overview                            │
+│  kb> chat                                                 │
+│  Chat mode — type /exit to return to shell.               │  ← info (gray)
+│  you> how does hybrid search work?                        │  ← chat-you (orange)
+│  kb> Hybrid search combines BM25 + vector rerank…         │  ← chat-assistant (blue)
+└────────────────────────────────────────────────────────────┘
+┌─ kb> ──────────────────────────────────────────────────────┐  ← InputBar (blue border)
+In chat mode the InputBar border turns orange and the prompt becomes `you>`.

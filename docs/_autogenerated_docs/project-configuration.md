@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Project Configuration
-date: '2026-04-27'
+date: '2026-05-03'
 kb_id: project-configuration
 tags:
   - configuration
@@ -11,4 +11,4 @@ categories:
   - reference
 ---
 
-The KB project is configured through a combination of environment variables and configuration files, primarily `~/.kb/config.json`. Node.js version 20+ is expected for running KB. The `kb config set` command is used to explicitly set configuration values, such as the LLM provider. Named knowledge bases store their SQLite data under `~/.kb/sessions/<base>/`. Base resolution order for `kb` is `activeBase` then `defaultBase`, both of which are stored in `~/.kb/config.json`.
+The project is configured through `~/.kb/config.json` and environment variables. The `~/.kb/config.json` file stores configuration settings, including the LLM provider and base resolution order. The LLM provider can be explicitly set using `kb config set llm.provider openai`. Base resolution order is determined by `activeBase` (current working base) and `defaultBase` (persistent default) in `~/.kb/config.json`. Named bases store their SQLite data under `~/.kb/sessions/<base>/`. KB expects `Node 22+` in the shell that runs `kb`.

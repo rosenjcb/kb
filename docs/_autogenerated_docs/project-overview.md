@@ -1,16 +1,15 @@
 ---
 layout: default
 title: Project Overview
-date: '2026-04-27'
+date: '2026-05-03'
 kb_id: project-overview
 tags:
   - project-overview
   - knowledge-base
-  - cli
-  - tui
   - development-workflow
+  - local-first
 categories:
-  - architecture
+  - introduction
 ---
 
-KB is a local-first knowledge layer designed to capture and manage project knowledge within development workflows. It provides a CLI and runtime to record decisions, facts, and context, preventing them from being lost in chat history or PR threads. The project aims to make knowledge base maintenance a side effect of daily work, rather than an overhead. KB is for developers and teams who want to record decisions and facts as they work, query past context before making changes, and invalidate stale facts before they mislead future work. All knowledge lives alongside the code, is versioned in Git, and is queryable like a lightweight memory system. The core hypothesis is that maintaining a KB can produce better systems faster, with lower token cost, better requirement capture, and improved recall of project knowledge compared to relying solely on a primary coding agent's transient context. The project's philosophy emphasizes accretion over overhead, descriptive rather than prescriptive approaches, and embracing change as the default, while providing transparency without extra effort.
+KB is a local-first knowledge layer designed for development workflows, providing a CLI and runtime to capture project learning over time. It aims to prevent decisions, fixes, and context from being lost in chat history or PR threads. Instead, KB allows users to record decisions and facts, query past context before making changes, and invalidate stale facts. All knowledge lives alongside the code, is versioned in Git, and is queryable as a lightweight memory system. The project's philosophy emphasizes accretion over overhead, descriptive rather than prescriptive knowledge capture, and embracing change as the default, aiming for transparency without extra effort. The core hypothesis is that maintaining a KB is materially useful for real development work, potentially leading to better systems faster, with lower token cost, improved requirement capture, and better recall of project knowledge.

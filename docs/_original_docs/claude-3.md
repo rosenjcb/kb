@@ -1,12 +1,12 @@
 ---
 layout: default
 title: CLAUDE.md - Prompts and instructions stay as Markdown
-date: '2026-04-27'
+date: '2026-05-03'
 kb_id: claude-md-prompts-and-instructions-stay-as-markdown
 tags:
   - source-excerpt
   - claude-md
-  - dogfood
+  - kb
 categories:
   - reference
 ---

@@ -1,14 +1,16 @@
 ---
 layout: default
 title: KB Architecture Overview
-date: '2026-04-27'
+date: '2026-05-03'
 kb_id: kb-architecture-overview
 tags:
   - architecture
   - components
-  - system-design
+  - cli
+  - tui
+  - knowledge-base
 categories:
-  - architecture
+  - introduction
 ---
 
-KB is a local-first knowledge layer for development workflows, providing a CLI and runtime to capture project knowledge. The high-level architecture of KB involves several main components that interact to provide its functionality. The core components are organized into `src/core`, `src/cli`, and `src/tools` directories. `src/core` contains the provider abstraction, intent loop, agent loop, and runtime types. `src/cli` handles the CLI entrypoint, KB intent parsing, base selection, and `kb init` functionality. `src/tools` includes write/query tools, markdown, and SQLite index integration. The system uses a SQLite database to store knowledge, with named bases storing their data under `~/.kb/sessions/<base>/`. The `kb` CLI and TUI (Terminal User Interface) provide the user interface, with `src/tui` containing the TUI's components and logic. The system is designed for composability, preferring the reuse of existing orchestrators, intent routes, and shared utilities. Policy decisions are centralized in orchestrators and intent layers, keeping CLI and TUI adapters thin. Testing is done with Vitest, with source files mirroring their tests in the `tests/` directory. The system also supports agent instructions, with prompts and instructions stored as Markdown files in `src/prompts/*.md` and `skills/<name>/SKILL.md` respectively.
+KB is a local-first knowledge layer for development workflows, designed to capture and recall project context. Its high-level architecture consists of a core, a CLI, and tools, with a TUI providing an interactive shell. The `src/core` directory contains the provider abstraction, intent loop, agent loop, and runtime types, forming the central logic of the system. The `src/cli` directory handles the CLI entrypoint, KB intent parsing, base selection, and initialization processes. The `src/tools` directory includes functionalities for writing and querying, along with markdown and SQLite index integration. The TUI (Terminal User Interface) is built using Ink and React, with `src/tui/index.tsx` as the launch entry and `src/tui/App.tsx` as the root component managing state and command dispatch. Key components within the TUI include `StatusBar`, `HistoryPane`, `InputBar`, and `LoadingSpinner`. The system supports both one-shot CLI commands (`kb <command>`) and an interactive TUI shell (`kb` with no arguments). Knowledge bases are stored as SQLite data under `~/.kb/sessions/<base>/`, and configuration is managed in `~/.kb/config.json`.
