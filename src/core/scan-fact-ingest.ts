@@ -21,7 +21,7 @@ export interface ScanFactIngestResult {
 }
 
 /**
- * Deterministic scan: segment each markdown source → `facts` rows (`import_doc`, `sourceRef` path#sN).
+ * Deterministic ingest: segment each markdown source → `facts` rows (`import_doc`, `sourceRef` path#sN).
  * Uses placeholder triplets (same policy as `SqliteDocumentWriter.indexFactsFromContent`). Idempotent
  * via `normalized_text` dedupe in `SqliteKbIndexer.upsertFact`.
  */

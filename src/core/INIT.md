@@ -1,6 +1,6 @@
 # KB Init Pipeline
 
-`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (crawl docs + source code), a **scan-facts** pass (deterministic sentence ingest into the `facts` table from collected markdown), a **code-facts** pass (per-file LLM extraction of semantic facts about source modules, anchored by `code:<path>@<symbol>`), then a **multi-pass LLM synthesis pipeline** that produces knowledge documents.
+`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`markdown-facts`** (deterministic sentence ingest from collected markdown into the `facts` table), **`code-facts`** (per-file LLM extraction into `import_code` facts), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb init --rescan`** this stage also plans/applies claim mutations), then **`pass-graph`** when enabled. There is **no** separate `kb scan` command — use **`kb init --rescan`** to refresh sources against an existing base.
 
 ## Input Collection
 
@@ -20,57 +20,26 @@ flowchart TD
     D & E --> F[InitContext]
 ```
 
-- `sourceFiles` — human-readable documentation files. Become `is_original = 1` docs if the synthesis collapses to a single doc (see Shard Fallback below).
-- `codeFiles` — structural index of source code. Fed into synthesis prompts so the LLM can reason about module layout, exports, and patterns.
+- `sourceFiles` — human-readable documentation files collected for **`import-docs`** (verbatim originals) and for **`markdown-facts`** / prompts.
+- `codeFiles` — structural index of source code. Fed into **`code-facts`** extraction.
 
-## Synthesis Pipeline
+## Init cycles
 
 ```mermaid
 flowchart TD
-    F[InitContext] --> SF
+    A[kb init] --> R[read-inputs]
+    R --> MF[markdown-facts]
+    MF --> CF[code-facts]
+    CF --> IM[import-docs]
+    IM --> W[write]
+    W --> PG[pass-graph]
 
-    SF["scan-facts — Deterministic ingest\nsegment markdown sources → facts\n(import_doc, before pass1)"]
-    SF --> CF
-
-    CF["code-facts — Per-file LLM extraction\nsemantic facts from source code\n(import_code, anchor=code:path@symbol)"]
-    CF --> P1
-
-    P1["pass1 — Synthesis\nOne LLM call per topic (parallel)\nfrom sourceFiles + codeFiles + Q&A"]
-    P1 --> X{docs.length == 1?}
-    X -- Yes --> SF["maybeExpandSingleDocCorpus\nExpand into source shards\n+ Project Overview"]
-    X -- No --> P2
-    SF --> P2
-
-    P2["pass2 — Refinement\nFollow-up questions + LLM refine"]
-    P2 --> PE
-
-    PE["pass-enrich — Per-doc Enrichment\nEach doc deepened in parallel\nusing sourceFiles + codeFiles"]
-    PE --> P3
-
-    P3["pass3 — Quality\nDedupe, validate, remove stubs\npreventInitDocCollapse guard"]
-    P3 --> W
-
-    W["write — Upsert to SQLite\nis_original flag set per doc"]
-    W --> PG
-
-    PG["pass-graph — Extract Knowledge Graph\nEntities + relationships → SQLite (kb_graph_*)"]
+    MF --> MF1["Deterministic markdown\n→ facts import_doc"]
+    CF --> CF1["Per-file LLM\n→ import_code facts"]
+    IM --> IM1["One original doc\nper source file"]
+    W --> W1["SQLite upsert\n+ rescan planner when --rescan"]
+    PG --> PG1["Optional graph\nextract to SQLite"]
 ```
-
-## Shard Fallback
-
-When pass1 produces exactly one synthesized document (common on small or tightly-scoped repos), `maybeExpandSingleDocCorpus` expands it:
-
-```mermaid
-flowchart LR
-    A["lone synthesis doc"] --> B["Project Overview\n(is_original = false)"]
-    A --> C["Source shard per doc file\n(is_original = true)"]
-    C --> C1["CLAUDE.md → 'Claude Instructions'"]
-    C --> C2["AGENTS.md → 'Agents'"]
-    C --> C3["TESTING.md → 'Testing'"]
-    C --> C4["… etc. (README excluded)"]
-```
-
-Titles for source shards use `basenameTitle()` — the original filename, no path components.
 
 ## Jekyll Routing
 
@@ -95,7 +64,7 @@ README.md is excluded from both — it is the site homepage (`docs/index.md`).
 
 ## Facts extracted from written documents
 
-When the init pipeline (or any path using **`SqliteDocumentWriter`**) persists markdown documents, the writer **indexes candidate facts** from document bodies (deterministic sentence segmentation, length filters, and capped inserts into the **`facts`** table). That is **incremental** fact growth alongside synthesis; it is **not** a full replacement for a dedicated scan-first ingest (see **`facts-architecture.md`** §2 / §7 Phase C).
+When the init pipeline (or any path using **`SqliteDocumentWriter`**) persists markdown documents, the writer **indexes candidate facts** from document bodies (deterministic sentence segmentation, length filters, and capped inserts into the **`facts`** table). That is **incremental** fact growth alongside init; see **`facts-architecture.md`** §2 / §7 for the full ingest model.
 
 ## Code-derived facts
 
@@ -110,10 +79,6 @@ The **`code-facts`** cycle ([src/core/code-fact-extract.ts](code-fact-extract.ts
 4. **Rescan** — `kb init --rescan` reads `code-facts-manifest.json` (per-base sidecar) and only re-extracts files whose `sha256` changed. The per-anchor diff guarantees that unchanged files don't churn the `facts` table.
 
 Budget knobs (env, sane defaults): `KB_CODE_FACTS_MAX_FILES=40`, `KB_CODE_FACTS_PER_FILE_CHARS=6000`, `KB_CODE_FACTS_MAX_CONCURRENCY=4`, `KB_CODE_FACTS_MAX_PER_FILE=8`. The graph builder (`rebuildFactGraph`) consumes the new triples directly — there is **no separate AST table**.
-
-## Collapse Prevention
-
-`preventInitDocCollapse(previous, next)` guards both pass2 and pass3: if the LLM returns 1 doc when it received N > 1, the previous corpus is kept. This prevents accidental consolidation in the refinement and quality passes.
 
 ## Configuration Constants
 

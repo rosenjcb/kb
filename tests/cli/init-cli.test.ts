@@ -139,7 +139,7 @@ describe('init-cli interview checkpoints', () => {
     )
   })
 
-  it('Given no defaultBase but an active session base, then init still suggests hardcoded default', async () => {
+  it('Given init without --base and config activeBase, then prompt brackets that base', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
@@ -157,10 +157,10 @@ describe('init-cli interview checkpoints', () => {
       questionIO: questionIO.io,
     })
 
-    expect(questionIO.prompts[0]).toContain('[default]')
-    expect(result.base).toBe('default')
+    expect(questionIO.prompts[0]).toContain('[dogfood]')
+    expect(result.base).toBe('dogfood')
     expect(result.checkpointFile).toBe(
-      path.join(kbHomeDir, 'sessions', 'default', 'checkpoints', 'init-latest.checkpoint.json')
+      path.join(kbHomeDir, 'sessions', 'dogfood', 'checkpoints', 'init-latest.checkpoint.json')
     )
   })
 
@@ -207,26 +207,6 @@ describe('init-cli interview checkpoints', () => {
     expect(() =>
       parseInitCommand(['--base', 'dogfood', '--rescan', '--dry-run', '--apply'])
     ).toThrow('--dry-run cannot be combined with --apply')
-  })
-
-  it('Given rescan safeguard flags, then parsing stores timeout and caps', () => {
-    const parsed = parseInitCommand([
-      '--base',
-      'dogfood',
-      '--rescan',
-      '--rescan-stage-timeout-ms',
-      '15000',
-      '--rescan-max-claims',
-      '25',
-      '--rescan-max-evidence-docs',
-      '120',
-      '--rescan-max-mutations',
-      '30',
-    ])
-    expect(parsed.rescanStageTimeoutMs).toBe(15000)
-    expect(parsed.rescanMaxClaims).toBe(25)
-    expect(parsed.rescanMaxEvidenceDocs).toBe(120)
-    expect(parsed.rescanMaxMutations).toBe(30)
   })
 
   it.todo(
@@ -772,7 +752,7 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(result.status).toBe('accepted')
-    expect((result.writtenDocIds ?? []).length).toBe(0)
+    expect((result.writtenDocIds ?? []).length).toBe(2)
   })
 
   it('Given --rescan plan preview, then it does not propose synthetic rescan files', async () => {
@@ -797,11 +777,11 @@ describe('init-cli interview checkpoints', () => {
     expect(output).not.toContain('diff --git a/docs/rescan-')
   })
 
-  it('Given interactive --rescan, then read-inputs does not ask initial interview questions', async () => {
+  it('Given interactive --rescan, then asks once to proceed then read-inputs does not ask initial interview questions', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has docs.\n',
     })
-    const questionIO = createQuestionIO(['dogfood'])
+    const questionIO = createQuestionIO(['y'])
 
     const result = await runKbInit({
       base: 'rescan-no-questions',
@@ -813,7 +793,8 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(result.status).toBe('paused')
-    expect(questionIO.prompts).toHaveLength(0)
+    expect(questionIO.prompts).toHaveLength(1)
+    expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(true)
   })
 
   it('Given interactive --rescan through import-docs, then follow-up interview questions are skipped', async () => {
@@ -822,7 +803,7 @@ describe('init-cli interview checkpoints', () => {
     })
     await mkdir(path.join(cwd, 'evaluation', 'runs'), { recursive: true })
     const provider = createProvider([])
-    const questionIO = createQuestionIO([])
+    const questionIO = createQuestionIO(['y'])
 
     const result = await runKbInit({
       base: 'rescan-no-followups',
@@ -835,6 +816,40 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(result.status).toBe('paused')
-    expect(questionIO.prompts).toHaveLength(0)
+    expect(questionIO.prompts).toHaveLength(1)
+    expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(true)
+  })
+
+  it('Given --rescan without --base and config activeBase, then uses that base', async () => {
+    await writeFile(
+      path.join(kbHomeDir, 'config.json'),
+      JSON.stringify({ activeBase: 'cfg-rescan-base' }),
+      'utf8'
+    )
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nDocs here.\n',
+    })
+    const result = await runKbInit({
+      rescan: true,
+      nonInteractive: true,
+      stopAfter: 'read-inputs',
+      cwd,
+    })
+    expect(result.base).toBe('cfg-rescan-base')
+    expect(result.status).toBe('paused')
+  })
+
+  it('Given --rescan without --base and no active/default in config, then non-interactive throws', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nDocs here.\n',
+    })
+    await expect(
+      runKbInit({
+        rescan: true,
+        nonInteractive: true,
+        stopAfter: 'read-inputs',
+        cwd,
+      })
+    ).rejects.toThrow(/No active or default KB base/)
   })
 })

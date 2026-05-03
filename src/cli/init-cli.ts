@@ -3,7 +3,7 @@
  *
  * Cycle 1 (read-inputs):     Discover README/CLAUDE.md in working dir,
  *                             ask an initial interview round via stdin.
- * Cycle 2 (scan-facts):      Deterministic sentence scan of source markdown → `facts` table
+ * Cycle 2 (markdown-facts):  Deterministic sentence segmentation of source markdown → `facts` table
  *                             (before synthesis; placeholder triplets).
  * Cycle 3 (code-facts):      Per-file LLM pass that extracts semantic facts from source code,
  *                             anchored by `code:<path>@<symbol>` for repair-friendly rescans.
@@ -55,7 +55,7 @@ import { createLLMProviderFromConfig, readKbConfig, resolveGraphEnabled } from '
 
 export type InitCycle =
   | 'read-inputs'
-  | 'scan-facts'
+  | 'markdown-facts'
   | 'code-facts'
   | 'import-docs'
   | 'write'
@@ -78,10 +78,6 @@ export interface InitOptions {
   rescan?: boolean
   apply?: boolean
   dryRun?: boolean
-  rescanStageTimeoutMs?: number
-  rescanMaxClaims?: number
-  rescanMaxEvidenceDocs?: number
-  rescanMaxMutations?: number
   detach?: boolean
   resume?: boolean
   stopAfter?: InitCycle
@@ -264,7 +260,7 @@ export function parseInitCommand(args: string[]): InitOptions {
   const stopAfter = readOption(args, '--stop-after') as InitCycle | undefined
   const validCycles: InitCycle[] = [
     'read-inputs',
-    'scan-facts',
+    'markdown-facts',
     'code-facts',
     'import-docs',
     'write',
@@ -290,25 +286,12 @@ export function parseInitCommand(args: string[]): InitOptions {
     throw new Error('Invalid flags: --dry-run cannot be combined with --apply.')
   }
 
-  const rescanStageTimeoutMs = parseOptionalPositiveInt(
-    readOption(args, '--rescan-stage-timeout-ms')
-  )
-  const rescanMaxClaims = parseOptionalPositiveInt(readOption(args, '--rescan-max-claims'))
-  const rescanMaxEvidenceDocs = parseOptionalPositiveInt(
-    readOption(args, '--rescan-max-evidence-docs')
-  )
-  const rescanMaxMutations = parseOptionalPositiveInt(readOption(args, '--rescan-max-mutations'))
-
   return {
     base,
     nonInteractive: readFlag(args, '--non-interactive'),
     rescan,
     apply,
     dryRun,
-    rescanStageTimeoutMs,
-    rescanMaxClaims,
-    rescanMaxEvidenceDocs,
-    rescanMaxMutations,
     detach: readFlag(args, '--detach'),
     resume,
     stopAfter,
@@ -360,6 +343,12 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const cwd = options.cwd ?? process.cwd()
   const base = await resolveInitBaseName(options, cwd, questionIO)
   const baseDir = await ensureOperationalBaseDir(base, cwd)
+  if (options.rescan && !options.nonInteractive) {
+    const proceed = await confirmRescanStart(questionIO, base, cwd)
+    if (!proceed) {
+      throw new Error('Rescan canceled.')
+    }
+  }
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
@@ -463,26 +452,26 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
 
     if (!context) throw new Error('read-inputs context missing')
 
-    if (!checkpoint.completedCycles.includes('scan-facts')) {
-      progress.start('scan-facts', 'indexing source sentences into facts…')
-      const endScanFacts = makeCycleTimer('scan-facts', provider, options.collector, counter)
-      const scanStats = ingestSourceMarkdownFilesAsFacts({
+    if (!checkpoint.completedCycles.includes('markdown-facts')) {
+      progress.start('markdown-facts', 'indexing source sentences into facts…')
+      const endScanFacts = makeCycleTimer('markdown-facts', provider, options.collector, counter)
+      const ingestStats = ingestSourceMarkdownFilesAsFacts({
         baseDir,
         files: context.sourceFiles,
       })
       endScanFacts()
       await persist({
-        completedCycles: ['scan-facts'],
+        completedCycles: ['markdown-facts'],
       })
       progress.finish(
-        'scan-facts',
-        `${scanStats.segmentsUpserted} segments from ${scanStats.filesScanned} files${
-          scanStats.segmentsSkippedShort > 0 ? ` (${scanStats.segmentsSkippedShort} too short)` : ''
+        'markdown-facts',
+        `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} files${
+          ingestStats.segmentsSkippedShort > 0 ? ` (${ingestStats.segmentsSkippedShort} too short)` : ''
         }`
       )
-      if (options.stopAfter === 'scan-facts') throw new InitPausedError('scan-facts')
+      if (options.stopAfter === 'markdown-facts') throw new InitPausedError('markdown-facts')
     } else {
-      progress.finish('scan-facts', 'reused from checkpoint')
+      progress.finish('markdown-facts', 'reused from checkpoint')
     }
 
     if (!checkpoint.completedCycles.includes('code-facts')) {
@@ -563,6 +552,13 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     if (!checkpoint.completedCycles.includes('write')) {
       progress.start('write', baseDir)
       if (options.rescan) {
+        let originalWritten: string[] = []
+        if (!options.dryRun) {
+          const originals = candidateDocs.filter(doc => doc.isOriginal)
+          if (originals.length > 0) {
+            originalWritten = await writeDocs(originals, baseDir, base)
+          }
+        }
         const planResult = await runRescanApplyOrchestrator({
           base,
           baseDir,
@@ -570,12 +566,8 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           dryRun: true,
           sourceFiles: context.sourceFiles,
           candidateDocs,
-          stageTimeoutMs: options.rescanStageTimeoutMs,
-          maxClaims: options.rescanMaxClaims,
-          maxEvidenceDocs: options.rescanMaxEvidenceDocs,
-          maxMutations: options.rescanMaxMutations,
         })
-        writtenDocIds = []
+        let mutationWritten: string[] = []
         questionIO.write?.(
           `[kb init] rescan plan: ${planResult.plan.mutations.length} actions (${planResult.plan.apply.noopMutations} noop) [plan-only].\n`
         )
@@ -596,18 +588,15 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             dryRun: false,
             sourceFiles: context.sourceFiles,
             candidateDocs,
-            stageTimeoutMs: options.rescanStageTimeoutMs,
-            maxClaims: options.rescanMaxClaims,
-            maxEvidenceDocs: options.rescanMaxEvidenceDocs,
-            maxMutations: options.rescanMaxMutations,
           })
-          writtenDocIds = applyResult.writtenDocIds
+          mutationWritten = applyResult.writtenDocIds
           questionIO.write?.(
             `[kb init] rescan apply: ${applyResult.plan.apply.appliedMutations} actions applied (${applyResult.plan.apply.noopMutations} noop).\n`
           )
         } else {
           questionIO.write?.('[kb init] rescan apply canceled by user; no mutations executed.\n')
         }
+        writtenDocIds = [...originalWritten, ...mutationWritten]
       } else {
         writtenDocIds = await writeDocs(candidateDocs, baseDir, base)
       }
@@ -1185,6 +1174,19 @@ async function resolveInitBaseName(
     return options.base.trim()
   }
 
+  if (options.rescan) {
+    const { activeBase, defaultBase } = await readBaseConfig()
+    const fromConfig = activeBase?.trim() || defaultBase?.trim()
+    if (fromConfig) {
+      return fromConfig
+    }
+    if (options.nonInteractive) {
+      throw new Error(
+        'No active or default KB base. Run `kb base use <name>` or `kb base use --default <name>`, or pass `--base <name>` to `kb init --rescan`.'
+      )
+    }
+  }
+
   const suggestedBase = await resolveSuggestedInitBase(cwd)
 
   if (options.nonInteractive) {
@@ -1210,6 +1212,9 @@ async function resolveInitBaseName(
 
 async function resolveSuggestedInitBase(_cwd: string): Promise<string | undefined> {
   const configured = await readBaseConfig()
+  if (configured.activeBase?.trim()) {
+    return configured.activeBase.trim()
+  }
   if (configured.defaultBase?.trim()) {
     return configured.defaultBase.trim()
   }
@@ -1439,23 +1444,45 @@ async function readCheckpoint(filePath: string): Promise<InitCheckpoint | undefi
 
 const VALID_V3_CYCLES = new Set<InitCycle>([
   'read-inputs',
-  'scan-facts',
+  'markdown-facts',
   'code-facts',
   'import-docs',
   'write',
   'pass-graph',
 ])
 
+/** Older checkpoints may list the markdown→facts cycle under its previous id. */
+function normalizeStoredCycleId(cycle: string): InitCycle | null {
+  if (cycle === 'scan-facts') return 'markdown-facts'
+  if (VALID_V3_CYCLES.has(cycle as InitCycle)) return cycle as InitCycle
+  return null
+}
+
+function normalizeCompletedCycles(cycles: unknown): InitCycle[] {
+  if (!Array.isArray(cycles)) return []
+  const out: InitCycle[] = []
+  for (const entry of cycles) {
+    if (typeof entry !== 'string') continue
+    const normalized = normalizeStoredCycleId(entry)
+    if (normalized) out.push(normalized)
+  }
+  return out
+}
+
 function migrateCheckpoint(checkpoint: StoredInitCheckpoint): InitCheckpoint | undefined {
   if (!checkpoint || typeof checkpoint !== 'object') return undefined
   if ('version' in checkpoint && checkpoint.version === 3) {
-    return checkpoint as InitCheckpoint
+    const cp = checkpoint as InitCheckpoint
+    return {
+      ...cp,
+      completedCycles: normalizeCompletedCycles(cp.completedCycles),
+    }
   }
   if ('version' in checkpoint && checkpoint.version === 2) {
     return undefined
   }
   if ('version' in checkpoint && checkpoint.version === 1) {
-    const cycles = (checkpoint.completedCycles as InitCycle[]).filter(c => VALID_V3_CYCLES.has(c))
+    const cycles = normalizeCompletedCycles(checkpoint.completedCycles)
     return {
       version: 3,
       updatedAt: checkpoint.updatedAt,
@@ -1533,13 +1560,16 @@ function readFlag(args: string[], flag: string): boolean {
   return args.includes(flag)
 }
 
-function parseOptionalPositiveInt(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined
-  const parsed = Number.parseInt(value, 10)
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error(`Expected a positive integer, received: ${value}`)
-  }
-  return parsed
+async function confirmRescanStart(
+  questionIO: InitQuestionIO,
+  base: string,
+  cwd: string
+): Promise<boolean> {
+  questionIO.write?.(
+    `\n[kb init] Rescan base "${base}" using sources under:\n  ${cwd}\n\nVerbatim originals will be refreshed from discovered markdown. Claim mutations stay plan-only until you add \`--apply\`.\nProceed? [y/N]\n`
+  )
+  const answer = (await questionIO.askQuestion('  > ')).trim().toLowerCase()
+  return answer === 'y' || answer === 'yes'
 }
 
 async function confirmRescanApply(
