@@ -113,7 +113,7 @@ export function createKBToolsRegistry(
         },
         sourceKind: {
           type: 'string',
-          enum: ['submit', 'import_doc'],
+          enum: ['submit', 'import_doc', 'import_code'],
           description: 'Source channel for this fact',
         },
         sourceRef: { type: 'string', description: 'Optional source provenance' },
@@ -127,7 +127,7 @@ export function createKBToolsRegistry(
     const payload = input as {
       factText: string
       triplet?: { subject?: string; predicate?: string; object?: string }
-      sourceKind: 'submit' | 'import_doc'
+      sourceKind: 'submit' | 'import_doc' | 'import_code'
       sourceRef?: string
       confidence?: number
     }

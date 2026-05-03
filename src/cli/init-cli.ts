@@ -3,15 +3,17 @@
  *
  * Cycle 1 (read-inputs):     Discover README/CLAUDE.md in working dir,
  *                             ask an initial interview round via stdin.
- * Cycle 2 (scan-facts):     Deterministic sentence scan of source markdown → `facts` table
+ * Cycle 2 (scan-facts):      Deterministic sentence scan of source markdown → `facts` table
  *                             (before synthesis; placeholder triplets).
- * Cycle 3 (pass1):           One LLM call per init topic (in parallel) from sources + Q&A.
- * Cycle 4 (pass2):           Follow-up questions for weak topics, LLM refinement.
- * Cycle 5 (pass-enrich):     Per-document enrichment — each doc gets a dedicated
+ * Cycle 3 (code-facts):      Per-file LLM pass that extracts semantic facts from source code,
+ *                             anchored by `code:<path>@<symbol>` for repair-friendly rescans.
+ * Cycle 4 (pass1):           One LLM call per init topic (in parallel) from sources + Q&A.
+ * Cycle 5 (pass2):           Follow-up questions for weak topics, LLM refinement.
+ * Cycle 6 (pass-enrich):     Per-document enrichment — each doc gets a dedicated
  *                             LLM pass to deepen coverage and add concrete detail.
- * Cycle 6 (pass3):           Final quality pass — validate, dedupe, remove stubs.
- * Cycle 7 (write):           Upsert all candidate documents to SQLite.
- * Cycle 8 (pass-graph):      Extract knowledge graph entities and relationships.
+ * Cycle 7 (pass3):           Final quality pass — validate, dedupe, remove stubs.
+ * Cycle 8 (write):           Upsert all candidate documents to SQLite.
+ * Cycle 9 (pass-graph):      Extract knowledge graph entities and relationships.
  *
  * Reuses progress reporting and checkpoint patterns from publish-cli.ts.
  */
@@ -27,6 +29,7 @@ import {
   INIT_SYNTHESIS_OPENAI_JSON_SCHEMA,
   parseInitSynthesisObject,
 } from '../core/init-synthesis-json'
+import { ingestCodeFilesAsFacts } from '../core/code-fact-extract'
 import { ingestSourceMarkdownFilesAsFacts } from '../core/scan-fact-ingest'
 import type { RunCollector } from '../core/telemetry'
 import { TokenCountingProvider, estimateCost } from '../core/telemetry'
@@ -43,6 +46,12 @@ import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { ensureOperationalBaseDir, getKbHomeDir, readBaseConfig } from './base-selection'
 import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from './cli-prerequisites'
+import {
+  buildHashesFor,
+  diffChangedFiles,
+  readCodeFactsManifest,
+  writeCodeFactsManifest,
+} from './init-code-facts-manifest'
 import { readKnowledgeGraphInitSummary } from './graph-cli'
 import {
   INIT_SOURCE_SNAPSHOT_MAX_FILES,
@@ -65,6 +74,7 @@ import { runLLMSetupWizard } from './llm-setup-wizard'
 export type InitCycle =
   | 'read-inputs'
   | 'scan-facts'
+  | 'code-facts'
   | 'pass1'
   | 'pass2'
   | 'pass-enrich'
@@ -273,6 +283,7 @@ export function parseInitCommand(args: string[]): InitOptions {
   const validCycles: InitCycle[] = [
     'read-inputs',
     'scan-facts',
+    'code-facts',
     'pass1',
     'pass2',
     'pass-enrich',
@@ -373,7 +384,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
-  const progress = new InitProgressReporter(8, options.progressSink)
+  const progress = new InitProgressReporter(9, options.progressSink)
   const emitInitAction = (label: string, detail: string) => {
     options.progressSink?.(`[init:action] ${label} — ${detail}\n`)
   }
@@ -496,6 +507,57 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       if (options.stopAfter === 'scan-facts') throw new InitPausedError('scan-facts')
     } else {
       progress.finish('scan-facts', 'reused from checkpoint')
+    }
+
+    if (!checkpoint.completedCycles.includes('code-facts')) {
+      progress.start('code-facts', 'extracting semantic facts from source code…')
+      const endCodeFacts = makeCycleTimer('code-facts', provider, options.collector, counter)
+      const codeFiles = context.codeFiles ?? {}
+      if (!provider) {
+        endCodeFacts()
+        await persist({ completedCycles: ['code-facts'] })
+        progress.finish('code-facts', 'skipped (no LLM provider configured)')
+      } else if (Object.keys(codeFiles).length === 0) {
+        endCodeFacts()
+        await persist({ completedCycles: ['code-facts'] })
+        progress.finish('code-facts', 'skipped (no source files crawled)')
+      } else {
+        const manifest = await readCodeFactsManifest(baseDir)
+        const candidateFiles = options.rescan
+          ? (diffChangedFiles(codeFiles, manifest) ?? Object.keys(codeFiles))
+          : undefined
+        if (options.rescan) {
+          options.questionIO?.write?.(
+            `[kb init] code-facts --rescan picked ${candidateFiles?.length ?? 0}/${Object.keys(codeFiles).length} changed source file(s).\n`
+          )
+        }
+        try {
+          const codeFactStats = await ingestCodeFilesAsFacts({
+            baseDir,
+            llm: provider,
+            codeFiles,
+            candidateFiles,
+          })
+          await writeCodeFactsManifest(baseDir, buildHashesFor(codeFiles))
+          endCodeFacts()
+          await persist({ completedCycles: ['code-facts'] })
+          progress.finish(
+            'code-facts',
+            `${codeFactStats.factsInserted} new, ${codeFactStats.factsSuperseded} superseded, ${codeFactStats.factsTombstoned} tombstoned across ${codeFactStats.filesProcessed}/${codeFactStats.filesConsidered} file(s)`
+          )
+        } catch (err) {
+          endCodeFacts()
+          const message = err instanceof Error ? err.message : String(err)
+          options.questionIO?.write?.(
+            `[kb init] code-facts cycle failed: ${message}. Continuing without code-derived facts.\n`
+          )
+          await persist({ completedCycles: ['code-facts'] })
+          progress.finish('code-facts', `failed (${message.slice(0, 80)})`)
+        }
+      }
+      if (options.stopAfter === 'code-facts') throw new InitPausedError('code-facts')
+    } else {
+      progress.finish('code-facts', 'reused from checkpoint')
     }
 
     if (!checkpoint.completedCycles.includes('pass1')) {

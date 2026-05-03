@@ -112,7 +112,7 @@ export interface FactUpsertInput {
   factText: string
   /** Omitted or partial values → deterministic placeholder triple derived from `factText`. */
   triplet?: FactTriplet
-  sourceKind: 'submit' | 'import_doc'
+  sourceKind: 'submit' | 'import_doc' | 'import_code'
   sourceRef?: string
   laneId?: FactLaneId
   confidence?: number
@@ -593,6 +593,43 @@ export class SqliteKbIndexer {
       supersedesFactId: row.id,
     })
     return { changed: 1, replacementId: replaced.id }
+  }
+
+  /** Tombstone a fact row by id and clear all derived indexes. Returns true if a row was changed. */
+  tombstoneFactById(factId: string): boolean {
+    const now = dayjs().toISOString()
+    const row = this.db
+      .prepare('SELECT id FROM facts WHERE id = ? AND tombstoned_at IS NULL')
+      .get(factId) as { id: string } | undefined
+    if (!row) return false
+    this.db
+      .prepare('UPDATE facts SET tombstoned_at = ?, updated_at = ? WHERE id = ?')
+      .run(now, now, row.id)
+    this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?').run(row.id)
+    this.db.prepare('DELETE FROM fact_embeddings WHERE fact_id = ?').run(row.id)
+    this.db.prepare('DELETE FROM fact_concepts WHERE fact_id = ?').run(row.id)
+    this.db
+      .prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?')
+      .run(row.id, row.id)
+    return true
+  }
+
+  /** Active facts whose `source_ref` exactly matches `sourceRef`. */
+  listFactsBySourceRef(sourceRef: string): FactRow[] {
+    return this.db
+      .prepare(
+        `SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref = ? AND tombstoned_at IS NULL`
+      )
+      .all(sourceRef) as FactRow[]
+  }
+
+  /** Active facts whose `source_ref` starts with `prefix` (e.g. `code:src/foo.ts@`). */
+  listActiveFactsBySourceRefPrefix(prefix: string): FactRow[] {
+    return this.db
+      .prepare(
+        `SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref LIKE ? AND tombstoned_at IS NULL`
+      )
+      .all(`${prefix}%`) as FactRow[]
   }
 
   upsertDerivedDoc(input: DerivedDocUpsertInput): void {

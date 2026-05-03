@@ -612,7 +612,7 @@ function createRescanIntentExecutor(indexer: SqliteKbIndexer): ToolExecutor {
         const payload = toolUse.input as {
           factText?: string
           triplet?: { subject?: string; predicate?: string; object?: string }
-          sourceKind?: 'submit' | 'import_doc'
+          sourceKind?: 'submit' | 'import_doc' | 'import_code'
           sourceRef?: string
           confidence?: number
         }
