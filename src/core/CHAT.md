@@ -14,11 +14,11 @@ Chat is intentionally minimal:
 3. **Run retrieval exactly like `kb query`** — both call **`runQueryTruthRetrieval()`** in
    `src/cli/query-truth-retrieval.ts`: `runIntentLoop` (same **`query_truth`** envelope the CLI
    builds after optional graph expansion and **only** optional **`--session`** rewrite — default
-   CLI query uses the literal topic string, like chat) → router → `read_documents`, then
-   **`augmentIntentResultWithWorkspaceFallback()`**. `DefaultIntentRouter` defaults **`query_truth`**
-   to **`discoveryDepth: 'deep'`** when `--discovery` is omitted, so chat and CLI get the same
-   research-style retrieval; chat passes **`discoveryDepth: 'deep'`** explicitly plus the chat
-   retrieval limit.
+   CLI query uses the literal topic string, like chat) → router → **`read_facts`** (fact FTS +
+   deep **`FactsQueryResearchOrchestrator`** when discovery is deep). **No** workspace markdown
+   fallback. `DefaultIntentRouter` defaults **`query_truth`** to **`discoveryDepth: 'deep'`** when
+   `--discovery` is omitted, so chat and CLI get the same research-style retrieval; chat passes
+   **`discoveryDepth: 'deep'`** explicitly plus the chat retrieval limit.
 4. **Conversational answer** — evidence from step 3 is passed to the chat system prompt + LLM
    (`src/cli/chat-cli.ts`, `src/prompts/chat-system.md`).
 5. **Orchestration output** — `printReadDocumentsOrchestrationFooter()` prints the same minimal
@@ -70,7 +70,7 @@ when you want those extra human rows to match an explicit `kb query --verbose` s
 - `src/cli/query-truth-retrieval.ts` — shared **`runQueryTruthRetrieval()`** for CLI `kb query` and chat
 - `src/cli/chat-query-orchestrator.ts` — builds chat **`query_truth`** envelope, delegates to shared retrieval
 - `src/cli/intent-cli.ts` — `printReadDocumentsOrchestrationFooter`, augment helpers
-- `src/intents/router.ts` — `query_truth` → `read_documents` routing
+- `src/intents/router.ts` — `query_truth` → **`read_facts`** routing
 - `src/core/TUI.md` — TUI command surface
 - `src/core/AGENT_LOOP.md` — full intent loop (retries, escalation); chat may adopt more of this
   later for QUERY turns

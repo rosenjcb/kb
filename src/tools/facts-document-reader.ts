@@ -1,3 +1,4 @@
+import type { DocType } from '../core/doc-taxonomy'
 import { formatFactUri } from '../core/fact-uri'
 import { SqliteKbIndexer, type FactRow } from './sqlite-kb-index'
 import { FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
@@ -7,7 +8,7 @@ export interface QueryDocumentsInput {
   mode?: 'id' | 'title' | 'tags' | 'content'
   discoveryDepth?: 'shallow' | 'deep'
   tags?: string[]
-  type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
+  type?: DocType
   limit?: number
   includeContent?: boolean
   surface?: 'query' | 'chat'

@@ -9,7 +9,6 @@ export interface ChatQueryTruthInput {
   /** Same string `kb query` would use after optional graph expansion. */
   expandedQuery: string
   retrievalLimit: number
-  workspaceDir: string
 }
 
 function buildChatQueryTruthParsed(
@@ -33,7 +32,7 @@ function buildChatQueryTruthParsed(
 
 /**
  * Chat QUERY branch: builds the same **`query_truth`** shape as CLI `kb query`, then
- * **`runQueryTruthRetrieval()`** (intent loop + workspace augment). Thin adapter only.
+ * **`runQueryTruthRetrieval()`** (intent loop only). Thin adapter only.
  */
 export async function executeChatQueryTruthRetrieval(
   input: ChatQueryTruthInput
@@ -42,6 +41,5 @@ export async function executeChatQueryTruthRetrieval(
   return runQueryTruthRetrieval({
     parsed,
     toolExecutor: input.toolExecutor,
-    workspaceDir: input.workspaceDir,
   })
 }

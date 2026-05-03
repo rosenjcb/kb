@@ -85,6 +85,10 @@ export class Printer {
 
   // Horizontal rule between content and metadata
   separator(): void {
+    if (this.mode === 'tui') {
+      this.orchestrationMeta('sep', '—')
+      return
+    }
     if (this.tty) {
       this.out.log(chalk.dim('---'))
     } else {

@@ -22,14 +22,13 @@ This is the composition principle: `intent → orchestrator → tools`. `runInte
 
 ```mermaid
 flowchart LR
-  Q["kb query / /query"] --> R["read_documents\nlexical + hybrid retrieval"]
-  R --> G["graph expansion + rerank\nread-only augmentation"]
+  Q["kb query / /query"] --> R["read_facts\nfact FTS + deep facts loop"]
+  R --> G["graph query expansion\n+ typed edge hints"]
   G --> A["grounded answer"]
 
   S["kb submit / /submit"] --> SO["SubmitOrchestrator"]
-  SO --> W["discover target + write KB"]
-  W --> C["reconcile contradictions"]
-  C --> SG["extract + upsert graph"]
+  SO --> W["discover target + upsert fact"]
+  W --> SG["extract + upsert graph"]
 
   I["kb invalidate / /invalidate"] --> IO["InvalidateOrchestrator"]
   IO --> P["preview/apply KB mutation"]
@@ -84,13 +83,13 @@ sequenceDiagram
   participant U as CLI / TUI
   participant L as runIntentLoop
   participant R as DefaultIntentRouter
-  participant D as read_documents
+  participant D as read_facts
   participant G as Graph augmentation
 
   U->>L: query_truth envelope
   L->>R: execute(query_truth)
-  R->>D: read_documents(query, discoveryDepth, limit)
-  D->>G: expand/rerank when graph enabled
+  R->>D: read_facts(query, discoveryDepth, limit)
+  D->>G: query expansion / hints when graph enabled
   G-->>R: grounded retrieval results
   R-->>L: IntentResult
   L-->>U: answer-ready result

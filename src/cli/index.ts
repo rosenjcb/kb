@@ -47,16 +47,13 @@ import {
 } from './docs-delete-cli'
 import {
   DocsGenerateError,
+  formatDocsGenerateHumanOutput,
+  isDocsGenerateJsonOutputArgs,
   parseDocsGenerateCommand,
   printDocsGenerateHelp,
   runDocsGenerate,
 } from './docs-generate-cli'
-import {
-  DocsMergeError,
-  parseDocsMergeCommand,
-  printDocsMergeHelp,
-  runDocsMerge,
-} from './docs-merge-cli'
+import { FactsCommandError, runFactsCommand } from './facts-cli'
 import {
   DocsRenameError,
   parseDocsRenameCommand,
@@ -135,6 +132,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  init        Build a KB from project docs',
     '  graph       Inspect or edit the knowledge graph',
     '  docs        Browse KB documents',
+    '  facts       List, search, or show KB facts',
     '  chat        Start an interactive KB chat session (--verbose / --debug for human orchestration)',
     '  publish     Publish KB docs',
     '  sync        Fast-forward main, rebuild, and refresh the global kb link',
@@ -175,7 +173,7 @@ function printInitHelp(mode: CmdMode = 'cli'): string {
     '  --non-interactive              Skip interview prompts when possible',
     '  --detach                       Pause after the current cycle and save a checkpoint',
     '  --resume                       Resume from the latest init checkpoint',
-    '  --stop-after <cycle>           Stop after read-inputs|pass1|pass2|pass-enrich|pass3|write|pass-graph',
+    '  --stop-after <cycle>           Stop after read-inputs|scan-facts|code-facts|pass1|pass2|pass-enrich|pass3|write|pass-graph',
     '  --rescan                       Re-read changed README-like sources and plan KB updates',
     '  --dry-run                      Preview the rescan plan without applying mutations',
     '  --apply                        Apply planned rescan mutations',
@@ -223,8 +221,7 @@ function printDocsHelp(mode: CmdMode = 'cli'): string {
     'Usage:',
     `  ${cmd('docs list', mode)} [options]`,
     `  ${cmd('docs view <document-id>', mode)} [options]`,
-    `  ${cmd('docs generate "<instruction>" --title "<title>"', mode)} [options]`,
-    `  ${cmd('docs merge <targetDocId> <sourceDocId> [...]', mode)} [options]`,
+    `  ${cmd('docs generate "<prompt>"', mode)} [options]  (see ${cmd('docs generate --help', mode)})`,
     `  ${cmd('docs rename <documentId> "<new title>"', mode)} [options]`,
     `  ${cmd('docs delete <documentId>', mode)} [options]`,
     '',
@@ -233,8 +230,6 @@ function printDocsHelp(mode: CmdMode = 'cli'): string {
     printViewHelp(mode),
     '',
     printDocsGenerateHelp(mode),
-    '',
-    printDocsMergeHelp(mode),
     '',
     printDocsRenameHelp(mode),
     '',
@@ -418,6 +413,8 @@ export async function runMainWithOutput(
       toolExecutor,
       mode,
       graphWriter: chatGraphWriter,
+      kbStorageDir: kbStorageDir,
+      kbConfig: config,
       conversationalRetrieval: resolveConversationalChatEnabled(config),
       verbose: chatVerbose,
       debug: chatDebug,
@@ -472,6 +469,23 @@ export async function runMainWithOutput(
     return
   }
 
+  if (firstArg === 'facts') {
+    try {
+      const text = await runFactsCommand(args.slice(1), { cwd: process.cwd() })
+      out.log(text)
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const exitCode = error instanceof FactsCommandError ? error.exitCode : 1
+      if (exitCode === 0) {
+        out.log(message)
+        return
+      }
+      out.error(`❌ ${message}`)
+    }
+    return
+  }
+
   if (firstArg === 'docs') {
     const docsAction = args[1]
 
@@ -515,10 +529,16 @@ export async function runMainWithOutput(
     }
 
     if (docsAction === 'generate') {
+      const jsonOut = isDocsGenerateJsonOutputArgs(args)
       try {
         const parsed = parseDocsGenerateCommand(args.slice(2))
-        const generated = await runDocsGenerate(parsed)
-        out.log(JSON.stringify({ status: 'accepted', generated }, null, 2))
+        const generated = await runDocsGenerate(parsed, process.cwd(), config)
+        const payload = { status: 'accepted' as const, generated }
+        if (parsed.outputFormat === 'json') {
+          out.log(JSON.stringify(payload))
+        } else {
+          out.log(formatDocsGenerateHumanOutput(generated))
+        }
         return
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -527,31 +547,11 @@ export async function runMainWithOutput(
           out.log(message)
           return
         }
-        out.error(`❌ ${message}`)
-      }
-      return
-    }
-
-    if (docsAction === 'merge') {
-      try {
-        const parsed = parseDocsMergeCommand(args.slice(2))
-        const mergeBaseDir = parsed.base
-          ? await ensureOperationalBaseDir(parsed.base)
-          : (await resolveEffectiveBaseDir()).baseDir
-        const mergeLlmProvider = createLLMProviderFromConfig(config)
-        if (!mergeLlmProvider) {
-          out.error(formatPrerequisiteError(CLI_ERROR_NO_LLM_PROVIDER))
-          return
+        if (jsonOut) {
+          out.log(JSON.stringify({ status: 'error', message }))
+        } else {
+          out.error(`❌ ${message}`)
         }
-        await runDocsMerge(parsed, mergeBaseDir, mergeLlmProvider, out)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        const exitCode = error instanceof DocsMergeError ? error.exitCode : 1
-        if (exitCode === 0) {
-          out.log(message)
-          return
-        }
-        out.error(`❌ ${message}`)
       }
       return
     }
@@ -811,8 +811,8 @@ export async function runMainWithOutput(
       const aligned = await runQueryTruthRetrieval({
         parsed,
         toolExecutor,
-        workspaceDir: process.cwd(),
         llmProvider: llmProvider ?? undefined,
+        kbStorageDir: intentBaseDir,
         collector,
       }).finally(() => {
         printer.stopSpinner()
@@ -948,11 +948,17 @@ async function main() {
   kbConfig = inferred.config
   applyConfigToEnv(kbConfig)
 
-  // One-shot CLI path
-  console.log('🤖 KB Agent Harness\n')
-  if (inferred.notice) {
-    console.log(inferred.notice)
-    console.log('')
+  // One-shot CLI path — skip banner when docs generate --output json (stdout must be parseable JSON only).
+  const machineJsonStdout = isDocsGenerateJsonOutputArgs(args)
+  if (!machineJsonStdout) {
+    console.log('🤖 KB Agent Harness\n')
+    if (inferred.notice) {
+      console.log(inferred.notice)
+      console.log('')
+    }
+  } else if (inferred.notice) {
+    console.error(inferred.notice)
+    console.error('')
   }
   await runMainWithOutput(args, defaultCliOutput, kbConfig)
 }

@@ -1,9 +1,12 @@
 import path from 'node:path'
+import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
+import type { FactTriplet } from './sqlite-kb-index'
 import { SqliteKbIndexer } from './sqlite-kb-index'
 
 export interface InvalidateFactInput {
   oldFact: string
   replacementFact?: string
+  replacementTriplet?: FactTriplet
   preview?: boolean
   dryRun?: boolean
   includeSessionLogs?: boolean
@@ -27,7 +30,7 @@ export async function invalidateFactTool(
   input: InvalidateFactInput,
   baseDir: string
 ): Promise<InvalidateFactResult> {
-  const { oldFact, replacementFact, preview = true, dryRun = false } = input
+  const { oldFact, replacementFact, replacementTriplet, preview = true, dryRun = false } = input
 
   const replaceFrom = oldFact.trim()
   const replaceTo = replacementFact?.trim() ?? ''
@@ -35,7 +38,7 @@ export async function invalidateFactTool(
   if (!replaceFrom) {
     return {
       changes: [],
-      summary: 'No KB documents changed.',
+      summary: 'No facts changed.',
       error: 'oldFact is required.',
     }
   }
@@ -62,7 +65,19 @@ export async function invalidateFactTool(
     })
 
     if (!preview && !dryRun) {
-      const result = indexer.invalidateFact(replaceFrom, replaceTo || undefined)
+      const replacementPayload =
+        replaceTo.length > 0
+          ? {
+              factText: replaceTo,
+              triplet:
+                replacementTriplet?.subject &&
+                replacementTriplet.predicate &&
+                replacementTriplet.object
+                  ? replacementTriplet
+                  : placeholderTripletFromFactText(replaceTo),
+            }
+          : undefined
+      const result = indexer.invalidateFact(exact.fact_text, replacementPayload)
       changes[0].replacementId = result.replacementId
     }
     const replaced = changes.length

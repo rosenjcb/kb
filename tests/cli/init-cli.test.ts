@@ -253,7 +253,7 @@ describe('init-cli interview checkpoints', () => {
       JSON.stringify([
         {
           title: 'Project Overview',
-          type: 'architecture',
+          type: 'introduction',
           tags: ['overview'],
           content: 'Summary.\n\nDetails.',
         },
@@ -261,21 +261,21 @@ describe('init-cli interview checkpoints', () => {
       JSON.stringify([
         {
           title: 'Project Overview',
-          type: 'architecture',
+          type: 'introduction',
           tags: ['overview'],
           content: 'Summary.\n\nDetails.',
         },
       ]),
       JSON.stringify({
         title: 'Project Overview',
-        type: 'architecture',
+        type: 'introduction',
         tags: ['overview'],
         content: 'Summary.\n\nDetails.',
       }),
       JSON.stringify([
         {
           title: 'Project Overview',
-          type: 'architecture',
+          type: 'introduction',
           tags: ['overview'],
           content: 'Summary.\n\nDetails.',
         },
@@ -283,7 +283,7 @@ describe('init-cli interview checkpoints', () => {
       JSON.stringify([
         {
           title: 'Project Overview',
-          type: 'architecture',
+          type: 'introduction',
           tags: ['overview'],
           content: 'Summary.\n\nDetails.',
         },
@@ -313,7 +313,7 @@ describe('init-cli interview checkpoints', () => {
       JSON.stringify([
         {
           title: 'Project Overview',
-          type: 'architecture',
+          type: 'introduction',
           tags: ['overview'],
           content: 'Overview content',
         },
@@ -321,21 +321,21 @@ describe('init-cli interview checkpoints', () => {
       JSON.stringify([
         {
           title: 'Project Overview',
-          type: 'architecture',
+          type: 'introduction',
           tags: ['overview'],
           content: 'Overview content',
         },
       ]),
       JSON.stringify({
         title: 'Project Overview',
-        type: 'architecture',
+        type: 'introduction',
         tags: ['overview'],
         content: 'Overview content',
       }),
       JSON.stringify([
         {
           title: 'Project Overview',
-          type: 'architecture',
+          type: 'introduction',
           tags: ['overview'],
           content: 'Overview content',
         },
@@ -343,7 +343,7 @@ describe('init-cli interview checkpoints', () => {
       JSON.stringify([
         {
           title: 'Project Overview',
-          type: 'architecture',
+          type: 'introduction',
           tags: ['overview'],
           content: 'Overview content',
         },
@@ -425,7 +425,7 @@ describe('init-cli interview checkpoints', () => {
       JSON.stringify([
         {
           title: 'Project Overview',
-          type: 'architecture',
+          type: 'introduction',
           tags: ['overview'],
           content:
             'Project overview summary with enough detail to satisfy quality gates and explain the system structure.',
@@ -434,7 +434,7 @@ describe('init-cli interview checkpoints', () => {
       JSON.stringify([
         {
           title: 'Project Overview',
-          type: 'architecture',
+          type: 'introduction',
           tags: ['overview'],
           content:
             'Project overview summary with enough detail to satisfy quality gates and explain the system structure plus refined workflow notes.',
@@ -535,7 +535,7 @@ describe('init-cli interview checkpoints', () => {
       JSON.stringify([
         {
           title: 'Project Overview',
-          type: 'architecture',
+          type: 'introduction',
           tags: ['overview'],
           content:
             'Project overview summary with enough detail to satisfy quality gates and explain the system structure.',
@@ -658,7 +658,7 @@ describe('init-cli interview checkpoints', () => {
       JSON.stringify([
         {
           title: 'Project Overview',
-          type: 'architecture',
+          type: 'introduction',
           tags: ['overview'],
           content:
             'Project overview summary with enough detail to satisfy quality gates and explain the system structure.',
@@ -731,7 +731,7 @@ describe('init-cli interview checkpoints', () => {
       INIT_TOPIC_DEFINITIONS.map(def =>
         JSON.stringify({
           title: `Synthesis ${def.topic}`,
-          type: 'architecture',
+          type: 'introduction',
           tags: [def.topic],
           content: `Substantive content for ${def.topic}. `.repeat(15),
         })

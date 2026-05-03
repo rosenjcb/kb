@@ -1,25 +1,44 @@
-export function renderNewFileDiff(filePath: string, content: string): string {
-  const plusLines = content
-    .split('\n')
-    .map(line => `+${line}`)
-    .join('\n')
-  return `diff --git a/${filePath} b/${filePath}\nnew file mode 100644\n--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${content.split('\n').length} @@\n${plusLines}`
+import chalk from 'chalk'
+import { createPatch } from 'diff'
+
+export function createUnifiedDiff(
+  filePath: string,
+  before: string,
+  after: string,
+  options: { context?: number } = {}
+): string {
+  const context = options.context ?? 3
+  return createPatch(filePath, before, after, before, after, { context })
 }
 
-export function renderTextDiff(filePath: string, before: string, after: string): string {
-  const beforeLines = before.split('\n')
-  const afterLines = after.split('\n')
-  const max = Math.max(beforeLines.length, afterLines.length)
-  const rows: string[] = []
-  for (let i = 0; i < max; i += 1) {
-    const left = beforeLines[i]
-    const right = afterLines[i]
-    if (left === right) continue
-    if (left !== undefined) rows.push(`-${left}`)
-    if (right !== undefined) rows.push(`+${right}`)
+export function colorizeUnifiedDiff(patch: string, options: { color?: boolean } = {}): string {
+  const useColor = options.color ?? true
+  if (!useColor) return patch
+  const lines = patch.split('\n')
+  const out: string[] = []
+  for (const line of lines) {
+    if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff ')) {
+      out.push(chalk.dim(line))
+    } else if (line.startsWith('@@')) {
+      out.push(chalk.cyan(line))
+    } else if (line.startsWith('+')) {
+      out.push(chalk.green(line))
+    } else if (line.startsWith('-')) {
+      out.push(chalk.red(line))
+    } else {
+      out.push(line)
+    }
   }
-  const body = rows.length > 0 ? rows.join('\n') : '+'
-  return `diff --git a/${filePath} b/${filePath}\n--- a/${filePath}\n+++ b/${filePath}\n@@ -1,${beforeLines.length} +1,${afterLines.length} @@\n${body}`
+  return out.join('\n')
+}
+
+export function renderNewFileDiff(filePath: string, content: string): string {
+  return createUnifiedDiff(filePath, '', content)
+}
+
+/** @deprecated Prefer {@link createUnifiedDiff}; kept for rescan preview call sites. */
+export function renderTextDiff(filePath: string, before: string, after: string): string {
+  return createUnifiedDiff(filePath, before, after)
 }
 
 export function renderDiffBundle(sections: string[], emptyMessage: string): string {

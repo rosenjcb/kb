@@ -10,10 +10,7 @@ import { formatOrchestrationMetaLine } from '../ui/orchestration-meta.js'
 import type { Printer } from '../ui/printer'
 import { type CmdMode, cmd } from './cmd-ref'
 import { appendQuerySession, loadQuerySessionMessages } from './query-session'
-import {
-  augmentReadDocumentsWithWorkspaceFallback,
-  formatReadDocumentSourceIds,
-} from './retrieval-fallback'
+import { formatReadDocumentSourceIds } from './retrieval-fallback'
 
 export type CliOutputMode = 'human' | 'json'
 
@@ -32,7 +29,7 @@ export interface ParsedIntentCommand {
   useQuerySession?: boolean
 }
 
-/** Human read_documents footer: default minimal; verbose adds summary/status/confidence; debug expands sources. */
+/** Human read_facts footer: default minimal; verbose adds summary/status/confidence; debug expands sources. */
 export interface ReadDocumentsHumanOutputOptions {
   verbose?: boolean
   /** When true, emit one `source>` line per hit with id, path, uri, snippet, highlights (default is a single `sources>` titles line). */
@@ -127,11 +124,21 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
   return { envelope, output, base, debug, verbose, useQuerySession }
 }
 
+export interface ExecuteIntentCommandOptions {
+  intentLlm?: LLMProvider
+  kbStorageDir?: string
+}
+
 export async function executeIntentCommand(
   parsed: ParsedIntentCommand,
-  toolExecutor: ToolExecutor
+  toolExecutor: ToolExecutor,
+  options?: ExecuteIntentCommandOptions
 ): Promise<IntentResult> {
-  const router = new DefaultIntentRouter(toolExecutor)
+  const router = new DefaultIntentRouter(
+    toolExecutor,
+    options?.intentLlm,
+    options?.kbStorageDir
+  )
   return router.execute(parsed.envelope)
 }
 
@@ -155,7 +162,7 @@ export function formatIntentResult(
     return JSON.stringify(result, null, 2)
   }
 
-  if (isReadDocumentsResult(result)) {
+  if (isReadFactsResult(result)) {
     return formatReadDocumentsHumanResult(result, readDocsOpts)
   }
 
@@ -192,7 +199,7 @@ export function printIntentResult(
     return
   }
 
-  if (isReadDocumentsResult(result)) {
+  if (isReadFactsResult(result)) {
     printReadDocumentsHumanResult(result, printer, options)
     return
   }
@@ -355,7 +362,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
   options?: { graphRelationContext?: string }
 ): Promise<IntentResult> {
   if (!llmProvider) return result
-  if (!isReadDocumentsResult(result)) return result
+  if (!isReadFactsResult(result)) return result
   if (process.env.KB_INTENT_LLM_ANSWER === 'false') return result
 
   const data = (result.data ?? {}) as ReadDocumentsResultData
@@ -488,34 +495,6 @@ export async function rewriteIntentInputWithSessionContext(
     }
   } catch {
     return parsed
-  }
-}
-
-export async function augmentIntentResultWithWorkspaceFallback(
-  parsed: ParsedIntentCommand,
-  result: IntentResult,
-  workspaceDir: string
-): Promise<IntentResult> {
-  if (!isReadDocumentsResult(result)) return result
-  if (parsed.envelope.intent !== 'query_truth') {
-    return result
-  }
-
-  const question = getIntentQuestion(parsed)
-  if (!question) return result
-
-  const data = (result.data ?? {}) as ReadDocumentsResultData
-  const augmented = await augmentReadDocumentsWithWorkspaceFallback(question, data, workspaceDir)
-  const results = Array.isArray(augmented.results) ? augmented.results : []
-
-  return {
-    ...result,
-    provenance: results.length > 0 ? formatReadDocumentSourceIds(results) : result.provenance,
-    data: {
-      ...data,
-      ...augmented,
-      total: results.length,
-    },
   }
 }
 
@@ -723,8 +702,8 @@ function requiresHighRecallQuery(query: string): boolean {
   return false
 }
 
-export function isReadDocumentsResult(result: IntentResult): boolean {
-  return result.recommendedAction === 'read_documents' && result.status === 'accepted'
+export function isReadFactsResult(result: IntentResult): boolean {
+  return result.recommendedAction === 'read_facts' && result.status === 'accepted'
 }
 
 function isReconciliationReviewResult(result: IntentResult): boolean {

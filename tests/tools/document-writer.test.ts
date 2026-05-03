@@ -63,10 +63,10 @@ describe('executeWriteDocumentTool', () => {
       })),
     }
 
-    await executeWriteDocumentTool({ title: 'Arch', content: 'Body', type: 'architecture' }, writer)
+    await executeWriteDocumentTool({ title: 'Howto', content: 'Body', type: 'howto' }, writer)
 
     expect(writer.writeDocument).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'architecture' })
+      expect.objectContaining({ type: 'howto' })
     )
   })
 
@@ -78,7 +78,7 @@ describe('executeWriteDocumentTool', () => {
     await expect(
       executeWriteDocumentTool({ title: 'Doc', content: 'Body', type: 'invalid-type' }, writer)
     ).rejects.toThrow(
-      'write_document: type must be one of architecture, decision, checklist, runbook, reference'
+      'write_document: type must be one of howto, introduction, reference, decision, runbook'
     )
   })
 })

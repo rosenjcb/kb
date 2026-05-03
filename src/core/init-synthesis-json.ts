@@ -2,10 +2,9 @@
  * Init pass1 synthesis: parse model output into one KB document shape, plus JSON Schemas for
  * providers that support native structured JSON (OpenAI json_schema, Gemini responseSchema).
  */
+import { DOC_TYPES, isDocType } from './doc-taxonomy'
 import type { WriteDocumentInput } from '../tools/document-writer'
 import { extractBalancedJsonObject } from '../tools/graph-entity-extractor'
-
-const DOC_TYPES = ['architecture', 'decision', 'reference', 'runbook', 'checklist'] as const
 
 /** OpenAI Chat Completions `response_format.json_schema` (strict) — all properties required. */
 export const INIT_SYNTHESIS_OPENAI_JSON_SCHEMA: Record<string, unknown> = {
@@ -98,15 +97,8 @@ export function parseInitSynthesisObject(text: string): ParsedInitSynthesisDoc |
       title: parsed.title.trim(),
       content: parsed.content,
     }
-    const allowed: WriteDocumentInput['type'][] = [
-      'architecture',
-      'decision',
-      'reference',
-      'runbook',
-      'checklist',
-    ]
-    if (typeof parsed.type === 'string' && (allowed as string[]).includes(parsed.type)) {
-      doc.type = parsed.type as WriteDocumentInput['type']
+    if (isDocType(parsed.type)) {
+      doc.type = parsed.type
     }
     if (Array.isArray(parsed.tags)) {
       doc.tags = parsed.tags.map(String)

@@ -28,23 +28,9 @@ export interface ToolResultBlock {
 /**
  * Tool Definition Contract
  *
- * Design Principle: Each tool has exactly ONE responsibility.
- * Tool names document intent. Separatate tools by action, not mode.
- *
- * ✅ Do this:
- *   - merge_documents: consolidate two docs
- *   - append_to_document: add content
- *   - update_document: replace content
- *
- * ❌ Don't do this:
- *   - write_document with operationMode=merge|append|replace
- *
- * Rationale: Intent is self-documenting; fewer parameters; easier testing.
- * See src/tools/TOOL_CONVENTIONS.md for full guidelines.
- *
- * Product note: end-user recall leans on **facts** + **graph** + `kb docs` for markdown corpora. Init/rescan
- * populate docs via **code paths** (`SqliteDocumentWriter`); these tool names exist for **agent** loops that still
- * mutate markdown. A future `kb docs generate`-style CLI may own more doc authoring.
+ * Design principle: each tool has one responsibility; tool names document intent.
+ * Default **`createKBToolsRegistry`** surface is facts + graph + optional **`task`** (no markdown mutators).
+ * See `src/tools/TOOL_CONVENTIONS.md` for authoring guidelines when adding tools.
  */
 export interface ToolDefinition {
   name: string

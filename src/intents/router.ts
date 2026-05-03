@@ -1,8 +1,8 @@
 import dayjs from 'dayjs'
 import type { ToolExecutor } from '../core/tool-registry'
-import type { ToolUseRequest } from '../core/types'
+import type { ToolUseRequest, LLMProvider } from '../core/types'
 import { InvalidateOrchestrator } from '../tools/invalidate-orchestrator'
-import { SubmitOrchestrator, inferDomainFromFact } from '../tools/submit-orchestrator'
+import { SubmitOrchestrator } from '../tools/submit-orchestrator'
 import type { ConsumerIntentEnvelope, IntentResult, RouteDecision } from './types'
 
 export interface IntentRouter {
@@ -19,7 +19,11 @@ function createToolUse(name: string, input: Record<string, unknown>): ToolUseReq
 }
 
 export class DefaultIntentRouter implements IntentRouter {
-  constructor(private toolExecutor: ToolExecutor) {}
+  constructor(
+    private readonly toolExecutor: ToolExecutor,
+    private readonly intentLlm?: LLMProvider,
+    private readonly kbStorageDir?: string
+  ) {}
 
   async route(intentEnvelope: ConsumerIntentEnvelope): Promise<RouteDecision> {
     const payload = intentEnvelope.payload
@@ -60,7 +64,7 @@ export class DefaultIntentRouter implements IntentRouter {
         const effectiveDiscoveryDepth = payload.discoveryDepth ?? 'deep'
 
         return {
-          selectedOperation: 'read_documents',
+          selectedOperation: 'read_facts',
           operationInput: {
             query: queryText,
             mode: 'content',
@@ -71,8 +75,8 @@ export class DefaultIntentRouter implements IntentRouter {
             surface: payload.surface === 'chat' ? 'chat' : 'query',
           },
           policyReason: highRecall
-            ? 'query intent maps to read_documents with high-recall evidence policy'
-            : 'query intent maps directly to read_documents',
+            ? 'query intent maps to read_facts with high-recall evidence policy'
+            : 'query intent maps directly to read_facts',
         }
       }
 
@@ -100,16 +104,8 @@ export class DefaultIntentRouter implements IntentRouter {
     if (decision.selectedOperation === 'submit_orchestrator') {
       const fact = String(payload.fact ?? '').trim()
       const source = String(payload.source ?? 'consumer')
-      const orchestrator = new SubmitOrchestrator(this.toolExecutor)
+      const orchestrator = new SubmitOrchestrator(this.toolExecutor, this.intentLlm)
       const orchestratorResult = await orchestrator.run({ fact, source })
-
-      const reconciliationOutcome = await maybeHandleSubmitContradictions(
-        this.toolExecutor,
-        payload,
-        `${decision.policyReason}; routed to ${orchestratorResult.targetDocId} (discovered=${orchestratorResult.discoveredTarget})`,
-        orchestratorResult.result
-      )
-      if (reconciliationOutcome) return reconciliationOutcome
 
       return {
         status: 'accepted',
@@ -131,7 +127,11 @@ export class DefaultIntentRouter implements IntentRouter {
         }
       }
 
-      const orchestrator = new InvalidateOrchestrator(this.toolExecutor)
+      const orchestrator = new InvalidateOrchestrator(
+        this.toolExecutor,
+        this.intentLlm,
+        this.kbStorageDir
+      )
       return orchestrator.run({
         oldFact,
         replacementFact: asOptionalString(payload.replacementFact),
@@ -153,45 +153,6 @@ export class DefaultIntentRouter implements IntentRouter {
       provenance: extractProvenance(toolResult),
       confidence: 0.8,
     }
-  }
-}
-
-async function maybeHandleSubmitContradictions(
-  toolExecutor: ToolExecutor,
-  payload: Record<string, unknown>,
-  policyReason: string,
-  submissionResult: unknown
-): Promise<IntentResult | null> {
-  const fact = typeof payload.fact === 'string' ? payload.fact.trim() : ''
-  if (!fact) return null
-
-  const domain = inferDomainFromFact(fact)
-  const includeSessionLogs = payload.includeSessionLogs === true
-  const reconciliationResult = (await toolExecutor.execute(
-    createToolUse('reconcile_contradictions', {
-      newFact: fact,
-      domain,
-      includeSessionLogs,
-      dryRun: false,
-    })
-  )) as { changedDocumentIds?: string[]; removedFacts?: number }
-
-  const changedDocumentIds = Array.isArray(reconciliationResult.changedDocumentIds)
-    ? reconciliationResult.changedDocumentIds
-    : []
-  const removedFacts =
-    typeof reconciliationResult.removedFacts === 'number' ? reconciliationResult.removedFacts : 0
-
-  return {
-    status: 'accepted',
-    explanation: `${policyReason}; contradiction reconciliation removed ${removedFacts} conflicting fact line${removedFacts === 1 ? '' : 's'}`,
-    recommendedAction: 'reconcile_contradictions',
-    data: {
-      submission: submissionResult,
-      contradictionReconciliation: reconciliationResult,
-    },
-    provenance: [...extractProvenance(submissionResult), ...changedDocumentIds],
-    confidence: 0.8,
   }
 }
 

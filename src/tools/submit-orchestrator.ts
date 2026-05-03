@@ -1,5 +1,9 @@
 import type { ToolExecutor } from '../core/tool-registry'
 import type { ToolUseRequest } from '../core/types'
+import type { LLMProvider } from '../core/types'
+import { assertSingleSentenceForSubmit } from '../core/sentence-split'
+import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
+import { extractFactTriplet } from './triplet-extractor'
 
 export interface SubmitOrchestratorInput {
   fact: string
@@ -14,14 +18,23 @@ export interface SubmitOrchestratorResult {
 }
 
 export class SubmitOrchestrator {
-  constructor(private readonly toolExecutor: ToolExecutor) {}
+  constructor(
+    private readonly toolExecutor: ToolExecutor,
+    private readonly llm?: LLMProvider
+  ) {}
 
   async run(input: SubmitOrchestratorInput): Promise<SubmitOrchestratorResult> {
     const { fact, source } = input
-    const domain = inferDomainFromFact(fact)
+    const sentence = assertSingleSentenceForSubmit(fact)
+    const triplet = this.llm
+      ? await extractFactTriplet(this.llm, sentence)
+      : placeholderTripletFromFactText(sentence)
+
+    const domain = inferDomainFromFact(sentence)
     const submission = await this.toolExecutor.execute(
       createToolUse('upsert_fact', {
-        factText: fact,
+        factText: sentence,
+        triplet,
         sourceKind: 'submit',
         sourceRef: source,
         confidence: 0.8,
@@ -34,7 +47,7 @@ export class SubmitOrchestrator {
 
     const graphSync = await this.toolExecutor.execute(
       createToolUse('upsert_graph_from_text', {
-        text: fact,
+        text: sentence,
         documentId: factId,
       })
     )

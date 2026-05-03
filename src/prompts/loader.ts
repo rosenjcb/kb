@@ -1,14 +1,13 @@
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { readPromptAssetUtf8 } from './prompt-assets'
 
-const promptsDir = dirname(fileURLToPath(import.meta.url))
+/** Re-export for callers that need the directory; prefer importing from `./prompt-assets.js`. */
+export { promptsRootDir, readPromptAssetUtf8, resolvePromptPath } from './prompt-assets'
 
 /**
- * Load a prompt file from src/prompts/ as a trimmed string.
+ * Load a top-level prompt file (`<name>.md` next to `doc-questionnaires/`) as a trimmed string.
  */
 export function loadPrompt(name: string): string {
-  return readFileSync(join(promptsDir, name), 'utf8').trim()
+  return readPromptAssetUtf8(name).trim()
 }
 
 /**

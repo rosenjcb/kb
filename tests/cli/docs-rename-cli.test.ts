@@ -28,7 +28,7 @@ async function seedDocument(
     title: string
     documentId?: string
     content: string
-    type?: 'architecture' | 'decision' | 'checklist' | 'runbook' | 'reference'
+    type?: 'howto' | 'introduction' | 'reference' | 'decision' | 'runbook'
     tags?: string[]
   }
 ): Promise<void> {
@@ -158,7 +158,7 @@ describe('runDocsRename', () => {
       title: 'Old Title',
       documentId: 'my-doc',
       content: 'Body.',
-      type: 'architecture',
+      type: 'introduction',
       tags: ['core', 'infra'],
     })
 
@@ -167,7 +167,7 @@ describe('runDocsRename', () => {
 
     const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
     const content = indexer.getDocumentContent('my-doc') ?? ''
-    expect(content).toContain('Type: architecture')
+    expect(content).toContain('Type: introduction')
     expect(content).toContain('Tags: core, infra')
   })
 

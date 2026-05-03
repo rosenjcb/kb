@@ -38,7 +38,7 @@ const defaultProfile: AgentProfile = {
   label: 'Default worker',
   systemPrompt: loadPrompt('agent-default.md'),
   defaultMaxTurns: 6,
-  defaultAllowedTools: ['read_documents'],
+  defaultAllowedTools: ['read_facts'],
 }
 
 const researchProfile: AgentProfile = {
@@ -46,7 +46,7 @@ const researchProfile: AgentProfile = {
   label: 'Research worker',
   systemPrompt: loadPrompt('agent-research.md'),
   defaultMaxTurns: 8,
-  defaultAllowedTools: ['read_documents'],
+  defaultAllowedTools: ['read_facts'],
 }
 
 registerAgentProfile(defaultProfile)

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { executeChatQueryTruthRetrieval } from '../../src/cli/chat-query-orchestrator'
-import { isReadDocumentsResult } from '../../src/cli/intent-cli'
+import { isReadFactsResult } from '../../src/cli/intent-cli'
 import type { ToolExecutor } from '../../src/core/tool-registry'
 
 describe('chat-query-orchestrator', () => {
-  it('Given a mocked read_documents result, then returns accepted read_documents IntentResult', async () => {
+  it('Given a mocked read_facts result, then returns accepted read_facts IntentResult', async () => {
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
@@ -18,11 +18,10 @@ describe('chat-query-orchestrator', () => {
       toolExecutor: executor,
       expandedQuery: 'What is up?',
       retrievalLimit: 5,
-      workspaceDir: '/tmp',
     })
 
-    expect(isReadDocumentsResult(result)).toBe(true)
-    expect(result.explanation).toContain('read_documents')
+    expect(isReadFactsResult(result)).toBe(true)
+    expect(result.explanation).toContain('read_facts')
     expect(executor.execute).toHaveBeenCalled()
   })
 })

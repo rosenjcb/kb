@@ -6,9 +6,9 @@
  * `all` (init + metrics + 8×query) vs `query` (existing base only; still clones repo for cwd).
  *
  * Usage (kb repo root, after `pnpm run build`):
- *   node scripts/eval-run.mjs all --suite raylib [--auto-score]
- *   node scripts/eval-run.mjs all --suite kb
- *   node scripts/eval-run.mjs all --suite generic --repo https://github.com/org/repo.git
+ *   node scripts/eval-run.mjs init --suite raylib [--auto-score]   # init = same as legacy `all`
+ *   node scripts/eval-run.mjs init --suite kb
+ *   node scripts/eval-run.mjs init --suite generic --repo https://github.com/org/repo.git
  *   node scripts/eval-run.mjs query --suite raylib --base dogfood
  *
  * Suites: vendor id → `eval/suites/<id>.yaml` (raylib, kb, generic). `--suite-yaml PATH` for custom pack.
@@ -164,7 +164,7 @@ function loadSuiteFromPath(absPath) {
 function parseArgs(argv) {
   const mode = argv[2]
   const out = {
-    mode: mode === 'query' ? 'query' : mode === 'all' ? 'all' : null,
+    mode: mode === 'query' ? 'query' : mode === 'all' || mode === 'init' ? 'all' : null,
     suite: null,
     suiteYaml: null,
     repo: null,
@@ -227,11 +227,12 @@ function assertRemovedEvalFlags(argv) {
 function printHelp() {
   console.log(`eval-run.mjs — unified eval harvest (EVALUATION.md schema)
 
-  node scripts/eval-run.mjs <all|query> --suite <vendor-id> [--repo <git-url>] [options]
+  node scripts/eval-run.mjs <init|all|query> --suite <vendor-id> [--repo <git-url>] [options]
   Vendor packs: eval/suites/<id>.yaml (e.g. raylib, kb, generic). Custom: --suite-yaml /path/to/pack.yaml
 
 Modes:
-  all     Fresh clone → kb init + docs + graph + logs + 8× query
+  init    Fresh clone → kb init + docs + graph + logs + 8× query (preferred; same as \`all\`)
+  all     Alias of \`init\` (backward compatible)
   query   Fresh clone → same capture minus init; requires --base (KB session must already exist)
 
 Layout (per run, snapshot clone):

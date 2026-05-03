@@ -20,6 +20,20 @@ describe('ui/printer', () => {
     expect(lines).toEqual(['assistant> hello', 'retrieval> hybrid', 'sources> doc-1'])
   })
 
+  it('Given tui mode, separator routes as orchestration meta', () => {
+    const lines: string[] = []
+    const printer = createPrinter(
+      {
+        log: line => lines.push(line),
+        write: line => lines.push(line),
+        error: line => lines.push(line),
+      },
+      'tui'
+    )
+    printer.separator()
+    expect(lines).toEqual(['sep> —'])
+  })
+
   it('Given cli mode without tty, metadata uses orchestration wire lines', () => {
     const lines: string[] = []
     const printer = createPrinter(

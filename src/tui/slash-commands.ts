@@ -13,6 +13,7 @@ const SHELL_COMMANDS: SlashCommand[] = [
   { command: '/invalidate', description: 'remove or replace stale KB facts' },
   { command: '/chat', description: 'start interactive chat mode' },
   { command: '/docs', description: 'list or view knowledge base documents' },
+  { command: '/facts', description: 'list, search, or show KB facts (see kb facts --help)' },
   { command: '/graph', description: 'inspect or edit the knowledge graph (see kb graph --help)' },
   { command: '/publish', description: 'publish docs to the external sink' },
   { command: '/sync', description: 'fast-forward main, rebuild, and refresh kb' },
@@ -25,6 +26,8 @@ const SHELL_COMMANDS: SlashCommand[] = [
 
 const CHAT_COMMANDS: SlashCommand[] = [
   { command: '/help', description: 'show chat-mode controls' },
+  { command: '/docs', description: 'knowledge base documents (chat: /docs generate …)' },
+  { command: '/facts', description: 'list, search, or show KB facts' },
   { command: '/clear', description: 'clear the visible session history' },
   { command: '/exit', description: 'leave chat mode' },
 ]
