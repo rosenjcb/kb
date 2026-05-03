@@ -792,7 +792,7 @@ export async function runMainWithOutput(
                     break
                   }
                 } catch {
-                  // Relational graph context is optional; never block query.
+                  // Relation-path block is best-effort; never block query.
                 }
               }
             } finally {

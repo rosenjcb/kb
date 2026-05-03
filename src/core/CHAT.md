@@ -9,11 +9,10 @@ Chat is intentionally minimal:
 
 1. **Resolve the turn** — conversational mode may rewrite follow-ups into a standalone retrieval
    query (`src/cli/chat-conversation.ts`).
-2. **Optional graph expansion** — same helpers as CLI query when graph is enabled
-   (`expandQueryWithGraph`, relation block for the LLM prompt).
+2. **Graph expansion** — same helpers as CLI query (`expandQueryWithGraph`, relation block for the LLM prompt).
 3. **Run retrieval exactly like `kb query`** — both call **`runQueryTruthRetrieval()`** in
    `src/cli/query-truth-retrieval.ts`: `runIntentLoop` (same **`query_truth`** envelope the CLI
-   builds after optional graph expansion and **only** optional **`--session`** rewrite — default
+   builds after graph expansion and **only** optional **`--session`** rewrite — default
    CLI query uses the literal topic string, like chat) → router → **`read_facts`** (fact FTS +
    deep **`FactsQueryResearchOrchestrator`** when discovery is deep). **No** workspace markdown
    fallback. `DefaultIntentRouter` defaults **`query_truth`** to **`discoveryDepth: 'deep'`** when

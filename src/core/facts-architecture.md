@@ -11,7 +11,7 @@ This is the platform mental model for `kb query`, `kb docs generate`, ingest (`k
 | Surface | Role |
 |--------|------|
 | **`facts` / `facts_fts`** | Canonical store for retrieval, dedupe keys (`normalized_text`), provenance (`source_kind`, `source_ref`), tombstones, lanes. |
-| **`kb query` / chat** | **Target:** form answers **only** from retrieved facts (plus optional graph over fact-linked entities)—not from full document bodies as evidence. |
+| **`kb query` / chat** | **Target:** form answers **only** from retrieved facts (plus graph neighborhood over fact-linked entities)—not from full document bodies as evidence. |
 | **`kb docs generate`** | **Target:** generate documents **from facts** (questionnaire + LLM shaping), cite facts; documents are outputs, not inputs to retrieval. |
 
 ---

@@ -258,7 +258,7 @@ export async function runChatSession(
             const block = await formatGraphRelationBlockFromQuestion(deps.graphWriter, input)
             if (block) graphRelationBlock = block
           } catch {
-            // Optional relational graph context only.
+            // Relation-path block is best-effort.
           }
         }
         const initialRetrieval = await withStageProgress(
