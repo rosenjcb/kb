@@ -8,7 +8,7 @@ import {
   resolveGraphEnabled,
 } from '../src/cli/kb-config.js'
 import { DefaultIntentRouter } from '../src/intents/router.js'
-import { DuckGraphWriter } from '../src/tools/duck-graph-writer.js'
+import { KbGraphWriter } from '../src/tools/kb-graph-writer.js'
 import { invalidateFactTool } from '../src/tools/invalidate-fact-tool.js'
 import { createKBToolsRegistry } from '../src/tools/kb-tools-registry.js'
 
@@ -138,7 +138,7 @@ async function runVariant(
   const baseDir = await ensureOperationalBaseDir(variant.base, cwd)
   const toolExecutor = createKBToolsRegistry(baseDir, config)
   const graphWriter = resolveGraphEnabled(config)
-    ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(baseDir))
+    ? new KbGraphWriter(KbGraphWriter.dbPathForBase(baseDir))
     : undefined
 
   const router = new DefaultIntentRouter(toolExecutor)
@@ -233,7 +233,7 @@ async function runScenario(input: {
   name: string
   prompts: string[]
   toolExecutor: ReturnType<typeof createKBToolsRegistry>
-  graphWriter: DuckGraphWriter | undefined
+  graphWriter: KbGraphWriter | undefined
   llmProvider: NonNullable<ReturnType<typeof createLLMProviderFromConfig>>
   conversationalRetrieval: boolean
   scorer: (result: { traces: ChatTurnTrace[]; outputs: string[] }) => {

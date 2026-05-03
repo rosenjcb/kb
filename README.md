@@ -5,7 +5,7 @@
 
 <p align="center">
   <a href="#"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="license" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg" alt="node version" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg" alt="node version" /></a>
 </p>
 
 KB is a local-first knowledge layer for development workflows.
@@ -39,12 +39,12 @@ npm run refresh:global
 command -v kb
 ```
 
-KB expects `Node 20+` in the shell that runs `kb`.
+KB expects `Node 22+` in the shell that runs `kb`.
 
-For installed clients, the supported release path is GitHub Releases. CI builds a fresh `kb-cli-node20.tgz` package for every push to `main` right now, and you can install or upgrade it with:
+For installed clients, the supported release path is GitHub Releases. CI builds a fresh `kb-cli-node22.tgz` package for every push to `main` right now, and you can install or upgrade it with:
 
 ```bash
-npm install -g ./kb-cli-node20.tgz
+npm install -g ./kb-cli-node22.tgz
 ```
 
 ### 2) Configure `~/.kb/config.json`
@@ -128,7 +128,7 @@ kb chat [--verbose] [--debug] [--base <name>]
 kb sync
 ```
 
-`kb sync` does not use your current project directory. It keeps a managed clone of `https://github.com/rosenjcb/kb.git` under `~/.kb/sources/kb`, fast-forwards `main`, runs `pnpm install --frozen-lockfile`, rebuilds the CLI, and refreshes the global `kb` link. It will complain early if the current shell is not running `Node 20+`.
+`kb sync` does not use your current project directory. It keeps a managed clone of `https://github.com/rosenjcb/kb.git` under `~/.kb/sources/kb`, fast-forwards `main`, runs `pnpm install --frozen-lockfile`, rebuilds the CLI, and refreshes the global `kb` link. It will complain early if the current shell is not running `Node 22+`.
 
 If you just want the supported shipped client, prefer installing the latest CI-built release package from GitHub Releases instead of using `kb sync`.
 

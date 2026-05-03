@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@duckdb/node-api':
-        specifier: ^1.1.3-alpha.12
-        version: 1.1.3-alpha.12
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
         version: 1.29.0(zod@3.25.76)
@@ -18,8 +15,8 @@ importers:
         specifier: ^1.6.0
         version: 1.15.0
       better-sqlite3:
-        specifier: ^12.8.0
-        version: 12.8.0
+        specifier: ^12.9.0
+        version: 12.9.0
       chalk:
         specifier: ^5.3.0
         version: 5.6.2
@@ -67,8 +64,8 @@ importers:
         specifier: ^4.0.9
         version: 4.0.9
       '@types/node':
-        specifier: ^20.19.39
-        version: 20.19.39
+        specifier: ^22.10.0
+        version: 22.19.17
       '@types/react':
         specifier: ^18.3.28
         version: 18.3.28
@@ -86,7 +83,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^3.2.4
-        version: 3.2.4(@types/node@20.19.39)(tsx@4.21.0)
+        version: 3.2.4(@types/node@22.19.17)(tsx@4.21.0)
 
 packages:
 
@@ -150,37 +147,6 @@ packages:
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [win32]
-
-  '@duckdb/node-api@1.1.3-alpha.12':
-    resolution: {integrity: sha512-7n4o3/IFVrhvsyGlogueK0J5Y2EMwoN4hWM5IXNe9EwZ+zyvPU/JJEDaRwaWCjXtECfYLz6H7CKDorhvssHl4A==}
-
-  '@duckdb/node-bindings-darwin-arm64@1.1.3-alpha.12':
-    resolution: {integrity: sha512-fuO+r4Y2qkrnbBs2FsUsgJ5p4sUOcsu0LTexz4HMnC7WkVcQK308n/+ILbZ8VSztjQR7UhNlfy4grGKUnGRzKg==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@duckdb/node-bindings-darwin-x64@1.1.3-alpha.12':
-    resolution: {integrity: sha512-97jw6ZO0ZO7YLJx83ifUg9Fsm7hKPeqNJi+AJSbSxmx9D3dWI7ndeBCMLX7CX8DW4Jjm6tZH7+VmLVrjt2vjQg==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@duckdb/node-bindings-linux-arm64@1.1.3-alpha.12':
-    resolution: {integrity: sha512-+3/ASrQoA5nPdoQofFGjtjklaYndW/UlUyzfHuUVxs21EfPZi4LI+6N0BA+78kPI1wHYHn1+4La0pc2wA6bzfg==}
-    cpu: [arm64]
-    os: [linux]
-
-  '@duckdb/node-bindings-linux-x64@1.1.3-alpha.12':
-    resolution: {integrity: sha512-kuAXWslGSPWZp5ienlV0LtSTO72Fhhst6qPbBxX59HeJLpCS4ZHkU9FNYKgXU8HziYh/3G81c/vBvqBgRKYbSA==}
-    cpu: [x64]
-    os: [linux]
-
-  '@duckdb/node-bindings-win32-x64@1.1.3-alpha.12':
-    resolution: {integrity: sha512-6JeeQR9Fs8WcBF22TkDjWWnpte5ijxnBlvpov154dBKbFDZMh5L43zYmfcvamtnzYtqfhkhox1LDIkSovyHZwQ==}
-    cpu: [x64]
-    os: [win32]
-
-  '@duckdb/node-bindings@1.1.3-alpha.12':
-    resolution: {integrity: sha512-I89ljU1Xnyrwv9W2Eel0NQQgjRH0JmOexmRBUrOdw3K+ajoDSe3Bdmd0WeI4kW1p5AWCVe7qG/YnGdM0AsS5JQ==}
 
   '@esbuild/aix-ppc64@0.25.12':
     resolution: {integrity: sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA==}
@@ -678,8 +644,8 @@ packages:
   '@types/js-yaml@4.0.9':
     resolution: {integrity: sha512-k4MGaQl5TGo/iipqb2UDG2UwjXziSWkh0uysQelTlJpX1qGlpUZYm8PnO4DxG1qBomtJUdYJ6qR6xdIah10JLg==}
 
-  '@types/node@20.19.39':
-    resolution: {integrity: sha512-orrrD74MBUyK8jOAD/r0+lfa1I2MO6I+vAkmAWzMYbCcgrN4lCrmK52gRFQq/JRxfYPfonkr4b0jcY7Olqdqbw==}
+  '@types/node@22.19.17':
+    resolution: {integrity: sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q==}
 
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
@@ -763,8 +729,8 @@ packages:
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
 
-  better-sqlite3@12.8.0:
-    resolution: {integrity: sha512-RxD2Vd96sQDjQr20kdP+F+dK/1OUNiVOl200vKBZY8u0vTwysfolF6Hq+3ZK2+h8My9YvZhHsF+RSGZW2VYrPQ==}
+  better-sqlite3@12.9.0:
+    resolution: {integrity: sha512-wqUv4Gm3toFpHDQmaKD4QhZm3g1DjUBI0yzS4UBl6lElUmXFYdTQmmEDpAFa5o8FiFiymURypEnfVHzILKaxqQ==}
     engines: {node: 20.x || 22.x || 23.x || 24.x || 25.x}
 
   bindings@1.5.0:
@@ -1821,33 +1787,6 @@ snapshots:
   '@biomejs/cli-win32-x64@1.9.4':
     optional: true
 
-  '@duckdb/node-api@1.1.3-alpha.12':
-    dependencies:
-      '@duckdb/node-bindings': 1.1.3-alpha.12
-
-  '@duckdb/node-bindings-darwin-arm64@1.1.3-alpha.12':
-    optional: true
-
-  '@duckdb/node-bindings-darwin-x64@1.1.3-alpha.12':
-    optional: true
-
-  '@duckdb/node-bindings-linux-arm64@1.1.3-alpha.12':
-    optional: true
-
-  '@duckdb/node-bindings-linux-x64@1.1.3-alpha.12':
-    optional: true
-
-  '@duckdb/node-bindings-win32-x64@1.1.3-alpha.12':
-    optional: true
-
-  '@duckdb/node-bindings@1.1.3-alpha.12':
-    optionalDependencies:
-      '@duckdb/node-bindings-darwin-arm64': 1.1.3-alpha.12
-      '@duckdb/node-bindings-darwin-x64': 1.1.3-alpha.12
-      '@duckdb/node-bindings-linux-arm64': 1.1.3-alpha.12
-      '@duckdb/node-bindings-linux-x64': 1.1.3-alpha.12
-      '@duckdb/node-bindings-win32-x64': 1.1.3-alpha.12
-
   '@esbuild/aix-ppc64@0.25.12':
     optional: true
 
@@ -2121,7 +2060,7 @@ snapshots:
 
   '@types/better-sqlite3@7.6.13':
     dependencies:
-      '@types/node': 20.19.39
+      '@types/node': 22.19.17
 
   '@types/chai@5.2.3':
     dependencies:
@@ -2134,7 +2073,7 @@ snapshots:
 
   '@types/js-yaml@4.0.9': {}
 
-  '@types/node@20.19.39':
+  '@types/node@22.19.17':
     dependencies:
       undici-types: 6.21.0
 
@@ -2153,13 +2092,13 @@ snapshots:
       chai: 5.3.3
       tinyrainbow: 2.0.0
 
-  '@vitest/mocker@3.2.4(vite@7.3.2(@types/node@20.19.39)(tsx@4.21.0))':
+  '@vitest/mocker@3.2.4(vite@7.3.2(@types/node@22.19.17)(tsx@4.21.0))':
     dependencies:
       '@vitest/spy': 3.2.4
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 7.3.2(@types/node@20.19.39)(tsx@4.21.0)
+      vite: 7.3.2(@types/node@22.19.17)(tsx@4.21.0)
 
   '@vitest/pretty-format@3.2.4':
     dependencies:
@@ -2229,7 +2168,7 @@ snapshots:
 
   base64-js@1.5.1: {}
 
-  better-sqlite3@12.8.0:
+  better-sqlite3@12.9.0:
     dependencies:
       bindings: 1.5.0
       prebuild-install: 7.1.3
@@ -3174,13 +3113,13 @@ snapshots:
 
   vary@1.1.2: {}
 
-  vite-node@3.2.4(@types/node@20.19.39)(tsx@4.21.0):
+  vite-node@3.2.4(@types/node@22.19.17)(tsx@4.21.0):
     dependencies:
       cac: 6.7.14
       debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 2.0.3
-      vite: 7.3.2(@types/node@20.19.39)(tsx@4.21.0)
+      vite: 7.3.2(@types/node@22.19.17)(tsx@4.21.0)
     transitivePeerDependencies:
       - '@types/node'
       - jiti
@@ -3195,7 +3134,7 @@ snapshots:
       - tsx
       - yaml
 
-  vite@7.3.2(@types/node@20.19.39)(tsx@4.21.0):
+  vite@7.3.2(@types/node@22.19.17)(tsx@4.21.0):
     dependencies:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
@@ -3204,15 +3143,15 @@ snapshots:
       rollup: 4.60.1
       tinyglobby: 0.2.16
     optionalDependencies:
-      '@types/node': 20.19.39
+      '@types/node': 22.19.17
       fsevents: 2.3.3
       tsx: 4.21.0
 
-  vitest@3.2.4(@types/node@20.19.39)(tsx@4.21.0):
+  vitest@3.2.4(@types/node@22.19.17)(tsx@4.21.0):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.4
-      '@vitest/mocker': 3.2.4(vite@7.3.2(@types/node@20.19.39)(tsx@4.21.0))
+      '@vitest/mocker': 3.2.4(vite@7.3.2(@types/node@22.19.17)(tsx@4.21.0))
       '@vitest/pretty-format': 3.2.4
       '@vitest/runner': 3.2.4
       '@vitest/snapshot': 3.2.4
@@ -3230,11 +3169,11 @@ snapshots:
       tinyglobby: 0.2.16
       tinypool: 1.1.1
       tinyrainbow: 2.0.0
-      vite: 7.3.2(@types/node@20.19.39)(tsx@4.21.0)
-      vite-node: 3.2.4(@types/node@20.19.39)(tsx@4.21.0)
+      vite: 7.3.2(@types/node@22.19.17)(tsx@4.21.0)
+      vite-node: 3.2.4(@types/node@22.19.17)(tsx@4.21.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@types/node': 20.19.39
+      '@types/node': 22.19.17
     transitivePeerDependencies:
       - jiti
       - less

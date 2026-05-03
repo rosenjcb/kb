@@ -6,7 +6,7 @@ import { getKbHomeDir } from './base-selection'
 import { type CmdMode, cmd } from './cmd-ref'
 
 const CANONICAL_REPO_URL = 'https://github.com/rosenjcb/kb.git'
-const MIN_NODE_MAJOR = 20
+const MIN_NODE_MAJOR = 22
 
 export interface SyncCommandOptions {
   cwd?: string

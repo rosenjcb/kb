@@ -36,7 +36,7 @@ import { TokenCountingProvider, estimateCost } from '../core/telemetry'
 import type { LLMProvider, LLMStructuredJsonRequest } from '../core/types'
 import { loadPromptParts } from '../prompts/loader'
 import type { WriteDocumentInput } from '../tools/document-writer'
-import { DuckGraphWriter } from '../tools/duck-graph-writer'
+import { KbGraphWriter } from '../tools/kb-graph-writer'
 import { extractGraphBatch } from '../tools/graph-entity-extractor'
 import {
   type RunRescanApplyOrchestratorResult,
@@ -809,9 +809,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           endPassGraph()
           graphPassOutcome = 'extracted'
           await persist({ completedCycles: ['pass-graph'] })
-          progress.finish('pass-graph', 'graph written to .kb-graph.duckdb')
+          progress.finish('pass-graph', 'graph written to .kb-index.sqlite')
         } catch (err) {
-          // Graph extraction failed. The DuckDB transaction was rolled back, so
+          // Graph extraction failed. The graph transaction was rolled back, so
           // the DB is clean. Mark pass-graph complete so plain `kb init` does not
           // retry endlessly; the user can force a retry with `kb init --rescan`.
           graphError = err instanceof Error ? err.message : String(err)
@@ -1526,8 +1526,8 @@ async function runGraphExtractionPass(provider: LLMProvider, baseDir: string): P
 
   if (docs.length === 0) return
 
-  const graphPath = DuckGraphWriter.dbPathForBase(baseDir)
-  const writer = new DuckGraphWriter(graphPath)
+  const graphPath = KbGraphWriter.dbPathForBase(baseDir)
+  const writer = new KbGraphWriter(graphPath)
   try {
     await writer.open()
     const { entities, relationships } = await extractGraphBatch(docs, provider)

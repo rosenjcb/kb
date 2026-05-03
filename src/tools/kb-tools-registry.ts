@@ -16,7 +16,7 @@ import type { StreamManager } from '../core/runtime/stream-manager'
 import type { ToolExecutor } from '../core/tool-registry'
 import { createToolRegistry } from '../core/tool-registry'
 import type { LLMProvider, ToolDefinition } from '../core/types'
-import { DuckGraphWriter } from './duck-graph-writer'
+import { KbGraphWriter } from './kb-graph-writer'
 import { FactsDocumentReader } from './facts-document-reader'
 import { extractGraph } from './graph-entity-extractor'
 import { invalidateFactTool } from './invalidate-fact-tool'
@@ -181,7 +181,7 @@ export function createKBToolsRegistry(
 
   const upsertGraphFromTextToolDef: ToolDefinition = {
     name: 'upsert_graph_from_text',
-    description: 'Extract graph entities/relationships from text and upsert them into DuckDB',
+    description: 'Extract graph entities/relationships from text and upsert them into the KB graph store',
     schema: {
       type: 'object',
       properties: {
@@ -219,7 +219,7 @@ export function createKBToolsRegistry(
       return { enabled: true, entities: 0, relationships: 0 }
     }
 
-    const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(storageDir))
+    const graphWriter = new KbGraphWriter(KbGraphWriter.dbPathForBase(storageDir))
     await graphWriter.open()
     try {
       if (entities.length > 0) await graphWriter.upsertEntities(entities)
@@ -265,7 +265,7 @@ export function createKBToolsRegistry(
       return { enabled: true, invalidatedRelationships: 0, documentIds: [] as string[] }
     }
 
-    const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(storageDir))
+    const graphWriter = new KbGraphWriter(KbGraphWriter.dbPathForBase(storageDir))
     let invalidatedRelationships = 0
     await graphWriter.open()
     try {

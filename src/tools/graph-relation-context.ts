@@ -1,4 +1,4 @@
-import type { DuckGraphWriter } from './duck-graph-writer'
+import type { KbGraphWriter } from './kb-graph-writer'
 
 export interface RelationalConceptPair {
   phraseA: string
@@ -42,7 +42,7 @@ export function parseRelationalConceptPair(query: string): RelationalConceptPair
 }
 
 export async function formatGraphRelationBlockForPair(
-  writer: DuckGraphWriter,
+  writer: KbGraphWriter,
   pair: RelationalConceptPair
 ): Promise<string> {
   const { phraseA: a, phraseB: b } = pair
@@ -84,7 +84,7 @@ export async function formatGraphRelationBlockForPair(
  * for LLM grounding. Returns null when the question is not treated as relational.
  */
 export async function formatGraphRelationBlockFromQuestion(
-  writer: DuckGraphWriter,
+  writer: KbGraphWriter,
   query: string
 ): Promise<string | null> {
   const pair = parseRelationalConceptPair(query)

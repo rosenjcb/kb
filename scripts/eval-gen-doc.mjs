@@ -147,7 +147,7 @@ const HOWTO = {
   answers: [
     ['documentTitle', 'kb init howto eval smoke'],
     ['goal', 'Create or refresh a project KB from markdown so kb query returns grounded answers.'],
-    ['prereqs', 'Node 20+, kb on PATH, repo + ~/.kb write access, optional LLM keys.'],
+    ['prereqs', 'Node 22+, kb on PATH, repo + ~/.kb write access, optional LLM keys.'],
     [
       'steps',
       'cd repo; kb init --base NAME --non-interactive; kb base use NAME; kb init --base NAME --rescan then --rescan --apply when ready; kb docs list --base NAME.',

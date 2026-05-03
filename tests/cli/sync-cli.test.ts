@@ -20,7 +20,7 @@ describe('sync-cli', () => {
   it('Given --help, then prints sync help', () => {
     expect(printSyncHelp()).toContain('kb sync command')
     expect(printSyncHelp()).toContain('~/.kb/sources/kb')
-    expect(printSyncHelp()).toContain('Node 20+')
+    expect(printSyncHelp()).toContain('Node 22+')
     expect(printSyncHelp()).toContain('installs deps')
     expect(printSyncHelp('tui')).toContain('/sync command')
   })

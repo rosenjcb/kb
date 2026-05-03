@@ -11,7 +11,7 @@ import {
   defaultLogsDir,
   estimateCost,
 } from '../core/telemetry'
-import { DuckGraphWriter } from '../tools/duck-graph-writer'
+import { KbGraphWriter } from '../tools/kb-graph-writer'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
@@ -404,7 +404,7 @@ export async function runMainWithOutput(
 
     const toolExecutor = createKBToolsRegistry(kbStorageDir, config, { taskProvider: llmProvider })
     const chatGraphWriter = resolveGraphEnabled(config)
-      ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(kbStorageDir))
+      ? new KbGraphWriter(KbGraphWriter.dbPathForBase(kbStorageDir))
       : undefined
     out.log(`🗂️ KB Storage: ${kbStorageDir}`)
     out.log('')
@@ -779,7 +779,7 @@ export async function runMainWithOutput(
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
         if (originalQuery) {
           try {
-            const graphWriter = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(intentBaseDir))
+            const graphWriter = new KbGraphWriter(KbGraphWriter.dbPathForBase(intentBaseDir))
             await graphWriter.open()
             try {
               payload.query = await expandQueryWithGraph(originalQuery, graphWriter)

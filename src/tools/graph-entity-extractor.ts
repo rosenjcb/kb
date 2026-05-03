@@ -14,7 +14,7 @@ import type {
   GraphEntity,
   GraphRelationship,
   RelationshipType,
-} from './duck-graph-writer'
+} from './kb-graph-writer'
 
 export interface ExtractedGraph {
   entities: GraphEntity[]
