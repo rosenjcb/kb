@@ -646,6 +646,7 @@ describe('init-cli interview checkpoints', () => {
       'README.md': '# Project\n\nOverview.\n',
       'AGENTS.md': '# Agents\n\nAgent rules.\n',
       'CLAUDE.md': '# Claude\n\nWorkflow hints.\n',
+      'docs/deep/nested.md': '# Nested\n\nDeep file.\n',
     })
     const provider = createProvider([])
 
@@ -664,12 +665,12 @@ describe('init-cli interview checkpoints', () => {
       candidateDocs?: Array<{ title: string; isOriginal?: boolean }>
     }
     const originals = checkpoint.candidateDocs?.filter(d => d.isOriginal) ?? []
-    expect(originals).toHaveLength(3)
+    expect(originals).toHaveLength(4)
     const titles = originals.map(d => d.title).sort()
-    expect(titles).toEqual(['AGENTS.md', 'CLAUDE.md', 'README.md'])
+    expect(titles).toEqual(['AGENTS.md', 'CLAUDE.md', 'README.md', 'docs/deep/nested.md'])
   })
 
-  it('Given --rescan and existing source snapshots, then read-inputs keeps only changed/new README files', async () => {
+  it('Given --rescan, then read-inputs loads all markdown sources under cwd', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
@@ -712,7 +713,7 @@ describe('init-cli interview checkpoints', () => {
       context?: { sourceFiles?: Record<string, string> }
     }
     const sourceFileKeys = Object.keys(checkpoint.context?.sourceFiles ?? {}).sort()
-    expect(sourceFileKeys).toEqual(['docs/README.md'])
+    expect(sourceFileKeys).toEqual(['AGENTS.md', 'README.md', 'docs/README.md'])
   })
 
   it('Given --rescan --dry-run, then write cycle prints plan diff and performs no mutations', async () => {
