@@ -1,23 +1,21 @@
 ---
 layout: default
-title: EVALUATION.md - Canonical Question Set
-date: '2026-04-27'
-kb_id: evaluation-md-canonical-question-set
+title: EVALUATION.md - Evaluation Design
+date: '2026-05-03'
+kb_id: evaluation-md-evaluation-design
 tags:
   - source-excerpt
   - evaluation-md
-  - dogfood
+  - kb
 categories:
   - reference
 ---
 
-## Canonical Question Set.
-Use these raylib-adapted questions for all runs. If revised, copy the old suite forward and record the change in the artifact.
-1. What is raylib for, and what are its main capabilities?
-2. How does raylib's architecture work, including modules and platform support?
-3. How do I install and build raylib, including dependencies and build systems?
-4. What configuration options and compile flags does raylib support?
-5. How does raylib handle graphics backends and platform-specific rendering?
-6. What are the coding conventions and style guidelines for contributing to raylib?
-7. What are the main gotchas, constraints, and known limitations of raylib?
-8. What does the raylib roadmap say about future plans, and what is the recent version history?
+## Evaluation Design.
+This evaluation should be run at least twice against the same codebase snapshot or equivalent branch state:
+1. Baseline run:
+- Build the KB from scratch with the normal workflow.
+- No special second-agent KB-maintenance strategy beyond answering `kb init` questions accurately.
+2. Comparison run:
+- Repeat on a fresh disposable base after using the intended two-agent workflow.
+- Keep the question set, scoring rubric, and artifact schema identical.

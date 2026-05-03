@@ -8,34 +8,28 @@ docs:
     url: /philosophy-3.html
   - title: PHILOSOPHY.md Part 1
     url: /philosophy-4.html
-  - title: EVALUATION.md - Scoring Rubric
-    url: /evaluation.html
-  - title: EVALUATION.md - Canonical Question Set
-    url: /evaluation-2.html
   - title: EVALUATION.md - Standard Procedure
-    url: /evaluation-3.html
+    url: /evaluation.html
   - title: EVALUATION.md - Evaluation Design
-    url: /evaluation-4.html
+    url: /evaluation-2.html
   - title: EVALUATION.md - Automated harvest (`scripts/eval-run.mjs`)
     url: /eval-run.html
   - title: EVALUATION.md - Evaluation Target
-    url: /evaluation-5.html
+    url: /evaluation-3.html
   - title: EVALUATION.md - Secondary Questions
-    url: /evaluation-6.html
+    url: /evaluation-4.html
   - title: EVALUATION.md - Primary Question
-    url: /evaluation-7.html
+    url: /evaluation-5.html
   - title: EVALUATION.md - Goal
-    url: /evaluation-8.html
+    url: /evaluation-6.html
   - title: DESIGN.md - Source Structure
     url: /design.html
   - title: DESIGN.md - Interactive Commands
     url: /design-2.html
-  - title: DESIGN.md - TUI vs One-Shot
-    url: /design-3.html
   - title: DESIGN.md - Layout
-    url: /design-4.html
+    url: /design-3.html
   - title: DESIGN.md - Color Scheme
-    url: /design-5.html
+    url: /design-4.html
   - title: CLAUDE.md - Dogfooding
     url: /claude.html
   - title: CLAUDE.md - Composability first

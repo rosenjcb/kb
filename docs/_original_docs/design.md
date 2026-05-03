@@ -1,12 +1,12 @@
 ---
 layout: default
 title: DESIGN.md - Source Structure
-date: '2026-04-27'
+date: '2026-05-03'
 kb_id: design-md-source-structure
 tags:
   - source-excerpt
   - design-md
-  - dogfood
+  - kb
 categories:
   - reference
 ---

@@ -1,21 +1,19 @@
 ---
 layout: default
-title: EVALUATION.md - Evaluation Design
-date: '2026-04-27'
-kb_id: evaluation-md-evaluation-design
+title: EVALUATION.md - Secondary Questions
+date: '2026-05-03'
+kb_id: evaluation-md-secondary-questions
 tags:
   - source-excerpt
   - evaluation-md
-  - dogfood
+  - kb
 categories:
   - reference
 ---
 
-## Evaluation Design.
-This evaluation should be run at least twice against the same codebase snapshot or equivalent branch state:
-1. Baseline run:
-- Build the KB from scratch with the normal workflow.
-- No special second-agent KB-maintenance strategy beyond answering `kb init` questions accurately.
-2. Comparison run:
-- Repeat on a fresh disposable base after using the intended two-agent workflow.
-- Keep the question set, scoring rubric, and artifact schema identical.
+## Secondary Questions.
+1. Does `kb init` produce a usable knowledge base from the current repo without manual surgery?
+2. Does the resulting KB support both retrieval-style questions (`kb query`) and synthesis-style questions (`kb chat`) across multiple topic areas?
+3. Is the resulting graph store populated enough to plausibly improve retrieval and follow-up questioning?
+4. What is the cost of producing this KB in time, tokens, and operator effort?
+5. In a later comparison run, does a dedicated KB-maintenance agent improve outcomes versus a single-agent baseline?

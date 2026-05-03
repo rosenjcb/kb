@@ -1,12 +1,12 @@
 ---
 layout: default
 title: CLAUDE.md - TUI / CLI parity
-date: '2026-04-27'
+date: '2026-05-03'
 kb_id: claude-md-tui-cli-parity
 tags:
   - source-excerpt
   - claude-md
-  - dogfood
+  - kb
 categories:
   - reference
 ---

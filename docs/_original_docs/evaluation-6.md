@@ -1,19 +1,18 @@
 ---
 layout: default
-title: EVALUATION.md - Secondary Questions
-date: '2026-04-27'
-kb_id: evaluation-md-secondary-questions
+title: EVALUATION.md - Goal
+date: '2026-05-03'
+kb_id: evaluation-md-goal
 tags:
   - source-excerpt
   - evaluation-md
-  - dogfood
+  - kb
 categories:
   - reference
 ---
 
-## Secondary Questions.
-1. Does `kb init` produce a usable knowledge base from the current repo without manual surgery?
-2. Does the resulting KB support both retrieval-style questions (`kb query`) and synthesis-style questions (`kb chat`) across multiple topic areas?
-3. Is the resulting graph store populated enough to plausibly improve retrieval and follow-up questioning?
-4. What is the cost of producing this KB in time, tokens, and operator effort?
-5. In a later comparison run, does a dedicated KB-maintenance agent improve outcomes versus a single-agent baseline?
+## Goal.
+Evaluate whether building and maintaining a `kb` knowledge base is materially useful for real development work, and whether a split workflow works better:
+- Agent A builds the product/codebase.
+- Agent B maintains and refreshes the knowledge base.
+The core hypothesis is that this produces better systems faster, with lower token cost, better requirement capture, and better recall of project knowledge than relying on the primary coding agent's transient context alone.

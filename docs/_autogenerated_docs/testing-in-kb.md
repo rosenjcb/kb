@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Testing in KB
-date: '2026-04-27'
+date: '2026-05-03'
 kb_id: testing-in-kb
 tags:
   - testing
@@ -9,13 +9,13 @@ tags:
   - development
   - source-excerpt
   - claude-md
-  - dogfood
+  - kb
   - testing-md
 categories:
   - reference
 ---
 
-Testing in KB uses Vitest as its test runner, which can be executed with `npm test` for a single pass or `npm run test:watch` for continuous testing. Test files mirror the source file layout, for example, `src/cli/publish-jekyll.ts` corresponds to `tests/cli/publish-jekyll.test.ts`. Tests should cover all exported functions with non-trivial logic, error paths, edge cases, and CLI parsers, including flag parsing, defaults, and conflict detection. Implementation details, private helpers, third-party library behavior, trivial getters, type-only exports, and features requiring a live LLM or network should not be directly tested. Mocking prefers real filesystems using `mkdtemp` and `rm` in `beforeEach` and `afterEach` hooks, and `vi.spyOn` for side effects. The SQLite layer should not be mocked; instead, a real in-memory DB via `better-sqlite3` should be used. A pre-commit gate, `npm run precommit`, runs lint, type-check, and the full test suite, all of which must pass before pushing.
+Testing in the KB project is primarily done using Vitest. Tests are run with `npm test` for a single pass or `npm run test:watch` for continuous monitoring. The file layout for tests mirrors the source files, with test files residing in a `tests/` directory that reflects the `src/` structure (e.g., `src/cli/publish-jekyll.ts` has a corresponding test at `tests/cli/publish-jekyll.test.ts`). Naming conventions for tests follow a `describe('module or class name', () => { it('Given <precondition>, then <expected outcome>', async () => { ... }) })` pattern. All exported functions with non-trivial logic, error paths, edge cases, and CLI parsers should be tested. Implementation details, private helpers, third-party library behavior, trivial getters, type-only exports, and features requiring a live LLM or network are explicitly not to be tested, with `it.todo` used to mark future tests for LLM/network-dependent features. Mocking prefers real filesystems using `mkdtemp`/`rm` in `beforeEach`/`afterEach` hooks, `vi.spyOn` for side effects, and avoids mocking the SQLite layer by using a real in-memory DB via `better-sqlite3`. A pre-commit gate, `npm run precommit`, runs lint, type-check, and the full test suite, all of which must pass before pushing changes.
 ## Testing
 All non-trivial logic needs unit tests before a PR merges. See [TESTING.md](TESTING.md) for naming conventions, file layout, and what to cover.
 Pre-commit gate: `npm run precommit` (lint + type-check + tests). Must pass before pushing.

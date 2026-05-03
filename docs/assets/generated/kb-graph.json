@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-28T04:36:37.596Z",
+  "generatedAt": "2026-05-03T22:31:33.065Z",
   "entities": [
     {
       "id": "transparency-without-effort",
@@ -77,84 +77,6 @@
       "id": "evaluation-md",
       "name": "EVALUATION.md",
       "type": "concept",
-      "docId": "evaluation-md-scoring-rubric"
-    },
-    {
-      "id": "scoring-rubric",
-      "name": "Scoring Rubric",
-      "type": "concept",
-      "docId": "evaluation-md-scoring-rubric"
-    },
-    {
-      "id": "correctness",
-      "name": "Correctness",
-      "type": "concept",
-      "docId": "evaluation-md-scoring-rubric"
-    },
-    {
-      "id": "canonical-question-set",
-      "name": "Canonical Question Set",
-      "type": "concept",
-      "docId": "evaluation-md-canonical-question-set"
-    },
-    {
-      "id": "raylib",
-      "name": "raylib",
-      "type": "system",
-      "docId": "evaluation-md-canonical-question-set"
-    },
-    {
-      "id": "raylib-architecture",
-      "name": "raylib's architecture",
-      "type": "concept",
-      "docId": "evaluation-md-canonical-question-set"
-    },
-    {
-      "id": "raylib-installation",
-      "name": "install and build raylib",
-      "type": "concept",
-      "docId": "evaluation-md-canonical-question-set"
-    },
-    {
-      "id": "raylib-configuration",
-      "name": "raylib configuration options and compile flags",
-      "type": "concept",
-      "docId": "evaluation-md-canonical-question-set"
-    },
-    {
-      "id": "raylib-graphics-backends",
-      "name": "raylib graphics backends and platform-specific rendering",
-      "type": "concept",
-      "docId": "evaluation-md-canonical-question-set"
-    },
-    {
-      "id": "raylib-coding-conventions",
-      "name": "raylib coding conventions and style guidelines",
-      "type": "concept",
-      "docId": "evaluation-md-canonical-question-set"
-    },
-    {
-      "id": "raylib-limitations",
-      "name": "raylib gotchas, constraints, and known limitations",
-      "type": "concept",
-      "docId": "evaluation-md-canonical-question-set"
-    },
-    {
-      "id": "raylib-roadmap",
-      "name": "raylib roadmap",
-      "type": "concept",
-      "docId": "evaluation-md-canonical-question-set"
-    },
-    {
-      "id": "raylib-version-history",
-      "name": "raylib recent version history",
-      "type": "concept",
-      "docId": "evaluation-md-canonical-question-set"
-    },
-    {
-      "id": "standard-procedure",
-      "name": "Standard Procedure",
-      "type": "concept",
       "docId": "evaluation-md-standard-procedure"
     },
     {
@@ -182,74 +104,14 @@
       "docId": "evaluation-md-standard-procedure"
     },
     {
-      "id": "run-metadata",
-      "name": "run metadata",
-      "type": "concept",
-      "docId": "evaluation-md-standard-procedure"
-    },
-    {
-      "id": "build-metrics",
-      "name": "Build Metrics",
-      "type": "concept",
-      "docId": "evaluation-md-standard-procedure"
-    },
-    {
       "id": "kb-logs",
       "name": "kb logs",
       "type": "tool",
       "docId": "evaluation-md-standard-procedure"
     },
     {
-      "id": "answer-quality",
-      "name": "Answer Quality",
-      "type": "concept",
-      "docId": "evaluation-md-standard-procedure"
-    },
-    {
       "id": "kb-query",
       "name": "kb query",
-      "type": "tool",
-      "docId": "evaluation-md-standard-procedure"
-    },
-    {
-      "id": "ci-raylib-date",
-      "name": "ci-raylib-<date>",
-      "type": "concept",
-      "docId": "evaluation-md-standard-procedure"
-    },
-    {
-      "id": "kb-chat",
-      "name": "kb chat",
-      "type": "tool",
-      "docId": "evaluation-md-standard-procedure"
-    },
-    {
-      "id": "rubric-score",
-      "name": "rubric score",
-      "type": "concept",
-      "docId": "evaluation-md-standard-procedure"
-    },
-    {
-      "id": "auto-score",
-      "name": "--auto-score",
-      "type": "concept",
-      "docId": "evaluation-md-standard-procedure"
-    },
-    {
-      "id": "eval-runner",
-      "name": "eval runner",
-      "type": "tool",
-      "docId": "evaluation-md-standard-procedure"
-    },
-    {
-      "id": "kb-publish",
-      "name": "kb publish",
-      "type": "tool",
-      "docId": "evaluation-md-standard-procedure"
-    },
-    {
-      "id": "jekyll",
-      "name": "jekyll",
       "type": "tool",
       "docId": "evaluation-md-standard-procedure"
     },
@@ -262,12 +124,6 @@
     {
       "id": "baseline-run",
       "name": "Baseline run",
-      "type": "concept",
-      "docId": "evaluation-md-evaluation-design"
-    },
-    {
-      "id": "kb-build",
-      "name": "Build the KB",
       "type": "concept",
       "docId": "evaluation-md-evaluation-design"
     },
@@ -296,6 +152,12 @@
       "docId": "evaluation-md-evaluation-design"
     },
     {
+      "id": "scoring-rubric",
+      "name": "scoring rubric",
+      "type": "concept",
+      "docId": "evaluation-md-evaluation-design"
+    },
+    {
       "id": "artifact-schema",
       "name": "artifact schema",
       "type": "concept",
@@ -308,8 +170,8 @@
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
     {
-      "id": "disposable-base-harvests",
-      "name": "disposable-base harvests",
+      "id": "suite-yaml",
+      "name": "suite YAML",
       "type": "concept",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
@@ -320,56 +182,32 @@
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
     {
-      "id": "suite-yaml",
-      "name": "suite YAML",
-      "type": "concept",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
-    },
-    {
-      "id": "repo-override",
-      "name": "--repo override",
-      "type": "concept",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
-    },
-    {
       "id": "fresh-snapshot-clone",
       "name": "fresh snapshot clone",
       "type": "concept",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
     {
-      "id": "kb-evaluations-dir",
+      "id": "kb-evaluations-run-name-repo",
+      "name": "~/.kb/evaluations/<run-name>/repo/",
+      "type": "system",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
+    },
+    {
+      "id": "kb-evaluations-run-name",
       "name": "~/.kb/evaluations/<run-name>/",
       "type": "system",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
     {
-      "id": "scratch-json",
-      "name": "scratch JSON",
-      "type": "concept",
+      "id": "npm-run-build",
+      "name": "pnpm run build",
+      "type": "tool",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
     {
-      "id": "default-artifact",
-      "name": "default artifact",
-      "type": "concept",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
-    },
-    {
-      "id": "base-option",
-      "name": "--base option",
-      "type": "concept",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
-    },
-    {
-      "id": "run-name",
-      "name": "<run-name>",
-      "type": "concept",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
-    },
-    {
-      "id": "npm-script",
-      "name": "npm script",
+      "id": "npm-run-eval-init",
+      "name": "npm run eval:init",
       "type": "tool",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
@@ -386,32 +224,26 @@
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
     {
-      "id": "kb-queries",
-      "name": "kb queries",
-      "type": "concept",
+      "id": "npm-run-eval-gen-doc",
+      "name": "npm run eval:gen-doc",
+      "type": "tool",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
     {
-      "id": "all-mode",
-      "name": "all mode",
+      "id": "kb-docs-generate",
+      "name": "kb docs generate",
+      "type": "tool",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
+    },
+    {
+      "id": "init-mode",
+      "name": "init mode",
       "type": "concept",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
     {
       "id": "query-mode",
       "name": "query mode",
-      "type": "concept",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
-    },
-    {
-      "id": "metrics",
-      "name": "metrics",
-      "type": "concept",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
-    },
-    {
-      "id": "kb-session",
-      "name": "KB session",
       "type": "concept",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
@@ -434,8 +266,8 @@
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
     {
-      "id": "questions-file-option",
-      "name": "--questions-file path.json",
+      "id": "questions-file",
+      "name": "--questions-file",
       "type": "concept",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
@@ -446,21 +278,63 @@
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
     {
-      "id": "out-option",
-      "name": "--out",
+      "id": "eval-gen-doc-mjs",
+      "name": "scripts/eval-gen-doc.mjs",
+      "type": "tool",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
+    },
+    {
+      "id": "docs-generate-finalize",
+      "name": "docs generate --finalize",
+      "type": "tool",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
+    },
+    {
+      "id": "docs-generate-accept",
+      "name": "docs generate --accept",
+      "type": "tool",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
+    },
+    {
+      "id": "diff-introduction-txt",
+      "name": "diff-introduction.txt",
       "type": "concept",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
     {
-      "id": "skip-init-option",
-      "name": "--skip-init",
+      "id": "diff-howto-txt",
+      "name": "diff-howto.txt",
       "type": "concept",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
     {
-      "id": "run-dir-option",
-      "name": "--run-dir",
+      "id": "export-introduction-md",
+      "name": "export-introduction.md",
       "type": "concept",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
+    },
+    {
+      "id": "export-howto-md",
+      "name": "export-howto.md",
+      "type": "concept",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
+    },
+    {
+      "id": "readme-exports-md",
+      "name": "README-exports.md",
+      "type": "concept",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
+    },
+    {
+      "id": "kb-chat",
+      "name": "kb chat",
+      "type": "tool",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
+    },
+    {
+      "id": "kb-facts",
+      "name": "kb facts",
+      "type": "tool",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs"
     },
     {
@@ -512,8 +386,8 @@
       "docId": "evaluation-md-evaluation-target"
     },
     {
-      "id": "kb-architecture-work",
-      "name": "kb architecture work",
+      "id": "kb-architectural-knowledge",
+      "name": "kb's own architectural knowledge",
       "type": "concept",
       "docId": "evaluation-md-evaluation-target"
     },
@@ -524,16 +398,40 @@
       "docId": "evaluation-md-evaluation-target"
     },
     {
-      "id": "compounding-hypothesis",
-      "name": "compounding hypothesis",
-      "type": "concept",
-      "docId": "evaluation-md-evaluation-target"
-    },
-    {
       "id": "jekyll-output",
       "name": "Jekyll output",
       "type": "concept",
       "docId": "evaluation-md-evaluation-target"
+    },
+    {
+      "id": "init-query-evidence-artifacts",
+      "name": "init/query evidence artifacts",
+      "type": "concept",
+      "docId": "evaluation-md-evaluation-target"
+    },
+    {
+      "id": "secondary-questions",
+      "name": "Secondary Questions",
+      "type": "concept",
+      "docId": "evaluation-md-secondary-questions"
+    },
+    {
+      "id": "graph-store",
+      "name": "graph store",
+      "type": "system",
+      "docId": "evaluation-md-secondary-questions"
+    },
+    {
+      "id": "kb-maintenance-agent",
+      "name": "KB-maintenance agent",
+      "type": "system",
+      "docId": "evaluation-md-secondary-questions"
+    },
+    {
+      "id": "single-agent-baseline",
+      "name": "single-agent baseline",
+      "type": "system",
+      "docId": "evaluation-md-secondary-questions"
     },
     {
       "id": "kb-from-scratch",
@@ -558,6 +456,42 @@
       "name": "extra maintenance work",
       "type": "concept",
       "docId": "evaluation-md-primary-question"
+    },
+    {
+      "id": "kb-knowledge-base",
+      "name": "kb knowledge base",
+      "type": "system",
+      "docId": "evaluation-md-goal"
+    },
+    {
+      "id": "agent-a",
+      "name": "Agent A",
+      "type": "concept",
+      "docId": "evaluation-md-goal"
+    },
+    {
+      "id": "agent-b",
+      "name": "Agent B",
+      "type": "concept",
+      "docId": "evaluation-md-goal"
+    },
+    {
+      "id": "split-workflow",
+      "name": "split workflow",
+      "type": "concept",
+      "docId": "evaluation-md-goal"
+    },
+    {
+      "id": "product-codebase",
+      "name": "product/codebase",
+      "type": "concept",
+      "docId": "evaluation-md-goal"
+    },
+    {
+      "id": "primary-coding-agent",
+      "name": "primary coding agent",
+      "type": "concept",
+      "docId": "evaluation-md-goal"
     },
     {
       "id": "design-md",
@@ -644,14 +578,8 @@
       "docId": "design-md-source-structure"
     },
     {
-      "id": "blue-constant",
-      "name": "BLUE constants",
-      "type": "concept",
-      "docId": "design-md-source-structure"
-    },
-    {
-      "id": "orange-constant",
-      "name": "ORANGE constants",
+      "id": "blue-orange-constants",
+      "name": "BLUE, ORANGE constants",
       "type": "concept",
       "docId": "design-md-source-structure"
     },
@@ -759,55 +687,55 @@
     },
     {
       "id": "query-command",
-      "name": "query \"…\"",
+      "name": "`query \"…\"`",
       "type": "tool",
       "docId": "design-md-interactive-commands"
     },
     {
       "id": "submit-command",
-      "name": "submit \"…\"",
+      "name": "`submit \"…\"`",
       "type": "tool",
       "docId": "design-md-interactive-commands"
     },
     {
       "id": "chat-command",
-      "name": "chat",
+      "name": "`chat`",
       "type": "tool",
       "docId": "design-md-interactive-commands"
     },
     {
       "id": "use-base-command",
-      "name": "use <base>",
+      "name": "`use <base>`",
       "type": "tool",
       "docId": "design-md-interactive-commands"
     },
     {
       "id": "docs-list-command",
-      "name": "docs list",
+      "name": "`docs list`",
       "type": "tool",
       "docId": "design-md-interactive-commands"
     },
     {
       "id": "docs-view-command",
-      "name": "docs view <id>",
+      "name": "`docs view <id>`",
       "type": "tool",
       "docId": "design-md-interactive-commands"
     },
     {
       "id": "help-command",
-      "name": "/help",
+      "name": "`/help`",
       "type": "tool",
       "docId": "design-md-interactive-commands"
     },
     {
       "id": "clear-command",
-      "name": "/clear",
+      "name": "`/clear`",
       "type": "tool",
       "docId": "design-md-interactive-commands"
     },
     {
       "id": "exit-command",
-      "name": "/exit",
+      "name": "`/exit`",
       "type": "tool",
       "docId": "design-md-interactive-commands"
     },
@@ -824,22 +752,10 @@
       "docId": "design-md-interactive-commands"
     },
     {
-      "id": "status-bar",
+      "id": "statusbar",
       "name": "StatusBar",
       "type": "system",
       "docId": "design-md-interactive-commands"
-    },
-    {
-      "id": "tui",
-      "name": "TUI",
-      "type": "concept",
-      "docId": "design-md-tui-vs-one-shot"
-    },
-    {
-      "id": "one-shot-cli",
-      "name": "One-Shot CLI",
-      "type": "concept",
-      "docId": "design-md-tui-vs-one-shot"
     },
     {
       "id": "layout",
@@ -851,6 +767,12 @@
       "id": "kb-agent",
       "name": "KB Agent",
       "type": "system",
+      "docId": "design-md-layout"
+    },
+    {
+      "id": "status-bar",
+      "name": "StatusBar",
+      "type": "concept",
       "docId": "design-md-layout"
     },
     {
@@ -926,9 +848,15 @@
       "docId": "design-md-color-scheme"
     },
     {
-      "id": "portal-valve",
-      "name": "Portal (Valve)",
+      "id": "portal-inspired",
+      "name": "Portal-inspired",
       "type": "concept",
+      "docId": "design-md-color-scheme"
+    },
+    {
+      "id": "valve",
+      "name": "Valve",
+      "type": "system",
       "docId": "design-md-color-scheme"
     },
     {
@@ -1022,12 +950,6 @@
       "docId": "claude-md-dogfooding"
     },
     {
-      "id": "dogfooding",
-      "name": "Dogfooding",
-      "type": "concept",
-      "docId": "claude-md-dogfooding"
-    },
-    {
       "id": "kb-cli",
       "name": "kb CLI",
       "type": "tool",
@@ -1035,7 +957,7 @@
     },
     {
       "id": "architectural-decisions",
-      "name": "Architectural Decisions",
+      "name": "architectural decisions",
       "type": "concept",
       "docId": "claude-md-dogfooding"
     },
@@ -1077,25 +999,37 @@
     },
     {
       "id": "spike-ticket-workflow",
-      "name": "SPIKE ticket workflow",
+      "name": "spike-ticket-workflow",
       "type": "concept",
       "docId": "claude-md-dogfooding"
     },
     {
+      "id": "tui",
+      "name": "TUI",
+      "type": "system",
+      "docId": "claude-md-dogfooding"
+    },
+    {
+      "id": "composability",
+      "name": "Composability",
+      "type": "concept",
+      "docId": "claude-md-composability-first"
+    },
+    {
       "id": "orchestrators",
-      "name": "orchestrators",
+      "name": "Orchestrators",
       "type": "concept",
       "docId": "claude-md-composability-first"
     },
     {
       "id": "intent-routes",
-      "name": "intent routes",
+      "name": "Intent Routes",
       "type": "concept",
       "docId": "claude-md-composability-first"
     },
     {
       "id": "shared-utilities",
-      "name": "shared utilities",
+      "name": "Shared Utilities",
       "type": "concept",
       "docId": "claude-md-composability-first"
     },
@@ -1107,26 +1041,38 @@
     },
     {
       "id": "intent-router",
-      "name": "intent router",
+      "name": "Intent Router",
       "type": "system",
       "docId": "claude-md-composability-first"
     },
     {
       "id": "shared-diff-render-helpers",
-      "name": "shared diff/render helpers",
+      "name": "Shared Diff/Render Helpers",
       "type": "tool",
+      "docId": "claude-md-composability-first"
+    },
+    {
+      "id": "shared-abstractions",
+      "name": "Shared Abstractions",
+      "type": "concept",
+      "docId": "claude-md-composability-first"
+    },
+    {
+      "id": "policy-decisions",
+      "name": "Policy Decisions",
+      "type": "concept",
       "docId": "claude-md-composability-first"
     },
     {
       "id": "cli-adapters",
-      "name": "CLI adapters",
-      "type": "tool",
+      "name": "CLI Adapters",
+      "type": "system",
       "docId": "claude-md-composability-first"
     },
     {
       "id": "tui-adapters",
-      "name": "TUI adapters",
-      "type": "tool",
+      "name": "TUI Adapters",
+      "type": "system",
       "docId": "claude-md-composability-first"
     },
     {
@@ -1174,7 +1120,7 @@
     {
       "id": "loader-utilities",
       "name": "loader utilities",
-      "type": "concept",
+      "type": "tool",
       "docId": "claude-md-prompts-and-instructions-stay-as-markdown"
     },
     {
@@ -1190,6 +1136,30 @@
       "docId": "claude-md-prompts-and-instructions-stay-as-markdown"
     },
     {
+      "id": "cli",
+      "name": "CLI",
+      "type": "concept",
+      "docId": "claude-md-tui-cli-parity"
+    },
+    {
+      "id": "kb-command",
+      "name": "kb <command>",
+      "type": "tool",
+      "docId": "claude-md-tui-cli-parity"
+    },
+    {
+      "id": "tui-shell-command",
+      "name": "/command (TUI shell)",
+      "type": "tool",
+      "docId": "claude-md-tui-cli-parity"
+    },
+    {
+      "id": "src-core-tui-md",
+      "name": "src/core/TUI.md",
+      "type": "concept",
+      "docId": "claude-md-tui-cli-parity"
+    },
+    {
       "id": "claude-md-part-1",
       "name": "CLAUDE.md Part 1",
       "type": "concept",
@@ -1197,7 +1167,7 @@
     },
     {
       "id": "repository",
-      "name": "Repository",
+      "name": "repository",
       "type": "system",
       "docId": "claude-md-part-1"
     },
@@ -1232,14 +1202,20 @@
       "docId": "claude-md-part-1"
     },
     {
-      "id": "node-20",
-      "name": "Node 20+",
+      "id": "node-js-22",
+      "name": "Node.js version 22+",
       "type": "system",
       "docId": "constraints-and-gotchas"
     },
     {
-      "id": "cli",
-      "name": "CLI",
+      "id": "kb-base-use",
+      "name": "kb base use",
+      "type": "tool",
+      "docId": "constraints-and-gotchas"
+    },
+    {
+      "id": "tui-shell",
+      "name": "TUI shell",
       "type": "concept",
       "docId": "constraints-and-gotchas"
     },
@@ -1250,21 +1226,9 @@
       "docId": "constraints-and-gotchas"
     },
     {
-      "id": "intent-layers",
-      "name": "Intent layers",
-      "type": "concept",
-      "docId": "constraints-and-gotchas"
-    },
-    {
       "id": "unit-tests",
       "name": "Unit tests",
       "type": "concept",
-      "docId": "constraints-and-gotchas"
-    },
-    {
-      "id": "pr-merge",
-      "name": "PR merge",
-      "type": "decision",
       "docId": "constraints-and-gotchas"
     },
     {
@@ -1274,63 +1238,87 @@
       "docId": "constraints-and-gotchas"
     },
     {
-      "id": "raylib-base",
-      "name": "raylib base",
-      "type": "system",
+      "id": "lint",
+      "name": "lint",
+      "type": "tool",
       "docId": "constraints-and-gotchas"
     },
     {
-      "id": "kb-project",
-      "name": "KB project",
-      "type": "system",
-      "docId": "deployment-release"
+      "id": "type-check",
+      "name": "type-check",
+      "type": "tool",
+      "docId": "constraints-and-gotchas"
     },
     {
       "id": "github-releases",
       "name": "GitHub Releases",
+      "type": "system",
+      "docId": "deployment-and-release-process"
+    },
+    {
+      "id": "kb-cli-node22-tgz",
+      "name": "kb-cli-node22.tgz",
       "type": "tool",
-      "docId": "deployment-release"
+      "docId": "deployment-and-release-process"
     },
     {
       "id": "ci",
       "name": "CI",
       "type": "system",
-      "docId": "deployment-release"
+      "docId": "deployment-and-release-process"
     },
     {
-      "id": "kb-cli-node20-tgz",
-      "name": "kb-cli-node20.tgz",
-      "type": "tool",
-      "docId": "deployment-release"
+      "id": "main",
+      "name": "main",
+      "type": "concept",
+      "docId": "deployment-and-release-process"
     },
     {
-      "id": "npm-install-g",
+      "id": "npm-install",
       "name": "npm install -g",
       "type": "tool",
-      "docId": "deployment-release"
+      "docId": "deployment-and-release-process"
     },
     {
       "id": "kb-sync",
       "name": "kb sync",
       "type": "tool",
-      "docId": "deployment-release"
+      "docId": "deployment-and-release-process"
     },
     {
-      "id": "kb-publish-jekyll",
-      "name": "kb publish-jekyll",
-      "type": "tool",
-      "docId": "deployment-release"
+      "id": "github-rosenjcb-kb",
+      "name": "github.com/rosenjcb/kb",
+      "type": "system",
+      "docId": "deployment-and-release-process"
     },
     {
-      "id": "pnpm-run-build",
-      "name": "pnpm run build",
-      "type": "tool",
-      "docId": "deployment-release"
-    },
-    {
-      "id": "kb-testing",
-      "name": "Testing in KB",
+      "id": "src-cli-publish-cli-ts",
+      "name": "src/cli/publish-cli.ts",
       "type": "concept",
+      "docId": "deployment-and-release-process"
+    },
+    {
+      "id": "src-cli-publish-jekyll-ts",
+      "name": "src/cli/publish-jekyll.ts",
+      "type": "concept",
+      "docId": "deployment-and-release-process"
+    },
+    {
+      "id": "src-core-publish-jekyll-sync-ts",
+      "name": "src/core/publish/jekyll-sync.ts",
+      "type": "concept",
+      "docId": "deployment-and-release-process"
+    },
+    {
+      "id": "jekyll",
+      "name": "Jekyll",
+      "type": "system",
+      "docId": "deployment-and-release-process"
+    },
+    {
+      "id": "kb-project",
+      "name": "KB project",
+      "type": "system",
       "docId": "testing-in-kb"
     },
     {
@@ -1352,111 +1340,27 @@
       "docId": "testing-in-kb"
     },
     {
-      "id": "test-files",
-      "name": "Test files",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "source-file-layout",
-      "name": "Source file layout",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "exported-functions",
-      "name": "Exported functions",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "error-paths",
-      "name": "Error paths",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "edge-cases",
-      "name": "Edge cases",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
       "id": "cli-parsers",
       "name": "CLI parsers",
       "type": "concept",
       "docId": "testing-in-kb"
     },
     {
-      "id": "flag-parsing",
-      "name": "Flag parsing",
+      "id": "llm",
+      "name": "LLM",
       "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "defaults",
-      "name": "Defaults",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "conflict-detection",
-      "name": "Conflict detection",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "implementation-details",
-      "name": "Implementation details",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "private-helpers",
-      "name": "Private helpers",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "third-party-library-behavior",
-      "name": "Third-party library behavior",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "trivial-getters",
-      "name": "Trivial getters",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "type-only-exports",
-      "name": "Type-only exports",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "live-llm",
-      "name": "Live LLM",
-      "type": "system",
       "docId": "testing-in-kb"
     },
     {
       "id": "network",
       "name": "Network",
-      "type": "system",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "mocking",
-      "name": "Mocking",
       "type": "concept",
       "docId": "testing-in-kb"
     },
     {
-      "id": "real-filesystems",
-      "name": "Real filesystems",
-      "type": "concept",
+      "id": "it-todo",
+      "name": "it.todo",
+      "type": "tool",
       "docId": "testing-in-kb"
     },
     {
@@ -1472,39 +1376,15 @@
       "docId": "testing-in-kb"
     },
     {
-      "id": "beforeeach-hook",
-      "name": "beforeEach hook",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "aftereach-hook",
-      "name": "afterEach hook",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "vi-spy-on",
+      "id": "vi-spyon",
       "name": "vi.spyOn",
       "type": "tool",
       "docId": "testing-in-kb"
     },
     {
-      "id": "side-effects",
-      "name": "Side effects",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
       "id": "sqlite-layer",
       "name": "SQLite layer",
-      "type": "system",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "in-memory-db",
-      "name": "In-memory DB",
-      "type": "system",
+      "type": "concept",
       "docId": "testing-in-kb"
     },
     {
@@ -1514,26 +1394,8 @@
       "docId": "testing-in-kb"
     },
     {
-      "id": "pre-commit-gate",
-      "name": "Pre-commit gate",
-      "type": "concept",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "lint",
-      "name": "Lint",
-      "type": "tool",
-      "docId": "testing-in-kb"
-    },
-    {
-      "id": "type-check",
-      "name": "Type-check",
-      "type": "tool",
-      "docId": "testing-in-kb"
-    },
-    {
       "id": "full-test-suite",
-      "name": "Full test suite",
+      "name": "full test suite",
       "type": "concept",
       "docId": "testing-in-kb"
     },
@@ -1544,51 +1406,75 @@
       "docId": "testing-in-kb"
     },
     {
-      "id": "pr-merges",
+      "id": "pr-merge",
       "name": "PR merges",
+      "type": "decision",
+      "docId": "testing-in-kb"
+    },
+    {
+      "id": "exported-functions",
+      "name": "exported functions",
       "type": "concept",
       "docId": "testing-in-kb"
     },
     {
-      "id": "naming-conventions",
-      "name": "Naming conventions",
+      "id": "error-paths",
+      "name": "error paths",
       "type": "concept",
       "docId": "testing-in-kb"
     },
     {
-      "id": "file-layout",
-      "name": "File layout",
+      "id": "edge-cases",
+      "name": "edge cases",
       "type": "concept",
       "docId": "testing-in-kb"
     },
     {
-      "id": "environment-variables",
-      "name": "environment variables",
+      "id": "implementation-details",
+      "name": "implementation details",
       "type": "concept",
-      "docId": "project-configuration"
+      "docId": "testing-in-kb"
     },
     {
-      "id": "configuration-files",
-      "name": "configuration files",
+      "id": "private-helpers",
+      "name": "private helpers",
+      "type": "concept",
+      "docId": "testing-in-kb"
+    },
+    {
+      "id": "third-party-library-behavior",
+      "name": "third-party library behavior",
+      "type": "concept",
+      "docId": "testing-in-kb"
+    },
+    {
+      "id": "trivial-getters",
+      "name": "trivial getters",
+      "type": "concept",
+      "docId": "testing-in-kb"
+    },
+    {
+      "id": "type-only-exports",
+      "name": "type-only exports",
+      "type": "concept",
+      "docId": "testing-in-kb"
+    },
+    {
+      "id": "project-configuration",
+      "name": "Project Configuration",
       "type": "concept",
       "docId": "project-configuration"
     },
     {
       "id": "kb-config-json",
       "name": "~/.kb/config.json",
-      "type": "tool",
-      "docId": "project-configuration"
-    },
-    {
-      "id": "nodejs-20",
-      "name": "Node.js version 20+",
       "type": "system",
       "docId": "project-configuration"
     },
     {
-      "id": "kb-config-set",
-      "name": "kb config set",
-      "type": "tool",
+      "id": "environment-variables",
+      "name": "environment variables",
+      "type": "concept",
       "docId": "project-configuration"
     },
     {
@@ -1598,27 +1484,15 @@
       "docId": "project-configuration"
     },
     {
-      "id": "named-knowledge-bases",
-      "name": "Named knowledge bases",
-      "type": "concept",
-      "docId": "project-configuration"
-    },
-    {
-      "id": "sqlite-data",
-      "name": "SQLite data",
-      "type": "concept",
-      "docId": "project-configuration"
-    },
-    {
-      "id": "kb-sessions-base",
-      "name": "~/.kb/sessions/<base>/",
-      "type": "tool",
-      "docId": "project-configuration"
-    },
-    {
       "id": "base-resolution-order",
-      "name": "Base resolution order",
+      "name": "base resolution order",
       "type": "concept",
+      "docId": "project-configuration"
+    },
+    {
+      "id": "kb-config-set-llm-provider-openai",
+      "name": "kb config set llm.provider openai",
+      "type": "tool",
       "docId": "project-configuration"
     },
     {
@@ -1634,26 +1508,32 @@
       "docId": "project-configuration"
     },
     {
-      "id": "runtime",
-      "name": "Runtime",
+      "id": "kb-sessions-base",
+      "name": "~/.kb/sessions/<base>/",
+      "type": "system",
+      "docId": "project-configuration"
+    },
+    {
+      "id": "sqlite-data",
+      "name": "SQLite data",
+      "type": "concept",
+      "docId": "project-configuration"
+    },
+    {
+      "id": "node-22",
+      "name": "Node 22+",
+      "type": "system",
+      "docId": "project-configuration"
+    },
+    {
+      "id": "core",
+      "name": "Core",
       "type": "concept",
       "docId": "kb-architecture-overview"
     },
     {
-      "id": "src-core",
-      "name": "src/core",
-      "type": "concept",
-      "docId": "kb-architecture-overview"
-    },
-    {
-      "id": "src-cli",
-      "name": "src/cli",
-      "type": "concept",
-      "docId": "kb-architecture-overview"
-    },
-    {
-      "id": "src-tools",
-      "name": "src/tools",
+      "id": "tools",
+      "name": "Tools",
       "type": "concept",
       "docId": "kb-architecture-overview"
     },
@@ -1700,8 +1580,26 @@
       "docId": "kb-architecture-overview"
     },
     {
-      "id": "write-query-tools",
-      "name": "Write/Query Tools",
+      "id": "initialization-processes",
+      "name": "Initialization Processes",
+      "type": "concept",
+      "docId": "kb-architecture-overview"
+    },
+    {
+      "id": "writing-functionalities",
+      "name": "Writing Functionalities",
+      "type": "concept",
+      "docId": "kb-architecture-overview"
+    },
+    {
+      "id": "querying-functionalities",
+      "name": "Querying Functionalities",
+      "type": "concept",
+      "docId": "kb-architecture-overview"
+    },
+    {
+      "id": "markdown-integration",
+      "name": "Markdown Integration",
       "type": "concept",
       "docId": "kb-architecture-overview"
     },
@@ -1712,44 +1610,62 @@
       "docId": "kb-architecture-overview"
     },
     {
-      "id": "sqlite-database",
-      "name": "SQLite Database",
-      "type": "system",
-      "docId": "kb-architecture-overview"
-    },
-    {
-      "id": "prompts",
-      "name": "Prompts",
-      "type": "concept",
-      "docId": "kb-architecture-overview"
-    },
-    {
-      "id": "skills",
-      "name": "Skills",
-      "type": "concept",
-      "docId": "kb-architecture-overview"
-    },
-    {
-      "id": "core-workflows",
-      "name": "Core Workflows",
-      "type": "concept",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "kb-tui",
-      "name": "kb TUI",
+      "id": "ink",
+      "name": "Ink",
       "type": "tool",
-      "docId": "core-workflows"
+      "docId": "kb-architecture-overview"
+    },
+    {
+      "id": "react",
+      "name": "React",
+      "type": "tool",
+      "docId": "kb-architecture-overview"
+    },
+    {
+      "id": "historypane",
+      "name": "HistoryPane",
+      "type": "concept",
+      "docId": "kb-architecture-overview"
+    },
+    {
+      "id": "inputbar",
+      "name": "InputBar",
+      "type": "concept",
+      "docId": "kb-architecture-overview"
+    },
+    {
+      "id": "loadingspinner",
+      "name": "LoadingSpinner",
+      "type": "concept",
+      "docId": "kb-architecture-overview"
+    },
+    {
+      "id": "one-shot-cli-commands",
+      "name": "One-shot CLI Commands",
+      "type": "concept",
+      "docId": "kb-architecture-overview"
+    },
+    {
+      "id": "interactive-tui-shell",
+      "name": "Interactive TUI Shell",
+      "type": "concept",
+      "docId": "kb-architecture-overview"
+    },
+    {
+      "id": "knowledge-bases",
+      "name": "Knowledge Bases",
+      "type": "concept",
+      "docId": "kb-architecture-overview"
+    },
+    {
+      "id": "configuration",
+      "name": "Configuration",
+      "type": "concept",
+      "docId": "kb-architecture-overview"
     },
     {
       "id": "kb-invalidate",
       "name": "kb invalidate",
-      "type": "tool",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "kb-base-use",
-      "name": "kb base use",
       "type": "tool",
       "docId": "core-workflows"
     },
@@ -1766,196 +1682,190 @@
       "docId": "core-workflows"
     },
     {
-      "id": "command-v-kb",
-      "name": "command -v kb",
-      "type": "tool",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "tui-query",
-      "name": "query \"...\"",
-      "type": "tool",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "tui-submit",
-      "name": "submit \"...\"",
-      "type": "tool",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "tui-chat",
-      "name": "chat",
-      "type": "tool",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "tui-use",
-      "name": "use <base>",
-      "type": "tool",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "tui-docs-list",
-      "name": "docs list",
-      "type": "tool",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "tui-docs-view",
-      "name": "docs view <id>",
-      "type": "tool",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "tui-help",
-      "name": "/help",
-      "type": "tool",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "tui-clear",
-      "name": "/clear",
-      "type": "tool",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "tui-exit",
-      "name": "/exit",
-      "type": "tool",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "knowledge-capture",
-      "name": "capturing knowledge",
-      "type": "concept",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "knowledge-recall",
-      "name": "recalling knowledge",
-      "type": "concept",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "knowledge-repair",
-      "name": "repairing knowledge",
-      "type": "concept",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "knowledge-base-initialization",
-      "name": "initialize a knowledge base",
-      "type": "concept",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "knowledge-base-management",
-      "name": "manage active knowledge base",
-      "type": "concept",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "configuration-management",
-      "name": "Configuration management",
-      "type": "concept",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "repository-sync",
-      "name": "update managed clone of repository",
-      "type": "concept",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "development-installation",
-      "name": "development installation",
-      "type": "concept",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "development-verification",
-      "name": "development verification",
-      "type": "concept",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "testing",
-      "name": "testing",
-      "type": "concept",
-      "docId": "core-workflows"
-    },
-    {
-      "id": "kb-command",
-      "name": "kb command",
-      "type": "tool",
-      "docId": "install-setup"
-    },
-    {
-      "id": "kb-config-set-llm-provider-openai",
-      "name": "kb config set llm.provider openai",
-      "type": "tool",
-      "docId": "install-setup"
-    },
-    {
-      "id": "openai",
-      "name": "openai",
-      "type": "system",
-      "docId": "install-setup"
-    },
-    {
-      "id": "kb-init-base-dogfood",
-      "name": "kb && /init --base dogfood",
-      "type": "tool",
-      "docId": "install-setup"
-    },
-    {
-      "id": "kb-init-base-dogfood-rescan",
-      "name": "kb init --base dogfood --rescan",
-      "type": "tool",
-      "docId": "install-setup"
-    },
-    {
-      "id": "kb-init-base-dogfood-rescan-apply",
-      "name": "kb init --base dogfood --rescan --apply",
-      "type": "tool",
-      "docId": "install-setup"
-    },
-    {
-      "id": "kb-base-use-dogfood",
-      "name": "kb && /base use dogfood",
-      "type": "tool",
-      "docId": "install-setup"
-    },
-    {
-      "id": "kb-init-rescan-apply",
-      "name": "kb && /init --rescan --apply",
-      "type": "tool",
-      "docId": "install-setup"
-    },
-    {
       "id": "pnpm-run-test",
       "name": "pnpm run test",
       "type": "tool",
-      "docId": "install-setup"
+      "docId": "core-workflows"
     },
     {
       "id": "pnpm-run-type-check",
       "name": "pnpm run type-check",
       "type": "tool",
-      "docId": "install-setup"
+      "docId": "core-workflows"
     },
     {
       "id": "pnpm-run-lint",
       "name": "pnpm run lint",
       "type": "tool",
-      "docId": "install-setup"
+      "docId": "core-workflows"
     },
     {
-      "id": "kb-init-base-ci-e2e-non-interactive-debug",
-      "name": "kb init --base ci-e2e --non-interactive --debug",
+      "id": "pnpm-run-build",
+      "name": "pnpm run build",
       "type": "tool",
-      "docId": "install-setup"
+      "docId": "core-workflows"
+    },
+    {
+      "id": "tui-query",
+      "name": "TUI query",
+      "type": "tool",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "tui-submit",
+      "name": "TUI submit",
+      "type": "tool",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "tui-chat",
+      "name": "TUI chat",
+      "type": "tool",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "tui-use",
+      "name": "TUI use",
+      "type": "tool",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "tui-docs-list",
+      "name": "TUI docs list",
+      "type": "tool",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "tui-docs-view",
+      "name": "TUI docs view",
+      "type": "tool",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "tui-help",
+      "name": "TUI /help",
+      "type": "tool",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "tui-clear",
+      "name": "TUI /clear",
+      "type": "tool",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "tui-exit",
+      "name": "TUI /exit",
+      "type": "tool",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "capturing-knowledge",
+      "name": "Capturing knowledge",
+      "type": "concept",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "recalling-context",
+      "name": "Recalling context",
+      "type": "concept",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "repairing-stale-knowledge",
+      "name": "Repairing stale knowledge",
+      "type": "concept",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "installation-and-setup",
+      "name": "Installation and setup",
+      "type": "concept",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "initializing-knowledge-base",
+      "name": "Initializing a knowledge base",
+      "type": "concept",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "refreshing-existing-base",
+      "name": "Refreshing an existing base",
+      "type": "concept",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "switching-knowledge-bases",
+      "name": "Switching between knowledge bases",
+      "type": "concept",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "development-commands",
+      "name": "Development commands",
+      "type": "concept",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "one-shot-cli",
+      "name": "One-shot CLI",
+      "type": "concept",
+      "docId": "core-workflows"
+    },
+    {
+      "id": "command-v-kb",
+      "name": "command -v kb",
+      "type": "tool",
+      "docId": "install-and-setup"
+    },
+    {
+      "id": "npm-install-g-kb-cli-node22-tgz",
+      "name": "npm install -g ./kb-cli-node22.tgz",
+      "type": "tool",
+      "docId": "install-and-setup"
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "type": "system",
+      "docId": "install-and-setup"
+    },
+    {
+      "id": "kb-init-base-dogfood",
+      "name": "kb && /init --base dogfood",
+      "type": "tool",
+      "docId": "install-and-setup"
+    },
+    {
+      "id": "kb-init-base-dogfood-rescan",
+      "name": "kb init --base dogfood --rescan",
+      "type": "tool",
+      "docId": "install-and-setup"
+    },
+    {
+      "id": "kb-init-base-dogfood-rescan-apply",
+      "name": "kb init --base dogfood --rescan --apply",
+      "type": "tool",
+      "docId": "install-and-setup"
+    },
+    {
+      "id": "kb-base-use-dogfood",
+      "name": "kb && /base use dogfood",
+      "type": "tool",
+      "docId": "install-and-setup"
+    },
+    {
+      "id": "kb-init-rescan-apply",
+      "name": "kb && /init --rescan --apply",
+      "type": "tool",
+      "docId": "install-and-setup"
+    },
+    {
+      "id": "sqlite",
+      "name": "SQLite",
+      "type": "system",
+      "docId": "install-and-setup"
     },
     {
       "id": "development-workflows",
@@ -1964,8 +1874,38 @@
       "docId": "project-overview"
     },
     {
-      "id": "project-knowledge",
-      "name": "project knowledge",
+      "id": "runtime",
+      "name": "runtime",
+      "type": "concept",
+      "docId": "project-overview"
+    },
+    {
+      "id": "chat-history",
+      "name": "chat history",
+      "type": "concept",
+      "docId": "project-overview"
+    },
+    {
+      "id": "pr-threads",
+      "name": "PR threads",
+      "type": "concept",
+      "docId": "project-overview"
+    },
+    {
+      "id": "git",
+      "name": "Git",
+      "type": "tool",
+      "docId": "project-overview"
+    },
+    {
+      "id": "memory-system",
+      "name": "memory system",
+      "type": "concept",
+      "docId": "project-overview"
+    },
+    {
+      "id": "project-learning",
+      "name": "project learning",
       "type": "concept",
       "docId": "project-overview"
     },
@@ -1982,92 +1922,8 @@
       "docId": "project-overview"
     },
     {
-      "id": "context",
-      "name": "context",
-      "type": "concept",
-      "docId": "project-overview"
-    },
-    {
-      "id": "chat-history",
-      "name": "chat history",
-      "type": "system",
-      "docId": "project-overview"
-    },
-    {
-      "id": "pr-threads",
-      "name": "PR threads",
-      "type": "system",
-      "docId": "project-overview"
-    },
-    {
-      "id": "knowledge-base-maintenance",
-      "name": "knowledge base maintenance",
-      "type": "concept",
-      "docId": "project-overview"
-    },
-    {
-      "id": "developers",
-      "name": "developers",
-      "type": "person",
-      "docId": "project-overview"
-    },
-    {
-      "id": "teams",
-      "name": "teams",
-      "type": "person",
-      "docId": "project-overview"
-    },
-    {
       "id": "code",
       "name": "code",
-      "type": "concept",
-      "docId": "project-overview"
-    },
-    {
-      "id": "git",
-      "name": "Git",
-      "type": "system",
-      "docId": "project-overview"
-    },
-    {
-      "id": "lightweight-memory-system",
-      "name": "lightweight memory system",
-      "type": "system",
-      "docId": "project-overview"
-    },
-    {
-      "id": "better-systems",
-      "name": "better systems",
-      "type": "concept",
-      "docId": "project-overview"
-    },
-    {
-      "id": "lower-token-cost",
-      "name": "lower token cost",
-      "type": "concept",
-      "docId": "project-overview"
-    },
-    {
-      "id": "better-requirement-capture",
-      "name": "better requirement capture",
-      "type": "concept",
-      "docId": "project-overview"
-    },
-    {
-      "id": "improved-recall-of-project-knowledge",
-      "name": "improved recall of project knowledge",
-      "type": "concept",
-      "docId": "project-overview"
-    },
-    {
-      "id": "primary-coding-agent",
-      "name": "primary coding agent",
-      "type": "system",
-      "docId": "project-overview"
-    },
-    {
-      "id": "transient-context",
-      "name": "transient context",
       "type": "concept",
       "docId": "project-overview"
     }
@@ -2111,7 +1967,7 @@
     {
       "fromId": "philosophy-md",
       "toId": "change-is-the-default",
-      "type": "related_to",
+      "type": "implements",
       "docId": "philosophy-md-change-is-the-default",
       "weight": 1
     },
@@ -2130,30 +1986,16 @@
       "weight": 1
     },
     {
-      "fromId": "philosophy-md",
+      "fromId": "kb",
       "toId": "accretion-not-overhead",
       "type": "implements",
       "docId": "philosophy-md-guiding-principles",
       "weight": 1
     },
     {
-      "fromId": "philosophy-md",
+      "fromId": "kb",
       "toId": "descriptive-not-prescriptive",
       "type": "implements",
-      "docId": "philosophy-md-guiding-principles",
-      "weight": 1
-    },
-    {
-      "fromId": "accretion-not-overhead",
-      "toId": "kb",
-      "type": "related_to",
-      "docId": "philosophy-md-guiding-principles",
-      "weight": 1
-    },
-    {
-      "fromId": "descriptive-not-prescriptive",
-      "toId": "kb",
-      "type": "related_to",
       "docId": "philosophy-md-guiding-principles",
       "weight": 1
     },
@@ -2165,107 +2007,23 @@
       "weight": 1
     },
     {
-      "fromId": "evaluation-md",
-      "toId": "scoring-rubric",
+      "fromId": "kb",
+      "toId": "knowledge-base",
       "type": "implements",
-      "docId": "evaluation-md-scoring-rubric",
-      "weight": 1
-    },
-    {
-      "fromId": "scoring-rubric",
-      "toId": "correctness",
-      "type": "related_to",
-      "docId": "evaluation-md-scoring-rubric",
+      "docId": "philosophy-md-part-1",
       "weight": 1
     },
     {
       "fromId": "evaluation-md",
-      "toId": "canonical-question-set",
-      "type": "implements",
-      "docId": "evaluation-md-canonical-question-set",
-      "weight": 1
-    },
-    {
-      "fromId": "canonical-question-set",
-      "toId": "raylib",
-      "type": "uses",
-      "docId": "evaluation-md-canonical-question-set",
-      "weight": 1
-    },
-    {
-      "fromId": "canonical-question-set",
-      "toId": "raylib-architecture",
+      "toId": "kb",
       "type": "related_to",
-      "docId": "evaluation-md-canonical-question-set",
-      "weight": 1
-    },
-    {
-      "fromId": "canonical-question-set",
-      "toId": "raylib-installation",
-      "type": "related_to",
-      "docId": "evaluation-md-canonical-question-set",
-      "weight": 1
-    },
-    {
-      "fromId": "canonical-question-set",
-      "toId": "raylib-configuration",
-      "type": "related_to",
-      "docId": "evaluation-md-canonical-question-set",
-      "weight": 1
-    },
-    {
-      "fromId": "canonical-question-set",
-      "toId": "raylib-graphics-backends",
-      "type": "related_to",
-      "docId": "evaluation-md-canonical-question-set",
-      "weight": 1
-    },
-    {
-      "fromId": "canonical-question-set",
-      "toId": "raylib-coding-conventions",
-      "type": "related_to",
-      "docId": "evaluation-md-canonical-question-set",
-      "weight": 1
-    },
-    {
-      "fromId": "canonical-question-set",
-      "toId": "raylib-limitations",
-      "type": "related_to",
-      "docId": "evaluation-md-canonical-question-set",
-      "weight": 1
-    },
-    {
-      "fromId": "canonical-question-set",
-      "toId": "raylib-roadmap",
-      "type": "related_to",
-      "docId": "evaluation-md-canonical-question-set",
-      "weight": 1
-    },
-    {
-      "fromId": "canonical-question-set",
-      "toId": "raylib-version-history",
-      "type": "related_to",
-      "docId": "evaluation-md-canonical-question-set",
-      "weight": 1
-    },
-    {
-      "fromId": "raylib-roadmap",
-      "toId": "raylib-version-history",
-      "type": "related_to",
-      "docId": "evaluation-md-canonical-question-set",
-      "weight": 1
-    },
-    {
-      "fromId": "evaluation-md",
-      "toId": "standard-procedure",
-      "type": "implements",
       "docId": "evaluation-md-standard-procedure",
       "weight": 1
     },
     {
-      "fromId": "standard-procedure",
-      "toId": "kb-init",
-      "type": "uses",
+      "fromId": "kb-init",
+      "toId": "kb",
+      "type": "implements",
       "docId": "evaluation-md-standard-procedure",
       "weight": 1
     },
@@ -2277,8 +2035,8 @@
       "weight": 1
     },
     {
-      "fromId": "kb-init",
-      "toId": "eval-run-mjs",
+      "fromId": "eval-run-mjs",
+      "toId": "kb-init",
       "type": "uses",
       "docId": "evaluation-md-standard-procedure",
       "weight": 1
@@ -2291,134 +2049,15 @@
       "weight": 1
     },
     {
-      "fromId": "kb-init",
-      "toId": "run-metadata",
+      "fromId": "kb-logs",
+      "toId": "kb",
       "type": "implements",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "standard-procedure",
-      "toId": "build-metrics",
-      "type": "implements",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "build-metrics",
-      "toId": "kb-logs",
-      "type": "uses",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "standard-procedure",
-      "toId": "answer-quality",
-      "type": "implements",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "answer-quality",
-      "toId": "kb-query",
-      "type": "uses",
       "docId": "evaluation-md-standard-procedure",
       "weight": 1
     },
     {
       "fromId": "kb-query",
-      "toId": "ci-raylib-date",
-      "type": "uses",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "answer-quality",
-      "toId": "kb-chat",
-      "type": "uses",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "answer-quality",
-      "toId": "canonical-question-set",
-      "type": "uses",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "standard-procedure",
-      "toId": "rubric-score",
-      "type": "implements",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "rubric-score",
-      "toId": "auto-score",
-      "type": "uses",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "auto-score",
-      "toId": "eval-runner",
-      "type": "uses",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "standard-procedure",
-      "toId": "kb-publish",
-      "type": "uses",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-publish",
-      "toId": "jekyll",
-      "type": "uses",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-publish",
-      "toId": "ci-raylib-date",
-      "type": "uses",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "kb",
-      "toId": "kb-init",
-      "type": "implements",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "kb",
-      "toId": "kb-logs",
-      "type": "implements",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "kb",
-      "toId": "kb-query",
-      "type": "implements",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "kb",
-      "toId": "kb-chat",
-      "type": "implements",
-      "docId": "evaluation-md-standard-procedure",
-      "weight": 1
-    },
-    {
-      "fromId": "kb",
-      "toId": "kb-publish",
+      "toId": "kb",
       "type": "implements",
       "docId": "evaluation-md-standard-procedure",
       "weight": 1
@@ -2426,33 +2065,33 @@
     {
       "fromId": "evaluation-design",
       "toId": "baseline-run",
-      "type": "implements",
+      "type": "uses",
       "docId": "evaluation-md-evaluation-design",
       "weight": 1
     },
     {
       "fromId": "evaluation-design",
       "toId": "comparison-run",
+      "type": "uses",
+      "docId": "evaluation-md-evaluation-design",
+      "weight": 1
+    },
+    {
+      "fromId": "baseline-run",
+      "toId": "kb",
       "type": "implements",
       "docId": "evaluation-md-evaluation-design",
       "weight": 1
     },
     {
       "fromId": "baseline-run",
-      "toId": "kb-build",
-      "type": "uses",
-      "docId": "evaluation-md-evaluation-design",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-build",
       "toId": "normal-workflow",
       "type": "uses",
       "docId": "evaluation-md-evaluation-design",
       "weight": 1
     },
     {
-      "fromId": "normal-workflow",
+      "fromId": "baseline-run",
       "toId": "kb-init",
       "type": "uses",
       "docId": "evaluation-md-evaluation-design",
@@ -2515,21 +2154,21 @@
       "weight": 1
     },
     {
-      "fromId": "eval-run-mjs",
-      "toId": "disposable-base-harvests",
+      "fromId": "automated-harvest",
+      "toId": "suite-yaml",
       "type": "uses",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
       "weight": 1
     },
     {
-      "fromId": "repo-override",
+      "fromId": "suite-yaml",
       "toId": "repo-url",
-      "type": "replaces",
+      "type": "implements",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
       "weight": 1
     },
     {
-      "fromId": "eval-run-mjs",
+      "fromId": "automated-harvest",
       "toId": "fresh-snapshot-clone",
       "type": "implements",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
@@ -2537,169 +2176,183 @@
     },
     {
       "fromId": "fresh-snapshot-clone",
-      "toId": "kb-evaluations-dir",
-      "type": "uses",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "scratch-json",
-      "toId": "kb-evaluations-dir",
-      "type": "related_to",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "default-artifact",
-      "toId": "kb-evaluations-dir",
-      "type": "related_to",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "base-option",
-      "toId": "run-name",
+      "toId": "kb-evaluations-run-name-repo",
       "type": "implements",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
       "weight": 1
     },
     {
-      "fromId": "npm-run-eval-all",
+      "fromId": "automated-harvest",
+      "toId": "kb-evaluations-run-name",
+      "type": "uses",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "npm-run-eval-init",
       "toId": "kb-init",
       "type": "uses",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
       "weight": 1
     },
     {
-      "fromId": "npm-run-eval-all",
-      "toId": "kb-queries",
+      "fromId": "npm-run-eval-init",
+      "toId": "kb-query",
       "type": "uses",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "npm-run-eval-all",
+      "toId": "npm-run-eval-init",
+      "type": "replaces",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
       "weight": 1
     },
     {
       "fromId": "npm-run-eval-query",
-      "toId": "kb-queries",
+      "toId": "kb-query",
       "type": "uses",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
       "weight": 1
     },
     {
-      "fromId": "all-mode",
-      "toId": "fresh-snapshot-clone",
-      "type": "implements",
+      "fromId": "npm-run-eval-gen-doc",
+      "toId": "kb-docs-generate",
+      "type": "uses",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
       "weight": 1
     },
     {
-      "fromId": "all-mode",
+      "fromId": "init-mode",
       "toId": "kb-init",
-      "type": "implements",
+      "type": "uses",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
       "weight": 1
     },
     {
-      "fromId": "all-mode",
-      "toId": "metrics",
-      "type": "implements",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "all-mode",
-      "toId": "kb-queries",
-      "type": "implements",
+      "fromId": "init-mode",
+      "toId": "kb-query",
+      "type": "uses",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
       "weight": 1
     },
     {
       "fromId": "query-mode",
-      "toId": "fresh-snapshot-clone",
-      "type": "implements",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "query-mode",
-      "toId": "kb-init",
-      "type": "contradicts",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "query-mode",
-      "toId": "base-option",
-      "type": "depends_on",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "query-mode",
-      "toId": "kb-session",
+      "toId": "kb-query",
       "type": "uses",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
       "weight": 1
     },
     {
       "fromId": "raylib-suite",
-      "toId": "kb-queries",
-      "type": "implements",
+      "toId": "npm-run-eval-init",
+      "type": "uses",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
       "weight": 1
     },
     {
       "fromId": "kb-suite",
-      "toId": "kb-queries",
-      "type": "implements",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "generic-suite",
-      "toId": "kb-queries",
-      "type": "implements",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "generic-suite",
-      "toId": "repo-override",
-      "type": "depends_on",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "questions-file-option",
-      "toId": "kb-queries",
-      "type": "replaces",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "default-artifact",
-      "toId": "artifact-json",
-      "type": "implements",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "out-option",
-      "toId": "artifact-json",
-      "type": "replaces",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "skip-init-option",
-      "toId": "kb-init",
-      "type": "contradicts",
-      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
-      "weight": 1
-    },
-    {
-      "fromId": "run-dir-option",
-      "toId": "kb-evaluations-dir",
+      "toId": "npm-run-eval-init",
       "type": "uses",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "generic-suite",
+      "toId": "npm-run-eval-init",
+      "type": "uses",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "automated-harvest",
+      "toId": "artifact-json",
+      "type": "implements",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "eval-gen-doc-mjs",
+      "toId": "kb-evaluations-run-name",
+      "type": "uses",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "eval-gen-doc-mjs",
+      "toId": "artifact-json",
+      "type": "uses",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "eval-gen-doc-mjs",
+      "toId": "docs-generate-finalize",
+      "type": "uses",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "eval-gen-doc-mjs",
+      "toId": "docs-generate-accept",
+      "type": "uses",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "docs-generate-finalize",
+      "toId": "diff-introduction-txt",
+      "type": "implements",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "docs-generate-finalize",
+      "toId": "diff-howto-txt",
+      "type": "implements",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "eval-gen-doc-mjs",
+      "toId": "export-introduction-md",
+      "type": "implements",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "eval-gen-doc-mjs",
+      "toId": "export-howto-md",
+      "type": "implements",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "eval-gen-doc-mjs",
+      "toId": "readme-exports-md",
+      "type": "implements",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-chat",
+      "toId": "kb-docs-generate",
+      "type": "uses",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-chat",
+      "toId": "kb-facts",
+      "type": "uses",
+      "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
+      "weight": 1
+    },
+    {
+      "fromId": "npm-run-build",
+      "toId": "eval-run-mjs",
+      "type": "depends_on",
       "docId": "evaluation-md-automated-harvest-scripts-eval-run-mjs",
       "weight": 1
     },
@@ -2746,23 +2399,23 @@
       "weight": 1
     },
     {
-      "fromId": "kb-architecture-work",
+      "fromId": "kb-architectural-knowledge",
       "toId": "dogfood-base",
-      "type": "uses",
+      "type": "implements",
       "docId": "evaluation-md-evaluation-target",
       "weight": 1
     },
     {
       "fromId": "eval-run-mjs",
       "toId": "disposable-base",
-      "type": "implements",
+      "type": "uses",
       "docId": "evaluation-md-evaluation-target",
       "weight": 1
     },
     {
-      "fromId": "raylib-suite",
-      "toId": "persistent-agent-comparison-base",
-      "type": "replaces",
+      "fromId": "persistent-agent-comparison-base",
+      "toId": "raylib-suite",
+      "type": "related_to",
       "docId": "evaluation-md-evaluation-target",
       "weight": 1
     },
@@ -2774,13 +2427,6 @@
       "weight": 1
     },
     {
-      "fromId": "compounding-hypothesis",
-      "toId": "persistent-agent-comparison-base",
-      "type": "depends_on",
-      "docId": "evaluation-md-evaluation-target",
-      "weight": 1
-    },
-    {
       "fromId": "evaluation-target",
       "toId": "jekyll-output",
       "type": "contradicts",
@@ -2788,9 +2434,44 @@
       "weight": 1
     },
     {
+      "fromId": "evaluation-target",
+      "toId": "init-query-evidence-artifacts",
+      "type": "uses",
+      "docId": "evaluation-md-evaluation-target",
+      "weight": 1
+    },
+    {
+      "fromId": "evaluation-md",
+      "toId": "secondary-questions",
+      "type": "related_to",
+      "docId": "evaluation-md-secondary-questions",
+      "weight": 1
+    },
+    {
+      "fromId": "knowledge-base",
+      "toId": "graph-store",
+      "type": "implements",
+      "docId": "evaluation-md-secondary-questions",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-maintenance-agent",
+      "toId": "single-agent-baseline",
+      "type": "contradicts",
+      "docId": "evaluation-md-secondary-questions",
+      "weight": 1
+    },
+    {
+      "fromId": "kb",
+      "toId": "kb-from-scratch",
+      "type": "implements",
+      "docId": "evaluation-md-primary-question",
+      "weight": 1
+    },
+    {
       "fromId": "kb-from-scratch",
       "toId": "evaluation-target-repository",
-      "type": "implements",
+      "type": "related_to",
       "docId": "evaluation-md-primary-question",
       "weight": 1
     },
@@ -2810,14 +2491,56 @@
     },
     {
       "fromId": "evaluation-md",
-      "toId": "kb",
+      "toId": "kb-knowledge-base",
       "type": "related_to",
-      "docId": "evaluation-md-primary-question",
+      "docId": "evaluation-md-goal",
+      "weight": 1
+    },
+    {
+      "fromId": "split-workflow",
+      "toId": "agent-a",
+      "type": "uses",
+      "docId": "evaluation-md-goal",
+      "weight": 1
+    },
+    {
+      "fromId": "split-workflow",
+      "toId": "agent-b",
+      "type": "uses",
+      "docId": "evaluation-md-goal",
+      "weight": 1
+    },
+    {
+      "fromId": "agent-a",
+      "toId": "product-codebase",
+      "type": "implements",
+      "docId": "evaluation-md-goal",
+      "weight": 1
+    },
+    {
+      "fromId": "agent-b",
+      "toId": "kb-knowledge-base",
+      "type": "implements",
+      "docId": "evaluation-md-goal",
+      "weight": 1
+    },
+    {
+      "fromId": "split-workflow",
+      "toId": "primary-coding-agent",
+      "type": "contradicts",
+      "docId": "evaluation-md-goal",
       "weight": 1
     },
     {
       "fromId": "design-md",
       "toId": "source-structure",
+      "type": "related_to",
+      "docId": "design-md-source-structure",
+      "weight": 1
+    },
+    {
+      "fromId": "source-structure",
+      "toId": "src-tui",
       "type": "related_to",
       "docId": "design-md-source-structure",
       "weight": 1
@@ -2901,14 +2624,7 @@
     },
     {
       "fromId": "theme-ts",
-      "toId": "blue-constant",
-      "type": "implements",
-      "docId": "design-md-source-structure",
-      "weight": 1
-    },
-    {
-      "fromId": "theme-ts",
-      "toId": "orange-constant",
+      "toId": "blue-orange-constants",
       "type": "implements",
       "docId": "design-md-source-structure",
       "weight": 1
@@ -3047,9 +2763,23 @@
       "weight": 1
     },
     {
+      "fromId": "chat-command",
+      "toId": "chat-mode",
+      "type": "implements",
+      "docId": "design-md-interactive-commands",
+      "weight": 1
+    },
+    {
       "fromId": "use-base-command",
       "toId": "interactive-commands",
       "type": "related_to",
+      "docId": "design-md-interactive-commands",
+      "weight": 1
+    },
+    {
+      "fromId": "use-base-command",
+      "toId": "statusbar",
+      "type": "uses",
       "docId": "design-md-interactive-commands",
       "weight": 1
     },
@@ -3089,27 +2819,6 @@
       "weight": 1
     },
     {
-      "fromId": "chat-command",
-      "toId": "chat-mode",
-      "type": "implements",
-      "docId": "design-md-interactive-commands",
-      "weight": 1
-    },
-    {
-      "fromId": "use-base-command",
-      "toId": "status-bar",
-      "type": "uses",
-      "docId": "design-md-interactive-commands",
-      "weight": 1
-    },
-    {
-      "fromId": "exit-command",
-      "toId": "chat-mode",
-      "type": "replaces",
-      "docId": "design-md-interactive-commands",
-      "weight": 1
-    },
-    {
       "fromId": "exit-command",
       "toId": "shell-mode",
       "type": "implements",
@@ -3117,17 +2826,10 @@
       "weight": 1
     },
     {
-      "fromId": "kb",
-      "toId": "tui",
-      "type": "implements",
-      "docId": "design-md-tui-vs-one-shot",
-      "weight": 1
-    },
-    {
-      "fromId": "kb",
-      "toId": "one-shot-cli",
-      "type": "implements",
-      "docId": "design-md-tui-vs-one-shot",
+      "fromId": "chat-mode",
+      "toId": "exit-command",
+      "type": "uses",
+      "docId": "design-md-interactive-commands",
       "weight": 1
     },
     {
@@ -3174,20 +2876,27 @@
     },
     {
       "fromId": "history-pane",
+      "toId": "chat-mode",
+      "type": "uses",
+      "docId": "design-md-layout",
+      "weight": 1
+    },
+    {
+      "fromId": "chat-mode",
       "toId": "info",
       "type": "uses",
       "docId": "design-md-layout",
       "weight": 1
     },
     {
-      "fromId": "history-pane",
+      "fromId": "chat-mode",
       "toId": "chat-you",
       "type": "uses",
       "docId": "design-md-layout",
       "weight": 1
     },
     {
-      "fromId": "history-pane",
+      "fromId": "chat-mode",
       "toId": "chat-assistant",
       "type": "uses",
       "docId": "design-md-layout",
@@ -3230,7 +2939,14 @@
     },
     {
       "fromId": "color-scheme",
-      "toId": "portal-valve",
+      "toId": "portal-inspired",
+      "type": "related_to",
+      "docId": "design-md-color-scheme",
+      "weight": 1
+    },
+    {
+      "fromId": "portal-inspired",
+      "toId": "valve",
       "type": "related_to",
       "docId": "design-md-color-scheme",
       "weight": 1
@@ -3328,41 +3044,34 @@
     },
     {
       "fromId": "claude-md",
-      "toId": "dogfooding",
+      "toId": "kb-cli",
+      "type": "uses",
+      "docId": "claude-md-dogfooding",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-cli",
+      "toId": "architectural-decisions",
       "type": "implements",
       "docId": "claude-md-dogfooding",
       "weight": 1
     },
     {
-      "fromId": "claude-md",
-      "toId": "kb-cli",
-      "type": "uses",
-      "docId": "claude-md-dogfooding",
-      "weight": 1
-    },
-    {
-      "fromId": "dogfooding",
-      "toId": "kb-cli",
-      "type": "uses",
-      "docId": "claude-md-dogfooding",
-      "weight": 1
-    },
-    {
-      "fromId": "dogfooding",
+      "fromId": "kb-cli",
       "toId": "npm-run-refresh-global",
       "type": "uses",
       "docId": "claude-md-dogfooding",
       "weight": 1
     },
     {
-      "fromId": "dogfooding",
+      "fromId": "kb-cli",
       "toId": "kb-query",
       "type": "uses",
       "docId": "claude-md-dogfooding",
       "weight": 1
     },
     {
-      "fromId": "dogfooding",
+      "fromId": "kb-cli",
       "toId": "kb-submit",
       "type": "uses",
       "docId": "claude-md-dogfooding",
@@ -3383,9 +3092,9 @@
       "weight": 1
     },
     {
-      "fromId": "ci-base",
-      "toId": "dogfood-base",
-      "type": "contradicts",
+      "fromId": "cli-changes",
+      "toId": "e2e-smoke-test",
+      "type": "depends_on",
       "docId": "claude-md-dogfooding",
       "weight": 1
     },
@@ -3404,13 +3113,6 @@
       "weight": 1
     },
     {
-      "fromId": "dogfooding",
-      "toId": "spike-ticket-workflow",
-      "type": "related_to",
-      "docId": "claude-md-dogfooding",
-      "weight": 1
-    },
-    {
       "fromId": "spike-ticket-workflow",
       "toId": "tui",
       "type": "uses",
@@ -3419,20 +3121,27 @@
     },
     {
       "fromId": "claude-md",
+      "toId": "composability",
+      "type": "implements",
+      "docId": "claude-md-composability-first",
+      "weight": 1
+    },
+    {
+      "fromId": "composability",
       "toId": "orchestrators",
       "type": "uses",
       "docId": "claude-md-composability-first",
       "weight": 1
     },
     {
-      "fromId": "claude-md",
+      "fromId": "composability",
       "toId": "intent-routes",
       "type": "uses",
       "docId": "claude-md-composability-first",
       "weight": 1
     },
     {
-      "fromId": "claude-md",
+      "fromId": "composability",
       "toId": "shared-utilities",
       "type": "uses",
       "docId": "claude-md-composability-first",
@@ -3460,30 +3169,37 @@
       "weight": 1
     },
     {
-      "fromId": "orchestrators",
-      "toId": "cli-adapters",
+      "fromId": "composability",
+      "toId": "shared-abstractions",
+      "type": "uses",
+      "docId": "claude-md-composability-first",
+      "weight": 1
+    },
+    {
+      "fromId": "policy-decisions",
+      "toId": "orchestrators",
       "type": "related_to",
       "docId": "claude-md-composability-first",
       "weight": 1
     },
     {
-      "fromId": "orchestrators",
-      "toId": "tui-adapters",
+      "fromId": "policy-decisions",
+      "toId": "intent-routes",
       "type": "related_to",
       "docId": "claude-md-composability-first",
       "weight": 1
     },
     {
-      "fromId": "intent-routes",
-      "toId": "cli-adapters",
-      "type": "related_to",
+      "fromId": "cli-adapters",
+      "toId": "policy-decisions",
+      "type": "contradicts",
       "docId": "claude-md-composability-first",
       "weight": 1
     },
     {
-      "fromId": "intent-routes",
-      "toId": "tui-adapters",
-      "type": "related_to",
+      "fromId": "tui-adapters",
+      "toId": "policy-decisions",
+      "type": "contradicts",
       "docId": "claude-md-composability-first",
       "weight": 1
     },
@@ -3495,30 +3211,16 @@
       "weight": 1
     },
     {
-      "fromId": "markdown",
-      "toId": "typescript-strings",
-      "type": "contradicts",
-      "docId": "claude-md-prompts-and-instructions-stay-as-markdown",
-      "weight": 1
-    },
-    {
-      "fromId": "markdown",
-      "toId": "template-literals",
-      "type": "contradicts",
-      "docId": "claude-md-prompts-and-instructions-stay-as-markdown",
-      "weight": 1
-    },
-    {
       "fromId": "runtime-prompts",
       "toId": "src-prompts-md",
-      "type": "implements",
+      "type": "related_to",
       "docId": "claude-md-prompts-and-instructions-stay-as-markdown",
       "weight": 1
     },
     {
       "fromId": "agent-skills",
       "toId": "skills-name-skill-md",
-      "type": "implements",
+      "type": "related_to",
       "docId": "claude-md-prompts-and-instructions-stay-as-markdown",
       "weight": 1
     },
@@ -3548,6 +3250,62 @@
       "toId": "skills-name-skill-md",
       "type": "uses",
       "docId": "claude-md-prompts-and-instructions-stay-as-markdown",
+      "weight": 1
+    },
+    {
+      "fromId": "markdown",
+      "toId": "typescript-strings",
+      "type": "contradicts",
+      "docId": "claude-md-prompts-and-instructions-stay-as-markdown",
+      "weight": 1
+    },
+    {
+      "fromId": "markdown",
+      "toId": "template-literals",
+      "type": "contradicts",
+      "docId": "claude-md-prompts-and-instructions-stay-as-markdown",
+      "weight": 1
+    },
+    {
+      "fromId": "claude-md",
+      "toId": "tui",
+      "type": "related_to",
+      "docId": "claude-md-tui-cli-parity",
+      "weight": 1
+    },
+    {
+      "fromId": "claude-md",
+      "toId": "cli",
+      "type": "related_to",
+      "docId": "claude-md-tui-cli-parity",
+      "weight": 1
+    },
+    {
+      "fromId": "tui",
+      "toId": "kb-command",
+      "type": "implements",
+      "docId": "claude-md-tui-cli-parity",
+      "weight": 1
+    },
+    {
+      "fromId": "cli",
+      "toId": "tui-shell-command",
+      "type": "implements",
+      "docId": "claude-md-tui-cli-parity",
+      "weight": 1
+    },
+    {
+      "fromId": "tui",
+      "toId": "src-core-tui-md",
+      "type": "related_to",
+      "docId": "claude-md-tui-cli-parity",
+      "weight": 1
+    },
+    {
+      "fromId": "cli",
+      "toId": "src-core-tui-md",
+      "type": "related_to",
+      "docId": "claude-md-tui-cli-parity",
       "weight": 1
     },
     {
@@ -3601,8 +3359,15 @@
     },
     {
       "fromId": "kb",
-      "toId": "node-20",
+      "toId": "node-js-22",
       "type": "depends_on",
+      "docId": "constraints-and-gotchas",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-base-use",
+      "toId": "kb",
+      "type": "uses",
       "docId": "constraints-and-gotchas",
       "weight": 1
     },
@@ -3614,154 +3379,126 @@
       "weight": 1
     },
     {
-      "fromId": "markdown-files",
+      "fromId": "kb",
+      "toId": "tui-shell",
+      "type": "implements",
+      "docId": "constraints-and-gotchas",
+      "weight": 1
+    },
+    {
+      "fromId": "runtime-prompts",
+      "toId": "markdown-files",
+      "type": "uses",
+      "docId": "constraints-and-gotchas",
+      "weight": 1
+    },
+    {
+      "fromId": "runtime-prompts",
       "toId": "typescript-strings",
       "type": "contradicts",
       "docId": "constraints-and-gotchas",
       "weight": 1
     },
     {
-      "fromId": "markdown-files",
-      "toId": "template-literals",
+      "fromId": "agent-skills",
+      "toId": "markdown-files",
+      "type": "uses",
+      "docId": "constraints-and-gotchas",
+      "weight": 1
+    },
+    {
+      "fromId": "agent-skills",
+      "toId": "typescript-strings",
       "type": "contradicts",
       "docId": "constraints-and-gotchas",
       "weight": 1
     },
     {
-      "fromId": "orchestrators",
-      "toId": "cli",
-      "type": "related_to",
-      "docId": "constraints-and-gotchas",
-      "weight": 1
-    },
-    {
-      "fromId": "orchestrators",
-      "toId": "tui",
-      "type": "related_to",
-      "docId": "constraints-and-gotchas",
-      "weight": 1
-    },
-    {
-      "fromId": "intent-layers",
-      "toId": "cli",
-      "type": "related_to",
-      "docId": "constraints-and-gotchas",
-      "weight": 1
-    },
-    {
-      "fromId": "intent-layers",
-      "toId": "tui",
-      "type": "related_to",
-      "docId": "constraints-and-gotchas",
-      "weight": 1
-    },
-    {
-      "fromId": "unit-tests",
-      "toId": "pr-merge",
-      "type": "depends_on",
+      "fromId": "npm-run-precommit",
+      "toId": "lint",
+      "type": "uses",
       "docId": "constraints-and-gotchas",
       "weight": 1
     },
     {
       "fromId": "npm-run-precommit",
-      "toId": "pr-merge",
-      "type": "depends_on",
+      "toId": "type-check",
+      "type": "uses",
       "docId": "constraints-and-gotchas",
       "weight": 1
     },
     {
-      "fromId": "e2e-smoke-test",
-      "toId": "cli",
+      "fromId": "npm-run-precommit",
+      "toId": "unit-tests",
+      "type": "uses",
+      "docId": "constraints-and-gotchas",
+      "weight": 1
+    },
+    {
+      "fromId": "dogfood-base",
+      "toId": "kb",
       "type": "related_to",
       "docId": "constraints-and-gotchas",
       "weight": 1
     },
     {
       "fromId": "ci-base",
-      "toId": "dogfood-base",
-      "type": "replaces",
+      "toId": "kb",
+      "type": "related_to",
       "docId": "constraints-and-gotchas",
       "weight": 1
     },
     {
-      "fromId": "kb-project",
-      "toId": "github-releases",
-      "type": "uses",
-      "docId": "deployment-release",
-      "weight": 1
-    },
-    {
       "fromId": "github-releases",
-      "toId": "ci",
-      "type": "uses",
-      "docId": "deployment-release",
+      "toId": "kb-cli-node22-tgz",
+      "type": "related_to",
+      "docId": "deployment-and-release-process",
       "weight": 1
     },
     {
       "fromId": "ci",
-      "toId": "kb-cli-node20-tgz",
-      "type": "implements",
-      "docId": "deployment-release",
-      "weight": 1
-    },
-    {
-      "fromId": "npm-install-g",
-      "toId": "kb-cli-node20-tgz",
+      "toId": "main",
       "type": "uses",
-      "docId": "deployment-release",
+      "docId": "deployment-and-release-process",
       "weight": 1
     },
     {
-      "fromId": "npm-install-g",
-      "toId": "kb-cli",
-      "type": "implements",
-      "docId": "deployment-release",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-project",
-      "toId": "kb-sync",
+      "fromId": "npm-install",
+      "toId": "kb-cli-node22-tgz",
       "type": "uses",
-      "docId": "deployment-release",
+      "docId": "deployment-and-release-process",
       "weight": 1
     },
     {
-      "fromId": "kb-project",
-      "toId": "kb-publish-jekyll",
+      "fromId": "kb-sync",
+      "toId": "github-rosenjcb-kb",
       "type": "uses",
-      "docId": "deployment-release",
+      "docId": "deployment-and-release-process",
       "weight": 1
     },
     {
-      "fromId": "kb-publish-jekyll",
+      "fromId": "src-cli-publish-cli-ts",
+      "toId": "kb-cli-node22-tgz",
+      "type": "related_to",
+      "docId": "deployment-and-release-process",
+      "weight": 1
+    },
+    {
+      "fromId": "src-cli-publish-jekyll-ts",
       "toId": "jekyll",
-      "type": "uses",
-      "docId": "deployment-release",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-project",
-      "toId": "pnpm-run-build",
-      "type": "uses",
-      "docId": "deployment-release",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-project",
-      "toId": "npm-run-refresh-global",
-      "type": "uses",
-      "docId": "deployment-release",
-      "weight": 1
-    },
-    {
-      "fromId": "npm-run-refresh-global",
-      "toId": "kb-cli",
       "type": "implements",
-      "docId": "deployment-release",
+      "docId": "deployment-and-release-process",
       "weight": 1
     },
     {
-      "fromId": "kb-testing",
+      "fromId": "src-core-publish-jekyll-sync-ts",
+      "toId": "jekyll",
+      "type": "implements",
+      "docId": "deployment-and-release-process",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-project",
       "toId": "vitest",
       "type": "uses",
       "docId": "testing-in-kb",
@@ -3782,119 +3519,77 @@
       "weight": 1
     },
     {
-      "fromId": "kb-testing",
-      "toId": "implementation-details",
-      "type": "contradicts",
+      "fromId": "llm",
+      "toId": "it-todo",
+      "type": "uses",
       "docId": "testing-in-kb",
       "weight": 1
     },
     {
-      "fromId": "kb-testing",
-      "toId": "private-helpers",
-      "type": "contradicts",
+      "fromId": "network",
+      "toId": "it-todo",
+      "type": "uses",
       "docId": "testing-in-kb",
       "weight": 1
     },
     {
-      "fromId": "kb-testing",
-      "toId": "third-party-library-behavior",
-      "type": "contradicts",
-      "docId": "testing-in-kb",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-testing",
-      "toId": "trivial-getters",
-      "type": "contradicts",
-      "docId": "testing-in-kb",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-testing",
-      "toId": "type-only-exports",
-      "type": "contradicts",
-      "docId": "testing-in-kb",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-testing",
-      "toId": "live-llm",
-      "type": "contradicts",
-      "docId": "testing-in-kb",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-testing",
-      "toId": "network",
-      "type": "contradicts",
-      "docId": "testing-in-kb",
-      "weight": 1
-    },
-    {
-      "fromId": "real-filesystems",
+      "fromId": "vitest",
       "toId": "mkdtemp",
       "type": "uses",
       "docId": "testing-in-kb",
       "weight": 1
     },
     {
-      "fromId": "real-filesystems",
+      "fromId": "vitest",
       "toId": "rm",
       "type": "uses",
       "docId": "testing-in-kb",
       "weight": 1
     },
     {
-      "fromId": "mkdtemp",
-      "toId": "beforeeach-hook",
+      "fromId": "vitest",
+      "toId": "vi-spyon",
       "type": "uses",
-      "docId": "testing-in-kb",
-      "weight": 1
-    },
-    {
-      "fromId": "rm",
-      "toId": "aftereach-hook",
-      "type": "uses",
-      "docId": "testing-in-kb",
-      "weight": 1
-    },
-    {
-      "fromId": "mocking",
-      "toId": "vi-spy-on",
-      "type": "uses",
-      "docId": "testing-in-kb",
-      "weight": 1
-    },
-    {
-      "fromId": "mocking",
-      "toId": "sqlite-layer",
-      "type": "contradicts",
       "docId": "testing-in-kb",
       "weight": 1
     },
     {
       "fromId": "sqlite-layer",
-      "toId": "in-memory-db",
-      "type": "uses",
-      "docId": "testing-in-kb",
-      "weight": 1
-    },
-    {
-      "fromId": "in-memory-db",
       "toId": "better-sqlite3",
       "type": "uses",
       "docId": "testing-in-kb",
       "weight": 1
     },
     {
-      "fromId": "pre-commit-gate",
+      "fromId": "kb-project",
       "toId": "npm-run-precommit",
+      "type": "uses",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "npm-run-precommit",
+      "toId": "lint",
       "type": "implements",
       "docId": "testing-in-kb",
       "weight": 1
     },
     {
-      "fromId": "kb-testing",
+      "fromId": "npm-run-precommit",
+      "toId": "type-check",
+      "type": "implements",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "npm-run-precommit",
+      "toId": "full-test-suite",
+      "type": "implements",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-project",
       "toId": "testing-md",
       "type": "related_to",
       "docId": "testing-in-kb",
@@ -3902,540 +3597,687 @@
     },
     {
       "fromId": "unit-tests",
-      "toId": "pr-merges",
+      "toId": "pr-merge",
       "type": "depends_on",
       "docId": "testing-in-kb",
       "weight": 1
     },
     {
-      "fromId": "base-resolution-order",
-      "toId": "activebase",
+      "fromId": "testing-md",
+      "toId": "exported-functions",
+      "type": "related_to",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "testing-md",
+      "toId": "error-paths",
+      "type": "related_to",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "testing-md",
+      "toId": "edge-cases",
+      "type": "related_to",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "testing-md",
+      "toId": "cli-parsers",
+      "type": "related_to",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "testing-md",
+      "toId": "implementation-details",
+      "type": "contradicts",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "testing-md",
+      "toId": "private-helpers",
+      "type": "contradicts",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "testing-md",
+      "toId": "third-party-library-behavior",
+      "type": "contradicts",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "testing-md",
+      "toId": "trivial-getters",
+      "type": "contradicts",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "testing-md",
+      "toId": "type-only-exports",
+      "type": "contradicts",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "testing-md",
+      "toId": "llm",
+      "type": "contradicts",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "testing-md",
+      "toId": "network",
+      "type": "contradicts",
+      "docId": "testing-in-kb",
+      "weight": 1
+    },
+    {
+      "fromId": "project-configuration",
+      "toId": "kb-config-json",
       "type": "uses",
       "docId": "project-configuration",
       "weight": 1
     },
     {
-      "fromId": "base-resolution-order",
-      "toId": "defaultbase",
+      "fromId": "project-configuration",
+      "toId": "environment-variables",
+      "type": "uses",
+      "docId": "project-configuration",
+      "weight": 1
+    },
+    {
+      "fromId": "llm-provider",
+      "toId": "kb-config-set-llm-provider-openai",
       "type": "uses",
       "docId": "project-configuration",
       "weight": 1
     },
     {
       "fromId": "kb",
-      "toId": "src-core",
-      "type": "implements",
+      "toId": "node-22",
+      "type": "depends_on",
+      "docId": "project-configuration",
+      "weight": 1
+    },
+    {
+      "fromId": "kb",
+      "toId": "core",
+      "type": "depends_on",
       "docId": "kb-architecture-overview",
       "weight": 1
     },
     {
       "fromId": "kb",
-      "toId": "src-cli",
-      "type": "implements",
+      "toId": "cli",
+      "type": "depends_on",
       "docId": "kb-architecture-overview",
       "weight": 1
     },
     {
       "fromId": "kb",
-      "toId": "src-tools",
-      "type": "implements",
-      "docId": "kb-architecture-overview",
-      "weight": 1
-    },
-    {
-      "fromId": "src-cli",
-      "toId": "kb-init",
-      "type": "implements",
-      "docId": "kb-architecture-overview",
-      "weight": 1
-    },
-    {
-      "fromId": "kb",
-      "toId": "sqlite-database",
-      "type": "uses",
-      "docId": "kb-architecture-overview",
-      "weight": 1
-    },
-    {
-      "fromId": "kb",
-      "toId": "kb-cli",
-      "type": "uses",
+      "toId": "tools",
+      "type": "depends_on",
       "docId": "kb-architecture-overview",
       "weight": 1
     },
     {
       "fromId": "kb",
       "toId": "tui",
+      "type": "depends_on",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "core",
+      "toId": "provider-abstraction",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "core",
+      "toId": "intent-loop",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "core",
+      "toId": "agent-loop",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "core",
+      "toId": "runtime-types",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "cli",
+      "toId": "cli-entrypoint",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "cli",
+      "toId": "kb-intent-parsing",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "cli",
+      "toId": "base-selection",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "cli",
+      "toId": "initialization-processes",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "tools",
+      "toId": "writing-functionalities",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "tools",
+      "toId": "querying-functionalities",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "tools",
+      "toId": "markdown-integration",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "tools",
+      "toId": "sqlite-index-integration",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "tui",
+      "toId": "ink",
       "type": "uses",
       "docId": "kb-architecture-overview",
       "weight": 1
     },
     {
       "fromId": "tui",
-      "toId": "src-tui",
+      "toId": "react",
+      "type": "uses",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "tui",
+      "toId": "app-tsx",
       "type": "implements",
       "docId": "kb-architecture-overview",
       "weight": 1
     },
     {
-      "fromId": "orchestrators",
-      "toId": "kb",
-      "type": "related_to",
+      "fromId": "app-tsx",
+      "toId": "statusbar",
+      "type": "implements",
       "docId": "kb-architecture-overview",
       "weight": 1
     },
     {
-      "fromId": "intent-layers",
-      "toId": "kb",
-      "type": "related_to",
+      "fromId": "app-tsx",
+      "toId": "historypane",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "app-tsx",
+      "toId": "inputbar",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "app-tsx",
+      "toId": "loadingspinner",
+      "type": "implements",
       "docId": "kb-architecture-overview",
       "weight": 1
     },
     {
       "fromId": "kb",
-      "toId": "vitest",
+      "toId": "one-shot-cli-commands",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "kb",
+      "toId": "interactive-tui-shell",
+      "type": "implements",
+      "docId": "kb-architecture-overview",
+      "weight": 1
+    },
+    {
+      "fromId": "knowledge-bases",
+      "toId": "sqlite-data",
       "type": "uses",
       "docId": "kb-architecture-overview",
       "weight": 1
     },
     {
-      "fromId": "agent-instructions",
-      "toId": "prompts",
+      "fromId": "kb",
+      "toId": "knowledge-bases",
       "type": "uses",
       "docId": "kb-architecture-overview",
       "weight": 1
     },
     {
-      "fromId": "agent-instructions",
-      "toId": "skills",
+      "fromId": "kb",
+      "toId": "configuration",
       "type": "uses",
       "docId": "kb-architecture-overview",
       "weight": 1
     },
     {
-      "fromId": "core-workflows",
-      "toId": "knowledge-capture",
-      "type": "implements",
-      "docId": "core-workflows",
-      "weight": 1
-    },
-    {
-      "fromId": "core-workflows",
-      "toId": "knowledge-recall",
-      "type": "implements",
-      "docId": "core-workflows",
-      "weight": 1
-    },
-    {
-      "fromId": "core-workflows",
-      "toId": "knowledge-repair",
-      "type": "implements",
-      "docId": "core-workflows",
-      "weight": 1
-    },
-    {
-      "fromId": "core-workflows",
-      "toId": "kb-cli",
-      "type": "uses",
-      "docId": "core-workflows",
-      "weight": 1
-    },
-    {
-      "fromId": "core-workflows",
-      "toId": "kb-tui",
+      "fromId": "kb-cli",
+      "toId": "capturing-knowledge",
       "type": "uses",
       "docId": "core-workflows",
       "weight": 1
     },
     {
       "fromId": "kb-cli",
-      "toId": "kb-submit",
+      "toId": "recalling-context",
       "type": "uses",
       "docId": "core-workflows",
       "weight": 1
     },
     {
       "fromId": "kb-cli",
-      "toId": "kb-query",
+      "toId": "repairing-stale-knowledge",
       "type": "uses",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "kb-cli",
-      "toId": "kb-invalidate",
+      "fromId": "tui",
+      "toId": "capturing-knowledge",
       "type": "uses",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "kb-cli",
-      "toId": "kb-init",
+      "fromId": "tui",
+      "toId": "recalling-context",
       "type": "uses",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "kb-cli",
-      "toId": "kb-base-use",
-      "type": "uses",
-      "docId": "core-workflows",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-cli",
-      "toId": "kb-config-set",
-      "type": "uses",
-      "docId": "core-workflows",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-cli",
-      "toId": "kb-sync",
+      "fromId": "tui",
+      "toId": "repairing-stale-knowledge",
       "type": "uses",
       "docId": "core-workflows",
       "weight": 1
     },
     {
       "fromId": "kb-submit",
-      "toId": "knowledge-capture",
+      "toId": "capturing-knowledge",
       "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
       "fromId": "kb-query",
-      "toId": "knowledge-recall",
+      "toId": "recalling-context",
       "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
       "fromId": "kb-invalidate",
-      "toId": "knowledge-repair",
-      "type": "implements",
-      "docId": "core-workflows",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-init",
-      "toId": "knowledge-base-initialization",
-      "type": "implements",
-      "docId": "core-workflows",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-base-use",
-      "toId": "knowledge-base-management",
+      "toId": "repairing-stale-knowledge",
       "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
       "fromId": "pnpm-install",
-      "toId": "development-installation",
+      "toId": "installation-and-setup",
       "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
       "fromId": "pnpm-run-check",
-      "toId": "development-verification",
+      "toId": "installation-and-setup",
       "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
       "fromId": "npm-run-refresh-global",
-      "toId": "development-installation",
+      "toId": "installation-and-setup",
       "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "command-v-kb",
-      "toId": "development-verification",
+      "fromId": "kb-config-json",
+      "toId": "installation-and-setup",
+      "type": "related_to",
+      "docId": "core-workflows",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-config-json",
+      "toId": "llm-provider",
+      "type": "uses",
+      "docId": "core-workflows",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-init",
+      "toId": "initializing-knowledge-base",
       "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "kb-config-set",
-      "toId": "configuration-management",
+      "fromId": "kb-init",
+      "toId": "refreshing-existing-base",
+      "type": "implements",
+      "docId": "core-workflows",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-base-use",
+      "toId": "switching-knowledge-bases",
       "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
       "fromId": "kb-sync",
-      "toId": "repository-sync",
+      "toId": "kb-cli",
+      "type": "related_to",
+      "docId": "core-workflows",
+      "weight": 1
+    },
+    {
+      "fromId": "pnpm-run-test",
+      "toId": "development-commands",
       "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "kb-tui",
-      "toId": "tui-query",
-      "type": "uses",
+      "fromId": "pnpm-run-type-check",
+      "toId": "development-commands",
+      "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "kb-tui",
-      "toId": "tui-submit",
-      "type": "uses",
+      "fromId": "pnpm-run-lint",
+      "toId": "development-commands",
+      "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "kb-tui",
-      "toId": "tui-chat",
-      "type": "uses",
+      "fromId": "pnpm-run-build",
+      "toId": "development-commands",
+      "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "kb-tui",
-      "toId": "tui-use",
-      "type": "uses",
+      "fromId": "tui-query",
+      "toId": "tui",
+      "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "kb-tui",
-      "toId": "tui-docs-list",
-      "type": "uses",
+      "fromId": "tui-submit",
+      "toId": "tui",
+      "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "kb-tui",
-      "toId": "tui-docs-view",
-      "type": "uses",
+      "fromId": "tui-chat",
+      "toId": "tui",
+      "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "kb-tui",
-      "toId": "tui-help",
-      "type": "uses",
+      "fromId": "tui-use",
+      "toId": "tui",
+      "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "kb-tui",
-      "toId": "tui-clear",
-      "type": "uses",
+      "fromId": "tui-docs-list",
+      "toId": "tui",
+      "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "kb-tui",
-      "toId": "tui-exit",
-      "type": "uses",
+      "fromId": "tui-docs-view",
+      "toId": "tui",
+      "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
-      "fromId": "npm-run-precommit",
-      "toId": "testing",
+      "fromId": "tui-help",
+      "toId": "tui",
+      "type": "implements",
+      "docId": "core-workflows",
+      "weight": 1
+    },
+    {
+      "fromId": "tui-clear",
+      "toId": "tui",
+      "type": "implements",
+      "docId": "core-workflows",
+      "weight": 1
+    },
+    {
+      "fromId": "tui-exit",
+      "toId": "tui",
+      "type": "implements",
+      "docId": "core-workflows",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-cli",
+      "toId": "tui",
+      "type": "replaces",
+      "docId": "core-workflows",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-cli",
+      "toId": "one-shot-cli",
       "type": "implements",
       "docId": "core-workflows",
       "weight": 1
     },
     {
       "fromId": "kb-project",
-      "toId": "node-20",
+      "toId": "node-22",
       "type": "depends_on",
-      "docId": "install-setup",
+      "docId": "install-and-setup",
       "weight": 1
     },
     {
-      "fromId": "kb-project",
-      "toId": "pnpm-install",
-      "type": "uses",
-      "docId": "install-setup",
+      "fromId": "pnpm-install",
+      "toId": "kb-project",
+      "type": "implements",
+      "docId": "install-and-setup",
       "weight": 1
     },
     {
-      "fromId": "kb-project",
-      "toId": "pnpm-run-check",
-      "type": "uses",
-      "docId": "install-setup",
+      "fromId": "pnpm-run-check",
+      "toId": "kb-project",
+      "type": "implements",
+      "docId": "install-and-setup",
       "weight": 1
     },
     {
-      "fromId": "kb-project",
-      "toId": "kb-command",
-      "type": "uses",
-      "docId": "install-setup",
+      "fromId": "npm-run-refresh-global",
+      "toId": "kb-project",
+      "type": "implements",
+      "docId": "install-and-setup",
       "weight": 1
     },
     {
-      "fromId": "kb-cli-node20-tgz",
+      "fromId": "command-v-kb",
+      "toId": "kb-project",
+      "type": "implements",
+      "docId": "install-and-setup",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-cli",
       "toId": "github-releases",
       "type": "related_to",
-      "docId": "install-setup",
+      "docId": "install-and-setup",
       "weight": 1
     },
     {
-      "fromId": "kb-project",
+      "fromId": "npm-install-g-kb-cli-node22-tgz",
+      "toId": "kb-cli",
+      "type": "implements",
+      "docId": "install-and-setup",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-config-set-llm-provider-openai",
       "toId": "kb-config-json",
       "type": "uses",
-      "docId": "install-setup",
+      "docId": "install-and-setup",
       "weight": 1
     },
     {
       "fromId": "kb-config-set-llm-provider-openai",
       "toId": "openai",
       "type": "uses",
-      "docId": "install-setup",
+      "docId": "install-and-setup",
       "weight": 1
     },
     {
-      "fromId": "kb-project",
-      "toId": "kb-init-base-dogfood",
-      "type": "uses",
-      "docId": "install-setup",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-project",
-      "toId": "kb-init-base-dogfood-rescan",
-      "type": "uses",
-      "docId": "install-setup",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-project",
-      "toId": "kb-init-base-dogfood-rescan-apply",
-      "type": "uses",
-      "docId": "install-setup",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-project",
-      "toId": "kb-base-use-dogfood",
-      "type": "uses",
-      "docId": "install-setup",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-project",
-      "toId": "kb-init-rescan-apply",
-      "type": "uses",
-      "docId": "install-setup",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-project",
-      "toId": "pnpm-run-test",
-      "type": "uses",
-      "docId": "install-setup",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-project",
-      "toId": "pnpm-run-type-check",
-      "type": "uses",
-      "docId": "install-setup",
-      "weight": 1
-    },
-    {
-      "fromId": "kb-project",
-      "toId": "pnpm-run-lint",
-      "type": "uses",
-      "docId": "install-setup",
-      "weight": 1
-    },
-    {
-      "fromId": "npm-run-precommit",
-      "toId": "pnpm-run-lint",
+      "fromId": "kb-init-base-dogfood",
+      "toId": "kb-project",
       "type": "implements",
-      "docId": "install-setup",
+      "docId": "install-and-setup",
       "weight": 1
     },
     {
-      "fromId": "npm-run-precommit",
-      "toId": "pnpm-run-type-check",
+      "fromId": "kb-init-base-dogfood-rescan",
+      "toId": "kb-project",
       "type": "implements",
-      "docId": "install-setup",
+      "docId": "install-and-setup",
       "weight": 1
     },
     {
-      "fromId": "npm-run-precommit",
-      "toId": "pnpm-run-test",
+      "fromId": "kb-init-base-dogfood-rescan-apply",
+      "toId": "kb-project",
       "type": "implements",
-      "docId": "install-setup",
+      "docId": "install-and-setup",
       "weight": 1
     },
     {
-      "fromId": "e2e-smoke-test",
-      "toId": "cli-changes",
-      "type": "related_to",
-      "docId": "install-setup",
+      "fromId": "kb-base-use-dogfood",
+      "toId": "kb-project",
+      "type": "implements",
+      "docId": "install-and-setup",
       "weight": 1
     },
     {
-      "fromId": "e2e-smoke-test",
-      "toId": "kb-init-base-ci-e2e-non-interactive-debug",
+      "fromId": "kb-init-rescan-apply",
+      "toId": "kb-project",
+      "type": "implements",
+      "docId": "install-and-setup",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-project",
+      "toId": "sqlite",
       "type": "uses",
-      "docId": "install-setup",
+      "docId": "install-and-setup",
       "weight": 1
     },
     {
-      "fromId": "cli",
-      "toId": "decisions",
-      "type": "uses",
+      "fromId": "kb",
+      "toId": "runtime",
+      "type": "implements",
       "docId": "project-overview",
       "weight": 1
     },
     {
-      "fromId": "cli",
-      "toId": "facts",
-      "type": "uses",
+      "fromId": "kb",
+      "toId": "chat-history",
+      "type": "contradicts",
       "docId": "project-overview",
       "weight": 1
     },
     {
-      "fromId": "cli",
-      "toId": "context",
-      "type": "uses",
+      "fromId": "kb",
+      "toId": "pr-threads",
+      "type": "contradicts",
       "docId": "project-overview",
       "weight": 1
     },
     {
-      "fromId": "runtime",
-      "toId": "decisions",
-      "type": "uses",
-      "docId": "project-overview",
-      "weight": 1
-    },
-    {
-      "fromId": "runtime",
-      "toId": "facts",
-      "type": "uses",
-      "docId": "project-overview",
-      "weight": 1
-    },
-    {
-      "fromId": "runtime",
-      "toId": "context",
+      "fromId": "kb",
+      "toId": "git",
       "type": "uses",
       "docId": "project-overview",
       "weight": 1
     },
     {
       "fromId": "kb",
-      "toId": "primary-coding-agent",
-      "type": "contradicts",
+      "toId": "memory-system",
+      "type": "related_to",
       "docId": "project-overview",
       "weight": 1
     },
     {
-      "fromId": "primary-coding-agent",
-      "toId": "transient-context",
-      "type": "uses",
+      "fromId": "kb",
+      "toId": "code",
+      "type": "related_to",
       "docId": "project-overview",
       "weight": 1
     }
