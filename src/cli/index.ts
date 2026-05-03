@@ -173,7 +173,7 @@ function printInitHelp(mode: CmdMode = 'cli'): string {
     '  --non-interactive              Skip interview prompts when possible',
     '  --detach                       Pause after the current cycle and save a checkpoint',
     '  --resume                       Resume from the latest init checkpoint',
-    '  --stop-after <cycle>           Stop after read-inputs|scan-facts|code-facts|pass1|pass2|pass-enrich|pass3|write|pass-graph',
+    '  --stop-after <cycle>           Stop after read-inputs|scan-facts|code-facts|import-docs|write|pass-graph',
     '  --rescan                       Re-read changed README-like sources and plan KB updates',
     '  --dry-run                      Preview the rescan plan without applying mutations',
     '  --apply                        Apply planned rescan mutations',

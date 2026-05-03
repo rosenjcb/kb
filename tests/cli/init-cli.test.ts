@@ -4,7 +4,6 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseInitCommand, runKbInit } from '../../src/cli/init-cli'
 import { buildFrozenSourceSnapshotDoc } from '../../src/cli/init-source-snapshots'
-import { INIT_TOPIC_DEFINITIONS } from '../../src/cli/init-topic-coverage'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
 import { SqliteDocumentWriter } from '../../src/tools/sqlite-document-writer'
 
@@ -369,7 +368,7 @@ describe('init-cli interview checkpoints', () => {
     stderrSpy.mockRestore()
   })
 
-  it('Given interactive read-inputs pause, then persists version 2 checkpoint with interview rounds', async () => {
+  it('Given interactive read-inputs pause, then persists version 3 checkpoint with interview rounds', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
@@ -402,14 +401,14 @@ describe('init-cli interview checkpoints', () => {
       topicCoverage: Array<{ topic: string }>
     }
 
-    expect(checkpoint.version).toBe(2)
+    expect(checkpoint.version).toBe(3)
     expect(checkpoint.interviewRounds).toHaveLength(1)
     expect(checkpoint.interviewRounds[0].questions.length).toBeGreaterThan(0)
     expect(checkpoint.context.userAnswers.length).toBe(2)
     expect(checkpoint.topicCoverage.some(topic => topic.topic === 'install-setup')).toBe(true)
   })
 
-  it('Given resumed init after pass1, then asks only follow-up questions and keeps initial round intact', async () => {
+  it('Given resume after import-docs pause, then finishes init without re-asking read-inputs', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
     })
@@ -421,79 +420,40 @@ describe('init-cli interview checkpoints', () => {
       '',
       '',
     ])
-    const provider = createProvider([
-      JSON.stringify([
-        {
-          title: 'Project Overview',
-          type: 'introduction',
-          tags: ['overview'],
-          content:
-            'Project overview summary with enough detail to satisfy quality gates and explain the system structure.',
-        },
-      ]),
-      JSON.stringify([
-        {
-          title: 'Project Overview',
-          type: 'introduction',
-          tags: ['overview'],
-          content:
-            'Project overview summary with enough detail to satisfy quality gates and explain the system structure plus refined workflow notes.',
-        },
-      ]),
-    ])
+    const provider = createProvider([])
 
     const firstRun = await runKbInit({
       base: 'dogfood',
       nonInteractive: false,
-      stopAfter: 'pass1',
+      stopAfter: 'import-docs',
       cwd,
       questionIO: firstQuestionIO.io,
       provider,
     })
 
-    const followUpQuestionIO = createQuestionIO([
-      'Testing uses vitest run.',
-      'Deployments happen manually for now.',
-      'Configuration uses .env.local.',
-      'Biggest gotcha is stale KB facts.',
-    ])
+    expect(firstRun.status).toBe('paused')
+    const firstCp = firstRun.checkpointFile
+    if (!firstCp) throw new Error('expected checkpointFile')
+    const mid = JSON.parse(await readFile(firstCp, 'utf8')) as {
+      completedCycles: string[]
+      candidateDocs?: Array<{ title: string; isOriginal?: boolean }>
+    }
+    expect(mid.completedCycles).toContain('import-docs')
+    expect(mid.candidateDocs?.some(d => d.title === 'README.md' && d.isOriginal)).toBe(true)
 
     const resumedRun = await runKbInit({
       base: 'dogfood',
-      nonInteractive: false,
-      stopAfter: 'pass2',
+      nonInteractive: true,
       cwd,
       resumeFrom: firstRun.checkpointFile,
-      questionIO: followUpQuestionIO.io,
+      questionIO: createQuestionIO([]).io,
       provider,
     })
 
-    expect(resumedRun.status).toBe('paused')
-    expect(followUpQuestionIO.prompts.length).toBeGreaterThan(0)
-    expect(
-      followUpQuestionIO.prompts.some(prompt =>
-        prompt.includes('How do you install or set up this project?')
-      )
-    ).toBe(false)
-
-    const firstCp = firstRun.checkpointFile
-    if (!firstCp) throw new Error('expected checkpointFile')
-    const checkpoint = JSON.parse(await readFile(firstCp, 'utf8')) as {
-      interviewRounds: Array<{
-        round: number
-        questions: Array<{ question: string; answer?: string }>
-      }>
-      completedCycles: string[]
-    }
-
-    expect(checkpoint.completedCycles).toContain('pass2')
-    expect(checkpoint.interviewRounds.length).toBeGreaterThanOrEqual(1)
-    expect(
-      checkpoint.interviewRounds.some(round => round.questions.some(question => question.answer))
-    ).toBe(true)
+    expect(resumedRun.status).toBe('accepted')
   })
 
-  it('Given version 1 checkpoint, then resume migrates it to version 2 without re-asking old answers', async () => {
+  it('Given version 1 checkpoint, then resume migrates it to version 3 without re-asking old answers', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nSimple overview.\n',
     })
@@ -531,22 +491,12 @@ describe('init-cli interview checkpoints', () => {
     )
 
     const questionIO = createQuestionIO([])
-    const provider = createProvider([
-      JSON.stringify([
-        {
-          title: 'Project Overview',
-          type: 'introduction',
-          tags: ['overview'],
-          content:
-            'Project overview summary with enough detail to satisfy quality gates and explain the system structure.',
-        },
-      ]),
-    ])
+    const provider = createProvider([])
 
     const result = await runKbInit({
       base: 'dogfood',
       nonInteractive: true,
-      stopAfter: 'pass1',
+      stopAfter: 'import-docs',
       cwd,
       resumeFrom: checkpointFile,
       questionIO: questionIO.io,
@@ -562,9 +512,9 @@ describe('init-cli interview checkpoints', () => {
       completedCycles: string[]
     }
 
-    expect(checkpoint.version).toBe(2)
+    expect(checkpoint.version).toBe(3)
     expect(checkpoint.interviewRounds[0].questions[0].answer).toBe('Run npm install.')
-    expect(checkpoint.completedCycles).toContain('pass1')
+    expect(checkpoint.completedCycles).toContain('import-docs')
   })
 
   it('Given detach during read-inputs, then checkpoint stores pending questions and resume answers them', async () => {
@@ -654,22 +604,12 @@ describe('init-cli interview checkpoints', () => {
       'utf8'
     )
 
-    const provider = createProvider([
-      JSON.stringify([
-        {
-          title: 'Project Overview',
-          type: 'introduction',
-          tags: ['overview'],
-          content:
-            'Project overview summary with enough detail to satisfy quality gates and explain the system structure.',
-        },
-      ]),
-    ])
+    const provider = createProvider([])
 
     const result = await runKbInit({
       base: 'dogfood',
       nonInteractive: true,
-      stopAfter: 'pass1',
+      stopAfter: 'import-docs',
       cwd,
       provider,
     })
@@ -682,7 +622,7 @@ describe('init-cli interview checkpoints', () => {
     const migrated = JSON.parse(await readFile(migratedPath, 'utf8')) as {
       version: number
     }
-    expect(migrated.version).toBe(2)
+    expect(migrated.version).toBe(3)
   })
 
   it('Given resumed pending questions, then askQuestion is called sequentially not concurrently', async () => {
@@ -721,27 +661,18 @@ describe('init-cli interview checkpoints', () => {
     expect(sequentialQuestionIO.prompts.length).toBeGreaterThan(0)
   })
 
-  it('Given per-topic synthesis and several repo markdown files, then pass1 checkpoint includes frozen originals beside autogen', async () => {
+  it('Given several repo markdown files, then import-docs checkpoint lists each as original', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nOverview.\n',
       'AGENTS.md': '# Agents\n\nAgent rules.\n',
       'CLAUDE.md': '# Claude\n\nWorkflow hints.\n',
     })
-    const provider = createProvider(
-      INIT_TOPIC_DEFINITIONS.map(def =>
-        JSON.stringify({
-          title: `Synthesis ${def.topic}`,
-          type: 'introduction',
-          tags: [def.topic],
-          content: `Substantive content for ${def.topic}. `.repeat(15),
-        })
-      )
-    )
+    const provider = createProvider([])
 
     const result = await runKbInit({
       base: 'multi-source-init',
       nonInteractive: true,
-      stopAfter: 'pass1',
+      stopAfter: 'import-docs',
       cwd,
       provider,
     })
@@ -753,10 +684,9 @@ describe('init-cli interview checkpoints', () => {
       candidateDocs?: Array<{ title: string; isOriginal?: boolean }>
     }
     const originals = checkpoint.candidateDocs?.filter(d => d.isOriginal) ?? []
-    expect(originals.length).toBeGreaterThanOrEqual(2)
+    expect(originals).toHaveLength(3)
     const titles = originals.map(d => d.title).sort()
-    expect(titles).toContain('AGENTS.md')
-    expect(titles).toContain('CLAUDE.md')
+    expect(titles).toEqual(['AGENTS.md', 'CLAUDE.md', 'README.md'])
   })
 
   it('Given --rescan and existing source snapshots, then read-inputs keeps only changed/new README files', async () => {
@@ -810,16 +740,7 @@ describe('init-cli interview checkpoints', () => {
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
     })
-    const provider = createProvider(
-      INIT_TOPIC_DEFINITIONS.map(def =>
-        JSON.stringify({
-          title: `Synthesis ${def.topic}`,
-          type: 'reference',
-          tags: [def.topic],
-          content: `Key statement for ${def.topic}. `.repeat(12),
-        })
-      )
-    )
+    const provider = createProvider([JSON.stringify({ entities: [], relationships: [] })])
 
     const result = await runKbInit({
       base: 'rescan-dry-run',
@@ -840,16 +761,7 @@ describe('init-cli interview checkpoints', () => {
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
     })
-    const provider = createProvider(
-      INIT_TOPIC_DEFINITIONS.map(def =>
-        JSON.stringify({
-          title: `Synthesis ${def.topic}`,
-          type: 'reference',
-          tags: [def.topic],
-          content: `Rescan candidate for ${def.topic}. `.repeat(10),
-        })
-      )
-    )
+    const provider = createProvider([JSON.stringify({ entities: [], relationships: [] })])
 
     const result = await runKbInit({
       base: 'rescan-plan-only',
@@ -868,16 +780,7 @@ describe('init-cli interview checkpoints', () => {
       'README.md': '# Project\n\nKB provides CLI + intent commands for project knowledge.\n',
       'docs/README.md': '# Docs\n\nUse kb submit and kb invalidate to manage facts.\n',
     })
-    const provider = createProvider(
-      INIT_TOPIC_DEFINITIONS.map(def =>
-        JSON.stringify({
-          title: `Synthesis ${def.topic}`,
-          type: 'reference',
-          tags: [def.topic],
-          content: `KB ${def.topic} details for rescan planning and command behavior. `.repeat(8),
-        })
-      )
-    )
+    const provider = createProvider([JSON.stringify({ entities: [], relationships: [] })])
     const questionIO = createQuestionIO([])
     const result = await runKbInit({
       base: 'rescan-preview-append-style',
@@ -913,28 +816,19 @@ describe('init-cli interview checkpoints', () => {
     expect(questionIO.prompts).toHaveLength(0)
   })
 
-  it('Given interactive --rescan through pass2, then follow-up interview questions are skipped', async () => {
+  it('Given interactive --rescan through import-docs, then follow-up interview questions are skipped', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has docs.\n',
     })
     await mkdir(path.join(cwd, 'evaluation', 'runs'), { recursive: true })
-    const provider = createProvider(
-      INIT_TOPIC_DEFINITIONS.map(def =>
-        JSON.stringify({
-          title: `Synthesis ${def.topic}`,
-          type: 'reference',
-          tags: [def.topic],
-          content: `Rescan candidate for ${def.topic}. `.repeat(10),
-        })
-      )
-    )
+    const provider = createProvider([])
     const questionIO = createQuestionIO([])
 
     const result = await runKbInit({
       base: 'rescan-no-followups',
       nonInteractive: false,
       rescan: true,
-      stopAfter: 'pass2',
+      stopAfter: 'import-docs',
       cwd,
       provider,
       questionIO: questionIO.io,

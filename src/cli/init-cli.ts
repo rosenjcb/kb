@@ -7,13 +7,9 @@
  *                             (before synthesis; placeholder triplets).
  * Cycle 3 (code-facts):      Per-file LLM pass that extracts semantic facts from source code,
  *                             anchored by `code:<path>@<symbol>` for repair-friendly rescans.
- * Cycle 4 (pass1):           One LLM call per init topic (in parallel) from sources + Q&A.
- * Cycle 5 (pass2):           Follow-up questions for weak topics, LLM refinement.
- * Cycle 6 (pass-enrich):     Per-document enrichment — each doc gets a dedicated
- *                             LLM pass to deepen coverage and add concrete detail.
- * Cycle 7 (pass3):           Final quality pass — validate, dedupe, remove stubs.
- * Cycle 8 (write):           Upsert all candidate documents to SQLite.
- * Cycle 9 (pass-graph):      Extract knowledge graph entities and relationships.
+ * Cycle 4 (import-docs):     One `is_original` SQLite doc per collected markdown file (verbatim body).
+ * Cycle 5 (write):           Upsert documents.
+ * Cycle 6 (pass-graph):      Graph extraction (optional provider).
  *
  * Reuses progress reporting and checkpoint patterns from publish-cli.ts.
  */
@@ -24,17 +20,12 @@ import path from 'node:path'
 import readline from 'node:readline'
 import dayjs from 'dayjs'
 import { DOC_TYPES } from '../core/doc-taxonomy'
-import {
-  INIT_SYNTHESIS_GEMINI_RESPONSE_SCHEMA,
-  INIT_SYNTHESIS_OPENAI_JSON_SCHEMA,
-  parseInitSynthesisObject,
-} from '../core/init-synthesis-json'
+import { basenameTitle } from '../core/string-utils'
 import { ingestCodeFilesAsFacts } from '../core/code-fact-extract'
 import { ingestSourceMarkdownFilesAsFacts } from '../core/scan-fact-ingest'
 import type { RunCollector } from '../core/telemetry'
 import { TokenCountingProvider, estimateCost } from '../core/telemetry'
-import type { LLMProvider, LLMStructuredJsonRequest } from '../core/types'
-import { loadPromptParts } from '../prompts/loader'
+import type { LLMProvider } from '../core/types'
 import type { WriteDocumentInput } from '../tools/document-writer'
 import { KbGraphWriter } from '../tools/kb-graph-writer'
 import { extractGraphBatch } from '../tools/graph-entity-extractor'
@@ -53,32 +44,20 @@ import {
   writeCodeFactsManifest,
 } from './init-code-facts-manifest'
 import { readKnowledgeGraphInitSummary } from './graph-cli'
-import {
-  INIT_SOURCE_SNAPSHOT_MAX_FILES,
-  appendFrozenSourceSnapshots,
-  buildFrozenSourceSnapshotDoc,
-  isInitReadmeHomePath,
-} from './init-source-snapshots'
+import { buildFrozenSourceSnapshotDoc } from './init-source-snapshots'
 import {
   INIT_TOPIC_DEFINITIONS,
   assessTopicCoverage,
-  buildTopicCoverageGaps,
-  getTopicDefinition,
   inferTopicFromQuestion,
-  markUnaskedTopicsAsInferred,
   summariseCoverage,
 } from './init-topic-coverage'
 import { createLLMProviderFromConfig, readKbConfig, resolveGraphEnabled } from './kb-config'
-import { runLLMSetupWizard } from './llm-setup-wizard'
 
 export type InitCycle =
   | 'read-inputs'
   | 'scan-facts'
   | 'code-facts'
-  | 'pass1'
-  | 'pass2'
-  | 'pass-enrich'
-  | 'pass3'
+  | 'import-docs'
   | 'write'
   | 'pass-graph'
 export type InitTopic =
@@ -199,7 +178,7 @@ interface InitCheckpointV1 {
 }
 
 export interface InitCheckpoint {
-  version: 2
+  version: 3
   updatedAt: string
   baseName: string
   workingDir: string
@@ -211,7 +190,21 @@ export interface InitCheckpoint {
   finalCoverageSummary?: InitCoverageSummary
 }
 
-type StoredInitCheckpoint = InitCheckpointV1 | InitCheckpoint
+type StoredInitCheckpoint = InitCheckpointV1 | InitCheckpoint | LegacyInitCheckpointV2
+
+/** v2 checkpoints used old synthesis cycles — not resumed; user must delete checkpoint and re-run. */
+interface LegacyInitCheckpointV2 {
+  version: 2
+  updatedAt: string
+  baseName: string
+  workingDir: string
+  completedCycles: string[]
+  context?: InitContext
+  candidateDocs?: CandidateDoc[]
+  interviewRounds?: InitInterviewRound[]
+  topicCoverage?: TopicCoverageAssessment[]
+  finalCoverageSummary?: InitCoverageSummary
+}
 
 export interface InitQuestionIO {
   write?: (message: string) => void
@@ -262,18 +255,7 @@ const SOURCE_FILE_CANDIDATES = [
   'docs/architecture.md',
 ]
 
-const MAX_SOURCE_SIZE = 20_000
 const MAX_TOTAL_QUESTIONS = 10
-const MAX_FOLLOW_UP_QUESTIONS = 4
-const INIT_MODEL_MAX_TOKENS = 32768
-const INIT_PROMPT_SAFETY_TOKENS = 256
-const INIT_OUTPUT_TOKENS = {
-  synthesisPerTopic: 1200,
-  refinement: 1000,
-  quality: 900,
-  enrich: 700,
-} as const
-
 export function parseInitCommand(args: string[]): InitOptions {
   const base = readOption(args, '--base') ?? undefined
 
@@ -284,10 +266,7 @@ export function parseInitCommand(args: string[]): InitOptions {
     'read-inputs',
     'scan-facts',
     'code-facts',
-    'pass1',
-    'pass2',
-    'pass-enrich',
-    'pass3',
+    'import-docs',
     'write',
     'pass-graph',
   ]
@@ -384,19 +363,16 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
-  const progress = new InitProgressReporter(9, options.progressSink)
-  const emitInitAction = (label: string, detail: string) => {
-    options.progressSink?.(`[init:action] ${label} — ${detail}\n`)
-  }
-  let rawProvider = options.provider ?? (await resolveProvider())
-  let counter =
+  const progress = new InitProgressReporter(6, options.progressSink)
+  const rawProvider = options.provider ?? (await resolveProvider())
+  const counter =
     rawProvider && options.collector ? new TokenCountingProvider(rawProvider) : undefined
-  let provider = counter ?? rawProvider
+  const provider = counter ?? rawProvider
   const kbConfig = await readKbConfig()
   const graphEnabled = resolveGraphEnabled(kbConfig)
 
   let checkpoint: InitCheckpoint = resumedCheckpoint ?? {
-    version: 2,
+    version: 3,
     updatedAt: dayjs().toISOString(),
     baseName: base,
     workingDir: cwd,
@@ -560,171 +536,28 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.finish('code-facts', 'reused from checkpoint')
     }
 
-    if (!checkpoint.completedCycles.includes('pass1')) {
-      progress.start('pass1', 'drafting docs + coverage…')
-      if (!provider) {
-        if (!options.nonInteractive && process.stdin.isTTY) {
-          console.log("\n⚙️  No LLM provider configured. Let's set one up before running kb init.\n")
-          const wizardResult = await runLLMSetupWizard()
-          if (!wizardResult.configured) {
-            throw new Error(
-              'LLM setup incomplete. Set the required environment variable and re-run `kb init`.'
-            )
-          }
-          // Re-resolve provider after wizard (e.g. ollama chosen — no key needed)
-          rawProvider = await resolveProvider()
-          counter =
-            rawProvider && options.collector ? new TokenCountingProvider(rawProvider) : undefined
-          provider = counter ?? rawProvider
-          if (!provider) {
-            throw new Error(
-              'Provider configuration saved. Please restart kb to apply your LLM settings.'
-            )
-          }
-        } else {
-          throw new Error(
-            'No LLM provider configured.\n\n' +
-              'Set one of the following environment variables:\n' +
-              '  export ANTHROPIC_API_KEY=<your-key>\n' +
-              '  export OPENAI_API_KEY=<your-key>\n' +
-              '  export GEMINI_API_KEY=<your-key>\n\n' +
-              'Or run `kb config llm` to configure interactively.'
-          )
-        }
-      }
-      const endPass1 = makeCycleTimer('pass1', provider, options.collector, counter)
-      candidateDocs = await runSynthesisPass(provider, context, base)
-      candidateDocs = materializeInitSourceCorpus(candidateDocs, context, base)
-      endPass1()
-      topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
-      await persist({
-        candidateDocs,
-        topicCoverage,
-        completedCycles: ['pass1'],
+    if (!checkpoint.completedCycles.includes('import-docs')) {
+      progress.start('import-docs', 'importing original markdown…')
+      const endImport = makeCycleTimer('import-docs', provider, options.collector, counter)
+      candidateDocs = normalizeInitDocs(buildOriginalDocumentsFromSourceFiles(context.sourceFiles, base), {
+        minWords: 0,
       })
-      progress.finish('pass1', `${candidateDocs.length} candidate docs`)
-      if (options.stopAfter === 'pass1') throw new InitPausedError('pass1')
-    } else {
-      progress.finish('pass1', 'reused from checkpoint')
-    }
-
-    if (!candidateDocs) throw new Error('pass1 candidateDocs missing')
-
-    if (!checkpoint.completedCycles.includes('pass2')) {
-      candidateDocs = materializeInitSourceCorpus(candidateDocs, context, base)
-      progress.start('pass2', 'follow-up + refining docs…')
-
-      if (!options.nonInteractive && !options.rescan) {
-        const pendingFollowUp = latestPendingRound(interviewRounds)
-        if (pendingFollowUp && checkpoint.completedCycles.includes('pass1')) {
-          const answeredRound = await answerPendingQuestions({
-            heading: '\n[kb init] Resuming pending follow-up questions:\n\n',
-            round: pendingFollowUp,
-            questionIO,
-          })
-          interviewRounds = replaceInterviewRound(interviewRounds, answeredRound)
-          context = mergeInterviewAnswersIntoContext(context, answeredRound)
-        } else {
-          const followUpQuestions = planFollowUpQuestions({
-            topicCoverage,
-            existingRounds: interviewRounds,
-            round: interviewRounds.length + 1,
-            maxQuestions: Math.min(
-              remainingQuestionBudget(interviewRounds),
-              MAX_FOLLOW_UP_QUESTIONS
-            ),
-          })
-
-          if (followUpQuestions.length > 0) {
-            if (options.detach) {
-              interviewRounds = appendRoundIfPresent(interviewRounds, {
-                round: followUpQuestions[0].round,
-                questions: followUpQuestions,
-              })
-              await persist({
-                context,
-                candidateDocs,
-                interviewRounds,
-                topicCoverage,
-              })
-              throw new InitPausedError('pass2')
-            }
-
-            const followUpRound = await askQuestions({
-              heading: '\n[kb init] Follow-up questions for weak topics:\n\n',
-              questions: followUpQuestions,
-              questionIO,
-            })
-            interviewRounds = appendRoundIfPresent(interviewRounds, followUpRound)
-            context = mergeInterviewAnswersIntoContext(context, followUpRound)
-          }
-        }
-      } else {
-        topicCoverage = markUnaskedTopicsAsInferred(topicCoverage, 'non-interactive-mode')
-      }
-
-      if (!provider) throw new Error('No LLM provider available.')
-      const endPass2 = makeCycleTimer('pass2', provider, options.collector, counter)
-      emitInitAction('pass2', 'normalize docs')
-      emitInitAction('pass2', 'split multi-topic docs')
-      emitInitAction('pass2', 'merge likely duplicates')
-      emitInitAction('pass2', 'enforce schema + coverage placeholders')
-      candidateDocs = await runRefinementPass(provider, context, candidateDocs)
-      endPass2()
-      topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
-      await persist({
-        context,
-        candidateDocs,
-        interviewRounds,
-        topicCoverage,
-        completedCycles: ['pass2'],
-      })
-      progress.finish('pass2', `${candidateDocs.length} docs after refinement`)
-      if (options.stopAfter === 'pass2') throw new InitPausedError('pass2')
-    } else {
-      progress.finish('pass2', 'reused from checkpoint')
-    }
-
-    if (!candidateDocs) throw new Error('pass2 candidateDocs missing')
-
-    if (!checkpoint.completedCycles.includes('pass-enrich')) {
-      progress.start('pass-enrich', `enriching ${candidateDocs.length} docs…`)
-      if (!provider) throw new Error('No LLM provider available.')
-      const endPassEnrich = makeCycleTimer('pass-enrich', provider, options.collector, counter)
-      candidateDocs = await runPerDocEnrichmentPass(provider, context, candidateDocs)
-      endPassEnrich()
-      await persist({
-        candidateDocs,
-        completedCycles: ['pass-enrich'],
-      })
-      progress.finish('pass-enrich', `${candidateDocs.length} docs enriched`)
-      if (options.stopAfter === 'pass-enrich') throw new InitPausedError('pass-enrich')
-    } else {
-      progress.finish('pass-enrich', 'reused from checkpoint')
-    }
-
-    if (!checkpoint.completedCycles.includes('pass3')) {
-      progress.start('pass3', 'quality pass…')
-      if (!provider) throw new Error('No LLM provider available.')
-      const endPass3 = makeCycleTimer('pass3', provider, options.collector, counter)
-      emitInitAction('pass3', 'dedup lines + docs')
-      emitInitAction('pass3', 'enforce min content + unique titles')
-      emitInitAction('pass3', 'final schema normalization')
-      candidateDocs = await runQualityPass(provider, candidateDocs)
-      endPass3()
+      endImport()
       topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
       const finalCoverageSummary = summariseCoverage(topicCoverage)
       await persist({
         candidateDocs,
         topicCoverage,
         finalCoverageSummary,
-        completedCycles: ['pass3'],
+        completedCycles: ['import-docs'],
       })
-      progress.finish('pass3', `${candidateDocs.length} docs finalised`)
-      if (options.stopAfter === 'pass3') throw new InitPausedError('pass3')
+      progress.finish('import-docs', `${candidateDocs.length} original doc(s)`)
+      if (options.stopAfter === 'import-docs') throw new InitPausedError('import-docs')
     } else {
-      progress.finish('pass3', 'reused from checkpoint')
+      progress.finish('import-docs', 'reused from checkpoint')
     }
+
+    if (!candidateDocs) throw new Error('import-docs candidateDocs missing')
 
     let writtenDocIds: string[] | undefined
     if (!checkpoint.completedCycles.includes('write')) {
@@ -958,7 +791,7 @@ async function collectSourceFiles(cwd: string): Promise<Record<string, string>> 
     const normalizedKey = relativePath.replace(/\\/g, '/').toLowerCase()
     if (seenPaths.has(normalizedKey)) return
     const content = await readFile(fullPath, 'utf8')
-    sourceFiles[relativePath] = content.slice(0, MAX_SOURCE_SIZE)
+    sourceFiles[relativePath] = content
     seenPaths.add(normalizedKey)
   }
 
@@ -1151,37 +984,6 @@ function planInitialQuestions(
   )
 }
 
-function planFollowUpQuestions(options: {
-  topicCoverage: TopicCoverageAssessment[]
-  existingRounds: InitInterviewRound[]
-  round: number
-  maxQuestions: number
-}): InitInterviewQuestion[] {
-  if (options.maxQuestions <= 0) {
-    return []
-  }
-
-  const alreadyAskedTopics = new Set(
-    options.existingRounds.flatMap(round =>
-      round.questions.map(question => `${question.topic}:${question.reason}`)
-    )
-  )
-
-  const candidates = buildTopicCoverageGaps(options.topicCoverage)
-    .filter(topic => !alreadyAskedTopics.has(`${topic.topic}:${topic.reason}`))
-    .slice(0, options.maxQuestions)
-
-  return candidates.map(topic => {
-    const definition = getTopicDefinition(topic.topic)
-    return buildInterviewQuestion(
-      topic.topic,
-      definition.followUpQuestion,
-      options.round,
-      topic.reason
-    )
-  })
-}
-
 async function answerPendingQuestions(options: {
   heading: string
   round: InitInterviewRound
@@ -1253,214 +1055,6 @@ function mergeInterviewAnswersIntoContext(
     ...context,
     userAnswers,
   }
-}
-
-function titleFromTopicSlug(slug: string): string {
-  return slug
-    .split('-')
-    .map(part => (part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part))
-    .join(' ')
-}
-
-function synthesisPlaceholderDoc(
-  def: (typeof INIT_TOPIC_DEFINITIONS)[number],
-  baseName: string
-): CandidateDoc {
-  return {
-    title: titleFromTopicSlug(def.topic),
-    type: 'reference',
-    tags: [def.topic, baseName],
-    isOriginal: false,
-    content: [
-      'Pass1 did not return valid JSON for this topic.',
-      '',
-      `**Focus:** ${def.initialQuestion}`,
-      '',
-      'Re-run `kb init` or pull facts manually from the repository sources.',
-    ].join('\n'),
-  }
-}
-
-async function runSynthesisPass(
-  provider: LLMProvider,
-  context: InitContext,
-  baseName: string
-): Promise<CandidateDoc[]> {
-  const synthesisParts = loadPromptParts('init-synthesis.md')
-  const perTopicMax = clampInitOutputTokens(INIT_OUTPUT_TOKENS.synthesisPerTopic)
-
-  const sectionsTemplate = [
-    {
-      heading: 'Documentation Files',
-      content: formatSourceFilesForPrompt(context.sourceFiles),
-      priority: 3,
-      minTokens: 500,
-    },
-    {
-      heading: 'Source Code Index',
-      content: formatCodeFilesForPrompt(context.codeFiles),
-      priority: 2,
-      minTokens: 300,
-    },
-    {
-      heading: 'User Q&A',
-      content: formatQuestionAnswersForPrompt(context.userAnswers, '(No Q&A collected)'),
-      priority: 1,
-      minTokens: 120,
-    },
-  ] as const
-
-  const topicResults = await Promise.all(
-    INIT_TOPIC_DEFINITIONS.map(async def => {
-      const topicQuestion = `**${def.topic}** — ${def.initialQuestion}`
-      const intro = synthesisParts.intro
-        .replace(/\{\{baseName\}\}/g, baseName)
-        .replace(/\{\{topicQuestion\}\}/g, topicQuestion)
-
-      const { prompt, maxTokens } = buildBudgetedPrompt({
-        intro,
-        sections: [...sectionsTemplate],
-        instructions: synthesisParts.instructions,
-        requestedMaxTokens: perTopicMax,
-      })
-
-      const structuredJson: LLMStructuredJsonRequest | undefined =
-        provider.name === 'openai'
-          ? {
-              openai: {
-                name: 'init_synthesis_doc',
-                schema: INIT_SYNTHESIS_OPENAI_JSON_SCHEMA,
-              },
-            }
-          : provider.name === 'gemini'
-            ? { gemini: INIT_SYNTHESIS_GEMINI_RESPONSE_SCHEMA }
-            : undefined
-
-      const response = await provider.call({
-        messages: [{ role: 'user', content: prompt }],
-        maxTokens,
-        temperature: 0.2,
-        ...(provider.name === 'gemini' ? { thinkingBudget: 0 } : {}),
-        ...(structuredJson ? { structuredJson } : {}),
-      })
-
-      const parsed = parseInitSynthesisObject(response.text)
-      if (!parsed) {
-        return {
-          succeeded: false,
-          doc: synthesisPlaceholderDoc(def, baseName),
-        }
-      }
-      const tags = [...new Set([...(parsed.tags ?? []), def.topic])]
-      return {
-        succeeded: true,
-        doc: { ...parsed, tags, isOriginal: false } satisfies CandidateDoc,
-      }
-    })
-  )
-
-  if (!topicResults.some(r => r.succeeded)) {
-    return normalizeInitDocs(
-      INIT_TOPIC_DEFINITIONS.map(def => synthesisPlaceholderDoc(def, baseName))
-    )
-  }
-
-  return normalizeInitDocs(topicResults.map(r => ({ ...r.doc, isOriginal: false })))
-}
-
-async function runRefinementPass(
-  _provider: LLMProvider,
-  context: InitContext,
-  docs: CandidateDoc[]
-): Promise<CandidateDoc[]> {
-  const next = runDeterministicRefinementPass(docs, context)
-  return normalizeInitDocs(preventInitDocCollapse(docs, next), {
-    fallback: docs,
-    preserveMinimumCount: docs.length,
-  })
-}
-
-async function runQualityPass(
-  _provider: LLMProvider,
-  docs: CandidateDoc[]
-): Promise<CandidateDoc[]> {
-  const next = runDeterministicQualityPass(docs)
-  return normalizeInitDocs(preventInitDocCollapse(docs, next), {
-    fallback: docs,
-    preserveMinimumCount: docs.length,
-    minWords: 20,
-  })
-}
-
-/**
- * Pass-enrich: each candidate doc gets a dedicated LLM pass to deepen its
- * coverage, add concrete detail, and remove internal redundancy.
- * Docs are processed in parallel since they are independent.
- */
-async function runPerDocEnrichmentPass(
-  provider: LLMProvider,
-  context: InitContext,
-  docs: CandidateDoc[]
-): Promise<CandidateDoc[]> {
-  const enriched = await Promise.all(
-    docs.map(async (doc): Promise<CandidateDoc> => {
-      const enrichmentParts = loadPromptParts('init-enrichment.md')
-      const { prompt, maxTokens } = buildBudgetedPrompt({
-        intro: enrichmentParts.intro,
-        sections: [
-          {
-            heading: 'Document',
-            content: formatDocsForPrompt([doc], 1400),
-            priority: 2,
-            minTokens: 180,
-          },
-          {
-            heading: 'Available source context',
-            content: formatSourceFilesForPrompt(context.sourceFiles, 2200),
-            priority: 2,
-            minTokens: 280,
-          },
-          {
-            heading: 'Source code index',
-            content: formatCodeFilesForPrompt(context.codeFiles),
-            priority: 1,
-            minTokens: 150,
-          },
-          {
-            heading: 'User Q&A',
-            content: formatQuestionAnswersForPrompt(context.userAnswers, '(none)'),
-            priority: 1,
-            minTokens: 100,
-          },
-        ],
-        instructions: enrichmentParts.instructions,
-        requestedMaxTokens: INIT_OUTPUT_TOKENS.enrich,
-      })
-
-      const response = await provider.call({
-        messages: [{ role: 'user', content: prompt }],
-        maxTokens,
-        temperature: 0.15,
-      })
-
-      const match = response.text.match(/\{[\s\S]*\}/)
-      if (!match) return doc
-      try {
-        const parsed = JSON.parse(match[0]) as Partial<CandidateDoc>
-        if (typeof parsed.title === 'string' && typeof parsed.content === 'string') {
-          return { ...doc, ...parsed }
-        }
-      } catch {
-        // fall through
-      }
-      return doc
-    })
-  )
-
-  return normalizeInitDocs(enriched, {
-    fallback: docs,
-    preserveMinimumCount: docs.length,
-  })
 }
 
 type GraphPassOutcome = 'extracted' | 'disabled' | 'dry-run' | 'failed' | 'no-provider' | 'reused'
@@ -1563,161 +1157,6 @@ async function writeDocs(docs: CandidateDoc[], baseDir: string, base: string): P
   }
 
   return writtenIds
-}
-
-function buildBudgetedPrompt(options: {
-  intro: string
-  sections: Array<{
-    heading: string
-    content: string
-    priority: number
-    minTokens?: number
-  }>
-  instructions: string
-  requestedMaxTokens: number
-}): { prompt: string; maxTokens: number } {
-  const maxTokens = clampInitOutputTokens(options.requestedMaxTokens)
-  const inputBudget = Math.max(INIT_MODEL_MAX_TOKENS - maxTokens - INIT_PROMPT_SAFETY_TOKENS, 400)
-
-  const header = options.intro.trim()
-  const instructions = `## Instructions\n${options.instructions.trim()}`
-  const sectionHeaders = options.sections.map(section => `## ${section.heading}`)
-  const fixedTokens = approximateTokenCount([header, ...sectionHeaders, instructions].join('\n\n'))
-
-  const contentBudget = Math.max(inputBudget - fixedTokens, 200)
-  const totalPriority = options.sections.reduce(
-    (sum, section) => sum + Math.max(section.priority, 1),
-    0
-  )
-
-  const initialBudgets = options.sections.map(section => {
-    const weightedBudget = Math.floor(
-      (contentBudget * Math.max(section.priority, 1)) / Math.max(totalPriority, 1)
-    )
-    return Math.max(section.minTokens ?? 80, weightedBudget)
-  })
-
-  let allocated = initialBudgets.reduce((sum, value) => sum + value, 0)
-  if (allocated > contentBudget) {
-    let overflow = allocated - contentBudget
-    for (let index = initialBudgets.length - 1; index >= 0 && overflow > 0; index -= 1) {
-      const floor = options.sections[index].minTokens ?? 80
-      const reducible = Math.max(initialBudgets[index] - floor, 0)
-      const reduction = Math.min(reducible, overflow)
-      initialBudgets[index] -= reduction
-      overflow -= reduction
-    }
-    allocated = initialBudgets.reduce((sum, value) => sum + value, 0)
-  }
-
-  const render = (budgets: number[]) =>
-    [
-      header,
-      ...options.sections.map(
-        (section, index) =>
-          `## ${section.heading}\n${trimToTokenBudget(section.content, budgets[index])}`
-      ),
-      instructions,
-    ].join('\n\n')
-
-  let prompt = render(initialBudgets)
-  let promptTokens = approximateTokenCount(prompt)
-
-  if (promptTokens > inputBudget) {
-    const budgets = [...initialBudgets]
-    let guard = 0
-    while (promptTokens > inputBudget && guard < 20) {
-      const largestIndex = budgets.reduce(
-        (best, budget, index, all) => (budget > all[best] ? index : best),
-        0
-      )
-      const floor = options.sections[largestIndex].minTokens ?? 40
-      if (budgets[largestIndex] <= floor) {
-        break
-      }
-      budgets[largestIndex] = Math.max(floor, budgets[largestIndex] - 60)
-      prompt = render(budgets)
-      promptTokens = approximateTokenCount(prompt)
-      guard += 1
-    }
-  }
-
-  return { prompt, maxTokens }
-}
-
-function clampInitOutputTokens(requested: number): number {
-  return Math.max(256, Math.min(requested, INIT_MODEL_MAX_TOKENS - INIT_PROMPT_SAFETY_TOKENS))
-}
-
-function approximateTokenCount(text: string): number {
-  return Math.ceil(text.length / 4)
-}
-
-function trimToTokenBudget(text: string, tokenBudget: number): string {
-  if (tokenBudget <= 0) return ''
-  const charBudget = Math.max(tokenBudget * 4, 32)
-  if (text.length <= charBudget) return text
-  if (charBudget < 80) return `${text.slice(0, charBudget)}…`
-  const head = Math.floor(charBudget * 0.75)
-  const tail = Math.max(charBudget - head - 24, 0)
-  return `${text.slice(0, head)}\n\n…[truncated for token budget]…\n\n${tail > 0 ? text.slice(-tail) : ''}`
-}
-
-function formatCodeFilesForPrompt(codeFiles: Record<string, string>): string {
-  const entries = Object.entries(codeFiles)
-  if (entries.length === 0) return '(No source code collected)'
-  // Group by top-level directory for readability
-  const byDir = new Map<string, string[]>()
-  for (const [file] of entries) {
-    const dir = file.includes('/') ? file.split('/')[0] : '(root)'
-    if (!byDir.has(dir)) byDir.set(dir, [])
-    byDir.get(dir)?.push(file)
-  }
-  const dirSummary = [...byDir.entries()]
-    .map(([dir, files]) => `${dir}/  (${files.length} files)\n  ${files.join('\n  ')}`)
-    .join('\n\n')
-  return `${entries.length} source files across ${byDir.size} directories:\n\n${dirSummary}`
-}
-
-function formatSourceFilesForPrompt(
-  sourceFiles: Record<string, string>,
-  perFileCharLimit = 3500
-): string {
-  const entries = Object.entries(sourceFiles)
-  if (entries.length === 0) return '(No source files collected)'
-  return entries
-    .map(
-      ([file, content]) =>
-        `### ${file}\n${trimToTokenBudget(content, approximateTokenCount(content.slice(0, perFileCharLimit)))}`
-    )
-    .join('\n\n---\n\n')
-}
-
-function formatQuestionAnswersForPrompt(
-  userAnswers: InitUserAnswer[],
-  emptyFallback: string
-): string {
-  if (userAnswers.length === 0) return emptyFallback
-  return userAnswers
-    .map(
-      ({ question, answer }) =>
-        `Q: ${trimToTokenBudget(question, 80)}\nA: ${trimToTokenBudget(answer, 140)}`
-    )
-    .join('\n\n')
-}
-
-function formatDocsForPrompt(docs: CandidateDoc[], contentCharLimit = 900): string {
-  return JSON.stringify(
-    docs.map(doc => ({
-      ...doc,
-      content: trimToTokenBudget(
-        doc.content,
-        approximateTokenCount(doc.content.slice(0, contentCharLimit))
-      ),
-    })),
-    null,
-    2
-  )
 }
 
 function createReadlineQuestionIO(): InitQuestionIO {
@@ -1830,79 +1269,23 @@ function slugify(value: string): string {
   )
 }
 
-/** Single-doc expansion plus frozen per-file snapshots (idempotent). */
-function materializeInitSourceCorpus(
-  docs: CandidateDoc[],
-  context: InitContext,
+function buildOriginalDocumentsFromSourceFiles(
+  sourceFiles: Record<string, string>,
   baseName: string
 ): CandidateDoc[] {
-  const expanded = maybeExpandSingleDocCorpus(docs, context, baseName)
-  return appendFrozenSourceSnapshots(expanded, context.sourceFiles, baseName)
-}
-
-/** When synthesis collapses to one doc but we have several source files, split into overview + per-file reference shards (baseline until a proper grouping pass exists). */
-function maybeExpandSingleDocCorpus(
-  docs: CandidateDoc[],
-  context: InitContext,
-  baseName: string
-): CandidateDoc[] {
-  if (docs.length !== 1) return docs
-  const paths = Object.keys(context.sourceFiles).filter(
-    key => (context.sourceFiles[key] ?? '').trim().length > 0
-  )
-  if (paths.length <= 1) return docs
-  return expandSingleDocIntoSourceShards(docs[0], context, baseName)
-}
-
-function expandSingleDocIntoSourceShards(
-  lone: CandidateDoc,
-  context: InitContext,
-  baseName: string
-): CandidateDoc[] {
-  const overview: CandidateDoc = {
-    title: 'Project Overview',
-    type: 'introduction',
-    tags: ['overview', baseName],
-    content: lone.content,
-    isOriginal: false,
-  }
-  const shards: CandidateDoc[] = []
-  for (const filePath of Object.keys(context.sourceFiles).slice(
-    0,
-    INIT_SOURCE_SNAPSHOT_MAX_FILES
-  )) {
-    const body = context.sourceFiles[filePath]
+  const out: CandidateDoc[] = []
+  for (const relPath of Object.keys(sourceFiles).sort()) {
+    const body = sourceFiles[relPath]
     if (typeof body !== 'string' || !body.trim()) continue
-    // README is the site homepage — exclude it from original_docs sidebar entries
-    if (isInitReadmeHomePath(filePath)) continue
-    shards.push(buildFrozenSourceSnapshotDoc(filePath, body, baseName, 'split-from-single'))
+    out.push({
+      title: basenameTitle(relPath),
+      type: 'reference',
+      tags: ['original-source', slugify(relPath.replace(/\\/g, '/')), baseName],
+      content: body,
+      isOriginal: true,
+    })
   }
-  return [overview, ...shards]
-}
-
-/** If the LLM returns one document but we had several, keep the prior corpus (refine/quality passes). */
-function preventInitDocCollapse(previous: CandidateDoc[], next: CandidateDoc[]): CandidateDoc[] {
-  if (previous.length > 1 && next.length === 1) return previous
-  return next
-}
-
-function runDeterministicRefinementPass(
-  docs: CandidateDoc[],
-  context: InitContext
-): CandidateDoc[] {
-  let next = normalizeInitDocs(docs, { fallback: docs })
-  next = splitMultiTopicDocs(next)
-  next = mergeLikelyDuplicateDocs(next)
-  next = appendCoveragePlaceholders(next, context)
-  return next
-}
-
-function runDeterministicQualityPass(docs: CandidateDoc[]): CandidateDoc[] {
-  let next = normalizeInitDocs(docs, { fallback: docs })
-  next = dedupWithinDocs(next)
-  next = mergeLikelyDuplicateDocs(next)
-  next = normalizeInitDocs(next, { fallback: docs, minWords: 20 })
-  return next
+  return out
 }
 
 function normalizeInitDocs(
@@ -1936,6 +1319,17 @@ function normalizeInitDocs(
 }
 
 function normalizeInitDoc(doc: CandidateDoc, minWords: number): CandidateDoc | null {
+  if (doc.isOriginal) {
+    const title = normalizeTitle(doc.title)
+    const content = doc.content.trimEnd()
+    if (!title || !content.trim()) return null
+    const tags = doc.tags?.length ? normalizeTags(doc.tags) : normalizeTags(['original-source'])
+    const type = VALID_DOC_TYPES.has(doc.type ?? 'reference')
+      ? (doc.type ?? 'reference')
+      : 'reference'
+    return { ...doc, title, type, tags, content, isOriginal: true }
+  }
+
   const title = normalizeTitle(doc.title)
   const content = normalizeContent(doc.content)
   if (!title || !content) return null
@@ -2007,158 +1401,6 @@ function ensureUniqueTitle(title: string, seenLowerTitles: Set<string>): string 
   return `${title} ${attempt}`
 }
 
-function splitMultiTopicDocs(docs: CandidateDoc[]): CandidateDoc[] {
-  const expanded: CandidateDoc[] = []
-  for (const doc of docs) {
-    const parts = splitDocByHeadings(doc)
-    if (parts.length <= 1) {
-      expanded.push(doc)
-      continue
-    }
-    expanded.push(...parts)
-  }
-  return expanded
-}
-
-function splitDocByHeadings(doc: CandidateDoc): CandidateDoc[] {
-  const lines = doc.content.split('\n')
-  const sections: string[] = []
-  let current: string[] = []
-  for (const line of lines) {
-    if (/^##\s+/.test(line) && current.length > 0) {
-      sections.push(current.join('\n').trim())
-      current = [line]
-      continue
-    }
-    current.push(line)
-  }
-  if (current.length > 0) sections.push(current.join('\n').trim())
-  if (sections.length <= 1) return [doc]
-
-  return sections
-    .map((content, index) => {
-      const heading = content.match(/^##\s+(.+)$/m)?.[1]?.trim()
-      return {
-        ...doc,
-        title: heading ? `${doc.title} - ${heading}` : `${doc.title} Part ${index + 1}`,
-        content,
-      }
-    })
-    .filter(section => countWords(section.content) >= 20)
-}
-
-function mergeLikelyDuplicateDocs(docs: CandidateDoc[]): CandidateDoc[] {
-  const merged: CandidateDoc[] = []
-  const used = new Set<number>()
-
-  for (let i = 0; i < docs.length; i++) {
-    if (used.has(i)) continue
-    let base = docs[i]
-
-    for (let j = i + 1; j < docs.length; j++) {
-      if (used.has(j)) continue
-      if (!areLikelyDuplicateDocs(base, docs[j])) continue
-      base = mergeTwoDocs(base, docs[j])
-      used.add(j)
-    }
-
-    merged.push(base)
-  }
-
-  return merged
-}
-
-function areLikelyDuplicateDocs(a: CandidateDoc, b: CandidateDoc): boolean {
-  const titleA = normalizeTitleTokenSet(a.title)
-  const titleB = normalizeTitleTokenSet(b.title)
-  const titleOverlap = overlapRatio(titleA, titleB)
-  if (titleOverlap >= 0.75) return true
-
-  const contentA = normalizeContentTokenSet(a.content)
-  const contentB = normalizeContentTokenSet(b.content)
-  return overlapRatio(contentA, contentB) >= 0.72
-}
-
-function mergeTwoDocs(a: CandidateDoc, b: CandidateDoc): CandidateDoc {
-  const title = a.title.length <= b.title.length ? a.title : b.title
-  const type = a.type === b.type ? a.type : (a.type ?? b.type ?? 'reference')
-  const tags = normalizeTags([...(a.tags ?? []), ...(b.tags ?? [])])
-  const content = dedupLines(`${a.content}\n${b.content}`)
-  return {
-    ...a,
-    title,
-    type,
-    tags,
-    content,
-  }
-}
-
-function dedupWithinDocs(docs: CandidateDoc[]): CandidateDoc[] {
-  return docs.map(doc => ({
-    ...doc,
-    content: dedupLines(doc.content),
-  }))
-}
-
-function dedupLines(content: string): string {
-  const seen = new Set<string>()
-  const output: string[] = []
-  for (const line of content.split('\n')) {
-    const key = line.toLowerCase().replace(/\s+/g, ' ').trim()
-    if (!key) continue
-    if (seen.has(key)) continue
-    seen.add(key)
-    output.push(line.trim())
-  }
-  return output.join('\n').trim()
-}
-
-function appendCoveragePlaceholders(docs: CandidateDoc[], context: InitContext): CandidateDoc[] {
-  const existingTopics = new Set(docs.flatMap(doc => doc.tags ?? []).map(tag => tag.toLowerCase()))
-  const missing = INIT_TOPIC_DEFINITIONS.filter(def => !existingTopics.has(def.topic))
-  if (missing.length === 0) return docs
-
-  const placeholders = missing.map(def => ({
-    title: titleFromTopicSlug(def.topic),
-    type: 'reference' as const,
-    tags: [def.topic],
-    content: `Coverage gap for topic ${def.topic}. Source evidence currently insufficient in init inputs.`,
-    isOriginal: false,
-  }))
-
-  if (context.userAnswers.length === 0 && docs.length > 0) return docs
-  return [...docs, ...placeholders]
-}
-
-function normalizeTitleTokenSet(value: string): Set<string> {
-  return new Set(
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter(token => token.length > 2)
-  )
-}
-
-function normalizeContentTokenSet(value: string): Set<string> {
-  return new Set(
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter(token => token.length > 4)
-  )
-}
-
-function overlapRatio(left: Set<string>, right: Set<string>): number {
-  if (left.size === 0 || right.size === 0) return 0
-  let overlap = 0
-  for (const item of left) {
-    if (right.has(item)) overlap += 1
-  }
-  return overlap / Math.max(Math.min(left.size, right.size), 1)
-}
-
 async function resolveProvider(): Promise<LLMProvider | undefined> {
   const config = await readKbConfig()
   return createLLMProviderFromConfig(config)
@@ -2195,18 +1437,31 @@ async function readCheckpoint(filePath: string): Promise<InitCheckpoint | undefi
   }
 }
 
+const VALID_V3_CYCLES = new Set<InitCycle>([
+  'read-inputs',
+  'scan-facts',
+  'code-facts',
+  'import-docs',
+  'write',
+  'pass-graph',
+])
+
 function migrateCheckpoint(checkpoint: StoredInitCheckpoint): InitCheckpoint | undefined {
   if (!checkpoint || typeof checkpoint !== 'object') return undefined
+  if ('version' in checkpoint && checkpoint.version === 3) {
+    return checkpoint as InitCheckpoint
+  }
   if ('version' in checkpoint && checkpoint.version === 2) {
-    return checkpoint
+    return undefined
   }
   if ('version' in checkpoint && checkpoint.version === 1) {
+    const cycles = (checkpoint.completedCycles as InitCycle[]).filter(c => VALID_V3_CYCLES.has(c))
     return {
-      version: 2,
+      version: 3,
       updatedAt: checkpoint.updatedAt,
       baseName: checkpoint.baseName,
       workingDir: checkpoint.workingDir,
-      completedCycles: checkpoint.completedCycles,
+      completedCycles: cycles,
       context: checkpoint.context
         ? {
             sourceFiles: checkpoint.context.sourceFiles ?? {},
