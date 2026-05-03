@@ -4,7 +4,7 @@
  */
 import path from 'node:path'
 import { discoverJekyllRoot, syncDocsToJekyll } from '../core/publish/jekyll-sync'
-import { DuckGraphWriter } from '../tools/duck-graph-writer'
+import { KbGraphWriter } from '../tools/kb-graph-writer'
 import { readDocumentsFromSqlite, resolvePublishBase } from './publish-cli'
 
 export interface JekyllPublishOptions {
@@ -92,8 +92,8 @@ function readFlag(args: string[], key: string): boolean {
 }
 
 async function readPublishedGraph(baseDir: string) {
-  const dbPath = DuckGraphWriter.dbPathForBase(baseDir)
-  const writer = new DuckGraphWriter(dbPath)
+  const dbPath = KbGraphWriter.dbPathForBase(baseDir)
+  const writer = new KbGraphWriter(dbPath)
   try {
     const exported = await writer.exportJson()
     return {

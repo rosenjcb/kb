@@ -2,16 +2,16 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { DuckGraphWriter } from '../../src/tools/duck-graph-writer'
+import { KbGraphWriter } from '../../src/tools/kb-graph-writer'
 
 let tmpDir: string
 let dbPath: string
-let writer: DuckGraphWriter
+let writer: KbGraphWriter
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(tmpdir(), 'kb-graph-test-'))
-  dbPath = join(tmpDir, '.kb-graph.duckdb')
-  writer = new DuckGraphWriter(dbPath)
+  dbPath = join(tmpDir, '.kb-index.sqlite')
+  writer = new KbGraphWriter(dbPath)
   await writer.open()
 })
 
@@ -28,14 +28,14 @@ const rel = (fromId: string, toId: string) => ({
   weight: 1.0,
 })
 
-describe('DuckGraphWriter transactions', () => {
+describe('KbGraphWriter transactions', () => {
   it('Given a committed transaction, then entities persist after close/reopen', async () => {
     await writer.beginTransaction()
     await writer.upsertEntities([entity('alpha'), entity('beta')])
     await writer.commit()
     await writer.close()
 
-    const reader = new DuckGraphWriter(dbPath)
+    const reader = new KbGraphWriter(dbPath)
     try {
       const summary = await reader.getSummary()
       expect(summary.totalEntities).toBe(2)
@@ -62,7 +62,6 @@ describe('DuckGraphWriter transactions', () => {
     await writer.rollback()
 
     const summary = await writer.getSummary()
-    // Only the pre-existing entity should remain; the transaction rolled back
     expect(summary.totalEntities).toBe(1)
     expect(summary.totalRelationships).toBe(0)
   })
@@ -79,7 +78,7 @@ describe('DuckGraphWriter transactions', () => {
   })
 })
 
-describe('DuckGraphWriter close', () => {
+describe('KbGraphWriter close', () => {
   it('close() resolves without throwing', async () => {
     await expect(writer.close()).resolves.toBeUndefined()
   })
@@ -90,13 +89,13 @@ describe('DuckGraphWriter close', () => {
   })
 })
 
-describe('DuckGraphWriter.dbPathForBase', () => {
-  it('returns .kb-graph.duckdb inside baseDir', () => {
-    expect(DuckGraphWriter.dbPathForBase('/some/base')).toBe('/some/base/.kb-graph.duckdb')
+describe('KbGraphWriter.dbPathForBase', () => {
+  it('returns .kb-index.sqlite inside baseDir', () => {
+    expect(KbGraphWriter.dbPathForBase('/some/base')).toBe('/some/base/.kb-index.sqlite')
   })
 })
 
-describe('DuckGraphWriter.expandQuery', () => {
+describe('KbGraphWriter.expandQuery', () => {
   it('Given edges touching slugged entities, then expansion includes triplet phrases and verbs', async () => {
     await writer.upsertEntities([
       { id: 'alpha', name: 'Alpha Node', type: 'concept' },
@@ -115,7 +114,7 @@ describe('DuckGraphWriter.expandQuery', () => {
   })
 })
 
-describe('DuckGraphWriter entity resolution and manual edges', () => {
+describe('KbGraphWriter entity resolution and manual edges', () => {
   it('Given entity stored by id, then resolveEntityRef finds it by display name', async () => {
     await writer.upsertEntities([{ id: 'auth-svc', name: 'Auth service', type: 'system' }])
     await expect(writer.resolveEntityRef('Auth service')).resolves.toBe('auth-svc')
@@ -155,10 +154,10 @@ describe('DuckGraphWriter entity resolution and manual edges', () => {
   })
 })
 
-describe('DuckGraphWriter concurrent writes', () => {
+describe('KbGraphWriter concurrent writes', () => {
   it('Given parallel writers for the same db, then writes are serialized and both succeed', async () => {
-    const writerA = new DuckGraphWriter(dbPath)
-    const writerB = new DuckGraphWriter(dbPath)
+    const writerA = new KbGraphWriter(dbPath)
+    const writerB = new KbGraphWriter(dbPath)
 
     try {
       await Promise.all([
@@ -166,11 +165,11 @@ describe('DuckGraphWriter concurrent writes', () => {
         writerB.upsertEntities([{ id: 'parallel-b', name: 'Parallel B', type: 'concept' }]),
       ])
 
-      const reader = new DuckGraphWriter(dbPath)
+      const reader = new KbGraphWriter(dbPath)
       try {
         const exported = await reader.exportJson()
-        expect(exported.entities.some(entity => entity.id === 'parallel-a')).toBe(true)
-        expect(exported.entities.some(entity => entity.id === 'parallel-b')).toBe(true)
+        expect(exported.entities.some(e => e.id === 'parallel-a')).toBe(true)
+        expect(exported.entities.some(e => e.id === 'parallel-b')).toBe(true)
       } finally {
         await reader.close()
       }

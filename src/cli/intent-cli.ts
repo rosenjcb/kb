@@ -252,7 +252,7 @@ interface ReadDocumentsResultItem {
     filePath?: string
   }
   content?: string
-  /** Graph rerank hints from DuckDB (includes relationship type labels). */
+  /** Graph rerank hints from the KB graph store (includes relationship type labels). */
   graphEvidence?: string[]
 }
 

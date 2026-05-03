@@ -136,7 +136,6 @@ describe('base-selection', () => {
     const legacyBaseDir = path.join(getKbHomeDir(), 'dogfood')
     await mkdir(path.join(legacyBaseDir, 'checkpoints'), { recursive: true })
     await writeFile(path.join(legacyBaseDir, '.kb-index.sqlite'), 'sqlite-bytes', 'utf8')
-    await writeFile(path.join(legacyBaseDir, '.kb-graph.duckdb'), 'duckdb-bytes', 'utf8')
     await writeFile(
       path.join(legacyBaseDir, 'checkpoints', 'init-latest.checkpoint.json'),
       '{"version":2}\n',
@@ -147,7 +146,6 @@ describe('base-selection', () => {
 
     expect(resolved).toBe(path.join(getKbHomeDir(), 'sessions', 'dogfood'))
     expect(await readFile(path.join(resolved, '.kb-index.sqlite'), 'utf8')).toBe('sqlite-bytes')
-    expect(await readFile(path.join(resolved, '.kb-graph.duckdb'), 'utf8')).toBe('duckdb-bytes')
     expect(
       await readFile(path.join(resolved, 'checkpoints', 'init-latest.checkpoint.json'), 'utf8')
     ).toContain('"version":2')

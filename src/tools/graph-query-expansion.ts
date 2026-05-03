@@ -1,4 +1,4 @@
-import type { DuckGraphWriter } from './duck-graph-writer'
+import type { KbGraphWriter } from './kb-graph-writer'
 
 export function toGraphQuerySlugs(query: string): string[] {
   const tokens = query
@@ -24,7 +24,7 @@ const MAX_GRAPH_EXPANSION_PHRASES = 18
 
 export async function expandQueryWithGraph(
   query: string,
-  graphWriter: DuckGraphWriter
+  graphWriter: KbGraphWriter
 ): Promise<string> {
   try {
     const slugs = toGraphQuerySlugs(query)

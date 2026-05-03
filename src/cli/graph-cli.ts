@@ -15,11 +15,11 @@
 
 import { existsSync } from 'node:fs'
 import {
-  DuckGraphWriter,
+  KbGraphWriter,
   type EntityType,
   type GraphSummary,
   kbGraphEntityIdKey,
-} from '../tools/duck-graph-writer'
+} from '../tools/kb-graph-writer'
 import { type CmdMode, cmd } from './cmd-ref'
 
 const ENTITY_TYPES: ReadonlySet<EntityType> = new Set([
@@ -104,10 +104,10 @@ export function formatKnowledgeGraphHumanSummary(summary: GraphSummary): string 
 export async function readKnowledgeGraphInitSummary(
   baseDir: string
 ): Promise<{ human: string; json: KnowledgeGraphInitSummaryJson } | null> {
-  const dbPath = DuckGraphWriter.dbPathForBase(baseDir)
+  const dbPath = KbGraphWriter.dbPathForBase(baseDir)
   if (!existsSync(dbPath)) return null
 
-  const writer = new DuckGraphWriter(dbPath)
+  const writer = new KbGraphWriter(dbPath)
   try {
     await writer.open()
     const summary = await writer.getSummary()
@@ -349,12 +349,12 @@ export interface GraphWriter {
   } | null>
 }
 
-function isDuckGraphWriter(w: GraphWriter): w is DuckGraphWriter {
-  return w instanceof DuckGraphWriter
+function isKbGraphWriter(w: GraphWriter): w is KbGraphWriter {
+  return w instanceof KbGraphWriter
 }
 
 async function executeGraphMutation(
-  writer: DuckGraphWriter,
+  writer: KbGraphWriter,
   plan: GraphMutationPlan,
   out: GraphOut,
   mode: CmdMode
@@ -452,15 +452,15 @@ export async function runGraphCommand(
   mode: CmdMode = 'cli'
 ): Promise<void> {
   const writer: GraphWriter =
-    writerOverride ?? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(baseDir))
+    writerOverride ?? new KbGraphWriter(KbGraphWriter.dbPathForBase(baseDir))
 
   try {
     await writer.open()
 
     if (opts.mutation) {
-      if (!isDuckGraphWriter(writer)) {
+      if (!isKbGraphWriter(writer)) {
         throw new GraphCommandError(
-          'Graph edits require the on-disk DuckDB graph (cannot run against an in-memory test stub).'
+          'Graph edits require the on-disk KB graph store (cannot run against an in-memory test stub).'
         )
       }
       await executeGraphMutation(writer, opts.mutation, out, mode)

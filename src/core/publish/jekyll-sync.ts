@@ -1,7 +1,7 @@
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'js-yaml'
-import type { GraphEntity, GraphRelationship } from '../../tools/duck-graph-writer'
+import type { GraphEntity, GraphRelationship } from '../../tools/kb-graph-writer'
 
 /**
  * Publish splits the KB into two Jekyll lanes only:

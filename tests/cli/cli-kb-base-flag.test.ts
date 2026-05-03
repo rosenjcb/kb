@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ensureOperationalBaseDir, writeSessionBase } from '../../src/cli/base-selection'
 import { runMainWithOutput } from '../../src/cli/index'
-import { DuckGraphWriter } from '../../src/tools/duck-graph-writer'
+import { KbGraphWriter } from '../../src/tools/kb-graph-writer'
 
 function makeOut() {
   const lines: string[] = []
@@ -35,7 +35,7 @@ describe('CLI --base override', () => {
     await ensureOperationalBaseDir('base-a')
     await ensureOperationalBaseDir('base-b')
     const bDir = path.join(kbHome, 'sessions', 'base-b')
-    const gw = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(bDir))
+    const gw = new KbGraphWriter(KbGraphWriter.dbPathForBase(bDir))
     await gw.open()
     await gw.upsertEntities([{ id: 'only-b', name: 'Only B marker', type: 'concept' }])
     await gw.close()
@@ -61,7 +61,7 @@ describe('CLI --base override', () => {
     await ensureOperationalBaseDir('base-a')
     await ensureOperationalBaseDir('base-b')
     const bDir = path.join(kbHome, 'sessions', 'base-b')
-    const gw = new DuckGraphWriter(DuckGraphWriter.dbPathForBase(bDir))
+    const gw = new KbGraphWriter(KbGraphWriter.dbPathForBase(bDir))
     await gw.open()
     await gw.upsertEntities([{ id: 'edge-a', name: 'edge-a', type: 'concept' }])
     await gw.upsertEntities([{ id: 'edge-b', name: 'edge-b', type: 'concept' }])

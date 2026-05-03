@@ -53,7 +53,7 @@ flowchart TD
     W["write — Upsert to SQLite\nis_original flag set per doc"]
     W --> PG
 
-    PG["pass-graph — Extract Knowledge Graph\nEntities + relationships → DuckDB"]
+    PG["pass-graph — Extract Knowledge Graph\nEntities + relationships → SQLite (kb_graph_*)"]
 ```
 
 ## Shard Fallback

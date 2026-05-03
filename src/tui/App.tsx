@@ -20,7 +20,7 @@ import {
   resolveConversationalChatEnabled,
   resolveGraphEnabled,
 } from '../cli/kb-config.js'
-import { DuckGraphWriter } from '../tools/duck-graph-writer.js'
+import { KbGraphWriter } from '../tools/kb-graph-writer.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
 import { isOrchestrationMetaLine } from '../ui/orchestration-meta.js'
 import { HistoryPane } from './components/HistoryPane.js'
@@ -149,7 +149,7 @@ export function App({ config, startupNotices = [] }: Props) {
       const storageDir = storageDirRef.current
       const toolExecutor = createKBToolsRegistry(storageDir, config, { taskProvider: llmProvider })
       const graphWriter = resolveGraphEnabled(config)
-        ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(storageDir))
+        ? new KbGraphWriter(KbGraphWriter.dbPathForBase(storageDir))
         : undefined
 
       setChatInputHint('')

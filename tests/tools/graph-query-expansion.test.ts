@@ -22,7 +22,7 @@ describe('graph-query-expansion', () => {
         'retrieves_via',
         'retrieves via',
         'SQLite',
-        'DuckDB',
+        'GraphStore',
         'Property Graph',
         'CLI',
         'Config',
@@ -44,7 +44,7 @@ describe('graph-query-expansion', () => {
     const expanded = await expandQueryWithGraph('config json', graphWriter as never)
 
     expect(expanded).toBe(
-      'config json kb query retrieves via read_facts retrieves_via retrieves via SQLite DuckDB Property Graph CLI Config Extra1 Extra2 Extra3 Extra4 Extra5 Extra6 Extra7 Extra8 Extra9 Extra10'
+      'config json kb query retrieves via read_facts retrieves_via retrieves via SQLite GraphStore Property Graph CLI Config Extra1 Extra2 Extra3 Extra4 Extra5 Extra6 Extra7 Extra8 Extra9 Extra10'
     )
   })
 

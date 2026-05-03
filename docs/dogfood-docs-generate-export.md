@@ -71,7 +71,7 @@ This guide explains how to initialize or refresh a project KB base from existing
 
 ### Prerequisites
 
-*   Node 20+
+*   Node 22+
 *   `kb` CLI installed and on `PATH`
 *   Write access to the repository and KB home (`~/.kb`)
 *   Optional: LLM keys configured for `init` and `docs generate` steps

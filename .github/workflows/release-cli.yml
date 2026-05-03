@@ -25,7 +25,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -42,7 +42,7 @@ jobs:
       - name: Rename release package
         run: |
           PACKAGE="$(ls kb-*.tgz | head -n 1)"
-          mv "$PACKAGE" kb-cli-node20.tgz
+          mv "$PACKAGE" kb-cli-node22.tgz
 
       - name: Compute release metadata
         id: meta
@@ -68,20 +68,20 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kb-cli-node20
-          path: kb-cli-node20.tgz
+          name: kb-cli-node22
+          path: kb-cli-node22.tgz
 
       - name: Publish GitHub release assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag_name }}
           name: ${{ steps.meta.outputs.release_name }}
-          files: kb-cli-node20.tgz
+          files: kb-cli-node22.tgz
           generate_release_notes: true
           prerelease: ${{ steps.meta.outputs.prerelease }}
           target_commitish: ${{ github.sha }}
           body: |
-            CI-built KB CLI package for Node 20+.
+            CI-built KB CLI package for Node 22+.
 
             Install globally with:
-            `npm install -g ./kb-cli-node20.tgz`
+            `npm install -g ./kb-cli-node22.tgz`

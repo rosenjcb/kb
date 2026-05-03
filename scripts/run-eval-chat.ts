@@ -7,7 +7,7 @@ import {
   resolveConversationalChatEnabled,
   resolveGraphEnabled,
 } from '../src/cli/kb-config.js'
-import { DuckGraphWriter } from '../src/tools/duck-graph-writer.js'
+import { KbGraphWriter } from '../src/tools/kb-graph-writer.js'
 import { createKBToolsRegistry } from '../src/tools/kb-tools-registry.js'
 
 const QUESTIONS = [
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
   const storageDir = await ensureOperationalBaseDir(base)
   const toolExecutor = createKBToolsRegistry(storageDir, config)
   const graphWriter = resolveGraphEnabled(config)
-    ? new DuckGraphWriter(DuckGraphWriter.dbPathForBase(storageDir))
+    ? new KbGraphWriter(KbGraphWriter.dbPathForBase(storageDir))
     : undefined
 
   const inputs = [...QUESTIONS, '/exit']

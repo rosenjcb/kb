@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { DuckGraphWriter } from '../../src/tools/duck-graph-writer'
+import { KbGraphWriter } from '../../src/tools/kb-graph-writer'
 import {
   formatGraphRelationBlockForPair,
   formatGraphRelationBlockFromQuestion,
@@ -32,12 +32,12 @@ describe('parseRelationalConceptPair', () => {
 describe('formatGraphRelationBlockForPair', () => {
   let tmpDir: string
   let dbPath: string
-  let writer: DuckGraphWriter
+  let writer: KbGraphWriter
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), 'kb-relation-'))
-    dbPath = join(tmpDir, '.kb-graph.duckdb')
-    writer = new DuckGraphWriter(dbPath)
+    dbPath = join(tmpDir, '.kb-index.sqlite')
+    writer = new KbGraphWriter(dbPath)
     await writer.open()
     await writer.beginTransaction()
     await writer.upsertEntities([

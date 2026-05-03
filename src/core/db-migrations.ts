@@ -312,6 +312,37 @@ const MIGRATIONS: Migration[] = [
         ON facts(object) WHERE tombstoned_at IS NULL;
     `,
   },
+  {
+    version: 9,
+    name: 'kb_graph_tables',
+    sql: `
+      CREATE TABLE IF NOT EXISTS kb_graph_entities (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'concept',
+        doc_id TEXT,
+        description TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS kb_graph_relationships (
+        id TEXT PRIMARY KEY,
+        from_id TEXT NOT NULL,
+        to_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        doc_id TEXT,
+        weight REAL NOT NULL DEFAULT 1.0,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_kb_graph_rel_from
+        ON kb_graph_relationships(from_id);
+      CREATE INDEX IF NOT EXISTS idx_kb_graph_rel_to
+        ON kb_graph_relationships(to_id);
+      CREATE INDEX IF NOT EXISTS idx_kb_graph_rel_doc
+        ON kb_graph_relationships(doc_id);
+    `,
+  },
 ]
 
 /**

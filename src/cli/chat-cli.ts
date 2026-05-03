@@ -6,7 +6,7 @@ import { resolveEffectiveBaseDir } from './base-selection'
 import { runDocsGenerateChatFlow } from './chat-docs-generate-flow'
 import type { KbConfig } from './kb-config'
 import { readKbConfig } from './kb-config'
-import type { DuckGraphWriter } from '../tools/duck-graph-writer'
+import type { KbGraphWriter } from '../tools/kb-graph-writer'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
 import { createPrinter, type Printer } from '../ui/printer'
@@ -25,7 +25,7 @@ export interface ChatSessionDeps {
   llmProvider: LLMProvider
   toolExecutor: ToolExecutor
   mode?: CmdMode
-  graphWriter?: DuckGraphWriter
+  graphWriter?: KbGraphWriter
   /** KB storage directory (`.kb` root). Resolved from cwd when omitted. */
   kbStorageDir?: string
   /** When omitted, `readKbConfig()` is used on first `/docs generate`. */
