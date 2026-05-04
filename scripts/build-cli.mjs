@@ -27,8 +27,21 @@ if (process.platform !== 'win32') {
   await chmod(outFile, 0o755)
 }
 
-const launcher = `#!/usr/bin/env node
-import './kb.js'
+const pinnedMajor = '22'
+const launcher = `#!/usr/bin/env bash
+# Resolve the Node version pinned by this project (.nvmrc = ${pinnedMajor}).
+# This avoids ABI mismatch when the shell's active Node differs from the
+# version better-sqlite3 was compiled against.
+SCRIPT_DIR="$(cd "$(dirname "\$0")" && pwd)"
+KB_NODE=""
+NVM_DIR="\${NVM_DIR:-\$HOME/.nvm}"
+if [ -d "\$NVM_DIR/versions/node" ]; then
+  KB_NODE="$(ls -d "\$NVM_DIR/versions/node/v${pinnedMajor}."*/bin/node 2>/dev/null | sort -V | tail -1)"
+fi
+if [ -z "\$KB_NODE" ]; then
+  KB_NODE="$(command -v node)"
+fi
+exec "\$KB_NODE" "\$SCRIPT_DIR/kb.js" "\$@"
 `
 
 await writeFile(launcherFile, launcher, 'utf8')
