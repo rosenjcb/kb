@@ -692,29 +692,45 @@ export class SqliteKbIndexer {
       )
   }
 
-  listDocsForView(limit = 20): SqliteDocumentRow[] {
-    const derived = this.db
-      .prepare(
-        `
+  listDocsForView(limit?: number): SqliteDocumentRow[] {
+    const derivedQuery =
+      typeof limit === 'number'
+        ? `
         SELECT id, title, markdown AS content, id AS file_path, doc_type, NULL AS lane, tags_json, created_at, updated_at, 0 AS is_original
         FROM derived_docs
         WHERE status = 'active'
         ORDER BY updated_at DESC
         LIMIT ?
       `
-      )
-      .all(limit) as SqliteDocumentRow[]
-    const original = this.db
-      .prepare(
-        `
+        : `
+        SELECT id, title, markdown AS content, id AS file_path, doc_type, NULL AS lane, tags_json, created_at, updated_at, 0 AS is_original
+        FROM derived_docs
+        WHERE status = 'active'
+        ORDER BY updated_at DESC
+      `
+    const originalQuery =
+      typeof limit === 'number'
+        ? `
         SELECT id, title, markdown AS content, source_ref AS file_path, doc_type, NULL AS lane, tags_json, created_at, updated_at, 1 AS is_original
         FROM original_docs
         ORDER BY updated_at DESC
         LIMIT ?
       `
-      )
-      .all(limit) as SqliteDocumentRow[]
-    return [...derived, ...original].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, limit)
+        : `
+        SELECT id, title, markdown AS content, source_ref AS file_path, doc_type, NULL AS lane, tags_json, created_at, updated_at, 1 AS is_original
+        FROM original_docs
+        ORDER BY updated_at DESC
+      `
+    const derived =
+      typeof limit === 'number'
+        ? (this.db.prepare(derivedQuery).all(limit) as SqliteDocumentRow[])
+        : (this.db.prepare(derivedQuery).all() as SqliteDocumentRow[])
+    const original =
+      typeof limit === 'number'
+        ? (this.db.prepare(originalQuery).all(limit) as SqliteDocumentRow[])
+        : (this.db.prepare(originalQuery).all() as SqliteDocumentRow[])
+    const combined = [...derived, ...original].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+    return typeof limit === 'number' ? combined.slice(0, limit) : combined
   }
 
   getDocById(id: string): SqliteDocumentRow | undefined {

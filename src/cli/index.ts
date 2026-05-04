@@ -154,7 +154,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('base use dogfood', mode)}`,
     `  ${cmd('base use --default dogfood', mode)}`,
     `  ${cmd('base delete ci-test --force', mode)}`,
-    `  ${cmd('docs list --base dogfood --limit 20', mode)}`,
+    `  ${cmd('docs list --base dogfood', mode)}`,
     `  ${cmd('docs view kb-base-selection-and-usage', mode)}`,
     `  ${cmd('submit "SQLite hybrid search is enabled in dogfood"', mode)}`,
   ].join('\n')

@@ -18,7 +18,7 @@ export interface ViewCommandResult {
 export interface ParsedListCommand {
   output: ViewOutputMode
   base?: string
-  limit: number
+  limit?: number
 }
 
 export class ViewCommandError extends Error {
@@ -52,10 +52,12 @@ export function printListHelp(mode: CmdMode = 'cli'): string {
     '',
     'Usage:',
     `  ${cmd('docs list [--base <name>] [--limit <n>] [--output human|json]', mode)}`,
+    '  By default, all documents are shown. Use --limit to cap the results.',
     '',
     'Examples:',
     `  ${cmd('docs list', mode)}`,
-    `  ${cmd('docs list --base dogfood --limit 20', mode)}`,
+    `  ${cmd('docs list --base dogfood', mode)}`,
+    `  ${cmd('docs list --limit 20', mode)}`,
     `  ${cmd('docs list --output json', mode)}`,
   ].join('\n')
 }
@@ -174,7 +176,7 @@ export function parseListCommand(args: string[]): ParsedListCommand {
 
   let base: string | undefined
   let output: ViewOutputMode = 'human'
-  let limit = 20
+  let limit: number | undefined
 
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index]
