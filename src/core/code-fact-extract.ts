@@ -497,7 +497,7 @@ function shortContentHash(contents: string): string {
 export async function ingestCodeFilesAsFacts(
   input: IngestCodeFilesAsFactsInput
 ): Promise<CodeFactIngestResult> {
-  const maxFiles = input.maxFiles ?? (Number(process.env.KB_CODE_FACTS_MAX_FILES) || 40)
+  const maxFiles = input.maxFiles ?? (Number(process.env.KB_CODE_FACTS_MAX_FILES) || 500)
   const perFileChars = input.perFileChars ?? (Number(process.env.KB_CODE_FACTS_PER_FILE_CHARS) || 6000)
   const maxConcurrency = input.maxConcurrency ?? (Number(process.env.KB_CODE_FACTS_MAX_CONCURRENCY) || 4)
   const maxPerFile = input.maxPerFile ?? (Number(process.env.KB_CODE_FACTS_MAX_PER_FILE) || 8)
