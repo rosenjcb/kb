@@ -179,6 +179,7 @@ function printInitHelp(mode: CmdMode = 'cli'): string {
     '  --debug                        Emit debug logging and telemetry details',
     '',
     'Notes:',
+    '  Without --base, interactive init prompts for a fresh base name and switches the active base immediately.',
     '  Without --base, --rescan uses config active base, then default base (no name prompt).',
     '  Interactive --rescan asks once to proceed; add --non-interactive to skip that prompt.',
     '  Rescan writes verbatim originals from discovered sources. Claim mutations stay plan-only until --rescan --apply.',

@@ -329,4 +329,67 @@ describe('ingestCodeFilesAsFacts', () => {
     expect(out.filesFailed).toBe(1)
     expect(out.factsInserted).toBe(0)
   })
+
+  it('reports file progress and remaining work while ingesting code facts', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-code-facts-progress-'))
+    tempDirs.push(baseDir)
+    new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') }).close()
+
+    const provider = makeStubProvider([
+      JSON.stringify({
+        module_summary: 'First module.',
+        facts: [
+          {
+            sentence: 'alpha returns 1.',
+            anchor: 'alpha',
+            triplet: { subject: 'alpha', predicate: 'returns', object: '1' },
+          },
+        ],
+      }),
+    ])
+
+    const snapshots: Array<{
+      filesCompleted: number
+      filesRemaining: number
+      filesProcessed: number
+      filesSkippedTooSmall: number
+      factsInserted: number
+    }> = []
+
+    const out = await ingestCodeFilesAsFacts({
+      baseDir,
+      llm: provider,
+      codeFiles: {
+        'src/a.ts': '/** A */\nexport function alpha() { return 1 }\n'.padEnd(200, ' '),
+        'src/tiny.ts': 'export const x = 1',
+      },
+      onProgress(progress) {
+        snapshots.push({
+          filesCompleted: progress.filesCompleted,
+          filesRemaining: progress.filesRemaining,
+          filesProcessed: progress.filesProcessed,
+          filesSkippedTooSmall: progress.filesSkippedTooSmall,
+          factsInserted: progress.factsInserted,
+        })
+      },
+    })
+
+    expect(out.filesConsidered).toBe(2)
+    expect(out.filesProcessed).toBe(1)
+    expect(out.filesSkippedTooSmall).toBe(1)
+    expect(snapshots[0]).toEqual({
+      filesCompleted: 0,
+      filesRemaining: 2,
+      filesProcessed: 0,
+      filesSkippedTooSmall: 0,
+      factsInserted: 0,
+    })
+    expect(snapshots.at(-1)).toEqual({
+      filesCompleted: 2,
+      filesRemaining: 0,
+      filesProcessed: 1,
+      filesSkippedTooSmall: 1,
+      factsInserted: 2,
+    })
+  })
 })

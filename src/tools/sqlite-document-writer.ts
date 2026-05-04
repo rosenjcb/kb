@@ -481,4 +481,8 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
       })
     }
   }
+
+  close(): void {
+    this.indexer.close()
+  }
 }

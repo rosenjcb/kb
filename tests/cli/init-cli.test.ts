@@ -133,13 +133,15 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.base).toBe('fresh-base')
     expect(questionIO.prompts[0]).toContain('Knowledge base name')
-    expect(questionIO.prompts[0]).toContain('[default]')
+    expect(questionIO.prompts[0]).toContain('[kb-init-cli-')
     expect(result.checkpointFile).toBe(
       path.join(kbHomeDir, 'sessions', 'fresh-base', 'checkpoints', 'init-latest.checkpoint.json')
     )
+    const config = JSON.parse(await readFile(path.join(kbHomeDir, 'config.json'), 'utf8'))
+    expect(config.activeBase).toBe('fresh-base')
   })
 
-  it('Given init without --base and config activeBase, then prompt brackets that base', async () => {
+  it('Given init without --base and config activeBase, then prompt suggests cwd instead of reusing config base', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
@@ -157,11 +159,20 @@ describe('init-cli interview checkpoints', () => {
       questionIO: questionIO.io,
     })
 
-    expect(questionIO.prompts[0]).toContain('[dogfood]')
-    expect(result.base).toBe('dogfood')
+    expect(questionIO.prompts[0]).not.toContain('[dogfood]')
+    expect(questionIO.prompts[0]).toContain('[kb-init-cli-')
+    expect(result.base).toBe(path.basename(cwd))
     expect(result.checkpointFile).toBe(
-      path.join(kbHomeDir, 'sessions', 'dogfood', 'checkpoints', 'init-latest.checkpoint.json')
+      path.join(
+        kbHomeDir,
+        'sessions',
+        path.basename(cwd).toLowerCase(),
+        'checkpoints',
+        'init-latest.checkpoint.json'
+      )
     )
+    const config = JSON.parse(await readFile(path.join(kbHomeDir, 'config.json'), 'utf8'))
+    expect(config.activeBase).toBe(path.basename(cwd))
   })
 
   it('Given detach and resume flags, then parses them into init options', () => {

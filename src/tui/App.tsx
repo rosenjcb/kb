@@ -297,6 +297,15 @@ export function App({ config, startupNotices = [] }: Props) {
             type: 'result',
             content: `✅ Init complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
           })
+          resolveEffectiveBaseDir()
+            .then(({ baseDir, baseName: effectiveBaseName }) => {
+              storageDirRef.current = baseDir
+              setBaseName(effectiveBaseName)
+            })
+            .catch(() => {
+              storageDirRef.current = ''
+              setBaseName(result.base)
+            })
           setMode('shell')
         })
         .catch(err => {

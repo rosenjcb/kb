@@ -2,9 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { ensureInitBaseArg } from '../../src/tui/init-args'
 
 describe('ensureInitBaseArg', () => {
-  it('Given no --base and fallback exists, then appends --base fallback', () => {
+  it('Given --rescan without --base and fallback exists, then appends --base fallback', () => {
     const result = ensureInitBaseArg(['--rescan'], 'dogfood')
     expect(result).toEqual(['--rescan', '--base', 'dogfood'])
+  })
+
+  it('Given plain init without --base, then leaves args unchanged so init can prompt', () => {
+    const result = ensureInitBaseArg([], 'dogfood')
+    expect(result).toEqual([])
   })
 
   it('Given --base already provided, then preserves original args', () => {

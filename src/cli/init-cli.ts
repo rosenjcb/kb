@@ -34,7 +34,12 @@ import {
 } from '../tools/rescan-apply-orchestrator'
 import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
-import { ensureOperationalBaseDir, getKbHomeDir, readBaseConfig } from './base-selection'
+import {
+  ensureOperationalBaseDir,
+  getKbHomeDir,
+  readBaseConfig,
+  writeSessionBase,
+} from './base-selection'
 import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from './cli-prerequisites'
 import {
   buildHashesFor,
@@ -356,6 +361,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const questionIO = options.questionIO ?? createReadlineQuestionIO()
   const cwd = options.cwd ?? process.cwd()
   const base = await resolveInitBaseName(options, cwd, questionIO)
+  if (!options.rescan) {
+    await writeSessionBase(base)
+  }
   const baseDir = await ensureOperationalBaseDir(base, cwd)
   if (options.rescan && !options.nonInteractive) {
     const proceed = await confirmRescanStart(questionIO, base, cwd)
@@ -516,6 +524,15 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             llm: provider,
             codeFiles,
             candidateFiles,
+            onProgress: snapshot => {
+              progress.update(
+                'code-facts',
+                `files ${snapshot.filesCompleted}/${snapshot.filesConsidered}, ${snapshot.factsInserted + snapshot.factsSuperseded} changed, ${snapshot.factsTombstoned} tombstoned`
+              )
+              options.questionIO?.write?.(
+                `[init:action] code-facts files ${snapshot.filesCompleted}/${snapshot.filesConsidered} (${snapshot.filesRemaining} left) | processed ${snapshot.filesProcessed}, skipped ${snapshot.filesSkippedNoExports + snapshot.filesSkippedTooSmall}, failed ${snapshot.filesFailed} | facts: +${snapshot.factsInserted} inserted, ${snapshot.factsSuperseded} superseded, ${snapshot.factsTombstoned} tombstoned, ${snapshot.factsUnchanged} unchanged${snapshot.currentFile ? ` | ${snapshot.currentFile}` : ''}\n`
+              )
+            },
           })
           await writeCodeFactsManifest(baseDir, buildHashesFor(codeFiles))
           endCodeFacts()
@@ -641,7 +658,17 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       } else if (provider) {
         try {
           const endPassGraph = makeCycleTimer('pass-graph', provider, options.collector, counter)
-          await runGraphExtractionPass(provider, baseDir)
+          await runGraphExtractionPass(provider, baseDir, {
+            onProgress: snapshot => {
+              progress.update(
+                'pass-graph',
+                `docs ${snapshot.docsProcessed}/${snapshot.totalDocs}, ${snapshot.totalEntities} nodes, ${snapshot.totalRelationships} connections`
+              )
+              questionIO.write?.(
+                `[init:action] graph docs ${snapshot.docsProcessed}/${snapshot.totalDocs} (+${snapshot.batchDocs}) | +${snapshot.batchEntities} nodes, +${snapshot.batchRelationships} connections | totals: ${snapshot.totalEntities} nodes, ${snapshot.totalRelationships} connections\n`
+              )
+            },
+          })
           endPassGraph()
           graphPassOutcome = 'extracted'
           await persist({ completedCycles: ['pass-graph'] })
@@ -1092,7 +1119,21 @@ async function emitPostInitGraphOverview(options: {
   }
 }
 
-async function runGraphExtractionPass(provider: LLMProvider, baseDir: string): Promise<void> {
+async function runGraphExtractionPass(
+  provider: LLMProvider,
+  baseDir: string,
+  options: {
+    onProgress?: (progress: {
+      docsProcessed: number
+      totalDocs: number
+      batchDocs: number
+      batchEntities: number
+      batchRelationships: number
+      totalEntities: number
+      totalRelationships: number
+    }) => void
+  } = {}
+): Promise<void> {
   const dbPath = path.join(baseDir, '.kb-index.sqlite')
   const indexer = new SqliteKbIndexer({ dbPath })
   let docs: Array<{ id: string; text: string }>
@@ -1111,7 +1152,18 @@ async function runGraphExtractionPass(provider: LLMProvider, baseDir: string): P
   const writer = new KbGraphWriter(graphPath)
   try {
     await writer.open()
-    const { entities, relationships } = await extractGraphBatch(docs, provider)
+    options.onProgress?.({
+      docsProcessed: 0,
+      totalDocs: docs.length,
+      batchDocs: 0,
+      batchEntities: 0,
+      batchRelationships: 0,
+      totalEntities: 0,
+      totalRelationships: 0,
+    })
+    const { entities, relationships } = await extractGraphBatch(docs, provider, {
+      onProgress: options.onProgress,
+    })
     await writer.beginTransaction()
     try {
       if (entities.length > 0) await writer.upsertEntities(entities)
@@ -1129,18 +1181,21 @@ async function runGraphExtractionPass(provider: LLMProvider, baseDir: string): P
 async function writeDocs(docs: CandidateDoc[], baseDir: string, base: string): Promise<string[]> {
   const writer = new SqliteDocumentWriter({ baseDir, base })
   const writtenIds: string[] = []
-
-  for (const doc of docs) {
-    const result = await writer.writeDocument({
-      title: doc.title,
-      content: doc.content,
-      type: doc.type,
-      tags: doc.tags,
-      documentId: doc.id ?? slugify(doc.title),
-      overwrite: true,
-      isOriginal: doc.isOriginal ?? false,
-    })
-    writtenIds.push(result.id)
+  try {
+    for (const doc of docs) {
+      const result = await writer.writeDocument({
+        title: doc.title,
+        content: doc.content,
+        type: doc.type,
+        tags: doc.tags,
+        documentId: doc.id ?? slugify(doc.title),
+        overwrite: true,
+        isOriginal: doc.isOriginal ?? false,
+      })
+      writtenIds.push(result.id)
+    }
+  } finally {
+    writer.close()
   }
 
   return writtenIds
@@ -1188,9 +1243,6 @@ async function resolveInitBaseName(
   const suggestedBase = await resolveSuggestedInitBase(cwd)
 
   if (options.nonInteractive) {
-    if (suggestedBase) {
-      return suggestedBase
-    }
     throw new Error(CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE)
   }
 
@@ -1209,13 +1261,8 @@ async function resolveInitBaseName(
 }
 
 async function resolveSuggestedInitBase(_cwd: string): Promise<string | undefined> {
-  const configured = await readBaseConfig()
-  if (configured.activeBase?.trim()) {
-    return configured.activeBase.trim()
-  }
-  if (configured.defaultBase?.trim()) {
-    return configured.defaultBase.trim()
-  }
+  const cwdBase = path.basename(_cwd).trim()
+  if (cwdBase) return cwdBase
   return 'default'
 }
 
