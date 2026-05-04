@@ -6,7 +6,8 @@ export interface SlashCommand {
 }
 
 const SHELL_COMMANDS: SlashCommand[] = [
-  { command: '/init', description: 'initialize or rescan a knowledge base' },
+  { command: '/init', description: 'build a knowledge base from this repo' },
+  { command: '/scan', description: 'scan this repo into the active or selected KB base' },
   { command: '/base', description: 'manage KB bases (use, delete)' },
   { command: '/query', description: 'search the knowledge base' },
   { command: '/submit', description: 'store a new fact or checkpoint' },
@@ -16,7 +17,7 @@ const SHELL_COMMANDS: SlashCommand[] = [
   { command: '/facts', description: 'list, search, or show KB facts (see kb facts --help)' },
   { command: '/graph', description: 'inspect or edit the knowledge graph (see kb graph --help)' },
   { command: '/publish', description: 'publish docs to the external sink' },
-  { command: '/sync', description: 'fast-forward main, rebuild, and refresh kb' },
+  { command: '/sync', description: 'install the latest published KB release' },
   { command: '/skill', description: 'manage agent skills' },
   { command: '/config', description: 'inspect or update config values' },
   { command: '/help', description: 'show kb CLI and TUI help' },

@@ -1,5 +1,5 @@
 /**
- * kb init — knowledge base bootstrap command.
+ * kb init / kb scan — knowledge base bootstrap and refresh commands.
  *
  * Cycle 1 (read-inputs):     Discover markdown/text sources under working dir (recursive),
  *                             ask an initial interview round via stdin.
@@ -215,6 +215,7 @@ class InitProgressReporter {
 
   constructor(
     private total: number,
+    private prefix: 'init' | 'scan' = 'init',
     private sink: (line: string) => void = line => process.stderr.write(line)
   ) {}
 
@@ -236,7 +237,7 @@ class InitProgressReporter {
     const filled = Math.round((this.completed / Math.max(this.total, 1)) * width)
     const bar = `${'='.repeat(filled)}${'-'.repeat(Math.max(width - filled, 0))}`
     const suffix = detail ? ` ${detail}` : ''
-    this.sink(`[init] [${bar}] ${this.completed}/${this.total} ${label}${suffix}\n`)
+    this.sink(`[${this.prefix}] [${bar}] ${this.completed}/${this.total} ${label}${suffix}\n`)
   }
 }
 
@@ -331,6 +332,13 @@ export function parseInitCommand(args: string[]): InitOptions {
   }
 }
 
+export function parseScanCommand(args: string[]): InitOptions {
+  if (args.includes('--rescan')) {
+    throw new Error('kb scan already implies rescan. Remove `--rescan`.')
+  }
+  return { ...parseInitCommand(['--rescan', ...args]), rescan: true }
+}
+
 function makeCycleTimer(
   cycle: InitCycle,
   provider: LLMProvider | undefined,
@@ -360,6 +368,14 @@ function makeCycleTimer(
   }
 }
 
+function kbCommandLabel(options: Pick<InitOptions, 'rescan'>): 'kb init' | 'kb scan' {
+  return options.rescan ? 'kb scan' : 'kb init'
+}
+
+function progressPrefix(options: Pick<InitOptions, 'rescan'>): 'init' | 'scan' {
+  return options.rescan ? 'scan' : 'init'
+}
+
 export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> {
   // When using real readline (no injected questionIO) and stdin is not a TTY
   // (e.g. CI, background process, piped input), force non-interactive mode so
@@ -385,7 +401,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
-  const progress = new InitProgressReporter(6, options.progressSink)
+  const progress = new InitProgressReporter(6, progressPrefix(options), options.progressSink)
   const rawProvider = options.provider ?? (await resolveProvider())
   const counter =
     rawProvider && options.collector ? new TokenCountingProvider(rawProvider) : undefined
@@ -437,7 +453,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         const pendingRound = latestPendingRound(interviewRounds)
         if (!pendingRound) throw new Error('Pending read-inputs interview round missing')
         const answeredRound = await answerPendingQuestions({
-          heading: '\n[kb init] Resuming pending questions:\n\n',
+          heading: `\n[${kbCommandLabel(options)}] Resuming pending questions:\n\n`,
           round: pendingRound,
           questionIO,
         })
@@ -526,7 +542,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           : undefined
         if (options.rescan) {
           options.questionIO?.write?.(
-            `[kb init] code-facts --rescan picked ${candidateFiles?.length ?? 0}/${Object.keys(codeFiles).length} changed source file(s).\n`
+            `[${kbCommandLabel(options)}] code-facts picked ${candidateFiles?.length ?? 0}/${Object.keys(codeFiles).length} changed source file(s).\n`
           )
         }
         try {
@@ -541,7 +557,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
                 `files ${snapshot.filesCompleted}/${snapshot.filesConsidered}, ${snapshot.factsInserted + snapshot.factsSuperseded} changed, ${snapshot.factsTombstoned} tombstoned`
               )
               options.questionIO?.write?.(
-                `[init:action] code-facts files ${snapshot.filesCompleted}/${snapshot.filesConsidered} (${snapshot.filesRemaining} left) | processed ${snapshot.filesProcessed}, skipped ${snapshot.filesSkippedNoExports + snapshot.filesSkippedTooSmall}, failed ${snapshot.filesFailed} | facts: +${snapshot.factsInserted} inserted, ${snapshot.factsSuperseded} superseded, ${snapshot.factsTombstoned} tombstoned, ${snapshot.factsUnchanged} unchanged${snapshot.currentFile ? ` | ${snapshot.currentFile}` : ''}\n`
+                `[${progressPrefix(options)}:action] code-facts files ${snapshot.filesCompleted}/${snapshot.filesConsidered} (${snapshot.filesRemaining} left) | processed ${snapshot.filesProcessed}, skipped ${snapshot.filesSkippedNoExports + snapshot.filesSkippedTooSmall}, failed ${snapshot.filesFailed} | facts: +${snapshot.factsInserted} inserted, ${snapshot.factsSuperseded} superseded, ${snapshot.factsTombstoned} tombstoned, ${snapshot.factsUnchanged} unchanged${snapshot.currentFile ? ` | ${snapshot.currentFile}` : ''}\n`
               )
             },
           })
@@ -556,7 +572,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           endCodeFacts()
           const message = err instanceof Error ? err.message : String(err)
           options.questionIO?.write?.(
-            `[kb init] code-facts cycle failed: ${message}. Continuing without code-derived facts.\n`
+            `[${kbCommandLabel(options)}] code-facts cycle failed: ${message}. Continuing without code-derived facts.\n`
           )
           await persist({ completedCycles: ['code-facts'] })
           progress.finish('code-facts', `failed (${message.slice(0, 80)})`)
@@ -611,16 +627,16 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         })
         let mutationWritten: string[] = []
         questionIO.write?.(
-          `[kb init] rescan plan: ${planResult.plan.mutations.length} actions (${planResult.plan.apply.noopMutations} noop) [plan-only].\n`
+          `[kb scan] plan: ${planResult.plan.mutations.length} actions (${planResult.plan.apply.noopMutations} noop) [plan-only].\n`
         )
-        questionIO.write?.(`[kb init] rescan plan preview:\n${planResult.previewDiff}\n`)
+        questionIO.write?.(`[kb scan] plan preview:\n${planResult.previewDiff}\n`)
         const safeguards = planResult.plan.safeguards?.triggered ?? []
         if (safeguards.length > 0) {
-          questionIO.write?.(`[kb init] rescan safeguards triggered: ${safeguards.join(', ')}\n`)
+          questionIO.write?.(`[kb scan] safeguards triggered: ${safeguards.join(', ')}\n`)
         }
         if (!options.apply) {
           questionIO.write?.(
-            '[kb init] rescan apply is disabled by default. Re-run with --rescan --apply to execute planned mutations.\n'
+            '[kb scan] apply is disabled by default. Re-run with `kb scan --apply` to execute planned mutations.\n'
           )
         } else if (options.nonInteractive || (await confirmRescanApply(questionIO, planResult))) {
           const applyResult = await runRescanApplyOrchestrator({
@@ -633,10 +649,10 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           })
           mutationWritten = applyResult.writtenDocIds
           questionIO.write?.(
-            `[kb init] rescan apply: ${applyResult.plan.apply.appliedMutations} actions applied (${applyResult.plan.apply.noopMutations} noop).\n`
+            `[kb scan] apply: ${applyResult.plan.apply.appliedMutations} actions applied (${applyResult.plan.apply.noopMutations} noop).\n`
           )
         } else {
-          questionIO.write?.('[kb init] rescan apply canceled by user; no mutations executed.\n')
+          questionIO.write?.('[kb scan] apply canceled by user; no mutations executed.\n')
         }
         writtenDocIds = [...originalWritten, ...mutationWritten]
       } else {
@@ -676,7 +692,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
                 `docs ${snapshot.docsProcessed}/${snapshot.totalDocs}, ${snapshot.totalEntities} nodes, ${snapshot.totalRelationships} connections`
               )
               questionIO.write?.(
-                `[init:action] graph docs ${snapshot.docsProcessed}/${snapshot.totalDocs} (+${snapshot.batchDocs}) | +${snapshot.batchEntities} nodes, +${snapshot.batchRelationships} connections | totals: ${snapshot.totalEntities} nodes, ${snapshot.totalRelationships} connections\n`
+                `[${progressPrefix(options)}:action] graph docs ${snapshot.docsProcessed}/${snapshot.totalDocs} (+${snapshot.batchDocs}) | +${snapshot.batchEntities} nodes, +${snapshot.batchRelationships} connections | totals: ${snapshot.totalEntities} nodes, ${snapshot.totalRelationships} connections\n`
               )
             },
           })
@@ -687,7 +703,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         } catch (err) {
           // Graph extraction failed. The graph transaction was rolled back, so
           // the DB is clean. Mark pass-graph complete so plain `kb init` does not
-          // retry endlessly; the user can force a retry with `kb init --rescan`.
+          // retry endlessly; the user can force a retry with `kb scan`.
           graphError = err instanceof Error ? err.message : String(err)
           graphPassOutcome = 'failed'
           await persist({ completedCycles: ['pass-graph'] })
@@ -902,11 +918,9 @@ async function collectRescanSourceFiles(options: {
   const allSourceFiles = await collectSourceFiles(options.cwd)
   const n = Object.keys(allSourceFiles).length
   if (n === 0) {
-    options.questionIO.write?.(
-      '[kb init] --rescan found no markdown/text sources under the working directory.\n'
-    )
+    options.questionIO.write?.('[kb scan] found no markdown/text sources under the working directory.\n')
   } else {
-    options.questionIO.write?.(`[kb init] --rescan loaded ${n} markdown/text source file(s).\n`)
+    options.questionIO.write?.(`[kb scan] loaded ${n} markdown/text source file(s).\n`)
   }
   return allSourceFiles
 }
@@ -1117,7 +1131,7 @@ async function emitPostInitGraphOverview(options: {
     if (options.graphPassOutcome === 'failed') {
       const reason = options.graphError ? `: ${options.graphError}` : ''
       write(
-        `${banner}Knowledge graph: extraction failed${reason}.\nThe graph is empty. Run \`kb init --rescan\` to retry graph extraction.\n`
+        `${banner}Knowledge graph: extraction failed${reason}.\nThe graph is empty. Run \`kb scan\` to retry graph extraction.\n`
       )
       return
     }
@@ -1251,7 +1265,7 @@ async function resolveInitBaseName(
     }
     if (options.nonInteractive) {
       throw new Error(
-        'No active or default KB base. Run `kb base use <name>` or `kb base use --default <name>`, or pass `--base <name>` to `kb init --rescan`.'
+        'No active or default KB base. Run `kb base use <name>` or `kb base use --default <name>`, or pass `--base <name>` to `kb scan`.'
       )
     }
   }
@@ -1630,7 +1644,7 @@ async function confirmRescanStart(
   cwd: string
 ): Promise<boolean> {
   questionIO.write?.(
-    `\n[kb init] Rescan base "${base}" using sources under:\n  ${cwd}\n\nVerbatim originals will be refreshed from discovered markdown. Claim mutations stay plan-only until you add \`--apply\`.\nProceed? [y/N]\n`
+    `\n[kb scan] Scan into base "${base}" using sources under:\n  ${cwd}\n\nThis refreshes verbatim originals from the current repo and plans the minimum safe KB mutations for that base. Add \`--apply\` to execute them.\nProceed? [y/N]\n`
   )
   const answer = (await questionIO.askQuestion('  > ')).trim().toLowerCase()
   return answer === 'y' || answer === 'yes'
@@ -1641,7 +1655,7 @@ async function confirmRescanApply(
   planResult: RunRescanApplyOrchestratorResult
 ): Promise<boolean> {
   questionIO.write?.(
-    `[kb init] Apply ${planResult.plan.mutations.length} planned rescan action(s)? [y/N]\n`
+    `[kb scan] Apply ${planResult.plan.mutations.length} planned scan action(s)? [y/N]\n`
   )
   const answer = (await questionIO.askQuestion('  > ')).trim().toLowerCase()
   return answer === 'y' || answer === 'yes'

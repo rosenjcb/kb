@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { parseInitCommand, runKbInit } from '../../src/cli/init-cli'
+import { parseInitCommand, parseScanCommand, runKbInit } from '../../src/cli/init-cli'
 import { buildFrozenSourceSnapshotDoc } from '../../src/cli/init-source-snapshots'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
 import { SqliteDocumentWriter } from '../../src/tools/sqlite-document-writer'
@@ -183,7 +183,7 @@ describe('init-cli interview checkpoints', () => {
     expect(parsed.resume).toBe(true)
   })
 
-  it('Given rescan flag, then parses it into init options', () => {
+  it('Given rescan flag, then parses it into init options for compatibility', () => {
     const parsed = parseInitCommand(['--base', 'dogfood', '--rescan'])
 
     expect(parsed.base).toBe('dogfood')
@@ -199,6 +199,20 @@ describe('init-cli interview checkpoints', () => {
   it('Given --apply without --rescan, then parsing rejects invalid combination', () => {
     expect(() => parseInitCommand(['--base', 'dogfood', '--apply'])).toThrow(
       '--apply requires --rescan'
+    )
+  })
+
+  it('Given scan args, then parsing implies rescan automatically', () => {
+    const parsed = parseScanCommand(['--base', 'dogfood', '--apply'])
+
+    expect(parsed.base).toBe('dogfood')
+    expect(parsed.rescan).toBe(true)
+    expect(parsed.apply).toBe(true)
+  })
+
+  it('Given kb scan with explicit --rescan, then parsing rejects the redundant flag', () => {
+    expect(() => parseScanCommand(['--base', 'dogfood', '--rescan'])).toThrow(
+      'kb scan already implies rescan'
     )
   })
 
@@ -777,7 +791,7 @@ describe('init-cli interview checkpoints', () => {
     expect((result.writtenDocIds ?? []).length).toBe(2)
   })
 
-  it('Given --rescan plan preview, then it does not propose synthetic rescan files', async () => {
+  it('Given scan plan preview, then it does not propose synthetic scan files', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nKB provides CLI + intent commands for project knowledge.\n',
       'docs/README.md': '# Docs\n\nUse kb submit and kb invalidate to manage facts.\n',
@@ -795,7 +809,7 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.status).toBe('accepted')
     const output = questionIO.writes.join('\n')
-    expect(output).toContain('rescan plan preview')
+    expect(output).toContain('[kb scan] plan preview')
     expect(output).not.toContain('diff --git a/docs/rescan-')
   })
 

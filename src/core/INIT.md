@@ -1,6 +1,6 @@
 # KB Init Pipeline
 
-`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`markdown-facts`** (deterministic sentence ingest from collected markdown into the `facts` table), **`code-facts`** (per-file LLM extraction into `import_code` facts), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb init --rescan`** this stage also plans/applies claim mutations), then **`pass-graph`** when enabled. There is **no** separate `kb scan` command — use **`kb init --rescan`** to refresh sources against an existing base.
+`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`markdown-facts`** (deterministic sentence ingest from collected markdown into the `facts` table), **`code-facts`** (per-file LLM extraction into `import_code` facts), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), then **`pass-graph`** when enabled. Use **`kb scan`** to refresh sources against an existing base.
 
 ## Input Collection
 
@@ -37,7 +37,7 @@ flowchart TD
     MF --> MF1["Deterministic markdown\n→ facts import_doc"]
     CF --> CF1["Per-file LLM\n→ import_code facts"]
     IM --> IM1["One original doc\nper source file"]
-    W --> W1["SQLite upsert\n+ rescan planner when --rescan"]
+    W --> W1["SQLite upsert\n+ scan planner"]
     PG --> PG1["Optional graph\nextract to SQLite"]
 ```
 
@@ -76,7 +76,7 @@ The **`code-facts`** cycle ([src/core/code-fact-extract.ts](code-fact-extract.ts
    - identical normalized text → no-op (dedupe in `upsertFact`),
    - reworded text → tombstone the old rows and insert the new one with `supersedes_fact_id`,
    - anchor missing in the new payload → tombstone all rows for that anchor.
-4. **Rescan** — `kb init --rescan` reads `code-facts-manifest.json` (per-base sidecar) and only re-extracts files whose `sha256` changed. The per-anchor diff guarantees that unchanged files don't churn the `facts` table.
+4. **Scan** — `kb scan` reads `code-facts-manifest.json` (per-base sidecar) and only re-extracts files whose `sha256` changed. The per-anchor diff guarantees that unchanged files don't churn the `facts` table.
 
 Budget knobs (env, sane defaults): `KB_CODE_FACTS_MAX_FILES=40`, `KB_CODE_FACTS_PER_FILE_CHARS=6000`, `KB_CODE_FACTS_MAX_CONCURRENCY=4`, `KB_CODE_FACTS_MAX_PER_FILE=8`. The graph builder (`rebuildFactGraph`) consumes the new triples directly — there is **no separate AST table**.
 

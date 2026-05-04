@@ -19,13 +19,13 @@ export function parseInitOutput(message: string): ParsedInitOutput {
     const line = rawLine.trim()
     if (!line) continue
 
-    if (line.startsWith('[init:action]')) {
+    if (line.startsWith('[init:action]') || line.startsWith('[scan:action]')) {
       actionLine = line
       historyLines.push(line)
       continue
     }
 
-    if (line.startsWith('[init]')) {
+    if (line.startsWith('[init]') || line.startsWith('[scan]')) {
       progressLine = line
       continue
     }

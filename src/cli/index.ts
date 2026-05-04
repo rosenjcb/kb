@@ -61,7 +61,7 @@ import {
   runDocsRename,
 } from './docs-rename-cli'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
-import { parseInitCommand, runKbInit } from './init-cli'
+import { parseInitCommand, parseScanCommand, runKbInit } from './init-cli'
 import {
   enrichReadDocumentsAnswerWithLLM,
   isIntentCommand,
@@ -129,13 +129,14 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     'Core commands:',
     '  base        Manage KB bases (use, delete)',
     '  config      Inspect or update persistent config',
-    '  init        Build a KB from project docs',
+    '  init        Build a KB from the current repo',
+    '  scan        Refresh a KB with content from the current repo',
     '  graph       Inspect or edit the knowledge graph',
     '  docs        Browse KB documents',
     '  facts       List, search, or show KB facts',
     '  chat        Start an interactive KB chat session (--verbose / --debug for human orchestration)',
     '  publish     Publish KB docs',
-    '  sync        Fast-forward main, rebuild, and refresh the global kb link',
+    '  sync        Install the latest published KB release',
     '  logs        Browse and compare run reports',
     '  skill       Manage agent skills',
     '',
@@ -148,10 +149,11 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '',
     'Examples:',
     `  ${cmd('init --base dogfood', mode)}`,
-    `  ${cmd('init --rescan', mode)}`,
-    `  ${cmd('init --rescan --apply', mode)}`,
-    `  ${cmd('sync', mode)}`,
+    `  ${cmd('scan --base dogfood', mode)}`,
+    `  ${cmd('scan --base dogfood --apply', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
+    `  ${cmd('scan', mode)}`,
+    `  ${cmd('sync', mode)}`,
     `  ${cmd('base use --default dogfood', mode)}`,
     `  ${cmd('base delete ci-test --force', mode)}`,
     `  ${cmd('docs list --base dogfood', mode)}`,
@@ -166,31 +168,50 @@ function printInitHelp(mode: CmdMode = 'cli'): string {
     '',
     'Usage:',
     `  ${cmd('init', mode)} [--base <name>] [--detach | --resume] [--stop-after <cycle>]`,
-    `  ${cmd('init', mode)} [--base <name>] --rescan [--apply]`,
     '',
     'Flags:',
-    '  --base <name>                   Choose the KB base to initialize or rescan',
+    '  --base <name>                   Choose the KB base to initialize',
     '  --non-interactive              Skip interview prompts when possible',
     '  --detach                       Pause after the current cycle and save a checkpoint',
     '  --resume                       Resume from the latest init checkpoint',
     '  --stop-after <cycle>           Stop after read-inputs|markdown-facts|code-facts|import-docs|write|pass-graph',
-    '  --rescan                       Re-read changed README-like sources, refresh originals, plan KB updates',
-    '  --apply                        Apply planned rescan mutations (default: preview only)',
     '  --debug                        Emit debug logging and telemetry details',
     '',
     'Notes:',
     '  Without --base, interactive init prompts for a fresh base name and switches the active base immediately.',
-    '  Without --base, --rescan uses config active base, then default base (no name prompt).',
-    '  Interactive --rescan asks once to proceed; add --non-interactive to skip that prompt.',
-    '  Rescan writes verbatim originals from discovered sources. Claim mutations stay plan-only until --rescan --apply.',
-    '  In the TUI, use `/init --rescan` after selecting a base with `/base use <base>`.',
+    `  Use ${cmd('scan', mode)} to refresh a base with content from this repo or from related repos.`,
     '',
     'Examples:',
     `  ${cmd('init --base dogfood', mode)}`,
     `  ${cmd('init --base dogfood --detach', mode)}`,
     `  ${cmd('init --base dogfood --resume', mode)}`,
-    `  ${cmd('init --base dogfood --rescan', mode)}`,
-    `  ${cmd('init --base dogfood --rescan --apply', mode)}`,
+  ].join('\n')
+}
+
+function printScanHelp(mode: CmdMode = 'cli'): string {
+  return [
+    `${cmd('scan', mode)} command`,
+    '',
+    'Usage:',
+    `  ${cmd('scan', mode)} [--base <name>] [--apply] [--non-interactive]`,
+    '',
+    'Flags:',
+    '  --base <name>                   Choose which existing KB base to refresh',
+    '  --apply                        Apply planned KB mutations (default: preview only)',
+    '  --non-interactive              Skip the proceed/apply confirmation prompts',
+    '  --debug                        Emit debug logging and telemetry details',
+    '',
+    'Notes:',
+    '  Scan re-reads markdown/text sources under the current repo, refreshes original docs, and plans the minimum safe KB mutations.',
+    '  Without --base, scan uses the active base first, then the default base.',
+    '  A common workflow is to run `kb init` in a primary repo, then run `kb scan` in related repos into that same base.',
+    `  In the TUI, use ${cmd('base use <base>', mode)} and then ${cmd('scan', mode)} in each related repo.`,
+    '',
+    'Examples:',
+    `  ${cmd('scan --base dogfood', mode)}`,
+    `  ${cmd('scan --base dogfood --apply', mode)}`,
+    `  ${cmd('base use dogfood', mode)}`,
+    `  ${cmd('scan', mode)}`,
   ].join('\n')
 }
 
@@ -631,10 +652,37 @@ export async function runMainWithOutput(
     const collector = new RunCollector('init')
     try {
       const parsed = parseInitCommand(args.slice(1))
+      if (parsed.rescan) {
+        out.log(
+          `⚠️  ${cmd('init --rescan', mode)} has moved to ${cmd('scan', mode)}. Continuing for compatibility.`
+        )
+      }
       const initCollector = new RunCollector('init', { debug: parsed.debug })
       const result = await runKbInit({ ...parsed, collector: initCollector })
       out.log(JSON.stringify(result, null, 2))
       await reporter.append(initCollector.finish('success'))
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      await reporter.append(collector.finish('error', message))
+      out.error(`❌ ${message}`)
+    }
+    return
+  }
+
+  if (firstArg === 'scan') {
+    if (args.includes('--help') || args.includes('-h') || args[1] === 'help') {
+      out.log(printScanHelp(mode))
+      return
+    }
+    const reporter = new ReportWriter(defaultLogsDir())
+    const collector = new RunCollector('scan')
+    try {
+      const parsed = parseScanCommand(args.slice(1))
+      const scanCollector = new RunCollector('scan', { debug: parsed.debug })
+      const result = await runKbInit({ ...parsed, collector: scanCollector })
+      out.log(JSON.stringify(result, null, 2))
+      await reporter.append(scanCollector.finish('success'))
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)

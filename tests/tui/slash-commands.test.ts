@@ -67,13 +67,13 @@ describe('slash command helpers', () => {
     const suggestions = getSlashCommands('shell')
     const { visible, startIndex } = getSuggestionWindow(suggestions, 4, 4)
     expect(startIndex).toBe(2)
-    expect(visible.map(item => item.command)).toEqual(['/query', '/submit', '/invalidate', '/chat'])
+    expect(visible.map(item => item.command)).toEqual(['/base', '/query', '/submit', '/invalidate'])
   })
 
   it('includes /init in shell command list', () => {
     const commands = getSlashCommands('shell')
     expect(commands.some(c => c.command === '/init')).toBe(true)
-    expect(commands.find(c => c.command === '/init')?.description).toContain('rescan')
+    expect(commands.find(c => c.command === '/init')?.description).toContain('build a knowledge base')
   })
 
   it('does not include /init in chat command list', () => {
@@ -84,6 +84,12 @@ describe('slash command helpers', () => {
   it('suggests /init when typing /in in shell mode', () => {
     const suggestions = getSlashCommandSuggestions('/in', 'shell')
     expect(suggestions.some(s => s.command === '/init')).toBe(true)
+  })
+
+  it('includes /scan in shell command list', () => {
+    const commands = getSlashCommands('shell')
+    expect(commands.some(c => c.command === '/scan')).toBe(true)
+    expect(commands.find(c => c.command === '/scan')?.description).toContain('active or selected KB base')
   })
 
   it('includes /skill in shell command list', () => {

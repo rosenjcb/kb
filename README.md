@@ -57,7 +57,7 @@ command -v kb
 For installed clients, the supported release path is GitHub Releases. CI builds a fresh `kb-cli-node22.tgz` package for every push to `main`, and you can install or upgrade it with:
 
 ```bash
-npm install -g ./kb-cli-node22.tgz
+npm install -g https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz
 ```
 
 ### 2) Configure `~/.kb/config.json`
@@ -80,10 +80,10 @@ kb && /init --base dogfood
 Refresh an existing base after README or docs changes:
 
 ```bash
-kb init --base dogfood --rescan
-kb init --base dogfood --rescan --apply
+kb scan --base dogfood
+kb scan --base dogfood --apply
 kb && /base use dogfood
-kb && /init --rescan --apply
+kb && /scan --apply
 ```
 
 ### 4) Start using KB intents
@@ -130,8 +130,8 @@ kb config get
 kb config set <key> <value>
 kb config unset <key>
 kb init [--base <name>] [--detach | --resume] [--stop-after <cycle>]
-kb init [--base <name>] --rescan [--dry-run | --apply]
-kb sync [--no-pull] [--no-build] [--no-link]
+kb scan [--base <name>] [--apply]
+kb sync
 kb publish [options]
 kb chat [--verbose] [--debug] [--base <name>]
 ```
@@ -142,9 +142,7 @@ kb chat [--verbose] [--debug] [--base <name>]
 kb sync
 ```
 
-`kb sync` does not use your current project directory. It keeps a managed clone of `https://github.com/rosenjcb/kb.git` under `~/.kb/sources/kb`, fast-forwards `main`, runs `pnpm install --frozen-lockfile`, rebuilds the CLI, and refreshes the global `kb` link. It will complain early if the current shell is not running `Node 22+`.
-
-> If you just want the supported shipped client, prefer installing the latest CI-built release package from GitHub Releases instead of using `kb sync`.
+`kb sync` installs the latest published `kb-cli-node22.tgz` release from GitHub Releases. It does not use your current project directory, and it does not build from source locally. It will complain early if the current shell is not running `Node 22+`.
 
 ### 1) Enable native SQLite dependency (if needed)
 
@@ -183,12 +181,11 @@ kb base use foo            # switch the active base for this session
 kb base use --default foo  # save a persistent default
 kb base use --show             # show active base and config default
 kb base delete bar --force # delete a base and all its data
-kb init --base foo --rescan        # preview KB updates from changed README-like files
-kb init --base foo --rescan --apply # apply planned rescan updates
-kb sync                           # update from github.com/rosenjcb/kb and relink globally
-kb sync --no-pull                 # rebuild/relink the managed clone without fetching
+kb scan --base foo              # preview KB updates from changed README-like files
+kb scan --base foo --apply      # apply planned scan updates
+kb sync                           # install the latest published GitHub release
 kb && /base use foo
-kb && /init --rescan --apply
+kb && /scan --apply
 kb && /sync
 ```
 
