@@ -196,6 +196,7 @@ describe('MarkdownMDWriterTool specialized operations', () => {
     const result = await writer.reconcileFacts({
       replaceFrom: 'foo',
       replaceTo: 'bar',
+      apply: true,
     })
 
     expect(result.changedDocs).toBe(1)
@@ -236,6 +237,7 @@ describe('MarkdownMDWriterTool specialized operations', () => {
       replaceFrom: 'foo',
       replaceTo: 'bar',
       includeSessionLogs: true,
+      apply: true,
     })
 
     expect(result.changedDocs).toBe(1)

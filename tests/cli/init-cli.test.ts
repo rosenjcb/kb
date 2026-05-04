@@ -185,28 +185,10 @@ describe('init-cli interview checkpoints', () => {
     )
   })
 
-  it('Given dry-run without rescan, then parsing rejects unsupported combination', () => {
-    expect(() => parseInitCommand(['--dry-run'])).toThrow(
-      '--dry-run is currently supported only with --rescan'
-    )
-  })
-
-  it('Given rescan with dry-run, then parsing enables both flags', () => {
-    const parsed = parseInitCommand(['--base', 'dogfood', '--rescan', '--dry-run'])
-    expect(parsed.rescan).toBe(true)
-    expect(parsed.dryRun).toBe(true)
-  })
-
   it('Given --apply without --rescan, then parsing rejects invalid combination', () => {
     expect(() => parseInitCommand(['--base', 'dogfood', '--apply'])).toThrow(
       '--apply requires --rescan'
     )
-  })
-
-  it('Given --dry-run with --apply, then parsing rejects invalid combination', () => {
-    expect(() =>
-      parseInitCommand(['--base', 'dogfood', '--rescan', '--dry-run', '--apply'])
-    ).toThrow('--dry-run cannot be combined with --apply')
   })
 
   it.todo(
@@ -716,7 +698,7 @@ describe('init-cli interview checkpoints', () => {
     expect(sourceFileKeys).toEqual(['AGENTS.md', 'README.md', 'docs/README.md'])
   })
 
-  it('Given --rescan --dry-run, then write cycle prints plan diff and performs no mutations', async () => {
+  it('Given --rescan without --apply, then write cycle writes originals but no mutations', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
@@ -724,17 +706,17 @@ describe('init-cli interview checkpoints', () => {
     const provider = createProvider([JSON.stringify({ entities: [], relationships: [] })])
 
     const result = await runKbInit({
-      base: 'rescan-dry-run',
+      base: 'rescan-preview',
       nonInteractive: true,
       rescan: true,
-      dryRun: true,
       cwd,
       provider,
       questionIO: createQuestionIO([]).io,
     })
 
     expect(result.status).toBe('accepted')
-    expect((result.writtenDocIds ?? []).length).toBe(0)
+    // originals are always written; mutations are gated behind --apply
+    expect((result.writtenDocIds ?? []).length).toBeGreaterThan(0)
   })
 
   it('Given --rescan without --apply, then run stays plan-only and writes no documents', async () => {

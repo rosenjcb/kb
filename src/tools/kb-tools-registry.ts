@@ -165,7 +165,6 @@ export function createKBToolsRegistry(
           additionalProperties: false,
         },
         preview: { type: 'boolean', description: 'When true, report changes without applying' },
-        dryRun: { type: 'boolean', description: 'When true, simulate writes without applying' },
         includeSessionLogs: {
           type: 'boolean',
           description: 'When true, include session-log documents in the invalidation scan',

@@ -14,7 +14,7 @@ As you build up your knowledge base, the graph gives you a structural view of ho
 
 **Export:** The full graph can be dumped as Graphviz DOT (for visualisation tools like Gephi or Mermaid) or JSON (for your own analysis).
 
-**Manual curation:** You can add nodes, descriptions, and directed edges from the CLI (dry-run by default, `--apply` to commit). Automated extraction from `kb submit` / `kb init` merges with hand-authored graph data in the same SQLite database as the document index.
+**Manual curation:** You can add nodes, descriptions, and directed edges from the CLI (preview by default, `--apply` to commit). Automated extraction from `kb submit` / `kb init` merges with hand-authored graph data in the same SQLite database as the document index.
 
 **Session override:** Pass `--base <name>` on `kb graph` (same as other KB commands) to target a specific session without switching your active base.
 

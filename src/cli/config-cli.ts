@@ -59,9 +59,13 @@ export async function runConfigCommand(
       await showLLMStatus({ configFile, output: print })
     } else {
       const isTTY = options.isTTY ?? Boolean(process.stdout.isTTY)
-      if (!isTTY) {
+      if (!isTTY || mode === 'tui') {
         await showLLMStatus({ configFile, output: print })
-        lines.push(`Run \`${cmd('config llm', mode)}\` in an interactive terminal to configure.`)
+        lines.push(
+          mode === 'tui'
+            ? 'LLM wizard requires interactive CLI. Run `kb config llm` in a terminal.'
+            : `Run \`${cmd('config llm', mode)}\` in an interactive terminal to configure.`
+        )
       } else {
         await runLLMSetupWizard({ configFile, output: print })
       }

@@ -223,7 +223,7 @@ export async function reconcileFacts(
 ): Promise<ReconcileFactsResult> {
   const replaceFrom = input.replaceFrom.trim()
   const replaceTo = input.replaceTo.trim()
-  const dryRun = input.dryRun ?? false
+  const apply = input.apply ?? false
   const includeSessionLogs = input.includeSessionLogs ?? false
 
   if (!replaceFrom || !replaceTo) {
@@ -234,7 +234,7 @@ export async function reconcileFacts(
     return {
       replaceFrom,
       replaceTo,
-      dryRun,
+      apply,
       scannedDocs: 0,
       changedDocs: 0,
       skippedDocs: 0,
@@ -303,7 +303,7 @@ export async function reconcileFacts(
       diff: buildUnifiedReplaceDiff(filePath, content, replaceFrom, replaceTo),
     })
 
-    if (!dryRun) {
+    if (apply) {
       await writeFile(filePath, replacement.content, 'utf8')
     }
   }
@@ -311,7 +311,7 @@ export async function reconcileFacts(
   return {
     replaceFrom,
     replaceTo,
-    dryRun,
+    apply,
     scannedDocs,
     changedDocs: changedDocumentIds.length,
     skippedDocs: skippedDocumentIds.length,
@@ -333,7 +333,7 @@ export async function reconcileContradictions(
   const newFact = input.newFact.trim()
   const domain = sanitizeId(input.domain ?? 'general') || 'general'
   const includeSessionLogs = input.includeSessionLogs ?? false
-  const dryRun = input.dryRun ?? false
+  const apply = input.apply ?? false
 
   if (!newFact) {
     throw new Error('reconcile_contradictions requires non-empty newFact')
@@ -344,7 +344,7 @@ export async function reconcileContradictions(
     return {
       newFact,
       domain,
-      dryRun,
+      apply,
       scannedDocs: 0,
       changedDocs: 0,
       removedFacts: 0,
@@ -392,7 +392,7 @@ export async function reconcileContradictions(
       diff: buildUnifiedRemoveDiff(filePath, removal.removedLines),
     })
 
-    if (!dryRun) {
+    if (apply) {
       await writeFile(filePath, removal.content, 'utf8')
     }
   }
@@ -400,7 +400,7 @@ export async function reconcileContradictions(
   return {
     newFact,
     domain,
-    dryRun,
+    apply,
     scannedDocs,
     changedDocs: changedDocumentIds.length,
     removedFacts,

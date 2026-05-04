@@ -136,7 +136,6 @@ export class DefaultIntentRouter implements IntentRouter {
         oldFact,
         replacementFact: asOptionalString(payload.replacementFact),
         preview: payload.preview === true,
-        dryRun: payload.dryRun === true,
         includeSessionLogs: payload.includeSessionLogs !== false,
       })
     }

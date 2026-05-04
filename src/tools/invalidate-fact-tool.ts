@@ -8,7 +8,6 @@ export interface InvalidateFactInput {
   replacementFact?: string
   replacementTriplet?: FactTriplet
   preview?: boolean
-  dryRun?: boolean
   includeSessionLogs?: boolean
 }
 
@@ -30,7 +29,7 @@ export async function invalidateFactTool(
   input: InvalidateFactInput,
   baseDir: string
 ): Promise<InvalidateFactResult> {
-  const { oldFact, replacementFact, replacementTriplet, preview = true, dryRun = false } = input
+  const { oldFact, replacementFact, replacementTriplet, preview = true } = input
 
   const replaceFrom = oldFact.trim()
   const replaceTo = replacementFact?.trim() ?? ''
@@ -64,7 +63,7 @@ export async function invalidateFactTool(
       replacementId: simulatedReplacementId,
     })
 
-    if (!preview && !dryRun) {
+    if (!preview) {
       const replacementPayload =
         replaceTo.length > 0
           ? {

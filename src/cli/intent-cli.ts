@@ -91,24 +91,14 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
       break
 
     case 'invalidate': {
-      if (readFlag(rest, '--apply')) {
-        throw new Error(
-          'Invalid flags: kb invalidate no longer accepts --apply; KB updates apply by default. Use --preview to plan without writes.'
-        )
-      }
-      const invalidatePreview = readFlag(rest, '--preview')
-      const invalidateDryRun = readFlag(rest, '--dry-run')
-      if (invalidatePreview && invalidateDryRun) {
-        throw new Error('Invalid flags: --preview cannot be combined with --dry-run')
-      }
+      const invalidateApply = readFlag(rest, '--apply')
       envelope = {
         intent: 'invalidate_fact',
         requestId: `req-${dayjs().valueOf()}`,
         payload: {
           oldFact: readPositional(rest, 0, 'invalidate requires an old fact string'),
           replacementFact: readOptionalPositional(rest, 1),
-          preview: invalidatePreview,
-          dryRun: invalidateDryRun,
+          preview: !invalidateApply,
           includeSessionLogs: true,
         },
       }
@@ -1063,7 +1053,7 @@ export function printIntentHelp(mode: CmdMode = 'cli'): string {
     'Intent commands:',
     `  ${cmd('submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--include-session-logs] [--output human|json]', mode)}`,
     `  ${cmd('query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]', mode)}`,
-    `  ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--preview|--dry-run] [--output human|json]', mode)}`,
+    `  ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--apply] [--output human|json]', mode)}`,
   ].join('\n')
 }
 

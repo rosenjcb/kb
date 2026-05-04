@@ -128,7 +128,7 @@ export class MarkdownMDWriterTool implements DocumentWriterExtended {
     await mkdir(this.baseDir, { recursive: true })
     const result = await reconcileFactsImpl(input, this.baseDir)
 
-    if (!input.dryRun && this.sqliteIndexer && result.changedDocumentIds.length > 0) {
+    if (input.apply && this.sqliteIndexer && result.changedDocumentIds.length > 0) {
       for (const documentId of result.changedDocumentIds) {
         await this.syncSqliteIndexByDocumentId(documentId)
       }
@@ -143,7 +143,7 @@ export class MarkdownMDWriterTool implements DocumentWriterExtended {
     await mkdir(this.baseDir, { recursive: true })
     const result = await reconcileContradictionsImpl(input, this.baseDir)
 
-    if (!input.dryRun && this.sqliteIndexer && result.changedDocumentIds.length > 0) {
+    if (input.apply && this.sqliteIndexer && result.changedDocumentIds.length > 0) {
       for (const documentId of result.changedDocumentIds) {
         await this.syncSqliteIndexByDocumentId(documentId)
       }

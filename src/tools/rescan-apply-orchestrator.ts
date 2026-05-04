@@ -39,7 +39,7 @@ export interface RescanPlannedMutation {
 }
 
 export interface RescanPlanSummary {
-  dryRun: boolean
+  preview: boolean
   changedReadmes: string[]
   claims: RescanCandidateClaim[]
   evidence: RescanEvidenceResult[]
@@ -69,7 +69,7 @@ export interface RunRescanApplyOrchestratorInput {
   base: string
   baseDir: string
   cwd: string
-  dryRun: boolean
+  apply: boolean
   sourceFiles: Record<string, string>
   candidateDocs: CandidateDocLike[]
   stageTimeoutMs?: number
@@ -115,7 +115,7 @@ export async function runRescanApplyOrchestrator(
   const applyResult = await applyMutations({
     base: input.base,
     baseDir: input.baseDir,
-    dryRun: input.dryRun,
+    apply: input.apply,
     claims,
     stageTimeoutMs,
     mutations,
@@ -125,7 +125,7 @@ export async function runRescanApplyOrchestrator(
   }
 
   const plan: RescanPlanSummary = {
-    dryRun: input.dryRun,
+    preview: !input.apply,
     changedReadmes: Object.keys(input.sourceFiles),
     claims,
     evidence,
@@ -375,7 +375,7 @@ function planMutations(
 async function applyMutations(input: {
   base: string
   baseDir: string
-  dryRun: boolean
+  apply: boolean
   claims: RescanCandidateClaim[]
   stageTimeoutMs: number
   mutations: RescanPlannedMutation[]
@@ -410,7 +410,7 @@ async function applyMutations(input: {
         noopMutations += 1
         continue
       }
-      if (input.dryRun) continue
+      if (!input.apply) continue
       try {
         if (mutation.action === 'invalidate_then_submit' && mutation.invalidateFact) {
           await invalidateFactTool(
@@ -418,7 +418,6 @@ async function applyMutations(input: {
               oldFact: mutation.invalidateFact,
               replacementFact: '',
               preview: false,
-              dryRun: false,
               includeSessionLogs: false,
             },
             input.baseDir
@@ -717,7 +716,6 @@ async function buildPlanDiff(input: {
             oldFact: mutation.invalidateFact,
             replacementFact: '',
             preview: true,
-            dryRun: true,
             includeSessionLogs: false,
           },
           input.baseDir

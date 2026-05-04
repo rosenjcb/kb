@@ -42,6 +42,22 @@ import {
 } from './slash-commands.js'
 import type { HistoryEntry, TuiMode } from './types.js'
 
+/**
+ * For commands that are preview-only without --apply, return the apply variant.
+ * Returns null if the command already includes --apply or isn't a preview command.
+ */
+function resolveApplyArgs(args: string[]): string[] | null {
+  if (args.includes('--apply')) return null
+  const first = args[0]
+  // publish notion|jekyll <...>
+  if (first === 'publish') return [...args, '--apply']
+  // invalidate "<fact>" [...]
+  if (first === 'invalidate') return [...args, '--apply']
+  // init --rescan (without --apply)
+  if (first === 'init' && args.includes('--rescan')) return [...args, '--apply']
+  return null
+}
+
 interface Props {
   config: KbConfig
   startupNotices?: string[]
@@ -443,6 +459,31 @@ export function App({ config, startupNotices = [] }: Props) {
         }
       }
 
+      // Intercept `docs delete <id>` without --force: show confirmation prompt
+      if (
+        firstArg === 'docs' &&
+        args[1] === 'delete' &&
+        !args.includes('--force') &&
+        !args.includes('-f')
+      ) {
+        const docId = args.slice(2).find(t => !t.startsWith('--'))
+        if (docId) {
+          addEntry({
+            type: 'info',
+            content: `Delete document "${docId}"? This cannot be undone. [y/N]`,
+          })
+          setPendingConfirm({
+            question: `Delete document "${docId}"?`,
+            onConfirm: async () => {
+              const forceArgs = [...args, '--force']
+              const output = await runCommandForTui(forceArgs, config)
+              if (output) addEntry({ type: 'result', content: output })
+            },
+          })
+          return
+        }
+      }
+
       // Dispatch to existing CLI logic
       setIsRunning(true)
       const resultId = addEntry({ type: 'result', content: '', loading: true })
@@ -477,6 +518,19 @@ export function App({ config, startupNotices = [] }: Props) {
         }
         if (!filledPrimary) {
           updateEntry(resultId, { content: emptyPrimaryContent, loading: false })
+        }
+
+        // For preview-by-default commands, offer to apply after showing the plan
+        const applyArgs = resolveApplyArgs(args)
+        if (applyArgs) {
+          addEntry({ type: 'info', content: 'Apply these changes? [y/N]' })
+          setPendingConfirm({
+            question: 'Apply?',
+            onConfirm: async () => {
+              const applyOutput = await runCommandForTui(applyArgs, config)
+              if (applyOutput) addEntry({ type: 'result', content: applyOutput })
+            },
+          })
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)

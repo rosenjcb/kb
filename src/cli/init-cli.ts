@@ -75,7 +75,6 @@ export interface InitOptions {
   nonInteractive: boolean
   rescan?: boolean
   apply?: boolean
-  dryRun?: boolean
   detach?: boolean
   resume?: boolean
   stopAfter?: InitCycle
@@ -279,8 +278,6 @@ const MAX_TOTAL_QUESTIONS = 10
 export function parseInitCommand(args: string[]): InitOptions {
   const base = readOption(args, '--base') ?? undefined
 
-  const dryRun = readFlag(args, '--dry-run')
-
   const stopAfter = readOption(args, '--stop-after') as InitCycle | undefined
   const validCycles: InitCycle[] = [
     'read-inputs',
@@ -303,19 +300,12 @@ export function parseInitCommand(args: string[]): InitOptions {
   if (apply && !rescan) {
     throw new Error('Invalid flags: --apply requires --rescan.')
   }
-  if (dryRun && !rescan) {
-    throw new Error('Invalid flags: --dry-run is currently supported only with --rescan.')
-  }
-  if (dryRun && apply) {
-    throw new Error('Invalid flags: --dry-run cannot be combined with --apply.')
-  }
 
   return {
     base,
     nonInteractive: readFlag(args, '--non-interactive'),
     rescan,
     apply,
-    dryRun,
     detach: readFlag(args, '--detach'),
     resume,
     stopAfter,
@@ -577,7 +567,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.start('write', baseDir)
       if (options.rescan) {
         let originalWritten: string[] = []
-        if (!options.dryRun) {
+        {
           const originals = candidateDocs.filter(doc => doc.isOriginal)
           if (originals.length > 0) {
             originalWritten = await writeDocs(originals, baseDir, base)
@@ -587,7 +577,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           base,
           baseDir,
           cwd,
-          dryRun: true,
+          apply: false,
           sourceFiles: context.sourceFiles,
           candidateDocs,
         })
@@ -609,7 +599,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             base,
             baseDir,
             cwd,
-            dryRun: false,
+            apply: true,
             sourceFiles: context.sourceFiles,
             candidateDocs,
           })
@@ -640,9 +630,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     let graphError: string | undefined
     if (!checkpoint.completedCycles.includes('pass-graph')) {
       progress.start('pass-graph', 'extracting knowledge graph…')
-      if (options.dryRun || (options.rescan && options.apply !== true)) {
-        graphPassOutcome = 'dry-run'
-        progress.finish('pass-graph', 'skipped (dry-run)')
+      if (options.rescan && options.apply !== true) {
+        graphPassOutcome = 'preview'
+        progress.finish('pass-graph', 'skipped (rescan preview)')
         await persist({ completedCycles: ['pass-graph'] })
       } else if (!graphEnabled) {
         graphPassOutcome = 'disabled'
@@ -1054,7 +1044,7 @@ function mergeInterviewAnswersIntoContext(
   }
 }
 
-type GraphPassOutcome = 'extracted' | 'disabled' | 'dry-run' | 'failed' | 'no-provider' | 'reused'
+type GraphPassOutcome = 'extracted' | 'disabled' | 'preview' | 'failed' | 'no-provider' | 'reused'
 
 async function emitPostInitGraphOverview(options: {
   baseDir: string
@@ -1073,8 +1063,8 @@ async function emitPostInitGraphOverview(options: {
       write(`${banner}Knowledge graph: skipped (disabled in kb config).\n`)
       return
     }
-    if (options.graphPassOutcome === 'dry-run') {
-      write(`${banner}Knowledge graph: skipped (dry-run mode).\n`)
+    if (options.graphPassOutcome === 'preview') {
+      write(`${banner}Knowledge graph: skipped (rescan preview).\n`)
       return
     }
     if (options.graphPassOutcome === 'no-provider') {

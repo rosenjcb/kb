@@ -71,41 +71,32 @@ describe('intent-cli parsing', () => {
     expect(parsed.debug).toBe(true)
   })
 
-  it('parses invalidate preview/dry-run fields', () => {
+  it('parses invalidate with --apply (writes)', () => {
     const parsed = parseIntentCommand([
       'invalidate',
       'old fact',
       'new fact',
       '--base',
       'dogfood',
-      '--preview',
+      '--apply',
     ])
 
     expect(parsed.base).toBe('dogfood')
     expect(parsed.envelope.intent).toBe('invalidate_fact')
     expect(parsed.envelope.payload.oldFact).toBe('old fact')
     expect(parsed.envelope.payload.replacementFact).toBe('new fact')
-    expect(parsed.envelope.payload.preview).toBe(true)
-    expect(parsed.envelope.payload.dryRun).toBe(false)
+    expect(parsed.envelope.payload.preview).toBe(false)
   })
 
-  it('defaults invalidate to applying (no preview flag)', () => {
+  it('defaults invalidate to preview (no --apply flag)', () => {
     const parsed = parseIntentCommand(['invalidate', 'old fact', 'new fact'])
 
+    expect(parsed.envelope.payload.preview).toBe(true)
+  })
+
+  it('accepts invalidate --apply', () => {
+    const parsed = parseIntentCommand(['invalidate', 'old fact', '--apply'])
     expect(parsed.envelope.payload.preview).toBe(false)
-    expect(parsed.envelope.payload.dryRun).toBe(false)
-  })
-
-  it('rejects invalidate --apply', () => {
-    expect(() => parseIntentCommand(['invalidate', 'old fact', '--apply'])).toThrow(
-      'no longer accepts --apply'
-    )
-  })
-
-  it('rejects invalidate --preview with --dry-run', () => {
-    expect(() => parseIntentCommand(['invalidate', 'old fact', '--preview', '--dry-run'])).toThrow(
-      '--preview cannot be combined with --dry-run'
-    )
   })
 
   it('rejects unknown public commands', () => {
