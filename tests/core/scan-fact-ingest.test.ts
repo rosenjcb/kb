@@ -13,7 +13,7 @@ afterEach(async () => {
 
 describe('ingestSourceMarkdownFilesAsFacts', () => {
   it('Given markdown with long sentences, then upserts facts with import_doc refs', async () => {
-    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-scan-ingest-'))
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-markdown-fact-ingest-'))
     tempDirs.push(baseDir)
     new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') }).close()
 
@@ -40,7 +40,7 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
   })
 
   it('Given short-only segments, then upserts zero and counts skipped', async () => {
-    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-scan-ingest-short-'))
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-markdown-fact-ingest-short-'))
     tempDirs.push(baseDir)
     new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') }).close()
 

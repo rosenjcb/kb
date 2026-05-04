@@ -4,7 +4,6 @@ id: kb
 display_name: kb
 repo_url: https://github.com/rosenjcb/kb.git
 rubric_focus: the **kb** local-first knowledge CLI/repo
-graph_with_base: false
 questions:
   - What is this project for, and what are the main things kb can do?
   - How does kb init work at a high level, including the major passes?

@@ -2,7 +2,7 @@
 
 **Contract:** the KB answers questions and drives authoring from **atomic facts** in the `facts` store. **Markdown documents are not a retrieval substrate for Q&A.** They exist as human-readable artifacts: originals (with facts extracted from them) or generated synthesis, and they matter most at **publish** time.
 
-This is the platform mental model for `kb query`, `kb docs generate`, ingest (`kb init` / rescan paths), and `kb publish`.
+This is the platform mental model for `kb query`, `kb docs generate`, ingest (`kb init` / `kb init --rescan`), and `kb publish`.
 
 ---
 
@@ -11,12 +11,12 @@ This is the platform mental model for `kb query`, `kb docs generate`, ingest (`k
 | Surface | Role |
 |--------|------|
 | **`facts` / `facts_fts`** | Canonical store for retrieval, dedupe keys (`normalized_text`), provenance (`source_kind`, `source_ref`), tombstones, lanes. |
-| **`kb query` / chat** | **Target:** form answers **only** from retrieved facts (plus optional graph over fact-linked entities)—not from full document bodies as evidence. |
+| **`kb query` / chat** | **Target:** form answers **only** from retrieved facts (plus graph neighborhood over fact-linked entities)—not from full document bodies as evidence. |
 | **`kb docs generate`** | **Target:** generate documents **from facts** (questionnaire + LLM shaping), cite facts; documents are outputs, not inputs to retrieval. |
 
 ---
 
-## 2. Ingest: init / scan → facts, not “index pages for hybrid search”
+## 2. Ingest: init / `kb init --rescan` → facts, not “index pages for hybrid search”
 
 **Target pipeline** when reading source pages (README, docs, crawled markdown, etc.):
 
@@ -46,7 +46,7 @@ This is the platform mental model for `kb query`, `kb docs generate`, ingest (`k
 
 ```mermaid
 flowchart TB
-  subgraph ingest["Ingest (init / scan / import)"]
+  subgraph ingest["Ingest (init / markdown-facts / import-docs)"]
     SRC["Source pages\n(markdown, etc.)"]
     SEG["Deterministic split\n→ candidate facts"]
     UPS["upsert / skip / merge\nfacts table"]
@@ -95,10 +95,10 @@ flowchart TB
 | **`kb docs generate`** | Draft/revise user messages include a **KB facts** block; empty FTS → orchestrator throws; **`## References`** from the same grounded set. |
 | **`kb facts`** | CLI + TUI **`/facts`** for list / search / show (`src/cli/facts-cli.ts`). |
 | **`kb docs merge`** | Removed (deterministic doc merge lived only in that CLI path). |
-| **`kb init`** | Pipeline runs **`scan-facts`** (deterministic markdown segmentation → `import_doc`) and **`code-facts`** (per-file LLM extraction → `import_code`, anchored by `code:<path>@<symbol>`) **before** synthesis. Synthesis still produces documents; **`SqliteDocumentWriter`** also indexes incremental fact rows from those bodies. |
+| **`kb init`** | Runs **`markdown-facts`** (deterministic markdown segmentation → `import_doc`) and **`code-facts`** (per-file LLM extraction → `import_code`, anchored by `code:<path>@<symbol>`), then **`import-docs`** (verbatim originals) and **`write`**. **`SqliteDocumentWriter`** also indexes incremental fact rows from document bodies when docs are persisted. |
 | **Publish** | Unchanged: reads stored documents for export. |
 
-Remaining gap vs “gold”: **scan-first ingest** (§2 / Phase C) as the primary init path, optional **`read_documents`** naming cleanup for agents, and ongoing prompt/UI wording to say “fact” where the wire is fact-shaped.
+Remaining gap vs “gold”: optional **`read_documents`** naming cleanup for agents, and ongoing prompt/UI wording to say “fact” where the wire is fact-shaped.
 
 ---
 
@@ -115,10 +115,10 @@ Fact block in prompts; refuse when no facts; **`acceptDraft`** guards zero **`su
 ### Phase C — Ingest: deterministic + semantic facts from sources (**done**)
 
 **Done:**
-- **`scan-facts`** init cycle runs after **`read-inputs`**, before **`pass1`**, calling `ingestSourceMarkdownFilesAsFacts` (`src/core/scan-fact-ingest.ts`) over `context.sourceFiles` — same segmentation policy as document writer ingest, `source_ref` like `README.md#s0`, placeholder triplets.
-- **`code-facts`** init cycle runs right after `scan-facts`. It calls `ingestCodeFilesAsFacts` (`src/core/code-fact-extract.ts`) over `context.codeFiles`: a per-file LLM call returns `{ module_summary, facts: [{ sentence, triplet, anchor }] }`; rows land as `source_kind = 'import_code'` with `source_ref = code:<path>@<anchor>#<contentHash>`. Per-anchor diff against prior rows handles supersede/tombstone, so **rerunning on unchanged content is idempotent** and `kb init --rescan` only re-extracts files whose `sha256` changed (tracked in `code-facts-manifest.json`). The graph is still built from fact triples (`rebuildFactGraph`); **no separate AST table**.
+- **`markdown-facts`** init cycle runs after **`read-inputs`**, calling `ingestSourceMarkdownFilesAsFacts` (`src/core/scan-fact-ingest.ts`) over `context.sourceFiles` — same segmentation policy as document writer ingest, `source_ref` like `README.md#s0`, placeholder triplets.
+- **`code-facts`** init cycle runs right after **`markdown-facts`**. It calls `ingestCodeFilesAsFacts` (`src/core/code-fact-extract.ts`) over `context.codeFiles`: a per-file LLM call returns `{ module_summary, facts: [{ sentence, triplet, anchor }] }`; rows land as `source_kind = 'import_code'` with `source_ref = code:<path>@<anchor>#<contentHash>`. Per-anchor diff against prior rows handles supersede/tombstone, so **rerunning on unchanged content is idempotent** and `kb init --rescan` only re-extracts files whose `sha256` changed (tracked in `code-facts-manifest.json`). The graph is still built from fact triples (`rebuildFactGraph`); **no separate AST table**.
 
-**Out of scope:** dedicated `kb scan` / rescan-only entry without full init synthesis (the current surface is `kb init --rescan`).
+**Surface for refreshing sources:** **`kb init --rescan`**. There is no **`kb scan`** command.
 
 ### Phase D — Documents as artifacts
 

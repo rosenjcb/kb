@@ -85,9 +85,9 @@ describe('docToCollectionFilename', () => {
     expect(docToCollectionFilename(doc)).toBe('api-auth-the-reckoning.md')
   })
 
-  it('Given a path-style title, then uses only the basename', () => {
+  it('Given a path-style title, then uses the full path as slug to avoid basename collisions', () => {
     const doc = makeDoc({ title: 'src/core/AGENT_LOOP.md' })
-    expect(docToCollectionFilename(doc)).toBe('agent-loop.md')
+    expect(docToCollectionFilename(doc)).toBe('src-core-agent-loop.md')
   })
 
   it('Given a title ending in .md, then strips extension before slugifying', () => {

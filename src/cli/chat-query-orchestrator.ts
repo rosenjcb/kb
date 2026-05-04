@@ -6,7 +6,7 @@ import { runQueryTruthRetrieval } from './query-truth-retrieval.js'
 
 export interface ChatQueryTruthInput {
   toolExecutor: ToolExecutor
-  /** Same string `kb query` would use after optional graph expansion. */
+  /** Same string `kb query` would use after graph-augmented query expansion. */
   expandedQuery: string
   retrievalLimit: number
 }

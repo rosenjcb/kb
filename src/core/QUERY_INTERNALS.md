@@ -14,7 +14,7 @@ The router maps the legacy **`read_documents`**-shaped envelope to **`FactsDocum
 | `discoveryDepth` | Behavior |
 |------------------|----------|
 | **`shallow`** | Lexical FTS over facts (`searchFacts`), or `listFactsForQuery` when the query string is empty. |
-| **`deep`** | **`FactsQueryResearchOrchestrator`** (`src/tools/facts-query-research-orchestrator.ts`): bounded iterations merging lexical hits, concept-frontier / concept rows, deterministic semantic rescoring, and optional concept-graph neighbor expansion until sufficiency or max iters. |
+| **`deep`** | **`FactsQueryResearchOrchestrator`** (`src/tools/facts-query-research-orchestrator.ts`): bounded iterations merging lexical hits, concept-frontier / concept rows, deterministic semantic rescoring, and bounded concept-graph neighbor expansion until sufficiency or max iters. |
 
 ## Answer enrichment
 

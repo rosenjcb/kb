@@ -143,8 +143,8 @@ export async function syncDocsToJekyll(
 }
 
 export function docToCollectionFilename(doc: Pick<KbDocRow, 'title'>): string {
-  const basename = path.basename(doc.title).replace(/\.[^.]+$/, '') || doc.title
-  return `${slugify(basename)}.md`
+  const withoutExt = doc.title.replace(/\.[^.]+$/, '') || doc.title
+  return `${slugify(withoutExt)}.md`
 }
 
 export function filenameToCollectionUrlPath(filename: string): string {

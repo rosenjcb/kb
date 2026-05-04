@@ -15,7 +15,7 @@ function cleanConceptPhrase(raw: string): string {
 
 /**
  * Detects natural-language questions that name two concepts and ask how they connect.
- * Used only to attach optional graph path context; failures must never affect retrieval.
+ * Attaches graph path context for relational questions; failures must not affect retrieval.
  */
 export function parseRelationalConceptPair(query: string): RelationalConceptPair | null {
   const q = query.trim()

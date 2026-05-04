@@ -37,7 +37,7 @@ function listSuiteIds() {
 }
 
 /**
- * @returns {{ id: string, questions: string[], rubricPhrase: string, graphWithBase: boolean, sourceFile: string, repoUrl: string | null }}
+ * @returns {{ id: string, questions: string[], rubricPhrase: string, sourceFile: string, repoUrl: string | null }}
  */
 function normalizeSuiteDoc(raw, sourceFile) {
   if (!raw || typeof raw !== 'object') {
@@ -55,14 +55,12 @@ function normalizeSuiteDoc(raw, sourceFile) {
     typeof raw.id === 'string' && raw.id.trim()
       ? raw.id.trim()
       : path.basename(sourceFile).replace(/\.(yaml|yml)$/i, '')
-  const graphWithBase = raw.graph_with_base !== false
   const repoUrl =
     typeof raw.repo_url === 'string' && raw.repo_url.trim() ? raw.repo_url.trim() : null
   return {
     id,
     questions: qs.map(s => s.trim()),
     rubricPhrase: rubric.trim(),
-    graphWithBase,
     sourceFile,
     repoUrl,
   }
@@ -685,10 +683,6 @@ function resolveQuestions(args, suiteConfig) {
   return suiteConfig.questions
 }
 
-function graphCmd(base, graphWithBase) {
-  return graphWithBase ? `graph --base ${base}` : 'graph'
-}
-
 /** kb logs list does not filter by base; init runs still show up in global telemetry. */
 function logsCmd(evalMode) {
   if (evalMode === 'query') return 'logs list --limit 5'
@@ -788,7 +782,6 @@ async function main() {
   const label = args.label || runName
   const evalMode = args.mode
 
-  const graphWithBase = suiteConfig.graphWithBase
   const hypothesis =
     args.hypothesis ||
     (repoUrl
@@ -832,7 +825,7 @@ async function main() {
     fs.writeFileSync(path.join(workdir, 'docs.json'), stripCliBanner(docsOut), 'utf8')
 
     console.error('[eval] graph')
-    const graphOut = kb(targetCwd, graphCmd(base, graphWithBase))
+    const graphOut = kb(targetCwd, `graph --base ${base}`)
     fs.writeFileSync(path.join(workdir, 'graph.txt'), graphOut, 'utf8')
 
     console.error('[eval] logs list')
@@ -1020,7 +1013,7 @@ async function main() {
           : null,
         `kb default ${base}`,
         `kb docs list --base ${base} --output json`,
-        `kb ${graphCmd(base, graphWithBase)}`,
+        `kb graph --base ${base}`,
         `kb ${logsCmd(evalMode)}`,
         `kb query "<8 questions>" --base ${base} --output json`,
       ].filter(Boolean),

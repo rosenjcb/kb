@@ -3,7 +3,6 @@ schema_version: 1
 id: generic
 display_name: generic
 rubric_focus: the **target software repository** knowledge base (facts + docs in SQLite)
-graph_with_base: true
 questions:
   - What is this project for, and what are its main capabilities?
   - How does this project's architecture work, including major modules and platform support?

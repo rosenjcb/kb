@@ -760,6 +760,28 @@ export class SqliteKbIndexer {
     return [...derived, ...original].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
   }
 
+  listAllDocs(): SqliteDocumentRow[] {
+    const derived = this.db
+      .prepare(
+        `
+        SELECT id, title, markdown AS content, id AS file_path, doc_type, NULL AS lane, tags_json, created_at, updated_at, 0 AS is_original
+        FROM derived_docs
+        ORDER BY updated_at DESC
+      `
+      )
+      .all() as SqliteDocumentRow[]
+    const original = this.db
+      .prepare(
+        `
+        SELECT id, title, markdown AS content, source_ref AS file_path, doc_type, NULL AS lane, tags_json, created_at, updated_at, 1 AS is_original
+        FROM original_docs
+        ORDER BY updated_at DESC
+      `
+      )
+      .all() as SqliteDocumentRow[]
+    return [...derived, ...original].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+  }
+
   private rebuildFactIndexes(factId: string, factText: string, now: string): void {
     this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?').run(factId)
     this.db

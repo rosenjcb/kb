@@ -5,6 +5,7 @@ import type { CliOutput } from './index'
 
 export interface ParsedDocsDeleteCommand {
   documentId: string
+  isWildcard: boolean
   base?: string
   force: boolean
 }
@@ -23,13 +24,15 @@ export function printDocsDeleteHelp(mode: CmdMode = 'cli'): string {
     `${cmd('docs delete', mode)} — delete a document`,
     '',
     'Usage:',
-    `  ${cmd('docs delete <documentId> [--base <name>] [--force]', mode)}`,
+    `  ${cmd('docs delete <documentId|pattern> [--base <name>] [--force]', mode)}`,
     '',
     'Prompts for confirmation unless --force is passed.',
+    'Use * as a wildcard to match and delete multiple documents.',
     '',
     'Examples:',
     `  ${cmd('docs delete general-facts', mode)}`,
     `  ${cmd('docs delete old-overview --base dogfood --force', mode)}`,
+    `  ${cmd('docs delete ci-* --force', mode)}`,
   ].join('\n')
 }
 
@@ -73,7 +76,11 @@ export function parseDocsDeleteCommand(args: string[]): ParsedDocsDeleteCommand 
     )
   }
 
-  return { documentId: sanitizeId(positional[0]), base, force }
+  const raw = positional[0]
+  const isWildcard = raw.includes('*')
+  const documentId = isWildcard ? sanitizeWildcardPattern(raw) : sanitizeId(raw)
+
+  return { documentId, isWildcard, base, force }
 }
 
 export async function runDocsDelete(
@@ -83,6 +90,36 @@ export async function runDocsDelete(
 ): Promise<void> {
   const dbPath = path.join(baseDir, '.kb-index.sqlite')
   const indexer = new SqliteKbIndexer({ dbPath })
+
+  if (parsed.isWildcard) {
+    const allDocs = indexer.listAllDocs()
+    const matches = allDocs.filter(d => matchesWildcard(parsed.documentId, d.id))
+
+    if (matches.length === 0) {
+      throw new DocsDeleteError(`No documents match pattern: ${parsed.documentId}`)
+    }
+
+    out.log(`Found ${matches.length} document(s) matching "${parsed.documentId}":`)
+    for (const doc of matches) {
+      out.log(`  ${doc.id} — ${doc.title}`)
+    }
+
+    if (!parsed.force) {
+      const confirmed = await promptConfirm(
+        `Delete ${matches.length} document(s)? This cannot be undone. [y/N]: `
+      )
+      if (!confirmed) {
+        out.log('Aborted.')
+        return
+      }
+    }
+
+    for (const doc of matches) {
+      indexer.removeDocument(doc.id)
+      out.log(`Deleted "${doc.title}" (${doc.id}).`)
+    }
+    return
+  }
 
   const existing = indexer.getDocumentContent(parsed.documentId)
   if (!existing) {
@@ -126,6 +163,21 @@ function sanitizeId(value: string): string {
       .replace(/^-+|-+$/g, '')
       .slice(0, 80) || 'document'
   )
+}
+
+function sanitizeWildcardPattern(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9*]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || '*'
+  )
+}
+
+function matchesWildcard(pattern: string, id: string): boolean {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
+  return new RegExp(`^${escaped}$`).test(id)
 }
 
 function extractTitle(content: string): string {

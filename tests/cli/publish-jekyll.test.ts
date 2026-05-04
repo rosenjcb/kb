@@ -217,15 +217,15 @@ describe('docToCollectionFilename', () => {
     expect(docToCollectionFilename({ title: 'Agent Loop' })).toBe('agent-loop.md')
   })
 
-  it('path-style title uses only the basename', () => {
-    expect(docToCollectionFilename({ title: 'src/core/AGENT_LOOP.md' })).toBe('agent-loop.md')
+  it('path-style title uses full path as slug to avoid basename collisions', () => {
+    expect(docToCollectionFilename({ title: 'src/core/AGENT_LOOP.md' })).toBe('src-core-agent-loop.md')
   })
 
-  it('strips .md extension from basename before slugifying', () => {
+  it('strips .md extension before slugifying', () => {
     expect(docToCollectionFilename({ title: 'README.md' })).toBe('readme.md')
   })
 
-  it('nested path strips directory components and extension', () => {
-    expect(docToCollectionFilename({ title: 'src/core/TUI.md' })).toBe('tui.md')
+  it('nested path includes directory components in slug', () => {
+    expect(docToCollectionFilename({ title: 'src/core/TUI.md' })).toBe('src-core-tui.md')
   })
 })
