@@ -15,9 +15,9 @@ export function InitStatusPanel({ status, visible }: Props) {
       <Box borderStyle="single" borderColor={ORANGE} flexDirection="column" paddingX={1}>
         <Text color="gray">init status</Text>
         <Text color="gray">{status.message ?? 'Initializing KB…'}</Text>
-        <Text color="gray">{status.actionLine ?? '[init:action] waiting for next step…'}</Text>
+        <Text color="gray">{status.actionLine ?? '[status] waiting for next step…'}</Text>
         <Text color={ORANGE}>
-          {status.progressLine ?? '[init] waiting for first progress update…'}
+          {status.progressLine ?? '[status] waiting for first progress update…'}
         </Text>
       </Box>
     </Box>

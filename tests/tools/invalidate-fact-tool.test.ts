@@ -45,7 +45,6 @@ describe('invalidateFactTool', () => {
         oldFact: 'We deploy to GCP',
         replacementFact: 'We deploy to AWS',
         preview: false,
-        dryRun: false,
       },
       baseDir
     )
@@ -64,7 +63,6 @@ describe('invalidateFactTool', () => {
       {
         oldFact: 'We deploy to GCP',
         preview: false,
-        dryRun: false,
       },
       baseDir
     )
@@ -84,7 +82,6 @@ describe('invalidateFactTool', () => {
         oldFact: 'We deploy to GCP',
         replacementFact: 'We deploy to AWS',
         preview: false,
-        dryRun: false,
       },
       baseDir
     )
@@ -102,7 +99,6 @@ describe('invalidateFactTool', () => {
         oldFact: 'We   deploy   to   GCP',
         replacementFact: 'We deploy to AWS',
         preview: false,
-        dryRun: false,
       },
       baseDir
     )
@@ -121,7 +117,6 @@ describe('invalidateFactTool', () => {
       {
         oldFact: 'No such fact',
         preview: true,
-        dryRun: true,
       },
       baseDir
     )

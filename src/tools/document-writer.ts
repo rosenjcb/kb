@@ -55,14 +55,14 @@ export interface ReconcileFactsInput {
   replaceFrom: string
   replaceTo: string
   includeSessionLogs?: boolean
-  dryRun?: boolean
+  apply?: boolean
 }
 
 export interface ReconcileContradictionsInput {
   newFact: string
   domain?: string
   includeSessionLogs?: boolean
-  dryRun?: boolean
+  apply?: boolean
 }
 
 export interface ReconcileFactsDiffPreview {
@@ -75,7 +75,7 @@ export interface ReconcileFactsDiffPreview {
 export interface ReconcileFactsResult {
   replaceFrom: string
   replaceTo: string
-  dryRun: boolean
+  apply: boolean
   scannedDocs: number
   changedDocs: number
   skippedDocs: number
@@ -92,7 +92,7 @@ export interface ReconcileFactsResult {
 export interface ReconcileContradictionsResult {
   newFact: string
   domain: string
-  dryRun: boolean
+  apply: boolean
   scannedDocs: number
   changedDocs: number
   removedFacts: number

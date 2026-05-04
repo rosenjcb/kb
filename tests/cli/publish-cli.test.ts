@@ -70,12 +70,11 @@ describe('partitionPublishDocsByOriginalFlag', () => {
 })
 
 describe('publish-cli parser', () => {
-  it('Given no apply flag, then defaults to dry-run all phase', () => {
+  it('Given no apply flag, then defaults to preview (apply=false)', () => {
     const parsed = parsePublishCommand(['--base', 'dogfood'])
 
     expect(parsed.base).toBe('dogfood')
     expect(parsed.phase).toBe('all')
-    expect(parsed.dryRun).toBe(true)
     expect(parsed.apply).toBe(false)
   })
 
@@ -84,7 +83,6 @@ describe('publish-cli parser', () => {
 
     expect(parsed.phase).toBe('import')
     expect(parsed.apply).toBe(true)
-    expect(parsed.dryRun).toBe(false)
   })
 
   it('Given checkpoint and stop flags, then parses resume options', () => {
@@ -105,9 +103,9 @@ describe('publish-cli parser', () => {
   })
 })
 
-describe('publish-cli dry run', () => {
+describe('publish-cli preview', () => {
   it.todo(
-    'Given markdown base directory, then returns package/import/restructure dry-run result — needs new publish architecture implementation'
+    'Given markdown base directory, then returns package/import/restructure preview result — needs new publish architecture implementation'
   )
 })
 
@@ -175,7 +173,7 @@ describe('publish-cli apply', () => {
       db.close()
 
       const dry = await runPublishCommand({
-        ...parsePublishCommand(['--base', baseDir, '--dry-run']),
+        ...parsePublishCommand(['--base', baseDir]),
         progressSink(line) {
           progressLines.push(line.trim())
         },

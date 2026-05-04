@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { parseInitCommand, runKbInit } from '../../src/cli/init-cli'
+import { parseInitCommand, parseScanCommand, runKbInit } from '../../src/cli/init-cli'
 import { buildFrozenSourceSnapshotDoc } from '../../src/cli/init-source-snapshots'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
 import { SqliteDocumentWriter } from '../../src/tools/sqlite-document-writer'
@@ -133,13 +133,15 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.base).toBe('fresh-base')
     expect(questionIO.prompts[0]).toContain('Knowledge base name')
-    expect(questionIO.prompts[0]).toContain('[default]')
+    expect(questionIO.prompts[0]).toContain('[kb-init-cli-')
     expect(result.checkpointFile).toBe(
       path.join(kbHomeDir, 'sessions', 'fresh-base', 'checkpoints', 'init-latest.checkpoint.json')
     )
+    const config = JSON.parse(await readFile(path.join(kbHomeDir, 'config.json'), 'utf8'))
+    expect(config.activeBase).toBe('fresh-base')
   })
 
-  it('Given init without --base and config activeBase, then prompt brackets that base', async () => {
+  it('Given init without --base and config activeBase, then prompt suggests cwd instead of reusing config base', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
@@ -157,11 +159,20 @@ describe('init-cli interview checkpoints', () => {
       questionIO: questionIO.io,
     })
 
-    expect(questionIO.prompts[0]).toContain('[dogfood]')
-    expect(result.base).toBe('dogfood')
+    expect(questionIO.prompts[0]).not.toContain('[dogfood]')
+    expect(questionIO.prompts[0]).toContain('[kb-init-cli-')
+    expect(result.base).toBe(path.basename(cwd))
     expect(result.checkpointFile).toBe(
-      path.join(kbHomeDir, 'sessions', 'dogfood', 'checkpoints', 'init-latest.checkpoint.json')
+      path.join(
+        kbHomeDir,
+        'sessions',
+        path.basename(cwd).toLowerCase(),
+        'checkpoints',
+        'init-latest.checkpoint.json'
+      )
     )
+    const config = JSON.parse(await readFile(path.join(kbHomeDir, 'config.json'), 'utf8'))
+    expect(config.activeBase).toBe(path.basename(cwd))
   })
 
   it('Given detach and resume flags, then parses them into init options', () => {
@@ -172,7 +183,7 @@ describe('init-cli interview checkpoints', () => {
     expect(parsed.resume).toBe(true)
   })
 
-  it('Given rescan flag, then parses it into init options', () => {
+  it('Given rescan flag, then parses it into init options for compatibility', () => {
     const parsed = parseInitCommand(['--base', 'dogfood', '--rescan'])
 
     expect(parsed.base).toBe('dogfood')
@@ -185,28 +196,24 @@ describe('init-cli interview checkpoints', () => {
     )
   })
 
-  it('Given dry-run without rescan, then parsing rejects unsupported combination', () => {
-    expect(() => parseInitCommand(['--dry-run'])).toThrow(
-      '--dry-run is currently supported only with --rescan'
-    )
-  })
-
-  it('Given rescan with dry-run, then parsing enables both flags', () => {
-    const parsed = parseInitCommand(['--base', 'dogfood', '--rescan', '--dry-run'])
-    expect(parsed.rescan).toBe(true)
-    expect(parsed.dryRun).toBe(true)
-  })
-
   it('Given --apply without --rescan, then parsing rejects invalid combination', () => {
     expect(() => parseInitCommand(['--base', 'dogfood', '--apply'])).toThrow(
       '--apply requires --rescan'
     )
   })
 
-  it('Given --dry-run with --apply, then parsing rejects invalid combination', () => {
-    expect(() =>
-      parseInitCommand(['--base', 'dogfood', '--rescan', '--dry-run', '--apply'])
-    ).toThrow('--dry-run cannot be combined with --apply')
+  it('Given scan args, then parsing implies rescan automatically', () => {
+    const parsed = parseScanCommand(['--base', 'dogfood', '--apply'])
+
+    expect(parsed.base).toBe('dogfood')
+    expect(parsed.rescan).toBe(true)
+    expect(parsed.apply).toBe(true)
+  })
+
+  it('Given kb scan with explicit --rescan, then parsing rejects the redundant flag', () => {
+    expect(() => parseScanCommand(['--base', 'dogfood', '--rescan'])).toThrow(
+      'kb scan already implies rescan'
+    )
   })
 
   it.todo(
@@ -716,7 +723,35 @@ describe('init-cli interview checkpoints', () => {
     expect(sourceFileKeys).toEqual(['AGENTS.md', 'README.md', 'docs/README.md'])
   })
 
-  it('Given --rescan --dry-run, then write cycle prints plan diff and performs no mutations', async () => {
+  it('Given Jekyll-generated docs, then read-inputs excludes published snapshots and export artifacts', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nReal repo overview.\n',
+      'docs/README.md': '# Docs\n\nReal docs.\n',
+      'docs/_original_docs/readme.md': '# Snapshot\n\nGenerated copy.\n',
+      'docs/_autogenerated_docs/howto.md': '# Autogen\n\nGenerated document.\n',
+      'docs/dogfood-docs-generate-export.md':
+        '# Dogfood export (docs generate)\n\nGenerated export.\n',
+    })
+
+    const result = await runKbInit({
+      base: 'exclude-jekyll-generated-docs',
+      nonInteractive: true,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: createQuestionIO([]).io,
+    })
+
+    expect(result.status).toBe('paused')
+    const cpPath = result.checkpointFile
+    if (!cpPath) throw new Error('expected checkpointFile')
+    const checkpoint = JSON.parse(await readFile(cpPath, 'utf8')) as {
+      context?: { sourceFiles?: Record<string, string> }
+    }
+    const sourceFileKeys = Object.keys(checkpoint.context?.sourceFiles ?? {}).sort()
+    expect(sourceFileKeys).toEqual(['README.md', 'docs/README.md'])
+  })
+
+  it('Given --rescan without --apply, then write cycle writes originals but no mutations', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
@@ -724,17 +759,17 @@ describe('init-cli interview checkpoints', () => {
     const provider = createProvider([JSON.stringify({ entities: [], relationships: [] })])
 
     const result = await runKbInit({
-      base: 'rescan-dry-run',
+      base: 'rescan-preview',
       nonInteractive: true,
       rescan: true,
-      dryRun: true,
       cwd,
       provider,
       questionIO: createQuestionIO([]).io,
     })
 
     expect(result.status).toBe('accepted')
-    expect((result.writtenDocIds ?? []).length).toBe(0)
+    // originals are always written; mutations are gated behind --apply
+    expect((result.writtenDocIds ?? []).length).toBeGreaterThan(0)
   })
 
   it('Given --rescan without --apply, then run stays plan-only and writes no documents', async () => {
@@ -756,7 +791,7 @@ describe('init-cli interview checkpoints', () => {
     expect((result.writtenDocIds ?? []).length).toBe(2)
   })
 
-  it('Given --rescan plan preview, then it does not propose synthetic rescan files', async () => {
+  it('Given scan plan preview, then it does not propose synthetic scan files', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nKB provides CLI + intent commands for project knowledge.\n',
       'docs/README.md': '# Docs\n\nUse kb submit and kb invalidate to manage facts.\n',
@@ -774,7 +809,7 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.status).toBe('accepted')
     const output = questionIO.writes.join('\n')
-    expect(output).toContain('rescan plan preview')
+    expect(output).toContain('[kb scan] plan preview')
     expect(output).not.toContain('diff --git a/docs/rescan-')
   })
 

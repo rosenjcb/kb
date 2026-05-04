@@ -7,7 +7,7 @@
  *   kb graph --path <from> <to>     Shortest path between two entities
  *   kb graph --format dot           Export full graph as Graphviz DOT
  *   kb graph --format json          Export full graph as JSON
- *   kb graph node add ... [--apply] Create / upsert an entity (dry-run without --apply)
+ *   kb graph node add ... [--apply] Create / upsert an entity (preview without --apply)
  *   kb graph node set ... [--apply] Update name, description, or type
  *   kb graph edge add ... [--apply] Add a directed edge (--verb is the relationship label)
  *   kb graph edge remove ... [--apply] Soft-delete a directed edge
@@ -150,7 +150,7 @@ export function printGraphHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('graph --path <from> <to>', mode)}`,
     `  ${cmd('graph --format dot|json', mode)}`,
     '',
-    'Edit (mutations are dry-run until you pass --apply):',
+    'Edit (preview only until you pass --apply):',
     `  ${cmd('graph node add --name "My API" [--id my-api] [--type tool] [--description "..."] [--doc-id <id>]', mode)}`,
     `  ${cmd('graph node set --entity <id-or-name> [--name "..."] [--description "..."] [--type concept]', mode)}`,
     `  ${cmd('graph edge add --from <id-or-name> --to <id-or-name> --verb uses [--doc-id <id>]', mode)}`,

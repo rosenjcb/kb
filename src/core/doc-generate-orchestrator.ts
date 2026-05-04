@@ -384,17 +384,24 @@ export async function acceptDraft(input: {
   const title = deriveDocumentTitle(session)
   const writer =
     input.deps?.documentWriter ?? new SqliteDocumentWriter({ baseDir: input.baseDir })
-  const result = await writer.writeDocument({
-    title,
-    content: session.draft.contentWithFooter,
-    type: session.docType,
-    tags: ['docs-generate'],
-  })
+  const ownsWriter = !input.deps?.documentWriter
+  try {
+    const result = await writer.writeDocument({
+      title,
+      content: session.draft.contentWithFooter,
+      type: session.docType,
+      tags: ['docs-generate'],
+    })
 
-  await acceptSessionDraft(input.baseDir, input.sessionId, { draftDocId: result.id })
-  return {
-    document: result,
-    sessionId: session.id,
-    revision: session.draft.revision,
+    await acceptSessionDraft(input.baseDir, input.sessionId, { draftDocId: result.id })
+    return {
+      document: result,
+      sessionId: session.id,
+      revision: session.draft.revision,
+    }
+  } finally {
+    if (ownsWriter && writer instanceof SqliteDocumentWriter) {
+      writer.close()
+    }
   }
 }

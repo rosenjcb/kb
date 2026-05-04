@@ -86,10 +86,10 @@ describe('view-cli parsing', () => {
 })
 
 describe('list-cli parsing', () => {
-  it('Given no flags, then parses default limit and human output', () => {
+  it('Given no flags, then parses unlimited output by default', () => {
     const parsed = parseListCommand([])
 
-    expect(parsed.limit).toBe(20)
+    expect(parsed.limit).toBeUndefined()
     expect(parsed.output).toBe('human')
   })
 
@@ -230,5 +230,23 @@ describe('list-cli runtime', () => {
     expect(result.output).toContain('"documents"')
     expect(result.output).toContain('"id": "cli-facts"')
     expect(result.output).not.toContain('Use `kb query` first.')
+  })
+
+  it('Given more than twenty documents, then docs list shows all by default', async () => {
+    const baseDir = await createTempBase()
+    for (let index = 1; index <= 25; index += 1) {
+      await seedDocument(baseDir, {
+        title: `Doc ${index}`,
+        documentId: `doc-${index}`,
+        content: `Content ${index}\n`,
+        type: 'reference',
+      })
+    }
+
+    const result = await runListCommand(['--base', baseDir])
+
+    expect(result.output).toContain('Count: 25')
+    expect(result.output).toContain('- doc-25 (title="Doc 25"; type=reference;')
+    expect(result.output).toContain('- doc-1 (title="Doc 1"; type=reference;')
   })
 })

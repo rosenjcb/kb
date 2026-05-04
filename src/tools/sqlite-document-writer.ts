@@ -264,11 +264,11 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
   async reconcileFacts(input: ReconcileFactsInput): Promise<ReconcileFactsResult> {
     const replaceFrom = input.replaceFrom.trim()
     const replaceTo = input.replaceTo.trim()
-    const dryRun = input.dryRun ?? false
+    const apply = input.apply ?? false
     const includeSessionLogs = input.includeSessionLogs ?? false
 
     if (!replaceFrom || !replaceTo || replaceFrom === replaceTo) {
-      return this.emptyReconcileFactsResult(replaceFrom, replaceTo, dryRun)
+      return this.emptyReconcileFactsResult(replaceFrom, replaceTo, apply)
     }
 
     const rows = this.indexer.getAllDocumentsForLexical()
@@ -305,7 +305,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
         diff: buildDiff(row.id, row.content, updated),
       })
 
-      if (!dryRun) {
+      if (apply) {
         this.indexer.upsertDocumentWithContent({
           id: row.id,
           title: row.title,
@@ -322,7 +322,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     return {
       replaceFrom,
       replaceTo,
-      dryRun,
+      apply,
       scannedDocs,
       changedDocs: changedDocumentIds.length,
       skippedDocs: skippedDocumentIds.length,
@@ -342,13 +342,13 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     const newFact = input.newFact.trim()
     const domain = input.domain ?? 'general'
     const includeSessionLogs = input.includeSessionLogs ?? false
-    const dryRun = input.dryRun ?? false
+    const apply = input.apply ?? false
 
     if (!newFact) {
       return {
         newFact,
         domain,
-        dryRun,
+        apply,
         scannedDocs: 0,
         changedDocs: 0,
         removedFacts: 0,
@@ -391,7 +391,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
         diff: buildDiff(row.id, row.content, updated),
       })
 
-      if (!dryRun) {
+      if (apply) {
         this.indexer.upsertDocumentWithContent({
           id: row.id,
           title: row.title,
@@ -408,7 +408,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     return {
       newFact,
       domain,
-      dryRun,
+      apply,
       scannedDocs,
       changedDocs: changedDocumentIds.length,
       removedFacts,
@@ -445,12 +445,12 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
   private emptyReconcileFactsResult(
     replaceFrom: string,
     replaceTo: string,
-    dryRun: boolean
+    apply: boolean
   ): ReconcileFactsResult {
     return {
       replaceFrom,
       replaceTo,
-      dryRun,
+      apply,
       scannedDocs: 0,
       changedDocs: 0,
       skippedDocs: 0,
@@ -480,5 +480,9 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
         confidence: 0.6,
       })
     }
+  }
+
+  close(): void {
+    this.indexer.close()
   }
 }

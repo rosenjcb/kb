@@ -390,6 +390,7 @@ export interface IngestCodeFilesAsFactsInput {
   perFileChars?: number
   maxConcurrency?: number
   maxPerFile?: number
+  onProgress?: (progress: CodeFactIngestProgress) => void
 }
 
 export interface CodeFactIngestResult {
@@ -402,6 +403,21 @@ export interface CodeFactIngestResult {
   factsUnchanged: number
   factsSuperseded: number
   factsTombstoned: number
+}
+
+export interface CodeFactIngestProgress {
+  filesConsidered: number
+  filesCompleted: number
+  filesRemaining: number
+  filesProcessed: number
+  filesSkippedNoExports: number
+  filesSkippedTooSmall: number
+  filesFailed: number
+  factsInserted: number
+  factsUnchanged: number
+  factsSuperseded: number
+  factsTombstoned: number
+  currentFile?: string
 }
 
 /** Heuristic: prefer src/ over scripts/tests/; bigger files first; cap to maxFiles. */
@@ -497,113 +513,136 @@ export async function ingestCodeFilesAsFacts(
     factsSuperseded: 0,
     factsTombstoned: 0,
   }
+  let filesCompleted = 0
   if (ranked.length === 0) return result
+
+  const emitProgress = (currentFile?: string) => {
+    input.onProgress?.({
+      filesConsidered: result.filesConsidered,
+      filesCompleted,
+      filesRemaining: Math.max(result.filesConsidered - filesCompleted, 0),
+      filesProcessed: result.filesProcessed,
+      filesSkippedNoExports: result.filesSkippedNoExports,
+      filesSkippedTooSmall: result.filesSkippedTooSmall,
+      filesFailed: result.filesFailed,
+      factsInserted: result.factsInserted,
+      factsUnchanged: result.factsUnchanged,
+      factsSuperseded: result.factsSuperseded,
+      factsTombstoned: result.factsTombstoned,
+      currentFile,
+    })
+  }
 
   const dbPath = path.join(input.baseDir, '.kb-index.sqlite')
   const indexer = new SqliteKbIndexer({ dbPath })
   try {
+    emitProgress()
     await runWithConcurrency(ranked, maxConcurrency, async filePath => {
-      const contents = input.codeFiles[filePath]
-      if (!contents || contents.length < 80) {
-        result.filesSkippedTooSmall += 1
-        return
-      }
-      const skeleton = extractCodeSkeleton(filePath, contents)
-      if (skeleton.exports.length === 0 && !skeleton.leadingDoc) {
-        result.filesSkippedNoExports += 1
-        return
-      }
-
-      let extraction: CodeFactExtraction
       try {
-        extraction = await extractCodeFactsForFile({
-          llm: input.llm,
-          filePath,
-          contents,
-          perFileChars,
-          maxFactSentences: maxPerFile,
-        })
-      } catch {
-        result.filesFailed += 1
-        return
-      }
-      result.filesProcessed += 1
+        const contents = input.codeFiles[filePath]
+        if (!contents || contents.length < 80) {
+          result.filesSkippedTooSmall += 1
+          return
+        }
+        const skeleton = extractCodeSkeleton(filePath, contents)
+        if (skeleton.exports.length === 0 && !skeleton.leadingDoc) {
+          result.filesSkippedNoExports += 1
+          return
+        }
 
-      const newFacts: Array<{ anchor: string; sentence: string; triplet: FactTriplet }> = []
-      if (extraction.moduleSummary) {
-        newFacts.push({
-          anchor: 'module',
-          sentence: extraction.moduleSummary,
-          triplet: {
-            subject: filePath,
-            predicate: 'is described as',
-            object: extraction.moduleSummary,
-          },
-        })
-      }
-      for (const f of extraction.facts.slice(0, maxPerFile)) {
-        newFacts.push({ anchor: f.anchor, sentence: f.sentence, triplet: f.triplet })
-      }
+        let extraction: CodeFactExtraction
+        try {
+          extraction = await extractCodeFactsForFile({
+            llm: input.llm,
+            filePath,
+            contents,
+            perFileChars,
+            maxFactSentences: maxPerFile,
+          })
+        } catch {
+          result.filesFailed += 1
+          return
+        }
+        result.filesProcessed += 1
 
-      const contentHash = shortContentHash(contents)
-      const prior = indexer.listActiveFactsBySourceRefPrefix(fileSourceRefPrefix(filePath))
-      const priorByAnchor = new Map<string, FactRow[]>()
-      for (const row of prior) {
-        const ref = row.source_ref ?? ''
-        const at = ref.indexOf('@')
-        if (at === -1) continue
-        const rest = ref.slice(at + 1)
-        const hashIdx = rest.indexOf('#')
-        const anchor = hashIdx === -1 ? rest : rest.slice(0, hashIdx)
-        const list = priorByAnchor.get(anchor) ?? []
-        list.push(row)
-        priorByAnchor.set(anchor, list)
-      }
+        const newFacts: Array<{ anchor: string; sentence: string; triplet: FactTriplet }> = []
+        if (extraction.moduleSummary) {
+          newFacts.push({
+            anchor: 'module',
+            sentence: extraction.moduleSummary,
+            triplet: {
+              subject: filePath,
+              predicate: 'is described as',
+              object: extraction.moduleSummary,
+            },
+          })
+        }
+        for (const f of extraction.facts.slice(0, maxPerFile)) {
+          newFacts.push({ anchor: f.anchor, sentence: f.sentence, triplet: f.triplet })
+        }
 
-      const seenAnchors = new Set<string>()
-      for (const nf of newFacts) {
-        seenAnchors.add(nf.anchor)
-        const sourceRef = buildSourceRef(filePath, contentHash, nf.anchor)
-        const existingRows = priorByAnchor.get(nf.anchor) ?? []
-        const matchedById = existingRows.find(r => r.fact_text.trim() === nf.sentence.trim())
-        if (matchedById) {
-          // Re-upsert keeps source_ref pointer current; dedupe path => no new row.
+        const contentHash = shortContentHash(contents)
+        const prior = indexer.listActiveFactsBySourceRefPrefix(fileSourceRefPrefix(filePath))
+        const priorByAnchor = new Map<string, FactRow[]>()
+        for (const row of prior) {
+          const ref = row.source_ref ?? ''
+          const at = ref.indexOf('@')
+          if (at === -1) continue
+          const rest = ref.slice(at + 1)
+          const hashIdx = rest.indexOf('#')
+          const anchor = hashIdx === -1 ? rest : rest.slice(0, hashIdx)
+          const list = priorByAnchor.get(anchor) ?? []
+          list.push(row)
+          priorByAnchor.set(anchor, list)
+        }
+
+        const seenAnchors = new Set<string>()
+        for (const nf of newFacts) {
+          seenAnchors.add(nf.anchor)
+          const sourceRef = buildSourceRef(filePath, contentHash, nf.anchor)
+          const existingRows = priorByAnchor.get(nf.anchor) ?? []
+          const matchedById = existingRows.find(r => r.fact_text.trim() === nf.sentence.trim())
+          if (matchedById) {
+            indexer.upsertFact({
+              factText: nf.sentence,
+              triplet: nf.triplet,
+              sourceKind: 'import_code',
+              sourceRef,
+              confidence: 0.7,
+            })
+            result.factsUnchanged += 1
+            continue
+          }
+          const supersedeId = existingRows[0]?.id
+          for (const old of existingRows) {
+            indexer.tombstoneFactById(old.id)
+            result.factsTombstoned += 1
+          }
           indexer.upsertFact({
             factText: nf.sentence,
             triplet: nf.triplet,
             sourceKind: 'import_code',
             sourceRef,
             confidence: 0.7,
+            supersedesFactId: supersedeId,
           })
-          result.factsUnchanged += 1
-          continue
+          if (supersedeId) {
+            result.factsSuperseded += 1
+          } else {
+            result.factsInserted += 1
+          }
         }
-        const supersedeId = existingRows[0]?.id
-        for (const old of existingRows) {
-          indexer.tombstoneFactById(old.id)
-          result.factsTombstoned += 1
-        }
-        indexer.upsertFact({
-          factText: nf.sentence,
-          triplet: nf.triplet,
-          sourceKind: 'import_code',
-          sourceRef,
-          confidence: 0.7,
-          supersedesFactId: supersedeId,
-        })
-        if (supersedeId) {
-          result.factsSuperseded += 1
-        } else {
-          result.factsInserted += 1
-        }
-      }
 
-      for (const [anchor, rows] of priorByAnchor.entries()) {
-        if (seenAnchors.has(anchor)) continue
-        for (const old of rows) {
-          indexer.tombstoneFactById(old.id)
-          result.factsTombstoned += 1
+        for (const [anchor, rows] of priorByAnchor.entries()) {
+          if (seenAnchors.has(anchor)) continue
+          for (const old of rows) {
+            indexer.tombstoneFactById(old.id)
+            result.factsTombstoned += 1
+          }
         }
+      } finally {
+        filesCompleted += 1
+        emitProgress(filePath)
       }
     })
   } finally {

@@ -13,7 +13,7 @@ import {
   formatPrerequisiteError,
 } from '../cli/cli-prerequisites.js'
 import type { InitOptions, InitQuestionIO } from '../cli/init-cli.js'
-import { parseInitCommand, runKbInit } from '../cli/init-cli.js'
+import { parseInitCommand, parseScanCommand, runKbInit } from '../cli/init-cli.js'
 import type { KbConfig } from '../cli/kb-config.js'
 import {
   createLLMProviderFromConfig,
@@ -28,7 +28,7 @@ import { InitStatusPanel } from './components/InitStatusPanel.js'
 import { InputBar } from './components/InputBar.js'
 import { StatusBar } from './components/StatusBar.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
-import { ensureInitBaseArg } from './init-args.js'
+import { ensureInitBaseArg, ensureScanBaseArg } from './init-args.js'
 import type { InitStatusState } from './init-status.js'
 import { parseInitOutput } from './init-status.js'
 import { partitionShellOutputForTui } from './partition-shell-output.js'
@@ -41,6 +41,24 @@ import {
   sanitizeSlashInput,
 } from './slash-commands.js'
 import type { HistoryEntry, TuiMode } from './types.js'
+
+/**
+ * For commands that are preview-only without --apply, return the apply variant.
+ * Returns null if the command already includes --apply or isn't a preview command.
+ */
+function resolveApplyArgs(args: string[]): string[] | null {
+  if (args.includes('--apply')) return null
+  const first = args[0]
+  // publish notion|jekyll <...>
+  if (first === 'publish') return [...args, '--apply']
+  // invalidate "<fact>" [...]
+  if (first === 'invalidate') return [...args, '--apply']
+  // init --rescan (without --apply)
+  if (first === 'init' && args.includes('--rescan')) return [...args, '--apply']
+  // scan (without --apply)
+  if (first === 'scan') return [...args, '--apply']
+  return null
+}
 
 interface Props {
   config: KbConfig
@@ -222,11 +240,14 @@ export function App({ config, startupNotices = [] }: Props) {
   )
 
   const startInitSession = useCallback(
-    (extraArgs: string[]) => {
+    (command: 'init' | 'scan', extraArgs: string[]) => {
+      const isScan = command === 'scan'
       setInitStatus({
-        message: 'Initializing KB — press Enter to skip any question.',
-        progressLine: '[init] starting…',
-        actionLine: '[init:action] waiting for first step…',
+        message: isScan
+          ? 'Scanning repo into KB — press Enter to skip any question.'
+          : 'Initializing KB — press Enter to skip any question.',
+        progressLine: isScan ? '[scan] starting…' : '[init] starting…',
+        actionLine: isScan ? '[scan:action] waiting for first step…' : '[init:action] waiting for first step…',
       })
 
       const questionIO: InitQuestionIO = {
@@ -252,8 +273,11 @@ export function App({ config, startupNotices = [] }: Props) {
 
       let parsed: InitOptions
       try {
-        const initArgs = ensureInitBaseArg(extraArgs, baseName)
-        parsed = parseInitCommand(initArgs)
+        if (isScan) {
+          parsed = parseScanCommand(ensureScanBaseArg(extraArgs, baseName))
+        } else {
+          parsed = parseInitCommand(ensureInitBaseArg(extraArgs, baseName))
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         addEntry({ type: 'error', content: `❌ ${message}` })
@@ -279,14 +303,25 @@ export function App({ config, startupNotices = [] }: Props) {
           setInitStatus({})
           addEntry({
             type: 'result',
-            content: `✅ Init complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
+            content: isScan
+              ? `✅ Scan complete — ${docCount} doc${docCount === 1 ? '' : 's'} refreshed in "${result.base}"`
+              : `✅ Init complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
           })
+          resolveEffectiveBaseDir()
+            .then(({ baseDir, baseName: effectiveBaseName }) => {
+              storageDirRef.current = baseDir
+              setBaseName(effectiveBaseName)
+            })
+            .catch(() => {
+              storageDirRef.current = ''
+              setBaseName(result.base)
+            })
           setMode('shell')
         })
         .catch(err => {
           const message = err instanceof Error ? err.message : String(err)
           setInitStatus({})
-          addEntry({ type: 'error', content: `Init error: ${message}` })
+          addEntry({ type: 'error', content: `${isScan ? 'Scan' : 'Init'} error: ${message}` })
           setMode('shell')
         })
     },
@@ -404,7 +439,13 @@ export function App({ config, startupNotices = [] }: Props) {
 
       if (firstArg === 'init') {
         setMode('init')
-        startInitSession(args.slice(1))
+        startInitSession('init', args.slice(1))
+        return
+      }
+
+      if (firstArg === 'scan') {
+        setMode('init')
+        startInitSession('scan', args.slice(1))
         return
       }
 
@@ -437,6 +478,31 @@ export function App({ config, startupNotices = [] }: Props) {
                   storageDirRef.current = ''
                   setBaseName('')
                 })
+            },
+          })
+          return
+        }
+      }
+
+      // Intercept `docs delete <id>` without --force: show confirmation prompt
+      if (
+        firstArg === 'docs' &&
+        args[1] === 'delete' &&
+        !args.includes('--force') &&
+        !args.includes('-f')
+      ) {
+        const docId = args.slice(2).find(t => !t.startsWith('--'))
+        if (docId) {
+          addEntry({
+            type: 'info',
+            content: `Delete document "${docId}"? This cannot be undone. [y/N]`,
+          })
+          setPendingConfirm({
+            question: `Delete document "${docId}"?`,
+            onConfirm: async () => {
+              const forceArgs = [...args, '--force']
+              const output = await runCommandForTui(forceArgs, config)
+              if (output) addEntry({ type: 'result', content: output })
             },
           })
           return
@@ -477,6 +543,19 @@ export function App({ config, startupNotices = [] }: Props) {
         }
         if (!filledPrimary) {
           updateEntry(resultId, { content: emptyPrimaryContent, loading: false })
+        }
+
+        // For preview-by-default commands, offer to apply after showing the plan
+        const applyArgs = resolveApplyArgs(args)
+        if (applyArgs) {
+          addEntry({ type: 'info', content: 'Apply these changes? [y/N]' })
+          setPendingConfirm({
+            question: 'Apply?',
+            onConfirm: async () => {
+              const applyOutput = await runCommandForTui(applyArgs, config)
+              if (applyOutput) addEntry({ type: 'result', content: applyOutput })
+            },
+          })
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)

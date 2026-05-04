@@ -36,4 +36,21 @@ Initializing KB — press Enter to skip any question.
       '[init] [========----------------] 4/6 import-docs importing original markdown…'
     )
   })
+
+  it('tracks init action lines separately from progress lines', () => {
+    const parsed = parseInitOutput(`
+[init] [====================----] 5/6 pass-graph docs 10/79, 83 nodes, 141 connections
+[init:action] graph docs 10/79 (+5) | +8 nodes, +14 connections | totals: 83 nodes, 141 connections
+`)
+
+    expect(parsed.historyLines).toEqual([
+      '[init:action] graph docs 10/79 (+5) | +8 nodes, +14 connections | totals: 83 nodes, 141 connections',
+    ])
+    expect(parsed.progressLine).toBe(
+      '[init] [====================----] 5/6 pass-graph docs 10/79, 83 nodes, 141 connections'
+    )
+    expect(parsed.actionLine).toBe(
+      '[init:action] graph docs 10/79 (+5) | +8 nodes, +14 connections | totals: 83 nodes, 141 connections'
+    )
+  })
 })

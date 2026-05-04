@@ -14,7 +14,6 @@ export interface InvalidateOrchestratorInput {
   oldFact: string
   replacementFact?: string
   preview?: boolean
-  dryRun?: boolean
   includeSessionLogs?: boolean
 }
 
@@ -33,7 +32,6 @@ export class InvalidateOrchestrator {
 
   async run(input: InvalidateOrchestratorInput): Promise<IntentResult> {
     const preview = input.preview === true
-    const dryRun = input.dryRun === true
 
     let canonicalOld = String(input.oldFact ?? '').trim()
     if (!canonicalOld) {
@@ -81,7 +79,6 @@ export class InvalidateOrchestrator {
         replacementFact: input.replacementFact,
         replacementTriplet,
         preview,
-        dryRun,
         includeSessionLogs: input.includeSessionLogs !== false,
       })
     )) as InvalidateToolResult
@@ -92,7 +89,7 @@ export class InvalidateOrchestrator {
           .filter(Boolean)
       : []
 
-    if (!preview && !dryRun && changedDocIds.length > 0) {
+    if (!preview && changedDocIds.length > 0) {
       await this.toolExecutor.execute(
         createToolUse('invalidate_graph_for_fact', {
           documentIds: changedDocIds,
@@ -102,17 +99,17 @@ export class InvalidateOrchestrator {
 
     const summary = result.summary ?? 'No facts changed.'
     const suffix =
-      !preview && !dryRun && changedDocIds.length > 0
+      !preview && changedDocIds.length > 0
         ? ` Graph invalidation applied to ${changedDocIds.length} fact provenance entr${changedDocIds.length === 1 ? 'y' : 'ies'}.`
         : ''
 
     return {
       status: result.error && changedDocIds.length === 0 ? 'uncertain' : 'accepted',
       explanation: `${summary}${suffix}`.trim(),
-      recommendedAction: preview || dryRun ? 'preview_invalidation' : 'invalidate_fact',
+      recommendedAction: preview ? 'preview_invalidation' : 'invalidate_fact',
       data: {
         ...result,
-        invalidatedGraphDocumentIds: !preview && !dryRun ? changedDocIds : [],
+        invalidatedGraphDocumentIds: !preview ? changedDocIds : [],
       },
       provenance: changedDocIds,
       confidence: changedDocIds.length > 0 ? 0.8 : 0.3,

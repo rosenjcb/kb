@@ -21,6 +21,16 @@ export interface ExtractedGraph {
   relationships: GraphRelationship[]
 }
 
+export interface GraphBatchProgress {
+  docsProcessed: number
+  totalDocs: number
+  batchDocs: number
+  batchEntities: number
+  batchRelationships: number
+  totalEntities: number
+  totalRelationships: number
+}
+
 const VALID_ENTITY_TYPES = new Set<string>(['concept', 'system', 'tool', 'decision', 'person'])
 const VALID_REL_TYPES = new Set<string>([
   'depends_on',
@@ -97,7 +107,10 @@ const GRAPH_BATCH_CONCURRENCY = 5
 
 export async function extractGraphBatch(
   docs: Array<{ id: string; text: string }>,
-  provider: LLMProvider
+  provider: LLMProvider,
+  options: {
+    onProgress?: (progress: GraphBatchProgress) => void
+  } = {}
 ): Promise<ExtractedGraph> {
   const allEntities: GraphEntity[] = []
   const allRelationships: GraphRelationship[] = []
@@ -105,17 +118,21 @@ export async function extractGraphBatch(
   const seenRelIds = new Set<string>()
 
   const filtered = docs.filter(d => d.text.trim())
+  const totalDocs = filtered.length
 
   // Process in parallel batches to avoid sequential LLM calls on large corpora
   for (let i = 0; i < filtered.length; i += GRAPH_BATCH_CONCURRENCY) {
     const batch = filtered.slice(i, i + GRAPH_BATCH_CONCURRENCY)
     const results = await Promise.all(batch.map(doc => extractGraph(doc.text, provider, doc.id)))
+    let batchEntities = 0
+    let batchRelationships = 0
 
     for (const result of results) {
       for (const e of result.entities) {
         if (!seenEntityIds.has(e.id)) {
           seenEntityIds.add(e.id)
           allEntities.push(e)
+          batchEntities += 1
         }
       }
       for (const r of result.relationships) {
@@ -123,9 +140,20 @@ export async function extractGraphBatch(
         if (!seenRelIds.has(relId)) {
           seenRelIds.add(relId)
           allRelationships.push(r)
+          batchRelationships += 1
         }
       }
     }
+
+    options.onProgress?.({
+      docsProcessed: Math.min(i + batch.length, totalDocs),
+      totalDocs,
+      batchDocs: batch.length,
+      batchEntities,
+      batchRelationships,
+      totalEntities: allEntities.length,
+      totalRelationships: allRelationships.length,
+    })
   }
 
   return { entities: allEntities, relationships: allRelationships }

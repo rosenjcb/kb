@@ -90,23 +90,27 @@ export async function runDocsRename(
 ): Promise<void> {
   const dbPath = path.join(baseDir, '.kb-index.sqlite')
   const indexer = new SqliteKbIndexer({ dbPath })
-
-  const existing = indexer.getDocumentContent(parsed.documentId)
-  if (!existing) {
-    throw new DocsRenameError(`Document not found: ${parsed.documentId}`)
-  }
-
-  const oldTitle = extractTitle(existing)
-  const body = stripPreamble(existing)
-
   const writer = new SqliteDocumentWriter({ baseDir })
-  await writer.updateDocument({
-    documentId: parsed.documentId,
-    title: parsed.newTitle,
-    content: body,
-  })
+  try {
+    const existing = indexer.getDocumentContent(parsed.documentId)
+    if (!existing) {
+      throw new DocsRenameError(`Document not found: ${parsed.documentId}`)
+    }
 
-  out.log(`Renamed "${oldTitle}" → "${parsed.newTitle}" (id: ${parsed.documentId})`)
+    const oldTitle = extractTitle(existing)
+    const body = stripPreamble(existing)
+
+    await writer.updateDocument({
+      documentId: parsed.documentId,
+      title: parsed.newTitle,
+      content: body,
+    })
+
+    out.log(`Renamed "${oldTitle}" → "${parsed.newTitle}" (id: ${parsed.documentId})`)
+  } finally {
+    writer.close()
+    indexer.close()
+  }
 }
 
 function sanitizeId(value: string): string {
