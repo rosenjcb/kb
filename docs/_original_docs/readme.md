@@ -1,112 +1,215 @@
 ---
 layout: default
-title: src/prompts/README.md
+title: README.md
 date: '2026-05-03'
-kb_id: src-prompts-readme-md
+kb_id: readme-md
 tags:
   - original-source
-  - src-prompts-readme-md
+  - readme-md
   - kb
 categories:
   - reference
 ---
 
-# Prompts
+<p align="center">
+  <img src="assets/kb-logo.png" alt="KB Logo" width="340" />
+</p>
 
-LLM prompts used by the KB CLI, stored as plain Markdown files so they can be read and edited without touching TypeScript.
+<p align="center">
+  <a href="#"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="license" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg" alt="node version" /></a>
+</p>
 
-## Design rule
+KB is a local-first knowledge layer for development workflows.
 
-- One prompt = one operation or one decision.
-- Orchestration, retries, branching, and multi-step policy live in TypeScript code.
-- Prompt text should define output contract and minimal task scope only.
-- Keep prompt context rich enough for accuracy (inputs, boundaries, failure behavior), but keep operation count to one.
+It gives you a CLI and runtime that capture what your project learns over time—so decisions, fixes, and context don’t disappear into chat history or PR threads.
 
-## Files
+Instead of re-deriving the same answers, KB lets you:
 
-| File | Used by | Kind |
-|---|---|---|
-| `chat-system.md` | `chat-cli.ts` — `CHAT_SYSTEM_PROMPT` | single-part |
-| `graph-extraction.md` | `graph-entity-extractor.ts` — `EXTRACTION_SYSTEM_PROMPT` | single-part |
-| `init-synthesis.md` | `init-cli.ts` — `runSynthesisPass` | two-part (intro + instructions) |
-| `init-refinement.md` | `init-cli.ts` — `runRefinementPass` | two-part (intro + instructions) |
-| `init-quality.md` | `init-cli.ts` — `runQualityPass` | two-part (intro + instructions) |
-| `init-enrichment.md` | `init-cli.ts` — `runPerDocEnrichmentPass` | two-part (intro + instructions) |
-| `agent-default.md` | `agent-registry.ts` — default delegated worker profile | single-part |
-| `agent-research.md` | `agent-registry.ts` — research delegated worker profile | single-part |
-| `subagent-delegation.md` | `task.ts` — delegated subagent execution instructions | single-part |
-| `doc-classify.md` | `docs-generate-cli.ts` — doc type classifier for `kb docs generate` | single-part |
-| `doc-draft-system.md` | `docs-generate-cli.ts` — body draft rules for `kb docs generate` | single-part |
-| `doc-questionnaires/*.md` | `doc-questionnaire.ts` — static per-`DocType` question lists | bullet grammar |
+* Record decisions and facts as you work
+* Query past context before making changes
+* Invalidate stale facts before they mislead future work
 
-## Prompt formats
+All of it lives alongside your code, versioned in Git, and queryable like a lightweight memory system.
 
-### Single-part
+## What it actually does
 
-Plain Markdown text. The entire file content is used as the prompt string.
+KB turns day-to-day development into a feedback loop:
 
-```
-You are a widget inspector. Examine the widget and report defects.
-```
+* Capture — Save facts, decisions, and discoveries as you go
+* Recall — Query relevant context when you need it
+* Repair — Replace or remove stale knowledge before it drifts
 
-Load with:
+## Quick Start
 
-```typescript
-import { loadPrompt } from '../prompts/loader'
+### 1) Install and verify
 
-const SYSTEM_PROMPT = loadPrompt('my-prompt.md')
+```bash
+pnpm install
+pnpm run check
+npm run refresh:global
+command -v kb
 ```
 
-### Single-part with placeholders
+KB expects `Node 22+` in the shell that runs `kb`.
 
-Same as single-part, but the file contains `{{placeholder}}` tokens that are replaced at call time.
+For installed clients, the supported release path is GitHub Releases. CI builds a fresh `kb-cli-node22.tgz` package for every push to `main` right now, and you can install or upgrade it with:
 
-```
-Check whether the following claim is accurate.
-
-Claim: {{claim}}
-
-Context:
-{{context}}
+```bash
+npm install -g ./kb-cli-node22.tgz
 ```
 
-Load with:
+### 2) Configure `~/.kb/config.json`
+Provider is auto-detected from whichever key is present. To set one explicitly:
 
-```typescript
-const prompt = loadPrompt('my-prompt.md')
-  .replace('{{claim}}', claim)
-  .replace('{{context}}', context)
+```bash
+kb config set llm.provider openai
 ```
 
-### Two-part (intro + instructions)
+### 3) Initialize your KB base
 
-For prompts passed to `buildBudgetedPrompt`, the file is split into an **intro** (role/context given to the LLM) and **instructions** (the task rules) by a `---` divider on its own line.
+Walk through the chat-based wizard to create your knowledge base. 
 
-```
-You are a widget inspector. Your job is to find defects in the widgets provided.
-
----
-
-1. List every visible defect.
-2. Rate severity: low | medium | high.
-3. Return ONLY a JSON array.
+```bash
+cd ~/{{YOUR_AWESOME_REPO}}
+kb && /init --base dogfood
 ```
 
-Load with:
+Refresh an existing base after README or docs changes:
 
-```typescript
-import { loadPromptParts } from '../prompts/loader'
-
-const { intro, instructions } = loadPromptParts('my-prompt.md')
-buildBudgetedPrompt({ intro, sections: [...], instructions })
+```bash
+kb init --base dogfood --rescan
+kb init --base dogfood --rescan --apply
+kb && /base use dogfood
+kb && /init --rescan --apply
 ```
 
-Placeholders work in two-part files too — call `.replace()` on `intro` or `instructions` after loading.
+### 4) Start using KB intents
 
-## Adding a new prompt
+```bash
+kb submit "Document writer now supports sqlite index sync"
+kb query "sqlite index sync behavior" --limit 5
+kb invalidate "kb use should persist across sessions" "kb base use is session-scoped; use kb base use --default to write a persistent default"
+```
 
-1. Create a `.md` file in this directory.
-2. Choose single-part or two-part format (use two-part when the prompt goes into `buildBudgetedPrompt`).
-3. Import `loadPrompt` or `loadPromptParts` from `../prompts/loader` in the consuming file.
-4. Add a row to the table above.
-5. Add a test case in `tests/prompts/loader.test.ts` if the new file uses a non-obvious format or a placeholder.
+## CLI Reference
+
+### KB intents
+
+One read intent:
+
+```
+kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]
+```
+
+Two mutation intents:
+
+```
+kb submit "<fact>" [--domain ops] [--source runbook] [--output human|json]
+kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--dry-run]
+```
+
+### Document browsing
+
+```
+kb docs list [--base <name>] [--limit <n>] [--output human|json]
+kb docs view <document-id> [--base <name>]
+kb docs view --title "<exact title>" [--base <name>]
+```
+
+### Other commands
+
+```
+kb base use <base>             — switch the active base for the current session
+kb base use --default <base>   — save persistent default to ~/.kb/config.json
+kb base use --show             — show active base and config default
+kb base delete <base>          — delete a base and all its data (prompts unless --force)
+kb config get
+kb config set <key> <value>
+kb config unset <key>
+kb init [--base <name>] [--detach | --resume] [--stop-after <cycle>]
+kb init [--base <name>] --rescan [--dry-run | --apply]
+kb sync [--no-pull] [--no-build] [--no-link]
+kb publish [options]
+kb chat [--verbose] [--debug] [--base <name>]
+```
+
+### Keeping `kb` up to date
+
+```bash
+kb sync
+```
+
+`kb sync` does not use your current project directory. It keeps a managed clone of `https://github.com/rosenjcb/kb.git` under `~/.kb/sources/kb`, fast-forwards `main`, runs `pnpm install --frozen-lockfile`, rebuilds the CLI, and refreshes the global `kb` link. It will complain early if the current shell is not running `Node 22+`.
+
+If you just want the supported shipped client, prefer installing the latest CI-built release package from GitHub Releases instead of using `kb sync`.
+
+### 1) Enable native SQLite dependency (if needed)
+
+```bash
+pnpm approve-builds --all
+pnpm rebuild better-sqlite3
+```
+
+### 2) Verify
+
+```bash
+kb submit "SQLite hybrid search enabled for this workspace"
+kb query "hybrid sqlite retrieval" --limit 5
+```
+
+If hybrid retrieval is unavailable or exceeds the latency budget, KB automatically falls back to lexical markdown query.
+
+## Daily Workflow
+
+```bash
+kb query "topic"
+kb submit "new fact"
+kb invalidate "old fact" "replacement fact"
+```
+
+## Agent skill: use KB while you develop
+
+
+- **Found here:** [`skills/kb-dev-workflow/SKILL.md`](skills/kb-dev-workflow/SKILL.md)
+
+The skill is self-contained (workflow + full command shapes). The [CLI Reference](#cli-reference) section above stays the in-repo quick reference for humans.
+
+## Swapping and deleting bases
+
+```bash
+kb base use foo            # switch the active base for this session
+kb base use --default foo  # save a persistent default
+kb base use --show             # show active base and config default
+kb base delete bar --force # delete a base and all its data
+kb init --base foo --rescan        # preview KB updates from changed README-like files
+kb init --base foo --rescan --apply # apply planned rescan updates
+kb sync                           # update from github.com/rosenjcb/kb and relink globally
+kb sync --no-pull                 # rebuild/relink the managed clone without fetching
+kb && /base use foo
+kb && /init --rescan --apply
+kb && /sync
+```
+
+Base resolution order (both live in `~/.kb/config.json`):
+1. `activeBase` — current working base from `kb base use <base>`
+2. `defaultBase` — persistent default from `kb base use --default <base>` (or `kb default <base>`)
+
+Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
+
+## Development Commands
+
+```bash
+pnpm run test
+pnpm run type-check
+pnpm run lint
+pnpm run build
+```
+
+## Project Map
+
+```text
+src/core   — provider abstraction, intent loop, agent loop, runtime types
+src/cli    — CLI entrypoint, KB intent parsing, base selection, kb init
+src/tools  — write/query tools, markdown + sqlite index integration
+```

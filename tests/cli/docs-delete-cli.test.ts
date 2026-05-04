@@ -52,6 +52,7 @@ describe('parseDocsDeleteCommand', () => {
   it('Given a doc id, then parses it', () => {
     const parsed = parseDocsDeleteCommand(['my-doc'])
     expect(parsed.documentId).toBe('my-doc')
+    expect(parsed.isWildcard).toBe(false)
     expect(parsed.force).toBe(false)
     expect(parsed.base).toBeUndefined()
   })
@@ -74,6 +75,24 @@ describe('parseDocsDeleteCommand', () => {
   it('Given id with caps/spaces, then normalizes to slug', () => {
     const parsed = parseDocsDeleteCommand(['My Doc ID'])
     expect(parsed.documentId).toBe('my-doc-id')
+    expect(parsed.isWildcard).toBe(false)
+  })
+
+  it('Given a wildcard pattern, then sets isWildcard true and preserves *', () => {
+    const parsed = parseDocsDeleteCommand(['ci-*'])
+    expect(parsed.documentId).toBe('ci-*')
+    expect(parsed.isWildcard).toBe(true)
+  })
+
+  it('Given a wildcard pattern with caps, then lowercases and preserves *', () => {
+    const parsed = parseDocsDeleteCommand(['CI-*'])
+    expect(parsed.documentId).toBe('ci-*')
+    expect(parsed.isWildcard).toBe(true)
+  })
+
+  it('Given a bare wildcard *, then isWildcard is true', () => {
+    const parsed = parseDocsDeleteCommand(['*'])
+    expect(parsed.isWildcard).toBe(true)
   })
 
   it('Given no args, then throws with exit code 0', () => {
@@ -115,7 +134,7 @@ describe('runDocsDelete', () => {
     await seedDocument(baseDir, { title: 'To Delete', documentId: 'to-delete', content: 'Body.' })
 
     const { out } = makeOut()
-    await runDocsDelete({ documentId: 'to-delete', force: true }, baseDir, out)
+    await runDocsDelete({ documentId: 'to-delete', isWildcard: false, force: true }, baseDir, out)
 
     const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
     expect(indexer.getDocumentContent('to-delete')).toBeUndefined()
@@ -126,7 +145,7 @@ describe('runDocsDelete', () => {
     await seedDocument(baseDir, { title: 'My Doc', documentId: 'my-doc', content: 'Body.' })
 
     const { out, lines } = makeOut()
-    await runDocsDelete({ documentId: 'my-doc', force: true }, baseDir, out)
+    await runDocsDelete({ documentId: 'my-doc', isWildcard: false, force: true }, baseDir, out)
 
     const output = lines.join('\n')
     expect(output).toContain('My Doc')
@@ -139,7 +158,7 @@ describe('runDocsDelete', () => {
     await seedDocument(baseDir, { title: 'Delete Me', documentId: 'delete-me', content: 'Body.' })
 
     const { out } = makeOut()
-    await runDocsDelete({ documentId: 'delete-me', force: true }, baseDir, out)
+    await runDocsDelete({ documentId: 'delete-me', isWildcard: false, force: true }, baseDir, out)
 
     const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
     expect(indexer.getDocumentContent('keep-me')).toBeDefined()
@@ -150,7 +169,7 @@ describe('runDocsDelete', () => {
     const { out } = makeOut()
 
     await expect(
-      runDocsDelete({ documentId: 'does-not-exist', force: true }, baseDir, out)
+      runDocsDelete({ documentId: 'does-not-exist', isWildcard: false, force: true }, baseDir, out)
     ).rejects.toThrow(DocsDeleteError)
   })
 
@@ -160,10 +179,65 @@ describe('runDocsDelete', () => {
 
     const { out, lines } = makeOut()
     // stdin.isTTY is falsy in test environment — promptConfirm returns false
-    await runDocsDelete({ documentId: 'safe-doc', force: false }, baseDir, out)
+    await runDocsDelete({ documentId: 'safe-doc', isWildcard: false, force: false }, baseDir, out)
 
     const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
     expect(indexer.getDocumentContent('safe-doc')).toBeDefined()
+    expect(lines.join('\n')).toContain('Aborted')
+  })
+})
+
+// ─── runDocsDelete (wildcard) ─────────────────────────────────────────────────
+
+describe('runDocsDelete (wildcard)', () => {
+  it('Given a prefix wildcard, then deletes all matching documents', async () => {
+    const baseDir = await createTempBase()
+    await seedDocument(baseDir, { title: 'CI Alpha', documentId: 'ci-alpha', content: 'Body.' })
+    await seedDocument(baseDir, { title: 'CI Beta', documentId: 'ci-beta', content: 'Body.' })
+    await seedDocument(baseDir, { title: 'Keep Me', documentId: 'keep-me', content: 'Body.' })
+
+    const { out } = makeOut()
+    await runDocsDelete({ documentId: 'ci-*', isWildcard: true, force: true }, baseDir, out)
+
+    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+    expect(indexer.getDocumentContent('ci-alpha')).toBeUndefined()
+    expect(indexer.getDocumentContent('ci-beta')).toBeUndefined()
+    expect(indexer.getDocumentContent('keep-me')).toBeDefined()
+  })
+
+  it('Given a wildcard match, then output lists matched ids and confirms each deletion', async () => {
+    const baseDir = await createTempBase()
+    await seedDocument(baseDir, { title: 'CI Alpha', documentId: 'ci-alpha', content: 'Body.' })
+    await seedDocument(baseDir, { title: 'CI Beta', documentId: 'ci-beta', content: 'Body.' })
+
+    const { out, lines } = makeOut()
+    await runDocsDelete({ documentId: 'ci-*', isWildcard: true, force: true }, baseDir, out)
+
+    const output = lines.join('\n')
+    expect(output).toContain('ci-alpha')
+    expect(output).toContain('ci-beta')
+    expect(output).toContain('Deleted')
+  })
+
+  it('Given a wildcard with no matches, then throws DocsDeleteError', async () => {
+    const baseDir = await createTempBase()
+    await seedDocument(baseDir, { title: 'Keep Me', documentId: 'keep-me', content: 'Body.' })
+
+    const { out } = makeOut()
+    await expect(
+      runDocsDelete({ documentId: 'ci-*', isWildcard: true, force: true }, baseDir, out)
+    ).rejects.toThrow(DocsDeleteError)
+  })
+
+  it('Given wildcard and non-interactive stdin without --force, then aborts without deleting', async () => {
+    const baseDir = await createTempBase()
+    await seedDocument(baseDir, { title: 'CI Alpha', documentId: 'ci-alpha', content: 'Body.' })
+
+    const { out, lines } = makeOut()
+    await runDocsDelete({ documentId: 'ci-*', isWildcard: true, force: false }, baseDir, out)
+
+    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+    expect(indexer.getDocumentContent('ci-alpha')).toBeDefined()
     expect(lines.join('\n')).toContain('Aborted')
   })
 })
