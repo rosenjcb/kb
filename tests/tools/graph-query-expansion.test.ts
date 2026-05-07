@@ -59,4 +59,35 @@ describe('graph-query-expansion', () => {
       'config json'
     )
   })
+
+  it('Given a code store, appends code neighbor names after semantic terms', async () => {
+    const graphWriter = {
+      expandQuery: async () => ['SemanticTerm'],
+    } as const
+
+    const codeStore = {
+      expandWithCodeNeighbors: () => [
+        { name: 'SqliteKbIndexer' },
+        { name: 'KbGraphWriter' },
+      ],
+    } as never
+
+    const expanded = await expandQueryWithGraph('indexer', graphWriter as never, codeStore)
+    expect(expanded).toContain('SemanticTerm')
+    expect(expanded).toContain('SqliteKbIndexer')
+    expect(expanded).toContain('KbGraphWriter')
+  })
+
+  it('Given code store failure, semantic expansion still succeeds', async () => {
+    const graphWriter = {
+      expandQuery: async () => ['SemanticTerm'],
+    } as const
+
+    const codeStore = {
+      expandWithCodeNeighbors: () => { throw new Error('code graph offline') },
+    } as never
+
+    const expanded = await expandQueryWithGraph('indexer', graphWriter as never, codeStore)
+    expect(expanded).toContain('SemanticTerm')
+  })
 })

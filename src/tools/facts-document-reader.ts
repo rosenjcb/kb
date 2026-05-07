@@ -1,7 +1,7 @@
 import type { DocType } from '../core/doc-taxonomy'
 import { formatFactUri } from '../core/fact-uri'
-import { SqliteKbIndexer, type FactRow } from './sqlite-kb-index'
 import { FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
+import { type FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
 export interface QueryDocumentsInput {
   query?: string

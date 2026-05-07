@@ -2,14 +2,11 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  parseDocsGenerateCommand,
-  runDocsGenerate,
-} from '../../src/cli/docs-generate-cli'
+import { parseDocsGenerateCommand, runDocsGenerate } from '../../src/cli/docs-generate-cli'
 import type { KbConfig } from '../../src/cli/kb-config'
+import { loadQuestionnaire } from '../../src/core/doc-questionnaire'
 import type { LLMProvider } from '../../src/core/types'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
-import { loadQuestionnaire } from '../../src/core/doc-questionnaire'
 
 const tempDirs: string[] = []
 
@@ -61,7 +58,13 @@ describe('docs generate flow', () => {
       confidence: 0.9,
     })
 
-    const start = parseDocsGenerateCommand(['auth overview', '--type', 'reference', '--base', baseDir])
+    const start = parseDocsGenerateCommand([
+      'auth overview',
+      '--type',
+      'reference',
+      '--base',
+      baseDir,
+    ])
     const startOut = (await runDocsGenerate(start, baseDir, config, {
       llm: mockLlm,
     })) as { sessionId: string }

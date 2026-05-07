@@ -1,8 +1,11 @@
-import { loadPrompt } from '../prompts/loader'
 import type { LLMProvider } from '../core/types'
+import { loadPrompt } from '../prompts/loader'
 import type { FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
-type IndexerPick = Pick<SqliteKbIndexer, 'searchFacts' | 'getActiveFactByTextMatch' | 'getActiveFactById'>
+type IndexerPick = Pick<
+  SqliteKbIndexer,
+  'searchFacts' | 'getActiveFactByTextMatch' | 'getActiveFactById'
+>
 
 function parseChosenFactId(text: string): string | null {
   const m = text.match(/\{[\s\S]*\}/)

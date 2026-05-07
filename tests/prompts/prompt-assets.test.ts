@@ -1,6 +1,10 @@
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { promptsRootDir, readPromptAssetUtf8, resolvePromptPath } from '../../src/prompts/prompt-assets'
+import {
+  promptsRootDir,
+  readPromptAssetUtf8,
+  resolvePromptPath,
+} from '../../src/prompts/prompt-assets'
 
 describe('prompt-assets', () => {
   it('resolvePromptPath nests under prompts root', () => {

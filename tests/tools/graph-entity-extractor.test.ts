@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
 import {
   extractBalancedJsonObject,
   extractGraphBatch,
   parseGraphExtractorJson,
 } from '../../src/tools/graph-entity-extractor'
-import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
 
 describe('extractBalancedJsonObject', () => {
   it('Given prose before JSON, then returns first balanced object', () => {

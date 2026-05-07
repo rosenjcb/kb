@@ -1,8 +1,8 @@
 import dayjs from 'dayjs'
+import { inferQueryLaneWeights } from '../core/fact-taxonomy'
+import { formatFactUri } from '../core/fact-uri'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message } from '../core/types'
-import { formatFactUri } from '../core/fact-uri'
-import { inferQueryLaneWeights } from '../core/fact-taxonomy'
 import { assertConsumerSafeCommand } from '../intents/policy'
 import { DefaultIntentRouter } from '../intents/router'
 import type { ConsumerIntent, ConsumerIntentEnvelope, IntentResult } from '../intents/types'
@@ -124,11 +124,7 @@ export async function executeIntentCommand(
   toolExecutor: ToolExecutor,
   options?: ExecuteIntentCommandOptions
 ): Promise<IntentResult> {
-  const router = new DefaultIntentRouter(
-    toolExecutor,
-    options?.intentLlm,
-    options?.kbStorageDir
-  )
+  const router = new DefaultIntentRouter(toolExecutor, options?.intentLlm, options?.kbStorageDir)
   return router.execute(parsed.envelope)
 }
 
@@ -644,7 +640,13 @@ function answerNeedsScaffoldRecovery(question: string, answer: string): boolean 
   const lanes = inferQueryLaneWeights(question)
   if (!lanes.build && !lanes.config) return false
   const normalized = answer.toLowerCase()
-  const requiredSections = ['prerequisites', 'commands', 'flags/options', 'platform notes', 'known gotchas']
+  const requiredSections = [
+    'prerequisites',
+    'commands',
+    'flags/options',
+    'platform notes',
+    'known gotchas',
+  ]
   const present = requiredSections.filter(section => normalized.includes(section)).length
   return present < 3
 }
@@ -657,10 +659,16 @@ function buildBuildConfigScaffoldAnswer(
   if (!lanes.build && !lanes.config) return undefined
 
   const sectionSpecs: Array<{ title: string; keywords: string[] }> = [
-    { title: 'Prerequisites', keywords: ['prereq', 'require', 'dependency', 'install', 'toolchain'] },
+    {
+      title: 'Prerequisites',
+      keywords: ['prereq', 'require', 'dependency', 'install', 'toolchain'],
+    },
     { title: 'Commands', keywords: ['cmake', 'make', 'build', 'compile', 'run', 'command'] },
     { title: 'Flags/Options', keywords: ['flag', 'option', 'define', 'switch', '--', '-d'] },
-    { title: 'Platform Notes', keywords: ['linux', 'windows', 'macos', 'android', 'web', 'platform'] },
+    {
+      title: 'Platform Notes',
+      keywords: ['linux', 'windows', 'macos', 'android', 'web', 'platform'],
+    },
     { title: 'Known Gotchas', keywords: ['gotcha', 'caveat', 'warning', 'limitation', 'note'] },
   ]
 

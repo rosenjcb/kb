@@ -1,26 +1,26 @@
-import type { DocType } from '../core/doc-taxonomy'
 import {
+  type DocGenerateOrchestratorDeps,
+  acceptDraft,
+  produceInitialDraft,
+  produceRevisedDraft,
+  startGenerationSession,
+} from '../core/doc-generate-orchestrator'
+import {
+  type DocGenerateSession,
   applyAnswer,
   applySkip,
   firstPendingAnswerIndex,
   listSessionSummaries,
   loadSession,
-  type DocGenerateSession,
 } from '../core/doc-generate-session'
-import {
-  acceptDraft,
-  type DocGenerateOrchestratorDeps,
-  produceInitialDraft,
-  produceRevisedDraft,
-  startGenerationSession,
-} from '../core/doc-generate-orchestrator'
 import { parseDocTypeFlag } from '../core/doc-questionnaire'
+import type { DocType } from '../core/doc-taxonomy'
 import { colorizeUnifiedDiff } from '../core/git-diff-preview'
-import type { KbConfig } from './kb-config'
-import { createLLMProviderFromConfig } from './kb-config'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
 import { CLI_ERROR_NO_LLM_PROVIDER, formatPrerequisiteError } from './cli-prerequisites'
 import { type CmdMode, cmd } from './cmd-ref'
+import type { KbConfig } from './kb-config'
+import { createLLMProviderFromConfig } from './kb-config'
 
 export type DocsGenerateMode = 'start' | 'resume' | 'list' | 'show'
 
@@ -188,7 +188,9 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
     if (token === '--output') {
       const { value, next } = readValue('--output', i)
       if (value !== 'human' && value !== 'json') {
-        throw new DocsGenerateError(`--output must be one of: human, json\n\n${printDocsGenerateHelp()}`)
+        throw new DocsGenerateError(
+          `--output must be one of: human, json\n\n${printDocsGenerateHelp()}`
+        )
       }
       outputFormat = value
       i = next
@@ -200,27 +202,37 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
     positional.push(token)
   }
 
-  const resumeActions = [finalize, skip, answer !== undefined, accept, rejectFeedback !== undefined].filter(
-    Boolean
-  ).length
+  const resumeActions = [
+    finalize,
+    skip,
+    answer !== undefined,
+    accept,
+    rejectFeedback !== undefined,
+  ].filter(Boolean).length
 
   if (list) {
     if (resumeId || showId || positional.length || resumeActions > 0 || typeFlag !== undefined) {
-      throw new DocsGenerateError(`--list does not combine with other generate actions.\n\n${printDocsGenerateHelp()}`)
+      throw new DocsGenerateError(
+        `--list does not combine with other generate actions.\n\n${printDocsGenerateHelp()}`
+      )
     }
     return { mode: 'list', base, outputFormat }
   }
 
   if (showId) {
     if (resumeId || positional.length || resumeActions > 0 || list || typeFlag !== undefined) {
-      throw new DocsGenerateError(`--show does not combine with other generate actions.\n\n${printDocsGenerateHelp()}`)
+      throw new DocsGenerateError(
+        `--show does not combine with other generate actions.\n\n${printDocsGenerateHelp()}`
+      )
     }
     return { mode: 'show', sessionId: showId, base, outputFormat }
   }
 
   if (resumeId) {
     if (positional.length || typeFlag !== undefined) {
-      throw new DocsGenerateError(`--resume does not accept extra positional args or --type.\n\n${printDocsGenerateHelp()}`)
+      throw new DocsGenerateError(
+        `--resume does not accept extra positional args or --type.\n\n${printDocsGenerateHelp()}`
+      )
     }
     if (resumeActions !== 1) {
       throw new DocsGenerateError(
@@ -228,17 +240,33 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
       )
     }
     if (finalize) {
-      return { mode: 'resume', sessionId: resumeId, base, factLimit, action: 'finalize', outputFormat }
+      return {
+        mode: 'resume',
+        sessionId: resumeId,
+        base,
+        factLimit,
+        action: 'finalize',
+        outputFormat,
+      }
     }
     if (skip) {
       return { mode: 'resume', sessionId: resumeId, base, factLimit, action: 'skip', outputFormat }
     }
     if (accept) {
-      return { mode: 'resume', sessionId: resumeId, base, factLimit, action: 'accept', outputFormat }
+      return {
+        mode: 'resume',
+        sessionId: resumeId,
+        base,
+        factLimit,
+        action: 'accept',
+        outputFormat,
+      }
     }
     if (rejectFeedback !== undefined) {
       if (!rejectFeedback.trim()) {
-        throw new DocsGenerateError(`--reject requires non-empty feedback\n\n${printDocsGenerateHelp()}`)
+        throw new DocsGenerateError(
+          `--reject requires non-empty feedback\n\n${printDocsGenerateHelp()}`
+        )
       }
       return {
         mode: 'resume',
@@ -250,7 +278,15 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
         outputFormat,
       }
     }
-    return { mode: 'resume', sessionId: resumeId, base, factLimit, action: 'answer', answer, outputFormat }
+    return {
+      mode: 'resume',
+      sessionId: resumeId,
+      base,
+      factLimit,
+      action: 'answer',
+      answer,
+      outputFormat,
+    }
   }
 
   if (finalize || skip || answer !== undefined || accept || rejectFeedback !== undefined) {
@@ -261,7 +297,9 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
 
   const prompt = positional.join(' ').trim()
   if (!prompt) {
-    throw new DocsGenerateError(`docs generate requires a prompt string.\n\n${printDocsGenerateHelp()}`)
+    throw new DocsGenerateError(
+      `docs generate requires a prompt string.\n\n${printDocsGenerateHelp()}`
+    )
   }
 
   return { mode: 'start', prompt, base, type: typeFlag, factLimit, outputFormat }

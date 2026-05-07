@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { assertSingleSentenceForSubmit, segmentMarkdownForFacts } from '../../src/core/sentence-split'
+import {
+  assertSingleSentenceForSubmit,
+  segmentMarkdownForFacts,
+} from '../../src/core/sentence-split'
 
 describe('segmentMarkdownForFacts', () => {
   it('treats ATX heading line as one segment (title only)', () => {
@@ -30,9 +33,9 @@ describe('assertSingleSentenceForSubmit', () => {
   })
 
   it('throws when multiple sentences detected', () => {
-    expect(() =>
-      assertSingleSentenceForSubmit('First sentence. Second sentence.')
-    ).toThrow(/exactly one sentence/)
+    expect(() => assertSingleSentenceForSubmit('First sentence. Second sentence.')).toThrow(
+      /exactly one sentence/
+    )
   })
 
   it('throws on empty', () => {

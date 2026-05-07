@@ -33,7 +33,12 @@ export async function readCodeFactsManifest(baseDir: string): Promise<CodeFactsM
   try {
     const raw = await readFile(file, 'utf-8')
     const parsed = JSON.parse(raw) as Partial<CodeFactsManifest>
-    if (!parsed || typeof parsed !== 'object' || !parsed.files || typeof parsed.files !== 'object') {
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      !parsed.files ||
+      typeof parsed.files !== 'object'
+    ) {
       return { version: 1, files: {}, updatedAt: '' }
     }
     return {

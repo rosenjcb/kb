@@ -77,9 +77,15 @@ describe('extractCodeSkeleton', () => {
   })
 
   it('detects Python def / class as exports', () => {
-    const py = ['"""Mod docstring."""', '', 'def alpha():', '    return 1', '', 'class Beta:', '    pass'].join(
-      '\n'
-    )
+    const py = [
+      '"""Mod docstring."""',
+      '',
+      'def alpha():',
+      '    return 1',
+      '',
+      'class Beta:',
+      '    pass',
+    ].join('\n')
     const skel = extractCodeSkeleton('src/mod.py', py)
     expect(skel.language).toBe('python')
     expect(skel.exports.map(e => e.name)).toEqual(expect.arrayContaining(['alpha', 'Beta']))
@@ -126,7 +132,11 @@ describe('extractCodeFactsForFile', () => {
         {
           sentence: 'Beta encapsulates a run method that returns 2.',
           anchor: 'Beta',
-          triplet: { subject: 'Beta', predicate: 'encapsulates', object: 'a run method returning 2' },
+          triplet: {
+            subject: 'Beta',
+            predicate: 'encapsulates',
+            object: 'a run method returning 2',
+          },
         },
         {
           sentence: 'Bogus claim about a symbol nobody declared here today.',
@@ -159,8 +169,16 @@ describe('extractCodeFactsForFile', () => {
       module_summary: '   ',
       facts: [
         { sentence: 'too', anchor: 'alpha' },
-        { sentence: 'alpha returns the constant 1.', anchor: 'alpha', triplet: { subject: '', predicate: 'returns', object: '1' } },
-        { sentence: 'alpha returns the constant 1.', anchor: 'alpha', triplet: { subject: 'alpha', predicate: 'returns', object: '1' } },
+        {
+          sentence: 'alpha returns the constant 1.',
+          anchor: 'alpha',
+          triplet: { subject: '', predicate: 'returns', object: '1' },
+        },
+        {
+          sentence: 'alpha returns the constant 1.',
+          anchor: 'alpha',
+          triplet: { subject: 'alpha', predicate: 'returns', object: '1' },
+        },
       ],
     })
     const provider = makeStubProvider([reply])
@@ -248,8 +266,16 @@ describe('ingestCodeFilesAsFacts', () => {
     const v1Reply = JSON.stringify({
       module_summary: 'Example module v1.',
       facts: [
-        { sentence: 'alpha returns 1 to its caller.', anchor: 'alpha', triplet: { subject: 'alpha', predicate: 'returns', object: '1' } },
-        { sentence: 'Beta exposes a run method returning 2.', anchor: 'Beta', triplet: { subject: 'Beta', predicate: 'exposes', object: 'run' } },
+        {
+          sentence: 'alpha returns 1 to its caller.',
+          anchor: 'alpha',
+          triplet: { subject: 'alpha', predicate: 'returns', object: '1' },
+        },
+        {
+          sentence: 'Beta exposes a run method returning 2.',
+          anchor: 'Beta',
+          triplet: { subject: 'Beta', predicate: 'exposes', object: 'run' },
+        },
       ],
     })
 
@@ -261,7 +287,11 @@ describe('ingestCodeFilesAsFacts', () => {
     const v2Reply = JSON.stringify({
       module_summary: 'Example module v2.',
       facts: [
-        { sentence: 'alpha now returns 42 instead of 1.', anchor: 'alpha', triplet: { subject: 'alpha', predicate: 'returns', object: '42' } },
+        {
+          sentence: 'alpha now returns 42 instead of 1.',
+          anchor: 'alpha',
+          triplet: { subject: 'alpha', predicate: 'returns', object: '42' },
+        },
       ],
     })
 

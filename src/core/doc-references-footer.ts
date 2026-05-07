@@ -1,5 +1,5 @@
-import { formatFactUri } from './fact-uri'
 import type { SupportingFact } from './doc-supporting-facts'
+import { formatFactUri } from './fact-uri'
 
 const REFERENCES_HEADING = '## References'
 
@@ -24,10 +24,7 @@ export function renderReferencesFooter(facts: readonly SupportingFact[]): string
 /**
  * Append a References footer to drafted markdown, separating with a blank line.
  */
-export function appendReferencesFooter(
-  body: string,
-  facts: readonly SupportingFact[]
-): string {
+export function appendReferencesFooter(body: string, facts: readonly SupportingFact[]): string {
   const footer = renderReferencesFooter(facts)
   if (!footer) return ensureTrailingNewline(body)
   const trimmed = body.replace(/\s+$/, '')

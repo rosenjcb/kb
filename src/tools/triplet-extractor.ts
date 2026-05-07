@@ -1,5 +1,5 @@
-import { loadPrompt } from '../prompts/loader'
 import type { LLMProvider } from '../core/types'
+import { loadPrompt } from '../prompts/loader'
 import type { FactTriplet } from './sqlite-kb-index'
 
 function parseTripletJson(text: string): FactTriplet {

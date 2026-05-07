@@ -127,7 +127,9 @@ export function parseFactsCommand(args: string[]): ParsedFactsCommand {
 
   if (sub === 'list') {
     if (positional.length > 0) {
-      throw new FactsCommandError(`facts list does not accept extra arguments.\n\n${printFactsHelp()}`)
+      throw new FactsCommandError(
+        `facts list does not accept extra arguments.\n\n${printFactsHelp()}`
+      )
     }
     return { sub: 'list', base, limit, output }
   }
@@ -141,7 +143,9 @@ export function parseFactsCommand(args: string[]): ParsedFactsCommand {
 }
 
 async function resolveBaseDir(parsed: ParsedFactsCommand, cwd: string): Promise<string> {
-  return parsed.base ? await ensureOperationalBaseDir(parsed.base, cwd) : (await resolveEffectiveBaseDir(cwd)).baseDir
+  return parsed.base
+    ? await ensureOperationalBaseDir(parsed.base, cwd)
+    : (await resolveEffectiveBaseDir(cwd)).baseDir
 }
 
 function formatFactJson(row: FactRow): Record<string, unknown> {
@@ -199,8 +203,8 @@ export async function runFactsCommand(
       return rows.map((r, i) => `--- ${i + 1} ---\n${formatFactHuman(r, parsed.base)}`).join('\n\n')
     }
 
-  const q = (parsed.query ?? '').trim()
-  const byId = /^fact-[a-f0-9]{16}$/i.test(q) ? indexer.getActiveFactById(q) : undefined
+    const q = (parsed.query ?? '').trim()
+    const byId = /^fact-[a-f0-9]{16}$/i.test(q) ? indexer.getActiveFactById(q) : undefined
     const row = byId ?? indexer.getActiveFactByTextMatch(q)
     if (!row) {
       throw new FactsCommandError(`No active fact matched: ${q}`)

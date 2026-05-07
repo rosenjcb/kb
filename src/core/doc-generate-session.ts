@@ -1,8 +1,8 @@
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
-import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { createUnifiedDiff } from './git-diff-preview'
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
 import type { DocType } from './doc-taxonomy'
+import { createUnifiedDiff } from './git-diff-preview'
 
 export interface DocAnswerSlot {
   key: string
@@ -69,10 +69,7 @@ function sessionPath(baseDir: string, id: string): string {
   return path.join(docSessionsDir(baseDir), `${id}.json`)
 }
 
-export async function loadSession(
-  baseDir: string,
-  id: string
-): Promise<DocGenerateSession | null> {
+export async function loadSession(baseDir: string, id: string): Promise<DocGenerateSession | null> {
   try {
     const raw = await readFile(sessionPath(baseDir, id), 'utf8')
     return JSON.parse(raw) as DocGenerateSession
@@ -109,9 +106,7 @@ export function createSessionRecord(input: {
 }
 
 export function firstPendingAnswerIndex(session: DocGenerateSession): number | null {
-  const idx = session.answers.findIndex(
-    slot => slot.answer === null && slot.skipped !== true
-  )
+  const idx = session.answers.findIndex(slot => slot.answer === null && slot.skipped !== true)
   return idx === -1 ? null : idx
 }
 

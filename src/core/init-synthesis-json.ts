@@ -1,10 +1,10 @@
+import type { WriteDocumentInput } from '../tools/document-writer'
+import { extractBalancedJsonObject } from '../tools/graph-entity-extractor'
 /**
  * Init pass1 synthesis: parse model output into one KB document shape, plus JSON Schemas for
  * providers that support native structured JSON (OpenAI json_schema, Gemini responseSchema).
  */
 import { DOC_TYPES, isDocType } from './doc-taxonomy'
-import type { WriteDocumentInput } from '../tools/document-writer'
-import { extractBalancedJsonObject } from '../tools/graph-entity-extractor'
 
 /** OpenAI Chat Completions `response_format.json_schema` (strict) — all properties required. */
 export const INIT_SYNTHESIS_OPENAI_JSON_SCHEMA: Record<string, unknown> = {

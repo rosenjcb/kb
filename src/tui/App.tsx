@@ -175,7 +175,11 @@ export function App({ config, startupNotices = [] }: Props) {
       const chatIO: ChatIO = {
         async read(prompt: string): Promise<string | null> {
           const normalized = prompt.replace(/\r/g, '').trim()
-          const firstLine = normalized.split('\n').find(l => l.trim().length > 0)?.trim() ?? ''
+          const firstLine =
+            normalized
+              .split('\n')
+              .find(l => l.trim().length > 0)
+              ?.trim() ?? ''
           const isIdleReadPrompt = /^you\s*>?\s*$/i.test(firstLine)
           if (normalized.length > 0 && !isIdleReadPrompt) {
             const oneLine = normalized.replace(/\s+/g, ' ').trim()
@@ -247,7 +251,9 @@ export function App({ config, startupNotices = [] }: Props) {
           ? 'Scanning repo into KB — press Enter to skip any question.'
           : 'Initializing KB — press Enter to skip any question.',
         progressLine: isScan ? '[scan] starting…' : '[init] starting…',
-        actionLine: isScan ? '[scan:action] waiting for first step…' : '[init:action] waiting for first step…',
+        actionLine: isScan
+          ? '[scan:action] waiting for first step…'
+          : '[init:action] waiting for first step…',
       })
 
       const questionIO: InitQuestionIO = {

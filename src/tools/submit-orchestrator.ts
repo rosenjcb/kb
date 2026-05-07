@@ -1,8 +1,8 @@
+import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
+import { assertSingleSentenceForSubmit } from '../core/sentence-split'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { ToolUseRequest } from '../core/types'
 import type { LLMProvider } from '../core/types'
-import { assertSingleSentenceForSubmit } from '../core/sentence-split'
-import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
 import { extractFactTriplet } from './triplet-extractor'
 
 export interface SubmitOrchestratorInput {

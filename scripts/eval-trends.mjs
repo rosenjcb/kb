@@ -53,9 +53,11 @@ function metric(artifact, key) {
   const c = artifact?.aggregate_scores?.combined
   if (key === 'usefulness') return q?.mean_usefulness ?? c?.mean_usefulness ?? null
   if (key === 'pass_rate')
-    return q?.pass_rate_correctness_and_usefulness_at_least_3 ??
+    return (
+      q?.pass_rate_correctness_and_usefulness_at_least_3 ??
       c?.pass_rate_correctness_and_usefulness_at_least_3 ??
       null
+    )
   if (key === 'correctness') return q?.mean_correctness ?? c?.mean_correctness ?? null
   if (key === 'specificity') return q?.mean_specificity ?? c?.mean_specificity ?? null
   if (key === 'evidence') return q?.mean_evidence_handling ?? c?.mean_evidence_handling ?? null
@@ -105,13 +107,7 @@ function matchesSuite(row, suite) {
   const p = suite.toLowerCase()
   if (!p) return true
   const a = row.artifact
-  const haystack = [
-    row.id,
-    a?.run?.suite,
-    a?.repository?.name,
-    a?.run_label,
-    a?.run?.run_name,
-  ]
+  const haystack = [row.id, a?.run?.suite, a?.repository?.name, a?.run_label, a?.run?.run_name]
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
@@ -189,7 +185,9 @@ function main() {
   const previous = limited.length > 1 ? limited[limited.length - 2] : null
   const delta = (a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : null)
 
-  console.log(`[eval-trends] suite=${args.suite} runs=${limited.length} (total matched=${filtered.length})`)
+  console.log(
+    `[eval-trends] suite=${args.suite} runs=${limited.length} (total matched=${filtered.length})`
+  )
   console.log(
     `[eval-trends] latest=${last.id} usefulness=${fmt(last.usefulness)} pass_rate=${fmt(last.pass_rate)} correctness=${fmt(last.correctness)}`
   )
@@ -220,4 +218,3 @@ function main() {
 }
 
 main()
-

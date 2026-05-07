@@ -236,7 +236,10 @@ export interface DeleteBaseResult {
  * Delete a named base: removes its session directory and clears any config
  * references to it. Only works for alias-style bases (not path-like).
  */
-export async function deleteBase(base: string, cwd: string = process.cwd()): Promise<DeleteBaseResult> {
+export async function deleteBase(
+  base: string,
+  cwd: string = process.cwd()
+): Promise<DeleteBaseResult> {
   const trimmed = base.trim()
   if (!trimmed) throw new Error('Base name is required')
   if (isPathLike(trimmed)) {

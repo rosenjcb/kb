@@ -95,7 +95,6 @@ describe('parseJekyllPublishOptions', () => {
     const opts = parseJekyllPublishOptions(['--apply'], '/workspace')
     expect(opts.apply).toBe(true)
   })
-
 })
 
 describe('runJekyllPublish preview', () => {
@@ -109,10 +108,7 @@ describe('runJekyllPublish preview', () => {
       { id: 'doc-1', title: 'Hello World', content: '# Hello World\n\nBody.' },
     ])
 
-    const result = await runJekyllPublish(
-      { base: baseDir, dir: siteDir, apply: false },
-      tempDir
-    )
+    const result = await runJekyllPublish({ base: baseDir, dir: siteDir, apply: false }, tempDir)
 
     expect(result.status).toBe('preview')
     expect(result.totalDocs).toBe(1)
@@ -135,10 +131,7 @@ describe('runJekyllPublish apply', () => {
       { id: 'doc-2', title: 'Second Doc', content: '# Second Doc\n\nMore content.' },
     ])
 
-    const result = await runJekyllPublish(
-      { base: baseDir, dir: siteDir, apply: true },
-      tempDir
-    )
+    const result = await runJekyllPublish({ base: baseDir, dir: siteDir, apply: true }, tempDir)
 
     expect(result.status).toBe('accepted')
     expect(result.totalDocs).toBe(2)
@@ -196,10 +189,7 @@ describe('runJekyllPublish apply', () => {
     await makeJekyllSite(siteDir)
     await makeSqliteDb(baseDir, [])
 
-    const result = await runJekyllPublish(
-      { base: baseDir, dir: siteDir, apply: false },
-      tempDir
-    )
+    const result = await runJekyllPublish({ base: baseDir, dir: siteDir, apply: false }, tempDir)
 
     expect(result.warnings.some(w => w.includes('kb init'))).toBe(true)
   })
@@ -211,7 +201,9 @@ describe('docToCollectionFilename', () => {
   })
 
   it('path-style title uses full path as slug to avoid basename collisions', () => {
-    expect(docToCollectionFilename({ title: 'src/core/AGENT_LOOP.md' })).toBe('src-core-agent-loop.md')
+    expect(docToCollectionFilename({ title: 'src/core/AGENT_LOOP.md' })).toBe(
+      'src-core-agent-loop.md'
+    )
   })
 
   it('strips .md extension before slugifying', () => {

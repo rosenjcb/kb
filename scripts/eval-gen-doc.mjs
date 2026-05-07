@@ -94,10 +94,7 @@ function tryDeleteDoc(base, docId, logPath) {
 }
 
 function wordCount(s) {
-  return String(s)
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean).length
+  return String(s).trim().split(/\s+/).filter(Boolean).length
 }
 
 function scoreDocument(scenario, docMeta, viewText) {
@@ -134,7 +131,10 @@ const INTRO = {
       'oneLineThesis',
       'kb is a local-first CLI knowledge base: facts and docs in SQLite-backed bases; query and generate so agents use team decisions.',
     ],
-    ['mentalModel', 'Bases isolate knowledge; submit/query facts; init ingests docs; docs generate uses a checklist then drafts with fact links.'],
+    [
+      'mentalModel',
+      'Bases isolate knowledge; submit/query facts; init ingests docs; docs generate uses a checklist then drafts with fact links.',
+    ],
     ['boundaries', 'Not a hosted SaaS; not a full IDE; not automatic correctness without review.'],
     ['nextLinks', 'kb init; kb query; docs list; CLAUDE.md for agent workflow.'],
   ],
@@ -152,14 +152,19 @@ const HOWTO = {
       'steps',
       'cd repo; kb init --base NAME --non-interactive; kb base use NAME; kb init --base NAME --rescan then --rescan --apply when ready; kb docs list --base NAME.',
     ],
-    ['gotchas', 'Large trees slow init; review rescan dry-run; use ci-* for throwaway bases; LLM required for LLM-heavy steps.'],
+    [
+      'gotchas',
+      'Large trees slow init; review rescan dry-run; use ci-* for throwaway bases; LLM required for LLM-heavy steps.',
+    ],
     ['verify', 'docs list shows docs; kb query returns cited hits; init completes without errors.'],
   ],
 }
 
 function writeMarkdownExport(runDir, scenarioType, docId, meta, content) {
   const rel = `export-${scenarioType}.md`
-  const safeTitle = String(meta.title ?? '').replace(/\s+/g, ' ').trim()
+  const safeTitle = String(meta.title ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
   const hdr = [
     `<!-- eval-gen-doc: scenario=${scenarioType} document_id=${docId} -->`,
     safeTitle ? `<!-- title: ${safeTitle.replace(/-->/g, '')} -->` : null,
@@ -179,7 +184,10 @@ function runScenario(base, spec, logPath, runDir) {
   for (const [, text] of spec.answers) {
     kbJson(['docs', 'generate', '--resume', sessionId, '--answer', text, '--base', base], logPath)
   }
-  const fin = kbJson(['docs', 'generate', '--resume', sessionId, '--finalize', '--base', base], logPath)
+  const fin = kbJson(
+    ['docs', 'generate', '--resume', sessionId, '--finalize', '--base', base],
+    logPath
+  )
   if (fin.status !== 'accepted') throw new Error(`finalize failed: ${JSON.stringify(fin)}`)
   const finGen = fin.generated
   if (finGen.status !== 'awaiting_review') {
@@ -199,7 +207,10 @@ function runScenario(base, spec, logPath, runDir) {
     }
   }
 
-  const acc = kbJson(['docs', 'generate', '--resume', sessionId, '--accept', '--base', base], logPath)
+  const acc = kbJson(
+    ['docs', 'generate', '--resume', sessionId, '--accept', '--base', base],
+    logPath
+  )
   if (acc.status !== 'accepted') throw new Error(`accept failed: ${JSON.stringify(acc)}`)
   const gen = acc.generated
   const docId = gen.document.id
@@ -210,7 +221,11 @@ function runScenario(base, spec, logPath, runDir) {
   const content = typeof docPayload.content === 'string' ? docPayload.content : ''
   const meta = docPayload.metadata ?? {}
   const exportMarkdown = writeMarkdownExport(runDir, spec.type, docId, meta, content)
-  const score = scoreDocument(spec.type, { ...gen, supportingFactCount: finGen.supportingFactCount }, content)
+  const score = scoreDocument(
+    spec.type,
+    { ...gen, supportingFactCount: finGen.supportingFactCount },
+    content
+  )
   return {
     scenario: spec.type,
     session_id: sessionId,
@@ -295,7 +310,11 @@ function main() {
     documents.push(runScenario(args.base, { ...HOWTO, rejectOnce }, logPath, runDir))
   } catch (e) {
     failed = true
-    fs.appendFileSync(logPath, `\nERROR: ${e instanceof Error ? e.stack || e.message : e}\n`, 'utf8')
+    fs.appendFileSync(
+      logPath,
+      `\nERROR: ${e instanceof Error ? e.stack || e.message : e}\n`,
+      'utf8'
+    )
     console.error(e instanceof Error ? e.message : e)
   }
 

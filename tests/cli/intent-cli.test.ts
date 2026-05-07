@@ -334,7 +334,8 @@ describe('intent-cli execution and enrichment', () => {
             },
             {
               metadata: { id: 'history', title: 'History' },
-              content: '# History\n\nVersion history includes release sequence and support policy updates.',
+              content:
+                '# History\n\nVersion history includes release sequence and support policy updates.',
             },
           ],
         },

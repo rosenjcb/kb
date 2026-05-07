@@ -15,9 +15,9 @@
 
 import { existsSync } from 'node:fs'
 import {
-  KbGraphWriter,
   type EntityType,
   type GraphSummary,
+  KbGraphWriter,
   kbGraphEntityIdKey,
 } from '../tools/kb-graph-writer'
 import { type CmdMode, cmd } from './cmd-ref'

@@ -21,17 +21,13 @@ describe('renderReferencesFooter', () => {
   })
 
   it('Given a fact id that is not prefixed, then formatFactUri returns the id unchanged', () => {
-    expect(renderReferencesFooter([{ id: 'raw-id', factText: 'Plain.' }])).toContain(
-      '`raw-id`'
-    )
+    expect(renderReferencesFooter([{ id: 'raw-id', factText: 'Plain.' }])).toContain('`raw-id`')
   })
 })
 
 describe('appendReferencesFooter', () => {
   it('Given a body and facts, then appends footer with blank line separation', () => {
-    const result = appendReferencesFooter('# Title\n\nBody.\n', [
-      { id: 'fact-1', factText: 'F.' },
-    ])
+    const result = appendReferencesFooter('# Title\n\nBody.\n', [{ id: 'fact-1', factText: 'F.' }])
     expect(result).toBe('# Title\n\nBody.\n\n## References\n\n- F. — `fact://1`\n')
   })
 

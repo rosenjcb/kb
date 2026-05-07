@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { deriveDocumentTitle, squeezeKbDocumentTitle } from '../../src/core/doc-generate-title'
 import type { DocGenerateSession } from '../../src/core/doc-generate-session'
+import { deriveDocumentTitle, squeezeKbDocumentTitle } from '../../src/core/doc-generate-title'
 
 function minimalSession(answers: DocGenerateSession['answers'], prompt = 'p'): DocGenerateSession {
   return {
@@ -38,7 +38,11 @@ describe('deriveDocumentTitle', () => {
     const t = deriveDocumentTitle(
       minimalSession([
         { key: 'documentTitle', question: '', answer: 'KB overview for AI-assisted development' },
-        { key: 'oneLineThesis', question: '', answer: 'This is a very long thesis that would be bad as a title.' },
+        {
+          key: 'oneLineThesis',
+          question: '',
+          answer: 'This is a very long thesis that would be bad as a title.',
+        },
       ])
     )
     expect(t).toBe('KB overview for AI-assisted development')
@@ -47,7 +51,11 @@ describe('deriveDocumentTitle', () => {
   it('falls back to squeezed thesis when documentTitle missing', () => {
     const t = deriveDocumentTitle(
       minimalSession([
-        { key: 'oneLineThesis', question: '', answer: 'Local-first KB for grounded agent context.' },
+        {
+          key: 'oneLineThesis',
+          question: '',
+          answer: 'Local-first KB for grounded agent context.',
+        },
       ])
     )
     expect(t).toBe('Local-first KB for grounded agent context')

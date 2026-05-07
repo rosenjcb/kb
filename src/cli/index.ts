@@ -11,9 +11,9 @@ import {
   defaultLogsDir,
   estimateCost,
 } from '../core/telemetry'
-import { KbGraphWriter } from '../tools/kb-graph-writer'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
+import { KbGraphWriter } from '../tools/kb-graph-writer'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
 import { createPrinter } from '../ui/printer'
 import {
@@ -38,6 +38,7 @@ import {
   formatPrerequisiteError,
 } from './cli-prerequisites'
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from './cmd-ref'
+import { CodeGraphStore } from '../tools/code-graph-store'
 import { printConfigHelp, runConfigCommand } from './config-cli'
 import {
   DocsDeleteError,
@@ -53,13 +54,13 @@ import {
   printDocsGenerateHelp,
   runDocsGenerate,
 } from './docs-generate-cli'
-import { FactsCommandError, runFactsCommand } from './facts-cli'
 import {
   DocsRenameError,
   parseDocsRenameCommand,
   printDocsRenameHelp,
   runDocsRename,
 } from './docs-rename-cli'
+import { FactsCommandError, runFactsCommand } from './facts-cli'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
 import { parseInitCommand, parseScanCommand, runKbInit } from './init-cli'
 import {
@@ -131,7 +132,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  config      Inspect or update persistent config',
     '  init        Build a KB from the current repo',
     '  scan        Refresh a KB with content from the current repo',
-    '  graph       Inspect or edit the knowledge graph',
+      '  graph       Inspect or edit the knowledge graph',
     '  docs        Browse KB documents',
     '  facts       List, search, or show KB facts',
     '  chat        Start an interactive KB chat session (--verbose / --debug for human orchestration)',
@@ -828,7 +829,12 @@ export async function runMainWithOutput(
             const graphWriter = new KbGraphWriter(KbGraphWriter.dbPathForBase(intentBaseDir))
             await graphWriter.open()
             try {
-              payload.query = await expandQueryWithGraph(originalQuery, graphWriter)
+              const codeStore = new CodeGraphStore(KbGraphWriter.dbPathForBase(intentBaseDir))
+              try {
+                payload.query = await expandQueryWithGraph(originalQuery, graphWriter, codeStore)
+              } finally {
+                codeStore.close()
+              }
               for (const qRel of [preRewriteQueryTruth, originalQuery]) {
                 if (!qRel) continue
                 try {
