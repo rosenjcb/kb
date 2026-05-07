@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseInitCommand, parseScanCommand, runKbInit } from '../../src/cli/init-cli'
 import { buildFrozenSourceSnapshotDoc } from '../../src/cli/init-source-snapshots'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
+import { KbGraphWriter } from '../../src/tools/kb-graph-writer'
 import { SqliteDocumentWriter } from '../../src/tools/sqlite-document-writer'
 
 const tempDirs: string[] = []
@@ -285,9 +286,12 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.status).toBe('accepted')
     expect(result.completedCycles).toContain('pass-graph')
-    await expect(
-      readFile(path.join(kbHomeDir, 'sessions', 'graph-disabled-test', '.kb-graph.duckdb'), 'utf8')
-    ).rejects.toThrow()
+    const graphWriter = new KbGraphWriter(
+      path.join(kbHomeDir, 'sessions', 'graph-disabled-test', '.kb-index.sqlite')
+    )
+    const summary = await graphWriter.getSummary()
+    await graphWriter.close()
+    expect(summary.totalEntities).toBe(0)
   })
 
   it('Given a custom progress sink, then init progress updates route there instead of writing directly to stderr', async () => {

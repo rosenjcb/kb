@@ -18,8 +18,8 @@ describe('parseRelationalConceptPair', () => {
   })
 
   it('parses relationship between X and Y', () => {
-    expect(parseRelationalConceptPair('relationship between DuckDB and the graph')).toEqual({
-      phraseA: 'DuckDB',
+    expect(parseRelationalConceptPair('relationship between SQLite and the graph')).toEqual({
+      phraseA: 'SQLite',
       phraseB: 'the graph',
     })
   })
