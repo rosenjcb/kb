@@ -43,7 +43,10 @@ export function createKBToolsRegistry(
 
   if (config) resolveFeatureFlags(config)
   const indexer = new SqliteKbIndexer({ dbPath: path.join(storageDir, '.kb-index.sqlite') })
-  const reader = new FactsDocumentReader(path.join(storageDir, '.kb-index.sqlite'))
+  const reader = new FactsDocumentReader(
+    path.join(storageDir, '.kb-index.sqlite'),
+    orchestrator?.taskProvider
+  )
 
   const readToolDef: ToolDefinition = {
     name: 'read_facts',
