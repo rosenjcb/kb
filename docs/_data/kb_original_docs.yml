@@ -6,6 +6,8 @@ docs:
     url: /src-tools-graph.html
   - title: src/prompts/subagent-delegation.md
     url: /src-prompts-subagent-delegation.html
+  - title: src/prompts/query-expand.md
+    url: /src-prompts-query-expand.html
   - title: src/prompts/init-synthesis.md
     url: /src-prompts-init-synthesis.html
   - title: src/prompts/init-refinement.md
@@ -66,12 +68,10 @@ docs:
     url: /skills-kb-dev-workflow-skill.html
   - title: skills/agent-compare-eval/SKILL.md
     url: /skills-agent-compare-eval-skill.html
+  - title: eval/suites/README.md
+    url: /eval-suites-readme.html
   - title: docs/index.md
     url: /docs-index.html
-  - title: docs/dogfood-docs-generate-export.md
-    url: /docs-dogfood-docs-generate-export.html
-  - title: docs/_graph_pages/knowledge-graph.md
-    url: /docs-graph-pages-knowledge-graph.html
   - title: docs/JEKYLL.md
     url: /docs-jekyll.html
   - title: TESTING.md
@@ -80,7 +80,13 @@ docs:
     url: /readme.html
   - title: PHILOSOPHY.md
     url: /philosophy.html
+  - title: EVALUATION.md
+    url: /evaluation.html
   - title: DESIGN.md
     url: /design.html
   - title: CLAUDE.md
     url: /claude.html
+  - title: docs/dogfood-docs-generate-export.md
+    url: /docs-dogfood-docs-generate-export.html
+  - title: docs/_graph_pages/knowledge-graph.md
+    url: /docs-graph-pages-knowledge-graph.html

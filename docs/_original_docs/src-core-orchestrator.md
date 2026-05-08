@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/ORCHESTRATOR.md
-date: '2026-05-03'
+date: '2026-05-08'
 kb_id: src-core-orchestrator-md
 tags:
   - original-source
@@ -218,7 +218,7 @@ flowchart LR
 ## Notes
 
 - **Isolation**: v1 uses a **forked message thread** and **shared storage**; nested `~/.kb/sessions/.../subagents/...` on-disk forks are not implemented here.
-- **Rescan apply strategy**: Incremental `kb init --rescan` reconciliation strategy (claim extraction, evidence checks, mutation planning, apply/verify) is documented in ticket `108` at `tickets/linear/108-rescan-apply-orchestrator.md`.
+- **Scan apply strategy**: Incremental `kb scan` reconciliation strategy (claim extraction, evidence checks, mutation planning, apply/verify) is documented in ticket `108` at `tickets/linear/108-rescan-apply-orchestrator.md`.
 - **Plan preview diffs**: Rescan plan output uses shared unified-diff helpers in `src/core/git-diff-preview.ts` so preview rendering is reusable by other orchestrators.
 
 ---

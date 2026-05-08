@@ -1,7 +1,7 @@
 ---
 layout: default
 title: How to start your knowledge base with kb
-date: '2026-05-03'
+date: '2026-05-08'
 kb_id: how-to-start-your-knowledge-base-with-kb
 tags:
   - docs-generate

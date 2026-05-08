@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/facts-architecture.md
-date: '2026-05-03'
+date: '2026-05-08'
 kb_id: src-core-facts-architecture-md
 tags:
   - original-source
@@ -15,7 +15,7 @@ categories:
 
 **Contract:** the KB answers questions and drives authoring from **atomic facts** in the `facts` store. **Markdown documents are not a retrieval substrate for Q&A.** They exist as human-readable artifacts: originals (with facts extracted from them) or generated synthesis, and they matter most at **publish** time.
 
-This is the platform mental model for `kb query`, `kb docs generate`, ingest (`kb init` / `kb init --rescan`), and `kb publish`.
+This is the platform mental model for `kb query`, `kb docs generate`, ingest (`kb init` / `kb scan`), and `kb publish`.
 
 ---
 
@@ -29,7 +29,7 @@ This is the platform mental model for `kb query`, `kb docs generate`, ingest (`k
 
 ---
 
-## 2. Ingest: init / `kb init --rescan` → facts, not “index pages for hybrid search”
+## 2. Ingest: init / `kb scan` → facts, not “index pages for hybrid search”
 
 **Target pipeline** when reading source pages (README, docs, crawled markdown, etc.):
 
@@ -129,9 +129,9 @@ Fact block in prompts; refuse when no facts; **`acceptDraft`** guards zero **`su
 
 **Done:**
 - **`markdown-facts`** init cycle runs after **`read-inputs`**, calling `ingestSourceMarkdownFilesAsFacts` (`src/core/scan-fact-ingest.ts`) over `context.sourceFiles` — same segmentation policy as document writer ingest, `source_ref` like `README.md#s0`, placeholder triplets.
-- **`code-facts`** init cycle runs right after **`markdown-facts`**. It calls `ingestCodeFilesAsFacts` (`src/core/code-fact-extract.ts`) over `context.codeFiles`: a per-file LLM call returns `{ module_summary, facts: [{ sentence, triplet, anchor }] }`; rows land as `source_kind = 'import_code'` with `source_ref = code:<path>@<anchor>#<contentHash>`. Per-anchor diff against prior rows handles supersede/tombstone, so **rerunning on unchanged content is idempotent** and `kb init --rescan` only re-extracts files whose `sha256` changed (tracked in `code-facts-manifest.json`). The graph is still built from fact triples (`rebuildFactGraph`); **no separate AST table**.
+- **`code-facts`** init cycle runs right after **`markdown-facts`**. It calls `ingestCodeFilesAsFacts` (`src/core/code-fact-extract.ts`) over `context.codeFiles`: a per-file LLM call returns `{ module_summary, facts: [{ sentence, triplet, anchor }] }`; rows land as `source_kind = 'import_code'` with `source_ref = code:<path>@<anchor>#<contentHash>`. Per-anchor diff against prior rows handles supersede/tombstone, so **rerunning on unchanged content is idempotent** and `kb scan` only re-extracts files whose `sha256` changed (tracked in `code-facts-manifest.json`). The graph is still built from fact triples (`rebuildFactGraph`); **no separate AST table**.
 
-**Surface for refreshing sources:** **`kb init --rescan`**. There is no **`kb scan`** command.
+**Surface for refreshing sources:** **`kb scan`**.
 
 ### Phase D — Documents as artifacts
 

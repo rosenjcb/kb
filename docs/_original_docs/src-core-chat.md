@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/CHAT.md
-date: '2026-05-03'
+date: '2026-05-08'
 kb_id: src-core-chat-md
 tags:
   - original-source

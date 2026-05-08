@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/TUI.md
-date: '2026-05-03'
+date: '2026-05-08'
 kb_id: src-core-tui-md
 tags:
   - original-source
@@ -44,9 +44,9 @@ Do not treat the TUI path as extra polish. It is part of the product surface.
 Examples:
 
 - `kb init` must support both its command-line path and the TUI `/init` path.
-- `kb init --rescan` must support both its command-line path and the TUI `/init --rescan` path.
+- `kb scan` must support both its command-line path and the TUI `/scan` path.
 - `kb base use` / `kb base delete` must work as both `kb base …` (CLI) and `/base use …` / `/base delete …` (TUI).
-- `kb sync` must work as both `kb sync` (CLI) and `/sync` (TUI) when repo-maintenance commands are exposed.
+- `kb sync` must work as both `kb sync` (CLI) and `/sync` (TUI) when release-install commands are exposed.
 - A help flag should work from both `kb --help` and `kb init --help`.
 - A normal intent command like `kb query "topic"` is already non-interactive by shape and should not need an extra mode flag.
 - The public intent surface is exactly `kb query`, `kb submit`, and `kb invalidate`, mirrored by `/query`, `/submit`, and `/invalidate` in the TUI shell.
@@ -73,15 +73,16 @@ For commands that can mutate durable KB state or external systems, prefer a cons
 
 - Default to a non-mutating mode unless the user explicitly opts into writes.
 - Use `--apply` as the shared opt-in flag for real writes.
-- Use `--dry-run` for non-mutating execution when the command can simulate full results.
-- Use `preview` language only when the command is specifically showing a human-oriented diff or reconciliation view rather than a full dry-run execution.
-- If a command supports both `--apply` and `--dry-run`, they should be mutually exclusive.
+- Do not expose a "preview mode" flag — default (no flag) is already preview/no-op.
+- Use `--preview` only for `kb invalidate`, where the default is to apply (reversed semantics).
 - Help text and success output should make the default clear so users are not surprised when a command previews instead of writing.
 
 Current repo direction:
 
-- `kb publish ...` should remain dry-run by default and only write on `--apply`.
-- `kb invalidate` applies KB document updates by default; use `--preview` for plan-only. Other mutating flows (for example `kb init --rescan`, `kb publish`) keep `--apply` as the write opt-in per the bullets above.
+- `kb publish ...` previews by default and only writes on `--apply`.
+- `kb scan` previews by default and only writes on `--apply`.
+- `kb invalidate` previews by default and only writes on `--apply`.
+- Any preview-by-default command should, in interactive mode, show the plan then ask "Apply? [y/N]" rather than requiring the user to re-run with `--apply` manually.
 - Avoid inventing command-specific synonyms for "really do it" when `--apply` already fits.
 
 ## Validation Checklist

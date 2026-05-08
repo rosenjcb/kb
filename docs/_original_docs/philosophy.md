@@ -1,7 +1,7 @@
 ---
 layout: default
 title: PHILOSOPHY.md
-date: '2026-05-03'
+date: '2026-05-08'
 kb_id: philosophy-md
 tags:
   - original-source
@@ -25,7 +25,9 @@ categories:
 
 ### Descriptive, Not Prescriptive
 
-`kb` doesn't tell you how to work. It just records what actually happened, not what some process says should happen. No ceremonies, no templates, no "best practices" unless you want them. The only thing that matters is what your team actually does.
+kb doesn’t tell you how to work. It just records what happened.
+
+Your agent talks to a separate harness backed by a semantic graph built from code and markdown. No workflows, templates, or process layer on top.
 
 The [Agile Manifesto](https://agilemanifesto.org) still says it best:
 

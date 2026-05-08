@@ -284,7 +284,7 @@ const MARKDOWN_SOURCE_EXCLUDE_DIRS = new Set([
 ])
 
 const MARKDOWN_TEXT_EXTENSIONS = new Set(['.md', '.markdown', '.mdown', '.mdx', '.txt'])
-const MAX_MARKDOWN_SOURCE_FILES = 500
+const MAX_MARKDOWN_SOURCE_FILES = 100
 const MAX_MARKDOWN_SOURCE_TOTAL_CHARS = 12_000_000
 const MAX_MARKDOWN_SINGLE_FILE_CHARS = 2_000_000
 
@@ -1032,9 +1032,7 @@ export const SOURCE_CODE_EXCLUDE_DIRS = new Set([
   '_data',
   '_graph_pages',
 ])
-const SOURCE_CODE_MAX_FILES = 200
 export const SOURCE_CODE_PER_FILE_CHARS = 400
-const SOURCE_CODE_MAX_TOTAL_CHARS = 60_000
 
 /**
  * Crawl the repo for source code files and return a lightweight index:
@@ -1044,12 +1042,8 @@ const SOURCE_CODE_MAX_TOTAL_CHARS = 60_000
  */
 export async function crawlSourceCode(cwd: string): Promise<Record<string, string>> {
   const result: Record<string, string> = {}
-  let totalChars = 0
 
   async function walk(dir: string): Promise<void> {
-    if (totalChars >= SOURCE_CODE_MAX_TOTAL_CHARS) return
-    if (Object.keys(result).length >= SOURCE_CODE_MAX_FILES) return
-
     let entries: { name: string; isDir: boolean }[]
     try {
       const raw = await readdir(dir, { withFileTypes: true })
@@ -1059,8 +1053,6 @@ export async function crawlSourceCode(cwd: string): Promise<Record<string, strin
     }
 
     for (const entry of entries) {
-      if (totalChars >= SOURCE_CODE_MAX_TOTAL_CHARS) break
-      if (Object.keys(result).length >= SOURCE_CODE_MAX_FILES) break
       if (entry.name.startsWith('.')) continue
 
       if (entry.isDir) {
@@ -1075,7 +1067,6 @@ export async function crawlSourceCode(cwd: string): Promise<Record<string, strin
           const snippet = content.slice(0, SOURCE_CODE_PER_FILE_CHARS)
           const relPath = path.relative(cwd, fullPath)
           result[relPath] = snippet
-          totalChars += snippet.length
         } catch {
           // unreadable — skip
         }
