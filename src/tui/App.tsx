@@ -1,5 +1,5 @@
 import { Box, useApp, useInput } from 'ink'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   deleteBase,
   formatDeleteBaseResult,
@@ -98,12 +98,12 @@ export function App({ config, startupNotices = [] }: Props) {
     return id
   }, [])
 
+  const startupNoticesRef = useRef(startupNotices)
   useEffect(() => {
-    if (startupNotices.length === 0) return
-    for (const notice of startupNotices) {
+    for (const notice of startupNoticesRef.current) {
       addEntry({ type: 'info', content: notice })
     }
-  }, [startupNotices, addEntry])
+  }, [addEntry])
 
   const updateEntry = useCallback((id: string, patch: Partial<Omit<HistoryEntry, 'id'>>) => {
     setHistory(prev => prev.map(e => (e.id === id ? { ...e, ...patch } : e)))
@@ -175,7 +175,11 @@ export function App({ config, startupNotices = [] }: Props) {
       const chatIO: ChatIO = {
         async read(prompt: string): Promise<string | null> {
           const normalized = prompt.replace(/\r/g, '').trim()
-          const firstLine = normalized.split('\n').find(l => l.trim().length > 0)?.trim() ?? ''
+          const firstLine =
+            normalized
+              .split('\n')
+              .find(l => l.trim().length > 0)
+              ?.trim() ?? ''
           const isIdleReadPrompt = /^you\s*>?\s*$/i.test(firstLine)
           if (normalized.length > 0 && !isIdleReadPrompt) {
             const oneLine = normalized.replace(/\s+/g, ' ').trim()
@@ -247,7 +251,9 @@ export function App({ config, startupNotices = [] }: Props) {
           ? 'Scanning repo into KB — press Enter to skip any question.'
           : 'Initializing KB — press Enter to skip any question.',
         progressLine: isScan ? '[scan] starting…' : '[init] starting…',
-        actionLine: isScan ? '[scan:action] waiting for first step…' : '[init:action] waiting for first step…',
+        actionLine: isScan
+          ? '[scan:action] waiting for first step…'
+          : '[init:action] waiting for first step…',
       })
 
       const questionIO: InitQuestionIO = {
@@ -579,7 +585,10 @@ export function App({ config, startupNotices = [] }: Props) {
     ]
   )
 
-  const slashSuggestions = getSlashCommandSuggestions(inputValue, mode)
+  const slashSuggestions = useMemo(
+    () => getSlashCommandSuggestions(inputValue, mode),
+    [inputValue, mode]
+  )
 
   useEffect(() => {
     setSelectedSuggestionIndex(current => {

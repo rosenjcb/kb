@@ -16,7 +16,10 @@ export interface FactLaneDefinition {
 const FACT_LANES: FactLaneDefinition[] = [
   { id: 'build', keywords: ['build', 'cmake', 'make', 'compile', 'install', 'dependency'] },
   { id: 'config', keywords: ['config', 'flag', 'option', 'define', 'setting'] },
-  { id: 'platform', keywords: ['platform', 'windows', 'linux', 'macos', 'android', 'web', 'opengl'] },
+  {
+    id: 'platform',
+    keywords: ['platform', 'windows', 'linux', 'macos', 'android', 'web', 'opengl'],
+  },
   { id: 'architecture', keywords: ['architecture', 'module', 'design', 'api', 'system'] },
   { id: 'contrib', keywords: ['contrib', 'contributing', 'style', 'convention', 'guideline'] },
   { id: 'roadmap', keywords: ['roadmap', 'future', 'history', 'version', 'release'] },
@@ -54,4 +57,3 @@ export function inferQueryLaneWeights(query: string): Partial<Record<FactLaneId,
   }
   return weights
 }
-

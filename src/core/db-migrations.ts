@@ -343,6 +343,82 @@ const MIGRATIONS: Migration[] = [
         ON kb_graph_relationships(doc_id);
     `,
   },
+  {
+    version: 10,
+    name: 'code_graph_tables',
+    sql: `
+      CREATE TABLE IF NOT EXISTS kg_nodes (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        subkind TEXT,
+        name TEXT NOT NULL,
+        qualified_name TEXT,
+        path TEXT,
+        file_id TEXT,
+        language TEXT,
+        span_start INTEGER,
+        span_end INTEGER,
+        exported INTEGER NOT NULL DEFAULT 0,
+        source TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        props_json TEXT NOT NULL DEFAULT '{}',
+        content_hash TEXT,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_kg_nodes_kind ON kg_nodes(kind);
+      CREATE INDEX IF NOT EXISTS idx_kg_nodes_file_id ON kg_nodes(file_id);
+      CREATE INDEX IF NOT EXISTS idx_kg_nodes_path ON kg_nodes(path);
+
+      CREATE TABLE IF NOT EXISTS kg_edges (
+        id TEXT PRIMARY KEY,
+        from_id TEXT NOT NULL,
+        to_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        source TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        props_json TEXT NOT NULL DEFAULT '{}',
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (from_id) REFERENCES kg_nodes(id) ON DELETE CASCADE,
+        FOREIGN KEY (to_id) REFERENCES kg_nodes(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_kg_edges_from ON kg_edges(from_id);
+      CREATE INDEX IF NOT EXISTS idx_kg_edges_to ON kg_edges(to_id);
+      CREATE INDEX IF NOT EXISTS idx_kg_edges_type ON kg_edges(type);
+
+      CREATE TABLE IF NOT EXISTS kg_file_state (
+        file_id TEXT PRIMARY KEY,
+        path TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        extractor TEXT NOT NULL,
+        schema_version INTEGER NOT NULL DEFAULT 1,
+        indexed_at TEXT NOT NULL,
+        success INTEGER NOT NULL DEFAULT 1,
+        error_text TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS kg_semantic_bridge (
+        code_node_id TEXT NOT NULL,
+        semantic_entity_id TEXT NOT NULL,
+        match_type TEXT NOT NULL DEFAULT 'name_match',
+        confidence REAL NOT NULL DEFAULT 0.8,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (code_node_id, semantic_entity_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_kg_semantic_bridge_entity
+        ON kg_semantic_bridge(semantic_entity_id);
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS kg_nodes_fts USING fts5(
+        id UNINDEXED,
+        name,
+        qualified_name,
+        path,
+        tokenize='unicode61'
+      );
+    `,
+  },
 ]
 
 /**

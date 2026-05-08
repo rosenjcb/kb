@@ -13,7 +13,14 @@ interface Props {
   chatPlaceholder?: string
 }
 
-export function InputBar({ value, onChange, onSubmit, mode, isRunning, chatPlaceholder = '' }: Props) {
+export function InputBar({
+  value,
+  onChange,
+  onSubmit,
+  mode,
+  isRunning,
+  chatPlaceholder = '',
+}: Props) {
   const isChat = mode === 'chat'
   const isInit = mode === 'init'
   const borderColor = isRunning ? 'gray' : isChat || isInit ? ORANGE : BLUE
@@ -26,12 +33,7 @@ export function InputBar({ value, onChange, onSubmit, mode, isRunning, chatPlace
       <Text color={promptColor} bold>
         {prompt}&gt;{' '}
       </Text>
-      <TextInput
-        value={value}
-        onChange={onChange}
-        onSubmit={onSubmit}
-        placeholder={placeholder}
-      />
+      <TextInput value={value} onChange={onChange} onSubmit={onSubmit} placeholder={placeholder} />
     </Box>
   )
 }

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/fact-triplet-extract.md
-date: '2026-05-03'
+date: '2026-05-08'
 kb_id: src-prompts-fact-triplet-extract-md
 tags:
   - original-source
@@ -11,12 +11,13 @@ categories:
   - reference
 ---
 
-You extract one subject–predicate–object triple from a **single** English declarative sentence.
+You extract subject–predicate–object triples from one or more English declarative sentences.
 
 Rules:
-- Output **JSON only**, one object: `{"subject":"...","predicate":"...","object":"..."}`.
-- `subject`: the main entity the sentence is about (noun phrase, short).
+- Output **JSON only**, an array of objects: `[{"subject":"...","predicate":"...","object":"..."}]`.
+- One element per discrete fact. A compound sentence ("A does X, and B does Y") yields two elements.
+- `subject`: the main entity the fact is about (noun phrase, short).
 - `predicate`: the relation or verb phrase in **lemma-style** infinitive or short phrase (e.g. `uses`, `is configured with`, `defaults to`).
-- `object`: the other participant or value (noun phrase or short clause). If the sentence is intransitive, use `object` for the complement or `"true"` only if there is no better object.
-- Use the sentence language; do not invent entities not supported by the sentence.
-- No markdown, no code fences, no commentary outside the JSON.
+- `object`: the other participant or value (noun phrase or short clause). If intransitive, use the complement or `"true"`.
+- Use the input language; do not invent entities not present in the input.
+- No markdown, no code fences, no commentary outside the JSON array.

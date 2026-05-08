@@ -7,20 +7,21 @@
  */
 
 import path from 'node:path'
-import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
 import { getKbHomeDir } from '../cli/base-selection'
 import type { KbConfig } from '../cli/kb-config'
 import { resolveFeatureFlags, resolveGraphEnabled } from '../cli/kb-config'
 import { DOC_TYPES } from '../core/doc-taxonomy'
+import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
 import type { StreamManager } from '../core/runtime/stream-manager'
 import type { ToolExecutor } from '../core/tool-registry'
 import { createToolRegistry } from '../core/tool-registry'
 import type { LLMProvider, ToolDefinition } from '../core/types'
-import { KbGraphWriter } from './kb-graph-writer'
+import { CodeGraphStore } from './code-graph-store'
 import { FactsDocumentReader } from './facts-document-reader'
+import type { QueryDocumentsInput, QueryResponse } from './facts-document-reader'
 import { extractGraph } from './graph-entity-extractor'
 import { invalidateFactTool } from './invalidate-fact-tool'
-import type { QueryDocumentsInput, QueryResponse } from './facts-document-reader'
+import { KbGraphWriter } from './kb-graph-writer'
 import { SqliteKbIndexer } from './sqlite-kb-index'
 import { executeSubagentTask } from './task'
 
@@ -42,7 +43,10 @@ export function createKBToolsRegistry(
 
   if (config) resolveFeatureFlags(config)
   const indexer = new SqliteKbIndexer({ dbPath: path.join(storageDir, '.kb-index.sqlite') })
-  const reader = new FactsDocumentReader(path.join(storageDir, '.kb-index.sqlite'))
+  const reader = new FactsDocumentReader(
+    path.join(storageDir, '.kb-index.sqlite'),
+    orchestrator?.taskProvider
+  )
 
   const readToolDef: ToolDefinition = {
     name: 'read_facts',
@@ -133,7 +137,10 @@ export function createKBToolsRegistry(
     }
     const t = payload.triplet
     const triplet =
-      t && typeof t.subject === 'string' && typeof t.predicate === 'string' && typeof t.object === 'string'
+      t &&
+      typeof t.subject === 'string' &&
+      typeof t.predicate === 'string' &&
+      typeof t.object === 'string'
         ? { subject: t.subject.trim(), predicate: t.predicate.trim(), object: t.object.trim() }
         : placeholderTripletFromFactText(payload.factText)
     return indexer.upsertFact({
@@ -180,7 +187,8 @@ export function createKBToolsRegistry(
 
   const upsertGraphFromTextToolDef: ToolDefinition = {
     name: 'upsert_graph_from_text',
-    description: 'Extract graph entities/relationships from text and upsert them into the KB graph store',
+    description:
+      'Extract graph entities/relationships from text and upsert them into the KB graph store',
     schema: {
       type: 'object',
       properties: {
@@ -277,6 +285,107 @@ export function createKBToolsRegistry(
 
     return { enabled: true, invalidatedRelationships, documentIds }
   })
+
+  const codeGraphDbPath = path.join(storageDir, '.kb-index.sqlite')
+
+  registry.register(
+    'search_code_symbols',
+    {
+      name: 'search_code_symbols',
+      description:
+        'Full-text search over code symbols (functions, classes, interfaces, etc.) in the code graph. Use this when the user asks about specific code constructs.',
+      schema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Symbol name or keyword to search for' },
+          kind: {
+            type: 'string',
+            description:
+              'Optional symbol kind filter (e.g. ClassDeclaration, FunctionDeclaration, InterfaceDeclaration)',
+          },
+          limit: { type: 'number', description: 'Max results (default 20)' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+    },
+    async input => {
+      const { query, kind, limit } = input as { query: string; kind?: string; limit?: number }
+      const store = new CodeGraphStore(codeGraphDbPath)
+      try {
+        return store.searchSymbols(query, { kind, limit })
+      } finally {
+        store.close()
+      }
+    }
+  )
+
+  registry.register(
+    'get_code_neighbors',
+    {
+      name: 'get_code_neighbors',
+      description:
+        'Get the immediate neighbors (imports, exports, extends, implements) of a code node by its id. Use after search_code_symbols to explore relationships.',
+      schema: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description: 'Node id, e.g. file:src/tools/foo.ts or symbol:src/tools/foo.ts#Bar',
+          },
+          edgeTypes: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Filter to specific edge types: IMPORTS_FILE, EXPORTS_SYMBOL, EXTENDS, IMPLEMENTS',
+          },
+          direction: {
+            type: 'string',
+            enum: ['out', 'in', 'both'],
+            description: 'Edge direction (default: both)',
+          },
+          limit: { type: 'number', description: 'Max results (default 50)' },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+    },
+    async input => {
+      const { id, edgeTypes, direction, limit } = input as {
+        id: string
+        edgeTypes?: string[]
+        direction?: 'out' | 'in' | 'both'
+        limit?: number
+      }
+      const store = new CodeGraphStore(codeGraphDbPath)
+      try {
+        return store.getNeighbors(id, { edgeTypes, direction, limit })
+      } finally {
+        store.close()
+      }
+    }
+  )
+
+  registry.register(
+    'get_code_graph_summary',
+    {
+      name: 'get_code_graph_summary',
+      description: 'Get a summary of the indexed code graph (node/edge counts, last indexed time).',
+      schema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+    async () => {
+      const store = new CodeGraphStore(codeGraphDbPath)
+      try {
+        return store.getSummary()
+      } finally {
+        store.close()
+      }
+    }
+  )
 
   if (orchestrator?.taskProvider) {
     const taskToolDef: ToolDefinition = {

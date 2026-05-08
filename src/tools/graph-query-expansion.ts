@@ -1,4 +1,5 @@
 import type { KbGraphWriter } from './kb-graph-writer'
+import type { CodeGraphStore } from './code-graph-store'
 
 export function toGraphQuerySlugs(query: string): string[] {
   const tokens = query
@@ -19,21 +20,38 @@ export function toGraphQuerySlugs(query: string): string[] {
   return [...new Set([...tokens, ...bigrams])].slice(0, 16)
 }
 
-/** Max expansion phrases appended to the raw query (triplets + verbs + neighbor names). */
-const MAX_GRAPH_EXPANSION_PHRASES = 18
+/** Max expansion phrases from semantic graph (triplets + verbs + neighbor names). */
+const MAX_SEMANTIC_EXPANSION = 18
+/** Max symbol names appended from the code graph bridge. */
+const MAX_CODE_EXPANSION = 8
 
 export async function expandQueryWithGraph(
   query: string,
-  graphWriter: KbGraphWriter
+  graphWriter: KbGraphWriter,
+  codeStore?: CodeGraphStore
 ): Promise<string> {
   try {
     const slugs = toGraphQuerySlugs(query)
     if (slugs.length === 0) return query
 
     const terms = await graphWriter.expandQuery(slugs)
-    if (terms.length === 0) return query
 
-    return `${query} ${terms.slice(0, MAX_GRAPH_EXPANSION_PHRASES).join(' ')}`
+    // Bridge into the code graph: find code symbols linked to the matched
+    // semantic entities and append their names for lexical boosting.
+    let codeTerms: string[] = []
+    if (codeStore) {
+      try {
+        const codeNodes = codeStore.expandWithCodeNeighbors(slugs, MAX_CODE_EXPANSION)
+        codeTerms = [...new Set(codeNodes.map(n => n.name))].slice(0, MAX_CODE_EXPANSION)
+      } catch {
+        // code graph expansion is best-effort
+      }
+    }
+
+    const allTerms = [...terms.slice(0, MAX_SEMANTIC_EXPANSION), ...codeTerms]
+    if (allTerms.length === 0) return query
+
+    return `${query} ${allTerms.join(' ')}`
   } catch {
     return query
   }

@@ -24,19 +24,6 @@ Do not invent a new scenario or JSON shape. Follow `EVALUATION.md` as the source
 - No publish step inside eval-run (artifacts only)
 - Artifact: `~/.kb/evaluations/<run-name>/artifact.json` by default
 
-## Canonical question set (raylib)
-
-Use these eight questions unchanged for `--suite raylib`:
-
-1. What is raylib for, and what are its main capabilities?
-2. How does raylib's architecture work, including modules and platform support?
-3. How do I install and build raylib, including dependencies and build systems?
-4. What configuration options and compile flags does raylib support?
-5. How does raylib handle graphics backends and platform-specific rendering?
-6. What are the coding conventions and style guidelines for contributing to raylib?
-7. What are the main gotchas, constraints, and known limitations of raylib?
-8. What does the raylib roadmap say about future plans, and what is the recent version history?
-
 ## Automated runner (single entry)
 
 From kb repo root (`pnpm run build` first):
@@ -61,18 +48,38 @@ Flags: `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`
 
 Artifacts default under `~/.kb/evaluations/<run-name>/`.
 
-### Manual equivalent (debug only)
+## Comparing runs — always use eval:trends
+
+`npm run eval:trends` is the canonical comparison tool. **Never write ad-hoc Python or bash scripts to compare run results.** It shows structural metrics (docs, entities, relationships, avg query result count) for every run, plus score columns when `--auto-score` was used.
 
 ```bash
-npm run refresh:global
-cd ~/raylib
-kb init --base ci-raylib-YYYYMMDD --non-interactive
-kb logs list --command init --limit 3
-kb docs list --base ci-raylib-YYYYMMDD --output json
-kb graph --base ci-raylib-YYYYMMDD
-kb query "<Q1>" --base ci-raylib-YYYYMMDD --output json   # repeat x8
-kb publish jekyll --base ci-raylib-YYYYMMDD --dir ~/raylib-kb-docs/ --apply
+# Compare all kb suite runs (structural + score trends)
+npm run eval:trends -- --suite kb
+
+# Compare all raylib suite runs
+npm run eval:trends -- --suite raylib [--limit 10]
 ```
+
+Output columns: `date | run | docs | ent | rels | res | use | pass | corr | src`
+
+- `docs` — documents written during init
+- `ent` / `rels` — semantic graph entities and relationships
+- `res` — average query result count (retrieval breadth proxy)
+- `use` / `pass` / `corr` — scored axes (populated only when `--auto-score` was used and scores are non-zero)
+
+Score deltas and sparkline trends are printed above the table. Structural deltas (first→latest, prev→latest) are always shown even without scoring.
+
+After every eval run, copy the artifact to `evaluation/runs/<label>.json` so it is visible in `eval:trends --source repo`.
+
+## Question sets
+
+Questions are defined in `eval/suites/<suite>.yaml`. The kb and raylib suites include a mix of conceptual and code-structure questions:
+
+**kb suite** — includes questions that specifically test code-graph traversal (IMPORTS_FILE, EXPORTS_SYMBOL edges) e.g. "Which source files import TsMorphIndexer?" These require the `code-graph` cycle to have run and the semantic bridge to be populated.
+
+**raylib suite** — includes structural questions about module dependencies and file relationships that test what the semantic graph captured about the C codebase.
+
+Do not hardcode question text in prompts or scripts — always load from the YAML.
 
 ## Auto-scoring
 

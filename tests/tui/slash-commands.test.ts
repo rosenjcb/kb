@@ -73,7 +73,9 @@ describe('slash command helpers', () => {
   it('includes /init in shell command list', () => {
     const commands = getSlashCommands('shell')
     expect(commands.some(c => c.command === '/init')).toBe(true)
-    expect(commands.find(c => c.command === '/init')?.description).toContain('build a knowledge base')
+    expect(commands.find(c => c.command === '/init')?.description).toContain(
+      'build a knowledge base'
+    )
   })
 
   it('does not include /init in chat command list', () => {
@@ -89,7 +91,9 @@ describe('slash command helpers', () => {
   it('includes /scan in shell command list', () => {
     const commands = getSlashCommands('shell')
     expect(commands.some(c => c.command === '/scan')).toBe(true)
-    expect(commands.find(c => c.command === '/scan')?.description).toContain('active or selected KB base')
+    expect(commands.find(c => c.command === '/scan')?.description).toContain(
+      'active or selected KB base'
+    )
   })
 
   it('includes /skill in shell command list', () => {

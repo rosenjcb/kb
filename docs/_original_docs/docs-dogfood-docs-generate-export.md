@@ -1,7 +1,7 @@
 ---
 layout: default
 title: docs/dogfood-docs-generate-export.md
-date: '2026-05-03'
+date: '2026-05-08'
 kb_id: docs-dogfood-docs-generate-export-md
 tags:
   - original-source

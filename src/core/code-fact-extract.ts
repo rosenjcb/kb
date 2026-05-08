@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { loadPrompt } from '../prompts/loader'
+import { type FactRow, type FactTriplet, SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import type { LLMProvider } from './types'
-import { SqliteKbIndexer, type FactRow, type FactTriplet } from '../tools/sqlite-kb-index'
 
 // ─── Skeleton ──────────────────────────────────────────────────────────────
 
@@ -79,7 +79,13 @@ function extractTsImports(lines: string[]): CodeImport[] {
       ? namesRaw
           .replace(/[{}]/g, '')
           .split(',')
-          .map(s => s.trim().split(/\s+as\s+/)[0]?.trim() ?? '')
+          .map(
+            s =>
+              s
+                .trim()
+                .split(/\s+as\s+/)[0]
+                ?.trim() ?? ''
+          )
           .filter(Boolean)
       : []
     imports.push({ source, names })
@@ -135,12 +141,18 @@ function extractPythonImports(lines: string[]): CodeImport[] {
     if (m[1]) {
       imports.push({
         source: m[1],
-        names: (m[2] ?? '').split(',').map(s => s.trim()).filter(Boolean),
+        names: (m[2] ?? '')
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean),
       })
     } else if (m[3]) {
       imports.push({
         source: m[3].split(',')[0]?.trim() ?? '',
-        names: m[3].split(',').map(s => s.trim()).filter(Boolean),
+        names: m[3]
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean),
       })
     }
   }
@@ -184,7 +196,15 @@ function extractRustExports(lines: string[]): CodeExportSymbol[] {
 /** Capture the leading JSDoc-style comment (or Python triple-quoted string) at the top of the file, if any. */
 function extractLeadingDoc(language: string, body: string): string | null {
   const trimmed = body.replace(/^\s*\n/, '')
-  if (language === 'typescript' || language === 'javascript' || language === 'java' || language === 'rust' || language === 'kotlin' || language === 'swift' || language === 'go') {
+  if (
+    language === 'typescript' ||
+    language === 'javascript' ||
+    language === 'java' ||
+    language === 'rust' ||
+    language === 'kotlin' ||
+    language === 'swift' ||
+    language === 'go'
+  ) {
     const m = /^\/\*\*([\s\S]*?)\*\//.exec(trimmed)
     if (!m) return null
     return m[1]
@@ -265,7 +285,9 @@ export function buildCodeFactPromptUser(input: BuildCodeFactPromptInput): string
     skeleton.imports.length > 0
       ? skeleton.imports
           .slice(0, 20)
-          .map(i => `- from "${i.source}"${i.names.length > 0 ? ` import ${i.names.join(', ')}` : ''}`)
+          .map(
+            i => `- from "${i.source}"${i.names.length > 0 ? ` import ${i.names.join(', ')}` : ''}`
+          )
           .join('\n')
       : '(no imports detected)'
   const leadingDoc = skeleton.leadingDoc?.trim()
@@ -318,7 +340,11 @@ function coerceTriplet(raw: unknown, fallbackSubject: string): FactTriplet | nul
   return { subject, predicate, object }
 }
 
-function parseCodeFactExtraction(filePath: string, raw: string, allowedAnchors: Set<string>): CodeFactExtraction {
+function parseCodeFactExtraction(
+  filePath: string,
+  raw: string,
+  allowedAnchors: Set<string>
+): CodeFactExtraction {
   const json = tryParseJson(raw)
   if (!json || typeof json !== 'object') {
     return { filePath, moduleSummary: null, facts: [] }
@@ -332,12 +358,22 @@ function parseCodeFactExtraction(filePath: string, raw: string, allowedAnchors: 
   const facts: CodeFactRecord[] = []
   for (const item of factsRaw) {
     if (!item || typeof item !== 'object') continue
-    const r = item as { sentence?: unknown; anchor?: unknown; subject?: unknown; predicate?: unknown; object?: unknown; triplet?: unknown }
+    const r = item as {
+      sentence?: unknown
+      anchor?: unknown
+      subject?: unknown
+      predicate?: unknown
+      object?: unknown
+      triplet?: unknown
+    }
     const sentence = typeof r.sentence === 'string' ? r.sentence.replace(/\s+/g, ' ').trim() : ''
     if (sentence.length < 8) continue
     const anchorRaw = typeof r.anchor === 'string' ? r.anchor.trim() : 'module'
     const anchor = allowedAnchors.has(anchorRaw) ? anchorRaw : 'module'
-    const tripletRaw = (r.triplet && typeof r.triplet === 'object') ? r.triplet : { subject: r.subject, predicate: r.predicate, object: r.object }
+    const tripletRaw =
+      r.triplet && typeof r.triplet === 'object'
+        ? r.triplet
+        : { subject: r.subject, predicate: r.predicate, object: r.object }
     const triplet = coerceTriplet(tripletRaw, anchor === 'module' ? filePath : anchor)
     if (!triplet) continue
     facts.push({ sentence, triplet, anchor })
@@ -357,8 +393,10 @@ export interface ExtractCodeFactsForFileInput {
 export async function extractCodeFactsForFile(
   input: ExtractCodeFactsForFileInput
 ): Promise<CodeFactExtraction> {
-  const perFileChars = input.perFileChars ?? (Number(process.env.KB_CODE_FACTS_PER_FILE_CHARS) || 6000)
-  const maxFactSentences = input.maxFactSentences ?? (Number(process.env.KB_CODE_FACTS_MAX_PER_FILE) || 8)
+  const perFileChars =
+    input.perFileChars ?? (Number(process.env.KB_CODE_FACTS_PER_FILE_CHARS) || 6000)
+  const maxFactSentences =
+    input.maxFactSentences ?? (Number(process.env.KB_CODE_FACTS_MAX_PER_FILE) || 8)
   const skeleton = extractCodeSkeleton(input.filePath, input.contents)
   const allowedAnchors = new Set<string>(['module', ...skeleton.exports.map(e => e.name)])
   const user = buildCodeFactPromptUser({
@@ -498,8 +536,10 @@ export async function ingestCodeFilesAsFacts(
   input: IngestCodeFilesAsFactsInput
 ): Promise<CodeFactIngestResult> {
   const maxFiles = input.maxFiles ?? (Number(process.env.KB_CODE_FACTS_MAX_FILES) || 500)
-  const perFileChars = input.perFileChars ?? (Number(process.env.KB_CODE_FACTS_PER_FILE_CHARS) || 6000)
-  const maxConcurrency = input.maxConcurrency ?? (Number(process.env.KB_CODE_FACTS_MAX_CONCURRENCY) || 4)
+  const perFileChars =
+    input.perFileChars ?? (Number(process.env.KB_CODE_FACTS_PER_FILE_CHARS) || 6000)
+  const maxConcurrency =
+    input.maxConcurrency ?? (Number(process.env.KB_CODE_FACTS_MAX_CONCURRENCY) || 4)
   const maxPerFile = input.maxPerFile ?? (Number(process.env.KB_CODE_FACTS_MAX_PER_FILE) || 8)
   const ranked = rankCodeFilesForFacts(input.codeFiles, input.candidateFiles, maxFiles)
   const result: CodeFactIngestResult = {

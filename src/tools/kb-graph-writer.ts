@@ -201,7 +201,9 @@ export class KbGraphWriter {
 
     const slug = slugify(trimmed)
     if (slug) {
-      const byId = db.prepare(`SELECT id FROM ${ENT} WHERE id = ?`).get(slug) as { id: string } | undefined
+      const byId = db.prepare(`SELECT id FROM ${ENT} WHERE id = ?`).get(slug) as
+        | { id: string }
+        | undefined
       if (byId) return byId.id
     }
 
@@ -266,9 +268,9 @@ export class KbGraphWriter {
     const db = this.requireDb()
 
     const totalE = db.prepare(`SELECT COUNT(*) AS n FROM ${ENT}`).get() as { n: number }
-    const totalR = db
-      .prepare(`SELECT COUNT(*) AS n FROM ${REL} WHERE weight > 0`)
-      .get() as { n: number }
+    const totalR = db.prepare(`SELECT COUNT(*) AS n FROM ${REL} WHERE weight > 0`).get() as {
+      n: number
+    }
 
     const top = db
       .prepare(
@@ -307,7 +309,13 @@ export class KbGraphWriter {
     const eRow = db
       .prepare(`SELECT id, name, type, doc_id, description FROM ${ENT} WHERE id = ?`)
       .get(id) as
-      | { id: string; name: string; type: string; doc_id: string | null; description: string | null }
+      | {
+          id: string
+          name: string
+          type: string
+          doc_id: string | null
+          description: string | null
+        }
       | undefined
     if (!eRow) return null
 
@@ -358,7 +366,9 @@ export class KbGraphWriter {
     if (!this.ready) await this.open()
     const db = this.requireDb()
     const id = (await this.resolveEntityRef(entityId)) ?? slugify(entityId)
-    const row = db.prepare(`SELECT name FROM ${ENT} WHERE id = ?`).get(id) as { name: string } | undefined
+    const row = db.prepare(`SELECT name FROM ${ENT} WHERE id = ?`).get(id) as
+      | { name: string }
+      | undefined
     return row ? row.name : entityId
   }
 
@@ -607,9 +617,7 @@ export class KbGraphWriter {
       description: string | null
     }>
     const rRows = db
-      .prepare(
-        `SELECT from_id, to_id, type, doc_id, weight FROM ${REL} WHERE weight > 0`
-      )
+      .prepare(`SELECT from_id, to_id, type, doc_id, weight FROM ${REL} WHERE weight > 0`)
       .all() as Array<{
       from_id: string
       to_id: string

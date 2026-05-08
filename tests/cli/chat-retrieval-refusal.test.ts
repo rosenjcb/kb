@@ -24,7 +24,11 @@ describe('chat retrieval refusal', () => {
         retrieval: { checkpoints: [{ confidence: 0.2 }, { confidence: 0.3 }] },
       })
     ).toBe(true)
-    expect(lastRetrievalCheckpointConfidence({ retrieval: { checkpoints: [{ confidence: 1 }, { confidence: 0.3 }] } })).toBe(0.3)
+    expect(
+      lastRetrievalCheckpointConfidence({
+        retrieval: { checkpoints: [{ confidence: 1 }, { confidence: 0.3 }] },
+      })
+    ).toBe(0.3)
   })
 
   it('allows when checkpoints missing (no signal)', () => {

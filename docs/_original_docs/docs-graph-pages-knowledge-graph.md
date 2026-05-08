@@ -1,7 +1,7 @@
 ---
 layout: default
 title: docs/_graph_pages/knowledge-graph.md
-date: '2026-05-03'
+date: '2026-05-08'
 kb_id: docs-graph-pages-knowledge-graph-md
 tags:
   - original-source

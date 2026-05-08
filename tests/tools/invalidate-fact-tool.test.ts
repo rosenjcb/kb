@@ -17,10 +17,7 @@ async function createTempBase(): Promise<string> {
   return dir
 }
 
-async function seedFact(
-  baseDir: string,
-  factText: string
-): Promise<void> {
+async function seedFact(baseDir: string, factText: string): Promise<void> {
   const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
   indexer.upsertFact({ factText, sourceKind: 'submit', sourceRef: 'test' })
   indexer.close()

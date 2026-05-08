@@ -2,12 +2,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { KbGraphWriter } from '../../src/tools/kb-graph-writer'
 import {
   formatGraphRelationBlockForPair,
   formatGraphRelationBlockFromQuestion,
   parseRelationalConceptPair,
 } from '../../src/tools/graph-relation-context'
+import { KbGraphWriter } from '../../src/tools/kb-graph-writer'
 
 describe('parseRelationalConceptPair', () => {
   it('parses how does X relate to Y', () => {

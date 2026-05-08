@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import Database from 'better-sqlite3'
 import dayjs from 'dayjs'
-import { classifyFactLane, type FactLaneId } from '../core/fact-taxonomy'
 import { runMigrations } from '../core/db-migrations'
+import { type FactLaneId, classifyFactLane } from '../core/fact-taxonomy'
 import { type RetrievalLane, classifyDocumentLane } from './retrieval-lane-router'
 
 export interface SqliteKbIndexerOptions {
@@ -266,8 +266,7 @@ export class SqliteKbIndexer {
       predicate = raw.predicate.trim()
       object = raw.object.trim()
     } else {
-      const o =
-        input.factText.trim().replace(/\s+/g, ' ').slice(0, 400) || 'unspecified'
+      const o = input.factText.trim().replace(/\s+/g, ' ').slice(0, 400) || 'unspecified'
       subject = 'kb'
       predicate = 'asserts'
       object = o
@@ -579,7 +578,9 @@ export class SqliteKbIndexer {
     this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?').run(row.id)
     this.db.prepare('DELETE FROM fact_embeddings WHERE fact_id = ?').run(row.id)
     this.db.prepare('DELETE FROM fact_concepts WHERE fact_id = ?').run(row.id)
-    this.db.prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?').run(row.id, row.id)
+    this.db
+      .prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?')
+      .run(row.id, row.id)
 
     if (!replacement?.factText?.trim()) {
       return { changed: 1 }
@@ -729,7 +730,9 @@ export class SqliteKbIndexer {
       typeof limit === 'number'
         ? (this.db.prepare(originalQuery).all(limit) as SqliteDocumentRow[])
         : (this.db.prepare(originalQuery).all() as SqliteDocumentRow[])
-    const combined = [...derived, ...original].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+    const combined = [...derived, ...original].sort((a, b) =>
+      b.updated_at.localeCompare(a.updated_at)
+    )
     return typeof limit === 'number' ? combined.slice(0, limit) : combined
   }
 
@@ -823,7 +826,9 @@ export class SqliteKbIndexer {
   private rebuildFactGraph(factId: string, factText: string, now: string): void {
     const concepts = extractConcepts(factText)
     this.db.prepare('DELETE FROM fact_concepts WHERE fact_id = ?').run(factId)
-    this.db.prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?').run(factId, factId)
+    this.db
+      .prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?')
+      .run(factId, factId)
     if (concepts.length === 0) return
 
     const upsertConcept = this.db.prepare(
@@ -914,9 +919,7 @@ export class SqliteKbIndexer {
 
   isDocumentStale(filePath: string, content: string): boolean {
     const id = basename(filePath, '.md')
-    const row = this.db
-      .prepare('SELECT markdown FROM original_docs WHERE id = ?')
-      .get(id) as
+    const row = this.db.prepare('SELECT markdown FROM original_docs WHERE id = ?').get(id) as
       | { markdown?: string }
       | undefined
 
@@ -1539,7 +1542,15 @@ export function normalizeFactText(input: string): string {
 }
 
 function tokenizeQuery(input: string): string[] {
-  return [...new Set(input.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t.length > 2))].slice(0, 10)
+  return [
+    ...new Set(
+      input
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(t => t.length > 2)
+    ),
+  ].slice(0, 10)
 }
 
 const FACT_STOP_WORDS = new Set([
@@ -1576,5 +1587,8 @@ function extractConcepts(input: string): string[] {
 }
 
 function normalizeConceptId(input: string): string {
-  return input.toLowerCase().replace(/[^a-z0-9_-]/g, '').trim()
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '')
+    .trim()
 }

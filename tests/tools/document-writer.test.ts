@@ -65,9 +65,7 @@ describe('executeWriteDocumentTool', () => {
 
     await executeWriteDocumentTool({ title: 'Howto', content: 'Body', type: 'howto' }, writer)
 
-    expect(writer.writeDocument).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'howto' })
-    )
+    expect(writer.writeDocument).toHaveBeenCalledWith(expect.objectContaining({ type: 'howto' }))
   })
 
   it('Given invalid document type, then should throw validation error', async () => {

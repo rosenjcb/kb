@@ -1,8 +1,13 @@
 import path from 'node:path'
-import type { DocType } from './doc-taxonomy'
-import { DOC_TYPES, isDocType } from './doc-taxonomy'
-import { appendReferencesFooter } from './doc-references-footer'
+import type { KbConfig } from '../cli/kb-config.js'
+import { createLLMProviderFromConfig } from '../cli/kb-config.js'
+import { loadPrompt } from '../prompts/loader'
+import type { WriteDocumentResult } from '../tools/document-writer'
+import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
+import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import {
+  type DocGenerateDraft,
+  type DocGenerateSession,
   acceptSessionDraft,
   applyAnswer,
   applySkip,
@@ -11,19 +16,14 @@ import {
   loadSession,
   saveSession,
   setSessionDraft,
-  type DocGenerateDraft,
-  type DocGenerateSession,
 } from './doc-generate-session'
 import { deriveDocumentTitle } from './doc-generate-title'
 import { loadQuestionnaire } from './doc-questionnaire'
+import { appendReferencesFooter } from './doc-references-footer'
 import { buildDocgenFactContext, searchSupportingFacts } from './doc-supporting-facts'
-import type { KbConfig } from '../cli/kb-config.js'
-import { createLLMProviderFromConfig } from '../cli/kb-config.js'
-import { loadPrompt } from '../prompts/loader'
+import type { DocType } from './doc-taxonomy'
+import { DOC_TYPES, isDocType } from './doc-taxonomy'
 import type { LLMProvider } from './types'
-import type { WriteDocumentResult } from '../tools/document-writer'
-import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
-import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 
 export interface DocGenerateOrchestratorDeps {
   llm?: LLMProvider
@@ -101,7 +101,7 @@ async function draftDocumentBody(
     'Structured answers:',
     ...session.answers.map(slot => {
       const status = slot.skipped ? '(skipped)' : ''
-      const body = slot.skipped ? '' : slot.answer ?? ''
+      const body = slot.skipped ? '' : (slot.answer ?? '')
       return `- **${slot.key}** ${status}: ${body}`.trimEnd()
     }),
     ...formatChatTranscriptBlock(session),
@@ -120,7 +120,10 @@ async function draftDocumentBody(
 function buildPriorReviewFeedbackLines(session: DocGenerateSession): string[] {
   const rows = session.revisions?.map(r => r.feedback?.trim()).filter(Boolean) ?? []
   if (rows.length === 0) return []
-  const lines = ['', 'Prior reviewer instructions (chronological; honor all that still apply; later rounds override earlier on conflict):']
+  const lines = [
+    '',
+    'Prior reviewer instructions (chronological; honor all that still apply; later rounds override earlier on conflict):',
+  ]
   for (let i = 0; i < rows.length; i += 1) {
     lines.push(`${i + 1}. ${rows[i]}`)
   }
@@ -144,7 +147,7 @@ async function draftDocumentRevision(
     'Structured answers:',
     ...session.answers.map(slot => {
       const status = slot.skipped ? '(skipped)' : ''
-      const body = slot.skipped ? '' : slot.answer ?? ''
+      const body = slot.skipped ? '' : (slot.answer ?? '')
       return `- **${slot.key}** ${status}: ${body}`.trimEnd()
     }),
     ...buildPriorReviewFeedbackLines(session),
@@ -382,8 +385,7 @@ export async function acceptDraft(input: {
   }
 
   const title = deriveDocumentTitle(session)
-  const writer =
-    input.deps?.documentWriter ?? new SqliteDocumentWriter({ baseDir: input.baseDir })
+  const writer = input.deps?.documentWriter ?? new SqliteDocumentWriter({ baseDir: input.baseDir })
   const ownsWriter = !input.deps?.documentWriter
   try {
     const result = await writer.writeDocument({

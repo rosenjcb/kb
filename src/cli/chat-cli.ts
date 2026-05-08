@@ -2,23 +2,24 @@ import { createInterface } from 'node:readline/promises'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message } from '../core/types'
 import { loadPrompt } from '../prompts/loader'
-import { resolveEffectiveBaseDir } from './base-selection'
-import { runDocsGenerateChatFlow } from './chat-docs-generate-flow'
-import type { KbConfig } from './kb-config'
-import { readKbConfig } from './kb-config'
-import type { KbGraphWriter } from '../tools/kb-graph-writer'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
-import { createPrinter, type Printer } from '../ui/printer'
+import { CodeGraphStore } from '../tools/code-graph-store'
+import { KbGraphWriter } from '../tools/kb-graph-writer'
+import { type Printer, createPrinter } from '../ui/printer'
+import { resolveEffectiveBaseDir } from './base-selection'
 import {
   type ChatConversationState,
   createInitialConversationState,
   resolveConversationalChatTurn,
   updateConversationState,
 } from './chat-conversation'
+import { runDocsGenerateChatFlow } from './chat-docs-generate-flow'
 import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
 import { type CmdMode, cmd } from './cmd-ref'
 import { isReadFactsResult, printReadDocumentsOrchestrationFooter } from './intent-cli.js'
+import type { KbConfig } from './kb-config'
+import { readKbConfig } from './kb-config'
 import { formatReadDocumentSourceIds } from './retrieval-fallback'
 
 export interface ChatSessionDeps {
@@ -124,7 +125,9 @@ function chatRetrievalMinConfidence(): number {
   return n
 }
 
-export function lastRetrievalCheckpointConfidence(snapshot: ReadDocumentsResult): number | undefined {
+export function lastRetrievalCheckpointConfidence(
+  snapshot: ReadDocumentsResult
+): number | undefined {
   const cps = snapshot.retrieval?.checkpoints
   if (!Array.isArray(cps) || cps.length === 0) return undefined
   const last = cps[cps.length - 1]
@@ -248,9 +251,21 @@ export async function runChatSession(
               topic: input,
               goal: 'answer user question',
             }
-        const expandedQuery = deps.graphWriter
-          ? await expandQueryWithGraph(resolvedTurn.retrievalQuery, deps.graphWriter)
-          : resolvedTurn.retrievalQuery
+        let expandedQuery = resolvedTurn.retrievalQuery
+        if (deps.graphWriter) {
+          const codeStore = deps.kbStorageDir
+            ? new CodeGraphStore(KbGraphWriter.dbPathForBase(deps.kbStorageDir))
+            : undefined
+          try {
+            expandedQuery = await expandQueryWithGraph(
+              resolvedTurn.retrievalQuery,
+              deps.graphWriter,
+              codeStore
+            )
+          } finally {
+            codeStore?.close()
+          }
+        }
 
         let graphRelationBlock: string | undefined
         if (deps.graphWriter) {

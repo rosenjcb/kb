@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/doc-questionnaires/decision.md
-date: '2026-05-03'
+date: '2026-05-08'
 kb_id: src-prompts-doc-questionnaires-decision-md
 tags:
   - original-source

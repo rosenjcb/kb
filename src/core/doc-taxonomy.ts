@@ -12,13 +12,7 @@
  *   - Init synthesis output type
  */
 
-export const DOC_TYPES = [
-  'howto',
-  'introduction',
-  'reference',
-  'decision',
-  'runbook',
-] as const
+export const DOC_TYPES = ['howto', 'introduction', 'reference', 'decision', 'runbook'] as const
 
 export type DocType = (typeof DOC_TYPES)[number]
 

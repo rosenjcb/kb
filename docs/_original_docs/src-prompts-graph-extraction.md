@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/graph-extraction.md
-date: '2026-05-03'
+date: '2026-05-08'
 kb_id: src-prompts-graph-extraction-md
 tags:
   - original-source
@@ -26,7 +26,7 @@ Output ONLY valid JSON matching this schema (no markdown, no explanation):
 }
 
 Rules:
-- Entity ids must be lowercase, hyphen-separated, max 50 chars (e.g. "duckdb", "kb-init", "openai-api")
+- Entity ids must be lowercase, hyphen-separated, max 50 chars (e.g. "sqlite", "kb-init", "openai-api")
 - Only extract entities explicitly mentioned or strongly implied
 - Only extract relationships where both endpoints appear as entities in your output
 - Omit entities or relationships you are uncertain about

@@ -1,7 +1,9 @@
 import type { DocType } from '../core/doc-taxonomy'
 import { formatFactUri } from '../core/fact-uri'
-import { SqliteKbIndexer, type FactRow } from './sqlite-kb-index'
+import type { LLMProvider } from '../core/types'
 import { FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
+import { expandQuery, shouldExpandQuery } from './query-expander'
+import { type FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
 export interface QueryDocumentsInput {
   query?: string
@@ -42,7 +44,10 @@ export interface QueryResponse {
 export class FactsDocumentReader {
   private readonly indexer: SqliteKbIndexer
 
-  constructor(dbPath: string) {
+  constructor(
+    dbPath: string,
+    private readonly llm?: LLMProvider
+  ) {
     this.indexer = new SqliteKbIndexer({ dbPath })
   }
 
@@ -50,12 +55,24 @@ export class FactsDocumentReader {
     const limit = input.limit ?? 10
     if (input.discoveryDepth === 'deep') {
       const orchestrator = new FactsQueryResearchOrchestrator(this.indexer)
-      return orchestrator.run({
-        query: input.query?.trim() ?? '',
+      const baseQuery = input.query?.trim() ?? ''
+      const opts = {
         limit,
         includeContent: input.includeContent === true,
         surface: input.surface ?? 'query',
-      })
+      } as const
+
+      if (this.llm && baseQuery && shouldExpandQuery(baseQuery)) {
+        const expansions = await expandQuery(this.llm, baseQuery)
+        if (expansions.length > 0) {
+          const responses = [baseQuery, ...expansions].map(q =>
+            orchestrator.run({ query: q, ...opts })
+          )
+          return mergeQueryResponses(responses, limit, expansions.length)
+        }
+      }
+
+      return orchestrator.run({ query: baseQuery, ...opts })
     }
     const rows = this.readRows(input, limit)
     const results = rows.map(row => this.toResult(row, input.includeContent === true))
@@ -92,4 +109,30 @@ function summarizeFactTitle(text: string): string {
   const trimmed = text.trim().replace(/\s+/g, ' ')
   if (trimmed.length <= 72) return trimmed
   return `${trimmed.slice(0, 69)}...`
+}
+
+function mergeQueryResponses(
+  responses: QueryResponse[],
+  limit: number,
+  expansionCount: number
+): QueryResponse {
+  const seen = new Set<string>()
+  const merged: QueryResult[] = []
+  for (const res of responses) {
+    for (const result of res.results) {
+      if (seen.has(result.metadata.id)) continue
+      seen.add(result.metadata.id)
+      merged.push(result)
+    }
+  }
+  const first = responses[0]
+  const baseDetail = first?.retrieval.detail ?? 'facts-loop'
+  return {
+    results: merged.slice(0, limit),
+    total: Math.min(merged.length, limit),
+    retrieval: {
+      method: merged.length > 0 ? 'hybrid' : 'lexical-fallback',
+      detail: `${baseDetail};expanded:${expansionCount}`,
+    },
+  }
 }

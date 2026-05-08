@@ -8,8 +8,8 @@ import {
   resolveGraphEnabled,
 } from '../src/cli/kb-config.js'
 import { DefaultIntentRouter } from '../src/intents/router.js'
-import { KbGraphWriter } from '../src/tools/kb-graph-writer.js'
 import { invalidateFactTool } from '../src/tools/invalidate-fact-tool.js'
+import { KbGraphWriter } from '../src/tools/kb-graph-writer.js'
 import { createKBToolsRegistry } from '../src/tools/kb-tools-registry.js'
 
 interface EvalVariant {

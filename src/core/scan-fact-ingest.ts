@@ -1,7 +1,7 @@
 import path from 'node:path'
+import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { placeholderTripletFromFactText } from './fact-triplet-placeholder'
 import { segmentMarkdownForFacts } from './sentence-split'
-import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 
 export interface ScanFactIngestInput {
   baseDir: string

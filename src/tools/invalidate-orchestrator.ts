@@ -1,14 +1,14 @@
 import path from 'node:path'
+import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
+import { assertSingleSentenceForSubmit } from '../core/sentence-split'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { ToolUseRequest } from '../core/types'
 import type { LLMProvider } from '../core/types'
 import type { IntentResult } from '../intents/types'
-import { assertSingleSentenceForSubmit } from '../core/sentence-split'
-import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
 import { locateFactRowFromNaturalLanguage } from './fact-locate-from-nl'
-import { extractFactTriplet } from './triplet-extractor'
 import type { FactTriplet } from './sqlite-kb-index'
 import { SqliteKbIndexer } from './sqlite-kb-index'
+import { extractFactTriplet } from './triplet-extractor'
 
 export interface InvalidateOrchestratorInput {
   oldFact: string
@@ -43,7 +43,9 @@ export class InvalidateOrchestrator {
     }
 
     if (this.kbStorageDir) {
-      const indexer = new SqliteKbIndexer({ dbPath: path.join(this.kbStorageDir, '.kb-index.sqlite') })
+      const indexer = new SqliteKbIndexer({
+        dbPath: path.join(this.kbStorageDir, '.kb-index.sqlite'),
+      })
       try {
         const row = await locateFactRowFromNaturalLanguage({
           indexer,

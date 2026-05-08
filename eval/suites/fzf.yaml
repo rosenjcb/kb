@@ -1,0 +1,16 @@
+# Vendor question pack for `kb` eval harness. Use: --suite fzf
+# Schema: eval/suites/README.md (or see loadVendorSuite in scripts/eval-run.mjs)
+schema_version: 1
+id: fzf
+display_name: fzf
+repo_url: https://github.com/junegunn/fzf.git
+rubric_focus: the **fzf** Go fuzzy-finder knowledge base (facts + docs in SQLite)
+questions:
+  - What is fzf for, and what are its main capabilities and use cases?
+  - How does fzf's architecture work, including major packages and how the fuzzy matching core relates to the TUI and shell integration?
+  - How do I install and build fzf, including platform support and build systems?
+  - What fuzzy matching algorithm and scoring scheme does fzf use?
+  - How does fzf integrate with shells (bash, zsh, fish) and editors like Vim/Neovim?
+  - What are the key flags and configuration options available to users?
+  - What are the main gotchas, constraints, and known limitations of fzf?
+  - What does the changelog say about recent version history and notable changes?

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { DOC_TYPES } from '../../src/core/doc-taxonomy'
 import { loadQuestionnaire, parseDocTypeFlag } from '../../src/core/doc-questionnaire'
+import { DOC_TYPES } from '../../src/core/doc-taxonomy'
 
 describe('loadQuestionnaire', () => {
   it.each(DOC_TYPES)('Given DocType %s, then loads non-empty keys and questions', docType => {

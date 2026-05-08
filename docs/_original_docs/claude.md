@@ -1,7 +1,7 @@
 ---
 layout: default
 title: CLAUDE.md
-date: '2026-05-03'
+date: '2026-05-08'
 kb_id: claude-md
 tags:
   - original-source
@@ -43,12 +43,12 @@ Pre-commit gate: `npm run precommit` (lint + type-check + tests). Must pass befo
 This repo uses its own `kb` CLI to record architectural decisions. After committing to a solution:
 
 ```bash
-npm run refresh:global          # ensure global kb is fresh
+npm run install:global          # ensure global kb is fresh
 kb query "<topic>"              # check for existing docs first
-kb submit "<decision>" --base dogfood   # record durable facts
+kb submit "<decision>" --base kb   # record durable facts
 ```
 
-Use `--base ci-*` for disposable test traffic; never pollute `dogfood` with throwaway data.
+Use `--base ci-*` for disposable test traffic; never pollute `kb` with throwaway data.
 
 For CLI changes, run an e2e smoke test before declaring done:
 

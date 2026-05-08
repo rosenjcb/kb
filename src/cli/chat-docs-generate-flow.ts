@@ -1,6 +1,6 @@
 import {
-  answerCurrent,
   acceptDraft,
+  answerCurrent,
   produceInitialDraft,
   produceRevisedDraft,
   skipCurrent,
@@ -9,10 +9,10 @@ import {
 import { firstPendingAnswerIndex, loadSession } from '../core/doc-generate-session'
 import { colorizeUnifiedDiff } from '../core/git-diff-preview'
 import type { LLMProvider } from '../core/types'
-import type { Printer } from '../ui/printer'
 import { parseShellArgs } from '../tui/runner.js'
-import type { KbConfig } from './kb-config'
+import type { Printer } from '../ui/printer'
 import { DocsGenerateError, parseDocsGenerateCommand } from './docs-generate-cli'
+import type { KbConfig } from './kb-config'
 
 export async function runDocsGenerateChatFlow(input: {
   read: (prompt: string) => Promise<string | null>
@@ -34,7 +34,8 @@ export async function runDocsGenerateChatFlow(input: {
   try {
     parsed = parseDocsGenerateCommand(argv)
   } catch (e) {
-    const msg = e instanceof DocsGenerateError ? e.message : e instanceof Error ? e.message : String(e)
+    const msg =
+      e instanceof DocsGenerateError ? e.message : e instanceof Error ? e.message : String(e)
     printer.chatAssistant(msg)
     return
   }

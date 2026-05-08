@@ -100,9 +100,7 @@ export async function runListCommand(
 
   return {
     output:
-      parsed.output === 'json'
-        ? formatListJson(response)
-        : formatListHuman(response, parsed.base),
+      parsed.output === 'json' ? formatListJson(response) : formatListHuman(response, parsed.base),
   }
 }
 
@@ -229,16 +227,11 @@ async function readDocumentById(
   return document
 }
 
-async function readDocumentByTitle(
-  indexer: SqliteKbIndexer,
-  title: string
-): Promise<QueryResult> {
+async function readDocumentByTitle(indexer: SqliteKbIndexer, title: string): Promise<QueryResult> {
   const exactMatches = indexer
     .listDocsForView(200)
     .map(row => toQueryResult(row))
-    .filter(
-    result => normalizeTitle(result.metadata.title) === normalizeTitle(title)
-  )
+    .filter(result => normalizeTitle(result.metadata.title) === normalizeTitle(title))
 
   if (exactMatches.length === 0) {
     throw new ViewCommandError(`Document not found: ${title}`)

@@ -31,7 +31,8 @@ export function buildDocgenFactContext(facts: SupportingFact[]): string {
   const lines = facts.map(
     (f, i) => `${i + 1}. [${f.id}] ${f.factText.replace(/\r?\n/g, ' ').trim()}`
   )
-  return ['KB facts (ground repository claims only with these; do not invent other facts):', ...lines].join(
-    '\n'
-  )
+  return [
+    'KB facts (ground repository claims only with these; do not invent other facts):',
+    ...lines,
+  ].join('\n')
 }

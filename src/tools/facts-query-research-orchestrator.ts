@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { formatFactUri } from '../core/fact-uri'
 import { inferQueryLaneWeights } from '../core/fact-taxonomy'
+import { formatFactUri } from '../core/fact-uri'
 import type { QueryResponse, QueryResult } from './facts-document-reader'
 import type { FactConceptRow, FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
@@ -54,7 +54,10 @@ export class FactsQueryResearchOrchestrator {
     const seenFactIds = new Set<string>()
     const scoredFacts = new Map<string, { row: FactRow; score: number }>()
     let graphHops = 0
-    let sufficiency: SufficiencyDecision = { decision: 'not_answerable_yet', reason: 'insufficient-facts' }
+    let sufficiency: SufficiencyDecision = {
+      decision: 'not_answerable_yet',
+      reason: 'insufficient-facts',
+    }
     const loopTrace: string[] = []
 
     for (let iter = 0; iter < maxIterations; iter++) {
@@ -65,8 +68,13 @@ export class FactsQueryResearchOrchestrator {
           ? this.indexer.searchFactsByConceptFrontier(frontierConcepts, perIterationLimit)
           : []
       const conceptRows =
-        activeConcepts.length > 0 ? this.indexer.searchFactsByConcepts(activeConcepts, perIterationLimit) : []
-      const merged = mergeUniqueFacts([...lexicalRows, ...frontierRows, ...conceptRows], seenFactIds)
+        activeConcepts.length > 0
+          ? this.indexer.searchFactsByConcepts(activeConcepts, perIterationLimit)
+          : []
+      const merged = mergeUniqueFacts(
+        [...lexicalRows, ...frontierRows, ...conceptRows],
+        seenFactIds
+      )
       const semanticScores = this.indexer.semanticFactScores(
         input.query,
         merged.map(row => row.id)

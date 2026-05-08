@@ -19,4 +19,3 @@ describe('fact taxonomy', () => {
     expect(weights.platform).toBeDefined()
   })
 })
-

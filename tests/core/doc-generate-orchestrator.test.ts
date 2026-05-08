@@ -78,9 +78,9 @@ describe('doc-generate-orchestrator', () => {
       factLimit: 5,
     })
     expect(d1.revision).toBe(1)
-    const draftCalls = vi.mocked(mockLlm.call).mock.calls.filter(
-      c => (c[0]?.systemPrompt ?? '').includes('write KB markdown')
-    )
+    const draftCalls = vi
+      .mocked(mockLlm.call)
+      .mock.calls.filter(c => (c[0]?.systemPrompt ?? '').includes('write KB markdown'))
     expect(draftCalls[0]?.[0]?.messages?.[0]?.content as string).toContain('KB facts')
     expect(draftCalls[0]?.[0]?.messages?.[0]?.content as string).toContain('orch fact')
 
@@ -179,9 +179,9 @@ describe('doc-generate-orchestrator', () => {
       factLimit: 5,
     })
 
-    const reviseCalls = vi.mocked(mockLlm.call).mock.calls.filter(args =>
-      (args[0]?.systemPrompt ?? '').includes('You revise an existing')
-    )
+    const reviseCalls = vi
+      .mocked(mockLlm.call)
+      .mock.calls.filter(args => (args[0]?.systemPrompt ?? '').includes('You revise an existing'))
     expect(reviseCalls.length).toBe(2)
     const firstUser = reviseCalls[0]?.[0]?.messages?.[0]?.content as string
     const secondUser = reviseCalls[1]?.[0]?.messages?.[0]?.content as string
