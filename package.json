@@ -35,6 +35,8 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@ast-grep/napi": "^0.42.1",
+    "@coderabbitai/ast-grep-langs": "^1.0.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "axios": "^1.6.0",
     "better-sqlite3": "^12.9.0",
@@ -49,7 +51,12 @@
     "js-yaml": "^4.1.0",
     "ora": "^8.2.0",
     "react": "^18.3.1",
+    "tree-sitter": "^0.25.0",
+    "tree-sitter-go": "^0.25.0",
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-typescript": "^0.23.2",
     "ts-morph": "^28.0.0",
+    "web-tree-sitter": "^0.26.8",
     "zod": "^3.22.0"
   },
   "devDependencies": {

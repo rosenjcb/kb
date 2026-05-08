@@ -9,7 +9,7 @@ questions:
   - How does kb init work at a high level, including the major passes?
   - Where do KB documents live, and how are active/default bases selected?
   - How does retrieval work, including hybrid retrieval and graph involvement?
-  - What does kb chat do when retrieval is weak or incomplete?
+  - Which source files import TsMorphIndexer, and what do they use it for?
   - What commands should a contributor use during normal dogfood development in this repo?
-  - What special repo rules apply to KB documentation and persistence?
-  - How can someone inspect the graph and run telemetry/log comparisons?
+  - What does the graph-query-expansion module export, and which modules call into it?
+  - Which source files in src/tools import from the code-graph-store module?

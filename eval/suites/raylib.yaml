@@ -9,8 +9,8 @@ questions:
   - What is raylib for, and what are its main capabilities?
   - How does raylib's architecture work, including modules and platform support?
   - How do I install and build raylib, including dependencies and build systems?
-  - What configuration options and compile flags does raylib support?
-  - How does raylib handle graphics backends and platform-specific rendering?
+  - Which source files in src/ implement platform-specific backends, and how do they relate to rcore?
+  - What functions does rcore.c expose that are called by or depended on by other source files?
   - What are the coding conventions and style guidelines for contributing to raylib?
   - What are the main gotchas, constraints, and known limitations of raylib?
-  - What does the raylib roadmap say about future plans, and what is the recent version history?
+  - Which header files does raylib.h directly include, and what subsystems do those dependencies cover?
