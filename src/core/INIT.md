@@ -1,6 +1,6 @@
 # KB Init Pipeline
 
-`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`markdown-facts`** (deterministic sentence ingest from collected markdown into the `facts` table), **`code-facts`** (per-file LLM extraction into `import_code` facts), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), then **`pass-graph`** when enabled. Use **`kb scan`** to refresh sources against an existing base.
+`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`markdown-facts`** (deterministic sentence ingest from collected markdown into the `facts` table), **`code-facts`** (per-file LLM extraction into `import_code` facts), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), **`pass-graph`** when enabled, and **`code-graph`** (deterministic AST indexing into `kg_*` tables). Use **`kb scan`** to refresh sources against an existing base.
 
 ## Input Collection
 
@@ -33,12 +33,14 @@ flowchart TD
     CF --> IM[import-docs]
     IM --> W[write]
     W --> PG[pass-graph]
+    PG --> CG[code-graph]
 
     MF --> MF1["Deterministic markdown\n→ facts import_doc"]
     CF --> CF1["Per-file LLM\n→ import_code facts"]
     IM --> IM1["One original doc\nper source file"]
     W --> W1["SQLite upsert\n+ scan planner"]
     PG --> PG1["Optional graph\nextract to SQLite"]
+    CG --> CG1["AST indexing\n→ kg_* tables + semantic bridge"]
 ```
 
 ## Jekyll Routing
@@ -79,6 +81,47 @@ The **`code-facts`** cycle ([src/core/code-fact-extract.ts](code-fact-extract.ts
 4. **Scan** — `kb scan` reads `code-facts-manifest.json` (per-base sidecar) and only re-extracts files whose `sha256` changed. The per-anchor diff guarantees that unchanged files don't churn the `facts` table.
 
 Budget knobs (env, sane defaults): `KB_CODE_FACTS_MAX_FILES=40`, `KB_CODE_FACTS_PER_FILE_CHARS=6000`, `KB_CODE_FACTS_MAX_CONCURRENCY=4`, `KB_CODE_FACTS_MAX_PER_FILE=8`. The graph builder (`rebuildFactGraph`) consumes the new triples directly — there is **no separate AST table**.
+
+## Code-graph cycle (cycle 7)
+
+The **`code-graph`** cycle runs at the end of every `kb init` and `kb scan`. It performs deterministic AST indexing of every file in the repo — no LLM involved — and writes results into `kg_*` tables in the same `.kb-index.sqlite` database.
+
+### Two indexers
+
+| Indexer | Files | When it runs |
+|---|---|---|
+| `TsMorphIndexer` (`src/tools/code-graph-indexer.ts`) | `.ts`, `.tsx`, `.js`, `.jsx` | When `tsconfig.json` is found; uses the TypeScript compiler for type-aware analysis |
+| `TreeSitterIndexer` (`src/tools/tree-sitter-indexer.ts`) | All other files | Always; uses WASM grammars via `web-tree-sitter` |
+
+When both run (TS project with Go files), `TsMorphIndexer` runs first and produces richer TS data (type-aware import resolution, `EXTENDS`/`IMPLEMENTS` edges). `TreeSitterIndexer` then covers everything else and uses `ON CONFLICT DO UPDATE` so it never overwrites TsMorphIndexer's richer TS nodes.
+
+### File handling by extension
+
+`TreeSitterIndexer` uses an explicit **allowlist** — not a denylist:
+
+- **AST-able** (`.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`) → full parse: file node + symbol nodes + import/export edges
+- **Text/config** (`.md`, `.yaml`, `.json`, `.toml`, `.sql`, `.sh`, `.tf`, etc.) → file node only, `language='text'`, no symbols
+- **Everything else** (images, binaries, lock files, compiled artifacts) → silently ignored
+
+The supported Go, TypeScript, TSX, and JavaScript grammars ship as `.wasm` files in their respective `tree-sitter-*` npm packages — no native compilation needed, works on all platforms.
+
+### What gets written
+
+```sql
+kg_nodes           — file nodes (kind='file') and symbol nodes (kind='symbol')
+kg_edges           — IMPORTS_FILE, EXPORTS_SYMBOL, EXTENDS, IMPLEMENTS edges
+kg_nodes_fts       — FTS index over node names and paths
+kg_file_state      — per-file content hash for incremental skip on re-run
+kg_semantic_bridge — name-matched links between kg_nodes symbols and kb_graph_entities
+```
+
+### Semantic bridge
+
+After indexing, both indexers populate `kg_semantic_bridge` by slugifying symbol names and matching them against existing `kb_graph_entities`. A match (confidence 0.8) creates a row linking the code node to the semantic entity. This is what allows `expandWithCodeNeighbors` in `CodeGraphStore` to answer "what source files are relevant to entity X?" without any LLM involvement — it follows the bridge then traverses `IMPORTS_FILE` edges one hop out.
+
+### Incremental behaviour
+
+Both indexers store a `content_hash` per file in `kg_file_state`. On re-run (including `kb scan`), files whose hash hasn't changed are counted as `skipped` and not re-processed. Only changed or new files are re-indexed.
 
 ## Configuration Constants
 

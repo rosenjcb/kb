@@ -1,9 +1,12 @@
 import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
-import { assertSingleSentenceForSubmit } from '../core/sentence-split'
+import { segmentMarkdownForFacts } from '../core/sentence-split'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { ToolUseRequest } from '../core/types'
 import type { LLMProvider } from '../core/types'
-import { extractFactTriplet } from './triplet-extractor'
+import type { FactTriplet } from './sqlite-kb-index'
+import { extractFactTriplets } from './triplet-extractor'
+
+const SENTENCE_CHUNK_SIZE = 5
 
 export interface SubmitOrchestratorInput {
   fact: string
@@ -25,29 +28,40 @@ export class SubmitOrchestrator {
 
   async run(input: SubmitOrchestratorInput): Promise<SubmitOrchestratorResult> {
     const { fact, source } = input
-    const sentence = assertSingleSentenceForSubmit(fact)
-    const triplet = this.llm
-      ? await extractFactTriplet(this.llm, sentence)
-      : placeholderTripletFromFactText(sentence)
+    const text = fact.trim()
+    if (!text) throw new Error('submit: empty fact text')
 
-    const domain = inferDomainFromFact(sentence)
-    const submission = await this.toolExecutor.execute(
-      createToolUse('upsert_fact', {
-        factText: sentence,
-        triplet,
-        sourceKind: 'submit',
-        sourceRef: source,
-        confidence: 0.8,
-      })
+    const factEntries = this.llm
+      ? await extractChunkedTriplets(this.llm, text)
+      : [{ triplet: placeholderTripletFromFactText(text), chunkText: text }]
+
+    const domain = inferDomainFromFact(text)
+    const fallbackId = `${domain}-fact`
+
+    const submissions = await Promise.all(
+      factEntries.map(({ triplet, chunkText }) =>
+        this.toolExecutor.execute(
+          createToolUse('upsert_fact', {
+            factText: chunkText,
+            triplet,
+            sourceKind: 'submit',
+            sourceRef: source,
+            confidence: 0.8,
+          })
+        )
+      )
     )
+
     const factId =
-      typeof (submission as { id?: unknown }).id === 'string'
-        ? (submission as { id: string }).id
-        : `${domain}-fact`
+      submissions
+        .map((s: unknown) =>
+          typeof (s as { id?: unknown }).id === 'string' ? (s as { id: string }).id : null
+        )
+        .find(Boolean) ?? fallbackId
 
     const graphSync = await this.toolExecutor.execute(
       createToolUse('upsert_graph_from_text', {
-        text: sentence,
+        text,
         documentId: factId,
       })
     )
@@ -57,7 +71,7 @@ export class SubmitOrchestrator {
       targetDocId: factId,
       discoveredTarget: false,
       result: {
-        submission,
+        submissions,
         graphSync,
       },
     }
@@ -126,4 +140,24 @@ function normalizeDomain(input: string): string {
 
 function createToolUse(name: string, input: Record<string, unknown>): ToolUseRequest {
   return { id: `submit-${name}-${Date.now()}`, name, input }
+}
+
+async function extractChunkedTriplets(
+  llm: LLMProvider,
+  text: string
+): Promise<Array<{ triplet: FactTriplet; chunkText: string }>> {
+  const sentences = segmentMarkdownForFacts(text)
+  const source = sentences.length > 0 ? sentences : [text]
+
+  const results: Array<{ triplet: FactTriplet; chunkText: string }> = []
+  for (let i = 0; i < source.length; i += SENTENCE_CHUNK_SIZE) {
+    const chunkText = source.slice(i, i + SENTENCE_CHUNK_SIZE).join(' ')
+    try {
+      const triplets = await extractFactTriplets(llm, chunkText)
+      for (const triplet of triplets) results.push({ triplet, chunkText })
+    } catch {
+      results.push({ triplet: placeholderTripletFromFactText(chunkText), chunkText })
+    }
+  }
+  return results
 }

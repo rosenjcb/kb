@@ -95,13 +95,43 @@ flowchart TB
   Graph["kb graph"] --> GraphView["explicit graph inspection / manual graph edits"]
 ```
 
+## Code graph (kg_* tables)
+
+Alongside the semantic graph (`kb_graph_entities` / `kb_graph_relationships`), KB maintains a separate **code graph** in `kg_*` tables. These are populated deterministically by the `code-graph` cycle during `kb init` and `kb scan` — no LLM.
+
+### What it stores
+
+```sql
+kg_nodes           — file nodes and symbol nodes extracted from source code
+kg_edges           — IMPORTS_FILE, EXPORTS_SYMBOL, EXTENDS, IMPLEMENTS
+kg_nodes_fts       — full-text search over node names and paths
+kg_file_state      — content hashes for incremental re-indexing
+kg_semantic_bridge — name-matched links between code symbols and semantic entities
+```
+
+### How it connects to the semantic graph
+
+The `kg_semantic_bridge` table is the join layer. After indexing, symbol names are slugified and matched against `kb_graph_entities` names. A match creates a bridge row at confidence 0.8. This enables `CodeGraphStore.expandWithCodeNeighbors` to answer "which files are structurally related to semantic entity X?" without any LLM call — it follows bridge rows then traverses `IMPORTS_FILE` edges.
+
+### Language support
+
+- **TypeScript / JavaScript** — `TsMorphIndexer` (type-aware; runs when `tsconfig.json` is present)
+- **Go** — `TreeSitterIndexer` with `tree-sitter-go.wasm`
+- **Text / config files** (`.md`, `.yaml`, `.json`, `.toml`, etc.) — `TreeSitterIndexer` text fallback: file node only, no symbols
+- Adding a new language requires one entry in the `LANG_CONFIGS` registry in `src/tools/tree-sitter-indexer.ts` plus the corresponding `tree-sitter-<lang>` npm package
+
+All WASM grammars ship as npm package assets — no native compilation, no platform-specific binaries.
+
 ## Implementation
 
 | File | Role |
 |---|---|
-| `src/tools/kb-graph-writer.ts` | Graph schema in SQLite, upsert, soft-delete, traversal, export |
+| `src/tools/kb-graph-writer.ts` | Semantic graph schema in SQLite, upsert, soft-delete, traversal, export |
 | `src/tools/graph-entity-extractor.ts` | LLM-based entity + relationship extraction from text |
 | `src/cli/graph-cli.ts` | `kb graph` command parsing and output formatting |
 | `src/tools/submit-orchestrator.ts` | KB write orchestration plus graph extraction/upsert |
 | `src/tools/invalidate-orchestrator.ts` | KB invalidation orchestration plus graph provenance cleanup |
-| `src/cli/init-cli.ts` | `pass-graph` cycle in `kb init` |
+| `src/cli/init-cli.ts` | `pass-graph` and `code-graph` cycles in `kb init` / `kb scan` |
+| `src/tools/code-graph-indexer.ts` | `TsMorphIndexer` — TS/JS AST indexing via ts-morph |
+| `src/tools/tree-sitter-indexer.ts` | `TreeSitterIndexer` — multi-language AST indexing via web-tree-sitter |
+| `src/tools/code-graph-store.ts` | Read-only queries over `kg_*` tables including `expandWithCodeNeighbors` |

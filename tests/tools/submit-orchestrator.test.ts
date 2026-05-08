@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ToolExecutor } from '../../src/core/tool-registry'
+import type { LLMCallParams, LLMProvider } from '../../src/core/types'
 import { SubmitOrchestrator, inferDomainFromFact } from '../../src/tools/submit-orchestrator'
+
+function mockLlm(triplets: Array<{ subject: string; predicate: string; object: string }>): LLMProvider {
+  return {
+    call: async () => ({ text: JSON.stringify(triplets), inputTokens: 0, outputTokens: 0 }),
+  } as unknown as LLMProvider
+}
 
 function makeExecutor(overrides?: Partial<Record<string, unknown>>): ToolExecutor {
   return {
@@ -67,6 +74,76 @@ describe('SubmitOrchestrator', () => {
 
     expect(result.discoveredTarget).toBe(false)
     expect(result.operation).toBe('fact_upserted')
+  })
+
+  it('multi-fact input calls upsert_fact once per triplet', async () => {
+    const executor = makeExecutor()
+    const llm = mockLlm([
+      { subject: 'TsMorphIndexer', predicate: 'handles', object: 'TypeScript files' },
+      { subject: 'TreeSitterIndexer', predicate: 'handles', object: 'Go files' },
+    ])
+
+    const orchestrator = new SubmitOrchestrator(executor, llm)
+    const result = await orchestrator.run({
+      fact: 'TsMorphIndexer handles TypeScript files and TreeSitterIndexer handles Go files',
+      source: 'consumer',
+    })
+
+    expect(result.operation).toBe('fact_upserted')
+    const upsertCalls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c: unknown[]) => (c[0] as { name?: string })?.name === 'upsert_fact'
+    )
+    expect(upsertCalls).toHaveLength(2)
+    expect(upsertCalls[0]?.[0].input.triplet.subject).toBe('TsMorphIndexer')
+    expect(upsertCalls[1]?.[0].input.triplet.subject).toBe('TreeSitterIndexer')
+  })
+
+  it('graph sync runs exactly once even for multi-fact input', async () => {
+    const executor = makeExecutor()
+    const llm = mockLlm([
+      { subject: 'A', predicate: 'uses', object: 'B' },
+      { subject: 'C', predicate: 'reads', object: 'D' },
+    ])
+
+    const orchestrator = new SubmitOrchestrator(executor, llm)
+    await orchestrator.run({ fact: 'A uses B and C reads D', source: 'consumer' })
+
+    const graphCalls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c: unknown[]) => (c[0] as { name?: string })?.name === 'upsert_graph_from_text'
+    )
+    expect(graphCalls).toHaveLength(1)
+  })
+
+  it('input with more than 5 sentences is split into multiple LLM chunks', async () => {
+    const callContents: string[] = []
+    const llm: LLMProvider = {
+      call: async (params: LLMCallParams) => {
+        const content = params.messages[0]?.content
+        callContents.push(typeof content === 'string' ? content : '')
+        return { text: '[{"subject":"X","predicate":"does","object":"Y"}]', inputTokens: 0, outputTokens: 0 }
+      },
+    } as unknown as LLMProvider
+
+    const executor = makeExecutor()
+    const orchestrator = new SubmitOrchestrator(executor, llm)
+    // 6 sentences → chunks of 5 + 1 → 2 LLM calls
+    await orchestrator.run({
+      fact: 'A does X. B does Y. C does Z. D does W. E does V. F does U.',
+      source: 'consumer',
+    })
+
+    expect(callContents).toHaveLength(2)
+    expect(callContents[0]).toContain('A does X')
+    expect(callContents[1]).toContain('F does U')
+    const upsertCalls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c: unknown[]) => (c[0] as { name?: string })?.name === 'upsert_fact'
+    )
+    expect(upsertCalls).toHaveLength(2)
+  })
+
+  it('throws on empty fact text', async () => {
+    const orchestrator = new SubmitOrchestrator(makeExecutor())
+    await expect(orchestrator.run({ fact: '   ', source: 'consumer' })).rejects.toThrow('empty')
   })
 
   it('Given graph sync still runs after upsert_fact', async () => {
