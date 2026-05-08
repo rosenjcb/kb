@@ -10,15 +10,16 @@
  * Cycle 4 (import-docs):     One `is_original` SQLite doc per collected markdown file (verbatim body).
  * Cycle 5 (write):           Upsert documents.
  * Cycle 6 (pass-graph):      Graph extraction (optional provider).
- * Cycle 7 (code-graph):      Deterministic AST indexing of TS/JS files via ts-morph → kg_* tables.
- *                             Runs automatically when tsconfig.json is found; non-TS/JS code files
- *                             are covered by code-facts (semantic/LLM path).
+ * Cycle 7 (code-graph):      Deterministic AST indexing via ts-morph (TS/JS) and tree-sitter (Go,
+ *                             and any other supported language) → kg_* tables.
+ *                             TS/JS: runs when tsconfig.json found. Go: runs when go.mod found.
  *
  * Reuses progress reporting and checkpoint patterns from publish-cli.ts.
  */
 
 import { existsSync } from 'node:fs'
 import { TsMorphIndexer } from '../tools/code-graph-indexer'
+import { TreeSitterIndexer } from '../tools/tree-sitter-indexer'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import readline from 'node:readline'
@@ -741,33 +742,57 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
 
     if (!checkpoint.completedCycles.includes('code-graph')) {
       progress.start('code-graph', 'indexing code graph (AST)…')
-      const tsconfigPath = path.join(cwd, 'tsconfig.json')
-      if (existsSync(tsconfigPath)) {
-        try {
-          const dbPath = path.join(baseDir, '.kb-index.sqlite')
+      try {
+        const dbPath = path.join(baseDir, '.kb-index.sqlite')
+        let totalFiles = 0
+        let totalSymbols = 0
+        let totalEdges = 0
+        let totalErrors = 0
+
+        // TS/JS: ts-morph gives richer analysis (type-aware imports, implements edges)
+        const tsconfigPath = path.join(cwd, 'tsconfig.json')
+        if (existsSync(tsconfigPath)) {
           const indexer = new TsMorphIndexer(dbPath)
           const stats = indexer.indexProject(cwd, tsconfigPath, {
             onProgress: s => {
               progress.update(
                 'code-graph',
-                `files ${s.files} symbols ${s.symbols} edges ${s.edges} skip ${s.skipped}`
+                `ts: files ${s.files} symbols ${s.symbols} edges ${s.edges} skip ${s.skipped}`
               )
             },
           })
           indexer.close()
-          await persist({ completedCycles: ['code-graph'] })
-          progress.finish(
-            'code-graph',
-            `${stats.files} files, ${stats.symbols} symbols, ${stats.edges} edges${stats.errors > 0 ? `, ${stats.errors} errors` : ''}`
-          )
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          await persist({ completedCycles: ['code-graph'] })
-          progress.finish('code-graph', `failed (${message.slice(0, 80)})`)
+          totalFiles += stats.files
+          totalSymbols += stats.symbols
+          totalEdges += stats.edges
+          totalErrors += stats.errors
         }
-      } else {
+
+        // All other files: walk everything, AST what we can, file-node fallback for the rest
+        const indexer = new TreeSitterIndexer(dbPath)
+        const stats = await indexer.indexProject(cwd, {
+          onProgress: s => {
+            progress.update(
+              'code-graph',
+              `files ${s.files} symbols ${s.symbols} edges ${s.edges} skip ${s.skipped}`
+            )
+          },
+        })
+        indexer.close()
+        totalFiles += stats.files
+        totalSymbols += stats.symbols
+        totalEdges += stats.edges
+        totalErrors += stats.errors
+
         await persist({ completedCycles: ['code-graph'] })
-        progress.finish('code-graph', 'skipped (no tsconfig.json)')
+        progress.finish(
+          'code-graph',
+          `${totalFiles} files, ${totalSymbols} symbols, ${totalEdges} edges${totalErrors > 0 ? `, ${totalErrors} errors` : ''}`
+        )
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        await persist({ completedCycles: ['code-graph'] })
+        progress.finish('code-graph', `failed (${message.slice(0, 80)})`)
       }
       if (options.stopAfter === 'code-graph') throw new InitPausedError('code-graph')
     } else {

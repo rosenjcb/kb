@@ -29,6 +29,11 @@ export interface CodeIndexOptions {
   onProgress?: (stats: CodeIndexStats) => void
 }
 
+export interface LanguageIndexer {
+  indexProject(repoRoot: string, opts?: CodeIndexOptions): Promise<CodeIndexStats> | CodeIndexStats
+  close(): void
+}
+
 const SCHEMA_VERSION = 1
 const SOURCE = 'deterministic-ts'
 
