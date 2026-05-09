@@ -83,8 +83,10 @@ import { parseJekyllPublishOptions, runJekyllPublish } from './publish-jekyll'
 import { runQueryTruthRetrieval } from './query-truth-retrieval'
 import {
   formatSkillInstallReport,
+  formatSkillUninstallReport,
   installSkillIntoProject,
   installSkillsGlobally,
+  uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
 import {
@@ -715,10 +717,21 @@ export async function runMainWithOutput(
     const subcommand = args[1]
     if (subcommand === 'install') {
       try {
-        const results = await installSkillIntoProject(process.cwd())
-        const report = formatSkillInstallReport(results)
+        const [skillResults, profileResults] = await Promise.all([
+          installSkillsGlobally(),
+          installSkillIntoProject(),
+        ])
+        out.log(formatSkillInstallReport(skillResults, profileResults))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        out.error(`❌ ${message}`)
+      }
+    } else if (subcommand === 'uninstall') {
+      try {
+        const results = await uninstallSkills()
+        const report = formatSkillUninstallReport(results)
         if (report) out.log(report)
-        else out.log('No changes made.')
+        else out.log('No KB skill files found to remove.')
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)
@@ -729,7 +742,8 @@ export async function runMainWithOutput(
           'Usage: kb skill <subcommand>',
           '',
           'Subcommands:',
-          '  install   Inject a KB skill reference into CLAUDE.md or AGENTS.md in the current directory',
+          '  install     Inject KB skill into ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md',
+          '  uninstall   Remove KB skill files and profile MD entries',
         ].join('\n')
       )
     }
@@ -936,7 +950,9 @@ async function main() {
 
   // Launch TUI when invoked interactively with no arguments
   if (isTTY && args.length === 0) {
-    installSkillsGlobally().catch(() => {}) // fire and forget — never block startup
+    const [skillResults] = await Promise.all([
+      installSkillsGlobally().catch(() => [] as Awaited<ReturnType<typeof installSkillsGlobally>>),
+    ])
     let kbConfig = await ensureDefaultConfig()
     const inferred = await persistInferredLLMProvider({ config: kbConfig })
     kbConfig = inferred.config
@@ -944,6 +960,11 @@ async function main() {
 
     const startupNotices: string[] = []
     if (inferred.notice) startupNotices.push(inferred.notice)
+
+    for (const r of skillResults) {
+      if (r.action === 'installed') startupNotices.push(`✓ KB agent skill installed for ${r.agent}`)
+      else if (r.action === 'updated') startupNotices.push(`↑ KB agent skill updated for ${r.agent}`)
+    }
 
     const hasApiKey =
       process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY
