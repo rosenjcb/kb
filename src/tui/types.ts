@@ -1,4 +1,4 @@
-export type TuiMode = 'shell' | 'chat' | 'init'
+export type TuiMode = 'chat'
 
 export type EntryType =
   | 'banner'

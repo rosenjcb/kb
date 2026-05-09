@@ -17,6 +17,7 @@ import {
 import { runDocsGenerateChatFlow } from './chat-docs-generate-flow'
 import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
 import { type CmdMode, cmd } from './cmd-ref'
+import { parseInitCommand, parseScanCommand, runKbInit } from './init-cli.js'
 import { isReadFactsResult, printReadDocumentsOrchestrationFooter } from './intent-cli.js'
 import type { KbConfig } from './kb-config'
 import { readKbConfig } from './kb-config'
@@ -44,6 +45,8 @@ export interface ChatSessionDeps {
   progressHeartbeatMs?: number
   /** Emit a "still working" notice after this delay. Default: 12000ms. */
   progressNoticeMs?: number
+  /** Called after /init or /scan completes so the caller can refresh base metadata. */
+  onBaseChanged?: () => void
 }
 
 export interface ChatIO {
@@ -183,7 +186,7 @@ export async function runChatSession(
   // The LLM sees native assistant/user pairs rather than embedded-text history.
   const messages: Message[] = []
 
-  printer.chatAssistant('Chat mode started. Type /help for commands.')
+  printer.chatAssistant('Type a question, or /help for commands.')
 
   if (deps.graphWriter) {
     try {
@@ -197,10 +200,7 @@ export async function runChatSession(
   try {
     while (true) {
       const rawInput = await io.read('you> ')
-      if (rawInput === null) {
-        printer.chatAssistant('Exiting chat.')
-        break
-      }
+      if (rawInput === null) break
 
       const input = rawInput.trim()
       if (!input) continue
@@ -226,18 +226,73 @@ export async function runChatSession(
         continue
       }
 
-      if (input === '/help') {
-        printer.chatAssistant('Commands:')
-        printer.chatAssistant('  /help  Show chat commands')
-        printer.chatAssistant('  /docs generate "<prompt>" …  Guided doc draft')
-        printer.chatAssistant('  /exit  Exit chat mode')
+      const initMatch = input.match(/^\/init(\s|$)/i)
+      const scanMatch = !initMatch && input.match(/^\/scan(\s|$)/i)
+      if (initMatch || scanMatch) {
+        const isScan = Boolean(scanMatch)
+        const prefix = isScan ? 'scan' : 'init'
+        const tail = input.slice(prefix.length + 1).trim()
+        const extraArgs = tail ? splitShellArgs(tail) : []
+        let parsed: ReturnType<typeof parseInitCommand>
+        try {
+          parsed = isScan ? parseScanCommand(extraArgs) : parseInitCommand(extraArgs)
+        } catch (e) {
+          io.error(`❌ ${e instanceof Error ? e.message : String(e)}`)
+          continue
+        }
+        io.write(`Starting ${prefix}… (press Enter to skip any question)`)
+        try {
+          const result = await runKbInit({
+            ...parsed,
+            questionIO: {
+              write: (msg: string) => io.write(msg),
+              askQuestion: async (question: string): Promise<string> => {
+                const answer = await io.read(question)
+                return answer ?? ''
+              },
+            },
+            progressSink: (line: string) => io.write(line),
+          })
+          const docCount = result.writtenDocIds?.length ?? 0
+          io.write(
+            `✅ ${isScan ? 'Scan' : 'Init'} complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`
+          )
+          deps.onBaseChanged?.()
+        } catch (err) {
+          io.error(
+            `${isScan ? 'Scan' : 'Init'} error: ${err instanceof Error ? err.message : String(err)}`
+          )
+        }
+        printer.separator()
         continue
       }
 
-      if (input === '/exit') {
-        printer.chatAssistant('Exiting chat.')
-        break
+      if (input === '/help') {
+        printer.chatAssistant(
+          [
+            'Commands:',
+            '  /query <text>          Search the KB',
+            '  /submit <text>         Store a fact',
+            '  /invalidate <text>     Remove stale facts',
+            '  /init [args]           Build a KB from this repo',
+            '  /scan [args]           Refresh the KB',
+            '  /base <use|delete> …   Manage KB bases',
+            '  /docs <list|view|generate|rename|delete> …',
+            '  /facts [args]          List or search KB facts',
+            '  /graph [args]          Inspect the knowledge graph',
+            '  /config [args]         View or update config',
+            '  /publish [args]        Publish KB docs',
+            '  /sync                  Install latest published KB',
+            '  /logs [args]           Browse run reports',
+            '  /skill <cmd>           Manage agent skills',
+            '  /clear                 Clear the screen',
+            '  /exit                  Quit kb',
+          ].join('\n')
+        )
+        continue
       }
+
+      if (input === '/exit') break
 
       try {
         const turnStartedAt = Date.now()
@@ -503,6 +558,26 @@ function buildChatAutoDeepenLine(retrievalQuery: string, pass: 1 | 2): string {
     return `Clarification: Automated deepen—cover every substantive angle (${focus}); prioritize exact CLI behavior, init/submit/query flows, architecture, and KB mechanics over short UI-only summaries.`
   }
   return `Clarification: Automated widen—pull adjacent facts on hybrid search, config, skills, evaluation harness, and repo workflow as they relate to: ${focus}.`
+}
+
+function splitShellArgs(input: string): string[] {
+  const args: string[] = []
+  let current = ''
+  let inQuote = false
+  let quoteChar = ''
+  for (const char of input) {
+    if (inQuote) {
+      if (char === quoteChar) { inQuote = false; args.push(current); current = '' }
+      else current += char
+    } else if (char === '"' || char === "'") {
+      if (current) { args.push(current); current = '' }
+      inQuote = true; quoteChar = char
+    } else if (char === ' ') {
+      if (current) { args.push(current); current = '' }
+    } else current += char
+  }
+  if (current) args.push(current)
+  return args
 }
 
 function normalizeReadResult(value: unknown): ReadDocumentsResult {

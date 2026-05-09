@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink'
 import TextInput from 'ink-text-input'
-import { BLUE, ORANGE } from '../theme.js'
+import { ORANGE } from '../theme.js'
 import type { TuiMode } from '../types.js'
 
 interface Props {
@@ -17,21 +17,15 @@ export function InputBar({
   value,
   onChange,
   onSubmit,
-  mode,
   isRunning,
   chatPlaceholder = '',
 }: Props) {
-  const isChat = mode === 'chat'
-  const isInit = mode === 'init'
-  const borderColor = isRunning ? 'gray' : isChat || isInit ? ORANGE : BLUE
-  const promptColor = isChat || isInit ? ORANGE : BLUE
-  const prompt = isChat ? 'you' : isInit ? 'ans' : 'kb'
-  const placeholder = isRunning ? '(running…)' : isChat && chatPlaceholder ? chatPlaceholder : ''
+  const placeholder = isRunning ? '(running…)' : chatPlaceholder || ''
 
   return (
-    <Box borderStyle="single" borderColor={borderColor} paddingX={1}>
-      <Text color={promptColor} bold>
-        {prompt}&gt;{' '}
+    <Box borderStyle="single" borderColor={isRunning ? 'gray' : ORANGE} paddingX={1}>
+      <Text color={ORANGE} bold>
+        you&gt;{' '}
       </Text>
       <TextInput value={value} onChange={onChange} onSubmit={onSubmit} placeholder={placeholder} />
     </Box>

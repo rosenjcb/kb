@@ -87,14 +87,14 @@ export async function runDocsGenerateChatFlow(input: {
       writeError('No pending question.')
       return
     }
-    const hint = '(answer | :skip | :cancel)'
+    const hint = '(answer | /skip | /cancel)'
     const line = await read(`[${q.key}] ${q.question} ${hint}\n> `)
-    if (line === null || line.trim() === ':cancel') {
+    if (line === null || line.trim() === '/cancel') {
       printer.chatAssistant('Cancelled document session (session file kept).')
       return
     }
     const t = line.trim()
-    if (t === ':skip') {
+    if (t === '/skip') {
       await skipCurrent(kbStorageDir, sessionId)
       printer.chatAssistant('Skipped.')
     } else {
@@ -114,27 +114,25 @@ export async function runDocsGenerateChatFlow(input: {
   printer.chatAssistant(draft.content)
 
   while (true) {
-    const line = await read('review> (accept | reject <feedback> | cancel)\n> ')
+    const line = await read('review> (/accept | /reject <feedback> | /cancel)\n> ')
     if (line === null) return
     const t = line.trim()
-    if (!t || t === 'cancel' || t === ':cancel' || t === 'q') {
+    if (!t || t === '/cancel') {
       printer.chatAssistant('Left review loop (draft saved; use CLI --accept when ready).')
       return
     }
     const lower = t.toLowerCase()
-    if (lower === 'accept' || lower === 'y' || lower === 'yes') {
+    if (lower === '/accept') {
       const out = await acceptDraft({ baseDir: kbStorageDir, sessionId, deps: { llm } })
       printer.chatAssistant(`Accepted. Document id: ${out.document.id}`)
       return
     }
     let feedback: string | undefined
-    if (lower.startsWith('reject ')) {
-      feedback = t.slice('reject '.length).trim()
-    } else if (lower.startsWith('r ')) {
-      feedback = t.slice(2).trim()
+    if (lower.startsWith('/reject ')) {
+      feedback = t.slice('/reject '.length).trim()
     }
     if (!feedback) {
-      printer.chatAssistant('Say `reject …` or `r …` with feedback, or `accept`.')
+      printer.chatAssistant('Use /accept, /reject <feedback>, or /cancel.')
       continue
     }
     printer.chatAssistant('Revising…')

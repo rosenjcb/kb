@@ -15,7 +15,7 @@ export function HistoryEntryRow({ entry }: Props) {
 
   switch (entry.type) {
     case 'banner':
-      return <WelcomeBanner />
+      return <WelcomeBanner providerLabel={entry.content || undefined} />
 
     case 'command':
       return <Text color={ORANGE}>{entry.content}</Text>

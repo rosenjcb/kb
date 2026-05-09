@@ -6,39 +6,40 @@ Use this note when designing or reviewing any user-facing `kb` feature.
 
 Every meaningful CLI feature must be usable in the right mode surfaces:
 
-- Interactive shell/TUI entry when the user starts with bare `kb`
+- Interactive chat TUI when the user starts with bare `kb` (chat is the primary experience)
 - One-shot non-interactive CLI entry when the user runs `kb <command> ...`
 - Help entry via `--help`
-- TUI slash entry such as `/init` when the feature is available from the Ink shell
+- TUI slash entry such as `/init` when the feature is available from the chat interface
 
 Do not treat the TUI path as extra polish. It is part of the product surface.
 
 ## Interaction Contract
 
-- `kb` in a real TTY should launch the interactive TUI shell.
+- `kb` in a real TTY launches directly into chat mode. There is no shell mode — chat is the default.
 - `kb --help` should print top-level help and exit.
 - `kb <command> ...` should be non-interactive by default unless that command intentionally runs an interview or session flow.
 - `kb <command> --help` should print help and exit without starting real work.
-- If a command is exposed inside the TUI, the slash path should mirror the CLI path closely enough that the same feature can be exercised both ways.
-- Success or follow-up copy in the TUI transcript (e.g. after `/base use` or `/base use --default`) should use **slash form** (`/base use …`), not `kb …`, so users are not told to leave the Ink shell. Shared formatters take `CmdMode` and build hints via `cmd()` in `src/cli/cmd-ref.ts`.
+- All commands are available as slash commands inside the chat interface. Slash commands that are output-only (query, submit, facts, graph, docs list/view, base, config, etc.) are intercepted at the TUI layer and display inline without involving the LLM loop. Interactive slash commands (`/init`, `/scan`, `/docs generate`) run through the chat session’s `io.read()`/`io.write()` interface — the same `ChatIO` used for LLM turns.
+- Success or follow-up copy in the TUI transcript should use **slash form** (`/base use …`), not `kb …`, so users are not told to leave the chat interface. Shared formatters take `CmdMode` and build hints via `cmd()` in `src/cli/cmd-ref.ts`.
+- `/docs generate` review uses slash commands only: `/accept`, `/reject <feedback>`, `/cancel`.
+- `/init` and `/scan` question answering uses `/skip` and `/cancel` as slash commands.
 
 ## Terminal scrollback (Ink)
 
 - Completed transcript rows should go through Ink `<Static>` where they must not be redrawn every frame, so the host TTY keeps them in normal scrollback (see `src/tui/components/HistoryPane.tsx`).
 - **Cursor’s integrated terminal** can behave differently from iTerm, Terminal.app, or VS Code’s terminal panel (e.g. scrollback feels “stuck”). If the issue appears only there, try an external terminal to confirm; the `<Static>` split is still the right default for real TTYs.
-- In **Ink chat mode**, `read()` used to drop the prompt string (only the shell showed `you>`). Sub-flows such as `/docs generate` now echo any **non-idle** prompt into the transcript and reuse a short form as the input placeholder so questionnaire / review steps read as a normal back-and-forth.
+- `read()` in `ChatIO` echoes any **non-idle** prompt into the transcript and reuses a short form as the input placeholder so questionnaire / review steps (docs generate, init questions) read as a normal back-and-forth.
 
 Examples:
 
-- `kb init` must support both its command-line path and the TUI `/init` path.
+- `kb init` must support both its command-line path and the TUI `/init` path (runs interactively inside the chat session).
 - `kb scan` must support both its command-line path and the TUI `/scan` path.
 - `kb base use` / `kb base delete` must work as both `kb base …` (CLI) and `/base use …` / `/base delete …` (TUI).
-- `kb sync` must work as both `kb sync` (CLI) and `/sync` (TUI) when release-install commands are exposed.
+- `kb sync` must work as both `kb sync` (CLI) and `/sync` (TUI).
 - A help flag should work from both `kb --help` and `kb init --help`.
-- A normal intent command like `kb query "topic"` is already non-interactive by shape and should not need an extra mode flag.
-- The public intent surface is exactly `kb query`, `kb submit`, and `kb invalidate`, mirrored by `/query`, `/submit`, and `/invalidate` in the TUI shell.
-- **`kb facts`** (list / search / show) must work as **`/facts …`** in the TUI shell (and in chat mode for parity), mirroring the same flags as the CLI.
-- **`--verbose`** on **`kb query`** / **`kb chat`** adds human rows **`summary>`** / **`status>`** / **`confidence>`**. **`--debug`** switches the default **`sources>`** (titles-only) footer to one detailed **`source>`** line per hit. Use these on that invocation (TUI shell: **`chat --verbose`**, **`chat --debug`**) before a chat session starts—there is no mid-session toggle.
+- A normal intent command like `kb query “topic”` is already non-interactive by shape and should not need an extra mode flag.
+- The public intent surface is exactly `kb query`, `kb submit`, and `kb invalidate`, mirrored by `/query`, `/submit`, and `/invalidate` in chat.
+- **`kb facts`** (list / search / show) must work as **`/facts …`** in chat, mirroring the same flags as the CLI.
 
 ## Flag Standardization Guidance
 

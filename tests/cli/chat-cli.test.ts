@@ -84,9 +84,9 @@ describe('chat-cli session loop', () => {
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
-    expect(io.outputs.join('\n')).toContain('Chat mode started')
+    expect(io.outputs.join('\n')).toContain('Type a question')
     expect(io.outputs.join('\n')).toContain('/help')
-    expect(io.outputs.join('\n')).toContain('Exiting chat')
+    expect(io.outputs.join('\n')).not.toContain('Exiting chat')
     expect(executor.execute).not.toHaveBeenCalled()
   })
 
@@ -217,7 +217,6 @@ describe('chat-cli session loop', () => {
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
     expect(io.errors.join('\n')).toContain('Chat turn failed: provider offline')
-    expect(io.outputs.join('\n')).toContain('Exiting chat')
   })
 
   it('Given deep discovery, then chat uses one retrieval call and returns the LLM answer directly', async () => {
