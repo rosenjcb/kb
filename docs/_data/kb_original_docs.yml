@@ -86,7 +86,3 @@ docs:
     url: /design.html
   - title: CLAUDE.md
     url: /claude.html
-  - title: docs/dogfood-docs-generate-export.md
-    url: /docs-dogfood-docs-generate-export.html
-  - title: docs/_graph_pages/knowledge-graph.md
-    url: /docs-graph-pages-knowledge-graph.html

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: skills/agent-compare-eval/SKILL.md
-date: '2026-05-08'
+date: '2026-05-09'
 kb_id: skills-agent-compare-eval-skill-md
 tags:
   - original-source
