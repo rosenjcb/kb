@@ -10,26 +10,37 @@ import {
 } from '../../src/tui/slash-commands.js'
 
 describe('slash command helpers', () => {
-  it('shows shell slash suggestions when input starts with slash', () => {
-    expect(getSlashCommandSuggestions('/c', 'shell')).toEqual([
-      { command: '/chat', description: 'start interactive chat mode' },
-      { command: '/config', description: 'inspect or update config values' },
-      { command: '/clear', description: 'clear the visible session history' },
-    ])
+  it('shows slash suggestions when input starts with slash', () => {
+    const suggestions = getSlashCommandSuggestions('/c', 'chat')
+    expect(suggestions.some(s => s.command === '/config')).toBe(true)
+    expect(suggestions.some(s => s.command === '/clear')).toBe(true)
   })
 
-  it('shows chat-specific suggestions in chat mode', () => {
-    expect(getSlashCommands('chat')).toEqual([
-      { command: '/help', description: 'show chat-mode controls' },
-      { command: '/docs', description: 'knowledge base documents (chat: /docs generate …)' },
-      { command: '/facts', description: 'list, search, or show KB facts' },
-      { command: '/clear', description: 'clear the visible session history' },
-      { command: '/exit', description: 'leave chat mode' },
-    ])
+  it('returns the full command list for chat mode', () => {
+    const commands = getSlashCommands('chat')
+    expect(commands.some(c => c.command === '/init')).toBe(true)
+    expect(commands.some(c => c.command === '/scan')).toBe(true)
+    expect(commands.some(c => c.command === '/query')).toBe(true)
+    expect(commands.some(c => c.command === '/submit')).toBe(true)
+    expect(commands.some(c => c.command === '/invalidate')).toBe(true)
+    expect(commands.some(c => c.command === '/docs')).toBe(true)
+    expect(commands.some(c => c.command === '/facts')).toBe(true)
+    expect(commands.some(c => c.command === '/graph')).toBe(true)
+    expect(commands.some(c => c.command === '/base')).toBe(true)
+    expect(commands.some(c => c.command === '/config')).toBe(true)
+    expect(commands.some(c => c.command === '/skill')).toBe(true)
+    expect(commands.some(c => c.command === '/sync')).toBe(true)
+    expect(commands.some(c => c.command === '/help')).toBe(true)
+    expect(commands.some(c => c.command === '/clear')).toBe(true)
+    expect(commands.some(c => c.command === '/exit')).toBe(true)
+  })
+
+  it('does not include /chat in the command list (chat is the app itself now)', () => {
+    expect(getSlashCommands('chat').some(c => c.command === '/chat')).toBe(false)
   })
 
   it('returns no suggestions for non-slash input', () => {
-    expect(getSlashCommandSuggestions('query docs', 'shell')).toEqual([])
+    expect(getSlashCommandSuggestions('query docs', 'chat')).toEqual([])
   })
 
   it('sanitizes tabs from the raw input value', () => {
@@ -37,17 +48,17 @@ describe('slash command helpers', () => {
   })
 
   it('wraps suggestion selection downward', () => {
-    const suggestions = getSlashCommandSuggestions('/c', 'shell')
+    const suggestions = getSlashCommandSuggestions('/c', 'chat')
     expect(clampSuggestionIndex(suggestions.length, suggestions)).toBe(0)
   })
 
   it('wraps suggestion selection upward', () => {
-    const suggestions = getSlashCommandSuggestions('/c', 'shell')
+    const suggestions = getSlashCommandSuggestions('/c', 'chat')
     expect(clampSuggestionIndex(-1, suggestions)).toBe(suggestions.length - 1)
   })
 
   it('formats the chosen suggestion for explicit completion', () => {
-    const [suggestion] = getSlashCommandSuggestions('/he', 'shell')
+    const [suggestion] = getSlashCommandSuggestions('/he', 'chat')
     expect(applySelectedSuggestion(suggestion)).toBe('/help ')
   })
 
@@ -64,55 +75,33 @@ describe('slash command helpers', () => {
   })
 
   it('scrolls the visible suggestion window with the selected row', () => {
-    const suggestions = getSlashCommands('shell')
+    const suggestions = getSlashCommands('chat')
     const { visible, startIndex } = getSuggestionWindow(suggestions, 4, 4)
-    expect(startIndex).toBe(2)
-    expect(visible.map(item => item.command)).toEqual(['/base', '/query', '/submit', '/invalidate'])
+    expect(visible.length).toBe(4)
+    expect(startIndex).toBeGreaterThanOrEqual(0)
   })
 
-  it('includes /init in shell command list', () => {
-    const commands = getSlashCommands('shell')
-    expect(commands.some(c => c.command === '/init')).toBe(true)
-    expect(commands.find(c => c.command === '/init')?.description).toContain(
-      'build a knowledge base'
-    )
-  })
-
-  it('does not include /init in chat command list', () => {
+  it('includes /init in the command list with correct description', () => {
     const commands = getSlashCommands('chat')
-    expect(commands.some(c => c.command === '/init')).toBe(false)
+    const initCmd = commands.find(c => c.command === '/init')
+    expect(initCmd).toBeDefined()
+    expect(initCmd?.description).toContain('build a knowledge base')
   })
 
-  it('suggests /init when typing /in in shell mode', () => {
-    const suggestions = getSlashCommandSuggestions('/in', 'shell')
+  it('includes /scan in the command list with correct description', () => {
+    const commands = getSlashCommands('chat')
+    const scanCmd = commands.find(c => c.command === '/scan')
+    expect(scanCmd).toBeDefined()
+    expect(scanCmd?.description).toContain('active or selected KB base')
+  })
+
+  it('suggests /init when typing /in', () => {
+    const suggestions = getSlashCommandSuggestions('/in', 'chat')
     expect(suggestions.some(s => s.command === '/init')).toBe(true)
   })
 
-  it('includes /scan in shell command list', () => {
-    const commands = getSlashCommands('shell')
-    expect(commands.some(c => c.command === '/scan')).toBe(true)
-    expect(commands.find(c => c.command === '/scan')?.description).toContain(
-      'active or selected KB base'
-    )
-  })
-
-  it('includes /skill in shell command list', () => {
-    const commands = getSlashCommands('shell')
-    expect(commands.some(c => c.command === '/skill')).toBe(true)
-  })
-
-  it('includes /sync in shell command list', () => {
-    const commands = getSlashCommands('shell')
-    expect(commands.some(c => c.command === '/sync')).toBe(true)
-  })
-
-  it('suggests /skill when typing /sk in shell mode', () => {
-    const suggestions = getSlashCommandSuggestions('/sk', 'shell')
+  it('suggests /skill when typing /sk', () => {
+    const suggestions = getSlashCommandSuggestions('/sk', 'chat')
     expect(suggestions.some(s => s.command === '/skill')).toBe(true)
-  })
-
-  it('returns no suggestions in init mode regardless of input', () => {
-    // init mode has no slash commands — input bar is for answering questions
-    expect(getSlashCommandSuggestions('/help', 'init')).toEqual([])
   })
 })

@@ -31,10 +31,8 @@ import {
   writeDefaultBase,
   writeSessionBase,
 } from './base-selection'
-import { printChatHelp, runChatSession } from './chat-cli'
 import {
   CLI_ERROR_NO_KB_BASE,
-  CLI_ERROR_NO_LLM_PROVIDER,
   formatPrerequisiteError,
 } from './cli-prerequisites'
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from './cmd-ref'
@@ -76,7 +74,6 @@ import {
   createLLMProviderFromConfig,
   ensureDefaultConfig,
   persistInferredLLMProvider,
-  resolveConversationalChatEnabled,
   resolveGraphEnabled,
 } from './kb-config'
 import type { KbConfig } from './kb-config'
@@ -86,8 +83,10 @@ import { parseJekyllPublishOptions, runJekyllPublish } from './publish-jekyll'
 import { runQueryTruthRetrieval } from './query-truth-retrieval'
 import {
   formatSkillInstallReport,
+  formatSkillUninstallReport,
   installSkillIntoProject,
   installSkillsGlobally,
+  uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
 import {
@@ -132,10 +131,9 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  config      Inspect or update persistent config',
     '  init        Build a KB from the current repo',
     '  scan        Refresh a KB with content from the current repo',
-      '  graph       Inspect or edit the knowledge graph',
+    '  graph       Inspect or edit the knowledge graph',
     '  docs        Browse KB documents',
     '  facts       List, search, or show KB facts',
-    '  chat        Start an interactive KB chat session (--verbose / --debug for human orchestration)',
     '  publish     Publish KB docs',
     '  sync        Install the latest published KB release',
     '  logs        Browse and compare run reports',
@@ -400,45 +398,7 @@ export async function runMainWithOutput(
   }
 
   if (firstArg === 'chat') {
-    if (args.includes('--help') || args.includes('-h') || args[1] === 'help') {
-      out.log(printChatHelp(mode))
-      return
-    }
-
-    const chatTail = args.slice(1)
-    const chatVerbose = chatTail.includes('--verbose')
-    const chatDebug = chatTail.includes('--debug')
-    let kbStorageDir: string
-    try {
-      kbStorageDir = await resolveKbStorageDirFromArgs(chatTail)
-    } catch {
-      out.error(formatPrerequisiteError(CLI_ERROR_NO_KB_BASE))
-      return
-    }
-    const llmProvider = createLLMProviderFromConfig(config)
-
-    if (!llmProvider) {
-      out.error(formatPrerequisiteError(CLI_ERROR_NO_LLM_PROVIDER))
-      return
-    }
-
-    const toolExecutor = createKBToolsRegistry(kbStorageDir, config, { taskProvider: llmProvider })
-    const chatGraphWriter = resolveGraphEnabled(config)
-      ? new KbGraphWriter(KbGraphWriter.dbPathForBase(kbStorageDir))
-      : undefined
-    out.log(`🗂️ KB Storage: ${kbStorageDir}`)
-    out.log('')
-    await runChatSession({
-      llmProvider,
-      toolExecutor,
-      mode,
-      graphWriter: chatGraphWriter,
-      kbStorageDir: kbStorageDir,
-      kbConfig: config,
-      conversationalRetrieval: resolveConversationalChatEnabled(config),
-      verbose: chatVerbose,
-      debug: chatDebug,
-    })
+    out.log('`kb chat` is no longer a standalone command. Run `kb` to open the interactive session.')
     return
   }
 
@@ -757,10 +717,21 @@ export async function runMainWithOutput(
     const subcommand = args[1]
     if (subcommand === 'install') {
       try {
-        const results = await installSkillIntoProject(process.cwd())
-        const report = formatSkillInstallReport(results)
+        const [skillResults, profileResults] = await Promise.all([
+          installSkillsGlobally(),
+          installSkillIntoProject(),
+        ])
+        out.log(formatSkillInstallReport(skillResults, profileResults))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        out.error(`❌ ${message}`)
+      }
+    } else if (subcommand === 'uninstall') {
+      try {
+        const results = await uninstallSkills()
+        const report = formatSkillUninstallReport(results)
         if (report) out.log(report)
-        else out.log('No changes made.')
+        else out.log('No KB skill files found to remove.')
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)
@@ -771,7 +742,8 @@ export async function runMainWithOutput(
           'Usage: kb skill <subcommand>',
           '',
           'Subcommands:',
-          '  install   Inject a KB skill reference into CLAUDE.md or AGENTS.md in the current directory',
+          '  install     Inject KB skill into ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md',
+          '  uninstall   Remove KB skill files and profile MD entries',
         ].join('\n')
       )
     }
@@ -978,13 +950,38 @@ async function main() {
 
   // Launch TUI when invoked interactively with no arguments
   if (isTTY && args.length === 0) {
-    installSkillsGlobally().catch(() => {}) // fire and forget — never block startup
+    const [skillResults] = await Promise.all([
+      installSkillsGlobally().catch(() => [] as Awaited<ReturnType<typeof installSkillsGlobally>>),
+    ])
     let kbConfig = await ensureDefaultConfig()
     const inferred = await persistInferredLLMProvider({ config: kbConfig })
     kbConfig = inferred.config
     applyConfigToEnv(kbConfig)
+
+    const startupNotices: string[] = []
+    if (inferred.notice) startupNotices.push(inferred.notice)
+
+    for (const r of skillResults) {
+      if (r.action === 'installed') startupNotices.push(`✓ KB agent skill installed for ${r.agent}`)
+      else if (r.action === 'updated') startupNotices.push(`↑ KB agent skill updated for ${r.agent}`)
+    }
+
+    const hasApiKey =
+      process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY
+    if (!hasApiKey) {
+      startupNotices.push(
+        [
+          '⚠  No LLM API key detected. KB needs one of:',
+          '     export ANTHROPIC_API_KEY=<your-key>   # Anthropic Claude',
+          '     export OPENAI_API_KEY=<your-key>       # OpenAI',
+          '     export GEMINI_API_KEY=<your-key>       # Google Gemini',
+          '   Set the key in your shell profile, then restart your terminal.',
+        ].join('\n')
+      )
+    }
+
     const { launchTui } = await import('../tui/index.js')
-    await launchTui(kbConfig, { startupNotices: inferred.notice ? [inferred.notice] : [] })
+    await launchTui(kbConfig, { startupNotices })
     return
   }
 

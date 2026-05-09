@@ -1,22 +1,20 @@
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { loadSkill } from '../skills/loader'
 
 const KB_DEV_WORKFLOW_SKILL = loadSkill('kb-dev-workflow')
 
-const KB_DEV_WORKFLOW_SKILL_BLURB = `
-## KB (knowledge base)
+/** Strip YAML frontmatter (---...---) so the skill body can be embedded in a CLAUDE.md/AGENTS.md. */
+function stripFrontmatter(content: string): string {
+  if (!content.startsWith('---')) return content
+  const end = content.indexOf('\n---', 3)
+  if (end === -1) return content
+  return content.slice(end + 4).replace(/^\n/, '')
+}
 
-This project uses the \`kb\` CLI for durable knowledge management. The full agent skill is auto-installed at startup — see \`~/.claude/skills/kb-dev-workflow/SKILL.md\` (Claude), \`~/.cursor/rules/kb-dev-workflow.mdc\` (Cursor), or equivalent.
-
-**Quick reference:**
-- \`kb query "<topic>"\` — search before big changes
-- \`kb submit "<fact>"\` — record durable decisions
-- \`kb invalidate "<old-fact>"\` — correct stale knowledge
-- \`kb publish notion|jekyll\` — publish to external targets
-`
+const KB_DEV_WORKFLOW_SKILL_BODY = stripFrontmatter(KB_DEV_WORKFLOW_SKILL)
 
 const SKILL_NAME = 'kb-dev-workflow'
 const HASH_PREFIX = '<!-- kb-skill-hash:'
@@ -111,64 +109,143 @@ export async function installSkillsGlobally(): Promise<SkillInstallResult[]> {
   return results.flatMap(r => (r.status === 'fulfilled' ? [r.value] : []))
 }
 
-// ─── kb skill install (project-level blurb) ──────────────────────────────────
+// ─── kb skill install (profile-level blurb) ──────────────────────────────────
 
-const PROJECT_SKILL_TARGETS = [
-  { file: 'CLAUDE.md', heading: '## KB (knowledge base)' },
-  { file: 'AGENTS.md', heading: '## KB (knowledge base)' },
-]
+const PROFILE_HEADING = '# KB dev workflow'
+
+function profileSkillTargets(): Array<{ label: string; filePath: string }> {
+  const home = os.homedir()
+  return [
+    { label: '~/.claude/CLAUDE.md', filePath: path.join(home, '.claude', 'CLAUDE.md') },
+    { label: '~/.codex/AGENTS.md', filePath: path.join(home, '.codex', 'AGENTS.md') },
+  ]
+}
 
 export interface ProjectInstallResult {
   file: string
   action: 'injected' | 'already-present' | 'created' | 'skipped'
 }
 
-export async function installSkillIntoProject(cwd: string): Promise<ProjectInstallResult[]> {
+export async function installSkillIntoProject(): Promise<ProjectInstallResult[]> {
   const results: ProjectInstallResult[] = []
 
-  for (const target of PROJECT_SKILL_TARGETS) {
-    const filePath = path.join(cwd, target.file)
+  for (const target of profileSkillTargets()) {
     let exists = false
 
     try {
-      await stat(filePath)
+      await stat(target.filePath)
       exists = true
     } catch {
       // doesn't exist
     }
 
     if (!exists) {
-      results.push({ file: target.file, action: 'skipped' })
+      results.push({ file: target.label, action: 'skipped' })
       continue
     }
 
-    const content = await readFile(filePath, 'utf8')
-    if (content.includes(target.heading)) {
-      results.push({ file: target.file, action: 'already-present' })
+    const content = await readFile(target.filePath, 'utf8')
+    if (content.includes(PROFILE_HEADING)) {
+      results.push({ file: target.label, action: 'already-present' })
       continue
     }
 
-    await writeFile(filePath, `${content.trimEnd()}\n${KB_DEV_WORKFLOW_SKILL_BLURB}`, 'utf8')
-    results.push({ file: target.file, action: 'injected' })
+    await writeFile(target.filePath, `${content.trimEnd()}\n${KB_DEV_WORKFLOW_SKILL_BODY}`, 'utf8')
+    results.push({ file: target.label, action: 'injected' })
   }
 
-  // If neither CLAUDE.md nor AGENTS.md exists, create AGENTS.md
-  const anyInjected = results.some(r => r.action === 'injected' || r.action === 'already-present')
-  if (!anyInjected) {
-    const agentsPath = path.join(cwd, 'AGENTS.md')
-    await writeFile(agentsPath, `# Agent Instructions\n${KB_DEV_WORKFLOW_SKILL_BLURB}`, 'utf8')
-    results.push({ file: 'AGENTS.md', action: 'created' })
+  // If no profile MDs exist yet, create ~/.claude/CLAUDE.md as the primary target
+  const anyActioned = results.some(r => r.action === 'injected' || r.action === 'already-present')
+  if (!anyActioned) {
+    const home = os.homedir()
+    const claudeMd = path.join(home, '.claude', 'CLAUDE.md')
+    await mkdir(path.dirname(claudeMd), { recursive: true })
+    await writeFile(claudeMd, `# Agent Instructions\n${KB_DEV_WORKFLOW_SKILL_BODY}`, 'utf8')
+    results.push({ file: '~/.claude/CLAUDE.md', action: 'created' })
   }
 
   return results
 }
 
-export function formatSkillInstallReport(results: ProjectInstallResult[]): string {
-  const lines: string[] = []
-  for (const r of results) {
-    if (r.action === 'injected') lines.push(`✓ Injected KB skill reference into ${r.file}`)
-    else if (r.action === 'created') lines.push(`✓ Created ${r.file} with KB skill reference`)
-    else if (r.action === 'already-present') lines.push(`• ${r.file} already has KB skill section`)
+export function formatSkillInstallReport(
+  skillResults: SkillInstallResult[],
+  profileResults: ProjectInstallResult[]
+): string {
+  const lines: string[] = ['Skill files (invokable via /kb-dev-workflow):']
+  for (const r of skillResults) {
+    if (r.action === 'installed') lines.push(`  ✓ installed  ~/.*/skills/kb-dev-workflow  [${r.agent}]`)
+    else if (r.action === 'updated') lines.push(`  ↑ updated    ~/.*/skills/kb-dev-workflow  [${r.agent}]`)
+    else lines.push(`  • up-to-date ~/.*/skills/kb-dev-workflow  [${r.agent}]`)
+  }
+  lines.push('', 'Profile instructions (always-on context):')
+  for (const r of profileResults) {
+    if (r.action === 'injected') lines.push(`  ✓ injected   ${r.file}`)
+    else if (r.action === 'created') lines.push(`  ✓ created    ${r.file}`)
+    else if (r.action === 'already-present') lines.push(`  • up-to-date ${r.file}`)
+    else lines.push(`  - skipped    ${r.file} (not found)`)
   }
   return lines.join('\n')
+}
+
+// ─── kb skill uninstall ───────────────────────────────────────────────────────
+
+export interface SkillUninstallResult {
+  target: string
+  action: 'removed' | 'not-found'
+}
+
+async function removeSkillFile(target: AgentTarget): Promise<SkillUninstallResult> {
+  try {
+    await stat(target.skillPath)
+  } catch {
+    return { target: target.name, action: 'not-found' }
+  }
+  await rm(target.skillPath)
+  return { target: target.name, action: 'removed' }
+}
+
+/** Remove the injected KB skill section from a profile MD file. */
+async function removeSkillFromProfileMd(
+  label: string,
+  filePath: string
+): Promise<SkillUninstallResult> {
+  let content: string
+  try {
+    content = await readFile(filePath, 'utf8')
+  } catch {
+    return { target: label, action: 'not-found' }
+  }
+
+  const idx = content.indexOf(PROFILE_HEADING)
+  if (idx === -1) return { target: label, action: 'not-found' }
+
+  // Find the next same-or-higher-level heading after the section, or end of file.
+  // PROFILE_HEADING starts with `# ` (h1), so look for the next `\n#` after it.
+  const afterSection = content.indexOf('\n#', idx + 1)
+  const before = content.slice(0, idx).trimEnd()
+  const stripped =
+    afterSection === -1 ? before : `${before}\n${content.slice(afterSection + 1)}`
+
+  await writeFile(filePath, stripped ? `${stripped}\n` : '', 'utf8')
+  return { target: label, action: 'removed' }
+}
+
+export async function uninstallSkills(): Promise<SkillUninstallResult[]> {
+  const skillRemovals = await Promise.allSettled(
+    agentTargets().map(t => removeSkillFile(t))
+  )
+  const profileRemovals = await Promise.allSettled(
+    profileSkillTargets().map(t => removeSkillFromProfileMd(t.label, t.filePath))
+  )
+  return [
+    ...skillRemovals.flatMap(r => (r.status === 'fulfilled' ? [r.value] : [])),
+    ...profileRemovals.flatMap(r => (r.status === 'fulfilled' ? [r.value] : [])),
+  ]
+}
+
+export function formatSkillUninstallReport(results: SkillUninstallResult[]): string {
+  return results
+    .filter(r => r.action === 'removed')
+    .map(r => `✓ Removed KB skill from ${r.target}`)
+    .join('\n')
 }

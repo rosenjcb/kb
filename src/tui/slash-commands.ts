@@ -5,43 +5,32 @@ export interface SlashCommand {
   description: string
 }
 
-const SHELL_COMMANDS: SlashCommand[] = [
-  { command: '/init', description: 'build a knowledge base from this repo' },
-  { command: '/scan', description: 'scan this repo into the active or selected KB base' },
-  { command: '/base', description: 'manage KB bases (use, delete)' },
+const CHAT_COMMANDS: SlashCommand[] = [
   { command: '/query', description: 'search the knowledge base' },
   { command: '/submit', description: 'store a new fact or checkpoint' },
   { command: '/invalidate', description: 'remove or replace stale KB facts' },
-  { command: '/chat', description: 'start interactive chat mode' },
-  { command: '/docs', description: 'list or view knowledge base documents' },
-  { command: '/facts', description: 'list, search, or show KB facts (see kb facts --help)' },
-  { command: '/graph', description: 'inspect or edit the knowledge graph (see kb graph --help)' },
+  { command: '/init', description: 'build a knowledge base from this repo' },
+  { command: '/scan', description: 'scan this repo into the active or selected KB base' },
+  { command: '/base', description: 'manage KB bases (use, delete)' },
+  { command: '/docs', description: 'browse or generate KB documents' },
+  { command: '/facts', description: 'list, search, or show KB facts' },
+  { command: '/graph', description: 'inspect or edit the knowledge graph' },
   { command: '/publish', description: 'publish docs to the external sink' },
   { command: '/sync', description: 'install the latest published KB release' },
   { command: '/skill', description: 'manage agent skills' },
   { command: '/config', description: 'inspect or update config values' },
-  { command: '/help', description: 'show kb CLI and TUI help' },
+  { command: '/logs', description: 'browse and compare run reports' },
+  { command: '/help', description: 'show available commands' },
   { command: '/clear', description: 'clear the visible session history' },
-  { command: '/exit', description: 'quit the TUI' },
+  { command: '/exit', description: 'quit kb' },
 ]
 
-const CHAT_COMMANDS: SlashCommand[] = [
-  { command: '/help', description: 'show chat-mode controls' },
-  { command: '/docs', description: 'knowledge base documents (chat: /docs generate …)' },
-  { command: '/facts', description: 'list, search, or show KB facts' },
-  { command: '/clear', description: 'clear the visible session history' },
-  { command: '/exit', description: 'leave chat mode' },
-]
-
-export function getSlashCommands(mode: TuiMode): SlashCommand[] {
-  if (mode === 'chat') return CHAT_COMMANDS
-  if (mode === 'init') return []
-  return SHELL_COMMANDS
+export function getSlashCommands(_mode: TuiMode): SlashCommand[] {
+  return CHAT_COMMANDS
 }
 
 export function getSlashCommandSuggestions(value: string, mode: TuiMode): SlashCommand[] {
   if (!value.startsWith('/')) return []
-  if (mode === 'init') return []
 
   const normalized = value.trim().toLowerCase()
   return getSlashCommands(mode).filter(({ command }) => command.startsWith(normalized))
