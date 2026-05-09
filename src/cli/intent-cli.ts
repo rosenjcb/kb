@@ -231,7 +231,7 @@ interface ReconciliationReviewResultData {
   }
 }
 
-interface ReadDocumentsResultItem {
+export interface ReadDocumentsResultItem {
   metadata?: {
     id?: string
     title?: string
