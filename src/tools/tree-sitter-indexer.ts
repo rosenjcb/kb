@@ -5,8 +5,7 @@
  * bundled .wasm file. Currently wired up: Go, TypeScript, TSX, JavaScript, JSX.
  *
  * Extracts file nodes, symbol nodes, and IMPORTS_FILE / EXPORTS_SYMBOL edges
- * into kg_* tables, then populates kg_semantic_bridge by name-matching symbols
- * to existing kb_graph_entities.
+ * into kg_* tables.
  */
 
 import crypto from 'node:crypto'
@@ -160,14 +159,6 @@ function fileId(rel: string): string {
 
 function symbolId(rel: string, name: string): string {
   return `symbol:${rel}#${name}`
-}
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 100)
 }
 
 function isExported(name: string, goConvention: boolean): boolean {
@@ -408,7 +399,6 @@ export class TreeSitterIndexer implements LanguageIndexer {
       opts.onProgress?.(stats)
     }
 
-    this.populateSemanticBridge()
     return stats
   }
 
@@ -432,32 +422,4 @@ export class TreeSitterIndexer implements LanguageIndexer {
     this.langCache.set(key, compiled)
   }
 
-  private populateSemanticBridge(): void {
-    const entityIds = (
-      this.db.prepare('SELECT id, name FROM kb_graph_entities').all() as Array<{ id: string; name: string }>
-    ).reduce<Map<string, string>>((m, r) => {
-      m.set(slugify(r.name), r.id)
-      return m
-    }, new Map())
-
-    if (entityIds.size === 0) return
-
-    const symbols = this.db
-      .prepare("SELECT id, name FROM kg_nodes WHERE kind = 'symbol' AND source = ?")
-      .all(SOURCE) as Array<{ id: string; name: string }>
-
-    const insert = this.db.prepare(`
-      INSERT OR IGNORE INTO kg_semantic_bridge
-        (code_node_id, semantic_entity_id, match_type, confidence, created_at)
-      VALUES (?, ?, 'name_match', 0.8, datetime('now'))
-    `)
-
-    const tx = this.db.transaction(() => {
-      for (const sym of symbols) {
-        const entityId = entityIds.get(slugify(sym.name))
-        if (entityId) insert.run(sym.id, entityId)
-      }
-    })
-    tx()
-  }
 }

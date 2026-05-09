@@ -398,18 +398,6 @@ const MIGRATIONS: Migration[] = [
         error_text TEXT
       );
 
-      CREATE TABLE IF NOT EXISTS kg_semantic_bridge (
-        code_node_id TEXT NOT NULL,
-        semantic_entity_id TEXT NOT NULL,
-        match_type TEXT NOT NULL DEFAULT 'name_match',
-        confidence REAL NOT NULL DEFAULT 0.8,
-        created_at TEXT NOT NULL,
-        PRIMARY KEY (code_node_id, semantic_entity_id)
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_kg_semantic_bridge_entity
-        ON kg_semantic_bridge(semantic_entity_id);
-
       CREATE VIRTUAL TABLE IF NOT EXISTS kg_nodes_fts USING fts5(
         id UNINDEXED,
         name,

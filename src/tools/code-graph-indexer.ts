@@ -3,8 +3,6 @@
  *
  * Extracts file nodes, symbol nodes, and typed edges (IMPORTS_FILE,
  * EXPORTS_SYMBOL, EXTENDS, IMPLEMENTS) into kg_* tables.
- * After indexing, populates kg_semantic_bridge by name-matching symbols
- * to existing kb_graph_entities.
  */
 
 import crypto from 'node:crypto'
@@ -66,14 +64,6 @@ function hashFile(filePath: string): string {
   } catch {
     return ''
   }
-}
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 100)
 }
 
 export class TsMorphIndexer {
@@ -374,43 +364,6 @@ export class TsMorphIndexer {
       opts.onProgress?.(stats)
     }
 
-    this.populateSemanticBridge()
     return stats
-  }
-
-  private populateSemanticBridge(): void {
-    // Match symbol names (slugified) to existing kb_graph_entities ids
-    const entityIds = (
-      this.db.prepare('SELECT id, name FROM kb_graph_entities').all() as Array<{
-        id: string
-        name: string
-      }>
-    ).reduce<Map<string, string>>((m, r) => {
-      m.set(slugify(r.name), r.id)
-      return m
-    }, new Map())
-
-    if (entityIds.size === 0) return
-
-    const symbols = this.db
-      .prepare("SELECT id, name FROM kg_nodes WHERE kind = 'symbol'")
-      .all() as Array<{ id: string; name: string }>
-
-    const insert = this.db.prepare(`
-      INSERT OR IGNORE INTO kg_semantic_bridge
-        (code_node_id, semantic_entity_id, match_type, confidence, created_at)
-      VALUES (?, ?, 'name_match', 0.8, datetime('now'))
-    `)
-
-    const tx = this.db.transaction(() => {
-      for (const sym of symbols) {
-        const slug = slugify(sym.name)
-        const entityId = entityIds.get(slug)
-        if (entityId) {
-          insert.run(sym.id, entityId)
-        }
-      }
-    })
-    tx()
   }
 }

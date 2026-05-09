@@ -431,12 +431,13 @@ export class KbGraphWriter {
     const tripletRows = db
       .prepare(
         `
-      SELECT DISTINCT sf.name AS from_name, r.type AS rel_type, st.name AS to_name
+      SELECT sf.name AS from_name, r.type AS rel_type, st.name AS to_name
       FROM ${REL} r
       JOIN ${ENT} sf ON sf.id = r.from_id
       JOIN ${ENT} st ON st.id = r.to_id
       WHERE r.weight > 0
         AND (sf.id IN (${placeholders}) OR st.id IN (${placeholders}))
+      ORDER BY r.weight DESC
     `
       )
       .all(...slugParams) as Array<{ from_name: string; rel_type: string; to_name: string }>
@@ -444,7 +445,7 @@ export class KbGraphWriter {
     const neighborRows = db
       .prepare(
         `
-      SELECT DISTINCT e.name
+      SELECT e.name
       FROM ${REL} r
       JOIN ${ENT} e ON (
         (r.from_id IN (${placeholders}) AND r.to_id = e.id)
@@ -452,6 +453,7 @@ export class KbGraphWriter {
         (r.to_id IN (${placeholders}) AND r.from_id = e.id)
       )
       WHERE r.weight > 0
+      ORDER BY r.weight DESC
     `
       )
       .all(...slugParams) as Array<{ name: string }>

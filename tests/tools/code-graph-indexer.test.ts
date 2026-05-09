@@ -120,35 +120,10 @@ export class Dog implements Animal { speak() { return 'woof' } }`
     expect(second.skipped).toBe(1)
   })
 
-  it('populates kg_semantic_bridge when symbol name matches a kb_graph_entity', async () => {
-    await writeTsconfig()
-    await writeFile(join(repoRoot, 'src', 'store.ts'), 'export class SqliteStore { get() {} }')
-
-    // Seed a matching semantic entity
-    const db = new Database(dbPath)
-    db.pragma('journal_mode = WAL')
-    // Run migrations to create tables
-    const indexer = new TsMorphIndexer(dbPath)
-    // Just open to trigger migrations, then insert entity
-    db.prepare(
-      `INSERT OR IGNORE INTO kb_graph_entities (id, name, type, created_at) VALUES ('sqlite-store', 'SqliteStore', 'system', datetime('now'))`
-    ).run()
-
-    indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
-    indexer.close()
-
-    const bridge = db
-      .prepare("SELECT * FROM kg_semantic_bridge WHERE semantic_entity_id = 'sqlite-store'")
-      .all() as Array<{ code_node_id: string }>
-    db.close()
-
-    expect(bridge.length).toBe(1)
-    expect(bridge[0]?.code_node_id).toBe('symbol:src/store.ts#SqliteStore')
-  })
 })
 
-describe('CodeGraphStore.expandWithCodeNeighbors', () => {
-  it('returns code neighbors of semantic entity ids via bridge', async () => {
+describe('CodeGraphStore.findCodeSymbolsByName', () => {
+  it('finds exported symbols matching query terms via direct FTS', async () => {
     await writeTsconfig()
     await writeFile(join(repoRoot, 'src', 'engine.ts'), 'export class Engine { run() {} }')
     await writeFile(
@@ -156,21 +131,15 @@ describe('CodeGraphStore.expandWithCodeNeighbors', () => {
       `import { Engine } from './engine'\nexport class Car { constructor(private e: Engine) {} }`
     )
 
-    const db = new Database(dbPath)
-    db.pragma('journal_mode = WAL')
     const indexer = new TsMorphIndexer(dbPath)
-    db.prepare(
-      `INSERT OR IGNORE INTO kb_graph_entities (id, name, type, created_at) VALUES ('engine', 'Engine', 'system', datetime('now'))`
-    ).run()
     indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
     indexer.close()
 
     const store = new CodeGraphStore(dbPath)
-    const neighbors = store.expandWithCodeNeighbors(['engine'])
+    const results = store.findCodeSymbolsByName(['engine'], 10)
     store.close()
-    db.close()
 
-    const names = neighbors.map(n => n.name)
-    expect(names).toContain('Car')
+    const names = results.map(n => n.name)
+    expect(names).toContain('Engine')
   })
 })

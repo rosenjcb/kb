@@ -130,27 +130,6 @@ describe('TreeSitterIndexer — Go', () => {
     expect(second.skipped).toBe(1)
   })
 
-  it('populates kg_semantic_bridge when Go symbol matches a kb_graph_entity', async () => {
-    await writeFile(join(repoRoot, 'store.go'), 'package main\ntype SqliteStore struct{}')
-
-    const db = new Database(dbPath)
-    db.pragma('journal_mode = WAL')
-    const indexer = new TreeSitterIndexer(dbPath)
-    db.prepare(
-      "INSERT OR IGNORE INTO kb_graph_entities (id, name, type, created_at) VALUES ('sqlite-store', 'SqliteStore', 'system', datetime('now'))"
-    ).run()
-
-    await indexer.indexProject(repoRoot)
-    indexer.close()
-
-    const bridge = db
-      .prepare("SELECT * FROM kg_semantic_bridge WHERE semantic_entity_id = 'sqlite-store'")
-      .all() as Array<{ code_node_id: string }>
-    db.close()
-
-    expect(bridge.length).toBe(1)
-    expect(bridge[0]?.code_node_id).toBe('symbol:store.go#SqliteStore')
-  })
 })
 
 describe('TreeSitterIndexer — TypeScript', () => {

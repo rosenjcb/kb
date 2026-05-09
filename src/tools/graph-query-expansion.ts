@@ -36,12 +36,11 @@ export async function expandQueryWithGraph(
 
     const terms = await graphWriter.expandQuery(slugs)
 
-    // Bridge into the code graph: find code symbols linked to the matched
-    // semantic entities and append their names for lexical boosting.
+    // Direct FTS into the code graph: find exported symbols matching query terms.
     let codeTerms: string[] = []
     if (codeStore) {
       try {
-        const codeNodes = codeStore.expandWithCodeNeighbors(slugs, MAX_CODE_EXPANSION)
+        const codeNodes = codeStore.findCodeSymbolsByName(slugs, MAX_CODE_EXPANSION)
         codeTerms = [...new Set(codeNodes.map(n => n.name))].slice(0, MAX_CODE_EXPANSION)
       } catch {
         // code graph expansion is best-effort
