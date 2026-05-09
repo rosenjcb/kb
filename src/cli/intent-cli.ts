@@ -373,7 +373,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
       : ''
 
     const userContent = [
-      'Answer using only the evidence below. Be direct; if evidence is insufficient, say so.',
+      'Answer from the evidence below. Always give a useful response — for broad questions a high-level summary is fine; for specific questions be precise. Only say evidence is insufficient if the question is completely unrelated to anything retrieved.',
       '',
       `Question: ${question}`,
       graphSection,
@@ -391,14 +391,8 @@ export async function enrichReadDocumentsAnswerWithLLM(
     if (!answer) return result
 
     if (looksLikeInsufficientEvidenceAnswer(answer)) {
-      const fallback = buildDeterministicIntentAnswer(question, results)
-      answer =
-        fallback ??
-        'I do not have enough grounded evidence yet. Next step: run kb query "<your fact>" --discovery deep --output json, then kb submit "<fact>" if evidence is missing.'
-    }
-    const coverageFallback = buildCoverageFacetAnswer(question, results)
-    if (coverageFallback && answerNeedsCoverageRecovery(question, answer)) {
-      answer = coverageFallback
+      answer = buildDeterministicIntentAnswer(question, results) ?? ''
+      if (!answer) return result
     }
     const scaffolded = buildBuildConfigScaffoldAnswer(question, results)
     if (scaffolded && answerNeedsScaffoldRecovery(question, answer)) {
@@ -542,34 +536,6 @@ function buildDeterministicIntentAnswer(
   return undefined
 }
 
-function buildCoverageFacetAnswer(
-  question: string,
-  results: ReadDocumentsResultItem[]
-): string | undefined {
-  const facets = deriveQuestionFacets(question)
-  if (facets.length === 0) return undefined
-  const sections: string[] = []
-  for (const facet of facets) {
-    const evidence = findEvidenceLine(results, [facet])
-    if (!evidence) continue
-    sections.push(`- ${facet}: ${evidence.line} (source: ${evidence.docId})`)
-  }
-  if (sections.length < 2) return undefined
-  return ['Evidence-backed coverage summary:', ...sections].join('\n')
-}
-
-function answerNeedsCoverageRecovery(question: string, answer: string): boolean {
-  const normalizedAnswer = answer.toLowerCase()
-
-  if (looksLikeInsufficientEvidenceAnswer(normalizedAnswer)) {
-    return true
-  }
-  const facets = deriveQuestionFacets(question)
-  if (facets.length === 0) return false
-  const covered = facets.filter(facet => normalizedAnswer.includes(facet)).length
-  const minimumCoverage = Math.max(1, Math.ceil(facets.length * 0.25))
-  return normalizedAnswer.length < 220 && covered < minimumCoverage
-}
 
 function findEvidenceLine(
   results: ReadDocumentsResultItem[],
@@ -596,44 +562,6 @@ function findEvidenceLine(
     }
   }
   return undefined
-}
-
-function deriveQuestionFacets(question: string): string[] {
-  const stopWords = new Set([
-    'what',
-    'where',
-    'when',
-    'which',
-    'who',
-    'why',
-    'how',
-    'does',
-    'do',
-    'did',
-    'the',
-    'and',
-    'for',
-    'with',
-    'from',
-    'into',
-    'about',
-    'that',
-    'this',
-    'these',
-    'those',
-    'main',
-    'including',
-    'recent',
-    'someone',
-    'project',
-    'repo',
-  ])
-  const tokens = question
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter(token => token.length > 3 && !stopWords.has(token))
-  return [...new Set(tokens)].slice(0, 8)
 }
 
 function answerNeedsScaffoldRecovery(question: string, answer: string): boolean {
@@ -792,7 +720,22 @@ function printReadDocumentsHumanResult(
 
   printer.content(data.answer?.trim() || buildAnswer(results))
   printer.separator()
+  printEvidenceBlock(printer, results)
   printReadDocumentsOrchestrationFooter(printer, result, options)
+}
+
+function printEvidenceBlock(printer: Printer, results: ReadDocumentsResultItem[]): void {
+  if (results.length === 0) return
+  const lines: string[] = []
+  for (const item of results.slice(0, 8)) {
+    const id = item.metadata?.id ?? 'unknown'
+    const raw = (item.content ?? '').split('\n').find(l => l.trim().length > 20)?.trim() ?? ''
+    const content = raw.replace(/^[-*]\s+/, '')
+    if (content) lines.push(`- ${content} (source: ${id})`)
+  }
+  if (lines.length > 0) {
+    printer.content(['evidence>', ...lines].join('\n'))
+  }
 }
 
 function buildSummary(results: ReadDocumentsResultItem[]): string {

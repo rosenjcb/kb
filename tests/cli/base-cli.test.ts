@@ -1,9 +1,10 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   ensureOperationalBaseDir,
+  resolveBaseToDir,
   writeDefaultBase,
   writeSessionBase,
 } from '../../src/cli/base-selection'
@@ -11,6 +12,13 @@ import { runMainWithOutput } from '../../src/cli/index'
 import { readKbConfig } from '../../src/cli/kb-config'
 
 let kbHomeDir: string
+
+/** Create a base directory with the sqlite marker so it looks initialized. */
+async function initBase(name: string): Promise<void> {
+  const dir = resolveBaseToDir(name)
+  await mkdir(dir, { recursive: true })
+  await writeFile(path.join(dir, '.kb-index.sqlite'), '', 'utf8')
+}
 
 function makeOut() {
   const lines: string[] = []
@@ -36,18 +44,28 @@ afterEach(async () => {
 
 describe('kb base use', () => {
   it('Given kb base use <base>, then sets activeBase and prints resolved path', async () => {
+    await initBase('mybase')
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'use', 'mybase'], out, {} as never)
     expect(lines.join('\n')).toContain('Using base: mybase')
     expect(lines.join('\n')).toContain('mybase')
   })
 
-  it('Given kb base use --default <base>, then sets defaultBase', async () => {
+  it('Given kb base use --default <base>, then sets both defaultBase and activeBase', async () => {
+    await initBase('mydefault')
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'use', '--default', 'mydefault'], out, {} as never)
     expect(lines.join('\n')).toContain('Default base: mydefault')
     const config = await readKbConfig()
     expect(config.defaultBase).toBe('mydefault')
+    expect(config.activeBase).toBe('mydefault')
+  })
+
+  it('Given kb base use <base> that does not exist, then errors and suggests kb init', async () => {
+    const { out, lines } = makeOut()
+    await runMainWithOutput(['base', 'use', 'ghost'], out, {} as never)
+    expect(lines.join('\n')).toContain('ghost')
+    expect(lines.join('\n')).toContain('kb init')
   })
 
   it('Given kb base use --show, then prints current base config', async () => {
@@ -124,6 +142,7 @@ describe('kb base delete', () => {
 
 describe('kb use (backward-compat alias)', () => {
   it('Given kb use <base>, then behaves identically to kb base use <base>', async () => {
+    await initBase('aliasbase')
     const { out, lines } = makeOut()
     await runMainWithOutput(['use', 'aliasbase'], out, {} as never)
     expect(lines.join('\n')).toContain('Using base: aliasbase')

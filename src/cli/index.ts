@@ -4,6 +4,8 @@
  * KB Agent Harness CLI
  */
 
+import { stat } from 'node:fs/promises'
+import path from 'node:path'
 import {
   ReportWriter,
   RunCollector,
@@ -25,6 +27,7 @@ import {
   migrateLegacyKbSessionJson,
   printBaseDeleteHelp,
   readBaseConfig,
+  resolveBaseToDir,
   resolveEffectiveBaseDir,
   resolveKbStorageDirFromArgs,
   stripCliFlagWithValue,
@@ -320,15 +323,22 @@ export async function runMainWithOutput(
         return
       }
 
-      if (makeDefault) {
-        const saved = await writeDefaultBase(base)
-        const resolved = await ensureOperationalBaseDir(saved.defaultBase ?? base)
-        out.log(formatDefaultCommandHelp(saved.defaultBase ?? base, resolved, mode))
+      const baseDir = resolveBaseToDir(base)
+      const sqlitePath = path.join(baseDir, '.kb-index.sqlite')
+      try {
+        await stat(sqlitePath)
+      } catch {
+        out.error(`Base "${base}" has not been initialized. Run: kb init --base ${base}`)
         return
       }
 
       await writeSessionBase(base)
       const resolved = await ensureOperationalBaseDir(base)
+      if (makeDefault) {
+        await writeDefaultBase(base)
+        out.log(formatDefaultCommandHelp(base, resolved, mode))
+        return
+      }
       out.log(formatUseCommandHelp(base, resolved, mode))
       return
     }
