@@ -18,8 +18,10 @@
  */
 
 import { existsSync } from 'node:fs'
+import Database from 'better-sqlite3'
 import { TsMorphIndexer } from '../tools/code-graph-indexer'
 import { TreeSitterIndexer } from '../tools/tree-sitter-indexer'
+import { promoteAstToSemanticGraph } from '../tools/ast-promote'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import readline from 'node:readline'
@@ -68,7 +70,7 @@ export type InitCycle =
   | 'import-docs'
   | 'write'
   | 'pass-graph'
-  | 'code-graph'
+  | 'ast-facts'
 export type InitTopic =
   | 'project-overview'
   | 'install-setup'
@@ -740,8 +742,8 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       graphError,
     })
 
-    if (!checkpoint.completedCycles.includes('code-graph')) {
-      progress.start('code-graph', 'indexing code graph (AST)…')
+    if (!checkpoint.completedCycles.includes('ast-facts')) {
+      progress.start('ast-facts', 'indexing code graph (AST)…')
       try {
         const dbPath = path.join(baseDir, '.kb-index.sqlite')
         let totalFiles = 0
@@ -756,7 +758,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           const stats = indexer.indexProject(cwd, tsconfigPath, {
             onProgress: s => {
               progress.update(
-                'code-graph',
+                'ast-facts',
                 `ts: files ${s.files} symbols ${s.symbols} edges ${s.edges} skip ${s.skipped}`
               )
             },
@@ -773,7 +775,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         const stats = await indexer.indexProject(cwd, {
           onProgress: s => {
             progress.update(
-              'code-graph',
+              'ast-facts',
               `files ${s.files} symbols ${s.symbols} edges ${s.edges} skip ${s.skipped}`
             )
           },
@@ -784,19 +786,27 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         totalEdges += stats.edges
         totalErrors += stats.errors
 
-        await persist({ completedCycles: ['code-graph'] })
+        let promoteNote = ''
+        if (graphEnabled) {
+          const db = new Database(dbPath)
+          const promoted = promoteAstToSemanticGraph(db)
+          db.close()
+          promoteNote = `, ${promoted.entities} entities, ${promoted.relationships} rels`
+        }
+
+        await persist({ completedCycles: ['ast-facts'] })
         progress.finish(
-          'code-graph',
-          `${totalFiles} files, ${totalSymbols} symbols, ${totalEdges} edges${totalErrors > 0 ? `, ${totalErrors} errors` : ''}`
+          'ast-facts',
+          `${totalFiles} files, ${totalSymbols} symbols, ${totalEdges} edges${promoteNote}${totalErrors > 0 ? `, ${totalErrors} errors` : ''}`
         )
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        await persist({ completedCycles: ['code-graph'] })
-        progress.finish('code-graph', `failed (${message.slice(0, 80)})`)
+        await persist({ completedCycles: ['ast-facts'] })
+        progress.finish('ast-facts', `failed (${message.slice(0, 80)})`)
       }
-      if (options.stopAfter === 'code-graph') throw new InitPausedError('code-graph')
+      if (options.stopAfter === 'ast-facts') throw new InitPausedError('ast-facts')
     } else {
-      progress.finish('code-graph', 'reused from checkpoint')
+      progress.finish('ast-facts', 'reused from checkpoint')
     }
 
     const finalCoverageSummary = checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
@@ -1000,14 +1010,12 @@ async function collectRescanSourceFiles(options: {
   return allSourceFiles
 }
 
+// Extensions handled natively by the ast-facts (tree-sitter) indexer — excluded from code-facts.
+const AST_FACTS_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.go'])
+
+// code-facts (LLM) only runs for languages tree-sitter cannot parse.
 export const SOURCE_CODE_EXTENSIONS = [
-  '.ts',
-  '.tsx',
-  '.js',
-  '.jsx',
-  '.mjs',
   '.py',
-  '.go',
   '.rb',
   '.java',
   '.rs',
@@ -1060,6 +1068,7 @@ export async function crawlSourceCode(cwd: string): Promise<Record<string, strin
         await walk(path.join(dir, entry.name))
       } else {
         const ext = path.extname(entry.name).toLowerCase()
+        if (AST_FACTS_EXTENSIONS.has(ext)) continue // handled by ast-facts indexer
         if (!SOURCE_CODE_EXTENSIONS.includes(ext)) continue
         const fullPath = path.join(dir, entry.name)
         try {

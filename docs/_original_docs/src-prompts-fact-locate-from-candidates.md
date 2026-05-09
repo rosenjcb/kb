@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/fact-locate-from-candidates.md
-date: '2026-05-08'
+date: '2026-05-09'
 kb_id: src-prompts-fact-locate-from-candidates-md
 tags:
   - original-source

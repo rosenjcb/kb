@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/init-quality.md
-date: '2026-05-08'
+date: '2026-05-09'
 kb_id: src-prompts-init-quality-md
 tags:
   - original-source

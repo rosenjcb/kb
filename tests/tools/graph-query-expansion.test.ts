@@ -66,7 +66,7 @@ describe('graph-query-expansion', () => {
     } as const
 
     const codeStore = {
-      expandWithCodeNeighbors: () => [
+      findCodeSymbolsByName: () => [
         { name: 'SqliteKbIndexer' },
         { name: 'KbGraphWriter' },
       ],
@@ -84,7 +84,7 @@ describe('graph-query-expansion', () => {
     } as const
 
     const codeStore = {
-      expandWithCodeNeighbors: () => { throw new Error('code graph offline') },
+      findCodeSymbolsByName: () => { throw new Error('code graph offline') },
     } as never
 
     const expanded = await expandQueryWithGraph('indexer', graphWriter as never, codeStore)

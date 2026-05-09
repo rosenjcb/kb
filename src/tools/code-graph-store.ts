@@ -206,42 +206,24 @@ export class CodeGraphStore {
   }
 
   /**
-   * Expand a set of semantic entity slugs to code-graph neighbors via the bridge.
-   *
-   * Traversal: bridge → code node → its containing file → files that import or
-   * are imported by that file → symbols exported by those files. This surfaces
-   * symbols in files that use (or are used by) the entity, which is more useful
-   * for query expansion than just the immediate 1-hop neighbors.
+   * Find exported code symbols whose name or qualified name matches any of the
+   * given terms. Used for query expansion without a bridge table — direct FTS.
    */
-  expandWithCodeNeighbors(semanticEntityIds: string[], limit = 10): KgNode[] {
-    if (semanticEntityIds.length === 0) return []
-    const placeholders = semanticEntityIds.map(() => '?').join(', ')
+  findCodeSymbolsByName(terms: string[], limit = 10): KgNode[] {
+    if (terms.length === 0) return []
+    const query = terms.join(' OR ')
     const rows = this.db
       .prepare(
         `
-        SELECT DISTINCT n2.*
-        FROM kg_semantic_bridge b
-        JOIN kg_nodes cn ON cn.id = b.code_node_id
-        -- resolve to the containing file node
-        JOIN kg_nodes file_node ON file_node.id = CASE
-          WHEN cn.kind = 'file' THEN cn.id
-          ELSE cn.file_id
-        END
-        -- files connected via IMPORTS_FILE (either direction)
-        JOIN kg_edges ie ON (ie.from_id = file_node.id OR ie.to_id = file_node.id)
-          AND ie.type = 'IMPORTS_FILE'
-        JOIN kg_nodes other_file ON other_file.id = CASE
-          WHEN ie.from_id = file_node.id THEN ie.to_id
-          ELSE ie.from_id
-        END
-        -- symbols exported by those connected files
-        JOIN kg_edges ee ON ee.from_id = other_file.id AND ee.type = 'EXPORTS_SYMBOL'
-        JOIN kg_nodes n2 ON n2.id = ee.to_id AND n2.kind = 'symbol'
-        WHERE b.semantic_entity_id IN (${placeholders})
+        SELECT n.*
+        FROM kg_nodes_fts fts
+        JOIN kg_nodes n ON n.id = fts.id
+        WHERE kg_nodes_fts MATCH ? AND n.kind = 'symbol' AND n.exported = 1
+        ORDER BY rank
         LIMIT ?
-      `
+        `
       )
-      .all(...semanticEntityIds, limit) as Record<string, unknown>[]
+      .all(query, limit) as Record<string, unknown>[]
     return rows.map(rowToNode)
   }
 }
