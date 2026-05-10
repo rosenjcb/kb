@@ -687,7 +687,7 @@ export async function runMainWithOutput(
 
   if (firstArg === 'sync') {
     try {
-      out.log(await runSyncCommand(args.slice(1), { mode }))
+      out.log(await runSyncCommand(args.slice(1), { mode, onProgress: line => out.log(line) }))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (message.startsWith(`${cmd('sync', mode)} command`)) {

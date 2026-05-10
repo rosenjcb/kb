@@ -366,7 +366,11 @@ export function App({ config, startupNotices = [] }: Props) {
         const resultId = addEntry({ type: 'result', content: '', loading: true })
 
         try {
-          const output = await runCommandForTui(args, config)
+          let streamedLines = ''
+          const output = await runCommandForTui(args, config, line => {
+            streamedLines = streamedLines ? `${streamedLines}\n${line}` : line
+            updateEntry(resultId, { content: streamedLines, loading: true })
+          })
 
           if (firstArg === 'base' || firstArg === 'use') refreshBase()
 

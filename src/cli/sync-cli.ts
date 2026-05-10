@@ -8,7 +8,8 @@ const MIN_NODE_MAJOR = 22
 export interface SyncCommandOptions {
   cwd?: string
   mode?: CmdMode
-  runCommand?: (command: string, args: string[], cwd: string) => Promise<string>
+  onProgress?: (line: string) => void
+  runCommand?: (command: string, args: string[], cwd: string, onProgress?: (line: string) => void) => Promise<string>
 }
 
 export function printSyncHelp(mode: CmdMode = 'cli'): string {
@@ -38,13 +39,14 @@ export async function runSyncCommand(
 
   const cwd = options.cwd ?? process.cwd()
   const run = options.runCommand ?? runShellCommand
-  const installOutput = await run('npm', ['install', '-g', RELEASE_TARBALL_URL], cwd)
+  const { onProgress } = options
 
-  return [
-    `Release asset: ${RELEASE_TARBALL_URL}`,
-    formatStep(`npm install -g ${RELEASE_TARBALL_URL}`, installOutput),
-    'Sync complete.',
-  ].join('\n\n')
+  onProgress?.('Downloading and installing from GitHub Releases (this may take ~1 minute)...')
+  onProgress?.(`Release asset: ${RELEASE_TARBALL_URL}`)
+
+  const installOutput = await run('npm', ['install', '-g', RELEASE_TARBALL_URL], cwd, onProgress)
+
+  return `Sync complete.\n${installOutput.trim()}`
 }
 
 function parseSyncCommand(args: string[], mode: CmdMode): void {
@@ -74,11 +76,12 @@ function assertSupportedNodeVersion(): void {
   }
 }
 
-function formatStep(label: string, output: string): string {
-  return output.trim().length > 0 ? `${label}\n${output.trim()}` : label
-}
-
-async function runShellCommand(command: string, args: string[], cwd: string): Promise<string> {
+async function runShellCommand(
+  command: string,
+  args: string[],
+  cwd: string,
+  onProgress?: (line: string) => void
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
@@ -89,19 +92,32 @@ async function runShellCommand(command: string, args: string[], cwd: string): Pr
     let stdout = ''
     let stderr = ''
 
-    child.stdout.on('data', chunk => {
-      stdout += String(chunk)
-    })
-    child.stderr.on('data', chunk => {
-      stderr += String(chunk)
-    })
-    child.on('error', reject)
-    child.on('close', code => {
+    // npm buffers all output when stdout is not a TTY, so data events only fire at the end.
+    // Emit elapsed-time heartbeats so the caller knows the process is alive.
+    let elapsed = 0
+    const heartbeat = onProgress
+      ? setInterval(() => {
+          elapsed += 5
+          onProgress(`  still installing… (${elapsed}s)`)
+        }, 5000)
+      : null
+
+    child.stdout.on('data', chunk => { stdout += String(chunk) })
+    child.stderr.on('data', chunk => { stderr += String(chunk) })
+
+    function finish(code: number | null) {
+      if (heartbeat) clearInterval(heartbeat)
       if (code === 0) {
         resolve(stdout.trim() || stderr.trim())
         return
       }
       reject(new Error((stderr || stdout || `${command} exited with code ${String(code)}`).trim()))
+    }
+
+    child.on('error', err => {
+      if (heartbeat) clearInterval(heartbeat)
+      reject(err)
     })
+    child.on('close', finish)
   })
 }

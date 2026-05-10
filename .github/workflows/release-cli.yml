@@ -51,18 +51,15 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG_NAME="${GITHUB_REF#refs/tags/}"
             RELEASE_NAME="KB CLI ${TAG_NAME}"
-            PRERELEASE="false"
           else
             SHORT_SHA="${GITHUB_SHA::7}"
             TAG_NAME="main-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
             RELEASE_NAME="KB CLI main build ${SHORT_SHA}"
-            PRERELEASE="true"
           fi
 
           {
             echo "tag_name=${TAG_NAME}"
             echo "release_name=${RELEASE_NAME}"
-            echo "prerelease=${PRERELEASE}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Upload workflow artifact
@@ -78,7 +75,6 @@ jobs:
           name: ${{ steps.meta.outputs.release_name }}
           files: kb-cli-node22.tgz
           generate_release_notes: true
-          prerelease: ${{ steps.meta.outputs.prerelease }}
           target_commitish: ${{ github.sha }}
           body: |
             CI-built KB CLI package for Node 22+.

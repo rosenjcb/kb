@@ -22,9 +22,16 @@ describe('sync-cli', () => {
       throw new Error(`Unexpected command: ${joined}`)
     })
 
-    const output = await runSyncCommand([], { cwd: '/tmp/kb-sync-test', runCommand })
+    const progressLines: string[] = []
+    const output = await runSyncCommand([], {
+      cwd: '/tmp/kb-sync-test',
+      runCommand,
+      onProgress: line => progressLines.push(line),
+    })
 
-    expect(output).toContain(`Release asset: ${RELEASE_TARBALL_URL}`)
+    expect(progressLines.some(l => l.includes(RELEASE_TARBALL_URL))).toBe(true)
+    expect(progressLines.some(l => l.includes('Downloading'))).toBe(true)
+    expect(output).toContain('Sync complete.')
     expect(output).toContain('install ok')
     expect(runCommand).toHaveBeenCalledTimes(1)
   })

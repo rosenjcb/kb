@@ -7,25 +7,30 @@ export { printCliHelp }
  * Run a CLI command and return its output as a string.
  * Used by the TUI to display results inline without spawning a new process.
  */
-export async function runCommandForTui(args: string[], config: KbConfig): Promise<string> {
+export async function runCommandForTui(
+  args: string[],
+  config: KbConfig,
+  onChunk?: (line: string) => void
+): Promise<string> {
   const chunks: string[] = []
-
-  const effectiveArgs = args
 
   const out = {
     log: (msg: string) => {
       chunks.push(msg)
+      onChunk?.(msg)
     },
     error: (msg: string) => {
       chunks.push(msg)
+      onChunk?.(msg)
     },
     write: (chunk: string) => {
       chunks.push(chunk)
+      onChunk?.(chunk)
     },
   }
 
   try {
-    await runMainWithOutput(effectiveArgs, out, config, 'tui')
+    await runMainWithOutput(args, out, config, 'tui')
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     chunks.push(message)
