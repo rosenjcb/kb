@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs'
 import {
   type GraphSummary,
   KbGraphWriter,
+  kbGraphEntityIdKey,
 } from '../tools/kb-graph-writer'
 import { type CmdMode, cmd } from './cmd-ref'
 
@@ -21,6 +22,24 @@ export interface GraphCommandOptions {
   pathFrom?: string
   pathTo?: string
   format?: 'dot' | 'json'
+}
+
+const MAX_NEXT_HOP_NEIGHBORS = 5
+const MAX_NEXT_HOP_PREVIEW = 3
+
+function graphEntityIdOrNull(entity: { name: string }): string | null {
+  const maybeId = (entity as { id?: unknown }).id
+  return typeof maybeId === 'string' && maybeId.trim().length > 0 ? maybeId : null
+}
+
+function graphEntityKey(entity: { name: string }): string {
+  return graphEntityIdOrNull(entity) ?? kbGraphEntityIdKey(entity.name)
+}
+
+function isSameGraphEntity(entity: { name: string }, anchor: { id: string; name: string }): boolean {
+  const entityId = graphEntityIdOrNull(entity)
+  if (entityId) return entityId === anchor.id
+  return graphEntityKey(entity) === graphEntityKey(anchor)
 }
 
 /** Compact JSON for init / tooling (counts + top nodes by degree, not full `exportJson`). */
@@ -160,8 +179,8 @@ export interface GraphWriter {
   findPath(from: string, to: string): Promise<{ hops: number; nodes: string[] } | null>
   getNeighbors(entity: string): Promise<{
     entity: { id: string; name: string; type: string; description?: string | null }
-    outgoing: Array<{ rel: string; target: { id?: string; name: string; type: string } }>
-    incoming: Array<{ rel: string; source: { id?: string; name: string; type: string } }>
+    outgoing: Array<{ rel: string; target: { name: string; type: string } }>
+    incoming: Array<{ rel: string; source: { name: string; type: string } }>
   } | null>
 }
 
@@ -233,26 +252,27 @@ export async function runGraphCommand(
       }
 
       if (result.outgoing.length > 0) {
-        const byNode = new Map<string, { id?: string; name: string; type: string }>()
+        const byNode = new Map<string, { name: string; type: string }>()
         for (const edge of result.outgoing) {
-          const key = edge.target.id ?? edge.target.name
+          const key = graphEntityKey(edge.target)
           if (!byNode.has(key)) byNode.set(key, edge.target)
         }
         const neighbors = [...byNode.values()]
-        const maxNeighbors = 5
-        const visible = neighbors.slice(0, maxNeighbors)
+        const visible = neighbors.slice(0, MAX_NEXT_HOP_NEIGHBORS)
+        const neighborData = await Promise.all(
+          visible.map(async neighbor => ({ neighbor, next: await writer.getNeighbors(neighbor.name) }))
+        )
         out.log('\nNext-hop exploration:')
-        for (const neighbor of visible) {
-          const next = await writer.getNeighbors(neighbor.id ?? neighbor.name)
+        for (const { neighbor, next } of neighborData) {
           if (!next) continue
           const secondHopByEdge = new Map<
             string,
-            { rel: string; target: { id?: string; name: string; type: string } }
+            { rel: string; target: { name: string; type: string } }
           >()
           for (const edge of next.outgoing) {
-            const targetKey = edge.target.id ?? edge.target.name
+            const targetKey = graphEntityKey(edge.target)
             const key = `${edge.rel}::${targetKey}`
-            if (targetKey === result.entity.id) continue
+            if (isSameGraphEntity(edge.target, result.entity)) continue
             if (!secondHopByEdge.has(key)) secondHopByEdge.set(key, edge)
           }
           const secondHops = [...secondHopByEdge.values()]
@@ -261,7 +281,7 @@ export async function runGraphCommand(
             continue
           }
           out.log(`  ${neighbor.name} [${neighbor.type}] can reach:`)
-          const preview = secondHops.slice(0, 3)
+          const preview = secondHops.slice(0, MAX_NEXT_HOP_PREVIEW)
           for (const hop of preview) {
             out.log(`    -[${hop.rel}]→ ${hop.target.name} [${hop.target.type}]`)
           }

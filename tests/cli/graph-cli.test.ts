@@ -146,7 +146,7 @@ describe('runGraphCommand — output routing', () => {
             incoming: [{ rel: 'queried_by', source: { id: 'cli', name: 'CLI', type: 'tool' } }],
           }
         }
-        if (entity === 'api') {
+        if (entity === 'api' || entity === 'API') {
           return {
             entity: { id: 'api', name: 'API', type: 'tool' },
             outgoing: [
