@@ -70,9 +70,15 @@ export class InvalidateOrchestrator {
     const rep = input.replacementFact?.trim()
     if (rep) {
       const sentence = assertSingleSentenceForSubmit(rep)
-      replacementTriplet = this.llm
-        ? await extractFactTriplet(this.llm, sentence)
-        : placeholderTripletFromFactText(sentence)
+      if (this.llm) {
+        try {
+          replacementTriplet = await extractFactTriplet(this.llm, sentence)
+        } catch {
+          replacementTriplet = placeholderTripletFromFactText(sentence)
+        }
+      } else {
+        replacementTriplet = placeholderTripletFromFactText(sentence)
+      }
     }
 
     const result = (await this.toolExecutor.execute(

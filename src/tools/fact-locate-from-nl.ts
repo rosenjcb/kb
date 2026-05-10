@@ -1,10 +1,11 @@
 import type { LLMProvider } from '../core/types'
 import { loadPrompt } from '../prompts/loader'
 import type { FactRow, SqliteKbIndexer } from './sqlite-kb-index'
+import { toGraphQuerySlugs } from './graph-query-expansion'
 
 type IndexerPick = Pick<
   SqliteKbIndexer,
-  'searchFacts' | 'getActiveFactByTextMatch' | 'getActiveFactById'
+  'searchFacts' | 'searchFactsByConcepts' | 'getActiveFactByTextMatch' | 'getActiveFactById'
 >
 
 function parseChosenFactId(text: string): string | null {
@@ -24,7 +25,7 @@ function parseChosenFactId(text: string): string | null {
 
 /**
  * Resolve a fact row from user natural language: exact id, exact normalized text,
- * else FTS candidates + LLM disambiguation.
+ * then BM25 FTS + concept-based search merged and deduplicated, then LLM disambiguation.
  */
 export async function locateFactRowFromNaturalLanguage(input: {
   indexer: IndexerPick
@@ -45,7 +46,32 @@ export async function locateFactRowFromNaturalLanguage(input: {
 
   if (!input.llm) return undefined
 
-  const candidates = input.indexer.searchFacts(q, 15)
+  // FTS search (BM25 relevance-ordered, stop-word filtered)
+  const ftsCandidates = input.indexer.searchFacts(q, 15)
+
+  // If FTS returns nothing (can happen with very long or stop-word-heavy inputs),
+  // retry with just the most distinctive tokens as a short phrase.
+  const shortPhrase = toGraphQuerySlugs(q).slice(0, 5).join(' ')
+  const ftsFallback =
+    ftsCandidates.length === 0 && shortPhrase
+      ? input.indexer.searchFacts(shortPhrase, 15)
+      : []
+
+  // Concept/slug-based search as a complement — catches cases where FTS tokenization misses
+  const slugs = toGraphQuerySlugs(q)
+  const conceptCandidates = slugs.length > 0 ? input.indexer.searchFactsByConcepts(slugs, 15) : []
+
+  // Merge: FTS results first (better relevance ordering), then fallback + concept hits
+  const seen = new Set(ftsCandidates.map(c => c.id))
+  const merged: FactRow[] = [...ftsCandidates]
+  for (const c of [...ftsFallback, ...conceptCandidates]) {
+    if (!seen.has(c.id)) {
+      seen.add(c.id)
+      merged.push(c)
+    }
+  }
+
+  const candidates = merged.slice(0, 15)
   if (candidates.length === 0) return undefined
   if (candidates.length === 1) return candidates[0]
 
