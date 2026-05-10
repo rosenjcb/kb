@@ -390,7 +390,7 @@ export class SqliteKbIndexer {
           JOIN facts f ON f.id = fts.fact_id
           WHERE facts_fts MATCH ?
             AND f.tombstoned_at IS NULL
-          ORDER BY f.updated_at DESC
+          ORDER BY rank
           LIMIT ?
         `
         )
@@ -1548,7 +1548,7 @@ function tokenizeQuery(input: string): string[] {
         .toLowerCase()
         .replace(/[^a-z0-9\s]/g, ' ')
         .split(/\s+/)
-        .filter(t => t.length > 2)
+        .filter(t => t.length > 2 && !FACT_STOP_WORDS.has(t))
     ),
   ].slice(0, 10)
 }
