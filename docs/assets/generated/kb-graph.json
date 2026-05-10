@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-09T20:33:25.823Z",
+  "generatedAt": "2026-05-09T22:06:25.029Z",
   "entities": [
     {
       "id": "tool-design-conventions",
@@ -45,9 +45,9 @@
     },
     {
       "id": "claude-code",
-      "name": "claude-code",
-      "type": "system",
-      "docId": "src-tools-tool-conventions-md"
+      "name": "Claude Code",
+      "type": "tool",
+      "docId": "fact-c2bd509a11e0ca2f"
     },
     {
       "id": "file-read-tool",
@@ -1552,8 +1552,8 @@
     {
       "id": "kb-query",
       "name": "kb query",
-      "type": "tool",
-      "docId": "src-core-facts-architecture-md"
+      "type": "system",
+      "docId": "fact-4e114011aa6cfab6"
     },
     {
       "id": "kb-publish",
@@ -1684,8 +1684,8 @@
     {
       "id": "run-query-truth-retrieval",
       "name": "runQueryTruthRetrieval",
-      "type": "tool",
-      "docId": "src-core-facts-architecture-md"
+      "type": "system",
+      "docId": "fact-4e114011aa6cfab6"
     },
     {
       "id": "kb-facts",
@@ -2265,9 +2265,9 @@
     },
     {
       "id": "enrich-read-documents-answer-with-llm",
-      "name": "enrichReadDocumentsAnswerWithLLM()",
+      "name": "enrichReadDocumentsAnswerWithLLM",
       "type": "system",
-      "docId": "src-core-query-internals-md"
+      "docId": "fact-4e114011aa6cfab6"
     },
     {
       "id": "src-cli-intent-cli-ts",
@@ -2727,9 +2727,9 @@
     },
     {
       "id": "execute-chat-query-truth-retrieval",
-      "name": "executeChatQueryTruthRetrieval()",
-      "type": "tool",
-      "docId": "src-core-chat-md"
+      "name": "executeChatQueryTruthRetrieval",
+      "type": "system",
+      "docId": "fact-4e114011aa6cfab6"
     },
     {
       "id": "printer",
@@ -2969,7 +2969,7 @@
       "id": "kb-dev-workflow",
       "name": "kb-dev-workflow",
       "type": "concept",
-      "docId": "skills-kb-dev-workflow-skill-md"
+      "docId": "fact-294ef8e2ddd3f739"
     },
     {
       "id": "coding-task",
@@ -3321,9 +3321,9 @@
     },
     {
       "id": "claude-md",
-      "name": "CLAUDE.md",
-      "type": "concept",
-      "docId": "docs-index-md"
+      "name": "~/.claude/CLAUDE.md",
+      "type": "system",
+      "docId": "fact-294ef8e2ddd3f739"
     },
     {
       "id": "llm-pipeline",
@@ -3820,8 +3820,8 @@
     {
       "id": "chat-mode",
       "name": "chat mode",
-      "type": "concept",
-      "docId": "design-md"
+      "type": "system",
+      "docId": "fact-4e114011aa6cfab6"
     },
     {
       "id": "shell-mode",
@@ -3910,14 +3910,14 @@
     {
       "id": "cursor",
       "name": "Cursor",
-      "type": "system",
-      "docId": "claude-md"
+      "type": "tool",
+      "docId": "fact-c2bd509a11e0ca2f"
     },
     {
       "id": "codex",
       "name": "Codex",
-      "type": "system",
-      "docId": "claude-md"
+      "type": "tool",
+      "docId": "fact-c2bd509a11e0ca2f"
     },
     {
       "id": "github-copilot",
@@ -9399,8 +9399,9 @@
     },
     {
       "id": "agents",
-      "name": "docs/_site/agents.html",
-      "type": "system",
+      "name": "agents",
+      "type": "concept",
+      "docId": "fact-7bdda1bb0c17e372",
       "description": "source file"
     },
     {
@@ -10350,6 +10351,186 @@
       "name": "vitest.config.ts",
       "type": "system",
       "description": "source file"
+    },
+    {
+      "id": "intent-rewrite-pipeline",
+      "name": "intent-rewrite pipeline",
+      "type": "system",
+      "docId": "fact-c2bd509a11e0ca2f"
+    },
+    {
+      "id": "auto-deepening",
+      "name": "auto-deepening",
+      "type": "concept",
+      "docId": "fact-4e114011aa6cfab6"
+    },
+    {
+      "id": "live-in-memory-message-history",
+      "name": "live in-memory message history",
+      "type": "concept",
+      "docId": "fact-4e114011aa6cfab6"
+    },
+    {
+      "id": "conversational-turn-resolution",
+      "name": "conversational turn resolution",
+      "type": "concept",
+      "docId": "fact-c2bd509a11e0ca2f"
+    },
+    {
+      "id": "install-skills-globally",
+      "name": "installSkillsGlobally",
+      "type": "concept",
+      "docId": "fact-294ef8e2ddd3f739"
+    },
+    {
+      "id": "tui-startup",
+      "name": "TUI startup",
+      "type": "concept",
+      "docId": "fact-0caf7416d26770e3"
+    },
+    {
+      "id": "startup-notices",
+      "name": "startup notices",
+      "type": "concept",
+      "docId": "fact-0caf7416d26770e3"
+    },
+    {
+      "id": "new-installs",
+      "name": "New installs",
+      "type": "concept",
+      "docId": "fact-0caf7416d26770e3"
+    },
+    {
+      "id": "updates",
+      "name": "updates",
+      "type": "concept",
+      "docId": "fact-0caf7416d26770e3"
+    },
+    {
+      "id": "kb-dev-workflow-skill-blurb",
+      "name": "KB_DEV_WORKFLOW_SKILL_BLURB",
+      "type": "concept",
+      "docId": "fact-7bdda1bb0c17e372"
+    },
+    {
+      "id": "skill-body",
+      "name": "skill body",
+      "type": "concept",
+      "docId": "fact-7bdda1bb0c17e372"
+    },
+    {
+      "id": "skill-files",
+      "name": "Skill files",
+      "type": "concept",
+      "docId": "fact-294ef8e2ddd3f739"
+    },
+    {
+      "id": "profile-md-injection",
+      "name": "profile MD injection",
+      "type": "concept",
+      "docId": "fact-7bdda1bb0c17e372"
+    },
+    {
+      "id": "behavioral-instructions",
+      "name": "behavioral instructions",
+      "type": "concept",
+      "docId": "fact-7bdda1bb0c17e372"
+    },
+    {
+      "id": "kb-skill-install",
+      "name": "kb skill install",
+      "type": "tool",
+      "docId": "fact-294ef8e2ddd3f739"
+    },
+    {
+      "id": "install-skill-into-project",
+      "name": "installSkillIntoProject()",
+      "type": "system",
+      "docId": "fact-0c5223b17f53aab1"
+    },
+    {
+      "id": "profile-instructions",
+      "name": "Profile instructions",
+      "type": "concept",
+      "docId": "fact-294ef8e2ddd3f739"
+    },
+    {
+      "id": "agents-md",
+      "name": "~/.codex/AGENTS.md",
+      "type": "system",
+      "docId": "fact-294ef8e2ddd3f739"
+    },
+    {
+      "id": "agent-facing",
+      "name": "agent-facing",
+      "type": "concept",
+      "docId": "fact-4e114011aa6cfab6"
+    },
+    {
+      "id": "one-shot",
+      "name": "one-shot",
+      "type": "concept",
+      "docId": "fact-4e114011aa6cfab6"
+    },
+    {
+      "id": "full-intent-rewrite-pipeline",
+      "name": "full intent-rewrite pipeline",
+      "type": "system",
+      "docId": "fact-4e114011aa6cfab6"
+    },
+    {
+      "id": "human-facing",
+      "name": "human-facing",
+      "type": "concept",
+      "docId": "fact-4e114011aa6cfab6"
+    },
+    {
+      "id": "iterative",
+      "name": "iterative",
+      "type": "concept",
+      "docId": "fact-4e114011aa6cfab6"
+    },
+    {
+      "id": "user-profile-level-mds",
+      "name": "user profile-level MDs",
+      "type": "concept",
+      "docId": "fact-0c5223b17f53aab1"
+    },
+    {
+      "id": "claude-md-profile",
+      "name": "~/.claude/CLAUDE.md",
+      "type": "system",
+      "docId": "fact-0c5223b17f53aab1"
+    },
+    {
+      "id": "agents-md-profile",
+      "name": "~/.codex/AGENTS.md",
+      "type": "system",
+      "docId": "fact-0c5223b17f53aab1"
+    },
+    {
+      "id": "local-repo-claude-md",
+      "name": "local repo CLAUDE.md",
+      "type": "system",
+      "docId": "fact-0c5223b17f53aab1"
+    },
+    {
+      "id": "local-repo-agents-md",
+      "name": "local repo AGENTS.md",
+      "type": "system",
+      "docId": "fact-0c5223b17f53aab1"
+    },
+    {
+      "id": "cwd-parameter",
+      "name": "cwd parameter",
+      "type": "concept",
+      "docId": "fact-0c5223b17f53aab1"
+    },
+    {
+      "id": "function-signature",
+      "name": "function signature",
+      "type": "concept",
+      "docId": "fact-0c5223b17f53aab1"
     }
   ],
   "relationships": [
@@ -12051,7 +12232,7 @@
       "fromId": "kb-query",
       "toId": "run-query-truth-retrieval",
       "type": "uses",
-      "docId": "src-core-facts-architecture-md",
+      "docId": "fact-c2bd509a11e0ca2f",
       "weight": 1
     },
     {
@@ -22039,6 +22220,272 @@
       "toId": "printer",
       "type": "imports",
       "weight": 0.9
+    },
+    {
+      "fromId": "kb-query",
+      "toId": "intent-rewrite-pipeline",
+      "type": "uses",
+      "docId": "fact-c2bd509a11e0ca2f",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-query",
+      "toId": "enrich-read-documents-answer-with-llm",
+      "type": "uses",
+      "docId": "fact-c2bd509a11e0ca2f",
+      "weight": 1
+    },
+    {
+      "fromId": "claude-code",
+      "toId": "kb-query",
+      "type": "uses",
+      "docId": "fact-c2bd509a11e0ca2f",
+      "weight": 1
+    },
+    {
+      "fromId": "cursor",
+      "toId": "kb-query",
+      "type": "uses",
+      "docId": "fact-c2bd509a11e0ca2f",
+      "weight": 1
+    },
+    {
+      "fromId": "codex",
+      "toId": "kb-query",
+      "type": "uses",
+      "docId": "fact-c2bd509a11e0ca2f",
+      "weight": 1
+    },
+    {
+      "fromId": "chat-mode",
+      "toId": "execute-chat-query-truth-retrieval",
+      "type": "uses",
+      "docId": "fact-4e114011aa6cfab6",
+      "weight": 1
+    },
+    {
+      "fromId": "chat-mode",
+      "toId": "auto-deepening",
+      "type": "uses",
+      "docId": "fact-c2bd509a11e0ca2f",
+      "weight": 1
+    },
+    {
+      "fromId": "chat-mode",
+      "toId": "live-in-memory-message-history",
+      "type": "uses",
+      "docId": "fact-c2bd509a11e0ca2f",
+      "weight": 1
+    },
+    {
+      "fromId": "chat-mode",
+      "toId": "conversational-turn-resolution",
+      "type": "uses",
+      "docId": "fact-c2bd509a11e0ca2f",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-query",
+      "toId": "chat-mode",
+      "type": "contradicts",
+      "docId": "fact-4e114011aa6cfab6",
+      "weight": 1
+    },
+    {
+      "fromId": "install-skills-globally",
+      "toId": "tui-startup",
+      "type": "depends_on",
+      "docId": "fact-0caf7416d26770e3",
+      "weight": 1
+    },
+    {
+      "fromId": "new-installs",
+      "toId": "startup-notices",
+      "type": "related_to",
+      "docId": "fact-0caf7416d26770e3",
+      "weight": 1
+    },
+    {
+      "fromId": "updates",
+      "toId": "startup-notices",
+      "type": "related_to",
+      "docId": "fact-0caf7416d26770e3",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-dev-workflow-skill-blurb",
+      "toId": "skill-body",
+      "type": "replaces",
+      "docId": "fact-7bdda1bb0c17e372",
+      "weight": 1
+    },
+    {
+      "fromId": "skill-body",
+      "toId": "behavioral-instructions",
+      "type": "related_to",
+      "docId": "fact-7bdda1bb0c17e372",
+      "weight": 1
+    },
+    {
+      "fromId": "skill-files",
+      "toId": "agents",
+      "type": "uses",
+      "docId": "fact-7bdda1bb0c17e372",
+      "weight": 1
+    },
+    {
+      "fromId": "profile-md-injection",
+      "toId": "agents",
+      "type": "uses",
+      "docId": "fact-7bdda1bb0c17e372",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-skill-install",
+      "toId": "install-skills-globally",
+      "type": "uses",
+      "docId": "fact-294ef8e2ddd3f739",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-skill-install",
+      "toId": "install-skill-into-project",
+      "type": "uses",
+      "docId": "fact-294ef8e2ddd3f739",
+      "weight": 1
+    },
+    {
+      "fromId": "install-skills-globally",
+      "toId": "skill-files",
+      "type": "implements",
+      "docId": "fact-294ef8e2ddd3f739",
+      "weight": 1
+    },
+    {
+      "fromId": "install-skill-into-project",
+      "toId": "profile-instructions",
+      "type": "implements",
+      "docId": "fact-294ef8e2ddd3f739",
+      "weight": 1
+    },
+    {
+      "fromId": "install-skill-into-project",
+      "toId": "claude-md",
+      "type": "uses",
+      "docId": "fact-294ef8e2ddd3f739",
+      "weight": 1
+    },
+    {
+      "fromId": "install-skill-into-project",
+      "toId": "agents-md",
+      "type": "uses",
+      "docId": "fact-294ef8e2ddd3f739",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-query",
+      "toId": "agent-facing",
+      "type": "related_to",
+      "docId": "fact-4e114011aa6cfab6",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-query",
+      "toId": "one-shot",
+      "type": "related_to",
+      "docId": "fact-4e114011aa6cfab6",
+      "weight": 1
+    },
+    {
+      "fromId": "kb-query",
+      "toId": "full-intent-rewrite-pipeline",
+      "type": "uses",
+      "docId": "fact-4e114011aa6cfab6",
+      "weight": 1
+    },
+    {
+      "fromId": "full-intent-rewrite-pipeline",
+      "toId": "run-query-truth-retrieval",
+      "type": "uses",
+      "docId": "fact-4e114011aa6cfab6",
+      "weight": 1
+    },
+    {
+      "fromId": "run-query-truth-retrieval",
+      "toId": "enrich-read-documents-answer-with-llm",
+      "type": "uses",
+      "docId": "fact-4e114011aa6cfab6",
+      "weight": 1
+    },
+    {
+      "fromId": "chat-mode",
+      "toId": "human-facing",
+      "type": "related_to",
+      "docId": "fact-4e114011aa6cfab6",
+      "weight": 1
+    },
+    {
+      "fromId": "chat-mode",
+      "toId": "iterative",
+      "type": "related_to",
+      "docId": "fact-4e114011aa6cfab6",
+      "weight": 1
+    },
+    {
+      "fromId": "execute-chat-query-truth-retrieval",
+      "toId": "auto-deepening",
+      "type": "uses",
+      "docId": "fact-4e114011aa6cfab6",
+      "weight": 1
+    },
+    {
+      "fromId": "execute-chat-query-truth-retrieval",
+      "toId": "live-in-memory-message-history",
+      "type": "uses",
+      "docId": "fact-4e114011aa6cfab6",
+      "weight": 1
+    },
+    {
+      "fromId": "user-profile-level-mds",
+      "toId": "claude-md-profile",
+      "type": "implements",
+      "docId": "fact-0c5223b17f53aab1",
+      "weight": 1
+    },
+    {
+      "fromId": "user-profile-level-mds",
+      "toId": "agents-md-profile",
+      "type": "implements",
+      "docId": "fact-0c5223b17f53aab1",
+      "weight": 1
+    },
+    {
+      "fromId": "install-skill-into-project",
+      "toId": "local-repo-claude-md",
+      "type": "contradicts",
+      "docId": "fact-0c5223b17f53aab1",
+      "weight": 1
+    },
+    {
+      "fromId": "install-skill-into-project",
+      "toId": "local-repo-agents-md",
+      "type": "contradicts",
+      "docId": "fact-0c5223b17f53aab1",
+      "weight": 1
+    },
+    {
+      "fromId": "install-skill-into-project",
+      "toId": "cwd-parameter",
+      "type": "replaces",
+      "docId": "fact-0c5223b17f53aab1",
+      "weight": 1
+    },
+    {
+      "fromId": "cwd-parameter",
+      "toId": "function-signature",
+      "type": "related_to",
+      "docId": "fact-0c5223b17f53aab1",
+      "weight": 1
     }
   ]
 }

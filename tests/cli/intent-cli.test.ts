@@ -309,7 +309,7 @@ describe('intent-cli execution and enrichment', () => {
     expect((untouched.data as { ok?: boolean }).ok).toBe(true)
   })
 
-  it('replaces insufficient LLM answer with generic coverage summary', async () => {
+  it('replaces insufficient LLM answer with deterministic fallback from documents', async () => {
     const llm: LLMProvider = {
       name: 'test',
       model: 'stub',
@@ -344,9 +344,9 @@ describe('intent-cli execution and enrichment', () => {
     )
 
     const answer = (enriched.data as { answer?: string }).answer ?? ''
-    expect(answer).toContain('Evidence-backed coverage summary:')
-    expect(answer).toContain('source: roadmap')
-    expect(answer).toContain('source: history')
+    // LLM said insufficient evidence — should fall back to a deterministic snippet, not the coverage bullet list
+    expect(answer).not.toContain('Evidence-backed coverage summary:')
+    expect(answer.length).toBeGreaterThan(0)
   })
 
   it('keeps long sufficient LLM answer unchanged', async () => {

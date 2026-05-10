@@ -4,6 +4,8 @@
  * KB Agent Harness CLI
  */
 
+import { stat } from 'node:fs/promises'
+import path from 'node:path'
 import {
   ReportWriter,
   RunCollector,
@@ -25,6 +27,7 @@ import {
   migrateLegacyKbSessionJson,
   printBaseDeleteHelp,
   readBaseConfig,
+  resolveBaseToDir,
   resolveEffectiveBaseDir,
   resolveKbStorageDirFromArgs,
   stripCliFlagWithValue,
@@ -64,11 +67,17 @@ import { parseInitCommand, parseScanCommand, runKbInit } from './init-cli'
 import {
   enrichReadDocumentsAnswerWithLLM,
   isIntentCommand,
+  isReadFactsResult,
   parseIntentCommand,
   printIntentHelp,
   printIntentResult,
   rewriteIntentInputWithSessionContext,
+  type ReadDocumentsResultData,
 } from './intent-cli'
+import {
+  llmExtractQueryEntities,
+  rerankByGraphConnectivity,
+} from '../tools/graph-rag-reranker'
 import {
   applyConfigToEnv,
   createLLMProviderFromConfig,
@@ -320,15 +329,22 @@ export async function runMainWithOutput(
         return
       }
 
-      if (makeDefault) {
-        const saved = await writeDefaultBase(base)
-        const resolved = await ensureOperationalBaseDir(saved.defaultBase ?? base)
-        out.log(formatDefaultCommandHelp(saved.defaultBase ?? base, resolved, mode))
+      const baseDir = resolveBaseToDir(base)
+      const sqlitePath = path.join(baseDir, '.kb-index.sqlite')
+      try {
+        await stat(sqlitePath)
+      } catch {
+        out.error(`Base "${base}" has not been initialized. Run: kb init --base ${base}`)
         return
       }
 
       await writeSessionBase(base)
       const resolved = await ensureOperationalBaseDir(base)
+      if (makeDefault) {
+        await writeDefaultBase(base)
+        out.log(formatDefaultCommandHelp(base, resolved, mode))
+        return
+      }
       out.log(formatUseCommandHelp(base, resolved, mode))
       return
     }
@@ -832,7 +848,7 @@ export async function runMainWithOutput(
         taskProvider: llmProvider ?? undefined,
       })
       printer.startSpinner('running intent loop...')
-      const aligned = await runQueryTruthRetrieval({
+      let aligned = await runQueryTruthRetrieval({
         parsed,
         toolExecutor,
         llmProvider: llmProvider ?? undefined,
@@ -841,6 +857,42 @@ export async function runMainWithOutput(
       }).finally(() => {
         printer.stopSpinner()
       })
+
+      // LLM-driven graph RAG: extract entities from query, re-rank retrieved facts by graph connectivity.
+      if (
+        parsed.envelope.intent === 'query_truth' &&
+        resolveGraphEnabled(config) &&
+        llmProvider &&
+        isReadFactsResult(aligned)
+      ) {
+        try {
+          const rerankerQuery = preRewriteQueryTruth
+          const entities = await llmExtractQueryEntities(rerankerQuery, llmProvider)
+          if (entities.length > 0) {
+            const rerankerGraph = new KbGraphWriter(KbGraphWriter.dbPathForBase(intentBaseDir))
+            await rerankerGraph.open()
+            try {
+              const codeStore = new CodeGraphStore(KbGraphWriter.dbPathForBase(intentBaseDir))
+              try {
+                const data = (aligned.data ?? {}) as ReadDocumentsResultData
+                const reranked = await rerankByGraphConnectivity(
+                  Array.isArray(data.results) ? data.results : [],
+                  entities,
+                  rerankerGraph,
+                  codeStore
+                )
+                aligned = { ...aligned, data: { ...data, results: reranked } }
+              } finally {
+                codeStore.close()
+              }
+            } finally {
+              await rerankerGraph.close()
+            }
+          }
+        } catch {
+          // re-ranking is best-effort; never block the answer
+        }
+      }
 
       // Flush any tokens accumulated during the intent loop and graph extraction.
       if (llmCounter) {
