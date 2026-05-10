@@ -140,7 +140,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  config      Inspect or update persistent config',
     '  init        Build a KB from the current repo',
     '  scan        Refresh a KB with content from the current repo',
-    '  graph       Inspect or edit the knowledge graph',
+    '  graph       Inspect and explore the knowledge graph',
     '  docs        Browse KB documents',
     '  facts       List, search, or show KB facts',
     '  publish     Publish KB docs',

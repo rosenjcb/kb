@@ -58,52 +58,16 @@ describe('graph-cli parsing', () => {
     expect(parseGraphCommand(['--format', 'json'])).toEqual({ format: 'json' })
   })
 
-  it('Given graph node add flags, then parser returns a node-add mutation plan', () => {
-    const opts = parseGraphCommand([
-      'node',
-      'add',
-      '--name',
-      'My API',
-      '--type',
-      'tool',
-      '--description',
-      'Handles auth',
-      '--doc-id',
-      'doc-1',
-    ])
-    expect(opts.mutation).toEqual({
-      op: 'node-add',
-      name: 'My API',
-      entityType: 'tool',
-      description: 'Handles auth',
-      docId: 'doc-1',
-      apply: false,
-    })
+  it('Given graph node mutation command, then parser rejects read-only writes', () => {
+    expect(() => parseGraphCommand(['node', 'add', '--name', 'My API'])).toThrow(
+      /read-only/i
+    )
   })
 
-  it('Given graph edge add with --apply, then parser records apply', () => {
-    const opts = parseGraphCommand([
-      'edge',
-      'add',
-      '--from',
-      'a',
-      '--to',
-      'b',
-      '--verb',
-      'depends on',
-      '--apply',
-    ])
-    expect(opts.mutation).toEqual({
-      op: 'edge-add',
-      fromRef: 'a',
-      toRef: 'b',
-      verb: 'depends on',
-      apply: true,
-    })
-  })
-
-  it('Given node add without --name, then parser throws', () => {
-    expect(() => parseGraphCommand(['node', 'add', '--type', 'concept'])).toThrow(GraphCommandError)
+  it('Given graph edge mutation command, then parser rejects read-only writes', () => {
+    expect(() => parseGraphCommand(['edge', 'add', '--from', 'a', '--to', 'b', '--verb', 'uses'])).toThrow(
+      /read-only/i
+    )
   })
 })
 
@@ -168,5 +132,39 @@ describe('runGraphCommand — output routing', () => {
     await runGraphCommand('/fake/base', { entity: 'Unknown' }, out, makeMockWriter())
 
     expect(lines.some(l => l.includes('not found'))).toBe(true)
+  })
+
+  it('shows next-hop exploration details for outgoing neighbors', async () => {
+    const lines: string[] = []
+    const out = { log: (msg: string) => lines.push(msg) }
+    const writer = makeMockWriter({
+      getNeighbors: vi.fn(async entity => {
+        if (entity === 'KB') {
+          return {
+            entity: { id: 'kb', name: 'KB', type: 'system' },
+            outgoing: [{ rel: 'uses', target: { id: 'api', name: 'API', type: 'tool' } }],
+            incoming: [{ rel: 'queried_by', source: { id: 'cli', name: 'CLI', type: 'tool' } }],
+          }
+        }
+        if (entity === 'api') {
+          return {
+            entity: { id: 'api', name: 'API', type: 'tool' },
+            outgoing: [
+              { rel: 'calls', target: { id: 'auth', name: 'Auth', type: 'system' } },
+              { rel: 'reads', target: { id: 'db', name: 'DB', type: 'system' } },
+            ],
+            incoming: [{ rel: 'uses', source: { id: 'kb', name: 'KB', type: 'system' } }],
+          }
+        }
+        return null
+      }),
+    })
+
+    await runGraphCommand('/fake/base', { entity: 'KB' }, out, writer)
+
+    expect(lines.some(l => l.includes('Next-hop exploration:'))).toBe(true)
+    expect(lines.some(l => l.includes('API [tool] can reach:'))).toBe(true)
+    expect(lines.some(l => l.includes('-[calls]→ Auth [system]'))).toBe(true)
+    expect(lines.some(l => l.includes('-[reads]→ DB [system]'))).toBe(true)
   })
 })

@@ -1,75 +1,26 @@
 /**
- * kb graph — CLI commands for the knowledge graph.
+ * kb graph — read-only CLI commands for the knowledge graph.
  *
  * Usage:
  *   kb graph                        Summary (entity + relationship counts, top nodes)
- *   kb graph --entity <name>        Neighbours of a named entity
+ *   kb graph --entity <name>        Neighbours of a named entity (+ next-hop exploration)
  *   kb graph --path <from> <to>     Shortest path between two entities
  *   kb graph --format dot           Export full graph as Graphviz DOT
  *   kb graph --format json          Export full graph as JSON
- *   kb graph node add ... [--apply] Create / upsert an entity (preview without --apply)
- *   kb graph node set ... [--apply] Update name, description, or type
- *   kb graph edge add ... [--apply] Add a directed edge (--verb is the relationship label)
- *   kb graph edge remove ... [--apply] Soft-delete a directed edge
  */
 
 import { existsSync } from 'node:fs'
 import {
-  type EntityType,
   type GraphSummary,
   KbGraphWriter,
-  kbGraphEntityIdKey,
 } from '../tools/kb-graph-writer'
 import { type CmdMode, cmd } from './cmd-ref'
-
-const ENTITY_TYPES: ReadonlySet<EntityType> = new Set([
-  'concept',
-  'system',
-  'tool',
-  'decision',
-  'person',
-])
-
-export type GraphMutationPlan =
-  | {
-      op: 'node-add'
-      name: string
-      id?: string
-      entityType: EntityType
-      description?: string
-      docId?: string
-      apply: boolean
-    }
-  | {
-      op: 'node-set'
-      target: string
-      name?: string
-      description?: string | null
-      entityType?: EntityType
-      apply: boolean
-    }
-  | {
-      op: 'edge-add'
-      fromRef: string
-      toRef: string
-      verb: string
-      docId?: string
-      apply: boolean
-    }
-  | {
-      op: 'edge-remove'
-      fromRef: string
-      toRef: string
-      verb: string
-      apply: boolean
-    }
 
 export interface GraphCommandOptions {
   entity?: string
   pathFrom?: string
   pathTo?: string
   format?: 'dot' | 'json'
-  mutation?: GraphMutationPlan
 }
 
 /** Compact JSON for init / tooling (counts + top nodes by degree, not full `exportJson`). */
@@ -142,7 +93,7 @@ export function printGraphHelp(mode: CmdMode = 'cli'): string {
     `${cmd('graph', mode)} commands`,
     '',
     'Global option (all subcommands):',
-    `  ${cmd('[--base <name>]', mode)}   Session KB to inspect or edit (defaults to active base)`,
+    `  ${cmd('[--base <name>]', mode)}   Session KB to inspect (defaults to active base)`,
     '',
     'Inspect:',
     `  ${cmd('graph', mode)}`,
@@ -150,149 +101,13 @@ export function printGraphHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('graph --path <from> <to>', mode)}`,
     `  ${cmd('graph --format dot|json', mode)}`,
     '',
-    'Edit (preview only until you pass --apply):',
-    `  ${cmd('graph node add --name "My API" [--id my-api] [--type tool] [--description "..."] [--doc-id <id>]', mode)}`,
-    `  ${cmd('graph node set --entity <id-or-name> [--name "..."] [--description "..."] [--type concept]', mode)}`,
-    `  ${cmd('graph edge add --from <id-or-name> --to <id-or-name> --verb uses [--doc-id <id>]', mode)}`,
-    `  ${cmd('graph edge remove --from <id-or-name> --to <id-or-name> --verb uses', mode)}`,
-    '',
     'Examples:',
     `  ${cmd('graph', mode)}`,
     `  ${cmd('graph --entity "KB"', mode)}`,
     `  ${cmd('graph --path "KB" "SQLite"', mode)}`,
     `  ${cmd('graph --format json', mode)}`,
     `  ${cmd('graph --base dogfood --entity KB', mode)}`,
-    `  ${cmd('graph node add --name "Auth service" --type system --description "Owns tokens" --apply', mode)}`,
-    `  ${cmd('graph edge add --from auth-service --to sqlite --verb persists_to --apply', mode)}`,
   ].join('\n')
-}
-
-function parseDoubleDashFlags(argv: string[]): { map: Record<string, string>; apply: boolean } {
-  const map: Record<string, string> = {}
-  let apply = false
-  for (let i = 0; i < argv.length; i++) {
-    const t = argv[i]
-    if (t === '--apply') {
-      apply = true
-      continue
-    }
-    if (!t.startsWith('--')) continue
-    const key = t.slice(2)
-    const next = argv[i + 1]
-    if (next && !next.startsWith('--')) {
-      map[key] = next
-      i++
-    } else {
-      map[key] = ''
-    }
-  }
-  return { map, apply }
-}
-
-function parseEntityType(raw: string | undefined, mode: CmdMode): EntityType {
-  if (!raw) return 'concept'
-  const t = raw.trim().toLowerCase() as EntityType
-  if (!ENTITY_TYPES.has(t)) {
-    throw new GraphCommandError(
-      `Invalid --type "${raw}". Use one of: ${[...ENTITY_TYPES].join(', ')}. Try ${cmd('graph --help', mode)}.`
-    )
-  }
-  return t
-}
-
-function parseMutationPlan(args: string[], mode: CmdMode): GraphMutationPlan {
-  if (args.length < 2) {
-    throw new GraphCommandError(
-      `Missing graph subcommand. Try ${cmd('graph --help', mode)} for node/edge editing.`
-    )
-  }
-
-  const head = args[0]
-  const sub = args[1]
-  const tail = args.slice(2)
-  const { map, apply } = parseDoubleDashFlags(tail)
-
-  if (head === 'node' && sub === 'add') {
-    const name = map.name?.trim()
-    if (!name) {
-      throw new GraphCommandError(
-        `node add requires --name. Example: ${cmd('graph node add --name "My concept" --apply', mode)}`
-      )
-    }
-    return {
-      op: 'node-add',
-      name,
-      id: map.id?.trim() || undefined,
-      entityType: parseEntityType(map.type, mode),
-      description: map.description?.trim() || undefined,
-      docId: map['doc-id']?.trim() || map.docId?.trim() || undefined,
-      apply,
-    }
-  }
-
-  if (head === 'node' && sub === 'set') {
-    const target = map.entity?.trim() || map.id?.trim()
-    if (!target) {
-      throw new GraphCommandError(
-        `node set requires --entity <id-or-name> (or --id). Example: ${cmd('graph node set --entity kb --description "..." --apply', mode)}`
-      )
-    }
-    const hasPatch = !!(map.name || map.description !== undefined || map.type)
-    if (!hasPatch) {
-      throw new GraphCommandError(
-        `node set needs at least one of: --name, --description, --type. Try ${cmd('graph --help', mode)}.`
-      )
-    }
-    return {
-      op: 'node-set',
-      target,
-      name: map.name?.trim() || undefined,
-      description: map.description !== undefined ? map.description : undefined,
-      entityType: map.type ? parseEntityType(map.type, mode) : undefined,
-      apply,
-    }
-  }
-
-  if (head === 'edge' && sub === 'add') {
-    const fromRef = map.from?.trim()
-    const toRef = map.to?.trim()
-    const verb = map.verb?.trim()
-    if (!fromRef || !toRef || !verb) {
-      throw new GraphCommandError(
-        `edge add requires --from, --to, and --verb. Example: ${cmd('graph edge add --from a --to b --verb uses --apply', mode)}`
-      )
-    }
-    return {
-      op: 'edge-add',
-      fromRef,
-      toRef,
-      verb,
-      docId: map['doc-id']?.trim() || map.docId?.trim() || undefined,
-      apply,
-    }
-  }
-
-  if (head === 'edge' && sub === 'remove') {
-    const fromRef = map.from?.trim()
-    const toRef = map.to?.trim()
-    const verb = map.verb?.trim()
-    if (!fromRef || !toRef || !verb) {
-      throw new GraphCommandError(
-        `edge remove requires --from, --to, and --verb. Example: ${cmd('graph edge remove --from a --to b --verb uses --apply', mode)}`
-      )
-    }
-    return {
-      op: 'edge-remove',
-      fromRef,
-      toRef,
-      verb,
-      apply,
-    }
-  }
-
-  throw new GraphCommandError(
-    `Unknown graph command "${head} ${sub}". Try ${cmd('graph --help', mode)}.`
-  )
 }
 
 export function parseGraphCommand(args: string[], mode: CmdMode = 'cli'): GraphCommandOptions {
@@ -303,8 +118,9 @@ export function parseGraphCommand(args: string[], mode: CmdMode = 'cli'): GraphC
   const opts: GraphCommandOptions = {}
 
   if (args[0] === 'node' || args[0] === 'edge') {
-    opts.mutation = parseMutationPlan(args, mode)
-    return opts
+    throw new GraphCommandError(
+      `kb graph is read-only. Use ${cmd('submit', mode)}, ${cmd('invalidate', mode)}, ${cmd('init --rescan --apply', mode)}, or ${cmd('scan --apply', mode)} to update KB data.`
+    )
   }
 
   const entityIndex = args.indexOf('--entity')
@@ -344,102 +160,9 @@ export interface GraphWriter {
   findPath(from: string, to: string): Promise<{ hops: number; nodes: string[] } | null>
   getNeighbors(entity: string): Promise<{
     entity: { id: string; name: string; type: string; description?: string | null }
-    outgoing: Array<{ rel: string; target: { name: string; type: string } }>
-    incoming: Array<{ rel: string; source: { name: string; type: string } }>
+    outgoing: Array<{ rel: string; target: { id?: string; name: string; type: string } }>
+    incoming: Array<{ rel: string; source: { id?: string; name: string; type: string } }>
   } | null>
-}
-
-function isKbGraphWriter(w: GraphWriter): w is KbGraphWriter {
-  return w instanceof KbGraphWriter
-}
-
-async function executeGraphMutation(
-  writer: KbGraphWriter,
-  plan: GraphMutationPlan,
-  out: GraphOut,
-  mode: CmdMode
-): Promise<void> {
-  if (plan.op === 'node-add') {
-    const anchor = plan.id ?? plan.name
-    const canonicalId = kbGraphEntityIdKey(anchor)
-    if (!plan.apply) {
-      out.log('Dry run (no changes). Pass --apply to write.')
-      out.log(`  Would upsert entity id=${canonicalId} name=${JSON.stringify(plan.name)}`)
-      out.log(`  type=${plan.entityType}`)
-      if (plan.description) out.log(`  description=${JSON.stringify(plan.description)}`)
-      if (plan.docId) out.log(`  doc_id=${JSON.stringify(plan.docId)}`)
-      return
-    }
-    await writer.upsertEntities([
-      {
-        id: plan.id ?? plan.name,
-        name: plan.name,
-        type: plan.entityType,
-        description: plan.description ?? null,
-        docId: plan.docId,
-      },
-    ])
-    out.log(`Upserted entity ${canonicalId} (${plan.name}).`)
-    return
-  }
-
-  if (plan.op === 'node-set') {
-    if (!plan.apply) {
-      out.log('Dry run (no changes). Pass --apply to write.')
-      out.log(`  Would update entity matching ${JSON.stringify(plan.target)}`)
-      if (plan.name !== undefined) out.log(`  name → ${JSON.stringify(plan.name)}`)
-      if (plan.description !== undefined)
-        out.log(`  description → ${JSON.stringify(plan.description)}`)
-      if (plan.entityType !== undefined) out.log(`  type → ${plan.entityType}`)
-      return
-    }
-    const ok = await writer.updateEntityByRef(plan.target, {
-      name: plan.name,
-      description: plan.description,
-      type: plan.entityType,
-    })
-    if (!ok) {
-      out.log(`No entity matched ${JSON.stringify(plan.target)}.`)
-      return
-    }
-    out.log(`Updated entity matching ${JSON.stringify(plan.target)}.`)
-    return
-  }
-
-  if (plan.op === 'edge-add') {
-    if (!plan.apply) {
-      out.log('Dry run (no changes). Pass --apply to write.')
-      out.log(
-        `  Would add edge ${JSON.stringify(plan.fromRef)} -[${plan.verb}]→ ${JSON.stringify(plan.toRef)}`
-      )
-      if (plan.docId) out.log(`  doc_id=${JSON.stringify(plan.docId)}`)
-      return
-    }
-    await writer.upsertRelationships([
-      { fromId: plan.fromRef, toId: plan.toRef, type: plan.verb, docId: plan.docId },
-    ])
-    out.log(`Added edge (${plan.fromRef})-[${plan.verb}]->(${plan.toRef}).`)
-    return
-  }
-
-  if (plan.op === 'edge-remove') {
-    if (!plan.apply) {
-      out.log('Dry run (no changes). Pass --apply to soft-delete the edge.')
-      out.log(
-        `  Would remove edge ${JSON.stringify(plan.fromRef)} -[${plan.verb}]→ ${JSON.stringify(plan.toRef)}`
-      )
-      return
-    }
-    const n = await writer.softDeleteEdge(plan.fromRef, plan.toRef, plan.verb)
-    if (n === 0) {
-      out.log('No matching live edge was found (already removed or unknown verb/endpoints).')
-      return
-    }
-    out.log('Soft-deleted the edge (weight set to 0).')
-    return
-  }
-
-  throw new GraphCommandError(`Unhandled mutation. Try ${cmd('graph --help', mode)}.`)
 }
 
 const defaultGraphOut: GraphOut = { log: console.log }
@@ -449,23 +172,13 @@ export async function runGraphCommand(
   opts: GraphCommandOptions,
   out: GraphOut = defaultGraphOut,
   writerOverride?: GraphWriter,
-  mode: CmdMode = 'cli'
+  _mode: CmdMode = 'cli'
 ): Promise<void> {
   const writer: GraphWriter =
     writerOverride ?? new KbGraphWriter(KbGraphWriter.dbPathForBase(baseDir))
 
   try {
     await writer.open()
-
-    if (opts.mutation) {
-      if (!isKbGraphWriter(writer)) {
-        throw new GraphCommandError(
-          'Graph edits require the on-disk KB graph store (cannot run against an in-memory test stub).'
-        )
-      }
-      await executeGraphMutation(writer, opts.mutation, out, mode)
-      return
-    }
 
     // --format dot
     if (opts.format === 'dot') {
@@ -516,6 +229,49 @@ export async function runGraphCommand(
       }
       if (result.outgoing.length === 0 && result.incoming.length === 0) {
         out.log('(no connections)')
+        return
+      }
+
+      if (result.outgoing.length > 0) {
+        const byNode = new Map<string, { id?: string; name: string; type: string }>()
+        for (const edge of result.outgoing) {
+          const key = edge.target.id ?? edge.target.name
+          if (!byNode.has(key)) byNode.set(key, edge.target)
+        }
+        const neighbors = [...byNode.values()]
+        const maxNeighbors = 5
+        const visible = neighbors.slice(0, maxNeighbors)
+        out.log('\nNext-hop exploration:')
+        for (const neighbor of visible) {
+          const next = await writer.getNeighbors(neighbor.id ?? neighbor.name)
+          if (!next) continue
+          const secondHopByEdge = new Map<
+            string,
+            { rel: string; target: { id?: string; name: string; type: string } }
+          >()
+          for (const edge of next.outgoing) {
+            const targetKey = edge.target.id ?? edge.target.name
+            const key = `${edge.rel}::${targetKey}`
+            if (targetKey === result.entity.id) continue
+            if (!secondHopByEdge.has(key)) secondHopByEdge.set(key, edge)
+          }
+          const secondHops = [...secondHopByEdge.values()]
+          if (secondHops.length === 0) {
+            out.log(`  ${neighbor.name} [${neighbor.type}]: no further outgoing hops`)
+            continue
+          }
+          out.log(`  ${neighbor.name} [${neighbor.type}] can reach:`)
+          const preview = secondHops.slice(0, 3)
+          for (const hop of preview) {
+            out.log(`    -[${hop.rel}]→ ${hop.target.name} [${hop.target.type}]`)
+          }
+          if (secondHops.length > preview.length) {
+            out.log(`    …and ${secondHops.length - preview.length} more`)
+          }
+        }
+        if (neighbors.length > visible.length) {
+          out.log(`  (showing ${visible.length} of ${neighbors.length} outgoing neighbors)`)
+        }
       }
       return
     }
