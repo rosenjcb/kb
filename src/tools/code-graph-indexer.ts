@@ -27,6 +27,7 @@ export interface CodeIndexStats {
 export interface CodeIndexOptions {
   onProgress?: (stats: CodeIndexStats) => void
   yieldEveryFiles?: number
+  candidateFiles?: string[]
 }
 
 export interface LanguageIndexer {
@@ -96,6 +97,9 @@ export class TsMorphIndexer {
 
     const stats: CodeIndexStats = { files: 0, symbols: 0, edges: 0, skipped: 0, errors: 0 }
     const yieldStride = opts.yieldEveryFiles ?? 10
+    const candidateSet = opts.candidateFiles
+      ? new Set(opts.candidateFiles.map(file => file.replace(/\\/g, '/')))
+      : undefined
 
     // Use INSERT ... ON CONFLICT DO UPDATE (not INSERT OR REPLACE) to avoid
     // triggering ON DELETE CASCADE on edges that reference this node via to_id.
@@ -351,6 +355,10 @@ export class TsMorphIndexer {
         processedFiles += 1
         await yieldEvery(processedFiles, yieldStride)
         continue
+      }
+      if (candidateSet) {
+        const rel = relPath(repoRoot, sf.getFilePath())
+        if (!candidateSet.has(rel)) continue
       }
       try {
         indexFile(sf)

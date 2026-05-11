@@ -17,7 +17,7 @@ Do not treat the TUI path as extra polish. It is part of the product surface.
 
 - `kb` in a real TTY launches directly into chat mode. There is no shell mode — chat is the default.
 - `kb --help` should print top-level help and exit.
-- `kb <command> ...` should be non-interactive by default unless that command intentionally runs an interview or session flow.
+- `kb <command> ...` should be non-interactive by default unless that command intentionally runs a session flow.
 - `kb <command> --help` should print help and exit without starting real work.
 - All commands are available as slash commands inside the chat interface. Slash commands that are output-only (query, submit, facts, graph, docs list/view, base, config, etc.) are intercepted at the TUI layer and display inline without involving the LLM loop. Interactive slash commands (`/init`, `/scan`, `/docs generate`) still use the chat session input surface, but init/scan progress should render in a dedicated live status row rather than being appended to transcript history. If no chat read is active, the TUI may run `/init` or `/scan` directly and preserve the same dedicated progress-line behavior.
 - Success or follow-up copy in the TUI transcript should use **slash form** (`/base use …`), not `kb …`, so users are not told to leave the chat interface. Shared formatters take `CmdMode` and build hints via `cmd()` in `src/cli/cmd-ref.ts`.
@@ -70,7 +70,7 @@ For commands that can mutate durable KB state or external systems, prefer a cons
 Current repo direction:
 
 - `kb publish ...` previews by default and only writes on `--apply`.
-- `kb scan` previews by default and only writes on `--apply`.
+- `kb scan` applies its refresh plan immediately; it should not stop for a separate proceed/apply ceremony.
 - `kb invalidate` previews by default and only writes on `--apply`.
 - Any preview-by-default command should, in interactive mode, show the plan then ask "Apply? [y/N]" rather than requiring the user to re-run with `--apply` manually.
 - Avoid inventing command-specific synonyms for "really do it" when `--apply` already fits.

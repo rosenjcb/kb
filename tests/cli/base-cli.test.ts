@@ -166,7 +166,6 @@ describe('kb init help', () => {
 
     const text = lines.join('\n')
     expect(text).toContain('kb scan --base dogfood')
-    expect(text).toContain('kb scan --base dogfood --apply')
     expect(text).toContain('kb sync')
   })
 

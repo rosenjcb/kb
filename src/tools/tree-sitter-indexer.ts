@@ -115,7 +115,7 @@ const EXT_MAP: Record<string, string> = {
 
 // Text/config extensions we index as plain file nodes (no AST, no symbols).
 // Anything not in EXT_MAP or TEXT_EXTS is ignored entirely.
-const TEXT_EXTS = new Set([
+export const TREE_SITTER_TEXT_EXTENSIONS = new Set([
   '.md', '.mdx', '.txt', '.rst',
   '.json', '.jsonc', '.json5',
   '.yaml', '.yml', '.toml', '.ini', '.env',
@@ -129,7 +129,7 @@ const TEXT_EXTS = new Set([
   '',         // extensionless files (Makefile, Dockerfile, etc.)
 ])
 
-const SKIP_DIRS = new Set([
+export const TREE_SITTER_SKIP_DIRS = new Set([
   'node_modules', 'vendor', '.git', 'dist', 'build', 'out',
   '.next', '.nuxt', 'coverage', '__pycache__',
 ])
@@ -175,7 +175,7 @@ function* walkFiles(dir: string): Generator<string> {
     return
   }
   for (const name of entries) {
-    if (SKIP_DIRS.has(name)) continue
+    if (TREE_SITTER_SKIP_DIRS.has(name)) continue
     const full = path.join(dir, name)
     let st: ReturnType<typeof statSync> | undefined
     try { st = statSync(full) } catch { continue }
@@ -185,6 +185,12 @@ function* walkFiles(dir: string): Generator<string> {
       yield full
     }
   }
+}
+
+export function isTreeSitterIndexablePath(relativePath: string): boolean {
+  const normalized = relativePath.replace(/\\/g, '/')
+  const ext = path.extname(normalized).toLowerCase()
+  return Boolean(EXT_MAP[ext]) || TREE_SITTER_TEXT_EXTENSIONS.has(ext)
 }
 
 // ---------------------------------------------------------------------------
@@ -223,6 +229,9 @@ export class TreeSitterIndexer implements LanguageIndexer {
 
     const stats: CodeIndexStats = { files: 0, symbols: 0, edges: 0, skipped: 0, errors: 0 }
     const yieldStride = opts.yieldEveryFiles ?? 10
+    const candidateFiles = opts.candidateFiles
+      ?.map(file => file.replace(/\\/g, '/'))
+      .filter(file => isTreeSitterIndexablePath(file))
 
     const insertNode = this.db.prepare(`
       INSERT INTO kg_nodes
@@ -382,10 +391,13 @@ export class TreeSitterIndexer implements LanguageIndexer {
     })
 
     let processedFiles = 0
-    for (const absPath of walkFiles(repoRoot)) {
+    const filesToIndex = candidateFiles
+      ? candidateFiles.map(file => path.join(repoRoot, file))
+      : walkFiles(repoRoot)
+    for (const absPath of filesToIndex) {
       const ext = path.extname(absPath).toLowerCase()
       const langKey = EXT_MAP[ext]
-      if (!langKey && !TEXT_EXTS.has(ext)) continue
+      if (!langKey && !TREE_SITTER_TEXT_EXTENSIONS.has(ext)) continue
       // If we have an AST grammar for this extension, load it before indexing
       if (langKey && LANG_CONFIGS[langKey]) {
         try {

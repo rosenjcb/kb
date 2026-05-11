@@ -217,6 +217,9 @@ export function App({ config, startupNotices = [] }: Props) {
           stopChatPending()
           addEntry({ type: 'error', content: line })
         },
+        setProgressLine(line: string | null) {
+          setProgressLine(line?.trimEnd() || null)
+        },
       }
 
       runChatSession(

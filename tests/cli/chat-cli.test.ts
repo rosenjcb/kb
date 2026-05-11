@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildChatTurnContent, printChatHelp, runChatSession } from '../../src/cli/chat-cli'
+import * as initCli from '../../src/cli/init-cli'
 import type { ToolExecutor } from '../../src/core/tool-registry'
 import type { LLMProvider } from '../../src/core/types'
 import { DefaultIntentRouter } from '../../src/intents/router'
@@ -12,6 +13,7 @@ import { createKBToolsRegistry } from '../../src/tools/kb-tools-registry'
 class ScriptedIO {
   public readonly outputs: string[] = []
   public readonly errors: string[] = []
+  public readonly progressLines: Array<string | null> = []
 
   constructor(private readonly inputs: Array<string | null>) {}
 
@@ -25,6 +27,10 @@ class ScriptedIO {
 
   error(line: string): void {
     this.errors.push(line)
+  }
+
+  setProgressLine(line: string | null): void {
+    this.progressLines.push(line)
   }
 }
 
@@ -143,6 +149,48 @@ describe('chat-cli session loop', () => {
 
     expect(io.outputs.join('\n')).toContain('Fresh session')
     expect(executor.execute).not.toHaveBeenCalled()
+  })
+
+  it('Given /init in chat mode, then progress updates use the dedicated progress hook instead of transcript history', async () => {
+    const io = new ScriptedIO(['/init', 'crawler-3', '/exit'])
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi.fn(),
+    }
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      model: 'test-model',
+      supportsStreaming: false,
+      call: vi.fn(),
+    }
+
+    const initSpy = vi.spyOn(initCli, 'runKbInit').mockImplementation(async options => {
+      options.questionIO?.write?.('\n[kb init] Choose a knowledge base name for this run.\n\n')
+      const answer = await options.questionIO?.askQuestion?.('> Knowledge base name [crawlee] ')
+      expect(answer).toBe('crawler-3')
+      options.progressSink?.('[init] [------------------------] 0/7 read-inputs discovering docs…')
+      options.progressSink?.('[init] [===---------------------] 1/7 markdown-facts indexing source sentences into facts…')
+      return {
+        status: 'accepted',
+        base: 'crawler-3',
+        completedCycles: ['read-inputs'],
+        writtenDocIds: ['doc-1'],
+      }
+    })
+
+    await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
+
+    expect(io.outputs.join('\n')).toContain('Starting init…')
+    expect(io.outputs.join('\n')).toContain('Choose a knowledge base name')
+    expect(io.outputs.join('\n')).toContain('✅ Init complete — 1 doc written to "crawler-3"')
+    expect(io.outputs.some(line => line.startsWith('[init]'))).toBe(false)
+    expect(io.progressLines).toContain(
+      '[init] [===---------------------] 1/7 markdown-facts indexing source sentences into facts…'
+    )
+    expect(io.progressLines.filter(line => line === null).length).toBeGreaterThanOrEqual(2)
+
+    initSpy.mockRestore()
   })
 
   it('Given a two-turn session, then the second retrieval call carries excludeIds from the first turn', async () => {

@@ -58,6 +58,7 @@ export interface ChatIO {
   read(prompt: string): Promise<string | null>
   write(line: string): void
   error(line: string): void
+  setProgressLine?(line: string | null): void
   close?(): void
 }
 
@@ -405,25 +406,34 @@ export async function runChatSession(
           io.error(`❌ ${e instanceof Error ? e.message : String(e)}`)
           continue
         }
-        io.write(`Starting ${prefix}… (press Enter to skip any question)`)
+        io.write(`Starting ${prefix}…`)
         try {
           const result = await runKbInit({
             ...parsed,
             questionIO: {
               write: (msg: string) => io.write(msg),
               askQuestion: async (question: string): Promise<string> => {
+                io.setProgressLine?.(null)
                 const answer = await io.read(question)
                 return answer ?? ''
               },
             },
-            progressSink: (line: string) => io.write(line),
+            progressSink: (line: string) => {
+              if (io.setProgressLine) {
+                io.setProgressLine(line.trimEnd())
+                return
+              }
+              io.write(line)
+            },
           })
+          io.setProgressLine?.(null)
           const docCount = result.writtenDocIds?.length ?? 0
           io.write(
             `✅ ${isScan ? 'Scan' : 'Init'} complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`
           )
           deps.onBaseChanged?.()
         } catch (err) {
+          io.setProgressLine?.(null)
           io.error(
             `${isScan ? 'Scan' : 'Init'} error: ${err instanceof Error ? err.message : String(err)}`
           )

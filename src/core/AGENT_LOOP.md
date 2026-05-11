@@ -107,7 +107,7 @@ Some commands implement deterministic loops over named cycles. LLM is called dir
 
 | Cycle | What happens | Output |
 |---|---|---|
-| `read-inputs` | Scan source files, ask user interview questions | `InitContext` |
+| `read-inputs` | Scan source files and collect repo inputs | `InitContext` |
 | `pass1` | One LLM call per coverage topic in parallel | `CandidateDoc[]` |
 | `pass2` | Coverage gap analysis, follow-up questions, refinement | Updated `CandidateDoc[]` |
 | `pass-enrich` | Per-document enrichment in parallel | Enriched `CandidateDoc[]` |
