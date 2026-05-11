@@ -113,7 +113,7 @@ Some commands implement deterministic loops over named cycles. LLM is called dir
 | `pass-enrich` | Per-document enrichment in parallel | Enriched `CandidateDoc[]` |
 | `pass3` | Final quality pass | Final `CandidateDoc[]` |
 | `write` | Upsert to SQLite | Written document IDs |
-| `pass-graph` | Extract entities and relationships into SQLite (`kb_graph_*`) | Graph store on disk |
+| `ast-facts` | Deterministic source-code indexing and fact promotion | `kg_*` + `facts` updates |
 
 ## Part 3: Choosing a Pattern
 

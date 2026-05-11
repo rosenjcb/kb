@@ -2,7 +2,6 @@
  * GraphEntityExtractor — LLM-based extraction of entities and relationships from text.
  *
  * Used by:
- *   - pass-graph cycle in kb init (full corpus extraction)
  *   - submit_fact handler (incremental extraction for a single fact)
  *   - kb invalidate (identifies doc_id to soft-delete)
  */

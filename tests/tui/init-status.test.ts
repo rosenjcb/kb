@@ -27,7 +27,7 @@ Starting init…
 
   it('uses the last init progress line when multiple updates arrive together', () => {
     const parsed = parseInitOutput(`
-[init] [========----------------] 2/6 markdown-facts indexing source sentences into facts…
+[init] [========----------------] 2/6 document-facts 📄 indexing document sentences into facts…
 [init] [========----------------] 4/6 import-docs importing original markdown…
 `)
 
@@ -37,14 +37,14 @@ Starting init…
     )
   })
 
-  it('keeps graph extraction totals inside the progress line without requiring a separate action row', () => {
+  it('keeps ast-facts totals inside the progress line without requiring a separate action row', () => {
     const parsed = parseInitOutput(`
-[init] [====================----] 5/6 pass-graph files 10/79 (+5), +8 nodes, +14 connections | totals: 83 nodes, 141 connections
+[init] [====================----] 6/6 ast-facts tree-sitter 10 changed, 69 unchanged | 83 symbols, 141 edges
 `)
 
     expect(parsed.historyLines).toEqual([])
     expect(parsed.progressLine).toBe(
-      '[init] [====================----] 5/6 pass-graph files 10/79 (+5), +8 nodes, +14 connections | totals: 83 nodes, 141 connections'
+      '[init] [====================----] 6/6 ast-facts tree-sitter 10 changed, 69 unchanged | 83 symbols, 141 edges'
     )
     expect(parsed.actionLine).toBeUndefined()
   })
