@@ -62,6 +62,7 @@ command -v kb
 ```
 
 > KB expects `Node 22+` in the shell that runs `kb`.
+> Both install paths prepare KB's native runtime automatically. If you later switch Node versions, rerun `kb sync` or `pnpm run install:global`.
 
 ### 2) Configure `~/.kb/config.json`
 
@@ -171,7 +172,7 @@ kb publish <notion|jekyll> [options]
 kb sync
 ```
 
-`kb sync` installs the latest published `kb-cli-node22.tgz` release from GitHub Releases. It does not use your current project directory, and it does not build from source locally. It will complain early if the current shell is not running `Node 22+`.
+`kb sync` installs the latest published `kb-cli-node22.tgz` release from GitHub Releases, refreshes KB's native runtime in `~/.kb`, and does not use your current project directory. It will complain early if the current shell is not running `Node 22+`.
 
 ### Verify
 

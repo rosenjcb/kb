@@ -1,15 +1,28 @@
 import { spawn } from 'node:child_process'
+import { access, readdir } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import path from 'node:path'
 import { type CmdMode, cmd } from './cmd-ref'
 
 const RELEASE_TARBALL_URL =
   'https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz'
 const MIN_NODE_MAJOR = 22
+const KB_HOME = path.join(homedir(), '.kb')
+const KB_BIN_DIR = path.join(KB_HOME, 'bin')
+const PNPM_GLOBAL_DIR = path.join(KB_HOME, 'pnpm-global')
+const NATIVE_DEP = 'better-sqlite3'
 
 export interface SyncCommandOptions {
   cwd?: string
   mode?: CmdMode
   onProgress?: (line: string) => void
-  runCommand?: (command: string, args: string[], cwd: string, onProgress?: (line: string) => void) => Promise<string>
+  runCommand?: (
+    command: string,
+    args: string[],
+    cwd: string,
+    onProgress?: (line: string) => void,
+    env?: NodeJS.ProcessEnv
+  ) => Promise<string>
 }
 
 export function printSyncHelp(mode: CmdMode = 'cli'): string {
@@ -43,10 +56,56 @@ export async function runSyncCommand(
 
   onProgress?.('Downloading and installing from GitHub Releases (this may take ~1 minute)...')
   onProgress?.(`Release asset: ${RELEASE_TARBALL_URL}`)
+  onProgress?.(`Install location: ${KB_BIN_DIR}`)
 
-  const installOutput = await run('pnpm', ['add', '-g', RELEASE_TARBALL_URL], cwd, onProgress)
+  const installOutput = await run(
+    'pnpm',
+    ['add', '-g', '--global-dir', PNPM_GLOBAL_DIR, RELEASE_TARBALL_URL],
+    cwd,
+    onProgress,
+    {
+      ...process.env,
+      PNPM_HOME: KB_BIN_DIR,
+    }
+  )
+  const importerDir = await resolvePnpmImporterDir(PNPM_GLOBAL_DIR)
+  onProgress?.(`Rebuilding native dependency: ${NATIVE_DEP}`)
+  const rebuildOutput = await run(
+    'pnpm',
+    ['rebuild', NATIVE_DEP, '--dir', importerDir],
+    cwd,
+    onProgress,
+    {
+      ...process.env,
+      PNPM_HOME: KB_BIN_DIR,
+    }
+  )
 
-  return `Sync complete.\n${installOutput.trim()}`
+  const details = [installOutput.trim(), rebuildOutput.trim()].filter(Boolean).join('\n')
+  return `Sync complete.\n${details}`
+}
+
+async function resolvePnpmImporterDir(globalDir: string): Promise<string> {
+  if (await hasManifest(globalDir)) return globalDir
+
+  const entries = await readdir(globalDir, { withFileTypes: true }).catch(() => [])
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const candidate = path.join(globalDir, entry.name)
+    if (await hasManifest(candidate)) return candidate
+  }
+
+  return globalDir
+}
+
+async function hasManifest(dir: string): Promise<boolean> {
+  for (const name of ['package.json', 'package.yaml', 'package.json5']) {
+    try {
+      await access(path.join(dir, name))
+      return true
+    } catch {}
+  }
+  return false
 }
 
 function parseSyncCommand(args: string[], mode: CmdMode): void {
@@ -80,13 +139,14 @@ async function runShellCommand(
   command: string,
   args: string[],
   cwd: string,
-  onProgress?: (line: string) => void
+  onProgress?: (line: string) => void,
+  env?: NodeJS.ProcessEnv
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
+      env: env ?? process.env,
     })
 
     let stdout = ''

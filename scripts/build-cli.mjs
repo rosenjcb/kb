@@ -7,6 +7,7 @@ const projectRoot = process.cwd()
 const binDir = path.join(projectRoot, 'dist', 'bin')
 const outFile = path.join(binDir, 'kb.js')
 const launcherFile = path.join(binDir, 'kb')
+const nativePreflightFile = path.join(binDir, 'native-preflight.cjs')
 
 await mkdir(binDir, { recursive: true })
 
@@ -28,6 +29,44 @@ if (process.platform !== 'win32') {
 }
 
 const pinnedMajor = '22'
+const nativePreflight = `#!/usr/bin/env node
+const { spawnSync } = require('node:child_process')
+const path = require('node:path')
+
+const dep = 'better-sqlite3'
+const rootDir = path.resolve(__dirname, '../..')
+
+function tryLoad() {
+  try {
+    require(dep)
+    return null
+  } catch (error) {
+    return error
+  }
+}
+
+let error = tryLoad()
+if (!error) process.exit(0)
+
+spawnSync('pnpm', ['rebuild', dep, '--dir', rootDir], {
+  cwd: rootDir,
+  stdio: 'ignore',
+  env: process.env,
+})
+
+error = tryLoad()
+if (!error) process.exit(0)
+
+console.error('KB could not prepare its native database runtime automatically.')
+console.error('Try rerunning one of these commands:')
+console.error('  kb sync')
+console.error('  pnpm run install:global')
+console.error('')
+if (error instanceof Error && error.message) {
+  console.error(error.message)
+}
+process.exit(1)
+`
 const launcher = `#!/usr/bin/env bash
 # Resolve the Node version pinned by this project (.nvmrc = ${pinnedMajor}).
 # This avoids ABI mismatch when the shell's active Node differs from the
@@ -47,13 +86,16 @@ fi
 if [ -z "\$KB_NODE" ]; then
   KB_NODE="$(command -v node)"
 fi
+"\$KB_NODE" "\$SCRIPT_DIR/native-preflight.cjs" || exit \$?
 exec "\$KB_NODE" "\$SCRIPT_DIR/kb.js" "\$@"
 `
 
 await writeFile(launcherFile, launcher, 'utf8')
+await writeFile(nativePreflightFile, nativePreflight, 'utf8')
 
 if (process.platform !== 'win32') {
   await chmod(launcherFile, 0o755)
+  await chmod(nativePreflightFile, 0o755)
 }
 
 // Copy prompt .md files so the bundled binary can resolve them at runtime (see src/prompts/prompt-assets.ts).
