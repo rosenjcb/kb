@@ -32,10 +32,10 @@ const pinnedMajor = '22'
 const nativePreflight = `#!/usr/bin/env node
 const { spawnSync } = require('node:child_process')
 const path = require('node:path')
-const fs = require('node:fs')
 
 const dep = 'better-sqlite3'
 const scriptDir = __dirname
+const currentNodeVersion = process.version
 
 function canLoadNativeRuntime() {
   const probe = spawnSync(process.execPath, ['-e', \`require(\${JSON.stringify(dep)})\`], {
@@ -48,10 +48,29 @@ function canLoadNativeRuntime() {
 
 if (canLoadNativeRuntime()) process.exit(0)
 
-console.error('KB requires build approval for native modules.')
-console.error('Please run one of these:')
-console.error('  1. pnpm approve-builds -g && pnpm rebuild -g better-sqlite3')
-console.error('  2. pnpm add -g --force https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz')
+// Check if Node version matches expected
+const currentMajor = parseInt(process.version.slice(1).split('.')[0], 10)
+const expectedMajor = ${pinnedMajor}
+
+console.error('❌ KB native module failed to load.')
+console.error('')
+console.error('Current Node:  ' + currentNodeVersion)
+console.error('Expected Node: v${pinnedMajor}.x.x')
+console.error('')
+
+if (currentMajor !== expectedMajor) {
+  console.error('Node version mismatch detected!')
+  console.error('better-sqlite3 was compiled for Node ${pinnedMajor}.')
+  console.error('')
+  console.error('Fix with nvm:')
+  console.error('  nvm install ${pinnedMajor}')
+  console.error('  nvm use ${pinnedMajor}')
+  console.error('  nvm alias default ${pinnedMajor}')
+} else {
+  console.error('Try reinstalling KB:')
+  console.error('  pnpm remove -g kb')
+  console.error('  pnpm add -g https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz')
+}
 process.exit(1)`
 
 const launcher = `#!/usr/bin/env bash
