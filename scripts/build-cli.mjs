@@ -36,35 +36,29 @@ const path = require('node:path')
 const dep = 'better-sqlite3'
 const rootDir = path.resolve(__dirname, '../..')
 
-function tryLoad() {
-  try {
-    require(dep)
-    return null
-  } catch (error) {
-    return error
-  }
+function canLoadNativeRuntime() {
+  const probe = spawnSync(process.execPath, ['-e', \`require(\${JSON.stringify(dep)})\`], {
+    cwd: rootDir,
+    stdio: 'ignore',
+    env: process.env,
+  })
+  return probe.status === 0
 }
 
-let error = tryLoad()
-if (!error) process.exit(0)
+if (canLoadNativeRuntime()) process.exit(0)
 
-spawnSync('pnpm', ['rebuild', dep, '--dir', rootDir], {
+spawnSync('npm', ['rebuild', dep], {
   cwd: rootDir,
   stdio: 'ignore',
   env: process.env,
 })
 
-error = tryLoad()
-if (!error) process.exit(0)
+if (canLoadNativeRuntime()) process.exit(0)
 
 console.error('KB could not prepare its native database runtime automatically.')
 console.error('Try rerunning one of these commands:')
 console.error('  kb sync')
 console.error('  pnpm run install:global')
-console.error('')
-if (error instanceof Error && error.message) {
-  console.error(error.message)
-}
 process.exit(1)
 `
 const launcher = `#!/usr/bin/env bash
