@@ -9,12 +9,12 @@ describe('segmentMarkdownForFacts', () => {
     expect(segmentMarkdownForFacts('## Hello World')).toEqual(['Hello World'])
   })
 
-  it('strips fenced code blocks before splitting', () => {
+  it('preserves fenced code blocks as collapsed segments before prose', () => {
     const md = 'Intro here.\n```ts\nconst x = 1;\nconst y = 2;\n```\nSecond sentence follows.'
     const segs = segmentMarkdownForFacts(md)
-    expect(segs.some(s => s.includes('const x'))).toBe(false)
-    expect(segs.length).toBeGreaterThanOrEqual(1)
-    expect(segs[0]).toContain('Intro here')
+    expect(segs.some(s => s.includes('const x = 1; const y = 2;'))).toBe(true)
+    expect(segs).toContain('Intro here.')
+    expect(segs).toContain('Second sentence follows.')
   })
 
   it('splits multiple sentences on one line', () => {

@@ -203,8 +203,8 @@ describe('init-cli interview checkpoints', () => {
     )
   })
 
-  it('Given scan args, then parsing implies rescan automatically', () => {
-    const parsed = parseScanCommand(['--base', 'dogfood', '--apply'])
+  it('Given scan args, then parsing implies rescan and always applies automatically', () => {
+    const parsed = parseScanCommand(['--base', 'dogfood'])
 
     expect(parsed.base).toBe('dogfood')
     expect(parsed.rescan).toBe(true)
@@ -359,19 +359,11 @@ describe('init-cli interview checkpoints', () => {
     stderrSpy.mockRestore()
   })
 
-  it('Given interactive read-inputs pause, then persists version 3 checkpoint with interview rounds', async () => {
+  it('Given interactive init, then read-inputs does not ask deprecated interview questions', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
-    const questionIO = createQuestionIO([
-      'Install with npm install.',
-      'Use kb query and kb submit daily.',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ])
+    const questionIO = createQuestionIO([])
 
     const result = await runKbInit({
       base: 'dogfood',
@@ -387,16 +379,15 @@ describe('init-cli interview checkpoints', () => {
     if (!checkpointPath) throw new Error('expected checkpointFile')
     const checkpoint = JSON.parse(await readFile(checkpointPath, 'utf8')) as {
       version: number
-      interviewRounds: Array<{ round: number; questions: Array<{ answer?: string }> }>
-      context: { userAnswers: Array<{ answer: string }> }
-      topicCoverage: Array<{ topic: string }>
+      interviewRounds?: Array<{ round: number; questions: Array<{ answer?: string }> }>
+      context: { userAnswers: Array<{ answer: string }>; sourceFiles?: Record<string, string> }
     }
 
     expect(checkpoint.version).toBe(3)
-    expect(checkpoint.interviewRounds).toHaveLength(1)
-    expect(checkpoint.interviewRounds[0].questions.length).toBeGreaterThan(0)
-    expect(checkpoint.context.userAnswers.length).toBe(2)
-    expect(checkpoint.topicCoverage.some(topic => topic.topic === 'install-setup')).toBe(true)
+    expect(questionIO.prompts).toHaveLength(0)
+    expect(checkpoint.interviewRounds ?? []).toHaveLength(0)
+    expect(checkpoint.context.userAnswers).toEqual([])
+    expect(Object.keys(checkpoint.context.sourceFiles ?? {})).toContain('README.md')
   })
 
   it('Given resume after import-docs pause, then finishes init without re-asking read-inputs', async () => {
@@ -444,7 +435,7 @@ describe('init-cli interview checkpoints', () => {
     expect(resumedRun.status).toBe('accepted')
   })
 
-  it('Given version 1 checkpoint, then resume migrates it to version 3 without re-asking old answers', async () => {
+  it('Given version 1 checkpoint, then resume migrates it to version 3 without reviving deprecated answers', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nSimple overview.\n',
     })
@@ -500,15 +491,17 @@ describe('init-cli interview checkpoints', () => {
     const checkpoint = JSON.parse(await readFile(checkpointFile, 'utf8')) as {
       version: number
       interviewRounds: Array<{ questions: Array<{ answer?: string }> }>
+      context: { userAnswers: Array<{ answer: string }> }
       completedCycles: string[]
     }
 
     expect(checkpoint.version).toBe(3)
-    expect(checkpoint.interviewRounds[0].questions[0].answer).toBe('Run npm install.')
+    expect(checkpoint.interviewRounds).toEqual([])
+    expect(checkpoint.context.userAnswers).toEqual([])
     expect(checkpoint.completedCycles).toContain('import-docs')
   })
 
-  it('Given detach during read-inputs, then checkpoint stores pending questions and resume answers them', async () => {
+  it('Given detach during read-inputs, then init no longer stores pending interview questions', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nTiny overview only.\n',
     })
@@ -528,45 +521,12 @@ describe('init-cli interview checkpoints', () => {
     const pausedCheckpoint = JSON.parse(await readFile(detachedCp, 'utf8')) as {
       completedCycles: string[]
       interviewRounds: Array<{ questions: Array<{ answer?: string }> }>
-    }
-
-    expect(pausedCheckpoint.completedCycles).not.toContain('read-inputs')
-    expect(pausedCheckpoint.interviewRounds[0].questions.some(question => !question.answer)).toBe(
-      true
-    )
-
-    const resumeQuestions = createQuestionIO([
-      'Install with pnpm install.',
-      'Use kb query and kb submit daily.',
-      'Architecture uses CLI plus SQLite-backed storage.',
-      'Configuration lives in .env.local and kb config.',
-      'Tests use vitest and npm run type-check.',
-      'Publishing uses kb publish.',
-      'Main gotcha is stale knowledge.',
-    ])
-
-    const resumed = await runKbInit({
-      base: 'dogfood',
-      nonInteractive: false,
-      resume: true,
-      stopAfter: 'read-inputs',
-      cwd,
-      questionIO: resumeQuestions.io,
-    })
-
-    expect(resumed.status).toBe('paused')
-
-    const resumedCheckpoint = JSON.parse(await readFile(detachedCp, 'utf8')) as {
-      completedCycles: string[]
       context: { userAnswers: Array<{ answer: string }> }
-      interviewRounds: Array<{ questions: Array<{ answer?: string }> }>
     }
 
-    expect(resumedCheckpoint.completedCycles).toContain('read-inputs')
-    expect(resumedCheckpoint.context.userAnswers.length).toBeGreaterThan(0)
-    expect(resumedCheckpoint.interviewRounds[0].questions.every(question => question.answer)).toBe(
-      true
-    )
+    expect(pausedCheckpoint.completedCycles).toContain('read-inputs')
+    expect(pausedCheckpoint.interviewRounds).toEqual([])
+    expect(pausedCheckpoint.context.userAnswers).toEqual([])
   })
 
   it('Given legacy tmp checkpoint path, then init migrates it into KB home checkpoints', async () => {
@@ -616,29 +576,22 @@ describe('init-cli interview checkpoints', () => {
     expect(migrated.version).toBe(3)
   })
 
-  it('Given resumed pending questions, then askQuestion is called sequentially not concurrently', async () => {
+  it('Given resume after read-inputs, then deprecated interview prompting does not resume', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nTiny overview only.\n',
     })
 
-    const _detached = await runKbInit({
+    const initial = await runKbInit({
       base: 'dogfood',
       nonInteractive: false,
-      detach: true,
       stopAfter: 'read-inputs',
       cwd,
       questionIO: createQuestionIO([]).io,
     })
 
-    const sequentialQuestionIO = createSequentialOnlyQuestionIO([
-      'Install with pnpm install.',
-      'Use kb query.',
-      'Architecture uses CLI and SQLite.',
-      'Configuration lives in .env.local.',
-      'Tests use vitest.',
-      'Publishing uses kb publish.',
-      'Gotcha is stale facts.',
-    ])
+    expect(initial.status).toBe('paused')
+
+    const sequentialQuestionIO = createSequentialOnlyQuestionIO([])
 
     await runKbInit({
       base: 'dogfood',
@@ -649,7 +602,7 @@ describe('init-cli interview checkpoints', () => {
       questionIO: sequentialQuestionIO.io,
     })
 
-    expect(sequentialQuestionIO.prompts.length).toBeGreaterThan(0)
+    expect(sequentialQuestionIO.prompts).toHaveLength(0)
   })
 
   it('Given several repo markdown files, then import-docs checkpoint lists each as original', async () => {
@@ -755,7 +708,7 @@ describe('init-cli interview checkpoints', () => {
     expect(sourceFileKeys).toEqual(['README.md', 'docs/README.md'])
   })
 
-  it('Given --rescan without --apply, then write cycle writes originals but no mutations', async () => {
+  it('Given --rescan, then write cycle writes originals and any resulting mutations', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
@@ -772,11 +725,10 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(result.status).toBe('accepted')
-    // originals are always written; mutations are gated behind --apply
     expect((result.writtenDocIds ?? []).length).toBeGreaterThan(0)
   })
 
-  it('Given --rescan without --apply, then run stays plan-only and writes no documents', async () => {
+  it('Given --rescan, then run writes refreshed documents instead of staying plan-only', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
@@ -795,7 +747,139 @@ describe('init-cli interview checkpoints', () => {
     expect((result.writtenDocIds ?? []).length).toBe(2)
   })
 
-  it('Given scan plan preview, then it does not propose synthetic scan files', async () => {
+  it('Given an unchanged second scan, then markdown sources are skipped and no original docs are rewritten', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nStable root README content.\n',
+      'docs/README.md': '# Docs\n\nThis README changed recently.\n',
+    })
+
+    await runKbInit({
+      base: 'rescan-skip-unchanged',
+      nonInteractive: true,
+      rescan: true,
+      cwd,
+    })
+
+    const lines: string[] = []
+    const result = await runKbInit({
+      base: 'rescan-skip-unchanged',
+      nonInteractive: true,
+      rescan: true,
+      cwd,
+      progressSink(line) {
+        lines.push(line)
+      },
+    })
+
+    expect(result.status).toBe('accepted')
+    expect(result.writtenDocIds ?? []).toEqual([])
+    expect(
+      lines.some(
+        line =>
+          line.includes('markdown-facts') &&
+          line.includes('0 changed, 2 unchanged file(s)')
+      )
+    ).toBe(true)
+    expect(
+      lines.some(
+        line =>
+          line.includes('import-docs') &&
+          line.includes('0 changed, 2 unchanged original doc(s)')
+      )
+    ).toBe(true)
+  })
+
+  it('Given one changed markdown source on rescan, then only that original doc is re-imported', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nStable root README content.\n',
+      'docs/README.md': '# Docs\n\nThis README changed recently.\n',
+    })
+    const base = 'rescan-one-changed-source'
+
+    await runKbInit({
+      base,
+      nonInteractive: true,
+      rescan: true,
+      cwd,
+    })
+
+    await writeFile(
+      path.join(cwd, 'docs/README.md'),
+      '# Docs\n\nThis README changed again with a new paragraph.\n',
+      'utf8'
+    )
+
+    const lines: string[] = []
+    const result = await runKbInit({
+      base,
+      nonInteractive: true,
+      rescan: true,
+      stopAfter: 'import-docs',
+      cwd,
+      progressSink(line) {
+        lines.push(line)
+      },
+    })
+
+    expect(result.status).toBe('paused')
+    expect(
+      lines.some(
+        line =>
+          line.includes('markdown-facts') &&
+          line.includes('1 changed, 1 unchanged file(s)')
+      )
+    ).toBe(true)
+    expect(
+      lines.some(
+        line =>
+          line.includes('import-docs') &&
+          line.includes('1 changed, 1 unchanged original doc(s)')
+      )
+    ).toBe(true)
+
+    const cpPath = result.checkpointFile
+    if (!cpPath) throw new Error('expected checkpointFile')
+    const checkpoint = JSON.parse(await readFile(cpPath, 'utf8')) as {
+      candidateDocs?: Array<{ title: string; isOriginal?: boolean }>
+    }
+    const originals = checkpoint.candidateDocs?.filter(d => d.isOriginal) ?? []
+    expect(originals).toHaveLength(1)
+    expect(originals[0]?.title).toBe('docs/README.md')
+  })
+
+  it('Given an unchanged second scan for AST-indexed code, then ast-facts skips the whole cycle from its manifest', async () => {
+    const cwd = await createTempProject({
+      'tsconfig.json': JSON.stringify({
+        compilerOptions: { target: 'ES2020', module: 'commonjs', strict: true },
+        include: ['src/**/*'],
+      }),
+      'src/stable.ts': 'export const STABLE = true\n',
+    })
+    const base = 'rescan-skip-unchanged-ast'
+
+    await runKbInit({
+      base,
+      nonInteractive: true,
+      rescan: true,
+      cwd,
+    })
+
+    const lines: string[] = []
+    const result = await runKbInit({
+      base,
+      nonInteractive: true,
+      rescan: true,
+      cwd,
+      progressSink(line) {
+        lines.push(line)
+      },
+    })
+
+    expect(result.status).toBe('accepted')
+    expect(lines.some(line => line.includes('ast-facts') && line.includes('0 changed, 2 unchanged files'))).toBe(true)
+  })
+
+  it('Given unchanged scan plan, then it does not emit preview diff chatter or synthetic scan files', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nKB provides CLI + intent commands for project knowledge.\n',
       'docs/README.md': '# Docs\n\nUse kb submit and kb invalidate to manage facts.\n',
@@ -813,15 +897,15 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.status).toBe('accepted')
     const output = questionIO.writes.join('\n')
-    expect(output).toContain('[kb scan] plan preview')
+    expect(output).not.toContain('[kb scan] plan preview')
     expect(output).not.toContain('diff --git a/docs/rescan-')
   })
 
-  it('Given interactive --rescan, then asks once to proceed then read-inputs does not ask initial interview questions', async () => {
+  it('Given interactive --rescan, then read-inputs does not ask initial interview questions or prompt to proceed', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has docs.\n',
     })
-    const questionIO = createQuestionIO(['y'])
+    const questionIO = createQuestionIO([])
 
     const result = await runKbInit({
       base: 'rescan-no-questions',
@@ -833,17 +917,17 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(result.status).toBe('paused')
-    expect(questionIO.prompts).toHaveLength(1)
-    expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(true)
+    expect(questionIO.prompts).toHaveLength(0)
+    expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(false)
   })
 
-  it('Given interactive --rescan through import-docs, then follow-up interview questions are skipped', async () => {
+  it('Given interactive --rescan through import-docs, then follow-up interview questions are skipped without a proceed prompt', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has docs.\n',
     })
     await mkdir(path.join(cwd, 'evaluation', 'runs'), { recursive: true })
     const provider = createProvider([])
-    const questionIO = createQuestionIO(['y'])
+    const questionIO = createQuestionIO([])
 
     const result = await runKbInit({
       base: 'rescan-no-followups',
@@ -856,8 +940,8 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(result.status).toBe('paused')
-    expect(questionIO.prompts).toHaveLength(1)
-    expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(true)
+    expect(questionIO.prompts).toHaveLength(0)
+    expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(false)
   })
 
   it('Given --rescan without --base and config activeBase, then uses that base', async () => {

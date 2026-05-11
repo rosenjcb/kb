@@ -73,6 +73,7 @@ export class DefaultIntentRouter implements IntentRouter {
             type: payload.type,
             discoveryDepth: effectiveDiscoveryDepth,
             surface: payload.surface === 'chat' ? 'chat' : 'query',
+            excludeIds: Array.isArray(payload.excludeIds) ? payload.excludeIds : undefined,
           },
           policyReason: highRecall
             ? 'query intent maps to read_facts with high-recall evidence policy'

@@ -42,7 +42,7 @@ export const PI = 3.14`
     )
 
     const indexer = new TsMorphIndexer(dbPath)
-    const stats = indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
+    const stats = await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
     indexer.close()
 
     expect(stats.files).toBe(1)
@@ -67,7 +67,7 @@ export const PI = 3.14`
     await writeFile(join(repoRoot, 'src', 'b.ts'), "import { x } from './a'\nexport const y = x + 1")
 
     const indexer = new TsMorphIndexer(dbPath)
-    const stats = indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
+    const stats = await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
     indexer.close()
 
     expect(stats.edges).toBeGreaterThanOrEqual(1)
@@ -92,7 +92,7 @@ export class Dog implements Animal { speak() { return 'woof' } }`
     )
 
     const indexer = new TsMorphIndexer(dbPath)
-    indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
+    await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
     indexer.close()
 
     const db = new Database(dbPath)
@@ -111,8 +111,8 @@ export class Dog implements Animal { speak() { return 'woof' } }`
     await writeFile(join(repoRoot, 'src', 'stable.ts'), 'export const STABLE = true')
 
     const indexer = new TsMorphIndexer(dbPath)
-    const first = indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
-    const second = indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
+    const first = await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
+    const second = await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
     indexer.close()
 
     expect(first.files).toBe(1)
@@ -132,7 +132,7 @@ describe('CodeGraphStore.findCodeSymbolsByName', () => {
     )
 
     const indexer = new TsMorphIndexer(dbPath)
-    indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
+    await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
     indexer.close()
 
     const store = new CodeGraphStore(dbPath)

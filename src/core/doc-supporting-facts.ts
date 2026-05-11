@@ -1,3 +1,4 @@
+import { FactsQueryResearchOrchestrator } from '../tools/facts-query-research-orchestrator'
 import type { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 
 export interface SupportingFact {
@@ -8,19 +9,21 @@ export interface SupportingFact {
 /**
  * Search the facts store for entries supporting a doc-generate prompt.
  *
- * Wraps `indexer.searchFacts` (the lexical/FTS path that powered the legacy
- * `generate_document_from_facts` tool) and projects rows to a shape
- * suitable for the References footer renderer.
+ * Uses the same FactsQueryResearchOrchestrator pipeline as kb query:
+ * graph hops, concept expansion, semantic scoring, and source-kind quotas all apply.
  */
 export function searchSupportingFacts(
-  indexer: Pick<SqliteKbIndexer, 'searchFacts'>,
+  indexer: SqliteKbIndexer,
   query: string,
   limit = 20
 ): SupportingFact[] {
   const trimmed = query.trim()
   if (!trimmed) return []
-  const rows = indexer.searchFacts(trimmed, limit)
-  return rows.map(row => ({ id: row.id, factText: row.fact_text }))
+  const orchestrator = new FactsQueryResearchOrchestrator(indexer)
+  const response = orchestrator.run({ query: trimmed, limit, surface: 'query', includeContent: true })
+  return response.results
+    .filter(r => r.content)
+    .map(r => ({ id: r.metadata.id, factText: r.content ?? '' }))
 }
 
 /** Markdown block listing grounded facts for doc-generate LLM prompts. */

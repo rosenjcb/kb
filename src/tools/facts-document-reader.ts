@@ -14,6 +14,8 @@ export interface QueryDocumentsInput {
   limit?: number
   includeContent?: boolean
   surface?: 'query' | 'chat'
+  /** Fact IDs already in the caller's session pool — orchestrator will skip these entirely. */
+  excludeIds?: string[]
 }
 
 export interface QueryResult {
@@ -35,6 +37,8 @@ export interface QueryResponse {
   retrieval: {
     method: 'lexical' | 'hybrid' | 'lexical-fallback'
     detail?: string
+    /** Per-iteration engine trace — only shown in --debug mode. */
+    traceDetail?: string
     clarificationQuestion?: string
     /** Chat-only: first-pass facts loop wants another retrieval with synthetic clarification (no stdin). */
     suggestRetrievalDeepen?: boolean
@@ -62,17 +66,22 @@ export class FactsDocumentReader {
         surface: input.surface ?? 'query',
       } as const
 
+      const excludeIdSet =
+        input.excludeIds && input.excludeIds.length > 0
+          ? new Set(input.excludeIds)
+          : undefined
+
       if (this.llm && baseQuery && shouldExpandQuery(baseQuery)) {
         const expansions = await expandQuery(this.llm, baseQuery)
         if (expansions.length > 0) {
           const responses = [baseQuery, ...expansions].map(q =>
-            orchestrator.run({ query: q, ...opts })
+            orchestrator.run({ query: q, ...opts, excludeIds: excludeIdSet })
           )
           return mergeQueryResponses(responses, limit, expansions.length)
         }
       }
 
-      return orchestrator.run({ query: baseQuery, ...opts })
+      return orchestrator.run({ query: baseQuery, ...opts, excludeIds: excludeIdSet })
     }
     const rows = this.readRows(input, limit)
     const results = rows.map(row => this.toResult(row, input.includeContent === true))

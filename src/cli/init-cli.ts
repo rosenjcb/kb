@@ -1,8 +1,7 @@
 /**
  * kb init / kb scan — knowledge base bootstrap and refresh commands.
  *
- * Cycle 1 (read-inputs):     Discover markdown/text sources under working dir (recursive),
- *                             ask an initial interview round via stdin.
+ * Cycle 1 (read-inputs):     Discover markdown/text sources under working dir (recursive).
  * Cycle 2 (markdown-facts):  Deterministic sentence segmentation of source markdown → `facts` table
  *                             (before synthesis; placeholder triplets).
  * Cycle 3 (code-facts):      Per-file LLM pass that extracts semantic facts from source code,
@@ -17,11 +16,16 @@
  * Reuses progress reporting and checkpoint patterns from publish-cli.ts.
  */
 
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import Database from 'better-sqlite3'
 import { TsMorphIndexer } from '../tools/code-graph-indexer'
-import { TreeSitterIndexer } from '../tools/tree-sitter-indexer'
-import { promoteAstToSemanticGraph } from '../tools/ast-promote'
+import {
+  isTreeSitterIndexablePath,
+  TreeSitterIndexer,
+  TREE_SITTER_SKIP_DIRS,
+} from '../tools/tree-sitter-indexer'
+import { promoteAstToFactsTable, promoteAstToSemanticGraph } from '../tools/ast-promote'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import readline from 'node:readline'
@@ -36,7 +40,6 @@ import type { WriteDocumentInput } from '../tools/document-writer'
 import { extractGraphBatch } from '../tools/graph-entity-extractor'
 import { KbGraphWriter } from '../tools/kb-graph-writer'
 import {
-  type RunRescanApplyOrchestratorResult,
   runRescanApplyOrchestrator,
 } from '../tools/rescan-apply-orchestrator'
 import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
@@ -56,9 +59,18 @@ import {
   writeCodeFactsManifest,
 } from './init-code-facts-manifest'
 import {
-  INIT_TOPIC_DEFINITIONS,
+  buildSourceFileHashes,
+  diffChangedSourceFiles,
+  readSourceFilesManifest,
+  writeSourceFilesManifest,
+} from './init-source-files-manifest'
+import {
+  diffChangedAstFiles,
+  readAstFilesManifest,
+  writeAstFilesManifest,
+} from './init-ast-files-manifest'
+import {
   assessTopicCoverage,
-  inferTopicFromQuestion,
   summariseCoverage,
 } from './init-topic-coverage'
 import { createLLMProviderFromConfig, readKbConfig, resolveGraphEnabled } from './kb-config'
@@ -220,32 +232,52 @@ export interface InitQuestionIO {
 
 class InitProgressReporter {
   private completed = 0
+  private lastUpdateMs = 0
+  private static readonly THROTTLE_MS = 120
+  private readonly sink: (line: string) => void
+  private readonly ttyMode: boolean
 
   constructor(
     private total: number,
     private prefix: 'init' | 'scan' = 'init',
-    private sink: (line: string) => void = line => process.stderr.write(line)
-  ) {}
+    sinkArg?: (line: string) => void
+  ) {
+    if (sinkArg) {
+      this.sink = sinkArg
+      this.ttyMode = false
+    } else {
+      this.sink = line => process.stderr.write(line)
+      this.ttyMode = process.stderr.isTTY === true
+    }
+  }
 
   start(label: string, detail?: string) {
-    this.render(label, detail)
+    this.render(label, detail, false)
   }
 
   finish(label: string, detail?: string) {
     this.completed += 1
-    this.render(label, detail)
+    this.render(label, detail, false)
   }
 
   update(label: string, detail?: string) {
-    this.render(label, detail)
+    const now = Date.now()
+    if (now - this.lastUpdateMs < InitProgressReporter.THROTTLE_MS) return
+    this.lastUpdateMs = now
+    this.render(label, detail, true)
   }
 
-  private render(label: string, detail?: string) {
+  private render(label: string, detail?: string, inPlace = false) {
     const width = 24
     const filled = Math.round((this.completed / Math.max(this.total, 1)) * width)
     const bar = `${'='.repeat(filled)}${'-'.repeat(Math.max(width - filled, 0))}`
     const suffix = detail ? ` ${detail}` : ''
-    this.sink(`[${this.prefix}] [${bar}] ${this.completed}/${this.total} ${label}${suffix}\n`)
+    const content = `[${this.prefix}] [${bar}] ${this.completed}/${this.total} ${label}${suffix}`
+    if (inPlace && this.ttyMode) {
+      this.sink(`\r\x1b[K${content}`)
+    } else {
+      this.sink(`${content}\n`)
+    }
   }
 }
 
@@ -302,7 +334,6 @@ function shouldExcludeMarkdownSourceFile(relativePath: string, content: string):
   return content.startsWith('# Dogfood export (docs generate)')
 }
 
-const MAX_TOTAL_QUESTIONS = 10
 export function parseInitCommand(args: string[]): InitOptions {
   const base = readOption(args, '--base') ?? undefined
 
@@ -347,7 +378,7 @@ export function parseScanCommand(args: string[]): InitOptions {
   if (args.includes('--rescan')) {
     throw new Error('kb scan already implies rescan. Remove `--rescan`.')
   }
-  return { ...parseInitCommand(['--rescan', ...args]), rescan: true }
+  return { ...parseInitCommand(['--rescan', ...args]), rescan: true, apply: true }
 }
 
 function makeCycleTimer(
@@ -403,12 +434,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     await writeSessionBase(base)
   }
   const baseDir = await ensureOperationalBaseDir(base, cwd)
-  if (options.rescan && !options.nonInteractive) {
-    const proceed = await confirmRescanStart(questionIO, base, cwd)
-    if (!proceed) {
-      throw new Error('Rescan canceled.')
-    }
-  }
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
@@ -455,56 +480,31 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   try {
     let context = checkpoint.context
     let candidateDocs = checkpoint.candidateDocs
-    let interviewRounds = checkpoint.interviewRounds ?? []
+    const interviewRounds: InitInterviewRound[] = []
     let topicCoverage = checkpoint.topicCoverage ?? []
 
     if (!checkpoint.completedCycles.includes('read-inputs')) {
       progress.start('read-inputs', 'discovering docs…')
-      if (context && hasPendingQuestions(interviewRounds)) {
-        const pendingRound = latestPendingRound(interviewRounds)
-        if (!pendingRound) throw new Error('Pending read-inputs interview round missing')
-        const answeredRound = await answerPendingQuestions({
-          heading: `\n[${kbCommandLabel(options)}] Resuming pending questions:\n\n`,
-          round: pendingRound,
-          questionIO,
-        })
-        interviewRounds = replaceInterviewRound(interviewRounds, answeredRound)
-        context = mergeInterviewAnswersIntoContext(context, answeredRound)
-        topicCoverage = assessTopicCoverage(context, undefined, false)
-      } else {
-        const readResult = await runReadInputsCycle({
-          cwd,
-          baseDir,
-          baseName: base,
-          rescan: options.rescan === true,
-          nonInteractive: options.nonInteractive,
-          detach: options.detach,
-          questionIO,
-          startingRound: interviewRounds.length + 1,
-          maxQuestions: remainingQuestionBudget(interviewRounds),
-        })
-        context = readResult.context
-        interviewRounds = appendRoundIfPresent(interviewRounds, readResult.interviewRound)
-        topicCoverage = readResult.topicCoverage
-        if (readResult.paused) {
-          await persist({
-            context,
-            interviewRounds,
-            topicCoverage,
-          })
-          throw new InitPausedError('read-inputs')
-        }
-      }
+      const readResult = await runReadInputsCycle({
+        cwd,
+        baseDir,
+        baseName: base,
+        rescan: options.rescan === true,
+        nonInteractive: options.nonInteractive,
+        detach: options.detach,
+        questionIO,
+        startingRound: 1,
+        maxQuestions: 0,
+      })
+      context = readResult.context
+      topicCoverage = readResult.topicCoverage
       await persist({
         context,
         interviewRounds,
         topicCoverage,
         completedCycles: ['read-inputs'],
       })
-      progress.finish(
-        'read-inputs',
-        `${Object.keys(context.sourceFiles).length} files, ${context.userAnswers.length} answers`
-      )
+      progress.finish('read-inputs', `${Object.keys(context.sourceFiles).length} files`)
       if (options.stopAfter === 'read-inputs') throw new InitPausedError('read-inputs')
     } else {
       progress.finish('read-inputs', 'reused from checkpoint')
@@ -512,12 +512,18 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
 
     if (!context) throw new Error('read-inputs context missing')
 
+    const changedSourceFiles = options.rescan
+      ? await selectChangedSourceFiles(baseDir, context.sourceFiles)
+      : context.sourceFiles
+    const totalSourceFileCount = Object.keys(context.sourceFiles).length
+    const unchangedSourceFileCount = totalSourceFileCount - Object.keys(changedSourceFiles).length
+
     if (!checkpoint.completedCycles.includes('markdown-facts')) {
       progress.start('markdown-facts', 'indexing source sentences into facts…')
       const endScanFacts = makeCycleTimer('markdown-facts', provider, options.collector, counter)
-      const ingestStats = ingestSourceMarkdownFilesAsFacts({
+      const ingestStats = await ingestSourceMarkdownFilesAsFacts({
         baseDir,
-        files: context.sourceFiles,
+        files: changedSourceFiles,
       })
       endScanFacts()
       await persist({
@@ -525,11 +531,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       })
       progress.finish(
         'markdown-facts',
-        `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} files${
-          ingestStats.segmentsSkippedShort > 0
-            ? ` (${ingestStats.segmentsSkippedShort} too short)`
-            : ''
-        }`
+        options.rescan
+          ? `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} changed, ${unchangedSourceFileCount} unchanged file(s)`
+          : `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} files`
       )
       if (options.stopAfter === 'markdown-facts') throw new InitPausedError('markdown-facts')
     } else {
@@ -553,9 +557,11 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         const candidateFiles = options.rescan
           ? (diffChangedFiles(codeFiles, manifest) ?? Object.keys(codeFiles))
           : undefined
+        const changedCodeFileCount = candidateFiles?.length ?? Object.keys(codeFiles).length
+        const unchangedCodeFileCount = Object.keys(codeFiles).length - changedCodeFileCount
         if (options.rescan) {
           options.questionIO?.write?.(
-            `[${kbCommandLabel(options)}] code-facts picked ${candidateFiles?.length ?? 0}/${Object.keys(codeFiles).length} changed source file(s).\n`
+            `[${kbCommandLabel(options)}] code-facts ${changedCodeFileCount} changed, ${unchangedCodeFileCount} unchanged source file(s).\n`
           )
         }
         try {
@@ -567,7 +573,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             onProgress: snapshot => {
               progress.update(
                 'code-facts',
-                `files ${snapshot.filesCompleted}/${snapshot.filesConsidered}, ${snapshot.factsInserted + snapshot.factsSuperseded} changed, ${snapshot.factsTombstoned} tombstoned`
+                `${snapshot.filesCompleted}/${snapshot.filesConsidered} changed, ${unchangedCodeFileCount} unchanged file(s) | ${snapshot.factsInserted + snapshot.factsSuperseded} changed, ${snapshot.factsTombstoned} tombstoned`
               )
               options.questionIO?.write?.(
                 `[${progressPrefix(options)}:action] code-facts files ${snapshot.filesCompleted}/${snapshot.filesConsidered} (${snapshot.filesRemaining} left) | processed ${snapshot.filesProcessed}, skipped ${snapshot.filesSkippedNoExports + snapshot.filesSkippedTooSmall}, failed ${snapshot.filesFailed} | facts: +${snapshot.factsInserted} inserted, ${snapshot.factsSuperseded} superseded, ${snapshot.factsTombstoned} tombstoned, ${snapshot.factsUnchanged} unchanged${snapshot.currentFile ? ` | ${snapshot.currentFile}` : ''}\n`
@@ -579,7 +585,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           await persist({ completedCycles: ['code-facts'] })
           progress.finish(
             'code-facts',
-            `${codeFactStats.factsInserted} new, ${codeFactStats.factsSuperseded} superseded, ${codeFactStats.factsTombstoned} tombstoned across ${codeFactStats.filesProcessed}/${codeFactStats.filesConsidered} file(s)`
+            options.rescan
+              ? `${codeFactStats.filesProcessed} changed, ${unchangedCodeFileCount} unchanged file(s) | ${codeFactStats.factsInserted} new, ${codeFactStats.factsSuperseded} superseded, ${codeFactStats.factsTombstoned} tombstoned`
+              : `${codeFactStats.factsInserted} new, ${codeFactStats.factsSuperseded} superseded, ${codeFactStats.factsTombstoned} tombstoned across ${codeFactStats.filesProcessed}/${codeFactStats.filesConsidered} file(s)`
           )
         } catch (err) {
           endCodeFacts()
@@ -600,7 +608,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.start('import-docs', 'importing original markdown…')
       const endImport = makeCycleTimer('import-docs', provider, options.collector, counter)
       candidateDocs = normalizeInitDocs(
-        buildOriginalDocumentsFromSourceFiles(context.sourceFiles, base),
+        buildOriginalDocumentsFromSourceFiles(changedSourceFiles, base),
         {
           minWords: 0,
         }
@@ -614,7 +622,12 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         finalCoverageSummary,
         completedCycles: ['import-docs'],
       })
-      progress.finish('import-docs', `${candidateDocs.length} original doc(s)`)
+      progress.finish(
+        'import-docs',
+        options.rescan
+          ? `${candidateDocs.length} changed, ${unchangedSourceFileCount} unchanged original doc(s)`
+          : `${candidateDocs.length} original doc(s)`
+      )
       if (options.stopAfter === 'import-docs') throw new InitPausedError('import-docs')
     } else {
       progress.finish('import-docs', 'reused from checkpoint')
@@ -642,33 +655,26 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           candidateDocs,
         })
         let mutationWritten: string[] = []
-        questionIO.write?.(
-          `[kb scan] plan: ${planResult.plan.mutations.length} actions (${planResult.plan.apply.noopMutations} noop) [plan-only].\n`
-        )
-        questionIO.write?.(`[kb scan] plan preview:\n${planResult.previewDiff}\n`)
         const safeguards = planResult.plan.safeguards?.triggered ?? []
         if (safeguards.length > 0) {
           questionIO.write?.(`[kb scan] safeguards triggered: ${safeguards.join(', ')}\n`)
         }
-        if (!options.apply) {
+        const applyResult = await runRescanApplyOrchestrator({
+          base,
+          baseDir,
+          cwd,
+          apply: true,
+          sourceFiles: context.sourceFiles,
+          candidateDocs,
+        })
+        mutationWritten = applyResult.writtenDocIds
+        if (
+          applyResult.plan.apply.appliedMutations > 0 ||
+          applyResult.plan.apply.noopMutations > 0
+        ) {
           questionIO.write?.(
-            '[kb scan] apply is disabled by default. Re-run with `kb scan --apply` to execute planned mutations.\n'
+            `[kb scan] applied ${applyResult.plan.apply.appliedMutations} action(s) (${applyResult.plan.apply.noopMutations} noop).\n`
           )
-        } else if (options.nonInteractive || (await confirmRescanApply(questionIO, planResult))) {
-          const applyResult = await runRescanApplyOrchestrator({
-            base,
-            baseDir,
-            cwd,
-            apply: true,
-            sourceFiles: context.sourceFiles,
-            candidateDocs,
-          })
-          mutationWritten = applyResult.writtenDocIds
-          questionIO.write?.(
-            `[kb scan] apply: ${applyResult.plan.apply.appliedMutations} actions applied (${applyResult.plan.apply.noopMutations} noop).\n`
-          )
-        } else {
-          questionIO.write?.('[kb scan] apply canceled by user; no mutations executed.\n')
         }
         writtenDocIds = [...originalWritten, ...mutationWritten]
       } else {
@@ -676,6 +682,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       }
       const finalCoverageSummary =
         checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
+      await writeSourceFilesManifest(baseDir, buildSourceFileHashes(context.sourceFiles))
       await persist({
         completedCycles: ['write'],
         finalCoverageSummary,
@@ -690,11 +697,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     let graphError: string | undefined
     if (!checkpoint.completedCycles.includes('pass-graph')) {
       progress.start('pass-graph', 'extracting knowledge graph…')
-      if (options.rescan && options.apply !== true) {
-        graphPassOutcome = 'preview'
-        progress.finish('pass-graph', 'skipped (rescan preview)')
-        await persist({ completedCycles: ['pass-graph'] })
-      } else if (!graphEnabled) {
+      if (!graphEnabled) {
         graphPassOutcome = 'disabled'
         progress.finish('pass-graph', 'skipped (graph disabled)')
         await persist({ completedCycles: ['pass-graph'] })
@@ -705,10 +708,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             onProgress: snapshot => {
               progress.update(
                 'pass-graph',
-                `docs ${snapshot.docsProcessed}/${snapshot.totalDocs}, ${snapshot.totalEntities} nodes, ${snapshot.totalRelationships} connections`
-              )
-              questionIO.write?.(
-                `[${progressPrefix(options)}:action] graph docs ${snapshot.docsProcessed}/${snapshot.totalDocs} (+${snapshot.batchDocs}) | +${snapshot.batchEntities} nodes, +${snapshot.batchRelationships} connections | totals: ${snapshot.totalEntities} nodes, ${snapshot.totalRelationships} connections\n`
+                `files ${snapshot.docsProcessed}/${snapshot.totalDocs} (+${snapshot.batchDocs}), +${snapshot.batchEntities} nodes, +${snapshot.batchRelationships} connections | totals: ${snapshot.totalEntities} nodes, ${snapshot.totalRelationships} connections`
               )
             },
           })
@@ -740,65 +740,125 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       graphPassOutcome,
       questionIO,
       graphError,
+      rescan: options.rescan,
     })
 
     if (!checkpoint.completedCycles.includes('ast-facts')) {
       progress.start('ast-facts', 'indexing code graph (AST)…')
       try {
         const dbPath = path.join(baseDir, '.kb-index.sqlite')
+        const currentAstFiles = await collectAstFileHashes(cwd)
+        const totalAstFileCount = Object.keys(currentAstFiles).length
+        const candidateAstFiles = options.rescan
+          ? await selectChangedAstFiles(baseDir, currentAstFiles)
+          : Object.keys(currentAstFiles)
+        const unchangedAstFileCount = totalAstFileCount - candidateAstFiles.length
+        if (options.rescan && candidateAstFiles.length === 0) {
+          await writeAstFilesManifest(baseDir, currentAstFiles)
+          await persist({ completedCycles: ['ast-facts'] })
+          progress.finish('ast-facts', `0 changed, ${unchangedAstFileCount} unchanged files`)
+        } else {
         let totalFiles = 0
         let totalSymbols = 0
         let totalEdges = 0
         let totalErrors = 0
+        let tsStatsSummary:
+          | { files: number; skipped: number; symbols: number; edges: number }
+          | undefined
+        let treeStatsSummary:
+          | { files: number; skipped: number; symbols: number; edges: number }
+          | undefined
+        const tsCandidateFiles = candidateAstFiles.filter(file => {
+          const ext = path.extname(file).toLowerCase()
+          return ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)
+        })
+        const totalTsFileCount = Object.keys(currentAstFiles).filter(file => {
+          const ext = path.extname(file).toLowerCase()
+          return ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)
+        }).length
+        const unchangedTsFileCount = totalTsFileCount - tsCandidateFiles.length
 
         // TS/JS: ts-morph gives richer analysis (type-aware imports, implements edges)
         const tsconfigPath = path.join(cwd, 'tsconfig.json')
-        if (existsSync(tsconfigPath)) {
+        if (existsSync(tsconfigPath) && tsCandidateFiles.length > 0) {
           const indexer = new TsMorphIndexer(dbPath)
-          const stats = indexer.indexProject(cwd, tsconfigPath, {
+          const stats = await indexer.indexProject(cwd, tsconfigPath, {
+            candidateFiles: tsCandidateFiles,
             onProgress: s => {
               progress.update(
                 'ast-facts',
-                `ts: files ${s.files} symbols ${s.symbols} edges ${s.edges} skip ${s.skipped}`
+                `ts/js ${s.files}/${tsCandidateFiles.length} changed, ${unchangedTsFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
               )
             },
           })
           indexer.close()
+          tsStatsSummary = stats
           totalFiles += stats.files
           totalSymbols += stats.symbols
           totalEdges += stats.edges
           totalErrors += stats.errors
         }
 
-        // All other files: walk everything, AST what we can, file-node fallback for the rest
+        const treeCandidateFiles = existsSync(tsconfigPath)
+          ? candidateAstFiles.filter(file => {
+              const ext = path.extname(file).toLowerCase()
+              return !['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)
+            })
+          : candidateAstFiles
+        const totalTreeFileCount = totalAstFileCount - totalTsFileCount
+        const unchangedTreeFileCount = totalTreeFileCount - treeCandidateFiles.length
+
+        // Tree-sitter/text fallback for changed files only.
         const indexer = new TreeSitterIndexer(dbPath)
         const stats = await indexer.indexProject(cwd, {
+          candidateFiles: treeCandidateFiles,
           onProgress: s => {
             progress.update(
               'ast-facts',
-              `files ${s.files} symbols ${s.symbols} edges ${s.edges} skip ${s.skipped}`
+              `tree-sitter ${s.files}/${treeCandidateFiles.length} changed, ${unchangedTreeFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
             )
           },
         })
         indexer.close()
+        treeStatsSummary = stats
         totalFiles += stats.files
         totalSymbols += stats.symbols
         totalEdges += stats.edges
         totalErrors += stats.errors
 
         let promoteNote = ''
-        if (graphEnabled) {
+        const factIndexer = new SqliteKbIndexer({ dbPath })
+        try {
           const db = new Database(dbPath)
-          const promoted = promoteAstToSemanticGraph(db)
+          if (graphEnabled) {
+            const promoted = promoteAstToSemanticGraph(db)
+            promoteNote = `, ${promoted.entities} entities, ${promoted.relationships} rels`
+          }
+          const factStats = promoteAstToFactsTable(db, factIndexer)
           db.close()
-          promoteNote = `, ${promoted.entities} entities, ${promoted.relationships} rels`
+          promoteNote += `, ${factStats.inserted} facts inserted, ${factStats.updated} updated, ${factStats.tombstoned} tombstoned`
+        } finally {
+          factIndexer.close()
         }
 
+        await writeAstFilesManifest(baseDir, currentAstFiles)
         await persist({ completedCycles: ['ast-facts'] })
+        const astParts: string[] = []
+        if (tsStatsSummary) {
+          astParts.push(
+            `ts/js ${tsStatsSummary.files} changed, ${unchangedTsFileCount} unchanged`
+          )
+        }
+        if (treeStatsSummary) {
+          astParts.push(
+            `tree-sitter ${treeStatsSummary.files} changed, ${unchangedTreeFileCount} unchanged`
+          )
+        }
         progress.finish(
           'ast-facts',
-          `${totalFiles} files, ${totalSymbols} symbols, ${totalEdges} edges${promoteNote}${totalErrors > 0 ? `, ${totalErrors} errors` : ''}`
+          `${astParts.join(' | ') || `${totalFiles} changed, ${unchangedAstFileCount} unchanged`} | ${totalSymbols} symbols, ${totalEdges} edges${promoteNote}${totalErrors > 0 ? `, ${totalErrors} errors` : ''}`
         )
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         await persist({ completedCycles: ['ast-facts'] })
@@ -871,53 +931,9 @@ async function runReadInputsCycle(options: {
     userAnswers: [],
   }
 
-  if (options.nonInteractive || options.rescan) {
-    return {
-      context,
-      topicCoverage: assessTopicCoverage(context, undefined, true),
-    }
-  }
-
-  const initialQuestions = planInitialQuestions(
-    sourceFiles,
-    options.startingRound,
-    options.maxQuestions
-  )
-  if (initialQuestions.length === 0) {
-    return {
-      context,
-      topicCoverage: assessTopicCoverage(context, undefined, false),
-    }
-  }
-
-  const heading =
-    Object.keys(sourceFiles).length > 0
-      ? '\n[kb init] A few quick questions to fill in gaps (press Enter to skip):\n\n'
-      : '\n[kb init] No README found. Answering these questions will seed your KB:\n\n'
-
-  if (options.detach) {
-    return {
-      context,
-      interviewRound: {
-        round: initialQuestions[0]?.round ?? options.startingRound,
-        questions: initialQuestions,
-      },
-      topicCoverage: assessTopicCoverage(context, undefined, false),
-      paused: true,
-    }
-  }
-
-  const interviewRound = await askQuestions({
-    heading,
-    questions: initialQuestions,
-    questionIO: options.questionIO,
-  })
-  const mergedContext = mergeInterviewAnswersIntoContext(context, interviewRound)
-
   return {
-    context: mergedContext,
-    interviewRound,
-    topicCoverage: assessTopicCoverage(mergedContext, undefined, false),
+    context,
+    topicCoverage: assessTopicCoverage(context, undefined, true),
   }
 }
 
@@ -1004,16 +1020,54 @@ async function collectRescanSourceFiles(options: {
     options.questionIO.write?.(
       '[kb scan] found no markdown/text sources under the working directory.\n'
     )
-  } else {
-    options.questionIO.write?.(`[kb scan] loaded ${n} markdown/text source file(s).\n`)
   }
   return allSourceFiles
+}
+
+function hashFileBuffer(contents: Buffer): string {
+  return createHash('sha256').update(contents).digest('hex')
+}
+
+async function collectAstFileHashes(cwd: string): Promise<Record<string, string>> {
+  const astFiles: Record<string, string> = {}
+
+  async function walk(absDir: string): Promise<void> {
+    let entries: { name: string; isDir: boolean }[]
+    try {
+      const raw = await readdir(absDir, { withFileTypes: true })
+      entries = raw.map(entry => ({ name: entry.name, isDir: entry.isDirectory() }))
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const absPath = path.join(absDir, entry.name)
+      if (entry.isDir) {
+        if (TREE_SITTER_SKIP_DIRS.has(entry.name)) continue
+        await walk(absPath)
+        continue
+      }
+      const rel = path.relative(cwd, absPath).replace(/\\/g, '/')
+      if (!isTreeSitterIndexablePath(rel)) continue
+      try {
+        const contents = await readFile(absPath)
+        astFiles[rel] = hashFileBuffer(contents)
+      } catch {
+        // Ignore individual file read failures during collection.
+      }
+    }
+  }
+
+  await walk(cwd)
+  return astFiles
 }
 
 // Extensions handled natively by the ast-facts (tree-sitter) indexer — excluded from code-facts.
 const AST_FACTS_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.go'])
 
-// code-facts (LLM) only runs for languages tree-sitter cannot parse.
+// code-facts (LLM) only runs for languages not supported by the AST indexer (tree-sitter/ts-morph).
+// TypeScript/Go are handled by ast-facts → promoteAstToFactsTable instead.
 export const SOURCE_CODE_EXTENSIONS = [
   '.py',
   '.rb',
@@ -1087,95 +1141,6 @@ export async function crawlSourceCode(cwd: string): Promise<Record<string, strin
   return result
 }
 
-function planInitialQuestions(
-  sourceFiles: Record<string, string>,
-  round: number,
-  maxQuestions: number
-): InitInterviewQuestion[] {
-  const combined = Object.values(sourceFiles).join('\n').toLowerCase()
-  const topicsToAsk = INIT_TOPIC_DEFINITIONS.filter(definition => {
-    if (Object.keys(sourceFiles).length === 0) return true
-    return !definition.keywords.some(keyword => combined.includes(keyword))
-  }).slice(0, maxQuestions)
-
-  return topicsToAsk.map(definition =>
-    buildInterviewQuestion(definition.topic, definition.initialQuestion, round, 'missing-topic')
-  )
-}
-
-async function answerPendingQuestions(options: {
-  heading: string
-  round: InitInterviewRound
-  questionIO: InitQuestionIO
-}): Promise<InitInterviewRound> {
-  const unanswered = options.round.questions.filter(question => !question.answer)
-  if (unanswered.length === 0) {
-    return options.round
-  }
-
-  const answeredRound = await askQuestions({
-    heading: options.heading,
-    questions: unanswered,
-    questionIO: options.questionIO,
-  })
-
-  const answeredById = new Map(answeredRound.questions.map(question => [question.id, question]))
-  return {
-    round: options.round.round,
-    questions: options.round.questions.map(question => answeredById.get(question.id) ?? question),
-  }
-}
-
-async function askQuestions(options: {
-  heading: string
-  questions: InitInterviewQuestion[]
-  questionIO: InitQuestionIO
-}): Promise<InitInterviewRound> {
-  options.questionIO.write?.(options.heading)
-
-  const questions: InitInterviewQuestion[] = []
-  for (const question of options.questions) {
-    const askedAt = dayjs().toISOString()
-    const answer = (await options.questionIO.askQuestion(`  > ${question.question}\n    `)).trim()
-    questions.push({
-      ...question,
-      askedAt,
-      answer: answer.length > 0 ? answer : undefined,
-      answeredAt: answer.length > 0 ? dayjs().toISOString() : undefined,
-    })
-  }
-
-  options.questionIO.write?.('\n')
-
-  return {
-    round: options.questions[0]?.round ?? 1,
-    questions,
-  }
-}
-
-function mergeInterviewAnswersIntoContext(
-  context: InitContext,
-  round: InitInterviewRound
-): InitContext {
-  const userAnswers = [
-    ...context.userAnswers,
-    ...round.questions
-      .filter((question): question is InitInterviewQuestion & { answer: string } =>
-        Boolean(question.answer)
-      )
-      .map(question => ({
-        question: question.question,
-        answer: question.answer,
-        topic: question.topic,
-      })),
-  ]
-
-  return {
-    ...context,
-    userAnswers,
-  }
-}
-
 type GraphPassOutcome = 'extracted' | 'disabled' | 'preview' | 'failed' | 'no-provider' | 'reused'
 
 async function emitPostInitGraphOverview(options: {
@@ -1183,14 +1148,17 @@ async function emitPostInitGraphOverview(options: {
   graphPassOutcome: GraphPassOutcome
   questionIO: InitQuestionIO
   graphError?: string
+  rescan?: boolean
 }): Promise<void> {
   const write = options.questionIO.write
   if (!write) return
 
-  const banner =
-    '\n--- Graph store (same text as `kb graph`; JSON is counts + top nodes, subset of `kb graph --format json`) ---\n'
+  const banner = '\n--- Graph store (same text as `kb graph`) ---\n'
 
   try {
+    if (options.rescan && options.graphPassOutcome !== 'failed') {
+      return
+    }
     if (options.graphPassOutcome === 'disabled') {
       write(`${banner}Knowledge graph: skipped (disabled in kb config).\n`)
       return
@@ -1217,7 +1185,7 @@ async function emitPostInitGraphOverview(options: {
       return
     }
 
-    write(`${banner}${payload.human}\n\n${JSON.stringify(payload.json)}\n`)
+    write(`${banner}${payload.human}\n`)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     write(`\n--- Graph store ---\nCould not read graph summary: ${msg}\n`)
@@ -1371,49 +1339,6 @@ async function resolveSuggestedInitBase(_cwd: string): Promise<string | undefine
   return 'default'
 }
 
-function buildInterviewQuestion(
-  topic: InitTopic,
-  question: string,
-  round: number,
-  reason: InitInterviewQuestion['reason']
-): InitInterviewQuestion {
-  return {
-    id: `${topic}-${reason}-${round}`,
-    round,
-    topic,
-    reason,
-    question,
-  }
-}
-
-function remainingQuestionBudget(rounds: InitInterviewRound[]): number {
-  const askedQuestions = rounds.reduce((total, round) => total + round.questions.length, 0)
-  return Math.max(MAX_TOTAL_QUESTIONS - askedQuestions, 0)
-}
-
-function appendRoundIfPresent(
-  rounds: InitInterviewRound[],
-  round: InitInterviewRound | undefined
-): InitInterviewRound[] {
-  if (!round) return rounds
-  return [...rounds, round]
-}
-
-function replaceInterviewRound(
-  rounds: InitInterviewRound[],
-  round: InitInterviewRound
-): InitInterviewRound[] {
-  return rounds.map(existing => (existing.round === round.round ? round : existing))
-}
-
-function hasPendingQuestions(rounds: InitInterviewRound[]): boolean {
-  return rounds.some(round => round.questions.some(question => !question.answer))
-}
-
-function latestPendingRound(rounds: InitInterviewRound[]): InitInterviewRound | undefined {
-  return [...rounds].reverse().find(round => round.questions.some(question => !question.answer))
-}
-
 function slugify(value: string): string {
   return (
     value
@@ -1444,6 +1369,29 @@ function buildOriginalDocumentsFromSourceFiles(
     })
   }
   return out
+}
+
+async function selectChangedSourceFiles(
+  baseDir: string,
+  sourceFiles: Record<string, string>
+): Promise<Record<string, string>> {
+  const manifest = await readSourceFilesManifest(baseDir)
+  const changedPaths = diffChangedSourceFiles(sourceFiles, manifest)
+  if (changedPaths === null) return sourceFiles
+  const changed: Record<string, string> = {}
+  for (const filePath of changedPaths) {
+    const content = sourceFiles[filePath]
+    if (typeof content === 'string') changed[filePath] = content
+  }
+  return changed
+}
+
+async function selectChangedAstFiles(
+  baseDir: string,
+  astFiles: Record<string, string>
+): Promise<string[]> {
+  const manifest = await readAstFilesManifest(baseDir)
+  return diffChangedAstFiles(astFiles, manifest) ?? Object.keys(astFiles)
 }
 
 function normalizeInitDocs(
@@ -1646,40 +1594,16 @@ function migrateCheckpoint(checkpoint: StoredInitCheckpoint): InitCheckpoint | u
         ? {
             sourceFiles: checkpoint.context.sourceFiles ?? {},
             codeFiles: {},
-            userAnswers: (checkpoint.context.userAnswers ?? []).map(answer => ({
-              question: answer.question,
-              answer: answer.answer,
-              topic: inferTopicFromQuestion(answer.question),
-            })),
+            userAnswers: [],
           }
         : undefined,
       candidateDocs: checkpoint.candidateDocs,
-      interviewRounds: checkpoint.context?.userAnswers?.length
-        ? [
-            {
-              round: 1,
-              questions: checkpoint.context.userAnswers.map((answer, index) => ({
-                id: `migrated-${index}`,
-                round: 1,
-                topic: inferTopicFromQuestion(answer.question) ?? 'project-overview',
-                reason: 'missing-topic',
-                question: answer.question,
-                answer: answer.answer,
-                askedAt: checkpoint.updatedAt,
-                answeredAt: checkpoint.updatedAt,
-              })),
-            },
-          ]
-        : [],
+      interviewRounds: [],
       topicCoverage: assessTopicCoverage(
         {
           sourceFiles: checkpoint.context?.sourceFiles ?? {},
           codeFiles: {},
-          userAnswers: (checkpoint.context?.userAnswers ?? []).map(answer => ({
-            question: answer.question,
-            answer: answer.answer,
-            topic: inferTopicFromQuestion(answer.question),
-          })),
+          userAnswers: [],
         },
         checkpoint.candidateDocs,
         false
@@ -1711,29 +1635,6 @@ function readOption(args: string[], flag: string): string | undefined {
 
 function readFlag(args: string[], flag: string): boolean {
   return args.includes(flag)
-}
-
-async function confirmRescanStart(
-  questionIO: InitQuestionIO,
-  base: string,
-  cwd: string
-): Promise<boolean> {
-  questionIO.write?.(
-    `\n[kb scan] Scan into base "${base}" using sources under:\n  ${cwd}\n\nThis refreshes verbatim originals from the current repo and plans the minimum safe KB mutations for that base. Add \`--apply\` to execute them.\nProceed? [y/N]\n`
-  )
-  const answer = (await questionIO.askQuestion('  > ')).trim().toLowerCase()
-  return answer === 'y' || answer === 'yes'
-}
-
-async function confirmRescanApply(
-  questionIO: InitQuestionIO,
-  planResult: RunRescanApplyOrchestratorResult
-): Promise<boolean> {
-  questionIO.write?.(
-    `[kb scan] Apply ${planResult.plan.mutations.length} planned scan action(s)? [y/N]\n`
-  )
-  const answer = (await questionIO.askQuestion('  > ')).trim().toLowerCase()
-  return answer === 'y' || answer === 'yes'
 }
 
 function dedup<T>(values: T[]): T[] {

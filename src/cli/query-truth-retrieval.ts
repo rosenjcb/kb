@@ -20,7 +20,7 @@ export interface RunQueryTruthRetrievalInput {
  * including shallow→deep **limit** escalation when retrieval is weak). No workspace README
  * injection. Router defaults **`discoveryDepth`** to **deep** unless the envelope sets **`--discovery shallow`**.
  *
- * **`kb query`** and **`kb chat`** QUERY turns must call this only — no parallel `router.execute`
+ * **`kb query`** and chat session QUERY turns must call this only — no parallel `router.execute`
  * shortcuts — so limits and discovery escalation cannot drift.
  *
  * Future **turn router** (see `src/core/CHAT.md`): dispatch QUERY here; other intents call their

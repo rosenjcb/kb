@@ -9,6 +9,7 @@
 import { appendFile, mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
+import { calculateModelCost } from 'pricetoken'
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -25,6 +26,8 @@ export interface StageMetrics {
 
 export interface RunReport {
   runId: string
+  /** Chat session that spawned this run, if any. */
+  sessionId?: string
   command: string
   startedAt: string
   finishedAt: string
@@ -37,46 +40,18 @@ export interface RunReport {
   errorMessage?: string
 }
 
-// ─── Cost tables ──────────────────────────────────────────────────
-// Rates in USD per 1M tokens. Stub = 0 until filled in.
-
-interface PriceRow {
-  inputPer1M: number
-  outputPer1M: number
-}
-
-const PRICE_TABLE: Record<string, Record<string, PriceRow>> = {
-  gemini: {
-    'gemini-2.5-flash': { inputPer1M: 0.075, outputPer1M: 0.3 },
-    'gemini-2.0-flash': { inputPer1M: 0.075, outputPer1M: 0.3 },
-    'gemini-2.0-flash-lite': { inputPer1M: 0.0375, outputPer1M: 0.15 },
-    'gemini-1.5-flash': { inputPer1M: 0.075, outputPer1M: 0.3 },
-    'gemini-1.5-pro': { inputPer1M: 1.25, outputPer1M: 5.0 },
-    'gemini-2.5-pro': { inputPer1M: 1.25, outputPer1M: 10.0 },
-    _default: { inputPer1M: 0.075, outputPer1M: 0.3 },
-  },
-  anthropic: {
-    // Stubs — fill in when anthropic pricing is needed
-    _default: { inputPer1M: 0, outputPer1M: 0 },
-  },
-  openai: {
-    // Stubs — fill in when openai pricing is needed
-    _default: { inputPer1M: 0, outputPer1M: 0 },
-  },
-  ollama: {
-    _default: { inputPer1M: 0, outputPer1M: 0 },
-  },
-}
-
 export function estimateCost(
-  provider: string,
+  _provider: string,
   model: string,
   inputTokens: number,
   outputTokens: number
 ): number {
-  const providerTable = PRICE_TABLE[provider] ?? { _default: { inputPer1M: 0, outputPer1M: 0 } }
-  const row = providerTable[model] ?? providerTable._default ?? { inputPer1M: 0, outputPer1M: 0 }
-  return (inputTokens / 1_000_000) * row.inputPer1M + (outputTokens / 1_000_000) * row.outputPer1M
+  if (inputTokens === 0 && outputTokens === 0) return 0
+  try {
+    return calculateModelCost(model, inputTokens, outputTokens).totalCost
+  } catch {
+    return 0
+  }
 }
 
 // ─── RunCollector ─────────────────────────────────────────────────
@@ -89,14 +64,16 @@ export class RunCollector {
   private runId: string
   private startedAt: string
   private debug: boolean
+  private sessionId?: string
 
   constructor(
     readonly command: string,
-    opts: { debug?: boolean } = {}
+    opts: { debug?: boolean; sessionId?: string } = {}
   ) {
     this.runId = `run-${dayjs().valueOf()}-${Math.random().toString(36).slice(2, 6)}`
     this.startedAt = dayjs().toISOString()
     this.debug = opts.debug ?? false
+    this.sessionId = opts.sessionId
   }
 
   /**
@@ -160,6 +137,7 @@ export class RunCollector {
 
     return {
       runId: this.runId,
+      ...(this.sessionId ? { sessionId: this.sessionId } : {}),
       command: this.command,
       startedAt: this.startedAt,
       finishedAt,

@@ -7,6 +7,7 @@ import {
 } from '../cli/base-selection.js'
 import type { ChatIO } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
+import { parseInitCommand, parseScanCommand, runKbInit } from '../cli/init-cli.js'
 import {
   CLI_ERROR_NO_KB_BASE,
   formatPrerequisiteError,
@@ -19,9 +20,10 @@ import {
 } from '../cli/kb-config.js'
 import { KbGraphWriter } from '../tools/kb-graph-writer.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
-import { isOrchestrationMetaLine } from '../ui/orchestration-meta.js'
+import { classifyChatIOLine } from './chat-io-classify.js'
 import { HistoryPane } from './components/HistoryPane.js'
 import { InputBar } from './components/InputBar.js'
+import { InitProgressBar } from './components/InitProgressBar.js'
 import { StatusBar } from './components/StatusBar.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
 import { partitionShellOutputForTui } from './partition-shell-output.js'
@@ -45,7 +47,7 @@ function resolveApplyArgs(args: string[]): string[] | null {
   return null
 }
 
-/** Commands handled inline (output-only). /init, /scan, /docs generate go to the chat session. */
+/** Commands handled inline as transcript-only output; interactive flows stay out of this path. */
 function isOutputOnlyCommand(first: string, args: string[]): boolean {
   if (first === 'init' || first === 'scan') return false
   if (first === 'docs' && args[1] === 'generate') return false
@@ -83,8 +85,11 @@ export function App({ config, startupNotices = [] }: Props) {
   } | null>(null)
   const [chatInputHint, setChatInputHint] = useState('')
 
+  const [progressLine, setProgressLine] = useState<string | null>(null)
+
   const chatInputResolverRef = useRef<((v: string | null) => void) | null>(null)
   const chatPendingEntryIdRef = useRef<string | null>(null)
+  const chatSessionIdRef = useRef<string | undefined>(undefined)
   const storageDirRef = useRef<string>('')
   const entryCounterRef = useRef(0)
   const chatStartedRef = useRef(false)
@@ -200,22 +205,20 @@ export function App({ config, startupNotices = [] }: Props) {
         },
         write(line: string) {
           stopChatPending()
-          if (isOrchestrationMetaLine(line)) {
+          const { category, content } = classifyChatIOLine(line)
+          if (category === 'meta') {
             addEntry({ type: 'chat-meta', content: line })
-            return
+          } else if (category === 'assistant') {
+            addEntry({ type: 'chat-assistant', content })
           }
-          // Init/scan progress lines — show as meta (less prominent)
-          if (line.startsWith('[init]') || line.startsWith('[scan]')) {
-            addEntry({ type: 'chat-meta', content: line })
-            return
-          }
-          const clean = line.startsWith('assistant> ') ? line.slice('assistant> '.length) : line
-          if (!clean.trim()) return
-          addEntry({ type: 'chat-assistant', content: clean })
+          // 'skip': blank line — do nothing
         },
         error(line: string) {
           stopChatPending()
           addEntry({ type: 'error', content: line })
+        },
+        setProgressLine(line: string | null) {
+          setProgressLine(line?.trimEnd() || null)
         },
       }
 
@@ -231,6 +234,7 @@ export function App({ config, startupNotices = [] }: Props) {
           verbose,
           debug,
           onBaseChanged: refreshBase,
+          onSessionStart: (id) => { chatSessionIdRef.current = id },
         },
         chatIO
       )
@@ -299,6 +303,12 @@ export function App({ config, startupNotices = [] }: Props) {
 
       if (trimmed === '/clear') {
         setHistory([{ id: 'welcome', type: 'banner', content: '' }])
+        // Also forward to the chat session so it resets conversation state + session pool
+        const clearResolver = chatInputResolverRef.current
+        if (clearResolver) {
+          chatInputResolverRef.current = null
+          clearResolver('/clear')
+        }
         return
       }
 
@@ -353,7 +363,7 @@ export function App({ config, startupNotices = [] }: Props) {
             setPendingConfirm({
               question: `Delete document "${docId}"?`,
               onConfirm: async () => {
-                const output = await runCommandForTui([...args, '--force'], config)
+                const output = await runCommandForTui([...args, '--force'], config, undefined, chatSessionIdRef.current)
                 if (output) addEntry({ type: 'result', content: output })
               },
             })
@@ -370,7 +380,7 @@ export function App({ config, startupNotices = [] }: Props) {
           const output = await runCommandForTui(args, config, line => {
             streamedLines = streamedLines ? `${streamedLines}\n${line}` : line
             updateEntry(resultId, { content: streamedLines, loading: true })
-          })
+          }, chatSessionIdRef.current)
 
           if (firstArg === 'base' || firstArg === 'use') refreshBase()
 
@@ -396,7 +406,7 @@ export function App({ config, startupNotices = [] }: Props) {
             setPendingConfirm({
               question: 'Apply?',
               onConfirm: async () => {
-                const applyOutput = await runCommandForTui(applyArgs, config)
+                const applyOutput = await runCommandForTui(applyArgs, config, undefined, chatSessionIdRef.current)
                 if (applyOutput) addEntry({ type: 'result', content: applyOutput })
               },
             })
@@ -404,6 +414,50 @@ export function App({ config, startupNotices = [] }: Props) {
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
           updateEntry(resultId, { type: 'error', content: message, loading: false })
+        } finally {
+          setIsRunning(false)
+        }
+        return
+      }
+
+      // ── /init and /scan with no active chat session — run directly ──
+      if (isSlash && (firstArg === 'init' || firstArg === 'scan') && !chatInputResolverRef.current) {
+        addEntry({ type: 'chat-you', content: trimmed })
+        setIsRunning(true)
+        try {
+          const extraArgs = args.slice(1)
+          const parsed = firstArg === 'scan' ? parseScanCommand(extraArgs) : parseInitCommand(extraArgs)
+          const result = await runKbInit({
+            ...parsed,
+            questionIO: {
+              write: (msg: string) => {
+                const text = msg.trimEnd()
+                if (text) addEntry({ type: 'result', content: text })
+              },
+              askQuestion: async (question: string): Promise<string> => {
+                setProgressLine(question.trimEnd())
+                return new Promise(resolve => {
+                  chatInputResolverRef.current = value => {
+                    chatInputResolverRef.current = null
+                    resolve(value ?? '')
+                  }
+                })
+              },
+            },
+            progressSink: (line: string) => setProgressLine(line.trimEnd()),
+          })
+          setProgressLine(null)
+          const docCount = result.writtenDocIds?.length ?? 0
+          addEntry({
+            type: 'result',
+            content: `✅ ${firstArg === 'scan' ? 'Scan' : 'Init'} complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
+          })
+          refreshBase()
+          startChatSession()
+        } catch (err) {
+          setProgressLine(null)
+          const message = err instanceof Error ? err.message : String(err)
+          addEntry({ type: 'error', content: message })
         } finally {
           setIsRunning(false)
         }
@@ -427,6 +481,7 @@ export function App({ config, startupNotices = [] }: Props) {
       addEntry,
       updateEntry,
       startChatPending,
+      startChatSession,
       refreshBase,
       exit,
     ]
@@ -476,6 +531,7 @@ export function App({ config, startupNotices = [] }: Props) {
     <Box flexDirection="column">
       <StatusBar baseName={baseName} />
       <HistoryPane entries={history} />
+      {progressLine ? <InitProgressBar line={progressLine} /> : null}
       <InputBar
         value={inputValue}
         onChange={handleInputChange}

@@ -59,13 +59,18 @@ async function runLogsList(args: string[], logsDir: string): Promise<string> {
     return 'No run reports found. Run a kb command with --debug or just run it — reports are always written.'
   }
 
-  const header = `${padR('Run ID', 26) + padR('Command', 12) + padR('Started', 22) + padR('Duration', 10) + padR('In tok', 8) + padR('Out tok', 8)}Cost`
+  const hasSession = recent.some(r => r.sessionId)
+  const SESSION_W = 14
+  const sessionCol = hasSession ? padR('Session', SESSION_W) : ''
+  const header = `${sessionCol}${padR('Run ID', 26)}${padR('Command', 12)}${padR('Started', 22)}${padR('Duration', 10)}${padR('In tok', 8)}${padR('Out tok', 8)}Cost`
   const divider = '─'.repeat(header.length)
   const rows = recent.map(r => {
     const started = dayjs(r.startedAt).format('YYYY-MM-DD HH:mm:ss')
     const duration = formatDuration(r.totalDurationMs)
     const cost = r.totalEstimatedCostUsd > 0 ? `$${r.totalEstimatedCostUsd.toFixed(5)}` : '-'
+    const sess = hasSession ? padR(r.sessionId ? r.sessionId.slice(-10) : '-', SESSION_W) : ''
     return (
+      sess +
       padR(r.runId, 26) +
       padR(r.command, 12) +
       padR(started, 22) +
@@ -81,6 +86,7 @@ async function runLogsList(args: string[], logsDir: string): Promise<string> {
   const totalDuration = recent.reduce((sum, report) => sum + report.totalDurationMs, 0)
   const totalCost = recent.reduce((sum, report) => sum + report.totalEstimatedCostUsd, 0)
   const totalRow =
+    (hasSession ? padR('', SESSION_W) : '') +
     padR('Total', 26) +
     padR(`${recent.length} run(s)`, 12) +
     padR('-', 22) +
@@ -106,6 +112,9 @@ async function runLogsShow(runId: string, logsDir: string): Promise<string> {
 function formatSingleReport(report: RunReport): string {
   const lines: string[] = []
   lines.push(`Run:      ${report.runId}`)
+  if (report.sessionId && report.sessionId !== report.runId) {
+    lines.push(`Session:  ${report.sessionId}`)
+  }
   lines.push(`Command:  ${report.command}`)
   lines.push(`Started:  ${dayjs(report.startedAt).format('YYYY-MM-DD HH:mm:ss')}`)
   lines.push(`Duration: ${formatDuration(report.totalDurationMs)}`)

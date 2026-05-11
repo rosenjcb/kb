@@ -155,6 +155,7 @@ export async function* agentLoop(
     messages.push({
       role: 'assistant',
       content: response.text,
+      toolUses: response.toolUses,
       metadata: { timestamp: dayjs().valueOf() },
     })
 

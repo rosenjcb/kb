@@ -10,7 +10,8 @@ interface Props {
 
 export function HistoryEntryRow({ entry }: Props) {
   if (entry.loading) {
-    return <LoadingSpinner />
+    const status = entry.content?.trim() || undefined
+    return <LoadingSpinner status={status} />
   }
 
   switch (entry.type) {

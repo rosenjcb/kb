@@ -43,22 +43,25 @@ KB turns day-to-day development into a feedback loop:
 
 ## ⚡ Quick Start
 
-### 1) Install and verify
+### 1) Install KB
+
+Install the latest published release:
+
+```bash
+pnpm add -g https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz
+command -v kb
+```
+
+Or build and install from this checkout:
 
 ```bash
 pnpm install
 pnpm run check
-npm run install:global
+pnpm run install:global
 command -v kb
 ```
 
 > KB expects `Node 22+` in the shell that runs `kb`.
-
-For installed clients, the supported release path is GitHub Releases. CI builds a fresh `kb-cli-node22.tgz` package for every push to `main`, and you can install or upgrade it with:
-
-```bash
-npm install -g https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz
-```
 
 ### 2) Configure `~/.kb/config.json`
 
@@ -81,10 +84,11 @@ Refresh an existing base after README or docs changes:
 
 ```bash
 kb scan --base dogfood
-kb scan --base dogfood --apply
 kb && /base use dogfood
-kb && /scan --apply
+kb && /scan
 ```
+
+`kb scan` reuses content hashes to skip unchanged collected docs and source files where possible, so routine rescans stay incremental.
 
 ### 4) Start using KB intents
 
@@ -101,22 +105,25 @@ kb invalidate "kb use should persist across sessions" "kb base use is session-sc
 One read intent:
 
 ```
-kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]
+kb query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]
 ```
 
 Two mutation intents:
 
 ```
-kb submit "<fact>" [--domain ops] [--source runbook] [--output human|json]
-kb invalidate "<old-fact>" ["<replacement-fact>"] [--preview|--dry-run]
+kb submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--include-session-logs] [--output human|json]
+kb invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--apply] [--output human|json]
 ```
 
-### 📂 Document browsing
+### 📂 Documents
 
 ```
 kb docs list [--base <name>] [--limit <n>] [--output human|json]
-kb docs view <document-id> [--base <name>]
-kb docs view --title "<exact title>" [--base <name>]
+kb docs view <document-id> [--base <name>] [--output human|json]
+kb docs view --title "<exact title>" [--base <name>] [--output human|json]
+kb docs generate "<prompt>" [--type howto|introduction|reference|decision|runbook] [--limit <n>] [--base <name>]
+kb docs rename <document-id> "<new title>" [--base <name>]
+kb docs delete <document-id> [--base <name>] [--force]
 ```
 
 ### 🛠️ Other commands
@@ -130,11 +137,33 @@ kb config get
 kb config set <key> <value>
 kb config unset <key>
 kb init [--base <name>] [--detach | --resume] [--stop-after <cycle>]
-kb scan [--base <name>] [--apply]
+kb scan [--base <name>] [--non-interactive]
+kb facts list|search|show ...
+kb graph ...
+kb logs list|show|compare ...
+kb skill install|uninstall
 kb sync
-kb publish [options]
-kb chat [--verbose] [--debug] [--base <name>]
+kb publish <notion|jekyll> [options]
 ```
+
+**Interactive session commands** (type while in `kb`):
+
+| Command | Effect |
+|---------|--------|
+| `/query`, `/submit`, `/invalidate` | Run the core KB intents inline |
+| `/base`, `/docs`, `/facts`, `/graph`, `/publish`, `/sync`, `/config`, `/logs`, `/skill` | Use the same command families you get in the CLI |
+| `/clear` | Wipe screen, reset fact pool and full conversation history — start fresh |
+| `/exit` | Leave the session |
+| `/help` | List all in-session commands |
+| `/docs generate "<prompt>"` | Guided doc-draft wizard |
+| `/init [args]` / `/scan [args]` | Build or refresh the KB without leaving the session |
+| `/session` | Show turn-by-turn token, cost, and timing stats |
+
+**How chat retrieval works:**
+- Each turn fetches facts via the research orchestrator (up to 5 iterations, 3 graph hops, 40-concept frontier).
+- The LLM can call the `query` tool mid-answer to fetch additional facts when it needs more depth.
+- Facts retrieved in earlier turns are excluded from subsequent retrieval — they remain available in the LLM's conversation history. Use `/clear` for a completely fresh start.
+- If a follow-up introduces 2+ new topical terms (e.g. "What about AST? How do I add Python support?"), those new terms drive retrieval instead of being appended to the previous topic.
 
 ### 🔄 Keeping `kb` up to date
 
@@ -174,11 +203,10 @@ kb base use foo            # switch the active base for this session
 kb base use --default foo  # save a persistent default
 kb base use --show             # show active base and config default
 kb base delete bar --force # delete a base and all its data
-kb scan --base foo              # preview KB updates from changed README-like files
-kb scan --base foo --apply      # apply planned scan updates
+kb scan --base foo              # refresh KB updates incrementally from changed docs/source files
 kb sync                           # install the latest published GitHub release
 kb && /base use foo
-kb && /scan --apply
+kb && /scan
 kb && /sync
 ```
 

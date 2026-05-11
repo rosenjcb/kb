@@ -9,6 +9,7 @@ interface FactsLoopOptions {
   limit: number
   includeContent: boolean
   surface: 'query' | 'chat'
+  excludeIds?: Set<string>
 }
 
 interface SufficiencyDecision {
@@ -45,13 +46,13 @@ export class FactsQueryResearchOrchestrator {
   constructor(private readonly indexer: SqliteKbIndexer) {}
 
   run(input: FactsLoopOptions): QueryResponse {
-    const maxIterations = clampInt(process.env.KB_FACTS_QUERY_MAX_ITERS, 3, 1, 6)
-    const maxGraphHops = clampInt(process.env.KB_FACTS_QUERY_MAX_HOPS, 2, 1, 3)
-    const perIterationLimit = Math.max(input.limit, 8)
+    const maxIterations = clampInt(process.env.KB_FACTS_QUERY_MAX_ITERS, 5, 1, 16)
+    const maxGraphHops = clampInt(process.env.KB_FACTS_QUERY_MAX_HOPS, 3, 1, 5)
+    const perIterationLimit = Math.max(input.limit, 15)
     const queryTokens = tokenizeQuery(input.query)
     const queryLaneWeights = inferQueryLaneWeights(input.query)
     let activeConcepts = queryTokens.slice(0, 8)
-    const seenFactIds = new Set<string>()
+    const seenFactIds = new Set<string>(input.excludeIds ?? [])
     const scoredFacts = new Map<string, { row: FactRow; score: number }>()
     let graphHops = 0
     let sufficiency: SufficiencyDecision = {
@@ -62,7 +63,7 @@ export class FactsQueryResearchOrchestrator {
 
     for (let iter = 0; iter < maxIterations; iter++) {
       const lexicalRows = this.indexer.searchFacts(input.query, perIterationLimit)
-      const frontierConcepts = [...new Set([...activeConcepts, ...queryTokens])].slice(0, 24)
+      const frontierConcepts = [...new Set([...activeConcepts, ...queryTokens])].slice(0, 40)
       const frontierRows =
         frontierConcepts.length > 0
           ? this.indexer.searchFactsByConceptFrontier(frontierConcepts, perIterationLimit)
@@ -102,7 +103,7 @@ export class FactsQueryResearchOrchestrator {
         scoredFacts,
         conceptCoverage,
       })
-      if (sufficiency.decision === 'answerable') {
+      if (sufficiency.decision === 'answerable' && graphHops >= 1) {
         return this.buildResponse({
           input,
           scoredFacts,
@@ -115,7 +116,7 @@ export class FactsQueryResearchOrchestrator {
       }
 
       if (iter < maxIterations - 1 && activeConcepts.length > 0 && graphHops < maxGraphHops) {
-        activeConcepts = this.indexer.expandNeighborConcepts(activeConcepts, 1, 24)
+        activeConcepts = this.indexer.expandNeighborConcepts(activeConcepts, 1, 40)
         graphHops += 1
       }
     }
@@ -145,10 +146,10 @@ export class FactsQueryResearchOrchestrator {
       .sort((a, b) => b - a)
       .slice(0, 3)
     const avgTop = top.length > 0 ? top.reduce((sum, value) => sum + value, 0) / top.length : 0
-    if (avgTop < 0.45) {
+    if (avgTop < 0.55) {
       return { decision: 'not_answerable_yet', reason: 'low-signal' }
     }
-    if (input.conceptCoverage < 0.35) {
+    if (input.conceptCoverage < 0.50) {
       return { decision: 'not_answerable_yet', reason: 'low-coverage' }
     }
     return { decision: 'answerable', reason: 'coverage-sufficient' }
@@ -197,9 +198,28 @@ export class FactsQueryResearchOrchestrator {
     loopTrace?: string[]
     queryLaneWeights?: Partial<Record<string, number>>
   }): QueryResponse {
-    const ranked = [...input.scoredFacts.values()]
-      .sort((a, b) => b.score - a.score)
-      .slice(0, input.input.limit)
+    const sorted = [...input.scoredFacts.values()].sort((a, b) => b.score - a.score)
+    const limit = input.input.limit
+    const MIN_PER_SOURCE = 2
+
+    // Guarantee at least MIN_PER_SOURCE facts from each source_kind present in the pool,
+    // then fill remaining slots by score.
+    const reserved: typeof sorted = []
+    const bySource = new Map<string, typeof sorted>()
+    for (const entry of sorted) {
+      const k = entry.row.source_kind
+      if (!bySource.has(k)) bySource.set(k, [])
+      bySource.get(k)?.push(entry)
+    }
+    const reservedIds = new Set<string>()
+    for (const entries of bySource.values()) {
+      for (const entry of entries.slice(0, MIN_PER_SOURCE)) {
+        reserved.push(entry)
+        reservedIds.add(entry.row.id)
+      }
+    }
+    const remainder = sorted.filter(e => !reservedIds.has(e.row.id))
+    const ranked = [...reserved, ...remainder].slice(0, limit)
     const results: QueryResult[] = ranked.map(({ row }) => ({
       metadata: {
         id: row.id,
@@ -218,6 +238,10 @@ export class FactsQueryResearchOrchestrator {
       `graph_hops:${input.graphHops}`,
       `sufficiency:${input.sufficiencyReason}`,
       'semantic:on',
+    ]
+      .filter(Boolean)
+      .join(';')
+    const traceDetail = [
       input.queryLaneWeights && Object.keys(input.queryLaneWeights).length > 0
         ? `lanes:${Object.keys(input.queryLaneWeights).join(',')}`
         : null,
@@ -228,6 +252,7 @@ export class FactsQueryResearchOrchestrator {
     const retrieval: QueryResponse['retrieval'] = {
       method: results.length > 0 ? 'hybrid' : 'lexical-fallback',
       detail: retrievalDetail,
+      ...(traceDetail ? { traceDetail } : {}),
     }
     if (input.suggestRetrievalDeepen === true) {
       retrieval.suggestRetrievalDeepen = true
@@ -258,9 +283,12 @@ function computeCoverage(queryTokens: string[], concepts: FactConceptRow[]): num
 }
 
 function tokenizeQuery(input: string): string[] {
+  const expanded = input
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
   return [
     ...new Set(
-      input
+      expanded
         .toLowerCase()
         .replace(/[^a-z0-9\s]/g, ' ')
         .split(/\s+/)

@@ -158,7 +158,6 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     'Examples:',
     `  ${cmd('init --base dogfood', mode)}`,
     `  ${cmd('scan --base dogfood', mode)}`,
-    `  ${cmd('scan --base dogfood --apply', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
     `  ${cmd('scan', mode)}`,
     `  ${cmd('sync', mode)}`,
@@ -201,23 +200,21 @@ function printScanHelp(mode: CmdMode = 'cli'): string {
     `${cmd('scan', mode)} command`,
     '',
     'Usage:',
-    `  ${cmd('scan', mode)} [--base <name>] [--apply] [--non-interactive]`,
+    `  ${cmd('scan', mode)} [--base <name>] [--non-interactive]`,
     '',
     'Flags:',
     '  --base <name>                   Choose which existing KB base to refresh',
-    '  --apply                        Apply planned KB mutations (default: preview only)',
-    '  --non-interactive              Skip the proceed/apply confirmation prompts',
+    '  --non-interactive              Skip any interactive questions when possible',
     '  --debug                        Emit debug logging and telemetry details',
     '',
     'Notes:',
-    '  Scan re-reads markdown/text sources under the current repo, refreshes original docs, and plans the minimum safe KB mutations.',
+    '  Scan re-reads markdown/text sources under the current repo, refreshes original docs, and applies the resulting KB mutations.',
     '  Without --base, scan uses the active base first, then the default base.',
     '  A common workflow is to run `kb init` in a primary repo, then run `kb scan` in related repos into that same base.',
     `  In the TUI, use ${cmd('base use <base>', mode)} and then ${cmd('scan', mode)} in each related repo.`,
     '',
     'Examples:',
     `  ${cmd('scan --base dogfood', mode)}`,
-    `  ${cmd('scan --base dogfood --apply', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
     `  ${cmd('scan', mode)}`,
   ].join('\n')
@@ -272,7 +269,8 @@ export async function runMainWithOutput(
   args: string[],
   out: CliOutput,
   config: KbConfig,
-  mode: CmdMode = 'cli'
+  mode: CmdMode = 'cli',
+  sessionId?: string
 ): Promise<void> {
   const firstArg = args[0]
 
@@ -410,11 +408,6 @@ export async function runMainWithOutput(
     const saved = await writeDefaultBase(base)
     const resolved = await ensureOperationalBaseDir(saved.defaultBase ?? base)
     out.log(formatDefaultCommandHelp(saved.defaultBase ?? base, resolved, mode))
-    return
-  }
-
-  if (firstArg === 'chat') {
-    out.log('`kb chat` is no longer a standalone command. Run `kb` to open the interactive session.')
     return
   }
 
@@ -768,11 +761,11 @@ export async function runMainWithOutput(
 
   if (isIntentCommand(firstArg)) {
     const reporter = new ReportWriter(defaultLogsDir())
-    let collector = new RunCollector(firstArg)
+    let collector = new RunCollector(firstArg, { sessionId })
     const printer = createPrinter(out, mode)
     try {
       let parsed = parseIntentCommand(args)
-      collector = new RunCollector(firstArg, { debug: parsed.debug })
+      collector = new RunCollector(firstArg, { debug: parsed.debug, sessionId })
       let intentBaseDir: string
       try {
         intentBaseDir = parsed.base

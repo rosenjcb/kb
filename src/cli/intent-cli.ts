@@ -249,6 +249,7 @@ export interface ReadDocumentsResultData {
   retrieval?: {
     method?: string
     detail?: string
+    traceDetail?: string
     checkpoints?: Array<{
       stage?: string
       status?: string
@@ -331,7 +332,9 @@ export function printReadDocumentsOrchestrationFooter(
   }
 
   if (data.retrieval?.method) {
-    const detail = data.retrieval.detail ? ` (${data.retrieval.detail})` : ''
+    const base = data.retrieval.detail ?? ''
+    const trace = options?.debug && data.retrieval.traceDetail ? `;${data.retrieval.traceDetail}` : ''
+    const detail = base || trace ? ` (${base}${trace})` : ''
     printer.metadata('Retrieval', `${data.retrieval.method}${detail}`)
   }
 
@@ -700,7 +703,9 @@ function formatReadDocumentsHumanResult(
   }
 
   if (data.retrieval?.method) {
-    const detail = data.retrieval.detail ? ` (${data.retrieval.detail})` : ''
+    const base = data.retrieval.detail ?? ''
+    const trace = options?.debug && data.retrieval.traceDetail ? `;${data.retrieval.traceDetail}` : ''
+    const detail = base || trace ? ` (${base}${trace})` : ''
     lines.push(formatOrchestrationMetaLine('retrieval', `${data.retrieval.method}${detail}`))
   }
 

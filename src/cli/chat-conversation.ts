@@ -9,6 +9,11 @@ export interface ChatPendingFollowUp {
   reason: string
 }
 
+export interface SessionFact {
+  id: string
+  text: string
+}
+
 export interface ChatConversationState {
   recentTurns: ChatConversationTurn[]
   activeTopic?: string
@@ -17,6 +22,7 @@ export interface ChatConversationState {
   lastRetrievedDocIds: string[]
   pendingFollowUp?: ChatPendingFollowUp
   needsSearch?: boolean
+  sessionFactPool: SessionFact[]
 }
 
 export type ChatTurnType =
@@ -33,11 +39,6 @@ export interface ResolvedChatTurn {
   answerFocus: string
   topic: string
   goal: string
-}
-
-export interface ChatTurnOutcome {
-  answer: string
-  retrievedDocIds: string[]
 }
 
 const CONFIRMATION_PATTERN =
@@ -89,6 +90,7 @@ export function createInitialConversationState(): ChatConversationState {
   return {
     recentTurns: [],
     lastRetrievedDocIds: [],
+    sessionFactPool: [],
   }
 }
 
@@ -116,11 +118,17 @@ export function resolveConversationalChatTurn(
     (turnType === 'follow-up' || turnType === 'clarification' || turnType === 'action-request') &&
     activeTopic
   ) {
-    const suffix = topicalTerms
-      .filter(term => !activeTopic.toLowerCase().includes(term.toLowerCase()))
-      .join(' ')
-      .trim()
-    retrievalQuery = suffix ? `${activeTopic} ${suffix}` : activeTopic
+    const newTerms = topicalTerms.filter(
+      term => !activeTopic.toLowerCase().includes(term.toLowerCase())
+    )
+    // If the user introduced ≥2 new substantive terms, those drive the query —
+    // the active topic stays in conversation history but shouldn't dilute retrieval.
+    if (newTerms.length >= 2) {
+      retrievalQuery = newTerms.join(' ')
+    } else {
+      const suffix = newTerms.join(' ').trim()
+      retrievalQuery = suffix ? `${activeTopic} ${suffix}` : activeTopic
+    }
   } else if (turnType === 'action-request' && previousQuery) {
     retrievalQuery = previousQuery
   }
@@ -135,6 +143,12 @@ export function resolveConversationalChatTurn(
     topic,
     goal: describeUserGoal(normalized, turnType),
   }
+}
+
+export interface ChatTurnOutcome {
+  answer: string
+  retrievedDocIds: string[]
+  newFacts?: SessionFact[]
 }
 
 export function updateConversationState(
@@ -160,6 +174,14 @@ export function updateConversationState(
       }
     : undefined
 
+  const existingIds = new Set(state.sessionFactPool.map(f => f.id))
+  const mergedPool = [...state.sessionFactPool]
+  for (const fact of outcome.newFacts ?? []) {
+    if (!existingIds.has(fact.id)) {
+      mergedPool.push(fact)
+    }
+  }
+
   return {
     recentTurns,
     activeTopic: resolvedTurn.topic,
@@ -168,6 +190,7 @@ export function updateConversationState(
     lastRetrievedDocIds: outcome.retrievedDocIds,
     pendingFollowUp,
     needsSearch,
+    sessionFactPool: mergedPool,
   }
 }
 
