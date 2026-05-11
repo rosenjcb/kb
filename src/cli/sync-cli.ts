@@ -44,7 +44,7 @@ export async function runSyncCommand(
   onProgress?.('Downloading and installing from GitHub Releases (this may take ~1 minute)...')
   onProgress?.(`Release asset: ${RELEASE_TARBALL_URL}`)
 
-  const installOutput = await run('npm', ['install', '-g', RELEASE_TARBALL_URL], cwd, onProgress)
+  const installOutput = await run('pnpm', ['add', '-g', RELEASE_TARBALL_URL], cwd, onProgress)
 
   return `Sync complete.\n${installOutput.trim()}`
 }
@@ -92,7 +92,8 @@ async function runShellCommand(
     let stdout = ''
     let stderr = ''
 
-    // npm buffers all output when stdout is not a TTY, so data events only fire at the end.
+    // Package managers can buffer output when stdout is not a TTY, so data events may only
+    // fire at the end.
     // Emit elapsed-time heartbeats so the caller knows the process is alive.
     let elapsed = 0
     const heartbeat = onProgress

@@ -16,7 +16,7 @@ describe('sync-cli', () => {
   it('Given no flags, then sync installs the latest release tarball globally', async () => {
     const runCommand = vi.fn(async (command: string, args: string[]) => {
       const joined = `${command} ${args.join(' ')}`
-      if (joined === `npm install -g ${RELEASE_TARBALL_URL}`) {
+      if (joined === `pnpm add -g ${RELEASE_TARBALL_URL}`) {
         return 'install ok'
       }
       throw new Error(`Unexpected command: ${joined}`)

@@ -189,6 +189,29 @@ export class KbGraphWriter {
     })
   }
 
+  async pruneOrphanEntitiesByDocIds(docIds: string[]): Promise<number> {
+    const uniqueDocIds = [...new Set(docIds.map(id => id.trim()).filter(Boolean))]
+    if (uniqueDocIds.length === 0) return 0
+    return this.runWrite(() => {
+      const db = this.requireDb()
+      const placeholders = uniqueDocIds.map(() => '?').join(', ')
+      const result = db
+        .prepare(
+          `
+        DELETE FROM ${ENT}
+        WHERE doc_id IN (${placeholders})
+          AND id NOT IN (
+            SELECT from_id FROM ${REL} WHERE weight > 0
+            UNION
+            SELECT to_id FROM ${REL} WHERE weight > 0
+          )
+      `
+        )
+        .run(...uniqueDocIds)
+      return Number(result.changes ?? 0)
+    })
+  }
+
   async resolveEntityRef(ref: string): Promise<string | null> {
     if (!this.ready) await this.open()
     return this.resolveEntityRefSync(ref)
