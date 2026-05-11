@@ -37,11 +37,12 @@ async function createTempDir(): Promise<string> {
 }
 
 describe('chat-cli prompt', () => {
-  it('Given chat help printer, then returns grouped usage and interactive commands', () => {
+  it('Given chat help printer, then returns grouped usage and interactive commands including /clear', () => {
     const help = printChatHelp()
     expect(help).toContain('kb chat')
     expect(help).toContain('Usage:')
     expect(help).toContain('/help')
+    expect(help).toContain('/clear')
     expect(help).toContain('/exit')
     expect(help).toContain('--verbose')
     expect(help).toContain('--debug')
@@ -64,6 +65,40 @@ describe('chat-cli prompt', () => {
     expect(content).toContain('general-facts')
     expect(content).toContain('User question: How does base precedence work?')
     expect(content).not.toContain('Conversation history:')
+  })
+
+  it('Given a session pool with prior facts not in current retrieval, then turn content includes session pool section', () => {
+    const content = buildChatTurnContent({
+      question: 'What about AST support?',
+      retrieval: {
+        results: [
+          { metadata: { id: 'fact-new' }, content: 'AST promotes symbols to facts table.' },
+        ],
+      },
+      sessionPool: [
+        { id: 'fact-prior', text: 'Agent loop orchestrates retrieval across hops.' },
+      ],
+    })
+
+    expect(content).toContain('Session fact pool')
+    expect(content).toContain('fact-prior')
+    expect(content).toContain('Agent loop orchestrates retrieval across hops.')
+  })
+
+  it('Given a session pool where all facts are already in current retrieval, then no session pool section appears', () => {
+    const content = buildChatTurnContent({
+      question: 'What about AST support?',
+      retrieval: {
+        results: [
+          { metadata: { id: 'fact-a' }, content: 'AST promotes symbols to facts table.' },
+        ],
+      },
+      sessionPool: [
+        { id: 'fact-a', text: 'AST promotes symbols to facts table.' },
+      ],
+    })
+
+    expect(content).not.toContain('Session fact pool')
   })
 })
 
@@ -88,6 +123,60 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('/help')
     expect(io.outputs.join('\n')).not.toContain('Exiting chat')
     expect(executor.execute).not.toHaveBeenCalled()
+  })
+
+  it('Given /clear, then prints fresh session message and subsequent turn uses empty message history', async () => {
+    const io = new ScriptedIO(['/clear', '/exit'])
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi.fn(),
+    }
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      model: 'test-model',
+      supportsStreaming: false,
+      call: vi.fn(),
+    }
+
+    await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
+
+    expect(io.outputs.join('\n')).toContain('Fresh session')
+    expect(executor.execute).not.toHaveBeenCalled()
+  })
+
+  it('Given a two-turn session, then the second retrieval call carries excludeIds from the first turn', async () => {
+    const io = new ScriptedIO(['What is the agent loop?', 'What about AST support?', '/exit'])
+
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi.fn(async () => ({
+        retrieval: { method: 'hybrid', detail: 'facts-loop;iterations:1' },
+        results: [{ metadata: { id: 'fact-agent-loop' }, content: 'Agent loop content.' }],
+      })),
+    }
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      model: 'test-model',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'Answer.',
+        stopReason: 'end_turn' as const,
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
+    await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
+
+    const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
+    expect(calls.length).toBeGreaterThanOrEqual(2)
+    // At least one call from the second turn should carry excludeIds with the first turn's fact
+    const excludingCall = calls.find(
+      c => Array.isArray(c[0]?.input?.excludeIds) && c[0].input.excludeIds.includes('fact-agent-loop')
+    )
+    expect(excludingCall).toBeDefined()
   })
 
   it('Given a user question, then retrieves evidence, calls LLM, and prints retrieval metadata', async () => {
@@ -317,9 +406,9 @@ describe('chat-cli session loop', () => {
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor, workspaceDir }, io)
 
-    expect(executor.execute.mock.calls.length).toBeGreaterThanOrEqual(1)
+    expect((executor.execute as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(1)
     expect(provider.call).toHaveBeenCalledTimes(1)
-    const callInput = (provider.call as { mock: { calls: Array<[unknown]> } }).mock.calls[0][0]
+    const callInput = (provider.call as ReturnType<typeof vi.fn>).mock.calls[0][0] as { messages: Array<{ content: unknown }> }
     const message = String(callInput.messages[0]?.content ?? '')
     expect(message).toContain('Session notes only.')
     expect(message).not.toContain('workspace-readme')

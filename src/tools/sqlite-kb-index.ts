@@ -379,7 +379,13 @@ export class SqliteKbIndexer {
     const trimmed = query.trim()
     if (!trimmed) return this.listFactsForQuery(limit)
     const tokens = tokenizeQuery(trimmed)
-    const ftsQuery = tokens.length > 0 ? tokens.join(' OR ') : trimmed
+    // Also include the camelCase-joined form so "agent OR loop" also matches the
+    // single FTS5 token "agentloop" stored for symbols like "agentLoop".
+    const joined = tokens.join('')
+    const ftsTokens = joined.length > 2 && joined !== tokens.join(' ')
+      ? [...new Set([...tokens, joined])]
+      : tokens
+    const ftsQuery = ftsTokens.length > 0 ? ftsTokens.join(' OR ') : trimmed
 
     try {
       const rows = this.db
@@ -1542,9 +1548,12 @@ export function normalizeFactText(input: string): string {
 }
 
 function tokenizeQuery(input: string): string[] {
+  const expanded = input
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
   return [
     ...new Set(
-      input
+      expanded
         .toLowerCase()
         .replace(/[^a-z0-9\s]/g, ' ')
         .split(/\s+/)

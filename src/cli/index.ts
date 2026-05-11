@@ -272,7 +272,8 @@ export async function runMainWithOutput(
   args: string[],
   out: CliOutput,
   config: KbConfig,
-  mode: CmdMode = 'cli'
+  mode: CmdMode = 'cli',
+  sessionId?: string
 ): Promise<void> {
   const firstArg = args[0]
 
@@ -768,11 +769,11 @@ export async function runMainWithOutput(
 
   if (isIntentCommand(firstArg)) {
     const reporter = new ReportWriter(defaultLogsDir())
-    let collector = new RunCollector(firstArg)
+    let collector = new RunCollector(firstArg, { sessionId })
     const printer = createPrinter(out, mode)
     try {
       let parsed = parseIntentCommand(args)
-      collector = new RunCollector(firstArg, { debug: parsed.debug })
+      collector = new RunCollector(firstArg, { debug: parsed.debug, sessionId })
       let intentBaseDir: string
       try {
         intentBaseDir = parsed.base

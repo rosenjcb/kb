@@ -73,4 +73,89 @@ describe('chat-conversation', () => {
     expect(next.needsSearch).toBe(true)
     expect(next.lastRetrievedDocIds).toEqual(['kb-system-overview'])
   })
+
+  it('Given initial state, then sessionFactPool is empty', () => {
+    const state = createInitialConversationState()
+    expect(state.sessionFactPool).toEqual([])
+  })
+
+  it('Given a turn with new facts, then updateConversationState accumulates them into the session pool', () => {
+    const state = createInitialConversationState()
+    const resolved = resolveConversationalChatTurn('What is the agent loop?', state)
+
+    const next = updateConversationState(
+      state,
+      resolved,
+      {
+        answer: 'The agent loop orchestrates retrieval.',
+        retrievedDocIds: ['fact-a', 'fact-b'],
+        newFacts: [
+          { id: 'fact-a', text: 'Agent loop orchestrates retrieval.' },
+          { id: 'fact-b', text: 'Agent loop calls tools.' },
+        ],
+      },
+      8
+    )
+
+    expect(next.sessionFactPool).toHaveLength(2)
+    expect(next.sessionFactPool.map(f => f.id)).toEqual(['fact-a', 'fact-b'])
+  })
+
+  it('Given facts already in the pool, then updateConversationState deduplicates on id', () => {
+    const state = {
+      ...createInitialConversationState(),
+      sessionFactPool: [{ id: 'fact-a', text: 'Agent loop orchestrates retrieval.' }],
+    }
+    const resolved = resolveConversationalChatTurn('Tell me more', state)
+
+    const next = updateConversationState(
+      state,
+      resolved,
+      {
+        answer: 'More detail.',
+        retrievedDocIds: ['fact-a', 'fact-c'],
+        newFacts: [
+          { id: 'fact-a', text: 'Agent loop orchestrates retrieval.' },
+          { id: 'fact-c', text: 'Agent loop uses graph hops.' },
+        ],
+      },
+      8
+    )
+
+    expect(next.sessionFactPool).toHaveLength(2)
+    expect(next.sessionFactPool.map(f => f.id)).toContain('fact-a')
+    expect(next.sessionFactPool.map(f => f.id)).toContain('fact-c')
+  })
+
+  it('Given a follow-up with 2+ new substantive terms, then it uses those terms as the retrieval query rather than prepending the active topic', () => {
+    const state = {
+      ...createInitialConversationState(),
+      activeTopic: 'agent loop',
+    }
+
+    // "ast" and "python" are new terms not in "agent loop"
+    const resolved = resolveConversationalChatTurn(
+      'What about the ast? How can I add support for python?',
+      state
+    )
+
+    expect(resolved.type).toBe('follow-up')
+    expect(resolved.retrievalQuery).not.toContain('agent loop')
+    expect(resolved.retrievalQuery).toContain('ast')
+    expect(resolved.retrievalQuery).toContain('python')
+  })
+
+  it('Given a vague follow-up with only 1 new substantive term, then it appends to the active topic', () => {
+    const state = {
+      ...createInitialConversationState(),
+      activeTopic: 'graph aware hybrid ranking',
+    }
+
+    // "this feature?" — "this" matches FOLLOW_UP_PATTERN, "feature" is the only new term
+    const resolved = resolveConversationalChatTurn('this feature?', state)
+
+    expect(resolved.type).toBe('follow-up')
+    expect(resolved.retrievalQuery).toContain('graph aware hybrid ranking')
+    expect(resolved.retrievalQuery).toContain('feature')
+  })
 })

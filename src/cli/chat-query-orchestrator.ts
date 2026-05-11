@@ -9,11 +9,14 @@ export interface ChatQueryTruthInput {
   /** Same string `kb query` would use after graph-augmented query expansion. */
   expandedQuery: string
   retrievalLimit: number
+  /** Fact IDs already accumulated in the session pool — orchestrator skips these. */
+  excludeIds?: string[]
 }
 
 function buildChatQueryTruthParsed(
   expandedQuery: string,
-  retrievalLimit: number
+  retrievalLimit: number,
+  excludeIds?: string[]
 ): ParsedIntentCommand {
   return {
     envelope: {
@@ -24,6 +27,7 @@ function buildChatQueryTruthParsed(
         limit: retrievalLimit,
         discoveryDepth: 'deep',
         surface: 'chat',
+        ...(excludeIds && excludeIds.length > 0 ? { excludeIds } : {}),
       },
     },
     output: 'human',
@@ -37,7 +41,7 @@ function buildChatQueryTruthParsed(
 export async function executeChatQueryTruthRetrieval(
   input: ChatQueryTruthInput
 ): Promise<IntentResult> {
-  const parsed = buildChatQueryTruthParsed(input.expandedQuery, input.retrievalLimit)
+  const parsed = buildChatQueryTruthParsed(input.expandedQuery, input.retrievalLimit, input.excludeIds)
   return runQueryTruthRetrieval({
     parsed,
     toolExecutor: input.toolExecutor,

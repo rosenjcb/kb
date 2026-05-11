@@ -10,7 +10,8 @@ export { printCliHelp }
 export async function runCommandForTui(
   args: string[],
   config: KbConfig,
-  onChunk?: (line: string) => void
+  onChunk?: (line: string) => void,
+  sessionId?: string
 ): Promise<string> {
   const chunks: string[] = []
 
@@ -30,7 +31,7 @@ export async function runCommandForTui(
   }
 
   try {
-    await runMainWithOutput(args, out, config, 'tui')
+    await runMainWithOutput(args, out, config, 'tui', sessionId)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     chunks.push(message)

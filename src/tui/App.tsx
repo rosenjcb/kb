@@ -7,6 +7,7 @@ import {
 } from '../cli/base-selection.js'
 import type { ChatIO } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
+import { parseInitCommand, parseScanCommand, runKbInit } from '../cli/init-cli.js'
 import {
   CLI_ERROR_NO_KB_BASE,
   formatPrerequisiteError,
@@ -85,6 +86,7 @@ export function App({ config, startupNotices = [] }: Props) {
 
   const chatInputResolverRef = useRef<((v: string | null) => void) | null>(null)
   const chatPendingEntryIdRef = useRef<string | null>(null)
+  const chatSessionIdRef = useRef<string | undefined>(undefined)
   const storageDirRef = useRef<string>('')
   const entryCounterRef = useRef(0)
   const chatStartedRef = useRef(false)
@@ -231,6 +233,7 @@ export function App({ config, startupNotices = [] }: Props) {
           verbose,
           debug,
           onBaseChanged: refreshBase,
+          onSessionStart: (id) => { chatSessionIdRef.current = id },
         },
         chatIO
       )
@@ -299,6 +302,12 @@ export function App({ config, startupNotices = [] }: Props) {
 
       if (trimmed === '/clear') {
         setHistory([{ id: 'welcome', type: 'banner', content: '' }])
+        // Also forward to the chat session so it resets conversation state + session pool
+        const clearResolver = chatInputResolverRef.current
+        if (clearResolver) {
+          chatInputResolverRef.current = null
+          clearResolver('/clear')
+        }
         return
       }
 
@@ -353,7 +362,7 @@ export function App({ config, startupNotices = [] }: Props) {
             setPendingConfirm({
               question: `Delete document "${docId}"?`,
               onConfirm: async () => {
-                const output = await runCommandForTui([...args, '--force'], config)
+                const output = await runCommandForTui([...args, '--force'], config, undefined, chatSessionIdRef.current)
                 if (output) addEntry({ type: 'result', content: output })
               },
             })
@@ -370,7 +379,7 @@ export function App({ config, startupNotices = [] }: Props) {
           const output = await runCommandForTui(args, config, line => {
             streamedLines = streamedLines ? `${streamedLines}\n${line}` : line
             updateEntry(resultId, { content: streamedLines, loading: true })
-          })
+          }, chatSessionIdRef.current)
 
           if (firstArg === 'base' || firstArg === 'use') refreshBase()
 
@@ -396,11 +405,51 @@ export function App({ config, startupNotices = [] }: Props) {
             setPendingConfirm({
               question: 'Apply?',
               onConfirm: async () => {
-                const applyOutput = await runCommandForTui(applyArgs, config)
+                const applyOutput = await runCommandForTui(applyArgs, config, undefined, chatSessionIdRef.current)
                 if (applyOutput) addEntry({ type: 'result', content: applyOutput })
               },
             })
           }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          updateEntry(resultId, { type: 'error', content: message, loading: false })
+        } finally {
+          setIsRunning(false)
+        }
+        return
+      }
+
+      // ── /init and /scan with no active chat session — run directly ──
+      if (isSlash && (firstArg === 'init' || firstArg === 'scan') && !chatInputResolverRef.current) {
+        addEntry({ type: 'chat-you', content: trimmed })
+        setIsRunning(true)
+        const resultId = addEntry({ type: 'result', content: 'Starting…', loading: true })
+        try {
+          const extraArgs = args.slice(1)
+          const parsed = firstArg === 'scan' ? parseScanCommand(extraArgs) : parseInitCommand(extraArgs)
+          const result = await runKbInit({
+            ...parsed,
+            questionIO: {
+              write: (msg: string) => updateEntry(resultId, { content: msg, loading: true }),
+              askQuestion: async (question: string): Promise<string> => {
+                updateEntry(resultId, { content: question, loading: true })
+                return new Promise(resolve => {
+                  chatInputResolverRef.current = value => {
+                    chatInputResolverRef.current = null
+                    resolve(value ?? '')
+                  }
+                })
+              },
+            },
+            progressSink: (line: string) => updateEntry(resultId, { content: line, loading: true }),
+          })
+          const docCount = result.writtenDocIds?.length ?? 0
+          updateEntry(resultId, {
+            content: `✅ ${firstArg === 'scan' ? 'Scan' : 'Init'} complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
+            loading: false,
+          })
+          refreshBase()
+          startChatSession()
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
           updateEntry(resultId, { type: 'error', content: message, loading: false })
@@ -427,6 +476,7 @@ export function App({ config, startupNotices = [] }: Props) {
       addEntry,
       updateEntry,
       startChatPending,
+      startChatSession,
       refreshBase,
       exit,
     ]

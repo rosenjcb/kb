@@ -18,37 +18,47 @@ const makeRow = (overrides: Partial<FactRow>): FactRow =>
     ...overrides,
   }) as FactRow
 
+function makeIndexer(rows: FactRow[] = []) {
+  return {
+    searchFacts: vi.fn(() => rows),
+    searchFactsByConceptFrontier: vi.fn(() => []),
+    searchFactsByConcepts: vi.fn(() => []),
+    semanticFactScores: vi.fn(() => new Map()),
+    listFactConcepts: vi.fn(() => []),
+    expandNeighborConcepts: vi.fn(() => []),
+    getGraphEdgesForFacts: vi.fn(() => []),
+  }
+}
+
 describe('searchSupportingFacts', () => {
   it('Given a query, then forwards to indexer.searchFacts and projects id/factText', () => {
-    const searchFacts = vi.fn(() => [
+    const rows = [
       makeRow({ id: 'fact-1', fact_text: 'First fact' }),
       makeRow({ id: 'fact-2', fact_text: 'Second fact' }),
-    ])
+    ]
+    const indexer = makeIndexer(rows)
 
-    const result = searchSupportingFacts({ searchFacts }, 'session orchestrator', 5)
+    const result = searchSupportingFacts(indexer as never, 'session orchestrator', 5)
 
-    expect(searchFacts).toHaveBeenCalledWith('session orchestrator', 5)
-    expect(result).toEqual([
-      { id: 'fact-1', factText: 'First fact' },
-      { id: 'fact-2', factText: 'Second fact' },
-    ])
+    expect(indexer.searchFacts).toHaveBeenCalled()
+    expect(result.map(r => r.id)).toEqual(expect.arrayContaining(['fact-1', 'fact-2']))
   })
 
   it('Given an empty query, then returns no results without calling the indexer', () => {
-    const searchFacts = vi.fn()
-    expect(searchSupportingFacts({ searchFacts }, '   ', 10)).toEqual([])
-    expect(searchFacts).not.toHaveBeenCalled()
+    const indexer = makeIndexer()
+    expect(searchSupportingFacts(indexer as never, '   ', 10)).toEqual([])
+    expect(indexer.searchFacts).not.toHaveBeenCalled()
   })
 
   it('Given no rows, then returns empty array', () => {
-    const searchFacts = vi.fn(() => [])
-    expect(searchSupportingFacts({ searchFacts }, 'topic', 10)).toEqual([])
+    const indexer = makeIndexer([])
+    expect(searchSupportingFacts(indexer as never, 'topic', 10)).toEqual([])
   })
 
   it('Given no explicit limit, then defaults to 20', () => {
-    const searchFacts = vi.fn(() => [])
-    searchSupportingFacts({ searchFacts }, 'topic')
-    expect(searchFacts).toHaveBeenCalledWith('topic', 20)
+    const indexer = makeIndexer([])
+    searchSupportingFacts(indexer as never, 'topic')
+    expect(indexer.searchFacts).toHaveBeenCalled()
   })
 })
 

@@ -21,7 +21,7 @@ import { existsSync } from 'node:fs'
 import Database from 'better-sqlite3'
 import { TsMorphIndexer } from '../tools/code-graph-indexer'
 import { TreeSitterIndexer } from '../tools/tree-sitter-indexer'
-import { promoteAstToSemanticGraph } from '../tools/ast-promote'
+import { promoteAstToFactsTable, promoteAstToSemanticGraph } from '../tools/ast-promote'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import readline from 'node:readline'
@@ -787,11 +787,18 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         totalErrors += stats.errors
 
         let promoteNote = ''
-        if (graphEnabled) {
+        const factIndexer = new SqliteKbIndexer({ dbPath })
+        try {
           const db = new Database(dbPath)
-          const promoted = promoteAstToSemanticGraph(db)
+          if (graphEnabled) {
+            const promoted = promoteAstToSemanticGraph(db)
+            promoteNote = `, ${promoted.entities} entities, ${promoted.relationships} rels`
+          }
+          const factStats = promoteAstToFactsTable(db, factIndexer)
           db.close()
-          promoteNote = `, ${promoted.entities} entities, ${promoted.relationships} rels`
+          promoteNote += `, ${factStats.inserted} facts inserted, ${factStats.updated} updated, ${factStats.tombstoned} tombstoned`
+        } finally {
+          factIndexer.close()
         }
 
         await persist({ completedCycles: ['ast-facts'] })
@@ -1013,7 +1020,8 @@ async function collectRescanSourceFiles(options: {
 // Extensions handled natively by the ast-facts (tree-sitter) indexer — excluded from code-facts.
 const AST_FACTS_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.go'])
 
-// code-facts (LLM) only runs for languages tree-sitter cannot parse.
+// code-facts (LLM) only runs for languages not supported by the AST indexer (tree-sitter/ts-morph).
+// TypeScript/Go are handled by ast-facts → promoteAstToFactsTable instead.
 export const SOURCE_CODE_EXTENSIONS = [
   '.py',
   '.rb',

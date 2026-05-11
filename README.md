@@ -136,6 +136,21 @@ kb publish [options]
 kb chat [--verbose] [--debug] [--base <name>]
 ```
 
+**Chat session commands** (type while in `kb chat`):
+
+| Command | Effect |
+|---------|--------|
+| `/clear` | Wipe screen, reset fact pool and full conversation history — start fresh |
+| `/exit` | Leave chat mode |
+| `/help` | List all in-session commands |
+| `/docs generate "<prompt>"` | Guided doc-draft wizard |
+| `/init [args]` / `/scan [args]` | Build or refresh the KB without leaving chat |
+
+**How chat retrieval works:**
+- Each turn fetches up to `retrievalLimit` facts via the research orchestrator (up to 5 iterations, 3 graph hops, 40-concept frontier).
+- Facts retrieved in earlier turns are excluded from subsequent retrieval — they remain available in the LLM's conversation history, so re-fetching is redundant. Use `/clear` if you want a completely fresh start.
+- If a follow-up introduces 2+ new topical terms (e.g. "What about AST? How do I add Python support?"), those new terms drive retrieval instead of being appended to the previous topic.
+
 ### 🔄 Keeping `kb` up to date
 
 ```bash
