@@ -18,23 +18,33 @@ if (canLoadNativeRuntime()) {
   process.exit(0)
 }
 
-// Check if we're in a global pnpm context by looking for the telltale path structure
-const isGlobalPnpm = process.env.npm_config_prefix?.includes('.kb/pnpm-global') || 
-                     process.env.npm_config_user_agent?.includes('pnpm') &&
-                     rootDir.includes('.pnpm-global')
+console.warn('Native bindings for better-sqlite3 not found — rebuilding for current Node version...')
 
-if (isGlobalPnpm) {
-  console.warn('KB installed globally, but native bindings are missing.')
-  console.warn('Please reinstall with: pnpm add -g --force https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz')
-  process.exit(1)
+const depDir = path.join(rootDir, 'node_modules', dep)
+const rebuild = spawnSync('npm', ['rebuild', dep], {
+  cwd: rootDir,
+  stdio: 'inherit',
+  env: process.env,
+  shell: true,
+})
+
+if (rebuild.status !== 0) {
+  const npx = spawnSync('npx', ['node-gyp', 'rebuild'], {
+    cwd: depDir,
+    stdio: 'inherit',
+    env: process.env,
+    shell: true,
+  })
+  if (npx.status !== 0) {
+    console.error('Failed to rebuild better-sqlite3. Ensure build tools (python3, make, g++) are installed.')
+    process.exit(1)
+  }
 }
 
-console.warn('KB installed, but its native runtime still needs setup for this machine.')
-console.warn('The first `kb` launch will try to finish that automatically.')
-
 if (canLoadNativeRuntime()) {
+  console.log('better-sqlite3 rebuilt successfully.')
   process.exit(0)
 }
 
-console.warn('KB installed, but its native runtime still needs setup for this machine.')
-console.warn('The first `kb` launch will try to finish that automatically.')
+console.error('Rebuild completed but better-sqlite3 still cannot load. Check your Node.js version and build tools.')
+process.exit(1)
