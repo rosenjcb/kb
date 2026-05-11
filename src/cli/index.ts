@@ -181,7 +181,7 @@ function printInitHelp(mode: CmdMode = 'cli'): string {
     '  --non-interactive              Skip interview prompts when possible',
     '  --detach                       Pause after the current cycle and save a checkpoint',
     '  --resume                       Resume from the latest init checkpoint',
-    '  --stop-after <cycle>           Stop after read-inputs|markdown-facts|code-facts|import-docs|write|pass-graph',
+    '  --stop-after <cycle>           Stop after read-inputs|markdown-facts|code-facts|import-docs|write|ast-facts',
     '  --debug                        Emit debug logging and telemetry details',
     '',
     'Notes:',

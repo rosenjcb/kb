@@ -170,7 +170,7 @@ describe('chat-cli session loop', () => {
       const answer = await options.questionIO?.askQuestion?.('> Knowledge base name [crawlee] ')
       expect(answer).toBe('crawler-3')
       options.progressSink?.('[init] [------------------------] 0/7 read-inputs discovering docs…')
-      options.progressSink?.('[init] [===---------------------] 1/7 markdown-facts indexing source sentences into facts…')
+      options.progressSink?.('[init] [===---------------------] 1/7 markdown-facts 📄 indexing document sentences into facts…')
       return {
         status: 'accepted',
         base: 'crawler-3',
@@ -186,7 +186,7 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('✅ Init complete — 1 doc written to "crawler-3"')
     expect(io.outputs.some(line => line.startsWith('[init]'))).toBe(false)
     expect(io.progressLines).toContain(
-      '[init] [===---------------------] 1/7 markdown-facts indexing source sentences into facts…'
+      '[init] [===---------------------] 1/7 markdown-facts 📄 indexing document sentences into facts…'
     )
     expect(io.progressLines.filter(line => line === null).length).toBeGreaterThanOrEqual(2)
 

@@ -118,7 +118,7 @@ From the target repo root (or a clone):
 
 1. Run: `kb init --base raylib-2026-04-27-1303 --non-interactive` (pick a fresh disposable name; `eval-run.mjs` generates this pattern automatically).
 2. Or interactively: start `kb`, then `/init --base <same>`
-3. Let `kb init` complete all passes through `pass-graph`.
+3. Let `kb init` complete all phases.
 4. Save the resulting run metadata.
 
 Use a disposable base name that matches your eval run folder when using `eval-run.mjs`, or any unique name for manual runs.

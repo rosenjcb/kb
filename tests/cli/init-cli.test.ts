@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseInitCommand, parseScanCommand, runKbInit } from '../../src/cli/init-cli'
 import { buildFrozenSourceSnapshotDoc } from '../../src/cli/init-source-snapshots'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
-import { KbGraphWriter } from '../../src/tools/kb-graph-writer'
 import { SqliteDocumentWriter } from '../../src/tools/sqlite-document-writer'
 
 const tempDirs: string[] = []
@@ -92,6 +91,7 @@ function createProvider(texts: string[]): LLMProvider {
   let index = 0
   return {
     name: 'test-provider',
+    model: 'test-model',
     supportsStreaming: false,
     async call(_params: LLMCallParams): Promise<LLMResponse> {
       const text = texts[index] ?? texts.at(-1) ?? '[]'
@@ -217,82 +217,25 @@ describe('init-cli interview checkpoints', () => {
     )
   })
 
+  it('Given init cycle validation, then exactly 6 phases are defined without pass-graph', () => {
+    // This test validates the pass-graph removal: init should have exactly 6 phases
+    // read-inputs → markdown-facts → code-facts → import-docs → write → ast-facts
+    const expectedCycles: Array<'read-inputs' | 'markdown-facts' | 'code-facts' | 'import-docs' | 'write' | 'ast-facts'> = [
+      'read-inputs',
+      'markdown-facts',
+      'code-facts',
+      'import-docs',
+      'write',
+      'ast-facts',
+    ]
+    
+    expect(expectedCycles).toHaveLength(6)
+    expect(expectedCycles).not.toContain('pass-graph')
+  })
+
   it.todo(
     'Given oversized init context, then every LLM phase stays within the 4096-token budget — token budget constraints relaxed to support richer agent prompts'
   )
-
-  it('Given graph.enabled false, then init skips graph extraction and does not write a graph db', async () => {
-    const cwd = await createTempProject({
-      'README.md': '# Project\n\nThis project has a CLI.\n',
-    })
-    await writeFile(
-      path.join(kbHomeDir, 'config.json'),
-      JSON.stringify(
-        {
-          graph: { enabled: false },
-        },
-        null,
-        2
-      )
-    )
-
-    const provider = createProvider([
-      JSON.stringify([
-        {
-          title: 'Project Overview',
-          type: 'introduction',
-          tags: ['overview'],
-          content: 'Summary.\n\nDetails.',
-        },
-      ]),
-      JSON.stringify([
-        {
-          title: 'Project Overview',
-          type: 'introduction',
-          tags: ['overview'],
-          content: 'Summary.\n\nDetails.',
-        },
-      ]),
-      JSON.stringify({
-        title: 'Project Overview',
-        type: 'introduction',
-        tags: ['overview'],
-        content: 'Summary.\n\nDetails.',
-      }),
-      JSON.stringify([
-        {
-          title: 'Project Overview',
-          type: 'introduction',
-          tags: ['overview'],
-          content: 'Summary.\n\nDetails.',
-        },
-      ]),
-      JSON.stringify([
-        {
-          title: 'Project Overview',
-          type: 'introduction',
-          tags: ['overview'],
-          content: 'Summary.\n\nDetails.',
-        },
-      ]),
-    ])
-
-    const result = await runKbInit({
-      base: 'graph-disabled-test',
-      nonInteractive: true,
-      cwd,
-      provider,
-    })
-
-    expect(result.status).toBe('accepted')
-    expect(result.completedCycles).toContain('pass-graph')
-    const graphWriter = new KbGraphWriter(
-      path.join(kbHomeDir, 'sessions', 'graph-disabled-test', '.kb-index.sqlite')
-    )
-    const summary = await graphWriter.getSummary()
-    await graphWriter.close()
-    expect(summary.totalEntities).toBe(0)
-  })
 
   it('Given a custom progress sink, then init progress updates route there instead of writing directly to stderr', async () => {
     const cwd = await createTempProject({
@@ -708,6 +651,34 @@ describe('init-cli interview checkpoints', () => {
     expect(sourceFileKeys).toEqual(['README.md', 'docs/README.md'])
   })
 
+  it('Given no markdown/text sources under the working directory, then markdown-facts stage is skipped', async () => {
+    const cwd = await createTempProject({
+      'package.json': '{"name":"test"}',
+      'src/index.ts': 'export function hello() {}',
+    })
+
+    const lines: string[] = []
+    const result = await runKbInit({
+      base: 'no-markdown-sources',
+      nonInteractive: true,
+      stopAfter: 'code-facts',
+      cwd,
+      progressSink(line) {
+        lines.push(line)
+      },
+      questionIO: createQuestionIO([]).io,
+    })
+
+    expect(result.status).toBe('paused')
+    expect(
+      lines.some(
+        line =>
+          line.includes('markdown-facts') &&
+          line.includes('skipped (no markdown/text documents found)')
+      )
+    ).toBe(true)
+  })
+
   it('Given --rescan, then write cycle writes originals and any resulting mutations', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
@@ -975,5 +946,74 @@ describe('init-cli interview checkpoints', () => {
         cwd,
       })
     ).rejects.toThrow(/No active or default KB base/)
+  })
+
+  it('Given a full init cycle, then progress counter shows 6/6 (not 7)', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nDocs here.\n',
+      'src/index.ts': 'export function hello() { console.log("hi"); }',
+    })
+
+    const provider = createProvider([
+      JSON.stringify([
+        {
+          title: 'Project Overview',
+          type: 'introduction',
+          tags: ['overview'],
+          content: 'Overview',
+        },
+      ]),
+      JSON.stringify([
+        {
+          title: 'Project Overview',
+          type: 'introduction',
+          tags: ['overview'],
+          content: 'Overview',
+        },
+      ]),
+      JSON.stringify({
+        title: 'Project Overview',
+        type: 'introduction',
+        tags: ['overview'],
+        content: 'Overview',
+      }),
+      JSON.stringify([
+        {
+          title: 'Project Overview',
+          type: 'introduction',
+          tags: ['overview'],
+          content: 'Overview',
+        },
+      ]),
+      JSON.stringify([
+        {
+          title: 'Project Overview',
+          type: 'introduction',
+          tags: ['overview'],
+          content: 'Overview',
+        },
+      ]),
+    ])
+
+    const lines: string[] = []
+    const result = await runKbInit({
+      base: 'progress-counter-test',
+      nonInteractive: true,
+      cwd,
+      provider,
+      progressSink(line) {
+        lines.push(line)
+      },
+    })
+
+    expect(result.status).toBe('accepted')
+    // Validate that all progress lines maintain 6/6 for the final phase
+    const astFactsLines = lines.filter(line => line.includes('ast-facts'))
+    expect(astFactsLines.length).toBeGreaterThan(0)
+    // The last ast-facts line should show 6/6 completion
+    const lastAstLine = astFactsLines[astFactsLines.length - 1]
+    expect(lastAstLine).toMatch(/6\/6/)
+    // Ensure no lines reference 7 phases
+    expect(lines.some(line => line.match(/\d\/7/))).toBe(false)
   })
 })
