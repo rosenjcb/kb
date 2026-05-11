@@ -8,6 +8,8 @@
 export interface Message {
   role: 'user' | 'assistant'
   content: string | ToolResultBlock[]
+  /** Tool calls made by an assistant message (used to round-trip tool_use through providers). */
+  toolUses?: Array<{ id: string; name: string; input: Record<string, unknown> }>
   metadata?: {
     timestamp: number
     tokenCount?: number

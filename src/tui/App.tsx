@@ -20,9 +20,10 @@ import {
 } from '../cli/kb-config.js'
 import { KbGraphWriter } from '../tools/kb-graph-writer.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
-import { isOrchestrationMetaLine } from '../ui/orchestration-meta.js'
+import { classifyChatIOLine } from './chat-io-classify.js'
 import { HistoryPane } from './components/HistoryPane.js'
 import { InputBar } from './components/InputBar.js'
+import { InitProgressBar } from './components/InitProgressBar.js'
 import { StatusBar } from './components/StatusBar.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
 import { partitionShellOutputForTui } from './partition-shell-output.js'
@@ -46,7 +47,7 @@ function resolveApplyArgs(args: string[]): string[] | null {
   return null
 }
 
-/** Commands handled inline (output-only). /init, /scan, /docs generate go to the chat session. */
+/** Commands handled inline as transcript-only output; interactive flows stay out of this path. */
 function isOutputOnlyCommand(first: string, args: string[]): boolean {
   if (first === 'init' || first === 'scan') return false
   if (first === 'docs' && args[1] === 'generate') return false
@@ -83,6 +84,8 @@ export function App({ config, startupNotices = [] }: Props) {
     onConfirm: () => Promise<void>
   } | null>(null)
   const [chatInputHint, setChatInputHint] = useState('')
+
+  const [progressLine, setProgressLine] = useState<string | null>(null)
 
   const chatInputResolverRef = useRef<((v: string | null) => void) | null>(null)
   const chatPendingEntryIdRef = useRef<string | null>(null)
@@ -202,18 +205,13 @@ export function App({ config, startupNotices = [] }: Props) {
         },
         write(line: string) {
           stopChatPending()
-          if (isOrchestrationMetaLine(line)) {
+          const { category, content } = classifyChatIOLine(line)
+          if (category === 'meta') {
             addEntry({ type: 'chat-meta', content: line })
-            return
+          } else if (category === 'assistant') {
+            addEntry({ type: 'chat-assistant', content })
           }
-          // Init/scan progress lines — show as meta (less prominent)
-          if (line.startsWith('[init]') || line.startsWith('[scan]')) {
-            addEntry({ type: 'chat-meta', content: line })
-            return
-          }
-          const clean = line.startsWith('assistant> ') ? line.slice('assistant> '.length) : line
-          if (!clean.trim()) return
-          addEntry({ type: 'chat-assistant', content: clean })
+          // 'skip': blank line — do nothing
         },
         error(line: string) {
           stopChatPending()
@@ -423,16 +421,18 @@ export function App({ config, startupNotices = [] }: Props) {
       if (isSlash && (firstArg === 'init' || firstArg === 'scan') && !chatInputResolverRef.current) {
         addEntry({ type: 'chat-you', content: trimmed })
         setIsRunning(true)
-        const resultId = addEntry({ type: 'result', content: 'Starting…', loading: true })
         try {
           const extraArgs = args.slice(1)
           const parsed = firstArg === 'scan' ? parseScanCommand(extraArgs) : parseInitCommand(extraArgs)
           const result = await runKbInit({
             ...parsed,
             questionIO: {
-              write: (msg: string) => updateEntry(resultId, { content: msg, loading: true }),
+              write: (msg: string) => {
+                const text = msg.trimEnd()
+                if (text) addEntry({ type: 'result', content: text })
+              },
               askQuestion: async (question: string): Promise<string> => {
-                updateEntry(resultId, { content: question, loading: true })
+                setProgressLine(question.trimEnd())
                 return new Promise(resolve => {
                   chatInputResolverRef.current = value => {
                     chatInputResolverRef.current = null
@@ -441,18 +441,20 @@ export function App({ config, startupNotices = [] }: Props) {
                 })
               },
             },
-            progressSink: (line: string) => updateEntry(resultId, { content: line, loading: true }),
+            progressSink: (line: string) => setProgressLine(line.trimEnd()),
           })
+          setProgressLine(null)
           const docCount = result.writtenDocIds?.length ?? 0
-          updateEntry(resultId, {
+          addEntry({
+            type: 'result',
             content: `✅ ${firstArg === 'scan' ? 'Scan' : 'Init'} complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
-            loading: false,
           })
           refreshBase()
           startChatSession()
         } catch (err) {
+          setProgressLine(null)
           const message = err instanceof Error ? err.message : String(err)
-          updateEntry(resultId, { type: 'error', content: message, loading: false })
+          addEntry({ type: 'error', content: message })
         } finally {
           setIsRunning(false)
         }
@@ -526,6 +528,7 @@ export function App({ config, startupNotices = [] }: Props) {
     <Box flexDirection="column">
       <StatusBar baseName={baseName} />
       <HistoryPane entries={history} />
+      {progressLine ? <InitProgressBar line={progressLine} /> : null}
       <InputBar
         value={inputValue}
         onChange={handleInputChange}

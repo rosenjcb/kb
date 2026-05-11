@@ -220,32 +220,52 @@ export interface InitQuestionIO {
 
 class InitProgressReporter {
   private completed = 0
+  private lastUpdateMs = 0
+  private static readonly THROTTLE_MS = 120
+  private readonly sink: (line: string) => void
+  private readonly ttyMode: boolean
 
   constructor(
     private total: number,
     private prefix: 'init' | 'scan' = 'init',
-    private sink: (line: string) => void = line => process.stderr.write(line)
-  ) {}
+    sinkArg?: (line: string) => void
+  ) {
+    if (sinkArg) {
+      this.sink = sinkArg
+      this.ttyMode = false
+    } else {
+      this.sink = line => process.stderr.write(line)
+      this.ttyMode = process.stderr.isTTY === true
+    }
+  }
 
   start(label: string, detail?: string) {
-    this.render(label, detail)
+    this.render(label, detail, false)
   }
 
   finish(label: string, detail?: string) {
     this.completed += 1
-    this.render(label, detail)
+    this.render(label, detail, false)
   }
 
   update(label: string, detail?: string) {
-    this.render(label, detail)
+    const now = Date.now()
+    if (now - this.lastUpdateMs < InitProgressReporter.THROTTLE_MS) return
+    this.lastUpdateMs = now
+    this.render(label, detail, true)
   }
 
-  private render(label: string, detail?: string) {
+  private render(label: string, detail?: string, inPlace = false) {
     const width = 24
     const filled = Math.round((this.completed / Math.max(this.total, 1)) * width)
     const bar = `${'='.repeat(filled)}${'-'.repeat(Math.max(width - filled, 0))}`
     const suffix = detail ? ` ${detail}` : ''
-    this.sink(`[${this.prefix}] [${bar}] ${this.completed}/${this.total} ${label}${suffix}\n`)
+    const content = `[${this.prefix}] [${bar}] ${this.completed}/${this.total} ${label}${suffix}`
+    if (inPlace && this.ttyMode) {
+      this.sink(`\r\x1b[K${content}`)
+    } else {
+      this.sink(`${content}\n`)
+    }
   }
 }
 
@@ -515,7 +535,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     if (!checkpoint.completedCycles.includes('markdown-facts')) {
       progress.start('markdown-facts', 'indexing source sentences into facts…')
       const endScanFacts = makeCycleTimer('markdown-facts', provider, options.collector, counter)
-      const ingestStats = ingestSourceMarkdownFilesAsFacts({
+      const ingestStats = await ingestSourceMarkdownFilesAsFacts({
         baseDir,
         files: context.sourceFiles,
       })
@@ -525,11 +545,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       })
       progress.finish(
         'markdown-facts',
-        `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} files${
-          ingestStats.segmentsSkippedShort > 0
-            ? ` (${ingestStats.segmentsSkippedShort} too short)`
-            : ''
-        }`
+        `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} files`
       )
       if (options.stopAfter === 'markdown-facts') throw new InitPausedError('markdown-facts')
     } else {
@@ -755,7 +771,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         const tsconfigPath = path.join(cwd, 'tsconfig.json')
         if (existsSync(tsconfigPath)) {
           const indexer = new TsMorphIndexer(dbPath)
-          const stats = indexer.indexProject(cwd, tsconfigPath, {
+          const stats = await indexer.indexProject(cwd, tsconfigPath, {
             onProgress: s => {
               progress.update(
                 'ast-facts',

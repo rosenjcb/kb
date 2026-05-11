@@ -11,6 +11,7 @@ import path from 'node:path'
 import Database from 'better-sqlite3'
 import { Node, Project } from 'ts-morph'
 import { runMigrations } from '../core/db-migrations'
+import { yieldEvery, yieldToEventLoop } from '../core/yield'
 
 export type KgNodeKind = 'file' | 'symbol'
 export type KgEdgeType = 'IMPORTS_FILE' | 'EXPORTS_SYMBOL' | 'EXTENDS' | 'IMPLEMENTS'
@@ -25,10 +26,11 @@ export interface CodeIndexStats {
 
 export interface CodeIndexOptions {
   onProgress?: (stats: CodeIndexStats) => void
+  yieldEveryFiles?: number
 }
 
 export interface LanguageIndexer {
-  indexProject(repoRoot: string, opts?: CodeIndexOptions): Promise<CodeIndexStats> | CodeIndexStats
+  indexProject(repoRoot: string, opts?: CodeIndexOptions): Promise<CodeIndexStats>
   close(): void
 }
 
@@ -80,18 +82,20 @@ export class TsMorphIndexer {
     this.db.close()
   }
 
-  indexProject(
+  async indexProject(
     repoRoot: string,
     tsconfigPath: string,
     opts: CodeIndexOptions = {}
-  ): CodeIndexStats {
+  ): Promise<CodeIndexStats> {
     const project = new Project({
       tsConfigFilePath: tsconfigPath,
       skipLoadingLibFiles: true,
       skipFileDependencyResolution: false,
     })
+    await yieldToEventLoop()
 
     const stats: CodeIndexStats = { files: 0, symbols: 0, edges: 0, skipped: 0, errors: 0 }
+    const yieldStride = opts.yieldEveryFiles ?? 10
 
     // Use INSERT ... ON CONFLICT DO UPDATE (not INSERT OR REPLACE) to avoid
     // triggering ON DELETE CASCADE on edges that reference this node via to_id.
@@ -340,9 +344,12 @@ export class TsMorphIndexer {
       })
     })
 
+    let processedFiles = 0
     for (const sf of project.getSourceFiles()) {
       if (sf.isDeclarationFile() || sf.isInNodeModules()) {
         stats.skipped++
+        processedFiles += 1
+        await yieldEvery(processedFiles, yieldStride)
         continue
       }
       try {
@@ -361,7 +368,9 @@ export class TsMorphIndexer {
           errorText: err instanceof Error ? err.message : String(err),
         })
       }
+      processedFiles += 1
       opts.onProgress?.(stats)
+      await yieldEvery(processedFiles, yieldStride)
     }
 
     return stats

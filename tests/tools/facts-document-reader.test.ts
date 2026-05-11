@@ -58,8 +58,8 @@ describe('FactsDocumentReader', () => {
     expect(response.retrieval.method).toBe('hybrid')
     expect(response.retrieval.detail).toContain('facts-loop')
     expect(response.retrieval.detail).toContain('semantic:on')
-    expect(response.retrieval.detail).toContain('trace:')
-    expect(response.retrieval.detail).toContain('frontier=')
+    expect(response.retrieval.traceDetail).toContain('trace:')
+    expect(response.retrieval.traceDetail).toContain('frontier=')
     expect(response.total).toBeGreaterThan(0)
   })
 

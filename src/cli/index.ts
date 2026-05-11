@@ -414,11 +414,6 @@ export async function runMainWithOutput(
     return
   }
 
-  if (firstArg === 'chat') {
-    out.log('`kb chat` is no longer a standalone command. Run `kb` to open the interactive session.')
-    return
-  }
-
   if (firstArg === 'config') {
     try {
       const result = await runConfigCommand(args.slice(1), {

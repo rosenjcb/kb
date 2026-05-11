@@ -238,6 +238,10 @@ export class FactsQueryResearchOrchestrator {
       `graph_hops:${input.graphHops}`,
       `sufficiency:${input.sufficiencyReason}`,
       'semantic:on',
+    ]
+      .filter(Boolean)
+      .join(';')
+    const traceDetail = [
       input.queryLaneWeights && Object.keys(input.queryLaneWeights).length > 0
         ? `lanes:${Object.keys(input.queryLaneWeights).join(',')}`
         : null,
@@ -248,6 +252,7 @@ export class FactsQueryResearchOrchestrator {
     const retrieval: QueryResponse['retrieval'] = {
       method: results.length > 0 ? 'hybrid' : 'lexical-fallback',
       detail: retrievalDetail,
+      ...(traceDetail ? { traceDetail } : {}),
     }
     if (input.suggestRetrievalDeepen === true) {
       retrieval.suggestRetrievalDeepen = true

@@ -16,6 +16,7 @@ import Database from 'better-sqlite3'
 import { Parser, Language, Query } from 'web-tree-sitter'
 import type { Tree } from 'web-tree-sitter'
 import { runMigrations } from '../core/db-migrations'
+import { yieldEvery } from '../core/yield'
 import type { CodeIndexStats, CodeIndexOptions, LanguageIndexer } from './code-graph-indexer'
 
 const require = createRequire(import.meta.url)
@@ -221,6 +222,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
     await this.ensureParser()
 
     const stats: CodeIndexStats = { files: 0, symbols: 0, edges: 0, skipped: 0, errors: 0 }
+    const yieldStride = opts.yieldEveryFiles ?? 10
 
     const insertNode = this.db.prepare(`
       INSERT INTO kg_nodes
@@ -379,6 +381,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
       upsertFileState.run({ fileId: fid, path: rel, contentHash, extractor: SOURCE, schemaVersion: SCHEMA_VERSION, success: 1, errorText: null })
     })
 
+    let processedFiles = 0
     for (const absPath of walkFiles(repoRoot)) {
       const ext = path.extname(absPath).toLowerCase()
       const langKey = EXT_MAP[ext]
@@ -396,7 +399,9 @@ export class TreeSitterIndexer implements LanguageIndexer {
       } catch {
         stats.errors++
       }
+      processedFiles += 1
       opts.onProgress?.(stats)
+      await yieldEvery(processedFiles, yieldStride)
     }
 
     return stats

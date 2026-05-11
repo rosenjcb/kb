@@ -2,6 +2,8 @@
 
 `kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`markdown-facts`** (deterministic sentence ingest from collected markdown into the `facts` table), **`code-facts`** (per-file LLM extraction into `import_code` facts), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), **`pass-graph`** when enabled, and **`code-graph`** (deterministic AST indexing into `kg_*` tables). Use **`kb scan`** to refresh sources against an existing base.
 
+In the TUI, init/scan progress is rendered as a dedicated live status line instead of transcript history. The long-running deterministic phases also yield cooperatively to the event loop between batches so the terminal can repaint and interrupts remain responsive during large scans.
+
 ## Input Collection
 
 ```mermaid
@@ -122,6 +124,8 @@ After indexing, both indexers populate `kg_semantic_bridge` by slugifying symbol
 ### Incremental behaviour
 
 Both indexers store a `content_hash` per file in `kg_file_state`. On re-run (including `kb scan`), files whose hash hasn't changed are counted as `skipped` and not re-processed. Only changed or new files are re-indexed.
+
+To keep the TUI responsive, the deterministic ingest/index loops yield back to the Node.js event loop between batches. That lets progress updates paint incrementally and gives `Ctrl-C` / terminal interrupts a chance to land between chunks instead of waiting for an entire repo walk to finish.
 
 ## Configuration Constants
 

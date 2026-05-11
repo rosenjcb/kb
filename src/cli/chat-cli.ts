@@ -1,12 +1,12 @@
 import { createInterface } from 'node:readline/promises'
 import dayjs from 'dayjs'
-import type { ToolExecutor } from '../core/tool-registry'
 import { ReportWriter, defaultLogsDir, estimateCost } from '../core/telemetry'
-import type { LLMProvider, Message } from '../core/types'
+import type { ToolExecutor } from '../core/tool-registry'
+import type { LLMProvider, Message, ToolDefinition, ToolResultBlock } from '../core/types'
 import { loadPrompt } from '../prompts/loader'
+import { CodeGraphStore } from '../tools/code-graph-store'
 import { expandQueryWithGraph } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
-import { CodeGraphStore } from '../tools/code-graph-store'
 import { KbGraphWriter } from '../tools/kb-graph-writer'
 import { type Printer, createPrinter } from '../ui/printer'
 import { resolveEffectiveBaseDir } from './base-selection'
@@ -127,7 +127,12 @@ async function flushSessionLog(stats: ChatSessionStats): Promise<void> {
   const totalInputTokens = stats.turns.reduce((s, t) => s + t.inputTokens, 0)
   const totalOutputTokens = stats.turns.reduce((s, t) => s + t.outputTokens, 0)
   const totalDurationMs = stats.turns.reduce((s, t) => s + t.totalMs, 0)
-  const totalCostUsd = estimateCost(stats.provider, stats.model, totalInputTokens, totalOutputTokens)
+  const totalCostUsd = estimateCost(
+    stats.provider,
+    stats.model,
+    totalInputTokens,
+    totalOutputTokens
+  )
   await writer.append({
     runId: stats.sessionId,
     sessionId: stats.sessionId,
@@ -190,17 +195,19 @@ function formatSessionStats(stats: ChatSessionStats, printer: Printer): void {
     '',
     header,
     divider,
-    ...turns.map(t => [
-      col(String(t.turn), 4),
-      col(dayjs(t.startedAt).format('HH:mm:ss'), 8),
-      rCol(String(t.inputTokens), 8),
-      rCol(String(t.outputTokens), 8),
-      rCol(String(t.factsRetrieved), 6),
-      rCol(String(t.retrievalMs), 8),
-      rCol(String(t.answerMs), 8),
-      rCol(String(t.totalMs), 9),
-      `  ${t.userMessage.slice(0, 48)}${t.userMessage.length > 48 ? '…' : ''}`,
-    ].join(' ')),
+    ...turns.map(t =>
+      [
+        col(String(t.turn), 4),
+        col(dayjs(t.startedAt).format('HH:mm:ss'), 8),
+        rCol(String(t.inputTokens), 8),
+        rCol(String(t.outputTokens), 8),
+        rCol(String(t.factsRetrieved), 6),
+        rCol(String(t.retrievalMs), 8),
+        rCol(String(t.answerMs), 8),
+        rCol(String(t.totalMs), 9),
+        `  ${t.userMessage.slice(0, 48)}${t.userMessage.length > 48 ? '…' : ''}`,
+      ].join(' ')
+    ),
     divider,
     [
       col('Σ', 4),
@@ -219,6 +226,28 @@ function formatSessionStats(stats: ChatSessionStats, printer: Printer): void {
 }
 
 const CHAT_MAX_OUTPUT_TOKENS = 4096
+
+const CHAT_QUERY_TOOL: ToolDefinition = {
+  name: 'query',
+  description:
+    'Search the knowledge base for additional facts. Call this proactively — especially for code questions — before concluding you lack information. ' +
+    'For code-related questions use specific technical identifiers: function names, class names, interface names, file paths, or method signatures seen in prior facts. ' +
+    'Call multiple times with different angles (e.g. first "ToolRegistry register", then "createKBToolsRegistry handler", then "tool registration pattern") to build a complete picture.',
+  schema: {
+    type: 'object',
+    properties: {
+      q: {
+        type: 'string',
+        description:
+          'Search query. For code topics, prefer specific identifiers (function/class/interface names) over natural-language descriptions.',
+      },
+    },
+    required: ['q'],
+    additionalProperties: false,
+  },
+}
+
+const MAX_QUERY_TOOL_ROUNDS = 5
 
 export function printChatHelp(mode: CmdMode = 'cli'): string {
   return [
@@ -537,11 +566,11 @@ export async function runChatSession(
         const retrievalForOutput = normalizeReadResult(intentResult.data)
 
         // Collect new facts from this turn's retrieval into the session pool.
-        const newFacts: SessionFact[] = (
-          retrievalForOutput.results ?? []
-        )
+        const newFacts: SessionFact[] = (retrievalForOutput.results ?? [])
           .filter(r => r.metadata?.id && r.content)
           .map(r => ({ id: r.metadata?.id ?? '', text: r.content ?? '' }))
+        // allNewFacts grows as the agentic query tool retrieves more facts.
+        const allNewFacts: SessionFact[] = [...newFacts]
 
         const userContent = buildChatTurnContent({
           question: input,
@@ -551,10 +580,10 @@ export async function runChatSession(
           graphRelationBlock,
         })
 
-        const turnMessages: Message[] = [...messages, { role: 'user', content: userContent }]
+        let turnMessages: Message[] = [...messages, { role: 'user', content: userContent }]
 
         let answer: string
-        let answerMs: number
+        let answerMs = 0
         if (shouldRefuseChatTurnOnRetrieval(retrievalForOutput)) {
           const conf = lastRetrievalCheckpointConfidence(retrievalForOutput)
           printer.chatMeta(
@@ -562,34 +591,122 @@ export async function runChatSession(
             `refused: weak-evidence results=${retrievalForOutput.results?.length ?? 0} lastCheckpoint=${conf?.toFixed(3) ?? 'n/a'} min=${chatRetrievalMinConfidence().toFixed(3)}`
           )
           answer = CHAT_WEAK_RETRIEVAL_REFUSAL
-          answerMs = 0
         } else {
-          const answerRun = await withStageProgress(
-            printer,
-            'answer',
-            () =>
-              deps.llmProvider.call({
-                messages: turnMessages,
-                systemPrompt: CHAT_SYSTEM_PROMPT,
-                temperature: 0.15,
-                maxTokens: CHAT_MAX_OUTPUT_TOKENS,
-              }),
-            { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
-          )
-          const completion = answerRun.result
-          answerMs = answerRun.durationMs
+          let totalInputTokens = 0
+          let totalOutputTokens = 0
+          let completionText = ''
+
+          for (let round = 0; round < MAX_QUERY_TOOL_ROUNDS; round++) {
+            const stageName = round === 0 ? 'answer' : `answer-r${round + 1}`
+            const roundRun = await withStageProgress(
+              printer,
+              stageName,
+              () =>
+                deps.llmProvider.call({
+                  messages: turnMessages,
+                  tools: [CHAT_QUERY_TOOL],
+                  systemPrompt: CHAT_SYSTEM_PROMPT,
+                  temperature: 0.15,
+                  maxTokens: CHAT_MAX_OUTPUT_TOKENS,
+                }),
+              { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
+            )
+            const completion = roundRun.result
+            answerMs += roundRun.durationMs
+            totalInputTokens += completion.usage.inputTokens
+            totalOutputTokens += completion.usage.outputTokens
+            completionText = completion.text
+
+            if (completion.stopReason !== 'tool_use' || completion.toolUses.length === 0) {
+              break
+            }
+
+            // Process query tool calls
+            const toolResultBlocks: ToolResultBlock[] = []
+            for (const toolUse of completion.toolUses) {
+              if (toolUse.name !== 'query') {
+                toolResultBlocks.push({
+                  type: 'tool_result',
+                  toolUseId: toolUse.id,
+                  toolName: toolUse.name,
+                  result: 'Unknown tool.',
+                  isError: true,
+                })
+                continue
+              }
+              const q = typeof toolUse.input.q === 'string' ? toolUse.input.q : ''
+              if (!q) {
+                toolResultBlocks.push({
+                  type: 'tool_result',
+                  toolUseId: toolUse.id,
+                  toolName: toolUse.name,
+                  result: 'Empty query.',
+                  isError: true,
+                })
+                continue
+              }
+
+              printer.chatMeta('query', q)
+
+              const currentExcludeIds = [...sessionExcludeIds, ...allNewFacts.map(f => f.id)]
+              const queryRetrieval = await withStageProgress(
+                printer,
+                'retrieval-tool',
+                () =>
+                  executeChatQueryTruthRetrieval({
+                    toolExecutor: deps.toolExecutor,
+                    expandedQuery: q,
+                    retrievalLimit,
+                    excludeIds: currentExcludeIds.length > 0 ? currentExcludeIds : undefined,
+                  }),
+                { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
+              )
+              retrievalMs += queryRetrieval.durationMs
+
+              let toolResult = 'No additional facts found.'
+              if (isReadFactsResult(queryRetrieval.result)) {
+                const snapshot = normalizeReadResult(queryRetrieval.result.data)
+                const toolFacts: SessionFact[] = (snapshot.results ?? [])
+                  .filter(r => r.metadata?.id && r.content)
+                  .map(r => ({ id: r.metadata?.id ?? '', text: r.content ?? '' }))
+                allNewFacts.push(...toolFacts)
+                toolResult = buildToolQueryResult(snapshot)
+              }
+
+              toolResultBlocks.push({
+                type: 'tool_result',
+                toolUseId: toolUse.id,
+                toolName: toolUse.name,
+                result: toolResult,
+              })
+            }
+
+            // Append the assistant tool-use turn + results for the next round.
+            turnMessages = [
+              ...turnMessages,
+              {
+                role: 'assistant' as const,
+                content: completion.text,
+                toolUses: completion.toolUses,
+              },
+              {
+                role: 'user' as const,
+                content: toolResultBlocks,
+              },
+            ]
+          }
 
           answer =
-            completion.text.trim() ||
+            completionText.trim() ||
             'I don\'t have enough information to answer that. Try: kb query "<your question>"'
 
           sessionStats.turns.push({
             turn: sessionStats.turns.length + 1,
             startedAt: new Date(turnStartedAt).toISOString(),
             userMessage: input,
-            inputTokens: completion.usage.inputTokens,
-            outputTokens: completion.usage.outputTokens,
-            factsRetrieved: retrievalForOutput.results?.length ?? 0,
+            inputTokens: totalInputTokens,
+            outputTokens: totalOutputTokens,
+            factsRetrieved: allNewFacts.length,
             retrievalMs,
             answerMs,
             totalMs: Date.now() - turnStartedAt,
@@ -625,7 +742,7 @@ export async function runChatSession(
           {
             answer,
             retrievedDocIds: sourceIds,
-            newFacts,
+            newFacts: allNewFacts,
           },
           maxHistoryTurns
         )
@@ -672,7 +789,6 @@ async function withStageProgress<T>(
     clearInterval(timer)
   }
 }
-
 
 export function buildChatTurnContent(input: {
   question: string
@@ -743,13 +859,23 @@ function splitShellArgs(input: string): string[] {
   let quoteChar = ''
   for (const char of input) {
     if (inQuote) {
-      if (char === quoteChar) { inQuote = false; args.push(current); current = '' }
-      else current += char
+      if (char === quoteChar) {
+        inQuote = false
+        args.push(current)
+        current = ''
+      } else current += char
     } else if (char === '"' || char === "'") {
-      if (current) { args.push(current); current = '' }
-      inQuote = true; quoteChar = char
+      if (current) {
+        args.push(current)
+        current = ''
+      }
+      inQuote = true
+      quoteChar = char
     } else if (char === ' ') {
-      if (current) { args.push(current); current = '' }
+      if (current) {
+        args.push(current)
+        current = ''
+      }
     } else current += char
   }
   if (current) args.push(current)
@@ -802,6 +928,19 @@ function buildEvidence(results: ReadDocumentsResult['results']): string {
   }
 
   return sections.join('\n\n')
+}
+
+function buildToolQueryResult(snapshot: ReadDocumentsResult): string {
+  const results = snapshot.results ?? []
+  if (results.length === 0) return 'No additional facts found.'
+  return results
+    .slice(0, 8)
+    .map((r, i) => {
+      const id = r.metadata?.id ?? `fact-${i + 1}`
+      const text = (r.content ?? '').trim().replace(/\r?\n/g, ' ').slice(0, 500)
+      return `${i + 1}. [${id}] ${text}`
+    })
+    .join('\n')
 }
 
 export function createTerminalChatIO(): ChatIO {

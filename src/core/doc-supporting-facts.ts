@@ -9,7 +9,7 @@ export interface SupportingFact {
 /**
  * Search the facts store for entries supporting a doc-generate prompt.
  *
- * Uses the same FactsQueryResearchOrchestrator pipeline as kb query / kb chat:
+ * Uses the same FactsQueryResearchOrchestrator pipeline as kb query:
  * graph hops, concept expansion, semantic scoring, and source-kind quotas all apply.
  */
 export function searchSupportingFacts(

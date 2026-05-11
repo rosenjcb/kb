@@ -3,6 +3,19 @@
  * Not linguistic perfection — stable splits for pipeline + submit single-sentence checks.
  */
 
+/** Extract fenced code block content as single collapsed segments (one per block). */
+function extractFencedCodeBlocks(text: string): string[] {
+  const blocks: string[] = []
+  const re = /```[^\n]*\n([\s\S]*?)```/g
+  let match = re.exec(text)
+  while (match !== null) {
+    const content = (match[1] ?? '').replace(/\s+/g, ' ').trim()
+    if (content.length >= 8) blocks.push(content)
+    match = re.exec(text)
+  }
+  return blocks
+}
+
 function stripFencedCodeBlocks(text: string): string {
   return text.replace(/```[\s\S]*?```/g, '\n')
 }
@@ -16,23 +29,27 @@ function splitEnglishSentences(line: string): string[] {
 }
 
 /**
- * Extract ordered segments: each markdown heading line becomes one segment (title only);
- * other lines are split into sentences.
+ * Extract ordered segments: fenced code blocks become one segment each (preserving
+ * CLI examples, config snippets, etc.); headings and prose sentences follow.
  */
 export function segmentMarkdownForFacts(markdown: string): string[] {
+  const codeBlocks = extractFencedCodeBlocks(markdown)
   const body = stripFencedCodeBlocks(markdown)
-  const out: string[] = []
+  const prose: string[] = []
   for (const rawLine of body.split('\n')) {
     const line = rawLine.trim()
     if (!line) continue
     if (/^#{1,6}\s+/.test(line)) {
       const title = line.replace(/^#{1,6}\s+/, '').trim()
-      if (title.length > 0) out.push(title)
+      if (title.length > 0) prose.push(title)
       continue
     }
-    out.push(...splitEnglishSentences(line))
+    prose.push(...splitEnglishSentences(line))
   }
-  return out.filter(s => s.replace(/\s+/g, ' ').trim().length >= 8)
+  return [
+    ...codeBlocks,
+    ...prose.filter(s => s.replace(/\s+/g, ' ').trim().length >= 8),
+  ]
 }
 
 /** For `kb submit`: user string must be a single sentence (one segment after trim). */

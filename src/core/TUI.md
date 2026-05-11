@@ -19,7 +19,7 @@ Do not treat the TUI path as extra polish. It is part of the product surface.
 - `kb --help` should print top-level help and exit.
 - `kb <command> ...` should be non-interactive by default unless that command intentionally runs an interview or session flow.
 - `kb <command> --help` should print help and exit without starting real work.
-- All commands are available as slash commands inside the chat interface. Slash commands that are output-only (query, submit, facts, graph, docs list/view, base, config, etc.) are intercepted at the TUI layer and display inline without involving the LLM loop. Interactive slash commands (`/init`, `/scan`, `/docs generate`) run through the chat session’s `io.read()`/`io.write()` interface — the same `ChatIO` used for LLM turns.
+- All commands are available as slash commands inside the chat interface. Slash commands that are output-only (query, submit, facts, graph, docs list/view, base, config, etc.) are intercepted at the TUI layer and display inline without involving the LLM loop. Interactive slash commands (`/init`, `/scan`, `/docs generate`) still use the chat session input surface, but init/scan progress should render in a dedicated live status row rather than being appended to transcript history. If no chat read is active, the TUI may run `/init` or `/scan` directly and preserve the same dedicated progress-line behavior.
 - Success or follow-up copy in the TUI transcript should use **slash form** (`/base use …`), not `kb …`, so users are not told to leave the chat interface. Shared formatters take `CmdMode` and build hints via `cmd()` in `src/cli/cmd-ref.ts`.
 - `/docs generate` review uses slash commands only: `/accept`, `/reject <feedback>`, `/cancel`.
 - `/init` and `/scan` question answering uses `/skip` and `/cancel` as slash commands.
@@ -27,6 +27,7 @@ Do not treat the TUI path as extra polish. It is part of the product surface.
 ## Terminal scrollback (Ink)
 
 - Completed transcript rows should go through Ink `<Static>` where they must not be redrawn every frame, so the host TTY keeps them in normal scrollback (see `src/tui/components/HistoryPane.tsx`).
+- Init/scan progress bars are not chat history. Keep them in a dedicated live component near the input area (for example `InitProgressBar`) so rapid progress updates do not pollute scrollback with transient `[init]` / `[scan]` frames.
 - **Cursor’s integrated terminal** can behave differently from iTerm, Terminal.app, or VS Code’s terminal panel (e.g. scrollback feels “stuck”). If the issue appears only there, try an external terminal to confirm; the `<Static>` split is still the right default for real TTYs.
 - `read()` in `ChatIO` echoes any **non-idle** prompt into the transcript and reuses a short form as the input placeholder so questionnaire / review steps (docs generate, init questions) read as a normal back-and-forth.
 
@@ -100,4 +101,4 @@ Many commands need **exactly one** of these at a time, and errors must name the 
 
 Canonical user-facing strings live in `src/cli/cli-prerequisites.ts` (`CLI_ERROR_NO_KB_BASE`, `CLI_ERROR_NO_LLM_PROVIDER`, etc.). CLI and TUI should reuse them so `/query` and `kb query` behave the same as bare `kb` + slash commands.
 
-When a command needs both (e.g. `kb chat`), check **base first**, then **LLM**, and surface **one** error at a time.
+When a command needs both base and LLM config (e.g. the interactive session), check **base first**, then **LLM**, and surface **one** error at a time.

@@ -43,7 +43,16 @@ KB turns day-to-day development into a feedback loop:
 
 ## ⚡ Quick Start
 
-### 1) Install and verify
+### 1) Install KB
+
+Install the latest published release:
+
+```bash
+npm install -g https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz
+command -v kb
+```
+
+Or build and install from this checkout:
 
 ```bash
 pnpm install
@@ -53,12 +62,6 @@ command -v kb
 ```
 
 > KB expects `Node 22+` in the shell that runs `kb`.
-
-For installed clients, the supported release path is GitHub Releases. CI builds a fresh `kb-cli-node22.tgz` package for every push to `main`, and you can install or upgrade it with:
-
-```bash
-npm install -g https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz
-```
 
 ### 2) Configure `~/.kb/config.json`
 
@@ -133,22 +136,23 @@ kb init [--base <name>] [--detach | --resume] [--stop-after <cycle>]
 kb scan [--base <name>] [--apply]
 kb sync
 kb publish [options]
-kb chat [--verbose] [--debug] [--base <name>]
 ```
 
-**Chat session commands** (type while in `kb chat`):
+**Interactive session commands** (type while in `kb`):
 
 | Command | Effect |
 |---------|--------|
 | `/clear` | Wipe screen, reset fact pool and full conversation history — start fresh |
-| `/exit` | Leave chat mode |
+| `/exit` | Leave the session |
 | `/help` | List all in-session commands |
 | `/docs generate "<prompt>"` | Guided doc-draft wizard |
-| `/init [args]` / `/scan [args]` | Build or refresh the KB without leaving chat |
+| `/init [args]` / `/scan [args]` | Build or refresh the KB without leaving the session |
+| `/session` | Show turn-by-turn token, cost, and timing stats |
 
 **How chat retrieval works:**
-- Each turn fetches up to `retrievalLimit` facts via the research orchestrator (up to 5 iterations, 3 graph hops, 40-concept frontier).
-- Facts retrieved in earlier turns are excluded from subsequent retrieval — they remain available in the LLM's conversation history, so re-fetching is redundant. Use `/clear` if you want a completely fresh start.
+- Each turn fetches facts via the research orchestrator (up to 5 iterations, 3 graph hops, 40-concept frontier).
+- The LLM can call the `query` tool mid-answer to fetch additional facts when it needs more depth.
+- Facts retrieved in earlier turns are excluded from subsequent retrieval — they remain available in the LLM's conversation history. Use `/clear` for a completely fresh start.
 - If a follow-up introduces 2+ new topical terms (e.g. "What about AST? How do I add Python support?"), those new terms drive retrieval instead of being appended to the previous topic.
 
 ### 🔄 Keeping `kb` up to date

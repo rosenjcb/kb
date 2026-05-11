@@ -4,7 +4,13 @@
  */
 
 import dayjs from 'dayjs'
-import type { LLMCallParams, LLMProvider, LLMResponse, LLMStreamChunk } from './types'
+import type {
+  LLMCallParams,
+  LLMProvider,
+  LLMResponse,
+  LLMStreamChunk,
+  ToolResultBlock,
+} from './types'
 
 type JsonRecord = Record<string, unknown>
 
@@ -53,10 +59,34 @@ export class AnthropicProvider implements LLMProvider {
     const body: Record<string, unknown> = {
       model: this.model,
       max_tokens: params.maxTokens ?? 4096,
-      messages: params.messages.map(m => ({
-        role: m.role,
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-      })),
+      messages: params.messages.map(m => {
+        if (m.role === 'user' && Array.isArray(m.content)) {
+          return {
+            role: 'user' as const,
+            content: (m.content as ToolResultBlock[]).map(block => ({
+              type: 'tool_result' as const,
+              tool_use_id: block.toolUseId,
+              content:
+                typeof block.result === 'string' ? block.result : JSON.stringify(block.result),
+              ...(block.isError ? { is_error: true } : {}),
+            })),
+          }
+        }
+        if (m.role === 'assistant' && m.toolUses?.length) {
+          const parts: unknown[] = []
+          if (typeof m.content === 'string' && m.content.trim()) {
+            parts.push({ type: 'text', text: m.content })
+          }
+          for (const tu of m.toolUses) {
+            parts.push({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input })
+          }
+          return { role: 'assistant' as const, content: parts }
+        }
+        return {
+          role: m.role,
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        }
+      }),
       tools: params.tools?.map(t => ({
         name: t.name,
         description: t.description,
@@ -182,17 +212,38 @@ export class OpenAIProvider implements LLMProvider {
       ? [{ role: 'system' as const, content: params.systemPrompt }]
       : []
 
+    const openAIMessages: Array<Record<string, unknown>> = [...systemMessages]
+    for (const m of params.messages) {
+      if (m.role === 'user' && Array.isArray(m.content)) {
+        for (const block of m.content as ToolResultBlock[]) {
+          openAIMessages.push({
+            role: 'tool',
+            tool_call_id: block.toolUseId,
+            content: typeof block.result === 'string' ? block.result : JSON.stringify(block.result),
+          })
+        }
+      } else if (m.role === 'assistant' && m.toolUses?.length) {
+        openAIMessages.push({
+          role: 'assistant',
+          content: typeof m.content === 'string' && m.content ? m.content : null,
+          tool_calls: m.toolUses.map(tu => ({
+            id: tu.id,
+            type: 'function',
+            function: { name: tu.name, arguments: JSON.stringify(tu.input) },
+          })),
+        })
+      } else {
+        openAIMessages.push({
+          role: m.role,
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        })
+      }
+    }
     const body: Record<string, unknown> = {
       model: this.model,
       max_tokens: params.maxTokens ?? 4096,
       temperature: params.temperature ?? 0.7,
-      messages: [
-        ...systemMessages,
-        ...params.messages.map(m => ({
-          role: m.role,
-          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-        })),
-      ],
+      messages: openAIMessages,
       tools: params.tools?.map(t => ({
         type: 'function',
         function: {
@@ -322,6 +373,12 @@ function geminiModelSupportsThinkingBudget(model: string): boolean {
   return /gemini-2\.5|gemini-3|gemini-exp/i.test(model)
 }
 
+/** Strip JSON Schema fields Gemini's function declaration API does not accept. */
+function stripUnsupportedSchemaFields(schema: Record<string, unknown>): Record<string, unknown> {
+  const { additionalProperties: _, ...rest } = schema
+  return rest
+}
+
 export class GeminiProvider implements LLMProvider {
   readonly name = 'gemini'
   readonly supportsStreaming = true
@@ -365,11 +422,39 @@ export class GeminiProvider implements LLMProvider {
     usage: { inputTokens: number; outputTokens: number }
     finishReason?: string
   }> {
+    const geminiContents: Array<Record<string, unknown>> = []
+    for (const m of params.messages) {
+      if (m.role === 'user' && Array.isArray(m.content)) {
+        geminiContents.push({
+          role: 'user',
+          parts: (m.content as ToolResultBlock[]).map(block => ({
+            functionResponse: {
+              name: block.toolName,
+              response: {
+                result:
+                  typeof block.result === 'string' ? block.result : JSON.stringify(block.result),
+              },
+            },
+          })),
+        })
+      } else if (m.role === 'assistant' && m.toolUses?.length) {
+        const parts: unknown[] = []
+        if (typeof m.content === 'string' && m.content.trim()) {
+          parts.push({ text: m.content })
+        }
+        for (const tu of m.toolUses) {
+          parts.push({ functionCall: { name: tu.name, args: tu.input } })
+        }
+        geminiContents.push({ role: 'model', parts })
+      } else {
+        geminiContents.push({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }],
+        })
+      }
+    }
     const body = {
-      contents: params.messages.map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }],
-      })),
+      contents: geminiContents,
       ...(params.systemPrompt
         ? {
             system_instruction: {
@@ -382,7 +467,7 @@ export class GeminiProvider implements LLMProvider {
           {
             name: t.name,
             description: t.description,
-            parameters: t.schema,
+            parameters: stripUnsupportedSchemaFields(t.schema),
           },
         ],
       })),

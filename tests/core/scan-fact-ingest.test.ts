@@ -21,7 +21,7 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
       'This is the first sentence that is intentionally verbose so it clears the forty character minimum length threshold. ' +
       'Here is another distinct sentence which also exceeds the minimum length for fact ingest pipeline testing purposes.'
 
-    const stats = ingestSourceMarkdownFilesAsFacts({
+    const stats = await ingestSourceMarkdownFilesAsFacts({
       baseDir,
       files: { 'README.md': `# Title\n\n${long}` },
       maxTotal: 100,
@@ -39,17 +39,16 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
     }
   })
 
-  it('Given short-only segments, then upserts zero and counts skipped', async () => {
+  it('Given short heading and short prose, then ingests only segments that survive markdown splitting', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-markdown-fact-ingest-short-'))
     tempDirs.push(baseDir)
     new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') }).close()
 
-    const stats = ingestSourceMarkdownFilesAsFacts({
+    const stats = await ingestSourceMarkdownFilesAsFacts({
       baseDir,
       files: { 'NOTE.md': '## Hi\n\nToo short.' },
-      minSegmentLength: 40,
     })
-    expect(stats.segmentsUpserted).toBe(0)
-    expect(stats.segmentsSkippedShort).toBeGreaterThan(0)
+    expect(stats.filesScanned).toBe(1)
+    expect(stats.segmentsUpserted).toBe(1)
   })
 })
