@@ -1,6 +1,6 @@
 # KB Init Pipeline
 
-`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`markdown-facts`** (document facts from markdown/text sources), **`code-facts`** (LLM fallback facts for source code when AST providers are unavailable), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), and **`ast-facts`** (deterministic AST indexing into `kg_*` tables and fact promotion). Use **`kb scan`** to refresh sources against an existing base.
+`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`document-facts`** (document facts from markdown/text sources), **`code-facts`** (LLM fallback facts for source code when AST providers are unavailable), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), and **`ast-facts`** (deterministic AST indexing into `kg_*` tables and fact promotion). Use **`kb scan`** to refresh sources against an existing base.
 
 In the TUI, init/scan progress is rendered as a dedicated live status line instead of transcript history. The long-running deterministic phases also yield cooperatively to the event loop between batches so the terminal can repaint and interrupts remain responsive during large scans.
 
@@ -22,7 +22,7 @@ flowchart TD
     D & E --> F[InitContext]
 ```
 
-- `sourceFiles` — human-readable documentation files collected for **`import-docs`** (verbatim originals) and for **`markdown-facts`** / prompts.
+- `sourceFiles` — human-readable documentation files collected for **`import-docs`** (verbatim originals) and for **`document-facts`** / prompts.
 - `codeFiles` — structural index of source code. Fed into **`code-facts`** extraction.
 
 ## Init cycles
@@ -30,7 +30,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[kb init] --> R[read-inputs]
-    R --> MF[markdown-facts]
+    R --> MF[document-facts]
     MF --> CF[code-facts]
     CF --> IM[import-docs]
     IM --> W[write]

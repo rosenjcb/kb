@@ -13,7 +13,7 @@ categories:
 
 # KB Init Pipeline
 
-`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`markdown-facts`** (deterministic sentence ingest from collected markdown into the `facts` table), **`code-facts`** (per-file LLM extraction into `import_code` facts), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), **`pass-graph`** when enabled, and **`code-graph`** (deterministic AST indexing into `kg_*` tables). Use **`kb scan`** to refresh sources against an existing base.
+`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`document-facts`** (deterministic sentence ingest from collected markdown into the `facts` table), **`code-facts`** (per-file LLM extraction into `import_code` facts), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), **`pass-graph`** when enabled, and **`code-graph`** (deterministic AST indexing into `kg_*` tables). Use **`kb scan`** to refresh sources against an existing base.
 
 ## Input Collection
 
@@ -33,7 +33,7 @@ flowchart TD
     D & E --> F[InitContext]
 ```
 
-- `sourceFiles` — human-readable documentation files collected for **`import-docs`** (verbatim originals) and for **`markdown-facts`** / prompts.
+- `sourceFiles` — human-readable documentation files collected for **`import-docs`** (verbatim originals) and for **`document-facts`** / prompts.
 - `codeFiles` — structural index of source code. Fed into **`code-facts`** extraction.
 
 ## Init cycles
@@ -41,7 +41,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[kb init] --> R[read-inputs]
-    R --> MF[markdown-facts]
+    R --> MF[document-facts]
     MF --> CF[code-facts]
     CF --> IM[import-docs]
     IM --> W[write]

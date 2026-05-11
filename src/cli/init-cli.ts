@@ -2,7 +2,7 @@
  * kb init / kb scan — knowledge base bootstrap and refresh commands.
  *
  * Cycle 1 (read-inputs):     Discover markdown/text sources under working dir (recursive).
- * Cycle 2 (markdown-facts):  Deterministic sentence segmentation of source markdown → `facts` table
+ * Cycle 2 (document-facts):  Deterministic sentence segmentation of source markdown → `facts` table
  *                             (before synthesis; placeholder triplets).
  * Cycle 3 (code-facts):      Per-file LLM pass that extracts semantic facts from source code,
  *                             anchored by `code:<path>@<symbol>` for repair-friendly rescans.
@@ -73,7 +73,7 @@ import { createLLMProviderFromConfig, readKbConfig, resolveGraphEnabled } from '
 
 export type InitCycle =
   | 'read-inputs'
-  | 'markdown-facts'
+  | 'document-facts'
   | 'code-facts'
   | 'import-docs'
   | 'write'
@@ -345,16 +345,19 @@ function shouldExcludeMarkdownSourceFile(relativePath: string, content: string):
 export function parseInitCommand(args: string[]): InitOptions {
   const base = readOption(args, '--base') ?? undefined
 
-  const stopAfter = readOption(args, '--stop-after') as InitCycle | undefined
+  const rawStopAfter = readOption(args, '--stop-after')
+  const stopAfter = rawStopAfter
+    ? (normalizeStoredCycleId(rawStopAfter) ?? undefined)
+    : undefined
   const validCycles: InitCycle[] = [
     'read-inputs',
-    'markdown-facts',
+    'document-facts',
     'code-facts',
     'import-docs',
     'write',
     'ast-facts',
   ]
-  if (stopAfter && !validCycles.includes(stopAfter)) {
+  if (rawStopAfter && (!stopAfter || !validCycles.includes(stopAfter))) {
     throw new Error(`Invalid --stop-after. Use: ${validCycles.join('|')}`)
   }
 
@@ -526,34 +529,34 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     const totalSourceFileCount = Object.keys(context.sourceFiles).length
     const unchangedSourceFileCount = totalSourceFileCount - Object.keys(changedSourceFiles).length
 
-    if (!checkpoint.completedCycles.includes('markdown-facts')) {
+    if (!checkpoint.completedCycles.includes('document-facts')) {
       const hasAnySourceFiles = Object.keys(context.sourceFiles).length > 0
       if (!hasAnySourceFiles) {
         await persist({
-          completedCycles: ['markdown-facts'],
+          completedCycles: ['document-facts'],
         })
-        progress.finish('markdown-facts', 'skipped (no markdown/text documents found)')
+        progress.finish('document-facts', 'skipped (no markdown/text documents found)')
       } else {
-        progress.start('markdown-facts', '📄 indexing document sentences into facts…')
-        const endScanFacts = makeCycleTimer('markdown-facts', provider, options.collector, counter)
+        progress.start('document-facts', '📄 indexing document sentences into facts…')
+        const endScanFacts = makeCycleTimer('document-facts', provider, options.collector, counter)
         const ingestStats = await ingestSourceMarkdownFilesAsFacts({
           baseDir,
           files: changedSourceFiles,
         })
         endScanFacts()
         await persist({
-          completedCycles: ['markdown-facts'],
+          completedCycles: ['document-facts'],
         })
         progress.finish(
-          'markdown-facts',
+          'document-facts',
           options.rescan
             ? `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} changed, ${unchangedSourceFileCount} unchanged file(s)`
             : `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} files`
         )
       }
-      if (options.stopAfter === 'markdown-facts') throw new InitPausedError('markdown-facts')
+      if (options.stopAfter === 'document-facts') throw new InitPausedError('document-facts')
     } else {
-      progress.finish('markdown-facts', 'reused from checkpoint')
+      progress.finish('document-facts', 'reused from checkpoint')
     }
 
     if (!checkpoint.completedCycles.includes('code-facts')) {
@@ -1420,15 +1423,16 @@ async function readCheckpoint(filePath: string): Promise<InitCheckpoint | undefi
 
 const VALID_V3_CYCLES = new Set<InitCycle>([
   'read-inputs',
-  'markdown-facts',
+  'document-facts',
   'code-facts',
   'import-docs',
   'write',
+  'ast-facts',
 ])
 
-/** Older checkpoints may list the markdown→facts cycle under its previous id. */
+/** Older checkpoints/flags may list the document-facts cycle under previous ids. */
 function normalizeStoredCycleId(cycle: string): InitCycle | null {
-  if (cycle === 'scan-facts') return 'markdown-facts'
+  if (cycle === 'scan-facts' || cycle === 'markdown-facts') return 'document-facts'
   if (VALID_V3_CYCLES.has(cycle as InitCycle)) return cycle as InitCycle
   return null
 }

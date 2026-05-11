@@ -59,7 +59,7 @@ This is the platform mental model for `kb query`, `kb docs generate`, ingest (`k
 
 ```mermaid
 flowchart TB
-  subgraph ingest["Ingest (init / markdown-facts / import-docs)"]
+  subgraph ingest["Ingest (init / document-facts / import-docs)"]
     SRC["Source pages\n(markdown, etc.)"]
     SEG["Deterministic split\n→ candidate facts"]
     UPS["upsert / skip / merge\nfacts table"]
@@ -108,7 +108,7 @@ flowchart TB
 | **`kb docs generate`** | Draft/revise user messages include a **KB facts** block; empty FTS → orchestrator throws; **`## References`** from the same grounded set. |
 | **`kb facts`** | CLI + TUI **`/facts`** for list / search / show (`src/cli/facts-cli.ts`). |
 | **`kb docs merge`** | Removed (deterministic doc merge lived only in that CLI path). |
-| **`kb init`** | Runs **`markdown-facts`** (deterministic markdown segmentation → `import_doc`) and **`code-facts`** (per-file LLM extraction → `import_code`, anchored by `code:<path>@<symbol>`), then **`import-docs`** (verbatim originals) and **`write`**. **`SqliteDocumentWriter`** also indexes incremental fact rows from document bodies when docs are persisted. |
+| **`kb init`** | Runs **`document-facts`** (deterministic markdown segmentation → `import_doc`) and **`code-facts`** (per-file LLM extraction → `import_code`, anchored by `code:<path>@<symbol>`), then **`import-docs`** (verbatim originals) and **`write`**. **`SqliteDocumentWriter`** also indexes incremental fact rows from document bodies when docs are persisted. |
 | **Publish** | Unchanged: reads stored documents for export. |
 
 Remaining gap vs “gold”: optional **`read_documents`** naming cleanup for agents, and ongoing prompt/UI wording to say “fact” where the wire is fact-shaped.
@@ -128,8 +128,8 @@ Fact block in prompts; refuse when no facts; **`acceptDraft`** guards zero **`su
 ### Phase C — Ingest: deterministic + semantic facts from sources (**done**)
 
 **Done:**
-- **`markdown-facts`** init cycle runs after **`read-inputs`**, calling `ingestSourceMarkdownFilesAsFacts` (`src/core/scan-fact-ingest.ts`) over `context.sourceFiles` — same segmentation policy as document writer ingest, `source_ref` like `README.md#s0`, placeholder triplets.
-- **`code-facts`** init cycle runs right after **`markdown-facts`**. It calls `ingestCodeFilesAsFacts` (`src/core/code-fact-extract.ts`) over `context.codeFiles`: a per-file LLM call returns `{ module_summary, facts: [{ sentence, triplet, anchor }] }`; rows land as `source_kind = 'import_code'` with `source_ref = code:<path>@<anchor>#<contentHash>`. Per-anchor diff against prior rows handles supersede/tombstone, so **rerunning on unchanged content is idempotent** and `kb scan` only re-extracts files whose `sha256` changed (tracked in `code-facts-manifest.json`). The graph is still built from fact triples (`rebuildFactGraph`); **no separate AST table**.
+- **`document-facts`** init cycle runs after **`read-inputs`**, calling `ingestSourceMarkdownFilesAsFacts` (`src/core/scan-fact-ingest.ts`) over `context.sourceFiles` — same segmentation policy as document writer ingest, `source_ref` like `README.md#s0`, placeholder triplets.
+- **`code-facts`** init cycle runs right after **`document-facts`**. It calls `ingestCodeFilesAsFacts` (`src/core/code-fact-extract.ts`) over `context.codeFiles`: a per-file LLM call returns `{ module_summary, facts: [{ sentence, triplet, anchor }] }`; rows land as `source_kind = 'import_code'` with `source_ref = code:<path>@<anchor>#<contentHash>`. Per-anchor diff against prior rows handles supersede/tombstone, so **rerunning on unchanged content is idempotent** and `kb scan` only re-extracts files whose `sha256` changed (tracked in `code-facts-manifest.json`). The graph is still built from fact triples (`rebuildFactGraph`); **no separate AST table**.
 
 **Surface for refreshing sources:** **`kb scan`**.
 

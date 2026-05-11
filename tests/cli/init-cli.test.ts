@@ -217,12 +217,18 @@ describe('init-cli interview checkpoints', () => {
     )
   })
 
+  it('Given legacy --stop-after markdown-facts, then parsing normalizes to document-facts', () => {
+    const parsed = parseInitCommand(['--base', 'dogfood', '--stop-after', 'markdown-facts'])
+
+    expect(parsed.stopAfter).toBe('document-facts')
+  })
+
   it('Given init cycle validation, then exactly 6 phases are defined without pass-graph', () => {
     // This test validates the pass-graph removal: init should have exactly 6 phases
-    // read-inputs → markdown-facts → code-facts → import-docs → write → ast-facts
-    const expectedCycles: Array<'read-inputs' | 'markdown-facts' | 'code-facts' | 'import-docs' | 'write' | 'ast-facts'> = [
+    // read-inputs -> document-facts -> code-facts -> import-docs -> write -> ast-facts
+    const expectedCycles: Array<'read-inputs' | 'document-facts' | 'code-facts' | 'import-docs' | 'write' | 'ast-facts'> = [
       'read-inputs',
-      'markdown-facts',
+      'document-facts',
       'code-facts',
       'import-docs',
       'write',
@@ -651,7 +657,7 @@ describe('init-cli interview checkpoints', () => {
     expect(sourceFileKeys).toEqual(['README.md', 'docs/README.md'])
   })
 
-  it('Given no markdown/text sources under the working directory, then markdown-facts stage is skipped', async () => {
+  it('Given no markdown/text sources under the working directory, then document-facts stage is skipped', async () => {
     const cwd = await createTempProject({
       'package.json': '{"name":"test"}',
       'src/index.ts': 'export function hello() {}',
@@ -673,7 +679,7 @@ describe('init-cli interview checkpoints', () => {
     expect(
       lines.some(
         line =>
-          line.includes('markdown-facts') &&
+          line.includes('document-facts') &&
           line.includes('skipped (no markdown/text documents found)')
       )
     ).toBe(true)
@@ -747,7 +753,7 @@ describe('init-cli interview checkpoints', () => {
     expect(
       lines.some(
         line =>
-          line.includes('markdown-facts') &&
+          line.includes('document-facts') &&
           line.includes('0 changed, 2 unchanged file(s)')
       )
     ).toBe(true)
@@ -796,7 +802,7 @@ describe('init-cli interview checkpoints', () => {
     expect(
       lines.some(
         line =>
-          line.includes('markdown-facts') &&
+          line.includes('document-facts') &&
           line.includes('1 changed, 1 unchanged file(s)')
       )
     ).toBe(true)
