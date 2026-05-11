@@ -32,13 +32,14 @@ const pinnedMajor = '22'
 const nativePreflight = `#!/usr/bin/env node
 const { spawnSync } = require('node:child_process')
 const path = require('node:path')
+const fs = require('node:fs')
 
 const dep = 'better-sqlite3'
-const rootDir = path.resolve(__dirname, '../..')
+const scriptDir = __dirname
 
 function canLoadNativeRuntime() {
   const probe = spawnSync(process.execPath, ['-e', \`require(\${JSON.stringify(dep)})\`], {
-    cwd: rootDir,
+    cwd: scriptDir,
     stdio: 'ignore',
     env: process.env,
   })
@@ -47,20 +48,12 @@ function canLoadNativeRuntime() {
 
 if (canLoadNativeRuntime()) process.exit(0)
 
-spawnSync('npm', ['rebuild', dep], {
-  cwd: rootDir,
-  stdio: 'ignore',
-  env: process.env,
-})
+console.error('KB requires build approval for native modules.')
+console.error('Please run one of these:')
+console.error('  1. pnpm approve-builds -g && pnpm rebuild -g better-sqlite3')
+console.error('  2. pnpm add -g --force https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz')
+process.exit(1)`
 
-if (canLoadNativeRuntime()) process.exit(0)
-
-console.error('KB could not prepare its native database runtime automatically.')
-console.error('Try rerunning one of these commands:')
-console.error('  kb sync')
-console.error('  pnpm run install:global')
-process.exit(1)
-`
 const launcher = `#!/usr/bin/env bash
 # Resolve the Node version pinned by this project (.nvmrc = ${pinnedMajor}).
 # This avoids ABI mismatch when the shell's active Node differs from the

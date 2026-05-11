@@ -99,7 +99,26 @@ kb query "sqlite index sync behavior" --limit 5
 kb invalidate "kb use should persist across sessions" "kb base use is session-scoped; use kb base use --default to write a persistent default"
 ```
 
-## 📖 CLI Reference
+## � Troubleshooting
+
+### Native module bindings error on global pnpm install
+
+If you see `Could not locate the bindings file` for `better-sqlite3` when running `kb` after installing globally:
+
+**Option 1: Uninstall and reinstall (recommended)**
+```bash
+pnpm remove -g kb
+pnpm add -g https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz
+```
+
+**Option 2: Force rebuild from global store**
+```bash
+pnpm add -g --force https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz
+```
+
+This happens because pnpm skips build scripts by default for security. KB's global installation requires the native SQLite bindings to run. Reinstalling with the commands above ensures the native module is built.
+
+## �📖 CLI Reference
 
 ### 🎯 KB intents
 
