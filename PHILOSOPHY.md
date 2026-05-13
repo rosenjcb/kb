@@ -33,3 +33,16 @@ Everything changes. `kb` expects facts to go stale, mistakes to happen, and prio
 ## Transparency Without Effort
 
 `kb` keeps a record of what happened, when, and why—automatically. You can always see how a decision was made, or why something changed, without digging through chat logs or old docs. If you want to go deep, the history is there. If you don't care, you never have to look.
+
+
+## Fact Retrieval as a Design Variable
+
+How facts get from the KB into a prompt is not a fixed decision — it's a configurable strategy. KB currently supports two retrieval methods, and this list is expected to grow as we learn more about what works.
+
+**`query_expansion` (default):** The query is expanded with synonyms and graph-derived context, searched against the index, and the top results are ranked and returned. This is focused and efficient — the LLM sees the most relevant facts, not everything. It works well when the KB is large and queries are specific.
+
+**`all_facts`:** Every fact in the KB is loaded into the prompt. No search, no ranking. The LLM sees the full knowledge base. This works well when the KB is small, when exhaustive coverage matters more than precision, or when you're debugging retrieval quality. In multi-turn loops (chat, docs generation, agent tasks), all facts are loaded **once** per session — subsequent retrievals in the same context skip the dump since the facts are already present.
+
+The retrieval method is set via `kb config set fact_retrieval_method <method>` and applies globally across all surfaces: `kb query`, `kb chat`, docs generation, and agentic tool loops.
+
+This is an active area of experimentation. The right retrieval strategy depends on KB size, query distribution, and LLM context window limits. Treat it as a dial, not a fixed setting.

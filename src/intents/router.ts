@@ -58,6 +58,7 @@ export class DefaultIntentRouter implements IntentRouter {
 
       case 'query_truth': {
         const queryText = String(payload.topic ?? payload.query ?? '')
+        const allFacts = payload.allFacts === true
         const highRecall = requiresHighRecallQuery(queryText)
         const requestedLimit = typeof payload.limit === 'number' ? payload.limit : 5
         const effectiveLimit = highRecall ? Math.max(requestedLimit, 12) : requestedLimit
@@ -69,15 +70,18 @@ export class DefaultIntentRouter implements IntentRouter {
             query: queryText,
             mode: 'content',
             includeContent: true,
-            limit: effectiveLimit,
+            limit: allFacts ? 99999 : effectiveLimit,
             type: payload.type,
-            discoveryDepth: effectiveDiscoveryDepth,
+            discoveryDepth: allFacts ? 'shallow' : effectiveDiscoveryDepth,
             surface: payload.surface === 'chat' ? 'chat' : 'query',
             excludeIds: Array.isArray(payload.excludeIds) ? payload.excludeIds : undefined,
+            ...(allFacts ? { allFacts: true } : {}),
           },
-          policyReason: highRecall
-            ? 'query intent maps to read_facts with high-recall evidence policy'
-            : 'query intent maps directly to read_facts',
+          policyReason: allFacts
+            ? 'query intent with --all-facts: load all KB facts without query expansion'
+            : highRecall
+              ? 'query intent maps to read_facts with high-recall evidence policy'
+              : 'query intent maps directly to read_facts',
         }
       }
 

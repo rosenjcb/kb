@@ -23,7 +23,7 @@ import { type CmdMode, cmd } from './cmd-ref'
 import { parseInitCommand, parseScanCommand, runKbInit } from './init-cli.js'
 import { isReadFactsResult, printReadDocumentsOrchestrationFooter } from './intent-cli.js'
 import type { KbConfig } from './kb-config'
-import { readKbConfig } from './kb-config'
+import { readKbConfig, resolveFactRetrievalMethod } from './kb-config'
 import { formatReadDocumentSourceIds } from './retrieval-fallback'
 
 export interface ChatSessionDeps {
@@ -498,8 +498,9 @@ export async function runChatSession(
               topic: input,
               goal: 'answer user question',
             }
+        const isAllFacts = resolveFactRetrievalMethod(deps.kbConfig ?? {}) === 'all_facts'
         let expandedQuery = resolvedTurn.retrievalQuery
-        if (deps.graphWriter) {
+        if (deps.graphWriter && !isAllFacts) {
           const codeStore = deps.kbStorageDir
             ? new CodeGraphStore(KbGraphWriter.dbPathForBase(deps.kbStorageDir))
             : undefined
@@ -515,7 +516,7 @@ export async function runChatSession(
         }
 
         let graphRelationBlock: string | undefined
-        if (deps.graphWriter) {
+        if (deps.graphWriter && !isAllFacts) {
           try {
             const block = await formatGraphRelationBlockFromQuestion(deps.graphWriter, input)
             if (block) graphRelationBlock = block
@@ -588,6 +589,7 @@ export async function runChatSession(
           sessionPool: conversationState.sessionFactPool,
           conversationState,
           graphRelationBlock,
+          allFacts: isAllFacts,
         })
 
         let turnMessages: Message[] = [...messages, { role: 'user', content: userContent }]
@@ -806,8 +808,9 @@ export function buildChatTurnContent(input: {
   conversationState?: ChatConversationState
   graphRelationBlock?: string
   sessionPool?: SessionFact[]
+  allFacts?: boolean
 }): string {
-  const evidence = buildEvidence(input.retrieval.results)
+  const evidence = buildEvidence(input.retrieval.results, input.allFacts)
 
   const contextLines: string[] = []
   if (input.conversationState?.activeTopic) {
@@ -911,14 +914,15 @@ function formatRetrievalMode(retrieval: ReadDocumentsResult['retrieval']): strin
   return `${method}${detail}`
 }
 
-function buildEvidence(results: ReadDocumentsResult['results']): string {
+function buildEvidence(results: ReadDocumentsResult['results'], allFacts?: boolean): string {
   if (!Array.isArray(results) || results.length === 0) {
     return 'No evidence retrieved from KB documents.'
   }
 
+  const slice = allFacts ? results : results.slice(0, 4)
   const sections: string[] = []
 
-  for (const [index, result] of results.slice(0, 4).entries()) {
+  for (const [index, result] of slice.entries()) {
     const docId = result.metadata?.id ?? `doc-${index + 1}`
     const content = (result.content ?? '').trim()
     const snippet = content.length > 900 ? `${content.slice(0, 900)}...` : content
@@ -926,7 +930,7 @@ function buildEvidence(results: ReadDocumentsResult['results']): string {
   }
 
   const graphHints = new Set<string>()
-  for (const result of results.slice(0, 4)) {
+  for (const result of slice) {
     for (const line of result.graphEvidence ?? []) {
       if (line.trim()) graphHints.add(line.trim())
     }

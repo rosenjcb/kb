@@ -4,9 +4,12 @@ import path from 'node:path'
 import dayjs from 'dayjs'
 import { createProvider } from '../core/llm-provider'
 
+export type FactRetrievalMethod = 'query_expansion' | 'all_facts'
+
 export interface KbConfig {
   activeBase?: string
   defaultBase?: string
+  factRetrievalMethod?: FactRetrievalMethod
   graph?: {
     enabled?: boolean
   }
@@ -55,6 +58,7 @@ export const KB_CONFIG_DIR = getKbConfigDir()
 export const KB_CONFIG_FILE = getKbConfigFile()
 
 const SUPPORTED_CONFIG_PATHS = [
+  'fact_retrieval_method',
   'graph',
   'graph.enabled',
   'notion',
@@ -256,6 +260,8 @@ export function getConfigValue(config: KbConfig, keyPath?: string): unknown {
   const normalized = normalizeKbConfig(config)
 
   switch (keyPath) {
+    case 'fact_retrieval_method':
+      return requireConfigValue(normalized.factRetrievalMethod, keyPath)
     case 'graph':
       return requireConfigValue(normalized.graph, keyPath)
     case 'graph.enabled':
@@ -291,6 +297,12 @@ export function setConfigValue(config: KbConfig, keyPath: string, value: string)
 
   const next = normalizeKbConfig(config)
   switch (keyPath) {
+    case 'fact_retrieval_method':
+      if (value !== 'query_expansion' && value !== 'all_facts') {
+        throw new Error('fact_retrieval_method must be one of: query_expansion, all_facts')
+      }
+      next.factRetrievalMethod = value as FactRetrievalMethod
+      break
     case 'graph':
       throw new Error('INVALID_CONFIG_WRITE: graph requires a nested key such as graph.enabled')
     case 'graph.enabled':
@@ -337,6 +349,9 @@ export function unsetConfigValue(config: KbConfig, keyPath: string): KbConfig {
 
   const next = normalizeKbConfig(config)
   switch (keyPath) {
+    case 'fact_retrieval_method':
+      next.factRetrievalMethod = undefined
+      break
     case 'graph':
       next.graph = undefined
       break
@@ -528,6 +543,12 @@ export interface ResolvedFeatureFlags {
   laneRouting: boolean
 }
 
+export function resolveFactRetrievalMethod(config: KbConfig): FactRetrievalMethod {
+  if (process.env.KB_FACT_RETRIEVAL_METHOD === 'all_facts') return 'all_facts'
+  if (process.env.KB_FACT_RETRIEVAL_METHOD === 'query_expansion') return 'query_expansion'
+  return config.factRetrievalMethod ?? 'query_expansion'
+}
+
 export function resolveGraphEnabled(config: KbConfig): boolean {
   if (process.env.KB_GRAPH !== undefined) {
     return parseBooleanEnv(process.env.KB_GRAPH, true)
@@ -654,6 +675,10 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
 
   if (defaultBase) {
     normalized.defaultBase = defaultBase
+  }
+
+  if (input.factRetrievalMethod === 'query_expansion' || input.factRetrievalMethod === 'all_facts') {
+    normalized.factRetrievalMethod = input.factRetrievalMethod
   }
 
   if (input.graph && typeof input.graph === 'object' && input.graph.enabled !== undefined) {
