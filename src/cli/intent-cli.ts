@@ -27,6 +27,8 @@ export interface ParsedIntentCommand {
    * (no silent session mutation of the retrieval query).
    */
   useQuerySession?: boolean
+  /** When true (`kb query --all-facts`), bypass query expansion and load all KB facts. */
+  allFacts?: boolean
 }
 
 /** Human read_facts footer: default minimal; verbose adds summary/status/confidence; debug expands sources. */
@@ -359,7 +361,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
   if (results.length === 0) return result
 
   const question = getIntentQuestion(parsed)
-  const evidence = buildEvidence(results, question)
+  const evidence = buildEvidence(results, question, parsed.allFacts)
   if (!question || !evidence) return result
 
   try {
@@ -788,8 +790,9 @@ function getIntentQuestion(parsed: ParsedIntentCommand): string {
   return fromOriginalQuery || fromOriginalFact || fromQuery || fromFact || fromChange
 }
 
-function buildEvidence(results: ReadDocumentsResultItem[], query: string): string {
-  const sections = results.slice(0, 5).map((item, index) => {
+function buildEvidence(results: ReadDocumentsResultItem[], query: string, allFacts?: boolean): string {
+  const slice = allFacts ? results : results.slice(0, 5)
+  const sections = slice.map((item, index) => {
     const id = item.metadata?.id ?? `doc-${index + 1}`
     const title = item.metadata?.title ?? id
     const snippets = extractRelevantEvidenceSnippets(item.content, query)
@@ -798,7 +801,7 @@ function buildEvidence(results: ReadDocumentsResultItem[], query: string): strin
   })
 
   const graphHints = new Set<string>()
-  for (const item of results.slice(0, 5)) {
+  for (const item of slice) {
     for (const line of item.graphEvidence ?? []) {
       if (line.trim()) graphHints.add(line.trim())
     }

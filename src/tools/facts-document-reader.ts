@@ -16,6 +16,8 @@ export interface QueryDocumentsInput {
   surface?: 'query' | 'chat'
   /** Fact IDs already in the caller's session pool — orchestrator will skip these entirely. */
   excludeIds?: string[]
+  /** When true, bypass all query expansion and load every fact in the KB. */
+  allFacts?: boolean
 }
 
 export interface QueryResult {
@@ -47,16 +49,37 @@ export interface QueryResponse {
 
 export class FactsDocumentReader {
   private readonly indexer: SqliteKbIndexer
+  private allFactsDumped = false
 
   constructor(
     dbPath: string,
-    private readonly llm?: LLMProvider
+    private readonly llm?: LLMProvider,
+    private readonly defaultAllFacts?: boolean
   ) {
     this.indexer = new SqliteKbIndexer({ dbPath })
   }
 
   async queryDocuments(input: QueryDocumentsInput): Promise<QueryResponse> {
     const limit = input.limit ?? 10
+
+    if (input.allFacts || this.defaultAllFacts) {
+      if (this.allFactsDumped) {
+        return {
+          results: [],
+          total: 0,
+          retrieval: { method: 'lexical', detail: 'all-facts:already-in-context' },
+        }
+      }
+      this.allFactsDumped = true
+      const rows = this.indexer.listFactsForQuery(99999)
+      const results = rows.map(row => this.toResult(row, input.includeContent === true))
+      return {
+        results,
+        total: results.length,
+        retrieval: { method: 'lexical', detail: 'all-facts' },
+      }
+    }
+
     if (input.discoveryDepth === 'deep') {
       const orchestrator = new FactsQueryResearchOrchestrator(this.indexer)
       const baseQuery = input.query?.trim() ?? ''

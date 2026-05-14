@@ -200,3 +200,98 @@ describe('FactsDocumentReader', () => {
     expect(response.retrieval.detail).not.toContain('expanded:')
   })
 })
+
+describe('FactsDocumentReader — all_facts mode', () => {
+  it('Given allFacts in input, then returns all facts without query-based filtering', async () => {
+    const dbPath = await createDbPath()
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.upsertFact({ factText: 'fact about apples', sourceKind: 'submit', sourceRef: 'test', confidence: 0.9 })
+    indexer.upsertFact({ factText: 'fact about oranges', sourceKind: 'submit', sourceRef: 'test', confidence: 0.9 })
+    indexer.upsertFact({ factText: 'fact about bananas', sourceKind: 'submit', sourceRef: 'test', confidence: 0.9 })
+    indexer.close()
+
+    const reader = new FactsDocumentReader(dbPath)
+    const response = await reader.queryDocuments({
+      query: 'completely unrelated query xyz',
+      allFacts: true,
+      includeContent: true,
+      limit: 5,
+    })
+
+    expect(response.results).toHaveLength(3)
+    expect(response.retrieval.detail).toBe('all-facts')
+    const texts = response.results.map(r => r.content ?? '')
+    expect(texts.some(t => t.includes('apples'))).toBe(true)
+    expect(texts.some(t => t.includes('oranges'))).toBe(true)
+    expect(texts.some(t => t.includes('bananas'))).toBe(true)
+  })
+
+  it('Given defaultAllFacts constructor param, then every queryDocuments call uses all-facts mode', async () => {
+    const dbPath = await createDbPath()
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.upsertFact({ factText: 'first fact', sourceKind: 'submit', sourceRef: 'test', confidence: 0.9 })
+    indexer.upsertFact({ factText: 'second fact', sourceKind: 'submit', sourceRef: 'test', confidence: 0.9 })
+    indexer.close()
+
+    const reader = new FactsDocumentReader(dbPath, undefined, true)
+    const response = await reader.queryDocuments({
+      query: 'nothing matches this',
+      includeContent: true,
+    })
+
+    expect(response.results).toHaveLength(2)
+    expect(response.retrieval.detail).toBe('all-facts')
+  })
+
+  it('Given all_facts mode, then second call in same session returns empty (already-in-context)', async () => {
+    const dbPath = await createDbPath()
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.upsertFact({ factText: 'some fact', sourceKind: 'submit', sourceRef: 'test', confidence: 0.9 })
+    indexer.close()
+
+    const reader = new FactsDocumentReader(dbPath, undefined, true)
+
+    const first = await reader.queryDocuments({ query: 'anything', includeContent: true })
+    const second = await reader.queryDocuments({ query: 'anything', includeContent: true })
+
+    expect(first.results).toHaveLength(1)
+    expect(first.retrieval.detail).toBe('all-facts')
+    expect(second.results).toHaveLength(0)
+    expect(second.retrieval.detail).toBe('all-facts:already-in-context')
+  })
+
+  it('Given all_facts mode via input flag, then deduplication also applies on second call', async () => {
+    const dbPath = await createDbPath()
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.upsertFact({ factText: 'dedupe test fact', sourceKind: 'submit', sourceRef: 'test', confidence: 0.9 })
+    indexer.close()
+
+    const reader = new FactsDocumentReader(dbPath)
+    const first = await reader.queryDocuments({ query: 'test', allFacts: true, includeContent: true })
+    const second = await reader.queryDocuments({ query: 'test', allFacts: true, includeContent: true })
+
+    expect(first.results).toHaveLength(1)
+    expect(second.results).toHaveLength(0)
+    expect(second.retrieval.detail).toBe('all-facts:already-in-context')
+  })
+
+  it('Given allFacts mode, then LLM query expansion is never invoked', async () => {
+    const dbPath = await createDbPath()
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.upsertFact({ factText: 'some expandable fact', sourceKind: 'submit', sourceRef: 'test', confidence: 0.9 })
+    indexer.close()
+
+    let llmCalled = false
+    const llm: LLMProvider = {
+      call: async () => {
+        llmCalled = true
+        return { text: '["expansion1"]', inputTokens: 0, outputTokens: 0 }
+      },
+    } as unknown as LLMProvider
+
+    const reader = new FactsDocumentReader(dbPath, llm, true)
+    await reader.queryDocuments({ query: 'raylib', discoveryDepth: 'deep', surface: 'query' })
+
+    expect(llmCalled).toBe(false)
+  })
+})

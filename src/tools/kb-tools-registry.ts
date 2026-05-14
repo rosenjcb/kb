@@ -9,7 +9,7 @@
 import path from 'node:path'
 import { getKbHomeDir } from '../cli/base-selection'
 import type { KbConfig } from '../cli/kb-config'
-import { resolveFeatureFlags, resolveGraphEnabled } from '../cli/kb-config'
+import { resolveFactRetrievalMethod, resolveFeatureFlags, resolveGraphEnabled } from '../cli/kb-config'
 import { DOC_TYPES } from '../core/doc-taxonomy'
 import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
 import type { StreamManager } from '../core/runtime/stream-manager'
@@ -45,7 +45,8 @@ export function createKBToolsRegistry(
   const indexer = new SqliteKbIndexer({ dbPath: path.join(storageDir, '.kb-index.sqlite') })
   const reader = new FactsDocumentReader(
     path.join(storageDir, '.kb-index.sqlite'),
-    orchestrator?.taskProvider
+    orchestrator?.taskProvider,
+    resolveFactRetrievalMethod(config ?? {}) === 'all_facts'
   )
 
   const readToolDef: ToolDefinition = {

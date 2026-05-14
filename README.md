@@ -72,6 +72,28 @@ Provider is auto-detected from whichever key is present. To set one explicitly:
 kb config set llm.provider openai
 ```
 
+#### Fact retrieval method
+
+KB supports two strategies for how facts are retrieved during `query`, `chat`, and document generation:
+
+| Method | Config value | Description |
+|--------|-------------|-------------|
+| Query expansion (default) | `query_expansion` | Expands the query with synonyms and graph context, searches the index, and ranks results. Efficient and focused. |
+| All facts | `all_facts` | Loads every fact in the KB into the prompt. No search or ranking — the LLM sees everything. Best for small KBs or exhaustive coverage. |
+
+```bash
+# Switch to all-facts mode
+kb config set fact_retrieval_method all_facts
+
+# Switch back to the default
+kb config set fact_retrieval_method query_expansion
+
+# Or unset to use the default
+kb config unset fact_retrieval_method
+```
+
+In `all_facts` mode, facts are dumped **once** per session context — multi-turn agent loops (docs generate, chat) load all facts on the first retrieval and then skip redundant dumps for the remainder of the session.
+
 ### 3) Initialize your KB base
 
 Walk through the chat-based wizard to create your knowledge base.

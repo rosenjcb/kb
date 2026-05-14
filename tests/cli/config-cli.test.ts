@@ -9,6 +9,7 @@ import {
   listSupportedConfigPaths,
   readKbConfig,
   resolveConversationalChatEnabled,
+  resolveFactRetrievalMethod,
   resolveGraphEnabled,
   resolveLLMProvider,
 } from '../../src/cli/kb-config'
@@ -114,6 +115,58 @@ describe('config-cli', () => {
     expect(keys).toContain('graph.enabled')
     expect(keys).toContain('notion')
     expect(keys).toContain('llm')
+    expect(keys).toContain('fact_retrieval_method')
+  })
+
+  it('Given fact_retrieval_method key, then set/get/unset round-trips correctly', async () => {
+    const configFile = await createConfigFile()
+
+    await runConfigCommand(['set', 'fact_retrieval_method', 'all_facts'], { configFile })
+    const value = await runConfigCommand(['get', 'fact_retrieval_method'], { configFile })
+    await runConfigCommand(['unset', 'fact_retrieval_method'], { configFile })
+    const saved = await readKbConfig(configFile)
+
+    expect(value.output).toBe('all_facts\n')
+    expect(saved.factRetrievalMethod).toBeUndefined()
+  })
+
+  it('Given fact_retrieval_method set to query_expansion, then get returns that value', async () => {
+    const configFile = await createConfigFile()
+
+    await runConfigCommand(['set', 'fact_retrieval_method', 'query_expansion'], { configFile })
+    const value = await runConfigCommand(['get', 'fact_retrieval_method'], { configFile })
+
+    expect(value.output).toBe('query_expansion\n')
+  })
+
+  it('Given invalid fact_retrieval_method value, then set throws a descriptive error', async () => {
+    const configFile = await createConfigFile()
+
+    await expect(
+      runConfigCommand(['set', 'fact_retrieval_method', 'semantic_search'], { configFile })
+    ).rejects.toThrow('fact_retrieval_method must be one of: query_expansion, all_facts')
+  })
+
+  it('Given resolveFactRetrievalMethod, then it returns query_expansion by default', () => {
+    expect(resolveFactRetrievalMethod({})).toBe('query_expansion')
+  })
+
+  it('Given resolveFactRetrievalMethod with all_facts in config, then it returns all_facts', () => {
+    expect(resolveFactRetrievalMethod({ factRetrievalMethod: 'all_facts' })).toBe('all_facts')
+  })
+
+  it('Given KB_FACT_RETRIEVAL_METHOD env override, then it wins over config', () => {
+    process.env.KB_FACT_RETRIEVAL_METHOD = 'all_facts'
+    try {
+      expect(resolveFactRetrievalMethod({ factRetrievalMethod: 'query_expansion' })).toBe('all_facts')
+    } finally {
+      delete process.env.KB_FACT_RETRIEVAL_METHOD
+    }
+  })
+
+  it('Given config help, then it includes fact_retrieval_method', () => {
+    const help = printConfigHelp()
+    expect(help).toContain('fact_retrieval_method')
   })
 
   it('Given graph.enabled key, then config set/get/unset round-trips the boolean flag', async () => {

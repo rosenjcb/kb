@@ -83,6 +83,7 @@ import {
   createLLMProviderFromConfig,
   ensureDefaultConfig,
   persistInferredLLMProvider,
+  resolveFactRetrievalMethod,
   resolveGraphEnabled,
 } from './kb-config'
 import type { KbConfig } from './kb-config'
@@ -765,6 +766,13 @@ export async function runMainWithOutput(
     const printer = createPrinter(out, mode)
     try {
       let parsed = parseIntentCommand(args)
+      if (parsed.envelope.intent === 'query_truth' && resolveFactRetrievalMethod(config) === 'all_facts') {
+        parsed = {
+          ...parsed,
+          allFacts: true,
+          envelope: { ...parsed.envelope, payload: { ...parsed.envelope.payload, allFacts: true } },
+        }
+      }
       collector = new RunCollector(firstArg, { debug: parsed.debug, sessionId })
       let intentBaseDir: string
       try {
@@ -802,7 +810,7 @@ export async function runMainWithOutput(
       } finally {
         printer.stopSpinner()
       }
-      if (parsed.envelope.intent === 'query_truth' && resolveGraphEnabled(config)) {
+      if (parsed.envelope.intent === 'query_truth' && resolveGraphEnabled(config) && !parsed.allFacts) {
         const payload = parsed.envelope.payload as { query?: string }
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
         if (originalQuery) {
@@ -856,7 +864,8 @@ export async function runMainWithOutput(
         parsed.envelope.intent === 'query_truth' &&
         resolveGraphEnabled(config) &&
         llmProvider &&
-        isReadFactsResult(aligned)
+        isReadFactsResult(aligned) &&
+        !parsed.allFacts
       ) {
         try {
           const rerankerQuery = preRewriteQueryTruth
