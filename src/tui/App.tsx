@@ -16,9 +16,7 @@ import type { KbConfig } from '../cli/kb-config.js'
 import {
   createLLMProviderFromConfig,
   resolveConversationalChatEnabled,
-  resolveGraphEnabled,
 } from '../cli/kb-config.js'
-import { KbGraphWriter } from '../tools/kb-graph-writer.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
 import { classifyChatIOLine } from './chat-io-classify.js'
 import { HistoryPane } from './components/HistoryPane.js'
@@ -173,9 +171,6 @@ export function App({ config, startupNotices = [] }: Props) {
 
       const storageDir = storageDirRef.current
       const toolExecutor = createKBToolsRegistry(storageDir, config, { taskProvider: llmProvider })
-      const graphWriter = resolveGraphEnabled(config)
-        ? new KbGraphWriter(KbGraphWriter.dbPathForBase(storageDir))
-        : undefined
 
       setChatInputHint('')
 
@@ -227,7 +222,6 @@ export function App({ config, startupNotices = [] }: Props) {
           llmProvider,
           toolExecutor,
           mode: 'tui',
-          graphWriter,
           kbStorageDir: storageDir,
           kbConfig: config,
           conversationalRetrieval: resolveConversationalChatEnabled(config),

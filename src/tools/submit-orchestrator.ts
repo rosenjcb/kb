@@ -59,20 +59,12 @@ export class SubmitOrchestrator {
         )
         .find(Boolean) ?? fallbackId
 
-    const graphSync = await this.toolExecutor.execute(
-      createToolUse('upsert_graph_from_text', {
-        text,
-        documentId: factId,
-      })
-    )
-
     return {
       operation: 'fact_upserted',
       targetDocId: factId,
       discoveredTarget: false,
       result: {
         submissions,
-        graphSync,
       },
     }
   }

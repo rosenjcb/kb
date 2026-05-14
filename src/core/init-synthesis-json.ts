@@ -1,5 +1,29 @@
 import type { WriteDocumentInput } from '../tools/document-writer'
-import { extractBalancedJsonObject } from '../tools/graph-entity-extractor'
+
+/**
+ * Find the outermost `{ ... }` object by brace depth (string-aware).
+ * Moved here from the deleted graph-entity-extractor.
+ */
+function extractBalancedJsonObject(source: string): string | null {
+  const start = source.indexOf('{')
+  if (start === -1) return null
+  let depth = 0
+  let inStr = false
+  let esc = false
+  for (let i = start; i < source.length; i++) {
+    const ch = source[i]
+    if (esc) { esc = false; continue }
+    if (ch === '\\' && inStr) { esc = true; continue }
+    if (ch === '"') { inStr = !inStr; continue }
+    if (inStr) continue
+    if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) return source.slice(start, i + 1)
+    }
+  }
+  return null
+}
 /**
  * Init pass1 synthesis: parse model output into one KB document shape, plus JSON Schemas for
  * providers that support native structured JSON (OpenAI json_schema, Gemini responseSchema).

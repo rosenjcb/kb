@@ -407,6 +407,14 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 11,
+    name: 'drop_kb_graph_tables',
+    sql: `
+      DROP TABLE IF EXISTS kb_graph_relationships;
+      DROP TABLE IF EXISTS kb_graph_entities;
+    `,
+  },
 ]
 
 /**

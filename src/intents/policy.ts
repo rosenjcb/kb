@@ -2,8 +2,6 @@ export const INTERNAL_OPERATION_TOOL_NAMES = new Set([
   'read_facts',
   'upsert_fact',
   'invalidate_fact',
-  'invalidate_graph_for_fact',
-  'upsert_graph_from_text',
   'task',
 ])
 
