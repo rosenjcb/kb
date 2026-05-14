@@ -740,8 +740,8 @@ function printEvidenceBlock(printer: Printer, results: ReadDocumentsResultItem[]
     const content = raw.replace(/^[-*]\s+/, '')
     if (content) lines.push(`- ${content} (source: ${id})`)
   }
-  if (lines.length > 0) {
-    printer.content(['evidence>', ...lines].join('\n'))
+  for (const line of lines) {
+    printer.orchestrationMeta('evidence', line)
   }
 }
 

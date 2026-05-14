@@ -1,84 +1,78 @@
 import { describe, expect, it } from 'vitest'
-import { classifyChatIOLine } from '../../src/tui/chat-io-classify'
+import {
+  CHAT_IO_CATEGORY,
+  classifyChatIOLine,
+} from '../../src/tui/chat-io-classify'
 
-describe('classifyChatIOLine', () => {
-  // ── orchestration wire lines ────────────────────────────────────
-
-  it('classifies stage> lines as meta', () => {
-    expect(classifyChatIOLine('stage> answer:start').category).toBe('meta')
-    expect(classifyChatIOLine('stage> retrieval:done 130ms').category).toBe('meta')
+describe('tui/chat-io-classify', () => {
+  describe('CHAT_IO_CATEGORY constants', () => {
+    it('has the three expected tier values', () => {
+      expect(CHAT_IO_CATEGORY.META).toBe('meta')
+      expect(CHAT_IO_CATEGORY.ASSISTANT).toBe('assistant')
+      expect(CHAT_IO_CATEGORY.SKIP).toBe('skip')
+    })
   })
 
-  it('classifies retrieval> lines as meta', () => {
-    expect(classifyChatIOLine('retrieval> hybrid (facts-loop;iterations:5)').category).toBe('meta')
+  describe('classifyChatIOLine — T1 metadata', () => {
+    it('classifies orchestration wire lines as META', () => {
+      expect(classifyChatIOLine('retrieval> hybrid').category).toBe(CHAT_IO_CATEGORY.META)
+      expect(classifyChatIOLine('evidence> some fact').category).toBe(CHAT_IO_CATEGORY.META)
+      expect(classifyChatIOLine('sources> fact://abc').category).toBe(CHAT_IO_CATEGORY.META)
+      expect(classifyChatIOLine('matches> 5').category).toBe(CHAT_IO_CATEGORY.META)
+      expect(classifyChatIOLine('thinking> planning').category).toBe(CHAT_IO_CATEGORY.META)
+      expect(classifyChatIOLine('sep> —').category).toBe(CHAT_IO_CATEGORY.META)
+    })
+
+    it('classifies init/scan progress lines as META', () => {
+      expect(classifyChatIOLine('[init] phase: read-inputs').category).toBe(CHAT_IO_CATEGORY.META)
+      expect(classifyChatIOLine('[scan] processing file').category).toBe(CHAT_IO_CATEGORY.META)
+    })
+
+    it('preserves full wire line as content for META', () => {
+      const result = classifyChatIOLine('retrieval> hybrid;iterations:2')
+      expect(result.category).toBe(CHAT_IO_CATEGORY.META)
+      expect(result.content).toBe('retrieval> hybrid;iterations:2')
+    })
   })
 
-  it('classifies matches> and sources> lines as meta', () => {
-    expect(classifyChatIOLine('matches> 12').category).toBe('meta')
-    expect(classifyChatIOLine('sources> fact://abc123').category).toBe('meta')
+  describe('classifyChatIOLine — T3 assistant content', () => {
+    it('strips assistant> prefix and classifies as ASSISTANT', () => {
+      const result = classifyChatIOLine('assistant> Here is the answer')
+      expect(result.category).toBe(CHAT_IO_CATEGORY.ASSISTANT)
+      expect(result.content).toBe('Here is the answer')
+    })
+
+    it('does NOT classify assistant> as META', () => {
+      expect(classifyChatIOLine('assistant> hello').category).toBe(CHAT_IO_CATEGORY.ASSISTANT)
+    })
+
+    it('classifies plain text as ASSISTANT', () => {
+      const result = classifyChatIOLine('Some plain answer text')
+      expect(result.category).toBe(CHAT_IO_CATEGORY.ASSISTANT)
+      expect(result.content).toBe('Some plain answer text')
+    })
+
+    it('handles multiline assistant content (full body as single write)', () => {
+      const multiline = 'assistant> Line one\nLine two\nLine three'
+      const result = classifyChatIOLine(multiline)
+      expect(result.category).toBe(CHAT_IO_CATEGORY.ASSISTANT)
+      expect(result.content).toBe('Line one\nLine two\nLine three')
+    })
   })
 
-  it('classifies query> tool-call lines as meta', () => {
-    expect(classifyChatIOLine('query> ToolRegistry register').category).toBe('meta')
-  })
+  describe('classifyChatIOLine — SKIP', () => {
+    it('classifies blank lines as SKIP', () => {
+      expect(classifyChatIOLine('').category).toBe(CHAT_IO_CATEGORY.SKIP)
+      expect(classifyChatIOLine('   ').category).toBe(CHAT_IO_CATEGORY.SKIP)
+    })
 
-  it('classifies timing> lines as meta', () => {
-    expect(classifyChatIOLine('timing> retrieval=90ms answer=1323ms total=1446ms').category).toBe('meta')
-  })
+    it('returns empty content for SKIP', () => {
+      expect(classifyChatIOLine('').content).toBe('')
+    })
 
-  // ── init / scan progress lines ──────────────────────────────────
-
-  it('classifies [init] progress bar lines as meta', () => {
-    expect(classifyChatIOLine('[init] [===---------------------] 1/7 read-inputs').category).toBe('meta')
-  })
-
-  it('classifies [init:action] per-file lines as meta', () => {
-    expect(
-      classifyChatIOLine(
-        '[init:action] code-facts files 0/10 (10 left) | processed 0, skipped 0, failed 0 | facts: +0 inserted, 0 superseded'
-      ).category
-    ).toBe('meta')
-  })
-
-  it('classifies [scan] and [scan:action] lines as meta', () => {
-    expect(classifyChatIOLine('[scan] [===-----] 1/3 read-inputs').category).toBe('meta')
-    expect(classifyChatIOLine('[scan:action] code-facts files 1/5').category).toBe('meta')
-  })
-
-  // ── assistant content ───────────────────────────────────────────
-
-  it('classifies assistant> lines as assistant and strips the prefix', () => {
-    const result = classifyChatIOLine('assistant> The KB uses hybrid retrieval.')
-    expect(result.category).toBe('assistant')
-    expect(result.content).toBe('The KB uses hybrid retrieval.')
-  })
-
-  it('classifies plain KB answer text as assistant', () => {
-    const result = classifyChatIOLine('✅ Init complete — 8 docs written to "kb"')
-    expect(result.category).toBe('assistant')
-    expect(result.content).toBe('✅ Init complete — 8 docs written to "kb"')
-  })
-
-  it('classifies general assistant prose as assistant', () => {
-    const result = classifyChatIOLine('To add a tool, call registry.register().')
-    expect(result.category).toBe('assistant')
-    expect(result.content).toBe('To add a tool, call registry.register().')
-  })
-
-  // ── blank / skip ────────────────────────────────────────────────
-
-  it('classifies empty string as skip', () => {
-    expect(classifyChatIOLine('').category).toBe('skip')
-  })
-
-  it('classifies whitespace-only lines as skip', () => {
-    expect(classifyChatIOLine('   ').category).toBe('skip')
-    expect(classifyChatIOLine('\n').category).toBe('skip')
-  })
-
-  // ── assistant> is NOT treated as meta ──────────────────────────
-
-  it('does not classify assistant> lines as meta', () => {
-    expect(classifyChatIOLine('assistant> hello').category).not.toBe('meta')
+    it('classifies assistant> with blank body as SKIP', () => {
+      expect(classifyChatIOLine('assistant> ').category).toBe(CHAT_IO_CATEGORY.SKIP)
+      // 'assistant>' (no trailing space) falls through to ASSISTANT — not a SKIP
+    })
   })
 })

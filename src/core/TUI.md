@@ -24,6 +24,54 @@ Do not treat the TUI path as extra polish. It is part of the product surface.
 - `/docs generate` review uses slash commands only: `/accept`, `/reject <feedback>`, `/cancel`.
 - `/init` and `/scan` question answering uses `/skip` and `/cancel` as slash commands.
 
+## Output Model — Three Tiers
+
+Every piece of output belongs to exactly one of these tiers. Get the tier wrong and you get double-renders, scrollback pollution, or a confusing UX.
+
+### Tier 1 — Metadata (immediate, permanent, grey)
+
+Orchestration wire lines written with `formatOrchestrationMetaLine(key, value)` — `retrieval>`, `evidence>`, `sources>`, `matches>`, `sep>`, `thinking>`, etc.
+
+- Written immediately via `chatIO.write()` / `printer.orchestrationMeta()`.
+- Classified by `classifyChatIOLine` → `category: 'meta'`.
+- Added directly to history as `chat-meta` entries (grey, no spinner).
+- Go through `<Static>` — permanent in terminal scrollback.
+- **Never accumulate these in a loading state.** They are context for the user, not "in progress".
+
+### Tier 2 — Progress (transient, live area only)
+
+The visual state shown *while* an async job is running. Comprises:
+
+a. **Spinner** — always present (blue `LoadingSpinner` component). Signals "something is happening".
+
+b. **Grey context lines** — last ≤6 lines of the in-flight content, capped at 100 chars/line, shown below the spinner in grey/dim (`LoadingSpinner` renders these from `entry.content`). Shows enough context to know what's happening without polluting scrollback.
+
+Both live exclusively in `liveItems` (entries with `loading: true`). Ink renders these in its mutable live area at the bottom of the terminal — they can be updated or cleared without touching scrollback.
+
+**Rule:** Never let Tier 2 content exceed ~6 lines. If the streaming content is longer, `LoadingSpinner` truncates it (shows only the tail). This prevents the live area from scrolling into the scrollback buffer, which would cause a double-render when the result is finally committed.
+
+### Tier 3 — Content (committed once, permanent)
+
+The final result of an operation — the answer text, a document body, a diff, command output.
+
+- Committed to history as a non-loading entry *exactly once*, after the job finishes.
+- Goes through `<Static>` — permanent in terminal scrollback.
+- For **output-only commands** (docs view/list, query, facts, etc.): the full output is held in `resultId` with `loading: true` during the run, then `loading: false` flipped when done. `LoadingSpinner` shows only the grey tail while running.
+- For **chat responses**: assistant lines accumulate in `chatResponseIdRef` (a single `loading: true` entry). `finalizeChatResponse()` flips it to `loading: false` when `chatIO.read()` is called (the turn boundary). This means the full response — whether two words or a 200-line document — is committed to scrollback exactly once.
+- For **init/scan progress**: shown via `InitProgressBar` in the live area (spinner + grey status line), never written to history.
+
+### Applying the model to new features
+
+| What you're building | Tier | API |
+|---|---|---|
+| Orchestration status (retrieval, routing) | 1 | `printer.orchestrationMeta()` → `chatIO.write()` |
+| LLM answer / doc body / diff | 3 | `printer.chatAssistant()` → accumulates in loading entry |
+| Init/scan phase progress | 2 | `progressSink` → `setProgressLine` → `InitProgressBar` |
+| Output-only command result | 3 | `out.write()` → `runCommandForTui` loading entry |
+| Error | — | `chatIO.error()` → finalizes any open response, then `addEntry` |
+
+When adding a new tool, agent, or orchestrator output path: ask "is this metadata the user needs for context (T1), transient progress (T2), or the final result (T3)?" Wire accordingly. **Do not mix tiers on the same output path.**
+
 ## Terminal scrollback (Ink)
 
 - Completed transcript rows should go through Ink `<Static>` where they must not be redrawn every frame, so the host TTY keeps them in normal scrollback (see `src/tui/components/HistoryPane.tsx`).

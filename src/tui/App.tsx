@@ -87,6 +87,8 @@ export function App({ config, startupNotices = [] }: Props) {
 
   const chatInputResolverRef = useRef<((v: string | null) => void) | null>(null)
   const chatPendingEntryIdRef = useRef<string | null>(null)
+  const chatResponseIdRef = useRef<string | null>(null)
+  const chatResponseBufRef = useRef<string>('')
   const chatSessionIdRef = useRef<string | undefined>(undefined)
   const storageDirRef = useRef<string>('')
   const entryCounterRef = useRef(0)
@@ -128,6 +130,13 @@ export function App({ config, startupNotices = [] }: Props) {
     chatPendingEntryIdRef.current = null
     removeEntry(pendingId)
   }, [removeEntry])
+
+  const finalizeChatResponse = useCallback(() => {
+    if (!chatResponseIdRef.current) return
+    updateEntry(chatResponseIdRef.current, { loading: false })
+    chatResponseIdRef.current = null
+    chatResponseBufRef.current = ''
+  }, [updateEntry])
 
   const refreshBase = useCallback(() => {
     resolveEffectiveBaseDir()
@@ -176,6 +185,8 @@ export function App({ config, startupNotices = [] }: Props) {
 
       const chatIO: ChatIO = {
         async read(prompt: string): Promise<string | null> {
+          // Commit any in-flight response before we wait for user input.
+          finalizeChatResponse()
           const normalized = prompt.replace(/\r/g, '').trim()
           const firstLine =
             normalized
@@ -202,13 +213,24 @@ export function App({ config, startupNotices = [] }: Props) {
           stopChatPending()
           const { category, content } = classifyChatIOLine(line)
           if (category === 'meta') {
+            // Metadata (retrieval>, evidence>, sources>, …) is always immediate and permanent.
             addEntry({ type: 'chat-meta', content: line })
           } else if (category === 'assistant') {
-            addEntry({ type: 'chat-assistant', content })
+            // Content accumulates in a single loading entry per response turn.
+            // The spinner shows the last few lines in grey; full text commits on read().
+            if (!chatResponseIdRef.current) {
+              chatResponseBufRef.current = content
+              chatResponseIdRef.current = addEntry({ type: 'chat-assistant', content, loading: true })
+            } else {
+              const buf = `${chatResponseBufRef.current}\n${content}`
+              chatResponseBufRef.current = buf
+              updateEntry(chatResponseIdRef.current, { content: buf })
+            }
           }
           // 'skip': blank line — do nothing
         },
         error(line: string) {
+          finalizeChatResponse()
           stopChatPending()
           addEntry({ type: 'error', content: line })
         },
@@ -233,11 +255,13 @@ export function App({ config, startupNotices = [] }: Props) {
         chatIO
       )
         .then(() => {
+          finalizeChatResponse()
           stopChatPending()
           setChatInputHint('')
           exit()
         })
         .catch(err => {
+          finalizeChatResponse()
           stopChatPending()
           setChatInputHint('')
           const message = err instanceof Error ? err.message : String(err)
@@ -247,7 +271,7 @@ export function App({ config, startupNotices = [] }: Props) {
           startChatSession(opts)
         })
     },
-    [config, addEntry, stopChatPending, refreshBase, exit]
+    [config, addEntry, stopChatPending, finalizeChatResponse, refreshBase, exit]
   )
 
   // Start chat session once after base dir resolves
