@@ -97,23 +97,11 @@ export class InvalidateOrchestrator {
           .filter(Boolean)
       : []
 
-    if (!preview && changedDocIds.length > 0) {
-      await this.toolExecutor.execute(
-        createToolUse('invalidate_graph_for_fact', {
-          documentIds: changedDocIds,
-        })
-      )
-    }
-
     const summary = result.summary ?? 'No facts changed.'
-    const suffix =
-      !preview && changedDocIds.length > 0
-        ? ` Graph invalidation applied to ${changedDocIds.length} fact provenance entr${changedDocIds.length === 1 ? 'y' : 'ies'}.`
-        : ''
 
     return {
       status: result.error && changedDocIds.length === 0 ? 'uncertain' : 'accepted',
-      explanation: `${summary}${suffix}`.trim(),
+      explanation: summary,
       recommendedAction: preview ? 'preview_invalidation' : 'invalidate_fact',
       data: {
         ...result,

@@ -1,4 +1,4 @@
-import type { KbGraphWriter } from './kb-graph-writer'
+import type Database from 'better-sqlite3'
 
 export interface RelationalConceptPair {
   phraseA: string
@@ -41,39 +41,123 @@ export function parseRelationalConceptPair(query: string): RelationalConceptPair
   return null
 }
 
-export async function formatGraphRelationBlockForPair(
-  writer: KbGraphWriter,
+interface FactsEdge {
+  subject: string
+  predicate: string
+  object: string
+}
+
+interface FactsPathResult {
+  nodes: string[]
+  edgeLabels: string[]
+}
+
+/**
+ * BFS through facts triplets (subject→object, bidirectional) to find a path between two terms.
+ */
+export function findFactsPath(
+  db: Database.Database,
+  a: string,
+  b: string,
+  maxHops = 5
+): FactsPathResult | null {
+  try {
+    const edges = db
+      .prepare(
+        `SELECT DISTINCT subject, predicate, object FROM facts
+         WHERE tombstoned_at IS NULL
+           AND predicate != 'asserts'
+           AND subject != 'kb'
+         LIMIT 5000`
+      )
+      .all() as FactsEdge[]
+
+    // Build bidirectional adjacency map (lowercase keys)
+    const adjacency = new Map<string, Array<{ neighbor: string; label: string }>>()
+    const addEdge = (from: string, to: string, label: string) => {
+      const fromLower = from.toLowerCase()
+      const toLower = to.toLowerCase()
+      if (!adjacency.has(fromLower)) adjacency.set(fromLower, [])
+      if (!adjacency.has(toLower)) adjacency.set(toLower, [])
+      adjacency.get(fromLower)?.push({ neighbor: toLower, label })
+      adjacency.get(toLower)?.push({ neighbor: fromLower, label })
+    }
+
+    for (const edge of edges) {
+      if (edge.subject && edge.object) {
+        addEdge(edge.subject, edge.object, edge.predicate)
+      }
+    }
+
+    const startKey = a.toLowerCase()
+    const endKey = b.toLowerCase()
+
+    if (!adjacency.has(startKey) || !adjacency.has(endKey)) return null
+    if (startKey === endKey) return { nodes: [a], edgeLabels: [] }
+
+    // BFS
+    interface BfsNode {
+      key: string
+      path: string[]
+      labels: string[]
+    }
+
+    const queue: BfsNode[] = [{ key: startKey, path: [startKey], labels: [] }]
+    const visited = new Set<string>([startKey])
+
+    while (queue.length > 0) {
+      const current = queue.shift()
+      if (!current) break
+      if (current.path.length > maxHops + 1) break
+
+      const neighbors = adjacency.get(current.key) ?? []
+      for (const { neighbor, label } of neighbors) {
+        if (visited.has(neighbor)) continue
+        const newPath = [...current.path, neighbor]
+        const newLabels = [...current.labels, label]
+
+        if (neighbor === endKey) {
+          // Reconstruct with original casing from edges
+          return { nodes: newPath, edgeLabels: newLabels }
+        }
+
+        visited.add(neighbor)
+        queue.push({ key: neighbor, path: newPath, labels: newLabels })
+      }
+    }
+
+    return null
+  } catch {
+    return null
+  }
+}
+
+export function formatGraphRelationBlockForPair(
+  db: Database.Database,
   pair: RelationalConceptPair
-): Promise<string> {
+): string {
   const { phraseA: a, phraseB: b } = pair
-  let path = await writer.findPath(a, b)
-  if (!path) {
-    path = await writer.findPath(b, a)
+  let result = findFactsPath(db, a, b)
+  if (!result) {
+    result = findFactsPath(db, b, a)
   }
-  if (!path || path.nodes.length === 0) {
-    return `KB graph: no directed path found between “${a}” and “${b}” within the configured hop limit (entities may be missing or only weakly linked).`
-  }
-
-  const labels: string[] = []
-  for (const id of path.nodes) {
-    labels.push(await writer.getEntityNameById(id))
+  if (!result || result.nodes.length === 0) {
+    return `KB graph: no directed path found between "${a}" and "${b}" within the configured hop limit (entities may be missing or only weakly linked).`
   }
 
+  const hops = result.edgeLabels.length
   const edgeLines: string[] = []
-  for (let i = 0; i < path.nodes.length - 1; i++) {
-    const fromN = path.nodes[i]
-    const toN = path.nodes[i + 1]
-    if (!fromN || !toN) continue
-    const types = await writer.getDirectedEdgeLabelsBetween(fromN, toN)
-    const typeStr = types.length === 0 ? '?' : types.join(' / ')
-    const left = labels[i] ?? fromN
-    const right = labels[i + 1] ?? toN
-    edgeLines.push(`  ${left} -[${typeStr}]-> ${right}`)
+  for (let i = 0; i < result.nodes.length - 1; i++) {
+    const left = result.nodes[i]
+    const right = result.nodes[i + 1]
+    const label = result.edgeLabels[i] ?? '?'
+    if (!left || !right) continue
+    edgeLines.push(`  ${left} -[${label}]-> ${right}`)
   }
 
-  const hopWord = path.hops === 1 ? 'hop' : 'hops'
+  const hopWord = hops === 1 ? 'hop' : 'hops'
   return [
-    `Shortest directed path (${path.hops} ${hopWord}): ${labels.join(' → ')}`,
+    `Shortest directed path (${hops} ${hopWord}): ${result.nodes.join(' → ')}`,
     'Typed edges along that path:',
     ...edgeLines,
   ].join('\n')
@@ -83,11 +167,11 @@ export async function formatGraphRelationBlockForPair(
  * When the question matches a two-concept relational pattern, returns a short graph summary
  * for LLM grounding. Returns null when the question is not treated as relational.
  */
-export async function formatGraphRelationBlockFromQuestion(
-  writer: KbGraphWriter,
+export function formatGraphRelationBlockFromQuestion(
+  db: Database.Database,
   query: string
-): Promise<string | null> {
+): string | null {
   const pair = parseRelationalConceptPair(query)
   if (!pair) return null
-  return formatGraphRelationBlockForPair(writer, pair)
+  return formatGraphRelationBlockForPair(db, pair)
 }

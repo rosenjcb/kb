@@ -1,16 +1,16 @@
 /**
  * kb init / kb scan — knowledge base bootstrap and refresh commands.
  *
- * Cycle 1 (read-inputs):     Discover markdown/text sources under working dir (recursive).
- * Cycle 2 (document-facts):  Deterministic sentence segmentation of source markdown → `facts` table
- *                             (before synthesis; placeholder triplets).
- * Cycle 3 (code-facts):      Per-file LLM pass that extracts semantic facts from source code,
- *                             anchored by `code:<path>@<symbol>` for repair-friendly rescans.
- * Cycle 4 (import-docs):     One `is_original` SQLite doc per collected markdown file (verbatim body).
- * Cycle 5 (write):           Upsert documents.
- * Cycle 6 (ast-facts):       Deterministic AST indexing via ts-morph (TS/JS) and tree-sitter (Go,
- *                             and any other supported language) → kg_* tables.
- *                             TS/JS: runs when tsconfig.json found. Go: runs when go.mod found.
+ * Cycle 1 (read-inputs):    Discover markdown/text sources under working dir (recursive).
+ * Cycle 2 (code-index):     Deterministic AST indexing (ts-morph for TS/JS, tree-sitter for Go/other)
+ *                            → kg_* tables, followed by per-file LLM semantic extraction (code-facts)
+ *                            as an enrichment pass when an LLM provider is configured.
+ * Cycle 3 (document-facts): Deterministic sentence segmentation of source markdown → `facts` table.
+ *                            Each segment's triplet is anchored to the nearest exported AST symbol via
+ *                            kg_nodes_fts FTS lookup (subject relatesTo astNode), falling back to a
+ *                            placeholder triplet when no match is found.
+ * Cycle 4 (import-docs):    One `is_original` SQLite doc per collected markdown file (verbatim body).
+ * Cycle 5 (write):          Upsert documents.
  *
  * Reuses progress reporting and checkpoint patterns from publish-cli.ts.
  */
@@ -24,7 +24,7 @@ import {
   TreeSitterIndexer,
   TREE_SITTER_SKIP_DIRS,
 } from '../tools/tree-sitter-indexer'
-import { promoteAstToFactsTable, promoteAstToSemanticGraph } from '../tools/ast-promote'
+import { promoteAstToFactsTable } from '../tools/ast-promote'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import readline from 'node:readline'
@@ -69,15 +69,14 @@ import {
   assessTopicCoverage,
   summariseCoverage,
 } from './init-topic-coverage'
-import { createLLMProviderFromConfig, readKbConfig, resolveGraphEnabled } from './kb-config'
+import { createLLMProviderFromConfig, readKbConfig } from './kb-config'
 
 export type InitCycle =
   | 'read-inputs'
+  | 'code-index'
   | 'document-facts'
-  | 'code-facts'
   | 'import-docs'
   | 'write'
-  | 'ast-facts'
 export type InitTopic =
   | 'project-overview'
   | 'install-setup'
@@ -351,11 +350,10 @@ export function parseInitCommand(args: string[]): InitOptions {
     : undefined
   const validCycles: InitCycle[] = [
     'read-inputs',
+    'code-index',
     'document-facts',
-    'code-facts',
     'import-docs',
     'write',
-    'ast-facts',
   ]
   if (rawStopAfter && (!stopAfter || !validCycles.includes(stopAfter))) {
     throw new Error(`Invalid --stop-after. Use: ${validCycles.join('|')}`)
@@ -453,9 +451,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const counter =
     rawProvider && options.collector ? new TokenCountingProvider(rawProvider) : undefined
   const provider = counter ?? rawProvider
-  const kbConfig = await readKbConfig()
-  const graphEnabled = resolveGraphEnabled(kbConfig)
-
   let checkpoint: InitCheckpoint = resumedCheckpoint ?? {
     version: 3,
     updatedAt: dayjs().toISOString(),
@@ -529,6 +524,171 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     const totalSourceFileCount = Object.keys(context.sourceFiles).length
     const unchangedSourceFileCount = totalSourceFileCount - Object.keys(changedSourceFiles).length
 
+    if (!checkpoint.completedCycles.includes('code-index')) {
+      progress.start('code-index', 'indexing code graph (AST)…')
+      try {
+        const dbPath = path.join(baseDir, '.kb-index.sqlite')
+        const currentAstFiles = await collectAstFileHashes(cwd)
+        const totalAstFileCount = Object.keys(currentAstFiles).length
+        const candidateAstFiles = options.rescan
+          ? await selectChangedAstFiles(baseDir, currentAstFiles)
+          : Object.keys(currentAstFiles)
+        const unchangedAstFileCount = totalAstFileCount - candidateAstFiles.length
+        if (options.rescan && candidateAstFiles.length === 0) {
+          await writeAstFilesManifest(baseDir, currentAstFiles)
+        } else {
+          let totalFiles = 0
+          let totalSymbols = 0
+          let totalEdges = 0
+          let totalErrors = 0
+          let tsStatsSummary:
+            | { files: number; skipped: number; symbols: number; edges: number }
+            | undefined
+          let treeStatsSummary:
+            | { files: number; skipped: number; symbols: number; edges: number }
+            | undefined
+          const tsCandidateFiles = candidateAstFiles.filter(file => {
+            const ext = path.extname(file).toLowerCase()
+            return ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)
+          })
+          const totalTsFileCount = Object.keys(currentAstFiles).filter(file => {
+            const ext = path.extname(file).toLowerCase()
+            return ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)
+          }).length
+          const unchangedTsFileCount = totalTsFileCount - tsCandidateFiles.length
+
+          const tsconfigPath = path.join(cwd, 'tsconfig.json')
+          if (existsSync(tsconfigPath) && tsCandidateFiles.length > 0) {
+            const indexer = new TsMorphIndexer(dbPath)
+            const stats = await indexer.indexProject(cwd, tsconfigPath, {
+              candidateFiles: tsCandidateFiles,
+              onProgress: s => {
+                progress.update(
+                  'code-index',
+                  `ts/js ${s.files}/${tsCandidateFiles.length} changed, ${unchangedTsFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
+                )
+              },
+            })
+            indexer.close()
+            tsStatsSummary = stats
+            totalFiles += stats.files
+            totalSymbols += stats.symbols
+            totalEdges += stats.edges
+            totalErrors += stats.errors
+          }
+
+          const treeCandidateFiles = existsSync(tsconfigPath)
+            ? candidateAstFiles.filter(file => {
+                const ext = path.extname(file).toLowerCase()
+                return !['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)
+              })
+            : candidateAstFiles
+          const totalTreeFileCount = totalAstFileCount - totalTsFileCount
+          const unchangedTreeFileCount = totalTreeFileCount - treeCandidateFiles.length
+
+          const treeIndexer = new TreeSitterIndexer(dbPath)
+          const treeStats = await treeIndexer.indexProject(cwd, {
+            candidateFiles: treeCandidateFiles,
+            onProgress: s => {
+              progress.update(
+                'code-index',
+                `tree-sitter ${s.files}/${treeCandidateFiles.length} changed, ${unchangedTreeFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
+              )
+            },
+          })
+          treeIndexer.close()
+          treeStatsSummary = treeStats
+          totalFiles += treeStats.files
+          totalSymbols += treeStats.symbols
+          totalEdges += treeStats.edges
+          totalErrors += treeStats.errors
+
+          let promoteNote = ''
+          const factIndexer = new SqliteKbIndexer({ dbPath })
+          try {
+            const db = new Database(dbPath)
+            const factStats = promoteAstToFactsTable(db, factIndexer)
+            db.close()
+            promoteNote += `, ${factStats.inserted} facts inserted, ${factStats.updated} updated, ${factStats.tombstoned} tombstoned`
+          } finally {
+            factIndexer.close()
+          }
+
+          await writeAstFilesManifest(baseDir, currentAstFiles)
+          const astParts: string[] = []
+          if (tsStatsSummary) {
+            astParts.push(
+              `ts/js ${tsStatsSummary.files} changed, ${unchangedTsFileCount} unchanged`
+            )
+          }
+          if (treeStatsSummary) {
+            astParts.push(
+              `tree-sitter ${treeStatsSummary.files} changed, ${unchangedTreeFileCount} unchanged`
+            )
+          }
+          progress.update(
+            'code-index',
+            `${astParts.join(' | ') || `${totalFiles} changed, ${unchangedAstFileCount} unchanged`} | ${totalSymbols} symbols, ${totalEdges} edges${promoteNote}${totalErrors > 0 ? `, ${totalErrors} errors` : ''}`
+          )
+        }
+
+        // LLM semantic extraction pass (code-facts) as part of the same phase
+        const codeFiles = context.codeFiles ?? {}
+        if (provider && Object.keys(codeFiles).length > 0) {
+          const manifest = await readCodeFactsManifest(baseDir)
+          const candidateFiles = options.rescan
+            ? (diffChangedFiles(codeFiles, manifest) ?? Object.keys(codeFiles))
+            : undefined
+          const changedCodeFileCount = candidateFiles?.length ?? Object.keys(codeFiles).length
+          const unchangedCodeFileCount = Object.keys(codeFiles).length - changedCodeFileCount
+          if (options.rescan) {
+            options.questionIO?.write?.(
+              `[${kbCommandLabel(options)}] code-index LLM: ${changedCodeFileCount} changed, ${unchangedCodeFileCount} unchanged source file(s).\n`
+            )
+          }
+          try {
+            const codeFactStats = await ingestCodeFilesAsFacts({
+              baseDir,
+              llm: provider,
+              codeFiles,
+              candidateFiles,
+              onProgress: snapshot => {
+                progress.update(
+                  'code-index',
+                  `LLM ${snapshot.filesCompleted}/${snapshot.filesConsidered} changed, ${unchangedCodeFileCount} unchanged | ${snapshot.factsInserted + snapshot.factsSuperseded} changed, ${snapshot.factsTombstoned} tombstoned`
+                )
+                options.questionIO?.write?.(
+                  `[${progressPrefix(options)}:action] code-index LLM files ${snapshot.filesCompleted}/${snapshot.filesConsidered} (${snapshot.filesRemaining} left) | processed ${snapshot.filesProcessed}, skipped ${snapshot.filesSkippedNoExports + snapshot.filesSkippedTooSmall}, failed ${snapshot.filesFailed} | facts: +${snapshot.factsInserted} inserted, ${snapshot.factsSuperseded} superseded, ${snapshot.factsTombstoned} tombstoned, ${snapshot.factsUnchanged} unchanged${snapshot.currentFile ? ` | ${snapshot.currentFile}` : ''}\n`
+                )
+              },
+            })
+            await writeCodeFactsManifest(baseDir, buildHashesFor(codeFiles))
+            progress.update(
+              'code-index',
+              options.rescan
+                ? `LLM: ${codeFactStats.filesProcessed} changed, ${unchangedCodeFileCount} unchanged | ${codeFactStats.factsInserted} new facts`
+                : `LLM: ${codeFactStats.factsInserted} new facts across ${codeFactStats.filesProcessed}/${codeFactStats.filesConsidered} file(s)`
+            )
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            options.questionIO?.write?.(
+              `[${kbCommandLabel(options)}] code-index LLM pass failed: ${message}. Continuing.\n`
+            )
+          }
+        }
+
+        await persist({ completedCycles: ['code-index'] })
+        progress.finish('code-index', 'done')
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        await persist({ completedCycles: ['code-index'] })
+        progress.finish('code-index', `failed (${message.slice(0, 80)})`)
+      }
+      if (options.stopAfter === 'code-index') throw new InitPausedError('code-index')
+    } else {
+      progress.finish('code-index', 'reused from checkpoint')
+    }
+
     if (!checkpoint.completedCycles.includes('document-facts')) {
       const hasAnySourceFiles = Object.keys(context.sourceFiles).length > 0
       if (!hasAnySourceFiles) {
@@ -542,6 +702,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         const ingestStats = await ingestSourceMarkdownFilesAsFacts({
           baseDir,
           files: changedSourceFiles,
+          matchAstNodes: true,
         })
         endScanFacts()
         await persist({
@@ -557,70 +718,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       if (options.stopAfter === 'document-facts') throw new InitPausedError('document-facts')
     } else {
       progress.finish('document-facts', 'reused from checkpoint')
-    }
-
-    if (!checkpoint.completedCycles.includes('code-facts')) {
-      progress.start('code-facts', 'extracting semantic facts from source code…')
-      const endCodeFacts = makeCycleTimer('code-facts', provider, options.collector, counter)
-      const codeFiles = context.codeFiles ?? {}
-      if (!provider) {
-        endCodeFacts()
-        await persist({ completedCycles: ['code-facts'] })
-        progress.finish('code-facts', 'skipped (no LLM provider configured)')
-      } else if (Object.keys(codeFiles).length === 0) {
-        endCodeFacts()
-        await persist({ completedCycles: ['code-facts'] })
-        progress.finish('code-facts', 'skipped (no source files crawled)')
-      } else {
-        const manifest = await readCodeFactsManifest(baseDir)
-        const candidateFiles = options.rescan
-          ? (diffChangedFiles(codeFiles, manifest) ?? Object.keys(codeFiles))
-          : undefined
-        const changedCodeFileCount = candidateFiles?.length ?? Object.keys(codeFiles).length
-        const unchangedCodeFileCount = Object.keys(codeFiles).length - changedCodeFileCount
-        if (options.rescan) {
-          options.questionIO?.write?.(
-            `[${kbCommandLabel(options)}] code-facts ${changedCodeFileCount} changed, ${unchangedCodeFileCount} unchanged source file(s).\n`
-          )
-        }
-        try {
-          const codeFactStats = await ingestCodeFilesAsFacts({
-            baseDir,
-            llm: provider,
-            codeFiles,
-            candidateFiles,
-            onProgress: snapshot => {
-              progress.update(
-                'code-facts',
-                `${snapshot.filesCompleted}/${snapshot.filesConsidered} changed, ${unchangedCodeFileCount} unchanged file(s) | ${snapshot.factsInserted + snapshot.factsSuperseded} changed, ${snapshot.factsTombstoned} tombstoned`
-              )
-              options.questionIO?.write?.(
-                `[${progressPrefix(options)}:action] code-facts files ${snapshot.filesCompleted}/${snapshot.filesConsidered} (${snapshot.filesRemaining} left) | processed ${snapshot.filesProcessed}, skipped ${snapshot.filesSkippedNoExports + snapshot.filesSkippedTooSmall}, failed ${snapshot.filesFailed} | facts: +${snapshot.factsInserted} inserted, ${snapshot.factsSuperseded} superseded, ${snapshot.factsTombstoned} tombstoned, ${snapshot.factsUnchanged} unchanged${snapshot.currentFile ? ` | ${snapshot.currentFile}` : ''}\n`
-              )
-            },
-          })
-          await writeCodeFactsManifest(baseDir, buildHashesFor(codeFiles))
-          endCodeFacts()
-          await persist({ completedCycles: ['code-facts'] })
-          progress.finish(
-            'code-facts',
-            options.rescan
-              ? `${codeFactStats.filesProcessed} changed, ${unchangedCodeFileCount} unchanged file(s) | ${codeFactStats.factsInserted} new, ${codeFactStats.factsSuperseded} superseded, ${codeFactStats.factsTombstoned} tombstoned`
-              : `${codeFactStats.factsInserted} new, ${codeFactStats.factsSuperseded} superseded, ${codeFactStats.factsTombstoned} tombstoned across ${codeFactStats.filesProcessed}/${codeFactStats.filesConsidered} file(s)`
-          )
-        } catch (err) {
-          endCodeFacts()
-          const message = err instanceof Error ? err.message : String(err)
-          options.questionIO?.write?.(
-            `[${kbCommandLabel(options)}] code-facts cycle failed: ${message}. Continuing without code-derived facts.\n`
-          )
-          await persist({ completedCycles: ['code-facts'] })
-          progress.finish('code-facts', `failed (${message.slice(0, 80)})`)
-        }
-      }
-      if (options.stopAfter === 'code-facts') throw new InitPausedError('code-facts')
-    } else {
-      progress.finish('code-facts', 'reused from checkpoint')
     }
 
     if (!checkpoint.completedCycles.includes('import-docs')) {
@@ -710,134 +807,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       if (options.stopAfter === 'write') throw new InitPausedError('write')
     } else {
       progress.finish('write', 'reused from checkpoint')
-    }
-
-
-
-    if (!checkpoint.completedCycles.includes('ast-facts')) {
-      progress.start('ast-facts', 'indexing code graph (AST)…')
-      try {
-        const dbPath = path.join(baseDir, '.kb-index.sqlite')
-        const currentAstFiles = await collectAstFileHashes(cwd)
-        const totalAstFileCount = Object.keys(currentAstFiles).length
-        const candidateAstFiles = options.rescan
-          ? await selectChangedAstFiles(baseDir, currentAstFiles)
-          : Object.keys(currentAstFiles)
-        const unchangedAstFileCount = totalAstFileCount - candidateAstFiles.length
-        if (options.rescan && candidateAstFiles.length === 0) {
-          await writeAstFilesManifest(baseDir, currentAstFiles)
-          await persist({ completedCycles: ['ast-facts'] })
-          progress.finish('ast-facts', `0 changed, ${unchangedAstFileCount} unchanged files`)
-        } else {
-        let totalFiles = 0
-        let totalSymbols = 0
-        let totalEdges = 0
-        let totalErrors = 0
-        let tsStatsSummary:
-          | { files: number; skipped: number; symbols: number; edges: number }
-          | undefined
-        let treeStatsSummary:
-          | { files: number; skipped: number; symbols: number; edges: number }
-          | undefined
-        const tsCandidateFiles = candidateAstFiles.filter(file => {
-          const ext = path.extname(file).toLowerCase()
-          return ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)
-        })
-        const totalTsFileCount = Object.keys(currentAstFiles).filter(file => {
-          const ext = path.extname(file).toLowerCase()
-          return ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)
-        }).length
-        const unchangedTsFileCount = totalTsFileCount - tsCandidateFiles.length
-
-        // TS/JS: ts-morph gives richer analysis (type-aware imports, implements edges)
-        const tsconfigPath = path.join(cwd, 'tsconfig.json')
-        if (existsSync(tsconfigPath) && tsCandidateFiles.length > 0) {
-          const indexer = new TsMorphIndexer(dbPath)
-          const stats = await indexer.indexProject(cwd, tsconfigPath, {
-            candidateFiles: tsCandidateFiles,
-            onProgress: s => {
-              progress.update(
-                'ast-facts',
-                `ts/js ${s.files}/${tsCandidateFiles.length} changed, ${unchangedTsFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
-              )
-            },
-          })
-          indexer.close()
-          tsStatsSummary = stats
-          totalFiles += stats.files
-          totalSymbols += stats.symbols
-          totalEdges += stats.edges
-          totalErrors += stats.errors
-        }
-
-        const treeCandidateFiles = existsSync(tsconfigPath)
-          ? candidateAstFiles.filter(file => {
-              const ext = path.extname(file).toLowerCase()
-              return !['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)
-            })
-          : candidateAstFiles
-        const totalTreeFileCount = totalAstFileCount - totalTsFileCount
-        const unchangedTreeFileCount = totalTreeFileCount - treeCandidateFiles.length
-
-        // Tree-sitter/text fallback for changed files only.
-        const indexer = new TreeSitterIndexer(dbPath)
-        const stats = await indexer.indexProject(cwd, {
-          candidateFiles: treeCandidateFiles,
-          onProgress: s => {
-            progress.update(
-              'ast-facts',
-              `tree-sitter ${s.files}/${treeCandidateFiles.length} changed, ${unchangedTreeFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
-            )
-          },
-        })
-        indexer.close()
-        treeStatsSummary = stats
-        totalFiles += stats.files
-        totalSymbols += stats.symbols
-        totalEdges += stats.edges
-        totalErrors += stats.errors
-
-        let promoteNote = ''
-        const factIndexer = new SqliteKbIndexer({ dbPath })
-        try {
-          const db = new Database(dbPath)
-          if (graphEnabled) {
-            const promoted = promoteAstToSemanticGraph(db)
-            promoteNote = `, ${promoted.entities} entities, ${promoted.relationships} rels`
-          }
-          const factStats = promoteAstToFactsTable(db, factIndexer)
-          db.close()
-          promoteNote += `, ${factStats.inserted} facts inserted, ${factStats.updated} updated, ${factStats.tombstoned} tombstoned`
-        } finally {
-          factIndexer.close()
-        }
-
-        await writeAstFilesManifest(baseDir, currentAstFiles)
-        await persist({ completedCycles: ['ast-facts'] })
-        const astParts: string[] = []
-        if (tsStatsSummary) {
-          astParts.push(
-            `ts/js ${tsStatsSummary.files} changed, ${unchangedTsFileCount} unchanged`
-          )
-        }
-        if (treeStatsSummary) {
-          astParts.push(
-            `tree-sitter ${treeStatsSummary.files} changed, ${unchangedTreeFileCount} unchanged`
-          )
-        }
-        progress.finish(
-          'ast-facts',
-          `${astParts.join(' | ') || `${totalFiles} changed, ${unchangedAstFileCount} unchanged`} | ${totalSymbols} symbols, ${totalEdges} edges${promoteNote}${totalErrors > 0 ? `, ${totalErrors} errors` : ''}`
-        )
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        await persist({ completedCycles: ['ast-facts'] })
-        progress.finish('ast-facts', `failed (${message.slice(0, 80)})`)
-      }
-      if (options.stopAfter === 'ast-facts') throw new InitPausedError('ast-facts')
-    } else {
-      progress.finish('ast-facts', 'reused from checkpoint')
     }
 
     const finalCoverageSummary = checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
@@ -1035,11 +1004,11 @@ async function collectAstFileHashes(cwd: string): Promise<Record<string, string>
   return astFiles
 }
 
-// Extensions handled natively by the ast-facts (tree-sitter) indexer — excluded from code-facts.
+// Extensions handled by the AST indexer (tree-sitter/ts-morph) — excluded from LLM extraction.
 const AST_FACTS_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.go'])
 
-// code-facts (LLM) only runs for languages not supported by the AST indexer (tree-sitter/ts-morph).
-// TypeScript/Go are handled by ast-facts → promoteAstToFactsTable instead.
+// LLM extraction only runs for languages not supported by the AST indexer.
+// TypeScript/Go are handled by the AST indexer → promoteAstToFactsTable instead.
 export const SOURCE_CODE_EXTENSIONS = [
   '.py',
   '.rb',
@@ -1110,7 +1079,7 @@ export async function crawlSourceCode(cwd: string): Promise<Record<string, strin
         await walk(path.join(dir, entry.name))
       } else {
         const ext = path.extname(entry.name).toLowerCase()
-        if (AST_FACTS_EXTENSIONS.has(ext)) continue // handled by ast-facts indexer
+        if (AST_FACTS_EXTENSIONS.has(ext)) continue // handled by AST indexer
         if (!SOURCE_CODE_EXTENSIONS.includes(ext)) continue
         const fullPath = path.join(dir, entry.name)
         try {
@@ -1423,16 +1392,13 @@ async function readCheckpoint(filePath: string): Promise<InitCheckpoint | undefi
 
 const VALID_V3_CYCLES = new Set<InitCycle>([
   'read-inputs',
+  'code-index',
   'document-facts',
-  'code-facts',
   'import-docs',
   'write',
-  'ast-facts',
 ])
 
-/** Older checkpoints/flags may list the document-facts cycle under previous ids. */
 function normalizeStoredCycleId(cycle: string): InitCycle | null {
-  if (cycle === 'scan-facts' || cycle === 'markdown-facts') return 'document-facts'
   if (VALID_V3_CYCLES.has(cycle as InitCycle)) return cycle as InitCycle
   return null
 }

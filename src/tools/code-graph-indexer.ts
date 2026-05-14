@@ -246,6 +246,8 @@ export class TsMorphIndexer {
         const sid = symbolId(rel, exportName)
         const subkind = decl.getKindName()
 
+        const rawText = decl.getText()
+        const sourceText = rawText.length > 1500 ? `${rawText.slice(0, 1497)}…` : rawText
         insertNode.run({
           id: sid,
           kind: 'symbol',
@@ -260,7 +262,7 @@ export class TsMorphIndexer {
           exported: 1,
           source: SOURCE,
           confidence: 0.99,
-          propsJson: '{}',
+          propsJson: JSON.stringify({ source_text: sourceText }),
           contentHash: null,
         })
         insertFts.run({

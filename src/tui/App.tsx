@@ -16,10 +16,9 @@ import type { KbConfig } from '../cli/kb-config.js'
 import {
   createLLMProviderFromConfig,
   resolveConversationalChatEnabled,
-  resolveGraphEnabled,
 } from '../cli/kb-config.js'
-import { KbGraphWriter } from '../tools/kb-graph-writer.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
+import { classifyChatReadPromptKind, shouldStartChatPending } from './chat-read-kind.js'
 import { classifyChatIOLine } from './chat-io-classify.js'
 import { HistoryPane } from './components/HistoryPane.js'
 import { InputBar } from './components/InputBar.js'
@@ -89,6 +88,9 @@ export function App({ config, startupNotices = [] }: Props) {
 
   const chatInputResolverRef = useRef<((v: string | null) => void) | null>(null)
   const chatPendingEntryIdRef = useRef<string | null>(null)
+  const chatResponseIdRef = useRef<string | null>(null)
+  const chatResponseBufRef = useRef<string>('')
+  const chatReadKindRef = useRef<'chat' | 'command'>('chat')
   const chatSessionIdRef = useRef<string | undefined>(undefined)
   const storageDirRef = useRef<string>('')
   const entryCounterRef = useRef(0)
@@ -130,6 +132,13 @@ export function App({ config, startupNotices = [] }: Props) {
     chatPendingEntryIdRef.current = null
     removeEntry(pendingId)
   }, [removeEntry])
+
+  const finalizeChatResponse = useCallback(() => {
+    if (!chatResponseIdRef.current) return
+    updateEntry(chatResponseIdRef.current, { loading: false })
+    chatResponseIdRef.current = null
+    chatResponseBufRef.current = ''
+  }, [updateEntry])
 
   const refreshBase = useCallback(() => {
     resolveEffectiveBaseDir()
@@ -173,21 +182,21 @@ export function App({ config, startupNotices = [] }: Props) {
 
       const storageDir = storageDirRef.current
       const toolExecutor = createKBToolsRegistry(storageDir, config, { taskProvider: llmProvider })
-      const graphWriter = resolveGraphEnabled(config)
-        ? new KbGraphWriter(KbGraphWriter.dbPathForBase(storageDir))
-        : undefined
 
       setChatInputHint('')
 
       const chatIO: ChatIO = {
         async read(prompt: string): Promise<string | null> {
+          // Commit any in-flight response before we wait for user input.
+          finalizeChatResponse()
           const normalized = prompt.replace(/\r/g, '').trim()
+          const readKind = classifyChatReadPromptKind(prompt)
           const firstLine =
             normalized
               .split('\n')
               .find(l => l.trim().length > 0)
               ?.trim() ?? ''
-          const isIdleReadPrompt = /^you\s*>?\s*$/i.test(firstLine)
+          const isIdleReadPrompt = readKind === 'chat'
           if (normalized.length > 0 && !isIdleReadPrompt) {
             const oneLine = normalized.replace(/\s+/g, ' ').trim()
             const clipped = oneLine.length > 500 ? `${oneLine.slice(0, 497)}…` : oneLine
@@ -195,9 +204,11 @@ export function App({ config, startupNotices = [] }: Props) {
             const hint = firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine
             setChatInputHint(hint)
           }
+          chatReadKindRef.current = readKind
           return new Promise<string | null>(resolve => {
             chatInputResolverRef.current = (value: string | null) => {
               chatInputResolverRef.current = null
+              chatReadKindRef.current = 'chat'
               setChatInputHint('')
               resolve(value)
             }
@@ -207,17 +218,29 @@ export function App({ config, startupNotices = [] }: Props) {
           stopChatPending()
           const { category, content } = classifyChatIOLine(line)
           if (category === 'meta') {
+            // Metadata (retrieval>, evidence>, sources>, …) is always immediate and permanent.
             addEntry({ type: 'chat-meta', content: line })
           } else if (category === 'assistant') {
-            addEntry({ type: 'chat-assistant', content })
+            // Content accumulates in a single loading entry per response turn.
+            // The spinner shows the last few lines in grey; full text commits on read().
+            if (!chatResponseIdRef.current) {
+              chatResponseBufRef.current = content
+              chatResponseIdRef.current = addEntry({ type: 'chat-assistant', content, loading: true })
+            } else {
+              const buf = `${chatResponseBufRef.current}\n${content}`
+              chatResponseBufRef.current = buf
+              updateEntry(chatResponseIdRef.current, { content: buf })
+            }
           }
           // 'skip': blank line — do nothing
         },
         error(line: string) {
+          finalizeChatResponse()
           stopChatPending()
           addEntry({ type: 'error', content: line })
         },
         setProgressLine(line: string | null) {
+          if (line) finalizeChatResponse()
           setProgressLine(line?.trimEnd() || null)
         },
       }
@@ -227,7 +250,6 @@ export function App({ config, startupNotices = [] }: Props) {
           llmProvider,
           toolExecutor,
           mode: 'tui',
-          graphWriter,
           kbStorageDir: storageDir,
           kbConfig: config,
           conversationalRetrieval: resolveConversationalChatEnabled(config),
@@ -239,11 +261,13 @@ export function App({ config, startupNotices = [] }: Props) {
         chatIO
       )
         .then(() => {
+          finalizeChatResponse()
           stopChatPending()
           setChatInputHint('')
           exit()
         })
         .catch(err => {
+          finalizeChatResponse()
           stopChatPending()
           setChatInputHint('')
           const message = err instanceof Error ? err.message : String(err)
@@ -253,7 +277,7 @@ export function App({ config, startupNotices = [] }: Props) {
           startChatSession(opts)
         })
     },
-    [config, addEntry, stopChatPending, refreshBase, exit]
+    [config, addEntry, updateEntry, stopChatPending, finalizeChatResponse, refreshBase, exit]
   )
 
   // Start chat session once after base dir resolves
@@ -466,11 +490,13 @@ export function App({ config, startupNotices = [] }: Props) {
 
       // ── Everything else → chat session (LLM queries, /init, /scan, /docs generate) ──
       addEntry({ type: 'chat-you', content: trimmed })
-      // Only show "thinking..." for LLM turns (plain text), not for slash sub-commands
-      if (!isSlash) startChatPending()
+      if (shouldStartChatPending({ isSlash, readKind: chatReadKindRef.current })) {
+        startChatPending()
+      }
       const resolver = chatInputResolverRef.current
       if (resolver) {
         chatInputResolverRef.current = null
+        chatReadKindRef.current = 'chat'
         resolver(trimmed)
       }
     },

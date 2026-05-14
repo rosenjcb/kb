@@ -4,10 +4,9 @@ import { ReportWriter, defaultLogsDir, estimateCost } from '../core/telemetry'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message, ToolDefinition, ToolResultBlock } from '../core/types'
 import { loadPrompt } from '../prompts/loader'
-import { CodeGraphStore } from '../tools/code-graph-store'
-import { expandQueryWithGraph } from '../tools/graph-query-expansion'
+import Database from 'better-sqlite3'
+import { expandQueryWithGraph, kbIndexDbPath } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
-import { KbGraphWriter } from '../tools/kb-graph-writer'
 import { type Printer, createPrinter } from '../ui/printer'
 import { resolveEffectiveBaseDir } from './base-selection'
 import {
@@ -30,7 +29,6 @@ export interface ChatSessionDeps {
   llmProvider: LLMProvider
   toolExecutor: ToolExecutor
   mode?: CmdMode
-  graphWriter?: KbGraphWriter
   /** KB storage directory (`.kb` root). Resolved from cwd when omitted. */
   kbStorageDir?: string
   /** When omitted, `readKbConfig()` is used on first `/docs generate`. */
@@ -355,14 +353,6 @@ export async function runChatSession(
 
   printer.chatAssistant('Type a question, or /help for commands.')
 
-  if (deps.graphWriter) {
-    try {
-      await deps.graphWriter.open()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      io.error(`[kb-graph] chat graph unavailable: ${message}`)
-    }
-  }
 
   try {
     while (true) {
@@ -501,28 +491,23 @@ export async function runChatSession(
             }
         const isAllFacts = resolveFactRetrievalMethod(deps.kbConfig ?? {}) === 'all_facts'
         let expandedQuery = resolvedTurn.retrievalQuery
-        if (deps.graphWriter && !isAllFacts) {
-          const codeStore = deps.kbStorageDir
-            ? new CodeGraphStore(KbGraphWriter.dbPathForBase(deps.kbStorageDir))
-            : undefined
-          try {
-            expandedQuery = await expandQueryWithGraph(
-              resolvedTurn.retrievalQuery,
-              deps.graphWriter,
-              codeStore
-            )
-          } finally {
-            codeStore?.close()
-          }
-        }
-
         let graphRelationBlock: string | undefined
-        if (deps.graphWriter && !isAllFacts) {
+        if (deps.kbStorageDir && !isAllFacts) {
           try {
-            const block = await formatGraphRelationBlockFromQuestion(deps.graphWriter, input)
-            if (block) graphRelationBlock = block
+            const db = new Database(kbIndexDbPath(deps.kbStorageDir), { readonly: true })
+            try {
+              expandedQuery = expandQueryWithGraph(resolvedTurn.retrievalQuery, db)
+              try {
+                const block = formatGraphRelationBlockFromQuestion(db, input)
+                if (block) graphRelationBlock = block
+              } catch {
+                // Relation-path block is best-effort.
+              }
+            } finally {
+              db.close()
+            }
           } catch {
-            // Relation-path block is best-effort.
+            // graph expansion is best-effort
           }
         }
         const sessionExcludeIds = conversationState.sessionFactPool.map(f => f.id)
@@ -766,9 +751,6 @@ export async function runChatSession(
     }
   } finally {
     await flushSessionLog(sessionStats).catch(() => {})
-    if (deps.graphWriter) {
-      await deps.graphWriter.close().catch(() => {})
-    }
     io.close?.()
   }
 }

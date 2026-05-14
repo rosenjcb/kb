@@ -13,9 +13,9 @@ import {
   defaultLogsDir,
   estimateCost,
 } from '../core/telemetry'
-import { expandQueryWithGraph } from '../tools/graph-query-expansion'
+import Database from 'better-sqlite3'
+import { expandQueryWithGraph, kbIndexDbPath } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
-import { KbGraphWriter } from '../tools/kb-graph-writer'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
 import { createPrinter } from '../ui/printer'
 import {
@@ -39,7 +39,6 @@ import {
   formatPrerequisiteError,
 } from './cli-prerequisites'
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from './cmd-ref'
-import { CodeGraphStore } from '../tools/code-graph-store'
 import { printConfigHelp, runConfigCommand } from './config-cli'
 import {
   DocsDeleteError,
@@ -84,7 +83,6 @@ import {
   ensureDefaultConfig,
   persistInferredLLMProvider,
   resolveFactRetrievalMethod,
-  resolveGraphEnabled,
 } from './kb-config'
 import type { KbConfig } from './kb-config'
 import { printLogsHelp, runLogsCommand } from './logs-cli'
@@ -182,7 +180,7 @@ function printInitHelp(mode: CmdMode = 'cli'): string {
     '  --non-interactive              Skip interview prompts when possible',
     '  --detach                       Pause after the current cycle and save a checkpoint',
     '  --resume                       Resume from the latest init checkpoint',
-    '  --stop-after <cycle>           Stop after read-inputs|document-facts|code-facts|import-docs|write|ast-facts',
+    '  --stop-after <cycle>           Stop after read-inputs|code-index|document-facts|import-docs|write',
     '  --debug                        Emit debug logging and telemetry details',
     '',
     'Notes:',
@@ -810,24 +808,18 @@ export async function runMainWithOutput(
       } finally {
         printer.stopSpinner()
       }
-      if (parsed.envelope.intent === 'query_truth' && resolveGraphEnabled(config) && !parsed.allFacts) {
+      if (parsed.envelope.intent === 'query_truth' && !parsed.allFacts) {
         const payload = parsed.envelope.payload as { query?: string }
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
         if (originalQuery) {
           try {
-            const graphWriter = new KbGraphWriter(KbGraphWriter.dbPathForBase(intentBaseDir))
-            await graphWriter.open()
+            const db = new Database(kbIndexDbPath(intentBaseDir), { readonly: true })
             try {
-              const codeStore = new CodeGraphStore(KbGraphWriter.dbPathForBase(intentBaseDir))
-              try {
-                payload.query = await expandQueryWithGraph(originalQuery, graphWriter, codeStore)
-              } finally {
-                codeStore.close()
-              }
+              payload.query = expandQueryWithGraph(originalQuery, db)
               for (const qRel of [preRewriteQueryTruth, originalQuery]) {
                 if (!qRel) continue
                 try {
-                  const block = await formatGraphRelationBlockFromQuestion(graphWriter, qRel)
+                  const block = formatGraphRelationBlockFromQuestion(db, qRel)
                   if (block) {
                     graphRelationContext = block
                     break
@@ -837,7 +829,7 @@ export async function runMainWithOutput(
                 }
               }
             } finally {
-              await graphWriter.close()
+              db.close()
             }
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
@@ -862,7 +854,6 @@ export async function runMainWithOutput(
       // LLM-driven graph RAG: extract entities from query, re-rank retrieved facts by graph connectivity.
       if (
         parsed.envelope.intent === 'query_truth' &&
-        resolveGraphEnabled(config) &&
         llmProvider &&
         isReadFactsResult(aligned) &&
         !parsed.allFacts
@@ -871,24 +862,17 @@ export async function runMainWithOutput(
           const rerankerQuery = preRewriteQueryTruth
           const entities = await llmExtractQueryEntities(rerankerQuery, llmProvider)
           if (entities.length > 0) {
-            const rerankerGraph = new KbGraphWriter(KbGraphWriter.dbPathForBase(intentBaseDir))
-            await rerankerGraph.open()
+            const db = new Database(kbIndexDbPath(intentBaseDir), { readonly: true })
             try {
-              const codeStore = new CodeGraphStore(KbGraphWriter.dbPathForBase(intentBaseDir))
-              try {
-                const data = (aligned.data ?? {}) as ReadDocumentsResultData
-                const reranked = await rerankByGraphConnectivity(
-                  Array.isArray(data.results) ? data.results : [],
-                  entities,
-                  rerankerGraph,
-                  codeStore
-                )
-                aligned = { ...aligned, data: { ...data, results: reranked } }
-              } finally {
-                codeStore.close()
-              }
+              const data = (aligned.data ?? {}) as ReadDocumentsResultData
+              const reranked = rerankByGraphConnectivity(
+                Array.isArray(data.results) ? data.results : [],
+                entities,
+                db
+              )
+              aligned = { ...aligned, data: { ...data, results: reranked } }
             } finally {
-              await rerankerGraph.close()
+              db.close()
             }
           }
         } catch {

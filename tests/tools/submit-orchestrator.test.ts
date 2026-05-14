@@ -16,9 +16,6 @@ function makeExecutor(overrides?: Partial<Record<string, unknown>>): ToolExecuto
     execute: vi.fn(async (toolUse: { name: string }) => {
       if (overrides && toolUse.name in overrides) return overrides[toolUse.name]
       if (toolUse.name === 'upsert_fact') return { id: 'fact-1234', operation: 'inserted' }
-      if (toolUse.name === 'upsert_graph_from_text') {
-        return { enabled: true, entities: 1, relationships: 1 }
-      }
       return { ok: true }
     }),
   }
@@ -37,18 +34,12 @@ describe('SubmitOrchestrator', () => {
     expect(result.discoveredTarget).toBe(false)
     expect(result.targetDocId).toBe('fact-1234')
     expect(result.operation).toBe('fact_upserted')
-    expect((result.result as { graphSync?: { entities?: number } }).graphSync?.entities).toBe(1)
 
     const upsertCall = (executor.execute as ReturnType<typeof vi.fn>).mock.calls.find(
       (c: unknown[]) => (c[0] as { name?: string })?.name === 'upsert_fact'
     )
     expect(upsertCall?.[0].input.sourceKind).toBe('submit')
     expect(upsertCall?.[0].input.factText).toContain('QueryResearchOrchestrator')
-    expect(
-      (executor.execute as ReturnType<typeof vi.fn>).mock.calls.some(
-        (c: unknown[]) => (c[0] as { name?: string })?.name === 'upsert_graph_from_text'
-      )
-    ).toBe(true)
   })
 
   it('Given domain-like fact, then graph source id is fact id', async () => {
@@ -98,20 +89,16 @@ describe('SubmitOrchestrator', () => {
     expect(upsertCalls[1]?.[0].input.triplet.subject).toBe('TreeSitterIndexer')
   })
 
-  it('graph sync runs exactly once even for multi-fact input', async () => {
+  it('upsert_fact is called exactly once for single-fact input', async () => {
     const executor = makeExecutor()
-    const llm = mockLlm([
-      { subject: 'A', predicate: 'uses', object: 'B' },
-      { subject: 'C', predicate: 'reads', object: 'D' },
-    ])
 
-    const orchestrator = new SubmitOrchestrator(executor, llm)
-    await orchestrator.run({ fact: 'A uses B and C reads D', source: 'consumer' })
+    const orchestrator = new SubmitOrchestrator(executor)
+    await orchestrator.run({ fact: 'A uses B', source: 'consumer' })
 
-    const graphCalls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls.filter(
-      (c: unknown[]) => (c[0] as { name?: string })?.name === 'upsert_graph_from_text'
+    const upsertCalls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c: unknown[]) => (c[0] as { name?: string })?.name === 'upsert_fact'
     )
-    expect(graphCalls).toHaveLength(1)
+    expect(upsertCalls).toHaveLength(1)
   })
 
   it('input with more than 5 sentences is split into multiple LLM chunks', async () => {
@@ -146,23 +133,6 @@ describe('SubmitOrchestrator', () => {
     await expect(orchestrator.run({ fact: '   ', source: 'consumer' })).rejects.toThrow('empty')
   })
 
-  it('Given graph sync still runs after upsert_fact', async () => {
-    const executor: ToolExecutor = {
-      register: vi.fn(),
-      getTools: vi.fn(() => []),
-      execute: vi.fn(async (toolUse: { name: string }) => {
-        if (toolUse.name === 'upsert_fact') return { id: 'general-fact' }
-        if (toolUse.name === 'upsert_graph_from_text') return { enabled: true, entities: 2 }
-        return {}
-      }),
-    }
-
-    const orchestrator = new SubmitOrchestrator(executor)
-    const result = await orchestrator.run({ fact: 'some new fact', source: 'consumer' })
-
-    expect(result.targetDocId).toBe('general-fact')
-    expect((result.result as { graphSync?: { entities?: number } }).graphSync?.entities).toBe(2)
-  })
 })
 
 describe('inferDomainFromFact', () => {

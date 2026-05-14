@@ -8,7 +8,7 @@ export function createUnifiedDiff(
   options: { context?: number } = {}
 ): string {
   const context = options.context ?? 3
-  return createPatch(filePath, before, after, before, after, { context })
+  return createPatch(filePath, before, after, '', '', { context })
 }
 
 export function colorizeUnifiedDiff(patch: string, options: { color?: boolean } = {}): string {

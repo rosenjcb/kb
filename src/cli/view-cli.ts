@@ -295,25 +295,23 @@ function parseTags(raw: string | null): string[] | undefined {
   }
 }
 
+const DOC_PREAMBLE_KEYS = ['ID', 'Type', 'Tags', 'Created', 'Updated', 'Base'] as const
+
 function formatViewHuman(document: QueryResult, base?: string): string {
-  const lines = [`# ${document.metadata.title}`, `ID: ${document.metadata.id}`]
+  const meta: Array<[typeof DOC_PREAMBLE_KEYS[number], string]> = [
+    ['ID', document.metadata.id],
+  ]
+  if (document.metadata.type) meta.push(['Type', document.metadata.type])
+  if (document.metadata.tags?.length) meta.push(['Tags', document.metadata.tags.join(', ')])
+  meta.push(['Created', document.metadata.createdAt])
+  meta.push(['Updated', document.metadata.updatedAt])
+  if (base) meta.push(['Base', base])
 
-  if (document.metadata.type) {
-    lines.push(`Type: ${document.metadata.type}`)
-  }
-
-  if (document.metadata.tags?.length) {
-    lines.push(`Tags: ${document.metadata.tags.join(', ')}`)
-  }
-
-  lines.push(`Created: ${document.metadata.createdAt}`)
-  lines.push(`Updated: ${document.metadata.updatedAt}`)
-
-  if (base) {
-    lines.push(`Base: ${base}`)
-  }
-
-  lines.push('')
+  const lines = [
+    `# ${document.metadata.title}`,
+    ...meta.map(([k, v]) => `${k}: ${v}`),
+    '',
+  ]
 
   return `${lines.join('\n')}\n${stripCanonicalDocumentPreamble(document.content ?? '')}`
 }
@@ -368,31 +366,18 @@ function sanitizeId(value: string): string {
   )
 }
 
+const DOC_PREAMBLE_KEY_PREFIXES = DOC_PREAMBLE_KEYS.map(k => `${k}:`)
+
 function stripCanonicalDocumentPreamble(content: string): string {
-  if (!content.startsWith('# ')) {
-    return content
-  }
+  if (!content.startsWith('# ')) return content
 
   const lines = content.split('\n')
-  let index = 1
+  let i = 1
+  while (i < lines.length && lines[i].trim() === '') i++
+  while (i < lines.length && DOC_PREAMBLE_KEY_PREFIXES.some(p => lines[i].startsWith(p))) i++
+  while (i < lines.length && lines[i].trim() === '') i++
 
-  while (index < lines.length && lines[index].trim() === '') {
-    index += 1
-  }
-
-  while (index < lines.length && isCanonicalMetadataLine(lines[index])) {
-    index += 1
-  }
-
-  while (index < lines.length && lines[index].trim() === '') {
-    index += 1
-  }
-
-  return lines.slice(index).join('\n')
-}
-
-function isCanonicalMetadataLine(line: string): boolean {
-  return line.startsWith('Created:') || line.startsWith('Type:') || line.startsWith('Tags:')
+  return lines.slice(i).join('\n')
 }
 
 function readRequiredValue(args: string[], index: number, flag: string): string {

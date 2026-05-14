@@ -122,6 +122,11 @@ export class FactsDocumentReader {
   }
 
   private toResult(row: FactRow, includeContent: boolean): QueryResult {
+    const content = includeContent
+      ? row.source_kind === 'import_code' && row.source_text
+        ? row.source_text
+        : row.fact_text
+      : undefined
     return {
       metadata: {
         id: row.id,
@@ -132,7 +137,7 @@ export class FactsDocumentReader {
         tags: [row.source_kind, row.lane_id, 'fact'],
         type: 'reference',
       },
-      content: includeContent ? row.fact_text : undefined,
+      content,
     }
   }
 }

@@ -10,7 +10,6 @@ import {
   readKbConfig,
   resolveConversationalChatEnabled,
   resolveFactRetrievalMethod,
-  resolveGraphEnabled,
   resolveLLMProvider,
 } from '../../src/cli/kb-config'
 
@@ -179,14 +178,6 @@ describe('config-cli', () => {
 
     expect(value.output).toBe('false\n')
     expect(saved.graph).toBeUndefined()
-  })
-
-  it('Given KB_GRAPH env override, then it wins over config graph.enabled', () => {
-    process.env.KB_GRAPH = 'false'
-
-    expect(resolveGraphEnabled({ graph: { enabled: true } })).toBe(false)
-
-    delete process.env.KB_GRAPH
   })
 
   it('Given internal chat config or env override, then conversational chat flag resolves without becoming a public config key', () => {

@@ -117,6 +117,8 @@ export interface FactUpsertInput {
   laneId?: FactLaneId
   confidence?: number
   supersedesFactId?: string
+  /** Raw source code snippet for import_code facts — stored and served to the LLM instead of verbose fact_text. */
+  sourceText?: string
 }
 
 export interface FactRow {
@@ -134,6 +136,7 @@ export interface FactRow {
   subject: string
   predicate: string
   object: string
+  source_text: string | null
 }
 
 export interface FactConceptRow {
@@ -234,10 +237,10 @@ const DEFAULT_LANE_ROUTING_THRESHOLDS: LaneRoutingRolloutThresholds = {
 
 /** `facts` row projection — keep aligned with `FactRow`. */
 const FACT_ROW_SELECT =
-  'id, fact_text, normalized_text, source_kind, source_ref, lane_id, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object'
+  'id, fact_text, normalized_text, source_kind, source_ref, lane_id, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text'
 
 const FACT_ROW_SELECT_F =
-  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.lane_id, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at, f.subject, f.predicate, f.object'
+  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.lane_id, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at, f.subject, f.predicate, f.object, f.source_text'
 
 export class SqliteKbIndexer {
   private readonly db: Database.Database
@@ -280,7 +283,7 @@ export class SqliteKbIndexer {
         .prepare(
           `
           UPDATE facts
-          SET fact_text = ?, source_kind = ?, source_ref = ?, lane_id = ?, confidence = ?, updated_at = ?, subject = ?, predicate = ?, object = ?
+          SET fact_text = ?, source_kind = ?, source_ref = ?, lane_id = ?, confidence = ?, updated_at = ?, subject = ?, predicate = ?, object = ?, source_text = ?
           WHERE id = ?
         `
         )
@@ -294,6 +297,7 @@ export class SqliteKbIndexer {
           subject,
           predicate,
           object,
+          input.sourceText ?? null,
           existing.id
         )
       this.rebuildFactIndexes(existing.id, input.factText.trim(), now)
@@ -306,9 +310,9 @@ export class SqliteKbIndexer {
       .prepare(
         `
         INSERT INTO facts (
-          id, fact_text, normalized_text, source_kind, source_ref, lane_id, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object
+          id, fact_text, normalized_text, source_kind, source_ref, lane_id, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
       `
       )
       .run(
@@ -324,7 +328,8 @@ export class SqliteKbIndexer {
         now,
         subject,
         predicate,
-        object
+        object,
+        input.sourceText ?? null
       )
     this.rebuildFactIndexes(id, input.factText.trim(), now)
     this.rebuildFactGraph(id, input.factText.trim(), now)

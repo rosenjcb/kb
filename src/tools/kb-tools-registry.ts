@@ -9,7 +9,7 @@
 import path from 'node:path'
 import { getKbHomeDir } from '../cli/base-selection'
 import type { KbConfig } from '../cli/kb-config'
-import { resolveFactRetrievalMethod, resolveFeatureFlags, resolveGraphEnabled } from '../cli/kb-config'
+import { resolveFactRetrievalMethod, resolveFeatureFlags } from '../cli/kb-config'
 import { DOC_TYPES } from '../core/doc-taxonomy'
 import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
 import type { StreamManager } from '../core/runtime/stream-manager'
@@ -19,9 +19,7 @@ import type { LLMProvider, ToolDefinition } from '../core/types'
 import { CodeGraphStore } from './code-graph-store'
 import { FactsDocumentReader } from './facts-document-reader'
 import type { QueryDocumentsInput, QueryResponse } from './facts-document-reader'
-import { extractGraph } from './graph-entity-extractor'
 import { invalidateFactTool } from './invalidate-fact-tool'
-import { KbGraphWriter } from './kb-graph-writer'
 import { SqliteKbIndexer } from './sqlite-kb-index'
 import { executeSubagentTask } from './task'
 
@@ -184,107 +182,6 @@ export function createKBToolsRegistry(
   }
   registry.register('invalidate_fact', invalidateFactToolDef, async input => {
     return await invalidateFactTool(input as never, storageDir)
-  })
-
-  const upsertGraphFromTextToolDef: ToolDefinition = {
-    name: 'upsert_graph_from_text',
-    description:
-      'Extract graph entities/relationships from text and upsert them into the KB graph store',
-    schema: {
-      type: 'object',
-      properties: {
-        text: {
-          type: 'string',
-          description: 'Submitted fact or content to extract graph data from',
-        },
-        documentId: {
-          type: 'string',
-          description: 'Document provenance id for extracted graph items',
-        },
-      },
-      required: ['text'],
-      additionalProperties: false,
-    },
-  }
-  registry.register('upsert_graph_from_text', upsertGraphFromTextToolDef, async input => {
-    if (!orchestrator?.taskProvider || !resolveGraphEnabled(config ?? {})) {
-      return { enabled: false, entities: 0, relationships: 0 }
-    }
-
-    const text =
-      typeof (input as { text?: unknown }).text === 'string' ? (input as { text: string }).text : ''
-    const documentId =
-      typeof (input as { documentId?: unknown }).documentId === 'string'
-        ? (input as { documentId: string }).documentId
-        : undefined
-
-    const { entities, relationships } = await extractGraph(
-      text,
-      orchestrator.taskProvider,
-      documentId
-    )
-    if (entities.length === 0 && relationships.length === 0) {
-      return { enabled: true, entities: 0, relationships: 0 }
-    }
-
-    const graphWriter = new KbGraphWriter(KbGraphWriter.dbPathForBase(storageDir))
-    await graphWriter.open()
-    try {
-      if (entities.length > 0) await graphWriter.upsertEntities(entities)
-      if (relationships.length > 0) await graphWriter.upsertRelationships(relationships)
-    } finally {
-      await graphWriter.close()
-    }
-
-    return { enabled: true, entities: entities.length, relationships: relationships.length }
-  })
-
-  const invalidateGraphForFactToolDef: ToolDefinition = {
-    name: 'invalidate_graph_for_fact',
-    description:
-      'Soft-delete graph relationships for affected fact provenance ids (same ids as upsert_graph_from_text documentId)',
-    schema: {
-      type: 'object',
-      properties: {
-        documentIds: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Fact / provenance ids whose graph relationships should be soft-deleted',
-        },
-      },
-      required: ['documentIds'],
-      additionalProperties: false,
-    },
-  }
-  registry.register('invalidate_graph_for_fact', invalidateGraphForFactToolDef, async input => {
-    if (!resolveGraphEnabled(config ?? {})) {
-      return { enabled: false, invalidatedRelationships: 0, documentIds: [] as string[] }
-    }
-
-    const rawIds = Array.isArray((input as { documentIds?: unknown[] }).documentIds)
-      ? ((input as { documentIds: unknown[] }).documentIds as unknown[])
-      : []
-    const documentIds = rawIds
-      .filter((value): value is string => typeof value === 'string')
-      .map(value => value.trim())
-      .filter(Boolean)
-
-    if (documentIds.length === 0) {
-      return { enabled: true, invalidatedRelationships: 0, documentIds: [] as string[] }
-    }
-
-    const graphWriter = new KbGraphWriter(KbGraphWriter.dbPathForBase(storageDir))
-    let invalidatedRelationships = 0
-    await graphWriter.open()
-    try {
-      for (const documentId of documentIds) {
-        invalidatedRelationships += await graphWriter.softDeleteByDocId(documentId)
-      }
-    } finally {
-      await graphWriter.close()
-    }
-
-    return { enabled: true, invalidatedRelationships, documentIds }
   })
 
   const codeGraphDbPath = path.join(storageDir, '.kb-index.sqlite')

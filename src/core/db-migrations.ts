@@ -407,6 +407,19 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 11,
+    name: 'drop_kb_graph_tables',
+    sql: `
+      DROP TABLE IF EXISTS kb_graph_relationships;
+      DROP TABLE IF EXISTS kb_graph_entities;
+    `,
+  },
+  {
+    version: 12,
+    name: 'facts_source_text',
+    sql: 'ALTER TABLE facts ADD COLUMN source_text TEXT;',
+  },
 ]
 
 /**

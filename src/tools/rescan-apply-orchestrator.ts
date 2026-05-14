@@ -633,9 +633,6 @@ function createRescanIntentExecutor(indexer: SqliteKbIndexer): ToolExecutor {
           confidence: payload.confidence,
         })
       }
-      if (toolUse.name === 'upsert_graph_from_text') {
-        return { enabled: false, entities: 0, relationships: 0 }
-      }
       if (toolUse.name === 'read_facts') {
         const query = normalizeText(String(toolUse.input.query ?? ''))
         const rows = indexer.getAllDocumentsForLexical()

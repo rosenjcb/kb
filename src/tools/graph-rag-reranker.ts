@@ -1,8 +1,7 @@
+import type Database from 'better-sqlite3'
 import type { ReadDocumentsResultItem } from '../cli/intent-cli'
 import type { LLMProvider } from '../core/types'
-import type { CodeGraphStore } from './code-graph-store'
-import type { KbGraphWriter } from './kb-graph-writer'
-import { toGraphQuerySlugs } from './graph-query-expansion'
+import { expandQueryWithGraph, toGraphQuerySlugs } from './graph-query-expansion'
 
 const MAX_ENTITIES = 8
 const MAX_NEIGHBOR_TERMS = 24
@@ -53,41 +52,30 @@ export async function llmExtractQueryEntities(
  * the query entities rise; unrelated duplicates stay put. Ties preserve original
  * retrieval order (stable sort).
  */
-export async function rerankByGraphConnectivity(
+export function rerankByGraphConnectivity(
   results: ReadDocumentsResultItem[],
   queryEntities: string[],
-  graphWriter: KbGraphWriter,
-  codeStore?: CodeGraphStore
-): Promise<ReadDocumentsResultItem[]> {
+  db: Database.Database
+): ReadDocumentsResultItem[] {
   if (queryEntities.length === 0 || results.length < 2) return results
 
   try {
     const entitySlugs = queryEntities.flatMap(e => toGraphQuerySlugs(e))
-    const neighborTerms = await graphWriter.expandQuery(entitySlugs)
-
-    let codeSymbols: string[] = []
-    if (codeStore) {
-      try {
-        const nodes = codeStore.findCodeSymbolsByName(entitySlugs, 12)
-        codeSymbols = nodes.map(n => n.name.toLowerCase())
-      } catch {
-        // best-effort
-      }
-    }
+    const expandedQuery = expandQueryWithGraph(entitySlugs.join(' '), db)
+    const neighborTerms = expandedQuery
+      .split(/\s+/)
+      .filter(t => t.length > 2)
+      .map(t => t.toLowerCase())
 
     const neighborSet = new Set<string>([
       ...queryEntities.map(e => e.toLowerCase()),
-      ...neighborTerms.slice(0, MAX_NEIGHBOR_TERMS).map(t => t.toLowerCase()),
-      ...codeSymbols,
+      ...neighborTerms.slice(0, MAX_NEIGHBOR_TERMS),
     ])
 
     if (neighborSet.size === 0) return results
 
     const scored = results.map((item, originalIndex) => {
-      const searchable = [
-        item.content ?? '',
-        ...(item.graphEvidence ?? []),
-      ].join(' ').toLowerCase()
+      const searchable = [item.content ?? '', ...(item.graphEvidence ?? [])].join(' ').toLowerCase()
 
       let score = 0
       for (const term of neighborSet) {

@@ -549,18 +549,6 @@ export function resolveFactRetrievalMethod(config: KbConfig): FactRetrievalMetho
   return config.factRetrievalMethod ?? 'query_expansion'
 }
 
-export function resolveGraphEnabled(config: KbConfig): boolean {
-  if (process.env.KB_GRAPH !== undefined) {
-    return parseBooleanEnv(process.env.KB_GRAPH, true)
-  }
-
-  if (config.graph?.enabled !== undefined) {
-    return config.graph.enabled
-  }
-
-  return true
-}
-
 export function resolveConversationalChatEnabled(config: KbConfig): boolean {
   if (process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL !== undefined) {
     return parseBooleanEnv(process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL, false)

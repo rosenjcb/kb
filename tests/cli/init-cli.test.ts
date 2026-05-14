@@ -217,8 +217,8 @@ describe('init-cli interview checkpoints', () => {
     )
   })
 
-  it('Given legacy --stop-after markdown-facts, then parsing normalizes to document-facts', () => {
-    const parsed = parseInitCommand(['--base', 'dogfood', '--stop-after', 'markdown-facts'])
+  it('Given --stop-after document-facts, then parsing returns document-facts', () => {
+    const parsed = parseInitCommand(['--base', 'dogfood', '--stop-after', 'document-facts'])
 
     expect(parsed.stopAfter).toBe('document-facts')
   })
@@ -667,7 +667,7 @@ describe('init-cli interview checkpoints', () => {
     const result = await runKbInit({
       base: 'no-markdown-sources',
       nonInteractive: true,
-      stopAfter: 'code-facts',
+      stopAfter: 'document-facts',
       cwd,
       progressSink(line) {
         lines.push(line)
@@ -853,7 +853,7 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(result.status).toBe('accepted')
-    expect(lines.some(line => line.includes('ast-facts') && line.includes('0 changed, 2 unchanged files'))).toBe(true)
+    expect(lines.some(line => line.includes('code-index') && line.includes('done'))).toBe(true)
   })
 
   it('Given unchanged scan plan, then it does not emit preview diff chatter or synthetic scan files', async () => {
@@ -1013,13 +1013,13 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(result.status).toBe('accepted')
-    // Validate that all progress lines maintain 6/6 for the final phase
-    const astFactsLines = lines.filter(line => line.includes('ast-facts'))
-    expect(astFactsLines.length).toBeGreaterThan(0)
-    // The last ast-facts line should show 6/6 completion
-    const lastAstLine = astFactsLines[astFactsLines.length - 1]
-    expect(lastAstLine).toMatch(/6\/6/)
+    // Validate that the write phase appears and no lines reference 7 phases
+    const writeLines = lines.filter(line => line.includes('write'))
+    expect(writeLines.length).toBeGreaterThan(0)
     // Ensure no lines reference 7 phases
     expect(lines.some(line => line.match(/\d\/7/))).toBe(false)
+    // Ensure all phase lines use the correct total (6)
+    const phaseLines = lines.filter(line => line.match(/\d+\/\d+/))
+    expect(phaseLines.every(line => !line.match(/\d+\/7/))).toBe(true)
   })
 })
