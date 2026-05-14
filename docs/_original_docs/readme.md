@@ -113,7 +113,7 @@ kb invalidate "kb use should persist across sessions" "kb base use is session-sc
 One read intent:
 
 ```
-kb query "<topic>" [--limit 5] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]
+kb query "<topic>" [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]
 ```
 
 Two mutation intents:

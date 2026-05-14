@@ -1011,7 +1011,7 @@ export function printIntentHelp(mode: CmdMode = 'cli'): string {
   return [
     'Intent commands:',
     `  ${cmd('submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--include-session-logs] [--output human|json]', mode)}`,
-    `  ${cmd('query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]', mode)}`,
+    `  ${cmd('query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]', mode)}`,
     `  ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--apply] [--output human|json]', mode)}`,
   ].join('\n')
 }

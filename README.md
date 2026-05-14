@@ -147,7 +147,7 @@ This happens because pnpm skips build scripts by default for security. KB's glob
 One read intent:
 
 ```
-kb query "<topic>" [--base <name>] [--limit 5] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]
+kb query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]
 ```
 
 Two mutation intents:
