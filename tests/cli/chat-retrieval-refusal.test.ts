@@ -17,6 +17,15 @@ describe('chat retrieval refusal', () => {
     expect(shouldRefuseChatTurnOnRetrieval({ results: [] })).toBe(true)
   })
 
+  it('allows when retrieval detail is all-facts:already-in-context even with zero results', () => {
+    expect(
+      shouldRefuseChatTurnOnRetrieval({
+        results: [],
+        retrieval: { detail: 'all-facts:already-in-context' },
+      })
+    ).toBe(false)
+  })
+
   it('refuses when last checkpoint below default min', () => {
     expect(
       shouldRefuseChatTurnOnRetrieval({

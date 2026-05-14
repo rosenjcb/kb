@@ -303,6 +303,7 @@ export function lastRetrievalCheckpointConfidence(
 }
 
 export function shouldRefuseChatTurnOnRetrieval(snapshot: ReadDocumentsResult): boolean {
+  if (snapshot.retrieval?.detail === 'all-facts:already-in-context') return false
   const n = snapshot.results?.length ?? 0
   if (n === 0) return true
   const conf = lastRetrievalCheckpointConfidence(snapshot)
@@ -810,7 +811,10 @@ export function buildChatTurnContent(input: {
   sessionPool?: SessionFact[]
   allFacts?: boolean
 }): string {
-  const evidence = buildEvidence(input.retrieval.results, input.allFacts)
+  const alreadyInContext = input.retrieval.retrieval?.detail === 'all-facts:already-in-context'
+  const evidence = alreadyInContext
+    ? 'All KB facts were loaded earlier in this conversation. Use what you already know from prior context to answer.'
+    : buildEvidence(input.retrieval.results, input.allFacts)
 
   const contextLines: string[] = []
   if (input.conversationState?.activeTopic) {
