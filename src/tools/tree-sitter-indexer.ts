@@ -18,11 +18,21 @@ import type { Tree } from 'web-tree-sitter'
 import { runMigrations } from '../core/db-migrations'
 import { yieldEvery } from '../core/yield'
 import type { CodeIndexStats, CodeIndexOptions, LanguageIndexer } from './code-graph-indexer'
+import type { Node as TsNode } from 'web-tree-sitter'
 
 const require = createRequire(import.meta.url)
 
 const SCHEMA_VERSION = 1
 const SOURCE = 'tree-sitter'
+
+/** Walk up from a captured @name node to the nearest top-level declaration. */
+function getDeclNode(nameNode: TsNode): TsNode {
+  let n: TsNode = nameNode
+  while (n.parent?.parent != null) {
+    n = n.parent
+  }
+  return n
+}
 
 // ---------------------------------------------------------------------------
 // Language registry — maps file extension → WASM grammar path
@@ -366,15 +376,18 @@ export class TreeSitterIndexer implements LanguageIndexer {
           const name = capture?.node.text
           if (!name || !capture) continue
           if (!isExported(name, compiled.config.goExportConvention)) continue
-          const node = capture.node
+          const nameNode = capture.node
+          const declNode = getDeclNode(nameNode)
           const sid = symbolId(rel, name)
+          const rawText = src.slice(declNode.startIndex, declNode.endIndex)
+          const sourceText = rawText.length > 1500 ? `${rawText.slice(0, 1497)}…` : rawText
           insertNode.run({
-            id: sid, kind: 'symbol', subkind: node.type,
+            id: sid, kind: 'symbol', subkind: nameNode.type,
             name, qualifiedName: `${rel}::${name}`,
             path: rel, fileId: fid, language: effectiveLang,
-            spanStart: node.startIndex, spanEnd: node.endIndex,
+            spanStart: declNode.startIndex, spanEnd: declNode.endIndex,
             exported: 1, source: SOURCE, confidence: 0.95,
-            propsJson: '{}', contentHash: null,
+            propsJson: JSON.stringify({ source_text: sourceText }), contentHash: null,
           })
           insertFts.run({ id: sid, name, qualifiedName: `${rel}::${name}`, path: rel })
           stats.symbols++

@@ -235,6 +235,7 @@ export function App({ config, startupNotices = [] }: Props) {
           addEntry({ type: 'error', content: line })
         },
         setProgressLine(line: string | null) {
+          if (line) finalizeChatResponse()
           setProgressLine(line?.trimEnd() || null)
         },
       }
@@ -271,7 +272,7 @@ export function App({ config, startupNotices = [] }: Props) {
           startChatSession(opts)
         })
     },
-    [config, addEntry, stopChatPending, finalizeChatResponse, refreshBase, exit]
+    [config, addEntry, updateEntry, stopChatPending, finalizeChatResponse, refreshBase, exit]
   )
 
   // Start chat session once after base dir resolves

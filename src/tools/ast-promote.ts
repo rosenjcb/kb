@@ -33,14 +33,23 @@ export function promoteAstToFactsTable(
   // 1. Exported symbol facts: "{Name} is a {subkind} exported from {path}"
   const symbols = db
     .prepare(
-      "SELECT name, subkind, path FROM kg_nodes WHERE kind='symbol' AND exported=1 AND path IS NOT NULL"
+      "SELECT name, subkind, path, props_json FROM kg_nodes WHERE kind='symbol' AND exported=1 AND path IS NOT NULL"
     )
-    .all() as Array<{ name: string; subkind: string | null; path: string }>
+    .all() as Array<{ name: string; subkind: string | null; path: string; props_json: string }>
 
   for (const sym of symbols) {
     const sourceRef = `ast:${sym.path}@${sym.name}`
     const subkind = (sym.subkind ?? 'symbol').replace(/Declaration$/, '')
     const factText = `${sym.name} is a ${subkind} exported from ${sym.path}`
+    let sourceText: string | undefined
+    try {
+      const props = JSON.parse(sym.props_json) as Record<string, unknown>
+      if (typeof props.source_text === 'string' && props.source_text.length > 0) {
+        sourceText = props.source_text
+      }
+    } catch {
+      // malformed props_json — skip
+    }
     newSourceRefs.add(sourceRef)
     const r = indexer.upsertFact({
       factText,
@@ -48,6 +57,7 @@ export function promoteAstToFactsTable(
       sourceRef,
       confidence: 0.65,
       triplet: { subject: sym.name, predicate: 'exported_from', object: sym.path },
+      sourceText,
     })
     if (r.operation === 'inserted') stats.inserted++
     else stats.updated++

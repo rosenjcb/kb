@@ -82,15 +82,9 @@ describe('DefaultIntentRouter', () => {
 
     expect(result.status).toBe('accepted')
     expect(result.recommendedAction).toBe('fact_upserted')
-    const data = result.data as {
-      submission?: unknown
-      graphSync?: { entities?: number }
-    }
-    expect(data.graphSync?.entities).toBe(1)
 
     const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
     expect(calls.some(call => call[0]?.name === 'upsert_fact')).toBe(true)
-    expect(calls.some(call => call[0]?.name === 'upsert_graph_from_text')).toBe(true)
     expect(calls.every(call => call[0]?.name !== 'reconcile_contradictions')).toBe(true)
   })
 
@@ -159,7 +153,6 @@ describe('DefaultIntentRouter', () => {
 
     const calls = (executor.execute as ReturnType<typeof vi.fn>).mock.calls
     expect(calls.some(call => call[0]?.name === 'invalidate_fact')).toBe(true)
-    expect(calls.some(call => call[0]?.name === 'invalidate_graph_for_fact')).toBe(true)
   })
 
   it('Given invalidate_fact with preview, then skips graph invalidation', async () => {

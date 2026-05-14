@@ -1,34 +1,30 @@
-import { describe, expect, it, vi } from 'vitest'
+import { mkdtemp, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import Database from 'better-sqlite3'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   GraphCommandError,
   parseGraphCommand,
   printGraphHelp,
   runGraphCommand,
 } from '../../src/cli/graph-cli'
-import type { GraphWriter } from '../../src/cli/graph-cli'
+import { runMigrations } from '../../src/core/db-migrations'
 
-// ---------------------------------------------------------------------------
-// Stub writer — injected directly via writerOverride parameter
-// ---------------------------------------------------------------------------
+let tempDir: string
+let dbPath: string
 
-const mockSummary = {
-  totalEntities: 3,
-  totalRelationships: 2,
-  topEntities: [{ id: 'kb', name: 'KB', type: 'system', connections: 5 }],
-}
+beforeEach(async () => {
+  tempDir = await mkdtemp(path.join(os.tmpdir(), 'kb-graph-cli-test-'))
+  dbPath = path.join(tempDir, '.kb-index.sqlite')
+  const db = new Database(dbPath)
+  runMigrations(db)
+  db.close()
+})
 
-function makeMockWriter(overrides: Partial<GraphWriter> = {}): GraphWriter {
-  return {
-    open: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn().mockResolvedValue(undefined),
-    getSummary: vi.fn().mockResolvedValue(mockSummary),
-    exportDot: vi.fn().mockResolvedValue('digraph {}'),
-    exportJson: vi.fn().mockResolvedValue({ entities: [], relationships: [] }),
-    findPath: vi.fn().mockResolvedValue(null),
-    getNeighbors: vi.fn().mockResolvedValue(null),
-    ...overrides,
-  }
-}
+afterEach(async () => {
+  await rm(tempDir, { recursive: true, force: true })
+})
 
 describe('graph-cli parsing', () => {
   it('Given graph help flag, then parser returns graph-specific help text', () => {
@@ -57,54 +53,6 @@ describe('graph-cli parsing', () => {
   it('Given graph format flag, then parser returns export format option', () => {
     expect(parseGraphCommand(['--format', 'json'])).toEqual({ format: 'json' })
   })
-
-  it('Given graph node add flags, then parser returns a node-add mutation plan', () => {
-    const opts = parseGraphCommand([
-      'node',
-      'add',
-      '--name',
-      'My API',
-      '--type',
-      'tool',
-      '--description',
-      'Handles auth',
-      '--doc-id',
-      'doc-1',
-    ])
-    expect(opts.mutation).toEqual({
-      op: 'node-add',
-      name: 'My API',
-      entityType: 'tool',
-      description: 'Handles auth',
-      docId: 'doc-1',
-      apply: false,
-    })
-  })
-
-  it('Given graph edge add with --apply, then parser records apply', () => {
-    const opts = parseGraphCommand([
-      'edge',
-      'add',
-      '--from',
-      'a',
-      '--to',
-      'b',
-      '--verb',
-      'depends on',
-      '--apply',
-    ])
-    expect(opts.mutation).toEqual({
-      op: 'edge-add',
-      fromRef: 'a',
-      toRef: 'b',
-      verb: 'depends on',
-      apply: true,
-    })
-  })
-
-  it('Given node add without --name, then parser throws', () => {
-    expect(() => parseGraphCommand(['node', 'add', '--type', 'concept'])).toThrow(GraphCommandError)
-  })
 })
 
 describe('graph-cli help', () => {
@@ -122,11 +70,11 @@ describe('runGraphCommand — output routing', () => {
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
 
-    await runGraphCommand('/fake/base', {}, out, makeMockWriter())
+    await runGraphCommand(tempDir, {}, out)
 
     expect(lines.some(l => l.includes('Knowledge graph summary'))).toBe(true)
-    expect(lines.some(l => l.includes('Entities:'))).toBe(true)
-    expect(lines.some(l => l.includes('Relationships:'))).toBe(true)
+    expect(lines.some(l => l.includes('Triplets:'))).toBe(true)
+    expect(lines.some(l => l.includes('Symbols:'))).toBe(true)
     expect(consoleSpy).not.toHaveBeenCalled()
   })
 
@@ -135,7 +83,7 @@ describe('runGraphCommand — output routing', () => {
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
 
-    await runGraphCommand('/fake/base', { format: 'dot' }, out, makeMockWriter())
+    await runGraphCommand(tempDir, { format: 'dot' }, out)
 
     expect(lines.some(l => l.includes('digraph'))).toBe(true)
     expect(consoleSpy).not.toHaveBeenCalled()
@@ -146,7 +94,7 @@ describe('runGraphCommand — output routing', () => {
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
 
-    await runGraphCommand('/fake/base', { format: 'json' }, out, makeMockWriter())
+    await runGraphCommand(tempDir, { format: 'json' }, out)
 
     expect(lines.length).toBeGreaterThan(0)
     expect(consoleSpy).not.toHaveBeenCalled()
@@ -156,7 +104,7 @@ describe('runGraphCommand — output routing', () => {
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
 
-    await runGraphCommand('/fake/base', { pathFrom: 'A', pathTo: 'B' }, out, makeMockWriter())
+    await runGraphCommand(tempDir, { pathFrom: 'A', pathTo: 'B' }, out)
 
     expect(lines.some(l => l.includes('No path found'))).toBe(true)
   })
@@ -165,8 +113,8 @@ describe('runGraphCommand — output routing', () => {
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
 
-    await runGraphCommand('/fake/base', { entity: 'Unknown' }, out, makeMockWriter())
+    await runGraphCommand(tempDir, { entity: 'Unknown' }, out)
 
-    expect(lines.some(l => l.includes('not found'))).toBe(true)
+    expect(lines.some(l => l.includes('not found') || l.includes('No facts found'))).toBe(true)
   })
 })

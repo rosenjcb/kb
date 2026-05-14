@@ -415,6 +415,11 @@ const MIGRATIONS: Migration[] = [
       DROP TABLE IF EXISTS kb_graph_entities;
     `,
   },
+  {
+    version: 12,
+    name: 'facts_source_text',
+    sql: 'ALTER TABLE facts ADD COLUMN source_text TEXT;',
+  },
 ]
 
 /**

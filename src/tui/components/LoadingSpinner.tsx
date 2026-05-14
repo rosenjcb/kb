@@ -38,6 +38,7 @@ export function LoadingSpinner({ status }: { status?: string }) {
         {' running…'}
       </Text>
       {lines.map((line, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: status lines have no stable identity
         <Text key={i} color="gray" dimColor>
           {line}
         </Text>

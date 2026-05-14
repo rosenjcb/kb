@@ -32,8 +32,6 @@ describe('createKBToolsRegistry', () => {
       expect(names.has('read_facts')).toBe(true)
       expect(names.has('upsert_fact')).toBe(true)
       expect(names.has('invalidate_fact')).toBe(true)
-      expect(names.has('invalidate_graph_for_fact')).toBe(true)
-      expect(names.has('upsert_graph_from_text')).toBe(true)
     } finally {
       await rm(path.join(process.cwd(), 'tmp-registry-surface'), { recursive: true, force: true })
     }

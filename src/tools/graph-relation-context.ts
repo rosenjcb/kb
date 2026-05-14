@@ -79,8 +79,8 @@ export function findFactsPath(
       const toLower = to.toLowerCase()
       if (!adjacency.has(fromLower)) adjacency.set(fromLower, [])
       if (!adjacency.has(toLower)) adjacency.set(toLower, [])
-      adjacency.get(fromLower)!.push({ neighbor: toLower, label })
-      adjacency.get(toLower)!.push({ neighbor: fromLower, label })
+      adjacency.get(fromLower)?.push({ neighbor: toLower, label })
+      adjacency.get(toLower)?.push({ neighbor: fromLower, label })
     }
 
     for (const edge of edges) {
@@ -106,7 +106,8 @@ export function findFactsPath(
     const visited = new Set<string>([startKey])
 
     while (queue.length > 0) {
-      const current = queue.shift()!
+      const current = queue.shift()
+      if (!current) break
       if (current.path.length > maxHops + 1) break
 
       const neighbors = adjacency.get(current.key) ?? []
