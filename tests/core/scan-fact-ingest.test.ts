@@ -2,7 +2,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ingestSourceMarkdownFilesAsFacts } from '../../src/core/scan-fact-ingest'
+import {
+  ingestSourceMarkdownFilesAsFacts,
+  type ScanFactIngestProgress,
+} from '../../src/core/scan-fact-ingest'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
 
 const tempDirs: string[] = []
@@ -50,5 +53,40 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
     })
     expect(stats.filesScanned).toBe(1)
     expect(stats.segmentsUpserted).toBe(1)
+  })
+
+  it('Given multiple markdown files, then emits monotonic per-file progress with current file names', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-markdown-fact-progress-'))
+    tempDirs.push(baseDir)
+    new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') }).close()
+
+    const snapshots: ScanFactIngestProgress[] = []
+    await ingestSourceMarkdownFilesAsFacts({
+      baseDir,
+      files: {
+        'README.md':
+          '# Root\n\nThis sentence is intentionally long enough to become a fact during ingest.',
+        'docs/guide.md':
+          '# Guide\n\nThis second sentence is also intentionally long enough to survive ingest.',
+      },
+      onProgress(snapshot) {
+        snapshots.push(snapshot)
+      },
+    })
+
+    expect(snapshots.length).toBeGreaterThan(0)
+    expect(snapshots.some(snapshot => snapshot.currentFile === 'README.md')).toBe(true)
+    expect(snapshots.some(snapshot => snapshot.currentFile === 'docs/guide.md')).toBe(true)
+    for (let index = 1; index < snapshots.length; index += 1) {
+      expect(snapshots[index]?.segmentsUpserted ?? 0).toBeGreaterThanOrEqual(
+        snapshots[index - 1]?.segmentsUpserted ?? 0
+      )
+      expect(snapshots[index]?.filesCompleted ?? 0).toBeGreaterThanOrEqual(
+        snapshots[index - 1]?.filesCompleted ?? 0
+      )
+    }
+    const last = snapshots.at(-1)
+    expect(last?.filesCompleted).toBe(2)
+    expect(last?.filesRemaining).toBe(0)
   })
 })

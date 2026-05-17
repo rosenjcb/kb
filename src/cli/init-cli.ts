@@ -31,13 +31,17 @@ import readline from 'node:readline'
 import dayjs from 'dayjs'
 import { ingestCodeFilesAsFacts } from '../core/code-fact-extract'
 import { DOC_TYPES } from '../core/doc-taxonomy'
-import { ingestSourceMarkdownFilesAsFacts } from '../core/scan-fact-ingest'
+import {
+  ingestSourceMarkdownFilesAsFacts,
+  type ScanFactIngestProgress,
+} from '../core/scan-fact-ingest'
 import type { RunCollector } from '../core/telemetry'
 import { TokenCountingProvider, estimateCost } from '../core/telemetry'
 import type { LLMProvider } from '../core/types'
 import type { WriteDocumentInput } from '../tools/document-writer'
 import {
   runRescanApplyOrchestrator,
+  type RescanApplyOrchestratorProgress,
 } from '../tools/rescan-apply-orchestrator'
 import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
@@ -177,6 +181,30 @@ interface CandidateDoc {
   isOriginal?: boolean
 }
 
+interface InitCollectionProgress {
+  itemsConsidered: number
+  itemsCompleted: number
+  itemsRemaining: number
+  currentItem?: string
+}
+
+interface ReadInputsCollectionProgress extends InitCollectionProgress {
+  stage: 'source-files' | 'code-files'
+}
+
+interface BuildOriginalDocsProgress extends InitCollectionProgress {
+  docsBuilt: number
+}
+
+interface NormalizeDocsProgress extends InitCollectionProgress {
+  docsNormalized: number
+}
+
+interface WriteDocsProgress extends InitCollectionProgress {
+  docsWritten: number
+  currentDocId?: string
+}
+
 const VALID_DOC_TYPES = new Set<NonNullable<CandidateDoc['type']>>(DOC_TYPES)
 
 interface InitCheckpointV1 {
@@ -255,6 +283,10 @@ class InitProgressReporter {
   }
 
   update(label: string, detail?: string) {
+    if (!this.ttyMode) {
+      this.render(label, detail, false)
+      return
+    }
     const now = Date.now()
     if (now - this.lastUpdateMs < InitProgressReporter.THROTTLE_MS) return
     this.lastUpdateMs = now
@@ -272,6 +304,71 @@ class InitProgressReporter {
     } else {
       this.sink(`${content}\n`)
     }
+  }
+}
+
+function clipProgressItem(value: string | undefined, max = 64): string | undefined {
+  if (!value) return undefined
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value
+}
+
+function formatReadInputsProgress(snapshot: ReadInputsCollectionProgress): string {
+  const current = clipProgressItem(snapshot.currentItem)
+  const label =
+    snapshot.stage === 'source-files' ? 'docs' : 'code'
+  return `${label} ${snapshot.itemsCompleted} collected${current ? ` | ${current}` : ''}`
+}
+
+function formatDocumentFactsProgress(
+  snapshot: ScanFactIngestProgress,
+  options: { rescan: boolean; unchangedCount: number }
+): string {
+  const activeFileCount = Math.max(snapshot.filesCompleted, snapshot.filesScanned)
+  const counts = options.rescan
+    ? `${activeFileCount}/${snapshot.filesConsidered} changed, ${options.unchangedCount} unchanged`
+    : `${activeFileCount}/${snapshot.filesConsidered} processed`
+  const current = clipProgressItem(snapshot.currentFile)
+  return `${counts} | ${snapshot.segmentsUpserted} segments${current ? ` | ${current}` : ''}`
+}
+
+function formatImportDocsBuildProgress(
+  snapshot: BuildOriginalDocsProgress,
+  options: { rescan: boolean; unchangedCount: number }
+): string {
+  const counts = options.rescan
+    ? `${snapshot.docsBuilt}/${snapshot.itemsConsidered} changed, ${options.unchangedCount} unchanged`
+    : `${snapshot.docsBuilt}/${snapshot.itemsConsidered} processed`
+  const current = clipProgressItem(snapshot.currentItem)
+  return `${counts} | building originals${current ? ` | ${current}` : ''}`
+}
+
+function formatImportDocsNormalizeProgress(snapshot: NormalizeDocsProgress): string {
+  const current = clipProgressItem(snapshot.currentItem)
+  return `${snapshot.itemsCompleted}/${snapshot.itemsConsidered} processed | ${snapshot.docsNormalized} normalized${current ? ` | ${current}` : ''}`
+}
+
+function formatWriteDocsProgress(
+  snapshot: WriteDocsProgress,
+  options: { label: string; rescan: boolean; unchangedCount?: number }
+): string {
+  const counts = options.rescan
+    ? `${snapshot.docsWritten}/${snapshot.itemsConsidered} changed, ${options.unchangedCount ?? 0} unchanged`
+    : `${snapshot.docsWritten}/${snapshot.itemsConsidered} processed`
+  const current = clipProgressItem(snapshot.currentItem ?? snapshot.currentDocId)
+  return `${counts} | ${options.label}${current ? ` | ${current}` : ''}`
+}
+
+function formatRescanWriteProgress(snapshot: RescanApplyOrchestratorProgress): string {
+  const current = clipProgressItem(snapshot.currentItem)
+  switch (snapshot.stage) {
+    case 'extract-claims':
+      return `${snapshot.itemsCompleted}/${snapshot.itemsConsidered} docs processed | ${snapshot.claimsExtracted ?? 0} claims${current ? ` | ${current}` : ''}`
+    case 'gather-evidence':
+      return `${snapshot.itemsCompleted}/${snapshot.itemsConsidered} claims checked | ${snapshot.evidenceDocsScanned ?? 0} docs scanned${current ? ` | ${current}` : ''}`
+    case 'apply-mutations':
+      return `${snapshot.itemsCompleted}/${snapshot.itemsConsidered} mutations processed | ${snapshot.appliedMutations ?? 0} applied, ${snapshot.noopMutations ?? 0} noop${current ? ` | ${current}` : ''}`
+    case 'preview-diff':
+      return `${snapshot.itemsCompleted}/${snapshot.itemsConsidered} preview diffs${current ? ` | ${current}` : ''}`
   }
 }
 
@@ -501,6 +598,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         questionIO,
         startingRound: 1,
         maxQuestions: 0,
+        onProgress: snapshot => {
+          progress.update('read-inputs', formatReadInputsProgress(snapshot))
+        },
       })
       context = readResult.context
       topicCoverage = readResult.topicCoverage
@@ -657,9 +757,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
                   'code-index',
                   `LLM ${snapshot.filesCompleted}/${snapshot.filesConsidered} changed, ${unchangedCodeFileCount} unchanged | ${snapshot.factsInserted + snapshot.factsSuperseded} changed, ${snapshot.factsTombstoned} tombstoned`
                 )
-                options.questionIO?.write?.(
-                  `[${progressPrefix(options)}:action] code-index LLM files ${snapshot.filesCompleted}/${snapshot.filesConsidered} (${snapshot.filesRemaining} left) | processed ${snapshot.filesProcessed}, skipped ${snapshot.filesSkippedNoExports + snapshot.filesSkippedTooSmall}, failed ${snapshot.filesFailed} | facts: +${snapshot.factsInserted} inserted, ${snapshot.factsSuperseded} superseded, ${snapshot.factsTombstoned} tombstoned, ${snapshot.factsUnchanged} unchanged${snapshot.currentFile ? ` | ${snapshot.currentFile}` : ''}\n`
-                )
               },
             })
             await writeCodeFactsManifest(baseDir, buildHashesFor(codeFiles))
@@ -703,6 +800,15 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           baseDir,
           files: changedSourceFiles,
           matchAstNodes: true,
+          onProgress: snapshot => {
+            progress.update(
+              'document-facts',
+              formatDocumentFactsProgress(snapshot, {
+                rescan: options.rescan === true,
+                unchangedCount: unchangedSourceFileCount,
+              })
+            )
+          },
         })
         endScanFacts()
         await persist({
@@ -724,9 +830,20 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.start('import-docs', 'importing original markdown…')
       const endImport = makeCycleTimer('import-docs', provider, options.collector, counter)
       candidateDocs = normalizeInitDocs(
-        buildOriginalDocumentsFromSourceFiles(changedSourceFiles, base),
+        buildOriginalDocumentsFromSourceFiles(changedSourceFiles, base, snapshot => {
+          progress.update(
+            'import-docs',
+            formatImportDocsBuildProgress(snapshot, {
+              rescan: options.rescan === true,
+              unchangedCount: unchangedSourceFileCount,
+            })
+          )
+        }),
         {
           minWords: 0,
+          onProgress: snapshot => {
+            progress.update('import-docs', formatImportDocsNormalizeProgress(snapshot))
+          },
         }
       )
       endImport()
@@ -759,7 +876,16 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         {
           const originals = candidateDocs.filter(doc => doc.isOriginal)
           if (originals.length > 0) {
-            originalWritten = await writeDocs(originals, baseDir, base)
+            originalWritten = await writeDocs(originals, baseDir, base, snapshot => {
+              progress.update(
+                'write',
+                formatWriteDocsProgress(snapshot, {
+                  label: 'writing original docs',
+                  rescan: true,
+                  unchangedCount: unchangedSourceFileCount,
+                })
+              )
+            })
           }
         }
         const planResult = await runRescanApplyOrchestrator({
@@ -769,6 +895,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           apply: false,
           sourceFiles: context.sourceFiles,
           candidateDocs,
+          onProgress: snapshot => {
+            progress.update('write', formatRescanWriteProgress(snapshot))
+          },
         })
         let mutationWritten: string[] = []
         const safeguards = planResult.plan.safeguards?.triggered ?? []
@@ -782,6 +911,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           apply: true,
           sourceFiles: context.sourceFiles,
           candidateDocs,
+          onProgress: snapshot => {
+            progress.update('write', formatRescanWriteProgress(snapshot))
+          },
         })
         mutationWritten = applyResult.writtenDocIds
         if (
@@ -794,7 +926,15 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         }
         writtenDocIds = [...originalWritten, ...mutationWritten]
       } else {
-        writtenDocIds = await writeDocs(candidateDocs, baseDir, base)
+        writtenDocIds = await writeDocs(candidateDocs, baseDir, base, snapshot => {
+          progress.update(
+            'write',
+            formatWriteDocsProgress(snapshot, {
+              label: 'writing docs',
+              rescan: false,
+            })
+          )
+        })
       }
       const finalCoverageSummary =
         checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
@@ -850,6 +990,7 @@ async function runReadInputsCycle(options: {
   questionIO: InitQuestionIO
   startingRound: number
   maxQuestions: number
+  onProgress?: (snapshot: ReadInputsCollectionProgress) => void
 }): Promise<{
   context: InitContext
   interviewRound?: InitInterviewRound
@@ -862,9 +1003,10 @@ async function runReadInputsCycle(options: {
         baseDir: options.baseDir,
         baseName: options.baseName,
         questionIO: options.questionIO,
+        onProgress: options.onProgress,
       })
-    : await collectSourceFiles(options.cwd)
-  const codeFiles = await crawlSourceCode(options.cwd)
+    : await collectSourceFiles(options.cwd, options.onProgress)
+  const codeFiles = await crawlSourceCode(options.cwd, options.onProgress)
   const context: InitContext = {
     sourceFiles,
     codeFiles,
@@ -877,7 +1019,10 @@ async function runReadInputsCycle(options: {
   }
 }
 
-async function collectSourceFiles(cwd: string): Promise<Record<string, string>> {
+async function collectSourceFiles(
+  cwd: string,
+  onProgress?: (snapshot: ReadInputsCollectionProgress) => void
+): Promise<Record<string, string>> {
   const sourceFiles: Record<string, string> = {}
   const seenPaths = new Set<string>()
   let totalChars = 0
@@ -897,6 +1042,13 @@ async function collectSourceFiles(cwd: string): Promise<Record<string, string>> 
       sourceFiles[relativePath.replace(/\\/g, '/')] = content
       seenPaths.add(normalizedKey)
       totalChars += content.length
+      onProgress?.({
+        stage: 'source-files',
+        itemsConsidered: Object.keys(sourceFiles).length,
+        itemsCompleted: Object.keys(sourceFiles).length,
+        itemsRemaining: 0,
+        currentItem: relativePath.replace(/\\/g, '/'),
+      })
       return true
     } catch {
       return false
@@ -952,10 +1104,11 @@ async function collectRescanSourceFiles(options: {
   baseDir: string
   baseName: string
   questionIO: InitQuestionIO
+  onProgress?: (snapshot: ReadInputsCollectionProgress) => void
 }): Promise<Record<string, string>> {
   void options.baseDir
   void options.baseName
-  const allSourceFiles = await collectSourceFiles(options.cwd)
+  const allSourceFiles = await collectSourceFiles(options.cwd, options.onProgress)
   const n = Object.keys(allSourceFiles).length
   if (n === 0) {
     options.questionIO.write?.(
@@ -1058,7 +1211,10 @@ export const SOURCE_CODE_PER_FILE_CHARS = 400
  * This feeds the synthesis passes so the LLM can reason about code structure,
  * not just documentation.
  */
-export async function crawlSourceCode(cwd: string): Promise<Record<string, string>> {
+export async function crawlSourceCode(
+  cwd: string,
+  onProgress?: (snapshot: ReadInputsCollectionProgress) => void
+): Promise<Record<string, string>> {
   const result: Record<string, string> = {}
 
   async function walk(dir: string): Promise<void> {
@@ -1087,6 +1243,13 @@ export async function crawlSourceCode(cwd: string): Promise<Record<string, strin
           const snippet = content.slice(0, SOURCE_CODE_PER_FILE_CHARS)
           const relPath = path.relative(cwd, fullPath)
           result[relPath] = snippet
+          onProgress?.({
+            stage: 'code-files',
+            itemsConsidered: Object.keys(result).length,
+            itemsCompleted: Object.keys(result).length,
+            itemsRemaining: 0,
+            currentItem: relPath.replace(/\\/g, '/'),
+          })
         } catch {
           // unreadable — skip
         }
@@ -1098,11 +1261,16 @@ export async function crawlSourceCode(cwd: string): Promise<Record<string, strin
   return result
 }
 
-async function writeDocs(docs: CandidateDoc[], baseDir: string, base: string): Promise<string[]> {
+async function writeDocs(
+  docs: CandidateDoc[],
+  baseDir: string,
+  base: string,
+  onProgress?: (snapshot: WriteDocsProgress) => void
+): Promise<string[]> {
   const writer = new SqliteDocumentWriter({ baseDir, base })
   const writtenIds: string[] = []
   try {
-    for (const doc of docs) {
+    for (const [index, doc] of docs.entries()) {
       const result = await writer.writeDocument({
         title: doc.title,
         content: doc.content,
@@ -1113,6 +1281,14 @@ async function writeDocs(docs: CandidateDoc[], baseDir: string, base: string): P
         isOriginal: doc.isOriginal ?? false,
       })
       writtenIds.push(result.id)
+      onProgress?.({
+        itemsConsidered: docs.length,
+        itemsCompleted: index + 1,
+        itemsRemaining: Math.max(docs.length - (index + 1), 0),
+        currentItem: doc.title,
+        currentDocId: result.id,
+        docsWritten: writtenIds.length,
+      })
     }
   } finally {
     writer.close()
@@ -1198,10 +1374,12 @@ function slugify(value: string): string {
 
 function buildOriginalDocumentsFromSourceFiles(
   sourceFiles: Record<string, string>,
-  baseName: string
+  baseName: string,
+  onProgress?: (snapshot: BuildOriginalDocsProgress) => void
 ): CandidateDoc[] {
   const out: CandidateDoc[] = []
-  for (const relPath of Object.keys(sourceFiles).sort()) {
+  const paths = Object.keys(sourceFiles).sort()
+  for (const [index, relPath] of paths.entries()) {
     const body = sourceFiles[relPath]
     if (typeof body !== 'string' || !body.trim()) continue
     const posixPath = relPath.replace(/\\/g, '/')
@@ -1213,6 +1391,13 @@ function buildOriginalDocumentsFromSourceFiles(
       tags: ['original-source', id, baseName],
       content: body,
       isOriginal: true,
+    })
+    onProgress?.({
+      itemsConsidered: paths.length,
+      itemsCompleted: index + 1,
+      itemsRemaining: Math.max(paths.length - (index + 1), 0),
+      currentItem: posixPath,
+      docsBuilt: out.length,
     })
   }
   return out
@@ -1247,17 +1432,26 @@ function normalizeInitDocs(
     fallback?: CandidateDoc[]
     preserveMinimumCount?: number
     minWords?: number
+    onProgress?: (snapshot: NormalizeDocsProgress) => void
   } = {}
 ): CandidateDoc[] {
   const normalized: CandidateDoc[] = []
   const seenTitles = new Set<string>()
 
-  for (const raw of docs) {
+  for (const [index, raw] of docs.entries()) {
     const cleaned = normalizeInitDoc(raw, options.minWords ?? 0)
-    if (!cleaned) continue
-    const title = ensureUniqueTitle(cleaned.title, seenTitles)
-    seenTitles.add(title.toLowerCase())
-    normalized.push({ ...cleaned, title })
+    if (cleaned) {
+      const title = ensureUniqueTitle(cleaned.title, seenTitles)
+      seenTitles.add(title.toLowerCase())
+      normalized.push({ ...cleaned, title })
+    }
+    options.onProgress?.({
+      itemsConsidered: docs.length,
+      itemsCompleted: index + 1,
+      itemsRemaining: Math.max(docs.length - (index + 1), 0),
+      currentItem: raw.title,
+      docsNormalized: normalized.length,
+    })
   }
 
   if (

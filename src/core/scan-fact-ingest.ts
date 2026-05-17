@@ -12,11 +12,21 @@ export interface ScanFactIngestInput {
   yieldEverySegments?: number
   /** When true, look up the nearest exported AST symbol for each segment and attach a relatesTo triplet. */
   matchAstNodes?: boolean
+  onProgress?: (progress: ScanFactIngestProgress) => void
 }
 
 export interface ScanFactIngestResult {
   filesScanned: number
   segmentsUpserted: number
+}
+
+export interface ScanFactIngestProgress {
+  filesConsidered: number
+  filesCompleted: number
+  filesRemaining: number
+  filesScanned: number
+  segmentsUpserted: number
+  currentFile?: string
 }
 
 /** Extract FTS-safe tokens from fact text for kg_nodes_fts lookup. */
@@ -116,8 +126,24 @@ export async function ingestSourceMarkdownFilesAsFacts(
         })
         segmentsUpserted += 1
         processedSegments += 1
+        input.onProgress?.({
+          filesConsidered: paths.length,
+          filesCompleted: Math.max(filesScanned - 1, 0),
+          filesRemaining: Math.max(paths.length - Math.max(filesScanned - 1, 0), 0),
+          filesScanned,
+          segmentsUpserted,
+          currentFile: relPath,
+        })
         await yieldEvery(processedSegments, yieldStride)
       }
+      input.onProgress?.({
+        filesConsidered: paths.length,
+        filesCompleted: filesScanned,
+        filesRemaining: Math.max(paths.length - filesScanned, 0),
+        filesScanned,
+        segmentsUpserted,
+        currentFile: relPath,
+      })
     }
   } finally {
     indexer.close()

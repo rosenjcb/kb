@@ -76,12 +76,25 @@ export interface RunRescanApplyOrchestratorInput {
   maxClaims?: number
   maxEvidenceDocs?: number
   maxMutations?: number
+  onProgress?: (progress: RescanApplyOrchestratorProgress) => void
 }
 
 export interface RunRescanApplyOrchestratorResult {
   plan: RescanPlanSummary
   previewDiff: string
   writtenDocIds: string[]
+}
+
+export interface RescanApplyOrchestratorProgress {
+  stage: 'extract-claims' | 'gather-evidence' | 'apply-mutations' | 'preview-diff'
+  itemsConsidered: number
+  itemsCompleted: number
+  itemsRemaining: number
+  currentItem?: string
+  claimsExtracted?: number
+  evidenceDocsScanned?: number
+  appliedMutations?: number
+  noopMutations?: number
 }
 
 export async function runRescanApplyOrchestrator(
@@ -93,14 +106,14 @@ export async function runRescanApplyOrchestrator(
   const maxMutations = clampPositiveInt(input.maxMutations, 80)
   const triggered: string[] = []
 
-  const claims = extractClaims(input.candidateDocs, input.sourceFiles, maxClaims)
+  const claims = extractClaims(input.candidateDocs, input.sourceFiles, maxClaims, input.onProgress)
   if (claims.length >= maxClaims) {
     triggered.push(`claims-capped:${maxClaims}`)
   }
   const evidenceResult = gatherEvidence(claims, input.baseDir, {
     maxEvidenceDocs,
     stageTimeoutMs,
-  })
+  }, input.onProgress)
   if (evidenceResult.timedOut) {
     triggered.push(`evidence-timeout:${stageTimeoutMs}ms`)
   }
@@ -119,6 +132,7 @@ export async function runRescanApplyOrchestrator(
     claims,
     stageTimeoutMs,
     mutations,
+    onProgress: input.onProgress,
   })
   if (applyResult.timedOut) {
     triggered.push(`apply-timeout:${stageTimeoutMs}ms`)
@@ -149,6 +163,7 @@ export async function runRescanApplyOrchestrator(
     claims,
     mutations,
     stageTimeoutMs,
+    onProgress: input.onProgress,
   })
   return {
     plan,
@@ -160,11 +175,12 @@ export async function runRescanApplyOrchestrator(
 function extractClaims(
   candidateDocs: CandidateDocLike[],
   sourceFiles: Record<string, string>,
-  maxClaims: number
+  maxClaims: number,
+  onProgress?: (progress: RescanApplyOrchestratorProgress) => void
 ): RescanCandidateClaim[] {
   const sourcePaths = Object.keys(sourceFiles)
   const claimMap = new Map<string, RescanCandidateClaim>()
-  for (const doc of candidateDocs) {
+  for (const [index, doc] of candidateDocs.entries()) {
     if (doc.isOriginal) continue
     const topic = doc.tags?.[0] ?? slugify(doc.title).slice(0, 40)
     const snippets = extractClaimSnippets(doc.content)
@@ -181,6 +197,14 @@ function extractClaims(
       })
       if (claimMap.size >= maxClaims) break
     }
+    onProgress?.({
+      stage: 'extract-claims',
+      itemsConsidered: candidateDocs.length,
+      itemsCompleted: index + 1,
+      itemsRemaining: Math.max(candidateDocs.length - (index + 1), 0),
+      currentItem: doc.title,
+      claimsExtracted: claimMap.size,
+    })
     if (claimMap.size >= maxClaims) break
   }
   return Array.from(claimMap.values())
@@ -189,7 +213,8 @@ function extractClaims(
 function gatherEvidence(
   claims: RescanCandidateClaim[],
   baseDir: string,
-  limits: { maxEvidenceDocs: number; stageTimeoutMs: number }
+  limits: { maxEvidenceDocs: number; stageTimeoutMs: number },
+  onProgress?: (progress: RescanApplyOrchestratorProgress) => void
 ): { results: RescanEvidenceResult[]; timedOut: boolean; cappedDocs: boolean } {
   const startedAt = Date.now()
   let timedOut = false
@@ -198,7 +223,7 @@ function gatherEvidence(
     const allRows = indexer.getAllDocumentsForLexical()
     const rows = allRows.slice(0, limits.maxEvidenceDocs)
     const cappedDocs = allRows.length > rows.length
-    const results = claims.map(claim => {
+    const results = claims.map((claim, index) => {
       if (Date.now() - startedAt > limits.stageTimeoutMs) {
         timedOut = true
         return {
@@ -215,11 +240,13 @@ function gatherEvidence(
       const contradictionFacts: string[] = []
       const supportDocs: string[] = []
       const claimNorm = normalizeText(claim.text)
+      let docsScanned = 0
       for (const row of rows) {
         if (Date.now() - startedAt > limits.stageTimeoutMs) {
           timedOut = true
           break
         }
+        docsScanned += 1
         const contentNorm = normalizeText(row.content)
         const overlap = keywordOverlap(claimNorm, contentNorm)
         const equivalent =
@@ -246,7 +273,7 @@ function gatherEvidence(
         0,
         1
       )
-      return {
+      const result = {
         claimId: claim.claimId,
         supportDocs: dedup(supportDocs),
         equivalentDocs: dedup(equivalentDocs),
@@ -254,6 +281,15 @@ function gatherEvidence(
         contradictionFacts: dedup(contradictionFacts),
         evidenceScore,
       }
+      onProgress?.({
+        stage: 'gather-evidence',
+        itemsConsidered: claims.length,
+        itemsCompleted: index + 1,
+        itemsRemaining: Math.max(claims.length - (index + 1), 0),
+        currentItem: claim.text,
+        evidenceDocsScanned: docsScanned,
+      })
+      return result
     })
     return { results, timedOut, cappedDocs }
   } finally {
@@ -379,6 +415,7 @@ async function applyMutations(input: {
   claims: RescanCandidateClaim[]
   stageTimeoutMs: number
   mutations: RescanPlannedMutation[]
+  onProgress?: (progress: RescanApplyOrchestratorProgress) => void
 }): Promise<{
   writtenDocIds: string[]
   appliedMutations: number
@@ -398,7 +435,7 @@ async function applyMutations(input: {
   let noopMutations = 0
 
   try {
-    for (const mutation of input.mutations) {
+    for (const [index, mutation] of input.mutations.entries()) {
       if (Date.now() - startedAt > input.stageTimeoutMs) {
         timedOut = true
         errors.push(`apply stage timed out after ${input.stageTimeoutMs}ms`)
@@ -408,9 +445,29 @@ async function applyMutations(input: {
       if (!claim) continue
       if (mutation.action === 'noop') {
         noopMutations += 1
+        input.onProgress?.({
+          stage: 'apply-mutations',
+          itemsConsidered: input.mutations.length,
+          itemsCompleted: index + 1,
+          itemsRemaining: Math.max(input.mutations.length - (index + 1), 0),
+          currentItem: mutation.submitFact ?? mutation.invalidateFact ?? mutation.claimId,
+          appliedMutations,
+          noopMutations,
+        })
         continue
       }
-      if (!input.apply) continue
+      if (!input.apply) {
+        input.onProgress?.({
+          stage: 'apply-mutations',
+          itemsConsidered: input.mutations.length,
+          itemsCompleted: index + 1,
+          itemsRemaining: Math.max(input.mutations.length - (index + 1), 0),
+          currentItem: mutation.submitFact ?? mutation.invalidateFact ?? mutation.claimId,
+          appliedMutations,
+          noopMutations,
+        })
+        continue
+      }
       try {
         if (mutation.action === 'invalidate_then_submit' && mutation.invalidateFact) {
           await invalidateFactTool(
@@ -437,6 +494,15 @@ async function applyMutations(input: {
         const message = error instanceof Error ? error.message : String(error)
         errors.push(`${mutation.claimId}: ${message}`)
       }
+      input.onProgress?.({
+        stage: 'apply-mutations',
+        itemsConsidered: input.mutations.length,
+        itemsCompleted: index + 1,
+        itemsRemaining: Math.max(input.mutations.length - (index + 1), 0),
+        currentItem: mutation.submitFact ?? mutation.invalidateFact ?? mutation.claimId,
+        appliedMutations,
+        noopMutations,
+      })
     }
   } finally {
     indexer.close()
@@ -688,13 +754,14 @@ async function buildPlanDiff(input: {
   claims: RescanCandidateClaim[]
   mutations: RescanPlannedMutation[]
   stageTimeoutMs: number
+  onProgress?: (progress: RescanApplyOrchestratorProgress) => void
 }): Promise<string> {
   const startedAt = Date.now()
   const claimById = new Map(input.claims.map(claim => [claim.claimId, claim]))
   const indexer = new SqliteKbIndexer({ dbPath: path.join(input.baseDir, '.kb-index.sqlite') })
   try {
     const sections: string[] = []
-    for (const mutation of input.mutations) {
+    for (const [index, mutation] of input.mutations.entries()) {
       if (Date.now() - startedAt > input.stageTimeoutMs) break
       if (mutation.action === 'noop') continue
       const claim = claimById.get(mutation.claimId)
@@ -733,6 +800,13 @@ async function buildPlanDiff(input: {
         const after = `${before}${before.endsWith('\n') ? '' : '\n'}- ${mutation.submitFact} (source: rescan)\n`
         sections.push(renderTextDiff(`docs/${mutation.targetDocId}.md`, before, after))
       }
+      input.onProgress?.({
+        stage: 'preview-diff',
+        itemsConsidered: input.mutations.length,
+        itemsCompleted: index + 1,
+        itemsRemaining: Math.max(input.mutations.length - (index + 1), 0),
+        currentItem: mutation.targetDocId ?? claim.text,
+      })
     }
 
     return renderDiffBundle(sections, '# No proposed content changes for this rescan plan.')

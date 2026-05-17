@@ -685,6 +685,38 @@ describe('init-cli interview checkpoints', () => {
     ).toBe(true)
   })
 
+  it('Given multiple markdown sources, then iterable init phases emit current-item progress', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nThis root sentence is intentionally long enough for fact ingest.\n',
+      'docs/guide.md':
+        '# Guide\n\nThis guide sentence is also intentionally long enough for fact ingest.\n',
+      'notes.txt':
+        'This plain text note is intentionally long enough to become a fact during ingest.\n',
+    })
+
+    const lines: string[] = []
+    const result = await runKbInit({
+      base: 'iterable-progress-test',
+      nonInteractive: true,
+      cwd,
+      progressSink(line) {
+        lines.push(line)
+      },
+    })
+
+    expect(result.status).toBe('accepted')
+    expect(lines.some(line => line.includes('read-inputs') && line.includes('README.md'))).toBe(
+      true
+    )
+    expect(
+      lines.some(line => line.includes('document-facts') && line.includes('README.md'))
+    ).toBe(true)
+    expect(lines.some(line => line.includes('import-docs') && line.includes('README.md'))).toBe(
+      true
+    )
+    expect(lines.some(line => line.includes('write') && line.includes('README.md'))).toBe(true)
+  })
+
   it('Given --rescan, then write cycle writes originals and any resulting mutations', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
@@ -711,6 +743,7 @@ describe('init-cli interview checkpoints', () => {
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
     })
     const provider = createProvider([JSON.stringify({ entities: [], relationships: [] })])
+    const lines: string[] = []
 
     const result = await runKbInit({
       base: 'rescan-plan-only',
@@ -718,10 +751,20 @@ describe('init-cli interview checkpoints', () => {
       rescan: true,
       cwd,
       provider,
+      progressSink(line) {
+        lines.push(line)
+      },
     })
 
     expect(result.status).toBe('accepted')
     expect((result.writtenDocIds ?? []).length).toBe(2)
+    expect(
+      lines.some(
+        line =>
+          line.includes('write') &&
+          (line.includes('writing original docs') || line.includes('mutations processed'))
+      )
+    ).toBe(true)
   })
 
   it('Given an unchanged second scan, then markdown sources are skipped and no original docs are rewritten', async () => {
@@ -803,14 +846,16 @@ describe('init-cli interview checkpoints', () => {
       lines.some(
         line =>
           line.includes('document-facts') &&
-          line.includes('1 changed, 1 unchanged file(s)')
+          line.includes('1 changed, 1 unchanged') &&
+          line.includes('docs/README.md')
       )
     ).toBe(true)
     expect(
       lines.some(
         line =>
           line.includes('import-docs') &&
-          line.includes('1 changed, 1 unchanged original doc(s)')
+          line.includes('1 changed, 1 unchanged') &&
+          line.includes('docs/README.md')
       )
     ).toBe(true)
 
