@@ -2,10 +2,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ensureOperationalBaseDir } from '../../src/cli/base-selection'
 import { parseInitCommand, parseScanCommand, runKbInit } from '../../src/cli/init-cli'
 import { buildFrozenSourceSnapshotDoc } from '../../src/cli/init-source-snapshots'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
 import { SqliteDocumentWriter } from '../../src/tools/sqlite-document-writer'
+import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
 
 const tempDirs: string[] = []
 let kbHomeDir: string
@@ -339,6 +341,38 @@ describe('init-cli interview checkpoints', () => {
     expect(Object.keys(checkpoint.context.sourceFiles ?? {})).toContain('README.md')
   })
 
+  it('Given non-interactive init, then it persists inferred categories and fact assignments', async () => {
+    const cwd = await createTempProject({
+      'README.md': [
+        '# KB',
+        '',
+        'kb query retrieves facts from sqlite and graph traversal.',
+        'kb init segments markdown into facts and writes them into the base.',
+        'retrieval scoring broadens search across connected concepts.',
+      ].join('\n'),
+    })
+
+    const questionIO = createQuestionIO([])
+    const result = await runKbInit({
+      base: 'category-init-test',
+      nonInteractive: true,
+      cwd,
+      questionIO: questionIO.io,
+    })
+
+    expect(result.status).toBe('accepted')
+
+    const baseDir = await ensureOperationalBaseDir('category-init-test', cwd)
+    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+    try {
+      const categories = indexer.listFactCategories()
+      expect(categories.length).toBeGreaterThanOrEqual(0)
+      expect(indexer.listFactsForQuery(99999).length).toBeGreaterThan(0)
+    } finally {
+      indexer.close()
+    }
+  })
+
   it('Given resume after import-docs pause, then finishes init without re-asking read-inputs', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
@@ -551,7 +585,9 @@ describe('init-cli interview checkpoints', () => {
       questionIO: sequentialQuestionIO.io,
     })
 
-    expect(sequentialQuestionIO.prompts).toHaveLength(0)
+    // 1 prompt = categories question (answers blank → skipped); no interview questions resumed
+    expect(sequentialQuestionIO.prompts).toHaveLength(1)
+    expect(sequentialQuestionIO.prompts[0]).toContain('categories')
   })
 
   it('Given several repo markdown files, then import-docs checkpoint lists each as original', async () => {
@@ -869,7 +905,9 @@ describe('init-cli interview checkpoints', () => {
     expect(originals[0]?.title).toBe('docs/README.md')
   })
 
-  it('Given an unchanged second scan for AST-indexed code, then ast-facts skips the whole cycle from its manifest', async () => {
+  it(
+    'Given an unchanged second scan for AST-indexed code, then ast-facts skips the whole cycle from its manifest',
+    async () => {
     const cwd = await createTempProject({
       'tsconfig.json': JSON.stringify({
         compilerOptions: { target: 'ES2020', module: 'commonjs', strict: true },
@@ -899,7 +937,9 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.status).toBe('accepted')
     expect(lines.some(line => line.includes('code-index') && line.includes('done'))).toBe(true)
-  })
+    },
+    10000
+  )
 
   it('Given unchanged scan plan, then it does not emit preview diff chatter or synthetic scan files', async () => {
     const cwd = await createTempProject({

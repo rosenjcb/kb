@@ -1,6 +1,7 @@
+import path from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import dayjs from 'dayjs'
-import { ReportWriter, defaultLogsDir, estimateCost } from '../core/telemetry'
+import { ReportWriter, RunCollector, defaultLogsDir, estimateCost } from '../core/telemetry'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message, ToolDefinition, ToolResultBlock } from '../core/types'
 import { loadPrompt } from '../prompts/loader'
@@ -107,15 +108,17 @@ export interface ChatSessionStats {
   startedAt: string
   provider: string
   model: string
+  base?: string
   turns: ChatTurnStats[]
 }
 
-function createSessionStats(provider: string, model: string): ChatSessionStats {
+function createSessionStats(provider: string, model: string, base?: string): ChatSessionStats {
   return {
     sessionId: `chat-${dayjs().valueOf()}-${Math.random().toString(36).slice(2, 6)}`,
     startedAt: dayjs().toISOString(),
     provider,
     model,
+    base,
     turns: [],
   }
 }
@@ -135,6 +138,7 @@ async function flushSessionLog(stats: ChatSessionStats): Promise<void> {
   await writer.append({
     runId: stats.sessionId,
     sessionId: stats.sessionId,
+    ...(stats.base ? { base: stats.base } : {}),
     command: 'chat',
     startedAt: stats.startedAt,
     finishedAt: dayjs().toISOString(),
@@ -348,7 +352,8 @@ export async function runChatSession(
   // Accumulated multi-turn message history — grows each turn like Claude Code does.
   // The LLM sees native assistant/user pairs rather than embedded-text history.
   const messages: Message[] = []
-  let sessionStats = createSessionStats(deps.llmProvider.name, deps.llmProvider.model)
+  const sessionBase = deps.kbStorageDir ? path.basename(deps.kbStorageDir) : undefined
+  let sessionStats = createSessionStats(deps.llmProvider.name, deps.llmProvider.model, sessionBase)
   deps.onSessionStart?.(sessionStats.sessionId)
 
   printer.chatAssistant('Type a question, or /help for commands.')
@@ -398,9 +403,12 @@ export async function runChatSession(
           continue
         }
         io.write(`Starting ${prefix}…`)
+        const initScanCollector = new RunCollector(prefix, { sessionId: sessionStats.sessionId })
+        const initScanReporter = new ReportWriter(defaultLogsDir())
         try {
           const result = await runKbInit({
             ...parsed,
+            collector: initScanCollector,
             questionIO: {
               write: (msg: string) => io.write(msg),
               askQuestion: async (question: string): Promise<string> => {
@@ -418,6 +426,7 @@ export async function runChatSession(
             },
           })
           io.setProgressLine?.(null)
+          await initScanReporter.append(initScanCollector.finish('success', undefined, result.base))
           const docCount = result.writtenDocIds?.length ?? 0
           io.write(
             `✅ ${isScan ? 'Scan' : 'Init'} complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`
@@ -425,9 +434,9 @@ export async function runChatSession(
           deps.onBaseChanged?.()
         } catch (err) {
           io.setProgressLine?.(null)
-          io.error(
-            `${isScan ? 'Scan' : 'Init'} error: ${err instanceof Error ? err.message : String(err)}`
-          )
+          const errMsg = err instanceof Error ? err.message : String(err)
+          await initScanReporter.append(initScanCollector.finish('error', errMsg)).catch(() => {})
+          io.error(`${isScan ? 'Scan' : 'Init'} error: ${errMsg}`)
         }
         printer.separator()
         continue
@@ -470,7 +479,7 @@ export async function runChatSession(
         await flushSessionLog(sessionStats).catch(() => {})
         conversationState = createInitialConversationState()
         messages.length = 0
-        sessionStats = createSessionStats(deps.llmProvider.name, deps.llmProvider.model)
+        sessionStats = createSessionStats(deps.llmProvider.name, deps.llmProvider.model, sessionBase)
         deps.onSessionStart?.(sessionStats.sessionId)
         if (deps.mode !== 'tui') process.stdout.write('\x1Bc')
         printer.chatAssistant('Fresh session. Ask me anything.')

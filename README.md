@@ -113,6 +113,8 @@ kb && /scan
 
 `kb scan` reuses content hashes to skip unchanged collected docs and source files where possible, so routine rescans stay incremental.
 
+During `kb init` (interactive mode), after facts are extracted you will be prompted to define **fact categories** — named buckets like "TUI", "Agent loop", "Facts" — each with an optional description. Facts are then assigned to those categories via TF-IDF similarity so `kb facts list` can show which bucket each fact belongs to. Category setup is a one-time step; `kb scan` preserves your categories without re-prompting.
+
 ### 4) Start using KB intents
 
 ```bash

@@ -1,6 +1,6 @@
 # KB Init Pipeline
 
-`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`document-facts`** (document facts from markdown/text sources), **`code-facts`** (LLM fallback facts for source code when AST providers are unavailable), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), and **`ast-facts`** (deterministic AST indexing into `kg_*` tables and fact promotion). Use **`kb scan`** to refresh sources against an existing base.
+`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`document-facts`** (document facts from markdown/text sources), **`code-facts`** (LLM fallback facts for source code when AST providers are unavailable), **`fact-categories`** (interactive step: user defines named categories with descriptions, facts are then assigned via TF-IDF cosine similarity), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), and **`ast-facts`** (deterministic AST indexing into `kg_*` tables and fact promotion). Use **`kb scan`** to refresh sources against an existing base.
 
 In the TUI, init/scan progress is rendered as a dedicated live status line instead of transcript history. Any phase that iterates over a collection of files, docs, facts, claims, or mutations emits incremental progress while that collection is being processed; only atomic operations stay start/finish-only. Progress lines include counts and, when useful, the current item. The long-running deterministic phases also yield cooperatively to the event loop between batches so the terminal can repaint and interrupts remain responsive during large scans.
 
@@ -32,16 +32,41 @@ flowchart TD
     A[kb init] --> R[read-inputs]
     R --> MF[document-facts]
     MF --> CF[code-facts]
-    CF --> IM[import-docs]
+    CF --> FC[fact-categories]
+    FC --> IM[import-docs]
     IM --> W[write]
     W --> AF[ast-facts]
 
     MF --> MF1["LLM document extraction\n→ facts import_doc"]
     CF --> CF1["LLM fallback only\n→ import_code facts"]
+    FC --> FC1["User names categories + descriptions\n→ TF-IDF assignment to all facts"]
     IM --> IM1["One original doc\nper source file"]
     W --> W1["SQLite upsert\n+ scan planner"]
     AF --> AF1["AST indexing\n→ kg_* tables + fact promotion"]
 ```
+
+## Fact Categories
+
+After `document-facts` and `code-facts` have populated the facts table, `kb init` (interactive mode only, skipped on `kb scan`) prompts the user to define **fact categories** — named buckets that help organise retrieval.
+
+**Flow:**
+
+1. User enters a comma-separated list of category names (blank → skip).
+2. The list is echoed back for review.
+3. User types `/accept` or `/reject` (reject loops back to step 1).
+4. On `/accept`, each category gets an optional description prompt — blank uses the default `"Facts about <name>"`.
+5. Categories are saved to `fact_categories`; all facts are assigned via TF-IDF cosine similarity (`threshold = 0.3`) against each category's name + description text.
+
+**Tables written:**
+
+| Table | Content |
+|---|---|
+| `fact_categories` | id, name, description, status (`edited`), createdBy (`user`) |
+| `fact_category_assignments` | fact_id → category_id with cosine similarity score |
+
+**`kb scan` behaviour:** category prompting is skipped on rescan — categories defined at init time are preserved. Re-run `kb init` to redefine them.
+
+**Future:** HDBSCAN-based auto-discovery (currently commented out in `src/cli/init-cli.ts`) will run before the manual step to suggest categories derived from the actual fact corpus.
 
 ## Jekyll Routing
 

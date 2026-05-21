@@ -40,6 +40,9 @@ tmp/
 # Node runtime
 .node-gyp/
 
+# Local Python clustering env
+.kb-python/
+
 # Skills directories (keep workflows tracked)
 .claude/**
 .github/SKILLS

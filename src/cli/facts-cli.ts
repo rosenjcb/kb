@@ -148,26 +148,26 @@ async function resolveBaseDir(parsed: ParsedFactsCommand, cwd: string): Promise<
     : (await resolveEffectiveBaseDir(cwd)).baseDir
 }
 
-function formatFactJson(row: FactRow): Record<string, unknown> {
+function formatFactJson(row: FactRow, categories: string[]): Record<string, unknown> {
   return {
     id: row.id,
     fact_text: row.fact_text,
     subject: row.subject,
     predicate: row.predicate,
     object: row.object,
-    lane_id: row.lane_id,
+    categories,
     source_kind: row.source_kind,
     source_ref: row.source_ref,
     uri: formatFactUri(row.id),
   }
 }
 
-function formatFactHuman(row: FactRow, baseLabel?: string): string {
+function formatFactHuman(row: FactRow, categories: string[], baseLabel?: string): string {
   const baseLine = baseLabel ? `base: ${baseLabel}\n` : ''
   return [
     `${baseLine}id: ${row.id}`,
     `uri: ${formatFactUri(row.id)}`,
-    `lane: ${row.lane_id}`,
+    `categories: ${categories.length > 0 ? categories.join(', ') : '(uncategorized)'}`,
     `source: ${row.source_kind}${row.source_ref ? ` (${row.source_ref})` : ''}`,
     `triple: (${row.subject}) [${row.predicate}] (${row.object})`,
     '',
@@ -175,10 +175,57 @@ function formatFactHuman(row: FactRow, baseLabel?: string): string {
   ].join('\n')
 }
 
+function buildCategoryStatsBlock(indexer: SqliteKbIndexer): string {
+  const stats = indexer.listFactCategoryStats()
+  const uncategorized = indexer.countUncategorizedFacts()
+  if (stats.length === 0 && uncategorized === 0) return ''
+  const total = stats.reduce((sum, s) => sum + s.count, 0) + uncategorized
+  const maxNameLen = Math.max(...stats.map(s => s.name.length), '(uncategorized)'.length)
+  const maxCountLen = String(Math.max(...stats.map(s => s.count), uncategorized)).length
+  const rows = stats.map(s => {
+    const pct = total > 0 ? Math.round((s.count / total) * 100) : 0
+    return `  ${s.name.padEnd(maxNameLen)}  ${String(s.count).padStart(maxCountLen)}  ${pct}%`
+  })
+  if (uncategorized > 0) {
+    const pct = total > 0 ? Math.round((uncategorized / total) * 100) : 0
+    rows.push(
+      `  ${'(uncategorized)'.padEnd(maxNameLen)}  ${String(uncategorized).padStart(maxCountLen)}  ${pct}%`
+    )
+  }
+  return [`Category breakdown (${total} facts):`, ...rows].join('\n')
+}
+
 export async function runFactsCommand(
   args: string[],
   options: { cwd?: string } = {}
 ): Promise<string> {
+  const isHelp =
+    args.length === 0 ||
+    args[0] === '--help' ||
+    args[0] === '-h' ||
+    args[0] === 'help' ||
+    args[0] === '--help'
+  if (isHelp) {
+    const cwd = options.cwd ?? process.cwd()
+    let statsBlock = ''
+    try {
+      const { baseDir } = await resolveEffectiveBaseDir(cwd)
+      const indexer = new SqliteKbIndexer({ dbPath: `${baseDir}/.kb-index.sqlite` })
+      try {
+        statsBlock = buildCategoryStatsBlock(indexer)
+      } finally {
+        indexer.close()
+      }
+    } catch {
+      // no base configured or DB not found — show help without stats
+    }
+    const help = printFactsHelp()
+    throw new FactsCommandError(
+      statsBlock ? help.replace('\n\nUsage:', `\n\n${statsBlock}\n\nUsage:`) : help,
+      0
+    )
+  }
+
   const parsed = parseFactsCommand(args)
   const cwd = options.cwd ?? process.cwd()
   const baseDir = await resolveBaseDir(parsed, cwd)
@@ -187,20 +234,43 @@ export async function runFactsCommand(
   try {
     if (parsed.sub === 'list') {
       const rows = indexer.listFactsForQuery(parsed.limit)
+      const categoryNames = indexer.getFactCategoryNamesForFacts(rows.map(row => row.id))
       if (parsed.output === 'json') {
-        return JSON.stringify({ facts: rows.map(formatFactJson) }, null, 2)
+        return JSON.stringify(
+          { facts: rows.map(row => formatFactJson(row, categoryNames.get(row.id) ?? [])) },
+          null,
+          2
+        )
       }
       if (rows.length === 0) return '(no live facts in this base)'
-      return rows.map((r, i) => `--- ${i + 1} ---\n${formatFactHuman(r, parsed.base)}`).join('\n\n')
+      return rows
+        .map(
+          (r, i) =>
+            `--- ${i + 1} ---\n${formatFactHuman(r, categoryNames.get(r.id) ?? [], parsed.base)}`
+        )
+        .join('\n\n')
     }
 
     if (parsed.sub === 'search') {
       const rows = indexer.searchFacts(parsed.query ?? '', parsed.limit)
+      const categoryNames = indexer.getFactCategoryNamesForFacts(rows.map(row => row.id))
       if (parsed.output === 'json') {
-        return JSON.stringify({ query: parsed.query, facts: rows.map(formatFactJson) }, null, 2)
+        return JSON.stringify(
+          {
+            query: parsed.query,
+            facts: rows.map(row => formatFactJson(row, categoryNames.get(row.id) ?? [])),
+          },
+          null,
+          2
+        )
       }
       if (rows.length === 0) return `No facts matched: ${parsed.query}`
-      return rows.map((r, i) => `--- ${i + 1} ---\n${formatFactHuman(r, parsed.base)}`).join('\n\n')
+      return rows
+        .map(
+          (r, i) =>
+            `--- ${i + 1} ---\n${formatFactHuman(r, categoryNames.get(r.id) ?? [], parsed.base)}`
+        )
+        .join('\n\n')
     }
 
     const q = (parsed.query ?? '').trim()
@@ -209,10 +279,11 @@ export async function runFactsCommand(
     if (!row) {
       throw new FactsCommandError(`No active fact matched: ${q}`)
     }
+    const categories = indexer.getFactCategoryNames(row.id)
     if (parsed.output === 'json') {
-      return JSON.stringify(formatFactJson(row), null, 2)
+      return JSON.stringify(formatFactJson(row, categories), null, 2)
     }
-    return formatFactHuman(row, parsed.base)
+    return formatFactHuman(row, categories, parsed.base)
   } finally {
     indexer.close()
   }

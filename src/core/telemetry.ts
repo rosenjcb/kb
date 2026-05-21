@@ -28,6 +28,8 @@ export interface RunReport {
   runId: string
   /** Chat session that spawned this run, if any. */
   sessionId?: string
+  /** KB base name used for this run, if known. */
+  base?: string
   command: string
   startedAt: string
   finishedAt: string
@@ -65,15 +67,17 @@ export class RunCollector {
   private startedAt: string
   private debug: boolean
   private sessionId?: string
+  private base?: string
 
   constructor(
     readonly command: string,
-    opts: { debug?: boolean; sessionId?: string } = {}
+    opts: { debug?: boolean; sessionId?: string; base?: string } = {}
   ) {
     this.runId = `run-${dayjs().valueOf()}-${Math.random().toString(36).slice(2, 6)}`
     this.startedAt = dayjs().toISOString()
     this.debug = opts.debug ?? false
     this.sessionId = opts.sessionId
+    this.base = opts.base
   }
 
   /**
@@ -115,7 +119,8 @@ export class RunCollector {
     }
   }
 
-  finish(status: 'success' | 'error', errorMessage?: string): RunReport {
+  finish(status: 'success' | 'error', errorMessage?: string, base?: string): RunReport {
+    if (base) this.base = base
     const finishedAt = dayjs().toISOString()
     const totalDurationMs = Date.now() - dayjs(this.startedAt).valueOf()
 
@@ -138,6 +143,7 @@ export class RunCollector {
     return {
       runId: this.runId,
       ...(this.sessionId ? { sessionId: this.sessionId } : {}),
+      ...(this.base ? { base: this.base } : {}),
       command: this.command,
       startedAt: this.startedAt,
       finishedAt,

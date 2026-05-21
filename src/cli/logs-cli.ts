@@ -60,19 +60,24 @@ async function runLogsList(args: string[], logsDir: string): Promise<string> {
   }
 
   const hasSession = recent.some(r => r.sessionId)
+  const hasBase = recent.some(r => r.base)
   const SESSION_W = 14
+  const BASE_W = 16
   const sessionCol = hasSession ? padR('Session', SESSION_W) : ''
-  const header = `${sessionCol}${padR('Run ID', 26)}${padR('Command', 12)}${padR('Started', 22)}${padR('Duration', 10)}${padR('In tok', 8)}${padR('Out tok', 8)}Cost`
+  const baseCol = hasBase ? padR('Knowledge Base', BASE_W) : ''
+  const header = `${sessionCol}${padR('Run ID', 26)}${padR('Command', 12)}${baseCol}${padR('Started', 22)}${padR('Duration', 10)}${padR('In tok', 8)}${padR('Out tok', 8)}Cost`
   const divider = '─'.repeat(header.length)
   const rows = recent.map(r => {
     const started = dayjs(r.startedAt).format('YYYY-MM-DD HH:mm:ss')
     const duration = formatDuration(r.totalDurationMs)
     const cost = r.totalEstimatedCostUsd > 0 ? `$${r.totalEstimatedCostUsd.toFixed(5)}` : '-'
     const sess = hasSession ? padR(r.sessionId ? r.sessionId.slice(-10) : '-', SESSION_W) : ''
+    const base = hasBase ? padR(r.base ?? '-', BASE_W) : ''
     return (
       sess +
       padR(r.runId, 26) +
       padR(r.command, 12) +
+      base +
       padR(started, 22) +
       padR(duration, 10) +
       padR(String(r.totalInputTokens), 8) +
@@ -89,6 +94,7 @@ async function runLogsList(args: string[], logsDir: string): Promise<string> {
     (hasSession ? padR('', SESSION_W) : '') +
     padR('Total', 26) +
     padR(`${recent.length} run(s)`, 12) +
+    (hasBase ? padR('', BASE_W) : '') +
     padR('-', 22) +
     padR(formatDuration(totalDuration), 10) +
     padR(String(totalInput), 8) +
@@ -114,6 +120,9 @@ function formatSingleReport(report: RunReport): string {
   lines.push(`Run:      ${report.runId}`)
   if (report.sessionId && report.sessionId !== report.runId) {
     lines.push(`Session:  ${report.sessionId}`)
+  }
+  if (report.base) {
+    lines.push(`Base:     ${report.base}`)
   }
   lines.push(`Command:  ${report.command}`)
   lines.push(`Started:  ${dayjs(report.startedAt).format('YYYY-MM-DD HH:mm:ss')}`)

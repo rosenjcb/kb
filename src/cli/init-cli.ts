@@ -30,6 +30,11 @@ import path from 'node:path'
 import readline from 'node:readline'
 import dayjs from 'dayjs'
 import { ingestCodeFilesAsFacts } from '../core/code-fact-extract'
+import {
+  assignFactsToCategoryIds,
+  slugifyFactCategoryName,
+  type FactCategoryDefinitionInput,
+} from '../core/fact-categories'
 import { DOC_TYPES } from '../core/doc-taxonomy'
 import {
   ingestSourceMarkdownFilesAsFacts,
@@ -825,6 +830,13 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     } else {
       progress.finish('document-facts', 'reused from checkpoint')
     }
+
+    await inferAndAssignProjectCategories({
+      baseDir,
+      nonInteractive: options.nonInteractive,
+      questionIO,
+      rescan: options.rescan === true,
+    })
 
     if (!checkpoint.completedCycles.includes('import-docs')) {
       progress.start('import-docs', 'importing original markdown…')
@@ -1678,6 +1690,149 @@ function readFlag(args: string[], flag: string): boolean {
 function dedup<T>(values: T[]): T[] {
   return Array.from(new Set(values))
 }
+
+async function inferAndAssignProjectCategories(input: {
+  baseDir: string
+  nonInteractive: boolean
+  questionIO: InitQuestionIO
+  rescan: boolean
+}): Promise<void> {
+  const indexer = new SqliteKbIndexer({ dbPath: path.join(input.baseDir, '.kb-index.sqlite') })
+  try {
+    const facts = indexer.listFactsForQuery(99999)
+    const fingerprint = createHash('sha256')
+      .update(facts.map(fact => `${fact.id}:${fact.updated_at}:${fact.normalized_text}`).join('|'))
+      .digest('hex')
+    const previousFingerprint = indexer.getIndexStateValue('fact_category_fingerprint')
+    if (input.rescan && previousFingerprint === fingerprint) {
+      return
+    }
+
+    // TODO: re-enable once UX is validated — runs HDBSCAN then hands off to reviewInferredFactCategories
+    // const discovered = inferAndAssignFactCategories(facts, 8, 0.45)
+    // const inferred = discovered.categories
+    // if (inferred.length === 0) return
+    // const reviewed = input.nonInteractive
+    //   ? inferred.map(category =>
+    //       buildCategoryDefinitionFromReview(category, { status: 'inferred', createdBy: 'system' })
+    //     )
+    //   : await reviewInferredFactCategories(inferred, input.questionIO, input.rescan)
+
+    if (facts.length === 0 || input.nonInteractive || input.rescan) return
+    const reviewed = await promptUserCategories(input.questionIO, input.rescan)
+    if (reviewed.length === 0) return
+
+    indexer.replaceFactCategories(reviewed)
+    // Lower threshold for user-typed short names vs HDBSCAN-derived categories with rich terms
+    const assignments = assignFactsToCategoryIds(facts, reviewed, 0.3)
+    indexer.replaceFactCategoryAssignments(assignments)
+    indexer.setIndexStateValue('fact_category_fingerprint', fingerprint)
+
+    const uncategorized = indexer.countUncategorizedFacts()
+    input.questionIO.write?.(
+      `[${input.rescan ? 'kb scan' : 'kb init'}] categories: ${reviewed.length} saved, ${facts.length - uncategorized}/${facts.length} facts assigned.\n`
+    )
+  } finally {
+    indexer.close()
+  }
+}
+
+
+async function promptUserCategories(
+  questionIO: InitQuestionIO,
+  rescan: boolean
+): Promise<FactCategoryDefinitionInput[]> {
+  const label = rescan ? 'kb scan' : 'kb init'
+  for (;;) {
+    const raw = (
+      await questionIO.askQuestion(`\n[${label}] Enter categories (comma-separated, blank to skip): `)
+    ).trim()
+    if (!raw) return []
+
+    const names = raw.split(',').map(s => s.trim()).filter(Boolean)
+    if (names.length === 0) return []
+
+    questionIO.write?.(
+      `\nCategories:\n${names.map((name, index) => `  ${index + 1}. ${name}`).join('\n')}\n\n`
+    )
+
+    const answer = (await questionIO.askQuestion('> /accept or /reject: ')).trim().toLowerCase()
+    if (answer === '/accept') {
+      const categories: FactCategoryDefinitionInput[] = []
+      for (const name of names) {
+        const defaultDesc = `Facts about ${name.toLowerCase()}`
+        const desc = (
+          await questionIO.askQuestion(`> Description for "${name}" (blank: "${defaultDesc}"): `)
+        ).trim()
+        categories.push({
+          id: `category-${slugifyFactCategoryName(name)}`,
+          name,
+          description: desc || defaultDesc,
+          status: 'edited' as const,
+          createdBy: 'user' as const,
+          representativeTerms: name.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 4),
+          centroidVector: [],
+        })
+      }
+      return categories
+    }
+  }
+}
+
+// TODO: restore after HDBSCAN UX is validated — per-category accept/rename/reject/merge review
+// async function reviewInferredFactCategories(
+//   inferred: InferredFactCategory[],
+//   questionIO: InitQuestionIO,
+//   rescan: boolean
+// ): Promise<FactCategoryDefinitionInput[]> {
+//   questionIO.write?.(
+//     `\n[${rescan ? 'kb scan' : 'kb init'}] Review inferred project categories:\n${inferred
+//       .map(
+//         (category, index) =>
+//           `  ${index + 1}. ${category.name} — ${category.description} [terms: ${category.representativeTerms.join(', ')}]`
+//       )
+//       .join('\n')}\n\n`
+//   )
+//   const accepted: FactCategoryDefinitionInput[] = []
+//   for (let index = 0; index < inferred.length; index += 1) {
+//     const category = inferred[index]
+//     const rawAnswer = (
+//       await questionIO.askQuestion(
+//         `> Category ${index + 1} "${category.name}" [/accept, /rename <name>, /reject, /merge <number>]: `
+//       )
+//     ).trim()
+//     const answer = rawAnswer.toLowerCase()
+//     if (!answer || answer === '/accept') {
+//       accepted.push(buildCategoryDefinitionFromReview(category, { status: 'accepted', createdBy: 'system' }))
+//       continue
+//     }
+//     if (answer === '/reject') continue
+//     if (answer.startsWith('/rename ')) {
+//       const renamed = rawAnswer.slice('/rename '.length).trim()
+//       accepted.push(buildCategoryDefinitionFromReview(category, { name: renamed || category.name, status: 'edited', createdBy: 'user' }))
+//       continue
+//     }
+//     if (answer.startsWith('/merge ')) {
+//       const targetIndex = Number.parseInt(answer.slice('/merge '.length).trim(), 10) - 1
+//       const target = accepted[targetIndex]
+//       if (target) target.description = `${target.description}; merged ${category.name.toLowerCase()}`
+//       continue
+//     }
+//     accepted.push(buildCategoryDefinitionFromReview(category, { name: rawAnswer, status: 'edited', createdBy: 'user' }))
+//   }
+//   const manual = (await questionIO.askQuestion('> Add a manual category (blank to skip): ')).trim()
+//   if (manual) {
+//     accepted.push({
+//       id: `category-${slugifyFactCategoryName(manual)}`,
+//       name: manual, description: `Facts about ${manual}`, status: 'edited', createdBy: 'user',
+//       representativeTerms: manual.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 4),
+//       centroidVector: [],
+//     })
+//   }
+//   return accepted.length > 0
+//     ? accepted
+//     : inferred.map(category => buildCategoryDefinitionFromReview(category, { status: 'accepted', createdBy: 'system' }))
+// }
 
 class InitPausedError extends Error {
   constructor(readonly cycle: InitCycle) {

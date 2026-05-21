@@ -1,5 +1,4 @@
 import dayjs from 'dayjs'
-import { inferQueryLaneWeights } from '../core/fact-taxonomy'
 import { formatFactUri } from '../core/fact-uri'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message } from '../core/types'
@@ -570,8 +569,7 @@ function findEvidenceLine(
 }
 
 function answerNeedsScaffoldRecovery(question: string, answer: string): boolean {
-  const lanes = inferQueryLaneWeights(question)
-  if (!lanes.build && !lanes.config) return false
+  if (!isBuildOrConfigQuestion(question)) return false
   const normalized = answer.toLowerCase()
   const requiredSections = [
     'prerequisites',
@@ -588,8 +586,7 @@ function buildBuildConfigScaffoldAnswer(
   question: string,
   results: ReadDocumentsResultItem[]
 ): string | undefined {
-  const lanes = inferQueryLaneWeights(question)
-  if (!lanes.build && !lanes.config) return undefined
+  if (!isBuildOrConfigQuestion(question)) return undefined
 
   const sectionSpecs: Array<{ title: string; keywords: string[] }> = [
     {
@@ -617,6 +614,13 @@ function buildBuildConfigScaffoldAnswer(
     }
   }
   return found > 0 ? lines.join('\n') : undefined
+}
+
+function isBuildOrConfigQuestion(question: string): boolean {
+  const normalized = question.toLowerCase()
+  return /(build|config|configure|flag|option|install|setup|cmake|compile|dependency)/.test(
+    normalized
+  )
 }
 
 function requiresHighRecallQuery(query: string): boolean {
