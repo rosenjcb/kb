@@ -45,12 +45,18 @@ KB turns day-to-day development into a feedback loop:
 
 ### 1) Install KB
 
-Install the latest published release:
+Default first install for users: install from GitHub Releases on a fresh machine.
 
 ```bash
-pnpm add -g https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz
+curl -fsSL https://github.com/rosenjcb/kb/releases/latest/download/install-kb.sh | bash
 command -v kb
 ```
+
+What this does:
+- installs `nvm` if needed
+- installs `Node 22`
+- installs the latest `kb` release into `~/.kb/runtime`
+- links the stable launcher at `~/.kb/bin/kb`
 
 Or build and install from this checkout:
 
@@ -61,8 +67,15 @@ pnpm run install:global
 command -v kb
 ```
 
-> KB expects `Node 22+` in the shell that runs `kb`.
-> Both install paths prepare KB's native runtime automatically. If you later switch Node versions, rerun `kb sync` or `pnpm run install:global`.
+> `install-kb.sh` bootstraps `nvm` and `Node 22` if they are missing.
+> KB installs its managed runtime under `~/.kb/runtime` and exposes `~/.kb/bin/kb`.
+> After the first install, use `kb sync` for upgrades.
+> If you later switch Node versions, rerun `kb sync` or reinstall with the bootstrap script.
+
+Fresh-machine behavior:
+- before install, `kb` will not exist yet
+- after running the release installer, open a new shell if needed and run `kb`
+- if you are working on KB itself, use the source install flow below instead
 
 ### Python dependency (fact categorisation)
 
@@ -157,16 +170,15 @@ If you see `Could not locate the bindings file` for `better-sqlite3` when runnin
 
 **Option 1: Uninstall and reinstall (recommended)**
 ```bash
-pnpm remove -g kb
-pnpm add -g https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz
+curl -fsSL https://github.com/rosenjcb/kb/releases/latest/download/install-kb.sh | bash
 ```
 
 **Option 2: Force rebuild from global store**
 ```bash
-pnpm add -g --force https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz
+kb sync
 ```
 
-This happens because pnpm skips build scripts by default for security. KB's global installation requires the native SQLite bindings to run. Reinstalling with the commands above ensures the native module is built.
+This happens because KB's current runtime still depends on native SQLite bindings. Reinstalling through the bootstrap installer is the most reliable path because it ensures the expected Node runtime is present first and refreshes the managed install under `~/.kb`.
 
 ## �📖 CLI Reference
 
@@ -241,7 +253,12 @@ kb publish <notion|jekyll> [options]
 kb sync
 ```
 
-`kb sync` installs the latest published `kb-cli-node22.tgz` release from GitHub Releases, refreshes KB's native runtime in `~/.kb`, and does not use your current project directory. It will complain early if the current shell is not running `Node 22+`.
+`kb sync` installs the latest published `kb-cli-node22.tgz` release into KB's managed runtime under `~/.kb/runtime`, refreshes the stable launcher at `~/.kb/bin/kb`, and does not use your current project directory. It will complain early if the current shell is not running `Node 22+`.
+For a fresh machine with no supported Node runtime yet, use:
+
+```bash
+curl -fsSL https://github.com/rosenjcb/kb/releases/latest/download/install-kb.sh | bash
+```
 
 ### Verify
 

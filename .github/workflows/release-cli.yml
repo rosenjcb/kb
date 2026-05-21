@@ -44,6 +44,11 @@ jobs:
           PACKAGE="$(ls kb-*.tgz | head -n 1)"
           mv "$PACKAGE" kb-cli-node22.tgz
 
+      - name: Prepare bootstrap installer
+        run: |
+          cp scripts/install-release.sh install-kb.sh
+          chmod +x install-kb.sh
+
       - name: Compute release metadata
         id: meta
         shell: bash
@@ -66,18 +71,25 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kb-cli-node22
-          path: kb-cli-node22.tgz
+          path: |
+            kb-cli-node22.tgz
+            install-kb.sh
 
       - name: Publish GitHub release assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag_name }}
           name: ${{ steps.meta.outputs.release_name }}
-          files: kb-cli-node22.tgz
+          files: |
+            kb-cli-node22.tgz
+            install-kb.sh
           generate_release_notes: true
           target_commitish: ${{ github.sha }}
           body: |
             CI-built KB CLI package for Node 22+.
 
-            Install globally with:
-            `npm install -g ./kb-cli-node22.tgz`
+            Install on a fresh machine with:
+            `curl -fsSL https://github.com/rosenjcb/kb/releases/latest/download/install-kb.sh | bash`
+
+            Upgrade an existing install with:
+            `kb sync`
