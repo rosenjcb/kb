@@ -72,7 +72,10 @@ export class FactsDocumentReader {
       }
       this.allFactsDumped = true
       const rows = this.indexer.listFactsForQuery(99999)
-      const results = rows.map(row => this.toResult(row, input.includeContent === true))
+      const categoryNames = this.indexer.getFactCategoryNamesForFacts(rows.map(row => row.id))
+      const results = rows.map(row =>
+        this.toResult(row, input.includeContent === true, categoryNames.get(row.id) ?? [])
+      )
       return {
         results,
         total: results.length,
@@ -107,7 +110,10 @@ export class FactsDocumentReader {
       return orchestrator.run({ query: baseQuery, ...opts, excludeIds: excludeIdSet })
     }
     const rows = this.readRows(input, limit)
-    const results = rows.map(row => this.toResult(row, input.includeContent === true))
+    const categoryNames = this.indexer.getFactCategoryNamesForFacts(rows.map(row => row.id))
+    const results = rows.map(row =>
+      this.toResult(row, input.includeContent === true, categoryNames.get(row.id) ?? [])
+    )
     return {
       results,
       total: results.length,
@@ -121,7 +127,7 @@ export class FactsDocumentReader {
     return this.indexer.searchFacts(query, limit)
   }
 
-  private toResult(row: FactRow, includeContent: boolean): QueryResult {
+  private toResult(row: FactRow, includeContent: boolean, categories: string[]): QueryResult {
     const content = includeContent
       ? row.source_kind === 'import_code' && row.source_text
         ? row.source_text
@@ -134,7 +140,7 @@ export class FactsDocumentReader {
         filePath: formatFactUri(row.id),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
-        tags: [row.source_kind, row.lane_id, 'fact'],
+        tags: [row.source_kind, ...categories, 'fact'],
         type: 'reference',
       },
       content,

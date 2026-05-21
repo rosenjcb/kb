@@ -60,6 +60,7 @@ import {
   printDocsRenameHelp,
   runDocsRename,
 } from './docs-rename-cli'
+import { ensurePythonEnv } from '../core/fact-categories'
 import { FactsCommandError, runFactsCommand } from './facts-cli'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
 import { parseInitCommand, parseScanCommand, runKbInit } from './init-cli'
@@ -618,7 +619,7 @@ export async function runMainWithOutput(
       return
     }
     const reporter = new ReportWriter(defaultLogsDir())
-    const collector = new RunCollector('init')
+    const collector = new RunCollector('init', { sessionId })
     try {
       const parsed = parseInitCommand(args.slice(1))
       if (parsed.rescan) {
@@ -626,10 +627,10 @@ export async function runMainWithOutput(
           `⚠️  ${cmd('init --rescan', mode)} has moved to ${cmd('scan', mode)}. Continuing for compatibility.`
         )
       }
-      const initCollector = new RunCollector('init', { debug: parsed.debug })
+      const initCollector = new RunCollector('init', { debug: parsed.debug, sessionId })
       const result = await runKbInit({ ...parsed, collector: initCollector })
       out.log(JSON.stringify(result, null, 2))
-      await reporter.append(initCollector.finish('success'))
+      await reporter.append(initCollector.finish('success', undefined, result.base))
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -645,13 +646,13 @@ export async function runMainWithOutput(
       return
     }
     const reporter = new ReportWriter(defaultLogsDir())
-    const collector = new RunCollector('scan')
+    const collector = new RunCollector('scan', { sessionId })
     try {
       const parsed = parseScanCommand(args.slice(1))
-      const scanCollector = new RunCollector('scan', { debug: parsed.debug })
+      const scanCollector = new RunCollector('scan', { debug: parsed.debug, sessionId })
       const result = await runKbInit({ ...parsed, collector: scanCollector })
       out.log(JSON.stringify(result, null, 2))
-      await reporter.append(scanCollector.finish('success'))
+      await reporter.append(scanCollector.finish('success', undefined, result.base))
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -771,7 +772,6 @@ export async function runMainWithOutput(
           envelope: { ...parsed.envelope, payload: { ...parsed.envelope.payload, allFacts: true } },
         }
       }
-      collector = new RunCollector(firstArg, { debug: parsed.debug, sessionId })
       let intentBaseDir: string
       try {
         intentBaseDir = parsed.base
@@ -784,6 +784,7 @@ export async function runMainWithOutput(
         await reporter.append(collector.finish('error', CLI_ERROR_NO_KB_BASE))
         return
       }
+      collector = new RunCollector(firstArg, { debug: parsed.debug, sessionId, base: path.basename(intentBaseDir) })
       const rawLlmProvider = createLLMProviderFromConfig(config)
       const llmCounter = rawLlmProvider ? new TokenCountingProvider(rawLlmProvider) : undefined
       const llmProvider = llmCounter ?? rawLlmProvider
@@ -1002,6 +1003,14 @@ async function main() {
     for (const r of skillResults) {
       if (r.action === 'installed') startupNotices.push(`✓ KB agent skill installed for ${r.agent}`)
       else if (r.action === 'updated') startupNotices.push(`↑ KB agent skill updated for ${r.agent}`)
+    }
+
+    try {
+      ensurePythonEnv()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      process.stderr.write(`❌ ${message}\n`)
+      process.exit(1)
     }
 
     const hasApiKey =

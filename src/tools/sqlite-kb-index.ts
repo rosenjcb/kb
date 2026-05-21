@@ -2,8 +2,12 @@ import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import Database from 'better-sqlite3'
 import dayjs from 'dayjs'
+import type {
+  FactCategoryCreatedBy,
+  FactCategoryDefinitionInput,
+  FactCategoryStatus,
+} from '../core/fact-categories'
 import { runMigrations } from '../core/db-migrations'
-import { type FactLaneId, classifyFactLane } from '../core/fact-taxonomy'
 import { type RetrievalLane, classifyDocumentLane } from './retrieval-lane-router'
 
 export interface SqliteKbIndexerOptions {
@@ -114,7 +118,6 @@ export interface FactUpsertInput {
   triplet?: FactTriplet
   sourceKind: 'submit' | 'import_doc' | 'import_code'
   sourceRef?: string
-  laneId?: FactLaneId
   confidence?: number
   supersedesFactId?: string
   /** Raw source code snippet for import_code facts — stored and served to the LLM instead of verbose fact_text. */
@@ -127,7 +130,7 @@ export interface FactRow {
   normalized_text: string
   source_kind: string
   source_ref: string | null
-  lane_id: FactLaneId | string
+  lane_id?: string
   confidence: number
   supersedes_fact_id: string | null
   tombstoned_at: string | null
@@ -137,6 +140,26 @@ export interface FactRow {
   predicate: string
   object: string
   source_text: string | null
+}
+
+export interface FactCategoryRow {
+  id: string
+  name: string
+  description: string
+  status: FactCategoryStatus
+  created_by: FactCategoryCreatedBy
+  representative_terms_json: string
+  centroid_vector_json: string
+  created_at: string
+  updated_at: string
+}
+
+export interface FactCategoryAssignmentRow {
+  fact_id: string
+  category_id: string
+  score: number
+  created_at: string
+  updated_at: string
 }
 
 export interface FactConceptRow {
@@ -237,10 +260,10 @@ const DEFAULT_LANE_ROUTING_THRESHOLDS: LaneRoutingRolloutThresholds = {
 
 /** `facts` row projection — keep aligned with `FactRow`. */
 const FACT_ROW_SELECT =
-  'id, fact_text, normalized_text, source_kind, source_ref, lane_id, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text'
+  'id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text'
 
 const FACT_ROW_SELECT_F =
-  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.lane_id, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at, f.subject, f.predicate, f.object, f.source_text'
+  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at, f.subject, f.predicate, f.object, f.source_text'
 
 export class SqliteKbIndexer {
   private readonly db: Database.Database
@@ -259,7 +282,6 @@ export class SqliteKbIndexer {
   upsertFact(input: FactUpsertInput): { id: string; operation: 'inserted' | 'updated' } {
     const now = dayjs().toISOString()
     const normalized = normalizeFactText(input.factText)
-    const laneId = input.laneId ?? classifyFactLane(input.factText)
     const raw = input.triplet
     let subject: string
     let predicate: string
@@ -283,7 +305,7 @@ export class SqliteKbIndexer {
         .prepare(
           `
           UPDATE facts
-          SET fact_text = ?, source_kind = ?, source_ref = ?, lane_id = ?, confidence = ?, updated_at = ?, subject = ?, predicate = ?, object = ?, source_text = ?
+          SET fact_text = ?, source_kind = ?, source_ref = ?, confidence = ?, updated_at = ?, subject = ?, predicate = ?, object = ?, source_text = ?
           WHERE id = ?
         `
         )
@@ -291,7 +313,6 @@ export class SqliteKbIndexer {
           input.factText.trim(),
           input.sourceKind,
           input.sourceRef ?? null,
-          laneId,
           input.confidence ?? 0.8,
           now,
           subject,
@@ -310,9 +331,9 @@ export class SqliteKbIndexer {
       .prepare(
         `
         INSERT INTO facts (
-          id, fact_text, normalized_text, source_kind, source_ref, lane_id, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text
+          id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
       `
       )
       .run(
@@ -321,7 +342,6 @@ export class SqliteKbIndexer {
         normalized,
         input.sourceKind,
         input.sourceRef ?? null,
-        laneId,
         input.confidence ?? 0.8,
         input.supersedesFactId ?? null,
         now,
@@ -642,6 +662,357 @@ export class SqliteKbIndexer {
         `SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref LIKE ? AND tombstoned_at IS NULL`
       )
       .all(`${prefix}%`) as FactRow[]
+  }
+
+  listFactCategories(): FactCategoryRow[] {
+    return this.db
+      .prepare(
+        `
+        SELECT id, name, description, status, created_by, representative_terms_json, centroid_vector_json, created_at, updated_at
+        FROM fact_categories
+        ORDER BY updated_at DESC, name ASC
+      `
+      )
+      .all() as FactCategoryRow[]
+  }
+
+  replaceFactCategories(categories: FactCategoryDefinitionInput[]): void {
+    const now = dayjs().toISOString()
+    const deleteAssignments = this.db.prepare('DELETE FROM fact_category_assignments')
+    const deleteMissing = this.db.prepare(
+      categories.length > 0
+        ? `DELETE FROM fact_categories WHERE id NOT IN (${categories.map(() => '?').join(', ')})`
+        : 'DELETE FROM fact_categories'
+    )
+    const upsertCategory = this.db.prepare(`
+      INSERT INTO fact_categories (
+        id,
+        name,
+        description,
+        status,
+        created_by,
+        representative_terms_json,
+        centroid_vector_json,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        description = excluded.description,
+        status = excluded.status,
+        created_by = excluded.created_by,
+        representative_terms_json = excluded.representative_terms_json,
+        centroid_vector_json = excluded.centroid_vector_json,
+        updated_at = excluded.updated_at
+    `)
+
+    const tx = this.db.transaction(() => {
+      deleteAssignments.run()
+      if (categories.length > 0) deleteMissing.run(...categories.map(category => category.id))
+      else deleteMissing.run()
+      for (const category of categories) {
+        upsertCategory.run(
+          category.id,
+          category.name,
+          category.description,
+          category.status,
+          category.createdBy,
+          JSON.stringify(category.representativeTerms),
+          JSON.stringify(category.centroidVector),
+          now,
+          now
+        )
+      }
+    })
+
+    tx()
+  }
+
+  replaceFactCategoryAssignments(
+    assignments: Map<string, Array<{ categoryId: string; score: number }>>
+  ): void {
+    const now = dayjs().toISOString()
+    const clear = this.db.prepare('DELETE FROM fact_category_assignments')
+    const insert = this.db.prepare(`
+      INSERT INTO fact_category_assignments (fact_id, category_id, score, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(fact_id, category_id) DO UPDATE SET
+        score = excluded.score,
+        updated_at = excluded.updated_at
+    `)
+
+    const tx = this.db.transaction(() => {
+      clear.run()
+      for (const [factId, rows] of assignments.entries()) {
+        for (const row of rows) {
+          insert.run(factId, row.categoryId, row.score, now, now)
+        }
+      }
+    })
+
+    tx()
+  }
+
+  mergeFactCategoryAssignments(
+    assignments: Map<string, Array<{ categoryId: string; score: number }>>
+  ): void {
+    const now = dayjs().toISOString()
+    const insert = this.db.prepare(`
+      INSERT INTO fact_category_assignments (fact_id, category_id, score, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(fact_id, category_id) DO UPDATE SET
+        score = excluded.score,
+        updated_at = excluded.updated_at
+    `)
+    const tx = this.db.transaction(() => {
+      for (const [factId, rows] of assignments.entries()) {
+        for (const row of rows) {
+          insert.run(factId, row.categoryId, row.score, now, now)
+        }
+      }
+    })
+    tx()
+  }
+
+  getFactCategoryNames(factId: string): string[] {
+    return this.db
+      .prepare(
+        `
+        SELECT c.name AS name
+        FROM fact_category_assignments a
+        JOIN fact_categories c ON c.id = a.category_id
+        WHERE a.fact_id = ?
+        ORDER BY a.score DESC, c.name ASC
+      `
+      )
+      .all(factId)
+      .map(row => String((row as { name: string }).name))
+  }
+
+  getFactCategoryNamesForFacts(factIds: string[]): Map<string, string[]> {
+    const ids = [...new Set(factIds.map(id => id.trim()).filter(Boolean))]
+    const out = new Map<string, string[]>()
+    if (ids.length === 0) return out
+    const placeholders = ids.map(() => '?').join(', ')
+    const rows = this.db
+      .prepare(
+        `
+        SELECT a.fact_id AS fact_id, c.name AS name
+        FROM fact_category_assignments a
+        JOIN fact_categories c ON c.id = a.category_id
+        WHERE a.fact_id IN (${placeholders})
+        ORDER BY a.score DESC, c.name ASC
+      `
+      )
+      .all(...ids) as Array<{ fact_id: string; name: string }>
+    for (const row of rows) {
+      if (!out.has(row.fact_id)) out.set(row.fact_id, [])
+      out.get(row.fact_id)?.push(row.name)
+    }
+    return out
+  }
+
+  getFactCategoryIdsForFacts(factIds: string[]): Map<string, string[]> {
+    const ids = [...new Set(factIds.map(id => id.trim()).filter(Boolean))]
+    const out = new Map<string, string[]>()
+    if (ids.length === 0) return out
+    const placeholders = ids.map(() => '?').join(', ')
+    const rows = this.db
+      .prepare(
+        `
+        SELECT fact_id, category_id
+        FROM fact_category_assignments
+        WHERE fact_id IN (${placeholders})
+        ORDER BY score DESC, category_id ASC
+      `
+      )
+      .all(...ids) as Array<{ fact_id: string; category_id: string }>
+    for (const row of rows) {
+      if (!out.has(row.fact_id)) out.set(row.fact_id, [])
+      out.get(row.fact_id)?.push(row.category_id)
+    }
+    return out
+  }
+
+  inferCategoriesForQuery(query: string, limit = 3): Array<{ categoryId: string; name: string; score: number }> {
+    const categories = this.listFactCategories()
+    if (!query.trim() || categories.length === 0) return []
+    const queryVector = buildDeterministicVector(query, this.vectorDimensions)
+    return categories
+      .map(category => {
+        const centroid = parseVectorJsonSafe(category.centroid_vector_json)
+        const termHits = parseTermsJsonSafe(category.representative_terms_json).filter(term =>
+          query.toLowerCase().includes(term.toLowerCase())
+        ).length
+        const cosine =
+          centroid.length === queryVector.length
+            ? (cosineSimilarity(queryVector, centroid) + 1) / 2
+            : 0
+        return {
+          categoryId: category.id,
+          name: category.name,
+          score: Math.min(1, cosine + termHits * 0.12),
+        }
+      })
+      .filter(category => category.score >= 0.58)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+  }
+
+  searchFactsInCategories(query: string, categoryIds: string[], limit = 10): FactRow[] {
+    const ids = [...new Set(categoryIds.map(id => id.trim()).filter(Boolean))]
+    if (ids.length === 0) return this.searchFacts(query, limit)
+    const placeholders = ids.map(() => '?').join(', ')
+    const tokens = tokenizeQuery(query.trim())
+    const joined = tokens.join('')
+    const ftsTokens =
+      joined.length > 2 && joined !== tokens.join(' ') ? [...new Set([...tokens, joined])] : tokens
+    const ftsQuery = ftsTokens.length > 0 ? ftsTokens.join(' OR ') : query.trim()
+    try {
+      const rows = this.db
+        .prepare(
+          `
+          SELECT ${FACT_ROW_SELECT_F}
+          FROM facts_fts fts
+          JOIN facts f ON f.id = fts.fact_id
+          JOIN fact_category_assignments a ON a.fact_id = f.id
+          WHERE facts_fts MATCH ?
+            AND a.category_id IN (${placeholders})
+            AND f.tombstoned_at IS NULL
+          ORDER BY a.score DESC, rank
+          LIMIT ?
+        `
+        )
+        .all(ftsQuery, ...ids, limit) as FactRow[]
+      if (rows.length > 0) return rows
+    } catch {
+      // fallback below
+    }
+
+    const likeQuery = `%${query.trim().toLowerCase()}%`
+    return this.db
+      .prepare(
+        `
+        SELECT DISTINCT ${FACT_ROW_SELECT_F}
+        FROM facts f
+        JOIN fact_category_assignments a ON a.fact_id = f.id
+        WHERE a.category_id IN (${placeholders})
+          AND f.tombstoned_at IS NULL
+          AND lower(f.fact_text) LIKE ?
+        ORDER BY a.score DESC, f.updated_at DESC
+        LIMIT ?
+      `
+      )
+      .all(...ids, likeQuery, limit) as FactRow[]
+  }
+
+  searchFactsByConceptsInCategories(conceptIds: string[], categoryIds: string[], limit = 20): FactRow[] {
+    const concepts = [...new Set(conceptIds.map(id => normalizeConceptId(id)).filter(Boolean))]
+    const categories = [...new Set(categoryIds.map(id => id.trim()).filter(Boolean))]
+    if (concepts.length === 0) return []
+    if (categories.length === 0) return this.searchFactsByConcepts(concepts, limit)
+    const conceptPlaceholders = concepts.map(() => '?').join(', ')
+    const categoryPlaceholders = categories.map(() => '?').join(', ')
+    return this.db
+      .prepare(
+        `
+        SELECT DISTINCT ${FACT_ROW_SELECT_F}
+        FROM facts f
+        JOIN fact_concepts fc ON fc.fact_id = f.id
+        JOIN fact_category_assignments a ON a.fact_id = f.id
+        WHERE f.tombstoned_at IS NULL
+          AND fc.concept_id IN (${conceptPlaceholders})
+          AND a.category_id IN (${categoryPlaceholders})
+        ORDER BY a.score DESC, f.updated_at DESC
+        LIMIT ?
+      `
+      )
+      .all(...concepts, ...categories, limit) as FactRow[]
+  }
+
+  searchFactsByConceptFrontierInCategories(
+    conceptIds: string[],
+    categoryIds: string[],
+    limit = 20
+  ): FactRow[] {
+    const concepts = [...new Set(conceptIds.map(id => normalizeConceptId(id)).filter(Boolean))]
+    const categories = [...new Set(categoryIds.map(id => id.trim()).filter(Boolean))]
+    if (concepts.length === 0) return []
+    if (categories.length === 0) return this.searchFactsByConceptFrontier(concepts, limit)
+    const conceptPlaceholders = concepts.map(() => '?').join(', ')
+    const categoryPlaceholders = categories.map(() => '?').join(', ')
+    return this.db
+      .prepare(
+        `
+        SELECT DISTINCT ${FACT_ROW_SELECT_F}
+        FROM facts f
+        JOIN (
+          SELECT
+            fc.fact_id,
+            COUNT(DISTINCT fc.concept_id) AS match_count
+          FROM fact_concepts fc
+          WHERE fc.concept_id IN (${conceptPlaceholders})
+          GROUP BY fc.fact_id
+        ) m ON m.fact_id = f.id
+        JOIN fact_category_assignments a ON a.fact_id = f.id
+        WHERE f.tombstoned_at IS NULL
+          AND a.category_id IN (${categoryPlaceholders})
+        ORDER BY a.score DESC, m.match_count DESC, f.confidence DESC, f.updated_at DESC
+        LIMIT ?
+      `
+      )
+      .all(...concepts, ...categories, limit) as FactRow[]
+  }
+
+  listUncategorizedFacts(): FactRow[] {
+    return this.db
+      .prepare(
+        `
+        SELECT f.*
+        FROM facts f
+        WHERE f.tombstoned_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM fact_category_assignments a
+            WHERE a.fact_id = f.id
+          )
+        ORDER BY f.updated_at DESC
+      `
+      )
+      .all() as FactRow[]
+  }
+
+  countUncategorizedFacts(): number {
+    const row = this.db
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+        FROM facts f
+        WHERE f.tombstoned_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM fact_category_assignments a
+            WHERE a.fact_id = f.id
+          )
+      `
+      )
+      .get() as { count: number }
+    return row.count
+  }
+
+  listFactCategoryStats(): Array<{ name: string; count: number }> {
+    return this.db
+      .prepare(
+        `
+        SELECT c.name AS name, COUNT(DISTINCT a.fact_id) AS count
+        FROM fact_categories c
+        LEFT JOIN fact_category_assignments a ON a.category_id = c.id
+        GROUP BY c.id, c.name
+        ORDER BY count DESC, c.name ASC
+      `
+      )
+      .all() as Array<{ name: string; count: number }>
   }
 
   upsertDerivedDoc(input: DerivedDocUpsertInput): void {
@@ -1394,6 +1765,28 @@ export class SqliteKbIndexer {
       })
   }
 
+  getIndexStateValue(key: string): string | undefined {
+    const row = this.db.prepare('SELECT value FROM index_state WHERE key = ?').get(key) as
+      | { value?: string }
+      | undefined
+    return typeof row?.value === 'string' ? row.value : undefined
+  }
+
+  setIndexStateValue(key: string, value: string): void {
+    const now = dayjs().toISOString()
+    this.db
+      .prepare(
+        `
+        INSERT INTO index_state (key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          value = excluded.value,
+          updated_at = excluded.updated_at
+      `
+      )
+      .run(key, value, now)
+  }
+
   // ─── Document Content API (SQLite-exclusive read path) ───────────
 
   getAllDocumentsForLexical(): SqliteDocumentRow[] {
@@ -1506,6 +1899,28 @@ function parseTagsJsonSafe(raw: string | null): string[] {
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
     return parsed.filter(tag => typeof tag === 'string') as string[]
+  } catch {
+    return []
+  }
+}
+
+function parseTermsJsonSafe(raw: string | null): string[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(term => typeof term === 'string') as string[]
+  } catch {
+    return []
+  }
+}
+
+function parseVectorJsonSafe(raw: string | null): number[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(value => typeof value === 'number') as number[]
   } catch {
     return []
   }

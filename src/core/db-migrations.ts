@@ -420,6 +420,40 @@ const MIGRATIONS: Migration[] = [
     name: 'facts_source_text',
     sql: 'ALTER TABLE facts ADD COLUMN source_text TEXT;',
   },
+  {
+    version: 13,
+    name: 'fact_categories',
+    sql: `
+      CREATE TABLE IF NOT EXISTS fact_categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        representative_terms_json TEXT NOT NULL DEFAULT '[]',
+        centroid_vector_json TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_fact_categories_name
+        ON fact_categories(name);
+
+      CREATE TABLE IF NOT EXISTS fact_category_assignments (
+        fact_id TEXT NOT NULL,
+        category_id TEXT NOT NULL,
+        score REAL NOT NULL DEFAULT 0.0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (fact_id, category_id),
+        FOREIGN KEY (fact_id) REFERENCES facts(id) ON DELETE CASCADE,
+        FOREIGN KEY (category_id) REFERENCES fact_categories(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_fact_category_assignments_category
+        ON fact_category_assignments(category_id, score DESC);
+    `,
+  },
 ]
 
 /**

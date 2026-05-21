@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto'
-import { inferQueryLaneWeights } from '../core/fact-taxonomy'
 import { formatFactUri } from '../core/fact-uri'
 import type { QueryResponse, QueryResult } from './facts-document-reader'
 import type { FactConceptRow, FactRow, SqliteKbIndexer } from './sqlite-kb-index'
@@ -50,7 +49,8 @@ export class FactsQueryResearchOrchestrator {
     const maxGraphHops = clampInt(process.env.KB_FACTS_QUERY_MAX_HOPS, 3, 1, 5)
     const perIterationLimit = Math.max(input.limit, 15)
     const queryTokens = tokenizeQuery(input.query)
-    const queryLaneWeights = inferQueryLaneWeights(input.query)
+    const rankedCategories = this.indexer.inferCategoriesForQuery(input.query, 4)
+    let activeCategoryIds = rankedCategories.slice(0, 2).map(category => category.categoryId)
     let activeConcepts = queryTokens.slice(0, 8)
     const seenFactIds = new Set<string>(input.excludeIds ?? [])
     const scoredFacts = new Map<string, { row: FactRow; score: number }>()
@@ -62,15 +62,30 @@ export class FactsQueryResearchOrchestrator {
     const loopTrace: string[] = []
 
     for (let iter = 0; iter < maxIterations; iter++) {
-      const lexicalRows = this.indexer.searchFacts(input.query, perIterationLimit)
+      const lexicalRows =
+        activeCategoryIds.length > 0
+          ? this.indexer.searchFactsInCategories(input.query, activeCategoryIds, perIterationLimit)
+          : this.indexer.searchFacts(input.query, perIterationLimit)
       const frontierConcepts = [...new Set([...activeConcepts, ...queryTokens])].slice(0, 40)
       const frontierRows =
         frontierConcepts.length > 0
-          ? this.indexer.searchFactsByConceptFrontier(frontierConcepts, perIterationLimit)
+          ? activeCategoryIds.length > 0
+            ? this.indexer.searchFactsByConceptFrontierInCategories(
+                frontierConcepts,
+                activeCategoryIds,
+                perIterationLimit
+              )
+            : this.indexer.searchFactsByConceptFrontier(frontierConcepts, perIterationLimit)
           : []
       const conceptRows =
         activeConcepts.length > 0
-          ? this.indexer.searchFactsByConcepts(activeConcepts, perIterationLimit)
+          ? activeCategoryIds.length > 0
+            ? this.indexer.searchFactsByConceptsInCategories(
+                activeConcepts,
+                activeCategoryIds,
+                perIterationLimit
+              )
+            : this.indexer.searchFactsByConcepts(activeConcepts, perIterationLimit)
           : []
       const merged = mergeUniqueFacts(
         [...lexicalRows, ...frontierRows, ...conceptRows],
@@ -81,7 +96,7 @@ export class FactsQueryResearchOrchestrator {
         merged.map(row => row.id)
       )
       loopTrace.push(
-        `i${iter + 1}:lex=${lexicalRows.length},frontier=${frontierRows.length},concept=${conceptRows.length},merged=${merged.length},sem=${semanticScores.size},c=${frontierConcepts.length}`
+        `i${iter + 1}:lex=${lexicalRows.length},frontier=${frontierRows.length},concept=${conceptRows.length},merged=${merged.length},sem=${semanticScores.size},c=${frontierConcepts.length},categories=${activeCategoryIds.length}`
       )
       if (merged.length === 0) break
 
@@ -91,7 +106,7 @@ export class FactsQueryResearchOrchestrator {
         scoredFacts,
         new Set(frontierRows.map(row => row.id)),
         semanticScores,
-        queryLaneWeights
+        activeCategoryIds
       )
       const topRows = [...scoredFacts.values()]
         .sort((a, b) => b.score - a.score)
@@ -111,13 +126,28 @@ export class FactsQueryResearchOrchestrator {
           graphHops,
           sufficiencyReason: sufficiency.reason,
           loopTrace,
-          queryLaneWeights,
+          rankedCategories,
         })
       }
 
       if (iter < maxIterations - 1 && activeConcepts.length > 0 && graphHops < maxGraphHops) {
         activeConcepts = this.indexer.expandNeighborConcepts(activeConcepts, 1, 40)
         graphHops += 1
+        if (
+          activeCategoryIds.length === 0 &&
+          rankedCategories.length > 0 &&
+          sufficiency.decision !== 'answerable'
+        ) {
+          activeCategoryIds = rankedCategories.slice(0, 3).map(category => category.categoryId)
+        } else if (
+          activeCategoryIds.length > 0 &&
+          activeCategoryIds.length < rankedCategories.length &&
+          sufficiency.decision !== 'answerable'
+        ) {
+          activeCategoryIds = rankedCategories
+            .slice(0, activeCategoryIds.length + 1)
+            .map(category => category.categoryId)
+        }
       }
     }
 
@@ -129,7 +159,7 @@ export class FactsQueryResearchOrchestrator {
       sufficiencyReason: sufficiency.reason,
       suggestRetrievalDeepen: input.surface === 'chat',
       loopTrace,
-      queryLaneWeights,
+      rankedCategories,
     })
   }
 
@@ -161,16 +191,21 @@ export class FactsQueryResearchOrchestrator {
     scores: Map<string, { row: FactRow; score: number }>,
     frontierFactIds: Set<string>,
     semanticScores: Map<string, number>,
-    queryLaneWeights: Partial<Record<string, number>>
+    activeCategoryIds: string[]
   ): void {
     const queryTokens = tokenizeQuery(query)
+    const categoryIds = this.indexer.getFactCategoryIdsForFacts(rows.map(row => row.id))
     for (const row of rows) {
       const textTokens = tokenizeQuery(row.fact_text)
       const overlap = textTokens.filter(token => queryTokens.includes(token)).length
       const overlapScore = queryTokens.length > 0 ? overlap / queryTokens.length : 0
       const recencyBias = row.source_kind === 'submit' ? 0.08 : 0
       const frontierBoost = frontierFactIds.has(row.id) ? 0.06 : 0
-      const laneBoost = (queryLaneWeights[row.lane_id] ?? 0) * 0.12
+      const categories = categoryIds.get(row.id) ?? []
+      const categoryBoost =
+        activeCategoryIds.length > 0 && categories.some(category => activeCategoryIds.includes(category))
+          ? Math.min(0.18, categories.filter(category => activeCategoryIds.includes(category)).length * 0.09)
+          : 0
       const semanticScore = semanticScores.get(row.id) ?? 0
       const score = Math.min(
         1,
@@ -179,7 +214,7 @@ export class FactsQueryResearchOrchestrator {
           row.confidence * 0.2 +
           recencyBias +
           frontierBoost +
-          laneBoost
+          categoryBoost
       )
       const current = scores.get(row.id)
       if (!current || score > current.score) {
@@ -196,7 +231,7 @@ export class FactsQueryResearchOrchestrator {
     sufficiencyReason: string
     suggestRetrievalDeepen?: boolean
     loopTrace?: string[]
-    queryLaneWeights?: Partial<Record<string, number>>
+    rankedCategories?: Array<{ categoryId: string; name: string; score: number }>
   }): QueryResponse {
     const sorted = [...input.scoredFacts.values()].sort((a, b) => b.score - a.score)
     const limit = input.input.limit
@@ -220,6 +255,7 @@ export class FactsQueryResearchOrchestrator {
     }
     const remainder = sorted.filter(e => !reservedIds.has(e.row.id))
     const ranked = [...reserved, ...remainder].slice(0, limit)
+    const categoryNames = this.indexer.getFactCategoryNamesForFacts(ranked.map(entry => entry.row.id))
     const results: QueryResult[] = ranked.map(({ row }) => ({
       metadata: {
         id: row.id,
@@ -227,7 +263,7 @@ export class FactsQueryResearchOrchestrator {
         filePath: formatFactUri(row.id),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
-        tags: [row.source_kind, row.lane_id, 'fact'],
+        tags: [row.source_kind, ...(categoryNames.get(row.id) ?? []), 'fact'],
         type: 'reference',
       },
       content: input.input.includeContent ? row.fact_text : undefined,
@@ -242,8 +278,8 @@ export class FactsQueryResearchOrchestrator {
       .filter(Boolean)
       .join(';')
     const traceDetail = [
-      input.queryLaneWeights && Object.keys(input.queryLaneWeights).length > 0
-        ? `lanes:${Object.keys(input.queryLaneWeights).join(',')}`
+      input.rankedCategories && input.rankedCategories.length > 0
+        ? `categories:${input.rankedCategories.map(category => category.name).join(',')}`
         : null,
       input.loopTrace?.length ? `trace:${input.loopTrace.join('|')}` : null,
     ]
