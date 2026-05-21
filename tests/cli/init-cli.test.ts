@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ensureOperationalBaseDir } from '../../src/cli/base-selection'
 import { parseInitCommand, parseScanCommand, runKbInit } from '../../src/cli/init-cli'
 import { buildFrozenSourceSnapshotDoc } from '../../src/cli/init-source-snapshots'
+import { RunCollector } from '../../src/core/telemetry'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
 import { SqliteDocumentWriter } from '../../src/tools/sqlite-document-writer'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
@@ -1104,5 +1105,98 @@ describe('init-cli interview checkpoints', () => {
     // Ensure all phase lines use the correct total (6)
     const phaseLines = lines.filter(line => line.match(/\d+\/\d+/))
     expect(phaseLines.every(line => !line.match(/\d+\/7/))).toBe(true)
+  })
+})
+
+describe('init-cli token tracking', () => {
+  function createTokenProvider(inputTokens: number, outputTokens: number): LLMProvider {
+    return {
+      name: 'test-provider',
+      model: 'test-model',
+      supportsStreaming: false,
+      async call(_params: LLMCallParams): Promise<LLMResponse> {
+        return {
+          text: JSON.stringify({ module_summary: 'A module.', facts: [] }),
+          stopReason: 'end_turn',
+          toolUses: [],
+          usage: { inputTokens, outputTokens },
+        }
+      },
+    }
+  }
+
+  it('Given a project with LLM-indexed code files (Python) and a collector, then code-index stage appears in the report with non-zero tokens', async () => {
+    // .ts files go through the AST indexer, not the LLM pass.
+    // Python/Ruby/Java/Rust/Swift/Kotlin are the languages that trigger ingestCodeFilesAsFacts.
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-tok-'))
+    try {
+      await writeFile(
+        path.join(dir, 'main.py'),
+        '"""Greeting utilities for the application."""\n\ndef greet(name: str) -> str:\n    """Return a greeting string for the given name."""\n    return f"Hello, {name}!"\n\ndef farewell(name: str) -> str:\n    """Return a farewell string for the given name."""\n    return f"Goodbye, {name}!"\n',
+        'utf8'
+      )
+      const collector = new RunCollector('init')
+      await runKbInit({
+        base: 'tok-code-index',
+        nonInteractive: true,
+        cwd: dir,
+        provider: createTokenProvider(300, 100),
+        collector,
+      })
+      const report = collector.finish('success')
+      const codeIndexStage = report.stages.find(s => s.stage === 'code-index')
+      expect(codeIndexStage).toBeDefined()
+      expect(codeIndexStage?.inputTokens).toBeGreaterThan(0)
+      expect(codeIndexStage?.outputTokens).toBeGreaterThan(0)
+      expect(report.totalInputTokens).toBeGreaterThan(0)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('Given a Python-only project (no markdown) with a collector, then code-index tokens are not lost when document-facts is skipped', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-tok-nomd-'))
+    try {
+      await writeFile(
+        path.join(dir, 'util.py'),
+        '"""Math utilities."""\n\ndef add(a: int, b: int) -> int:\n    """Return the sum of a and b."""\n    return a + b\n\ndef subtract(a: int, b: int) -> int:\n    """Return a minus b."""\n    return a - b\n',
+        'utf8'
+      )
+      const collector = new RunCollector('init')
+      await runKbInit({
+        base: 'tok-no-markdown',
+        nonInteractive: true,
+        cwd: dir,
+        provider: createTokenProvider(200, 80),
+        collector,
+      })
+      const report = collector.finish('success')
+      expect(report.totalInputTokens).toBeGreaterThan(0)
+      expect(report.totalOutputTokens).toBeGreaterThan(0)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('Given a TypeScript-only project, then code-index LLM stage is absent and total tokens are zero', async () => {
+    // TypeScript files use the AST indexer (tree-sitter), not the LLM extraction pass,
+    // so no code-index stage should be recorded and total tokens should be 0.
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-tok-ts-'))
+    try {
+      await writeFile(path.join(dir, 'index.ts'), 'export function greet() { return "hi" }', 'utf8')
+      const collector = new RunCollector('init')
+      await runKbInit({
+        base: 'tok-ts-only',
+        nonInteractive: true,
+        cwd: dir,
+        provider: createTokenProvider(300, 100),
+        collector,
+      })
+      const report = collector.finish('success')
+      expect(report.stages.find(s => s.stage === 'code-index')).toBeUndefined()
+      expect(report.totalInputTokens).toBe(0)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })

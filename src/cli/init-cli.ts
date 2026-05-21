@@ -750,6 +750,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
               `[${kbCommandLabel(options)}] code-index LLM: ${changedCodeFileCount} changed, ${unchangedCodeFileCount} unchanged source file(s).\n`
             )
           }
+          const endCodeFacts = makeCycleTimer('code-index', provider, options.collector, counter)
           try {
             const codeFactStats = await ingestCodeFilesAsFacts({
               baseDir,
@@ -763,6 +764,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
                 )
               },
             })
+            endCodeFacts()
             await writeCodeFactsManifest(baseDir, buildHashesFor(codeFiles))
             progress.update(
               'code-index',
@@ -771,6 +773,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
                 : `LLM: ${codeFactStats.factsInserted} new facts across ${codeFactStats.filesProcessed}/${codeFactStats.filesConsidered} file(s)`
             )
           } catch (err) {
+            endCodeFacts()
             const message = err instanceof Error ? err.message : String(err)
             options.questionIO?.write?.(
               `[${kbCommandLabel(options)}] code-index LLM pass failed: ${message}. Continuing.\n`
