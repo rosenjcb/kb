@@ -1,7 +1,7 @@
 /**
  * kb init / kb scan — knowledge base bootstrap and refresh commands.
  *
- * Cycle 1 (read-inputs):    Discover markdown/text sources under working dir (recursive).
+ * Cycle 1 (read-inputs):    Discover markdown sources under working dir (recursive).
  * Cycle 2 (code-index):     Deterministic AST indexing (ts-morph for TS/JS, tree-sitter for Go/other)
  *                            → kg_* tables, followed by per-file LLM semantic extraction (code-facts)
  *                            as an enrichment pass when an LLM provider is configured.
@@ -379,7 +379,6 @@ function formatRescanWriteProgress(snapshot: RescanApplyOrchestratorProgress): s
 
 const SOURCE_FILE_CANDIDATES = [
   'README.md',
-  'README.txt',
   'readme.md',
   'CLAUDE.md',
   'AGENTS.md',
@@ -390,7 +389,7 @@ const SOURCE_FILE_CANDIDATES = [
   'docs/architecture.md',
 ]
 
-/** Dirs skipped when collecting markdown/text sources (keep aligned with `SOURCE_CODE_EXCLUDE_DIRS` plus KB/publish paths). */
+/** Dirs skipped when collecting markdown sources (keep aligned with `SOURCE_CODE_EXCLUDE_DIRS` plus KB/publish paths). */
 const MARKDOWN_SOURCE_EXCLUDE_DIRS = new Set([
   // Node.js
   'node_modules',
@@ -426,7 +425,7 @@ const MARKDOWN_SOURCE_EXCLUDE_DIRS = new Set([
   '_site',
 ])
 
-const MARKDOWN_TEXT_EXTENSIONS = new Set(['.md', '.markdown', '.mdown', '.mdx', '.txt'])
+const MARKDOWN_TEXT_EXTENSIONS = new Set(['.md', '.markdown', '.mdown', '.mdx'])
 const MAX_MARKDOWN_SOURCE_FILES = 100
 const MAX_MARKDOWN_SOURCE_TOTAL_CHARS = 12_000_000
 const MAX_MARKDOWN_SINGLE_FILE_CHARS = 2_000_000
@@ -797,7 +796,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         await persist({
           completedCycles: ['document-facts'],
         })
-        progress.finish('document-facts', 'skipped (no markdown/text documents found)')
+        progress.finish('document-facts', 'skipped (no markdown documents found)')
       } else {
         progress.start('document-facts', '📄 indexing document sentences into facts…')
         const endScanFacts = makeCycleTimer('document-facts', provider, options.collector, counter)
@@ -1124,7 +1123,7 @@ async function collectRescanSourceFiles(options: {
   const n = Object.keys(allSourceFiles).length
   if (n === 0) {
     options.questionIO.write?.(
-      '[kb scan] found no markdown/text sources under the working directory.\n'
+      '[kb scan] found no markdown sources under the working directory.\n'
     )
   }
   return allSourceFiles

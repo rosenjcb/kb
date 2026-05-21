@@ -693,7 +693,7 @@ describe('init-cli interview checkpoints', () => {
     expect(sourceFileKeys).toEqual(['README.md', 'docs/README.md'])
   })
 
-  it('Given no markdown/text sources under the working directory, then document-facts stage is skipped', async () => {
+  it('Given no markdown sources under the working directory, then document-facts stage is skipped', async () => {
     const cwd = await createTempProject({
       'package.json': '{"name":"test"}',
       'src/index.ts': 'export function hello() {}',
@@ -716,7 +716,7 @@ describe('init-cli interview checkpoints', () => {
       lines.some(
         line =>
           line.includes('document-facts') &&
-          line.includes('skipped (no markdown/text documents found)')
+          line.includes('skipped (no markdown documents found)')
       )
     ).toBe(true)
   })
@@ -726,8 +726,6 @@ describe('init-cli interview checkpoints', () => {
       'README.md': '# Project\n\nThis root sentence is intentionally long enough for fact ingest.\n',
       'docs/guide.md':
         '# Guide\n\nThis guide sentence is also intentionally long enough for fact ingest.\n',
-      'notes.txt':
-        'This plain text note is intentionally long enough to become a fact during ingest.\n',
     })
 
     const lines: string[] = []
