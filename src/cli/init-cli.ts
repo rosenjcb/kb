@@ -1718,7 +1718,36 @@ async function inferAndAssignProjectCategories(input: {
     //     )
     //   : await reviewInferredFactCategories(inferred, input.questionIO, input.rescan)
 
-    if (facts.length === 0 || input.nonInteractive || input.rescan) return
+    if (facts.length === 0 || input.nonInteractive) return
+
+    if (input.rescan) {
+      // On rescan: re-assign uncategorized (or newly added) facts to existing categories
+      const existingCategoryRows = indexer.listFactCategories()
+      if (existingCategoryRows.length === 0) return
+      const existingCategories = existingCategoryRows.map(row => ({
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        status: row.status,
+        createdBy: row.created_by,
+        representativeTerms: JSON.parse(row.representative_terms_json) as string[],
+        centroidVector: JSON.parse(row.centroid_vector_json) as number[],
+      }))
+      const uncategorizedFacts = indexer.listUncategorizedFacts()
+      if (uncategorizedFacts.length === 0) {
+        indexer.setIndexStateValue('fact_category_fingerprint', fingerprint)
+        return
+      }
+      const newAssignments = assignFactsToCategoryIds(uncategorizedFacts, existingCategories, 0.3)
+      indexer.mergeFactCategoryAssignments(newAssignments)
+      indexer.setIndexStateValue('fact_category_fingerprint', fingerprint)
+      const stillUncategorized = indexer.countUncategorizedFacts()
+      input.questionIO.write?.(
+        `[kb scan] categories: ${uncategorizedFacts.length - stillUncategorized} newly assigned, ${facts.length - stillUncategorized}/${facts.length} total.\n`
+      )
+      return
+    }
+
     const reviewed = await promptUserCategories(input.questionIO, input.rescan)
     if (reviewed.length === 0) return
 
@@ -1730,7 +1759,7 @@ async function inferAndAssignProjectCategories(input: {
 
     const uncategorized = indexer.countUncategorizedFacts()
     input.questionIO.write?.(
-      `[${input.rescan ? 'kb scan' : 'kb init'}] categories: ${reviewed.length} saved, ${facts.length - uncategorized}/${facts.length} facts assigned.\n`
+      `[kb init] categories: ${reviewed.length} saved, ${facts.length - uncategorized}/${facts.length} facts assigned.\n`
     )
   } finally {
     indexer.close()

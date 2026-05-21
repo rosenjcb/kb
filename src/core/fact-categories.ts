@@ -1,5 +1,7 @@
-import { execFileSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { existsSync, writeFileSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
@@ -72,13 +74,15 @@ export function inferFactCategories(
 export function assignFactsToCategoryIds(
   facts: Array<Pick<FactRow, 'id' | 'fact_text' | 'subject' | 'predicate' | 'object'>>,
   categories: FactCategoryDefinitionInput[],
-  threshold = 0.72
+  threshold = 0.72,
+  forceAssign = true
 ): Map<string, Array<{ categoryId: string; score: number }>> {
   const out = new Map<string, Array<{ categoryId: string; score: number }>>()
   if (facts.length === 0 || categories.length === 0) return out
   const payload = {
     mode: 'assign',
     threshold,
+    force_assign: forceAssign,
     facts: facts.map(fact => ({
       id: fact.id,
       text: buildFactCategoryDocument(fact),
@@ -210,14 +214,63 @@ function runFactCategoryPython(payload: Record<string, unknown>): unknown {
   }
 }
 
-function resolvePythonBinary(): string {
+// Requirements mirrored from requirements/fact-category-clustering.txt
+const PYTHON_REQUIREMENTS = ['hdbscan==0.8.40', 'numpy==2.2.5', 'scikit-learn==1.6.1']
+
+function globalVenvDir(): string {
+  const kbHome = process.env.KB_HOME?.trim() ?? path.join(os.homedir(), '.kb')
+  return path.join(kbHome, '.kb-python')
+}
+
+function globalVenvPython(): string {
+  return path.join(globalVenvDir(), 'bin', 'python3')
+}
+
+export function ensurePythonEnv(): string {
   const envOverride = process.env.KB_CATEGORY_CLUSTER_PYTHON?.trim()
   if (envOverride) return envOverride
 
+  // Repo-local venv (dev workflow)
   const localVenvPython = path.join(REPO_ROOT, '.kb-python', 'bin', 'python3')
   if (existsSync(localVenvPython)) return localVenvPython
 
-  return 'python3'
+  // Global venv under ~/.kb
+  const globalPython = globalVenvPython()
+  if (existsSync(globalPython)) return globalPython
+
+  // Neither exists — attempt auto-install
+  const base = spawnSync('python3', ['--version'], { encoding: 'utf8' })
+  if (base.error || base.status !== 0) {
+    throw new Error(
+      'KB requires Python 3 for fact categorisation but `python3` was not found on your PATH.\n' +
+      'Install Python 3.9+ from https://python.org then re-run kb init.'
+    )
+  }
+
+  const venvDir = globalVenvDir()
+  process.stderr.write(`[kb] Installing Python category env into ${venvDir} (one-time setup)…\n`)
+
+  const createVenv = spawnSync('python3', ['-m', 'venv', venvDir], { encoding: 'utf8' })
+  if (createVenv.status !== 0) {
+    throw new Error(`Failed to create Python venv at ${venvDir}:\n${createVenv.stderr}`)
+  }
+
+  const pip = path.join(venvDir, 'bin', 'pip')
+  const reqsFile = path.join(venvDir, 'kb-requirements.txt')
+  mkdirSync(venvDir, { recursive: true })
+  writeFileSync(reqsFile, `${PYTHON_REQUIREMENTS.join('\n')}\n`, 'utf8')
+
+  const install = spawnSync(pip, ['install', '--quiet', '-r', reqsFile], { encoding: 'utf8', stdio: 'inherit' })
+  if (install.status !== 0) {
+    throw new Error(`Failed to install Python dependencies:\n${install.stderr ?? ''}`)
+  }
+
+  process.stderr.write('[kb] Python category env ready.\n')
+  return globalPython
+}
+
+function resolvePythonBinary(): string {
+  return ensurePythonEnv()
 }
 
 function sha256(input: string): string {

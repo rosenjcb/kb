@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { describe, expect, it, vi } from 'vitest'
 import {
   assignFactsToCategoryIds,
@@ -5,18 +6,18 @@ import {
   type FactCategoryDefinitionInput,
 } from '../../src/core/fact-categories'
 
-vi.mock('node:child_process', () => ({
-  execFileSync: vi.fn((_, args: string[]) => {
-    const payload = JSON.parse(args[args.length - 1] ?? '{}')
-    return JSON.stringify(payload)
-  }),
-}))
+type MockPayload = {
+  mode?: string
+  facts?: Array<{ id: string }>
+  categories?: Array<{ id: string }>
+  threshold?: number
+  force_assign?: boolean
+}
 
-// Override execFileSync to read from stdin instead — the real code pipes via input option
 vi.mock('node:child_process', () => {
   return {
     execFileSync: vi.fn((_bin: string, _args: string[], opts: { input?: string } = {}) => {
-      const payload = JSON.parse(opts.input ?? '{}') as { mode?: string; facts?: Array<{ id: string }>; categories?: Array<{ id: string }> }
+      const payload = JSON.parse(opts.input ?? '{}') as MockPayload
       if (payload.mode === 'discover' || payload.mode === 'discover_and_assign') {
         const facts = payload.facts ?? []
         const categories = facts.length >= 2
@@ -46,10 +47,21 @@ vi.mock('node:child_process', () => {
       }
       if (payload.mode === 'assign') {
         const cats = payload.categories ?? []
-        const assignments = (payload.facts ?? []).map((f) => ({
-          fact_id: f.id,
-          assignments: cats.slice(0, 1).map((c) => ({ category_id: c.id, score: 0.8 })),
-        }))
+        const threshold = payload.threshold ?? 0.72
+        const forceAssign = payload.force_assign ?? false
+        // Simulate zero similarity for facts whose text has no overlap with category text
+        // by returning no matches when threshold is high and the fact text is "unrelated"
+        const assignments = (payload.facts ?? []).map((f) => {
+          const isUnrelated = (f as { id: string; text?: string }).text?.includes('unrelated') ?? false
+          const aboveThreshold = cats.slice(0, 1).map((c) => ({ category_id: c.id, score: 0.8 }))
+          if (isUnrelated && threshold > 0.5) {
+            // simulate zero cosine similarity — no matches above threshold
+            if (!forceAssign) return { fact_id: f.id, assignments: [] }
+            // force_assign: return best match with score 0
+            return { fact_id: f.id, assignments: [{ category_id: cats[0]?.id ?? 'cat-1', score: 0 }] }
+          }
+          return { fact_id: f.id, assignments: aboveThreshold }
+        })
         return JSON.stringify({ assignments })
       }
       return JSON.stringify({})
@@ -144,5 +156,81 @@ describe('fact-categories', () => {
 
     expect(assignments.get('f1')?.length).toBeGreaterThan(0)
     expect(assignments.get('f2')?.length).toBeGreaterThan(0)
+  })
+
+  it('with forceAssign=false, facts with no vocabulary overlap are left unassigned', () => {
+    const categories: FactCategoryDefinitionInput[] = [
+      {
+        id: 'category-tui',
+        name: 'TUI',
+        description: 'Facts about the TUI interface',
+        status: 'accepted',
+        createdBy: 'user',
+        representativeTerms: ['tui', 'interface', 'cli'],
+        centroidVector: [],
+      },
+    ]
+
+    const assignments = assignFactsToCategoryIds(
+      [{ id: 'f-unrelated', fact_text: 'unrelated zephyr content', subject: '', predicate: '', object: '' }],
+      categories,
+      0.72,
+      false
+    )
+
+    expect(assignments.get('f-unrelated')).toBeUndefined()
+  })
+
+  it('with forceAssign=true (default), facts with no vocabulary overlap are still assigned to nearest category', () => {
+    const categories: FactCategoryDefinitionInput[] = [
+      {
+        id: 'category-tui',
+        name: 'TUI',
+        description: 'Facts about the TUI interface',
+        status: 'accepted',
+        createdBy: 'user',
+        representativeTerms: ['tui', 'interface', 'cli'],
+        centroidVector: [],
+      },
+    ]
+
+    const assignments = assignFactsToCategoryIds(
+      [{ id: 'f-unrelated', fact_text: 'unrelated zephyr content', subject: '', predicate: '', object: '' }],
+      categories,
+      0.72
+      // forceAssign defaults to true
+    )
+
+    expect(assignments.get('f-unrelated')?.length).toBeGreaterThan(0)
+    expect(assignments.get('f-unrelated')?.[0].categoryId).toBe('category-tui')
+  })
+
+  it('passes force_assign flag in payload to python', () => {
+    type SpyExec = { mockClear(): void; mock: { calls: Array<[unknown, unknown, { input: string }]> } }
+    const spy = execFileSync as unknown as SpyExec
+    spy.mockClear()
+
+    const categories: FactCategoryDefinitionInput[] = [
+      {
+        id: 'category-x',
+        name: 'X',
+        description: 'X',
+        status: 'accepted',
+        createdBy: 'user',
+        representativeTerms: [],
+        centroidVector: [],
+      },
+    ]
+    assignFactsToCategoryIds(
+      [{ id: 'f1', fact_text: 'some fact', subject: '', predicate: '', object: '' }],
+      categories,
+      0.3,
+      true
+    )
+
+    const call = spy.mock.calls[0]
+    const payload = JSON.parse(call[2].input) as MockPayload
+    expect(payload.force_assign).toBe(true)
+    expect(payload.threshold).toBe(0.3)
   })
 })

@@ -60,6 +60,7 @@ import {
   printDocsRenameHelp,
   runDocsRename,
 } from './docs-rename-cli'
+import { ensurePythonEnv } from '../core/fact-categories'
 import { FactsCommandError, runFactsCommand } from './facts-cli'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
 import { parseInitCommand, parseScanCommand, runKbInit } from './init-cli'
@@ -1002,6 +1003,14 @@ async function main() {
     for (const r of skillResults) {
       if (r.action === 'installed') startupNotices.push(`✓ KB agent skill installed for ${r.agent}`)
       else if (r.action === 'updated') startupNotices.push(`↑ KB agent skill updated for ${r.agent}`)
+    }
+
+    try {
+      ensurePythonEnv()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      process.stderr.write(`❌ ${message}\n`)
+      process.exit(1)
     }
 
     const hasApiKey =

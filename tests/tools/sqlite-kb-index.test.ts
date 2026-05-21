@@ -424,3 +424,79 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 })
+
+describe('fact category assignment', () => {
+  it('listUncategorizedFacts returns only facts with no assignment', async () => {
+    const baseDir = await createTempDir()
+    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+
+    const { id: f1 } = indexer.upsertFact({ factText: 'fact one', sourceKind: 'submit' })
+    const { id: f2 } = indexer.upsertFact({ factText: 'fact two', sourceKind: 'submit' })
+
+    const category = {
+      id: 'category-tui',
+      name: 'TUI',
+      description: 'TUI facts',
+      status: 'accepted' as const,
+      createdBy: 'user' as const,
+      representativeTerms: ['tui'],
+      centroidVector: [],
+    }
+    indexer.replaceFactCategories([category])
+    indexer.replaceFactCategoryAssignments(
+      new Map([[f1, [{ categoryId: 'category-tui', score: 0.9 }]]])
+    )
+
+    const uncategorized = indexer.listUncategorizedFacts()
+    expect(uncategorized.map(f => f.id)).toEqual([f2])
+    indexer.close()
+  })
+
+  it('mergeFactCategoryAssignments adds new assignments without removing existing ones', async () => {
+    const baseDir = await createTempDir()
+    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+
+    const { id: f1 } = indexer.upsertFact({ factText: 'fact one', sourceKind: 'submit' })
+    const { id: f2 } = indexer.upsertFact({ factText: 'fact two', sourceKind: 'submit' })
+
+    const categories = [
+      { id: 'category-tui', name: 'TUI', description: 'TUI', status: 'accepted' as const, createdBy: 'user' as const, representativeTerms: [], centroidVector: [] },
+      { id: 'category-cli', name: 'CLI', description: 'CLI', status: 'accepted' as const, createdBy: 'user' as const, representativeTerms: [], centroidVector: [] },
+    ]
+    indexer.replaceFactCategories(categories)
+
+    indexer.replaceFactCategoryAssignments(
+      new Map([[f1, [{ categoryId: 'category-tui', score: 0.9 }]]])
+    )
+
+    // merge assigns f2 without touching f1
+    indexer.mergeFactCategoryAssignments(
+      new Map([[f2, [{ categoryId: 'category-cli', score: 0.7 }]]])
+    )
+
+    expect(indexer.getFactCategoryNames(f1)).toEqual(['TUI'])
+    expect(indexer.getFactCategoryNames(f2)).toEqual(['CLI'])
+    expect(indexer.countUncategorizedFacts()).toBe(0)
+    indexer.close()
+  })
+
+  it('mergeFactCategoryAssignments upserts score when fact+category already assigned', async () => {
+    const baseDir = await createTempDir()
+    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+
+    const { id: f1 } = indexer.upsertFact({ factText: 'fact one', sourceKind: 'submit' })
+    indexer.replaceFactCategories([
+      { id: 'category-tui', name: 'TUI', description: 'TUI', status: 'accepted' as const, createdBy: 'user' as const, representativeTerms: [], centroidVector: [] },
+    ])
+    indexer.replaceFactCategoryAssignments(new Map([[f1, [{ categoryId: 'category-tui', score: 0.5 }]]]))
+
+    // merge with higher score — should update
+    indexer.mergeFactCategoryAssignments(new Map([[f1, [{ categoryId: 'category-tui', score: 0.95 }]]]))
+
+    // still just one assignment, score updated
+    const names = indexer.getFactCategoryNames(f1)
+    expect(names).toEqual(['TUI'])
+    expect(indexer.countUncategorizedFacts()).toBe(0)
+    indexer.close()
+  })
+})

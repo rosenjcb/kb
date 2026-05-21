@@ -64,6 +64,32 @@ command -v kb
 > KB expects `Node 22+` in the shell that runs `kb`.
 > Both install paths prepare KB's native runtime automatically. If you later switch Node versions, rerun `kb sync` or `pnpm run install:global`.
 
+### Python dependency (fact categorisation)
+
+`kb init` uses a Python 3 clustering environment for fact categories. **Python 3.9+ must be on your `PATH`.**
+
+KB will auto-install its own isolated environment into `~/.kb/.kb-python` on the first `kb init` run — no manual setup required. You'll see a one-time message:
+
+```
+[kb] Installing Python category env into ~/.kb/.kb-python (one-time setup)…
+[kb] Python category env ready.
+```
+
+If `python3` is not found, KB will abort with a clear error pointing you to https://python.org.
+
+To pre-install manually (e.g. in CI or an offline environment):
+
+```bash
+python3 -m venv ~/.kb/.kb-python
+~/.kb/.kb-python/bin/pip install hdbscan==0.8.40 numpy==2.2.5 scikit-learn==1.6.1
+```
+
+Override the Python binary KB uses with:
+
+```bash
+export KB_CATEGORY_CLUSTER_PYTHON=/path/to/python3
+```
+
 ### 2) Configure `~/.kb/config.json`
 
 Provider is auto-detected from whichever key is present. To set one explicitly:

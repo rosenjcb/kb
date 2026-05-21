@@ -52,6 +52,7 @@ def main() -> None:
                     payload.get("facts", []),
                     payload.get("categories", []),
                     float(payload.get("threshold", 0.72)),
+                    bool(payload.get("force_assign", False)),
                 )
             }
         )
@@ -110,7 +111,7 @@ def discover_categories(facts: list[dict[str, Any]], max_categories: int) -> lis
 
 
 def assign_categories(
-    facts: list[dict[str, Any]], categories: list[dict[str, Any]], threshold: float
+    facts: list[dict[str, Any]], categories: list[dict[str, Any]], threshold: float, force_assign: bool = False
 ) -> list[dict[str, Any]]:
     fact_rows = [(fact.get("id", ""), normalize_text(fact.get("text", ""))) for fact in facts]
     fact_rows = [(fact_id, text) for fact_id, text in fact_rows if fact_id and text]
@@ -131,12 +132,16 @@ def assign_categories(
     assignments: list[dict[str, Any]] = []
     category_ids = [category_id for category_id, _ in category_rows]
     for row_index, (fact_id, _) in enumerate(fact_rows):
+        scores = similarities[row_index].tolist()
         pairs = [
             {"category_id": category_ids[col_index], "score": float(score)}
-            for col_index, score in enumerate(similarities[row_index].tolist())
+            for col_index, score in enumerate(scores)
             if score >= threshold
         ]
         pairs.sort(key=lambda item: item["score"], reverse=True)
+        if not pairs and force_assign:
+            best_col = int(np.argmax(scores))
+            pairs = [{"category_id": category_ids[best_col], "score": float(scores[best_col])}]
         if pairs:
             assignments.append({"fact_id": fact_id, "assignments": pairs[:3]})
     return assignments

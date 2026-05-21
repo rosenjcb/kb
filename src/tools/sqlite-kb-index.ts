@@ -754,6 +754,27 @@ export class SqliteKbIndexer {
     tx()
   }
 
+  mergeFactCategoryAssignments(
+    assignments: Map<string, Array<{ categoryId: string; score: number }>>
+  ): void {
+    const now = dayjs().toISOString()
+    const insert = this.db.prepare(`
+      INSERT INTO fact_category_assignments (fact_id, category_id, score, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(fact_id, category_id) DO UPDATE SET
+        score = excluded.score,
+        updated_at = excluded.updated_at
+    `)
+    const tx = this.db.transaction(() => {
+      for (const [factId, rows] of assignments.entries()) {
+        for (const row of rows) {
+          insert.run(factId, row.categoryId, row.score, now, now)
+        }
+      }
+    })
+    tx()
+  }
+
   getFactCategoryNames(factId: string): string[] {
     return this.db
       .prepare(
@@ -942,6 +963,24 @@ export class SqliteKbIndexer {
       `
       )
       .all(...concepts, ...categories, limit) as FactRow[]
+  }
+
+  listUncategorizedFacts(): FactRow[] {
+    return this.db
+      .prepare(
+        `
+        SELECT f.*
+        FROM facts f
+        WHERE f.tombstoned_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM fact_category_assignments a
+            WHERE a.fact_id = f.id
+          )
+        ORDER BY f.updated_at DESC
+      `
+      )
+      .all() as FactRow[]
   }
 
   countUncategorizedFacts(): number {
