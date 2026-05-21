@@ -1,7 +1,7 @@
 ---
 layout: default
 title: DESIGN.md
-date: '2026-05-09'
+date: '2026-05-21'
 kb_id: design-md
 tags:
   - original-source

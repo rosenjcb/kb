@@ -1,7 +1,7 @@
 ---
 layout: default
 title: EVALUATION.md
-date: '2026-05-09'
+date: '2026-05-21'
 kb_id: evaluation-md
 tags:
   - original-source
@@ -131,7 +131,7 @@ From the target repo root (or a clone):
 
 1. Run: `kb init --base raylib-2026-04-27-1303 --non-interactive` (pick a fresh disposable name; `eval-run.mjs` generates this pattern automatically).
 2. Or interactively: start `kb`, then `/init --base <same>`
-3. Let `kb init` complete all passes through `pass-graph`.
+3. Let `kb init` complete all phases.
 4. Save the resulting run metadata.
 
 Use a disposable base name that matches your eval run folder when using `eval-run.mjs`, or any unique name for manual runs.

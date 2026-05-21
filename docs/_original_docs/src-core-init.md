@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/INIT.md
-date: '2026-05-09'
+date: '2026-05-21'
 kb_id: src-core-init-md
 tags:
   - original-source
@@ -13,7 +13,9 @@ categories:
 
 # KB Init Pipeline
 
-`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`document-facts`** (deterministic sentence ingest from collected markdown into the `facts` table), **`code-facts`** (per-file LLM extraction into `import_code` facts), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), **`pass-graph`** when enabled, and **`code-graph`** (deterministic AST indexing into `kg_*` tables). Use **`kb scan`** to refresh sources against an existing base.
+`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`document-facts`** (document facts from markdown sources), **`code-facts`** (LLM fallback facts for source code when AST providers are unavailable), **`fact-categories`** (interactive step: user defines named categories with descriptions, facts are then assigned via TF-IDF cosine similarity), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), and **`ast-facts`** (deterministic AST indexing into `kg_*` tables and fact promotion). Use **`kb scan`** to refresh sources against an existing base.
+
+In the TUI, init/scan progress is rendered as a dedicated live status line instead of transcript history. Any phase that iterates over a collection of files, docs, facts, claims, or mutations emits incremental progress while that collection is being processed; only atomic operations stay start/finish-only. Progress lines include counts and, when useful, the current item. The long-running deterministic phases also yield cooperatively to the event loop between batches so the terminal can repaint and interrupts remain responsive during large scans.
 
 ## Input Collection
 
@@ -43,18 +45,41 @@ flowchart TD
     A[kb init] --> R[read-inputs]
     R --> MF[document-facts]
     MF --> CF[code-facts]
-    CF --> IM[import-docs]
+    CF --> FC[fact-categories]
+    FC --> IM[import-docs]
     IM --> W[write]
-    W --> PG[pass-graph]
-    PG --> CG[code-graph]
+    W --> AF[ast-facts]
 
-    MF --> MF1["Deterministic markdown\n→ facts import_doc"]
-    CF --> CF1["Per-file LLM\n→ import_code facts"]
+    MF --> MF1["LLM document extraction\n→ facts import_doc"]
+    CF --> CF1["LLM fallback only\n→ import_code facts"]
+    FC --> FC1["User names categories + descriptions\n→ TF-IDF assignment to all facts"]
     IM --> IM1["One original doc\nper source file"]
     W --> W1["SQLite upsert\n+ scan planner"]
-    PG --> PG1["Optional graph\nextract to SQLite"]
-    CG --> CG1["AST indexing\n→ kg_* tables + semantic bridge"]
+    AF --> AF1["AST indexing\n→ kg_* tables + fact promotion"]
 ```
+
+## Fact Categories
+
+After `document-facts` and `code-facts` have populated the facts table, `kb init` (interactive mode only, skipped on `kb scan`) prompts the user to define **fact categories** — named buckets that help organise retrieval.
+
+**Flow:**
+
+1. User enters a comma-separated list of category names (blank → skip).
+2. The list is echoed back for review.
+3. User types `/accept` or `/reject` (reject loops back to step 1).
+4. On `/accept`, each category gets an optional description prompt — blank uses the default `"Facts about <name>"`.
+5. Categories are saved to `fact_categories`; all facts are assigned via TF-IDF cosine similarity (`threshold = 0.3`) against each category's name + description text.
+
+**Tables written:**
+
+| Table | Content |
+|---|---|
+| `fact_categories` | id, name, description, status (`edited`), createdBy (`user`) |
+| `fact_category_assignments` | fact_id → category_id with cosine similarity score |
+
+**`kb scan` behaviour:** category prompting is skipped on rescan — categories defined at init time are preserved. Re-run `kb init` to redefine them.
+
+**Future:** HDBSCAN-based auto-discovery (currently commented out in `src/cli/init-cli.ts`) will run before the manual step to suggest categories derived from the actual fact corpus.
 
 ## Jekyll Routing
 
@@ -81,9 +106,9 @@ README.md is excluded from both — it is the site homepage (`docs/index.md`).
 
 When the init pipeline (or any path using **`SqliteDocumentWriter`**) persists markdown documents, the writer **indexes candidate facts** from document bodies (deterministic sentence segmentation, length filters, and capped inserts into the **`facts`** table). That is **incremental** fact growth alongside init; see **`facts-architecture.md`** §2 / §7 for the full ingest model.
 
-## Code-derived facts
+## Code-derived facts (AST-first)
 
-The **`code-facts`** cycle ([src/core/code-fact-extract.ts](code-fact-extract.ts)) makes source code a **first-class fact source** without mirroring the AST:
+Source code facts are AST-first. Supported languages are indexed deterministically by the AST pipeline and promoted into facts. The **`code-facts`** cycle ([src/core/code-fact-extract.ts](code-fact-extract.ts)) is a fallback path for languages or environments where AST indexing is unavailable.
 
 1. **Skeleton** — a deterministic regex pass per file extracts top-level exports, imports, and the leading doc block. The skeleton is used only as **prompt context** and as the **anchor namespace**; it does not write fact rows.
 2. **LLM semantic pass** — one structured JSON call per file (system prompt: [src/prompts/code-fact-extract.md](../prompts/code-fact-extract.md)) returns a `module_summary` plus up to **`KB_CODE_FACTS_MAX_PER_FILE`** semantic facts. Each fact carries a `triplet` (subject/predicate/object) and an `anchor` that is either `module` or one of the symbols from the skeleton.
@@ -135,6 +160,8 @@ After indexing, both indexers populate `kg_semantic_bridge` by slugifying symbol
 ### Incremental behaviour
 
 Both indexers store a `content_hash` per file in `kg_file_state`. On re-run (including `kb scan`), files whose hash hasn't changed are counted as `skipped` and not re-processed. Only changed or new files are re-indexed.
+
+To keep the TUI responsive, the deterministic ingest/index loops yield back to the Node.js event loop between batches. That lets progress updates paint incrementally and gives `Ctrl-C` / terminal interrupts a chance to land between chunks instead of waiting for an entire repo walk to finish.
 
 ## Configuration Constants
 

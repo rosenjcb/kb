@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/tools/GRAPH.md
-date: '2026-05-09'
+date: '2026-05-21'
 kb_id: src-tools-graph-md
 tags:
   - original-source
@@ -56,7 +56,7 @@ kb_graph_relationships  — id, from_id, to_id, type, doc_id, weight, created_at
 
 ```mermaid
 flowchart LR
-  I["kb init"] --> IG["pass-graph batch extraction"]
+  I["kb init"] --> AF["ast-facts deterministic indexing"]
   S["kb submit"] --> SW["SubmitOrchestrator writes KB fact"]
   SW --> SG["extract + upsert graph provenance"]
   Q["kb query"] --> QG["graph expansion + rerank\nread-only"]
@@ -68,7 +68,7 @@ flowchart LR
 |---|---|
 | `kb submit "<fact>"` | `SubmitOrchestrator` writes the KB fact, then extracts and upserts graph entities + relationships when graph mode is enabled |
 | `kb invalidate "<old>"` | All edges whose `doc_id` matches the affected documents are soft-deleted (weight → 0) |
-| `kb init` — `pass-graph` cycle | LLM runs batch extraction over all finalized documents written to SQLite |
+| `kb init` / `kb scan` — `ast-facts` cycle | Deterministic code graph indexing updates `kg_*`; semantic graph remains incremental via submit/invalidate |
 
 ## CLI
 
@@ -144,7 +144,7 @@ All WASM grammars ship as npm package assets — no native compilation, no platf
 | `src/cli/graph-cli.ts` | `kb graph` command parsing and output formatting |
 | `src/tools/submit-orchestrator.ts` | KB write orchestration plus graph extraction/upsert |
 | `src/tools/invalidate-orchestrator.ts` | KB invalidation orchestration plus graph provenance cleanup |
-| `src/cli/init-cli.ts` | `pass-graph` and `code-graph` cycles in `kb init` / `kb scan` |
+| `src/cli/init-cli.ts` | `ast-facts` cycle in `kb init` / `kb scan` |
 | `src/tools/code-graph-indexer.ts` | `TsMorphIndexer` — TS/JS AST indexing via ts-morph |
 | `src/tools/tree-sitter-indexer.ts` | `TreeSitterIndexer` — multi-language AST indexing via web-tree-sitter |
 | `src/tools/code-graph-store.ts` | Read-only queries over `kg_*` tables including `expandWithCodeNeighbors` |

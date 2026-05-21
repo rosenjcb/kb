@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/doc-generate-architecture.md
-date: '2026-05-09'
+date: '2026-05-21'
 kb_id: src-core-doc-generate-architecture-md
 tags:
   - original-source

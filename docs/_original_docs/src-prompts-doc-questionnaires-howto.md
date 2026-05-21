@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/doc-questionnaires/howto.md
-date: '2026-05-09'
+date: '2026-05-21'
 kb_id: src-prompts-doc-questionnaires-howto-md
 tags:
   - original-source

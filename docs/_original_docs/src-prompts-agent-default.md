@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/agent-default.md
-date: '2026-05-09'
+date: '2026-05-21'
 kb_id: src-prompts-agent-default-md
 tags:
   - original-source

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/ORCHESTRATOR.md
-date: '2026-05-09'
+date: '2026-05-21'
 kb_id: src-core-orchestrator-md
 tags:
   - original-source

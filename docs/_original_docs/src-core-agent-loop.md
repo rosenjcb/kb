@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/AGENT_LOOP.md
-date: '2026-05-09'
+date: '2026-05-21'
 kb_id: src-core-agent-loop-md
 tags:
   - original-source
@@ -120,13 +120,13 @@ Some commands implement deterministic loops over named cycles. LLM is called dir
 
 | Cycle | What happens | Output |
 |---|---|---|
-| `read-inputs` | Scan source files, ask user interview questions | `InitContext` |
+| `read-inputs` | Scan source files and collect repo inputs | `InitContext` |
 | `pass1` | One LLM call per coverage topic in parallel | `CandidateDoc[]` |
 | `pass2` | Coverage gap analysis, follow-up questions, refinement | Updated `CandidateDoc[]` |
 | `pass-enrich` | Per-document enrichment in parallel | Enriched `CandidateDoc[]` |
 | `pass3` | Final quality pass | Final `CandidateDoc[]` |
 | `write` | Upsert to SQLite | Written document IDs |
-| `pass-graph` | Extract entities and relationships into SQLite (`kb_graph_*`) | Graph store on disk |
+| `ast-facts` | Deterministic source-code indexing and fact promotion | `kg_*` + `facts` updates |
 
 ## Part 3: Choosing a Pattern
 

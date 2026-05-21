@@ -1,7 +1,7 @@
 ---
 layout: default
 title: docs/index.md
-date: '2026-05-09'
+date: '2026-05-21'
 kb_id: docs-index-md
 tags:
   - original-source
@@ -46,10 +46,23 @@ Every project accumulates decisions, constraints, and tribal knowledge that live
 
 ### 1. Install
 
+Install the latest published release:
+
+```bash
+npm install -g https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz
+command -v kb
+```
+
+Or build and install from source:
+
 ```bash
 pnpm install
-npm run refresh:global
+pnpm run check
+npm run install:global
+command -v kb
 ```
+
+> KB expects `Node 22+` in the shell that runs `kb`.
 
 ### 2. Configure your LLM
 

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/QUERY_INTERNALS.md
-date: '2026-05-09'
+date: '2026-05-21'
 kb_id: src-core-query-internals-md
 tags:
   - original-source
@@ -27,7 +27,7 @@ The router maps the legacy **`read_documents`**-shaped envelope to **`FactsDocum
 | `discoveryDepth` | Behavior |
 |------------------|----------|
 | **`shallow`** | Lexical FTS over facts (`searchFacts`), or `listFactsForQuery` when the query string is empty. |
-| **`deep`** | **`FactsQueryResearchOrchestrator`** (`src/tools/facts-query-research-orchestrator.ts`): bounded iterations merging lexical hits, concept-frontier / concept rows, deterministic semantic rescoring, and bounded concept-graph neighbor expansion until sufficiency or max iters. |
+| **`deep`** | **`FactsQueryResearchOrchestrator`** (`src/tools/facts-query-research-orchestrator.ts`): adaptive passes merging lexical hits, concept-frontier / concept rows, deterministic semantic rescoring, category widening, and concept-graph neighbor expansion until the evidence plateaus, the frontier is exhausted, or a safety budget is reached. |
 
 ## Answer enrichment
 
@@ -39,8 +39,9 @@ When graph mode is enabled, **`expandQueryWithGraph`** (`src/tools/graph-query-e
 
 ## Environment knobs (facts deep loop)
 
-- `KB_FACTS_QUERY_MAX_ITERS` (default `3`, clamped 1–6)
-- `KB_FACTS_QUERY_MAX_HOPS` (default `2`, clamped 1–3) — concept neighbor expansion between iterations
+- `KB_FACTS_QUERY_MAX_ITERS` (default `8`, clamped 1–24) — pass budget / safety guardrail
+- `KB_FACTS_QUERY_MAX_HOPS` (default `6`, clamped 1–12) — concept neighbor expansion ceiling
+- `KB_FACTS_QUERY_MAX_RESULTS` (default `60`, clamped 10–200) — adaptive retrieval-limit ceiling
 
 ## Crawl (init-time only)
 
