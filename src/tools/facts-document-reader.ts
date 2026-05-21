@@ -42,8 +42,12 @@ export interface QueryResponse {
     /** Per-iteration engine trace — only shown in --debug mode. */
     traceDetail?: string
     clarificationQuestion?: string
-    /** Chat-only: first-pass facts loop wants another retrieval with synthetic clarification (no stdin). */
-    suggestRetrievalDeepen?: boolean
+    checkpoints?: Array<{
+      stage?: string
+      status?: string
+      nextAction?: string
+      confidence?: number
+    }>
   }
 }
 

@@ -16,6 +16,27 @@ interface SufficiencyDecision {
   reason: string
 }
 
+type LoopStopReason =
+  | 'answerable_plateau'
+  | 'frontier_exhausted'
+  | 'budget_exhausted'
+  | 'weak_evidence_after_exhaustion'
+
+interface LoopCheckpoint {
+  stage: string
+  status: 'continue' | 'stop'
+  nextAction: string
+  confidence: number
+}
+
+interface LoopMetrics {
+  uniqueFacts: number
+  conceptCoverage: number
+  avgTop: number
+  queryTokenCoverage: number
+  frontierConcepts: number
+}
+
 const QUERY_STOP_WORDS = new Set([
   'what',
   'where',
@@ -45,13 +66,15 @@ export class FactsQueryResearchOrchestrator {
   constructor(private readonly indexer: SqliteKbIndexer) {}
 
   run(input: FactsLoopOptions): QueryResponse {
-    const maxIterations = clampInt(process.env.KB_FACTS_QUERY_MAX_ITERS, 5, 1, 16)
-    const maxGraphHops = clampInt(process.env.KB_FACTS_QUERY_MAX_HOPS, 3, 1, 5)
-    const perIterationLimit = Math.max(input.limit, 15)
+    const maxIterations = clampInt(process.env.KB_FACTS_QUERY_MAX_ITERS, 8, 1, 24)
+    const maxGraphHops = clampInt(process.env.KB_FACTS_QUERY_MAX_HOPS, 6, 1, 12)
+    const hardResultLimit = clampInt(process.env.KB_FACTS_QUERY_MAX_RESULTS, 60, 10, 200)
     const queryTokens = tokenizeQuery(input.query)
     const rankedCategories = this.indexer.inferCategoriesForQuery(input.query, 4)
     let activeCategoryIds = rankedCategories.slice(0, 2).map(category => category.categoryId)
     let activeConcepts = queryTokens.slice(0, 8)
+    let activeConceptBudget = 40
+    let retrievalLimit = Math.max(input.limit, 5)
     const seenFactIds = new Set<string>(input.excludeIds ?? [])
     const scoredFacts = new Map<string, { row: FactRow; score: number }>()
     let graphHops = 0
@@ -60,13 +83,23 @@ export class FactsQueryResearchOrchestrator {
       reason: 'insufficient-facts',
     }
     const loopTrace: string[] = []
+    const checkpoints: LoopCheckpoint[] = []
+    let plateauCount = 0
+    let stopReason: LoopStopReason = 'budget_exhausted'
+    let previousMetrics: LoopMetrics | undefined
+    let iterationsRun = 0
 
     for (let iter = 0; iter < maxIterations; iter++) {
+      iterationsRun = iter + 1
+      const perIterationLimit = Math.max(retrievalLimit, 15)
       const lexicalRows =
         activeCategoryIds.length > 0
           ? this.indexer.searchFactsInCategories(input.query, activeCategoryIds, perIterationLimit)
           : this.indexer.searchFacts(input.query, perIterationLimit)
-      const frontierConcepts = [...new Set([...activeConcepts, ...queryTokens])].slice(0, 40)
+      const frontierConcepts = [...new Set([...activeConcepts, ...queryTokens])].slice(
+        0,
+        activeConceptBudget
+      )
       const frontierRows =
         frontierConcepts.length > 0
           ? activeCategoryIds.length > 0
@@ -96,9 +129,34 @@ export class FactsQueryResearchOrchestrator {
         merged.map(row => row.id)
       )
       loopTrace.push(
-        `i${iter + 1}:lex=${lexicalRows.length},frontier=${frontierRows.length},concept=${conceptRows.length},merged=${merged.length},sem=${semanticScores.size},c=${frontierConcepts.length},categories=${activeCategoryIds.length}`
+        `i${iter + 1}:limit=${perIterationLimit},lex=${lexicalRows.length},frontier=${frontierRows.length},concept=${conceptRows.length},merged=${merged.length},sem=${semanticScores.size},c=${frontierConcepts.length},categories=${activeCategoryIds.length},hops=${graphHops}`
       )
-      if (merged.length === 0) break
+      if (merged.length === 0) {
+        const exhaustedMetrics =
+          previousMetrics ??
+          ({
+            uniqueFacts: scoredFacts.size,
+            conceptCoverage: 0,
+            avgTop: averageTopScores(scoredFacts),
+            queryTokenCoverage: queryTokens.length,
+            frontierConcepts: frontierConcepts.length,
+          } satisfies LoopMetrics)
+        const exhaustedConfidence =
+          scoredFacts.size > 0 ? computeCheckpointConfidence(exhaustedMetrics) : 0
+        checkpoints.push({
+          stage: `pass_${iter + 1}`,
+          status: 'stop',
+          nextAction: 'frontier_exhausted',
+          confidence: exhaustedConfidence,
+        })
+        stopReason =
+          sufficiency.decision === 'answerable'
+            ? 'frontier_exhausted'
+            : scoredFacts.size > 0
+              ? 'weak_evidence_after_exhaustion'
+              : 'weak_evidence_after_exhaustion'
+        break
+      }
 
       this.scoreIterationFacts(
         input.query,
@@ -114,52 +172,106 @@ export class FactsQueryResearchOrchestrator {
         .map(entry => entry.row)
       const factConcepts = this.indexer.listFactConcepts(topRows.map(row => row.id))
       const conceptCoverage = computeCoverage(queryTokens, factConcepts)
+      const avgTop = averageTopScores(scoredFacts)
+      const metrics: LoopMetrics = {
+        uniqueFacts: scoredFacts.size,
+        conceptCoverage,
+        avgTop,
+        queryTokenCoverage: queryTokens.length,
+        frontierConcepts: frontierConcepts.length,
+      }
       sufficiency = this.assessSufficiency({
         scoredFacts,
         conceptCoverage,
       })
-      if (sufficiency.decision === 'answerable' && graphHops >= 1) {
-        return this.buildResponse({
-          input,
-          scoredFacts,
-          iterations: iter + 1,
-          graphHops,
-          sufficiencyReason: sufficiency.reason,
-          loopTrace,
-          rankedCategories,
-        })
+      const confidence = computeCheckpointConfidence(metrics)
+      const hasMeaningfulGain = hasMeaningfulProgress(previousMetrics, metrics)
+      plateauCount = hasMeaningfulGain ? 0 : plateauCount + 1
+
+      let nextAction = 'continue'
+      let status: LoopCheckpoint['status'] = 'continue'
+
+      if (sufficiency.decision === 'answerable' && plateauCount >= 2) {
+        status = 'stop'
+        nextAction = 'return_answerable_plateau'
+        stopReason = 'answerable_plateau'
       }
 
-      if (iter < maxIterations - 1 && activeConcepts.length > 0 && graphHops < maxGraphHops) {
-        activeConcepts = this.indexer.expandNeighborConcepts(activeConcepts, 1, 40)
-        graphHops += 1
-        if (
-          activeCategoryIds.length === 0 &&
-          rankedCategories.length > 0 &&
-          sufficiency.decision !== 'answerable'
-        ) {
-          activeCategoryIds = rankedCategories.slice(0, 3).map(category => category.categoryId)
-        } else if (
-          activeCategoryIds.length > 0 &&
-          activeCategoryIds.length < rankedCategories.length &&
-          sufficiency.decision !== 'answerable'
-        ) {
-          activeCategoryIds = rankedCategories
-            .slice(0, activeCategoryIds.length + 1)
-            .map(category => category.categoryId)
+      const shouldGrowLimit = shouldIncreaseRetrievalLimit({
+        currentLimit: retrievalLimit,
+        hardResultLimit,
+        metrics,
+        sufficiency,
+      })
+      const nextCategoryIds = shouldWidenCategories({
+        activeCategoryIds,
+        rankedCategories,
+        sufficiency,
+      })
+      const expandedConcepts =
+        graphHops < maxGraphHops && activeConcepts.length > 0
+          ? this.indexer.expandNeighborConcepts(activeConcepts, 1, activeConceptBudget + 8)
+          : activeConcepts
+      const newNeighborConcepts = expandedConcepts.filter(concept => !activeConcepts.includes(concept))
+      const canExpandGraph = newNeighborConcepts.length > 0 && graphHops < maxGraphHops
+
+      if (status !== 'stop') {
+        const frontierExhausted =
+          !shouldGrowLimit &&
+          nextCategoryIds.length === activeCategoryIds.length &&
+          !canExpandGraph &&
+          plateauCount >= 1
+        if (frontierExhausted) {
+          status = 'stop'
+          nextAction = 'frontier_exhausted'
+          stopReason =
+            sufficiency.decision === 'answerable'
+              ? 'frontier_exhausted'
+              : 'weak_evidence_after_exhaustion'
+        } else if (plateauCount >= 2) {
+          status = 'stop'
+          nextAction = 'plateau'
+          stopReason =
+            sufficiency.decision === 'answerable'
+              ? 'answerable_plateau'
+              : 'weak_evidence_after_exhaustion'
         }
       }
+
+      checkpoints.push({
+        stage: `pass_${iter + 1}`,
+        status,
+        nextAction,
+        confidence,
+      })
+
+      if (status === 'stop') {
+        break
+      }
+
+      if (shouldGrowLimit) {
+        retrievalLimit = nextRetrievalLimit(retrievalLimit, hardResultLimit)
+      }
+      if (nextCategoryIds.length > activeCategoryIds.length) {
+        activeCategoryIds = nextCategoryIds
+      }
+      if (canExpandGraph) {
+        graphHops += 1
+        activeConceptBudget = Math.min(activeConceptBudget + 8, 96)
+        activeConcepts = expandedConcepts.slice(0, activeConceptBudget)
+      }
+      previousMetrics = metrics
     }
 
     return this.buildResponse({
       input,
       scoredFacts,
-      iterations: maxIterations,
+      iterations: iterationsRun,
       graphHops,
-      sufficiencyReason: sufficiency.reason,
-      suggestRetrievalDeepen: input.surface === 'chat',
+      sufficiencyReason: stopReason,
       loopTrace,
       rankedCategories,
+      checkpoints,
     })
   }
 
@@ -229,9 +341,9 @@ export class FactsQueryResearchOrchestrator {
     iterations: number
     graphHops: number
     sufficiencyReason: string
-    suggestRetrievalDeepen?: boolean
     loopTrace?: string[]
     rankedCategories?: Array<{ categoryId: string; name: string; score: number }>
+    checkpoints?: LoopCheckpoint[]
   }): QueryResponse {
     const sorted = [...input.scoredFacts.values()].sort((a, b) => b.score - a.score)
     const limit = input.input.limit
@@ -270,9 +382,9 @@ export class FactsQueryResearchOrchestrator {
     }))
     const retrievalDetail = [
       'facts-loop',
-      `iterations:${input.iterations}`,
+      `passes:${input.iterations}`,
       `graph_hops:${input.graphHops}`,
-      `sufficiency:${input.sufficiencyReason}`,
+      `stop:${input.sufficiencyReason}`,
       'semantic:on',
     ]
       .filter(Boolean)
@@ -288,10 +400,10 @@ export class FactsQueryResearchOrchestrator {
     const retrieval: QueryResponse['retrieval'] = {
       method: results.length > 0 ? 'hybrid' : 'lexical-fallback',
       detail: retrievalDetail,
+      ...(input.checkpoints && input.checkpoints.length > 0
+        ? { checkpoints: input.checkpoints }
+        : {}),
       ...(traceDetail ? { traceDetail } : {}),
-    }
-    if (input.suggestRetrievalDeepen === true) {
-      retrieval.suggestRetrievalDeepen = true
     }
     return {
       results,
@@ -339,11 +451,70 @@ function summarizeFactTitle(text: string): string {
   return `${trimmed.slice(0, 69)}...`
 }
 
+function averageTopScores(scores: Map<string, { row: FactRow; score: number }>): number {
+  const top = [...scores.values()]
+    .map(entry => entry.score)
+    .sort((a, b) => b - a)
+    .slice(0, 3)
+  return top.length > 0 ? top.reduce((sum, value) => sum + value, 0) / top.length : 0
+}
+
+function computeCheckpointConfidence(metrics: LoopMetrics): number {
+  const blended = metrics.avgTop * 0.75 + metrics.conceptCoverage * 0.25
+  const floorFromStrongSingleFact =
+    metrics.uniqueFacts > 0 && metrics.avgTop >= 0.65 ? Math.min(0.6, metrics.avgTop) : 0
+  return clampFloat(Math.max(blended, floorFromStrongSingleFact), 0, 1)
+}
+
+function hasMeaningfulProgress(previous: LoopMetrics | undefined, current: LoopMetrics): boolean {
+  if (!previous) return true
+  if (current.uniqueFacts >= previous.uniqueFacts + 2) return true
+  if (current.conceptCoverage >= previous.conceptCoverage + 0.08) return true
+  if (current.avgTop >= previous.avgTop + 0.04) return true
+  if (current.frontierConcepts > previous.frontierConcepts) return true
+  return false
+}
+
+function shouldIncreaseRetrievalLimit(input: {
+  currentLimit: number
+  hardResultLimit: number
+  metrics: LoopMetrics
+  sufficiency: SufficiencyDecision
+}): boolean {
+  if (input.currentLimit >= input.hardResultLimit) return false
+  if (input.metrics.uniqueFacts <= input.currentLimit + 2) return true
+  if (input.sufficiency.decision !== 'answerable') return true
+  if (input.metrics.conceptCoverage < 0.7) return true
+  return input.metrics.avgTop < 0.7
+}
+
+function nextRetrievalLimit(currentLimit: number, hardResultLimit: number): number {
+  if (currentLimit >= hardResultLimit) return hardResultLimit
+  const step = currentLimit < 10 ? 5 : Math.max(5, Math.ceil(currentLimit * 0.5))
+  return Math.min(hardResultLimit, currentLimit + step)
+}
+
+function shouldWidenCategories(input: {
+  activeCategoryIds: string[]
+  rankedCategories: Array<{ categoryId: string; name: string; score: number }>
+  sufficiency: SufficiencyDecision
+}): string[] {
+  if (input.sufficiency.decision === 'answerable') return input.activeCategoryIds
+  if (input.activeCategoryIds.length >= input.rankedCategories.length) return input.activeCategoryIds
+  return input.rankedCategories
+    .slice(0, input.activeCategoryIds.length + 1)
+    .map(category => category.categoryId)
+}
+
 function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
   if (!raw) return fallback
   const parsed = Number.parseInt(raw, 10)
   if (!Number.isFinite(parsed)) return fallback
   return Math.max(min, Math.min(max, parsed))
+}
+
+function clampFloat(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
 }
 
 export function buildFactsLoopFingerprint(query: string): string {

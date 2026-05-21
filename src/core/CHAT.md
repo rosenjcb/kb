@@ -13,8 +13,10 @@ Update it when behavior changes.
    `runIntentLoop` → router → **`read_facts`** (fact FTS + deep **`FactsQueryResearchOrchestrator`**).
    Facts already in the session pool are excluded via `excludeIds`. **No** workspace markdown fallback.
 4. **Agentic answer loop** — the LLM is given a `query` tool it can call to fetch additional facts
-   mid-answer (up to 3 rounds). Each `query` call runs another retrieval pass and injects results as
-   tool-result messages so the LLM can continue. New facts accumulate into the session pool.
+   mid-answer (up to 5 rounds). Each `query` call runs another retrieval pass and injects results as
+   tool-result messages so the LLM can continue. New facts accumulate into the session pool. This is
+   optional refinement only: default retrieval exhaustiveness comes from the shared plateau-based
+   controller, not from chat-specific auto-deepen passes or model initiative.
 5. **Conversational answer** — final LLM reply from step 4 is printed.
 6. **Orchestration footer** — `printReadDocumentsOrchestrationFooter()` prints `retrieval>`,
    `matches>`, `sources>`. Add **`chat --verbose`** in the TUI shell before the session starts to

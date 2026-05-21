@@ -212,6 +212,32 @@ describe('intent-cli formatting', () => {
 })
 
 describe('intent-cli execution and enrichment', () => {
+  it('derives query confidence from retrieval checkpoints instead of a fixed router default', async () => {
+    const toolExecutor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi.fn(async () => ({
+        retrieval: {
+          method: 'hybrid',
+          detail: 'facts-loop;passes:3;graph_hops:2;stop:weak_evidence_after_exhaustion;semantic:on',
+          checkpoints: [
+            { stage: 'pass_1', status: 'continue', nextAction: 'continue', confidence: 0.22 },
+            { stage: 'pass_2', status: 'stop', nextAction: 'plateau', confidence: 0.34 },
+          ],
+        },
+        results: [{ metadata: { id: 'fact-a' }, content: 'Weak evidence fact.' }],
+        total: 1,
+      })),
+    }
+
+    const result = await executeIntentCommand(
+      parseIntentCommand(['query', 'why is retrieval weak']),
+      toolExecutor
+    )
+
+    expect(result.confidence).toBe(0.34)
+  })
+
   it('executes invalidate through the router', async () => {
     const toolExecutor: ToolExecutor = {
       register: vi.fn(),

@@ -230,8 +230,8 @@ kb publish <notion|jekyll> [options]
 | `/session` | Show turn-by-turn token, cost, and timing stats |
 
 **How chat retrieval works:**
-- Each turn fetches facts via the research orchestrator (up to 5 iterations, 3 graph hops, 40-concept frontier).
-- The LLM can call the `query` tool mid-answer to fetch additional facts when it needs more depth.
+- Each turn fetches facts via the same plateau-based research orchestrator used by `kb query`: it adaptively grows the result budget, widens concept/category frontier, and expands graph hops until the evidence plateaus, the frontier is exhausted, or an internal safety budget is reached.
+- The LLM can still call the `query` tool mid-answer to fetch additional facts, but default exploration depth no longer depends on the model volunteering more searches.
 - Facts retrieved in earlier turns are excluded from subsequent retrieval — they remain available in the LLM's conversation history. Use `/clear` for a completely fresh start.
 - If a follow-up introduces 2+ new topical terms (e.g. "What about AST? How do I add Python support?"), those new terms drive retrieval instead of being appended to the previous topic.
 
