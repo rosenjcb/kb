@@ -73,7 +73,6 @@ export interface ReadDocumentsResult {
     method?: string
     detail?: string
     clarificationQuestion?: string
-    suggestRetrievalDeepen?: boolean
     checkpoints?: Array<{
       stage?: string
       status?: string
@@ -533,31 +532,7 @@ export async function runChatSession(
           { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
         )
         let retrievalMs = initialRetrieval.durationMs
-        let intentResult = initialRetrieval.result
-
-        for (let deepenPass = 0; deepenPass < 2; deepenPass += 1) {
-          if (!isReadFactsResult(intentResult)) break
-          const snapshot = normalizeReadResult(intentResult.data)
-          if (!snapshot.retrieval?.suggestRetrievalDeepen) break
-          const pass: 1 | 2 = deepenPass === 0 ? 1 : 2
-          const deepenedQuery = `${resolvedTurn.retrievalQuery}\n${buildChatAutoDeepenLine(
-            resolvedTurn.retrievalQuery,
-            pass
-          )}`
-          const deepened = await withStageProgress(
-            printer,
-            'retrieval-deepen',
-            () =>
-              executeChatQueryTruthRetrieval({
-                toolExecutor: deps.toolExecutor,
-                expandedQuery: deepenedQuery,
-                retrievalLimit,
-              }),
-            { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
-          )
-          retrievalMs += deepened.durationMs
-          intentResult = deepened.result
-        }
+        const intentResult = initialRetrieval.result
 
         if (!isReadFactsResult(intentResult)) {
           const detail =
@@ -842,23 +817,6 @@ export function buildChatTurnContent(input: {
     .join('\n')
 }
 
-function chatDeepenFocusTokens(retrievalQuery: string): string {
-  const cleaned = retrievalQuery
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter(t => t.length > 2)
-  return [...new Set(cleaned)].slice(0, 8).join(', ') || 'full question scope'
-}
-
-/** Synthetic clarification (no stdin)—mirrors prior interactive clarify passes. */
-function buildChatAutoDeepenLine(retrievalQuery: string, pass: 1 | 2): string {
-  const focus = chatDeepenFocusTokens(retrievalQuery)
-  if (pass === 1) {
-    return `Clarification: Automated deepen—cover every substantive angle (${focus}); prioritize exact CLI behavior, init/submit/query flows, architecture, and KB mechanics over short UI-only summaries.`
-  }
-  return `Clarification: Automated widen—pull adjacent facts on hybrid search, config, skills, evaluation harness, and repo workflow as they relate to: ${focus}.`
-}
 
 function splitShellArgs(input: string): string[] {
   const args: string[] = []

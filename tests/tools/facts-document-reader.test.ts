@@ -57,13 +57,16 @@ describe('FactsDocumentReader', () => {
 
     expect(response.retrieval.method).toBe('hybrid')
     expect(response.retrieval.detail).toContain('facts-loop')
+    expect(response.retrieval.detail).toContain('passes:')
+    expect(response.retrieval.detail).toContain('stop:')
     expect(response.retrieval.detail).toContain('semantic:on')
     expect(response.retrieval.traceDetail).toContain('trace:')
     expect(response.retrieval.traceDetail).toContain('frontier=')
+    expect(response.retrieval.checkpoints?.length).toBeGreaterThan(0)
     expect(response.total).toBeGreaterThan(0)
   })
 
-  it('signals automated retrieval deepen for chat when deep loop stays insufficient', async () => {
+  it('marks weak evidence after exhaustion without requiring chat-only deepen hints', async () => {
     const dbPath = await createDbPath()
     const indexer = new SqliteKbIndexer({ dbPath })
     indexer.upsertFact({
@@ -84,30 +87,47 @@ describe('FactsDocumentReader', () => {
     })
 
     expect(response.retrieval.clarificationQuestion).toBeFalsy()
-    expect(response.retrieval.suggestRetrievalDeepen).toBe(true)
+    expect(response.retrieval.detail).toContain('stop:weak_evidence_after_exhaustion')
+    expect(response.retrieval.checkpoints?.at(-1)?.nextAction).toBeTruthy()
   })
 
-  it('does not suggest retrieval deepen for query surface when loop stays insufficient', async () => {
+  it('continues expanding graph hops while novel concepts exist', async () => {
     const dbPath = await createDbPath()
     const indexer = new SqliteKbIndexer({ dbPath })
     indexer.upsertFact({
-      factText: 'build pipeline runs on every push',
+      factText: 'alpha connects to beta in the controller graph',
+      triplet: { subject: 'alpha', predicate: 'connects_to', object: 'beta' },
       sourceKind: 'submit',
       sourceRef: 'test',
-      confidence: 0.7,
+      confidence: 0.9,
+    })
+    indexer.upsertFact({
+      factText: 'beta connects to gamma in the controller graph',
+      triplet: { subject: 'beta', predicate: 'connects_to', object: 'gamma' },
+      sourceKind: 'submit',
+      sourceRef: 'test',
+      confidence: 0.9,
+    })
+    indexer.upsertFact({
+      factText: 'gamma connects to delta in the controller graph',
+      triplet: { subject: 'gamma', predicate: 'connects_to', object: 'delta' },
+      sourceKind: 'submit',
+      sourceRef: 'test',
+      confidence: 0.9,
     })
     indexer.close()
 
     const reader = new FactsDocumentReader(dbPath)
     const response = await reader.queryDocuments({
-      query: 'How do we guarantee secure release signing in production?',
+      query: 'alpha delta controller graph',
       discoveryDepth: 'deep',
       includeContent: true,
       limit: 5,
       surface: 'query',
     })
 
-    expect(response.retrieval.suggestRetrievalDeepen).toBeFalsy()
+    expect(response.retrieval.detail).toContain('graph_hops:')
+    expect(response.retrieval.checkpoints?.length).toBeGreaterThan(1)
   })
 
   it('expands generic query via LLM and merges results from all sub-queries', async () => {

@@ -155,7 +155,7 @@ export class DefaultIntentRouter implements IntentRouter {
       recommendedAction: decision.selectedOperation,
       data: toolResult,
       provenance: extractProvenance(toolResult),
-      confidence: 0.8,
+      confidence: deriveToolResultConfidence(toolResult),
     }
   }
 }
@@ -183,4 +183,18 @@ function extractProvenance(result: unknown): string[] {
     return results.map(r => r.metadata?.id).filter(Boolean) as string[]
   }
   return []
+}
+
+function deriveToolResultConfidence(result: unknown): number {
+  if (!result || typeof result !== 'object') return 0.8
+  const checkpoints = (
+    result as {
+      retrieval?: { checkpoints?: Array<{ confidence?: number }> }
+    }
+  ).retrieval?.checkpoints
+  const lastConfidence = checkpoints?.[checkpoints.length - 1]?.confidence
+  if (typeof lastConfidence === 'number' && Number.isFinite(lastConfidence)) {
+    return Math.max(0, Math.min(1, lastConfidence))
+  }
+  return 0.8
 }
