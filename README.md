@@ -31,7 +31,7 @@ Instead of re-deriving the same answers, KB lets you:
 * 🔍 **Query** past context before making changes
 * 🗑️ **Invalidate** stale facts before they mislead future work
 
-All of it lives alongside your code, versioned in Git, and queryable like a lightweight memory system.
+Scan and index code and documents once, and you get a queryable and lightweight knowledge base.
 
 ## 🧠 What it actually does
 
