@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { describe, expect, it, vi } from 'vitest'
 import {
   assignFactsToCategoryIds,
@@ -16,6 +16,15 @@ type MockPayload = {
 
 vi.mock('node:child_process', () => {
   return {
+    spawnSync: vi.fn((bin: string, args: string[]) => {
+      if (bin === 'python3' && args[0] === '--version') {
+        return { status: 0, stdout: 'Python 3.11.0', stderr: '' }
+      }
+      if (bin === 'python3' && args[0] === '-m' && args[1] === 'venv') {
+        return { status: 0, stdout: '', stderr: '' }
+      }
+      return { status: 0, stdout: '', stderr: '' }
+    }),
     execFileSync: vi.fn((_bin: string, _args: string[], opts: { input?: string } = {}) => {
       const payload = JSON.parse(opts.input ?? '{}') as MockPayload
       if (payload.mode === 'discover' || payload.mode === 'discover_and_assign') {
