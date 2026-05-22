@@ -11,7 +11,7 @@ export async function readPublishedGraph(baseDir: string): Promise<JekyllGraphPa
     const allRelationships = db
       .prepare(
         `SELECT subject AS fromId, predicate AS type, object AS toId FROM facts
-         WHERE tombstoned_at IS NULL AND predicate != 'asserts' AND subject != 'kb'
+         WHERE tombstoned_at IS NULL
          LIMIT 5000`
       )
       .all() as Array<{ fromId: string; type: string; toId: string }>

@@ -98,8 +98,7 @@ export function expandQueryWithGraph(query: string, db: Database.Database): stri
         const factRows = db
           .prepare(
             `SELECT subject, object FROM facts
-             WHERE tombstoned_at IS NULL
-               AND predicate != 'asserts'
+             WHERE                predicate != 'asserts'
                AND subject != 'kb'
                AND (LOWER(subject) LIKE ? OR LOWER(object) LIKE ?)
              LIMIT 30`

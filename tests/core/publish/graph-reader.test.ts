@@ -78,19 +78,18 @@ describe('readPublishedGraph', () => {
     expect(result?.relationships).toHaveLength(0)
   })
 
-  it('excludes the kb subject and asserts predicate', async () => {
+  it('includes all non-tombstoned facts including kb and asserts predicates', async () => {
     makeDb(tempDir, [
-      { subject: 'kb', predicate: 'asserts', object: 'something' },
+      { subject: 'kb', predicate: 'asserts', object: 'some fact text' },
       { subject: 'FuncA', predicate: 'asserts', object: 'value' },
       { subject: 'FuncA', predicate: 'calls', object: 'FuncB' },
     ])
     const result = await readPublishedGraph(tempDir)
     const ids = new Set(result?.entities.map(e => e.id))
-    expect(ids).not.toContain('kb')
+    expect(ids).toContain('kb')
     expect(ids).toContain('FuncA')
     expect(ids).toContain('FuncB')
-    expect(result?.relationships.every(r => r.type !== 'asserts')).toBe(true)
-    expect(result?.relationships).toHaveLength(1)
+    expect(result?.relationships).toHaveLength(3)
   })
 
   it('includes a generatedAt timestamp', async () => {

@@ -297,7 +297,7 @@ export class SqliteKbIndexer {
       object = o
     }
     const existing = this.db
-      .prepare('SELECT id FROM facts WHERE normalized_text = ? AND tombstoned_at IS NULL')
+      .prepare('SELECT id FROM facts WHERE normalized_text = ?')
       .get(normalized) as { id: string } | undefined
 
     if (existing) {
@@ -364,7 +364,7 @@ export class SqliteKbIndexer {
         `
         SELECT ${FACT_ROW_SELECT}
         FROM facts
-        WHERE normalized_text = ? AND tombstoned_at IS NULL
+        WHERE normalized_text = ?
         LIMIT 1
       `
       )
@@ -379,7 +379,7 @@ export class SqliteKbIndexer {
         `
         SELECT ${FACT_ROW_SELECT}
         FROM facts
-        WHERE id = ? AND tombstoned_at IS NULL
+        WHERE id = ?
         LIMIT 1
       `
       )
@@ -392,7 +392,6 @@ export class SqliteKbIndexer {
         `
         SELECT ${FACT_ROW_SELECT}
         FROM facts
-        WHERE tombstoned_at IS NULL
         ORDER BY updated_at DESC
         LIMIT ?
       `
@@ -420,7 +419,7 @@ export class SqliteKbIndexer {
           FROM facts_fts fts
           JOIN facts f ON f.id = fts.fact_id
           WHERE facts_fts MATCH ?
-            AND f.tombstoned_at IS NULL
+           
           ORDER BY rank
           LIMIT ?
         `
@@ -438,8 +437,7 @@ export class SqliteKbIndexer {
           `
           SELECT ${FACT_ROW_SELECT}
           FROM facts
-          WHERE tombstoned_at IS NULL
-            AND lower(fact_text) LIKE ?
+          WHERE             lower(fact_text) LIKE ?
           ORDER BY updated_at DESC
           LIMIT ?
         `
@@ -454,8 +452,7 @@ export class SqliteKbIndexer {
         `
         SELECT ${FACT_ROW_SELECT}
         FROM facts
-        WHERE tombstoned_at IS NULL
-          AND (${where})
+        WHERE           (${where})
         ORDER BY updated_at DESC
         LIMIT ?
       `
@@ -473,8 +470,7 @@ export class SqliteKbIndexer {
         SELECT ${FACT_ROW_SELECT_F}
         FROM facts f
         JOIN fact_concepts fc ON fc.fact_id = f.id
-        WHERE f.tombstoned_at IS NULL
-          AND fc.concept_id IN (${placeholders})
+        WHERE           fc.concept_id IN (${placeholders})
         ORDER BY f.updated_at DESC
         LIMIT ?
       `
@@ -503,7 +499,6 @@ export class SqliteKbIndexer {
           WHERE fc.concept_id IN (${placeholders})
           GROUP BY fc.fact_id
         ) m ON m.fact_id = f.id
-        WHERE f.tombstoned_at IS NULL
         ORDER BY m.match_count DESC, f.confidence DESC, f.updated_at DESC
         LIMIT ?
       `
@@ -596,15 +591,10 @@ export class SqliteKbIndexer {
     replacement?: { factText: string; triplet: FactTriplet }
   ): { changed: number; replacementId?: string } {
     const normalized = normalizeFactText(oldFact)
-    const now = dayjs().toISOString()
     const row = this.db
-      .prepare('SELECT id FROM facts WHERE normalized_text = ? AND tombstoned_at IS NULL')
+      .prepare('SELECT id FROM facts WHERE normalized_text = ?')
       .get(normalized) as { id: string } | undefined
     if (!row) return { changed: 0 }
-
-    this.db
-      .prepare('UPDATE facts SET tombstoned_at = ?, updated_at = ? WHERE id = ?')
-      .run(now, now, row.id)
 
     this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?').run(row.id)
     this.db.prepare('DELETE FROM fact_embeddings WHERE fact_id = ?').run(row.id)
@@ -612,6 +602,7 @@ export class SqliteKbIndexer {
     this.db
       .prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?')
       .run(row.id, row.id)
+    this.db.prepare('DELETE FROM facts WHERE id = ?').run(row.id)
 
     if (!replacement?.factText?.trim()) {
       return { changed: 1 }
@@ -627,22 +618,19 @@ export class SqliteKbIndexer {
     return { changed: 1, replacementId: replaced.id }
   }
 
-  /** Tombstone a fact row by id and clear all derived indexes. Returns true if a row was changed. */
+  /** Delete a fact row by id and clear all derived indexes. Returns true if a row was changed. */
   tombstoneFactById(factId: string): boolean {
-    const now = dayjs().toISOString()
     const row = this.db
-      .prepare('SELECT id FROM facts WHERE id = ? AND tombstoned_at IS NULL')
+      .prepare('SELECT id FROM facts WHERE id = ?')
       .get(factId) as { id: string } | undefined
     if (!row) return false
-    this.db
-      .prepare('UPDATE facts SET tombstoned_at = ?, updated_at = ? WHERE id = ?')
-      .run(now, now, row.id)
     this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?').run(row.id)
     this.db.prepare('DELETE FROM fact_embeddings WHERE fact_id = ?').run(row.id)
     this.db.prepare('DELETE FROM fact_concepts WHERE fact_id = ?').run(row.id)
     this.db
       .prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?')
       .run(row.id, row.id)
+    this.db.prepare('DELETE FROM facts WHERE id = ?').run(row.id)
     return true
   }
 
@@ -650,7 +638,7 @@ export class SqliteKbIndexer {
   listFactsBySourceRef(sourceRef: string): FactRow[] {
     return this.db
       .prepare(
-        `SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref = ? AND tombstoned_at IS NULL`
+        `SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref = ?`
       )
       .all(sourceRef) as FactRow[]
   }
@@ -659,7 +647,7 @@ export class SqliteKbIndexer {
   listActiveFactsBySourceRefPrefix(prefix: string): FactRow[] {
     return this.db
       .prepare(
-        `SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref LIKE ? AND tombstoned_at IS NULL`
+        `SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref LIKE ?`
       )
       .all(`${prefix}%`) as FactRow[]
   }
@@ -879,7 +867,7 @@ export class SqliteKbIndexer {
           JOIN fact_category_assignments a ON a.fact_id = f.id
           WHERE facts_fts MATCH ?
             AND a.category_id IN (${placeholders})
-            AND f.tombstoned_at IS NULL
+           
           ORDER BY a.score DESC, rank
           LIMIT ?
         `
@@ -898,7 +886,7 @@ export class SqliteKbIndexer {
         FROM facts f
         JOIN fact_category_assignments a ON a.fact_id = f.id
         WHERE a.category_id IN (${placeholders})
-          AND f.tombstoned_at IS NULL
+         
           AND lower(f.fact_text) LIKE ?
         ORDER BY a.score DESC, f.updated_at DESC
         LIMIT ?
@@ -921,8 +909,7 @@ export class SqliteKbIndexer {
         FROM facts f
         JOIN fact_concepts fc ON fc.fact_id = f.id
         JOIN fact_category_assignments a ON a.fact_id = f.id
-        WHERE f.tombstoned_at IS NULL
-          AND fc.concept_id IN (${conceptPlaceholders})
+        WHERE           fc.concept_id IN (${conceptPlaceholders})
           AND a.category_id IN (${categoryPlaceholders})
         ORDER BY a.score DESC, f.updated_at DESC
         LIMIT ?
@@ -956,8 +943,7 @@ export class SqliteKbIndexer {
           GROUP BY fc.fact_id
         ) m ON m.fact_id = f.id
         JOIN fact_category_assignments a ON a.fact_id = f.id
-        WHERE f.tombstoned_at IS NULL
-          AND a.category_id IN (${categoryPlaceholders})
+        WHERE           a.category_id IN (${categoryPlaceholders})
         ORDER BY a.score DESC, m.match_count DESC, f.confidence DESC, f.updated_at DESC
         LIMIT ?
       `
@@ -971,8 +957,7 @@ export class SqliteKbIndexer {
         `
         SELECT f.*
         FROM facts f
-        WHERE f.tombstoned_at IS NULL
-          AND NOT EXISTS (
+        WHERE           NOT EXISTS (
             SELECT 1
             FROM fact_category_assignments a
             WHERE a.fact_id = f.id
@@ -989,8 +974,7 @@ export class SqliteKbIndexer {
         `
         SELECT COUNT(*) AS count
         FROM facts f
-        WHERE f.tombstoned_at IS NULL
-          AND NOT EXISTS (
+        WHERE           NOT EXISTS (
             SELECT 1
             FROM fact_category_assignments a
             WHERE a.fact_id = f.id
@@ -1233,7 +1217,7 @@ export class SqliteKbIndexer {
         JOIN facts f ON f.id = fc.fact_id
         WHERE fc.concept_id IN (${placeholders})
           AND fc.fact_id != ?
-          AND f.tombstoned_at IS NULL
+         
         ORDER BY f.updated_at DESC
         LIMIT 12
       `
