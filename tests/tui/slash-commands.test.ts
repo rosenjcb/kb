@@ -6,6 +6,8 @@ import {
   getSlashCommands,
   getSuggestionWindow,
   normalizeSlashCommandArgs,
+  parseSlashInput,
+  resolveSlashSuggestions,
   sanitizeSlashInput,
 } from '../../src/tui/slash-commands.js'
 
@@ -30,6 +32,7 @@ describe('slash command helpers', () => {
     expect(commands.some(c => c.command === '/config')).toBe(true)
     expect(commands.some(c => c.command === '/skills')).toBe(true)
     expect(commands.some(c => c.command === '/sync')).toBe(true)
+    expect(commands.some(c => c.command === '/session')).toBe(true)
     expect(commands.some(c => c.command === '/help')).toBe(true)
     expect(commands.some(c => c.command === '/clear')).toBe(true)
     expect(commands.some(c => c.command === '/exit')).toBe(true)
@@ -59,7 +62,7 @@ describe('slash command helpers', () => {
 
   it('formats the chosen suggestion for explicit completion', () => {
     const [suggestion] = getSlashCommandSuggestions('/he', 'chat')
-    expect(applySelectedSuggestion(suggestion)).toBe('/help ')
+    expect(applySelectedSuggestion(suggestion, '/he')).toBe('/help ')
   })
 
   it('returns empty completion text when no suggestion is selected', () => {
@@ -103,5 +106,45 @@ describe('slash command helpers', () => {
   it('suggests /skills when typing /sk', () => {
     const suggestions = getSlashCommandSuggestions('/sk', 'chat')
     expect(suggestions.some(s => s.command === '/skills')).toBe(true)
+  })
+
+  it('suggests docs subcommands when typing /docs g', () => {
+    const suggestions = resolveSlashSuggestions('/docs g', 'idle')
+    expect(suggestions.some(s => s.command === '/docs generate')).toBe(true)
+  })
+
+  it('suggests /facts list when typing /facts li', () => {
+    const suggestions = resolveSlashSuggestions('/facts li', 'idle')
+    expect(suggestions.some(s => s.command === '/facts list')).toBe(true)
+  })
+
+  it('shows /accept in docs-generate-review context only', () => {
+    expect(resolveSlashSuggestions('/ac', 'docs-generate-review').some(s => s.command === '/accept')).toBe(
+      true
+    )
+    expect(resolveSlashSuggestions('/ac', 'idle').some(s => s.command === '/accept')).toBe(false)
+  })
+
+  it('shows /skip in docs-generate-question context', () => {
+    expect(resolveSlashSuggestions('/sk', 'docs-generate-question').some(s => s.command === '/skip')).toBe(
+      true
+    )
+  })
+
+  it('shows /cancel in every context', () => {
+    expect(resolveSlashSuggestions('/ca', 'docs-generate-review').some(s => s.command === '/cancel')).toBe(
+      true
+    )
+    expect(resolveSlashSuggestions('/ca', 'idle').some(s => s.command === '/cancel')).toBe(true)
+  })
+
+  it('completes multi-segment commands', () => {
+    const [suggestion] = resolveSlashSuggestions('/docs g', 'idle')
+    expect(applySelectedSuggestion(suggestion, '/docs g')).toBe('/docs generate ')
+  })
+
+  it('suppresses suggestions after complete path with trailing args', () => {
+    expect(parseSlashInput('/docs generate "foo"').hasTrailingArgs).toBe(true)
+    expect(resolveSlashSuggestions('/docs generate "foo"', 'idle')).toEqual([])
   })
 })

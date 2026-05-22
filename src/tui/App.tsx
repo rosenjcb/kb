@@ -5,7 +5,7 @@ import {
   formatDeleteBaseResult,
   resolveEffectiveBaseDir,
 } from '../cli/base-selection.js'
-import type { ChatIO } from '../cli/chat-cli.js'
+import type { ChatIO, ChatReadOptions } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
 import { parseInitCommand, parseScanCommand, runKbInit } from '../cli/init-cli.js'
 import {
@@ -32,6 +32,7 @@ import {
   getSlashCommandSuggestions,
   normalizeSlashCommandArgs,
   sanitizeSlashInput,
+  type SlashInputContext,
 } from './slash-commands.js'
 import type { HistoryEntry, TuiMode } from './types.js'
 
@@ -82,6 +83,7 @@ export function App({ config, startupNotices = [] }: Props) {
     onConfirm: () => Promise<void>
   } | null>(null)
   const [chatInputHint, setChatInputHint] = useState('')
+  const [slashContext, setSlashContext] = useState<SlashInputContext>('idle')
 
   const [progressLine, setProgressLine] = useState<string | null>(null)
 
@@ -183,9 +185,10 @@ export function App({ config, startupNotices = [] }: Props) {
       const toolExecutor = createKBToolsRegistry(storageDir, config, { taskProvider: llmProvider })
 
       setChatInputHint('')
+      setSlashContext('idle')
 
       const chatIO: ChatIO = {
-        async read(prompt: string): Promise<string | null> {
+        async read(prompt: string, opts?: ChatReadOptions): Promise<string | null> {
           // Commit any in-flight response before we wait for user input.
           finalizeChatResponse()
           const normalized = prompt.replace(/\r/g, '').trim()
@@ -204,11 +207,13 @@ export function App({ config, startupNotices = [] }: Props) {
             setChatInputHint(hint)
           }
           chatReadKindRef.current = readKind
+          setSlashContext(opts?.slashContext ?? 'idle')
           return new Promise<string | null>(resolve => {
             chatInputResolverRef.current = (value: string | null) => {
               chatInputResolverRef.current = null
               chatReadKindRef.current = 'chat'
               setChatInputHint('')
+              setSlashContext('idle')
               resolve(value)
             }
           })
@@ -456,11 +461,13 @@ export function App({ config, startupNotices = [] }: Props) {
                 const text = msg.trimEnd()
                 if (text) addEntry({ type: 'result', content: text })
               },
-              askQuestion: async (question: string): Promise<string> => {
+              askQuestion: async (question, opts) => {
                 setProgressLine(question.trimEnd())
+                setSlashContext(opts?.slashContext ?? 'idle')
                 return new Promise(resolve => {
                   chatInputResolverRef.current = value => {
                     chatInputResolverRef.current = null
+                    setSlashContext('idle')
                     resolve(value ?? '')
                   }
                 })
@@ -512,8 +519,8 @@ export function App({ config, startupNotices = [] }: Props) {
   )
 
   const slashSuggestions = useMemo(
-    () => getSlashCommandSuggestions(inputValue, mode),
-    [inputValue]
+    () => getSlashCommandSuggestions(inputValue, mode, slashContext),
+    [inputValue, slashContext]
   )
 
   useEffect(() => {
@@ -541,7 +548,7 @@ export function App({ config, startupNotices = [] }: Props) {
       if (key.tab) {
         const suggestion = slashSuggestions[selectedSuggestionIndex] ?? slashSuggestions[0]
         if (!suggestion) return
-        setInputValue(applySelectedSuggestion(suggestion))
+        setInputValue(applySelectedSuggestion(suggestion, inputValue))
       }
     },
     { isActive: slashSuggestions.length > 0 }

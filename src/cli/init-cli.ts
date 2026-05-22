@@ -80,6 +80,7 @@ import {
   summariseCoverage,
 } from './init-topic-coverage'
 import { createLLMProviderFromConfig, readKbConfig } from './kb-config'
+import type { SlashInputContext } from '../tui/slash-command-registry.js'
 
 export type InitCycle =
   | 'read-inputs'
@@ -252,9 +253,20 @@ interface LegacyInitCheckpointV2 {
   finalCoverageSummary?: InitCoverageSummary
 }
 
+export interface InitQuestionOptions {
+  slashContext?: SlashInputContext
+}
+
+export class InitCancelledError extends Error {
+  constructor(message = 'Cancelled.') {
+    super(message)
+    this.name = 'InitCancelledError'
+  }
+}
+
 export interface InitQuestionIO {
   write?: (message: string) => void
-  askQuestion: (question: string) => Promise<string>
+  askQuestion: (question: string, opts?: InitQuestionOptions) => Promise<string>
   close?: () => Promise<void> | void
 }
 
@@ -1316,7 +1328,7 @@ function createReadlineQuestionIO(): InitQuestionIO {
     write(message: string) {
       process.stdout.write(message)
     },
-    askQuestion(question: string) {
+    askQuestion(question: string, _opts?: InitQuestionOptions) {
       return new Promise(resolve => {
         rl.question(question, answer => resolve(answer))
       })
@@ -1359,7 +1371,10 @@ async function resolveInitBaseName(
   const prompt = suggestedBase
     ? `  > Knowledge base name [${suggestedBase}]\n    `
     : '  > Knowledge base name\n    '
-  const answer = (await questionIO.askQuestion(prompt)).trim()
+  const answer = (await questionIO.askQuestion(prompt, { slashContext: 'init-free-text' })).trim()
+  if (answer === '/cancel') {
+    throw new InitCancelledError()
+  }
   const resolved = answer || suggestedBase
   if (!resolved) {
     throw new Error(
@@ -1775,9 +1790,13 @@ async function promptUserCategories(
   const label = rescan ? 'kb scan' : 'kb init'
   for (;;) {
     const raw = (
-      await questionIO.askQuestion(`\n[${label}] Enter categories (comma-separated, blank to skip): `)
+      await questionIO.askQuestion(
+        `\n[${label}] Enter categories (comma-separated, /skip, or /cancel): `,
+        { slashContext: 'init-question' }
+      )
     ).trim()
-    if (!raw) return []
+    if (!raw || raw === '/skip') return []
+    if (raw === '/cancel') throw new InitCancelledError()
 
     const names = raw.split(',').map(s => s.trim()).filter(Boolean)
     if (names.length === 0) return []
@@ -1786,14 +1805,22 @@ async function promptUserCategories(
       `\nCategories:\n${names.map((name, index) => `  ${index + 1}. ${name}`).join('\n')}\n\n`
     )
 
-    const answer = (await questionIO.askQuestion('> /accept or /reject: ')).trim().toLowerCase()
+    const answer = (
+      await questionIO.askQuestion('> /accept or /reject: ', { slashContext: 'init-category-confirm' })
+    )
+      .trim()
+      .toLowerCase()
+    if (answer === '/cancel') throw new InitCancelledError()
     if (answer === '/accept') {
       const categories: FactCategoryDefinitionInput[] = []
       for (const name of names) {
         const defaultDesc = `Facts about ${name.toLowerCase()}`
         const desc = (
-          await questionIO.askQuestion(`> Description for "${name}" (blank: "${defaultDesc}"): `)
+          await questionIO.askQuestion(`> Description for "${name}" (blank: "${defaultDesc}"): `, {
+            slashContext: 'init-free-text',
+          })
         ).trim()
+        if (desc === '/cancel') throw new InitCancelledError()
         categories.push({
           id: `category-${slugifyFactCategoryName(name)}`,
           name,

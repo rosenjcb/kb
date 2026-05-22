@@ -9,13 +9,14 @@ import {
 import { firstPendingAnswerIndex, loadSession } from '../core/doc-generate-session'
 import { colorizeUnifiedDiff } from '../core/git-diff-preview'
 import type { LLMProvider } from '../core/types'
+import type { SlashInputContext } from '../tui/slash-command-registry.js'
 import { parseShellArgs } from '../tui/runner.js'
 import type { Printer } from '../ui/printer'
 import { DocsGenerateError, parseDocsGenerateCommand } from './docs-generate-cli'
 import type { KbConfig } from './kb-config'
 
 export async function runDocsGenerateChatFlow(input: {
-  read: (prompt: string) => Promise<string | null>
+  read: (prompt: string, opts?: { slashContext?: SlashInputContext }) => Promise<string | null>
   writeError: (line: string) => void
   printer: Printer
   llm: LLMProvider
@@ -88,7 +89,9 @@ export async function runDocsGenerateChatFlow(input: {
       return
     }
     const hint = '(answer | /skip | /cancel)'
-    const line = await read(`[${q.key}] ${q.question} ${hint}\n> `)
+    const line = await read(`[${q.key}] ${q.question} ${hint}\n> `, {
+      slashContext: 'docs-generate-question',
+    })
     if (line === null || line.trim() === '/cancel') {
       printer.chatAssistant('Cancelled document session (session file kept).')
       return
@@ -114,7 +117,9 @@ export async function runDocsGenerateChatFlow(input: {
   printer.chatAssistant(draft.content)
 
   while (true) {
-    const line = await read('review> (/accept | /reject <feedback> | /cancel)\n> ')
+    const line = await read('review> (/accept | /reject <feedback> | /cancel)\n> ', {
+      slashContext: 'docs-generate-review',
+    })
     if (line === null) return
     const t = line.trim()
     if (!t || t === '/cancel') {

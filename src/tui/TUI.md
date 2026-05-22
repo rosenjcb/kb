@@ -15,13 +15,23 @@ React/Ink chat shell launched when the user runs bare `kb` in a TTY. Product-wid
 
 ## Slash command routing
 
-`slash-commands.ts` lists suggestions; `App.tsx` decides handling:
+[`slash-command-registry.ts`](slash-command-registry.ts) is the single source of truth for autocomplete and command metadata. [`slash-commands.ts`](slash-commands.ts) exposes resolver helpers; `App.tsx` decides routing:
 
 - **Output-only** (`query`, `submit`, `facts`, `graph`, `docs list`, `base`, `config`, …): `runCommandForTui` → stdout partitioned via `partition-shell-output.ts` → transcript entries. No LLM loop.
 - **Interactive** (`/init`, `/scan`, `/docs generate`): stay on chat input surface; progress uses `InitProgressBar`, not history spam.
 - **Chat turns** (no leading `/`): `runChatSession` with `ChatIO` adapter classifying each line (`chat-io-classify.ts`).
 
+`App.tsx` tracks `slashContext` from `ChatIO.read(..., { slashContext })` and `InitQuestionIO.askQuestion(..., { slashContext })` so contextual commands (`/accept`, `/skip`, …) autocomplete without per-flow suggestion logic.
+
 `normalizeSlashCommandArgs` strips redundant leading `/` on first token so `kb` argv matches CLI parsing.
+
+## Extension checklist
+
+1. Add one `SlashCommandSpec` row to [`slash-command-registry.ts`](slash-command-registry.ts) (`path`, `description`, `contexts`).
+2. If output-only: add to `isOutputOnlyCommand()` in `App.tsx` and ensure CLI supports the same argv shape.
+3. If interactive with contextual slash commands: pass `slashContext` on `ChatIO.read()` or `InitQuestionIO.askQuestion()` — do not add suggestion logic in the flow.
+4. Respect three output tiers from `../core/TUI.md`.
+5. User-facing success copy: slash form via `cmd('…', 'tui')`.
 
 ## `ChatIO` bridge
 
@@ -45,10 +55,3 @@ React/Ink chat shell launched when the user runs bare `kb` in a TTY. Product-wid
 ## Subprocess commands
 
 `runner.ts` runs `node …/kb` (or packaged binary) with inherited env. `partitionShellOutputForTui` splits orchestration meta vs body so tier-1 grey lines render correctly.
-
-## Extension checklist
-
-1. Add slash to `slash-commands.ts` with description.
-2. If output-only: add to `isOutputOnlyCommand()` in `App.tsx` and ensure CLI supports the same argv shape.
-3. Respect three output tiers from `../core/TUI.md`.
-4. User-facing success copy: slash form via `cmd('…', 'tui')`.
