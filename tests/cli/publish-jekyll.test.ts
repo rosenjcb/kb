@@ -225,14 +225,12 @@ describe('runJekyllPublish apply', () => {
     expect(result.warnings.some(w => w.includes('kb init'))).toBe(true)
   })
 
-  it('Given facts with edges whose target is a non-entity value, then kb-graph.json contains no dangling edges', async () => {
+  it('Given facts with edges, then kb-graph.json contains all nodes and edges with no dangling references', async () => {
     const baseDir = path.join(tempDir, 'base')
     const siteDir = path.join(tempDir, 'site')
     await mkdir(baseDir, { recursive: true })
     await mkdir(siteDir, { recursive: true })
     await makeJekyllSite(siteDir)
-    // EntityA --exported_from--> src/cli/base-selection.ts (file path, not an entity)
-    // EntityA --relates_to--> EntityB (both are subjects, so both are entities)
     await makeSqliteDbWithFacts(baseDir, [
       { id: 'f1', subject: 'EntityA', predicate: 'exported_from', object: 'src/cli/base-selection.ts' },
       { id: 'f2', subject: 'EntityA', predicate: 'relates_to', object: 'EntityB' },
@@ -245,20 +243,11 @@ describe('runJekyllPublish apply', () => {
     const payload = JSON.parse(raw)
     const entityIds = new Set((payload.entities as Array<{ id: string }>).map(e => e.id))
 
-    // file path target should not appear as an entity
-    expect(entityIds.has('src/cli/base-selection.ts')).toBe(false)
-
-    // every edge must reference existing node IDs
+    expect(payload.relationships).toHaveLength(3)
     for (const rel of payload.relationships as Array<{ fromId: string; toId: string }>) {
       expect(entityIds.has(rel.fromId)).toBe(true)
       expect(entityIds.has(rel.toId)).toBe(true)
     }
-
-    // the valid entity-to-entity edge should still be present
-    const validEdge = (payload.relationships as Array<{ fromId: string; toId: string }>).find(
-      r => r.fromId === 'EntityA' && r.toId === 'EntityB'
-    )
-    expect(validEdge).toBeDefined()
   })
 })
 
