@@ -15,7 +15,6 @@ import {
 import type { KbConfig } from '../cli/kb-config.js'
 import {
   createLLMProviderFromConfig,
-  resolveConversationalChatEnabled,
 } from '../cli/kb-config.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
 import { classifyChatReadPromptKind, shouldStartChatPending } from './chat-read-kind.js'
@@ -252,7 +251,6 @@ export function App({ config, startupNotices = [] }: Props) {
           mode: 'tui',
           kbStorageDir: storageDir,
           kbConfig: config,
-          conversationalRetrieval: resolveConversationalChatEnabled(config),
           verbose,
           debug,
           onBaseChanged: refreshBase,

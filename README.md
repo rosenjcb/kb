@@ -312,11 +312,3 @@ pnpm run type-check
 pnpm run lint
 pnpm run build
 ```
-
-## 🗺️ Project Map
-
-```text
-src/core   — provider abstraction, intent loop, agent loop, runtime types
-src/cli    — CLI entrypoint, KB intent parsing, base selection, kb init
-src/tools  — write/query tools, markdown + sqlite index integration
-```

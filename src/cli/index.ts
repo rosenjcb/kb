@@ -65,7 +65,6 @@ import { FactsCommandError, runFactsCommand } from './facts-cli'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
 import { parseInitCommand, parseScanCommand, runKbInit } from './init-cli'
 import {
-  enrichReadDocumentsAnswerWithLLM,
   isIntentCommand,
   isReadFactsResult,
   parseIntentCommand,
@@ -74,6 +73,7 @@ import {
   rewriteIntentInputWithSessionContext,
   type ReadDocumentsResultData,
 } from './intent-cli'
+import { normalizeReadResult, runChatSynthesis } from './chat-cli'
 import {
   llmExtractQueryEntities,
   rerankByGraphConnectivity,
@@ -905,39 +905,46 @@ export async function runMainWithOutput(
         }
       }
 
-      printer.startSpinner('drafting final answer...')
-      const enriched = await enrichReadDocumentsAnswerWithLLM(
-        parsed,
-        aligned,
-        llmProvider ?? undefined,
-        querySessionDir,
-        undefined,
-        graphRelationContext ? { graphRelationContext } : undefined
-      ).finally(() => {
-        printer.stopSpinner()
-      })
+      // Synthesize answer using the chat pipeline (multi-round agentic LLM).
+      let enriched = aligned
+      if (llmProvider && isReadFactsResult(aligned) && preRewriteQueryTruth) {
+        const retrieval = normalizeReadResult(aligned.data)
+        const synthesis = await runChatSynthesis({
+          question: preRewriteQueryTruth,
+          retrieval,
+          messages: [],
+          llmProvider,
+          toolExecutor,
+          kbStorageDir: intentBaseDir,
+          isAllFacts: parsed.allFacts,
+          graphRelationBlock: graphRelationContext,
+          printer,
+        })
+        enriched = {
+          ...aligned,
+          data: { ...(aligned.data as object), answer: synthesis.answer },
+        }
 
-      // Capture tokens from the answer-enrichment LLM call (query path)
-      if (llmCounter) {
-        const enrichTokens = llmCounter.getAndReset()
-        if (enrichTokens.inputTokens > 0 || enrichTokens.outputTokens > 0) {
-          collector.addStage({
-            stage: `${parsed.envelope.intent}:answer-enrichment`,
-            startedAt: new Date().toISOString(),
-            durationMs: 0,
-            inputTokens: enrichTokens.inputTokens,
-            outputTokens: enrichTokens.outputTokens,
-            estimatedCostUsd: llmProvider
-              ? estimateCost(
-                  llmProvider.name,
-                  llmProvider.model,
-                  enrichTokens.inputTokens,
-                  enrichTokens.outputTokens
-                )
-              : 0,
-            provider: llmProvider?.name ?? 'unknown',
-            model: llmProvider?.model ?? 'unknown',
-          })
+        // Capture tokens from the synthesis LLM calls.
+        if (llmCounter) {
+          const enrichTokens = llmCounter.getAndReset()
+          if (enrichTokens.inputTokens > 0 || enrichTokens.outputTokens > 0) {
+            collector.addStage({
+              stage: `${parsed.envelope.intent}:answer-enrichment`,
+              startedAt: new Date().toISOString(),
+              durationMs: synthesis.answerMs,
+              inputTokens: enrichTokens.inputTokens,
+              outputTokens: enrichTokens.outputTokens,
+              estimatedCostUsd: estimateCost(
+                llmProvider.name,
+                llmProvider.model,
+                enrichTokens.inputTokens,
+                enrichTokens.outputTokens
+              ),
+              provider: llmProvider.name,
+              model: llmProvider.model,
+            })
+          }
         }
       }
 
