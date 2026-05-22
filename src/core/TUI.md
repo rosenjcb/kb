@@ -1,6 +1,6 @@
 # TUI and Non-Interactive Standards
 
-Use this note when designing or reviewing any user-facing `kb` feature.
+Ink implementation details: [`../tui/TUI.md`](../tui/TUI.md). Use this note when designing or reviewing any user-facing `kb` feature.
 
 ## Core Rule
 

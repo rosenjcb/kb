@@ -1125,14 +1125,13 @@ describe('init-cli token tracking', () => {
     }
   }
 
-  it('Given a project with LLM-indexed code files (Python) and a collector, then code-index stage appears in the report with non-zero tokens', async () => {
-    // .ts files go through the AST indexer, not the LLM pass.
-    // Python/Ruby/Java/Rust/Swift/Kotlin are the languages that trigger ingestCodeFilesAsFacts.
+  it('Given a project with LLM-indexed code files (Swift) and a collector, then code-index stage appears in the report with non-zero tokens', async () => {
+    // TS/JS/Go/Python/etc. use the AST indexer; SOURCE_CODE_EXTENSIONS (Swift, Kotlin) trigger ingestCodeFilesAsFacts.
     const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-tok-'))
     try {
       await writeFile(
-        path.join(dir, 'main.py'),
-        '"""Greeting utilities for the application."""\n\ndef greet(name: str) -> str:\n    """Return a greeting string for the given name."""\n    return f"Hello, {name}!"\n\ndef farewell(name: str) -> str:\n    """Return a farewell string for the given name."""\n    return f"Goodbye, {name}!"\n',
+        path.join(dir, 'main.swift'),
+        '/**\n * Greeting utilities for the application.\n */\nfunc greet(name: String) -> String {\n    return "Hello, \\(name)!"\n}\nfunc farewell(name: String) -> String {\n    return "Goodbye, \\(name)!"\n}\n',
         'utf8'
       )
       const collector = new RunCollector('init')
@@ -1154,12 +1153,12 @@ describe('init-cli token tracking', () => {
     }
   })
 
-  it('Given a Python-only project (no markdown) with a collector, then code-index tokens are not lost when document-facts is skipped', async () => {
+  it('Given a Swift-only project (no markdown) with a collector, then code-index tokens are not lost when document-facts is skipped', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-tok-nomd-'))
     try {
       await writeFile(
-        path.join(dir, 'util.py'),
-        '"""Math utilities."""\n\ndef add(a: int, b: int) -> int:\n    """Return the sum of a and b."""\n    return a + b\n\ndef subtract(a: int, b: int) -> int:\n    """Return a minus b."""\n    return a - b\n',
+        path.join(dir, 'util.swift'),
+        '/**\n * Math utilities.\n */\nfunc add(_ a: Int, _ b: Int) -> Int { a + b }\nfunc subtract(_ a: Int, _ b: Int) -> Int { a - b }\n',
         'utf8'
       )
       const collector = new RunCollector('init')

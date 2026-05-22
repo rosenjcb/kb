@@ -146,7 +146,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  publish     Publish KB docs',
     '  sync        Install the latest published KB release',
     '  logs        Browse and compare run reports',
-    '  skill       Manage agent skills',
+    '  skills      Manage agent skills',
     '',
     'Intent commands:',
     '  query       Search the knowledge base',
@@ -722,7 +722,7 @@ export async function runMainWithOutput(
     return
   }
 
-  if (firstArg === 'skill') {
+  if (firstArg === 'skills') {
     const subcommand = args[1]
     if (subcommand === 'install') {
       try {
@@ -748,10 +748,10 @@ export async function runMainWithOutput(
     } else {
       out.log(
         [
-          'Usage: kb skill <subcommand>',
+          'Usage: kb skills <subcommand>',
           '',
           'Subcommands:',
-          '  install     Inject KB skill into ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md',
+          '  install     Inject KB skills into ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md',
           '  uninstall   Remove KB skill files and profile MD entries',
         ].join('\n')
       )
@@ -1008,8 +1008,8 @@ async function main() {
     if (inferred.notice) startupNotices.push(inferred.notice)
 
     for (const r of skillResults) {
-      if (r.action === 'installed') startupNotices.push(`✓ KB agent skill installed for ${r.agent}`)
-      else if (r.action === 'updated') startupNotices.push(`↑ KB agent skill updated for ${r.agent}`)
+      if (r.action === 'installed') startupNotices.push(`✓ KB skill ${r.skill} installed for ${r.agent}`)
+      else if (r.action === 'updated') startupNotices.push(`↑ KB skill ${r.skill} updated for ${r.agent}`)
     }
 
     try {

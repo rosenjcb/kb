@@ -17,7 +17,7 @@ const CHAT_COMMANDS: SlashCommand[] = [
   { command: '/graph', description: 'inspect or edit the knowledge graph' },
   { command: '/publish', description: 'publish docs to the external sink' },
   { command: '/sync', description: 'install the latest published KB release' },
-  { command: '/skill', description: 'manage agent skills' },
+  { command: '/skills', description: 'manage agent skills' },
   { command: '/config', description: 'inspect or update config values' },
   { command: '/logs', description: 'browse and compare run reports' },
   { command: '/help', description: 'show available commands' },

@@ -4,7 +4,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { loadSkill } from '../skills/loader'
 
-const KB_DEV_WORKFLOW_SKILL = loadSkill('kb-dev-workflow')
+const KB_DEV_WORKFLOW_SKILL = loadSkill('kb:dev-workflow')
+const KB_DUMP_CONTEXT_SKILL = loadSkill('kb:dump-context')
+const KB_EVALUATION_RUN_SKILL = loadSkill('kb:evaluation-run')
 
 /** Strip YAML frontmatter (---...---) so the skill body can be embedded in a CLAUDE.md/AGENTS.md. */
 function stripFrontmatter(content: string): string {
@@ -16,8 +18,13 @@ function stripFrontmatter(content: string): string {
 
 const KB_DEV_WORKFLOW_SKILL_BODY = stripFrontmatter(KB_DEV_WORKFLOW_SKILL)
 
-const SKILL_NAME = 'kb-dev-workflow'
 const HASH_PREFIX = '<!-- kb-skill-hash:'
+
+const SKILLS: Array<{ name: string; content: string }> = [
+  { name: 'kb:dev-workflow', content: KB_DEV_WORKFLOW_SKILL },
+  { name: 'kb:dump-context', content: KB_DUMP_CONTEXT_SKILL },
+  { name: 'kb:evaluation-run', content: KB_EVALUATION_RUN_SKILL },
+]
 
 interface AgentTarget {
   name: string
@@ -25,33 +32,33 @@ interface AgentTarget {
   format: 'skill-md' | 'mdc'
 }
 
-function agentTargets(): AgentTarget[] {
+function agentTargets(skillName: string): AgentTarget[] {
   const home = os.homedir()
   return [
     {
       name: 'claude',
-      skillPath: path.join(home, '.claude', 'skills', SKILL_NAME, 'SKILL.md'),
+      skillPath: path.join(home, '.claude', 'skills', skillName, 'SKILL.md'),
       format: 'skill-md',
     },
     {
       name: 'cursor',
-      skillPath: path.join(home, '.cursor', 'rules', `${SKILL_NAME}.mdc`),
+      skillPath: path.join(home, '.cursor', 'rules', `${skillName}.mdc`),
       format: 'mdc',
     },
     {
       name: 'codex',
-      skillPath: path.join(home, '.codex', 'skills', `${SKILL_NAME}.md`),
+      skillPath: path.join(home, '.codex', 'skills', `${skillName}.md`),
       format: 'skill-md',
     },
     {
       name: 'github',
-      skillPath: path.join(home, '.github', 'copilot-instructions', `${SKILL_NAME}.md`),
+      skillPath: path.join(home, '.github', 'copilot-instructions', `${skillName}.md`),
       format: 'skill-md',
     },
   ]
 }
 
-export interface SkillInstallResult {
+interface InstallTargetResult {
   agent: string
   action: 'installed' | 'updated' | 'skipped'
 }
@@ -82,7 +89,7 @@ function extractInstalledHash(content: string): string | null {
 async function installTarget(
   target: AgentTarget,
   skillContent: string
-): Promise<SkillInstallResult> {
+): Promise<InstallTargetResult> {
   const expected = contentHash(skillContent)
   const installContent = buildInstallContent(skillContent, target.format)
 
@@ -102,11 +109,22 @@ async function installTarget(
   }
 }
 
+export interface SkillInstallResult {
+  skill: string
+  agent: string
+  action: 'installed' | 'updated' | 'skipped'
+}
+
 export async function installSkillsGlobally(): Promise<SkillInstallResult[]> {
-  const results = await Promise.allSettled(
-    agentTargets().map(target => installTarget(target, KB_DEV_WORKFLOW_SKILL))
+  const all = await Promise.allSettled(
+    SKILLS.flatMap(({ name, content }) =>
+      agentTargets(name).map(async target => {
+        const r = await installTarget(target, content)
+        return { skill: name, agent: r.agent, action: r.action }
+      })
+    )
   )
-  return results.flatMap(r => (r.status === 'fulfilled' ? [r.value] : []))
+  return all.flatMap(r => (r.status === 'fulfilled' ? [r.value] : []))
 }
 
 // ─── kb skill install (profile-level blurb) ──────────────────────────────────
@@ -171,11 +189,10 @@ export function formatSkillInstallReport(
   skillResults: SkillInstallResult[],
   profileResults: ProjectInstallResult[]
 ): string {
-  const lines: string[] = ['Skill files (invokable via /kb-dev-workflow):']
+  const lines: string[] = ['Skill files:']
   for (const r of skillResults) {
-    if (r.action === 'installed') lines.push(`  ✓ installed  ~/.*/skills/kb-dev-workflow  [${r.agent}]`)
-    else if (r.action === 'updated') lines.push(`  ↑ updated    ~/.*/skills/kb-dev-workflow  [${r.agent}]`)
-    else lines.push(`  • up-to-date ~/.*/skills/kb-dev-workflow  [${r.agent}]`)
+    const tag = r.action === 'installed' ? '✓ installed ' : r.action === 'updated' ? '↑ updated   ' : '• up-to-date'
+    lines.push(`  ${tag}  ${r.skill}  [${r.agent}]`)
   }
   lines.push('', 'Profile instructions (always-on context):')
   for (const r of profileResults) {
@@ -232,7 +249,7 @@ async function removeSkillFromProfileMd(
 
 export async function uninstallSkills(): Promise<SkillUninstallResult[]> {
   const skillRemovals = await Promise.allSettled(
-    agentTargets().map(t => removeSkillFile(t))
+    SKILLS.flatMap(({ name }) => agentTargets(name).map(t => removeSkillFile(t)))
   )
   const profileRemovals = await Promise.allSettled(
     profileSkillTargets().map(t => removeSkillFromProfileMd(t.label, t.filePath))

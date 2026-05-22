@@ -116,9 +116,9 @@ The `kg_semantic_bridge` table is the join layer. After indexing, symbol names a
 ### Language support
 
 - **TypeScript / JavaScript** — `TsMorphIndexer` (type-aware; runs when `tsconfig.json` is present)
-- **Go** — `TreeSitterIndexer` with `tree-sitter-go.wasm`
+- **Tree-sitter AST** — Go, TS/TSX, JS/JSX, Python, Rust, Ruby, Java, C/C++, C#, CSS, Bash, PHP, Scala, HTML (see `LANG_CONFIGS` in `src/tools/tree-sitter-indexer.ts`; each needs a `tree-sitter-<lang>` npm package that ships `.wasm`)
 - **Text / config files** (`.md`, `.yaml`, `.json`, `.toml`, etc.) — `TreeSitterIndexer` text fallback: file node only, no symbols
-- Adding a new language requires one entry in the `LANG_CONFIGS` registry in `src/tools/tree-sitter-indexer.ts` plus the corresponding `tree-sitter-<lang>` npm package
+- Adding a new language requires one entry in `LANG_CONFIGS` + `EXT_MAP` plus a WASM-shipping `tree-sitter-<lang>` package. See [`TREE_SITTER_INDEXER.md`](TREE_SITTER_INDEXER.md) for registry and query conventions.
 
 All WASM grammars ship as npm package assets — no native compilation, no platform-specific binaries.
 

@@ -21,6 +21,7 @@ import Database from 'better-sqlite3'
 import { TsMorphIndexer } from '../tools/code-graph-indexer'
 import {
   isTreeSitterIndexablePath,
+  TREE_SITTER_AST_EXTENSIONS,
   TreeSitterIndexer,
   TREE_SITTER_SKIP_DIRS,
 } from '../tools/tree-sitter-indexer'
@@ -1172,17 +1173,15 @@ async function collectAstFileHashes(cwd: string): Promise<Record<string, string>
 }
 
 // Extensions handled by the AST indexer (tree-sitter/ts-morph) — excluded from LLM extraction.
-const AST_FACTS_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.go'])
+const AST_FACTS_EXTENSIONS = new Set([
+  ...TREE_SITTER_AST_EXTENSIONS,
+])
 
 // LLM extraction only runs for languages not supported by the AST indexer.
-// TypeScript/Go are handled by the AST indexer → promoteAstToFactsTable instead.
 export const SOURCE_CODE_EXTENSIONS = [
-  '.py',
-  '.rb',
-  '.java',
-  '.rs',
   '.swift',
   '.kt',
+  '.kts',
 ]
 export const SOURCE_CODE_EXCLUDE_DIRS = new Set([
   // Node.js

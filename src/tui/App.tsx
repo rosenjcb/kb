@@ -52,7 +52,7 @@ function isOutputOnlyCommand(first: string, args: string[]): boolean {
   const known = new Set([
     'query', 'submit', 'invalidate',
     'facts', 'graph', 'docs',
-    'base', 'config', 'logs', 'skill', 'publish', 'sync',
+    'base', 'config', 'logs', 'skills', 'publish', 'sync',
   ])
   return known.has(first)
 }

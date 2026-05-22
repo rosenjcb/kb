@@ -20,11 +20,11 @@ afterEach(async () => {
 })
 
 describe('crawlSourceCode', () => {
-  it('Given a Python file, then includes it (not handled by ast-facts)', async () => {
-    await writeFile(path.join(tempDir, 'main.py'), 'def hello(): pass', 'utf8')
+  it('Given a Swift file, then includes it (not handled by ast-facts)', async () => {
+    await writeFile(path.join(tempDir, 'main.swift'), 'func hello() {}', 'utf8')
     const result = await crawlSourceCode(tempDir)
-    expect(result['main.py']).toBeDefined()
-    expect(result['main.py']).toContain('def hello')
+    expect(result['main.swift']).toBeDefined()
+    expect(result['main.swift']).toContain('func hello')
   })
 
   it('Given a TypeScript file, then excludes it (handled by ast-facts)', async () => {
@@ -41,9 +41,9 @@ describe('crawlSourceCode', () => {
 
   it('Given nested source files, then includes files from subdirectories', async () => {
     await mkdir(path.join(tempDir, 'src'))
-    await writeFile(path.join(tempDir, 'src', 'utils.py'), 'x = 1', 'utf8')
+    await writeFile(path.join(tempDir, 'src', 'utils.swift'), 'let x = 1', 'utf8')
     const result = await crawlSourceCode(tempDir)
-    expect(result['src/utils.py']).toBeDefined()
+    expect(result['src/utils.swift']).toBeDefined()
   })
 
   it('Given a node_modules directory, then excludes it', async () => {
@@ -81,18 +81,18 @@ describe('crawlSourceCode', () => {
 
   it('Given a markdown file, then excludes it (not a source code extension)', async () => {
     await writeFile(path.join(tempDir, 'README.md'), '# Readme', 'utf8')
-    await writeFile(path.join(tempDir, 'app.py'), 'x=1', 'utf8')
+    await writeFile(path.join(tempDir, 'app.swift'), 'let x = 1', 'utf8')
     const result = await crawlSourceCode(tempDir)
     expect(result['README.md']).toBeUndefined()
-    expect(result['app.py']).toBeDefined()
+    expect(result['app.swift']).toBeDefined()
   })
 
   it('Given a file longer than per-file char limit, then truncates content', async () => {
     const longContent = 'x'.repeat(SOURCE_CODE_PER_FILE_CHARS * 3)
-    await writeFile(path.join(tempDir, 'big.py'), longContent, 'utf8')
+    await writeFile(path.join(tempDir, 'big.swift'), longContent, 'utf8')
     const result = await crawlSourceCode(tempDir)
-    expect(result['big.py']).toBeDefined()
-    expect(result['big.py']?.length).toBeLessThanOrEqual(SOURCE_CODE_PER_FILE_CHARS)
+    expect(result['big.swift']).toBeDefined()
+    expect(result['big.swift']?.length).toBeLessThanOrEqual(SOURCE_CODE_PER_FILE_CHARS)
   })
 
   it('Given an empty directory, then returns empty object', async () => {
@@ -102,7 +102,7 @@ describe('crawlSourceCode', () => {
 
   it('Given dotfiles/dotdirs, then skips them', async () => {
     await mkdir(path.join(tempDir, '.hidden'))
-    await writeFile(path.join(tempDir, '.hidden', 'secret.py'), 'x=1', 'utf8')
+    await writeFile(path.join(tempDir, '.hidden', 'secret.swift'), 'let x = 1', 'utf8')
     const result = await crawlSourceCode(tempDir)
     expect(Object.keys(result).some(k => k.startsWith('.'))).toBe(false)
   })
@@ -113,9 +113,11 @@ describe('crawlSourceCode', () => {
     expect(SOURCE_CODE_EXTENSIONS).not.toContain('.tsx')
     expect(SOURCE_CODE_EXTENSIONS).not.toContain('.js')
     expect(SOURCE_CODE_EXTENSIONS).not.toContain('.go')
+    expect(SOURCE_CODE_EXTENSIONS).not.toContain('.py')
+    expect(SOURCE_CODE_EXTENSIONS).not.toContain('.rb')
+    expect(SOURCE_CODE_EXTENSIONS).not.toContain('.java')
     // fallback languages must be present
-    expect(SOURCE_CODE_EXTENSIONS).toContain('.py')
-    expect(SOURCE_CODE_EXTENSIONS).toContain('.rb')
-    expect(SOURCE_CODE_EXTENSIONS).toContain('.java')
+    expect(SOURCE_CODE_EXTENSIONS).toContain('.swift')
+    expect(SOURCE_CODE_EXTENSIONS).toContain('.kt')
   })
 })

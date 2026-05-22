@@ -1,6 +1,6 @@
 ---
 name: agent-compare-eval
-description: "Use when: running the Agent A vs Agent B token efficiency comparison on ~/raylib/; measuring per-task token cost with/without KB; implementing canonical raylib tasks; capturing codeburn artifacts under evaluation/runs/agent-compare/."
+description: "Is the user asking me to run an agent token efficiency comparison — measuring whether a KB-backed agent uses fewer tokens than a raw agent across the canonical raylib task sequence?"
 ---
 
 # Agent Token Efficiency Comparison Eval

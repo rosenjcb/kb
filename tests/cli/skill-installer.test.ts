@@ -9,7 +9,10 @@ import {
   installSkillsGlobally,
   uninstallSkills,
 } from '../../src/cli/skill-installer'
-import { KB_DEV_WORKFLOW_SKILL } from '../../src/skills/kb-dev-workflow'
+import { loadSkill } from '../../src/skills/loader'
+
+const KB_DEV_WORKFLOW_SKILL = loadSkill('kb:dev-workflow')
+const KB_DEV_WORKFLOW_SKILL_DIR = 'kb:dev-workflow'
 
 let tempDir: string
 
@@ -40,7 +43,7 @@ describe('installSkillsGlobally', () => {
 
   it('Given already-installed skill with matching hash, then action is skipped', async () => {
     const fakeHome = path.join(tempDir, 'home')
-    const skillDir = path.join(fakeHome, '.claude', 'skills', 'kb-dev-workflow')
+    const skillDir = path.join(fakeHome, '.claude', 'skills', KB_DEV_WORKFLOW_SKILL_DIR)
     await mkdir(skillDir, { recursive: true })
 
     // Write a file with the correct hash header
@@ -65,7 +68,7 @@ describe('installSkillsGlobally', () => {
 
   it('Given stale skill hash, then action is updated', async () => {
     const fakeHome = path.join(tempDir, 'home')
-    const skillDir = path.join(fakeHome, '.claude', 'skills', 'kb-dev-workflow')
+    const skillDir = path.join(fakeHome, '.claude', 'skills', KB_DEV_WORKFLOW_SKILL_DIR)
     await mkdir(skillDir, { recursive: true })
     // Write with a wrong hash
     await writeFile(
@@ -207,7 +210,7 @@ describe('uninstallSkills', () => {
   })
 
   it('Given installed skill files, then removes them and reports removed', async () => {
-    const skillDir = path.join(fakeHome, '.claude', 'skills', 'kb-dev-workflow')
+    const skillDir = path.join(fakeHome, '.claude', 'skills', KB_DEV_WORKFLOW_SKILL_DIR)
     await mkdir(skillDir, { recursive: true })
     await writeFile(path.join(skillDir, 'SKILL.md'), '<!-- kb-skill-hash: abc -->\ncontent', 'utf8')
 

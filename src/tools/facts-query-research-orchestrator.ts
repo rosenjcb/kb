@@ -67,7 +67,7 @@ export class FactsQueryResearchOrchestrator {
 
   run(input: FactsLoopOptions): QueryResponse {
     const maxIterations = clampInt(process.env.KB_FACTS_QUERY_MAX_ITERS, 8, 1, 24)
-    const maxGraphHops = clampInt(process.env.KB_FACTS_QUERY_MAX_HOPS, 6, 1, 12)
+    const maxGraphHops = clampInt(process.env.KB_FACTS_QUERY_MAX_HOPS, 20, 1, 40)
     const hardResultLimit = clampInt(process.env.KB_FACTS_QUERY_MAX_RESULTS, 60, 10, 200)
     const queryTokens = tokenizeQuery(input.query)
     const rankedCategories = this.indexer.inferCategoriesForQuery(input.query, 4)

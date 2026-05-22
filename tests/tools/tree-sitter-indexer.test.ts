@@ -213,6 +213,66 @@ describe('TreeSitterIndexer — TSX', () => {
   })
 })
 
+describe('TreeSitterIndexer — Python', () => {
+  it('indexes functions and classes', async () => {
+    await writeFile(
+      join(repoRoot, 'app.py'),
+      'def public_fn():\n    pass\n\nclass Widget:\n    pass\n'
+    )
+
+    const indexer = new TreeSitterIndexer(dbPath)
+    const stats = await indexer.indexProject(repoRoot)
+    indexer.close()
+
+    expect(stats.files).toBe(1)
+    expect(stats.symbols).toBeGreaterThanOrEqual(2)
+    expect(stats.errors).toBe(0)
+
+    const store = new CodeGraphStore(dbPath)
+    expect(store.getNode('symbol:app.py#public_fn')).not.toBeNull()
+    expect(store.getNode('symbol:app.py#Widget')).not.toBeNull()
+    store.close()
+  })
+})
+
+describe('TreeSitterIndexer — Rust', () => {
+  it('indexes functions and structs', async () => {
+    await writeFile(
+      join(repoRoot, 'lib.rs'),
+      'pub fn run() {}\nstruct Engine;\n'
+    )
+
+    const indexer = new TreeSitterIndexer(dbPath)
+    const stats = await indexer.indexProject(repoRoot)
+    indexer.close()
+
+    expect(stats.errors).toBe(0)
+    const store = new CodeGraphStore(dbPath)
+    expect(store.getNode('symbol:lib.rs#run')).not.toBeNull()
+    expect(store.getNode('symbol:lib.rs#Engine')).not.toBeNull()
+    store.close()
+  })
+})
+
+describe('TreeSitterIndexer — HTML', () => {
+  it('indexes elements with id attributes', async () => {
+    await writeFile(
+      join(repoRoot, 'index.html'),
+      '<html><body><div id="root"></div></body></html>'
+    )
+
+    const indexer = new TreeSitterIndexer(dbPath)
+    const stats = await indexer.indexProject(repoRoot)
+    indexer.close()
+
+    expect(stats.errors).toBe(0)
+    const store = new CodeGraphStore(dbPath)
+    expect(store.getNode('file:index.html')?.language).toBe('html')
+    expect(store.getNode('symbol:index.html#root')).not.toBeNull()
+    store.close()
+  })
+})
+
 describe('TreeSitterIndexer — text fallback', () => {
   it('creates a file node for non-code files without extracting symbols', async () => {
     await writeFile(join(repoRoot, 'README.md'), '# Hello\nThis is a readme.')

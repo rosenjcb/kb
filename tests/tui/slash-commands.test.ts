@@ -28,7 +28,7 @@ describe('slash command helpers', () => {
     expect(commands.some(c => c.command === '/graph')).toBe(true)
     expect(commands.some(c => c.command === '/base')).toBe(true)
     expect(commands.some(c => c.command === '/config')).toBe(true)
-    expect(commands.some(c => c.command === '/skill')).toBe(true)
+    expect(commands.some(c => c.command === '/skills')).toBe(true)
     expect(commands.some(c => c.command === '/sync')).toBe(true)
     expect(commands.some(c => c.command === '/help')).toBe(true)
     expect(commands.some(c => c.command === '/clear')).toBe(true)
@@ -100,8 +100,8 @@ describe('slash command helpers', () => {
     expect(suggestions.some(s => s.command === '/init')).toBe(true)
   })
 
-  it('suggests /skill when typing /sk', () => {
+  it('suggests /skills when typing /sk', () => {
     const suggestions = getSlashCommandSuggestions('/sk', 'chat')
-    expect(suggestions.some(s => s.command === '/skill')).toBe(true)
+    expect(suggestions.some(s => s.command === '/skills')).toBe(true)
   })
 })

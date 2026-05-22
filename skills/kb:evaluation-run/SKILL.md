@@ -1,6 +1,6 @@
 ---
 name: kb-evaluation-run
-description: "Use when: running the reusable KB evaluation scenario (canonical raylib, kb dogfood self-check, or any repo via suite `repo_url`/`--repo`), scoring `kb query`, and writing artifacts under `~/.kb/evaluations/<run-name>/` per `EVALUATION.md`."
+description: "Is the user asking me to run a KB evaluation — the canonical raylib benchmark, the kb dogfood self-check, or a custom repo? Should I score kb query results or write evaluation artifacts under ~/.kb/evaluations/ following EVALUATION.md?"
 ---
 
 # KB Evaluation Run

@@ -124,11 +124,11 @@ When both run (TS project with Go files), `TsMorphIndexer` runs first and produc
 
 `TreeSitterIndexer` uses an explicit **allowlist** — not a denylist:
 
-- **AST-able** (`.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`) → full parse: file node + symbol nodes + import/export edges
-- **Text/config** (`.md`, `.yaml`, `.json`, `.toml`, `.sql`, `.sh`, `.tf`, etc.) → file node only, `language='text'`, no symbols
+- **AST-able** — extensions in `EXT_MAP` (`src/tools/tree-sitter-indexer.ts`): Go, TS/TSX, JS/JSX, Python, Rust, Ruby, Java, C/C++, C#, CSS, Bash, PHP, Scala, HTML, etc. → file node + symbol nodes + import/export edges where queries exist
+- **Text/config** (`.md`, `.yaml`, `.json`, `.toml`, `.sql`, `.tf`, etc.) → file node only, `language='text'`, no symbols
 - **Everything else** (images, binaries, lock files, compiled artifacts) → silently ignored
 
-The supported Go, TypeScript, TSX, and JavaScript grammars ship as `.wasm` files in their respective `tree-sitter-*` npm packages — no native compilation needed, works on all platforms.
+WASM grammars ship in `tree-sitter-*` npm packages — no native compilation, all platforms.
 
 ### What gets written
 

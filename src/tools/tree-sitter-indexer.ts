@@ -2,7 +2,7 @@
  * Multi-language code graph indexer using web-tree-sitter (WASM grammars).
  *
  * Supports any language that has a tree-sitter-<lang> npm package with a
- * bundled .wasm file. Currently wired up: Go, TypeScript, TSX, JavaScript, JSX.
+ * bundled .wasm file. See LANG_CONFIGS / EXT_MAP for the wired-up set.
  *
  * Extracts file nodes, symbol nodes, and IMPORTS_FILE / EXPORTS_SYMBOL edges
  * into kg_* tables.
@@ -110,6 +110,150 @@ const LANG_CONFIGS: Record<string, LangConfig> = {
     ],
     goExportConvention: false,
   },
+  python: {
+    wasmPath: resolveWasm('tree-sitter-python', 'tree-sitter-python.wasm'),
+    importQueries: [],
+    exportQueries: [
+      '(function_definition name: (identifier) @name)',
+      '(class_definition name: (identifier) @name)',
+    ],
+    goExportConvention: false,
+  },
+  rust: {
+    wasmPath: resolveWasm('tree-sitter-rust', 'tree-sitter-rust.wasm'),
+    importQueries: [],
+    exportQueries: [
+      '(function_item name: (identifier) @name)',
+      '(struct_item name: (type_identifier) @name)',
+      '(enum_item name: (type_identifier) @name)',
+      '(trait_item name: (type_identifier) @name)',
+      '(type_item name: (type_identifier) @name)',
+      '(const_item name: (identifier) @name)',
+      '(mod_item name: (identifier) @name)',
+    ],
+    goExportConvention: false,
+  },
+  ruby: {
+    wasmPath: resolveWasm('tree-sitter-ruby', 'tree-sitter-ruby.wasm'),
+    importQueries: [
+      '((call method: (identifier) @method arguments: (argument_list (string (string_content) @path))) (#match? @method "^require"))',
+    ],
+    exportQueries: [
+      '(method name: (identifier) @name)',
+      '(singleton_method name: (identifier) @name)',
+      '(class name: (constant) @name)',
+      '(module name: (constant) @name)',
+    ],
+    goExportConvention: false,
+  },
+  java: {
+    wasmPath: resolveWasm('tree-sitter-java', 'tree-sitter-java.wasm'),
+    importQueries: [],
+    exportQueries: [
+      '(class_declaration name: (identifier) @name)',
+      '(interface_declaration name: (identifier) @name)',
+      '(enum_declaration name: (identifier) @name)',
+      '(method_declaration name: (identifier) @name)',
+      '(constructor_declaration name: (identifier) @name)',
+    ],
+    goExportConvention: false,
+  },
+  c: {
+    wasmPath: resolveWasm('tree-sitter-c', 'tree-sitter-c.wasm'),
+    importQueries: [],
+    exportQueries: [
+      '(function_definition declarator: (function_declarator declarator: (identifier) @name))',
+      '(declaration declarator: (function_declarator declarator: (identifier) @name))',
+      '(type_definition declarator: (type_identifier) @name)',
+      '(struct_specifier name: (type_identifier) @name)',
+      '(enum_specifier name: (type_identifier) @name)',
+    ],
+    goExportConvention: false,
+  },
+  cpp: {
+    wasmPath: resolveWasm('tree-sitter-cpp', 'tree-sitter-cpp.wasm'),
+    importQueries: [],
+    exportQueries: [
+      '(function_definition declarator: (function_declarator declarator: (identifier) @name))',
+      '(declaration declarator: (function_declarator declarator: (identifier) @name))',
+      '(class_specifier name: (type_identifier) @name)',
+      '(struct_specifier name: (type_identifier) @name)',
+      '(enum_specifier name: (type_identifier) @name)',
+    ],
+    goExportConvention: false,
+  },
+  csharp: {
+    wasmPath: resolveWasm('tree-sitter-c-sharp', 'tree-sitter-c_sharp.wasm'),
+    importQueries: [],
+    exportQueries: [
+      '(class_declaration name: (identifier) @name)',
+      '(interface_declaration name: (identifier) @name)',
+      '(struct_declaration name: (identifier) @name)',
+      '(enum_declaration name: (identifier) @name)',
+      '(method_declaration name: (identifier) @name)',
+      '(constructor_declaration name: (identifier) @name)',
+    ],
+    goExportConvention: false,
+  },
+  css: {
+    wasmPath: resolveWasm('tree-sitter-css', 'tree-sitter-css.wasm'),
+    importQueries: [],
+    exportQueries: [
+      '(class_selector (class_name) @name)',
+      '(id_selector (id_name) @name)',
+    ],
+    goExportConvention: false,
+  },
+  bash: {
+    wasmPath: resolveWasm('tree-sitter-bash', 'tree-sitter-bash.wasm'),
+    importQueries: [
+      '(source_command (word) @path)',
+    ],
+    exportQueries: [
+      '(function_definition name: (word) @name)',
+    ],
+    goExportConvention: false,
+  },
+  php: {
+    wasmPath: resolveWasm('tree-sitter-php', 'tree-sitter-php_only.wasm'),
+    importQueries: [
+      '(include_expression (string (string_content) @path))',
+      '(include_once_expression (string (string_content) @path))',
+      '(require_expression (string (string_content) @path))',
+      '(require_once_expression (string (string_content) @path))',
+    ],
+    exportQueries: [
+      '(function_definition name: (name) @name)',
+      '(class_declaration name: (name) @name)',
+      '(interface_declaration name: (name) @name)',
+      '(trait_declaration name: (name) @name)',
+      '(method_declaration name: (name) @name)',
+    ],
+    goExportConvention: false,
+  },
+  scala: {
+    wasmPath: resolveWasm('tree-sitter-scala', 'tree-sitter-scala.wasm'),
+    importQueries: [],
+    exportQueries: [
+      '(function_definition name: (identifier) @name)',
+      '(function_declaration name: (identifier) @name)',
+      '(class_definition name: (identifier) @name)',
+      '(object_definition name: (identifier) @name)',
+      '(trait_definition name: (identifier) @name)',
+      '(val_definition pattern: (identifier) @name)',
+    ],
+    goExportConvention: false,
+  },
+  html: {
+    wasmPath: resolveWasm('tree-sitter-html', 'tree-sitter-html.wasm'),
+    importQueries: [],
+    exportQueries: [
+      '(element (start_tag (attribute (attribute_name) @attr (quoted_attribute_value (attribute_value) @name)) (#eq? @attr "id")))',
+      '(script_element (start_tag (attribute (attribute_name) @attr (quoted_attribute_value (attribute_value) @name)) (#eq? @attr "id")))',
+      '(style_element (start_tag (attribute (attribute_name) @attr (quoted_attribute_value (attribute_value) @name)) (#eq? @attr "id")))',
+    ],
+    goExportConvention: false,
+  },
 }
 
 // Extension → language key (known AST-able extensions)
@@ -121,7 +265,42 @@ const EXT_MAP: Record<string, string> = {
   '.mjs': 'js',
   '.cjs': 'js',
   '.jsx': 'jsx',
+  // Python
+  '.py': 'python',
+  // Rust
+  '.rs': 'rust',
+  // Ruby
+  '.rb': 'ruby',
+  // Java
+  '.java': 'java',
+  // C
+  '.c': 'c',
+  '.h': 'c',
+  // C++
+  '.cpp': 'cpp',
+  '.cc': 'cpp',
+  '.cxx': 'cpp',
+  '.hpp': 'cpp',
+  '.hxx': 'cpp',
+  // C#
+  '.cs': 'csharp',
+  // CSS (also listed in TREE_SITTER_TEXT_EXTENSIONS for indexability)
+  '.css': 'css',
+  // Bash / shell (also listed in TREE_SITTER_TEXT_EXTENSIONS)
+  '.sh': 'bash',
+  '.bash': 'bash',
+  '.zsh': 'bash',
+  // PHP
+  '.php': 'php',
+  // Scala
+  '.scala': 'scala',
+  // HTML
+  '.html': 'html',
+  '.htm': 'html',
 }
+
+/** File extensions with a WASM grammar in LANG_CONFIGS (leading dot). */
+export const TREE_SITTER_AST_EXTENSIONS = new Set(Object.keys(EXT_MAP))
 
 // Text/config extensions we index as plain file nodes (no AST, no symbols).
 // Anything not in EXT_MAP or TEXT_EXTS is ignored entirely.
@@ -129,8 +308,8 @@ export const TREE_SITTER_TEXT_EXTENSIONS = new Set([
   '.md', '.mdx', '.txt', '.rst',
   '.json', '.jsonc', '.json5',
   '.yaml', '.yml', '.toml', '.ini', '.env',
-  '.xml', '.html', '.htm', '.css', '.scss', '.sass', '.less',
-  '.sh', '.bash', '.zsh', '.fish',
+  '.xml', '.scss', '.sass', '.less',
+  '.fish',
   '.dockerfile', '.containerfile',
   '.graphql', '.gql',
   '.proto',
@@ -372,7 +551,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
       // Exports → symbol nodes + EXPORTS_SYMBOL edges
       for (const q of compiled.exportQueries) {
         for (const match of q.matches(tree.rootNode)) {
-          const capture = match.captures[0]
+          const capture = match.captures.find(c => c.name === 'name') ?? match.captures[0]
           const name = capture?.node.text
           if (!name || !capture) continue
           if (!isExported(name, compiled.config.goExportConvention)) continue
