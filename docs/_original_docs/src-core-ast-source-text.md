@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/AST_SOURCE_TEXT.md
-date: '2026-05-21'
+date: '2026-05-22'
 kb_id: src-core-ast-source-text-md
 tags:
   - original-source

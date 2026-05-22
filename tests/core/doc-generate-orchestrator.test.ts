@@ -192,6 +192,93 @@ describe('doc-generate-orchestrator', () => {
     expect(secondUser).toContain('second round')
   })
 
+  it('Given user-defined sections, startGenerationSession is ready immediately and skips questionnaire', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-orch-sections-'))
+    tempDirs.push(baseDir)
+    const config = {} as KbConfig
+
+    const mockLlm: LLMProvider = {
+      name: 'mock',
+      model: 'mock',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'reference',
+        stopReason: 'end_turn' as const,
+        toolUses: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    }
+
+    const started = await startGenerationSession({
+      baseDir,
+      prompt: 'Custom sections doc',
+      type: 'reference',
+      config,
+      deps: { llm: mockLlm },
+      sections: [
+        { name: 'Overview', description: 'High-level summary' },
+        { name: 'API', description: 'Endpoint reference' },
+      ],
+    })
+
+    expect(started.status).toBe('ready')
+    expect(started.questionIndex).toBeNull()
+    expect(started.question).toBeUndefined()
+    // LLM should NOT be called for classification since type was provided
+    expect(mockLlm.call).not.toHaveBeenCalled()
+  })
+
+  it('Given user-defined sections, produceInitialDraft sends sections block not structured answers', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-orch-sectionsprompt-'))
+    tempDirs.push(baseDir)
+    const config = {} as KbConfig
+
+    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+    indexer.upsertFact({
+      factText: 'background steps: custom doc generation with user sections.',
+      sourceKind: 'submit',
+      sourceRef: 't',
+      confidence: 0.9,
+    })
+    indexer.close()
+
+    const mockLlm: LLMProvider = {
+      name: 'mock',
+      model: 'mock',
+      supportsStreaming: false,
+      call: vi.fn(async () => ({
+        text: 'SECTIONS_DRAFT\n',
+        stopReason: 'end_turn' as const,
+        toolUses: [],
+        usage: { inputTokens: 2, outputTokens: 2 },
+      })),
+    }
+
+    const started = await startGenerationSession({
+      baseDir,
+      prompt: 'My custom doc',
+      type: 'howto',
+      config,
+      deps: { llm: mockLlm },
+      sections: [
+        { name: 'Background', description: 'Context for this document' },
+        { name: 'Steps', description: 'What to do' },
+      ],
+    })
+
+    await produceInitialDraft({ baseDir, sessionId: started.sessionId, llm: mockLlm, factLimit: 5 })
+
+    const draftCall = vi.mocked(mockLlm.call).mock.calls.find(c =>
+      (c[0]?.systemPrompt ?? '').includes('write KB markdown')
+    )
+    expect(draftCall).toBeDefined()
+    const userMsg = draftCall?.[0]?.messages?.[0]?.content as string
+    expect(userMsg).toContain('User-defined sections')
+    expect(userMsg).toContain('1. Background')
+    expect(userMsg).toContain('2. Steps')
+    expect(userMsg).not.toContain('Structured answers')
+  })
+
   it('Given no facts in KB, produceInitialDraft throws before calling draft LLM', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-orch-empty-'))
     tempDirs.push(baseDir)

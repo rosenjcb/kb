@@ -43,7 +43,7 @@ describe('chat-docs-generate-flow', () => {
 
     const qn = loadQuestionnaire('reference').length
     const answers = Array.from({ length: qn }, (_, i) => `chat-ans-${i}`)
-    const readQueue = [...answers, '/accept']
+    const readQueue = ['/skip', ...answers, '/accept']
     let readIdx = 0
 
     const logged: string[] = []

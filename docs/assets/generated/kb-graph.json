@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-22T03:14:15.982Z",
+  "generatedAt": "2026-05-22T08:33:31.364Z",
   "entities": [
     {
       "id": "kb",
@@ -48,6 +48,46 @@
     {
       "id": "# Switch to all-facts mode kb config set fact_retrieval_method all_facts # Switch back to the default kb config set fact_retrieval_method query_expansion # Or unset to use the default kb config unset fact_retrieval_method",
       "name": "# Switch to all-facts mode kb config set fact_retrieval_method all_facts # Switch back to the default kb config set fact_retrieval_method query_expansion # Or unset to use the default kb config unset fact_retrieval_method"
+    },
+    {
+      "id": "* The `CODE_FACTS_MANIFEST_FILENAME` variable [fact-3d2074dc2a795281]",
+      "name": "* The `CODE_FACTS_MANIFEST_FILENAME` variable [fact-3d2074dc2a795281]"
+    },
+    {
+      "id": "* The `CodeFactsManifest` interface [fact-062de7d86eda960a]",
+      "name": "* The `CodeFactsManifest` interface [fact-062de7d86eda960a]"
+    },
+    {
+      "id": "* The `InitCheckpoint` interface [fact-f7ca28e04e2c2783]",
+      "name": "* The `InitCheckpoint` interface [fact-f7ca28e04e2c2783]"
+    },
+    {
+      "id": "* The `InitInterviewRound` interface [fact-4405edbf308728b1]",
+      "name": "* The `InitInterviewRound` interface [fact-4405edbf308728b1]"
+    },
+    {
+      "id": "* The `SOURCE_CODE_EXCLUDE_DIRS` variable [fact-475023d742e7bd03]",
+      "name": "* The `SOURCE_CODE_EXCLUDE_DIRS` variable [fact-475023d742e7bd03]"
+    },
+    {
+      "id": "* `diffChangedFiles` [fact-cbf19b75ddb70c4e]",
+      "name": "* `diffChangedFiles` [fact-cbf19b75ddb70c4e]"
+    },
+    {
+      "id": "* `hashFileContents` [fact-86b88243bef03e01]",
+      "name": "* `hashFileContents` [fact-86b88243bef03e01]"
+    },
+    {
+      "id": "* `manifestPath` [fact-ec206e52d42fad7b]",
+      "name": "* `manifestPath` [fact-ec206e52d42fad7b]"
+    },
+    {
+      "id": "* `readCodeFactsManifest` [fact-a7788508994a2f7e]",
+      "name": "* `readCodeFactsManifest` [fact-a7788508994a2f7e]"
+    },
+    {
+      "id": "* `writeCodeFactsManifest` [fact-3c60f7c4259c01b7]",
+      "name": "* `writeCodeFactsManifest` [fact-3c60f7c4259c01b7]"
     },
     {
       "id": "* 📝 **Record** decisions and facts as you work",
@@ -494,6 +534,14 @@
       "name": "- **`facts` / `facts_fts`** — canonical rows for Q&A (`SqliteKbIndexer.searchFacts`, concept links, optional deterministic semantic scores over fact ids)."
     },
     {
+      "id": "- - CLI wording should make this explicit: these are knowledge-base cleanup operations, not codebase refactors.",
+      "name": "- - CLI wording should make this explicit: these are knowledge-base cleanup operations, not codebase refactors."
+    },
+    {
+      "id": "- - `query` — Fresh clone → same capture minus init; requires `--base` for an already-populated KB session.",
+      "name": "- - `query` — Fresh clone → same capture minus init; requires `--base` for an already-populated KB session."
+    },
+    {
       "id": "- <a href=\"{{ '/graph.html' | relative_url }}\">Open the knowledge graph</a>",
       "name": "- <a href=\"{{ '/graph.html' | relative_url }}\">Open the knowledge graph</a>"
     },
@@ -632,6 +680,10 @@
     {
       "id": "- Code blocks: preserve user-provided code verbatim.",
       "name": "- Code blocks: preserve user-provided code verbatim."
+    },
+    {
+      "id": "- CodeFactsManifest is a Interface exported from src/cli/init-code-facts-manifest.ts — `fact://062de7d86eda960a`",
+      "name": "- CodeFactsManifest is a Interface exported from src/cli/init-code-facts-manifest.ts — `fact://062de7d86eda960a`"
     },
     {
       "id": "- Combined mean score",
@@ -872,6 +924,10 @@
     {
       "id": "- Keep the question set, scoring rubric, and artifact schema identical.",
       "name": "- Keep the question set, scoring rubric, and artifact schema identical."
+    },
+    {
+      "id": "- LLM-synthesized documents produced by `kb init` and stored in the knowledge base.",
+      "name": "- LLM-synthesized documents produced by `kb init` and stored in the knowledge base."
     },
     {
       "id": "- LLM/provider drift may change answer quality across days.",
@@ -1118,6 +1174,10 @@
       "name": "- Run metadata"
     },
     {
+      "id": "- SOURCE_CODE_EXCLUDE_DIRS is a Variable exported from src/cli/init-cli.ts — `fact://475023d742e7bd03`",
+      "name": "- SOURCE_CODE_EXCLUDE_DIRS is a Variable exported from src/cli/init-cli.ts — `fact://475023d742e7bd03`"
+    },
+    {
       "id": "- SQLite-backed KB actions should read and write through the KB storage layer (`documents`, `chunks`, and related index updates), not filesystem globs.",
       "name": "- SQLite-backed KB actions should read and write through the KB storage layer (`documents`, `chunks`, and related index updates), not filesystem globs."
     },
@@ -1128,6 +1188,10 @@
     {
       "id": "- Same run root: **`~/.kb/evaluations/<run-name>/`** with `artifact.json` and `gen-doc.log`.",
       "name": "- Same run root: **`~/.kb/evaluations/<run-name>/`** with `artifact.json` and `gen-doc.log`."
+    },
+    {
+      "id": "- Scan and index code and documents once, and you get a queryable and lightweight knowledge base.",
+      "name": "- Scan and index code and documents once, and you get a queryable and lightweight knowledge base."
     },
     {
       "id": "- Scope must be limited to the active KB store, not arbitrary repo files.",
@@ -1634,8 +1698,16 @@
       "name": "- `kb chat` against the same base (optional, mark `not_captured` if skipped)"
     },
     {
+      "id": "- `kb init` bootstraps a knowledge base from a repo.",
+      "name": "- `kb init` bootstraps a knowledge base from a repo."
+    },
+    {
       "id": "- `kb init` run ID from `kb logs`",
       "name": "- `kb init` run ID from `kb logs`"
+    },
+    {
+      "id": "- `kb publish jekyll --base dogfood --dir docs/ --apply` (run from the repo root) syncs the dogfood knowledge base into this directory: — `fact://926946a57046ff16`",
+      "name": "- `kb publish jekyll --base dogfood --dir docs/ --apply` (run from the repo root) syncs the dogfood knowledge base into this directory: — `fact://926946a57046ff16`"
     },
     {
       "id": "- `kb query \"<question>\" --base ci-raylib-<date> --output json`",
@@ -1986,6 +2058,10 @@
       "name": "- boundaries: What is explicitly out of scope?"
     },
     {
+      "id": "- cd ~/{{YOUR_AWESOME_REPO}} kb && /init --base dogfood — `fact://08a2a038c9350398`",
+      "name": "- cd ~/{{YOUR_AWESOME_REPO}} kb && /init --base dogfood — `fact://08a2a038c9350398`"
+    },
+    {
       "id": "- choice: What did we decide (one sentence)?",
       "name": "- choice: What did we decide (one sentence)?"
     },
@@ -2042,6 +2118,10 @@
       "name": "- links the stable launcher at `~/.kb/bin/kb`"
     },
     {
+      "id": "- manifestPath is a Function exported from src/cli/init-code-facts-manifest.ts — `fact://ec206e52d42fad7b`",
+      "name": "- manifestPath is a Function exported from src/cli/init-code-facts-manifest.ts — `fact://ec206e52d42fad7b`"
+    },
+    {
       "id": "- mentalModel: Core concepts / how pieces fit (short).",
       "name": "- mentalModel: Core concepts / how pieces fit (short)."
     },
@@ -2060,6 +2140,10 @@
     {
       "id": "- prereqs: What must be true before starting (tools, access, versions)?",
       "name": "- prereqs: What must be true before starting (tools, access, versions)?"
+    },
+    {
+      "id": "- readCodeFactsManifest is a Function exported from src/cli/init-code-facts-manifest.ts — `fact://a7788508994a2f7e`",
+      "name": "- readCodeFactsManifest is a Function exported from src/cli/init-code-facts-manifest.ts — `fact://a7788508994a2f7e`"
     },
     {
       "id": "- rollback: How to undo or mitigate if the run fails?",
@@ -2682,6 +2766,10 @@
       "name": "Design rule"
     },
     {
+      "id": "Details on a specific `kb chat` interface are _(not provided)_.",
+      "name": "Details on a specific `kb chat` interface are _(not provided)_."
+    },
+    {
       "id": "Disposable KB base names are **not** configured here — `eval-run.mjs` defaults `--base` to the run folder name (`<repo-leaf>-YYYY-MM-DD-HHmm`, same string as `~/.kb/evaluations/<that>/`).",
       "name": "Disposable KB base names are **not** configured here — `eval-run.mjs` defaults `--base` to the run folder name (`<repo-leaf>-YYYY-MM-DD-HHmm`, same string as `~/.kb/evaluations/<that>/`)."
     },
@@ -2942,6 +3030,10 @@
       "name": "For a 200-line class this would be large, so it is **capped at 1497 characters** (plus a `…` marker)."
     },
     {
+      "id": "For an already-populated knowledge base session, the `query` command requires the `--base` argument [fact-756ddd4c644a9752].",
+      "name": "For an already-populated knowledge base session, the `query` command requires the `--base` argument [fact-756ddd4c644a9752]."
+    },
+    {
       "id": "For day-to-day kb architecture work on your checkout, use `--base dogfood` (separate from disposable eval bases).",
       "name": "For day-to-day kb architecture work on your checkout, use `--base dogfood` (separate from disposable eval bases)."
     },
@@ -2960,6 +3052,10 @@
     {
       "id": "For every live edge touching those entities, expansion adds **semantic triplets** as natural-language phrases (`Subject <predicate phrase> Object`, plus the stored predicate slug and a spaced variant, e.g.",
       "name": "For every live edge touching those entities, expansion adds **semantic triplets** as natural-language phrases (`Subject <predicate phrase> Object`, plus the stored predicate slug and a spaced variant, e.g."
+    },
+    {
+      "id": "For example, to initialize a knowledge base named `your-awesome-project` in your repository:",
+      "name": "For example, to initialize a knowledge base named `your-awesome-project` in your repository:"
     },
     {
       "id": "For large classes the 1500-char cap keeps cost bounded.",
@@ -3298,6 +3394,10 @@
       "name": "It runs **input collection** (README-like docs + optional source-code crawl), **`document-facts`** (document facts from markdown/text sources), **`code-facts`** (LLM fallback facts for source code when AST providers are unavailable), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim m"
     },
     {
+      "id": "It scans and indexes code and documents to create a queryable and lightweight knowledge base [fact-cddc7e6aa33210d4].",
+      "name": "It scans and indexes code and documents to create a queryable and lightweight knowledge base [fact-cddc7e6aa33210d4]."
+    },
+    {
       "id": "It tests whether having a KB *actually reduces token usage* during real implementation work.",
       "name": "It tests whether having a KB *actually reduces token usage* during real implementation work."
     },
@@ -3412,6 +3512,10 @@
     {
       "id": "Keeping `docs/` in a separate repo",
       "name": "Keeping `docs/` in a separate repo"
+    },
+    {
+      "id": "Key components involved in the `init` lifecycle include:",
+      "name": "Key components involved in the `init` lifecycle include:"
     },
     {
       "id": "Knowledge Graph",
@@ -4078,6 +4182,10 @@
       "name": "Speak as a domain expert who simply knows the answer."
     },
     {
+      "id": "Specific installation steps for the `kb cli` are _(not provided)_.",
+      "name": "Specific installation steps for the `kb cli` are _(not provided)_."
+    },
+    {
       "id": "Specificity",
       "name": "Specificity"
     },
@@ -4210,6 +4318,22 @@
       "name": "The `init_result` object should contain:"
     },
     {
+      "id": "The `kb init` command bootstraps a knowledge base from a repository [fact-f0c7dd2c08ba7803].",
+      "name": "The `kb init` command bootstraps a knowledge base from a repository [fact-f0c7dd2c08ba7803]."
+    },
+    {
+      "id": "The `kb init` command performs the initial scan and indexing of code and documents [fact-cddc7e6aa33210d4].",
+      "name": "The `kb init` command performs the initial scan and indexing of code and documents [fact-cddc7e6aa33210d4]."
+    },
+    {
+      "id": "The `kb` command-line tool is used to interact with the knowledge base.",
+      "name": "The `kb` command-line tool is used to interact with the knowledge base."
+    },
+    {
+      "id": "The `kb` tool allows you to bootstrap a knowledge base from your repository, scanning and indexing your code and documents to create a queryable and lightweight knowledge base [fact-f0c7dd2c08ba7803] [fact-cddc7e6aa33210d4].",
+      "name": "The `kb` tool allows you to bootstrap a knowledge base from your repository, scanning and indexing your code and documents to create a queryable and lightweight knowledge base [fact-f0c7dd2c08ba7803] [fact-cddc7e6aa33210d4]."
+    },
+    {
       "id": "The `kg_semantic_bridge` table is the join layer.",
       "name": "The `kg_semantic_bridge` table is the join layer."
     },
@@ -4274,12 +4398,20 @@
       "name": "The goal is simple: you get a knowledge base for free, as a side effect of doing your real work."
     },
     {
+      "id": "The goal is to produce a usable knowledge base from the current repository without requiring manual intervention [fact-b0a9d1aeaa802896].",
+      "name": "The goal is to produce a usable knowledge base from the current repository without requiring manual intervention [fact-b0a9d1aeaa802896]."
+    },
+    {
       "id": "The graph store is populated with non-zero entities and relationships.",
       "name": "The graph store is populated with non-zero entities and relationships."
     },
     {
       "id": "The graph tracks concepts, systems, tools, decisions, and people as **entities**, connected by typed **relationships** (e.g.",
       "name": "The graph tracks concepts, systems, tools, decisions, and people as **entities**, connected by typed **relationships** (e.g."
+    },
+    {
+      "id": "The knowledge base provides a graph that offers a structural view of how ideas connect, which a flat SQLite full-text index cannot express [fact-61b9c2f43ef389bf].",
+      "name": "The knowledge base provides a graph that offers a structural view of how ideas connect, which a flat SQLite full-text index cannot express [fact-61b9c2f43ef389bf]."
     },
     {
       "id": "The long-running deterministic phases also yield cooperatively to the event loop between batches so the terminal can repaint and interrupts remain responsive during large scans.",
@@ -4382,6 +4514,10 @@
       "name": "These may be omitted only if the artifact is marked `partial`."
     },
     {
+      "id": "These operations are designed for knowledge base cleanup, not for codebase refactoring [fact-536e0c6379891a50].",
+      "name": "These operations are designed for knowledge base cleanup, not for codebase refactoring [fact-536e0c6379891a50]."
+    },
+    {
       "id": "These reflect the raw project documentation.",
       "name": "These reflect the raw project documentation."
     },
@@ -4422,6 +4558,10 @@
       "name": "This file remains as a stable redirect for older links."
     },
     {
+      "id": "This guide explains how to set up a knowledge base for your codebase using the `kb` command-line tool.",
+      "name": "This guide explains how to set up a knowledge base for your codebase using the `kb` command-line tool."
+    },
+    {
       "id": "This is a separate evaluation from the init/query quality eval above.",
       "name": "This is a separate evaluation from the init/query quality eval above."
     },
@@ -4452,6 +4592,10 @@
     {
       "id": "This prevents the live area from scrolling into the scrollback buffer, which would cause a double-render when the result is finally committed.",
       "name": "This prevents the live area from scrolling into the scrollback buffer, which would cause a double-render when the result is finally committed."
+    },
+    {
+      "id": "This process produces LLM-synthesized documents that are stored within the knowledge base [fact-cd95d472886d0eab].",
+      "name": "This process produces LLM-synthesized documents that are stored within the knowledge base [fact-cd95d472886d0eab]."
     },
     {
       "id": "This site uses the [`jekyll-vitepress-theme`](https://github.com/crmne/jekyll-vitepress-theme) gem (see `Gemfile`).",
@@ -4626,6 +4770,10 @@
       "name": "Use fresh `ci-raylib-*` bases for both runs."
     },
     {
+      "id": "Use the `kb query` command to interact with your knowledge base.",
+      "name": "Use the `kb query` command to interact with your knowledge base."
+    },
+    {
       "id": "Use the kb CLI during implementation and review: query before big changes,",
       "name": "Use the kb CLI during implementation and review: query before big changes,"
     },
@@ -4768,6 +4916,10 @@
     {
       "id": "Which best matches the user's intent for the document they want to write?",
       "name": "Which best matches the user's intent for the document they want to write?"
+    },
+    {
+      "id": "While a dedicated `kb scan` command for rescanning is _(not provided)_ in the facts, you can manage and update facts within your knowledge base using the `kb submit` and `kb invalidate` commands [fact-c69c0ce49c138848].",
+      "name": "While a dedicated `kb scan` command for rescanning is _(not provided)_ in the facts, you can manage and update facts within your knowledge base using the `kb submit` and `kb invalidate` commands [fact-c69c0ce49c138848]."
     },
     {
       "id": "Why This Matters",
@@ -5112,6 +5264,10 @@
     {
       "id": "cd ~/{{YOUR_AWESOME_REPO}} kb && /init --base dogfood",
       "name": "cd ~/{{YOUR_AWESOME_REPO}} kb && /init --base dogfood"
+    },
+    {
+      "id": "cd ~/{{YOUR_AWESOME_REPO}} kb init --base your-awesome-project",
+      "name": "cd ~/{{YOUR_AWESOME_REPO}} kb init --base your-awesome-project"
     },
     {
       "id": "chruby + ruby-install (macOS / Linux)",
@@ -9429,6 +9585,56 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "* The `CODE_FACTS_MANIFEST_FILENAME` variable [fact-3d2074dc2a795281]"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* The `CodeFactsManifest` interface [fact-062de7d86eda960a]"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* The `InitCheckpoint` interface [fact-f7ca28e04e2c2783]"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* The `InitInterviewRound` interface [fact-4405edbf308728b1]"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* The `SOURCE_CODE_EXCLUDE_DIRS` variable [fact-475023d742e7bd03]"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* `diffChangedFiles` [fact-cbf19b75ddb70c4e]"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* `hashFileContents` [fact-86b88243bef03e01]"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* `manifestPath` [fact-ec206e52d42fad7b]"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* `readCodeFactsManifest` [fact-a7788508994a2f7e]"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* `writeCodeFactsManifest` [fact-3c60f7c4259c01b7]"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "* 📝 **Record** decisions and facts as you work"
     },
     {
@@ -9984,6 +10190,16 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "- - CLI wording should make this explicit: these are knowledge-base cleanup operations, not codebase refactors."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "- - `query` — Fresh clone → same capture minus init; requires `--base` for an already-populated KB session."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "- <a href=\"{{ '/graph.html' | relative_url }}\">Open the knowledge graph</a>"
     },
     {
@@ -10155,6 +10371,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "- Code blocks: preserve user-provided code verbatim."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "- CodeFactsManifest is a Interface exported from src/cli/init-code-facts-manifest.ts — `fact://062de7d86eda960a`"
     },
     {
       "fromId": "kb",
@@ -10455,6 +10676,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "- Keep the question set, scoring rubric, and artifact schema identical."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "- LLM-synthesized documents produced by `kb init` and stored in the knowledge base."
     },
     {
       "fromId": "kb",
@@ -10764,6 +10990,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "- SOURCE_CODE_EXCLUDE_DIRS is a Variable exported from src/cli/init-cli.ts — `fact://475023d742e7bd03`"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "- SQLite-backed KB actions should read and write through the KB storage layer (`documents`, `chunks`, and related index updates), not filesystem globs."
     },
     {
@@ -10775,6 +11006,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "- Same run root: **`~/.kb/evaluations/<run-name>/`** with `artifact.json` and `gen-doc.log`."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "- Scan and index code and documents once, and you get a queryable and lightweight knowledge base."
     },
     {
       "fromId": "kb",
@@ -11409,7 +11645,17 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "- `kb init` bootstraps a knowledge base from a repo."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "- `kb init` run ID from `kb logs`"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "- `kb publish jekyll --base dogfood --dir docs/ --apply` (run from the repo root) syncs the dogfood knowledge base into this directory: — `fact://926946a57046ff16`"
     },
     {
       "fromId": "kb",
@@ -11849,6 +12095,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "- cd ~/{{YOUR_AWESOME_REPO}} kb && /init --base dogfood — `fact://08a2a038c9350398`"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "- choice: What did we decide (one sentence)?"
     },
     {
@@ -11919,6 +12170,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "- manifestPath is a Function exported from src/cli/init-code-facts-manifest.ts — `fact://ec206e52d42fad7b`"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "- mentalModel: Core concepts / how pieces fit (short)."
     },
     {
@@ -11940,6 +12196,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "- prereqs: What must be true before starting (tools, access, versions)?"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "- readCodeFactsManifest is a Function exported from src/cli/init-code-facts-manifest.ts — `fact://a7788508994a2f7e`"
     },
     {
       "fromId": "kb",
@@ -12719,6 +12980,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "Details on a specific `kb chat` interface are _(not provided)_."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "Disposable KB base names are **not** configured here — `eval-run.mjs` defaults `--base` to the run folder name (`<repo-leaf>-YYYY-MM-DD-HHmm`, same string as `~/.kb/evaluations/<that>/`)."
     },
     {
@@ -13044,6 +13310,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "For an already-populated knowledge base session, the `query` command requires the `--base` argument [fact-756ddd4c644a9752]."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "For day-to-day kb architecture work on your checkout, use `--base dogfood` (separate from disposable eval bases)."
     },
     {
@@ -13065,6 +13336,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "For every live edge touching those entities, expansion adds **semantic triplets** as natural-language phrases (`Subject <predicate phrase> Object`, plus the stored predicate slug and a spaced variant, e.g."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "For example, to initialize a knowledge base named `your-awesome-project` in your repository:"
     },
     {
       "fromId": "kb",
@@ -13484,6 +13760,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "It scans and indexes code and documents to create a queryable and lightweight knowledge base [fact-cddc7e6aa33210d4]."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "It tests whether having a KB *actually reduces token usage* during real implementation work."
     },
     {
@@ -13625,6 +13906,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "Keeping `docs/` in a separate repo"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "Key components involved in the `init` lifecycle include:"
     },
     {
       "fromId": "kb",
@@ -14449,6 +14735,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "Specific installation steps for the `kb cli` are _(not provided)_."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "Specificity"
     },
     {
@@ -14614,6 +14905,26 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "The `kb init` command bootstraps a knowledge base from a repository [fact-f0c7dd2c08ba7803]."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "The `kb init` command performs the initial scan and indexing of code and documents [fact-cddc7e6aa33210d4]."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "The `kb` command-line tool is used to interact with the knowledge base."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "The `kb` tool allows you to bootstrap a knowledge base from your repository, scanning and indexing your code and documents to create a queryable and lightweight knowledge base [fact-f0c7dd2c08ba7803] [fact-cddc7e6aa33210d4]."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "The `kg_semantic_bridge` table is the join layer."
     },
     {
@@ -14694,12 +15005,22 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "The goal is to produce a usable knowledge base from the current repository without requiring manual intervention [fact-b0a9d1aeaa802896]."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "The graph store is populated with non-zero entities and relationships."
     },
     {
       "fromId": "kb",
       "type": "asserts",
       "toId": "The graph tracks concepts, systems, tools, decisions, and people as **entities**, connected by typed **relationships** (e.g."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "The knowledge base provides a graph that offers a structural view of how ideas connect, which a flat SQLite full-text index cannot express [fact-61b9c2f43ef389bf]."
     },
     {
       "fromId": "kb",
@@ -14829,6 +15150,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "These operations are designed for knowledge base cleanup, not for codebase refactoring [fact-536e0c6379891a50]."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "These reflect the raw project documentation."
     },
     {
@@ -14879,6 +15205,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "This guide explains how to set up a knowledge base for your codebase using the `kb` command-line tool."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "This is a separate evaluation from the init/query quality eval above."
     },
     {
@@ -14915,6 +15246,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "This prevents the live area from scrolling into the scrollback buffer, which would cause a double-render when the result is finally committed."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "This process produces LLM-synthesized documents that are stored within the knowledge base [fact-cd95d472886d0eab]."
     },
     {
       "fromId": "kb",
@@ -15124,6 +15460,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "Use the `kb query` command to interact with your knowledge base."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "Use the kb CLI during implementation and review: query before big changes,"
     },
     {
@@ -15300,6 +15641,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "Which best matches the user's intent for the document they want to write?"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "While a dedicated `kb scan` command for rescanning is _(not provided)_ in the facts, you can manage and update facts within your knowledge base using the `kb submit` and `kb invalidate` commands [fact-c69c0ce49c138848]."
     },
     {
       "fromId": "kb",
@@ -15730,6 +16076,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "cd ~/{{YOUR_AWESOME_REPO}} kb && /init --base dogfood"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "cd ~/{{YOUR_AWESOME_REPO}} kb init --base your-awesome-project"
     },
     {
       "fromId": "kb",

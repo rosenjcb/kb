@@ -4,6 +4,11 @@ import path from 'node:path'
 import type { DocType } from './doc-taxonomy'
 import { createUnifiedDiff } from './git-diff-preview'
 
+export interface UserDefinedDocSection {
+  name: string
+  description: string
+}
+
 export interface DocAnswerSlot {
   key: string
   question: string
@@ -45,6 +50,8 @@ export interface DocGenerateSession {
   prompt: string
   docType: DocType
   answers: DocAnswerSlot[]
+  /** User-defined document sections (replaces questionnaire when present). */
+  sections?: UserDefinedDocSection[]
   status: DocGenerateSessionStatus
   draft?: DocGenerateDraft
   revisions?: DocGenerateRevisionEntry[]
@@ -88,21 +95,29 @@ export function createSessionRecord(input: {
   prompt: string
   docType: DocType
   questions: Array<{ key: string; question: string }>
+  sections?: UserDefinedDocSection[]
 }): DocGenerateSession {
   const now = Date.now()
-  return {
+  const answers = input.questions.map(q => ({
+    key: q.key,
+    question: q.question,
+    answer: null as string | null,
+  }))
+  const hasSections = (input.sections?.length ?? 0) > 0
+  const allResolved = answers.every(slot => slot.answer !== null)
+  const record: DocGenerateSession = {
     id: randomUUID(),
     prompt: input.prompt.trim(),
     docType: input.docType,
-    answers: input.questions.map(q => ({
-      key: q.key,
-      question: q.question,
-      answer: null,
-    })),
-    status: 'gathering',
+    answers,
+    status: hasSections || allResolved ? 'ready' : 'gathering',
     createdAt: now,
     updatedAt: now,
   }
+  if (hasSections) {
+    record.sections = input.sections
+  }
+  return record
 }
 
 export function firstPendingAnswerIndex(session: DocGenerateSession): number | null {

@@ -8,6 +8,7 @@ import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import {
   type DocGenerateDraft,
   type DocGenerateSession,
+  type UserDefinedDocSection,
   acceptSessionDraft,
   applyAnswer,
   applySkip,
@@ -37,7 +38,17 @@ function buildFactSearchQuery(session: DocGenerateSession): string {
       parts.push(`${slot.key}: ${slot.answer}`)
     }
   }
+  if (session.sections?.length) {
+    parts.push(session.sections.map(s => `${s.name}: ${s.description}`).join('\n'))
+  }
   return parts.join('\n')
+}
+
+function buildUserDefinedSectionsBlock(sections: UserDefinedDocSection[]): string[] {
+  return [
+    'User-defined sections (write a `##` heading for each, in this order; use KB facts for content):',
+    ...sections.map((s, i) => `${i + 1}. ${s.name} — ${s.description}`),
+  ]
 }
 
 async function classifyDocType(
@@ -92,18 +103,24 @@ async function draftDocumentBody(
   factContextMarkdown: string
 ): Promise<string> {
   const systemPrompt = loadPrompt('doc-draft-system.md')
+  const contentBlock =
+    session.sections?.length
+      ? buildUserDefinedSectionsBlock(session.sections)
+      : [
+          'Structured answers:',
+          ...session.answers.map(slot => {
+            const status = slot.skipped ? '(skipped)' : ''
+            const body = slot.skipped ? '' : (slot.answer ?? '')
+            return `- **${slot.key}** ${status}: ${body}`.trimEnd()
+          }),
+        ]
   const lines = [
     `Document type: ${session.docType}`,
     '',
     'Original user prompt:',
     session.prompt,
     '',
-    'Structured answers:',
-    ...session.answers.map(slot => {
-      const status = slot.skipped ? '(skipped)' : ''
-      const body = slot.skipped ? '' : (slot.answer ?? '')
-      return `- **${slot.key}** ${status}: ${body}`.trimEnd()
-    }),
+    ...contentBlock,
     ...formatChatTranscriptBlock(session),
     '',
     factContextMarkdown,
@@ -138,18 +155,24 @@ async function draftDocumentRevision(
   factContextMarkdown: string
 ): Promise<string> {
   const systemPrompt = loadPrompt('doc-edit-system.md')
+  const contentBlock =
+    session.sections?.length
+      ? buildUserDefinedSectionsBlock(session.sections)
+      : [
+          'Structured answers:',
+          ...session.answers.map(slot => {
+            const status = slot.skipped ? '(skipped)' : ''
+            const body = slot.skipped ? '' : (slot.answer ?? '')
+            return `- **${slot.key}** ${status}: ${body}`.trimEnd()
+          }),
+        ]
   const user = [
     `Document type: ${session.docType}`,
     '',
     'Original user prompt:',
     session.prompt,
     '',
-    'Structured answers:',
-    ...session.answers.map(slot => {
-      const status = slot.skipped ? '(skipped)' : ''
-      const body = slot.skipped ? '' : (slot.answer ?? '')
-      return `- **${slot.key}** ${status}: ${body}`.trimEnd()
-    }),
+    ...contentBlock,
     ...buildPriorReviewFeedbackLines(session),
     '',
     'Latest reviewer instruction (apply on top of the prior list):',
@@ -178,6 +201,8 @@ export async function startGenerationSession(input: {
   deps?: DocGenerateOrchestratorDeps
   /** When starting from chat, persist for draft + all revision prompts. */
   chatTranscript?: string
+  /** User-defined document sections; skips questionnaire when provided. */
+  sections?: UserDefinedDocSection[]
 }): Promise<{
   status: DocGenerateSession['status']
   sessionId: string
@@ -188,11 +213,12 @@ export async function startGenerationSession(input: {
 }> {
   const docType =
     input.type ?? (await classifyDocType(input.config, input.deps ?? {}, input.prompt))
-  const items = loadQuestionnaire(docType)
+  const items = input.sections?.length ? [] : loadQuestionnaire(docType)
   const session = createSessionRecord({
     prompt: input.prompt,
     docType,
     questions: items,
+    sections: input.sections,
   })
   const tx = input.chatTranscript?.trim()
   if (tx) {

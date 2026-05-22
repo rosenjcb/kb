@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/chat-system.md
-date: '2026-05-21'
+date: '2026-05-22'
 kb_id: src-prompts-chat-system-md
 tags:
   - original-source

@@ -12,6 +12,7 @@ import {
   loadSession,
   saveSession,
   setSessionDraft,
+  type UserDefinedDocSection,
 } from '../../src/core/doc-generate-session'
 
 const tempDirs: string[] = []
@@ -118,6 +119,53 @@ describe('doc-generate-session', () => {
     expect(s?.revisions?.[0]?.revision).toBe(2)
     expect(s?.revisions?.[0]?.diff).toContain('-alpha')
     expect(s?.revisions?.[0]?.diff).toContain('+beta')
+  })
+
+  it('Given sections provided, then status is ready immediately with no gathering phase', () => {
+    const sections: UserDefinedDocSection[] = [
+      { name: 'Overview', description: 'High-level summary' },
+      { name: 'Usage', description: 'How to use it' },
+    ]
+    const session = createSessionRecord({
+      prompt: 'Explain the CLI',
+      docType: 'howto',
+      questions: [],
+      sections,
+    })
+    expect(session.status).toBe('ready')
+    expect(session.sections).toEqual(sections)
+    expect(session.answers).toEqual([])
+    expect(firstPendingAnswerIndex(session)).toBeNull()
+    expect(allAnswerSlotsResolved(session)).toBe(true)
+  })
+
+  it('Given sections provided, then sections are persisted and reloaded correctly', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-session-sections-'))
+    tempDirs.push(dir)
+    const sections: UserDefinedDocSection[] = [
+      { name: 'Background', description: 'Context for the decision' },
+      { name: 'Decision', description: 'What was decided' },
+    ]
+    const session = createSessionRecord({
+      prompt: 'Architecture decision record',
+      docType: 'decision',
+      questions: [],
+      sections,
+    })
+    await saveSession(dir, session)
+    const loaded = await loadSession(dir, session.id)
+    expect(loaded?.sections).toEqual(sections)
+    expect(loaded?.status).toBe('ready')
+  })
+
+  it('Given no sections, then status starts as gathering with non-empty questions', () => {
+    const session = createSessionRecord({
+      prompt: 'normal flow',
+      docType: 'howto',
+      questions: [{ key: 'goal', question: 'Goal?' }],
+    })
+    expect(session.status).toBe('gathering')
+    expect(session.sections).toBeUndefined()
   })
 
   it('Given acceptSessionDraft, then status finalized and draft preserved', async () => {

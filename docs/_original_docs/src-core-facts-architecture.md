@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/facts-architecture.md
-date: '2026-05-21'
+date: '2026-05-22'
 kb_id: src-core-facts-architecture-md
 tags:
   - original-source

@@ -21,6 +21,7 @@ import { CLI_ERROR_NO_LLM_PROVIDER, formatPrerequisiteError } from './cli-prereq
 import { type CmdMode, cmd } from './cmd-ref'
 import type { KbConfig } from './kb-config'
 import { createLLMProviderFromConfig } from './kb-config'
+import { promptUserDocSections } from './docs-generate-sections'
 
 export type DocsGenerateMode = 'start' | 'resume' | 'list' | 'show'
 
@@ -389,12 +390,32 @@ async function runStart(
   config: KbConfig,
   deps: RunDocsGenerateDeps
 ): Promise<unknown> {
+  let sections: Awaited<ReturnType<typeof promptUserDocSections>> = 'skip'
+
+  if (process.stdin.isTTY) {
+    const { createInterface } = await import('node:readline')
+    const rl = createInterface({ input: process.stdin, output: process.stdout })
+    try {
+      sections = await promptUserDocSections({
+        writeLine: msg => process.stdout.write(`${msg}\n`),
+        readLine: prompt =>
+          new Promise(resolve => rl.question(prompt, ans => resolve(ans))),
+      })
+    } finally {
+      rl.close()
+    }
+    if (sections === 'cancel') {
+      return { status: 'cancelled' }
+    }
+  }
+
   return startGenerationSession({
     baseDir,
     prompt: parsed.prompt,
     type: parsed.type,
     config,
     deps,
+    sections: sections === 'skip' ? undefined : sections,
   })
 }
 

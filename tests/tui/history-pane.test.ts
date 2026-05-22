@@ -27,4 +27,43 @@ describe('partitionHistoryEntries', () => {
       liveItems: [],
     })
   })
+
+  it('loading entry in the middle stays in liveItems while surrounding statics go to staticItems', () => {
+    // Simulates: meta(static) → answer(loading) → sep(static) → timing(static)
+    // The answer must stay in liveItems until finalized; meta/sep/timing go to staticItems.
+    // Ink's <Static> requires new items to be appended at the tail of staticItems.
+    // App.tsx's write() calls finalizeChatResponse() before adding meta entries so the
+    // answer is always committed before the entries that follow it.
+    const entries: HistoryEntry[] = [
+      { id: 'stage', type: 'chat-meta', content: 'stage> answer:done 300ms' },
+      { id: 'answer', type: 'chat-assistant', content: 'The answer text', loading: true },
+      { id: 'sep', type: 'chat-meta', content: 'sep> —' },
+      { id: 'timing', type: 'chat-meta', content: 'timing> total=300ms' },
+    ]
+
+    const { staticItems, liveItems } = partitionHistoryEntries(entries)
+
+    expect(liveItems).toEqual([
+      { id: 'answer', type: 'chat-assistant', content: 'The answer text', loading: true },
+    ])
+    // stage, sep, timing are static; answer is still live
+    expect(staticItems.map(e => e.id)).toEqual(['stage', 'sep', 'timing'])
+  })
+
+  it('once answer is committed it appears in staticItems at its array position', () => {
+    // After finalizeChatResponse() the answer becomes loading: false.
+    // Because App.tsx flushes the answer before adding sep/timing, the committed
+    // answer lands before them in the entries array — so Static sees them in order.
+    const entries: HistoryEntry[] = [
+      { id: 'stage', type: 'chat-meta', content: 'stage> answer:done 300ms' },
+      { id: 'answer', type: 'chat-assistant', content: 'The answer text' }, // loading: false
+      { id: 'sep', type: 'chat-meta', content: 'sep> —' },
+      { id: 'timing', type: 'chat-meta', content: 'timing> total=300ms' },
+    ]
+
+    const { staticItems, liveItems } = partitionHistoryEntries(entries)
+
+    expect(liveItems).toEqual([])
+    expect(staticItems.map(e => e.id)).toEqual(['stage', 'answer', 'sep', 'timing'])
+  })
 })

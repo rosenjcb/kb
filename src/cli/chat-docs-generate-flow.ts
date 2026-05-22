@@ -13,6 +13,7 @@ import type { SlashInputContext } from '../tui/slash-command-registry.js'
 import { parseShellArgs } from '../tui/runner.js'
 import type { Printer } from '../ui/printer'
 import { DocsGenerateError, parseDocsGenerateCommand } from './docs-generate-cli'
+import { promptUserDocSections } from './docs-generate-sections'
 import type { KbConfig } from './kb-config'
 
 export async function runDocsGenerateChatFlow(input: {
@@ -62,6 +63,16 @@ export async function runDocsGenerateChatFlow(input: {
     }
   }
 
+  const sectionsResult = await promptUserDocSections({
+    writeLine: msg => printer.chatAssistant(msg),
+    readLine: prompt => read(prompt, { slashContext: 'docs-generate-question' }),
+  })
+  if (sectionsResult === 'cancel') {
+    printer.chatAssistant('Cancelled.')
+    return
+  }
+  const sections = sectionsResult === 'skip' ? undefined : sectionsResult
+
   printer.chatAssistant('Starting document session…')
   const started = await startGenerationSession({
     baseDir: kbStorageDir,
@@ -70,6 +81,7 @@ export async function runDocsGenerateChatFlow(input: {
     config,
     deps: { llm },
     chatTranscript: input.chatTranscript?.trim() || undefined,
+    sections,
   })
   const sessionId = started.sessionId
   printer.chatAssistant(`Session ${sessionId} (${started.docType}).`)

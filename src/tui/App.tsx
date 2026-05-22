@@ -222,7 +222,12 @@ export function App({ config, startupNotices = [] }: Props) {
           stopChatPending()
           const { category, content } = classifyChatIOLine(line)
           if (category === 'meta') {
-            // Metadata (retrieval>, evidence>, sources>, …) is always immediate and permanent.
+            // Flush any in-flight assistant response first so the answer entry is
+            // committed (loading→false) before these meta entries are appended.
+            // Without this, <Static> sees meta entries committed before the answer
+            // and inserts the answer mid-stream when finalized, causing Ink to
+            // re-render tail entries (duplicate timing lines) and drop the answer.
+            finalizeChatResponse()
             addEntry({ type: 'chat-meta', content: line })
           } else if (category === 'assistant') {
             // Content accumulates in a single loading entry per response turn.
