@@ -224,6 +224,7 @@ This page renders the current published KB graph using Cytoscape.js.
           ? 'No graph data has been published yet. Run kb init, then kb publish jekyll --apply.'
           : entities.length + ' nodes, ' + relationships.length + ' edges. Click a node to focus its neighborhood.'
 
+      const entityIds = new Set(entities.map(e => e.id))
       const elements = [
         ...entities.map(entity => ({
           data: {
@@ -232,14 +233,16 @@ This page renders the current published KB graph using Cytoscape.js.
             type: entity.type || 'concept',
           },
         })),
-        ...relationships.map((relationship, index) => ({
-          data: {
-            id: relationship.fromId + '__' + relationship.type + '__' + relationship.toId + '__' + index,
-            source: relationship.fromId,
-            target: relationship.toId,
-            label: relationship.type,
-          },
-        })),
+        ...relationships
+          .filter(r => entityIds.has(r.fromId) && entityIds.has(r.toId))
+          .map((relationship, index) => ({
+            data: {
+              id: relationship.fromId + '__' + relationship.type + '__' + relationship.toId + '__' + index,
+              source: relationship.fromId,
+              target: relationship.toId,
+              label: relationship.type,
+            },
+          })),
       ]
 
       const cy = cytoscape({

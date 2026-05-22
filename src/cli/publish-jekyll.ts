@@ -98,13 +98,15 @@ async function readPublishedGraph(baseDir: string) {
          LIMIT 500`
       )
       .all() as Array<{ id: string; name: string }>
-    const relationships = db
+    const allRelationships = db
       .prepare(
         `SELECT subject AS fromId, predicate AS type, object AS toId FROM facts
          WHERE tombstoned_at IS NULL AND predicate != 'asserts' AND subject != 'kb'
          LIMIT 2000`
       )
       .all() as Array<{ fromId: string; type: string; toId: string }>
+    const entityIds = new Set(entities.map(e => e.id))
+    const relationships = allRelationships.filter(r => entityIds.has(r.fromId) && entityIds.has(r.toId))
     return { generatedAt: new Date().toISOString(), entities, relationships }
   } finally {
     db.close()
