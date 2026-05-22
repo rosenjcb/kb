@@ -1,39 +1,24 @@
+import type { SlashInputContext } from './slash-command-registry.js'
+import {
+  getSlashCommandsForContext,
+  resolveSlashSuggestions,
+  type SlashCommand,
+} from './slash-command-registry.js'
 import type { TuiMode } from './types.js'
 
-export interface SlashCommand {
-  command: string
-  description: string
-}
-
-const CHAT_COMMANDS: SlashCommand[] = [
-  { command: '/query', description: 'search the knowledge base' },
-  { command: '/submit', description: 'store a new fact or checkpoint' },
-  { command: '/invalidate', description: 'remove or replace stale KB facts' },
-  { command: '/init', description: 'build a knowledge base from this repo' },
-  { command: '/scan', description: 'scan this repo into the active or selected KB base' },
-  { command: '/base', description: 'manage KB bases (use, delete)' },
-  { command: '/docs', description: 'browse or generate KB documents' },
-  { command: '/facts', description: 'list, search, or show KB facts' },
-  { command: '/graph', description: 'inspect or edit the knowledge graph' },
-  { command: '/publish', description: 'publish docs to the external sink' },
-  { command: '/sync', description: 'install the latest published KB release' },
-  { command: '/skills', description: 'manage agent skills' },
-  { command: '/config', description: 'inspect or update config values' },
-  { command: '/logs', description: 'browse and compare run reports' },
-  { command: '/help', description: 'show available commands' },
-  { command: '/clear', description: 'clear the visible session history' },
-  { command: '/exit', description: 'quit kb' },
-]
+export type { SlashCommand, SlashInputContext } from './slash-command-registry.js'
+export { parseSlashInput, resolveSlashSuggestions, SLASH_COMMAND_REGISTRY } from './slash-command-registry.js'
 
 export function getSlashCommands(_mode: TuiMode): SlashCommand[] {
-  return CHAT_COMMANDS
+  return getSlashCommandsForContext('idle')
 }
 
-export function getSlashCommandSuggestions(value: string, mode: TuiMode): SlashCommand[] {
-  if (!value.startsWith('/')) return []
-
-  const normalized = value.trim().toLowerCase()
-  return getSlashCommands(mode).filter(({ command }) => command.startsWith(normalized))
+export function getSlashCommandSuggestions(
+  value: string,
+  _mode: TuiMode,
+  context: SlashInputContext = 'idle'
+): SlashCommand[] {
+  return resolveSlashSuggestions(value, context)
 }
 
 export function sanitizeSlashInput(value: string): string {
@@ -47,8 +32,15 @@ export function clampSuggestionIndex(index: number, suggestions: SlashCommand[])
   return index
 }
 
-export function applySelectedSuggestion(suggestion?: SlashCommand): string {
-  return suggestion ? `${suggestion.command} ` : ''
+export function applySelectedSuggestion(suggestion?: SlashCommand, currentInput?: string): string {
+  if (!suggestion) return ''
+
+  const trimmed = currentInput?.trim() ?? ''
+  if (trimmed && suggestion.command.toLowerCase().startsWith(trimmed.toLowerCase())) {
+    return `${suggestion.command} `
+  }
+
+  return `${suggestion.command} `
 }
 
 export function normalizeSlashCommandArgs(args: string[]): string[] {

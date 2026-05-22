@@ -13,6 +13,7 @@ import type { SessionFact } from './chat-conversation'
 import { runDocsGenerateChatFlow } from './chat-docs-generate-flow'
 import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
 import type { IntentResult } from '../intents/types.js'
+import type { SlashInputContext } from '../tui/slash-command-registry.js'
 import { type CmdMode, cmd } from './cmd-ref'
 import { parseInitCommand, parseScanCommand, runKbInit } from './init-cli.js'
 import { isReadFactsResult, printReadDocumentsOrchestrationFooter } from './intent-cli.js'
@@ -48,8 +49,12 @@ export interface ChatSessionDeps {
   onBaseChanged?: () => void
 }
 
+export interface ChatReadOptions {
+  slashContext?: SlashInputContext
+}
+
 export interface ChatIO {
-  read(prompt: string): Promise<string | null>
+  read(prompt: string, opts?: ChatReadOptions): Promise<string | null>
   write(line: string): void
   error(line: string): void
   setProgressLine?(line: string | null): void
@@ -545,7 +550,7 @@ export async function runChatSession(
           (await resolveEffectiveBaseDir(deps.workspaceDir ?? process.cwd())).baseDir
         const chatConfig = deps.kbConfig ?? (await readKbConfig())
         await runDocsGenerateChatFlow({
-          read: prompt => io.read(prompt),
+          read: (prompt, opts) => io.read(prompt, opts),
           writeError: line => io.error(line),
           printer,
           llm: deps.llmProvider,
@@ -581,9 +586,9 @@ export async function runChatSession(
             collector: initScanCollector,
             questionIO: {
               write: (msg: string) => io.write(msg),
-              askQuestion: async (question: string): Promise<string> => {
+              askQuestion: async (question, opts): Promise<string> => {
                 io.setProgressLine?.(null)
-                const answer = await io.read(question)
+                const answer = await io.read(question, { slashContext: opts?.slashContext })
                 return answer ?? ''
               },
             },
@@ -1016,7 +1021,7 @@ export function createTerminalChatIO(): ChatIO {
   rl.on('SIGINT', onSigint)
 
   return {
-    async read(prompt: string): Promise<string | null> {
+    async read(prompt: string, _opts?: ChatReadOptions): Promise<string | null> {
       if (interrupted) return null
 
       try {
