@@ -5,6 +5,7 @@ export type SlashInputContext =
   | 'init-category-confirm'
   | 'init-free-text'
   | 'init-question'
+  | 'scan-base-picker'
 
 export interface SlashCommandSpec {
   /** ['docs','generate'] → '/docs generate' */

@@ -53,8 +53,10 @@ import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import {
   ensureOperationalBaseDir,
+  findKbFile,
   getKbHomeDir,
-  readBaseConfig,
+  listAllBases,
+  writeKbFile,
   writeSessionBase,
 } from './base-selection'
 import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from './cli-prerequisites'
@@ -255,6 +257,8 @@ interface LegacyInitCheckpointV2 {
 
 export interface InitQuestionOptions {
   slashContext?: SlashInputContext
+  /** Plain-text inline completions forwarded to TUI autocomplete. */
+  suggestions?: string[]
 }
 
 export class InitCancelledError extends Error {
@@ -556,6 +560,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   if (!options.rescan) {
     await writeSessionBase(base)
   }
+  await writeKbFile(cwd, base)
   const baseDir = await ensureOperationalBaseDir(base, cwd)
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
@@ -1349,16 +1354,48 @@ async function resolveInitBaseName(
   }
 
   if (options.rescan) {
-    const { activeBase, defaultBase } = await readBaseConfig()
-    const fromConfig = activeBase?.trim() || defaultBase?.trim()
-    if (fromConfig) {
-      return fromConfig
-    }
+    // .kb file in CWD or any ancestor takes priority — no prompt needed
+    const kbFileBase = await findKbFile(cwd)
+    if (kbFileBase) return kbFileBase
+
     if (options.nonInteractive) {
       throw new Error(
-        'No active or default KB base. Run `kb base use <name>` or `kb base use --default <name>`, or pass `--base <name>` to `kb scan`.'
+        'No .kb file found in this directory. Pass `--base <name>` or cd into a directory with a .kb file.'
       )
     }
+
+    // No .kb file — show a list picker so the user explicitly chooses
+    const bases = await listAllBases()
+    if (bases.length === 0) {
+      throw new Error(
+        'No initialized bases found. Run `kb init --base <name>` first.'
+      )
+    }
+    if (bases.length === 1) {
+      questionIO.write?.(`[kb scan] Using base: ${bases[0].name}\n`)
+      return bases[0].name
+    }
+
+    questionIO.write?.('\n[kb scan] Available bases:\n')
+    for (const b of bases) {
+      const tags = [b.isActive ? 'active' : '', b.isDefault ? 'default' : ''].filter(Boolean)
+      const tagStr = tags.length ? `  [${tags.join(', ')}]` : ''
+      questionIO.write?.(`  ${b.name}${tagStr}\n`)
+    }
+    questionIO.write?.('\n')
+
+    const answer = (await questionIO.askQuestion(
+      '  > Base name: ',
+      { slashContext: 'scan-base-picker', suggestions: bases.map(b => b.name) }
+    )).trim()
+
+    if (answer === '/cancel') throw new InitCancelledError()
+
+    const matched = bases.find(b => b.name === answer)
+    if (!matched) {
+      throw new Error(`Unknown base: "${answer}". Available: ${bases.map(b => b.name).join(', ')}`)
+    }
+    return matched.name
   }
 
   const suggestedBase = await resolveSuggestedInitBase(cwd)

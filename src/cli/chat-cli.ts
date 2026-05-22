@@ -51,6 +51,8 @@ export interface ChatSessionDeps {
 
 export interface ChatReadOptions {
   slashContext?: SlashInputContext
+  /** Plain-text inline completions (e.g. base names). Shown when input doesn't start with '/'. */
+  suggestions?: string[]
 }
 
 export interface ChatIO {

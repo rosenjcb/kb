@@ -1,4 +1,4 @@
-import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
+import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { CLI_ERROR_NO_KB_BASE } from './cli-prerequisites'
@@ -143,16 +143,82 @@ export async function writeSessionBase(base: string): Promise<BaseSelectionConfi
 
 export interface EffectiveBaseResolution {
   baseDir: string
-  source: 'config.activeBase' | 'config.defaultBase'
+  source: 'directory:.kb' | 'config.activeBase' | 'config.defaultBase'
   baseName: string
+}
+
+export interface BaseInfo {
+  name: string
+  path: string
+  isActive: boolean
+  isDefault: boolean
+  lastModified: Date | null
+}
+
+/** Walk from startDir up to the filesystem root looking for a `.kb` file. Returns the base name inside or null. */
+export async function findKbFile(startDir: string): Promise<string | null> {
+  let dir = path.resolve(startDir)
+  while (true) {
+    const candidate = path.join(dir, '.kb')
+    try {
+      const contents = await readFile(candidate, 'utf8')
+      const baseName = contents.trim()
+      if (baseName) return baseName
+    } catch {
+      // not found here, keep walking
+    }
+    const parent = path.dirname(dir)
+    if (parent === dir) return null
+    dir = parent
+  }
+}
+
+/** Write a `.kb` file in the given directory containing the base name. */
+export async function writeKbFile(dir: string, baseName: string): Promise<void> {
+  await writeFile(path.join(dir, '.kb'), `${baseName}\n`, 'utf8')
+}
+
+/** List all initialized bases found under `~/.kb/sessions/`. */
+export async function listAllBases(): Promise<BaseInfo[]> {
+  const sessionsDir = path.join(getKbHomeDir(), 'sessions')
+  if (!(await pathExists(sessionsDir))) return []
+
+  const config = await readKbConfig()
+  const entries = await readdir(sessionsDir)
+  const bases: BaseInfo[] = []
+
+  for (const entry of entries) {
+    const basePath = path.join(sessionsDir, entry)
+    const sqlitePath = path.join(basePath, '.kb-index.sqlite')
+    if (!(await pathExists(sqlitePath))) continue
+
+    let lastModified: Date | null = null
+    try {
+      const info = await stat(sqlitePath)
+      lastModified = info.mtime
+    } catch {
+      // ignore
+    }
+
+    bases.push({
+      name: entry,
+      path: basePath,
+      isActive: config.activeBase === entry,
+      isDefault: config.defaultBase === entry,
+      lastModified,
+    })
+  }
+
+  return bases.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /**
  * Resolve which base to use.
  *
  * Priority:
- *   1. config.activeBase — current working base from `kb use <base>` (persisted in ~/.kb/config.json).
- *   2. config.defaultBase — default from `kb use --default <base>` / `kb default <base>`.
+ *   1. directory `.kb` file — found by walking CWD up to filesystem root.
+ *   2. config.activeBase — current working base from `kb use <base>`.
+ *   3. config.defaultBase — default from `kb use --default <base>` / `kb default <base>`.
  *
  * configOverride is accepted only for testing — real callers omit it.
  */
@@ -160,6 +226,18 @@ export async function resolveEffectiveBaseDir(
   cwd: string = process.cwd(),
   configOverride?: Pick<BaseSelectionConfig, 'activeBase' | 'defaultBase'> | KbConfig
 ): Promise<EffectiveBaseResolution> {
+  // Only check .kb file in real (non-test) invocations
+  if (configOverride === undefined) {
+    const kbFileBase = await findKbFile(cwd)
+    if (kbFileBase) {
+      return {
+        baseDir: await ensureOperationalBaseDir(kbFileBase, cwd),
+        source: 'directory:.kb',
+        baseName: kbFileBase,
+      }
+    }
+  }
+
   const activeBase =
     configOverride !== undefined
       ? 'activeBase' in configOverride

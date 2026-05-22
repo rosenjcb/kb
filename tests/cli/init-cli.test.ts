@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ensureOperationalBaseDir } from '../../src/cli/base-selection'
-import { parseInitCommand, parseScanCommand, runKbInit } from '../../src/cli/init-cli'
+import { ensureOperationalBaseDir, findKbFile, resolveBaseToDir, writeKbFile } from '../../src/cli/base-selection'
+import { parseInitCommand, parseScanCommand, runKbInit, type InitCancelledError } from '../../src/cli/init-cli'
 import { buildFrozenSourceSnapshotDoc } from '../../src/cli/init-source-snapshots'
 import { RunCollector } from '../../src/core/telemetry'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
@@ -1005,29 +1005,28 @@ describe('init-cli interview checkpoints', () => {
     expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(false)
   })
 
-  it('Given --rescan without --base and config activeBase, then uses that base', async () => {
-    await writeFile(
-      path.join(kbHomeDir, 'config.json'),
-      JSON.stringify({ activeBase: 'cfg-rescan-base' }),
-      'utf8'
-    )
+  it('Given --rescan with a .kb file in cwd, uses the pinned base even in non-interactive mode', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nDocs here.\n',
     })
+    await initBase('pinned-rescan-base')
+    await writeKbFile(cwd, 'pinned-rescan-base')
+
     const result = await runKbInit({
       rescan: true,
       nonInteractive: true,
       stopAfter: 'read-inputs',
       cwd,
     })
-    expect(result.base).toBe('cfg-rescan-base')
+    expect(result.base).toBe('pinned-rescan-base')
     expect(result.status).toBe('paused')
   })
 
-  it('Given --rescan without --base and no active/default in config, then non-interactive throws', async () => {
+  it('Given --rescan without --base and no .kb file in non-interactive mode, throws with .kb guidance', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nDocs here.\n',
     })
+    await initBase('some-base')
     await expect(
       runKbInit({
         rescan: true,
@@ -1035,7 +1034,7 @@ describe('init-cli interview checkpoints', () => {
         stopAfter: 'read-inputs',
         cwd,
       })
-    ).rejects.toThrow(/No active or default KB base/)
+    ).rejects.toThrow(/.kb file/)
   })
 
   it('Given a full init cycle, then progress counter shows 6/6 (not 7)', async () => {
@@ -1197,5 +1196,234 @@ describe('init-cli token tracking', () => {
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// helpers shared by scan base-resolution tests
+// ---------------------------------------------------------------------------
+
+async function initBase(name: string): Promise<void> {
+  const dir = resolveBaseToDir(name)
+  await mkdir(dir, { recursive: true })
+  await writeFile(path.join(dir, '.kb-index.sqlite'), '', 'utf8')
+}
+
+describe('kb scan — base resolution', () => {
+  it('Given a .kb file in cwd, uses that base without prompting', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    await initBase('pinned-base')
+    await writeKbFile(cwd, 'pinned-base')
+    const { io, prompts } = createQuestionIO([])
+
+    const result = await runKbInit({
+      rescan: true,
+      apply: true,
+      nonInteractive: false,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: io,
+    })
+
+    expect(result.base).toBe('pinned-base')
+    expect(prompts).toHaveLength(0)
+    // .kb file still present and correct
+    expect(await findKbFile(cwd)).toBe('pinned-base')
+  })
+
+  it('Given a .kb file in an ancestor dir, uses that base without prompting', async () => {
+    const root = await createTempProject({ 'README.md': '# hi\n' })
+    const cwd = path.join(root, 'src', 'lib')
+    await mkdir(cwd, { recursive: true })
+    await initBase('ancestor-base')
+    await writeKbFile(root, 'ancestor-base')
+    const { io, prompts } = createQuestionIO([])
+
+    const result = await runKbInit({
+      rescan: true,
+      apply: true,
+      nonInteractive: false,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: io,
+    })
+
+    expect(result.base).toBe('ancestor-base')
+    expect(prompts).toHaveLength(0)
+  })
+
+  it('Given --base flag, uses it directly without reading .kb file or prompting', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    await initBase('explicit-base')
+    const { io, prompts } = createQuestionIO([])
+
+    const result = await runKbInit({
+      base: 'explicit-base',
+      rescan: true,
+      apply: true,
+      nonInteractive: false,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: io,
+    })
+
+    expect(result.base).toBe('explicit-base')
+    expect(prompts).toHaveLength(0)
+  })
+
+  it('Given no .kb file and a single initialized base, auto-selects it without prompting', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    await initBase('solo-base')
+    const { io, prompts, writes } = createQuestionIO([])
+
+    const result = await runKbInit({
+      rescan: true,
+      apply: true,
+      nonInteractive: false,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: io,
+    })
+
+    expect(result.base).toBe('solo-base')
+    expect(prompts).toHaveLength(0)
+    expect(writes.join('')).toContain('solo-base')
+  })
+
+  it('Given no .kb file and multiple bases, prompts with a list and accepts a typed name', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    await initBase('alpha')
+    await initBase('beta')
+    const { io, prompts, writes } = createQuestionIO(['beta'])
+
+    const result = await runKbInit({
+      rescan: true,
+      apply: true,
+      nonInteractive: false,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: io,
+    })
+
+    expect(result.base).toBe('beta')
+    expect(prompts[0]).toContain('Base name')
+    expect(writes.join('')).toContain('alpha')
+    expect(writes.join('')).toContain('beta')
+  })
+
+  it('Given no .kb file and multiple bases, passing suggestions list to askQuestion', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    await initBase('alpha')
+    await initBase('beta')
+
+    const capturedOpts: unknown[] = []
+    const io = {
+      write: (_msg: string) => {},
+      async askQuestion(_question: string, opts?: unknown): Promise<string> {
+        capturedOpts.push(opts)
+        return 'alpha'
+      },
+      async close() {},
+    }
+
+    await runKbInit({
+      rescan: true,
+      apply: true,
+      nonInteractive: false,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: io,
+    })
+
+    const opts = capturedOpts[0] as { slashContext?: string; suggestions?: string[] }
+    expect(opts?.slashContext).toBe('scan-base-picker')
+    expect(opts?.suggestions).toContain('alpha')
+    expect(opts?.suggestions).toContain('beta')
+  })
+
+  it('Given no .kb file and multiple bases, an invalid name throws an error', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    await initBase('alpha')
+    await initBase('beta')
+    const { io } = createQuestionIO(['does-not-exist'])
+
+    await expect(
+      runKbInit({
+        rescan: true,
+        apply: true,
+        nonInteractive: false,
+        stopAfter: 'read-inputs',
+        cwd,
+        questionIO: io,
+      })
+    ).rejects.toThrow('Unknown base')
+  })
+
+  it('Given no .kb file and /cancel answer, throws InitCancelledError', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    await initBase('alpha')
+    await initBase('beta')
+    const { io } = createQuestionIO(['/cancel'])
+
+    await expect(
+      runKbInit({
+        rescan: true,
+        apply: true,
+        nonInteractive: false,
+        stopAfter: 'read-inputs',
+        cwd,
+        questionIO: io,
+      })
+    ).rejects.toThrow('Cancelled')
+  })
+
+  it('Given no .kb file and no initialized bases, throws a helpful error', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    const { io } = createQuestionIO([])
+
+    await expect(
+      runKbInit({
+        rescan: true,
+        apply: true,
+        nonInteractive: false,
+        stopAfter: 'read-inputs',
+        cwd,
+        questionIO: io,
+      })
+    ).rejects.toThrow('No initialized bases found')
+  })
+
+  it('Given no .kb file and --non-interactive, throws without prompting', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    await initBase('alpha')
+    const { io } = createQuestionIO([])
+
+    await expect(
+      runKbInit({
+        rescan: true,
+        apply: true,
+        nonInteractive: true,
+        cwd,
+        questionIO: io,
+      })
+    ).rejects.toThrow('.kb file')
+  })
+
+  it('After scan completes, writes .kb file to cwd', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    await initBase('written-base')
+    await writeKbFile(cwd, 'written-base')
+    const { io } = createQuestionIO([])
+
+    await runKbInit({
+      rescan: true,
+      apply: true,
+      nonInteractive: false,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: io,
+    })
+
+    expect(await findKbFile(cwd)).toBe('written-base')
   })
 })

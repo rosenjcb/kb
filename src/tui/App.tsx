@@ -84,6 +84,7 @@ export function App({ config, startupNotices = [] }: Props) {
   } | null>(null)
   const [chatInputHint, setChatInputHint] = useState('')
   const [slashContext, setSlashContext] = useState<SlashInputContext>('idle')
+  const [inlineSuggestions, setInlineSuggestions] = useState<string[]>([])
 
   const [progressLine, setProgressLine] = useState<string | null>(null)
 
@@ -208,12 +209,14 @@ export function App({ config, startupNotices = [] }: Props) {
           }
           chatReadKindRef.current = readKind
           setSlashContext(opts?.slashContext ?? 'idle')
+          setInlineSuggestions(opts?.suggestions ?? [])
           return new Promise<string | null>(resolve => {
             chatInputResolverRef.current = (value: string | null) => {
               chatInputResolverRef.current = null
               chatReadKindRef.current = 'chat'
               setChatInputHint('')
               setSlashContext('idle')
+              setInlineSuggestions([])
               resolve(value)
             }
           })
@@ -469,10 +472,12 @@ export function App({ config, startupNotices = [] }: Props) {
               askQuestion: async (question, opts) => {
                 setProgressLine(question.trimEnd())
                 setSlashContext(opts?.slashContext ?? 'idle')
+                setInlineSuggestions(opts?.suggestions ?? [])
                 return new Promise(resolve => {
                   chatInputResolverRef.current = value => {
                     chatInputResolverRef.current = null
                     setSlashContext('idle')
+                    setInlineSuggestions([])
                     resolve(value ?? '')
                   }
                 })
@@ -523,10 +528,15 @@ export function App({ config, startupNotices = [] }: Props) {
     ]
   )
 
-  const slashSuggestions = useMemo(
-    () => getSlashCommandSuggestions(inputValue, mode, slashContext),
-    [inputValue, slashContext]
-  )
+  const slashSuggestions = useMemo(() => {
+    if (inlineSuggestions.length > 0 && !inputValue.startsWith('/')) {
+      const lower = inputValue.toLowerCase()
+      return inlineSuggestions
+        .filter(s => s.toLowerCase().startsWith(lower))
+        .map(s => ({ command: s, description: 'KB base' }))
+    }
+    return getSlashCommandSuggestions(inputValue, mode, slashContext)
+  }, [inputValue, slashContext, inlineSuggestions])
 
   useEffect(() => {
     setSelectedSuggestionIndex(current => {

@@ -21,9 +21,11 @@ import { createPrinter } from '../ui/printer'
 import {
   deleteBase,
   ensureOperationalBaseDir,
+  findKbFile,
   formatDefaultCommandHelp,
   formatDeleteBaseResult,
   formatUseCommandHelp,
+  listAllBases,
   migrateLegacyKbSessionJson,
   printBaseDeleteHelp,
   readBaseConfig,
@@ -225,12 +227,16 @@ function printBaseHelp(mode: CmdMode = 'cli'): string {
     `${cmd('base', mode)} commands`,
     '',
     'Usage:',
-    `  ${cmd('base use <base>', mode)}`,
-    `  ${cmd('base use --default <base>', mode)}`,
-    `  ${cmd('base use --show', mode)}`,
-    `  ${cmd('base delete <base> [--force]', mode)}`,
+    `  ${cmd('base', mode)}                          Show status and list all bases`,
+    `  ${cmd('base list', mode)}                     List all initialized bases`,
+    `  ${cmd('base use <base>', mode)}               Switch the active base`,
+    `  ${cmd('base use --default <base>', mode)}     Set the persistent default base`,
+    `  ${cmd('base use --show', mode)}               Show current base configuration`,
+    `  ${cmd('base delete <base> [--force]', mode)}  Delete a base`,
     '',
     'Examples:',
+    `  ${cmd('base', mode)}`,
+    `  ${cmd('base list', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
     `  ${cmd('base use --default dogfood', mode)}`,
     `  ${cmd('base use --show', mode)}`,
@@ -285,8 +291,51 @@ export async function runMainWithOutput(
     const subArgs = firstArg === 'use' ? ['use', ...args.slice(1)] : args.slice(1)
     const subCmd = subArgs[0]
 
-    if (!subCmd || subCmd === '--help' || subCmd === '-h' || subCmd === 'help') {
+    if (subCmd === '--help' || subCmd === '-h' || subCmd === 'help') {
       out.log(printBaseHelp(mode))
+      return
+    }
+
+    if (!subCmd || subCmd === 'list') {
+      const configured = await readBaseConfig()
+      const kbFileBase = await findKbFile(process.cwd())
+      let effective: Awaited<ReturnType<typeof resolveEffectiveBaseDir>> | null = null
+      try {
+        effective = await resolveEffectiveBaseDir()
+      } catch {
+        // No base configured yet.
+      }
+
+      const lines: string[] = ['KB base status']
+      if (effective) {
+        lines.push(`  Active: ${effective.baseName}  (source: ${effective.source})`)
+      } else {
+        lines.push('  Active: none')
+      }
+      if (configured.defaultBase) {
+        lines.push(`  Default: ${configured.defaultBase}`)
+      }
+      if (kbFileBase) {
+        lines.push(`  .kb file: ${kbFileBase}  (found in current or ancestor directory)`)
+      }
+
+      const bases = await listAllBases()
+      lines.push('')
+      if (bases.length === 0) {
+        lines.push('No initialized bases found.')
+        lines.push(`  Run \`${cmd('init --base <name>', mode)}\` to create one.`)
+      } else {
+        lines.push('Bases:')
+        for (const b of bases) {
+          const tags: string[] = []
+          if (b.isActive) tags.push('active')
+          if (b.isDefault) tags.push('default')
+          const tagStr = tags.length ? `  [${tags.join(', ')}]` : ''
+          lines.push(`  ${b.name}${tagStr}`)
+          lines.push(`    ${b.path}`)
+        }
+      }
+      out.log(lines.join('\n'))
       return
     }
 
