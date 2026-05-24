@@ -301,6 +301,7 @@ export function printChatHelp(mode: CmdMode = 'cli'): string {
 
 const CHAT_SYSTEM_PROMPT = loadPrompt('chat-system.md')
 const CHAT_ROUTER_SYSTEM_PROMPT = loadPrompt('chat-router-system.md')
+const CHAT_DECOMPOSE_SYSTEM_PROMPT = loadPrompt('chat-decompose-system.md')
 
 const DOC_SESSION_TRANSCRIPT_MAX_CHARS = 12000
 
@@ -678,7 +679,74 @@ export async function runChatSession(
         let factsRetrieved = 0
         let lastIntentResult: IntentResult | undefined
 
-        const MAX_CHAT_TOOL_ROUNDS = 4
+        // Query decomposition pre-step: for synthesis/elaboration queries, retrieve from multiple
+        // angles before the LLM-driven tool loop so the model has grounded context upfront.
+        if (!input.startsWith('/') && SYNTHESIS_QUERY_RE.test(input)) {
+          const subQueries = await decomposeQueryForRetrieval(input, deps.llmProvider)
+          if (subQueries.length > 1) {
+            const preToolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> =
+              subQueries.map((q, i) => ({ id: `pre-${i}`, name: 'query_kb', input: { q } }))
+
+            for (const q of subQueries) printer.chatMeta('query', q)
+
+            // Run all sub-query retrievals in parallel (mirrors how Claude Code batches tool calls)
+            const preRetrievals = await Promise.all(
+              subQueries.map(async (q, i) => {
+                let expandedQuery = q
+                if (deps.kbStorageDir && !isAllFacts) {
+                  try {
+                    const db = new Database(kbIndexDbPath(deps.kbStorageDir), { readonly: true })
+                    try {
+                      expandedQuery = expandQueryWithGraph(q, db)
+                    } finally {
+                      db.close()
+                    }
+                  } catch {
+                    // graph expansion is best-effort
+                  }
+                }
+                const run = await withStageProgress(
+                  printer,
+                  'retrieval-pre',
+                  () =>
+                    executeChatQueryTruthRetrieval({
+                      toolExecutor: deps.toolExecutor,
+                      expandedQuery,
+                      retrievalLimit,
+                    }),
+                  { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
+                )
+                return { i, run }
+              })
+            )
+
+            const preToolResults: ToolResultBlock[] = preRetrievals.map(({ i, run }) => {
+              retrievalMs += run.durationMs
+              let toolResult = 'No facts found.'
+              if (isReadFactsResult(run.result)) {
+                lastIntentResult = run.result
+                const snapshot = normalizeReadResult(run.result.data)
+                factsRetrieved += snapshot.results?.length ?? 0
+                toolResult = buildToolQueryResult(snapshot) || 'No facts found.'
+              }
+              return {
+                type: 'tool_result' as const,
+                toolUseId: `pre-${i}`,
+                toolName: 'query_kb',
+                result: toolResult,
+              }
+            })
+
+            // Inject as synthetic assistant (tool calls) + user (tool results) pair
+            turnMessages = [
+              ...turnMessages,
+              { role: 'assistant' as const, content: '', toolUses: preToolUses },
+              { role: 'user' as const, content: preToolResults },
+            ]
+          }
+        }
+
+        const MAX_CHAT_TOOL_ROUNDS = 8
 
         for (let round = 0; round < MAX_CHAT_TOOL_ROUNDS; round++) {
           const stageName = round === 0 ? 'answer' : `answer-r${round + 1}`
@@ -940,6 +1008,33 @@ function splitShellArgs(input: string): string[] {
   }
   if (current) args.push(current)
   return args
+}
+
+const SYNTHESIS_QUERY_RE =
+  /\b(elaborate|build on|expand on|tell me more|summarize|give me an overview|overview of|dive into|go deeper|how does .+ relate|walk me through)\b/i
+
+async function decomposeQueryForRetrieval(
+  input: string,
+  llmProvider: LLMProvider
+): Promise<string[]> {
+  if (input.length < 40 || !SYNTHESIS_QUERY_RE.test(input)) return [input]
+  try {
+    const response = await llmProvider.call({
+      messages: [{ role: 'user', content: input }],
+      systemPrompt: CHAT_DECOMPOSE_SYSTEM_PROMPT,
+      temperature: 0,
+      maxTokens: 150,
+      thinkingBudget: 0,
+    })
+    const lines = response.text
+      .trim()
+      .split('\n')
+      .map(l => l.replace(/^[-•*\d.)\s]+/, '').trim())
+      .filter(l => l.length > 0)
+    return lines.length > 0 ? lines.slice(0, 4) : [input]
+  } catch {
+    return [input]
+  }
 }
 
 export function normalizeReadResult(value: unknown): ReadDocumentsResult {
