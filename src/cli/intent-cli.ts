@@ -37,7 +37,7 @@ export interface ReadDocumentsHumanOutputOptions {
   debug?: boolean
 }
 
-const INTENT_COMMANDS = new Set(['submit', 'query', 'invalidate'])
+const INTENT_COMMANDS = new Set(['query'])
 const INTENT_LLM_MAX_OUTPUT_TOKENS = 4096
 
 export function isIntentCommand(command: string): boolean {
@@ -65,19 +65,6 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
   let envelope: ConsumerIntentEnvelope
 
   switch (command) {
-    case 'submit':
-      envelope = {
-        intent: 'submit_fact',
-        requestId: `req-${dayjs().valueOf()}`,
-        payload: {
-          fact: readPositional(rest, 0, 'submit requires a fact string'),
-          domain: readOption(rest, '--domain'),
-          source: readOption(rest, '--source'),
-          includeSessionLogs: readFlag(rest, '--include-session-logs'),
-        },
-      }
-      break
-
     case 'query':
       envelope = {
         intent: 'query_truth',
@@ -90,21 +77,6 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
         },
       }
       break
-
-    case 'invalidate': {
-      const invalidateApply = readFlag(rest, '--apply')
-      envelope = {
-        intent: 'invalidate_fact',
-        requestId: `req-${dayjs().valueOf()}`,
-        payload: {
-          oldFact: readPositional(rest, 0, 'invalidate requires an old fact string'),
-          replacementFact: readOptionalPositional(rest, 1),
-          preview: !invalidateApply,
-          includeSessionLogs: true,
-        },
-      }
-      break
-    }
 
     default:
       throw new Error(`Unsupported intent command: ${command}`)
@@ -663,7 +635,7 @@ function formatReconciliationReviewHumanResult(result: IntentResult): string {
     `Reconciliation Preview: ${preview?.changedDocs ?? 0} docs, ${preview?.totalReplacements ?? 0} replacements`
   )
   lines.push(
-    `Decision: re-run submit with ${acceptFlag} to apply changes, or ${passFlag} to skip propagation.`
+    `Decision: re-run with ${acceptFlag} to apply changes, or ${passFlag} to skip propagation.`
   )
 
   if (diffs.length === 0) {
@@ -895,7 +867,7 @@ function scoreEvidenceLine(line: string, queryTokens: string[]): number {
     }
   }
 
-  if (/(kb|cli|command|query|submit|invalidate|chat|help)/i.test(line)) {
+  if (/(kb|cli|command|query|chat|help)/i.test(line)) {
     score += 3
   }
 
@@ -1014,9 +986,7 @@ function extractHighlights(content: string | undefined): HighlightRef[] {
 export function printIntentHelp(mode: CmdMode = 'cli'): string {
   return [
     'Intent commands:',
-    `  ${cmd('submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--include-session-logs] [--output human|json]', mode)}`,
     `  ${cmd('query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]', mode)}`,
-    `  ${cmd('invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--apply] [--output human|json]', mode)}`,
   ].join('\n')
 }
 
@@ -1051,12 +1021,6 @@ function readPositional(args: string[], index: number, errorMessage: string): st
   return value
 }
 
-function readOptionalPositional(args: string[], index: number): string | undefined {
-  const positional = args.filter(arg => !arg.startsWith('--'))
-  const value = positional[index]
-  return value || undefined
-}
-
 function readOption(args: string[], option: string): string | undefined {
   const index = args.indexOf(option)
   if (index < 0) return undefined
@@ -1073,12 +1037,8 @@ function readFlag(args: string[], option: string): boolean {
 
 export function toIntentName(command: string): ConsumerIntent {
   switch (command) {
-    case 'submit':
-      return 'submit_fact'
     case 'query':
       return 'query_truth'
-    case 'invalidate':
-      return 'invalidate_fact'
     default:
       throw new Error(`Unsupported command: ${command}`)
   }

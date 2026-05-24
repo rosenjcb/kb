@@ -1,8 +1,6 @@
 import dayjs from 'dayjs'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, ToolUseRequest } from '../core/types'
-import { InvalidateOrchestrator } from '../tools/invalidate-orchestrator'
-import { SubmitOrchestrator } from '../tools/submit-orchestrator'
 import type { ConsumerIntentEnvelope, IntentResult, RouteDecision } from './types'
 
 export interface IntentRouter {
@@ -21,41 +19,14 @@ function createToolUse(name: string, input: Record<string, unknown>): ToolUseReq
 export class DefaultIntentRouter implements IntentRouter {
   constructor(
     private readonly toolExecutor: ToolExecutor,
-    private readonly intentLlm?: LLMProvider,
-    private readonly kbStorageDir?: string
+    _intentLlm?: LLMProvider,
+    _kbStorageDir?: string
   ) {}
 
   async route(intentEnvelope: ConsumerIntentEnvelope): Promise<RouteDecision> {
     const payload = intentEnvelope.payload
 
     switch (intentEnvelope.intent) {
-      case 'submit_fact': {
-        const fact = String(payload.fact ?? '').trim()
-        const source = String(payload.source ?? 'consumer')
-
-        if (!fact) {
-          return {
-            selectedOperation: 'validation_error',
-            operationInput: payload,
-            policyReason: 'fact is required',
-          }
-        }
-
-        return {
-          selectedOperation: 'submit_orchestrator',
-          operationInput: { fact, source },
-          policyReason: 'submit intent; discover best KB target via submit orchestrator',
-        }
-      }
-
-      case 'invalidate_fact':
-        return {
-          selectedOperation: 'invalidate_orchestrator',
-          operationInput: payload,
-          policyReason:
-            'invalidate intent; KB mutation via invalidate orchestrator (preview opt-in)',
-        }
-
       case 'query_truth': {
         const queryText = String(payload.topic ?? payload.query ?? '')
         const allFacts = payload.allFacts === true
@@ -96,7 +67,6 @@ export class DefaultIntentRouter implements IntentRouter {
 
   async execute(intentEnvelope: ConsumerIntentEnvelope): Promise<IntentResult> {
     const decision = await this.route(intentEnvelope)
-    const payload = intentEnvelope.payload
 
     if (decision.selectedOperation === 'validation_error') {
       return {
@@ -104,45 +74,6 @@ export class DefaultIntentRouter implements IntentRouter {
         errorCode: 'INVALID_PAYLOAD_OR_INTENT',
         explanation: decision.policyReason,
       }
-    }
-
-    if (decision.selectedOperation === 'submit_orchestrator') {
-      const fact = String(payload.fact ?? '').trim()
-      const source = String(payload.source ?? 'consumer')
-      const orchestrator = new SubmitOrchestrator(this.toolExecutor, this.intentLlm)
-      const orchestratorResult = await orchestrator.run({ fact, source })
-
-      return {
-        status: 'accepted',
-        explanation: `${decision.policyReason}; routed to ${orchestratorResult.targetDocId} (discovered=${orchestratorResult.discoveredTarget})`,
-        recommendedAction: orchestratorResult.operation,
-        data: orchestratorResult.result,
-        provenance: extractProvenance(orchestratorResult.result),
-        confidence: 0.8,
-      }
-    }
-
-    if (decision.selectedOperation === 'invalidate_orchestrator') {
-      const oldFact = String(payload.oldFact ?? payload.fact ?? '').trim()
-      if (!oldFact) {
-        return {
-          status: 'error',
-          errorCode: 'INVALID_PAYLOAD',
-          explanation: 'invalidate_fact requires payload.oldFact or payload.fact',
-        }
-      }
-
-      const orchestrator = new InvalidateOrchestrator(
-        this.toolExecutor,
-        this.intentLlm,
-        this.kbStorageDir
-      )
-      return orchestrator.run({
-        oldFact,
-        replacementFact: asOptionalString(payload.replacementFact),
-        preview: payload.preview === true,
-        includeSessionLogs: payload.includeSessionLogs !== false,
-      })
     }
 
     const toolResult = await this.toolExecutor.execute(
@@ -158,12 +89,6 @@ export class DefaultIntentRouter implements IntentRouter {
       confidence: deriveToolResultConfidence(toolResult),
     }
   }
-}
-
-function asOptionalString(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined
-  const trimmed = value.trim()
-  return trimmed ? trimmed : undefined
 }
 
 function requiresHighRecallQuery(query: string): boolean {

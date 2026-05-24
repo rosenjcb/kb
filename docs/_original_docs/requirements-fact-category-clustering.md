@@ -1,7 +1,7 @@
 ---
 layout: default
 title: requirements/fact-category-clustering.txt
-date: '2026-05-22'
+date: '2026-05-24'
 kb_id: requirements-fact-category-clustering-txt
 tags:
   - original-source

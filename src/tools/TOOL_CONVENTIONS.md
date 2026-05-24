@@ -164,7 +164,7 @@ export const mergeDocumentsTool = buildTool({
 
 ## KB Cleanup Boundary
 
-For KB maintenance tools that mutate stored knowledge (for example `invalidate_fact` / `kb invalidate`):
+For KB maintenance tools that mutate stored knowledge:
 
 - Scope must be limited to the active KB store, not arbitrary repo files.
 - SQLite-backed KB actions should read and write through the KB storage layer (`documents`, `chunks`, and related index updates), not filesystem globs.

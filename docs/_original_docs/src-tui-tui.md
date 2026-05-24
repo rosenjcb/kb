@@ -1,3 +1,16 @@
+---
+layout: default
+title: src/tui/TUI.md
+date: '2026-05-24'
+kb_id: src-tui-tui-md
+tags:
+  - original-source
+  - src-tui-tui-md
+  - kb
+categories:
+  - reference
+---
+
 # TUI Implementation (Ink)
 
 React/Ink chat shell launched when the user runs bare `kb` in a TTY. Product-wide output tiers and slash-command contract: [`../core/TUI.md`](../core/TUI.md).

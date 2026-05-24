@@ -1,3 +1,16 @@
+---
+layout: default
+title: src/skills/SKILLS.md
+date: '2026-05-24'
+kb_id: src-skills-skills-md
+tags:
+  - original-source
+  - src-skills-skills-md
+  - kb
+categories:
+  - reference
+---
+
 # Bundled Agent Skills
 
 KB ships first-party **Agent Skills** (Cursor/Claude/Codex format) for dogfooding and `kb skills install`. Source of truth: repo `skills/<name>/SKILL.md`; runtime loading via `loader.ts`.

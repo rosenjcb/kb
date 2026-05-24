@@ -1,7 +1,7 @@
 ---
 layout: default
 title: README.md
-date: '2026-05-22'
+date: '2026-05-24'
 kb_id: readme-md
 tags:
   - original-source
@@ -35,23 +35,17 @@ categories:
 
 **KB** is a local-first knowledge layer for development workflows.
 
-It gives you a CLI and runtime that capture what your project learns over time — so decisions, fixes, and context don't disappear into chat history or PR threads.
+It reads your code and documentation, extracts structured facts, and gives you a fast, queryable knowledge base — so decisions, architecture details, and project context are always at your fingertips.
 
-Instead of re-deriving the same answers, KB lets you:
-
-* 📝 **Record** decisions and facts as you work
-* 🔍 **Query** past context before making changes
-* 🗑️ **Invalidate** stale facts before they mislead future work
-
-Scan and index code and documents once, and you get a queryable and lightweight knowledge base.
+No manual fact entry. KB reads from the source.
 
 ## 🧠 What it actually does
 
-KB turns day-to-day development into a feedback loop:
+KB turns your codebase and docs into a searchable knowledge base:
 
-* 📥 **Capture** — Save facts, decisions, and discoveries as you go
-* 🔁 **Recall** — Query relevant context when you need it
-* 🔧 **Repair** — Replace or remove stale knowledge before it drifts
+* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically
+* 🔍 **Query** — Ask questions in natural language; get grounded, source-linked answers
+* 🔁 **Refresh** — Re-scan after changes to keep the knowledge base current
 
 ## ⚡ Quick Start
 
@@ -166,15 +160,14 @@ kb && /scan
 
 During `kb init` (interactive mode), after facts are extracted you will be prompted to define **fact categories** — named buckets like "TUI", "Agent loop", "Facts" — each with an optional description. Facts are then assigned to those categories via TF-IDF similarity so `kb facts list` can show which bucket each fact belongs to. Category setup is a one-time step; `kb scan` preserves your categories without re-prompting.
 
-### 4) Start using KB intents
+### 4) Query your knowledge base
 
 ```bash
-kb submit "Document writer now supports sqlite index sync"
 kb query "sqlite index sync behavior" --limit 5
-kb invalidate "kb use should persist across sessions" "kb base use is session-scoped; use kb base use --default to write a persistent default"
+kb query "how does AST indexing work"
 ```
 
-## � Troubleshooting
+## 🔧 Troubleshooting
 
 ### Native module bindings error on global pnpm install
 
@@ -192,21 +185,12 @@ kb sync
 
 This happens because KB's current runtime still depends on native SQLite bindings. Reinstalling through the bootstrap installer is the most reliable path because it ensures the expected Node runtime is present first and refreshes the managed install under `~/.kb`.
 
-## �📖 CLI Reference
+## 📖 CLI Reference
 
-### 🎯 KB intents
-
-One read intent:
+### 🎯 KB query
 
 ```
 kb query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]
-```
-
-Two mutation intents:
-
-```
-kb submit "<fact>" [--base <name>] [--domain ops] [--source runbook] [--include-session-logs] [--output human|json]
-kb invalidate "<old-fact>" ["<replacement-fact>"] [--base <name>] [--apply] [--output human|json]
 ```
 
 ### 📂 Documents
@@ -244,7 +228,7 @@ kb publish <notion|jekyll> [options]
 
 | Command | Effect |
 |---------|--------|
-| `/query`, `/submit`, `/invalidate` | Run the core KB intents inline |
+| `/query` | Run a KB query inline |
 | `/base`, `/docs`, `/facts`, `/graph`, `/publish`, `/sync`, `/config`, `/logs`, `/skill` | Use the same command families you get in the CLI |
 | `/clear` | Wipe screen, reset fact pool and full conversation history — start fresh |
 | `/exit` | Leave the session |
@@ -275,7 +259,6 @@ curl -fsSL https://github.com/rosenjcb/kb/releases/latest/download/install-kb.sh
 ### Verify
 
 ```bash
-kb submit "SQLite hybrid search enabled for this workspace"
 kb query "hybrid sqlite retrieval" --limit 5
 ```
 
@@ -285,8 +268,7 @@ kb query "hybrid sqlite retrieval" --limit 5
 
 ```bash
 kb query "topic"
-kb submit "new fact"
-kb invalidate "old fact" "replacement fact"
+kb scan   # refresh after code/doc changes
 ```
 
 ## 🤖 Agent skill: use KB while you develop
@@ -323,12 +305,4 @@ pnpm run test
 pnpm run type-check
 pnpm run lint
 pnpm run build
-```
-
-## 🗺️ Project Map
-
-```text
-src/core   — provider abstraction, intent loop, agent loop, runtime types
-src/cli    — CLI entrypoint, KB intent parsing, base selection, kb init
-src/tools  — write/query tools, markdown + sqlite index integration
 ```

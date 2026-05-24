@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/TUI.md
-date: '2026-05-22'
+date: '2026-05-24'
 kb_id: src-core-tui-md
 tags:
   - original-source
@@ -13,7 +13,7 @@ categories:
 
 # TUI and Non-Interactive Standards
 
-Use this note when designing or reviewing any user-facing `kb` feature.
+Ink implementation details: [`../tui/TUI.md`](../tui/TUI.md). Use this note when designing or reviewing any user-facing `kb` feature.
 
 ## Core Rule
 
@@ -32,7 +32,7 @@ Do not treat the TUI path as extra polish. It is part of the product surface.
 - `kb --help` should print top-level help and exit.
 - `kb <command> ...` should be non-interactive by default unless that command intentionally runs a session flow.
 - `kb <command> --help` should print help and exit without starting real work.
-- All commands are available as slash commands inside the chat interface. Slash commands that are output-only (query, submit, facts, graph, docs list/view, base, config, etc.) are intercepted at the TUI layer and display inline without involving the LLM loop. Interactive slash commands (`/init`, `/scan`, `/docs generate`) still use the chat session input surface, but init/scan progress should render in a dedicated live status row rather than being appended to transcript history. If no chat read is active, the TUI may run `/init` or `/scan` directly and preserve the same dedicated progress-line behavior.
+- All commands are available as slash commands inside the chat interface. Slash commands that are output-only (query, facts, graph, docs list/view, base, config, etc.) are intercepted at the TUI layer and display inline without involving the LLM loop. Interactive slash commands (`/init`, `/scan`, `/docs generate`) still use the chat session input surface, but init/scan progress should render in a dedicated live status row rather than being appended to transcript history. If no chat read is active, the TUI may run `/init` or `/scan` directly and preserve the same dedicated progress-line behavior.
 - Success or follow-up copy in the TUI transcript should use **slash form** (`/base use …`), not `kb …`, so users are not told to leave the chat interface. Shared formatters take `CmdMode` and build hints via `cmd()` in `src/cli/cmd-ref.ts`.
 - `/docs generate` review uses slash commands only: `/accept`, `/reject <feedback>`, `/cancel`.
 - `/init` and `/scan` question answering uses `/skip` and `/cancel` as slash commands.
@@ -100,7 +100,7 @@ Examples:
 - `kb sync` must work as both `kb sync` (CLI) and `/sync` (TUI).
 - A help flag should work from both `kb --help` and `kb init --help`.
 - A normal intent command like `kb query “topic”` is already non-interactive by shape and should not need an extra mode flag.
-- The public intent surface is exactly `kb query`, `kb submit`, and `kb invalidate`, mirrored by `/query`, `/submit`, and `/invalidate` in chat.
+- The public intent surface is `kb query`, mirrored by `/query` in chat.
 - **`kb query` vs chat are intentionally different retrieval paths.** `kb query` is the agent-facing, one-shot command: it runs the full intent-rewrite pipeline → `runQueryTruthRetrieval` → `enrichReadDocumentsAnswerWithLLM` in a single pass, designed for programmatic callers (Claude Code, Cursor, Codex) that need a complete answer in one shot. Chat mode is the human-facing iterative path: `executeChatQueryTruthRetrieval` with auto-deepening, live in-memory message history, and conversational turn resolution. Do not collapse these two paths — they serve different audiences with different needs.
 - **`kb facts`** (list / search / show) must work as **`/facts …`** in chat, mirroring the same flags as the CLI.
 
@@ -125,14 +125,12 @@ For commands that can mutate durable KB state or external systems, prefer a cons
 - Default to a non-mutating mode unless the user explicitly opts into writes.
 - Use `--apply` as the shared opt-in flag for real writes.
 - Do not expose a "preview mode" flag — default (no flag) is already preview/no-op.
-- Use `--preview` only for `kb invalidate`, where the default is to apply (reversed semantics).
 - Help text and success output should make the default clear so users are not surprised when a command previews instead of writing.
 
 Current repo direction:
 
 - `kb publish ...` previews by default and only writes on `--apply`.
 - `kb scan` applies its refresh plan immediately; it should not stop for a separate proceed/apply ceremony.
-- `kb invalidate` previews by default and only writes on `--apply`.
 - Any preview-by-default command should, in interactive mode, show the plan then ask "Apply? [y/N]" rather than requiring the user to re-run with `--apply` manually.
 - Avoid inventing command-specific synonyms for "really do it" when `--apply` already fits.
 

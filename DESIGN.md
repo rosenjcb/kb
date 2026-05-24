@@ -44,7 +44,6 @@ In chat mode the InputBar border turns orange and the prompt becomes `you>`.
 | Shell input | Behaviour |
 |---|---|
 | `query "…"` | Runs intent, shows result inline with spinner |
-| `submit "…"` | Submits fact, shows confirmation |
 | `chat` | Switches to chat mode |
 | `use <base>` | Switches base, StatusBar updates |
 | `docs list` | Lists documents |

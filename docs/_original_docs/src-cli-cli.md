@@ -1,3 +1,16 @@
+---
+layout: default
+title: src/cli/CLI.md
+date: '2026-05-24'
+kb_id: src-cli-cli-md
+tags:
+  - original-source
+  - src-cli-cli-md
+  - kb
+categories:
+  - reference
+---
+
 # CLI Layer
 
 Command-line entry, argument parsing, and orchestration wiring for `kb`. Implementation files live in this directory; behavioral standards for TUI vs non-interactive output are in [`../core/TUI.md`](../core/TUI.md).

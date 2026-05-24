@@ -1,7 +1,7 @@
 ---
 layout: default
 title: skills/agent-compare-eval/SKILL.md
-date: '2026-05-22'
+date: '2026-05-24'
 kb_id: skills-agent-compare-eval-skill-md
 tags:
   - original-source
@@ -13,7 +13,7 @@ categories:
 
 ---
 name: agent-compare-eval
-description: "Use when: running the Agent A vs Agent B token efficiency comparison on ~/raylib/; measuring per-task token cost with/without KB; implementing canonical raylib tasks; capturing codeburn artifacts under evaluation/runs/agent-compare/."
+description: "Is the user asking me to run an agent token efficiency comparison — measuring whether a KB-backed agent uses fewer tokens than a raw agent across the canonical raylib task sequence?"
 ---
 
 # Agent Token Efficiency Comparison Eval
@@ -29,7 +29,7 @@ Measure whether a KB-backed agent uses fewer tokens per task than a raw agent, a
 At the start of a new chat the user will specify:
 
 - `--agent raw` → **Agent A**: no `kb` access, discover everything by reading `~/raylib/` source directly
-- `--agent kb-backed` → **Agent B**: use `kb query --base raylib` before writing code, `kb submit --base raylib` after each task
+- `--agent kb-backed` → **Agent B**: use `kb query --base raylib` before writing code
 
 If not specified, ask: **"Am I running as Agent A (raw) or Agent B (KB-backed)?"**
 
@@ -66,7 +66,6 @@ npx tsx scripts/eval-task-artifact.ts \
   --run     ${RUN}                         \
   --base    raylib                         \
   --queries-made      ${N_QUERIES}         \
-  --submissions-made  ${N_SUBMISSIONS}     \
   --notes   "what you did, what you read, what the KB did or didn't have"
 ```
 
@@ -74,14 +73,13 @@ npx tsx scripts/eval-task-artifact.ts \
 
 ## Agent A (raw) protocol
 
-- No `kb` access at all — do not run `kb query` or `kb submit`
+- No `kb` access at all — do not run `kb query`
 - Discover context by reading `~/raylib/src/`, headers, and examples directly
 - Pass `--base null` (the flag accepts the string `"null"`)
 
 ## Agent B (KB-backed) protocol
 
 - Run at least one `kb query --base raylib` before writing any code for the task
-- Run at least one `kb submit --base raylib` after completing the task
 - May also read source files, but prefer KB for facts already there
 
 ## KB base
@@ -102,7 +100,7 @@ Never use `ci-*` names for the agent-compare base.
 
 ## Artifact schema
 
-That script builds this from the two snapshots; the operator (or LLM) supplies `--notes`, `--queries-made`, and `--submissions-made`.
+That script builds this from the two snapshots; the operator (or LLM) supplies `--notes` and `--queries-made`.
 
 ```json
 {
@@ -111,7 +109,6 @@ That script builds this from the two snapshots; the operator (or LLM) supplies `
   "agent": "kb-backed",
   "base": "raylib",
   "kb_queries_made": 2,
-  "kb_submissions_made": 1,
   "codeburn_cost_usd_delta": 0.12,
   "codeburn_calls_delta": 8,
   "codeburn_snapshot_before": { "ts": "...", "today_cost": 10.0, "today_calls": 100, "month_cost": 50.0, "month_calls": 500 },

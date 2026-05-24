@@ -1,3 +1,16 @@
+---
+layout: default
+title: src/intents/INTENTS.md
+date: '2026-05-24'
+kb_id: src-intents-intents-md
+tags:
+  - original-source
+  - src-intents-intents-md
+  - kb
+categories:
+  - reference
+---
+
 # Intent Routing
 
 Maps **consumer intent envelopes** (`query_truth`) to **tool operations** executed by the agent loop. CLI and chat both build envelopes; routing stays in this package so policy does not scatter across commands.

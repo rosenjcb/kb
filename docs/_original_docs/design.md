@@ -1,7 +1,7 @@
 ---
 layout: default
 title: DESIGN.md
-date: '2026-05-22'
+date: '2026-05-24'
 kb_id: design-md
 tags:
   - original-source
@@ -57,7 +57,6 @@ In chat mode the InputBar border turns orange and the prompt becomes `you>`.
 | Shell input | Behaviour |
 |---|---|
 | `query "…"` | Runs intent, shows result inline with spinner |
-| `submit "…"` | Submits fact, shows confirmation |
 | `chat` | Switches to chat mode |
 | `use <base>` | Switches base, StatusBar updates |
 | `docs list` | Lists documents |

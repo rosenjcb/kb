@@ -31,21 +31,6 @@ afterEach(async () => {
 })
 
 describe('intent-cli parsing', () => {
-  it('parses submit with supported payload fields only', () => {
-    const parsed = parseIntentCommand([
-      'submit',
-      'Deployments need flag X',
-      '--domain',
-      'ops',
-      '--include-session-logs',
-    ])
-    expect(parsed.envelope.intent).toBe('submit_fact')
-    expect(parsed.envelope.payload.fact).toBe('Deployments need flag X')
-    expect(parsed.envelope.payload.domain).toBe('ops')
-    expect(parsed.envelope.payload.includeSessionLogs).toBe(true)
-    expect(Object.keys(parsed.envelope.payload)).not.toContain('targetDocumentId')
-  })
-
   it('parses query flags and query session support', () => {
     const parsed = parseIntentCommand([
       'query',
@@ -71,44 +56,16 @@ describe('intent-cli parsing', () => {
     expect(parsed.debug).toBe(true)
   })
 
-  it('parses invalidate with --apply (writes)', () => {
-    const parsed = parseIntentCommand([
-      'invalidate',
-      'old fact',
-      'new fact',
-      '--base',
-      'dogfood',
-      '--apply',
-    ])
-
-    expect(parsed.base).toBe('dogfood')
-    expect(parsed.envelope.intent).toBe('invalidate_fact')
-    expect(parsed.envelope.payload.oldFact).toBe('old fact')
-    expect(parsed.envelope.payload.replacementFact).toBe('new fact')
-    expect(parsed.envelope.payload.preview).toBe(false)
-  })
-
-  it('defaults invalidate to preview (no --apply flag)', () => {
-    const parsed = parseIntentCommand(['invalidate', 'old fact', 'new fact'])
-
-    expect(parsed.envelope.payload.preview).toBe(true)
-  })
-
-  it('accepts invalidate --apply', () => {
-    const parsed = parseIntentCommand(['invalidate', 'old fact', '--apply'])
-    expect(parsed.envelope.payload.preview).toBe(false)
-  })
-
   it('rejects unknown public commands', () => {
     expect(() => parseIntentCommand(['review', 'claim'])).toThrow(
       'Unsupported intent command: review'
     )
   })
 
-  it('only treats query submit and invalidate as intent commands', () => {
+  it('only treats query as an intent command', () => {
     expect(isIntentCommand('query')).toBe(true)
-    expect(isIntentCommand('submit')).toBe(true)
-    expect(isIntentCommand('invalidate')).toBe(true)
+    expect(isIntentCommand('submit')).toBe(false)
+    expect(isIntentCommand('invalidate')).toBe(false)
     expect(isIntentCommand('write_document')).toBe(false)
     expect(isIntentCommand('review')).toBe(false)
   })
@@ -151,9 +108,9 @@ describe('intent-cli formatting', () => {
 
   it('prints minimal intent help with only the supported commands', () => {
     const help = printIntentHelp()
-    expect(help).toContain('submit "<fact>"')
     expect(help).toContain('query "<topic>"')
-    expect(help).toContain('invalidate "<old-fact>"')
+    expect(help).not.toContain('submit')
+    expect(help).not.toContain('invalidate')
   })
 
   it('renders orchestration footer through printer helpers', () => {
@@ -184,7 +141,7 @@ describe('intent-cli formatting', () => {
     expect(lines.some(line => isOrchestrationMetaLine(line))).toBe(true)
   })
 
-  it('prints invalidate results without pretending they are read_facts', () => {
+  it('prints non-read_facts results without treating them as query results', () => {
     const lines: string[] = []
     const printer = createPrinter(
       {
@@ -199,7 +156,7 @@ describe('intent-cli formatting', () => {
       {
         status: 'accepted',
         explanation: 'Scanned 3 KB documents. 1 replacements in 1 documents.',
-        recommendedAction: 'invalidate_fact',
+        recommendedAction: 'upsert_fact',
         confidence: 0.8,
       },
       'human',
@@ -207,7 +164,7 @@ describe('intent-cli formatting', () => {
     )
 
     expect(lines.join('\n')).toContain('status> accepted')
-    expect(lines.join('\n')).toContain('invalidate_fact')
+    expect(lines.join('\n')).toContain('upsert_fact')
   })
 })
 
@@ -236,33 +193,6 @@ describe('intent-cli execution and enrichment', () => {
     )
 
     expect(result.confidence).toBe(0.34)
-  })
-
-  it('executes invalidate through the router', async () => {
-    const toolExecutor: ToolExecutor = {
-      register: vi.fn(),
-      getTools: vi.fn(() => []),
-      execute: vi.fn(async toolUse => {
-        if (toolUse.name === 'invalidate_fact') {
-          return {
-            changes: [
-              { factId: 'ops-facts', title: 'Ops Facts', replaced: 1, diff: '- old\n+ new' },
-            ],
-            summary: 'Scanned 3 KB documents. 1 replacements in 1 documents.',
-          }
-        }
-        if (toolUse.name === 'invalidate_graph_for_fact') {
-          return { enabled: true, invalidatedRelationships: 1, documentIds: ['ops-facts'] }
-        }
-        return { ok: true }
-      }),
-    }
-
-    const parsed = parseIntentCommand(['invalidate', 'old fact'])
-    const result = await executeIntentCommand(parsed, toolExecutor)
-
-    expect(result.status).toBe('accepted')
-    expect(result.provenance).toContain('ops-facts')
   })
 
   it('keeps query rewrite/session fallback scoped to query only', async () => {
@@ -296,7 +226,7 @@ describe('intent-cli execution and enrichment', () => {
     expect(rewritten.envelope.payload.query).toBe('How does kb base selection work?')
   })
 
-  it('enriches query answers with the LLM but does not disturb non-read results', async () => {
+  it('enriches query answers with the LLM', async () => {
     const llm: LLMProvider = {
       name: 'test',
       model: 'stub',
@@ -325,14 +255,6 @@ describe('intent-cli execution and enrichment', () => {
       llm
     )
     expect((enriched.data as { answer?: string }).answer).toContain('session base first')
-
-    const invalidateParsed = parseIntentCommand(['invalidate', 'old fact'])
-    const untouched = await enrichReadDocumentsAnswerWithLLM(
-      invalidateParsed,
-      { status: 'accepted', recommendedAction: 'invalidate_fact', data: { ok: true } },
-      llm
-    )
-    expect((untouched.data as { ok?: boolean }).ok).toBe(true)
   })
 
   it('replaces insufficient LLM answer with deterministic fallback from documents', async () => {

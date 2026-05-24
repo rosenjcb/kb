@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/AST_SOURCE_TEXT.md
-date: '2026-05-22'
+date: '2026-05-24'
 kb_id: src-core-ast-source-text-md
 tags:
   - original-source
@@ -127,7 +127,6 @@ const content = includeContent
 | `import_code`  | yes                   | code snippet                 |
 | `import_code`  | no (legacy / old db)  | `"X is a Y exported from Z"` |
 | `import_doc`   | —                     | `fact_text`                  |
-| `submit`       | —                     | `fact_text`                  |
 
 ---
 

@@ -114,7 +114,6 @@ const content = includeContent
 | `import_code`  | yes                   | code snippet                 |
 | `import_code`  | no (legacy / old db)  | `"X is a Y exported from Z"` |
 | `import_doc`   | —                     | `fact_text`                  |
-| `submit`       | —                     | `fact_text`                  |
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Howto setup a knowledge base in a fresh repo
-date: '2026-05-22'
+date: '2026-05-24'
 kb_id: howto-setup-a-knowledge-base-in-a-fresh-repo
 tags:
   - docs-generate

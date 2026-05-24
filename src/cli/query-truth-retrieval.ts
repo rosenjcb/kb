@@ -10,7 +10,7 @@ export interface RunQueryTruthRetrievalInput {
   parsed: ParsedIntentCommand
   toolExecutor: ToolExecutor
   llmProvider?: LLMProvider
-  /** Active KB base dir — passed to intent router for submit triplet extract + invalidate NL locate. */
+  /** Active KB base dir — passed to intent router. */
   kbStorageDir?: string
   collector?: RunCollector
 }

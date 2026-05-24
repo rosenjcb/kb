@@ -1,7 +1,7 @@
 ---
 layout: default
 title: EVALUATION.md
-date: '2026-05-22'
+date: '2026-05-24'
 kb_id: evaluation-md
 tags:
   - original-source
@@ -507,7 +507,6 @@ Each task is self-contained enough to run independently (agent starts fresh each
 **Agent B (KB-backed)**:
 - Has `kb query` available, base `raylib`
 - Required to run at least one `kb query` before writing code
-- Required to `kb submit` at least one fact discovered during the task before finishing
 - May read source files too, but should prefer KB for known facts
 
 ### Measurement

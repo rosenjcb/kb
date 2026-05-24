@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  assertSingleSentenceForSubmit,
+  assertSingleSentenceFact,
   segmentMarkdownForFacts,
 } from '../../src/core/sentence-split'
 
@@ -27,26 +27,26 @@ describe('segmentMarkdownForFacts', () => {
   })
 })
 
-describe('assertSingleSentenceForSubmit', () => {
+describe('assertSingleSentenceFact', () => {
   it('returns trimmed single sentence', () => {
-    expect(assertSingleSentenceForSubmit('  One clear sentence.  ')).toBe('One clear sentence.')
+    expect(assertSingleSentenceFact('  One clear sentence.  ')).toBe('One clear sentence.')
   })
 
   it('throws when multiple sentences detected', () => {
-    expect(() => assertSingleSentenceForSubmit('First sentence. Second sentence.')).toThrow(
+    expect(() => assertSingleSentenceFact('First sentence. Second sentence.')).toThrow(
       /exactly one sentence/
     )
   })
 
   it('throws on empty', () => {
-    expect(() => assertSingleSentenceForSubmit('   ')).toThrow(/empty/)
+    expect(() => assertSingleSentenceFact('   ')).toThrow(/empty/)
   })
 
   it('when no segment passes length filter but text is long enough, returns full trimmed text', () => {
-    expect(assertSingleSentenceForSubmit('abcdefgh')).toBe('abcdefgh')
+    expect(assertSingleSentenceFact('abcdefgh')).toBe('abcdefgh')
   })
 
   it('throws when text too short for fallback path', () => {
-    expect(() => assertSingleSentenceForSubmit('short')).toThrow(/too short/)
+    expect(() => assertSingleSentenceFact('short')).toThrow(/too short/)
   })
 })

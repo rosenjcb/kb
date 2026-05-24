@@ -1,11 +1,9 @@
 /**
- * Intent Loop — generic multi-iteration harness for KB intent commands.
+ * Intent Loop — multi-iteration harness for KB query commands.
  *
  * Wraps DefaultIntentRouter.execute() with:
  *   - Discovery escalation for query (shallow → deep on weak retrieval)
  *   - Carryover of confidence, provenance, and retrieval depth across iterations
- *
- * submit_fact and invalidate_fact are single-pass — no retry logic applies.
  */
 
 import dayjs from 'dayjs'
@@ -29,7 +27,7 @@ export interface IntentLoopConfig {
   confidenceThreshold?: number
   /** Optional provider used by callers that also collect token telemetry. */
   provider?: LLMProvider
-  /** Active KB base directory (`.kb-index.sqlite` parent). Enables NL fact locate on invalidate. */
+  /** Active KB base directory (`.kb-index.sqlite` parent). */
   kbStorageDir?: string
   /** Telemetry collector — records per-iteration StageMetrics. */
   collector?: RunCollector
@@ -95,7 +93,6 @@ export async function runIntentLoop(
   while (iterations < maxIterations) {
     const intent = envelope.intent
 
-    if (intent === 'submit_fact' || intent === 'invalidate_fact') break
     if ((result.confidence ?? 0) >= confidenceThreshold) break
     if (result.status === 'error') break
 

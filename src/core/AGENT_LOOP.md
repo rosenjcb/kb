@@ -4,19 +4,17 @@
 
 KB uses three loop patterns:
 
-1. **`runIntentLoop`** — the primary harness for the public KB intents: one read intent (`query`) and two mutation intents (`submit`, `invalidate`).
+1. **`runIntentLoop`** — the primary harness for the public KB query intent.
 2. **Domain-specific cycle loops** — deterministic multi-pass orchestration for commands with a fixed lifecycle such as `kb init` and `kb publish`.
 3. **`agentLoop`** — low-level async generator for autonomous tool-calling. Available for programmatic / SDK use; not used by the CLI.
 
-The public KB intents delegate their core logic to orchestrators:
+The public KB query intent delegates to the router-owned retrieval path:
 
-| Intent | Orchestrator | Location |
+| Intent | Handler | Location |
 |---|---|---|
 | `query_truth` | Router-owned retrieval path | `src/intents/router.ts` |
-| `submit_fact` | `SubmitOrchestrator` | `src/tools/submit-orchestrator.ts` |
-| `invalidate_fact` | `InvalidateOrchestrator` | `src/tools/invalidate-orchestrator.ts` |
 
-This is the composition principle: `intent → orchestrator → tools`. `runIntentLoop` owns retry policy; orchestrators own multi-step behavior; CLI/TUI adapters stay thin.
+This is the composition principle: `intent → router → tools`. `runIntentLoop` owns retry policy; CLI/TUI adapters stay thin.
 
 ## Intent Surface
 
@@ -25,21 +23,13 @@ flowchart LR
   Q["kb query / /query"] --> R["read_facts\nfact FTS + deep facts loop"]
   R --> G["graph query expansion\n+ typed edge hints"]
   G --> A["grounded answer"]
-
-  S["kb submit / /submit"] --> SO["SubmitOrchestrator"]
-  SO --> W["discover target + upsert fact"]
-  W --> SG["extract + upsert graph"]
-
-  I["kb invalidate / /invalidate"] --> IO["InvalidateOrchestrator"]
-  IO --> P["preview/apply KB mutation"]
-  P --> IG["soft-delete graph provenance"]
 ```
 
 ## Part 1: Intent Loop
 
 **File:** `src/core/intent-loop.ts`
 
-`runIntentLoop` is the entry point for the full public KB intent surface: one read intent plus two mutation intents.
+`runIntentLoop` is the entry point for the public KB query intent.
 
 ### Signature
 
@@ -70,10 +60,8 @@ interface IntentLoopResult {
 | Intent | Retry? | Strategy |
 |---|---|---|
 | `query_truth` | Yes, up to `maxIterations` | Router defaults to deep discovery; weak retrieval escalates to deep with a wider limit. |
-| `submit_fact` | No | Single pass — mutation flow is orchestrator-owned and graph sync happens inside `SubmitOrchestrator`. |
-| `invalidate_fact` | No | Single pass — preview/apply and graph invalidation are orchestrator-owned. |
 
-Weak retrieval for query means zero results, fewer than two results, or a final retrieval checkpoint with `status: 'miss'` or `'error'`.
+Weak retrieval means zero results, fewer than two results, or a final retrieval checkpoint with `status: 'miss'` or `'error'`.
 
 ### Query sequence
 
@@ -97,7 +85,7 @@ sequenceDiagram
 
 ### CLI wiring
 
-All KB intents go through the same loop. Query-specific answer enrichment runs afterward only for the read intent.
+The query intent goes through the intent loop. Answer enrichment runs afterward for the read intent.
 
 ## Part 2: Domain-Specific Cycle Loops
 
@@ -119,7 +107,7 @@ Some commands implement deterministic loops over named cycles. LLM is called dir
 
 | Situation | Use |
 |---|---|
-| Public KB intent (`query`, `submit`, `invalidate`) | `runIntentLoop` |
+| KB query intent | `runIntentLoop` |
 | Fixed sequence of LLM passes with known inputs/outputs | Cycle loop |
 | User interaction between LLM calls | Cycle loop |
 | Autonomous open-ended tool use in SDK/programmatic context | `agentLoop` |
@@ -129,6 +117,4 @@ Some commands implement deterministic loops over named cycles. LLM is called dir
 
 - `src/core/intent-loop.ts` — primary intent harness
 - `src/cli/intent-cli.ts` — public intent parsing and formatting
-- `src/tools/submit-orchestrator.ts` — KB write + graph sync
-- `src/tools/invalidate-orchestrator.ts` — KB invalidation + graph cleanup
-- `src/tools/GRAPH.md` — graph lifecycle and read/write semantics
+- `src/tools/GRAPH.md` — graph lifecycle and read semantics
