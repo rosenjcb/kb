@@ -746,9 +746,10 @@ export async function runChatSession(
           }
         }
 
-        const MAX_CHAT_TOOL_ROUNDS = 8
+        const MAX_CHAT_TURNS = 12
+        let round = 0
 
-        for (let round = 0; round < MAX_CHAT_TOOL_ROUNDS; round++) {
+        while (true) {
           const stageName = round === 0 ? 'answer' : `answer-r${round + 1}`
           const roundRun = await withStageProgress(
             printer,
@@ -763,84 +764,86 @@ export async function runChatSession(
               }),
             { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
           )
+          round++
           const completion = roundRun.result
           answerMs += roundRun.durationMs
           totalInputTokens += completion.usage.inputTokens
           totalOutputTokens += completion.usage.outputTokens
 
-          if (completion.stopReason !== 'tool_use' || completion.toolUses.length === 0) {
+          // Stop when the model produces no tool calls, or the turn cap is reached
+          if (completion.stopReason !== 'tool_use' || completion.toolUses.length === 0 || round >= MAX_CHAT_TURNS) {
             answer = completion.text.trim()
             break
           }
 
-          const toolResultBlocks: ToolResultBlock[] = []
-          for (const toolUse of completion.toolUses) {
-            if (toolUse.name !== 'query_kb') {
-              toolResultBlocks.push({
-                type: 'tool_result',
-                toolUseId: toolUse.id,
-                toolName: toolUse.name,
-                result: 'Unknown tool.',
-                isError: true,
-              })
-              continue
-            }
-            const q = typeof toolUse.input.q === 'string' ? toolUse.input.q : ''
-            if (!q) {
-              toolResultBlocks.push({
-                type: 'tool_result',
-                toolUseId: toolUse.id,
-                toolName: toolUse.name,
-                result: 'Empty query.',
-                isError: true,
-              })
-              continue
-            }
-
-            printer.chatMeta('query', q)
-
-            let expandedQuery = q
-            if (deps.kbStorageDir && !isAllFacts) {
-              try {
-                const db = new Database(kbIndexDbPath(deps.kbStorageDir), { readonly: true })
-                try {
-                  expandedQuery = expandQueryWithGraph(q, db)
-                } finally {
-                  db.close()
+          // Execute all tool calls in the batch concurrently
+          const toolResultBlocks = await Promise.all(
+            completion.toolUses.map(async (toolUse) => {
+              if (toolUse.name !== 'query_kb') {
+                return {
+                  type: 'tool_result' as const,
+                  toolUseId: toolUse.id,
+                  toolName: toolUse.name,
+                  result: 'Unknown tool.',
+                  isError: true,
                 }
-              } catch {
-                // graph expansion is best-effort
               }
-            }
+              const q = typeof toolUse.input.q === 'string' ? toolUse.input.q : ''
+              if (!q) {
+                return {
+                  type: 'tool_result' as const,
+                  toolUseId: toolUse.id,
+                  toolName: toolUse.name,
+                  result: 'Empty query.',
+                  isError: true,
+                }
+              }
 
-            const retrievalRun = await withStageProgress(
-              printer,
-              'retrieval-tool',
-              () =>
-                executeChatQueryTruthRetrieval({
-                  toolExecutor: deps.toolExecutor,
-                  expandedQuery,
-                  retrievalLimit,
-                }),
-              { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
-            )
-            retrievalMs += retrievalRun.durationMs
+              printer.chatMeta('query', q)
 
-            let toolResult = 'No facts found.'
-            if (isReadFactsResult(retrievalRun.result)) {
-              lastIntentResult = retrievalRun.result
-              const snapshot = normalizeReadResult(retrievalRun.result.data)
-              factsRetrieved += snapshot.results?.length ?? 0
-              toolResult = buildToolQueryResult(snapshot) || 'No facts found.'
-            }
+              let expandedQuery = q
+              if (deps.kbStorageDir && !isAllFacts) {
+                try {
+                  const db = new Database(kbIndexDbPath(deps.kbStorageDir), { readonly: true })
+                  try {
+                    expandedQuery = expandQueryWithGraph(q, db)
+                  } finally {
+                    db.close()
+                  }
+                } catch {
+                  // graph expansion is best-effort
+                }
+              }
 
-            toolResultBlocks.push({
-              type: 'tool_result',
-              toolUseId: toolUse.id,
-              toolName: toolUse.name,
-              result: toolResult,
+              const retrievalRun = await withStageProgress(
+                printer,
+                'retrieval-tool',
+                () =>
+                  executeChatQueryTruthRetrieval({
+                    toolExecutor: deps.toolExecutor,
+                    expandedQuery,
+                    retrievalLimit,
+                  }),
+                { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
+              )
+              retrievalMs += retrievalRun.durationMs
+
+              let toolResult = 'No facts found.'
+              if (isReadFactsResult(retrievalRun.result)) {
+                lastIntentResult = retrievalRun.result
+                const snapshot = normalizeReadResult(retrievalRun.result.data)
+                factsRetrieved += snapshot.results?.length ?? 0
+                toolResult = buildToolQueryResult(snapshot) || 'No facts found.'
+              }
+
+              return {
+                type: 'tool_result' as const,
+                toolUseId: toolUse.id,
+                toolName: toolUse.name,
+                result: toolResult,
+              }
             })
-          }
+          )
 
           turnMessages = [
             ...turnMessages,
