@@ -141,7 +141,7 @@ describe('intent-cli formatting', () => {
     expect(lines.some(line => isOrchestrationMetaLine(line))).toBe(true)
   })
 
-  it('prints invalidate results without pretending they are read_facts', () => {
+  it('prints non-read_facts results without treating them as query results', () => {
     const lines: string[] = []
     const printer = createPrinter(
       {
@@ -156,7 +156,7 @@ describe('intent-cli formatting', () => {
       {
         status: 'accepted',
         explanation: 'Scanned 3 KB documents. 1 replacements in 1 documents.',
-        recommendedAction: 'invalidate_fact',
+        recommendedAction: 'upsert_fact',
         confidence: 0.8,
       },
       'human',
@@ -164,7 +164,7 @@ describe('intent-cli formatting', () => {
     )
 
     expect(lines.join('\n')).toContain('status> accepted')
-    expect(lines.join('\n')).toContain('invalidate_fact')
+    expect(lines.join('\n')).toContain('upsert_fact')
   })
 })
 

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/doc-draft-system.md
-date: '2026-05-22'
+date: '2026-05-24'
 kb_id: src-prompts-doc-draft-system-md
 tags:
   - original-source
@@ -23,3 +23,4 @@ Rules:
 - Missing or skipped answer: write one line `_(not provided)_` for that section.
 - Do not invent facts beyond what answers state and the **KB facts** block in the user message (repository claims must cite that block only).
 - Do not add a References section (added separately by tooling).
+- When "User-defined sections" are listed in the user message, generate exactly those sections as `##` headings in the specified order. Do not add, remove, or reorder sections. Treat each section description as the content focus for that section.

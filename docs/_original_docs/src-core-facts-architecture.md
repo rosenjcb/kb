@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/facts-architecture.md
-date: '2026-05-22'
+date: '2026-05-24'
 kb_id: src-core-facts-architecture-md
 tags:
   - original-source
@@ -40,7 +40,7 @@ This is the platform mental model for `kb query`, `kb docs generate`, ingest (`k
    - if **mergeable** with an existing fact (same claim, tighter wording): **merge / update** the row (preserve lineage where the schema allows).
 3. **Original documents** may still be stored for audit and publish, but **truth for automation** is the fact rows extracted from them.
 
-`kb submit` / `upsert_fact` remain the interactive escape hatch for humans and agents; ingest should converge on the same store.
+Facts are written exclusively by automated ingest (`kb init` / `kb scan` AST and doc extraction); the same `upsert_fact` storage layer is used throughout.
 
 ---
 

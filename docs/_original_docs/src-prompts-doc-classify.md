@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/doc-classify.md
-date: '2026-05-22'
+date: '2026-05-24'
 kb_id: src-prompts-doc-classify-md
 tags:
   - original-source

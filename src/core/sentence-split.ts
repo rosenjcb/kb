@@ -1,6 +1,6 @@
 /**
  * Deterministic sentence-like segments from markdown/plain text for fact ingest.
- * Not linguistic perfection — stable splits for pipeline + submit single-sentence checks.
+ * Not linguistic perfection — stable splits for pipeline + fact single-sentence checks.
  */
 
 /** Extract fenced code block content as single collapsed segments (one per block). */

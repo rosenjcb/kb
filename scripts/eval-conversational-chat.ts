@@ -86,8 +86,8 @@ async function main(): Promise<void> {
   )
 
   const followUp = compareScenario(report, 'follow-up-search')
-  const submit = compareScenario(report, 'submit-propagation')
-  const invalidate = compareScenario(report, 'invalidate-propagation')
+  const upsert = compareScenario(report, 'upsert-propagation')
+  const replace = compareScenario(report, 'replace-propagation')
 
   console.log(
     JSON.stringify(
@@ -96,14 +96,14 @@ async function main(): Promise<void> {
         initializedBases: [baseA, baseB],
         comparison: {
           followUp,
-          submit,
-          invalidate,
+          upsert,
+          replace,
           sameBaseA: {
             followUp: comparePair(report, 'follow-up-search', 'baseline-a', 'conversational-a'),
-            submit: comparePair(report, 'submit-propagation', 'baseline-a', 'conversational-a'),
-            invalidate: comparePair(
+            upsert: comparePair(report, 'upsert-propagation', 'baseline-a', 'conversational-a'),
+            replace: comparePair(
               report,
-              'invalidate-propagation',
+              'replace-propagation',
               'baseline-a',
               'conversational-a'
             ),
@@ -172,8 +172,8 @@ async function runVariant(
     },
   })
 
-  const submitResult = await runScenario({
-    name: 'submit-propagation',
+  const upsertResult = await runScenario({
+    name: 'upsert-propagation',
     prompts: ['What is the release process?'],
     toolExecutor,
     graphWriter,
@@ -184,7 +184,7 @@ async function runVariant(
       return {
         score,
         notes: [
-          `submit answer mentions GitHub Actions: ${String(result.outputs.some(line => /GitHub Actions/i.test(line)))}`,
+          `upsert answer mentions GitHub Actions: ${String(result.outputs.some(line => /GitHub Actions/i.test(line)))}`,
         ],
       }
     },
@@ -199,8 +199,8 @@ async function runVariant(
     baseDir
   )
 
-  const invalidateResult = await runScenario({
-    name: 'invalidate-propagation',
+  const replaceResult = await runScenario({
+    name: 'replace-propagation',
     prompts: ['What is the release process?', 'Explain it more.'],
     toolExecutor,
     graphWriter,
@@ -212,8 +212,8 @@ async function runVariant(
       return {
         score: [buildkiteSeen, !staleSeen].filter(Boolean).length,
         notes: [
-          `invalidate answer mentions Buildkite: ${String(buildkiteSeen)}`,
-          `invalidate answer avoids stale GitHub Actions: ${String(!staleSeen)}`,
+          `replace answer mentions Buildkite: ${String(buildkiteSeen)}`,
+          `replace answer avoids stale GitHub Actions: ${String(!staleSeen)}`,
         ],
       }
     },
@@ -223,7 +223,7 @@ async function runVariant(
     label: variant.label,
     base: variant.base,
     conversationalRetrieval: variant.conversationalRetrieval,
-    results: [followUpResult, submitResult, invalidateResult],
+    results: [followUpResult, upsertResult, replaceResult],
   }
 }
 

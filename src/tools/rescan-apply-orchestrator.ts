@@ -350,7 +350,7 @@ function planMutations(
       e.contradictionDocs.length > 0 &&
       claim.confidence >= 0.6 &&
       e.evidenceScore >= 0.45 &&
-      isSafeInvalidationFact(contradictionFact)
+      isSafeReplacementFact(contradictionFact)
     ) {
       if (!targetDocId) {
         return {
@@ -555,7 +555,7 @@ function pickContradictionFact(content: string, claimNorm: string): string {
   return best
 }
 
-function isSafeInvalidationFact(value: string | undefined): value is string {
+function isSafeReplacementFact(value: string | undefined): value is string {
   if (!value) return false
   const trimmed = value.trim()
   if (trimmed.length < 60 || trimmed.length > 320) return false

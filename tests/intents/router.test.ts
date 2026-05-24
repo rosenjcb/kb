@@ -39,15 +39,6 @@ function createExecutorMock(): ToolExecutor {
       if (toolUse.name === 'upsert_graph_from_text') {
         return { enabled: true, entities: 1, relationships: 1 }
       }
-      if (toolUse.name === 'invalidate_fact') {
-        return {
-          changes: [{ factId: 'ops-facts', title: 'Ops Facts', replaced: 1, diff: '- old\n+ new' }],
-          summary: 'Scanned 3 KB documents. 1 replacements in 1 documents.',
-        }
-      }
-      if (toolUse.name === 'invalidate_graph_for_fact') {
-        return { enabled: true, invalidatedRelationships: 3, documentIds: ['ops-facts'] }
-      }
       return { ok: true }
     }),
   }
