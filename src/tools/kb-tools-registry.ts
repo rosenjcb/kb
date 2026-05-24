@@ -1,9 +1,8 @@
 /**
  * KB Tools Registry Factory
  *
- * **Facts-first agent surface:** `read_facts`, `upsert_fact`, `invalidate_fact`, graph helpers, optional `task`.
- * Markdown documents are written by **`kb init` / rescan** via `SqliteDocumentWriter` in code — not via removed
- * write/append/merge tools. Use **`kb submit`** / **`kb docs`** for knowledge work.
+ * **Facts-first agent surface:** `read_facts`, `upsert_fact`, graph helpers, optional `task`.
+ * Markdown documents are written by `kb init` / rescan via `SqliteDocumentWriter`.
  */
 
 import path from 'node:path'
@@ -19,7 +18,6 @@ import type { LLMProvider, ToolDefinition } from '../core/types'
 import { CodeGraphStore } from './code-graph-store'
 import { FactsDocumentReader } from './facts-document-reader'
 import type { QueryDocumentsInput, QueryResponse } from './facts-document-reader'
-import { invalidateFactTool } from './invalidate-fact-tool'
 import { SqliteKbIndexer } from './sqlite-kb-index'
 import { executeSubagentTask } from './task'
 
@@ -29,7 +27,7 @@ export interface KBToolsOrchestratorOptions {
 }
 
 /**
- * Factory: KB tools for query/submit/invalidate and optional subagent `task`.
+ * Factory: KB tools for query and optional subagent `task`.
  */
 export function createKBToolsRegistry(
   baseDir?: string,
@@ -116,7 +114,7 @@ export function createKBToolsRegistry(
         },
         sourceKind: {
           type: 'string',
-          enum: ['submit', 'import_doc', 'import_code'],
+          enum: ['import_doc', 'import_code'],
           description: 'Source channel for this fact',
         },
         sourceRef: { type: 'string', description: 'Optional source provenance' },
@@ -130,7 +128,7 @@ export function createKBToolsRegistry(
     const payload = input as {
       factText: string
       triplet?: { subject?: string; predicate?: string; object?: string }
-      sourceKind: 'submit' | 'import_doc' | 'import_code'
+      sourceKind: 'import_doc' | 'import_code'
       sourceRef?: string
       confidence?: number
     }
@@ -149,39 +147,6 @@ export function createKBToolsRegistry(
       sourceRef: payload.sourceRef,
       confidence: payload.confidence,
     })
-  })
-
-  const invalidateFactToolDef: ToolDefinition = {
-    name: 'invalidate_fact',
-    description: 'Preview or apply KB-only fact invalidation in the facts store',
-    schema: {
-      type: 'object',
-      properties: {
-        oldFact: { type: 'string', description: 'Existing fact text to remove or replace' },
-        replacementFact: { type: 'string', description: 'Optional replacement fact text' },
-        replacementTriplet: {
-          type: 'object',
-          description: 'Optional explicit triple for replacement (when replacementFact is set)',
-          properties: {
-            subject: { type: 'string' },
-            predicate: { type: 'string' },
-            object: { type: 'string' },
-          },
-          required: ['subject', 'predicate', 'object'],
-          additionalProperties: false,
-        },
-        preview: { type: 'boolean', description: 'When true, report changes without applying' },
-        includeSessionLogs: {
-          type: 'boolean',
-          description: 'When true, include session-log documents in the invalidation scan',
-        },
-      },
-      required: ['oldFact'],
-      additionalProperties: false,
-    },
-  }
-  registry.register('invalidate_fact', invalidateFactToolDef, async input => {
-    return await invalidateFactTool(input as never, storageDir)
   })
 
   const codeGraphDbPath = path.join(storageDir, '.kb-index.sqlite')

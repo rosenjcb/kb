@@ -46,7 +46,6 @@ export function printGraphHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('graph --format dot|json', mode)}`,
     '',
     'Notes:',
-    '  Graph mutations happen via kb submit / kb invalidate.',
     '  The graph is derived from the facts table (subject→predicate→object triplets).',
     '',
     'Examples:',

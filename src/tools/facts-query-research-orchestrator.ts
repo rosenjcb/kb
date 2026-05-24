@@ -311,7 +311,7 @@ export class FactsQueryResearchOrchestrator {
       const textTokens = tokenizeQuery(row.fact_text)
       const overlap = textTokens.filter(token => queryTokens.includes(token)).length
       const overlapScore = queryTokens.length > 0 ? overlap / queryTokens.length : 0
-      const recencyBias = row.source_kind === 'submit' ? 0.08 : 0
+      const recencyBias = 0
       const frontierBoost = frontierFactIds.has(row.id) ? 0.06 : 0
       const categories = categoryIds.get(row.id) ?? []
       const categoryBoost =

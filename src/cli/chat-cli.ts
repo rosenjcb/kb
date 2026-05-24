@@ -306,7 +306,7 @@ const DOC_SESSION_TRANSCRIPT_MAX_CHARS = 12000
 
 /** Shown when retrieval is empty or last checkpoint confidence is below threshold. */
 export const CHAT_WEAK_RETRIEVAL_REFUSAL =
-  'I don\'t have enough information in the retrieved KB evidence to answer that confidently. Try rephrasing, run `kb query "<topic>"`, or add facts with `kb submit`.'
+  'I don\'t have enough information in the retrieved KB evidence to answer that confidently. Try rephrasing or run `kb query "<topic>"`.'
 
 function chatRetrievalMinConfidence(): number {
   const raw = process.env.KB_CHAT_RETRIEVAL_MIN_CONFIDENCE
@@ -503,7 +503,7 @@ export async function runChatSynthesis(params: {
   return {
     answer:
       completionText.trim() ||
-      'I don\'t have enough information to answer that. Try rephrasing or add facts with `kb submit`.',
+      'I don\'t have enough information to answer that. Try rephrasing.',
     inputTokens: totalInputTokens,
     outputTokens: totalOutputTokens,
     answerMs: Date.now() - started,
@@ -624,8 +624,6 @@ export async function runChatSession(
           [
             'Commands:',
             '  /query <text>          Search the KB',
-            '  /submit <text>         Store a fact',
-            '  /invalidate <text>     Remove stale facts',
             '  /init [args]           Build a KB from this repo',
             '  /scan [args]           Refresh the KB',
             '  /base <use|delete> …   Manage KB bases',

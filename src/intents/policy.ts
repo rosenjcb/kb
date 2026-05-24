@@ -1,7 +1,6 @@
 export const INTERNAL_OPERATION_TOOL_NAMES = new Set([
   'read_facts',
   'upsert_fact',
-  'invalidate_fact',
   'task',
 ])
 
@@ -20,7 +19,7 @@ export function assertConsumerSafeCommand(firstArg: string): void {
 
   if (isDirectInternalToolInvocation(firstArg)) {
     throw new Error(
-      `Direct internal tool invocation is blocked in consumer mode: ${firstArg}. Use intent commands (submit|query|invalidate).`
+      `Direct internal tool invocation is blocked in consumer mode: ${firstArg}. Use kb query.`
     )
   }
 }

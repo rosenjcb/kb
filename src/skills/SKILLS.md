@@ -27,7 +27,7 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 
 Maintained in `SKILLS` constant inside `skill-installer.ts` (must stay in sync with `skills/` directory):
 
-- `kb:dev-workflow` — query/submit/invalidate/graph/docs conventions
+- `kb:dev-workflow` — query/graph/docs conventions
 - `kb:dump-context` — in-place architecture markdown (this skill)
 - `kb:evaluation-run` — eval suites under `eval/`
 

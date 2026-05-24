@@ -52,19 +52,17 @@ export function segmentMarkdownForFacts(markdown: string): string[] {
   ]
 }
 
-/** For `kb submit`: user string must be a single sentence (one segment after trim). */
-export function assertSingleSentenceForSubmit(text: string): string {
+/** Validate that a fact string is a single sentence (one segment after trim). */
+export function assertSingleSentenceFact(text: string): string {
   const t = text.trim()
-  if (!t) throw new Error('submit: empty fact text')
+  if (!t) throw new Error('fact text is empty')
   const segs = segmentMarkdownForFacts(t)
   if (segs.length === 0) {
-    if (t.length < 8) throw new Error('submit: fact text too short (min 8 characters)')
+    if (t.length < 8) throw new Error('fact text too short (min 8 characters)')
     return t
   }
   if (segs.length > 1) {
-    throw new Error(
-      'submit: provide exactly one sentence. Split multi-sentence facts into separate kb submit calls.'
-    )
+    throw new Error('provide exactly one sentence per fact')
   }
   const only = segs[0]
   return only ?? t

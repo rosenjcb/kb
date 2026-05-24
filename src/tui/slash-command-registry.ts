@@ -23,8 +23,6 @@ export interface SlashCommand {
 export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
   // Top-level
   { path: ['query'], description: 'search the knowledge base', contexts: ['idle'] },
-  { path: ['submit'], description: 'store a new fact or checkpoint', contexts: ['idle'] },
-  { path: ['invalidate'], description: 'remove or replace stale KB facts', contexts: ['idle'] },
   { path: ['init'], description: 'build a knowledge base from this repo', contexts: ['idle'] },
   { path: ['scan'], description: 'scan this repo into the active or selected KB base', contexts: ['idle'] },
   { path: ['base'], description: 'manage KB bases (use, delete)', contexts: ['idle'] },

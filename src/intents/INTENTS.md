@@ -1,6 +1,6 @@
 # Intent Routing
 
-Maps **consumer intent envelopes** (`submit_fact`, `invalidate_fact`, `query_truth`, …) to **tool operations** executed by the agent loop. CLI and chat both build envelopes; routing stays in this package so policy does not scatter across commands.
+Maps **consumer intent envelopes** (`query_truth`) to **tool operations** executed by the agent loop. CLI and chat both build envelopes; routing stays in this package so policy does not scatter across commands.
 
 ## Core types
 
@@ -16,11 +16,9 @@ Defined in `types.ts`; evaluated in `evaluator.ts` for guardrails.
 
 | Intent | Operation | Notes |
 |---|---|---|
-| `submit_fact` | `submit_orchestrator` | Requires non-empty `fact`; optional `source` |
-| `invalidate_fact` | `invalidate_orchestrator` | Preview-by-default mutations |
 | `query_truth` | `read_facts` | Sets `limit`, `discoveryDepth`, `surface`; high-recall queries bump limit |
 
-`execute()` dispatches to orchestrators (`SubmitOrchestrator`, `InvalidateOrchestrator`) or the tool registry for `read_facts`.
+`execute()` dispatches to the tool registry for `read_facts`.
 
 ## Relationship to `runIntentLoop`
 
@@ -30,7 +28,7 @@ Do not add a second retrieval path that bypasses the router for `read_facts`.
 
 ## Policy hooks
 
-`policy.ts` holds cross-cutting rules (e.g. when preview is required). When adding intents:
+`policy.ts` holds cross-cutting rules. When adding intents:
 
 1. Extend `ConsumerIntentEnvelope` intent union in `types.ts`
 2. Add `route()` case with explicit `policyReason`
@@ -40,7 +38,3 @@ Do not add a second retrieval path that bypasses the router for `read_facts`.
 ## High-recall queries
 
 `requiresHighRecallQuery()` in `router.ts` detects broad questions and raises `read_facts` limit (min 12). Changing recall behavior affects both `kb query` and chat — test both surfaces.
-
-## Future: chat turn router
-
-`src/core/CHAT.md` describes a turn-level router that would send QUERY here and route other intents to existing CLI handlers before summarizing. Until then, only QUERY uses `runQueryTruthRetrieval`; submit/invalidate have dedicated CLI paths.

@@ -161,7 +161,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     this.indexer.upsertDocumentWithContent(upsert)
     this.indexFactsFromContent(
       input.content,
-      input.isOriginal === true ? 'import_doc' : 'submit',
+      'import_doc',
       id
     )
 
@@ -464,7 +464,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
 
   private indexFactsFromContent(
     content: string,
-    sourceKind: 'import_doc' | 'submit',
+    sourceKind: 'import_doc' | 'import_code',
     sourceRef: string
   ): void {
     const segments = segmentMarkdownForFacts(content)

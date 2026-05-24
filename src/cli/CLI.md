@@ -8,7 +8,7 @@ Command-line entry, argument parsing, and orchestration wiring for `kb`. Impleme
 |---|---|---|
 | `kb` / `kb <command>` | `index.ts` | Dispatches subcommands; bare `kb` in a TTY delegates to `src/tui/index.tsx` |
 | Init / scan | `init-cli.ts` | Multi-cycle pipeline; largest file in this package |
-| Query / submit / invalidate | `intent-cli.ts` + `query-truth-retrieval.ts` | Intent envelope parsing and shared retrieval |
+| Query | `intent-cli.ts` + `query-truth-retrieval.ts` | Intent envelope parsing and shared retrieval |
 | Chat session | `chat-cli.ts` + `chat-query-orchestrator.ts` | REPL loop; QUERY turns call `runQueryTruthRetrieval()` |
 | Skills | `skill-installer.ts` | Install bundled skills to agent homes + profile blurbs |
 
@@ -65,5 +65,5 @@ Adding a skill: append to `SKILLS` array, add `loadSkill()` source under `skills
 ## Gotchas
 
 - **Base resolution:** Most commands flow through `base-selection.ts`; missing base → `CLI_ERROR_NO_KB_BASE` (formatted by `cli-prerequisites.ts`).
-- **Apply defaults:** TUI `resolveApplyArgs()` auto-appends `--apply` for `publish`, `invalidate`, `scan`, and `init --rescan` — CLI users must pass `--apply` explicitly.
+- **Apply defaults:** TUI `resolveApplyArgs()` auto-appends `--apply` for `publish`, `scan`, and `init --rescan` — CLI users must pass `--apply` explicitly.
 - **Init progress:** Pass `InitProgressReporter` from TUI; do not append `[init] …` lines to chat history (see `src/tui/TUI.md`).

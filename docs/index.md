@@ -5,12 +5,10 @@ title: KB — Local-First Knowledge for AI Workflows
 
 # KB
 
-KB is a local-first knowledge system built for AI-assisted development. It gives you a CLI and runtime for storing durable facts, querying them by intent, and keeping project knowledge close to your code.
+KB is a local-first knowledge system built for AI-assisted development. It reads your code and documentation, extracts structured facts, and gives you a fast, queryable knowledge base — so context is always at your fingertips.
 
 ```bash
-kb submit "Auth tokens expire after 15 minutes, not 24 hours"
 kb query "token expiry policy"
-kb invalidate "Auth tokens expire after 24 hours" "Auth tokens expire after 15 minutes, not 24 hours"
 ```
 
 ---
@@ -76,12 +74,10 @@ kb init
 
 `kb init` reads your README, CLAUDE.md, and other project docs, then runs a multi-pass LLM pipeline to produce a set of focused, retrieval-ready fact documents. Takes 1–3 minutes for a typical repo.
 
-### 5. Start using intent commands
+### 5. Query your knowledge base
 
 ```bash
 kb query "how does authentication work?"
-kb submit "OAuth tokens are short-lived; use the refresh endpoint after 15 min"
-kb invalidate "passwords are hashed with MD5" "passwords are hashed with bcrypt"
 ```
 
 ---
@@ -92,11 +88,8 @@ kb invalidate "passwords are hashed with MD5" "passwords are hashed with bcrypt"
 # Before making a change — pull relevant context
 kb query "topic I'm about to touch"
 
-# After a decision — record it
-kb submit "we chose option B because option A required a schema migration"
-
-# Repair stale knowledge
-kb invalidate "the queue is strongly consistent" "the queue is eventually consistent"
+# After code/doc changes — refresh the KB
+kb scan
 ```
 
 ---

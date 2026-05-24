@@ -1,15 +1,10 @@
 import path from 'node:path'
 import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
 import { renderDiffBundle, renderTextDiff } from '../core/git-diff-preview'
-import { assertSingleSentenceForSubmit } from '../core/sentence-split'
-import type { ToolExecutor } from '../core/tool-registry'
-import type { ToolUseRequest } from '../core/types'
-import { DefaultIntentRouter } from '../intents/router'
-import type { ConsumerIntentEnvelope } from '../intents/types'
 import { invalidateFactTool } from './invalidate-fact-tool'
 import { SqliteKbIndexer } from './sqlite-kb-index'
 
-export type RescanClaimAction = 'noop' | 'append_existing' | 'submit' | 'invalidate_then_submit'
+export type RescanClaimAction = 'noop' | 'append_existing' | 'write' | 'replace'
 
 export interface RescanCandidateClaim {
   claimId: string
@@ -32,8 +27,8 @@ export interface RescanPlannedMutation {
   claimId: string
   action: RescanClaimAction
   targetDocId?: string
-  invalidateFact?: string
-  submitFact?: string
+  oldFact?: string
+  newFact?: string
   rationale: string
   expectedPostcondition: string
 }
@@ -329,7 +324,7 @@ function planMutations(
           claimId: claim.claimId,
           action: 'append_existing',
           targetDocId,
-          submitFact: claim.text,
+          newFact: claim.text,
           rationale: 'Equivalent evidence exists, but claim carries additional detail to append.',
           expectedPostcondition: 'Target document contains appended detail for this fact family.',
         }
@@ -369,10 +364,10 @@ function planMutations(
       }
       return {
         claimId: claim.claimId,
-        action: 'invalidate_then_submit',
+        action: 'replace',
         targetDocId,
-        invalidateFact: contradictionFact,
-        submitFact: claim.text,
+        oldFact: contradictionFact,
+        newFact: claim.text,
         rationale:
           'Contradicting evidence exists and new claim confidence/evidence pass threshold.',
         expectedPostcondition:
@@ -383,7 +378,7 @@ function planMutations(
       return {
         claimId: claim.claimId,
         action: 'noop',
-        rationale: 'Claim confidence is below submit threshold and does not justify a write.',
+        rationale: 'Claim confidence is below write threshold and does not justify a write.',
         expectedPostcondition: 'No KB mutation should be required.',
       }
     }
@@ -400,7 +395,7 @@ function planMutations(
       claimId: claim.claimId,
       action: 'append_existing',
       targetDocId,
-      submitFact: claim.text,
+      newFact: claim.text,
       rationale: 'No strong equivalent found; append claim into best supporting document.',
       expectedPostcondition:
         'Target document contains inserted fact and retrieval should surface it.',
@@ -427,8 +422,6 @@ async function applyMutations(input: {
   let timedOut = false
   const claimById = new Map(input.claims.map(claim => [claim.claimId, claim]))
   const indexer = new SqliteKbIndexer({ dbPath: path.join(input.baseDir, '.kb-index.sqlite') })
-  const intentExecutor = createRescanIntentExecutor(indexer)
-  const intentRouter = new DefaultIntentRouter(intentExecutor)
   const writtenDocIds: string[] = []
   const errors: string[] = []
   let appliedMutations = 0
@@ -450,7 +443,7 @@ async function applyMutations(input: {
           itemsConsidered: input.mutations.length,
           itemsCompleted: index + 1,
           itemsRemaining: Math.max(input.mutations.length - (index + 1), 0),
-          currentItem: mutation.submitFact ?? mutation.invalidateFact ?? mutation.claimId,
+          currentItem: mutation.newFact ?? mutation.oldFact ?? mutation.claimId,
           appliedMutations,
           noopMutations,
         })
@@ -462,17 +455,17 @@ async function applyMutations(input: {
           itemsConsidered: input.mutations.length,
           itemsCompleted: index + 1,
           itemsRemaining: Math.max(input.mutations.length - (index + 1), 0),
-          currentItem: mutation.submitFact ?? mutation.invalidateFact ?? mutation.claimId,
+          currentItem: mutation.newFact ?? mutation.oldFact ?? mutation.claimId,
           appliedMutations,
           noopMutations,
         })
         continue
       }
       try {
-        if (mutation.action === 'invalidate_then_submit' && mutation.invalidateFact) {
+        if (mutation.action === 'replace' && mutation.oldFact) {
           await invalidateFactTool(
             {
-              oldFact: mutation.invalidateFact,
+              oldFact: mutation.oldFact,
               replacementFact: '',
               preview: false,
               includeSessionLogs: false,
@@ -480,14 +473,15 @@ async function applyMutations(input: {
             input.baseDir
           )
         }
-        if (mutation.submitFact) {
-          const result = await submitViaIntentRouter({
-            router: intentRouter,
-            fact: mutation.submitFact,
-            targetDocumentId: mutation.targetDocId,
+        if (mutation.newFact) {
+          const result = indexer.upsertFact({
+            factText: mutation.newFact,
+            triplet: placeholderTripletFromFactText(mutation.newFact),
+            sourceKind: 'import_code',
+            sourceRef: 'rescan',
+            confidence: 0.8,
           })
-          const id = extractResultId(result)
-          if (id) writtenDocIds.push(id)
+          writtenDocIds.push(result.id)
         }
         appliedMutations += 1
       } catch (error) {
@@ -499,7 +493,7 @@ async function applyMutations(input: {
         itemsConsidered: input.mutations.length,
         itemsCompleted: index + 1,
         itemsRemaining: Math.max(input.mutations.length - (index + 1), 0),
-        currentItem: mutation.submitFact ?? mutation.invalidateFact ?? mutation.claimId,
+        currentItem: mutation.newFact ?? mutation.oldFact ?? mutation.claimId,
         appliedMutations,
         noopMutations,
       })
@@ -666,87 +660,6 @@ function pickTargetDocumentId(evidence: RescanEvidenceResult): string | undefine
   return evidence.equivalentDocs[0] ?? evidence.supportDocs[0] ?? evidence.contradictionDocs[0]
 }
 
-function createRescanIntentExecutor(indexer: SqliteKbIndexer): ToolExecutor {
-  return {
-    register() {},
-    getTools() {
-      return []
-    },
-    async execute(toolUse: ToolUseRequest): Promise<unknown> {
-      if (toolUse.name === 'upsert_fact') {
-        const payload = toolUse.input as {
-          factText?: string
-          triplet?: { subject?: string; predicate?: string; object?: string }
-          sourceKind?: 'submit' | 'import_doc' | 'import_code'
-          sourceRef?: string
-          confidence?: number
-        }
-        const sentence = assertSingleSentenceForSubmit(String(payload.factText ?? ''))
-        const t = payload.triplet
-        const triplet =
-          t?.subject?.trim() && t.predicate?.trim() && t.object?.trim()
-            ? {
-                subject: t.subject.trim(),
-                predicate: t.predicate.trim(),
-                object: t.object.trim(),
-              }
-            : placeholderTripletFromFactText(sentence)
-        return indexer.upsertFact({
-          factText: sentence,
-          triplet,
-          sourceKind: payload.sourceKind ?? 'submit',
-          sourceRef: payload.sourceRef,
-          confidence: payload.confidence,
-        })
-      }
-      if (toolUse.name === 'read_facts') {
-        const query = normalizeText(String(toolUse.input.query ?? ''))
-        const rows = indexer.getAllDocumentsForLexical()
-        const ranked = rows
-          .map(row => ({ row, score: keywordOverlap(query, normalizeText(row.content)) }))
-          .filter(item => item.score > 0)
-          .sort((a, b) => b.score - a.score)
-          .slice(0, Math.max(1, Number(toolUse.input.limit ?? 3)))
-        return {
-          retrieval: { method: 'hybrid' },
-          results: ranked.map(item => ({ metadata: { id: item.row.id } })),
-        }
-      }
-      throw new Error(`Unsupported rescan intent tool: ${toolUse.name}`)
-    },
-  }
-}
-
-async function submitViaIntentRouter(input: {
-  router: DefaultIntentRouter
-  fact: string
-  targetDocumentId?: string
-}): Promise<unknown> {
-  const envelope: ConsumerIntentEnvelope = {
-    intent: 'submit_fact',
-    payload: {
-      fact: input.fact,
-      source: 'rescan',
-      ...(input.targetDocumentId ? { targetDocumentId: input.targetDocumentId } : {}),
-    },
-  }
-  const result = await input.router.execute(envelope)
-  if (result.status === 'error') {
-    throw new Error(result.explanation ?? 'submit_fact intent failed')
-  }
-  return result.data
-}
-
-function extractResultId(value: unknown): string | undefined {
-  if (!value || typeof value !== 'object') return undefined
-  const record = value as Record<string, unknown>
-  if (typeof record.id === 'string') return record.id
-  if (record.submission && typeof record.submission === 'object') {
-    const nested = record.submission as Record<string, unknown>
-    if (typeof nested.id === 'string') return nested.id
-  }
-  return undefined
-}
 
 async function buildPlanDiff(input: {
   base: string
@@ -767,17 +680,17 @@ async function buildPlanDiff(input: {
       const claim = claimById.get(mutation.claimId)
       if (!claim) continue
 
-      if (mutation.action === 'append_existing' && mutation.targetDocId && mutation.submitFact) {
+      if (mutation.action === 'append_existing' && mutation.targetDocId && mutation.newFact) {
         const before = indexer.getDocumentContent(mutation.targetDocId) ?? ''
-        const after = `${before}${before.endsWith('\n') ? '' : '\n'}- ${mutation.submitFact} (source: rescan)\n`
+        const after = `${before}${before.endsWith('\n') ? '' : '\n'}- ${mutation.newFact} (source: rescan)\n`
         sections.push(renderTextDiff(`docs/${mutation.targetDocId}.md`, before, after))
         continue
       }
 
-      if (mutation.action === 'invalidate_then_submit' && mutation.invalidateFact) {
+      if (mutation.action === 'replace' && mutation.oldFact) {
         const preview = await invalidateFactTool(
           {
-            oldFact: mutation.invalidateFact,
+            oldFact: mutation.oldFact,
             replacementFact: '',
             preview: true,
             includeSessionLogs: false,
@@ -795,9 +708,9 @@ async function buildPlanDiff(input: {
         }
       }
 
-      if (mutation.submitFact && mutation.targetDocId) {
+      if (mutation.newFact && mutation.targetDocId) {
         const before = indexer.getDocumentContent(mutation.targetDocId) ?? ''
-        const after = `${before}${before.endsWith('\n') ? '' : '\n'}- ${mutation.submitFact} (source: rescan)\n`
+        const after = `${before}${before.endsWith('\n') ? '' : '\n'}- ${mutation.newFact} (source: rescan)\n`
         sections.push(renderTextDiff(`docs/${mutation.targetDocId}.md`, before, after))
       }
       input.onProgress?.({

@@ -7,7 +7,6 @@ import {
   readKbConfig,
   resolveGraphEnabled,
 } from '../src/cli/kb-config.js'
-import { DefaultIntentRouter } from '../src/intents/router.js'
 import { invalidateFactTool } from '../src/tools/invalidate-fact-tool.js'
 import { KbGraphWriter } from '../src/tools/kb-graph-writer.js'
 import { createKBToolsRegistry } from '../src/tools/kb-tools-registry.js'
@@ -141,8 +140,6 @@ async function runVariant(
     ? new KbGraphWriter(KbGraphWriter.dbPathForBase(baseDir))
     : undefined
 
-  const router = new DefaultIntentRouter(toolExecutor)
-
   const followUpResult = await runScenario({
     name: 'follow-up-search',
     prompts: ['Explain the agent loop', 'What about TUI?', 'Yeah let’s do the search'],
@@ -165,12 +162,13 @@ async function runVariant(
     },
   })
 
-  await router.execute({
-    intent: 'submit_fact',
-    payload: {
-      fact: 'Release process uses GitHub Actions.',
-      domain: 'ops',
-      source: 'eval',
+  await toolExecutor.execute({
+    name: 'upsert_fact',
+    input: {
+      factText: 'Release process uses GitHub Actions.',
+      sourceKind: 'import_doc',
+      sourceRef: 'eval',
+      confidence: 0.9,
     },
   })
 

@@ -282,7 +282,7 @@ export async function produceInitialDraft(input: {
     )
     if (facts.length === 0) {
       throw new Error(
-        'doc generate: no supporting facts in KB match this prompt. Submit facts with kb submit or broaden answers, then retry.'
+        'doc generate: no supporting facts in KB match this prompt. Run kb scan to refresh the knowledge base, or broaden your answers, then retry.'
       )
     }
     const factBlock = buildDocgenFactContext(facts)
@@ -346,7 +346,7 @@ export async function produceRevisedDraft(input: {
     )
     if (facts.length === 0) {
       throw new Error(
-        'doc generate: no supporting facts in KB match this prompt. Submit facts with kb submit or broaden answers, then retry.'
+        'doc generate: no supporting facts in KB match this prompt. Run kb scan to refresh the knowledge base, or broaden your answers, then retry.'
       )
     }
     const factBlock = buildDocgenFactContext(facts)

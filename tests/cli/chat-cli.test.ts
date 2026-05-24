@@ -6,7 +6,6 @@ import { buildChatTurnContent, printChatHelp, runChatSession } from '../../src/c
 import * as initCli from '../../src/cli/init-cli'
 import type { ToolExecutor } from '../../src/core/tool-registry'
 import type { LLMProvider } from '../../src/core/types'
-import { DefaultIntentRouter } from '../../src/intents/router'
 import { invalidateFactTool } from '../../src/tools/invalidate-fact-tool'
 import { createKBToolsRegistry } from '../../src/tools/kb-tools-registry'
 
@@ -465,18 +464,18 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('I can continue if you want me to search the KB')
   })
 
-  it('Given submit and invalidate changes in the same base, then conversational chat reflects updated facts across turns', async () => {
+  it('Given fact upsert and invalidate changes in the same base, then conversational chat reflects updated facts across turns', async () => {
     const baseDir = await createTempDir()
     const config = { graph: { enabled: false } }
     const toolExecutor = createKBToolsRegistry(baseDir, config)
-    const router = new DefaultIntentRouter(toolExecutor)
 
-    await router.execute({
-      intent: 'submit_fact',
-      payload: {
-        fact: 'Release process uses GitHub Actions.',
-        domain: 'ops',
-        source: 'test',
+    await toolExecutor.execute({
+      name: 'upsert_fact',
+      input: {
+        factText: 'Release process uses GitHub Actions.',
+        sourceKind: 'import_doc',
+        sourceRef: 'test',
+        confidence: 0.9,
       },
     })
 

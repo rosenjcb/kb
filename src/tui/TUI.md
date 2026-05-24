@@ -17,7 +17,7 @@ React/Ink chat shell launched when the user runs bare `kb` in a TTY. Product-wid
 
 [`slash-command-registry.ts`](slash-command-registry.ts) is the single source of truth for autocomplete and command metadata. [`slash-commands.ts`](slash-commands.ts) exposes resolver helpers; `App.tsx` decides routing:
 
-- **Output-only** (`query`, `submit`, `facts`, `graph`, `docs list`, `base`, `config`, …): `runCommandForTui` → stdout partitioned via `partition-shell-output.ts` → transcript entries. No LLM loop.
+- **Output-only** (`query`, `facts`, `graph`, `docs list`, `base`, `config`, …): `runCommandForTui` → stdout partitioned via `partition-shell-output.ts` → transcript entries. No LLM loop.
 - **Interactive** (`/init`, `/scan`, `/docs generate`): stay on chat input surface; progress uses `InitProgressBar`, not history spam.
 - **Chat turns** (no leading `/`): `runChatSession` with `ChatIO` adapter classifying each line (`chat-io-classify.ts`).
 

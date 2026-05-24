@@ -77,7 +77,7 @@ export interface LaneRoutingEventInput {
 export interface SessionEntryInput {
   sessionDate: string
   base: string
-  eventType: 'submit' | 'validate' | 'query' | 'chat' | 'publish' | 'init' | 'tool-call' | 'system'
+  eventType: 'validate' | 'query' | 'chat' | 'publish' | 'init' | 'tool-call' | 'system'
   summary: string
   metadata?: Record<string, unknown>
 }
@@ -116,7 +116,7 @@ export interface FactUpsertInput {
   factText: string
   /** Omitted or partial values → deterministic placeholder triple derived from `factText`. */
   triplet?: FactTriplet
-  sourceKind: 'submit' | 'import_doc' | 'import_code'
+  sourceKind: 'import_doc' | 'import_code'
   sourceRef?: string
   confidence?: number
   supersedesFactId?: string
@@ -356,7 +356,7 @@ export class SqliteKbIndexer {
     return { id, operation: 'inserted' }
   }
 
-  /** Resolve a fact the same way upsert/invalidate match: normalized lowercase + collapsed whitespace. */
+  /** Resolve a fact by normalized lowercase + collapsed whitespace match. */
   getActiveFactByTextMatch(factText: string): FactRow | undefined {
     const normalized = normalizeFactText(factText)
     return this.db
@@ -611,8 +611,8 @@ export class SqliteKbIndexer {
     const replaced = this.upsertFact({
       factText: replacement.factText,
       triplet: replacement.triplet,
-      sourceKind: 'submit',
-      sourceRef: `invalidate:${row.id}`,
+      sourceKind: 'import_code',
+      sourceRef: `replace:${row.id}`,
       supersedesFactId: row.id,
     })
     return { changed: 1, replacementId: replaced.id }
@@ -1946,7 +1946,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / Math.sqrt(magA * magB)
 }
 
-/** Exported for tools (invalidate, CLI) that must match `facts.normalized_text` exactly. */
+/** Exported for tools that must match `facts.normalized_text` exactly. */
 export function normalizeFactText(input: string): string {
   return input.toLowerCase().replace(/\s+/g, ' ').trim()
 }

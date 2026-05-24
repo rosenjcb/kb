@@ -23,8 +23,6 @@ describe('slash command helpers', () => {
     expect(commands.some(c => c.command === '/init')).toBe(true)
     expect(commands.some(c => c.command === '/scan')).toBe(true)
     expect(commands.some(c => c.command === '/query')).toBe(true)
-    expect(commands.some(c => c.command === '/submit')).toBe(true)
-    expect(commands.some(c => c.command === '/invalidate')).toBe(true)
     expect(commands.some(c => c.command === '/docs')).toBe(true)
     expect(commands.some(c => c.command === '/facts')).toBe(true)
     expect(commands.some(c => c.command === '/graph')).toBe(true)

@@ -14,7 +14,7 @@ As you build up your knowledge base, the graph gives you a structural view of ho
 
 **Export:** The full graph can be dumped as Graphviz DOT (for visualisation tools like Gephi or Mermaid) or JSON (for your own analysis).
 
-**Manual curation:** You can add nodes, descriptions, and directed edges from the CLI (preview by default, `--apply` to commit). Automated extraction from `kb submit` / `kb init` merges with hand-authored graph data in the same SQLite database as the document index.
+**Manual curation:** You can add nodes, descriptions, and directed edges from the CLI (preview by default, `--apply` to commit). Automated extraction from `kb init` / `kb scan` merges with hand-authored graph data in the same SQLite database as the document index.
 
 **Session override:** Pass `--base <name>` on `kb graph` (same as other KB commands) to target a specific session without switching your active base.
 
@@ -36,26 +36,21 @@ kb_graph_relationships  — id, from_id, to_id, type, doc_id, weight, created_at
 
 - `type` on entities: `concept | system | tool | decision | person`
 - `type` on relationships: canonical extractor labels (`depends_on`, `contradicts`, `related_to`, `replaces`, `implements`, `uses`) **or** any snake_case label you set via `kb graph edge add --verb` (free text is normalized to snake_case for storage)
-- `weight`: 1.0 for live edges, 0 for soft-deleted edges (set by `kb invalidate`)
+- `weight`: 1.0 for live edges, 0 for soft-deleted edges
 - Traversal uses SQLite recursive CTEs.
 
 ## How it stays up to date
 
 ```mermaid
 flowchart LR
-  I["kb init"] --> AF["ast-facts deterministic indexing"]
-  S["kb submit"] --> SW["SubmitOrchestrator writes KB fact"]
-  SW --> SG["extract + upsert graph provenance"]
+  I["kb init / kb scan"] --> AF["ast-facts deterministic indexing"]
+  AF --> SG["extract + upsert graph provenance"]
   Q["kb query"] --> QG["graph expansion + rerank\nread-only"]
-  N["kb invalidate"] --> NW["InvalidateOrchestrator mutates KB state"]
-  NW --> NG["soft-delete graph relationships by doc_id"]
 ```
 
 | Trigger | What happens |
 |---|---|
-| `kb submit "<fact>"` | `SubmitOrchestrator` writes the KB fact, then extracts and upserts graph entities + relationships when graph mode is enabled |
-| `kb invalidate "<old>"` | All edges whose `doc_id` matches the affected documents are soft-deleted (weight → 0) |
-| `kb init` / `kb scan` — `ast-facts` cycle | Deterministic code graph indexing updates `kg_*`; semantic graph remains incremental via submit/invalidate |
+| `kb init` / `kb scan` — `ast-facts` cycle | Deterministic code graph indexing updates `kg_*`; semantic graph is built incrementally from source |
 
 ## CLI
 
@@ -89,8 +84,6 @@ This means a query for "KbGraphWriter" can still surface facts that mention "SQL
 ```mermaid
 flowchart TB
   Intent["Intent commands"] --> Query["kb query / /query\nread-only retrieval"]
-  Intent --> Submit["kb submit / /submit\nKB write + internal graph sync"]
-  Intent --> Invalidate["kb invalidate / /invalidate\nKB mutation + internal graph invalidation"]
   Docs["kb docs"] --> DocsView["explicit document inspection"]
   Graph["kb graph"] --> GraphView["explicit graph inspection / manual graph edits"]
 ```
@@ -129,8 +122,6 @@ All WASM grammars ship as npm package assets — no native compilation, no platf
 | `src/tools/kb-graph-writer.ts` | Semantic graph schema in SQLite, upsert, soft-delete, traversal, export |
 | `src/tools/graph-entity-extractor.ts` | LLM-based entity + relationship extraction from text |
 | `src/cli/graph-cli.ts` | `kb graph` command parsing and output formatting |
-| `src/tools/submit-orchestrator.ts` | KB write orchestration plus graph extraction/upsert |
-| `src/tools/invalidate-orchestrator.ts` | KB invalidation orchestration plus graph provenance cleanup |
 | `src/cli/init-cli.ts` | `ast-facts` cycle in `kb init` / `kb scan` |
 | `src/tools/code-graph-indexer.ts` | `TsMorphIndexer` — TS/JS AST indexing via ts-morph |
 | `src/tools/tree-sitter-indexer.ts` | `TreeSitterIndexer` — multi-language AST indexing via web-tree-sitter |
