@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/query-expand.md
-date: '2026-05-24'
+date: '2026-05-25'
 kb_id: src-prompts-query-expand-md
 tags:
   - original-source

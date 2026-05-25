@@ -24,7 +24,7 @@ Pond seeds come from `buildPondQueries`: the full query, token pairs (`languages
 
 Each pass merges five candidate streams before dedup and scoring:
 
-1. **Edge neighbors** — `getFactNeighbors(activePond.frontierFactIds, seenIds, edgeBatch)`: one BFS hop from the **active pond's** frontier only (capped per hop so code swamps do not flood a single pass).
+1. **Edge neighbors** — `getFactNeighbors(activePond.frontierFactIds, seenIds, perIterationLimit)`: one BFS hop from the **active pond's** frontier only.
 2. **Lexical (primary)** — FTS for the original query string.
 3. **Lexical (pond)** — FTS for the active pond's sub-query (skipped when identical to primary).
 4. **Concept frontier** — facts sharing any concept token in the active concept set.
@@ -40,31 +40,32 @@ After retrieval, **`enrichReadDocumentsAnswerWithLLM()`** (`src/cli/intent-cli.t
 
 Terminal **`evidence>`** is a **single summary header** (`formatEvidenceSummaryHeader()` in `src/core/evidence-summary.ts`) — count, doc/code mix, top themes, lead titles, walk/stop/conf. No per-fact bullet lines. See **`src/core/EVIDENCE_SUMMARY.md`**.
 
-## BFS exploration vs surfaced results
+## Fact collection budget
 
-Three separate budgets — do not conflate them:
+**One limit controls how many facts are collected: `DEFAULT_FACT_LIMIT`** (`src/tools/facts-query-research-orchestrator.ts`, default `500`). The loop checks `scoredFacts.size >= input.limit` at the top of each iteration and breaks when reached. `DEFAULT_FACT_LIMIT` is also the starting per-iteration DB fetch count (`perIterationLimit = 50` per call) and the value the router passes as `input.limit`.
 
-| Layer | What it limits | Default | Role |
-|-------|----------------|---------|------|
-| **Hop walk** | New nodes visited per pond per pass | 200 edges/hop (`KB_FACTS_QUERY_EDGE_BATCH`), 20 hops (`KB_FACTS_QUERY_MAX_HOPS`) | Graph **exploration** — landing ponds, grow frontiers |
-| **Loop passes** | Round-robin pond iterations | 24 (`KB_FACTS_QUERY_MAX_ITERS`) | How long BFS + lexical + concept streams keep merging |
-| **Surface limit** | Facts returned in `results[]` | 200 (`--limit` / `KB_FACTS_QUERY_MAX_RESULTS`) | Ranked pool scored across all passes; top-N by score |
+There is **no output trimming** — all scored facts in `scoredFacts` are passed to the LLM via `buildResponse`. Recall-first: answer quality over token economy.
 
-BFS is **not** “return everything reachable.” Each hop can pull up to `EDGE_BATCH` neighbors; `seenFactIds` dedupes globally; scoring ranks the union; **`buildResponse` slices to `limit`**. Exponential neighbor growth is bounded by hop cap × edge batch × pond count, not by returning the whole graph.
-
-**Recall-first policy (current):** all facts in the ranked `results[]` pool go to the LLM with full text. Optimize token load later; answer quality first.
+| Layer | What it limits | Default |
+|-------|----------------|---------|
+| **Total facts collected** | `scoredFacts.size` cap | `DEFAULT_FACT_LIMIT` = 500 |
+| **Per DB call** | Rows from each `searchFacts` / `getFactNeighbors` call | `perIterationLimit` = 50 (fixed) |
+| **Loop passes** | Round-robin pond iterations | 24 (`KB_FACTS_QUERY_MAX_ITERS`) |
+| **Graph hops** | BFS levels across all ponds | 20 (`KB_FACTS_QUERY_MAX_HOPS`) |
 
 ## Graph expansion (query string only)
 
 When graph mode is enabled, **`expandQueryWithGraph`** (`src/tools/graph-query-expansion.ts`) may rewrite / widen the **query string** before the intent envelope is built. That expanded string is what **`read_facts`** searches against. See **`src/tools/GRAPH.md`** (“Graph-augmented query”).
+
+## Sufficiency and early exit
+
+Each iteration calls `assessSufficiency()`. The loop exits immediately (no plateau wait) when ≥10 facts score ≥0.40 against the query. If that threshold is never reached the loop continues until the frontier is exhausted, a plateau is detected (2 iterations with no meaningful gain), or the fact budget is hit.
 
 ## Environment knobs (facts deep loop)
 
 - `KB_FACTS_QUERY_MAX_ITERS` (default `24`, clamped 1–24; `-1` = unlimited up to 512 passes)
 - `KB_FACTS_QUERY_MAX_HOPS` (default `20`, clamped 1–40; `-1` = unlimited)
 - `KB_FACTS_QUERY_MAX_PONDS` (default `6`, clamped 2–12; `-1` = unlimited up to 32 ponds)
-- `KB_FACTS_QUERY_EDGE_BATCH` (default `200`, clamped 10–200; `-1` = unlimited neighbors per hop)
-- `KB_FACTS_QUERY_MAX_RESULTS` (default `200`, clamped 10–200; `-1` = unlimited)
 
 Use `-1` only for debugging — absolute safety caps still apply on iters/ponds.
 

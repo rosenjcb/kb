@@ -27,7 +27,7 @@ read-inputs → code-index → document-facts → import-docs → write
 | Cycle | What happens |
 |---|---|
 | `read-inputs` | Collect markdown sources + crawl non-AST source snippets for prompts |
-| `code-index` | Deterministic `kg_*` indexing (ts-morph + tree-sitter) **and** LLM `code-facts` pass for changed files |
+| `code-index` | Deterministic AST indexing into `facts`/`fact_edges` (ts-morph + tree-sitter) **and** LLM `code-facts` pass for changed files |
 | `document-facts` | Sentence-level facts from discovered markdown |
 | `import-docs` | Verbatim original docs into SQLite |
 | `write` | Persist docs; on scan, claim planner/mutations |

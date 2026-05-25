@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/README.md
-date: '2026-05-24'
+date: '2026-05-25'
 kb_id: src-prompts-readme-md
 tags:
   - original-source
@@ -26,7 +26,7 @@ LLM prompts used by the KB CLI, stored as plain Markdown files so they can be re
 
 | File | Used by | Kind |
 |---|---|---|
-| `chat-system.md` | `chat-cli.ts` — `CHAT_SYSTEM_PROMPT` | single-part |
+| `chat-router-system.md` | `chat-cli.ts` — `CHAT_ROUTER_SYSTEM_PROMPT` | single-part |
 | `graph-extraction.md` | `graph-entity-extractor.ts` — `EXTRACTION_SYSTEM_PROMPT` | single-part |
 | `init-synthesis.md` | `init-cli.ts` — `runSynthesisPass` | two-part (intro + instructions) |
 | `init-refinement.md` | `init-cli.ts` — `runRefinementPass` | two-part (intro + instructions) |

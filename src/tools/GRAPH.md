@@ -27,7 +27,7 @@ Graph mode is enabled by default. You can disable graph extraction and graph-aug
 - `graph.enabled: false` in `~/.kb/config.json`
 - `KB_GRAPH=false` as a one-off environment override
 
-The code-fact graph uses the shared **`facts`** table (`source_kind='import_code'`) and **`fact_edges`** for all structural edges. `kb_graph_entities` / `kb_graph_relationships` were dropped in migration v11; `kg_nodes`, `kg_edges`, `kg_file_state`, `kg_nodes_fts`, and `kg_semantic_bridge` were dropped in migration v14.
+The code-fact graph uses the shared **`facts`** table (`source_kind='import_code'`) and **`fact_edges`** for all structural edges.
 
 ## How it stays up to date
 
@@ -40,7 +40,7 @@ flowchart LR
 
 | Trigger | What happens |
 |---|---|
-| `kb init` / `kb scan` — `ast-facts` cycle | Deterministic code graph indexing updates `kg_*`; semantic graph is built incrementally from source |
+| `kb init` / `kb scan` — `ast-facts` cycle | Deterministic code graph indexing writes into `facts` + `fact_edges`; semantic graph is built incrementally from source |
 
 ## CLI
 
@@ -78,23 +78,9 @@ flowchart TB
   Graph["kb graph"] --> GraphView["explicit graph inspection / manual graph edits"]
 ```
 
-## Code graph (kg_* tables)
+## Code graph
 
-Alongside the semantic graph (`kb_graph_entities` / `kb_graph_relationships`), KB maintains a separate **code graph** in `kg_*` tables. These are populated deterministically by the `code-graph` cycle during `kb init` and `kb scan` — no LLM.
-
-### What it stores
-
-```sql
-kg_nodes           — file nodes and symbol nodes extracted from source code
-kg_edges           — IMPORTS_FILE, EXPORTS_SYMBOL, EXTENDS, IMPLEMENTS
-kg_nodes_fts       — full-text search over node names and paths
-kg_file_state      — content hashes for incremental re-indexing
-kg_semantic_bridge — name-matched links between code symbols and semantic entities
-```
-
-### How it connects to the semantic graph
-
-The `kg_semantic_bridge` table is the join layer. After indexing, symbol names are slugified and matched against `kb_graph_entities` names. A match creates a bridge row at confidence 0.8. This enables `CodeGraphStore.expandWithCodeNeighbors` to answer "which files are structurally related to semantic entity X?" without any LLM call — it follows bridge rows then traverses `IMPORTS_FILE` edges.
+The `code-graph` cycle runs during `kb init` and `kb scan` — no LLM. It indexes source files deterministically and writes into `facts` (`source_kind='import_code'`) and `fact_edges` (structural edge types: `IMPORTS_FILE`, `EXPORTS_SYMBOL`, `EXTENDS`, `IMPLEMENTS`). Per-file content hashes enable incremental skip on re-run.
 
 ### Language support
 
@@ -115,4 +101,4 @@ All WASM grammars ship as npm package assets — no native compilation, no platf
 | `src/cli/init-cli.ts` | `ast-facts` cycle in `kb init` / `kb scan` |
 | `src/tools/code-graph-indexer.ts` | `TsMorphIndexer` — TS/JS AST indexing via ts-morph |
 | `src/tools/tree-sitter-indexer.ts` | `TreeSitterIndexer` — multi-language AST indexing via web-tree-sitter |
-| `src/tools/code-graph-store.ts` | Read-only queries over `kg_*` tables including `expandWithCodeNeighbors` |
+| `src/tools/code-graph-store.ts` | Read-only queries over `facts`/`fact_edges` including `expandWithCodeNeighbors` |

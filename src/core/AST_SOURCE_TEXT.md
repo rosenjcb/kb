@@ -10,11 +10,8 @@ This document describes how compact, token-efficient code snippets are extracted
 
 ```
 TsMorphIndexer / TreeSitterIndexer
-  └─ kg_nodes.props_json  ← { source_text: "<full declaration, capped 1497 chars>" }
-        │
-        ▼
-  promoteAstToFactsTable  (ast-promote.ts)
-        │  reads props_json, passes sourceText to upsertFact
+  └─ upsertCodeFileFact (code-fact-writer.ts)
+        │  passes sourceText directly to upsertFact
         ▼
   facts.source_text       ← actual code snippet
         │
@@ -32,12 +29,12 @@ TsMorphIndexer / TreeSitterIndexer
 
 ### TsMorphIndexer (`code-graph-indexer.ts`)
 
-For every exported declaration, ts-morph gives the exact source text via `decl.getText()`. This is stored in `kg_nodes.props_json`:
+For every exported declaration, ts-morph gives the exact source text via `decl.getText()`. This is passed directly to `upsertCodeFileFact`:
 
 ```typescript
 const rawText = decl.getText()
 const sourceText = rawText.length > 1500 ? `${rawText.slice(0, 1497)}…` : rawText
-propsJson: JSON.stringify({ source_text: sourceText })
+upsertCodeFileFact(indexer, sourceRef, factText, triplet, confidence, sourceText)
 ```
 
 `decl.getText()` returns the full declaration including the body. For a 200-line class this would be large, so it is **capped at 1497 characters** (plus a `…` marker).
@@ -65,23 +62,7 @@ const rawText = src.slice(declNode.startIndex, declNode.endIndex)
 
 The same 1500-char cap applies.
 
-**Note:** `spanStart`/`spanEnd` in `kg_nodes` are also updated to cover the full declaration (not just the name identifier), making them useful for future navigation.
-
----
-
-## Promotion: flowing source_text into facts
-
-`promoteAstToFactsTable` (`ast-promote.ts`) queries `kg_nodes` and reads `props_json`:
-
-```typescript
-const props = JSON.parse(sym.props_json) as Record<string, unknown>
-if (typeof props.source_text === 'string' && props.source_text.length > 0) {
-  sourceText = props.source_text
-}
-indexer.upsertFact({ factText, sourceKind: 'import_code', sourceRef, sourceText, ... })
-```
-
-`fact_text` is always kept as the human-readable description (`"Foo is a Class exported from…"`) because it drives FTS search and deduplication via `normalized_text`. `source_text` is a separate column that exists solely to enrich LLM context.
+`fact_text` is always the human-readable description (`"Foo is a Class exported from…"`) because it drives FTS search and deduplication via `normalized_text`. `source_text` is a separate column that exists solely to enrich LLM context.
 
 ---
 

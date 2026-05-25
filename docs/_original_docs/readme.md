@@ -1,7 +1,7 @@
 ---
 layout: default
 title: README.md
-date: '2026-05-24'
+date: '2026-05-25'
 kb_id: readme-md
 tags:
   - original-source

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: skills/kb:dump-context/SKILL.md
-date: '2026-05-24'
+date: '2026-05-25'
 kb_id: skills-kb-dump-context-skill-md
 tags:
   - original-source

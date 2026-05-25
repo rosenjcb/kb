@@ -1,7 +1,7 @@
 ---
 layout: default
 title: skills/kb:evaluation-run/SKILL.md
-date: '2026-05-24'
+date: '2026-05-25'
 kb_id: skills-kb-evaluation-run-skill-md
 tags:
   - original-source
@@ -42,22 +42,22 @@ Do not invent a new scenario or JSON shape. Follow `EVALUATION.md` as the source
 From kb repo root (`pnpm run build` first):
 
 ```bash
-# Canonical raylib disposable run + optional auto-score
-npm run eval:all -- --suite raylib [--auto-score]
+# Canonical raylib run: clone → init → 8 queries + optional auto-score
+npm run eval -- --suite raylib [--auto-score]
 
-# Re-query only (existing base; no init)
-npm run eval:query -- --suite raylib --base <base> [--auto-score]
-
-# Kb repo dogfood questions (not the raylib benchmark)
-npm run eval:all -- --suite kb [--auto-score]
+# Kb repo dogfood questions
+npm run eval -- --suite kb [--auto-score]
 
 # Any git URL → shallow clone → init → generic eight questions
-npm run eval:all -- --suite generic --repo https://github.com/org/repo.git [--auto-score]
+npm run eval -- --suite generic --repo https://github.com/org/repo.git [--auto-score]
+
+# Conversational chat eval: init + 3 scenarios + retrieval scoring
+npm run eval:chat -- --base <name> --cwd <repo-path>
 ```
 
-Implementation: `scripts/eval-run.mjs` (modes `all` | `query`, suites `raylib` | `kb` | `generic`). Repo URL resolves from suite YAML `repo_url`, with `--repo` as explicit override.
+Implementation: `scripts/eval-run.mjs` (suites `raylib` | `kb` | `generic`). Repo URL resolves from suite YAML `repo_url`, with `--repo` as explicit override.
 
-Flags: `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`, `--run-dir`, `--out`, `--scores-file`, `--auto-score`, `--skip-init`, `--hypothesis`, `--label`. See `EVALUATION.md` § Automated harvest.
+Flags: `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`, `--run-dir`, `--out`, `--scores-file`, `--auto-score`, `--hypothesis`, `--label`. See `EVALUATION.md` § Automated harvest.
 
 Artifacts default under `~/.kb/evaluations/<run-name>/`.
 

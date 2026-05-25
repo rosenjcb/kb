@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/AGENT_LOOP.md
-date: '2026-05-24'
+date: '2026-05-25'
 kb_id: src-core-agent-loop-md
 tags:
   - original-source
@@ -114,7 +114,7 @@ Some commands implement deterministic loops over named cycles. LLM is called dir
 | `pass-enrich` | Per-document enrichment in parallel | Enriched `CandidateDoc[]` |
 | `pass3` | Final quality pass | Final `CandidateDoc[]` |
 | `write` | Upsert to SQLite | Written document IDs |
-| `ast-facts` | Deterministic source-code indexing and fact promotion | `kg_*` + `facts` updates |
+| `ast-facts` | Deterministic source-code indexing and fact promotion | `facts` + `fact_edges` updates |
 
 ## Part 3: Choosing a Pattern
 
