@@ -58,15 +58,14 @@ describe('graph-query-expansion', () => {
     expect(expanded).toBe('config json')
   })
 
-  it('Given exported symbols in kg_nodes, then expansion appends matching symbol names', () => {
-    // Use a name that the unicode61 tokenizer will match on the query term 'router'
+  it('Given exported symbols in facts, then expansion appends matching symbol names', () => {
+    // Insert an exported_from fact so the FTS expansion picks up 'router'
     db.prepare(
-      `INSERT INTO kg_nodes (id, kind, name, qualified_name, path, source, confidence, exported, props_json, updated_at)
-       VALUES ('sym:router','symbol','router','src/router.ts::router','src/router.ts','test',0.9,1,'{}',datetime('now'))`
+      `INSERT INTO facts (id, fact_text, normalized_text, source_kind, lane_id, confidence, tombstoned_at, created_at, updated_at, subject, predicate, object)
+       VALUES ('f-router','router is a Function exported from src/router.ts','router is a function exported from src/router.ts','import_code','general',0.65,NULL,datetime('now'),datetime('now'),'router','exported_from','src/router.ts')`
     ).run()
     db.prepare(
-      `INSERT INTO kg_nodes_fts (id, name, qualified_name, path)
-       VALUES ('sym:router','router','src/router.ts::router','src/router.ts')`
+      `INSERT INTO facts_fts (fact_id, fact_text) VALUES ('f-router','router is a Function exported from src/router.ts')`
     ).run()
 
     const expanded = expandQueryWithGraph('router', db)

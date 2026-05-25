@@ -1,7 +1,15 @@
-import { printCliHelp, runMainWithOutput } from '../cli/index.js'
 import type { KbConfig } from '../cli/kb-config.js'
 
-export { printCliHelp }
+// Lazy-load index.ts so its top-level main() call doesn't fire just from
+// importing runner.ts (which chat-cli pulls in via chat-docs-generate-flow).
+async function loadIndex() {
+  return import('../cli/index.js')
+}
+
+export async function printCliHelp(): Promise<string> {
+  const { printCliHelp: impl } = await loadIndex()
+  return impl()
+}
 
 /**
  * Run a CLI command and return its output as a string.
@@ -13,6 +21,7 @@ export async function runCommandForTui(
   onChunk?: (line: string) => void,
   sessionId?: string
 ): Promise<string> {
+  const { runMainWithOutput } = await loadIndex()
   const chunks: string[] = []
 
   const out = {

@@ -1,6 +1,11 @@
 import path from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import dayjs from 'dayjs'
+import {
+  formatRetrievedFactsForLLM,
+  formatSessionPoolFactsForLLM,
+  formatToolQueryFactsForLLM,
+} from '../core/retrieval-context'
 import { ReportWriter, RunCollector, defaultLogsDir, estimateCost } from '../core/telemetry'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message, ToolDefinition, ToolResultBlock } from '../core/types'
@@ -231,27 +236,7 @@ function formatSessionStats(stats: ChatSessionStats, printer: Printer): void {
 
 const CHAT_MAX_OUTPUT_TOKENS = 4096
 
-const CHAT_QUERY_TOOL: ToolDefinition = {
-  name: 'query',
-  description:
-    'Search the knowledge base for additional facts. Call this proactively — especially for code questions — before concluding you lack information. ' +
-    'For code-related questions use specific technical identifiers: function names, class names, interface names, file paths, or method signatures seen in prior facts. ' +
-    'Call multiple times with different angles (e.g. first "ToolRegistry register", then "createKBToolsRegistry handler", then "tool registration pattern") to build a complete picture.',
-  schema: {
-    type: 'object',
-    properties: {
-      q: {
-        type: 'string',
-        description:
-          'Search query. For code topics, prefer specific identifiers (function/class/interface names) over natural-language descriptions.',
-      },
-    },
-    required: ['q'],
-    additionalProperties: false,
-  },
-}
-
-const MAX_QUERY_TOOL_ROUNDS = 5
+const MAX_SYNTHESIS_TURNS = 12
 
 const CHAT_QUERY_KB_TOOL: ToolDefinition = {
   name: 'query_kb',
@@ -299,8 +284,8 @@ export function printChatHelp(mode: CmdMode = 'cli'): string {
   ].join('\n')
 }
 
-const CHAT_SYSTEM_PROMPT = loadPrompt('chat-system.md')
 const CHAT_ROUTER_SYSTEM_PROMPT = loadPrompt('chat-router-system.md')
+const CHAT_DECOMPOSE_SYSTEM_PROMPT = loadPrompt('chat-decompose-system.md')
 
 const DOC_SESSION_TRANSCRIPT_MAX_CHARS = 12000
 
@@ -360,30 +345,33 @@ export interface ChatSynthesisResult {
   outputTokens: number
   answerMs: number
   factsRetrieved: number
+  lastIntentResult?: IntentResult
 }
 
 /**
- * Synthesize an answer from pre-fetched retrieval using the chat LLM pipeline.
- * Used by `kb query` to produce a chat-quality answer from a single-shot retrieval.
+ * Canonical smart agentic loop for KB question answering.
+ * Used by both `kb query` (retrieval provided) and `kb chat` per turn (retrieval undefined).
  */
 export async function runChatSynthesis(params: {
   question: string
-  retrieval: ReadDocumentsResult
+  /** Pre-fetched retrieval from `kb query`. Omit for the chat path (no initial retrieval). */
+  retrieval?: ReadDocumentsResult
   messages: Message[]
   llmProvider: LLMProvider
   toolExecutor: ToolExecutor
   kbStorageDir?: string
-  sessionExcludeIds?: string[]
   isAllFacts?: boolean
   graphRelationBlock?: string
   printer: Printer
+  retrievalLimit?: number
   progressHeartbeatMs?: number
   progressNoticeMs?: number
 }): Promise<ChatSynthesisResult> {
   const heartbeatMs = params.progressHeartbeatMs ?? 8000
   const noticeMs = params.progressNoticeMs ?? 12000
+  const retrievalLimit = params.retrievalLimit ?? 200
 
-  if (shouldRefuseChatTurnOnRetrieval(params.retrieval)) {
+  if (params.retrieval !== undefined && shouldRefuseChatTurnOnRetrieval(params.retrieval)) {
     return {
       answer: CHAT_WEAK_RETRIEVAL_REFUSAL,
       inputTokens: 0,
@@ -393,21 +381,30 @@ export async function runChatSynthesis(params: {
     }
   }
 
-  const userContent = buildChatTurnContent({
-    question: params.question,
-    retrieval: params.retrieval,
-    allFacts: params.isAllFacts,
-    graphRelationBlock: params.graphRelationBlock,
-  })
+  // kb query path: inject pre-fetched retrieval as the initial user message
+  // chat path: messages already contain the full history including the user question
+  let turnMessages: Message[]
+  if (params.retrieval !== undefined) {
+    const userContent = buildChatTurnContent({
+      question: params.question,
+      retrieval: params.retrieval,
+      allFacts: params.isAllFacts,
+      graphRelationBlock: params.graphRelationBlock,
+    })
+    turnMessages = [...params.messages, { role: 'user', content: userContent }]
+  } else {
+    turnMessages = [...params.messages]
+  }
 
-  let turnMessages: Message[] = [...params.messages, { role: 'user', content: userContent }]
   let totalInputTokens = 0
   let totalOutputTokens = 0
   let completionText = ''
   const started = Date.now()
-  const allNewFacts: Array<{ id: string; text: string }> = []
+  let factsRetrieved = params.retrieval?.results?.length ?? 0
+  let lastIntentResult: IntentResult | undefined
+  let round = 0
 
-  for (let round = 0; round < MAX_QUERY_TOOL_ROUNDS; round++) {
+  while (true) {
     const stageName = round === 0 ? 'answer' : `answer-r${round + 1}`
     const roundRun = await withStageProgress(
       params.printer,
@@ -415,83 +412,89 @@ export async function runChatSynthesis(params: {
       () =>
         params.llmProvider.call({
           messages: turnMessages,
-          tools: [CHAT_QUERY_TOOL],
-          systemPrompt: CHAT_SYSTEM_PROMPT,
+          tools: [CHAT_QUERY_KB_TOOL],
+          systemPrompt: CHAT_ROUTER_SYSTEM_PROMPT,
           temperature: 0.15,
           maxTokens: CHAT_MAX_OUTPUT_TOKENS,
         }),
       { heartbeatMs, noticeMs }
     )
+    round++
     const completion = roundRun.result
     totalInputTokens += completion.usage.inputTokens
     totalOutputTokens += completion.usage.outputTokens
     completionText = completion.text
 
-    if (completion.stopReason !== 'tool_use' || completion.toolUses.length === 0) {
+    if (completion.stopReason !== 'tool_use' || completion.toolUses.length === 0 || round >= MAX_SYNTHESIS_TURNS) {
       break
     }
 
-    const toolResultBlocks: ToolResultBlock[] = []
-    for (const toolUse of completion.toolUses) {
-      if (toolUse.name !== 'query') {
-        toolResultBlocks.push({
-          type: 'tool_result',
-          toolUseId: toolUse.id,
-          toolName: toolUse.name,
-          result: 'Unknown tool.',
-          isError: true,
-        })
-        continue
-      }
-      const q = typeof toolUse.input.q === 'string' ? toolUse.input.q : ''
-      if (!q) {
-        toolResultBlocks.push({
-          type: 'tool_result',
-          toolUseId: toolUse.id,
-          toolName: toolUse.name,
-          result: 'Empty query.',
-          isError: true,
-        })
-        continue
-      }
-
-      params.printer.chatMeta('query', q)
-
-      const currentExcludeIds = [
-        ...(params.sessionExcludeIds ?? []),
-        ...allNewFacts.map(f => f.id),
-      ]
-      const queryRetrieval = await withStageProgress(
-        params.printer,
-        'retrieval-tool',
-        () =>
-          executeChatQueryTruthRetrieval({
-            toolExecutor: params.toolExecutor,
-            expandedQuery: q,
-            retrievalLimit: 5,
-            excludeIds: currentExcludeIds.length > 0 ? currentExcludeIds : undefined,
-          }),
-        { heartbeatMs, noticeMs }
-      )
-
-      let toolResult = 'No additional facts found.'
-      if (isReadFactsResult(queryRetrieval.result)) {
-        const snapshot = normalizeReadResult(queryRetrieval.result.data)
-        for (const r of snapshot.results ?? []) {
-          if (r.metadata?.id && r.content) {
-            allNewFacts.push({ id: r.metadata.id, text: r.content })
+    const toolResultBlocks = await Promise.all(
+      completion.toolUses.map(async (toolUse) => {
+        if (toolUse.name !== 'query_kb') {
+          return {
+            type: 'tool_result' as const,
+            toolUseId: toolUse.id,
+            toolName: toolUse.name,
+            result: 'Unknown tool.',
+            isError: true,
           }
         }
-        toolResult = buildToolQueryResult(snapshot)
-      }
+        const q = typeof toolUse.input.q === 'string' ? toolUse.input.q : ''
+        if (!q) {
+          return {
+            type: 'tool_result' as const,
+            toolUseId: toolUse.id,
+            toolName: toolUse.name,
+            result: 'Empty query.',
+            isError: true,
+          }
+        }
 
-      toolResultBlocks.push({
-        type: 'tool_result',
-        toolUseId: toolUse.id,
-        toolName: toolUse.name,
-        result: toolResult,
+        params.printer.chatMeta('query', q)
+
+        let expandedQuery = q
+        if (params.kbStorageDir && !params.isAllFacts) {
+          try {
+            const db = new Database(kbIndexDbPath(params.kbStorageDir), { readonly: true })
+            try {
+              expandedQuery = expandQueryWithGraph(q, db)
+            } finally {
+              db.close()
+            }
+          } catch {
+            // graph expansion is best-effort
+          }
+        }
+
+        const retrievalRun = await withStageProgress(
+          params.printer,
+          'retrieval-tool',
+          () =>
+            executeChatQueryTruthRetrieval({
+              toolExecutor: params.toolExecutor,
+              expandedQuery,
+              retrievalLimit,
+            }),
+          { heartbeatMs, noticeMs }
+        )
+
+        let toolResult = 'No facts found.'
+        if (isReadFactsResult(retrievalRun.result)) {
+          lastIntentResult = retrievalRun.result
+          const snapshot = normalizeReadResult(retrievalRun.result.data)
+          factsRetrieved += snapshot.results?.length ?? 0
+          toolResult = buildToolQueryResult(snapshot) || 'No facts found.'
+        }
+
+        return {
+          type: 'tool_result' as const,
+          toolUseId: toolUse.id,
+          toolName: toolUse.name,
+          result: toolResult,
+        }
       })
-    }
+    )
 
     turnMessages = [
       ...turnMessages,
@@ -507,7 +510,8 @@ export async function runChatSynthesis(params: {
     inputTokens: totalInputTokens,
     outputTokens: totalOutputTokens,
     answerMs: Date.now() - started,
-    factsRetrieved: (params.retrieval.results?.length ?? 0) + allNewFacts.length,
+    factsRetrieved,
+    lastIntentResult,
   }
 }
 
@@ -523,7 +527,7 @@ export async function runChatSession(
     },
     deps.mode ?? 'cli'
   )
-  const retrievalLimit = deps.retrievalLimit ?? 5
+  const retrievalLimit = deps.retrievalLimit ?? 200
   const maxHistoryTurns = deps.maxHistoryTurns ?? 8
   const progressHeartbeatMs = Math.max(1500, deps.progressHeartbeatMs ?? 8000)
   const progressNoticeMs = Math.max(3000, deps.progressNoticeMs ?? 12000)
@@ -678,119 +682,92 @@ export async function runChatSession(
         let factsRetrieved = 0
         let lastIntentResult: IntentResult | undefined
 
-        const MAX_CHAT_TOOL_ROUNDS = 4
+        // Query decomposition pre-step: for synthesis/elaboration queries, retrieve from multiple
+        // angles before the LLM-driven tool loop so the model has grounded context upfront.
+        if (!input.startsWith('/') && SYNTHESIS_QUERY_RE.test(input)) {
+          const subQueries = await decomposeQueryForRetrieval(input, deps.llmProvider)
+          if (subQueries.length > 1) {
+            const preToolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> =
+              subQueries.map((q, i) => ({ id: `pre-${i}`, name: 'query_kb', input: { q } }))
 
-        for (let round = 0; round < MAX_CHAT_TOOL_ROUNDS; round++) {
-          const stageName = round === 0 ? 'answer' : `answer-r${round + 1}`
-          const roundRun = await withStageProgress(
-            printer,
-            stageName,
-            () =>
-              deps.llmProvider.call({
-                messages: turnMessages,
-                tools: [CHAT_QUERY_KB_TOOL],
-                systemPrompt: CHAT_ROUTER_SYSTEM_PROMPT,
-                temperature: 0.15,
-                maxTokens: CHAT_MAX_OUTPUT_TOKENS,
-              }),
-            { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
-          )
-          const completion = roundRun.result
-          answerMs += roundRun.durationMs
-          totalInputTokens += completion.usage.inputTokens
-          totalOutputTokens += completion.usage.outputTokens
+            for (const q of subQueries) printer.chatMeta('query', q)
 
-          if (completion.stopReason !== 'tool_use' || completion.toolUses.length === 0) {
-            answer = completion.text.trim()
-            break
-          }
-
-          const toolResultBlocks: ToolResultBlock[] = []
-          for (const toolUse of completion.toolUses) {
-            if (toolUse.name !== 'query_kb') {
-              toolResultBlocks.push({
-                type: 'tool_result',
-                toolUseId: toolUse.id,
-                toolName: toolUse.name,
-                result: 'Unknown tool.',
-                isError: true,
-              })
-              continue
-            }
-            const q = typeof toolUse.input.q === 'string' ? toolUse.input.q : ''
-            if (!q) {
-              toolResultBlocks.push({
-                type: 'tool_result',
-                toolUseId: toolUse.id,
-                toolName: toolUse.name,
-                result: 'Empty query.',
-                isError: true,
-              })
-              continue
-            }
-
-            printer.chatMeta('query', q)
-
-            let expandedQuery = q
-            if (deps.kbStorageDir && !isAllFacts) {
-              try {
-                const db = new Database(kbIndexDbPath(deps.kbStorageDir), { readonly: true })
-                try {
-                  expandedQuery = expandQueryWithGraph(q, db)
-                } finally {
-                  db.close()
+            // Run all sub-query retrievals in parallel (mirrors how Claude Code batches tool calls)
+            const preRetrievals = await Promise.all(
+              subQueries.map(async (q, i) => {
+                let expandedQuery = q
+                if (deps.kbStorageDir && !isAllFacts) {
+                  try {
+                    const db = new Database(kbIndexDbPath(deps.kbStorageDir), { readonly: true })
+                    try {
+                      expandedQuery = expandQueryWithGraph(q, db)
+                    } finally {
+                      db.close()
+                    }
+                  } catch {
+                    // graph expansion is best-effort
+                  }
                 }
-              } catch {
-                // graph expansion is best-effort
-              }
-            }
-
-            const retrievalRun = await withStageProgress(
-              printer,
-              'retrieval-tool',
-              () =>
-                executeChatQueryTruthRetrieval({
-                  toolExecutor: deps.toolExecutor,
-                  expandedQuery,
-                  retrievalLimit,
-                }),
-              { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
+                const run = await withStageProgress(
+                  printer,
+                  'retrieval-pre',
+                  () =>
+                    executeChatQueryTruthRetrieval({
+                      toolExecutor: deps.toolExecutor,
+                      expandedQuery,
+                      retrievalLimit,
+                    }),
+                  { heartbeatMs: progressHeartbeatMs, noticeMs: progressNoticeMs }
+                )
+                return { i, run }
+              })
             )
-            retrievalMs += retrievalRun.durationMs
 
-            let toolResult = 'No facts found.'
-            if (isReadFactsResult(retrievalRun.result)) {
-              lastIntentResult = retrievalRun.result
-              const snapshot = normalizeReadResult(retrievalRun.result.data)
-              factsRetrieved += snapshot.results?.length ?? 0
-              toolResult = buildToolQueryResult(snapshot) || 'No facts found.'
-            }
-
-            toolResultBlocks.push({
-              type: 'tool_result',
-              toolUseId: toolUse.id,
-              toolName: toolUse.name,
-              result: toolResult,
+            const preToolResults: ToolResultBlock[] = preRetrievals.map(({ i, run }) => {
+              retrievalMs += run.durationMs
+              let toolResult = 'No facts found.'
+              if (isReadFactsResult(run.result)) {
+                lastIntentResult = run.result
+                const snapshot = normalizeReadResult(run.result.data)
+                factsRetrieved += snapshot.results?.length ?? 0
+                toolResult = buildToolQueryResult(snapshot) || 'No facts found.'
+              }
+              return {
+                type: 'tool_result' as const,
+                toolUseId: `pre-${i}`,
+                toolName: 'query_kb',
+                result: toolResult,
+              }
             })
+
+            // Inject as synthetic assistant (tool calls) + user (tool results) pair
+            turnMessages = [
+              ...turnMessages,
+              { role: 'assistant' as const, content: '', toolUses: preToolUses },
+              { role: 'user' as const, content: preToolResults },
+            ]
           }
-
-          turnMessages = [
-            ...turnMessages,
-            {
-              role: 'assistant' as const,
-              content: completion.text,
-              toolUses: completion.toolUses,
-            },
-            {
-              role: 'user' as const,
-              content: toolResultBlocks,
-            },
-          ]
         }
 
-        if (!answer) {
-          answer = 'I couldn\'t form a complete answer. Try rephrasing your question.'
-        }
+        const synthesis = await runChatSynthesis({
+          question: input,
+          retrieval: undefined,
+          messages: turnMessages,
+          llmProvider: deps.llmProvider,
+          toolExecutor: deps.toolExecutor,
+          kbStorageDir: deps.kbStorageDir,
+          isAllFacts,
+          printer,
+          retrievalLimit,
+          progressHeartbeatMs,
+          progressNoticeMs,
+        })
+        answer = synthesis.answer
+        totalInputTokens = synthesis.inputTokens
+        totalOutputTokens = synthesis.outputTokens
+        answerMs = synthesis.answerMs
+        factsRetrieved += synthesis.factsRetrieved
+        lastIntentResult = synthesis.lastIntentResult
 
         messages.push({ role: 'user', content: input })
         messages.push({ role: 'assistant', content: answer })
@@ -897,7 +874,7 @@ export function buildChatTurnContent(input: {
   const poolFacts = (input.sessionPool ?? []).filter(f => !priorFactIds.has(f.id))
   const poolSection =
     poolFacts.length > 0
-      ? `Session fact pool (facts retrieved in earlier turns — still relevant context):\n${poolFacts.map((f, i) => `${i + 1}. [${f.id}] ${f.text.replace(/\r?\n/g, ' ').slice(0, 300)}`).join('\n')}`
+      ? `Session fact pool (facts retrieved in earlier turns — still relevant context):\n${formatSessionPoolFactsForLLM(poolFacts)}`
       : ''
 
   return [
@@ -942,6 +919,33 @@ function splitShellArgs(input: string): string[] {
   return args
 }
 
+const SYNTHESIS_QUERY_RE =
+  /\b(elaborate|build on|expand on|tell me more|summarize|give me an overview|overview of|dive into|go deeper|how does .+ relate|walk me through)\b/i
+
+async function decomposeQueryForRetrieval(
+  input: string,
+  llmProvider: LLMProvider
+): Promise<string[]> {
+  if (input.length < 40 || !SYNTHESIS_QUERY_RE.test(input)) return [input]
+  try {
+    const response = await llmProvider.call({
+      messages: [{ role: 'user', content: input }],
+      systemPrompt: CHAT_DECOMPOSE_SYSTEM_PROMPT,
+      temperature: 0,
+      maxTokens: 150,
+      thinkingBudget: 0,
+    })
+    const lines = response.text
+      .trim()
+      .split('\n')
+      .map(l => l.replace(/^[-•*\d.)\s]+/, '').trim())
+      .filter(l => l.length > 0)
+    return lines.length > 0 ? lines.slice(0, 4) : [input]
+  } catch {
+    return [input]
+  }
+}
+
 export function normalizeReadResult(value: unknown): ReadDocumentsResult {
   if (!value || typeof value !== 'object') {
     return { results: [] }
@@ -961,47 +965,24 @@ function formatRetrievalMode(retrieval: ReadDocumentsResult['retrieval']): strin
   return `${method}${detail}`
 }
 
-function buildEvidence(results: ReadDocumentsResult['results'], allFacts?: boolean): string {
-  if (!Array.isArray(results) || results.length === 0) {
-    return 'No evidence retrieved from KB documents.'
-  }
-
-  const slice = allFacts ? results : results.slice(0, 4)
-  const sections: string[] = []
-
-  for (const [index, result] of slice.entries()) {
-    const docId = result.metadata?.id ?? `doc-${index + 1}`
-    const content = (result.content ?? '').trim()
-    const snippet = content.length > 900 ? `${content.slice(0, 900)}...` : content
-    sections.push(`Document ${index + 1} (${docId}):\n${snippet || 'No content available.'}`)
-  }
-
-  const graphHints = new Set<string>()
-  for (const result of slice) {
-    for (const line of result.graphEvidence ?? []) {
-      if (line.trim()) graphHints.add(line.trim())
-    }
-  }
-  if (graphHints.size > 0) {
-    sections.push(
-      `Graph linkage hints (typed edges; must agree with document text above):\n${[...graphHints].map(h => `- ${h}`).join('\n')}`
-    )
-  }
-
-  return sections.join('\n\n')
+function buildEvidence(results: ReadDocumentsResult['results'], _allFacts?: boolean): string {
+  return formatRetrievedFactsForLLM(results)
 }
 
 function buildToolQueryResult(snapshot: ReadDocumentsResult): string {
   const results = snapshot.results ?? []
-  if (results.length === 0) return 'No additional facts found.'
-  return results
-    .slice(0, 8)
-    .map((r, i) => {
-      const id = r.metadata?.id ?? `fact-${i + 1}`
-      const text = (r.content ?? '').trim().replace(/\r?\n/g, ' ').slice(0, 500)
-      return `${i + 1}. [${id}] ${text}`
-    })
-    .join('\n')
+  const lines = formatToolQueryFactsForLLM(results)
+  if (results.length === 0) return lines
+  const detail = snapshot.retrieval?.detail ?? ''
+  const isWeakEvidence = detail.includes('weak_evidence_after_exhaustion')
+  const isFrontierExhausted = detail.includes('frontier_exhausted')
+  if (isWeakEvidence) {
+    return `${lines}\n\n[Retrieval confidence was low — the graph frontier was exhausted without strong evidence. Try querying with different or broader terms before answering.]`
+  }
+  if (isFrontierExhausted) {
+    return `${lines}\n\n[Graph frontier exhausted — all reachable nodes from initial query seeds were visited. If the above facts don't fully answer the question, try at least two more queries using specific technical identifiers (function names, file paths, constant names) rather than natural-language descriptions.]`
+  }
+  return lines
 }
 
 export function createTerminalChatIO(): ChatIO {

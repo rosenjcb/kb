@@ -1,7 +1,6 @@
 /**
  * Tests for AST source text reconstruction:
  *  - source_text stored via upsertFact / read back via FactRow
- *  - promoteAstToFactsTable passes props_json source_text into the facts table
  *  - FactsDocumentReader serves source_text (not fact_text) for import_code facts
  *  - FactsDocumentReader falls back to fact_text when source_text is absent
  *  - Migration 12 adds source_text column
@@ -11,9 +10,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import Database from 'better-sqlite3'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { runMigrations } from '../../src/core/db-migrations'
-import { promoteAstToFactsTable } from '../../src/tools/ast-promote'
 import { FactsDocumentReader } from '../../src/tools/facts-document-reader'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
 
@@ -115,103 +113,6 @@ describe('SqliteKbIndexer.upsertFact — sourceText', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// promoteAstToFactsTable — source_text flows from props_json
-// ---------------------------------------------------------------------------
-describe('promoteAstToFactsTable — source_text from kg_nodes.props_json', () => {
-  let db: Database.Database
-  let indexer: SqliteKbIndexer
-
-  beforeEach(async () => {
-    const result = await mkdb()
-    db = result.db
-    indexer = result.indexer
-  })
-  afterEach(() => {
-    try { db.close() } catch { /* already closed */ }
-  })
-
-  function insertKgNode(
-    id: string,
-    name: string,
-    relPath: string,
-    propsJson: string,
-    exported = 1
-  ) {
-    db.prepare(
-      `INSERT INTO kg_nodes (id, kind, subkind, name, path, source, confidence, exported, props_json, updated_at)
-       VALUES (?, 'symbol', 'FunctionDeclaration', ?, ?, 'test', 1.0, ?, ?, datetime('now'))`
-    ).run(id, name, relPath, exported, propsJson)
-  }
-
-  it('stores source_text from props_json when present', async () => {
-    insertKgNode(
-      'symbol:src/math.ts#add',
-      'add',
-      'src/math.ts',
-      JSON.stringify({ source_text: 'export function add(a: number, b: number) { return a + b }' })
-    )
-    promoteAstToFactsTable(db, indexer)
-
-    const row = db
-      .prepare("SELECT source_text FROM facts WHERE source_ref = 'ast:src/math.ts@add'")
-      .get() as { source_text: string | null } | undefined
-    expect(row?.source_text).toBe(
-      'export function add(a: number, b: number) { return a + b }'
-    )
-  })
-
-  it('stores NULL when props_json has no source_text', async () => {
-    insertKgNode('symbol:src/utils.ts#helper', 'helper', 'src/utils.ts', '{}')
-    promoteAstToFactsTable(db, indexer)
-
-    const row = db
-      .prepare("SELECT source_text FROM facts WHERE source_ref = 'ast:src/utils.ts@helper'")
-      .get() as { source_text: string | null } | undefined
-    expect(row?.source_text).toBeNull()
-  })
-
-  it('stores NULL when props_json is malformed JSON', async () => {
-    insertKgNode('symbol:src/bad.ts#fn', 'fn', 'src/bad.ts', 'NOT_JSON')
-    promoteAstToFactsTable(db, indexer)
-
-    const row = db
-      .prepare("SELECT source_text FROM facts WHERE source_ref = 'ast:src/bad.ts@fn'")
-      .get() as { source_text: string | null } | undefined
-    expect(row?.source_text).toBeNull()
-  })
-
-  it('still writes the human-readable fact_text regardless of source_text', async () => {
-    insertKgNode(
-      'symbol:src/foo.ts#Foo',
-      'Foo',
-      'src/foo.ts',
-      JSON.stringify({ source_text: 'export class Foo {}' })
-    )
-    promoteAstToFactsTable(db, indexer)
-
-    const row = db
-      .prepare("SELECT fact_text FROM facts WHERE source_ref = 'ast:src/foo.ts@Foo'")
-      .get() as { fact_text: string } | undefined
-    expect(row?.fact_text).toBe('Foo is a Function exported from src/foo.ts')
-  })
-
-  it('does not promote unexported symbols', async () => {
-    insertKgNode(
-      'symbol:src/private.ts#_impl',
-      '_impl',
-      'src/private.ts',
-      '{}',
-      0
-    )
-    promoteAstToFactsTable(db, indexer)
-
-    const row = db
-      .prepare("SELECT id FROM facts WHERE source_ref = 'ast:src/private.ts@_impl'")
-      .get()
-    expect(row).toBeUndefined()
-  })
-})
 
 // ---------------------------------------------------------------------------
 // FactsDocumentReader — toResult serves source_text for import_code facts

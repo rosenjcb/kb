@@ -5,8 +5,8 @@
  *   kb graph                        Summary (triplet count, symbol count, top subjects)
  *   kb graph --entity <name>        Matching triplets from facts
  *   kb graph --path <from> <to>     BFS path through facts triplets
- *   kb graph --format dot           Export from facts triplets + kg_nodes
- *   kb graph --format json          Export from facts triplets + kg_nodes
+ *   kb graph --format dot           Export from facts triplets as DOT graph
+ *   kb graph --format json          Export from facts triplets as JSON
  */
 
 import { existsSync } from 'node:fs'
@@ -200,7 +200,10 @@ export async function runGraphCommand(
 
     const symbolCount = (
       db
-        .prepare(`SELECT COUNT(DISTINCT id) AS n FROM kg_nodes WHERE kind='symbol'`)
+        .prepare(
+          `SELECT COUNT(*) AS n FROM facts
+           WHERE source_kind = 'import_code' AND predicate = 'exported_from' AND tombstoned_at IS NULL`
+        )
         .get() as { n: number }
     ).n
 
@@ -257,7 +260,10 @@ export async function readKnowledgeGraphInitSummary(
 
     const symbolCount = (
       db
-        .prepare(`SELECT COUNT(DISTINCT id) AS n FROM kg_nodes WHERE kind='symbol'`)
+        .prepare(
+          `SELECT COUNT(*) AS n FROM facts
+           WHERE source_kind = 'import_code' AND predicate = 'exported_from' AND tombstoned_at IS NULL`
+        )
         .get() as { n: number }
     ).n
 

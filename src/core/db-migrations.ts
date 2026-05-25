@@ -454,6 +454,24 @@ const MIGRATIONS: Migration[] = [
         ON fact_category_assignments(category_id, score DESC);
     `,
   },
+  {
+    version: 14,
+    name: 'unify_facts_drop_kg_tables',
+    sql: `
+      CREATE TABLE IF NOT EXISTS code_file_state (
+        file_path TEXT PRIMARY KEY,
+        content_hash TEXT NOT NULL,
+        extractor TEXT NOT NULL,
+        indexed_at TEXT NOT NULL
+      );
+
+      DROP TABLE IF EXISTS kg_nodes_fts;
+      DROP TABLE IF EXISTS kg_edges;
+      DROP TABLE IF EXISTS kg_nodes;
+      DROP TABLE IF EXISTS kg_file_state;
+      DROP TABLE IF EXISTS kg_semantic_bridge;
+    `,
+  },
 ]
 
 /**

@@ -3,7 +3,7 @@ import { loadPrompt, loadPromptParts } from '../../src/prompts/loader'
 
 describe('loadPrompt', () => {
   it('loads a prompt file as a trimmed string', () => {
-    const text = loadPrompt('chat-system.md')
+    const text = loadPrompt('chat-router-system.md')
     expect(typeof text).toBe('string')
     expect(text.length).toBeGreaterThan(0)
     expect(text).not.toMatch(/^\s/)
@@ -41,8 +41,8 @@ describe('loadPromptParts', () => {
   })
 
   it('throws when the prompt file has no --- divider', () => {
-    // chat-system.md is a single-part prompt with no divider
-    expect(() => loadPromptParts('chat-system.md')).toThrow(/missing the \\n---\\n divider/)
+    // chat-router-system.md is a single-part prompt with no divider
+    expect(() => loadPromptParts('chat-router-system.md')).toThrow(/missing the \\n---\\n divider/)
   })
 
   it('all two-part prompt files parse without throwing', () => {

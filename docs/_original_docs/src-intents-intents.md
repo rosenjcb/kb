@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/intents/INTENTS.md
-date: '2026-05-24'
+date: '2026-05-25'
 kb_id: src-intents-intents-md
 tags:
   - original-source
@@ -50,4 +50,4 @@ Do not add a second retrieval path that bypasses the router for `read_facts`.
 
 ## High-recall queries
 
-`requiresHighRecallQuery()` in `router.ts` detects broad questions and raises `read_facts` limit (min 12). Changing recall behavior affects both `kb query` and chat — test both surfaces.
+- `requiresHighRecallQuery()` in `router.ts` detects broad identifier-style queries (telemetry only today; does not raise `read_facts` limit). Default limit is `DEFAULT_FACT_LIMIT` (500, exported from `src/tools/facts-query-research-orchestrator.ts`) when `--limit` is omitted — change the constant there to affect all callers.

@@ -3,12 +3,10 @@
  *
  * Cycle 1 (read-inputs):    Discover markdown sources under working dir (recursive).
  * Cycle 2 (code-index):     Deterministic AST indexing (ts-morph for TS/JS, tree-sitter for Go/other)
- *                            → kg_* tables, followed by per-file LLM semantic extraction (code-facts)
- *                            as an enrichment pass when an LLM provider is configured.
+ *                            → facts table (symbols, imports, structural edges), followed by per-file
+ *                            LLM semantic extraction (code-facts) as an enrichment pass when an LLM
+ *                            provider is configured.
  * Cycle 3 (document-facts): Deterministic sentence segmentation of source markdown → `facts` table.
- *                            Each segment's triplet is anchored to the nearest exported AST symbol via
- *                            kg_nodes_fts FTS lookup (subject relatesTo astNode), falling back to a
- *                            placeholder triplet when no match is found.
  * Cycle 4 (import-docs):    One `is_original` SQLite doc per collected markdown file (verbatim body).
  * Cycle 5 (write):          Upsert documents.
  *
@@ -17,15 +15,13 @@
 
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import Database from 'better-sqlite3'
-import { TsMorphIndexer } from '../tools/code-graph-indexer'
+import { TsMorphIndexer, tombstoneStaleAstFacts } from '../tools/code-graph-indexer'
 import {
   isTreeSitterIndexablePath,
   TREE_SITTER_AST_EXTENSIONS,
   TreeSitterIndexer,
   TREE_SITTER_SKIP_DIRS,
 } from '../tools/tree-sitter-indexer'
-import { promoteAstToFactsTable } from '../tools/ast-promote'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import readline from 'node:readline'
@@ -663,12 +659,8 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           let totalSymbols = 0
           let totalEdges = 0
           let totalErrors = 0
-          let tsStatsSummary:
-            | { files: number; skipped: number; symbols: number; edges: number }
-            | undefined
-          let treeStatsSummary:
-            | { files: number; skipped: number; symbols: number; edges: number }
-            | undefined
+          let tsStatsSummary: import('../tools/code-graph-indexer').CodeIndexStats | undefined
+          let treeStatsSummary: import('../tools/code-graph-indexer').CodeIndexStats | undefined
           const tsCandidateFiles = candidateAstFiles.filter(file => {
             const ext = path.extname(file).toLowerCase()
             return ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)
@@ -680,25 +672,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           const unchangedTsFileCount = totalTsFileCount - tsCandidateFiles.length
 
           const tsconfigPath = path.join(cwd, 'tsconfig.json')
-          if (existsSync(tsconfigPath) && tsCandidateFiles.length > 0) {
-            const indexer = new TsMorphIndexer(dbPath)
-            const stats = await indexer.indexProject(cwd, tsconfigPath, {
-              candidateFiles: tsCandidateFiles,
-              onProgress: s => {
-                progress.update(
-                  'code-index',
-                  `ts/js ${s.files}/${tsCandidateFiles.length} changed, ${unchangedTsFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
-                )
-              },
-            })
-            indexer.close()
-            tsStatsSummary = stats
-            totalFiles += stats.files
-            totalSymbols += stats.symbols
-            totalEdges += stats.edges
-            totalErrors += stats.errors
-          }
-
           const treeCandidateFiles = existsSync(tsconfigPath)
             ? candidateAstFiles.filter(file => {
                 const ext = path.extname(file).toLowerCase()
@@ -708,32 +681,52 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           const totalTreeFileCount = totalAstFileCount - totalTsFileCount
           const unchangedTreeFileCount = totalTreeFileCount - treeCandidateFiles.length
 
-          const treeIndexer = new TreeSitterIndexer(dbPath)
-          const treeStats = await treeIndexer.indexProject(cwd, {
-            candidateFiles: treeCandidateFiles,
-            onProgress: s => {
-              progress.update(
-                'code-index',
-                `tree-sitter ${s.files}/${treeCandidateFiles.length} changed, ${unchangedTreeFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
-              )
-            },
-          })
-          treeIndexer.close()
-          treeStatsSummary = treeStats
-          totalFiles += treeStats.files
-          totalSymbols += treeStats.symbols
-          totalEdges += treeStats.edges
-          totalErrors += treeStats.errors
-
-          let promoteNote = ''
-          const factIndexer = new SqliteKbIndexer({ dbPath })
+          const astFactIndexer = new SqliteKbIndexer({ dbPath })
           try {
-            const db = new Database(dbPath)
-            const factStats = promoteAstToFactsTable(db, factIndexer)
-            db.close()
-            promoteNote += `, ${factStats.inserted} facts inserted, ${factStats.updated} updated, ${factStats.tombstoned} tombstoned`
+            if (existsSync(tsconfigPath) && tsCandidateFiles.length > 0) {
+              const indexer = new TsMorphIndexer(dbPath, astFactIndexer)
+              const stats = await indexer.indexProject(cwd, tsconfigPath, {
+                candidateFiles: tsCandidateFiles,
+                onProgress: s => {
+                  progress.update(
+                    'code-index',
+                    `ts/js ${s.files}/${tsCandidateFiles.length} changed, ${unchangedTsFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
+                  )
+                },
+              })
+              indexer.close()
+              tsStatsSummary = stats
+              totalFiles += stats.files
+              totalSymbols += stats.symbols
+              totalEdges += stats.edges
+              totalErrors += stats.errors
+            }
+
+            const treeIndexer = new TreeSitterIndexer(dbPath, astFactIndexer)
+            const treeStats = await treeIndexer.indexProject(cwd, {
+              candidateFiles: treeCandidateFiles,
+              onProgress: s => {
+                progress.update(
+                  'code-index',
+                  `tree-sitter ${s.files}/${treeCandidateFiles.length} changed, ${unchangedTreeFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
+                )
+              },
+            })
+            treeIndexer.close()
+            treeStatsSummary = treeStats
+            totalFiles += treeStats.files
+            totalSymbols += treeStats.symbols
+            totalEdges += treeStats.edges
+            totalErrors += treeStats.errors
+
+            const allSourceRefs = new Set([
+              ...(tsStatsSummary?.sourceRefs ?? []),
+              ...treeStats.sourceRefs,
+            ])
+            tombstoneStaleAstFacts(astFactIndexer, allSourceRefs)
+            astFactIndexer.relinkCodeImportEdges()
           } finally {
-            factIndexer.close()
+            astFactIndexer.close()
           }
 
           await writeAstFilesManifest(baseDir, currentAstFiles)
@@ -750,7 +743,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           }
           progress.update(
             'code-index',
-            `${astParts.join(' | ') || `${totalFiles} changed, ${unchangedAstFileCount} unchanged`} | ${totalSymbols} symbols, ${totalEdges} edges${promoteNote}${totalErrors > 0 ? `, ${totalErrors} errors` : ''}`
+            `${astParts.join(' | ') || `${totalFiles} changed, ${unchangedAstFileCount} unchanged`} | ${totalSymbols} symbols, ${totalEdges} edges${totalErrors > 0 ? `, ${totalErrors} errors` : ''}`
           )
         }
 

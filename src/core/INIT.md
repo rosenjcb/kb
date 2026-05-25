@@ -1,6 +1,6 @@
 # KB Init Pipeline
 
-`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`document-facts`** (document facts from markdown sources), **`code-facts`** (LLM fallback facts for source code when AST providers are unavailable), **`fact-categories`** (interactive step: user defines named categories with descriptions, facts are then assigned via TF-IDF cosine similarity), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), and **`ast-facts`** (deterministic AST indexing into `kg_*` tables and fact promotion). Use **`kb scan`** to refresh sources against an existing base.
+`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`document-facts`** (document facts from markdown sources), **`code-facts`** (LLM fallback facts for source code when AST providers are unavailable), **`fact-categories`** (interactive step: user defines named categories with descriptions, facts are then assigned via TF-IDF cosine similarity), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), and **`ast-facts`** (deterministic AST indexing directly into `facts` + `fact_edges`). Use **`kb scan`** to refresh sources against an existing base.
 
 In the TUI, init/scan progress is rendered as a dedicated live status line instead of transcript history. Any phase that iterates over a collection of files, docs, facts, claims, or mutations emits incremental progress while that collection is being processed; only atomic operations stay start/finish-only. Progress lines include counts and, when useful, the current item. The long-running deterministic phases also yield cooperatively to the event loop between batches so the terminal can repaint and interrupts remain responsive during large scans.
 
@@ -42,7 +42,7 @@ flowchart TD
     FC --> FC1["User names categories + descriptions\n→ TF-IDF assignment to all facts"]
     IM --> IM1["One original doc\nper source file"]
     W --> W1["SQLite upsert\n+ scan planner"]
-    AF --> AF1["AST indexing\n→ kg_* tables + fact promotion"]
+    AF --> AF1["AST indexing\n→ facts + fact_edges"]
 ```
 
 ## Fact Categories
@@ -109,7 +109,7 @@ Budget knobs (env, sane defaults): `KB_CODE_FACTS_MAX_FILES=40`, `KB_CODE_FACTS_
 
 ## Code-graph cycle (cycle 7)
 
-The **`code-graph`** cycle runs at the end of every `kb init` and `kb scan`. It performs deterministic AST indexing of every file in the repo — no LLM involved — and writes results into `kg_*` tables in the same `.kb-index.sqlite` database.
+The **`code-graph`** cycle runs at the end of every `kb init` and `kb scan`. It performs deterministic AST indexing of every file in the repo — no LLM involved — and writes directly into `facts` (`source_kind='import_code'`) and `fact_edges` in the same `.kb-index.sqlite` database.
 
 ### Two indexers
 
@@ -132,23 +132,46 @@ WASM grammars ship in `tree-sitter-*` npm packages — no native compilation, al
 
 ### What gets written
 
-```sql
-kg_nodes           — file nodes (kind='file') and symbol nodes (kind='symbol')
-kg_edges           — IMPORTS_FILE, EXPORTS_SYMBOL, EXTENDS, IMPLEMENTS edges
-kg_nodes_fts       — FTS index over node names and paths
-kg_file_state      — per-file content hash for incremental skip on re-run
-kg_semantic_bridge — name-matched links between kg_nodes symbols and kb_graph_entities
-```
-
-### Semantic bridge
-
-After indexing, both indexers populate `kg_semantic_bridge` by slugifying symbol names and matching them against existing `kb_graph_entities`. A match (confidence 0.8) creates a row linking the code node to the semantic entity. This is what allows `expandWithCodeNeighbors` in `CodeGraphStore` to answer "what source files are relevant to entity X?" without any LLM involvement — it follows the bridge then traverses `IMPORTS_FILE` edges one hop out.
+- **`facts`** (`source_kind='import_code'`) — one fact per exported symbol (`"Foo is a Class exported from src/foo.ts"`) with `source_text` set to the raw declaration (capped at 1500 chars)
+- **`fact_edges`** — structural edges: `IMPORTS_FILE`, `EXPORTS_SYMBOL`, `EXTENDS`, `IMPLEMENTS`
+- **`code_file_state`** — per-file content hash for incremental skip on re-run
 
 ### Incremental behaviour
 
-Both indexers store a `content_hash` per file in `kg_file_state`. On re-run (including `kb scan`), files whose hash hasn't changed are counted as `skipped` and not re-processed. Only changed or new files are re-indexed.
+Both indexers store a `content_hash` per file in `code_file_state`. On re-run (including `kb scan`), files whose hash hasn't changed are counted as `skipped` and not re-processed. Only changed or new files are re-indexed.
 
 To keep the TUI responsive, the deterministic ingest/index loops yield back to the Node.js event loop between batches. That lets progress updates paint incrementally and gives `Ctrl-C` / terminal interrupts a chance to land between chunks instead of waiting for an entire repo walk to finish.
+
+## Language Support
+
+Two pipelines index source code. **Code-graph** (`TsMorphIndexer` / `TreeSitterIndexer`) is deterministic AST-based. **Code-facts** (`code-fact-extract.ts`) is an LLM semantic pass. They are independent — a language can appear in one, both, or neither.
+
+| Language | Extensions | Code-graph (AST) | Code-facts (LLM) |
+|---|---|---|---|
+| TypeScript | `.ts` `.tsx` `.mts` `.cts` | yes — TsMorphIndexer (type-aware) + TreeSitter | yes |
+| JavaScript | `.js` `.jsx` `.mjs` `.cjs` | yes — TsMorphIndexer + TreeSitter | yes |
+| Python | `.py` | yes | yes |
+| Go | `.go` | yes (uppercase-export convention) | yes |
+| Ruby | `.rb` | yes | yes |
+| Java | `.java` | yes | yes |
+| Rust | `.rs` | yes | yes |
+| Swift | `.swift` | no — no tree-sitter grammar | yes |
+| Kotlin | `.kt` | no — no tree-sitter grammar | yes |
+| C / C++ | `.c` `.h` `.cpp` `.cc` `.hpp` … | yes | no |
+| C# | `.cs` | yes | no |
+| PHP | `.php` | yes | no |
+| Scala | `.scala` | yes | no |
+| Bash | `.sh` `.bash` `.zsh` | yes | no |
+| CSS | `.css` | yes (selectors) | no |
+| HTML | `.html` `.htm` | yes (id elements) | no |
+
+Code-graph import/export edges: TS/JS have full import resolution; Go uses uppercase-initial convention; Python/Rust/Ruby/Java/C/C#/PHP/Scala/HTML extract exports but not imports (except Ruby `require` and PHP `require`/`include`).
+
+**Text-only** (file node, no symbols): `.md`, `.yaml`, `.json`, `.toml`, `.sql`, `.tf`, `.proto`, `.graphql`, `.scss`, `.xml`, extensionless files (Makefile, Dockerfile).
+
+**Ignored entirely**: images, binaries, lock files, compiled artifacts.
+
+To add a language to code-graph: install `tree-sitter-<lang>`, add to `LANG_CONFIGS` + `EXT_MAP` in `src/tools/tree-sitter-indexer.ts`. To add to code-facts: add the extension to `LANG_BY_EXT` in `src/core/code-fact-extract.ts`.
 
 ## Configuration Constants
 

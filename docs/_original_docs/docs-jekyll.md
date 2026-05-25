@@ -1,7 +1,7 @@
 ---
 layout: default
 title: docs/JEKYLL.md
-date: '2026-05-24'
+date: '2026-05-25'
 kb_id: docs-jekyll-md
 tags:
   - original-source

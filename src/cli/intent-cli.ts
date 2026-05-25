@@ -1,5 +1,6 @@
 import dayjs from 'dayjs'
-import { formatFactUri } from '../core/fact-uri'
+import { formatEvidenceSummaryHeader } from '../core/evidence-summary'
+import { formatRetrievedFactsForLLM } from '../core/retrieval-context'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message } from '../core/types'
 import { assertConsumerSafeCommand } from '../intents/policy'
@@ -9,9 +10,14 @@ import { formatOrchestrationMetaLine } from '../ui/orchestration-meta.js'
 import type { Printer } from '../ui/printer'
 import { type CmdMode, cmd } from './cmd-ref'
 import { appendQuerySession, loadQuerySessionMessages } from './query-session'
-import { formatReadDocumentSourceIds } from './retrieval-fallback'
+import { formatReadDocumentSourcesPreview } from './retrieval-fallback'
 
 export type CliOutputMode = 'human' | 'json'
+
+export function formatRetrievalMatchesMeta(retrievedCount: number): string {
+  if (retrievedCount === 0) return '0'
+  return `${retrievedCount} ranked facts`
+}
 
 export interface ParsedIntentCommand {
   envelope: ConsumerIntentEnvelope
@@ -33,7 +39,7 @@ export interface ParsedIntentCommand {
 /** Human read_facts footer: default minimal; verbose adds summary/status/confidence; debug expands sources. */
 export interface ReadDocumentsHumanOutputOptions {
   verbose?: boolean
-  /** When true, emit one `source>` line per hit with id, path, uri, snippet, highlights (default is a single `sources>` titles line). */
+  /** When true, emit one `source>` line per hit with id, path, uri, snippet, highlights (default is ranked `sources>` preview). */
   debug?: boolean
 }
 
@@ -141,7 +147,7 @@ export function formatIntentResult(
   const data = result.data as { results?: Array<{ metadata?: { id?: string } }> } | undefined
   const results = data?.results
   if (Array.isArray(results)) {
-    lines.push(formatOrchestrationMetaLine('matches', String(results.length)))
+    lines.push(formatOrchestrationMetaLine('matches', formatRetrievalMatchesMeta(results.length)))
   }
 
   return lines.join('\n')
@@ -179,7 +185,7 @@ export function printIntentResult(
   const data = result.data as { results?: Array<{ metadata?: { id?: string } }> } | undefined
   const results = data?.results
   if (Array.isArray(results)) {
-    printer.metadata('Matches', String(results.length))
+    printer.metadata('Matches', formatRetrievalMatchesMeta(results.length))
   }
 }
 
@@ -209,6 +215,7 @@ export interface ReadDocumentsResultItem {
     id?: string
     title?: string
     filePath?: string
+    tags?: string[]
   }
   content?: string
   /** Graph rerank hints from the KB graph store (includes relationship type labels). */
@@ -259,9 +266,7 @@ function appendReadDocumentsSourcesToLines(
       lines.push(formatOrchestrationMetaLine('source', formatReadDocumentsFullSourceValue(item)))
     }
   } else {
-    const sourceIds = formatReadDocumentSourceIds(results)
-    const refs = sourceIds.map(formatFactUri)
-    lines.push(formatOrchestrationMetaLine('sources', refs.length > 0 ? refs.join('; ') : '(none)'))
+    lines.push(formatOrchestrationMetaLine('sources', formatReadDocumentSourcesPreview(results)))
   }
 }
 
@@ -280,9 +285,7 @@ function printReadDocumentsSourcesBlock(
       printer.metadata('Source', formatReadDocumentsFullSourceValue(item))
     }
   } else {
-    const sourceIds = formatReadDocumentSourceIds(results)
-    const refs = sourceIds.map(formatFactUri)
-    printer.metadata('Sources', refs.length > 0 ? refs.join('; ') : '(none)')
+    printer.metadata('Sources', formatReadDocumentSourcesPreview(results))
   }
 }
 
@@ -311,7 +314,7 @@ export function printReadDocumentsOrchestrationFooter(
     printer.metadata('Retrieval', `${data.retrieval.method}${detail}`)
   }
 
-  printer.metadata('Matches', String(results.length))
+  printer.metadata('Matches', formatRetrievalMatchesMeta(results.length))
   printReadDocumentsSourcesBlock(printer, results, options)
 }
 
@@ -332,7 +335,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
   if (results.length === 0) return result
 
   const question = getIntentQuestion(parsed)
-  const evidence = buildEvidence(results, question, parsed.allFacts)
+  const evidence = buildEvidence(results, parsed.allFacts)
   if (!question || !evidence) return result
 
   try {
@@ -672,6 +675,11 @@ function formatReadDocumentsHumanResult(
   lines.push(data.answer?.trim() || buildAnswer(results))
   lines.push('---')
 
+  const evidenceSummary = formatEvidenceSummaryHeader({ results, retrieval: data.retrieval })
+  if (evidenceSummary) {
+    lines.push(formatOrchestrationMetaLine('evidence', evidenceSummary))
+  }
+
   if (verbose) {
     lines.push(formatOrchestrationMetaLine('summary', buildSummary(results)))
     lines.push(formatOrchestrationMetaLine('status', result.status))
@@ -687,7 +695,7 @@ function formatReadDocumentsHumanResult(
     lines.push(formatOrchestrationMetaLine('retrieval', `${data.retrieval.method}${detail}`))
   }
 
-  lines.push(formatOrchestrationMetaLine('matches', String(results.length)))
+  lines.push(formatOrchestrationMetaLine('matches', formatRetrievalMatchesMeta(results.length)))
   appendReadDocumentsSourcesToLines(lines, results, options)
 
   return lines.join('\n')
@@ -703,22 +711,18 @@ function printReadDocumentsHumanResult(
 
   printer.content(data.answer?.trim() || buildAnswer(results))
   printer.separator()
-  printEvidenceBlock(printer, results)
+  printEvidenceSummaryBlock(printer, results, data.retrieval)
   printReadDocumentsOrchestrationFooter(printer, result, options)
 }
 
-function printEvidenceBlock(printer: Printer, results: ReadDocumentsResultItem[]): void {
-  if (results.length === 0) return
-  const lines: string[] = []
-  for (const item of results.slice(0, 8)) {
-    const id = item.metadata?.id ?? 'unknown'
-    const raw = (item.content ?? '').split('\n').find(l => l.trim().length > 20)?.trim() ?? ''
-    const content = raw.replace(/^[-*]\s+/, '')
-    if (content) lines.push(`- ${content} (source: ${id})`)
-  }
-  for (const line of lines) {
-    printer.orchestrationMeta('evidence', line)
-  }
+function printEvidenceSummaryBlock(
+  printer: Printer,
+  results: ReadDocumentsResultItem[],
+  retrieval?: ReadDocumentsResultData['retrieval']
+): void {
+  const summary = formatEvidenceSummaryHeader({ results, retrieval })
+  if (!summary) return
+  printer.orchestrationMeta('evidence', summary)
 }
 
 function buildSummary(results: ReadDocumentsResultItem[]): string {
@@ -766,116 +770,14 @@ function getIntentQuestion(parsed: ParsedIntentCommand): string {
   return fromOriginalQuery || fromOriginalFact || fromQuery || fromFact || fromChange
 }
 
-function buildEvidence(results: ReadDocumentsResultItem[], query: string, allFacts?: boolean): string {
-  const slice = allFacts ? results : results.slice(0, 5)
-  const sections = slice.map((item, index) => {
-    const id = item.metadata?.id ?? `doc-${index + 1}`
-    const title = item.metadata?.title ?? id
-    const snippets = extractRelevantEvidenceSnippets(item.content, query)
-    if (snippets.length === 0) return ''
-    return `Document ${index + 1}: ${title} (id=${id})\n${snippets.join('\n')}`
+function buildEvidence(results: ReadDocumentsResultItem[], _allFacts?: boolean): string {
+  return formatRetrievedFactsForLLM(results, {
+    heading: (item, index) => {
+      const id = item.metadata?.id ?? `doc-${index + 1}`
+      const title = item.metadata?.title ?? id
+      return `Document ${index + 1}: ${title} (id=${id})`
+    },
   })
-
-  const graphHints = new Set<string>()
-  for (const item of slice) {
-    for (const line of item.graphEvidence ?? []) {
-      if (line.trim()) graphHints.add(line.trim())
-    }
-  }
-  const graphBlock =
-    graphHints.size > 0
-      ? `\n\nGraph linkage hints (typed edges in the KB graph; must agree with document text above):\n${[...graphHints].map(h => `- ${h}`).join('\n')}`
-      : ''
-
-  return sections.filter(Boolean).join('\n\n') + graphBlock
-}
-
-function extractRelevantEvidenceSnippets(content: string | undefined, query: string): string[] {
-  if (!content?.trim()) return []
-
-  const queryTokens = tokenizeForEvidence(query)
-  const lines = content
-    .split('\n')
-    .map(line => line.trim())
-    .filter(
-      line =>
-        line.length > 0 &&
-        !line.startsWith('#') &&
-        !line.startsWith('Created:') &&
-        !line.startsWith('Tags:') &&
-        !line.startsWith('Type:')
-    )
-
-  if (lines.length === 0) return []
-
-  const scored = lines
-    .map((line, index) => ({
-      line,
-      index,
-      score: scoreEvidenceLine(line, queryTokens),
-    }))
-    .filter(entry => entry.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
-
-  const exploredWindows: string[] = []
-  const usedLineIndexes = new Set<number>()
-
-  for (const hit of scored) {
-    const windowStart = Math.max(0, hit.index - 1)
-    const windowEnd = Math.min(lines.length - 1, hit.index + 1)
-    const windowLines: string[] = []
-
-    for (let i = windowStart; i <= windowEnd; i += 1) {
-      const candidate = lines[i]
-      if (candidate.length < 20) continue
-      if (usedLineIndexes.has(i)) continue
-      usedLineIndexes.add(i)
-      windowLines.push(candidate)
-    }
-
-    if (windowLines.length > 0) {
-      exploredWindows.push(`- ${windowLines.join(' | ')}`)
-    }
-  }
-
-  if (exploredWindows.length > 0) {
-    return exploredWindows
-  }
-
-  return lines
-    .filter(line => line.length >= 30)
-    .slice(0, 2)
-    .map(line => `- ${line}`)
-}
-
-function tokenizeForEvidence(input: string): string[] {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter(token => token.length > 2)
-}
-
-function scoreEvidenceLine(line: string, queryTokens: string[]): number {
-  const normalized = line.toLowerCase()
-  let score = 0
-
-  for (const token of queryTokens) {
-    if (normalized.includes(token)) {
-      score += 2
-    }
-  }
-
-  if (/(kb|cli|command|query|chat|help)/i.test(line)) {
-    score += 3
-  }
-
-  if (line.length > 35 && line.length < 260) {
-    score += 1
-  }
-
-  return score
 }
 
 function collectCandidateLines(items: ReadDocumentsResultItem[]): string[] {

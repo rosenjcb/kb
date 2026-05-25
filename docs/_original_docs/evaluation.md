@@ -1,7 +1,7 @@
 ---
 layout: default
 title: EVALUATION.md
-date: '2026-05-24'
+date: '2026-05-25'
 kb_id: evaluation-md
 tags:
   - original-source
@@ -66,17 +66,11 @@ From the kb repo root (after `pnpm run build`):
 
 | npm script | Maps to |
 |------------|---------|
-| `npm run eval:init -- --suite raylib …` | Clone suite `repo_url`, init, queries |
-| `npm run eval:init -- --suite kb …` | Clone suite `repo_url`, init, queries |
-| `npm run eval:init -- --suite generic --repo <git-url> …` | Generic suite requires explicit repo override, then clone/init/queries |
-| `npm run eval:all …` | Same as `eval:init` (alias) |
-| `npm run eval:query -- --suite raylib --base <existing> …` | No init: docs + graph + logs + 8× `kb query` (still clones repo for cwd) |
+| `npm run eval -- --suite raylib …` | Clone suite `repo_url`, init, queries |
+| `npm run eval -- --suite kb …` | Clone suite `repo_url`, init, queries |
+| `npm run eval -- --suite generic --repo <git-url> …` | Generic suite requires explicit repo override, then clone/init/queries |
+| `npm run eval:chat -- --base <name> --cwd <path>` | Init + 3 conversational scenarios + retrieval scoring |
 | `npm run eval:gen-doc` | `kb docs generate` smoke (introduction + howto) on `--base` (default `dogfood`); artifact under `~/.kb/evaluations/<run>/` |
-
-**Modes**
-
-- `init` (or legacy `all`) — Fresh clone → `kb init --non-interactive`, then metrics + eight queries.
-- `query` — Fresh clone → same capture minus init; requires `--base` for an already-populated KB session.
 
 **Suites (`--suite`)**
 

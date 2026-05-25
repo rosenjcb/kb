@@ -308,6 +308,48 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
+  it('Given fact_edges, getFactNeighbors walks both directions and skips seen ids', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    const symbolFact = indexer.upsertFact({
+      factText: 'TsMorphIndexer is a Class exported from src/tools/code-graph-indexer.ts',
+      triplet: {
+        subject: 'TsMorphIndexer',
+        predicate: 'exported_from',
+        object: 'src/tools/code-graph-indexer.ts',
+      },
+      sourceKind: 'import_code',
+      sourceRef: 'code:src/tools/code-graph-indexer.ts@TsMorphIndexer',
+      confidence: 0.95,
+    })
+    const importFact = indexer.upsertFact({
+      factText: 'src/cli/init-cli.ts imports src/tools/code-graph-indexer.ts',
+      triplet: {
+        subject: 'src/cli/init-cli.ts',
+        predicate: 'imports',
+        object: 'src/tools/code-graph-indexer.ts',
+      },
+      sourceKind: 'import_code',
+      sourceRef: 'code:src/cli/init-cli.ts@import',
+      confidence: 0.95,
+    })
+
+    expect(indexer.relinkCodeImportEdges()).toBeGreaterThan(0)
+
+    const seen = new Set<string>([importFact.id])
+    const neighbors = indexer.getFactNeighbors([importFact.id], seen)
+    expect(neighbors.map(row => row.id)).toEqual([symbolFact.id])
+
+    const reverseNeighbors = indexer.getFactNeighbors([symbolFact.id], new Set())
+    expect(reverseNeighbors.map(row => row.id)).toEqual(
+      expect.arrayContaining([importFact.id])
+    )
+
+    indexer.close()
+  })
+
   it('Given natural language query, searchFacts should match token-level evidence', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')

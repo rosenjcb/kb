@@ -17,6 +17,7 @@ import {
   createLLMProviderFromConfig,
 } from '../cli/kb-config.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
+import { awaitRefreshThenStart } from './base-refresh.js'
 import { classifyChatReadPromptKind, shouldStartChatPending } from './chat-read-kind.js'
 import { classifyChatIOLine } from './chat-io-classify.js'
 import { HistoryPane } from './components/HistoryPane.js'
@@ -143,7 +144,7 @@ export function App({ config, startupNotices = [] }: Props) {
   }, [updateEntry])
 
   const refreshBase = useCallback(() => {
-    resolveEffectiveBaseDir()
+    return resolveEffectiveBaseDir()
       .then(({ baseDir, baseName: n }) => {
         storageDirRef.current = baseDir
         setBaseName(n)
@@ -491,8 +492,7 @@ export function App({ config, startupNotices = [] }: Props) {
             type: 'result',
             content: `✅ ${firstArg === 'scan' ? 'Scan' : 'Init'} complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
           })
-          refreshBase()
-          startChatSession()
+          await awaitRefreshThenStart(refreshBase, startChatSession)
         } catch (err) {
           setProgressLine(null)
           const message = err instanceof Error ? err.message : String(err)

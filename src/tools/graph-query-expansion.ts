@@ -31,7 +31,7 @@ const MAX_CODE_EXPANSION = 8
 
 /**
  * Expand a query string using:
- *   1. FTS on kg_nodes_fts → get matching exported symbol names, traverse kg_edges for neighbors
+ *   1. FTS on facts_fts (source_kind=import_code) → exported symbol names, 1-hop via fact_edges
  *   2. LIKE-scan facts where subject or object matches slug (excluding placeholder 'asserts' rows)
  *
  * Synchronous — no async needed.
@@ -53,38 +53,42 @@ export function expandQueryWithGraph(query: string, db: Database.Database): stri
       terms.push(t)
     }
 
-    // 1. FTS on kg_nodes_fts → find exported symbol names matching slugs, then get neighbors via kg_edges
+    // 1. FTS on facts_fts → find exported symbol names, then get neighbors via fact_edges
     try {
       const ftsQuery = slugs.join(' OR ')
       const symbolRows = db
         .prepare(
-          `SELECT DISTINCT n.name FROM kg_nodes_fts f
-           JOIN kg_nodes n ON n.id = f.id
-           WHERE kg_nodes_fts MATCH ? AND n.exported = 1
+          `SELECT DISTINCT f.subject, f.id FROM facts_fts fts
+           JOIN facts f ON f.id = fts.fact_id
+           WHERE facts_fts MATCH ?
+             AND f.source_kind = 'import_code'
+             AND f.predicate = 'exported_from'
+             AND f.tombstoned_at IS NULL
            LIMIT 20`
         )
-        .all(ftsQuery) as Array<{ name: string }>
+        .all(ftsQuery) as Array<{ subject: string; id: string }>
 
       for (const row of symbolRows) {
-        add(row.name)
+        add(row.subject)
       }
 
-      // Traverse kg_edges for neighbors of matched symbols
+      // 1-hop via fact_edges to get neighbor symbol names
       if (symbolRows.length > 0) {
-        const symbolNames = symbolRows.map(r => r.name)
-        const placeholders = symbolNames.map(() => '?').join(', ')
+        const factIds = symbolRows.map(r => r.id)
+        const placeholders = factIds.map(() => '?').join(', ')
         const neighborRows = db
           .prepare(
-            `SELECT DISTINCT n2.name
-             FROM kg_nodes n1
-             JOIN kg_edges e ON e.from_id = n1.id OR e.to_id = n1.id
-             JOIN kg_nodes n2 ON (e.from_id = n2.id OR e.to_id = n2.id) AND n2.id != n1.id
-             WHERE n1.name IN (${placeholders}) AND n2.exported = 1
+            `SELECT DISTINCT f2.subject
+             FROM fact_edges fe
+             JOIN facts f2 ON f2.id = fe.to_fact_id
+             WHERE fe.from_fact_id IN (${placeholders})
+               AND f2.source_kind = 'import_code'
+               AND f2.tombstoned_at IS NULL
              LIMIT 20`
           )
-          .all(...symbolNames) as Array<{ name: string }>
+          .all(...factIds) as Array<{ subject: string }>
         for (const row of neighborRows) {
-          add(row.name)
+          add(row.subject)
         }
       }
     } catch {
