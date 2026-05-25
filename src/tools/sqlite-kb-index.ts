@@ -550,6 +550,42 @@ export class SqliteKbIndexer {
       .all(...ids) as FactConceptRow[]
   }
 
+  /** BFS neighbor lookup via fact_edges (both directions), excluding already-seen fact ids. */
+  getFactNeighbors(factIds: string[], seen: Set<string>, limit = 80): FactRow[] {
+    const ids = [...new Set(factIds.map(id => id.trim()).filter(Boolean))]
+    if (ids.length === 0) return []
+    const placeholders = ids.map(() => '?').join(', ')
+    const neighborRows = this.db
+      .prepare(
+        `
+        SELECT DISTINCT to_fact_id AS neighbor_id FROM fact_edges WHERE from_fact_id IN (${placeholders})
+        UNION
+        SELECT DISTINCT from_fact_id AS neighbor_id FROM fact_edges WHERE to_fact_id IN (${placeholders})
+      `
+      )
+      .all(...ids, ...ids) as Array<{ neighbor_id: string }>
+    const boundedLimit = Math.max(1, Math.min(200, limit))
+    const neighborIds = [
+      ...new Set(
+        neighborRows
+          .map(row => row.neighbor_id?.trim())
+          .filter((id): id is string => Boolean(id) && !seen.has(id))
+      ),
+    ].slice(0, boundedLimit)
+    if (neighborIds.length === 0) return []
+    const factPlaceholders = neighborIds.map(() => '?').join(', ')
+    return this.db
+      .prepare(
+        `
+        SELECT ${FACT_ROW_SELECT}
+        FROM facts
+        WHERE id IN (${factPlaceholders})
+          AND tombstoned_at IS NULL
+      `
+      )
+      .all(...neighborIds) as FactRow[]
+  }
+
   expandNeighborConcepts(conceptIds: string[], hopLimit = 1, limit = 20): string[] {
     let frontier = [...new Set(conceptIds.map(id => normalizeConceptId(id)).filter(Boolean))]
     if (frontier.length === 0) return []
@@ -650,6 +686,40 @@ export class SqliteKbIndexer {
         `SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref LIKE ?`
       )
       .all(`${prefix}%`) as FactRow[]
+  }
+
+  /**
+   * Wire `imports` facts directly to `exported_from` facts for the same file path.
+   * This is a deterministic structural pass — AST import relationships are exact,
+   * not token-similarity based. Returns the number of new edges created.
+   */
+  relinkCodeImportEdges(): number {
+    const now = new Date().toISOString()
+    const fwd = this.db.prepare(`
+      INSERT OR IGNORE INTO fact_edges (from_fact_id, to_fact_id, edge_type, weight, created_at)
+      SELECT imp.id, sym.id, 'imports_symbol', 1.0, ?
+      FROM facts imp
+      JOIN facts sym ON sym.object = imp.object
+        AND sym.source_kind = 'import_code'
+        AND sym.predicate = 'exported_from'
+        AND sym.tombstoned_at IS NULL
+      WHERE imp.source_kind = 'import_code'
+        AND imp.predicate = 'imports'
+        AND imp.tombstoned_at IS NULL
+    `).run(now)
+    const rev = this.db.prepare(`
+      INSERT OR IGNORE INTO fact_edges (from_fact_id, to_fact_id, edge_type, weight, created_at)
+      SELECT sym.id, imp.id, 'imports_symbol', 1.0, ?
+      FROM facts imp
+      JOIN facts sym ON sym.object = imp.object
+        AND sym.source_kind = 'import_code'
+        AND sym.predicate = 'exported_from'
+        AND sym.tombstoned_at IS NULL
+      WHERE imp.source_kind = 'import_code'
+        AND imp.predicate = 'imports'
+        AND imp.tombstoned_at IS NULL
+    `).run(now)
+    return fwd.changes + rev.changes
   }
 
   listFactCategories(): FactCategoryRow[] {

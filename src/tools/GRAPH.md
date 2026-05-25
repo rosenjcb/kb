@@ -20,24 +20,14 @@ As you build up your knowledge base, the graph gives you a structural view of ho
 
 ## Storage
 
-Graph tables live in **`<base-dir>/.kb-index.sqlite`** (`kb_graph_entities`, `kb_graph_relationships`), alongside documents, chunks, and facts.
+All graph data lives in **`<base-dir>/.kb-index.sqlite`** alongside documents and facts. There is one unified graph — no separate semantic entity tables.
 
 Graph mode is enabled by default. You can disable graph extraction and graph-augmented lookup with either:
 
 - `graph.enabled: false` in `~/.kb/config.json`
 - `KB_GRAPH=false` as a one-off environment override
 
-Schema:
-
-```sql
-kb_graph_entities       — id, name, type, doc_id, description, created_at
-kb_graph_relationships  — id, from_id, to_id, type, doc_id, weight, created_at
-```
-
-- `type` on entities: `concept | system | tool | decision | person`
-- `type` on relationships: canonical extractor labels (`depends_on`, `contradicts`, `related_to`, `replaces`, `implements`, `uses`) **or** any snake_case label you set via `kb graph edge add --verb` (free text is normalized to snake_case for storage)
-- `weight`: 1.0 for live edges, 0 for soft-deleted edges
-- Traversal uses SQLite recursive CTEs.
+The code-fact graph uses the shared **`facts`** table (`source_kind='import_code'`) and **`fact_edges`** for all structural edges. `kb_graph_entities` / `kb_graph_relationships` were dropped in migration v11; `kg_nodes`, `kg_edges`, `kg_file_state`, `kg_nodes_fts`, and `kg_semantic_bridge` were dropped in migration v14.
 
 ## How it stays up to date
 

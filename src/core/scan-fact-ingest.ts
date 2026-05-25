@@ -29,7 +29,7 @@ export interface ScanFactIngestProgress {
   currentFile?: string
 }
 
-/** Extract FTS-safe tokens from fact text for kg_nodes_fts lookup. */
+/** Extract FTS-safe tokens from fact text for facts_fts lookup. */
 function ftsQueryFromText(text: string, maxTerms = 8): string {
   return text
     .split(/\W+/)
@@ -38,11 +38,10 @@ function ftsQueryFromText(text: string, maxTerms = 8): string {
     .join(' OR ')
 }
 
-interface KgNodeRow {
+interface CodeFactRow {
   id: string
-  name: string
-  qualified_name: string | null
-  path: string | null
+  subject: string
+  object: string | null
 }
 
 /**
@@ -58,18 +57,19 @@ export async function ingestSourceMarkdownFilesAsFacts(
   const indexer = new SqliteKbIndexer({ dbPath })
 
   let astDb: Database.Database | null = null
-  let findNearest: ((text: string) => KgNodeRow | null) | null = null
+  let findNearest: ((text: string) => CodeFactRow | null) | null = null
 
   if (input.matchAstNodes && existsSync(dbPath)) {
     try {
       astDb = new Database(dbPath, { readonly: true })
-      const stmt = astDb.prepare<[string, number], KgNodeRow>(`
-        SELECT n.id, n.name, n.qualified_name, n.path
-        FROM kg_nodes_fts f
-        JOIN kg_nodes n ON n.id = f.id
-        WHERE kg_nodes_fts MATCH ?
-          AND n.kind = 'symbol'
-          AND n.exported = 1
+      const stmt = astDb.prepare<[string, number], CodeFactRow>(`
+        SELECT f.id, f.subject, f.object
+        FROM facts_fts fts
+        JOIN facts f ON f.id = fts.fact_id
+        WHERE facts_fts MATCH ?
+          AND f.source_kind = 'import_code'
+          AND f.predicate = 'exported_from'
+          AND f.tombstoned_at IS NULL
         ORDER BY rank
         LIMIT ?
       `)
@@ -112,7 +112,7 @@ export async function ingestSourceMarkdownFilesAsFacts(
             triplet = {
               subject: sourceLabel,
               predicate: 'relatesTo',
-              object: node.qualified_name ?? node.name,
+              object: node.subject,
             }
           }
         }

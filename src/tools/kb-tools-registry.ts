@@ -156,16 +156,11 @@ export function createKBToolsRegistry(
     {
       name: 'search_code_symbols',
       description:
-        'Full-text search over code symbols (functions, classes, interfaces, etc.) in the code graph. Use this when the user asks about specific code constructs.',
+        'Full-text search over code symbols (functions, classes, interfaces, etc.) in the indexed code facts. Use this when the user asks about specific code constructs.',
       schema: {
         type: 'object',
         properties: {
           query: { type: 'string', description: 'Symbol name or keyword to search for' },
-          kind: {
-            type: 'string',
-            description:
-              'Optional symbol kind filter (e.g. ClassDeclaration, FunctionDeclaration, InterfaceDeclaration)',
-          },
           limit: { type: 'number', description: 'Max results (default 20)' },
         },
         required: ['query'],
@@ -173,10 +168,10 @@ export function createKBToolsRegistry(
       },
     },
     async input => {
-      const { query, kind, limit } = input as { query: string; kind?: string; limit?: number }
+      const { query, limit } = input as { query: string; limit?: number }
       const store = new CodeGraphStore(codeGraphDbPath)
       try {
-        return store.searchSymbols(query, { kind, limit })
+        return store.searchSymbols(query, { limit })
       } finally {
         store.close()
       }
@@ -188,24 +183,13 @@ export function createKBToolsRegistry(
     {
       name: 'get_code_neighbors',
       description:
-        'Get the immediate neighbors (imports, exports, extends, implements) of a code node by its id. Use after search_code_symbols to explore relationships.',
+        'Get the immediate neighbors of a code fact by its fact id. Use after search_code_symbols to explore relationships via the facts graph.',
       schema: {
         type: 'object',
         properties: {
           id: {
             type: 'string',
-            description: 'Node id, e.g. file:src/tools/foo.ts or symbol:src/tools/foo.ts#Bar',
-          },
-          edgeTypes: {
-            type: 'array',
-            items: { type: 'string' },
-            description:
-              'Filter to specific edge types: IMPORTS_FILE, EXPORTS_SYMBOL, EXTENDS, IMPLEMENTS',
-          },
-          direction: {
-            type: 'string',
-            enum: ['out', 'in', 'both'],
-            description: 'Edge direction (default: both)',
+            description: 'Fact id returned by search_code_symbols',
           },
           limit: { type: 'number', description: 'Max results (default 50)' },
         },
@@ -214,15 +198,10 @@ export function createKBToolsRegistry(
       },
     },
     async input => {
-      const { id, edgeTypes, direction, limit } = input as {
-        id: string
-        edgeTypes?: string[]
-        direction?: 'out' | 'in' | 'both'
-        limit?: number
-      }
+      const { id, limit } = input as { id: string; limit?: number }
       const store = new CodeGraphStore(codeGraphDbPath)
       try {
-        return store.getNeighbors(id, { edgeTypes, direction, limit })
+        return store.getNeighbors(id, { limit })
       } finally {
         store.close()
       }

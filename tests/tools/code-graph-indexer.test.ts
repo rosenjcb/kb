@@ -3,7 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import Database from 'better-sqlite3'
+import { runMigrations } from '../../src/core/db-migrations'
 import { TsMorphIndexer } from '../../src/tools/code-graph-indexer'
+import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
 import { CodeGraphStore } from '../../src/tools/code-graph-store'
 
 let tmpDir: string
@@ -32,8 +34,14 @@ async function writeTsconfig() {
   )
 }
 
+function makeIndexer() {
+  const factIndexer = new SqliteKbIndexer({ dbPath })
+  const indexer = new TsMorphIndexer(dbPath, factIndexer)
+  return { indexer, factIndexer }
+}
+
 describe('TsMorphIndexer', () => {
-  it('indexes exported functions and emits file + symbol nodes', async () => {
+  it('indexes exported functions and writes symbol facts', async () => {
     await writeTsconfig()
     await writeFile(
       join(repoRoot, 'src', 'utils.ts'),
@@ -41,49 +49,57 @@ describe('TsMorphIndexer', () => {
 export const PI = 3.14`
     )
 
-    const indexer = new TsMorphIndexer(dbPath)
+    const { indexer, factIndexer } = makeIndexer()
     const stats = await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
     indexer.close()
+    factIndexer.close()
 
     expect(stats.files).toBe(1)
     expect(stats.symbols).toBeGreaterThanOrEqual(2)
     expect(stats.errors).toBe(0)
 
-    const store = new CodeGraphStore(dbPath)
-    const fileNode = store.getNode('file:src/utils.ts')
-    expect(fileNode).not.toBeNull()
-    expect(fileNode?.kind).toBe('file')
+    const db = new Database(dbPath)
+    runMigrations(db)
+    const facts = db
+      .prepare(
+        "SELECT subject, predicate, object FROM facts WHERE source_kind = 'import_code' AND predicate = 'exported_from' AND tombstoned_at IS NULL"
+      )
+      .all() as Array<{ subject: string; predicate: string; object: string }>
+    db.close()
 
-    const addSymbol = store.getNode('symbol:src/utils.ts#add')
-    expect(addSymbol).not.toBeNull()
-    expect(addSymbol?.subkind).toBe('FunctionDeclaration')
-    expect(addSymbol?.exported).toBe(true)
-    store.close()
+    const names = facts.map(f => f.subject)
+    expect(names).toContain('add')
+    expect(names).toContain('PI')
+    expect(facts[0]?.object).toMatch(/src\/utils\.ts/)
   })
 
-  it('emits IMPORTS_FILE edges between files', async () => {
+  it('emits IMPORTS_FILE bridge facts between files', async () => {
     await writeTsconfig()
     await writeFile(join(repoRoot, 'src', 'a.ts'), 'export const x = 1')
     await writeFile(join(repoRoot, 'src', 'b.ts'), "import { x } from './a'\nexport const y = x + 1")
 
-    const indexer = new TsMorphIndexer(dbPath)
+    const { indexer, factIndexer } = makeIndexer()
     const stats = await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
     indexer.close()
+    factIndexer.close()
 
     expect(stats.edges).toBeGreaterThanOrEqual(1)
 
     const db = new Database(dbPath)
-    const edges = db
-      .prepare("SELECT * FROM kg_edges WHERE type = 'IMPORTS_FILE'")
-      .all() as Array<{ from_id: string; to_id: string }>
+    runMigrations(db)
+    const importFacts = db
+      .prepare(
+        "SELECT subject, predicate, object FROM facts WHERE source_kind = 'import_code' AND predicate = 'imports' AND tombstoned_at IS NULL"
+      )
+      .all() as Array<{ subject: string; predicate: string; object: string }>
     db.close()
 
-    expect(edges.length).toBeGreaterThanOrEqual(1)
-    expect(edges[0]?.from_id).toBe('file:src/b.ts')
-    expect(edges[0]?.to_id).toBe('file:src/a.ts')
+    expect(importFacts.length).toBeGreaterThanOrEqual(1)
+    expect(importFacts[0]?.subject).toMatch(/src\/b\.ts/)
+    expect(importFacts[0]?.object).toMatch(/src\/a\.ts/)
   })
 
-  it('emits IMPLEMENTS edges for class declarations', async () => {
+  it('emits IMPLEMENTS facts for class declarations', async () => {
     await writeTsconfig()
     await writeFile(
       join(repoRoot, 'src', 'animal.ts'),
@@ -91,39 +107,49 @@ export const PI = 3.14`
 export class Dog implements Animal { speak() { return 'woof' } }`
     )
 
-    const indexer = new TsMorphIndexer(dbPath)
+    const { indexer, factIndexer } = makeIndexer()
     await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
     indexer.close()
+    factIndexer.close()
 
     const db = new Database(dbPath)
-    const edges = db
-      .prepare("SELECT * FROM kg_edges WHERE type = 'IMPLEMENTS'")
-      .all() as Array<{ from_id: string; to_id: string }>
+    runMigrations(db)
+    const implementsFacts = db
+      .prepare(
+        "SELECT subject, predicate, object FROM facts WHERE source_kind = 'import_code' AND predicate = 'implements' AND tombstoned_at IS NULL"
+      )
+      .all() as Array<{ subject: string; predicate: string; object: string }>
     db.close()
 
-    expect(edges.length).toBeGreaterThanOrEqual(1)
-    expect(edges[0]?.from_id).toContain('Dog')
-    expect(edges[0]?.to_id).toContain('Animal')
+    expect(implementsFacts.length).toBeGreaterThanOrEqual(1)
+    expect(implementsFacts[0]?.subject).toBe('Dog')
+    expect(implementsFacts[0]?.object).toBe('Animal')
   })
 
   it('skips unchanged files on re-index', async () => {
     await writeTsconfig()
     await writeFile(join(repoRoot, 'src', 'stable.ts'), 'export const STABLE = true')
 
-    const indexer = new TsMorphIndexer(dbPath)
-    const first = await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
-    const second = await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
-    indexer.close()
+    const factIndexer1 = new SqliteKbIndexer({ dbPath })
+    const indexer1 = new TsMorphIndexer(dbPath, factIndexer1)
+    const first = await indexer1.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
+    indexer1.close()
+    factIndexer1.close()
+
+    const factIndexer2 = new SqliteKbIndexer({ dbPath })
+    const indexer2 = new TsMorphIndexer(dbPath, factIndexer2)
+    const second = await indexer2.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
+    indexer2.close()
+    factIndexer2.close()
 
     expect(first.files).toBe(1)
     expect(second.files).toBe(0)
     expect(second.skipped).toBe(1)
   })
-
 })
 
-describe('CodeGraphStore.findCodeSymbolsByName', () => {
-  it('finds exported symbols matching query terms via direct FTS', async () => {
+describe('CodeGraphStore', () => {
+  it('finds exported symbols matching query terms via FTS', async () => {
     await writeTsconfig()
     await writeFile(join(repoRoot, 'src', 'engine.ts'), 'export class Engine { run() {} }')
     await writeFile(
@@ -131,9 +157,10 @@ describe('CodeGraphStore.findCodeSymbolsByName', () => {
       `import { Engine } from './engine'\nexport class Car { constructor(private e: Engine) {} }`
     )
 
-    const indexer = new TsMorphIndexer(dbPath)
+    const { indexer, factIndexer } = makeIndexer()
     await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
     indexer.close()
+    factIndexer.close()
 
     const store = new CodeGraphStore(dbPath)
     const results = store.findCodeSymbolsByName(['engine'], 10)
@@ -141,5 +168,23 @@ describe('CodeGraphStore.findCodeSymbolsByName', () => {
 
     const names = results.map(n => n.name)
     expect(names).toContain('Engine')
+  })
+
+  it('getSummary returns correct counts', async () => {
+    await writeTsconfig()
+    await writeFile(join(repoRoot, 'src', 'a.ts'), 'export const x = 1')
+    await writeFile(join(repoRoot, 'src', 'b.ts'), "import { x } from './a'\nexport const y = 2")
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
+    indexer.close()
+    factIndexer.close()
+
+    const store = new CodeGraphStore(dbPath)
+    const summary = store.getSummary()
+    store.close()
+
+    expect(summary.symbols).toBeGreaterThanOrEqual(2)
+    expect(summary.files).toBeGreaterThanOrEqual(1)
   })
 })

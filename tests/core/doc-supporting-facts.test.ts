@@ -26,6 +26,7 @@ function makeIndexer(rows: FactRow[] = []) {
     semanticFactScores: vi.fn(() => new Map()),
     listFactConcepts: vi.fn(() => []),
     expandNeighborConcepts: vi.fn(() => []),
+    getFactNeighbors: vi.fn(() => []),
     getGraphEdgesForFacts: vi.fn(() => []),
     inferCategoriesForQuery: vi.fn(() => []),
     getFactCategoryNamesForFacts: vi.fn(() => new Map()),

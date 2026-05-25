@@ -14,7 +14,25 @@ The router maps the legacy **`read_documents`**-shaped envelope to **`FactsDocum
 | `discoveryDepth` | Behavior |
 |------------------|----------|
 | **`shallow`** | Lexical FTS over facts (`searchFacts`), or `listFactsForQuery` when the query string is empty. |
-| **`deep`** | **`FactsQueryResearchOrchestrator`** (`src/tools/facts-query-research-orchestrator.ts`): adaptive passes merging lexical hits, concept-frontier / concept rows, deterministic semantic rescoring, category widening, and concept-graph neighbor expansion until the evidence plateaus, the frontier is exhausted, or a safety budget is reached. |
+| **`deep`** | **`FactsQueryResearchOrchestrator`** (`src/tools/facts-query-research-orchestrator.ts`): adaptive passes merging **BFS edge-walk neighbors** (`fact_edges`), lexical hits, concept-frontier rows, and deterministic semantic rescoring until the evidence plateaus, the frontier is exhausted, or a safety budget is reached. |
+
+## Deep loop — per-iteration sources
+
+Each pass round-robins an **exploration pond** — a sub-query with its own BFS frontier — so one code-heavy neighborhood cannot monopolize the walk.
+
+Pond seeds come from `buildPondQueries`: the full query, token pairs (`languages supported`, `init scan`, …), and single-token fallbacks. Each pond gets a diverse lexical seed (mixed `source_kind`) before the loop starts.
+
+Each pass merges five candidate streams before dedup and scoring:
+
+1. **Edge neighbors** — `getFactNeighbors(activePond.frontierFactIds, seenIds, edgeBatch)`: one BFS hop from the **active pond's** frontier only (capped per hop so code swamps do not flood a single pass).
+2. **Lexical (primary)** — FTS for the original query string.
+3. **Lexical (pond)** — FTS for the active pond's sub-query (skipped when identical to primary).
+4. **Concept frontier** — facts sharing any concept token in the active concept set.
+5. **Concept rows** — facts sharing active concepts (broader union than frontier).
+
+Primary lexical hits from pass 1 are tracked as **anchors** (+0.10 score boost; up to 3 reserved in the final slice). When a pond stalls (no new edge or pond-lexical facts), it is marked exhausted and the loop advances to the next pond. Fresh concept neighbors can spawn an additional pond mid-loop. `frontier_exhausted` fires only when **all ponds** are exhausted and every stream returns nothing new.
+
+After scoring, the active pond's frontier is updated from its edge neighbors, pond-lexical hits, and local top scores. `graphHops` counts global BFS levels across ponds.
 
 ## Answer enrichment
 
