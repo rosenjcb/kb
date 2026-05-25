@@ -150,6 +150,37 @@ Both indexers store a `content_hash` per file in `kg_file_state`. On re-run (inc
 
 To keep the TUI responsive, the deterministic ingest/index loops yield back to the Node.js event loop between batches. That lets progress updates paint incrementally and gives `Ctrl-C` / terminal interrupts a chance to land between chunks instead of waiting for an entire repo walk to finish.
 
+## Language Support
+
+Two pipelines index source code. **Code-graph** (`TsMorphIndexer` / `TreeSitterIndexer`) is deterministic AST-based. **Code-facts** (`code-fact-extract.ts`) is an LLM semantic pass. They are independent — a language can appear in one, both, or neither.
+
+| Language | Extensions | Code-graph (AST) | Code-facts (LLM) |
+|---|---|---|---|
+| TypeScript | `.ts` `.tsx` `.mts` `.cts` | yes — TsMorphIndexer (type-aware) + TreeSitter | yes |
+| JavaScript | `.js` `.jsx` `.mjs` `.cjs` | yes — TsMorphIndexer + TreeSitter | yes |
+| Python | `.py` | yes | yes |
+| Go | `.go` | yes (uppercase-export convention) | yes |
+| Ruby | `.rb` | yes | yes |
+| Java | `.java` | yes | yes |
+| Rust | `.rs` | yes | yes |
+| Swift | `.swift` | no — no tree-sitter grammar | yes |
+| Kotlin | `.kt` | no — no tree-sitter grammar | yes |
+| C / C++ | `.c` `.h` `.cpp` `.cc` `.hpp` … | yes | no |
+| C# | `.cs` | yes | no |
+| PHP | `.php` | yes | no |
+| Scala | `.scala` | yes | no |
+| Bash | `.sh` `.bash` `.zsh` | yes | no |
+| CSS | `.css` | yes (selectors) | no |
+| HTML | `.html` `.htm` | yes (id elements) | no |
+
+Code-graph import/export edges: TS/JS have full import resolution; Go uses uppercase-initial convention; Python/Rust/Ruby/Java/C/C#/PHP/Scala/HTML extract exports but not imports (except Ruby `require` and PHP `require`/`include`).
+
+**Text-only** (file node, no symbols): `.md`, `.yaml`, `.json`, `.toml`, `.sql`, `.tf`, `.proto`, `.graphql`, `.scss`, `.xml`, extensionless files (Makefile, Dockerfile).
+
+**Ignored entirely**: images, binaries, lock files, compiled artifacts.
+
+To add a language to code-graph: install `tree-sitter-<lang>`, add to `LANG_CONFIGS` + `EXT_MAP` in `src/tools/tree-sitter-indexer.ts`. To add to code-facts: add the extension to `LANG_BY_EXT` in `src/core/code-fact-extract.ts`.
+
 ## Configuration Constants
 
 | Constant | Value | Purpose |
