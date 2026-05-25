@@ -12,6 +12,7 @@ React/Ink chat shell launched when the user runs bare `kb` in a TTY. Product-wid
 | Init status | `components/InitProgressBar.tsx` + `init-status.ts` | Dedicated live row for `/init` and `/scan` |
 | Status bar | `components/StatusBar.tsx` | Base name, mode hints |
 | Runner | `runner.ts` | Spawn `kb <args>` subprocess for output-only commands |
+| Base refresh | `base-refresh.ts` | `awaitRefreshThenStart` — sequences async base resolution before session start |
 
 ## Slash command routing
 
@@ -51,6 +52,8 @@ React/Ink chat shell launched when the user runs bare `kb` in a TTY. Product-wid
 - `resolveApplyArgs()` adding `--apply` for rescan/scan
 
 **Invariant:** init progress strings match `init-status.ts` parsing (`[init]`, `[scan]` prefixes) so the bar can parse `6/6 ast-facts …` style lines without polluting `HistoryPane`.
+
+**Invariant:** after `/init` or `/scan` completes, `awaitRefreshThenStart(refreshBase, startChatSession)` must be used — not bare `refreshBase(); startChatSession()`. `refreshBase` is async (`resolveEffectiveBaseDir` I/O); the chat session reads `storageDirRef.current` on startup, so the refresh must fully resolve first or the session opens against the old base.
 
 ## Subprocess commands
 

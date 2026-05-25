@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildChatTurnContent, printChatHelp, runChatSession } from '../../src/cli/chat-cli'
+import { buildChatTurnContent, printChatHelp, runChatSession, runChatSynthesis } from '../../src/cli/chat-cli'
 import * as initCli from '../../src/cli/init-cli'
 import type { ToolExecutor } from '../../src/core/tool-registry'
 import type { LLMProvider } from '../../src/core/types'
@@ -632,6 +632,143 @@ describe('chat-cli session loop', () => {
     // No decompose call — provider called exactly twice (route → synthesize), executor once
     expect(provider.call).toHaveBeenCalledTimes(2)
     expect(executor.execute).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('runChatSynthesis', () => {
+  function makePrinter() {
+    const lines: string[] = []
+    return {
+      printer: {
+        chatMeta: (_k: string, _v: string) => {},
+        chatAssistant: (s: string) => lines.push(s),
+        separator: () => {},
+        log: (s: string) => lines.push(s),
+        write: (s: string) => lines.push(s),
+        error: (s: string) => lines.push(s),
+      } as Parameters<typeof runChatSynthesis>[0]['printer'],
+      lines,
+    }
+  }
+
+  it('Given retrieval provided, then synthesizes answer from pre-fetched context without extra retrieval', async () => {
+    const { printer } = makePrinter()
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi.fn(),
+    }
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      model: 'test-model',
+      supportsStreaming: false,
+      call: vi.fn().mockResolvedValueOnce({
+        text: 'The answer is 42.',
+        stopReason: 'end_turn' as const,
+        toolUses: [],
+        usage: { inputTokens: 10, outputTokens: 5 },
+      }),
+    }
+
+    const result = await runChatSynthesis({
+      question: 'What is the answer?',
+      retrieval: { results: [{ metadata: { id: 'fact-1' }, content: 'The answer is 42.' }] },
+      messages: [],
+      llmProvider: provider,
+      toolExecutor: executor,
+      printer,
+    })
+
+    expect(result.answer).toBe('The answer is 42.')
+    expect(result.inputTokens).toBe(10)
+    expect(result.outputTokens).toBe(5)
+    expect(result.factsRetrieved).toBe(1)
+    expect(executor.execute).not.toHaveBeenCalled()
+  })
+
+  it('Given multi-round loop, then calls query_kb in parallel and populates lastIntentResult', async () => {
+    const { printer } = makePrinter()
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi.fn().mockResolvedValue({
+        retrieval: { method: 'hybrid', detail: 'research-orchestrator' },
+        results: [{ metadata: { id: 'fact-r2' }, content: 'Extra context.' }],
+      }),
+    }
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      model: 'test-model',
+      supportsStreaming: false,
+      call: vi.fn()
+        .mockResolvedValueOnce({
+          text: '',
+          stopReason: 'tool_use' as const,
+          toolUses: [
+            { id: 'tu-1', name: 'query_kb', input: { q: 'angle one' } },
+            { id: 'tu-2', name: 'query_kb', input: { q: 'angle two' } },
+          ],
+          usage: { inputTokens: 5, outputTokens: 2 },
+        })
+        .mockResolvedValue({
+          text: 'Full answer after parallel retrieval.',
+          stopReason: 'end_turn' as const,
+          toolUses: [],
+          usage: { inputTokens: 5, outputTokens: 10 },
+        }),
+    }
+
+    const result = await runChatSynthesis({
+      question: 'Tell me everything.',
+      retrieval: { results: [{ metadata: { id: 'fact-0' }, content: 'Initial context.' }] },
+      messages: [],
+      llmProvider: provider,
+      toolExecutor: executor,
+      printer,
+    })
+
+    // Both parallel tool calls triggered executor twice
+    expect(executor.execute).toHaveBeenCalledTimes(2)
+    expect(provider.call).toHaveBeenCalledTimes(2)
+    expect(result.answer).toBe('Full answer after parallel retrieval.')
+    // lastIntentResult populated from tool retrieval
+    expect(result.lastIntentResult).toBeDefined()
+    // facts from initial retrieval + two parallel retrievals
+    expect(result.factsRetrieved).toBeGreaterThanOrEqual(3)
+  })
+
+  it('Given retrieval undefined (chat path), then starts loop from provided messages directly', async () => {
+    const { printer } = makePrinter()
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi.fn(),
+    }
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      model: 'test-model',
+      supportsStreaming: false,
+      call: vi.fn().mockResolvedValueOnce({
+        text: 'Direct answer from history.',
+        stopReason: 'end_turn' as const,
+        toolUses: [],
+        usage: { inputTokens: 3, outputTokens: 7 },
+      }),
+    }
+
+    const result = await runChatSynthesis({
+      question: 'Anything?',
+      retrieval: undefined,
+      messages: [{ role: 'user', content: 'Anything?' }],
+      llmProvider: provider,
+      toolExecutor: executor,
+      printer,
+    })
+
+    expect(result.answer).toBe('Direct answer from history.')
+    expect(result.factsRetrieved).toBe(0)
+    expect(result.lastIntentResult).toBeUndefined()
+    expect(executor.execute).not.toHaveBeenCalled()
   })
 })
 
