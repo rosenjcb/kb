@@ -1,6 +1,11 @@
 import path from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import dayjs from 'dayjs'
+import {
+  formatRetrievedFactsForLLM,
+  formatSessionPoolFactsForLLM,
+  formatToolQueryFactsForLLM,
+} from '../core/retrieval-context'
 import { ReportWriter, RunCollector, defaultLogsDir, estimateCost } from '../core/telemetry'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message, ToolDefinition, ToolResultBlock } from '../core/types'
@@ -364,7 +369,7 @@ export async function runChatSynthesis(params: {
 }): Promise<ChatSynthesisResult> {
   const heartbeatMs = params.progressHeartbeatMs ?? 8000
   const noticeMs = params.progressNoticeMs ?? 12000
-  const retrievalLimit = params.retrievalLimit ?? 5
+  const retrievalLimit = params.retrievalLimit ?? 200
 
   if (params.retrieval !== undefined && shouldRefuseChatTurnOnRetrieval(params.retrieval)) {
     return {
@@ -522,7 +527,7 @@ export async function runChatSession(
     },
     deps.mode ?? 'cli'
   )
-  const retrievalLimit = deps.retrievalLimit ?? 5
+  const retrievalLimit = deps.retrievalLimit ?? 200
   const maxHistoryTurns = deps.maxHistoryTurns ?? 8
   const progressHeartbeatMs = Math.max(1500, deps.progressHeartbeatMs ?? 8000)
   const progressNoticeMs = Math.max(3000, deps.progressNoticeMs ?? 12000)
@@ -869,7 +874,7 @@ export function buildChatTurnContent(input: {
   const poolFacts = (input.sessionPool ?? []).filter(f => !priorFactIds.has(f.id))
   const poolSection =
     poolFacts.length > 0
-      ? `Session fact pool (facts retrieved in earlier turns — still relevant context):\n${poolFacts.map((f, i) => `${i + 1}. [${f.id}] ${f.text.replace(/\r?\n/g, ' ').slice(0, 300)}`).join('\n')}`
+      ? `Session fact pool (facts retrieved in earlier turns — still relevant context):\n${formatSessionPoolFactsForLLM(poolFacts)}`
       : ''
 
   return [
@@ -960,47 +965,14 @@ function formatRetrievalMode(retrieval: ReadDocumentsResult['retrieval']): strin
   return `${method}${detail}`
 }
 
-function buildEvidence(results: ReadDocumentsResult['results'], allFacts?: boolean): string {
-  if (!Array.isArray(results) || results.length === 0) {
-    return 'No evidence retrieved from KB documents.'
-  }
-
-  const slice = allFacts ? results : results.slice(0, 4)
-  const sections: string[] = []
-
-  for (const [index, result] of slice.entries()) {
-    const docId = result.metadata?.id ?? `doc-${index + 1}`
-    const content = (result.content ?? '').trim()
-    const snippet = content.length > 900 ? `${content.slice(0, 900)}...` : content
-    sections.push(`Document ${index + 1} (${docId}):\n${snippet || 'No content available.'}`)
-  }
-
-  const graphHints = new Set<string>()
-  for (const result of slice) {
-    for (const line of result.graphEvidence ?? []) {
-      if (line.trim()) graphHints.add(line.trim())
-    }
-  }
-  if (graphHints.size > 0) {
-    sections.push(
-      `Graph linkage hints (typed edges; must agree with document text above):\n${[...graphHints].map(h => `- ${h}`).join('\n')}`
-    )
-  }
-
-  return sections.join('\n\n')
+function buildEvidence(results: ReadDocumentsResult['results'], _allFacts?: boolean): string {
+  return formatRetrievedFactsForLLM(results)
 }
 
 function buildToolQueryResult(snapshot: ReadDocumentsResult): string {
   const results = snapshot.results ?? []
-  if (results.length === 0) return 'No additional facts found.'
-  const lines = results
-    .slice(0, 8)
-    .map((r, i) => {
-      const id = r.metadata?.id ?? `fact-${i + 1}`
-      const text = (r.content ?? '').trim().replace(/\r?\n/g, ' ').slice(0, 500)
-      return `${i + 1}. [${id}] ${text}`
-    })
-    .join('\n')
+  const lines = formatToolQueryFactsForLLM(results)
+  if (results.length === 0) return lines
   const detail = snapshot.retrieval?.detail ?? ''
   const isWeakEvidence = detail.includes('weak_evidence_after_exhaustion')
   const isFrontierExhausted = detail.includes('frontier_exhausted')

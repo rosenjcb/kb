@@ -1,0 +1,48 @@
+# Evidence summary header (`evidence>`)
+
+Terminal query/chat output prints **one** `evidence>` orchestration line after the answer. It replaces per-fact bullet previews.
+
+Implementation: **`formatEvidenceSummaryHeader()`** in `src/core/evidence-summary.ts`, wired from `printEvidenceSummaryBlock()` / `formatReadDocumentsHumanResult()` in `src/cli/intent-cli.ts`.
+
+## Purpose
+
+Humans need a scannable read on **what retrieval produced** without duplicating fact bodies the LLM already consumed. The LLM still receives the **full ranked pool** via `formatRetrievedFactsForLLM()` — this header is display-only.
+
+## Segment order
+
+Segments join with ` · ` (middle dot):
+
+| Segment | Source | Example |
+|---------|--------|---------|
+| **Count → LLM** | `results.length` | `200 facts → LLM (full text)` |
+| **Mix** | `metadata.tags[0]` source_kind tallies | `mix: 142 doc · 58 code` or `mix: all doc` |
+| **Themes** | category tags on facts (top 4 by frequency) | `themes: code-graph, init, languages` |
+| **Leads** | top 3 unique `metadata.title` values (rank order) | `leads: Language \| Extensions, TsMorphIndexer, …` |
+| **Walk** | parsed from `retrieval.detail` | `walk: 24p/20h/6 ponds` |
+| **Stop** | `stop:` token in `retrieval.detail` | `stop: budget_exhausted` |
+| **Conf** | last finite checkpoint `confidence` | `conf: 0.71` |
+
+Optional segments omitted when data missing.
+
+## Example
+
+```
+evidence> 200 facts → LLM (full text) · mix: 120 doc · 80 code · themes: code-graph, init, tree-sitter · leads: Language | Extensions | Code-graph (AST), TsMorphIndexer, Tree-Sitter Code Graph Indexer · walk: 24p/20h/6 ponds · stop: budget_exhausted · conf: 0.68
+```
+
+## Related footer lines
+
+| Line | Role |
+|------|------|
+| `retrieval>` | method + full loop detail string |
+| `matches>` | `{N} ranked facts` (count only) |
+| `sources>` | top 10 fact URIs by rank (`top N of M ranked: …`; all when M ≤ 10) |
+
+## Tests
+
+`tests/core/evidence-summary.test.ts` — mix/themes/leads parsing, walk/stop/conf from retrieval detail, dedupe rules.
+
+## See also
+
+- `src/core/QUERY_INTERNALS.md` — BFS loop and surface limit
+- `src/core/retrieval-context.ts` — full-fidelity LLM fact payloads

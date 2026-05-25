@@ -60,7 +60,7 @@ describe('DefaultIntentRouter', () => {
     expect(decision.operationInput.discoveryDepth).toBe('deep')
   })
 
-  it('Given query_truth with high-recall token query, then auto-promotes to wider limit', async () => {
+  it('Given query_truth with high-recall token query, then uses default limit without floor', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -68,10 +68,25 @@ describe('DefaultIntentRouter', () => {
       intent: 'query_truth',
       payload: {
         query: 'query-research-orchestrator',
+        limit: 12,
       },
     })
 
     expect(decision.selectedOperation).toBe('read_facts')
-    expect(decision.operationInput.limit).toBeGreaterThanOrEqual(12)
+    expect(decision.operationInput.limit).toBe(12)
+  })
+
+  it('Given query_truth without explicit limit, then defaults to 500 facts', async () => {
+    const executor = createExecutorMock()
+    const router = new DefaultIntentRouter(executor)
+
+    const decision = await router.route({
+      intent: 'query_truth',
+      payload: {
+        query: 'how does hybrid retrieval work in kb',
+      },
+    })
+
+    expect(decision.operationInput.limit).toBe(500)
   })
 })

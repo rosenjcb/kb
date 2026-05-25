@@ -284,7 +284,7 @@ describe('chat-cli session loop', () => {
     )
     expect(io.outputs.join('\n')).toContain('assistant> The KB uses a hybrid path with lexical fallback.')
     expect(io.outputs.join('\n')).toContain('retrieval> hybrid (fts+vector-rerank)')
-    expect(io.outputs.join('\n')).toContain('sources> session-log-2026-04-12')
+    expect(io.outputs.join('\n')).toContain('session-log-2026-04-12')
   })
 
   it('Given debug chat session, then footer prints full per-document source lines', async () => {
@@ -357,7 +357,7 @@ describe('chat-cli session loop', () => {
       })
     )
     expect(io.outputs.join('\n')).toContain('assistant> Rollout strategy is immediate.')
-    expect(io.outputs.join('\n')).toContain('sources> rollout-facts')
+    expect(io.outputs.join('\n')).toContain('rollout-facts')
   })
 
   it('Given a two-turn session, then second LLM call includes first-turn context in message history', async () => {
@@ -434,7 +434,7 @@ describe('chat-cli session loop', () => {
 
     expect(executor.execute).toHaveBeenCalledTimes(1)
     expect(io.outputs.join('\n')).toContain('assistant> Try the known runbook recovery steps first.')
-    expect(io.outputs.join('\n')).toContain('sources> known-runbook')
+    expect(io.outputs.join('\n')).toContain('known-runbook')
   })
 
   it('Given user message that is just a follow-up phrase, then LLM can answer directly without retrieval', async () => {

@@ -564,14 +564,13 @@ export class SqliteKbIndexer {
       `
       )
       .all(...ids, ...ids) as Array<{ neighbor_id: string }>
-    const boundedLimit = Math.max(1, Math.min(200, limit))
     const neighborIds = [
       ...new Set(
         neighborRows
           .map(row => row.neighbor_id?.trim())
           .filter((id): id is string => Boolean(id) && !seen.has(id))
       ),
-    ].slice(0, boundedLimit)
+    ].slice(0, limit === -1 ? undefined : Math.max(1, Math.min(200, limit)))
     if (neighborIds.length === 0) return []
     const factPlaceholders = neighborIds.map(() => '?').join(', ')
     return this.db

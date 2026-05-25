@@ -37,4 +37,4 @@ Do not add a second retrieval path that bypasses the router for `read_facts`.
 
 ## High-recall queries
 
-`requiresHighRecallQuery()` in `router.ts` detects broad questions and raises `read_facts` limit (min 12). Changing recall behavior affects both `kb query` and chat — test both surfaces.
+- `requiresHighRecallQuery()` in `router.ts` detects broad identifier-style queries (telemetry only today; does not raise `read_facts` limit). Default limit is 200 when `--limit` is omitted.

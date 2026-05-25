@@ -36,7 +36,23 @@ After scoring, the active pond's frontier is updated from its edge neighbors, po
 
 ## Answer enrichment
 
-After retrieval, **`enrichReadDocumentsAnswerWithLLM()`** (`src/cli/intent-cli.ts`) turns the final **fact-shaped** hit list into prose. The function name is historical; inputs are **`read_facts`** results (metadata title summarizes fact text; optional body is fact text when `includeContent` is enabled).
+After retrieval, **`enrichReadDocumentsAnswerWithLLM()`** (`src/cli/intent-cli.ts`) and chat synthesis (`src/cli/chat-cli.ts`) turn the final **fact-shaped** hit list into prose. Both paths pass the **entire ranked retrieval pool** to the LLM via **`formatRetrievedFactsForLLM()`** (`src/core/retrieval-context.ts`) — full `fact_text`, no snippet extraction or char caps.
+
+Terminal **`evidence>`** is a **single summary header** (`formatEvidenceSummaryHeader()` in `src/core/evidence-summary.ts`) — count, doc/code mix, top themes, lead titles, walk/stop/conf. No per-fact bullet lines. See **`src/core/EVIDENCE_SUMMARY.md`**.
+
+## BFS exploration vs surfaced results
+
+Three separate budgets — do not conflate them:
+
+| Layer | What it limits | Default | Role |
+|-------|----------------|---------|------|
+| **Hop walk** | New nodes visited per pond per pass | 200 edges/hop (`KB_FACTS_QUERY_EDGE_BATCH`), 20 hops (`KB_FACTS_QUERY_MAX_HOPS`) | Graph **exploration** — landing ponds, grow frontiers |
+| **Loop passes** | Round-robin pond iterations | 24 (`KB_FACTS_QUERY_MAX_ITERS`) | How long BFS + lexical + concept streams keep merging |
+| **Surface limit** | Facts returned in `results[]` | 200 (`--limit` / `KB_FACTS_QUERY_MAX_RESULTS`) | Ranked pool scored across all passes; top-N by score |
+
+BFS is **not** “return everything reachable.” Each hop can pull up to `EDGE_BATCH` neighbors; `seenFactIds` dedupes globally; scoring ranks the union; **`buildResponse` slices to `limit`**. Exponential neighbor growth is bounded by hop cap × edge batch × pond count, not by returning the whole graph.
+
+**Recall-first policy (current):** all facts in the ranked `results[]` pool go to the LLM with full text. Optimize token load later; answer quality first.
 
 ## Graph expansion (query string only)
 
@@ -44,11 +60,13 @@ When graph mode is enabled, **`expandQueryWithGraph`** (`src/tools/graph-query-e
 
 ## Environment knobs (facts deep loop)
 
-- `KB_FACTS_QUERY_MAX_ITERS` (default `24`, clamped 1–24) — pass budget; early-exit conditions
-  (`answerable_plateau`, `frontier_exhausted`, `weak_evidence_after_exhaustion`) normally fire
-  well before this ceiling. Raised from 8 to 24 so artificial cap never truncates genuine exploration.
-- `KB_FACTS_QUERY_MAX_HOPS` (default `20`, clamped 1–40) — concept neighbor expansion ceiling
-- `KB_FACTS_QUERY_MAX_RESULTS` (default `60`, clamped 10–200) — adaptive retrieval-limit ceiling
+- `KB_FACTS_QUERY_MAX_ITERS` (default `24`, clamped 1–24; `-1` = unlimited up to 512 passes)
+- `KB_FACTS_QUERY_MAX_HOPS` (default `20`, clamped 1–40; `-1` = unlimited)
+- `KB_FACTS_QUERY_MAX_PONDS` (default `6`, clamped 2–12; `-1` = unlimited up to 32 ponds)
+- `KB_FACTS_QUERY_EDGE_BATCH` (default `200`, clamped 10–200; `-1` = unlimited neighbors per hop)
+- `KB_FACTS_QUERY_MAX_RESULTS` (default `200`, clamped 10–200; `-1` = unlimited)
+
+Use `-1` only for debugging — absolute safety caps still apply on iters/ponds.
 
 ## Crawl (init-time only)
 

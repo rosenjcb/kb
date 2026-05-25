@@ -39,11 +39,18 @@ user input
    passes, plateau/frontier-based early exit). Facts already in the session pool are
    excluded via `excludeIds`.
 
-5. **Weak evidence signal** — when retrieval stops with `weak_evidence_after_exhaustion`,
+5. **LLM context** — every fact in the ranked retrieval `results[]` is passed to the model
+   with **full `fact_text`** via `formatRetrievedFactsForLLM()` (`src/core/retrieval-context.ts`).
+   No snippet extraction, no char caps.
+
+6. **Evidence header** — one `evidence>` summary line (count, mix, themes, leads, walk/stop/conf).
+   See `src/core/EVIDENCE_SUMMARY.md`. Per-fact bullet previews removed.
+
+7. **Weak evidence signal** — when retrieval stops with `weak_evidence_after_exhaustion`,
    `buildToolQueryResult` appends a note telling the LLM to try different query terms before
    concluding information is unavailable.
 
-6. **Orchestration footer** — `printReadDocumentsOrchestrationFooter()` prints `retrieval>`,
+8. **Orchestration footer** — `printReadDocumentsOrchestrationFooter()` prints `retrieval>`,
    `matches>`, `sources>`, `timing>`. Use `--verbose` for `summary>`/`confidence>` rows,
    `--debug` for per-document provenance.
 

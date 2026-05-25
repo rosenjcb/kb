@@ -36,19 +36,18 @@ describe('tui/partitionShellOutputForTui', () => {
     expect(metas[0]).toEqual({ kind: 'meta', line: 'sep> —' })
   })
 
-  it('evidence> items each on their own wire-key line → all grey meta', () => {
+  it('evidence> summary is a single meta line after the answer', () => {
     const output = [
       'Final answer text',
       'sep> —',
-      'evidence> - item 1 (source: fact://abc)',
-      'evidence> - item 2 (source: fact://def)',
+      'evidence> 2 facts → LLM (full text) · mix: all doc · themes: cli · leads: A, B · walk: 3p/2h/2 ponds · stop: budget_exhausted · conf: 0.80',
       'retrieval> hybrid',
     ].join('\n')
     const { segments } = partitionShellOutputForTui(output)
     const metaLines = segments.filter(s => s.kind === 'meta').map(s => (s as { kind: 'meta'; line: string }).line)
     expect(metaLines).toContain('sep> —')
-    expect(metaLines).toContain('evidence> - item 1 (source: fact://abc)')
-    expect(metaLines).toContain('evidence> - item 2 (source: fact://def)')
+    expect(metaLines.filter(line => line.startsWith('evidence>'))).toHaveLength(1)
+    expect(metaLines.some(line => line.includes('facts → LLM (full text)'))).toBe(true)
     expect(metaLines).toContain('retrieval> hybrid')
     const bodies = segments.filter(s => s.kind === 'body')
     expect(bodies).toHaveLength(1)

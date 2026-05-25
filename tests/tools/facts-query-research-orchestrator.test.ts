@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildPondQueries,
   FactsQueryResearchOrchestrator,
+  isUnlimitedLimit,
 } from '../../src/tools/facts-query-research-orchestrator'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
 
@@ -32,9 +33,95 @@ describe('buildPondQueries', () => {
     expect(ponds).toContain('init scan')
     expect(ponds).toContain('languages scan')
   })
+
+  it('Given maxPonds -1, then returns every generated pond query', () => {
+    const ponds = buildPondQueries(
+      'rust code graph',
+      ['rust', 'code', 'graph'],
+      -1
+    )
+    expect(ponds.length).toBeGreaterThan(6)
+    expect(ponds).toContain('rust')
+    expect(isUnlimitedLimit(-1)).toBe(true)
+  })
 })
 
 describe('FactsQueryResearchOrchestrator ponds', () => {
+  it('Given reserved anchor and source slots overlap, then buildResponse dedupes fact ids', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    const shared = indexer.upsertFact({
+      factText: 'Supported languages include Rust via tree-sitter AST code-graph indexing',
+      sourceKind: 'import_doc',
+      sourceRef: 'init-md',
+      confidence: 0.95,
+    })
+    indexer.upsertFact({
+      factText: 'parseScanCommand is exported from src/cli/init-cli.ts',
+      triplet: {
+        subject: 'parseScanCommand',
+        predicate: 'exported_from',
+        object: 'src/cli/init-cli.ts',
+      },
+      sourceKind: 'import_code',
+      sourceRef: 'code:init-cli',
+      confidence: 0.95,
+    })
+
+    const response = new FactsQueryResearchOrchestrator(indexer).run({
+      query: 'supported languages rust code-graph',
+      limit: 5,
+      includeContent: true,
+      surface: 'query',
+    })
+
+    const ids = response.results.map(result => result.metadata.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids).toContain(shared.id)
+    indexer.close()
+  })
+
+  it('Given generated _site code facts, then they are excluded from surfaced results', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    const languageList = indexer.upsertFact({
+      factText:
+        'Code-graph indexing supported languages include Go, TS/TSX, JS/JSX, Python, Rust, Ruby, Java, C/C++, C#, CSS, Bash, PHP via EXT_MAP.',
+      sourceKind: 'import_doc',
+      sourceRef: 'src/core/INIT.md#languages',
+      confidence: 0.95,
+    })
+    const siteNoise = indexer.upsertFact({
+      factText:
+        'code-graph indexing supported languages vp-nav-star attribute_value exported from docs/_site/evaluation.html',
+      triplet: {
+        subject: 'vp-nav-star',
+        predicate: 'attribute_value',
+        object: 'docs/_site/evaluation.html',
+      },
+      sourceKind: 'import_code',
+      sourceRef: 'code:docs/_site/evaluation.html',
+      confidence: 0.99,
+    })
+    expect(siteNoise.id).toMatch(/^fact-/)
+
+    const response = new FactsQueryResearchOrchestrator(indexer).run({
+      query: 'code-graph indexing supported languages',
+      limit: 5,
+      includeContent: true,
+      surface: 'query',
+    })
+
+    expect(response.results.length).toBeGreaterThan(0)
+    expect(response.results.every(result => !/docs\/_site\//.test(result.content ?? ''))).toBe(true)
+    expect(response.results.map(result => result.metadata.id)).toContain(languageList.id)
+    indexer.close()
+  })
+
   it('Given disjoint doc and code facts, pond search keeps primary lexical anchors in results', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')

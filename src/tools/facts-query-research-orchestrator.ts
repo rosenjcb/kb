@@ -3,6 +3,8 @@ import { formatFactUri } from '../core/fact-uri'
 import type { QueryResponse, QueryResult } from './facts-document-reader'
 import type { FactConceptRow, FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
+export const DEFAULT_FACT_LIMIT = 500
+
 interface FactsLoopOptions {
   query: string
   limit: number
@@ -71,21 +73,22 @@ const QUERY_STOP_WORDS = new Set([
   'were',
 ])
 
+const ABSOLUTE_MAX_ITERATIONS = 512
+const ABSOLUTE_MAX_PONDS = 32
+
 export class FactsQueryResearchOrchestrator {
   constructor(private readonly indexer: SqliteKbIndexer) {}
 
   run(input: FactsLoopOptions): QueryResponse {
-    const maxIterations = clampInt(process.env.KB_FACTS_QUERY_MAX_ITERS, 24, 1, 24)
-    const maxGraphHops = clampInt(process.env.KB_FACTS_QUERY_MAX_HOPS, 20, 1, 40)
-    const maxPonds = clampInt(process.env.KB_FACTS_QUERY_MAX_PONDS, 6, 2, 12)
-    const perHopEdgeLimit = clampInt(process.env.KB_FACTS_QUERY_EDGE_BATCH, 50, 10, 200)
-    const hardResultLimit = clampInt(process.env.KB_FACTS_QUERY_MAX_RESULTS, 60, 10, 200)
+    const maxIterations = clampLimitInt(process.env.KB_FACTS_QUERY_MAX_ITERS, 24, 1, 24)
+    const maxGraphHops = clampLimitInt(process.env.KB_FACTS_QUERY_MAX_HOPS, 20, 1, 40)
+    const maxPonds = clampLimitInt(process.env.KB_FACTS_QUERY_MAX_PONDS, 6, 2, 12)
+    const perIterationLimit = 50
     const queryTokens = tokenizeQuery(input.query)
     const rankedCategories = this.indexer.inferCategoriesForQuery(input.query, 4)
     let activeCategoryIds = rankedCategories.slice(0, 2).map(category => category.categoryId)
     let activeConcepts = queryTokens.slice(0, 8)
     let activeConceptBudget = 40
-    let retrievalLimit = Math.max(input.limit, 5)
     const seenFactIds = new Set<string>(input.excludeIds ?? [])
     const scoredFacts = new Map<string, { row: FactRow; score: number }>()
     const primaryLexicalAnchors = new Set<string>()
@@ -104,9 +107,17 @@ export class FactsQueryResearchOrchestrator {
     seedPondFrontiers(this.indexer, ponds, activeCategoryIds)
     let pondCursor = 0
 
-    for (let iter = 0; iter < maxIterations; iter++) {
+    for (let iter = 0; isUnlimited(maxIterations) || iter < maxIterations; iter++) {
+      if (isUnlimited(maxIterations) && iter >= ABSOLUTE_MAX_ITERATIONS) {
+        stopReason = 'budget_exhausted'
+        loopTrace.push(`i${iter + 1}:absolute_iter_cap`)
+        break
+      }
       iterationsRun = iter + 1
-      const perIterationLimit = Math.max(retrievalLimit, 15)
+      if (scoredFacts.size >= input.limit) {
+        stopReason = 'budget_exhausted'
+        break
+      }
       const activePondSelection = selectNextPond(ponds, pondCursor)
       if (!activePondSelection) {
         stopReason = scoredFacts.size > 0 ? 'weak_evidence_after_exhaustion' : 'frontier_exhausted'
@@ -116,8 +127,8 @@ export class FactsQueryResearchOrchestrator {
       pondCursor = (activePondIndex + 1) % ponds.length
 
       const edgeNeighborRows =
-        graphHops < maxGraphHops && activePond.frontierFactIds.length > 0
-          ? this.indexer.getFactNeighbors(activePond.frontierFactIds, seenFactIds, perHopEdgeLimit)
+        withinLimit(graphHops, maxGraphHops) && activePond.frontierFactIds.length > 0
+          ? this.indexer.getFactNeighbors(activePond.frontierFactIds, seenFactIds, perIterationLimit)
           : []
       if (edgeNeighborRows.length > 0) {
         graphHops += 1
@@ -240,10 +251,7 @@ export class FactsQueryResearchOrchestrator {
         frontierConcepts: frontierConcepts.length,
         activePonds,
       }
-      sufficiency = this.assessSufficiency({
-        scoredFacts,
-        conceptCoverage,
-      })
+      sufficiency = this.assessSufficiency({ scoredFacts })
       const confidence = computeCheckpointConfidence(metrics)
       const hasMeaningfulGain = hasMeaningfulProgress(previousMetrics, metrics)
       plateauCount = hasMeaningfulGain ? 0 : plateauCount + 1
@@ -251,23 +259,13 @@ export class FactsQueryResearchOrchestrator {
       let nextAction = 'continue'
       let status: LoopCheckpoint['status'] = 'continue'
 
-      if (sufficiency.decision === 'answerable' && plateauCount >= 2) {
+      if (sufficiency.decision === 'answerable') {
         status = 'stop'
-        nextAction = 'return_answerable_plateau'
+        nextAction = 'return_answerable'
         stopReason = 'answerable_plateau'
       }
 
-      const shouldGrowLimit = shouldIncreaseRetrievalLimit({
-        currentLimit: retrievalLimit,
-        hardResultLimit,
-        metrics,
-        sufficiency,
-      })
-      const nextCategoryIds = shouldWidenCategories({
-        activeCategoryIds,
-        rankedCategories,
-        sufficiency,
-      })
+      const nextCategoryIds = shouldWidenCategories({ activeCategoryIds, rankedCategories, sufficiency })
       const triedEdgeWalk = activePond.frontierFactIds.length > 0
       const pondEdgeStalled = triedEdgeWalk && edgeNeighborRows.length === 0
       if (pondEdgeStalled && pondLexicalRows.every(row => seenFactIds.has(row.id))) {
@@ -281,7 +279,7 @@ export class FactsQueryResearchOrchestrator {
         })
       }
       const anyPondCanWalk =
-        graphHops < maxGraphHops &&
+        withinLimit(graphHops, maxGraphHops) &&
         ponds.some(pond => !pond.exhausted && pond.frontierFactIds.length > 0)
       const canExpandEdges = anyPondCanWalk
       const expandedConcepts =
@@ -294,7 +292,6 @@ export class FactsQueryResearchOrchestrator {
 
       if (status !== 'stop') {
         const frontierExhausted =
-          !shouldGrowLimit &&
           nextCategoryIds.length === activeCategoryIds.length &&
           !canExpandGraph &&
           plateauCount >= 1
@@ -326,9 +323,6 @@ export class FactsQueryResearchOrchestrator {
         break
       }
 
-      if (shouldGrowLimit) {
-        retrievalLimit = nextRetrievalLimit(retrievalLimit, hardResultLimit)
-      }
       if (nextCategoryIds.length > activeCategoryIds.length) {
         activeCategoryIds = nextCategoryIds
       }
@@ -357,21 +351,10 @@ export class FactsQueryResearchOrchestrator {
   // Minimal prompt contract: single decision from deterministic signals.
   private assessSufficiency(input: {
     scoredFacts: Map<string, { row: FactRow; score: number }>
-    conceptCoverage: number
   }): SufficiencyDecision {
-    if (input.scoredFacts.size < 2) {
+    const relevantFacts = [...input.scoredFacts.values()].filter(entry => entry.score >= 0.40)
+    if (relevantFacts.length < 10) {
       return { decision: 'not_answerable_yet', reason: 'insufficient-facts' }
-    }
-    const top = [...input.scoredFacts.values()]
-      .map(entry => entry.score)
-      .sort((a, b) => b - a)
-      .slice(0, 3)
-    const avgTop = top.length > 0 ? top.reduce((sum, value) => sum + value, 0) / top.length : 0
-    if (avgTop < 0.55) {
-      return { decision: 'not_answerable_yet', reason: 'low-signal' }
-    }
-    if (input.conceptCoverage < 0.50) {
-      return { decision: 'not_answerable_yet', reason: 'low-coverage' }
     }
     return { decision: 'answerable', reason: 'coverage-sufficient' }
   }
@@ -400,6 +383,7 @@ export class FactsQueryResearchOrchestrator {
           ? Math.min(0.18, categories.filter(category => activeCategoryIds.includes(category)).length * 0.09)
           : 0
       const semanticScore = semanticScores.get(row.id) ?? 0
+      const qualityPenalty = retrievalFactPenalty(row)
       const score = Math.min(
         1,
         overlapScore * 0.45 +
@@ -408,7 +392,8 @@ export class FactsQueryResearchOrchestrator {
           recencyBias +
           frontierBoost +
           anchorBoost +
-          categoryBoost
+          categoryBoost -
+          qualityPenalty
       )
       const current = scores.get(row.id)
       if (!current || score > current.score) {
@@ -429,14 +414,18 @@ export class FactsQueryResearchOrchestrator {
     primaryLexicalAnchors?: Set<string>
     pondCount?: number
   }): QueryResponse {
-    const sorted = [...input.scoredFacts.values()].sort((a, b) => b.score - a.score)
-    const limit = input.input.limit
+    const sorted = [...input.scoredFacts.values()]
+      .filter(entry => !isExcludedRetrievalFact(entry.row))
+      .sort((a, b) => b.score - a.score)
     const MIN_PER_SOURCE = 2
     const ANCHOR_SLOTS = 3
 
     const anchorEntries = [...(input.primaryLexicalAnchors ?? [])]
       .map(id => input.scoredFacts.get(id))
-      .filter((entry): entry is { row: FactRow; score: number } => Boolean(entry))
+      .filter((entry): entry is { row: FactRow; score: number } => {
+        if (!entry) return false
+        return !isExcludedRetrievalFact(entry.row)
+      })
       .sort((a, b) => b.score - a.score)
       .slice(0, ANCHOR_SLOTS)
 
@@ -452,12 +441,13 @@ export class FactsQueryResearchOrchestrator {
     const reservedIds = new Set<string>(anchorEntries.map(entry => entry.row.id))
     for (const entries of bySource.values()) {
       for (const entry of entries.slice(0, MIN_PER_SOURCE)) {
+        if (reservedIds.has(entry.row.id)) continue
         reserved.push(entry)
         reservedIds.add(entry.row.id)
       }
     }
     const remainder = sorted.filter(e => !reservedIds.has(e.row.id))
-    const ranked = [...reserved, ...remainder].slice(0, limit)
+    const ranked = dedupeRankedFacts([...reserved, ...remainder])
     const categoryNames = this.indexer.getFactCategoryNamesForFacts(ranked.map(entry => entry.row.id))
     const results: QueryResult[] = ranked.map(({ row }) => ({
       metadata: {
@@ -505,6 +495,39 @@ export class FactsQueryResearchOrchestrator {
   }
 }
 
+function dedupeRankedFacts(
+  entries: Array<{ row: FactRow; score: number }>
+): Array<{ row: FactRow; score: number }> {
+  const seen = new Set<string>()
+  const out: Array<{ row: FactRow; score: number }> = []
+  for (const entry of entries) {
+    if (seen.has(entry.row.id)) continue
+    seen.add(entry.row.id)
+    out.push(entry)
+  }
+  return out
+}
+
+/** Downrank or drop generated-site artifacts that pollute graph retrieval. */
+export function retrievalFactPenalty(row: FactRow): number {
+  if (isExcludedRetrievalFact(row)) return 1
+  const ref = row.source_ref ?? ''
+  const text = row.fact_text
+  if (ref.includes('_site/') || text.includes('docs/_site/')) return 0.45
+  if (/attribute_value exported from docs\/_site\//i.test(text)) return 0.45
+  return 0
+}
+
+export function isExcludedRetrievalFact(row: FactRow): boolean {
+  const ref = row.source_ref ?? ''
+  const text = row.fact_text
+  return (
+    ref.includes('_site/') ||
+    text.includes('docs/_site/') ||
+    /attribute_value exported from docs\/_site\//i.test(text)
+  )
+}
+
 function mergeUniqueFacts(rows: FactRow[], seenFactIds: Set<string>): FactRow[] {
   const merged: FactRow[] = []
   for (const row of rows) {
@@ -542,7 +565,7 @@ export function buildPondQueries(query: string, queryTokens: string[], maxPonds:
     add(`${queryTokens[0]} ${queryTokens[1]} ${queryTokens[2]}`)
   }
   for (const token of queryTokens) add(token)
-  return ponds.slice(0, maxPonds)
+  return isUnlimited(maxPonds) ? ponds : ponds.slice(0, maxPonds)
 }
 
 function buildExplorationPonds(query: string, queryTokens: string[], maxPonds: number): ExplorationPond[] {
@@ -631,7 +654,9 @@ function maybeSpawnConceptPond(
   indexer: SqliteKbIndexer,
   activeCategoryIds: string[]
 ): void {
-  if (ponds.length >= maxPonds || newConcepts.length < 2) return
+  if (ponds.length >= ABSOLUTE_MAX_PONDS) return
+  if (!isUnlimited(maxPonds) && ponds.length >= maxPonds) return
+  if (newConcepts.length < 2) return
   const query = newConcepts.slice(0, 3).join(' ')
   if (ponds.some(pond => pond.query.toLowerCase() === query.toLowerCase())) return
   const rows =
@@ -699,24 +724,6 @@ function hasMeaningfulProgress(previous: LoopMetrics | undefined, current: LoopM
   return false
 }
 
-function shouldIncreaseRetrievalLimit(input: {
-  currentLimit: number
-  hardResultLimit: number
-  metrics: LoopMetrics
-  sufficiency: SufficiencyDecision
-}): boolean {
-  if (input.currentLimit >= input.hardResultLimit) return false
-  if (input.metrics.uniqueFacts <= input.currentLimit + 2) return true
-  if (input.sufficiency.decision !== 'answerable') return true
-  if (input.metrics.conceptCoverage < 0.7) return true
-  return input.metrics.avgTop < 0.7
-}
-
-function nextRetrievalLimit(currentLimit: number, hardResultLimit: number): number {
-  if (currentLimit >= hardResultLimit) return hardResultLimit
-  const step = currentLimit < 10 ? 5 : Math.max(5, Math.ceil(currentLimit * 0.5))
-  return Math.min(hardResultLimit, currentLimit + step)
-}
 
 function shouldWidenCategories(input: {
   activeCategoryIds: string[]
@@ -730,11 +737,24 @@ function shouldWidenCategories(input: {
     .map(category => category.categoryId)
 }
 
-function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
+function clampLimitInt(raw: string | undefined, fallback: number, min: number, max: number): number {
   if (!raw) return fallback
   const parsed = Number.parseInt(raw, 10)
   if (!Number.isFinite(parsed)) return fallback
+  if (parsed === -1) return -1
   return Math.max(min, Math.min(max, parsed))
+}
+
+export function isUnlimitedLimit(limit: number): boolean {
+  return limit === -1
+}
+
+function isUnlimited(limit: number): boolean {
+  return isUnlimitedLimit(limit)
+}
+
+function withinLimit(current: number, limit: number): boolean {
+  return isUnlimited(limit) || current < limit
 }
 
 function clampFloat(value: number, min: number, max: number): number {

@@ -1,6 +1,7 @@
 import dayjs from 'dayjs'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, ToolUseRequest } from '../core/types'
+import { DEFAULT_FACT_LIMIT } from '../tools/facts-query-research-orchestrator'
 import type { ConsumerIntentEnvelope, IntentResult, RouteDecision } from './types'
 
 export interface IntentRouter {
@@ -16,6 +17,8 @@ function createToolUse(name: string, input: Record<string, unknown>): ToolUseReq
   }
 }
 
+const DEFAULT_FACT_RETRIEVAL_LIMIT = DEFAULT_FACT_LIMIT
+
 export class DefaultIntentRouter implements IntentRouter {
   constructor(
     private readonly toolExecutor: ToolExecutor,
@@ -30,9 +33,8 @@ export class DefaultIntentRouter implements IntentRouter {
       case 'query_truth': {
         const queryText = String(payload.topic ?? payload.query ?? '')
         const allFacts = payload.allFacts === true
-        const highRecall = requiresHighRecallQuery(queryText)
-        const requestedLimit = typeof payload.limit === 'number' ? payload.limit : 5
-        const effectiveLimit = highRecall ? Math.max(requestedLimit, 12) : requestedLimit
+        const effectiveLimit =
+          typeof payload.limit === 'number' ? payload.limit : DEFAULT_FACT_RETRIEVAL_LIMIT
         const effectiveDiscoveryDepth = payload.discoveryDepth ?? 'deep'
 
         return {
@@ -50,9 +52,7 @@ export class DefaultIntentRouter implements IntentRouter {
           },
           policyReason: allFacts
             ? 'query intent with --all-facts: load all KB facts without query expansion'
-            : highRecall
-              ? 'query intent maps to read_facts with high-recall evidence policy'
-              : 'query intent maps directly to read_facts',
+            : 'query intent maps to read_facts',
         }
       }
 
@@ -89,14 +89,6 @@ export class DefaultIntentRouter implements IntentRouter {
       confidence: deriveToolResultConfidence(toolResult),
     }
   }
-}
-
-function requiresHighRecallQuery(query: string): boolean {
-  const trimmed = query.trim()
-  if (!trimmed) return false
-  if (/^[A-Z0-9._-]{16,}$/.test(trimmed)) return true
-  if (trimmed.length >= 20 && (trimmed.includes('_') || trimmed.includes('-'))) return true
-  return false
 }
 
 function extractProvenance(result: unknown): string[] {

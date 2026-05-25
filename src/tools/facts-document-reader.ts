@@ -1,7 +1,7 @@
 import type { DocType } from '../core/doc-taxonomy'
 import { formatFactUri } from '../core/fact-uri'
 import type { LLMProvider } from '../core/types'
-import { FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
+import { DEFAULT_FACT_LIMIT, FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
 import { expandQuery, shouldExpandQuery } from './query-expander'
 import { type FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
@@ -64,7 +64,7 @@ export class FactsDocumentReader {
   }
 
   async queryDocuments(input: QueryDocumentsInput): Promise<QueryResponse> {
-    const limit = input.limit ?? 10
+    const limit = input.limit ?? DEFAULT_FACT_LIMIT
 
     if (input.allFacts || this.defaultAllFacts) {
       if (this.allFactsDumped) {

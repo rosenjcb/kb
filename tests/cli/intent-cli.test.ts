@@ -83,14 +83,19 @@ describe('intent-cli formatting', () => {
           answer: 'The KB uses session base first, then default base.',
           retrieval: {
             method: 'hybrid',
-            detail: 'fts+vector-rerank',
+            detail: 'facts-loop;passes:3;graph_hops:2;ponds:2;stop:answerable_plateau;semantic:on',
             checkpoints: [
-              { stage: 'hybrid_primary', status: 'hit', nextAction: 'return', confidence: 0.86 },
+              { stage: 'pass_3', status: 'stop', nextAction: 'return', confidence: 0.86 },
             ],
           },
           results: [
             {
-              metadata: { id: 'cli-facts', title: 'CLI Facts', filePath: '/tmp/cli-facts.md' },
+              metadata: {
+                id: 'cli-facts',
+                title: 'CLI Facts',
+                filePath: '/tmp/cli-facts.md',
+                tags: ['import_doc', 'cli', 'fact'],
+              },
               content: '# CLI Facts\n\nKB base precedence order: 1) kb use, 2) kb default.',
             },
           ],
@@ -101,9 +106,12 @@ describe('intent-cli formatting', () => {
     )
 
     expect(output).toContain('The KB uses session base first, then default base.')
-    expect(output).toContain('retrieval> hybrid (fts+vector-rerank)')
-    expect(output).toContain('matches> 1')
-    expect(output).toContain('sources> cli-facts')
+    expect(output).toContain('evidence> 1 facts → LLM (full text)')
+    expect(output).toContain('themes: cli')
+    expect(output).toContain('stop: answerable_plateau')
+    expect(output).toContain('retrieval> hybrid (facts-loop;passes:3;graph_hops:2;ponds:2;stop:answerable_plateau;semantic:on)')
+    expect(output).toContain('matches> 1 ranked facts')
+    expect(output).toContain('sources> all 1 ranked: cli-facts')
   })
 
   it('prints minimal intent help with only the supported commands', () => {
