@@ -1092,7 +1092,7 @@ function buildEvidence(results: ReadDocumentsResult['results'], allFacts?: boole
 function buildToolQueryResult(snapshot: ReadDocumentsResult): string {
   const results = snapshot.results ?? []
   if (results.length === 0) return 'No additional facts found.'
-  return results
+  const lines = results
     .slice(0, 8)
     .map((r, i) => {
       const id = r.metadata?.id ?? `fact-${i + 1}`
@@ -1100,6 +1100,11 @@ function buildToolQueryResult(snapshot: ReadDocumentsResult): string {
       return `${i + 1}. [${id}] ${text}`
     })
     .join('\n')
+  const isWeakEvidence = snapshot.retrieval?.detail?.includes('weak_evidence_after_exhaustion')
+  if (isWeakEvidence) {
+    return `${lines}\n\n[Retrieval confidence was low — the graph frontier was exhausted without strong evidence. Try querying with different or broader terms before answering.]`
+  }
+  return lines
 }
 
 export function createTerminalChatIO(): ChatIO {
