@@ -501,6 +501,138 @@ describe('chat-cli session loop', () => {
     expect(secondOutput).toContain('Buildkite')
     expect(secondOutput).not.toContain('GitHub Actions. (source:')
   })
+
+  it('Given a multi-round query where LLM calls query_kb twice across rounds, then both retrievals run and final answer is returned', async () => {
+    const io = new ScriptedIO(['How does the agent loop work?', '/exit'])
+    const executor = makeExecutor('Agent loop content.', 'agent-loop-doc')
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      model: 'test-model',
+      supportsStreaming: false,
+      call: vi.fn()
+        .mockResolvedValueOnce({
+          text: '',
+          stopReason: 'tool_use' as const,
+          toolUses: [{ id: 'tu-1', name: 'query_kb', input: { q: 'agent loop' } }],
+          usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        .mockResolvedValueOnce({
+          text: '',
+          stopReason: 'tool_use' as const,
+          toolUses: [{ id: 'tu-2', name: 'query_kb', input: { q: 'agent loop exit condition' } }],
+          usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        .mockResolvedValue({
+          text: 'The agent loop runs until no tool calls are produced.',
+          stopReason: 'end_turn' as const,
+          toolUses: [],
+          usage: { inputTokens: 1, outputTokens: 1 },
+        }),
+    }
+
+    await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
+
+    // Two retrieval rounds → executor called twice, provider called three times
+    expect(executor.execute).toHaveBeenCalledTimes(2)
+    expect(provider.call).toHaveBeenCalledTimes(3)
+    expect(io.outputs.join('\n')).toContain('The agent loop runs until no tool calls are produced.')
+  })
+
+  it('Given a turn where LLM returns two tool calls in one round, then both execute and results are returned', async () => {
+    const io = new ScriptedIO(['Compare retrieval strategies', '/exit'])
+
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi.fn(async () => ({
+        retrieval: { method: 'hybrid', detail: 'research-orchestrator' },
+        results: [{ metadata: { id: 'fact-1' }, content: 'Retrieval strategy content.' }],
+      })),
+    }
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      model: 'test-model',
+      supportsStreaming: false,
+      call: vi.fn()
+        .mockResolvedValueOnce({
+          text: '',
+          stopReason: 'tool_use' as const,
+          toolUses: [
+            { id: 'tu-1', name: 'query_kb', input: { q: 'hybrid retrieval' } },
+            { id: 'tu-2', name: 'query_kb', input: { q: 'vector retrieval' } },
+          ],
+          usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        .mockResolvedValue({
+          text: 'Hybrid and vector retrieval both available.',
+          stopReason: 'end_turn' as const,
+          toolUses: [],
+          usage: { inputTokens: 1, outputTokens: 1 },
+        }),
+    }
+
+    await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
+
+    // Both tool calls in the same round → executor called twice
+    expect(executor.execute).toHaveBeenCalledTimes(2)
+    // Both query> lines should appear in output (logged before parallel execution)
+    const out = io.outputs.join('\n')
+    expect(out).toContain('query> hybrid retrieval')
+    expect(out).toContain('query> vector retrieval')
+    expect(out).toContain('Hybrid and vector retrieval both available.')
+  })
+
+  it('Given a synthesis keyword query, then decompose pre-step fires and sub-queries are logged before main loop', async () => {
+    // Query must be ≥40 chars to pass the decompose length guard
+    const io = new ScriptedIO(['Give me an overview of how the kb init process works', '/exit'])
+
+    const executor = makeExecutor('Init process content.', 'init-doc')
+
+    const provider: LLMProvider = {
+      name: 'test-provider',
+      model: 'test-model',
+      supportsStreaming: false,
+      call: vi.fn()
+        // First call: decompose → returns two sub-query lines
+        .mockResolvedValueOnce({
+          text: 'kb init command behavior\nread-inputs cycle during init',
+          stopReason: 'end_turn' as const,
+          toolUses: [],
+          usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        // Remaining calls: main loop synthesis
+        .mockResolvedValue({
+          text: 'The init process reads inputs then writes documents.',
+          stopReason: 'end_turn' as const,
+          toolUses: [],
+          usage: { inputTokens: 1, outputTokens: 1 },
+        }),
+    }
+
+    await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
+
+    const out = io.outputs.join('\n')
+    // Both sub-queries logged (from the decompose pre-step)
+    expect(out).toContain('query> kb init command behavior')
+    expect(out).toContain('query> read-inputs cycle during init')
+    // Provider called at least twice: once for decompose, once for main loop
+    expect((provider.call as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(out).toContain('The init process reads inputs then writes documents.')
+  })
+
+  it('Given a short or non-synthesis query, then decompose pre-step is skipped', async () => {
+    const io = new ScriptedIO(['What is kb?', '/exit'])
+    const executor = makeExecutor('kb is a knowledge base tool.', 'kb-doc')
+    const provider = makeKBProvider('kb is a knowledge base tool.', 'What is kb?')
+
+    await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
+
+    // No decompose call — provider called exactly twice (route → synthesize), executor once
+    expect(provider.call).toHaveBeenCalledTimes(2)
+    expect(executor.execute).toHaveBeenCalledTimes(1)
+  })
 })
 
 afterEach(async () => {
