@@ -26,8 +26,10 @@ When graph mode is enabled, **`expandQueryWithGraph`** (`src/tools/graph-query-e
 
 ## Environment knobs (facts deep loop)
 
-- `KB_FACTS_QUERY_MAX_ITERS` (default `8`, clamped 1–24) — pass budget / safety guardrail
-- `KB_FACTS_QUERY_MAX_HOPS` (default `6`, clamped 1–12) — concept neighbor expansion ceiling
+- `KB_FACTS_QUERY_MAX_ITERS` (default `24`, clamped 1–24) — pass budget; early-exit conditions
+  (`answerable_plateau`, `frontier_exhausted`, `weak_evidence_after_exhaustion`) normally fire
+  well before this ceiling. Raised from 8 to 24 so artificial cap never truncates genuine exploration.
+- `KB_FACTS_QUERY_MAX_HOPS` (default `20`, clamped 1–40) — concept neighbor expansion ceiling
 - `KB_FACTS_QUERY_MAX_RESULTS` (default `60`, clamped 10–200) — adaptive retrieval-limit ceiling
 
 ## Crawl (init-time only)
