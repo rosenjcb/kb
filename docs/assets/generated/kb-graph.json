@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-25T19:44:08.590Z",
+  "generatedAt": "2026-05-27T04:53:29.025Z",
   "entities": [
     {
       "id": "kb",
@@ -56,6 +56,62 @@
     {
       "id": "(`answerable_plateau`, `frontier_exhausted`, `weak_evidence_after_exhaustion`) normally fire",
       "name": "(`answerable_plateau`, `frontier_exhausted`, `weak_evidence_after_exhaustion`) normally fire"
+    },
+    {
+      "id": "* **Chat Mode**: In chat mode, the InputBar border turns orange and the prompt becomes `you>`.",
+      "name": "* **Chat Mode**: In chat mode, the InputBar border turns orange and the prompt becomes `you>`."
+    },
+    {
+      "id": "* **KB Tool**: For the first install, install `kb` from GitHub Releases on a fresh machine.",
+      "name": "* **KB Tool**: For the first install, install `kb` from GitHub Releases on a fresh machine."
+    },
+    {
+      "id": "* **Node.js**: KB expects Node 22+ in the shell.",
+      "name": "* **Node.js**: KB expects Node 22+ in the shell."
+    },
+    {
+      "id": "* **Query**: Use `kb query` to ask questions.",
+      "name": "* **Query**: Use `kb query` to ask questions."
+    },
+    {
+      "id": "* Extracts document facts from markdown sources.",
+      "name": "* Extracts document facts from markdown sources."
+    },
+    {
+      "id": "* Imports original documents for each discovered markdown file.",
+      "name": "* Imports original documents for each discovered markdown file."
+    },
+    {
+      "id": "* In chat mode, you can use the `/docs generate \"<prompt>\"` slash command for a guided doc-draft wizard.",
+      "name": "* In chat mode, you can use the `/docs generate \"<prompt>\"` slash command for a guided doc-draft wizard."
+    },
+    {
+      "id": "* LLM-generated documents produced by `kb docs generate` are stored in the knowledge base.",
+      "name": "* LLM-generated documents produced by `kb docs generate` are stored in the knowledge base."
+    },
+    {
+      "id": "* Performs LLM fallback for source code facts if AST providers are unavailable.",
+      "name": "* Performs LLM fallback for source code facts if AST providers are unavailable."
+    },
+    {
+      "id": "* Performs deterministic AST indexing of every file in the repository, writing directly into `facts` and `fact_edges` in the `.kb-index.sqlite` database.",
+      "name": "* Performs deterministic AST indexing of every file in the repository, writing directly into `facts` and `fact_edges` in the `.kb-index.sqlite` database."
+    },
+    {
+      "id": "* Persists documents and indexes candidate facts into the `facts` table.",
+      "name": "* Persists documents and indexes candidate facts into the `facts` table."
+    },
+    {
+      "id": "* Prompts the user to define fact categories (named buckets for organizing retrieval).",
+      "name": "* Prompts the user to define fact categories (named buckets for organizing retrieval)."
+    },
+    {
+      "id": "* Reads source files and collects repository inputs.",
+      "name": "* Reads source files and collects repository inputs."
+    },
+    {
+      "id": "* Use the command with a prompt and specify the document type:",
+      "name": "* Use the command with a prompt and specify the document type:"
     },
     {
       "id": "* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically",
@@ -762,6 +818,10 @@
       "name": "- Do not output the user's question verbatim — extract the distinct concepts that need to be retrieved separately."
     },
     {
+      "id": "- Does `kb init` produce a usable knowledge base from the current repo without manual surgery?",
+      "name": "- Does `kb init` produce a usable knowledge base from the current repo without manual surgery?"
+    },
+    {
       "id": "- Each `sentence` MUST be a single declarative sentence ending in a period; no questions, no lists, no markdown.",
       "name": "- Each `sentence` MUST be a single declarative sentence ending in a period; no questions, no lists, no markdown."
     },
@@ -1362,8 +1422,16 @@
       "name": "- `kb <command> [args]` → one-shot CLI (non-interactive by default)"
     },
     {
+      "id": "- `kb init` bootstraps a knowledge base from a repo.",
+      "name": "- `kb init` bootstraps a knowledge base from a repo."
+    },
+    {
       "id": "- `kb init` cwd = snapshot clone under `~/.kb/evaluations/<run-name>/repo/`",
       "name": "- `kb init` cwd = snapshot clone under `~/.kb/evaluations/<run-name>/repo/`"
+    },
+    {
+      "id": "- `kb publish jekyll --base dogfood --dir docs/ --apply` (run from the repo root) syncs the dogfood knowledge base into this directory: — `fact://9c0d8f35bc9c22c6`",
+      "name": "- `kb publish jekyll --base dogfood --dir docs/ --apply` (run from the repo root) syncs the dogfood knowledge base into this directory: — `fact://9c0d8f35bc9c22c6`"
     },
     {
       "id": "- `kb query` and chat QUERY must both use this — no parallel router shortcuts.",
@@ -1726,6 +1794,10 @@
       "name": "- surfaces: Entry points (commands, types, modules) to list."
     },
     {
+      "id": "- title: KB — Local-First Knowledge for AI Workflows — `fact://5a1f5031591fc500`",
+      "name": "- title: KB — Local-First Knowledge for AI Workflows — `fact://5a1f5031591fc500`"
+    },
+    {
       "id": "- trigger: When should someone run this (symptoms, alerts, schedule)?",
       "name": "- trigger: When should someone run this (symptoms, alerts, schedule)?"
     },
@@ -2038,6 +2110,10 @@
       "name": "All graph data lives in **`<base-dir>/.kb-index.sqlite`** alongside documents and facts."
     },
     {
+      "id": "All graph data, documents, chunks, and facts live in the `<base-dir>/.kb-index.sqlite` file.",
+      "name": "All graph data, documents, chunks, and facts live in the `<base-dir>/.kb-index.sqlite` file."
+    },
+    {
       "id": "All must pass before pushing.",
       "name": "All must pass before pushing."
     },
@@ -2142,6 +2218,10 @@
       "name": "Budget knobs (env, sane defaults): `KB_CODE_FACTS_MAX_FILES=40`, `KB_CODE_FACTS_PER_FILE_CHARS=6000`, `KB_CODE_FACTS_MAX_CONCURRENCY=4`, `KB_CODE_FACTS_MAX_PER_FILE=8`."
     },
     {
+      "id": "By extracting structured facts, KB ensures that decisions, architecture details, and project context are always at your fingertips, allowing both AI agents and developers to retrieve the right context before making changes.",
+      "name": "By extracting structured facts, KB ensures that decisions, architecture details, and project context are always at your fingertips, allowing both AI agents and developers to retrieve the right context before making changes."
+    },
+    {
       "id": "CHAT_WEAK_RETRIEVAL_REFUSAL",
       "name": "CHAT_WEAK_RETRIEVAL_REFUSAL"
     },
@@ -2196,6 +2276,10 @@
     {
       "id": "Categories are saved to `fact_categories`; all facts are assigned via TF-IDF cosine similarity (`threshold = 0.3`) against each category's name + description text.",
       "name": "Categories are saved to `fact_categories`; all facts are assigned via TF-IDF cosine similarity (`threshold = 0.3`) against each category's name + description text."
+    },
+    {
+      "id": "Category prompting is skipped on rescan, preserving categories defined at init time.",
+      "name": "Category prompting is skipped on rescan, preserving categories defined at init time."
     },
     {
       "id": "Changing recall behavior affects both `kb query` and chat — test both surfaces.",
@@ -2436,6 +2520,10 @@
     {
       "id": "Draft from the template; omit empty sections.",
       "name": "Draft from the template; omit empty sections."
+    },
+    {
+      "id": "During initialization, `kb init` performs several steps:",
+      "name": "During initialization, `kb init` performs several steps:"
     },
     {
       "id": "Each base stores its SQLite index under `~/.kb/sessions/<base>/`.",
@@ -2718,6 +2806,10 @@
       "name": "Humans need a scannable read on **what retrieval produced** without duplicating fact bodies the LLM already consumed."
     },
     {
+      "id": "Hybrid retrieval (SQLite full-text search + vector-style ranking) returns relevant documents even when query phrasing differs from stored facts.",
+      "name": "Hybrid retrieval (SQLite full-text search + vector-style ranking) returns relevant documents even when query phrasing differs from stored facts."
+    },
+    {
       "id": "Hypothesis",
       "name": "Hypothesis"
     },
@@ -2922,6 +3014,10 @@
       "name": "InitProgressBar"
     },
     {
+      "id": "Initialize the knowledge base using `kb init`.",
+      "name": "Initialize the knowledge base using `kb init`."
+    },
+    {
       "id": "Ink implementation details: [`../tui/TUI.md`](../tui/TUI.md).",
       "name": "Ink implementation details: [`../tui/TUI.md`](../tui/TUI.md)."
     },
@@ -2988,6 +3084,10 @@
     {
       "id": "Is the user giving me a coding task in a project that uses the KB knowledge",
       "name": "Is the user giving me a coding task in a project that uses the KB knowledge"
+    },
+    {
+      "id": "It addresses the pain of maintaining a knowledge base by turning your codebase and documentation into a searchable, queryable system.",
+      "name": "It addresses the pain of maintaining a knowledge base by turning your codebase and documentation into a searchable, queryable system."
     },
     {
       "id": "It indexes source files deterministically and writes into `facts` (`source_kind='import_code'`) and `fact_edges` (structural edge types: `IMPORTS_FILE`, `EXPORTS_SYMBOL`, `EXTENDS`, `IMPLEMENTS`).",
@@ -3060,6 +3160,10 @@
     {
       "id": "KB maintains a property graph alongside its SQLite document store.",
       "name": "KB maintains a property graph alongside its SQLite document store."
+    },
+    {
+      "id": "KB reads your code and documentation, extracts structured facts, and provides a fast, queryable knowledge base.",
+      "name": "KB reads your code and documentation, extracts structured facts, and provides a fast, queryable knowledge base."
     },
     {
       "id": "KB ships first-party **Agent Skills** (Cursor/Claude/Codex format) for dogfooding and `kb skills install`.",
@@ -3224,6 +3328,10 @@
     {
       "id": "On re-run we group prior rows by `<path>@<anchor>` (via `SqliteKbIndexer.listActiveFactsBySourceRefPrefix`) and:",
       "name": "On re-run we group prior rows by `<path>@<anchor>` (via `SqliteKbIndexer.listActiveFactsBySourceRefPrefix`) and:"
+    },
+    {
+      "id": "Once your knowledge base is set up, you can query it and use chat mode to explore.",
+      "name": "Once your knowledge base is set up, you can query it and use chat mode to explore."
     },
     {
       "id": "One runner drives all disposable-base harvests.",
@@ -3710,6 +3818,10 @@
       "name": "Skills installer"
     },
     {
+      "id": "Slash commands that are output-only (e.g., `/query`, `/facts`, `/graph`, `/docs list`, `/base`, `/config`) are intercepted at the TUI layer and display inline without involving the LLM loop.",
+      "name": "Slash commands that are output-only (e.g., `/query`, `/facts`, `/graph`, `/docs list`, `/base`, `/config`) are intercepted at the TUI layer and display inline without involving the LLM loop."
+    },
+    {
       "id": "Slash commands that are output-only (query, facts, graph, docs list/view, base, config, etc.) are intercepted at the TUI layer and display inline without involving the LLM loop.",
       "name": "Slash commands that are output-only (query, facts, graph, docs list/view, base, config, etc.) are intercepted at the TUI layer and display inline without involving the LLM loop."
     },
@@ -3898,6 +4010,10 @@
       "name": "The goal is simple: you get a knowledge base for free, as a side effect of doing your real work."
     },
     {
+      "id": "The goal is to provide a knowledge base for free, as a side effect of your regular development work.",
+      "name": "The goal is to provide a knowledge base for free, as a side effect of your regular development work."
+    },
+    {
       "id": "The graph builder (`rebuildFactGraph`) consumes the new triples directly — there is **no separate AST table**.",
       "name": "The graph builder (`rebuildFactGraph`) consumes the new triples directly — there is **no separate AST table**."
     },
@@ -3940,6 +4056,10 @@
     {
       "id": "The per-anchor diff guarantees that unchanged files don't churn the `facts` table.",
       "name": "The per-anchor diff guarantees that unchanged files don't churn the `facts` table."
+    },
+    {
+      "id": "The progress of `init`/`scan` is rendered as a dedicated live status line in the TUI.",
+      "name": "The progress of `init`/`scan` is rendered as a dedicated live status line in the TUI."
     },
     {
       "id": "The public KB query intent delegates to the router-owned retrieval path:",
@@ -4034,6 +4154,10 @@
       "name": "They are independent — a language can appear in one, both, or neither."
     },
     {
+      "id": "This command bootstraps a knowledge base from your repository.",
+      "name": "This command bootstraps a knowledge base from your repository."
+    },
+    {
       "id": "This directory is the Jekyll source for the **kb dogfood** documentation site, published to GitHub Pages at `https://rosenjcb.github.io/kb`.",
       "name": "This directory is the Jekyll source for the **kb dogfood** documentation site, published to GitHub Pages at `https://rosenjcb.github.io/kb`."
     },
@@ -4090,6 +4214,10 @@
       "name": "This site uses the [`jekyll-vitepress-theme`](https://github.com/crmne/jekyll-vitepress-theme) gem (see `Gemfile`)."
     },
     {
+      "id": "This step is interactive and skipped on `kb scan`.",
+      "name": "This step is interactive and skipped on `kb scan`."
+    },
+    {
       "id": "This works well when the KB is small, when exhaustive coverage matters more than precision, or when you're debugging retrieval quality.",
       "name": "This works well when the KB is small, when exhaustive coverage matters more than precision, or when you're debugging retrieval quality."
     },
@@ -4124,6 +4252,14 @@
     {
       "id": "To keep the TUI responsive, the deterministic ingest/index loops yield back to the Node.js event loop between batches.",
       "name": "To keep the TUI responsive, the deterministic ingest/index loops yield back to the Node.js event loop between batches."
+    },
+    {
+      "id": "To refresh sources against an existing knowledge base after changes, use `kb scan`.",
+      "name": "To refresh sources against an existing knowledge base after changes, use `kb scan`."
+    },
+    {
+      "id": "To set up a knowledge base in your local repository:",
+      "name": "To set up a knowledge base in your local repository:"
     },
     {
       "id": "Token savings",
@@ -4270,6 +4406,10 @@
       "name": "WIRE_KEY"
     },
     {
+      "id": "Walk through the chat-based wizard to create your knowledge base.",
+      "name": "Walk through the chat-based wizard to create your knowledge base."
+    },
+    {
       "id": "We only capture init/query evidence artifacts.",
       "name": "We only capture init/query evidence artifacts."
     },
@@ -4404,6 +4544,14 @@
     {
       "id": "You can disable graph extraction and graph-augmented lookup with either:",
       "name": "You can disable graph extraction and graph-augmented lookup with either:"
+    },
+    {
+      "id": "You can generate documents using the `kb docs generate` command.",
+      "name": "You can generate documents using the `kb docs generate` command."
+    },
+    {
+      "id": "You can specify a base name, for example `dogfood`:",
+      "name": "You can specify a base name, for example `dogfood`:"
     },
     {
       "id": "You decompose user questions into 1–4 focused retrieval queries for a codebase knowledge base.",
@@ -4648,6 +4796,10 @@
     {
       "id": "`kb query` and chat QUERY turns share **`runQueryTruthRetrieval()`** (`src/cli/query-truth-retrieval.ts`): **`runIntentLoop`** → **`DefaultIntentRouter`** → **`read_facts`** (registry in `src/tools/kb-tools-registry.ts`).",
       "name": "`kb query` and chat QUERY turns share **`runQueryTruthRetrieval()`** (`src/cli/query-truth-retrieval.ts`): **`runIntentLoop`** → **`DefaultIntentRouter`** → **`read_facts`** (registry in `src/tools/kb-tools-registry.ts`)."
+    },
+    {
+      "id": "`kb scan` only re-extracts files whose `sha256` has changed.",
+      "name": "`kb scan` only re-extracts files whose `sha256` has changed."
     },
     {
       "id": "`kb_graph_entities` / `kb_graph_relationships` were dropped in migration v11; `kg_nodes`, `kg_edges`, `kg_file_state`, `kg_nodes_fts`, and `kg_semantic_bridge` were dropped in migration v14.",
@@ -5250,6 +5402,10 @@
       "name": "kb base use foo # switch the active base for this session kb base use --default foo # save a persistent default kb base use --show # show active base and config default kb base delete bar --force # delete a base and all its data kb scan --base foo # refresh KB updates incrementally from changed docs/source files kb sync # install the latest published GitHub release kb && /base use foo kb && /scan"
     },
     {
+      "id": "kb docs generate \"<prompt>\" --type howto|introduction|reference|decision|runbook [--base <name>]",
+      "name": "kb docs generate \"<prompt>\" --type howto|introduction|reference|decision|runbook [--base <name>]"
+    },
+    {
       "id": "kb docs list [--base <name>] [--limit <n>] [--output human|json] kb docs view <document-id> [--base <name>] [--output human|json] kb docs view --title \"<exact title>\" [--base <name>] [--output human|json] kb docs generate \"<prompt>\" [--type howto|introduction|reference|decision|runbook] [--limit <n>] [--base <name>] kb docs rename <document-id> \"<new title>\" [--base <name>] kb docs delete <documen",
       "name": "kb docs list [--base <name>] [--limit <n>] [--output human|json] kb docs view <document-id> [--base <name>] [--output human|json] kb docs view --title \"<exact title>\" [--base <name>] [--output human|json] kb docs generate \"<prompt>\" [--type howto|introduction|reference|decision|runbook] [--limit <n>] [--base <name>] kb docs rename <document-id> \"<new title>\" [--base <name>] kb docs delete <documen"
     },
@@ -5602,10 +5758,6 @@
       "name": "runIntentLoop( envelope: ConsumerIntentEnvelope, toolExecutor: ToolExecutor, config?: IntentLoopConfig, ): Promise<IntentLoopResult>"
     },
     {
-      "id": "runLLMSetupWizard",
-      "name": "runLLMSetupWizard"
-    },
-    {
       "id": "runLogsCommand",
       "name": "runLogsCommand"
     },
@@ -5670,12 +5822,244 @@
       "name": "specificity"
     },
     {
+      "id": "src/cli/docs-generate-cli.ts",
+      "name": "src/cli/docs-generate-cli.ts"
+    },
+    {
+      "id": "src/cli/base-selection.ts",
+      "name": "src/cli/base-selection.ts"
+    },
+    {
+      "id": "src/tui/App.tsx",
+      "name": "src/tui/App.tsx"
+    },
+    {
+      "id": "src/cli/chat-cli.ts",
+      "name": "src/cli/chat-cli.ts"
+    },
+    {
+      "id": "src/cli/cli-prerequisites.ts",
+      "name": "src/cli/cli-prerequisites.ts"
+    },
+    {
+      "id": "src/cli/cmd-ref.ts",
+      "name": "src/cli/cmd-ref.ts"
+    },
+    {
+      "id": "printDocsGenerateHelp",
+      "name": "printDocsGenerateHelp"
+    },
+    {
+      "id": "parseDocsGenerateCommand",
+      "name": "parseDocsGenerateCommand"
+    },
+    {
+      "id": "formatDocsGenerateHumanOutput",
+      "name": "formatDocsGenerateHumanOutput"
+    },
+    {
+      "id": "runDocsGenerate",
+      "name": "runDocsGenerate"
+    },
+    {
+      "id": "DocsGenerateMode",
+      "name": "DocsGenerateMode"
+    },
+    {
+      "id": "DocsGenerateOutputFormat",
+      "name": "DocsGenerateOutputFormat"
+    },
+    {
+      "id": "ParsedDocsGenerateCommand",
+      "name": "ParsedDocsGenerateCommand"
+    },
+    {
+      "id": "DocsGenerateError",
+      "name": "DocsGenerateError"
+    },
+    {
+      "id": "RunDocsGenerateDeps",
+      "name": "RunDocsGenerateDeps"
+    },
+    {
+      "id": "src/cli/docs-generate-sections.ts",
+      "name": "src/cli/docs-generate-sections.ts"
+    },
+    {
+      "id": "src/cli/init-cli.ts",
+      "name": "src/cli/init-cli.ts"
+    },
+    {
+      "id": "src/cli/kb-config.ts",
+      "name": "src/cli/kb-config.ts"
+    },
+    {
+      "id": "src/core/doc-generate-orchestrator.ts",
+      "name": "src/core/doc-generate-orchestrator.ts"
+    },
+    {
       "id": "src/cli/publish-jekyll.ts → tests/cli/publish-jekyll.test.ts src/core/publish/jekyll-sync.ts → tests/core/jekyll-sync.test.ts src/tools/document-writer.ts → tests/tools/document-writer.test.ts",
       "name": "src/cli/publish-jekyll.ts → tests/cli/publish-jekyll.test.ts src/core/publish/jekyll-sync.ts → tests/core/jekyll-sync.test.ts src/tools/document-writer.ts → tests/tools/document-writer.test.ts"
     },
     {
+      "id": "classifyFeedback",
+      "name": "classifyFeedback"
+    },
+    {
+      "id": "src/core/doc-feedback-classifier.ts",
+      "name": "src/core/doc-feedback-classifier.ts"
+    },
+    {
+      "id": "FeedbackKind",
+      "name": "FeedbackKind"
+    },
+    {
+      "id": "startGenerationSession",
+      "name": "startGenerationSession"
+    },
+    {
+      "id": "answerCurrent",
+      "name": "answerCurrent"
+    },
+    {
+      "id": "skipCurrent",
+      "name": "skipCurrent"
+    },
+    {
+      "id": "produceInitialDraft",
+      "name": "produceInitialDraft"
+    },
+    {
+      "id": "produceRevisedDraft",
+      "name": "produceRevisedDraft"
+    },
+    {
+      "id": "acceptDraft",
+      "name": "acceptDraft"
+    },
+    {
+      "id": "DocGenerateOrchestratorDeps",
+      "name": "DocGenerateOrchestratorDeps"
+    },
+    {
+      "id": "src/core/doc-generate-session.ts",
+      "name": "src/core/doc-generate-session.ts"
+    },
+    {
+      "id": "src/core/doc-generate-title.ts",
+      "name": "src/core/doc-generate-title.ts"
+    },
+    {
+      "id": "src/core/doc-questionnaire.ts",
+      "name": "src/core/doc-questionnaire.ts"
+    },
+    {
+      "id": "src/core/doc-references-footer.ts",
+      "name": "src/core/doc-references-footer.ts"
+    },
+    {
+      "id": "src/core/doc-supporting-facts.ts",
+      "name": "src/core/doc-supporting-facts.ts"
+    },
+    {
+      "id": "buildDocgenFactContext",
+      "name": "buildDocgenFactContext"
+    },
+    {
+      "id": "SupportingFact",
+      "name": "SupportingFact"
+    },
+    {
+      "id": "src/core/doc-taxonomy.ts",
+      "name": "src/core/doc-taxonomy.ts"
+    },
+    {
+      "id": "src/core/git-diff-preview.ts",
+      "name": "src/core/git-diff-preview.ts"
+    },
+    {
+      "id": "src/core/types.ts",
+      "name": "src/core/types.ts"
+    },
+    {
+      "id": "src/prompts/loader.ts",
+      "name": "src/prompts/loader.ts"
+    },
+    {
+      "id": "src/tools/document-writer.ts",
+      "name": "src/tools/document-writer.ts"
+    },
+    {
+      "id": "src/tools/facts-query-research-orchestrator.ts",
+      "name": "src/tools/facts-query-research-orchestrator.ts"
+    },
+    {
+      "id": "src/tools/kb-tools-registry.ts",
+      "name": "src/tools/kb-tools-registry.ts"
+    },
+    {
+      "id": "src/tools/sqlite-document-writer.ts",
+      "name": "src/tools/sqlite-document-writer.ts"
+    },
+    {
+      "id": "src/tools/sqlite-kb-index.ts",
+      "name": "src/tools/sqlite-kb-index.ts"
+    },
+    {
       "id": "src/tui/ index.tsx # launchTui(config) — Ink render entry App.tsx # Root component, state, command dispatch runner.ts # runCommandForTui(), parseShellArgs() theme.ts # BLUE, ORANGE constants types.ts # TuiMode, HistoryEntry, EntryType components/ StatusBar.tsx # Top bar HistoryPane.tsx # Scrollable output list HistoryEntryRow.tsx # Single output line (type-aware coloring) InputBar.tsx # Bottom pro",
       "name": "src/tui/ index.tsx # launchTui(config) — Ink render entry App.tsx # Root component, state, command dispatch runner.ts # runCommandForTui(), parseShellArgs() theme.ts # BLUE, ORANGE constants types.ts # TuiMode, HistoryEntry, EntryType components/ StatusBar.tsx # Top bar HistoryPane.tsx # Scrollable output list HistoryEntryRow.tsx # Single output line (type-aware coloring) InputBar.tsx # Bottom pro"
+    },
+    {
+      "id": "App",
+      "name": "App"
+    },
+    {
+      "id": "src/tui/base-refresh.ts",
+      "name": "src/tui/base-refresh.ts"
+    },
+    {
+      "id": "src/tui/chat-io-classify.ts",
+      "name": "src/tui/chat-io-classify.ts"
+    },
+    {
+      "id": "src/tui/chat-read-kind.ts",
+      "name": "src/tui/chat-read-kind.ts"
+    },
+    {
+      "id": "src/tui/components/HistoryPane.tsx",
+      "name": "src/tui/components/HistoryPane.tsx"
+    },
+    {
+      "id": "src/tui/components/InitProgressBar.tsx",
+      "name": "src/tui/components/InitProgressBar.tsx"
+    },
+    {
+      "id": "src/tui/components/InputBar.tsx",
+      "name": "src/tui/components/InputBar.tsx"
+    },
+    {
+      "id": "src/tui/components/StatusBar.tsx",
+      "name": "src/tui/components/StatusBar.tsx"
+    },
+    {
+      "id": "src/tui/components/SuggestionsBar.tsx",
+      "name": "src/tui/components/SuggestionsBar.tsx"
+    },
+    {
+      "id": "src/tui/partition-shell-output.ts",
+      "name": "src/tui/partition-shell-output.ts"
+    },
+    {
+      "id": "src/tui/runner.ts",
+      "name": "src/tui/runner.ts"
+    },
+    {
+      "id": "src/tui/slash-commands.ts",
+      "name": "src/tui/slash-commands.ts"
+    },
+    {
+      "id": "src/tui/types.ts",
+      "name": "src/tui/types.ts"
     },
     {
       "id": "standard-procedure",
@@ -6715,6 +7099,76 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "* **Chat Mode**: In chat mode, the InputBar border turns orange and the prompt becomes `you>`."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* **KB Tool**: For the first install, install `kb` from GitHub Releases on a fresh machine."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* **Node.js**: KB expects Node 22+ in the shell."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* **Query**: Use `kb query` to ask questions."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* Extracts document facts from markdown sources."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* Imports original documents for each discovered markdown file."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* In chat mode, you can use the `/docs generate \"<prompt>\"` slash command for a guided doc-draft wizard."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* LLM-generated documents produced by `kb docs generate` are stored in the knowledge base."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* Performs LLM fallback for source code facts if AST providers are unavailable."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* Performs deterministic AST indexing of every file in the repository, writing directly into `facts` and `fact_edges` in the `.kb-index.sqlite` database."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* Persists documents and indexes candidate facts into the `facts` table."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* Prompts the user to define fact categories (named buckets for organizing retrieval)."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* Reads source files and collects repository inputs."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "* Use the command with a prompt and specify the document type:"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically"
     },
     {
@@ -7595,6 +8049,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "- Does `kb init` produce a usable knowledge base from the current repo without manual surgery?"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "- Each `sentence` MUST be a single declarative sentence ending in a period; no questions, no lists, no markdown."
     },
     {
@@ -8345,7 +8804,17 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "- `kb init` bootstraps a knowledge base from a repo."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "- `kb init` cwd = snapshot clone under `~/.kb/evaluations/<run-name>/repo/`"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "- `kb publish jekyll --base dogfood --dir docs/ --apply` (run from the repo root) syncs the dogfood knowledge base into this directory: — `fact://9c0d8f35bc9c22c6`"
     },
     {
       "fromId": "kb",
@@ -8800,6 +9269,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "- title: KB — Local-First Knowledge for AI Workflows — `fact://5a1f5031591fc500`"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "- trigger: When should someone run this (symptoms, alerts, schedule)?"
     },
     {
@@ -9215,6 +9689,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "All graph data, documents, chunks, and facts live in the `<base-dir>/.kb-index.sqlite` file."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "All must pass before pushing."
     },
     {
@@ -9336,6 +9815,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "Budget knobs (env, sane defaults): `KB_CODE_FACTS_MAX_FILES=40`, `KB_CODE_FACTS_PER_FILE_CHARS=6000`, `KB_CODE_FACTS_MAX_CONCURRENCY=4`, `KB_CODE_FACTS_MAX_PER_FILE=8`."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "By extracting structured facts, KB ensures that decisions, architecture details, and project context are always at your fingertips, allowing both AI agents and developers to retrieve the right context before making changes."
     },
     {
       "fromId": "DESIGN",
@@ -9476,6 +9960,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "Categories are saved to `fact_categories`; all facts are assigned via TF-IDF cosine similarity (`threshold = 0.3`) against each category's name + description text."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "Category prompting is skipped on rescan, preserving categories defined at init time."
     },
     {
       "fromId": "kb",
@@ -9855,6 +10344,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "During initialization, `kb init` performs several steps:"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "Each base stores its SQLite index under `~/.kb/sessions/<base>/`."
     },
     {
@@ -10206,6 +10700,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "Humans need a scannable read on **what retrieval produced** without duplicating fact bodies the LLM already consumed."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "Hybrid retrieval (SQLite full-text search + vector-style ranking) returns relevant documents even when query phrasing differs from stored facts."
     },
     {
       "fromId": "kb",
@@ -10595,6 +11094,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "Initialize the knowledge base using `kb init`."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "Ink implementation details: [`../tui/TUI.md`](../tui/TUI.md)."
     },
     {
@@ -10676,6 +11180,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "Is the user giving me a coding task in a project that uses the KB knowledge"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "It addresses the pain of maintaining a knowledge base by turning your codebase and documentation into a searchable, queryable system."
     },
     {
       "fromId": "kb",
@@ -10771,6 +11280,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "KB maintains a property graph alongside its SQLite document store."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "KB reads your code and documentation, extracts structured facts, and provides a fast, queryable knowledge base."
     },
     {
       "fromId": "kb",
@@ -10976,6 +11490,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "On re-run we group prior rows by `<path>@<anchor>` (via `SqliteKbIndexer.listActiveFactsBySourceRefPrefix`) and:"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "Once your knowledge base is set up, you can query it and use chat mode to explore."
     },
     {
       "fromId": "kb",
@@ -11705,6 +12224,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "Slash commands that are output-only (e.g., `/query`, `/facts`, `/graph`, `/docs list`, `/base`, `/config`) are intercepted at the TUI layer and display inline without involving the LLM loop."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "Slash commands that are output-only (query, facts, graph, docs list/view, base, config, etc.) are intercepted at the TUI layer and display inline without involving the LLM loop."
     },
     {
@@ -11960,6 +12484,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "The goal is to provide a knowledge base for free, as a side effect of your regular development work."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "The graph builder (`rebuildFactGraph`) consumes the new triples directly — there is **no separate AST table**."
     },
     {
@@ -12011,6 +12540,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "The per-anchor diff guarantees that unchanged files don't churn the `facts` table."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "The progress of `init`/`scan` is rendered as a dedicated live status line in the TUI."
     },
     {
       "fromId": "kb",
@@ -12130,6 +12664,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "This command bootstraps a knowledge base from your repository."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "This directory is the Jekyll source for the **kb dogfood** documentation site, published to GitHub Pages at `https://rosenjcb.github.io/kb`."
     },
     {
@@ -12200,6 +12739,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "This step is interactive and skipped on `kb scan`."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "This works well when the KB is small, when exhaustive coverage matters more than precision, or when you're debugging retrieval quality."
     },
     {
@@ -12241,6 +12785,16 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "To keep the TUI responsive, the deterministic ingest/index loops yield back to the Node.js event loop between batches."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "To refresh sources against an existing knowledge base after changes, use `kb scan`."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "To set up a knowledge base in your local repository:"
     },
     {
       "fromId": "kb",
@@ -12430,6 +12984,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "Walk through the chat-based wizard to create your knowledge base."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "We only capture init/query evidence artifacts."
     },
     {
@@ -12596,6 +13155,16 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "You can disable graph extraction and graph-augmented lookup with either:"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "You can generate documents using the `kb docs generate` command."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "You can specify a base name, for example `dogfood`:"
     },
     {
       "fromId": "kb",
@@ -12901,6 +13470,11 @@
       "fromId": "kb",
       "type": "asserts",
       "toId": "`kb query` and chat QUERY turns share **`runQueryTruthRetrieval()`** (`src/cli/query-truth-retrieval.ts`): **`runIntentLoop`** → **`DefaultIntentRouter`** → **`read_facts`** (registry in `src/tools/kb-tools-registry.ts`)."
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
+      "toId": "`kb scan` only re-extracts files whose `sha256` has changed."
     },
     {
       "fromId": "kb",
@@ -14475,6 +15049,11 @@
     {
       "fromId": "kb",
       "type": "asserts",
+      "toId": "kb docs generate \"<prompt>\" --type howto|introduction|reference|decision|runbook [--base <name>]"
+    },
+    {
+      "fromId": "kb",
+      "type": "asserts",
       "toId": "kb docs list [--base <name>] [--limit <n>] [--output human|json] kb docs view <document-id> [--base <name>] [--output human|json] kb docs view --title \"<exact title>\" [--base <name>] [--output human|json] kb docs generate \"<prompt>\" [--type howto|introduction|reference|decision|runbook] [--limit <n>] [--base <name>] kb docs rename <document-id> \"<new title>\" [--base <name>] kb docs delete <documen"
     },
     {
@@ -15738,11 +16317,6 @@
       "toId": "runIntentLoop( envelope: ConsumerIntentEnvelope, toolExecutor: ToolExecutor, config?: IntentLoopConfig, ): Promise<IntentLoopResult>"
     },
     {
-      "fromId": "README",
-      "type": "relatesTo",
-      "toId": "runLLMSetupWizard"
-    },
-    {
       "fromId": "EVALUATION",
       "type": "relatesTo",
       "toId": "runLogsCommand"
@@ -15903,14 +16477,344 @@
       "toId": "specificity"
     },
     {
+      "fromId": "src/cli/docs-generate-cli.ts",
+      "type": "imports",
+      "toId": "src/cli/base-selection.ts"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/cli/base-selection.ts"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/cli/chat-cli.ts"
+    },
+    {
+      "fromId": "src/cli/docs-generate-cli.ts",
+      "type": "imports",
+      "toId": "src/cli/cli-prerequisites.ts"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/cli/cli-prerequisites.ts"
+    },
+    {
+      "fromId": "src/cli/docs-generate-cli.ts",
+      "type": "imports",
+      "toId": "src/cli/cmd-ref.ts"
+    },
+    {
+      "fromId": "isDocsGenerateJsonOutputArgs",
+      "type": "exported_from",
+      "toId": "src/cli/docs-generate-cli.ts"
+    },
+    {
+      "fromId": "printDocsGenerateHelp",
+      "type": "exported_from",
+      "toId": "src/cli/docs-generate-cli.ts"
+    },
+    {
+      "fromId": "parseDocsGenerateCommand",
+      "type": "exported_from",
+      "toId": "src/cli/docs-generate-cli.ts"
+    },
+    {
+      "fromId": "formatDocsGenerateHumanOutput",
+      "type": "exported_from",
+      "toId": "src/cli/docs-generate-cli.ts"
+    },
+    {
+      "fromId": "runDocsGenerate",
+      "type": "exported_from",
+      "toId": "src/cli/docs-generate-cli.ts"
+    },
+    {
+      "fromId": "DocsGenerateMode",
+      "type": "exported_from",
+      "toId": "src/cli/docs-generate-cli.ts"
+    },
+    {
+      "fromId": "DocsGenerateOutputFormat",
+      "type": "exported_from",
+      "toId": "src/cli/docs-generate-cli.ts"
+    },
+    {
+      "fromId": "ParsedDocsGenerateCommand",
+      "type": "exported_from",
+      "toId": "src/cli/docs-generate-cli.ts"
+    },
+    {
+      "fromId": "DocsGenerateError",
+      "type": "exported_from",
+      "toId": "src/cli/docs-generate-cli.ts"
+    },
+    {
+      "fromId": "RunDocsGenerateDeps",
+      "type": "exported_from",
+      "toId": "src/cli/docs-generate-cli.ts"
+    },
+    {
+      "fromId": "src/cli/docs-generate-cli.ts",
+      "type": "imports",
+      "toId": "src/cli/docs-generate-sections.ts"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/cli/init-cli.ts"
+    },
+    {
+      "fromId": "src/cli/docs-generate-cli.ts",
+      "type": "imports",
+      "toId": "src/cli/kb-config.ts"
+    },
+    {
+      "fromId": "src/core/doc-generate-orchestrator.ts",
+      "type": "imports",
+      "toId": "src/cli/kb-config.ts"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/cli/kb-config.ts"
+    },
+    {
       "fromId": "kb",
       "type": "asserts",
       "toId": "src/cli/publish-jekyll.ts → tests/cli/publish-jekyll.test.ts src/core/publish/jekyll-sync.ts → tests/core/jekyll-sync.test.ts src/tools/document-writer.ts → tests/tools/document-writer.test.ts"
     },
     {
+      "fromId": "classifyFeedback",
+      "type": "exported_from",
+      "toId": "src/core/doc-feedback-classifier.ts"
+    },
+    {
+      "fromId": "FeedbackKind",
+      "type": "exported_from",
+      "toId": "src/core/doc-feedback-classifier.ts"
+    },
+    {
+      "fromId": "src/core/doc-generate-orchestrator.ts",
+      "type": "imports",
+      "toId": "src/core/doc-feedback-classifier.ts"
+    },
+    {
+      "fromId": "src/cli/docs-generate-cli.ts",
+      "type": "imports",
+      "toId": "src/core/doc-generate-orchestrator.ts"
+    },
+    {
+      "fromId": "startGenerationSession",
+      "type": "exported_from",
+      "toId": "src/core/doc-generate-orchestrator.ts"
+    },
+    {
+      "fromId": "answerCurrent",
+      "type": "exported_from",
+      "toId": "src/core/doc-generate-orchestrator.ts"
+    },
+    {
+      "fromId": "skipCurrent",
+      "type": "exported_from",
+      "toId": "src/core/doc-generate-orchestrator.ts"
+    },
+    {
+      "fromId": "produceInitialDraft",
+      "type": "exported_from",
+      "toId": "src/core/doc-generate-orchestrator.ts"
+    },
+    {
+      "fromId": "produceRevisedDraft",
+      "type": "exported_from",
+      "toId": "src/core/doc-generate-orchestrator.ts"
+    },
+    {
+      "fromId": "acceptDraft",
+      "type": "exported_from",
+      "toId": "src/core/doc-generate-orchestrator.ts"
+    },
+    {
+      "fromId": "DocGenerateOrchestratorDeps",
+      "type": "exported_from",
+      "toId": "src/core/doc-generate-orchestrator.ts"
+    },
+    {
+      "fromId": "src/cli/docs-generate-cli.ts",
+      "type": "imports",
+      "toId": "src/core/doc-generate-session.ts"
+    },
+    {
+      "fromId": "src/core/doc-generate-orchestrator.ts",
+      "type": "imports",
+      "toId": "src/core/doc-generate-session.ts"
+    },
+    {
+      "fromId": "src/core/doc-generate-orchestrator.ts",
+      "type": "imports",
+      "toId": "src/core/doc-generate-title.ts"
+    },
+    {
+      "fromId": "src/cli/docs-generate-cli.ts",
+      "type": "imports",
+      "toId": "src/core/doc-questionnaire.ts"
+    },
+    {
+      "fromId": "src/core/doc-generate-orchestrator.ts",
+      "type": "imports",
+      "toId": "src/core/doc-questionnaire.ts"
+    },
+    {
+      "fromId": "src/core/doc-generate-orchestrator.ts",
+      "type": "imports",
+      "toId": "src/core/doc-references-footer.ts"
+    },
+    {
+      "fromId": "src/core/doc-generate-orchestrator.ts",
+      "type": "imports",
+      "toId": "src/core/doc-supporting-facts.ts"
+    },
+    {
+      "fromId": "searchSupportingFacts",
+      "type": "exported_from",
+      "toId": "src/core/doc-supporting-facts.ts"
+    },
+    {
+      "fromId": "buildDocgenFactContext",
+      "type": "exported_from",
+      "toId": "src/core/doc-supporting-facts.ts"
+    },
+    {
+      "fromId": "SupportingFact",
+      "type": "exported_from",
+      "toId": "src/core/doc-supporting-facts.ts"
+    },
+    {
+      "fromId": "src/cli/docs-generate-cli.ts",
+      "type": "imports",
+      "toId": "src/core/doc-taxonomy.ts"
+    },
+    {
+      "fromId": "src/core/doc-generate-orchestrator.ts",
+      "type": "imports",
+      "toId": "src/core/doc-taxonomy.ts"
+    },
+    {
+      "fromId": "src/cli/docs-generate-cli.ts",
+      "type": "imports",
+      "toId": "src/core/git-diff-preview.ts"
+    },
+    {
+      "fromId": "src/core/doc-generate-orchestrator.ts",
+      "type": "imports",
+      "toId": "src/core/types.ts"
+    },
+    {
+      "fromId": "src/core/doc-generate-orchestrator.ts",
+      "type": "imports",
+      "toId": "src/prompts/loader.ts"
+    },
+    {
+      "fromId": "src/core/doc-generate-orchestrator.ts",
+      "type": "imports",
+      "toId": "src/tools/document-writer.ts"
+    },
+    {
+      "fromId": "src/core/doc-supporting-facts.ts",
+      "type": "imports",
+      "toId": "src/tools/facts-query-research-orchestrator.ts"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/tools/kb-tools-registry.ts"
+    },
+    {
+      "fromId": "src/core/doc-generate-orchestrator.ts",
+      "type": "imports",
+      "toId": "src/tools/sqlite-document-writer.ts"
+    },
+    {
+      "fromId": "src/core/doc-generate-orchestrator.ts",
+      "type": "imports",
+      "toId": "src/tools/sqlite-kb-index.ts"
+    },
+    {
+      "fromId": "src/core/doc-supporting-facts.ts",
+      "type": "imports",
+      "toId": "src/tools/sqlite-kb-index.ts"
+    },
+    {
       "fromId": "kb",
       "type": "asserts",
       "toId": "src/tui/ index.tsx # launchTui(config) — Ink render entry App.tsx # Root component, state, command dispatch runner.ts # runCommandForTui(), parseShellArgs() theme.ts # BLUE, ORANGE constants types.ts # TuiMode, HistoryEntry, EntryType components/ StatusBar.tsx # Top bar HistoryPane.tsx # Scrollable output list HistoryEntryRow.tsx # Single output line (type-aware coloring) InputBar.tsx # Bottom pro"
+    },
+    {
+      "fromId": "App",
+      "type": "exported_from",
+      "toId": "src/tui/App.tsx"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/tui/base-refresh.ts"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/tui/chat-io-classify.ts"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/tui/chat-read-kind.ts"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/tui/components/HistoryPane.tsx"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/tui/components/InitProgressBar.tsx"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/tui/components/InputBar.tsx"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/tui/components/StatusBar.tsx"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/tui/components/SuggestionsBar.tsx"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/tui/partition-shell-output.ts"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/tui/runner.ts"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/tui/slash-commands.ts"
+    },
+    {
+      "fromId": "src/tui/App.tsx",
+      "type": "imports",
+      "toId": "src/tui/types.ts"
     },
     {
       "fromId": "EVALUATION",

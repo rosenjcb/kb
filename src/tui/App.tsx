@@ -421,19 +421,26 @@ export function App({ config, startupNotices = [] }: Props) {
           if (firstArg === 'base' || firstArg === 'use') refreshBase()
 
           const { segments, emptyPrimaryContent } = partitionShellOutputForTui(output)
-          let filledPrimary = false
-          for (const seg of segments) {
+
+          // Finalize the primary result entry BEFORE adding any meta entries.
+          // Ink's <Static> commits entries to scrollback as soon as they become non-loading.
+          // If meta entries (which have no loading flag) are added first, Static renders them
+          // before the answer entry is finalized, causing the answer to be dropped or to
+          // appear after the meta lines in the wrong order (same bug as the chat path).
+          const firstBodyIdx = segments.findIndex(s => s.kind === 'body')
+          const primaryContent =
+            firstBodyIdx >= 0
+              ? (segments[firstBodyIdx] as { kind: 'body'; text: string }).text
+              : emptyPrimaryContent
+          updateEntry(resultId, { content: primaryContent, loading: false })
+
+          for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i]
             if (seg.kind === 'meta') {
               addEntry({ type: 'chat-meta', content: seg.line })
-            } else if (!filledPrimary) {
-              updateEntry(resultId, { content: seg.text, loading: false })
-              filledPrimary = true
-            } else {
-              addEntry({ type: 'result', content: seg.text })
+            } else if (i !== firstBodyIdx) {
+              addEntry({ type: 'result', content: (seg as { kind: 'body'; text: string }).text })
             }
-          }
-          if (!filledPrimary) {
-            updateEntry(resultId, { content: emptyPrimaryContent, loading: false })
           }
 
           const applyArgs = resolveApplyArgs(args)

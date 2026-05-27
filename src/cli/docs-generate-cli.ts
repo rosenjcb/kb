@@ -319,6 +319,12 @@ export function formatDocsGenerateHumanOutput(generated: unknown): string {
   if (typeof g.supportingFactCount === 'number') {
     lines.push(`Supporting facts: ${g.supportingFactCount}`)
   }
+  if (g.explorationKind === 'gap') {
+    const added = typeof g.newFactCount === 'number' ? g.newFactCount : 0
+    lines.push(`Fact exploration: deep — ${added} new fact${added === 1 ? '' : 's'} added from gap analysis`)
+  } else if (g.explorationKind === 'style') {
+    lines.push('Style revision — same grounding facts reused')
+  }
   if (Array.isArray(g.nextActions)) {
     lines.push(`Next: ${(g.nextActions as string[]).join('  |  ')}`)
   }

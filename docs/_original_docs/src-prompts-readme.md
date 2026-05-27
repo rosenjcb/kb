@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/README.md
-date: '2026-05-25'
+date: '2026-05-26'
 kb_id: src-prompts-readme-md
 tags:
   - original-source

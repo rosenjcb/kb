@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/tools/TOOL_CONVENTIONS.md
-date: '2026-05-25'
+date: '2026-05-26'
 kb_id: src-tools-tool-conventions-md
 tags:
   - original-source

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: skills/kb:evaluation-run/SKILL.md
-date: '2026-05-25'
+date: '2026-05-26'
 kb_id: skills-kb-evaluation-run-skill-md
 tags:
   - original-source

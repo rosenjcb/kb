@@ -15,12 +15,19 @@ export interface SupportingFact {
 export function searchSupportingFacts(
   indexer: SqliteKbIndexer,
   query: string,
-  limit = 20
+  limit = 20,
+  options?: { excludeIds?: Set<string> }
 ): SupportingFact[] {
   const trimmed = query.trim()
   if (!trimmed) return []
   const orchestrator = new FactsQueryResearchOrchestrator(indexer)
-  const response = orchestrator.run({ query: trimmed, limit, surface: 'query', includeContent: true })
+  const response = orchestrator.run({
+    query: trimmed,
+    limit,
+    surface: 'query',
+    includeContent: true,
+    excludeIds: options?.excludeIds,
+  })
   return response.results
     .filter(r => r.content)
     .map(r => ({ id: r.metadata.id, factText: r.content ?? '' }))

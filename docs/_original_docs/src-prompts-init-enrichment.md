@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/init-enrichment.md
-date: '2026-05-25'
+date: '2026-05-26'
 kb_id: src-prompts-init-enrichment-md
 tags:
   - original-source
