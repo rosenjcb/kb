@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/EVIDENCE_SUMMARY.md
-date: '2026-05-25'
+date: '2026-05-26'
 kb_id: src-core-evidence-summary-md
 tags:
   - original-source

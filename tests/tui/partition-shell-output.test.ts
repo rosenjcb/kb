@@ -67,4 +67,57 @@ describe('tui/partitionShellOutputForTui', () => {
     const metaOnly = partitionShellOutputForTui('retrieval> hybrid')
     expect(metaOnly.emptyPrimaryContent).toBe('')
   })
+
+  it('real-world /query output: stage lines are meta, answer prose is body', () => {
+    // Reproduces the bug: answer text between stage>answer:done and sep> must be a body segment.
+    const output = [
+      'stage> answer:start',
+      'stage> answer:done 5137ms',
+      'To add Haskell support, modify the SKILLS array in src/cli/init-cli.ts.',
+      'sep> —',
+      'evidence> 381 facts → LLM (full text) · mix: all doc · themes: CLI, Init/Scan',
+      'retrieval> hybrid (facts-loop;passes:1)',
+      'matches> 381 ranked facts',
+    ].join('\n')
+
+    const { segments } = partitionShellOutputForTui(output)
+    const bodies = segments.filter(s => s.kind === 'body')
+    const metas = segments.filter(s => s.kind === 'meta')
+
+    // The answer prose must be the only body segment
+    expect(bodies).toHaveLength(1)
+    expect((bodies[0] as { kind: 'body'; text: string }).text).toBe(
+      'To add Haskell support, modify the SKILLS array in src/cli/init-cli.ts.'
+    )
+
+    // All stage/sep/evidence/retrieval/matches lines are meta
+    const metaLines = metas.map(s => (s as { kind: 'meta'; line: string }).line)
+    expect(metaLines).toContain('stage> answer:start')
+    expect(metaLines).toContain('stage> answer:done 5137ms')
+    expect(metaLines).toContain('sep> —')
+    expect(metaLines.some(l => l.startsWith('evidence>'))).toBe(true)
+    expect(metaLines).toContain('retrieval> hybrid (facts-loop;passes:1)')
+    expect(metaLines).toContain('matches> 381 ranked facts')
+  })
+
+  it('first body segment index is stable so primary-first ordering works', () => {
+    // Validates the App.tsx fix: firstBodyIdx must point to the answer prose, not a meta line.
+    const output = [
+      'stage> answer:start',
+      'stage> answer:done 5137ms',
+      'The answer is here.',
+      'sep> —',
+      'evidence> 10 facts',
+    ].join('\n')
+
+    const { segments } = partitionShellOutputForTui(output)
+    const firstBodyIdx = segments.findIndex(s => s.kind === 'body')
+
+    expect(firstBodyIdx).toBeGreaterThan(-1)
+    expect(segments[firstBodyIdx]).toEqual({ kind: 'body', text: 'The answer is here.' })
+    // All segments before the first body must be meta
+    for (let i = 0; i < firstBodyIdx; i++) {
+      expect(segments[i].kind).toBe('meta')
+    }
+  })
 })

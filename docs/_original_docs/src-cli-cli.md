@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/cli/CLI.md
-date: '2026-05-25'
+date: '2026-05-26'
 kb_id: src-cli-cli-md
 tags:
   - original-source

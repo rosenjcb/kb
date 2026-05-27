@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/graph-extraction.md
-date: '2026-05-25'
+date: '2026-05-26'
 kb_id: src-prompts-graph-extraction-md
 tags:
   - original-source

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: PHILOSOPHY.md
-date: '2026-05-25'
+date: '2026-05-26'
 kb_id: philosophy-md
 tags:
   - original-source

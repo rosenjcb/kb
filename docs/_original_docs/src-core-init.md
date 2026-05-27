@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/INIT.md
-date: '2026-05-25'
+date: '2026-05-26'
 kb_id: src-core-init-md
 tags:
   - original-source

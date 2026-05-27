@@ -1,7 +1,7 @@
 ---
 layout: default
 title: docs/index.md
-date: '2026-05-25'
+date: '2026-05-26'
 kb_id: docs-index-md
 tags:
   - original-source

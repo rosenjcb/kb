@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/QUERY_INTERNALS.md
-date: '2026-05-25'
+date: '2026-05-26'
 kb_id: src-core-query-internals-md
 tags:
   - original-source

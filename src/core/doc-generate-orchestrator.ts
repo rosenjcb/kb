@@ -21,6 +21,7 @@ import {
 import { deriveDocumentTitle } from './doc-generate-title'
 import { loadQuestionnaire } from './doc-questionnaire'
 import { appendReferencesFooter } from './doc-references-footer'
+import { classifyFeedback } from './doc-feedback-classifier'
 import { buildDocgenFactContext, searchSupportingFacts } from './doc-supporting-facts'
 import type { DocType } from './doc-taxonomy'
 import { DOC_TYPES, isDocType } from './doc-taxonomy'
@@ -278,7 +279,7 @@ export async function produceInitialDraft(input: {
     const facts = searchSupportingFacts(
       indexer,
       buildFactSearchQuery(session),
-      input.factLimit ?? 20
+      input.factLimit ?? 50
     )
     if (facts.length === 0) {
       throw new Error(
@@ -325,6 +326,8 @@ export async function produceRevisedDraft(input: {
   diff: string
   contentWithFooter: string
   supportingFactCount: number
+  newFactCount: number
+  explorationKind: 'gap' | 'style'
 }> {
   const session = await loadSession(input.baseDir, input.sessionId)
   if (!session) {
@@ -337,13 +340,35 @@ export async function produceRevisedDraft(input: {
   }
 
   const prior = session.draft
+  const trimmedFeedback = input.feedback.trim()
+  const explorationKind = classifyFeedback(trimmedFeedback)
+  const factLimit = input.factLimit ?? 50
+
   const indexer = new SqliteKbIndexer({ dbPath: path.join(input.baseDir, '.kb-index.sqlite') })
   try {
-    const facts = searchSupportingFacts(
-      indexer,
-      buildFactSearchQuery(session),
-      input.factLimit ?? 20
-    )
+    let facts = searchSupportingFacts(indexer, buildFactSearchQuery(session), factLimit)
+    let newFactCount = 0
+
+    if (explorationKind === 'gap') {
+      // Expand query with feedback terms and search for facts not already in the draft
+      const expandedQuery = `${buildFactSearchQuery(session)}\n${trimmedFeedback}`
+      const priorIds = new Set(prior.supportingFactIds)
+      const newFacts = searchSupportingFacts(indexer, expandedQuery, factLimit, {
+        excludeIds: priorIds,
+      })
+      newFactCount = newFacts.length
+      // Merge: prior facts first (preserve grounding), then new facts, deduplicated, capped at factLimit * 2
+      const seenIds = new Set(facts.map(f => f.id))
+      const merged = [...facts]
+      for (const f of newFacts) {
+        if (!seenIds.has(f.id)) {
+          merged.push(f)
+          seenIds.add(f.id)
+        }
+      }
+      facts = merged.slice(0, factLimit * 2)
+    }
+
     if (facts.length === 0) {
       throw new Error(
         'doc generate: no supporting facts in KB match this prompt. Run kb scan to refresh the knowledge base, or broaden your answers, then retry.'
@@ -354,7 +379,7 @@ export async function produceRevisedDraft(input: {
       input.llm,
       session,
       prior.content,
-      input.feedback.trim(),
+      trimmedFeedback,
       factBlock
     )
     const fullContent = appendReferencesFooter(nextBody, facts)
@@ -365,7 +390,7 @@ export async function produceRevisedDraft(input: {
       content: nextBody,
       contentWithFooter: fullContent,
       supportingFactIds: facts.map(f => f.id),
-      feedback: input.feedback.trim(),
+      feedback: trimmedFeedback,
       createdAt: now,
     }
     await setSessionDraft(input.baseDir, input.sessionId, nextDraft)
@@ -380,6 +405,8 @@ export async function produceRevisedDraft(input: {
       diff,
       contentWithFooter: fullContent,
       supportingFactCount: facts.length,
+      newFactCount,
+      explorationKind,
     }
   } finally {
     indexer.close()
