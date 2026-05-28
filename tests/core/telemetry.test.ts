@@ -111,34 +111,7 @@ describe('RunCollector', () => {
     expect(report.stages[0].durationMs).toBeGreaterThanOrEqual(0)
   })
 
-  it('Given debug mode, then addStage writes to stderr', () => {
-    const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-    const c = new RunCollector('query', { debug: true })
-    c.addStage({
-      stage: 'query_truth:iter1',
-      startedAt: new Date().toISOString(),
-      durationMs: 70,
-      inputTokens: 100,
-      outputTokens: 5,
-      estimatedCostUsd: 0.00001,
-      provider: 'gemini',
-      model: 'gemini-2.0-flash',
-    })
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('[kb:debug]'))
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('query_truth:iter1'))
-    spy.mockRestore()
-  })
-
-  it('Given debug mode, then finish writes totals summary to stderr', () => {
-    const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-    const c = new RunCollector('init', { debug: true })
-    c.finish('success')
-    const calls = spy.mock.calls.map(c => c[0] as string)
-    expect(calls.some(s => s.includes('Total:'))).toBe(true)
-    spy.mockRestore()
-  })
-
-  it('Given no debug mode, then addStage does not write to stderr', () => {
+  it('Given addStage, then does not write to stderr', () => {
     const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     const c = new RunCollector('query')
     c.addStage({

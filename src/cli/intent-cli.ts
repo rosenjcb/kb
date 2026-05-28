@@ -12,7 +12,6 @@ import { type CmdMode, cmd } from './cmd-ref'
 import { appendQuerySession, loadQuerySessionMessages } from './query-session'
 import { formatReadDocumentSourcesPreview } from './retrieval-fallback'
 
-export type CliOutputMode = 'human' | 'json'
 
 export function formatRetrievalMatchesMeta(retrievedCount: number): string {
   if (retrievedCount === 0) return '0'
@@ -21,9 +20,7 @@ export function formatRetrievalMatchesMeta(retrievedCount: number): string {
 
 export interface ParsedIntentCommand {
   envelope: ConsumerIntentEnvelope
-  output: CliOutputMode
   base?: string
-  debug?: boolean
   /** Extra human orchestration rows (summary, status, confidence) for query/chat. */
   verbose?: boolean
   /**
@@ -36,11 +33,9 @@ export interface ParsedIntentCommand {
   allFacts?: boolean
 }
 
-/** Human read_facts footer: default minimal; verbose adds summary/status/confidence; debug expands sources. */
+/** Human read_facts footer: default minimal; verbose adds summary/status/confidence. */
 export interface ReadDocumentsHumanOutputOptions {
   verbose?: boolean
-  /** When true, emit one `source>` line per hit with id, path, uri, snippet, highlights (default is ranked `sources>` preview). */
-  debug?: boolean
 }
 
 const INTENT_COMMANDS = new Set(['query'])
@@ -63,9 +58,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
 
   assertConsumerSafeCommand(command)
 
-  const output = parseOutput(rest)
   const base = readOption(rest, '--base')
-  const debug = readFlag(rest, '--debug')
   const verbose = readFlag(rest, '--verbose')
 
   let envelope: ConsumerIntentEnvelope
@@ -90,7 +83,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
 
   const useQuerySession = command === 'query' && readFlag(rest, '--session')
 
-  return { envelope, output, base, debug, verbose, useQuerySession }
+  return { envelope, base, verbose, useQuerySession }
 }
 
 export interface ExecuteIntentCommandOptions {
@@ -118,14 +111,9 @@ function normalizeReadDocumentsHumanOptions(
 
 export function formatIntentResult(
   result: IntentResult,
-  output: CliOutputMode,
   options?: ReadDocumentsHumanOutputOptions | boolean
 ): string {
   const readDocsOpts = normalizeReadDocumentsHumanOptions(options)
-
-  if (output === 'json') {
-    return JSON.stringify(result, null, 2)
-  }
 
   if (isReadFactsResult(result)) {
     return formatReadDocumentsHumanResult(result, readDocsOpts)
@@ -155,15 +143,9 @@ export function formatIntentResult(
 
 export function printIntentResult(
   result: IntentResult,
-  output: CliOutputMode,
   printer: Printer,
   options?: ReadDocumentsHumanOutputOptions
 ): void {
-  if (output === 'json') {
-    printer.content(JSON.stringify(result, null, 2))
-    return
-  }
-
   if (isReadFactsResult(result)) {
     printReadDocumentsHumanResult(result, printer, options)
     return
@@ -239,54 +221,26 @@ export interface ReadDocumentsResultData {
   }
 }
 
-function formatReadDocumentsFullSourceValue(item: ReadDocumentsResultItem): string {
-  const id = item.metadata?.id ?? 'unknown-id'
-  const title = item.metadata?.title?.trim() || id
-  const filePath = item.metadata?.filePath ?? 'unknown-path'
-  const uri = filePath.startsWith('/') ? `file://${filePath}` : filePath
-  const snippet = extractSnippet(item.content)
-  const highlights = extractHighlights(item.content)
-  const highlightText =
-    highlights.length > 0 ? highlights.map(h => `[${h.section}] ${h.excerpt}`).join(' | ') : 'none'
-  return `id=${id}; title=${title}; location=${filePath}; uri=${uri}; snippet=${snippet}; highlights=${highlightText}`
-}
-
 function appendReadDocumentsSourcesToLines(
   lines: string[],
-  results: ReadDocumentsResultItem[],
-  options?: ReadDocumentsHumanOutputOptions
+  results: ReadDocumentsResultItem[]
 ): void {
-  const debug = options?.debug === true
   if (results.length === 0) {
     lines.push(formatOrchestrationMetaLine('sources', '(none)'))
     return
   }
-  if (debug) {
-    for (const item of results) {
-      lines.push(formatOrchestrationMetaLine('source', formatReadDocumentsFullSourceValue(item)))
-    }
-  } else {
-    lines.push(formatOrchestrationMetaLine('sources', formatReadDocumentSourcesPreview(results)))
-  }
+  lines.push(formatOrchestrationMetaLine('sources', formatReadDocumentSourcesPreview(results)))
 }
 
 function printReadDocumentsSourcesBlock(
   printer: Printer,
-  results: ReadDocumentsResultItem[],
-  options?: ReadDocumentsHumanOutputOptions
+  results: ReadDocumentsResultItem[]
 ): void {
-  const debug = options?.debug === true
   if (results.length === 0) {
     printer.metadata('Sources', '(none)')
     return
   }
-  if (debug) {
-    for (const item of results) {
-      printer.metadata('Source', formatReadDocumentsFullSourceValue(item))
-    }
-  } else {
-    printer.metadata('Sources', formatReadDocumentSourcesPreview(results))
-  }
+  printer.metadata('Sources', formatReadDocumentSourcesPreview(results))
 }
 
 /** Same orchestration block as `kb query` human output (after the answer + ---). */
@@ -309,13 +263,12 @@ export function printReadDocumentsOrchestrationFooter(
 
   if (data.retrieval?.method) {
     const base = data.retrieval.detail ?? ''
-    const trace = options?.debug && data.retrieval.traceDetail ? `;${data.retrieval.traceDetail}` : ''
-    const detail = base || trace ? ` (${base}${trace})` : ''
+    const detail = base ? ` (${base})` : ''
     printer.metadata('Retrieval', `${data.retrieval.method}${detail}`)
   }
 
   printer.metadata('Matches', formatRetrievalMatchesMeta(results.length))
-  printReadDocumentsSourcesBlock(printer, results, options)
+  printReadDocumentsSourcesBlock(printer, results)
 }
 
 export async function enrichReadDocumentsAnswerWithLLM(
@@ -690,13 +643,12 @@ function formatReadDocumentsHumanResult(
 
   if (data.retrieval?.method) {
     const base = data.retrieval.detail ?? ''
-    const trace = options?.debug && data.retrieval.traceDetail ? `;${data.retrieval.traceDetail}` : ''
-    const detail = base || trace ? ` (${base}${trace})` : ''
+    const detail = base ? ` (${base})` : ''
     lines.push(formatOrchestrationMetaLine('retrieval', `${data.retrieval.method}${detail}`))
   }
 
   lines.push(formatOrchestrationMetaLine('matches', formatRetrievalMatchesMeta(results.length)))
-  appendReadDocumentsSourcesToLines(lines, results, options)
+  appendReadDocumentsSourcesToLines(lines, results)
 
   return lines.join('\n')
 }
@@ -846,57 +798,12 @@ function extractSnippet(content: string | undefined): string {
   return `${normalized.slice(0, 177)}...`
 }
 
-interface HighlightRef {
-  section: string
-  excerpt: string
-}
-
-function extractHighlights(content: string | undefined): HighlightRef[] {
-  if (!content) return []
-
-  const lines = content.split('\n')
-  const highlights: HighlightRef[] = []
-  let activeSection = 'document'
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim()
-    if (!line) continue
-
-    const headingMatch = line.match(/^#{2,6}\s+(.+)$/)
-    if (headingMatch) {
-      activeSection = headingMatch[1].trim().toLowerCase().replace(/\s+/g, '-')
-      continue
-    }
-
-    if (
-      line.startsWith('#') ||
-      line.startsWith('Created:') ||
-      line.startsWith('Tags:') ||
-      line.startsWith('Type:')
-    ) {
-      continue
-    }
-
-    const excerpt = line.length <= 110 ? line : `${line.slice(0, 107)}...`
-    highlights.push({ section: activeSection, excerpt })
-    if (highlights.length >= 2) break
-  }
-
-  return highlights
-}
 
 export function printIntentHelp(mode: CmdMode = 'cli'): string {
   return [
     'Intent commands:',
-    `  ${cmd('query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]', mode)}`,
+    `  ${cmd('query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose]', mode)}`,
   ].join('\n')
-}
-
-function parseOutput(args: string[]): CliOutputMode {
-  const value = readOption(args, '--output')
-  if (!value) return 'human'
-  if (value === 'human' || value === 'json') return value
-  throw new Error('--output must be one of: human, json')
 }
 
 function parseLimit(value: string | undefined): number | undefined {

@@ -18,9 +18,9 @@ async function tempBase(): Promise<string> {
 }
 
 describe('parseFactsCommand', () => {
-  it('Given list subcommand, then parses limit and output', () => {
-    const p = parseFactsCommand(['list', '--limit', '5', '--output', 'json', '--base', 'dogfood'])
-    expect(p).toEqual({ sub: 'list', base: 'dogfood', limit: 5, output: 'json' })
+  it('Given list subcommand, then parses limit and base', () => {
+    const p = parseFactsCommand(['list', '--limit', '5', '--base', 'dogfood'])
+    expect(p).toEqual({ sub: 'list', base: 'dogfood', limit: 5 })
   })
 
   it('Given --help, then throws FactsCommandError exit 0', () => {

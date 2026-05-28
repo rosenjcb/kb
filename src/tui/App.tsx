@@ -167,9 +167,8 @@ export function App({ config, startupNotices = [] }: Props) {
   }, [])
 
   const startChatSession = useCallback(
-    (opts: { verbose?: boolean; debug?: boolean } = {}) => {
+    (opts: { verbose?: boolean } = {}) => {
       const verbose = opts.verbose === true
-      const debug = opts.debug === true
       if (!storageDirRef.current) {
         addEntry({
           type: 'error',
@@ -266,7 +265,6 @@ export function App({ config, startupNotices = [] }: Props) {
           kbStorageDir: storageDir,
           kbConfig: config,
           verbose,
-          debug,
           onBaseChanged: refreshBase,
           onSessionStart: (id) => { chatSessionIdRef.current = id },
         },

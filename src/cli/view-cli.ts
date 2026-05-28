@@ -3,11 +3,8 @@ import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
 import { type CmdMode, cmd } from './cmd-ref'
 
-export type ViewOutputMode = 'human' | 'json'
-
 export interface ParsedViewCommand {
   selector: { mode: 'id'; value: string } | { mode: 'title'; value: string }
-  output: ViewOutputMode
   base?: string
 }
 
@@ -16,7 +13,6 @@ export interface ViewCommandResult {
 }
 
 export interface ParsedListCommand {
-  output: ViewOutputMode
   base?: string
   limit?: number
 }
@@ -36,13 +32,12 @@ export function printViewHelp(mode: CmdMode = 'cli'): string {
     `${cmd('docs view', mode)} commands`,
     '',
     'Usage:',
-    `  ${cmd('docs view <document-id> [--base <name>] [--output human|json]', mode)}`,
-    `  ${cmd('docs view --title "<exact title>" [--base <name>] [--output human|json]', mode)}`,
+    `  ${cmd('docs view <document-id> [--base <name>]', mode)}`,
+    `  ${cmd('docs view --title "<exact title>" [--base <name>]', mode)}`,
     '',
     'Examples:',
     `  ${cmd('docs view kb-base-selection-and-usage', mode)}`,
     `  ${cmd('docs view --title "KB Base Selection and Usage"', mode)}`,
-    `  ${cmd('docs view kb-base-selection-and-usage --output json', mode)}`,
   ].join('\n')
 }
 
@@ -51,14 +46,13 @@ export function printListHelp(mode: CmdMode = 'cli'): string {
     `${cmd('docs list', mode)} commands`,
     '',
     'Usage:',
-    `  ${cmd('docs list [--base <name>] [--limit <n>] [--output human|json]', mode)}`,
+    `  ${cmd('docs list [--base <name>] [--limit <n>]', mode)}`,
     '  By default, all documents are shown. Use --limit to cap the results.',
     '',
     'Examples:',
     `  ${cmd('docs list', mode)}`,
     `  ${cmd('docs list --base dogfood', mode)}`,
     `  ${cmd('docs list --limit 20', mode)}`,
-    `  ${cmd('docs list --output json', mode)}`,
   ].join('\n')
 }
 
@@ -80,8 +74,7 @@ export async function runViewCommand(
       : await readDocumentByTitle(indexer, parsed.selector.value)
 
   return {
-    output:
-      parsed.output === 'json' ? formatViewJson(document) : formatViewHuman(document, parsed.base),
+    output: formatViewHuman(document, parsed.base),
   }
 }
 
@@ -99,8 +92,7 @@ export async function runListCommand(
   const response = indexer.listDocsForView(parsed.limit).map(row => toQueryResult(row))
 
   return {
-    output:
-      parsed.output === 'json' ? formatListJson(response) : formatListHuman(response, parsed.base),
+    output: formatListHuman(response, parsed.base),
   }
 }
 
@@ -111,7 +103,6 @@ export function parseViewCommand(args: string[]): ParsedViewCommand {
 
   let title: string | undefined
   let base: string | undefined
-  let output: ViewOutputMode = 'human'
   const positional: string[] = []
 
   for (let index = 0; index < args.length; index += 1) {
@@ -125,16 +116,6 @@ export function parseViewCommand(args: string[]): ParsedViewCommand {
 
     if (token === '--base') {
       base = readRequiredValue(args, index, '--base')
-      index += 1
-      continue
-    }
-
-    if (token === '--output') {
-      const value = readRequiredValue(args, index, '--output')
-      if (value !== 'human' && value !== 'json') {
-        throw new ViewCommandError(`Unsupported output mode: ${value}. Use human or json.`)
-      }
-      output = value
       index += 1
       continue
     }
@@ -162,7 +143,6 @@ export function parseViewCommand(args: string[]): ParsedViewCommand {
     selector: title
       ? { mode: 'title', value: title }
       : { mode: 'id', value: sanitizeId(positional[0]) },
-    output,
     base,
   }
 }
@@ -173,7 +153,6 @@ export function parseListCommand(args: string[]): ParsedListCommand {
   }
 
   let base: string | undefined
-  let output: ViewOutputMode = 'human'
   let limit: number | undefined
 
   for (let index = 0; index < args.length; index += 1) {
@@ -181,16 +160,6 @@ export function parseListCommand(args: string[]): ParsedListCommand {
 
     if (token === '--base') {
       base = readRequiredValue(args, index, '--base')
-      index += 1
-      continue
-    }
-
-    if (token === '--output') {
-      const value = readRequiredValue(args, index, '--output')
-      if (value !== 'human' && value !== 'json') {
-        throw new ViewCommandError(`Unsupported output mode: ${value}. Use human or json.`)
-      }
-      output = value
       index += 1
       continue
     }
@@ -211,7 +180,7 @@ export function parseListCommand(args: string[]): ParsedListCommand {
     )
   }
 
-  return { output, base, limit }
+  return { base, limit }
 }
 
 async function readDocumentById(
@@ -316,10 +285,6 @@ function formatViewHuman(document: QueryResult, base?: string): string {
   return `${lines.join('\n')}\n${stripCanonicalDocumentPreamble(document.content ?? '')}`
 }
 
-function formatViewJson(document: QueryResult): string {
-  return `${JSON.stringify({ document }, null, 2)}\n`
-}
-
 function formatListHuman(documents: QueryResult[], base?: string): string {
   const lines = ['# KB Documents']
 
@@ -346,10 +311,6 @@ function formatListHuman(documents: QueryResult[], base?: string): string {
   }
 
   return `${lines.join('\n')}\n`
-}
-
-function formatListJson(documents: QueryResult[]): string {
-  return `${JSON.stringify({ documents: documents.map(document => document.metadata) }, null, 2)}\n`
 }
 
 function normalizeTitle(value: string): string {

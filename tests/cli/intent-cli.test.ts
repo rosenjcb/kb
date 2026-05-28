@@ -43,7 +43,6 @@ describe('intent-cli parsing', () => {
       'deep',
       '--session',
       '--verbose',
-      '--debug',
     ])
 
     expect(parsed.base).toBe('test-init')
@@ -53,7 +52,6 @@ describe('intent-cli parsing', () => {
     expect(parsed.envelope.payload.discoveryDepth).toBe('deep')
     expect(parsed.useQuerySession).toBe(true)
     expect(parsed.verbose).toBe(true)
-    expect(parsed.debug).toBe(true)
   })
 
   it('rejects unknown public commands', () => {
@@ -101,8 +99,7 @@ describe('intent-cli formatting', () => {
           ],
           total: 1,
         },
-      },
-      'human'
+      }
     )
 
     expect(output).toContain('The KB uses session base first, then default base.')
@@ -167,7 +164,6 @@ describe('intent-cli formatting', () => {
         recommendedAction: 'upsert_fact',
         confidence: 0.8,
       },
-      'human',
       printer
     )
 

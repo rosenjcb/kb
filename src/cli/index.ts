@@ -181,7 +181,6 @@ function printInitHelp(mode: CmdMode = 'cli'): string {
     '  --detach                       Pause after the current cycle and save a checkpoint',
     '  --resume                       Resume from the latest init checkpoint',
     '  --stop-after <cycle>           Stop after read-inputs|code-index|document-facts|import-docs|write',
-    '  --debug                        Emit debug logging and telemetry details',
     '',
     'Notes:',
     '  Without --base, interactive init prompts for a fresh base name and switches the active base immediately.',
@@ -204,7 +203,6 @@ function printScanHelp(mode: CmdMode = 'cli'): string {
     'Flags:',
     '  --base <name>                   Choose which existing KB base to refresh',
     '  --non-interactive              Skip any interactive questions when possible',
-    '  --debug                        Emit debug logging and telemetry details',
     '',
     'Notes:',
     '  Scan re-reads markdown/text sources under the current repo, refreshes original docs, and applies the resulting KB mutations.',
@@ -673,7 +671,7 @@ export async function runMainWithOutput(
           `⚠️  ${cmd('init --rescan', mode)} has moved to ${cmd('scan', mode)}. Continuing for compatibility.`
         )
       }
-      const initCollector = new RunCollector('init', { debug: parsed.debug, sessionId })
+      const initCollector = new RunCollector('init', { sessionId })
       const result = await runKbInit({ ...parsed, collector: initCollector })
       out.log(JSON.stringify(result, null, 2))
       await reporter.append(initCollector.finish('success', undefined, result.base))
@@ -695,7 +693,7 @@ export async function runMainWithOutput(
     const collector = new RunCollector('scan', { sessionId })
     try {
       const parsed = parseScanCommand(args.slice(1))
-      const scanCollector = new RunCollector('scan', { debug: parsed.debug, sessionId })
+      const scanCollector = new RunCollector('scan', { sessionId })
       const result = await runKbInit({ ...parsed, collector: scanCollector })
       out.log(JSON.stringify(result, null, 2))
       await reporter.append(scanCollector.finish('success', undefined, result.base))
@@ -830,7 +828,7 @@ export async function runMainWithOutput(
         await reporter.append(collector.finish('error', CLI_ERROR_NO_KB_BASE))
         return
       }
-      collector = new RunCollector(firstArg, { debug: parsed.debug, sessionId, base: path.basename(intentBaseDir) })
+      collector = new RunCollector(firstArg, { sessionId, base: path.basename(intentBaseDir) })
       const rawLlmProvider = createLLMProviderFromConfig(config)
       const llmCounter = rawLlmProvider ? new TokenCountingProvider(rawLlmProvider) : undefined
       const llmProvider = llmCounter ?? rawLlmProvider
@@ -994,9 +992,8 @@ export async function runMainWithOutput(
         }
       }
 
-      printIntentResult(enriched, parsed.output, printer, {
+      printIntentResult(enriched, printer, {
         verbose: parsed.verbose,
-        debug: parsed.debug,
       })
       await reporter.append(collector.finish('success'))
       return

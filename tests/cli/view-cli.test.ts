@@ -51,15 +51,12 @@ describe('view-cli parsing', () => {
       mode: 'id',
       value: 'kb-base-selection-and-usage',
     })
-    expect(parsed.output).toBe('human')
   })
 
-  it('Given title and output flags, then parses title mode and json output', () => {
+  it('Given title and base flags, then parses title mode with base', () => {
     const parsed = parseViewCommand([
       '--title',
       'KB Base Selection and Usage',
-      '--output',
-      'json',
       '--base',
       'dogfood',
     ])
@@ -68,7 +65,6 @@ describe('view-cli parsing', () => {
       mode: 'title',
       value: 'KB Base Selection and Usage',
     })
-    expect(parsed.output).toBe('json')
     expect(parsed.base).toBe('dogfood')
   })
 
@@ -78,10 +74,8 @@ describe('view-cli parsing', () => {
     )
   })
 
-  it('Given unsupported output, then throws explicit error', () => {
-    expect(() => parseViewCommand(['doc-id', '--output', 'yaml'])).toThrow(
-      'Unsupported output mode: yaml. Use human or json.'
-    )
+  it('Given unknown flag, then throws explicit error', () => {
+    expect(() => parseViewCommand(['doc-id', '--output', 'yaml'])).toThrow('Unknown option: --output')
   })
 })
 
@@ -90,15 +84,13 @@ describe('list-cli parsing', () => {
     const parsed = parseListCommand([])
 
     expect(parsed.limit).toBeUndefined()
-    expect(parsed.output).toBe('human')
   })
 
-  it('Given flags, then parses limit, base, and json output', () => {
-    const parsed = parseListCommand(['--base', 'dogfood', '--limit', '5', '--output', 'json'])
+  it('Given flags, then parses limit and base', () => {
+    const parsed = parseListCommand(['--base', 'dogfood', '--limit', '5'])
 
     expect(parsed.base).toBe('dogfood')
     expect(parsed.limit).toBe(5)
-    expect(parsed.output).toBe('json')
   })
 
   it('Given positional arg, then throws explicit error', () => {
@@ -129,7 +121,7 @@ describe('view-cli runtime', () => {
     expect(result.output.match(/^Created:/gm)).toHaveLength(1)
   })
 
-  it('Given exact title selector, then returns matching document json payload', async () => {
+  it('Given exact title selector, then returns matching document', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, {
       title: 'KB Base Selection and Usage',
@@ -141,14 +133,11 @@ describe('view-cli runtime', () => {
     const result = await runViewCommand([
       '--title',
       'KB Base Selection and Usage',
-      '--output',
-      'json',
       '--base',
       baseDir,
     ])
 
-    expect(result.output).toContain('"id": "kb-base-selection-and-usage"')
-    expect(result.output).toContain('"title": "KB Base Selection and Usage"')
+    expect(result.output).toContain('KB Base Selection and Usage')
     expect(result.output).toContain('Base selection uses kb use and kb default.')
   })
 
@@ -216,7 +205,7 @@ describe('list-cli runtime', () => {
     )
   })
 
-  it('Given json output, then returns metadata-only document list', async () => {
+  it('Given base filter, then returns document list for that base', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, {
       title: 'CLI Facts',
@@ -225,11 +214,9 @@ describe('list-cli runtime', () => {
       type: 'reference',
     })
 
-    const result = await runListCommand(['--base', baseDir, '--output', 'json'])
+    const result = await runListCommand(['--base', baseDir])
 
-    expect(result.output).toContain('"documents"')
-    expect(result.output).toContain('"id": "cli-facts"')
-    expect(result.output).not.toContain('Use `kb query` first.')
+    expect(result.output).toContain('cli-facts')
   })
 
   it('Given more than twenty documents, then docs list shows all by default', async () => {
