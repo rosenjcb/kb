@@ -348,6 +348,7 @@ export async function runMainWithOutput(
 
       if (show || !base) {
         const configured = await readBaseConfig()
+        const kbFileBase = await findKbFile(process.cwd())
         let effective: Awaited<ReturnType<typeof resolveEffectiveBaseDir>> | null = null
         try {
           effective = await resolveEffectiveBaseDir()
@@ -368,6 +369,9 @@ export async function runMainWithOutput(
         if (configured.defaultBase) {
           out.log(`Default base: ${configured.defaultBase}`)
         }
+        if (kbFileBase) {
+          out.log(`.kb file: ${kbFileBase}  (found in current or ancestor directory)`)
+        }
         return
       }
 
@@ -382,12 +386,13 @@ export async function runMainWithOutput(
 
       await writeSessionBase(base)
       const resolved = await ensureOperationalBaseDir(base)
+      const kbFileBase = await findKbFile(process.cwd())
       if (makeDefault) {
         await writeDefaultBase(base)
-        out.log(formatDefaultCommandHelp(base, resolved, mode))
+        out.log(formatDefaultCommandHelp(base, resolved, mode, kbFileBase ?? undefined))
         return
       }
-      out.log(formatUseCommandHelp(base, resolved, mode))
+      out.log(formatUseCommandHelp(base, resolved, mode, kbFileBase ?? undefined))
       return
     }
 

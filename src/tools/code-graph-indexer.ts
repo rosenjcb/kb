@@ -95,6 +95,12 @@ export class TsMorphIndexer {
       ? new Set(opts.candidateFiles.map(file => file.replace(/\\/g, '/')))
       : undefined
 
+    // Ensure every candidate file is in the project regardless of tsconfig include/exclude.
+    // Without this, files outside tsconfig's scope are silently skipped.
+    if (opts.candidateFiles) {
+      project.addSourceFilesAtPaths(opts.candidateFiles.map(f => path.join(repoRoot, f)))
+    }
+
     const indexFile = (sf: ReturnType<typeof project.getSourceFiles>[number]) => {
       const abs = sf.getFilePath()
       const rel = relPath(repoRoot, abs)

@@ -548,10 +548,10 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const questionIO = options.questionIO ?? createReadlineQuestionIO()
   const cwd = options.cwd ?? process.cwd()
   const base = await resolveInitBaseName(options, cwd, questionIO)
+  await writeKbFile(cwd, base)
   if (!options.rescan) {
     await writeSessionBase(base)
   }
-  await writeKbFile(cwd, base)
   const baseDir = await ensureOperationalBaseDir(base, cwd)
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
@@ -1039,7 +1039,7 @@ async function runReadInputsCycle(options: {
   }
 }
 
-async function collectSourceFiles(
+export async function collectSourceFiles(
   cwd: string,
   onProgress?: (snapshot: ReadInputsCollectionProgress) => void
 ): Promise<Record<string, string>> {
@@ -1333,7 +1333,10 @@ async function resolveInitBaseName(
   if (options.rescan) {
     // .kb file in CWD or any ancestor takes priority — no prompt needed
     const kbFileBase = await findKbFile(cwd)
-    if (kbFileBase) return kbFileBase
+    if (kbFileBase) {
+      questionIO.write?.(`[kb scan] Using base from .kb file: ${kbFileBase}\n`)
+      return kbFileBase
+    }
 
     if (options.nonInteractive) {
       throw new Error(
@@ -1375,7 +1378,8 @@ async function resolveInitBaseName(
     return matched.name
   }
 
-  const suggestedBase = await resolveSuggestedInitBase(cwd)
+  const kbFileBase = await findKbFile(cwd)
+  const suggestedBase = kbFileBase ?? await resolveSuggestedInitBase(cwd)
 
   if (options.nonInteractive) {
     throw new Error(CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE)
