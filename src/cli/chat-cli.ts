@@ -41,8 +41,6 @@ export interface ChatSessionDeps {
   conversationalRetrieval?: boolean
   /** When true, human orchestration matches `kb query --verbose` (summary, status, confidence rows). */
   verbose?: boolean
-  /** When true, human footer uses one detailed `source>` line per hit (same as `kb query --debug`). */
-  debug?: boolean
   onTurnComplete?: (turn: ChatTurnTrace) => void
   /** Called once at session start with the session ID so callers can tag related log entries. */
   onSessionStart?: (sessionId: string) => void
@@ -263,11 +261,10 @@ export function printChatHelp(mode: CmdMode = 'cli'): string {
     `${cmd('chat', mode)}`,
     '',
     'Usage:',
-    `  ${cmd('chat', mode)} [--verbose] [--debug] [--base <name>]`,
+    `  ${cmd('chat', mode)} [--verbose] [--base <name>]`,
     '',
     'Flags:',
     '  --verbose   After each answer, also print summary / status / confidence orchestration rows (same as kb query --verbose). Must be passed before the session starts (CLI or TUI shell: chat --verbose).',
-    '  --debug     After each answer, print one full provenance `source>` line per retrieved document (ids, paths, snippets). Combine with --verbose if you want both. TUI: chat --debug before the session starts.',
     '',
     'Interactive commands:',
     '  /help     Show chat commands',
@@ -777,7 +774,6 @@ export async function runChatSession(
         if (lastIntentResult) {
           printReadDocumentsOrchestrationFooter(printer, lastIntentResult, {
             verbose: deps.verbose,
-            debug: deps.debug,
           })
         }
         printer.chatMeta(

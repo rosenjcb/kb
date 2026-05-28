@@ -178,15 +178,15 @@ This happens because KB's current runtime still depends on native SQLite binding
 ### 🎯 KB query
 
 ```
-kb query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--debug] [--output human|json]
+kb query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose]
 ```
 
 ### 📂 Documents
 
 ```
-kb docs list [--base <name>] [--limit <n>] [--output human|json]
-kb docs view <document-id> [--base <name>] [--output human|json]
-kb docs view --title "<exact title>" [--base <name>] [--output human|json]
+kb docs list [--base <name>] [--limit <n>]
+kb docs view <document-id> [--base <name>]
+kb docs view --title "<exact title>" [--base <name>]
 kb docs generate "<prompt>" [--type howto|introduction|reference|decision|runbook] [--limit <n>] [--base <name>]
 kb docs rename <document-id> "<new title>" [--base <name>]
 kb docs delete <document-id> [--base <name>] [--force]

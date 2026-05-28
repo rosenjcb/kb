@@ -273,34 +273,54 @@ export async function resolveEffectiveBaseDir(
 
 /**
  * Format the output after `use <base>` (CLI: `kb use`, TUI: `/use`).
+ * Pass `kbFileOverride` when a `.kb` file in the directory specifies a different base —
+ * the user needs to know that the `.kb` file takes priority over what they just set.
  */
 export function formatUseCommandHelp(
   base: string,
   resolvedPath: string,
-  mode: CmdMode = 'cli'
+  mode: CmdMode = 'cli',
+  kbFileOverride?: string
 ): string {
-  return [
+  const lines = [
     `Using base: ${base}`,
     `Resolved path: ${resolvedPath}`,
     '',
     'Switched the active base for this session.',
     `Use \`${cmd('base use --default <base>', mode)}\` to save the preferred base for future runs.`,
-  ].join('\n')
+  ]
+  if (kbFileOverride && kbFileOverride !== base) {
+    lines.push(
+      '',
+      'Note: A .kb file in this directory always takes priority over the active and default bases.',
+      `Commands run here will use "${kbFileOverride}", not "${base}".`
+    )
+  }
+  return lines.join('\n')
 }
 
 /** Format the output after `base use --default` / `default` (CLI vs TUI via `mode`). */
 export function formatDefaultCommandHelp(
   base: string,
   resolvedPath: string,
-  mode: CmdMode = 'cli'
+  mode: CmdMode = 'cli',
+  kbFileOverride?: string
 ): string {
-  return [
+  const lines = [
     `Default base: ${base}`,
     `Resolved path: ${resolvedPath}`,
     '',
     'Saved as the preferred base for future runs.',
     `Use \`${cmd('base use <base>', mode)}\` when you want to switch bases temporarily.`,
-  ].join('\n')
+  ]
+  if (kbFileOverride && kbFileOverride !== base) {
+    lines.push(
+      '',
+      'Note: A .kb file in this directory always takes priority over the active and default bases.',
+      `Commands run here will use "${kbFileOverride}", not "${base}".`
+    )
+  }
+  return lines.join('\n')
 }
 
 export interface DeleteBaseResult {

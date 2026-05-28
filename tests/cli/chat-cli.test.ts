@@ -50,7 +50,6 @@ describe('chat-cli prompt', () => {
     expect(help).toContain('/clear')
     expect(help).toContain('/exit')
     expect(help).toContain('--verbose')
-    expect(help).toContain('--debug')
   })
 
   it('Given evidence and question, then turn content includes evidence block and question without embedded history', () => {
@@ -285,31 +284,6 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('assistant> The KB uses a hybrid path with lexical fallback.')
     expect(io.outputs.join('\n')).toContain('retrieval> hybrid (fts+vector-rerank)')
     expect(io.outputs.join('\n')).toContain('session-log-2026-04-12')
-  })
-
-  it('Given debug chat session, then footer prints full per-document source lines', async () => {
-    const io = new ScriptedIO(['How retrieval works?', '/exit'])
-
-    const executor: ToolExecutor = {
-      register: vi.fn(),
-      getTools: vi.fn(() => []),
-      execute: vi.fn(async () => ({
-        retrieval: { method: 'hybrid', detail: 'fts+vector-rerank' },
-        results: [{
-          metadata: { id: 'session-log-2026-04-12', title: 'Session', filePath: '/tmp/s.md' },
-          content: '# Session\n\nHybrid retrieval details.',
-        }],
-      })),
-    }
-
-    const provider = makeKBProvider('The KB uses a hybrid path.', 'How retrieval works?')
-
-    await runChatSession({ llmProvider: provider, toolExecutor: executor, debug: true }, io)
-
-    const out = io.outputs.join('\n')
-    expect(out).toContain('source> id=session-log-2026-04-12')
-    expect(out).toContain('location=/tmp/s.md')
-    expect(out).not.toContain('sources> Session')
   })
 
   it('Given provider failure, then loop reports error and remains interactive', async () => {

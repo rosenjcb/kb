@@ -4,8 +4,6 @@ import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from './base-selection'
 import { type CmdMode, cmd } from './cmd-ref'
 
-export type FactsOutputMode = 'human' | 'json'
-
 export class FactsCommandError extends Error {
   exitCode: number
 
@@ -21,9 +19,9 @@ export function printFactsHelp(mode: CmdMode = 'cli'): string {
     `${cmd('facts', mode)} — inspect the canonical facts store`,
     '',
     'Usage:',
-    `  ${cmd('facts list', mode)} [--base <name>] [--limit <n>] [--output human|json]`,
-    `  ${cmd('facts search', mode)} "<query>" [--base <name>] [--limit <n>] [--output human|json]`,
-    `  ${cmd('facts show', mode)} "<fact id or exact text>" [--base <name>] [--output human|json]`,
+    `  ${cmd('facts list', mode)} [--base <name>] [--limit <n>]`,
+    `  ${cmd('facts search', mode)} "<query>" [--base <name>] [--limit <n>]`,
+    `  ${cmd('facts show', mode)} "<fact id or exact text>" [--base <name>]`,
     '',
     'Examples:',
     `  ${cmd('facts list --limit 10', mode)}`,
@@ -36,7 +34,6 @@ export interface ParsedFactsCommand {
   sub: 'list' | 'search' | 'show'
   base?: string
   limit: number
-  output: FactsOutputMode
   /** search / show query text */
   query?: string
 }
@@ -48,13 +45,11 @@ function readFlag(args: string[], name: string): boolean {
 function parseFactsTail(tail: string[]): {
   base?: string
   limitRaw?: string
-  outputRaw?: string
   positional: string[]
 } {
   const positional: string[] = []
   let base: string | undefined
   let limitRaw: string | undefined
-  let outputRaw: string | undefined
   for (let i = 0; i < tail.length; ) {
     const t = tail[i] ?? ''
     if (t === '--base') {
@@ -75,22 +70,13 @@ function parseFactsTail(tail: string[]): {
       i += 2
       continue
     }
-    if (t === '--output') {
-      const v = tail[i + 1]
-      if (!v || v.startsWith('--')) {
-        throw new FactsCommandError(`--output requires a value\n\n${printFactsHelp()}`)
-      }
-      outputRaw = v
-      i += 2
-      continue
-    }
     if (t.startsWith('--')) {
       throw new FactsCommandError(`Unknown option: ${t}\n\n${printFactsHelp()}`)
     }
     positional.push(t)
     i += 1
   }
-  return { base, limitRaw, outputRaw, positional }
+  return { base, limitRaw, positional }
 }
 
 function parseLimit(raw: string | undefined, fallback: number): number {
@@ -121,9 +107,8 @@ export function parseFactsCommand(args: string[]): ParsedFactsCommand {
     throw new FactsCommandError(printFactsHelp(), 0)
   }
 
-  const { base, limitRaw, outputRaw, positional } = parseFactsTail(tail)
+  const { base, limitRaw, positional } = parseFactsTail(tail)
   const limit = parseLimit(limitRaw, sub === 'list' ? 30 : 15)
-  const output: FactsOutputMode = outputRaw?.toLowerCase() === 'json' ? 'json' : 'human'
 
   if (sub === 'list') {
     if (positional.length > 0) {
@@ -131,7 +116,7 @@ export function parseFactsCommand(args: string[]): ParsedFactsCommand {
         `facts list does not accept extra arguments.\n\n${printFactsHelp()}`
       )
     }
-    return { sub: 'list', base, limit, output }
+    return { sub: 'list', base, limit }
   }
 
   const q = positional.join(' ').trim()
@@ -139,27 +124,13 @@ export function parseFactsCommand(args: string[]): ParsedFactsCommand {
     throw new FactsCommandError(`facts ${sub} requires a query string.\n\n${printFactsHelp()}`)
   }
 
-  return { sub, base, limit, output, query: q }
+  return { sub, base, limit, query: q }
 }
 
 async function resolveBaseDir(parsed: ParsedFactsCommand, cwd: string): Promise<string> {
   return parsed.base
     ? await ensureOperationalBaseDir(parsed.base, cwd)
     : (await resolveEffectiveBaseDir(cwd)).baseDir
-}
-
-function formatFactJson(row: FactRow, categories: string[]): Record<string, unknown> {
-  return {
-    id: row.id,
-    fact_text: row.fact_text,
-    subject: row.subject,
-    predicate: row.predicate,
-    object: row.object,
-    categories,
-    source_kind: row.source_kind,
-    source_ref: row.source_ref,
-    uri: formatFactUri(row.id),
-  }
 }
 
 function formatFactHuman(row: FactRow, categories: string[], baseLabel?: string): string {
@@ -235,13 +206,6 @@ export async function runFactsCommand(
     if (parsed.sub === 'list') {
       const rows = indexer.listFactsForQuery(parsed.limit)
       const categoryNames = indexer.getFactCategoryNamesForFacts(rows.map(row => row.id))
-      if (parsed.output === 'json') {
-        return JSON.stringify(
-          { facts: rows.map(row => formatFactJson(row, categoryNames.get(row.id) ?? [])) },
-          null,
-          2
-        )
-      }
       if (rows.length === 0) return '(no live facts in this base)'
       return rows
         .map(
@@ -254,16 +218,6 @@ export async function runFactsCommand(
     if (parsed.sub === 'search') {
       const rows = indexer.searchFacts(parsed.query ?? '', parsed.limit)
       const categoryNames = indexer.getFactCategoryNamesForFacts(rows.map(row => row.id))
-      if (parsed.output === 'json') {
-        return JSON.stringify(
-          {
-            query: parsed.query,
-            facts: rows.map(row => formatFactJson(row, categoryNames.get(row.id) ?? [])),
-          },
-          null,
-          2
-        )
-      }
       if (rows.length === 0) return `No facts matched: ${parsed.query}`
       return rows
         .map(
@@ -280,9 +234,6 @@ export async function runFactsCommand(
       throw new FactsCommandError(`No active fact matched: ${q}`)
     }
     const categories = indexer.getFactCategoryNames(row.id)
-    if (parsed.output === 'json') {
-      return JSON.stringify(formatFactJson(row, categories), null, 2)
-    }
     return formatFactHuman(row, categories, parsed.base)
   } finally {
     indexer.close()

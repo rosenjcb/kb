@@ -30,7 +30,6 @@ function buildChatQueryTruthParsed(
         ...(excludeIds && excludeIds.length > 0 ? { excludeIds } : {}),
       },
     },
-    output: 'human',
   }
 }
 

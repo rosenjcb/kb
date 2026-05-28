@@ -65,17 +65,15 @@ export class RunCollector {
   private stages: StageMetrics[] = []
   private runId: string
   private startedAt: string
-  private debug: boolean
   private sessionId?: string
   private base?: string
 
   constructor(
     readonly command: string,
-    opts: { debug?: boolean; sessionId?: string; base?: string } = {}
+    opts: { sessionId?: string; base?: string } = {}
   ) {
     this.runId = `run-${dayjs().valueOf()}-${Math.random().toString(36).slice(2, 6)}`
     this.startedAt = dayjs().toISOString()
-    this.debug = opts.debug ?? false
     this.sessionId = opts.sessionId
     this.base = opts.base
   }
@@ -85,13 +83,6 @@ export class RunCollector {
    */
   addStage(metrics: StageMetrics): void {
     this.stages.push(metrics)
-    if (this.debug) {
-      const cost =
-        metrics.estimatedCostUsd > 0 ? `$${metrics.estimatedCostUsd.toFixed(5)}` : '$0.00000'
-      process.stderr.write(
-        `[kb:debug] ${metrics.stage.padEnd(24)} ${String(metrics.durationMs).padStart(6)}ms  in=${metrics.inputTokens} out=${metrics.outputTokens}  ${cost}  ${metrics.provider}/${metrics.model}\n`
-      )
-    }
   }
 
   /**
@@ -132,12 +123,6 @@ export class RunCollector {
       totalInputTokens += s.inputTokens
       totalOutputTokens += s.outputTokens
       totalEstimatedCostUsd += s.estimatedCostUsd
-    }
-
-    if (this.debug) {
-      process.stderr.write(
-        `[kb:debug] ─────────────────────────────────────────────────────────────\n[kb:debug] Total: ${totalDurationMs}ms  in=${totalInputTokens} out=${totalOutputTokens}  $${totalEstimatedCostUsd.toFixed(5)}\n`
-      )
     }
 
     return {

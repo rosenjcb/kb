@@ -126,6 +126,47 @@ export class Dog implements Animal { speak() { return 'woof' } }`
     expect(implementsFacts[0]?.object).toBe('Animal')
   })
 
+  it('indexes TS files outside tsconfig include when passed as candidateFiles', async () => {
+    // tsconfig only covers src/, but lib/ has TS files we want indexed
+    await writeFile(
+      join(repoRoot, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: { target: 'ES2020', module: 'commonjs' },
+        include: ['src/**/*'],
+      })
+    )
+    await mkdir(join(repoRoot, 'packages', 'catalog', 'src'), { recursive: true })
+    await writeFile(join(repoRoot, 'src', 'index.ts'), 'export const ROOT = true')
+    await writeFile(
+      join(repoRoot, 'packages', 'catalog', 'src', 'widget.ts'),
+      'export class Widget { render() {} }'
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    const stats = await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'), {
+      candidateFiles: ['src/index.ts', 'packages/catalog/src/widget.ts'],
+    })
+    indexer.close()
+    factIndexer.close()
+
+    // Both files must be indexed even though packages/catalog/src/widget.ts is outside tsconfig include
+    expect(stats.files).toBe(2)
+    expect(stats.errors).toBe(0)
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    const facts = db
+      .prepare(
+        "SELECT subject FROM facts WHERE source_kind = 'import_code' AND predicate = 'exported_from' AND tombstoned_at IS NULL"
+      )
+      .all() as Array<{ subject: string }>
+    db.close()
+
+    const names = facts.map(f => f.subject)
+    expect(names).toContain('ROOT')
+    expect(names).toContain('Widget')
+  })
+
   it('skips unchanged files on re-index', async () => {
     await writeTsconfig()
     await writeFile(join(repoRoot, 'src', 'stable.ts'), 'export const STABLE = true')

@@ -113,7 +113,6 @@ export interface InitOptions {
   questionIO?: InitQuestionIO
   progressSink?: (line: string) => void
   collector?: RunCollector
-  debug?: boolean
 }
 
 export interface InitResult {
@@ -439,9 +438,6 @@ const MARKDOWN_SOURCE_EXCLUDE_DIRS = new Set([
 ])
 
 const MARKDOWN_TEXT_EXTENSIONS = new Set(['.md', '.markdown', '.mdown', '.mdx'])
-const MAX_MARKDOWN_SOURCE_FILES = 100
-const MAX_MARKDOWN_SOURCE_TOTAL_CHARS = 12_000_000
-const MAX_MARKDOWN_SINGLE_FILE_CHARS = 2_000_000
 
 function shouldExcludeMarkdownSourceFile(relativePath: string, content: string): boolean {
   const normalizedPath = relativePath.replace(/\\/g, '/').toLowerCase()
@@ -493,7 +489,6 @@ export function parseInitCommand(args: string[]): InitOptions {
     stopAfter,
     resumeFrom: readOption(args, '--resume-from'),
     checkpointFile: readOption(args, '--checkpoint-file'),
-    debug: readFlag(args, '--debug'),
   }
 }
 
@@ -553,10 +548,10 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const questionIO = options.questionIO ?? createReadlineQuestionIO()
   const cwd = options.cwd ?? process.cwd()
   const base = await resolveInitBaseName(options, cwd, questionIO)
+  await writeKbFile(cwd, base)
   if (!options.rescan) {
     await writeSessionBase(base)
   }
-  await writeKbFile(cwd, base)
   const baseDir = await ensureOperationalBaseDir(base, cwd)
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
@@ -1044,29 +1039,23 @@ async function runReadInputsCycle(options: {
   }
 }
 
-async function collectSourceFiles(
+export async function collectSourceFiles(
   cwd: string,
   onProgress?: (snapshot: ReadInputsCollectionProgress) => void
 ): Promise<Record<string, string>> {
   const sourceFiles: Record<string, string> = {}
   const seenPaths = new Set<string>()
-  let totalChars = 0
 
   const addSourceFile = async (relativePath: string): Promise<boolean> => {
     const normalizedKey = relativePath.replace(/\\/g, '/').toLowerCase()
     if (seenPaths.has(normalizedKey)) return false
-    if (Object.keys(sourceFiles).length >= MAX_MARKDOWN_SOURCE_FILES) return false
-    if (totalChars >= MAX_MARKDOWN_SOURCE_TOTAL_CHARS) return false
     const fullPath = path.join(cwd, relativePath)
     if (!existsSync(fullPath)) return false
     try {
       const content = await readFile(fullPath, 'utf8')
-      if (content.length > MAX_MARKDOWN_SINGLE_FILE_CHARS) return false
-      if (totalChars + content.length > MAX_MARKDOWN_SOURCE_TOTAL_CHARS) return false
       if (shouldExcludeMarkdownSourceFile(relativePath, content)) return false
       sourceFiles[relativePath.replace(/\\/g, '/')] = content
       seenPaths.add(normalizedKey)
-      totalChars += content.length
       onProgress?.({
         stage: 'source-files',
         itemsConsidered: Object.keys(sourceFiles).length,
@@ -1085,9 +1074,6 @@ async function collectSourceFiles(
   }
 
   async function walkMarkdownTree(absDir: string): Promise<void> {
-    if (Object.keys(sourceFiles).length >= MAX_MARKDOWN_SOURCE_FILES) return
-    if (totalChars >= MAX_MARKDOWN_SOURCE_TOTAL_CHARS) return
-
     let entries: { name: string; isDir: boolean }[]
     try {
       const raw = await readdir(absDir, { withFileTypes: true })
@@ -1097,8 +1083,6 @@ async function collectSourceFiles(
     }
 
     for (const entry of entries) {
-      if (Object.keys(sourceFiles).length >= MAX_MARKDOWN_SOURCE_FILES) break
-      if (totalChars >= MAX_MARKDOWN_SOURCE_TOTAL_CHARS) break
       // Skip all dotfiles/directories
       if (entry.name.startsWith('.')) continue
 
@@ -1349,7 +1333,10 @@ async function resolveInitBaseName(
   if (options.rescan) {
     // .kb file in CWD or any ancestor takes priority — no prompt needed
     const kbFileBase = await findKbFile(cwd)
-    if (kbFileBase) return kbFileBase
+    if (kbFileBase) {
+      questionIO.write?.(`[kb scan] Using base from .kb file: ${kbFileBase}\n`)
+      return kbFileBase
+    }
 
     if (options.nonInteractive) {
       throw new Error(
@@ -1391,7 +1378,8 @@ async function resolveInitBaseName(
     return matched.name
   }
 
-  const suggestedBase = await resolveSuggestedInitBase(cwd)
+  const kbFileBase = await findKbFile(cwd)
+  const suggestedBase = kbFileBase ?? await resolveSuggestedInitBase(cwd)
 
   if (options.nonInteractive) {
     throw new Error(CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE)
