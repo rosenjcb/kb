@@ -1,9 +1,9 @@
 /**
  * Read-side API for code facts (source_kind='import_code' rows in the facts table).
- * All queries are synchronous (better-sqlite3).
+ * All queries are synchronous (node:sqlite).
  */
 
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import { runMigrations } from '../core/db-migrations'
 
 export interface CodeSymbol {
@@ -39,11 +39,11 @@ function rowToSymbol(r: Record<string, unknown>): CodeSymbol {
 }
 
 export class CodeGraphStore {
-  private db: Database.Database
+  private db: DatabaseSync
 
   constructor(dbPath: string) {
-    this.db = new Database(dbPath, { readonly: false })
-    this.db.pragma('journal_mode = WAL')
+    this.db = new DatabaseSync(dbPath)
+    this.db.exec('PRAGMA journal_mode = WAL')
     runMigrations(this.db)
   }
 

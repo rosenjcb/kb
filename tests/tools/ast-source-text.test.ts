@@ -9,7 +9,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import { DatabaseSync as Database } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runMigrations } from '../../src/core/db-migrations'
 import { FactsDocumentReader } from '../../src/tools/facts-document-reader'
@@ -20,12 +20,12 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map(d => rm(d, { recursive: true, force: true })))
 })
 
-async function mkdb(): Promise<{ dbPath: string; db: Database.Database; indexer: SqliteKbIndexer }> {
+async function mkdb(): Promise<{ dbPath: string; db: Database; indexer: SqliteKbIndexer }> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-ast-src-'))
   tempDirs.push(dir)
   const dbPath = path.join(dir, 'kb.sqlite')
   const db = new Database(dbPath)
-  db.pragma('journal_mode = WAL')
+  db.exec('PRAGMA journal_mode = WAL')
   runMigrations(db)
   const indexer = new SqliteKbIndexer({ dbPath })
   return { dbPath, db, indexer }

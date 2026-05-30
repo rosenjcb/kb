@@ -13,7 +13,7 @@ import {
   defaultLogsDir,
   estimateCost,
 } from '../core/telemetry'
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import { expandQueryWithGraph, kbIndexDbPath } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
@@ -863,7 +863,7 @@ export async function runMainWithOutput(
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
         if (originalQuery) {
           try {
-            const db = new Database(kbIndexDbPath(intentBaseDir), { readonly: true })
+            const db = new DatabaseSync(kbIndexDbPath(intentBaseDir), { readOnly: true })
             try {
               payload.query = expandQueryWithGraph(originalQuery, db)
               for (const qRel of [preRewriteQueryTruth, originalQuery]) {
@@ -912,7 +912,7 @@ export async function runMainWithOutput(
           const rerankerQuery = preRewriteQueryTruth
           const entities = await llmExtractQueryEntities(rerankerQuery, llmProvider)
           if (entities.length > 0) {
-            const db = new Database(kbIndexDbPath(intentBaseDir), { readonly: true })
+            const db = new DatabaseSync(kbIndexDbPath(intentBaseDir), { readOnly: true })
             try {
               const data = (aligned.data ?? {}) as ReadDocumentsResultData
               const reranked = rerankByGraphConnectivity(

@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import Database from 'better-sqlite3'
+import { DatabaseSync as Database } from 'node:sqlite'
 import { runMigrations } from '../../src/core/db-migrations'
 import { TreeSitterIndexer } from '../../src/tools/tree-sitter-indexer'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
@@ -29,7 +29,7 @@ function makeIndexer() {
   return { indexer, factIndexer }
 }
 
-function queryFacts(db: Database.Database, name: string, filePath: string): boolean {
+function queryFacts(db: Database, name: string, filePath: string): boolean {
   return db
     .prepare(
       "SELECT 1 FROM facts WHERE source_kind='import_code' AND predicate='exported_from' AND subject=? AND object=? AND tombstoned_at IS NULL"
@@ -37,7 +37,7 @@ function queryFacts(db: Database.Database, name: string, filePath: string): bool
     .get(name, filePath) !== undefined
 }
 
-function queryImportFacts(db: Database.Database) {
+function queryImportFacts(db: Database) {
   return db
     .prepare(
       "SELECT subject, object FROM facts WHERE source_kind='import_code' AND predicate='imports' AND tombstoned_at IS NULL"
@@ -45,7 +45,7 @@ function queryImportFacts(db: Database.Database) {
     .all() as Array<{ subject: string; object: string }>
 }
 
-function queryCodeFileState(db: Database.Database, filePath: string): boolean {
+function queryCodeFileState(db: Database, filePath: string): boolean {
   return db
     .prepare('SELECT 1 FROM code_file_state WHERE file_path = ?')
     .get(filePath) !== undefined

@@ -7,7 +7,6 @@ const projectRoot = process.cwd()
 const binDir = path.join(projectRoot, 'dist', 'bin')
 const outFile = path.join(binDir, 'kb.js')
 const launcherFile = path.join(binDir, 'kb')
-const nativePreflightFile = path.join(binDir, 'native-preflight.cjs')
 
 await mkdir(binDir, { recursive: true })
 
@@ -17,7 +16,7 @@ await build({
   bundle: true,
   platform: 'node',
   format: 'esm',
-  target: 'node22',
+  target: 'node24',
   sourcemap: true,
   packages: 'external',
   jsx: 'automatic',
@@ -28,55 +27,10 @@ if (process.platform !== 'win32') {
   await chmod(outFile, 0o755)
 }
 
-const pinnedMajor = '22'
-const nativePreflight = `#!/usr/bin/env node
-const { spawnSync } = require('node:child_process')
-const path = require('node:path')
-
-const dep = 'better-sqlite3'
-const scriptDir = __dirname
-const currentNodeVersion = process.version
-
-function canLoadNativeRuntime() {
-  const probe = spawnSync(process.execPath, ['-e', \`require(\${JSON.stringify(dep)})\`], {
-    cwd: scriptDir,
-    stdio: 'ignore',
-    env: process.env,
-  })
-  return probe.status === 0
-}
-
-if (canLoadNativeRuntime()) process.exit(0)
-
-// Check if Node version matches expected
-const currentMajor = parseInt(process.version.slice(1).split('.')[0], 10)
-const expectedMajor = ${pinnedMajor}
-
-console.error('❌ KB native module failed to load.')
-console.error('')
-console.error('Current Node:  ' + currentNodeVersion)
-console.error('Expected Node: v${pinnedMajor}.x.x')
-console.error('')
-
-if (currentMajor !== expectedMajor) {
-  console.error('Node version mismatch detected!')
-  console.error('better-sqlite3 was compiled for Node ${pinnedMajor}.')
-  console.error('')
-  console.error('Fix with nvm:')
-  console.error('  nvm install ${pinnedMajor}')
-  console.error('  nvm use ${pinnedMajor}')
-  console.error('  nvm alias default ${pinnedMajor}')
-} else {
-  console.error('Try reinstalling KB:')
-  console.error('  pnpm remove -g kb')
-  console.error('  pnpm add -g https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz')
-}
-process.exit(1)`
+const pinnedMajor = '24'
 
 const launcher = `#!/usr/bin/env bash
 # Resolve the Node version pinned by this project (.nvmrc = ${pinnedMajor}).
-# This avoids ABI mismatch when the shell's active Node differs from the
-# version better-sqlite3 was compiled against.
 SOURCE="\$0"
 while [ -L "\$SOURCE" ]; do
   DIR="$(cd "$(dirname "\$SOURCE")" && pwd)"
@@ -92,16 +46,13 @@ fi
 if [ -z "\$KB_NODE" ]; then
   KB_NODE="$(command -v node)"
 fi
-"\$KB_NODE" "\$SCRIPT_DIR/native-preflight.cjs" || exit \$?
-exec "\$KB_NODE" "\$SCRIPT_DIR/kb.js" "\$@"
+exec "\$KB_NODE" --no-warnings "\$SCRIPT_DIR/kb.js" "\$@"
 `
 
 await writeFile(launcherFile, launcher, 'utf8')
-await writeFile(nativePreflightFile, nativePreflight, 'utf8')
 
 if (process.platform !== 'win32') {
   await chmod(launcherFile, 0o755)
-  await chmod(nativePreflightFile, 0o755)
 }
 
 // Copy prompt .md files so the bundled binary can resolve them at runtime (see src/prompts/prompt-assets.ts).

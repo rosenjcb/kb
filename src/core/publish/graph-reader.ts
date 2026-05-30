@@ -1,12 +1,12 @@
 import { existsSync } from 'node:fs'
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import { kbIndexDbPath } from '../../tools/graph-query-expansion'
 import type { JekyllGraphPayload } from './jekyll-sync'
 
 export async function readPublishedGraph(baseDir: string): Promise<JekyllGraphPayload | undefined> {
   const dbPath = kbIndexDbPath(baseDir)
   if (!existsSync(dbPath)) return undefined
-  const db = new Database(dbPath, { readonly: true })
+  const db = new DatabaseSync(dbPath, { readOnly: true })
   try {
     const allRelationships = db
       .prepare(
