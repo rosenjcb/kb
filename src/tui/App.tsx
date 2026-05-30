@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import { Box, useApp, useInput } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -11,6 +13,7 @@ import { parseInitCommand, parseScanCommand, runKbInit } from '../cli/init-cli.j
 import {
   CLI_ERROR_NO_KB_BASE,
   formatPrerequisiteError,
+  uninitializedBaseNotice,
 } from '../cli/cli-prerequisites.js'
 import type { KbConfig } from '../cli/kb-config.js'
 import {
@@ -290,12 +293,72 @@ export function App({ config, startupNotices = [] }: Props) {
     [config, addEntry, updateEntry, stopChatPending, finalizeChatResponse, refreshBase, exit]
   )
 
-  // Start chat session once after base dir resolves
+  const runInitFlow = useCallback(async (extraArgs: string[] = []) => {
+    setIsRunning(true)
+    try {
+      const parsed = parseInitCommand(extraArgs)
+      const result = await runKbInit({
+        ...parsed,
+        questionIO: {
+          write: (msg: string) => {
+            const text = msg.trimEnd()
+            if (text) addEntry({ type: 'result', content: text })
+          },
+          askQuestion: async (question, opts) => {
+            setProgressLine(question.trimEnd())
+            setSlashContext(opts?.slashContext ?? 'idle')
+            setInlineSuggestions(opts?.suggestions ?? [])
+            return new Promise(resolve => {
+              chatInputResolverRef.current = value => {
+                chatInputResolverRef.current = null
+                setSlashContext('idle')
+                setInlineSuggestions([])
+                resolve(value ?? '')
+              }
+            })
+          },
+        },
+        progressSink: (line: string) => setProgressLine(line.trimEnd()),
+      })
+      setProgressLine(null)
+      const docCount = result.writtenDocIds?.length ?? 0
+      addEntry({
+        type: 'result',
+        content: `✅ Init complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
+      })
+      await awaitRefreshThenStart(refreshBase, startChatSession)
+    } catch (err) {
+      setProgressLine(null)
+      const message = err instanceof Error ? err.message : String(err)
+      addEntry({ type: 'error', content: message })
+    } finally {
+      setIsRunning(false)
+    }
+  }, [addEntry, refreshBase, startChatSession])
+
+  // Start chat session once after base dir resolves; auto-init when .kb file points at an uninitialised base
   useEffect(() => {
     if (!baseResolved || chatStartedRef.current) return
     chatStartedRef.current = true
-    startChatSession()
-  }, [baseResolved, startChatSession])
+    resolveEffectiveBaseDir()
+      .then(({ baseDir, baseName: effectiveBaseName, source }) => {
+        if (!existsSync(path.join(baseDir, '.kb-index.sqlite'))) {
+          if (source === 'directory:.kb') {
+            addEntry({
+              type: 'info',
+              content: `Base "${effectiveBaseName}" detected from .kb file but hasn't been initialized yet. Starting setup…`,
+            })
+            runInitFlow()
+          } else {
+            addEntry({ type: 'info', content: uninitializedBaseNotice(effectiveBaseName) })
+            startChatSession()
+          }
+        } else {
+          startChatSession()
+        }
+      })
+      .catch(() => startChatSession())
+  }, [baseResolved, startChatSession, runInitFlow, addEntry])
 
   const handleSubmit = useCallback(
     async (value: string) => {
@@ -464,46 +527,50 @@ export function App({ config, startupNotices = [] }: Props) {
       // ── /init and /scan with no active chat session — run directly ──
       if (isSlash && (firstArg === 'init' || firstArg === 'scan') && !chatInputResolverRef.current) {
         addEntry({ type: 'chat-you', content: trimmed })
-        setIsRunning(true)
-        try {
-          const extraArgs = args.slice(1)
-          const parsed = firstArg === 'scan' ? parseScanCommand(extraArgs) : parseInitCommand(extraArgs)
-          const result = await runKbInit({
-            ...parsed,
-            questionIO: {
-              write: (msg: string) => {
-                const text = msg.trimEnd()
-                if (text) addEntry({ type: 'result', content: text })
+        const extraArgs = args.slice(1)
+        if (firstArg === 'init') {
+          await runInitFlow(extraArgs)
+        } else {
+          setIsRunning(true)
+          try {
+            const parsed = parseScanCommand(extraArgs)
+            const result = await runKbInit({
+              ...parsed,
+              questionIO: {
+                write: (msg: string) => {
+                  const text = msg.trimEnd()
+                  if (text) addEntry({ type: 'result', content: text })
+                },
+                askQuestion: async (question, opts) => {
+                  setProgressLine(question.trimEnd())
+                  setSlashContext(opts?.slashContext ?? 'idle')
+                  setInlineSuggestions(opts?.suggestions ?? [])
+                  return new Promise(resolve => {
+                    chatInputResolverRef.current = value => {
+                      chatInputResolverRef.current = null
+                      setSlashContext('idle')
+                      setInlineSuggestions([])
+                      resolve(value ?? '')
+                    }
+                  })
+                },
               },
-              askQuestion: async (question, opts) => {
-                setProgressLine(question.trimEnd())
-                setSlashContext(opts?.slashContext ?? 'idle')
-                setInlineSuggestions(opts?.suggestions ?? [])
-                return new Promise(resolve => {
-                  chatInputResolverRef.current = value => {
-                    chatInputResolverRef.current = null
-                    setSlashContext('idle')
-                    setInlineSuggestions([])
-                    resolve(value ?? '')
-                  }
-                })
-              },
-            },
-            progressSink: (line: string) => setProgressLine(line.trimEnd()),
-          })
-          setProgressLine(null)
-          const docCount = result.writtenDocIds?.length ?? 0
-          addEntry({
-            type: 'result',
-            content: `✅ ${firstArg === 'scan' ? 'Scan' : 'Init'} complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
-          })
-          await awaitRefreshThenStart(refreshBase, startChatSession)
-        } catch (err) {
-          setProgressLine(null)
-          const message = err instanceof Error ? err.message : String(err)
-          addEntry({ type: 'error', content: message })
-        } finally {
-          setIsRunning(false)
+              progressSink: (line: string) => setProgressLine(line.trimEnd()),
+            })
+            setProgressLine(null)
+            const docCount = result.writtenDocIds?.length ?? 0
+            addEntry({
+              type: 'result',
+              content: `✅ Scan complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
+            })
+            await awaitRefreshThenStart(refreshBase, startChatSession)
+          } catch (err) {
+            setProgressLine(null)
+            const message = err instanceof Error ? err.message : String(err)
+            addEntry({ type: 'error', content: message })
+          } finally {
+            setIsRunning(false)
+          }
         }
         return
       }
@@ -528,6 +595,7 @@ export function App({ config, startupNotices = [] }: Props) {
       updateEntry,
       startChatPending,
       startChatSession,
+      runInitFlow,
       refreshBase,
       exit,
     ]

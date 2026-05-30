@@ -222,7 +222,7 @@ function globalVenvDir(): string {
   return path.join(kbHome, '.kb-python')
 }
 
-function globalVenvPython(): string {
+export function globalVenvPython(): string {
   return path.join(globalVenvDir(), 'bin', 'python3')
 }
 

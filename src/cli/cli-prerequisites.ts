@@ -17,3 +17,11 @@ export const CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE = `${CLI_ERROR_NO_KB_
 export function formatPrerequisiteError(message: string): string {
   return `❌ ${message}`
 }
+
+export function uninitializedBaseNotice(baseName: string): string {
+  return [
+    `Base "${baseName}" is set but hasn't been initialized yet.`,
+    '',
+    'Type /init to index this project, or run `kb init` from your terminal.',
+  ].join('\n')
+}

@@ -4,6 +4,7 @@
  * KB Agent Harness CLI
  */
 
+import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -62,7 +63,7 @@ import {
   printDocsRenameHelp,
   runDocsRename,
 } from './docs-rename-cli'
-import { ensurePythonEnv } from '../core/fact-categories'
+import { ensurePythonEnv, globalVenvPython } from '../core/fact-categories'
 import { FactsCommandError, runFactsCommand } from './facts-cli'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
 import { parseInitCommand, parseScanCommand, runKbInit } from './init-cli'
@@ -124,6 +125,25 @@ const defaultCliOutput: CliOutput = {
   error: msg => console.error(msg),
   write: chunk => process.stdout.write(chunk),
 }
+
+// ---------------------------------------------------------------------------
+// Startup notices
+// ---------------------------------------------------------------------------
+
+export const FIRST_RUN_WELCOME_NOTICE = [
+  '👋 Welcome to KB!',
+  '',
+  'KB is a local knowledge base that indexes your codebase so you can ask questions,',
+  'explore relationships, and generate docs — all from the terminal.',
+  '',
+  'Quick start:',
+  '  kb init        index a project',
+  '  kb query       ask questions about your code',
+  '  kb graph       explore symbol relationships',
+  '  kb docs        generate documentation',
+  '',
+  'Type a message below or press ? for help.',
+].join('\n')
 
 // ---------------------------------------------------------------------------
 // Help printers
@@ -1067,12 +1087,19 @@ async function main() {
       else if (r.action === 'updated') startupNotices.push(`↑ KB skill ${r.skill} updated for ${r.agent}`)
     }
 
+    const isFreshInstall = !existsSync(globalVenvPython())
+    if (isFreshInstall) {
+      process.stderr.write('👋 Welcome to KB! Setting up your environment for the first time…\n')
+    }
     try {
       ensurePythonEnv()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       process.stderr.write(`❌ ${message}\n`)
       process.exit(1)
+    }
+    if (isFreshInstall) {
+      startupNotices.push(FIRST_RUN_WELCOME_NOTICE)
     }
 
     const hasApiKey =
