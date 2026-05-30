@@ -100,6 +100,7 @@ import {
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
+import { runUninstallCommand } from './uninstall-cli'
 import {
   ViewCommandError,
   printListHelp,
@@ -149,6 +150,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  sync        Install the latest published KB release',
     '  logs        Browse and compare run reports',
     '  skills      Manage agent skills',
+    '  uninstall   Remove the kb binary and optionally all user data',
     '',
     'Intent commands:',
     '  query       Search the knowledge base',
@@ -805,6 +807,11 @@ export async function runMainWithOutput(
         ].join('\n')
       )
     }
+    return
+  }
+
+  if (firstArg === 'uninstall') {
+    await runUninstallCommand(out)
     return
   }
 

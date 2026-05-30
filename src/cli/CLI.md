@@ -11,6 +11,7 @@ Command-line entry, argument parsing, and orchestration wiring for `kb`. Impleme
 | Query | `intent-cli.ts` + `query-truth-retrieval.ts` | Intent envelope parsing and shared retrieval |
 | Chat session | `chat-cli.ts` + `chat-query-orchestrator.ts` | REPL loop; QUERY turns call `runQueryTruthRetrieval()` |
 | Skills | `skill-installer.ts` | Install bundled skills to agent homes + profile blurbs |
+| Uninstall | `uninstall-cli.ts` | Consumer-facing removal of the release install layout |
 
 ## `CliOutput` abstraction
 
@@ -61,6 +62,12 @@ Ts/JS/Go extensions are AST-handled via ts-morph or tree-sitter; do not re-add t
 - **Profile:** `installSkillIntoProject()` injects `kb:dev-workflow` body into `~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md` when present.
 
 Adding a skill: append to `SKILLS` array, add `loadSkill()` source under `skills/`, ensure build copies `.skill.md` into `dist/bin/`.
+
+## Consumer uninstall
+
+`kb uninstall` targets the **release install layout** (`scripts/install-release.sh`): removes `~/.kb/bin/kb` symlink, `~/.kb/runtime/` npm package, and the `PATH` entry from shell rc files. It interactively prompts before deleting `~/.kb/` user data (knowledge bases, config, logs). Respects `KB_INSTALL_ROOT`.
+
+Distinct from `pnpm uninstall:global` (`scripts/uninstall-global.sh`), which targets the dev symlink at `$PNPM_HOME/bin/kb` and removes `dist/` + `.kb-python/`. **`kb uninstall` must never touch `$PNPM_HOME` paths.**
 
 ## Gotchas
 
