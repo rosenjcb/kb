@@ -1,4 +1,6 @@
 import { existsSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { Box, useApp, useInput } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -10,6 +12,7 @@ import {
 import type { ChatIO, ChatReadOptions } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
 import { parseInitCommand, parseScanCommand, runKbInit } from '../cli/init-cli.js'
+import { performUninstall } from '../cli/uninstall-cli.js'
 import {
   CLI_ERROR_NO_KB_BASE,
   autoInitAnnouncement,
@@ -411,6 +414,52 @@ export function App({ config, startupNotices = [] }: Props) {
       const isSlash = trimmed.startsWith('/')
       const args = normalizeSlashCommandArgs(parseShellArgs(trimmed))
       const firstArg = args[0]
+
+      // ── /uninstall — two-step confirmation ──
+      if (isSlash && firstArg === 'uninstall') {
+        addEntry({ type: 'chat-you', content: trimmed })
+        const purge = args.includes('--purge')
+        const kbHome = process.env.KB_INSTALL_ROOT ?? path.join(os.homedir(), '.kb')
+        addEntry({
+          type: 'info',
+          content: purge
+            ? `⚠️  Uninstall KB and permanently delete all user data at ${kbHome}? This cannot be undone. [y/N]`
+            : `⚠️  Remove the KB binary, Python environment, and runtime? Knowledge bases at ${kbHome} will be kept (you can delete them after). [y/N]`,
+        })
+        setPendingConfirm({
+          question: purge ? 'Uninstall KB and delete all data?' : 'Uninstall KB?',
+          onConfirm: async () => {
+            const lines: string[] = []
+            const uninstallOut = {
+              log: (msg: string) => { lines.push(msg) },
+              error: (msg: string) => { lines.push(msg) },
+              write: (chunk: string) => { lines.push(chunk) },
+            }
+            await performUninstall({ yes: true, purge }, uninstallOut)
+            const output = lines.filter(l => l.trim()).join('\n')
+            if (output) addEntry({ type: 'result', content: output })
+
+            if (!purge) {
+              addEntry({
+                type: 'info',
+                content: `Delete all KB user data at ${kbHome}? (knowledge bases, config, logs) [y/N]`,
+              })
+              setPendingConfirm({
+                question: `Delete ${kbHome}?`,
+                onConfirm: async () => {
+                  await rm(kbHome, { recursive: true, force: true })
+                  addEntry({ type: 'result', content: `Removed: ${kbHome}\n\nDone. KB has been uninstalled.` })
+                  exit()
+                },
+              })
+            } else {
+              addEntry({ type: 'result', content: 'Done. KB has been uninstalled.' })
+              exit()
+            }
+          },
+        })
+        return
+      }
 
       // ── Output-only slash commands (don't touch chatInputResolverRef) ──
       if (isSlash && firstArg && isOutputOnlyCommand(firstArg, args)) {

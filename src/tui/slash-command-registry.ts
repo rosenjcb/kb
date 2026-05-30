@@ -31,6 +31,7 @@ export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
   { path: ['graph'], description: 'inspect or edit the knowledge graph', contexts: ['idle'] },
   { path: ['publish'], description: 'publish docs to the external sink', contexts: ['idle'] },
   { path: ['sync'], description: 'install the latest published KB release', contexts: ['idle'] },
+  { path: ['uninstall'], description: 'remove the kb binary, Python env, and runtime', contexts: ['idle'] },
   { path: ['skills'], description: 'manage agent skills', contexts: ['idle'] },
   { path: ['config'], description: 'inspect or update config values', contexts: ['idle'] },
   { path: ['logs'], description: 'browse and compare run reports', contexts: ['idle'] },

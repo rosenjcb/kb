@@ -65,9 +65,17 @@ Adding a skill: append to `SKILLS` array, add `loadSkill()` source under `skills
 
 ## Consumer uninstall
 
-`kb uninstall` targets the **release install layout** (`scripts/install-release.sh`): removes `~/.kb/bin/kb` symlink, `~/.kb/runtime/` npm package, and the `PATH` entry from shell rc files. It interactively prompts before deleting `~/.kb/` user data (knowledge bases, config, logs). Respects `KB_INSTALL_ROOT`.
+`kb uninstall` targets the **release install layout** (`scripts/install-release.sh`). Core logic is in `performUninstall()`, shared with the TUI `/uninstall` flow.
 
-Distinct from `pnpm uninstall:global` (`scripts/uninstall-global.sh`), which targets the dev symlink at `$PNPM_HOME/bin/kb` and removes `dist/` + `.kb-python/`. **`kb uninstall` must never touch `$PNPM_HOME` paths.**
+Removes in order: `~/.kb/bin/kb` symlink (via `lstat` so broken symlinks are caught), `~/.kb/runtime/` npm package, `~/.kb/.kb-python` Python venv, and the `PATH` entry from shell rc files. Then prompts interactively before deleting `~/.kb/` user data.
+
+Flags:
+- `--yes` — skip the user-data prompt; keep `~/.kb` intact
+- `--purge` — also delete `~/.kb` without prompting (implies skipping user-data prompt)
+
+Non-interactive callers (TUI, CI) should pass `--yes` or `--purge`; without a TTY and without a flag the command exits with an error.
+
+Distinct from `pnpm uninstall:global` (`scripts/uninstall-global.sh`), which targets the dev symlink at `$PNPM_HOME/bin/kb` and removes `dist/` + both the repo-local and global `.kb-python` venvs. **`kb uninstall` must never touch `$PNPM_HOME` paths.**
 
 ## Gotchas
 

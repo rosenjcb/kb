@@ -50,7 +50,7 @@ export class AnthropicProvider implements LLMProvider {
 
   constructor(
     private apiKey: string,
-    model = 'claude-sonnet-4-6'
+    model = 'claude-haiku-4-5'
   ) {
     this.model = model
   }

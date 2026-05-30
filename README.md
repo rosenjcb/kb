@@ -97,6 +97,34 @@ Override the Python binary KB uses with:
 export KB_CATEGORY_CLUSTER_PYTHON=/path/to/python3
 ```
 
+### Uninstalling KB
+
+To remove KB from a release install:
+
+```bash
+kb uninstall
+```
+
+This removes:
+- The `~/.kb/bin/kb` binary symlink
+- The installed runtime at `~/.kb/runtime`
+- The Python environment at `~/.kb/.kb-python`
+- The `PATH` entry from your shell config (`.bashrc` / `.zshrc` / `.profile`)
+
+You will be prompted whether to also delete `~/.kb` (knowledge bases, config, logs). To skip the prompt and keep user data:
+
+```bash
+kb uninstall --yes
+```
+
+To remove everything including `~/.kb` in one shot:
+
+```bash
+kb uninstall --purge
+```
+
+From the TUI, type `/uninstall` (or `/uninstall --purge` to also wipe user data). The TUI will walk you through both confirmation steps before exiting.
+
 ### 2) Configure `~/.kb/config.json`
 
 Provider is auto-detected from whichever key is present. To set one explicitly:
@@ -281,7 +309,7 @@ To install and uninstall a dev build globally (symlinks `dist/bin/kb` into `$PNP
 
 ```bash
 pnpm run install:global    # build then symlink kb into $PNPM_HOME/bin
-pnpm run uninstall:global  # remove symlink, dist/, and .kb-python/; prompts before deleting ~/.kb
+pnpm run uninstall:global  # remove symlink, dist/, repo + global .kb-python; prompts before deleting ~/.kb
 ```
 
 > These are dev-only scripts and are not shipped in the release package. Consumer users should use `kb uninstall` instead.

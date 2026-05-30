@@ -831,7 +831,7 @@ export async function runMainWithOutput(
   }
 
   if (firstArg === 'uninstall') {
-    await runUninstallCommand(out)
+    await runUninstallCommand(args.slice(1), out)
     return
   }
 

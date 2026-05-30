@@ -23,14 +23,21 @@ if [ -d "$ROOT_DIR/dist" ]; then
   echo "Removed: dist/"
 fi
 
-# --- Python venv ---
+# --- Dev repo Python venv ---
 if [ -d "$ROOT_DIR/.kb-python" ]; then
   rm -rf "$ROOT_DIR/.kb-python"
-  echo "Removed: .kb-python/"
+  echo "Removed: $ROOT_DIR/.kb-python"
+fi
+
+# --- Global Python venv (~/.kb/.kb-python) ---
+KB_HOME="${KB_INSTALL_ROOT:-$HOME/.kb}"
+KB_GLOBAL_PYTHON="$KB_HOME/.kb-python"
+if [ -d "$KB_GLOBAL_PYTHON" ]; then
+  rm -rf "$KB_GLOBAL_PYTHON"
+  echo "Removed: $KB_GLOBAL_PYTHON"
 fi
 
 # --- User data (~/.kb) ---
-KB_HOME="${KB_INSTALL_ROOT:-$HOME/.kb}"
 if [ -d "$KB_HOME" ]; then
   printf '\nFound KB user data at %s (knowledge bases, runtime, logs).\n' "$KB_HOME"
   printf 'Delete it? [y/N] '

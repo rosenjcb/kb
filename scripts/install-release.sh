@@ -62,12 +62,19 @@ ensure_node() {
     return 0
   fi
 
+  if command -v node >/dev/null 2>&1; then
+    log "Found Node $(node -v), but KB requires Node $NODE_MAJOR.x."
+    log "Installing Node $NODE_MAJOR via nvm (your existing Node is not affected)."
+  else
+    log "Node not found. Installing Node $NODE_MAJOR via nvm."
+  fi
+
   ensure_nvm_loaded
-  log "Installing Node $NODE_MAJOR via nvm"
   nvm install "$NODE_MAJOR"
   nvm alias default "$NODE_MAJOR" >/dev/null
   nvm use "$NODE_MAJOR" >/dev/null
-  log "Using Node $(node -v)"
+  log "Node $NODE_MAJOR installed and active for this session (via nvm)."
+  log "Your shell will use Node $NODE_MAJOR automatically after opening a new terminal."
 }
 
 ensure_npm() {
