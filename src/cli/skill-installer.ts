@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { loadSkill } from '../skills/loader'
@@ -187,7 +187,8 @@ export async function installSkillIntoProject(): Promise<ProjectInstallResult[]>
 
 export function formatSkillInstallReport(
   skillResults: SkillInstallResult[],
-  profileResults: ProjectInstallResult[]
+  profileResults: ProjectInstallResult[],
+  hookResults?: HookInstallResult[]
 ): string {
   const lines: string[] = ['Skill files:']
   for (const r of skillResults) {
@@ -201,7 +202,181 @@ export function formatSkillInstallReport(
     else if (r.action === 'already-present') lines.push(`  • up-to-date ${r.file}`)
     else lines.push(`  - skipped    ${r.file} (not found)`)
   }
+  if (hookResults) {
+    lines.push('', 'Agent hooks (kb-first reminder):')
+    for (const r of hookResults) {
+      if (r.action === 'not-installed') lines.push(`  - skipped    ${r.provider} (not found)`)
+      else if (r.action === 'installed') lines.push(`  ✓ installed  ${r.provider}`)
+      else if (r.action === 'updated') lines.push(`  ↑ updated    ${r.provider}`)
+      else lines.push(`  • up-to-date ${r.provider}`)
+    }
+  }
   return lines.join('\n')
+}
+
+// ─── Hook installation ────────────────────────────────────────────────────────
+
+const KB_HOOK_SCRIPT_NAME = 'kb-reminder.sh'
+
+const KB_HOOK_SCRIPT_CONTENT = `#!/bin/bash
+input=$(cat)
+cmd=$(echo "$input" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    c = d.get('command') or d.get('tool_input', {}).get('command') or ''
+    print(c)
+except Exception:
+    pass
+" 2>/dev/null)
+if [ -n "$cmd" ] && echo "$cmd" | grep -qE '\\b(grep|awk|sed|find)\\b'; then
+  echo "Reminder: kb query should be your first step for codebase exploration — use grep/awk/sed/find only as a last resort when kb cannot answer the question."
+fi
+exit 0
+`
+
+interface HookProvider {
+  name: string
+  configDir: string
+  settingsFile: string
+  event: string
+  matcher: string
+}
+
+function hookProviders(): HookProvider[] {
+  const home = os.homedir()
+  return [
+    {
+      name: 'claude',
+      configDir: path.join(home, '.claude'),
+      settingsFile: path.join(home, '.claude', 'settings.json'),
+      event: 'PreToolUse',
+      matcher: 'Bash',
+    },
+    {
+      name: 'gemini',
+      configDir: path.join(home, '.gemini'),
+      settingsFile: path.join(home, '.gemini', 'settings.json'),
+      event: 'BeforeTool',
+      matcher: 'run_shell_command',
+    },
+    {
+      name: 'codex',
+      configDir: path.join(home, '.codex'),
+      settingsFile: path.join(home, '.codex', 'hooks.json'),
+      event: 'PreToolUse',
+      matcher: 'Bash',
+    },
+  ]
+}
+
+export interface HookInstallResult {
+  provider: string
+  action: 'installed' | 'updated' | 'skipped' | 'not-installed'
+}
+
+async function ensureHookScript(): Promise<string> {
+  const home = os.homedir()
+  const hooksDir = path.join(home, '.kb', 'hooks')
+  await mkdir(hooksDir, { recursive: true })
+  const scriptPath = path.join(hooksDir, KB_HOOK_SCRIPT_NAME)
+  await writeFile(scriptPath, KB_HOOK_SCRIPT_CONTENT, 'utf8')
+  await chmod(scriptPath, 0o755)
+  return scriptPath
+}
+
+type HookEntry = { type: string; command: string }
+type MatcherGroup = { matcher: string; hooks: HookEntry[] }
+type HooksSection = Record<string, MatcherGroup[]>
+type SettingsJson = { hooks?: HooksSection } & Record<string, unknown>
+
+async function installHookForProvider(
+  provider: HookProvider,
+  scriptPath: string
+): Promise<HookInstallResult> {
+  try {
+    await stat(provider.configDir)
+  } catch {
+    return { provider: provider.name, action: 'not-installed' }
+  }
+
+  let settings: SettingsJson = {}
+  try {
+    const raw = await readFile(provider.settingsFile, 'utf8')
+    settings = JSON.parse(raw) as SettingsJson
+  } catch {
+    // File doesn't exist or invalid JSON — start fresh
+  }
+
+  const hooksSection: HooksSection = (settings.hooks as HooksSection) ?? {}
+  const eventGroups: MatcherGroup[] = hooksSection[provider.event] ?? []
+  const existingGroup = eventGroups.find(g => g.matcher === provider.matcher)
+
+  if (existingGroup) {
+    const alreadyPresent = existingGroup.hooks.some(h => h.command.endsWith(KB_HOOK_SCRIPT_NAME))
+    if (alreadyPresent) {
+      // Update path if it changed (e.g. reinstall to different location)
+      const needsUpdate = !existingGroup.hooks.some(h => h.command === scriptPath)
+      if (!needsUpdate) return { provider: provider.name, action: 'skipped' }
+      existingGroup.hooks = existingGroup.hooks.map(h =>
+        h.command.endsWith(KB_HOOK_SCRIPT_NAME) ? { type: 'command', command: scriptPath } : h
+      )
+    } else {
+      existingGroup.hooks.push({ type: 'command', command: scriptPath })
+    }
+  } else {
+    eventGroups.push({ matcher: provider.matcher, hooks: [{ type: 'command', command: scriptPath }] })
+  }
+
+  const isNew = !settings.hooks || !hooksSection[provider.event]
+  const updated: SettingsJson = {
+    ...settings,
+    hooks: { ...hooksSection, [provider.event]: eventGroups },
+  }
+
+  await mkdir(path.dirname(provider.settingsFile), { recursive: true })
+  await writeFile(provider.settingsFile, `${JSON.stringify(updated, null, 2)}\n`, 'utf8')
+
+  return { provider: provider.name, action: isNew ? 'installed' : 'updated' }
+}
+
+export async function installHooks(): Promise<HookInstallResult[]> {
+  const scriptPath = await ensureHookScript()
+  return Promise.all(hookProviders().map(p => installHookForProvider(p, scriptPath)))
+}
+
+async function uninstallHookForProvider(provider: HookProvider): Promise<HookInstallResult> {
+  let settings: SettingsJson
+  try {
+    const raw = await readFile(provider.settingsFile, 'utf8')
+    settings = JSON.parse(raw) as SettingsJson
+  } catch {
+    return { provider: provider.name, action: 'not-installed' }
+  }
+
+  const hooksSection = settings.hooks
+  if (!hooksSection) return { provider: provider.name, action: 'not-installed' }
+
+  const eventGroups = hooksSection[provider.event]
+  if (!eventGroups) return { provider: provider.name, action: 'not-installed' }
+
+  const next = eventGroups
+    .map(g => ({
+      ...g,
+      hooks: g.hooks.filter(h => !h.command.endsWith(KB_HOOK_SCRIPT_NAME)),
+    }))
+    .filter(g => g.hooks.length > 0)
+
+  const changed = next.length !== eventGroups.length || next.some((g, i) => g.hooks.length !== eventGroups[i]?.hooks.length)
+  if (!changed) return { provider: provider.name, action: 'not-installed' }
+
+  const updated: SettingsJson = { ...settings, hooks: { ...hooksSection, [provider.event]: next } }
+  await writeFile(provider.settingsFile, `${JSON.stringify(updated, null, 2)}\n`, 'utf8')
+  return { provider: provider.name, action: 'updated' }
+}
+
+export async function uninstallHooks(): Promise<HookInstallResult[]> {
+  return Promise.all(hookProviders().map(p => uninstallHookForProvider(p)))
 }
 
 // ─── kb skill uninstall ───────────────────────────────────────────────────────
@@ -260,9 +435,17 @@ export async function uninstallSkills(): Promise<SkillUninstallResult[]> {
   ]
 }
 
-export function formatSkillUninstallReport(results: SkillUninstallResult[]): string {
-  return results
+export function formatSkillUninstallReport(
+  results: SkillUninstallResult[],
+  hookResults?: HookInstallResult[]
+): string {
+  const lines = results
     .filter(r => r.action === 'removed')
     .map(r => `✓ Removed KB skill from ${r.target}`)
-    .join('\n')
+  if (hookResults) {
+    for (const r of hookResults) {
+      if (r.action === 'updated') lines.push(`✓ Removed KB hook from ${r.provider}`)
+    }
+  }
+  return lines.join('\n')
 }

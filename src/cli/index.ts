@@ -96,8 +96,10 @@ import { runQueryTruthRetrieval } from './query-truth-retrieval'
 import {
   formatSkillInstallReport,
   formatSkillUninstallReport,
+  installHooks,
   installSkillIntoProject,
   installSkillsGlobally,
+  uninstallHooks,
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
@@ -797,19 +799,20 @@ export async function runMainWithOutput(
     const subcommand = args[1]
     if (subcommand === 'install') {
       try {
-        const [skillResults, profileResults] = await Promise.all([
+        const [skillResults, profileResults, hookResults] = await Promise.all([
           installSkillsGlobally(),
           installSkillIntoProject(),
+          installHooks(),
         ])
-        out.log(formatSkillInstallReport(skillResults, profileResults))
+        out.log(formatSkillInstallReport(skillResults, profileResults, hookResults))
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)
       }
     } else if (subcommand === 'uninstall') {
       try {
-        const results = await uninstallSkills()
-        const report = formatSkillUninstallReport(results)
+        const [results, hookResults] = await Promise.all([uninstallSkills(), uninstallHooks()])
+        const report = formatSkillUninstallReport(results, hookResults)
         if (report) out.log(report)
         else out.log('No KB skill files found to remove.')
       } catch (error) {
