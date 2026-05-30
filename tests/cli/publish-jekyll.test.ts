@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import { DatabaseSync as Database } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { parseJekyllPublishOptions, runJekyllPublish } from '../../src/cli/publish-jekyll'
 import { docToCollectionFilename } from '../../src/core/publish/jekyll-sync'

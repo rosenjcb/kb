@@ -5,7 +5,7 @@
 
 <p align="center">
   <a href="#"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="license" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg" alt="node version" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D24-brightgreen.svg" alt="node version" /></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/quickstart-→-blue.svg" alt="quick start" /></a>
   <a href="#cli-reference"><img src="https://img.shields.io/badge/CLI-reference-orange.svg" alt="CLI reference" /></a>
 </p>
@@ -48,7 +48,7 @@ command -v kb
 
 What this does:
 - installs `nvm` if needed
-- installs `Node 22`
+- installs `Node 24`
 - installs the latest `kb` release into `~/.kb/runtime`
 - links the stable launcher at `~/.kb/bin/kb`
 
@@ -61,7 +61,7 @@ pnpm run install:global
 command -v kb
 ```
 
-> `install-kb.sh` bootstraps `nvm` and `Node 22` if they are missing.
+> `install-kb.sh` bootstraps `nvm` and `Node 24` if they are missing.
 > KB installs its managed runtime under `~/.kb/runtime` and exposes `~/.kb/bin/kb`.
 > After the first install, use `kb sync` for upgrades.
 > If you later switch Node versions, rerun `kb sync` or reinstall with the bootstrap script.
@@ -96,6 +96,34 @@ Override the Python binary KB uses with:
 ```bash
 export KB_CATEGORY_CLUSTER_PYTHON=/path/to/python3
 ```
+
+### Uninstalling KB
+
+To remove KB from a release install:
+
+```bash
+kb uninstall
+```
+
+This removes:
+- The `~/.kb/bin/kb` binary symlink
+- The installed runtime at `~/.kb/runtime`
+- The Python environment at `~/.kb/.kb-python`
+- The `PATH` entry from your shell config (`.bashrc` / `.zshrc` / `.profile`)
+
+You will be prompted whether to also delete `~/.kb` (knowledge bases, config, logs). To skip the prompt and keep user data:
+
+```bash
+kb uninstall --yes
+```
+
+To remove everything including `~/.kb` in one shot:
+
+```bash
+kb uninstall --purge
+```
+
+From the TUI, type `/uninstall` (or `/uninstall --purge` to also wipe user data). The TUI will walk you through both confirmation steps before exiting.
 
 ### 2) Configure `~/.kb/config.json`
 
@@ -154,24 +182,6 @@ During `kb init` (interactive mode), after facts are extracted you will be promp
 kb query "sqlite index sync behavior" --limit 5
 kb query "how does AST indexing work"
 ```
-
-## 🔧 Troubleshooting
-
-### Native module bindings error on global pnpm install
-
-If you see `Could not locate the bindings file` for `better-sqlite3` when running `kb` after installing globally:
-
-**Option 1: Uninstall and reinstall (recommended)**
-```bash
-curl -fsSL https://github.com/rosenjcb/kb/releases/latest/download/install-kb.sh | bash
-```
-
-**Option 2: Force rebuild from global store**
-```bash
-kb sync
-```
-
-This happens because KB's current runtime still depends on native SQLite bindings. Reinstalling through the bootstrap installer is the most reliable path because it ensures the expected Node runtime is present first and refreshes the managed install under `~/.kb`.
 
 ## 📖 CLI Reference
 
@@ -237,7 +247,7 @@ kb publish <notion|jekyll> [options]
 kb sync
 ```
 
-`kb sync` installs the latest published `kb-cli-node22.tgz` release into KB's managed runtime under `~/.kb/runtime`, refreshes the stable launcher at `~/.kb/bin/kb`, and does not use your current project directory. It will complain early if the current shell is not running `Node 22+`.
+`kb sync` installs the latest published `kb-cli-node24.tgz` release into KB's managed runtime under `~/.kb/runtime`, refreshes the stable launcher at `~/.kb/bin/kb`, and does not use your current project directory. It will complain early if the current shell is not running `Node 24+`.
 For a fresh machine with no supported Node runtime yet, use:
 
 ```bash
@@ -294,3 +304,12 @@ pnpm run type-check
 pnpm run lint
 pnpm run build
 ```
+
+To install and uninstall a dev build globally (symlinks `dist/bin/kb` into `$PNPM_HOME/bin`):
+
+```bash
+pnpm run install:global    # build then symlink kb into $PNPM_HOME/bin
+pnpm run uninstall:global  # remove symlink, dist/, repo + global .kb-python; prompts before deleting ~/.kb
+```
+
+> These are dev-only scripts and are not shipped in the release package. Consumer users should use `kb uninstall` instead.

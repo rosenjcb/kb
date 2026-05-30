@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type Database from 'better-sqlite3'
+import type { DatabaseSync } from 'node:sqlite'
 
 export function kbIndexDbPath(baseDir: string): string {
   return path.join(baseDir, '.kb-index.sqlite')
@@ -36,7 +36,7 @@ const MAX_CODE_EXPANSION = 8
  *
  * Synchronous — no async needed.
  */
-export function expandQueryWithGraph(query: string, db: Database.Database): string {
+export function expandQueryWithGraph(query: string, db: DatabaseSync): string {
   try {
     const slugs = toGraphQuerySlugs(query)
     if (slugs.length === 0) return query

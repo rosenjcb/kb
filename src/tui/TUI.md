@@ -30,9 +30,10 @@ React/Ink chat shell launched when the user runs bare `kb` in a TTY. Product-wid
 
 1. Add one `SlashCommandSpec` row to [`slash-command-registry.ts`](slash-command-registry.ts) (`path`, `description`, `contexts`).
 2. If output-only: add to `isOutputOnlyCommand()` in `App.tsx` and ensure CLI supports the same argv shape.
-3. If interactive with contextual slash commands: pass `slashContext` on `ChatIO.read()` or `InitQuestionIO.askQuestion()` — do not add suggestion logic in the flow.
-4. Respect three output tiers from `../core/TUI.md`.
-5. User-facing success copy: slash form via `cmd('…', 'tui')`.
+3. If confirmation-required (destructive, multi-step): handle inline in `App.tsx` **before** the `isOutputOnlyCommand` block using `setPendingConfirm`. Chain a second `setPendingConfirm` from inside `onConfirm` for two-step flows (e.g. `/uninstall`: first removes binary/runtime/Python, second offers to purge `~/.kb`). Do not route through `runCommandForTui` for flows that need TTY prompts — call the exported logic function directly.
+4. If interactive with contextual slash commands: pass `slashContext` on `ChatIO.read()` or `InitQuestionIO.askQuestion()` — do not add suggestion logic in the flow.
+5. Respect three output tiers from `../core/TUI.md`.
+6. User-facing success copy: slash form via `cmd('…', 'tui')`.
 
 ## `ChatIO` bridge
 

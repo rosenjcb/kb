@@ -1,5 +1,52 @@
 packages:
   - '.'
 
+# Packages that have install scripts but ship pre-built binaries or WASM files.
+# We explicitly set all of them to false so pnpm does not try to compile native
+# addons (which would require a C++ toolchain and fail on minimal machines).
+# Platform-specific binaries are delivered via optional peer packages instead.
 allowBuilds:
-  better-sqlite3: true
+  '@ast-grep/lang-angular': false
+  '@ast-grep/lang-bash': false
+  '@ast-grep/lang-c': false
+  '@ast-grep/lang-cpp': false
+  '@ast-grep/lang-csharp': false
+  '@ast-grep/lang-css': false
+  '@ast-grep/lang-dart': false
+  '@ast-grep/lang-elixir': false
+  '@ast-grep/lang-go': false
+  '@ast-grep/lang-haskell': false
+  '@ast-grep/lang-html': false
+  '@ast-grep/lang-java': false
+  '@ast-grep/lang-javascript': false
+  '@ast-grep/lang-json': false
+  '@ast-grep/lang-kotlin': false
+  '@ast-grep/lang-lua': false
+  '@ast-grep/lang-php': false
+  '@ast-grep/lang-python': false
+  '@ast-grep/lang-ruby': false
+  '@ast-grep/lang-rust': false
+  '@ast-grep/lang-scala': false
+  '@ast-grep/lang-sql': false
+  '@ast-grep/lang-swift': false
+  '@ast-grep/lang-toml': false
+  '@ast-grep/lang-tsx': false
+  '@ast-grep/lang-typescript': false
+  '@ast-grep/lang-yaml': false
+  '@biomejs/biome': false
+  esbuild: false
+  tree-sitter-bash: false
+  tree-sitter-c: false
+  tree-sitter-c-sharp: false
+  tree-sitter-cpp: false
+  tree-sitter-css: false
+  tree-sitter-go: false
+  tree-sitter-html: false
+  tree-sitter-java: false
+  tree-sitter-javascript: false
+  tree-sitter-php: false
+  tree-sitter-python: false
+  tree-sitter-ruby: false
+  tree-sitter-rust: false
+  tree-sitter-scala: false
+  tree-sitter-typescript: false

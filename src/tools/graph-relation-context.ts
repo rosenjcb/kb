@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3'
+import type { DatabaseSync } from 'node:sqlite'
 
 export interface RelationalConceptPair {
   phraseA: string
@@ -56,7 +56,7 @@ interface FactsPathResult {
  * BFS through facts triplets (subject→object, bidirectional) to find a path between two terms.
  */
 export function findFactsPath(
-  db: Database.Database,
+  db: DatabaseSync,
   a: string,
   b: string,
   maxHops = 5
@@ -70,7 +70,7 @@ export function findFactsPath(
            AND subject != 'kb'
          LIMIT 5000`
       )
-      .all() as FactsEdge[]
+      .all() as unknown as FactsEdge[]
 
     // Build bidirectional adjacency map (lowercase keys)
     const adjacency = new Map<string, Array<{ neighbor: string; label: string }>>()
@@ -133,7 +133,7 @@ export function findFactsPath(
 }
 
 export function formatGraphRelationBlockForPair(
-  db: Database.Database,
+  db: DatabaseSync,
   pair: RelationalConceptPair
 ): string {
   const { phraseA: a, phraseB: b } = pair
@@ -168,7 +168,7 @@ export function formatGraphRelationBlockForPair(
  * for LLM grounding. Returns null when the question is not treated as relational.
  */
 export function formatGraphRelationBlockFromQuestion(
-  db: Database.Database,
+  db: DatabaseSync,
   query: string
 ): string | null {
   const pair = parseRelationalConceptPair(query)

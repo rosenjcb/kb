@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import dayjs from 'dayjs'
 import type {
   FactCategoryCreatedBy,
@@ -9,6 +9,17 @@ import type {
 } from '../core/fact-categories'
 import { runMigrations } from '../core/db-migrations'
 import { type RetrievalLane, classifyDocumentLane } from './retrieval-lane-router'
+
+function runInTransaction(db: DatabaseSync, fn: () => void): void {
+  db.exec('BEGIN')
+  try {
+    fn()
+    db.exec('COMMIT')
+  } catch (e) {
+    db.exec('ROLLBACK')
+    throw e
+  }
+}
 
 export interface SqliteKbIndexerOptions {
   dbPath: string
@@ -266,16 +277,16 @@ const FACT_ROW_SELECT_F =
   'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at, f.subject, f.predicate, f.object, f.source_text'
 
 export class SqliteKbIndexer {
-  private readonly db: Database.Database
+  private readonly db: DatabaseSync
   private readonly modelId: string
   private readonly vectorDimensions: number
 
   constructor(options: SqliteKbIndexerOptions) {
-    this.db = new Database(options.dbPath)
+    this.db = new DatabaseSync(options.dbPath)
     this.modelId = options.modelId ?? process.env.OLLAMA_EMBED_MODEL ?? 'nomic-embed-text'
     this.vectorDimensions = options.vectorDimensions ?? 64
-    this.db.pragma('journal_mode = WAL')
-    this.db.pragma('foreign_keys = ON')
+    this.db.exec('PRAGMA journal_mode = WAL')
+    this.db.exec('PRAGMA foreign_keys = ON')
     runMigrations(this.db)
   }
 
@@ -396,7 +407,7 @@ export class SqliteKbIndexer {
         LIMIT ?
       `
       )
-      .all(limit) as FactRow[]
+      .all(limit) as unknown as FactRow[]
   }
 
   searchFacts(query: string, limit = 10): FactRow[] {
@@ -424,7 +435,7 @@ export class SqliteKbIndexer {
           LIMIT ?
         `
         )
-        .all(ftsQuery, limit) as FactRow[]
+        .all(ftsQuery, limit) as unknown as FactRow[]
       if (rows.length > 0) return rows
     } catch {
       // fallback below
@@ -442,7 +453,7 @@ export class SqliteKbIndexer {
           LIMIT ?
         `
         )
-        .all(like, limit) as FactRow[]
+        .all(like, limit) as unknown as FactRow[]
     }
 
     const where = tokens.map(() => 'lower(fact_text) LIKE ?').join(' OR ')
@@ -457,7 +468,7 @@ export class SqliteKbIndexer {
         LIMIT ?
       `
       )
-      .all(...likeValues, limit) as FactRow[]
+      .all(...likeValues, limit) as unknown as FactRow[]
   }
 
   searchFactsByConcepts(conceptIds: string[], limit = 20): FactRow[] {
@@ -475,7 +486,7 @@ export class SqliteKbIndexer {
         LIMIT ?
       `
       )
-      .all(...normalized, limit) as FactRow[]
+      .all(...normalized, limit) as unknown as FactRow[]
   }
 
   /**
@@ -503,7 +514,7 @@ export class SqliteKbIndexer {
         LIMIT ?
       `
       )
-      .all(...normalized, limit) as FactRow[]
+      .all(...normalized, limit) as unknown as FactRow[]
   }
 
   semanticFactScores(query: string, factIds: string[]): Map<string, number> {
@@ -547,7 +558,7 @@ export class SqliteKbIndexer {
         WHERE fact_id IN (${placeholders})
       `
       )
-      .all(...ids) as FactConceptRow[]
+      .all(...ids) as unknown as FactConceptRow[]
   }
 
   /** BFS neighbor lookup via fact_edges (both directions), excluding already-seen fact ids. */
@@ -582,7 +593,7 @@ export class SqliteKbIndexer {
           AND tombstoned_at IS NULL
       `
       )
-      .all(...neighborIds) as FactRow[]
+      .all(...neighborIds) as unknown as FactRow[]
   }
 
   expandNeighborConcepts(conceptIds: string[], hopLimit = 1, limit = 20): string[] {
@@ -675,7 +686,7 @@ export class SqliteKbIndexer {
       .prepare(
         `SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref = ?`
       )
-      .all(sourceRef) as FactRow[]
+      .all(sourceRef) as unknown as FactRow[]
   }
 
   /** Active facts whose `source_ref` starts with `prefix` (e.g. `code:src/foo.ts@`). */
@@ -684,7 +695,7 @@ export class SqliteKbIndexer {
       .prepare(
         `SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref LIKE ?`
       )
-      .all(`${prefix}%`) as FactRow[]
+      .all(`${prefix}%`) as unknown as FactRow[]
   }
 
   /**
@@ -718,7 +729,7 @@ export class SqliteKbIndexer {
         AND imp.predicate = 'imports'
         AND imp.tombstoned_at IS NULL
     `).run(now)
-    return fwd.changes + rev.changes
+    return Number(fwd.changes) + Number(rev.changes)
   }
 
   listFactCategories(): FactCategoryRow[] {
@@ -730,7 +741,7 @@ export class SqliteKbIndexer {
         ORDER BY updated_at DESC, name ASC
       `
       )
-      .all() as FactCategoryRow[]
+      .all() as unknown as FactCategoryRow[]
   }
 
   replaceFactCategories(categories: FactCategoryDefinitionInput[]): void {
@@ -764,7 +775,7 @@ export class SqliteKbIndexer {
         updated_at = excluded.updated_at
     `)
 
-    const tx = this.db.transaction(() => {
+    runInTransaction(this.db, () => {
       deleteAssignments.run()
       if (categories.length > 0) deleteMissing.run(...categories.map(category => category.id))
       else deleteMissing.run()
@@ -782,8 +793,6 @@ export class SqliteKbIndexer {
         )
       }
     })
-
-    tx()
   }
 
   replaceFactCategoryAssignments(
@@ -799,7 +808,7 @@ export class SqliteKbIndexer {
         updated_at = excluded.updated_at
     `)
 
-    const tx = this.db.transaction(() => {
+    runInTransaction(this.db, () => {
       clear.run()
       for (const [factId, rows] of assignments.entries()) {
         for (const row of rows) {
@@ -807,8 +816,6 @@ export class SqliteKbIndexer {
         }
       }
     })
-
-    tx()
   }
 
   mergeFactCategoryAssignments(
@@ -822,14 +829,13 @@ export class SqliteKbIndexer {
         score = excluded.score,
         updated_at = excluded.updated_at
     `)
-    const tx = this.db.transaction(() => {
+    runInTransaction(this.db, () => {
       for (const [factId, rows] of assignments.entries()) {
         for (const row of rows) {
           insert.run(factId, row.categoryId, row.score, now, now)
         }
       }
     })
-    tx()
   }
 
   getFactCategoryNames(factId: string): string[] {
@@ -941,7 +947,7 @@ export class SqliteKbIndexer {
           LIMIT ?
         `
         )
-        .all(ftsQuery, ...ids, limit) as FactRow[]
+        .all(ftsQuery, ...ids, limit) as unknown as FactRow[]
       if (rows.length > 0) return rows
     } catch {
       // fallback below
@@ -961,7 +967,7 @@ export class SqliteKbIndexer {
         LIMIT ?
       `
       )
-      .all(...ids, likeQuery, limit) as FactRow[]
+      .all(...ids, likeQuery, limit) as unknown as FactRow[]
   }
 
   searchFactsByConceptsInCategories(conceptIds: string[], categoryIds: string[], limit = 20): FactRow[] {
@@ -984,7 +990,7 @@ export class SqliteKbIndexer {
         LIMIT ?
       `
       )
-      .all(...concepts, ...categories, limit) as FactRow[]
+      .all(...concepts, ...categories, limit) as unknown as FactRow[]
   }
 
   searchFactsByConceptFrontierInCategories(
@@ -1017,7 +1023,7 @@ export class SqliteKbIndexer {
         LIMIT ?
       `
       )
-      .all(...concepts, ...categories, limit) as FactRow[]
+      .all(...concepts, ...categories, limit) as unknown as FactRow[]
   }
 
   listUncategorizedFacts(): FactRow[] {
@@ -1034,7 +1040,7 @@ export class SqliteKbIndexer {
         ORDER BY f.updated_at DESC
       `
       )
-      .all() as FactRow[]
+      .all() as unknown as FactRow[]
   }
 
   countUncategorizedFacts(): number {
@@ -1159,12 +1165,12 @@ export class SqliteKbIndexer {
       `
     const derived =
       typeof limit === 'number'
-        ? (this.db.prepare(derivedQuery).all(limit) as SqliteDocumentRow[])
-        : (this.db.prepare(derivedQuery).all() as SqliteDocumentRow[])
+        ? (this.db.prepare(derivedQuery).all(limit) as unknown as SqliteDocumentRow[])
+        : (this.db.prepare(derivedQuery).all() as unknown as SqliteDocumentRow[])
     const original =
       typeof limit === 'number'
-        ? (this.db.prepare(originalQuery).all(limit) as SqliteDocumentRow[])
-        : (this.db.prepare(originalQuery).all() as SqliteDocumentRow[])
+        ? (this.db.prepare(originalQuery).all(limit) as unknown as SqliteDocumentRow[])
+        : (this.db.prepare(originalQuery).all() as unknown as SqliteDocumentRow[])
     const combined = [...derived, ...original].sort((a, b) =>
       b.updated_at.localeCompare(a.updated_at)
     )
@@ -1202,7 +1208,7 @@ export class SqliteKbIndexer {
         WHERE status = 'active'
       `
       )
-      .all() as SqliteDocumentRow[]
+      .all() as unknown as SqliteDocumentRow[]
     const original = this.db
       .prepare(
         `
@@ -1210,7 +1216,7 @@ export class SqliteKbIndexer {
         FROM original_docs
       `
       )
-      .all() as SqliteDocumentRow[]
+      .all() as unknown as SqliteDocumentRow[]
     return [...derived, ...original].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
   }
 
@@ -1223,7 +1229,7 @@ export class SqliteKbIndexer {
         ORDER BY updated_at DESC
       `
       )
-      .all() as SqliteDocumentRow[]
+      .all() as unknown as SqliteDocumentRow[]
     const original = this.db
       .prepare(
         `
@@ -1232,7 +1238,7 @@ export class SqliteKbIndexer {
         ORDER BY updated_at DESC
       `
       )
-      .all() as SqliteDocumentRow[]
+      .all() as unknown as SqliteDocumentRow[]
     return [...derived, ...original].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
   }
 
@@ -1328,12 +1334,12 @@ export class SqliteKbIndexer {
   backfillDocumentLanes(): number {
     const rows = this.db
       .prepare('SELECT id, title, file_path, doc_type, tags_json FROM documents')
-      .all() as LaneBackfillRow[]
+      .all() as unknown as LaneBackfillRow[]
 
     const updateDocumentLane = this.db.prepare('UPDATE documents SET lane = ? WHERE id = ?')
     const updateChunkLane = this.db.prepare('UPDATE chunks SET lane = ? WHERE doc_id = ?')
 
-    const tx = this.db.transaction(() => {
+    runInTransaction(this.db, () => {
       for (const row of rows) {
         const lane = classifyDocumentLane(
           row.id,
@@ -1347,8 +1353,6 @@ export class SqliteKbIndexer {
         updateChunkLane.run(lane, row.id)
       }
     })
-
-    tx()
     return rows.length
   }
 
@@ -1374,13 +1378,11 @@ export class SqliteKbIndexer {
         updated_at=excluded.updated_at
     `)
 
-    const tx = this.db.transaction(() => {
+    runInTransaction(this.db, () => {
       deleteDerived.run(documentId)
       deleteOriginal.run(documentId)
       upsertIndexState.run({ value: now, updatedAt: now })
     })
-
-    tx()
   }
 
   recordRetrievalMissEvent(input: RetrievalMissEventInput): void {
@@ -1414,7 +1416,7 @@ export class SqliteKbIndexer {
         updated_at = excluded.updated_at
     `)
 
-    const tx = this.db.transaction(() => {
+    runInTransaction(this.db, () => {
       insertMissEvent.run({
         queryFingerprint: input.queryFingerprint,
         rawQuery: input.rawQuery,
@@ -1435,8 +1437,6 @@ export class SqliteKbIndexer {
         })
       }
     })
-
-    tx()
   }
 
   listRetrievalMissClusters(limit = 20): RetrievalMissCluster[] {
@@ -1452,7 +1452,7 @@ export class SqliteKbIndexer {
         ORDER BY occurrences DESC, lastSeenAt DESC
         LIMIT ?
       `)
-      .all(limit) as RetrievalMissCluster[]
+      .all(limit) as unknown as RetrievalMissCluster[]
 
     return rows
   }
@@ -1470,7 +1470,7 @@ export class SqliteKbIndexer {
         ORDER BY hint_score DESC, occurrences DESC
         LIMIT 25
       `)
-      .all(queryFingerprint, minOccurrences) as RetrievalRankingHint[]
+      .all(queryFingerprint, minOccurrences) as unknown as RetrievalRankingHint[]
 
     return rows
   }
@@ -1504,7 +1504,7 @@ export class SqliteKbIndexer {
     `)
 
     const now = dayjs().toISOString()
-    const tx = this.db.transaction(() => {
+    runInTransaction(this.db, () => {
       for (const event of events) {
         insertCheckpoint.run({
           queryFingerprint: event.queryFingerprint,
@@ -1519,8 +1519,6 @@ export class SqliteKbIndexer {
         })
       }
     })
-
-    tx()
   }
 
   recordLaneRoutingEvent(input: LaneRoutingEventInput): void {

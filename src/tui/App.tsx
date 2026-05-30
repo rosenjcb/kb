@@ -1,3 +1,7 @@
+import { existsSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { Box, useApp, useInput } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -8,9 +12,13 @@ import {
 import type { ChatIO, ChatReadOptions } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
 import { parseInitCommand, parseScanCommand, runKbInit } from '../cli/init-cli.js'
+import { performUninstall } from '../cli/uninstall-cli.js'
 import {
   CLI_ERROR_NO_KB_BASE,
+  autoInitAnnouncement,
   formatPrerequisiteError,
+  shouldAutoInit,
+  uninitializedBaseNotice,
 } from '../cli/cli-prerequisites.js'
 import type { KbConfig } from '../cli/kb-config.js'
 import {
@@ -290,12 +298,68 @@ export function App({ config, startupNotices = [] }: Props) {
     [config, addEntry, updateEntry, stopChatPending, finalizeChatResponse, refreshBase, exit]
   )
 
-  // Start chat session once after base dir resolves
+  const runInitFlow = useCallback(async (extraArgs: string[] = []) => {
+    setIsRunning(true)
+    try {
+      const parsed = parseInitCommand(extraArgs)
+      const result = await runKbInit({
+        ...parsed,
+        questionIO: {
+          write: (msg: string) => {
+            const text = msg.trimEnd()
+            if (text) addEntry({ type: 'result', content: text })
+          },
+          askQuestion: async (question, opts) => {
+            setProgressLine(question.trimEnd())
+            setSlashContext(opts?.slashContext ?? 'idle')
+            setInlineSuggestions(opts?.suggestions ?? [])
+            return new Promise(resolve => {
+              chatInputResolverRef.current = value => {
+                chatInputResolverRef.current = null
+                setSlashContext('idle')
+                setInlineSuggestions([])
+                resolve(value ?? '')
+              }
+            })
+          },
+        },
+        progressSink: (line: string) => setProgressLine(line.trimEnd()),
+      })
+      setProgressLine(null)
+      const docCount = result.writtenDocIds?.length ?? 0
+      addEntry({
+        type: 'result',
+        content: `✅ Init complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
+      })
+      await awaitRefreshThenStart(refreshBase, startChatSession)
+    } catch (err) {
+      setProgressLine(null)
+      const message = err instanceof Error ? err.message : String(err)
+      addEntry({ type: 'error', content: message })
+    } finally {
+      setIsRunning(false)
+    }
+  }, [addEntry, refreshBase, startChatSession])
+
+  // Start chat session once after base dir resolves; auto-init when .kb file points at an uninitialised base
   useEffect(() => {
     if (!baseResolved || chatStartedRef.current) return
     chatStartedRef.current = true
-    startChatSession()
-  }, [baseResolved, startChatSession])
+    resolveEffectiveBaseDir()
+      .then(({ baseDir, baseName: effectiveBaseName, source }) => {
+        const hasIndex = existsSync(path.join(baseDir, '.kb-index.sqlite'))
+        if (shouldAutoInit(source, hasIndex)) {
+          addEntry({ type: 'info', content: autoInitAnnouncement(effectiveBaseName) })
+          runInitFlow(['--base', effectiveBaseName])
+        } else if (!hasIndex) {
+          addEntry({ type: 'info', content: uninitializedBaseNotice(effectiveBaseName) })
+          startChatSession()
+        } else {
+          startChatSession()
+        }
+      })
+      .catch(() => startChatSession())
+  }, [baseResolved, startChatSession, runInitFlow, addEntry])
 
   const handleSubmit = useCallback(
     async (value: string) => {
@@ -350,6 +414,52 @@ export function App({ config, startupNotices = [] }: Props) {
       const isSlash = trimmed.startsWith('/')
       const args = normalizeSlashCommandArgs(parseShellArgs(trimmed))
       const firstArg = args[0]
+
+      // ── /uninstall — two-step confirmation ──
+      if (isSlash && firstArg === 'uninstall') {
+        addEntry({ type: 'chat-you', content: trimmed })
+        const purge = args.includes('--purge')
+        const kbHome = process.env.KB_INSTALL_ROOT ?? path.join(os.homedir(), '.kb')
+        addEntry({
+          type: 'info',
+          content: purge
+            ? `⚠️  Uninstall KB and permanently delete all user data at ${kbHome}? This cannot be undone. [y/N]`
+            : `⚠️  Remove the KB binary, Python environment, and runtime? Knowledge bases at ${kbHome} will be kept (you can delete them after). [y/N]`,
+        })
+        setPendingConfirm({
+          question: purge ? 'Uninstall KB and delete all data?' : 'Uninstall KB?',
+          onConfirm: async () => {
+            const lines: string[] = []
+            const uninstallOut = {
+              log: (msg: string) => { lines.push(msg) },
+              error: (msg: string) => { lines.push(msg) },
+              write: (chunk: string) => { lines.push(chunk) },
+            }
+            await performUninstall({ yes: true, purge }, uninstallOut)
+            const output = lines.filter(l => l.trim()).join('\n')
+            if (output) addEntry({ type: 'result', content: output })
+
+            if (!purge) {
+              addEntry({
+                type: 'info',
+                content: `Delete all KB user data at ${kbHome}? (knowledge bases, config, logs) [y/N]`,
+              })
+              setPendingConfirm({
+                question: `Delete ${kbHome}?`,
+                onConfirm: async () => {
+                  await rm(kbHome, { recursive: true, force: true })
+                  addEntry({ type: 'result', content: `Removed: ${kbHome}\n\nDone. KB has been uninstalled.` })
+                  exit()
+                },
+              })
+            } else {
+              addEntry({ type: 'result', content: 'Done. KB has been uninstalled.' })
+              exit()
+            }
+          },
+        })
+        return
+      }
 
       // ── Output-only slash commands (don't touch chatInputResolverRef) ──
       if (isSlash && firstArg && isOutputOnlyCommand(firstArg, args)) {
@@ -464,46 +574,50 @@ export function App({ config, startupNotices = [] }: Props) {
       // ── /init and /scan with no active chat session — run directly ──
       if (isSlash && (firstArg === 'init' || firstArg === 'scan') && !chatInputResolverRef.current) {
         addEntry({ type: 'chat-you', content: trimmed })
-        setIsRunning(true)
-        try {
-          const extraArgs = args.slice(1)
-          const parsed = firstArg === 'scan' ? parseScanCommand(extraArgs) : parseInitCommand(extraArgs)
-          const result = await runKbInit({
-            ...parsed,
-            questionIO: {
-              write: (msg: string) => {
-                const text = msg.trimEnd()
-                if (text) addEntry({ type: 'result', content: text })
+        const extraArgs = args.slice(1)
+        if (firstArg === 'init') {
+          await runInitFlow(extraArgs)
+        } else {
+          setIsRunning(true)
+          try {
+            const parsed = parseScanCommand(extraArgs)
+            const result = await runKbInit({
+              ...parsed,
+              questionIO: {
+                write: (msg: string) => {
+                  const text = msg.trimEnd()
+                  if (text) addEntry({ type: 'result', content: text })
+                },
+                askQuestion: async (question, opts) => {
+                  setProgressLine(question.trimEnd())
+                  setSlashContext(opts?.slashContext ?? 'idle')
+                  setInlineSuggestions(opts?.suggestions ?? [])
+                  return new Promise(resolve => {
+                    chatInputResolverRef.current = value => {
+                      chatInputResolverRef.current = null
+                      setSlashContext('idle')
+                      setInlineSuggestions([])
+                      resolve(value ?? '')
+                    }
+                  })
+                },
               },
-              askQuestion: async (question, opts) => {
-                setProgressLine(question.trimEnd())
-                setSlashContext(opts?.slashContext ?? 'idle')
-                setInlineSuggestions(opts?.suggestions ?? [])
-                return new Promise(resolve => {
-                  chatInputResolverRef.current = value => {
-                    chatInputResolverRef.current = null
-                    setSlashContext('idle')
-                    setInlineSuggestions([])
-                    resolve(value ?? '')
-                  }
-                })
-              },
-            },
-            progressSink: (line: string) => setProgressLine(line.trimEnd()),
-          })
-          setProgressLine(null)
-          const docCount = result.writtenDocIds?.length ?? 0
-          addEntry({
-            type: 'result',
-            content: `✅ ${firstArg === 'scan' ? 'Scan' : 'Init'} complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
-          })
-          await awaitRefreshThenStart(refreshBase, startChatSession)
-        } catch (err) {
-          setProgressLine(null)
-          const message = err instanceof Error ? err.message : String(err)
-          addEntry({ type: 'error', content: message })
-        } finally {
-          setIsRunning(false)
+              progressSink: (line: string) => setProgressLine(line.trimEnd()),
+            })
+            setProgressLine(null)
+            const docCount = result.writtenDocIds?.length ?? 0
+            addEntry({
+              type: 'result',
+              content: `✅ Scan complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
+            })
+            await awaitRefreshThenStart(refreshBase, startChatSession)
+          } catch (err) {
+            setProgressLine(null)
+            const message = err instanceof Error ? err.message : String(err)
+            addEntry({ type: 'error', content: message })
+          } finally {
+            setIsRunning(false)
+          }
         }
         return
       }
@@ -528,6 +642,7 @@ export function App({ config, startupNotices = [] }: Props) {
       updateEntry,
       startChatPending,
       startChatSession,
+      runInitFlow,
       refreshBase,
       exit,
     ]

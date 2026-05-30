@@ -6,7 +6,7 @@
 
 import { readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import dayjs from 'dayjs'
 import type {
   AppendToDocumentInput,
@@ -621,7 +621,7 @@ function loadIndexCandidates(baseDir: string, replaceFrom: string): string[] {
   const sqlitePath = path.join(baseDir, '.kb-index.sqlite')
 
   try {
-    const db = new Database(sqlitePath, { readonly: true })
+    const db = new DatabaseSync(sqlitePath, { readOnly: true })
     try {
       const tokens = replaceFrom
         .toLowerCase()

@@ -10,7 +10,7 @@ import { ReportWriter, RunCollector, defaultLogsDir, estimateCost } from '../cor
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message, ToolDefinition, ToolResultBlock } from '../core/types'
 import { loadPrompt } from '../prompts/loader'
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import { expandQueryWithGraph, kbIndexDbPath } from '../tools/graph-query-expansion'
 import { type Printer, createPrinter } from '../ui/printer'
 import { resolveEffectiveBaseDir } from './base-selection'
@@ -453,7 +453,7 @@ export async function runChatSynthesis(params: {
         let expandedQuery = q
         if (params.kbStorageDir && !params.isAllFacts) {
           try {
-            const db = new Database(kbIndexDbPath(params.kbStorageDir), { readonly: true })
+            const db = new DatabaseSync(kbIndexDbPath(params.kbStorageDir), { readOnly: true })
             try {
               expandedQuery = expandQueryWithGraph(q, db)
             } finally {
@@ -695,7 +695,7 @@ export async function runChatSession(
                 let expandedQuery = q
                 if (deps.kbStorageDir && !isAllFacts) {
                   try {
-                    const db = new Database(kbIndexDbPath(deps.kbStorageDir), { readonly: true })
+                    const db = new DatabaseSync(kbIndexDbPath(deps.kbStorageDir), { readOnly: true })
                     try {
                       expandedQuery = expandQueryWithGraph(q, db)
                     } finally {

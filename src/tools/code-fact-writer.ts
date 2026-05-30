@@ -3,7 +3,7 @@
  * facts into the facts table and manage incremental file state.
  */
 
-import type Database from 'better-sqlite3'
+import type { DatabaseSync } from 'node:sqlite'
 import type { FactTriplet, SqliteKbIndexer } from './sqlite-kb-index.js'
 
 export interface CodeFileStateRow {
@@ -14,7 +14,7 @@ export interface CodeFileStateRow {
 }
 
 export function getCodeFileState(
-  db: Database.Database,
+  db: DatabaseSync,
   filePath: string
 ): CodeFileStateRow | undefined {
   return db
@@ -23,7 +23,7 @@ export function getCodeFileState(
 }
 
 export function upsertCodeFileState(
-  db: Database.Database,
+  db: DatabaseSync,
   filePath: string,
   contentHash: string,
   extractor: string

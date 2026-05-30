@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import { DatabaseSync as Database } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MarkdownMDWriterTool } from '../../src/tools/markdown-md-writer-tool'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
@@ -37,7 +37,7 @@ describe('SQLite KB index integration', () => {
       overwrite: true,
     })
 
-    const db = new Database(dbPath, { readonly: true })
+    const db = new Database(dbPath, { readOnly: true })
     const docCount = db.prepare('SELECT count(*) AS count FROM original_docs').get() as {
       count: number
     }
@@ -83,7 +83,7 @@ describe('SQLite KB index integration', () => {
       prunePattern: 'Old Section',
     })
 
-    const db = new Database(dbPath, { readonly: true })
+    const db = new Database(dbPath, { readOnly: true })
     const row = db
       .prepare('SELECT title, markdown FROM original_docs WHERE id = ?')
       .get('ops-runbook') as { title: string; markdown: string }

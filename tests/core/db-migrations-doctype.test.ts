@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import { DatabaseSync as Database } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runMigrations } from '../../src/core/db-migrations'
 

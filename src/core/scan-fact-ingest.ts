@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { placeholderTripletFromFactText } from './fact-triplet-placeholder'
 import { segmentMarkdownForFacts } from './sentence-split'
@@ -56,13 +56,13 @@ export async function ingestSourceMarkdownFilesAsFacts(
   const dbPath = path.join(input.baseDir, '.kb-index.sqlite')
   const indexer = new SqliteKbIndexer({ dbPath })
 
-  let astDb: Database.Database | null = null
+  let astDb: DatabaseSync | null = null
   let findNearest: ((text: string) => CodeFactRow | null) | null = null
 
   if (input.matchAstNodes && existsSync(dbPath)) {
     try {
-      astDb = new Database(dbPath, { readonly: true })
-      const stmt = astDb.prepare<[string, number], CodeFactRow>(`
+      astDb = new DatabaseSync(dbPath, { readOnly: true })
+      const stmt = astDb.prepare(`
         SELECT f.id, f.subject, f.object
         FROM facts_fts fts
         JOIN facts f ON f.id = fts.fact_id
@@ -77,7 +77,7 @@ export async function ingestSourceMarkdownFilesAsFacts(
         const q = ftsQueryFromText(text)
         if (!q) return null
         try {
-          return stmt.get(q, 1) ?? null
+          return (stmt.get(q, 1) as unknown as CodeFactRow | undefined) ?? null
         } catch {
           return null
         }

@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3'
+import type { DatabaseSync } from 'node:sqlite'
 
 interface Migration {
   version: number
@@ -478,7 +478,7 @@ const MIGRATIONS: Migration[] = [
  * Apply any unapplied migrations to the database in order.
  * Safe to call on every open — already-applied migrations are skipped.
  */
-export function runMigrations(db: Database.Database): void {
+export function runMigrations(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version   INTEGER PRIMARY KEY,

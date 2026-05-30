@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NODE_MAJOR="22"
-RELEASE_TARBALL_URL="https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node22.tgz"
+NODE_MAJOR="24"
+RELEASE_TARBALL_URL="https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node24.tgz"
 NVM_INSTALL_URL="https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh"
 KB_HOME_DIR="${KB_INSTALL_ROOT:-$HOME/.kb}"
 KB_RUNTIME_DIR="$KB_HOME_DIR/runtime"
@@ -32,7 +32,7 @@ has_supported_node() {
 
   local major
   major="$(node -p "process.versions.node.split('.')[0]" 2>/dev/null || true)"
-  [ -n "$major" ] && [ "$major" -ge "$NODE_MAJOR" ]
+  [ -n "$major" ] && [ "$major" -eq "$NODE_MAJOR" ]
 }
 
 ensure_nvm_loaded() {
@@ -62,12 +62,19 @@ ensure_node() {
     return 0
   fi
 
+  if command -v node >/dev/null 2>&1; then
+    log "Found Node $(node -v), but KB requires Node $NODE_MAJOR.x."
+    log "Installing Node $NODE_MAJOR via nvm (your existing Node is not affected)."
+  else
+    log "Node not found. Installing Node $NODE_MAJOR via nvm."
+  fi
+
   ensure_nvm_loaded
-  log "Installing Node $NODE_MAJOR via nvm"
   nvm install "$NODE_MAJOR"
   nvm alias default "$NODE_MAJOR" >/dev/null
   nvm use "$NODE_MAJOR" >/dev/null
-  log "Using Node $(node -v)"
+  log "Node $NODE_MAJOR installed and active for this session (via nvm)."
+  log "Your shell will use Node $NODE_MAJOR automatically after opening a new terminal."
 }
 
 ensure_npm() {
@@ -99,7 +106,9 @@ ensure_shell_path() {
 
 install_kb_release() {
   log "Installing KB into $KB_RUNTIME_DIR from $RELEASE_TARBALL_URL"
-  npm install --prefix "$KB_RUNTIME_DIR" "$RELEASE_TARBALL_URL"
+  # --ignore-scripts prevents tree-sitter-* grammar packages from attempting
+  # native compilation.  All grammars are loaded as pre-built WASM files.
+  npm install --ignore-scripts --prefix "$KB_RUNTIME_DIR" "$RELEASE_TARBALL_URL"
   ln -sf "$KB_PACKAGE_BIN" "$KB_BIN_LINK"
 }
 

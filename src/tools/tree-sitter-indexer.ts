@@ -12,7 +12,7 @@ import crypto from 'node:crypto'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import { Parser, Language, Query } from 'web-tree-sitter'
 import type { Tree } from 'web-tree-sitter'
 import { runMigrations } from '../core/db-migrations'
@@ -398,7 +398,7 @@ interface CompiledLang {
 // ---------------------------------------------------------------------------
 
 export class TreeSitterIndexer implements LanguageIndexer {
-  private db: Database.Database
+  private db: DatabaseSync
   private parser: Parser | null = null
   private langCache = new Map<string, CompiledLang>()
 
@@ -406,8 +406,8 @@ export class TreeSitterIndexer implements LanguageIndexer {
     dbPath: string,
     private factIndexer: SqliteKbIndexer
   ) {
-    this.db = new Database(dbPath)
-    this.db.pragma('journal_mode = WAL')
+    this.db = new DatabaseSync(dbPath)
+    this.db.exec('PRAGMA journal_mode = WAL')
     runMigrations(this.db)
   }
 

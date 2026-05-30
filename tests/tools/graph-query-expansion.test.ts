@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import { DatabaseSync as Database } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runMigrations } from '../../src/core/db-migrations'
 import { expandQueryWithGraph, toGraphQuerySlugs } from '../../src/tools/graph-query-expansion'
@@ -22,13 +22,13 @@ describe('graph-query-expansion', () => {
   // ---------------------------------------------------------------------------
 
   let tmpDir: string
-  let db: Database.Database
+  let db: Database
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'kb-graph-expansion-'))
     const dbPath = path.join(tmpDir, 'kb.sqlite')
     db = new Database(dbPath)
-    db.pragma('journal_mode = WAL')
+    db.exec('PRAGMA journal_mode = WAL')
     runMigrations(db)
   })
 

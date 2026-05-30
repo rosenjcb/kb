@@ -11,7 +11,7 @@
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import { findFactsPath } from '../tools/graph-relation-context'
 import { type CmdMode, cmd } from './cmd-ref'
 
@@ -106,7 +106,7 @@ export async function runGraphCommand(
     return
   }
 
-  const db = new Database(dbPath, { readonly: true })
+  const db = new DatabaseSync(dbPath, { readOnly: true })
   try {
     // --format dot
     if (opts.format === 'dot') {
@@ -247,7 +247,7 @@ export async function readKnowledgeGraphInitSummary(
   const dbPath = path.join(baseDir, '.kb-index.sqlite')
   if (!existsSync(dbPath)) return null
 
-  const db = new Database(dbPath, { readonly: true })
+  const db = new DatabaseSync(dbPath, { readOnly: true })
   try {
     const tripletCount = (
       db

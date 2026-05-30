@@ -8,7 +8,7 @@
 import crypto from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import { Node, Project } from 'ts-morph'
 import { runMigrations } from '../core/db-migrations'
 import { yieldEvery, yieldToEventLoop } from '../core/yield'
@@ -62,14 +62,14 @@ function hashFile(filePath: string): string {
 }
 
 export class TsMorphIndexer {
-  private db: Database.Database
+  private db: DatabaseSync
 
   constructor(
     dbPath: string,
     private factIndexer: SqliteKbIndexer
   ) {
-    this.db = new Database(dbPath)
-    this.db.pragma('journal_mode = WAL')
+    this.db = new DatabaseSync(dbPath)
+    this.db.exec('PRAGMA journal_mode = WAL')
     runMigrations(this.db)
   }
 

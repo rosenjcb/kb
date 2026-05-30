@@ -17,3 +17,30 @@ export const CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE = `${CLI_ERROR_NO_KB_
 export function formatPrerequisiteError(message: string): string {
   return `❌ ${message}`
 }
+
+export function uninitializedBaseNotice(baseName: string): string {
+  return [
+    `Base "${baseName}" is set but hasn't been initialized yet.`,
+    '',
+    'Type /init to index this project, or run `kb init` from your terminal.',
+  ].join('\n')
+}
+
+/**
+ * Shown when a .kb file points at an uninitialised base and we kick off init automatically.
+ * We pass --base so the name-selection prompt is skipped.
+ */
+export function autoInitAnnouncement(baseName: string): string {
+  return [
+    `Base "${baseName}" was detected from a .kb file but hasn't been initialized yet.`,
+    `Running \`kb init --base ${baseName}\` to set up your knowledge base…`,
+  ].join('\n')
+}
+
+/** True when the TUI should kick off init automatically on startup. */
+export function shouldAutoInit(
+  source: string,
+  hasIndex: boolean,
+): boolean {
+  return !hasIndex && source === 'directory:.kb'
+}

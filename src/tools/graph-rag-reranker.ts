@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3'
+import type { DatabaseSync } from 'node:sqlite'
 import type { ReadDocumentsResultItem } from '../cli/intent-cli'
 import type { LLMProvider } from '../core/types'
 import { expandQueryWithGraph, toGraphQuerySlugs } from './graph-query-expansion'
@@ -55,7 +55,7 @@ export async function llmExtractQueryEntities(
 export function rerankByGraphConnectivity(
   results: ReadDocumentsResultItem[],
   queryEntities: string[],
-  db: Database.Database
+  db: DatabaseSync
 ): ReadDocumentsResultItem[] {
   if (queryEntities.length === 0 || results.length < 2) return results
 

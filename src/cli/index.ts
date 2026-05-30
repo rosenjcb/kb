@@ -4,6 +4,7 @@
  * KB Agent Harness CLI
  */
 
+import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -13,7 +14,7 @@ import {
   defaultLogsDir,
   estimateCost,
 } from '../core/telemetry'
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import { expandQueryWithGraph, kbIndexDbPath } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
@@ -62,7 +63,7 @@ import {
   printDocsRenameHelp,
   runDocsRename,
 } from './docs-rename-cli'
-import { ensurePythonEnv } from '../core/fact-categories'
+import { ensurePythonEnv, globalVenvPython } from '../core/fact-categories'
 import { FactsCommandError, runFactsCommand } from './facts-cli'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
 import { parseInitCommand, parseScanCommand, runKbInit } from './init-cli'
@@ -95,11 +96,14 @@ import { runQueryTruthRetrieval } from './query-truth-retrieval'
 import {
   formatSkillInstallReport,
   formatSkillUninstallReport,
+  installHooks,
   installSkillIntoProject,
   installSkillsGlobally,
+  uninstallHooks,
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
+import { runUninstallCommand } from './uninstall-cli'
 import {
   ViewCommandError,
   printListHelp,
@@ -123,6 +127,25 @@ const defaultCliOutput: CliOutput = {
   error: msg => console.error(msg),
   write: chunk => process.stdout.write(chunk),
 }
+
+// ---------------------------------------------------------------------------
+// Startup notices
+// ---------------------------------------------------------------------------
+
+export const FIRST_RUN_WELCOME_NOTICE = [
+  '👋 Welcome to KB!',
+  '',
+  'KB is a local knowledge base that indexes your codebase so you can ask questions,',
+  'explore relationships, and generate docs — all from the terminal.',
+  '',
+  'Quick start:',
+  '  kb init        index a project',
+  '  kb query       ask questions about your code',
+  '  kb graph       explore symbol relationships',
+  '  kb docs        generate documentation',
+  '',
+  'Type a message below or press ? for help.',
+].join('\n')
 
 // ---------------------------------------------------------------------------
 // Help printers
@@ -149,6 +172,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  sync        Install the latest published KB release',
     '  logs        Browse and compare run reports',
     '  skills      Manage agent skills',
+    '  uninstall   Remove the kb binary and optionally all user data',
     '',
     'Intent commands:',
     '  query       Search the knowledge base',
@@ -775,19 +799,20 @@ export async function runMainWithOutput(
     const subcommand = args[1]
     if (subcommand === 'install') {
       try {
-        const [skillResults, profileResults] = await Promise.all([
+        const [skillResults, profileResults, hookResults] = await Promise.all([
           installSkillsGlobally(),
           installSkillIntoProject(),
+          installHooks(),
         ])
-        out.log(formatSkillInstallReport(skillResults, profileResults))
+        out.log(formatSkillInstallReport(skillResults, profileResults, hookResults))
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)
       }
     } else if (subcommand === 'uninstall') {
       try {
-        const results = await uninstallSkills()
-        const report = formatSkillUninstallReport(results)
+        const [results, hookResults] = await Promise.all([uninstallSkills(), uninstallHooks()])
+        const report = formatSkillUninstallReport(results, hookResults)
         if (report) out.log(report)
         else out.log('No KB skill files found to remove.')
       } catch (error) {
@@ -805,6 +830,11 @@ export async function runMainWithOutput(
         ].join('\n')
       )
     }
+    return
+  }
+
+  if (firstArg === 'uninstall') {
+    await runUninstallCommand(args.slice(1), out)
     return
   }
 
@@ -863,7 +893,7 @@ export async function runMainWithOutput(
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
         if (originalQuery) {
           try {
-            const db = new Database(kbIndexDbPath(intentBaseDir), { readonly: true })
+            const db = new DatabaseSync(kbIndexDbPath(intentBaseDir), { readOnly: true })
             try {
               payload.query = expandQueryWithGraph(originalQuery, db)
               for (const qRel of [preRewriteQueryTruth, originalQuery]) {
@@ -912,7 +942,7 @@ export async function runMainWithOutput(
           const rerankerQuery = preRewriteQueryTruth
           const entities = await llmExtractQueryEntities(rerankerQuery, llmProvider)
           if (entities.length > 0) {
-            const db = new Database(kbIndexDbPath(intentBaseDir), { readonly: true })
+            const db = new DatabaseSync(kbIndexDbPath(intentBaseDir), { readOnly: true })
             try {
               const data = (aligned.data ?? {}) as ReadDocumentsResultData
               const reranked = rerankByGraphConnectivity(
@@ -1060,12 +1090,19 @@ async function main() {
       else if (r.action === 'updated') startupNotices.push(`↑ KB skill ${r.skill} updated for ${r.agent}`)
     }
 
+    const isFreshInstall = !existsSync(globalVenvPython())
+    if (isFreshInstall) {
+      process.stderr.write('👋 Welcome to KB! Setting up your environment for the first time…\n')
+    }
     try {
       ensurePythonEnv()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       process.stderr.write(`❌ ${message}\n`)
       process.exit(1)
+    }
+    if (isFreshInstall) {
+      startupNotices.push(FIRST_RUN_WELCOME_NOTICE)
     }
 
     const hasApiKey =
