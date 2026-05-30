@@ -12,7 +12,9 @@ import { runChatSession } from '../cli/chat-cli.js'
 import { parseInitCommand, parseScanCommand, runKbInit } from '../cli/init-cli.js'
 import {
   CLI_ERROR_NO_KB_BASE,
+  autoInitAnnouncement,
   formatPrerequisiteError,
+  shouldAutoInit,
   uninitializedBaseNotice,
 } from '../cli/cli-prerequisites.js'
 import type { KbConfig } from '../cli/kb-config.js'
@@ -342,17 +344,13 @@ export function App({ config, startupNotices = [] }: Props) {
     chatStartedRef.current = true
     resolveEffectiveBaseDir()
       .then(({ baseDir, baseName: effectiveBaseName, source }) => {
-        if (!existsSync(path.join(baseDir, '.kb-index.sqlite'))) {
-          if (source === 'directory:.kb') {
-            addEntry({
-              type: 'info',
-              content: `Base "${effectiveBaseName}" detected from .kb file but hasn't been initialized yet. Starting setup…`,
-            })
-            runInitFlow()
-          } else {
-            addEntry({ type: 'info', content: uninitializedBaseNotice(effectiveBaseName) })
-            startChatSession()
-          }
+        const hasIndex = existsSync(path.join(baseDir, '.kb-index.sqlite'))
+        if (shouldAutoInit(source, hasIndex)) {
+          addEntry({ type: 'info', content: autoInitAnnouncement(effectiveBaseName) })
+          runInitFlow(['--base', effectiveBaseName])
+        } else if (!hasIndex) {
+          addEntry({ type: 'info', content: uninitializedBaseNotice(effectiveBaseName) })
+          startChatSession()
         } else {
           startChatSession()
         }
