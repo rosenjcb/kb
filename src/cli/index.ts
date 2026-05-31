@@ -66,7 +66,8 @@ import {
 import { ensurePythonEnv, globalVenvPython } from '../core/fact-categories'
 import { FactsCommandError, runFactsCommand } from './facts-cli'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
-import { parseInitCommand, parseScanCommand, runKbInit } from './init-cli'
+import { parseInitCommand, parseScanCommand, runKbInit, isInitCancelledError } from './init-cli'
+import { initCancelledNotice, scanCancelledNotice } from './cli-prerequisites'
 import {
   isIntentCommand,
   isReadFactsResult,
@@ -706,6 +707,17 @@ export async function runMainWithOutput(
       await reporter.append(initCollector.finish('success', undefined, result.base))
       return
     } catch (error) {
+      if (isInitCancelledError(error)) {
+        let baseName: string | undefined
+        try {
+          baseName = (await resolveEffectiveBaseDir()).baseName
+        } catch {
+          baseName = undefined
+        }
+        await reporter.append(collector.finish('success', undefined, baseName))
+        out.log(initCancelledNotice(baseName))
+        return
+      }
       const message = error instanceof Error ? error.message : String(error)
       await reporter.append(collector.finish('error', message))
       out.error(`❌ ${message}`)
@@ -728,6 +740,17 @@ export async function runMainWithOutput(
       await reporter.append(scanCollector.finish('success', undefined, result.base))
       return
     } catch (error) {
+      if (isInitCancelledError(error)) {
+        let baseName: string | undefined
+        try {
+          baseName = (await resolveEffectiveBaseDir()).baseName
+        } catch {
+          baseName = undefined
+        }
+        await reporter.append(collector.finish('success', undefined, baseName))
+        out.log(scanCancelledNotice(baseName))
+        return
+      }
       const message = error instanceof Error ? error.message : String(error)
       await reporter.append(collector.finish('error', message))
       out.error(`❌ ${message}`)

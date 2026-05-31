@@ -65,7 +65,7 @@ export async function runDocsGenerateChatFlow(input: {
 
   const sectionsResult = await promptUserDocSections({
     writeLine: msg => printer.chatAssistant(msg),
-    readLine: prompt => read(prompt, { slashContext: 'docs-generate-question' }),
+    readLine: (prompt, opts) => read(prompt, opts),
   })
   if (sectionsResult === 'cancel') {
     printer.chatAssistant('Cancelled.')

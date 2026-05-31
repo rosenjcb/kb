@@ -116,11 +116,23 @@ describe('slash command helpers', () => {
     expect(suggestions.some(s => s.command === '/facts list')).toBe(true)
   })
 
-  it('shows /accept in docs-generate-review context only', () => {
+  it('shows /accept in docs-generate-review and named-list-confirm contexts', () => {
     expect(resolveSlashSuggestions('/ac', 'docs-generate-review').some(s => s.command === '/accept')).toBe(
       true
     )
+    expect(resolveSlashSuggestions('/ac', 'named-list-confirm').some(s => s.command === '/accept')).toBe(
+      true
+    )
     expect(resolveSlashSuggestions('/ac', 'idle').some(s => s.command === '/accept')).toBe(false)
+    expect(resolveSlashSuggestions('/ac', 'init-question').some(s => s.command === '/accept')).toBe(false)
+  })
+
+  it('shows /complete in init-question and docs-generate-question contexts', () => {
+    expect(resolveSlashSuggestions('/co', 'init-question').some(s => s.command === '/complete')).toBe(true)
+    expect(resolveSlashSuggestions('/co', 'docs-generate-question').some(s => s.command === '/complete')).toBe(
+      true
+    )
+    expect(resolveSlashSuggestions('/co', 'idle').some(s => s.command === '/complete')).toBe(false)
   })
 
   it('shows /skip in docs-generate-question context', () => {

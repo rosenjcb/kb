@@ -20,7 +20,8 @@ import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
 import type { IntentResult } from '../intents/types.js'
 import type { SlashInputContext } from '../tui/slash-command-registry.js'
 import { type CmdMode, cmd } from './cmd-ref'
-import { parseInitCommand, parseScanCommand, runKbInit } from './init-cli.js'
+import { parseInitCommand, parseScanCommand, runKbInit, isInitCancelledError } from './init-cli.js'
+import { initCancelledNotice, scanCancelledNotice } from './cli-prerequisites.js'
 import { isReadFactsResult, printReadDocumentsOrchestrationFooter } from './intent-cli.js'
 import type { KbConfig } from './kb-config'
 import { readKbConfig, resolveFactRetrievalMethod } from './kb-config'
@@ -612,9 +613,15 @@ export async function runChatSession(
           deps.onBaseChanged?.()
         } catch (err) {
           io.setProgressLine?.(null)
-          const errMsg = err instanceof Error ? err.message : String(err)
-          await initScanReporter.append(initScanCollector.finish('error', errMsg)).catch(() => {})
-          io.error(`${isScan ? 'Scan' : 'Init'} error: ${errMsg}`)
+          if (isInitCancelledError(err)) {
+            const baseName = deps.kbStorageDir ? path.basename(deps.kbStorageDir) : undefined
+            io.write(isScan ? scanCancelledNotice(baseName) : initCancelledNotice(baseName))
+            await initScanReporter.append(initScanCollector.finish('success', undefined)).catch(() => {})
+          } else {
+            const errMsg = err instanceof Error ? err.message : String(err)
+            await initScanReporter.append(initScanCollector.finish('error', errMsg)).catch(() => {})
+            io.error(`${isScan ? 'Scan' : 'Init'} error: ${errMsg}`)
+          }
         }
         printer.separator()
         continue

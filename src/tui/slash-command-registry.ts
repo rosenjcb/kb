@@ -2,9 +2,9 @@ export type SlashInputContext =
   | 'idle'
   | 'docs-generate-question'
   | 'docs-generate-review'
-  | 'init-category-confirm'
   | 'init-free-text'
   | 'init-question'
+  | 'named-list-confirm'
   | 'scan-base-picker'
 
 export interface SlashCommandSpec {
@@ -67,9 +67,10 @@ export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
 
   // Flow-local commands
   { path: ['skip'], description: 'skip the current question', contexts: ['docs-generate-question', 'init-question'] },
+  { path: ['complete'], description: 'finish adding items', contexts: ['docs-generate-question', 'init-question'] },
   { path: ['cancel'], description: 'cancel the current flow', contexts: 'always' },
-  { path: ['accept'], description: 'accept draft or categories', contexts: ['docs-generate-review', 'init-category-confirm'] },
-  { path: ['reject'], description: 'reject with feedback', contexts: ['docs-generate-review', 'init-category-confirm'] },
+  { path: ['accept'], description: 'accept list or draft', contexts: ['docs-generate-review', 'named-list-confirm'] },
+  { path: ['reject'], description: 'reject and start over', contexts: ['docs-generate-review', 'named-list-confirm'] },
 ]
 
 function specToSlashCommand(spec: SlashCommandSpec): SlashCommand {

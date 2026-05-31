@@ -26,6 +26,38 @@ export function uninitializedBaseNotice(baseName: string): string {
   ].join('\n')
 }
 
+export function initCancelledNotice(baseName?: string): string {
+  const trimmedBase = baseName?.trim()
+  const statusLine = trimmedBase
+    ? `"${trimmedBase}" is not set up yet — nothing was saved.`
+    : 'Your knowledge base is not set up yet — nothing was saved.'
+
+  return [
+    'No problem — init was cancelled.',
+    '',
+    statusLine,
+    '',
+    "Whenever you're ready:",
+    '  • Type /init here',
+    '  • Or run `kb init` from your terminal',
+  ].join('\n')
+}
+
+export function scanCancelledNotice(baseName?: string): string {
+  const trimmedBase = baseName?.trim()
+  const statusLine = trimmedBase
+    ? `Your "${trimmedBase}" knowledge base was left unchanged.`
+    : 'Your knowledge base was left unchanged.'
+
+  return [
+    'No problem — scan was cancelled.',
+    '',
+    statusLine,
+    '',
+    'Run /scan again whenever you want to refresh this project.',
+  ].join('\n')
+}
+
 /**
  * Shown when a .kb file points at an uninitialised base and we kick off init automatically.
  * We pass --base so the name-selection prompt is skipped.
