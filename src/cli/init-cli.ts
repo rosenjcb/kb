@@ -28,6 +28,7 @@ import {
   slugifyFactCategoryName,
   type FactCategoryDefinitionInput,
 } from '../core/fact-categories'
+import { promptNamedListInterview } from './named-list-interview'
 import { DOC_TYPES } from '../core/doc-taxonomy'
 import {
   ingestSourceMarkdownFilesAsFacts,
@@ -249,6 +250,10 @@ export class InitCancelledError extends Error {
     super(message)
     this.name = 'InitCancelledError'
   }
+}
+
+export function isInitCancelledError(error: unknown): error is InitCancelledError {
+  return error instanceof InitCancelledError
 }
 
 export interface InitQuestionIO {
@@ -1641,52 +1646,37 @@ async function promptUserCategories(
   rescan: boolean
 ): Promise<FactCategoryDefinitionInput[]> {
   const label = rescan ? 'kb scan' : 'kb init'
-  for (;;) {
-    const raw = (
-      await questionIO.askQuestion(
-        `\n[${label}] Enter categories (comma-separated, /skip, or /cancel): `,
-        { slashContext: 'init-question' }
-      )
-    ).trim()
-    if (!raw || raw === '/skip') return []
-    if (raw === '/cancel') throw new InitCancelledError()
+  const result = await promptNamedListInterview(
+    {
+      write: message => questionIO.write?.(message),
+      ask: (prompt, opts) => questionIO.askQuestion(prompt, opts),
+    },
+    {
+      label,
+      itemNounSingular: 'category',
+      itemNounPlural: 'categories',
+      listLabel: 'Categories',
+      defaultDescription: name => `Facts about ${name.toLowerCase()}`,
+      slashContext: {
+        name: 'init-question',
+        description: 'init-free-text',
+        confirm: 'named-list-confirm',
+      },
+    },
+    ({ name, description }) => ({
+      id: `category-${slugifyFactCategoryName(name)}`,
+      name,
+      description,
+      status: 'edited' as const,
+      createdBy: 'user' as const,
+      representativeTerms: name.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 4),
+      centroidVector: [],
+    })
+  )
 
-    const names = raw.split(',').map(s => s.trim()).filter(Boolean)
-    if (names.length === 0) return []
-
-    questionIO.write?.(
-      `\nCategories:\n${names.map((name, index) => `  ${index + 1}. ${name}`).join('\n')}\n\n`
-    )
-
-    const answer = (
-      await questionIO.askQuestion('> /accept or /reject: ', { slashContext: 'init-category-confirm' })
-    )
-      .trim()
-      .toLowerCase()
-    if (answer === '/cancel') throw new InitCancelledError()
-    if (answer === '/accept') {
-      const categories: FactCategoryDefinitionInput[] = []
-      for (const name of names) {
-        const defaultDesc = `Facts about ${name.toLowerCase()}`
-        const desc = (
-          await questionIO.askQuestion(`> Description for "${name}" (blank: "${defaultDesc}"): `, {
-            slashContext: 'init-free-text',
-          })
-        ).trim()
-        if (desc === '/cancel') throw new InitCancelledError()
-        categories.push({
-          id: `category-${slugifyFactCategoryName(name)}`,
-          name,
-          description: desc || defaultDesc,
-          status: 'edited' as const,
-          createdBy: 'user' as const,
-          representativeTerms: name.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 4),
-          centroidVector: [],
-        })
-      }
-      return categories
-    }
-  }
+  if (result.kind === 'cancel') throw new InitCancelledError()
+  if (result.kind === 'skip') return []
+  return result.items
 }
 
 // TODO: restore after HDBSCAN UX is validated — per-category accept/rename/reject/merge review

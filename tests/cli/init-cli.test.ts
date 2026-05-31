@@ -371,6 +371,40 @@ describe('init-cli interview checkpoints', () => {
     }
   })
 
+  it('Given interactive init category descriptions left blank, then saves placeholder descriptions', async () => {
+    const cwd = await createTempProject({
+      'README.md': [
+        '# KB',
+        '',
+        'kb query retrieves facts from sqlite and graph traversal.',
+        'kb init segments markdown into facts and writes them into the base.',
+        'retrieval scoring broadens search across connected concepts.',
+      ].join('\n'),
+    })
+
+    const questionIO = createQuestionIO(['CLI', '', 'API', '', '/complete', '/accept'])
+    const result = await runKbInit({
+      base: 'category-blank-desc-test',
+      nonInteractive: false,
+      cwd,
+      questionIO: questionIO.io,
+    })
+
+    expect(result.status).toBe('accepted')
+
+    const baseDir = await ensureOperationalBaseDir('category-blank-desc-test', cwd)
+    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+    try {
+      const categories = indexer.listFactCategories()
+      expect(categories.map(c => ({ name: c.name, description: c.description })).sort((a, b) => a.name.localeCompare(b.name))).toEqual([
+        { name: 'API', description: 'Facts about api' },
+        { name: 'CLI', description: 'Facts about cli' },
+      ])
+    } finally {
+      indexer.close()
+    }
+  })
+
   it('Given resume after import-docs pause, then finishes init without re-asking read-inputs', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',

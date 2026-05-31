@@ -11,12 +11,13 @@ import {
 } from '../cli/base-selection.js'
 import type { ChatIO, ChatReadOptions } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
-import { parseInitCommand, parseScanCommand, runKbInit } from '../cli/init-cli.js'
 import { performUninstall } from '../cli/uninstall-cli.js'
 import {
   CLI_ERROR_NO_KB_BASE,
   autoInitAnnouncement,
   formatPrerequisiteError,
+  initCancelledNotice,
+  scanCancelledNotice,
   shouldAutoInit,
   uninitializedBaseNotice,
 } from '../cli/cli-prerequisites.js'
@@ -24,6 +25,7 @@ import type { KbConfig } from '../cli/kb-config.js'
 import {
   createLLMProviderFromConfig,
 } from '../cli/kb-config.js'
+import { isInitCancelledError, parseInitCommand, parseScanCommand, runKbInit } from '../cli/init-cli.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
 import { awaitRefreshThenStart } from './base-refresh.js'
 import { classifyChatReadPromptKind, shouldStartChatPending } from './chat-read-kind.js'
@@ -298,6 +300,27 @@ export function App({ config, startupNotices = [] }: Props) {
     [config, addEntry, updateEntry, stopChatPending, finalizeChatResponse, refreshBase, exit]
   )
 
+  const handleInitFlowCancel = useCallback(
+    async (flow: 'init' | 'scan') => {
+      try {
+        const { baseName } = await resolveEffectiveBaseDir()
+        addEntry({
+          type: 'info',
+          content: flow === 'init' ? initCancelledNotice(baseName) : scanCancelledNotice(baseName),
+        })
+      } catch {
+        addEntry({
+          type: 'info',
+          content: flow === 'init' ? initCancelledNotice() : scanCancelledNotice(),
+        })
+      }
+      if (!chatSessionIdRef.current) {
+        startChatSession()
+      }
+    },
+    [addEntry, startChatSession]
+  )
+
   const runInitFlow = useCallback(async (extraArgs: string[] = []) => {
     setIsRunning(true)
     try {
@@ -334,12 +357,16 @@ export function App({ config, startupNotices = [] }: Props) {
       await awaitRefreshThenStart(refreshBase, startChatSession)
     } catch (err) {
       setProgressLine(null)
+      if (isInitCancelledError(err)) {
+        await handleInitFlowCancel('init')
+        return
+      }
       const message = err instanceof Error ? err.message : String(err)
       addEntry({ type: 'error', content: message })
     } finally {
       setIsRunning(false)
     }
-  }, [addEntry, refreshBase, startChatSession])
+  }, [addEntry, refreshBase, startChatSession, handleInitFlowCancel])
 
   // Start chat session once after base dir resolves; auto-init when .kb file points at an uninitialised base
   useEffect(() => {
@@ -364,7 +391,17 @@ export function App({ config, startupNotices = [] }: Props) {
   const handleSubmit = useCallback(
     async (value: string) => {
       const trimmed = value.trim()
-      if (!trimmed) return
+      const pendingInput = chatInputResolverRef.current
+      if (!trimmed) {
+        if (pendingInput) {
+          setInputValue('')
+          chatInputResolverRef.current = null
+          setSlashContext('idle')
+          setInlineSuggestions([])
+          pendingInput('')
+        }
+        return
+      }
       setInputValue('')
 
       // ── Pending confirmation (base/docs delete) ──
@@ -613,6 +650,10 @@ export function App({ config, startupNotices = [] }: Props) {
             await awaitRefreshThenStart(refreshBase, startChatSession)
           } catch (err) {
             setProgressLine(null)
+            if (isInitCancelledError(err)) {
+              await handleInitFlowCancel('scan')
+              return
+            }
             const message = err instanceof Error ? err.message : String(err)
             addEntry({ type: 'error', content: message })
           } finally {
@@ -645,6 +686,7 @@ export function App({ config, startupNotices = [] }: Props) {
       runInitFlow,
       refreshBase,
       exit,
+      handleInitFlowCancel,
     ]
   )
 

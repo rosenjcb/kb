@@ -1,37 +1,44 @@
 import type { UserDefinedDocSection } from '../core/doc-generate-session'
+import type { SlashInputContext } from '../tui/slash-command-registry.js'
+import { promptNamedListInterview, type NamedListInterviewIO } from './named-list-interview'
 
 export interface DocSectionsIO {
   writeLine: (msg: string) => void
-  readLine: (prompt: string) => Promise<string | null>
+  readLine: (prompt: string, opts?: { slashContext?: SlashInputContext }) => Promise<string | null>
+}
+
+function toNamedListInterviewIO(io: DocSectionsIO): NamedListInterviewIO {
+  return {
+    write: message => io.writeLine(message),
+    ask: async (prompt, opts) => {
+      const answer = await io.readLine(prompt, opts)
+      if (answer === null) return '/cancel'
+      return answer
+    },
+  }
 }
 
 export async function promptUserDocSections(
   io: DocSectionsIO
 ): Promise<UserDefinedDocSection[] | 'skip' | 'cancel'> {
-  for (;;) {
-    const raw = await io.readLine(
-      '\n[docs generate] Enter sections (comma-separated, /skip, or /cancel): '
-    )
-    if (raw === null || raw.trim() === '/cancel') return 'cancel'
-    const trimmed = raw.trim()
-    if (!trimmed || trimmed === '/skip') return 'skip'
+  const result = await promptNamedListInterview(
+    toNamedListInterviewIO(io),
+    {
+      label: 'docs generate',
+      itemNounSingular: 'section',
+      itemNounPlural: 'sections',
+      listLabel: 'Sections',
+      defaultDescription: name => `Content about ${name.toLowerCase()}`,
+      slashContext: {
+        name: 'docs-generate-question',
+        description: 'init-free-text',
+        confirm: 'named-list-confirm',
+      },
+    },
+    ({ name, description }) => ({ name, description })
+  )
 
-    const names = trimmed.split(',').map(s => s.trim()).filter(Boolean)
-    if (names.length === 0) return 'skip'
-
-    io.writeLine(`\nSections:\n${names.map((name, i) => `  ${i + 1}. ${name}`).join('\n')}\n`)
-
-    const answer = await io.readLine('> /accept or /reject: ')
-    if (answer === null || answer.trim() === '/cancel') return 'cancel'
-    if (answer.trim().toLowerCase() !== '/accept') continue
-
-    const sections: UserDefinedDocSection[] = []
-    for (const name of names) {
-      const defaultDesc = `Content about ${name.toLowerCase()}`
-      const desc = await io.readLine(`> Description for "${name}" (blank: "${defaultDesc}"): `)
-      if (desc === null || desc.trim() === '/cancel') return 'cancel'
-      sections.push({ name, description: desc.trim() || defaultDesc })
-    }
-    return sections
-  }
+  if (result.kind === 'cancel') return 'cancel'
+  if (result.kind === 'skip') return 'skip'
+  return result.items
 }

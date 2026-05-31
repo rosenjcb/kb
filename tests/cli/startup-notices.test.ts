@@ -4,6 +4,8 @@ import { describe, expect, it, afterEach, beforeEach } from 'vitest'
 import { FIRST_RUN_WELCOME_NOTICE } from '../../src/cli/index'
 import {
   autoInitAnnouncement,
+  initCancelledNotice,
+  scanCancelledNotice,
   shouldAutoInit,
   uninitializedBaseNotice,
 } from '../../src/cli/cli-prerequisites'
@@ -90,6 +92,33 @@ describe('uninitializedBaseNotice', () => {
   it('reflects the given base name exactly', () => {
     const notice = uninitializedBaseNotice('special-base-99')
     expect(notice).toContain('"special-base-99"')
+  })
+})
+
+describe('initCancelledNotice', () => {
+  it('reassures the user and names the base when provided', () => {
+    const notice = initCancelledNotice('my-project')
+    expect(notice).toContain('No problem')
+    expect(notice).toContain('"my-project"')
+    expect(notice).toContain('nothing was saved')
+    expect(notice).toContain('/init')
+    expect(notice).toContain('kb init')
+  })
+
+  it('works without a base name', () => {
+    const notice = initCancelledNotice()
+    expect(notice).toContain('not set up yet')
+    expect(notice).toContain('/init')
+  })
+})
+
+describe('scanCancelledNotice', () => {
+  it('reassures the user and names the base when provided', () => {
+    const notice = scanCancelledNotice('my-project')
+    expect(notice).toContain('No problem')
+    expect(notice).toContain('"my-project"')
+    expect(notice).toContain('unchanged')
+    expect(notice).toContain('/scan')
   })
 })
 
