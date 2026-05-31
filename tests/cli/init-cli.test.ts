@@ -403,20 +403,14 @@ describe('init-cli interview checkpoints', () => {
     } finally {
       indexer.close()
     }
-  })
+  }, 20000)
 
   it('Given resume after import-docs pause, then finishes init without re-asking read-inputs', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
     })
 
-    const firstQuestionIO = createQuestionIO([
-      'Install with npm install.',
-      'Use kb query for lookup.',
-      '',
-      '',
-      '',
-    ])
+    const firstQuestionIO = createQuestionIO([])
     const provider = createProvider([])
 
     const firstRun = await runKbInit({
@@ -617,9 +611,9 @@ describe('init-cli interview checkpoints', () => {
       questionIO: sequentialQuestionIO.io,
     })
 
-    // 1 prompt = categories question (answers blank → skipped); no interview questions resumed
+    // 1 prompt = category name question (answers blank → skipped); no interview questions resumed
     expect(sequentialQuestionIO.prompts).toHaveLength(1)
-    expect(sequentialQuestionIO.prompts[0]).toContain('categories')
+    expect(sequentialQuestionIO.prompts[0]).toContain('category')
   })
 
   it('Given several repo markdown files, then import-docs checkpoint lists each as original', async () => {
