@@ -1,7 +1,7 @@
 ---
 layout: default
 title: skills/kb:dev-workflow/SKILL.md
-date: '2026-05-26'
+date: '2026-05-30'
 kb_id: skills-kb-dev-workflow-skill-md
 tags:
   - original-source

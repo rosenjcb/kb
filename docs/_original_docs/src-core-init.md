@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/INIT.md
-date: '2026-05-26'
+date: '2026-05-30'
 kb_id: src-core-init-md
 tags:
   - original-source
@@ -13,7 +13,7 @@ categories:
 
 # KB Init Pipeline
 
-`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs + optional source-code crawl), **`document-facts`** (document facts from markdown sources), **`code-facts`** (LLM fallback facts for source code when AST providers are unavailable), **`fact-categories`** (interactive step: user defines named categories with descriptions, facts are then assigned via TF-IDF cosine similarity), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations), and **`ast-facts`** (deterministic AST indexing directly into `facts` + `fact_edges`). Use **`kb scan`** to refresh sources against an existing base.
+`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs), **`code-index`** (deterministic AST indexing into `facts` + `fact_edges`), **`document-facts`** (sentence facts from markdown sources), **`fact-categories`** (interactive step: user defines named categories with descriptions, facts are then assigned via TF-IDF cosine similarity), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), and **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations). Use **`kb scan`** to refresh sources against an existing base.
 
 In the TUI, init/scan progress is rendered as a dedicated live status line instead of transcript history. Any phase that iterates over a collection of files, docs, facts, claims, or mutations emits incremental progress while that collection is being processed; only atomic operations stay start/finish-only. Progress lines include counts and, when useful, the current item. The long-running deterministic phases also yield cooperatively to the event loop between batches so the terminal can repaint and interrupts remain responsive during large scans.
 
@@ -22,45 +22,37 @@ In the TUI, init/scan progress is rendered as a dedicated live status line inste
 ```mermaid
 flowchart TD
     A[kb init] --> B[collectSourceFiles]
-    A --> C[crawlSourceCode]
 
     B --> B1["Fixed candidates\n(README, CLAUDE, AGENTS, …)"]
     B --> B2["Top-level *.md files\n(up to 8 total)"]
     B1 & B2 --> D[sourceFiles\nRecord<path, content>]
 
-    C --> C1["Walk repo tree\n(skip node_modules, dist, .git, …)"]
-    C1 --> C2["Collect *.ts *.tsx *.js *.py *.go …\n(up to 200 files, 400 chars/file)"]
-    C2 --> E[codeFiles\nRecord<path, snippet>]
-
-    D & E --> F[InitContext]
+    D --> F[InitContext]
 ```
 
 - `sourceFiles` — human-readable documentation files collected for **`import-docs`** (verbatim originals) and for **`document-facts`** / prompts.
-- `codeFiles` — structural index of source code. Fed into **`code-facts`** extraction.
 
 ## Init cycles
 
 ```mermaid
 flowchart TD
     A[kb init] --> R[read-inputs]
-    R --> MF[document-facts]
-    MF --> CF[code-facts]
-    CF --> FC[fact-categories]
+    R --> CI[code-index]
+    CI --> MF[document-facts]
+    MF --> FC[fact-categories]
     FC --> IM[import-docs]
     IM --> W[write]
-    W --> AF[ast-facts]
 
-    MF --> MF1["LLM document extraction\n→ facts import_doc"]
-    CF --> CF1["LLM fallback only\n→ import_code facts"]
+    CI --> CI1["AST indexing\n→ facts + fact_edges"]
+    MF --> MF1["Sentence segmentation\n→ facts import_doc"]
     FC --> FC1["User names categories + descriptions\n→ TF-IDF assignment to all facts"]
     IM --> IM1["One original doc\nper source file"]
     W --> W1["SQLite upsert\n+ scan planner"]
-    AF --> AF1["AST indexing\n→ facts + fact_edges"]
 ```
 
 ## Fact Categories
 
-After `document-facts` and `code-facts` have populated the facts table, `kb init` (interactive mode only, skipped on `kb scan`) prompts the user to define **fact categories** — named buckets that help organise retrieval.
+After `document-facts` (and AST `code-index`) have populated the facts table, `kb init` (interactive mode only, skipped on `kb scan`) prompts the user to define **fact categories** — named buckets that help organise retrieval.
 
 **Flow:**
 
@@ -106,23 +98,11 @@ README.md is excluded from both — it is the site homepage (`docs/index.md`).
 
 When the init pipeline (or any path using **`SqliteDocumentWriter`**) persists markdown documents, the writer **indexes candidate facts** from document bodies (deterministic sentence segmentation, length filters, and capped inserts into the **`facts`** table). That is **incremental** fact growth alongside init; see **`facts-architecture.md`** §2 / §7 for the full ingest model.
 
-## Code-derived facts (AST-first)
+## Code-derived facts (AST-only)
 
-Source code facts are AST-first. Supported languages are indexed deterministically by the AST pipeline and promoted into facts. The **`code-facts`** cycle ([src/core/code-fact-extract.ts](code-fact-extract.ts)) is a fallback path for languages or environments where AST indexing is unavailable.
+Source code facts come **only** from deterministic AST indexing (`TsMorphIndexer` + `TreeSitterIndexer`) during the **`code-index`** cycle. Supported languages get symbol facts and structural edges in `facts` / `fact_edges`. Languages without a wired WASM grammar are **not indexed** — there is no LLM fallback.
 
-1. **Skeleton** — a deterministic regex pass per file extracts top-level exports, imports, and the leading doc block. The skeleton is used only as **prompt context** and as the **anchor namespace**; it does not write fact rows.
-2. **LLM semantic pass** — one structured JSON call per file (system prompt: [src/prompts/code-fact-extract.md](../prompts/code-fact-extract.md)) returns a `module_summary` plus up to **`KB_CODE_FACTS_MAX_PER_FILE`** semantic facts. Each fact carries a `triplet` (subject/predicate/object) and an `anchor` that is either `module` or one of the symbols from the skeleton.
-3. **Repair-friendly upsert** — every row is stored with `source_kind = 'import_code'` and `source_ref = code:<path>@<anchor>#<contentHash>`. On re-run we group prior rows by `<path>@<anchor>` (via `SqliteKbIndexer.listActiveFactsBySourceRefPrefix`) and:
-   - identical normalized text → no-op (dedupe in `upsertFact`),
-   - reworded text → tombstone the old rows and insert the new one with `supersedes_fact_id`,
-   - anchor missing in the new payload → tombstone all rows for that anchor.
-4. **Scan** — `kb scan` reads `code-facts-manifest.json` (per-base sidecar) and only re-extracts files whose `sha256` changed. The per-anchor diff guarantees that unchanged files don't churn the `facts` table.
-
-Budget knobs (env, sane defaults): `KB_CODE_FACTS_MAX_FILES=40`, `KB_CODE_FACTS_PER_FILE_CHARS=6000`, `KB_CODE_FACTS_MAX_CONCURRENCY=4`, `KB_CODE_FACTS_MAX_PER_FILE=8`. The graph builder (`rebuildFactGraph`) consumes the new triples directly — there is **no separate AST table**.
-
-## Code-graph cycle (cycle 7)
-
-The **`code-graph`** cycle runs at the end of every `kb init` and `kb scan`. It performs deterministic AST indexing of every file in the repo — no LLM involved — and writes directly into `facts` (`source_kind='import_code'`) and `fact_edges` in the same `.kb-index.sqlite` database.
+See **Language Support** below for the current AST matrix and the removed fallback list.
 
 ### Two indexers
 
@@ -157,26 +137,26 @@ To keep the TUI responsive, the deterministic ingest/index loops yield back to t
 
 ## Language Support
 
-Two pipelines index source code. **Code-graph** (`TsMorphIndexer` / `TreeSitterIndexer`) is deterministic AST-based. **Code-facts** (`code-fact-extract.ts`) is an LLM semantic pass. They are independent — a language can appear in one, both, or neither.
+One pipeline indexes source code: **code-graph** (`TsMorphIndexer` / `TreeSitterIndexer`), deterministic AST-based.
 
-| Language | Extensions | Code-graph (AST) | Code-facts (LLM) |
-|---|---|---|---|
-| TypeScript | `.ts` `.tsx` `.mts` `.cts` | yes — TsMorphIndexer (type-aware) + TreeSitter | yes |
-| JavaScript | `.js` `.jsx` `.mjs` `.cjs` | yes — TsMorphIndexer + TreeSitter | yes |
-| Python | `.py` | yes | yes |
-| Go | `.go` | yes (uppercase-export convention) | yes |
-| Ruby | `.rb` | yes | yes |
-| Java | `.java` | yes | yes |
-| Rust | `.rs` | yes | yes |
-| Swift | `.swift` | no — no tree-sitter grammar | yes |
-| Kotlin | `.kt` | no — no tree-sitter grammar | yes |
-| C / C++ | `.c` `.h` `.cpp` `.cc` `.hpp` … | yes | no |
-| C# | `.cs` | yes | no |
-| PHP | `.php` | yes | no |
-| Scala | `.scala` | yes | no |
-| Bash | `.sh` `.bash` `.zsh` | yes | no |
-| CSS | `.css` | yes (selectors) | no |
-| HTML | `.html` `.htm` | yes (id elements) | no |
+| Language | Extensions | Code-graph (AST) |
+|---|---|---|
+| TypeScript | `.ts` `.tsx` `.mts` `.cts` | yes — TsMorphIndexer (type-aware) + TreeSitter |
+| JavaScript | `.js` `.jsx` `.mjs` `.cjs` | yes — TsMorphIndexer + TreeSitter |
+| Python | `.py` | yes |
+| Go | `.go` | yes (uppercase-export convention) |
+| Ruby | `.rb` | yes |
+| Java | `.java` | yes |
+| Rust | `.rs` | yes |
+| C / C++ | `.c` `.h` `.cpp` `.cc` `.hpp` … | yes |
+| C# | `.cs` | yes |
+| PHP | `.php` | yes |
+| Scala | `.scala` | yes |
+| Bash | `.sh` `.bash` `.zsh` | yes |
+| CSS | `.css` | yes (selectors) |
+| HTML | `.html` `.htm` | yes (id elements) |
+| Swift | `.swift` | **no** — no tree-sitter WASM grammar |
+| Kotlin | `.kt` `.kts` | **no** — `tree-sitter-kotlin` is native-only |
 
 Code-graph import/export edges: TS/JS have full import resolution; Go uses uppercase-initial convention; Python/Rust/Ruby/Java/C/C#/PHP/Scala/HTML extract exports but not imports (except Ruby `require` and PHP `require`/`include`).
 
@@ -184,15 +164,27 @@ Code-graph import/export edges: TS/JS have full import resolution; Go uses upper
 
 **Ignored entirely**: images, binaries, lock files, compiled artifacts.
 
-To add a language to code-graph: install `tree-sitter-<lang>`, add to `LANG_CONFIGS` + `EXT_MAP` in `src/tools/tree-sitter-indexer.ts`. To add to code-facts: add the extension to `LANG_BY_EXT` in `src/core/code-fact-extract.ts`.
+To add a language to code-graph: install `tree-sitter-<lang>`, add to `LANG_CONFIGS` + `EXT_MAP` in `src/tools/tree-sitter-indexer.ts`.
+
+### Removed LLM code-facts fallback (historical)
+
+Before removal, languages **without** AST support could be indexed via an LLM semantic pass (`code-fact-extract.ts`, prompt `code-fact-extract.md`). That path is **gone** — no AST module means the language is skipped.
+
+**Languages actually crawled for LLM fallback** (allowlist `SOURCE_CODE_EXTENSIONS` in `init-cli.ts` at removal):
+
+| Language | Extensions | Notes |
+|---|---|---|
+| Swift | `.swift` | No WASM tree-sitter grammar available |
+| Kotlin | `.kt`, `.kts` | `tree-sitter-kotlin` has no WASM build |
+
+**Not LLM-fallback targets** (despite labels in the extractor's internal `LANG_BY_EXT` map): TypeScript, JavaScript, Python, Go, Ruby, Java, Rust. Those extensions were excluded from the crawl because AST indexing already handled them — the LLM pass never ran on them in production.
+
+**How the fallback worked:** `crawlSourceCode()` walked the repo for the extensions above (up to 200 files, 400 chars/file), then one LLM call per file produced `{ module_summary, facts[] }` rows as `source_kind='import_code'`. Incremental rescans tracked file hashes in `code-facts-manifest.json`.
 
 ## Configuration Constants
 
 | Constant | Value | Purpose |
 |---|---|---|
 | `MAX_SOURCE_SIZE` | 20 000 chars | Per-file cap for documentation files |
-| `SOURCE_CODE_PER_FILE_CHARS` | 400 chars | Per-file snippet length for code crawl |
-| `SOURCE_CODE_MAX_FILES` | 200 | Max source files indexed |
-| `SOURCE_CODE_MAX_TOTAL_CHARS` | 60 000 chars | Total code index budget |
 | `INIT_SOURCE_SHARD_MAX_FILES` | (see code) | Max shards when expanding |
 | `INIT_SOURCE_SHARD_MAX_CHARS` | 8 000 chars | Per-shard content cap |

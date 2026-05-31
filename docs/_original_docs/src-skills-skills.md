@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/skills/SKILLS.md
-date: '2026-05-26'
+date: '2026-05-30'
 kb_id: src-skills-skills-md
 tags:
   - original-source
