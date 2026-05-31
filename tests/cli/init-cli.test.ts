@@ -226,19 +226,16 @@ describe('init-cli interview checkpoints', () => {
     expect(parsed.stopAfter).toBe('document-facts')
   })
 
-  it('Given init cycle validation, then exactly 6 phases are defined without pass-graph', () => {
-    // This test validates the pass-graph removal: init should have exactly 6 phases
-    // read-inputs -> document-facts -> code-facts -> import-docs -> write -> ast-facts
-    const expectedCycles: Array<'read-inputs' | 'document-facts' | 'code-facts' | 'import-docs' | 'write' | 'ast-facts'> = [
+  it('Given init cycle validation, then exactly 5 phases are defined without pass-graph', () => {
+    const expectedCycles: Array<'read-inputs' | 'document-facts' | 'import-docs' | 'write' | 'ast-facts'> = [
       'read-inputs',
       'document-facts',
-      'code-facts',
       'import-docs',
       'write',
       'ast-facts',
     ]
-    
-    expect(expectedCycles).toHaveLength(6)
+
+    expect(expectedCycles).toHaveLength(5)
     expect(expectedCycles).not.toContain('pass-graph')
   })
 
@@ -1124,61 +1121,8 @@ describe('init-cli token tracking', () => {
     }
   }
 
-  it('Given a project with LLM-indexed code files (Swift) and a collector, then code-index stage appears in the report with non-zero tokens', async () => {
-    // TS/JS/Go/Python/etc. use the AST indexer; SOURCE_CODE_EXTENSIONS (Swift, Kotlin) trigger ingestCodeFilesAsFacts.
-    const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-tok-'))
-    try {
-      await writeFile(
-        path.join(dir, 'main.swift'),
-        '/**\n * Greeting utilities for the application.\n */\nfunc greet(name: String) -> String {\n    return "Hello, \\(name)!"\n}\nfunc farewell(name: String) -> String {\n    return "Goodbye, \\(name)!"\n}\n',
-        'utf8'
-      )
-      const collector = new RunCollector('init')
-      await runKbInit({
-        base: 'tok-code-index',
-        nonInteractive: true,
-        cwd: dir,
-        provider: createTokenProvider(300, 100),
-        collector,
-      })
-      const report = collector.finish('success')
-      const codeIndexStage = report.stages.find(s => s.stage === 'code-index')
-      expect(codeIndexStage).toBeDefined()
-      expect(codeIndexStage?.inputTokens).toBeGreaterThan(0)
-      expect(codeIndexStage?.outputTokens).toBeGreaterThan(0)
-      expect(report.totalInputTokens).toBeGreaterThan(0)
-    } finally {
-      await rm(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('Given a Swift-only project (no markdown) with a collector, then code-index tokens are not lost when document-facts is skipped', async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-tok-nomd-'))
-    try {
-      await writeFile(
-        path.join(dir, 'util.swift'),
-        '/**\n * Math utilities.\n */\nfunc add(_ a: Int, _ b: Int) -> Int { a + b }\nfunc subtract(_ a: Int, _ b: Int) -> Int { a - b }\n',
-        'utf8'
-      )
-      const collector = new RunCollector('init')
-      await runKbInit({
-        base: 'tok-no-markdown',
-        nonInteractive: true,
-        cwd: dir,
-        provider: createTokenProvider(200, 80),
-        collector,
-      })
-      const report = collector.finish('success')
-      expect(report.totalInputTokens).toBeGreaterThan(0)
-      expect(report.totalOutputTokens).toBeGreaterThan(0)
-    } finally {
-      await rm(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('Given a TypeScript-only project, then code-index LLM stage is absent and total tokens are zero', async () => {
-    // TypeScript files use the AST indexer (tree-sitter), not the LLM extraction pass,
-    // so no code-index stage should be recorded and total tokens should be 0.
+  it('Given a TypeScript-only project, then AST code-index uses no LLM tokens', async () => {
+    // TypeScript files use the AST indexer (tree-sitter), not an LLM pass.
     const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-tok-ts-'))
     try {
       await writeFile(path.join(dir, 'index.ts'), 'export function greet() { return "hi" }', 'utf8')
