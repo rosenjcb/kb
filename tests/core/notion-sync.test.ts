@@ -90,6 +90,20 @@ describe('syncDocsToNotion preview', () => {
     ])
     expect(result.written).toHaveLength(1)
   })
+
+  it('Given a doc with no title, then skips it with reason', async () => {
+    const result = await syncDocsToNotion({
+      token: 'token',
+      parentPageId: 'parent-1',
+      baseName: 'dogfood',
+      baseDir: tempDir,
+      docs: [makeDoc({ title: '' })],
+      apply: false,
+    })
+
+    expect(result.written).toHaveLength(0)
+    expect(result.skipped).toEqual([{ id: 'doc-1', title: '', reason: 'no title' }])
+  })
 })
 
 describe('syncDocsToNotion apply', () => {

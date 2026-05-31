@@ -77,6 +77,17 @@ Non-interactive callers (TUI, CI) should pass `--yes` or `--purge`; without a TT
 
 Distinct from `pnpm uninstall:global` (`scripts/uninstall-global.sh`), which targets the dev symlink at `$PNPM_HOME/bin/kb` and removes `dist/` + both the repo-local and global `.kb-python` venvs. **`kb uninstall` must never touch `$PNPM_HOME` paths.**
 
+## Publish
+
+`kb publish notion` and `kb publish jekyll` read publishable docs from the base SQLite index and sync them to an external sink. See [`../core/publish/PUBLISH.md`](../core/publish/PUBLISH.md).
+
+| Command | Apply flag | Notes |
+|---|---|---|
+| `publish jekyll [--dir <root>] [--base <name>]` | `--apply` | Wipes lane `.md` dirs, rewrites collections + graph |
+| `publish notion [--base <name>] [--parent-page-id <id>]` | `--apply` | Archives section children, recreates pages; state in `.kb-publish-notion.json` |
+
+Preview responses include `removed` / `removedPages` for docs that exist in the sink but not in SQLite.
+
 ## Gotchas
 
 - **Base resolution:** Most commands flow through `base-selection.ts`; missing base → `CLI_ERROR_NO_KB_BASE` (formatted by `cli-prerequisites.ts`).

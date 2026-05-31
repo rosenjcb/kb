@@ -38,7 +38,7 @@ Facts are written exclusively by automated ingest (`kb init` / `kb scan` AST and
 | **Original** | Authored or imported markdown representing source material; facts were (or will be) **extracted** from it. |
 | **Generated** | Produced by tools such as **`kb docs generate`** (or init synthesis outputs treated as generated docs), grounded in facts + prompts. |
 
-**Neither kind is used directly** to answer ad-hoc questions in the target architecture. Readers see them on **publish** (static site, export, “view doc”), not as chunks inside **`read_facts`** for chat.
+**Neither kind is used directly** to answer ad-hoc questions in the target architecture. Readers see them on **publish** (static site, export, “view doc”), not as chunks inside **`read_facts`** for chat. Sync semantics: [`publish/PUBLISH.md`](./publish/PUBLISH.md).
 
 ---
 
