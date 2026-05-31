@@ -3,9 +3,7 @@
  *
  * Cycle 1 (read-inputs):    Discover markdown sources under working dir (recursive).
  * Cycle 2 (code-index):     Deterministic AST indexing (ts-morph for TS/JS, tree-sitter for Go/other)
- *                            → facts table (symbols, imports, structural edges), followed by per-file
- *                            LLM semantic extraction (code-facts) as an enrichment pass when an LLM
- *                            provider is configured.
+ *                            → facts table (symbols, imports, structural edges).
  * Cycle 3 (document-facts): Deterministic sentence segmentation of source markdown → `facts` table.
  * Cycle 4 (import-docs):    One `is_original` SQLite doc per collected markdown file (verbatim body).
  * Cycle 5 (write):          Upsert documents.
@@ -18,7 +16,6 @@ import { existsSync } from 'node:fs'
 import { TsMorphIndexer, tombstoneStaleAstFacts } from '../tools/code-graph-indexer'
 import {
   isTreeSitterIndexablePath,
-  TREE_SITTER_AST_EXTENSIONS,
   TreeSitterIndexer,
   TREE_SITTER_SKIP_DIRS,
 } from '../tools/tree-sitter-indexer'
@@ -26,7 +23,6 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import readline from 'node:readline'
 import dayjs from 'dayjs'
-import { ingestCodeFilesAsFacts } from '../core/code-fact-extract'
 import {
   assignFactsToCategoryIds,
   slugifyFactCategoryName,
@@ -56,12 +52,6 @@ import {
   writeSessionBase,
 } from './base-selection'
 import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from './cli-prerequisites'
-import {
-  buildHashesFor,
-  diffChangedFiles,
-  readCodeFactsManifest,
-  writeCodeFactsManifest,
-} from './init-code-facts-manifest'
 import {
   buildSourceFileHashes,
   diffChangedSourceFiles,
@@ -133,8 +123,6 @@ export interface InitUserAnswer {
 
 export interface InitContext {
   sourceFiles: Record<string, string>
-  /** Lightweight source-code index: file path → first N chars of content. Feeds synthesis passes. */
-  codeFiles: Record<string, string>
   userAnswers: InitUserAnswer[]
 }
 
@@ -401,7 +389,7 @@ const SOURCE_FILE_CANDIDATES = [
   'docs/architecture.md',
 ]
 
-/** Dirs skipped when collecting markdown sources (keep aligned with `SOURCE_CODE_EXCLUDE_DIRS` plus KB/publish paths). */
+/** Dirs skipped when collecting markdown sources (keep aligned with tree-sitter skip dirs plus KB/publish paths). */
 const MARKDOWN_SOURCE_EXCLUDE_DIRS = new Set([
   // Node.js
   'node_modules',
@@ -526,10 +514,6 @@ function makeCycleTimer(
       model,
     })
   }
-}
-
-function kbCommandLabel(options: Pick<InitOptions, 'rescan'>): 'kb init' | 'kb scan' {
-  return options.rescan ? 'kb scan' : 'kb init'
 }
 
 function progressPrefix(options: Pick<InitOptions, 'rescan'>): 'init' | 'scan' {
@@ -742,50 +726,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           )
         }
 
-        // LLM semantic extraction pass (code-facts) as part of the same phase
-        const codeFiles = context.codeFiles ?? {}
-        if (provider && Object.keys(codeFiles).length > 0) {
-          const manifest = await readCodeFactsManifest(baseDir)
-          const candidateFiles = options.rescan
-            ? (diffChangedFiles(codeFiles, manifest) ?? Object.keys(codeFiles))
-            : undefined
-          const changedCodeFileCount = candidateFiles?.length ?? Object.keys(codeFiles).length
-          const unchangedCodeFileCount = Object.keys(codeFiles).length - changedCodeFileCount
-          if (options.rescan) {
-            options.questionIO?.write?.(
-              `[${kbCommandLabel(options)}] code-index LLM: ${changedCodeFileCount} changed, ${unchangedCodeFileCount} unchanged source file(s).\n`
-            )
-          }
-          const endCodeFacts = makeCycleTimer('code-index', provider, options.collector, counter)
-          try {
-            const codeFactStats = await ingestCodeFilesAsFacts({
-              baseDir,
-              llm: provider,
-              codeFiles,
-              candidateFiles,
-              onProgress: snapshot => {
-                progress.update(
-                  'code-index',
-                  `LLM ${snapshot.filesCompleted}/${snapshot.filesConsidered} changed, ${unchangedCodeFileCount} unchanged | ${snapshot.factsInserted + snapshot.factsSuperseded} changed, ${snapshot.factsTombstoned} tombstoned`
-                )
-              },
-            })
-            endCodeFacts()
-            await writeCodeFactsManifest(baseDir, buildHashesFor(codeFiles))
-            progress.update(
-              'code-index',
-              options.rescan
-                ? `LLM: ${codeFactStats.filesProcessed} changed, ${unchangedCodeFileCount} unchanged | ${codeFactStats.factsInserted} new facts`
-                : `LLM: ${codeFactStats.factsInserted} new facts across ${codeFactStats.filesProcessed}/${codeFactStats.filesConsidered} file(s)`
-            )
-          } catch (err) {
-            endCodeFacts()
-            const message = err instanceof Error ? err.message : String(err)
-            options.questionIO?.write?.(
-              `[${kbCommandLabel(options)}] code-index LLM pass failed: ${message}. Continuing.\n`
-            )
-          }
-        }
 
         await persist({ completedCycles: ['code-index'] })
         progress.finish('code-index', 'done')
@@ -1026,10 +966,8 @@ async function runReadInputsCycle(options: {
         onProgress: options.onProgress,
       })
     : await collectSourceFiles(options.cwd, options.onProgress)
-  const codeFiles = await crawlSourceCode(options.cwd, options.onProgress)
   const context: InitContext = {
     sourceFiles,
-    codeFiles,
     userAnswers: [],
   }
 
@@ -1166,107 +1104,6 @@ async function collectAstFileHashes(cwd: string): Promise<Record<string, string>
   return astFiles
 }
 
-// Extensions handled by the AST indexer (tree-sitter/ts-morph) — excluded from LLM extraction.
-const AST_FACTS_EXTENSIONS = new Set([
-  ...TREE_SITTER_AST_EXTENSIONS,
-])
-
-// LLM extraction only runs for languages not supported by the AST indexer.
-export const SOURCE_CODE_EXTENSIONS = [
-  '.swift',
-  '.kt',
-  '.kts',
-]
-export const SOURCE_CODE_EXCLUDE_DIRS = new Set([
-  // Node.js
-  'node_modules',
-  '.next',
-  '.turbo',
-  // Build outputs
-  'dist',
-  'build',
-  'out',
-  'target',
-  // Caches
-  '.cache',
-  'coverage',
-  '.pytest_cache',
-  '.tox',
-  // Python
-  '__pycache__',
-  'venv',
-  '.venv',
-  // Ruby & Go
-  'vendor',
-  // IDEs & Editors
-  '.git',
-  '.idea',
-  '.vscode',
-  '.DS_Store',
-  // Docs/KB
-  '_original_docs',
-  '_autogenerated_docs',
-  '_data',
-  '_graph_pages',
-  '_site',
-])
-export const SOURCE_CODE_PER_FILE_CHARS = 400
-
-/**
- * Crawl the repo for source code files and return a lightweight index:
- * file path → first N chars of content (enough to see exports/signatures).
- * This feeds the synthesis passes so the LLM can reason about code structure,
- * not just documentation.
- */
-export async function crawlSourceCode(
-  cwd: string,
-  onProgress?: (snapshot: ReadInputsCollectionProgress) => void
-): Promise<Record<string, string>> {
-  const result: Record<string, string> = {}
-
-  async function walk(dir: string): Promise<void> {
-    let entries: { name: string; isDir: boolean }[]
-    try {
-      const raw = await readdir(dir, { withFileTypes: true })
-      entries = raw.map(e => ({ name: e.name, isDir: e.isDirectory() }))
-    } catch {
-      return
-    }
-
-    for (const entry of entries) {
-      // Skip all dotfiles/directories and known ignorable dirs
-      if (entry.name.startsWith('.')) continue
-
-      if (entry.isDir) {
-        if (SOURCE_CODE_EXCLUDE_DIRS.has(entry.name)) continue
-        await walk(path.join(dir, entry.name))
-      } else {
-        const ext = path.extname(entry.name).toLowerCase()
-        if (AST_FACTS_EXTENSIONS.has(ext)) continue // handled by AST indexer
-        if (!SOURCE_CODE_EXTENSIONS.includes(ext)) continue
-        const fullPath = path.join(dir, entry.name)
-        try {
-          const content = await readFile(fullPath, 'utf8')
-          const snippet = content.slice(0, SOURCE_CODE_PER_FILE_CHARS)
-          const relPath = path.relative(cwd, fullPath)
-          result[relPath] = snippet
-          onProgress?.({
-            stage: 'code-files',
-            itemsConsidered: Object.keys(result).length,
-            itemsCompleted: Object.keys(result).length,
-            itemsRemaining: 0,
-            currentItem: relPath.replace(/\\/g, '/'),
-          })
-        } catch {
-          // unreadable — skip
-        }
-      }
-    }
-  }
-
-  await walk(cwd)
-  return result
-}
 
 async function writeDocs(
   docs: CandidateDoc[],
@@ -1677,7 +1514,6 @@ function migrateCheckpoint(checkpoint: StoredInitCheckpoint): InitCheckpoint | u
       context: checkpoint.context
         ? {
             sourceFiles: checkpoint.context.sourceFiles ?? {},
-            codeFiles: {},
             userAnswers: [],
           }
         : undefined,
@@ -1686,7 +1522,6 @@ function migrateCheckpoint(checkpoint: StoredInitCheckpoint): InitCheckpoint | u
       topicCoverage: assessTopicCoverage(
         {
           sourceFiles: checkpoint.context?.sourceFiles ?? {},
-          codeFiles: {},
           userAnswers: [],
         },
         checkpoint.candidateDocs,

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/core/QUERY_INTERNALS.md
-date: '2026-05-26'
+date: '2026-05-30'
 kb_id: src-core-query-internals-md
 tags:
   - original-source
@@ -84,7 +84,7 @@ Use `-1` only for debugging — absolute safety caps still apply on iters/ponds.
 
 ## Crawl (init-time only)
 
-Unchanged from the previous doc: **`crawlSourceCode()`** during **`kb init`** discovers source snippets for synthesis; it is **not** used at query time. See **`src/core/INIT.md`**.
+Code facts at query time come from the AST-indexed `facts` table (`source_kind='import_code'`). See **`src/core/INIT.md`** for ingest coverage.
 
 ## See also
 

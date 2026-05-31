@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/prompts/doc-edit-system.md
-date: '2026-05-26'
+date: '2026-05-30'
 kb_id: src-prompts-doc-edit-system-md
 tags:
   - original-source

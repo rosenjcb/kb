@@ -20,7 +20,7 @@ Exported: `TREE_SITTER_AST_EXTENSIONS` (keys of `EXT_MAP`), `TREE_SITTER_TEXT_EX
 5. Add vitest fixture under `tests/tools/tree-sitter-indexer.test.ts`.
 6. Run `npm install` — some grammars need `legacy-peer-deps` (see root `.npmrc`).
 
-**No WASM (do not wire):** `tree-sitter-kotlin`, `tree-sitter-yaml` (native-only packages) — keep as text fallback or LLM `SOURCE_CODE_EXTENSIONS`.
+**No WASM (do not wire):** `tree-sitter-kotlin`, `tree-sitter-yaml` (native-only packages). Kotlin/Swift source files are not AST-indexed today; there is no LLM fallback.
 
 ## Export query convention
 

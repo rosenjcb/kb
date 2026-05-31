@@ -1,7 +1,7 @@
 ---
 layout: default
 title: src/cli/CLI.md
-date: '2026-05-26'
+date: '2026-05-30'
 kb_id: src-cli-cli-md
 tags:
   - original-source
@@ -24,6 +24,7 @@ Command-line entry, argument parsing, and orchestration wiring for `kb`. Impleme
 | Query | `intent-cli.ts` + `query-truth-retrieval.ts` | Intent envelope parsing and shared retrieval |
 | Chat session | `chat-cli.ts` + `chat-query-orchestrator.ts` | REPL loop; QUERY turns call `runQueryTruthRetrieval()` |
 | Skills | `skill-installer.ts` | Install bundled skills to agent homes + profile blurbs |
+| Uninstall | `uninstall-cli.ts` | Consumer-facing removal of the release install layout |
 
 ## `CliOutput` abstraction
 
@@ -39,8 +40,8 @@ read-inputs → code-index → document-facts → import-docs → write
 
 | Cycle | What happens |
 |---|---|
-| `read-inputs` | Collect markdown sources + crawl non-AST source snippets for prompts |
-| `code-index` | Deterministic AST indexing into `facts`/`fact_edges` (ts-morph + tree-sitter) **and** LLM `code-facts` pass for changed files |
+| `read-inputs` | Collect markdown sources under cwd |
+| `code-index` | Deterministic AST indexing into `facts`/`fact_edges` (ts-morph + tree-sitter) |
 | `document-facts` | Sentence-level facts from discovered markdown |
 | `import-docs` | Verbatim original docs into SQLite |
 | `write` | Persist docs; on scan, claim planner/mutations |
@@ -49,11 +50,11 @@ read-inputs → code-index → document-facts → import-docs → write
 
 `--stop-after <cycle>` and `--detach` pause after the named cycle. v2 checkpoint files are rejected — user must delete and re-run.
 
-## AST vs LLM source coverage
+## AST source coverage
 
-`crawlSourceCode()` only walks extensions in `SOURCE_CODE_EXTENSIONS` (Swift, Kotlin today). Everything in `TREE_SITTER_AST_EXTENSIONS` (from `tree-sitter-indexer.ts`) is excluded — those files get symbols via `code-index`, not per-file LLM extraction.
+Code facts are **AST-only**. Extensions in `TREE_SITTER_AST_EXTENSIONS` (from `tree-sitter-indexer.ts`) plus TS/JS via ts-morph are indexed during `code-index`. Everything else is text-only or ignored.
 
-Ts/JS/Go extensions are AST-handled via ts-morph or tree-sitter; do not re-add them to `SOURCE_CODE_EXTENSIONS` without intentional fallback.
+**Previously LLM-fallback (removed):** Swift (`.swift`), Kotlin (`.kt`, `.kts`) — see [`../core/INIT.md`](../core/INIT.md) §Removed LLM code-facts fallback.
 
 ## Shared retrieval
 
@@ -74,6 +75,20 @@ Ts/JS/Go extensions are AST-handled via ts-morph or tree-sitter; do not re-add t
 - **Profile:** `installSkillIntoProject()` injects `kb:dev-workflow` body into `~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md` when present.
 
 Adding a skill: append to `SKILLS` array, add `loadSkill()` source under `skills/`, ensure build copies `.skill.md` into `dist/bin/`.
+
+## Consumer uninstall
+
+`kb uninstall` targets the **release install layout** (`scripts/install-release.sh`). Core logic is in `performUninstall()`, shared with the TUI `/uninstall` flow.
+
+Removes in order: `~/.kb/bin/kb` symlink (via `lstat` so broken symlinks are caught), `~/.kb/runtime/` npm package, `~/.kb/.kb-python` Python venv, and the `PATH` entry from shell rc files. Then prompts interactively before deleting `~/.kb/` user data.
+
+Flags:
+- `--yes` — skip the user-data prompt; keep `~/.kb` intact
+- `--purge` — also delete `~/.kb` without prompting (implies skipping user-data prompt)
+
+Non-interactive callers (TUI, CI) should pass `--yes` or `--purge`; without a TTY and without a flag the command exits with an error.
+
+Distinct from `pnpm uninstall:global` (`scripts/uninstall-global.sh`), which targets the dev symlink at `$PNPM_HOME/bin/kb` and removes `dist/` + both the repo-local and global `.kb-python` venvs. **`kb uninstall` must never touch `$PNPM_HOME` paths.**
 
 ## Gotchas
 

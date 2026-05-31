@@ -38,7 +38,7 @@ Facts are written exclusively by automated ingest (`kb init` / `kb scan` AST and
 | **Original** | Authored or imported markdown representing source material; facts were (or will be) **extracted** from it. |
 | **Generated** | Produced by tools such as **`kb docs generate`** (or init synthesis outputs treated as generated docs), grounded in facts + prompts. |
 
-**Neither kind is used directly** to answer ad-hoc questions in the target architecture. Readers see them on **publish** (static site, export, “view doc”), not as chunks inside **`read_facts`** for chat.
+**Neither kind is used directly** to answer ad-hoc questions in the target architecture. Readers see them on **publish** (static site, export, “view doc”), not as chunks inside **`read_facts`** for chat. Sync semantics: [`publish/PUBLISH.md`](./publish/PUBLISH.md).
 
 ---
 
@@ -96,7 +96,7 @@ flowchart TB
 | **`kb facts`** | CLI + TUI **`/facts`** for list / search / show (`src/cli/facts-cli.ts`). |
 | **Fact categories** | Interactive step in `kb init` (skipped on `kb scan`): user supplies comma-separated category names + optional descriptions; facts are assigned to categories via TF-IDF cosine similarity (`threshold = 0.3`) and stored in `fact_categories` / `fact_category_assignments`. HDBSCAN auto-discovery is scaffolded in `src/core/fact-categories.ts` and `scripts/fact_categories_hdbscan.py` but currently bypassed pending UX validation. |
 | **`kb docs merge`** | Removed (deterministic doc merge lived only in that CLI path). |
-| **`kb init`** | Runs **`document-facts`** (deterministic markdown segmentation → `import_doc`) and **`code-facts`** (per-file LLM extraction → `import_code`, anchored by `code:<path>@<symbol>`), then **`import-docs`** (verbatim originals) and **`write`**. **`SqliteDocumentWriter`** also indexes incremental fact rows from document bodies when docs are persisted. |
+| **`kb init`** | Runs **`code-index`** (AST → `import_code` facts + edges), **`document-facts`** (markdown segmentation → `import_doc`), then **`import-docs`** (verbatim originals) and **`write`**. **`SqliteDocumentWriter`** also indexes incremental fact rows from document bodies when docs are persisted. |
 | **Publish** | Unchanged: reads stored documents for export. |
 
 Remaining gap vs “gold”: optional **`read_documents`** naming cleanup for agents, and ongoing prompt/UI wording to say “fact” where the wire is fact-shaped.
@@ -116,12 +116,12 @@ Fact block in prompts; refuse when no facts; **`acceptDraft`** guards zero **`su
 ### Phase C — Ingest: deterministic + semantic facts from sources (**done**)
 
 **Done:**
-- **`document-facts`** init cycle runs after **`read-inputs`**, calling `ingestSourceMarkdownFilesAsFacts` (`src/core/scan-fact-ingest.ts`) over `context.sourceFiles` — same segmentation policy as document writer ingest, `source_ref` like `README.md#s0`, placeholder triplets.
-- **`code-facts`** init cycle runs right after **`document-facts`**. It calls `ingestCodeFilesAsFacts` (`src/core/code-fact-extract.ts`) over `context.codeFiles`: a per-file LLM call returns `{ module_summary, facts: [{ sentence, triplet, anchor }] }`; rows land as `source_kind = 'import_code'` with `source_ref = code:<path>@<anchor>#<contentHash>`. Per-anchor diff against prior rows handles supersede/tombstone, so **rerunning on unchanged content is idempotent** and `kb scan` only re-extracts files whose `sha256` changed (tracked in `code-facts-manifest.json`). The graph is still built from fact triples (`rebuildFactGraph`); **no separate AST table**.
+- **`document-facts`** init cycle runs after **`code-index`**, calling `ingestSourceMarkdownFilesAsFacts` (`src/core/scan-fact-ingest.ts`) over `context.sourceFiles` — same segmentation policy as document writer ingest, `source_ref` like `README.md#s0`, placeholder triplets.
+- **`code-index`** runs deterministic AST indexing (`TsMorphIndexer` / `TreeSitterIndexer`) → `import_code` facts and `fact_edges`. No LLM code-facts fallback. Previously Swift/Kotlin were LLM-indexed when AST was unavailable — see `INIT.md` §Removed LLM code-facts fallback.
 
 **Surface for refreshing sources:** **`kb scan`**.
 
-**Fact categorisation** runs after `document-facts` + `code-facts` during interactive `kb init`. See `INIT.md §Fact Categories` for the full flow. `kb scan` preserves existing categories without re-prompting.
+**Fact categorisation** runs after ingest during interactive `kb init`. See `INIT.md §Fact Categories` for the full flow. `kb scan` preserves existing categories without re-prompting.
 
 ### Phase D — Documents as artifacts
 
