@@ -13,6 +13,8 @@
 
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import { writeBaseMeta } from './base-meta'
+import { cloneRepo, getHeadSha } from './git-sync'
 import { TsMorphIndexer, tombstoneStaleAstFacts } from '../tools/code-graph-indexer'
 import {
   isTreeSitterIndexablePath,
@@ -104,6 +106,10 @@ export interface InitOptions {
   questionIO?: InitQuestionIO
   progressSink?: (line: string) => void
   collector?: RunCollector
+  /** Set by `kb init --git <url>` to record the remote origin for auto-sync. */
+  gitUrl?: string
+  /** Branch to track; defaults to 'main'. */
+  gitBranch?: string
 }
 
 export interface InitResult {
@@ -446,6 +452,8 @@ function shouldExcludeMarkdownSourceFile(relativePath: string, content: string):
 
 export function parseInitCommand(args: string[]): InitOptions {
   const base = readOption(args, '--base') ?? undefined
+  const gitUrl = readOption(args, '--git') ?? undefined
+  const gitBranch = readOption(args, '--branch') ?? undefined
 
   const rawStopAfter = readOption(args, '--stop-after')
   const stopAfter = rawStopAfter
@@ -482,6 +490,8 @@ export function parseInitCommand(args: string[]): InitOptions {
     stopAfter,
     resumeFrom: readOption(args, '--resume-from'),
     checkpointFile: readOption(args, '--checkpoint-file'),
+    gitUrl,
+    gitBranch,
   }
 }
 
@@ -536,14 +546,36 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
 
   const questionIO = options.questionIO ?? createReadlineQuestionIO()
   const cwd = options.cwd ?? process.cwd()
+
   const base = await resolveInitBaseName(options, cwd, questionIO)
+
+  // Resolve git URL — asked after base name so the user has context for what they're indexing.
+  const gitUrl = await resolveGitUrlForInit(options, questionIO)
+  const gitBranch = options.gitBranch ?? 'main'
   await writeKbFile(cwd, base)
   if (!options.rescan) {
     await writeSessionBase(base)
   }
   const baseDir = await ensureOperationalBaseDir(base, cwd)
+
+  // For git-linked init: clone into <baseDir>/repo/ and scan from there.
+  let scanDir = cwd
+  let headSha: string | undefined
+  if (gitUrl && !options.rescan) {
+    const repoDir = path.join(baseDir, 'repo')
+    if (!existsSync(repoDir)) {
+      await cloneRepo(gitUrl, repoDir, gitBranch)
+    }
+    await mkdir(repoDir, { recursive: true })
+    headSha = await getHeadSha(repoDir)
+    scanDir = repoDir
+    await writeKbFile(repoDir, base)
+  }
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
+
+  // Collect categories upfront so the user isn't interrupted mid-scan.
+  const preCollectedCategories = await collectUpfrontCategories(options, questionIO, resumedCheckpoint)
 
   const progress = new InitProgressReporter(6, progressPrefix(options), options.progressSink)
   const rawProvider = options.provider ?? (await resolveProvider())
@@ -591,7 +623,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     if (!checkpoint.completedCycles.includes('read-inputs')) {
       progress.start('read-inputs', 'discovering docs…')
       const readResult = await runReadInputsCycle({
-        cwd,
+        cwd: scanDir,
         baseDir,
         baseName: base,
         rescan: options.rescan === true,
@@ -630,7 +662,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.start('code-index', 'indexing code graph (AST)…')
       try {
         const dbPath = path.join(baseDir, '.kb-index.sqlite')
-        const currentAstFiles = await collectAstFileHashes(cwd)
+        const currentAstFiles = await collectAstFileHashes(scanDir)
         const totalAstFileCount = Object.keys(currentAstFiles).length
         const candidateAstFiles = options.rescan
           ? await selectChangedAstFiles(baseDir, currentAstFiles)
@@ -655,7 +687,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           }).length
           const unchangedTsFileCount = totalTsFileCount - tsCandidateFiles.length
 
-          const tsconfigPath = path.join(cwd, 'tsconfig.json')
+          const tsconfigPath = path.join(scanDir, 'tsconfig.json')
           const treeCandidateFiles = existsSync(tsconfigPath)
             ? candidateAstFiles.filter(file => {
                 const ext = path.extname(file).toLowerCase()
@@ -669,7 +701,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           try {
             if (existsSync(tsconfigPath) && tsCandidateFiles.length > 0) {
               const indexer = new TsMorphIndexer(dbPath, astFactIndexer)
-              const stats = await indexer.indexProject(cwd, tsconfigPath, {
+              const stats = await indexer.indexProject(scanDir, tsconfigPath, {
                 candidateFiles: tsCandidateFiles,
                 onProgress: s => {
                   progress.update(
@@ -687,7 +719,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             }
 
             const treeIndexer = new TreeSitterIndexer(dbPath, astFactIndexer)
-            const treeStats = await treeIndexer.indexProject(cwd, {
+            const treeStats = await treeIndexer.indexProject(scanDir, {
               candidateFiles: treeCandidateFiles,
               onProgress: s => {
                 progress.update(
@@ -789,6 +821,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       nonInteractive: options.nonInteractive,
       questionIO,
       rescan: options.rescan === true,
+      preCollected: preCollectedCategories,
     })
 
     if (!checkpoint.completedCycles.includes('import-docs')) {
@@ -856,7 +889,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         const planResult = await runRescanApplyOrchestrator({
           base,
           baseDir,
-          cwd,
+          cwd: scanDir,
           apply: false,
           sourceFiles: context.sourceFiles,
           candidateDocs,
@@ -872,7 +905,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         const applyResult = await runRescanApplyOrchestrator({
           base,
           baseDir,
-          cwd,
+          cwd: scanDir,
           apply: true,
           sourceFiles: context.sourceFiles,
           candidateDocs,
@@ -932,6 +965,14 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     }
   } finally {
     await questionIO.close?.()
+    if (gitUrl && !options.rescan && headSha !== undefined) {
+      await writeBaseMeta(baseDir, {
+        gitUrl,
+        gitBranch,
+        lastSyncedSha: headSha,
+        lastSyncedAt: new Date().toISOString(),
+      })
+    }
   }
 
   return {
@@ -1242,6 +1283,23 @@ async function resolveInitBaseName(
     )
   }
   return resolved
+}
+
+async function resolveGitUrlForInit(
+  options: InitOptions,
+  questionIO: InitQuestionIO
+): Promise<string | undefined> {
+  if (options.gitUrl) return options.gitUrl
+  if (options.rescan || options.nonInteractive || options.base) return undefined
+
+  questionIO.write?.('\n[kb init] Git remote URL (blank to index the local directory):\n\n')
+  const answer = (
+    await questionIO.askQuestion('  > Git URL\n    ', { slashContext: 'init-free-text' })
+  ).trim()
+
+  if (!answer || answer === '/skip') return undefined
+  if (answer === '/cancel') throw new InitCancelledError()
+  return answer
 }
 
 async function resolveSuggestedInitBase(_cwd: string): Promise<string | undefined> {
@@ -1570,6 +1628,7 @@ async function inferAndAssignProjectCategories(input: {
   nonInteractive: boolean
   questionIO: InitQuestionIO
   rescan: boolean
+  preCollected?: FactCategoryDefinitionInput[]
 }): Promise<void> {
   const indexer = new SqliteKbIndexer({ dbPath: path.join(input.baseDir, '.kb-index.sqlite') })
   try {
@@ -1622,7 +1681,9 @@ async function inferAndAssignProjectCategories(input: {
       return
     }
 
-    const reviewed = await promptUserCategories(input.questionIO, input.rescan)
+    const reviewed = input.preCollected?.length
+      ? input.preCollected
+      : await promptUserCategories(input.questionIO, input.rescan)
     if (reviewed.length === 0) return
 
     indexer.replaceFactCategories(reviewed)
@@ -1677,6 +1738,15 @@ async function promptUserCategories(
   if (result.kind === 'cancel') throw new InitCancelledError()
   if (result.kind === 'skip') return []
   return result.items
+}
+
+async function collectUpfrontCategories(
+  options: InitOptions,
+  questionIO: InitQuestionIO,
+  resumedCheckpoint: InitCheckpoint | undefined
+): Promise<FactCategoryDefinitionInput[]> {
+  if (options.rescan || options.nonInteractive || options.base || resumedCheckpoint) return []
+  return promptUserCategories(questionIO, false)
 }
 
 // TODO: restore after HDBSCAN UX is validated — per-category accept/rename/reject/merge review

@@ -88,8 +88,32 @@ Distinct from `pnpm uninstall:global` (`scripts/uninstall-global.sh`), which tar
 
 Preview responses include `removed` / `removedPages` for docs that exist in the sink but not in SQLite.
 
+## Git-linked bases
+
+Pin a base to a git remote; the index auto-updates on every query without a local checkout.
+
+```text
+kb init --git <url> [--branch <branch>] [--base <name>]
+# interactive: enter the URL at the "Git URL" upfront prompt (second question)
+```
+
+Each git-linked base stores a blobless clone at `~/.kb/sessions/<base>/repo/` and a `meta.json` (`{ gitUrl, gitBranch, lastSyncedSha, lastSyncedAt }`). On every intent command, `maybeAutoSync()` (`auto-sync.ts`) checks `lastSyncedAt`; if stale (default 30 min) it runs `git pull` in `repo/` and, when new commits are detected, delegates to `runRescanApplyOrchestrator` with `repo/` as the scan root. Non-git bases (no `meta.json`) are no-ops.
+
+| File | Role |
+|---|---|
+| `base-meta.ts` | `readBaseMeta` / `writeBaseMeta` for `meta.json` |
+| `git-sync.ts` | `cloneRepo`, `pullRepo`, `getHeadSha`, `baseNameFromGitUrl` |
+| `auto-sync.ts` | `maybeAutoSync` — staleness gate + pull + conditional rescan |
+
+**Invariants:**
+- `meta.json` is written in `runKbInit`'s `finally` block — reflects the last completed scan even on a paused run.
+- `maybeAutoSync` must never throw; git failures are swallowed and logged so queries proceed on the current index.
+- `scanDir` (`repo/`) is the cwd for all file-discovery cycles; `cwd` (caller's shell dir) is only used for checkpoint paths and the `.kb` marker.
+- `kb sync` = self-upgrade (GitHub Releases). Unrelated to git-linked base sync.
+
 ## Gotchas
 
 - **Base resolution:** Most commands flow through `base-selection.ts`; missing base → `CLI_ERROR_NO_KB_BASE` (formatted by `cli-prerequisites.ts`).
 - **Apply defaults:** TUI `resolveApplyArgs()` auto-appends `--apply` for `publish`, `scan`, and `init --rescan` — CLI users must pass `--apply` explicitly.
 - **Init progress:** Pass `InitProgressReporter` from TUI; do not append `[init] …` lines to chat history (see `src/tui/TUI.md`).
+- **Upfront questions:** Interactive `kb init` (no `--base`, no `--rescan`) asks three questions before the scan: base name (`prompts[0]`), git URL (`prompts[1]`), fact categories (`prompts[2]`). All three are skipped when `--base` is set, `--rescan`, or resuming from checkpoint. Tests asserting prompt order must follow this sequence.
