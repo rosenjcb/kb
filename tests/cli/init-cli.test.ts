@@ -119,8 +119,9 @@ describe('init-cli interview checkpoints', () => {
     })
     const questionIO = createQuestionIO([
       'fresh-base',
+      '',          // git URL → blank = local dir
+      '',          // categories → blank = skip
       'Install with npm install.',
-      '',
       '',
       '',
       '',
@@ -154,7 +155,7 @@ describe('init-cli interview checkpoints', () => {
       `${JSON.stringify({ activeBase: 'dogfood' }, null, 2)}\n`,
       'utf8'
     )
-    const questionIO = createQuestionIO(['', '', '', '', '', '', '', ''])
+    const questionIO = createQuestionIO(['', '', '', '', '', '', '', '', ''])
 
     const result = await runKbInit({
       nonInteractive: false,
@@ -1364,5 +1365,158 @@ describe('kb scan — base resolution', () => {
     })
 
     expect(await findKbFile(cwd)).toBe('written-base')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// git-linked init dialog
+// ---------------------------------------------------------------------------
+
+vi.mock('../../src/cli/git-sync', () => ({
+  cloneRepo: vi.fn(),
+  getHeadSha: vi.fn(),
+  pullRepo: vi.fn(),
+  baseNameFromGitUrl: (url: string) => {
+    const cleaned = url.replace(/\.git$/, '').replace(/\/$/, '')
+    const parts = cleaned.split('/')
+    return `${parts.at(-2) ?? 'unknown'}-${parts.at(-1) ?? 'repo'}`.replace(/[^a-zA-Z0-9._-]/g, '-').toLowerCase()
+  },
+}))
+
+vi.mock('../../src/cli/base-meta', () => ({
+  writeBaseMeta: vi.fn(),
+  readBaseMeta: vi.fn().mockResolvedValue(null),
+}))
+
+import { cloneRepo, getHeadSha } from '../../src/cli/git-sync'
+import { writeBaseMeta } from '../../src/cli/base-meta'
+
+const mockCloneRepo = vi.mocked(cloneRepo)
+const mockGetHeadSha = vi.mocked(getHeadSha)
+const mockWriteBaseMeta = vi.mocked(writeBaseMeta)
+
+describe('init-cli git-linked dialog', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetHeadSha.mockResolvedValue('abc1234abc1234abc1234abc1234abc1234abc12')
+    mockCloneRepo.mockResolvedValue(undefined)
+    mockWriteBaseMeta.mockResolvedValue(undefined)
+  })
+
+  it('Given interactive init with blank git URL, then proceeds as local-dir init', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    const { io, prompts } = createQuestionIO(['', '', ''])  // base name, git URL (blank), categories (skip)
+
+    await runKbInit({
+      nonInteractive: false,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: io,
+    })
+
+    expect(prompts[0]).toContain('Knowledge base name')
+    expect(prompts[1]).toContain('Git URL')
+    expect(prompts[2]).toContain('category')
+    expect(mockCloneRepo).not.toHaveBeenCalled()
+    expect(mockWriteBaseMeta).not.toHaveBeenCalled()
+  })
+
+  it('Given interactive init with /skip for git URL, then proceeds as local-dir init', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    const { io, prompts } = createQuestionIO(['', '/skip', ''])  // base name, /skip git URL, categories (skip)
+
+    await runKbInit({
+      nonInteractive: false,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: io,
+    })
+
+    expect(prompts[1]).toContain('Git URL')
+    expect(mockCloneRepo).not.toHaveBeenCalled()
+  })
+
+  it('Given interactive init with a git URL entered second, then clones from that URL', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    const { io, prompts } = createQuestionIO([
+      '',                                       // accept suggested base name (cwd-derived)
+      'https://github.com/myorg/myrepo.git',   // git URL — second prompt
+      '',                                       // categories — skip
+    ])
+
+    await runKbInit({
+      nonInteractive: false,
+      stopAfter: 'read-inputs',
+      cwd,
+      questionIO: io,
+    })
+
+    expect(prompts[0]).toContain('Knowledge base name')
+    expect(prompts[1]).toContain('Git URL')
+    expect(mockCloneRepo).toHaveBeenCalledWith(
+      'https://github.com/myorg/myrepo.git',
+      expect.any(String),
+      'main'
+    )
+  })
+
+  it('Given --git flag (non-interactive), then clones and writes meta.json', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+
+    // Make the clone create a minimal directory so scan can proceed
+    mockCloneRepo.mockImplementation(async (_url, destDir) => {
+      await mkdir(destDir, { recursive: true })
+      await writeFile(path.join(destDir, 'README.md'), '# Remote Repo\n', 'utf8')
+    })
+
+    await runKbInit({
+      base: 'my-remote',
+      gitUrl: 'https://github.com/org/repo.git',
+      gitBranch: 'main',
+      nonInteractive: true,
+      stopAfter: 'read-inputs',
+      cwd,
+    })
+
+    expect(mockCloneRepo).toHaveBeenCalledWith(
+      'https://github.com/org/repo.git',
+      expect.stringContaining('my-remote'),
+      'main'
+    )
+    expect(mockWriteBaseMeta).toHaveBeenCalledWith(
+      expect.stringContaining('my-remote'),
+      expect.objectContaining({
+        gitUrl: 'https://github.com/org/repo.git',
+        gitBranch: 'main',
+        lastSyncedSha: 'abc1234abc1234abc1234abc1234abc1234abc12',
+      })
+    )
+  })
+
+  it('Given /cancel at base name prompt, throws InitCancelledError', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    const { io } = createQuestionIO(['/cancel'])
+
+    await expect(
+      runKbInit({
+        nonInteractive: false,
+        stopAfter: 'read-inputs',
+        cwd,
+        questionIO: io,
+      })
+    ).rejects.toThrow(/cancel/i)
+  })
+
+  it('parseInitCommand parses --git and --branch flags', () => {
+    const parsed = parseInitCommand(['--git', 'https://github.com/org/repo', '--branch', 'develop', '--base', 'my-base'])
+    expect(parsed.gitUrl).toBe('https://github.com/org/repo')
+    expect(parsed.gitBranch).toBe('develop')
+    expect(parsed.base).toBe('my-base')
+  })
+
+  it('parseInitCommand with only --git sets gitUrl, gitBranch undefined', () => {
+    const parsed = parseInitCommand(['--git', 'https://github.com/org/repo'])
+    expect(parsed.gitUrl).toBe('https://github.com/org/repo')
+    expect(parsed.gitBranch).toBeUndefined()
   })
 })

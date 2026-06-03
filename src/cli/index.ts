@@ -104,6 +104,9 @@ import {
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
+import { maybeAutoSync } from './auto-sync'
+import { writeBaseMeta } from './base-meta'
+import { baseNameFromGitUrl, cloneRepo, getHeadSha } from './git-sync'
 import { runUninstallCommand } from './uninstall-cli'
 import {
   ViewCommandError,
@@ -702,6 +705,40 @@ export async function runMainWithOutput(
         )
       }
       const initCollector = new RunCollector('init', { sessionId })
+
+      if (parsed.gitUrl) {
+        const baseName = parsed.base ?? baseNameFromGitUrl(parsed.gitUrl)
+        const baseDir = await ensureOperationalBaseDir(baseName)
+        const repoDir = path.join(baseDir, 'repo')
+        const branch = parsed.gitBranch ?? 'main'
+
+        if (!existsSync(repoDir)) {
+          out.log(`Cloning ${parsed.gitUrl} (${branch})…`)
+          await cloneRepo(parsed.gitUrl, repoDir, branch)
+        }
+
+        const headSha = await getHeadSha(repoDir)
+        const result = await runKbInit({
+          ...parsed,
+          base: baseName,
+          cwd: repoDir,
+          nonInteractive: true,
+          collector: initCollector,
+        })
+
+        await writeBaseMeta(baseDir, {
+          gitUrl: parsed.gitUrl,
+          gitBranch: branch,
+          lastSyncedSha: headSha,
+          lastSyncedAt: new Date().toISOString(),
+        })
+        await writeSessionBase(baseName)
+
+        out.log(JSON.stringify(result, null, 2))
+        await reporter.append(initCollector.finish('success', undefined, result.base))
+        return
+      }
+
       const result = await runKbInit({ ...parsed, collector: initCollector })
       out.log(JSON.stringify(result, null, 2))
       await reporter.append(initCollector.finish('success', undefined, result.base))
@@ -886,6 +923,7 @@ export async function runMainWithOutput(
         await reporter.append(collector.finish('error', CLI_ERROR_NO_KB_BASE))
         return
       }
+      await maybeAutoSync(intentBaseDir, { onProgress: line => out.log(line) })
       collector = new RunCollector(firstArg, { sessionId, base: path.basename(intentBaseDir) })
       const rawLlmProvider = createLLMProviderFromConfig(config)
       const llmCounter = rawLlmProvider ? new TokenCountingProvider(rawLlmProvider) : undefined

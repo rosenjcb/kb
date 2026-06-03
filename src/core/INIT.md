@@ -1,6 +1,6 @@
 # KB Init Pipeline
 
-`kb init` bootstraps a knowledge base from a repo. It runs **input collection** (README-like docs), **`code-index`** (deterministic AST indexing into `facts` + `fact_edges`), **`document-facts`** (sentence facts from markdown sources), **`fact-categories`** (interactive step: user defines named categories with descriptions, facts are then assigned via TF-IDF cosine similarity), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), and **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations). Use **`kb scan`** to refresh sources against an existing base.
+`kb init` bootstraps a knowledge base from a repo. In interactive mode it first collects all user input upfront — base name, optional git remote URL, and fact-category definitions — then runs the uninterrupted multi-phase scan: **`read-inputs`** (README-like docs), **`code-index`** (deterministic AST indexing into `facts` + `fact_edges`), **`document-facts`** (sentence facts from markdown sources), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), and **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations). Use **`kb scan`** to refresh sources against an existing base.
 
 In the TUI, init/scan progress is rendered as a dedicated live status line instead of transcript history. Any phase that iterates over a collection of files, docs, facts, claims, or mutations emits incremental progress while that collection is being processed; only atomic operations stay start/finish-only. Progress lines include counts and, when useful, the current item. The long-running deterministic phases also yield cooperatively to the event loop between batches so the terminal can repaint and interrupts remain responsive during large scans.
 
@@ -23,31 +23,39 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[kb init] --> R[read-inputs]
+    A[kb init] --> UQ[upfront questions]
+    UQ --> UQ1["base name\ngit URL ?\ncategory defs ?"]
+    UQ --> R[read-inputs]
     R --> CI[code-index]
     CI --> MF[document-facts]
-    MF --> FC[fact-categories]
+    MF --> FC[fact-categories assign]
     FC --> IM[import-docs]
     IM --> W[write]
 
     CI --> CI1["AST indexing\n→ facts + fact_edges"]
     MF --> MF1["Sentence segmentation\n→ facts import_doc"]
-    FC --> FC1["User names categories + descriptions\n→ TF-IDF assignment to all facts"]
+    FC --> FC1["TF-IDF assignment\nusing pre-collected defs"]
     IM --> IM1["One original doc\nper source file"]
     W --> W1["SQLite upsert\n+ scan planner"]
 ```
 
+## Upfront Questions
+
+Before the scan begins, interactive `kb init` (no `--base`, not `--rescan`, not `--non-interactive`) asks three questions in order:
+
+| # | Prompt | Skipped when |
+|---|---|---|
+| 1 | Base name | `--base` provided or resuming checkpoint |
+| 2 | Git remote URL (blank = local dir) | `--base` provided, `--git` provided, or resuming |
+| 3 | Fact category names + descriptions | any of the above, or resuming |
+
+A blank or `/skip` at the git URL prompt indexes the local working directory. `/cancel` at any prompt aborts and returns to the chat session.
+
+Pre-collected categories are passed directly into the `fact-categories assign` sub-step (after `document-facts`) instead of prompting mid-scan. On resume from checkpoint, categories are already in the DB — no re-prompt.
+
 ## Fact Categories
 
-After `document-facts` (and AST `code-index`) have populated the facts table, `kb init` (interactive mode only, skipped on `kb scan`) prompts the user to define **fact categories** — named buckets that help organise retrieval.
-
-**Flow:**
-
-1. User enters a comma-separated list of category names (blank → skip).
-2. The list is echoed back for review.
-3. User types `/accept` or `/reject` (reject loops back to step 1).
-4. On `/accept`, each category gets an optional description prompt — blank uses the default `"Facts about <name>"`.
-5. Categories are saved to `fact_categories`; all facts are assigned via TF-IDF cosine similarity (`threshold = 0.3`) against each category's name + description text.
+`kb init` collects category definitions **upfront** (see above); after `document-facts` has populated the facts table, `inferAndAssignProjectCategories` assigns facts using the pre-collected definitions via TF-IDF cosine similarity (`threshold = 0.3`). No prompt appears mid-scan.
 
 **Tables written:**
 
