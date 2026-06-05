@@ -12,7 +12,9 @@ export interface AutoSyncOptions {
 
 /**
  * If `baseDir` has a `meta.json` (i.e. was created with `kb init --git`),
- * pull from the remote and rescan if the last sync is older than `staleLimitMs`.
+ * pull from the remote and rescan when the last sync is older than `staleLimitMs`
+ * (default 30 min). Pass `staleLimitMs: 0` to always pull regardless of recency
+ * (used at session load and `kb base use`).
  * No-ops for local bases.
  */
 export async function maybeAutoSync(baseDir: string, opts: AutoSyncOptions = {}): Promise<void> {
