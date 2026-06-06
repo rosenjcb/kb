@@ -1,76 +1,106 @@
-# TICKET-012: Benchmark Alignment & Validation Suite
+# TICKET-012: Benchmark Tasks & Alignment Suite
 
 **Status:** Open  
 **Priority:** P3  
-**Labels:** evaluation, benchmarks, validation
+**Language:** TypeScript + YAML  
+**Labels:** evaluation, benchmarks, tasks
 
 ## Context
 
-The MOEL framework is novel, so its results need to be anchored to established industry benchmarks to be credible to external reviewers. Additionally, the `kb`-specific evaluation suite needs a curated task library that exercises the scenarios where `kb` is most expected to help: documentation generation, symbol lookup, cross-file refactoring.
+The MOEL framework needs a curated task library that exercises scenarios where `kb` is most expected to help: fact retrieval, symbol navigation, cross-file reasoning, and documentation quality. Tasks are defined as YAML files extending the existing `eval/suites/*.yaml` format used by `eval-run.mjs`.
 
-This ticket designs the task library and ensures the MOEL framework's output can be cross-referenced against SWE Atlas, SWE-ContextBench, and CodeScaleBench standards.
+Results also need to be anchored to established benchmarks (SWE Atlas, SWE-ContextBench, CodeScaleBench) to be credible to external reviewers.
 
 ## Objective
 
-Build the initial `kb` evaluation task library (minimum 10 tasks) and document the mapping between MOEL metrics and the verification protocols used by each external benchmark.
+Build the initial task library (minimum 10 tasks) in the existing YAML format with MOEL-specific extensions, and document how MOEL metrics map to external benchmark verification protocols.
+
+## Task YAML Format Extension
+
+The existing `eval/suites/kb.yaml` format has: `questions[]` with `question` and `answer`. MOEL tasks extend this with additional required fields:
+
+```yaml
+# eval/suites/moel-kb.yaml
+rubricContext: "Evaluate against the kb codebase"
+tasks:
+  - id: kb-fact-retrieval-001
+    question: "How does kb's retrieval orchestrator detect when it has gathered sufficient evidence?"
+    answer: "<reference answer>"
+    targetSymbols:
+      - "FactsQueryResearchOrchestrator"
+      - "detectPlateau"
+    rubric:
+      - "Does the answer correctly identify plateau detection as the stopping criterion?"
+      - "Does the answer mention the sufficiency check mechanism?"
+      - "Is the answer free of hallucinated function names?"
+    tokenBudget: 150000
+    stepCeiling: 15
+    oracleFactIds: []    # populated by moel-run.mjs at runtime via SQLite query
+```
 
 ## Acceptance Criteria
 
-### Task Library
-- [ ] At least 10 evaluation tasks covering:
-  - Documentation generation (3 tasks): agent must produce accurate markdown docs for a class/module.
-  - Symbol lookup & navigation (3 tasks): agent must locate and modify a specific function given only a high-level description.
-  - Cross-file refactoring (2 tasks): agent must propagate a signature change across multiple files.
-  - Bug diagnosis (2 tasks): agent must identify and fix a seeded logic error.
-- [ ] Each task stored as `eval/tasks/<task_id>/`:
-  - `task.json` — `TaskDefinition` with rubric, target symbols, test command, budgets.
-  - `reference/` — reference output files (`Y*`) for AST loss comparison.
-  - `rubric.md` — human-readable rubric with atomic criteria.
-  - `optimal_actions.json` — pre-computed optimal action set for trajectory loss.
-- [ ] All tasks have working test suites (mutation check is executable).
-- [ ] Condition O oracle context is pre-computed and stored in `task.json` for reproducibility.
+### Task Library (minimum 10 tasks across 4 categories)
+
+**Fact Retrieval (3 tasks)** — agent must answer a question about kb's internal architecture using only what it can retrieve from the fact store.
+- [ ] How does the retrieval orchestrator detect evidence sufficiency?
+- [ ] What is the relationship between `fact_edges` and `get_code_neighbors`?
+- [ ] How does kb handle incremental rescans when files change?
+
+**Symbol Navigation (3 tasks)** — agent must locate a specific symbol in the codebase and describe its behavior.
+- [ ] What does `TreeSitterIndexer` extract from non-TypeScript files?
+- [ ] What is the role of `retrieval-lane-router.ts`?
+- [ ] How does `TokenCountingProvider` integrate with the stage telemetry system?
+
+**Cross-File Reasoning (2 tasks)** — agent must connect information across multiple files/facts.
+- [ ] How do `eval-run.mjs` and `kb-config.ts` coordinate LLM provider selection?
+- [ ] What is the data flow from `kb init` to a fact appearing in `read_facts` results?
+
+**Documentation Quality (2 tasks)** — agent must produce a documentation artifact (markdown) that accurately describes a class or module.
+- [ ] Write a one-paragraph description of the `RunCollector` class including its lifecycle and output.
+- [ ] Write a one-paragraph description of how `fact_categories` are assigned during init.
+
+### Task Artifacts
+- [ ] Each task in `eval/suites/moel-kb.yaml` with all required YAML fields.
+- [ ] `eval/tasks/<taskId>/reference-answer.md` — expert-written reference for AST and jury comparison.
+- [ ] `eval/tasks/<taskId>/optimal-actions-K.json` — pre-computed optimal kb tool call set for Condition K.
+- [ ] `eval/tasks/<taskId>/optimal-actions-N.json` — pre-computed optimal file read set for Condition N.
 
 ### Benchmark Alignment Documentation
-- [ ] `eval/benchmarks/alignment.md` documents:
-  - How `L_correctness` maps to SWE Atlas outcome verification (manifest + mutation checks satisfy their programmatic check requirements).
-  - How `L_resource` and trajectory tracking maps to SWE-ContextBench's time efficiency and cache token cost metrics.
-  - How the three-condition comparison maps to CodeScaleBench's task validity / outcome validity / tool effectiveness framework.
-- [ ] Differences from each benchmark's protocol are explicitly called out (not hidden).
+- [ ] `eval/benchmarks/alignment.md` covering:
+  - SWE Atlas: how manifest + mutation checks satisfy their programmatic check requirements; where MOEL differs (AST distance vs. static reference text matching).
+  - SWE-ContextBench: how `L_resource` and trajectory tracking maps to their time-efficiency and cache-token-cost metrics.
+  - CodeScaleBench: how the three-condition comparison maps to their task/outcome/tool validity tiers. Differences called out explicitly.
 
-### Reporting
-- [ ] `eval/reports/summary.py` produces a comparison table across all tasks and conditions:
+### Summary Reporter
+- [ ] `eval/reports/summary.ts` produces a Markdown and JSON comparison table:
   ```
-  Task ID | Condition | L_correctness | L_trajectory | L_resource | L_MOEL
-  --------|-----------|---------------|--------------|------------|-------
+  Task ID                | N L_MOEL | K L_MOEL | O L_MOEL | N-K Delta | Hypothesis
+  -----------------------|----------|----------|----------|-----------|----------
+  kb-fact-retrieval-001  |  0.72    |  0.31    |  0.18    |  +0.41    | ✓
   ```
-- [ ] Summary report is exportable as both Markdown and JSON.
-- [ ] Includes aggregate statistics: mean L_MOEL per condition, `L_MOEL(N) - L_MOEL(K)` (the primary hypothesis test statistic).
+- [ ] Aggregate row: mean `L_MOEL` per condition, overall `N - K` delta.
 
 ## Implementation Notes
 
-### Task Selection Criteria
+### Task Selection Rationale
 
-Tasks should be drawn from the actual `kb` repository and its dependencies — not synthetic examples. This ensures the evaluation is grounded in real-world `kb` usage patterns and is harder to contaminate via benchmark memorization.
+All tasks are drawn from the kb repo itself (dogfooding). This prevents benchmark contamination — no external repo that a model might have memorized. Tasks are tagged with the git commit hash they were designed against; the harness warns if the repo has diverged.
 
-Avoid tasks where the answer is in a well-known public file (e.g., README) — prefer tasks that require navigating internal module relationships.
+### Pre-Computing Optimal Actions
 
-### Contamination Resistance
+For Condition K optimal actions, run a query against the kb SQLite database (assuming `kb init` has been run on the repo) and record the fact IDs returned by a BFS from the target symbols. Store as `optimal-actions-K.json`.
 
-Because the tasks are derived from the live `kb` repo, they will change as `kb` evolves. Tag each task with the git commit hash of the repo state it was designed against. The harness should warn if the repo has diverged significantly from the tagged commit.
+For Condition N, record the file paths returned by `git grep -l <symbol>` for each target symbol. Store as `optimal-actions-N.json`.
 
-### Benchmark Alignment Notes
+These are pre-computed once and committed — the harness reads them rather than recomputing at evaluation time.
 
-| Benchmark | Key Metric Overlap | Key Gap |
-|-----------|-------------------|---------|
-| SWE Atlas | Manifest + mutation programmatic checks | SWE Atlas uses static reference text; MOEL uses AST distance |
-| SWE-ContextBench | Cache token cost tracking, time efficiency | SWE-ContextBench does not decompose into trajectory vs. resource |
-| CodeScaleBench | Three-tier validity (task/outcome/tool) | CodeScaleBench targets multi-repo; MOEL is single-repo focused |
+## Files to Create
 
-## Output Artifact
-
-`eval/tasks/` — task library  
-`eval/benchmarks/alignment.md`  
-`eval/reports/summary.py`
+- `eval/suites/moel-kb.yaml`
+- `eval/tasks/<taskId>/` (10+ task directories)
+- `eval/benchmarks/alignment.md`
+- `eval/reports/summary.ts`
 
 ## Dependencies
 
@@ -78,4 +108,4 @@ TICKET-010, TICKET-011
 
 ## Feeds Into
 
-Final experiment runs and any external publication or peer review of the framework.
+Final experiment runs and external publication.
