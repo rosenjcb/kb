@@ -397,8 +397,9 @@ function extractInitAcceptedObject(logText) {
 }
 
 export function parseGraphCounts(graphText) {
-  const em = /Entities:\s*(\d+)/.exec(graphText)
-  const rm = /Relationships:\s*(\d+)/.exec(graphText)
+  // kb graph outputs "Triplets:" and "Symbols:" (not "Entities:"/"Relationships:")
+  const em = /Triplets:\s*(\d+)/.exec(graphText) ?? /Entities:\s*(\d+)/.exec(graphText)
+  const rm = /Symbols:\s*(\d+)/.exec(graphText) ?? /Relationships:\s*(\d+)/.exec(graphText)
   return {
     entities: em ? Number(em[1]) : 0,
     relationships: rm ? Number(rm[1]) : 0,
