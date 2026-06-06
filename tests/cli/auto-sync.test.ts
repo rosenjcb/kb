@@ -106,6 +106,30 @@ describe('auto-sync', () => {
     expect(progress.some(l => l.includes('network error'))).toBe(true)
   })
 
+  it('Given staleLimitMs: 0, then always pulls even for a freshly-synced base', async () => {
+    await writeBaseMeta(baseDir, staleMeta({
+      lastSyncedAt: new Date().toISOString(),
+    }))
+    mockPullRepo.mockResolvedValue(false)
+    mockGetHeadSha.mockResolvedValue('anysha')
+
+    await maybeAutoSync(baseDir, { staleLimitMs: 0 })
+    expect(mockPullRepo).toHaveBeenCalledOnce()
+  })
+
+  it('Given staleLimitMs: 0 and a git pull failure, then warns and does not rescan', async () => {
+    await writeBaseMeta(baseDir, staleMeta({
+      lastSyncedAt: new Date().toISOString(),
+    }))
+    mockPullRepo.mockRejectedValue(new Error('network error'))
+
+    const progress: string[] = []
+    await maybeAutoSync(baseDir, { staleLimitMs: 0, onProgress: l => progress.push(l) })
+
+    expect(mockRunKbInit).not.toHaveBeenCalled()
+    expect(progress.some(l => l.includes('network error'))).toBe(true)
+  })
+
   it('Given a custom staleLimitMs, then respects it', async () => {
     await writeBaseMeta(baseDir, staleMeta({
       lastSyncedAt: new Date(Date.now() - 10 * 1000).toISOString(), // 10 seconds ago

@@ -413,6 +413,10 @@ export async function runMainWithOutput(
       }
 
       await writeSessionBase(base)
+      await maybeAutoSync(baseDir, {
+        staleLimitMs: 0,
+        onProgress: msg => out.log(msg),
+      })
       const resolved = await ensureOperationalBaseDir(base)
       const kbFileBase = await findKbFile(process.cwd())
       if (makeDefault) {
@@ -1178,6 +1182,19 @@ async function main() {
           '   Set the key in your shell profile, then restart your terminal.',
         ].join('\n')
       )
+    }
+
+    try {
+      const effective = await resolveEffectiveBaseDir()
+      await maybeAutoSync(effective.baseDir, {
+        staleLimitMs: 0,
+        onProgress: msg => {
+          process.stderr.write(`${msg}\n`)
+          startupNotices.push(msg)
+        },
+      })
+    } catch {
+      // No base configured yet – fine
     }
 
     const { launchTui } = await import('../tui/index.js')

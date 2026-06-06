@@ -1,19 +1,24 @@
 #!/usr/bin/env node
 /**
- * Unified kb eval harvest: **git URL only** (no local target cwd). Fresh clone per run = snapshot.
- * Layout: run folder `~/.kb/evaluations/<run-name>/` contains `<repo-name>/` clone + run artifacts.
- * Default KB base for `all` == `<run-name>` (e.g. `raylib-2026-04-27-1303`); override with `--base`.
- * `all` (init + metrics + 8×query) vs `query` (existing base only; still clones repo for cwd).
+ * Unified kb eval harvest: run 8× `kb query` against a KB session and record results.
+ * Layout: `~/.kb/evaluations/<run-name>/` contains `<repo-name>/` clone + artifacts.
+ *
+ * Session lifecycle is fully automatic:
+ *   - Base name is derived from the suite id: `eval-{suiteId}` (e.g. `eval-raylib`, `eval-kb`).
+ *   - If the session already has docs → reuse it (query-only run).
+ *   - If the session is empty / missing → run `kb init` first, then query.
+ *   - `--base NAME` overrides the formula. `--force-init` forces re-init even if docs exist.
+ * Ends with an automatic trends summary across prior runs for the same suite.
  *
  * Usage (kb repo root, after `pnpm run build`):
- *   node scripts/eval-run.mjs init --suite raylib [--auto-score]   # init = same as legacy `all`
- *   node scripts/eval-run.mjs init --suite kb
- *   node scripts/eval-run.mjs init --suite generic --repo https://github.com/org/repo.git
- *   node scripts/eval-run.mjs query --suite raylib --base dogfood
+ *   node scripts/eval-run.mjs --suite raylib [--auto-score]
+ *   node scripts/eval-run.mjs --suite kb
+ *   node scripts/eval-run.mjs --suite generic --repo https://github.com/org/repo.git
+ *   node scripts/eval-run.mjs --suite raylib --base my-session   # override session name
+ *   node scripts/eval-run.mjs --suite raylib --force-init        # re-init even if session exists
  *
- * Suites: vendor id → `eval/suites/<id>.yaml` (raylib, kb, generic). `--suite-yaml PATH` for custom pack.
- * Clone: --repo URL (optional when suite YAML has repo_url), [--clone-branch BR] [--clone-depth N default 1].
- * Eval run does not publish docs.
+ * Suites: vendor id → `eval/suites/<id>.yaml` (raylib, kb, generic). `--suite-yaml PATH` for custom.
+ * Clone: suite YAML repo_url used by default; override with `--repo <git-url>`.
  */
 
 import { execSync, spawnSync } from 'node:child_process'
@@ -37,7 +42,7 @@ function listSuiteIds() {
 }
 
 /**
- * @returns {{ id: string, questions: string[], rubricPhrase: string, sourceFile: string, repoUrl: string | null }}
+ * @returns {{ id: string, questions: string[], answers: string[] | null, rubricPhrase: string, sourceFile: string, repoUrl: string | null }}
  */
 function normalizeSuiteDoc(raw, sourceFile) {
   if (!raw || typeof raw !== 'object') {
@@ -57,9 +62,21 @@ function normalizeSuiteDoc(raw, sourceFile) {
       : path.basename(sourceFile).replace(/\.(yaml|yml)$/i, '')
   const repoUrl =
     typeof raw.repo_url === 'string' && raw.repo_url.trim() ? raw.repo_url.trim() : null
+
+  let answers = null
+  if (Array.isArray(raw.answers)) {
+    if (raw.answers.length !== qs.length || !raw.answers.every(a => typeof a === 'string')) {
+      throw new Error(
+        `${sourceFile}: answers: must be an array of strings the same length as questions:`
+      )
+    }
+    answers = raw.answers.map(a => a.trim())
+  }
+
   return {
     id,
     questions: qs.map(s => s.trim()),
+    answers,
     rubricPhrase: rubric.trim(),
     sourceFile,
     repoUrl,
@@ -70,7 +87,7 @@ function evaluationsRoot() {
   return path.join(os.homedir(), '.kb', 'evaluations')
 }
 
-function sanitizeSlugPart(s) {
+export function sanitizeSlugPart(s) {
   const x = String(s)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -80,7 +97,7 @@ function sanitizeSlugPart(s) {
 }
 
 /** Short repo leaf name for artifact.repository.name (e.g. raylib). */
-function repoLeafNameFromUrl(url) {
+export function repoLeafNameFromUrl(url) {
   const raw = String(url)
     .trim()
     .replace(/\.git$/i, '')
@@ -160,9 +177,13 @@ function loadSuiteFromPath(absPath) {
 }
 
 function parseArgs(argv) {
-  const mode = argv[2]
+  // Accept optional legacy mode positional (init/all/query) for backward compat
+  const legacyModes = new Set(['init', 'all', 'query'])
+  const first = argv[2]
+  const hasLegacyMode = first && !first.startsWith('-') && legacyModes.has(first)
   const out = {
-    mode: mode === 'query' ? 'query' : mode === 'all' || mode === 'init' ? 'all' : null,
+    // init/all legacy → treat as --force-init; query legacy → no-op
+    forceInit: first === 'init' || first === 'all',
     suite: null,
     suiteYaml: null,
     repo: null,
@@ -176,12 +197,11 @@ function parseArgs(argv) {
     outFile: null,
     scoresFile: null,
     skipCapture: false,
-    autoScore: false,
+    autoScore: true, // on by default; disable with --manual-score
     autoScoreFile: null,
     help: false,
   }
-  if (mode === '--help' || mode === '-h') out.help = true
-  let i = 3
+  let i = hasLegacyMode ? 3 : 2
   while (i < argv.length) {
     const a = argv[i]
     if (a === '--suite') out.suite = argv[++i]
@@ -201,7 +221,9 @@ function parseArgs(argv) {
       const next = argv[i + 1]
       if (next && !next.startsWith('--')) out.autoScoreFile = argv[++i]
     } else if (a === '--auto-score') out.autoScore = true
+    else if (a === '--manual-score') out.autoScore = false
     else if (a === '--skip-init') out.skipCapture = true
+    else if (a === '--force-init') out.forceInit = true
     else if (a === '--help' || a === '-h') out.help = true
     i++
   }
@@ -223,36 +245,46 @@ function assertRemovedEvalFlags(argv) {
 }
 
 function printHelp() {
-  console.log(`eval-run.mjs — unified eval harvest (EVALUATION.md schema)
+  console.log(`eval-run.mjs — kb query eval harvest (EVALUATION.md schema)
 
-  node scripts/eval-run.mjs <init|all|query> --suite <vendor-id> [--repo <git-url>] [options]
-  Vendor packs: eval/suites/<id>.yaml (e.g. raylib, kb, generic). Custom: --suite-yaml /path/to/pack.yaml
+  node scripts/eval-run.mjs --suite <vendor-id> [options]
+  npm run eval -- --suite raylib [--auto-score]
 
-Modes:
-  init    Fresh clone → kb init + docs + graph + logs + 8× query (preferred; same as \`all\`)
-  all     Alias of \`init\` (backward compatible)
-  query   Fresh clone → same capture minus init; requires --base (KB session must already exist)
+Session lifecycle (automatic):
+  Base is derived as eval-{suiteId} (e.g. eval-raylib, eval-kb).
+  If the session has docs → reuse it (query-only run).
+  If the session is empty / missing → kb init first, then query.
+  Ends with a trends summary across prior runs for the same suite.
 
-Layout (per run, snapshot clone):
-  ~/.kb/evaluations/<run-name>/<repo-name>/  git clone
-  ~/.kb/evaluations/<run-name>/         scratch (q*.json, logs) + default artifact.json
+Suite / questions:
+  --suite VENDOR          Load eval/suites/VENDOR.yaml  (raylib, kb, fzf, generic)
+  --suite-yaml PATH       Load pack from arbitrary YAML path
+  --questions-file F.json Override: JSON array of exactly 8 strings
 
-Target:
-  --repo URL              Git remote override (https or git@); if omitted, use suite YAML repo_url
+Session:
+  --base NAME             Override derived session name (default: eval-{suiteId})
+  --force-init            Re-init even if session already has docs
+
+Target repo (for clone + git metadata):
+  --repo URL              Override suite YAML repo_url (https or git@)
   --clone-branch BR
   --clone-depth N         Shallow depth (default 1; use 0 for full clone)
 
-Suite / questions:
-  --suite VENDOR          Load eval/suites/VENDOR.yaml
-  --suite-yaml PATH       Load pack from arbitrary YAML path
-  --questions-file F.json Override: JSON array of exactly 8 strings (rubric still from suite YAML)
-
-Other:
-  --base NAME             Override KB base (all: default = run folder name, e.g. raylib-2026-04-27-1303; query: required)
+Output:
   --label SLUG            Stored as run_label in artifact
-  --run-dir PATH          With --skip-init: existing ~/.kb/evaluations/<run>/ (expects one git clone dir)
   --out PATH              Override artifact JSON path
-  --scores-file, --auto-score, --auto-score-file, --skip-init, --hypothesis
+  --manual-score          Skip LLM auto-scoring (default: auto-score is ON)
+  --scores-file PATH      Load manual rubric scores instead (JSON array of 8)
+  --auto-score-file PATH  Write auto-scores to a specific path
+
+Advanced:
+  --run-dir PATH          With --skip-init: reuse existing scratch dir
+  --skip-init             Skip all kb commands; re-score existing q*.json
+  --hypothesis TEXT
+
+Layout (per run, snapshot clone):
+  ~/.kb/evaluations/<run-name>/<repo-name>/  git clone
+  ~/.kb/evaluations/<run-name>/              scratch (q*.json, logs) + artifact.json
 `)
 }
 
@@ -274,15 +306,65 @@ function kb(cwd, args, opts = {}) {
   })
 }
 
-function stripCliBanner(text) {
+export function stripCliBanner(text) {
   const i = text.indexOf('{')
   if (i === -1) return text.trim()
   return text.slice(i)
 }
 
-function parseJsonFile(file) {
+/** Deterministic session name from suite id: eval-{suiteId} */
+export function derivedBase(suiteId) {
+  return `eval-${sanitizeSlugPart(suiteId)}`
+}
+
+/** Returns true if the KB session already has at least one document. */
+function sessionHasDocs(targetCwd, base) {
+  try {
+    const out = kb(targetCwd, `docs list --base ${base}`)
+    const m = /Count:\s*(\d+)/.exec(out)
+    return m ? Number(m[1]) > 0 : false
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Parse the text output of `kb query` into a normalized object.
+ * kb query does not support --output json; this handles the prose format.
+ */
+export function parseQueryText(text) {
+  // The output has multiple answer rounds (answer:done, answer-r2:done, answer-r3:done).
+  // The final comprehensive answer is always between the last "stage> answer*:done Xms" line
+  // and the "---" separator that precedes the evidence/retrieval footer.
+  let answer = null
+  const sepIdx = text.indexOf('\n---\n')
+  if (sepIdx !== -1) {
+    const beforeSep = text.slice(0, sepIdx)
+    const lastDoneIdx = beforeSep.lastIndexOf('\nstage> answer')
+    if (lastDoneIdx !== -1) {
+      const lineEnd = beforeSep.indexOf('\n', lastDoneIdx + 1)
+      if (lineEnd !== -1) answer = beforeSep.slice(lineEnd + 1).trim()
+    }
+  }
+  const retrievalLine = /^retrieval>\s*(.+)$/m.exec(text)?.[1]?.trim() ?? null
+  const method = /^(\w+)/.exec(retrievalLine ?? '')?.[1] ?? null
+  const resultCount = Number(/^matches>\s*(\d+)\s+ranked/m.exec(text)?.[1] ?? 0)
+  const sourcesRaw = /^sources>\s*top \d+ of \d+ ranked:\s*(.+)$/m.exec(text)?.[1] ?? ''
+  const provenance = sourcesRaw
+    .split(';')
+    .map(s => s.trim())
+    .filter(Boolean)
+  return {
+    answer,
+    result_count: resultCount,
+    provenance,
+    retrieval: { method, detail: retrievalLine, confidence: null },
+  }
+}
+
+function readQueryResult(file) {
   const raw = fs.readFileSync(file, 'utf8')
-  return JSON.parse(stripCliBanner(raw))
+  return parseQueryText(raw)
 }
 
 function extractInitAcceptedObject(logText) {
@@ -314,7 +396,7 @@ function extractInitAcceptedObject(logText) {
   return null
 }
 
-function parseGraphCounts(graphText) {
+export function parseGraphCounts(graphText) {
   const em = /Entities:\s*(\d+)/.exec(graphText)
   const rm = /Relationships:\s*(\d+)/.exec(graphText)
   return {
@@ -335,24 +417,6 @@ function git(repo, args) {
     return execSync(`git ${args}`, { encoding: 'utf8', cwd: repo }).trim()
   } catch {
     return 'unknown'
-  }
-}
-
-function summarizeRaw(parsed) {
-  const data = parsed.data ?? {}
-  const results = data.results ?? []
-  const ans =
-    typeof parsed.answer === 'string'
-      ? parsed.answer
-      : typeof data.answer === 'string'
-        ? data.answer
-        : undefined
-  return {
-    status: parsed.status,
-    result_count: results.length,
-    retrieval: data.retrieval ?? null,
-    answer_preview: typeof ans === 'string' ? ans.slice(0, 500) : null,
-    provenance: Array.isArray(parsed.provenance) ? parsed.provenance : [],
   }
 }
 
@@ -398,7 +462,7 @@ function deriveCoverageFacets(question) {
   return [...new Set(tokens)].slice(0, 8)
 }
 
-function buildCoverageAudit(question, answer, retrievalDetail) {
+export function buildCoverageAudit(question, answer, retrievalDetail) {
   const facets = deriveCoverageFacets(question)
   if (facets.length === 0) {
     return { facets: [], missing_facets: [], covered_count: 0, coverage_ratio: 1 }
@@ -417,13 +481,6 @@ function buildCoverageAudit(question, answer, retrievalDetail) {
 function clipText(s, maxLen) {
   if (typeof s !== 'string' || !s) return ''
   return s.length <= maxLen ? s : `${s.slice(0, maxLen)}\n…[truncated]`
-}
-
-function extractAnswerFromQuery(parsed) {
-  const data = parsed.data ?? {}
-  if (typeof parsed.answer === 'string') return parsed.answer
-  if (typeof data.answer === 'string') return data.answer
-  return null
 }
 
 function clampScore0to4(x) {
@@ -454,12 +511,22 @@ function parseJsonObjectFromLLM(text) {
     o = tryParse(trimmed.slice(i, j + 1))
     if (o && typeof o === 'object') return o
   }
+  // Also try extracting a bare JSON array
+  const ai = trimmed.indexOf('[')
+  const aj = trimmed.lastIndexOf(']')
+  if (ai !== -1 && aj > ai) {
+    o = tryParse(trimmed.slice(ai, aj + 1))
+    if (Array.isArray(o)) return o
+  }
   throw new Error(
     `[eval] Auto-score: could not parse JSON from model (prefix): ${trimmed.slice(0, 500)}`
   )
 }
 
-function buildRubric(phrase) {
+function buildRubric(phrase, hasReferenceAnswers = false) {
+  const referenceNote = hasReferenceAnswers
+    ? '\n\nA reference answer is provided for each question. Use it as a factual ground-truth to assess correctness — if the actual answer contradicts or omits key facts present in the reference, lower the Correctness score accordingly. The reference answer is not a style template; answers that cover the same facts differently are still correct.'
+    : ''
   return `You score kb \`query\` answers for ${phrase}. Each axis must be an integer 0–4.
 
 Correctness — 4: factually correct and grounded in the supplied answer/evidence; 3: mostly correct; 2: mixed or meaningful inaccuracies; 1: mostly wrong; 0: no useful answer.
@@ -467,7 +534,7 @@ Usefulness — 4: directly helps a developer act or understand the system; 3: he
 Specificity — 4: concrete project-specific APIs, paths, build flags, or mechanisms; 3: some concrete detail; 2: partly generic; 1: mostly generic; 0: purely generic or evasive.
 Evidence handling — 4: clearly tied to evidence, acknowledges gaps; 3: reasonably grounded; 2: some speculation; 1: strong speculation or unsupported claims; 0: no evidence discipline.
 
-Penalize boilerplate-only answers, stub lines that are not real explanations, and answers that miss the core of the question even if retrieval metadata looks confident.`
+Penalize boilerplate-only answers, stub lines that are not real explanations, and answers that miss the core of the question even if retrieval metadata looks confident.${referenceNote}`
 }
 
 async function callGeminiJudgeJson({ apiKey, model, systemInstruction, userText }) {
@@ -476,7 +543,7 @@ async function callGeminiJudgeJson({ apiKey, model, systemInstruction, userText 
     contents: [{ role: 'user', parts: [{ text: userText }] }],
     generationConfig: {
       temperature: 0.25,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 16384,
       responseMimeType: 'application/json',
     },
   }
@@ -531,18 +598,16 @@ async function callOpenAIJudgeJson({ apiKey, model, systemInstruction, userText 
   return content
 }
 
-async function runAutoScoreFile({ workdir, questions, outScoresPath, rubricPhrase }) {
-  const RUBRIC = buildRubric(rubricPhrase)
+async function runAutoScoreFile({ workdir, questions, answers, outScoresPath, rubricPhrase }) {
+  const hasRef = Array.isArray(answers) && answers.length === questions.length
+  const RUBRIC = buildRubric(rubricPhrase, hasRef)
   const blocks = questions.map((q, i) => {
-    const parsed = parseJsonFile(path.join(workdir, `q${i + 1}.json`))
-    const ans = extractAnswerFromQuery(parsed) || ''
-    const data = parsed.data ?? {}
-    const results = data.results ?? []
-    const prov = Array.isArray(parsed.provenance)
-      ? parsed.provenance
-      : results.map(r => r.metadata?.id).filter(Boolean)
-    const ret = data.retrieval ?? parsed.retrieval ?? null
-    return `### Question ${i + 1}\n${q}\n\nRetrieval (summary): ${clipText(JSON.stringify(ret), 2000)}\nProvenance ids: ${JSON.stringify(prov)}\n\nAnswer:\n${clipText(ans, 6000)}\n`
+    const parsed = readQueryResult(path.join(workdir, `q${i + 1}.json`))
+    const ans = parsed.answer || ''
+    const prov = parsed.provenance
+    const ret = parsed.retrieval
+    const refSection = hasRef ? `\nReference answer:\n${clipText(answers[i], 3000)}\n` : ''
+    return `### Question ${i + 1}\n${q}\n\nRetrieval (summary): ${clipText(JSON.stringify(ret), 2000)}\nProvenance ids: ${JSON.stringify(prov)}\n${refSection}\nAnswer:\n${clipText(ans, 6000)}\n`
   })
 
   const schemaHint = `Return a single JSON object with exactly one key "scores" whose value is an array of exactly 8 objects in question order (index 0 = question 1). Each object must have: "correctness", "usefulness", "specificity", "evidence_handling" (integers 0-4) and "notes" (short string rationale). No markdown fences.`
@@ -581,7 +646,9 @@ async function runAutoScoreFile({ workdir, questions, outScoresPath, rubricPhras
     )
   }
 
-  const obj = parseJsonObjectFromLLM(rawJsonText)
+  let obj = parseJsonObjectFromLLM(rawJsonText)
+  // Handle model returning a bare array instead of { scores: [...] }
+  if (Array.isArray(obj)) obj = { scores: obj }
   const scores = obj.scores
   if (!Array.isArray(scores) || scores.length !== 8) {
     throw new Error(
@@ -703,6 +770,213 @@ function readBaseFromInitLog(initLogPath) {
   return m ? m[1].replace(/['"`]+$/, '') : null
 }
 
+// ── Trends summary (absorbed from eval-trends.mjs) ──────────────────────────
+
+function _safeJson(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+export function scoreMetric(artifact, key) {
+  const q = artifact?.aggregate_scores?.query
+  const c = artifact?.aggregate_scores?.combined
+  if (key === 'usefulness') return q?.mean_usefulness ?? c?.mean_usefulness ?? null
+  if (key === 'pass_rate')
+    return (
+      q?.pass_rate_correctness_and_usefulness_at_least_3 ??
+      c?.pass_rate_correctness_and_usefulness_at_least_3 ??
+      null
+    )
+  if (key === 'correctness') return q?.mean_correctness ?? c?.mean_correctness ?? null
+  return null
+}
+
+export function structuralMetric(artifact, key) {
+  const init = artifact?.run?.init_result
+  const gs = init?.graph_summary
+  if (key === 'docs') return init?.written_docs ?? null
+  if (key === 'entities') return gs?.entities ?? null
+  if (key === 'rels') return gs?.relationships ?? null
+  if (key === 'avg_results') {
+    const qe = artifact?.query_evaluation ?? []
+    if (!qe.length) return null
+    const counts = qe.map(q => q.result_count ?? 0)
+    return counts.reduce((a, b) => a + b, 0) / counts.length
+  }
+  return null
+}
+
+export function matchesSuite(row, suite) {
+  if (!suite) return true
+  const p = suite.toLowerCase()
+  const a = row.artifact
+  const runSuite = (a?.run?.suite ?? '').toLowerCase()
+  if (runSuite) return runSuite === p
+  const haystack = [row.id, a?.repository?.name, a?.run_label, a?.run?.run_name]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  return haystack.includes(p)
+}
+
+export function sparkline(values, maxWidth = 28) {
+  const chars = '▁▂▃▄▅▆▇█'
+  const nums = values.filter(v => typeof v === 'number')
+  if (!nums.length) return ''
+  const trimmed = nums.slice(Math.max(0, nums.length - maxWidth))
+  const min = Math.min(...trimmed)
+  const max = Math.max(...trimmed)
+  if (max === min) return '▅'.repeat(trimmed.length)
+  return trimmed
+    .map(v => {
+      const idx = Math.max(0, Math.min(7, Math.round(((v - min) / (max - min)) * 7)))
+      return chars[idx]
+    })
+    .join('')
+}
+
+function _fmtN(n) {
+  if (n === null || n === undefined) return '  -'
+  if (Number.isInteger(n)) return String(n).padStart(3)
+  return n.toFixed(1).padStart(5)
+}
+
+function _fmtScore(n) {
+  return n === null || n === undefined ? '  -  ' : n.toFixed(3)
+}
+function _delta(a, b) {
+  return typeof a === 'number' && typeof b === 'number' ? a - b : null
+}
+function _fmtDelta(n) {
+  if (n === null) return '  -  '
+  return (n >= 0 ? '+' : '') + n.toFixed(3)
+}
+
+function _gatherArtifacts(repoRoot) {
+  const rows = []
+  const homeRoot = path.join(os.homedir(), '.kb', 'evaluations')
+  const repoRuns = path.join(repoRoot, 'evaluation', 'runs')
+  if (fs.existsSync(homeRoot)) {
+    for (const entry of fs.readdirSync(homeRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name === 'repos') continue
+      const artifactPath = path.join(homeRoot, entry.name, 'artifact.json')
+      if (!fs.existsSync(artifactPath)) continue
+      const artifact = _safeJson(artifactPath)
+      if (!artifact?.status) continue
+      rows.push({ source: 'home', id: entry.name, file: artifactPath, artifact })
+    }
+  }
+  if (fs.existsSync(repoRuns)) {
+    for (const entry of fs.readdirSync(repoRuns, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.json')) continue
+      const artifactPath = path.join(repoRuns, entry.name)
+      const artifact = _safeJson(artifactPath)
+      if (!artifact?.status) continue
+      rows.push({
+        source: 'repo',
+        id: entry.name.replace(/\.json$/i, ''),
+        file: artifactPath,
+        artifact,
+      })
+    }
+  }
+  return rows
+}
+
+function printTrendsSummary(suiteId) {
+  const repoRoot = KB_REPO
+  const all = _gatherArtifacts(repoRoot)
+  const filtered = all
+    .filter(row => matchesSuite(row, suiteId))
+    .map(row => ({
+      ...row,
+      created: row.artifact?.created_at ?? null,
+      docs: structuralMetric(row.artifact, 'docs'),
+      entities: structuralMetric(row.artifact, 'entities'),
+      rels: structuralMetric(row.artifact, 'rels'),
+      avg_results: structuralMetric(row.artifact, 'avg_results'),
+      usefulness: scoreMetric(row.artifact, 'usefulness'),
+      pass_rate: scoreMetric(row.artifact, 'pass_rate'),
+      correctness: scoreMetric(row.artifact, 'correctness'),
+    }))
+    .filter(row => row.docs !== null || row.entities !== null || row.avg_results !== null)
+    .sort((a, b) => {
+      const ta = a.created ? new Date(a.created).getTime() : Number.NaN
+      const tb = b.created ? new Date(b.created).getTime() : Number.NaN
+      return (Number.isFinite(ta) ? ta : 0) - (Number.isFinite(tb) ? tb : 0)
+    })
+    .slice(-20)
+
+  if (filtered.length === 0) {
+    console.log(`\n[eval-trends] no prior runs found for suite "${suiteId}"`)
+    return
+  }
+
+  const last = filtered[filtered.length - 1]
+  const prev = filtered.length > 1 ? filtered[filtered.length - 2] : null
+  const first = filtered[0]
+  const scoredRuns = filtered.filter(
+    r =>
+      typeof r.usefulness === 'number' && (r.usefulness > 0 || r.pass_rate > 0 || r.correctness > 0)
+  )
+
+  console.log(
+    `\n[eval-trends] suite=${suiteId}  runs=${filtered.length}  scored=${scoredRuns.length}`
+  )
+  console.log(
+    `[eval-trends] latest  docs=${_fmtN(last.docs).trim()} entities=${_fmtN(last.entities).trim()} rels=${_fmtN(last.rels).trim()} avg_results=${last.avg_results !== null ? last.avg_results.toFixed(1) : '-'}`
+  )
+  if (scoredRuns.length) {
+    const sl = scoredRuns[scoredRuns.length - 1]
+    console.log(
+      `[eval-trends] latest (scored)  use=${_fmtScore(sl.usefulness)} pass=${_fmtScore(sl.pass_rate)} corr=${_fmtScore(sl.correctness)}`
+    )
+  }
+  if (prev) {
+    console.log(
+      `[eval-trends] delta(prev→latest)  docs=${_fmtDelta(_delta(last.docs, prev.docs))} entities=${_fmtDelta(_delta(last.entities, prev.entities))} avg_results=${_fmtDelta(_delta(last.avg_results, prev.avg_results))}`
+    )
+  }
+  console.log(
+    `[eval-trends] delta(first→latest)  docs=${_fmtDelta(_delta(last.docs, first.docs))} entities=${_fmtDelta(_delta(last.entities, first.entities))}`
+  )
+
+  const entitiesSpark = sparkline(filtered.map(r => r.entities))
+  const resultsSpark = sparkline(filtered.map(r => r.avg_results))
+  const useSpark = sparkline(scoredRuns.map(r => r.usefulness))
+  if (entitiesSpark) console.log(`[eval-trends] entities trend    ${entitiesSpark}`)
+  if (resultsSpark) console.log(`[eval-trends] avg-results trend ${resultsSpark}`)
+  if (useSpark) console.log(`[eval-trends] usefulness trend  ${useSpark}`)
+
+  const W = 26
+  const hdr = `\n${'date'.padEnd(20)} ${'run'.padEnd(W)} ${'docs'.padStart(4)} ${'ent'.padStart(5)} ${'rels'.padStart(5)} ${'res'.padStart(5)} ${'use'.padStart(6)} ${'pass'.padStart(6)} ${'corr'.padStart(6)}  src`
+  console.log(hdr)
+  console.log('-'.repeat(hdr.trim().length))
+  for (const r of filtered) {
+    const d = r.created ? String(r.created).slice(0, 19) : 'unknown             '
+    const id = r.id.length > W ? `${r.id.slice(0, W - 1)}…` : r.id.padEnd(W)
+    console.log(
+      [
+        d,
+        id,
+        _fmtN(r.docs),
+        _fmtN(r.entities),
+        _fmtN(r.rels),
+        _fmtN(r.avg_results),
+        _fmtScore(r.usefulness),
+        _fmtScore(r.pass_rate),
+        _fmtScore(r.correctness),
+        ` ${r.source}`,
+      ].join(' ')
+    )
+  }
+}
+
+// ── Main ─────────────────────────────────────────────────────────────────────
+
 async function main() {
   const argv = process.argv
   let args
@@ -713,9 +987,9 @@ async function main() {
     console.error(e instanceof Error ? e.message : e)
     process.exit(1)
   }
-  if (args.help || !args.mode) {
+  if (args.help) {
     printHelp()
-    process.exit(args.help ? 0 : 1)
+    process.exit(0)
   }
 
   if (args.suiteYaml && args.suite) {
@@ -734,11 +1008,6 @@ async function main() {
     suiteConfig = args.suiteYaml ? loadSuiteFromPath(args.suiteYaml) : loadVendorSuite(args.suite)
   } catch (e) {
     console.error(e instanceof Error ? e.message : e)
-    process.exit(1)
-  }
-
-  if (args.mode === 'query' && !args.base) {
-    console.error('[eval] mode query requires --base')
     process.exit(1)
   }
 
@@ -762,31 +1031,26 @@ async function main() {
   }
 
   const workdir = runDir
-
   const questions = resolveQuestions(args, suiteConfig)
   const rubricPhrase = suiteConfig.rubricPhrase
 
-  let base = args.base
-  if (!base && args.skipCapture) {
+  // Base: user override → formula eval-{suiteId} → fall back from --skip-init scratch
+  let base = args.base || derivedBase(suiteId)
+  if (args.skipCapture) {
     const initLogPath = path.join(workdir, 'init.log')
-    if (fs.existsSync(initLogPath)) base = readBaseFromInitLog(initLogPath)
+    if (!args.base && fs.existsSync(initLogPath)) base = readBaseFromInitLog(initLogPath) || base
   }
-  if (!base && args.mode === 'all' && !args.skipCapture) base = runName
-  if (!base) {
-    console.error(
-      '[eval] could not determine KB base — pass --base (for --skip-init, ensure init.log contains kb --base or query_only JSON)'
-    )
-    process.exit(1)
-  }
+
+  // Auto-detect whether init is needed: session missing docs → init; existing docs → query only
+  const needsInit = !args.skipCapture && (args.forceInit || !sessionHasDocs(targetCwd, base))
+  const evalMode = needsInit ? 'all' : 'query'
 
   const label = args.label || runName
-  const evalMode = args.mode
-
   const hypothesis =
     args.hypothesis ||
     (repoUrl
-      ? `Unified eval: clone ${repoUrl} → init + 8 queries (suite=${suiteId}).`
-      : `Unified eval: suite=${suiteId}, run=${runName}, mode=${evalMode} (--skip-init).`)
+      ? `Eval suite=${suiteId} base=${base} mode=${evalMode} repo=${repoUrl}.`
+      : `Eval suite=${suiteId} base=${base} mode=${evalMode} (--skip-init).`)
 
   if (!args.skipCapture) {
     fs.mkdirSync(workdir, { recursive: true })
@@ -804,9 +1068,11 @@ async function main() {
   if (!args.skipCapture) {
     console.error(`[eval] workdir ${workdir}`)
     console.error(`[eval] target cwd ${targetCwd}`)
+    console.error(
+      `[eval] base "${base}" — ${needsInit ? 'no docs found, running kb init' : 'session exists, reusing'}`
+    )
 
-    if (evalMode === 'all') {
-      console.error(`[eval] init --base ${base}`)
+    if (needsInit) {
       const initLog = kb(targetCwd, `init --base ${base} --non-interactive --debug`)
       fs.writeFileSync(path.join(workdir, 'init.log'), initLog, 'utf8')
     } else {
@@ -821,8 +1087,8 @@ async function main() {
     kb(targetCwd, `default ${base}`, { stdio: 'inherit' })
 
     console.error('[eval] docs list')
-    const docsOut = kb(targetCwd, `docs list --base ${base} --output json`)
-    fs.writeFileSync(path.join(workdir, 'docs.json'), stripCliBanner(docsOut), 'utf8')
+    const docsOut = kb(targetCwd, `docs list --base ${base}`)
+    fs.writeFileSync(path.join(workdir, 'docs.txt'), docsOut, 'utf8')
 
     console.error('[eval] graph')
     const graphOut = kb(targetCwd, `graph --base ${base}`)
@@ -836,7 +1102,7 @@ async function main() {
     for (const question of questions) {
       console.error(`[eval] query ${q}/8`)
       const escaped = question.replace(/"/g, '\\"')
-      const out = kb(targetCwd, `query "${escaped}" --base ${base} --output json`)
+      const out = kb(targetCwd, `query "${escaped}" --base ${base}`)
       fs.writeFileSync(path.join(workdir, `q${q}.json`), out, 'utf8')
       q++
     }
@@ -848,12 +1114,13 @@ async function main() {
   const graphCounts = parseGraphCounts(graphText)
   const logsText = fs.readFileSync(path.join(workdir, 'logs.txt'), 'utf8')
   const initRunId = parseLatestInitRunId(logsText)
-  const docsList = parseJsonFile(path.join(workdir, 'docs.json'))
+  const docsListText = fs.existsSync(path.join(workdir, 'docs.txt'))
+    ? fs.readFileSync(path.join(workdir, 'docs.txt'), 'utf8')
+    : ''
+  const docsCountMatch = /Count:\s*(\d+)/.exec(docsListText)
+  const docsList = { count: docsCountMatch ? Number(docsCountMatch[1]) : null }
 
-  if (args.scoresFile && args.autoScore) {
-    console.error('[eval] Use only one of --scores-file and --auto-score / --auto-score-file.')
-    process.exit(1)
-  }
+  if (args.scoresFile) args.autoScore = false // --scores-file wins over auto-score default
 
   let manualScores = null
   let queryScoringMeta = null
@@ -870,6 +1137,7 @@ async function main() {
       const res = await runAutoScoreFile({
         workdir,
         questions,
+        answers: suiteConfig?.answers ?? null,
         outScoresPath: outScores,
         rubricPhrase,
       })
@@ -888,27 +1156,9 @@ async function main() {
 
   const query_evaluation = []
   for (let n = 1; n <= 8; n++) {
-    const parsed = parseJsonFile(path.join(workdir, `q${n}.json`))
-    const data = parsed.data ?? {}
-    const results = data.results ?? []
-    const retrieval = data.retrieval
-      ? {
-          method: data.retrieval.method ?? null,
-          detail: data.retrieval.detail ?? null,
-          confidence:
-            data.retrieval.checkpoints?.[0]?.confidence ?? data.retrieval.confidence ?? null,
-        }
-      : { method: null, detail: null, confidence: null }
-    const answer =
-      typeof parsed.answer === 'string'
-        ? parsed.answer
-        : typeof data.answer === 'string'
-          ? data.answer
-          : null
+    const parsed = readQueryResult(path.join(workdir, `q${n}.json`))
+    const { answer, result_count, provenance: prov, retrieval } = parsed
     const coverageAudit = buildCoverageAudit(questions[n - 1], answer, retrieval.detail)
-    const prov = Array.isArray(parsed.provenance)
-      ? parsed.provenance
-      : results.map(r => r.metadata?.id).filter(Boolean)
 
     const ms = manualScores?.[n - 1]
     const scores = ms
@@ -921,16 +1171,15 @@ async function main() {
       : { correctness: 0, usefulness: 0, specificity: 0, evidence_handling: 0 }
     const notes = ms?.notes?.trim()
       ? ms.notes
-      : 'Rubric scores not supplied — use EVALUATION.md, --scores-file, or --auto-score.'
+      : 'Rubric scores not supplied — use --scores-file or --manual-score to skip auto-scoring.'
 
     query_evaluation.push({
       question_id: n,
       question: questions[n - 1],
-      result_count: results.length,
+      result_count,
       retrieval,
       answer_excerpt: answer ? answer.slice(0, 280) : null,
       provenance: prov,
-      raw_query_output: summarizeRaw(parsed),
       coverage_audit: coverageAudit,
       scores,
       notes,
@@ -967,7 +1216,7 @@ async function main() {
       ? `Query rubric: auto-scored (${queryScoringMeta.provider} ${queryScoringMeta.model}). Scores: ${queryScoringMeta.scores_file}.`
       : args.scoresFile
         ? `Scores loaded from --scores-file (${path.resolve(args.scoresFile)}).`
-        : 'Query scores unset — pass --scores-file or --auto-score.',
+        : 'Query scores unset — pass --scores-file or remove --manual-score.',
     `eval_mode=${evalMode} suite=${suiteId} clone=${targetCwd}`,
     repoUrl ? `repo_url=${repoUrl}` : null,
     `Scratch + artifact under ${runDir}; snapshot clone under ${repoDir}`,
@@ -1089,9 +1338,15 @@ async function main() {
   fs.mkdirSync(path.dirname(outPath), { recursive: true })
   fs.writeFileSync(outPath, JSON.stringify(artifact, null, 2), 'utf8')
   console.error(`[eval] wrote ${outPath}`)
+
+  printTrendsSummary(suiteId)
 }
 
-main().catch(err => {
-  console.error(err instanceof Error ? err.stack || err.message : err)
-  process.exit(1)
-})
+const _isMain =
+  process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+if (_isMain) {
+  main().catch(err => {
+    console.error(err instanceof Error ? err.stack || err.message : err)
+    process.exit(1)
+  })
+}

@@ -97,17 +97,17 @@ kb init --git <url> [--branch <branch>] [--base <name>]
 # interactive: enter the URL at the "Git URL" upfront prompt (second question)
 ```
 
-Each git-linked base stores a blobless clone at `~/.kb/sessions/<base>/repo/` and a `meta.json` (`{ gitUrl, gitBranch, lastSyncedSha, lastSyncedAt }`). On every intent command, `maybeAutoSync()` (`auto-sync.ts`) checks `lastSyncedAt`; if stale (default 30 min) it runs `git pull` in `repo/` and, when new commits are detected, delegates to `runRescanApplyOrchestrator` with `repo/` as the scan root. Non-git bases (no `meta.json`) are no-ops.
+Each git-linked base stores a blobless clone at `~/.kb/sessions/<base>/repo/` and a `meta.json` (`{ gitUrl, gitBranch, lastSyncedSha, lastSyncedAt }`). `maybeAutoSync()` (`auto-sync.ts`) is called in two modes: (1) **on session load** — TUI startup and `kb base use` — always pulls regardless of recency (`staleLimitMs: 0`); (2) **on every intent command** — stale-gated (default 30 min). In both cases, new commits trigger a rescan; a failed pull emits a warning and the session continues on the existing index. Non-git bases (no `meta.json`) are no-ops.
 
 | File | Role |
 |---|---|
 | `base-meta.ts` | `readBaseMeta` / `writeBaseMeta` for `meta.json` |
 | `git-sync.ts` | `cloneRepo`, `pullRepo`, `getHeadSha`, `baseNameFromGitUrl` |
-| `auto-sync.ts` | `maybeAutoSync` — staleness gate + pull + conditional rescan |
+| `auto-sync.ts` | `maybeAutoSync` — forced pull on session load; stale-gated pull on queries; conditional rescan on new commits |
 
 **Invariants:**
 - `meta.json` is written in `runKbInit`'s `finally` block — reflects the last completed scan even on a paused run.
-- `maybeAutoSync` must never throw; git failures are swallowed and logged so queries proceed on the current index.
+- `maybeAutoSync` must never throw; git failures are swallowed and logged so the session proceeds on the current index.
 - `scanDir` (`repo/`) is the cwd for all file-discovery cycles; `cwd` (caller's shell dir) is only used for checkpoint paths and the `.kb` marker.
 - `kb sync` = self-upgrade (GitHub Releases). Unrelated to git-linked base sync.
 
