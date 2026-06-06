@@ -112,30 +112,9 @@ Not part of eval-run. Keep eval artifacts only; publish flows run separately.
 - Artifacts: `evaluation/runs/*.json` (default: not in git — see `EVALUATION.md` § Artifact Storage)
 - Raylib docs site: `~/raylib-kb-docs/`
 
-## MOEL pipeline (efficiency measurement)
-
-A separate pipeline measures exploration efficiency rather than answer quality. It lives in `eval/losses/` and is not yet wired to a runner script (TICKET-010 pending).
-
-**Loss components** — each in `[0, 1]`:
-
-| Loss | File | What it measures |
-|------|------|-----------------|
-| `L_AST` | `ast-loss.ts` | Jaccard distance over tree-sitter named exports between candidate and reference output |
-| `L_jury` | `jury-loss.ts` | LLM ensemble jury with minority-veto (≥2 vetoes → 1.0) and four bias mitigations |
-| `L_trajectory` | `trajectory-loss.ts` | Step deviation + duplicate tool-call ratio |
-| `L_resource` | `resource-loss.ts` | Weighted token footprint vs. task budget |
-
-**Formula:** `L_MOEL = wC*(mu*L_AST + (1-mu)*L_jury) + wT*L_trajectory + wR*L_resource`
-Default weights in `eval/config/moel-weights.json`: `wC=0.5, wT=0.3, wR=0.2, mu=0.6`.
-
-**Three conditions per task:** N (raw filesystem), K (kb-enabled), O (oracle injected facts). Hypothesis: `L_MOEL(N) > L_MOEL(K)`.
-
-Token/tool data per step is recorded by `TrajectoryCollector` in `src/core/telemetry.ts`. When asked to run a MOEL evaluation, check whether `scripts/moel-run.mjs` exists first; if not, TICKET-010 is the blocker.
-
 ## Notes
 
 - `EVALUATION.md` is singular. If the user says `EVALUATIONS.md`, treat it as `EVALUATION.md`.
 - Keep `ci-raylib-*` / disposable bases ephemeral; never pollute `dogfood`.
 - A low score is a valid result — comparability over optics.
 - Reference baseline: `evaluation/runs/2026-04-19-raylib-baseline.json` (pass rate 0.50, 14 docs, 404 entities).
-- kb self-check baseline (2026-06-06): pass rate 0.875, 53 docs, 2028 triplets, 718 symbols.
