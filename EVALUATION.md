@@ -16,8 +16,8 @@ After building a KB from scratch for the evaluation target repository, can `kb` 
 ## Secondary Questions
 
 1. Does `kb init` produce a usable knowledge base from the current repo without manual surgery?
-2. Does the resulting KB support both retrieval-style questions (`kb query`) and synthesis-style questions (`kb chat`) across multiple topic areas?
-3. Is the resulting graph store populated enough to plausibly improve retrieval and follow-up questioning?
+2. Does the resulting KB support retrieval-style questions (`kb query`) accurately across multiple topic areas?
+3. Is the resulting graph store populated enough to plausibly improve retrieval?
 4. What is the cost of producing this KB in time, tokens, and operator effort?
 5. In a later comparison run, does a dedicated KB-maintenance agent improve outcomes versus a single-agent baseline?
 
@@ -35,11 +35,13 @@ For day-to-day kb architecture work on your checkout, use `--base dogfood` (sepa
 
 | Base | Purpose | Lifetime |
 |------|---------|----------|
-| `<repo-leaf>-YYYY-MM-DD-HHmm` | Default disposable base from `eval-run.mjs`: **same string** as `~/.kb/evaluations/<run-name>/` (override with `--base`) | Ephemeral |
+| `eval-{suiteId}` | **Default** session for `eval-run.mjs`: e.g. `eval-raylib`, `eval-kb`. Created once and reused across runs. Override with `--base`. | Semi-permanent |
 | `raylib` | Persistent agent comparison base — accumulates across tasks, never wiped | Permanent |
 | `dogfood` | kb's own architectural knowledge | Permanent |
 
-The `raylib` base is the KB that a KB-backed agent would actually use during real development on a long-lived raylib tree. Do not reuse ephemeral eval run names for it — the compounding hypothesis requires the same base to persist across multiple task sessions.
+The `eval-{suiteId}` base is created automatically on first run and reused on subsequent runs. This means query quality improves over time as the session accumulates facts. Use `--force-init` to wipe and re-init the session from scratch if needed.
+
+The `raylib` base is the KB that a KB-backed agent uses during real development work. Do not confuse it with `eval-raylib` — `raylib` accumulates task results, `eval-raylib` is the eval benchmark session.
 
 ### Published docs location
 
@@ -47,51 +49,49 @@ Eval runs do **not** publish Jekyll output. We only capture init/query evidence 
 
 ## Automated harvest (`scripts/eval-run.mjs`)
 
-One runner drives all disposable-base harvests. **No local target directory:** repo URL resolves from suite YAML `repo_url`, with optional `--repo` override. Each run does a **fresh snapshot clone** under `~/.kb/evaluations/<run-name>/repo/`; scratch JSON and the default artifact live under `~/.kb/evaluations/<run-name>/`. **Default `--base`** for `init` / `all` equals **`<run-name>`** (e.g. `raylib-2026-04-27-1303` = repo leaf + date + `HHmm`; same-minute collision adds `-2`, `-3`, …).
+One runner drives all eval runs. Session lifecycle is fully automatic:
 
-From the kb repo root (after `pnpm run build`):
+1. Base is derived as `eval-{suiteId}` (e.g. `eval-raylib`).
+2. If the session already has docs → reuse it (query-only run).
+3. If the session is empty / missing → run `kb init` first, then query.
+4. After writing `artifact.json`, prints a trends summary across prior runs for the same suite.
+
+**Quick start** (from kb repo root, after `pnpm run build`):
+
+```bash
+# Standard run — auto-manages session, ends with trends:
+npm run eval -- --suite raylib
+
+# With LLM auto-scoring:
+npm run eval -- --suite raylib --auto-score
+
+# Force re-init even if session exists:
+npm run eval -- --suite raylib --force-init
+
+# Override session name:
+npm run eval -- --suite raylib --base my-custom-session
+```
 
 | npm script | Maps to |
 |------------|---------|
-| `npm run eval -- --suite raylib …` | Clone suite `repo_url`, init, queries |
-| `npm run eval -- --suite kb …` | Clone suite `repo_url`, init, queries |
-| `npm run eval -- --suite generic --repo <git-url> …` | Generic suite requires explicit repo override, then clone/init/queries |
-| `npm run eval:chat -- --base <name> --cwd <path>` | Init + 3 conversational scenarios + retrieval scoring |
-| `npm run eval:gen-doc` | `kb docs generate` smoke (introduction + howto) on `--base` (default `dogfood`); artifact under `~/.kb/evaluations/<run>/` |
+| `npm run eval -- --suite raylib` | 8× query eval against `eval-raylib`, then trends |
+| `npm run eval -- --suite kb` | Self-check against `eval-kb` |
+| `npm run eval -- --suite generic --repo <git-url>` | Any repo (requires explicit `--repo`) |
 
 **Suites (`--suite`)**
 
-- `raylib` — Eight **raylib-specific** questions (this document).
-- `kb` — Eight **kb-repo / product** questions (contributor dogfood).
-- `generic` — Eight **repo-neutral** questions. Use with `--repo` for arbitrary upstreams.
+- `raylib` — Eight raylib-specific questions.
+- `kb` — Eight kb-repo / product questions (contributor dogfood).
+- `fzf` — Eight fzf-specific questions.
+- `generic` — Eight repo-neutral questions. Use with `--repo` for arbitrary upstreams.
 
-Override questions with `--questions-file path.json` (JSON array of exactly eight strings) to lock a custom suite without forking the script.
-
-**Example**
-
-```bash
-npm run eval:init -- --suite generic \
-  --repo https://github.com/raysan5/raylib.git \
-  --label raylib-upstream-smoke \
-  --auto-score
-```
-
-Options: `--clone-branch main`, `--clone-depth 1` (default shallow; use `0` for full history). The artifact records `run.clone_url`, `run.target_cwd`, `run.run_dir`, `run.run_name`.
+Override questions with `--questions-file path.json` (JSON array of exactly eight strings).
 
 **Artifacts**
 
 - Default path: **`~/.kb/evaluations/<run-name>/artifact.json`**. Override with `--out`.
-- Rebuild artifact from existing scratch: `--skip-init --run-dir ~/.kb/evaluations/<run-name>/` (expects matching clone at `~/.kb/evaluations/<run-name>/repo/`).
+- Rebuild artifact from existing scratch: `--skip-init --run-dir ~/.kb/evaluations/<run-name>/`.
 - Automated artifacts may include extra `run` fields for traceability. Tools should treat unknown keys as forward-compatible metadata.
-
-**Docs generate smoke (`scripts/eval-gen-doc.mjs`)**
-
-- Same run root: **`~/.kb/evaluations/<run-name>/`** with `artifact.json` and `gen-doc.log`.
-- Flow matches CLI: each scenario runs **`docs generate --finalize`** (draft + `awaiting_review`), optional **`--reject-once "<feedback>"`** (one LLM revision; writes **`diff-introduction.txt`** / **`diff-howto.txt`** when a patch is produced), then **`docs generate --accept`** to commit the SQLite document.
-- Each finalized doc is also written as **`export-introduction.md`** and **`export-howto.md`** (SQLite body from `docs view --output json`). Open **`README-exports.md`** in that folder for absolute paths and a one-line `open` / `xdg-open` hint.
-- Default **`--base dogfood`**. Optional **`--skip-purge`** to skip deleting prior eval-titled docs (ids derived from fixed `documentTitle` strings).
-- Exit `1` only on hard failure; artifact `status` is `complete` when automated checks pass for both scenarios.
-- Interactive parity: **`kb chat`** supports **`/docs generate "<prompt>" …`** (questionnaire + review loop) and **`/facts`** (same surface as **`kb facts`**).
 
 ## Evaluation Design
 
@@ -106,51 +106,31 @@ This evaluation should be run at least twice against the same codebase snapshot 
 
 ## Standard Procedure
 
-### Phase 1: Initialize a Fresh KB
-
-From the target repo root (or a clone):
-
-1. Run: `kb init --base raylib-2026-04-27-1303 --non-interactive` (pick a fresh disposable name; `eval-run.mjs` generates this pattern automatically).
-2. Or interactively: start `kb`, then `/init --base <same>`
-3. Let `kb init` complete all phases.
-4. Save the resulting run metadata.
-
-Use a disposable base name that matches your eval run folder when using `eval-run.mjs`, or any unique name for manual runs.
-
-### Phase 2: Capture Build Metrics
-
-Collect:
-
-- Base name
-- Git branch and commit of `~/raylib/`
-- Start/end timestamps
-- `kb init` run ID from `kb logs`
-- Total init duration
-- Total init input tokens
-- Total init output tokens
-- Estimated init cost
-- Number of documents created
-- Graph entity count
-- Graph relationship count
-
-### Phase 3: Evaluate Answer Quality
-
-Run a fixed question set:
-
-- `kb query "<question>" --base ci-raylib-<date> --output json`
-- `kb chat` against the same base (optional, mark `not_captured` if skipped)
-
-Questions adapted for raylib (see Canonical Question Set below).
-
-### Phase 4: Score the Results
-
-Each question gets a rubric score on four axes. Use `--auto-score` with the eval runner when available.
-
-### Phase 5: Publish
+### Phase 1: Run the Eval
 
 ```bash
-kb publish jekyll --base ci-raylib-<date> --dir ~/raylib-kb-docs/ --apply
+npm run eval -- --suite raylib [--auto-score]
 ```
+
+The script handles session management automatically:
+- On first run: clones the repo, runs `kb init --base eval-raylib`, queries.
+- On subsequent runs: reuses the `eval-raylib` session, queries only.
+- Ends with a historical trends table.
+
+To force a fresh init (e.g. after significant KB changes): `--force-init`.
+
+### Phase 2: Review Artifacts
+
+Artifacts land in `~/.kb/evaluations/<run-name>/artifact.json`. Fields to check:
+
+- `run.init_result.written_docs` — docs created (only relevant when init ran)
+- `run.init_result.graph_summary.entities` / `.relationships`
+- `aggregate_scores.query.mean_usefulness`
+- `aggregate_scores.query.pass_rate_correctness_and_usefulness_at_least_3`
+
+### Phase 3: Score the Results
+
+Each question gets a rubric score on four axes. Use `--auto-score` for LLM judging (requires `GEMINI_API_KEY` or `OPENAI_API_KEY`), or supply a `--scores-file` for manual scoring.
 
 ## Canonical Question Set
 

@@ -5,11 +5,104 @@ display_name: kb
 repo_url: https://github.com/rosenjcb/kb.git
 rubric_focus: the **kb** local-first knowledge CLI/repo
 questions:
-  - What is this project for, and what are the main things kb can do?
-  - How does kb init work at a high level, including the major passes?
-  - Where do KB documents live, and how are active/default bases selected?
-  - How does retrieval work, including hybrid retrieval and graph involvement?
-  - Which source files import TsMorphIndexer, and what do they use it for?
-  - What commands should a contributor use during normal dogfood development in this repo?
-  - What does the graph-query-expansion module export, and which modules call into it?
-  - Which source files in src/tools import from the code-graph-store module?
+  - What is kb for, and what are the main commands and capabilities it provides?
+  - How does kb init work, including the indexing phases and what gets written to the SQLite store?
+  - How does kb scan differ from kb init, and when should a contributor use each?
+  - How does retrieval work in kb query — including the hybrid search approach, graph involvement, and facts-first architecture?
+  - How does the skills system work — how are skills defined, bundled during build, and installed into agent profiles?
+  - Which AST indexers does kb use, what languages or file types does each handle, and how do they interact during code-index?
+  - What does the query-expansion module do, how does it improve recall, and which parts of the codebase call into it?
+  - How does the eval system work — what does npm run eval do, how is the session managed, and how are results scored?
+answers:
+  - >
+    kb is a local-first knowledge base CLI that indexes a codebase into a SQLite-backed knowledge
+    graph and answers natural-language questions about it using hybrid retrieval. It combines
+    deterministic AST indexing (ts-morph for TS/JS, tree-sitter for Go/Python/Rust/etc.) with
+    LLM-extracted doc facts stored in `.kb-index.sqlite`. Main commands: `kb init` (bootstrap:
+    AST index + doc facts + category interview), `kb scan` (incremental refresh, skips interview),
+    `kb query` (natural-language Q&A via hybrid retrieval), `kb facts` (list/search facts),
+    `kb docs` (inspect documents), `kb graph` (inspect/edit the knowledge graph), `kb publish`
+    (publish to Notion or Jekyll, requires `--apply`), `kb submit` (add/update facts in a live
+    base), `kb base` (manage sessions). A React/Ink TUI launches when run in a TTY with slash-command
+    autocomplete. Skills (kb:dev-workflow, kb:dump-context, kb:evaluation-run) install into Claude
+    Code, Cursor, Codex, and Copilot agent profiles.
+
+  - >
+    `kb init` runs 5 checkpointed cycles: (1) read-inputs — recursively discovers markdown sources;
+    (2) code-index — runs TsMorphIndexer (TS/JS → IMPORTS_FILE, EXPORTS_SYMBOL, EXTENDS, IMPLEMENTS
+    facts with source_kind='import_code') and TreeSitterIndexer (Go, Python, Rust, Ruby, Java, C,
+    C++, C#, CSS, Bash, PHP, Scala, HTML etc.); (3) document-facts — sentence-segments markdown
+    sources into the facts table (source_kind='doc'); (4) import-docs — writes one is_original doc
+    per markdown file (verbatim body) into the documents table; (5) write — upserts documents.
+    After cycles, an interactive category interview assigns facts to user-named categories using
+    TF-IDF cosine similarity (skipped with --non-interactive). SQLite tables written: facts,
+    fact_edges, facts_fts (FTS5), fact_embeddings, documents, fact_categories, code_file_state.
+
+  - >
+    `kb scan` is equivalent to `kb init --rescan --apply`. Key differences: it is incremental
+    (only re-indexes files whose content hash changed per code_file_state), skips the category
+    interview and instead re-assigns uncategorized facts to existing categories using TF-IDF cosine
+    similarity at threshold 0.3, and always applies changes without a separate apply step.
+    Use `kb init` when creating a knowledge base for the first time or after major structural
+    reorganization that requires fresh categories. Use `kb scan` for routine incremental updates
+    after code changes, or to ingest facts from a related repo into an existing base.
+
+  - >
+    Retrieval is facts-first and multi-stage. First, `expandQueryWithGraph()` appends related terms:
+    exported symbols found via FTS5 search + 1-hop fact_edges neighbors, plus subject/object
+    LIKE-scan from the facts table — up to 26 extra terms. The facts-loop orchestrator then iterates
+    over exploration ponds (query sub-topics). Each iteration combines lexical FTS5 search, graph
+    neighbor expansion via fact_edges, and deterministic semantic scoring (cosine similarity between
+    a query embedding and stored fact_embeddings, weighted at 35%). Final score = lexical rank +
+    semantic×0.35 + lane fitness boost. Iteration stops at answerable_plateau confidence or when
+    all ponds are exhausted. The answer phase is multi-round: a quick intro first, then a
+    retrieval-tool call for deep retrieval, then a final comprehensive answer. Reported as
+    `hybrid (facts-loop;passes:N;ponds:N;semantic:on)`.
+
+  - >
+    Skills are markdown files in `skills/<name>/SKILL.md`. During build (scripts/build-cli.mjs)
+    each SKILL.md is copied to `dist/bin/<name>.skill.md` alongside the bundled binary.
+    At runtime, `src/skills/loader.ts` reads the skill: tries `<loaderDir>/<name>.skill.md`
+    (prod/dist), falls back to `../../skills/<name>/SKILL.md` (dev/tsx). Three bundled skills:
+    kb:dev-workflow, kb:dump-context, kb:evaluation-run. `src/cli/skill-installer.ts` installs
+    each skill to four agent targets: Claude Code (~/.claude/skills/<name>/SKILL.md),
+    Cursor (~/.cursor/rules/<name>.mdc), Codex (~/.codex/skills/<name>.md), and
+    Copilot (~/.github/copilot-instructions/<name>.md). Installation is idempotent: a content hash
+    is embedded as an HTML comment (`<!-- kb-skill-hash: ... -->`); the file is only rewritten if
+    the hash changed.
+
+  - >
+    Two AST indexers run sequentially during the code-index cycle. TsMorphIndexer
+    (src/tools/code-graph-indexer.ts) uses ts-morph for TypeScript and JavaScript, producing
+    IMPORTS_FILE, EXPORTS_SYMBOL, EXTENDS, and IMPLEMENTS structural edge facts. TreeSitterIndexer
+    (src/tools/tree-sitter-indexer.ts) uses web-tree-sitter with bundled WASM grammars and handles:
+    Go, TypeScript, TSX, JavaScript, JSX, Python, Rust, Ruby, Java, C, C++, C# (.cs), CSS, Bash,
+    PHP, Scala, and HTML, plus text-like formats (JSON, YAML, Markdown). Both indexers write to the
+    facts table with source_kind='import_code'. Changed files are identified by content hash from
+    code_file_state. Stale facts from deleted or changed files are tombstoned via
+    tombstoneStaleAstFacts.
+
+  - >
+    `expandQueryWithGraph()` in src/tools/graph-query-expansion.ts appends related terms to the
+    query before FTS search, improving recall by matching alternative names for the same concept.
+    Two-pass expansion: (1) code graph pass — FTS-searches facts_fts for exported symbols matching
+    tokenized query terms (including bigrams), then follows 1-hop fact_edges to get neighbor symbols
+    (up to MAX_CODE_EXPANSION=8 terms); (2) facts LIKE-scan — for each query slug, scans the facts
+    table subject/object for LIKE matches and appends the other side (up to MAX_SEMANTIC_EXPANSION=18
+    terms). The expanded query string is passed to FTS search, causing it to match documents
+    referencing related symbols even if the original term does not appear. Callers: src/cli/index.ts
+    (kb query command), src/cli/chat-cli.ts (two chat-turn call sites), and
+    src/tools/graph-rag-reranker.ts.
+
+  - >
+    `npm run eval` runs scripts/eval-run.mjs. Session management: derives base name as
+    eval-{suiteId} (e.g. eval-kb), checks docs via `kb docs list --base <base>` parsing `Count: N`.
+    If no docs, runs `kb init --base <base> --non-interactive`; otherwise reuses the existing
+    session. Query loop: runs all 8 questions from eval/suites/<suite>.yaml, saving each output as
+    q1.json...q8.json (text format parsed by parseQueryText(), which extracts the final answer after
+    the last `stage> answer` line before the `---` separator). Auto-scoring is on by default (opt
+    out with --manual-score): runAutoScoreFile() sends all 8 Q&A pairs to Gemini
+    (gemini-2.5-flash) or OpenAI, which scores 4 axes (Correctness, Usefulness, Specificity,
+    Evidence Handling) each 0–4. Results saved to auto-scores.json and artifact.json under
+    ~/.kb/evaluations/<run-name>/. Ends with a sparkline trends summary comparing this run against
+    prior runs of the same suite.
