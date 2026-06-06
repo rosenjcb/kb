@@ -22,6 +22,45 @@ Evaluate whether building and maintaining a `kb` knowledge base is materially us
 
 The core hypothesis is that this produces better systems faster, with lower token cost, better requirement capture, and better recall of project knowledge than relying on the primary coding agent's transient context alone.
 
+## Two evaluation pipelines
+
+KB has two complementary measurement approaches:
+
+### 1. Query quality harvest (`scripts/eval-run.mjs`)
+
+The original pipeline. Runs `kb init` on a fresh clone, then asks 8 questions from a YAML suite and scores answers on four axes (correctness, usefulness, specificity, evidence handling) via `--auto-score`. Produces `artifact.json` under `~/.kb/evaluations/<run>/`. See § Automated harvest below.
+
+### 2. MOEL pipeline (`eval/losses/`)
+
+New. Measures exploration *efficiency* across three controlled conditions per task, producing a single normalized loss scalar in `[0, 1]` where 0 is perfect. The primary hypothesis is `L_MOEL(N) > L_MOEL(K)` — kb-equipped agents find correct answers with less redundancy and fewer tokens than raw-filesystem agents.
+
+**MOEL formula:**
+```
+L_correctness = mu * L_AST + (1 - mu) * L_jury
+L_MOEL = wC * L_correctness + wT * L_trajectory + wR * L_resource
+```
+
+Default weights: `wC=0.5, wT=0.3, wR=0.2, mu=0.6` (in `eval/config/moel-weights.json`).
+
+**Three evaluation conditions per task:**
+
+| Condition | Tools | Purpose |
+|-----------|-------|---------|
+| **N** — Baseline FS | Raw filesystem only | Worst-case baseline |
+| **K** — KB-enabled | Full kb tool registry | Primary experiment |
+| **O** — Oracle | Minimal target facts injected as system prompt | Theoretical ceiling |
+
+**Loss components** (all in `[0, 1]`, implemented in `eval/losses/`):
+
+| Component | File | Method |
+|-----------|------|--------|
+| `L_AST` | `ast-loss.ts` | Jaccard distance over tree-sitter named exports/declarations |
+| `L_jury` | `jury-loss.ts` | LLM ensemble jury with minority-veto and four bias mitigations |
+| `L_trajectory` | `trajectory-loss.ts` | Step deviation + duplicate-call redundancy ratio |
+| `L_resource` | `resource-loss.ts` | Weighted token footprint vs. task budget |
+
+Per-step token and tool data flows through `TrajectoryCollector` in `src/core/telemetry.ts`. The MOEL harness (`scripts/moel-run.mjs`, TICKET-010) is not yet complete; the loss library is tested and ready.
+
 ## Primary Question
 
 After building a KB from scratch for the evaluation target repository, can `kb` answer important questions about the project accurately and usefully enough to justify the extra maintenance work?
