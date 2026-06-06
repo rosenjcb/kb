@@ -1,6 +1,6 @@
 # TICKET-003: LLM Jury Semantic Loss (`L_jury`)
 
-**Status:** Open  
+**Status:** Implemented  
 **Priority:** P1  
 **Language:** TypeScript  
 **Labels:** evaluation, correctness, llm-judge
