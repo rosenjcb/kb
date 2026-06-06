@@ -1,6 +1,6 @@
 # TICKET-004: Trajectory Inefficiency Loss (`L_trajectory`)
 
-**Status:** Open  
+**Status:** Implemented  
 **Priority:** P1  
 **Language:** TypeScript  
 **Labels:** evaluation, trajectory

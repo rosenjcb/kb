@@ -1,6 +1,6 @@
 # TICKET-002: AST Structural Loss (`L_AST`)
 
-**Status:** Open  
+**Status:** Implemented  
 **Priority:** P1  
 **Language:** TypeScript  
 **Labels:** evaluation, correctness

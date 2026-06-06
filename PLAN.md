@@ -58,20 +58,20 @@ Extend Telemetry (001)
 
 ### Ticket Index
 
-| Ticket | Title | Language | Depends On |
-|--------|-------|----------|------------|
-| [001](tickets/TICKET-001-telemetry-instrumentation.md) | Extend Telemetry with Trajectory Tracking | TypeScript | — |
-| [002](tickets/TICKET-002-ast-structural-loss.md) | AST Structural Loss (`L_AST`) | TypeScript | 001 |
-| [003](tickets/TICKET-003-llm-jury-semantic-loss.md) | LLM Jury Semantic Loss (`L_jury`) | TypeScript | 001 |
-| [004](tickets/TICKET-004-trajectory-inefficiency-loss.md) | Trajectory Inefficiency Loss (`L_trajectory`) | TypeScript | 001 |
-| [005](tickets/TICKET-005-resource-consumption-loss.md) | Resource Consumption Loss (`L_resource`) | TypeScript | 001 |
-| [006](tickets/TICKET-006-moel-aggregator.md) | MOEL Aggregator | TypeScript | 002, 003, 004, 005 |
-| [007](tickets/TICKET-007-bias-mitigation.md) | LLM Judge Bias Mitigation | TypeScript | 003 |
-| [008](tickets/TICKET-008-statistical-calibration.md) | Statistical Calibration Framework | **Python** | 007 |
-| [009](tickets/TICKET-009-manifest-mutation-checks.md) | Programmatic Validation (Manifest & Mutation) | TypeScript | 001 |
-| [010](tickets/TICKET-010-evaluation-harness.md) | Extend eval-run.mjs with MOEL Conditions | TypeScript | 006, 009 |
-| [011](tickets/TICKET-011-context-compaction.md) | Context Compaction & Runaway Limits | TypeScript | 010 |
-| [012](tickets/TICKET-012-benchmark-alignment.md) | Benchmark Tasks & Alignment Suite | TypeScript + YAML | 010, 011 |
+| Ticket | Title | Language | Depends On | Status |
+|--------|-------|----------|------------|--------|
+| [001](tickets/TICKET-001-telemetry-instrumentation.md) | Extend Telemetry with Trajectory Tracking | TypeScript | — | ✅ Implemented |
+| [002](tickets/TICKET-002-ast-structural-loss.md) | AST Structural Loss (`L_AST`) | TypeScript | 001 | ✅ Implemented |
+| [003](tickets/TICKET-003-llm-jury-semantic-loss.md) | LLM Jury Semantic Loss (`L_jury`) | TypeScript | 001 | Open |
+| [004](tickets/TICKET-004-trajectory-inefficiency-loss.md) | Trajectory Inefficiency Loss (`L_trajectory`) | TypeScript | 001 | ✅ Implemented |
+| [005](tickets/TICKET-005-resource-consumption-loss.md) | Resource Consumption Loss (`L_resource`) | TypeScript | 001 | ✅ Implemented |
+| [006](tickets/TICKET-006-moel-aggregator.md) | MOEL Aggregator | TypeScript | 002, 003, 004, 005 | ✅ Implemented |
+| [007](tickets/TICKET-007-bias-mitigation.md) | LLM Judge Bias Mitigation | TypeScript | 003 | Open |
+| [008](tickets/TICKET-008-statistical-calibration.md) | Statistical Calibration Framework | **Python** | 007 | Open |
+| [009](tickets/TICKET-009-manifest-mutation-checks.md) | Programmatic Validation (Manifest & Mutation) | TypeScript | 001 | Open |
+| [010](tickets/TICKET-010-evaluation-harness.md) | Extend eval-run.mjs with MOEL Conditions | TypeScript | 006, 009 | Open |
+| [011](tickets/TICKET-011-context-compaction.md) | Context Compaction & Runaway Limits | TypeScript | 010 | Open |
+| [012](tickets/TICKET-012-benchmark-alignment.md) | Benchmark Tasks & Alignment Suite | TypeScript + YAML | 010, 011 | Open |
 
 ## Three Evaluation Conditions
 

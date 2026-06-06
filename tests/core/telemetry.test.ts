@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import dayjs from 'dayjs'
@@ -8,8 +8,10 @@ import {
   ReportWriter,
   RunCollector,
   TokenCountingProvider,
+  TrajectoryCollector,
   estimateCost,
 } from '../../src/core/telemetry'
+import type { TrajectoryFile } from '../../src/core/telemetry'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
 
 // ─── estimateCost ─────────────────────────────────────────────────
@@ -316,5 +318,81 @@ describe('ReportWriter', () => {
     await expect(writer.append(c.finish('success'))).resolves.not.toThrow()
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('could not write run report'))
     stderrSpy.mockRestore()
+  })
+})
+
+// ─── TrajectoryCollector ──────────────────────────────────────────
+
+describe('TrajectoryCollector', () => {
+  it('Given a fresh collector, compileTrajectory returns empty steps and non-negative elapsedMs', () => {
+    const c = new TrajectoryCollector('task-1', 'K')
+    const t = c.compileTrajectory()
+    expect(t.totalSteps).toBe(0)
+    expect(t.steps).toHaveLength(0)
+    expect(t.elapsedMs).toBeGreaterThanOrEqual(0)
+    expect(t.taskId).toBe('task-1')
+    expect(t.condition).toBe('K')
+  })
+
+  it('Given a single step, stepIndex is 0 and fields match what was passed', () => {
+    const c = new TrajectoryCollector('task-2', 'N')
+    c.record_step('read_file', { path: '/src/foo.ts' }, { fresh: 100, cached: 50, output: 20 })
+    const t = c.compileTrajectory()
+    expect(t.totalSteps).toBe(1)
+    expect(t.steps[0].stepIndex).toBe(0)
+    expect(t.steps[0].toolName).toBe('read_file')
+    expect(t.steps[0].arguments).toEqual({ path: '/src/foo.ts' })
+    expect(t.steps[0].freshTokens).toBe(100)
+    expect(t.steps[0].cachedTokens).toBe(50)
+    expect(t.steps[0].outputTokens).toBe(20)
+    expect(t.steps[0].timestampMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('Given duplicate tool calls, both appear with sequential stepIndex values', () => {
+    const c = new TrajectoryCollector('task-3', 'O')
+    c.record_step('read_facts', { id: 'fact-1' })
+    c.record_step('read_facts', { id: 'fact-1' })
+    const t = c.compileTrajectory()
+    expect(t.totalSteps).toBe(2)
+    expect(t.steps[0].stepIndex).toBe(0)
+    expect(t.steps[1].stepIndex).toBe(1)
+    expect(t.steps[0].toolName).toBe('read_facts')
+    expect(t.steps[1].toolName).toBe('read_facts')
+  })
+
+  it('Given no tokens argument, all token fields default to 0', () => {
+    const c = new TrajectoryCollector('task-4', 'K')
+    c.record_step('search_code', { query: 'foo' })
+    const step = c.compileTrajectory().steps[0]
+    expect(step.freshTokens).toBe(0)
+    expect(step.cachedTokens).toBe(0)
+    expect(step.outputTokens).toBe(0)
+  })
+
+  it('Given compiled trajectory, JSON round-trip produces identical result', () => {
+    const c = new TrajectoryCollector('task-5', 'N')
+    c.record_step('tool_a', { x: 1 }, { fresh: 10 })
+    c.record_step('tool_b', { y: 'hello' })
+    const t = c.compileTrajectory()
+    const roundTripped: TrajectoryFile = JSON.parse(JSON.stringify(t))
+    expect(roundTripped).toEqual(t)
+  })
+
+  it('Given writeTrajectory, file is written at expected path and parses back correctly', async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'kb-traj-test-'))
+    try {
+      const c = new TrajectoryCollector('task-6', 'K')
+      c.record_step('read_facts', { id: 'fact-abc' }, { fresh: 200, output: 10 })
+      await c.writeTrajectory(tmpDir)
+      const filePath = path.join(tmpDir, 'trajectory_K.json')
+      expect(existsSync(filePath)).toBe(true)
+      const parsed: TrajectoryFile = JSON.parse(await readFile(filePath, 'utf-8'))
+      expect(parsed.taskId).toBe('task-6')
+      expect(parsed.condition).toBe('K')
+      expect(parsed.totalSteps).toBe(1)
+      expect(parsed.steps[0].toolName).toBe('read_facts')
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true })
+    }
   })
 })

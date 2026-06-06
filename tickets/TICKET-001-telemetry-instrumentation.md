@@ -1,6 +1,6 @@
 # TICKET-001: Extend Telemetry with Trajectory Tracking
 
-**Status:** Open  
+**Status:** Implemented  
 **Priority:** P0 — Foundational (all other tickets depend on this)  
 **Language:** TypeScript  
 **Labels:** infrastructure, evaluation

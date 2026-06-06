@@ -1,6 +1,6 @@
 # TICKET-005: Resource Consumption Loss (`L_resource`)
 
-**Status:** Open  
+**Status:** Implemented  
 **Priority:** P1  
 **Language:** TypeScript  
 **Labels:** evaluation, tokens, cost
