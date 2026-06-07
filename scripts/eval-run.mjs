@@ -366,7 +366,7 @@ async function callGeminiJudgeJson({ apiKey, model, systemInstruction, userText 
     system_instruction: { parts: [{ text: systemInstruction }] },
     contents: [{ role: 'user', parts: [{ text: userText }] }],
     generationConfig: {
-      temperature: 0.25,
+      temperature: 0,
       maxOutputTokens: 16384,
       responseMimeType: 'application/json',
     },
@@ -395,7 +395,7 @@ async function callGeminiJudgeJson({ apiKey, model, systemInstruction, userText 
 async function callOpenAIJudgeJson({ apiKey, model, systemInstruction, userText }) {
   const body = {
     model,
-    temperature: 0.2,
+    temperature: 0,
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemInstruction },
