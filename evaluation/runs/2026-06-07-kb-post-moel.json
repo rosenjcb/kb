@@ -1,0 +1,504 @@
+{
+  "schema_version": 1,
+  "evaluation_plan": "EVALUATION.md",
+  "run_label": "kb-2026-06-07-0701",
+  "status": "complete",
+  "created_at": "2026-06-07T07:03:08.950Z",
+  "repository": {
+    "name": "kb",
+    "branch": "main",
+    "commit": "3a3a5673c73cac8f126674307a64a22b4d7d22a1",
+    "clone_path": "/root/.kb/evaluations/kb-2026-06-07-0701/kb"
+  },
+  "hypothesis": "Eval suite=kb base=eval-kb mode=query repo=https://github.com/rosenjcb/kb.git.",
+  "run": {
+    "base": "eval-kb",
+    "eval_mode": "query",
+    "suite": "kb",
+    "run_name": "kb-2026-06-07-0701",
+    "evaluations_root": "/root/.kb/evaluations",
+    "question_suite_file": "eval/suites/kb.yaml",
+    "clone_url": "https://github.com/rosenjcb/kb.git",
+    "target_cwd": "/root/.kb/evaluations/kb-2026-06-07-0701/kb",
+    "mode": "query_only_harvest",
+    "commands": [
+      "pnpm run build (kb repo)",
+      "git clone (snapshot) → /root/.kb/evaluations/kb-2026-06-07-0701/kb",
+      "kb default eval-kb",
+      "kb docs list --base eval-kb --output json",
+      "kb graph --base eval-kb",
+      "kb logs list --limit 5",
+      "kb query \"<8 questions>\" --base eval-kb --output json"
+    ],
+    "workdir": "/root/.kb/evaluations/kb-2026-06-07-0701",
+    "run_dir": "/root/.kb/evaluations/kb-2026-06-07-0701",
+    "publish_dir": null,
+    "init_result": {
+      "status": "not_run",
+      "written_docs": 0,
+      "written_doc_ids": [],
+      "init_run_id": null,
+      "init_run_id_note": "query-only run: no init executed.",
+      "docs_list": {
+        "count": 53
+      },
+      "graph_summary": {
+        "entities": 2028,
+        "relationships": 718
+      }
+    }
+  },
+  "question_set": [
+    "What is kb for, and what are the main commands and capabilities it provides?",
+    "How does kb init work, including the indexing phases and what gets written to the SQLite store?",
+    "How does kb scan differ from kb init, and when should a contributor use each?",
+    "How does retrieval work in kb query — including the hybrid search approach, graph involvement, and facts-first architecture?",
+    "How does the skills system work — how are skills defined, bundled during build, and installed into agent profiles?",
+    "Which AST indexers does kb use, what languages or file types does each handle, and how do they interact during code-index?",
+    "What does the query-expansion module do, how does it improve recall, and which parts of the codebase call into it?",
+    "How does the eval system work — what does npm run eval do, how is the session managed, and how are results scored?"
+  ],
+  "query_scoring": {
+    "mode": "llm_judge_single_shot",
+    "provider": "gemini",
+    "model": "gemini-2.5-flash",
+    "scores_file": "/root/.kb/evaluations/kb-2026-06-07-0701/auto-scores.json"
+  },
+  "query_evaluation": [
+    {
+      "question_id": 1,
+      "question": "What is kb for, and what are the main commands and capabilities it provides?",
+      "result_count": 162,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "hybrid (facts-loop;passes:1;graph_hops:1;ponds:6;stop:answerable_plateau;semantic:on)",
+        "confidence": null
+      },
+      "answer_excerpt": "KB is a local-first knowledge system designed to bridge the gap between understanding code and actively working within a system. It provides a structural view of how different ideas and components connect, going beyond the limitations of a flat full-text index. Its core purpose i",
+      "provenance": [
+        "fact://0f4cb7e2f6a17bd6",
+        "fact://03d58a76e04c58cf",
+        "fact://b73c22cf1f085175",
+        "fact://d2c52e4844fc4eb4",
+        "fact://00c7bf69dc3818a6",
+        "fact://0029cac6203b3cca",
+        "fact://f36def172033e435",
+        "fact://52ca2f2dcc36cafe",
+        "fact://4df6a774eb577d25",
+        "fact://a8c26abd0fb0cd40"
+      ],
+      "coverage_audit": {
+        "facets": [
+          "commands",
+          "capabilities",
+          "provides"
+        ],
+        "missing_facets": [],
+        "covered_count": 3,
+        "coverage_ratio": 1
+      },
+      "scores": {
+        "correctness": 2,
+        "usefulness": 2,
+        "specificity": 3,
+        "evidence_handling": 2
+      },
+      "notes": "Misses key aspects like kb publish, kb submit, the skills system, and the core indexing tech (AST, LLM-extracted facts) in the initial description. Adds /config not in reference."
+    },
+    {
+      "question_id": 2,
+      "question": "How does kb init work, including the indexing phases and what gets written to the SQLite store?",
+      "result_count": 183,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "hybrid (facts-loop;passes:1;graph_hops:1;ponds:6;stop:answerable_plateau;semantic:on)",
+        "confidence": null
+      },
+      "answer_excerpt": "The `kb init` command is designed to automatically build a knowledge base from your codebase and documentation. Its primary goal is to provide a usable knowledge base as a side effect of your work, extracting facts without requiring manual intervention.\n\nThe `kb init` process inv",
+      "provenance": [
+        "fact://37e084b2ab7b389e",
+        "fact://251d7726729c038d",
+        "fact://439c8db3eb4d1687",
+        "fact://2c9c6f342198351b",
+        "fact://d538a004d887f1ad",
+        "fact://f482eff8252603a7",
+        "fact://6f07dcd92f73e3ca",
+        "fact://0cce1468939b978a",
+        "fact://ebb1f0b3a4f9dbdf",
+        "fact://16c9fa5991e5d7df"
+      ],
+      "coverage_audit": {
+        "facets": [
+          "including",
+          "indexing",
+          "phases",
+          "written",
+          "sqlite",
+          "store"
+        ],
+        "missing_facets": [
+          "including"
+        ],
+        "covered_count": 5,
+        "coverage_ratio": 0.833
+      },
+      "scores": {
+        "correctness": 3,
+        "usefulness": 4,
+        "specificity": 4,
+        "evidence_handling": 3
+      },
+      "notes": "Mostly correct and highly specific. Misses `facts_fts` and `fact_embeddings` tables, and includes `meta.json` which is not a SQLite table."
+    },
+    {
+      "question_id": 3,
+      "question": "How does kb scan differ from kb init, and when should a contributor use each?",
+      "result_count": 176,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "hybrid (facts-loop;passes:1;graph_hops:1;ponds:6;stop:answerable_plateau;semantic:on)",
+        "confidence": null
+      },
+      "answer_excerpt": "Both `kb init` and `kb scan` are used for ingesting facts into the knowledge base, performing deterministic code graph indexing, and building the semantic graph from source. They both execute the `code-graph` cycle and utilize the same `upsert_fact` storage layer for automated fa",
+      "provenance": [
+        "fact://002b030295a31b9c",
+        "fact://9876f47b5f72f12a",
+        "fact://4b7eaf53e3e9ba46",
+        "fact://0f7dc19ec64982f3",
+        "fact://2c9c6f342198351b",
+        "fact://d97c754e9a1152c5",
+        "fact://f212ee20c38ed48b",
+        "fact://205d7ab5dd8b45e8",
+        "fact://97e5d6890c95f9f4",
+        "fact://c46194335405fc85"
+      ],
+      "coverage_audit": {
+        "facets": [
+          "differ",
+          "should",
+          "contributor"
+        ],
+        "missing_facets": [
+          "differ"
+        ],
+        "covered_count": 2,
+        "coverage_ratio": 0.667
+      },
+      "scores": {
+        "correctness": 2,
+        "usefulness": 2,
+        "specificity": 2,
+        "evidence_handling": 2
+      },
+      "notes": "Misses crucial differences like the incremental nature of `kb scan` (only re-indexes changed files) and its handling of category re-assignment, which are key to understanding its behavior."
+    },
+    {
+      "question_id": 4,
+      "question": "How does retrieval work in kb query — including the hybrid search approach, graph involvement, and facts-first architecture?",
+      "result_count": 153,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "hybrid (facts-loop;passes:1;graph_hops:1;ponds:6;stop:answerable_plateau;semantic:on)",
+        "confidence": null
+      },
+      "answer_excerpt": "Retrieval in `kb query` operates on a facts-first architecture, meaning answers are primarily formed from retrieved facts and their graph neighborhood, rather than directly from full document bodies. This process involves a hybrid search approach and significant graph involvement",
+      "provenance": [
+        "fact://5737b440782dffab",
+        "fact://b06e64bf24e917fa",
+        "fact://78bf27862318f368",
+        "fact://e85d9bea5c8c18bd",
+        "fact://b01873d3fd6d3f51",
+        "fact://37e084b2ab7b389e",
+        "fact://251d7726729c038d",
+        "fact://1c5d9d07f79f42b0",
+        "fact://86b437628f2f15c3",
+        "fact://53c60a9774b1b0f2"
+      ],
+      "coverage_audit": {
+        "facets": [
+          "retrieval",
+          "query",
+          "including",
+          "hybrid",
+          "search",
+          "approach",
+          "graph",
+          "involvement"
+        ],
+        "missing_facets": [
+          "including"
+        ],
+        "covered_count": 7,
+        "coverage_ratio": 0.875
+      },
+      "scores": {
+        "correctness": 3,
+        "usefulness": 4,
+        "specificity": 4,
+        "evidence_handling": 4
+      },
+      "notes": "Very detailed and specific. Misses the specific semantic weighting (35%), the `answerable_plateau` stop condition, the multi-round answer phase, and explicit mention of `fact_embeddings` for semantic scoring."
+    },
+    {
+      "question_id": 5,
+      "question": "How does the skills system work — how are skills defined, bundled during build, and installed into agent profiles?",
+      "result_count": 144,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "hybrid (facts-loop;passes:1;graph_hops:1;ponds:6;stop:answerable_plateau;semantic:on)",
+        "confidence": null
+      },
+      "answer_excerpt": "Skills are defined as Markdown files (`SKILL.md`) located under the `skills/<name>/` directory in the repository. These files include YAML frontmatter for metadata like `name` and `description`.\n\nDuring the build process, `skill-installer.ts` is responsible for bundling these ski",
+      "provenance": [
+        "fact://7fe6bc664ddcf06b",
+        "fact://22c15cc0e02ce565",
+        "fact://714b399b90014f3a",
+        "fact://0bdc8175fec8784f",
+        "fact://33b5ea6b200b0576",
+        "fact://db6b0ee658176733",
+        "fact://dac6f88bfdd360b3",
+        "fact://ed2a83f3aedc2ee2",
+        "fact://9f7a9c1427fa4a38",
+        "fact://2c48fe252aa3423c"
+      ],
+      "coverage_audit": {
+        "facets": [
+          "skills",
+          "system",
+          "defined",
+          "bundled",
+          "during",
+          "build",
+          "installed",
+          "agent"
+        ],
+        "missing_facets": [
+          "system",
+          "bundled"
+        ],
+        "covered_count": 6,
+        "coverage_ratio": 0.75
+      },
+      "scores": {
+        "correctness": 3,
+        "usefulness": 4,
+        "specificity": 3,
+        "evidence_handling": 4
+      },
+      "notes": "Mostly correct and detailed. Minor inaccuracy about `skill-installer.ts` handling bundling (it's the build script). Misses specific file extensions for agent profiles and the names of the three bundled skills."
+    },
+    {
+      "question_id": 6,
+      "question": "Which AST indexers does kb use, what languages or file types does each handle, and how do they interact during code-index?",
+      "result_count": 165,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "hybrid (facts-loop;passes:1;graph_hops:1;ponds:6;stop:answerable_plateau;semantic:on)",
+        "confidence": null
+      },
+      "answer_excerpt": "KB uses two primary AST indexers: `TsMorphIndexer` and `TreeSitterIndexer`.\n\nThe `TsMorphIndexer` handles TypeScript, TSX, JavaScript, and JSX files. It is used when a `tsconfig.json` file is present, leveraging the TypeScript compiler for type-aware analysis.\n\nThe `TreeSitterInd",
+      "provenance": [
+        "fact://8c56e363f01adcf7",
+        "fact://439c8db3eb4d1687",
+        "fact://4ddfcd1e311007b9",
+        "fact://78dcb8e48f0be62a",
+        "fact://a653602713ec497b",
+        "fact://8a450d0f7041aa63",
+        "fact://56c4f0bbd528aca1",
+        "fact://3e2a43b450a9058b",
+        "fact://294ce12468e2f5b5",
+        "fact://c626a427efb55a4c"
+      ],
+      "coverage_audit": {
+        "facets": [
+          "indexers",
+          "languages",
+          "types",
+          "handle",
+          "interact",
+          "during",
+          "index"
+        ],
+        "missing_facets": [],
+        "covered_count": 7,
+        "coverage_ratio": 1
+      },
+      "scores": {
+        "correctness": 3,
+        "usefulness": 4,
+        "specificity": 4,
+        "evidence_handling": 4
+      },
+      "notes": "Highly correct and specific. Misses the `tombstoneStaleAstFacts` mechanism for cleaning up stale facts."
+    },
+    {
+      "question_id": 7,
+      "question": "What does the query-expansion module do, how does it improve recall, and which parts of the codebase call into it?",
+      "result_count": 174,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "hybrid (facts-loop;passes:1;graph_hops:1;ponds:6;stop:answerable_plateau;semantic:on)",
+        "confidence": null
+      },
+      "answer_excerpt": "The query expansion module enhances retrieval by adding graph neighbors of a query term as synonyms. This process, handled by `expandQueryWithGraph` (found in `src/tools/graph-query-expansion.ts`), runs before `read_facts` accesses the fact full-text index. By widening the query ",
+      "provenance": [
+        "fact://464806634a8dc79d",
+        "fact://37e084b2ab7b389e",
+        "fact://9607cda0787ae151",
+        "fact://aba235ddeebe61b8",
+        "fact://25d8e3c0b44c5595",
+        "fact://394da6605cc67db4",
+        "fact://d666ead045931295",
+        "fact://d2b390c633c5408a",
+        "fact://effd12c62ea3eb69",
+        "fact://9961eb8500a353b8"
+      ],
+      "coverage_audit": {
+        "facets": [
+          "query",
+          "expansion",
+          "module",
+          "improve",
+          "recall",
+          "parts",
+          "codebase"
+        ],
+        "missing_facets": [
+          "parts"
+        ],
+        "covered_count": 6,
+        "coverage_ratio": 0.857
+      },
+      "scores": {
+        "correctness": 2,
+        "usefulness": 3,
+        "specificity": 2,
+        "evidence_handling": 2
+      },
+      "notes": "Explains the 'what' and 'why' well, but significantly omits the detailed two-pass expansion mechanism (code graph pass, facts LIKE-scan, term limits). Adds callers not in the reference."
+    },
+    {
+      "question_id": 8,
+      "question": "How does the eval system work — what does npm run eval do, how is the session managed, and how are results scored?",
+      "result_count": 174,
+      "retrieval": {
+        "method": "hybrid",
+        "detail": "hybrid (facts-loop;passes:1;graph_hops:1;ponds:6;stop:answerable_plateau;semantic:on)",
+        "confidence": null
+      },
+      "answer_excerpt": "The `npm run eval` system is designed for repeatable evaluations of the `kb` system, supporting various evaluation suites and automatic session management, with results scored and stored as artifacts.\n\n**Functionality of `npm run eval`:**\nThis command initiates an evaluation run,",
+      "provenance": [
+        "fact://bee65fa58c335495",
+        "fact://fec605fdf32c7068",
+        "fact://1704af94d8f3a6cb",
+        "fact://c3a4da05f1f4e7e7",
+        "fact://0f7dc19ec64982f3",
+        "fact://d173cc152205efc3",
+        "fact://1cf7ee67131bdf8e",
+        "fact://afbc8da87cef626a",
+        "fact://b9f7507d18030af2",
+        "fact://26d8c32b21c7abdd"
+      ],
+      "coverage_audit": {
+        "facets": [
+          "system",
+          "session",
+          "managed",
+          "results",
+          "scored"
+        ],
+        "missing_facets": [
+          "managed"
+        ],
+        "covered_count": 4,
+        "coverage_ratio": 0.8
+      },
+      "scores": {
+        "correctness": 3,
+        "usefulness": 4,
+        "specificity": 4,
+        "evidence_handling": 4
+      },
+      "notes": "Very comprehensive and specific. Misses the specific LLM model, the `parseQueryText` detail for answer extraction, the sparkline summary, and doesn't explicitly list all four scoring axes, only examples."
+    }
+  ],
+  "coverage_audit": {
+    "mean_coverage_ratio": 0.848,
+    "questions_with_missing_facets": [
+      {
+        "question_id": 2,
+        "missing_facets": [
+          "including"
+        ]
+      },
+      {
+        "question_id": 3,
+        "missing_facets": [
+          "differ"
+        ]
+      },
+      {
+        "question_id": 4,
+        "missing_facets": [
+          "including"
+        ]
+      },
+      {
+        "question_id": 5,
+        "missing_facets": [
+          "system",
+          "bundled"
+        ]
+      },
+      {
+        "question_id": 7,
+        "missing_facets": [
+          "parts"
+        ]
+      },
+      {
+        "question_id": 8,
+        "missing_facets": [
+          "managed"
+        ]
+      }
+    ]
+  },
+  "chat_evaluation": {
+    "status": "not_captured",
+    "notes": "Batch automation: kb chat transcripts not captured. Follow EVALUATION.md Phase 3 for interactive chat when a complete run is required."
+  },
+  "aggregate_scores": {
+    "query": {
+      "mean_correctness": 2.625,
+      "mean_usefulness": 3.375,
+      "mean_specificity": 3.25,
+      "mean_evidence_handling": 3.125,
+      "pass_rate_correctness_and_usefulness_at_least_3": 0.625
+    },
+    "chat": {
+      "mean_correctness": 0,
+      "mean_usefulness": 0,
+      "mean_specificity": 0,
+      "mean_evidence_handling": 0,
+      "pass_rate_correctness_and_usefulness_at_least_3": 0
+    },
+    "combined": {
+      "mean_correctness": 2.625,
+      "mean_usefulness": 3.375,
+      "mean_specificity": 3.25,
+      "mean_evidence_handling": 3.125,
+      "pass_rate_correctness_and_usefulness_at_least_3": 0.625
+    }
+  },
+  "qualitative_findings": [
+    "Query rubric: auto-scored (gemini gemini-2.5-flash). Scores: /root/.kb/evaluations/kb-2026-06-07-0701/auto-scores.json.",
+    "eval_mode=query suite=kb clone=/root/.kb/evaluations/kb-2026-06-07-0701/kb",
+    "repo_url=https://github.com/rosenjcb/kb.git",
+    "Scratch + artifact under /root/.kb/evaluations/kb-2026-06-07-0701; snapshot clone under /root/.kb/evaluations/kb-2026-06-07-0701/kb"
+  ],
+  "next_improvement_areas": [
+    "Optional: capture kb chat for status=complete per EVALUATION.md.",
+    "Optional: read init token totals from ~/.kb/logs for init_result telemetry."
+  ]
+}
