@@ -131,6 +131,7 @@ function parseArgs(argv) {
     skipCapture: false,
     autoScore: true, // on by default; disable with --manual-score
     autoScoreFile: null,
+    scoreRuns: 1,
     help: false,
   }
   let i = hasLegacyMode ? 3 : 2
@@ -153,6 +154,7 @@ function parseArgs(argv) {
       const next = argv[i + 1]
       if (next && !next.startsWith('--')) out.autoScoreFile = argv[++i]
     } else if (a === '--auto-score') out.autoScore = true
+    else if (a === '--score-runs' && argv[i + 1]) out.scoreRuns = Math.max(1, Number.parseInt(argv[++i], 10) || 1)
     else if (a === '--manual-score') out.autoScore = false
     else if (a === '--skip-init') out.skipCapture = true
     else if (a === '--force-init') out.forceInit = true
@@ -206,6 +208,7 @@ Output:
   --label SLUG            Stored as run_label in artifact
   --out PATH              Override artifact JSON path
   --manual-score          Skip LLM auto-scoring (default: auto-score is ON)
+  --score-runs N          Call scorer N times and average (reduces noise; default 1)
   --scores-file PATH      Load manual rubric scores instead (JSON array of 8)
   --auto-score-file PATH  Write auto-scores to a specific path
 
@@ -422,7 +425,7 @@ async function callOpenAIJudgeJson({ apiKey, model, systemInstruction, userText 
   return content
 }
 
-async function runAutoScoreFile({ workdir, questions, answers, outScoresPath, rubricPhrase }) {
+async function runAutoScoreFile({ workdir, questions, answers, outScoresPath, rubricPhrase, scoreRuns = 1 }) {
   const hasRef = Array.isArray(answers) && answers.length === questions.length
   const RUBRIC = buildRubric(rubricPhrase, hasRef)
   const blocks = questions.map((q, i) => {
@@ -442,59 +445,71 @@ async function runAutoScoreFile({ workdir, questions, answers, outScoresPath, ru
   const geminiKey = process.env.GEMINI_API_KEY
   const openaiKey = process.env.OPENAI_API_KEY
 
-  let rawJsonText
   let providerUsed
   let modelUsed
 
   if (geminiKey) {
     providerUsed = 'gemini'
     modelUsed = process.env.EVAL_SCORER_MODEL || 'gemini-2.5-flash'
-    rawJsonText = await callGeminiJudgeJson({
-      apiKey: geminiKey,
-      model: modelUsed,
-      systemInstruction,
-      userText,
-    })
   } else if (openaiKey) {
     providerUsed = 'openai'
     modelUsed = process.env.EVAL_SCORER_OPENAI_MODEL || 'gpt-4o-mini'
-    rawJsonText = await callOpenAIJudgeJson({
-      apiKey: openaiKey,
-      model: modelUsed,
-      systemInstruction,
-      userText,
-    })
   } else {
     throw new Error(
       '[eval] --auto-score requires GEMINI_API_KEY or OPENAI_API_KEY (same keys as kb init).'
     )
   }
 
-  let obj = parseJsonObjectFromLLM(rawJsonText)
-  // Handle model returning a bare array instead of { scores: [...] }
-  if (Array.isArray(obj)) obj = { scores: obj }
-  const scores = obj.scores
-  if (!Array.isArray(scores) || scores.length !== 8) {
-    throw new Error(
-      `[eval] Auto-score: expected { "scores": [ ... 8 items ] }, got keys=${Object.keys(obj).join(',')}`
-    )
+  /** Call the LLM once and return a normalized 8-item score array. */
+  async function callOnce() {
+    const rawJsonText = geminiKey
+      ? await callGeminiJudgeJson({ apiKey: geminiKey, model: modelUsed, systemInstruction, userText })
+      : await callOpenAIJudgeJson({ apiKey: openaiKey, model: modelUsed, systemInstruction, userText })
+
+    let obj = parseJsonObjectFromLLM(rawJsonText)
+    if (Array.isArray(obj)) obj = { scores: obj }
+    const scores = obj.scores
+    if (!Array.isArray(scores) || scores.length !== 8) {
+      throw new Error(
+        `[eval] Auto-score: expected { "scores": [ ... 8 items ] }, got keys=${Object.keys(obj).join(',')}`
+      )
+    }
+    return scores.map((row, idx) => ({
+      correctness: clampScore0to4(row.correctness),
+      usefulness: clampScore0to4(row.usefulness),
+      specificity: clampScore0to4(row.specificity),
+      evidence_handling: clampScore0to4(row.evidence_handling),
+      notes:
+        typeof row.notes === 'string' && row.notes.trim()
+          ? row.notes.trim()
+          : `Auto-score question ${idx + 1} (${providerUsed})`,
+    }))
   }
 
-  const normalized = scores.map((row, idx) => ({
-    correctness: clampScore0to4(row.correctness),
-    usefulness: clampScore0to4(row.usefulness),
-    specificity: clampScore0to4(row.specificity),
-    evidence_handling: clampScore0to4(row.evidence_handling),
-    notes:
-      typeof row.notes === 'string' && row.notes.trim()
-        ? row.notes.trim()
-        : `Auto-score question ${idx + 1} (${providerUsed})`,
-  }))
+  const runs = Math.max(1, scoreRuns)
+  const allRuns = []
+  for (let r = 0; r < runs; r++) {
+    if (runs > 1) console.error(`[eval] auto-score run ${r + 1}/${runs}`)
+    allRuns.push(await callOnce())
+  }
+
+  // Average numeric axes across runs; keep notes from the last run
+  const normalized = questions.map((_, idx) => {
+    const axes = ['correctness', 'usefulness', 'specificity', 'evidence_handling']
+    const averaged = {}
+    for (const axis of axes) {
+      const mean = allRuns.reduce((s, run) => s + run[idx][axis], 0) / runs
+      averaged[axis] = Math.round(mean * 10) / 10
+    }
+    averaged.notes = allRuns[allRuns.length - 1][idx].notes
+    if (runs > 1) averaged.notes = `[avg×${runs}] ${averaged.notes}`
+    return averaged
+  })
 
   fs.mkdirSync(path.dirname(path.resolve(outScoresPath)), { recursive: true })
   fs.writeFileSync(path.resolve(outScoresPath), `${JSON.stringify(normalized, null, 2)}\n`, 'utf8')
   console.error(
-    `[eval] auto-score wrote ${path.resolve(outScoresPath)} (${providerUsed}/${modelUsed})`
+    `[eval] auto-score wrote ${path.resolve(outScoresPath)} (${providerUsed}/${modelUsed}${runs > 1 ? ` ×${runs}` : ''})`
   )
 
   return { normalized, providerUsed, modelUsed, outScoresPath: path.resolve(outScoresPath) }
@@ -906,10 +921,11 @@ async function main() {
         answers: suiteConfig?.answers ?? null,
         outScoresPath: outScores,
         rubricPhrase,
+        scoreRuns: args.scoreRuns,
       })
       manualScores = res.normalized
       queryScoringMeta = {
-        mode: 'llm_judge_single_shot',
+        mode: args.scoreRuns > 1 ? `llm_judge_avg_${args.scoreRuns}` : 'llm_judge_single_shot',
         provider: res.providerUsed,
         model: res.modelUsed,
         scores_file: res.outScoresPath,

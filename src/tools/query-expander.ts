@@ -53,7 +53,7 @@ export async function expandQuery(llm: LLMProvider, query: string): Promise<stri
     systemPrompt,
     messages: [{ role: 'user', content: `Query: ${query.trim()}` }],
     maxTokens: 256,
-    temperature: 0.3,
+    temperature: 0,
   })
   return parseExpansionArray(res.text)
 }
