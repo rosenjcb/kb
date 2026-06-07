@@ -1,0 +1,8 @@
+{
+  "taskId": "moel-kb-doc-quality-009",
+  "filePaths": [
+    "src/core/telemetry.ts"
+  ],
+  "queryMethod": "git-grep",
+  "anchorCommit": "241e1d2"
+}

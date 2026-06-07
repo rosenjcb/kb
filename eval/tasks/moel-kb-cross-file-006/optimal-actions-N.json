@@ -1,0 +1,11 @@
+{
+  "taskId": "moel-kb-cross-file-006",
+  "filePaths": [
+    "src/tools/code-graph-indexer.ts",
+    "src/tools/tree-sitter-indexer.ts",
+    "src/tools/sqlite-kb-index.ts",
+    "src/core/db-migrations.ts"
+  ],
+  "queryMethod": "git-grep",
+  "anchorCommit": "241e1d2"
+}

@@ -67,11 +67,11 @@ Extend Telemetry (001)
 | [005](tickets/TICKET-005-resource-consumption-loss.md) | Resource Consumption Loss (`L_resource`) | TypeScript | 001 | ✅ Implemented |
 | [006](tickets/TICKET-006-moel-aggregator.md) | MOEL Aggregator | TypeScript | 002, 003, 004, 005 | ✅ Implemented |
 | [007](tickets/TICKET-007-bias-mitigation.md) | LLM Judge Bias Mitigation | TypeScript | 003 | ✅ Implemented |
-| [008](tickets/TICKET-008-statistical-calibration.md) | Statistical Calibration Framework | **Python** | 007 | Open |
-| [009](tickets/TICKET-009-manifest-mutation-checks.md) | Programmatic Validation (Manifest & Mutation) | TypeScript | 001 | Open |
-| [010](tickets/TICKET-010-evaluation-harness.md) | Extend eval-run.mjs with MOEL Conditions | TypeScript | 006, 009 | Open |
-| [011](tickets/TICKET-011-context-compaction.md) | Context Compaction & Runaway Limits | TypeScript | 010 | Open |
-| [012](tickets/TICKET-012-benchmark-alignment.md) | Benchmark Tasks & Alignment Suite | TypeScript + YAML | 010, 011 | Open |
+| [008](tickets/TICKET-008-statistical-calibration.md) | Statistical Calibration Framework | **Python** | 007 | ✅ Implemented |
+| [009](tickets/TICKET-009-manifest-mutation-checks.md) | Programmatic Validation (Manifest & Mutation) | TypeScript | 001 | ✅ Implemented |
+| [010](tickets/TICKET-010-evaluation-harness.md) | Extend eval-run.mjs with MOEL Conditions | TypeScript | 006, 009 | ✅ Implemented |
+| [011](tickets/TICKET-011-context-compaction.md) | Context Compaction & Runaway Limits | TypeScript | 010 | ✅ Implemented |
+| [012](tickets/TICKET-012-benchmark-alignment.md) | Benchmark Tasks & Alignment Suite | TypeScript + YAML | 010, 011 | ✅ Implemented |
 
 ## Three Evaluation Conditions
 

@@ -18,6 +18,7 @@
     "install:global": "pnpm run build && bash scripts/install-global.sh",
     "uninstall:global": "bash scripts/uninstall-global.sh",
     "eval": "node scripts/eval-run.mjs",
+    "moel": "node scripts/moel-run.mjs",
     "test": "NODE_OPTIONS=--no-warnings vitest run",
     "test:watch": "NODE_OPTIONS=--no-warnings vitest",
     "test:functional": "bash tests/functional-test.sh",

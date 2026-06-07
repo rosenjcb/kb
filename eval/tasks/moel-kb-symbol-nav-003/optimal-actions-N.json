@@ -1,0 +1,8 @@
+{
+  "taskId": "moel-kb-symbol-nav-003",
+  "filePaths": [
+    "src/tools/tree-sitter-indexer.ts"
+  ],
+  "queryMethod": "git-grep",
+  "anchorCommit": "241e1d2"
+}
