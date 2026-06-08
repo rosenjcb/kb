@@ -240,27 +240,12 @@ Default weights: $w_C = 0.5$, $w_T = 0.3$, $w_R = 0.2$.  The
 constraint $w_C + w_T + w_R = 1$ is validated to within $10^{-6}$ and all
 loss terms are bounded to $[0, 1]$.
 
-\subsection{Programmatic Validators}
-
-\textbf{ManifestValidator.}  After each agent run, the agent's final message is
-parsed for a JSON manifest block listing modified, created, and deleted files.
-The validator diffs the declared manifest against the live
-\texttt{git diff --name-only HEAD} output.  A run passes only if there are no
-undeclared changes (phantom declarations are flagged as warnings, not failures).
-
-\textbf{MutationValidator.}  For TypeScript tasks, the validator locates the
-target function body via tree-sitter, replaces it with a stub
-\texttt{\{ throw new Error("moel-stub"); \}}, and verifies that the test suite
-fails on the mutant.  This confirms causal linkage: the agent's change was
-necessary for the tests to pass, not coincidental.
-
 \subsection{Benchmark Alignment}
 
 MOEL's three-condition design (N/K/O) mirrors SWE-ContextBench's context
 injection conditions; $L_\text{resource}$ replicates that benchmark's
 token-cost metric with the additional fresh/cached split.
-\texttt{ManifestValidator} adopts SWE-Atlas's live-diff validation and extends
-it with causal mutation testing.  CodeScaleBench's tool-validity tier
-corresponds to MOEL's condition comparison: Condition N uses only primitive
-filesystem tools, Condition K adds the full KB tool registry.
+CodeScaleBench's tool-validity tier corresponds to MOEL's condition comparison:
+Condition N uses only primitive filesystem tools, Condition K adds the full KB
+tool registry.
 
