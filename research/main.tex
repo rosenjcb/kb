@@ -56,18 +56,18 @@ a ranked fact pool, exiting on a scored sufficiency condition.
 \textbf{MOEL} (Multi-Objective Exploration Loss) is a quantitative evaluation
 framework that measures agent efficiency under three controlled conditions:
 Condition N (raw filesystem baseline), Condition K (KB-equipped), and Condition
-O (oracle context injection).  MOEL combines four normalized loss terms—AST
-structural distance ($L_\text{AST}$), LLM jury semantic loss ($L_\text{jury}$),
-trajectory inefficiency ($L_\text{trajectory}$), and resource consumption
-($L_\text{resource}$)—into a single weighted scalar $L_\text{MOEL}$.  Bias
-mitigation (position debiasing, verbosity normalization, self-enhancement
-down-weighting, family diversity enforcement) and statistical calibration via
-per-judge logistic regression are built in.
+O (oracle context injection).  MOEL combines three normalized loss terms—LLM
+jury semantic loss ($L_\text{jury}$), trajectory inefficiency
+($L_\text{trajectory}$), and resource consumption ($L_\text{resource}$)—into a
+single weighted scalar $L_\text{MOEL}$.  Bias mitigation (position debiasing,
+verbosity normalization, self-enhancement down-weighting, family diversity
+enforcement) and statistical calibration via per-judge logistic regression are
+built in.
 
 Empirically, KB achieves pass rates of 0.75--1.00 on the KB self-check suite
 and 0.62 on an external raylib C library benchmark, with evidence-handling scores
 reaching 4.00/4.00 in the most recent runs—up from 0.25 on the first raylib run
-and 0.38 on the first KB run.  All 12 MOEL framework components are fully
+and 0.38 on the first KB run.  All MOEL framework components are fully
 implemented and unit-tested, with benchmark alignment against SWE Atlas,
 SWE-ContextBench, and CodeScaleBench established.
 \end{abstract}

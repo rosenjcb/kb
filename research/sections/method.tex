@@ -111,8 +111,8 @@ indistinguishable under pass/fail scoring.  Similarly, LLM-as-judge evaluators
 have known failure modes (position bias, verbosity inflation, self-enhancement)
 that inflate quality estimates when judges are not calibrated~\cite{zheng2023judging}.
 
-MOEL addresses both problems by combining four normalized loss components into a
-single differentiable scalar, evaluated under three controlled conditions per task.
+MOEL addresses both problems by combining three normalized loss components into a
+single scalar, evaluated under three controlled conditions per task.
 
 \subsection{Three-Condition Evaluation Design}
 \label{subsec:conditions}
@@ -145,21 +145,6 @@ matures.  \texttt{compareConditions()} checks this automatically from the
 per-condition result objects.
 
 \subsection{Loss Functions}
-
-\subsubsection*{$L_\text{AST}$ --- AST Structural Loss}
-
-$L_\text{AST}$ quantifies semantic distance between a candidate code snippet and
-a reference by computing the Jaccard distance over their sets of named exported
-declarations, extracted via per-language tree-sitter queries.
-
-Let $D_c$ and $D_r$ denote the declaration sets of the candidate and reference
-respectively.  Then:
-
-\begin{equation}
-L_\text{AST} = 1 - \frac{|D_c \cap D_r|}{|D_c \cup D_r|}
-\label{eq:last}
-\end{equation}
-
 
 \subsubsection*{$L_\text{jury}$ --- LLM Jury Semantic Loss}
 
@@ -244,17 +229,14 @@ and output tokens; aggregated totals that lack this split are not used.
 
 \subsection{MOEL Aggregation}
 
-The four components combine into a single scalar through a two-level weighted
-sum:
+The three components combine into a single scalar:
 
-\begin{align}
-L_\text{corr} &= \mu \cdot L_\text{AST} + (1 - \mu) \cdot L_\text{jury}
-\label{eq:lcorr} \\[4pt]
-L_\text{MOEL} &= w_C \cdot L_\text{corr} + w_T \cdot L_\text{traj} + w_R \cdot L_\text{res}
+\begin{equation}
+L_\text{MOEL} = w_C \cdot L_\text{jury} + w_T \cdot L_\text{traj} + w_R \cdot L_\text{res}
 \label{eq:lmoel}
-\end{align}
+\end{equation}
 
-Default weights: $w_C = 0.5$, $w_T = 0.3$, $w_R = 0.2$, $\mu = 0.6$.  The
+Default weights: $w_C = 0.5$, $w_T = 0.3$, $w_R = 0.2$.  The
 constraint $w_C + w_T + w_R = 1$ is validated to within $10^{-6}$ and all
 loss terms are bounded to $[0, 1]$.
 

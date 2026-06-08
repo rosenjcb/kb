@@ -9,7 +9,7 @@ the stable-phase runs consistently achieve 0.75--1.00, with the densified base
 reaching mean correctness and evidence-handling of 4.00/4.00.
 
 We also introduced MOEL, a multi-objective evaluation framework that measures
-agent efficiency along correctness ($L_\text{AST}$ + $L_\text{jury}$),
+agent efficiency along correctness ($L_\text{jury}$),
 trajectory ($L_\text{trajectory}$), and resource ($L_\text{resource}$) axes.
 MOEL's bias-mitigated jury ensemble, statistical calibration, and programmatic
 validators make it possible to distinguish between an agent that answers
@@ -25,13 +25,6 @@ comparison (N vs.\ K) and oracle ceiling (O) are deferred to follow-on work.
 dataset is sufficient for per-judge logistic regression but does not support
 fine-grained calibration per rubric axis.  A 100-sample dataset with axis-level
 labels would significantly strengthen the calibration validity.
-
-\textbf{AST loss is structural, not semantic.}  $L_\text{AST}$ measures
-declaration-set overlap, not whether two implementations are behaviorally
-equivalent.  An agent that renames every exported symbol would receive high
-$L_\text{AST}$ even if the logic is identical.  Combining $L_\text{AST}$ with
-execution-based correctness (e.g., test passage) would yield a more robust
-correctness signal.
 
 \textbf{Knowledge base scope.}  KB currently operates on per-file ASTs.
 Cross-file dependencies (inheritance hierarchies, inter-module call graphs)
