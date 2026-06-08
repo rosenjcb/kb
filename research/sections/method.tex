@@ -88,11 +88,10 @@ fresh run.
 \subsection{Retrieval: Multi-Pond BFS}
 \label{subsec:retrieval}
 
-At query time, KB dispatches through \texttt{runQueryTruthRetrieval()} to a
-\emph{deep} retrieval loop inside \texttt{FactsQueryResearchOrchestrator}.  The
-loop maintains a set of \emph{exploration ponds}---independent BFS frontiers
-seeded from different sub-queries---so that one dominant code neighborhood
-cannot monopolize the evidence budget.
+At query time, KB executes a \emph{deep} retrieval loop that maintains a set
+of \emph{exploration ponds}---independent BFS frontiers seeded from different
+sub-queries---so that one dominant code neighborhood cannot monopolize the
+evidence budget.
 
 Each iteration of the loop merges five candidate streams:
 \begin{enumerate}
@@ -111,34 +110,22 @@ any of the following conditions is satisfied: (a) $\geq 10$ facts score
 $\geq 0.40$ against the query (\emph{answerable plateau}), (b) all ponds are
 exhausted, or (c) the fact budget ($500$ facts) is reached.
 
-Graph-augmented query expansion (\texttt{expandQueryWithGraph}) may optionally
-rewrite or widen the query string before the loop begins, based on entity
-relationships in the stored graph.
+Graph-augmented query expansion may optionally rewrite or widen the query
+string before the loop begins, based on entity relationships in the stored
+graph.
 
 \subsection{Knowledge Accretion}
 
 Unlike one-shot RAG systems, KB is designed for long-running use.  Each
 \texttt{kb submit} call deposits new facts into the base, which immediately
-become available to subsequent queries.  In the agent token-efficiency
-experiment (Section~\ref{subsec:token-efficiency}), a KB-backed agent completing
-the first task enriches the base with implementation-specific facts, which then
-benefit tasks 2--4 through lower retrieval cost.  The compounding effect is the
-primary differentiating property of KB over session-scoped context injection.
+become available to subsequent queries.  A KB-backed agent completing an early
+task enriches the base with implementation-specific facts that benefit later
+tasks through lower retrieval cost.  The compounding effect is the primary
+differentiating property of KB over session-scoped context injection.
 
-\subsection{Interfaces}
-
-KB is surfaced through three interfaces:
-\begin{itemize}
-  \item \textbf{CLI} (\texttt{kb query}, \texttt{kb chat}, \texttt{kb init},
-    \texttt{kb submit}): one-shot and interactive terminal commands.
-  \item \textbf{TUI}: an Ink-based terminal UI with a Portal-inspired color
-    scheme (blue for assistant output, orange for user input) supporting shell
-    and chat modes.
-  \item \textbf{Tool registry}: a set of MCP-compatible tools
-    (\texttt{read\_facts}, \texttt{search\_code\_symbols},
-    \texttt{get\_code\_neighbors}, \texttt{get\_code\_graph\_summary}) exposed
-    to external agent frameworks without requiring prompt modifications.
-\end{itemize}
+KB exposes its retrieval capabilities as a set of MCP-compatible tools
+(\texttt{kb query}, \texttt{kb init}, \texttt{kb submit}) accessible to
+external agent frameworks without requiring prompt modifications.
 
 %% ─── MOEL ─────────────────────────────────────────────────────────────────────
 \section{MOEL: Multi-Objective Exploration Loss}
@@ -202,10 +189,8 @@ L_\text{AST} = 1 - \frac{|D_c \cap D_r|}{|D_c \cup D_r|}
 \label{eq:last}
 \end{equation}
 
-Supported languages: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust.  The
-metric returns $1.0$ on unsupported languages or parse failures.  The WASM
-runtime is initialized once per process (\texttt{initAstLossParser()}) and
-reused across calls to amortize grammar loading.
+Supported languages: TypeScript, JavaScript, Python, Go, and Rust.  The
+metric returns $1.0$ on unsupported languages or parse failures.
 
 \subsubsection*{$L_\text{jury}$ --- LLM Jury Semantic Loss}
 
@@ -248,9 +233,8 @@ P(\text{correct} \mid s) = \sigma(\beta_0 + \beta_1 s)
 \end{equation}
 fitted on a 20-sample human-annotated dataset (10 pass / 10 fail, three human
 judges per sample).  Generalization error is estimated via leave-one-out
-cross-validation.  The calibration pipeline (\texttt{eval/calibration/calibrate.py})
-is invoked once per judge model and outputs $(\beta_0, \beta_1)$ coefficients
-stored in \texttt{calibration\_model.json}.
+cross-validation.  The pipeline is invoked once per judge model and stores
+$(\beta_0, \beta_1)$ coefficients for use at scoring time.
 
 \subsubsection*{$L_\text{trajectory}$ --- Trajectory Inefficiency Loss}
 
@@ -286,9 +270,8 @@ L_\text{resource} = \min\!\left(
 \label{eq:lresource}
 \end{equation}
 
-Token counts are drawn exclusively from \texttt{TrajectoryFile.steps}---the
-per-step record with a fresh/cached split---rather than from
-\texttt{StageMetrics.inputTokens}, which provides only an undifferentiated total.
+Token counts are drawn from per-step records that distinguish fresh, cached,
+and output tokens; aggregated totals that lack this split are not used.
 
 \subsection{MOEL Aggregation}
 
@@ -303,12 +286,8 @@ L_\text{MOEL} &= w_C \cdot L_\text{corr} + w_T \cdot L_\text{traj} + w_R \cdot L
 \end{align}
 
 Default weights: $w_C = 0.5$, $w_T = 0.3$, $w_R = 0.2$, $\mu = 0.6$.  The
-constraint $w_C + w_T + w_R = 1$ is validated at every \texttt{computeMoel()}
-call to within $10^{-6}$.  All loss terms are bounded to $[0, 1]$; the
-aggregator throws on any out-of-range input.  Weights are loaded from
-\texttt{eval/config/moel-weights.json} at runtime with hardcoded defaults as
-fallback, making the weighting policy auditable and editable without code
-changes.
+constraint $w_C + w_T + w_R = 1$ is validated to within $10^{-6}$ and all
+loss terms are bounded to $[0, 1]$.
 
 \subsection{Programmatic Validators}
 
@@ -323,15 +302,6 @@ target function body via tree-sitter, replaces it with a stub
 \texttt{\{ throw new Error("moel-stub"); \}}, and verifies that the test suite
 fails on the mutant.  This confirms causal linkage: the agent's change was
 necessary for the tests to pass, not coincidental.
-
-\subsection{Context Compaction}
-
-Long-running agent turns can exhaust context windows, forcing premature
-termination.  MOEL records compaction events in \texttt{CompactionRecord}---
-step index, tokens freed, turns compacted, and condition---so that compaction
-overhead is visible in trajectory analysis without conflating it with
-legitimate exploration steps.  Full compaction execution is deferred to the
-in-process harness (\texttt{moel-run.mjs}).
 
 \subsection{Benchmark Alignment}
 

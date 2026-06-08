@@ -5,12 +5,6 @@ Uri Alon, Meital Zilberstein, Omer Levy, and Eran Yahav.
 \newblock code2vec: Learning distributed representations of code.
 \newblock {\em Proceedings of the ACM on Programming Languages}, 3(POPL), 2019.
 
-\bibitem{chen2021codex}
-Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de~Oliveira
-  Pinto, Jared Kaplan, et~al.
-\newblock Evaluating large language models trained on code.
-\newblock {\em arXiv preprint arXiv:2107.03374}, 2021.
-
 \bibitem{dubois2024alpacafarm}
 Yann Dubois, Chen~Xuechen Li, Rohan Taori, Tianyi Zhang, Ishaan Gulrajani,
   Jimmy Ba, et~al.

@@ -4,10 +4,15 @@
 
 \subsection{LLM-Based Code Agents and Tools}
 
-SWE-Agent~\cite{yang2024sweagent} and Agentless~\cite{xia2024agentless} are
-representative systems in which agents navigate repositories through file-read
-and string-edit operations.  AutoCodeRover~\cite{zhang2024autocoderover}
-augments this with symbol indices and file maps to guide localization.
+SWE-Agent~\cite{yang2024sweagent} navigates repositories through iterative
+file-read and string-edit operations.  Agentless~\cite{xia2024agentless} takes
+a non-agentic approach—a fixed localization-then-repair pipeline that
+deliberately avoids giving the LLM autonomous tool-use—yet still requires
+direct file reads without pre-indexed context.
+AutoCodeRover~\cite{zhang2024autocoderover}
+augments localization with AST-based code search APIs (e.g.,
+\texttt{search\_method\_in\_file}) that retrieve class and method implementations
+from a structured AST index.
 CODESTRUCT~\cite{kim2025codestruct} replaces text-based edits with AST-grounded
 primitives (\texttt{readCode}/\texttt{editCode}), reducing input tokens by
 12--38\% and improving SWE-Bench Verified Pass@1 by up to 5.0pp.  KB is
@@ -29,10 +34,12 @@ retrieval quality a function of graph density rather than fixed index size.
 \subsection{LLM Evaluation Frameworks}
 
 Evaluating LLM outputs with another LLM (LLM-as-judge) is established in
-MT-Bench~\cite{zheng2023judging} and AlpacaFarm~\cite{dubois2024alpacafarm}.
-Known failure modes include position bias, verbosity bias, and self-enhancement
-bias.  PandaLM~\cite{wang2023pandalm} trains a dedicated judge model to
-mitigate these.  MOEL's jury module addresses the same biases at inference time
+MT-Bench~\cite{zheng2023judging}, which identifies position bias, verbosity
+bias, and self-enhancement bias as the primary failure modes.
+AlpacaFarm~\cite{dubois2024alpacafarm} applies a related idea—using LLMs to
+simulate human preference feedback—for RLHF training at lower cost.
+PandaLM~\cite{wang2023pandalm} trains a dedicated judge model for reliable
+instruction-tuning evaluation.  MOEL's jury module addresses the same biases at inference time
 through position debiasing (swapped-order consistency), verbosity normalization
 ($\log_{1+}$ length scaling), self-enhancement down-weighting ($\times 0.5$ for
 same-family judges), and family diversity enforcement---without requiring a

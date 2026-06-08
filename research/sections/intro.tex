@@ -3,9 +3,8 @@
 \label{sec:intro}
 
 Large language models (LLMs) have dramatically changed how developers interact
-with codebases, enabling agents to answer architectural questions, locate bugs,
-and generate new features at the cost of a prompt~\cite{chen2021codex,
-yang2024sweagent}.  Yet the dominant interaction model remains \emph{ephemeral}:
+with codebases, enabling agents to autonomously resolve real-world software
+engineering issues~\cite{yang2024sweagent}.  Yet the dominant interaction model remains \emph{ephemeral}:
 each agent session begins with an empty context window, forcing the model to
 re-discover facts about the codebase from scratch.  This creates a compounding
 inefficiency—teams that rely on LLM assistants must accept that every question
@@ -17,9 +16,9 @@ answer, because there is no prior accumulation of structured knowledge to query.
 On representative SWE-Bench tasks, text-based agents spend up to 21 steps
 navigating via grep and line-range reads to locate a single target function---work
 that structured pre-indexed facts resolve in two or three
-queries~\cite{kim2025codestruct, yang2024sweagent}.  Second,
-\textbf{context dilution}: reading large files degrades reasoning by flooding
-the context window with irrelevant code~\cite{shi2023distracted}, and brittle
+queries~\cite{kim2025codestruct}.  Second,
+\textbf{context dilution}: irrelevant context degrades LLM
+reasoning~\cite{shi2023distracted}, and brittle
 string-matching edits fail when whitespace or formatting drifts~\cite{kim2025codestruct}.
 
 Existing retrieval-augmented generation (RAG) systems~\cite{lewis2020rag}
