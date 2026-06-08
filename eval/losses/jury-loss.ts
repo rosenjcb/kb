@@ -5,7 +5,7 @@ import type { LLMCallParams, LLMProvider } from '../../src/core/types'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const PROMPT_TEMPLATE_PATH = path.join(__dirname, '../prompts/judge-meta-prompt.txt')
+const PROMPT_TEMPLATE_PATH = path.join(__dirname, '../prompts/judge-meta-prompt.md')
 
 export interface JudgeConfig {
   provider: LLMProvider

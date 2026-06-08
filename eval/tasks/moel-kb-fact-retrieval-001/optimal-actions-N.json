@@ -1,8 +1,0 @@
-{
-  "taskId": "moel-kb-fact-retrieval-001",
-  "filePaths": [
-    "src/tools/facts-query-research-orchestrator.ts"
-  ],
-  "queryMethod": "git-grep",
-  "anchorCommit": "241e1d2"
-}

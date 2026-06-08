@@ -1,9 +1,0 @@
-{
-  "taskId": "moel-kb-doc-quality-010",
-  "filePaths": [
-    "src/core/fact-categories.ts",
-    "src/tools/sqlite-kb-index.ts"
-  ],
-  "queryMethod": "git-grep",
-  "anchorCommit": "241e1d2"
-}

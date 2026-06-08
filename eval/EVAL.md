@@ -40,7 +40,6 @@ eval/
   tools/           filesystem-tools.ts — read_file / list_directory / search_file_contents for Condition N
   reports/         summary.ts — buildSummaryMarkdown / buildSummaryJson from moel_results.json
   calibration/     calibrate.py, apply_calibration.py, calibration_data.json (Python, logistic regression)
-  tasks/           Per-task reference answers and optimal-action sets (moel-kb-*/)
   benchmarks/      alignment.md — mapping to SWE Atlas / SWE-ContextBench / CodeScaleBench
   config/          Runtime weight and cost JSON (fallback defaults hardcoded in each module)
   prompts/         LLM prompt templates

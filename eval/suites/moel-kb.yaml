@@ -7,7 +7,6 @@ display_name: "MOEL — kb dogfood task library"
 repo_url: https://github.com/rosenjcb/kb.git
 rubric_focus: the **kb** local-first knowledge CLI/repo (MOEL task library, 10 tasks)
 
-# ── Flat arrays for eval-run.mjs compatibility ──────────────────────────────
 questions:
   - "How does kb's retrieval orchestrator decide when it has gathered sufficient evidence to answer?"
   - "What is the role of retrieval-lane-router.ts, and which lane types does it define?"
@@ -20,29 +19,7 @@ questions:
   - "Write a one-paragraph description of the RunCollector class including its lifecycle and output format."
   - "Write a one-paragraph description of how fact_categories are assigned during kb init and kb scan."
 
-answers:
-  - >
-    (reference answer — see eval/tasks/moel-kb-fact-retrieval-001/reference-answer.md)
-  - >
-    (reference answer — see eval/tasks/moel-kb-symbol-nav-002/reference-answer.md)
-  - >
-    (reference answer — see eval/tasks/moel-kb-symbol-nav-003/reference-answer.md)
-  - >
-    (reference answer — see eval/tasks/moel-kb-symbol-nav-004/reference-answer.md)
-  - >
-    (reference answer — see eval/tasks/moel-kb-cross-file-005/reference-answer.md)
-  - >
-    (reference answer — see eval/tasks/moel-kb-cross-file-006/reference-answer.md)
-  - >
-    (reference answer — see eval/tasks/moel-kb-cross-file-007/reference-answer.md)
-  - >
-    (reference answer — see eval/tasks/moel-kb-fact-retrieval-008/reference-answer.md)
-  - >
-    (reference answer — see eval/tasks/moel-kb-doc-quality-009/reference-answer.md)
-  - >
-    (reference answer — see eval/tasks/moel-kb-doc-quality-010/reference-answer.md)
-
-# ── MOEL extensions — parallel to questions/answers arrays ──────────────────
+# ── MOEL task definitions ────────────────────────────────────────────────────
 tasks:
   - id: moel-kb-fact-retrieval-001
     category: fact-retrieval

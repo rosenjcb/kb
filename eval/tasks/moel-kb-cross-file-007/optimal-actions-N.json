@@ -1,8 +1,0 @@
-{
-  "taskId": "moel-kb-cross-file-007",
-  "filePaths": [
-    "src/core/telemetry.ts"
-  ],
-  "queryMethod": "git-grep",
-  "anchorCommit": "241e1d2"
-}

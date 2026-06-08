@@ -60,7 +60,7 @@ Config files loaded at runtime (falling back to hardcoded defaults):
 - `eval/config/provider-costs.json` — `{ delta, gamma }`
 - `eval/config/bias-config.json` — `BiasConfig` defaults (read by callers, not by jury-loss itself)
 
-The jury prompt template lives at `eval/prompts/judge-meta-prompt.txt` and is loaded by `runJury` on every call.
+The jury prompt template lives at `eval/prompts/judge-meta-prompt.md` and is loaded by `runJury` on every call.
 
 ## Invariants
 

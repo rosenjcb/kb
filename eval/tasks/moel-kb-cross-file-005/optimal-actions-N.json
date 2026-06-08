@@ -1,9 +1,0 @@
-{
-  "taskId": "moel-kb-cross-file-005",
-  "filePaths": [
-    "scripts/eval-run.mjs",
-    "eval/suites/kb.yaml"
-  ],
-  "queryMethod": "git-grep",
-  "anchorCommit": "241e1d2"
-}

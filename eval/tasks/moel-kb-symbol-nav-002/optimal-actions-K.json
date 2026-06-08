@@ -1,7 +1,0 @@
-{
-  "taskId": "moel-kb-symbol-nav-002",
-  "factIds": [],
-  "queryMethod": "bfs-2-hop",
-  "anchorCommit": "241e1d2",
-  "note": "Populated at runtime by moel-run.mjs via SQLite BFS from targetSymbols"
-}

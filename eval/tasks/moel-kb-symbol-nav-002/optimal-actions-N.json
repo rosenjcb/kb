@@ -1,8 +1,0 @@
-{
-  "taskId": "moel-kb-symbol-nav-002",
-  "filePaths": [
-    "src/tools/retrieval-lane-router.ts"
-  ],
-  "queryMethod": "git-grep",
-  "anchorCommit": "241e1d2"
-}

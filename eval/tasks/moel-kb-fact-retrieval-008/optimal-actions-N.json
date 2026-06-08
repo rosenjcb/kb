@@ -1,9 +1,0 @@
-{
-  "taskId": "moel-kb-fact-retrieval-008",
-  "filePaths": [
-    "src/tools/code-fact-writer.ts",
-    "src/tools/rescan-apply-orchestrator.ts"
-  ],
-  "queryMethod": "git-grep",
-  "anchorCommit": "241e1d2"
-}

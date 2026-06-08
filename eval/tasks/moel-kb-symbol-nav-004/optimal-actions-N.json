@@ -1,8 +1,0 @@
-{
-  "taskId": "moel-kb-symbol-nav-004",
-  "filePaths": [
-    "src/tools/graph-query-expansion.ts"
-  ],
-  "queryMethod": "git-grep",
-  "anchorCommit": "241e1d2"
-}
