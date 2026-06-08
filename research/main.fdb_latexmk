@@ -1,15 +1,15 @@
 # Fdb version 4
-["bibtex main"] 1780954466.41092 "main.aux" "main.bbl" "main" 1780954532.1088 0
+["bibtex main"] 1780955805.51715 "main.aux" "main.bbl" "main" 1780955818.41069 0
   "./refs.bib" 1780950072.41066 5787 b11ab14212b5eba764c6de1e32b279b2 ""
   "/usr/local/texlive/2026basic/texmf-dist/bibtex/bst/base/plain.bst" 1292289607 20613 bd3fbfa9f64872b81ac57a0dd2ed855f ""
-  "main.aux" 1780954531.90406 7499 d9387c765fd164b20ee105e79a9d8495 "pdflatex"
+  "main.aux" 1780955818.22472 7157 63264742ad0bc34f3e2ae2e06bf85a08 "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1780954531.0864 "/Users/rosenjcb/kb/research/main.tex" "main.pdf" "main" 1780954532.10906 0
+["pdflatex"] 1780955817.43267 "/Users/rosenjcb/kb/research/main.tex" "main.pdf" "main" 1780955818.41096 0
   "/Users/rosenjcb/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/tcrm1000.600pk" 1780949224.08208 11524 19344868cf9bfe9176ca16cf00fe8d63 ""
-  "/Users/rosenjcb/kb/research/main.tex" 1780952506.60088 4590 f1fc0b22468d594a9a837cbe9dde7114 ""
+  "/Users/rosenjcb/kb/research/main.tex" 1780955703.29762 4335 1b8fbc461ad6919fbff57cd2d8412227 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/jknappen/ec/tcrm1000.tfm" 1136768653 1536 e07581a4bb3136ece9eeb4c3ffab8233 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex7.tfm" 1246382020 1004 54797486969f23fa377b128694d548df ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex8.tfm" 1246382020 988 bdf658c3bfc2d96d3c8b02cfc1c94c20 ""
@@ -55,11 +55,9 @@
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb" 1248133631 30251 6afa5cb1d0204815a708a080681d4674 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb" 1248133631 36299 5f9df58c2139e7edcf37c8fca4bd384d ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb" 1248133631 36281 c355509802a035cadc5f15869451dcee ""
-  "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb" 1248133631 36094 798f80770b3b148ceedd006d487db67c ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb" 1248133631 35752 024fb6c41858982481f6968b5fc26508 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb" 1248133631 32722 d7379af29a190c3f453aba36302ff5a9 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr5.pfb" 1248133631 31809 8670ca339bf94e56da1fc21c80635e2a ""
-  "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb" 1248133631 32734 69e00a6b65cedb993666e42eedb3d48f ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb" 1248133631 32762 224316ccc9ad3ca0423a14971cfa7fc1 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb" 1248133631 32726 0a1aea6fcd6468ee2cf64d891f5c43c8 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb" 1248133631 33993 9b89b85fd2d9df0482bd47194d1d3bf3 ""
@@ -133,16 +131,15 @@
   "/usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1780949020 79187 e3f5941707347d15c1721f52279213a2 ""
   "/usr/local/texlive/2026basic/texmf-var/web2c/pdftex/pdflatex.fmt" 1772405612 2966183 588a2f29d0aaf280e3a142a37c2dd621 ""
   "/usr/local/texlive/2026basic/texmf.cnf" 1772405582 628 bbc09d6d38872d53c11bb48dc9b14e88 ""
-  "main.aux" 1780954531.90406 7499 d9387c765fd164b20ee105e79a9d8495 "pdflatex"
-  "main.bbl" 1780954466.44887 3626 99475c545cb81d6ef7e600f376073b74 "bibtex main"
-  "main.out" 1780954531.90548 4534 8b54c321e4b238ea8c5fb900b8a0da29 "pdflatex"
-  "main.tex" 1780952506.60088 4590 f1fc0b22468d594a9a837cbe9dde7114 ""
+  "main.aux" 1780955818.22472 7157 63264742ad0bc34f3e2ae2e06bf85a08 "pdflatex"
+  "main.bbl" 1780955805.54959 3626 99475c545cb81d6ef7e600f376073b74 "bibtex main"
+  "main.out" 1780955818.22611 4534 8b54c321e4b238ea8c5fb900b8a0da29 "pdflatex"
+  "main.tex" 1780955703.29762 4335 1b8fbc461ad6919fbff57cd2d8412227 ""
   "sections/conclusion.tex" 1780952110.04241 3980 a4f86c3678fed4ce8ab1693826d88b1d ""
   "sections/eval.tex" 1780954252.89154 4655 a726d9bc6ec31b271ecf9c8fbccda14e ""
   "sections/intro.tex" 1780954229.3817 6079 8e9c3cf5513f30dfe3b12fd3a1453e9e ""
-  "sections/method.tex" 1780954458.25034 14308 600e1a0cf6d680535ee486d0fb807c13 ""
+  "sections/method.tex" 1780955796.08333 13931 2338d88aefdecd4a9956f91e9feaa5b9 ""
   "sections/related.tex" 1780954248.15365 4084 459a175142a5e2abf6943fdac89a0b38 ""
-  "tables/benchmark-alignment.tex" 1780950072.41344 1274 cab255d07e010fc07cd5a3b9db9c94a0 ""
   (generated)
   "main.aux"
   "main.log"

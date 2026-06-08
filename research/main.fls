@@ -225,11 +225,6 @@ INPUT ./sections/conclusion.tex
 INPUT ./sections/conclusion.tex
 INPUT ./sections/conclusion.tex
 INPUT sections/conclusion.tex
-INPUT ./tables/benchmark-alignment.tex
-INPUT ./tables/benchmark-alignment.tex
-INPUT ./tables/benchmark-alignment.tex
-INPUT ./tables/benchmark-alignment.tex
-INPUT tables/benchmark-alignment.tex
 INPUT ./main.bbl
 INPUT ./main.bbl
 INPUT main.bbl
@@ -246,11 +241,9 @@ INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb
-INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr5.pfb
-INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb

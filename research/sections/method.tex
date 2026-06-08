@@ -123,9 +123,6 @@ task enriches the base with implementation-specific facts that benefit later
 tasks through lower retrieval cost.  The compounding effect is the primary
 differentiating property of KB over session-scoped context injection.
 
-KB exposes its retrieval capabilities as a set of MCP-compatible tools
-(\texttt{kb query}, \texttt{kb init}, \texttt{kb submit}) accessible to
-external agent frameworks without requiring prompt modifications.
 
 %% ─── MOEL ─────────────────────────────────────────────────────────────────────
 \section{MOEL: Multi-Objective Exploration Loss}
@@ -189,8 +186,6 @@ L_\text{AST} = 1 - \frac{|D_c \cap D_r|}{|D_c \cup D_r|}
 \label{eq:last}
 \end{equation}
 
-Supported languages: TypeScript, JavaScript, Python, Go, and Rust.  The
-metric returns $1.0$ on unsupported languages or parse failures.
 
 \subsubsection*{$L_\text{jury}$ --- LLM Jury Semantic Loss}
 
@@ -305,10 +300,11 @@ necessary for the tests to pass, not coincidental.
 
 \subsection{Benchmark Alignment}
 
-Table~\ref{tab:benchmark-alignment} places MOEL in the context of three
-external benchmarks.  MOEL's three-condition design (N/K/O) maps directly to
-SWE-ContextBench's context injection conditions; its $L_\text{resource}$ formula
-replicates that benchmark's token-cost metric with the additional
-fresh/cached split.  The \texttt{ManifestValidator} adopts SWE-Atlas's live-diff
-validation, extending it with causal mutation testing.  CodeScaleBench's tool
-validity tier maps to MOEL's \texttt{compareConditions()} check.
+MOEL's three-condition design (N/K/O) mirrors SWE-ContextBench's context
+injection conditions; $L_\text{resource}$ replicates that benchmark's
+token-cost metric with the additional fresh/cached split.
+\texttt{ManifestValidator} adopts SWE-Atlas's live-diff validation and extends
+it with causal mutation testing.  CodeScaleBench's tool-validity tier
+corresponds to MOEL's condition comparison: Condition N uses only primitive
+filesystem tools, Condition K adds the full KB tool registry.
+
