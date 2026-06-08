@@ -39,6 +39,26 @@ describe('module or class name', () => {
 - Use `vi.spyOn` for side effects (stderr writes, external API calls)
 - Avoid mocking the SQLite layer — use a real in-memory DB via `better-sqlite3`
 
+## Eval framework tests
+
+Tests for the MOEL evaluation framework live in `tests/eval/` and mirror the `eval/` source tree:
+
+```
+eval/losses/ast-loss.ts          →  tests/eval/ast-loss.test.ts
+eval/losses/moel.ts              →  tests/eval/moel.test.ts
+eval/validators/manifest-*.ts    →  tests/eval/manifest-validator.test.ts
+eval/reports/summary.ts          →  tests/eval/summary.test.ts
+eval/tools/filesystem-tools.ts   →  tests/eval/filesystem-tools.test.ts
+eval/compaction.ts               →  tests/eval/compaction.test.ts
+```
+
+Additional patterns specific to eval tests:
+
+- **Real git repos in tests**: `ManifestValidator` needs git. Use `mkdtemp` + `git init` + `git config commit.gpgsign false` in `beforeEach`. Always set `user.email` and `user.name` before the first commit.
+- **Temp dirs for filesystem tests**: `FilesystemTool` tests use `mkdtemp` / `rm` pairs in `beforeEach` / `afterEach` — same as the rest of the project.
+- **No LLM calls in unit tests**: `MutationValidator` and `runJury` require running subprocesses or LLMs. Park these as `it.todo` or write integration fixtures instead.
+- **Pure function bias**: prefer testing `extractManifest`, `buildSummaryJson`, `computeMoel` (pure) over the git-/LLM-integrated validators.
+
 ## Pre-commit gate
 
 `npm run precommit` runs lint, type-check, and the full test suite. All must pass before pushing.

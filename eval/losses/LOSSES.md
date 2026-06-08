@@ -17,15 +17,39 @@ flowchart LR
 
 ## Core pieces
 
-**`ast-loss.ts`** — `L_AST`. Initialise once with `initAstLossParser()` (loads WASM grammars), then call `computeAstLoss(candidate, reference, language, ctx)`. Uses tree-sitter export queries to extract named declarations from both snippets and returns their Jaccard distance (`1 − |intersection| / |union|`). Returns `1.0` on unsupported language. Languages: `ts`, `tsx`, `python`, `js`, `jsx`, `go`, `rust`.
+**`ast-loss.ts`** — `L_AST`. Initialise once with `initAstLossParser()` (loads WASM grammars), then call `computeAstLoss(candidate, reference, language, ctx)`. Uses tree-sitter export queries to extract named declarations from both snippets and returns their Jaccard distance:
 
-**`trajectory-loss.ts`** — `L_trajectory`. `computeTrajectoryLoss(trajectory, _optimalActions, hLimit=20)`. Two terms averaged at 0.5 each: step deviation (`steps / hLimit`, clamped to 1) and redundancy ratio (duplicate tool+args calls divided by total steps). `buildOptimalActionSet()` is a future helper for oracle path deviation — not used in the formula yet.
+$$L_{\text{AST}} = 1 - \frac{|\text{declarations}_{\text{candidate}} \cap \text{declarations}_{\text{reference}}|}{|\text{declarations}_{\text{candidate}} \cup \text{declarations}_{\text{reference}}|}$$
 
-**`resource-loss.ts`** — `L_resource`. `computeResourceLoss(trajectory, budget=250_000, delta=0.1, gamma=1.0)`. Weighted token total `= fresh + δ·cached + γ·output`, normalised against budget and clamped to 1. `loadProviderCosts()` reads `eval/config/provider-costs.json` for δ and γ.
+Returns `1.0` on unsupported language. Languages: `ts`, `tsx`, `python`, `js`, `jsx`, `go`, `rust`.
 
-**`jury-loss.ts`** — `L_jury`. `runJury(input, judges, biasConfig?, generatorProviderName?)`. Sends candidate and reference strings to an ensemble of `LLMProvider` instances. Each judge grades rubric items 0–5; minority-veto (≥2 vetos → `L_jury = 1.0`). `BiasConfig` controls four debiasing mechanisms (verbosity normalisation, position debiasing, self-enhancement down-weighting, family diversity enforcement). `parseVerdict()` is exported for testing.
+**`trajectory-loss.ts`** — `L_trajectory`. `computeTrajectoryLoss(trajectory, _optimalActions, hLimit=20)`. Two terms averaged equally:
 
-**`moel.ts`** — Aggregator. `computeMoel(components, weights, taskId, condition)` validates inputs and returns `MoelResult`. `compareConditions(results)` produces pairwise deltas and sets `hypothesisConfirmed = L_MOEL(N) > L_MOEL(K)`. `loadDefaultWeights()` reads `eval/config/moel-weights.json`.
+$$L_{\text{trajectory}} = 0.5 \cdot \min\!\left(\frac{\text{steps}}{h_{\text{limit}}}, 1\right) + 0.5 \cdot \frac{\text{duplicate calls}}{\text{total steps}}$$
+
+`buildOptimalActionSet()` is a future helper for oracle path deviation — not used in the formula yet.
+
+**`resource-loss.ts`** — `L_resource`. `computeResourceLoss(trajectory, budget=250_000, delta=0.1, gamma=1.0)`. Weighted token cost normalised against budget:
+
+$$L_{\text{resource}} = \min\!\left(\frac{C_{\text{fresh}} + \delta \cdot C_{\text{cached}} + \gamma \cdot C_{\text{output}}}{\text{budget}},\ 1\right)$$
+
+Defaults: $\delta = 0.1$, $\gamma = 1.0$, budget $= 250\,000$. `loadProviderCosts()` reads `eval/config/provider-costs.json` for δ and γ.
+
+**`jury-loss.ts`** — `L_jury`. `runJury(input, judges, biasConfig?, generatorProviderName?)`. Sends candidate and reference strings to an ensemble of `LLMProvider` instances. Each judge grades rubric items 0–5 and emits an optional veto flag. Minority-veto policy:
+
+$$L_{\text{jury}} = \begin{cases} 1.0 & \text{if veto count} \geq 2 \\ \text{mean of per-judge scores (normalised to } [0,1]\text{)} & \text{otherwise} \end{cases}$$
+
+`BiasConfig` controls four debiasing mechanisms (verbosity normalisation, position debiasing, self-enhancement down-weighting, family diversity enforcement). `parseVerdict()` is exported for testing.
+
+**`moel.ts`** — Aggregator. `computeMoel(components, weights, taskId, condition)` validates inputs and returns `MoelResult`. The full MOEL scalar:
+
+$$L_{\text{correctness}} = \mu \cdot L_{\text{AST}} + (1 - \mu) \cdot L_{\text{jury}}$$
+
+$$L_{\text{MOEL}} = w_C \cdot L_{\text{correctness}} + w_T \cdot L_{\text{trajectory}} + w_R \cdot L_{\text{resource}}$$
+
+Default weights: $w_C = 0.5$, $w_T = 0.3$, $w_R = 0.2$, $\mu = 0.6$. Constraint: $w_C + w_T + w_R = 1$ within $10^{-6}$.
+
+`compareConditions(results)` produces pairwise deltas and sets `hypothesisConfirmed = L_MOEL(N) > L_MOEL(K)`. `loadDefaultWeights()` reads `eval/config/moel-weights.json`.
 
 ## Integration
 
