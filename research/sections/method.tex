@@ -20,7 +20,8 @@ expansion during retrieval—a capability not available in flat vector indices.
 
 \subsection{Indexing Pipeline}
 
-\texttt{kb init} executes a deterministic, three-phase indexing pipeline:
+\texttt{kb init} executes a fully deterministic, two-phase indexing pipeline.
+No LLM is invoked and no API cost is incurred.
 
 \medskip
 \noindent\textbf{Phase 1 --- AST Code Indexing.}  For each source file, KB
@@ -28,24 +29,17 @@ invokes the \texttt{web-tree-sitter} WASM runtime with per-language export
 queries to extract named declarations (functions, classes, interfaces, type
 aliases, constants, module items).  Each symbol becomes a code fact with
 its qualified source reference.  Import edges between symbols are recorded in
-\texttt{fact\_edges}, forming the structural backbone of the graph.  This phase
-is entirely deterministic; no LLM is involved.
+\texttt{fact\_edges}, forming the structural backbone of the graph.
 
 \medskip
 \noindent\textbf{Phase 2 --- Document Fact Extraction.}  Human-readable
 sources (README files, markdown documentation) are segmented into sentences via
-deterministic NLP segmentation.  Each sentence becomes a document fact.  An LLM
-pass synthesizes additional thematic documents (e.g., \emph{project-overview},
-\emph{constraints-and-gotchas}) from the extracted sentences.
-
-\medskip
-\noindent\textbf{Phase 3 --- Semantic Embedding.}  Fact embeddings are computed
-in batch and stored in \texttt{fact\_embeddings}.  These enable semantic
-rescoring during retrieval but are never the sole source of evidence.
+deterministic NLP segmentation.  Each sentence becomes a document fact stored
+verbatim in the \texttt{facts} table.  Embeddings are computed lazily at query
+time, not during init.
 
 The entire init pipeline for the raylib C library (373--698 entities across
-runs) completes in under 3 minutes on a laptop, at a cost of \$0.02--\$0.05 per
-fresh run.
+runs) completes in under 3 minutes on a laptop with no API cost.
 
 %% ─── Figure: KB Architecture ─────────────────────────────────────────────────
 \begin{figure}[t]
