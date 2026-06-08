@@ -2,11 +2,9 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-We introduced KB, a local-first, facts-first codebase knowledge system that
-converts the overhead of maintaining a knowledge base into a side-effect of
-normal development work.  KB's deterministic AST indexing, multi-pond BFS
-retrieval, and knowledge accretion model produce a system that improves with
-use rather than requiring dedicated maintenance.  On the raylib benchmark, pass rate reaches 0.62; on the KB self-check suite,
+We introduced KB, a local-first, facts-first codebase knowledge system.
+KB's deterministic AST indexing and multi-pond BFS retrieval provide
+agents with structured, persistent codebase knowledge without per-session re-exploration.  On the raylib benchmark, pass rate reaches 0.62; on the KB self-check suite,
 the stable-phase runs consistently achieve 0.75--1.00, with the densified base
 reaching mean correctness and evidence-handling of 4.00/4.00.
 
@@ -50,9 +48,6 @@ whole-repository static analysis is future work.
   \item \textbf{Calibration expansion}: grow the human-annotated set to 100+
     samples with axis-level labels; evaluate whether axis-level calibration
     improves jury reliability.
-  \item \textbf{Streaming accretion}: integrate \texttt{kb submit} into
-    agent loop hooks so that facts are deposited in real time during a session,
-    not only at explicit submission points.
   \item \textbf{Cross-language extension}: extend AST indexing and $L_\text{AST}$
     to C (for raylib's primary codebase) and Java; evaluate whether entity and
     relationship density correlates with retrieval quality across languages.

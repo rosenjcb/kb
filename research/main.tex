@@ -51,9 +51,7 @@ KB indexes source code deterministically via AST analysis (tree-sitter) and
 documentation via sentence-level fact extraction, storing atomic facts in a
 SQLite graph with typed edges.  At query time, a multi-pond BFS loop merges
 lexical (BM25/FTS5), semantic (embedding), and graph-walk evidence streams into
-a ranked fact pool, exiting on a scored sufficiency condition.  The result is
-a knowledge base that \emph{accretes} over successive tasks rather than being
-rebuilt from scratch.
+a ranked fact pool, exiting on a scored sufficiency condition.
 
 \textbf{MOEL} (Multi-Objective Exploration Loss) is a quantitative evaluation
 framework that measures agent efficiency under three controlled conditions:

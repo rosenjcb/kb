@@ -2,16 +2,6 @@
 \section{KB: A Facts-First Codebase Knowledge System}
 \label{sec:system}
 
-\subsection{Design Philosophy}
-
-KB rests on a single organizing principle: \emph{knowledge should accrete as a
-side effect of real work, not as a separate maintenance obligation}.  The system
-is \emph{descriptive}, not prescriptive—it records what happened without
-imposing workflows.  Any fact in the base can be corrected or deleted in
-constant time; incorrect knowledge is never sacred.  This philosophy
-distinguishes KB from documentation systems, which suffer from rot, and from
-ad-hoc context-stuffing approaches, which do not persist across sessions.
-
 \subsection{Knowledge Representation}
 
 KB represents a codebase as a set of atomic, citable \emph{facts} stored in a
@@ -113,16 +103,6 @@ exhausted, or (c) the fact budget ($500$ facts) is reached.
 Graph-augmented query expansion may optionally rewrite or widen the query
 string before the loop begins, based on entity relationships in the stored
 graph.
-
-\subsection{Knowledge Accretion}
-
-Unlike one-shot RAG systems, KB is designed for long-running use.  Each
-\texttt{kb submit} call deposits new facts into the base, which immediately
-become available to subsequent queries.  A KB-backed agent completing an early
-task enriches the base with implementation-specific facts that benefit later
-tasks through lower retrieval cost.  The compounding effect is the primary
-differentiating property of KB over session-scoped context injection.
-
 
 %% ─── MOEL ─────────────────────────────────────────────────────────────────────
 \section{MOEL: Multi-Objective Exploration Loss}
