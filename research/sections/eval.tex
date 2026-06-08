@@ -16,24 +16,12 @@ the KB codebase itself (suite \texttt{kb}).  This dogfood condition tests
 whether KB can answer questions about its own architecture—a strict test of
 retrieval grounding, since the evaluator already knows the correct answers.
 
-\subsection{Canonical Question Set}
-
-Each suite uses eight questions spanning topic areas that stress different
-retrieval paths.  The raylib questions are:
-\begin{enumerate}
-  \item What is raylib for, and what are its main capabilities?
-  \item How does raylib's architecture work, including modules and platform support?
-  \item How do I install and build raylib, including dependencies and build systems?
-  \item What configuration options and compile flags does raylib support?
-  \item How does raylib handle graphics backends and platform-specific rendering?
-  \item What are the coding conventions and style guidelines for contributing to raylib?
-  \item What are the main gotchas, constraints, and known limitations of raylib?
-  \item What does the raylib roadmap say about future plans, and recent version history?
-\end{enumerate}
-
 \subsection{Scoring Rubric}
 
-Each answer is scored on four axes, each from 0 to 4:
+Each suite covers eight questions spanning capabilities, architecture, installation,
+configuration, platform specifics, conventions, gotchas, and roadmap—topics that
+stress different retrieval paths through the fact graph.  Answers are scored on
+four axes (0--4):
 
 \begin{center}\small
 \begin{tabular}{@{}lp{4.2cm}@{}}
@@ -61,153 +49,53 @@ scoring passes per question to reduce scorer noise by $\sqrt{3}$.
 \subsection{Main Results: Raylib Suite}
 \label{subsec:raylib-results}
 
-Table~\ref{tab:raylib} reports results across the three raylib evaluation runs
-with non-zero scores.  The progression shows consistent improvement as KB's
-fact-extraction pipeline was refined between runs.
-
-\begin{table}[h]
-\centering\small
-\caption{Raylib suite results (scale 0--4 for means, 0--1 for pass rate).}
-\label{tab:raylib}
-\begin{tabular}{@{}ccrrrrrr@{}}
-\toprule
-\textbf{Date} & \textbf{Time} & \textbf{Ent} & \textbf{Corr} & \textbf{Use} & \textbf{Spec} & \textbf{EH} & \textbf{PR} \\
-\midrule
-04-27 & 1945 & 323 & 2.25 & 1.38 & 2.25 & 2.50 & 0.25 \\
-04-27 & 2002 & 344 & 2.50 & 2.38 & 2.25 & 2.50 & 0.62 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\noindent The 0.25 $\to$ 0.62 improvement in pass rate between runs reflects
-two concurrent changes: the retrieval loop's evidence-mixing strategy was
-stabilized, and init category assignment was improved to better distribute
-facts across topic areas.  Q2 (architecture) and Q3 (installation) showed
-the largest gains, as both require multi-hop graph traversal across module
-documentation that was previously under-indexed.
+Two evaluation runs on April 27 show pass rate improving from 0.25 to 0.62
+(323 $\to$ 344 entities) as the retrieval loop's evidence-mixing strategy was
+stabilized and init category assignment was improved.  Q2 (architecture) and
+Q3 (installation) showed the largest per-question gains, as both require
+multi-hop graph traversal across module documentation that was previously
+under-indexed.
 
 \subsection{Main Results: KB Self-Check Suite}
 \label{subsec:kb-results}
 
-Table~\ref{tab:kb-runs} reports the full KB self-check run history.  Two
-distinct phases are visible.
+During pipeline development (May 3--9, ten runs), pass rates ranged 0.38--0.88
+as the retrieval loop, graph traversal depth, and sufficiency thresholds were
+tuned.  Table~\ref{tab:kb-runs} reports the stable-suite phase (May 24 onwards),
+where both the question set and pipeline were fixed.
 
 \begin{table}[h]
 \centering\footnotesize
-\caption{KB suite results (all scored runs). Ent = graph entities,
+\caption{KB suite results (stable phase). Ent = graph entities,
 Corr/Use/Spec/EH = mean axis scores (0--4), PR = pass rate.}
 \label{tab:kb-runs}
 \begin{tabular}{@{}lrrrrrrr@{}}
 \toprule
 \textbf{Date} & \textbf{Time} & \textbf{Ent} & \textbf{Corr} & \textbf{Use} & \textbf{Spec} & \textbf{EH} & \textbf{PR} \\
 \midrule
-05-03 & 1153 &  322 & 1.88 & 1.75 & 2.25 & 2.00 & 0.38 \\
-05-07 & 2006 &  656 & 2.62 & 2.50 & 2.62 & 2.50 & 0.62 \\
-05-08 & 1554 &  698 & 2.75 & 2.62 & 3.25 & 2.88 & 0.50 \\
-05-08 & 1558 &  653 & 2.38 & 2.38 & 3.00 & 3.25 & 0.50 \\
-05-08 & 1735 & 1494 & 1.88 & 1.62 & 2.12 & 1.50 & 0.38 \\
-05-08 & 1742 & 1598 & 3.25 & 2.88 & 3.38 & 3.50 & 0.62 \\
-05-09 & 1538 & 1598$\dagger$ & 4.00 & 3.50 & 3.12 & 4.00 & 0.88 \\
 05-24 & 1554 & --- & 3.75 & 3.50 & 3.38 & 3.75 & 0.88 \\
 05-24 & 1605 & --- & 3.75 & 3.38 & 3.50 & 3.75 & 0.75 \\
 06-04 & 2151 & --- & \textbf{4.00} & \textbf{4.00} & 3.88 & \textbf{4.00} & \textbf{1.00} \\
 06-04 & 2245 & --- & 3.12 & 3.50 & 3.25 & 3.50 & 0.75 \\
 06-08 & 1238 & 2042 & 2.75 & 3.50 & 3.50 & 3.12 & 0.75 \\
 \bottomrule
-\multicolumn{8}{@{}l}{$\dagger$ Query-only rerun; graph not rebuilt.
-  --- = graph not rebuilt.} \\
+\multicolumn{7}{@{}l}{--- = query-only rerun against existing graph.} \\
 \end{tabular}
 \end{table}
 
-\noindent\textbf{Phase 1 (May 3--8).}  Early runs with 322--698 entities
-achieve 0.38--0.62 pass rates.  The May 8 run with 1,494 entities (run
-\texttt{kb-2026-05-08-1735}) shows a regression to 0.38: overly aggressive
-edge expansion introduced noise into fact neighborhoods, diluting answer
-grounding.  After reducing graph traversal depth and tightening sufficiency
-thresholds, the same entity count (1,598) yields 0.62 pass rate the same day
-(\texttt{kb-2026-05-08-1742}) and 0.88 on the following day (query-only rerun
-against the same base).
+All five stable-phase runs exceed the 0.70 pass-rate threshold.  The
+perfect-scoring run (06-04 2151) achieves correctness $= 4.0$, usefulness
+$= 4.0$, evidence handling $= 4.0$, and 8/8 questions passing against a
+densified base.  The June 8 run (2,042 entities, freshly rebuilt graph) lands
+at 0.75, consistent with the observed variance of $\pm 0.13$ across stable
+runs.
 
-\noindent\textbf{Phase 2 (May 24--June 8).}  Runs consistently achieve
-0.75--1.00 pass rate, with correctness and evidence-handling means at or above
-3.75.  The perfect-scoring run (\texttt{kb-2026-06-04-2151}) is a query-only
-run against the densified base: it achieves mean correctness $= 4.0$,
-usefulness $= 4.0$, evidence handling $= 4.0$, and 8/8 questions passing.
+\subsection{Jury Calibration}
+\label{subsec:calibration}
 
-\subsection{Score Progression}
-
-Figure~\ref{fig:score-trend} shows the progression of mean correctness and
-pass rate across all KB runs in chronological order.
-
-%% ─── Figure: Score Trend placeholder ─────────────────────────────────────────
-\begin{figure}[t]
-\centering
-\fbox{
-  \parbox{0.92\columnwidth}{
-    \centering
-    \vspace{0.4cm}
-    \textit{\textbf{[FIGURE 3 — Score Progression Over Evaluation Runs]}} \\[6pt]
-    A dual-axis line chart with runs on the x-axis (chronological). \\
-    \textbf{Left y-axis (0--4)}: Mean Correctness score (solid line),
-      Mean Evidence Handling score (dashed line). \\
-    \textbf{Right y-axis (0--1)}: Pass Rate (filled area or dotted line). \\
-    Key annotations: \\
-    - May 8 regression dip at \texttt{kb-2026-05-08-1735} (over-expansion). \\
-    - Recovery at \texttt{kb-2026-05-08-1742} after depth reduction. \\
-    - Plateau at correctness $= 4.0$, PR $= 1.0$ at \texttt{kb-2026-06-04-2151}. \\
-    Horizontal dashed line at PR $= 0.70$ (success threshold).
-    \vspace{0.4cm}
-  }
-}
-\caption{KB self-check suite: mean correctness and pass rate over time.
-Phase 1 (early runs) shows high variance; Phase 2 (May 24+) stabilizes
-above the 0.70 success threshold.}
-\label{fig:score-trend}
-\end{figure}
-
-\subsection{Token Efficiency: Agent Comparison}
-\label{subsec:token-efficiency}
-
-The MOEL framework includes a separate token-efficiency comparison designed to
-test the compounding hypothesis: that a KB-backed agent uses \emph{fewer} tokens
-per task as the base densifies over a sequential task series.  The canonical
-task sequence runs on the raylib C library:
-\begin{enumerate}
-  \item Implement a flappy bird game in \texttt{examples/games/flappy\_bird.c}.
-  \item Add parallax scrolling background.
-  \item Add a high score counter persisting between runs.
-  \item Add sound effects using raylib's audio API.
-\end{enumerate}
-
-\noindent\textbf{Condition N (raw):} No \texttt{kb} access; agent reads
-\texttt{src/}, headers, and examples directly. \\
-\textbf{Condition K (KB-backed):} Agent runs at least one \texttt{kb query}
-per task; may also read source files.
-
-Per-task token counts are captured via \texttt{codeburn}.  The hypothesis is
-confirmed if Agent K's per-task cost is lower than Agent N's by tasks 3--4, and
-if Agent K's cost curve slopes downward as the base densifies.
-
-\noindent\textit{Note:} Full controlled comparison runs across both conditions
-are in progress as of this writing.  Preliminary single-condition telemetry
-confirms that KB-backed sessions issue 60--80\% fewer distinct file reads per
-task after the first task deposits implementation facts into the base.
-
-\subsection{Calibration Results}
-
-The statistical calibration pipeline fits per-judge logistic regression models
-on the 20-sample human-annotated dataset.  The dataset balances 10 passing and
-10 failing examples, each scored by three human judges (GPT-4o, Claude, Gemini).
-Mean human score is 3.05 across all samples.
-
-Preliminary calibration results (from the \texttt{calibrate.py} LOO procedure):
-
-\begin{itemize}
-  \item GPT-4o judge: balanced accuracy $= 0.80$, max absolute error $\leq 1.5\%$.
-  \item Claude judge: balanced accuracy $= 0.78$, max absolute error $\leq 1.7\%$.
-  \item Gemini judge: balanced accuracy $= 0.75$, max absolute error $\leq 2.0\%$.
-\end{itemize}
-
-These figures are consistent with the framework's success criterion (max
-absolute error $\leq 1.5\%$) for the primary judge family, and within 0.5\%
-for all three.
+Per-judge logistic regression calibration on a 20-sample human-annotated
+dataset (10 pass / 10 fail, three judges) yields balanced accuracy of 0.80
+(GPT-4o), 0.78 (Claude), and 0.75 (Gemini), with max absolute error
+$\leq 2.0\%$ across all three---within the framework's 1.5\% target for the
+primary judge.  Full N/K/O condition comparisons are ongoing; results will
+be reported in a follow-on publication.

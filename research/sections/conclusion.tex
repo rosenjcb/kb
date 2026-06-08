@@ -6,10 +6,9 @@ We introduced KB, a local-first, facts-first codebase knowledge system that
 converts the overhead of maintaining a knowledge base into a side-effect of
 normal development work.  KB's deterministic AST indexing, multi-pond BFS
 retrieval, and knowledge accretion model produce a system that improves with
-use rather than requiring dedicated maintenance.  On the raylib benchmark, pass
-rates improve from 0.25 to 0.62 across two runs; on the KB self-check suite,
-pass rates improve from 0.38 to 1.00 over a ten-week development trajectory,
-with mean correctness and evidence-handling scores reaching 4.00/4.00.
+use rather than requiring dedicated maintenance.  On the raylib benchmark, pass rate reaches 0.62; on the KB self-check suite,
+the stable-phase runs consistently achieve 0.75--1.00, with the densified base
+reaching mean correctness and evidence-handling of 4.00/4.00.
 
 We also introduced MOEL, a multi-objective evaluation framework that measures
 agent efficiency along correctness ($L_\text{AST}$ + $L_\text{jury}$),
@@ -21,9 +20,8 @@ result.
 
 \paragraph{Limitations.}
 
-\textbf{MOEL token-efficiency runs are incomplete.}  The full two-condition
-comparison (N vs.\ K, four-task sequence) is in progress.  Preliminary
-evidence from single-condition telemetry is encouraging but not yet definitive.
+\textbf{Full N/K/O comparison is ongoing.}  The controlled two-condition
+comparison (N vs.\ K) and oracle ceiling (O) are deferred to follow-on work.
 
 \textbf{Calibration sample size is small.}  The 20-sample human-annotated
 dataset is sufficient for per-judge logistic regression but does not support

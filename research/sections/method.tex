@@ -98,7 +98,7 @@ Each iteration of the loop merges five candidate streams:
 \begin{enumerate}
   \item \textbf{Edge neighbors}: one BFS hop from the active pond's frontier
     via \texttt{fact\_edges}.
-  \item \textbf{Primary lexical}: BM25 FTS5 search for the original query.
+  \item \textbf{Primary lexical}: BM25~\cite{robertson2009bm25} FTS5 search for the original query.
   \item \textbf{Pond lexical}: FTS5 search for the active pond's sub-query.
   \item \textbf{Concept frontier}: facts sharing any concept token in the
     active concept set.
@@ -231,13 +231,12 @@ handling) on a 0--5 scale, and may optionally raise a \emph{veto flag}.
     homogeneous scoring coalitions.
 \end{enumerate}
 
-\noindent\textbf{Minority-veto policy.}  If $\geq 2$ judges veto:
+\noindent\textbf{Minority-veto policy.}  If $\geq 2$ judges veto,
+$L_\text{jury} = 1.0$; otherwise it equals $\bar{s}_w$, the weighted mean of
+per-judge normalized scores:
 
 \begin{equation}
-L_\text{jury} = \begin{cases}
-  1.0 & \text{if veto count} \geq 2 \\
-  \text{weighted mean of normalized scores} & \text{otherwise}
-\end{cases}
+L_\text{jury} = \begin{cases} 1.0 & \text{veto count} \geq 2 \\ \bar{s}_w & \text{otherwise} \end{cases}
 \label{eq:ljury}
 \end{equation}
 

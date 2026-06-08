@@ -54,8 +54,8 @@ changes and test coverage.
 
 \subsection{AST-Based Code Analysis}
 
-Tree-sitter~\cite{falleri2014gumtree} and related tools provide fine-grained
-AST differencing.  ASTNN~\cite{alon2019code2vec} uses AST path embeddings for
+Tree-sitter and GumTree~\cite{falleri2014gumtree} provide fine-grained
+AST differencing and incremental parsing.  code2vec~\cite{alon2019code2vec} uses AST path embeddings for
 code representation learning.  MOEL's $L_\text{AST}$ adopts a simpler but
 interpretable measure: Jaccard distance over named exported declarations,
 computed deterministically without learned components, making it reproducible

@@ -14,9 +14,10 @@ triggers a fresh, expensive, and error-prone tour of the filesystem.
 Two failure modes characterize this status quo.  First, \textbf{exploration
 waste}: agents read far more source files than necessary before reaching an
 answer, because there is no prior accumulation of structured knowledge to query.
-SWE-Agent-style trajectories routinely issue 50--80 filesystem operations to
-answer questions that could be resolved in two or three targeted fact lookups if
-relevant context were already indexed~\cite{yang2024sweagent}.  Second,
+On representative SWE-Bench tasks, text-based agents spend up to 21 steps
+navigating via grep and line-range reads to locate a single target function---work
+that structured pre-indexed facts resolve in two or three
+queries~\cite{kim2025codestruct, yang2024sweagent}.  Second,
 \textbf{context dilution}: reading large files degrades reasoning by flooding
 the context window with irrelevant code~\cite{shi2023distracted}, and brittle
 string-matching edits fail when whitespace or formatting drifts~\cite{kim2025codestruct}.

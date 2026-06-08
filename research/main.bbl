@@ -6,43 +6,63 @@ Uri Alon, Meital Zilberstein, Omer Levy, and Eran Yahav.
 \newblock {\em Proceedings of the ACM on Programming Languages}, 3(POPL), 2019.
 
 \bibitem{chen2021codex}
-Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de~Oliveira Pinto, Jared Kaplan, et~al.
+Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de~Oliveira
+  Pinto, Jared Kaplan, et~al.
 \newblock Evaluating large language models trained on code.
 \newblock {\em arXiv preprint arXiv:2107.03374}, 2021.
 
 \bibitem{dubois2024alpacafarm}
-Yann Dubois, Chen~Xuechen Li, Rohan Taori, Tianyi Zhang, Ishaan Gulrajani, Jimmy Ba, et~al.
-\newblock {AlpacaFarm}: A simulation framework for methods that learn from human feedback.
-\newblock {\em Advances in Neural Information Processing Systems (NeurIPS)}, 2024.
+Yann Dubois, Chen~Xuechen Li, Rohan Taori, Tianyi Zhang, Ishaan Gulrajani,
+  Jimmy Ba, et~al.
+\newblock {AlpacaFarm}: A simulation framework for methods that learn from
+  human feedback.
+\newblock {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  2024.
 
 \bibitem{falleri2014gumtree}
-Jean-R{\'e}my Falleri, Flor{\'e}al Morandat, Xavier Blanc, Matias Martinez, and Martin Monperrus.
+Jean-R{\'e}my Falleri, Flor{\'e}al Morandat, Xavier Blanc, Matias Martinez, and
+  Martin Monperrus.
 \newblock Fine-grained and accurate source code differencing.
-\newblock {\em Proceedings of the 29th ACM/IEEE International Conference on Automated Software Engineering (ASE)}, 2014.
+\newblock {\em Proceedings of the 29th ACM/IEEE International Conference on
+  Automated Software Engineering (ASE)}, 2014.
 
 \bibitem{husain2019codesearchnet}
-Hamel Husain, Ho-Howard Wu, Tiferet Gazit, Miltiadis Allamanis, and Marc Brockschmidt.
-\newblock {CodeSearchNet} challenge: Evaluating the state of semantic code search.
+Hamel Husain, Ho-Howard Wu, Tiferet Gazit, Miltiadis Allamanis, and Marc
+  Brockschmidt.
+\newblock {CodeSearchNet} challenge: Evaluating the state of semantic code
+  search.
 \newblock {\em arXiv preprint arXiv:1909.09436}, 2019.
 
 \bibitem{kim2025codestruct}
-Myeongsoo Kim, Joe Hsu, Dingmin Wang, Shweta Garg, Varun Kumar, and Murali~Krishna Ramanathan.
+Myeongsoo Kim, Joe Hsu, Dingmin Wang, Shweta Garg, Varun Kumar, and
+  Murali~Krishna Ramanathan.
 \newblock {CODESTRUCT}: Code agents over structured action spaces.
 \newblock {\em arXiv preprint arXiv:2604.05407}, 2025.
 
 \bibitem{lewis2020rag}
-Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petrov, Vladimir Karpukhin, Yinfei Yang, et~al.
+Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petrov, Vladimir
+  Karpukhin, Yinfei Yang, et~al.
 \newblock Retrieval-augmented generation for knowledge-intensive {NLP} tasks.
-\newblock {\em Advances in Neural Information Processing Systems (NeurIPS)}, 2020.
+\newblock {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  2020.
+
+\bibitem{robertson2009bm25}
+Stephen Robertson and Hugo Zaragoza.
+\newblock The probabilistic relevance framework: {BM25} and beyond.
+\newblock {\em Foundations and Trends in Information Retrieval}, 3(4), 2009.
 
 \bibitem{shi2023distracted}
-Freda Shi, Xinyun Chen, Kanishka Misra, Nathan Scales, David Dohan, Ed~H Chi, Nathanael Sch{\"a}rli, and Denny Zhou.
+Freda Shi, Xinyun Chen, Kanishka Misra, Nathan Scales, David Dohan, Ed~H Chi,
+  Nathanael Sch{\"a}rli, and Denny Zhou.
 \newblock Large language models can be easily distracted by irrelevant context.
-\newblock {\em Proceedings of the 40th International Conference on Machine Learning (ICML)}, 2023.
+\newblock {\em Proceedings of the 40th International Conference on Machine
+  Learning (ICML)}, 2023.
 
 \bibitem{wang2023pandalm}
-Yidong Wang, Zhuohao Yu, Zhengran Zeng, Linyi Yang, Cunxiang Wang, Hao Chen, et~al.
-\newblock {PandaLM}: An automatic evaluation benchmark for {LLM} instruction tuning optimization.
+Yidong Wang, Zhuohao Yu, Zhengran Zeng, Linyi Yang, Cunxiang Wang, Hao Chen,
+  et~al.
+\newblock {PandaLM}: An automatic evaluation benchmark for {LLM} instruction
+  tuning optimization.
 \newblock {\em arXiv preprint arXiv:2306.05087}, 2023.
 
 \bibitem{xia2024agentless}
@@ -51,18 +71,24 @@ Chunqiu~Steven Xia, Yinlin Deng, Soren Dunn, and Lingming Zhang.
 \newblock {\em Proceedings of the ACM on Software Engineering}, 1(FSE), 2024.
 
 \bibitem{yang2024sweagent}
-John Yang, Carlos~E Jimenez, Alexander Wettig, Kilian Lieret, Shunyu Yao, Karthik Narasimhan, and Ofir Press.
-\newblock {SWE-agent}: Agent-computer interfaces enable automated software engineering.
-\newblock {\em Advances in Neural Information Processing Systems (NeurIPS)}, 2024.
+John Yang, Carlos~E Jimenez, Alexander Wettig, Kilian Lieret, Shunyu Yao,
+  Karthik Narasimhan, and Ofir Press.
+\newblock {SWE-agent}: Agent-computer interfaces enable automated software
+  engineering.
+\newblock {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  2024.
 
 \bibitem{zhang2024autocoderover}
 Yuntong Zhang, Haifeng Ruan, Zhiyu Fan, and Abhik Roychoudhury.
 \newblock {AutoCodeRover}: Autonomous program improvement.
-\newblock {\em Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis}, 2024.
+\newblock {\em Proceedings of the 33rd ACM SIGSOFT International Symposium on
+  Software Testing and Analysis}, 2024.
 
 \bibitem{zheng2023judging}
-Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao Zhuang, et~al.
+Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao
+  Zhuang, et~al.
 \newblock Judging {LLM}-as-a-judge with {MT}-bench and chatbot arena.
-\newblock {\em Advances in Neural Information Processing Systems (NeurIPS)}, 2023.
+\newblock {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  2023.
 
 \end{thebibliography}
