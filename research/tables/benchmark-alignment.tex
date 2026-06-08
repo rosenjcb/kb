@@ -1,0 +1,21 @@
+%% ─── Benchmark Alignment Table ───────────────────────────────────────────────
+\begin{table*}[t]
+\centering
+\caption{MOEL benchmark alignment: how MOEL's design maps to three external evaluation frameworks.}
+\label{tab:benchmark-alignment}
+\small
+\begin{tabular}{p{2.8cm}p{2.8cm}p{3.2cm}p{3.0cm}p{3.0cm}}
+\toprule
+\textbf{Aspect} & \textbf{SWE Atlas} & \textbf{SWE-ContextBench} & \textbf{CodeScaleBench} & \textbf{MOEL (ours)} \\
+\midrule
+Task type & Real GH issues & Context-efficiency & Multi-scale engineering & Knowledge retrieval \\
+Correctness & Test execution & Completion rate & Build/CI pass & $L_\text{jury}$ + $L_\text{AST}$ \\
+Efficiency & Not primary & Token cost + cache & Tool validity tier & $L_\text{traj}$ + $L_\text{res}$ \\
+Baseline & No agent & No context & Primitive tools & Condition N (raw FS) \\
+Augmented & Agent w/ tools & Context injection & Augmented tools & Condition K (KB) \\
+Upper bound & N/A & Oracle context & N/A & Condition O (oracle) \\
+Prog.\ check & Reference tests & N/A & CI execution & Manifest + mutation \\
+Token split & Not primary & Input/output & Not primary & Fresh/cached/output \\
+\bottomrule
+\end{tabular}
+\end{table*}

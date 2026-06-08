@@ -1,0 +1,109 @@
+%% ─── Introduction ───────────────────────────────────────────────────────────
+\section{Introduction}
+\label{sec:intro}
+
+Large language models (LLMs) have dramatically changed how developers interact
+with codebases, enabling agents to answer architectural questions, locate bugs,
+and generate new features at the cost of a prompt~\cite{chen2021codex,
+yang2024sweagent}.  Yet the dominant interaction model remains \emph{ephemeral}:
+each agent session begins with an empty context window, forcing the model to
+re-discover facts about the codebase from scratch.  This creates a compounding
+inefficiency—teams that rely on LLM assistants must accept that every question
+triggers a fresh, expensive, and error-prone tour of the filesystem.
+
+Two failure modes characterize this status quo.  First, \textbf{exploration
+waste}: agents read far more source files than necessary before reaching an
+answer, because there is no prior accumulation of structured knowledge to query.
+SWE-Agent-style trajectories routinely issue 50--80 filesystem operations to
+answer questions that could be resolved in two or three targeted fact lookups if
+relevant context were already indexed~\cite{yang2024sweagent}.  Second,
+\textbf{context dilution}: reading large files degrades reasoning by flooding
+the context window with irrelevant code~\cite{shi2023distracted}, and brittle
+string-matching edits fail when whitespace or formatting drifts~\cite{kim2025codestruct}.
+
+Existing retrieval-augmented generation (RAG) systems~\cite{lewis2020rag}
+address the first problem partially, but are designed for static document
+corpora, not living codebases with interleaved code, documentation, and
+decision history.  Code-search benchmarks such as
+CodeSearchNet~\cite{husain2019codesearchnet} evaluate individual retrieval
+steps in isolation, ignoring the sequential cost of multi-step agent
+exploration.
+
+We present \textbf{KB}, a local-first, \emph{facts-first} codebase knowledge
+system that:
+\begin{enumerate}
+  \item[(1)] indexes a repository's code and documentation into a persistent
+    SQLite store of atomic, citable facts via deterministic AST analysis and
+    sentence-level fact extraction;
+  \item[(2)] exposes those facts to LLM agents through a multi-pond BFS
+    retrieval loop that merges lexical (BM25), semantic (embedding), and
+    graph-walk evidence streams without manual query engineering; and
+  \item[(3)] naturally accretes knowledge as developers work, so the base
+    densifies over time without a dedicated maintenance burden.
+\end{enumerate}
+
+Critically, KB's value is only as compelling as the evidence that it actually
+reduces agent exploration cost.  Rubric-based Q\&A scoring—the standard in
+prior agent evaluation—captures answer quality but is blind to \emph{how} the
+agent arrived at that answer.  A system that reads 40 files before synthesizing
+a correct response and one that queries two facts look identical under a
+pass/fail quality signal.
+
+To fill this gap, we introduce the \textbf{Multi-Objective Exploration Loss
+(MOEL)} evaluation framework, a quantitative harness that measures agent
+efficiency along three orthogonal axes---correctness, trajectory
+efficiency, and resource consumption---and aggregates them into a single
+normalized loss scalar.  MOEL runs every task under three controlled
+\emph{conditions}: a raw-filesystem baseline (N), a KB-equipped agent (K), and
+an oracle that receives the minimal covering fact set directly in its system
+prompt (O).  The primary hypothesis is $L_\text{MOEL}(K) < L_\text{MOEL}(N)$,
+with $L_\text{MOEL}(K)$ approaching the oracle ceiling $L_\text{MOEL}(O)$ as the
+knowledge base densifies over successive tasks.
+
+Figure~\ref{fig:system-overview} illustrates the end-to-end system.  Our
+contributions are:
+
+\begin{enumerate}
+  \item \textbf{KB}: a facts-first codebase knowledge system with deterministic
+    AST indexing, a multi-pond hybrid retrieval orchestrator, and a natural
+    knowledge-accretion model that requires no explicit maintenance workflow.
+
+  \item \textbf{MOEL}: a multi-objective evaluation framework comprising four
+    normalized loss functions ($L_\text{AST}$, $L_\text{jury}$,
+    $L_\text{trajectory}$, $L_\text{resource}$), bias-mitigated LLM jury scoring,
+    logistic-regression calibration on a 20-sample human-annotated set, and
+    programmatic manifest and mutation validators.
+
+  \item \textbf{Empirical results}: across 17 scored evaluation runs on the
+    raylib C library and the KB codebase itself, pass rates improve from 25\%
+    (run 1) to 75--100\% (latest runs), with evidence-handling scores increasing
+    from 2.50 to 4.00 as the fact base densifies.
+\end{enumerate}
+
+%% ─── Figure: System Overview placeholder ─────────────────────────────────────
+\begin{figure}[t]
+\centering
+\fbox{
+  \parbox{0.92\columnwidth}{
+    \centering
+    \vspace{0.4cm}
+    \textit{\textbf{[FIGURE 1 — System Overview]}} \\[6pt]
+    A three-panel horizontal flow diagram: \\
+    \textbf{Left panel} — Developer working directory with source files,
+      markdown, and git history feeding into \texttt{kb init} (AST indexer +
+      sentence segmenter + fact extractor). \\
+    \textbf{Center panel} — SQLite knowledge store: \texttt{facts} table
+      (doc + code facts), \texttt{fact\_edges} graph, \texttt{fact\_embeddings}
+      semantic index, \texttt{documents} (human-readable artifacts). \\
+    \textbf{Right panel} — LLM agent loop: \texttt{kb query} dispatches
+      multi-pond BFS retrieval, passes ranked facts to LLM, returns grounded
+      prose answer. Arrow from right panel looping back to center labeled
+      ``Knowledge accretion via \texttt{kb submit}''. \\
+    Below all panels: MOEL harness comparing Condition N (raw filesystem),
+      K (kb-enabled), O (oracle) with $L_\text{MOEL}$ scalar output.
+    \vspace{0.4cm}
+  }
+}
+\caption{End-to-end KB system and MOEL evaluation harness.}
+\label{fig:system-overview}
+\end{figure}
