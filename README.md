@@ -313,6 +313,28 @@ Base resolution order (both live in `~/.kb/config.json`):
 
 Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
 
+## 📊 Evaluation
+
+KB ships a two-pipeline evaluation framework for measuring answer quality and exploration efficiency.
+
+**Query harvest** — runs all questions in a suite against a live KB base, auto-scores answers on four axes (Correctness, Usefulness, Specificity, Evidence Handling) via Gemini or OpenAI, and writes results to `~/.kb/evaluations/<run>/`.
+
+```bash
+# Run the kb dogfood suite (requires GEMINI_API_KEY or OPENAI_API_KEY)
+pnpm run eval -- --suite kb
+
+# Average the scorer over 3 runs to reduce LLM noise
+pnpm run eval -- --suite kb --score-runs 3
+```
+
+**MOEL pipeline** — measures exploration efficiency across three conditions per task (baseline filesystem, kb-enabled, oracle). Computes a composite loss `L_MOEL` and tests the hypothesis that kb reduces exploration cost.
+
+```bash
+pnpm run moel -- --suite moel-kb
+```
+
+More reading: [`eval/EVAL.md`](eval/EVAL.md) — pipeline overview, loss functions, scoring stability, and the three-condition design.
+
 ## 🧪 Development Commands
 
 ```bash

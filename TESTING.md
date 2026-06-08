@@ -1,6 +1,6 @@
 # Testing
 
-Test runner: **Vitest**. Run with `npm test` (single pass) or `npm run test:watch`.
+Test runner: **Vitest**. Run with `pnpm test` (single pass) or `pnpm run test:watch`.
 
 ## File layout
 
@@ -61,4 +61,4 @@ Additional patterns specific to eval tests:
 
 ## Pre-commit gate
 
-`npm run precommit` runs lint, type-check, and the full test suite. All must pass before pushing.
+`pnpm run precommit` runs lint, type-check, and the full test suite. All must pass before pushing.

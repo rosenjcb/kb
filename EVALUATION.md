@@ -56,27 +56,27 @@ One runner drives all eval runs. Session lifecycle is fully automatic:
 3. If the session is empty / missing → run `kb init` first, then query.
 4. After writing `artifact.json`, prints a trends summary across prior runs for the same suite.
 
-**Quick start** (from kb repo root, after `pnpm run build`):
+**Quick start** (from kb repo root, after `ppnpm run build`):
 
 ```bash
 # Standard run — auto-manages session, ends with trends:
-npm run eval -- --suite raylib
+pnpm run eval -- --suite raylib
 
 # With LLM auto-scoring:
-npm run eval -- --suite raylib --auto-score
+pnpm run eval -- --suite raylib --auto-score
 
 # Force re-init even if session exists:
-npm run eval -- --suite raylib --force-init
+pnpm run eval -- --suite raylib --force-init
 
 # Override session name:
-npm run eval -- --suite raylib --base my-custom-session
+pnpm run eval -- --suite raylib --base my-custom-session
 ```
 
 | npm script | Maps to |
 |------------|---------|
-| `npm run eval -- --suite raylib` | 8× query eval against `eval-raylib`, then trends |
-| `npm run eval -- --suite kb` | Self-check against `eval-kb` |
-| `npm run eval -- --suite generic --repo <git-url>` | Any repo (requires explicit `--repo`) |
+| `pnpm run eval -- --suite raylib` | 8× query eval against `eval-raylib`, then trends |
+| `pnpm run eval -- --suite kb` | Self-check against `eval-kb` |
+| `pnpm run eval -- --suite generic --repo <git-url>` | Any repo (requires explicit `--repo`) |
 
 **Suites (`--suite`)**
 
@@ -109,7 +109,7 @@ This evaluation should be run at least twice against the same codebase snapshot 
 ### Phase 1: Run the Eval
 
 ```bash
-npm run eval -- --suite raylib [--auto-score]
+pnpm run eval -- --suite raylib [--auto-score]
 ```
 
 The script handles session management automatically:
