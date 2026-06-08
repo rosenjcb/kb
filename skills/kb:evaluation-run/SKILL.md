@@ -30,16 +30,16 @@ From kb repo root (`pnpm run build` first):
 
 ```bash
 # Canonical raylib run: clone → init → 8 queries + optional auto-score
-npm run eval -- --suite raylib [--auto-score]
+pnpm run eval -- --suite raylib [--auto-score]
 
 # Kb repo dogfood questions
-npm run eval -- --suite kb [--auto-score]
+pnpm run eval -- --suite kb [--auto-score]
 
 # Any git URL → shallow clone → init → generic eight questions
-npm run eval -- --suite generic --repo https://github.com/org/repo.git [--auto-score]
+pnpm run eval -- --suite generic --repo https://github.com/org/repo.git [--auto-score]
 
 # Conversational chat eval: init + 3 scenarios + retrieval scoring
-npm run eval:chat -- --base <name> --cwd <repo-path>
+pnpm run eval:chat -- --base <name> --cwd <repo-path>
 ```
 
 Implementation: `scripts/eval-run.mjs` (suites `raylib` | `kb` | `generic`). Repo URL resolves from suite YAML `repo_url`, with `--repo` as explicit override.
@@ -50,14 +50,14 @@ Artifacts default under `~/.kb/evaluations/<run-name>/`.
 
 ## Comparing runs — always use eval:trends
 
-`npm run eval:trends` is the canonical comparison tool. **Never write ad-hoc Python or bash scripts to compare run results.** It shows structural metrics (docs, entities, relationships, avg query result count) for every run, plus score columns when `--auto-score` was used.
+`pnpm run eval:trends` is the canonical comparison tool. **Never write ad-hoc Python or bash scripts to compare run results.** It shows structural metrics (docs, entities, relationships, avg query result count) for every run, plus score columns when `--auto-score` was used.
 
 ```bash
 # Compare all kb suite runs (structural + score trends)
-npm run eval:trends -- --suite kb
+pnpm run eval:trends -- --suite kb
 
 # Compare all raylib suite runs
-npm run eval:trends -- --suite raylib [--limit 10]
+pnpm run eval:trends -- --suite raylib [--limit 10]
 ```
 
 Output columns: `date | run | docs | ent | rels | res | use | pass | corr | src`

@@ -315,7 +315,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
 
     const completion = await llmProvider.call({
       messages: [...contextMessages, { role: 'user', content: userContent }],
-      temperature: 0.1,
+      temperature: 0,
       maxTokens: INTENT_LLM_MAX_OUTPUT_TOKENS,
     })
 

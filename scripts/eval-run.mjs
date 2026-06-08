@@ -29,94 +29,40 @@ import { fileURLToPath } from 'node:url'
 import dayjs from 'dayjs'
 import yaml from 'js-yaml'
 
+import {
+  sanitizeSlugPart,
+  repoLeafNameFromUrl,
+  stripCliBanner,
+  derivedBase,
+  parseQueryText,
+  parseGraphCounts,
+  buildCoverageAudit,
+  scoreMetric,
+  structuralMetric,
+  matchesSuite,
+  sparkline,
+  evaluationsRoot,
+  normalizeSuiteDoc,
+  loadVendorSuite,
+  listSuiteIds,
+} from './eval-shared.mjs'
+
+export {
+  sanitizeSlugPart,
+  repoLeafNameFromUrl,
+  stripCliBanner,
+  derivedBase,
+  parseQueryText,
+  parseGraphCounts,
+  buildCoverageAudit,
+  scoreMetric,
+  structuralMetric,
+  matchesSuite,
+  sparkline,
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const KB_REPO = path.resolve(__dirname, '..')
-const SUITES_DIR = path.join(KB_REPO, 'eval', 'suites')
-
-function listSuiteIds() {
-  if (!fs.existsSync(SUITES_DIR)) return []
-  return fs
-    .readdirSync(SUITES_DIR)
-    .filter(f => f.endsWith('.yaml') || f.endsWith('.yml'))
-    .map(f => path.basename(f).replace(/\.(yaml|yml)$/i, ''))
-}
-
-/**
- * @returns {{ id: string, questions: string[], answers: string[] | null, rubricPhrase: string, sourceFile: string, repoUrl: string | null }}
- */
-function normalizeSuiteDoc(raw, sourceFile) {
-  if (!raw || typeof raw !== 'object') {
-    throw new Error(`Invalid suite YAML (not an object): ${sourceFile}`)
-  }
-  const qs = raw.questions
-  if (!Array.isArray(qs) || qs.length !== 8 || !qs.every(q => typeof q === 'string' && q.trim())) {
-    throw new Error(`${sourceFile}: require questions: as exactly 8 non-empty strings`)
-  }
-  const rubric = raw.rubric_focus
-  if (typeof rubric !== 'string' || !rubric.trim()) {
-    throw new Error(`${sourceFile}: require rubric_focus: non-empty string (LLM rubric context)`)
-  }
-  const id =
-    typeof raw.id === 'string' && raw.id.trim()
-      ? raw.id.trim()
-      : path.basename(sourceFile).replace(/\.(yaml|yml)$/i, '')
-  const repoUrl =
-    typeof raw.repo_url === 'string' && raw.repo_url.trim() ? raw.repo_url.trim() : null
-
-  let answers = null
-  if (Array.isArray(raw.answers)) {
-    if (raw.answers.length !== qs.length || !raw.answers.every(a => typeof a === 'string')) {
-      throw new Error(
-        `${sourceFile}: answers: must be an array of strings the same length as questions:`
-      )
-    }
-    answers = raw.answers.map(a => a.trim())
-  }
-
-  return {
-    id,
-    questions: qs.map(s => s.trim()),
-    answers,
-    rubricPhrase: rubric.trim(),
-    sourceFile,
-    repoUrl,
-  }
-}
-
-function evaluationsRoot() {
-  return path.join(os.homedir(), '.kb', 'evaluations')
-}
-
-export function sanitizeSlugPart(s) {
-  const x = String(s)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48)
-  return x || 'repo'
-}
-
-/** Short repo leaf name for artifact.repository.name (e.g. raylib). */
-export function repoLeafNameFromUrl(url) {
-  const raw = String(url)
-    .trim()
-    .replace(/\.git$/i, '')
-  const scp = /^[\w.+-]+@[\w.-]+:[\w.-]+\/([\w.-]+)$/i.exec(raw)
-  if (scp) return sanitizeSlugPart(scp[1])
-  let href = raw
-  if (!/^[\w+.-]+:/.test(href)) href = `https://${href}`
-  try {
-    const u = new URL(href)
-    const segs = u.pathname
-      .replace(/^\/+|\/+$/g, '')
-      .split('/')
-      .filter(Boolean)
-    if (segs.length) return sanitizeSlugPart(segs[segs.length - 1])
-  } catch {
-    /* */
-  }
-  return 'repo'
-}
 
 /**
  * Run folder basename == default KB `--base` for `all` mode: `<repoLeaf>-YYYY-MM-DD-HHmm`.
@@ -155,20 +101,6 @@ function resolveRepoDirInRun(runDir, repoUrl) {
   )
 }
 
-function loadVendorSuite(suiteId) {
-  const y = path.join(SUITES_DIR, `${suiteId}.yaml`)
-  const y2 = path.join(SUITES_DIR, `${suiteId}.yml`)
-  const file = fs.existsSync(y) ? y : fs.existsSync(y2) ? y2 : null
-  if (!file) {
-    const known = listSuiteIds()
-    throw new Error(
-      `[eval] unknown suite "${suiteId}". Files under eval/suites/: ${known.length ? known.join(', ') : '(none)'}`
-    )
-  }
-  const raw = yaml.load(fs.readFileSync(file, 'utf8'))
-  return normalizeSuiteDoc(raw, file)
-}
-
 function loadSuiteFromPath(absPath) {
   const resolved = path.resolve(absPath)
   if (!fs.existsSync(resolved)) throw new Error(`[eval] --suite-yaml not found: ${resolved}`)
@@ -199,6 +131,7 @@ function parseArgs(argv) {
     skipCapture: false,
     autoScore: true, // on by default; disable with --manual-score
     autoScoreFile: null,
+    scoreRuns: 1,
     help: false,
   }
   let i = hasLegacyMode ? 3 : 2
@@ -221,6 +154,7 @@ function parseArgs(argv) {
       const next = argv[i + 1]
       if (next && !next.startsWith('--')) out.autoScoreFile = argv[++i]
     } else if (a === '--auto-score') out.autoScore = true
+    else if (a === '--score-runs' && argv[i + 1]) out.scoreRuns = Math.max(1, Number.parseInt(argv[++i], 10) || 1)
     else if (a === '--manual-score') out.autoScore = false
     else if (a === '--skip-init') out.skipCapture = true
     else if (a === '--force-init') out.forceInit = true
@@ -274,6 +208,7 @@ Output:
   --label SLUG            Stored as run_label in artifact
   --out PATH              Override artifact JSON path
   --manual-score          Skip LLM auto-scoring (default: auto-score is ON)
+  --score-runs N          Call scorer N times and average (reduces noise; default 1)
   --scores-file PATH      Load manual rubric scores instead (JSON array of 8)
   --auto-score-file PATH  Write auto-scores to a specific path
 
@@ -306,17 +241,6 @@ function kb(cwd, args, opts = {}) {
   })
 }
 
-export function stripCliBanner(text) {
-  const i = text.indexOf('{')
-  if (i === -1) return text.trim()
-  return text.slice(i)
-}
-
-/** Deterministic session name from suite id: eval-{suiteId} */
-export function derivedBase(suiteId) {
-  return `eval-${sanitizeSlugPart(suiteId)}`
-}
-
 /** Returns true if the KB session already has at least one document. */
 function sessionHasDocs(targetCwd, base) {
   try {
@@ -325,40 +249,6 @@ function sessionHasDocs(targetCwd, base) {
     return m ? Number(m[1]) > 0 : false
   } catch {
     return false
-  }
-}
-
-/**
- * Parse the text output of `kb query` into a normalized object.
- * kb query does not support --output json; this handles the prose format.
- */
-export function parseQueryText(text) {
-  // The output has multiple answer rounds (answer:done, answer-r2:done, answer-r3:done).
-  // The final comprehensive answer is always between the last "stage> answer*:done Xms" line
-  // and the "---" separator that precedes the evidence/retrieval footer.
-  let answer = null
-  const sepIdx = text.indexOf('\n---\n')
-  if (sepIdx !== -1) {
-    const beforeSep = text.slice(0, sepIdx)
-    const lastDoneIdx = beforeSep.lastIndexOf('\nstage> answer')
-    if (lastDoneIdx !== -1) {
-      const lineEnd = beforeSep.indexOf('\n', lastDoneIdx + 1)
-      if (lineEnd !== -1) answer = beforeSep.slice(lineEnd + 1).trim()
-    }
-  }
-  const retrievalLine = /^retrieval>\s*(.+)$/m.exec(text)?.[1]?.trim() ?? null
-  const method = /^(\w+)/.exec(retrievalLine ?? '')?.[1] ?? null
-  const resultCount = Number(/^matches>\s*(\d+)\s+ranked/m.exec(text)?.[1] ?? 0)
-  const sourcesRaw = /^sources>\s*top \d+ of \d+ ranked:\s*(.+)$/m.exec(text)?.[1] ?? ''
-  const provenance = sourcesRaw
-    .split(';')
-    .map(s => s.trim())
-    .filter(Boolean)
-  return {
-    answer,
-    result_count: resultCount,
-    provenance,
-    retrieval: { method, detail: retrievalLine, confidence: null },
   }
 }
 
@@ -396,15 +286,6 @@ function extractInitAcceptedObject(logText) {
   return null
 }
 
-export function parseGraphCounts(graphText) {
-  const em = /Entities:\s*(\d+)/.exec(graphText)
-  const rm = /Relationships:\s*(\d+)/.exec(graphText)
-  return {
-    entities: em ? Number(em[1]) : 0,
-    relationships: rm ? Number(rm[1]) : 0,
-  }
-}
-
 function parseLatestInitRunId(logsText) {
   const lines = logsText.split('\n').filter(l => l.trim().startsWith('run-'))
   if (lines.length === 0) return null
@@ -422,60 +303,6 @@ function git(repo, args) {
 
 function mean(xs) {
   return xs.reduce((a, b) => a + b, 0) / xs.length
-}
-
-function deriveCoverageFacets(question) {
-  const stopWords = new Set([
-    'what',
-    'where',
-    'when',
-    'which',
-    'who',
-    'why',
-    'how',
-    'does',
-    'do',
-    'did',
-    'the',
-    'and',
-    'for',
-    'with',
-    'from',
-    'into',
-    'about',
-    'that',
-    'this',
-    'these',
-    'those',
-    'main',
-    'including',
-    'recent',
-    'someone',
-    'project',
-    'repo',
-  ])
-  const tokens = String(question)
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter(token => token.length > 3 && !stopWords.has(token))
-  return [...new Set(tokens)].slice(0, 8)
-}
-
-export function buildCoverageAudit(question, answer, retrievalDetail) {
-  const facets = deriveCoverageFacets(question)
-  if (facets.length === 0) {
-    return { facets: [], missing_facets: [], covered_count: 0, coverage_ratio: 1 }
-  }
-  const haystack = `${answer || ''}\n${retrievalDetail || ''}`.toLowerCase()
-  const missing = facets.filter(facet => !haystack.includes(facet))
-  const covered = facets.length - missing.length
-  return {
-    facets,
-    missing_facets: missing,
-    covered_count: covered,
-    coverage_ratio: Number((covered / facets.length).toFixed(3)),
-  }
 }
 
 function clipText(s, maxLen) {
@@ -542,7 +369,7 @@ async function callGeminiJudgeJson({ apiKey, model, systemInstruction, userText 
     system_instruction: { parts: [{ text: systemInstruction }] },
     contents: [{ role: 'user', parts: [{ text: userText }] }],
     generationConfig: {
-      temperature: 0.25,
+      temperature: 0,
       maxOutputTokens: 16384,
       responseMimeType: 'application/json',
     },
@@ -571,7 +398,7 @@ async function callGeminiJudgeJson({ apiKey, model, systemInstruction, userText 
 async function callOpenAIJudgeJson({ apiKey, model, systemInstruction, userText }) {
   const body = {
     model,
-    temperature: 0.2,
+    temperature: 0,
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemInstruction },
@@ -598,7 +425,7 @@ async function callOpenAIJudgeJson({ apiKey, model, systemInstruction, userText 
   return content
 }
 
-async function runAutoScoreFile({ workdir, questions, answers, outScoresPath, rubricPhrase }) {
+async function runAutoScoreFile({ workdir, questions, answers, outScoresPath, rubricPhrase, scoreRuns = 1 }) {
   const hasRef = Array.isArray(answers) && answers.length === questions.length
   const RUBRIC = buildRubric(rubricPhrase, hasRef)
   const blocks = questions.map((q, i) => {
@@ -618,59 +445,71 @@ async function runAutoScoreFile({ workdir, questions, answers, outScoresPath, ru
   const geminiKey = process.env.GEMINI_API_KEY
   const openaiKey = process.env.OPENAI_API_KEY
 
-  let rawJsonText
   let providerUsed
   let modelUsed
 
   if (geminiKey) {
     providerUsed = 'gemini'
     modelUsed = process.env.EVAL_SCORER_MODEL || 'gemini-2.5-flash'
-    rawJsonText = await callGeminiJudgeJson({
-      apiKey: geminiKey,
-      model: modelUsed,
-      systemInstruction,
-      userText,
-    })
   } else if (openaiKey) {
     providerUsed = 'openai'
     modelUsed = process.env.EVAL_SCORER_OPENAI_MODEL || 'gpt-4o-mini'
-    rawJsonText = await callOpenAIJudgeJson({
-      apiKey: openaiKey,
-      model: modelUsed,
-      systemInstruction,
-      userText,
-    })
   } else {
     throw new Error(
       '[eval] --auto-score requires GEMINI_API_KEY or OPENAI_API_KEY (same keys as kb init).'
     )
   }
 
-  let obj = parseJsonObjectFromLLM(rawJsonText)
-  // Handle model returning a bare array instead of { scores: [...] }
-  if (Array.isArray(obj)) obj = { scores: obj }
-  const scores = obj.scores
-  if (!Array.isArray(scores) || scores.length !== 8) {
-    throw new Error(
-      `[eval] Auto-score: expected { "scores": [ ... 8 items ] }, got keys=${Object.keys(obj).join(',')}`
-    )
+  /** Call the LLM once and return a normalized 8-item score array. */
+  async function callOnce() {
+    const rawJsonText = geminiKey
+      ? await callGeminiJudgeJson({ apiKey: geminiKey, model: modelUsed, systemInstruction, userText })
+      : await callOpenAIJudgeJson({ apiKey: openaiKey, model: modelUsed, systemInstruction, userText })
+
+    let obj = parseJsonObjectFromLLM(rawJsonText)
+    if (Array.isArray(obj)) obj = { scores: obj }
+    const scores = obj.scores
+    if (!Array.isArray(scores) || scores.length !== 8) {
+      throw new Error(
+        `[eval] Auto-score: expected { "scores": [ ... 8 items ] }, got keys=${Object.keys(obj).join(',')}`
+      )
+    }
+    return scores.map((row, idx) => ({
+      correctness: clampScore0to4(row.correctness),
+      usefulness: clampScore0to4(row.usefulness),
+      specificity: clampScore0to4(row.specificity),
+      evidence_handling: clampScore0to4(row.evidence_handling),
+      notes:
+        typeof row.notes === 'string' && row.notes.trim()
+          ? row.notes.trim()
+          : `Auto-score question ${idx + 1} (${providerUsed})`,
+    }))
   }
 
-  const normalized = scores.map((row, idx) => ({
-    correctness: clampScore0to4(row.correctness),
-    usefulness: clampScore0to4(row.usefulness),
-    specificity: clampScore0to4(row.specificity),
-    evidence_handling: clampScore0to4(row.evidence_handling),
-    notes:
-      typeof row.notes === 'string' && row.notes.trim()
-        ? row.notes.trim()
-        : `Auto-score question ${idx + 1} (${providerUsed})`,
-  }))
+  const runs = Math.max(1, scoreRuns)
+  const allRuns = []
+  for (let r = 0; r < runs; r++) {
+    if (runs > 1) console.error(`[eval] auto-score run ${r + 1}/${runs}`)
+    allRuns.push(await callOnce())
+  }
+
+  // Average numeric axes across runs; keep notes from the last run
+  const normalized = questions.map((_, idx) => {
+    const axes = ['correctness', 'usefulness', 'specificity', 'evidence_handling']
+    const averaged = {}
+    for (const axis of axes) {
+      const mean = allRuns.reduce((s, run) => s + run[idx][axis], 0) / runs
+      averaged[axis] = Math.round(mean * 10) / 10
+    }
+    averaged.notes = allRuns[allRuns.length - 1][idx].notes
+    if (runs > 1) averaged.notes = `[avg×${runs}] ${averaged.notes}`
+    return averaged
+  })
 
   fs.mkdirSync(path.dirname(path.resolve(outScoresPath)), { recursive: true })
   fs.writeFileSync(path.resolve(outScoresPath), `${JSON.stringify(normalized, null, 2)}\n`, 'utf8')
   console.error(
-    `[eval] auto-score wrote ${path.resolve(outScoresPath)} (${providerUsed}/${modelUsed})`
+    `[eval] auto-score wrote ${path.resolve(outScoresPath)} (${providerUsed}/${modelUsed}${runs > 1 ? ` ×${runs}` : ''})`
   )
 
   return { normalized, providerUsed, modelUsed, outScoresPath: path.resolve(outScoresPath) }
@@ -778,64 +617,6 @@ function _safeJson(file) {
   } catch {
     return null
   }
-}
-
-export function scoreMetric(artifact, key) {
-  const q = artifact?.aggregate_scores?.query
-  const c = artifact?.aggregate_scores?.combined
-  if (key === 'usefulness') return q?.mean_usefulness ?? c?.mean_usefulness ?? null
-  if (key === 'pass_rate')
-    return (
-      q?.pass_rate_correctness_and_usefulness_at_least_3 ??
-      c?.pass_rate_correctness_and_usefulness_at_least_3 ??
-      null
-    )
-  if (key === 'correctness') return q?.mean_correctness ?? c?.mean_correctness ?? null
-  return null
-}
-
-export function structuralMetric(artifact, key) {
-  const init = artifact?.run?.init_result
-  const gs = init?.graph_summary
-  if (key === 'docs') return init?.written_docs ?? null
-  if (key === 'entities') return gs?.entities ?? null
-  if (key === 'rels') return gs?.relationships ?? null
-  if (key === 'avg_results') {
-    const qe = artifact?.query_evaluation ?? []
-    if (!qe.length) return null
-    const counts = qe.map(q => q.result_count ?? 0)
-    return counts.reduce((a, b) => a + b, 0) / counts.length
-  }
-  return null
-}
-
-export function matchesSuite(row, suite) {
-  if (!suite) return true
-  const p = suite.toLowerCase()
-  const a = row.artifact
-  const runSuite = (a?.run?.suite ?? '').toLowerCase()
-  if (runSuite) return runSuite === p
-  const haystack = [row.id, a?.repository?.name, a?.run_label, a?.run?.run_name]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-  return haystack.includes(p)
-}
-
-export function sparkline(values, maxWidth = 28) {
-  const chars = '▁▂▃▄▅▆▇█'
-  const nums = values.filter(v => typeof v === 'number')
-  if (!nums.length) return ''
-  const trimmed = nums.slice(Math.max(0, nums.length - maxWidth))
-  const min = Math.min(...trimmed)
-  const max = Math.max(...trimmed)
-  if (max === min) return '▅'.repeat(trimmed.length)
-  return trimmed
-    .map(v => {
-      const idx = Math.max(0, Math.min(7, Math.round(((v - min) / (max - min)) * 7)))
-      return chars[idx]
-    })
-    .join('')
 }
 
 function _fmtN(n) {
@@ -1140,10 +921,11 @@ async function main() {
         answers: suiteConfig?.answers ?? null,
         outScoresPath: outScores,
         rubricPhrase,
+        scoreRuns: args.scoreRuns,
       })
       manualScores = res.normalized
       queryScoringMeta = {
-        mode: 'llm_judge_single_shot',
+        mode: args.scoreRuns > 1 ? `llm_judge_avg_${args.scoreRuns}` : 'llm_judge_single_shot',
         provider: res.providerUsed,
         model: res.modelUsed,
         scores_file: res.outScoresPath,

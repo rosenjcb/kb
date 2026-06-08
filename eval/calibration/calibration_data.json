@@ -1,0 +1,242 @@
+[
+  {
+    "taskId": "kb-arch-001",
+    "candidate": "kb uses a SQLite database to store facts extracted from source files. The retrieval orchestrator queries this database using full-text search and semantic embeddings to find relevant facts before answering questions.",
+    "reference": "kb stores facts in a SQLite database with FTS5 for full-text search and fact_embeddings for semantic retrieval. The FactsQueryResearchOrchestrator drives the retrieval loop, stopping when assessSufficiency() returns 'answerable' based on score thresholds.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 3.5,
+      "judge-claude": 3.8,
+      "judge-gemini": 3.2
+    },
+    "humanPass": true
+  },
+  {
+    "taskId": "kb-arch-002",
+    "candidate": "kb uses a vector database to store embeddings and retrieves facts using cosine similarity. It calls OpenAI's embedding API for each query.",
+    "reference": "kb stores facts in a SQLite database with FTS5 for full-text search and fact_embeddings for semantic retrieval. The FactsQueryResearchOrchestrator drives the retrieval loop, stopping when assessSufficiency() returns 'answerable' based on score thresholds.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 1.2,
+      "judge-claude": 0.8,
+      "judge-gemini": 1.5
+    },
+    "humanPass": false
+  },
+  {
+    "taskId": "kb-usage-001",
+    "candidate": "Run 'kb init' to initialize the knowledge base for a repository, then 'kb query' to ask questions about the codebase.",
+    "reference": "kb init indexes the repository into a SQLite knowledge base. kb query retrieves facts and generates answers using an LLM. kb scan performs incremental updates on changed files.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 2.8,
+      "judge-claude": 2.5,
+      "judge-gemini": 3.0
+    },
+    "humanPass": false
+  },
+  {
+    "taskId": "kb-usage-002",
+    "candidate": "To use kb: first run 'kb init --non-interactive' to index the repo. This runs 5 cycles: read-inputs, code-index, document-facts, import-docs, write. Then use 'kb query' for retrieval, or 'kb scan' for incremental updates after file changes.",
+    "reference": "kb init indexes the repository into a SQLite knowledge base. kb query retrieves facts and generates answers using an LLM. kb scan performs incremental updates on changed files.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 4.2,
+      "judge-claude": 4.5,
+      "judge-gemini": 4.0
+    },
+    "humanPass": true
+  },
+  {
+    "taskId": "kb-retrieval-001",
+    "candidate": "The retrieval system uses BM25 ranking to score documents against the query.",
+    "reference": "kb uses FTS5 full-text search combined with semantic embedding similarity. The retrieval-lane-router routes queries to appropriate fact categories, and graph expansion via expandQueryWithGraph() adds related symbols.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 0.5,
+      "judge-claude": 0.8,
+      "judge-gemini": 1.0
+    },
+    "humanPass": false
+  },
+  {
+    "taskId": "kb-retrieval-002",
+    "candidate": "kb retrieval uses a hybrid approach: FTS5 full-text search on the facts table, semantic similarity via fact_embeddings, lane routing through retrieval-lane-router.ts, and graph expansion through expandQueryWithGraph(). The orchestrator iterates until assessSufficiency() signals enough evidence.",
+    "reference": "kb uses FTS5 full-text search combined with semantic embedding similarity. The retrieval-lane-router routes queries to appropriate fact categories, and graph expansion via expandQueryWithGraph() adds related symbols.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 4.8,
+      "judge-claude": 4.6,
+      "judge-gemini": 4.9
+    },
+    "humanPass": true
+  },
+  {
+    "taskId": "kb-indexer-001",
+    "candidate": "kb parses TypeScript files using ts-morph to extract class and function information, and stores this as facts.",
+    "reference": "kb uses two indexers: TsMorphIndexer for TypeScript/JavaScript code-graph relationships (imports, exports), and TreeSitterIndexer for 17+ languages (Go, Python, Rust, etc.) using WASM grammars to extract IMPORTS_FILE and EXPORTS_SYMBOL facts.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 2.0,
+      "judge-claude": 1.5,
+      "judge-gemini": 2.2
+    },
+    "humanPass": false
+  },
+  {
+    "taskId": "kb-indexer-002",
+    "candidate": "kb uses TsMorphIndexer (code-graph-indexer.ts) for TypeScript/JS relationships and TreeSitterIndexer (tree-sitter-indexer.ts) with WASM grammars for 17 languages. TreeSitterIndexer writes IMPORTS_FILE and EXPORTS_SYMBOL facts. The goExportConvention flag handles Go's uppercase-initial export convention.",
+    "reference": "kb uses two indexers: TsMorphIndexer for TypeScript/JavaScript code-graph relationships (imports, exports), and TreeSitterIndexer for 17+ languages (Go, Python, Rust, etc.) using WASM grammars to extract IMPORTS_FILE and EXPORTS_SYMBOL facts.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 4.7,
+      "judge-claude": 4.8,
+      "judge-gemini": 4.6
+    },
+    "humanPass": true
+  },
+  {
+    "taskId": "kb-telemetry-001",
+    "candidate": "kb tracks API costs using a token counter that wraps the LLM provider.",
+    "reference": "TokenCountingProvider wraps any LLMProvider and accumulates _inputTokens/_outputTokens. RunCollector uses startStage()/addStage()/finish() to produce RunReport. ReportWriter appends NDJSON to ~/.kb/logs/YYYY-MM-DD.jsonl.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 2.2,
+      "judge-claude": 2.0,
+      "judge-gemini": 2.5
+    },
+    "humanPass": false
+  },
+  {
+    "taskId": "kb-telemetry-002",
+    "candidate": "TokenCountingProvider wraps LLMProvider, intercepting call() to accumulate tokens. getAndReset() returns and resets counters between init cycles. RunCollector.startStage() returns a closer function; calling it with token counts triggers addStage(). ReportWriter appends NDJSON to ~/.kb/logs.",
+    "reference": "TokenCountingProvider wraps any LLMProvider and accumulates _inputTokens/_outputTokens. RunCollector uses startStage()/addStage()/finish() to produce RunReport. ReportWriter appends NDJSON to ~/.kb/logs/YYYY-MM-DD.jsonl.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 4.5,
+      "judge-claude": 4.7,
+      "judge-gemini": 4.4
+    },
+    "humanPass": true
+  },
+  {
+    "taskId": "kb-scan-001",
+    "candidate": "kb scan re-indexes all files in the repository from scratch.",
+    "reference": "kb scan is equivalent to kb init --rescan --apply. It uses content-hash comparison via code_file_state to detect changed files. Stale facts from deleted or modified files are tombstoned via tombstoneStaleCodeFacts/tombstoneStaleAstFacts.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 0.8,
+      "judge-claude": 0.5,
+      "judge-gemini": 1.0
+    },
+    "humanPass": false
+  },
+  {
+    "taskId": "kb-scan-002",
+    "candidate": "kb scan runs incremental reindexing. It compares content hashes stored in code_file_state to detect which files changed. Only changed files are re-indexed; stale facts are tombstoned. Uncategorized facts are auto-assigned at cosine similarity threshold 0.3.",
+    "reference": "kb scan is equivalent to kb init --rescan --apply. It uses content-hash comparison via code_file_state to detect changed files. Stale facts from deleted or modified files are tombstoned via tombstoneStaleCodeFacts/tombstoneStaleAstFacts.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 4.6,
+      "judge-claude": 4.4,
+      "judge-gemini": 4.5
+    },
+    "humanPass": true
+  },
+  {
+    "taskId": "kb-lane-001",
+    "candidate": "The retrieval system has multiple search modes including keyword search, semantic search, and code search.",
+    "reference": "retrieval-lane-router.ts defines 6 RetrievalLane values: error-runbook, fact, policy, architecture, session-log, workflow. routeQueryToLanes() maps queries to lanes; laneFitnessBoost() provides post-retrieval reranking (0.15/0.10/0.05/0.02 tiers).",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 1.5,
+      "judge-claude": 1.2,
+      "judge-gemini": 1.8
+    },
+    "humanPass": false
+  },
+  {
+    "taskId": "kb-lane-002",
+    "candidate": "retrieval-lane-router.ts defines RetrievalLane as a union of 6 values: error-runbook, fact, policy, architecture, session-log, workflow. routeQueryToLanes() routes a query to appropriate lanes; laneFitnessBoost() applies post-retrieval scoring (0.15 for index 0, down to 0.02).",
+    "reference": "retrieval-lane-router.ts defines 6 RetrievalLane values: error-runbook, fact, policy, architecture, session-log, workflow. routeQueryToLanes() maps queries to lanes; laneFitnessBoost() provides post-retrieval reranking (0.15/0.10/0.05/0.02 tiers).",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 4.3,
+      "judge-claude": 4.5,
+      "judge-gemini": 4.2
+    },
+    "humanPass": true
+  },
+  {
+    "taskId": "kb-graph-001",
+    "candidate": "kb uses a knowledge graph to connect related facts through relationships.",
+    "reference": "expandQueryWithGraph() performs two passes: (1) FTS on facts_fts for import_code source_kind + 1-hop fact_edges; (2) LIKE-scan of subject/object fields. MAX_CODE_EXPANSION=8, MAX_SEMANTIC_EXPANSION=18 cap outputs.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 1.8,
+      "judge-claude": 1.5,
+      "judge-gemini": 2.0
+    },
+    "humanPass": false
+  },
+  {
+    "taskId": "kb-graph-002",
+    "candidate": "expandQueryWithGraph() improves recall via two passes: FTS on import_code facts + 1-hop graph expansion (capped at MAX_CODE_EXPANSION=8), and LIKE-scan on subject/object fields (capped at MAX_SEMANTIC_EXPANSION=18). toGraphQuerySlugs() generates unigrams and bigrams.",
+    "reference": "expandQueryWithGraph() performs two passes: (1) FTS on facts_fts for import_code source_kind + 1-hop fact_edges; (2) LIKE-scan of subject/object fields. MAX_CODE_EXPANSION=8, MAX_SEMANTIC_EXPANSION=18 cap outputs.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 4.6,
+      "judge-claude": 4.8,
+      "judge-gemini": 4.5
+    },
+    "humanPass": true
+  },
+  {
+    "taskId": "kb-eval-001",
+    "candidate": "kb evaluation uses a scoring rubric with 4 dimensions: correctness, usefulness, specificity, and evidence handling. Scores are 0-4 for each dimension.",
+    "reference": "eval-run.mjs loads suite YAML (including rubric_focus), runs 8 kb queries, and batch-scores all Q&A pairs via Gemini (GEMINI_API_KEY) or OpenAI fallback. Results saved to auto-scores.json and artifact.json.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 2.5,
+      "judge-claude": 2.8,
+      "judge-gemini": 2.3
+    },
+    "humanPass": false
+  },
+  {
+    "taskId": "kb-eval-002",
+    "candidate": "eval-run.mjs loads the suite YAML (using rubric_focus for the scoring prompt), runs 8 kb queries, and sends all Q&A pairs in one batch to the LLM scorer (Gemini via GEMINI_API_KEY, or OpenAI as fallback). All 8 scores saved to auto-scores.json and merged into artifact.json.",
+    "reference": "eval-run.mjs loads suite YAML (including rubric_focus), runs 8 kb queries, and batch-scores all Q&A pairs via Gemini (GEMINI_API_KEY) or OpenAI fallback. Results saved to auto-scores.json and artifact.json.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 4.4,
+      "judge-claude": 4.6,
+      "judge-gemini": 4.3
+    },
+    "humanPass": true
+  },
+  {
+    "taskId": "kb-dataflow-001",
+    "candidate": "kb init processes files sequentially, extracting information and storing it in the database.",
+    "reference": "kb init runs 5 checkpointed cycles: read-inputs, code-index, document-facts, import-docs, write. SQLite tables written: facts, fact_edges, facts_fts (FTS5), fact_embeddings, documents, fact_categories, code_file_state.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 1.2,
+      "judge-claude": 1.0,
+      "judge-gemini": 1.5
+    },
+    "humanPass": false
+  },
+  {
+    "taskId": "kb-dataflow-002",
+    "candidate": "kb init runs 5 named cycles: read-inputs (file discovery), code-index (TsMorphIndexer + TreeSitterIndexer write source_kind='import_code' facts), document-facts (markdown segmentation writes source_kind='doc' facts), import-docs, write. SQLite tables: facts, fact_edges, facts_fts, fact_embeddings, documents, fact_categories, code_file_state.",
+    "reference": "kb init runs 5 checkpointed cycles: read-inputs, code-index, document-facts, import-docs, write. SQLite tables written: facts, fact_edges, facts_fts (FTS5), fact_embeddings, documents, fact_categories, code_file_state.",
+    "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
+    "humanScores": {
+      "judge-gpt4o": 4.7,
+      "judge-claude": 4.9,
+      "judge-gemini": 4.6
+    },
+    "humanPass": true
+  }
+]

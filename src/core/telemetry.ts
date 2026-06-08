@@ -6,7 +6,7 @@
  * When --debug is passed, live stage summaries are printed to stderr.
  */
 
-import { appendFile, mkdir } from 'node:fs/promises'
+import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { calculateModelCost } from 'pricetoken'
@@ -170,6 +170,73 @@ export class ReportWriter {
 export function defaultLogsDir(): string {
   const home = process.env.HOME ?? process.env.USERPROFILE ?? '/tmp'
   return path.join(home, '.kb', 'logs')
+}
+
+// ─── Trajectory Tracking ──────────────────────────────────────────
+
+export interface TrajectoryStep {
+  stepIndex: number
+  timestampMs: number
+  toolName: string
+  arguments: Record<string, unknown>
+  freshTokens: number
+  cachedTokens: number
+  outputTokens: number
+}
+
+export interface TrajectoryFile {
+  taskId: string
+  condition: 'N' | 'K' | 'O'
+  totalSteps: number
+  elapsedMs: number
+  steps: TrajectoryStep[]
+}
+
+export class TrajectoryCollector {
+  private steps: TrajectoryStep[] = []
+  private startMs: number
+
+  constructor(
+    private taskId: string,
+    private condition: 'N' | 'K' | 'O'
+  ) {
+    this.startMs = Date.now()
+  }
+
+  record_step(
+    toolName: string,
+    args: Record<string, unknown>,
+    tokens?: { fresh?: number; cached?: number; output?: number }
+  ): void {
+    this.steps.push({
+      stepIndex: this.steps.length,
+      timestampMs: Date.now() - this.startMs,
+      toolName,
+      arguments: args,
+      freshTokens: tokens?.fresh ?? 0,
+      cachedTokens: tokens?.cached ?? 0,
+      outputTokens: tokens?.output ?? 0,
+    })
+  }
+
+  compileTrajectory(): TrajectoryFile {
+    return {
+      taskId: this.taskId,
+      condition: this.condition,
+      totalSteps: this.steps.length,
+      elapsedMs: Date.now() - this.startMs,
+      steps: this.steps,
+    }
+  }
+
+  async writeTrajectory(runDir: string): Promise<void> {
+    await mkdir(runDir, { recursive: true })
+    await writeFile(
+      path.join(runDir, `trajectory_${this.condition}.json`),
+      JSON.stringify(this.compileTrajectory(), null, 2),
+      'utf-8'
+    )
+  }
 }
 
 // ─── TokenCountingProvider ────────────────────────────────────────

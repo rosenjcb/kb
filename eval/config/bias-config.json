@@ -1,0 +1,6 @@
+{
+  "vetoThreshold": 2,
+  "enableVerbosityNormalization": true,
+  "enablePositionDebiasing": true,
+  "enforceModelFamilyDiversity": true
+}

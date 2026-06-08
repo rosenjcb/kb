@@ -1,0 +1,345 @@
+%% ─── System: KB ──────────────────────────────────────────────────────────────
+\section{KB: A Facts-First Codebase Knowledge System}
+\label{sec:system}
+
+\subsection{Design Philosophy}
+
+KB rests on a single organizing principle: \emph{knowledge should accrete as a
+side effect of real work, not as a separate maintenance obligation}.  The system
+is \emph{descriptive}, not prescriptive—it records what happened without
+imposing workflows.  Any fact in the base can be corrected or deleted in
+constant time; incorrect knowledge is never sacred.  This philosophy
+distinguishes KB from documentation systems, which suffer from rot, and from
+ad-hoc context-stuffing approaches, which do not persist across sessions.
+
+\subsection{Knowledge Representation}
+
+KB represents a codebase as a set of atomic, citable \emph{facts} stored in a
+SQLite database.  Each fact is a natural-language sentence paired with:
+\begin{itemize}
+  \item a \texttt{source\_kind} (\texttt{import\_code} for AST-derived facts,
+    \texttt{import\_doc} for sentence-segmented markdown);
+  \item a \texttt{source\_ref} (e.g., \texttt{code:src/tools/indexer.ts@parseAST});
+  \item optional embedding vector for semantic search;
+  \item a soft-deletion tombstone for incremental invalidation.
+\end{itemize}
+
+Facts are connected by typed edges in a \texttt{fact\_edges} table, forming a
+lightweight semantic graph.  This graph enables breadth-first neighborhood
+expansion during retrieval—a capability not available in flat vector indices.
+
+\subsection{Indexing Pipeline}
+
+\texttt{kb init} executes a deterministic, three-phase indexing pipeline:
+
+\medskip
+\noindent\textbf{Phase 1 --- AST Code Indexing.}  For each source file, KB
+invokes the \texttt{web-tree-sitter} WASM runtime with per-language export
+queries to extract named declarations (functions, classes, interfaces, type
+aliases, constants, module items).  Each symbol becomes a code fact with
+its qualified source reference.  Import edges between symbols are recorded in
+\texttt{fact\_edges}, forming the structural backbone of the graph.  This phase
+is entirely deterministic; no LLM is involved.
+
+\medskip
+\noindent\textbf{Phase 2 --- Document Fact Extraction.}  Human-readable
+sources (README files, markdown documentation) are segmented into sentences via
+deterministic NLP segmentation.  Each sentence becomes a document fact.  An LLM
+pass synthesizes additional thematic documents (e.g., \emph{project-overview},
+\emph{constraints-and-gotchas}) from the extracted sentences.
+
+\medskip
+\noindent\textbf{Phase 3 --- Semantic Embedding.}  Fact embeddings are computed
+in batch and stored in \texttt{fact\_embeddings}.  These enable semantic
+rescoring during retrieval but are never the sole source of evidence.
+
+The entire init pipeline for the raylib C library (373--698 entities across
+runs) completes in under 3 minutes on a laptop, at a cost of \$0.02--\$0.05 per
+fresh run.
+
+%% ─── Figure: KB Architecture ─────────────────────────────────────────────────
+\begin{figure}[t]
+\centering
+\fbox{
+  \parbox{0.92\columnwidth}{
+    \centering
+    \vspace{0.4cm}
+    \textit{\textbf{[FIGURE 2 — KB Indexing and Retrieval Architecture]}} \\[6pt]
+    A two-column diagram. \\
+    \textbf{Left column (Init):} Source files $\rightarrow$ tree-sitter AST
+      parser $\rightarrow$ named declarations $\rightarrow$ \texttt{facts}
+      (code). Markdown/README $\rightarrow$ sentence segmenter $\rightarrow$
+      \texttt{facts} (doc). Both feed into \texttt{fact\_edges} (graph) and
+      \texttt{fact\_embeddings} (semantic). \\
+    \textbf{Right column (Query):} Query string $\rightarrow$ intent router
+      $\rightarrow$ multi-pond BFS loop (labeled with the five evidence
+      streams: edge neighbors, primary FTS, pond FTS, concept frontier,
+      concept rows) $\rightarrow$ scored fact pool $\rightarrow$ sufficiency
+      check ($\geq 10$ facts $\geq 0.40$) $\rightarrow$ LLM synthesis
+      $\rightarrow$ grounded prose answer with evidence header. \\
+    Arrow between columns labeled ``graph-augmented query expansion''.
+    \vspace{0.4cm}
+  }
+}
+\caption{KB indexing (left) and multi-pond BFS retrieval (right).}
+\label{fig:kb-arch}
+\end{figure}
+
+\subsection{Retrieval: Multi-Pond BFS}
+\label{subsec:retrieval}
+
+At query time, KB dispatches through \texttt{runQueryTruthRetrieval()} to a
+\emph{deep} retrieval loop inside \texttt{FactsQueryResearchOrchestrator}.  The
+loop maintains a set of \emph{exploration ponds}---independent BFS frontiers
+seeded from different sub-queries---so that one dominant code neighborhood
+cannot monopolize the evidence budget.
+
+Each iteration of the loop merges five candidate streams:
+\begin{enumerate}
+  \item \textbf{Edge neighbors}: one BFS hop from the active pond's frontier
+    via \texttt{fact\_edges}.
+  \item \textbf{Primary lexical}: BM25 FTS5 search for the original query.
+  \item \textbf{Pond lexical}: FTS5 search for the active pond's sub-query.
+  \item \textbf{Concept frontier}: facts sharing any concept token in the
+    active concept set.
+  \item \textbf{Concept rows}: broader concept-union expansion.
+\end{enumerate}
+
+Facts from the first pass are promoted as \emph{anchors} and receive a $+0.10$
+score boost in later passes, ensuring stable grounding.  The loop exits when
+any of the following conditions is satisfied: (a) $\geq 10$ facts score
+$\geq 0.40$ against the query (\emph{answerable plateau}), (b) all ponds are
+exhausted, or (c) the fact budget ($500$ facts) is reached.
+
+Graph-augmented query expansion (\texttt{expandQueryWithGraph}) may optionally
+rewrite or widen the query string before the loop begins, based on entity
+relationships in the stored graph.
+
+\subsection{Knowledge Accretion}
+
+Unlike one-shot RAG systems, KB is designed for long-running use.  Each
+\texttt{kb submit} call deposits new facts into the base, which immediately
+become available to subsequent queries.  In the agent token-efficiency
+experiment (Section~\ref{subsec:token-efficiency}), a KB-backed agent completing
+the first task enriches the base with implementation-specific facts, which then
+benefit tasks 2--4 through lower retrieval cost.  The compounding effect is the
+primary differentiating property of KB over session-scoped context injection.
+
+\subsection{Interfaces}
+
+KB is surfaced through three interfaces:
+\begin{itemize}
+  \item \textbf{CLI} (\texttt{kb query}, \texttt{kb chat}, \texttt{kb init},
+    \texttt{kb submit}): one-shot and interactive terminal commands.
+  \item \textbf{TUI}: an Ink-based terminal UI with a Portal-inspired color
+    scheme (blue for assistant output, orange for user input) supporting shell
+    and chat modes.
+  \item \textbf{Tool registry}: a set of MCP-compatible tools
+    (\texttt{read\_facts}, \texttt{search\_code\_symbols},
+    \texttt{get\_code\_neighbors}, \texttt{get\_code\_graph\_summary}) exposed
+    to external agent frameworks without requiring prompt modifications.
+\end{itemize}
+
+%% ─── MOEL ─────────────────────────────────────────────────────────────────────
+\section{MOEL: Multi-Objective Exploration Loss}
+\label{sec:moel}
+
+\subsection{Motivation}
+
+Standard evaluation of LLM agents on code tasks measures whether the final
+answer is correct.  This binary signal hides the cost of exploration: an agent
+that issues 50 tool calls to reach a correct answer and one that issues 3 are
+indistinguishable under pass/fail scoring.  Similarly, LLM-as-judge evaluators
+have known failure modes (position bias, verbosity inflation, self-enhancement)
+that inflate quality estimates when judges are not calibrated~\cite{zheng2023judging}.
+
+MOEL addresses both problems by combining four normalized loss components into a
+single differentiable scalar, evaluated under three controlled conditions per task.
+
+\subsection{Three-Condition Evaluation Design}
+\label{subsec:conditions}
+
+Every MOEL task runs under three conditions:
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}p{1.6cm}p{3.4cm}p{1.6cm}@{}}
+\toprule
+\textbf{Cond.} & \textbf{Tools available} & \textbf{Purpose} \\
+\midrule
+\textbf{N} (raw FS) &
+  {\footnotesize\texttt{read\_file}, \texttt{list\_directory},
+  \texttt{search\_file\_contents}} &
+  Worst-case baseline \\[3pt]
+\textbf{K} (KB) &
+  Full KB tool registry &
+  Primary experiment \\[3pt]
+\textbf{O} (Oracle) &
+  Minimal facts injected in system prompt &
+  Ceiling \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The primary hypothesis is $L_\text{MOEL}(N) > L_\text{MOEL}(K)$; secondary
+goal is $L_\text{MOEL}(K) \approx L_\text{MOEL}(O)$ as the knowledge base
+matures.  \texttt{compareConditions()} checks this automatically from the
+per-condition result objects.
+
+\subsection{Loss Functions}
+
+\subsubsection*{$L_\text{AST}$ --- AST Structural Loss}
+
+$L_\text{AST}$ quantifies semantic distance between a candidate code snippet and
+a reference by computing the Jaccard distance over their sets of named exported
+declarations, extracted via per-language tree-sitter queries.
+
+Let $D_c$ and $D_r$ denote the declaration sets of the candidate and reference
+respectively.  Then:
+
+\begin{equation}
+L_\text{AST} = 1 - \frac{|D_c \cap D_r|}{|D_c \cup D_r|}
+\label{eq:last}
+\end{equation}
+
+Supported languages: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust.  The
+metric returns $1.0$ on unsupported languages or parse failures.  The WASM
+runtime is initialized once per process (\texttt{initAstLossParser()}) and
+reused across calls to amortize grammar loading.
+
+\subsubsection*{$L_\text{jury}$ --- LLM Jury Semantic Loss}
+
+$L_\text{jury}$ submits the candidate and reference to an ensemble of LLM
+judges and aggregates their rubric scores.  Each judge assigns scores on
+configurable rubric axes (correctness, usefulness, specificity, evidence
+handling) on a 0--5 scale, and may optionally raise a \emph{veto flag}.
+
+\medskip
+\noindent\textbf{Bias mitigation.}  Four debiasing mechanisms are applied:
+\begin{enumerate}
+  \item \textbf{Verbosity normalization}: a $\log_{1+}$ length-scaling term is
+    added to the rubric, penalizing unnecessary verbosity without penalizing
+    accurate, detailed responses.
+  \item \textbf{Position debiasing}: each judge evaluates both
+    (candidate, reference) and (reference, candidate) orderings; the reported
+    score is the average, and the absolute difference ($\Delta_\text{pos}$) is
+    recorded as a consistency metric.
+  \item \textbf{Self-enhancement down-weighting}: when a judge's model family
+    matches the generator's, its weight is reduced to $0.5$.
+  \item \textbf{Family diversity enforcement}: the ensemble must include
+    $\geq 2$ judge families distinct from the generator family, preventing
+    homogeneous scoring coalitions.
+\end{enumerate}
+
+\noindent\textbf{Minority-veto policy.}  If $\geq 2$ judges veto:
+
+\begin{equation}
+L_\text{jury} = \begin{cases}
+  1.0 & \text{if veto count} \geq 2 \\
+  \text{weighted mean of normalized scores} & \text{otherwise}
+\end{cases}
+\label{eq:ljury}
+\end{equation}
+
+\noindent\textbf{Statistical calibration.}  Jury scores are calibrated using
+per-judge logistic regression:
+\begin{equation}
+P(\text{correct} \mid s) = \sigma(\beta_0 + \beta_1 s)
+\label{eq:calibration}
+\end{equation}
+fitted on a 20-sample human-annotated dataset (10 pass / 10 fail, three human
+judges per sample).  Generalization error is estimated via leave-one-out
+cross-validation.  The calibration pipeline (\texttt{eval/calibration/calibrate.py})
+is invoked once per judge model and outputs $(\beta_0, \beta_1)$ coefficients
+stored in \texttt{calibration\_model.json}.
+
+\subsubsection*{$L_\text{trajectory}$ --- Trajectory Inefficiency Loss}
+
+$L_\text{trajectory}$ penalizes two failure modes: taking more steps than a
+configured ceiling, and repeating identical tool calls.  Let $H$ denote the
+total step count, $h_\text{limit}$ the ceiling (default 20), and
+$H_\text{dup}$ the number of duplicate (tool, args) pairs:
+
+\begin{equation}
+L_\text{traj} = \min\!\Bigl(
+  \tfrac{1}{2}\min\!\bigl(\tfrac{H}{h_\text{lim}},1\bigr)
+  + \tfrac{1}{2}\,\tfrac{H_\text{dup}}{H},\;1
+\Bigr)
+\label{eq:ltraj}
+\end{equation}
+
+Duplicate detection normalizes argument keys (alphabetical sort, whitespace
+trim) so that logically identical calls with different JSON serializations are
+correctly collapsed.
+
+\subsubsection*{$L_\text{resource}$ --- Resource Consumption Loss}
+
+$L_\text{resource}$ measures the weighted token footprint of a task run
+against a configurable budget.  Following Anthropic's prompt caching pricing,
+cached tokens are discounted by $\delta = 0.1$, and output tokens are weighted
+at $\gamma = 1.0$:
+
+\begin{equation}
+L_\text{resource} = \min\!\left(
+  \frac{C_\text{fresh} + \delta \cdot C_\text{cached} + \gamma \cdot C_\text{output}}
+       {\text{budget}},\; 1
+\right)
+\label{eq:lresource}
+\end{equation}
+
+Token counts are drawn exclusively from \texttt{TrajectoryFile.steps}---the
+per-step record with a fresh/cached split---rather than from
+\texttt{StageMetrics.inputTokens}, which provides only an undifferentiated total.
+
+\subsection{MOEL Aggregation}
+
+The four components combine into a single scalar through a two-level weighted
+sum:
+
+\begin{align}
+L_\text{corr} &= \mu \cdot L_\text{AST} + (1 - \mu) \cdot L_\text{jury}
+\label{eq:lcorr} \\[4pt]
+L_\text{MOEL} &= w_C \cdot L_\text{corr} + w_T \cdot L_\text{traj} + w_R \cdot L_\text{res}
+\label{eq:lmoel}
+\end{align}
+
+Default weights: $w_C = 0.5$, $w_T = 0.3$, $w_R = 0.2$, $\mu = 0.6$.  The
+constraint $w_C + w_T + w_R = 1$ is validated at every \texttt{computeMoel()}
+call to within $10^{-6}$.  All loss terms are bounded to $[0, 1]$; the
+aggregator throws on any out-of-range input.  Weights are loaded from
+\texttt{eval/config/moel-weights.json} at runtime with hardcoded defaults as
+fallback, making the weighting policy auditable and editable without code
+changes.
+
+\subsection{Programmatic Validators}
+
+\textbf{ManifestValidator.}  After each agent run, the agent's final message is
+parsed for a JSON manifest block listing modified, created, and deleted files.
+The validator diffs the declared manifest against the live
+\texttt{git diff --name-only HEAD} output.  A run passes only if there are no
+undeclared changes (phantom declarations are flagged as warnings, not failures).
+
+\textbf{MutationValidator.}  For TypeScript tasks, the validator locates the
+target function body via tree-sitter, replaces it with a stub
+\texttt{\{ throw new Error("moel-stub"); \}}, and verifies that the test suite
+fails on the mutant.  This confirms causal linkage: the agent's change was
+necessary for the tests to pass, not coincidental.
+
+\subsection{Context Compaction}
+
+Long-running agent turns can exhaust context windows, forcing premature
+termination.  MOEL records compaction events in \texttt{CompactionRecord}---
+step index, tokens freed, turns compacted, and condition---so that compaction
+overhead is visible in trajectory analysis without conflating it with
+legitimate exploration steps.  Full compaction execution is deferred to the
+in-process harness (\texttt{moel-run.mjs}).
+
+\subsection{Benchmark Alignment}
+
+Table~\ref{tab:benchmark-alignment} places MOEL in the context of three
+external benchmarks.  MOEL's three-condition design (N/K/O) maps directly to
+SWE-ContextBench's context injection conditions; its $L_\text{resource}$ formula
+replicates that benchmark's token-cost metric with the additional
+fresh/cached split.  The \texttt{ManifestValidator} adopts SWE-Atlas's live-diff
+validation, extending it with causal mutation testing.  CodeScaleBench's tool
+validity tier maps to MOEL's \texttt{compareConditions()} check.
