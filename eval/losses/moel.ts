@@ -3,11 +3,9 @@
  *
  * Combines the three loss components into a single scalar:
  *
- *   L_MOEL = wC * L_correctness + wT * L_trajectory + wR * L_resource
+ *   L_MOEL = wC * L_jury + wT * L_trajectory + wR * L_resource
  *
- * where L_correctness = mu * L_AST + (1 - mu) * L_jury
- *
- * Default weights: wC=0.5, wT=0.3, wR=0.2, mu=0.6
+ * Default weights: wC=0.5, wT=0.3, wR=0.2
  * Weights are loaded from eval/config/moel-weights.json at runtime;
  * the defaults above are fallbacks when the file is absent.
  */
@@ -21,9 +19,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const WEIGHT_SUM_EPSILON = 1e-6
 
 export interface MoelComponents {
-  lAst: number        // [0, 1] Jaccard structural distance (TICKET-002)
-  lJury: number       // [0, 1] LLM jury semantic loss (TICKET-003)
-  lTrajectory: number // [0, 1] trajectory inefficiency loss (TICKET-004)
+  lJury: number       // [0, 1] LLM jury semantic loss
+  lTrajectory: number // [0, 1] trajectory inefficiency loss
   lResource: number   // [0, 1] resource consumption loss (from ResourceLossResult.loss)
 }
 
@@ -31,13 +28,11 @@ export interface MoelWeights {
   wC: number  // correctness weight — default 0.5
   wT: number  // trajectory weight — default 0.3
   wR: number  // resource weight   — default 0.2
-  mu: number  // AST/jury balance [0, 1] — default 0.6
 }
 
 export interface MoelResult {
   lMoel: number
   lCorrectness: number
-  lAst: number
   lJury: number
   lTrajectory: number
   lResource: number
@@ -52,7 +47,7 @@ export interface ComparisonReport {
   hypothesisConfirmed: boolean      // true when L_MOEL(N) > L_MOEL(K)
 }
 
-const DEFAULT_WEIGHTS: MoelWeights = { wC: 0.5, wT: 0.3, wR: 0.2, mu: 0.6 }
+const DEFAULT_WEIGHTS: MoelWeights = { wC: 0.5, wT: 0.3, wR: 0.2 }
 
 /** Load weights from eval/config/moel-weights.json, falling back to defaults. */
 export async function loadDefaultWeights(): Promise<MoelWeights> {
@@ -81,7 +76,7 @@ function validateWeights(w: MoelWeights): void {
     )
   }
   for (const [key, val] of Object.entries(w) as [keyof MoelWeights, number][]) {
-    if (val < 0 || val > 1) {
+    if (val < 0) {
       throw new Error(`MoelWeights.${key} must be in [0, 1]; got ${val}`)
     }
   }
@@ -104,7 +99,7 @@ export function computeMoel(
   validateComponents(components)
   validateWeights(weights)
 
-  const lCorrectness = weights.mu * components.lAst + (1 - weights.mu) * components.lJury
+  const lCorrectness = components.lJury
   const lMoel =
     weights.wC * lCorrectness +
     weights.wT * components.lTrajectory +
@@ -113,7 +108,6 @@ export function computeMoel(
   return {
     lMoel,
     lCorrectness,
-    lAst: components.lAst,
     lJury: components.lJury,
     lTrajectory: components.lTrajectory,
     lResource: components.lResource,

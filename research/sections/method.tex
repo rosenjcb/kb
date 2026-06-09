@@ -2,16 +2,6 @@
 \section{KB: A Facts-First Codebase Knowledge System}
 \label{sec:system}
 
-\subsection{Design Philosophy}
-
-KB rests on a single organizing principle: \emph{knowledge should accrete as a
-side effect of real work, not as a separate maintenance obligation}.  The system
-is \emph{descriptive}, not prescriptive—it records what happened without
-imposing workflows.  Any fact in the base can be corrected or deleted in
-constant time; incorrect knowledge is never sacred.  This philosophy
-distinguishes KB from documentation systems, which suffer from rot, and from
-ad-hoc context-stuffing approaches, which do not persist across sessions.
-
 \subsection{Knowledge Representation}
 
 KB represents a codebase as a set of atomic, citable \emph{facts} stored in a
@@ -30,7 +20,8 @@ expansion during retrieval—a capability not available in flat vector indices.
 
 \subsection{Indexing Pipeline}
 
-\texttt{kb init} executes a deterministic, three-phase indexing pipeline:
+\texttt{kb init} executes a fully deterministic, two-phase indexing pipeline.
+No LLM is invoked and no API cost is incurred.
 
 \medskip
 \noindent\textbf{Phase 1 --- AST Code Indexing.}  For each source file, KB
@@ -38,24 +29,17 @@ invokes the \texttt{web-tree-sitter} WASM runtime with per-language export
 queries to extract named declarations (functions, classes, interfaces, type
 aliases, constants, module items).  Each symbol becomes a code fact with
 its qualified source reference.  Import edges between symbols are recorded in
-\texttt{fact\_edges}, forming the structural backbone of the graph.  This phase
-is entirely deterministic; no LLM is involved.
+\texttt{fact\_edges}, forming the structural backbone of the graph.
 
 \medskip
 \noindent\textbf{Phase 2 --- Document Fact Extraction.}  Human-readable
 sources (README files, markdown documentation) are segmented into sentences via
-deterministic NLP segmentation.  Each sentence becomes a document fact.  An LLM
-pass synthesizes additional thematic documents (e.g., \emph{project-overview},
-\emph{constraints-and-gotchas}) from the extracted sentences.
-
-\medskip
-\noindent\textbf{Phase 3 --- Semantic Embedding.}  Fact embeddings are computed
-in batch and stored in \texttt{fact\_embeddings}.  These enable semantic
-rescoring during retrieval but are never the sole source of evidence.
+deterministic NLP segmentation.  Each sentence becomes a document fact stored
+verbatim in the \texttt{facts} table.  Embeddings are computed lazily at query
+time, not during init.
 
 The entire init pipeline for the raylib C library (373--698 entities across
-runs) completes in under 3 minutes on a laptop, at a cost of \$0.02--\$0.05 per
-fresh run.
+runs) completes in under 3 minutes on a laptop with no API cost.
 
 %% ─── Figure: KB Architecture ─────────────────────────────────────────────────
 \begin{figure}[t]
@@ -114,16 +98,6 @@ Graph-augmented query expansion may optionally rewrite or widen the query
 string before the loop begins, based on entity relationships in the stored
 graph.
 
-\subsection{Knowledge Accretion}
-
-Unlike one-shot RAG systems, KB is designed for long-running use.  Each
-\texttt{kb submit} call deposits new facts into the base, which immediately
-become available to subsequent queries.  A KB-backed agent completing an early
-task enriches the base with implementation-specific facts that benefit later
-tasks through lower retrieval cost.  The compounding effect is the primary
-differentiating property of KB over session-scoped context injection.
-
-
 %% ─── MOEL ─────────────────────────────────────────────────────────────────────
 \section{MOEL: Multi-Objective Exploration Loss}
 \label{sec:moel}
@@ -137,8 +111,8 @@ indistinguishable under pass/fail scoring.  Similarly, LLM-as-judge evaluators
 have known failure modes (position bias, verbosity inflation, self-enhancement)
 that inflate quality estimates when judges are not calibrated~\cite{zheng2023judging}.
 
-MOEL addresses both problems by combining four normalized loss components into a
-single differentiable scalar, evaluated under three controlled conditions per task.
+MOEL addresses both problems by combining three normalized loss components into a
+single scalar, evaluated under three controlled conditions per task.
 
 \subsection{Three-Condition Evaluation Design}
 \label{subsec:conditions}
@@ -171,21 +145,6 @@ matures.  \texttt{compareConditions()} checks this automatically from the
 per-condition result objects.
 
 \subsection{Loss Functions}
-
-\subsubsection*{$L_\text{AST}$ --- AST Structural Loss}
-
-$L_\text{AST}$ quantifies semantic distance between a candidate code snippet and
-a reference by computing the Jaccard distance over their sets of named exported
-declarations, extracted via per-language tree-sitter queries.
-
-Let $D_c$ and $D_r$ denote the declaration sets of the candidate and reference
-respectively.  Then:
-
-\begin{equation}
-L_\text{AST} = 1 - \frac{|D_c \cap D_r|}{|D_c \cup D_r|}
-\label{eq:last}
-\end{equation}
-
 
 \subsubsection*{$L_\text{jury}$ --- LLM Jury Semantic Loss}
 
@@ -270,41 +229,23 @@ and output tokens; aggregated totals that lack this split are not used.
 
 \subsection{MOEL Aggregation}
 
-The four components combine into a single scalar through a two-level weighted
-sum:
+The three components combine into a single scalar:
 
-\begin{align}
-L_\text{corr} &= \mu \cdot L_\text{AST} + (1 - \mu) \cdot L_\text{jury}
-\label{eq:lcorr} \\[4pt]
-L_\text{MOEL} &= w_C \cdot L_\text{corr} + w_T \cdot L_\text{traj} + w_R \cdot L_\text{res}
+\begin{equation}
+L_\text{MOEL} = w_C \cdot L_\text{jury} + w_T \cdot L_\text{traj} + w_R \cdot L_\text{res}
 \label{eq:lmoel}
-\end{align}
+\end{equation}
 
-Default weights: $w_C = 0.5$, $w_T = 0.3$, $w_R = 0.2$, $\mu = 0.6$.  The
+Default weights: $w_C = 0.5$, $w_T = 0.3$, $w_R = 0.2$.  The
 constraint $w_C + w_T + w_R = 1$ is validated to within $10^{-6}$ and all
 loss terms are bounded to $[0, 1]$.
-
-\subsection{Programmatic Validators}
-
-\textbf{ManifestValidator.}  After each agent run, the agent's final message is
-parsed for a JSON manifest block listing modified, created, and deleted files.
-The validator diffs the declared manifest against the live
-\texttt{git diff --name-only HEAD} output.  A run passes only if there are no
-undeclared changes (phantom declarations are flagged as warnings, not failures).
-
-\textbf{MutationValidator.}  For TypeScript tasks, the validator locates the
-target function body via tree-sitter, replaces it with a stub
-\texttt{\{ throw new Error("moel-stub"); \}}, and verifies that the test suite
-fails on the mutant.  This confirms causal linkage: the agent's change was
-necessary for the tests to pass, not coincidental.
 
 \subsection{Benchmark Alignment}
 
 MOEL's three-condition design (N/K/O) mirrors SWE-ContextBench's context
 injection conditions; $L_\text{resource}$ replicates that benchmark's
 token-cost metric with the additional fresh/cached split.
-\texttt{ManifestValidator} adopts SWE-Atlas's live-diff validation and extends
-it with causal mutation testing.  CodeScaleBench's tool-validity tier
-corresponds to MOEL's condition comparison: Condition N uses only primitive
-filesystem tools, Condition K adds the full KB tool registry.
+CodeScaleBench's tool-validity tier corresponds to MOEL's condition comparison:
+Condition N uses only primitive filesystem tools, Condition K adds the full KB
+tool registry.
 

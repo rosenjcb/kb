@@ -37,9 +37,7 @@ system that:
     sentence-level fact extraction;
   \item[(2)] exposes those facts to LLM agents through a multi-pond BFS
     retrieval loop that merges lexical (BM25), semantic (embedding), and
-    graph-walk evidence streams without manual query engineering; and
-  \item[(3)] naturally accretes knowledge as developers work, so the base
-    densifies over time without a dedicated maintenance burden.
+    graph-walk evidence streams without manual query engineering.
 \end{enumerate}
 
 Critically, KB's value is only as compelling as the evidence that it actually
@@ -65,19 +63,17 @@ contributions are:
 
 \begin{enumerate}
   \item \textbf{KB}: a facts-first codebase knowledge system with deterministic
-    AST indexing, a multi-pond hybrid retrieval orchestrator, and a natural
-    knowledge-accretion model that requires no explicit maintenance workflow.
+    AST indexing and a multi-pond hybrid retrieval orchestrator.
 
-  \item \textbf{MOEL}: a multi-objective evaluation framework comprising four
-    normalized loss functions ($L_\text{AST}$, $L_\text{jury}$,
-    $L_\text{trajectory}$, $L_\text{resource}$), bias-mitigated LLM jury scoring,
-    logistic-regression calibration on a 20-sample human-annotated set, and
-    programmatic manifest and mutation validators.
+  \item \textbf{MOEL}: a multi-objective evaluation framework comprising three
+    normalized loss functions ($L_\text{jury}$, $L_\text{trajectory}$,
+    $L_\text{resource}$), bias-mitigated LLM jury scoring, and
+    logistic-regression calibration on a 20-sample human-annotated set.
 
-  \item \textbf{Empirical results}: across 17 scored evaluation runs on the
-    raylib C library and the KB codebase itself, pass rates improve from 25\%
-    (run 1) to 75--100\% (latest runs), with evidence-handling scores increasing
-    from 2.50 to 4.00 as the fact base densifies.
+  \item \textbf{Empirical results}: evaluated against the raylib C library
+    (14,087 entities, pass rate 0.75) and the KB codebase itself (2,216
+    entities, pass rate 1.00), with evidence-handling scores of 3.88 and 4.00
+    respectively.
 \end{enumerate}
 
 %% ─── Figure: System Overview placeholder ─────────────────────────────────────
@@ -97,8 +93,7 @@ contributions are:
       semantic index, \texttt{documents} (human-readable artifacts). \\
     \textbf{Right panel} — LLM agent loop: \texttt{kb query} dispatches
       multi-pond BFS retrieval, passes ranked facts to LLM, returns grounded
-      prose answer. Arrow from right panel looping back to center labeled
-      ``Knowledge accretion via \texttt{kb submit}''. \\
+      prose answer. \\
     Below all panels: MOEL harness comparing Condition N (raw filesystem),
       K (kb-enabled), O (oracle) with $L_\text{MOEL}$ scalar output.
     \vspace{0.4cm}

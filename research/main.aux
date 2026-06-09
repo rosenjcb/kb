@@ -14,65 +14,56 @@
 \citation{xia2024agentless}
 \citation{zhang2024autocoderover}
 \citation{kim2025codestruct}
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces End-to-end KB system and MOEL evaluation harness.}}{2}{figure.1}\protected@file@percent }
-\newlabel{fig:system-overview}{{1}{2}{End-to-end KB system and MOEL evaluation harness}{figure.1}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{2}{section.2}\protected@file@percent }
-\newlabel{sec:related}{{2}{2}{Related Work}{section.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}LLM-Based Code Agents and Tools}{2}{subsection.2.1}\protected@file@percent }
 \citation{lewis2020rag}
 \citation{zheng2023judging}
 \citation{dubois2024alpacafarm}
 \citation{wang2023pandalm}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{2}{section.2}\protected@file@percent }
+\newlabel{sec:related}{{2}{2}{Related Work}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}LLM-Based Code Agents and Tools}{2}{subsection.2.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces End-to-end KB system and MOEL evaluation harness.}}{2}{figure.1}\protected@file@percent }
+\newlabel{fig:system-overview}{{1}{2}{End-to-end KB system and MOEL evaluation harness}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Retrieval-Augmented Generation}{2}{subsection.2.2}\protected@file@percent }
 \citation{falleri2014gumtree}
 \citation{alon2019code2vec}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Retrieval-Augmented Generation}{3}{subsection.2.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.3}LLM Evaluation Frameworks}{3}{subsection.2.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Agent Efficiency Measurement}{3}{subsection.2.4}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.5}AST-Based Code Analysis}{3}{subsection.2.5}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {3}KB: A Facts-First Codebase Knowledge System}{3}{section.3}\protected@file@percent }
 \newlabel{sec:system}{{3}{3}{KB: A Facts-First Codebase Knowledge System}{section.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Design Philosophy}{3}{subsection.3.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Knowledge Representation}{3}{subsection.3.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Indexing Pipeline}{3}{subsection.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Knowledge Representation}{3}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Indexing Pipeline}{3}{subsection.3.2}\protected@file@percent }
 \citation{robertson2009bm25}
 \citation{zheng2023judging}
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces KB indexing (left) and multi-pond BFS retrieval (right).}}{4}{figure.2}\protected@file@percent }
 \newlabel{fig:kb-arch}{{2}{4}{KB indexing (left) and multi-pond BFS retrieval (right)}{figure.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Retrieval: Multi-Pond BFS}{4}{subsection.3.4}\protected@file@percent }
-\newlabel{subsec:retrieval}{{3.4}{4}{Retrieval: Multi-Pond BFS}{subsection.3.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Knowledge Accretion}{4}{subsection.3.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Retrieval: Multi-Pond BFS}{4}{subsection.3.3}\protected@file@percent }
+\newlabel{subsec:retrieval}{{3.3}{4}{Retrieval: Multi-Pond BFS}{subsection.3.3}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {4}MOEL: Multi-Objective Exploration Loss}{4}{section.4}\protected@file@percent }
 \newlabel{sec:moel}{{4}{4}{MOEL: Multi-Objective Exploration Loss}{section.4}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Motivation}{4}{subsection.4.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Three-Condition Evaluation Design}{5}{subsection.4.2}\protected@file@percent }
-\newlabel{subsec:conditions}{{4.2}{5}{Three-Condition Evaluation Design}{subsection.4.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Loss Functions}{5}{subsection.4.3}\protected@file@percent }
-\newlabel{eq:last}{{1}{5}{$L_\text {AST}$ --- AST Structural Loss}{equation.1}{}}
-\newlabel{eq:ljury}{{2}{5}{$L_\text {jury}$ --- LLM Jury Semantic Loss}{equation.2}{}}
-\newlabel{eq:calibration}{{3}{5}{$L_\text {jury}$ --- LLM Jury Semantic Loss}{equation.3}{}}
-\newlabel{eq:ltraj}{{4}{5}{$L_\text {trajectory}$ --- Trajectory Inefficiency Loss}{equation.4}{}}
-\newlabel{eq:lresource}{{5}{6}{$L_\text {resource}$ --- Resource Consumption Loss}{equation.5}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}MOEL Aggregation}{6}{subsection.4.4}\protected@file@percent }
-\newlabel{eq:lcorr}{{6}{6}{MOEL Aggregation}{equation.6}{}}
-\newlabel{eq:lmoel}{{7}{6}{MOEL Aggregation}{equation.7}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Programmatic Validators}{6}{subsection.4.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Benchmark Alignment}{6}{subsection.4.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5}Experiments}{6}{section.5}\protected@file@percent }
-\newlabel{sec:experiments}{{5}{6}{Experiments}{section.5}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Evaluation Targets}{6}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Three-Condition Evaluation Design}{4}{subsection.4.2}\protected@file@percent }
+\newlabel{subsec:conditions}{{4.2}{4}{Three-Condition Evaluation Design}{subsection.4.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Loss Functions}{4}{subsection.4.3}\protected@file@percent }
+\newlabel{eq:ljury}{{1}{5}{$L_\text {jury}$ --- LLM Jury Semantic Loss}{equation.4.1}{}}
+\newlabel{eq:calibration}{{2}{5}{$L_\text {jury}$ --- LLM Jury Semantic Loss}{equation.4.2}{}}
+\newlabel{eq:ltraj}{{3}{5}{$L_\text {trajectory}$ --- Trajectory Inefficiency Loss}{equation.4.3}{}}
+\newlabel{eq:lresource}{{4}{5}{$L_\text {resource}$ --- Resource Consumption Loss}{equation.4.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}MOEL Aggregation}{5}{subsection.4.4}\protected@file@percent }
+\newlabel{eq:lmoel}{{5}{5}{MOEL Aggregation}{equation.4.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Benchmark Alignment}{5}{subsection.4.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Experiments}{5}{section.5}\protected@file@percent }
+\newlabel{sec:experiments}{{5}{5}{Experiments}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Evaluation Targets}{5}{subsection.5.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Scoring Rubric}{6}{subsection.5.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Main Results: Raylib Suite}{6}{subsection.5.3}\protected@file@percent }
-\newlabel{subsec:raylib-results}{{5.3}{6}{Main Results: Raylib Suite}{subsection.5.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Main Results: KB Self-Check Suite}{7}{subsection.5.4}\protected@file@percent }
-\newlabel{subsec:kb-results}{{5.4}{7}{Main Results: KB Self-Check Suite}{subsection.5.4}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces KB suite results (stable phase). Ent = graph entities, Corr/Use/Spec/EH = mean axis scores (0--4), PR = pass rate.}}{7}{table.1}\protected@file@percent }
-\newlabel{tab:kb-runs}{{1}{7}{KB suite results (stable phase). Ent = graph entities, Corr/Use/Spec/EH = mean axis scores (0--4), PR = pass rate}{table.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Jury Calibration}{7}{subsection.5.5}\protected@file@percent }
-\newlabel{subsec:calibration}{{5.5}{7}{Jury Calibration}{subsection.5.5}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{7}{section.6}\protected@file@percent }
-\newlabel{sec:conclusion}{{6}{7}{Conclusion}{section.6}{}}
-\@writefile{toc}{\contentsline {paragraph}{Limitations.}{7}{section*.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Future Work.}{7}{section*.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Results}{6}{subsection.5.3}\protected@file@percent }
+\newlabel{subsec:results}{{5.3}{6}{Results}{subsection.5.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Evaluation results. Ent = graph entities, Rels = graph edges, Corr/Use/Spec/EH = mean axis scores (0--4), PR = pass rate.}}{6}{table.1}\protected@file@percent }
+\newlabel{tab:results}{{1}{6}{Evaluation results. Ent = graph entities, Rels = graph edges, Corr/Use/Spec/EH = mean axis scores (0--4), PR = pass rate}{table.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{6}{section.6}\protected@file@percent }
+\newlabel{sec:conclusion}{{6}{6}{Conclusion}{section.6}{}}
+\@writefile{toc}{\contentsline {paragraph}{Limitations.}{6}{section*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Future Work.}{6}{section*.6}\protected@file@percent }
 \bibstyle{plain}
 \bibdata{refs}
 \bibcite{alon2019code2vec}{1}
@@ -88,5 +79,5 @@
 \bibcite{yang2024sweagent}{11}
 \bibcite{zhang2024autocoderover}{12}
 \bibcite{zheng2023judging}{13}
-\@writefile{toc}{\contentsline {paragraph}{Reproducibility.}{8}{section*.8}\protected@file@percent }
-\gdef \@abspage@last{8}
+\@writefile{toc}{\contentsline {paragraph}{Reproducibility.}{7}{section*.7}\protected@file@percent }
+\gdef \@abspage@last{7}
