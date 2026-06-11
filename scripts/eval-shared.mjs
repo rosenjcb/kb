@@ -3,10 +3,12 @@
  * Do not duplicate these in either script — import from here.
  */
 
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import dayjs from 'dayjs'
 import yaml from 'js-yaml'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -307,6 +309,194 @@ export function matchesSuite(row, suite) {
     .join(' ')
     .toLowerCase()
   return haystack.includes(p)
+}
+
+/**
+ * Which experiment condition produced an artifact: 'control' (real agent, no KB),
+ * 'kb' (KB-equipped), or null if not tagged. Used to keep control and KB runs
+ * for the same suite separable in trend tables and comparisons.
+ */
+export function conditionOf(artifact) {
+  const c = artifact?.run?.condition
+  if (typeof c === 'string' && c.trim()) return c.trim().toLowerCase()
+  // Back-compat: untagged harvest artifacts are KB runs.
+  if (artifact?.run?.mode === 'control_agent') return 'control'
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Run directory allocation + clone (shared by eval-run.mjs and control-run.mjs)
+// ---------------------------------------------------------------------------
+
+/**
+ * Run folder basename: `<repoLeaf>-YYYY-MM-DD-HHmm`, suffixed `-2`, `-3`, … if the
+ * name is already taken (same-minute rerun).
+ */
+export function allocateRunName(repoLeaf) {
+  const leaf = sanitizeSlugPart(repoLeaf)
+  const dateStr = dayjs().format('YYYY-MM-DD')
+  const timeStr = dayjs().format('HHmm')
+  const stem = `${leaf}-${dateStr}-${timeStr}`
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  const root = evaluationsRoot()
+  let name = stem
+  let n = 0
+  while (fs.existsSync(path.join(root, name))) {
+    n += 1
+    name = `${stem}-${n}`
+  }
+  return name
+}
+
+/** Fresh snapshot clone: removes dest if present. */
+export function gitCloneSnapshot({ url, dest, branch, depth }) {
+  if (fs.existsSync(dest)) {
+    fs.rmSync(dest, { recursive: true, force: true })
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true })
+  const args = ['clone']
+  if (depth > 0) args.push(`--depth=${String(depth)}`)
+  if (branch) args.push('-b', branch)
+  args.push(url, dest)
+  console.error(`[eval] git ${args.join(' ')}`)
+  const r = spawnSync('git', args, { stdio: 'inherit', encoding: 'utf8' })
+  if (r.error) throw r.error
+  if (r.status !== 0) throw new Error(`git clone failed with status ${r.status}`)
+}
+
+// ---------------------------------------------------------------------------
+// Trends summary (shared by eval-run.mjs and control-run.mjs)
+// ---------------------------------------------------------------------------
+
+function _safeJson(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function _fmtN(n) {
+  if (n === null || n === undefined) return '  -'
+  if (Number.isInteger(n)) return String(n).padStart(3)
+  return n.toFixed(1).padStart(5)
+}
+
+function _fmtScore(n) {
+  return n === null || n === undefined ? '  -  ' : n.toFixed(3)
+}
+
+function _gatherArtifacts(repoRoot) {
+  const rows = []
+  const homeRoot = path.join(os.homedir(), '.kb', 'evaluations')
+  const repoRuns = path.join(repoRoot, 'evaluation', 'runs')
+  if (fs.existsSync(homeRoot)) {
+    for (const entry of fs.readdirSync(homeRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name === 'repos') continue
+      const artifactPath = path.join(homeRoot, entry.name, 'artifact.json')
+      if (!fs.existsSync(artifactPath)) continue
+      const artifact = _safeJson(artifactPath)
+      if (!artifact?.status) continue
+      rows.push({ source: 'home', id: entry.name, file: artifactPath, artifact })
+    }
+  }
+  if (fs.existsSync(repoRuns)) {
+    for (const entry of fs.readdirSync(repoRuns, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.json')) continue
+      const artifactPath = path.join(repoRuns, entry.name)
+      const artifact = _safeJson(artifactPath)
+      if (!artifact?.status) continue
+      rows.push({
+        source: 'repo',
+        id: entry.name.replace(/\.json$/i, ''),
+        file: artifactPath,
+        artifact,
+      })
+    }
+  }
+  return rows
+}
+
+/**
+ * Print a trends table across prior runs for a suite. Rows are tagged with their
+ * condition (control vs kb) so a control baseline and a KB run for the same suite
+ * stay distinguishable. `repoRoot` is the kb repo root (for evaluation/runs/).
+ */
+export function printTrendsSummary(suiteId, repoRoot) {
+  const all = _gatherArtifacts(repoRoot)
+  const filtered = all
+    .filter(row => matchesSuite(row, suiteId))
+    .map(row => ({
+      ...row,
+      created: row.artifact?.created_at ?? null,
+      cond: conditionOf(row.artifact) ?? 'kb',
+      docs: structuralMetric(row.artifact, 'docs'),
+      entities: structuralMetric(row.artifact, 'entities'),
+      rels: structuralMetric(row.artifact, 'rels'),
+      avg_results: structuralMetric(row.artifact, 'avg_results'),
+      usefulness: scoreMetric(row.artifact, 'usefulness'),
+      pass_rate: scoreMetric(row.artifact, 'pass_rate'),
+      correctness: scoreMetric(row.artifact, 'correctness'),
+    }))
+    .sort((a, b) => {
+      const ta = a.created ? new Date(a.created).getTime() : Number.NaN
+      const tb = b.created ? new Date(b.created).getTime() : Number.NaN
+      return (Number.isFinite(ta) ? ta : 0) - (Number.isFinite(tb) ? tb : 0)
+    })
+    .slice(-20)
+
+  if (filtered.length === 0) {
+    console.log(`\n[eval-trends] no prior runs found for suite "${suiteId}"`)
+    return
+  }
+
+  const controls = filtered.filter(r => r.cond === 'control')
+  const kbs = filtered.filter(r => r.cond !== 'control')
+  console.log(
+    `\n[eval-trends] suite=${suiteId}  runs=${filtered.length}  kb=${kbs.length}  control=${controls.length}`
+  )
+
+  // Head-to-head: latest KB vs latest control (the control-vs-kb comparison).
+  const latestKb = kbs[kbs.length - 1]
+  const latestControl = controls[controls.length - 1]
+  if (latestKb && latestControl) {
+    const d = (a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : null)
+    const fmtD = n => (n === null ? '  -  ' : (n >= 0 ? '+' : '') + n.toFixed(3))
+    console.log('[eval-trends] control vs kb (latest of each):')
+    console.log(
+      `[eval-trends]   pass   control=${_fmtScore(latestControl.pass_rate)} kb=${_fmtScore(latestKb.pass_rate)}  Δ(kb-control)=${fmtD(d(latestKb.pass_rate, latestControl.pass_rate))}`
+    )
+    console.log(
+      `[eval-trends]   corr   control=${_fmtScore(latestControl.correctness)} kb=${_fmtScore(latestKb.correctness)}  Δ(kb-control)=${fmtD(d(latestKb.correctness, latestControl.correctness))}`
+    )
+    console.log(
+      `[eval-trends]   use    control=${_fmtScore(latestControl.usefulness)} kb=${_fmtScore(latestKb.usefulness)}  Δ(kb-control)=${fmtD(d(latestKb.usefulness, latestControl.usefulness))}`
+    )
+  }
+
+  const W = 24
+  const hdr = `\n${'date'.padEnd(20)} ${'cond'.padEnd(7)} ${'run'.padEnd(W)} ${'docs'.padStart(4)} ${'ent'.padStart(5)} ${'res'.padStart(5)} ${'use'.padStart(6)} ${'pass'.padStart(6)} ${'corr'.padStart(6)}  src`
+  console.log(hdr)
+  console.log('-'.repeat(hdr.trim().length))
+  for (const r of filtered) {
+    const dt = r.created ? String(r.created).slice(0, 19) : 'unknown             '
+    const id = r.id.length > W ? `${r.id.slice(0, W - 1)}…` : r.id.padEnd(W)
+    console.log(
+      [
+        dt,
+        r.cond.padEnd(7),
+        id,
+        _fmtN(r.docs),
+        _fmtN(r.entities),
+        _fmtN(r.avg_results),
+        _fmtScore(r.usefulness),
+        _fmtScore(r.pass_rate),
+        _fmtScore(r.correctness),
+        ` ${r.source}`,
+      ].join(' ')
+    )
+  }
 }
 
 // ---------------------------------------------------------------------------

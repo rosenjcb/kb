@@ -316,9 +316,9 @@ Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
 
 ## 📊 Evaluation
 
-KB ships a two-pipeline evaluation framework for measuring answer quality and exploration efficiency.
+KB ships a multi-pipeline evaluation framework for measuring answer quality and exploration efficiency.
 
-**Query harvest** — runs all questions in a suite against a live KB base, auto-scores answers on four axes (Correctness, Usefulness, Specificity, Evidence Handling) via Gemini or OpenAI, and writes results to `~/.kb/evaluations/<run>/`.
+**Query harvest (kb side)** — runs all questions in a suite against a live KB base, auto-scores answers on four axes (Correctness, Usefulness, Specificity, Evidence Handling) via Gemini or OpenAI, and writes results to `~/.kb/evaluations/<run>/`.
 
 ```bash
 # Run the kb dogfood suite (requires GEMINI_API_KEY or OPENAI_API_KEY)
@@ -328,7 +328,15 @@ pnpm run eval -- --suite kb
 pnpm run eval -- --suite kb --score-runs 3
 ```
 
-**MOEL pipeline** — measures exploration efficiency across three conditions per task (baseline filesystem, kb-enabled, oracle). Computes a composite loss `L_MOEL` and tests the hypothesis that kb reduces exploration cost.
+**Control baseline (the real comparison)** — the same questions, but answered by a **real coding agent (Claude Code, headless) with no KB**, exploring a fresh clone itself. Scored by the same rubric/judge so it compares head-to-head against the kb run — "is kb actually better than what people do today?"
+
+```bash
+# Control side (Condition N): real agent, no kb
+pnpm run control -- --suite raylib --auto-score
+pnpm run control -- --suite raylib --dry-run    # preview the exact `claude -p …` command
+```
+
+**MOEL pipeline** — measures exploration efficiency across three conditions per task (control agent, kb-enabled, oracle). Computes a composite loss `L_MOEL` and tests the hypothesis that kb reduces exploration cost.
 
 ```bash
 pnpm run moel -- --suite moel-kb

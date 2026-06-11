@@ -93,6 +93,40 @@ Override questions with `--questions-file path.json` (JSON array of exactly eigh
 - Rebuild artifact from existing scratch: `--skip-init --run-dir ~/.kb/evaluations/<run-name>/`.
 - Automated artifacts may include extra `run` fields for traceability. Tools should treat unknown keys as forward-compatible metadata.
 
+## The Control (Condition N): a real agent, no KB
+
+The honest question for `kb` is not "does it improve over previous `kb` runs?" but "does it beat the workflow people
+use today?" — *a real coding agent exploring the codebase by itself, with no outsourced knowledge base.* That is the
+**control**, and it is the baseline every `kb` (Condition **K**) result should be reported against.
+
+The control is a real agent, not a simulation. `scripts/control-run.mjs` clones the target repo and hands each suite
+question to **Claude Code running headless** inside the clone, with **no KB and no MCP** (`--bare
+--strict-mcp-config`), so it must explore raw files with its own `Read`/`Grep`/`Glob`/`Bash` tools. Answers are scored
+by the **same rubric and the same judge** as `kb query`, and per-question agent telemetry (tokens, turns, cost) is
+captured so the comparison covers both **quality and efficiency**.
+
+```bash
+# Control side (Condition N): real agent, no kb
+pnpm run control -- --suite raylib --auto-score
+pnpm run control -- --suite raylib --dry-run        # prints the plan + exact `claude -p …` command
+
+# kb side (Condition K): kb query over a built knowledge base
+pnpm run eval -- --suite raylib --auto-score
+```
+
+Per-question, the comparison is literally `kb query "Q"` (the kb artifact) vs the *same* `Q` handed to Claude
+(`claude -p "<prompt> Q"`). Both runners write `~/.kb/evaluations/<run>/artifact.json` in the identical schema; the
+control artifact is tagged `run.condition = "control"` (vs `"kb"`) and carries `run.control_telemetry`. The trends
+table printed at the end of each run separates control from kb rows and prints the latest control-vs-kb deltas.
+
+Knobs (all optional): `--model <id>` pins the agent model, `--max-turns N` caps exploration per question,
+`--control-prompt` (env `KB_CONTROL_PROMPT`) tunes the wrapper prompt — it must contain `{{question}}` — and
+`--agent-cmd` (env `KB_CONTROL_AGENT_CMD`) swaps the entire agent command (e.g. to use Cursor); the prompt is fed on
+stdin and JSON is read from stdout.
+
+> The control supersedes the legacy `eval/tools/filesystem-tools.ts` toy tools, which only approximated Condition N and
+> were never wired into a runner. Use `scripts/control-run.mjs` for any control baseline.
+
 ## Evaluation Design
 
 This evaluation should be run at least twice against the same codebase snapshot or equivalent branch state:

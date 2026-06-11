@@ -21,9 +21,8 @@
  * Clone: suite YAML repo_url used by default; override with `--repo <git-url>`.
  */
 
-import { execSync, spawnSync } from 'node:child_process'
+import { execSync } from 'node:child_process'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import dayjs from 'dayjs'
@@ -45,7 +44,12 @@ import {
   normalizeSuiteDoc,
   loadVendorSuite,
   listSuiteIds,
+  allocateRunName,
+  gitCloneSnapshot,
+  printTrendsSummary,
 } from './eval-shared.mjs'
+
+import { readQueryResultFile, runAutoScoreFile } from './eval-score.mjs'
 
 export {
   sanitizeSlugPart,
@@ -63,27 +67,6 @@ export {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const KB_REPO = path.resolve(__dirname, '..')
-
-/**
- * Run folder basename == default KB `--base` for `all` mode: `<repoLeaf>-YYYY-MM-DD-HHmm`.
- * Suffix `-2`, `-3`, … if that name is already taken (same-minute rerun).
- */
-function allocateRunName(repoLeaf) {
-  const leaf = sanitizeSlugPart(repoLeaf)
-  const dateStr = dayjs().format('YYYY-MM-DD')
-  const timeStr = dayjs().format('HHmm')
-  const stem = `${leaf}-${dateStr}-${timeStr}`
-    .replace(/[^a-zA-Z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  const root = evaluationsRoot()
-  let name = stem
-  let n = 0
-  while (fs.existsSync(path.join(root, name))) {
-    n += 1
-    name = `${stem}-${n}`
-  }
-  return name
-}
 
 function resolveRepoDirInRun(runDir, repoUrl) {
   if (repoUrl && String(repoUrl).trim()) {
@@ -253,8 +236,7 @@ function sessionHasDocs(targetCwd, base) {
 }
 
 function readQueryResult(file) {
-  const raw = fs.readFileSync(file, 'utf8')
-  return parseQueryText(raw)
+  return readQueryResultFile(file)
 }
 
 function extractInitAcceptedObject(logText) {
@@ -303,232 +285,6 @@ function git(repo, args) {
 
 function mean(xs) {
   return xs.reduce((a, b) => a + b, 0) / xs.length
-}
-
-function clipText(s, maxLen) {
-  if (typeof s !== 'string' || !s) return ''
-  return s.length <= maxLen ? s : `${s.slice(0, maxLen)}\n…[truncated]`
-}
-
-function clampScore0to4(x) {
-  const n = Math.round(Number(x))
-  if (!Number.isFinite(n)) return 0
-  return Math.min(4, Math.max(0, n))
-}
-
-function parseJsonObjectFromLLM(text) {
-  const trimmed = String(text).trim()
-  const tryParse = s => {
-    try {
-      return JSON.parse(s)
-    } catch {
-      return null
-    }
-  }
-  let o = tryParse(trimmed)
-  if (o && typeof o === 'object') return o
-  const fence = /^```(?:json)?\s*([\s\S]*?)```$/im.exec(trimmed)
-  if (fence) {
-    o = tryParse(fence[1].trim())
-    if (o && typeof o === 'object') return o
-  }
-  const i = trimmed.indexOf('{')
-  const j = trimmed.lastIndexOf('}')
-  if (i !== -1 && j > i) {
-    o = tryParse(trimmed.slice(i, j + 1))
-    if (o && typeof o === 'object') return o
-  }
-  // Also try extracting a bare JSON array
-  const ai = trimmed.indexOf('[')
-  const aj = trimmed.lastIndexOf(']')
-  if (ai !== -1 && aj > ai) {
-    o = tryParse(trimmed.slice(ai, aj + 1))
-    if (Array.isArray(o)) return o
-  }
-  throw new Error(
-    `[eval] Auto-score: could not parse JSON from model (prefix): ${trimmed.slice(0, 500)}`
-  )
-}
-
-function buildRubric(phrase, hasReferenceAnswers = false) {
-  const referenceNote = hasReferenceAnswers
-    ? '\n\nA reference answer is provided for each question. Use it as a factual ground-truth to assess correctness — if the actual answer contradicts or omits key facts present in the reference, lower the Correctness score accordingly. The reference answer is not a style template; answers that cover the same facts differently are still correct.'
-    : ''
-  return `You score kb \`query\` answers for ${phrase}. Each axis must be an integer 0–4.
-
-Correctness — 4: factually correct and grounded in the supplied answer/evidence; 3: mostly correct; 2: mixed or meaningful inaccuracies; 1: mostly wrong; 0: no useful answer.
-Usefulness — 4: directly helps a developer act or understand the system; 3: helpful but incomplete; 2: some signal, needs substantial follow-up; 1: barely helpful; 0: not helpful.
-Specificity — 4: concrete project-specific APIs, paths, build flags, or mechanisms; 3: some concrete detail; 2: partly generic; 1: mostly generic; 0: purely generic or evasive.
-Evidence handling — 4: clearly tied to evidence, acknowledges gaps; 3: reasonably grounded; 2: some speculation; 1: strong speculation or unsupported claims; 0: no evidence discipline.
-
-Penalize boilerplate-only answers, stub lines that are not real explanations, and answers that miss the core of the question even if retrieval metadata looks confident.${referenceNote}`
-}
-
-async function callGeminiJudgeJson({ apiKey, model, systemInstruction, userText }) {
-  const body = {
-    system_instruction: { parts: [{ text: systemInstruction }] },
-    contents: [{ role: 'user', parts: [{ text: userText }] }],
-    generationConfig: {
-      temperature: 0,
-      maxOutputTokens: 16384,
-      responseMimeType: 'application/json',
-    },
-  }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  const data = await response.json()
-  if (!response.ok) {
-    const msg = data?.error?.message || response.statusText
-    throw new Error(`[eval] Gemini judge failed (${response.status}): ${msg}`)
-  }
-  const parts = data?.candidates?.[0]?.content?.parts
-  if (!Array.isArray(parts)) {
-    throw new Error('[eval] Gemini judge: empty candidates/parts')
-  }
-  return parts
-    .filter(p => p && typeof p.text === 'string' && p.thought !== true)
-    .map(p => p.text)
-    .join('')
-}
-
-async function callOpenAIJudgeJson({ apiKey, model, systemInstruction, userText }) {
-  const body = {
-    model,
-    temperature: 0,
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: systemInstruction },
-      { role: 'user', content: userText },
-    ],
-  }
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  })
-  const data = await response.json()
-  if (!response.ok) {
-    const msg = data?.error?.message || response.statusText
-    throw new Error(`[eval] OpenAI judge failed (${response.status}): ${msg}`)
-  }
-  const content = data?.choices?.[0]?.message?.content
-  if (typeof content !== 'string') {
-    throw new Error('[eval] OpenAI judge: missing message content')
-  }
-  return content
-}
-
-async function runAutoScoreFile({ workdir, questions, answers, outScoresPath, rubricPhrase, scoreRuns = 1 }) {
-  const hasRef = Array.isArray(answers) && answers.length === questions.length
-  const RUBRIC = buildRubric(rubricPhrase, hasRef)
-  const blocks = questions.map((q, i) => {
-    const parsed = readQueryResult(path.join(workdir, `q${i + 1}.json`))
-    const ans = parsed.answer || ''
-    const prov = parsed.provenance
-    const ret = parsed.retrieval
-    const refSection = hasRef ? `\nReference answer:\n${clipText(answers[i], 3000)}\n` : ''
-    return `### Question ${i + 1}\n${q}\n\nRetrieval (summary): ${clipText(JSON.stringify(ret), 2000)}\nProvenance ids: ${JSON.stringify(prov)}\n${refSection}\nAnswer:\n${clipText(ans, 6000)}\n`
-  })
-
-  const schemaHint = `Return a single JSON object with exactly one key "scores" whose value is an array of exactly 8 objects in question order (index 0 = question 1). Each object must have: "correctness", "usefulness", "specificity", "evidence_handling" (integers 0-4) and "notes" (short string rationale). No markdown fences.`
-
-  const systemInstruction = `${RUBRIC}\n\n${schemaHint}`
-  const userText = `Score these 8 kb query question/answer pairs.\n\n${blocks.join('\n---\n')}`
-
-  const geminiKey = process.env.GEMINI_API_KEY
-  const openaiKey = process.env.OPENAI_API_KEY
-
-  let providerUsed
-  let modelUsed
-
-  if (geminiKey) {
-    providerUsed = 'gemini'
-    modelUsed = process.env.EVAL_SCORER_MODEL || 'gemini-2.5-flash'
-  } else if (openaiKey) {
-    providerUsed = 'openai'
-    modelUsed = process.env.EVAL_SCORER_OPENAI_MODEL || 'gpt-4o-mini'
-  } else {
-    throw new Error(
-      '[eval] --auto-score requires GEMINI_API_KEY or OPENAI_API_KEY (same keys as kb init).'
-    )
-  }
-
-  /** Call the LLM once and return a normalized 8-item score array. */
-  async function callOnce() {
-    const rawJsonText = geminiKey
-      ? await callGeminiJudgeJson({ apiKey: geminiKey, model: modelUsed, systemInstruction, userText })
-      : await callOpenAIJudgeJson({ apiKey: openaiKey, model: modelUsed, systemInstruction, userText })
-
-    let obj = parseJsonObjectFromLLM(rawJsonText)
-    if (Array.isArray(obj)) obj = { scores: obj }
-    const scores = obj.scores
-    if (!Array.isArray(scores) || scores.length !== 8) {
-      throw new Error(
-        `[eval] Auto-score: expected { "scores": [ ... 8 items ] }, got keys=${Object.keys(obj).join(',')}`
-      )
-    }
-    return scores.map((row, idx) => ({
-      correctness: clampScore0to4(row.correctness),
-      usefulness: clampScore0to4(row.usefulness),
-      specificity: clampScore0to4(row.specificity),
-      evidence_handling: clampScore0to4(row.evidence_handling),
-      notes:
-        typeof row.notes === 'string' && row.notes.trim()
-          ? row.notes.trim()
-          : `Auto-score question ${idx + 1} (${providerUsed})`,
-    }))
-  }
-
-  const runs = Math.max(1, scoreRuns)
-  const allRuns = []
-  for (let r = 0; r < runs; r++) {
-    if (runs > 1) console.error(`[eval] auto-score run ${r + 1}/${runs}`)
-    allRuns.push(await callOnce())
-  }
-
-  // Average numeric axes across runs; keep notes from the last run
-  const normalized = questions.map((_, idx) => {
-    const axes = ['correctness', 'usefulness', 'specificity', 'evidence_handling']
-    const averaged = {}
-    for (const axis of axes) {
-      const mean = allRuns.reduce((s, run) => s + run[idx][axis], 0) / runs
-      averaged[axis] = Math.round(mean * 10) / 10
-    }
-    averaged.notes = allRuns[allRuns.length - 1][idx].notes
-    if (runs > 1) averaged.notes = `[avg×${runs}] ${averaged.notes}`
-    return averaged
-  })
-
-  fs.mkdirSync(path.dirname(path.resolve(outScoresPath)), { recursive: true })
-  fs.writeFileSync(path.resolve(outScoresPath), `${JSON.stringify(normalized, null, 2)}\n`, 'utf8')
-  console.error(
-    `[eval] auto-score wrote ${path.resolve(outScoresPath)} (${providerUsed}/${modelUsed}${runs > 1 ? ` ×${runs}` : ''})`
-  )
-
-  return { normalized, providerUsed, modelUsed, outScoresPath: path.resolve(outScoresPath) }
-}
-
-/** Fresh snapshot clone: removes dest if present. */
-function gitCloneSnapshot({ url, dest, branch, depth }) {
-  if (fs.existsSync(dest)) {
-    fs.rmSync(dest, { recursive: true, force: true })
-  }
-  fs.mkdirSync(path.dirname(dest), { recursive: true })
-  const args = ['clone']
-  if (depth > 0) args.push(`--depth=${String(depth)}`)
-  if (branch) args.push('-b', branch)
-  args.push(url, dest)
-  console.error(`[eval] git ${args.join(' ')}`)
-  const r = spawnSync('git', args, { stdio: 'inherit', encoding: 'utf8' })
-  if (r.error) throw r.error
-  if (r.status !== 0) throw new Error(`git clone failed with status ${r.status}`)
 }
 
 /**
@@ -607,153 +363,6 @@ function readBaseFromInitLog(initLogPath) {
   }
   const m = /--base\s+(\S+)/.exec(t)
   return m ? m[1].replace(/['"`]+$/, '') : null
-}
-
-// ── Trends summary (absorbed from eval-trends.mjs) ──────────────────────────
-
-function _safeJson(file) {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'))
-  } catch {
-    return null
-  }
-}
-
-function _fmtN(n) {
-  if (n === null || n === undefined) return '  -'
-  if (Number.isInteger(n)) return String(n).padStart(3)
-  return n.toFixed(1).padStart(5)
-}
-
-function _fmtScore(n) {
-  return n === null || n === undefined ? '  -  ' : n.toFixed(3)
-}
-function _delta(a, b) {
-  return typeof a === 'number' && typeof b === 'number' ? a - b : null
-}
-function _fmtDelta(n) {
-  if (n === null) return '  -  '
-  return (n >= 0 ? '+' : '') + n.toFixed(3)
-}
-
-function _gatherArtifacts(repoRoot) {
-  const rows = []
-  const homeRoot = path.join(os.homedir(), '.kb', 'evaluations')
-  const repoRuns = path.join(repoRoot, 'evaluation', 'runs')
-  if (fs.existsSync(homeRoot)) {
-    for (const entry of fs.readdirSync(homeRoot, { withFileTypes: true })) {
-      if (!entry.isDirectory() || entry.name === 'repos') continue
-      const artifactPath = path.join(homeRoot, entry.name, 'artifact.json')
-      if (!fs.existsSync(artifactPath)) continue
-      const artifact = _safeJson(artifactPath)
-      if (!artifact?.status) continue
-      rows.push({ source: 'home', id: entry.name, file: artifactPath, artifact })
-    }
-  }
-  if (fs.existsSync(repoRuns)) {
-    for (const entry of fs.readdirSync(repoRuns, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith('.json')) continue
-      const artifactPath = path.join(repoRuns, entry.name)
-      const artifact = _safeJson(artifactPath)
-      if (!artifact?.status) continue
-      rows.push({
-        source: 'repo',
-        id: entry.name.replace(/\.json$/i, ''),
-        file: artifactPath,
-        artifact,
-      })
-    }
-  }
-  return rows
-}
-
-function printTrendsSummary(suiteId) {
-  const repoRoot = KB_REPO
-  const all = _gatherArtifacts(repoRoot)
-  const filtered = all
-    .filter(row => matchesSuite(row, suiteId))
-    .map(row => ({
-      ...row,
-      created: row.artifact?.created_at ?? null,
-      docs: structuralMetric(row.artifact, 'docs'),
-      entities: structuralMetric(row.artifact, 'entities'),
-      rels: structuralMetric(row.artifact, 'rels'),
-      avg_results: structuralMetric(row.artifact, 'avg_results'),
-      usefulness: scoreMetric(row.artifact, 'usefulness'),
-      pass_rate: scoreMetric(row.artifact, 'pass_rate'),
-      correctness: scoreMetric(row.artifact, 'correctness'),
-    }))
-    .filter(row => row.docs !== null || row.entities !== null || row.avg_results !== null)
-    .sort((a, b) => {
-      const ta = a.created ? new Date(a.created).getTime() : Number.NaN
-      const tb = b.created ? new Date(b.created).getTime() : Number.NaN
-      return (Number.isFinite(ta) ? ta : 0) - (Number.isFinite(tb) ? tb : 0)
-    })
-    .slice(-20)
-
-  if (filtered.length === 0) {
-    console.log(`\n[eval-trends] no prior runs found for suite "${suiteId}"`)
-    return
-  }
-
-  const last = filtered[filtered.length - 1]
-  const prev = filtered.length > 1 ? filtered[filtered.length - 2] : null
-  const first = filtered[0]
-  const scoredRuns = filtered.filter(
-    r =>
-      typeof r.usefulness === 'number' && (r.usefulness > 0 || r.pass_rate > 0 || r.correctness > 0)
-  )
-
-  console.log(
-    `\n[eval-trends] suite=${suiteId}  runs=${filtered.length}  scored=${scoredRuns.length}`
-  )
-  console.log(
-    `[eval-trends] latest  docs=${_fmtN(last.docs).trim()} entities=${_fmtN(last.entities).trim()} rels=${_fmtN(last.rels).trim()} avg_results=${last.avg_results !== null ? last.avg_results.toFixed(1) : '-'}`
-  )
-  if (scoredRuns.length) {
-    const sl = scoredRuns[scoredRuns.length - 1]
-    console.log(
-      `[eval-trends] latest (scored)  use=${_fmtScore(sl.usefulness)} pass=${_fmtScore(sl.pass_rate)} corr=${_fmtScore(sl.correctness)}`
-    )
-  }
-  if (prev) {
-    console.log(
-      `[eval-trends] delta(prev→latest)  docs=${_fmtDelta(_delta(last.docs, prev.docs))} entities=${_fmtDelta(_delta(last.entities, prev.entities))} avg_results=${_fmtDelta(_delta(last.avg_results, prev.avg_results))}`
-    )
-  }
-  console.log(
-    `[eval-trends] delta(first→latest)  docs=${_fmtDelta(_delta(last.docs, first.docs))} entities=${_fmtDelta(_delta(last.entities, first.entities))}`
-  )
-
-  const entitiesSpark = sparkline(filtered.map(r => r.entities))
-  const resultsSpark = sparkline(filtered.map(r => r.avg_results))
-  const useSpark = sparkline(scoredRuns.map(r => r.usefulness))
-  if (entitiesSpark) console.log(`[eval-trends] entities trend    ${entitiesSpark}`)
-  if (resultsSpark) console.log(`[eval-trends] avg-results trend ${resultsSpark}`)
-  if (useSpark) console.log(`[eval-trends] usefulness trend  ${useSpark}`)
-
-  const W = 26
-  const hdr = `\n${'date'.padEnd(20)} ${'run'.padEnd(W)} ${'docs'.padStart(4)} ${'ent'.padStart(5)} ${'rels'.padStart(5)} ${'res'.padStart(5)} ${'use'.padStart(6)} ${'pass'.padStart(6)} ${'corr'.padStart(6)}  src`
-  console.log(hdr)
-  console.log('-'.repeat(hdr.trim().length))
-  for (const r of filtered) {
-    const d = r.created ? String(r.created).slice(0, 19) : 'unknown             '
-    const id = r.id.length > W ? `${r.id.slice(0, W - 1)}…` : r.id.padEnd(W)
-    console.log(
-      [
-        d,
-        id,
-        _fmtN(r.docs),
-        _fmtN(r.entities),
-        _fmtN(r.rels),
-        _fmtN(r.avg_results),
-        _fmtScore(r.usefulness),
-        _fmtScore(r.pass_rate),
-        _fmtScore(r.correctness),
-        ` ${r.source}`,
-      ].join(' ')
-    )
-  }
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -1028,6 +637,7 @@ async function main() {
     hypothesis,
     run: {
       base,
+      condition: 'kb',
       eval_mode: evalMode,
       suite: suiteId,
       run_name: runName,
@@ -1121,7 +731,7 @@ async function main() {
   fs.writeFileSync(outPath, JSON.stringify(artifact, null, 2), 'utf8')
   console.error(`[eval] wrote ${outPath}`)
 
-  printTrendsSummary(suiteId)
+  printTrendsSummary(suiteId, KB_REPO)
 }
 
 const _isMain =
