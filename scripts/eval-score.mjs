@@ -2,7 +2,7 @@
  * Shared LLM auto-scoring for kb evaluation harnesses.
  *
  * Extracted from eval-run.mjs so both the KB harvest runner (eval-run.mjs) and the
- * control runner (control-run.mjs) score answers with the *same* rubric and the *same*
+ * control phase (control-core.mjs) score answers with the *same* rubric and the *same*
  * judge. Keeping one copy is what makes control-vs-KB a fair comparison.
  *
  * Public API:

@@ -50,6 +50,12 @@ import {
 } from './eval-shared.mjs'
 
 import { readQueryResultFile, runAutoScoreFile } from './eval-score.mjs'
+import {
+  DEFAULT_CONTROL_PROMPT,
+  DEFAULT_MAX_TURNS,
+  buildControlComparison,
+  runControlPass,
+} from './control-core.mjs'
 
 export {
   sanitizeSlugPart,
@@ -115,6 +121,12 @@ function parseArgs(argv) {
     autoScore: true, // on by default; disable with --manual-score
     autoScoreFile: null,
     scoreRuns: 1,
+    // Control condition (the real-agent baseline) runs side-by-side with kb by default.
+    skipControl: false,
+    controlModel: null,
+    controlMaxTurns: DEFAULT_MAX_TURNS,
+    controlPrompt: process.env.KB_CONTROL_PROMPT || DEFAULT_CONTROL_PROMPT,
+    controlAgentCmd: process.env.KB_CONTROL_AGENT_CMD || null,
     help: false,
   }
   let i = hasLegacyMode ? 3 : 2
@@ -137,10 +149,17 @@ function parseArgs(argv) {
       const next = argv[i + 1]
       if (next && !next.startsWith('--')) out.autoScoreFile = argv[++i]
     } else if (a === '--auto-score') out.autoScore = true
-    else if (a === '--score-runs' && argv[i + 1]) out.scoreRuns = Math.max(1, Number.parseInt(argv[++i], 10) || 1)
+    else if (a === '--score-runs' && argv[i + 1])
+      out.scoreRuns = Math.max(1, Number.parseInt(argv[++i], 10) || 1)
     else if (a === '--manual-score') out.autoScore = false
     else if (a === '--skip-init') out.skipCapture = true
     else if (a === '--force-init') out.forceInit = true
+    else if (a === '--skip-control') out.skipControl = true
+    else if (a === '--control-model') out.controlModel = argv[++i]
+    else if (a === '--control-max-turns')
+      out.controlMaxTurns = Math.max(1, Number.parseInt(argv[++i], 10) || DEFAULT_MAX_TURNS)
+    else if (a === '--control-prompt') out.controlPrompt = argv[++i]
+    else if (a === '--control-agent-cmd') out.controlAgentCmd = argv[++i]
     else if (a === '--help' || a === '-h') out.help = true
     i++
   }
@@ -194,6 +213,13 @@ Output:
   --score-runs N          Call scorer N times and average (reduces noise; default 1)
   --scores-file PATH      Load manual rubric scores instead (JSON array of 8)
   --auto-score-file PATH  Write auto-scores to a specific path
+
+Control baseline (runs side-by-side with kb into ONE artifact, scored by the same rubric):
+  --skip-control          Do NOT run the control; emit a kb-only artifact (control data omitted)
+  --control-model NAME    Pin the control agent model (e.g. claude-opus-4-8)
+  --control-max-turns N   Per-question turn ceiling for the control agent (default ${DEFAULT_MAX_TURNS})
+  --control-prompt TEXT   Wrapper prompt for each control question ({{question}} placeholder). Env: KB_CONTROL_PROMPT
+  --control-agent-cmd CMD Override the control agent command (prompt on stdin, JSON on stdout). Env: KB_CONTROL_AGENT_CMD
 
 Advanced:
   --run-dir PATH          With --skip-init: reuse existing scratch dir
@@ -725,6 +751,38 @@ async function main() {
       'Optional: capture kb chat for status=complete per EVALUATION.md.',
       'Optional: read init token totals from ~/.kb/logs for init_result telemetry.',
     ],
+  }
+
+  // ── Control phase: the real-agent baseline, side-by-side with kb ────────────
+  // Runs by default; --skip-control omits it (control data simply absent from the JSON).
+  // Skipped in --skip-init rescore mode (that path re-scores existing q*.json cheaply and
+  // should not trigger fresh, billable agent calls).
+  if (args.skipCapture && !args.skipControl) {
+    console.error('[eval] --skip-init: control phase not run (rescore-only mode)')
+  }
+  if (!args.skipControl && !args.skipCapture) {
+    console.error('[eval] control phase — real agent, no kb (--skip-control to disable)')
+    try {
+      const control = await runControlPass({
+        repoDir: targetCwd,
+        workdir: path.join(runDir, 'control'),
+        suiteConfig,
+        model: args.controlModel,
+        maxTurns: args.controlMaxTurns,
+        agentCmd: args.controlAgentCmd,
+        controlPrompt: args.controlPrompt,
+        autoScore: args.autoScore,
+        scoreRuns: args.scoreRuns,
+        scoresFile: null,
+      })
+      artifact.control = control
+      artifact.comparison = buildControlComparison(artifact.aggregate_scores, control)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error(`[eval] control phase skipped: ${msg}`)
+      artifact.control = { condition: 'control', status: 'error', error: msg }
+      artifact.comparison = null
+    }
   }
 
   fs.mkdirSync(path.dirname(outPath), { recursive: true })

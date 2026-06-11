@@ -239,12 +239,46 @@ function deriveCoverageFacets(question) {
     .split(/\s+/)
     .filter(w => w.length > 4)
   const stops = new Set([
-    'about', 'after', 'again', 'also', 'another', 'before', 'between',
-    'could', 'does', 'every', 'first', 'found', 'given', 'having',
-    'hours', 'large', 'later', 'might', 'never', 'often', 'other',
-    'place', 'small', 'since', 'still', 'their', 'there', 'these',
-    'thing', 'think', 'those', 'three', 'under', 'until', 'using',
-    'value', 'which', 'while', 'whose', 'would',
+    'about',
+    'after',
+    'again',
+    'also',
+    'another',
+    'before',
+    'between',
+    'could',
+    'does',
+    'every',
+    'first',
+    'found',
+    'given',
+    'having',
+    'hours',
+    'large',
+    'later',
+    'might',
+    'never',
+    'often',
+    'other',
+    'place',
+    'small',
+    'since',
+    'still',
+    'their',
+    'there',
+    'these',
+    'thing',
+    'think',
+    'those',
+    'three',
+    'under',
+    'until',
+    'using',
+    'value',
+    'which',
+    'while',
+    'whose',
+    'would',
   ])
   return [...new Set(words.filter(w => !stops.has(w)))].slice(0, 8)
 }
@@ -325,7 +359,7 @@ export function conditionOf(artifact) {
 }
 
 // ---------------------------------------------------------------------------
-// Run directory allocation + clone (shared by eval-run.mjs and control-run.mjs)
+// Run directory allocation + clone (shared by eval-run.mjs and control-core.mjs)
 // ---------------------------------------------------------------------------
 
 /**
@@ -366,7 +400,7 @@ export function gitCloneSnapshot({ url, dest, branch, depth }) {
 }
 
 // ---------------------------------------------------------------------------
-// Trends summary (shared by eval-run.mjs and control-run.mjs)
+// Trends summary (shared by eval-run.mjs and control-core.mjs)
 // ---------------------------------------------------------------------------
 
 function _safeJson(file) {
@@ -425,20 +459,31 @@ function _gatherArtifacts(repoRoot) {
  */
 export function printTrendsSummary(suiteId, repoRoot) {
   const all = _gatherArtifacts(repoRoot)
+  // Each unified artifact yields a kb row (top-level scores) and, when present, a
+  // nested control row (artifact.control) — so historic control-vs-kb stays comparable
+  // even across runs where one side was skipped.
+  const buildRow = (row, cond, data) => ({
+    ...row,
+    cond,
+    created: row.artifact?.created_at ?? null,
+    docs: structuralMetric(data, 'docs'),
+    entities: structuralMetric(data, 'entities'),
+    rels: structuralMetric(data, 'rels'),
+    avg_results: structuralMetric(data, 'avg_results'),
+    usefulness: scoreMetric(data, 'usefulness'),
+    pass_rate: scoreMetric(data, 'pass_rate'),
+    correctness: scoreMetric(data, 'correctness'),
+  })
   const filtered = all
     .filter(row => matchesSuite(row, suiteId))
-    .map(row => ({
-      ...row,
-      created: row.artifact?.created_at ?? null,
-      cond: conditionOf(row.artifact) ?? 'kb',
-      docs: structuralMetric(row.artifact, 'docs'),
-      entities: structuralMetric(row.artifact, 'entities'),
-      rels: structuralMetric(row.artifact, 'rels'),
-      avg_results: structuralMetric(row.artifact, 'avg_results'),
-      usefulness: scoreMetric(row.artifact, 'usefulness'),
-      pass_rate: scoreMetric(row.artifact, 'pass_rate'),
-      correctness: scoreMetric(row.artifact, 'correctness'),
-    }))
+    .flatMap(row => {
+      const out = [buildRow(row, conditionOf(row.artifact) ?? 'kb', row.artifact)]
+      const control = row.artifact?.control
+      if (control?.aggregate_scores) {
+        out.push(buildRow({ ...row, id: `${row.id} [control]` }, 'control', control))
+      }
+      return out
+    })
     .sort((a, b) => {
       const ta = a.created ? new Date(a.created).getTime() : Number.NaN
       const tb = b.created ? new Date(b.created).getTime() : Number.NaN

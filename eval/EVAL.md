@@ -6,51 +6,49 @@ Houses the MOEL (Multi-Objective Exploration Loss) evaluation framework — a qu
 
 ```mermaid
 flowchart LR
-  S["eval/suites/*.yaml\nquestion packs"] --> H["scripts/eval-run.mjs\nkb query (cond K)"]
-  S --> CT["scripts/control-run.mjs\nreal agent, no kb (cond N)"]
-  H --> A["~/.kb/evaluations/<run>/artifact.json"]
+  S["eval/suites/*.yaml\nquestion packs"] --> H["scripts/eval-run.mjs"]
+  H --> K["kb query (cond K)"]
+  H --> CT["control phase: real agent, no kb (cond N)\nscripts/control-core.mjs"]
+  K --> A["~/.kb/evaluations/<run>/artifact.json\nkb + control + comparison"]
   CT --> A
   T["TrajectoryFile (telemetry)"] --> L["eval/losses/\nL_AST · L_jury · L_traj · L_resource"]
   L --> M["L_MOEL scalar"]
   M --> C["compareConditions()\nN vs K vs O"]
 ```
 
-Three evaluation pipelines co-exist:
+Two evaluation pipelines co-exist:
 
-1. **Query harvest** (`scripts/eval-run.mjs`, suites `raylib`/`kb`/`generic`) — the **kb side** (condition **K**). Rubric-based Q&A scoring of `kb query` answers via auto-score (Gemini/OpenAI). Artifacts under `~/.kb/evaluations/<run>/` (tagged `run.condition = "kb"`). Use `--score-runs N` to average the scorer N times for more stable results.
+1. **Query harvest** (`scripts/eval-run.mjs`, suites `raylib`/`kb`/`generic`) — runs the **kb side** (condition **K**) and, by default, the **control side** (condition **N**) side-by-side into one unified artifact. kb scores `kb query` answers via auto-score (Gemini/OpenAI); the control hands each question to a *real coding agent* (Claude Code headless, no kb) and scores it with the **same rubric/judge**. Artifacts under `~/.kb/evaluations/<run>/artifact.json` hold both (kb at top level + a `control` block + a `comparison`). `--skip-control` runs kb only; `--score-runs N` averages the scorer. See [Control vs kb](#control-vs-kb-the-real-baseline).
 
-2. **Control harvest** (`scripts/control-run.mjs`, same suites) — the **control side** (condition **N**, made real). Hands each suite question to a *real coding agent* (Claude Code headless) exploring a fresh clone with **no kb**, scored by the **same rubric/judge**. Artifacts share the harvest schema (tagged `run.condition = "control"`) plus per-question agent telemetry (tokens, turns, cost). This is the baseline kb is measured against — "what people do today". See [Control vs kb](#control-vs-kb-the-real-baseline).
-
-3. **MOEL pipeline** (`scripts/moel-run.mjs`, suite `moel-kb`) — measures exploration efficiency across conditions per task. Loss functions live in `eval/losses/`; the harness is `scripts/moel-run.mjs`.
+2. **MOEL pipeline** (`scripts/moel-run.mjs`, suite `moel-kb`) — measures exploration efficiency across conditions per task. Loss functions live in `eval/losses/`; the harness is `scripts/moel-run.mjs`.
 
 ## Three evaluation conditions
 
 | Condition | Setup | Purpose |
 |-----------|----------------|---------|
-| **N** (Control) | A **real coding agent (Claude Code headless), no kb** — explores a clean clone with its own Read/Grep/Glob/Bash tools. Run via `scripts/control-run.mjs`. | Real-world baseline |
+| **N** (Control) | A **real coding agent (Claude Code headless), no kb** — explores the clone with its own Read/Grep/Glob/Bash tools. Runs as a phase of `eval-run.mjs` (`scripts/control-core.mjs`). | Real-world baseline |
 | **K** (kb-enabled) | `kb query` over a built knowledge base. Run via `scripts/eval-run.mjs`. | Primary experiment |
 | **O** (Oracle) | Minimal target facts injected as system prompt | Theoretical ceiling |
 
-The hypothesis is **K beats N**: `kb query` answers should match or exceed the control agent's quality while using far fewer tokens/turns. For the MOEL pipeline this is `L_MOEL(N) > L_MOEL(K)`; for the harvest pipelines it is a direct rubric + telemetry comparison between a `control` artifact and a `kb` artifact for the same suite.
+The hypothesis is **K beats N**: `kb query` answers should match or exceed the control agent's quality while using far fewer tokens/turns. For the MOEL pipeline this is `L_MOEL(N) > L_MOEL(K)`; for the harvest pipeline it is the `comparison` block in each artifact (kb-minus-control rubric deltas) plus the control's token/turn/cost telemetry.
 
 ## Control vs kb (the real baseline)
 
-The **control** is the thing kb is compared against: instead of querying a knowledge base, you ask a real agent the *same* question and let it explore the codebase itself.
+The **control** is the thing kb is compared against: instead of querying a knowledge base, a real agent gets the *same* question and explores the codebase itself. It runs by default as part of `pnpm run eval` — no separate command.
 
 ```bash
-# Control side (condition N): real agent, no kb
-pnpm run control -- --suite raylib --auto-score
-pnpm run control -- --suite raylib --dry-run     # print plan + the exact `claude -p …` command
-
-# kb side (condition K): kb query
+# kb + control side-by-side into ONE artifact.json (control on by default)
 pnpm run eval -- --suite raylib --auto-score
+
+# kb only — control omitted (compare against historic control trends instead)
+pnpm run eval -- --suite raylib --auto-score --skip-control
 ```
 
-Both write `~/.kb/evaluations/<run>/artifact.json` in the same schema, scored by the same rubric/judge, so the two compare head-to-head. The trends summary printed at the end of each run separates `control` from `kb` rows and prints the latest control-vs-kb deltas.
+The single `~/.kb/evaluations/<run>/artifact.json` holds the kb results (top level, `run.condition = "kb"`), a `control` block (real agent, no kb — its own `aggregate_scores` + `control_telemetry`), and a `comparison` block of kb-minus-control deltas. Both sides answer the same questions and are scored by the same rubric/judge. The trends summary at the end separates `control` from `kb` rows and prints the latest control-vs-kb deltas.
 
-The control agent is invoked headless with `--bare --strict-mcp-config` so **no MCP servers, skills, or kb tools load** — it truly explores raw files. The wrapper prompt is configurable (`--control-prompt` / `KB_CONTROL_PROMPT`), the model via `--model`, and the whole agent command via `--agent-cmd` / `KB_CONTROL_AGENT_CMD` (e.g. to swap in Cursor).
+The control agent is invoked headless with `--bare --strict-mcp-config` so **no MCP servers, skills, or kb tools load** — it truly explores raw files. Tunables: `--control-prompt` / `KB_CONTROL_PROMPT` (wrapper prompt, must contain `{{question}}`), `--control-model`, `--control-max-turns`, and `--control-agent-cmd` / `KB_CONTROL_AGENT_CMD` to swap the whole agent command (e.g. Cursor).
 
-> **Note:** `eval/tools/filesystem-tools.ts` (`read_file` / `list_directory` / `search_file_contents`) is a **legacy** toy approximation of condition N, kept only for its unit test. The real control is `scripts/control-run.mjs` driving an actual agent — do not treat the toy tools as the baseline.
+> **Note:** `eval/tools/filesystem-tools.ts` (`read_file` / `list_directory` / `search_file_contents`) is a **legacy** toy approximation of condition N, kept only for its unit test. The real control is `scripts/control-core.mjs` driving an actual agent inside `eval-run.mjs` — do not treat the toy tools as the baseline.
 
 ## Directory layout
 
@@ -58,7 +56,7 @@ The control agent is invoked headless with `--bare --strict-mcp-config` so **no 
 eval/
   losses/          Five loss functions + LOSSES.md
   validators/      ManifestValidator, MutationValidator (programmatic checks)
-  tools/           filesystem-tools.ts — LEGACY toy approximation of Condition N (superseded by scripts/control-run.mjs)
+  tools/           filesystem-tools.ts — LEGACY toy approximation of Condition N (superseded by scripts/control-core.mjs)
   reports/         summary.ts — buildSummaryMarkdown / buildSummaryJson from moel_results.json
   calibration/     calibrate.py, apply_calibration.py, calibration_data.json (Python, logistic regression)
   benchmarks/      alignment.md — mapping to SWE Atlas / SWE-ContextBench / CodeScaleBench

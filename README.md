@@ -318,22 +318,17 @@ Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
 
 KB ships a multi-pipeline evaluation framework for measuring answer quality and exploration efficiency.
 
-**Query harvest (kb side)** — runs all questions in a suite against a live KB base, auto-scores answers on four axes (Correctness, Usefulness, Specificity, Evidence Handling) via Gemini or OpenAI, and writes results to `~/.kb/evaluations/<run>/`.
+**Query harvest** — runs all questions in a suite two ways, **side-by-side into one artifact**: the **kb side** (`kb query` over a live KB base) and the **control side** — the *same* questions answered by a **real coding agent (Claude Code, headless) with no KB**, exploring the clone itself. Both are auto-scored on four axes (Correctness, Usefulness, Specificity, Evidence Handling) via Gemini or OpenAI by the same judge, so the artifact answers the real question: *"is kb actually better than what people do today?"* Results (kb + control + a kb-vs-control comparison + the control's token/turn/cost telemetry) land in `~/.kb/evaluations/<run>/artifact.json`.
 
 ```bash
-# Run the kb dogfood suite (requires GEMINI_API_KEY or OPENAI_API_KEY)
-pnpm run eval -- --suite kb
+# kb + control side-by-side (control runs by default; needs GEMINI_API_KEY or OPENAI_API_KEY + `claude`)
+pnpm run eval -- --suite raylib --auto-score
+
+# kb only — skip the control (compare against historic control trends instead)
+pnpm run eval -- --suite raylib --auto-score --skip-control
 
 # Average the scorer over 3 runs to reduce LLM noise
 pnpm run eval -- --suite kb --score-runs 3
-```
-
-**Control baseline (the real comparison)** — the same questions, but answered by a **real coding agent (Claude Code, headless) with no KB**, exploring a fresh clone itself. Scored by the same rubric/judge so it compares head-to-head against the kb run — "is kb actually better than what people do today?"
-
-```bash
-# Control side (Condition N): real agent, no kb
-pnpm run control -- --suite raylib --auto-score
-pnpm run control -- --suite raylib --dry-run    # preview the exact `claude -p …` command
 ```
 
 **MOEL pipeline** — measures exploration efficiency across three conditions per task (control agent, kb-enabled, oracle). Computes a composite loss `L_MOEL` and tests the hypothesis that kb reduces exploration cost.

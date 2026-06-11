@@ -35,10 +35,9 @@ pnpm run eval -- --suite raylib [--auto-score]
 # Kb repo dogfood questions
 pnpm run eval -- --suite kb [--auto-score]
 
-# Control baseline (Condition N): SAME questions, but a real agent (Claude Code, no kb)
-# explores the clone itself. Compare its artifact head-to-head against the kb run above.
-pnpm run control -- --suite raylib [--auto-score]
-pnpm run control -- --suite raylib --dry-run     # print plan + exact `claude -p …`, run nothing
+# Control baseline (Condition N) runs side-by-side with kb BY DEFAULT: the SAME questions
+# answered by a real agent (Claude Code, no kb) exploring the clone. Both land in one artifact.
+pnpm run eval -- --suite raylib --skip-control   # opt out → kb-only artifact
 
 # Any git URL → shallow clone → init → generic eight questions
 pnpm run eval -- --suite generic --repo https://github.com/org/repo.git [--auto-score]
@@ -53,16 +52,17 @@ Flags: `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`
 
 Artifacts default under `~/.kb/evaluations/<run-name>/`.
 
-## Control baseline (Condition N) — `scripts/control-run.mjs`
+## Control baseline (Condition N) — `scripts/control-core.mjs`, a phase of `eval`
 
 The control is the workflow kb is measured against: a **real coding agent (Claude Code headless), no kb**, answering
-the same suite questions by exploring a fresh clone itself. Run `pnpm run control -- --suite <id> [--auto-score]`. It
-scores with the **same rubric/judge** as `kb query` and writes an artifact in the same schema, tagged
-`run.condition = "control"` (vs `"kb"`) with `run.control_telemetry` (tokens, turns, cost). The agent runs with
-`--bare --strict-mcp-config` so no MCP/kb tools load. Knobs: `--model`, `--max-turns`, `--control-prompt`
-(`KB_CONTROL_PROMPT`, must contain `{{question}}`), `--agent-cmd` (`KB_CONTROL_AGENT_CMD`, e.g. Cursor). Use `--dry-run`
-to preview the exact command. To compare: run `control` and `eval` on the same suite, then read the control-vs-kb
-deltas in the trends summary. See `EVALUATION.md` § The Control.
+the same suite questions by exploring the clone itself. It runs **by default inside `pnpm run eval`** (not a separate
+command) — pass `--skip-control` to opt out. It scores with the **same rubric/judge** as `kb query`. The single
+`artifact.json` holds kb at top level (`run.condition = "kb"`), a `control` block (its own `aggregate_scores` +
+`control_telemetry` tokens/turns/cost), and a `comparison` block (kb-minus-control deltas); with `--skip-control` those
+keys are absent. The agent runs with `--bare --strict-mcp-config` so no MCP/kb tools load. Knobs: `--control-model`,
+`--control-max-turns`, `--control-prompt` (`KB_CONTROL_PROMPT`, must contain `{{question}}`), `--control-agent-cmd`
+(`KB_CONTROL_AGENT_CMD`, e.g. Cursor). The trends summary separates control-vs-kb rows and prints deltas. See
+`EVALUATION.md` § The Control.
 
 ## Comparing runs — always use eval:trends
 
