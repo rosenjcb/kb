@@ -6,7 +6,9 @@ import { describe, expect, it } from 'vitest'
 import { conditionOf } from '../../scripts/eval-shared.mjs'
 import { readQueryResultFile } from '../../scripts/eval-score.mjs'
 import {
+  assertControlAgentAvailable,
   buildControlComparison,
+  controlAgentBinary,
   defaultClaudeArgv,
   describeAgentCommand,
   extractJsonObject,
@@ -46,6 +48,30 @@ describe('control agent command', () => {
     expect(describeAgentCommand({ agentCmd: null, model: null, maxTurns: 30 })).toContain(
       'claude -p'
     )
+  })
+})
+
+describe('assertControlAgentAvailable (preflight)', () => {
+  it('resolves the agent binary (claude by default, else first token of agent-cmd)', () => {
+    expect(controlAgentBinary(null)).toBe('claude')
+    expect(controlAgentBinary('cursor-agent -p --output-format json')).toBe('cursor-agent')
+  })
+
+  it('throws an actionable error naming the missing binary and --skip-control', () => {
+    expect(() =>
+      assertControlAgentAvailable({ agentCmd: 'definitely-not-a-real-agent-xyz -p' })
+    ).toThrow(/definitely-not-a-real-agent-xyz[\s\S]*--skip-control/)
+  })
+
+  it('throws when the control prompt lacks {{question}}', () => {
+    // `sh` exists on PATH, so this isolates the prompt-validation failure.
+    expect(() =>
+      assertControlAgentAvailable({ agentCmd: 'sh', controlPrompt: 'no placeholder' })
+    ).toThrow(/question/)
+  })
+
+  it('passes for an available binary with a valid prompt', () => {
+    expect(() => assertControlAgentAvailable({ agentCmd: 'sh' })).not.toThrow()
   })
 })
 

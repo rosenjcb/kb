@@ -53,6 +53,7 @@ import { readQueryResultFile, runAutoScoreFile } from './eval-score.mjs'
 import {
   DEFAULT_CONTROL_PROMPT,
   DEFAULT_MAX_TURNS,
+  assertControlAgentAvailable,
   buildControlComparison,
   runControlPass,
 } from './control-core.mjs'
@@ -430,6 +431,20 @@ async function main() {
   const suiteId = suiteConfig.id
   if (!args.repo && suiteConfig.repoUrl) {
     args.repo = suiteConfig.repoUrl
+  }
+
+  // Control preflight: the control baseline runs by default, so fail fast (before any
+  // clone / kb init) if its agent is missing — rather than doing all the kb work first.
+  if (!args.skipControl && !args.skipCapture) {
+    try {
+      assertControlAgentAvailable({
+        agentCmd: args.controlAgentCmd,
+        controlPrompt: args.controlPrompt,
+      })
+    } catch (e) {
+      console.error(`[eval] ${e instanceof Error ? e.message : e}`)
+      process.exit(1)
+    }
   }
 
   let paths

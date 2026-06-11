@@ -71,6 +71,40 @@ export function commandAvailable(cmd) {
   }
 }
 
+/** The agent binary the control phase will invoke (default: claude; else first token of agentCmd). */
+export function controlAgentBinary(agentCmd) {
+  if (!agentCmd) return 'claude'
+  const m = String(agentCmd)
+    .trim()
+    .match(/^(\S+)/)
+  return m ? m[1] : 'claude'
+}
+
+/**
+ * Preflight: throw a clear, actionable error if the control phase cannot run.
+ * Called early by eval-run.mjs so the whole eval fails fast (before any clone / kb init)
+ * rather than doing all the kb work and only then discovering the agent is missing.
+ */
+export function assertControlAgentAvailable({
+  agentCmd = null,
+  controlPrompt = DEFAULT_CONTROL_PROMPT,
+} = {}) {
+  if (!controlPrompt.includes('{{question}}')) {
+    throw new Error('control prompt must contain the {{question}} placeholder (--control-prompt)')
+  }
+  const bin = controlAgentBinary(agentCmd)
+  if (!commandAvailable(bin)) {
+    throw new Error(
+      `control agent \`${bin}\` is not installed / not on PATH.
+  The control baseline runs by default and needs a real coding agent.
+  Fix one of:
+    • install Claude Code (https://code.claude.com), or
+    • re-run with --skip-control to evaluate kb only (control data omitted), or
+    • pass --control-agent-cmd "<cmd>" (env KB_CONTROL_AGENT_CMD) to use another agent.`
+    )
+  }
+}
+
 /** Extract the trailing JSON object from agent stdout (tolerates a leading banner). */
 export function extractJsonObject(text) {
   const i = text.indexOf('{')
@@ -142,14 +176,7 @@ export async function runControlPass({
   scoreRuns = 1,
   scoresFile = null,
 }) {
-  if (!controlPrompt.includes('{{question}}')) {
-    throw new Error('control prompt must contain the {{question}} placeholder')
-  }
-  if (!agentCmd && !commandAvailable('claude')) {
-    throw new Error(
-      'control agent `claude` not found on PATH — install Claude Code or pass --control-agent-cmd'
-    )
-  }
+  assertControlAgentAvailable({ agentCmd, controlPrompt })
 
   const questions = suiteConfig.questions
   const agentName = agentCmd ? 'custom' : 'claude-code'
