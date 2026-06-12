@@ -1,12 +1,13 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildPondQueries,
   FactsQueryResearchOrchestrator,
   isUnlimitedLimit,
 } from '../../src/tools/facts-query-research-orchestrator'
+import type { FactsSufficiencyJudge } from '../../src/tools/facts-sufficiency-judge'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
 
 const tempDirs: string[] = []
@@ -62,7 +63,7 @@ describe('assessSufficiency threshold', () => {
       })
     }
 
-    const response = new FactsQueryResearchOrchestrator(indexer).run({
+    const response = await new FactsQueryResearchOrchestrator(indexer).run({
       query: 'query expansion mechanism orchestrator',
       limit: 500,
       includeContent: true,
@@ -89,7 +90,7 @@ describe('assessSufficiency threshold', () => {
       })
     }
 
-    const response = new FactsQueryResearchOrchestrator(indexer).run({
+    const response = await new FactsQueryResearchOrchestrator(indexer).run({
       query: 'query expansion mechanism orchestrator',
       limit: 500,
       includeContent: true,
@@ -125,7 +126,7 @@ describe('FactsQueryResearchOrchestrator ponds', () => {
       confidence: 0.95,
     })
 
-    const response = new FactsQueryResearchOrchestrator(indexer).run({
+    const response = await new FactsQueryResearchOrchestrator(indexer).run({
       query: 'supported languages rust code-graph',
       limit: 5,
       includeContent: true,
@@ -164,7 +165,7 @@ describe('FactsQueryResearchOrchestrator ponds', () => {
     })
     expect(siteNoise.id).toMatch(/^fact-/)
 
-    const response = new FactsQueryResearchOrchestrator(indexer).run({
+    const response = await new FactsQueryResearchOrchestrator(indexer).run({
       query: 'code-graph indexing supported languages',
       limit: 5,
       includeContent: true,
@@ -231,7 +232,7 @@ describe('FactsQueryResearchOrchestrator ponds', () => {
     expect(indexer.getFactNeighbors([codeFact.id], new Set(), 20).length).toBeGreaterThan(0)
 
     const orchestrator = new FactsQueryResearchOrchestrator(indexer)
-    const response = orchestrator.run({
+    const response = await orchestrator.run({
       query: 'languages supported by kb init and scan tool',
       limit: 6,
       includeContent: true,
@@ -260,7 +261,7 @@ describe('FactsQueryResearchOrchestrator — hard cap', () => {
       })
     }
 
-    const response = new FactsQueryResearchOrchestrator(indexer).run({
+    const response = await new FactsQueryResearchOrchestrator(indexer).run({
       query: 'raylib rendering opengl',
       limit: 500,
       includeContent: true,
@@ -283,7 +284,7 @@ describe('FactsQueryResearchOrchestrator — hard cap', () => {
       confidence: 0.9,
     })
 
-    const response = new FactsQueryResearchOrchestrator(indexer).run({
+    const response = await new FactsQueryResearchOrchestrator(indexer).run({
       query: 'raylib',
       limit: 500,
       includeContent: true,
@@ -318,7 +319,7 @@ describe('FactsQueryResearchOrchestrator — relevant-facts plateau', () => {
       })
     }
 
-    const response = new FactsQueryResearchOrchestrator(indexer).run({
+    const response = await new FactsQueryResearchOrchestrator(indexer).run({
       query: 'query expansion expandQueryWithGraph',
       limit: 500,
       includeContent: true,
@@ -329,6 +330,85 @@ describe('FactsQueryResearchOrchestrator — relevant-facts plateau', () => {
     const passesMatch = response.retrieval.detail?.match(/passes:(\d+)/)
     const passes = passesMatch ? Number.parseInt(passesMatch[1], 10) : 999
     expect(passes).toBeLessThan(24)
+    indexer.close()
+  })
+})
+
+describe('FactsQueryResearchOrchestrator — LLM sufficiency judge', () => {
+  it('Given judge returns answerable, then loop stops with llm_judge_answerable', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    // Insert enough relevant facts to trigger the judge (needs >= 5 scoring >= 0.5)
+    for (let i = 0; i < 10; i++) {
+      indexer.upsertFact({
+        factText: `query expansion mechanism step ${i} calls expandQueryWithGraph in orchestrator`,
+        sourceKind: 'import_doc',
+        sourceRef: `doc-${i}`,
+        confidence: 0.95,
+      })
+    }
+
+    const judge: FactsSufficiencyJudge = vi.fn().mockResolvedValue('answerable')
+    const response = await new FactsQueryResearchOrchestrator(indexer, { judge }).run({
+      query: 'query expansion mechanism orchestrator',
+      limit: 500,
+      includeContent: true,
+      surface: 'query',
+    })
+
+    expect(response.retrieval.detail).toContain('stop:llm_judge_answerable')
+    expect(vi.mocked(judge)).toHaveBeenCalled()
+    indexer.close()
+  })
+
+  it('Given judge returns insufficient, then loop continues past the judge call', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    for (let i = 0; i < 10; i++) {
+      indexer.upsertFact({
+        factText: `query expansion mechanism step ${i} calls expandQueryWithGraph in orchestrator`,
+        sourceKind: 'import_doc',
+        sourceRef: `doc-${i}`,
+        confidence: 0.95,
+      })
+    }
+
+    const judge: FactsSufficiencyJudge = vi.fn().mockResolvedValue('insufficient')
+    const response = await new FactsQueryResearchOrchestrator(indexer, { judge }).run({
+      query: 'query expansion mechanism orchestrator',
+      limit: 500,
+      includeContent: true,
+      surface: 'query',
+    })
+
+    expect(response.retrieval.detail).not.toContain('stop:llm_judge_answerable')
+    indexer.close()
+  })
+
+  it('Given no judge provided, then orchestrator runs without judge calls', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    indexer.upsertFact({
+      factText: 'query expansion mechanism calls expandQueryWithGraph',
+      sourceKind: 'import_doc',
+      sourceRef: 'doc-0',
+      confidence: 0.95,
+    })
+
+    const response = await new FactsQueryResearchOrchestrator(indexer).run({
+      query: 'query expansion mechanism',
+      limit: 500,
+      includeContent: true,
+      surface: 'query',
+    })
+
+    expect(response.retrieval.detail).not.toContain('stop:llm_judge_answerable')
     indexer.close()
   })
 })

@@ -276,7 +276,7 @@ export async function produceInitialDraft(input: {
 
   const indexer = new SqliteKbIndexer({ dbPath: path.join(input.baseDir, '.kb-index.sqlite') })
   try {
-    const facts = searchSupportingFacts(
+    const facts = await searchSupportingFacts(
       indexer,
       buildFactSearchQuery(session),
       input.factLimit ?? 50
@@ -346,14 +346,14 @@ export async function produceRevisedDraft(input: {
 
   const indexer = new SqliteKbIndexer({ dbPath: path.join(input.baseDir, '.kb-index.sqlite') })
   try {
-    let facts = searchSupportingFacts(indexer, buildFactSearchQuery(session), factLimit)
+    let facts = await searchSupportingFacts(indexer, buildFactSearchQuery(session), factLimit)
     let newFactCount = 0
 
     if (explorationKind === 'gap') {
       // Expand query with feedback terms and search for facts not already in the draft
       const expandedQuery = `${buildFactSearchQuery(session)}\n${trimmedFeedback}`
       const priorIds = new Set(prior.supportingFactIds)
-      const newFacts = searchSupportingFacts(indexer, expandedQuery, factLimit, {
+      const newFacts = await searchSupportingFacts(indexer, expandedQuery, factLimit, {
         excludeIds: priorIds,
       })
       newFactCount = newFacts.length

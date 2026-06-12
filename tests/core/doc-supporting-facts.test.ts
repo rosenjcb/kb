@@ -38,33 +38,33 @@ function makeIndexer(rows: FactRow[] = []) {
 }
 
 describe('searchSupportingFacts', () => {
-  it('Given a query, then forwards to indexer.searchFacts and projects id/factText', () => {
+  it('Given a query, then forwards to indexer.searchFacts and projects id/factText', async () => {
     const rows = [
       makeRow({ id: 'fact-1', fact_text: 'First fact' }),
       makeRow({ id: 'fact-2', fact_text: 'Second fact' }),
     ]
     const indexer = makeIndexer(rows)
 
-    const result = searchSupportingFacts(indexer as never, 'session orchestrator', 5)
+    const result = await searchSupportingFacts(indexer as never, 'session orchestrator', 5)
 
     expect(indexer.searchFacts).toHaveBeenCalled()
     expect(result.map(r => r.id)).toEqual(expect.arrayContaining(['fact-1', 'fact-2']))
   })
 
-  it('Given an empty query, then returns no results without calling the indexer', () => {
+  it('Given an empty query, then returns no results without calling the indexer', async () => {
     const indexer = makeIndexer()
-    expect(searchSupportingFacts(indexer as never, '   ', 10)).toEqual([])
+    expect(await searchSupportingFacts(indexer as never, '   ', 10)).toEqual([])
     expect(indexer.searchFacts).not.toHaveBeenCalled()
   })
 
-  it('Given no rows, then returns empty array', () => {
+  it('Given no rows, then returns empty array', async () => {
     const indexer = makeIndexer([])
-    expect(searchSupportingFacts(indexer as never, 'topic', 10)).toEqual([])
+    expect(await searchSupportingFacts(indexer as never, 'topic', 10)).toEqual([])
   })
 
-  it('Given no explicit limit, then defaults to 20', () => {
+  it('Given no explicit limit, then defaults to 20', async () => {
     const indexer = makeIndexer([])
-    searchSupportingFacts(indexer as never, 'topic')
+    await searchSupportingFacts(indexer as never, 'topic')
     expect(indexer.searchFacts).toHaveBeenCalled()
   })
 })

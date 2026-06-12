@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { formatFactUri } from '../core/fact-uri'
 import type { QueryResponse, QueryResult } from './facts-document-reader'
+import { type FactsSufficiencyJudge, shouldCallJudge } from './facts-sufficiency-judge'
 import type { FactConceptRow, FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
 export const DEFAULT_FACT_LIMIT = 500
@@ -24,6 +25,7 @@ interface SufficiencyDecision {
 
 type LoopStopReason =
   | 'answerable_plateau'
+  | 'llm_judge_answerable'
   | 'frontier_exhausted'
   | 'budget_exhausted'
   | 'weak_evidence_after_exhaustion'
@@ -82,9 +84,12 @@ const ABSOLUTE_MAX_ITERATIONS = 512
 const ABSOLUTE_MAX_PONDS = 32
 
 export class FactsQueryResearchOrchestrator {
-  constructor(private readonly indexer: SqliteKbIndexer) {}
+  constructor(
+    private readonly indexer: SqliteKbIndexer,
+    private readonly options?: { judge?: FactsSufficiencyJudge }
+  ) {}
 
-  run(input: FactsLoopOptions): QueryResponse {
+  async run(input: FactsLoopOptions): Promise<QueryResponse> {
     const maxIterations = clampLimitInt(process.env.KB_FACTS_QUERY_MAX_ITERS, 24, 1, 24)
     const maxGraphHops = clampLimitInt(process.env.KB_FACTS_QUERY_MAX_HOPS, 20, 1, 40)
     const maxPonds = clampLimitInt(process.env.KB_FACTS_QUERY_MAX_PONDS, 6, 2, 12)
@@ -272,6 +277,18 @@ export class FactsQueryResearchOrchestrator {
         status = 'stop'
         nextAction = 'return_answerable'
         stopReason = 'answerable_plateau'
+      } else if (this.options?.judge && shouldCallJudge(iter, relevantFacts)) {
+        const judgeInput = [...scoredFacts.values()]
+          .filter(e => e.score >= 0.5)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 40)
+          .map(e => ({ id: e.row.id, text: e.row.fact_text }))
+        const verdict = await this.options.judge(input.query, judgeInput)
+        if (verdict === 'answerable') {
+          status = 'stop'
+          nextAction = 'llm_judge_answerable'
+          stopReason = 'llm_judge_answerable'
+        }
       }
 
       const nextCategoryIds = shouldWidenCategories({ activeCategoryIds, rankedCategories, sufficiency })
