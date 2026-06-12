@@ -50,9 +50,10 @@ export async function runLogsCommand(args: string[]): Promise<string> {
 async function runLogsList(args: string[], logsDir: string): Promise<string> {
   const command = readOption(args, '--command')
   const since = readOption(args, '--since')
+  const base = readOption(args, '--base')
   const limit = parseLimit(readOption(args, '--limit')) ?? 20
 
-  const reports = await loadReports(logsDir, { command, since })
+  const reports = await loadReports(logsDir, { command, since, base })
   const recent = reports.slice(-limit).reverse()
 
   if (recent.length === 0) {
@@ -172,6 +173,7 @@ function formatSingleReport(report: RunReport): string {
 async function runLogsCompare(args: string[], logsDir: string): Promise<string> {
   const command = readOption(args, '--command')
   const since = readOption(args, '--since')
+  const base = readOption(args, '--base')
   const cleanPositionals = extractPositionalIds(args)
 
   let reportA: RunReport
@@ -190,8 +192,8 @@ async function runLogsCompare(args: string[], logsDir: string): Promise<string> 
     reportA = a
     reportB = b
   } else {
-    // Default: last two runs, optionally filtered by command/since
-    const reports = await loadReports(logsDir, { command, since })
+    // Default: last two runs, optionally filtered by command/since/base
+    const reports = await loadReports(logsDir, { command, since, base })
     if (reports.length < 2) {
       throw new Error(
         `Need at least 2 runs to compare${command ? ` for command "${command}"` : ''}. Found ${reports.length}.`
@@ -310,7 +312,7 @@ function formatCompareRow(
 
 async function loadReports(
   logsDir: string,
-  filters: { command?: string; since?: string }
+  filters: { command?: string; since?: string; base?: string }
 ): Promise<RunReport[]> {
   if (!existsSync(logsDir)) return []
 
@@ -333,6 +335,7 @@ async function loadReports(
         const report = JSON.parse(line) as RunReport
         if (filters.command && report.command !== filters.command) continue
         if (sinceMs > 0 && new Date(report.startedAt).getTime() < sinceMs) continue
+        if (filters.base && report.base !== filters.base) continue
         reports.push(report)
       } catch {
         // Malformed line — skip
@@ -434,14 +437,16 @@ export function printLogsHelp(mode: CmdMode = 'cli'): string {
     `${cmd('logs', mode)} — browse and compare run reports`,
     '',
     'Usage:',
-    `  ${cmd('logs list [--command <cmd>] [--since <1h|7d|YYYY-MM-DD>] [--limit <n>]', mode)}`,
+    `  ${cmd('logs list [--command <cmd>] [--base <name>] [--since <1h|7d|YYYY-MM-DD>] [--limit <n>]', mode)}`,
     `  ${cmd('logs show <runId>', mode)}`,
-    `  ${cmd('logs compare [<runIdA> <runIdB>] [--command <cmd>] [--since <period>]', mode)}`,
+    `  ${cmd('logs compare [<runIdA> <runIdB>] [--command <cmd>] [--base <name>] [--since <period>]', mode)}`,
     '',
     'Examples:',
     `  ${cmd('logs list', mode)}`,
+    `  ${cmd('logs list --base my-project', mode)}`,
     `  ${cmd('logs list --command init --since 7d', mode)}`,
     `  ${cmd('logs compare', mode)}                        # last two runs`,
+    `  ${cmd('logs compare --base my-project', mode)}      # last two runs for a base`,
     `  ${cmd('logs compare --command init', mode)}         # last two init runs`,
     `  ${cmd('logs compare run-abc123 run-def456', mode)}  # specific runs`,
   ].join('\n')
