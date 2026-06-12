@@ -246,12 +246,12 @@ describe('FactsQueryResearchOrchestrator ponds', () => {
 })
 
 describe('FactsQueryResearchOrchestrator — hard cap', () => {
-  it('Given KB_MAX_FACTS_FOR_LLM=5, then results are capped to at most 5 facts', async () => {
+  it('Given more facts than MAX_FACTS_FOR_LLM, then results are capped at 75', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
 
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 100; i++) {
       indexer.upsertFact({
         factText: `raylib provides rendering module step ${i} with opengl backend`,
         sourceKind: 'import_doc',
@@ -260,56 +260,18 @@ describe('FactsQueryResearchOrchestrator — hard cap', () => {
       })
     }
 
-    const prev = process.env.KB_MAX_FACTS_FOR_LLM
-    process.env.KB_MAX_FACTS_FOR_LLM = '5'
-    try {
-      const response = new FactsQueryResearchOrchestrator(indexer).run({
-        query: 'raylib rendering opengl',
-        limit: 500,
-        includeContent: true,
-        surface: 'query',
-      })
-      expect(response.results.length).toBeLessThanOrEqual(5)
-      expect(response.retrieval.detail).toContain('facts:')
-    } finally {
-      if (prev === undefined) delete process.env.KB_MAX_FACTS_FOR_LLM
-      else process.env.KB_MAX_FACTS_FOR_LLM = prev
-    }
+    const response = new FactsQueryResearchOrchestrator(indexer).run({
+      query: 'raylib rendering opengl',
+      limit: 500,
+      includeContent: true,
+      surface: 'query',
+    })
+    expect(response.results.length).toBeLessThanOrEqual(75)
+    expect(response.retrieval.detail).toContain('facts:')
     indexer.close()
   })
 
-  it('Given KB_MAX_FACTS_FOR_LLM=-1, then results are not capped', async () => {
-    const baseDir = await createTempDir()
-    const dbPath = path.join(baseDir, 'kb-index.sqlite')
-    const indexer = new SqliteKbIndexer({ dbPath })
-
-    for (let i = 0; i < 30; i++) {
-      indexer.upsertFact({
-        factText: `raylib provides rendering module step ${i} with opengl backend`,
-        sourceKind: 'import_doc',
-        sourceRef: `doc-${i}`,
-        confidence: 0.9,
-      })
-    }
-
-    const prev = process.env.KB_MAX_FACTS_FOR_LLM
-    process.env.KB_MAX_FACTS_FOR_LLM = '-1'
-    try {
-      const response = new FactsQueryResearchOrchestrator(indexer).run({
-        query: 'raylib rendering opengl',
-        limit: 500,
-        includeContent: true,
-        surface: 'query',
-      })
-      expect(response.results.length).toBeGreaterThan(5)
-    } finally {
-      if (prev === undefined) delete process.env.KB_MAX_FACTS_FOR_LLM
-      else process.env.KB_MAX_FACTS_FOR_LLM = prev
-    }
-    indexer.close()
-  })
-
-  it('Given default cap, then retrieval detail includes facts count', async () => {
+  it('Given retrieval detail, then it includes facts count', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })

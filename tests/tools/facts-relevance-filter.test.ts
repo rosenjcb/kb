@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { LLMProvider } from '../../src/core/types'
 import type { QueryResult } from '../../src/tools/facts-document-reader'
 import {
@@ -50,31 +50,12 @@ function badResponseLlm(): LLMProvider {
 }
 
 describe('shouldRunRelevanceFilter', () => {
-  let prevEnv: string | undefined
-
-  beforeEach(() => {
-    prevEnv = process.env.KB_LLM_RELEVANCE_FILTER
-  })
-
-  afterEach(() => {
-    if (prevEnv === undefined) delete process.env.KB_LLM_RELEVANCE_FILTER
-    else process.env.KB_LLM_RELEVANCE_FILTER = prevEnv
-  })
-
-  it('Given KB_LLM_RELEVANCE_FILTER not set and many results, then returns false', () => {
-    delete process.env.KB_LLM_RELEVANCE_FILTER
-    const results = Array.from({ length: 25 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
-    expect(shouldRunRelevanceFilter(results)).toBe(false)
-  })
-
-  it('Given KB_LLM_RELEVANCE_FILTER=true and many results, then returns true', () => {
-    process.env.KB_LLM_RELEVANCE_FILTER = 'true'
+  it('Given many results, then returns true', () => {
     const results = Array.from({ length: 25 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
     expect(shouldRunRelevanceFilter(results)).toBe(true)
   })
 
-  it('Given KB_LLM_RELEVANCE_FILTER=true but few results, then returns false', () => {
-    process.env.KB_LLM_RELEVANCE_FILTER = 'true'
+  it('Given few results (at or below threshold), then returns false', () => {
     const results = Array.from({ length: 10 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
     expect(shouldRunRelevanceFilter(results)).toBe(false)
   })

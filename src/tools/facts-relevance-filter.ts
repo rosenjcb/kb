@@ -65,8 +65,5 @@ export async function filterRelevantFacts(
 }
 
 export function shouldRunRelevanceFilter(results: QueryResult[]): boolean {
-  return (
-    process.env.KB_LLM_RELEVANCE_FILTER === 'true' &&
-    results.length > FILTER_MIN_RESULTS
-  )
+  return results.length > FILTER_MIN_RESULTS
 }

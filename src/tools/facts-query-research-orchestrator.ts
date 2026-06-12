@@ -4,6 +4,10 @@ import type { QueryResponse, QueryResult } from './facts-document-reader'
 import type { FactConceptRow, FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
 export const DEFAULT_FACT_LIMIT = 500
+/** Maximum facts sent to LLM synthesis — caps the recall-first context to control token cost. */
+export const MAX_FACTS_FOR_LLM = 75
+/** Minimum score for remainder facts (excludes near-zero-signal tail; reserved entries bypass this). */
+const MIN_FACT_SCORE = 0.20
 
 interface FactsLoopOptions {
   query: string
@@ -464,14 +468,10 @@ export class FactsQueryResearchOrchestrator {
         reservedIds.add(entry.row.id)
       }
     }
-    const minScore = parseEnvFloat(process.env.KB_MIN_FACT_SCORE, 0.20)
-    const maxFacts = clampLimitInt(process.env.KB_MAX_FACTS_FOR_LLM, 75, 1, DEFAULT_FACT_LIMIT)
-    // Filter low-quality tail facts but always keep reserved (anchor + per-source) entries
     const filteredRemainder = sorted
-      .filter(e => !reservedIds.has(e.row.id) && e.score >= minScore)
+      .filter(e => !reservedIds.has(e.row.id) && e.score >= MIN_FACT_SCORE)
     const ranked = dedupeRankedFacts([...reserved, ...filteredRemainder])
-    // Hard cap: slice the final ranked list before sending to LLM
-    const cappedRanked = isUnlimited(maxFacts) ? ranked : ranked.slice(0, maxFacts)
+    const cappedRanked = ranked.slice(0, MAX_FACTS_FOR_LLM)
     const categoryNames = this.indexer.getFactCategoryNamesForFacts(cappedRanked.map(entry => entry.row.id))
     const results: QueryResult[] = cappedRanked.map(({ row }) => ({
       metadata: {
@@ -761,12 +761,6 @@ function shouldWidenCategories(input: {
   return input.rankedCategories
     .slice(0, input.activeCategoryIds.length + 1)
     .map(category => category.categoryId)
-}
-
-function parseEnvFloat(raw: string | undefined, fallback: number): number {
-  if (!raw) return fallback
-  const parsed = Number.parseFloat(raw)
-  return Number.isFinite(parsed) ? parsed : fallback
 }
 
 function clampLimitInt(raw: string | undefined, fallback: number, min: number, max: number): number {
