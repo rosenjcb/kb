@@ -121,7 +121,7 @@ function parseArgs(argv) {
     skipCapture: false,
     autoScore: true, // on by default; disable with --manual-score
     autoScoreFile: null,
-    scoreRuns: 1,
+    scoreRuns: 3,
     // Control condition (the real-agent baseline) runs side-by-side with kb by default.
     skipControl: false,
     controlModel: null,
@@ -211,7 +211,7 @@ Output:
   --label SLUG            Stored as run_label in artifact
   --out PATH              Override artifact JSON path
   --manual-score          Skip LLM auto-scoring (default: auto-score is ON)
-  --score-runs N          Call scorer N times and average (reduces noise; default 1)
+  --score-runs N          Call scorer N times and average (reduces noise; default 3)
   --scores-file PATH      Load manual rubric scores instead (JSON array of 8)
   --auto-score-file PATH  Write auto-scores to a specific path
 

@@ -172,6 +172,8 @@ Artifacts land in `~/.kb/evaluations/<run-name>/artifact.json`. Fields to check:
 
 Each question gets a rubric score on four axes. Use `--auto-score` for LLM judging (requires `GEMINI_API_KEY` or `OPENAI_API_KEY`), or supply a `--scores-file` for manual scoring.
 
+The scorer is called **3 times by default** and the numeric axes are averaged (`--score-runs 3`). Single-shot Gemini scores have ~1 point of noise per question; averaging across 3 calls reduces run-to-run variance enough to make inter-run comparisons meaningful. Pass `--score-runs 1` to cut costs when you only need a rough signal.
+
 ## Canonical Question Set
 
 Use these raylib-adapted questions for all runs. If revised, copy the old suite forward and record the change in the artifact.

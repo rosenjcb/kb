@@ -234,20 +234,25 @@ export async function runControlPass({
       throw new Error(`control --scores-file must be a JSON array of length ${questions.length}`)
     }
   } else if (autoScore) {
-    const res = await runAutoScoreFile({
-      workdir,
-      questions,
-      answers: suiteConfig.answers ?? null,
-      outScoresPath: path.join(workdir, 'auto-scores.json'),
-      rubricPhrase: suiteConfig.rubricPhrase,
-      scoreRuns,
-    })
-    scores = res.normalized
-    queryScoringMeta = {
-      mode: scoreRuns > 1 ? `llm_judge_avg_${scoreRuns}` : 'llm_judge_single_shot',
-      provider: res.providerUsed,
-      model: res.modelUsed,
-      scores_file: res.outScoresPath,
+    try {
+      const res = await runAutoScoreFile({
+        workdir,
+        questions,
+        answers: suiteConfig.answers ?? null,
+        outScoresPath: path.join(workdir, 'auto-scores.json'),
+        rubricPhrase: suiteConfig.rubricPhrase,
+        scoreRuns,
+      })
+      scores = res.normalized
+      queryScoringMeta = {
+        mode: scoreRuns > 1 ? `llm_judge_avg_${scoreRuns}` : 'llm_judge_single_shot',
+        provider: res.providerUsed,
+        model: res.modelUsed,
+        scores_file: res.outScoresPath,
+      }
+    } catch (e) {
+      console.error(`[control] auto-score failed (agent answers preserved, scores omitted): ${e instanceof Error ? e.message : e}`)
+      queryScoringMeta = { mode: 'failed', error: e instanceof Error ? e.message : String(e) }
     }
   }
 
@@ -300,7 +305,9 @@ export async function runControlPass({
 
   return {
     condition: 'control',
-    status: tels.length === questions.length ? 'complete' : 'partial',
+    status: tels.length === questions.length
+      ? (queryScoringMeta?.mode === 'failed' ? 'complete_unscored' : 'complete')
+      : 'partial',
     agent: { name: agentName, model: model ?? 'default', command: agentDesc, max_turns: maxTurns },
     control_prompt: controlPrompt,
     query_scoring: queryScoringMeta,

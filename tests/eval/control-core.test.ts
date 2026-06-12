@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { conditionOf } from '../../scripts/eval-shared.mjs'
 import { readQueryResultFile } from '../../scripts/eval-score.mjs'
@@ -120,6 +120,33 @@ describe('runControlPass', () => {
         autoScore: false,
       })
     ).rejects.toThrow(/question/)
+  })
+
+  it('returns complete_unscored when agent answers succeed but auto-score throws', async () => {
+    const workdir = mkdtempSync(path.join(tmpdir(), 'control-unscored-'))
+    // Patch runAutoScoreFile to simulate a Gemini fetch failure.
+    const evalScore = await import('../../scripts/eval-score.mjs')
+    const spy = vi.spyOn(evalScore, 'runAutoScoreFile').mockRejectedValueOnce(new Error('fetch failed'))
+    try {
+      const block = await runControlPass({
+        repoDir: workdir,
+        workdir,
+        suiteConfig: fakeSuite(),
+        agentCmd: FAKE_AGENT_CMD,
+        autoScore: true,
+      })
+      // Answers must be preserved.
+      expect(block.condition).toBe('control')
+      expect(block.status).toBe('complete_unscored')
+      expect(block.query_evaluation).toHaveLength(2)
+      expect(block.query_evaluation[0].answer_excerpt).toBeTruthy()
+      // Scores default to zero when judge failed.
+      expect(block.query_evaluation[0].scores.correctness).toBe(0)
+      // Scoring failure surfaced in metadata.
+      expect(block.query_scoring?.mode).toBe('failed')
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
 

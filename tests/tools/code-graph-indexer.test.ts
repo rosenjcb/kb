@@ -198,7 +198,7 @@ export class Dog implements Animal { speak() { return 'woof' } }`
     await writeTsconfig()
     await writeFile(
       join(repoRoot, 'src', 'config.ts'),
-      `const ABSOLUTE_MAX_ITERATIONS = 512\nconst THRESHOLD = 0.58\nexport function getMax() { return ABSOLUTE_MAX_ITERATIONS }`
+      'const ABSOLUTE_MAX_ITERATIONS = 512\nconst THRESHOLD = 0.58\nexport function getMax() { return ABSOLUTE_MAX_ITERATIONS }'
     )
 
     const { indexer, factIndexer } = makeIndexer()
