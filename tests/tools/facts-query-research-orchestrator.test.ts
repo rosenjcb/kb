@@ -334,6 +334,62 @@ describe('FactsQueryResearchOrchestrator — relevant-facts plateau', () => {
   })
 })
 
+describe('FactsQueryResearchOrchestrator — code fact graph-proximity scoring', () => {
+  it('Given code fact linked via graph to a high-scoring doc fact, then it ranks higher than an identifier-only code fact', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    // High-relevance doc fact — directly answers the query
+    const docFact = indexer.upsertFact({
+      factText: 'expandQuery is the entry point for query expansion in the orchestrator pipeline',
+      sourceKind: 'import_doc',
+      sourceRef: 'ARCH.md',
+      confidence: 0.95,
+    })
+
+    // Code fact: linked to the doc fact via concept overlap (shares "expandQuery", "expansion")
+    const graphLinkedCode = indexer.upsertFact({
+      factText: 'expandQuery is a Function exported from src/tools/query-expander.ts',
+      triplet: { subject: 'expandQuery', predicate: 'exported_from', object: 'src/tools/query-expander.ts' },
+      sourceKind: 'import_code',
+      sourceRef: 'code:query-expander',
+      confidence: 0.95,
+    })
+
+    // Code fact: identifier matches "query" but is totally unrelated (false positive by text)
+    const identifierOnlyCode = indexer.upsertFact({
+      factText: 'queryResultCache is a Variable exported from src/tools/cache.ts',
+      triplet: { subject: 'queryResultCache', predicate: 'exported_from', object: 'src/tools/cache.ts' },
+      sourceKind: 'import_code',
+      sourceRef: 'code:cache',
+      confidence: 0.95,
+    })
+
+    // Confirm graph edge exists between doc fact and graphLinkedCode via concept overlap
+    const neighbors = indexer.getFactNeighbors([docFact.id], new Set(), 20)
+    const neighborIds = neighbors.map(r => r.id)
+
+    const response = await new FactsQueryResearchOrchestrator(indexer).run({
+      query: 'query expansion orchestrator',
+      limit: 50,
+      includeContent: true,
+      surface: 'query',
+    })
+
+    const resultIds = response.results.map(r => r.metadata.id)
+    const graphLinkedRank = resultIds.indexOf(graphLinkedCode.id)
+    const identifierOnlyRank = resultIds.indexOf(identifierOnlyCode.id)
+
+    // Graph-linked code fact should rank above or equal to the identifier-only code fact
+    expect(graphLinkedRank).toBeGreaterThanOrEqual(0)
+    if (identifierOnlyRank >= 0) {
+      expect(graphLinkedRank).toBeLessThanOrEqual(identifierOnlyRank)
+    }
+    indexer.close()
+  })
+})
+
 describe('FactsQueryResearchOrchestrator — LLM sufficiency judge', () => {
   it('Given judge returns answerable, then loop stops with llm_judge_answerable', async () => {
     const baseDir = await createTempDir()

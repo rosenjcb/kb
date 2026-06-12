@@ -235,6 +235,11 @@ export class FactsQueryResearchOrchestrator {
         break
       }
 
+      const edgeNeighborIds = new Set(edgeNeighborRows.map(row => row.id))
+      const frontierMaxScore =
+        activePond.frontierFactIds.length > 0
+          ? Math.max(...activePond.frontierFactIds.map(id => scoredFacts.get(id)?.score ?? 0))
+          : 0
       this.scoreIterationFacts(
         input.query,
         merged,
@@ -244,6 +249,8 @@ export class FactsQueryResearchOrchestrator {
           ...pondLexicalRows.map(row => row.id),
           ...edgeNeighborRows.map(row => row.id),
         ]),
+        edgeNeighborIds,
+        frontierMaxScore,
         semanticScores,
         activeCategoryIds,
         primaryLexicalAnchors
@@ -403,6 +410,8 @@ export class FactsQueryResearchOrchestrator {
     rows: FactRow[],
     scores: Map<string, { row: FactRow; score: number }>,
     frontierFactIds: Set<string>,
+    edgeNeighborIds: Set<string>,
+    frontierMaxScore: number,
     semanticScores: Map<string, number>,
     activeCategoryIds: string[],
     primaryLexicalAnchors: Set<string>
@@ -413,7 +422,6 @@ export class FactsQueryResearchOrchestrator {
       const textTokens = tokenizeQuery(row.fact_text)
       const overlap = textTokens.filter(token => queryTokens.includes(token)).length
       const overlapScore = queryTokens.length > 0 ? overlap / queryTokens.length : 0
-      const recencyBias = 0
       const frontierBoost = frontierFactIds.has(row.id) ? 0.06 : 0
       const anchorBoost = primaryLexicalAnchors.has(row.id) ? 0.1 : 0
       const categories = categoryIds.get(row.id) ?? []
@@ -421,19 +429,39 @@ export class FactsQueryResearchOrchestrator {
         activeCategoryIds.length > 0 && categories.some(category => activeCategoryIds.includes(category))
           ? Math.min(0.18, categories.filter(category => activeCategoryIds.includes(category)).length * 0.09)
           : 0
-      const semanticScore = semanticScores.get(row.id) ?? 0
       const qualityPenalty = retrievalFactPenalty(row)
-      const score = Math.min(
-        1,
-        overlapScore * 0.45 +
-          semanticScore * 0.35 +
-          row.confidence * 0.2 +
-          recencyBias +
-          frontierBoost +
-          anchorBoost +
-          categoryBoost -
-          qualityPenalty
-      )
+
+      // Code facts: swap SHA256 semantic weight for graph proximity score.
+      // Identifier-only matches score ~0.25-0.39 (below "relevant" threshold of 0.5).
+      // Facts discovered via graph traversal from a high-scoring parent score 0.55+.
+      const isCodeFact = row.source_kind === 'import_code'
+      let score: number
+      if (isCodeFact) {
+        const graphProximityScore = edgeNeighborIds.has(row.id) ? frontierMaxScore : 0
+        score = Math.min(
+          1,
+          overlapScore * 0.20 +
+            graphProximityScore * 0.60 +
+            row.confidence * 0.20 +
+            frontierBoost +
+            anchorBoost +
+            categoryBoost -
+            qualityPenalty
+        )
+      } else {
+        const semanticScore = semanticScores.get(row.id) ?? 0
+        score = Math.min(
+          1,
+          overlapScore * 0.45 +
+            semanticScore * 0.35 +
+            row.confidence * 0.20 +
+            frontierBoost +
+            anchorBoost +
+            categoryBoost -
+            qualityPenalty
+        )
+      }
+
       const current = scores.get(row.id)
       if (!current || score > current.score) {
         scores.set(row.id, { row, score })
