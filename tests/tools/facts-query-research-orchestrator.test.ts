@@ -327,7 +327,7 @@ describe('FactsQueryResearchOrchestrator — relevant-facts plateau', () => {
 
     // Should stop within the configured max iterations (not running all 24)
     const passesMatch = response.retrieval.detail?.match(/passes:(\d+)/)
-    const passes = passesMatch ? parseInt(passesMatch[1], 10) : 999
+    const passes = passesMatch ? Number.parseInt(passesMatch[1], 10) : 999
     expect(passes).toBeLessThan(24)
     indexer.close()
   })
