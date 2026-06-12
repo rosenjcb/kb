@@ -722,7 +722,7 @@ function getIntentQuestion(parsed: ParsedIntentCommand): string {
   return fromOriginalQuery || fromOriginalFact || fromQuery || fromFact || fromChange
 }
 
-const MAX_FACT_CONTENT_CHARS = 800
+const MAX_FACT_CONTENT_CHARS = 2000
 
 function buildEvidence(results: ReadDocumentsResultItem[], _allFacts?: boolean): string {
   return formatRetrievedFactsForLLM(results, {
