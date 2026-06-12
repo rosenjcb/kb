@@ -247,12 +247,12 @@ describe('FactsQueryResearchOrchestrator ponds', () => {
 })
 
 describe('FactsQueryResearchOrchestrator — hard cap', () => {
-  it('Given more facts than MAX_FACTS_FOR_LLM, then results are capped at 75', async () => {
+  it('Given more facts than MAX_FACTS_FOR_LLM, then results are capped at 150', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
 
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < 160; i++) {
       indexer.upsertFact({
         factText: `raylib rendering opengl step ${i}`,
         sourceKind: 'import_doc',
@@ -267,10 +267,10 @@ describe('FactsQueryResearchOrchestrator — hard cap', () => {
       includeContent: true,
       surface: 'query',
     })
-    expect(response.results.length).toBeLessThanOrEqual(75)
+    expect(response.results.length).toBeLessThanOrEqual(150)
     expect(response.retrieval.detail).toContain('facts:')
     indexer.close()
-  }, 15000)
+  }, 30000)
 
   it('Given retrieval detail, then it includes facts count', async () => {
     const baseDir = await createTempDir()

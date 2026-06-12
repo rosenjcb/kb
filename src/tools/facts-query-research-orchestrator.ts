@@ -6,7 +6,7 @@ import type { FactConceptRow, FactRow, SqliteKbIndexer } from './sqlite-kb-index
 
 export const DEFAULT_FACT_LIMIT = 500
 /** Maximum facts sent to LLM synthesis — caps the recall-first context to control token cost. */
-export const MAX_FACTS_FOR_LLM = 75
+export const MAX_FACTS_FOR_LLM = 150
 /** Minimum score for remainder facts (excludes near-zero-signal tail; reserved entries bypass this). */
 const MIN_FACT_SCORE = 0.20
 
