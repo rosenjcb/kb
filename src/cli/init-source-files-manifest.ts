@@ -76,6 +76,19 @@ export function diffChangedSourceFiles(
   return changed
 }
 
+/** Paths present in the last manifest but absent from the current scan tree. */
+export function diffRemovedSourceFiles(
+  current: Record<string, string>,
+  manifest: SourceFilesManifest
+): string[] {
+  if (Object.keys(manifest.files).length === 0) return []
+  const removed: string[] = []
+  for (const filePath of Object.keys(manifest.files)) {
+    if (!(filePath in current)) removed.push(filePath)
+  }
+  return removed.sort()
+}
+
 export function buildSourceFileHashes(files: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [filePath, contents] of Object.entries(files)) {

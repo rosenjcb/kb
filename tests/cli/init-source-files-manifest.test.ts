@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildSourceFileHashes,
   diffChangedSourceFiles,
+  diffRemovedSourceFiles,
   hashSourceFileContents,
   readSourceFilesManifest,
   writeSourceFilesManifest,
@@ -42,6 +43,20 @@ describe('init-source-files-manifest', () => {
     const diff = diffChangedSourceFiles(v2, manifest)
     expect(diff).not.toBeNull()
     expect(new Set(diff)).toEqual(new Set(['docs/guide.md', 'notes.txt']))
+  })
+
+  it('detects source files removed since the last manifest', () => {
+    const manifest = {
+      version: 1 as const,
+      files: { 'README.md': 'a', 'docs/old.md': 'b' },
+      updatedAt: '',
+    }
+    expect(diffRemovedSourceFiles({ 'README.md': '# stay\n' }, manifest)).toEqual(['docs/old.md'])
+    expect(diffRemovedSourceFiles({ 'README.md': '# stay\n', 'docs/new.md': '# new\n' }, manifest)).toEqual(
+      ['docs/old.md']
+    )
+    expect(diffRemovedSourceFiles({ 'README.md': '# stay\n', 'docs/old.md': '# old\n' }, manifest)).toEqual([])
+    expect(diffRemovedSourceFiles({ 'README.md': '# stay\n' }, { version: 1, files: {}, updatedAt: '' })).toEqual([])
   })
 
   it('treats unchanged contents as a no-op diff', async () => {
