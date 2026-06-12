@@ -167,6 +167,85 @@ export class Dog implements Animal { speak() { return 'woof' } }`
     expect(names).toContain('Widget')
   })
 
+  it('includes value in fact text for exported constants with simple literal initializers', async () => {
+    await writeTsconfig()
+    await writeFile(
+      join(repoRoot, 'src', 'limits.ts'),
+      `export const MAX_RETRIES = 5\nexport const VERSION = 'v1.2.3'\nexport const DEBUG = false`
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
+    indexer.close()
+    factIndexer.close()
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    const facts = db
+      .prepare(
+        "SELECT fact_text FROM facts WHERE source_kind = 'import_code' AND predicate = 'exported_from' AND tombstoned_at IS NULL"
+      )
+      .all() as Array<{ fact_text: string }>
+    db.close()
+
+    const texts = facts.map(f => f.fact_text)
+    expect(texts.some(t => t.includes('MAX_RETRIES') && t.includes('5'))).toBe(true)
+    expect(texts.some(t => t.includes('VERSION') && t.includes('v1.2.3'))).toBe(true)
+    expect(texts.some(t => t.includes('DEBUG') && t.includes('false'))).toBe(true)
+  })
+
+  it('extracts non-exported module-level constants with literal values', async () => {
+    await writeTsconfig()
+    await writeFile(
+      join(repoRoot, 'src', 'config.ts'),
+      `const ABSOLUTE_MAX_ITERATIONS = 512\nconst THRESHOLD = 0.58\nexport function getMax() { return ABSOLUTE_MAX_ITERATIONS }`
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
+    indexer.close()
+    factIndexer.close()
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    const facts = db
+      .prepare(
+        "SELECT fact_text, predicate FROM facts WHERE source_kind = 'import_code' AND tombstoned_at IS NULL"
+      )
+      .all() as Array<{ fact_text: string; predicate: string }>
+    db.close()
+
+    const texts = facts.map(f => f.fact_text)
+    expect(texts.some(t => t.includes('ABSOLUTE_MAX_ITERATIONS') && t.includes('512'))).toBe(true)
+    expect(texts.some(t => t.includes('THRESHOLD') && t.includes('0.58'))).toBe(true)
+  })
+
+  it('does not extract non-exported constants with complex initializers', async () => {
+    await writeTsconfig()
+    await writeFile(
+      join(repoRoot, 'src', 'computed.ts'),
+      `const STOP_WORDS = new Set(['the', 'and', 'for'])\nconst REGEX = /foo/g\nexport const EXPORTED = 1`
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot, join(repoRoot, 'tsconfig.json'))
+    indexer.close()
+    factIndexer.close()
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    const facts = db
+      .prepare(
+        "SELECT fact_text FROM facts WHERE source_kind = 'import_code' AND predicate = 'defined_in' AND tombstoned_at IS NULL"
+      )
+      .all() as Array<{ fact_text: string }>
+    db.close()
+
+    // Complex initializers (Set, RegExp) should not produce defined_in facts
+    expect(facts.every(f => !f.fact_text.includes('STOP_WORDS'))).toBe(true)
+    expect(facts.every(f => !f.fact_text.includes('REGEX'))).toBe(true)
+  })
+
   it('skips unchanged files on re-index', async () => {
     await writeTsconfig()
     await writeFile(join(repoRoot, 'src', 'stable.ts'), 'export const STABLE = true')

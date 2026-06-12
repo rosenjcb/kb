@@ -46,6 +46,61 @@ describe('buildPondQueries', () => {
   })
 })
 
+describe('assessSufficiency threshold', () => {
+  it('Given fewer than 20 relevant facts, then loop does not stop early on sufficiency', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    // Insert exactly 15 highly-relevant facts (old threshold was 10@0.40, new is 20@0.50)
+    for (let i = 0; i < 15; i++) {
+      indexer.upsertFact({
+        factText: `query expansion mechanism step ${i} calls expandQueryWithGraph in orchestrator`,
+        sourceKind: 'import_doc',
+        sourceRef: `doc-${i}`,
+        confidence: 0.95,
+      })
+    }
+
+    const response = new FactsQueryResearchOrchestrator(indexer).run({
+      query: 'query expansion mechanism orchestrator',
+      limit: 500,
+      includeContent: true,
+      surface: 'query',
+    })
+
+    // Should NOT stop with answerable_plateau when only 15 facts found
+    expect(response.retrieval.detail).not.toContain('stop:answerable_plateau')
+    indexer.close()
+  })
+
+  it('Given 20+ relevant high-scoring facts, then loop stops as answerable', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    // Insert 25 highly-relevant facts
+    for (let i = 0; i < 25; i++) {
+      indexer.upsertFact({
+        factText: `query expansion mechanism step ${i} calls expandQueryWithGraph in orchestrator pipeline`,
+        sourceKind: 'import_doc',
+        sourceRef: `doc-${i}`,
+        confidence: 0.95,
+      })
+    }
+
+    const response = new FactsQueryResearchOrchestrator(indexer).run({
+      query: 'query expansion mechanism orchestrator',
+      limit: 500,
+      includeContent: true,
+      surface: 'query',
+    })
+
+    expect(response.results.length).toBeGreaterThanOrEqual(20)
+    indexer.close()
+  })
+})
+
 describe('FactsQueryResearchOrchestrator ponds', () => {
   it('Given reserved anchor and source slots overlap, then buildResponse dedupes fact ids', async () => {
     const baseDir = await createTempDir()
