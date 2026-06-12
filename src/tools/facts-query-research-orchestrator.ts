@@ -33,6 +33,7 @@ interface LoopCheckpoint {
 
 interface LoopMetrics {
   uniqueFacts: number
+  relevantFacts: number
   conceptCoverage: number
   avgTop: number
   queryTokenCoverage: number
@@ -201,6 +202,7 @@ export class FactsQueryResearchOrchestrator {
           previousMetrics ??
           ({
             uniqueFacts: scoredFacts.size,
+            relevantFacts: [...scoredFacts.values()].filter(e => e.score >= 0.5).length,
             conceptCoverage: 0,
             avgTop: averageTopScores(scoredFacts),
             queryTokenCoverage: queryTokens.length,
@@ -244,8 +246,10 @@ export class FactsQueryResearchOrchestrator {
       const factConcepts = this.indexer.listFactConcepts(topRows.map(row => row.id))
       const conceptCoverage = computeCoverage(queryTokens, factConcepts)
       const avgTop = averageTopScores(scoredFacts)
+      const relevantFacts = [...scoredFacts.values()].filter(e => e.score >= 0.5).length
       const metrics: LoopMetrics = {
         uniqueFacts: scoredFacts.size,
+        relevantFacts,
         conceptCoverage,
         avgTop,
         queryTokenCoverage: queryTokens.length,
@@ -460,10 +464,16 @@ export class FactsQueryResearchOrchestrator {
         reservedIds.add(entry.row.id)
       }
     }
-    const remainder = sorted.filter(e => !reservedIds.has(e.row.id))
-    const ranked = dedupeRankedFacts([...reserved, ...remainder])
-    const categoryNames = this.indexer.getFactCategoryNamesForFacts(ranked.map(entry => entry.row.id))
-    const results: QueryResult[] = ranked.map(({ row }) => ({
+    const minScore = parseEnvFloat(process.env.KB_MIN_FACT_SCORE, 0.20)
+    const maxFacts = clampLimitInt(process.env.KB_MAX_FACTS_FOR_LLM, 75, 1, DEFAULT_FACT_LIMIT)
+    // Filter low-quality tail facts but always keep reserved (anchor + per-source) entries
+    const filteredRemainder = sorted
+      .filter(e => !reservedIds.has(e.row.id) && e.score >= minScore)
+    const ranked = dedupeRankedFacts([...reserved, ...filteredRemainder])
+    // Hard cap: slice the final ranked list before sending to LLM
+    const cappedRanked = isUnlimited(maxFacts) ? ranked : ranked.slice(0, maxFacts)
+    const categoryNames = this.indexer.getFactCategoryNamesForFacts(cappedRanked.map(entry => entry.row.id))
+    const results: QueryResult[] = cappedRanked.map(({ row }) => ({
       metadata: {
         id: row.id,
         title: summarizeFactTitle(row.fact_text),
@@ -481,6 +491,7 @@ export class FactsQueryResearchOrchestrator {
       `graph_hops:${input.graphHops}`,
       input.pondCount ? `ponds:${input.pondCount}` : null,
       `stop:${input.sufficiencyReason}`,
+      `facts:${results.length}`,
       'semantic:on',
     ]
       .filter(Boolean)
@@ -730,7 +741,8 @@ function computeCheckpointConfidence(metrics: LoopMetrics): number {
 
 function hasMeaningfulProgress(previous: LoopMetrics | undefined, current: LoopMetrics): boolean {
   if (!previous) return true
-  if (current.uniqueFacts >= previous.uniqueFacts + 2) return true
+  // Require at least one new high-quality (score >= 0.5) fact — prevents iterating on junk
+  if (current.relevantFacts >= previous.relevantFacts + 1) return true
   if (current.conceptCoverage >= previous.conceptCoverage + 0.08) return true
   if (current.avgTop >= previous.avgTop + 0.04) return true
   if (current.frontierConcepts > previous.frontierConcepts) return true
@@ -749,6 +761,12 @@ function shouldWidenCategories(input: {
   return input.rankedCategories
     .slice(0, input.activeCategoryIds.length + 1)
     .map(category => category.categoryId)
+}
+
+function parseEnvFloat(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback
+  const parsed = Number.parseFloat(raw)
+  return Number.isFinite(parsed) ? parsed : fallback
 }
 
 function clampLimitInt(raw: string | undefined, fallback: number, min: number, max: number): number {

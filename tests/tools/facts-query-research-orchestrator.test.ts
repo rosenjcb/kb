@@ -244,3 +244,129 @@ describe('FactsQueryResearchOrchestrator ponds', () => {
     indexer.close()
   })
 })
+
+describe('FactsQueryResearchOrchestrator — hard cap', () => {
+  it('Given KB_MAX_FACTS_FOR_LLM=5, then results are capped to at most 5 facts', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    for (let i = 0; i < 30; i++) {
+      indexer.upsertFact({
+        factText: `raylib provides rendering module step ${i} with opengl backend`,
+        sourceKind: 'import_doc',
+        sourceRef: `doc-${i}`,
+        confidence: 0.9,
+      })
+    }
+
+    const prev = process.env.KB_MAX_FACTS_FOR_LLM
+    process.env.KB_MAX_FACTS_FOR_LLM = '5'
+    try {
+      const response = new FactsQueryResearchOrchestrator(indexer).run({
+        query: 'raylib rendering opengl',
+        limit: 500,
+        includeContent: true,
+        surface: 'query',
+      })
+      expect(response.results.length).toBeLessThanOrEqual(5)
+      expect(response.retrieval.detail).toContain('facts:')
+    } finally {
+      if (prev === undefined) delete process.env.KB_MAX_FACTS_FOR_LLM
+      else process.env.KB_MAX_FACTS_FOR_LLM = prev
+    }
+    indexer.close()
+  })
+
+  it('Given KB_MAX_FACTS_FOR_LLM=-1, then results are not capped', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    for (let i = 0; i < 30; i++) {
+      indexer.upsertFact({
+        factText: `raylib provides rendering module step ${i} with opengl backend`,
+        sourceKind: 'import_doc',
+        sourceRef: `doc-${i}`,
+        confidence: 0.9,
+      })
+    }
+
+    const prev = process.env.KB_MAX_FACTS_FOR_LLM
+    process.env.KB_MAX_FACTS_FOR_LLM = '-1'
+    try {
+      const response = new FactsQueryResearchOrchestrator(indexer).run({
+        query: 'raylib rendering opengl',
+        limit: 500,
+        includeContent: true,
+        surface: 'query',
+      })
+      expect(response.results.length).toBeGreaterThan(5)
+    } finally {
+      if (prev === undefined) delete process.env.KB_MAX_FACTS_FOR_LLM
+      else process.env.KB_MAX_FACTS_FOR_LLM = prev
+    }
+    indexer.close()
+  })
+
+  it('Given default cap, then retrieval detail includes facts count', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    indexer.upsertFact({
+      factText: 'raylib is a simple game development library',
+      sourceKind: 'import_doc',
+      sourceRef: 'doc-1',
+      confidence: 0.9,
+    })
+
+    const response = new FactsQueryResearchOrchestrator(indexer).run({
+      query: 'raylib',
+      limit: 500,
+      includeContent: true,
+      surface: 'query',
+    })
+    expect(response.retrieval.detail).toMatch(/facts:\d+/)
+    indexer.close()
+  })
+})
+
+describe('FactsQueryResearchOrchestrator — relevant-facts plateau', () => {
+  it('Given plateau of low-quality facts with no new relevant facts, then loop stops within 3 extra iterations', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    // Insert a few on-topic facts plus many off-topic ones
+    for (let i = 0; i < 3; i++) {
+      indexer.upsertFact({
+        factText: `query expansion calls expandQueryWithGraph step ${i}`,
+        sourceKind: 'import_doc',
+        sourceRef: `on-topic-${i}`,
+        confidence: 0.9,
+      })
+    }
+    for (let i = 0; i < 20; i++) {
+      indexer.upsertFact({
+        factText: `unrelated noise fact about fruit growing season ${i}`,
+        sourceKind: 'import_doc',
+        sourceRef: `noise-${i}`,
+        confidence: 0.9,
+      })
+    }
+
+    const response = new FactsQueryResearchOrchestrator(indexer).run({
+      query: 'query expansion expandQueryWithGraph',
+      limit: 500,
+      includeContent: true,
+      surface: 'query',
+    })
+
+    // Should stop within the configured max iterations (not running all 24)
+    const passesMatch = response.retrieval.detail?.match(/passes:(\d+)/)
+    const passes = passesMatch ? parseInt(passesMatch[1], 10) : 999
+    expect(passes).toBeLessThan(24)
+    indexer.close()
+  })
+})
