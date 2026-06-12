@@ -93,6 +93,46 @@ Override questions with `--questions-file path.json` (JSON array of exactly eigh
 - Rebuild artifact from existing scratch: `--skip-init --run-dir ~/.kb/evaluations/<run-name>/`.
 - Automated artifacts may include extra `run` fields for traceability. Tools should treat unknown keys as forward-compatible metadata.
 
+## The Control (Condition N): a real agent, no KB
+
+The honest question for `kb` is not "does it improve over previous `kb` runs?" but "does it beat the workflow people
+use today?" — *a real coding agent exploring the codebase by itself, with no outsourced knowledge base.* That is the
+**control**, and it is the baseline every `kb` (Condition **K**) result should be reported against.
+
+The control is a real agent, not a simulation, and it runs **as a phase of `pnpm run eval`** — kb and control go
+side-by-side into **one unified artifact**. After the kb queries, eval clones nothing extra: it reuses the same repo
+snapshot and hands each suite question to **Claude Code running headless** inside that clone, with **no KB and no MCP**
+(`--strict-mcp-config`), so it must explore raw files with its own `Read`/`Grep`/`Glob`/`Bash` tools. Answers
+are scored by the **same rubric and the same judge** as `kb query`, and per-question agent telemetry (tokens, turns,
+cost) is captured so the comparison covers both **quality and efficiency**.
+
+```bash
+# kb + control side-by-side into one artifact.json (control runs by default)
+pnpm run eval -- --suite raylib --auto-score
+
+# kb only — control omitted; compare against historic control trends instead
+pnpm run eval -- --suite raylib --auto-score --skip-control
+```
+
+Per-question, the comparison is literally `kb query "Q"` vs the *same* `Q` handed to Claude (`claude -p "<prompt> Q"`).
+A single `~/.kb/evaluations/<run>/artifact.json` holds both: the kb results at top level (`run.condition = "kb"`), the
+control under a `control` block (with its own `aggregate_scores` + `control_telemetry`), and a `comparison` block of
+kb-minus-control deltas. With `--skip-control` the `control`/`comparison` keys are simply absent. The trends table
+printed at the end separates control from kb rows and prints the latest control-vs-kb deltas.
+
+Because the control runs by default, eval **preflights the agent and fails fast**: if `claude` (or the
+`--control-agent-cmd` binary) is not on PATH, the run exits immediately — *before any clone or `kb init`* — with a clear
+message telling you to install the agent or re-run with `--skip-control`. It never silently does the kb work and then
+discovers the agent is missing.
+
+Knobs (all optional): `--control-model <id>` pins the agent model, `--control-max-turns N` caps exploration per
+question, `--control-prompt` (env `KB_CONTROL_PROMPT`) tunes the wrapper prompt — it must contain `{{question}}` — and
+`--control-agent-cmd` (env `KB_CONTROL_AGENT_CMD`) swaps the entire agent command (e.g. to use Cursor); the prompt is
+fed on stdin and JSON is read from stdout.
+
+> The control supersedes the legacy `eval/tools/filesystem-tools.ts` toy tools, which only approximated Condition N and
+> were never wired into a runner. The control logic lives in `scripts/control-core.mjs` and runs inside `eval-run.mjs`.
+
 ## Evaluation Design
 
 This evaluation should be run at least twice against the same codebase snapshot or equivalent branch state:
