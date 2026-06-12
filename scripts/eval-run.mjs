@@ -47,6 +47,9 @@ import {
   allocateRunName,
   gitCloneSnapshot,
   printTrendsSummary,
+  formatScoreDelta,
+  kbControlVerdict,
+  worstQuestionGaps,
 } from './eval-shared.mjs'
 
 import { readQueryResultFile, runAutoScoreFile } from './eval-score.mjs'
@@ -70,6 +73,9 @@ export {
   structuralMetric,
   matchesSuite,
   sparkline,
+  formatScoreDelta,
+  kbControlVerdict,
+  worstQuestionGaps,
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -804,7 +810,7 @@ async function main() {
   fs.writeFileSync(outPath, JSON.stringify(artifact, null, 2), 'utf8')
   console.error(`[eval] wrote ${outPath}`)
 
-  printTrendsSummary(suiteId, KB_REPO)
+  printTrendsSummary(suiteId, KB_REPO, { currentRunId: runName })
 }
 
 const _isMain =

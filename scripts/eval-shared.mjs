@@ -403,6 +403,50 @@ export function gitCloneSnapshot({ url, dest, branch, depth }) {
 // Trends summary (shared by eval-run.mjs and control-core.mjs)
 // ---------------------------------------------------------------------------
 
+/** Format kb − control delta for summary tables. */
+export function formatScoreDelta(n) {
+  if (n === null || n === undefined || Number.isNaN(n)) return '   -   '
+  return ((n >= 0 ? '+' : '') + n.toFixed(3)).padStart(7)
+}
+
+/** One-line verdict from kb vs control score objects. */
+export function kbControlVerdict(kbScores, ctrlScores) {
+  const axes = ['pass', 'correctness', 'usefulness']
+  const deltas = axes
+    .map(k => {
+      const a = kbScores?.[k]
+      const b = ctrlScores?.[k]
+      return typeof a === 'number' && typeof b === 'number' ? a - b : null
+    })
+    .filter(d => d !== null)
+  if (!deltas.length) return 'no comparison'
+  const ahead = deltas.filter(d => d >= 0).length
+  if (ahead === deltas.length) return 'ahead or tied vs control'
+  if (ahead === 0) return 'behind control'
+  return 'mixed vs control'
+}
+
+/** Largest correctness gaps (kb − control), most negative first. */
+export function worstQuestionGaps(kbEvals, ctrlEvals, questions, limit = 3) {
+  const gaps = (kbEvals ?? [])
+    .map((kb, i) => {
+      const ctrl = ctrlEvals?.[i]
+      const kbCorr = kb?.scores?.correctness
+      const ctrlCorr = ctrl?.scores?.correctness
+      if (typeof kbCorr !== 'number' || typeof ctrlCorr !== 'number') return null
+      return {
+        q: i + 1,
+        topic: String(questions?.[i] ?? '').slice(0, 42),
+        kb: kbCorr,
+        ctrl: ctrlCorr,
+        gap: kbCorr - ctrlCorr,
+      }
+    })
+    .filter(Boolean)
+  gaps.sort((a, b) => a.gap - b.gap)
+  return gaps.slice(0, limit)
+}
+
 function _safeJson(file) {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -419,6 +463,35 @@ function _fmtN(n) {
 
 function _fmtScore(n) {
   return n === null || n === undefined ? '  -  ' : n.toFixed(3)
+}
+
+function _padScore(n) {
+  return n === null || n === undefined ? '  -   ' : n.toFixed(3).padStart(6)
+}
+
+function _queryScores(artifact) {
+  const q = artifact?.aggregate_scores?.query ?? artifact?.aggregate_scores?.combined ?? {}
+  return {
+    pass: q.pass_rate_correctness_and_usefulness_at_least_3 ?? null,
+    correctness: q.mean_correctness ?? null,
+    usefulness: q.mean_usefulness ?? null,
+    specificity: q.mean_specificity ?? null,
+    evidence: q.mean_evidence_handling ?? null,
+  }
+}
+
+function _summaryLine(ch = '─', width = 62) {
+  return ch.repeat(width)
+}
+
+function _trendNote(values) {
+  const nums = values.filter(v => typeof v === 'number')
+  if (nums.length < 2) return ''
+  const prev = nums[nums.length - 2]
+  const last = nums[nums.length - 1]
+  const d = last - prev
+  const sign = d >= 0 ? '+' : ''
+  return `${prev.toFixed(3)} → ${last.toFixed(3)} (${sign}${d.toFixed(3)} vs prev)`
 }
 
 function _gatherArtifacts(repoRoot) {
@@ -453,26 +526,21 @@ function _gatherArtifacts(repoRoot) {
 }
 
 /**
- * Print a trends table across prior runs for a suite. Rows are tagged with their
- * condition (control vs kb) so a control baseline and a KB run for the same suite
- * stay distinguishable. `repoRoot` is the kb repo root (for evaluation/runs/).
+ * Print a structured eval summary: this-run scorecard, kb trend, recent history.
+ * `options.currentRunId` highlights the run that just finished (basename of run dir).
  */
-export function printTrendsSummary(suiteId, repoRoot) {
+export function printTrendsSummary(suiteId, repoRoot, options = {}) {
+  const { currentRunId = null } = options
   const all = _gatherArtifacts(repoRoot)
-  // Each unified artifact yields a kb row (top-level scores) and, when present, a
-  // nested control row (artifact.control) — so historic control-vs-kb stays comparable
-  // even across runs where one side was skipped.
   const buildRow = (row, cond, data) => ({
     ...row,
     cond,
     created: row.artifact?.created_at ?? null,
-    docs: structuralMetric(data, 'docs'),
-    entities: structuralMetric(data, 'entities'),
-    rels: structuralMetric(data, 'rels'),
-    avg_results: structuralMetric(data, 'avg_results'),
     usefulness: scoreMetric(data, 'usefulness'),
     pass_rate: scoreMetric(data, 'pass_rate'),
     correctness: scoreMetric(data, 'correctness'),
+    scores: _queryScores(data),
+    artifactData: data,
   })
   const filtered = all
     .filter(row => matchesSuite(row, suiteId))
@@ -489,59 +557,113 @@ export function printTrendsSummary(suiteId, repoRoot) {
       const tb = b.created ? new Date(b.created).getTime() : Number.NaN
       return (Number.isFinite(ta) ? ta : 0) - (Number.isFinite(tb) ? tb : 0)
     })
-    .slice(-20)
 
   if (filtered.length === 0) {
-    console.log(`\n[eval-trends] no prior runs found for suite "${suiteId}"`)
+    console.log(`\n[eval] no prior runs for suite "${suiteId}"`)
     return
   }
 
-  const controls = filtered.filter(r => r.cond === 'control')
   const kbs = filtered.filter(r => r.cond !== 'control')
+  const controls = filtered.filter(r => r.cond === 'control')
+  const currentKb =
+    (currentRunId && kbs.find(r => r.id === currentRunId)) || kbs[kbs.length - 1]
+  const currentArtifact = currentKb?.artifact
+  const sameRunControl =
+    currentArtifact?.control?.status === 'complete' ||
+    currentArtifact?.control?.status === 'complete_unscored'
+      ? currentArtifact.control
+      : null
+  const ctrlForCompare = sameRunControl
+    ? _queryScores(sameRunControl)
+    : controls[controls.length - 1]?.scores
+  const kbScores = currentKb?.scores ?? _queryScores(currentArtifact)
+
+  const runLabel = currentKb?.id ?? currentRunId ?? 'latest'
+  console.log('')
+  console.log(_summaryLine('═'))
+  console.log(` eval summary · suite=${suiteId} · ${runLabel}`)
+  console.log(_summaryLine('═'))
+
+  if (ctrlForCompare && kbScores) {
+    const delta = k => {
+      const a = kbScores[k]
+      const b = ctrlForCompare[k]
+      return typeof a === 'number' && typeof b === 'number' ? a - b : null
+    }
+    console.log('')
+    console.log(' THIS RUN — kb vs control')
+    console.log('              pass    corr     use')
+    console.log(
+      ` control   ${_padScore(ctrlForCompare.pass)}  ${_padScore(ctrlForCompare.correctness)}  ${_padScore(ctrlForCompare.usefulness)}`
+    )
+    console.log(
+      ` kb        ${_padScore(kbScores.pass)}  ${_padScore(kbScores.correctness)}  ${_padScore(kbScores.usefulness)}`
+    )
+    console.log(
+      ` Δ kb−ctrl ${formatScoreDelta(delta('pass'))}  ${formatScoreDelta(delta('correctness'))}  ${formatScoreDelta(delta('usefulness'))}`
+    )
+    console.log(` verdict   ${kbControlVerdict(kbScores, ctrlForCompare)}`)
+
+    if (sameRunControl && currentArtifact?.query_evaluation?.length) {
+      const worst = worstQuestionGaps(
+        currentArtifact.query_evaluation,
+        sameRunControl.query_evaluation,
+        currentArtifact.question_set,
+        3
+      ).filter(g => g.gap < 0)
+      if (worst.length) {
+        console.log('')
+        console.log(' WEAKEST (corr gap, kb − control)')
+        for (const g of worst) {
+          console.log(
+            `   Q${g.q}  ${g.topic.padEnd(42)}  kb=${g.kb.toFixed(1)}  ctrl=${g.ctrl.toFixed(1)}  Δ=${formatScoreDelta(g.gap).trim()}`
+          )
+        }
+      }
+    }
+
+    const tel = currentArtifact?.comparison?.control_efficiency
+    if (tel?.total_cost_usd != null) {
+      console.log(
+        ` control cost  $${Number(tel.total_cost_usd).toFixed(2)} · ${tel.mean_num_turns ?? '?'} turns/q`
+      )
+    }
+  } else if (kbScores) {
+    console.log('')
+    console.log(' THIS RUN — kb only (no control in artifact)')
+    console.log(
+      ` pass=${_padScore(kbScores.pass).trim()}  corr=${_padScore(kbScores.correctness).trim()}  use=${_padScore(kbScores.usefulness).trim()}`
+    )
+  }
+
+  const kbHistory = kbs.slice(-12)
+  if (kbHistory.length >= 2) {
+    const corrSeries = kbHistory.map(r => r.correctness)
+    const passSeries = kbHistory.map(r => r.pass_rate)
+    console.log('')
+    console.log(' KB TREND (last runs)')
+    console.log(` corr  ${sparkline(corrSeries)}  ${_trendNote(corrSeries)}`)
+    console.log(` pass  ${sparkline(passSeries)}  ${_trendNote(passSeries)}`)
+  }
+
+  const recent = filtered.slice(-14)
+  const W = 22
+  console.log('')
+  console.log(' RECENT RUNS')
   console.log(
-    `\n[eval-trends] suite=${suiteId}  runs=${filtered.length}  kb=${kbs.length}  control=${controls.length}`
+    `${'date'.padEnd(17)} ${'who'.padEnd(7)} ${'pass'.padStart(6)} ${'corr'.padStart(6)} ${'use'.padStart(6)}  run`
   )
-
-  // Head-to-head: latest KB vs latest control (the control-vs-kb comparison).
-  const latestKb = kbs[kbs.length - 1]
-  const latestControl = controls[controls.length - 1]
-  if (latestKb && latestControl) {
-    const d = (a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : null)
-    const fmtD = n => (n === null ? '  -  ' : (n >= 0 ? '+' : '') + n.toFixed(3))
-    console.log('[eval-trends] control vs kb (latest of each):')
+  console.log(_summaryLine())
+  for (const r of recent) {
+    const dt = r.created ? String(r.created).slice(0, 16).replace('T', ' ') : 'unknown'
+    const marker = r.id === runLabel || r.id === `${runLabel} [control]` ? ' ←' : ''
+    const id =
+      r.id.length > W ? `${r.id.slice(0, W - 1)}…` : r.id
     console.log(
-      `[eval-trends]   pass   control=${_fmtScore(latestControl.pass_rate)} kb=${_fmtScore(latestKb.pass_rate)}  Δ(kb-control)=${fmtD(d(latestKb.pass_rate, latestControl.pass_rate))}`
-    )
-    console.log(
-      `[eval-trends]   corr   control=${_fmtScore(latestControl.correctness)} kb=${_fmtScore(latestKb.correctness)}  Δ(kb-control)=${fmtD(d(latestKb.correctness, latestControl.correctness))}`
-    )
-    console.log(
-      `[eval-trends]   use    control=${_fmtScore(latestControl.usefulness)} kb=${_fmtScore(latestKb.usefulness)}  Δ(kb-control)=${fmtD(d(latestKb.usefulness, latestControl.usefulness))}`
+      `${dt.padEnd(17)} ${r.cond.padEnd(7)} ${_padScore(r.pass_rate)} ${_padScore(r.correctness)} ${_padScore(r.usefulness)}  ${id}${marker}`
     )
   }
-
-  const W = 24
-  const hdr = `\n${'date'.padEnd(20)} ${'cond'.padEnd(7)} ${'run'.padEnd(W)} ${'docs'.padStart(4)} ${'ent'.padStart(5)} ${'res'.padStart(5)} ${'use'.padStart(6)} ${'pass'.padStart(6)} ${'corr'.padStart(6)}  src`
-  console.log(hdr)
-  console.log('-'.repeat(hdr.trim().length))
-  for (const r of filtered) {
-    const dt = r.created ? String(r.created).slice(0, 19) : 'unknown             '
-    const id = r.id.length > W ? `${r.id.slice(0, W - 1)}…` : r.id.padEnd(W)
-    console.log(
-      [
-        dt,
-        r.cond.padEnd(7),
-        id,
-        _fmtN(r.docs),
-        _fmtN(r.entities),
-        _fmtN(r.avg_results),
-        _fmtScore(r.usefulness),
-        _fmtScore(r.pass_rate),
-        _fmtScore(r.correctness),
-        ` ${r.source}`,
-      ].join(' ')
-    )
-  }
+  console.log(_summaryLine('═'))
 }
 
 // ---------------------------------------------------------------------------
