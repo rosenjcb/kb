@@ -19,10 +19,9 @@ import {
   runControlPass,
 } from '../../scripts/control-core.mjs'
 
-// A fake agent command: ignores stdin, prints a fixed result JSON to stdout. Lets us
-// exercise runControlPass end-to-end with no network and no `claude` binary.
+// Cross-platform stub: avoid shell `printf` differences (dash/busybox/CI).
 const FAKE_AGENT_CMD =
-  'printf \'{"result":"Stub answer grounded in src/main.c.","total_cost_usd":0.02,"input_tokens":120,"output_tokens":40,"num_turns":3}\''
+  'node -e "process.stdout.write(JSON.stringify({result:\'Stub answer grounded in src/main.c.\',total_cost_usd:0.02,input_tokens:120,output_tokens:40,num_turns:3}))"'
 
 function fakeSuite() {
   return {
@@ -178,6 +177,19 @@ describe('runControlPass', () => {
     const q1 = readQueryResultFile(path.join(workdir, 'q1.json'))
     expect(q1.answer).toContain('Stub answer')
     expect(block.aggregate_scores.query).toBeDefined()
+  })
+
+  it('returns partial when the agent fails on some questions', async () => {
+    const workdir = mkdtempSync(path.join(tmpdir(), 'control-partial-'))
+    const block = await runControlPass({
+      repoDir: workdir,
+      workdir,
+      suiteConfig: fakeSuite(),
+      agentCmd: 'node -e "process.exit(1)"',
+      autoScore: false,
+    })
+    expect(block.status).toBe('partial')
+    expect(block.query_evaluation.every(ev => ev.answer_excerpt === null)).toBe(true)
   })
 
   it('throws when the control prompt lacks the {{question}} placeholder', async () => {

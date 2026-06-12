@@ -365,9 +365,10 @@ export async function runControlPass({
   }
 
   const tels = perQuestion.map(qf => qf.telemetry).filter(Boolean)
+  const answered = perQuestion.filter(qf => String(qf.answer ?? '').trim()).length
   const sum = key => tels.reduce((a, t) => a + (Number(t[key]) || 0), 0)
   const controlTelemetry = {
-    questions_answered: tels.length,
+    questions_answered: Math.max(tels.length, answered),
     total_input_tokens: sum('input_tokens'),
     total_output_tokens: sum('output_tokens'),
     total_cost_usd: Number(sum('total_cost_usd').toFixed(4)),
@@ -377,9 +378,12 @@ export async function runControlPass({
 
   return {
     condition: 'control',
-    status: tels.length === questions.length
-      ? (queryScoringMeta?.mode === 'failed' ? 'complete_unscored' : 'complete')
-      : 'partial',
+    status:
+      answered === questions.length
+        ? queryScoringMeta?.mode === 'failed'
+          ? 'complete_unscored'
+          : 'complete'
+        : 'partial',
     agent: { name: agentName, model: model ?? 'default', command: agentDesc, max_turns: maxTurns },
     control_prompt: controlPrompt,
     query_scoring: queryScoringMeta,
