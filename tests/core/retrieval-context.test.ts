@@ -6,14 +6,34 @@ import {
 } from '../../src/core/retrieval-context'
 
 describe('retrieval-context', () => {
-  it('Given long fact text, then LLM formatting keeps full content', () => {
+  it('Given long fact text with no limit, then full content is kept', () => {
     const long = 'x'.repeat(2500)
     expect(formatFactContentForLLM(long)).toBe(long)
     const formatted = formatRetrievedFactsForLLM([
       { metadata: { id: 'fact-a', title: 'Alpha' }, content: long },
     ])
     expect(formatted).toContain(long)
-    expect(formatted).not.toContain('...')
+  })
+
+  it('Given maxContentChars set, then long fact content is truncated with ellipsis', () => {
+    const long = 'a'.repeat(1000)
+    const formatted = formatRetrievedFactsForLLM(
+      [{ metadata: { id: 'fact-a' }, content: long }],
+      { maxContentChars: 100 }
+    )
+    expect(formatted).toContain('a'.repeat(100))
+    expect(formatted).toContain('…')
+    expect(formatted).not.toContain('a'.repeat(101))
+  })
+
+  it('Given maxContentChars set, then short fact content is kept unchanged', () => {
+    const short = 'short fact'
+    const formatted = formatRetrievedFactsForLLM(
+      [{ metadata: { id: 'fact-a' }, content: short }],
+      { maxContentChars: 100 }
+    )
+    expect(formatted).toContain(short)
+    expect(formatted).not.toContain('…')
   })
 
   it('Given multiple ranked facts, then all are included for LLM context', () => {

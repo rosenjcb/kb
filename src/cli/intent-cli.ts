@@ -722,6 +722,8 @@ function getIntentQuestion(parsed: ParsedIntentCommand): string {
   return fromOriginalQuery || fromOriginalFact || fromQuery || fromFact || fromChange
 }
 
+const MAX_FACT_CONTENT_CHARS = 800
+
 function buildEvidence(results: ReadDocumentsResultItem[], _allFacts?: boolean): string {
   return formatRetrievedFactsForLLM(results, {
     heading: (item, index) => {
@@ -729,6 +731,7 @@ function buildEvidence(results: ReadDocumentsResultItem[], _allFacts?: boolean):
       const title = item.metadata?.title ?? id
       return `Document ${index + 1}: ${title} (id=${id})`
     },
+    maxContentChars: MAX_FACT_CONTENT_CHARS,
   })
 }
 

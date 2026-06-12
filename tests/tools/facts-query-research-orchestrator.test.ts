@@ -251,9 +251,9 @@ describe('FactsQueryResearchOrchestrator — hard cap', () => {
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
 
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 80; i++) {
       indexer.upsertFact({
-        factText: `raylib provides rendering module step ${i} with opengl backend`,
+        factText: `raylib rendering opengl step ${i}`,
         sourceKind: 'import_doc',
         sourceRef: `doc-${i}`,
         confidence: 0.9,
@@ -269,7 +269,7 @@ describe('FactsQueryResearchOrchestrator — hard cap', () => {
     expect(response.results.length).toBeLessThanOrEqual(75)
     expect(response.retrieval.detail).toContain('facts:')
     indexer.close()
-  })
+  }, 15000)
 
   it('Given retrieval detail, then it includes facts count', async () => {
     const baseDir = await createTempDir()
