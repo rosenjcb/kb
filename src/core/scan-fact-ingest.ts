@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
+import { tombstoneDocFactsForFile } from './doc-fact-writer'
 import { placeholderTripletFromFactText } from './fact-triplet-placeholder'
 import { segmentMarkdownForFacts } from './sentence-split'
 import { yieldEvery } from './yield'
@@ -18,6 +19,7 @@ export interface ScanFactIngestInput {
 export interface ScanFactIngestResult {
   filesScanned: number
   segmentsUpserted: number
+  segmentsTombstoned: number
 }
 
 export interface ScanFactIngestProgress {
@@ -90,14 +92,17 @@ export async function ingestSourceMarkdownFilesAsFacts(
 
   let filesScanned = 0
   let segmentsUpserted = 0
+  let segmentsTombstoned = 0
   let processedSegments = 0
   const yieldStride = input.yieldEverySegments ?? 50
   try {
     const paths = Object.keys(input.files).sort()
     for (const relPath of paths) {
       const raw = input.files[relPath]
-      if (!raw?.trim()) continue
+      if (raw === undefined) continue
       filesScanned += 1
+      segmentsTombstoned += tombstoneDocFactsForFile(indexer, relPath)
+      if (!raw.trim()) continue
       const sourceLabel = path.basename(relPath, path.extname(relPath))
       const segments = segmentMarkdownForFacts(raw).map(s => s.replace(/\s+/g, ' ').trim())
       let segIdx = 0
@@ -149,5 +154,5 @@ export async function ingestSourceMarkdownFilesAsFacts(
     indexer.close()
     astDb?.close()
   }
-  return { filesScanned, segmentsUpserted }
+  return { filesScanned, segmentsUpserted, segmentsTombstoned }
 }

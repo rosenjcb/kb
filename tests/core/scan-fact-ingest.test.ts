@@ -27,10 +27,10 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
     const stats = await ingestSourceMarkdownFilesAsFacts({
       baseDir,
       files: { 'README.md': `# Title\n\n${long}` },
-      maxTotal: 100,
     })
     expect(stats.filesScanned).toBe(1)
     expect(stats.segmentsUpserted).toBeGreaterThanOrEqual(2)
+    expect(stats.segmentsTombstoned).toBe(0)
 
     const ix = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
     try {
@@ -88,5 +88,68 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
     const last = snapshots.at(-1)
     expect(last?.filesCompleted).toBe(2)
     expect(last?.filesRemaining).toBe(0)
+  })
+
+  it('Given a re-ingest with fewer segments, then tombstones orphaned segment facts', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-markdown-fact-rescan-'))
+    tempDirs.push(baseDir)
+    new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') }).close()
+
+    const sentenceA =
+      'First long sentence about eval harvest pipeline behavior for automated regression testing.'
+    const sentenceB =
+      'Second long sentence about session management and scoring artifacts for eval runs today.'
+    const sentenceC =
+      'Third long sentence that will be removed on rescan so its fact must be purged from sqlite.'
+
+    await ingestSourceMarkdownFilesAsFacts({
+      baseDir,
+      files: { 'EVAL.md': `# Eval\n\n${sentenceA}\n\n${sentenceB}\n\n${sentenceC}` },
+    })
+
+    const rescan = await ingestSourceMarkdownFilesAsFacts({
+      baseDir,
+      files: { 'EVAL.md': `# Eval\n\n${sentenceA}\n\n${sentenceB}` },
+    })
+    expect(rescan.segmentsTombstoned).toBeGreaterThanOrEqual(3)
+    expect(rescan.segmentsUpserted).toBeGreaterThanOrEqual(2)
+
+    const ix = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+    try {
+      const refs = ix.listActiveFactsBySourceRefPrefix('EVAL.md#').map(f => f.source_ref)
+      expect(refs).not.toContain('EVAL.md#s2')
+      expect(ix.searchFacts('removed on rescan', 5).length).toBe(0)
+      expect(ix.searchFacts('session management and scoring artifacts', 5).length).toBeGreaterThan(0)
+    } finally {
+      ix.close()
+    }
+  })
+
+  it('Given an emptied markdown file, then purges all prior segment facts', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-markdown-fact-empty-'))
+    tempDirs.push(baseDir)
+    new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') }).close()
+
+    const sentence =
+      'Sentence about npm run eval that should disappear when the markdown file becomes empty.'
+    await ingestSourceMarkdownFilesAsFacts({
+      baseDir,
+      files: { 'EMPTY.md': `# Empty\n\n${sentence}` },
+    })
+
+    const cleared = await ingestSourceMarkdownFilesAsFacts({
+      baseDir,
+      files: { 'EMPTY.md': '   \n' },
+    })
+    expect(cleared.segmentsTombstoned).toBeGreaterThan(0)
+    expect(cleared.segmentsUpserted).toBe(0)
+
+    const ix = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+    try {
+      expect(ix.listActiveFactsBySourceRefPrefix('EMPTY.md#').length).toBe(0)
+      expect(ix.searchFacts('npm run eval', 5).length).toBe(0)
+    } finally {
+      ix.close()
+    }
   })
 })

@@ -32,6 +32,7 @@ import {
 } from '../core/fact-categories'
 import { promptNamedListInterview } from './named-list-interview'
 import { DOC_TYPES } from '../core/doc-taxonomy'
+import { tombstoneRemovedDocSourceFiles } from '../core/doc-fact-writer'
 import {
   ingestSourceMarkdownFilesAsFacts,
   type ScanFactIngestProgress,
@@ -786,6 +787,25 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       } else {
         progress.start('document-facts', '📄 indexing document sentences into facts…')
         const endScanFacts = makeCycleTimer('document-facts', provider, options.collector, counter)
+        if (options.rescan) {
+          const manifest = await readSourceFilesManifest(baseDir)
+          const purgeIndexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+          try {
+            const purged = tombstoneRemovedDocSourceFiles(
+              purgeIndexer,
+              context.sourceFiles,
+              manifest
+            )
+            if (purged > 0) {
+              progress.update(
+                'document-facts',
+                `purged ${purged} segment(s) from deleted source file(s)`
+              )
+            }
+          } finally {
+            purgeIndexer.close()
+          }
+        }
         const ingestStats = await ingestSourceMarkdownFilesAsFacts({
           baseDir,
           files: changedSourceFiles,
@@ -804,11 +824,15 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         await persist({
           completedCycles: ['document-facts'],
         })
+        const tombstoneNote =
+          ingestStats.segmentsTombstoned > 0
+            ? `, ${ingestStats.segmentsTombstoned} stale segment(s) purged`
+            : ''
         progress.finish(
           'document-facts',
           options.rescan
-            ? `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} changed, ${unchangedSourceFileCount} unchanged file(s)`
-            : `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} files`
+            ? `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} changed, ${unchangedSourceFileCount} unchanged file(s)${tombstoneNote}`
+            : `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} files${tombstoneNote}`
         )
       }
       if (options.stopAfter === 'document-facts') throw new InitPausedError('document-facts')
