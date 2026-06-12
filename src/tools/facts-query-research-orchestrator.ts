@@ -86,7 +86,8 @@ export class FactsQueryResearchOrchestrator {
     const perIterationLimit = 50
     const queryTokens = tokenizeQuery(input.query)
     const rankedCategories = this.indexer.inferCategoriesForQuery(input.query, 4)
-    let activeCategoryIds = rankedCategories.slice(0, 2).map(category => category.categoryId)
+    let activeCategoryIds = rankedCategories.slice(0, 3).map(category => category.categoryId)
+    let categoryWideningExhausted = false
     let activeConcepts = queryTokens.slice(0, 8)
     let activeConceptBudget = 40
     const seenFactIds = new Set<string>(input.excludeIds ?? [])
@@ -251,7 +252,7 @@ export class FactsQueryResearchOrchestrator {
         frontierConcepts: frontierConcepts.length,
         activePonds,
       }
-      sufficiency = this.assessSufficiency({ scoredFacts })
+      sufficiency = this.assessSufficiency({ scoredFacts, conceptCoverage })
       const confidence = computeCheckpointConfidence(metrics)
       const hasMeaningfulGain = hasMeaningfulProgress(previousMetrics, metrics)
       plateauCount = hasMeaningfulGain ? 0 : plateauCount + 1
@@ -302,7 +303,7 @@ export class FactsQueryResearchOrchestrator {
             sufficiency.decision === 'answerable'
               ? 'frontier_exhausted'
               : 'weak_evidence_after_exhaustion'
-        } else if (plateauCount >= 2) {
+        } else if (plateauCount >= 3) {
           status = 'stop'
           nextAction = 'plateau'
           stopReason =
@@ -325,6 +326,15 @@ export class FactsQueryResearchOrchestrator {
 
       if (nextCategoryIds.length > activeCategoryIds.length) {
         activeCategoryIds = nextCategoryIds
+      } else if (
+        !categoryWideningExhausted &&
+        sufficiency.decision === 'not_answerable_yet' &&
+        activeCategoryIds.length >= rankedCategories.length
+      ) {
+        // All ranked categories exhausted and still not answerable — drop category filter
+        // so uncategorized search paths can surface cross-cutting facts.
+        categoryWideningExhausted = true
+        activeCategoryIds = []
       }
       if (canExpandConcepts) {
         activeConceptBudget = Math.min(activeConceptBudget + 8, 96)
@@ -351,10 +361,14 @@ export class FactsQueryResearchOrchestrator {
   // Minimal prompt contract: single decision from deterministic signals.
   private assessSufficiency(input: {
     scoredFacts: Map<string, { row: FactRow; score: number }>
+    conceptCoverage?: number
   }): SufficiencyDecision {
-    const relevantFacts = [...input.scoredFacts.values()].filter(entry => entry.score >= 0.40)
-    if (relevantFacts.length < 10) {
+    const relevantFacts = [...input.scoredFacts.values()].filter(entry => entry.score >= 0.50)
+    if (relevantFacts.length < 20) {
       return { decision: 'not_answerable_yet', reason: 'insufficient-facts' }
+    }
+    if ((input.conceptCoverage ?? 0) < 0.3 && relevantFacts.length < 30) {
+      return { decision: 'not_answerable_yet', reason: 'low-concept-coverage' }
     }
     return { decision: 'answerable', reason: 'coverage-sufficient' }
   }

@@ -123,15 +123,45 @@ export class TsMorphIndexer {
         const sourceText = rawText.length > 1500 ? `${rawText.slice(0, 1497)}…` : rawText
         const sourceRef = `ast:${rel}@${exportName}`
         stats.sourceRefs.add(sourceRef)
+
+        // For variable declarations (constants), include value in fact text
+        let factText = `${exportName} is a ${subkind} exported from ${rel}`
+        if (Node.isVariableDeclaration(decl)) {
+          const valueText = extractSimpleInitializerText(decl.getInitializer()?.getText())
+          if (valueText) factText = `${exportName} is a constant with value ${valueText} exported from ${rel}`
+        }
+
         upsertCodeFileFact(
           this.factIndexer,
           sourceRef,
-          `${exportName} is a ${subkind} exported from ${rel}`,
+          factText,
           { subject: exportName, predicate: 'exported_from', object: rel },
           0.65,
           sourceText
         )
         stats.symbols++
+      }
+
+      // Module-level non-exported constants with literal values
+      for (const vs of sf.getVariableStatements()) {
+        if (vs.isExported()) continue
+        if (vs.getDeclarationKind().toString() !== 'const') continue
+        for (const vd of vs.getDeclarations()) {
+          const name = vd.getName()
+          const valueText = extractSimpleInitializerText(vd.getInitializer()?.getText())
+          if (!valueText) continue
+          const sourceRef = `ast:const:${rel}@${name}`
+          stats.sourceRefs.add(sourceRef)
+          upsertCodeFileFact(
+            this.factIndexer,
+            sourceRef,
+            `${name} is a constant with value ${valueText} in ${rel}`,
+            { subject: name, predicate: 'defined_in', object: rel },
+            0.6,
+            vd.getText()
+          )
+          stats.symbols++
+        }
       }
 
       // IMPORTS_FILE facts (bridges between file clusters)
@@ -231,3 +261,20 @@ export function tombstoneStaleAstFacts(
 
 // Re-export SOURCE constant for compatibility
 export { SOURCE as DETERMINISTIC_TS_SOURCE }
+
+/**
+ * Returns a concise string for simple literal initializers (numbers, strings, booleans,
+ * short arithmetic/template expressions). Returns undefined for complex expressions.
+ */
+function extractSimpleInitializerText(text: string | undefined): string | undefined {
+  if (!text) return undefined
+  const trimmed = text.trim()
+  if (trimmed.length > 120) return undefined
+  // Accept: numeric literals, string literals, booleans, simple arithmetic, arrays of literals
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return trimmed
+  if (/^['"`]/.test(trimmed)) return trimmed.slice(0, 80)
+  if (trimmed === 'true' || trimmed === 'false') return trimmed
+  // Short expressions that look like formulas (contain operators but no function calls)
+  if (trimmed.length <= 60 && /[\d]/.test(trimmed) && !/[({]/.test(trimmed)) return trimmed
+  return undefined
+}
