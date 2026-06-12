@@ -102,7 +102,7 @@ use today?" — *a real coding agent exploring the codebase by itself, with no o
 The control is a real agent, not a simulation, and it runs **as a phase of `pnpm run eval`** — kb and control go
 side-by-side into **one unified artifact**. After the kb queries, eval clones nothing extra: it reuses the same repo
 snapshot and hands each suite question to **Claude Code running headless** inside that clone, with **no KB and no MCP**
-(`--bare --strict-mcp-config`), so it must explore raw files with its own `Read`/`Grep`/`Glob`/`Bash` tools. Answers
+(`--strict-mcp-config`), so it must explore raw files with its own `Read`/`Grep`/`Glob`/`Bash` tools. Answers
 are scored by the **same rubric and the same judge** as `kb query`, and per-question agent telemetry (tokens, turns,
 cost) is captured so the comparison covers both **quality and efficiency**.
 

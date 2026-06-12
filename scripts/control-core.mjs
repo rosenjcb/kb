@@ -3,7 +3,7 @@
  *
  * Used as a phase inside `scripts/eval-run.mjs` (not a standalone command). For each
  * suite question it runs a REAL coding agent (Claude Code, headless) inside the same
- * repo clone the kb run used, with NO knowledge base (`--bare --strict-mcp-config`, so
+ * repo clone the kb run used, with NO knowledge base (`--strict-mcp-config`, so
  * no kb/MCP tools load). The agent explores raw files with its own Read/Grep/Glob/Bash
  * tools and answers — "what people do today". Answers are scored by the SAME rubric +
  * SAME judge as `kb query`. The result is returned as a `control` block that eval-run
@@ -38,11 +38,10 @@ function mean(xs) {
 // Agent invocation
 // ---------------------------------------------------------------------------
 
-/** Default Claude Code headless argv. `--bare`/`--strict-mcp-config` guarantee no kb/MCP loads. */
+/** Default Claude Code headless argv. `--strict-mcp-config` guarantees no kb/MCP loads. */
 export function defaultClaudeArgv({ model, maxTurns }) {
   const argv = [
     '-p',
-    '--bare',
     '--strict-mcp-config',
     '--output-format',
     'json',
@@ -133,7 +132,14 @@ export function runControlAgent({ repoDir, prompt, model, maxTurns, agentCmd }) 
       })
   if (res.error) throw res.error
   if (res.status !== 0) {
-    throw new Error(`control agent exited ${res.status}: ${(res.stderr || '').slice(0, 800)}`)
+    let detail = (res.stderr || '').slice(0, 800)
+    if (!detail) {
+      try {
+        const j = extractJsonObject(res.stdout || '')
+        detail = (j.result || j.error || JSON.stringify(j).slice(0, 200))
+      } catch { /* ignore */ }
+    }
+    throw new Error(`control agent exited ${res.status}: ${detail}`)
   }
   const j = extractJsonObject(res.stdout || '')
   const usage = j.usage ?? {}

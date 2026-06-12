@@ -32,9 +32,9 @@ function fakeSuite() {
 }
 
 describe('control agent command', () => {
-  it('default Claude Code argv loads no kb/MCP (--bare, --strict-mcp-config)', () => {
+  it('default Claude Code argv loads no kb/MCP (--strict-mcp-config)', () => {
     const argv = defaultClaudeArgv({ model: 'claude-opus-4-8', maxTurns: 30 })
-    expect(argv).toContain('--bare')
+    expect(argv).not.toContain('--bare')
     expect(argv).toContain('--strict-mcp-config')
     expect(argv).toContain('--output-format')
     expect(argv).toEqual(expect.arrayContaining(['--model', 'claude-opus-4-8']))
