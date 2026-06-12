@@ -30,6 +30,19 @@ export const DEFAULT_CONTROL_PROMPT =
 
 export const DEFAULT_MAX_TURNS = 30
 
+/** Built-in control backends selectable via `--control-agent`. */
+export const CONTROL_AGENT_CHOICES = ['claude', 'cursor']
+
+export function normalizeControlAgent(name) {
+  const v = String(name ?? 'claude')
+    .trim()
+    .toLowerCase()
+  if (CONTROL_AGENT_CHOICES.includes(v)) return v
+  throw new Error(
+    `unknown --control-agent "${name}"; choose one of: ${CONTROL_AGENT_CHOICES.join(', ')}`
+  )
+}
+
 function mean(xs) {
   return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0
 }
@@ -55,9 +68,22 @@ export function defaultClaudeArgv({ model, maxTurns }) {
   return argv
 }
 
+/**
+ * Default Cursor Agent CLI argv (`agent` binary). `--mode ask` is read-only Q&A;
+ * `--trust` skips headless workspace prompts. No kb/MCP tools are injected by eval.
+ */
+export function defaultCursorArgv({ model }) {
+  const argv = ['-p', '--output-format', 'json', '--mode', 'ask', '--trust']
+  if (model) argv.push('--model', model)
+  return argv
+}
+
 /** Human-readable description of the agent command (for logs / artifact). */
-export function describeAgentCommand({ agentCmd, model, maxTurns }) {
+export function describeAgentCommand({ agentCmd, controlAgent = 'claude', model, maxTurns }) {
   if (agentCmd) return agentCmd
+  if (controlAgent === 'cursor') {
+    return ['agent', ...defaultCursorArgv({ model })].join(' ')
+  }
   return ['claude', ...defaultClaudeArgv({ model, maxTurns })].join(' ')
 }
 
@@ -70,13 +96,15 @@ export function commandAvailable(cmd) {
   }
 }
 
-/** The agent binary the control phase will invoke (default: claude; else first token of agentCmd). */
-export function controlAgentBinary(agentCmd) {
-  if (!agentCmd) return 'claude'
-  const m = String(agentCmd)
-    .trim()
-    .match(/^(\S+)/)
-  return m ? m[1] : 'claude'
+/** The agent binary the control phase will invoke. */
+export function controlAgentBinary({ agentCmd = null, controlAgent = 'claude' } = {}) {
+  if (agentCmd) {
+    const m = String(agentCmd)
+      .trim()
+      .match(/^(\S+)/)
+    return m ? m[1] : 'claude'
+  }
+  return controlAgent === 'cursor' ? 'agent' : 'claude'
 }
 
 /**
@@ -86,21 +114,42 @@ export function controlAgentBinary(agentCmd) {
  */
 export function assertControlAgentAvailable({
   agentCmd = null,
+  controlAgent = 'claude',
   controlPrompt = DEFAULT_CONTROL_PROMPT,
 } = {}) {
   if (!controlPrompt.includes('{{question}}')) {
     throw new Error('control prompt must contain the {{question}} placeholder (--control-prompt)')
   }
-  const bin = controlAgentBinary(agentCmd)
+  const bin = controlAgentBinary({ agentCmd, controlAgent })
   if (!commandAvailable(bin)) {
+    const installHint =
+      controlAgent === 'cursor'
+        ? 'install Cursor Agent CLI (`agent` on PATH; https://cursor.com/docs/agent/cli)'
+        : 'install Claude Code (`claude` on PATH; https://code.claude.com)'
     throw new Error(
       `control agent \`${bin}\` is not installed / not on PATH.
   The control baseline runs by default and needs a real coding agent.
   Fix one of:
-    • install Claude Code (https://code.claude.com), or
+    • ${installHint}, or
     • re-run with --skip-control to evaluate kb only (control data omitted), or
-    • pass --control-agent-cmd "<cmd>" (env KB_CONTROL_AGENT_CMD) to use another agent.`
+    • pass --control-agent claude|cursor (env KB_CONTROL_AGENT), or
+    • pass --control-agent-cmd "<cmd>" (env KB_CONTROL_AGENT_CMD) for a full override.`
     )
+  }
+}
+
+/** Normalize agent JSON telemetry (Claude Code + Cursor Agent CLI shapes). */
+export function normalizeAgentTelemetry(j) {
+  const usage = j.usage ?? {}
+  return {
+    input_tokens: j.input_tokens ?? usage.input_tokens ?? usage.inputTokens ?? null,
+    output_tokens: j.output_tokens ?? usage.output_tokens ?? usage.outputTokens ?? null,
+    cache_read_tokens: usage.cache_read_input_tokens ?? usage.cacheReadTokens ?? null,
+    total_cost_usd: j.total_cost_usd ?? j.cost_usd ?? null,
+    num_turns: j.num_turns ?? null,
+    duration_ms: j.duration_ms ?? j.duration_api_ms ?? null,
+    session_id: j.session_id ?? null,
+    is_error: j.is_error ?? false,
   }
 }
 
@@ -116,20 +165,25 @@ export function extractJsonObject(text) {
  * Run the control agent for one prompt inside repoDir. Returns the answer text and
  * normalized telemetry. Reads agent JSON from stdout; prompt is fed on stdin.
  */
-export function runControlAgent({ repoDir, prompt, model, maxTurns, agentCmd }) {
+export function runControlAgent({
+  repoDir,
+  prompt,
+  model,
+  maxTurns,
+  agentCmd,
+  controlAgent = 'claude',
+}) {
+  const spawnOpts = {
+    cwd: repoDir,
+    input: prompt,
+    encoding: 'utf8',
+    maxBuffer: 50 * 1024 * 1024,
+  }
   const res = agentCmd
-    ? spawnSync('sh', ['-c', agentCmd], {
-        cwd: repoDir,
-        input: prompt,
-        encoding: 'utf8',
-        maxBuffer: 50 * 1024 * 1024,
-      })
-    : spawnSync('claude', defaultClaudeArgv({ model, maxTurns }), {
-        cwd: repoDir,
-        input: prompt,
-        encoding: 'utf8',
-        maxBuffer: 50 * 1024 * 1024,
-      })
+    ? spawnSync('sh', ['-c', agentCmd], spawnOpts)
+    : controlAgent === 'cursor'
+      ? spawnSync('agent', defaultCursorArgv({ model }), spawnOpts)
+      : spawnSync('claude', defaultClaudeArgv({ model, maxTurns }), spawnOpts)
   if (res.error) throw res.error
   if (res.status !== 0) {
     let detail = (res.stderr || '').slice(0, 800)
@@ -142,19 +196,9 @@ export function runControlAgent({ repoDir, prompt, model, maxTurns, agentCmd }) 
     throw new Error(`control agent exited ${res.status}: ${detail}`)
   }
   const j = extractJsonObject(res.stdout || '')
-  const usage = j.usage ?? {}
   return {
     answer: typeof j.result === 'string' ? j.result : (j.text ?? ''),
-    telemetry: {
-      input_tokens: j.input_tokens ?? usage.input_tokens ?? null,
-      output_tokens: j.output_tokens ?? usage.output_tokens ?? null,
-      cache_read_tokens: usage.cache_read_input_tokens ?? null,
-      total_cost_usd: j.total_cost_usd ?? j.cost_usd ?? null,
-      num_turns: j.num_turns ?? null,
-      duration_ms: j.duration_ms ?? null,
-      session_id: j.session_id ?? null,
-      is_error: j.is_error ?? false,
-    },
+    telemetry: normalizeAgentTelemetry(j),
   }
 }
 
@@ -177,16 +221,18 @@ export async function runControlPass({
   model = null,
   maxTurns = DEFAULT_MAX_TURNS,
   agentCmd = null,
+  controlAgent = 'claude',
   controlPrompt = DEFAULT_CONTROL_PROMPT,
   autoScore = true,
   scoreRuns = 1,
   scoresFile = null,
 }) {
-  assertControlAgentAvailable({ agentCmd, controlPrompt })
+  const backend = agentCmd ? null : normalizeControlAgent(controlAgent)
+  assertControlAgentAvailable({ agentCmd, controlAgent: backend ?? 'claude', controlPrompt })
 
   const questions = suiteConfig.questions
-  const agentName = agentCmd ? 'custom' : 'claude-code'
-  const agentDesc = describeAgentCommand({ agentCmd, model, maxTurns })
+  const agentName = agentCmd ? 'custom' : backend === 'cursor' ? 'cursor-agent' : 'claude-code'
+  const agentDesc = describeAgentCommand({ agentCmd, controlAgent: backend ?? 'claude', model, maxTurns })
   fs.mkdirSync(workdir, { recursive: true })
   console.error(`[control] agent ${agentDesc}`)
 
@@ -199,7 +245,14 @@ export async function runControlPass({
     let answer = ''
     let telemetry = null
     try {
-      const r = runControlAgent({ repoDir, prompt, model, maxTurns, agentCmd })
+      const r = runControlAgent({
+        repoDir,
+        prompt,
+        model,
+        maxTurns,
+        agentCmd,
+        controlAgent: backend ?? 'claude',
+      })
       answer = r.answer
       telemetry = r.telemetry
       console.error(

@@ -58,6 +58,7 @@ import {
   DEFAULT_MAX_TURNS,
   assertControlAgentAvailable,
   buildControlComparison,
+  normalizeControlAgent,
   runControlPass,
 } from './control-core.mjs'
 
@@ -133,6 +134,7 @@ function parseArgs(argv) {
     controlModel: null,
     controlMaxTurns: DEFAULT_MAX_TURNS,
     controlPrompt: process.env.KB_CONTROL_PROMPT || DEFAULT_CONTROL_PROMPT,
+    controlAgent: process.env.KB_CONTROL_AGENT || 'claude',
     controlAgentCmd: process.env.KB_CONTROL_AGENT_CMD || null,
     help: false,
   }
@@ -166,6 +168,7 @@ function parseArgs(argv) {
     else if (a === '--control-max-turns')
       out.controlMaxTurns = Math.max(1, Number.parseInt(argv[++i], 10) || DEFAULT_MAX_TURNS)
     else if (a === '--control-prompt') out.controlPrompt = argv[++i]
+    else if (a === '--control-agent') out.controlAgent = normalizeControlAgent(argv[++i])
     else if (a === '--control-agent-cmd') out.controlAgentCmd = argv[++i]
     else if (a === '--help' || a === '-h') out.help = true
     i++
@@ -223,10 +226,11 @@ Output:
 
 Control baseline (runs side-by-side with kb into ONE artifact, scored by the same rubric):
   --skip-control          Do NOT run the control; emit a kb-only artifact (control data omitted)
-  --control-model NAME    Pin the control agent model (e.g. claude-opus-4-8)
-  --control-max-turns N   Per-question turn ceiling for the control agent (default ${DEFAULT_MAX_TURNS})
+  --control-agent NAME    Built-in control agent: claude (default) or cursor (Cursor Agent CLI). Env: KB_CONTROL_AGENT
+  --control-model NAME    Pin the control agent model (e.g. claude-opus-4-8, composer-2.5)
+  --control-max-turns N   Per-question turn ceiling — claude only (default ${DEFAULT_MAX_TURNS})
   --control-prompt TEXT   Wrapper prompt for each control question ({{question}} placeholder). Env: KB_CONTROL_PROMPT
-  --control-agent-cmd CMD Override the control agent command (prompt on stdin, JSON on stdout). Env: KB_CONTROL_AGENT_CMD
+  --control-agent-cmd CMD Full override of --control-agent (prompt on stdin, JSON on stdout). Env: KB_CONTROL_AGENT_CMD
 
 Advanced:
   --run-dir PATH          With --skip-init: reuse existing scratch dir
@@ -445,6 +449,7 @@ async function main() {
     try {
       assertControlAgentAvailable({
         agentCmd: args.controlAgentCmd,
+        controlAgent: args.controlAgentCmd ? 'claude' : args.controlAgent,
         controlPrompt: args.controlPrompt,
       })
     } catch (e) {
@@ -782,7 +787,12 @@ async function main() {
     console.error('[eval] --skip-init: control phase not run (rescore-only mode)')
   }
   if (!args.skipControl && !args.skipCapture) {
-    console.error('[eval] control phase — real agent, no kb (--skip-control to disable)')
+    const controlLabel = args.controlAgentCmd
+      ? 'custom agent cmd'
+      : `${args.controlAgent} agent`
+    console.error(
+      `[eval] control phase — ${controlLabel}, no kb (--skip-control to disable)`
+    )
     try {
       const control = await runControlPass({
         repoDir: targetCwd,
@@ -791,6 +801,7 @@ async function main() {
         model: args.controlModel,
         maxTurns: args.controlMaxTurns,
         agentCmd: args.controlAgentCmd,
+        controlAgent: args.controlAgent,
         controlPrompt: args.controlPrompt,
         autoScore: args.autoScore,
         scoreRuns: args.scoreRuns,
