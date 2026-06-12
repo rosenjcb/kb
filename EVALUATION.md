@@ -120,15 +120,19 @@ control under a `control` block (with its own `aggregate_scores` + `control_tele
 kb-minus-control deltas. With `--skip-control` the `control`/`comparison` keys are simply absent. The trends table
 printed at the end separates control from kb rows and prints the latest control-vs-kb deltas.
 
-Because the control runs by default, eval **preflights the agent and fails fast**: if `claude` (or the
-`--control-agent-cmd` binary) is not on PATH, the run exits immediately — *before any clone or `kb init`* — with a clear
-message telling you to install the agent or re-run with `--skip-control`. It never silently does the kb work and then
-discovers the agent is missing.
+Because the control runs by default, eval **preflights the agent and fails fast**: if the chosen agent binary is not on
+PATH (`claude` by default, `agent` for Cursor), the run exits immediately — *before any clone or `kb init`* — with a
+clear message telling you to install the agent or re-run with `--skip-control`. It never silently does the kb work and
+then discovers the agent is missing.
 
-Knobs (all optional): `--control-model <id>` pins the agent model, `--control-max-turns N` caps exploration per
-question, `--control-prompt` (env `KB_CONTROL_PROMPT`) tunes the wrapper prompt — it must contain `{{question}}` — and
-`--control-agent-cmd` (env `KB_CONTROL_AGENT_CMD`) swaps the entire agent command (e.g. to use Cursor); the prompt is
-fed on stdin and JSON is read from stdout.
+Knobs (all optional):
+
+- `--control-agent claude|cursor` (env `KB_CONTROL_AGENT`) — built-in backends. Default: `claude` (Claude Code).
+  `cursor` uses the Cursor Agent CLI (`agent -p --mode ask --trust`, read-only headless).
+- `--control-model <id>` pins the agent model (e.g. `claude-opus-4-8`, `composer-2.5`).
+- `--control-max-turns N` caps exploration per question (**claude only**).
+- `--control-prompt` (env `KB_CONTROL_PROMPT`) tunes the wrapper prompt — must contain `{{question}}`.
+- `--control-agent-cmd` (env `KB_CONTROL_AGENT_CMD`) **fully overrides** `--control-agent`; prompt on stdin, JSON on stdout.
 
 > The control supersedes the legacy `eval/tools/filesystem-tools.ts` toy tools, which only approximated Condition N and
 > were never wired into a runner. The control logic lives in `scripts/control-core.mjs` and runs inside `eval-run.mjs`.
@@ -171,6 +175,8 @@ Artifacts land in `~/.kb/evaluations/<run-name>/artifact.json`. Fields to check:
 ### Phase 3: Score the Results
 
 Each question gets a rubric score on four axes. Use `--auto-score` for LLM judging (requires `GEMINI_API_KEY` or `OPENAI_API_KEY`), or supply a `--scores-file` for manual scoring.
+
+The scorer is called **3 times by default** and the numeric axes are averaged (`--score-runs 3`). Single-shot Gemini scores have ~1 point of noise per question; averaging across 3 calls reduces run-to-run variance enough to make inter-run comparisons meaningful. Pass `--score-runs 1` to cut costs when you only need a rough signal.
 
 ## Canonical Question Set
 

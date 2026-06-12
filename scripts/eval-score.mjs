@@ -123,6 +123,27 @@ function clipText(s, maxLen) {
 // Judge calls
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Retry helper for transient network errors
+// ---------------------------------------------------------------------------
+
+export async function withRetry(fn, { attempts = 3, baseDelayMs = 1500 } = {}) {
+  let lastErr
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn()
+    } catch (e) {
+      lastErr = e
+      if (i < attempts - 1) {
+        const delay = baseDelayMs * 2 ** i
+        console.error(`[eval] judge call failed (attempt ${i + 1}/${attempts}), retrying in ${delay}ms: ${e.message}`)
+        await new Promise(r => setTimeout(r, delay))
+      }
+    }
+  }
+  throw lastErr
+}
+
 export async function callGeminiJudgeJson({ apiKey, model, systemInstruction, userText }) {
   const body = {
     system_instruction: { parts: [{ text: systemInstruction }] },
@@ -134,24 +155,26 @@ export async function callGeminiJudgeJson({ apiKey, model, systemInstruction, us
     },
   }
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+  return withRetry(async () => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await response.json()
+    if (!response.ok) {
+      const msg = data?.error?.message || response.statusText
+      throw new Error(`[eval] Gemini judge failed (${response.status}): ${msg}`)
+    }
+    const parts = data?.candidates?.[0]?.content?.parts
+    if (!Array.isArray(parts)) {
+      throw new Error('[eval] Gemini judge: empty candidates/parts')
+    }
+    return parts
+      .filter(p => p && typeof p.text === 'string' && p.thought !== true)
+      .map(p => p.text)
+      .join('')
   })
-  const data = await response.json()
-  if (!response.ok) {
-    const msg = data?.error?.message || response.statusText
-    throw new Error(`[eval] Gemini judge failed (${response.status}): ${msg}`)
-  }
-  const parts = data?.candidates?.[0]?.content?.parts
-  if (!Array.isArray(parts)) {
-    throw new Error('[eval] Gemini judge: empty candidates/parts')
-  }
-  return parts
-    .filter(p => p && typeof p.text === 'string' && p.thought !== true)
-    .map(p => p.text)
-    .join('')
 }
 
 export async function callOpenAIJudgeJson({ apiKey, model, systemInstruction, userText }) {
@@ -164,24 +187,26 @@ export async function callOpenAIJudgeJson({ apiKey, model, systemInstruction, us
       { role: 'user', content: userText },
     ],
   }
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
+  return withRetry(async () => {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    })
+    const data = await response.json()
+    if (!response.ok) {
+      const msg = data?.error?.message || response.statusText
+      throw new Error(`[eval] OpenAI judge failed (${response.status}): ${msg}`)
+    }
+    const content = data?.choices?.[0]?.message?.content
+    if (typeof content !== 'string') {
+      throw new Error('[eval] OpenAI judge: missing message content')
+    }
+    return content
   })
-  const data = await response.json()
-  if (!response.ok) {
-    const msg = data?.error?.message || response.statusText
-    throw new Error(`[eval] OpenAI judge failed (${response.status}): ${msg}`)
-  }
-  const content = data?.choices?.[0]?.message?.content
-  if (typeof content !== 'string') {
-    throw new Error('[eval] OpenAI judge: missing message content')
-  }
-  return content
 }
 
 // ---------------------------------------------------------------------------

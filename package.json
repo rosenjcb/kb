@@ -5,12 +5,13 @@
   "type": "module",
   "private": true,
   "engines": {
-    "node": ">=24.15.0"
+    "node": ">=24"
   },
   "bin": {
     "kb": "dist/bin/kb"
   },
   "scripts": {
+    "preinstall": "node scripts/check-node-version.mjs",
     "dev": "tsx src/cli/index.ts",
     "dev:local": "node --env-file=.env.local --import tsx src/cli/index.ts",
     "build": "tsc && node scripts/build-cli.mjs",
@@ -80,6 +81,6 @@
     "husky": "9.1.7",
     "tsx": "^4.7.0",
     "typescript": "^5.5.0",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.6"
   }
 }

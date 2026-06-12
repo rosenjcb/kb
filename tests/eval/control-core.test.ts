@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { conditionOf } from '../../scripts/eval-shared.mjs'
 import { readQueryResultFile } from '../../scripts/eval-score.mjs'
@@ -10,8 +10,12 @@ import {
   buildControlComparison,
   controlAgentBinary,
   defaultClaudeArgv,
+  defaultCursorArgv,
   describeAgentCommand,
   extractJsonObject,
+  formatControlAnswerLog,
+  normalizeAgentTelemetry,
+  normalizeControlAgent,
   runControlPass,
 } from '../../scripts/control-core.mjs'
 
@@ -43,18 +47,41 @@ describe('control agent command', () => {
   })
 
   it('describeAgentCommand prefers an explicit agent-cmd override', () => {
-    const custom = 'cursor-agent -p --output-format json'
+    const custom = 'my-agent -p --output-format json'
     expect(describeAgentCommand({ agentCmd: custom })).toBe(custom)
     expect(describeAgentCommand({ agentCmd: null, model: null, maxTurns: 30 })).toContain(
       'claude -p'
     )
+    expect(describeAgentCommand({ controlAgent: 'cursor', model: 'composer-2.5' })).toBe(
+      'agent -p --output-format json --mode ask --trust --model composer-2.5'
+    )
+  })
+
+  it('defaultCursorArgv uses read-only ask mode with json output', () => {
+    const argv = defaultCursorArgv({ model: 'composer-2.5' })
+    expect(argv).toContain('-p')
+    expect(argv).toContain('--mode')
+    expect(argv).toContain('ask')
+    expect(argv).toContain('--trust')
+    expect(argv).toEqual(expect.arrayContaining(['--model', 'composer-2.5']))
+  })
+})
+
+describe('normalizeControlAgent', () => {
+  it('accepts claude and cursor', () => {
+    expect(normalizeControlAgent('claude')).toBe('claude')
+    expect(normalizeControlAgent('Cursor')).toBe('cursor')
+  })
+  it('throws on unknown backends', () => {
+    expect(() => normalizeControlAgent('gpt')).toThrow(/claude, cursor/)
   })
 })
 
 describe('assertControlAgentAvailable (preflight)', () => {
-  it('resolves the agent binary (claude by default, else first token of agent-cmd)', () => {
-    expect(controlAgentBinary(null)).toBe('claude')
-    expect(controlAgentBinary('cursor-agent -p --output-format json')).toBe('cursor-agent')
+  it('resolves the agent binary (claude by default, cursor → agent, else agent-cmd)', () => {
+    expect(controlAgentBinary()).toBe('claude')
+    expect(controlAgentBinary({ controlAgent: 'cursor' })).toBe('agent')
+    expect(controlAgentBinary({ agentCmd: 'my-agent -p --output-format json' })).toBe('my-agent')
   })
 
   it('throws an actionable error naming the missing binary and --skip-control', () => {
@@ -72,6 +99,50 @@ describe('assertControlAgentAvailable (preflight)', () => {
 
   it('passes for an available binary with a valid prompt', () => {
     expect(() => assertControlAgentAvailable({ agentCmd: 'sh' })).not.toThrow()
+  })
+})
+
+describe('formatControlAnswerLog', () => {
+  it('shows tokens and duration for Cursor-style telemetry', () => {
+    const line = formatControlAnswerLog({
+      input_tokens: 34001,
+      output_tokens: 3613,
+      cache_read_tokens: 182354,
+      duration_ms: 60613,
+    })
+    expect(line).toContain('in=34001 out=3613')
+    expect(line).toContain('cache=182354')
+    expect(line).toContain('61s')
+    expect(line).not.toContain('turns=')
+    expect(line).not.toContain('cost=')
+  })
+
+  it('shows turns and cost for Claude-style telemetry', () => {
+    const line = formatControlAnswerLog({
+      input_tokens: 120,
+      output_tokens: 40,
+      num_turns: 3,
+      total_cost_usd: 0.02,
+      duration_ms: 4500,
+    })
+    expect(line).toContain('in=120 out=40')
+    expect(line).toContain('turns=3')
+    expect(line).toContain('cost=$0.0200')
+    expect(line).toContain('4.5s')
+  })
+})
+
+describe('normalizeAgentTelemetry', () => {
+  it('reads Cursor Agent CLI camelCase usage fields', () => {
+    const tel = normalizeAgentTelemetry({
+      result: 'ok',
+      duration_ms: 1200,
+      usage: { inputTokens: 100, outputTokens: 40, cacheReadTokens: 10 },
+    })
+    expect(tel.input_tokens).toBe(100)
+    expect(tel.output_tokens).toBe(40)
+    expect(tel.cache_read_tokens).toBe(10)
+    expect(tel.duration_ms).toBe(1200)
   })
 })
 
@@ -120,6 +191,33 @@ describe('runControlPass', () => {
         autoScore: false,
       })
     ).rejects.toThrow(/question/)
+  })
+
+  it('returns complete_unscored when agent answers succeed but auto-score throws', async () => {
+    const workdir = mkdtempSync(path.join(tmpdir(), 'control-unscored-'))
+    // Patch runAutoScoreFile to simulate a Gemini fetch failure.
+    const evalScore = await import('../../scripts/eval-score.mjs')
+    const spy = vi.spyOn(evalScore, 'runAutoScoreFile').mockRejectedValueOnce(new Error('fetch failed'))
+    try {
+      const block = await runControlPass({
+        repoDir: workdir,
+        workdir,
+        suiteConfig: fakeSuite(),
+        agentCmd: FAKE_AGENT_CMD,
+        autoScore: true,
+      })
+      // Answers must be preserved.
+      expect(block.condition).toBe('control')
+      expect(block.status).toBe('complete_unscored')
+      expect(block.query_evaluation).toHaveLength(2)
+      expect(block.query_evaluation[0].answer_excerpt).toBeTruthy()
+      // Scores default to zero when judge failed.
+      expect(block.query_evaluation[0].scores.correctness).toBe(0)
+      // Scoring failure surfaced in metadata.
+      expect(block.query_scoring?.mode).toBe('failed')
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
 

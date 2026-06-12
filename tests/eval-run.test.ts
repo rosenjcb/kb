@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCoverageAudit,
   derivedBase,
+  formatScoreDelta,
+  kbControlVerdict,
   matchesSuite,
   parseGraphCounts,
   parseQueryText,
@@ -11,6 +13,7 @@ import {
   sparkline,
   stripCliBanner,
   structuralMetric,
+  worstQuestionGaps,
 } from '../scripts/eval-run.mjs'
 
 describe('sanitizeSlugPart', () => {
@@ -191,6 +194,45 @@ describe('matchesSuite', () => {
   it('falls back to id match when run.suite is absent', () => {
     const row = { id: 'raylib-2026-01-01', artifact: {} }
     expect(matchesSuite(row, 'raylib')).toBe(true)
+  })
+})
+
+describe('formatScoreDelta', () => {
+  it('formats positive and negative deltas', () => {
+    expect(formatScoreDelta(0.25).trim()).toBe('+0.250')
+    expect(formatScoreDelta(-0.5).trim()).toBe('-0.500')
+  })
+  it('returns placeholder for null', () => {
+    expect(formatScoreDelta(null).trim()).toBe('-')
+  })
+})
+
+describe('kbControlVerdict', () => {
+  it('reports behind when all axes lose', () => {
+    expect(
+      kbControlVerdict(
+        { pass: 0.5, correctness: 2.5, usefulness: 3 },
+        { pass: 1, correctness: 4, usefulness: 4 }
+      )
+    ).toBe('behind control')
+  })
+  it('reports ahead when all axes tie or win', () => {
+    expect(
+      kbControlVerdict(
+        { pass: 1, correctness: 4, usefulness: 4 },
+        { pass: 1, correctness: 3.5, usefulness: 3.5 }
+      )
+    ).toBe('ahead or tied vs control')
+  })
+})
+
+describe('worstQuestionGaps', () => {
+  it('returns largest negative gaps first', () => {
+    const kb = [{ scores: { correctness: 2 } }, { scores: { correctness: 4 } }]
+    const ctrl = [{ scores: { correctness: 4 } }, { scores: { correctness: 3 } }]
+    const gaps = worstQuestionGaps(kb, ctrl, ['a', 'b'], 2)
+    expect(gaps[0].q).toBe(1)
+    expect(gaps[0].gap).toBe(-2)
   })
 })
 
