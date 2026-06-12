@@ -13,6 +13,7 @@ import {
   defaultCursorArgv,
   describeAgentCommand,
   extractJsonObject,
+  formatControlAnswerLog,
   normalizeAgentTelemetry,
   normalizeControlAgent,
   runControlPass,
@@ -98,6 +99,36 @@ describe('assertControlAgentAvailable (preflight)', () => {
 
   it('passes for an available binary with a valid prompt', () => {
     expect(() => assertControlAgentAvailable({ agentCmd: 'sh' })).not.toThrow()
+  })
+})
+
+describe('formatControlAnswerLog', () => {
+  it('shows tokens and duration for Cursor-style telemetry', () => {
+    const line = formatControlAnswerLog({
+      input_tokens: 34001,
+      output_tokens: 3613,
+      cache_read_tokens: 182354,
+      duration_ms: 60613,
+    })
+    expect(line).toContain('in=34001 out=3613')
+    expect(line).toContain('cache=182354')
+    expect(line).toContain('61s')
+    expect(line).not.toContain('turns=')
+    expect(line).not.toContain('cost=')
+  })
+
+  it('shows turns and cost for Claude-style telemetry', () => {
+    const line = formatControlAnswerLog({
+      input_tokens: 120,
+      output_tokens: 40,
+      num_turns: 3,
+      total_cost_usd: 0.02,
+      duration_ms: 4500,
+    })
+    expect(line).toContain('in=120 out=40')
+    expect(line).toContain('turns=3')
+    expect(line).toContain('cost=$0.0200')
+    expect(line).toContain('4.5s')
   })
 })
 

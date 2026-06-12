@@ -138,6 +138,27 @@ export function assertControlAgentAvailable({
   }
 }
 
+/** One-line progress log after a control answer (tokens-first; turns/cost when present). */
+export function formatControlAnswerLog(telemetry) {
+  const parts = []
+  const inTok = telemetry?.input_tokens
+  const outTok = telemetry?.output_tokens
+  if (typeof inTok === 'number' || typeof outTok === 'number') {
+    parts.push(`in=${inTok ?? '?'} out=${outTok ?? '?'}`)
+  }
+  const cache = telemetry?.cache_read_tokens
+  if (typeof cache === 'number' && cache > 0) parts.push(`cache=${cache}`)
+  if (typeof telemetry?.num_turns === 'number') parts.push(`turns=${telemetry.num_turns}`)
+  if (typeof telemetry?.total_cost_usd === 'number') {
+    parts.push(`cost=$${telemetry.total_cost_usd.toFixed(4)}`)
+  }
+  if (typeof telemetry?.duration_ms === 'number') {
+    const s = telemetry.duration_ms / 1000
+    parts.push(s >= 10 ? `${s.toFixed(0)}s` : `${s.toFixed(1)}s`)
+  }
+  return parts.length ? parts.join(' ') : 'no telemetry'
+}
+
 /** Normalize agent JSON telemetry (Claude Code + Cursor Agent CLI shapes). */
 export function normalizeAgentTelemetry(j) {
   const usage = j.usage ?? {}
@@ -255,9 +276,7 @@ export async function runControlPass({
       })
       answer = r.answer
       telemetry = r.telemetry
-      console.error(
-        `[control] answer (${answer.length} chars, turns=${telemetry.num_turns ?? '?'}, cost=$${telemetry.total_cost_usd ?? '?'})`
-      )
+      console.error(`[control] answer ${formatControlAnswerLog(telemetry)}`)
     } catch (e) {
       console.error(`[control] agent failed on Q${q}: ${e instanceof Error ? e.message : e}`)
     }
