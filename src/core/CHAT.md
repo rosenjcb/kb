@@ -39,9 +39,10 @@ user input
    passes, plateau/frontier-based early exit). Facts already in the session pool are
    excluded via `excludeIds`.
 
-5. **LLM context** — every fact in the ranked retrieval `results[]` is passed to the model
-   with **full `fact_text`** via `formatRetrievedFactsForLLM()` (`src/core/retrieval-context.ts`).
-   No snippet extraction, no char caps.
+5. **LLM context** — facts in the ranked retrieval `results[]` (capped at 150) are passed to
+   the model via `formatRetrievedFactsForLLM()` (`src/core/retrieval-context.ts`) with each
+   fact truncated to 2000 characters. An optional post-retrieval relevance filter
+   (`src/tools/facts-relevance-filter.ts`) may drop off-topic facts before synthesis.
 
 6. **Evidence header** — one `evidence>` summary line (count, mix, themes, leads, walk/stop/conf).
    See `src/core/EVIDENCE_SUMMARY.md`. Per-fact bullet previews removed.
