@@ -39,3 +39,17 @@ jobs:
 
       - name: Build
         run: pnpm run build
+
+      - name: Check for changeset
+        if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          CHANGESETS=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" \
+            | grep -E '^\.changeset/.+\.md$' | grep -v '^\.changeset/README\.md$' || true)
+          if [ -z "$CHANGESETS" ]; then
+            echo "❌ No changeset found in this PR."
+            echo "   Run 'pnpm changeset' and commit the generated file."
+            exit 1
+          fi
+          echo "✓ Changeset found:"
+          echo "$CHANGESETS"
