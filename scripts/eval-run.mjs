@@ -6,7 +6,8 @@
  * Session lifecycle is fully automatic:
  *   - Base name is derived from the suite id: `eval-{suiteId}` (e.g. `eval-raylib`, `eval-kb`).
  *   - If the session already has docs → reuse it (query-only run).
- *   - If the session is empty / missing → run `kb init` first, then query.
+ *   - If the session is empty / missing → run `kb init` first.
+ *   - Every harvest runs `kb scan --non-interactive` on the snapshot clone, then query.
  *   - `--base NAME` overrides the formula. `--force-init` forces re-init even if docs exist.
  * Ends with an automatic trends summary across prior runs for the same suite.
  *
@@ -69,6 +70,8 @@ export {
   derivedBase,
   parseQueryText,
   parseGraphCounts,
+  parseLatestRunIdForCommand,
+  logsCmd,
   buildCoverageAudit,
   scoreMetric,
   structuralMetric,
@@ -199,7 +202,8 @@ function printHelp() {
 Session lifecycle (automatic):
   Base is derived as eval-{suiteId} (e.g. eval-raylib, eval-kb).
   If the session has docs → reuse it (query-only run).
-  If the session is empty / missing → kb init first, then query.
+  If the session is empty / missing → kb init first.
+  Every run: kb scan on the snapshot clone, then 8× kb query.
   Ends with a trends summary across prior runs for the same suite.
 
 Suite / questions:
@@ -305,11 +309,22 @@ function extractInitAcceptedObject(logText) {
   return null
 }
 
+function parseLatestRunIdForCommand(logsText, command) {
+  for (const line of logsText.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('run-')) continue
+    const parts = trimmed.split(/\s+/)
+    if (parts.length >= 2 && parts[1] === command) return parts[0]
+  }
+  return null
+}
+
 function parseLatestInitRunId(logsText) {
-  const lines = logsText.split('\n').filter(l => l.trim().startsWith('run-'))
-  if (lines.length === 0) return null
-  const first = lines[0].trim().split(/\s+/)[0]
-  return first || null
+  return parseLatestRunIdForCommand(logsText, 'init')
+}
+
+function parseLatestScanRunId(logsText) {
+  return parseLatestRunIdForCommand(logsText, 'scan')
 }
 
 function git(repo, args) {
@@ -382,10 +397,9 @@ function resolveQuestions(args, suiteConfig) {
   return suiteConfig.questions
 }
 
-/** kb logs list does not filter by base; init runs still show up in global telemetry. */
-function logsCmd(evalMode) {
-  if (evalMode === 'query') return 'logs list --limit 5'
-  return 'logs list --command init --limit 3'
+/** Recent telemetry for this eval base (init/scan/query). */
+function logsCmd(base) {
+  return `logs list --base ${base} --limit 10`
 }
 
 function readBaseFromInitLog(initLogPath) {
@@ -511,7 +525,7 @@ async function main() {
     console.error(`[eval] workdir ${workdir}`)
     console.error(`[eval] target cwd ${targetCwd}`)
     console.error(
-      `[eval] base "${base}" — ${needsInit ? 'no docs found, running kb init' : 'session exists, reusing'}`
+      `[eval] base "${base}" — ${needsInit ? 'no docs found, running kb init' : 'session exists, reusing'}; kb scan before queries`
     )
 
     if (needsInit) {
@@ -525,6 +539,10 @@ async function main() {
       )
     }
 
+    console.error(`[eval] kb scan --base ${base}`)
+    const scanLog = kb(targetCwd, `scan --base ${base} --non-interactive --debug`)
+    fs.writeFileSync(path.join(workdir, 'scan.log'), scanLog, 'utf8')
+
     console.error(`[eval] kb default ${base}`)
     kb(targetCwd, `default ${base}`, { stdio: 'inherit' })
 
@@ -537,7 +555,7 @@ async function main() {
     fs.writeFileSync(path.join(workdir, 'graph.txt'), graphOut, 'utf8')
 
     console.error('[eval] logs list')
-    const logsOut = kb(targetCwd, logsCmd(evalMode))
+    const logsOut = kb(targetCwd, logsCmd(base))
     fs.writeFileSync(path.join(workdir, 'logs.txt'), logsOut, 'utf8')
 
     let q = 1
@@ -556,6 +574,7 @@ async function main() {
   const graphCounts = parseGraphCounts(graphText)
   const logsText = fs.readFileSync(path.join(workdir, 'logs.txt'), 'utf8')
   const initRunId = parseLatestInitRunId(logsText)
+  const scanRunId = parseLatestScanRunId(logsText)
   const docsListText = fs.existsSync(path.join(workdir, 'docs.txt'))
     ? fs.readFileSync(path.join(workdir, 'docs.txt'), 'utf8')
     : ''
@@ -704,10 +723,11 @@ async function main() {
         evalMode === 'all'
           ? `kb init --base ${base} --non-interactive --debug (cwd: ${targetCwd})`
           : null,
+        `kb scan --base ${base} --non-interactive --debug (cwd: ${targetCwd})`,
         `kb default ${base}`,
         `kb docs list --base ${base} --output json`,
         `kb graph --base ${base}`,
-        `kb ${logsCmd(evalMode)}`,
+        `kb ${logsCmd(base)}`,
         `kb query "<8 questions>" --base ${base} --output json`,
       ].filter(Boolean),
       workdir,
@@ -733,6 +753,10 @@ async function main() {
             : initRunId
               ? null
               : 'Could not parse init run id from kb logs table.',
+        scan_run_id: scanRunId,
+        scan_run_id_note: scanRunId
+          ? null
+          : 'Could not parse scan run id from kb logs table.',
         docs_list: docsList,
         graph_summary: {
           entities: graphCounts.entities,

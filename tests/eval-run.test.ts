@@ -4,8 +4,10 @@ import {
   derivedBase,
   formatScoreDelta,
   kbControlVerdict,
+  logsCmd,
   matchesSuite,
   parseGraphCounts,
+  parseLatestRunIdForCommand,
   parseQueryText,
   repoLeafNameFromUrl,
   sanitizeSlugPart,
@@ -246,5 +248,33 @@ describe('sparkline', () => {
   it('returns a string of the right length for varied input', () => {
     const result = sparkline([1, 2, 3, 4])
     expect(result.length).toBe(4)
+  })
+})
+
+describe('logsCmd', () => {
+  it('filters logs by eval base with a generous limit', () => {
+    expect(logsCmd('eval-kb')).toBe('logs list --base eval-kb --limit 10')
+  })
+})
+
+describe('parseLatestRunIdForCommand', () => {
+  const sample = [
+    '🤖 KB Agent Harness',
+    '',
+    'run-abc init       eval-kb 2026-06-12 10:00:00',
+    'run-def scan       eval-kb 2026-06-12 10:05:00',
+    'run-ghi query      eval-kb 2026-06-12 10:06:00',
+  ].join('\n')
+
+  it('finds the latest init run id', () => {
+    expect(parseLatestRunIdForCommand(sample, 'init')).toBe('run-abc')
+  })
+
+  it('finds the latest scan run id', () => {
+    expect(parseLatestRunIdForCommand(sample, 'scan')).toBe('run-def')
+  })
+
+  it('returns null when command is absent', () => {
+    expect(parseLatestRunIdForCommand(sample, 'publish')).toBeNull()
   })
 })

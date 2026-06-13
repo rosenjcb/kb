@@ -368,7 +368,7 @@ describe('FactsQueryResearchOrchestrator — code fact graph-proximity scoring',
 
     // Confirm graph edge exists between doc fact and graphLinkedCode via concept overlap
     const neighbors = indexer.getFactNeighbors([docFact.id], new Set(), 20)
-    const neighborIds = neighbors.map(r => r.id)
+    const _neighborIds = neighbors.map(r => r.id)
 
     const response = await new FactsQueryResearchOrchestrator(indexer).run({
       query: 'query expansion orchestrator',

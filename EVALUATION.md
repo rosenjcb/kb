@@ -53,7 +53,8 @@ One runner drives all eval runs. Session lifecycle is fully automatic:
 
 1. Base is derived as `eval-{suiteId}` (e.g. `eval-raylib`).
 2. If the session already has docs → reuse it (query-only run).
-3. If the session is empty / missing → run `kb init` first, then query.
+3. If the session is empty / missing → run `kb init` first.
+4. **Always** run `kb scan --non-interactive` on the snapshot clone (refresh facts/tombstones), then query.
 4. After writing `artifact.json`, prints a trends summary across prior runs for the same suite.
 
 **Quick start** (from kb repo root, after `ppnpm run build`):
