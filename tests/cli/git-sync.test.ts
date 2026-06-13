@@ -45,16 +45,20 @@ describe('git-sync', () => {
       await execFileAsync('git', args, { cwd, encoding: 'utf8' })
     }
 
+    async function setBareHead(branch: string): Promise<void> {
+      await execFileAsync('git', ['--git-dir', bareOrigin, 'symbolic-ref', 'HEAD', `refs/heads/${branch}`])
+    }
+
     beforeEach(async () => {
       tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'kb-git-sync-pull-'))
       bareOrigin = path.join(tmpRoot, 'origin.git')
       cloneDir = path.join(tmpRoot, 'clone')
 
-      await git(tmpRoot, 'init', '--bare', bareOrigin)
+      await git(tmpRoot, 'init', '--bare', '-b', 'main', bareOrigin)
 
       const seedDir = path.join(tmpRoot, 'seed')
       await mkdir(seedDir, { recursive: true })
-      await git(seedDir, 'init')
+      await git(seedDir, 'init', '-b', 'main')
       await git(seedDir, 'config', 'user.email', 'test@test.com')
       await git(seedDir, 'config', 'user.name', 'Test')
       await git(seedDir, 'config', 'commit.gpgsign', 'false')
@@ -62,11 +66,11 @@ describe('git-sync', () => {
       await writeFile(path.join(seedDir, '.kb'), 'kb\n')
       await git(seedDir, 'add', '.')
       await git(seedDir, 'commit', '-m', 'v1')
-      await git(seedDir, 'branch', '-M', 'main')
       await git(seedDir, 'remote', 'add', 'origin', bareOrigin)
       await git(seedDir, 'push', '-u', 'origin', 'main')
+      await setBareHead('main')
 
-      await git(tmpRoot, 'clone', bareOrigin, cloneDir)
+      await git(tmpRoot, 'clone', '--branch', 'main', bareOrigin, cloneDir)
       await git(cloneDir, 'config', 'user.email', 'test@test.com')
       await git(cloneDir, 'config', 'user.name', 'Test')
       await git(cloneDir, 'config', 'commit.gpgsign', 'false')
