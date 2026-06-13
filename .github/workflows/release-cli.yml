@@ -3,6 +3,8 @@ name: Release CLI
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - 'v*.*.*'
 
@@ -40,7 +42,7 @@ jobs:
       - name: Rename release package
         run: |
           PACKAGE="$(ls kb-*.tgz | head -n 1)"
-          mv "$PACKAGE" kb-cli-node22.tgz
+          mv "$PACKAGE" kb-cli-node24.tgz
 
       - name: Prepare bootstrap installer
         run: |
@@ -51,26 +53,52 @@ jobs:
         id: meta
         shell: bash
         run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            # Versioned release published via Changesets (v*.*.*).
             TAG_NAME="${GITHUB_REF#refs/tags/}"
             RELEASE_NAME="KB CLI ${TAG_NAME}"
+            PRERELEASE="false"
           else
+            # Rolling build for every push to main, named after the current
+            # (Changesets-managed) version so the changeset version is visible.
             SHORT_SHA="${GITHUB_SHA::7}"
             TAG_NAME="main-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
-            RELEASE_NAME="KB CLI main build ${SHORT_SHA}"
+            RELEASE_NAME="KB CLI v${PKG_VERSION} (build ${SHORT_SHA})"
+            PRERELEASE="false"
           fi
 
           {
             echo "tag_name=${TAG_NAME}"
             echo "release_name=${RELEASE_NAME}"
+            echo "pkg_version=${PKG_VERSION}"
+            echo "prerelease=${PRERELEASE}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Extract changeset notes
+        id: notes
+        shell: bash
+        run: |
+          # Pull the latest CHANGELOG section (changeset-generated notes) for the
+          # current version so the release body reflects what changed.
+          NOTES="$(node scripts/extract-changelog.mjs "${{ steps.meta.outputs.pkg_version }}")"
+          {
+            echo 'changelog<<EOF'
+            if [ -n "$NOTES" ]; then
+              echo "$NOTES"
+            else
+              echo "_No changeset notes recorded for this version._"
+            fi
+            echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kb-cli-node22
+          name: kb-cli-node24
           path: |
-            kb-cli-node22.tgz
+            kb-cli-node24.tgz
             install-kb.sh
 
       - name: Publish GitHub release assets
@@ -78,13 +106,20 @@ jobs:
         with:
           tag_name: ${{ steps.meta.outputs.tag_name }}
           name: ${{ steps.meta.outputs.release_name }}
+          prerelease: ${{ steps.meta.outputs.prerelease }}
           files: |
-            kb-cli-node22.tgz
+            kb-cli-node24.tgz
             install-kb.sh
           generate_release_notes: true
           target_commitish: ${{ github.sha }}
           body: |
-            CI-built KB CLI package for Node 22+.
+            KB CLI **v${{ steps.meta.outputs.pkg_version }}** — CI-built package for Node 24+.
+
+            ## What's changed (changeset notes)
+
+            ${{ steps.notes.outputs.changelog }}
+
+            ---
 
             Install on a fresh machine with:
             `curl -fsSL https://github.com/rosenjcb/kb/releases/latest/download/install-kb.sh | bash`
