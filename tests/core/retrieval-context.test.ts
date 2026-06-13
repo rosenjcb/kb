@@ -3,6 +3,7 @@ import {
   formatFactContentForLLM,
   formatRetrievedFactsForLLM,
   formatToolQueryFactsForLLM,
+  MAX_FACT_CONTENT_CHARS,
 } from '../../src/core/retrieval-context'
 
 describe('retrieval-context', () => {
@@ -49,14 +50,14 @@ describe('retrieval-context', () => {
     expect(formatted).toContain('Third fact body.')
   })
 
-  it('Given tool query results, then tool payload uses full fact text for every row', () => {
-    const body = 'Rust | .rs | yes | yes |'
+  it('Given tool query results, then tool payload truncates long fact bodies by default', () => {
+    const long = 'x'.repeat(2500)
     const formatted = formatToolQueryFactsForLLM([
-      { metadata: { id: 'fact-rust' }, content: body },
-      { metadata: { id: 'fact-go' }, content: 'Go | .go | yes | yes |' },
+      { metadata: { id: 'fact-rust' }, content: long },
     ])
     expect(formatted).toContain('[fact-rust]')
-    expect(formatted).toContain(body)
-    expect(formatted).toContain('[fact-go]')
+    expect(formatted).toContain('x'.repeat(MAX_FACT_CONTENT_CHARS))
+    expect(formatted).toContain('…')
+    expect(formatted).not.toContain('x'.repeat(2500))
   })
 })

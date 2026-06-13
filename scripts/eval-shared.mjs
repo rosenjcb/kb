@@ -192,6 +192,27 @@ export function loadMoelSuite(suiteId) {
 // Query result parsing
 // ---------------------------------------------------------------------------
 
+/** Strip harness preamble / orchestration lines from direct (non chat-loop) query output. */
+function extractDirectQueryAnswer(beforeSep) {
+  const lines = beforeSep.split('\n')
+  const kept = []
+  let pastPreamble = false
+  for (const line of lines) {
+    if (!pastPreamble) {
+      if (line.trim() === '') continue
+      if (/^🤖 KB Agent/.test(line)) continue
+      if (/^running intent /.test(line)) continue
+      if (/^(stage|query)> /.test(line)) continue
+      pastPreamble = true
+    } else if (/^(stage|query)> /.test(line)) {
+      continue
+    }
+    kept.push(line)
+  }
+  const answer = kept.join('\n').trim()
+  return answer || null
+}
+
 export function parseQueryText(text) {
   let answer = null
   const sepIdx = text.indexOf('\n---\n')
@@ -201,6 +222,8 @@ export function parseQueryText(text) {
     if (lastDoneIdx !== -1) {
       const lineEnd = beforeSep.indexOf('\n', lastDoneIdx + 1)
       if (lineEnd !== -1) answer = beforeSep.slice(lineEnd + 1).trim()
+    } else {
+      answer = extractDirectQueryAnswer(beforeSep)
     }
   }
   const retrievalLine = /^retrieval>\s*(.+)$/m.exec(text)?.[1]?.trim() ?? null

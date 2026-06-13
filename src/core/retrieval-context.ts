@@ -1,5 +1,8 @@
 /** Full-fidelity fact payloads for LLM answer synthesis. */
 
+/** Default per-fact body cap before LLM synthesis (query + chat evidence blocks). */
+export const MAX_FACT_CONTENT_CHARS = 2000
+
 export interface RetrievedFactForLLM {
   metadata?: { id?: string; title?: string }
   content?: string
@@ -63,13 +66,16 @@ export function formatGraphEvidenceBlock(facts: RetrievedFactForLLM[]): string {
   return `Graph linkage hints (typed edges in the KB graph; must agree with document text above):\n${[...graphHints].map(h => `- ${h}`).join('\n')}`
 }
 
-export function formatToolQueryFactsForLLM(results: RetrievedFactForLLM[]): string {
+export function formatToolQueryFactsForLLM(
+  results: RetrievedFactForLLM[],
+  maxContentChars: number = MAX_FACT_CONTENT_CHARS
+): string {
   const facts = factsForLLMContext(results)
   if (facts.length === 0) return 'No additional facts found.'
   return facts
     .map((r, i) => {
       const id = r.metadata?.id ?? `fact-${i + 1}`
-      return `${i + 1}. [${id}]\n${formatFactContentForLLM(r.content)}`
+      return `${i + 1}. [${id}]\n${formatFactContentForLLM(r.content, maxContentChars)}`
     })
     .join('\n\n')
 }

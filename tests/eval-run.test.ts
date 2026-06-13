@@ -111,6 +111,23 @@ describe('parseQueryText', () => {
   it('returns null answer when no --- separator found', () => {
     expect(parseQueryText('no separator here').answer).toBeNull()
   })
+  it('extracts direct answer before --- when no stage> answer lines (one-shot synthesis)', () => {
+    const output = [
+      '🤖 KB Agent Harness',
+      '',
+      'running intent rewrite...',
+      'running intent loop...',
+      'Build/config evidence scaffold:',
+      '- Prerequisites: cmake',
+      '---',
+      'evidence> 150 facts',
+      'retrieval> hybrid (passes:1)',
+      'matches> 10 ranked facts',
+      'sources> top 10 of 10 ranked: fact://abc',
+    ].join('\n')
+    expect(parseQueryText(output).answer).toContain('Build/config evidence scaffold')
+    expect(parseQueryText(output).answer).toContain('Prerequisites: cmake')
+  })
 })
 
 describe('stripCliBanner', () => {

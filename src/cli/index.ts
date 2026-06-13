@@ -74,10 +74,11 @@ import {
   parseIntentCommand,
   printIntentHelp,
   printIntentResult,
+  enrichReadDocumentsAnswerWithLLM,
+  getIntentQuestion,
   rewriteIntentInputWithSessionContext,
   type ReadDocumentsResultData,
 } from './intent-cli'
-import { normalizeReadResult, runChatSynthesis } from './chat-cli'
 import {
   llmExtractQueryEntities,
   rerankByGraphConnectivity,
@@ -953,6 +954,8 @@ export async function runMainWithOutput(
       } finally {
         printer.stopSpinner()
       }
+      const synthesisQuestion =
+        parsed.envelope.intent === 'query_truth' ? getIntentQuestion(parsed).trim() : ''
       if (parsed.envelope.intent === 'query_truth' && !parsed.allFacts) {
         const payload = parsed.envelope.payload as { query?: string }
         const originalQuery = typeof payload.query === 'string' ? payload.query.trim() : ''
@@ -1049,34 +1052,26 @@ export async function runMainWithOutput(
         }
       }
 
-      // Synthesize answer using the chat pipeline (multi-round agentic LLM).
+      // One-shot synthesis with capped fact text (chat agent loop is kb chat only).
       let enriched = aligned
       if (llmProvider && isReadFactsResult(aligned) && preRewriteQueryTruth) {
-        const retrieval = normalizeReadResult(aligned.data)
-        const synthesis = await runChatSynthesis({
-          question: preRewriteQueryTruth,
-          retrieval,
-          messages: [],
+        const enrichStarted = Date.now()
+        enriched = await enrichReadDocumentsAnswerWithLLM(
+          parsed,
+          aligned,
           llmProvider,
-          toolExecutor,
-          kbStorageDir: intentBaseDir,
-          isAllFacts: parsed.allFacts,
-          graphRelationBlock: graphRelationContext,
-          printer,
-        })
-        enriched = {
-          ...aligned,
-          data: { ...(aligned.data as object), answer: synthesis.answer },
-        }
+          querySessionDir,
+          undefined,
+          { graphRelationContext, synthesisQuestion: synthesisQuestion || preRewriteQueryTruth }
+        )
 
-        // Capture tokens from the synthesis LLM calls.
         if (llmCounter) {
           const enrichTokens = llmCounter.getAndReset()
           if (enrichTokens.inputTokens > 0 || enrichTokens.outputTokens > 0) {
             collector.addStage({
               stage: `${parsed.envelope.intent}:answer-enrichment`,
               startedAt: new Date().toISOString(),
-              durationMs: synthesis.answerMs,
+              durationMs: Date.now() - enrichStarted,
               inputTokens: enrichTokens.inputTokens,
               outputTokens: enrichTokens.outputTokens,
               estimatedCostUsd: estimateCost(

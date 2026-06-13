@@ -10,9 +10,6 @@ const FILTER_MIN_KEEP = 10
 /**
  * Post-retrieval LLM relevance filter. Sends fact summaries to the LLM and
  * keeps only those rated relevant to the query.
- *
- * Enabled when KB_LLM_RELEVANCE_FILTER=true. Falls back silently to the
- * original list on errors or if filtering would leave too few facts.
  */
 export async function filterRelevantFacts(
   llm: LLMProvider,
