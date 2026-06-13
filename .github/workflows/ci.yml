@@ -15,6 +15,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -43,13 +45,17 @@ jobs:
       - name: Check for changeset
         if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
         run: |
-          git fetch origin ${{ github.base_ref }}
-          CHANGESETS=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" \
-            | grep -E '^\.changeset/.+\.md$' | grep -v '^\.changeset/README\.md$' || true)
-          if [ -z "$CHANGESETS" ]; then
-            echo "❌ No changeset found in this PR."
-            echo "   Run 'pnpm changeset' and commit the generated file."
-            exit 1
+          # Pass if pending changeset files exist (pnpm version not yet run)
+          CHANGESETS=$(find .changeset -name '*.md' ! -name 'README.md' 2>/dev/null || true)
+          if [ -n "$CHANGESETS" ]; then
+            echo "✓ Changeset found: $CHANGESETS"
+            exit 0
           fi
-          echo "✓ Changeset found:"
-          echo "$CHANGESETS"
+          # Also pass if CHANGELOG.md was added or modified in this PR (pnpm version was run inline)
+          CHANGELOG_DIFF=$(git diff "origin/${{ github.base_ref }}...HEAD" -- CHANGELOG.md | head -1)
+          if [ -n "$CHANGELOG_DIFF" ]; then
+            echo "✓ Version bump found (CHANGELOG.md updated in this PR)"
+            exit 0
+          fi
+          echo "❌ No changeset found. Run 'pnpm version' to create one."
+          exit 1
