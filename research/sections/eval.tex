@@ -36,10 +36,42 @@ Evidence Handling & Constrained to evidence; acknowledges uncertainty \\
 \end{tabular}
 \end{center}
 
-\noindent\textbf{Pass criterion.}  A question passes if
-correctness $\geq 3$ \textbf{and} usefulness $\geq 3$.
-\textbf{Run-level threshold}: a run is considered promising if pass
-rate $\geq 0.70$.
+\subsection{Success Score}
+\label{subsec:success}
+
+The headline metric is a single scalar $S \in [0,1]$ (higher is better) that
+blends answer quality with the operational cost of producing it. Quality alone
+rewards a system that reads the entire repository into context; $S$ penalizes
+that by charging for tokens and latency:
+
+\begin{equation}
+S = w_Q \cdot Q + w_T \cdot E_{\text{tok}} + w_V \cdot E_{\text{speed}}
+\label{eq:success}
+\end{equation}
+
+\noindent with default weights $w_Q = 0.60$, $w_T = 0.30$, $w_V = 0.10$. The
+three components are each normalized to $[0,1]$:
+
+\begin{align}
+Q &= \frac{\bar{c} + \bar{u}}{8}, &
+E_{\text{tok}} &= 1 - \min\!\Bigl(\tfrac{T}{B_T},\,1\Bigr), &
+E_{\text{speed}} &= 1 - \min\!\Bigl(\tfrac{\tau}{B_\tau},\,1\Bigr)
+\label{eq:success-components}
+\end{align}
+
+\noindent where $\bar{c}, \bar{u}$ are the mean correctness and usefulness axes
+(each $0$--$4$), $T$ is total input$+$output tokens for the eight-question run,
+and $\tau$ is total wall-clock latency. Normalization is \emph{budget-absolute}:
+the references $B_T = 10^6$ tokens and $B_\tau = 6\!\times\!10^5$\,ms are fixed
+rather than relative to the baseline, so $S$ is stable across comparisons. The
+KB-equipped run and the control run are scored with the identical formula and
+budgets, making $S$ directly comparable head-to-head; the components
+$Q$, $E_{\text{tok}}$, $E_{\text{speed}}$ localize \emph{where} an advantage
+arises.
+
+\noindent\textbf{Pass criterion (secondary).}  As a diagnostic we also report
+the per-question pass rate: a question passes if correctness $\geq 3$
+\textbf{and} usefulness $\geq 3$, and a run is promising if $S \geq 0.70$.
 
 \noindent\textbf{Scoring stability.}  The auto-scorer (Gemini 2.5 Flash) is
 non-deterministic even at temperature 0 due to distributed inference.
@@ -53,14 +85,18 @@ under the current methodology (June 8, 2026).
 \begin{table}[h]
 \centering\footnotesize
 \caption{Evaluation results. Ent = graph entities, Rels = graph edges,
-Corr/Use/Spec/EH = mean axis scores (0--4), PR = pass rate.}
+Corr/Use/Spec/EH = mean axis scores (0--4), $Q$ = quality component of the
+success score (Eq.~\ref{eq:success-components}), PR = pass rate. The token/speed
+components ($E_{\text{tok}}$, $E_{\text{speed}}$) require the schema~v2 telemetry
+capture introduced after this run; $Q$ is reported here as the quality term that
+feeds the full score $S$ in subsequent runs.}
 \label{tab:results}
-\begin{tabular}{@{}lrrrrrrrrr@{}}
+\begin{tabular}{@{}lrrrrrrrr@{}}
 \toprule
-\textbf{Suite} & \textbf{Ent} & \textbf{Rels} & \textbf{Corr} & \textbf{Use} & \textbf{Spec} & \textbf{EH} & \textbf{PR} \\
+\textbf{Suite} & \textbf{Ent} & \textbf{Rels} & \textbf{Corr} & \textbf{Use} & \textbf{Spec} & \textbf{EH} & \textbf{$Q$} & \textbf{PR} \\
 \midrule
-KB self-check & 2{,}216 & 772  & 3.00 & \textbf{3.88} & 3.75 & \textbf{4.00} & \textbf{1.00} \\
-Raylib        & 14{,}087 & 12{,}744 & \textbf{3.88} & 3.50 & 3.13 & 3.88 & 0.75 \\
+KB self-check & 2{,}216 & 772  & 3.00 & \textbf{3.88} & 3.75 & \textbf{4.00} & 0.86 & \textbf{1.00} \\
+Raylib        & 14{,}087 & 12{,}744 & \textbf{3.88} & 3.50 & 3.13 & 3.88 & \textbf{0.92} & 0.75 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -86,3 +122,13 @@ substantially larger (14,087 entities, 12,744 edges) reflecting the C
 codebase's dense header structure; the KB self-check graph (2,216 entities,
 772 edges) is smaller but achieves a higher pass rate, consistent with
 the self-referential nature of the evaluation.
+
+\noindent\textbf{Success score.}  The quality components are $Q = 0.86$
+(KB self-check) and $Q = 0.92$ (raylib).  Under the success score
+(Eq.~\ref{eq:success}), these quality terms contribute $w_Q \cdot Q = 0.52$
+and $0.55$ of the maximum $0.60$ quality weight; the remaining $0.40$ is
+governed by token economy and latency, which the schema~v2 telemetry capture
+records for both the KB-equipped and control runs so that $S$ can be compared
+head-to-head.  Because normalization is budget-absolute, a system that
+inflates context to raise $Q$ is penalized through $E_{\text{tok}}$, making
+$S$ a more faithful proxy for practical retrieval value than quality alone.

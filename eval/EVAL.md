@@ -32,6 +32,18 @@ Two evaluation pipelines co-exist:
 
 The hypothesis is **K beats N**: `kb query` answers should match or exceed the control agent's quality while using far fewer tokens/turns. For the MOEL pipeline this is `L_MOEL(N) > L_MOEL(K)`; for the harvest pipeline it is the `comparison` block in each artifact (kb-minus-control rubric deltas) plus the control's token/turn/cost telemetry.
 
+## Success score (harvest headline metric)
+
+The query-harvest pipeline's primary scalar is `success_score ∈ [0,1]` (higher is better), a weighted blend that rewards good answers that are cheap and fast:
+
+$$\text{success} = 0.60 \cdot \text{quality} + 0.30 \cdot \text{token\_efficiency} + 0.10 \cdot \text{speed}$$
+
+- **quality** = `(mean_correctness + mean_usefulness) / 8` (both axes `0–4`)
+- **token_efficiency** = `1 − min(total_tokens / token_budget, 1)`
+- **speed** = `1 − min(total_duration_ms / time_budget, 1)`
+
+Normalization is **budget-absolute** (not relative to control), so the number is stable run-to-run. Defaults live in `scripts/eval-shared.mjs`: `token_budget = 1,000,000`, `time_budget = 600,000 ms`. Both kb and control are scored with the identical formula and budgets, so `success_score` is directly comparable head-to-head; the per-component parts (`quality_score`, `token_efficiency`, `speed_score`) show where a win or loss originates. KB-side telemetry comes from `kb_query_telemetry` (read from `~/.kb/logs`), the control's from `control_telemetry`.
+
 ## Control vs kb (the real baseline)
 
 The **control** is the thing kb is compared against: instead of querying a knowledge base, a real agent gets the *same* question and explores the codebase itself. It runs by default as part of `pnpm run eval` — no separate command.

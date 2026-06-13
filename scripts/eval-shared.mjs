@@ -300,12 +300,84 @@ export function buildCoverageAudit(question, answer, retrievalDetail) {
 }
 
 // ---------------------------------------------------------------------------
+// Composite success score
+// ---------------------------------------------------------------------------
+
+/**
+ * Weights for the composite success score (must sum to 1.0):
+ *   - quality: mean correctness + usefulness (answer quality)
+ *   - tokens:  total token economy (cheaper = better)
+ *   - speed:   wall-clock latency (faster = better)
+ */
+export const SUCCESS_WEIGHTS = { quality: 0.6, tokens: 0.3, speed: 0.1 }
+
+/**
+ * Budget-absolute normalization references for an 8-question run. Both token and
+ * speed sub-scores are `1 - min(total / budget, 1)`, so a run at the budget
+ * scores 0 and a free/instant run scores 1. Tune these to recalibrate.
+ */
+export const SUCCESS_BUDGETS = { tokens: 1_000_000, timeMs: 600_000 }
+
+const _clamp01 = n => Math.max(0, Math.min(1, n))
+const _round3 = n => Number(n.toFixed(3))
+
+/**
+ * Composite success score in [0,1] (higher = better). Quality is scored
+ * absolutely from the correctness/usefulness axes; token and speed sub-scores
+ * are budget-normalized. When token or speed telemetry is missing the composite
+ * is `null` (an old quality-only artifact cannot be fairly ranked against a
+ * fully-instrumented one), but the available sub-scores are still returned.
+ *
+ * @param {{ meanCorrectness:number, meanUsefulness:number, totalTokens?:number|null, totalDurationMs?:number|null }} input
+ */
+export function computeSuccessScore(input, budgets = SUCCESS_BUDGETS, weights = SUCCESS_WEIGHTS) {
+  const meanCorrectness = Number(input.meanCorrectness) || 0
+  const meanUsefulness = Number(input.meanUsefulness) || 0
+  // Quality: correctness + usefulness, each 0–4, mapped to [0,1].
+  const quality = _clamp01((meanCorrectness + meanUsefulness) / 8)
+
+  const totalTokens = input.totalTokens
+  const tokenEfficiency =
+    typeof totalTokens === 'number' && Number.isFinite(totalTokens) && budgets.tokens > 0
+      ? _clamp01(1 - Math.min(totalTokens / budgets.tokens, 1))
+      : null
+
+  const durationMs = input.totalDurationMs
+  const speed =
+    typeof durationMs === 'number' && Number.isFinite(durationMs) && budgets.timeMs > 0
+      ? _clamp01(1 - Math.min(durationMs / budgets.timeMs, 1))
+      : null
+
+  const success =
+    tokenEfficiency === null || speed === null
+      ? null
+      : weights.quality * quality + weights.tokens * tokenEfficiency + weights.speed * speed
+
+  return {
+    success_score: success === null ? null : _round3(success),
+    quality_score: _round3(quality),
+    token_efficiency: tokenEfficiency === null ? null : _round3(tokenEfficiency),
+    speed_score: speed === null ? null : _round3(speed),
+    inputs: {
+      mean_correctness: _round3(meanCorrectness),
+      mean_usefulness: _round3(meanUsefulness),
+      total_tokens: typeof totalTokens === 'number' ? totalTokens : null,
+      total_duration_ms: typeof durationMs === 'number' ? durationMs : null,
+      token_budget: budgets.tokens,
+      time_budget_ms: budgets.timeMs,
+    },
+    weights,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Artifact metric accessors
 // ---------------------------------------------------------------------------
 
 export function scoreMetric(artifact, key) {
   const q = artifact?.aggregate_scores?.query
   const c = artifact?.aggregate_scores?.combined
+  if (key === 'success_score') return q?.success_score ?? c?.success_score ?? null
   if (key === 'usefulness') return q?.mean_usefulness ?? c?.mean_usefulness ?? null
   if (key === 'pass_rate')
     return (
@@ -411,6 +483,16 @@ export function formatScoreDelta(n) {
 
 /** One-line verdict from kb vs control score objects. */
 export function kbControlVerdict(kbScores, ctrlScores) {
+  // Primary: composite success score when both sides have it.
+  const ks = kbScores?.success
+  const cs = ctrlScores?.success
+  if (typeof ks === 'number' && typeof cs === 'number') {
+    const d = ks - cs
+    if (d >= 0.02) return 'ahead of control'
+    if (d <= -0.02) return 'behind control'
+    return 'on par with control'
+  }
+  // Fallback (old artifacts without success_score): sweep the quality axes.
   const axes = ['pass', 'correctness', 'usefulness']
   const deltas = axes
     .map(k => {
@@ -472,6 +554,7 @@ function _padScore(n) {
 function _queryScores(artifact) {
   const q = artifact?.aggregate_scores?.query ?? artifact?.aggregate_scores?.combined ?? {}
   return {
+    success: q.success_score ?? null,
     pass: q.pass_rate_correctness_and_usefulness_at_least_3 ?? null,
     correctness: q.mean_correctness ?? null,
     usefulness: q.mean_usefulness ?? null,
@@ -536,6 +619,7 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
     ...row,
     cond,
     created: row.artifact?.created_at ?? null,
+    success_score: scoreMetric(data, 'success_score'),
     usefulness: scoreMetric(data, 'usefulness'),
     pass_rate: scoreMetric(data, 'pass_rate'),
     correctness: scoreMetric(data, 'correctness'),
@@ -591,16 +675,16 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
       return typeof a === 'number' && typeof b === 'number' ? a - b : null
     }
     console.log('')
-    console.log(' THIS RUN — kb vs control')
-    console.log('              pass    corr     use')
+    console.log(' THIS RUN — kb vs control (success = .6·quality + .3·tokens + .1·speed)')
+    console.log('            success    pass    corr     use')
     console.log(
-      ` control   ${_padScore(ctrlForCompare.pass)}  ${_padScore(ctrlForCompare.correctness)}  ${_padScore(ctrlForCompare.usefulness)}`
+      ` control   ${_padScore(ctrlForCompare.success)}  ${_padScore(ctrlForCompare.pass)}  ${_padScore(ctrlForCompare.correctness)}  ${_padScore(ctrlForCompare.usefulness)}`
     )
     console.log(
-      ` kb        ${_padScore(kbScores.pass)}  ${_padScore(kbScores.correctness)}  ${_padScore(kbScores.usefulness)}`
+      ` kb        ${_padScore(kbScores.success)}  ${_padScore(kbScores.pass)}  ${_padScore(kbScores.correctness)}  ${_padScore(kbScores.usefulness)}`
     )
     console.log(
-      ` Δ kb−ctrl ${formatScoreDelta(delta('pass'))}  ${formatScoreDelta(delta('correctness'))}  ${formatScoreDelta(delta('usefulness'))}`
+      ` Δ kb−ctrl ${formatScoreDelta(delta('success'))}  ${formatScoreDelta(delta('pass'))}  ${formatScoreDelta(delta('correctness'))}  ${formatScoreDelta(delta('usefulness'))}`
     )
     console.log(` verdict   ${kbControlVerdict(kbScores, ctrlForCompare)}`)
 
@@ -632,18 +716,20 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
     console.log('')
     console.log(' THIS RUN — kb only (no control in artifact)')
     console.log(
-      ` pass=${_padScore(kbScores.pass).trim()}  corr=${_padScore(kbScores.correctness).trim()}  use=${_padScore(kbScores.usefulness).trim()}`
+      ` success=${_padScore(kbScores.success).trim()}  pass=${_padScore(kbScores.pass).trim()}  corr=${_padScore(kbScores.correctness).trim()}  use=${_padScore(kbScores.usefulness).trim()}`
     )
   }
 
   const kbHistory = kbs.slice(-12)
   if (kbHistory.length >= 2) {
+    const successSeries = kbHistory.map(r => r.success_score)
     const corrSeries = kbHistory.map(r => r.correctness)
     const passSeries = kbHistory.map(r => r.pass_rate)
     console.log('')
     console.log(' KB TREND (last runs)')
-    console.log(` corr  ${sparkline(corrSeries)}  ${_trendNote(corrSeries)}`)
-    console.log(` pass  ${sparkline(passSeries)}  ${_trendNote(passSeries)}`)
+    console.log(` success  ${sparkline(successSeries)}  ${_trendNote(successSeries)}`)
+    console.log(` corr     ${sparkline(corrSeries)}  ${_trendNote(corrSeries)}`)
+    console.log(` pass     ${sparkline(passSeries)}  ${_trendNote(passSeries)}`)
   }
 
   const recent = filtered.slice(-14)
@@ -651,7 +737,7 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
   console.log('')
   console.log(' RECENT RUNS')
   console.log(
-    `${'date'.padEnd(17)} ${'who'.padEnd(7)} ${'pass'.padStart(6)} ${'corr'.padStart(6)} ${'use'.padStart(6)}  run`
+    `${'date'.padEnd(17)} ${'who'.padEnd(7)} ${'success'.padStart(7)} ${'pass'.padStart(6)} ${'corr'.padStart(6)} ${'use'.padStart(6)}  run`
   )
   console.log(_summaryLine())
   for (const r of recent) {
@@ -660,7 +746,7 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
     const id =
       r.id.length > W ? `${r.id.slice(0, W - 1)}…` : r.id
     console.log(
-      `${dt.padEnd(17)} ${r.cond.padEnd(7)} ${_padScore(r.pass_rate)} ${_padScore(r.correctness)} ${_padScore(r.usefulness)}  ${id}${marker}`
+      `${dt.padEnd(17)} ${r.cond.padEnd(7)} ${_padScore(r.success_score).padStart(7)} ${_padScore(r.pass_rate)} ${_padScore(r.correctness)} ${_padScore(r.usefulness)}  ${id}${marker}`
     )
   }
   console.log(_summaryLine('═'))

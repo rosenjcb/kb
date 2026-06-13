@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildCoverageAudit,
+  computeSuccessScore,
   derivedBase,
   formatScoreDelta,
   kbControlVerdict,
@@ -12,6 +13,8 @@ import {
   repoLeafNameFromUrl,
   sanitizeSlugPart,
   scoreMetric,
+  SUCCESS_BUDGETS,
+  SUCCESS_WEIGHTS,
   sparkline,
   stripCliBanner,
   structuralMetric,
@@ -143,7 +146,12 @@ describe('buildCoverageAudit', () => {
 describe('scoreMetric', () => {
   const artifact = {
     aggregate_scores: {
-      query: { mean_usefulness: 3.5, mean_correctness: 2.8, pass_rate_correctness_and_usefulness_at_least_3: 0.75 },
+      query: {
+        success_score: 0.751,
+        mean_usefulness: 3.5,
+        mean_correctness: 2.8,
+        pass_rate_correctness_and_usefulness_at_least_3: 0.75,
+      },
     },
   }
   it('extracts usefulness from query scores', () => {
@@ -155,12 +163,82 @@ describe('scoreMetric', () => {
   it('extracts pass_rate', () => {
     expect(scoreMetric(artifact, 'pass_rate')).toBe(0.75)
   })
+  it('extracts success_score', () => {
+    expect(scoreMetric(artifact, 'success_score')).toBe(0.751)
+  })
   it('falls back to combined when query is absent', () => {
     const a = { aggregate_scores: { combined: { mean_usefulness: 1.5 } } }
     expect(scoreMetric(a, 'usefulness')).toBe(1.5)
   })
   it('returns null when key is absent', () => {
     expect(scoreMetric({}, 'usefulness')).toBeNull()
+  })
+})
+
+describe('computeSuccessScore', () => {
+  it('weights default to 0.6 quality / 0.3 tokens / 0.1 speed summing to 1', () => {
+    expect(SUCCESS_WEIGHTS.quality + SUCCESS_WEIGHTS.tokens + SUCCESS_WEIGHTS.speed).toBeCloseTo(1, 6)
+  })
+
+  it('maps perfect quality, zero tokens, zero time to 1.0', () => {
+    const r = computeSuccessScore({
+      meanCorrectness: 4,
+      meanUsefulness: 4,
+      totalTokens: 0,
+      totalDurationMs: 0,
+    })
+    expect(r.quality_score).toBe(1)
+    expect(r.token_efficiency).toBe(1)
+    expect(r.speed_score).toBe(1)
+    expect(r.success_score).toBe(1)
+  })
+
+  it('blends the three components with the configured weights', () => {
+    // quality = (3 + 3) / 8 = 0.75; tokens at half budget → 0.5; time at half budget → 0.5
+    const r = computeSuccessScore({
+      meanCorrectness: 3,
+      meanUsefulness: 3,
+      totalTokens: SUCCESS_BUDGETS.tokens / 2,
+      totalDurationMs: SUCCESS_BUDGETS.timeMs / 2,
+    })
+    expect(r.quality_score).toBe(0.75)
+    expect(r.token_efficiency).toBe(0.5)
+    expect(r.speed_score).toBe(0.5)
+    // 0.6*0.75 + 0.3*0.5 + 0.1*0.5 = 0.45 + 0.15 + 0.05 = 0.65
+    expect(r.success_score).toBe(0.65)
+  })
+
+  it('clamps token and speed sub-scores to 0 when over budget', () => {
+    const r = computeSuccessScore({
+      meanCorrectness: 4,
+      meanUsefulness: 4,
+      totalTokens: SUCCESS_BUDGETS.tokens * 3,
+      totalDurationMs: SUCCESS_BUDGETS.timeMs * 3,
+    })
+    expect(r.token_efficiency).toBe(0)
+    expect(r.speed_score).toBe(0)
+    // only quality contributes: 0.6 * 1.0 = 0.6
+    expect(r.success_score).toBe(0.6)
+  })
+
+  it('returns null success_score when telemetry is missing', () => {
+    const r = computeSuccessScore({ meanCorrectness: 4, meanUsefulness: 4 })
+    expect(r.success_score).toBeNull()
+    expect(r.token_efficiency).toBeNull()
+    expect(r.speed_score).toBeNull()
+    expect(r.quality_score).toBe(1)
+  })
+})
+
+describe('kbControlVerdict — success-driven', () => {
+  it('reports ahead when kb success exceeds control by >= 0.02', () => {
+    expect(kbControlVerdict({ success: 0.78 }, { success: 0.74 })).toBe('ahead of control')
+  })
+  it('reports behind when kb success trails control by >= 0.02', () => {
+    expect(kbControlVerdict({ success: 0.70 }, { success: 0.80 })).toBe('behind control')
+  })
+  it('reports on par within the 0.02 band', () => {
+    expect(kbControlVerdict({ success: 0.751 }, { success: 0.75 })).toBe('on par with control')
   })
 })
 

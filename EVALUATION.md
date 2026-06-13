@@ -228,14 +228,41 @@ Score each answer on four axes from `0` to `4`.
 - `1`: Strong speculation or unsupported claims.
 - `0`: No evidence discipline.
 
+## Success Score (primary metric)
+
+The headline success metric is a single scalar in `[0, 1]` (higher is better) that
+blends answer quality, token economy, and speed:
+
+```
+success = 0.60 · quality + 0.30 · token_efficiency + 0.10 · speed
+```
+
+| Component | Weight | Definition |
+|-----------|--------|------------|
+| `quality` | 60% | `(mean_correctness + mean_usefulness) / 8` — both axes are `0–4`, so their sum maps to `[0, 1]`. |
+| `token_efficiency` | 30% | `1 − min(total_tokens / token_budget, 1)` — total input+output tokens for the 8-question run. |
+| `speed` | 10% | `1 − min(total_duration_ms / time_budget, 1)` — total wall-clock for the 8-question run. |
+
+**Budget-absolute normalization.** Token and speed sub-scores are measured against
+fixed budgets (not relative to control), so a run's score is stable across
+comparisons. Defaults (tunable in `scripts/eval-shared.mjs`):
+
+- `token_budget = 1,000,000` tokens per 8-question run
+- `time_budget = 600,000` ms (10 min) per 8-question run
+
+Both the kb run and the control run are scored with the **same** formula and budgets,
+so `success` is directly comparable head-to-head. When token/speed telemetry is
+missing (e.g. an old quality-only artifact), `success_score` is `null` rather than
+a partial number.
+
 ## Aggregate Metrics
 
-For each run, compute:
+For each run, compute and record:
 
-- Mean score per axis for `query`
-- Mean score per axis for `chat`
-- Combined mean score
-- Pass rate where `correctness >= 3` and `usefulness >= 3`
+- `success_score` (primary) plus its `quality_score`, `token_efficiency`, `speed_score` parts
+- Mean score per axis for `query` (`correctness`, `usefulness`, `specificity`, `evidence_handling`)
+- Pass rate where `correctness >= 3` and `usefulness >= 3` (secondary/diagnostic)
+- KB and control token/latency telemetry (`kb_query_telemetry`, `control_telemetry`)
 - Coverage notes by topic area
 
 ## Success Thresholds
@@ -244,18 +271,15 @@ Treat a run as promising if all are true:
 
 1. `kb init` completes successfully on a fresh disposable base.
 2. The graph store is populated with non-zero entities and relationships.
-3. Combined pass rate is at least `70%`.
+3. `success_score >= 0.70`.
 4. At least `6/8` questions score `correctness >= 3`.
 5. At least `6/8` questions score `usefulness >= 3`.
 
-Treat the two-agent theory as supported only if the comparison run beats the baseline on at least one of:
-
-- Better combined answer quality
-- Lower total token cost
-- Lower elapsed time
-- Better requirement/process capture in qualitative notes
-
-without causing a meaningful regression in the other categories.
+Treat the two-agent theory as supported when the kb run's `success_score` meets or
+exceeds the control baseline's — i.e. the weighted blend of quality, token economy,
+and speed is at least as good as the real-agent baseline. The per-component deltas
+(`quality_score`, `token_efficiency`, `speed_score`) show *where* the win or loss
+comes from.
 
 ## Artifact Storage
 
@@ -296,13 +320,15 @@ Future agents should treat the JSON shape below as the canonical artifact format
 - `question_set`
 - `query_evaluation`
 - `chat_evaluation`
+- `kb_query_telemetry` (v2: kb-side token/latency totals; mirrors `control_telemetry`)
+- `success_score_inputs` (v2: the raw values fed to the composite, including budgets)
 - `aggregate_scores`
 - `qualitative_findings`
 - `next_improvement_areas`
 
 ### Field expectations
 
-- `schema_version`: integer schema version, starting at `1`
+- `schema_version`: integer schema version (currently `2`; v2 adds `success_score` + telemetry)
 - `evaluation_plan`: string path, usually `EVALUATION.md`
 - `run_label`: short label like `raylib-baseline` or `raylib-compare-agent-b`
 - `status`: `complete` or `partial`
@@ -380,7 +406,7 @@ These may be omitted only if the artifact is marked `partial`.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "evaluation_plan": "EVALUATION.md",
   "run_label": "raylib-baseline",
   "status": "complete",
@@ -412,8 +438,28 @@ These may be omitted only if the artifact is marked `partial`.
   "question_set": [],
   "query_evaluation": [],
   "chat_evaluation": { "status": "not_captured", "notes": "" },
+  "kb_query_telemetry": {
+    "questions_answered": 8,
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "total_cost_usd": 0,
+    "mean_num_turns": null,
+    "total_duration_ms": 0
+  },
+  "success_score_inputs": {
+    "mean_correctness": 0,
+    "mean_usefulness": 0,
+    "total_tokens": 0,
+    "total_duration_ms": 0,
+    "token_budget": 1000000,
+    "time_budget_ms": 600000
+  },
   "aggregate_scores": {
     "query": {
+      "success_score": 0,
+      "quality_score": 0,
+      "token_efficiency": 0,
+      "speed_score": 0,
       "mean_correctness": 0,
       "mean_usefulness": 0,
       "mean_specificity": 0,
@@ -421,6 +467,10 @@ These may be omitted only if the artifact is marked `partial`.
       "pass_rate_correctness_and_usefulness_at_least_3": 0
     },
     "chat": {
+      "success_score": null,
+      "quality_score": null,
+      "token_efficiency": null,
+      "speed_score": null,
       "mean_correctness": null,
       "mean_usefulness": null,
       "mean_specificity": null,
@@ -428,6 +478,10 @@ These may be omitted only if the artifact is marked `partial`.
       "pass_rate_correctness_and_usefulness_at_least_3": null
     },
     "combined": {
+      "success_score": 0,
+      "quality_score": 0,
+      "token_efficiency": 0,
+      "speed_score": 0,
       "mean_correctness": 0,
       "mean_usefulness": 0,
       "mean_specificity": 0,

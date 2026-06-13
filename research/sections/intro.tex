@@ -70,10 +70,11 @@ contributions are:
     $L_\text{resource}$), bias-mitigated LLM jury scoring, and
     logistic-regression calibration on a 20-sample human-annotated set.
 
-  \item \textbf{Empirical results}: evaluated against the raylib C library
-    (14,087 entities, pass rate 0.75) and the KB codebase itself (2,216
-    entities, pass rate 1.00), with evidence-handling scores of 3.88 and 4.00
-    respectively.
+  \item \textbf{Empirical results}: evaluated under a budget-normalized success
+    score (quality $60\%$, token economy $30\%$, speed $10\%$) against the
+    raylib C library (14,087 entities, quality $Q=0.92$, pass rate 0.75) and the
+    KB codebase itself (2,216 entities, $Q=0.86$, pass rate 1.00), with
+    evidence-handling scores of 3.88 and 4.00 respectively.
 \end{enumerate}
 
 %% ─── Figure: System Overview placeholder ─────────────────────────────────────

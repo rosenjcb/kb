@@ -177,6 +177,10 @@ describe('runControlPass', () => {
     const q1 = readQueryResultFile(path.join(workdir, 'q1.json'))
     expect(q1.answer).toContain('Stub answer')
     expect(block.aggregate_scores.query).toBeDefined()
+    // Composite success score is computed from the control's own telemetry.
+    expect(typeof block.aggregate_scores.query.success_score).toBe('number')
+    expect(block.aggregate_scores.query.token_efficiency).not.toBeNull()
+    expect(block.aggregate_scores.query.speed_score).not.toBeNull()
   })
 
   it('returns partial when the agent fails on some questions', async () => {
@@ -237,6 +241,7 @@ describe('buildControlComparison', () => {
   it('computes kb-minus-control deltas per axis', () => {
     const kbAggregate = {
       query: {
+        success_score: 0.78,
         mean_correctness: 3.8,
         mean_usefulness: 3.5,
         pass_rate_correctness_and_usefulness_at_least_3: 0.75,
@@ -245,6 +250,7 @@ describe('buildControlComparison', () => {
     const control = {
       aggregate_scores: {
         query: {
+          success_score: 0.74,
           mean_correctness: 3.0,
           mean_usefulness: 3.0,
           pass_rate_correctness_and_usefulness_at_least_3: 0.5,
@@ -255,6 +261,7 @@ describe('buildControlComparison', () => {
     const cmp = buildControlComparison(kbAggregate, control)
     expect(cmp.pass_rate.delta_kb_minus_control).toBe(0.25)
     expect(cmp.mean_correctness.delta_kb_minus_control).toBeCloseTo(0.8)
+    expect(cmp.success_score.delta_kb_minus_control).toBeCloseTo(0.04)
     expect(cmp.control_efficiency.total_cost_usd).toBe(0.4)
   })
 })

@@ -20,7 +20,7 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { buildCoverageAudit } from './eval-shared.mjs'
+import { buildCoverageAudit, computeSuccessScore } from './eval-shared.mjs'
 import { runAutoScoreFile } from './eval-score.mjs'
 
 export const DEFAULT_CONTROL_PROMPT =
@@ -356,13 +356,6 @@ export async function runControlPass({
   const passRate =
     query_evaluation.filter(x => x.scores.correctness >= 3 && x.scores.usefulness >= 3).length /
     query_evaluation.length
-  const aggregateQuery = {
-    mean_correctness: Number(agg('correctness').toFixed(3)),
-    mean_usefulness: Number(agg('usefulness').toFixed(3)),
-    mean_specificity: Number(agg('specificity').toFixed(3)),
-    mean_evidence_handling: Number(agg('evidence_handling').toFixed(3)),
-    pass_rate_correctness_and_usefulness_at_least_3: Number(passRate.toFixed(3)),
-  }
 
   const tels = perQuestion.map(qf => qf.telemetry).filter(Boolean)
   const answered = perQuestion.filter(qf => String(qf.answer ?? '').trim()).length
@@ -374,6 +367,29 @@ export async function runControlPass({
     total_cost_usd: Number(sum('total_cost_usd').toFixed(4)),
     mean_num_turns: tels.length ? Number((sum('num_turns') / tels.length).toFixed(2)) : null,
     total_duration_ms: sum('duration_ms'),
+  }
+
+  // Composite success score from the same formula kb uses (fair comparison).
+  const mCorr = agg('correctness')
+  const mUse = agg('usefulness')
+  const controlSuccess = computeSuccessScore({
+    meanCorrectness: mCorr,
+    meanUsefulness: mUse,
+    totalTokens: tels.length
+      ? controlTelemetry.total_input_tokens + controlTelemetry.total_output_tokens
+      : null,
+    totalDurationMs: tels.length ? controlTelemetry.total_duration_ms : null,
+  })
+  const aggregateQuery = {
+    success_score: controlSuccess.success_score,
+    quality_score: controlSuccess.quality_score,
+    token_efficiency: controlSuccess.token_efficiency,
+    speed_score: controlSuccess.speed_score,
+    mean_correctness: Number(mCorr.toFixed(3)),
+    mean_usefulness: Number(mUse.toFixed(3)),
+    mean_specificity: Number(agg('specificity').toFixed(3)),
+    mean_evidence_handling: Number(agg('evidence_handling').toFixed(3)),
+    pass_rate_correctness_and_usefulness_at_least_3: Number(passRate.toFixed(3)),
   }
 
   return {
@@ -409,6 +425,9 @@ export function buildControlComparison(kbAggregate, control) {
     delta_kb_minus_control: delta(k[key], c[key]),
   })
   return {
+    success_score: axis('success_score'),
+    token_efficiency: axis('token_efficiency'),
+    speed_score: axis('speed_score'),
     pass_rate: axis('pass_rate_correctness_and_usefulness_at_least_3'),
     mean_correctness: axis('mean_correctness'),
     mean_usefulness: axis('mean_usefulness'),

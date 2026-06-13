@@ -64,11 +64,16 @@ verbosity normalization, self-enhancement down-weighting, family diversity
 enforcement) and statistical calibration via per-judge logistic regression are
 built in.
 
-Empirically, KB achieves a pass rate of 1.00 on the KB self-check suite
-(evidence handling 4.00/4.00) and 0.75 on the external raylib C library
-benchmark (correctness 3.88/4.00, evidence handling 3.88/4.00).  All MOEL
-framework components are fully implemented and unit-tested, with benchmark
-alignment against SWE Atlas, SWE-ContextBench, and CodeScaleBench established.
+The headline metric is a budget-normalized success score
+$S = 0.60\,Q + 0.30\,E_{\text{tok}} + 0.10\,E_{\text{speed}}$ that blends answer
+quality with token economy and latency, scored identically for KB-equipped and
+control runs so the two are directly comparable.  Empirically, KB reaches a
+quality component $Q = 0.86$ and pass rate $1.00$ on the KB self-check suite
+(evidence handling 4.00/4.00) and $Q = 0.92$, pass rate $0.75$ on the external
+raylib C library benchmark (correctness 3.88/4.00, evidence handling
+3.88/4.00).  All MOEL framework components are fully implemented and
+unit-tested, with benchmark alignment against SWE Atlas, SWE-ContextBench, and
+CodeScaleBench established.
 \end{abstract}
 
 %% ─── Body ────────────────────────────────────────────────────────────────────
