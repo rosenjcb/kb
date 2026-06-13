@@ -1,9 +1,10 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { chmod, copyFile, mkdir, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { build } from 'esbuild'
 
 const projectRoot = process.cwd()
+const { version } = JSON.parse(readFileSync(path.join(projectRoot, 'package.json'), 'utf-8'))
 const binDir = path.join(projectRoot, 'dist', 'bin')
 const outFile = path.join(binDir, 'kb.js')
 const launcherFile = path.join(binDir, 'kb')
@@ -21,6 +22,9 @@ await build({
   packages: 'external',
   jsx: 'automatic',
   jsxImportSource: 'react',
+  define: {
+    __KB_VERSION__: JSON.stringify(version),
+  },
 })
 
 if (process.platform !== 'win32') {

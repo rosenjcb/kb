@@ -18,6 +18,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { expandQueryWithGraph, kbIndexDbPath } from '../tools/graph-query-expansion'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
+import { KB_VERSION } from '../version.js'
 import { createPrinter } from '../ui/printer'
 import {
   deleteBase,
@@ -1130,6 +1131,11 @@ async function main() {
   const args = process.argv.slice(2)
   const isTTY = Boolean(process.stdout.isTTY)
 
+  if (args.includes('--version') || args.includes('-V')) {
+    console.log(`kb v${KB_VERSION}`)
+    return
+  }
+
   await migrateLegacyKbSessionJson()
 
   // Launch TUI when invoked interactively with no arguments
@@ -1198,7 +1204,7 @@ async function main() {
   }
 
   if (isHelpOnlyInvocation(args)) {
-    console.log('🤖 KB Agent Harness\n')
+    console.log(`🤖 KB Agent Harness v${KB_VERSION}\n`)
     await runMainWithOutput(args, defaultCliOutput, {} as KbConfig)
     return
   }
@@ -1212,7 +1218,7 @@ async function main() {
   // One-shot CLI path — skip banner when docs generate --output json (stdout must be parseable JSON only).
   const machineJsonStdout = isDocsGenerateJsonOutputArgs(args)
   if (!machineJsonStdout) {
-    console.log('🤖 KB Agent Harness\n')
+    console.log(`🤖 KB Agent Harness v${KB_VERSION}\n`)
     if (inferred.notice) {
       console.log(inferred.notice)
       console.log('')
