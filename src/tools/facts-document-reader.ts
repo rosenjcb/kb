@@ -1,7 +1,7 @@
 import type { DocType } from '../core/doc-taxonomy'
 import { formatFactUri } from '../core/fact-uri'
 import type { LLMProvider } from '../core/types'
-import { DEFAULT_FACT_LIMIT, FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
+import { DEFAULT_FACT_LIMIT, FactsQueryResearchOrchestrator, MAX_FACTS_FOR_LLM } from './facts-query-research-orchestrator'
 import { filterRelevantFacts, shouldRunRelevanceFilter } from './facts-relevance-filter'
 import { makeSufficiencyJudge } from './facts-sufficiency-judge'
 import { expandQuery, shouldExpandQuery } from './query-expander'
@@ -112,7 +112,7 @@ export class FactsDocumentReader {
               orchestrator.run({ query: q, ...opts, excludeIds: excludeIdSet })
             )
           )
-          const merged = mergeQueryResponses(responses, limit, expansions.length)
+          const merged = mergeQueryResponses(responses, MAX_FACTS_FOR_LLM, expansions.length)
           return this.maybeFilterRelevance(merged, baseQuery)
         }
       }
@@ -134,6 +134,8 @@ export class FactsDocumentReader {
 
   private async maybeFilterRelevance(response: QueryResponse, query: string): Promise<QueryResponse> {
     if (!this.llm || !shouldRunRelevanceFilter(response.results)) return response
+    // Judge already confirmed sufficiency — skip redundant relevance filter call
+    if (response.retrieval.detail?.includes('llm_judge_answerable')) return response
     const filtered = await filterRelevantFacts(this.llm, query, response.results)
     if (filtered === response.results) return response
     return {
