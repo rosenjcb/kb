@@ -88,7 +88,7 @@ Examples:
 - A help flag should work from both `kb --help` and `kb init --help`.
 - A normal intent command like `kb query “topic”` is already non-interactive by shape and should not need an extra mode flag.
 - The public intent surface is `kb query`, mirrored by `/query` in chat.
-- **`kb query` vs chat are intentionally different retrieval paths.** `kb query` is the agent-facing, one-shot command: it runs the full intent-rewrite pipeline → `runQueryTruthRetrieval` → `enrichReadDocumentsAnswerWithLLM` in a single pass, designed for programmatic callers (Claude Code, Cursor, Codex) that need a complete answer in one shot. Chat mode is the human-facing iterative path: `executeChatQueryTruthRetrieval` with auto-deepening, live in-memory message history, and conversational turn resolution. Do not collapse these two paths — they serve different audiences with different needs.
+- **`kb query` vs chat are intentionally different synthesis paths.** Shared retrieval (`runQueryTruthRetrieval`); divergent answer phase. `kb query` = one-shot `enrichReadDocumentsAnswerWithLLM()` (single LLM call, eval harvest). Chat = multi-turn `runChatSynthesis()` with optional `query_kb` follow-ups. Do not collapse these paths.
 - **`kb facts`** (list / search / show) must work as **`/facts …`** in chat, mirroring the same flags as the CLI.
 
 ## Flag Standardization Guidance

@@ -1,9 +1,14 @@
 import { createHash } from 'node:crypto'
 import { formatFactUri } from '../core/fact-uri'
 import type { QueryResponse, QueryResult } from './facts-document-reader'
+import { type FactsSufficiencyJudge, shouldCallJudge } from './facts-sufficiency-judge'
 import type { FactConceptRow, FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
 export const DEFAULT_FACT_LIMIT = 500
+/** Maximum facts sent to LLM synthesis — caps the recall-first context to control token cost. */
+export const MAX_FACTS_FOR_LLM = 150
+/** Minimum score for remainder facts (excludes near-zero-signal tail; reserved entries bypass this). */
+const MIN_FACT_SCORE = 0.20
 
 interface FactsLoopOptions {
   query: string
@@ -20,6 +25,7 @@ interface SufficiencyDecision {
 
 type LoopStopReason =
   | 'answerable_plateau'
+  | 'llm_judge_answerable'
   | 'frontier_exhausted'
   | 'budget_exhausted'
   | 'weak_evidence_after_exhaustion'
@@ -33,6 +39,7 @@ interface LoopCheckpoint {
 
 interface LoopMetrics {
   uniqueFacts: number
+  relevantFacts: number
   conceptCoverage: number
   avgTop: number
   queryTokenCoverage: number
@@ -77,9 +84,12 @@ const ABSOLUTE_MAX_ITERATIONS = 512
 const ABSOLUTE_MAX_PONDS = 32
 
 export class FactsQueryResearchOrchestrator {
-  constructor(private readonly indexer: SqliteKbIndexer) {}
+  constructor(
+    private readonly indexer: SqliteKbIndexer,
+    private readonly options?: { judge?: FactsSufficiencyJudge }
+  ) {}
 
-  run(input: FactsLoopOptions): QueryResponse {
+  async run(input: FactsLoopOptions): Promise<QueryResponse> {
     const maxIterations = clampLimitInt(process.env.KB_FACTS_QUERY_MAX_ITERS, 24, 1, 24)
     const maxGraphHops = clampLimitInt(process.env.KB_FACTS_QUERY_MAX_HOPS, 20, 1, 40)
     const maxPonds = clampLimitInt(process.env.KB_FACTS_QUERY_MAX_PONDS, 6, 2, 12)
@@ -201,6 +211,7 @@ export class FactsQueryResearchOrchestrator {
           previousMetrics ??
           ({
             uniqueFacts: scoredFacts.size,
+            relevantFacts: [...scoredFacts.values()].filter(e => e.score >= 0.5).length,
             conceptCoverage: 0,
             avgTop: averageTopScores(scoredFacts),
             queryTokenCoverage: queryTokens.length,
@@ -224,6 +235,11 @@ export class FactsQueryResearchOrchestrator {
         break
       }
 
+      const edgeNeighborIds = new Set(edgeNeighborRows.map(row => row.id))
+      const frontierMaxScore =
+        activePond.frontierFactIds.length > 0
+          ? Math.max(...activePond.frontierFactIds.map(id => scoredFacts.get(id)?.score ?? 0))
+          : 0
       this.scoreIterationFacts(
         input.query,
         merged,
@@ -233,6 +249,8 @@ export class FactsQueryResearchOrchestrator {
           ...pondLexicalRows.map(row => row.id),
           ...edgeNeighborRows.map(row => row.id),
         ]),
+        edgeNeighborIds,
+        frontierMaxScore,
         semanticScores,
         activeCategoryIds,
         primaryLexicalAnchors
@@ -244,8 +262,10 @@ export class FactsQueryResearchOrchestrator {
       const factConcepts = this.indexer.listFactConcepts(topRows.map(row => row.id))
       const conceptCoverage = computeCoverage(queryTokens, factConcepts)
       const avgTop = averageTopScores(scoredFacts)
+      const relevantFacts = [...scoredFacts.values()].filter(e => e.score >= 0.5).length
       const metrics: LoopMetrics = {
         uniqueFacts: scoredFacts.size,
+        relevantFacts,
         conceptCoverage,
         avgTop,
         queryTokenCoverage: queryTokens.length,
@@ -264,6 +284,18 @@ export class FactsQueryResearchOrchestrator {
         status = 'stop'
         nextAction = 'return_answerable'
         stopReason = 'answerable_plateau'
+      } else if (this.options?.judge && shouldCallJudge(iter, relevantFacts)) {
+        const judgeInput = [...scoredFacts.values()]
+          .filter(e => e.score >= 0.5)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 40)
+          .map(e => ({ id: e.row.id, text: e.row.fact_text }))
+        const verdict = await this.options.judge(input.query, judgeInput)
+        if (verdict === 'answerable') {
+          status = 'stop'
+          nextAction = 'llm_judge_answerable'
+          stopReason = 'llm_judge_answerable'
+        }
       }
 
       const nextCategoryIds = shouldWidenCategories({ activeCategoryIds, rankedCategories, sufficiency })
@@ -378,6 +410,8 @@ export class FactsQueryResearchOrchestrator {
     rows: FactRow[],
     scores: Map<string, { row: FactRow; score: number }>,
     frontierFactIds: Set<string>,
+    edgeNeighborIds: Set<string>,
+    frontierMaxScore: number,
     semanticScores: Map<string, number>,
     activeCategoryIds: string[],
     primaryLexicalAnchors: Set<string>
@@ -388,7 +422,6 @@ export class FactsQueryResearchOrchestrator {
       const textTokens = tokenizeQuery(row.fact_text)
       const overlap = textTokens.filter(token => queryTokens.includes(token)).length
       const overlapScore = queryTokens.length > 0 ? overlap / queryTokens.length : 0
-      const recencyBias = 0
       const frontierBoost = frontierFactIds.has(row.id) ? 0.06 : 0
       const anchorBoost = primaryLexicalAnchors.has(row.id) ? 0.1 : 0
       const categories = categoryIds.get(row.id) ?? []
@@ -396,19 +429,39 @@ export class FactsQueryResearchOrchestrator {
         activeCategoryIds.length > 0 && categories.some(category => activeCategoryIds.includes(category))
           ? Math.min(0.18, categories.filter(category => activeCategoryIds.includes(category)).length * 0.09)
           : 0
-      const semanticScore = semanticScores.get(row.id) ?? 0
       const qualityPenalty = retrievalFactPenalty(row)
-      const score = Math.min(
-        1,
-        overlapScore * 0.45 +
-          semanticScore * 0.35 +
-          row.confidence * 0.2 +
-          recencyBias +
-          frontierBoost +
-          anchorBoost +
-          categoryBoost -
-          qualityPenalty
-      )
+
+      // Code facts: swap SHA256 semantic weight for graph proximity score.
+      // Identifier-only matches score ~0.25-0.39 (below "relevant" threshold of 0.5).
+      // Facts discovered via graph traversal from a high-scoring parent score 0.55+.
+      const isCodeFact = row.source_kind === 'import_code'
+      let score: number
+      if (isCodeFact) {
+        const graphProximityScore = edgeNeighborIds.has(row.id) ? frontierMaxScore : 0
+        score = Math.min(
+          1,
+          overlapScore * 0.20 +
+            graphProximityScore * 0.60 +
+            row.confidence * 0.20 +
+            frontierBoost +
+            anchorBoost +
+            categoryBoost -
+            qualityPenalty
+        )
+      } else {
+        const semanticScore = semanticScores.get(row.id) ?? 0
+        score = Math.min(
+          1,
+          overlapScore * 0.45 +
+            semanticScore * 0.35 +
+            row.confidence * 0.20 +
+            frontierBoost +
+            anchorBoost +
+            categoryBoost -
+            qualityPenalty
+        )
+      }
+
       const current = scores.get(row.id)
       if (!current || score > current.score) {
         scores.set(row.id, { row, score })
@@ -460,10 +513,12 @@ export class FactsQueryResearchOrchestrator {
         reservedIds.add(entry.row.id)
       }
     }
-    const remainder = sorted.filter(e => !reservedIds.has(e.row.id))
-    const ranked = dedupeRankedFacts([...reserved, ...remainder])
-    const categoryNames = this.indexer.getFactCategoryNamesForFacts(ranked.map(entry => entry.row.id))
-    const results: QueryResult[] = ranked.map(({ row }) => ({
+    const filteredRemainder = sorted
+      .filter(e => !reservedIds.has(e.row.id) && e.score >= MIN_FACT_SCORE)
+    const ranked = dedupeRankedFacts([...reserved, ...filteredRemainder])
+    const cappedRanked = ranked.slice(0, MAX_FACTS_FOR_LLM)
+    const categoryNames = this.indexer.getFactCategoryNamesForFacts(cappedRanked.map(entry => entry.row.id))
+    const results: QueryResult[] = cappedRanked.map(({ row }) => ({
       metadata: {
         id: row.id,
         title: summarizeFactTitle(row.fact_text),
@@ -481,6 +536,7 @@ export class FactsQueryResearchOrchestrator {
       `graph_hops:${input.graphHops}`,
       input.pondCount ? `ponds:${input.pondCount}` : null,
       `stop:${input.sufficiencyReason}`,
+      `facts:${results.length}`,
       'semantic:on',
     ]
       .filter(Boolean)
@@ -730,7 +786,8 @@ function computeCheckpointConfidence(metrics: LoopMetrics): number {
 
 function hasMeaningfulProgress(previous: LoopMetrics | undefined, current: LoopMetrics): boolean {
   if (!previous) return true
-  if (current.uniqueFacts >= previous.uniqueFacts + 2) return true
+  // Require at least one new high-quality (score >= 0.5) fact — prevents iterating on junk
+  if (current.relevantFacts >= previous.relevantFacts + 1) return true
   if (current.conceptCoverage >= previous.conceptCoverage + 0.08) return true
   if (current.avgTop >= previous.avgTop + 0.04) return true
   if (current.frontierConcepts > previous.frontierConcepts) return true

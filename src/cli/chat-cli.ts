@@ -5,7 +5,9 @@ import {
   formatRetrievedFactsForLLM,
   formatSessionPoolFactsForLLM,
   formatToolQueryFactsForLLM,
+  MAX_FACT_CONTENT_CHARS,
 } from '../core/retrieval-context'
+import { MAX_FACTS_FOR_LLM } from '../tools/facts-query-research-orchestrator'
 import { ReportWriter, RunCollector, defaultLogsDir, estimateCost } from '../core/telemetry'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message, ToolDefinition, ToolResultBlock } from '../core/types'
@@ -367,7 +369,7 @@ export async function runChatSynthesis(params: {
 }): Promise<ChatSynthesisResult> {
   const heartbeatMs = params.progressHeartbeatMs ?? 8000
   const noticeMs = params.progressNoticeMs ?? 12000
-  const retrievalLimit = params.retrievalLimit ?? 200
+  const retrievalLimit = params.retrievalLimit ?? MAX_FACTS_FOR_LLM
 
   if (params.retrieval !== undefined && shouldRefuseChatTurnOnRetrieval(params.retrieval)) {
     return {
@@ -525,7 +527,7 @@ export async function runChatSession(
     },
     deps.mode ?? 'cli'
   )
-  const retrievalLimit = deps.retrievalLimit ?? 200
+  const retrievalLimit = deps.retrievalLimit ?? MAX_FACTS_FOR_LLM
   const maxHistoryTurns = deps.maxHistoryTurns ?? 8
   const progressHeartbeatMs = Math.max(1500, deps.progressHeartbeatMs ?? 8000)
   const progressNoticeMs = Math.max(3000, deps.progressNoticeMs ?? 12000)
@@ -969,7 +971,7 @@ function formatRetrievalMode(retrieval: ReadDocumentsResult['retrieval']): strin
 }
 
 function buildEvidence(results: ReadDocumentsResult['results'], _allFacts?: boolean): string {
-  return formatRetrievedFactsForLLM(results)
+  return formatRetrievedFactsForLLM(results, { maxContentChars: MAX_FACT_CONTENT_CHARS })
 }
 
 function buildToolQueryResult(snapshot: ReadDocumentsResult): string {

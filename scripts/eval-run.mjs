@@ -6,7 +6,8 @@
  * Session lifecycle is fully automatic:
  *   - Base name is derived from the suite id: `eval-{suiteId}` (e.g. `eval-raylib`, `eval-kb`).
  *   - If the session already has docs → reuse it (query-only run).
- *   - If the session is empty / missing → run `kb init` first, then query.
+ *   - If the session is empty / missing → run `kb init` first.
+ *   - Every harvest runs `kb scan --non-interactive` on the snapshot clone, then query.
  *   - `--base NAME` overrides the formula. `--force-init` forces re-init even if docs exist.
  * Ends with an automatic trends summary across prior runs for the same suite.
  *
@@ -23,6 +24,7 @@
 
 import { execSync } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import dayjs from 'dayjs'
@@ -50,6 +52,7 @@ import {
   formatScoreDelta,
   kbControlVerdict,
   worstQuestionGaps,
+  computeSuccessScore,
 } from './eval-shared.mjs'
 
 import { readQueryResultFile, runAutoScoreFile } from './eval-score.mjs'
@@ -69,6 +72,8 @@ export {
   derivedBase,
   parseQueryText,
   parseGraphCounts,
+  parseLatestRunIdForCommand,
+  logsCmd,
   buildCoverageAudit,
   scoreMetric,
   structuralMetric,
@@ -77,7 +82,10 @@ export {
   formatScoreDelta,
   kbControlVerdict,
   worstQuestionGaps,
+  computeSuccessScore,
 }
+export { SUCCESS_WEIGHTS, SUCCESS_BUDGETS, SUCCESS_TOKEN_CACHE_DISCOUNT } from './eval-shared.mjs'
+export { computeWeightedTokenTotal } from './eval-shared.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const KB_REPO = path.resolve(__dirname, '..')
@@ -199,7 +207,8 @@ function printHelp() {
 Session lifecycle (automatic):
   Base is derived as eval-{suiteId} (e.g. eval-raylib, eval-kb).
   If the session has docs → reuse it (query-only run).
-  If the session is empty / missing → kb init first, then query.
+  If the session is empty / missing → kb init first.
+  Every run: kb scan on the snapshot clone, then 8× kb query.
   Ends with a trends summary across prior runs for the same suite.
 
 Suite / questions:
@@ -305,11 +314,22 @@ function extractInitAcceptedObject(logText) {
   return null
 }
 
+function parseLatestRunIdForCommand(logsText, command) {
+  for (const line of logsText.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('run-')) continue
+    const parts = trimmed.split(/\s+/)
+    if (parts.length >= 2 && parts[1] === command) return parts[0]
+  }
+  return null
+}
+
 function parseLatestInitRunId(logsText) {
-  const lines = logsText.split('\n').filter(l => l.trim().startsWith('run-'))
-  if (lines.length === 0) return null
-  const first = lines[0].trim().split(/\s+/)[0]
-  return first || null
+  return parseLatestRunIdForCommand(logsText, 'init')
+}
+
+function parseLatestScanRunId(logsText) {
+  return parseLatestRunIdForCommand(logsText, 'scan')
 }
 
 function git(repo, args) {
@@ -382,10 +402,47 @@ function resolveQuestions(args, suiteConfig) {
   return suiteConfig.questions
 }
 
-/** kb logs list does not filter by base; init runs still show up in global telemetry. */
-function logsCmd(evalMode) {
-  if (evalMode === 'query') return 'logs list --limit 5'
-  return 'logs list --command init --limit 3'
+/** Recent telemetry for this eval base (init/scan/query). */
+function logsCmd(base) {
+  return `logs list --base ${base} --limit 10`
+}
+
+/**
+ * Read kb-side query telemetry directly from the NDJSON run reports
+ * (~/.kb/logs/<date>.jsonl). Filters to `query` runs for this base, takes the
+ * most recent `limit`, and sums tokens / duration / cost. Mirrors the control
+ * block's `control_telemetry` so kb-vs-control comparison is symmetric.
+ *
+ * @returns {{ questions_answered:number, total_input_tokens:number, total_output_tokens:number, total_cost_usd:number, mean_num_turns:number|null, total_duration_ms:number }|null}
+ */
+function readKbQueryTelemetry(base, limit = 8) {
+  const logsDir = path.join(os.homedir(), '.kb', 'logs')
+  if (!fs.existsSync(logsDir)) return null
+  const reports = []
+  for (const file of fs.readdirSync(logsDir).filter(f => f.endsWith('.jsonl')).sort()) {
+    const text = fs.readFileSync(path.join(logsDir, file), 'utf8')
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue
+      try {
+        const r = JSON.parse(line)
+        if (r.command === 'query' && (!base || r.base === base)) reports.push(r)
+      } catch {
+        /* skip malformed line */
+      }
+    }
+  }
+  if (reports.length === 0) return null
+  reports.sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime())
+  const recent = reports.slice(-limit)
+  const sum = key => recent.reduce((a, r) => a + (Number(r[key]) || 0), 0)
+  return {
+    questions_answered: recent.length,
+    total_input_tokens: sum('totalInputTokens'),
+    total_output_tokens: sum('totalOutputTokens'),
+    total_cost_usd: Number(sum('totalEstimatedCostUsd').toFixed(4)),
+    mean_num_turns: null,
+    total_duration_ms: sum('totalDurationMs'),
+  }
 }
 
 function readBaseFromInitLog(initLogPath) {
@@ -511,7 +568,7 @@ async function main() {
     console.error(`[eval] workdir ${workdir}`)
     console.error(`[eval] target cwd ${targetCwd}`)
     console.error(
-      `[eval] base "${base}" — ${needsInit ? 'no docs found, running kb init' : 'session exists, reusing'}`
+      `[eval] base "${base}" — ${needsInit ? 'no docs found, running kb init' : 'session exists, reusing'}; kb scan before queries`
     )
 
     if (needsInit) {
@@ -525,6 +582,10 @@ async function main() {
       )
     }
 
+    console.error(`[eval] kb scan --base ${base}`)
+    const scanLog = kb(targetCwd, `scan --base ${base} --non-interactive --debug`)
+    fs.writeFileSync(path.join(workdir, 'scan.log'), scanLog, 'utf8')
+
     console.error(`[eval] kb default ${base}`)
     kb(targetCwd, `default ${base}`, { stdio: 'inherit' })
 
@@ -537,7 +598,7 @@ async function main() {
     fs.writeFileSync(path.join(workdir, 'graph.txt'), graphOut, 'utf8')
 
     console.error('[eval] logs list')
-    const logsOut = kb(targetCwd, logsCmd(evalMode))
+    const logsOut = kb(targetCwd, logsCmd(base))
     fs.writeFileSync(path.join(workdir, 'logs.txt'), logsOut, 'utf8')
 
     let q = 1
@@ -556,6 +617,7 @@ async function main() {
   const graphCounts = parseGraphCounts(graphText)
   const logsText = fs.readFileSync(path.join(workdir, 'logs.txt'), 'utf8')
   const initRunId = parseLatestInitRunId(logsText)
+  const scanRunId = parseLatestScanRunId(logsText)
   const docsListText = fs.existsSync(path.join(workdir, 'docs.txt'))
     ? fs.readFileSync(path.join(workdir, 'docs.txt'), 'utf8')
     : ''
@@ -636,6 +698,28 @@ async function main() {
   const pr =
     query_evaluation.filter(q => q.scores.correctness >= 3 && q.scores.usefulness >= 3).length /
     query_evaluation.length
+
+  // KB-side query telemetry (tokens + latency) for the composite success score.
+  const kbQueryTelemetry = readKbQueryTelemetry(base, 8)
+  const kbSuccess = computeSuccessScore({
+    meanCorrectness: mC,
+    meanUsefulness: mU,
+    totalTokens: kbQueryTelemetry
+      ? kbQueryTelemetry.total_input_tokens + kbQueryTelemetry.total_output_tokens
+      : null,
+    totalDurationMs: kbQueryTelemetry ? kbQueryTelemetry.total_duration_ms : null,
+  })
+  const aggregateQueryScores = {
+    success_score: kbSuccess.success_score,
+    quality_score: kbSuccess.quality_score,
+    token_efficiency: kbSuccess.token_efficiency,
+    speed_score: kbSuccess.speed_score,
+    mean_correctness: Number(mC.toFixed(3)),
+    mean_usefulness: Number(mU.toFixed(3)),
+    mean_specificity: Number(mS.toFixed(3)),
+    mean_evidence_handling: Number(mE.toFixed(3)),
+    pass_rate_correctness_and_usefulness_at_least_3: Number(pr.toFixed(3)),
+  }
   const coverageAuditSummary = {
     mean_coverage_ratio: Number(
       mean(query_evaluation.map(q => q.coverage_audit.coverage_ratio)).toFixed(3)
@@ -675,7 +759,7 @@ async function main() {
           : 'partial'
 
   const artifact = {
-    schema_version: 1,
+    schema_version: 2,
     evaluation_plan: 'EVALUATION.md',
     run_label: label,
     status,
@@ -704,10 +788,11 @@ async function main() {
         evalMode === 'all'
           ? `kb init --base ${base} --non-interactive --debug (cwd: ${targetCwd})`
           : null,
+        `kb scan --base ${base} --non-interactive --debug (cwd: ${targetCwd})`,
         `kb default ${base}`,
         `kb docs list --base ${base} --output json`,
         `kb graph --base ${base}`,
-        `kb ${logsCmd(evalMode)}`,
+        `kb ${logsCmd(base)}`,
         `kb query "<8 questions>" --base ${base} --output json`,
       ].filter(Boolean),
       workdir,
@@ -733,6 +818,10 @@ async function main() {
             : initRunId
               ? null
               : 'Could not parse init run id from kb logs table.',
+        scan_run_id: scanRunId,
+        scan_run_id_note: scanRunId
+          ? null
+          : 'Could not parse scan run id from kb logs table.',
         docs_list: docsList,
         graph_summary: {
           entities: graphCounts.entities,
@@ -749,28 +838,22 @@ async function main() {
       notes:
         'Batch automation: kb chat transcripts not captured. Follow EVALUATION.md Phase 3 for interactive chat when a complete run is required.',
     },
+    kb_query_telemetry: kbQueryTelemetry,
+    success_score_inputs: kbSuccess.inputs,
     aggregate_scores: {
-      query: {
-        mean_correctness: Number(mC.toFixed(3)),
-        mean_usefulness: Number(mU.toFixed(3)),
-        mean_specificity: Number(mS.toFixed(3)),
-        mean_evidence_handling: Number(mE.toFixed(3)),
-        pass_rate_correctness_and_usefulness_at_least_3: Number(pr.toFixed(3)),
-      },
+      query: aggregateQueryScores,
       chat: {
+        success_score: null,
+        quality_score: 0,
+        token_efficiency: null,
+        speed_score: null,
         mean_correctness: 0,
         mean_usefulness: 0,
         mean_specificity: 0,
         mean_evidence_handling: 0,
         pass_rate_correctness_and_usefulness_at_least_3: 0,
       },
-      combined: {
-        mean_correctness: Number(mC.toFixed(3)),
-        mean_usefulness: Number(mU.toFixed(3)),
-        mean_specificity: Number(mS.toFixed(3)),
-        mean_evidence_handling: Number(mE.toFixed(3)),
-        pass_rate_correctness_and_usefulness_at_least_3: Number(pr.toFixed(3)),
-      },
+      combined: aggregateQueryScores,
     },
     qualitative_findings: qualitative,
     next_improvement_areas: [

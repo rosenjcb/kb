@@ -129,6 +129,10 @@ describe('printLogsHelp', () => {
   it('documents --since flag', () => {
     expect(printLogsHelp()).toContain('--since')
   })
+
+  it('documents --base flag', () => {
+    expect(printLogsHelp()).toContain('--base')
+  })
 })
 
 // ─── kb logs list ─────────────────────────────────────────────────
@@ -287,6 +291,90 @@ describe('runLogsCommand compare', () => {
     const output = await run(['compare'])
     const expectedDelta = initReportB.totalDurationMs - initReportA.totalDurationMs // -5000
     expect(output).toContain(String(expectedDelta))
+    vi.resetModules()
+  })
+})
+
+// ─── kb logs list --base filter ──────────────────────────────────
+
+describe('runLogsCommand list --base', () => {
+  it('Given --base filter, then only reports matching that base appear', async () => {
+    const repoA = makeReport({ runId: 'run-400-dddd', command: 'query', base: 'project-alpha' })
+    const repoB = makeReport({ runId: 'run-500-eeee', command: 'query', base: 'project-beta' })
+    mockLogsDir([repoA, repoB])
+    const { runLogsCommand: run } = await import('../../src/cli/logs-cli')
+    const output = await run(['list', '--base', 'project-alpha'])
+    expect(output).toContain('run-400-dddd')
+    expect(output).not.toContain('run-500-eeee')
+    vi.resetModules()
+  })
+
+  it('Given --base filter that matches nothing, then returns empty message', async () => {
+    const repoA = makeReport({ runId: 'run-400-dddd', command: 'query', base: 'project-alpha' })
+    mockLogsDir([repoA])
+    const { runLogsCommand: run } = await import('../../src/cli/logs-cli')
+    const output = await run(['list', '--base', 'nonexistent-base'])
+    expect(output).toContain('No run reports found')
+    vi.resetModules()
+  })
+
+  it('Given --base combined with --command, then both filters apply', async () => {
+    const initAlpha = makeReport({ runId: 'run-410-ffff', command: 'init', base: 'project-alpha' })
+    const queryAlpha = makeReport({ runId: 'run-420-gggg', command: 'query', base: 'project-alpha' })
+    const initBeta = makeReport({ runId: 'run-430-hhhh', command: 'init', base: 'project-beta' })
+    mockLogsDir([initAlpha, queryAlpha, initBeta])
+    const { runLogsCommand: run } = await import('../../src/cli/logs-cli')
+    const output = await run(['list', '--base', 'project-alpha', '--command', 'init'])
+    expect(output).toContain('run-410-ffff')
+    expect(output).not.toContain('run-420-gggg')
+    expect(output).not.toContain('run-430-hhhh')
+    vi.resetModules()
+  })
+})
+
+// ─── kb logs compare --base filter ───────────────────────────────
+
+describe('runLogsCommand compare --base', () => {
+  it('Given --base filter, then compare uses only runs from that base', async () => {
+    const alphaA = makeReport({
+      runId: 'run-600-iiii',
+      command: 'query',
+      base: 'project-alpha',
+      startedAt: '2026-04-17T10:00:00.000Z',
+      totalDurationMs: 5000,
+      totalInputTokens: 1000,
+      totalOutputTokens: 200,
+      totalEstimatedCostUsd: 0.0001,
+      stages: [],
+    })
+    const alphaB = makeReport({
+      runId: 'run-700-jjjj',
+      command: 'query',
+      base: 'project-alpha',
+      startedAt: '2026-04-17T10:01:00.000Z',
+      totalDurationMs: 4500,
+      totalInputTokens: 900,
+      totalOutputTokens: 180,
+      totalEstimatedCostUsd: 0.00009,
+      stages: [],
+    })
+    const betaRun = makeReport({
+      runId: 'run-800-kkkk',
+      command: 'query',
+      base: 'project-beta',
+      startedAt: '2026-04-17T10:02:00.000Z',
+      totalDurationMs: 3000,
+      totalInputTokens: 500,
+      totalOutputTokens: 100,
+      totalEstimatedCostUsd: 0.00005,
+      stages: [],
+    })
+    mockLogsDir([alphaA, alphaB, betaRun])
+    const { runLogsCommand: run } = await import('../../src/cli/logs-cli')
+    const output = await run(['compare', '--base', 'project-alpha'])
+    expect(output).toContain('run-600-iiii')
+    expect(output).toContain('run-700-jjjj')
+    expect(output).not.toContain('run-800-kkkk')
     vi.resetModules()
   })
 })

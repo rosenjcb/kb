@@ -53,10 +53,11 @@ One runner drives all eval runs. Session lifecycle is fully automatic:
 
 1. Base is derived as `eval-{suiteId}` (e.g. `eval-raylib`).
 2. If the session already has docs → reuse it (query-only run).
-3. If the session is empty / missing → run `kb init` first, then query.
-4. After writing `artifact.json`, prints a trends summary across prior runs for the same suite.
+3. If the session is empty / missing → run `kb init` first.
+4. **Always** run `kb scan --non-interactive` on the snapshot clone (refresh facts/tombstones), then query.
+4. After writing `artifact.json`, prints a **kb vs control** summary for this run (`success_score`, ΔS, verdict). A secondary trends table lists prior runs for the same suite (diagnostic only — not the headline comparison).
 
-**Quick start** (from kb repo root, after `ppnpm run build`):
+**Quick start** (from kb repo root, after `pnpm run build`):
 
 ```bash
 # Standard run — auto-manages session, ends with trends:
@@ -110,15 +111,18 @@ cost) is captured so the comparison covers both **quality and efficiency**.
 # kb + control side-by-side into one artifact.json (control runs by default)
 pnpm run eval -- --suite raylib --auto-score
 
-# kb only — control omitted; compare against historic control trends instead
+# kb only — control omitted; no ΔS verdict (use for kb-side iteration only)
 pnpm run eval -- --suite raylib --auto-score --skip-control
 ```
 
 Per-question, the comparison is literally `kb query "Q"` vs the *same* `Q` handed to Claude (`claude -p "<prompt> Q"`).
 A single `~/.kb/evaluations/<run>/artifact.json` holds both: the kb results at top level (`run.condition = "kb"`), the
 control under a `control` block (with its own `aggregate_scores` + `control_telemetry`), and a `comparison` block of
-kb-minus-control deltas. With `--skip-control` the `control`/`comparison` keys are simply absent. The trends table
-printed at the end separates control from kb rows and prints the latest control-vs-kb deltas.
+kb-minus-control deltas. With `--skip-control` the `control`/`comparison` keys are absent — **there is no headline grade
+for that run**.
+
+The end-of-run summary prints **this run's** kb vs control row first (when both phases ran). The trends table below is
+for regression tracking only; do not treat kb-vs-kb historical deltas as the project verdict.
 
 Because the control runs by default, eval **preflights the agent and fails fast**: if the chosen agent binary is not on
 PATH (`claude` by default, `agent` for Cursor), the run exits immediately — *before any clone or `kb init`* — with a
@@ -153,13 +157,15 @@ This evaluation should be run at least twice against the same codebase snapshot 
 ### Phase 1: Run the Eval
 
 ```bash
-pnpm run eval -- --suite raylib [--auto-score]
+# Headline grade (kb + control → ΔS in artifact.comparison):
+pnpm run eval -- --suite kb --auto-score
+
+# Kb-side iteration only (no ΔS):
+pnpm run eval -- --suite kb --auto-score --skip-control
 ```
 
-The script handles session management automatically:
-- On first run: clones the repo, runs `kb init --base eval-raylib`, queries.
-- On subsequent runs: reuses the `eval-raylib` session, queries only.
-- Ends with a historical trends table.
+Every run: `kb scan` on the snapshot clone, then 8× `kb query` (one-shot synthesis — see
+`src/core/QUERY_INTERNALS.md`), then control (unless skipped).
 
 To force a fresh init (e.g. after significant KB changes): `--force-init`.
 
@@ -227,14 +233,69 @@ Score each answer on four axes from `0` to `4`.
 - `1`: Strong speculation or unsupported claims.
 - `0`: No evidence discipline.
 
+## Headline verdict: kb vs control (ΔS)
+
+The **single scalar grade** for whether kb beats the real-agent baseline is the
+**success-score delta** from the same artifact:
+
+```
+ΔS = success_score_kb − success_score_control
+     = artifact.comparison.success_score.delta_kb_minus_control
+```
+
+Both sides answer the **same eight questions**, are scored by the **same judge** (Gemini/OpenAI,
+`--score-runs 3` by default), and are graded with the **same** `success_score` formula and
+budgets. This is the harvest pipeline's MOEL-aligned headline metric: one number that blends
+quality, token economy, and speed (see below).
+
+| ΔS | Verdict (`kbControlVerdict`) |
+|----|------------------------------|
+| ≥ +0.02 | **kb ahead of control** |
+| ≤ −0.02 | **kb behind control** |
+| otherwise | **on par with control** |
+
+Read the full breakdown in `artifact.comparison` — each axis has `{ kb, control, delta_kb_minus_control }`
+for `success_score`, `quality_score`, `token_efficiency`, `speed_score`, pass rate, and rubric means.
+The per-component deltas show *where* kb wins or loses (e.g. higher quality but slower control).
+
+**Requires both phases.** Run `pnpm run eval -- --suite <name> --auto-score` without `--skip-control`.
+Kb-only runs still record `aggregate_scores.query.success_score` but cannot emit ΔS.
+
+## Success Score (primary metric)
+
+`success_score` (also written **S** in the research paper) is the per-side scalar in `[0, 1]` (higher is better) that
+blends answer quality, token economy, and speed:
+
+```
+success = 0.60 · quality + 0.30 · token_efficiency + 0.10 · speed
+```
+
+| Component | Weight | Definition |
+|-----------|--------|------------|
+| `quality` | 60% | `(mean_correctness + mean_usefulness) / 8` — both axes are `0–4`, so their sum maps to `[0, 1]`. |
+| `token_efficiency` | 30% | `1 − min(weighted_tokens / token_budget, 1)` — weighted total for the 8-question run: `input + output + 0.1 × cache_read` (cache discount matches MOEL / Anthropic prompt caching). kb query logs undifferentiated input+output; control agents report cache reads separately. |
+| `speed` | 10% | `1 − min(total_duration_ms / time_budget, 1)` — total wall-clock for the 8-question run. |
+
+**Budget-absolute normalization.** Token and speed sub-scores are measured against
+fixed budgets (not relative to control), so a run's score is stable across
+comparisons. Defaults (tunable in `scripts/eval-shared.mjs`):
+
+- `token_budget = 1,000,000` tokens per 8-question run
+- `time_budget = 600,000` ms (10 min) per 8-question run
+
+Both the kb run and the control run are scored with the **same** formula and budgets,
+so `success` is directly comparable head-to-head. When token/speed telemetry is
+missing (e.g. an old quality-only artifact), `success_score` is `null` rather than
+a partial number.
+
 ## Aggregate Metrics
 
-For each run, compute:
+For each run, compute and record:
 
-- Mean score per axis for `query`
-- Mean score per axis for `chat`
-- Combined mean score
-- Pass rate where `correctness >= 3` and `usefulness >= 3`
+- `success_score` (primary) plus its `quality_score`, `token_efficiency`, `speed_score` parts
+- Mean score per axis for `query` (`correctness`, `usefulness`, `specificity`, `evidence_handling`)
+- Pass rate where `correctness >= 3` and `usefulness >= 3` (secondary/diagnostic)
+- KB and control token/latency telemetry (`kb_query_telemetry`, `control_telemetry`)
 - Coverage notes by topic area
 
 ## Success Thresholds
@@ -243,18 +304,13 @@ Treat a run as promising if all are true:
 
 1. `kb init` completes successfully on a fresh disposable base.
 2. The graph store is populated with non-zero entities and relationships.
-3. Combined pass rate is at least `70%`.
+3. `success_score >= 0.70`.
 4. At least `6/8` questions score `correctness >= 3`.
 5. At least `6/8` questions score `usefulness >= 3`.
 
-Treat the two-agent theory as supported only if the comparison run beats the baseline on at least one of:
-
-- Better combined answer quality
-- Lower total token cost
-- Lower elapsed time
-- Better requirement/process capture in qualitative notes
-
-without causing a meaningful regression in the other categories.
+Treat kb as **ahead of the real-agent baseline** when `comparison.success_score.delta_kb_minus_control ≥ 0.02`
+(equivalently: kb's `success_score` beats control's by at least 0.02 in the same artifact). The per-component
+deltas in `artifact.comparison` show *where* the win or loss comes from.
 
 ## Artifact Storage
 
@@ -295,13 +351,17 @@ Future agents should treat the JSON shape below as the canonical artifact format
 - `question_set`
 - `query_evaluation`
 - `chat_evaluation`
+- `kb_query_telemetry` (v2: kb-side token/latency totals; mirrors `control_telemetry`)
+- `success_score_inputs` (v2: the raw values fed to the composite, including budgets)
 - `aggregate_scores`
 - `qualitative_findings`
 - `next_improvement_areas`
+- `control` (when control phase ran — condition N scores + telemetry)
+- `comparison` (when control phase ran — **headline ΔS** and per-axis kb−control deltas)
 
 ### Field expectations
 
-- `schema_version`: integer schema version, starting at `1`
+- `schema_version`: integer schema version (currently `2`; v2 adds `success_score` + telemetry)
 - `evaluation_plan`: string path, usually `EVALUATION.md`
 - `run_label`: short label like `raylib-baseline` or `raylib-compare-agent-b`
 - `status`: `complete` or `partial`
@@ -379,7 +439,7 @@ These may be omitted only if the artifact is marked `partial`.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "evaluation_plan": "EVALUATION.md",
   "run_label": "raylib-baseline",
   "status": "complete",
@@ -411,8 +471,28 @@ These may be omitted only if the artifact is marked `partial`.
   "question_set": [],
   "query_evaluation": [],
   "chat_evaluation": { "status": "not_captured", "notes": "" },
+  "kb_query_telemetry": {
+    "questions_answered": 8,
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "total_cost_usd": 0,
+    "mean_num_turns": null,
+    "total_duration_ms": 0
+  },
+  "success_score_inputs": {
+    "mean_correctness": 0,
+    "mean_usefulness": 0,
+    "total_tokens": 0,
+    "total_duration_ms": 0,
+    "token_budget": 1000000,
+    "time_budget_ms": 600000
+  },
   "aggregate_scores": {
     "query": {
+      "success_score": 0,
+      "quality_score": 0,
+      "token_efficiency": 0,
+      "speed_score": 0,
       "mean_correctness": 0,
       "mean_usefulness": 0,
       "mean_specificity": 0,
@@ -420,6 +500,10 @@ These may be omitted only if the artifact is marked `partial`.
       "pass_rate_correctness_and_usefulness_at_least_3": 0
     },
     "chat": {
+      "success_score": null,
+      "quality_score": null,
+      "token_efficiency": null,
+      "speed_score": null,
       "mean_correctness": null,
       "mean_usefulness": null,
       "mean_specificity": null,
@@ -427,6 +511,10 @@ These may be omitted only if the artifact is marked `partial`.
       "pass_rate_correctness_and_usefulness_at_least_3": null
     },
     "combined": {
+      "success_score": 0,
+      "quality_score": 0,
+      "token_efficiency": 0,
+      "speed_score": 0,
       "mean_correctness": 0,
       "mean_usefulness": 0,
       "mean_specificity": 0,
@@ -435,9 +523,36 @@ These may be omitted only if the artifact is marked `partial`.
     }
   },
   "qualitative_findings": [],
-  "next_improvement_areas": []
+  "next_improvement_areas": [],
+  "control": {
+    "run": { "condition": "control", "suite": "raylib" },
+    "aggregate_scores": { "query": { "success_score": 0.812 } },
+    "control_telemetry": {
+      "questions_answered": 8,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0,
+      "mean_num_turns": 0,
+      "total_duration_ms": 0
+    }
+  },
+  "comparison": {
+    "success_score": {
+      "kb": 0.754,
+      "control": 0.812,
+      "delta_kb_minus_control": -0.058
+    },
+    "mean_correctness": {
+      "kb": 3.113,
+      "control": 3.875,
+      "delta_kb_minus_control": -0.762
+    }
+  }
 }
 ```
+
+`control` and `comparison` are present only when the control phase ran (default). The headline project grade is
+`comparison.success_score.delta_kb_minus_control` (ΔS).
 
 ### Authoring rule
 
@@ -449,13 +564,18 @@ Agents should not invent their own artifact shape for future runs. If the schema
 
 ## Comparison Guidance
 
-When comparing two runs:
+**Primary comparison:** kb vs control in the **same** artifact (`comparison.*.delta_kb_minus_control`).
+Do not compare kb run A against control run B from different timestamps unless reproducing a regression.
 
-1. Keep `~/raylib/` at the same git commit for both runs.
-2. Use fresh `ci-raylib-*` bases for both runs.
-3. Reuse the same question set and scoring rubric.
-4. Prefer the same evaluator, or multiple evaluators with normalized scoring notes.
-5. Compare both machine metrics and human judgment.
+**Secondary (diagnostics only):** `pnpm run eval:trends -- --suite <name>` lists prior kb and control rows for
+the suite. Use trends to spot regressions in kb-side quality or token use — not as the headline verdict.
+
+When comparing two kb-side iterations (e.g. synthesis changes):
+
+1. Keep the snapshot repo at the same git commit when possible.
+2. Use `--force-init` or a fresh `--base` if you need a clean index.
+3. Reuse the same question set and `--score-runs`.
+4. Prefer `--skip-control` for kb-only A/B; run with control periodically to refresh ΔS.
 
 ## Threats to Validity
 

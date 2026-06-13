@@ -1,7 +1,9 @@
 import type { DocType } from '../core/doc-taxonomy'
 import { formatFactUri } from '../core/fact-uri'
 import type { LLMProvider } from '../core/types'
-import { DEFAULT_FACT_LIMIT, FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
+import { DEFAULT_FACT_LIMIT, FactsQueryResearchOrchestrator, MAX_FACTS_FOR_LLM } from './facts-query-research-orchestrator'
+import { filterRelevantFacts, shouldRunRelevanceFilter } from './facts-relevance-filter'
+import { makeSufficiencyJudge } from './facts-sufficiency-judge'
 import { expandQuery, shouldExpandQuery } from './query-expander'
 import { type FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
@@ -88,7 +90,8 @@ export class FactsDocumentReader {
     }
 
     if (input.discoveryDepth === 'deep') {
-      const orchestrator = new FactsQueryResearchOrchestrator(this.indexer)
+      const judge = this.llm ? makeSufficiencyJudge(this.llm) : undefined
+      const orchestrator = new FactsQueryResearchOrchestrator(this.indexer, { judge })
       const baseQuery = input.query?.trim() ?? ''
       const opts = {
         limit,
@@ -104,14 +107,18 @@ export class FactsDocumentReader {
       if (this.llm && baseQuery && shouldExpandQuery(baseQuery)) {
         const expansions = await expandQuery(this.llm, baseQuery)
         if (expansions.length > 0) {
-          const responses = [baseQuery, ...expansions].map(q =>
-            orchestrator.run({ query: q, ...opts, excludeIds: excludeIdSet })
+          const responses = await Promise.all(
+            [baseQuery, ...expansions].map(q =>
+              orchestrator.run({ query: q, ...opts, excludeIds: excludeIdSet })
+            )
           )
-          return mergeQueryResponses(responses, limit, expansions.length)
+          const merged = mergeQueryResponses(responses, MAX_FACTS_FOR_LLM, expansions.length)
+          return this.maybeFilterRelevance(merged, baseQuery)
         }
       }
 
-      return orchestrator.run({ query: baseQuery, ...opts, excludeIds: excludeIdSet })
+      const response = await orchestrator.run({ query: baseQuery, ...opts, excludeIds: excludeIdSet })
+      return this.maybeFilterRelevance(response, baseQuery)
     }
     const rows = this.readRows(input, limit)
     const categoryNames = this.indexer.getFactCategoryNamesForFacts(rows.map(row => row.id))
@@ -122,6 +129,23 @@ export class FactsDocumentReader {
       results,
       total: results.length,
       retrieval: { method: 'lexical', detail: 'facts+graph-first' },
+    }
+  }
+
+  private async maybeFilterRelevance(response: QueryResponse, query: string): Promise<QueryResponse> {
+    if (!this.llm || !shouldRunRelevanceFilter(response.results)) return response
+    // Judge already confirmed sufficiency — skip redundant relevance filter call
+    if (response.retrieval.detail?.includes('llm_judge_answerable')) return response
+    const filtered = await filterRelevantFacts(this.llm, query, response.results)
+    if (filtered === response.results) return response
+    return {
+      ...response,
+      results: filtered,
+      total: filtered.length,
+      retrieval: {
+        ...response.retrieval,
+        detail: `${response.retrieval.detail ?? ''};relevance_filtered:${filtered.length}`,
+      },
     }
   }
 

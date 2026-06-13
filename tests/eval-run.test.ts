@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildCoverageAudit,
+  computeSuccessScore,
+  computeWeightedTokenTotal,
   derivedBase,
   formatScoreDelta,
   kbControlVerdict,
+  logsCmd,
   matchesSuite,
   parseGraphCounts,
+  parseLatestRunIdForCommand,
   parseQueryText,
   repoLeafNameFromUrl,
   sanitizeSlugPart,
   scoreMetric,
+  SUCCESS_BUDGETS,
+  SUCCESS_WEIGHTS,
+  SUCCESS_TOKEN_CACHE_DISCOUNT,
   sparkline,
   stripCliBanner,
   structuralMetric,
@@ -106,6 +113,23 @@ describe('parseQueryText', () => {
   it('returns null answer when no --- separator found', () => {
     expect(parseQueryText('no separator here').answer).toBeNull()
   })
+  it('extracts direct answer before --- when no stage> answer lines (one-shot synthesis)', () => {
+    const output = [
+      '🤖 KB Agent Harness',
+      '',
+      'running intent rewrite...',
+      'running intent loop...',
+      'Build/config evidence scaffold:',
+      '- Prerequisites: cmake',
+      '---',
+      'evidence> 150 facts',
+      'retrieval> hybrid (passes:1)',
+      'matches> 10 ranked facts',
+      'sources> top 10 of 10 ranked: fact://abc',
+    ].join('\n')
+    expect(parseQueryText(output).answer).toContain('Build/config evidence scaffold')
+    expect(parseQueryText(output).answer).toContain('Prerequisites: cmake')
+  })
 })
 
 describe('stripCliBanner', () => {
@@ -141,7 +165,12 @@ describe('buildCoverageAudit', () => {
 describe('scoreMetric', () => {
   const artifact = {
     aggregate_scores: {
-      query: { mean_usefulness: 3.5, mean_correctness: 2.8, pass_rate_correctness_and_usefulness_at_least_3: 0.75 },
+      query: {
+        success_score: 0.751,
+        mean_usefulness: 3.5,
+        mean_correctness: 2.8,
+        pass_rate_correctness_and_usefulness_at_least_3: 0.75,
+      },
     },
   }
   it('extracts usefulness from query scores', () => {
@@ -153,12 +182,109 @@ describe('scoreMetric', () => {
   it('extracts pass_rate', () => {
     expect(scoreMetric(artifact, 'pass_rate')).toBe(0.75)
   })
+  it('extracts success_score', () => {
+    expect(scoreMetric(artifact, 'success_score')).toBe(0.751)
+  })
   it('falls back to combined when query is absent', () => {
     const a = { aggregate_scores: { combined: { mean_usefulness: 1.5 } } }
     expect(scoreMetric(a, 'usefulness')).toBe(1.5)
   })
   it('returns null when key is absent', () => {
     expect(scoreMetric({}, 'usefulness')).toBeNull()
+  })
+})
+
+describe('computeSuccessScore', () => {
+  it('weights default to 0.6 quality / 0.3 tokens / 0.1 speed summing to 1', () => {
+    expect(SUCCESS_WEIGHTS.quality + SUCCESS_WEIGHTS.tokens + SUCCESS_WEIGHTS.speed).toBeCloseTo(1, 6)
+  })
+
+  it('maps perfect quality, zero tokens, zero time to 1.0', () => {
+    const r = computeSuccessScore({
+      meanCorrectness: 4,
+      meanUsefulness: 4,
+      totalTokens: 0,
+      totalDurationMs: 0,
+    })
+    expect(r.quality_score).toBe(1)
+    expect(r.token_efficiency).toBe(1)
+    expect(r.speed_score).toBe(1)
+    expect(r.success_score).toBe(1)
+  })
+
+  it('blends the three components with the configured weights', () => {
+    // quality = (3 + 3) / 8 = 0.75; tokens at half budget → 0.5; time at half budget → 0.5
+    const r = computeSuccessScore({
+      meanCorrectness: 3,
+      meanUsefulness: 3,
+      totalTokens: SUCCESS_BUDGETS.tokens / 2,
+      totalDurationMs: SUCCESS_BUDGETS.timeMs / 2,
+    })
+    expect(r.quality_score).toBe(0.75)
+    expect(r.token_efficiency).toBe(0.5)
+    expect(r.speed_score).toBe(0.5)
+    // 0.6*0.75 + 0.3*0.5 + 0.1*0.5 = 0.45 + 0.15 + 0.05 = 0.65
+    expect(r.success_score).toBe(0.65)
+  })
+
+  it('clamps token and speed sub-scores to 0 when over budget', () => {
+    const r = computeSuccessScore({
+      meanCorrectness: 4,
+      meanUsefulness: 4,
+      totalTokens: SUCCESS_BUDGETS.tokens * 3,
+      totalDurationMs: SUCCESS_BUDGETS.timeMs * 3,
+    })
+    expect(r.token_efficiency).toBe(0)
+    expect(r.speed_score).toBe(0)
+    // only quality contributes: 0.6 * 1.0 = 0.6
+    expect(r.success_score).toBe(0.6)
+  })
+
+  it('returns null success_score when telemetry is missing', () => {
+    const r = computeSuccessScore({ meanCorrectness: 4, meanUsefulness: 4 })
+    expect(r.success_score).toBeNull()
+    expect(r.token_efficiency).toBeNull()
+    expect(r.speed_score).toBeNull()
+    expect(r.quality_score).toBe(1)
+  })
+
+  it('weights cache reads at the MOEL discount when scoring control telemetry', () => {
+    expect(SUCCESS_TOKEN_CACHE_DISCOUNT).toBe(0.1)
+    const weighted = computeWeightedTokenTotal({
+      inputTokens: 78,
+      outputTokens: 13833,
+      cacheReadTokens: 1_077_245,
+    })
+    expect(weighted).toBeCloseTo(121_635.5, 0)
+    const kb = computeSuccessScore({
+      meanCorrectness: 3.275,
+      meanUsefulness: 3.75,
+      totalTokens: 141_150,
+      totalDurationMs: 139_070,
+    })
+    const control = computeSuccessScore({
+      meanCorrectness: 3.612,
+      meanUsefulness: 4,
+      totalTokens: weighted,
+      totalDurationMs: 586_974,
+    })
+    expect(kb.success_score).toBe(0.861)
+    expect(control.success_score).toBe(0.837)
+    expect(kbControlVerdict({ success: kb.success_score }, { success: control.success_score })).toBe(
+      'ahead of control'
+    )
+  })
+})
+
+describe('kbControlVerdict — success-driven', () => {
+  it('reports ahead when kb success exceeds control by >= 0.02', () => {
+    expect(kbControlVerdict({ success: 0.78 }, { success: 0.74 })).toBe('ahead of control')
+  })
+  it('reports behind when kb success trails control by >= 0.02', () => {
+    expect(kbControlVerdict({ success: 0.70 }, { success: 0.80 })).toBe('behind control')
+  })
+  it('reports on par within the 0.02 band', () => {
+    expect(kbControlVerdict({ success: 0.751 }, { success: 0.75 })).toBe('on par with control')
   })
 })
 
@@ -246,5 +372,33 @@ describe('sparkline', () => {
   it('returns a string of the right length for varied input', () => {
     const result = sparkline([1, 2, 3, 4])
     expect(result.length).toBe(4)
+  })
+})
+
+describe('logsCmd', () => {
+  it('filters logs by eval base with a generous limit', () => {
+    expect(logsCmd('eval-kb')).toBe('logs list --base eval-kb --limit 10')
+  })
+})
+
+describe('parseLatestRunIdForCommand', () => {
+  const sample = [
+    '🤖 KB Agent Harness',
+    '',
+    'run-abc init       eval-kb 2026-06-12 10:00:00',
+    'run-def scan       eval-kb 2026-06-12 10:05:00',
+    'run-ghi query      eval-kb 2026-06-12 10:06:00',
+  ].join('\n')
+
+  it('finds the latest init run id', () => {
+    expect(parseLatestRunIdForCommand(sample, 'init')).toBe('run-abc')
+  })
+
+  it('finds the latest scan run id', () => {
+    expect(parseLatestRunIdForCommand(sample, 'scan')).toBe('run-def')
+  })
+
+  it('returns null when command is absent', () => {
+    expect(parseLatestRunIdForCommand(sample, 'publish')).toBeNull()
   })
 })

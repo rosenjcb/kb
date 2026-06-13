@@ -570,7 +570,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     await mkdir(repoDir, { recursive: true })
     headSha = await getHeadSha(repoDir)
     scanDir = repoDir
-    await writeKbFile(repoDir, base)
   }
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)

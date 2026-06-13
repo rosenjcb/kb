@@ -4,22 +4,38 @@
 
 \subsection{Evaluation Targets}
 
-\textbf{Raylib.}  Our primary external benchmark is the
-\href{https://github.com/raysan5/raylib}{raylib C library}—a mature,
-well-documented game-programming framework (\texttt{git commit 3c82b48}).
-Raylib is chosen because it is not the KB codebase itself (eliminating
-evaluator familiarity bias), has rich cross-module structure suitable for
-graph-based retrieval, and has stable upstream documentation.
+\textbf{Raylib (planned external benchmark).}  We target the
+\href{https://github.com/raysan5/raylib}{raylib C library}---a mature,
+well-documented game-programming framework---as the primary \emph{external}
+benchmark: it is not the KB codebase (eliminating evaluator familiarity bias),
+has rich cross-module structure for graph retrieval, and has stable upstream
+documentation.  Results in \S\ref{subsec:results} are from the KB self-check only;
+raylib paired runs are future work.
 
-\textbf{KB self-check.}  As a product smoke test, we also evaluate KB against
-the KB codebase itself (suite \texttt{kb}).  This self-evaluation tests
-whether KB can answer questions about its own architecture—a strict test of
-retrieval grounding, since the evaluator has ground truth of the correct answers.
+\textbf{KB self-check (reported).}  Suite \texttt{kb} evaluates KB against its
+own codebase---eight architecture and workflow questions.  This smoke test
+stress-tests retrieval grounding on a repo whose structure the authors know well;
+paired $\Delta S$ here is the headline empirical claim in this paper.
+
+\subsection{Protocol: kb vs control in one artifact}
+
+Each harvest run executes, in order:
+(1)~clone and index the suite repo (\texttt{kb init} or reuse session,
+\texttt{kb scan});
+(2)~eight \texttt{kb query} calls (condition \textbf{K})---one-shot synthesis
+over the retrieved fact pool (\S\ref{subsec:synthesis});
+(3)~the same eight questions handed to a real coding agent with no KB
+(condition \textbf{N}, Claude Code headless by default);
+(4)~LLM auto-scoring ($\times 3$ averaged) on four rubric axes for both sides.
+
+Both sides are scored in one run; the headline grade is the difference
+$\Delta S = S_K - S_N$ (Eq.~\ref{eq:delta-s}).  Skipping the control phase yields
+no $\Delta S$.
 
 \subsection{Scoring Rubric}
 
 Each suite covers eight questions spanning capabilities, architecture, installation,
-configuration, platform specifics, conventions, gotchas, and roadmap—topics that
+configuration, platform specifics, conventions, gotchas, and roadmap---topics that
 stress different retrieval paths through the fact graph.  Answers are scored on
 four axes (0--4):
 
@@ -36,53 +52,114 @@ Evidence Handling & Constrained to evidence; acknowledges uncertainty \\
 \end{tabular}
 \end{center}
 
-\noindent\textbf{Pass criterion.}  A question passes if
-correctness $\geq 3$ \textbf{and} usefulness $\geq 3$.
-\textbf{Run-level threshold}: a run is considered promising if pass
-rate $\geq 0.70$.
+\subsection{Success Score and Headline Verdict ($\Delta S$)}
+\label{subsec:success}
+
+The harvest pipeline's single scalar per side is $S \in [0,1]$ (higher is better).
+It blends answer quality with operational cost so that inflating context to raise
+quality is penalized:
+
+\begin{equation}
+S = w_Q \cdot Q + w_T \cdot E_{\text{tok}} + w_V \cdot E_{\text{speed}}
+\label{eq:success}
+\end{equation}
+
+\noindent with default weights $w_Q = 0.60$, $w_T = 0.30$, $w_V = 0.10$:
+
+\begin{align}
+Q &= \frac{\bar{c} + \bar{u}}{8}, &
+E_{\text{tok}} &= 1 - \min\!\Bigl(\tfrac{T}{B_T},\,1\Bigr), &
+E_{\text{speed}} &= 1 - \min\!\Bigl(\tfrac{\tau}{B_\tau},\,1\Bigr)
+\label{eq:success-components}
+\end{align}
+
+\noindent where $\bar{c}, \bar{u}$ are mean correctness and usefulness ($0$--$4$),
+$T$ is the weighted token total for the eight-question side
+($\text{input} + \text{output} + 0.1 \times \text{cache\_read}$ for control agents;
+kb query uses undifferentiated input$+$output), and $\tau$ is
+wall-clock latency.  Budgets $B_T = 10^6$ tokens and $B_\tau = 6\times 10^5$\,ms
+are fixed (budget-absolute), so $S$ is stable across runs.  KB (K) and control (N)
+use the identical formula.
+
+\medskip
+\noindent\textbf{Headline project grade.}  The single number that answers
+\emph{does KB beat a real coding agent?} is the success-score \emph{difference}
+in the same evaluation run:
+
+\begin{equation}
+\Delta S = S_K - S_N
+\label{eq:delta-s}
+\end{equation}
+
+\noindent $\Delta S \geq +0.02$ $\Rightarrow$ KB \textbf{ahead of control};
+$\Delta S \leq -0.02$ $\Rightarrow$ \textbf{behind}; otherwise \textbf{on par}.
+Per-side scores $S_K$ and $S_N$ come from Eq.~\ref{eq:success}; their component
+parts ($Q$, $E_{\text{tok}}$, $E_{\text{speed}}$) show \emph{where} KB wins or
+loses (e.g.\ higher quality but slower exploration).
+
+\medskip
+\noindent\textbf{Secondary diagnostics.}  Pass rate and per-axis rubric means
+(correctness, usefulness, etc.) help explain a $\Delta S$ outcome but are not
+the headline grade.
 
 \noindent\textbf{Scoring stability.}  The auto-scorer (Gemini 2.5 Flash) is
-non-deterministic even at temperature 0 due to distributed inference.
+non-deterministic even at temperature~0; we average three scorer calls per question.
 
-\subsection{Results}
+\subsection{Results: kb vs control}
 \label{subsec:results}
 
-Table~\ref{tab:results} reports the single evaluation run per suite conducted
-under the current methodology (June 8, 2026).
+Table~\ref{tab:kb-vs-control} reports condition~K (\texttt{kb query}) vs.\
+condition~N (headless Claude Code agent, no KB) on the \texttt{kb} self-check suite
+($n=8$ questions, same Gemini judge, same run; run \texttt{0011}, June 2026).
 
-\begin{table}[h]
-\centering\footnotesize
-\caption{Evaluation results. Ent = graph entities, Rels = graph edges,
-Corr/Use/Spec/EH = mean axis scores (0--4), PR = pass rate.}
-\label{tab:results}
-\begin{tabular}{@{}lrrrrrrrrr@{}}
+\begin{center}
+\fbox{%
+  \parbox{0.92\columnwidth}{%
+    \centering
+    \textbf{Headline grade}\quad
+    $\Delta S = S_K - S_N = \mathbf{+0.024}$ \\[4pt]
+    {\small KB \textbf{ahead of control} ($\Delta S \geq 0.02$).}%
+  }%
+}
+\end{center}
+
+\vspace{0.4em}
+\begin{table}[t]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\caption{KB vs control on the \texttt{kb} suite. Top: composite $S$ and its
+parts; bottom: rubric diagnostics.}
+\label{tab:kb-vs-control}
+\begin{tabular}{@{}lrrr@{}}
 \toprule
-\textbf{Suite} & \textbf{Ent} & \textbf{Rels} & \textbf{Corr} & \textbf{Use} & \textbf{Spec} & \textbf{EH} & \textbf{PR} \\
+\textbf{Metric} & \textbf{K (kb)} & \textbf{N (ctrl)} & $\boldsymbol{\Delta}$ \\
 \midrule
-KB self-check & 2{,}216 & 772  & 3.00 & \textbf{3.88} & 3.75 & \textbf{4.00} & \textbf{1.00} \\
-Raylib        & 14{,}087 & 12{,}744 & \textbf{3.88} & 3.50 & 3.13 & 3.88 & 0.75 \\
+\multicolumn{4}{@{}l@{}}{\textit{Composite success score (Eq.~\ref{eq:success})}} \\
+$S$ (composite)         & 0.861 & 0.837 & $+$0.024 \\
+\quad Quality $Q$       & 0.878 & 0.952 & $-$0.074 \\
+\quad Token economy     & 0.859 & 0.878 & $-$0.019 \\
+\quad Speed             & 0.768 & 0.022 & $+$0.746 \\
+\midrule
+\multicolumn{4}{@{}l@{}}{\textit{Rubric diagnostics (secondary)}} \\
+Pass rate   & 0.875 & 1.000 & $-$0.125 \\
+Correctness & 3.28 & 3.61 & $-$0.34 \\
+Usefulness  & 3.75 & 4.00 & $-$0.25 \\
+Evidence    & 4.00 & 3.88 & $+$0.13 \\
+Tokens (8Q) & 141k & 122k$^\dagger$ & \\
+Time (8Q)   & 139s & 587s & \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\noindent\textbf{KB self-check.}  All 8 questions pass (correctness $\geq 3$
-and usefulness $\geq 3$).  Evidence handling reaches 4.00/4.00 across all
-questions, indicating that the retrieval loop consistently grounds answers in
-indexed facts without hallucinating.  Correctness is uniformly 3/4 — accurate
-but not maximally precise — suggesting the fact base covers topics
-breadth-first with moderate depth.
+\noindent$^\dagger$Control weighted total:
+$78 + 13{,}833 + 0.1 \times 1{,}077{,}245 \approx 122$\,k (prompt-cache reads
+discounted at $0.1$, matching MOEL $L_\text{resource}$).
 
-\noindent\textbf{Raylib.}  6 of 8 questions pass.  The two failures (Q6 and
-Q8) score usefulness $= 2$, indicating the answers were factually grounded but
-not actionable.  Both failing questions target platform-specific build
-configuration and roadmap details — topics that are sparsely represented in
-raylib's markdown documentation and therefore thin in the fact graph.
-Correctness on passing questions averages 3.88/4.00, and evidence handling
-4.00/4.00 on those same questions, confirming retrieval quality is high where
-the fact base has coverage.
-
-Both suites exceed the 0.70 pass-rate threshold.  The raylib graph is
-substantially larger (14,087 entities, 12,744 edges) reflecting the C
-codebase's dense header structure; the KB self-check graph (2,216 entities,
-772 edges) is smaller but achieves a higher pass rate, consistent with
-the self-referential nature of the evaluation.
+\noindent\textbf{Interpretation.}  KB \textbf{wins the headline composite}
+($\Delta S = +0.024$): control leads on $Q$, pass rate, and weighted token
+economy, but KB's ${\sim}$4$\times$ wall-clock advantage (139\,s vs.\ 587\,s)
+dominates the 10\% speed term and outweighs the quality gap under 60/30/10
+weights.  KB also leads on evidence handling (4.0 vs.\ 3.88).  Weakest kb
+questions vs.\ control: query-expansion behavior (Q7), \texttt{kb init} workflow
+(Q2), and skills layout (Q5).

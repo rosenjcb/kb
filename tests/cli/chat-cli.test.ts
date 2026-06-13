@@ -71,6 +71,20 @@ describe('chat-cli prompt', () => {
     expect(content).not.toContain('Conversation history:')
   })
 
+  it('Given long retrieved fact bodies, then turn content truncates each fact for synthesis', () => {
+    const long = 'z'.repeat(2500)
+    const content = buildChatTurnContent({
+      question: 'What is kb?',
+      retrieval: {
+        results: [{ metadata: { id: 'fact-long' }, content: long }],
+      },
+    })
+
+    expect(content).toContain('z'.repeat(2000))
+    expect(content).toContain('…')
+    expect(content).not.toContain(long)
+  })
+
   it('Given a session pool with prior facts not in current retrieval, then turn content includes session pool section', () => {
     const content = buildChatTurnContent({
       question: 'What about AST support?',

@@ -9,7 +9,7 @@
 \usepackage{graphicx}
 \usepackage{xcolor}
 \usepackage{hyperref}
-\usepackage{microtype}
+\usepackage[expansion=false]{microtype}
 
 \hypersetup{
   colorlinks=true,
@@ -56,19 +56,21 @@ a ranked fact pool, exiting on a scored sufficiency condition.
 \textbf{MOEL} (Multi-Objective Exploration Loss) is a quantitative evaluation
 framework that measures agent efficiency under three controlled conditions:
 Condition N (raw filesystem baseline), Condition K (KB-equipped), and Condition
-O (oracle context injection).  MOEL combines three normalized loss terms—LLM
-jury semantic loss ($L_\text{jury}$), trajectory inefficiency
-($L_\text{trajectory}$), and resource consumption ($L_\text{resource}$)—into a
-single weighted scalar $L_\text{MOEL}$.  Bias mitigation (position debiasing,
-verbosity normalization, self-enhancement down-weighting, family diversity
-enforcement) and statistical calibration via per-judge logistic regression are
-built in.
+O (oracle context injection).  MOEL combines three normalized loss terms—LLM jury semantic loss ($L_\text{jury}$),
+trajectory inefficiency ($L_\text{trajectory}$), and resource consumption
+($L_\text{resource}$)—into a single weighted scalar $L_\text{MOEL}$ in a deep
+harness with toy-tool N/K/O conditions.  The harvest runner instead compares
+\texttt{kb query} (K) to a real headless coding agent (N) via $\Delta S$.
 
-Empirically, KB achieves a pass rate of 1.00 on the KB self-check suite
-(evidence handling 4.00/4.00) and 0.75 on the external raylib C library
-benchmark (correctness 3.88/4.00, evidence handling 3.88/4.00).  All MOEL
-framework components are fully implemented and unit-tested, with benchmark
-alignment against SWE Atlas, SWE-ContextBench, and CodeScaleBench established.
+The headline metric is a budget-normalized success score
+$S = 0.60\,Q + 0.30\,E_{\text{tok}} + 0.10\,E_{\text{speed}}$ that blends answer
+quality with token economy and latency, scored identically for KB-equipped and
+control runs.  The project grade is $\Delta S = S_K - S_N$ from a single eval
+artifact (Eq.~\ref{eq:delta-s}).  On the \texttt{kb} self-check suite, a paired
+harvest (run \texttt{0011}, June 2026) yields $\Delta S = +0.024$---\textbf{ahead
+of control} ($S_K = 0.861$, $S_N = 0.837$)---while \texttt{kb query} completes
+eight questions in 139\,s at ${\sim}$141\,k tokens versus 587\,s for a headless
+coding agent with no KB (control weighted tokens ${\sim}$122\,k after cache discount).
 \end{abstract}
 
 %% ─── Body ────────────────────────────────────────────────────────────────────

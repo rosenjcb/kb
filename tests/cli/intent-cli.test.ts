@@ -372,4 +372,51 @@ describe('intent-cli execution and enrichment', () => {
     expect(answer).toContain('Platform Notes')
     expect(answer).toContain('Known Gotchas')
   })
+
+  it('keeps LLM answer when synthesisQuestion is pre-expansion text (not graph-expanded query)', async () => {
+    const llmText =
+      'Skills are markdown files under skills/<name>/SKILL.md, copied at build time, and installed by skill-installer.ts.'
+    const llm: LLMProvider = {
+      name: 'test',
+      model: 'stub',
+      call: vi.fn(async () => ({
+        text: llmText,
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    } as unknown as LLMProvider
+
+    const parsed = parseIntentCommand([
+      'query',
+      'skills bundled during build install profiles buildSourceFileHashes configureFlags',
+    ])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      parsed,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_facts',
+        data: {
+          retrieval: { method: 'hybrid' },
+          results: [
+            {
+              metadata: { id: 'skills-doc', title: 'Skills' },
+              content:
+                '# Skills\n\nInstall dependencies before build.\nRun cmake && make.\nUse -D flags for options.',
+            },
+          ],
+        },
+      },
+      llm,
+      undefined,
+      undefined,
+      {
+        synthesisQuestion:
+          'How does the skills system work — how are skills defined, bundled during build, and installed into agent profiles?',
+      }
+    )
+
+    expect((enriched.data as { answer?: string }).answer).toBe(llmText)
+    expect((enriched.data as { answer?: string }).answer).not.toContain(
+      'Build/config evidence scaffold:'
+    )
+  })
 })

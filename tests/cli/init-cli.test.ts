@@ -1491,6 +1491,10 @@ describe('init-cli git-linked dialog', () => {
         lastSyncedSha: 'abc1234abc1234abc1234abc1234abc1234abc12',
       })
     )
+
+    const baseDir = resolveBaseToDir('my-remote', cwd)
+    expect(await findKbFile(cwd)).toBe('my-remote')
+    expect(await findKbFile(path.join(baseDir, 'repo'))).toBeNull()
   })
 
   it('Given /cancel at base name prompt, throws InitCancelledError', async () => {

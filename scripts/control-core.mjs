@@ -20,7 +20,11 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { buildCoverageAudit } from './eval-shared.mjs'
+import {
+  buildCoverageAudit,
+  computeSuccessScore,
+  computeWeightedTokenTotal,
+} from './eval-shared.mjs'
 import { runAutoScoreFile } from './eval-score.mjs'
 
 export const DEFAULT_CONTROL_PROMPT =
@@ -356,30 +360,65 @@ export async function runControlPass({
   const passRate =
     query_evaluation.filter(x => x.scores.correctness >= 3 && x.scores.usefulness >= 3).length /
     query_evaluation.length
-  const aggregateQuery = {
-    mean_correctness: Number(agg('correctness').toFixed(3)),
-    mean_usefulness: Number(agg('usefulness').toFixed(3)),
-    mean_specificity: Number(agg('specificity').toFixed(3)),
-    mean_evidence_handling: Number(agg('evidence_handling').toFixed(3)),
-    pass_rate_correctness_and_usefulness_at_least_3: Number(passRate.toFixed(3)),
-  }
 
   const tels = perQuestion.map(qf => qf.telemetry).filter(Boolean)
+  const answered = perQuestion.filter(qf => String(qf.answer ?? '').trim()).length
   const sum = key => tels.reduce((a, t) => a + (Number(t[key]) || 0), 0)
+  const totalInputTokens = sum('input_tokens')
+  const totalOutputTokens = sum('output_tokens')
+  const totalCacheReadTokens = sum('cache_read_tokens')
+  const totalWeightedTokens = tels.length
+    ? tels.reduce(
+        (acc, t) =>
+          acc +
+          computeWeightedTokenTotal({
+            inputTokens: t.input_tokens,
+            outputTokens: t.output_tokens,
+            cacheReadTokens: t.cache_read_tokens,
+          }),
+        0
+      )
+    : null
   const controlTelemetry = {
-    questions_answered: tels.length,
-    total_input_tokens: sum('input_tokens'),
-    total_output_tokens: sum('output_tokens'),
+    questions_answered: Math.max(tels.length, answered),
+    total_input_tokens: totalInputTokens,
+    total_output_tokens: totalOutputTokens,
+    total_cache_read_tokens: totalCacheReadTokens,
+    total_weighted_tokens: totalWeightedTokens === null ? null : Math.round(totalWeightedTokens),
     total_cost_usd: Number(sum('total_cost_usd').toFixed(4)),
     mean_num_turns: tels.length ? Number((sum('num_turns') / tels.length).toFixed(2)) : null,
     total_duration_ms: sum('duration_ms'),
   }
 
+  // Composite success score from the same formula kb uses (fair comparison).
+  const mCorr = agg('correctness')
+  const mUse = agg('usefulness')
+  const controlSuccess = computeSuccessScore({
+    meanCorrectness: mCorr,
+    meanUsefulness: mUse,
+    totalTokens: totalWeightedTokens,
+    totalDurationMs: tels.length ? controlTelemetry.total_duration_ms : null,
+  })
+  const aggregateQuery = {
+    success_score: controlSuccess.success_score,
+    quality_score: controlSuccess.quality_score,
+    token_efficiency: controlSuccess.token_efficiency,
+    speed_score: controlSuccess.speed_score,
+    mean_correctness: Number(mCorr.toFixed(3)),
+    mean_usefulness: Number(mUse.toFixed(3)),
+    mean_specificity: Number(agg('specificity').toFixed(3)),
+    mean_evidence_handling: Number(agg('evidence_handling').toFixed(3)),
+    pass_rate_correctness_and_usefulness_at_least_3: Number(passRate.toFixed(3)),
+  }
+
   return {
     condition: 'control',
-    status: tels.length === questions.length
-      ? (queryScoringMeta?.mode === 'failed' ? 'complete_unscored' : 'complete')
-      : 'partial',
+    status:
+      answered === questions.length
+        ? queryScoringMeta?.mode === 'failed'
+          ? 'complete_unscored'
+          : 'complete'
+        : 'partial',
     agent: { name: agentName, model: model ?? 'default', command: agentDesc, max_turns: maxTurns },
     control_prompt: controlPrompt,
     query_scoring: queryScoringMeta,
@@ -405,6 +444,9 @@ export function buildControlComparison(kbAggregate, control) {
     delta_kb_minus_control: delta(k[key], c[key]),
   })
   return {
+    success_score: axis('success_score'),
+    token_efficiency: axis('token_efficiency'),
+    speed_score: axis('speed_score'),
     pass_rate: axis('pass_rate_correctness_and_usefulness_at_least_3'),
     mean_correctness: axis('mean_correctness'),
     mean_usefulness: axis('mean_usefulness'),

@@ -1,6 +1,6 @@
 import dayjs from 'dayjs'
 import { formatEvidenceSummaryHeader } from '../core/evidence-summary'
-import { formatRetrievedFactsForLLM } from '../core/retrieval-context'
+import { formatRetrievedFactsForLLM, MAX_FACT_CONTENT_CHARS } from '../core/retrieval-context'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, Message } from '../core/types'
 import { assertConsumerSafeCommand } from '../intents/policy'
@@ -277,7 +277,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
   llmProvider?: LLMProvider,
   sessionDir?: string,
   priorMessages?: Message[],
-  options?: { graphRelationContext?: string }
+  options?: { graphRelationContext?: string; synthesisQuestion?: string }
 ): Promise<IntentResult> {
   if (!llmProvider) return result
   if (!isReadFactsResult(result)) return result
@@ -287,7 +287,8 @@ export async function enrichReadDocumentsAnswerWithLLM(
   const results = Array.isArray(data.results) ? data.results : []
   if (results.length === 0) return result
 
-  const question = getIntentQuestion(parsed)
+  // Pre-expansion user question — graph-expanded payload.query must not drive synthesis/scaffold.
+  const question = options?.synthesisQuestion?.trim() || getIntentQuestion(parsed)
   const evidence = buildEvidence(results, parsed.allFacts)
   if (!question || !evidence) return result
 
@@ -546,9 +547,15 @@ function buildBuildConfigScaffoldAnswer(
 
 function isBuildOrConfigQuestion(question: string): boolean {
   const normalized = question.toLowerCase()
-  return /(build|config|configure|flag|option|install|setup|cmake|compile|dependency)/.test(
-    normalized
-  )
+  if (/\bbuild config(uration)?\b/.test(normalized)) return true
+  if (/\b(cmake|makefile|toolchain)\b/.test(normalized)) return true
+  if (
+    /\bhow (?:do i|to)\b/.test(normalized) &&
+    /\b(install|build|compile|configure)\b/.test(normalized)
+  ) {
+    return true
+  }
+  return /\b(configuration options|compile flags|build settings|build systems?)\b/.test(normalized)
 }
 
 function requiresHighRecallQuery(query: string): boolean {
@@ -710,7 +717,7 @@ function buildAnswer(results: ReadDocumentsResultItem[]): string {
   return candidateLines[0]
 }
 
-function getIntentQuestion(parsed: ParsedIntentCommand): string {
+export function getIntentQuestion(parsed: ParsedIntentCommand): string {
   const payload = parsed.envelope.payload
   const fromOriginalQuery =
     typeof payload.originalQuery === 'string' ? payload.originalQuery.trim() : ''
@@ -729,6 +736,7 @@ function buildEvidence(results: ReadDocumentsResultItem[], _allFacts?: boolean):
       const title = item.metadata?.title ?? id
       return `Document ${index + 1}: ${title} (id=${id})`
     },
+    maxContentChars: MAX_FACT_CONTENT_CHARS,
   })
 }
 

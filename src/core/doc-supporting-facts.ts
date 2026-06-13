@@ -12,16 +12,16 @@ export interface SupportingFact {
  * Uses the same FactsQueryResearchOrchestrator pipeline as kb query:
  * graph hops, concept expansion, semantic scoring, and source-kind quotas all apply.
  */
-export function searchSupportingFacts(
+export async function searchSupportingFacts(
   indexer: SqliteKbIndexer,
   query: string,
   limit = 20,
   options?: { excludeIds?: Set<string> }
-): SupportingFact[] {
+): Promise<SupportingFact[]> {
   const trimmed = query.trim()
   if (!trimmed) return []
   const orchestrator = new FactsQueryResearchOrchestrator(indexer)
-  const response = orchestrator.run({
+  const response = await orchestrator.run({
     query: trimmed,
     limit,
     surface: 'query',

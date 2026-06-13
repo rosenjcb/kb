@@ -19,10 +19,9 @@ import {
   runControlPass,
 } from '../../scripts/control-core.mjs'
 
-// A fake agent command: ignores stdin, prints a fixed result JSON to stdout. Lets us
-// exercise runControlPass end-to-end with no network and no `claude` binary.
+// Cross-platform stub: avoid shell `printf` differences (dash/busybox/CI).
 const FAKE_AGENT_CMD =
-  'printf \'{"result":"Stub answer grounded in src/main.c.","total_cost_usd":0.02,"input_tokens":120,"output_tokens":40,"num_turns":3}\''
+  'node -e "process.stdout.write(JSON.stringify({result:\'Stub answer grounded in src/main.c.\',total_cost_usd:0.02,input_tokens:120,output_tokens:40,num_turns:3}))"'
 
 function fakeSuite() {
   return {
@@ -178,6 +177,23 @@ describe('runControlPass', () => {
     const q1 = readQueryResultFile(path.join(workdir, 'q1.json'))
     expect(q1.answer).toContain('Stub answer')
     expect(block.aggregate_scores.query).toBeDefined()
+    // Composite success score is computed from the control's own telemetry.
+    expect(typeof block.aggregate_scores.query.success_score).toBe('number')
+    expect(block.aggregate_scores.query.token_efficiency).not.toBeNull()
+    expect(block.aggregate_scores.query.speed_score).not.toBeNull()
+  })
+
+  it('returns partial when the agent fails on some questions', async () => {
+    const workdir = mkdtempSync(path.join(tmpdir(), 'control-partial-'))
+    const block = await runControlPass({
+      repoDir: workdir,
+      workdir,
+      suiteConfig: fakeSuite(),
+      agentCmd: 'node -e "process.exit(1)"',
+      autoScore: false,
+    })
+    expect(block.status).toBe('partial')
+    expect(block.query_evaluation.every(ev => ev.answer_excerpt === null)).toBe(true)
   })
 
   it('throws when the control prompt lacks the {{question}} placeholder', async () => {
@@ -225,6 +241,7 @@ describe('buildControlComparison', () => {
   it('computes kb-minus-control deltas per axis', () => {
     const kbAggregate = {
       query: {
+        success_score: 0.78,
         mean_correctness: 3.8,
         mean_usefulness: 3.5,
         pass_rate_correctness_and_usefulness_at_least_3: 0.75,
@@ -233,6 +250,7 @@ describe('buildControlComparison', () => {
     const control = {
       aggregate_scores: {
         query: {
+          success_score: 0.74,
           mean_correctness: 3.0,
           mean_usefulness: 3.0,
           pass_rate_correctness_and_usefulness_at_least_3: 0.5,
@@ -243,6 +261,7 @@ describe('buildControlComparison', () => {
     const cmp = buildControlComparison(kbAggregate, control)
     expect(cmp.pass_rate.delta_kb_minus_control).toBe(0.25)
     expect(cmp.mean_correctness.delta_kb_minus_control).toBeCloseTo(0.8)
+    expect(cmp.success_score.delta_kb_minus_control).toBeCloseTo(0.04)
     expect(cmp.control_efficiency.total_cost_usd).toBe(0.4)
   })
 })
