@@ -34,7 +34,7 @@ async function main(): Promise<void> {
   if (!llmProvider) throw new Error('No LLM provider configured')
 
   const storageDir = await ensureOperationalBaseDir(base)
-  const toolExecutor = createKBToolsRegistry(storageDir, config)
+  const toolExecutor = createKBToolsRegistry(storageDir, config, { taskProvider: llmProvider })
   const graphWriter = resolveGraphEnabled(config)
     ? new KbGraphWriter(KbGraphWriter.dbPathForBase(storageDir))
     : undefined
