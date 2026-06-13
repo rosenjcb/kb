@@ -4,56 +4,49 @@
 
 We introduced KB, a local-first, facts-first codebase knowledge system.
 KB's deterministic AST indexing and multi-pond BFS retrieval provide
-agents with structured, persistent codebase knowledge without per-session re-exploration.  On the raylib benchmark, pass rate reaches 0.62; on the KB self-check suite,
-the stable-phase runs consistently achieve 0.75--1.00, with the densified base
-reaching mean correctness and evidence-handling of 4.00/4.00.
+agents with structured, persistent codebase knowledge without per-session re-exploration.
+\texttt{kb query} now uses one-shot synthesis over a capped fact pool, cutting eval
+token cost by ${\sim}$70\% while maintaining competitive rubric scores on the KB
+self-check suite ($S_K = 0.84$, pass rate $0.75$).
 
-We also introduced MOEL, a multi-objective evaluation framework that measures
-agent efficiency along correctness ($L_\text{jury}$),
-trajectory ($L_\text{trajectory}$), and resource ($L_\text{resource}$) axes.
-MOEL's bias-mitigated jury ensemble, statistical calibration, and programmatic
-validators make it possible to distinguish between an agent that answers
-correctly by exploring efficiently and one that wastes compute to reach the same
-result.
+We also introduced MOEL, a multi-objective evaluation framework spanning two pipelines:
+(1)~the harvest runner, whose headline grade is $\Delta S = S_K - S_N$ from a single
+artifact comparing \texttt{kb query} to a real coding agent on the same eight questions;
+and (2)~the deep MOEL harness ($L_\text{MOEL}$), which measures exploration loss under
+N/K/O conditions per task.  Bias-mitigated jury ensemble, statistical calibration, and
+programmatic validators distinguish efficient exploration from expensive correctness.
 
 \paragraph{Limitations.}
 
-\textbf{Full N/K/O comparison is ongoing.}  The controlled two-condition
-comparison (N vs.\ K) and oracle ceiling (O) are deferred to follow-on work.
+\textbf{Paired $\Delta S$ requires both eval phases.}  Kb-only runs report $S_K$ but
+cannot emit the headline verdict until the control agent runs in the same artifact.
 
 \textbf{Calibration sample size is small.}  The 20-sample human-annotated
 dataset is sufficient for per-judge logistic regression but does not support
-fine-grained calibration per rubric axis.  A 100-sample dataset with axis-level
-labels would significantly strengthen the calibration validity.
+fine-grained calibration per rubric axis.
 
 \textbf{Knowledge base scope.}  KB currently operates on per-file ASTs.
-Cross-file dependencies (inheritance hierarchies, inter-module call graphs)
-are captured through edge relationships but are not modeled explicitly at init
-time.  This is shared with all file-level agent interfaces; extending to
-whole-repository static analysis is future work.
+Cross-file dependencies are captured through edge relationships but are not modeled
+explicitly at init time.
 
 \paragraph{Future Work.}
 
 \begin{itemize}
-  \item \textbf{Full MOEL run completion}: execute the four-task N/K/O comparison,
-    report $L_\text{MOEL}$ per condition per task, and test the compounding
-    hypothesis quantitatively.
+  \item \textbf{Full MOEL N/K/O runs}: execute the \texttt{moel-kb} task library under
+    all three conditions and report $L_\text{MOEL}$ per task.
+  \item \textbf{Raylib $\Delta S$}: complete a paired kb+control harvest on the
+    external raylib suite with one-shot synthesis and report $\Delta S$.
+  \item \textbf{Synthesis accuracy}: reduce caller-tracing and contradictory-fact errors
+    on architecture questions without restoring unbounded multi-turn token cost.
   \item \textbf{Calibration expansion}: grow the human-annotated set to 100+
-    samples with axis-level labels; evaluate whether axis-level calibration
-    improves jury reliability.
-  \item \textbf{Cross-language extension}: extend AST indexing and $L_\text{AST}$
-    to C (for raylib's primary codebase) and Java; evaluate whether entity and
-    relationship density correlates with retrieval quality across languages.
-  \item \textbf{Multi-repo knowledge graphs}: explore federated knowledge bases
-    where facts from multiple related repositories are connected through
-    shared symbol references, enabling cross-repo reasoning.
+    samples with axis-level labels.
 \end{itemize}
 
 \paragraph{Reproducibility.}
 
-All evaluation artifacts are stored under
-\texttt{\textasciitilde/.kb/evaluations/<run-name>/artifact.json} in a
-versioned JSON schema.  The canonical question sets are defined in
-\texttt{eval/suites/\{raylib,kb,fzf\}.yaml}.  Loss function implementations,
-calibration scripts, and the MOEL harness are available in the KB repository
-under \texttt{eval/}.
+Evaluation artifacts live under
+\texttt{\textasciitilde/.kb/evaluations/<run-name>/artifact.json} (schema version~2).
+Question packs: \texttt{eval/suites/\{raylib,kb,fzf\}.yaml}.
+Headline grade: \texttt{comparison.success\_score.delta\_kb\_minus\_control}.
+Implementation: \texttt{scripts/eval-run.mjs}, \texttt{scripts/eval-shared.mjs},
+\texttt{scripts/control-core.mjs}, \texttt{eval/losses/}.

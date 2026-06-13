@@ -23,8 +23,23 @@ export async function cloneRepo(url: string, destDir: string, branch: string): P
   await run('git', ['clone', '--filter=blob:none', '--branch', branch, '--single-branch', url, destDir], process.cwd())
 }
 
+/** Discard kb's local `.kb` marker so ff-only pulls in hidden clones don't fail. */
+async function clearKbMarkerForPull(repoDir: string): Promise<void> {
+  try {
+    await run('git', ['restore', '--', '.kb'], repoDir)
+  } catch {
+    // not tracked or nothing to restore
+  }
+  try {
+    await run('git', ['clean', '-f', '--', '.kb'], repoDir)
+  } catch {
+    // ignore
+  }
+}
+
 /** Pull latest commits in an already-cloned repo. Returns true if there were new commits. */
 export async function pullRepo(repoDir: string): Promise<boolean> {
+  await clearKbMarkerForPull(repoDir)
   const before = await getHeadSha(repoDir)
   await run('git', ['pull', '--ff-only'], repoDir)
   const after = await getHeadSha(repoDir)

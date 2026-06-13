@@ -30,7 +30,11 @@ Two evaluation pipelines co-exist:
 | **K** (kb-enabled) | `kb query` over a built knowledge base. Run via `scripts/eval-run.mjs`. | Primary experiment |
 | **O** (Oracle) | Minimal target facts injected as system prompt | Theoretical ceiling |
 
-The hypothesis is **K beats N**: `kb query` answers should match or exceed the control agent's quality while using far fewer tokens/turns. For the MOEL pipeline this is `L_MOEL(N) > L_MOEL(K)`; for the harvest pipeline it is the `comparison` block in each artifact (kb-minus-control rubric deltas) plus the control's token/turn/cost telemetry.
+The hypothesis is **K beats N**: `kb query` answers should match or exceed the control agent's quality while using far fewer tokens/turns. For the MOEL deep pipeline this is `L_MOEL(N) > L_MOEL(K)`; for the harvest pipeline the **headline grade** is `ΔS = success_score_K − success_score_N` from `artifact.comparison` (see [Headline verdict](#headline-verdict-kb-vs-control-δs) below).
+
+## Headline verdict: kb vs control (ΔS)
+
+The harvest suite's single scalar grade is **`comparison.success_score.delta_kb_minus_control`** (ΔS). Both kb (K) and control (N) get the same `success_score` formula; ΔS ≥ +0.02 ⇒ kb ahead, ΔS ≤ −0.02 ⇒ kb behind. Requires both phases in one `pnpm run eval` (no `--skip-control`). See `EVALUATION.md` § Headline verdict.
 
 ## Success score (harvest headline metric)
 
@@ -49,14 +53,14 @@ Normalization is **budget-absolute** (not relative to control), so the number is
 The **control** is the thing kb is compared against: instead of querying a knowledge base, a real agent gets the *same* question and explores the codebase itself. It runs by default as part of `pnpm run eval` — no separate command.
 
 ```bash
-# kb + control side-by-side into ONE artifact.json (control on by default)
+# kb + control → ONE artifact.json with comparison block (control on by default)
 pnpm run eval -- --suite raylib --auto-score
 
-# kb only — control omitted (compare against historic control trends instead)
+# kb only — no ΔS verdict (iteration / CI without agent binary)
 pnpm run eval -- --suite raylib --auto-score --skip-control
 ```
 
-The single `~/.kb/evaluations/<run>/artifact.json` holds the kb results (top level, `run.condition = "kb"`), a `control` block (real agent, no kb — its own `aggregate_scores` + `control_telemetry`), and a `comparison` block of kb-minus-control deltas. Both sides answer the same questions and are scored by the same rubric/judge. The trends summary at the end separates `control` from `kb` rows and prints the latest control-vs-kb deltas.
+The single `~/.kb/evaluations/<run>/artifact.json` holds the kb results (top level, `run.condition = "kb"`), a `control` block (real agent, no kb — its own `aggregate_scores` + `control_telemetry`), and a `comparison` block of kb-minus-control deltas including **`success_score.delta_kb_minus_control` (ΔS)**. Both sides answer the same questions and are scored by the same rubric/judge. The end-of-run summary prints **this run's** kb vs control row first; the trends table is diagnostic only.
 
 The control agent is invoked headless with `--bare --strict-mcp-config` so **no MCP servers, skills, or kb tools load** — it truly explores raw files. Tunables: `--control-prompt` / `KB_CONTROL_PROMPT` (wrapper prompt, must contain `{{question}}`), `--control-model`, `--control-max-turns`, and `--control-agent-cmd` / `KB_CONTROL_AGENT_CMD` to swap the whole agent command (e.g. Cursor).
 
@@ -100,7 +104,8 @@ Default weights: `wC=0.5, wT=0.3, wR=0.2, mu=0.6`. Weights must sum to 1.0 withi
 The query harvest pipeline's scorer (Gemini/OpenAI) is non-deterministic even at `temperature=0` due to distributed inference. To get stable scores:
 
 - Use `--score-runs 3` when running `eval-run.mjs` — scores the same answers three times and averages per question, reducing scorer noise by √3.
-- Query expansion and answer synthesis both use `temperature=0` to minimize answer variation between runs.
+- Query expansion and **`kb query` answer synthesis** both use `temperature=0` to minimize answer variation between runs.
+- **`kb query`** uses one-shot `enrichReadDocumentsAnswerWithLLM()` (no chat agent loop). **`kb chat`** uses multi-turn `runChatSynthesis()` with optional `query_kb` tool rounds.
 
 ## Invariants
 

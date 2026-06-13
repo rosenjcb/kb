@@ -320,13 +320,15 @@ KB ships a multi-pipeline evaluation framework for measuring answer quality and 
 
 **Query harvest** — runs all questions in a suite two ways, **side-by-side into one artifact**: the **kb side** (`kb query` over a live KB base) and the **control side** — the *same* questions answered by a **real coding agent (Claude Code, headless) with no KB**, exploring the clone itself. Both are auto-scored on four axes (Correctness, Usefulness, Specificity, Evidence Handling) via Gemini or OpenAI by the same judge, so the artifact answers the real question: *"is kb actually better than what people do today?"* Results (kb + control + a kb-vs-control comparison + both sides' token/latency telemetry) land in `~/.kb/evaluations/<run>/artifact.json`.
 
-The headline metric is a single **success score** ∈ `[0,1]` — a weighted blend of answer quality (60%), token economy (30%), and speed (10%): `success = 0.60·quality + 0.30·token_efficiency + 0.10·speed`, where quality is `(correctness+usefulness)/8` and the token/speed terms are budget-normalized. kb and control are scored with the same formula, so the score is directly comparable head-to-head. See [`EVALUATION.md`](EVALUATION.md#success-score-primary-metric) for the full definition and budgets.
+The headline metric is a single **success score** S ∈ `[0,1]` — a weighted blend of answer quality (60%), token economy (30%), and speed (10%): `success = 0.60·quality + 0.30·token_efficiency + 0.10·speed`, where quality is `(correctness+usefulness)/8` and the token/speed terms are budget-normalized. kb and control are scored with the same formula.
+
+**Headline project grade:** `ΔS = success_score_kb − success_score_control` from `artifact.comparison` in the same eval run (requires control phase; omit `--skip-control`). ΔS ≥ +0.02 ⇒ kb ahead of the real-agent baseline. See [`EVALUATION.md`](EVALUATION.md#headline-verdict-kb-vs-control-δs).
 
 ```bash
-# kb + control side-by-side (control runs by default; needs GEMINI_API_KEY or OPENAI_API_KEY + `claude`)
+# kb + control → ΔS in artifact.comparison (default)
 pnpm run eval -- --suite raylib --auto-score
 
-# kb only — skip the control (compare against historic control trends instead)
+# kb only — no ΔS (kb-side iteration)
 pnpm run eval -- --suite raylib --auto-score --skip-control
 
 # Average the scorer over 3 runs to reduce LLM noise

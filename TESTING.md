@@ -54,6 +54,8 @@ eval/compaction.ts               →  tests/eval/compaction.test.ts
 
 Additional patterns specific to eval tests:
 
+- **`tests/eval-run.test.ts`** — harvest parser, `computeSuccessScore`, `kbControlVerdict`, trends helpers. Headline grade ΔS lives in `scripts/eval-shared.mjs` + `scripts/control-core.mjs` (`buildControlComparison`).
+
 - **Real git repos in tests**: `ManifestValidator` needs git. Use `mkdtemp` + `git init` + `git config commit.gpgsign false` in `beforeEach`. Always set `user.email` and `user.name` before the first commit.
 - **Temp dirs for filesystem tests**: `FilesystemTool` tests use `mkdtemp` / `rm` pairs in `beforeEach` / `afterEach` — same as the rest of the project.
 - **No LLM calls in unit tests**: `MutationValidator` and `runJury` require running subprocesses or LLMs. Park these as `it.todo` or write integration fixtures instead.

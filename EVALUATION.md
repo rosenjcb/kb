@@ -55,9 +55,9 @@ One runner drives all eval runs. Session lifecycle is fully automatic:
 2. If the session already has docs → reuse it (query-only run).
 3. If the session is empty / missing → run `kb init` first.
 4. **Always** run `kb scan --non-interactive` on the snapshot clone (refresh facts/tombstones), then query.
-4. After writing `artifact.json`, prints a trends summary across prior runs for the same suite.
+4. After writing `artifact.json`, prints a **kb vs control** summary for this run (`success_score`, ΔS, verdict). A secondary trends table lists prior runs for the same suite (diagnostic only — not the headline comparison).
 
-**Quick start** (from kb repo root, after `ppnpm run build`):
+**Quick start** (from kb repo root, after `pnpm run build`):
 
 ```bash
 # Standard run — auto-manages session, ends with trends:
@@ -111,15 +111,18 @@ cost) is captured so the comparison covers both **quality and efficiency**.
 # kb + control side-by-side into one artifact.json (control runs by default)
 pnpm run eval -- --suite raylib --auto-score
 
-# kb only — control omitted; compare against historic control trends instead
+# kb only — control omitted; no ΔS verdict (use for kb-side iteration only)
 pnpm run eval -- --suite raylib --auto-score --skip-control
 ```
 
 Per-question, the comparison is literally `kb query "Q"` vs the *same* `Q` handed to Claude (`claude -p "<prompt> Q"`).
 A single `~/.kb/evaluations/<run>/artifact.json` holds both: the kb results at top level (`run.condition = "kb"`), the
 control under a `control` block (with its own `aggregate_scores` + `control_telemetry`), and a `comparison` block of
-kb-minus-control deltas. With `--skip-control` the `control`/`comparison` keys are simply absent. The trends table
-printed at the end separates control from kb rows and prints the latest control-vs-kb deltas.
+kb-minus-control deltas. With `--skip-control` the `control`/`comparison` keys are absent — **there is no headline grade
+for that run**.
+
+The end-of-run summary prints **this run's** kb vs control row first (when both phases ran). The trends table below is
+for regression tracking only; do not treat kb-vs-kb historical deltas as the project verdict.
 
 Because the control runs by default, eval **preflights the agent and fails fast**: if the chosen agent binary is not on
 PATH (`claude` by default, `agent` for Cursor), the run exits immediately — *before any clone or `kb init`* — with a
@@ -154,13 +157,15 @@ This evaluation should be run at least twice against the same codebase snapshot 
 ### Phase 1: Run the Eval
 
 ```bash
-pnpm run eval -- --suite raylib [--auto-score]
+# Headline grade (kb + control → ΔS in artifact.comparison):
+pnpm run eval -- --suite kb --auto-score
+
+# Kb-side iteration only (no ΔS):
+pnpm run eval -- --suite kb --auto-score --skip-control
 ```
 
-The script handles session management automatically:
-- On first run: clones the repo, runs `kb init --base eval-raylib`, queries.
-- On subsequent runs: reuses the `eval-raylib` session, queries only.
-- Ends with a historical trends table.
+Every run: `kb scan` on the snapshot clone, then 8× `kb query` (one-shot synthesis — see
+`src/core/QUERY_INTERNALS.md`), then control (unless skipped).
 
 To force a fresh init (e.g. after significant KB changes): `--force-init`.
 
@@ -228,9 +233,37 @@ Score each answer on four axes from `0` to `4`.
 - `1`: Strong speculation or unsupported claims.
 - `0`: No evidence discipline.
 
+## Headline verdict: kb vs control (ΔS)
+
+The **single scalar grade** for whether kb beats the real-agent baseline is the
+**success-score delta** from the same artifact:
+
+```
+ΔS = success_score_kb − success_score_control
+     = artifact.comparison.success_score.delta_kb_minus_control
+```
+
+Both sides answer the **same eight questions**, are scored by the **same judge** (Gemini/OpenAI,
+`--score-runs 3` by default), and are graded with the **same** `success_score` formula and
+budgets. This is the harvest pipeline's MOEL-aligned headline metric: one number that blends
+quality, token economy, and speed (see below).
+
+| ΔS | Verdict (`kbControlVerdict`) |
+|----|------------------------------|
+| ≥ +0.02 | **kb ahead of control** |
+| ≤ −0.02 | **kb behind control** |
+| otherwise | **on par with control** |
+
+Read the full breakdown in `artifact.comparison` — each axis has `{ kb, control, delta_kb_minus_control }`
+for `success_score`, `quality_score`, `token_efficiency`, `speed_score`, pass rate, and rubric means.
+The per-component deltas show *where* kb wins or loses (e.g. higher quality but slower control).
+
+**Requires both phases.** Run `pnpm run eval -- --suite <name> --auto-score` without `--skip-control`.
+Kb-only runs still record `aggregate_scores.query.success_score` but cannot emit ΔS.
+
 ## Success Score (primary metric)
 
-The headline success metric is a single scalar in `[0, 1]` (higher is better) that
+`success_score` (also written **S** in the research paper) is the per-side scalar in `[0, 1]` (higher is better) that
 blends answer quality, token economy, and speed:
 
 ```
@@ -275,11 +308,9 @@ Treat a run as promising if all are true:
 4. At least `6/8` questions score `correctness >= 3`.
 5. At least `6/8` questions score `usefulness >= 3`.
 
-Treat the two-agent theory as supported when the kb run's `success_score` meets or
-exceeds the control baseline's — i.e. the weighted blend of quality, token economy,
-and speed is at least as good as the real-agent baseline. The per-component deltas
-(`quality_score`, `token_efficiency`, `speed_score`) show *where* the win or loss
-comes from.
+Treat kb as **ahead of the real-agent baseline** when `comparison.success_score.delta_kb_minus_control ≥ 0.02`
+(equivalently: kb's `success_score` beats control's by at least 0.02 in the same artifact). The per-component
+deltas in `artifact.comparison` show *where* the win or loss comes from.
 
 ## Artifact Storage
 
@@ -325,6 +356,8 @@ Future agents should treat the JSON shape below as the canonical artifact format
 - `aggregate_scores`
 - `qualitative_findings`
 - `next_improvement_areas`
+- `control` (when control phase ran — condition N scores + telemetry)
+- `comparison` (when control phase ran — **headline ΔS** and per-axis kb−control deltas)
 
 ### Field expectations
 
@@ -490,9 +523,36 @@ These may be omitted only if the artifact is marked `partial`.
     }
   },
   "qualitative_findings": [],
-  "next_improvement_areas": []
+  "next_improvement_areas": [],
+  "control": {
+    "run": { "condition": "control", "suite": "raylib" },
+    "aggregate_scores": { "query": { "success_score": 0.812 } },
+    "control_telemetry": {
+      "questions_answered": 8,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0,
+      "mean_num_turns": 0,
+      "total_duration_ms": 0
+    }
+  },
+  "comparison": {
+    "success_score": {
+      "kb": 0.754,
+      "control": 0.812,
+      "delta_kb_minus_control": -0.058
+    },
+    "mean_correctness": {
+      "kb": 3.113,
+      "control": 3.875,
+      "delta_kb_minus_control": -0.762
+    }
+  }
 }
 ```
+
+`control` and `comparison` are present only when the control phase ran (default). The headline project grade is
+`comparison.success_score.delta_kb_minus_control` (ΔS).
 
 ### Authoring rule
 
@@ -504,13 +564,18 @@ Agents should not invent their own artifact shape for future runs. If the schema
 
 ## Comparison Guidance
 
-When comparing two runs:
+**Primary comparison:** kb vs control in the **same** artifact (`comparison.*.delta_kb_minus_control`).
+Do not compare kb run A against control run B from different timestamps unless reproducing a regression.
 
-1. Keep `~/raylib/` at the same git commit for both runs.
-2. Use fresh `ci-raylib-*` bases for both runs.
-3. Reuse the same question set and scoring rubric.
-4. Prefer the same evaluator, or multiple evaluators with normalized scoring notes.
-5. Compare both machine metrics and human judgment.
+**Secondary (diagnostics only):** `pnpm run eval:trends -- --suite <name>` lists prior kb and control rows for
+the suite. Use trends to spot regressions in kb-side quality or token use — not as the headline verdict.
+
+When comparing two kb-side iterations (e.g. synthesis changes):
+
+1. Keep the snapshot repo at the same git commit when possible.
+2. Use `--force-init` or a fresh `--base` if you need a clean index.
+3. Reuse the same question set and `--score-runs`.
+4. Prefer `--skip-control` for kb-only A/B; run with control periodically to refresh ΔS.
 
 ## Threats to Validity
 

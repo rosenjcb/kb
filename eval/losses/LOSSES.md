@@ -1,6 +1,8 @@
 # Loss Functions
 
-Five normalized loss components, each in `[0, 1]`, that feed the MOEL aggregator. Zero is perfect; one is maximum failure.
+Five normalized loss components, each in `[0, 1]`, that feed the MOEL deep-pipeline aggregator (`moel-run.mjs`). Zero is perfect; one is maximum failure.
+
+> **Suite harvest headline grade:** `pnpm run eval` uses a separate scalar **`success_score`** (S, higher is better) and reports **`comparison.success_score.delta_kb_minus_control`** (ΔS) when kb and control run in the same artifact. See `EVALUATION.md` § Headline verdict and `eval/EVAL.md`.
 
 ## Role in the stack
 

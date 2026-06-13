@@ -48,15 +48,11 @@ a correct response and one that queries two facts look identical under a
 pass/fail quality signal.
 
 To fill this gap, we introduce the \textbf{Multi-Objective Exploration Loss
-(MOEL)} evaluation framework, a quantitative harness that measures agent
-efficiency along three orthogonal axes---correctness, trajectory
-efficiency, and resource consumption---and aggregates them into a single
-normalized loss scalar.  MOEL runs every task under three controlled
-\emph{conditions}: a raw-filesystem baseline (N), a KB-equipped agent (K), and
-an oracle that receives the minimal covering fact set directly in its system
-prompt (O).  The primary hypothesis is $L_\text{MOEL}(K) < L_\text{MOEL}(N)$,
-with $L_\text{MOEL}(K)$ approaching the oracle ceiling $L_\text{MOEL}(O)$ as the
-knowledge base densifies over successive tasks.
+(MOEL)} evaluation framework.  The harvest runner scores both KB (K) and a
+real-agent control (N) on the same eight questions and reports the headline
+grade $\Delta S = S_K - S_N$ (Eq.~\ref{eq:delta-s}).  A complementary deep
+pipeline runs tasks under three conditions (N, K, O) and aggregates exploration
+loss into $L_\text{MOEL}$.
 
 Figure~\ref{fig:system-overview} illustrates the end-to-end system.  Our
 contributions are:
@@ -70,11 +66,10 @@ contributions are:
     $L_\text{resource}$), bias-mitigated LLM jury scoring, and
     logistic-regression calibration on a 20-sample human-annotated set.
 
-  \item \textbf{Empirical results}: evaluated under a budget-normalized success
-    score (quality $60\%$, token economy $30\%$, speed $10\%$) against the
-    raylib C library (14,087 entities, quality $Q=0.92$, pass rate 0.75) and the
-    KB codebase itself (2,216 entities, $Q=0.86$, pass rate 1.00), with
-    evidence-handling scores of 3.88 and 4.00 respectively.
+  \item \textbf{Empirical results}: harvest evaluation compares condition~K
+    (\texttt{kb query}, one-shot synthesis) to condition~N (real coding agent, no KB)
+    via $\Delta S = S_K - S_N$ in a single artifact.  On the KB self-check suite,
+    $S_K = 0.84$ at ${\sim}$135\,k tokens for eight queries (June 2026).
 \end{enumerate}
 
 %% ─── Figure: System Overview placeholder ─────────────────────────────────────

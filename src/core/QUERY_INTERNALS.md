@@ -68,7 +68,12 @@ The judge requires an `LLMProvider` to be wired into `FactsDocumentReader` (via 
 
 ## Answer enrichment
 
-After retrieval, **`enrichReadDocumentsAnswerWithLLM()`** (`src/cli/intent-cli.ts`) and chat synthesis (`src/cli/chat-cli.ts`) turn the final fact list into prose. Both paths pass the ranked results to the LLM via **`formatRetrievedFactsForLLM()`** (`src/core/retrieval-context.ts`) with `maxContentChars: 2000` — each fact's text is truncated to 2000 characters before synthesis to control token cost.
+After retrieval, ranked facts are turned into prose via **`formatRetrievedFactsForLLM()`** (`src/core/retrieval-context.ts`) with `maxContentChars: 2000` per fact.
+
+| Command | Synthesis | Notes |
+|---------|-----------|-------|
+| **`kb query`** | **`enrichReadDocumentsAnswerWithLLM()`** (`intent-cli.ts`) | **One-shot** — single LLM call; uses pre-expansion `synthesisQuestion` for prompt/scaffold checks (not graph-expanded query string). |
+| **`kb chat`** | **`runChatSynthesis()`** (`chat-cli.ts`) | **Multi-turn** — optional `query_kb` tool rounds for targeted follow-up retrieval before final answer. |
 
 An optional **post-retrieval LLM relevance filter** (`src/tools/facts-relevance-filter.ts`) fires when results exceed 20 facts: a cheap LLM call discards off-topic facts before synthesis. Falls back silently to the unfiltered list on errors or if filtering would drop below 15% of the original count.
 

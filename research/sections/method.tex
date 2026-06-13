@@ -96,7 +96,25 @@ exhausted, or (c) the fact budget ($500$ facts) is reached.
 
 Graph-augmented query expansion may optionally rewrite or widen the query
 string before the loop begins, based on entity relationships in the stored
-graph.
+graph.  The \emph{pre-expansion} user question is preserved for answer synthesis
+so graph symbol names do not pollute scaffold or prompt text.
+
+\subsection{Answer synthesis}
+\label{subsec:synthesis}
+
+Retrieval output is identical for \texttt{kb query} and chat; synthesis paths differ:
+
+\begin{itemize}
+  \item \textbf{One-shot (\texttt{kb query})} --- \texttt{enrichReadDocumentsAnswerWithLLM()}
+    issues a single LLM call over at most 150 facts (2000 characters each).  Eval harvest
+    and programmatic agents use this path.
+  \item \textbf{Multi-turn (chat)} --- \texttt{runChatSynthesis()} may invoke a
+    \texttt{query\_kb} tool across several rounds for targeted follow-up retrieval
+    before producing the final answer.
+\end{itemize}
+
+Both paths truncate fact text and share the same relevance filter when result counts
+exceed 20 facts.
 
 %% ─── MOEL ─────────────────────────────────────────────────────────────────────
 \section{MOEL: Multi-Objective Exploration Loss}

@@ -78,8 +78,7 @@ in the relevant section with:
 |-------|-------------|
 | `fig:system-overview` | End-to-end KB + MOEL flow (intro.tex) |
 | `fig:kb-arch` | KB indexing and multi-pond BFS retrieval (method.tex) |
-| `fig:score-trend` | Score progression over evaluation runs (eval.tex) |
 
 ## Output
 
-The compiled PDF lands at `research/main.pdf` (not committed to git).
+The compiled PDF is **`research/main.pdf`** — commit it after rebuilding when the paper changes. LaTeX intermediates (`*.aux`, `*.out`, `*.log`, etc.) are gitignored via `research/.gitignore`.

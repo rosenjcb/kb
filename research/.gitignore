@@ -1,0 +1,21 @@
+# LaTeX build intermediates — main.pdf is the committed artifact (not ignored)
+
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.pdfsync
+
+# latexmk scratch
+*.xdv
+*.dvi
+
+# Editor / OS
+.DS_Store
+
+# Optional local-only outputs (figures drafts, etc.)
+generated/

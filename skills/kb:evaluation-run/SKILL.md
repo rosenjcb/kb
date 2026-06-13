@@ -64,26 +64,34 @@ keys are absent. The agent runs with `--bare --strict-mcp-config` so no MCP/kb t
 (`KB_CONTROL_AGENT_CMD`, e.g. Cursor). The trends summary separates control-vs-kb rows and prints deltas. See
 `EVALUATION.md` § The Control.
 
-## Comparing runs — always use eval:trends
+## Headline grade: kb vs control (ΔS)
 
-`pnpm run eval:trends` is the canonical comparison tool. **Never write ad-hoc Python or bash scripts to compare run results.** It shows structural metrics (docs, entities, relationships, avg query result count) for every run, plus score columns when `--auto-score` was used.
+The project verdict is **`artifact.comparison.success_score.delta_kb_minus_control`** from a single eval run with both phases:
 
 ```bash
-# Compare all kb suite runs (structural + score trends)
-pnpm run eval:trends -- --suite kb
+pnpm run eval -- --suite kb --auto-score    # → ΔS in artifact + end summary
+```
 
-# Compare all raylib suite runs
+| ΔS | Verdict |
+|----|---------|
+| ≥ +0.02 | kb ahead of control |
+| ≤ −0.02 | kb behind control |
+| else | on par |
+
+`--skip-control` omits `control`/`comparison` — use only for kb-side iteration; no ΔS.
+
+Full spec: `EVALUATION.md` § Headline verdict.
+
+## Secondary: eval:trends (regression tracking)
+
+`pnpm run eval:trends` lists prior runs for a suite (structural metrics + score columns). Use it to spot kb-side regressions — **not** as the headline kb-vs-control comparison (that requires ΔS from one artifact).
+
+```bash
+pnpm run eval:trends -- --suite kb
 pnpm run eval:trends -- --suite raylib [--limit 10]
 ```
 
-Output columns: `date | run | docs | ent | rels | res | use | pass | corr | src`
-
-- `docs` — documents written during init
-- `ent` / `rels` — semantic graph entities and relationships
-- `res` — average query result count (retrieval breadth proxy)
-- `use` / `pass` / `corr` — scored axes (populated only when `--auto-score` was used and scores are non-zero)
-
-Score deltas and sparkline trends are printed above the table. Structural deltas (first→latest, prev→latest) are always shown even without scoring.
+Columns: `date | run | docs | ent | rels | res | success | pass | corr | use`
 
 After every eval run, copy the artifact to `evaluation/runs/<label>.json` so it is visible in `eval:trends --source repo`.
 

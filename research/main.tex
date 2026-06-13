@@ -9,7 +9,7 @@
 \usepackage{graphicx}
 \usepackage{xcolor}
 \usepackage{hyperref}
-\usepackage{microtype}
+\usepackage[expansion=false]{microtype}
 
 \hypersetup{
   colorlinks=true,
@@ -67,13 +67,11 @@ built in.
 The headline metric is a budget-normalized success score
 $S = 0.60\,Q + 0.30\,E_{\text{tok}} + 0.10\,E_{\text{speed}}$ that blends answer
 quality with token economy and latency, scored identically for KB-equipped and
-control runs so the two are directly comparable.  Empirically, KB reaches a
-quality component $Q = 0.86$ and pass rate $1.00$ on the KB self-check suite
-(evidence handling 4.00/4.00) and $Q = 0.92$, pass rate $0.75$ on the external
-raylib C library benchmark (correctness 3.88/4.00, evidence handling
-3.88/4.00).  All MOEL framework components are fully implemented and
-unit-tested, with benchmark alignment against SWE Atlas, SWE-ContextBench, and
-CodeScaleBench established.
+control runs.  The project grade is $\Delta S = S_K - S_N$ from a single eval
+artifact (Eq.~\ref{eq:delta-s}).  On the \texttt{kb} suite, a paired harvest
+(run \texttt{1747}) yields $\Delta S = -0.058$ (behind control on quality, ahead
+on speed); one-shot synthesis later cuts kb tokens to ${\sim}$135\,k at
+$S_K = 0.84$ pending a fresh paired rerun.
 \end{abstract}
 
 %% ─── Body ────────────────────────────────────────────────────────────────────
