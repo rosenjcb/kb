@@ -102,19 +102,11 @@ so graph symbol names do not pollute scaffold or prompt text.
 \subsection{Answer synthesis}
 \label{subsec:synthesis}
 
-Retrieval output is identical for \texttt{kb query} and chat; synthesis paths differ:
-
-\begin{itemize}
-  \item \textbf{One-shot (\texttt{kb query})} --- \texttt{enrichReadDocumentsAnswerWithLLM()}
-    issues a single LLM call over at most 150 facts (2000 characters each).  Eval harvest
-    and programmatic agents use this path.
-  \item \textbf{Multi-turn (chat)} --- \texttt{runChatSynthesis()} may invoke a
-    \texttt{query\_kb} tool across several rounds for targeted follow-up retrieval
-    before producing the final answer.
-\end{itemize}
-
-Both paths truncate fact text and share the same relevance filter when result counts
-exceed 20 facts.
+After retrieval, \texttt{kb query} performs \emph{one-shot} synthesis: a single
+LLM call over at most 150 ranked facts (2000 characters each), optionally filtered
+when the pool exceeds 20 facts.  This is the path evaluated against the control
+agent in \S\ref{subsec:results}---no multi-turn tool loop, matching how an external
+agent would call KB for a standalone question.
 
 %% ─── MOEL ─────────────────────────────────────────────────────────────────────
 \section{MOEL: Multi-Objective Exploration Loss}

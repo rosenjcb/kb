@@ -28,25 +28,3 @@ fine-grained calibration per rubric axis.
 \textbf{Knowledge base scope.}  KB currently operates on per-file ASTs.
 Cross-file dependencies are captured through edge relationships but are not modeled
 explicitly at init time.
-
-\paragraph{Future Work.}
-
-\begin{itemize}
-  \item \textbf{Full MOEL N/K/O runs}: execute the \texttt{moel-kb} task library under
-    all three conditions and report $L_\text{MOEL}$ per task.
-  \item \textbf{Raylib $\Delta S$}: complete a paired kb+control harvest on the
-    external raylib suite with one-shot synthesis and report $\Delta S$.
-  \item \textbf{Synthesis accuracy}: reduce caller-tracing and contradictory-fact errors
-    on architecture questions without restoring unbounded multi-turn token cost.
-  \item \textbf{Calibration expansion}: grow the human-annotated set to 100+
-    samples with axis-level labels.
-\end{itemize}
-
-\paragraph{Reproducibility.}
-
-Evaluation artifacts live under
-\texttt{\textasciitilde/.kb/evaluations/<run-name>/artifact.json} (schema version~2).
-Question packs: \texttt{eval/suites/\{raylib,kb,fzf\}.yaml}.
-Headline grade: \texttt{comparison.success\_score.delta\_kb\_minus\_control}.
-Implementation: \texttt{scripts/eval-run.mjs}, \texttt{scripts/eval-shared.mjs},
-\texttt{scripts/control-core.mjs}, \texttt{eval/losses/}.

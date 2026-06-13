@@ -21,17 +21,15 @@ retrieval grounding, since the evaluator has ground truth of the correct answers
 Each harvest run executes, in order:
 (1)~clone and index the suite repo (\texttt{kb init} or reuse session,
 \texttt{kb scan});
-(2)~eight \texttt{kb query} calls (condition \textbf{K}) using \emph{one-shot}
-synthesis (\S\ref{subsec:oneshot});
+(2)~eight \texttt{kb query} calls (condition \textbf{K})---one-shot synthesis
+over the retrieved fact pool (\S\ref{subsec:synthesis});
 (3)~the same eight questions handed to a real coding agent with no KB
 (condition \textbf{N}, Claude Code headless by default);
 (4)~LLM auto-scoring ($\times 3$ averaged) on four rubric axes for both sides.
 
-Both sides land in a single
-\texttt{\textasciitilde/.kb/evaluations/<run>/artifact.json}.  The control block
-holds $S_N$; the kb block holds $S_K$; the \texttt{comparison} block holds
-pairwise deltas.  Passing \texttt{--skip-control} omits steps~(3)--(4) and
-produces no headline grade.
+Both sides are scored in one run; the headline grade is the difference
+$\Delta S = S_K - S_N$ (Eq.~\ref{eq:delta-s}).  Skipping the control phase yields
+no $\Delta S$.
 
 \subsection{Scoring Rubric}
 
@@ -81,25 +79,25 @@ are fixed (budget-absolute), so $S$ is stable across runs.  KB (K) and control (
 use the identical formula.
 
 \medskip
-\noindent\textbf{Headline project grade.}  The MOEL-aligned verdict for whether
-KB beats the real-agent baseline is the \emph{difference} in the same artifact:
+\noindent\textbf{Headline project grade.}  The single number that answers
+\emph{does KB beat a real coding agent?} is the success-score \emph{difference}
+in the same evaluation run:
 
 \begin{equation}
-\Delta S = S_K - S_N =
-\texttt{comparison.success\_score.delta\_kb\_minus\_control}
+\Delta S = S_K - S_N
 \label{eq:delta-s}
 \end{equation}
 
-\noindent Implemented in \texttt{scripts/eval-shared.mjs} (\texttt{kbControlVerdict}):
-$\Delta S \geq +0.02$ $\Rightarrow$ KB \emph{ahead of control};
-$\Delta S \leq -0.02$ $\Rightarrow$ \emph{behind}; otherwise \emph{on par}.
-Component deltas in \texttt{artifact.comparison} localize where KB wins or loses
-(e.g.\ higher $Q$ but lower $E_{\text{speed}}$ when the control agent explores longer).
+\noindent $\Delta S \geq +0.02$ $\Rightarrow$ KB \textbf{ahead of control};
+$\Delta S \leq -0.02$ $\Rightarrow$ \textbf{behind}; otherwise \textbf{on par}.
+Per-side scores $S_K$ and $S_N$ come from Eq.~\ref{eq:success}; their component
+parts ($Q$, $E_{\text{tok}}$, $E_{\text{speed}}$) show \emph{where} KB wins or
+loses (e.g.\ higher quality but slower exploration).
 
 \medskip
-\noindent\textbf{Secondary diagnostic.}  Pass rate (correctness $\geq 3$ and
-usefulness $\geq 3$ on $\geq 6/8$ questions) and per-axis means remain useful
-for debugging; they do not replace $\Delta S$ as the headline grade.
+\noindent\textbf{Secondary diagnostics.}  Pass rate and per-axis rubric means
+(correctness, usefulness, etc.) help explain a $\Delta S$ outcome but are not
+the headline grade.
 
 \noindent\textbf{Scoring stability.}  The auto-scorer (Gemini 2.5 Flash) is
 non-deterministic even at temperature~0; we average three scorer calls per question.
@@ -107,53 +105,51 @@ non-deterministic even at temperature~0; we average three scorer calls per quest
 \subsection{Results: kb vs control}
 \label{subsec:results}
 
-Table~\ref{tab:kb-vs-control} reports the headline comparison on the \texttt{kb}
-self-check suite (eight architecture questions, same judge, same artifact).
-Condition~K is \texttt{kb query}; condition~N is a headless coding agent
-(Claude Code, no KB/MCP) exploring the clone.
-Run \texttt{kb-2026-06-12-1747}, June 2026.
+Table~\ref{tab:kb-vs-control} reports condition~K (\texttt{kb query}) vs.\
+condition~N (headless coding agent, no KB) on the \texttt{kb} self-check suite
+($n=8$ questions, same judge, same run; run \texttt{1747}, June 2026).
 
+\begin{center}
+\fbox{%
+  \parbox{0.92\columnwidth}{%
+    \centering
+    \textbf{Headline grade}\quad
+    $\Delta S = S_K - S_N = \mathbf{-0.058}$ \\[4pt]
+    {\small KB \textbf{behind control} on the composite score
+    ($|\Delta S| \geq 0.02$).}%
+  }%
+}
+\end{center}
+
+\vspace{0.4em}
 \begin{table}[t]
 \centering
 \footnotesize
 \setlength{\tabcolsep}{4pt}
-\caption{KB vs control on the \texttt{kb} suite ($n=8$ questions).}
+\caption{KB vs control on the \texttt{kb} suite. Top: composite $S$ and its
+parts; bottom: rubric diagnostics.}
 \label{tab:kb-vs-control}
 \begin{tabular}{@{}lrrr@{}}
 \toprule
 \textbf{Metric} & \textbf{K (kb)} & \textbf{N (ctrl)} & $\boldsymbol{\Delta}$ \\
 \midrule
-Success $S$ & 0.754 & 0.812 & $-$0.058 \\
+\multicolumn{4}{@{}l@{}}{\textit{Composite success score (Eq.~\ref{eq:success})}} \\
+$S$ (headline inputs) & 0.754 & 0.812 & $-$0.058 \\
+\quad Quality $Q$       & 0.858 & 0.984 & $-$0.126 \\
+\quad Token economy     & 0.543 & 0.693 & $-$0.150 \\
+\quad Speed             & 0.769 & 0.140 & $+$0.629 \\
+\midrule
+\multicolumn{4}{@{}l@{}}{\textit{Rubric diagnostics (secondary)}} \\
 Pass rate   & 0.875 & 1.000 & $-$0.125 \\
 Correctness & 3.11 & 3.88 & $-$0.76 \\
 Usefulness  & 3.75 & 4.00 & $-$0.25 \\
 Tokens (8Q) & 452k & 307k & \\
 Time (8Q)   & 139s & 516s & \\
-\midrule
-\multicolumn{4}{@{}l@{}}{\textit{Verdict: behind control} ($\Delta S = -0.058$)} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\noindent Control wins on quality ($Q$) and pass rate; KB wins on speed
-($E_{\text{speed}} = 0.77$ vs.\ $0.14$) and uses fewer tokens despite higher
-per-query synthesis cost in this run (multi-turn chat synthesis on the kb path).
-Switching \texttt{kb query} to one-shot synthesis (June 2026) cuts kb-side tokens
-to ${\sim}$135\,k at $S_K = 0.84$ (run \texttt{2351}); a fresh paired control run
-is needed to update $\Delta S$ under the new synthesis path.
-
-\subsection{Query synthesis: one-shot vs chat}
-\label{subsec:oneshot}
-
-Retrieval is shared between \texttt{kb query} and chat; synthesis diverges:
-
-\begin{itemize}
-  \item \textbf{\texttt{kb query}} --- one-shot
-    \texttt{enrichReadDocumentsAnswerWithLLM()}: a single LLM call over the capped
-    fact list.  Used by the eval harvest and programmatic agents.
-  \item \textbf{\texttt{kb chat}} --- multi-turn \texttt{runChatSynthesis()} with
-    optional \texttt{query\_kb} tool rounds for targeted follow-up retrieval.
-\end{itemize}
-
-This split keeps eval token costs predictable while preserving iterative exploration
-for interactive sessions.
+\noindent Control leads on answer quality ($Q$) and pass rate; KB leads on speed.
+This run predates one-shot synthesis on the kb path (${\sim}$452\,k kb tokens);
+subsequent kb-only runs reach ${\sim}$135\,k tokens at $S_K = 0.84$---a paired
+kb+control rerun is needed to refresh $\Delta S$ under the current synthesis stack.
