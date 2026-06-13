@@ -33,6 +33,7 @@
     "format": "biome format --write .",
     "check": "biome check --write .",
     "type-check": "tsc --noEmit",
+    "bump": "changeset && changeset version && node scripts/update-research-version.mjs",
     "changeset": "changeset",
     "version": "changeset version && node scripts/update-research-version.mjs",
     "release": "node scripts/publish.mjs",
