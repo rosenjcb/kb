@@ -13,11 +13,14 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 
 ## Installer (`../cli/skill-installer.ts`)
 
+`kb skills install` runs the first three rows together (install skill files **and** update the core agent readmes + hook); `kb skills uninstall` runs `uninstallSkills()` + `uninstallHooks()`.
+
 | Function | Target |
 |---|---|
 | `installSkillsGlobally()` | Per-agent skill files under `~/.claude`, `~/.cursor/rules`, `~/.codex`, `~/.github` |
 | `installSkillIntoProject()` | Injects `kb:dev-workflow` body into profile MDs (`CLAUDE.md`, `AGENTS.md`) |
-| `uninstallSkills()` | Removes installed files matching bundled set |
+| `installHooks()` | Registers a kb-first pre-tool hook (`~/.kb/hooks/kb-reminder.sh`) in Claude / Gemini / Codex settings |
+| `uninstallSkills()` / `uninstallHooks()` | Removes installed files, profile MD entries, and hooks matching bundled set |
 
 **Idempotency:** Each install writes `<!-- kb-skill-hash: <sha256-prefix> -->`. Matching hash → `skipped`; mismatch → `updated`.
 

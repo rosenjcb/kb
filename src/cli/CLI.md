@@ -66,8 +66,11 @@ Both share retrieval; only the answer phase differs. See [`../core/QUERY_INTERNA
 
 `skill-installer.ts` bundles skills from `src/skills/loader.ts` (dev: `skills/<name>/SKILL.md`; prod: `dist/bin/<name>.skill.md`).
 
+`kb skills install` runs `installSkillsGlobally()` + `installSkillIntoProject()` + `installHooks()` together; `kb skills uninstall` reverses all three.
+
 - **Global:** `installSkillsGlobally()` writes per-agent paths (Claude, Cursor `.mdc`, Codex, GitHub Copilot) with `<!-- kb-skill-hash: … -->` for idempotent updates.
 - **Profile:** `installSkillIntoProject()` injects `kb:dev-workflow` body into `~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md` when present.
+- **Hooks:** `installHooks()` writes `~/.kb/hooks/kb-reminder.sh` and registers a kb-first pre-tool hook in Claude / Gemini / Codex settings when their config dirs exist.
 
 Adding a skill: append to `SKILLS` array, add `loadSkill()` source under `skills/`, ensure build copies `.skill.md` into `dist/bin/`.
 

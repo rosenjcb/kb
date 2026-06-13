@@ -890,9 +890,12 @@ export async function runMainWithOutput(
         [
           'Usage: kb skills <subcommand>',
           '',
+          'Manage the bundled KB agent skills for Claude, Cursor, Codex, and Copilot.',
+          '',
           'Subcommands:',
-          '  install     Inject KB skills into ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md',
-          '  uninstall   Remove KB skill files and profile MD entries',
+          '  install     Install the skill files for each agent CLI and update the core',
+          '              agent readmes (~/.claude/CLAUDE.md, ~/.codex/AGENTS.md) + kb-first hook',
+          '  uninstall   Remove the installed skill files, readme entries, and hook',
         ].join('\n')
       )
     }
