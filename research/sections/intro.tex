@@ -68,8 +68,11 @@ contributions are:
 
   \item \textbf{Empirical results}: harvest evaluation compares condition~K
     (\texttt{kb query}, one-shot synthesis) to condition~N (real coding agent, no KB)
-    via $\Delta S = S_K - S_N$ in a single artifact.  On the KB self-check suite,
-    $S_K = 0.84$ at ${\sim}$135\,k tokens for eight queries (June 2026).
+    via $\Delta S = S_K - S_N$ in a single artifact.  On the KB self-check suite
+    (run \texttt{0011}), KB is \textbf{ahead of control}
+    ($\Delta S = +0.024$; $S_K = 0.861$, $S_N = 0.837$): control leads on answer
+    quality and pass rate, KB leads on wall-clock speed (139\,s vs.\ 587\,s) and
+    evidence handling, at ${\sim}$141\,k query tokens.
 \end{enumerate}
 
 %% ─── Figure: System Overview placeholder ─────────────────────────────────────
@@ -90,11 +93,13 @@ contributions are:
     \textbf{Right panel} — LLM agent loop: \texttt{kb query} dispatches
       multi-pond BFS retrieval, passes ranked facts to LLM, returns grounded
       prose answer. \\
-    Below all panels: MOEL harness comparing Condition N (raw filesystem),
-      K (kb-enabled), O (oracle) with $L_\text{MOEL}$ scalar output.
+    Below all panels: harvest runner reporting $\Delta S = S_K - S_N$ (K vs.\ real
+      agent); deep MOEL harness (N/K/O toy-tool conditions) reporting
+      $L_\text{MOEL}$.
     \vspace{0.4cm}
   }
 }
-\caption{End-to-end KB system and MOEL evaluation harness.}
+\caption{End-to-end KB system.  Primary harvest grade: $\Delta S$ (K vs.\ real
+agent); deep MOEL harness adds $L_\text{MOEL}$ under toy-tool N/K/O conditions.}
 \label{fig:system-overview}
 \end{figure}

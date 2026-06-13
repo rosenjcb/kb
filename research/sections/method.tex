@@ -127,10 +127,16 @@ single scalar, evaluated under three controlled conditions per task.
 \subsection{Three-Condition Evaluation Design}
 \label{subsec:conditions}
 
-Every MOEL task runs under three conditions:
+The \emph{deep} MOEL harness runs each task under three toy-tool conditions
+(Table~\ref{tab:moel-conditions}).  This differs from the \emph{harvest} runner
+(\S\ref{sec:experiments}), where condition~N is a real headless coding agent
+(Claude Code with Read/Grep/Glob/Bash) and condition~K is \texttt{kb query}---the
+pair that defines $\Delta S$.
 
 \begin{table}[h]
 \centering\small
+\caption{Deep MOEL harness: toy-tool conditions per task (not the harvest N/K pair).}
+\label{tab:moel-conditions}
 \begin{tabular}{@{}p{1.6cm}p{3.4cm}p{1.6cm}@{}}
 \toprule
 \textbf{Cond.} & \textbf{Tools available} & \textbf{Purpose} \\
@@ -151,8 +157,7 @@ Every MOEL task runs under three conditions:
 
 The primary hypothesis is $L_\text{MOEL}(N) > L_\text{MOEL}(K)$; secondary
 goal is $L_\text{MOEL}(K) \approx L_\text{MOEL}(O)$ as the knowledge base
-matures.  \texttt{compareConditions()} checks this automatically from the
-per-condition result objects.
+matures.  Harvest headline results (\S\ref{subsec:results}) use $\Delta S$ instead.
 
 \subsection{Loss Functions}
 

@@ -43,7 +43,7 @@ The query-harvest pipeline's primary scalar is `success_score ∈ [0,1]` (higher
 $$\text{success} = 0.60 \cdot \text{quality} + 0.30 \cdot \text{token\_efficiency} + 0.10 \cdot \text{speed}$$
 
 - **quality** = `(mean_correctness + mean_usefulness) / 8` (both axes `0–4`)
-- **token_efficiency** = `1 − min(total_tokens / token_budget, 1)`
+- **token_efficiency** = `1 − min(weighted_tokens / token_budget, 1)` where `weighted_tokens = input + output + 0.1 × cache_read` (control cache reads discounted like MOEL)
 - **speed** = `1 − min(total_duration_ms / time_budget, 1)`
 
 Normalization is **budget-absolute** (not relative to control), so the number is stable run-to-run. Defaults live in `scripts/eval-shared.mjs`: `token_budget = 1,000,000`, `time_budget = 600,000 ms`. Both kb and control are scored with the identical formula and budgets, so `success_score` is directly comparable head-to-head; the per-component parts (`quality_score`, `token_efficiency`, `speed_score`) show where a win or loss originates. KB-side telemetry comes from `kb_query_telemetry` (read from `~/.kb/logs`), the control's from `control_telemetry`.

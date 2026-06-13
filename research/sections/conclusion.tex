@@ -5,26 +5,16 @@
 We introduced KB, a local-first, facts-first codebase knowledge system.
 KB's deterministic AST indexing and multi-pond BFS retrieval provide
 agents with structured, persistent codebase knowledge without per-session re-exploration.
-\texttt{kb query} now uses one-shot synthesis over a capped fact pool, cutting eval
-token cost by ${\sim}$70\% while maintaining competitive rubric scores on the KB
-self-check suite ($S_K = 0.84$, pass rate $0.75$).
+\texttt{kb query} uses one-shot synthesis over a capped fact pool; on the KB
+self-check suite (run \texttt{0011}), KB is \textbf{ahead of control}
+($\Delta S = +0.024$; $S_K = 0.861$, $S_N = 0.837$) while answering eight
+questions in 139\,s at ${\sim}$141\,k tokens versus 587\,s for a headless coding
+agent (pass rate $0.875$ vs.\ $1.000$; evidence handling 4.0 vs.\ 3.88).
 
 We also introduced MOEL, a multi-objective evaluation framework spanning two pipelines:
 (1)~the harvest runner, whose headline grade is $\Delta S = S_K - S_N$ from a single
 artifact comparing \texttt{kb query} to a real coding agent on the same eight questions;
 and (2)~the deep MOEL harness ($L_\text{MOEL}$), which measures exploration loss under
-N/K/O conditions per task.  Bias-mitigated jury ensemble, statistical calibration, and
-programmatic validators distinguish efficient exploration from expensive correctness.
-
-\paragraph{Limitations.}
-
-\textbf{Paired $\Delta S$ requires both eval phases.}  Kb-only runs report $S_K$ but
-cannot emit the headline verdict until the control agent runs in the same artifact.
-
-\textbf{Calibration sample size is small.}  The 20-sample human-annotated
-dataset is sufficient for per-judge logistic regression but does not support
-fine-grained calibration per rubric axis.
-
-\textbf{Knowledge base scope.}  KB currently operates on per-file ASTs.
-Cross-file dependencies are captured through edge relationships but are not modeled
-explicitly at init time.
+toy-tool N/K/O conditions per task.  Bias-mitigated jury ensemble, statistical calibration,
+and programmatic validators distinguish efficient exploration from expensive correctness.
+External validation on raylib remains the next empirical step.

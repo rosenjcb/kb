@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCoverageAudit,
   computeSuccessScore,
+  computeWeightedTokenTotal,
   derivedBase,
   formatScoreDelta,
   kbControlVerdict,
@@ -15,6 +16,7 @@ import {
   scoreMetric,
   SUCCESS_BUDGETS,
   SUCCESS_WEIGHTS,
+  SUCCESS_TOKEN_CACHE_DISCOUNT,
   sparkline,
   stripCliBanner,
   structuralMetric,
@@ -244,6 +246,33 @@ describe('computeSuccessScore', () => {
     expect(r.token_efficiency).toBeNull()
     expect(r.speed_score).toBeNull()
     expect(r.quality_score).toBe(1)
+  })
+
+  it('weights cache reads at the MOEL discount when scoring control telemetry', () => {
+    expect(SUCCESS_TOKEN_CACHE_DISCOUNT).toBe(0.1)
+    const weighted = computeWeightedTokenTotal({
+      inputTokens: 78,
+      outputTokens: 13833,
+      cacheReadTokens: 1_077_245,
+    })
+    expect(weighted).toBeCloseTo(121_635.5, 0)
+    const kb = computeSuccessScore({
+      meanCorrectness: 3.275,
+      meanUsefulness: 3.75,
+      totalTokens: 141_150,
+      totalDurationMs: 139_070,
+    })
+    const control = computeSuccessScore({
+      meanCorrectness: 3.612,
+      meanUsefulness: 4,
+      totalTokens: weighted,
+      totalDurationMs: 586_974,
+    })
+    expect(kb.success_score).toBe(0.861)
+    expect(control.success_score).toBe(0.837)
+    expect(kbControlVerdict({ success: kb.success_score }, { success: control.success_score })).toBe(
+      'ahead of control'
+    )
   })
 })
 

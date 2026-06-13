@@ -4,17 +4,18 @@
 
 \subsection{Evaluation Targets}
 
-\textbf{Raylib.}  Our primary external benchmark is the
+\textbf{Raylib (planned external benchmark).}  We target the
 \href{https://github.com/raysan5/raylib}{raylib C library}---a mature,
-well-documented game-programming framework.
-Raylib is chosen because it is not the KB codebase itself (eliminating
-evaluator familiarity bias), has rich cross-module structure suitable for
-graph-based retrieval, and has stable upstream documentation.
+well-documented game-programming framework---as the primary \emph{external}
+benchmark: it is not the KB codebase (eliminating evaluator familiarity bias),
+has rich cross-module structure for graph retrieval, and has stable upstream
+documentation.  Results in \S\ref{subsec:results} are from the KB self-check only;
+raylib paired runs are future work.
 
-\textbf{KB self-check.}  As a product smoke test, we also evaluate KB against
-the KB codebase itself (suite \texttt{kb}).  This self-evaluation tests
-whether KB can answer questions about its own architecture---a strict test of
-retrieval grounding, since the evaluator has ground truth of the correct answers.
+\textbf{KB self-check (reported).}  Suite \texttt{kb} evaluates KB against its
+own codebase---eight architecture and workflow questions.  This smoke test
+stress-tests retrieval grounding on a repo whose structure the authors know well;
+paired $\Delta S$ here is the headline empirical claim in this paper.
 
 \subsection{Protocol: kb vs control in one artifact}
 
@@ -73,7 +74,9 @@ E_{\text{speed}} &= 1 - \min\!\Bigl(\tfrac{\tau}{B_\tau},\,1\Bigr)
 \end{align}
 
 \noindent where $\bar{c}, \bar{u}$ are mean correctness and usefulness ($0$--$4$),
-$T$ is total input$+$output tokens for the eight-question side, and $\tau$ is
+$T$ is the weighted token total for the eight-question side
+($\text{input} + \text{output} + 0.1 \times \text{cache\_read}$ for control agents;
+kb query uses undifferentiated input$+$output), and $\tau$ is
 wall-clock latency.  Budgets $B_T = 10^6$ tokens and $B_\tau = 6\times 10^5$\,ms
 are fixed (budget-absolute), so $S$ is stable across runs.  KB (K) and control (N)
 use the identical formula.
@@ -106,17 +109,16 @@ non-deterministic even at temperature~0; we average three scorer calls per quest
 \label{subsec:results}
 
 Table~\ref{tab:kb-vs-control} reports condition~K (\texttt{kb query}) vs.\
-condition~N (headless coding agent, no KB) on the \texttt{kb} self-check suite
-($n=8$ questions, same judge, same run; run \texttt{1747}, June 2026).
+condition~N (headless Claude Code agent, no KB) on the \texttt{kb} self-check suite
+($n=8$ questions, same Gemini judge, same run; run \texttt{0011}, June 2026).
 
 \begin{center}
 \fbox{%
   \parbox{0.92\columnwidth}{%
     \centering
     \textbf{Headline grade}\quad
-    $\Delta S = S_K - S_N = \mathbf{-0.058}$ \\[4pt]
-    {\small KB \textbf{behind control} on the composite score
-    ($|\Delta S| \geq 0.02$).}%
+    $\Delta S = S_K - S_N = \mathbf{+0.024}$ \\[4pt]
+    {\small KB \textbf{ahead of control} ($\Delta S \geq 0.02$).}%
   }%
 }
 \end{center}
@@ -134,22 +136,30 @@ parts; bottom: rubric diagnostics.}
 \textbf{Metric} & \textbf{K (kb)} & \textbf{N (ctrl)} & $\boldsymbol{\Delta}$ \\
 \midrule
 \multicolumn{4}{@{}l@{}}{\textit{Composite success score (Eq.~\ref{eq:success})}} \\
-$S$ (headline inputs) & 0.754 & 0.812 & $-$0.058 \\
-\quad Quality $Q$       & 0.858 & 0.984 & $-$0.126 \\
-\quad Token economy     & 0.543 & 0.693 & $-$0.150 \\
-\quad Speed             & 0.769 & 0.140 & $+$0.629 \\
+$S$ (composite)         & 0.861 & 0.837 & $+$0.024 \\
+\quad Quality $Q$       & 0.878 & 0.952 & $-$0.074 \\
+\quad Token economy     & 0.859 & 0.878 & $-$0.019 \\
+\quad Speed             & 0.768 & 0.022 & $+$0.746 \\
 \midrule
 \multicolumn{4}{@{}l@{}}{\textit{Rubric diagnostics (secondary)}} \\
 Pass rate   & 0.875 & 1.000 & $-$0.125 \\
-Correctness & 3.11 & 3.88 & $-$0.76 \\
+Correctness & 3.28 & 3.61 & $-$0.34 \\
 Usefulness  & 3.75 & 4.00 & $-$0.25 \\
-Tokens (8Q) & 452k & 307k & \\
-Time (8Q)   & 139s & 516s & \\
+Evidence    & 4.00 & 3.88 & $+$0.13 \\
+Tokens (8Q) & 141k & 122k$^\dagger$ & \\
+Time (8Q)   & 139s & 587s & \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\noindent Control leads on answer quality ($Q$) and pass rate; KB leads on speed.
-This run predates one-shot synthesis on the kb path (${\sim}$452\,k kb tokens);
-subsequent kb-only runs reach ${\sim}$135\,k tokens at $S_K = 0.84$---a paired
-kb+control rerun is needed to refresh $\Delta S$ under the current synthesis stack.
+\noindent$^\dagger$Control weighted total:
+$78 + 13{,}833 + 0.1 \times 1{,}077{,}245 \approx 122$\,k (prompt-cache reads
+discounted at $0.1$, matching MOEL $L_\text{resource}$).
+
+\noindent\textbf{Interpretation.}  KB \textbf{wins the headline composite}
+($\Delta S = +0.024$): control leads on $Q$, pass rate, and weighted token
+economy, but KB's ${\sim}$4$\times$ wall-clock advantage (139\,s vs.\ 587\,s)
+dominates the 10\% speed term and outweighs the quality gap under 60/30/10
+weights.  KB also leads on evidence handling (4.0 vs.\ 3.88).  Weakest kb
+questions vs.\ control: query-expansion behavior (Q7), \texttt{kb init} workflow
+(Q2), and skills layout (Q5).

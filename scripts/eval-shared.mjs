@@ -341,6 +341,24 @@ export const SUCCESS_WEIGHTS = { quality: 0.6, tokens: 0.3, speed: 0.1 }
  */
 export const SUCCESS_BUDGETS = { tokens: 1_000_000, timeMs: 600_000 }
 
+/** Prompt-cache reads weighted at 0.1 (matches MOEL L_resource / Anthropic pricing). */
+export const SUCCESS_TOKEN_CACHE_DISCOUNT = 0.1
+
+/**
+ * Weighted token footprint for success-score budgeting.
+ * Control agents report fresh input, cache reads, and output separately; kb query
+ * typically has no cache and passes only input+output (cacheReadTokens omitted).
+ *
+ * @param {{ inputTokens?: number|null, outputTokens?: number|null, cacheReadTokens?: number|null }} parts
+ * @param {number} [cacheDiscount=SUCCESS_TOKEN_CACHE_DISCOUNT]
+ */
+export function computeWeightedTokenTotal(parts, cacheDiscount = SUCCESS_TOKEN_CACHE_DISCOUNT) {
+  const fresh = Number(parts.inputTokens) || 0
+  const cached = Number(parts.cacheReadTokens) || 0
+  const output = Number(parts.outputTokens) || 0
+  return fresh + cacheDiscount * cached + output
+}
+
 const _clamp01 = n => Math.max(0, Math.min(1, n))
 const _round3 = n => Number(n.toFixed(3))
 
@@ -351,7 +369,7 @@ const _round3 = n => Number(n.toFixed(3))
  * is `null` (an old quality-only artifact cannot be fairly ranked against a
  * fully-instrumented one), but the available sub-scores are still returned.
  *
- * @param {{ meanCorrectness:number, meanUsefulness:number, totalTokens?:number|null, totalDurationMs?:number|null }} input
+ * @param {{ meanCorrectness:number, meanUsefulness:number, totalTokens?:number|null, totalDurationMs?:number|null, inputTokens?:number|null, outputTokens?:number|null, cacheReadTokens?:number|null }} input
  */
 export function computeSuccessScore(input, budgets = SUCCESS_BUDGETS, weights = SUCCESS_WEIGHTS) {
   const meanCorrectness = Number(input.meanCorrectness) || 0
@@ -359,7 +377,14 @@ export function computeSuccessScore(input, budgets = SUCCESS_BUDGETS, weights = 
   // Quality: correctness + usefulness, each 0–4, mapped to [0,1].
   const quality = _clamp01((meanCorrectness + meanUsefulness) / 8)
 
-  const totalTokens = input.totalTokens
+  const totalTokens =
+    typeof input.totalTokens === 'number' && Number.isFinite(input.totalTokens)
+      ? input.totalTokens
+      : typeof input.inputTokens === 'number' ||
+          typeof input.outputTokens === 'number' ||
+          typeof input.cacheReadTokens === 'number'
+        ? computeWeightedTokenTotal(input)
+        : null
   const tokenEfficiency =
     typeof totalTokens === 'number' && Number.isFinite(totalTokens) && budgets.tokens > 0
       ? _clamp01(1 - Math.min(totalTokens / budgets.tokens, 1))
@@ -384,7 +409,11 @@ export function computeSuccessScore(input, budgets = SUCCESS_BUDGETS, weights = 
     inputs: {
       mean_correctness: _round3(meanCorrectness),
       mean_usefulness: _round3(meanUsefulness),
-      total_tokens: typeof totalTokens === 'number' ? totalTokens : null,
+      total_tokens: typeof totalTokens === 'number' ? Math.round(totalTokens) : null,
+      total_cache_read_tokens:
+        typeof input.cacheReadTokens === 'number' && Number.isFinite(input.cacheReadTokens)
+          ? Math.round(input.cacheReadTokens)
+          : null,
       total_duration_ms: typeof durationMs === 'number' ? durationMs : null,
       token_budget: budgets.tokens,
       time_budget_ms: budgets.timeMs,

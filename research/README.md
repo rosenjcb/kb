@@ -57,7 +57,7 @@ research/
     related.tex         Related work
     method.tex          KB system + MOEL framework (all math)
     eval.tex            Experiments and results tables
-    conclusion.tex      Limitations
+    conclusion.tex      Conclusion
   tables/
     benchmark-alignment.tex   MOEL vs SWE Atlas / ContextBench / CodeScaleBench
   figures/              Drop rendered figures here (PDF or PNG)

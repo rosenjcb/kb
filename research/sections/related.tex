@@ -43,9 +43,10 @@ instruction-tuning evaluation.  MOEL's jury module addresses the same biases at 
 through position debiasing (swapped-order consistency), verbosity normalization
 ($\log_{1+}$ length scaling), self-enhancement down-weighting ($\times 0.5$ for
 same-family judges), and family diversity enforcement---without requiring a
-fine-tuned judge.  Unlike prior work, MOEL is not outcome-only: it combines
-the LLM jury with an AST-structural loss and trajectory/resource losses so that
-efficiency failures are numerically visible.
+fine-tuned judge.  Unlike prior work, MOEL is not outcome-only: the deep harness combines
+the LLM jury with trajectory and resource losses so that
+efficiency failures are numerically visible; the harvest runner adds $\Delta S$
+against a real agent baseline.
 
 \subsection{Agent Efficiency Measurement}
 
@@ -63,7 +64,6 @@ changes and test coverage.
 
 Tree-sitter and GumTree~\cite{falleri2014gumtree} provide fine-grained
 AST differencing and incremental parsing.  code2vec~\cite{alon2019code2vec} uses AST path embeddings for
-code representation learning.  MOEL's $L_\text{AST}$ adopts a simpler but
-interpretable measure: Jaccard distance over named exported declarations,
-computed deterministically without learned components, making it reproducible
-across model versions.
+code representation learning.  KB's code facts are derived deterministically from
+tree-sitter exports; MOEL's programmatic validators (manifest and mutation checks)
+extend SWE-Atlas-style live-diff verification with AST-grounded causal linkage.

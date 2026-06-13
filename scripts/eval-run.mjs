@@ -84,7 +84,8 @@ export {
   worstQuestionGaps,
   computeSuccessScore,
 }
-export { SUCCESS_WEIGHTS, SUCCESS_BUDGETS } from './eval-shared.mjs'
+export { SUCCESS_WEIGHTS, SUCCESS_BUDGETS, SUCCESS_TOKEN_CACHE_DISCOUNT } from './eval-shared.mjs'
+export { computeWeightedTokenTotal } from './eval-shared.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const KB_REPO = path.resolve(__dirname, '..')

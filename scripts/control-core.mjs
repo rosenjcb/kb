@@ -20,7 +20,11 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { buildCoverageAudit, computeSuccessScore } from './eval-shared.mjs'
+import {
+  buildCoverageAudit,
+  computeSuccessScore,
+  computeWeightedTokenTotal,
+} from './eval-shared.mjs'
 import { runAutoScoreFile } from './eval-score.mjs'
 
 export const DEFAULT_CONTROL_PROMPT =
@@ -360,10 +364,27 @@ export async function runControlPass({
   const tels = perQuestion.map(qf => qf.telemetry).filter(Boolean)
   const answered = perQuestion.filter(qf => String(qf.answer ?? '').trim()).length
   const sum = key => tels.reduce((a, t) => a + (Number(t[key]) || 0), 0)
+  const totalInputTokens = sum('input_tokens')
+  const totalOutputTokens = sum('output_tokens')
+  const totalCacheReadTokens = sum('cache_read_tokens')
+  const totalWeightedTokens = tels.length
+    ? tels.reduce(
+        (acc, t) =>
+          acc +
+          computeWeightedTokenTotal({
+            inputTokens: t.input_tokens,
+            outputTokens: t.output_tokens,
+            cacheReadTokens: t.cache_read_tokens,
+          }),
+        0
+      )
+    : null
   const controlTelemetry = {
     questions_answered: Math.max(tels.length, answered),
-    total_input_tokens: sum('input_tokens'),
-    total_output_tokens: sum('output_tokens'),
+    total_input_tokens: totalInputTokens,
+    total_output_tokens: totalOutputTokens,
+    total_cache_read_tokens: totalCacheReadTokens,
+    total_weighted_tokens: totalWeightedTokens === null ? null : Math.round(totalWeightedTokens),
     total_cost_usd: Number(sum('total_cost_usd').toFixed(4)),
     mean_num_turns: tels.length ? Number((sum('num_turns') / tels.length).toFixed(2)) : null,
     total_duration_ms: sum('duration_ms'),
@@ -375,9 +396,7 @@ export async function runControlPass({
   const controlSuccess = computeSuccessScore({
     meanCorrectness: mCorr,
     meanUsefulness: mUse,
-    totalTokens: tels.length
-      ? controlTelemetry.total_input_tokens + controlTelemetry.total_output_tokens
-      : null,
+    totalTokens: totalWeightedTokens,
     totalDurationMs: tels.length ? controlTelemetry.total_duration_ms : null,
   })
   const aggregateQuery = {

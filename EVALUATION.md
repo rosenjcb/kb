@@ -273,7 +273,7 @@ success = 0.60 · quality + 0.30 · token_efficiency + 0.10 · speed
 | Component | Weight | Definition |
 |-----------|--------|------------|
 | `quality` | 60% | `(mean_correctness + mean_usefulness) / 8` — both axes are `0–4`, so their sum maps to `[0, 1]`. |
-| `token_efficiency` | 30% | `1 − min(total_tokens / token_budget, 1)` — total input+output tokens for the 8-question run. |
+| `token_efficiency` | 30% | `1 − min(weighted_tokens / token_budget, 1)` — weighted total for the 8-question run: `input + output + 0.1 × cache_read` (cache discount matches MOEL / Anthropic prompt caching). kb query logs undifferentiated input+output; control agents report cache reads separately. |
 | `speed` | 10% | `1 − min(total_duration_ms / time_budget, 1)` — total wall-clock for the 8-question run. |
 
 **Budget-absolute normalization.** Token and speed sub-scores are measured against
