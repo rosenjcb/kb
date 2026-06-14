@@ -6,10 +6,11 @@ We introduced KB, a local-first, facts-first codebase knowledge system.
 KB's deterministic AST indexing and multi-pond BFS retrieval provide
 agents with structured, persistent codebase knowledge without per-session re-exploration.
 \texttt{kb query} uses one-shot synthesis over a capped fact pool; on the KB
-self-check suite (run \texttt{0011}), KB is \textbf{ahead of control}
-($\Delta S = +0.024$; $S_K = 0.861$, $S_N = 0.837$) while answering eight
-questions in 139\,s at ${\sim}$141\,k tokens versus 587\,s for a headless coding
-agent (pass rate $0.875$ vs.\ $1.000$; evidence handling 4.0 vs.\ 3.88).
+self-check suite (run \texttt{kb-2026-06-13-1747}), KB is \textbf{ahead of control}
+($\Delta S = +0.128$; $S_K = 0.888$, $S_N = 0.760$) while answering eight
+questions in 128\,s at ${\sim}$120\,k tokens versus 416\,s and ${\sim}$569\,k
+weighted tokens for a Cursor agent (pass rate $0.75$ vs.\ $1.00$; evidence
+handling tied at 4.0).
 
 We also introduced MOEL, a multi-objective evaluation framework spanning two pipelines:
 (1)~the harvest runner, whose headline grade is $\Delta S = S_K - S_N$ from a single

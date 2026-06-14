@@ -81,14 +81,16 @@
   \texttt{kb query} (K) to a real headless coding agent (N) via $\Delta S$.
 
   The headline metric is a budget-normalized success score
-  $S = 0.60\,Q + 0.30\,E_{\text{tok}} + 0.10\,E_{\text{speed}}$ that blends answer
-  quality with token economy and latency, scored identically for KB-equipped and
-  control runs.  The project grade is $\Delta S = S_K - S_N$ from a single eval
-  artifact (Eq.~\ref{eq:delta-s}).  On the \texttt{kb} self-check suite, a paired
-  harvest (run \texttt{0011}, June 2026) yields $\Delta S = +0.024$---\textbf{ahead
-  of control} ($S_K = 0.861$, $S_N = 0.837$)---while \texttt{kb query} completes
-  eight questions in 139\,s at ${\sim}$141\,k tokens versus 587\,s for a headless
-  coding agent with no KB (control weighted tokens ${\sim}$122\,k after cache discount).
+  $S = 0.60\,Q_{\text{adeq}} + 0.30\,E_{\text{tok}} + 0.10\,E_{\text{speed}}$ that
+  blends adequacy-weighted answer quality (correctness and usefulness with
+  diminishing returns above $\tau{=}3$) with token economy and latency, scored
+  identically for KB-equipped and control runs.  The project grade is
+  $\Delta S = S_K - S_N$ from a single eval artifact (Eq.~\ref{eq:delta-s}).
+  On the \texttt{kb} self-check suite, a paired harvest
+  (run \texttt{kb-2026-06-13-1747}, June 2026) yields $\Delta S = +0.128$---\textbf{ahead
+  of control} ($S_K = 0.888$, $S_N = 0.760$)---while \texttt{kb query} completes
+  eight questions in 128\,s at ${\sim}$120\,k tokens versus 416\,s for a Cursor
+  agent with no KB (control weighted tokens ${\sim}$569\,k after cache discount).
 
   \vspace{0.85em}
 ]
