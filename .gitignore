@@ -46,7 +46,6 @@ tmp/
 # Skills directories (keep workflows tracked)
 .claude/**
 .github/SKILLS
-AGENTS.md
 
 # Misc
 tickets/
