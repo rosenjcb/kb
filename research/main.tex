@@ -1,7 +1,6 @@
-\documentclass[twocolumn]{article}
+\documentclass[10pt,twocolumn]{article}
 
 %% ─── Packages ────────────────────────────────────────────────────────────────
-% Core packages only — all present in BasicTeX
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath,amssymb}
 \usepackage{booktabs}
@@ -21,61 +20,78 @@
 %% ─── Version (auto-updated by scripts/update-research-version.mjs) ──────────
 \input{version}
 
-%% ─── Title ───────────────────────────────────────────────────────────────────
-\title{%
-  \textbf{KB: A Facts-First Codebase Knowledge System with\\
-  Multi-Objective Exploration Loss Evaluation}%
-}
-
-\author{%
-  Jacob Rosenzweig \\
-  \textit{Independent Research} \\
-  \texttt{rosenjcb@gmail.com} \\[4pt]
-  {\small \texttt{KB v\kbversion} \enspace\textbullet\enspace \kbreleasedate}%
-}
-
-\date{}
+%% ─── Title block + section spacing (SWE-agent-style rhythm) ────────────────
+\makeatletter
+\renewcommand{\section}{\@startsection{section}{1}{\z@}%
+  {-1.25em \@plus -0.25em \@minus -0.1em}%
+  {0.5em \@plus 0.1em}%
+  {\normalfont\large\bfseries}}
+\renewcommand{\subsection}{\@startsection{subsection}{2}{\z@}%
+  {-0.9em \@plus -0.2em \@minus -0.1em}%
+  {0.35em \@plus 0.1em}%
+  {\normalfont\normalsize\bfseries}}
+\makeatother
 
 %% ─── Document ────────────────────────────────────────────────────────────────
 \begin{document}
 
-\maketitle
+\twocolumn[
+  \begin{center}
+    {\LARGE\bfseries KB: A Facts-First Codebase Knowledge System with\\
+    Multi-Objective Exploration Loss Evaluation\par}
+    \vspace{0.85em}
+    \hrule height 0.4pt
+    \vspace{1.1em}
+    {\normalsize Jacob Rosenzweig\par}
+    \vspace{0.45em}
+    {\normalsize\textit{Independent Research}\par}
+    \vspace{0.35em}
+    {\normalsize\texttt{rosenjcb@gmail.com}\par}
+    \vspace{0.55em}
+    {\small\texttt{KB v\kbversion} \enspace\textbullet\enspace \kbreleasedate\par}
+    \vspace{1.35em}
+  \end{center}
 
-%% ─── Abstract ────────────────────────────────────────────────────────────────
-\begin{abstract}
-LLM-based developer agents suffer from two compounding inefficiencies: each
-session begins with an empty context window, forcing costly re-exploration of
-the codebase, and current evaluation frameworks measure only whether the final
-answer is correct, hiding the exploration cost that produced it.  We present
-two complementary contributions.
+  \begin{center}
+    \textbf{Abstract}
+  \end{center}
+  \vspace{0.55em}
+  \noindent
+  LLM-based developer agents suffer from two compounding inefficiencies: each
+  session begins with an empty context window, forcing costly re-exploration of
+  the codebase, and current evaluation frameworks measure only whether the final
+  answer is correct, hiding the exploration cost that produced it.  We present
+  two complementary contributions.
 
-\textbf{KB} is a local-first, facts-first codebase knowledge system that
-converts knowledge maintenance into a side-effect of normal development work.
-KB indexes source code deterministically via AST analysis (tree-sitter) and
-documentation via sentence-level fact extraction, storing atomic facts in a
-SQLite graph with typed edges.  At query time, a multi-pond BFS loop merges
-lexical (BM25/FTS5), semantic (embedding), and graph-walk evidence streams into
-a ranked fact pool, exiting on a scored sufficiency condition.
+  \textbf{KB} is a local-first, facts-first codebase knowledge system that
+  converts knowledge maintenance into a side-effect of normal development work.
+  KB indexes source code deterministically via AST analysis (tree-sitter) and
+  documentation via sentence-level fact extraction, storing atomic facts in a
+  SQLite graph with typed edges.  At query time, a multi-pond BFS loop merges
+  lexical (BM25/FTS5), semantic (embedding), and graph-walk evidence streams into
+  a ranked fact pool, exiting on a scored sufficiency condition.
 
-\textbf{MOEL} (Multi-Objective Exploration Loss) is a quantitative evaluation
-framework that measures agent efficiency under three controlled conditions:
-Condition N (raw filesystem baseline), Condition K (KB-equipped), and Condition
-O (oracle context injection).  MOEL combines three normalized loss terms—LLM jury semantic loss ($L_\text{jury}$),
-trajectory inefficiency ($L_\text{trajectory}$), and resource consumption
-($L_\text{resource}$)—into a single weighted scalar $L_\text{MOEL}$ in a deep
-harness with toy-tool N/K/O conditions.  The harvest runner instead compares
-\texttt{kb query} (K) to a real headless coding agent (N) via $\Delta S$.
+  \textbf{MOEL} (Multi-Objective Exploration Loss) is a quantitative evaluation
+  framework that measures agent efficiency under three controlled conditions:
+  Condition N (raw filesystem baseline), Condition K (KB-equipped), and Condition
+  O (oracle context injection).  MOEL combines three normalized loss terms—LLM jury semantic loss ($L_\text{jury}$),
+  trajectory inefficiency ($L_\text{trajectory}$), and resource consumption
+  ($L_\text{resource}$)—into a single weighted scalar $L_\text{MOEL}$ in a deep
+  harness with toy-tool N/K/O conditions.  The harvest runner instead compares
+  \texttt{kb query} (K) to a real headless coding agent (N) via $\Delta S$.
 
-The headline metric is a budget-normalized success score
-$S = 0.60\,Q + 0.30\,E_{\text{tok}} + 0.10\,E_{\text{speed}}$ that blends answer
-quality with token economy and latency, scored identically for KB-equipped and
-control runs.  The project grade is $\Delta S = S_K - S_N$ from a single eval
-artifact (Eq.~\ref{eq:delta-s}).  On the \texttt{kb} self-check suite, a paired
-harvest (run \texttt{0011}, June 2026) yields $\Delta S = +0.024$---\textbf{ahead
-of control} ($S_K = 0.861$, $S_N = 0.837$)---while \texttt{kb query} completes
-eight questions in 139\,s at ${\sim}$141\,k tokens versus 587\,s for a headless
-coding agent with no KB (control weighted tokens ${\sim}$122\,k after cache discount).
-\end{abstract}
+  The headline metric is a budget-normalized success score
+  $S = 0.60\,Q + 0.30\,E_{\text{tok}} + 0.10\,E_{\text{speed}}$ that blends answer
+  quality with token economy and latency, scored identically for KB-equipped and
+  control runs.  The project grade is $\Delta S = S_K - S_N$ from a single eval
+  artifact (Eq.~\ref{eq:delta-s}).  On the \texttt{kb} self-check suite, a paired
+  harvest (run \texttt{0011}, June 2026) yields $\Delta S = +0.024$---\textbf{ahead
+  of control} ($S_K = 0.861$, $S_N = 0.837$)---while \texttt{kb query} completes
+  eight questions in 139\,s at ${\sim}$141\,k tokens versus 587\,s for a headless
+  coding agent with no KB (control weighted tokens ${\sim}$122\,k after cache discount).
+
+  \vspace{0.85em}
+]
 
 %% ─── Body ────────────────────────────────────────────────────────────────────
 \input{sections/intro}
