@@ -586,8 +586,8 @@ async function main() {
     const scanLog = kb(targetCwd, `scan --base ${base} --non-interactive --debug`)
     fs.writeFileSync(path.join(workdir, 'scan.log'), scanLog, 'utf8')
 
-    console.error(`[eval] kb default ${base}`)
-    kb(targetCwd, `default ${base}`, { stdio: 'inherit' })
+    console.error(`[eval] kb base use --default ${base}`)
+    kb(targetCwd, `base use --default ${base}`, { stdio: 'inherit' })
 
     console.error('[eval] docs list')
     const docsOut = kb(targetCwd, `docs list --base ${base}`)
@@ -789,7 +789,7 @@ async function main() {
           ? `kb init --base ${base} --non-interactive --debug (cwd: ${targetCwd})`
           : null,
         `kb scan --base ${base} --non-interactive --debug (cwd: ${targetCwd})`,
-        `kb default ${base}`,
+        `kb base use --default ${base}`,
         `kb docs list --base ${base} --output json`,
         `kb graph --base ${base}`,
         `kb ${logsCmd(base)}`,

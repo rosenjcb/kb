@@ -1,5 +1,11 @@
 # kb
 
+## 0.4.1
+
+### Patch Changes
+
+- Fixed eval script using purgd command.
+
 ## 0.4.0
 
 ### Minor Changes

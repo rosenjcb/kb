@@ -74,7 +74,7 @@ npx tsx scripts/eval-task-artifact.ts \
 Use `--base raylib` (permanent, never wiped). The compounding hypothesis requires the same base to accumulate across all sessions and run numbers.
 
 ```bash
-kb default raylib
+kb base use --default raylib
 ```
 
 Never use `ci-*` names for the agent-compare base.
