@@ -53,6 +53,9 @@ import {
   kbControlVerdict,
   worstQuestionGaps,
   computeSuccessScore,
+  adequacyUtility,
+  computeAdequacyQuality,
+  ADEQUACY_THRESHOLD,
 } from './eval-shared.mjs'
 
 import { readQueryResultFile, runAutoScoreFile } from './eval-score.mjs'
@@ -83,6 +86,9 @@ export {
   kbControlVerdict,
   worstQuestionGaps,
   computeSuccessScore,
+  adequacyUtility,
+  computeAdequacyQuality,
+  ADEQUACY_THRESHOLD,
 }
 export { SUCCESS_WEIGHTS, SUCCESS_BUDGETS, SUCCESS_TOKEN_CACHE_DISCOUNT } from './eval-shared.mjs'
 export { computeWeightedTokenTotal } from './eval-shared.mjs'

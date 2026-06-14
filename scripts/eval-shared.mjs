@@ -345,6 +345,42 @@ export const SUCCESS_BUDGETS = { tokens: 1_000_000, timeMs: 600_000 }
 export const SUCCESS_TOKEN_CACHE_DISCOUNT = 0.1
 
 /**
+ * Adequacy threshold on the 0--4 rubric axes: scores below τ are penalized
+ * linearly; marginal gain above τ is discounted by β (diminishing returns).
+ */
+export const ADEQUACY_THRESHOLD = 3
+export const ADEQUACY_EXCELLENCE_BONUS = 0.2
+
+const _clamp01 = n => Math.max(0, Math.min(1, n))
+const _round3 = n => Number(n.toFixed(3))
+
+/**
+ * Per-axis adequacy utility φ(s) ∈ [0,1]. Maps rubric score s to a normalized
+ * value where τ is "good enough" and excellence above τ earns only a β-fraction
+ * of the remaining scale.
+ *
+ * @param {number} score
+ * @param {number} [tau=ADEQUACY_THRESHOLD]
+ * @param {number} [beta=ADEQUACY_EXCELLENCE_BONUS]
+ */
+export function adequacyUtility(score, tau = ADEQUACY_THRESHOLD, beta = ADEQUACY_EXCELLENCE_BONUS) {
+  const s = Math.max(0, Math.min(4, Number(score) || 0))
+  const linear = Math.min(s, tau) / tau
+  const excess = (Math.max(0, s - tau) / (4 - tau)) * beta
+  return _clamp01((linear + excess) / (1 + beta))
+}
+
+/**
+ * Harvest adequacy quality Q ∈ [0,1]: average of correctness and usefulness
+ * adequacy utilities (replaces linear (c+u)/8 in the success score).
+ */
+export function computeAdequacyQuality(meanCorrectness, meanUsefulness) {
+  return _round3(
+    (adequacyUtility(meanCorrectness) + adequacyUtility(meanUsefulness)) / 2
+  )
+}
+
+/**
  * Weighted token footprint for success-score budgeting.
  * Control agents report fresh input, cache reads, and output separately; kb query
  * typically has no cache and passes only input+output (cacheReadTokens omitted).
@@ -359,23 +395,17 @@ export function computeWeightedTokenTotal(parts, cacheDiscount = SUCCESS_TOKEN_C
   return fresh + cacheDiscount * cached + output
 }
 
-const _clamp01 = n => Math.max(0, Math.min(1, n))
-const _round3 = n => Number(n.toFixed(3))
-
 /**
- * Composite success score in [0,1] (higher = better). Quality is scored
- * absolutely from the correctness/usefulness axes; token and speed sub-scores
- * are budget-normalized. When token or speed telemetry is missing the composite
- * is `null` (an old quality-only artifact cannot be fairly ranked against a
- * fully-instrumented one), but the available sub-scores are still returned.
+ * Composite success score in [0,1] (higher = better). Quality uses adequacy
+ * utilities on correctness and usefulness (τ=3 acceptable, β-discounted above);
+ * token and speed sub-scores are budget-normalized.
  *
  * @param {{ meanCorrectness:number, meanUsefulness:number, totalTokens?:number|null, totalDurationMs?:number|null, inputTokens?:number|null, outputTokens?:number|null, cacheReadTokens?:number|null }} input
  */
 export function computeSuccessScore(input, budgets = SUCCESS_BUDGETS, weights = SUCCESS_WEIGHTS) {
   const meanCorrectness = Number(input.meanCorrectness) || 0
   const meanUsefulness = Number(input.meanUsefulness) || 0
-  // Quality: correctness + usefulness, each 0–4, mapped to [0,1].
-  const quality = _clamp01((meanCorrectness + meanUsefulness) / 8)
+  const quality = computeAdequacyQuality(meanCorrectness, meanUsefulness)
 
   const totalTokens =
     typeof input.totalTokens === 'number' && Number.isFinite(input.totalTokens)

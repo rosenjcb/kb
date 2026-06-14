@@ -255,6 +255,15 @@ Default weights: $w_C = 0.5$, $w_T = 0.3$, $w_R = 0.2$.  The
 constraint $w_C + w_T + w_R = 1$ is validated to within $10^{-6}$ and all
 loss terms are bounded to $[0, 1]$.
 
+\medskip
+\noindent\textbf{Harvest adequacy scoring.}  The headline harvest runner
+(\S\ref{subsec:success}) uses a complementary \emph{gain} formulation $S$ rather
+than $L_\text{MOEL}$, but shares the same design principle: quality is measured
+through an adequacy utility $\varphi_\tau$ (Eq.~\ref{eq:adequacy}) that treats
+$\tau{=}3$ on the 0--4 rubric as ``good enough'' and applies diminishing
+returns above it, so token and latency savings are not drowned out by marginal
+rubric polish.
+
 \subsection{Benchmark Alignment}
 
 MOEL's three-condition design (N/K/O) mirrors SWE-ContextBench's context

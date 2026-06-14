@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCoverageAudit,
   computeSuccessScore,
+  computeAdequacyQuality,
+  adequacyUtility,
+  ADEQUACY_THRESHOLD,
   computeWeightedTokenTotal,
   derivedBase,
   formatScoreDelta,
@@ -213,18 +216,18 @@ describe('computeSuccessScore', () => {
   })
 
   it('blends the three components with the configured weights', () => {
-    // quality = (3 + 3) / 8 = 0.75; tokens at half budget → 0.5; time at half budget → 0.5
+    // adequacy at c=u=3 → Q_adeq = 1/(1+β) ≈ 0.833; tokens at half budget → 0.5; time at half budget → 0.5
     const r = computeSuccessScore({
       meanCorrectness: 3,
       meanUsefulness: 3,
       totalTokens: SUCCESS_BUDGETS.tokens / 2,
       totalDurationMs: SUCCESS_BUDGETS.timeMs / 2,
     })
-    expect(r.quality_score).toBe(0.75)
+    expect(r.quality_score).toBe(0.833)
     expect(r.token_efficiency).toBe(0.5)
     expect(r.speed_score).toBe(0.5)
-    // 0.6*0.75 + 0.3*0.5 + 0.1*0.5 = 0.45 + 0.15 + 0.05 = 0.65
-    expect(r.success_score).toBe(0.65)
+    // 0.6*0.833 + 0.3*0.5 + 0.1*0.5 ≈ 0.7
+    expect(r.success_score).toBe(0.7)
   })
 
   it('clamps token and speed sub-scores to 0 when over budget', () => {
@@ -251,28 +254,36 @@ describe('computeSuccessScore', () => {
   it('weights cache reads at the MOEL discount when scoring control telemetry', () => {
     expect(SUCCESS_TOKEN_CACHE_DISCOUNT).toBe(0.1)
     const weighted = computeWeightedTokenTotal({
-      inputTokens: 78,
-      outputTokens: 13833,
-      cacheReadTokens: 1_077_245,
+      inputTokens: 292946,
+      outputTokens: 32472,
+      cacheReadTokens: 2_437_286,
     })
-    expect(weighted).toBeCloseTo(121_635.5, 0)
+    expect(weighted).toBeCloseTo(569_147, 0)
     const kb = computeSuccessScore({
-      meanCorrectness: 3.275,
-      meanUsefulness: 3.75,
-      totalTokens: 141_150,
-      totalDurationMs: 139_070,
+      meanCorrectness: 3.325,
+      meanUsefulness: 3.575,
+      totalTokens: 119_629,
+      totalDurationMs: 128_051,
     })
     const control = computeSuccessScore({
-      meanCorrectness: 3.612,
+      meanCorrectness: 4,
       meanUsefulness: 4,
       totalTokens: weighted,
-      totalDurationMs: 586_974,
+      totalDurationMs: 416_046,
     })
-    expect(kb.success_score).toBe(0.861)
-    expect(control.success_score).toBe(0.837)
+    expect(kb.success_score).toBe(0.888)
+    expect(control.success_score).toBe(0.76)
     expect(kbControlVerdict({ success: kb.success_score }, { success: control.success_score })).toBe(
       'ahead of control'
     )
+  })
+
+  it('treats rubric scores at τ as adequate with diminishing returns above', () => {
+    expect(adequacyUtility(ADEQUACY_THRESHOLD)).toBeCloseTo(0.833, 3)
+    expect(adequacyUtility(4)).toBe(1)
+    expect(adequacyUtility(2)).toBeCloseTo(2 / 3 / 1.2, 3)
+    expect(computeAdequacyQuality(3, 3)).toBe(0.833)
+    expect(computeAdequacyQuality(4, 4)).toBe(1)
   })
 })
 
