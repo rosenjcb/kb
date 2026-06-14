@@ -42,20 +42,54 @@ jobs:
       - name: Build
         run: pnpm run build
 
-      - name: Check for changeset
-        if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
+  # Dedicated, independently-named status check so it can be marked "Required"
+  # in branch protection. Hard-fails when shipped source code changes without a
+  # changeset, so a missing changeset blocks the merge instead of slipping through.
+  changeset:
+    name: Changeset required
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require a changeset for source changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          # Pass if pending changeset files exist (pnpm version not yet run)
-          CHANGESETS=$(find .changeset -name '*.md' ! -name 'README.md' 2>/dev/null || true)
-          if [ -n "$CHANGESETS" ]; then
-            echo "✓ Changeset found: $CHANGESETS"
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_REF"
+
+          # Files this PR changes relative to the base branch.
+          CHANGED=$(git diff --name-only "origin/$BASE_REF...HEAD")
+          echo "Changed files in this PR:"
+          echo "$CHANGED"
+          echo "---"
+
+          # Only shipped code (src/, bin/) requires a release note. Pure docs,
+          # eval, research, CI, or config changes do not need a changeset.
+          SOURCE_CHANGED=$(echo "$CHANGED" | grep -E '^(src/|bin/)' || true)
+          if [ -z "$SOURCE_CHANGED" ]; then
+            echo "✓ No shipped source changes (src/, bin/) — changeset not required."
             exit 0
           fi
-          # Also pass if CHANGELOG.md was added or modified in this PR (pnpm version was run inline)
-          CHANGELOG_DIFF=$(git diff "origin/${{ github.base_ref }}...HEAD" -- CHANGELOG.md | head -1)
-          if [ -n "$CHANGELOG_DIFF" ]; then
-            echo "✓ Version bump found (CHANGELOG.md updated in this PR)"
+
+          # A pending changeset file (added by 'pnpm changeset') satisfies the rule.
+          PENDING=$(find .changeset -name '*.md' ! -name 'README.md' 2>/dev/null || true)
+          if [ -n "$PENDING" ]; then
+            echo "✓ Changeset found:"
+            echo "$PENDING"
             exit 0
           fi
-          echo "❌ No changeset found. Run 'pnpm version' to create one."
+
+          # Or an inline version bump where CHANGELOG.md was updated in this PR.
+          if echo "$CHANGED" | grep -qx 'CHANGELOG.md'; then
+            echo "✓ Version bump found (CHANGELOG.md updated in this PR)."
+            exit 0
+          fi
+
+          echo "❌ This PR changes shipped source code (src/ or bin/) but has no changeset."
+          echo "   Add one with 'pnpm changeset' (or 'pnpm version'), commit it, and push."
           exit 1
