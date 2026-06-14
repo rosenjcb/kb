@@ -130,7 +130,7 @@ function main() {
   const result = evaluateChangesetConsistency({
     changedFiles,
     pendingChangesets: listPendingChangesets(),
-    basePackageVersion: readPackageVersion(`${base}:package.json`),
+    basePackageVersion: readPackageVersion(base),
     headPackageVersion: readHeadPackageVersion(),
     headTexVersion: readHeadVersionTex(),
   })
