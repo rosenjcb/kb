@@ -19,7 +19,7 @@ import { expandQueryWithGraph, kbIndexDbPath } from '../tools/graph-query-expans
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
 import { KB_VERSION } from '../version.js'
-import { createPrinter } from '../ui/printer'
+import { createPrinter, createReasoningProgressSink } from '../ui/printer'
 import {
   deleteBase,
   ensureOperationalBaseDir,
@@ -126,6 +126,12 @@ export interface CliOutput {
   log(message: string): void
   error(message: string): void
   write(chunk: string): void
+  /**
+   * Optional transient progress sink (e.g. streaming reasoning tokens). Unlike `log`,
+   * lines sent here replace one another and disappear when passed `null`. In the TUI this
+   * maps to the disappearing progress bar; CLI callers may leave it unset.
+   */
+  progress?(line: string | null): void
 }
 
 const defaultCliOutput: CliOutput = {
@@ -1002,14 +1008,23 @@ export async function runMainWithOutput(
       let enriched = aligned
       if (llmProvider && isReadFactsResult(aligned) && preRewriteQueryTruth) {
         const enrichStarted = Date.now()
+        // Stream the model's reasoning as a transient "loading" line while it synthesizes
+        // the answer; it clears as soon as the answer is ready.
+        const onReasoning = createReasoningProgressSink(printer)
         enriched = await enrichReadDocumentsAnswerWithLLM(
           parsed,
           aligned,
           llmProvider,
           querySessionDir,
           undefined,
-          { graphRelationContext, synthesisQuestion: synthesisQuestion || preRewriteQueryTruth }
-        )
+          {
+            graphRelationContext,
+            synthesisQuestion: synthesisQuestion || preRewriteQueryTruth,
+            onReasoning,
+          }
+        ).finally(() => {
+          printer.clearProgress()
+        })
 
         if (llmCounter) {
           const enrichTokens = llmCounter.getAndReset()

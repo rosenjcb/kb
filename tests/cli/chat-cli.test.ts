@@ -634,6 +634,8 @@ describe('runChatSynthesis', () => {
         log: (s: string) => lines.push(s),
         write: (s: string) => lines.push(s),
         error: (s: string) => lines.push(s),
+        progress: (_s: string) => {},
+        clearProgress: () => {},
       } as Parameters<typeof runChatSynthesis>[0]['printer'],
       lines,
     }

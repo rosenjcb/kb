@@ -58,38 +58,4 @@ jobs:
       - name: Require a changeset for source changes
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin "$BASE_REF"
-
-          # Files this PR changes relative to the base branch.
-          CHANGED=$(git diff --name-only "origin/$BASE_REF...HEAD")
-          echo "Changed files in this PR:"
-          echo "$CHANGED"
-          echo "---"
-
-          # Only shipped code (src/, bin/) requires a release note. Pure docs,
-          # eval, research, CI, or config changes do not need a changeset.
-          SOURCE_CHANGED=$(echo "$CHANGED" | grep -E '^(src/|bin/)' || true)
-          if [ -z "$SOURCE_CHANGED" ]; then
-            echo "✓ No shipped source changes (src/, bin/) — changeset not required."
-            exit 0
-          fi
-
-          # A pending changeset file (added by 'pnpm changeset') satisfies the rule.
-          PENDING=$(find .changeset -name '*.md' ! -name 'README.md' 2>/dev/null || true)
-          if [ -n "$PENDING" ]; then
-            echo "✓ Changeset found:"
-            echo "$PENDING"
-            exit 0
-          fi
-
-          # Or an inline version bump where CHANGELOG.md was updated in this PR.
-          if echo "$CHANGED" | grep -qx 'CHANGELOG.md'; then
-            echo "✓ Version bump found (CHANGELOG.md updated in this PR)."
-            exit 0
-          fi
-
-          echo "❌ This PR changes shipped source code (src/ or bin/) but has no changeset."
-          echo "   Add one with 'pnpm changeset' (or 'pnpm version'), commit it, and push."
-          exit 1
+        run: node scripts/check-changeset-consistency.mjs --base "origin/$BASE_REF"

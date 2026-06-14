@@ -1,19 +1,25 @@
 /**
- * Unified version bump script.
- * - Locally: runs the interactive changeset wizard, then bumps package.json + CHANGELOG + research/version.tex
- * - In CI (CI=true): skips the wizard (changeset files already exist from PRs), just consumes them
+ * Single changeset entrypoint (`pnpm run changeset`).
+ * - Locally: interactive changeset wizard, then consume + bump package.json, CHANGELOG.md, research/version.tex
+ * - In CI (CI=true): skips the wizard and only consumes pending changesets
  */
 import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const root = new URL('..', import.meta.url).pathname
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const changesetBin = path.join(root, 'node_modules', '.bin', 'changeset')
 
-if (!process.env.CI) {
-  execSync('changeset', { stdio: 'inherit' })
+function runChangeset(args) {
+  execSync(`"${changesetBin}" ${args}`, { stdio: 'inherit', cwd: root })
 }
 
-execSync('changeset version', { stdio: 'inherit' })
+if (!process.env.CI) {
+  runChangeset('')
+}
+
+runChangeset('version')
 
 const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf-8'))
 const releaseDate = new Date().toLocaleDateString('en-US', {
