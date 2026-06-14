@@ -286,7 +286,7 @@ kb && /sync
 Base resolution order (both live in `~/.kb/config.json`):
 
 1. `activeBase` — current working base from `kb base use <base>`
-2. `defaultBase` — persistent default from `kb base use --default <base>` (or `kb default <base>`)
+2. `defaultBase` — persistent default from `kb base use --default <base>`
 
 Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
 

@@ -188,37 +188,12 @@ describe('init-cli interview checkpoints', () => {
     expect(parsed.resume).toBe(true)
   })
 
-  it('Given rescan flag, then parses it into init options for compatibility', () => {
-    const parsed = parseInitCommand(['--base', 'dogfood', '--rescan'])
-
-    expect(parsed.base).toBe('dogfood')
-    expect(parsed.rescan).toBe(true)
-  })
-
-  it('Given rescan with resume, then parsing rejects incompatible lifecycle flags', () => {
-    expect(() => parseInitCommand(['--base', 'dogfood', '--rescan', '--resume'])).toThrow(
-      '--rescan cannot be combined with --resume'
-    )
-  })
-
-  it('Given --apply without --rescan, then parsing rejects invalid combination', () => {
-    expect(() => parseInitCommand(['--base', 'dogfood', '--apply'])).toThrow(
-      '--apply requires --rescan'
-    )
-  })
-
   it('Given scan args, then parsing implies rescan and always applies automatically', () => {
     const parsed = parseScanCommand(['--base', 'dogfood'])
 
     expect(parsed.base).toBe('dogfood')
     expect(parsed.rescan).toBe(true)
     expect(parsed.apply).toBe(true)
-  })
-
-  it('Given kb scan with explicit --rescan, then parsing rejects the redundant flag', () => {
-    expect(() => parseScanCommand(['--base', 'dogfood', '--rescan'])).toThrow(
-      'kb scan already implies rescan'
-    )
   })
 
   it('Given --stop-after document-facts, then parsing returns document-facts', () => {
@@ -613,7 +588,7 @@ describe('init-cli interview checkpoints', () => {
     expect(titles).toEqual(['AGENTS.md', 'CLAUDE.md', 'README.md', 'docs/deep/nested.md'])
   })
 
-  it('Given --rescan, then read-inputs loads all markdown sources under cwd', async () => {
+  it('Given rescan, then read-inputs loads all markdown sources under cwd', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
@@ -745,7 +720,7 @@ describe('init-cli interview checkpoints', () => {
     expect(lines.some(line => line.includes('write') && line.includes('README.md'))).toBe(true)
   })
 
-  it('Given --rescan, then write cycle writes originals and any resulting mutations', async () => {
+  it('Given rescan, then write cycle writes originals and any resulting mutations', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
@@ -765,7 +740,7 @@ describe('init-cli interview checkpoints', () => {
     expect((result.writtenDocIds ?? []).length).toBeGreaterThan(0)
   })
 
-  it('Given --rescan, then run writes refreshed documents instead of staying plan-only', async () => {
+  it('Given rescan, then run writes refreshed documents instead of staying plan-only', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
@@ -955,7 +930,7 @@ describe('init-cli interview checkpoints', () => {
     expect(output).not.toContain('diff --git a/docs/rescan-')
   })
 
-  it('Given interactive --rescan, then read-inputs does not ask initial interview questions or prompt to proceed', async () => {
+  it('Given interactive rescan, then read-inputs does not ask initial interview questions or prompt to proceed', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has docs.\n',
     })
@@ -975,7 +950,7 @@ describe('init-cli interview checkpoints', () => {
     expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(false)
   })
 
-  it('Given interactive --rescan through import-docs, then follow-up interview questions are skipped without a proceed prompt', async () => {
+  it('Given interactive rescan through import-docs, then follow-up interview questions are skipped without a proceed prompt', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has docs.\n',
     })
@@ -998,7 +973,7 @@ describe('init-cli interview checkpoints', () => {
     expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(false)
   })
 
-  it('Given --rescan with a .kb file in cwd, uses the pinned base even in non-interactive mode', async () => {
+  it('Given rescan with a .kb file in cwd, uses the pinned base even in non-interactive mode', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nDocs here.\n',
     })
@@ -1015,7 +990,7 @@ describe('init-cli interview checkpoints', () => {
     expect(result.status).toBe('paused')
   })
 
-  it('Given --rescan without --base and no .kb file in non-interactive mode, throws with .kb guidance', async () => {
+  it('Given rescan without --base and no .kb file in non-interactive mode, throws with .kb guidance', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nDocs here.\n',
     })

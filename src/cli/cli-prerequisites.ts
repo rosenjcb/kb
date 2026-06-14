@@ -5,7 +5,7 @@
 
 /** Shown when no effective KB base exists and no `--base` override applies. */
 export const CLI_ERROR_NO_KB_BASE =
-  'No knowledge base selected. Use `kb use <base>` or `kb use --default <base>`.'
+  'No knowledge base selected. Use `kb base use <base>` or `kb base use --default <base>`.'
 
 /** Shown when an LLM provider cannot be constructed from config + environment. */
 export const CLI_ERROR_NO_LLM_PROVIDER =

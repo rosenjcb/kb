@@ -126,7 +126,7 @@ describe('view-cli runtime', () => {
     await seedDocument(baseDir, {
       title: 'KB Base Selection and Usage',
       documentId: 'kb-base-selection-and-usage',
-      content: 'Base selection uses kb use and kb default.\n',
+      content: 'Base selection uses kb base use and kb base use --default.\n',
       type: 'reference',
     })
 
@@ -138,7 +138,7 @@ describe('view-cli runtime', () => {
     ])
 
     expect(result.output).toContain('KB Base Selection and Usage')
-    expect(result.output).toContain('Base selection uses kb use and kb default.')
+    expect(result.output).toContain('Base selection uses kb base use and kb base use --default.')
   })
 
   it('Given missing document, then throws not found error', async () => {

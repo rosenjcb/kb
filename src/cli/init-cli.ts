@@ -471,23 +471,13 @@ export function parseInitCommand(args: string[]): InitOptions {
     throw new Error(`Invalid --stop-after. Use: ${validCycles.join('|')}`)
   }
 
-  const rescan = readFlag(args, '--rescan')
-  const apply = readFlag(args, '--apply')
-  const resume = readFlag(args, '--resume')
-  if (rescan && resume) {
-    throw new Error('Invalid flags: --rescan cannot be combined with --resume.')
-  }
-  if (apply && !rescan) {
-    throw new Error('Invalid flags: --apply requires --rescan.')
-  }
-
   return {
     base,
     nonInteractive: readFlag(args, '--non-interactive'),
-    rescan,
-    apply,
+    rescan: false,
+    apply: false,
     detach: readFlag(args, '--detach'),
-    resume,
+    resume: readFlag(args, '--resume'),
     stopAfter,
     resumeFrom: readOption(args, '--resume-from'),
     checkpointFile: readOption(args, '--checkpoint-file'),
@@ -497,10 +487,7 @@ export function parseInitCommand(args: string[]): InitOptions {
 }
 
 export function parseScanCommand(args: string[]): InitOptions {
-  if (args.includes('--rescan')) {
-    throw new Error('kb scan already implies rescan. Remove `--rescan`.')
-  }
-  return { ...parseInitCommand(['--rescan', ...args]), rescan: true, apply: true }
+  return { ...parseInitCommand(args), rescan: true, apply: true }
 }
 
 function makeCycleTimer(

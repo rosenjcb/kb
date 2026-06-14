@@ -52,7 +52,6 @@ function resolveApplyArgs(args: string[]): string[] | null {
   const first = args[0]
   if (first === 'publish') return [...args, '--apply']
   if (first === 'invalidate') return [...args, '--apply']
-  if (first === 'init' && args.includes('--rescan')) return [...args, '--apply']
   if (first === 'scan') return [...args, '--apply']
   return null
 }
@@ -563,7 +562,7 @@ export function App({ config, startupNotices = [] }: Props) {
             updateEntry(resultId, { content: streamedLines, loading: true })
           }, chatSessionIdRef.current)
 
-          if (firstArg === 'base' || firstArg === 'use') refreshBase()
+          if (firstArg === 'base') refreshBase()
 
           const { segments, emptyPrimaryContent } = partitionShellOutputForTui(output)
 

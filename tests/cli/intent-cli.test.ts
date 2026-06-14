@@ -94,7 +94,7 @@ describe('intent-cli formatting', () => {
                 filePath: '/tmp/cli-facts.md',
                 tags: ['import_doc', 'cli', 'fact'],
               },
-              content: '# CLI Facts\n\nKB base precedence order: 1) kb use, 2) kb default.',
+              content: '# CLI Facts\n\nKB base precedence order: 1) active base, 2) default base.',
             },
           ],
           total: 1,
@@ -251,7 +251,7 @@ describe('intent-cli execution and enrichment', () => {
           results: [
             {
               metadata: { id: 'cli-facts', title: 'CLI Facts' },
-              content: '# CLI Facts\n\nKB base precedence order: 1) kb use, 2) kb default.',
+              content: '# CLI Facts\n\nKB base precedence order: 1) active base, 2) default base.',
             },
           ],
         },

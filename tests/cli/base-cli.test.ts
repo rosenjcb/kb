@@ -190,15 +190,6 @@ describe('kb base (no args) / kb base list', () => {
   })
 })
 
-describe('kb use (backward-compat alias)', () => {
-  it('Given kb use <base>, then behaves identically to kb base use <base>', async () => {
-    await initBase('aliasbase')
-    const { out, lines } = makeOut()
-    await runMainWithOutput(['use', 'aliasbase'], out, {} as never)
-    expect(lines.join('\n')).toContain('Using base: aliasbase')
-  })
-})
-
 describe('kb init help', () => {
   it('Given kb init --help, then points refresh workflows to kb scan', async () => {
     const { out, lines } = makeOut()

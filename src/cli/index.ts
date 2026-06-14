@@ -310,10 +310,8 @@ export async function runMainWithOutput(
     return
   }
 
-  if (firstArg === 'base' || firstArg === 'use') {
-    // `kb use ...` is a deprecated alias for `kb base use ...`
-    // Normalize: if the user typed `kb use <args>`, treat it as `kb base use <args>`
-    const subArgs = firstArg === 'use' ? ['use', ...args.slice(1)] : args.slice(1)
+  if (firstArg === 'base') {
+    const subArgs = args.slice(1)
     const subCmd = subArgs[0]
 
     if (subCmd === '--help' || subCmd === '-h' || subCmd === 'help') {
@@ -464,33 +462,6 @@ export async function runMainWithOutput(
     }
 
     out.error(`Unknown base subcommand: ${subCmd}\n\n${printBaseHelp(mode)}`)
-    return
-  }
-
-  if (firstArg === 'default') {
-    const base = args[1]
-    if (base === '--show' || !base) {
-      const configured = await readBaseConfig()
-      if (!configured.defaultBase) {
-        out.log('No default base configured.')
-        out.log(`  Set one with: ${cmd('base use --default <base>', mode)}`)
-        return
-      }
-      const resolved = await ensureOperationalBaseDir(configured.defaultBase)
-      out.log(`Default base: ${configured.defaultBase}`)
-      out.log(`Resolved path: ${resolved}`)
-      if (configured.activeBase) {
-        out.log(`Current active base: ${configured.activeBase}`)
-      }
-      out.log(
-        `Use \`${cmd('base use <base>', mode)}\` to switch the active base without changing the saved default.`
-      )
-      return
-    }
-
-    const saved = await writeDefaultBase(base)
-    const resolved = await ensureOperationalBaseDir(saved.defaultBase ?? base)
-    out.log(formatDefaultCommandHelp(saved.defaultBase ?? base, resolved, mode))
     return
   }
 
@@ -672,30 +643,6 @@ export async function runMainWithOutput(
     return
   }
 
-  if (firstArg === 'view') {
-    out.error(`❌ \`${cmd('view', mode)}\` has moved to \`${cmd('docs view', mode)}\`.`)
-    return
-  }
-
-  if (firstArg === 'list') {
-    const treatAsLogsList = args
-      .slice(1)
-      .some(arg => ['--since', '--command', '--limit'].includes(arg))
-    if (treatAsLogsList) {
-      try {
-        out.log(await runLogsCommand(['list', ...args.slice(1)]))
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        out.error(`❌ ${message}`)
-        out.error('')
-        out.log(printLogsHelp(mode))
-      }
-      return
-    }
-    out.error(`❌ \`${cmd('list', mode)}\` has moved to \`${cmd('docs list', mode)}\`.`)
-    return
-  }
-
   if (firstArg === 'init') {
     if (args.includes('--help') || args.includes('-h') || args[1] === 'help') {
       out.log(printInitHelp(mode))
@@ -705,11 +652,6 @@ export async function runMainWithOutput(
     const collector = new RunCollector('init', { sessionId })
     try {
       const parsed = parseInitCommand(args.slice(1))
-      if (parsed.rescan) {
-        out.log(
-          `⚠️  ${cmd('init --rescan', mode)} has moved to ${cmd('scan', mode)}. Continuing for compatibility.`
-        )
-      }
       const initCollector = new RunCollector('init', { sessionId })
 
       if (parsed.gitUrl) {
