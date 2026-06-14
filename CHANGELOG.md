@@ -1,5 +1,23 @@
 # kb
 
+## 0.3.0
+
+### Minor Changes
+
+- 2b1d118: Remove non-canonical CLI command aliases and fix the `kb sync` runtime.
+
+  - Drop the duplicate aliases so only the canonical forms exist: `kb use` →
+    `kb base use`, `kb default` → `kb base use --default`, `kb view`/`kb list` →
+    `kb docs view`/`kb docs list`, and `kb init --rescan` → `kb scan`. The
+    `--rescan`/`--apply` flags are no longer parsed from `kb init`.
+  - Fix `kb sync` so it resolves and re-indexes git-URL bases correctly at
+    runtime (auto-pull and re-index on new commits, no manual scan needed).
+  - Refresh the root README and skill docs to reference the canonical commands.
+
+### Patch Changes
+
+- e2bef79: Restore a GitHub release on every push to `main`. Releases are now named after the current Changesets-managed version (e.g. `KB CLI v0.2.0 (build abc1234)`) and include the latest changeset notes from `CHANGELOG.md` in the body. Also fixes the release artifact name mismatch (`node22` → `node24`) that broke the `install-kb.sh` bootstrap installer.
+
 ## 0.2.0
 
 ### Minor Changes
