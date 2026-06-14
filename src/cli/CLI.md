@@ -66,8 +66,11 @@ Both share retrieval; only the answer phase differs. See [`../core/QUERY_INTERNA
 
 `skill-installer.ts` bundles skills from `src/skills/loader.ts` (dev: `skills/<name>/SKILL.md`; prod: `dist/bin/<name>.skill.md`).
 
+`kb skills install` runs `installSkillsGlobally()` + `installSkillIntoProject()` + `installHooks()` together; `kb skills uninstall` reverses all three.
+
 - **Global:** `installSkillsGlobally()` writes per-agent paths (Claude, Cursor `.mdc`, Codex, GitHub Copilot) with `<!-- kb-skill-hash: … -->` for idempotent updates.
 - **Profile:** `installSkillIntoProject()` injects `kb:dev-workflow` body into `~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md` when present.
+- **Hooks:** `installHooks()` writes `~/.kb/hooks/kb-reminder.sh` and registers a kb-first pre-tool hook in Claude / Gemini / Codex settings when their config dirs exist.
 
 Adding a skill: append to `SKILLS` array, add `loadSkill()` source under `skills/`, ensure build copies `.skill.md` into `dist/bin/`.
 
@@ -122,6 +125,6 @@ Each git-linked base stores a blobless clone at `~/.kb/sessions/<base>/repo/` an
 ## Gotchas
 
 - **Base resolution:** Most commands flow through `base-selection.ts`; missing base → `CLI_ERROR_NO_KB_BASE` (formatted by `cli-prerequisites.ts`).
-- **Apply defaults:** TUI `resolveApplyArgs()` auto-appends `--apply` for `publish`, `scan`, and `init --rescan` — CLI users must pass `--apply` explicitly.
+- **Apply defaults:** TUI `resolveApplyArgs()` auto-appends `--apply` for `publish` and `scan` — CLI users must pass `--apply` explicitly. `scan` always implies apply (`parseScanCommand` sets `rescan`/`apply`).
 - **Init progress:** Pass `InitProgressReporter` from TUI; do not append `[init] …` lines to chat history (see `src/tui/TUI.md`).
-- **Upfront questions:** Interactive `kb init` (no `--base`, no `--rescan`) asks three questions before the scan: base name (`prompts[0]`), git URL (`prompts[1]`), fact categories (`prompts[2]`). All three are skipped when `--base` is set, `--rescan`, or resuming from checkpoint. Tests asserting prompt order must follow this sequence.
+- **Upfront questions:** Interactive `kb init` (no `--base`) asks three questions before the scan: base name (`prompts[0]`), git URL (`prompts[1]`), fact categories (`prompts[2]`). All three are skipped when `--base` is set, when running `kb scan`, or when resuming from checkpoint. Tests asserting prompt order must follow this sequence.

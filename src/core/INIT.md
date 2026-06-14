@@ -41,7 +41,7 @@ flowchart TD
 
 ## Upfront Questions
 
-Before the scan begins, interactive `kb init` (no `--base`, not `--rescan`, not `--non-interactive`) asks three questions in order:
+Before the scan begins, interactive `kb init` (no `--base`, not `kb scan`, not `--non-interactive`) asks three questions in order:
 
 | # | Prompt | Skipped when |
 |---|---|---|

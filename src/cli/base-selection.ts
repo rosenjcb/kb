@@ -217,8 +217,8 @@ export async function listAllBases(): Promise<BaseInfo[]> {
  *
  * Priority:
  *   1. directory `.kb` file — found by walking CWD up to filesystem root.
- *   2. config.activeBase — current working base from `kb use <base>`.
- *   3. config.defaultBase — default from `kb use --default <base>` / `kb default <base>`.
+ *   2. config.activeBase — current working base from `kb base use <base>`.
+ *   3. config.defaultBase — default from `kb base use --default <base>`.
  *
  * configOverride is accepted only for testing — real callers omit it.
  */
@@ -272,7 +272,7 @@ export async function resolveEffectiveBaseDir(
 }
 
 /**
- * Format the output after `use <base>` (CLI: `kb use`, TUI: `/use`).
+ * Format the output after `base use <base>` (CLI: `kb base use`, TUI: `/base use`).
  * Pass `kbFileOverride` when a `.kb` file in the directory specifies a different base —
  * the user needs to know that the `.kb` file takes priority over what they just set.
  */
