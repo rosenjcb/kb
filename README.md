@@ -229,7 +229,7 @@ kb publish <notion|jekyll> [options]
 kb sync
 ```
 
-`kb sync` installs the latest published `kb-cli-node24.tgz` release into KB's managed runtime under `~/.kb/runtime`, refreshes the stable launcher at `~/.kb/bin/kb`, and does not use your current project directory. It will complain early if the current shell is not running `Node 24+`.
+`kb sync` installs the latest published `kb-cli-node24.tgz` release into KB's managed runtime under `~/.kb/runtime`, refreshes the stable launcher at `~/.kb/bin/kb`, and does not use your current project directory. It runs on KB's managed `Node 24` runtime, so your shell's Node version doesn't matter.
 For a fresh machine with no supported Node runtime yet, use:
 
 ```bash
