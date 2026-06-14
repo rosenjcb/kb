@@ -277,7 +277,12 @@ export async function enrichReadDocumentsAnswerWithLLM(
   llmProvider?: LLMProvider,
   sessionDir?: string,
   priorMessages?: Message[],
-  options?: { graphRelationContext?: string; synthesisQuestion?: string }
+  options?: {
+    graphRelationContext?: string
+    synthesisQuestion?: string
+    /** Stream the model's reasoning tokens for a transient "loading" display. */
+    onReasoning?: (delta: string) => void
+  }
 ): Promise<IntentResult> {
   if (!llmProvider) return result
   if (!isReadFactsResult(result)) return result
@@ -318,6 +323,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
       messages: [...contextMessages, { role: 'user', content: userContent }],
       temperature: 0,
       maxTokens: INTENT_LLM_MAX_OUTPUT_TOKENS,
+      ...(options?.onReasoning ? { onReasoning: options.onReasoning } : {}),
     })
 
     let answer = completion.text.trim()

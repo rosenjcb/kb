@@ -6,6 +6,20 @@ import {
   createProvider,
 } from '../../src/core/llm-provider'
 
+/** Build a streaming fetch Response whose body emits the given text chunks. */
+function streamResponse(chunks: string[], status = 200): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const enc = new TextEncoder()
+      for (const c of chunks) controller.enqueue(enc.encode(c))
+      controller.close()
+    },
+  })
+  return new Response(body, { status, headers: { 'content-type': 'text/event-stream' } })
+}
+
+const sse = (obj: unknown) => `data: ${JSON.stringify(obj)}\n\n`
+
 describe('llm-provider', () => {
   it('Given each provider name in factory config, then should return a provider with matching name', () => {
     expect(createProvider({ provider: 'anthropic', apiKey: 'k' }).name).toBe('anthropic')
@@ -211,5 +225,149 @@ describe('llm-provider', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
 
     fetchMock.mockRestore()
+  })
+
+  describe('reasoning streaming (onReasoning)', () => {
+    it('Given an Anthropic onReasoning callback, then thinking enabled, deltas streamed, and text/usage reconstructed', async () => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        streamResponse([
+          sse({ type: 'message_start', message: { usage: { input_tokens: 5 } } }),
+          sse({ type: 'content_block_start', index: 0, content_block: { type: 'text' } }),
+          sse({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'let me ' } }),
+          sse({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'reason' } }),
+          sse({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hel' } }),
+          sse({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'lo' } }),
+          sse({ type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 3 } }),
+          sse({ type: 'message_stop' }),
+        ])
+      )
+
+      const reasoning: string[] = []
+      const provider = new AnthropicProvider('k', 'claude-haiku-4-5')
+      const result = await provider.call({
+        messages: [{ role: 'user', content: 'hi' }],
+        onReasoning: d => reasoning.push(d),
+      })
+
+      expect(result.text).toBe('Hello')
+      expect(result.usage).toEqual({ inputTokens: 5, outputTokens: 3 })
+      expect(reasoning.join('')).toBe('let me reason')
+
+      const [, init] = fetchMock.mock.calls[0] ?? []
+      const body = JSON.parse(String((init as RequestInit | undefined)?.body ?? '{}'))
+      expect(body.stream).toBe(true)
+      expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 1024 })
+
+      fetchMock.mockRestore()
+    })
+
+    it('Given an Anthropic streamed tool_use, then input JSON deltas reconstruct the tool call', async () => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        streamResponse([
+          sse({ type: 'message_start', message: { usage: { input_tokens: 1 } } }),
+          sse({ type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tu_1', name: 'query_kb' } }),
+          sse({ type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"q":' } }),
+          sse({ type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '"facts"}' } }),
+          sse({ type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 2 } }),
+          sse({ type: 'message_stop' }),
+        ])
+      )
+
+      const provider = new AnthropicProvider('k', 'claude-haiku-4-5')
+      const result = await provider.call({
+        messages: [{ role: 'user', content: 'hi' }],
+        onReasoning: () => {},
+      })
+
+      expect(result.stopReason).toBe('tool_use')
+      expect(result.toolUses).toEqual([{ id: 'tu_1', name: 'query_kb', input: { q: 'facts' } }])
+
+      fetchMock.mockRestore()
+    })
+
+    it('Given an Anthropic stream that errors, then call falls back to the non-streaming path', async () => {
+      const fetchMock = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(streamResponse(['nope'], 500))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              content: [{ type: 'text', text: 'FALLBACK' }],
+              stop_reason: 'end_turn',
+              usage: { input_tokens: 1, output_tokens: 1 },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          )
+        )
+
+      const reasoning: string[] = []
+      const provider = new AnthropicProvider('k', 'claude-haiku-4-5')
+      const result = await provider.call({
+        messages: [{ role: 'user', content: 'hi' }],
+        onReasoning: d => reasoning.push(d),
+      })
+
+      expect(result.text).toBe('FALLBACK')
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(reasoning).toEqual([])
+
+      fetchMock.mockRestore()
+    })
+
+    it('Given an OpenAI reasoning stream, then reasoning deltas and tool calls reconstruct', async () => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        streamResponse([
+          sse({ choices: [{ delta: { reasoning: 'thinking…' } }] }),
+          sse({ choices: [{ delta: { content: 'partial ' } }] }),
+          sse({ choices: [{ delta: { content: 'answer' } }] }),
+          sse({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', function: { name: 'query_kb', arguments: '{"q":' } }] } }] }),
+          sse({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"x"}' } }] } }] }),
+          sse({ choices: [{ delta: {} }], usage: { prompt_tokens: 7, completion_tokens: 4 } }),
+        ])
+      )
+
+      const reasoning: string[] = []
+      const provider = new OpenAIProvider('k', 'gpt-5')
+      const result = await provider.call({
+        messages: [{ role: 'user', content: 'hi' }],
+        onReasoning: d => reasoning.push(d),
+      })
+
+      expect(reasoning.join('')).toBe('thinking…')
+      expect(result.text).toBe('partial answer')
+      expect(result.stopReason).toBe('tool_use')
+      expect(result.toolUses).toEqual([{ id: 'c1', name: 'query_kb', input: { q: 'x' } }])
+      expect(result.usage).toEqual({ inputTokens: 7, outputTokens: 4 })
+
+      fetchMock.mockRestore()
+    })
+
+    it('Given a Gemini onReasoning callback, then thought parts stream and visible text/tools reconstruct', async () => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        streamResponse([
+          sse({ candidates: [{ content: { parts: [{ text: 'pondering', thought: true }] } }] }),
+          sse({ candidates: [{ content: { parts: [{ text: 'ANSWER' }] } }] }),
+          sse({ usageMetadata: { promptTokenCount: 9, candidatesTokenCount: 2 } }),
+        ])
+      )
+
+      const reasoning: string[] = []
+      const provider = new GeminiProvider('k', 'gemini-2.5-flash')
+      const result = await provider.call({
+        messages: [{ role: 'user', content: 'hi' }],
+        onReasoning: d => reasoning.push(d),
+      })
+
+      expect(reasoning.join('')).toBe('pondering')
+      expect(result.text).toBe('ANSWER')
+      expect(result.usage).toEqual({ inputTokens: 9, outputTokens: 2 })
+
+      const [url, init] = fetchMock.mock.calls[0] ?? []
+      expect(String(url)).toContain(':streamGenerateContent?alt=sse')
+      const body = JSON.parse(String((init as RequestInit | undefined)?.body ?? '{}'))
+      expect(body.generationConfig?.thinkingConfig?.includeThoughts).toBe(true)
+
+      fetchMock.mockRestore()
+    })
   })
 })

@@ -92,7 +92,7 @@ export interface LLMResponse {
 }
 
 export interface LLMStreamChunk {
-  type: 'text_delta' | 'tool_use_start' | 'tool_use_input_delta' | 'done'
+  type: 'text_delta' | 'reasoning_delta' | 'tool_use_start' | 'tool_use_input_delta' | 'done'
   content?: string
   toolUseId?: string
   toolName?: string
@@ -128,6 +128,17 @@ export interface LLMCallParams {
   thinkingBudget?: number
   /** Prefer native JSON outputs over prose when the active provider implements this. */
   structuredJson?: LLMStructuredJsonRequest
+  /**
+   * Opt-in reasoning stream. When provided, the provider enables model "thinking" and
+   * streams the reasoning/thought tokens here as they are produced. Reasoning is **not**
+   * the final answer — callers surface it as transient progress (a "loading bar") that
+   * disappears once {@link LLMProvider.call} resolves with the real result.
+   *
+   * Passing this switches the provider to its streaming path; the returned
+   * {@link LLMResponse} is reconstructed from the stream and is otherwise identical to a
+   * non-streaming call. Providers that cannot stream reasoning fall back transparently.
+   */
+  onReasoning?: (delta: string) => void
 }
 
 // ─── Session State ──────────────────────────────────────────────

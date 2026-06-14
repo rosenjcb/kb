@@ -14,7 +14,7 @@ import type { LLMProvider, Message, ToolDefinition, ToolResultBlock } from '../c
 import { loadPrompt } from '../prompts/loader'
 import { DatabaseSync } from 'node:sqlite'
 import { expandQueryWithGraph, kbIndexDbPath } from '../tools/graph-query-expansion'
-import { type Printer, createPrinter } from '../ui/printer'
+import { type Printer, createPrinter, createReasoningProgressSink } from '../ui/printer'
 import { resolveEffectiveBaseDir } from './base-selection'
 import type { SessionFact } from './chat-conversation'
 import { runDocsGenerateChatFlow } from './chat-docs-generate-flow'
@@ -406,6 +406,9 @@ export async function runChatSynthesis(params: {
 
   while (true) {
     const stageName = round === 0 ? 'answer' : `answer-r${round + 1}`
+    // Stream the model's reasoning onto the transient progress line so the user sees
+    // what the model is working through; it disappears once the answer arrives.
+    const onReasoning = createReasoningProgressSink(params.printer)
     const roundRun = await withStageProgress(
       params.printer,
       stageName,
@@ -416,6 +419,7 @@ export async function runChatSynthesis(params: {
           systemPrompt: CHAT_ROUTER_SYSTEM_PROMPT,
           temperature: 0.15,
           maxTokens: CHAT_MAX_OUTPUT_TOKENS,
+          onReasoning,
         }),
       { heartbeatMs, noticeMs }
     )
@@ -524,6 +528,7 @@ export async function runChatSession(
       log: line => io.write(line),
       write: line => io.write(line),
       error: line => io.error(line),
+      ...(io.setProgressLine ? { progress: (line: string | null) => io.setProgressLine?.(line) } : {}),
     },
     deps.mode ?? 'cli'
   )
@@ -852,6 +857,8 @@ async function withStageProgress<T>(
     return { result, durationMs }
   } finally {
     clearInterval(timer)
+    // Clear any transient reasoning/progress line now the stage has settled.
+    printer.clearProgress()
   }
 }
 

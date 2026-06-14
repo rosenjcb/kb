@@ -106,6 +106,42 @@ export class Printer {
   }
 
   // ---------------------------------------------------------------------------
+  // Transient progress — streaming reasoning / "loading bar" text
+  //
+  // Unlike orchestrationMeta/content, progress lines REPLACE one another and vanish
+  // when cleared. TUI routes them to its disappearing progress bar; TTY CLI folds them
+  // into the live spinner text; piped output stays quiet (transient noise is dropped).
+  // ---------------------------------------------------------------------------
+
+  /** Show/replace the current transient progress line. */
+  progress(text: string): void {
+    const line = condenseProgressText(text)
+    if (!line) return
+    if (this.out.progress) {
+      this.out.progress(line)
+      return
+    }
+    if (this.mode === 'tui') return
+    if (this.tty) {
+      if (this.spinner) {
+        this.spinner.text = line
+      } else {
+        this.spinner = ora({ text: line, color: 'cyan', spinner: 'dots' }).start()
+      }
+    }
+    // non-TTY: drop transient progress (would spam piped output)
+  }
+
+  /** Clear the transient progress line (call when the awaited result arrives). */
+  clearProgress(): void {
+    if (this.out.progress) {
+      this.out.progress(null)
+      return
+    }
+    this.stopSpinner()
+  }
+
+  // ---------------------------------------------------------------------------
   // Spinner — wraps LLM invocations and agent loop calls
   // ---------------------------------------------------------------------------
 
@@ -146,4 +182,31 @@ export class Printer {
 
 export function createPrinter(out: CliOutput, mode: CmdMode): Printer {
   return new Printer(out, mode)
+}
+
+/** Max characters shown on a single transient progress line (tail-preserved). */
+export const PROGRESS_LINE_MAX_CHARS = 120
+
+/**
+ * Collapse streaming text into a single bounded progress line: newlines/whitespace
+ * folded to single spaces, trimmed, and tail-truncated so the most recent reasoning is
+ * always visible. Pure — exported for testing.
+ */
+export function condenseProgressText(text: string, maxChars = PROGRESS_LINE_MAX_CHARS): string {
+  const collapsed = text.replace(/\s+/g, ' ').trim()
+  if (collapsed.length <= maxChars) return collapsed
+  return `…${collapsed.slice(-(maxChars - 1))}`
+}
+
+/**
+ * Build an `onReasoning` callback that streams a model's reasoning tokens onto the
+ * printer's transient progress line. Reasoning accumulates so the line reflects the
+ * latest tail; call {@link Printer.clearProgress} when the awaited result arrives.
+ */
+export function createReasoningProgressSink(printer: Printer): (delta: string) => void {
+  let buffer = ''
+  return (delta: string) => {
+    buffer += delta
+    printer.progress(buffer)
+  }
 }

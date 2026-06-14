@@ -14,6 +14,12 @@ import type {
 
 type JsonRecord = Record<string, unknown>
 
+/**
+ * Default reasoning budget (tokens) when a caller opts into reasoning via
+ * {@link LLMCallParams.onReasoning} without specifying an explicit `thinkingBudget`.
+ */
+const DEFAULT_REASONING_BUDGET_TOKENS = 1024
+
 function asRecord(value: unknown): JsonRecord {
   if (value && typeof value === 'object') {
     return value as JsonRecord
@@ -41,6 +47,112 @@ function readApiErrorMessage(data: unknown, fallback: string): string {
   return fallback
 }
 
+/** Resolve the reasoning budget for a reasoning-enabled call. */
+function resolveReasoningBudget(params: LLMCallParams): number {
+  if (typeof params.thinkingBudget === 'number' && params.thinkingBudget > 0) {
+    return params.thinkingBudget
+  }
+  return DEFAULT_REASONING_BUDGET_TOKENS
+}
+
+/**
+ * Stream Server-Sent-Event `data:` payloads from a fetch Response, parsed as JSON.
+ * Lines are buffered across chunk boundaries so multi-chunk events parse correctly.
+ * Throws a readable error for non-2xx responses (mirrors the non-streaming paths).
+ */
+async function* iterateSseData(
+  response: Response,
+  providerLabel: string
+): AsyncGenerator<JsonRecord> {
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    throw new Error(
+      `[${providerLabel}] API request failed (${response.status}): ${readApiErrorMessage(
+        data,
+        response.statusText
+      )}`
+    )
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) return
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  const emit = function* (raw: string): Generator<JsonRecord> {
+    const line = raw.trim()
+    if (!line || line.startsWith(':')) return
+    if (!line.startsWith('data:')) return
+    const payload = line.slice(5).trim()
+    if (!payload || payload === '[DONE]') return
+    try {
+      yield asRecord(JSON.parse(payload))
+    } catch {
+      // Ignore malformed/partial events.
+    }
+  }
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let nl = buffer.indexOf('\n')
+    while (nl >= 0) {
+      yield* emit(buffer.slice(0, nl))
+      buffer = buffer.slice(nl + 1)
+      nl = buffer.indexOf('\n')
+    }
+  }
+  if (buffer) yield* emit(buffer)
+}
+
+/**
+ * Stream newline-delimited JSON objects (JSONL) from a fetch Response.
+ * Used by providers that stream JSONL rather than SSE (e.g. Ollama).
+ */
+async function* iterateJsonLines(
+  response: Response,
+  providerLabel: string
+): AsyncGenerator<JsonRecord> {
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    throw new Error(
+      `[${providerLabel}] API request failed (${response.status}): ${readApiErrorMessage(
+        data,
+        response.statusText
+      )}`
+    )
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) return
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  const emit = function* (raw: string): Generator<JsonRecord> {
+    const line = raw.trim()
+    if (!line) return
+    try {
+      yield asRecord(JSON.parse(line))
+    } catch {
+      // Ignore malformed/partial lines.
+    }
+  }
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let nl = buffer.indexOf('\n')
+    while (nl >= 0) {
+      yield* emit(buffer.slice(0, nl))
+      buffer = buffer.slice(nl + 1)
+      nl = buffer.indexOf('\n')
+    }
+  }
+  if (buffer) yield* emit(buffer)
+}
+
 // ─── Anthropic Claude ────────────────────────────────────────────
 
 export class AnthropicProvider implements LLMProvider {
@@ -55,43 +167,63 @@ export class AnthropicProvider implements LLMProvider {
     this.model = model
   }
 
+  /** Map the unified message list to Anthropic's content-block format. */
+  private buildMessages(params: LLMCallParams): unknown[] {
+    return params.messages.map(m => {
+      if (m.role === 'user' && Array.isArray(m.content)) {
+        return {
+          role: 'user' as const,
+          content: (m.content as ToolResultBlock[]).map(block => ({
+            type: 'tool_result' as const,
+            tool_use_id: block.toolUseId,
+            content:
+              typeof block.result === 'string' ? block.result : JSON.stringify(block.result),
+            ...(block.isError ? { is_error: true } : {}),
+          })),
+        }
+      }
+      if (m.role === 'assistant' && m.toolUses?.length) {
+        const parts: unknown[] = []
+        if (typeof m.content === 'string' && m.content.trim()) {
+          parts.push({ type: 'text', text: m.content })
+        }
+        for (const tu of m.toolUses) {
+          parts.push({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input })
+        }
+        return { role: 'assistant' as const, content: parts }
+      }
+      return {
+        role: m.role,
+        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+      }
+    })
+  }
+
+  private buildTools(params: LLMCallParams) {
+    return params.tools?.map(t => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.schema,
+    }))
+  }
+
   async call(params: LLMCallParams): Promise<LLMResponse> {
+    if (params.onReasoning) {
+      try {
+        return await this.callWithReasoning(params, params.onReasoning)
+      } catch {
+        // Reasoning stream unsupported/failed for this model — fall back transparently.
+      }
+    }
+    return this.callNonStreaming(params)
+  }
+
+  private async callNonStreaming(params: LLMCallParams): Promise<LLMResponse> {
     const body: Record<string, unknown> = {
       model: this.model,
       max_tokens: params.maxTokens ?? 4096,
-      messages: params.messages.map(m => {
-        if (m.role === 'user' && Array.isArray(m.content)) {
-          return {
-            role: 'user' as const,
-            content: (m.content as ToolResultBlock[]).map(block => ({
-              type: 'tool_result' as const,
-              tool_use_id: block.toolUseId,
-              content:
-                typeof block.result === 'string' ? block.result : JSON.stringify(block.result),
-              ...(block.isError ? { is_error: true } : {}),
-            })),
-          }
-        }
-        if (m.role === 'assistant' && m.toolUses?.length) {
-          const parts: unknown[] = []
-          if (typeof m.content === 'string' && m.content.trim()) {
-            parts.push({ type: 'text', text: m.content })
-          }
-          for (const tu of m.toolUses) {
-            parts.push({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input })
-          }
-          return { role: 'assistant' as const, content: parts }
-        }
-        return {
-          role: m.role,
-          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-        }
-      }),
-      tools: params.tools?.map(t => ({
-        name: t.name,
-        description: t.description,
-        input_schema: t.schema,
-      })),
+      messages: this.buildMessages(params),
+      tools: this.buildTools(params),
     }
 
     if (params.systemPrompt) {
@@ -133,6 +265,106 @@ export class AnthropicProvider implements LLMProvider {
     }
   }
 
+  /**
+   * Streaming call with extended thinking enabled. Forwards `thinking_delta` events to
+   * `onReasoning` and reconstructs the full {@link LLMResponse} from the SSE stream.
+   */
+  private async callWithReasoning(
+    params: LLMCallParams,
+    onReasoning: (delta: string) => void
+  ): Promise<LLMResponse> {
+    const budget = resolveReasoningBudget(params)
+    // Extended thinking requires max_tokens > budget_tokens.
+    const maxTokens = Math.max(params.maxTokens ?? 4096, budget + 512)
+
+    const body: Record<string, unknown> = {
+      model: this.model,
+      max_tokens: maxTokens,
+      messages: this.buildMessages(params),
+      tools: this.buildTools(params),
+      thinking: { type: 'enabled', budget_tokens: budget },
+      stream: true,
+      // Extended thinking does not allow a custom temperature; omit it.
+    }
+    if (params.systemPrompt) {
+      body.system = params.systemPrompt
+    }
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': this.apiKey,
+        'content-type': 'application/json',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(body),
+    })
+
+    let text = ''
+    let stopReason: LLMResponse['stopReason'] = 'end_turn'
+    let inputTokens = 0
+    let outputTokens = 0
+    // tool_use blocks arrive incrementally as input_json_delta keyed by content index.
+    const toolBlocks = new Map<number, { id: string; name: string; json: string }>()
+
+    for await (const event of iterateSseData(response, 'anthropic')) {
+      const type = event.type
+      if (type === 'message_start') {
+        const usage = asRecord(asRecord(event.message).usage)
+        if (typeof usage.input_tokens === 'number') inputTokens = usage.input_tokens
+      } else if (type === 'content_block_start') {
+        const index = typeof event.index === 'number' ? event.index : -1
+        const block = asRecord(event.content_block)
+        if (block.type === 'tool_use') {
+          toolBlocks.set(index, {
+            id: typeof block.id === 'string' ? block.id : `${dayjs().valueOf()}-tool`,
+            name: typeof block.name === 'string' ? block.name : 'unknown_tool',
+            json: '',
+          })
+        }
+      } else if (type === 'content_block_delta') {
+        const delta = asRecord(event.delta)
+        if (delta.type === 'text_delta' && typeof delta.text === 'string') {
+          text += delta.text
+        } else if (delta.type === 'thinking_delta' && typeof delta.thinking === 'string') {
+          onReasoning(delta.thinking)
+        } else if (delta.type === 'input_json_delta' && typeof delta.partial_json === 'string') {
+          const index = typeof event.index === 'number' ? event.index : -1
+          const tb = toolBlocks.get(index)
+          if (tb) tb.json += delta.partial_json
+        }
+      } else if (type === 'message_delta') {
+        const delta = asRecord(event.delta)
+        if (delta.stop_reason === 'tool_use') stopReason = 'tool_use'
+        const usage = asRecord(event.usage)
+        if (typeof usage.output_tokens === 'number') outputTokens = usage.output_tokens
+      }
+    }
+
+    const toolUses = [...toolBlocks.values()].map(tb => ({
+      id: tb.id,
+      name: tb.name,
+      input: this.parseToolJson(tb.json),
+    }))
+    if (toolUses.length > 0) stopReason = 'tool_use'
+
+    return {
+      text,
+      stopReason,
+      toolUses,
+      usage: { inputTokens, outputTokens },
+    }
+  }
+
+  private parseToolJson(json: string): Record<string, unknown> {
+    if (!json.trim()) return {}
+    try {
+      return asRecord(JSON.parse(json))
+    } catch {
+      return {}
+    }
+  }
+
   async *callStream(params: LLMCallParams): AsyncGenerator<LLMStreamChunk> {
     const body = {
       model: this.model,
@@ -166,6 +398,8 @@ export class AnthropicProvider implements LLMProvider {
           if (event.type === 'content_block_delta') {
             if (event.delta.type === 'text_delta') {
               yield { type: 'text_delta', content: event.delta.text }
+            } else if (event.delta.type === 'thinking_delta') {
+              yield { type: 'reasoning_delta', content: event.delta.thinking }
             }
           }
         }
@@ -207,12 +441,11 @@ export class OpenAIProvider implements LLMProvider {
     this.model = model
   }
 
-  async call(params: LLMCallParams): Promise<LLMResponse> {
-    const systemMessages = params.systemPrompt
-      ? [{ role: 'system' as const, content: params.systemPrompt }]
+  /** Map the unified message list to OpenAI chat-completions format. */
+  private buildMessages(params: LLMCallParams): Array<Record<string, unknown>> {
+    const openAIMessages: Array<Record<string, unknown>> = params.systemPrompt
+      ? [{ role: 'system', content: params.systemPrompt }]
       : []
-
-    const openAIMessages: Array<Record<string, unknown>> = [...systemMessages]
     for (const m of params.messages) {
       if (m.role === 'user' && Array.isArray(m.content)) {
         for (const block of m.content as ToolResultBlock[]) {
@@ -239,19 +472,39 @@ export class OpenAIProvider implements LLMProvider {
         })
       }
     }
+    return openAIMessages
+  }
+
+  private buildTools(params: LLMCallParams) {
+    return params.tools?.map(t => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.schema,
+      },
+    }))
+  }
+
+  async call(params: LLMCallParams): Promise<LLMResponse> {
+    // Native structured JSON is incompatible with the streaming reconstruction path.
+    if (params.onReasoning && !params.structuredJson?.openai) {
+      try {
+        return await this.callWithReasoning(params, params.onReasoning)
+      } catch {
+        // Fall back transparently if streaming fails.
+      }
+    }
+    return this.callNonStreaming(params)
+  }
+
+  private async callNonStreaming(params: LLMCallParams): Promise<LLMResponse> {
     const body: Record<string, unknown> = {
       model: this.model,
       max_tokens: params.maxTokens ?? 4096,
       temperature: params.temperature ?? 0.7,
-      messages: openAIMessages,
-      tools: params.tools?.map(t => ({
-        type: 'function',
-        function: {
-          name: t.name,
-          description: t.description,
-          parameters: t.schema,
-        },
-      })),
+      messages: this.buildMessages(params),
+      tools: this.buildTools(params),
     }
 
     if (params.structuredJson?.openai) {
@@ -314,6 +567,94 @@ export class OpenAIProvider implements LLMProvider {
     }
   }
 
+  /**
+   * Streaming call that forwards reasoning deltas (`delta.reasoning` /
+   * `delta.reasoning_content`, emitted by reasoning-capable models) to `onReasoning`
+   * and reconstructs the full {@link LLMResponse} including tool calls and usage.
+   */
+  private async callWithReasoning(
+    params: LLMCallParams,
+    onReasoning: (delta: string) => void
+  ): Promise<LLMResponse> {
+    const body: Record<string, unknown> = {
+      model: this.model,
+      max_tokens: params.maxTokens ?? 4096,
+      temperature: params.temperature ?? 0.7,
+      messages: this.buildMessages(params),
+      tools: this.buildTools(params),
+      stream: true,
+      stream_options: { include_usage: true },
+    }
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    let text = ''
+    let inputTokens = 0
+    let outputTokens = 0
+    let sawToolCalls = false
+    // Tool calls stream as index-keyed deltas (name once, arguments incrementally).
+    const toolCalls = new Map<number, { id: string; name: string; args: string }>()
+
+    for await (const event of iterateSseData(response, 'openai')) {
+      const usage = asRecord(event.usage)
+      if (typeof usage.prompt_tokens === 'number') inputTokens = usage.prompt_tokens
+      if (typeof usage.completion_tokens === 'number') outputTokens = usage.completion_tokens
+
+      const choices = Array.isArray(event.choices) ? event.choices : []
+      const delta = asRecord(asRecord(choices[0]).delta)
+      if (typeof delta.content === 'string') text += delta.content
+      const reasoning =
+        typeof delta.reasoning === 'string'
+          ? delta.reasoning
+          : typeof delta.reasoning_content === 'string'
+            ? delta.reasoning_content
+            : ''
+      if (reasoning) onReasoning(reasoning)
+
+      const deltaToolCalls = Array.isArray(delta.tool_calls) ? delta.tool_calls : []
+      for (const raw of deltaToolCalls) {
+        sawToolCalls = true
+        const tc = asRecord(raw)
+        const index = typeof tc.index === 'number' ? tc.index : 0
+        const fn = asRecord(tc.function)
+        const existing = toolCalls.get(index) ?? { id: '', name: '', args: '' }
+        if (typeof tc.id === 'string' && tc.id) existing.id = tc.id
+        if (typeof fn.name === 'string' && fn.name) existing.name = fn.name
+        if (typeof fn.arguments === 'string') existing.args += fn.arguments
+        toolCalls.set(index, existing)
+      }
+    }
+
+    const toolUses = [...toolCalls.values()].map(tc => ({
+      id: tc.id || `${dayjs().valueOf()}-tool`,
+      name: tc.name || 'unknown_tool',
+      input: this.parseToolArgs(tc.args),
+    }))
+
+    return {
+      text,
+      stopReason: sawToolCalls && toolUses.length > 0 ? 'tool_use' : 'end_turn',
+      toolUses,
+      usage: { inputTokens, outputTokens },
+    }
+  }
+
+  private parseToolArgs(args: string): Record<string, unknown> {
+    if (!args.trim()) return {}
+    try {
+      return asRecord(JSON.parse(args))
+    } catch {
+      return {}
+    }
+  }
+
   async *callStream(params: LLMCallParams): AsyncGenerator<LLMStreamChunk> {
     const body = {
       model: this.model,
@@ -321,14 +662,7 @@ export class OpenAIProvider implements LLMProvider {
         role: m.role,
         content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
       })),
-      tools: params.tools?.map(t => ({
-        type: 'function',
-        function: {
-          name: t.name,
-          description: t.description,
-          parameters: t.schema,
-        },
-      })),
+      tools: this.buildTools(params),
       stream: true,
     }
 
@@ -341,27 +675,19 @@ export class OpenAIProvider implements LLMProvider {
       body: JSON.stringify(body),
     })
 
-    const reader = response.body?.getReader()
-    const decoder = new TextDecoder()
-
-    while (reader) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      const text = decoder.decode(value)
-      for (const line of text.split('\n')) {
-        if (line.startsWith('data:')) {
-          const dataStr = line.slice(6).trim()
-          if (dataStr === '[DONE]') continue
-
-          const data = JSON.parse(dataStr)
-          const delta = data.choices?.[0]?.delta
-
-          if (delta?.content) {
-            yield { type: 'text_delta', content: delta.content }
-          }
-        }
+    for await (const event of iterateSseData(response, 'openai')) {
+      const choices = Array.isArray(event.choices) ? event.choices : []
+      const delta = asRecord(asRecord(choices[0]).delta)
+      if (typeof delta.content === 'string' && delta.content) {
+        yield { type: 'text_delta', content: delta.content }
       }
+      const reasoning =
+        typeof delta.reasoning === 'string'
+          ? delta.reasoning
+          : typeof delta.reasoning_content === 'string'
+            ? delta.reasoning_content
+            : ''
+      if (reasoning) yield { type: 'reasoning_delta', content: reasoning }
     }
   }
 }
@@ -392,6 +718,14 @@ export class GeminiProvider implements LLMProvider {
   }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
+    if (params.onReasoning && !params.structuredJson?.gemini) {
+      try {
+        return await this.callWithReasoning(params, params.onReasoning)
+      } catch {
+        // Fall back transparently if streaming fails.
+      }
+    }
+
     const initialBudget = params.maxTokens ?? 4096
     let parsed = await this.generateContent(params, initialBudget)
 
@@ -407,21 +741,8 @@ export class GeminiProvider implements LLMProvider {
     }
   }
 
-  async *callStream(_params: LLMCallParams): AsyncGenerator<LLMStreamChunk> {
-    // Gemini streaming endpoint - similar pattern
-    yield { type: 'done' }
-  }
-
-  private async generateContent(
-    params: LLMCallParams,
-    maxOutputTokens: number
-  ): Promise<{
-    text: string
-    stopReason: 'tool_use' | 'end_turn'
-    toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }>
-    usage: { inputTokens: number; outputTokens: number }
-    finishReason?: string
-  }> {
+  /** Build the unified message list into Gemini `contents`. */
+  private buildContents(params: LLMCallParams): Array<Record<string, unknown>> {
     const geminiContents: Array<Record<string, unknown>> = []
     for (const m of params.messages) {
       if (m.role === 'user' && Array.isArray(m.content)) {
@@ -453,14 +774,29 @@ export class GeminiProvider implements LLMProvider {
         })
       }
     }
-    const body = {
-      contents: geminiContents,
+    return geminiContents
+  }
+
+  private buildBody(
+    params: LLMCallParams,
+    maxOutputTokens: number,
+    opts: { includeThoughts?: boolean } = {}
+  ): Record<string, unknown> {
+    const supportsThinking = geminiModelSupportsThinkingBudget(this.model)
+    const thinkingConfig: Record<string, unknown> = {}
+    if (opts.includeThoughts && supportsThinking) {
+      thinkingConfig.includeThoughts = true
+      if (typeof params.thinkingBudget === 'number' && params.thinkingBudget > 0) {
+        thinkingConfig.thinkingBudget = params.thinkingBudget
+      }
+    } else if (params.thinkingBudget !== undefined && supportsThinking) {
+      thinkingConfig.thinkingBudget = params.thinkingBudget
+    }
+
+    return {
+      contents: this.buildContents(params),
       ...(params.systemPrompt
-        ? {
-            system_instruction: {
-              parts: [{ text: params.systemPrompt }],
-            },
-          }
+        ? { system_instruction: { parts: [{ text: params.systemPrompt }] } }
         : {}),
       tools: params.tools?.map(t => ({
         functionDeclarations: [
@@ -474,9 +810,7 @@ export class GeminiProvider implements LLMProvider {
       generationConfig: {
         maxOutputTokens,
         temperature: params.temperature ?? 0.7,
-        ...(params.thinkingBudget !== undefined && geminiModelSupportsThinkingBudget(this.model)
-          ? { thinkingConfig: { thinkingBudget: params.thinkingBudget } }
-          : {}),
+        ...(Object.keys(thinkingConfig).length > 0 ? { thinkingConfig } : {}),
         ...(params.structuredJson?.gemini
           ? {
               responseMimeType: 'application/json',
@@ -485,6 +819,19 @@ export class GeminiProvider implements LLMProvider {
           : {}),
       },
     }
+  }
+
+  private async generateContent(
+    params: LLMCallParams,
+    maxOutputTokens: number
+  ): Promise<{
+    text: string
+    stopReason: 'tool_use' | 'end_turn'
+    toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }>
+    usage: { inputTokens: number; outputTokens: number }
+    finishReason?: string
+  }> {
+    const body = this.buildBody(params, maxOutputTokens)
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
@@ -540,6 +887,66 @@ export class GeminiProvider implements LLMProvider {
       finishReason: typeof first.finishReason === 'string' ? first.finishReason : undefined,
     }
   }
+
+  /**
+   * Streaming call with `includeThoughts` enabled. Thought parts are forwarded to
+   * `onReasoning`; visible text and function calls reconstruct the {@link LLMResponse}.
+   */
+  private async callWithReasoning(
+    params: LLMCallParams,
+    onReasoning: (delta: string) => void
+  ): Promise<LLMResponse> {
+    const body = this.buildBody(params, params.maxTokens ?? 4096, { includeThoughts: true })
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      }
+    )
+
+    let text = ''
+    let inputTokens = 0
+    let outputTokens = 0
+    const toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> = []
+
+    for await (const event of iterateSseData(response, 'gemini')) {
+      const candidates = Array.isArray(event.candidates) ? event.candidates : []
+      const content = asRecord(asRecord(candidates[0]).content)
+      const parts = Array.isArray(content.parts) ? content.parts : []
+      for (const rawPart of parts) {
+        const part = asRecord(rawPart)
+        if (part.functionCall) {
+          const call = asRecord(part.functionCall)
+          toolUses.push({
+            id: `${dayjs().valueOf()}-${Math.random()}`,
+            name: typeof call.name === 'string' ? call.name : 'unknown_tool',
+            input: asRecord(call.args),
+          })
+        } else if (typeof part.text === 'string' && part.text.length > 0) {
+          if (part.thought === true) onReasoning(part.text)
+          else text += part.text
+        }
+      }
+      const usage = asRecord(event.usageMetadata)
+      if (typeof usage.promptTokenCount === 'number') inputTokens = usage.promptTokenCount
+      if (typeof usage.candidatesTokenCount === 'number') outputTokens = usage.candidatesTokenCount
+    }
+
+    return {
+      text,
+      stopReason: toolUses.length > 0 ? 'tool_use' : 'end_turn',
+      toolUses,
+      usage: { inputTokens, outputTokens },
+    }
+  }
+
+  async *callStream(_params: LLMCallParams): AsyncGenerator<LLMStreamChunk> {
+    // Gemini streaming endpoint - similar pattern
+    yield { type: 'done' }
+  }
 }
 
 // ─── Local Ollama ───────────────────────────────────────────────
@@ -557,6 +964,14 @@ export class OllamaProvider implements LLMProvider {
   }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
+    if (params.onReasoning) {
+      try {
+        return await this.callWithReasoning(params, params.onReasoning)
+      } catch {
+        // Fall back transparently if streaming fails.
+      }
+    }
+
     const response = await fetch(`${this.endpoint}/api/chat`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -589,6 +1004,46 @@ export class OllamaProvider implements LLMProvider {
         inputTokens: 0,
         outputTokens: 0,
       },
+    }
+  }
+
+  /**
+   * Streaming call with `think: true`. Forwards `message.thinking` deltas to `onReasoning`
+   * and reconstructs the response text + token usage from the JSONL stream.
+   */
+  private async callWithReasoning(
+    params: LLMCallParams,
+    onReasoning: (delta: string) => void
+  ): Promise<LLMResponse> {
+    const response = await fetch(`${this.endpoint}/api/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: this.model,
+        messages: params.messages,
+        ...(params.systemPrompt ? { system: params.systemPrompt } : {}),
+        think: true,
+        stream: true,
+      }),
+    })
+
+    let text = ''
+    let inputTokens = 0
+    let outputTokens = 0
+
+    for await (const event of iterateJsonLines(response, 'ollama')) {
+      const message = asRecord(event.message)
+      if (typeof message.content === 'string') text += message.content
+      if (typeof message.thinking === 'string' && message.thinking) onReasoning(message.thinking)
+      if (typeof event.prompt_eval_count === 'number') inputTokens = event.prompt_eval_count
+      if (typeof event.eval_count === 'number') outputTokens = event.eval_count
+    }
+
+    return {
+      text,
+      stopReason: 'end_turn',
+      toolUses: [],
+      usage: { inputTokens, outputTokens },
     }
   }
 
