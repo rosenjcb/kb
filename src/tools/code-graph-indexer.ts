@@ -251,12 +251,14 @@ export class TsMorphIndexer {
   }
 }
 
-/** Tombstone facts for files no longer in the repo. Call after both indexers finish. */
+/** Tombstone facts for files no longer in the repo. Call after both indexers finish.
+ *  Scoped to `gitRepo` so re-indexing one repo never tombstones another repo's code facts. */
 export function tombstoneStaleAstFacts(
   factIndexer: SqliteKbIndexer,
-  allSourceRefs: Set<string>
+  allSourceRefs: Set<string>,
+  gitRepo?: string
 ): number {
-  return tombstoneStaleCodeFacts(factIndexer, allSourceRefs)
+  return tombstoneStaleCodeFacts(factIndexer, allSourceRefs, gitRepo)
 }
 
 // Re-export SOURCE constant for compatibility

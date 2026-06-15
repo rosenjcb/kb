@@ -1,12 +1,12 @@
-import path from 'node:path'
-import { type CmdMode, cmd } from './cmd-ref'
+import { readBaseMeta, writeBaseMeta } from './base-meta'
 import {
-  DEFAULT_KB_IGNORE_PATTERNS,
-  type FoundKbFile,
-  findKbFileInfo,
-  readKbFileAt,
-  writeKbFileAt,
-} from './kb-file'
+  readOptionalCliValue,
+  resolveBaseToDir,
+  resolveEffectiveBaseDir,
+  stripCliFlagWithValue,
+} from './base-selection'
+import { type CmdMode, cmd } from './cmd-ref'
+import { DEFAULT_KB_IGNORE_PATTERNS } from './kb-file'
 
 export class IgnoreCommandError extends Error {}
 
@@ -19,39 +19,59 @@ export function printIgnoreHelp(mode: CmdMode = 'cli'): string {
   return [
     `${cmd('ignore', mode)} commands`,
     '',
-    'Manage the `.kb` project file: it maps this directory to a KB base and',
-    'lists gitignore-style patterns excluded from `kb init` / `kb scan`.',
+    'Manage the ignore patterns for a KB base. Patterns are gitignore-style globs',
+    'excluded from `kb init` / `kb scan` across every repo the base tracks. They are',
+    "stored in the base's meta.json, so they persist across rescans of the clones KB",
+    'manages under ~/.kb (which you never see directly).',
     '',
     'Usage:',
-    `  ${cmd('ignore', mode)}                  Show the active .kb file and its ignore patterns`,
+    `  ${cmd('ignore', mode)}                  Show the base and its ignore patterns`,
     `  ${cmd('ignore list', mode)}             Same as above`,
-    `  ${cmd('ignore init', mode)}             Create a .kb file here, seeded with sensible defaults`,
+    `  ${cmd('ignore init', mode)}             Seed the base with sensible default patterns`,
     `  ${cmd('ignore add <pattern...>', mode)} Add one or more ignore patterns`,
+    '',
+    'All subcommands accept `--base <name>`; without it the active/default base is used.',
+    'A repo may also commit its own `.kb` file with an `[ignore]` section — those',
+    'patterns are honored too, unioned with the base-level list.',
     '',
     'Examples:',
     `  ${cmd('ignore init', mode)}`,
     `  ${cmd('ignore add "*.tmp" drafts/', mode)}`,
-    `  ${cmd('ignore list', mode)}`,
+    `  ${cmd('ignore list --base acme', mode)}`,
   ].join('\n')
 }
 
-function formatKbFile(found: FoundKbFile | null, cwd: string): string {
-  if (!found) {
-    return [
-      'No .kb file found for this directory.',
-      `Run \`${cmd('ignore init')}\` to create one in ${cwd}.`,
-    ].join('\n')
+async function resolveTargetBase(
+  args: string[],
+  cwd: string
+): Promise<{ baseDir: string; baseName: string }> {
+  const baseArg = readOptionalCliValue(args, '--base')
+  if (baseArg) {
+    return { baseDir: resolveBaseToDir(baseArg, cwd), baseName: baseArg }
   }
+  try {
+    const effective = await resolveEffectiveBaseDir(cwd)
+    return { baseDir: effective.baseDir, baseName: effective.baseName }
+  } catch {
+    throw new IgnoreCommandError(
+      [
+        'No KB base resolved.',
+        'Pass `--base <name>`, switch to one with `kb base use <name>`, or create one with `kb init --git <url>`.',
+      ].join('\n')
+    )
+  }
+}
 
-  const lines = [`.kb file: ${found.filePath}`]
-  if (found.base) lines.push(`Base: ${found.base}`)
-  lines.push('')
-  if (found.ignore.length === 0) {
+function formatIgnoreList(baseName: string, patterns: string[]): string {
+  const lines = [`Base: ${baseName}`, '']
+  if (patterns.length === 0) {
     lines.push('Ignore patterns: (none)')
-    lines.push(`Add some with \`${cmd('ignore add <pattern>')}\`.`)
+    lines.push(
+      `Seed defaults with \`${cmd('ignore init')}\` or add your own with \`${cmd('ignore add <pattern>')}\`.`
+    )
   } else {
     lines.push('Ignore patterns:')
-    for (const pattern of found.ignore) lines.push(`  ${pattern}`)
+    for (const pattern of patterns) lines.push(`  ${pattern}`)
   }
   return lines.join('\n')
 }
@@ -68,50 +88,45 @@ export async function runIgnoreCommand(
     return printIgnoreHelp(mode)
   }
 
-  if (!sub || sub === 'list' || sub === 'show') {
-    const found = await findKbFileInfo(cwd)
-    return formatKbFile(found, cwd)
+  if (!sub || sub.startsWith('-') || sub === 'list' || sub === 'show') {
+    const { baseDir, baseName } = await resolveTargetBase(args, cwd)
+    const meta = await readBaseMeta(baseDir)
+    return formatIgnoreList(baseName, meta?.ignore ?? [])
   }
 
   if (sub === 'init') {
-    const existing = await readKbFileAt(cwd)
-    const inherited = existing ? null : await findKbFileInfo(cwd)
-    const base = existing?.base ?? inherited?.base
-    const merged = mergePatterns(existing?.ignore ?? [], DEFAULT_KB_IGNORE_PATTERNS)
-    await writeKbFileAt(cwd, { base, ignore: merged })
-
-    const verb = existing ? 'Updated' : 'Created'
-    const target = path.join(cwd, '.kb')
+    const { baseDir, baseName } = await resolveTargetBase(args.slice(1), cwd)
+    const meta = await readBaseMeta(baseDir)
+    const merged = mergePatterns(meta?.ignore ?? [], DEFAULT_KB_IGNORE_PATTERNS)
+    await writeBaseMeta(baseDir, { ignore: merged })
     return [
-      `${verb} ${target}`,
-      base ? `Base: ${base}` : 'Base: (not set — run `kb init` to map this directory to a base)',
+      `Seeded ignore patterns for base "${baseName}".`,
       '',
       'Ignore patterns:',
       ...merged.map(pattern => `  ${pattern}`),
       '',
-      'Edit the file to fine-tune what `kb init` / `kb scan` pick up.',
+      'These apply on the next `kb scan` / `kb init`.',
     ].join('\n')
   }
 
   if (sub === 'add') {
-    const patterns = args.slice(1).filter(token => token && !token.startsWith('--'))
+    const rest = stripCliFlagWithValue(args.slice(1), '--base')
+    const patterns = rest.filter(token => token && !token.startsWith('--'))
     if (patterns.length === 0) {
       throw new IgnoreCommandError(`Usage: ${cmd('ignore add <pattern...>', mode)}`)
     }
 
-    // Update the governing .kb file when one exists; otherwise create one here.
-    const found = await findKbFileInfo(cwd)
-    const targetDir = found?.dir ?? cwd
-    const current = found ?? { base: undefined, ignore: [] }
-    const merged = mergePatterns(current.ignore, patterns)
-    const added = merged.length - current.ignore.length
-    await writeKbFileAt(targetDir, { base: current.base, ignore: merged })
+    const { baseDir, baseName } = await resolveTargetBase(args.slice(1), cwd)
+    const meta = await readBaseMeta(baseDir)
+    const current = meta?.ignore ?? []
+    const merged = mergePatterns(current, patterns)
+    const added = merged.length - current.length
+    await writeBaseMeta(baseDir, { ignore: merged })
 
-    const target = path.join(targetDir, '.kb')
     return [
       added > 0
-        ? `Added ${added} pattern${added === 1 ? '' : 's'} to ${target}`
-        : `No new patterns added (already present) — ${target}`,
+        ? `Added ${added} pattern${added === 1 ? '' : 's'} to base "${baseName}".`
+        : `No new patterns added (already present) — base "${baseName}".`,
       '',
       'Ignore patterns:',
       ...merged.map(pattern => `  ${pattern}`),

@@ -22,8 +22,9 @@ import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
 import type { IntentResult } from '../intents/types.js'
 import type { SlashInputContext } from '../tui/slash-command-registry.js'
 import { type CmdMode, cmd } from './cmd-ref'
-import { parseInitCommand, parseScanCommand, runKbInit, isInitCancelledError } from './init-cli.js'
-import { initCancelledNotice, scanCancelledNotice } from './cli-prerequisites.js'
+import { parseInitCommand, runKbInit, isInitCancelledError } from './init-cli.js'
+import { initCancelledNotice } from './cli-prerequisites.js'
+import { runScanCommand } from './scan-command.js'
 import { isReadFactsResult, printReadDocumentsOrchestrationFooter } from './intent-cli.js'
 import type { KbConfig } from './kb-config'
 import { readKbConfig, resolveFactRetrievalMethod } from './kb-config'
@@ -576,14 +577,37 @@ export async function runChatSession(
 
       const initMatch = input.match(/^\/init(\s|$)/i)
       const scanMatch = !initMatch && input.match(/^\/scan(\s|$)/i)
-      if (initMatch || scanMatch) {
-        const isScan = Boolean(scanMatch)
-        const prefix = isScan ? 'scan' : 'init'
+      if (scanMatch) {
+        const tail = input.slice('scan'.length + 1).trim()
+        const extraArgs = tail ? splitShellArgs(tail) : []
+        const scanCollector = new RunCollector('scan', { sessionId: sessionStats.sessionId })
+        const scanReporter = new ReportWriter(defaultLogsDir())
+        try {
+          io.write('Starting scan…')
+          const summary = await runScanCommand(extraArgs, line => {
+            if (io.setProgressLine) io.setProgressLine(line.trimEnd())
+            else io.write(line)
+          })
+          io.setProgressLine?.(null)
+          io.write(`✅ ${summary}`)
+          await scanReporter.append(scanCollector.finish('success', undefined))
+          deps.onBaseChanged?.()
+        } catch (err) {
+          io.setProgressLine?.(null)
+          const errMsg = err instanceof Error ? err.message : String(err)
+          await scanReporter.append(scanCollector.finish('error', errMsg)).catch(() => {})
+          io.error(`Scan error: ${errMsg}`)
+        }
+        printer.separator()
+        continue
+      }
+      if (initMatch) {
+        const prefix = 'init'
         const tail = input.slice(prefix.length + 1).trim()
         const extraArgs = tail ? splitShellArgs(tail) : []
         let parsed: ReturnType<typeof parseInitCommand>
         try {
-          parsed = isScan ? parseScanCommand(extraArgs) : parseInitCommand(extraArgs)
+          parsed = parseInitCommand(extraArgs)
         } catch (e) {
           io.error(`❌ ${e instanceof Error ? e.message : String(e)}`)
           continue
@@ -615,19 +639,19 @@ export async function runChatSession(
           await initScanReporter.append(initScanCollector.finish('success', undefined, result.base))
           const docCount = result.writtenDocIds?.length ?? 0
           io.write(
-            `✅ ${isScan ? 'Scan' : 'Init'} complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`
+            `✅ Init complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`
           )
           deps.onBaseChanged?.()
         } catch (err) {
           io.setProgressLine?.(null)
           if (isInitCancelledError(err)) {
             const baseName = deps.kbStorageDir ? path.basename(deps.kbStorageDir) : undefined
-            io.write(isScan ? scanCancelledNotice(baseName) : initCancelledNotice(baseName))
+            io.write(initCancelledNotice(baseName))
             await initScanReporter.append(initScanCollector.finish('success', undefined)).catch(() => {})
           } else {
             const errMsg = err instanceof Error ? err.message : String(err)
             await initScanReporter.append(initScanCollector.finish('error', errMsg)).catch(() => {})
-            io.error(`${isScan ? 'Scan' : 'Init'} error: ${errMsg}`)
+            io.error(`Init error: ${errMsg}`)
           }
         }
         printer.separator()

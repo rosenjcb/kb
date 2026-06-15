@@ -44,7 +44,8 @@ export function upsertCodeFileFact(
   factText: string,
   triplet: FactTriplet,
   confidence: number,
-  sourceText?: string
+  sourceText?: string,
+  gitRepo?: string
 ): 'inserted' | 'updated' {
   const r = indexer.upsertFact({
     factText,
@@ -53,6 +54,7 @@ export function upsertCodeFileFact(
     sourceRef,
     confidence,
     sourceText,
+    gitRepo,
   })
   return r.operation
 }
@@ -68,11 +70,15 @@ export function relinkImportCodeEdges(indexer: SqliteKbIndexer): number {
 
 export function tombstoneStaleCodeFacts(
   indexer: SqliteKbIndexer,
-  currentSourceRefs: Set<string>
+  currentSourceRefs: Set<string>,
+  gitRepo?: string
 ): number {
   const existing = indexer.listActiveFactsBySourceRefPrefix('ast:')
   let count = 0
   for (const fact of existing) {
+    // Multi-repo: only reconcile stale facts for the repo being indexed, so re-indexing
+    // one repo never tombstones another repo's code facts (scoped by the git_repo column).
+    if (gitRepo !== undefined && fact.git_repo !== gitRepo) continue
     if (fact.source_ref && !currentSourceRefs.has(fact.source_ref)) {
       indexer.tombstoneFactById(fact.id)
       count++

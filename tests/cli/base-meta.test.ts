@@ -1,8 +1,14 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { readBaseMeta, writeBaseMeta, type GitBaseMeta } from '../../src/cli/base-meta'
+import {
+  type GitBaseMeta,
+  readBaseMeta,
+  repoDirForSlug,
+  repoSlugFromGitUrl,
+  writeBaseMeta,
+} from '../../src/cli/base-meta'
 
 let tmpDir: string
 
@@ -15,29 +21,91 @@ afterEach(async () => {
 })
 
 const sample: GitBaseMeta = {
-  gitUrl: 'https://github.com/org/repo',
-  gitBranch: 'main',
-  lastSyncedSha: 'abc1234defabc1234defabc1234defabc1234def',
-  lastSyncedAt: '2026-06-01T00:00:00.000Z',
+  repos: [
+    {
+      gitUrl: 'https://github.com/org/repo',
+      gitBranch: 'main',
+      slug: 'org-repo',
+      dir: 'repos/org-repo',
+      lastSyncedSha: 'abc1234defabc1234defabc1234defabc1234def',
+      lastSyncedAt: '2026-06-01T00:00:00.000Z',
+    },
+  ],
 }
 
 describe('base-meta', () => {
   it('readBaseMeta returns null when meta.json does not exist', async () => {
-    const result = await readBaseMeta(tmpDir)
-    expect(result).toBeNull()
+    expect(await readBaseMeta(tmpDir)).toBeNull()
   })
 
-  it('writeBaseMeta then readBaseMeta round-trips the metadata', async () => {
-    await writeBaseMeta(tmpDir, sample)
-    const result = await readBaseMeta(tmpDir)
-    expect(result).toEqual(sample)
+  it('round-trips a multi-repo meta', async () => {
+    const multi: GitBaseMeta = {
+      repos: [
+        ...sample.repos,
+        {
+          gitUrl: 'git@github.com:org/web.git',
+          gitBranch: 'develop',
+          slug: 'org-web',
+          dir: 'repos/org-web',
+          lastSyncedSha: 'def5678',
+          lastSyncedAt: '2026-06-02T00:00:00.000Z',
+        },
+      ],
+    }
+    await writeBaseMeta(tmpDir, multi)
+    expect(await readBaseMeta(tmpDir)).toEqual(multi)
   })
 
-  it('writeBaseMeta overwrites existing metadata', async () => {
-    await writeBaseMeta(tmpDir, sample)
-    const updated: GitBaseMeta = { ...sample, lastSyncedSha: 'newsha', lastSyncedAt: '2026-06-02T00:00:00.000Z' }
-    await writeBaseMeta(tmpDir, updated)
+  it('normalizes a legacy single-repo meta into one repo entry keeping the repo/ clone dir', async () => {
+    await writeFile(
+      path.join(tmpDir, 'meta.json'),
+      JSON.stringify({
+        gitUrl: 'https://github.com/org/legacy',
+        gitBranch: 'main',
+        lastSyncedSha: 'oldsha',
+        lastSyncedAt: '2026-05-01T00:00:00.000Z',
+      })
+    )
     const result = await readBaseMeta(tmpDir)
-    expect(result?.lastSyncedSha).toBe('newsha')
+    expect(result?.repos).toHaveLength(1)
+    expect(result?.repos[0]).toMatchObject({
+      gitUrl: 'https://github.com/org/legacy',
+      gitBranch: 'main',
+      slug: 'org-legacy',
+      dir: 'repo',
+      lastSyncedSha: 'oldsha',
+    })
+  })
+
+  it('repoSlugFromGitUrl handles https, ssh, and local paths', () => {
+    expect(repoSlugFromGitUrl('https://github.com/Acme/Auth-Svc.git')).toBe('acme-auth-svc')
+    expect(repoSlugFromGitUrl('git@github.com:Acme/web.git')).toBe('acme-web')
+    expect(repoSlugFromGitUrl('/tmp/fixtures/my-service')).toBe('fixtures-my-service')
+  })
+
+  it('repoDirForSlug nests clones under repos/', () => {
+    expect(repoDirForSlug('org-repo')).toBe(path.join('repos', 'org-repo'))
+  })
+
+  it('round-trips base-scoped ignore patterns', async () => {
+    await writeBaseMeta(tmpDir, { repos: sample.repos, ignore: ['node_modules/', '*.log'] })
+    const meta = await readBaseMeta(tmpDir)
+    expect(meta?.ignore).toEqual(['node_modules/', '*.log'])
+  })
+
+  it('merge-on-write: writing repos preserves ignore', async () => {
+    await writeBaseMeta(tmpDir, { repos: sample.repos, ignore: ['dist/'] })
+    await writeBaseMeta(tmpDir, { repos: [] })
+    const meta = await readBaseMeta(tmpDir)
+    expect(meta?.repos).toEqual([])
+    expect(meta?.ignore).toEqual(['dist/'])
+  })
+
+  it('merge-on-write: writing ignore preserves repos', async () => {
+    await writeBaseMeta(tmpDir, { repos: sample.repos })
+    await writeBaseMeta(tmpDir, { ignore: ['coverage/'] })
+    const meta = await readBaseMeta(tmpDir)
+    expect(meta?.repos).toHaveLength(sample.repos.length)
+    expect(meta?.ignore).toEqual(['coverage/'])
   })
 })

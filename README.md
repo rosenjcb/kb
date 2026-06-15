@@ -72,32 +72,6 @@ Fresh-machine behavior:
 - after running the release installer, open a new shell if needed and run `kb`
 - if you are working on KB itself, use the source install flow below instead
 
-### Python dependency (fact categorisation)
-
-`kb init` uses a Python 3 clustering environment for fact categories. **Python 3.9+ must be on your `PATH`.**
-
-KB will auto-install its own isolated environment into `~/.kb/.kb-python` on the first `kb init` run — no manual setup required. You'll see a one-time message:
-
-```
-[kb] Installing Python category env into ~/.kb/.kb-python (one-time setup)…
-[kb] Python category env ready.
-```
-
-If `python3` is not found, KB will abort with a clear error pointing you to https://python.org.
-
-To pre-install manually (e.g. in CI or an offline environment):
-
-```bash
-python3 -m venv ~/.kb/.kb-python
-~/.kb/.kb-python/bin/pip install hdbscan==0.8.40 numpy==2.2.5 scikit-learn==1.6.1
-```
-
-Override the Python binary KB uses with:
-
-```bash
-export KB_CATEGORY_CLUSTER_PYTHON=/path/to/python3
-```
-
 ### Uninstalling KB
 
 To remove KB from a release install:
@@ -109,7 +83,6 @@ kb uninstall
 This removes:
 - The `~/.kb/bin/kb` binary symlink
 - The installed runtime at `~/.kb/runtime`
-- The Python environment at `~/.kb/.kb-python`
 - The `PATH` entry from your shell config (`.bashrc` / `.zshrc` / `.profile`)
 
 You will be prompted whether to also delete `~/.kb` (knowledge bases, config, logs). To skip the prompt and keep user data:
@@ -136,25 +109,21 @@ kb config set llm.provider openai
 
 ### 3) Initialize your KB base
 
-Walk through the chat-based wizard to create your knowledge base.
+Create a knowledge base from one or more git repositories. **At least one git remote is required** — KB clones each repo and keeps the base fresh for you, auto-pulling and re-indexing on new commits whenever you open a session or switch to the base, so you never run a scan by hand.
 
 ```bash
-cd ~/{{YOUR_AWESOME_REPO}}
-kb && /init
+# single repo
+kb init --git https://github.com/acme/auth-svc
+
+# multiple repos into one base, with an inline branch override
+kb init --git https://github.com/acme/auth --git https://github.com/acme/web#develop --base acme
 ```
 
-The wizard asks for a base name and an optional **git remote URL**. Point it at a git URL and KB clones the repo and keeps that base fresh for you — it auto-pulls and re-indexes on new commits whenever you open a session or switch to the base, so you never run a scan by hand.
+`--git` is repeatable. Each value may carry an inline `#branch`; the `--branch` flag sets the default branch for any repo that doesn't specify one (default `main`).
 
-Leave the URL blank to index the local working directory instead, then refresh it yourself after doc or code changes:
+All repos in a base fold into a **single connected graph**. After indexing, a reconciliation pass bridges the per-repo subgraphs by linking facts across repos on real integration signals — `package.json` dependencies, cross-repo symbol imports, and `.env`/service references.
 
-```bash
-kb && /base use dogfood
-kb && /scan
-```
-
-Rescans reuse content hashes to skip unchanged docs and source files, so they stay incremental.
-
-During `kb init` you'll also be prompted to define **fact categories** — named buckets like "TUI", "Agent loop", "Facts" — that facts are sorted into via TF-IDF similarity. It's a one-time step; rescans preserve your categories without re-prompting.
+Each repo is cloned to `~/.kb/sessions/<base>/repos/<slug>/` and recorded in the base's `meta.json` as a `repos` array. Rescans reuse content hashes to skip unchanged docs and source files, so they stay incremental.
 
 ### 4) Query your knowledge base
 
@@ -192,11 +161,14 @@ kb base delete <base>          — delete a base and all its data (prompts unles
 kb config get
 kb config set <key> <value>
 kb config unset <key>
-kb init [--base <name>] [--detach | --resume] [--stop-after <cycle>]
-kb scan [--base <name>] [--non-interactive]
-kb ignore init                 — scaffold a .kb project file with default ignore patterns
-kb ignore add <pattern...>     — add gitignore-style patterns excluded from init/scan
-kb ignore list                 — show the active .kb file and its ignore patterns
+kb init --git <url[#branch]> [--git <url[#branch]> ...] [--branch <default>] [--base <name>] [--detach | --resume] [--stop-after <cycle>]
+kb scan [--base <name>]
+kb ignore init [--base <name>]            — seed the base with default ignore patterns
+kb ignore add <pattern...> [--base <name>] — add gitignore-style patterns excluded from init/scan
+kb ignore list [--base <name>]            — show the base's ignore patterns
+kb base list-repos [--base <name>]
+kb base add-repo <url[#branch]> [--branch <b>] [--base <name>]
+kb base remove-repo <url|slug> [--base <name>]
 kb facts list|search|show ...
 kb graph ...
 kb logs list|show|compare ...
@@ -218,47 +190,43 @@ kb publish <notion|jekyll> [options]
 | `/help` | List all in-session commands |
 | `/docs generate "<prompt>"` | Guided doc-draft wizard |
 | `/init [args]` / `/scan [args]` | Build or refresh the KB without leaving the session |
-| `/ignore init\|add\|list` | Manage the `.kb` project file (base + ignore patterns) |
+| `/ignore init\|add\|list` | Manage the base's init/scan ignore patterns |
 | `/session` | Show turn-by-turn token, cost, and timing stats |
 
 **How chat retrieval works:**
-- Each turn fetches facts via the same plateau-based research orchestrator used by `kb query`: it adaptively grows the result budget, widens concept/category frontier, and expands graph hops until the evidence plateaus, the frontier is exhausted, or an internal safety budget is reached.
+- Each turn fetches facts via the same plateau-based research orchestrator used by `kb query`: it adaptively grows the result budget, lands in whichever repo the strongest hit belongs to and exhausts that repo's fact pool, then walks the cross-repo edge tree to sibling repos (depends-on links first), expanding graph hops until the evidence plateaus, the frontier is exhausted, or an internal safety budget is reached.
 - The LLM can still call the `query` tool mid-answer to fetch additional facts, but default exploration depth no longer depends on the model volunteering more searches.
 - Facts retrieved in earlier turns are excluded from subsequent retrieval — they remain available in the LLM's conversation history. Use `/clear` for a completely fresh start.
 - If a follow-up introduces 2+ new topical terms (e.g. "What about AST? How do I add Python support?"), those new terms drive retrieval instead of being appended to the previous topic.
 
-### 📌 The `.kb` project file
+### 🚫 Ignore patterns
 
-Each repo (or subdirectory) can have a `.kb` file that pins the directory to a KB
-base and controls what `kb init` / `kb scan` pick up. It's a small **TOML** file:
-
-```toml
-base = "my-project"
-
-[ignore]
-# gitignore-style globs — anything matching is skipped by init/scan
-patterns = ["node_modules/", "dist/", "*.log", "drafts/**"]
-```
-
-- **`base`** maps this directory to a KB base. A `.kb` file found in the current
-  directory (or any ancestor) always takes priority over the active/default base.
-  `kb init` writes this for you and preserves any existing `[ignore]` patterns.
-- **`[ignore].patterns`** are gitignore-style globs (`*`, `**`, `?`, leading `/`
-  to anchor, trailing `/` for directories, `!` to negate). Matching files and
-  directories are excluded from both markdown source collection and code (AST)
-  indexing during `kb init` and `kb scan`.
-
-Scaffold one with sensible defaults and manage it without hand-editing:
+KB indexes the **clones** it manages under `~/.kb/sessions/<base>/repos/<slug>/`, not
+your working directory — so "what to skip" is a property of the **base**, stored in
+its `meta.json` and applied on every scan/rescan. Manage it with `kb ignore`:
 
 ```bash
-kb ignore init                 # create .kb here, seeded with default patterns
-kb ignore add "*.tmp" drafts/  # append patterns (updates the governing .kb file)
-kb ignore list                 # show the active .kb file and its patterns
+kb ignore init                 # seed the active base with sensible defaults
+kb ignore add "*.tmp" drafts/  # append gitignore-style patterns
+kb ignore list                 # show the base's patterns
+kb ignore add "*.snap" --base acme   # target a specific base
 ```
 
-Legacy `.kb` files that contain only a bare base name are still read transparently.
-After you run `kb` a few times in a directory without a `.kb` file, KB will
-suggest creating one.
+Patterns are gitignore-style globs (`*`, `**`, `?`, leading `/` to anchor, trailing
+`/` for directories, `!` to negate) and are excluded from both markdown source
+collection and code (AST) indexing during `kb init` / `kb scan`.
+
+A repo can also **ship its own** ignore rules by committing a `.kb` TOML file at its
+root — those travel with the code (like `.gitignore`) and are unioned with the
+base-level list when KB indexes the clone:
+
+```toml
+[ignore]
+patterns = ["fixtures/**", "*.generated.ts"]
+```
+
+> The same `.kb` file may carry a `base = "<name>"` line, which acts as a hint so
+> `kb` commands run in that directory resolve to the right base.
 
 ### 🔄 Keeping `kb` up to date
 
@@ -285,8 +253,10 @@ kb query "hybrid sqlite retrieval" --limit 5
 
 ```bash
 kb query "topic"
-kb scan   # refresh after code/doc changes
+kb scan   # pull + re-index every repo the base tracks, then rebuild cross-repo links
 ```
+
+`kb scan` no longer reads the current working directory — it refreshes every git repo the base tracks and rebuilds the cross-repo graph links. Auto-sync (on session load, `kb base use`, and queries) syncs all of a base's repos the same way.
 
 ## 🤖 Agent Skills: use KB while you develop
 
@@ -313,7 +283,7 @@ kb base use foo            # switch the active base for this session
 kb base use --default foo  # save a persistent default
 kb base use --show             # show active base and config default
 kb base delete bar --force # delete a base and all its data
-kb scan --base foo              # refresh KB updates incrementally from changed docs/source files
+kb scan --base foo              # pull + re-index every tracked repo, rebuild cross-repo links
 kb sync                           # install the latest published GitHub release
 kb && /base use foo
 kb && /scan
@@ -325,7 +295,19 @@ Base resolution order (both live in `~/.kb/config.json`):
 1. `activeBase` — current working base from `kb base use <base>`
 2. `defaultBase` — persistent default from `kb base use --default <base>`
 
-Named bases store their SQLite data under `~/.kb/sessions/<base>/`.
+Named bases store their SQLite data under `~/.kb/sessions/<base>/`, and each tracked repo's clone under `~/.kb/sessions/<base>/repos/<slug>/`. The base's `meta.json` holds a `repos` array — one entry per tracked repo (`gitUrl`, `gitBranch`, `slug`, `dir`, `lastSyncedSha`, `lastSyncedAt`).
+
+### Adding / removing repos
+
+A base can track multiple repos; add or remove them after init with `kb base`:
+
+```bash
+kb base list-repos [--base <name>]                       # list the repos a base tracks
+kb base add-repo <url[#branch]> [--branch <b>] [--base <name>]   # clone, index, and link a new repo
+kb base remove-repo <url|slug> [--base <name>]           # purge a repo's facts + clone
+```
+
+`add-repo` clones the repo, indexes it, and rebuilds the cross-repo links. `remove-repo` purges that repo's facts and its clone; it refuses to remove the last remaining repo.
 
 ## 📊 Evaluation
 

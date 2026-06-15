@@ -232,15 +232,3 @@ export function createIgnoreMatcher(patterns: string[]): (relativePath: string) 
     return ignored
   }
 }
-
-/**
- * Convenience: find the `.kb` file governing `scanDir` and return a matcher for
- * its ignore patterns. When no `.kb` file (or no patterns) exists, the matcher
- * never ignores anything.
- */
-export async function loadKbIgnoreMatcher(
-  scanDir: string
-): Promise<(relativePath: string) => boolean> {
-  const found = await findKbFileInfo(scanDir)
-  return createIgnoreMatcher(found?.ignore ?? [])
-}

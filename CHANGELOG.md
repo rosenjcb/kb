@@ -1,15 +1,22 @@
 # kb
 
+## 0.6.0
+
+### Minor Changes
+
+- Improve TUI init progress: show repo slug and a bold progress bar above history, with an idle spinner before the first update. Init progress lines now include `@ repo` when indexing multi-repo bases; merge default-branch clone handling from upstream.
+
 ## 0.5.0
 
 ### Minor Changes
 
-- Make the per-directory `.kb` file a TOML document with a `[ignore]` section of
-  gitignore-style patterns. Ignored paths are excluded from both markdown and code
-  (AST) collection during `kb init` / `kb scan`. Adds a `kb ignore`
-  command (`init` / `add` / `list`) to scaffold and manage the file, and a passive
-  suggestion to create one after repeated `kb` runs in a directory without it.
-  Legacy plain-text `.kb` files (bare base name) are still read transparently.
+- Multi-repo knowledge bases: a base now tracks one or more git repos and folds them into a single graph.
+
+  - `kb init` requires at least one `--git <url>` (repeatable; supports inline `url#branch` and a `--branch` default). Local-directory init has been removed.
+  - Manage a base's repos with `kb config list-repos` / `add-repo <url>` / `remove-repo <url|slug>`.
+  - `kb scan` now pulls and re-indexes every repo a base tracks (it no longer reads the working directory); auto-sync syncs all repos.
+  - Facts record their originating repo in a new `git_repo` column; a reconciliation pass bridges repos into one connected graph via package-manager, cross-repo symbol, and env/service references.
+  - Retrieval is now repo-scoped: query expansion exhausts the landed repo's facts before walking the cross-repo edge tree. The fact-category/tags/topics system (and its Python clustering) has been removed.
 
 ## 0.4.1
 

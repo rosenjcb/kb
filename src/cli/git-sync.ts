@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { repoSlugFromGitUrl } from './base-meta'
 
 function run(cmd: string, args: string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -18,9 +19,18 @@ function run(cmd: string, args: string[], cwd: string): Promise<string> {
   })
 }
 
-/** Blobless clone of `url` at `branch` into `destDir`. */
-export async function cloneRepo(url: string, destDir: string, branch: string): Promise<void> {
-  await run('git', ['clone', '--filter=blob:none', '--branch', branch, '--single-branch', url, destDir], process.cwd())
+/** Blobless clone of `url` into `destDir`. Tracks `branch` when given, else the remote's
+ *  own default branch (HEAD) — so repos on `master` (or anything else) clone correctly. */
+export async function cloneRepo(url: string, destDir: string, branch?: string): Promise<void> {
+  const args = ['clone', '--filter=blob:none', '--single-branch']
+  if (branch) args.push('--branch', branch)
+  args.push(url, destDir)
+  await run('git', args, process.cwd())
+}
+
+/** Current branch name of a clone (e.g. `main`, `master`). */
+export async function getCurrentBranch(repoDir: string): Promise<string> {
+  return run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], repoDir)
 }
 
 /** Discard kb's local `.kb` marker so ff-only pulls in hidden clones don't fail. */
@@ -53,15 +63,8 @@ export async function getHeadSha(repoDir: string): Promise<string> {
 
 /** Derive a normalised base name from a git remote URL.
  *  Handles both https (https://github.com/org/repo.git) and ssh (git@github.com:org/repo.git).
+ *  Shares the slug derivation with `repoSlugFromGitUrl` so base names and repo slugs agree.
  */
 export function baseNameFromGitUrl(url: string): string {
-  const cleaned = url.replace(/\.git$/, '').replace(/\/$/, '')
-  // Extract the org/repo path component regardless of protocol
-  const pathPart = cleaned.includes('://')
-    ? cleaned.split('/').slice(3).join('/')   // https://host/org/repo → org/repo
-    : (cleaned.split(':')[1] ?? cleaned)       // git@host:org/repo → org/repo
-  const parts = pathPart.split('/')
-  const org = parts.at(-2) ?? 'unknown'
-  const repo = parts.at(-1) ?? 'repo'
-  return `${org}-${repo}`.replace(/[^a-zA-Z0-9._-]/g, '-').toLowerCase()
+  return repoSlugFromGitUrl(url)
 }

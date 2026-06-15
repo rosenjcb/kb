@@ -8,7 +8,6 @@ import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { ensurePythonEnv, globalVenvPython } from '../core/fact-categories'
 import {
   ReportWriter,
   RunCollector,
@@ -23,7 +22,6 @@ import { createKBToolsRegistry } from '../tools/kb-tools-registry'
 import { createPrinter, createReasoningProgressSink } from '../ui/printer'
 import { KB_VERSION } from '../version.js'
 import { maybeAutoSync } from './auto-sync'
-import { writeBaseMeta } from './base-meta'
 import {
   deleteBase,
   ensureOperationalBaseDir,
@@ -43,7 +41,7 @@ import {
   writeSessionBase,
 } from './base-selection'
 import { CLI_ERROR_NO_KB_BASE, formatPrerequisiteError } from './cli-prerequisites'
-import { initCancelledNotice, scanCancelledNotice } from './cli-prerequisites'
+import { initCancelledNotice } from './cli-prerequisites'
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from './cmd-ref'
 import { printConfigHelp, runConfigCommand } from './config-cli'
 import {
@@ -67,10 +65,10 @@ import {
   runDocsRename,
 } from './docs-rename-cli'
 import { FactsCommandError, runFactsCommand } from './facts-cli'
-import { baseNameFromGitUrl, cloneRepo, getHeadSha } from './git-sync'
+import { baseNameFromGitUrl } from './git-sync'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
 import { IgnoreCommandError, printIgnoreHelp, runIgnoreCommand } from './ignore-cli'
-import { isInitCancelledError, parseInitCommand, parseScanCommand, runKbInit } from './init-cli'
+import { isInitCancelledError, parseInitCommand, runKbInit } from './init-cli'
 import {
   type ReadDocumentsResultData,
   enrichReadDocumentsAnswerWithLLM,
@@ -86,15 +84,17 @@ import {
   applyConfigToEnv,
   createLLMProviderFromConfig,
   ensureDefaultConfig,
+  getKbConfigFile,
   persistInferredLLMProvider,
   resolveFactRetrievalMethod,
 } from './kb-config'
 import type { KbConfig } from './kb-config'
-import { recordKbDirRun } from './kb-file-usage'
 import { printLogsHelp, runLogsCommand } from './logs-cli'
 import { parsePublishCommand, runPublishCommand } from './publish-cli'
 import { parseJekyllPublishOptions, runJekyllPublish } from './publish-jekyll'
 import { runQueryTruthRetrieval } from './query-truth-retrieval'
+import { isRepoAction, runRepoCommand } from './repo-cli'
+import { runScanCommand } from './scan-command'
 import {
   formatSkillInstallReport,
   formatSkillUninstallReport,
@@ -173,7 +173,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  config      Inspect or update persistent config',
     '  init        Build a KB from the current repo',
     '  scan        Refresh a KB with content from the current repo',
-    '  ignore      Manage the .kb project file (base + ignore patterns)',
+    "  ignore      Manage a base's init/scan ignore patterns",
     '  graph       Inspect or edit the knowledge graph',
     '  docs        Browse KB documents',
     '  facts       List, search, or show KB facts',
@@ -206,23 +206,26 @@ function printInitHelp(mode: CmdMode = 'cli'): string {
     `${cmd('init', mode)} command`,
     '',
     'Usage:',
-    `  ${cmd('init', mode)} [--base <name>] [--detach | --resume] [--stop-after <cycle>]`,
+    `  ${cmd('init --git <url> [--git <url2#branch> …] [--base <name>] [--branch <default>]', mode)}`,
     '',
     'Flags:',
-    '  --base <name>                   Choose the KB base to initialize',
+    '  --git <url[#branch]>            Git remote to index (REQUIRED; repeatable for multiple repos)',
+    "  --branch <name>                Default branch for repos without an inline #branch (else the remote's default)",
+    '  --base <name>                  Base name (defaults to the first repo)',
     '  --non-interactive              Skip interview prompts when possible',
     '  --detach                       Pause after the current cycle and save a checkpoint',
     '  --resume                       Resume from the latest init checkpoint',
     '  --stop-after <cycle>           Stop after read-inputs|code-index|document-facts|import-docs|write',
     '',
     'Notes:',
-    '  Without --base, interactive init prompts for a fresh base name and switches the active base immediately.',
-    `  Use ${cmd('scan', mode)} to refresh a base with content from this repo or from related repos.`,
+    '  At least one --git URL is required — a base clones and indexes its repos. Multiple repos',
+    '  are folded into one graph and linked by their cross-repo references (deps, imports, env).',
+    `  Add or remove repos later with ${cmd('base add-repo', mode)} / ${cmd('base remove-repo', mode)}.`,
+    `  Use ${cmd('scan', mode)} to pull + re-index the base's repos.`,
     '',
     'Examples:',
-    `  ${cmd('init --base dogfood', mode)}`,
-    `  ${cmd('init --base dogfood --detach', mode)}`,
-    `  ${cmd('init --base dogfood --resume', mode)}`,
+    `  ${cmd('init --git https://github.com/acme/auth-svc', mode)}`,
+    `  ${cmd('init --git https://github.com/acme/auth --git https://github.com/acme/web#develop --base acme', mode)}`,
   ].join('\n')
 }
 
@@ -231,22 +234,19 @@ function printScanHelp(mode: CmdMode = 'cli'): string {
     `${cmd('scan', mode)} command`,
     '',
     'Usage:',
-    `  ${cmd('scan', mode)} [--base <name>] [--non-interactive]`,
+    `  ${cmd('scan', mode)} [--base <name>]`,
     '',
     'Flags:',
-    '  --base <name>                   Choose which existing KB base to refresh',
-    '  --non-interactive              Skip any interactive questions when possible',
+    '  --base <name>                   Choose which base to refresh (defaults to active, then default)',
     '',
     'Notes:',
-    '  Scan re-reads markdown/text sources under the current repo, refreshes original docs, and applies the resulting KB mutations.',
-    '  Without --base, scan uses the active base first, then the default base.',
-    '  A common workflow is to run `kb init` in a primary repo, then run `kb scan` in related repos into that same base.',
-    `  In the TUI, use ${cmd('base use <base>', mode)} and then ${cmd('scan', mode)} in each related repo.`,
+    '  Scan pulls every git repo the base tracks, re-indexes them, and rebuilds the cross-repo',
+    '  graph links. It does not read the current working directory.',
+    `  To track another repo, use ${cmd('base add-repo <url>', mode)}.`,
     '',
     'Examples:',
-    `  ${cmd('scan --base dogfood', mode)}`,
-    `  ${cmd('base use dogfood', mode)}`,
     `  ${cmd('scan', mode)}`,
+    `  ${cmd('scan --base acme', mode)}`,
   ].join('\n')
 }
 
@@ -262,13 +262,18 @@ function printBaseHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('base use --show', mode)}               Show current base configuration`,
     `  ${cmd('base delete <base> [--force]', mode)}  Delete a base`,
     '',
+    'Git repos (a base tracks one or more):',
+    `  ${cmd('base list-repos [--base <name>]', mode)}            List the repos a base tracks`,
+    `  ${cmd('base add-repo <url[#branch]> [--branch <b>] [--base <name>]', mode)}   Clone + index another repo`,
+    `  ${cmd('base remove-repo <url|slug> [--base <name>]', mode)}    Remove a repo and its facts`,
+    '',
     'Examples:',
     `  ${cmd('base', mode)}`,
-    `  ${cmd('base list', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
-    `  ${cmd('base use --default dogfood', mode)}`,
-    `  ${cmd('base use --show', mode)}`,
     `  ${cmd('base delete ci-test --force', mode)}`,
+    `  ${cmd('base list-repos', mode)}`,
+    `  ${cmd('base add-repo https://github.com/acme/pdf-service', mode)}`,
+    `  ${cmd('base remove-repo acme-pdf-service', mode)}`,
   ].join('\n')
 }
 
@@ -461,6 +466,19 @@ export async function runMainWithOutput(
 
       const result = await deleteBase(base)
       out.log(formatDeleteBaseResult(base, result, mode))
+      return
+    }
+
+    if (isRepoAction(subCmd)) {
+      try {
+        const result = await runRepoCommand(subCmd, subArgs.slice(1), {
+          mode,
+          onProgress: line => out.log(line),
+        })
+        out.log(result.output)
+      } catch (error) {
+        out.error(`❌ ${error instanceof Error ? error.message : String(error)}`)
+      }
       return
     }
 
@@ -657,40 +675,17 @@ export async function runMainWithOutput(
       const parsed = parseInitCommand(args.slice(1))
       const initCollector = new RunCollector('init', { sessionId })
 
-      if (parsed.gitUrl) {
-        const baseName = parsed.base ?? baseNameFromGitUrl(parsed.gitUrl)
-        const baseDir = await ensureOperationalBaseDir(baseName)
-        const repoDir = path.join(baseDir, 'repo')
-        const branch = parsed.gitBranch ?? 'main'
-
-        if (!existsSync(repoDir)) {
-          out.log(`Cloning ${parsed.gitUrl} (${branch})…`)
-          await cloneRepo(parsed.gitUrl, repoDir, branch)
-        }
-
-        const headSha = await getHeadSha(repoDir)
-        const result = await runKbInit({
-          ...parsed,
-          base: baseName,
-          cwd: repoDir,
-          nonInteractive: true,
-          collector: initCollector,
-        })
-
-        await writeBaseMeta(baseDir, {
-          gitUrl: parsed.gitUrl,
-          gitBranch: branch,
-          lastSyncedSha: headSha,
-          lastSyncedAt: new Date().toISOString(),
-        })
-        await writeSessionBase(baseName)
-
-        out.log(JSON.stringify(result, null, 2))
-        await reporter.append(initCollector.finish('success', undefined, result.base))
-        return
+      // Default the base name to the first repo's slug when not given (CLI parity with the
+      // interactive prompt). runKbInit owns cloning, indexing, reconciliation, and meta.json.
+      if (!parsed.base && parsed.gitTargets && parsed.gitTargets.length > 0) {
+        parsed.base = baseNameFromGitUrl(parsed.gitTargets[0].url)
       }
 
-      const result = await runKbInit({ ...parsed, collector: initCollector })
+      const result = await runKbInit({
+        ...parsed,
+        collector: initCollector,
+        progressSink: line => out.log(line),
+      })
       out.log(JSON.stringify(result, null, 2))
       await reporter.append(initCollector.finish('success', undefined, result.base))
       return
@@ -721,24 +716,13 @@ export async function runMainWithOutput(
     const reporter = new ReportWriter(defaultLogsDir())
     const collector = new RunCollector('scan', { sessionId })
     try {
-      const parsed = parseScanCommand(args.slice(1))
-      const scanCollector = new RunCollector('scan', { sessionId })
-      const result = await runKbInit({ ...parsed, collector: scanCollector })
-      out.log(JSON.stringify(result, null, 2))
-      await reporter.append(scanCollector.finish('success', undefined, result.base))
+      // Scan now means "pull + re-index every git repo this base tracks", then reconcile the
+      // cross-repo graph. It no longer reads the caller's working directory.
+      const summary = await runScanCommand(args.slice(1), line => out.log(line))
+      out.log(summary)
+      await reporter.append(collector.finish('success', undefined))
       return
     } catch (error) {
-      if (isInitCancelledError(error)) {
-        let baseName: string | undefined
-        try {
-          baseName = (await resolveEffectiveBaseDir()).baseName
-        } catch {
-          baseName = undefined
-        }
-        await reporter.append(collector.finish('success', undefined, baseName))
-        out.log(scanCancelledNotice(baseName))
-        return
-      }
       const message = error instanceof Error ? error.message : String(error)
       await reporter.append(collector.finish('error', message))
       out.error(`❌ ${message}`)
@@ -1119,6 +1103,7 @@ async function main() {
     const [skillResults] = await Promise.all([
       installSkillsGlobally().catch(() => [] as Awaited<ReturnType<typeof installSkillsGlobally>>),
     ])
+    const isFreshInstall = !existsSync(getKbConfigFile())
     let kbConfig = await ensureDefaultConfig()
     const inferred = await persistInferredLLMProvider({ config: kbConfig })
     kbConfig = inferred.config
@@ -1134,17 +1119,6 @@ async function main() {
         startupNotices.push(`↑ KB skill ${r.skill} updated for ${r.agent}`)
     }
 
-    const isFreshInstall = !existsSync(globalVenvPython())
-    if (isFreshInstall) {
-      process.stderr.write('👋 Welcome to KB! Setting up your environment for the first time…\n')
-    }
-    try {
-      ensurePythonEnv()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      process.stderr.write(`❌ ${message}\n`)
-      process.exit(1)
-    }
     if (isFreshInstall) {
       startupNotices.push(FIRST_RUN_WELCOME_NOTICE)
     }
@@ -1176,9 +1150,6 @@ async function main() {
       // No base configured yet – fine
     }
 
-    const kbFileTip = await recordKbDirRun(process.cwd())
-    if (kbFileTip) startupNotices.push(kbFileTip)
-
     const { launchTui } = await import('../tui/index.js')
     await launchTui(kbConfig, { startupNotices })
     return
@@ -1207,16 +1178,6 @@ async function main() {
   } else if (inferred.notice) {
     console.error(inferred.notice)
     console.error('')
-  }
-
-  // Passively suggest scaffolding a `.kb` file once a directory is in regular
-  // use. Skip when the user is already managing it via `kb ignore`.
-  if (!machineJsonStdout && args[0] !== 'ignore') {
-    const kbFileTip = await recordKbDirRun(process.cwd())
-    if (kbFileTip) {
-      console.log(kbFileTip)
-      console.log('')
-    }
   }
 
   await runMainWithOutput(args, defaultCliOutput, kbConfig)

@@ -2,11 +2,6 @@ import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import dayjs from 'dayjs'
-import type {
-  FactCategoryCreatedBy,
-  FactCategoryDefinitionInput,
-  FactCategoryStatus,
-} from '../core/fact-categories'
 import { runMigrations } from '../core/db-migrations'
 import { type RetrievalLane, classifyDocumentLane } from './retrieval-lane-router'
 
@@ -133,6 +128,8 @@ export interface FactUpsertInput {
   supersedesFactId?: string
   /** Raw source code snippet for import_code facts — stored and served to the LLM instead of verbose fact_text. */
   sourceText?: string
+  /** Slug of the git repo this fact was indexed from (multi-repo provenance). */
+  gitRepo?: string
 }
 
 export interface FactRow {
@@ -151,26 +148,7 @@ export interface FactRow {
   predicate: string
   object: string
   source_text: string | null
-}
-
-export interface FactCategoryRow {
-  id: string
-  name: string
-  description: string
-  status: FactCategoryStatus
-  created_by: FactCategoryCreatedBy
-  representative_terms_json: string
-  centroid_vector_json: string
-  created_at: string
-  updated_at: string
-}
-
-export interface FactCategoryAssignmentRow {
-  fact_id: string
-  category_id: string
-  score: number
-  created_at: string
-  updated_at: string
+  git_repo: string | null
 }
 
 export interface FactConceptRow {
@@ -271,15 +249,17 @@ const DEFAULT_LANE_ROUTING_THRESHOLDS: LaneRoutingRolloutThresholds = {
 
 /** `facts` row projection — keep aligned with `FactRow`. */
 const FACT_ROW_SELECT =
-  'id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text'
+  'id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text, git_repo'
 
 const FACT_ROW_SELECT_F =
-  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at, f.subject, f.predicate, f.object, f.source_text'
+  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at, f.subject, f.predicate, f.object, f.source_text, f.git_repo'
 
 export class SqliteKbIndexer {
   private readonly db: DatabaseSync
   private readonly modelId: string
   private readonly vectorDimensions: number
+  /** Repo slug applied to facts that don't set one explicitly (multi-repo provenance). */
+  private activeGitRepo: string | null = null
 
   constructor(options: SqliteKbIndexerOptions) {
     this.db = new DatabaseSync(options.dbPath)
@@ -290,8 +270,18 @@ export class SqliteKbIndexer {
     runMigrations(this.db)
   }
 
+  /**
+   * Set the repo slug stamped onto facts that don't pass `gitRepo` explicitly. Lets the code
+   * indexers tag every fact for the repo being scanned without threading the slug through
+   * every `upsertCodeFileFact` call. Pass `null` to clear.
+   */
+  setActiveGitRepo(slug: string | null): void {
+    this.activeGitRepo = slug
+  }
+
   upsertFact(input: FactUpsertInput): { id: string; operation: 'inserted' | 'updated' } {
     const now = dayjs().toISOString()
+    const gitRepo = input.gitRepo ?? this.activeGitRepo
     const normalized = normalizeFactText(input.factText)
     const raw = input.triplet
     let subject: string
@@ -316,7 +306,8 @@ export class SqliteKbIndexer {
         .prepare(
           `
           UPDATE facts
-          SET fact_text = ?, source_kind = ?, source_ref = ?, confidence = ?, updated_at = ?, subject = ?, predicate = ?, object = ?, source_text = ?
+          SET fact_text = ?, source_kind = ?, source_ref = ?, confidence = ?, updated_at = ?, subject = ?, predicate = ?, object = ?, source_text = ?,
+              git_repo = COALESCE(?, git_repo)
           WHERE id = ?
         `
         )
@@ -330,6 +321,7 @@ export class SqliteKbIndexer {
           predicate,
           object,
           input.sourceText ?? null,
+          gitRepo,
           existing.id
         )
       this.rebuildFactIndexes(existing.id, input.factText.trim(), now)
@@ -342,9 +334,9 @@ export class SqliteKbIndexer {
       .prepare(
         `
         INSERT INTO facts (
-          id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text
+          id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text, git_repo
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
       `
       )
       .run(
@@ -360,7 +352,8 @@ export class SqliteKbIndexer {
         subject,
         predicate,
         object,
-        input.sourceText ?? null
+        input.sourceText ?? null,
+        gitRepo
       )
     this.rebuildFactIndexes(id, input.factText.trim(), now)
     this.rebuildFactGraph(id, input.factText.trim(), now)
@@ -713,6 +706,7 @@ export class SqliteKbIndexer {
         AND sym.source_kind = 'import_code'
         AND sym.predicate = 'exported_from'
         AND sym.tombstoned_at IS NULL
+        AND sym.git_repo IS imp.git_repo
       WHERE imp.source_kind = 'import_code'
         AND imp.predicate = 'imports'
         AND imp.tombstoned_at IS NULL
@@ -725,6 +719,7 @@ export class SqliteKbIndexer {
         AND sym.source_kind = 'import_code'
         AND sym.predicate = 'exported_from'
         AND sym.tombstoned_at IS NULL
+        AND sym.git_repo IS imp.git_repo
       WHERE imp.source_kind = 'import_code'
         AND imp.predicate = 'imports'
         AND imp.tombstoned_at IS NULL
@@ -732,346 +727,161 @@ export class SqliteKbIndexer {
     return Number(fwd.changes) + Number(rev.changes)
   }
 
-  listFactCategories(): FactCategoryRow[] {
-    return this.db
-      .prepare(
-        `
-        SELECT id, name, description, status, created_by, representative_terms_json, centroid_vector_json, created_at, updated_at
-        FROM fact_categories
-        ORDER BY updated_at DESC, name ASC
-      `
-      )
-      .all() as unknown as FactCategoryRow[]
+  /**
+   * Hard-delete every fact tagged with `gitRepo` (and its derived index rows). Used by
+   * `kb base remove-repo` so a removed repo leaves no facts behind. Returns the count.
+   */
+  deleteFactsByRepo(gitRepo: string): number {
+    const rows = this.db
+      .prepare('SELECT id FROM facts WHERE git_repo = ?')
+      .all(gitRepo) as Array<{ id: string }>
+    if (rows.length === 0) return 0
+    const delFts = this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?')
+    for (const { id } of rows) delFts.run(id)
+    // fact_edges / fact_concepts / fact_embeddings cascade on the facts FK;
+    // facts_fts is a virtual table and is cleared explicitly above.
+    this.db.prepare('DELETE FROM facts WHERE git_repo = ?').run(gitRepo)
+    return rows.length
   }
 
-  replaceFactCategories(categories: FactCategoryDefinitionInput[]): void {
-    const now = dayjs().toISOString()
-    const deleteAssignments = this.db.prepare('DELETE FROM fact_category_assignments')
-    const deleteMissing = this.db.prepare(
-      categories.length > 0
-        ? `DELETE FROM fact_categories WHERE id NOT IN (${categories.map(() => '?').join(', ')})`
-        : 'DELETE FROM fact_categories'
+  /**
+   * Bridge the per-repo subgraphs into one connected graph. After each repo is indexed
+   * its facts form an island (imports↔exports only join by file path within a repo); this
+   * pass adds `fact_edges` between facts whose `git_repo` differ, on real integration
+   * signals. Idempotent (`INSERT OR IGNORE`) and derivable purely from live facts, so it is
+   * safe to re-run after any scan/add/remove. Returns the number of new edges created.
+   *
+   * Edge types (all bidirectional):
+   * - `depends_on_repo`   — repo A's package.json depends on repo B's package name.
+   * - `cross_repo_symbol` — a symbol imported in repo A is exported by repo B.
+   * - `references_repo`   — an env/service value in repo A names repo B (package/slug).
+   */
+  reconcileCrossRepoEdges(): number {
+    const now = new Date().toISOString()
+    let created = 0
+
+    // depends_on (subject=slug, object=packageName) → package_name_of (subject=packageName, object=slug)
+    created += this.insertBidirectionalEdges(
+      'depends_on_repo',
+      1.0,
+      `
+        SELECT dep.id AS a, pkg.id AS b
+        FROM facts dep
+        JOIN facts pkg
+          ON LOWER(pkg.subject) = LOWER(dep.object)
+          AND pkg.predicate = 'package_name_of'
+          AND pkg.tombstoned_at IS NULL
+          AND pkg.git_repo IS NOT NULL
+          AND pkg.git_repo <> dep.git_repo
+        WHERE dep.predicate = 'depends_on'
+          AND dep.tombstoned_at IS NULL
+          AND dep.git_repo IS NOT NULL
+      `,
+      now
     )
-    const upsertCategory = this.db.prepare(`
-      INSERT INTO fact_categories (
-        id,
-        name,
-        description,
-        status,
-        created_by,
-        representative_terms_json,
-        centroid_vector_json,
-        created_at,
-        updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        name = excluded.name,
-        description = excluded.description,
-        status = excluded.status,
-        created_by = excluded.created_by,
-        representative_terms_json = excluded.representative_terms_json,
-        centroid_vector_json = excluded.centroid_vector_json,
-        updated_at = excluded.updated_at
-    `)
 
-    runInTransaction(this.db, () => {
-      deleteAssignments.run()
-      if (categories.length > 0) deleteMissing.run(...categories.map(category => category.id))
-      else deleteMissing.run()
-      for (const category of categories) {
-        upsertCategory.run(
-          category.id,
-          category.name,
-          category.description,
-          category.status,
-          category.createdBy,
-          JSON.stringify(category.representativeTerms),
-          JSON.stringify(category.centroidVector),
-          now,
-          now
-        )
-      }
-    })
-  }
-
-  replaceFactCategoryAssignments(
-    assignments: Map<string, Array<{ categoryId: string; score: number }>>
-  ): void {
-    const now = dayjs().toISOString()
-    const clear = this.db.prepare('DELETE FROM fact_category_assignments')
-    const insert = this.db.prepare(`
-      INSERT INTO fact_category_assignments (fact_id, category_id, score, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(fact_id, category_id) DO UPDATE SET
-        score = excluded.score,
-        updated_at = excluded.updated_at
-    `)
-
-    runInTransaction(this.db, () => {
-      clear.run()
-      for (const [factId, rows] of assignments.entries()) {
-        for (const row of rows) {
-          insert.run(factId, row.categoryId, row.score, now, now)
-        }
-      }
-    })
-  }
-
-  mergeFactCategoryAssignments(
-    assignments: Map<string, Array<{ categoryId: string; score: number }>>
-  ): void {
-    const now = dayjs().toISOString()
-    const insert = this.db.prepare(`
-      INSERT INTO fact_category_assignments (fact_id, category_id, score, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(fact_id, category_id) DO UPDATE SET
-        score = excluded.score,
-        updated_at = excluded.updated_at
-    `)
-    runInTransaction(this.db, () => {
-      for (const [factId, rows] of assignments.entries()) {
-        for (const row of rows) {
-          insert.run(factId, row.categoryId, row.score, now, now)
-        }
-      }
-    })
-  }
-
-  getFactCategoryNames(factId: string): string[] {
-    return this.db
-      .prepare(
-        `
-        SELECT c.name AS name
-        FROM fact_category_assignments a
-        JOIN fact_categories c ON c.id = a.category_id
-        WHERE a.fact_id = ?
-        ORDER BY a.score DESC, c.name ASC
+    // imports (object=symbol) in repo A → exported_from (subject=symbol) in repo B
+    created += this.insertBidirectionalEdges(
+      'cross_repo_symbol',
+      0.5,
       `
-      )
-      .all(factId)
-      .map(row => String((row as { name: string }).name))
-  }
+        SELECT imp.id AS a, sym.id AS b
+        FROM facts imp
+        JOIN facts sym
+          ON sym.subject = imp.object
+          AND sym.source_kind = 'import_code'
+          AND sym.predicate = 'exported_from'
+          AND sym.tombstoned_at IS NULL
+          AND sym.git_repo IS NOT NULL
+          AND sym.git_repo <> imp.git_repo
+        WHERE imp.source_kind = 'import_code'
+          AND imp.predicate = 'imports'
+          AND imp.tombstoned_at IS NULL
+          AND imp.git_repo IS NOT NULL
+      `,
+      now
+    )
 
-  getFactCategoryNamesForFacts(factIds: string[]): Map<string, string[]> {
-    const ids = [...new Set(factIds.map(id => id.trim()).filter(Boolean))]
-    const out = new Map<string, string[]>()
-    if (ids.length === 0) return out
-    const placeholders = ids.map(() => '?').join(', ')
-    const rows = this.db
-      .prepare(
-        `
-        SELECT a.fact_id AS fact_id, c.name AS name
-        FROM fact_category_assignments a
-        JOIN fact_categories c ON c.id = a.category_id
-        WHERE a.fact_id IN (${placeholders})
-        ORDER BY a.score DESC, c.name ASC
+    // references_service (object names another repo) → that repo's identity/package fact
+    created += this.insertBidirectionalEdges(
+      'references_repo',
+      0.5,
       `
-      )
-      .all(...ids) as Array<{ fact_id: string; name: string }>
-    for (const row of rows) {
-      if (!out.has(row.fact_id)) out.set(row.fact_id, [])
-      out.get(row.fact_id)?.push(row.name)
-    }
-    return out
-  }
-
-  getFactCategoryIdsForFacts(factIds: string[]): Map<string, string[]> {
-    const ids = [...new Set(factIds.map(id => id.trim()).filter(Boolean))]
-    const out = new Map<string, string[]>()
-    if (ids.length === 0) return out
-    const placeholders = ids.map(() => '?').join(', ')
-    const rows = this.db
-      .prepare(
-        `
-        SELECT fact_id, category_id
-        FROM fact_category_assignments
-        WHERE fact_id IN (${placeholders})
-        ORDER BY score DESC, category_id ASC
-      `
-      )
-      .all(...ids) as Array<{ fact_id: string; category_id: string }>
-    for (const row of rows) {
-      if (!out.has(row.fact_id)) out.set(row.fact_id, [])
-      out.get(row.fact_id)?.push(row.category_id)
-    }
-    return out
-  }
-
-  inferCategoriesForQuery(query: string, limit = 3): Array<{ categoryId: string; name: string; score: number }> {
-    const categories = this.listFactCategories()
-    if (!query.trim() || categories.length === 0) return []
-    const queryVector = buildDeterministicVector(query, this.vectorDimensions)
-    return categories
-      .map(category => {
-        const centroid = parseVectorJsonSafe(category.centroid_vector_json)
-        const termHits = parseTermsJsonSafe(category.representative_terms_json).filter(term =>
-          query.toLowerCase().includes(term.toLowerCase())
-        ).length
-        const cosine =
-          centroid.length === queryVector.length
-            ? (cosineSimilarity(queryVector, centroid) + 1) / 2
-            : 0
-        return {
-          categoryId: category.id,
-          name: category.name,
-          score: Math.min(1, cosine + termHits * 0.12),
-        }
-      })
-      .filter(category => category.score >= 0.58)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit)
-  }
-
-  searchFactsInCategories(query: string, categoryIds: string[], limit = 10): FactRow[] {
-    const ids = [...new Set(categoryIds.map(id => id.trim()).filter(Boolean))]
-    if (ids.length === 0) return this.searchFacts(query, limit)
-    const placeholders = ids.map(() => '?').join(', ')
-    const tokens = tokenizeQuery(query.trim())
-    const joined = tokens.join('')
-    const ftsTokens =
-      joined.length > 2 && joined !== tokens.join(' ') ? [...new Set([...tokens, joined])] : tokens
-    const ftsQuery = ftsTokens.length > 0 ? ftsTokens.join(' OR ') : query.trim()
-    try {
-      const rows = this.db
-        .prepare(
-          `
-          SELECT ${FACT_ROW_SELECT_F}
-          FROM facts_fts fts
-          JOIN facts f ON f.id = fts.fact_id
-          JOIN fact_category_assignments a ON a.fact_id = f.id
-          WHERE facts_fts MATCH ?
-            AND a.category_id IN (${placeholders})
-           
-          ORDER BY a.score DESC, rank
-          LIMIT ?
-        `
-        )
-        .all(ftsQuery, ...ids, limit) as unknown as FactRow[]
-      if (rows.length > 0) return rows
-    } catch {
-      // fallback below
-    }
-
-    const likeQuery = `%${query.trim().toLowerCase()}%`
-    return this.db
-      .prepare(
-        `
-        SELECT DISTINCT ${FACT_ROW_SELECT_F}
-        FROM facts f
-        JOIN fact_category_assignments a ON a.fact_id = f.id
-        WHERE a.category_id IN (${placeholders})
-         
-          AND lower(f.fact_text) LIKE ?
-        ORDER BY a.score DESC, f.updated_at DESC
-        LIMIT ?
-      `
-      )
-      .all(...ids, likeQuery, limit) as unknown as FactRow[]
-  }
-
-  searchFactsByConceptsInCategories(conceptIds: string[], categoryIds: string[], limit = 20): FactRow[] {
-    const concepts = [...new Set(conceptIds.map(id => normalizeConceptId(id)).filter(Boolean))]
-    const categories = [...new Set(categoryIds.map(id => id.trim()).filter(Boolean))]
-    if (concepts.length === 0) return []
-    if (categories.length === 0) return this.searchFactsByConcepts(concepts, limit)
-    const conceptPlaceholders = concepts.map(() => '?').join(', ')
-    const categoryPlaceholders = categories.map(() => '?').join(', ')
-    return this.db
-      .prepare(
-        `
-        SELECT DISTINCT ${FACT_ROW_SELECT_F}
-        FROM facts f
-        JOIN fact_concepts fc ON fc.fact_id = f.id
-        JOIN fact_category_assignments a ON a.fact_id = f.id
-        WHERE           fc.concept_id IN (${conceptPlaceholders})
-          AND a.category_id IN (${categoryPlaceholders})
-        ORDER BY a.score DESC, f.updated_at DESC
-        LIMIT ?
-      `
-      )
-      .all(...concepts, ...categories, limit) as unknown as FactRow[]
-  }
-
-  searchFactsByConceptFrontierInCategories(
-    conceptIds: string[],
-    categoryIds: string[],
-    limit = 20
-  ): FactRow[] {
-    const concepts = [...new Set(conceptIds.map(id => normalizeConceptId(id)).filter(Boolean))]
-    const categories = [...new Set(categoryIds.map(id => id.trim()).filter(Boolean))]
-    if (concepts.length === 0) return []
-    if (categories.length === 0) return this.searchFactsByConceptFrontier(concepts, limit)
-    const conceptPlaceholders = concepts.map(() => '?').join(', ')
-    const categoryPlaceholders = categories.map(() => '?').join(', ')
-    return this.db
-      .prepare(
-        `
-        SELECT DISTINCT ${FACT_ROW_SELECT_F}
-        FROM facts f
-        JOIN (
-          SELECT
-            fc.fact_id,
-            COUNT(DISTINCT fc.concept_id) AS match_count
-          FROM fact_concepts fc
-          WHERE fc.concept_id IN (${conceptPlaceholders})
-          GROUP BY fc.fact_id
-        ) m ON m.fact_id = f.id
-        JOIN fact_category_assignments a ON a.fact_id = f.id
-        WHERE           a.category_id IN (${categoryPlaceholders})
-        ORDER BY a.score DESC, m.match_count DESC, f.confidence DESC, f.updated_at DESC
-        LIMIT ?
-      `
-      )
-      .all(...concepts, ...categories, limit) as unknown as FactRow[]
-  }
-
-  listUncategorizedFacts(): FactRow[] {
-    return this.db
-      .prepare(
-        `
-        SELECT f.*
-        FROM facts f
-        WHERE           NOT EXISTS (
-            SELECT 1
-            FROM fact_category_assignments a
-            WHERE a.fact_id = f.id
+        SELECT ref.id AS a, id.id AS b
+        FROM facts ref
+        JOIN facts id
+          ON id.predicate IN ('package_name_of', 'is_repo')
+          AND id.tombstoned_at IS NULL
+          AND id.git_repo IS NOT NULL
+          AND id.git_repo <> ref.git_repo
+          AND (
+            LOWER(ref.object) = LOWER(id.subject)
+            OR LOWER(ref.object) = LOWER(id.git_repo)
+            OR INSTR(LOWER(ref.object), LOWER(id.git_repo)) > 0
           )
-        ORDER BY f.updated_at DESC
-      `
-      )
-      .all() as unknown as FactRow[]
+        WHERE ref.predicate = 'references_service'
+          AND ref.tombstoned_at IS NULL
+          AND ref.git_repo IS NOT NULL
+      `,
+      now
+    )
+
+    return created
   }
 
-  countUncategorizedFacts(): number {
-    const row = this.db
-      .prepare(
-        `
-        SELECT COUNT(*) AS count
-        FROM facts f
-        WHERE           NOT EXISTS (
-            SELECT 1
-            FROM fact_category_assignments a
-            WHERE a.fact_id = f.id
-          )
-      `
-      )
-      .get() as { count: number }
-    return row.count
-  }
-
-  listFactCategoryStats(): Array<{ name: string; count: number }> {
+  /**
+   * Cross-repo links derived from the reconciliation edges, collapsed to repo→repo pairs.
+   * Used by retrieval to order repo "pools" (exhaust the landed repo, then walk the tree).
+   */
+  listCrossRepoLinks(): Array<{ fromRepo: string; toRepo: string; weight: number }> {
     return this.db
       .prepare(
         `
-        SELECT c.name AS name, COUNT(DISTINCT a.fact_id) AS count
-        FROM fact_categories c
-        LEFT JOIN fact_category_assignments a ON a.category_id = c.id
-        GROUP BY c.id, c.name
-        ORDER BY count DESC, c.name ASC
+        SELECT fa.git_repo AS fromRepo, fb.git_repo AS toRepo, MAX(e.weight) AS weight
+        FROM fact_edges e
+        JOIN facts fa ON fa.id = e.from_fact_id
+        JOIN facts fb ON fb.id = e.to_fact_id
+        WHERE e.edge_type IN ('depends_on_repo', 'cross_repo_symbol', 'references_repo')
+          AND fa.git_repo IS NOT NULL AND fb.git_repo IS NOT NULL
+          AND fa.git_repo <> fb.git_repo
+        GROUP BY fa.git_repo, fb.git_repo
       `
       )
-      .all() as Array<{ name: string; count: number }>
+      .all() as Array<{ fromRepo: string; toRepo: string; weight: number }>
+  }
+
+  /** Insert both directions of an edge for every (a, b) pair the SELECT yields. */
+  private insertBidirectionalEdges(
+    edgeType: string,
+    weight: number,
+    pairSelect: string,
+    now: string
+  ): number {
+    const fwd = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO fact_edges (from_fact_id, to_fact_id, edge_type, weight, created_at)
+         SELECT a, b, ?, ?, ? FROM (${pairSelect})`
+      )
+      .run(edgeType, weight, now)
+    const rev = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO fact_edges (from_fact_id, to_fact_id, edge_type, weight, created_at)
+         SELECT b, a, ?, ?, ? FROM (${pairSelect})`
+      )
+      .run(edgeType, weight, now)
+    return Number(fwd.changes) + Number(rev.changes)
+  }
+
+  /** Live fact counts grouped by originating git repo (NULL → '(unscoped)'). */
+  listRepoStats(): Array<{ repo: string; count: number }> {
+    return this.db
+      .prepare(
+        `SELECT COALESCE(git_repo, '(unscoped)') AS repo, COUNT(*) AS count
+         FROM facts WHERE tombstoned_at IS NULL
+         GROUP BY COALESCE(git_repo, '(unscoped)')
+         ORDER BY count DESC, repo ASC`
+      )
+      .all() as Array<{ repo: string; count: number }>
   }
 
   upsertDerivedDoc(input: DerivedDocUpsertInput): void {
@@ -1950,28 +1760,6 @@ function parseTagsJsonSafe(raw: string | null): string[] {
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
     return parsed.filter(tag => typeof tag === 'string') as string[]
-  } catch {
-    return []
-  }
-}
-
-function parseTermsJsonSafe(raw: string | null): string[] {
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter(term => typeof term === 'string') as string[]
-  } catch {
-    return []
-  }
-}
-
-function parseVectorJsonSafe(raw: string | null): number[] {
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter(value => typeof value === 'number') as number[]
   } catch {
     return []
   }
