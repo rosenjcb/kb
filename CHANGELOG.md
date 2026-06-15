@@ -1,5 +1,16 @@
 # kb
 
+## 0.5.0
+
+### Minor Changes
+
+- Make the per-directory `.kb` file a TOML document with a `[ignore]` section of
+  gitignore-style patterns. Ignored paths are excluded from both markdown and code
+  (AST) collection during `kb init` / `kb scan`. Adds a `kb ignore`
+  command (`init` / `add` / `list`) to scaffold and manage the file, and a passive
+  suggestion to create one after repeated `kb` runs in a directory without it.
+  Legacy plain-text `.kb` files (bare base name) are still read transparently.
+
 ## 0.4.1
 
 ### Patch Changes

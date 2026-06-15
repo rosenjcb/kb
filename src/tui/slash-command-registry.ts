@@ -24,18 +24,35 @@ export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
   // Top-level
   { path: ['query'], description: 'search the knowledge base', contexts: ['idle'] },
   { path: ['init'], description: 'build a knowledge base from this repo', contexts: ['idle'] },
-  { path: ['scan'], description: 'scan this repo into the active or selected KB base', contexts: ['idle'] },
+  {
+    path: ['scan'],
+    description: 'scan this repo into the active or selected KB base',
+    contexts: ['idle'],
+  },
+  {
+    path: ['ignore'],
+    description: 'manage the .kb project file (base + ignore patterns)',
+    contexts: ['idle'],
+  },
   { path: ['base'], description: 'manage KB bases (use, delete)', contexts: ['idle'] },
   { path: ['docs'], description: 'browse or generate KB documents', contexts: ['idle'] },
   { path: ['facts'], description: 'list, search, or show KB facts', contexts: ['idle'] },
   { path: ['graph'], description: 'inspect or edit the knowledge graph', contexts: ['idle'] },
   { path: ['publish'], description: 'publish docs to the external sink', contexts: ['idle'] },
   { path: ['sync'], description: 'install the latest published KB release', contexts: ['idle'] },
-  { path: ['uninstall'], description: 'remove the kb binary, Python env, and runtime', contexts: ['idle'] },
+  {
+    path: ['uninstall'],
+    description: 'remove the kb binary, Python env, and runtime',
+    contexts: ['idle'],
+  },
   { path: ['skills'], description: 'manage agent skills', contexts: ['idle'] },
   { path: ['config'], description: 'inspect or update config values', contexts: ['idle'] },
   { path: ['logs'], description: 'browse and compare run reports', contexts: ['idle'] },
-  { path: ['session'], description: 'show session stats (turns, tokens, facts, timing)', contexts: ['idle'] },
+  {
+    path: ['session'],
+    description: 'show session stats (turns, tokens, facts, timing)',
+    contexts: ['idle'],
+  },
   { path: ['help'], description: 'show available commands', contexts: ['idle'] },
   { path: ['clear'], description: 'clear the visible session history', contexts: ['idle'] },
   { path: ['exit'], description: 'quit kb', contexts: 'always' },
@@ -43,7 +60,11 @@ export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
   // docs subcommands
   { path: ['docs', 'list'], description: 'list KB documents', contexts: ['idle'] },
   { path: ['docs', 'view'], description: 'view a KB document by id', contexts: ['idle'] },
-  { path: ['docs', 'generate'], description: 'guided document draft (questionnaire + review)', contexts: ['idle'] },
+  {
+    path: ['docs', 'generate'],
+    description: 'guided document draft (questionnaire + review)',
+    contexts: ['idle'],
+  },
   { path: ['docs', 'rename'], description: 'rename a KB document', contexts: ['idle'] },
   { path: ['docs', 'delete'], description: 'delete a KB document', contexts: ['idle'] },
 
@@ -51,6 +72,23 @@ export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
   { path: ['facts', 'list'], description: 'list KB facts', contexts: ['idle'] },
   { path: ['facts', 'search'], description: 'search KB facts', contexts: ['idle'] },
   { path: ['facts', 'show'], description: 'show a KB fact by id or text', contexts: ['idle'] },
+
+  // ignore subcommands
+  {
+    path: ['ignore', 'init'],
+    description: 'create a .kb file seeded with default ignore patterns',
+    contexts: ['idle'],
+  },
+  {
+    path: ['ignore', 'add'],
+    description: 'add a gitignore-style pattern to the .kb file',
+    contexts: ['idle'],
+  },
+  {
+    path: ['ignore', 'list'],
+    description: 'show the active .kb file and ignore patterns',
+    contexts: ['idle'],
+  },
 
   // base subcommands
   { path: ['base', 'use'], description: 'switch active KB base', contexts: ['idle'] },
@@ -66,11 +104,27 @@ export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
   { path: ['skills', 'uninstall'], description: 'uninstall an agent skill', contexts: ['idle'] },
 
   // Flow-local commands
-  { path: ['skip'], description: 'skip the current question', contexts: ['docs-generate-question', 'init-question'] },
-  { path: ['complete'], description: 'finish adding items', contexts: ['docs-generate-question', 'init-question'] },
+  {
+    path: ['skip'],
+    description: 'skip the current question',
+    contexts: ['docs-generate-question', 'init-question'],
+  },
+  {
+    path: ['complete'],
+    description: 'finish adding items',
+    contexts: ['docs-generate-question', 'init-question'],
+  },
   { path: ['cancel'], description: 'cancel the current flow', contexts: 'always' },
-  { path: ['accept'], description: 'accept list or draft', contexts: ['docs-generate-review', 'named-list-confirm'] },
-  { path: ['reject'], description: 'reject and start over', contexts: ['docs-generate-review', 'named-list-confirm'] },
+  {
+    path: ['accept'],
+    description: 'accept list or draft',
+    contexts: ['docs-generate-review', 'named-list-confirm'],
+  },
+  {
+    path: ['reject'],
+    description: 'reject and start over',
+    contexts: ['docs-generate-review', 'named-list-confirm'],
+  },
 ]
 
 function specToSlashCommand(spec: SlashCommandSpec): SlashCommand {
@@ -150,9 +204,7 @@ export function resolveSlashSuggestions(
 }
 
 export function getSlashCommandsForContext(context: SlashInputContext = 'idle'): SlashCommand[] {
-  return SLASH_COMMAND_REGISTRY.filter(
-    spec => spec.path.length === 1 && isEligible(spec, context)
-  )
+  return SLASH_COMMAND_REGISTRY.filter(spec => spec.path.length === 1 && isEligible(spec, context))
     .map(specToSlashCommand)
     .sort((a, b) => a.command.localeCompare(b.command))
 }

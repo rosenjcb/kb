@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { collectSourceFiles } from '../../src/cli/init-cli'
+import { createIgnoreMatcher } from '../../src/cli/kb-file'
 
 let tempDir: string
 
@@ -60,6 +61,20 @@ describe('collectSourceFiles', () => {
 
     expect(Object.keys(result).some(k => k.includes('node_modules'))).toBe(false)
     expect(result['README.md']).toBeDefined()
+  })
+
+  it('applies the .kb ignore matcher to files and directories', async () => {
+    await mkdir(path.join(tempDir, 'drafts'), { recursive: true })
+    await writeFile(path.join(tempDir, 'drafts', 'wip.md'), '# WIP', 'utf8')
+    await writeFile(path.join(tempDir, 'scratch.md'), '# Scratch', 'utf8')
+    await writeFile(path.join(tempDir, 'README.md'), '# Root', 'utf8')
+
+    const ignore = createIgnoreMatcher(['drafts/', 'scratch.md'])
+    const result = await collectSourceFiles(tempDir, undefined, ignore)
+
+    expect(result['README.md']).toBeDefined()
+    expect(result['drafts/wip.md']).toBeUndefined()
+    expect(result['scratch.md']).toBeUndefined()
   })
 
   it('explores sibling directories at the same depth', async () => {

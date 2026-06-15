@@ -372,17 +372,34 @@ describe('writeKbFile', () => {
     await rm(tempDir, { recursive: true, force: true })
   })
 
-  it('writes a .kb file containing the base name', async () => {
+  it('writes a .kb file that resolves to the base name', async () => {
     await writeKbFile(tempDir, 'mybase')
-    const contents = await readFile(path.join(tempDir, '.kb'), 'utf8')
-    expect(contents.trim()).toBe('mybase')
+    expect(await findKbFile(tempDir)).toBe('mybase')
   })
 
-  it('overwrites an existing .kb file', async () => {
-    await writeKbFile(tempDir, 'first')
+  it('writes the base as TOML', async () => {
+    await writeKbFile(tempDir, 'mybase')
+    const contents = await readFile(path.join(tempDir, '.kb'), 'utf8')
+    expect(contents).toContain('base = "mybase"')
+  })
+
+  it('updates the base while preserving existing ignore patterns', async () => {
+    await writeFile(
+      path.join(tempDir, '.kb'),
+      'base = "first"\n\n[ignore]\npatterns = ["*.log", "dist/"]\n',
+      'utf8'
+    )
     await writeKbFile(tempDir, 'second')
     const contents = await readFile(path.join(tempDir, '.kb'), 'utf8')
-    expect(contents.trim()).toBe('second')
+    expect(contents).toContain('base = "second"')
+    expect(contents).toContain('"*.log"')
+    expect(contents).toContain('"dist/"')
+    expect(await findKbFile(tempDir)).toBe('second')
+  })
+
+  it('reads legacy plain-text .kb files', async () => {
+    await writeFile(path.join(tempDir, '.kb'), 'legacy-base\n', 'utf8')
+    expect(await findKbFile(tempDir)).toBe('legacy-base')
   })
 })
 

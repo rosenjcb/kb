@@ -7,6 +7,8 @@
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
+import { ensurePythonEnv, globalVenvPython } from '../core/fact-categories'
 import {
   ReportWriter,
   RunCollector,
@@ -14,12 +16,14 @@ import {
   defaultLogsDir,
   estimateCost,
 } from '../core/telemetry'
-import { DatabaseSync } from 'node:sqlite'
 import { expandQueryWithGraph, kbIndexDbPath } from '../tools/graph-query-expansion'
+import { llmExtractQueryEntities, rerankByGraphConnectivity } from '../tools/graph-rag-reranker'
 import { formatGraphRelationBlockFromQuestion } from '../tools/graph-relation-context'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry'
-import { KB_VERSION } from '../version.js'
 import { createPrinter, createReasoningProgressSink } from '../ui/printer'
+import { KB_VERSION } from '../version.js'
+import { maybeAutoSync } from './auto-sync'
+import { writeBaseMeta } from './base-meta'
 import {
   deleteBase,
   ensureOperationalBaseDir,
@@ -38,10 +42,8 @@ import {
   writeDefaultBase,
   writeSessionBase,
 } from './base-selection'
-import {
-  CLI_ERROR_NO_KB_BASE,
-  formatPrerequisiteError,
-} from './cli-prerequisites'
+import { CLI_ERROR_NO_KB_BASE, formatPrerequisiteError } from './cli-prerequisites'
+import { initCancelledNotice, scanCancelledNotice } from './cli-prerequisites'
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from './cmd-ref'
 import { printConfigHelp, runConfigCommand } from './config-cli'
 import {
@@ -64,26 +66,22 @@ import {
   printDocsRenameHelp,
   runDocsRename,
 } from './docs-rename-cli'
-import { ensurePythonEnv, globalVenvPython } from '../core/fact-categories'
 import { FactsCommandError, runFactsCommand } from './facts-cli'
+import { baseNameFromGitUrl, cloneRepo, getHeadSha } from './git-sync'
 import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
-import { parseInitCommand, parseScanCommand, runKbInit, isInitCancelledError } from './init-cli'
-import { initCancelledNotice, scanCancelledNotice } from './cli-prerequisites'
+import { IgnoreCommandError, printIgnoreHelp, runIgnoreCommand } from './ignore-cli'
+import { isInitCancelledError, parseInitCommand, parseScanCommand, runKbInit } from './init-cli'
 import {
+  type ReadDocumentsResultData,
+  enrichReadDocumentsAnswerWithLLM,
+  getIntentQuestion,
   isIntentCommand,
   isReadFactsResult,
   parseIntentCommand,
   printIntentHelp,
   printIntentResult,
-  enrichReadDocumentsAnswerWithLLM,
-  getIntentQuestion,
   rewriteIntentInputWithSessionContext,
-  type ReadDocumentsResultData,
 } from './intent-cli'
-import {
-  llmExtractQueryEntities,
-  rerankByGraphConnectivity,
-} from '../tools/graph-rag-reranker'
 import {
   applyConfigToEnv,
   createLLMProviderFromConfig,
@@ -92,6 +90,7 @@ import {
   resolveFactRetrievalMethod,
 } from './kb-config'
 import type { KbConfig } from './kb-config'
+import { recordKbDirRun } from './kb-file-usage'
 import { printLogsHelp, runLogsCommand } from './logs-cli'
 import { parsePublishCommand, runPublishCommand } from './publish-cli'
 import { parseJekyllPublishOptions, runJekyllPublish } from './publish-jekyll'
@@ -106,9 +105,6 @@ import {
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
-import { maybeAutoSync } from './auto-sync'
-import { writeBaseMeta } from './base-meta'
-import { baseNameFromGitUrl, cloneRepo, getHeadSha } from './git-sync'
 import { runUninstallCommand } from './uninstall-cli'
 import {
   ViewCommandError,
@@ -177,6 +173,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  config      Inspect or update persistent config',
     '  init        Build a KB from the current repo',
     '  scan        Refresh a KB with content from the current repo',
+    '  ignore      Manage the .kb project file (base + ignore patterns)',
     '  graph       Inspect or edit the knowledge graph',
     '  docs        Browse KB documents',
     '  facts       List, search, or show KB facts',
@@ -749,6 +746,22 @@ export async function runMainWithOutput(
     return
   }
 
+  if (firstArg === 'ignore') {
+    try {
+      out.log(await runIgnoreCommand(args.slice(1), { mode }))
+    } catch (error) {
+      if (error instanceof IgnoreCommandError) {
+        out.error(error.message)
+        return
+      }
+      const message = error instanceof Error ? error.message : String(error)
+      out.error(`❌ ${message}`)
+      out.error('')
+      out.log(printIgnoreHelp(mode))
+    }
+    return
+  }
+
   if (firstArg === 'logs') {
     try {
       out.log(await runLogsCommand(args.slice(1)))
@@ -861,7 +874,10 @@ export async function runMainWithOutput(
     const printer = createPrinter(out, mode)
     try {
       let parsed = parseIntentCommand(args)
-      if (parsed.envelope.intent === 'query_truth' && resolveFactRetrievalMethod(config) === 'all_facts') {
+      if (
+        parsed.envelope.intent === 'query_truth' &&
+        resolveFactRetrievalMethod(config) === 'all_facts'
+      ) {
         parsed = {
           ...parsed,
           allFacts: true,
@@ -1112,8 +1128,10 @@ async function main() {
     if (inferred.notice) startupNotices.push(inferred.notice)
 
     for (const r of skillResults) {
-      if (r.action === 'installed') startupNotices.push(`✓ KB skill ${r.skill} installed for ${r.agent}`)
-      else if (r.action === 'updated') startupNotices.push(`↑ KB skill ${r.skill} updated for ${r.agent}`)
+      if (r.action === 'installed')
+        startupNotices.push(`✓ KB skill ${r.skill} installed for ${r.agent}`)
+      else if (r.action === 'updated')
+        startupNotices.push(`↑ KB skill ${r.skill} updated for ${r.agent}`)
     }
 
     const isFreshInstall = !existsSync(globalVenvPython())
@@ -1158,6 +1176,9 @@ async function main() {
       // No base configured yet – fine
     }
 
+    const kbFileTip = await recordKbDirRun(process.cwd())
+    if (kbFileTip) startupNotices.push(kbFileTip)
+
     const { launchTui } = await import('../tui/index.js')
     await launchTui(kbConfig, { startupNotices })
     return
@@ -1187,6 +1208,17 @@ async function main() {
     console.error(inferred.notice)
     console.error('')
   }
+
+  // Passively suggest scaffolding a `.kb` file once a directory is in regular
+  // use. Skip when the user is already managing it via `kb ignore`.
+  if (!machineJsonStdout && args[0] !== 'ignore') {
+    const kbFileTip = await recordKbDirRun(process.cwd())
+    if (kbFileTip) {
+      console.log(kbFileTip)
+      console.log('')
+    }
+  }
+
   await runMainWithOutput(args, defaultCliOutput, kbConfig)
 }
 

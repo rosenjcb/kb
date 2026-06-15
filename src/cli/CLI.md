@@ -43,6 +43,12 @@ Code facts are **AST-only**. Extensions in `TREE_SITTER_AST_EXTENSIONS` (from `t
 
 **Previously LLM-fallback (removed):** Swift (`.swift`), Kotlin (`.kt`, `.kts`) — see [`../core/INIT.md`](../core/INIT.md) §Removed LLM code-facts fallback.
 
+## `.kb` project file & ignore patterns
+
+The per-directory `.kb` marker is a **TOML** file (`kb-file.ts`): `base = "<name>"` plus an optional `[ignore].patterns` array of gitignore-style globs. Legacy plain-text `.kb` files (bare base name) still parse via `parseKbFileContents`. `findKbFile`/`writeKbFile` in `base-selection.ts` delegate here; `writeKbFile` preserves existing ignore patterns when re-stamping the base on init/scan.
+
+`loadKbIgnoreMatcher(scanDir)` builds a matcher (`createIgnoreMatcher`) that `collectSourceFiles` (markdown) and `collectAstFileHashes` (code) apply during `read-inputs` / `code-index`, so ignored paths never reach indexing. The `kb ignore` command (`ignore-cli.ts`) scaffolds (`init`), appends (`add`), and shows (`list`) patterns. After a few `kb` runs in a directory with no `.kb`, `recordKbDirRun` (`kb-file-usage.ts`, state in `~/.kb/dir-usage.json`) surfaces a one-time suggestion to run `kb ignore init`.
+
 ## Shared retrieval
 
 **Single path for facts retrieval:** `runQueryTruthRetrieval()` → `runIntentLoop()` → `DefaultIntentRouter` → `read_facts`.

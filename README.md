@@ -194,6 +194,9 @@ kb config set <key> <value>
 kb config unset <key>
 kb init [--base <name>] [--detach | --resume] [--stop-after <cycle>]
 kb scan [--base <name>] [--non-interactive]
+kb ignore init                 — scaffold a .kb project file with default ignore patterns
+kb ignore add <pattern...>     — add gitignore-style patterns excluded from init/scan
+kb ignore list                 — show the active .kb file and its ignore patterns
 kb facts list|search|show ...
 kb graph ...
 kb logs list|show|compare ...
@@ -215,6 +218,7 @@ kb publish <notion|jekyll> [options]
 | `/help` | List all in-session commands |
 | `/docs generate "<prompt>"` | Guided doc-draft wizard |
 | `/init [args]` / `/scan [args]` | Build or refresh the KB without leaving the session |
+| `/ignore init\|add\|list` | Manage the `.kb` project file (base + ignore patterns) |
 | `/session` | Show turn-by-turn token, cost, and timing stats |
 
 **How chat retrieval works:**
@@ -222,6 +226,39 @@ kb publish <notion|jekyll> [options]
 - The LLM can still call the `query` tool mid-answer to fetch additional facts, but default exploration depth no longer depends on the model volunteering more searches.
 - Facts retrieved in earlier turns are excluded from subsequent retrieval — they remain available in the LLM's conversation history. Use `/clear` for a completely fresh start.
 - If a follow-up introduces 2+ new topical terms (e.g. "What about AST? How do I add Python support?"), those new terms drive retrieval instead of being appended to the previous topic.
+
+### 📌 The `.kb` project file
+
+Each repo (or subdirectory) can have a `.kb` file that pins the directory to a KB
+base and controls what `kb init` / `kb scan` pick up. It's a small **TOML** file:
+
+```toml
+base = "my-project"
+
+[ignore]
+# gitignore-style globs — anything matching is skipped by init/scan
+patterns = ["node_modules/", "dist/", "*.log", "drafts/**"]
+```
+
+- **`base`** maps this directory to a KB base. A `.kb` file found in the current
+  directory (or any ancestor) always takes priority over the active/default base.
+  `kb init` writes this for you and preserves any existing `[ignore]` patterns.
+- **`[ignore].patterns`** are gitignore-style globs (`*`, `**`, `?`, leading `/`
+  to anchor, trailing `/` for directories, `!` to negate). Matching files and
+  directories are excluded from both markdown source collection and code (AST)
+  indexing during `kb init` and `kb scan`.
+
+Scaffold one with sensible defaults and manage it without hand-editing:
+
+```bash
+kb ignore init                 # create .kb here, seeded with default patterns
+kb ignore add "*.tmp" drafts/  # append patterns (updates the governing .kb file)
+kb ignore list                 # show the active .kb file and its patterns
+```
+
+Legacy `.kb` files that contain only a bare base name are still read transparently.
+After you run `kb` a few times in a directory without a `.kb` file, KB will
+suggest creating one.
 
 ### 🔄 Keeping `kb` up to date
 

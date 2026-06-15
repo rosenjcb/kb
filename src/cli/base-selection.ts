@@ -1,9 +1,10 @@
-import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { CLI_ERROR_NO_KB_BASE } from './cli-prerequisites'
 import { type CmdMode, cmd } from './cmd-ref'
 import { type KbConfig, readKbConfig, writeKbConfig } from './kb-config'
+import { findKbFileInfo, readKbFileAt, writeKbFileAt } from './kb-file'
 
 export interface BaseSelectionConfig {
   activeBase?: string
@@ -157,25 +158,17 @@ export interface BaseInfo {
 
 /** Walk from startDir up to the filesystem root looking for a `.kb` file. Returns the base name inside or null. */
 export async function findKbFile(startDir: string): Promise<string | null> {
-  let dir = path.resolve(startDir)
-  while (true) {
-    const candidate = path.join(dir, '.kb')
-    try {
-      const contents = await readFile(candidate, 'utf8')
-      const baseName = contents.trim()
-      if (baseName) return baseName
-    } catch {
-      // not found here, keep walking
-    }
-    const parent = path.dirname(dir)
-    if (parent === dir) return null
-    dir = parent
-  }
+  const found = await findKbFileInfo(startDir)
+  return found?.base ?? null
 }
 
-/** Write a `.kb` file in the given directory containing the base name. */
+/**
+ * Write the `.kb` file in `dir` so it maps to `baseName`. Any existing
+ * `[ignore]` patterns are preserved.
+ */
 export async function writeKbFile(dir: string, baseName: string): Promise<void> {
-  await writeFile(path.join(dir, '.kb'), `${baseName}\n`, 'utf8')
+  const existing = await readKbFileAt(dir)
+  await writeKbFileAt(dir, { base: baseName, ignore: existing?.ignore ?? [] })
 }
 
 /** List all initialized bases found under `~/.kb/sessions/`. */

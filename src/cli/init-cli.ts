@@ -13,40 +13,38 @@
 
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { writeBaseMeta } from './base-meta'
-import { cloneRepo, getHeadSha } from './git-sync'
-import { TsMorphIndexer, tombstoneStaleAstFacts } from '../tools/code-graph-indexer'
-import {
-  isTreeSitterIndexablePath,
-  TreeSitterIndexer,
-  TREE_SITTER_SKIP_DIRS,
-} from '../tools/tree-sitter-indexer'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import readline from 'node:readline'
 import dayjs from 'dayjs'
+import { tombstoneRemovedDocSourceFiles } from '../core/doc-fact-writer'
+import { DOC_TYPES } from '../core/doc-taxonomy'
 import {
+  type FactCategoryDefinitionInput,
   assignFactsToCategoryIds,
   slugifyFactCategoryName,
-  type FactCategoryDefinitionInput,
 } from '../core/fact-categories'
-import { promptNamedListInterview } from './named-list-interview'
-import { DOC_TYPES } from '../core/doc-taxonomy'
-import { tombstoneRemovedDocSourceFiles } from '../core/doc-fact-writer'
 import {
-  ingestSourceMarkdownFilesAsFacts,
   type ScanFactIngestProgress,
+  ingestSourceMarkdownFilesAsFacts,
 } from '../core/scan-fact-ingest'
 import type { RunCollector } from '../core/telemetry'
 import { TokenCountingProvider, estimateCost } from '../core/telemetry'
 import type { LLMProvider } from '../core/types'
+import { TsMorphIndexer, tombstoneStaleAstFacts } from '../tools/code-graph-indexer'
 import type { WriteDocumentInput } from '../tools/document-writer'
 import {
-  runRescanApplyOrchestrator,
   type RescanApplyOrchestratorProgress,
+  runRescanApplyOrchestrator,
 } from '../tools/rescan-apply-orchestrator'
 import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
+import {
+  TREE_SITTER_SKIP_DIRS,
+  TreeSitterIndexer,
+  isTreeSitterIndexablePath,
+} from '../tools/tree-sitter-indexer'
+import { writeBaseMeta } from './base-meta'
 import {
   ensureOperationalBaseDir,
   findKbFile,
@@ -55,31 +53,29 @@ import {
   writeKbFile,
   writeSessionBase,
 } from './base-selection'
+import { cloneRepo, getHeadSha } from './git-sync'
+import { loadKbIgnoreMatcher } from './kb-file'
+import { promptNamedListInterview } from './named-list-interview'
+
+/** Predicate that returns true when a path (relative to the scan root) is excluded by the `.kb` ignore list. */
+type IgnoreMatcher = (relativePath: string) => boolean
+import type { SlashInputContext } from '../tui/slash-command-registry.js'
 import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from './cli-prerequisites'
-import {
-  buildSourceFileHashes,
-  diffChangedSourceFiles,
-  readSourceFilesManifest,
-  writeSourceFilesManifest,
-} from './init-source-files-manifest'
 import {
   diffChangedAstFiles,
   readAstFilesManifest,
   writeAstFilesManifest,
 } from './init-ast-files-manifest'
 import {
-  assessTopicCoverage,
-  summariseCoverage,
-} from './init-topic-coverage'
+  buildSourceFileHashes,
+  diffChangedSourceFiles,
+  readSourceFilesManifest,
+  writeSourceFilesManifest,
+} from './init-source-files-manifest'
+import { assessTopicCoverage, summariseCoverage } from './init-topic-coverage'
 import { createLLMProviderFromConfig, readKbConfig } from './kb-config'
-import type { SlashInputContext } from '../tui/slash-command-registry.js'
 
-export type InitCycle =
-  | 'read-inputs'
-  | 'code-index'
-  | 'document-facts'
-  | 'import-docs'
-  | 'write'
+export type InitCycle = 'read-inputs' | 'code-index' | 'document-facts' | 'import-docs' | 'write'
 export type InitTopic =
   | 'project-overview'
   | 'install-setup'
@@ -331,8 +327,7 @@ function clipProgressItem(value: string | undefined, max = 64): string | undefin
 
 function formatReadInputsProgress(snapshot: ReadInputsCollectionProgress): string {
   const current = clipProgressItem(snapshot.currentItem)
-  const label =
-    snapshot.stage === 'source-files' ? 'docs' : 'code'
+  const label = snapshot.stage === 'source-files' ? 'docs' : 'code'
   return `${label} ${snapshot.itemsCompleted} collected${current ? ` | ${current}` : ''}`
 }
 
@@ -457,9 +452,7 @@ export function parseInitCommand(args: string[]): InitOptions {
   const gitBranch = readOption(args, '--branch') ?? undefined
 
   const rawStopAfter = readOption(args, '--stop-after')
-  const stopAfter = rawStopAfter
-    ? (normalizeStoredCycleId(rawStopAfter) ?? undefined)
-    : undefined
+  const stopAfter = rawStopAfter ? (normalizeStoredCycleId(rawStopAfter) ?? undefined) : undefined
   const validCycles: InitCycle[] = [
     'read-inputs',
     'code-index',
@@ -562,7 +555,11 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
   // Collect categories upfront so the user isn't interrupted mid-scan.
-  const preCollectedCategories = await collectUpfrontCategories(options, questionIO, resumedCheckpoint)
+  const preCollectedCategories = await collectUpfrontCategories(
+    options,
+    questionIO,
+    resumedCheckpoint
+  )
 
   const progress = new InitProgressReporter(6, progressPrefix(options), options.progressSink)
   const rawProvider = options.provider ?? (await resolveProvider())
@@ -649,7 +646,10 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.start('code-index', 'indexing code graph (AST)…')
       try {
         const dbPath = path.join(baseDir, '.kb-index.sqlite')
-        const currentAstFiles = await collectAstFileHashes(scanDir)
+        const currentAstFiles = await collectAstFileHashes(
+          scanDir,
+          await loadKbIgnoreMatcher(scanDir)
+        )
         const totalAstFileCount = Object.keys(currentAstFiles).length
         const candidateAstFiles = options.rescan
           ? await selectChangedAstFiles(baseDir, currentAstFiles)
@@ -750,7 +750,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           )
         }
 
-
         await persist({ completedCycles: ['code-index'] })
         progress.finish('code-index', 'done')
       } catch (err) {
@@ -775,7 +774,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         const endScanFacts = makeCycleTimer('document-facts', provider, options.collector, counter)
         if (options.rescan) {
           const manifest = await readSourceFilesManifest(baseDir)
-          const purgeIndexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+          const purgeIndexer = new SqliteKbIndexer({
+            dbPath: path.join(baseDir, '.kb-index.sqlite'),
+          })
           try {
             const purged = tombstoneRemovedDocSourceFiles(
               purgeIndexer,
@@ -1013,6 +1014,7 @@ async function runReadInputsCycle(options: {
   topicCoverage: TopicCoverageAssessment[]
   paused?: boolean
 }> {
+  const ignore = await loadKbIgnoreMatcher(options.cwd)
   const sourceFiles = options.rescan
     ? await collectRescanSourceFiles({
         cwd: options.cwd,
@@ -1020,8 +1022,9 @@ async function runReadInputsCycle(options: {
         baseName: options.baseName,
         questionIO: options.questionIO,
         onProgress: options.onProgress,
+        ignore,
       })
-    : await collectSourceFiles(options.cwd, options.onProgress)
+    : await collectSourceFiles(options.cwd, options.onProgress, ignore)
   const context: InitContext = {
     sourceFiles,
     userAnswers: [],
@@ -1035,7 +1038,8 @@ async function runReadInputsCycle(options: {
 
 export async function collectSourceFiles(
   cwd: string,
-  onProgress?: (snapshot: ReadInputsCollectionProgress) => void
+  onProgress?: (snapshot: ReadInputsCollectionProgress) => void,
+  ignore?: IgnoreMatcher
 ): Promise<Record<string, string>> {
   const sourceFiles: Record<string, string> = {}
   const seenPaths = new Set<string>()
@@ -1043,6 +1047,7 @@ export async function collectSourceFiles(
   const addSourceFile = async (relativePath: string): Promise<boolean> => {
     const normalizedKey = relativePath.replace(/\\/g, '/').toLowerCase()
     if (seenPaths.has(normalizedKey)) return false
+    if (ignore?.(relativePath.replace(/\\/g, '/'))) return false
     const fullPath = path.join(cwd, relativePath)
     if (!existsSync(fullPath)) return false
     try {
@@ -1081,13 +1086,14 @@ export async function collectSourceFiles(
       if (entry.name.startsWith('.')) continue
 
       const absPath = path.join(absDir, entry.name)
+      const relPath = path.relative(cwd, absPath).replace(/\\/g, '/')
       if (entry.isDir) {
         if (MARKDOWN_SOURCE_EXCLUDE_DIRS.has(entry.name)) continue
+        if (ignore?.(relPath)) continue
         await walkMarkdownTree(absPath)
       } else {
         const ext = path.extname(entry.name).toLowerCase()
         if (!MARKDOWN_TEXT_EXTENSIONS.has(ext)) continue
-        const relPath = path.relative(cwd, absPath)
         await addSourceFile(relPath)
       }
     }
@@ -1108,15 +1114,14 @@ async function collectRescanSourceFiles(options: {
   baseName: string
   questionIO: InitQuestionIO
   onProgress?: (snapshot: ReadInputsCollectionProgress) => void
+  ignore?: IgnoreMatcher
 }): Promise<Record<string, string>> {
   void options.baseDir
   void options.baseName
-  const allSourceFiles = await collectSourceFiles(options.cwd, options.onProgress)
+  const allSourceFiles = await collectSourceFiles(options.cwd, options.onProgress, options.ignore)
   const n = Object.keys(allSourceFiles).length
   if (n === 0) {
-    options.questionIO.write?.(
-      '[kb scan] found no markdown sources under the working directory.\n'
-    )
+    options.questionIO.write?.('[kb scan] found no markdown sources under the working directory.\n')
   }
   return allSourceFiles
 }
@@ -1125,7 +1130,10 @@ function hashFileBuffer(contents: Buffer): string {
   return createHash('sha256').update(contents).digest('hex')
 }
 
-async function collectAstFileHashes(cwd: string): Promise<Record<string, string>> {
+async function collectAstFileHashes(
+  cwd: string,
+  ignore?: IgnoreMatcher
+): Promise<Record<string, string>> {
   const astFiles: Record<string, string> = {}
 
   async function walk(absDir: string): Promise<void> {
@@ -1140,12 +1148,14 @@ async function collectAstFileHashes(cwd: string): Promise<Record<string, string>
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue
       const absPath = path.join(absDir, entry.name)
+      const rel = path.relative(cwd, absPath).replace(/\\/g, '/')
       if (entry.isDir) {
         if (TREE_SITTER_SKIP_DIRS.has(entry.name)) continue
+        if (ignore?.(rel)) continue
         await walk(absPath)
         continue
       }
-      const rel = path.relative(cwd, absPath).replace(/\\/g, '/')
+      if (ignore?.(rel)) continue
       if (!isTreeSitterIndexablePath(rel)) continue
       try {
         const contents = await readFile(absPath)
@@ -1159,7 +1169,6 @@ async function collectAstFileHashes(cwd: string): Promise<Record<string, string>
   await walk(cwd)
   return astFiles
 }
-
 
 async function writeDocs(
   docs: CandidateDoc[],
@@ -1240,9 +1249,7 @@ async function resolveInitBaseName(
     // No .kb file — show a list picker so the user explicitly chooses
     const bases = await listAllBases()
     if (bases.length === 0) {
-      throw new Error(
-        'No initialized bases found. Run `kb init --base <name>` first.'
-      )
+      throw new Error('No initialized bases found. Run `kb init --base <name>` first.')
     }
     if (bases.length === 1) {
       questionIO.write?.(`[kb scan] Using base: ${bases[0].name}\n`)
@@ -1257,10 +1264,12 @@ async function resolveInitBaseName(
     }
     questionIO.write?.('\n')
 
-    const answer = (await questionIO.askQuestion(
-      '  > Base name: ',
-      { slashContext: 'scan-base-picker', suggestions: bases.map(b => b.name) }
-    )).trim()
+    const answer = (
+      await questionIO.askQuestion('  > Base name: ', {
+        slashContext: 'scan-base-picker',
+        suggestions: bases.map(b => b.name),
+      })
+    ).trim()
 
     if (answer === '/cancel') throw new InitCancelledError()
 
@@ -1272,7 +1281,7 @@ async function resolveInitBaseName(
   }
 
   const kbFileBase = await findKbFile(cwd)
-  const suggestedBase = kbFileBase ?? await resolveSuggestedInitBase(cwd)
+  const suggestedBase = kbFileBase ?? (await resolveSuggestedInitBase(cwd))
 
   if (options.nonInteractive) {
     throw new Error(CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE)
@@ -1710,7 +1719,6 @@ async function inferAndAssignProjectCategories(input: {
     indexer.close()
   }
 }
-
 
 async function promptUserCategories(
   questionIO: InitQuestionIO,
