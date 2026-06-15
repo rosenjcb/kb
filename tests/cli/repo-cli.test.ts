@@ -5,13 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../src/cli/git-sync', () => ({
   cloneRepo: vi.fn(async () => {}),
-  getHeadSha: vi.fn(async () => 'headsha000'),
   getCurrentBranch: vi.fn(async () => 'main'),
+  getHeadSha: vi.fn(async () => 'headsha000'),
 }))
 vi.mock('../../src/cli/init-cli', () => ({
   runKbInit: vi.fn(async () => ({ status: 'accepted', base: 'demo', completedCycles: [] })),
   // repo-cli imports parseGitTarget too — provide the real-ish behavior.
-  parseGitTarget: (raw: string, def: string) => {
+  parseGitTarget: (raw: string, def?: string) => {
     const i = raw.lastIndexOf('#')
     return i > 0 ? { url: raw.slice(0, i), branch: raw.slice(i + 1) || def } : { url: raw, branch: def }
   },

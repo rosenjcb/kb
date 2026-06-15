@@ -280,6 +280,7 @@ class InitProgressReporter {
   private static readonly THROTTLE_MS = 120
   private readonly sink: (line: string) => void
   private readonly ttyMode: boolean
+  private repoSlug?: string
 
   constructor(
     private total: number,
@@ -293,6 +294,10 @@ class InitProgressReporter {
       this.sink = line => process.stderr.write(line)
       this.ttyMode = process.stderr.isTTY === true
     }
+  }
+
+  setRepo(slug: string | undefined) {
+    this.repoSlug = slug
   }
 
   start(label: string, detail?: string) {
@@ -320,7 +325,10 @@ class InitProgressReporter {
     const filled = Math.round((this.completed / Math.max(this.total, 1)) * width)
     const bar = `${'='.repeat(filled)}${'-'.repeat(Math.max(width - filled, 0))}`
     const suffix = detail ? ` ${detail}` : ''
-    const content = `[${this.prefix}] [${bar}] ${this.completed}/${this.total} ${label}${suffix}`
+    const core = `[${bar}] ${this.completed}/${this.total} ${label}${suffix}`
+    const content = this.repoSlug
+      ? `[${this.prefix}] @ ${this.repoSlug} │ ${core}`
+      : `[${this.prefix}] ${core}`
     if (inPlace && this.ttyMode) {
       this.sink(`\r\x1b[K${content}`)
     } else {
@@ -496,7 +504,8 @@ export function parseInitCommand(args: string[]): InitOptions {
 export function parseGitTarget(raw: string, defaultBranch?: string): GitTarget {
   const hashIdx = raw.lastIndexOf('#')
   if (hashIdx > 0) {
-    return { url: raw.slice(0, hashIdx), branch: raw.slice(hashIdx + 1) || defaultBranch }
+    const explicit = raw.slice(hashIdx + 1)
+    return { url: raw.slice(0, hashIdx), branch: explicit || defaultBranch }
   }
   return { url: raw, branch: defaultBranch }
 }
@@ -578,10 +587,11 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         await cloneRepo(target.url, repoDir, target.branch)
       }
       await mkdir(repoDir, { recursive: true })
+      const gitBranch = target.branch ?? (await getCurrentBranch(repoDir))
       repoMetas.push({
         gitUrl: target.url,
         // Record the branch actually checked out (the remote default when none was pinned).
-        gitBranch: target.branch ?? (await getCurrentBranch(repoDir)),
+        gitBranch,
         slug,
         dir,
         lastSyncedSha: await getHeadSha(repoDir),
@@ -597,6 +607,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
   const progress = new InitProgressReporter(6, progressPrefix(options), options.progressSink)
+  if (options.gitRepo ?? gitRepoSlug) {
+    progress.setRepo(options.gitRepo ?? gitRepoSlug)
+  }
   const rawProvider = options.provider ?? (await resolveProvider())
   const counter =
     rawProvider && options.collector ? new TokenCountingProvider(rawProvider) : undefined
@@ -1000,7 +1013,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     // facts and write no meta — the primary run owns meta.json below.)
     if (!options.rescan && additionalRepos.length > 0) {
       for (const repo of additionalRepos) {
-        options.progressSink?.(`[kb init] Indexing additional repo ${repo.slug}…`)
         await runKbInit({
           base,
           cwd: path.join(baseDir, repo.dir),
@@ -1376,12 +1388,12 @@ async function resolveGitTargetsForInit(
 
   if (options.nonInteractive) {
     throw new Error(
-      'kb init requires at least one git remote. Pass `--git <url>` (repeatable; use url#branch for a non-main branch).'
+      'kb init requires at least one git remote. Pass `--git <url>` (repeatable; use url#branch or --branch to override the remote default).'
     )
   }
 
   questionIO.write?.(
-    '\n[kb init] Git remote URL(s) to index (space or comma separated; use url#branch for a branch):\n\n'
+    '\n[kb init] Git remote URL(s) to index (space or comma separated; use url#branch to override the default branch):\n\n'
   )
   for (;;) {
     const answer = (

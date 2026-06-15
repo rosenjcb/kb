@@ -98,6 +98,7 @@ export function App({ config, startupNotices = [] }: Props) {
   const [inlineSuggestions, setInlineSuggestions] = useState<string[]>([])
 
   const [progressLine, setProgressLine] = useState<string | null>(null)
+  const [initActive, setInitActive] = useState(false)
 
   const chatInputResolverRef = useRef<((v: string | null) => void) | null>(null)
   const chatPendingEntryIdRef = useRef<string | null>(null)
@@ -322,7 +323,11 @@ export function App({ config, startupNotices = [] }: Props) {
   )
 
   const runInitFlow = useCallback(async (extraArgs: string[] = []) => {
+    stopChatPending()
+    finalizeChatResponse()
     setIsRunning(true)
+    setInitActive(true)
+    setProgressLine(null)
     try {
       const parsed = parseInitCommand(extraArgs)
       const result = await runKbInit({
@@ -364,9 +369,10 @@ export function App({ config, startupNotices = [] }: Props) {
       const message = err instanceof Error ? err.message : String(err)
       addEntry({ type: 'error', content: message })
     } finally {
+      setInitActive(false)
       setIsRunning(false)
     }
-  }, [addEntry, refreshBase, startChatSession, handleInitFlowCancel])
+  }, [addEntry, refreshBase, startChatSession, handleInitFlowCancel, stopChatPending, finalizeChatResponse])
 
   // Start chat session once after base dir resolves; auto-init when .kb file points at an uninitialised base
   useEffect(() => {
@@ -709,8 +715,10 @@ export function App({ config, startupNotices = [] }: Props) {
   return (
     <Box flexDirection="column">
       <StatusBar baseName={baseName} />
+      {progressLine || initActive ? (
+        <InitProgressBar line={progressLine} idle={initActive && !progressLine} />
+      ) : null}
       <HistoryPane entries={history} />
-      {progressLine ? <InitProgressBar line={progressLine} /> : null}
       <InputBar
         value={inputValue}
         onChange={handleInputChange}

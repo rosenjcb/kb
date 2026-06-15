@@ -41,10 +41,10 @@ async function createTempProject(files: Record<string, string>): Promise<string>
   return dir
 }
 
-async function makeTempGitRepo(files: Record<string, string>): Promise<string> {
+async function makeTempGitRepo(files: Record<string, string>, branch = 'main'): Promise<string> {
   const dir = await createTempProject(files) // already pushes to tempDirs
   const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'ignore' })
-  git('init', '-b', 'main')
+  git('init', '-b', branch)
   git('config', 'user.email', 'test@example.com')
   git('config', 'user.name', 'Test')
   git('config', 'commit.gpgsign', 'false')
@@ -1436,6 +1436,22 @@ describe('init-cli git-linked dialog', () => {
     expect(meta?.repos[0]?.lastSyncedAt).toBeTruthy()
 
     expect(await findKbFile(cwd)).toBe('my-remote')
+  })
+
+  it('Given --git without branch, then clones the remote default branch', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    const repo = await makeTempGitRepo({ 'README.md': '# Remote Repo\n' }, 'master')
+
+    await runKbInit({
+      base: 'master-remote',
+      gitTargets: [{ url: repo }],
+      nonInteractive: true,
+      cwd,
+    })
+
+    const baseDir = resolveBaseToDir('master-remote', cwd)
+    const meta = await readBaseMeta(baseDir)
+    expect(meta?.repos[0]?.gitBranch).toBe('master')
   })
 
   it('Given multiple --git targets, then both repos index into one base and meta lists both', async () => {

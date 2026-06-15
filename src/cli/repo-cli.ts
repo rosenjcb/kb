@@ -103,10 +103,12 @@ export async function runRepoCommand(
     }
     const dir = repoDirForSlug(slug)
     const repoDir = path.join(baseDir, dir)
-    options.onProgress?.(`Cloning ${gitTarget.url} (${gitTarget.branch})…`)
+    const branchLabel = gitTarget.branch ?? 'default branch'
+    options.onProgress?.(`Cloning ${gitTarget.url} (${branchLabel})…`)
     if (!existsSync(repoDir)) {
       await cloneRepo(gitTarget.url, repoDir, gitTarget.branch)
     }
+    const gitBranch = gitTarget.branch ?? (await getCurrentBranch(repoDir))
     const headSha = await getHeadSha(repoDir)
     options.onProgress?.(`Indexing ${slug}…`)
     await runKbInit({
@@ -120,7 +122,7 @@ export async function runRepoCommand(
     })
     const entry: GitRepoMeta = {
       gitUrl: gitTarget.url,
-      gitBranch: gitTarget.branch ?? (await getCurrentBranch(repoDir)),
+      gitBranch,
       slug,
       dir,
       lastSyncedSha: headSha,

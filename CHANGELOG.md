@@ -1,5 +1,11 @@
 # kb
 
+## 0.6.0
+
+### Minor Changes
+
+- Improve TUI init progress: show repo slug and a bold progress bar above history, with an idle spinner before the first update. Init progress lines now include `@ repo` when indexing multi-repo bases; merge default-branch clone handling from upstream.
+
 ## 0.5.0
 
 ### Minor Changes

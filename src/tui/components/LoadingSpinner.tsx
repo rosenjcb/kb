@@ -31,15 +31,20 @@ export function truncateStatusLines(
 export function LoadingSpinner({ status }: { status?: string }) {
   const lines = truncateStatusLines(status)
 
-  return (
-    <Box flexDirection="column">
+  if (lines.length === 0) {
+    return (
       <Text color={BLUE}>
         <Spinner type="dots" />
         {' running…'}
       </Text>
+    )
+  }
+
+  return (
+    <Box flexDirection="column">
       {lines.map((line, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: status lines have no stable identity
-        <Text key={i} color="gray" dimColor>
+        <Text key={i} bold>
           {line}
         </Text>
       ))}

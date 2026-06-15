@@ -36,6 +36,50 @@ describe('git-sync', () => {
     })
   })
 
+  describe('cloneRepo', () => {
+    let tmpRoot: string
+    let bareOrigin: string
+
+    async function git(cwd: string, ...args: string[]): Promise<void> {
+      await execFileAsync('git', args, { cwd, encoding: 'utf8' })
+    }
+
+    beforeEach(async () => {
+      tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'kb-git-sync-clone-'))
+      bareOrigin = path.join(tmpRoot, 'origin.git')
+
+      await git(tmpRoot, 'init', '--bare', '-b', 'master', bareOrigin)
+
+      const seedDir = path.join(tmpRoot, 'seed')
+      await mkdir(seedDir, { recursive: true })
+      await git(seedDir, 'init', '-b', 'master')
+      await git(seedDir, 'config', 'user.email', 'test@test.com')
+      await git(seedDir, 'config', 'user.name', 'Test')
+      await git(seedDir, 'config', 'commit.gpgsign', 'false')
+      await writeFile(path.join(seedDir, 'README.md'), '# v1\n')
+      await git(seedDir, 'add', '.')
+      await git(seedDir, 'commit', '-m', 'v1')
+      await git(seedDir, 'remote', 'add', 'origin', bareOrigin)
+      await git(seedDir, 'push', '-u', 'origin', 'master')
+    })
+
+    afterEach(async () => {
+      await rm(tmpRoot, { recursive: true, force: true })
+    })
+
+    it('Given no branch, then clones the remote default branch', async () => {
+      const cloneDir = path.join(tmpRoot, 'clone-default')
+      await cloneRepo(bareOrigin, cloneDir)
+      expect(await getCurrentBranch(cloneDir)).toBe('master')
+    })
+
+    it('Given an explicit branch, then clones that branch', async () => {
+      const cloneDir = path.join(tmpRoot, 'clone-explicit')
+      await cloneRepo(bareOrigin, cloneDir, 'master')
+      expect(await getCurrentBranch(cloneDir)).toBe('master')
+    })
+  })
+
   describe('pullRepo', () => {
     let tmpRoot: string
     let bareOrigin: string
