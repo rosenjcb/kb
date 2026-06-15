@@ -1,5 +1,5 @@
 /**
- * `kb config add-repo|remove-repo|list-repos` — manage the git repos a base tracks.
+ * `kb base add-repo|remove-repo|list-repos` — manage the git repos a base tracks.
  *
  * The repo list lives in the base's `meta.json` (not the global config). Adding clones +
  * indexes the repo into the one base graph; removing purges its facts and clone. After any
@@ -91,7 +91,7 @@ export async function runRepoCommand(
 
   if (action === 'add-repo') {
     if (!target) {
-      throw new Error(`${cmd('config add-repo', mode)} requires a git URL (optionally url#branch)`)
+      throw new Error(`${cmd('base add-repo', mode)} requires a git URL (optionally url#branch)`)
     }
     const branch = readOption(args, '--branch')
     const gitTarget = parseGitTarget(target, branch ?? 'main')
@@ -133,7 +133,7 @@ export async function runRepoCommand(
 
   // remove-repo
   if (!target) {
-    throw new Error(`${cmd('config remove-repo', mode)} requires a git URL or repo slug`)
+    throw new Error(`${cmd('base remove-repo', mode)} requires a git URL or repo slug`)
   }
   const { baseDir, baseName } = await resolveRepoBaseDir(baseArg)
   const meta = await readBaseMeta(baseDir)

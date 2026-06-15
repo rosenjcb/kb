@@ -17,7 +17,7 @@ export async function runScanCommand(
   const meta = await readBaseMeta(baseDir)
   if (!meta || meta.repos.length === 0) {
     throw new Error(
-      'This base has no git repos to scan. Add one with `kb config add-repo <url>` or create a base with `kb init --git <url>`.'
+      'This base has no git repos to scan. Add one with `kb base add-repo <url>` or create a base with `kb init --git <url>`.'
     )
   }
   await scanBaseRepos(baseDir, { onProgress })

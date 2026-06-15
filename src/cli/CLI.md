@@ -137,12 +137,12 @@ After every repo is indexed, an **integration-ingest** pass bridges the per-repo
 
 These produce bridge `fact_edges` of types **`depends_on_repo`**, **`cross_repo_symbol`**, and **`references_repo`**. Reconciliation runs at the end of `kb init`, after `kb scan`, and after auto-sync.
 
-### Managing repos (`kb config`)
+### Managing repos (`kb base`)
 
 ```text
-kb config list-repos [--base <name>]
-kb config add-repo <url[#branch]> [--branch <b>] [--base <name>]
-kb config remove-repo <url|slug> [--base <name>]
+kb base list-repos [--base <name>]
+kb base add-repo <url[#branch]> [--branch <b>] [--base <name>]
+kb base remove-repo <url|slug> [--base <name>]
 ```
 
 - `add-repo` clones the repo, indexes it, and rebuilds the cross-repo links.

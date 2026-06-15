@@ -25,7 +25,7 @@ export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
   { path: ['query'], description: 'search the knowledge base', contexts: ['idle'] },
   { path: ['init'], description: 'build a knowledge base from one or more git repos', contexts: ['idle'] },
   { path: ['scan'], description: "pull + re-index the base's git repos", contexts: ['idle'] },
-  { path: ['base'], description: 'manage KB bases (use, delete)', contexts: ['idle'] },
+  { path: ['base'], description: 'manage KB bases and their git repos', contexts: ['idle'] },
   { path: ['docs'], description: 'browse or generate KB documents', contexts: ['idle'] },
   { path: ['facts'], description: 'list, search, or show KB facts', contexts: ['idle'] },
   { path: ['graph'], description: 'inspect or edit the knowledge graph', contexts: ['idle'] },
@@ -55,11 +55,9 @@ export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
   // base subcommands
   { path: ['base', 'use'], description: 'switch active KB base', contexts: ['idle'] },
   { path: ['base', 'delete'], description: 'delete a KB base', contexts: ['idle'] },
-
-  // config subcommands
-  { path: ['config', 'list-repos'], description: 'list the git repos this base tracks', contexts: ['idle'] },
-  { path: ['config', 'add-repo'], description: 'clone + index another git repo into this base', contexts: ['idle'] },
-  { path: ['config', 'remove-repo'], description: 'remove a git repo and its facts from this base', contexts: ['idle'] },
+  { path: ['base', 'list-repos'], description: 'list the git repos this base tracks', contexts: ['idle'] },
+  { path: ['base', 'add-repo'], description: 'clone + index another git repo into this base', contexts: ['idle'] },
+  { path: ['base', 'remove-repo'], description: 'remove a git repo and its facts from this base', contexts: ['idle'] },
 
   // logs subcommands
   { path: ['logs', 'list'], description: 'list run reports', contexts: ['idle'] },

@@ -162,10 +162,10 @@ kb config get
 kb config set <key> <value>
 kb config unset <key>
 kb init --git <url[#branch]> [--git <url[#branch]> ...] [--branch <default>] [--base <name>] [--detach | --resume] [--stop-after <cycle>]
-kb scan [--base <name>] [--non-interactive]
-kb config list-repos [--base <name>]
-kb config add-repo <url[#branch]> [--branch <b>] [--base <name>]
-kb config remove-repo <url|slug> [--base <name>]
+kb scan [--base <name>]
+kb base list-repos [--base <name>]
+kb base add-repo <url[#branch]> [--branch <b>] [--base <name>]
+kb base remove-repo <url|slug> [--base <name>]
 kb facts list|search|show ...
 kb graph ...
 kb logs list|show|compare ...
@@ -266,12 +266,12 @@ Named bases store their SQLite data under `~/.kb/sessions/<base>/`, and each tra
 
 ### Adding / removing repos
 
-A base can track multiple repos; add or remove them after init with `kb config`:
+A base can track multiple repos; add or remove them after init with `kb base`:
 
 ```bash
-kb config list-repos [--base <name>]                       # list the repos a base tracks
-kb config add-repo <url[#branch]> [--branch <b>] [--base <name>]   # clone, index, and link a new repo
-kb config remove-repo <url|slug> [--base <name>]           # purge a repo's facts + clone
+kb base list-repos [--base <name>]                       # list the repos a base tracks
+kb base add-repo <url[#branch]> [--branch <b>] [--base <name>]   # clone, index, and link a new repo
+kb base remove-repo <url|slug> [--base <name>]           # purge a repo's facts + clone
 ```
 
 `add-repo` clones the repo, indexes it, and rebuilds the cross-repo links. `remove-repo` purges that repo's facts and its clone; it refuses to remove the last remaining repo.
