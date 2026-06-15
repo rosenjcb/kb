@@ -9,7 +9,7 @@ rubric_focus: the **kb** local-first knowledge CLI/repo (MOEL task library, 10 t
 
 questions:
   - "How does kb's retrieval orchestrator decide when it has gathered sufficient evidence to answer?"
-  - "What is the role of retrieval-lane-router.ts, and which lane types does it define?"
+  - "How does reconcileCrossRepoEdges link facts across repos into one graph, and which edge types does it create?"
   - "What does TreeSitterIndexer extract from non-TypeScript files, and which languages does it support?"
   - "How does expandQueryWithGraph() improve retrieval recall, and which constants cap its output?"
   - "How do eval-run.mjs and the kb suite YAML coordinate LLM provider selection and auto-scoring?"
@@ -17,7 +17,7 @@ questions:
   - "How does TokenCountingProvider integrate with the RunCollector stage telemetry system?"
   - "How does kb handle incremental rescans — what determines whether a file is re-indexed?"
   - "Write a one-paragraph description of the RunCollector class including its lifecycle and output format."
-  - "Write a one-paragraph description of how fact_categories are assigned during kb init and kb scan."
+  - "Write a one-paragraph description of how facts are tagged with their git repo and how repos are reconciled into one graph."
 
 # ── MOEL task definitions ────────────────────────────────────────────────────
 tasks:
@@ -44,22 +44,22 @@ tasks:
 
   - id: moel-kb-symbol-nav-002
     category: symbol-navigation
-    question: "What is the role of retrieval-lane-router.ts, and which lane types does it define?"
+    question: "How does reconcileCrossRepoEdges link facts across repos into one graph, and which edge types does it create?"
     targetSymbols:
-      - "RetrievalLane"               # src/tools/retrieval-lane-router.ts — union type
-      - "routeQueryToLanes"           # exported function
-      - "classifyDocumentLane"        # exported function
-      - "laneFitnessBoost"            # exported function — returns 0.15 / 0.10 / 0.05 / 0.02
-      - "LaneRoutingDecision"         # interface with lanes, fallbackLanes, lastResortLanes, reason
+      - "reconcileCrossRepoEdges"     # src/tools/sqlite-kb-index.ts — bridges per-repo subgraphs
+      - "listCrossRepoLinks"          # collapses cross-repo fact_edges to repo→repo pairs
+      - "ingestIntegrationSignals"    # src/core/integration-ingest.ts — package.json/.env signals
+      - "deleteFactsByRepo"           # purges a repo's facts (kb base remove-repo)
+      - "repoSlugFromGitUrl"          # src/cli/base-meta.ts — provenance slug
     rubric:
       - axis: correctness
-        check: "Lists all six RetrievalLane values: error-runbook, fact, policy, architecture, session-log, workflow."
+        check: "Names the three bridge edge types: depends_on_repo, cross_repo_symbol, references_repo."
       - axis: specificity
-        check: "Describes laneFitnessBoost() and its scoring tier (0.15 for index 0, 0.10 for index 1, etc.)."
+        check: "Explains the signals: package.json dependency vs another repo's package_name_of; a symbol imported in one repo and exported_from another; an .env/service reference matching a repo."
       - axis: correctness
-        check: "Distinguishes routeQueryToLanes() (query → lanes) from classifyDocumentLane() (document → single lane)."
+        check: "States that every fact carries a git_repo column and that reconciliation only links facts whose git_repo differ, running after init/scan/auto-sync."
       - axis: evidence_handling
-        check: "Does not conflate lane routing with FTS or semantic scoring — lane fitness is a post-retrieval reranking boost."
+        check: "Does not describe fact categories or lanes — facts are organised by repo (git_repo), not by user-named categories."
     tokenBudget: 120000
     stepCeiling: 12
     oracleFactIds: []
@@ -134,18 +134,18 @@ tasks:
     targetSymbols:
       - "TsMorphIndexer"              # src/tools/code-graph-indexer.ts — TS/JS indexer
       - "TreeSitterIndexer"           # src/tools/tree-sitter-indexer.ts — multi-lang indexer
-      - "facts"                       # SQLite table — primary facts store
+      - "facts"                       # SQLite table — primary facts store (has git_repo column)
       - "facts_fts"                   # SQLite FTS5 virtual table
       - "fact_embeddings"             # SQLite table — semantic vectors
-      - "fact_categories"             # SQLite table — TF-IDF category assignments
+      - "git_repo"                    # facts column — originating repo (provenance)
       - "code_file_state"             # SQLite table — content-hash change tracking
     rubric:
       - axis: correctness
         check: "Enumerates the 5 checkpointed init cycles: read-inputs, code-index, document-facts, import-docs, write."
       - axis: correctness
-        check: "Names all SQLite tables written: facts, fact_edges, facts_fts (FTS5), fact_embeddings, documents, fact_categories, code_file_state."
+        check: "Names the SQLite tables written: facts (with git_repo), fact_edges, facts_fts (FTS5), fact_embeddings, documents, code_file_state — there is no fact_categories table."
       - axis: specificity
-        check: "Distinguishes source_kind='import_code' (AST indexers) from source_kind='doc' (markdown sentence segmentation)."
+        check: "Distinguishes source_kind='import_code' (AST indexers) from source_kind='import_doc' (markdown sentence segmentation)."
       - axis: evidence_handling
         check: "Does not describe read_facts as a separate service — it queries the same .kb-index.sqlite database written by init."
     tokenBudget: 150000
@@ -187,13 +187,13 @@ tasks:
       - "RescanApplyOrchestrator"     # src/tools/rescan-apply-orchestrator.ts — orchestrates scan
     rubric:
       - axis: correctness
-        check: "States that kb scan is equivalent to kb init --rescan --apply, and that it skips the category interview."
+        check: "States that kb scan pulls + re-indexes the base's git repos (not the working directory) and applies changes."
       - axis: specificity
         check: "Identifies content-hash comparison via code_file_state as the change-detection mechanism (not mtime or file size)."
       - axis: correctness
-        check: "Notes that stale facts from deleted or changed files are tombstoned via tombstoneStaleCodeFacts / tombstoneStaleAstFacts."
+        check: "Notes that stale facts from deleted or changed files are tombstoned via tombstoneStaleCodeFacts / tombstoneStaleAstFacts (scoped to the repo's git_repo)."
       - axis: correctness
-        check: "Explains that uncategorized facts are re-assigned to existing categories via TF-IDF cosine similarity at threshold 0.3 (not re-interviewed)."
+        check: "Explains that re-indexed facts are re-tagged with their git_repo and the cross-repo graph is rebuilt via reconcileCrossRepoEdges."
     tokenBudget: 120000
     stepCeiling: 12
     oracleFactIds: []
@@ -221,17 +221,18 @@ tasks:
 
   - id: moel-kb-doc-quality-010
     category: doc-quality
-    question: "Write a one-paragraph description of how fact_categories are assigned during kb init and kb scan."
+    question: "Write a one-paragraph description of how facts are tagged with their git repo and how repos are reconciled into one graph."
     targetSymbols:
-      - "fact_categories"             # SQLite table
-      - "inferCategoriesForQuery"     # SqliteKbIndexer method — TF-IDF cosine similarity
+      - "git_repo"                    # facts column — originating repo slug
+      - "setActiveGitRepo"            # SqliteKbIndexer — stamps the active repo onto facts
+      - "reconcileCrossRepoEdges"     # bridges repos via cross-repo fact_edges
     rubric:
       - axis: correctness
-        check: "States that during init, categories are assigned via an interactive TF-IDF cosine similarity interview (skipped with --non-interactive)."
+        check: "States that each fact records its originating repo in a nullable git_repo column, set per repo during init/scan (backfilled on rescan)."
       - axis: correctness
-        check: "States that during scan, uncategorized facts are auto-assigned to existing categories at cosine similarity threshold 0.3 — no interview."
+        check: "States that after indexing, reconcileCrossRepoEdges links facts across repos (depends_on_repo, cross_repo_symbol, references_repo) so the repos form one connected graph."
       - axis: specificity
-        check: "Paragraph does not confuse fact_categories (assignment table) with fact_embeddings (semantic vectors used for hybrid scoring)."
+        check: "Paragraph does not confuse git_repo provenance with fact_embeddings (semantic vectors used for hybrid scoring), and does not mention fact categories (removed)."
       - axis: usefulness
         check: "Paragraph is self-contained and accurate enough to use as inline documentation without further editing."
     tokenBudget: 100000

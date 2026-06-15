@@ -18,34 +18,41 @@ answers:
     kb is a local-first knowledge base CLI that indexes a codebase into a SQLite-backed knowledge
     graph and answers natural-language questions about it using hybrid retrieval. It combines
     deterministic AST indexing (ts-morph for TS/JS, tree-sitter for Go/Python/Rust/etc.) with
-    LLM-extracted doc facts stored in `.kb-index.sqlite`. Main commands: `kb init` (bootstrap:
-    AST index + doc facts + category interview), `kb scan` (incremental refresh, skips interview),
-    `kb query` (natural-language Q&A via hybrid retrieval), `kb facts` (list/search facts),
-    `kb docs` (inspect documents), `kb graph` (inspect/edit the knowledge graph), `kb publish`
-    (publish to Notion or Jekyll, requires `--apply`), `kb submit` (add/update facts in a live
-    base), `kb base` (manage sessions). A React/Ink TUI launches when run in a TTY with slash-command
+    LLM-extracted doc facts stored in `.kb-index.sqlite`. A base tracks one or more git repos and
+    folds them into a single graph. Main commands: `kb init --git <url>` (clone + index one or more
+    git repos into a base), `kb scan` (pull + re-index the base's repos), `kb query`
+    (natural-language Q&A via hybrid retrieval), `kb facts` (list/search facts), `kb docs`
+    (inspect documents), `kb graph` (inspect/edit the knowledge graph), `kb publish` (publish to
+    Notion or Jekyll, requires `--apply`), `kb submit` (add/update facts in a live base), `kb base`
+    (manage sessions and their git repos: use, delete, add-repo, remove-repo, list-repos).
+    A React/Ink TUI launches when run in a TTY with slash-command
     autocomplete. Skills (kb:dev-workflow, kb:dump-context, kb:evaluation-run) install into Claude
     Code, Cursor, Codex, and Copilot agent profiles.
 
   - >
-    `kb init` runs 5 checkpointed cycles: (1) read-inputs — recursively discovers markdown sources;
-    (2) code-index — runs TsMorphIndexer (TS/JS → IMPORTS_FILE, EXPORTS_SYMBOL, EXTENDS, IMPLEMENTS
-    facts with source_kind='import_code') and TreeSitterIndexer (Go, Python, Rust, Ruby, Java, C,
-    C++, C#, CSS, Bash, PHP, Scala, HTML etc.); (3) document-facts — sentence-segments markdown
-    sources into the facts table (source_kind='doc'); (4) import-docs — writes one is_original doc
-    per markdown file (verbatim body) into the documents table; (5) write — upserts documents.
-    After cycles, an interactive category interview assigns facts to user-named categories using
-    TF-IDF cosine similarity (skipped with --non-interactive). SQLite tables written: facts,
-    fact_edges, facts_fts (FTS5), fact_embeddings, documents, fact_categories, code_file_state.
+    `kb init` requires at least one `--git <url>` (repeatable; supports `url#branch`). It clones
+    each repo into `~/.kb/sessions/<base>/repos/<slug>/` and runs 5 checkpointed cycles per repo:
+    (1) read-inputs — discovers markdown sources and ingests integration signals (package.json
+    deps, .env service refs); (2) code-index — runs TsMorphIndexer (TS/JS → IMPORTS_FILE,
+    EXPORTS_SYMBOL, EXTENDS, IMPLEMENTS facts with source_kind='import_code') and TreeSitterIndexer
+    (Go, Python, Rust, Ruby, Java, C, C++, C#, CSS, Bash, PHP, Scala, HTML etc.); (3) document-facts
+    — sentence-segments markdown into the facts table; (4) import-docs — writes one is_original doc
+    per markdown file into the documents table; (5) write — upserts documents. Every fact records
+    its originating repo in a `git_repo` column. After all repos index, a reconciliation pass adds
+    cross-repo `fact_edges` (depends_on_repo, cross_repo_symbol, references_repo) so the repos form
+    one connected graph. SQLite tables written: facts (with git_repo), fact_edges, facts_fts (FTS5),
+    fact_embeddings, documents, code_file_state. There is no category interview or fact_categories
+    table — facts are organised by repo, not by user-named categories.
 
   - >
-    `kb scan` is equivalent to `kb init --rescan --apply`. Key differences: it is incremental
-    (only re-indexes files whose content hash changed per code_file_state), skips the category
-    interview and instead re-assigns uncategorized facts to existing categories using TF-IDF cosine
-    similarity at threshold 0.3, and always applies changes without a separate apply step.
-    Use `kb init` when creating a knowledge base for the first time or after major structural
-    reorganization that requires fresh categories. Use `kb scan` for routine incremental updates
-    after code changes, or to ingest facts from a related repo into an existing base.
+    `kb scan` pulls every git repo the base tracks and re-indexes the ones with changes, then
+    rebuilds the cross-repo links. Unlike the old behavior, it does not read the current working
+    directory — it operates on the base's cloned repos (under `~/.kb/sessions/<base>/repos/`).
+    Re-indexing is incremental (only files whose content hash changed per code_file_state) and
+    always applied. Use `kb init --git <url>` to create a base from one or more repos; use `kb scan`
+    for routine refreshes; use `kb base add-repo <url>` to fold an additional repo into an existing
+    base (and `kb base remove-repo` to drop one). Auto-sync runs the same per-repo refresh on
+    session load and before queries.
 
   - >
     Retrieval is facts-first and multi-stage. First, `expandQueryWithGraph()` appends related terms:
@@ -53,8 +60,11 @@ answers:
     LIKE-scan from the facts table — up to 26 extra terms. The facts-loop orchestrator then iterates
     over exploration ponds (query sub-topics). Each iteration combines lexical FTS5 search, graph
     neighbor expansion via fact_edges, and deterministic semantic scoring (cosine similarity between
-    a query embedding and stored fact_embeddings, weighted at 35%). Final score = lexical rank +
-    semantic×0.35 + lane fitness boost. Iteration stops at answerable_plateau confidence or when
+    a query embedding and stored fact_embeddings, weighted at 35%). Final score = lexical overlap +
+    semantic×0.35 + confidence + a repo-pool boost (facts from the landed repo rank highest, then
+    sibling repos by distance along the cross-repo edge tree; single-repo bases get no boost).
+    Retrieval is repo-scoped: it exhausts the repo the strongest hit lands in before walking the
+    cross-repo edges to other repos. Iteration stops at answerable_plateau confidence or when
     all ponds are exhausted. The answer phase is multi-round: a quick intro first, then a
     retrieval-tool call for deep retrieval, then a final comprehensive answer. Reported as
     `hybrid (facts-loop;passes:N;ponds:N;semantic:on)`.
@@ -97,7 +107,8 @@ answers:
   - >
     `npm run eval` runs scripts/eval-run.mjs. Session management: derives base name as
     eval-{suiteId} (e.g. eval-kb), checks docs via `kb docs list --base <base>` parsing `Count: N`.
-    If no docs, runs `kb init --base <base> --non-interactive`; otherwise reuses the existing
+    If no docs, runs `kb init --base <base> --git <snapshot-clone>#<branch> --non-interactive`
+    (the snapshot clone is the local git checkout); otherwise reuses the existing
     session. Query loop: runs all 8 questions from eval/suites/<suite>.yaml, saving each output as
     q1.json...q8.json (text format parsed by parseQueryText(), which extracts the final answer after
     the last `stage> answer` line before the `---` separator). Auto-scoring is on by default (opt
