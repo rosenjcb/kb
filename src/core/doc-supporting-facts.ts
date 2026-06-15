@@ -15,7 +15,7 @@ export interface SupportingFact {
 export async function searchSupportingFacts(
   indexer: SqliteKbIndexer,
   query: string,
-  limit = 20,
+  _limit = 20,
   options?: { excludeIds?: Set<string> }
 ): Promise<SupportingFact[]> {
   const trimmed = query.trim()
@@ -23,7 +23,6 @@ export async function searchSupportingFacts(
   const orchestrator = new FactsQueryResearchOrchestrator(indexer)
   const response = await orchestrator.run({
     query: trimmed,
-    limit,
     surface: 'query',
     includeContent: true,
     excludeIds: options?.excludeIds,

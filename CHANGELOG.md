@@ -1,5 +1,11 @@
 # kb
 
+## 0.7.0
+
+### Minor Changes
+
+- Remove 150-fact cap from kb query. The research loop now runs until all facts are exhausted or a sufficiency threshold is reached, instead of stopping at a hard ceiling.
+
 ## 0.6.0
 
 ### Minor Changes

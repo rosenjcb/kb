@@ -1,7 +1,7 @@
 import type { DocType } from '../core/doc-taxonomy'
 import { formatFactUri } from '../core/fact-uri'
 import type { LLMProvider } from '../core/types'
-import { DEFAULT_FACT_LIMIT, FactsQueryResearchOrchestrator, MAX_FACTS_FOR_LLM } from './facts-query-research-orchestrator'
+import { DEFAULT_FACT_LIMIT, FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
 import { filterRelevantFacts, shouldRunRelevanceFilter } from './facts-relevance-filter'
 import { makeSufficiencyJudge } from './facts-sufficiency-judge'
 import { expandQuery, shouldExpandQuery } from './query-expander'
@@ -91,7 +91,6 @@ export class FactsDocumentReader {
       const orchestrator = new FactsQueryResearchOrchestrator(this.indexer, { judge })
       const baseQuery = input.query?.trim() ?? ''
       const opts = {
-        limit,
         includeContent: input.includeContent === true,
         surface: input.surface ?? 'query',
       } as const
@@ -109,7 +108,7 @@ export class FactsDocumentReader {
               orchestrator.run({ query: q, ...opts, excludeIds: excludeIdSet })
             )
           )
-          const merged = mergeQueryResponses(responses, MAX_FACTS_FOR_LLM, expansions.length)
+          const merged = mergeQueryResponses(responses, expansions.length)
           return this.maybeFilterRelevance(merged, baseQuery)
         }
       }
@@ -178,7 +177,6 @@ function summarizeFactTitle(text: string): string {
 
 function mergeQueryResponses(
   responses: QueryResponse[],
-  limit: number,
   expansionCount: number
 ): QueryResponse {
   const seen = new Set<string>()
@@ -193,8 +191,8 @@ function mergeQueryResponses(
   const first = responses[0]
   const baseDetail = first?.retrieval.detail ?? 'facts-loop'
   return {
-    results: merged.slice(0, limit),
-    total: Math.min(merged.length, limit),
+    results: merged,
+    total: merged.length,
     retrieval: {
       method: merged.length > 0 ? 'hybrid' : 'lexical-fallback',
       detail: `${baseDetail};expanded:${expansionCount}`,
