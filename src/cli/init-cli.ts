@@ -13,8 +13,8 @@
 
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { writeBaseMeta } from './base-meta'
-import { cloneRepo, getHeadSha } from './git-sync'
+import { type GitRepoMeta, repoDirForSlug, repoSlugFromGitUrl, writeBaseMeta } from './base-meta'
+import { cloneRepo, getCurrentBranch, getHeadSha } from './git-sync'
 import { TsMorphIndexer, tombstoneStaleAstFacts } from '../tools/code-graph-indexer'
 import {
   isTreeSitterIndexablePath,
@@ -25,14 +25,9 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import readline from 'node:readline'
 import dayjs from 'dayjs'
-import {
-  assignFactsToCategoryIds,
-  slugifyFactCategoryName,
-  type FactCategoryDefinitionInput,
-} from '../core/fact-categories'
-import { promptNamedListInterview } from './named-list-interview'
 import { DOC_TYPES } from '../core/doc-taxonomy'
 import { tombstoneRemovedDocSourceFiles } from '../core/doc-fact-writer'
+import { ingestIntegrationSignals } from '../core/integration-ingest'
 import {
   ingestSourceMarkdownFilesAsFacts,
   type ScanFactIngestProgress,
@@ -107,10 +102,20 @@ export interface InitOptions {
   questionIO?: InitQuestionIO
   progressSink?: (line: string) => void
   collector?: RunCollector
-  /** Set by `kb init --git <url>` to record the remote origin for auto-sync. */
-  gitUrl?: string
-  /** Branch to track; defaults to 'main'. */
-  gitBranch?: string
+  /** Git remotes to clone + index. `kb init` requires at least one. */
+  gitTargets?: GitTarget[]
+  /**
+   * Slug of the repo currently being indexed. Tags every fact written in this run with its
+   * originating repo (multi-repo provenance + repo-pool retrieval). Set internally per repo.
+   */
+  gitRepo?: string
+}
+
+/** A git remote to track. `branch` is omitted unless the user pins one (inline `#branch` or
+ *  `--branch`); when omitted the clone follows the remote's own default branch. */
+export interface GitTarget {
+  url: string
+  branch?: string
 }
 
 export interface InitResult {
@@ -275,6 +280,7 @@ class InitProgressReporter {
   private static readonly THROTTLE_MS = 120
   private readonly sink: (line: string) => void
   private readonly ttyMode: boolean
+  private repoSlug?: string
 
   constructor(
     private total: number,
@@ -288,6 +294,10 @@ class InitProgressReporter {
       this.sink = line => process.stderr.write(line)
       this.ttyMode = process.stderr.isTTY === true
     }
+  }
+
+  setRepo(slug: string | undefined) {
+    this.repoSlug = slug
   }
 
   start(label: string, detail?: string) {
@@ -315,7 +325,10 @@ class InitProgressReporter {
     const filled = Math.round((this.completed / Math.max(this.total, 1)) * width)
     const bar = `${'='.repeat(filled)}${'-'.repeat(Math.max(width - filled, 0))}`
     const suffix = detail ? ` ${detail}` : ''
-    const content = `[${this.prefix}] [${bar}] ${this.completed}/${this.total} ${label}${suffix}`
+    const core = `[${bar}] ${this.completed}/${this.total} ${label}${suffix}`
+    const content = this.repoSlug
+      ? `[${this.prefix}] @ ${this.repoSlug} │ ${core}`
+      : `[${this.prefix}] ${core}`
     if (inPlace && this.ttyMode) {
       this.sink(`\r\x1b[K${content}`)
     } else {
@@ -453,8 +466,8 @@ function shouldExcludeMarkdownSourceFile(relativePath: string, content: string):
 
 export function parseInitCommand(args: string[]): InitOptions {
   const base = readOption(args, '--base') ?? undefined
-  const gitUrl = readOption(args, '--git') ?? undefined
-  const gitBranch = readOption(args, '--branch') ?? undefined
+  const defaultBranch = readOption(args, '--branch') ?? undefined
+  const gitTargets = readAllOptions(args, '--git').map(raw => parseGitTarget(raw, defaultBranch))
 
   const rawStopAfter = readOption(args, '--stop-after')
   const stopAfter = rawStopAfter
@@ -481,9 +494,20 @@ export function parseInitCommand(args: string[]): InitOptions {
     stopAfter,
     resumeFrom: readOption(args, '--resume-from'),
     checkpointFile: readOption(args, '--checkpoint-file'),
-    gitUrl,
-    gitBranch,
+    gitTargets,
   }
+}
+
+/** Parse a `--git` value of the form `url` or `url#branch` into a GitTarget. When no branch is
+ *  given (inline or via `defaultBranch`), `branch` is left undefined so the clone follows the
+ *  remote's default branch. */
+export function parseGitTarget(raw: string, defaultBranch?: string): GitTarget {
+  const hashIdx = raw.lastIndexOf('#')
+  if (hashIdx > 0) {
+    const explicit = raw.slice(hashIdx + 1)
+    return { url: raw.slice(0, hashIdx), branch: explicit || defaultBranch }
+  }
+  return { url: raw, branch: defaultBranch }
 }
 
 export function parseScanCommand(args: string[]): InitOptions {
@@ -537,34 +561,55 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
 
   const base = await resolveInitBaseName(options, cwd, questionIO)
 
-  // Resolve git URL — asked after base name so the user has context for what they're indexing.
-  const gitUrl = await resolveGitUrlForInit(options, questionIO)
-  const gitBranch = options.gitBranch ?? 'main'
   await writeKbFile(cwd, base)
   if (!options.rescan) {
     await writeSessionBase(base)
   }
   const baseDir = await ensureOperationalBaseDir(base, cwd)
 
-  // For git-linked init: clone into <baseDir>/repo/ and scan from there.
+  // Resolve where to scan + the repo provenance for facts written this run.
+  // - rescan: index `cwd` directly (a clone managed by auto-sync / scan / add-repo), tagged
+  //   with the caller-supplied `options.gitRepo`.
+  // - fresh init: git is REQUIRED. Clone every target into `repos/<slug>`; index the first
+  //   here and the rest via recursive rescan calls below, then reconcile + write meta.
   let scanDir = cwd
-  let headSha: string | undefined
-  if (gitUrl && !options.rescan) {
-    const repoDir = path.join(baseDir, 'repo')
-    if (!existsSync(repoDir)) {
-      await cloneRepo(gitUrl, repoDir, gitBranch)
+  let gitRepoSlug = options.gitRepo
+  let primaryRepoMeta: GitRepoMeta | undefined
+  let additionalRepos: GitRepoMeta[] = []
+  if (!options.rescan) {
+    const targets = await resolveGitTargetsForInit(options, questionIO)
+    const repoMetas: GitRepoMeta[] = []
+    for (const target of targets) {
+      const slug = repoSlugFromGitUrl(target.url)
+      const dir = repoDirForSlug(slug)
+      const repoDir = path.join(baseDir, dir)
+      if (!existsSync(repoDir)) {
+        await cloneRepo(target.url, repoDir, target.branch)
+      }
+      await mkdir(repoDir, { recursive: true })
+      const gitBranch = target.branch ?? (await getCurrentBranch(repoDir))
+      repoMetas.push({
+        gitUrl: target.url,
+        // Record the branch actually checked out (the remote default when none was pinned).
+        gitBranch,
+        slug,
+        dir,
+        lastSyncedSha: await getHeadSha(repoDir),
+        lastSyncedAt: new Date().toISOString(),
+      })
     }
-    await mkdir(repoDir, { recursive: true })
-    headSha = await getHeadSha(repoDir)
-    scanDir = repoDir
+    primaryRepoMeta = repoMetas[0]
+    additionalRepos = repoMetas.slice(1)
+    scanDir = path.join(baseDir, primaryRepoMeta.dir)
+    gitRepoSlug = primaryRepoMeta.slug
   }
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
-  // Collect categories upfront so the user isn't interrupted mid-scan.
-  const preCollectedCategories = await collectUpfrontCategories(options, questionIO, resumedCheckpoint)
-
   const progress = new InitProgressReporter(6, progressPrefix(options), options.progressSink)
+  if (options.gitRepo ?? gitRepoSlug) {
+    progress.setRepo(options.gitRepo ?? gitRepoSlug)
+  }
   const rawProvider = options.provider ?? (await resolveProvider())
   const counter =
     rawProvider && options.collector ? new TokenCountingProvider(rawProvider) : undefined
@@ -639,6 +684,17 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
 
     if (!context) throw new Error('read-inputs context missing')
 
+    // Ingest cross-repo integration signals (package.json deps, env service refs) so
+    // `reconcileCrossRepoEdges` can later bridge this repo to its siblings.
+    if (gitRepoSlug) {
+      await ingestIntegrationSignals({
+        baseDir,
+        scanDir,
+        gitRepo: gitRepoSlug,
+        gitUrl: primaryRepoMeta?.gitUrl,
+      })
+    }
+
     const changedSourceFiles = options.rescan
       ? await selectChangedSourceFiles(baseDir, context.sourceFiles)
       : context.sourceFiles
@@ -685,6 +741,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           const unchangedTreeFileCount = totalTreeFileCount - treeCandidateFiles.length
 
           const astFactIndexer = new SqliteKbIndexer({ dbPath })
+          astFactIndexer.setActiveGitRepo(gitRepoSlug ?? null)
           try {
             if (existsSync(tsconfigPath) && tsCandidateFiles.length > 0) {
               const indexer = new TsMorphIndexer(dbPath, astFactIndexer)
@@ -726,7 +783,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
               ...(tsStatsSummary?.sourceRefs ?? []),
               ...treeStats.sourceRefs,
             ])
-            tombstoneStaleAstFacts(astFactIndexer, allSourceRefs)
+            tombstoneStaleAstFacts(astFactIndexer, allSourceRefs, gitRepoSlug)
             astFactIndexer.relinkCodeImportEdges()
           } finally {
             astFactIndexer.close()
@@ -780,7 +837,8 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             const purged = tombstoneRemovedDocSourceFiles(
               purgeIndexer,
               context.sourceFiles,
-              manifest
+              manifest,
+              gitRepoSlug
             )
             if (purged > 0) {
               progress.update(
@@ -796,6 +854,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           baseDir,
           files: changedSourceFiles,
           matchAstNodes: true,
+          gitRepo: gitRepoSlug,
           onProgress: snapshot => {
             progress.update(
               'document-facts',
@@ -825,14 +884,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     } else {
       progress.finish('document-facts', 'reused from checkpoint')
     }
-
-    await inferAndAssignProjectCategories({
-      baseDir,
-      nonInteractive: options.nonInteractive,
-      questionIO,
-      rescan: options.rescan === true,
-      preCollected: preCollectedCategories,
-    })
 
     if (!checkpoint.completedCycles.includes('import-docs')) {
       progress.start('import-docs', 'importing original markdown…')
@@ -957,6 +1008,39 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.finish('write', 'reused from checkpoint')
     }
 
+    // Multi-repo init: index the remaining repos into this same base, then bridge them all
+    // into one connected graph. (Additional repos reuse the rescan path; they tag their own
+    // facts and write no meta — the primary run owns meta.json below.)
+    if (!options.rescan && additionalRepos.length > 0) {
+      for (const repo of additionalRepos) {
+        await runKbInit({
+          base,
+          cwd: path.join(baseDir, repo.dir),
+          rescan: true,
+          apply: true,
+          nonInteractive: true,
+          gitRepo: repo.slug,
+          provider: rawProvider,
+          collector: options.collector,
+          progressSink: options.progressSink,
+          questionIO: SILENT_QUESTION_IO,
+        })
+      }
+    }
+    if (!options.rescan) {
+      const reconcileIndexer = new SqliteKbIndexer({
+        dbPath: path.join(baseDir, '.kb-index.sqlite'),
+      })
+      try {
+        const linked = reconcileIndexer.reconcileCrossRepoEdges()
+        if (linked > 0) {
+          options.progressSink?.(`[kb init] Linked ${linked} cross-repo edge(s).`)
+        }
+      } finally {
+        reconcileIndexer.close()
+      }
+    }
+
     const finalCoverageSummary = checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
     return {
       status: 'accepted',
@@ -975,13 +1059,8 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     }
   } finally {
     await questionIO.close?.()
-    if (gitUrl && !options.rescan && headSha !== undefined) {
-      await writeBaseMeta(baseDir, {
-        gitUrl,
-        gitBranch,
-        lastSyncedSha: headSha,
-        lastSyncedAt: new Date().toISOString(),
-      })
+    if (!options.rescan && primaryRepoMeta) {
+      await writeBaseMeta(baseDir, { repos: [primaryRepoMeta, ...additionalRepos] })
     }
   }
 
@@ -1295,21 +1374,46 @@ async function resolveInitBaseName(
   return resolved
 }
 
-async function resolveGitUrlForInit(
+/**
+ * Resolve the git remotes to index. `kb init` requires at least one — local-directory
+ * indexing is no longer supported. CLI `--git` flags win; otherwise prompt interactively
+ * (space/comma separated, repeatable until at least one URL is given). Non-interactive with
+ * no `--git` is a hard error.
+ */
+async function resolveGitTargetsForInit(
   options: InitOptions,
   questionIO: InitQuestionIO
-): Promise<string | undefined> {
-  if (options.gitUrl) return options.gitUrl
-  if (options.rescan || options.nonInteractive || options.base) return undefined
+): Promise<GitTarget[]> {
+  if (options.gitTargets && options.gitTargets.length > 0) return options.gitTargets
 
-  questionIO.write?.('\n[kb init] Git remote URL (blank to index the local directory):\n\n')
-  const answer = (
-    await questionIO.askQuestion('  > Git URL\n    ', { slashContext: 'init-free-text' })
-  ).trim()
+  if (options.nonInteractive) {
+    throw new Error(
+      'kb init requires at least one git remote. Pass `--git <url>` (repeatable; use url#branch or --branch to override the remote default).'
+    )
+  }
 
-  if (!answer || answer === '/skip') return undefined
-  if (answer === '/cancel') throw new InitCancelledError()
-  return answer
+  questionIO.write?.(
+    '\n[kb init] Git remote URL(s) to index (space or comma separated; use url#branch to override the default branch):\n\n'
+  )
+  for (;;) {
+    const answer = (
+      await questionIO.askQuestion('  > Git URL(s)\n    ', { slashContext: 'init-free-text' })
+    ).trim()
+    if (answer === '/cancel') throw new InitCancelledError()
+    const targets = answer
+      .split(/[\s,]+/)
+      .filter(Boolean)
+      .map(raw => parseGitTarget(raw))
+    if (targets.length > 0) return targets
+    questionIO.write?.('  At least one git URL is required.\n')
+  }
+}
+
+/** A questionIO that never prompts — used for recursive rescans of additional repos. */
+const SILENT_QUESTION_IO: InitQuestionIO = {
+  write: () => {},
+  askQuestion: async () => '',
+  close: async () => {},
 }
 
 async function resolveSuggestedInitBase(_cwd: string): Promise<string | undefined> {
@@ -1625,6 +1729,18 @@ function readOption(args: string[], flag: string): string | undefined {
   return index !== -1 && index + 1 < args.length ? args[index + 1] : undefined
 }
 
+/** Collect every `--flag <value>` occurrence (e.g. repeatable `--git`). */
+function readAllOptions(args: string[], flag: string): string[] {
+  const values: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === flag && i + 1 < args.length) {
+      const value = args[i + 1]
+      if (value && !value.startsWith('--')) values.push(value)
+    }
+  }
+  return values
+}
+
 function readFlag(args: string[], flag: string): boolean {
   return args.includes(flag)
 }
@@ -1632,187 +1748,6 @@ function readFlag(args: string[], flag: string): boolean {
 function dedup<T>(values: T[]): T[] {
   return Array.from(new Set(values))
 }
-
-async function inferAndAssignProjectCategories(input: {
-  baseDir: string
-  nonInteractive: boolean
-  questionIO: InitQuestionIO
-  rescan: boolean
-  preCollected?: FactCategoryDefinitionInput[]
-}): Promise<void> {
-  const indexer = new SqliteKbIndexer({ dbPath: path.join(input.baseDir, '.kb-index.sqlite') })
-  try {
-    const facts = indexer.listFactsForQuery(99999)
-    const fingerprint = createHash('sha256')
-      .update(facts.map(fact => `${fact.id}:${fact.updated_at}:${fact.normalized_text}`).join('|'))
-      .digest('hex')
-    const previousFingerprint = indexer.getIndexStateValue('fact_category_fingerprint')
-    if (input.rescan && previousFingerprint === fingerprint) {
-      return
-    }
-
-    // TODO: re-enable once UX is validated — runs HDBSCAN then hands off to reviewInferredFactCategories
-    // const discovered = inferAndAssignFactCategories(facts, 8, 0.45)
-    // const inferred = discovered.categories
-    // if (inferred.length === 0) return
-    // const reviewed = input.nonInteractive
-    //   ? inferred.map(category =>
-    //       buildCategoryDefinitionFromReview(category, { status: 'inferred', createdBy: 'system' })
-    //     )
-    //   : await reviewInferredFactCategories(inferred, input.questionIO, input.rescan)
-
-    if (facts.length === 0 || input.nonInteractive) return
-
-    if (input.rescan) {
-      // On rescan: re-assign uncategorized (or newly added) facts to existing categories
-      const existingCategoryRows = indexer.listFactCategories()
-      if (existingCategoryRows.length === 0) return
-      const existingCategories = existingCategoryRows.map(row => ({
-        id: row.id,
-        name: row.name,
-        description: row.description,
-        status: row.status,
-        createdBy: row.created_by,
-        representativeTerms: JSON.parse(row.representative_terms_json) as string[],
-        centroidVector: JSON.parse(row.centroid_vector_json) as number[],
-      }))
-      const uncategorizedFacts = indexer.listUncategorizedFacts()
-      if (uncategorizedFacts.length === 0) {
-        indexer.setIndexStateValue('fact_category_fingerprint', fingerprint)
-        return
-      }
-      const newAssignments = assignFactsToCategoryIds(uncategorizedFacts, existingCategories, 0.3)
-      indexer.mergeFactCategoryAssignments(newAssignments)
-      indexer.setIndexStateValue('fact_category_fingerprint', fingerprint)
-      const stillUncategorized = indexer.countUncategorizedFacts()
-      input.questionIO.write?.(
-        `[kb scan] categories: ${uncategorizedFacts.length - stillUncategorized} newly assigned, ${facts.length - stillUncategorized}/${facts.length} total.\n`
-      )
-      return
-    }
-
-    const reviewed = input.preCollected?.length
-      ? input.preCollected
-      : await promptUserCategories(input.questionIO, input.rescan)
-    if (reviewed.length === 0) return
-
-    indexer.replaceFactCategories(reviewed)
-    // Lower threshold for user-typed short names vs HDBSCAN-derived categories with rich terms
-    const assignments = assignFactsToCategoryIds(facts, reviewed, 0.3)
-    indexer.replaceFactCategoryAssignments(assignments)
-    indexer.setIndexStateValue('fact_category_fingerprint', fingerprint)
-
-    const uncategorized = indexer.countUncategorizedFacts()
-    input.questionIO.write?.(
-      `[kb init] categories: ${reviewed.length} saved, ${facts.length - uncategorized}/${facts.length} facts assigned.\n`
-    )
-  } finally {
-    indexer.close()
-  }
-}
-
-
-async function promptUserCategories(
-  questionIO: InitQuestionIO,
-  rescan: boolean
-): Promise<FactCategoryDefinitionInput[]> {
-  const label = rescan ? 'kb scan' : 'kb init'
-  const result = await promptNamedListInterview(
-    {
-      write: message => questionIO.write?.(message),
-      ask: (prompt, opts) => questionIO.askQuestion(prompt, opts),
-    },
-    {
-      label,
-      itemNounSingular: 'category',
-      itemNounPlural: 'categories',
-      listLabel: 'Categories',
-      defaultDescription: name => `Facts about ${name.toLowerCase()}`,
-      slashContext: {
-        name: 'init-question',
-        description: 'init-free-text',
-        confirm: 'named-list-confirm',
-      },
-    },
-    ({ name, description }) => ({
-      id: `category-${slugifyFactCategoryName(name)}`,
-      name,
-      description,
-      status: 'edited' as const,
-      createdBy: 'user' as const,
-      representativeTerms: name.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 4),
-      centroidVector: [],
-    })
-  )
-
-  if (result.kind === 'cancel') throw new InitCancelledError()
-  if (result.kind === 'skip') return []
-  return result.items
-}
-
-async function collectUpfrontCategories(
-  options: InitOptions,
-  questionIO: InitQuestionIO,
-  resumedCheckpoint: InitCheckpoint | undefined
-): Promise<FactCategoryDefinitionInput[]> {
-  if (options.rescan || options.nonInteractive || options.base || resumedCheckpoint) return []
-  return promptUserCategories(questionIO, false)
-}
-
-// TODO: restore after HDBSCAN UX is validated — per-category accept/rename/reject/merge review
-// async function reviewInferredFactCategories(
-//   inferred: InferredFactCategory[],
-//   questionIO: InitQuestionIO,
-//   rescan: boolean
-// ): Promise<FactCategoryDefinitionInput[]> {
-//   questionIO.write?.(
-//     `\n[${rescan ? 'kb scan' : 'kb init'}] Review inferred project categories:\n${inferred
-//       .map(
-//         (category, index) =>
-//           `  ${index + 1}. ${category.name} — ${category.description} [terms: ${category.representativeTerms.join(', ')}]`
-//       )
-//       .join('\n')}\n\n`
-//   )
-//   const accepted: FactCategoryDefinitionInput[] = []
-//   for (let index = 0; index < inferred.length; index += 1) {
-//     const category = inferred[index]
-//     const rawAnswer = (
-//       await questionIO.askQuestion(
-//         `> Category ${index + 1} "${category.name}" [/accept, /rename <name>, /reject, /merge <number>]: `
-//       )
-//     ).trim()
-//     const answer = rawAnswer.toLowerCase()
-//     if (!answer || answer === '/accept') {
-//       accepted.push(buildCategoryDefinitionFromReview(category, { status: 'accepted', createdBy: 'system' }))
-//       continue
-//     }
-//     if (answer === '/reject') continue
-//     if (answer.startsWith('/rename ')) {
-//       const renamed = rawAnswer.slice('/rename '.length).trim()
-//       accepted.push(buildCategoryDefinitionFromReview(category, { name: renamed || category.name, status: 'edited', createdBy: 'user' }))
-//       continue
-//     }
-//     if (answer.startsWith('/merge ')) {
-//       const targetIndex = Number.parseInt(answer.slice('/merge '.length).trim(), 10) - 1
-//       const target = accepted[targetIndex]
-//       if (target) target.description = `${target.description}; merged ${category.name.toLowerCase()}`
-//       continue
-//     }
-//     accepted.push(buildCategoryDefinitionFromReview(category, { name: rawAnswer, status: 'edited', createdBy: 'user' }))
-//   }
-//   const manual = (await questionIO.askQuestion('> Add a manual category (blank to skip): ')).trim()
-//   if (manual) {
-//     accepted.push({
-//       id: `category-${slugifyFactCategoryName(manual)}`,
-//       name: manual, description: `Facts about ${manual}`, status: 'edited', createdBy: 'user',
-//       representativeTerms: manual.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 4),
-//       centroidVector: [],
-//     })
-//   }
-//   return accepted.length > 0
-//     ? accepted
-//     : inferred.map(category => buildCategoryDefinitionFromReview(category, { status: 'accepted', createdBy: 'system' }))
-// }
 
 class InitPausedError extends Error {
   constructor(readonly cycle: InitCycle) {

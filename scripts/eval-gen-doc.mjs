@@ -142,15 +142,15 @@ const INTRO = {
 
 const HOWTO = {
   type: 'howto',
-  prompt: 'How to initialize a kb base from a repo with kb init, rescan, and verify indexing.',
+  prompt: 'How to initialize a kb base from one or more git repos with kb init, refresh with kb scan, and verify indexing.',
   purgeId: sanitizeDocId('kb init howto eval smoke'),
   answers: [
     ['documentTitle', 'kb init howto eval smoke'],
-    ['goal', 'Create or refresh a project KB from markdown so kb query returns grounded answers.'],
-    ['prereqs', 'Node 24, kb on PATH, repo + ~/.kb write access, optional LLM keys.'],
+    ['goal', 'Create or refresh a project KB from one or more git repos so kb query returns grounded answers.'],
+    ['prereqs', 'Node 24, kb on PATH, git remote URL(s), ~/.kb write access, optional LLM keys.'],
     [
       'steps',
-      'cd repo; kb init --base NAME --non-interactive; kb base use NAME; kb init --base NAME --rescan then --rescan --apply when ready; kb docs list --base NAME.',
+      'kb init --base NAME --git <url> [--git <url2#branch>]; kb base use NAME; kb base add-repo <url> to fold in another repo; kb scan --base NAME to refresh; kb docs list --base NAME.',
     ],
     [
       'gotchas',

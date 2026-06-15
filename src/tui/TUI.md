@@ -46,11 +46,11 @@ React/Ink chat shell launched when the user runs bare `kb` in a TTY. Product-wid
 
 ## Init / scan from TUI
 
-`/init` and `/scan` call `runKbInit` / `parseScanCommand` directly with:
+`/init` calls `runKbInit` directly (cloning + indexing the base's git repos); `/scan` calls
+`runScanCommand` (pull + re-index every repo the base tracks). Both wire:
 
 - `InitProgressReporter` wired to `InitProgressBar`
 - `CliOutput` capture where needed
-- `resolveApplyArgs()` adding `--apply` for scan
 
 **Invariant:** init progress strings match `init-status.ts` parsing (`[init]`, `[scan]` prefixes) so the bar can parse `6/6 ast-facts …` style lines without polluting `HistoryPane`.
 

@@ -14,7 +14,7 @@ The router maps the legacy **`read_documents`**-shaped envelope to **`FactsDocum
 | `discoveryDepth` | Behavior |
 |------------------|----------|
 | **`shallow`** | Lexical FTS over facts (`searchFacts`), or `listFactsForQuery` when the query string is empty. |
-| **`deep`** | **`FactsQueryResearchOrchestrator`** (`src/tools/facts-query-research-orchestrator.ts`): adaptive passes merging **BFS edge-walk neighbors** (`fact_edges`), lexical hits, concept-frontier rows, and deterministic semantic rescoring until the LLM judge confirms sufficiency, the frontier is exhausted, or a safety budget is reached. |
+| **`deep`** | **`FactsQueryResearchOrchestrator`** (`src/tools/facts-query-research-orchestrator.ts`): adaptive passes merging **BFS edge-walk neighbors** (`fact_edges`), lexical hits, concept-frontier rows, and deterministic semantic rescoring until the LLM judge confirms sufficiency, the frontier is exhausted, or a safety budget is reached. Retrieval is **repo-scoped**: expansion lands in whichever repo the strongest hit belongs to (via the fact's `git_repo` column) and exhausts that repo's fact pool first, then walks the cross-repo `fact_edges` to sibling repos (`depends_on_repo` links first). |
 
 ## Deep loop — per-iteration sources
 
@@ -34,6 +34,8 @@ Primary lexical hits from pass 1 are tracked as **anchors** (+0.10 score boost; 
 
 After scoring, the active pond's frontier is updated from its edge neighbors, pond-lexical hits, and local top scores. `graphHops` counts global BFS levels across ponds.
 
+**Repo ordering:** the walk first exhausts the fact pool of the repo the strongest hit belongs to (the fact's `git_repo`), then crosses into sibling repos by following cross-repo `fact_edges` — `depends_on_repo` edges are walked before `cross_repo_symbol` / `references_repo`. There is no fact-category widening; repo edges drive the reach across subgraphs.
+
 ## Fact scoring
 
 Scoring differs by `source_kind` because identifier-name text overlap is unreliable for code facts.
@@ -52,7 +54,7 @@ score = overlapScore × 0.20 + graphProximityScore × 0.60 + confidence × 0.20 
 - `semanticScore` — deterministic hash-based cosine similarity (lexical proxy, not neural embeddings).
 - `graphProximityScore` — max score of the frontier parent that led to this code fact via BFS traversal. Zero when the fact was found only by text search. This is the primary discriminator for code facts: a function discovered via graph traversal from a high-scoring doc fact scores 0.55–0.80; a function matched only by identifier name overlap scores 0.25–0.39.
 - `confidence` — indexer-assigned quality signal (code facts default to 0.95).
-- `boosts` — anchor boost +0.10, frontier boost +0.06, category boost up to +0.18.
+- `boosts` — anchor boost +0.10, frontier boost +0.06.
 
 Facts scoring below `MIN_FACT_SCORE` (0.20) are dropped from the final result set (reserved anchor and per-source-kind minimum facts bypass this floor).
 

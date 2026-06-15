@@ -31,7 +31,7 @@ sequenceDiagram
 |---|---|---|
 | `install-release.sh` | Fresh install from GitHub Releases tarball | End users |
 | `install-global.sh` | Symlink dev build into `$PNPM_HOME/bin` | Contributors |
-| `uninstall-global.sh` | Remove dev symlink, dist/, and Python venvs | Contributors |
+| `uninstall-global.sh` | Remove dev symlink and dist/ | Contributors |
 
 Consumer uninstall is `kb uninstall` (see [`../src/cli/CLI.md`](../src/cli/CLI.md)) — not a shell script.
 
@@ -71,8 +71,7 @@ Without the hook, run `nvm use` once after entering the repo.
 ~/.kb/
   bin/kb          → symlink to runtime/node_modules/.bin/kb
   runtime/        npm package (kb-cli-node24.tgz unpacked)
-  .kb-python/     Python venv for fact categorisation (auto-created on first kb init)
-  <base-name>/    SQLite + markdown per knowledge base
+  sessions/<base>/  SQLite + markdown + repos/<slug>/ clones per knowledge base
   config.json     LLM provider settings
 ```
 
@@ -83,9 +82,7 @@ Without the hook, run `nvm use` once after entering the repo.
 Removes in order:
 1. `$PNPM_HOME/bin/kb` dev symlink
 2. `dist/` build output
-3. Repo-local `.kb-python/` venv (from `pnpm setup:category-clustering`)
-4. Global `~/.kb/.kb-python/` venv
-5. Prompts interactively before deleting `~/.kb/`
+3. Prompts interactively before deleting `~/.kb/`
 
 ## Invariants
 

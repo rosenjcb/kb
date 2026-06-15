@@ -95,9 +95,15 @@ export class FactsQueryResearchOrchestrator {
     const maxPonds = clampLimitInt(process.env.KB_FACTS_QUERY_MAX_PONDS, 6, 2, 12)
     const perIterationLimit = 50
     const queryTokens = tokenizeQuery(input.query)
-    const rankedCategories = this.indexer.inferCategoriesForQuery(input.query, 4)
-    let activeCategoryIds = rankedCategories.slice(0, 3).map(category => category.categoryId)
-    let categoryWideningExhausted = false
+    // Repo-pool retrieval: facts are organised by the git repo they came from (not by
+    // categories). We seed on the repo the first lexical hit lands in, then order results so
+    // that repo's pool is exhausted before walking the cross-repo edge tree to sibling repos.
+    const crossRepoLinks = this.indexer.listCrossRepoLinks()
+    // Repo-pool ordering only kicks in for genuinely multi-repo bases; single-repo (and all
+    // legacy) bases behave exactly as before — no repo boost, no repo-distance sort.
+    const multiRepo = crossRepoLinks.length > 0
+    let primaryRepo: string | null = null
+    let repoDistance = new Map<string, number>()
     let activeConcepts = queryTokens.slice(0, 8)
     let activeConceptBudget = 40
     const seenFactIds = new Set<string>(input.excludeIds ?? [])
@@ -115,7 +121,7 @@ export class FactsQueryResearchOrchestrator {
     let previousMetrics: LoopMetrics | undefined
     let iterationsRun = 0
     const ponds = buildExplorationPonds(input.query, queryTokens, maxPonds)
-    seedPondFrontiers(this.indexer, ponds, activeCategoryIds)
+    seedPondFrontiers(this.indexer, ponds)
     let pondCursor = 0
 
     for (let iter = 0; isUnlimited(maxIterations) || iter < maxIterations; iter++) {
@@ -145,48 +151,33 @@ export class FactsQueryResearchOrchestrator {
         graphHops += 1
         activePond.hops += 1
       }
-      const lexicalRows =
-        activeCategoryIds.length > 0
-          ? this.indexer.searchFactsInCategories(input.query, activeCategoryIds, perIterationLimit)
-          : this.indexer.searchFacts(input.query, perIterationLimit)
+      const lexicalRows = this.indexer.searchFacts(input.query, perIterationLimit)
       if (iter === 0) {
         for (const row of lexicalRows.slice(0, 10)) {
           primaryLexicalAnchors.add(row.id)
+        }
+        // The "landed" repo is where the strongest lexical hit lives; everything is ordered
+        // outward from it along the cross-repo edge tree.
+        if (multiRepo) {
+          primaryRepo = lexicalRows.find(row => row.git_repo)?.git_repo ?? null
+          repoDistance = computeRepoDistances(primaryRepo, crossRepoLinks)
         }
       }
       const pondLexicalRows =
         activePond.query.trim().toLowerCase() === input.query.trim().toLowerCase()
           ? []
-          : activeCategoryIds.length > 0
-            ? this.indexer.searchFactsInCategories(
-                activePond.query,
-                activeCategoryIds,
-                perIterationLimit
-              )
-            : this.indexer.searchFacts(activePond.query, perIterationLimit)
+          : this.indexer.searchFacts(activePond.query, perIterationLimit)
       const frontierConcepts = [...new Set([...activeConcepts, ...queryTokens])].slice(
         0,
         activeConceptBudget
       )
       const frontierRows =
         frontierConcepts.length > 0
-          ? activeCategoryIds.length > 0
-            ? this.indexer.searchFactsByConceptFrontierInCategories(
-                frontierConcepts,
-                activeCategoryIds,
-                perIterationLimit
-              )
-            : this.indexer.searchFactsByConceptFrontier(frontierConcepts, perIterationLimit)
+          ? this.indexer.searchFactsByConceptFrontier(frontierConcepts, perIterationLimit)
           : []
       const conceptRows =
         activeConcepts.length > 0
-          ? activeCategoryIds.length > 0
-            ? this.indexer.searchFactsByConceptsInCategories(
-                activeConcepts,
-                activeCategoryIds,
-                perIterationLimit
-              )
-            : this.indexer.searchFactsByConcepts(activeConcepts, perIterationLimit)
+          ? this.indexer.searchFactsByConcepts(activeConcepts, perIterationLimit)
           : []
       const merged = mergeUniqueFacts(
         [...lexicalRows, ...pondLexicalRows, ...edgeNeighborRows, ...frontierRows, ...conceptRows],
@@ -198,7 +189,7 @@ export class FactsQueryResearchOrchestrator {
       )
       const activePonds = ponds.filter(pond => !pond.exhausted).length
       loopTrace.push(
-        `i${iter + 1}:limit=${perIterationLimit},lex=${lexicalRows.length},pond=${activePond.id}/${ponds.length}:${summarizePondQuery(activePond.query)},plex=${pondLexicalRows.length},edges=${edgeNeighborRows.length},frontier=${frontierRows.length},concept=${conceptRows.length},merged=${merged.length},sem=${semanticScores.size},c=${frontierConcepts.length},categories=${activeCategoryIds.length},ponds=${activePonds},hops=${graphHops}`
+        `i${iter + 1}:limit=${perIterationLimit},lex=${lexicalRows.length},pond=${activePond.id}/${ponds.length}:${summarizePondQuery(activePond.query)},plex=${pondLexicalRows.length},edges=${edgeNeighborRows.length},frontier=${frontierRows.length},concept=${conceptRows.length},merged=${merged.length},sem=${semanticScores.size},c=${frontierConcepts.length},repo=${primaryRepo ?? 'n/a'},ponds=${activePonds},hops=${graphHops}`
       )
       if (merged.length === 0) {
         markPondExhaustedIfStalled(activePond, edgeNeighborRows, pondLexicalRows, seenFactIds)
@@ -252,7 +243,7 @@ export class FactsQueryResearchOrchestrator {
         edgeNeighborIds,
         frontierMaxScore,
         semanticScores,
-        activeCategoryIds,
+        repoDistance,
         primaryLexicalAnchors
       )
       const topRows = [...scoredFacts.values()]
@@ -298,7 +289,6 @@ export class FactsQueryResearchOrchestrator {
         }
       }
 
-      const nextCategoryIds = shouldWidenCategories({ activeCategoryIds, rankedCategories, sufficiency })
       const triedEdgeWalk = activePond.frontierFactIds.length > 0
       const pondEdgeStalled = triedEdgeWalk && edgeNeighborRows.length === 0
       if (pondEdgeStalled && pondLexicalRows.every(row => seenFactIds.has(row.id))) {
@@ -324,10 +314,7 @@ export class FactsQueryResearchOrchestrator {
       const canExpandGraph = canExpandEdges || canExpandConcepts
 
       if (status !== 'stop') {
-        const frontierExhausted =
-          nextCategoryIds.length === activeCategoryIds.length &&
-          !canExpandGraph &&
-          plateauCount >= 1
+        const frontierExhausted = !canExpandGraph && plateauCount >= 1
         if (frontierExhausted) {
           status = 'stop'
           nextAction = 'frontier_exhausted'
@@ -356,22 +343,10 @@ export class FactsQueryResearchOrchestrator {
         break
       }
 
-      if (nextCategoryIds.length > activeCategoryIds.length) {
-        activeCategoryIds = nextCategoryIds
-      } else if (
-        !categoryWideningExhausted &&
-        sufficiency.decision === 'not_answerable_yet' &&
-        activeCategoryIds.length >= rankedCategories.length
-      ) {
-        // All ranked categories exhausted and still not answerable — drop category filter
-        // so uncategorized search paths can surface cross-cutting facts.
-        categoryWideningExhausted = true
-        activeCategoryIds = []
-      }
       if (canExpandConcepts) {
         activeConceptBudget = Math.min(activeConceptBudget + 8, 96)
         activeConcepts = expandedConcepts.slice(0, activeConceptBudget)
-        maybeSpawnConceptPond(ponds, newNeighborConcepts, maxPonds, this.indexer, activeCategoryIds)
+        maybeSpawnConceptPond(ponds, newNeighborConcepts, maxPonds, this.indexer)
       }
       previousMetrics = metrics
     }
@@ -383,7 +358,8 @@ export class FactsQueryResearchOrchestrator {
       graphHops,
       sufficiencyReason: stopReason,
       loopTrace,
-      rankedCategories,
+      primaryRepo,
+      repoDistance,
       checkpoints,
       primaryLexicalAnchors,
       pondCount: ponds.length,
@@ -413,22 +389,19 @@ export class FactsQueryResearchOrchestrator {
     edgeNeighborIds: Set<string>,
     frontierMaxScore: number,
     semanticScores: Map<string, number>,
-    activeCategoryIds: string[],
+    repoDistance: Map<string, number>,
     primaryLexicalAnchors: Set<string>
   ): void {
     const queryTokens = tokenizeQuery(query)
-    const categoryIds = this.indexer.getFactCategoryIdsForFacts(rows.map(row => row.id))
     for (const row of rows) {
       const textTokens = tokenizeQuery(row.fact_text)
       const overlap = textTokens.filter(token => queryTokens.includes(token)).length
       const overlapScore = queryTokens.length > 0 ? overlap / queryTokens.length : 0
       const frontierBoost = frontierFactIds.has(row.id) ? 0.06 : 0
       const anchorBoost = primaryLexicalAnchors.has(row.id) ? 0.1 : 0
-      const categories = categoryIds.get(row.id) ?? []
-      const categoryBoost =
-        activeCategoryIds.length > 0 && categories.some(category => activeCategoryIds.includes(category))
-          ? Math.min(0.18, categories.filter(category => activeCategoryIds.includes(category)).length * 0.09)
-          : 0
+      // Repo-pool boost: facts from the landed repo rank highest; sibling repos decay with
+      // their distance along the cross-repo edge tree.
+      const repoBoost = repoBoostForDistance(repoDistanceFor(row.git_repo, repoDistance))
       const qualityPenalty = retrievalFactPenalty(row)
 
       // Code facts: swap SHA256 semantic weight for graph proximity score.
@@ -445,7 +418,7 @@ export class FactsQueryResearchOrchestrator {
             row.confidence * 0.20 +
             frontierBoost +
             anchorBoost +
-            categoryBoost -
+            repoBoost -
             qualityPenalty
         )
       } else {
@@ -457,7 +430,7 @@ export class FactsQueryResearchOrchestrator {
             row.confidence * 0.20 +
             frontierBoost +
             anchorBoost +
-            categoryBoost -
+            repoBoost -
             qualityPenalty
         )
       }
@@ -476,14 +449,23 @@ export class FactsQueryResearchOrchestrator {
     graphHops: number
     sufficiencyReason: string
     loopTrace?: string[]
-    rankedCategories?: Array<{ categoryId: string; name: string; score: number }>
+    primaryRepo?: string | null
+    repoDistance?: Map<string, number>
     checkpoints?: LoopCheckpoint[]
     primaryLexicalAnchors?: Set<string>
     pondCount?: number
   }): QueryResponse {
+    const repoDistance = input.repoDistance ?? new Map<string, number>()
+    // Order primarily by repo pool (landed repo first, then outward along the tree), and by
+    // score within each pool — so a query that lands in "auth" exhausts auth before others.
     const sorted = [...input.scoredFacts.values()]
       .filter(entry => !isExcludedRetrievalFact(entry.row))
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => {
+        const da = repoDistanceFor(a.row.git_repo, repoDistance)
+        const db = repoDistanceFor(b.row.git_repo, repoDistance)
+        if (da !== db) return da - db
+        return b.score - a.score
+      })
     const MIN_PER_SOURCE = 2
     const ANCHOR_SLOTS = 3
 
@@ -517,7 +499,6 @@ export class FactsQueryResearchOrchestrator {
       .filter(e => !reservedIds.has(e.row.id) && e.score >= MIN_FACT_SCORE)
     const ranked = dedupeRankedFacts([...reserved, ...filteredRemainder])
     const cappedRanked = ranked.slice(0, MAX_FACTS_FOR_LLM)
-    const categoryNames = this.indexer.getFactCategoryNamesForFacts(cappedRanked.map(entry => entry.row.id))
     const results: QueryResult[] = cappedRanked.map(({ row }) => ({
       metadata: {
         id: row.id,
@@ -525,7 +506,7 @@ export class FactsQueryResearchOrchestrator {
         filePath: formatFactUri(row.id),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
-        tags: [row.source_kind, ...(categoryNames.get(row.id) ?? []), 'fact'],
+        tags: [row.source_kind, ...(row.git_repo ? [row.git_repo] : []), 'fact'],
         type: 'reference',
       },
       content: input.input.includeContent ? row.fact_text : undefined,
@@ -542,9 +523,7 @@ export class FactsQueryResearchOrchestrator {
       .filter(Boolean)
       .join(';')
     const traceDetail = [
-      input.rankedCategories && input.rankedCategories.length > 0
-        ? `categories:${input.rankedCategories.map(category => category.name).join(',')}`
-        : null,
+      input.primaryRepo ? `repo:${input.primaryRepo}` : null,
       input.loopTrace?.length ? `trace:${input.loopTrace.join('|')}` : null,
     ]
       .filter(Boolean)
@@ -648,18 +627,59 @@ function buildExplorationPonds(query: string, queryTokens: string[], maxPonds: n
   }))
 }
 
-function seedPondFrontiers(
-  indexer: SqliteKbIndexer,
-  ponds: ExplorationPond[],
-  activeCategoryIds: string[]
-): void {
+function seedPondFrontiers(indexer: SqliteKbIndexer, ponds: ExplorationPond[]): void {
   for (const pond of ponds) {
-    const rows =
-      activeCategoryIds.length > 0
-        ? indexer.searchFactsInCategories(pond.query, activeCategoryIds, 8)
-        : indexer.searchFacts(pond.query, 8)
+    const rows = indexer.searchFacts(pond.query, 8)
     pond.frontierFactIds = pickDiverseSeedFacts(rows, 5)
   }
+}
+
+/**
+ * Distance of every repo from `primaryRepo`, via BFS over the cross-repo edge tree.
+ * The landed repo is distance 0; repos it links to are 1, and so on. Repos with no path
+ * (or when there is no primary repo) are simply absent and treated as far away.
+ */
+function computeRepoDistances(
+  primaryRepo: string | null,
+  links: Array<{ fromRepo: string; toRepo: string; weight: number }>
+): Map<string, number> {
+  const distances = new Map<string, number>()
+  if (!primaryRepo) return distances
+  const adjacency = new Map<string, string[]>()
+  for (const link of links) {
+    if (!adjacency.has(link.fromRepo)) adjacency.set(link.fromRepo, [])
+    adjacency.get(link.fromRepo)?.push(link.toRepo)
+  }
+  distances.set(primaryRepo, 0)
+  const queue: string[] = [primaryRepo]
+  while (queue.length > 0) {
+    const repo = queue.shift() as string
+    const depth = distances.get(repo) ?? 0
+    for (const next of adjacency.get(repo) ?? []) {
+      if (distances.has(next)) continue
+      distances.set(next, depth + 1)
+      queue.push(next)
+    }
+  }
+  return distances
+}
+
+/**
+ * Repo distance for a fact: landed repo 0, known siblings by tree depth, otherwise far.
+ * An empty `distances` map (single-repo / unreconciled base) makes every fact equidistant, so
+ * scoring and ordering fall back to pure score — no repo boost, no reordering.
+ */
+function repoDistanceFor(gitRepo: string | null, distances: Map<string, number>): number {
+  if (!gitRepo) return Number.MAX_SAFE_INTEGER
+  return distances.get(gitRepo) ?? Number.MAX_SAFE_INTEGER
+}
+
+/** Score boost by repo distance: 0 → +0.18, 1 → +0.10, 2 → +0.05, further/unknown → 0. */
+function repoBoostForDistance(distance: number): number {
+  if (distance === 0) return 0.18
+  if (distance === 1) return 0.1
+  if (distance === 2) return 0.05
+  return 0
 }
 
 function pickDiverseSeedFacts(rows: FactRow[], limit: number): string[] {
@@ -721,18 +741,14 @@ function maybeSpawnConceptPond(
   ponds: ExplorationPond[],
   newConcepts: string[],
   maxPonds: number,
-  indexer: SqliteKbIndexer,
-  activeCategoryIds: string[]
+  indexer: SqliteKbIndexer
 ): void {
   if (ponds.length >= ABSOLUTE_MAX_PONDS) return
   if (!isUnlimited(maxPonds) && ponds.length >= maxPonds) return
   if (newConcepts.length < 2) return
   const query = newConcepts.slice(0, 3).join(' ')
   if (ponds.some(pond => pond.query.toLowerCase() === query.toLowerCase())) return
-  const rows =
-    activeCategoryIds.length > 0
-      ? indexer.searchFactsInCategories(query, activeCategoryIds, 8)
-      : indexer.searchFacts(query, 8)
+  const rows = indexer.searchFacts(query, 8)
   if (rows.length === 0) return
   ponds.push({
     id: ponds.length,
@@ -795,18 +811,6 @@ function hasMeaningfulProgress(previous: LoopMetrics | undefined, current: LoopM
   return false
 }
 
-
-function shouldWidenCategories(input: {
-  activeCategoryIds: string[]
-  rankedCategories: Array<{ categoryId: string; name: string; score: number }>
-  sufficiency: SufficiencyDecision
-}): string[] {
-  if (input.sufficiency.decision === 'answerable') return input.activeCategoryIds
-  if (input.activeCategoryIds.length >= input.rankedCategories.length) return input.activeCategoryIds
-  return input.rankedCategories
-    .slice(0, input.activeCategoryIds.length + 1)
-    .map(category => category.categoryId)
-}
 
 function clampLimitInt(raw: string | undefined, fallback: number, min: number, max: number): number {
   if (!raw) return fallback

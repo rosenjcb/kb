@@ -27,13 +27,13 @@ read-inputs → code-index → document-facts → import-docs → write
 
 | Cycle | What happens |
 |---|---|
-| `read-inputs` | Collect markdown sources under cwd |
+| `read-inputs` | Collect markdown sources from each tracked repo clone |
 | `code-index` | Deterministic AST indexing into `facts`/`fact_edges` (ts-morph + tree-sitter) |
 | `document-facts` | Sentence-level facts from discovered markdown |
 | `import-docs` | Verbatim original docs into SQLite |
 | `write` | Persist docs; on scan, claim planner/mutations |
 
-**Not separate checkpoint cycles:** `ast-facts` / `code-facts` / `fact-categories` names in older docs refer to **sub-steps inside** `code-index` or interactive extras. See [`../core/INIT.md`](../core/INIT.md) for narrative detail; trust `InitCycle` + `runKbInit` for resume boundaries.
+**Not separate checkpoint cycles:** `ast-facts` / `code-facts` names in older docs refer to **sub-steps inside** `code-index`. See [`../core/INIT.md`](../core/INIT.md) for narrative detail; trust `InitCycle` + `runKbInit` for resume boundaries.
 
 `--stop-after <cycle>` and `--detach` pause after the named cycle. v2 checkpoint files are rejected — user must delete and re-run.
 
@@ -99,32 +99,58 @@ Distinct from `pnpm uninstall:global` (`scripts/uninstall-global.sh`), which tar
 
 Preview responses include `removed` / `removedPages` for docs that exist in the sink but not in SQLite.
 
-## Git-linked bases
+## Git-linked bases (multi-repo)
 
-Pin a base to a git remote; the index auto-updates on every query without a local checkout.
+A base tracks **one or more** git remotes; git is **required** (local-directory indexing has been removed). The index auto-updates on every query without a manual checkout.
 
 ```text
-kb init --git <url> [--branch <branch>] [--base <name>]
-# interactive: enter the URL at the "Git URL" upfront prompt (second question)
+kb init --git <url[#branch]> [--git <url[#branch]> ...] [--branch <default>] [--base <name>]
 ```
 
-Each git-linked base stores a blobless clone at `~/.kb/sessions/<base>/repo/` and a `meta.json` (`{ gitUrl, gitBranch, lastSyncedSha, lastSyncedAt }`). `maybeAutoSync()` (`auto-sync.ts`) is called in two modes: (1) **on session load** — TUI startup and `kb base use` — always pulls regardless of recency (`staleLimitMs: 0`); (2) **on every intent command** — stale-gated (default 30 min). In both cases, new commits trigger a rescan; a failed pull emits a warning and the session continues on the existing index. Non-git bases (no `meta.json`) are no-ops.
+`--git` is repeatable; each value may carry an inline `#branch`. The `--branch` flag sets the default branch for any repo that omits one (default `main`).
+
+Each base stores a blobless clone per repo at `~/.kb/sessions/<base>/repos/<slug>/` and a `meta.json` shaped as `{ repos: [ { gitUrl, gitBranch, slug, dir, lastSyncedSha, lastSyncedAt }, … ] }`. Every fact records its origin repo in the **`git_repo`** column, and imported doc `source_ref`s are slug-prefixed so provenance survives the fold into one graph.
+
+> **Legacy single-repo bases** with the old `meta.json` (`{ gitUrl, gitBranch, lastSyncedSha, lastSyncedAt }`) and a `repo/` clone still load and keep working.
+
+`maybeAutoSync()` (`auto-sync.ts`) is called in two modes: (1) **on session load** — TUI startup and `kb base use` — always pulls regardless of recency (`staleLimitMs: 0`); (2) **on every intent command** — stale-gated (default 30 min). In both modes **every** repo the base tracks is synced; new commits on any repo trigger a rescan plus a cross-repo link rebuild. A failed pull emits a warning and the session continues on the existing index. Non-git bases (no `meta.json`) are no-ops.
 
 | File | Role |
 |---|---|
-| `base-meta.ts` | `readBaseMeta` / `writeBaseMeta` for `meta.json` |
+| `base-meta.ts` | `readBaseMeta` / `writeBaseMeta` for `meta.json` (`repos` array) |
 | `git-sync.ts` | `cloneRepo`, `pullRepo`, `getHeadSha`, `baseNameFromGitUrl` |
-| `auto-sync.ts` | `maybeAutoSync` — forced pull on session load; stale-gated pull on queries; conditional rescan on new commits |
+| `auto-sync.ts` | `maybeAutoSync` — forced pull on session load; stale-gated pull on queries; per-repo rescan + cross-repo relink on new commits |
 
 **Invariants:**
 - `meta.json` is written in `runKbInit`'s `finally` block — reflects the last completed scan even on a paused run.
 - `maybeAutoSync` must never throw; git failures are swallowed and logged so the session proceeds on the current index.
-- `scanDir` (`repo/`) is the cwd for all file-discovery cycles; `cwd` (caller's shell dir) is only used for checkpoint paths and the `.kb` marker.
+- File-discovery cycles run over each repo's clone dir; the caller's shell dir is only used for checkpoint paths and the `.kb` marker.
 - `kb sync` = self-upgrade (GitHub Releases). Unrelated to git-linked base sync.
+
+### Cross-repo reconciliation
+
+After every repo is indexed, an **integration-ingest** pass bridges the per-repo subgraphs into one connected graph by linking facts across repos on real integration signals:
+
+- `package.json` dependencies (repo A depends on repo B's published package)
+- cross-repo symbol imports
+- `.env` / service references
+
+These produce bridge `fact_edges` of types **`depends_on_repo`**, **`cross_repo_symbol`**, and **`references_repo`**. Reconciliation runs at the end of `kb init`, after `kb scan`, and after auto-sync.
+
+### Managing repos (`kb base`)
+
+```text
+kb base list-repos [--base <name>]
+kb base add-repo <url[#branch]> [--branch <b>] [--base <name>]
+kb base remove-repo <url|slug> [--base <name>]
+```
+
+- `add-repo` clones the repo, indexes it, and rebuilds the cross-repo links.
+- `remove-repo` purges that repo's facts and its clone; it refuses to remove the last remaining repo.
 
 ## Gotchas
 
 - **Base resolution:** Most commands flow through `base-selection.ts`; missing base → `CLI_ERROR_NO_KB_BASE` (formatted by `cli-prerequisites.ts`).
-- **Apply defaults:** TUI `resolveApplyArgs()` auto-appends `--apply` for `publish` and `scan` — CLI users must pass `--apply` explicitly. `scan` always implies apply (`parseScanCommand` sets `rescan`/`apply`).
+- **Apply defaults:** TUI `resolveApplyArgs()` auto-appends `--apply` for `publish` — CLI users must pass `--apply` explicitly. `scan` runs through `runScanCommand` (pull + re-index every repo the base tracks); it takes no `--apply`.
 - **Init progress:** Pass `InitProgressReporter` from TUI; do not append `[init] …` lines to chat history (see `src/tui/TUI.md`).
-- **Upfront questions:** Interactive `kb init` (no `--base`) asks three questions before the scan: base name (`prompts[0]`), git URL (`prompts[1]`), fact categories (`prompts[2]`). All three are skipped when `--base` is set, when running `kb scan`, or when resuming from checkpoint. Tests asserting prompt order must follow this sequence.
+- **Upfront questions:** Interactive `kb init` (no `--base`) asks for the base name (`prompts[0]`) and at least one git URL (`prompts[1]`) before the scan. Git URLs are **required** — there is no blank-to-local option and no fact-category prompt. Both prompts are skipped when `--base` is set, when running `kb scan`, or when resuming from checkpoint. Tests asserting prompt order must follow this sequence.

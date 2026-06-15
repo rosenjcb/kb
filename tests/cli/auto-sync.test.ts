@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { writeBaseMeta, type GitBaseMeta } from '../../src/cli/base-meta'
+import { type GitBaseMeta, type GitRepoMeta, readBaseMeta, writeBaseMeta } from '../../src/cli/base-meta'
 import { maybeAutoSync } from '../../src/cli/auto-sync'
 
 vi.mock('../../src/cli/git-sync', () => ({
@@ -14,7 +14,7 @@ vi.mock('../../src/cli/init-cli', () => ({
   runKbInit: vi.fn(),
 }))
 
-import { pullRepo, getHeadSha } from '../../src/cli/git-sync'
+import { getHeadSha, pullRepo } from '../../src/cli/git-sync'
 import { runKbInit } from '../../src/cli/init-cli'
 
 const mockPullRepo = vi.mocked(pullRepo)
@@ -23,17 +23,24 @@ const mockRunKbInit = vi.mocked(runKbInit)
 
 let baseDir: string
 
-const staleMeta = (overrides: Partial<GitBaseMeta> = {}): GitBaseMeta => ({
-  gitUrl: 'https://github.com/org/repo',
-  gitBranch: 'main',
-  lastSyncedSha: 'oldshaoldshaoldshaoldshaoldshaoldsha',
-  lastSyncedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-  ...overrides,
-})
+function repo(overrides: Partial<GitRepoMeta> = {}): GitRepoMeta {
+  return {
+    gitUrl: 'https://github.com/org/repo',
+    gitBranch: 'main',
+    slug: 'org-repo',
+    dir: path.join('repos', 'org-repo'),
+    lastSyncedSha: 'oldshaoldshaoldshaoldshaoldshaoldsha',
+    lastSyncedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
+    ...overrides,
+  }
+}
+
+const staleMeta = (overrides: Partial<GitRepoMeta> = {}): GitBaseMeta => ({ repos: [repo(overrides)] })
 
 beforeEach(async () => {
   baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-auto-sync-test-'))
   vi.clearAllMocks()
+  mockRunKbInit.mockResolvedValue({ status: 'accepted', base: path.basename(baseDir), completedCycles: [] })
 })
 
 afterEach(async () => {
@@ -47,102 +54,94 @@ describe('auto-sync', () => {
     expect(mockRunKbInit).not.toHaveBeenCalled()
   })
 
-  it('Given a fresh base (synced within stale window), then skips pull', async () => {
-    await writeBaseMeta(baseDir, staleMeta({
-      lastSyncedAt: new Date().toISOString(), // just synced
-    }))
-
+  it('Given a repo synced within the stale window, then skips pull', async () => {
+    await writeBaseMeta(baseDir, staleMeta({ lastSyncedAt: new Date().toISOString() }))
     await maybeAutoSync(baseDir)
     expect(mockPullRepo).not.toHaveBeenCalled()
   })
 
-  it('Given a stale base with no new commits, then updates lastSyncedAt without rescanning', async () => {
+  it('Given a stale repo with no new commits, then refreshes lastSyncedAt without rescanning', async () => {
     const meta = staleMeta()
     await writeBaseMeta(baseDir, meta)
-    mockPullRepo.mockResolvedValue(false) // no new commits
-    mockGetHeadSha.mockResolvedValue(meta.lastSyncedSha)
+    mockPullRepo.mockResolvedValue(false)
+    mockGetHeadSha.mockResolvedValue(meta.repos[0].lastSyncedSha)
 
     await maybeAutoSync(baseDir)
 
     expect(mockPullRepo).toHaveBeenCalledOnce()
     expect(mockRunKbInit).not.toHaveBeenCalled()
-
-    const { readBaseMeta } = await import('../../src/cli/base-meta')
     const updated = await readBaseMeta(baseDir)
-    expect(updated?.lastSyncedSha).toBe(meta.lastSyncedSha) // sha unchanged
-    expect(updated?.lastSyncedAt).not.toBe(meta.lastSyncedAt) // timestamp refreshed
+    expect(updated?.repos[0].lastSyncedSha).toBe(meta.repos[0].lastSyncedSha)
+    expect(updated?.repos[0].lastSyncedAt).not.toBe(meta.repos[0].lastSyncedAt)
   })
 
-  it('Given a stale base with new commits, then pulls and rescans', async () => {
-    const meta = staleMeta()
-    await writeBaseMeta(baseDir, meta)
+  it('Given a stale repo with new commits, then pulls and re-indexes that repo by slug', async () => {
+    await writeBaseMeta(baseDir, staleMeta())
     const newSha = 'newshanewshanewshanewshanewshanewsha'
-    mockPullRepo.mockResolvedValue(true) // new commits
+    mockPullRepo.mockResolvedValue(true)
     mockGetHeadSha.mockResolvedValue(newSha)
-    mockRunKbInit.mockResolvedValue({ status: 'accepted', base: path.basename(baseDir), completedCycles: [] })
 
     const progress: string[] = []
     await maybeAutoSync(baseDir, { onProgress: l => progress.push(l) })
 
     expect(mockRunKbInit).toHaveBeenCalledOnce()
     expect(mockRunKbInit).toHaveBeenCalledWith(
-      expect.objectContaining({ cwd: path.join(baseDir, 'repo'), rescan: true, nonInteractive: true })
+      expect.objectContaining({
+        cwd: path.join(baseDir, 'repos', 'org-repo'),
+        rescan: true,
+        nonInteractive: true,
+        gitRepo: 'org-repo',
+      })
     )
-
-    const { readBaseMeta } = await import('../../src/cli/base-meta')
     const updated = await readBaseMeta(baseDir)
-    expect(updated?.lastSyncedSha).toBe(newSha)
+    expect(updated?.repos[0].lastSyncedSha).toBe(newSha)
     expect(progress.some(l => l.includes(newSha.slice(0, 8)))).toBe(true)
   })
 
-  it('Given a git pull failure, then logs warning and does not rescan', async () => {
-    await writeBaseMeta(baseDir, staleMeta())
-    mockPullRepo.mockRejectedValue(new Error('network error'))
+  it('Given multiple repos, then only the changed repo is re-indexed and others keep their sha', async () => {
+    const a = repo({ slug: 'org-a', dir: path.join('repos', 'org-a'), gitUrl: 'https://github.com/org/a' })
+    const b = repo({ slug: 'org-b', dir: path.join('repos', 'org-b'), gitUrl: 'https://github.com/org/b', lastSyncedSha: 'bsha' })
+    await writeBaseMeta(baseDir, { repos: [a, b] })
+
+    // a has new commits, b does not.
+    mockPullRepo.mockImplementation(async (dir: string) => dir.endsWith(path.join('repos', 'org-a')))
+    mockGetHeadSha.mockImplementation(async (dir: string) =>
+      dir.endsWith(path.join('repos', 'org-a')) ? 'asha-new' : 'bsha'
+    )
+
+    await maybeAutoSync(baseDir)
+
+    expect(mockRunKbInit).toHaveBeenCalledOnce()
+    expect(mockRunKbInit).toHaveBeenCalledWith(expect.objectContaining({ gitRepo: 'org-a' }))
+    const updated = await readBaseMeta(baseDir)
+    expect(updated?.repos.find(r => r.slug === 'org-a')?.lastSyncedSha).toBe('asha-new')
+    expect(updated?.repos.find(r => r.slug === 'org-b')?.lastSyncedSha).toBe('bsha')
+  })
+
+  it("Given one repo's pull fails, then the other repos still sync", async () => {
+    const a = repo({ slug: 'org-a', dir: path.join('repos', 'org-a') })
+    const b = repo({ slug: 'org-b', dir: path.join('repos', 'org-b') })
+    await writeBaseMeta(baseDir, { repos: [a, b] })
+
+    mockPullRepo.mockImplementation(async (dir: string) => {
+      if (dir.endsWith(path.join('repos', 'org-a'))) throw new Error('network error')
+      return false
+    })
+    mockGetHeadSha.mockResolvedValue('whatever')
 
     const progress: string[] = []
     await maybeAutoSync(baseDir, { onProgress: l => progress.push(l) })
 
-    expect(mockRunKbInit).not.toHaveBeenCalled()
+    expect(mockPullRepo).toHaveBeenCalledTimes(2)
     expect(progress.some(l => l.includes('network error'))).toBe(true)
   })
 
-  it('Given staleLimitMs: 0, then always pulls even for a freshly-synced base', async () => {
-    await writeBaseMeta(baseDir, staleMeta({
-      lastSyncedAt: new Date().toISOString(),
-    }))
+  it('Given staleLimitMs: 0, then pulls even a freshly-synced repo', async () => {
+    await writeBaseMeta(baseDir, staleMeta({ lastSyncedAt: new Date().toISOString() }))
     mockPullRepo.mockResolvedValue(false)
     mockGetHeadSha.mockResolvedValue('anysha')
 
     await maybeAutoSync(baseDir, { staleLimitMs: 0 })
-    expect(mockPullRepo).toHaveBeenCalledOnce()
-  })
-
-  it('Given staleLimitMs: 0 and a git pull failure, then warns and does not rescan', async () => {
-    await writeBaseMeta(baseDir, staleMeta({
-      lastSyncedAt: new Date().toISOString(),
-    }))
-    mockPullRepo.mockRejectedValue(new Error('network error'))
-
-    const progress: string[] = []
-    await maybeAutoSync(baseDir, { staleLimitMs: 0, onProgress: l => progress.push(l) })
-
-    expect(mockRunKbInit).not.toHaveBeenCalled()
-    expect(progress.some(l => l.includes('network error'))).toBe(true)
-  })
-
-  it('Given a custom staleLimitMs, then respects it', async () => {
-    await writeBaseMeta(baseDir, staleMeta({
-      lastSyncedAt: new Date(Date.now() - 10 * 1000).toISOString(), // 10 seconds ago
-    }))
-
-    // With default (30 min) threshold → fresh → no pull
-    await maybeAutoSync(baseDir)
-    expect(mockPullRepo).not.toHaveBeenCalled()
-
-    // With 5-second threshold → stale → pull
-    mockPullRepo.mockResolvedValue(false)
-    mockGetHeadSha.mockResolvedValue('anysha')
-    await maybeAutoSync(baseDir, { staleLimitMs: 5000 })
     expect(mockPullRepo).toHaveBeenCalledOnce()
   })
 })

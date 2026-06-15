@@ -42,31 +42,17 @@ describe('runFactsCommand', () => {
   it('Given seeded facts, list and search return human text', async () => {
     const baseDir = await tempBase()
     const ix = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
-    const inserted = ix.upsertFact({
+    ix.upsertFact({
       factText: 'Unique orchid retrieval phrase for FTS.',
       sourceKind: 'submit',
       sourceRef: 't',
       confidence: 0.9,
     })
-    ix.replaceFactCategories([
-      {
-        id: 'category-retrieval',
-        name: 'Retrieval',
-        description: 'Facts about retrieval',
-        status: 'accepted',
-        createdBy: 'system',
-        representativeTerms: ['retrieval'],
-        centroidVector: [],
-      },
-    ])
-    ix.replaceFactCategoryAssignments(
-      new Map([[inserted.id, [{ categoryId: 'category-retrieval', score: 0.95 }]]])
-    )
     ix.close()
 
     const listed = await runFactsCommand(['list', '--base', baseDir, '--limit', '10'])
     expect(listed).toContain('Unique orchid retrieval')
-    expect(listed).toContain('categories: Retrieval')
+    expect(listed).toContain('repo: (unscoped)')
 
     const searched = await runFactsCommand(['search', 'orchid retrieval', '--base', baseDir])
     expect(searched).toContain('Unique orchid')

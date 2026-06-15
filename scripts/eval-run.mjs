@@ -6,8 +6,8 @@
  * Session lifecycle is fully automatic:
  *   - Base name is derived from the suite id: `eval-{suiteId}` (e.g. `eval-raylib`, `eval-kb`).
  *   - If the session already has docs → reuse it (query-only run).
- *   - If the session is empty / missing → run `kb init` first.
- *   - Every harvest runs `kb scan --non-interactive` on the snapshot clone, then query.
+ *   - If the session is empty / missing → run `kb init --git <snapshot-clone>` first.
+ *   - Every harvest runs `kb scan` (pulls + re-indexes the base's repos), then query.
  *   - `--base NAME` overrides the formula. `--force-init` forces re-init even if docs exist.
  * Ends with an automatic trends summary across prior runs for the same suite.
  *
@@ -213,8 +213,8 @@ function printHelp() {
 Session lifecycle (automatic):
   Base is derived as eval-{suiteId} (e.g. eval-raylib, eval-kb).
   If the session has docs → reuse it (query-only run).
-  If the session is empty / missing → kb init first.
-  Every run: kb scan on the snapshot clone, then 8× kb query.
+  If the session is empty / missing → kb init --git <snapshot-clone> first.
+  Every run: kb scan (pulls + re-indexes the base's repos), then 8× kb query.
   Ends with a trends summary across prior runs for the same suite.
 
 Suite / questions:
@@ -578,7 +578,12 @@ async function main() {
     )
 
     if (needsInit) {
-      const initLog = kb(targetCwd, `init --base ${base} --non-interactive --debug`)
+      // kb init now requires a git remote. Point it at the local snapshot clone (exact commit,
+      // no extra network); kb follows the clone's own default branch (main, master, …).
+      const initLog = kb(
+        targetCwd,
+        `init --base ${base} --git "${targetCwd}" --non-interactive --debug`
+      )
       fs.writeFileSync(path.join(workdir, 'init.log'), initLog, 'utf8')
     } else {
       fs.writeFileSync(
@@ -589,7 +594,7 @@ async function main() {
     }
 
     console.error(`[eval] kb scan --base ${base}`)
-    const scanLog = kb(targetCwd, `scan --base ${base} --non-interactive --debug`)
+    const scanLog = kb(targetCwd, `scan --base ${base} --debug`)
     fs.writeFileSync(path.join(workdir, 'scan.log'), scanLog, 'utf8')
 
     console.error(`[eval] kb base use --default ${base}`)
@@ -792,9 +797,9 @@ async function main() {
         'pnpm run build (kb repo)',
         repoUrl ? `git clone (snapshot) → ${targetCwd}` : null,
         evalMode === 'all'
-          ? `kb init --base ${base} --non-interactive --debug (cwd: ${targetCwd})`
+          ? `kb init --base ${base} --git "${targetCwd}" --non-interactive --debug (cwd: ${targetCwd})`
           : null,
-        `kb scan --base ${base} --non-interactive --debug (cwd: ${targetCwd})`,
+        `kb scan --base ${base} --debug (cwd: ${targetCwd})`,
         `kb base use --default ${base}`,
         `kb docs list --base ${base} --output json`,
         `kb graph --base ${base}`,

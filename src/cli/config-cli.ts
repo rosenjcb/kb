@@ -39,6 +39,8 @@ export function printConfigHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('config llm', mode)}              Set up LLM provider (interactive wizard)`,
     `  ${cmd('config llm --show', mode)}       Show current LLM configuration`,
     '',
+    `Manage a base's git repos with ${cmd('base add-repo', mode)} / ${cmd('base remove-repo', mode)} / ${cmd('base list-repos', mode)}.`,
+    '',
     `Supported keys: ${listSupportedConfigPaths().join(', ')}`,
   ].join('\n')
 }

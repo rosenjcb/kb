@@ -10,8 +10,8 @@ This is the platform mental model for `kb query`, `kb docs generate`, ingest (`k
 
 | Surface | Role |
 |--------|------|
-| **`facts` / `facts_fts`** | Canonical store for retrieval, dedupe keys (`normalized_text`), provenance (`source_kind`, `source_ref`), tombstones, lanes. |
-| **`kb query` / chat** | **Target:** form answers **only** from retrieved facts (plus graph neighborhood over fact-linked entities)—not from full document bodies as evidence. |
+| **`facts` / `facts_fts`** | Canonical store for retrieval, dedupe keys (`normalized_text`), provenance (`source_kind`, `source_ref`, `git_repo` origin repo), tombstones, lanes. |
+| **`kb query` / chat** | **Target:** form answers **only** from retrieved facts (plus graph neighborhood over fact-linked entities)—not from full document bodies as evidence. Retrieval is **repo-scoped**: it lands in the repo the strongest hit belongs to (`git_repo`), exhausts that repo's pool, then walks cross-repo `fact_edges` to siblings. |
 | **`kb docs generate`** | **Target:** generate documents **from facts** (questionnaire + LLM shaping), cite facts; documents are outputs, not inputs to retrieval. |
 
 ---
@@ -94,9 +94,9 @@ flowchart TB
 | **`kb query` / chat** | **`read_facts`** in **`createKBToolsRegistry`** → **`FactsDocumentReader`** / **`FactsQueryResearchOrchestrator`**. No workspace markdown fallback on the shared retrieval path (`runQueryTruthRetrieval`). |
 | **`kb docs generate`** | Draft/revise user messages include a **KB facts** block; empty FTS → orchestrator throws; **`## References`** from the same grounded set. |
 | **`kb facts`** | CLI + TUI **`/facts`** for list / search / show (`src/cli/facts-cli.ts`). |
-| **Fact categories** | Interactive step in `kb init` (skipped on `kb scan`): user supplies comma-separated category names + optional descriptions; facts are assigned to categories via TF-IDF cosine similarity (`threshold = 0.3`) and stored in `fact_categories` / `fact_category_assignments`. HDBSCAN auto-discovery is scaffolded in `src/core/fact-categories.ts` and `scripts/fact_categories_hdbscan.py` but currently bypassed pending UX validation. |
+| **Multi-repo bases** | A base tracks one or more git repos (git required). Each fact carries a `git_repo` origin; after per-repo indexing, an integration-ingest pass links facts across repos with cross-repo `fact_edges` (`depends_on_repo`, `cross_repo_symbol`, `references_repo`). Retrieval is repo-scoped (land, exhaust, walk edges). |
 | **`kb docs merge`** | Removed (deterministic doc merge lived only in that CLI path). |
-| **`kb init`** | Runs **`code-index`** (AST → `import_code` facts + edges), **`document-facts`** (markdown segmentation → `import_doc`), then **`import-docs`** (verbatim originals) and **`write`**. **`SqliteDocumentWriter`** also indexes incremental fact rows from document bodies when docs are persisted. |
+| **`kb init`** | Clones each `--git` repo, then per repo runs **`code-index`** (AST → `import_code` facts + edges, `git_repo` set), **`document-facts`** (markdown segmentation → `import_doc`), **`import-docs`** (verbatim originals) and **`write`**, followed by cross-repo reconciliation. **`SqliteDocumentWriter`** also indexes incremental fact rows from document bodies when docs are persisted. |
 | **Publish** | Unchanged: reads stored documents for export. |
 
 Remaining gap vs “gold”: optional **`read_documents`** naming cleanup for agents, and ongoing prompt/UI wording to say “fact” where the wire is fact-shaped.
@@ -119,9 +119,9 @@ Fact block in prompts; refuse when no facts; **`acceptDraft`** guards zero **`su
 - **`document-facts`** init cycle runs after **`code-index`**, calling `ingestSourceMarkdownFilesAsFacts` (`src/core/scan-fact-ingest.ts`) over `context.sourceFiles` — same segmentation policy as document writer ingest, `source_ref` like `README.md#s0`, placeholder triplets.
 - **`code-index`** runs deterministic AST indexing (`TsMorphIndexer` / `TreeSitterIndexer`) → `import_code` facts and `fact_edges`. No LLM code-facts fallback. Previously Swift/Kotlin were LLM-indexed when AST was unavailable — see `INIT.md` §Removed LLM code-facts fallback.
 
-**Surface for refreshing sources:** **`kb scan`**.
+**Surface for refreshing sources:** **`kb scan`** — pulls + re-indexes every tracked repo and rebuilds cross-repo links.
 
-**Fact categorisation** runs after ingest during interactive `kb init`. See `INIT.md §Fact Categories` for the full flow. `kb scan` preserves existing categories without re-prompting.
+**Cross-repo reconciliation** runs after the per-repo index loop (init / scan / auto-sync), bridging subgraphs via integration signals into one connected graph. See `INIT.md §Integration-ingest reconciliation`.
 
 ### Phase D — Documents as artifacts
 

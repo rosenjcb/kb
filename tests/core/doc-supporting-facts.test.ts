@@ -28,12 +28,7 @@ function makeIndexer(rows: FactRow[] = []) {
     expandNeighborConcepts: vi.fn(() => []),
     getFactNeighbors: vi.fn(() => []),
     getGraphEdgesForFacts: vi.fn(() => []),
-    inferCategoriesForQuery: vi.fn(() => []),
-    getFactCategoryNamesForFacts: vi.fn(() => new Map()),
-    getFactCategoryIdsForFacts: vi.fn(() => new Map()),
-    searchFactsInCategories: vi.fn(() => []),
-    searchFactsByConceptFrontierInCategories: vi.fn(() => []),
-    searchFactsByConceptsInCategories: vi.fn(() => []),
+    listCrossRepoLinks: vi.fn(() => []),
   }
 }
 

@@ -13,6 +13,8 @@ export interface ScanFactIngestInput {
   yieldEverySegments?: number
   /** When true, look up the nearest exported AST symbol for each segment and attach a relatesTo triplet. */
   matchAstNodes?: boolean
+  /** Repo slug — prefixes `source_ref` and tags the `git_repo` column (multi-repo provenance). */
+  gitRepo?: string
   onProgress?: (progress: ScanFactIngestProgress) => void
 }
 
@@ -101,13 +103,16 @@ export async function ingestSourceMarkdownFilesAsFacts(
       const raw = input.files[relPath]
       if (raw === undefined) continue
       filesScanned += 1
-      segmentsTombstoned += tombstoneDocFactsForFile(indexer, relPath)
+      // Namespace the source_ref by repo so two repos that both contain e.g. README.md don't
+      // tombstone each other's facts (per-file tombstoning keys off source_ref).
+      const refPath = input.gitRepo ? `${input.gitRepo}/${relPath}` : relPath
+      segmentsTombstoned += tombstoneDocFactsForFile(indexer, refPath)
       if (!raw.trim()) continue
       const sourceLabel = path.basename(relPath, path.extname(relPath))
       const segments = segmentMarkdownForFacts(raw).map(s => s.replace(/\s+/g, ' ').trim())
       let segIdx = 0
       for (const factText of segments) {
-        const sourceRef = `${relPath}#s${segIdx}`
+        const sourceRef = `${refPath}#s${segIdx}`
         segIdx += 1
 
         let triplet = placeholderTripletFromFactText(factText)
@@ -128,6 +133,7 @@ export async function ingestSourceMarkdownFilesAsFacts(
           sourceKind: 'import_doc',
           sourceRef,
           confidence: 0.55,
+          gitRepo: input.gitRepo,
         })
         segmentsUpserted += 1
         processedSegments += 1

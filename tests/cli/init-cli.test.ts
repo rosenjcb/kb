@@ -1,9 +1,11 @@
+import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ensureOperationalBaseDir, findKbFile, resolveBaseToDir, writeKbFile } from '../../src/cli/base-selection'
-import { parseInitCommand, parseScanCommand, runKbInit, type InitCancelledError } from '../../src/cli/init-cli'
+import { readBaseMeta, repoSlugFromGitUrl } from '../../src/cli/base-meta'
+import { findKbFile, resolveBaseToDir, writeKbFile } from '../../src/cli/base-selection'
+import { parseInitCommand, parseScanCommand, runKbInit } from '../../src/cli/init-cli'
 import { buildFrozenSourceSnapshotDoc } from '../../src/cli/init-source-snapshots'
 import { RunCollector } from '../../src/core/telemetry'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
@@ -36,6 +38,18 @@ async function createTempProject(files: Record<string, string>): Promise<string>
       await writeFile(fullPath, content, 'utf8')
     })
   )
+  return dir
+}
+
+async function makeTempGitRepo(files: Record<string, string>, branch = 'main'): Promise<string> {
+  const dir = await createTempProject(files) // already pushes to tempDirs
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'ignore' })
+  git('init', '-b', branch)
+  git('config', 'user.email', 'test@example.com')
+  git('config', 'user.name', 'Test')
+  git('config', 'commit.gpgsign', 'false')
+  git('add', '-A')
+  git('commit', '-m', 'init')
   return dir
 }
 
@@ -117,22 +131,18 @@ describe('init-cli interview checkpoints', () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nThis project has a CLI.\n',
+    })
     const questionIO = createQuestionIO([
       'fresh-base',
-      '',          // git URL → blank = local dir
-      '',          // categories → blank = skip
-      'Install with npm install.',
-      '',
-      '',
-      '',
-      '',
-      '',
     ])
 
     const result = await runKbInit({
       nonInteractive: false,
       stopAfter: 'read-inputs',
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       questionIO: questionIO.io,
     })
 
@@ -155,12 +165,16 @@ describe('init-cli interview checkpoints', () => {
       `${JSON.stringify({ activeBase: 'dogfood' }, null, 2)}\n`,
       'utf8'
     )
-    const questionIO = createQuestionIO(['', '', '', '', '', '', '', '', ''])
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nThis project has a CLI.\n',
+    })
+    const questionIO = createQuestionIO([''])
 
     const result = await runKbInit({
       nonInteractive: false,
       stopAfter: 'read-inputs',
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       questionIO: questionIO.io,
     })
 
@@ -265,6 +279,9 @@ describe('init-cli interview checkpoints', () => {
       ]),
     ])
 
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nCLI docs.\n',
+    })
     const lines: string[] = []
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
@@ -272,6 +289,7 @@ describe('init-cli interview checkpoints', () => {
       base: 'progress-sink-test',
       nonInteractive: true,
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       provider,
       progressSink(line) {
         lines.push(line)
@@ -288,6 +306,9 @@ describe('init-cli interview checkpoints', () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nThis project has a CLI.\n',
+    })
     const questionIO = createQuestionIO([])
 
     const result = await runKbInit({
@@ -295,6 +316,7 @@ describe('init-cli interview checkpoints', () => {
       nonInteractive: false,
       stopAfter: 'read-inputs',
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       questionIO: questionIO.io,
     })
 
@@ -315,44 +337,14 @@ describe('init-cli interview checkpoints', () => {
     expect(Object.keys(checkpoint.context.sourceFiles ?? {})).toContain('README.md')
   })
 
-  it('Given non-interactive init, then it persists inferred categories and fact assignments', async () => {
-    const cwd = await createTempProject({
-      'README.md': [
-        '# KB',
-        '',
-        'kb query retrieves facts from sqlite and graph traversal.',
-        'kb init segments markdown into facts and writes them into the base.',
-        'retrieval scoring broadens search across connected concepts.',
-      ].join('\n'),
-    })
-
-    const questionIO = createQuestionIO([])
-    const result = await runKbInit({
-      base: 'category-init-test',
-      nonInteractive: true,
-      cwd,
-      questionIO: questionIO.io,
-    })
-
-    expect(result.status).toBe('accepted')
-
-    const baseDir = await ensureOperationalBaseDir('category-init-test', cwd)
-    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
-    try {
-      const categories = indexer.listFactCategories()
-      expect(categories.length).toBeGreaterThanOrEqual(0)
-      expect(indexer.listFactsForQuery(99999).length).toBeGreaterThan(0)
-    } finally {
-      indexer.close()
-    }
-  })
-
-
   it('Given resume after import-docs pause, then finishes init without re-asking read-inputs', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
     })
 
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
+    })
     const firstQuestionIO = createQuestionIO([])
     const provider = createProvider([])
 
@@ -361,6 +353,7 @@ describe('init-cli interview checkpoints', () => {
       nonInteractive: false,
       stopAfter: 'import-docs',
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       questionIO: firstQuestionIO.io,
       provider,
     })
@@ -379,6 +372,7 @@ describe('init-cli interview checkpoints', () => {
       base: 'dogfood',
       nonInteractive: true,
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       resumeFrom: firstRun.checkpointFile,
       questionIO: createQuestionIO([]).io,
       provider,
@@ -424,6 +418,9 @@ describe('init-cli interview checkpoints', () => {
       'utf8'
     )
 
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nSimple overview.\n',
+    })
     const questionIO = createQuestionIO([])
     const provider = createProvider([])
 
@@ -432,6 +429,7 @@ describe('init-cli interview checkpoints', () => {
       nonInteractive: true,
       stopAfter: 'import-docs',
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       resumeFrom: checkpointFile,
       questionIO: questionIO.io,
       provider,
@@ -457,6 +455,9 @@ describe('init-cli interview checkpoints', () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nTiny overview only.\n',
     })
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nTiny overview only.\n',
+    })
 
     const detached = await runKbInit({
       base: 'dogfood',
@@ -464,6 +465,7 @@ describe('init-cli interview checkpoints', () => {
       detach: true,
       stopAfter: 'read-inputs',
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       questionIO: createQuestionIO([]).io,
     })
 
@@ -507,6 +509,9 @@ describe('init-cli interview checkpoints', () => {
       'utf8'
     )
 
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nSimple overview.\n',
+    })
     const provider = createProvider([])
 
     const result = await runKbInit({
@@ -514,6 +519,7 @@ describe('init-cli interview checkpoints', () => {
       nonInteractive: true,
       stopAfter: 'import-docs',
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       provider,
     })
 
@@ -532,12 +538,16 @@ describe('init-cli interview checkpoints', () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nTiny overview only.\n',
     })
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nTiny overview only.\n',
+    })
 
     const initial = await runKbInit({
       base: 'dogfood',
       nonInteractive: false,
       stopAfter: 'read-inputs',
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       questionIO: createQuestionIO([]).io,
     })
 
@@ -551,16 +561,19 @@ describe('init-cli interview checkpoints', () => {
       resume: true,
       stopAfter: 'read-inputs',
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       questionIO: sequentialQuestionIO.io,
     })
 
-    // 1 prompt = category name question (answers blank → skipped); no interview questions resumed
-    expect(sequentialQuestionIO.prompts).toHaveLength(1)
-    expect(sequentialQuestionIO.prompts[0]).toContain('category')
+    // git targets supplied → no git prompt; categories removed → no category prompt
+    expect(sequentialQuestionIO.prompts).toHaveLength(0)
   })
 
   it('Given several repo markdown files, then import-docs checkpoint lists each as original', async () => {
     const cwd = await createTempProject({
+      'README.md': '# Project\n\nOverview.\n',
+    })
+    const repo = await makeTempGitRepo({
       'README.md': '# Project\n\nOverview.\n',
       'AGENTS.md': '# Agents\n\nAgent rules.\n',
       'CLAUDE.md': '# Claude\n\nWorkflow hints.\n',
@@ -573,6 +586,7 @@ describe('init-cli interview checkpoints', () => {
       nonInteractive: true,
       stopAfter: 'import-docs',
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       provider,
     })
 
@@ -637,6 +651,9 @@ describe('init-cli interview checkpoints', () => {
   it('Given Jekyll-generated docs, then read-inputs excludes published snapshots and export artifacts', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nReal repo overview.\n',
+    })
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nReal repo overview.\n',
       'docs/README.md': '# Docs\n\nReal docs.\n',
       'docs/_original_docs/readme.md': '# Snapshot\n\nGenerated copy.\n',
       'docs/_autogenerated_docs/howto.md': '# Autogen\n\nGenerated document.\n',
@@ -649,6 +666,7 @@ describe('init-cli interview checkpoints', () => {
       nonInteractive: true,
       stopAfter: 'read-inputs',
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       questionIO: createQuestionIO([]).io,
     })
 
@@ -665,6 +683,9 @@ describe('init-cli interview checkpoints', () => {
   it('Given no markdown sources under the working directory, then document-facts stage is skipped', async () => {
     const cwd = await createTempProject({
       'package.json': '{"name":"test"}',
+    })
+    const repo = await makeTempGitRepo({
+      'package.json': '{"name":"test"}',
       'src/index.ts': 'export function hello() {}',
     })
 
@@ -674,6 +695,7 @@ describe('init-cli interview checkpoints', () => {
       nonInteractive: true,
       stopAfter: 'document-facts',
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       progressSink(line) {
         lines.push(line)
       },
@@ -693,6 +715,9 @@ describe('init-cli interview checkpoints', () => {
   it('Given multiple markdown sources, then iterable init phases emit current-item progress', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis root sentence is intentionally long enough for fact ingest.\n',
+    })
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nThis root sentence is intentionally long enough for fact ingest.\n',
       'docs/guide.md':
         '# Guide\n\nThis guide sentence is also intentionally long enough for fact ingest.\n',
     })
@@ -702,6 +727,7 @@ describe('init-cli interview checkpoints', () => {
       base: 'iterable-progress-test',
       nonInteractive: true,
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       progressSink(line) {
         lines.push(line)
       },
@@ -1008,6 +1034,9 @@ describe('init-cli interview checkpoints', () => {
   it('Given a full init cycle, then progress counter shows 6/6 (not 7)', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nDocs here.\n',
+    })
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nDocs here.\n',
       'src/index.ts': 'export function hello() { console.log("hi"); }',
     })
 
@@ -1057,6 +1086,7 @@ describe('init-cli interview checkpoints', () => {
       base: 'progress-counter-test',
       nonInteractive: true,
       cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
       provider,
       progressSink(line) {
         lines.push(line)
@@ -1095,13 +1125,16 @@ describe('init-cli token tracking', () => {
   it('Given a TypeScript-only project, then AST code-index uses no LLM tokens', async () => {
     // TypeScript files use the AST indexer (tree-sitter), not an LLM pass.
     const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-tok-ts-'))
+    const repo = await makeTempGitRepo({
+      'index.ts': 'export function greet() { return "hi" }',
+    })
     try {
-      await writeFile(path.join(dir, 'index.ts'), 'export function greet() { return "hi" }', 'utf8')
       const collector = new RunCollector('init')
       await runKbInit({
         base: 'tok-ts-only',
         nonInteractive: true,
         cwd: dir,
+        gitTargets: [{ url: repo, branch: 'main' }],
         provider: createTokenProvider(300, 100),
         collector,
       })
@@ -1347,129 +1380,116 @@ describe('kb scan — base resolution', () => {
 // git-linked init dialog
 // ---------------------------------------------------------------------------
 
-vi.mock('../../src/cli/git-sync', () => ({
-  cloneRepo: vi.fn(),
-  getHeadSha: vi.fn(),
-  pullRepo: vi.fn(),
-  baseNameFromGitUrl: (url: string) => {
-    const cleaned = url.replace(/\.git$/, '').replace(/\/$/, '')
-    const parts = cleaned.split('/')
-    return `${parts.at(-2) ?? 'unknown'}-${parts.at(-1) ?? 'repo'}`.replace(/[^a-zA-Z0-9._-]/g, '-').toLowerCase()
-  },
-}))
-
-vi.mock('../../src/cli/base-meta', () => ({
-  writeBaseMeta: vi.fn(),
-  readBaseMeta: vi.fn().mockResolvedValue(null),
-}))
-
-import { cloneRepo, getHeadSha } from '../../src/cli/git-sync'
-import { writeBaseMeta } from '../../src/cli/base-meta'
-
-const mockCloneRepo = vi.mocked(cloneRepo)
-const mockGetHeadSha = vi.mocked(getHeadSha)
-const mockWriteBaseMeta = vi.mocked(writeBaseMeta)
-
 describe('init-cli git-linked dialog', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mockGetHeadSha.mockResolvedValue('abc1234abc1234abc1234abc1234abc1234abc12')
-    mockCloneRepo.mockResolvedValue(undefined)
-    mockWriteBaseMeta.mockResolvedValue(undefined)
-  })
-
-  it('Given interactive init with blank git URL, then proceeds as local-dir init', async () => {
-    const cwd = await createTempProject({ 'README.md': '# hi\n' })
-    const { io, prompts } = createQuestionIO(['', '', ''])  // base name, git URL (blank), categories (skip)
-
-    await runKbInit({
-      nonInteractive: false,
-      stopAfter: 'read-inputs',
-      cwd,
-      questionIO: io,
-    })
-
-    expect(prompts[0]).toContain('Knowledge base name')
-    expect(prompts[1]).toContain('Git URL')
-    expect(prompts[2]).toContain('category')
-    expect(mockCloneRepo).not.toHaveBeenCalled()
-    expect(mockWriteBaseMeta).not.toHaveBeenCalled()
-  })
-
-  it('Given interactive init with /skip for git URL, then proceeds as local-dir init', async () => {
-    const cwd = await createTempProject({ 'README.md': '# hi\n' })
-    const { io, prompts } = createQuestionIO(['', '/skip', ''])  // base name, /skip git URL, categories (skip)
-
-    await runKbInit({
-      nonInteractive: false,
-      stopAfter: 'read-inputs',
-      cwd,
-      questionIO: io,
-    })
-
-    expect(prompts[1]).toContain('Git URL')
-    expect(mockCloneRepo).not.toHaveBeenCalled()
-  })
-
   it('Given interactive init with a git URL entered second, then clones from that URL', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    const repo = await makeTempGitRepo({ 'README.md': '# Remote Repo\n' })
     const { io, prompts } = createQuestionIO([
-      '',                                       // accept suggested base name (cwd-derived)
-      'https://github.com/myorg/myrepo.git',   // git URL — second prompt
-      '',                                       // categories — skip
+      '',     // accept suggested base name (cwd-derived)
+      repo,   // git URL — second prompt
     ])
 
     await runKbInit({
       nonInteractive: false,
-      stopAfter: 'read-inputs',
       cwd,
       questionIO: io,
     })
 
     expect(prompts[0]).toContain('Knowledge base name')
     expect(prompts[1]).toContain('Git URL')
-    expect(mockCloneRepo).toHaveBeenCalledWith(
-      'https://github.com/myorg/myrepo.git',
-      expect.any(String),
-      'main'
-    )
+
+    const baseDir = resolveBaseToDir(path.basename(cwd), cwd)
+    const meta = await readBaseMeta(baseDir)
+    expect(meta?.repos[0]?.gitUrl).toBe(repo)
+
+    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+    try {
+      expect(indexer.listFactsForQuery(99999).length).toBeGreaterThan(0)
+    } finally {
+      indexer.close()
+    }
   })
 
   it('Given --git flag (non-interactive), then clones and writes meta.json', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
-
-    // Make the clone create a minimal directory so scan can proceed
-    mockCloneRepo.mockImplementation(async (_url, destDir) => {
-      await mkdir(destDir, { recursive: true })
-      await writeFile(path.join(destDir, 'README.md'), '# Remote Repo\n', 'utf8')
-    })
+    const repo = await makeTempGitRepo({ 'README.md': '# Remote Repo\n' })
 
     await runKbInit({
       base: 'my-remote',
-      gitUrl: 'https://github.com/org/repo.git',
-      gitBranch: 'main',
+      gitTargets: [{ url: repo, branch: 'main' }],
       nonInteractive: true,
-      stopAfter: 'read-inputs',
       cwd,
     })
 
-    expect(mockCloneRepo).toHaveBeenCalledWith(
-      'https://github.com/org/repo.git',
-      expect.stringContaining('my-remote'),
-      'main'
-    )
-    expect(mockWriteBaseMeta).toHaveBeenCalledWith(
-      expect.stringContaining('my-remote'),
+    const baseDir = resolveBaseToDir('my-remote', cwd)
+    const meta = await readBaseMeta(baseDir)
+    expect(meta?.repos).toHaveLength(1)
+    expect(meta?.repos[0]).toEqual(
       expect.objectContaining({
-        gitUrl: 'https://github.com/org/repo.git',
+        gitUrl: repo,
         gitBranch: 'main',
-        lastSyncedSha: 'abc1234abc1234abc1234abc1234abc1234abc12',
+        slug: repoSlugFromGitUrl(repo),
       })
     )
+    expect(meta?.repos[0]?.dir).toBeTruthy()
+    expect(meta?.repos[0]?.lastSyncedSha).toMatch(/^[0-9a-f]{7,40}$/)
+    expect(meta?.repos[0]?.lastSyncedAt).toBeTruthy()
 
-    const baseDir = resolveBaseToDir('my-remote', cwd)
     expect(await findKbFile(cwd)).toBe('my-remote')
-    expect(await findKbFile(path.join(baseDir, 'repo'))).toBeNull()
+  })
+
+  it('Given --git without branch, then clones the remote default branch', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    const repo = await makeTempGitRepo({ 'README.md': '# Remote Repo\n' }, 'master')
+
+    await runKbInit({
+      base: 'master-remote',
+      gitTargets: [{ url: repo }],
+      nonInteractive: true,
+      cwd,
+    })
+
+    const baseDir = resolveBaseToDir('master-remote', cwd)
+    const meta = await readBaseMeta(baseDir)
+    expect(meta?.repos[0]?.gitBranch).toBe('master')
+  })
+
+  it('Given multiple --git targets, then both repos index into one base and meta lists both', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    const repoA = await makeTempGitRepo({
+      'README.md': '# Repo A\n\nAlpha service documentation lives here.\n',
+    })
+    const repoB = await makeTempGitRepo({
+      'README.md': '# Repo B\n\nBeta service documentation lives here.\n',
+    })
+
+    await runKbInit({
+      base: 'multi-remote',
+      gitTargets: [
+        { url: repoA, branch: 'main' },
+        { url: repoB, branch: 'main' },
+      ],
+      nonInteractive: true,
+      cwd,
+    })
+
+    const baseDir = resolveBaseToDir('multi-remote', cwd)
+    const meta = await readBaseMeta(baseDir)
+    expect(meta?.repos).toHaveLength(2)
+    const urls = meta?.repos.map(r => r.gitUrl).sort()
+    expect(urls).toEqual([repoA, repoB].sort())
+
+    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+    try {
+      const slugA = repoSlugFromGitUrl(repoA)
+      const slugB = repoSlugFromGitUrl(repoB)
+      const facts = indexer.listFactsForQuery(99999)
+      const repos = new Set(facts.map(f => f.git_repo))
+      expect(repos.has(slugA)).toBe(true)
+      expect(repos.has(slugB)).toBe(true)
+    } finally {
+      indexer.close()
+    }
   })
 
   it('Given /cancel at base name prompt, throws InitCancelledError', async () => {
@@ -1487,15 +1507,20 @@ describe('init-cli git-linked dialog', () => {
   })
 
   it('parseInitCommand parses --git and --branch flags', () => {
-    const parsed = parseInitCommand(['--git', 'https://github.com/org/repo', '--branch', 'develop', '--base', 'my-base'])
-    expect(parsed.gitUrl).toBe('https://github.com/org/repo')
-    expect(parsed.gitBranch).toBe('develop')
-    expect(parsed.base).toBe('my-base')
+    const parsed = parseInitCommand(['--git', 'U', '--branch', 'dev'])
+    expect(parsed.gitTargets).toEqual([{ url: 'U', branch: 'dev' }])
   })
 
-  it('parseInitCommand with only --git sets gitUrl, gitBranch undefined', () => {
-    const parsed = parseInitCommand(['--git', 'https://github.com/org/repo'])
-    expect(parsed.gitUrl).toBe('https://github.com/org/repo')
-    expect(parsed.gitBranch).toBeUndefined()
+  it('parseInitCommand parses repeatable --git with inline branch (no branch = remote default)', () => {
+    const parsed = parseInitCommand(['--git', 'A', '--git', 'B#feat'])
+    expect(parsed.gitTargets).toEqual([
+      { url: 'A', branch: undefined },
+      { url: 'B', branch: 'feat' },
+    ])
+  })
+
+  it('parseInitCommand with only --git leaves the branch undefined (remote default)', () => {
+    const parsed = parseInitCommand(['--git', 'U'])
+    expect(parsed.gitTargets).toEqual([{ url: 'U', branch: undefined }])
   })
 })
