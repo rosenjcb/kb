@@ -16,7 +16,7 @@ Segments join with ` · ` (middle dot):
 |---------|--------|---------|
 | **Count → LLM** | `results.length` | `200 facts → LLM (full text)` |
 | **Mix** | `metadata.tags[0]` source_kind tallies | `mix: 142 doc · 58 code` or `mix: all doc` |
-| **Themes** | category tags on facts (top 4 by frequency) | `themes: code-graph, init, languages` |
+| **Repos** | `git_repo` origin tallies across the pool (top 4 by frequency) | `repos: auth-svc, web, shared` |
 | **Leads** | top 3 unique `metadata.title` values (rank order) | `leads: Language \| Extensions, TsMorphIndexer, …` |
 | **Walk** | parsed from `retrieval.detail` | `walk: 24p/20h/6 ponds` |
 | **Stop** | `stop:` token in `retrieval.detail` | `stop: budget_exhausted` |
@@ -27,7 +27,7 @@ Optional segments omitted when data missing.
 ## Example
 
 ```
-evidence> 200 facts → LLM (full text) · mix: 120 doc · 80 code · themes: code-graph, init, tree-sitter · leads: Language | Extensions | Code-graph (AST), TsMorphIndexer, Tree-Sitter Code Graph Indexer · walk: 24p/20h/6 ponds · stop: budget_exhausted · conf: 0.68
+evidence> 200 facts → LLM (full text) · mix: 120 doc · 80 code · repos: auth-svc, web, shared · leads: Language | Extensions | Code-graph (AST), TsMorphIndexer, Tree-Sitter Code Graph Indexer · walk: 24p/20h/6 ponds · stop: budget_exhausted · conf: 0.68
 ```
 
 ## Related footer lines
@@ -40,7 +40,7 @@ evidence> 200 facts → LLM (full text) · mix: 120 doc · 80 code · themes: co
 
 ## Tests
 
-`tests/core/evidence-summary.test.ts` — mix/themes/leads parsing, walk/stop/conf from retrieval detail, dedupe rules.
+`tests/core/evidence-summary.test.ts` — mix/repos/leads parsing, walk/stop/conf from retrieval detail, dedupe rules.
 
 ## See also
 

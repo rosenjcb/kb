@@ -1,6 +1,6 @@
 {
   "name": "kb",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "TypeScript-based agent harness with LLM provider abstraction",
   "type": "module",
   "private": true,
@@ -15,7 +15,6 @@
     "dev": "tsx src/cli/index.ts",
     "dev:local": "node --env-file=.env.local --import tsx src/cli/index.ts",
     "build": "tsc && node scripts/build-cli.mjs",
-    "setup:category-clustering": "bash scripts/setup-category-clustering-env.sh",
     "install:global": "pnpm run build && bash scripts/install-global.sh",
     "uninstall:global": "bash scripts/uninstall-global.sh",
     "research:build": "cd research && latexmk -pdf -interaction=nonstopmode main.tex && echo '→ research/main.pdf'",

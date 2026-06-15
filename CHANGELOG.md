@@ -1,5 +1,17 @@
 # kb
 
+## 0.5.0
+
+### Minor Changes
+
+- Multi-repo knowledge bases: a base now tracks one or more git repos and folds them into a single graph.
+
+  - `kb init` requires at least one `--git <url>` (repeatable; supports inline `url#branch` and a `--branch` default). Local-directory init has been removed.
+  - Manage a base's repos with `kb config list-repos` / `add-repo <url>` / `remove-repo <url|slug>`.
+  - `kb scan` now pulls and re-indexes every repo a base tracks (it no longer reads the working directory); auto-sync syncs all repos.
+  - Facts record their originating repo in a new `git_repo` column; a reconciliation pass bridges repos into one connected graph via package-manager, cross-repo symbol, and env/service references.
+  - Retrieval is now repo-scoped: query expansion exhausts the landed repo's facts before walking the cross-repo edge tree. The fact-category/tags/topics system (and its Python clustering) has been removed.
+
 ## 0.4.1
 
 ### Patch Changes

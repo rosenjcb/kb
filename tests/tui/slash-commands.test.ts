@@ -93,7 +93,7 @@ describe('slash command helpers', () => {
     const commands = getSlashCommands('chat')
     const scanCmd = commands.find(c => c.command === '/scan')
     expect(scanCmd).toBeDefined()
-    expect(scanCmd?.description).toContain('active or selected KB base')
+    expect(scanCmd?.description).toContain('re-index')
   })
 
   it('suggests /init when typing /in', () => {

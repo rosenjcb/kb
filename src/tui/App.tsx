@@ -25,7 +25,8 @@ import type { KbConfig } from '../cli/kb-config.js'
 import {
   createLLMProviderFromConfig,
 } from '../cli/kb-config.js'
-import { isInitCancelledError, parseInitCommand, parseScanCommand, runKbInit } from '../cli/init-cli.js'
+import { isInitCancelledError, parseInitCommand, runKbInit } from '../cli/init-cli.js'
+import { runScanCommand } from '../cli/scan-command.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
 import { awaitRefreshThenStart } from './base-refresh.js'
 import { classifyChatReadPromptKind, shouldStartChatPending } from './chat-read-kind.js'
@@ -616,43 +617,15 @@ export function App({ config, startupNotices = [] }: Props) {
         } else {
           setIsRunning(true)
           try {
-            const parsed = parseScanCommand(extraArgs)
-            const result = await runKbInit({
-              ...parsed,
-              questionIO: {
-                write: (msg: string) => {
-                  const text = msg.trimEnd()
-                  if (text) addEntry({ type: 'result', content: text })
-                },
-                askQuestion: async (question, opts) => {
-                  setProgressLine(question.trimEnd())
-                  setSlashContext(opts?.slashContext ?? 'idle')
-                  setInlineSuggestions(opts?.suggestions ?? [])
-                  return new Promise(resolve => {
-                    chatInputResolverRef.current = value => {
-                      chatInputResolverRef.current = null
-                      setSlashContext('idle')
-                      setInlineSuggestions([])
-                      resolve(value ?? '')
-                    }
-                  })
-                },
-              },
-              progressSink: (line: string) => setProgressLine(line.trimEnd()),
+            const summary = await runScanCommand(extraArgs, line => {
+              const text = line.trimEnd()
+              if (text) addEntry({ type: 'result', content: text })
             })
             setProgressLine(null)
-            const docCount = result.writtenDocIds?.length ?? 0
-            addEntry({
-              type: 'result',
-              content: `✅ Scan complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
-            })
+            addEntry({ type: 'result', content: `✅ ${summary}` })
             await awaitRefreshThenStart(refreshBase, startChatSession)
           } catch (err) {
             setProgressLine(null)
-            if (isInitCancelledError(err)) {
-              await handleInitFlowCancel('scan')
-              return
-            }
             const message = err instanceof Error ? err.message : String(err)
             addEntry({ type: 'error', content: message })
           } finally {
@@ -685,7 +658,6 @@ export function App({ config, startupNotices = [] }: Props) {
       runInitFlow,
       refreshBase,
       exit,
-      handleInitFlowCancel,
     ]
   )
 

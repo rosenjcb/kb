@@ -133,12 +133,12 @@ async function resolveBaseDir(parsed: ParsedFactsCommand, cwd: string): Promise<
     : (await resolveEffectiveBaseDir(cwd)).baseDir
 }
 
-function formatFactHuman(row: FactRow, categories: string[], baseLabel?: string): string {
+function formatFactHuman(row: FactRow, baseLabel?: string): string {
   const baseLine = baseLabel ? `base: ${baseLabel}\n` : ''
   return [
     `${baseLine}id: ${row.id}`,
     `uri: ${formatFactUri(row.id)}`,
-    `categories: ${categories.length > 0 ? categories.join(', ') : '(uncategorized)'}`,
+    `repo: ${row.git_repo ?? '(unscoped)'}`,
     `source: ${row.source_kind}${row.source_ref ? ` (${row.source_ref})` : ''}`,
     `triple: (${row.subject}) [${row.predicate}] (${row.object})`,
     '',
@@ -146,24 +146,17 @@ function formatFactHuman(row: FactRow, categories: string[], baseLabel?: string)
   ].join('\n')
 }
 
-function buildCategoryStatsBlock(indexer: SqliteKbIndexer): string {
-  const stats = indexer.listFactCategoryStats()
-  const uncategorized = indexer.countUncategorizedFacts()
-  if (stats.length === 0 && uncategorized === 0) return ''
-  const total = stats.reduce((sum, s) => sum + s.count, 0) + uncategorized
-  const maxNameLen = Math.max(...stats.map(s => s.name.length), '(uncategorized)'.length)
-  const maxCountLen = String(Math.max(...stats.map(s => s.count), uncategorized)).length
+function buildRepoStatsBlock(indexer: SqliteKbIndexer): string {
+  const stats = indexer.listRepoStats()
+  if (stats.length === 0) return ''
+  const total = stats.reduce((sum, s) => sum + s.count, 0)
+  const maxNameLen = Math.max(...stats.map(s => s.repo.length))
+  const maxCountLen = String(Math.max(...stats.map(s => s.count))).length
   const rows = stats.map(s => {
     const pct = total > 0 ? Math.round((s.count / total) * 100) : 0
-    return `  ${s.name.padEnd(maxNameLen)}  ${String(s.count).padStart(maxCountLen)}  ${pct}%`
+    return `  ${s.repo.padEnd(maxNameLen)}  ${String(s.count).padStart(maxCountLen)}  ${pct}%`
   })
-  if (uncategorized > 0) {
-    const pct = total > 0 ? Math.round((uncategorized / total) * 100) : 0
-    rows.push(
-      `  ${'(uncategorized)'.padEnd(maxNameLen)}  ${String(uncategorized).padStart(maxCountLen)}  ${pct}%`
-    )
-  }
-  return [`Category breakdown (${total} facts):`, ...rows].join('\n')
+  return [`Repo breakdown (${total} facts):`, ...rows].join('\n')
 }
 
 export async function runFactsCommand(
@@ -183,7 +176,7 @@ export async function runFactsCommand(
       const { baseDir } = await resolveEffectiveBaseDir(cwd)
       const indexer = new SqliteKbIndexer({ dbPath: `${baseDir}/.kb-index.sqlite` })
       try {
-        statsBlock = buildCategoryStatsBlock(indexer)
+        statsBlock = buildRepoStatsBlock(indexer)
       } finally {
         indexer.close()
       }
@@ -205,25 +198,17 @@ export async function runFactsCommand(
   try {
     if (parsed.sub === 'list') {
       const rows = indexer.listFactsForQuery(parsed.limit)
-      const categoryNames = indexer.getFactCategoryNamesForFacts(rows.map(row => row.id))
       if (rows.length === 0) return '(no live facts in this base)'
       return rows
-        .map(
-          (r, i) =>
-            `--- ${i + 1} ---\n${formatFactHuman(r, categoryNames.get(r.id) ?? [], parsed.base)}`
-        )
+        .map((r, i) => `--- ${i + 1} ---\n${formatFactHuman(r, parsed.base)}`)
         .join('\n\n')
     }
 
     if (parsed.sub === 'search') {
       const rows = indexer.searchFacts(parsed.query ?? '', parsed.limit)
-      const categoryNames = indexer.getFactCategoryNamesForFacts(rows.map(row => row.id))
       if (rows.length === 0) return `No facts matched: ${parsed.query}`
       return rows
-        .map(
-          (r, i) =>
-            `--- ${i + 1} ---\n${formatFactHuman(r, categoryNames.get(r.id) ?? [], parsed.base)}`
-        )
+        .map((r, i) => `--- ${i + 1} ---\n${formatFactHuman(r, parsed.base)}`)
         .join('\n\n')
     }
 
@@ -233,8 +218,7 @@ export async function runFactsCommand(
     if (!row) {
       throw new FactsCommandError(`No active fact matched: ${q}`)
     }
-    const categories = indexer.getFactCategoryNames(row.id)
-    return formatFactHuman(row, categories, parsed.base)
+    return formatFactHuman(row, parsed.base)
   } finally {
     indexer.close()
   }

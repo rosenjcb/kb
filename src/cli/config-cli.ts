@@ -10,6 +10,7 @@ import {
   writeKbConfig,
 } from './kb-config'
 import { runLLMSetupWizard, showLLMStatus } from './llm-setup-wizard'
+import { isRepoAction, runRepoCommand } from './repo-cli'
 
 export interface ConfigCommandResult {
   output: string
@@ -39,6 +40,11 @@ export function printConfigHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('config llm', mode)}              Set up LLM provider (interactive wizard)`,
     `  ${cmd('config llm --show', mode)}       Show current LLM configuration`,
     '',
+    'Git repos (per base):',
+    `  ${cmd('config list-repos [--base <name>]', mode)}            List the repos a base tracks`,
+    `  ${cmd('config add-repo <url[#branch]> [--branch <b>] [--base <name>]', mode)}   Clone + index another repo`,
+    `  ${cmd('config remove-repo <url|slug> [--base <name>]', mode)}    Remove a repo and its facts`,
+    '',
     `Supported keys: ${listSupportedConfigPaths().join(', ')}`,
   ].join('\n')
 }
@@ -48,6 +54,14 @@ export async function runConfigCommand(
   options: RunConfigCommandOptions = {}
 ): Promise<ConfigCommandResult> {
   const mode = options.mode ?? 'cli'
+
+  // Per-base git repo management lives under `kb config` but operates on the base's meta.json.
+  const action = args[0]
+  if (isRepoAction(action)) {
+    const result = await runRepoCommand(action, args.slice(1), { mode })
+    return { output: result.output }
+  }
+
   const command = parseConfigCommand(args, mode)
   const configFile = options.configFile ?? getKbConfigFile()
 

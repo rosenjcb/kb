@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { repoSlugFromGitUrl } from './base-meta'
 
 function run(cmd: string, args: string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -53,15 +54,8 @@ export async function getHeadSha(repoDir: string): Promise<string> {
 
 /** Derive a normalised base name from a git remote URL.
  *  Handles both https (https://github.com/org/repo.git) and ssh (git@github.com:org/repo.git).
+ *  Shares the slug derivation with `repoSlugFromGitUrl` so base names and repo slugs agree.
  */
 export function baseNameFromGitUrl(url: string): string {
-  const cleaned = url.replace(/\.git$/, '').replace(/\/$/, '')
-  // Extract the org/repo path component regardless of protocol
-  const pathPart = cleaned.includes('://')
-    ? cleaned.split('/').slice(3).join('/')   // https://host/org/repo → org/repo
-    : (cleaned.split(':')[1] ?? cleaned)       // git@host:org/repo → org/repo
-  const parts = pathPart.split('/')
-  const org = parts.at(-2) ?? 'unknown'
-  const repo = parts.at(-1) ?? 'repo'
-  return `${org}-${repo}`.replace(/[^a-zA-Z0-9._-]/g, '-').toLowerCase()
+  return repoSlugFromGitUrl(url)
 }

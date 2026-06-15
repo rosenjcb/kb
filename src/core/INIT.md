@@ -1,6 +1,8 @@
 # KB Init Pipeline
 
-`kb init` bootstraps a knowledge base from a repo. In interactive mode it first collects all user input upfront — base name, optional git remote URL, and fact-category definitions — then runs the uninterrupted multi-phase scan: **`read-inputs`** (README-like docs), **`code-index`** (deterministic AST indexing into `facts` + `fact_edges`), **`document-facts`** (sentence facts from markdown sources), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), and **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations). Use **`kb scan`** to refresh sources against an existing base.
+`kb init` bootstraps a knowledge base from **one or more git repositories** — at least one `--git` remote is required (local-directory indexing has been removed). In interactive mode it first collects user input upfront — base name and at least one git URL — then clones each repo into `~/.kb/sessions/<base>/repos/<slug>/` and runs the multi-phase scan **per repo**: **`read-inputs`** (README-like docs), **`code-index`** (deterministic AST indexing into `facts` + `fact_edges`), **`document-facts`** (sentence facts from markdown sources), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), and **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations). Each fact records its origin repo in the **`git_repo`** column.
+
+All repos fold into **one connected graph**. After the per-repo loop, an **integration-ingest** reconciliation pass bridges the subgraphs by linking facts across repos on real integration signals — `package.json` dependencies, cross-repo symbol imports, and `.env`/service references — producing cross-repo `fact_edges` (`depends_on_repo`, `cross_repo_symbol`, `references_repo`). This runs at the end of `kb init`, after **`kb scan`**, and after auto-sync. Use **`kb scan`** to pull + re-index every tracked repo and rebuild the cross-repo links.
 
 In the TUI, init/scan progress is rendered as a dedicated live status line instead of transcript history. Any phase that iterates over a collection of files, docs, facts, claims, or mutations emits incremental progress while that collection is being processed; only atomic operations stay start/finish-only. Progress lines include counts and, when useful, the current item. The long-running deterministic phases also yield cooperatively to the event loop between batches so the terminal can repaint and interrupts remain responsive during large scans.
 
@@ -24,49 +26,46 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[kb init] --> UQ[upfront questions]
-    UQ --> UQ1["base name\ngit URL ?\ncategory defs ?"]
-    UQ --> R[read-inputs]
+    UQ --> UQ1["base name\ngit URL(s) (required)"]
+    UQ --> CL[clone repos]
+    CL --> R["per-repo loop:\nread-inputs"]
     R --> CI[code-index]
     CI --> MF[document-facts]
-    MF --> FC[fact-categories assign]
-    FC --> IM[import-docs]
+    MF --> IM[import-docs]
     IM --> W[write]
+    W --> RC[integration-ingest\nreconciliation]
 
-    CI --> CI1["AST indexing\n→ facts + fact_edges"]
+    CI --> CI1["AST indexing\n→ facts + fact_edges\n(git_repo set)"]
     MF --> MF1["Sentence segmentation\n→ facts import_doc"]
-    FC --> FC1["TF-IDF assignment\nusing pre-collected defs"]
     IM --> IM1["One original doc\nper source file"]
     W --> W1["SQLite upsert\n+ scan planner"]
+    RC --> RC1["cross-repo fact_edges:\ndepends_on_repo,\ncross_repo_symbol,\nreferences_repo"]
 ```
 
 ## Upfront Questions
 
-Before the scan begins, interactive `kb init` (no `--base`, not `kb scan`, not `--non-interactive`) asks three questions in order:
+Before the scan begins, interactive `kb init` (no `--base`, not `kb scan`, not `--non-interactive`) asks two questions in order:
 
 | # | Prompt | Skipped when |
 |---|---|---|
 | 1 | Base name | `--base` provided or resuming checkpoint |
-| 2 | Git remote URL (blank = local dir) | `--base` provided, `--git` provided, or resuming |
-| 3 | Fact category names + descriptions | any of the above, or resuming |
+| 2 | Git URL(s) — at least one **required** | `--base` provided, `--git` provided, or resuming |
 
-A blank or `/skip` at the git URL prompt indexes the local working directory. `/cancel` at any prompt aborts and returns to the chat session.
+Git URLs are mandatory; there is no blank-to-local option and no fact-category prompt. Each URL may carry an inline `#branch`; the `--branch` flag sets the default branch for repos that omit one (default `main`). `/cancel` at any prompt aborts and returns to the chat session.
 
-Pre-collected categories are passed directly into the `fact-categories assign` sub-step (after `document-facts`) instead of prompting mid-scan. On resume from checkpoint, categories are already in the DB — no re-prompt.
+## Multi-repo clone + index
 
-## Fact Categories
+After the upfront questions, each `--git` repo is cloned into `~/.kb/sessions/<base>/repos/<slug>/` and recorded in `meta.json`'s `repos` array (`{ gitUrl, gitBranch, slug, dir, lastSyncedSha, lastSyncedAt }`). The per-repo loop runs `read-inputs → code-index → document-facts → import-docs → write` against each clone, tagging every fact with its `git_repo` origin.
 
-`kb init` collects category definitions **upfront** (see above); after `document-facts` has populated the facts table, `inferAndAssignProjectCategories` assigns facts using the pre-collected definitions via TF-IDF cosine similarity (`threshold = 0.3`). No prompt appears mid-scan.
+## Integration-ingest reconciliation
 
-**Tables written:**
+Once all repos are indexed, the reconciliation pass folds the per-repo subgraphs into one connected graph. It links facts across repos on real integration signals:
 
-| Table | Content |
-|---|---|
-| `fact_categories` | id, name, description, status (`edited`), createdBy (`user`) |
-| `fact_category_assignments` | fact_id → category_id with cosine similarity score |
+- `package.json` dependencies (repo A depends on repo B's package)
+- cross-repo symbol imports
+- `.env` / service references
 
-**`kb scan` behaviour:** category prompting is skipped on rescan — categories defined at init time are preserved. Re-run `kb init` to redefine them.
-
-**Future:** HDBSCAN-based auto-discovery (currently commented out in `src/cli/init-cli.ts`) will run before the manual step to suggest categories derived from the actual fact corpus.
+These emit bridge `fact_edges` of types `depends_on_repo`, `cross_repo_symbol`, and `references_repo`. The pass runs at the end of `kb init`, after `kb scan`, and after auto-sync.
 
 ## Jekyll Routing
 

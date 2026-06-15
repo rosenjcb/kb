@@ -215,7 +215,7 @@ describe('kb init help', () => {
     await runMainWithOutput(['scan', '--help'], out, {} as never, 'tui')
 
     const text = lines.join('\n')
-    expect(text).toContain('/scan --base dogfood')
-    expect(text).toContain('/base use <base>')
+    expect(text).toContain('/scan --base acme')
+    expect(text).toContain('/config add-repo <url>')
   })
 })

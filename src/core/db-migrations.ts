@@ -472,6 +472,27 @@ const MIGRATIONS: Migration[] = [
       DROP TABLE IF EXISTS kg_semantic_bridge;
     `,
   },
+  {
+    // Multi-repo bases: every fact records which git repo it came from (slug).
+    // Nullable — rows written before this version stay NULL until the next scan
+    // re-writes them with their repo slug (opportunistic backfill, no data migration).
+    version: 15,
+    name: 'add_facts_git_repo',
+    sql: `
+      ALTER TABLE facts ADD COLUMN git_repo TEXT;
+      CREATE INDEX IF NOT EXISTS idx_facts_git_repo
+        ON facts(git_repo) WHERE tombstoned_at IS NULL;
+    `,
+  },
+  {
+    // Fact categories were replaced by repo-based organisation (facts.git_repo).
+    version: 16,
+    name: 'drop_fact_categories',
+    sql: `
+      DROP TABLE IF EXISTS fact_category_assignments;
+      DROP TABLE IF EXISTS fact_categories;
+    `,
+  },
 ]
 
 /**

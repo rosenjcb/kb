@@ -29,11 +29,13 @@ export function tombstoneDocFactsForFile(indexer: SqliteKbIndexer, relPath: stri
 export function tombstoneRemovedDocSourceFiles(
   indexer: SqliteKbIndexer,
   current: Record<string, string>,
-  manifest: SourceFilesManifest
+  manifest: SourceFilesManifest,
+  gitRepo?: string
 ): number {
   let count = 0
   for (const relPath of diffRemovedSourceFiles(current, manifest)) {
-    count += tombstoneDocFactsForFile(indexer, relPath)
+    const refPath = gitRepo ? `${gitRepo}/${relPath}` : relPath
+    count += tombstoneDocFactsForFile(indexer, refPath)
   }
   return count
 }

@@ -1,6 +1,4 @@
-import os from 'node:os'
-import path from 'node:path'
-import { describe, expect, it, afterEach, beforeEach } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { FIRST_RUN_WELCOME_NOTICE } from '../../src/cli/index'
 import {
   autoInitAnnouncement,
@@ -9,7 +7,6 @@ import {
   shouldAutoInit,
   uninitializedBaseNotice,
 } from '../../src/cli/cli-prerequisites'
-import { globalVenvPython } from '../../src/core/fact-categories'
 
 // ---------------------------------------------------------------------------
 // FIRST_RUN_WELCOME_NOTICE
@@ -34,41 +31,6 @@ describe('FIRST_RUN_WELCOME_NOTICE', () => {
   it('is a non-empty string', () => {
     expect(typeof FIRST_RUN_WELCOME_NOTICE).toBe('string')
     expect(FIRST_RUN_WELCOME_NOTICE.length).toBeGreaterThan(0)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// globalVenvPython — path resolution
-// ---------------------------------------------------------------------------
-
-describe('globalVenvPython', () => {
-  let originalKbHome: string | undefined
-
-  beforeEach(() => {
-    originalKbHome = process.env.KB_HOME
-  })
-
-  afterEach(() => {
-    if (originalKbHome === undefined) delete process.env.KB_HOME
-    else process.env.KB_HOME = originalKbHome
-  })
-
-  it('resolves under KB_HOME when set', () => {
-    process.env.KB_HOME = '/tmp/custom-kb'
-    expect(globalVenvPython()).toBe('/tmp/custom-kb/.kb-python/bin/python3')
-  })
-
-  it('resolves under ~/.kb by default', () => {
-    delete process.env.KB_HOME
-    expect(globalVenvPython()).toBe(path.join(os.homedir(), '.kb', '.kb-python', 'bin', 'python3'))
-  })
-
-  it('always ends with /bin/python3', () => {
-    expect(globalVenvPython()).toMatch(/\/bin\/python3$/)
-  })
-
-  it('always contains .kb-python', () => {
-    expect(globalVenvPython()).toContain('.kb-python')
   })
 })
 
