@@ -1,5 +1,20 @@
 # kb
 
+## 0.7.0
+
+### Minor Changes
+
+- Add gitignore-style ignore patterns that exclude files from `kb init` / `kb scan`.
+
+  Because a base indexes git-repo clones under `~/.kb` (not the caller's working
+  directory), the patterns are stored **in the base** (`meta.json` gains an
+  `ignore` array) so they persist across rescans. Manage them with the new
+  `kb ignore` command (`init` seeds defaults, `add` appends, `list` shows), which
+  targets the active base or `--base <name>`. A repo may also commit a `.kb` TOML
+  file with an `[ignore]` section to ship its own rules (unioned with the base
+  list when KB indexes that repo). The per-directory `.kb` file is now TOML and may
+  carry a `base = "<name>"` hint; legacy plain-text `.kb` files still parse.
+
 ## 0.6.0
 
 ### Minor Changes
