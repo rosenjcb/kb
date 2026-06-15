@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../../src/cli/git-sync', () => ({
   cloneRepo: vi.fn(async () => {}),
   getHeadSha: vi.fn(async () => 'headsha000'),
+  getCurrentBranch: vi.fn(async () => 'main'),
 }))
 vi.mock('../../src/cli/init-cli', () => ({
   runKbInit: vi.fn(async () => ({ status: 'accepted', base: 'demo', completedCycles: [] })),

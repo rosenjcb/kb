@@ -579,11 +579,10 @@ async function main() {
 
     if (needsInit) {
       // kb init now requires a git remote. Point it at the local snapshot clone (exact commit,
-      // no extra network) tracking the branch the snapshot is on.
-      const branch = git(targetCwd, 'rev-parse --abbrev-ref HEAD') || 'main'
+      // no extra network); kb follows the clone's own default branch (main, master, …).
       const initLog = kb(
         targetCwd,
-        `init --base ${base} --git "${targetCwd}#${branch}" --non-interactive --debug`
+        `init --base ${base} --git "${targetCwd}" --non-interactive --debug`
       )
       fs.writeFileSync(path.join(workdir, 'init.log'), initLog, 'utf8')
     } else {
@@ -798,7 +797,7 @@ async function main() {
         'pnpm run build (kb repo)',
         repoUrl ? `git clone (snapshot) → ${targetCwd}` : null,
         evalMode === 'all'
-          ? `kb init --base ${base} --git "${targetCwd}#<branch>" --non-interactive --debug (cwd: ${targetCwd})`
+          ? `kb init --base ${base} --git "${targetCwd}" --non-interactive --debug (cwd: ${targetCwd})`
           : null,
         `kb scan --base ${base} --debug (cwd: ${targetCwd})`,
         `kb base use --default ${base}`,

@@ -20,7 +20,7 @@ import {
 } from './base-meta'
 import { resolveBaseToDir, resolveEffectiveBaseDir } from './base-selection'
 import { type CmdMode, cmd } from './cmd-ref'
-import { cloneRepo, getHeadSha } from './git-sync'
+import { cloneRepo, getCurrentBranch, getHeadSha } from './git-sync'
 import { parseGitTarget, runKbInit } from './init-cli'
 
 export interface RepoCommandResult {
@@ -94,7 +94,7 @@ export async function runRepoCommand(
       throw new Error(`${cmd('base add-repo', mode)} requires a git URL (optionally url#branch)`)
     }
     const branch = readOption(args, '--branch')
-    const gitTarget = parseGitTarget(target, branch ?? 'main')
+    const gitTarget = parseGitTarget(target, branch)
     const { baseDir, baseName } = await resolveRepoBaseDir(baseArg)
     const meta: GitBaseMeta = (await readBaseMeta(baseDir)) ?? { repos: [] }
     const slug = repoSlugFromGitUrl(gitTarget.url)
@@ -120,7 +120,7 @@ export async function runRepoCommand(
     })
     const entry: GitRepoMeta = {
       gitUrl: gitTarget.url,
-      gitBranch: gitTarget.branch,
+      gitBranch: gitTarget.branch ?? (await getCurrentBranch(repoDir)),
       slug,
       dir,
       lastSyncedSha: headSha,

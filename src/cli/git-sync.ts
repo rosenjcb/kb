@@ -19,9 +19,18 @@ function run(cmd: string, args: string[], cwd: string): Promise<string> {
   })
 }
 
-/** Blobless clone of `url` at `branch` into `destDir`. */
-export async function cloneRepo(url: string, destDir: string, branch: string): Promise<void> {
-  await run('git', ['clone', '--filter=blob:none', '--branch', branch, '--single-branch', url, destDir], process.cwd())
+/** Blobless clone of `url` into `destDir`. Tracks `branch` when given, else the remote's
+ *  own default branch (HEAD) — so repos on `master` (or anything else) clone correctly. */
+export async function cloneRepo(url: string, destDir: string, branch?: string): Promise<void> {
+  const args = ['clone', '--filter=blob:none', '--single-branch']
+  if (branch) args.push('--branch', branch)
+  args.push(url, destDir)
+  await run('git', args, process.cwd())
+}
+
+/** Current branch name of a clone (e.g. `main`, `master`). */
+export async function getCurrentBranch(repoDir: string): Promise<string> {
+  return run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], repoDir)
 }
 
 /** Discard kb's local `.kb` marker so ff-only pulls in hidden clones don't fail. */

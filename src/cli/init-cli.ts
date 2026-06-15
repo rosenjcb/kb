@@ -14,7 +14,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { type GitRepoMeta, repoDirForSlug, repoSlugFromGitUrl, writeBaseMeta } from './base-meta'
-import { cloneRepo, getHeadSha } from './git-sync'
+import { cloneRepo, getCurrentBranch, getHeadSha } from './git-sync'
 import { TsMorphIndexer, tombstoneStaleAstFacts } from '../tools/code-graph-indexer'
 import {
   isTreeSitterIndexablePath,
@@ -111,10 +111,11 @@ export interface InitOptions {
   gitRepo?: string
 }
 
-/** A git remote to track, with the branch to follow (default `main`). */
+/** A git remote to track. `branch` is omitted unless the user pins one (inline `#branch` or
+ *  `--branch`); when omitted the clone follows the remote's own default branch. */
 export interface GitTarget {
   url: string
-  branch: string
+  branch?: string
 }
 
 export interface InitResult {
@@ -457,7 +458,7 @@ function shouldExcludeMarkdownSourceFile(relativePath: string, content: string):
 
 export function parseInitCommand(args: string[]): InitOptions {
   const base = readOption(args, '--base') ?? undefined
-  const defaultBranch = readOption(args, '--branch') ?? 'main'
+  const defaultBranch = readOption(args, '--branch') ?? undefined
   const gitTargets = readAllOptions(args, '--git').map(raw => parseGitTarget(raw, defaultBranch))
 
   const rawStopAfter = readOption(args, '--stop-after')
@@ -489,8 +490,10 @@ export function parseInitCommand(args: string[]): InitOptions {
   }
 }
 
-/** Parse a `--git` value of the form `url` or `url#branch` into a GitTarget. */
-export function parseGitTarget(raw: string, defaultBranch: string): GitTarget {
+/** Parse a `--git` value of the form `url` or `url#branch` into a GitTarget. When no branch is
+ *  given (inline or via `defaultBranch`), `branch` is left undefined so the clone follows the
+ *  remote's default branch. */
+export function parseGitTarget(raw: string, defaultBranch?: string): GitTarget {
   const hashIdx = raw.lastIndexOf('#')
   if (hashIdx > 0) {
     return { url: raw.slice(0, hashIdx), branch: raw.slice(hashIdx + 1) || defaultBranch }
@@ -577,7 +580,8 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       await mkdir(repoDir, { recursive: true })
       repoMetas.push({
         gitUrl: target.url,
-        gitBranch: target.branch,
+        // Record the branch actually checked out (the remote default when none was pinned).
+        gitBranch: target.branch ?? (await getCurrentBranch(repoDir)),
         slug,
         dir,
         lastSyncedSha: await getHeadSha(repoDir),
@@ -1387,7 +1391,7 @@ async function resolveGitTargetsForInit(
     const targets = answer
       .split(/[\s,]+/)
       .filter(Boolean)
-      .map(raw => parseGitTarget(raw, 'main'))
+      .map(raw => parseGitTarget(raw))
     if (targets.length > 0) return targets
     questionIO.write?.('  At least one git URL is required.\n')
   }

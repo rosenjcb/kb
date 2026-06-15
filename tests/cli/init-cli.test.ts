@@ -1495,16 +1495,16 @@ describe('init-cli git-linked dialog', () => {
     expect(parsed.gitTargets).toEqual([{ url: 'U', branch: 'dev' }])
   })
 
-  it('parseInitCommand parses repeatable --git with inline branch', () => {
+  it('parseInitCommand parses repeatable --git with inline branch (no branch = remote default)', () => {
     const parsed = parseInitCommand(['--git', 'A', '--git', 'B#feat'])
     expect(parsed.gitTargets).toEqual([
-      { url: 'A', branch: 'main' },
+      { url: 'A', branch: undefined },
       { url: 'B', branch: 'feat' },
     ])
   })
 
-  it('parseInitCommand with only --git sets a single main-branch target', () => {
+  it('parseInitCommand with only --git leaves the branch undefined (remote default)', () => {
     const parsed = parseInitCommand(['--git', 'U'])
-    expect(parsed.gitTargets).toEqual([{ url: 'U', branch: 'main' }])
+    expect(parsed.gitTargets).toEqual([{ url: 'U', branch: undefined }])
   })
 })

@@ -214,7 +214,7 @@ function printInitHelp(mode: CmdMode = 'cli'): string {
     '',
     'Flags:',
     '  --git <url[#branch]>            Git remote to index (REQUIRED; repeatable for multiple repos)',
-    '  --branch <name>                Default branch for repos without an inline #branch (default: main)',
+    "  --branch <name>                Default branch for repos without an inline #branch (else the remote's default)",
     '  --base <name>                  Base name (defaults to the first repo)',
     '  --non-interactive              Skip interview prompts when possible',
     '  --detach                       Pause after the current cycle and save a checkpoint',

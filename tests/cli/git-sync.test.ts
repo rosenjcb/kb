@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { baseNameFromGitUrl, pullRepo } from '../../src/cli/git-sync'
+import { baseNameFromGitUrl, cloneRepo, getCurrentBranch, pullRepo } from '../../src/cli/git-sync'
 
 const execFileAsync = promisify(execFile)
 
@@ -95,6 +95,51 @@ describe('git-sync', () => {
       expect(hadNewCommits).toBe(true)
       expect(await readFile(path.join(cloneDir, 'README.md'), 'utf8')).toBe('# v2\n')
       await expect(readFile(path.join(cloneDir, '.kb'), 'utf8')).rejects.toThrow()
+    })
+  })
+
+  describe('cloneRepo default branch', () => {
+    let tmpRoot: string
+    let origin: string
+
+    async function git(cwd: string, ...args: string[]): Promise<void> {
+      await execFileAsync('git', args, { cwd, encoding: 'utf8' })
+    }
+
+    // Build a repo whose default branch is `master` (not `main`) — the raylib/raygui case.
+    beforeEach(async () => {
+      tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'kb-git-sync-clone-'))
+      origin = path.join(tmpRoot, 'origin')
+      await mkdir(origin, { recursive: true })
+      await git(origin, 'init', '-b', 'master')
+      await git(origin, 'config', 'user.email', 'test@test.com')
+      await git(origin, 'config', 'user.name', 'Test')
+      await git(origin, 'config', 'commit.gpgsign', 'false')
+      await writeFile(path.join(origin, 'README.md'), '# master repo\n')
+      await git(origin, 'add', '.')
+      await git(origin, 'commit', '-m', 'init')
+    })
+
+    afterEach(async () => {
+      await rm(tmpRoot, { recursive: true, force: true })
+    })
+
+    it('clones a repo whose default branch is master without specifying a branch', async () => {
+      const dest = path.join(tmpRoot, 'clone-default')
+      await cloneRepo(origin, dest)
+      expect(await getCurrentBranch(dest)).toBe('master')
+      expect(await readFile(path.join(dest, 'README.md'), 'utf8')).toBe('# master repo\n')
+    })
+
+    it('honors an explicitly requested branch', async () => {
+      await git(origin, 'checkout', '-b', 'dev')
+      await writeFile(path.join(origin, 'README.md'), '# dev branch\n')
+      await git(origin, 'commit', '-am', 'dev')
+      await git(origin, 'checkout', 'master')
+
+      const dest = path.join(tmpRoot, 'clone-dev')
+      await cloneRepo(origin, dest, 'dev')
+      expect(await getCurrentBranch(dest)).toBe('dev')
     })
   })
 })
