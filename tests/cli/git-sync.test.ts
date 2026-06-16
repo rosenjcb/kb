@@ -140,6 +140,30 @@ describe('git-sync', () => {
       expect(await readFile(path.join(cloneDir, 'README.md'), 'utf8')).toBe('# v2\n')
       await expect(readFile(path.join(cloneDir, '.kb'), 'utf8')).rejects.toThrow()
     })
+
+    it('Given dirty tracked files and no new remote commits, then pull discards local edits', async () => {
+      await writeFile(path.join(cloneDir, 'README.md'), '# local edit\n')
+
+      const hadNewCommits = await pullRepo(cloneDir)
+
+      expect(hadNewCommits).toBe(false)
+      expect(await readFile(path.join(cloneDir, 'README.md'), 'utf8')).toBe('# v1\n')
+    })
+
+    it('Given dirty tracked files and new remote commits, then pull succeeds', async () => {
+      await writeFile(path.join(cloneDir, 'README.md'), '# local edit\n')
+
+      const seedDir = path.join(tmpRoot, 'seed')
+      await writeFile(path.join(seedDir, 'README.md'), '# v2\n')
+      await git(seedDir, 'add', '.')
+      await git(seedDir, 'commit', '-m', 'v2')
+      await git(seedDir, 'push', 'origin', 'main')
+
+      const hadNewCommits = await pullRepo(cloneDir)
+
+      expect(hadNewCommits).toBe(true)
+      expect(await readFile(path.join(cloneDir, 'README.md'), 'utf8')).toBe('# v2\n')
+    })
   })
 
   describe('cloneRepo default branch', () => {

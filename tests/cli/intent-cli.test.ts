@@ -419,4 +419,38 @@ describe('intent-cli execution and enrichment', () => {
       'Build/config evidence scaffold:'
     )
   })
+
+  it('query synthesis allows a larger answer output budget', async () => {
+    const onReasoning = vi.fn()
+    const call = vi.fn(async () => ({
+      text: 'Full synthesized answer.',
+      usage: { inputTokens: 1, outputTokens: 1 },
+    }))
+    const llm = { name: 'test', model: 'stub', call } as unknown as LLMProvider
+
+    await enrichReadDocumentsAnswerWithLLM(
+      parseIntentCommand(['query', 'base precedence']),
+      {
+        status: 'accepted',
+        recommendedAction: 'read_facts',
+        data: {
+          retrieval: { method: 'hybrid' },
+          results: [
+            {
+              metadata: { id: 'cli-facts', title: 'CLI Facts' },
+              content: 'KB base precedence order: active base, then default base.',
+            },
+          ],
+        },
+      },
+      llm,
+      undefined,
+      undefined,
+      { onReasoning }
+    )
+
+    expect(call).toHaveBeenCalledWith(
+      expect.objectContaining({ maxTokens: 8192, onReasoning })
+    )
+  })
 })

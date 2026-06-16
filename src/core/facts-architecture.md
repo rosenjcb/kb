@@ -10,7 +10,7 @@ This is the platform mental model for `kb query`, `kb docs generate`, ingest (`k
 
 | Surface | Role |
 |--------|------|
-| **`facts` / `facts_fts`** | Canonical store for retrieval, dedupe keys (`normalized_text`), provenance (`source_kind`, `source_ref`, `git_repo` origin repo), tombstones, lanes. |
+| **`facts` / `facts_fts`** | Canonical store for retrieval, dedupe keys (`normalized_text`), provenance (`source_kind`, `source_ref`, `git_repo` origin repo). |
 | **`kb query` / chat** | **Target:** form answers **only** from retrieved facts (plus graph neighborhood over fact-linked entities)—not from full document bodies as evidence. Retrieval is **repo-scoped**: it lands in the repo the strongest hit belongs to (`git_repo`), exhausts that repo's pool, then walks cross-repo `fact_edges` to siblings. |
 | **`kb docs generate`** | **Target:** generate documents **from facts** (questionnaire + LLM shaping), cite facts; documents are outputs, not inputs to retrieval. |
 

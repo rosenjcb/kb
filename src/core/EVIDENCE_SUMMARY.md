@@ -6,7 +6,7 @@ Implementation: **`formatEvidenceSummaryHeader()`** in `src/core/evidence-summar
 
 ## Purpose
 
-Humans need a scannable read on **what retrieval produced** without duplicating fact bodies the LLM already consumed. The LLM still receives the **full ranked pool** via `formatRetrievedFactsForLLM()` — this header is display-only.
+Humans need a scannable read on **what retrieval produced** without duplicating fact bodies the LLM already consumed. The LLM still receives the ranked pool via `formatRetrievedFactsForLLM()` — this header is display-only.
 
 ## Segment order
 
@@ -44,5 +44,5 @@ evidence> 200 facts → LLM (full text) · mix: 120 doc · 80 code · repos: aut
 
 ## See also
 
-- `src/core/QUERY_INTERNALS.md` — BFS loop and surface limit
-- `src/core/retrieval-context.ts` — full-fidelity LLM fact payloads
+- `src/core/QUERY_INTERNALS.md` — BFS loop and limits
+- `src/core/retrieval-context.ts` — LLM fact payloads

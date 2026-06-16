@@ -81,22 +81,23 @@ An optional **post-retrieval LLM relevance filter** (`src/tools/facts-relevance-
 
 Terminal **`evidence>`** is a **single summary header** (`formatEvidenceSummaryHeader()` in `src/core/evidence-summary.ts`) — count, doc/code mix, top themes, lead titles, walk/stop/conf. No per-fact bullet lines. See **`src/core/EVIDENCE_SUMMARY.md`**.
 
-## Fact collection budget
+## Limits
 
-The loop accumulates up to `DEFAULT_FACT_LIMIT` (500) scored facts. After the loop, `buildResponse` caps the output at `MAX_FACTS_FOR_LLM` (150) before synthesis.
+**Deep loop** (`discoveryDepth: deep` — default for `kb query`):
 
-| Layer | What it limits | Default |
-|-------|----------------|---------|
-| **Total facts collected** | `scoredFacts.size` cap | `DEFAULT_FACT_LIMIT` = 500 |
-| **Facts sent to synthesis** | Final ranked slice | `MAX_FACTS_FOR_LLM` = 150 |
-| **Per-fact content** | Chars sent to synthesis LLM | 2000 chars |
-| **Per DB call** | Rows from each `searchFacts` / `getFactNeighbors` call | `perIterationLimit` = 50 (fixed) |
-| **Loop passes** | Round-robin pond iterations | 24 (`KB_FACTS_QUERY_MAX_ITERS`) |
-| **Graph hops** | BFS levels across all ponds | 20 (`KB_FACTS_QUERY_MAX_HOPS`) |
+| Layer | Default |
+|-------|---------|
+| Facts sent to synthesis | Ranked pool above `MIN_FACT_SCORE` (0.20); optional relevance filter when **>20** facts |
+| Per-fact content | 2000 chars (`MAX_FACT_CONTENT_CHARS`) |
+| Per DB call | 50 rows (`perIterationLimit`) |
+| Loop passes | 24 (`KB_FACTS_QUERY_MAX_ITERS`; absolute max 512) |
+| Graph hops | 20 (`KB_FACTS_QUERY_MAX_HOPS`) |
 
-## Graph expansion (query string only)
+**Shallow** (`--discovery shallow`): lexical FTS; **`--limit`** defaults to 500 (`DEFAULT_FACT_LIMIT`).
 
-When graph mode is enabled, **`expandQueryWithGraph`** (`src/tools/graph-query-expansion.ts`) may rewrite / widen the **query string** before the intent envelope is built. That expanded string is what **`read_facts`** searches against. See **`src/tools/GRAPH.md`** ("Graph-augmented query").
+## Graph expansion
+
+When graph mode is enabled, **`expandQueryWithGraph()`** in `index.ts` / `chat-cli.ts` widens the query string before **`read_facts`**. See **`src/tools/GRAPH.md`**. Optional post-retrieval rerank: **`rerankByGraphConnectivity()`**.
 
 ## Environment knobs (facts deep loop)
 

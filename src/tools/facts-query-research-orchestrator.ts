@@ -5,14 +5,11 @@ import { type FactsSufficiencyJudge, shouldCallJudge } from './facts-sufficiency
 import type { FactConceptRow, FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
 export const DEFAULT_FACT_LIMIT = 500
-/** Maximum facts sent to LLM synthesis — caps the recall-first context to control token cost. */
-export const MAX_FACTS_FOR_LLM = 150
 /** Minimum score for remainder facts (excludes near-zero-signal tail; reserved entries bypass this). */
 const MIN_FACT_SCORE = 0.20
 
 interface FactsLoopOptions {
   query: string
-  limit: number
   includeContent: boolean
   surface: 'query' | 'chat'
   excludeIds?: Set<string>
@@ -131,10 +128,6 @@ export class FactsQueryResearchOrchestrator {
         break
       }
       iterationsRun = iter + 1
-      if (scoredFacts.size >= input.limit) {
-        stopReason = 'budget_exhausted'
-        break
-      }
       const activePondSelection = selectNextPond(ponds, pondCursor)
       if (!activePondSelection) {
         stopReason = scoredFacts.size > 0 ? 'weak_evidence_after_exhaustion' : 'frontier_exhausted'
@@ -498,8 +491,7 @@ export class FactsQueryResearchOrchestrator {
     const filteredRemainder = sorted
       .filter(e => !reservedIds.has(e.row.id) && e.score >= MIN_FACT_SCORE)
     const ranked = dedupeRankedFacts([...reserved, ...filteredRemainder])
-    const cappedRanked = ranked.slice(0, MAX_FACTS_FOR_LLM)
-    const results: QueryResult[] = cappedRanked.map(({ row }) => ({
+    const results: QueryResult[] = ranked.map(({ row }) => ({
       metadata: {
         id: row.id,
         title: summarizeFactTitle(row.fact_text),
