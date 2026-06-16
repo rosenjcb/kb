@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { createIgnoreMatcher } from '../../src/cli/kb-ignore'
 import { collectSourceFiles } from '../../src/cli/init-cli'
 
 let tempDir: string
@@ -74,5 +75,21 @@ describe('collectSourceFiles', () => {
     const result = await collectSourceFiles(tempDir)
 
     expect(result['zzz/late.md']).toBeDefined()
+  })
+
+  it('respects an ignore matcher (prunes dirs and files)', async () => {
+    await mkdir(path.join(tempDir, 'docs', 'legacy'), { recursive: true })
+    await writeFile(path.join(tempDir, 'README.md'), '# Root', 'utf8')
+    await writeFile(path.join(tempDir, 'docs', 'guide.md'), '# Guide', 'utf8')
+    await writeFile(path.join(tempDir, 'docs', 'legacy', 'old.md'), '# Old', 'utf8')
+    await writeFile(path.join(tempDir, 'NOTES.draft.md'), '# Draft', 'utf8')
+
+    const matcher = createIgnoreMatcher(['docs/legacy/', '*.draft.md'])
+    const result = await collectSourceFiles(tempDir, undefined, matcher)
+
+    expect(result['README.md']).toBeDefined()
+    expect(result['docs/guide.md']).toBeDefined()
+    expect(result['docs/legacy/old.md']).toBeUndefined()
+    expect(result['NOTES.draft.md']).toBeUndefined()
   })
 })

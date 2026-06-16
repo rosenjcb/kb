@@ -13,6 +13,25 @@ Command-line entry, argument parsing, and orchestration wiring for `kb`. Impleme
 | Skills | `skill-installer.ts` | Install bundled skills to agent homes + profile blurbs |
 | Uninstall | `uninstall-cli.ts` | Consumer-facing removal of the release install layout |
 
+## Command style convention (noun → verb)
+
+New multi-action commands follow a **noun-then-verb** shape, like `git remote …`: the
+subject (noun) comes first, the action (verb) second, with a bare noun defaulting to the
+read/list action.
+
+```text
+kb base ignore            # list (bare noun = read)
+kb base ignore add  …     # <noun> <verb> [args]
+kb base ignore remove …
+kb base ignore set  …
+kb base ignore clear
+```
+
+Prefer this over flag-driven mode switches: a `--list` / `--add` flag on a verb-named command
+reads awkwardly. Both the CLI dispatcher (`index.ts`) and the TUI slash registry
+(`src/tui/slash-command-registry.ts`) expose the same noun/verb paths, and new command groups
+must follow this shape.
+
 ## `CliOutput` abstraction
 
 `index.ts` exports `CliOutput` (`log`, `error`, `write`). The TUI passes a capturing implementation so slash commands and init progress do not fight Ink rendering. **Invariant:** long-running work that prints incremental status must use the injected output, not raw `console.log`, when invoked from the TUI.
@@ -109,7 +128,7 @@ kb init --git <url[#branch]> [--git <url[#branch]> ...] [--branch <default>] [--
 
 `--git` is repeatable; each value may carry an inline `#branch`. The `--branch` flag sets the default branch for any repo that omits one (default `main`).
 
-Each base stores a blobless clone per repo at `~/.kb/sessions/<base>/repos/<slug>/` and a `meta.json` shaped as `{ repos: [ { gitUrl, gitBranch, slug, dir, lastSyncedSha, lastSyncedAt }, … ] }`. Every fact records its origin repo in the **`git_repo`** column, and imported doc `source_ref`s are slug-prefixed so provenance survives the fold into one graph.
+Each base stores a blobless clone per repo at `~/.kb/sessions/<base>/repos/<slug>/` and a `meta.json` shaped as `{ repos: [ { gitUrl, gitBranch, slug, dir, lastSyncedSha, lastSyncedAt }, … ], ignore?: string[] }`. Every fact records its origin repo in the **`git_repo`** column, and imported doc `source_ref`s are slug-prefixed so provenance survives the fold into one graph. The optional `ignore` array holds gitignore-style scan-exclusion patterns (see [Ignore patterns](#ignore-patterns-kb-base-ignore)).
 
 > **Legacy single-repo bases** with the old `meta.json` (`{ gitUrl, gitBranch, lastSyncedSha, lastSyncedAt }`) and a `repo/` clone still load and keep working.
 
@@ -137,20 +156,39 @@ After every repo is indexed, an **integration-ingest** pass bridges the per-repo
 
 These produce bridge `fact_edges` of types **`depends_on_repo`**, **`cross_repo_symbol`**, and **`references_repo`**. Reconciliation runs at the end of `kb init`, after `kb scan`, and after auto-sync.
 
-### Managing repos (`kb base`)
+### Managing repos (`kb base repo`)
 
 ```text
-kb base list-repos [--base <name>]
-kb base add-repo <url[#branch]> [--branch <b>] [--base <name>]
-kb base remove-repo <url|slug> [--base <name>]
+kb base repo list [--base <name>]
+kb base repo add <url[#branch]> [--branch <b>] [--base <name>]
+kb base repo remove <url|slug> [--base <name>]
 ```
 
-- `add-repo` clones the repo, indexes it, and rebuilds the cross-repo links.
-- `remove-repo` purges that repo's facts and its clone; it refuses to remove the last remaining repo.
+- A bare `kb base repo` (or `… repo list`) lists the tracked repos.
+- `add` clones the repo, indexes it, and rebuilds the cross-repo links.
+- `remove` purges that repo's facts and its clone; it refuses to remove the last remaining repo.
+
+### Ignore patterns (`kb base ignore`)
+
+Gitignore-style patterns let a base skip files/dirs that are irrelevant to the knowledge base. They are stored per-base in `meta.json` (`ignore: string[]`) and respected on **init and every rescan** (`kb scan`, auto-sync, `kb base repo add`).
+
+```text
+kb base ignore [list]            # show current patterns (bare command also lists)
+kb base ignore add <patterns…>   # append
+kb base ignore remove <patterns…># drop
+kb base ignore set <patterns…>   # replace the whole list
+kb base ignore clear             # remove all
+```
+
+- Patterns may be repeated args and/or comma-separated within one arg: `kb base ignore add "tests/, **/*.spec.ts"`.
+- Matching (`kb-ignore.ts`) follows `.gitignore`: trailing `/` = dir-only, leading/internal `/` anchors to the repo root, bare names match by basename at any depth, `*`/`**`/`?` globs, `!` negates, and ignoring a directory ignores its contents.
+- A `.kbignore` file committed at a repo root is merged on top of the base's stored patterns at scan time — handy for repo-specific rules you want version-controlled.
+- Fresh `kb init` prompts for patterns once (skippable; press Enter or `/skip`) and persists them to `meta.json`. The prompt is skipped when `--base` already has stored patterns, in non-interactive mode, and on `kb scan`.
+- Changing the list affects the **next** scan. Newly-ignored paths already indexed are pruned from the file manifest but their existing facts/docs are only fully purged by a fresh re-index — the same limitation as deleting a tracked file.
 
 ## Gotchas
 
 - **Base resolution:** Most commands flow through `base-selection.ts`; missing base → `CLI_ERROR_NO_KB_BASE` (formatted by `cli-prerequisites.ts`).
 - **Apply defaults:** TUI `resolveApplyArgs()` auto-appends `--apply` for `publish` — CLI users must pass `--apply` explicitly. `scan` runs through `runScanCommand` (pull + re-index every repo the base tracks); it takes no `--apply`.
 - **Init progress:** Pass `InitProgressReporter` from TUI; do not append `[init] …` lines to chat history (see `src/tui/TUI.md`).
-- **Upfront questions:** Interactive `kb init` (no `--base`) asks for the base name (`prompts[0]`) and at least one git URL (`prompts[1]`) before the scan. Git URLs are **required** — there is no blank-to-local option and no fact-category prompt. Both prompts are skipped when `--base` is set, when running `kb scan`, or when resuming from checkpoint. Tests asserting prompt order must follow this sequence.
+- **Upfront questions:** Interactive `kb init` (no `--base`) asks for the base name (`prompts[0]`), at least one git URL (`prompts[1]`), then an optional, skippable ignore-patterns prompt (`prompts[2]`) before the scan. Git URLs are **required** — there is no blank-to-local option and no fact-category prompt. The ignore prompt accepts comma-separated gitignore-style patterns and may be skipped (Enter / `/skip`). The base-name and git-URL prompts are skipped when `--base` is set, when running `kb scan`, or when resuming from checkpoint; the ignore prompt is additionally skipped when the base already has stored ignore patterns. Tests asserting prompt order must follow this sequence.

@@ -13,8 +13,15 @@
 
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { type GitRepoMeta, repoDirForSlug, repoSlugFromGitUrl, writeBaseMeta } from './base-meta'
+import {
+  type GitRepoMeta,
+  readBaseMeta,
+  repoDirForSlug,
+  repoSlugFromGitUrl,
+  writeBaseMeta,
+} from './base-meta'
 import { cloneRepo, getCurrentBranch, getHeadSha } from './git-sync'
+import { type IgnoreMatcher, parseIgnoreInput, resolveIgnoreMatcher } from './kb-ignore'
 import { TsMorphIndexer, tombstoneStaleAstFacts } from '../tools/code-graph-indexer'
 import {
   isTreeSitterIndexablePath,
@@ -109,6 +116,12 @@ export interface InitOptions {
    * originating repo (multi-repo provenance + repo-pool retrieval). Set internally per repo.
    */
   gitRepo?: string
+  /**
+   * Gitignore-style patterns for paths to skip while indexing. Supplied internally to
+   * recursive per-repo runs; for top-level runs the patterns are prompted (fresh init) or
+   * read from the base's `meta.json` (rescan).
+   */
+  ignorePatterns?: string[]
 }
 
 /** A git remote to track. `branch` is omitted unless the user pins one (inline `#branch` or
@@ -568,7 +581,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const baseDir = await ensureOperationalBaseDir(base, cwd)
 
   // Resolve where to scan + the repo provenance for facts written this run.
-  // - rescan: index `cwd` directly (a clone managed by auto-sync / scan / add-repo), tagged
+  // - rescan: index `cwd` directly (a clone managed by auto-sync / scan / repo add), tagged
   //   with the caller-supplied `options.gitRepo`.
   // - fresh init: git is REQUIRED. Clone every target into `repos/<slug>`; index the first
   //   here and the rest via recursive rescan calls below, then reconcile + write meta.
@@ -603,6 +616,22 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     scanDir = path.join(baseDir, primaryRepoMeta.dir)
     gitRepoSlug = primaryRepoMeta.slug
   }
+
+  // Resolve the ignore patterns for this run. Recursive per-repo runs receive them
+  // explicitly; rescans inherit the base's stored list; a fresh init prompts (skippable)
+  // unless a prior (resumed) run already recorded them in meta.json.
+  let ignorePatterns: string[]
+  if (options.ignorePatterns) {
+    ignorePatterns = options.ignorePatterns
+  } else if (options.rescan) {
+    ignorePatterns = (await readBaseMeta(baseDir))?.ignore ?? []
+  } else {
+    ignorePatterns =
+      (await readBaseMeta(baseDir))?.ignore ??
+      (await resolveIgnorePatternsForInit(options, questionIO))
+  }
+  const ignoreMatcher = await resolveIgnoreMatcher(scanDir, ignorePatterns)
+
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
@@ -662,6 +691,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         nonInteractive: options.nonInteractive,
         detach: options.detach,
         questionIO,
+        ignoreMatcher,
         startingRound: 1,
         maxQuestions: 0,
         onProgress: snapshot => {
@@ -705,7 +735,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.start('code-index', 'indexing code graph (AST)…')
       try {
         const dbPath = path.join(baseDir, '.kb-index.sqlite')
-        const currentAstFiles = await collectAstFileHashes(scanDir)
+        const currentAstFiles = await collectAstFileHashes(scanDir, ignoreMatcher)
         const totalAstFileCount = Object.keys(currentAstFiles).length
         const candidateAstFiles = options.rescan
           ? await selectChangedAstFiles(baseDir, currentAstFiles)
@@ -1020,6 +1050,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           apply: true,
           nonInteractive: true,
           gitRepo: repo.slug,
+          ignorePatterns,
           provider: rawProvider,
           collector: options.collector,
           progressSink: options.progressSink,
@@ -1060,7 +1091,10 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   } finally {
     await questionIO.close?.()
     if (!options.rescan && primaryRepoMeta) {
-      await writeBaseMeta(baseDir, { repos: [primaryRepoMeta, ...additionalRepos] })
+      await writeBaseMeta(baseDir, {
+        repos: [primaryRepoMeta, ...additionalRepos],
+        ignore: ignorePatterns.length > 0 ? ignorePatterns : undefined,
+      })
     }
   }
 
@@ -1083,6 +1117,7 @@ async function runReadInputsCycle(options: {
   nonInteractive: boolean
   detach?: boolean
   questionIO: InitQuestionIO
+  ignoreMatcher?: IgnoreMatcher
   startingRound: number
   maxQuestions: number
   onProgress?: (snapshot: ReadInputsCollectionProgress) => void
@@ -1098,9 +1133,10 @@ async function runReadInputsCycle(options: {
         baseDir: options.baseDir,
         baseName: options.baseName,
         questionIO: options.questionIO,
+        ignoreMatcher: options.ignoreMatcher,
         onProgress: options.onProgress,
       })
-    : await collectSourceFiles(options.cwd, options.onProgress)
+    : await collectSourceFiles(options.cwd, options.onProgress, options.ignoreMatcher)
   const context: InitContext = {
     sourceFiles,
     userAnswers: [],
@@ -1114,7 +1150,8 @@ async function runReadInputsCycle(options: {
 
 export async function collectSourceFiles(
   cwd: string,
-  onProgress?: (snapshot: ReadInputsCollectionProgress) => void
+  onProgress?: (snapshot: ReadInputsCollectionProgress) => void,
+  ignoreMatcher?: IgnoreMatcher
 ): Promise<Record<string, string>> {
   const sourceFiles: Record<string, string> = {}
   const seenPaths = new Set<string>()
@@ -1122,6 +1159,7 @@ export async function collectSourceFiles(
   const addSourceFile = async (relativePath: string): Promise<boolean> => {
     const normalizedKey = relativePath.replace(/\\/g, '/').toLowerCase()
     if (seenPaths.has(normalizedKey)) return false
+    if (ignoreMatcher?.ignores(relativePath.replace(/\\/g, '/'))) return false
     const fullPath = path.join(cwd, relativePath)
     if (!existsSync(fullPath)) return false
     try {
@@ -1160,14 +1198,22 @@ export async function collectSourceFiles(
       if (entry.name.startsWith('.')) continue
 
       const absPath = path.join(absDir, entry.name)
+      const relEntry = path.relative(cwd, absPath).replace(/\\/g, '/')
       if (entry.isDir) {
         if (MARKDOWN_SOURCE_EXCLUDE_DIRS.has(entry.name)) continue
+        // Prune ignored subtrees, unless negation rules could re-include something below.
+        if (
+          ignoreMatcher &&
+          !ignoreMatcher.hasNegation &&
+          ignoreMatcher.ignores(relEntry, true)
+        ) {
+          continue
+        }
         await walkMarkdownTree(absPath)
       } else {
         const ext = path.extname(entry.name).toLowerCase()
         if (!MARKDOWN_TEXT_EXTENSIONS.has(ext)) continue
-        const relPath = path.relative(cwd, absPath)
-        await addSourceFile(relPath)
+        await addSourceFile(relEntry)
       }
     }
   }
@@ -1186,11 +1232,16 @@ async function collectRescanSourceFiles(options: {
   baseDir: string
   baseName: string
   questionIO: InitQuestionIO
+  ignoreMatcher?: IgnoreMatcher
   onProgress?: (snapshot: ReadInputsCollectionProgress) => void
 }): Promise<Record<string, string>> {
   void options.baseDir
   void options.baseName
-  const allSourceFiles = await collectSourceFiles(options.cwd, options.onProgress)
+  const allSourceFiles = await collectSourceFiles(
+    options.cwd,
+    options.onProgress,
+    options.ignoreMatcher
+  )
   const n = Object.keys(allSourceFiles).length
   if (n === 0) {
     options.questionIO.write?.(
@@ -1204,7 +1255,10 @@ function hashFileBuffer(contents: Buffer): string {
   return createHash('sha256').update(contents).digest('hex')
 }
 
-async function collectAstFileHashes(cwd: string): Promise<Record<string, string>> {
+async function collectAstFileHashes(
+  cwd: string,
+  ignoreMatcher?: IgnoreMatcher
+): Promise<Record<string, string>> {
   const astFiles: Record<string, string> = {}
 
   async function walk(absDir: string): Promise<void> {
@@ -1219,13 +1273,17 @@ async function collectAstFileHashes(cwd: string): Promise<Record<string, string>
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue
       const absPath = path.join(absDir, entry.name)
+      const rel = path.relative(cwd, absPath).replace(/\\/g, '/')
       if (entry.isDir) {
         if (TREE_SITTER_SKIP_DIRS.has(entry.name)) continue
+        if (ignoreMatcher && !ignoreMatcher.hasNegation && ignoreMatcher.ignores(rel, true)) {
+          continue
+        }
         await walk(absPath)
         continue
       }
-      const rel = path.relative(cwd, absPath).replace(/\\/g, '/')
       if (!isTreeSitterIndexablePath(rel)) continue
+      if (ignoreMatcher?.ignores(rel)) continue
       try {
         const contents = await readFile(absPath)
         astFiles[rel] = hashFileBuffer(contents)
@@ -1407,6 +1465,36 @@ async function resolveGitTargetsForInit(
     if (targets.length > 0) return targets
     questionIO.write?.('  At least one git URL is required.\n')
   }
+}
+
+/**
+ * Skippable prompt for gitignore-style ignore patterns during a fresh `kb init`. Returns an
+ * empty list when skipped or non-interactive. Patterns are persisted to the base's meta.json
+ * and respected on every subsequent scan.
+ */
+async function resolveIgnorePatternsForInit(
+  options: InitOptions,
+  questionIO: InitQuestionIO
+): Promise<string[]> {
+  if (options.ignorePatterns) return options.ignorePatterns
+  if (options.nonInteractive) return []
+  // Only prompt in the interactive bootstrap path (bare `kb init`). When git targets are
+  // supplied up front (flags / programmatic callers), skip the prompt — same as the git-URL one.
+  if (options.gitTargets && options.gitTargets.length > 0) return []
+
+  questionIO.write?.(
+    '\n[kb init] Ignore paths/globs to skip while indexing (gitignore-style; optional).\n' +
+      '  Comma-separated; press Enter (or /skip) to index everything.\n' +
+      '  Examples: tests/, **/*.spec.ts, vendor, docs/legacy\n\n'
+  )
+  const answer = (
+    await questionIO.askQuestion('  > Ignore patterns (optional)\n    ', {
+      slashContext: 'init-free-text',
+    })
+  ).trim()
+  if (!answer || answer === '/skip') return []
+  if (answer === '/cancel') throw new InitCancelledError()
+  return parseIgnoreInput(answer)
 }
 
 /** A questionIO that never prompts — used for recursive rescans of additional repos. */

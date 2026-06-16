@@ -49,7 +49,7 @@ tasks:
       - "reconcileCrossRepoEdges"     # src/tools/sqlite-kb-index.ts — bridges per-repo subgraphs
       - "listCrossRepoLinks"          # collapses cross-repo fact_edges to repo→repo pairs
       - "ingestIntegrationSignals"    # src/core/integration-ingest.ts — package.json/.env signals
-      - "deleteFactsByRepo"           # purges a repo's facts (kb base remove-repo)
+      - "deleteFactsByRepo"           # purges a repo's facts (kb base repo remove)
       - "repoSlugFromGitUrl"          # src/cli/base-meta.ts — provenance slug
     rubric:
       - axis: correctness

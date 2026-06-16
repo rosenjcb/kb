@@ -216,6 +216,6 @@ describe('kb init help', () => {
 
     const text = lines.join('\n')
     expect(text).toContain('/scan --base acme')
-    expect(text).toContain('/base add-repo <url>')
+    expect(text).toContain('/base repo add <url>')
   })
 })
