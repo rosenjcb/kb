@@ -47,11 +47,23 @@ async function clearKbMarkerForPull(repoDir: string): Promise<void> {
   }
 }
 
-/** Pull latest commits in an already-cloned repo. Returns true if there were new commits. */
+/** Pull latest commits in an already-cloned repo. Returns true if HEAD changed.
+ *  Discards local modifications — session clones are managed mirrors, not workspaces. */
 export async function pullRepo(repoDir: string): Promise<boolean> {
   await clearKbMarkerForPull(repoDir)
   const before = await getHeadSha(repoDir)
-  await run('git', ['pull', '--ff-only'], repoDir)
+  await run('git', ['fetch'], repoDir)
+  try {
+    await run('git', ['reset', '--hard', '@{u}'], repoDir)
+  } catch {
+    const branch = await getCurrentBranch(repoDir)
+    await run('git', ['reset', '--hard', `origin/${branch}`], repoDir)
+  }
+  try {
+    await run('git', ['clean', '-fd'], repoDir)
+  } catch {
+    // ignore
+  }
   const after = await getHeadSha(repoDir)
   return before !== after
 }

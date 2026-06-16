@@ -10,7 +10,7 @@ As you build up your knowledge base, the graph gives you a structural view of ho
 
 **Path finding:** "How is A related to B?" runs a shortest-path traversal over the graph, surfacing non-obvious connections across documents.
 
-**Query expansion:** Graph neighbors of a query term are added as synonyms before **`read_facts`** hits the **fact** full-text index, improving recall when exact phrasing differs between a query and a stored fact.
+**Query expansion:** `expandQueryWithGraph()` (`src/tools/graph-query-expansion.ts`) appends related symbol and fact terms to the query string before **`read_facts`**. See § Graph-augmented query below.
 
 **Export:** The full graph can be dumped as Graphviz DOT (for visualisation tools like Gephi or Mermaid) or JSON (for your own analysis).
 
@@ -60,14 +60,9 @@ kb graph edge remove --from ... --to ... --verb ... [--apply]
 
 ## Graph-augmented query
 
-When graph mode is enabled, **`expandQueryWithGraph`** runs **before** the **`query_truth`** envelope is executed. It widens the **query string** that **`read_facts`** will search (fact FTS + deep facts loop), not a separate markdown document index.
+`expandQueryWithGraph()` runs in `index.ts` and `chat-cli.ts` before the `query_truth` envelope reaches **`read_facts`**. It widens the query string (code-graph FTS + 1-hop `fact_edges`, then LIKE on `facts.subject`/`object`; capped at 26 appended terms). Post-retrieval, `rerankByGraphConnectivity()` may re-score results.
 
-1. The query terms are slugified and looked up as entity IDs.
-2. For every live edge touching those entities, expansion adds **semantic triplets** as natural-language phrases (`Subject <predicate phrase> Object`, plus the stored predicate slug and a spaced variant, e.g. `retrieves_via` and `retrieves via`) and then **neighbor entity names** (same star neighborhood as before).
-3. The expanded term set is capped and concatenated to the original query for fact retrieval.
-4. Retrieval may attach **typed edge hints** (entity names plus stored relationship `type`, e.g. `one-hop:kb-query-[retrieves_via]->KbGraphWriter`) to top **fact** hits; **answer enrichment** can include those hints so prose reflects real edges when they align with fact text.
-
-This means a query for "KbGraphWriter" can still surface facts that mention "SQLite" or "property graph" if those edges exist in the graph — even when the literal query string did not include those words.
+Separate from `query-expander.ts` (LLM paraphrases inside the deep **`FactsDocumentReader`** path).
 
 ## Surface ownership
 
@@ -95,6 +90,8 @@ All WASM grammars ship as npm package assets — no native compilation, no platf
 
 | File | Role |
 |---|---|
+| `src/tools/graph-query-expansion.ts` | Pre-retrieval query widening |
+| `src/tools/graph-rag-reranker.ts` | Post-retrieval graph re-rank |
 | `src/tools/kb-graph-writer.ts` | Semantic graph schema in SQLite, upsert, soft-delete, traversal, export |
 | `src/tools/graph-entity-extractor.ts` | LLM-based entity + relationship extraction from text |
 | `src/cli/graph-cli.ts` | `kb graph` command parsing and output formatting |

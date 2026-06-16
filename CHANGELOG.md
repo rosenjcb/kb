@@ -1,6 +1,6 @@
 # kb
 
-## 0.7.0
+## 0.8.0
 
 ### Minor Changes
 
@@ -14,6 +14,12 @@
   file with an `[ignore]` section to ship its own rules (unioned with the base
   list when KB indexes that repo). The per-directory `.kb` file is now TOML and may
   carry a `base = "<name>"` hint; legacy plain-text `.kb` files still parse.
+
+## 0.7.0
+
+### Minor Changes
+
+- Remove 150-fact cap from kb query. The research loop now runs until all facts are exhausted or a sufficiency threshold is reached, instead of stopping at a hard ceiling.
 
 ## 0.6.0
 

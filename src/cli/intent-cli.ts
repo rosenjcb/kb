@@ -39,7 +39,8 @@ export interface ReadDocumentsHumanOutputOptions {
 }
 
 const INTENT_COMMANDS = new Set(['query'])
-const INTENT_LLM_MAX_OUTPUT_TOKENS = 4096
+/** Visible answer output budget for kb query synthesis (reasoning stream is separate UX). */
+const INTENT_LLM_MAX_OUTPUT_TOKENS = 8192
 
 export function isIntentCommand(command: string): boolean {
   return INTENT_COMMANDS.has(command)
