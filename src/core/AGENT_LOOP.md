@@ -20,10 +20,13 @@ This is the composition principle: `intent → router → tools`. `runIntentLoop
 
 ```mermaid
 flowchart LR
-  Q["kb query / /query"] --> R["read_facts\nfact FTS + deep facts loop"]
-  R --> G["graph query expansion\n+ typed edge hints"]
-  G --> A["grounded answer"]
+  Q["kb query / /query"] --> G["expandQueryWithGraph"]
+  G --> R["read_facts"]
+  R --> RR["rerankByGraphConnectivity"]
+  RR --> A["LLM answer"]
 ```
+
+Graph expansion runs in `index.ts` / `chat-cli.ts` before `runQueryTruthRetrieval()`. Optional rerank after retrieval.
 
 ## Part 1: Intent Loop
 
@@ -72,13 +75,11 @@ sequenceDiagram
   participant L as runIntentLoop
   participant R as DefaultIntentRouter
   participant D as read_facts
-  participant G as Graph augmentation
 
   U->>L: query_truth envelope
   L->>R: execute(query_truth)
   R->>D: read_facts(query, discoveryDepth, limit)
-  D->>G: query expansion / hints when graph enabled
-  G-->>R: grounded retrieval results
+  D-->>R: grounded retrieval results
   R-->>L: IntentResult
   L-->>U: answer-ready result
 ```

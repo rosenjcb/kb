@@ -31,17 +31,15 @@ user input
    LLM returns no `tool_use` blocks OR `MAX_CHAT_TURNS` (12) is hit. Each round calls the
    LLM with the `query_kb` tool. All tool calls in a batch execute concurrently.
 
-3. **Graph expansion** — before each retrieval, `expandQueryWithGraph` may widen the query
-   string using the concept graph.
+3. **Graph expansion** — before each retrieval, `expandQueryWithGraph` may widen the query string.
 
 4. **Retrieval** — `executeChatQueryTruthRetrieval()` → `runQueryTruthRetrieval()` →
    `runIntentLoop` → router → `read_facts` → `FactsQueryResearchOrchestrator` (up to 24
    passes, plateau/frontier-based early exit). Facts already in the session pool are
    excluded via `excludeIds`.
 
-5. **LLM context** — facts in the ranked retrieval `results[]` (capped at 150) are passed to
-   the model via `formatRetrievedFactsForLLM()` (`src/core/retrieval-context.ts`) with each
-   fact truncated to 2000 characters. An optional post-retrieval relevance filter
+5. **LLM context** — ranked retrieval `results[]` via `formatRetrievedFactsForLLM()`
+   (`src/core/retrieval-context.ts`), 2000 chars per fact. An optional post-retrieval relevance filter
    (`src/tools/facts-relevance-filter.ts`) may drop off-topic facts before synthesis.
 
 6. **Answer synthesis** — chat uses **`runChatSynthesis()`** (`chat-cli.ts`): multi-turn loop
@@ -49,7 +47,7 @@ user input
    one-shot `enrichReadDocumentsAnswerWithLLM()` instead (see `QUERY_INTERNALS.md`).
 
 7. **Evidence header** — one `evidence>` summary line (count, mix, themes, leads, walk/stop/conf).
-   See `src/core/EVIDENCE_SUMMARY.md`. Per-fact bullet previews removed.
+   See `src/core/EVIDENCE_SUMMARY.md`.
 
 8. **Weak evidence signal** — when retrieval stops with `weak_evidence_after_exhaustion`,
    `buildToolQueryResult` appends a note telling the LLM to try different query terms before
