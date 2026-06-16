@@ -55,9 +55,16 @@ export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
   // base subcommands
   { path: ['base', 'use'], description: 'switch active KB base', contexts: ['idle'] },
   { path: ['base', 'delete'], description: 'delete a KB base', contexts: ['idle'] },
-  { path: ['base', 'list-repos'], description: 'list the git repos this base tracks', contexts: ['idle'] },
-  { path: ['base', 'add-repo'], description: 'clone + index another git repo into this base', contexts: ['idle'] },
-  { path: ['base', 'remove-repo'], description: 'remove a git repo and its facts from this base', contexts: ['idle'] },
+  { path: ['base', 'repo'], description: 'manage the git repos this base tracks (list/add/remove)', contexts: ['idle'] },
+  { path: ['base', 'repo', 'list'], description: 'list the git repos this base tracks', contexts: ['idle'] },
+  { path: ['base', 'repo', 'add'], description: 'clone + index another git repo into this base', contexts: ['idle'] },
+  { path: ['base', 'repo', 'remove'], description: 'remove a git repo and its facts from this base', contexts: ['idle'] },
+  { path: ['base', 'ignore'], description: 'manage gitignore-style paths to skip while indexing (list/add/remove/set/clear)', contexts: ['idle'] },
+  { path: ['base', 'ignore', 'list'], description: 'show the ignore patterns for this base', contexts: ['idle'] },
+  { path: ['base', 'ignore', 'add'], description: 'append ignore patterns', contexts: ['idle'] },
+  { path: ['base', 'ignore', 'remove'], description: 'drop ignore patterns', contexts: ['idle'] },
+  { path: ['base', 'ignore', 'set'], description: 'replace the ignore patterns', contexts: ['idle'] },
+  { path: ['base', 'ignore', 'clear'], description: 'remove all ignore patterns', contexts: ['idle'] },
 
   // logs subcommands
   { path: ['logs', 'list'], description: 'list run reports', contexts: ['idle'] },

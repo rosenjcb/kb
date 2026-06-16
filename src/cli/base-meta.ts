@@ -15,6 +15,11 @@ export interface GitRepoMeta {
 
 export interface GitBaseMeta {
   repos: GitRepoMeta[]
+  /**
+   * Gitignore-style patterns for files/directories to skip while indexing this base.
+   * Set via `kb init`'s prompt or `kb base set-ignore`; respected on init and every rescan.
+   */
+  ignore?: string[]
 }
 
 /** Legacy single-repo `meta.json` shape (pre multi-repo). Still read for back-compat. */

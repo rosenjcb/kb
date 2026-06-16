@@ -1,9 +1,12 @@
 /**
- * `kb base add-repo|remove-repo|list-repos` — manage the git repos a base tracks.
+ * `kb base repo list|add|remove` — manage the git repos a base tracks.
  *
  * The repo list lives in the base's `meta.json` (not the global config). Adding clones +
  * indexes the repo into the one base graph; removing purges its facts and clone. After any
  * mutation we re-run cross-repo reconciliation so the graph stays one connected tree.
+ *
+ * Also hosts `kb base ignore …` (gitignore-style scan-exclusion patterns) since it shares the
+ * same `meta.json` plumbing.
  */
 
 import { existsSync } from 'node:fs'
@@ -22,6 +25,7 @@ import { resolveBaseToDir, resolveEffectiveBaseDir } from './base-selection'
 import { type CmdMode, cmd } from './cmd-ref'
 import { cloneRepo, getCurrentBranch, getHeadSha } from './git-sync'
 import { parseGitTarget, runKbInit } from './init-cli'
+import { normalizeIgnorePatterns, parseIgnoreInput } from './kb-ignore'
 
 export interface RepoCommandResult {
   output: string
@@ -30,12 +34,6 @@ export interface RepoCommandResult {
 export interface RunRepoCommandOptions {
   mode?: CmdMode
   onProgress?: (line: string) => void
-}
-
-export type RepoAction = 'add-repo' | 'remove-repo' | 'list-repos'
-
-export function isRepoAction(action: string | undefined): action is RepoAction {
-  return action === 'add-repo' || action === 'remove-repo' || action === 'list-repos'
 }
 
 function readOption(args: string[], flag: string): string | undefined {
@@ -65,18 +63,29 @@ function reconcile(baseDir: string, onProgress?: (line: string) => void): void {
   }
 }
 
+const REPO_VERBS = new Set(['list', 'add', 'remove'])
+
+/**
+ * `kb base repo [list|add|remove] …`. A bare `kb base repo` (or `… repo list`) lists the
+ * tracked repos; `add <url>` clones + indexes; `remove <url|slug>` purges facts + clone.
+ */
 export async function runRepoCommand(
-  action: RepoAction,
   args: string[],
   options: RunRepoCommandOptions = {}
 ): Promise<RepoCommandResult> {
   const mode = options.mode ?? 'cli'
   const baseArg = readOption(args, '--base')
-  const positional = args.filter(a => !a.startsWith('--'))
-  // Drop a value that belongs to --base from the positionals.
-  const target = positional.find(p => p !== baseArg)
+  const branch = readOption(args, '--branch')
+  const positional = args.filter(a => !a.startsWith('--') && a !== baseArg && a !== branch)
+  const verb = positional[0] ?? 'list'
+  if (!REPO_VERBS.has(verb)) {
+    throw new Error(
+      `Unknown repo command "${verb}". Use: ${cmd('base repo [list|add|remove]', mode)}`
+    )
+  }
+  const target = positional[1]
 
-  if (action === 'list-repos') {
+  if (verb === 'list') {
     const { baseDir, baseName } = await resolveRepoBaseDir(baseArg)
     const meta = await readBaseMeta(baseDir)
     if (!meta || meta.repos.length === 0) {
@@ -89,11 +98,10 @@ export async function runRepoCommand(
     return { output: [`Repos tracked by "${baseName}":`, ...lines].join('\n') }
   }
 
-  if (action === 'add-repo') {
+  if (verb === 'add') {
     if (!target) {
-      throw new Error(`${cmd('base add-repo', mode)} requires a git URL (optionally url#branch)`)
+      throw new Error(`${cmd('base repo add', mode)} requires a git URL (optionally url#branch)`)
     }
-    const branch = readOption(args, '--branch')
     const gitTarget = parseGitTarget(target, branch)
     const { baseDir, baseName } = await resolveRepoBaseDir(baseArg)
     const meta: GitBaseMeta = (await readBaseMeta(baseDir)) ?? { repos: [] }
@@ -128,14 +136,14 @@ export async function runRepoCommand(
       lastSyncedSha: headSha,
       lastSyncedAt: new Date().toISOString(),
     }
-    await writeBaseMeta(baseDir, { repos: [...meta.repos, entry] })
+    await writeBaseMeta(baseDir, { ...meta, repos: [...meta.repos, entry] })
     reconcile(baseDir, options.onProgress)
     return { output: `Added repo "${slug}" to base "${baseName}".` }
   }
 
-  // remove-repo
+  // verb === 'remove'
   if (!target) {
-    throw new Error(`${cmd('base remove-repo', mode)} requires a git URL or repo slug`)
+    throw new Error(`${cmd('base repo remove', mode)} requires a git URL or repo slug`)
   }
   const { baseDir, baseName } = await resolveRepoBaseDir(baseArg)
   const meta = await readBaseMeta(baseDir)
@@ -163,8 +171,87 @@ export async function runRepoCommand(
     indexer.close()
   }
   await rm(path.join(baseDir, repo.dir), { recursive: true, force: true })
-  await writeBaseMeta(baseDir, { repos: meta.repos.filter(r => r.slug !== repo.slug) })
+  await writeBaseMeta(baseDir, { ...meta, repos: meta.repos.filter(r => r.slug !== repo.slug) })
   return {
     output: `Removed repo "${repo.slug}" from base "${baseName}" (purged ${removedFacts} fact(s)).`,
+  }
+}
+
+const IGNORE_VERBS = new Set(['list', 'add', 'remove', 'set', 'clear'])
+
+/**
+ * `kb base ignore [list|add|remove|set|clear] [patterns…]` — manage a base's gitignore-style
+ * ignore list (stored in meta.json, respected on every scan). Follows the noun-then-verb style
+ * (`git remote …`): a bare `kb base ignore` (or `… ignore list`) prints the current patterns.
+ *   add <patterns…>     append patterns
+ *   remove <patterns…>  drop patterns
+ *   set <patterns…>     replace the whole list
+ *   clear               remove all patterns
+ * Patterns may be repeated args and/or comma-separated within one arg.
+ */
+export async function runIgnoreCommand(
+  args: string[],
+  options: RunRepoCommandOptions = {}
+): Promise<RepoCommandResult> {
+  const mode = options.mode ?? 'cli'
+  const baseArg = readOption(args, '--base')
+  const positional = args.filter(a => !a.startsWith('--') && a !== baseArg)
+  const verb = positional[0] ?? 'list'
+  if (!IGNORE_VERBS.has(verb)) {
+    throw new Error(
+      `Unknown ignore command "${verb}". Use: ${cmd('base ignore [list|add|remove|set|clear]', mode)}`
+    )
+  }
+  const patterns = positional.slice(1).flatMap(parseIgnoreInput)
+
+  const { baseDir, baseName } = await resolveRepoBaseDir(baseArg)
+  const meta: GitBaseMeta = (await readBaseMeta(baseDir)) ?? { repos: [] }
+  const current = meta.ignore ?? []
+
+  if (verb === 'list') {
+    if (current.length === 0) {
+      return {
+        output: `Base "${baseName}" has no ignore patterns. Add some: ${cmd('base ignore add "tests/, **/*.spec.ts"', mode)}`,
+      }
+    }
+    return {
+      output: [`Ignore patterns for base "${baseName}":`, ...current.map(p => `  ${p}`)].join('\n'),
+    }
+  }
+
+  if ((verb === 'add' || verb === 'remove' || verb === 'set') && patterns.length === 0) {
+    throw new Error(`${cmd(`base ignore ${verb}`, mode)} requires at least one pattern.`)
+  }
+
+  let next: string[]
+  switch (verb) {
+    case 'add':
+      next = normalizeIgnorePatterns([...current, ...patterns])
+      break
+    case 'remove': {
+      const drop = new Set(patterns)
+      next = current.filter(p => !drop.has(p))
+      break
+    }
+    case 'set':
+      next = normalizeIgnorePatterns(patterns)
+      break
+    default: // 'clear'
+      next = []
+      break
+  }
+
+  await writeBaseMeta(baseDir, { ...meta, ignore: next.length > 0 ? next : undefined })
+
+  if (next.length === 0) {
+    return { output: `Cleared ignore patterns for base "${baseName}".` }
+  }
+  return {
+    output: [
+      `Ignore patterns for base "${baseName}" (${next.length}):`,
+      ...next.map(p => `  ${p}`),
+      '',
+      `Re-index to apply: ${cmd('scan', mode)}.`,
+    ].join('\n'),
   }
 }

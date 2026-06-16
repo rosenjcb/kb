@@ -1,5 +1,19 @@
 # kb
 
+## 0.8.0
+
+### Minor Changes
+
+- Add gitignore-style ignore patterns for scans. A base now stores an `ignore` list in its
+  `meta.json` that is honoured on init and every rescan (`kb scan`, auto-sync). Manage it with
+  `kb base ignore list|add|remove|set|clear`, and `kb init` prompts for patterns up front
+  (skippable). A `.kbignore` file committed at a repo root is merged on top of the base's
+  patterns at scan time. Patterns follow `.gitignore` semantics (anchoring, `*`/`**`/`?` globs,
+  trailing-slash dir-only, `!` negation).
+
+  Adopt a noun-then-verb command style (like `git remote …`) for base-scoped repo management:
+  `kb base repo list`, `kb base repo add <url[#branch]>`, and `kb base repo remove <url|slug>`.
+
 ## 0.7.0
 
 ### Minor Changes

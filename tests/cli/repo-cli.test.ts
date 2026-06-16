@@ -18,7 +18,7 @@ vi.mock('../../src/cli/init-cli', () => ({
 }))
 
 import { writeBaseMeta, readBaseMeta } from '../../src/cli/base-meta'
-import { runRepoCommand } from '../../src/cli/repo-cli'
+import { runIgnoreCommand, runRepoCommand } from '../../src/cli/repo-cli'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
 
 let kbHome: string
@@ -41,19 +41,30 @@ afterEach(async () => {
 })
 
 describe('repo-cli', () => {
-  it('list-repos reports an empty base, then the added repo', async () => {
+  it('repo list reports an empty base, then the added repo', async () => {
     await writeBaseMeta(baseDir, { repos: [] })
-    const empty = await runRepoCommand('list-repos', ['--base', BASE])
+    const empty = await runRepoCommand(['list', '--base', BASE])
     expect(empty.output).toContain('no git repos')
 
-    await runRepoCommand('add-repo', ['https://github.com/org/svc', '--base', BASE])
-    const listed = await runRepoCommand('list-repos', ['--base', BASE])
+    await runRepoCommand(['add', 'https://github.com/org/svc', '--base', BASE])
+    const listed = await runRepoCommand(['list', '--base', BASE])
     expect(listed.output).toContain('org-svc')
   })
 
-  it('add-repo clones, indexes, and appends to meta.json', async () => {
+  it('a bare repo command (no verb) lists', async () => {
     await writeBaseMeta(baseDir, { repos: [] })
-    const res = await runRepoCommand('add-repo', ['https://github.com/org/svc#develop', '--base', BASE])
+    const empty = await runRepoCommand(['--base', BASE])
+    expect(empty.output).toContain('no git repos')
+  })
+
+  it('rejects an unknown repo verb', async () => {
+    await writeBaseMeta(baseDir, { repos: [] })
+    await expect(runRepoCommand(['frobnicate', '--base', BASE])).rejects.toThrow(/Unknown repo command/)
+  })
+
+  it('repo add clones, indexes, and appends to meta.json', async () => {
+    await writeBaseMeta(baseDir, { repos: [] })
+    const res = await runRepoCommand(['add', 'https://github.com/org/svc#develop', '--base', BASE])
     expect(res.output).toContain('Added repo "org-svc"')
 
     const meta = await readBaseMeta(baseDir)
@@ -61,16 +72,16 @@ describe('repo-cli', () => {
     expect(meta?.repos[0]).toMatchObject({ slug: 'org-svc', gitBranch: 'develop', dir: path.join('repos', 'org-svc') })
   })
 
-  it('add-repo rejects a duplicate slug', async () => {
+  it('repo add rejects a duplicate slug', async () => {
     await writeBaseMeta(baseDir, {
       repos: [{ gitUrl: 'https://github.com/org/svc', gitBranch: 'main', slug: 'org-svc', dir: 'repos/org-svc', lastSyncedSha: 's', lastSyncedAt: 't' }],
     })
-    await expect(runRepoCommand('add-repo', ['https://github.com/org/svc', '--base', BASE])).rejects.toThrow(
+    await expect(runRepoCommand(['add', 'https://github.com/org/svc', '--base', BASE])).rejects.toThrow(
       /already tracked/
     )
   })
 
-  it('remove-repo purges the repo facts and drops it from meta', async () => {
+  it('repo remove purges the repo facts and drops it from meta', async () => {
     // Two repos so removal is allowed; seed a fact for the one we remove.
     await writeBaseMeta(baseDir, {
       repos: [
@@ -82,7 +93,7 @@ describe('repo-cli', () => {
     seed.upsertFact({ factText: 'b fact one', sourceKind: 'import_doc', sourceRef: 'b/x#s0', gitRepo: 'org-b' })
     seed.close()
 
-    const res = await runRepoCommand('remove-repo', ['org-b', '--base', BASE])
+    const res = await runRepoCommand(['remove', 'org-b', '--base', BASE])
     expect(res.output).toContain('Removed repo "org-b"')
 
     const meta = await readBaseMeta(baseDir)
@@ -93,10 +104,65 @@ describe('repo-cli', () => {
     expect(remaining).toHaveLength(0)
   })
 
-  it('remove-repo refuses to remove the last repo', async () => {
+  it('repo remove refuses to remove the last repo', async () => {
     await writeBaseMeta(baseDir, {
       repos: [{ gitUrl: 'https://github.com/org/a', gitBranch: 'main', slug: 'org-a', dir: 'repos/org-a', lastSyncedSha: 's', lastSyncedAt: 't' }],
     })
-    await expect(runRepoCommand('remove-repo', ['org-a', '--base', BASE])).rejects.toThrow(/last repo/)
+    await expect(runRepoCommand(['remove', 'org-a', '--base', BASE])).rejects.toThrow(/last repo/)
+  })
+
+  describe('ignore', () => {
+    it('lists, sets, adds, removes, and clears patterns', async () => {
+      await writeBaseMeta(baseDir, { repos: [] })
+
+      const empty = await runIgnoreCommand(['list', '--base', BASE])
+      expect(empty.output).toContain('no ignore patterns')
+
+      // set replaces the whole list; comma-separated within one arg.
+      await runIgnoreCommand(['set', 'tests/, vendor', '--base', BASE])
+      expect((await readBaseMeta(baseDir))?.ignore).toEqual(['tests/', 'vendor'])
+
+      // add appends + de-dupes.
+      await runIgnoreCommand(['add', '**/*.spec.ts', 'vendor', '--base', BASE])
+      expect((await readBaseMeta(baseDir))?.ignore).toEqual(['tests/', 'vendor', '**/*.spec.ts'])
+
+      // bare ignore (no verb) lists.
+      const listed = await runIgnoreCommand(['--base', BASE])
+      expect(listed.output).toContain('tests/')
+      expect(listed.output).toContain('**/*.spec.ts')
+
+      // remove drops the named pattern.
+      await runIgnoreCommand(['remove', 'vendor', '--base', BASE])
+      expect((await readBaseMeta(baseDir))?.ignore).toEqual(['tests/', '**/*.spec.ts'])
+
+      // clear empties (and drops the field).
+      const cleared = await runIgnoreCommand(['clear', '--base', BASE])
+      expect(cleared.output).toContain('Cleared')
+      expect((await readBaseMeta(baseDir))?.ignore).toBeUndefined()
+    })
+
+    it('rejects an unknown verb', async () => {
+      await writeBaseMeta(baseDir, { repos: [] })
+      await expect(runIgnoreCommand(['frobnicate', '--base', BASE])).rejects.toThrow(
+        /Unknown ignore command/
+      )
+    })
+
+    it('requires a pattern for add/remove/set', async () => {
+      await writeBaseMeta(baseDir, { repos: [] })
+      await expect(runIgnoreCommand(['add', '--base', BASE])).rejects.toThrow(
+        /requires at least one pattern/
+      )
+    })
+
+    it('preserves repos when editing ignore patterns', async () => {
+      await writeBaseMeta(baseDir, {
+        repos: [{ gitUrl: 'https://github.com/org/a', gitBranch: 'main', slug: 'org-a', dir: 'repos/org-a', lastSyncedSha: 's', lastSyncedAt: 't' }],
+      })
+      await runIgnoreCommand(['add', 'tests/', '--base', BASE])
+      const meta = await readBaseMeta(baseDir)
+      expect(meta?.repos.map(r => r.slug)).toEqual(['org-a'])
+      expect(meta?.ignore).toEqual(['tests/'])
+    })
   })
 })

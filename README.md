@@ -163,9 +163,10 @@ kb config set <key> <value>
 kb config unset <key>
 kb init --git <url[#branch]> [--git <url[#branch]> ...] [--branch <default>] [--base <name>] [--detach | --resume] [--stop-after <cycle>]
 kb scan [--base <name>]
-kb base list-repos [--base <name>]
-kb base add-repo <url[#branch]> [--branch <b>] [--base <name>]
-kb base remove-repo <url|slug> [--base <name>]
+kb base repo list [--base <name>]
+kb base repo add <url[#branch]> [--branch <b>] [--base <name>]
+kb base repo remove <url|slug> [--base <name>]
+kb base ignore list|add|remove|set|clear [<patterns…>] [--base <name>]
 kb facts list|search|show ...
 kb graph ...
 kb logs list|show|compare ...
@@ -269,12 +270,26 @@ Named bases store their SQLite data under `~/.kb/sessions/<base>/`, and each tra
 A base can track multiple repos; add or remove them after init with `kb base`:
 
 ```bash
-kb base list-repos [--base <name>]                       # list the repos a base tracks
-kb base add-repo <url[#branch]> [--branch <b>] [--base <name>]   # clone, index, and link a new repo
-kb base remove-repo <url|slug> [--base <name>]           # purge a repo's facts + clone
+kb base repo list [--base <name>]                       # list the repos a base tracks
+kb base repo add <url[#branch]> [--branch <b>] [--base <name>]   # clone, index, and link a new repo
+kb base repo remove <url|slug> [--base <name>]          # purge a repo's facts + clone
 ```
 
-`add-repo` clones the repo, indexes it, and rebuilds the cross-repo links. `remove-repo` purges that repo's facts and its clone; it refuses to remove the last remaining repo.
+`repo add` clones the repo, indexes it, and rebuilds the cross-repo links. `repo remove` purges that repo's facts and its clone; it refuses to remove the last remaining repo.
+
+### Ignoring paths
+
+Skip files/dirs that aren't relevant to the knowledge base with gitignore-style patterns stored per base. `kb init` also prompts for these (skippable), and every scan respects them:
+
+```bash
+kb base ignore list [--base <name>]                     # show current patterns
+kb base ignore add "tests/, **/*.spec.ts, vendor"       # append (comma-separated ok)
+kb base ignore remove vendor                            # drop a pattern
+kb base ignore set "docs/legacy/**"                     # replace the whole list
+kb base ignore clear                                    # remove all
+```
+
+A `.kbignore` file committed at a repo root is merged on top of the base's patterns at scan time.
 
 ## 📊 Evaluation
 

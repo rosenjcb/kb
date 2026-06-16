@@ -77,6 +77,15 @@ describe('base-meta', () => {
     })
   })
 
+  it('round-trips an ignore list alongside repos', async () => {
+    const withIgnore: GitBaseMeta = {
+      ...sample,
+      ignore: ['tests/', '**/*.spec.ts', 'vendor'],
+    }
+    await writeBaseMeta(tmpDir, withIgnore)
+    expect(await readBaseMeta(tmpDir)).toEqual(withIgnore)
+  })
+
   it('repoSlugFromGitUrl handles https, ssh, and local paths', () => {
     expect(repoSlugFromGitUrl('https://github.com/Acme/Auth-Svc.git')).toBe('acme-auth-svc')
     expect(repoSlugFromGitUrl('git@github.com:Acme/web.git')).toBe('acme-web')

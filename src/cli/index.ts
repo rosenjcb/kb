@@ -109,7 +109,7 @@ import { printSyncHelp, runSyncCommand } from './sync-cli'
 import { maybeAutoSync } from './auto-sync'
 import { baseNameFromGitUrl } from './git-sync'
 import { runScanCommand } from './scan-command'
-import { isRepoAction, runRepoCommand } from './repo-cli'
+import { runIgnoreCommand, runRepoCommand } from './repo-cli'
 import { runUninstallCommand } from './uninstall-cli'
 import {
   ViewCommandError,
@@ -224,7 +224,7 @@ function printInitHelp(mode: CmdMode = 'cli'): string {
     'Notes:',
     '  At least one --git URL is required — a base clones and indexes its repos. Multiple repos',
     '  are folded into one graph and linked by their cross-repo references (deps, imports, env).',
-    `  Add or remove repos later with ${cmd('base add-repo', mode)} / ${cmd('base remove-repo', mode)}.`,
+    `  Add or remove repos later with ${cmd('base repo add', mode)} / ${cmd('base repo remove', mode)}.`,
     `  Use ${cmd('scan', mode)} to pull + re-index the base's repos.`,
     '',
     'Examples:',
@@ -246,7 +246,7 @@ function printScanHelp(mode: CmdMode = 'cli'): string {
     'Notes:',
     "  Scan pulls every git repo the base tracks, re-indexes them, and rebuilds the cross-repo",
     '  graph links. It does not read the current working directory.',
-    `  To track another repo, use ${cmd('base add-repo <url>', mode)}.`,
+    `  To track another repo, use ${cmd('base repo add <url>', mode)}.`,
     '',
     'Examples:',
     `  ${cmd('scan', mode)}`,
@@ -267,17 +267,25 @@ function printBaseHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('base delete <base> [--force]', mode)}  Delete a base`,
     '',
     'Git repos (a base tracks one or more):',
-    `  ${cmd('base list-repos [--base <name>]', mode)}            List the repos a base tracks`,
-    `  ${cmd('base add-repo <url[#branch]> [--branch <b>] [--base <name>]', mode)}   Clone + index another repo`,
-    `  ${cmd('base remove-repo <url|slug> [--base <name>]', mode)}    Remove a repo and its facts`,
+    `  ${cmd('base repo list [--base <name>]', mode)}            List the repos a base tracks`,
+    `  ${cmd('base repo add <url[#branch]> [--branch <b>] [--base <name>]', mode)}   Clone + index another repo`,
+    `  ${cmd('base repo remove <url|slug> [--base <name>]', mode)}    Remove a repo and its facts`,
+    '',
+    'Ignore patterns (gitignore-style; skip files/dirs while indexing):',
+    `  ${cmd('base ignore [list] [--base <name>]', mode)}                Show the ignore patterns`,
+    `  ${cmd('base ignore add <patterns…> [--base <name>]', mode)}       Append ignore patterns`,
+    `  ${cmd('base ignore remove <patterns…> [--base <name>]', mode)}    Drop ignore patterns`,
+    `  ${cmd('base ignore set <patterns…> [--base <name>]', mode)}       Replace the whole list`,
+    `  ${cmd('base ignore clear [--base <name>]', mode)}                 Remove all ignore patterns`,
     '',
     'Examples:',
     `  ${cmd('base', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
     `  ${cmd('base delete ci-test --force', mode)}`,
-    `  ${cmd('base list-repos', mode)}`,
-    `  ${cmd('base add-repo https://github.com/acme/pdf-service', mode)}`,
-    `  ${cmd('base remove-repo acme-pdf-service', mode)}`,
+    `  ${cmd('base repo list', mode)}`,
+    `  ${cmd('base repo add https://github.com/acme/pdf-service', mode)}`,
+    `  ${cmd('base repo remove acme-pdf-service', mode)}`,
+    `  ${cmd('base ignore add "tests/, **/*.spec.ts, vendor"', mode)}`,
   ].join('\n')
 }
 
@@ -473,12 +481,22 @@ export async function runMainWithOutput(
       return
     }
 
-    if (isRepoAction(subCmd)) {
+    if (subCmd === 'repo') {
       try {
-        const result = await runRepoCommand(subCmd, subArgs.slice(1), {
+        const result = await runRepoCommand(subArgs.slice(1), {
           mode,
           onProgress: line => out.log(line),
         })
+        out.log(result.output)
+      } catch (error) {
+        out.error(`❌ ${error instanceof Error ? error.message : String(error)}`)
+      }
+      return
+    }
+
+    if (subCmd === 'ignore') {
+      try {
+        const result = await runIgnoreCommand(subArgs.slice(1), { mode })
         out.log(result.output)
       } catch (error) {
         out.error(`❌ ${error instanceof Error ? error.message : String(error)}`)

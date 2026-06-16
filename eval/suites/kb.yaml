@@ -24,7 +24,7 @@ answers:
     (natural-language Q&A via hybrid retrieval), `kb facts` (list/search facts), `kb docs`
     (inspect documents), `kb graph` (inspect/edit the knowledge graph), `kb publish` (publish to
     Notion or Jekyll, requires `--apply`), `kb submit` (add/update facts in a live base), `kb base`
-    (manage sessions and their git repos: use, delete, add-repo, remove-repo, list-repos).
+    (manage sessions and their git repos: use, delete, repo add, repo remove, repo list).
     A React/Ink TUI launches when run in a TTY with slash-command
     autocomplete. Skills (kb:dev-workflow, kb:dump-context, kb:evaluation-run) install into Claude
     Code, Cursor, Codex, and Copilot agent profiles.
@@ -50,8 +50,8 @@ answers:
     directory — it operates on the base's cloned repos (under `~/.kb/sessions/<base>/repos/`).
     Re-indexing is incremental (only files whose content hash changed per code_file_state) and
     always applied. Use `kb init --git <url>` to create a base from one or more repos; use `kb scan`
-    for routine refreshes; use `kb base add-repo <url>` to fold an additional repo into an existing
-    base (and `kb base remove-repo` to drop one). Auto-sync runs the same per-repo refresh on
+    for routine refreshes; use `kb base repo add <url>` to fold an additional repo into an existing
+    base (and `kb base repo remove` to drop one). Auto-sync runs the same per-repo refresh on
     session load and before queries.
 
   - >

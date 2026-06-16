@@ -112,7 +112,7 @@ export async function maybeAutoSync(baseDir: string, opts: AutoSyncOptions = {})
   }
 
   if (anyReindexed) reconcile(baseDir, opts.onProgress)
-  if (anyTouched) await writeBaseMeta(baseDir, { repos: updated })
+  if (anyTouched) await writeBaseMeta(baseDir, { ...meta, repos: updated })
 }
 
 /**
