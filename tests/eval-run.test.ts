@@ -8,6 +8,8 @@ import {
   computeWeightedTokenTotal,
   derivedBase,
   formatScoreDelta,
+  formatCompactTokens,
+  formatDurationMs,
   kbControlVerdict,
   logsCmd,
   matchesSuite,
@@ -335,12 +337,28 @@ describe('matchesSuite', () => {
 })
 
 describe('formatScoreDelta', () => {
-  it('formats positive and negative deltas', () => {
+  it('formats signed deltas', () => {
     expect(formatScoreDelta(0.25).trim()).toBe('+0.250')
     expect(formatScoreDelta(-0.5).trim()).toBe('-0.500')
   })
-  it('returns placeholder for null', () => {
+  it('returns dash for null', () => {
     expect(formatScoreDelta(null).trim()).toBe('-')
+  })
+})
+
+describe('formatCompactTokens', () => {
+  it('formats large counts compactly', () => {
+    expect(formatCompactTokens(389900)).toBe('390k')
+    expect(formatCompactTokens(534712)).toBe('535k')
+    expect(formatCompactTokens(1_920_473)).toBe('1.9M')
+  })
+})
+
+describe('formatDurationMs', () => {
+  it('formats seconds and minutes', () => {
+    expect(formatDurationMs(161935)).toBe('162s')
+    expect(formatDurationMs(308582)).toBe('309s')
+    expect(formatDurationMs(3600000)).toBe('60.0m')
   })
 })
 

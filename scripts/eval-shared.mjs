@@ -637,11 +637,57 @@ function _queryScores(artifact) {
   const q = artifact?.aggregate_scores?.query ?? artifact?.aggregate_scores?.combined ?? {}
   return {
     success: q.success_score ?? null,
+    quality: q.quality_score ?? null,
+    tokens: q.token_efficiency ?? null,
+    speed: q.speed_score ?? null,
     pass: q.pass_rate_correctness_and_usefulness_at_least_3 ?? null,
     correctness: q.mean_correctness ?? null,
     usefulness: q.mean_usefulness ?? null,
     specificity: q.mean_specificity ?? null,
     evidence: q.mean_evidence_handling ?? null,
+  }
+}
+
+/** Compact token count for summary tables (e.g. 389900 → "390k"). */
+export function formatCompactTokens(n) {
+  if (n === null || n === undefined || Number.isNaN(n)) return '  -'
+  const v = Math.round(Number(n))
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
+  if (v >= 10_000) return `${Math.round(v / 1000)}k`
+  if (v >= 1000) return `${(v / 1000).toFixed(1)}k`
+  return String(v)
+}
+
+/** Wall-clock duration for summary tables (e.g. 161935 → "162s"). */
+export function formatDurationMs(ms) {
+  if (ms === null || ms === undefined || Number.isNaN(ms)) return '  -'
+  const s = Math.round(Number(ms) / 1000)
+  if (s >= 600) return `${(s / 60).toFixed(1)}m`
+  return `${s}s`
+}
+
+function _runTelemetry(artifact, side) {
+  if (side === 'kb') {
+    const tel = artifact?.kb_query_telemetry
+    const inputs = artifact?.success_score_inputs
+    return {
+      weightedTokens: tel
+        ? (tel.total_input_tokens ?? 0) + (tel.total_output_tokens ?? 0)
+        : (inputs?.total_tokens ?? null),
+      durationMs: tel?.total_duration_ms ?? inputs?.total_duration_ms ?? null,
+      cacheReadTokens: null,
+      costUsd: tel?.total_cost_usd ?? null,
+      meanTurns: tel?.mean_num_turns ?? null,
+    }
+  }
+  const tel =
+    artifact?.control?.control_telemetry ?? artifact?.comparison?.control_efficiency ?? null
+  return {
+    weightedTokens: tel?.total_weighted_tokens ?? null,
+    durationMs: tel?.total_duration_ms ?? null,
+    cacheReadTokens: tel?.total_cache_read_tokens ?? null,
+    costUsd: tel?.total_cost_usd ?? null,
+    meanTurns: tel?.mean_num_turns ?? null,
   }
 }
 
@@ -702,6 +748,9 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
     cond,
     created: row.artifact?.created_at ?? null,
     success_score: scoreMetric(data, 'success_score'),
+    quality_score: data?.aggregate_scores?.query?.quality_score ?? null,
+    token_efficiency: data?.aggregate_scores?.query?.token_efficiency ?? null,
+    speed_score: data?.aggregate_scores?.query?.speed_score ?? null,
     usefulness: scoreMetric(data, 'usefulness'),
     pass_rate: scoreMetric(data, 'pass_rate'),
     correctness: scoreMetric(data, 'correctness'),
@@ -756,20 +805,62 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
       const b = ctrlForCompare[k]
       return typeof a === 'number' && typeof b === 'number' ? a - b : null
     }
+    const deltaS = delta('success')
     console.log('')
-    console.log(' THIS RUN — kb vs control (success = .6·quality + .3·tokens + .1·speed)')
-    console.log('            success    pass    corr     use')
+    console.log(' THIS RUN — kb vs control')
     console.log(
-      ` control   ${_padScore(ctrlForCompare.success)}  ${_padScore(ctrlForCompare.pass)}  ${_padScore(ctrlForCompare.correctness)}  ${_padScore(ctrlForCompare.usefulness)}`
+      ` ΔS = ${formatScoreDelta(deltaS).trim()}  (${kbControlVerdict(kbScores, ctrlForCompare)}, threshold ±0.02)`
+    )
+    console.log(' S = 0.60·Q_adeq + 0.30·E_tok + 0.10·E_speed')
+    console.log('            S      Q_adeq  E_tok  E_speed')
+    console.log(
+      ` control   ${_padScore(ctrlForCompare.success)}  ${_padScore(ctrlForCompare.quality)}  ${_padScore(ctrlForCompare.tokens)}  ${_padScore(ctrlForCompare.speed)}`
     )
     console.log(
-      ` kb        ${_padScore(kbScores.success)}  ${_padScore(kbScores.pass)}  ${_padScore(kbScores.correctness)}  ${_padScore(kbScores.usefulness)}`
+      ` kb        ${_padScore(kbScores.success)}  ${_padScore(kbScores.quality)}  ${_padScore(kbScores.tokens)}  ${_padScore(kbScores.speed)}`
     )
     console.log(
-      ` Δ kb−ctrl ${formatScoreDelta(delta('success'))}  ${formatScoreDelta(delta('pass'))}  ${formatScoreDelta(delta('correctness'))}  ${formatScoreDelta(delta('usefulness'))}`
+      ` Δ kb−ctrl ${formatScoreDelta(delta('success'))}  ${formatScoreDelta(delta('quality'))}  ${formatScoreDelta(delta('tokens'))}  ${formatScoreDelta(delta('speed'))}`
     )
-    console.log(` verdict   ${kbControlVerdict(kbScores, ctrlForCompare)}`)
 
+    const kbTel = _runTelemetry(currentArtifact, 'kb')
+    const ctrlTel = _runTelemetry(currentArtifact, 'control')
+    if (kbTel.weightedTokens != null || ctrlTel.weightedTokens != null) {
+      console.log('')
+      console.log(' TELEMETRY (8 questions)')
+      console.log('            tokens   time')
+      console.log(
+        ` kb         ${formatCompactTokens(kbTel.weightedTokens).padStart(6)}  ${formatDurationMs(kbTel.durationMs).padStart(5)}`
+      )
+      console.log(
+        ` control    ${formatCompactTokens(ctrlTel.weightedTokens).padStart(6)}  ${formatDurationMs(ctrlTel.durationMs).padStart(5)}`
+      )
+      if (ctrlTel.cacheReadTokens) {
+        console.log(
+          `            control weighted: input+output+0.1×cache (${formatCompactTokens(ctrlTel.cacheReadTokens)} cache read)`
+        )
+      }
+      if (kbTel.costUsd != null || ctrlTel.costUsd != null) {
+        const kbCost =
+          kbTel.costUsd != null ? `$${Number(kbTel.costUsd).toFixed(2)}` : '  -'
+        const ctrlCost =
+          ctrlTel.costUsd != null ? `$${Number(ctrlTel.costUsd).toFixed(2)}` : '  -'
+        console.log(`            cost  kb ${kbCost}  control ${ctrlCost}`)
+      }
+    }
+
+    console.log('')
+    console.log(' RUBRIC (secondary)')
+    console.log('            pass    corr     use')
+    console.log(
+      ` control   ${_padScore(ctrlForCompare.pass)}  ${_padScore(ctrlForCompare.correctness)}  ${_padScore(ctrlForCompare.usefulness)}`
+    )
+    console.log(
+      ` kb        ${_padScore(kbScores.pass)}  ${_padScore(kbScores.correctness)}  ${_padScore(kbScores.usefulness)}`
+    )
+    console.log(
+      ` Δ kb−ctrl ${formatScoreDelta(delta('pass'))}  ${formatScoreDelta(delta('correctness'))}  ${formatScoreDelta(delta('usefulness'))}`
+    )
     if (sameRunControl && currentArtifact?.query_evaluation?.length) {
       const worst = worstQuestionGaps(
         currentArtifact.query_evaluation,
@@ -788,30 +879,33 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
       }
     }
 
-    const tel = currentArtifact?.comparison?.control_efficiency
-    if (tel?.total_cost_usd != null) {
-      console.log(
-        ` control cost  $${Number(tel.total_cost_usd).toFixed(2)} · ${tel.mean_num_turns ?? '?'} turns/q`
-      )
-    }
   } else if (kbScores) {
     console.log('')
     console.log(' THIS RUN — kb only (no control in artifact)')
     console.log(
-      ` success=${_padScore(kbScores.success).trim()}  pass=${_padScore(kbScores.pass).trim()}  corr=${_padScore(kbScores.correctness).trim()}  use=${_padScore(kbScores.usefulness).trim()}`
+      ` S=${_padScore(kbScores.success).trim()}  Q_adeq=${_padScore(kbScores.quality).trim()}  E_tok=${_padScore(kbScores.tokens).trim()}  E_speed=${_padScore(kbScores.speed).trim()}`
+    )
+    const kbTel = _runTelemetry(currentArtifact, 'kb')
+    if (kbTel.weightedTokens != null || kbTel.durationMs != null) {
+      console.log(
+        ` tokens=${formatCompactTokens(kbTel.weightedTokens)}  time=${formatDurationMs(kbTel.durationMs)}`
+      )
+    }
+    console.log(
+      ` pass=${_padScore(kbScores.pass).trim()}  corr=${_padScore(kbScores.correctness).trim()}  use=${_padScore(kbScores.usefulness).trim()}`
     )
   }
 
   const kbHistory = kbs.slice(-12)
   if (kbHistory.length >= 2) {
     const successSeries = kbHistory.map(r => r.success_score)
-    const corrSeries = kbHistory.map(r => r.correctness)
-    const passSeries = kbHistory.map(r => r.pass_rate)
+    const tokSeries = kbHistory.map(r => r.token_efficiency)
+    const speedSeries = kbHistory.map(r => r.speed_score)
     console.log('')
     console.log(' KB TREND (last runs)')
-    console.log(` success  ${sparkline(successSeries)}  ${_trendNote(successSeries)}`)
-    console.log(` corr     ${sparkline(corrSeries)}  ${_trendNote(corrSeries)}`)
-    console.log(` pass     ${sparkline(passSeries)}  ${_trendNote(passSeries)}`)
+    console.log(` S        ${sparkline(successSeries)}  ${_trendNote(successSeries)}`)
+    console.log(` E_tok    ${sparkline(tokSeries)}  ${_trendNote(tokSeries)}`)
+    console.log(` E_speed  ${sparkline(speedSeries)}  ${_trendNote(speedSeries)}`)
   }
 
   const recent = filtered.slice(-14)
@@ -819,7 +913,7 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
   console.log('')
   console.log(' RECENT RUNS')
   console.log(
-    `${'date'.padEnd(17)} ${'who'.padEnd(7)} ${'success'.padStart(7)} ${'pass'.padStart(6)} ${'corr'.padStart(6)} ${'use'.padStart(6)}  run`
+    `${'date'.padEnd(17)} ${'who'.padEnd(7)} ${'S'.padStart(6)} ${'Q'.padStart(6)} ${'tok'.padStart(6)} ${'spd'.padStart(6)}  run`
   )
   console.log(_summaryLine())
   for (const r of recent) {
@@ -828,7 +922,7 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
     const id =
       r.id.length > W ? `${r.id.slice(0, W - 1)}…` : r.id
     console.log(
-      `${dt.padEnd(17)} ${r.cond.padEnd(7)} ${_padScore(r.success_score).padStart(7)} ${_padScore(r.pass_rate)} ${_padScore(r.correctness)} ${_padScore(r.usefulness)}  ${id}${marker}`
+      `${dt.padEnd(17)} ${r.cond.padEnd(7)} ${_padScore(r.success_score).padStart(6)} ${_padScore(r.quality_score)} ${_padScore(r.token_efficiency)} ${_padScore(r.speed_score)}  ${id}${marker}`
     )
   }
   console.log(_summaryLine('═'))

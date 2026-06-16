@@ -134,7 +134,7 @@ non-deterministic even at temperature~0; we average three scorer calls per quest
 
 Table~\ref{tab:kb-vs-control} reports condition~K (\texttt{kb query}) vs.\
 condition~N (Cursor agent headless, no KB) on the \texttt{kb} self-check suite
-($n=8$ questions, same Gemini judge, same run; \texttt{kb-2026-06-13-1747},
+($n=8$ questions, same Gemini judge, same run; \texttt{kb-2026-06-15-1717},
 June 2026).
 
 \begin{center}
@@ -142,7 +142,7 @@ June 2026).
   \parbox{0.92\columnwidth}{%
     \centering
     \textbf{Headline grade}\quad
-    $\Delta S = S_K - S_N = \mathbf{+0.128}$ \\[4pt]
+    $\Delta S = S_K - S_N = \mathbf{+0.045}$ \\[4pt]
     {\small KB \textbf{ahead of control} ($\Delta S \geq 0.02$).}%
   }%
 }
@@ -161,31 +161,32 @@ parts; bottom: rubric diagnostics.}
 \textbf{Metric} & \textbf{K (kb)} & \textbf{N (ctrl)} & $\boldsymbol{\Delta}$ \\
 \midrule
 \multicolumn{4}{@{}l@{}}{\textit{Composite success score (Eq.~\ref{eq:success})}} \\
-$S$ (composite)         & 0.888 & 0.760 & $+$0.128 \\
-\quad Adequacy $Q_{\text{adeq}}$ & 0.908 & 1.000 & $-$0.092 \\
-\quad Token economy     & 0.880 & 0.431 & $+$0.449 \\
-\quad Speed             & 0.787 & 0.307 & $+$0.480 \\
+$S$ (composite)         & 0.833 & 0.788 & $+$0.045 \\
+\quad Adequacy $Q_{\text{adeq}}$ & 0.962 & 1.000 & $-$0.038 \\
+\quad Token economy     & 0.610 & 0.465 & $+$0.145 \\
+\quad Speed             & 0.730 & 0.486 & $+$0.244 \\
 \midrule
 \multicolumn{4}{@{}l@{}}{\textit{Rubric diagnostics (secondary)}} \\
-Pass rate ($c,u \geq 3$) & 0.750 & 1.000 & $-$0.250 \\
-Correctness & 3.33 & 4.00 & $-$0.67 \\
-Usefulness  & 3.58 & 4.00 & $-$0.42 \\
+Pass rate ($c,u \geq 3$) & 1.000 & 1.000 & $+$0.000 \\
+Correctness & 3.55 & 4.00 & $-$0.45 \\
+Usefulness  & 4.00 & 4.00 & $+$0.00 \\
 Evidence    & 4.00 & 4.00 & $+$0.00 \\
-Tokens (8Q) & 120k & 569k$^\dagger$ & \\
-Time (8Q)   & 128s & 416s & \\
+Tokens (8Q) & 390k & 535k$^\dagger$ & \\
+Time (8Q)   & 162s & 309s & \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \noindent$^\dagger$Control weighted total:
-$293{,}946 + 32{,}472 + 0.1 \times 2{,}437{,}286 \approx 569$\,k (prompt-cache reads
+$311{,}619 + 31{,}046 + 0.1 \times 1{,}920{,}473 \approx 535$\,k (prompt-cache reads
 discounted at $0.1$, matching MOEL $L_\text{resource}$).
 
 \noindent\textbf{Interpretation.}  Under adequacy-weighted scoring, KB \textbf{wins
-the headline composite} ($\Delta S = +0.128$): control still leads on raw rubric
-means and pass rate, but the $\varphi_\tau$ transform compresses the quality gap
-(control perfection vs.\ kb ``acceptable-plus'' is only $\approx 0.09$ on
-$Q_{\text{adeq}}$).  KB's ${\sim}$3$\times$ wall-clock advantage and ${\sim}$5$\times$
+the headline composite} ($\Delta S = +0.045$): control still leads on raw
+correctness ($\bar{c} = 4.0$ vs.\ $3.55$), but pass rate is tied at 1.0 and the
+$\varphi_\tau$ transform compresses the quality gap to $\approx 0.04$ on
+$Q_{\text{adeq}}$.  KB's ${\sim}$1.9$\times$ wall-clock advantage and ${\sim}$1.4$\times$
 lower weighted token footprint dominate under 30/10 cost weights.  KB matches
-control on evidence handling (4.0).  Weakest kb questions vs.\ control: query-expansion
-(Q7, $\bar{c} \approx 2.3$), overview enumeration (Q1), and scan vs.\ init nuance (Q3).
+control on usefulness and evidence handling (4.0).  Weakest kb questions vs.\
+control: overview enumeration (Q1), init indexing detail (Q2), and retrieval
+architecture (Q4).
