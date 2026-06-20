@@ -32,7 +32,7 @@ No manual fact entry. KB reads from the source.
 
 KB turns your codebase and docs into a searchable knowledge base:
 
-* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically
+* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically. Plain markdown is segmented into sentence facts; docs written in the [Open Knowledge Format (OKF)](#-open-knowledge-format-okf) are detected and their curated frontmatter (type, title, description, tags) is indexed as high-signal facts.
 * 🔍 **Query** — Ask questions in natural language; get grounded, source-linked answers
 * 🔁 **Refresh** — Re-scan after changes to keep the knowledge base current
 
@@ -243,6 +243,31 @@ kb skills uninstall   # remove everything kb skills install added
 Installs are idempotent: each skill carries a content hash, so re-running upgrades changed skills in place and skips ones already current. `kb skills uninstall` reverses both steps.
 
 The skills are self-contained (workflow + full command shapes). Source: [`skills/`](skills/); see [`src/skills/SKILLS.md`](src/skills/SKILLS.md) for the bundled set and how to add one. The [CLI Reference](#cli-reference) above stays the in-repo quick reference for humans.
+
+The `kb:dump-context` skill writes in-place companion docs in the **Open Knowledge Format** (see below), so the architecture knowledge your agent captures is indexed structurally rather than as loose prose.
+
+## 📚 Open Knowledge Format (OKF)
+
+KB encourages documenting your code in the [**Open Knowledge Format (OKF)**](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) — Google's open, vendor-neutral standard for the "LLM-wiki" pattern. An OKF concept doc is just a markdown file with a small YAML frontmatter block; the only required field is `type`:
+
+```markdown
+---
+type: Subsystem
+title: TUI Renderer
+description: Drives the Ink session loop and frame diffing.
+resource: ./session.tsx
+tags: [tui, rendering]
+timestamp: 2026-06-20T00:00:00Z
+---
+
+# TUI Renderer
+
+One-paragraph what/why, role in the stack, invariants, …
+```
+
+**KB stays format-agnostic** — any markdown still ingests via sentence segmentation, so OKF is never required and a malformed doc is never rejected. But when KB detects OKF frontmatter during `kb init` / `kb scan`, it uses a structured strategy: the curated `type`, `title`, `description`, and `tags` become high-signal facts, and the metadata block is stripped from the body instead of leaking in as raw `key: value` noise. The result is better retrieval for docs that opt into the standard.
+
+The bundled `kb:dump-context` agent skill authors companion docs (`TUI.md`, `INTENTS.md`, …) as OKF concept files by default, so your knowledge base grows in a portable, interoperable format. OKF reserves the filenames `index.md` (directory listing) and `log.md` (update history); concept docs use any other name.
 
 ## 🗄️ Swapping and deleting bases
 

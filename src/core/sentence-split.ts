@@ -3,6 +3,8 @@
  * Not linguistic perfection — stable splits for pipeline + fact single-sentence checks.
  */
 
+import { okfFrontmatterSegments, parseOkfDocument } from './okf'
+
 /** Extract fenced code block content as single collapsed segments (one per block). */
 function extractFencedCodeBlocks(text: string): string[] {
   const blocks: string[] = []
@@ -31,12 +33,20 @@ function splitEnglishSentences(line: string): string[] {
 /**
  * Extract ordered segments: fenced code blocks become one segment each (preserving
  * CLI examples, config snippets, etc.); headings and prose sentences follow.
+ *
+ * OKF docs (frontmatter with a `type`) get a structured strategy: their curated
+ * frontmatter is lifted into high-signal segments up front, and the metadata block
+ * is stripped before prose segmentation so it never leaks in as raw `key: value`
+ * facts. Plain markdown is unchanged.
  */
 export function segmentMarkdownForFacts(markdown: string): string[] {
-  const codeBlocks = extractFencedCodeBlocks(markdown)
-  const body = stripFencedCodeBlocks(markdown)
+  const { isOkf, frontmatter, body } = parseOkfDocument(markdown)
+  const structured = isOkf && frontmatter ? okfFrontmatterSegments(frontmatter) : []
+
+  const codeBlocks = extractFencedCodeBlocks(body)
+  const stripped = stripFencedCodeBlocks(body)
   const prose: string[] = []
-  for (const rawLine of body.split('\n')) {
+  for (const rawLine of stripped.split('\n')) {
     const line = rawLine.trim()
     if (!line) continue
     if (/^#{1,6}\s+/.test(line)) {
@@ -46,10 +56,9 @@ export function segmentMarkdownForFacts(markdown: string): string[] {
     }
     prose.push(...splitEnglishSentences(line))
   }
-  return [
-    ...codeBlocks,
-    ...prose.filter(s => s.replace(/\s+/g, ' ').trim().length >= 8),
-  ]
+  return [...structured, ...codeBlocks, ...prose].filter(
+    s => s.replace(/\s+/g, ' ').trim().length >= 8
+  )
 }
 
 /** Validate that a fact string is a single sentence (one segment after trim). */

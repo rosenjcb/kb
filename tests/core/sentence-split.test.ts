@@ -25,6 +25,32 @@ describe('segmentMarkdownForFacts', () => {
   it('drops segments shorter than 8 chars after normalize', () => {
     expect(segmentMarkdownForFacts('Hi. Ok.')).toEqual([])
   })
+
+  it('lifts OKF frontmatter into structured segments and strips the metadata block', () => {
+    const md = [
+      '---',
+      'type: Subsystem',
+      'title: Query Engine',
+      'description: Runs the plateau-based retrieval orchestrator.',
+      'tags: [retrieval, query]',
+      '---',
+      '',
+      '# Query Engine',
+      '',
+      'It exhausts the repo fact pool before walking cross-repo edges.',
+    ].join('\n')
+    const segs = segmentMarkdownForFacts(md)
+    expect(segs[0]).toBe('Query Engine is a Subsystem.')
+    expect(segs).toContain('Runs the plateau-based retrieval orchestrator.')
+    expect(segs).toContain('Query Engine relates to retrieval, query.')
+    expect(segs).toContain('It exhausts the repo fact pool before walking cross-repo edges.')
+    // The raw YAML keys never become facts.
+    expect(segs.some(s => s.includes('type:') || s.includes('tags:'))).toBe(false)
+  })
+
+  it('leaves plain markdown (no frontmatter) segmentation unchanged', () => {
+    expect(segmentMarkdownForFacts('## Hello World')).toEqual(['Hello World'])
+  })
 })
 
 describe('assertSingleSentenceFact', () => {
