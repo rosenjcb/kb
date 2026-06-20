@@ -135,7 +135,7 @@ A base tracks **one or more** git remotes; git is **required** (local-directory 
 kb init --git <url[#branch]> [--git <url[#branch]> ...] [--branch <default>] [--base <name>]
 ```
 
-`--git` is repeatable; each value may carry an inline `#branch`. The `--branch` flag sets the default branch for any repo that omits one (default `main`).
+`--git` is repeatable, and the branch is resolved per target by `parseGitTarget` (`init-cli.ts`): an inline `<url>#<branch>` pins that one repo, `--branch <name>` is the fallback for any target without an inline branch, and when neither is set the clone follows the remote's own default branch. Examples: `kb init --git <url> --branch develop`, `kb init --git <url>#release-2.0`.
 
 Each base stores a blobless clone per repo at `~/.kb/sessions/<base>/repos/<slug>/` and a `meta.json` shaped as `{ repos: [ { gitUrl, gitBranch, slug, dir, lastSyncedSha, lastSyncedAt }, … ], ignore?: string[] }`. Every fact records its origin repo in the **`git_repo`** column, and imported doc `source_ref`s are slug-prefixed so provenance survives the fold into one graph. The optional `ignore` array holds gitignore-style scan-exclusion patterns (see [Ignore patterns](#ignore-patterns-kb-base-ignore)).
 
@@ -192,7 +192,7 @@ kb base ignore clear             # remove all
 - Patterns may be repeated args and/or comma-separated within one arg: `kb base ignore add "tests/, **/*.spec.ts"`.
 - Matching (`kb-ignore.ts`) follows `.gitignore`: trailing `/` = dir-only, leading/internal `/` anchors to the repo root, bare names match by basename at any depth, `*`/`**`/`?` globs, `!` negates, and ignoring a directory ignores its contents.
 - A `.kbignore` file committed at a repo root is merged on top of the base's stored patterns at scan time — handy for repo-specific rules you want version-controlled.
-- Fresh `kb init` prompts for patterns once (skippable; press Enter or `/skip`) and persists them to `meta.json`. The prompt is skipped when `--base` already has stored patterns, in non-interactive mode, and on `kb scan`.
+- Fresh interactive `kb init` prompts for patterns once (skippable; press Enter or `/skip`) and persists them to `meta.json` — including when a repo is passed via `--git`. The prompt is skipped when `--base` already has stored patterns, in non-interactive mode, on resume, and on `kb scan`.
 - Changing the list affects the **next** scan. Newly-ignored paths already indexed are pruned from the file manifest but their existing facts/docs are only fully purged by a fresh re-index — the same limitation as deleting a tracked file.
 
 ## Gotchas

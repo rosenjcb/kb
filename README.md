@@ -121,14 +121,26 @@ kb config set llm.provider openai
 Create a knowledge base from one or more git repositories. **At least one git remote is required** — KB clones each repo and keeps the base fresh for you, auto-pulling and re-indexing on new commits whenever you open a session or switch to the base, so you never run a scan by hand.
 
 ```bash
-# single repo
+# single repo (follows the remote's default branch)
 kb init --git https://github.com/acme/auth-svc
 
-# multiple repos into one base, with an inline branch override
+# pin a branch for every --git that has no inline #branch
+kb init --git https://github.com/acme/auth-svc --branch develop
+
+# multiple repos into one base, with a per-repo inline #branch override
 kb init --git https://github.com/acme/auth --git https://github.com/acme/web#develop --base acme
 ```
 
-`--git` is repeatable. Each value may carry an inline `#branch`; the `--branch` flag sets the default branch for any repo that doesn't specify one (default `main`).
+#### Choosing a branch
+
+`--git` is repeatable, and you can target a specific branch two ways:
+
+| Form | Scope | Example |
+|------|-------|---------|
+| `--branch <name>` | Default for **all** `--git` targets that omit an inline branch | `kb init --git <url> --branch develop` |
+| `<url>#<branch>` (inline) | **Per repo**, overrides `--branch` for that one | `kb init --git <url>#release-2.0` |
+
+When neither is given, the clone follows the remote's own default branch.
 
 All repos in a base fold into a **single connected graph**. After indexing, a reconciliation pass bridges the per-repo subgraphs by linking facts across repos on real integration signals — `package.json` dependencies, cross-repo symbol imports, and `.env`/service references.
 
