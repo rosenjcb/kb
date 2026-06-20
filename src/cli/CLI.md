@@ -1,3 +1,12 @@
+---
+type: "Subsystem"
+title: "CLI Layer"
+description: "Command-line entry, argument parsing, and orchestration wiring for kb."
+resource: ./src/cli
+tags: [cli, commands, entrypoint]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # CLI Layer
 
 Command-line entry, argument parsing, and orchestration wiring for `kb`. Implementation files live in this directory; behavioral standards for TUI vs non-interactive output are in [`../core/TUI.md`](../core/TUI.md).

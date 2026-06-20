@@ -1,3 +1,12 @@
+---
+type: "Standard"
+title: "TUI and Non-Interactive Standards"
+description: "The rule that every meaningful kb feature works in both the interactive chat TUI and one-shot CLI surfaces."
+resource: ./src/core
+tags: [tui, cli, standards]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # TUI and Non-Interactive Standards
 
 Ink implementation details: [`../tui/TUI.md`](../tui/TUI.md). Use this note when designing or reviewing any user-facing `kb` feature.

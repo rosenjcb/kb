@@ -1,3 +1,12 @@
+---
+type: "Project Overview"
+title: "KB"
+description: "A local-first knowledge layer that turns your codebase and docs into a fast, queryable knowledge base."
+resource: ./
+tags: [overview, cli, knowledge-base]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 
 <p align="center">
   <img src="assets/kb-logo.png" alt="KB Logo" width="340" />

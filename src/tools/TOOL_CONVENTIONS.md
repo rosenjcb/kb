@@ -1,3 +1,12 @@
+---
+type: "Convention"
+title: "Tool Design Conventions"
+description: "The single-responsibility conventions every KB tool follows so intent is clear from the tool name."
+resource: ./src/tools
+tags: [tools, conventions, design]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Tool Design Conventions
 
 ## Core Principle: Separation of Concerns

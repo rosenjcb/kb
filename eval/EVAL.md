@@ -1,3 +1,12 @@
+---
+type: "Subsystem"
+title: "Eval Directory"
+description: "The MOEL evaluation framework — a quantitative harness proving KB-equipped agents explore less and spend fewer tokens."
+resource: ./eval
+tags: [eval, moel, harness]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Eval Directory
 
 Houses the MOEL (Multi-Objective Exploration Loss) evaluation framework — a quantitative harness for proving that `kb`-equipped agents produce correct answers with less exploration and fewer tokens than raw-filesystem agents.

@@ -1,3 +1,12 @@
+---
+type: "Guide"
+title: "Testing"
+description: "How tests are organized and run in the KB repo using Vitest."
+resource: ./tests
+tags: [testing, vitest, development]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Testing
 
 Test runner: **Vitest**. Run with `pnpm test` (single pass) or `pnpm run test:watch`.

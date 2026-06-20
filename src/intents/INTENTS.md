@@ -1,3 +1,12 @@
+---
+type: "Subsystem"
+title: "Intent Routing"
+description: "Maps consumer intent envelopes to the tool operations executed by the agent loop."
+resource: ./src/intents
+tags: [intents, routing, agent-loop]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Intent Routing
 
 Maps **consumer intent envelopes** (`query_truth`) to **tool operations** executed by the agent loop. CLI and chat both build envelopes; routing stays in this package so policy does not scatter across commands.

@@ -1,3 +1,12 @@
+---
+type: "Architecture"
+title: "AST Source Text Reconstruction"
+description: "How compact, token-efficient code snippets are extracted at index time and served as fact content at retrieval time."
+resource: ./src/core
+tags: [ast, facts, retrieval]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # AST source text reconstruction
 
 When the code graph is indexed, exported symbols are promoted into the `facts` table as human-readable strings like `"Router is a Class exported from src/router.ts"`. These strings are good for search and deduplication but wasteful as LLM context — the model already knows what a class is. What it actually needs is the **source code**.

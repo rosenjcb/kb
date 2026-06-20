@@ -1,3 +1,12 @@
+---
+type: "Reference"
+title: "Eval Question Suites"
+description: "YAML schema and conventions for the question packs loaded by --suite."
+resource: ./eval/suites
+tags: [eval, suites, yaml]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Eval question suites (YAML)
 
 `--suite <name>` loads `eval/suites/<name>.yaml` (or `.yml`). `--suite` can also be a path to a YAML file.

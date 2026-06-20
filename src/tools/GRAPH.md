@@ -1,3 +1,12 @@
+---
+type: "Subsystem"
+title: "Knowledge Graph"
+description: "The property graph KB maintains alongside its SQLite store for structural navigation and path finding."
+resource: ./src/tools
+tags: [graph, entities, relationships]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Knowledge Graph
 
 KB maintains a property graph alongside its SQLite document store. The graph tracks concepts, systems, tools, decisions, and people as **entities**, connected by typed **relationships** (e.g. `uses`, `depends_on`, `implements`).

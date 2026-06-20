@@ -1,3 +1,12 @@
+---
+type: "Reference"
+title: "MOEL Benchmark Alignment"
+description: "How the MOEL evaluation framework maps onto established external software-agent benchmarks."
+resource: ./eval/benchmarks
+tags: [eval, benchmarks, alignment]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # MOEL Benchmark Alignment
 
 How the MOEL evaluation framework maps to established external benchmarks.

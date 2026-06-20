@@ -1,3 +1,12 @@
+---
+type: "Reference"
+title: "Loss Functions"
+description: "The five normalized loss components that feed the MOEL deep-pipeline aggregator."
+resource: ./eval/losses
+tags: [eval, moel, loss-functions]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Loss Functions
 
 Five normalized loss components, each in `[0, 1]`, that feed the MOEL deep-pipeline aggregator (`moel-run.mjs`). Zero is perfect; one is maximum failure.

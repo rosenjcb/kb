@@ -1,3 +1,12 @@
+---
+type: "Design Doc"
+title: "Chat Session Design"
+description: "The source-of-truth design for how the interactive KB chat session and its turn lifecycle work."
+resource: ./src/core
+tags: [chat, tui, retrieval]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Chat session — design
 
 This doc is the **source of truth** for how the interactive chat session works.

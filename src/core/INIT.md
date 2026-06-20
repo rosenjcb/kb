@@ -1,3 +1,12 @@
+---
+type: "Pipeline"
+title: "KB Init Pipeline"
+description: "How kb init and kb scan bootstrap and refresh a multi-repo knowledge base through the per-repo scan phases."
+resource: ./src/core
+tags: [init, scan, ingest]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # KB Init Pipeline
 
 `kb init` bootstraps a knowledge base from **one or more git repositories** — at least one `--git` remote is required (local-directory indexing has been removed). In interactive mode it first collects user input upfront — base name and at least one git URL — then clones each repo into `~/.kb/sessions/<base>/repos/<slug>/` and runs the multi-phase scan **per repo**: **`read-inputs`** (README-like docs), **`code-index`** (deterministic AST indexing into `facts` + `fact_edges`), **`document-facts`** (sentence facts from markdown sources), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), and **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations). Each fact records its origin repo in the **`git_repo`** column.

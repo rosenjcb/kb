@@ -1,3 +1,12 @@
+---
+type: "Design Doc"
+title: "KB TUI Design"
+description: "Visual design language for the KB terminal UI — color scheme, layout, and component styling."
+resource: ./src/tui
+tags: [tui, design, ux]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # KB TUI Design
 
 ## Color Scheme

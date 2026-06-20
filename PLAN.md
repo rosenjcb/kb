@@ -1,3 +1,12 @@
+---
+type: "Project Plan"
+title: "MOEL Evaluation Framework Plan"
+description: "Plan for the Multi-Objective Exploration Loss framework that measures whether KB makes developer agents more efficient."
+resource: ./eval
+tags: [moel, evaluation, plan]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # MOEL Evaluation Framework — Project Plan
 
 ## What We're Building

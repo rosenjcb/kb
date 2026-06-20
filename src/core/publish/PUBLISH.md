@@ -1,3 +1,12 @@
+---
+type: "Subsystem"
+title: "Publish"
+description: "Exports the SQLite knowledge base to external sinks via wipe-and-replace."
+resource: ./src/core/publish
+tags: [publish, jekyll, notion]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Publish
 
 Export the SQLite knowledge base to external sinks. Publish reads **active** docs from `.kb-index.sqlite` — it does not re-run init or LLM synthesis. Both sinks use wipe-and-replace: lane contents are cleared, then rewritten; items no longer in SQLite are removed.

@@ -1,3 +1,12 @@
+---
+type: "Architecture"
+title: "Query Internals: Facts Retrieval"
+description: "The shared facts-retrieval path behind kb query and chat QUERY turns."
+resource: ./src/core
+tags: [query, retrieval, facts]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Query internals: facts retrieval
 
 `kb query` and chat QUERY turns share **`runQueryTruthRetrieval()`** (`src/cli/query-truth-retrieval.ts`): **`runIntentLoop`** → **`DefaultIntentRouter`** → **`read_facts`** (registry in `src/tools/kb-tools-registry.ts`). There is **no** workspace README injection and **no** markdown chunk hybrid pipeline on this path.

@@ -1,3 +1,12 @@
+---
+type: "Architecture"
+title: "Facts-First KB Architecture"
+description: "The platform mental model: KB answers questions and drives authoring from atomic facts, not markdown chunks."
+resource: ./src/core
+tags: [facts, architecture, retrieval]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Facts-first KB architecture
 
 **Contract:** the KB answers questions and drives authoring from **atomic facts** in the `facts` store. **Markdown documents are not a retrieval substrate for Q&A.** They exist as human-readable artifacts: originals (with facts extracted from them) or generated synthesis, and they matter most at **publish** time.

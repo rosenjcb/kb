@@ -1,3 +1,12 @@
+---
+type: "Convention"
+title: "Agent Loop Conventions"
+description: "The three loop patterns KB uses to drive intents, fixed-lifecycle cycles, and autonomous tool calling."
+resource: ./src/core
+tags: [agent-loop, orchestration, conventions]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Agent Loop Conventions
 
 ## Overview
