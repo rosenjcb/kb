@@ -41,7 +41,7 @@ No manual fact entry. KB reads from the source.
 
 KB turns your codebase and docs into a searchable knowledge base:
 
-* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically. Plain markdown is segmented into sentence facts; docs written in the [Open Knowledge Format (OKF)](#-open-knowledge-format-okf) are detected and their curated frontmatter (type, title, description, tags) is indexed as high-signal facts.
+* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically. Plain markdown is segmented into sentence facts; docs written in the [Open Knowledge Format (OKF)](#-open-knowledge-format-okf) are recognized and their frontmatter boilerplate is skipped, so only the document body is indexed (no `key: value` noise).
 * 🔍 **Query** — Ask questions in natural language; get grounded, source-linked answers
 * 🔁 **Refresh** — Re-scan after changes to keep the knowledge base current
 
@@ -286,7 +286,7 @@ timestamp: 2026-06-20T00:00:00Z
 One-paragraph what/why, role in the stack, invariants, …
 ```
 
-**KB stays format-agnostic** — any markdown still ingests via sentence segmentation, so OKF is never required and a malformed doc is never rejected. But when KB detects OKF frontmatter during `kb init` / `kb scan`, it uses a structured strategy: the curated `type`, `title`, `description`, and `tags` become high-signal facts, and the metadata block is stripped from the body instead of leaking in as raw `key: value` noise. The result is better retrieval for docs that opt into the standard.
+**KB stays format-agnostic** — any markdown still ingests via sentence segmentation, so OKF is never required and a malformed doc is never rejected. KB gives OKF **functional support**: when it detects OKF frontmatter during `kb init` / `kb scan`, it recognizes the format and **skips the metadata block** so it never leaks in as raw `key: value` noise — then indexes the document body exactly like any markdown. OKF docs get no special retrieval boost; KB just reads them cleanly.
 
 The bundled `kb:dump-context` agent skill authors companion docs (`TUI.md`, `INTENTS.md`, …) as OKF concept files by default, so your knowledge base grows in a portable, interoperable format. OKF reserves the filenames `index.md` (directory listing) and `log.md` (update history); concept docs use any other name.
 

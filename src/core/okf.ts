@@ -5,10 +5,10 @@ import yaml from 'js-yaml'
  *
  * OKF is the LLM-wiki standard kb encourages for companion docs (see the
  * `kb:dump-context` skill): a markdown file with a leading YAML frontmatter
- * block whose only required field is `type`. kb stays **format-agnostic** —
- * plain markdown still ingests via sentence segmentation — but when a doc *is*
- * OKF we detect it and lift its curated frontmatter into high-signal facts
- * instead of letting the metadata block fall through the sentence splitter.
+ * block whose only required field is `type`. kb gives OKF **functional support
+ * only** — it recognizes the format and strips the frontmatter boilerplate so
+ * the metadata block is not indexed as raw `key: value` facts, then ingests the
+ * body exactly like plain markdown. No special retrieval boost.
  *
  * Spec: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md
  */
@@ -94,22 +94,4 @@ export function parseOkfDocument(markdown: string): ParsedDocument {
 /** True when a markdown doc conforms to OKF (frontmatter with a non-empty `type`). */
 export function isOkfDocument(markdown: string): boolean {
   return parseOkfDocument(markdown).isOkf
-}
-
-/**
- * High-signal fact segments synthesized from OKF frontmatter. These index the
- * curated identity, summary, and tags that a sentence splitter would otherwise
- * mangle or drop, giving OKF docs better retrieval structure than prose alone.
- */
-export function okfFrontmatterSegments(fm: OkfFrontmatter): string[] {
-  const segments: string[] = []
-  const label = fm.title?.trim()
-
-  segments.push(label ? `${label} is a ${fm.type}.` : `This document describes a ${fm.type}.`)
-  if (fm.description) segments.push(fm.description)
-  if (fm.tags?.length) {
-    segments.push(`${label ?? 'This document'} relates to ${fm.tags.join(', ')}.`)
-  }
-
-  return segments
 }

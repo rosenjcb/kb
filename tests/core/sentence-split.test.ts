@@ -26,7 +26,7 @@ describe('segmentMarkdownForFacts', () => {
     expect(segmentMarkdownForFacts('Hi. Ok.')).toEqual([])
   })
 
-  it('lifts OKF frontmatter into structured segments and strips the metadata block', () => {
+  it('strips the OKF frontmatter block and segments only the body (no boosting facts)', () => {
     const md = [
       '---',
       'type: Subsystem',
@@ -40,12 +40,16 @@ describe('segmentMarkdownForFacts', () => {
       'It exhausts the repo fact pool before walking cross-repo edges.',
     ].join('\n')
     const segs = segmentMarkdownForFacts(md)
-    expect(segs[0]).toBe('Query Engine is a Subsystem.')
-    expect(segs).toContain('Runs the plateau-based retrieval orchestrator.')
-    expect(segs).toContain('Query Engine relates to retrieval, query.')
+    // Body content is indexed exactly like plain markdown.
+    expect(segs).toContain('Query Engine')
     expect(segs).toContain('It exhausts the repo fact pool before walking cross-repo edges.')
-    // The raw YAML keys never become facts.
+    // No synthesized identity/tag/description "boosting" facts.
+    expect(segs).not.toContain('Query Engine is a Subsystem.')
+    expect(segs.some(s => s.includes('relates to'))).toBe(false)
+    // The raw YAML keys never become facts either.
     expect(segs.some(s => s.includes('type:') || s.includes('tags:'))).toBe(false)
+    // The frontmatter `description` (metadata, not body) is not indexed.
+    expect(segs).not.toContain('Runs the plateau-based retrieval orchestrator.')
   })
 
   it('leaves plain markdown (no frontmatter) segmentation unchanged', () => {

@@ -11,8 +11,8 @@ description: >-
 
 Write companion docs beside the code they describe, in the **Open Knowledge Format
 (OKF)** — the LLM-wiki standard kb encourages. `kb init` / `kb scan` ingest these
-files as source material for the KB, and detect OKF frontmatter to index the
-curated metadata as high-signal facts.
+files as source material for the KB; they recognize OKF frontmatter and skip the
+metadata block, indexing the document body like any markdown.
 
 **Sources:** Open files, Read/Grep/Glob, user-named paths, and conversation scope — disk and session context only.
 
@@ -40,7 +40,7 @@ One-paragraph what/why …
   `Module`, `Playbook`, `CLI Command`, `Contract`, …). Recommended fields above
   improve retrieval — include them when known, omit when not.
 - kb tolerates non-OKF markdown too, so an incomplete file is never rejected — but
-  default to writing valid OKF so the metadata gets indexed structurally.
+  default to writing valid OKF so docs stay portable and consistently structured.
 
 ## Body tier
 

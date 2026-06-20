@@ -6,11 +6,11 @@
 
 - Adopt the Open Knowledge Format (OKF) as the encouraged documentation standard.
 
-  - Ingestion is now OKF-aware: `kb init` / `kb scan` detect markdown docs with OKF
-    frontmatter (a YAML block carrying a `type`) and use a structured strategy that
-    lifts curated `type`/`title`/`description`/`tags` into high-signal facts, stripping
-    the metadata block so it never leaks in as raw `key: value` prose. Plain markdown is
-    unchanged — kb stays format-agnostic and never rejects a non-OKF doc.
+  - Functional OKF support on ingest: `kb init` / `kb scan` recognize markdown docs with
+    OKF frontmatter (a YAML block carrying a `type`) and skip the metadata block so it
+    never leaks in as raw `key: value` facts, then index the document body exactly like
+    any markdown. OKF docs get no special retrieval boost. Plain markdown is unchanged —
+    kb stays format-agnostic and never rejects a non-OKF doc.
   - The bundled `kb:dump-context` agent skill now authors companion docs as OKF concept
     files (frontmatter + body) by default.
 

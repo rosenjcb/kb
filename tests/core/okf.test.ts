@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  isOkfDocument,
-  okfFrontmatterSegments,
-  parseOkfDocument,
-} from '../../src/core/okf'
+import { isOkfDocument, parseOkfDocument } from '../../src/core/okf'
 
 const OKF_DOC = `---
 type: Subsystem
@@ -73,24 +69,5 @@ describe('isOkfDocument', () => {
   it('is true only for frontmatter carrying a non-empty type', () => {
     expect(isOkfDocument(OKF_DOC)).toBe(true)
     expect(isOkfDocument('# Plain\n\ntext')).toBe(false)
-  })
-})
-
-describe('okfFrontmatterSegments', () => {
-  it('synthesizes identity, description, and tag segments', () => {
-    const segs = okfFrontmatterSegments({
-      type: 'Subsystem',
-      title: 'TUI Renderer',
-      description: 'Drives the Ink-based interactive session loop.',
-      tags: ['tui', 'rendering'],
-    })
-    expect(segs).toContain('TUI Renderer is a Subsystem.')
-    expect(segs).toContain('Drives the Ink-based interactive session loop.')
-    expect(segs).toContain('TUI Renderer relates to tui, rendering.')
-  })
-
-  it('falls back when no title is present', () => {
-    const segs = okfFrontmatterSegments({ type: 'Playbook' })
-    expect(segs).toEqual(['This document describes a Playbook.'])
   })
 })
