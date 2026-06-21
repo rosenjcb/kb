@@ -3,8 +3,8 @@ type: "Guide"
 title: "Research Paper"
 description: "How to build the KB research paper, a LaTeX two-column article living in this directory."
 resource: ./research
-tags: [research, latex, paper]
-timestamp: 2026-06-20T00:00:00Z
+tags: [research, latex, paper, results, eval]
+timestamp: 2026-06-21T00:00:00Z
 ---
 
 # Research Paper
@@ -74,6 +74,35 @@ research/
   figures/              Drop rendered figures here (PDF or PNG)
   generated/            Scratch space for auto-generated assets
 ```
+
+## Results: single source of truth
+
+Every headline number — `S`, `ΔS`, `S_K`/`S_N`, correctness, pass rate, run ID,
+KB token totals — is defined **once** as a macro in `tables/latest_results.tex`
+and referenced from `intro.tex`, `eval.tex`, and `conclusion.tex`. This exists
+because earlier drafts hardcoded numbers per section and drifted: the abstract
+quoted `ΔS = +0.128` from one run while the eval section quoted `ΔS = +0.045`
+from another and the conclusion reverted to the first — a reviewer-visible
+inconsistency.
+
+Invariants:
+
+- **Never hardcode a result number in a prose section.** Reference the macro from
+  `tables/latest_results.tex` so abstract, results, and conclusion cannot
+  diverge. `latest-quality.tex` is generated from the same macros.
+- **One run is the source for all reported numbers** — the run named by the
+  `\LatestResults*` macros. Do not mix runs across sections.
+- **The paper does not render init/scan times.** Runtime macros exist in
+  `latest_results.tex` for internal reporting only; keep them out of prose.
+- **Results cover both targets** (`kb` self-check and `raylib`) and mark control
+  rows explicitly when control data was not collected.
+
+The eval harness (`scripts/eval-run.mjs`) writes a per-run `runtime.json` into
+each run's workdir (init/scan/docs/graph/logs and per-query durations, plus
+`query_total_duration_ms`) and folds it into the run artifact under `runtime`.
+That file is the raw timing source; `latest_results.tex` is curated from it by
+hand when the paper is refreshed. Runtimes are also a coding signal for agents —
+they show where the scan pipeline actually spends time.
 
 ## Figures
 

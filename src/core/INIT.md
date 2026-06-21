@@ -3,7 +3,7 @@ type: "Pipeline"
 title: "KB Init Pipeline"
 description: "How kb init and kb scan bootstrap and refresh a multi-repo knowledge base through the per-repo scan phases."
 resource: ./src/core
-tags: [init, scan, ingest]
+tags: [init, scan, ingest, batching, performance]
 timestamp: 2026-06-21T00:00:00Z
 ---
 
@@ -50,6 +50,61 @@ flowchart TD
     W --> W1["SQLite upsert\n+ scan planner"]
     RC --> RC1["cross-repo fact_edges:\ndepends_on_repo,\ncross_repo_symbol,\nreferences_repo"]
 ```
+
+## Write batching & scan performance
+
+The deterministic phases (`code-index`, `document-facts`) are write-bound, not
+compute-bound: on a monorepo the original cost was thousands of individual
+autocommitted SQLite writes (one bundle per segment / per symbol, each touching
+3–4 tables). The fix is **transaction batching**, not a redesign — the indexers
+fold many `upsertFact` calls into a single SQLite transaction.
+
+```mermaid
+flowchart LR
+    A[document-facts] --> T1["runInTransaction\n(whole-repo)"]
+    T1 --> S["per-segment\nupsertFact ×N"]
+    B[code-index] --> T2["runInTransaction\n(per source file)"]
+    T2 --> F["per-symbol/edge\nupsertFact ×N"]
+    F --> ST["code_file_state\nhash write\n(OUTSIDE txn)"]
+```
+
+Invariants:
+
+- **`document-facts` ingest wraps the entire repo's files in one
+  `SqliteKbIndexer.runInTransaction`** (`src/core/scan-fact-ingest.ts`). Do not
+  reintroduce per-segment autocommit — it was the dominant scan cost.
+- **`code-index` wraps each source file's facts in a per-file
+  `runInTransaction`** (`tree-sitter-indexer.ts:472`, `code-graph-indexer.ts:115`).
+- **`runInTransaction` is re-entrant** via `transactionDepth` — a nested call
+  joins the open transaction instead of issuing a second `BEGIN`.
+- **`code_file_state` (per-file content hash) is written outside the fact
+  transaction**, so a rolled-back fact batch never marks a file as indexed.
+- **Per-segment symbol anchoring stays two-tier**: OKF `resource` scope first
+  (candidate symbols loaded once, token-overlap scored in memory via
+  `scoreSegmentInScope`), then the global FTS nearest-symbol fallback
+  (`findNearest`) only when no resource scope resolves.
+- **Segmentation granularity is preserved**: `segmentMarkdownForFacts` defaults
+  to `minSegmentLength=8` with no merging; scan ingest calls it with no options.
+  Coarse paragraph merging (`mergeShortSegmentsBelow`) exists as opt-in only.
+
+### Tried and reverted (do not redo without re-proving quality)
+
+These were attempted for extra speed and reverted because they changed
+graph/retrieval behavior while the structural DB stayed otherwise identical:
+
+| Experiment | Why reverted |
+|---|---|
+| Defer `rebuildFactGraph` to a single post-ingest batch | Changed concept/edge graph; `rebuildFactGraph` stays per `upsertFact` |
+| Cache a single global symbol matcher, drop the per-segment FTS fallback | Hurt retrieval anchoring; FTS fallback retained |
+| Coarsen scan segmentation by default (merge short prose) | Reduced retrieval granularity; made opt-in instead |
+
+### Build-under-test benchmark
+
+Speed claims are measured by indexing the **same target snapshot** with two
+different `kb` binaries (main build vs feature build), not by changing the target
+repo. Latest run: ~24% faster init on the kb self-check, ~46% on raylib
+(`db0870f`), with fact/doc/code-fact/docs counts identical across builds. Headline
+numbers live in `research/tables/latest_results.tex` (see `research/README.md`).
 
 ## Upfront Questions
 
