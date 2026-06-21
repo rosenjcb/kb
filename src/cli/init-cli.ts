@@ -1307,26 +1307,30 @@ async function writeDocs(
   const writer = new SqliteDocumentWriter({ baseDir, base })
   const writtenIds: string[] = []
   try {
-    for (const [index, doc] of docs.entries()) {
-      const result = await writer.writeDocument({
-        title: doc.title,
-        content: doc.content,
-        type: doc.type,
-        tags: doc.tags,
-        documentId: doc.id ?? slugify(doc.title),
-        overwrite: true,
-        isOriginal: doc.isOriginal ?? false,
-      })
-      writtenIds.push(result.id)
-      onProgress?.({
-        itemsConsidered: docs.length,
-        itemsCompleted: index + 1,
-        itemsRemaining: Math.max(docs.length - (index + 1), 0),
-        currentItem: doc.title,
-        currentDocId: result.id,
-        docsWritten: writtenIds.length,
-      })
-    }
+    // Batch every doc write into a single transaction so the store commits once
+    // instead of fsync-ing per statement — the dominant cost of this phase.
+    await writer.runInTransaction(async () => {
+      for (const [index, doc] of docs.entries()) {
+        const result = await writer.writeDocument({
+          title: doc.title,
+          content: doc.content,
+          type: doc.type,
+          tags: doc.tags,
+          documentId: doc.id ?? slugify(doc.title),
+          overwrite: true,
+          isOriginal: doc.isOriginal ?? false,
+        })
+        writtenIds.push(result.id)
+        onProgress?.({
+          itemsConsidered: docs.length,
+          itemsCompleted: index + 1,
+          itemsRemaining: Math.max(docs.length - (index + 1), 0),
+          currentItem: doc.title,
+          currentDocId: result.id,
+          docsWritten: writtenIds.length,
+        })
+      }
+    })
   } finally {
     writer.close()
   }

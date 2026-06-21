@@ -125,6 +125,15 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     this.base = options.base ?? path.basename(options.baseDir)
   }
 
+  /**
+   * Run `fn` inside a single SQLite transaction so a batch of `writeDocument` calls
+   * commits once instead of fsync-ing per statement. Nested calls reuse the open
+   * transaction.
+   */
+  async runInTransaction<T>(fn: () => Promise<T> | T): Promise<T> {
+    return this.indexer.runInTransaction(fn)
+  }
+
   // ─── Write ──────────────────────────────────────────────────────
 
   async writeDocument(input: WriteDocumentInput): Promise<WriteDocumentResult> {
@@ -159,11 +168,15 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     }
 
     this.indexer.upsertDocumentWithContent(upsert)
-    this.indexFactsFromContent(
-      input.content,
-      'import_doc',
-      id
-    )
+    // Original/source docs are already segmented into facts by the dedicated
+    // `document-facts` ingest pipeline (scan-fact-ingest), which anchors triplets to
+    // AST symbols and namespaces source_ref as `path#sN`. Re-segmenting here would be
+    // redundant work — and it overwrites that richer provenance with placeholder
+    // triplets and a bare doc-id source_ref, which breaks per-file fact tombstoning on
+    // rescan. So only derived docs (which have no other fact source) index facts here.
+    if (!upsert.isOriginal) {
+      this.indexFactsFromContent(input.content, 'import_doc', id)
+    }
 
     return { id, title: input.title, filePath: '', createdAt: now, updatedAt: now }
   }
