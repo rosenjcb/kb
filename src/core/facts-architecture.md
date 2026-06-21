@@ -105,7 +105,7 @@ flowchart TB
 | **`kb facts`** | CLI + TUI **`/facts`** for list / search / show (`src/cli/facts-cli.ts`). |
 | **Multi-repo bases** | A base tracks one or more git repos (git required). Each fact carries a `git_repo` origin; after per-repo indexing, an integration-ingest pass links facts across repos with cross-repo `fact_edges` (`depends_on_repo`, `cross_repo_symbol`, `references_repo`). Retrieval is repo-scoped (land, exhaust, walk edges). |
 | **`kb docs merge`** | Removed (deterministic doc merge lived only in that CLI path). |
-| **`kb init`** | Clones each `--git` repo, then per repo runs **`code-index`** (AST → `import_code` facts + edges, `git_repo` set), **`document-facts`** (markdown segmentation → `import_doc`), **`import-docs`** (verbatim originals) and **`write`**, followed by cross-repo reconciliation. **`SqliteDocumentWriter`** also indexes incremental fact rows from document bodies when docs are persisted. |
+| **`kb init`** | Clones each `--git` repo, then per repo runs **`code-index`** (AST → `import_code` facts + edges, `git_repo` set), **`document-facts`** (markdown segmentation → `import_doc`), **`import-docs`** (verbatim originals) and **`write`**, followed by cross-repo reconciliation. **`SqliteDocumentWriter`** also indexes incremental fact rows from **derived** document bodies when they are persisted; **original/source docs are skipped** (their facts come from **`document-facts`**, not the writer). |
 | **Publish** | Unchanged: reads stored documents for export. |
 
 Remaining gap vs “gold”: optional **`read_documents`** naming cleanup for agents, and ongoing prompt/UI wording to say “fact” where the wire is fact-shaped.
