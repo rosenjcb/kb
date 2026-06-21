@@ -132,11 +132,6 @@ export interface FactUpsertInput {
   gitRepo?: string
 }
 
-export interface FactUpsertOptions {
-  /** Skip concept/edge graph maintenance when caller will rebuild in one batch. */
-  rebuildGraph?: boolean
-}
-
 export interface FactRow {
   id: string
   fact_text: string
@@ -301,15 +296,11 @@ export class SqliteKbIndexer {
     }
   }
 
-  upsertFact(
-    input: FactUpsertInput,
-    options: FactUpsertOptions = {}
-  ): { id: string; operation: 'inserted' | 'updated' } {
+  upsertFact(input: FactUpsertInput): { id: string; operation: 'inserted' | 'updated' } {
     const now = dayjs().toISOString()
     const gitRepo = input.gitRepo ?? this.activeGitRepo
     const normalized = normalizeFactText(input.factText)
     const factText = input.factText.trim()
-    const rebuildGraph = options.rebuildGraph ?? true
     const raw = input.triplet
     let subject: string
     let predicate: string
@@ -352,7 +343,7 @@ export class SqliteKbIndexer {
           existing.id
         )
       this.rebuildFactIndexes(existing.id, factText, now)
-      if (rebuildGraph) this.rebuildFactGraph(existing.id, factText, now)
+      this.rebuildFactGraph(existing.id, factText, now)
       return { id: existing.id, operation: 'updated' }
     }
 
@@ -383,7 +374,7 @@ export class SqliteKbIndexer {
         gitRepo
       )
     this.rebuildFactIndexes(id, factText, now)
-    if (rebuildGraph) this.rebuildFactGraph(id, factText, now)
+    this.rebuildFactGraph(id, factText, now)
     return { id, operation: 'inserted' }
   }
 
@@ -716,21 +707,6 @@ export class SqliteKbIndexer {
         `SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref LIKE ?`
       )
       .all(`${prefix}%`) as unknown as FactRow[]
-  }
-
-  /** Active code export facts loaded once for scan-time doc→symbol matching. */
-  listActiveCodeExportFacts(): FactRow[] {
-    return this.db
-      .prepare(
-        `
-        SELECT ${FACT_ROW_SELECT}
-        FROM facts
-        WHERE source_kind = 'import_code'
-          AND predicate = 'exported_from'
-          AND tombstoned_at IS NULL
-      `
-      )
-      .all() as unknown as FactRow[]
   }
 
   /**
@@ -1163,17 +1139,6 @@ export class SqliteKbIndexer {
     for (const row of relatedFacts) {
       upsertEdge.run(factId, row.fact_id, 1, now)
       upsertEdge.run(row.fact_id, factId, 1, now)
-    }
-  }
-
-  rebuildFactGraphs(facts: Array<{ id: string; factText: string }>): void {
-    if (facts.length === 0) return
-    const now = dayjs().toISOString()
-    const seen = new Set<string>()
-    for (const fact of facts) {
-      if (!fact.id || seen.has(fact.id)) continue
-      seen.add(fact.id)
-      this.rebuildFactGraph(fact.id, fact.factText.trim(), now)
     }
   }
 

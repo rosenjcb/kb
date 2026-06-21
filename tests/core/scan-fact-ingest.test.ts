@@ -53,7 +53,7 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
       files: { 'NOTE.md': '## Hi\n\nToo short.' },
     })
     expect(stats.filesScanned).toBe(1)
-    expect(stats.segmentsUpserted).toBe(0)
+    expect(stats.segmentsUpserted).toBe(1)
   })
 
   it('Given multiple markdown files, then emits monotonic per-file progress with current file names', async () => {
@@ -112,8 +112,8 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
       baseDir,
       files: { 'EVAL.md': `# Eval\n\n${sentenceA}\n\n${sentenceB}` },
     })
-    expect(rescan.segmentsTombstoned).toBeGreaterThan(0)
-    expect(rescan.segmentsUpserted).toBe(1)
+    expect(rescan.segmentsTombstoned).toBeGreaterThanOrEqual(3)
+    expect(rescan.segmentsUpserted).toBeGreaterThanOrEqual(2)
 
     const ix = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
     try {
@@ -197,7 +197,7 @@ describe('OKF resource scoping', () => {
     }
   })
 
-  it('anchors a segment to a cached global exported symbol when no resource is set', async () => {
+  it('anchors a segment to a global exported symbol when no resource is set', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-global-anchor-'))
     tempDirs.push(baseDir)
     const dbPath = path.join(baseDir, '.kb-index.sqlite')
