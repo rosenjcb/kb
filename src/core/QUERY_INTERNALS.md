@@ -4,7 +4,7 @@ title: "Query Internals: Facts Retrieval"
 description: "The shared facts-retrieval path behind kb query and chat QUERY turns."
 resource: ./src/core
 tags: [query, retrieval, facts]
-timestamp: 2026-06-20T00:00:00Z
+timestamp: 2026-06-21T00:00:00Z
 ---
 
 # Query internals: facts retrieval
@@ -38,6 +38,24 @@ Each pass merges five candidate streams before dedup and scoring:
 3. **Lexical (pond)** — FTS for the active pond's sub-query (skipped when identical to primary).
 4. **Concept frontier** — facts sharing any concept token in the active concept set.
 5. **Concept rows** — facts sharing active concepts (broader union than frontier).
+
+```mermaid
+flowchart TD
+  P["active pond<br/>(sub-query + BFS frontier)"] --> M{"merge 5 streams"}
+  M --> E["1. edge neighbors<br/>getFactNeighbors"]
+  M --> LP["2. lexical (primary FTS)"]
+  M --> LPo["3. lexical (pond FTS)"]
+  M --> CF["4. concept frontier"]
+  M --> CR["5. concept rows"]
+  E --> DD
+  LP --> DD
+  LPo --> DD
+  CF --> DD
+  CR --> DD
+  DD["dedup + score by source_kind<br/>(+anchor boosts)"] --> UF["update pond frontier<br/>advance graphHops"]
+  UF -->|"sufficiency / frontier exhausted / budget"| STOP([stop])
+  UF -->|"else → next pond"| P
+```
 
 Primary lexical hits from pass 1 are tracked as **anchors** (+0.10 score boost; up to 3 reserved in the final slice). When a pond stalls (no new edge or pond-lexical facts), it is marked exhausted and the loop advances to the next pond. Fresh concept neighbors can spawn an additional pond mid-loop. `frontier_exhausted` fires only when **all ponds** are exhausted and every stream returns nothing new.
 

@@ -4,7 +4,7 @@ title: "Chat Session Design"
 description: "The source-of-truth design for how the interactive KB chat session and its turn lifecycle work."
 resource: ./src/core
 tags: [chat, tui, retrieval]
-timestamp: 2026-06-20T00:00:00Z
+timestamp: 2026-06-21T00:00:00Z
 ---
 
 # Chat session — design
@@ -14,20 +14,19 @@ Update it when behavior changes.
 
 ## How a chat turn works
 
-```
-user input
-   │
-   ├─ synthesis keyword? (SYNTHESIS_QUERY_RE, len ≥ 40)
-   │     └─ decomposeQueryForRetrieval() → 1–4 sub-queries
-   │           └─ Promise.all pre-retrievals → inject as synthetic tool turns
-   │
-   └─ agentic loop (while true, cap MAX_CHAT_TURNS = 12)
-         LLM call with query_kb tool
-            ├─ stopReason = end_turn → answer done
-            └─ stopReason = tool_use
-                  └─ Promise.all all tool calls concurrently
-                        each: graph expand → executeChatQueryTruthRetrieval()
-                        weak_evidence? → append retry hint to tool result
+```mermaid
+flowchart TD
+  U([user input]) --> S{"synthesis query?<br/>SYNTHESIS_QUERY_RE, ≥40 chars"}
+  S -- yes --> D["decomposeQueryForRetrieval()<br/>1–4 sub-queries"]
+  D --> PR["Promise.all pre-retrievals<br/>injected as synthetic tool turns"]
+  PR --> L
+  S -- no --> L["agentic loop<br/>while true, ≤ MAX_CHAT_TURNS (12)"]
+  L --> LLM["LLM call w/ query_kb tool"]
+  LLM -- end_turn --> A([answer done])
+  LLM -- tool_use --> T["Promise.all tool calls (concurrent)"]
+  T --> GE["graph expand →<br/>executeChatQueryTruthRetrieval()"]
+  GE -- weak_evidence --> RH["append retry hint"] --> L
+  GE -- ok --> L
 ```
 
 1. **Decompose pre-step** — for synthesis/elaboration queries (≥40 chars matching

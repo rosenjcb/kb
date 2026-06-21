@@ -4,7 +4,7 @@ title: "AST Source Text Reconstruction"
 description: "How compact, token-efficient code snippets are extracted at index time and served as fact content at retrieval time."
 resource: ./src/core
 tags: [ast, facts, retrieval]
-timestamp: 2026-06-20T00:00:00Z
+timestamp: 2026-06-21T00:00:00Z
 ---
 
 # AST source text reconstruction
@@ -17,19 +17,13 @@ This document describes how compact, token-efficient code snippets are extracted
 
 ## Pipeline
 
-```
-TsMorphIndexer / TreeSitterIndexer
-  └─ upsertCodeFileFact (code-fact-writer.ts)
-        │  passes sourceText directly to upsertFact
-        ▼
-  facts.source_text       ← actual code snippet
-        │
-        ▼
-  FactsDocumentReader.toResult
-        │  source_kind='import_code' AND source_text IS NOT NULL
-        │    → content = source_text   (sent to LLM)
-        └─ otherwise
-             → content = fact_text    (verbose description)
+```mermaid
+flowchart TD
+  IDX["TsMorphIndexer / TreeSitterIndexer"] --> W["upsertCodeFileFact (code-fact-writer.ts)"]
+  W -- "passes sourceText to upsertFact" --> ST["facts.source_text<br/>(actual code snippet)"]
+  ST --> R["FactsDocumentReader.toResult"]
+  R -- "import_code AND source_text IS NOT NULL" --> C1["content = source_text<br/>(sent to LLM)"]
+  R -- otherwise --> C2["content = fact_text<br/>(verbose description)"]
 ```
 
 ---
