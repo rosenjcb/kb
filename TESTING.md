@@ -16,8 +16,8 @@ Test runner: **Vitest**. Run with `pnpm test` (single pass) or `pnpm run test:wa
 Source files mirror their tests:
 
 ```
-src/cli/publish-jekyll.ts   →   tests/cli/publish-jekyll.test.ts
-src/core/publish/jekyll-sync.ts   →   tests/core/jekyll-sync.test.ts
+src/cli/publish-cli.ts   →   tests/cli/publish-cli.test.ts
+src/core/publish/notion-sync.ts   →   tests/core/notion-sync.test.ts
 src/tools/document-writer.ts   →   tests/tools/document-writer.test.ts
 ```
 

@@ -118,11 +118,10 @@ Distinct from `pnpm uninstall:global` (`scripts/uninstall-global.sh`), which tar
 
 ## Publish
 
-`kb publish notion` and `kb publish jekyll` read publishable docs from the base SQLite index and sync them to an external sink. See [`../core/publish/PUBLISH.md`](../core/publish/PUBLISH.md).
+`kb publish notion` reads publishable docs from the base SQLite index and syncs them to an external sink. See [`../core/publish/PUBLISH.md`](../core/publish/PUBLISH.md).
 
 | Command | Apply flag | Notes |
 |---|---|---|
-| `publish jekyll [--dir <root>] [--base <name>]` | `--apply` | Wipes lane `.md` dirs, rewrites collections + graph |
 | `publish notion [--base <name>] [--parent-page-id <id>]` | `--apply` | Archives section children, recreates pages; state in `.kb-publish-notion.json` |
 
 Preview responses include `removed` / `removedPages` for docs that exist in the sink but not in SQLite.

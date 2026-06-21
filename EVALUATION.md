@@ -54,7 +54,7 @@ The `raylib` base is the KB that a KB-backed agent uses during real development 
 
 ### Published docs location
 
-Eval runs do **not** publish Jekyll output. We only capture init/query evidence artifacts.
+Eval runs do **not** publish output. We only capture init/query evidence artifacts.
 
 ## Automated harvest (`scripts/eval-run.mjs`)
 
@@ -400,7 +400,7 @@ Recommended for automated runs (so comparisons stay attributable):
 - `suite`: `raylib` \| `kb` \| `generic` (or custom label if using `--questions-file`)
 - `target_cwd`: absolute path where `kb` commands ran
 - `clone_url`: if the target was produced by `git clone`, the URL (else `null`)
-- `publish_dir`: Jekyll site root if publish ran (else `null`)
+- `publish_dir`: publish output root if publish ran (else `null`)
 - `workdir`: scratch directory holding `q1.json`…`q8.json` (safe to delete after archiving)
 
 The `init_result` object should contain:
@@ -464,8 +464,7 @@ These may be omitted only if the artifact is marked `partial`.
     "mode": "non_interactive_init",
     "commands": [
       "kb init --base ci-raylib-20260419 --non-interactive",
-      "kb query '<question>' --base ci-raylib-20260419 --output json (x8)",
-      "kb publish jekyll --base ci-raylib-20260419 --dir ~/raylib-kb-docs/ --apply"
+      "kb query '<question>' --base ci-raylib-20260419 --output json (x8)"
     ],
     "init_result": {
       "status": "accepted",

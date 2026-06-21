@@ -126,7 +126,7 @@ Use the schema in `EVALUATION.md`. Minimum:
 3. Include raw outputs when practical.
 4. If a field is unavailable, use `null` and explain why in a sibling `*_note` field.
 
-## Jekyll publish
+## Publish
 
 Not part of eval-run. Keep eval artifacts only; publish flows run separately.
 
@@ -134,7 +134,6 @@ Not part of eval-run. Keep eval artifacts only; publish flows run separately.
 
 - Spec: `EVALUATION.md`
 - Artifacts: `evaluation/runs/*.json` (default: not in git — see `EVALUATION.md` § Artifact Storage)
-- Raylib docs site: `~/raylib-kb-docs/`
 
 ## Notes
 

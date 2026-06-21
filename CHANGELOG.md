@@ -1,5 +1,11 @@
 # kb
 
+## 0.10.0
+
+### Minor Changes
+
+- Remove the `kb publish jekyll` command and the generated Jekyll docs site. Publishing now targets Notion only (`kb publish notion`). The `docs/` Jekyll site, the `jekyll-docs` GitHub workflow, and the `jekyll-sync`/`graph-reader`/`publish-jekyll` modules and their tests have been deleted.
+
 ## 0.9.2
 
 ### Patch Changes

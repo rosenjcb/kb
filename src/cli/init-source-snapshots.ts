@@ -2,7 +2,7 @@
  * Frozen "original lane" excerpts from repository files during `kb init`.
  * Autogen topic docs may be many while `maybeExpandSingleDocCorpus` only runs when
  * synthesis collapses to a single document — this module always appends per-file
- * snapshots so publish/Jekyll can populate originals alongside autogen.
+ * snapshots so publishing can populate originals alongside autogen.
  */
 import { basenameTitle } from '../core/string-utils'
 

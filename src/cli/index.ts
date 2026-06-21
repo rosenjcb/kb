@@ -94,7 +94,6 @@ import {
 import type { KbConfig } from './kb-config'
 import { printLogsHelp, runLogsCommand } from './logs-cli'
 import { parsePublishCommand, runPublishCommand } from './publish-cli'
-import { parseJekyllPublishOptions, runJekyllPublish } from './publish-jekyll'
 import { runQueryTruthRetrieval } from './query-truth-retrieval'
 import {
   formatSkillInstallReport,
@@ -531,7 +530,7 @@ export async function runMainWithOutput(
   if (firstArg === 'publish') {
     const provider = args[1]
     if (!provider || provider.startsWith('--')) {
-      out.error('Usage: kb publish <notion|jekyll> [options]')
+      out.error('Usage: kb publish <notion> [options]')
       return
     }
     try {
@@ -542,12 +541,8 @@ export async function runMainWithOutput(
           progressSink: line => out.log(line.trimEnd()),
         })
         out.log(JSON.stringify(result, null, 2))
-      } else if (provider === 'jekyll') {
-        const parsed = parseJekyllPublishOptions(args.slice(2), process.cwd())
-        const result = await runJekyllPublish(parsed, process.cwd())
-        out.log(JSON.stringify(result, null, 2))
       } else {
-        out.error(`Unknown provider "${provider}". Usage: kb publish <notion|jekyll> [options]`)
+        out.error(`Unknown provider "${provider}". Usage: kb publish <notion> [options]`)
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
