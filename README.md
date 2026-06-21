@@ -1,3 +1,12 @@
+---
+type: "Project Overview"
+title: "KB"
+description: "A local-first knowledge layer that turns your codebase and docs into a fast, queryable knowledge base."
+resource: ./
+tags: [overview, cli, knowledge-base]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 
 <p align="center">
   <img src="assets/kb-logo.png" alt="KB Logo" width="340" />
@@ -32,7 +41,7 @@ No manual fact entry. KB reads from the source.
 
 KB turns your codebase and docs into a searchable knowledge base:
 
-* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically
+* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically. Plain markdown is segmented into sentence facts; docs written in the [Open Knowledge Format (OKF)](#-open-knowledge-format-okf) are recognized and their frontmatter boilerplate is skipped, so only the document body is indexed (no `key: value` noise).
 * 🔍 **Query** — Ask questions in natural language; get grounded, source-linked answers
 * 🔁 **Refresh** — Re-scan after changes to keep the knowledge base current
 
@@ -112,14 +121,26 @@ kb config set llm.provider openai
 Create a knowledge base from one or more git repositories. **At least one git remote is required** — KB clones each repo and keeps the base fresh for you, auto-pulling and re-indexing on new commits whenever you open a session or switch to the base, so you never run a scan by hand.
 
 ```bash
-# single repo
+# single repo (follows the remote's default branch)
 kb init --git https://github.com/acme/auth-svc
 
-# multiple repos into one base, with an inline branch override
+# pin a branch for every --git that has no inline #branch
+kb init --git https://github.com/acme/auth-svc --branch develop
+
+# multiple repos into one base, with a per-repo inline #branch override
 kb init --git https://github.com/acme/auth --git https://github.com/acme/web#develop --base acme
 ```
 
-`--git` is repeatable. Each value may carry an inline `#branch`; the `--branch` flag sets the default branch for any repo that doesn't specify one (default `main`).
+#### Choosing a branch
+
+`--git` is repeatable, and you can target a specific branch two ways:
+
+| Form | Scope | Example |
+|------|-------|---------|
+| `--branch <name>` | Default for **all** `--git` targets that omit an inline branch | `kb init --git <url> --branch develop` |
+| `<url>#<branch>` (inline) | **Per repo**, overrides `--branch` for that one | `kb init --git <url>#release-2.0` |
+
+When neither is given, the clone follows the remote's own default branch.
 
 All repos in a base fold into a **single connected graph**. After indexing, a reconciliation pass bridges the per-repo subgraphs by linking facts across repos on real integration signals — `package.json` dependencies, cross-repo symbol imports, and `.env`/service references.
 
@@ -243,6 +264,31 @@ kb skills uninstall   # remove everything kb skills install added
 Installs are idempotent: each skill carries a content hash, so re-running upgrades changed skills in place and skips ones already current. `kb skills uninstall` reverses both steps.
 
 The skills are self-contained (workflow + full command shapes). Source: [`skills/`](skills/); see [`src/skills/SKILLS.md`](src/skills/SKILLS.md) for the bundled set and how to add one. The [CLI Reference](#cli-reference) above stays the in-repo quick reference for humans.
+
+The `kb:dump-context` skill writes in-place companion docs in the **Open Knowledge Format** (see below), so the architecture knowledge your agent captures is indexed structurally rather than as loose prose.
+
+## 📚 Open Knowledge Format (OKF)
+
+KB encourages documenting your code in the [**Open Knowledge Format (OKF)**](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) — Google's open, vendor-neutral standard for the "LLM-wiki" pattern. An OKF concept doc is just a markdown file with a small YAML frontmatter block; the only required field is `type`:
+
+```markdown
+---
+type: Subsystem
+title: TUI Renderer
+description: Drives the Ink session loop and frame diffing.
+resource: ./session.tsx
+tags: [tui, rendering]
+timestamp: 2026-06-20T00:00:00Z
+---
+
+# TUI Renderer
+
+One-paragraph what/why, role in the stack, invariants, …
+```
+
+**KB stays format-agnostic** — any markdown still ingests via sentence segmentation, so OKF is never required and a malformed doc is never rejected. KB gives OKF **functional support**: when it detects OKF frontmatter during `kb init` / `kb scan`, it recognizes the format and **skips the metadata block** so it never leaks in as raw `key: value` noise — then indexes the document body exactly like any markdown. OKF docs get no special retrieval boost; KB just reads them cleanly.
+
+The bundled `kb:dump-context` agent skill authors companion docs (`TUI.md`, `INTENTS.md`, …) as OKF concept files by default, so your knowledge base grows in a portable, interoperable format. OKF reserves the filenames `index.md` (directory listing) and `log.md` (update history); concept docs use any other name.
 
 ## 🗄️ Swapping and deleting bases
 

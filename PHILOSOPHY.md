@@ -1,3 +1,11 @@
+---
+type: "Explanation"
+title: "KB Philosophy"
+description: "The guiding principles behind KB — a knowledge base you get for free as a side effect of real work."
+tags: [philosophy, principles]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 
 # KB Philosophy
 

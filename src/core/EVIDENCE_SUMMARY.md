@@ -1,3 +1,12 @@
+---
+type: "Feature"
+title: "Evidence Summary Header"
+description: "The single evidence> orchestration line printed after a terminal query or chat answer."
+resource: ./src/core/evidence-summary.ts
+tags: [evidence, cli-output, retrieval]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Evidence summary header (`evidence>`)
 
 Terminal query/chat output prints **one** `evidence>` orchestration line after the answer. It replaces per-fact bullet previews.

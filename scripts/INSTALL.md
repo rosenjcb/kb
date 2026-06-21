@@ -1,3 +1,12 @@
+---
+type: "Subsystem"
+title: "Install / Uninstall Scripts"
+description: "Shell scripts that manage the lifecycle of KB on a user machine."
+resource: ./scripts
+tags: [install, scripts, lifecycle]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Install / Uninstall Scripts
 
 Shell scripts that manage the lifecycle of KB on a user's machine. The release installer runs once on first install; `uninstall-global.sh` is dev-only.

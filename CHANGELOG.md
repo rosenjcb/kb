@@ -1,5 +1,23 @@
 # kb
 
+## 0.9.0
+
+### Minor Changes
+
+- Adopt the Open Knowledge Format (OKF) as the encouraged documentation standard.
+
+  - Functional OKF support on ingest: `kb init` / `kb scan` recognize markdown docs with
+    OKF frontmatter (a YAML block carrying a `type`) and skip the metadata block so it
+    never leaks in as raw `key: value` facts, then index the document body exactly like
+    any markdown. OKF docs get no special retrieval boost. Plain markdown is unchanged —
+    kb stays format-agnostic and never rejects a non-OKF doc.
+  - The bundled `kb:dump-context` agent skill now authors companion docs as OKF concept
+    files (frontmatter + body) by default.
+  - A doc's OKF `resource:` (when it resolves to a code file/dir via the
+    `ast:<path>@<symbol>` convention) scopes each segment's anchor to that file/dir's
+    exported symbols, instead of guessing against the global nearest-symbol FTS pool.
+    Docs without a resolvable `resource` are unchanged.
+
 ## 0.8.0
 
 ### Minor Changes

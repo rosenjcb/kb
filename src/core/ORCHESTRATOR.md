@@ -1,3 +1,12 @@
+---
+type: "Architecture"
+title: "Subagent Orchestrator"
+description: "In-repo architecture notes for the boss/worker task tool and the nested agent loop."
+resource: ./src/tools/task.ts
+tags: [subagent, orchestration, task-tool]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Subagent orchestrator (Ticket 105)
 
 In-repo architecture notes for the boss/worker **task** tool, nested **`agentLoop`**, and related types. **Mermaid diagrams** below are the primary UML-style views; keep them in sync when behavior changes.

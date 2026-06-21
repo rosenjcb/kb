@@ -1,3 +1,12 @@
+---
+type: "Architecture"
+title: "Facts-First KB Architecture"
+description: "The platform mental model: KB answers questions and drives authoring from atomic facts, not markdown chunks."
+resource: ./src/core
+tags: [facts, architecture, retrieval]
+timestamp: 2026-06-21T00:00:00Z
+---
+
 # Facts-first KB architecture
 
 **Contract:** the KB answers questions and drives authoring from **atomic facts** in the `facts` store. **Markdown documents are not a retrieval substrate for Q&A.** They exist as human-readable artifacts: originals (with facts extracted from them) or generated synthesis, and they matter most at **publish** time.
@@ -20,7 +29,7 @@ This is the platform mental model for `kb query`, `kb docs generate`, ingest (`k
 
 **Target pipeline** when reading source pages (README, docs, crawled markdown, etc.):
 
-1. **Deterministic segmentation** — walk the page in order; each sentence or paragraph (configurable grain) becomes a **candidate fact** text.
+1. **Deterministic segmentation** — walk the page in order; each sentence or paragraph (configurable grain) becomes a **candidate fact** text. Open Knowledge Format (OKF) docs are recognized and their YAML frontmatter is stripped before segmentation, so metadata never becomes junk facts; the body is segmented like any markdown.
 2. **Upsert policy** — for each candidate:
    - if **no** existing fact matches (normalized text / fuzzy policy TBD): **insert**;
    - if **duplicate**: **skip**;
@@ -116,7 +125,7 @@ Fact block in prompts; refuse when no facts; **`acceptDraft`** guards zero **`su
 ### Phase C — Ingest: deterministic + semantic facts from sources (**done**)
 
 **Done:**
-- **`document-facts`** init cycle runs after **`code-index`**, calling `ingestSourceMarkdownFilesAsFacts` (`src/core/scan-fact-ingest.ts`) over `context.sourceFiles` — same segmentation policy as document writer ingest, `source_ref` like `README.md#s0`, placeholder triplets.
+- **`document-facts`** init cycle runs after **`code-index`**, calling `ingestSourceMarkdownFilesAsFacts` (`src/core/scan-fact-ingest.ts`) over `context.sourceFiles` — same segmentation policy as document writer ingest, `source_ref` like `README.md#s0`. Each segment's triplet anchors to the nearest exported AST symbol (FTS over `import_code`/`exported_from` facts), falling back to a placeholder. When an OKF doc declares a `resource:` that resolves to a code file/dir, the anchor is scoped to that file/dir's exported symbols only, instead of the global pool.
 - **`code-index`** runs deterministic AST indexing (`TsMorphIndexer` / `TreeSitterIndexer`) → `import_code` facts and `fact_edges`. No LLM code-facts fallback. Previously Swift/Kotlin were LLM-indexed when AST was unavailable — see `INIT.md` §Removed LLM code-facts fallback.
 
 **Surface for refreshing sources:** **`kb scan`** — pulls + re-indexes every tracked repo and rebuilds cross-repo links.

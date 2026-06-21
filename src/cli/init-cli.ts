@@ -1478,9 +1478,12 @@ async function resolveIgnorePatternsForInit(
 ): Promise<string[]> {
   if (options.ignorePatterns) return options.ignorePatterns
   if (options.nonInteractive) return []
-  // Only prompt in the interactive bootstrap path (bare `kb init`). When git targets are
-  // supplied up front (flags / programmatic callers), skip the prompt — same as the git-URL one.
-  if (options.gitTargets && options.gitTargets.length > 0) return []
+  // Resume inherits the base's stored ignores (or none) instead of re-prompting.
+  if (options.resume || options.resumeFrom) return []
+  // Otherwise prompt whenever we're interactive. Supplying --git no longer suppresses this,
+  // so a fresh `kb init --git <url>` still gives you the chance to exclude paths (e.g. `docs/`).
+  // Non-interactive / piped / CI stdin is already short-circuited above (and forced to
+  // non-interactive upstream), and programmatic callers pass `ignorePatterns` explicitly.
 
   questionIO.write?.(
     '\n[kb init] Ignore paths/globs to skip while indexing (gitignore-style; optional).\n' +

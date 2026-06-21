@@ -1,3 +1,12 @@
+---
+type: "Subsystem"
+title: "Bundled Agent Skills"
+description: "The first-party agent skills KB ships for dogfooding and kb skills install, and how to add one."
+resource: ./src/skills
+tags: [skills, agents, install]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Bundled Agent Skills
 
 KB ships first-party **Agent Skills** (Cursor/Claude/Codex format) for dogfooding and `kb skills install`. Source of truth: repo `skills/<name>/SKILL.md`; runtime loading via `loader.ts`.
@@ -31,7 +40,7 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 Maintained in `SKILLS` constant inside `skill-installer.ts` (must stay in sync with `skills/` directory):
 
 - `kb:dev-workflow` — query/graph/docs conventions
-- `kb:dump-context` — in-place architecture markdown (this skill)
+- `kb:dump-context` — in-place architecture docs in the Open Knowledge Format (OKF: YAML frontmatter + markdown body)
 - `kb:evaluation-run` — eval suites under `eval/`
 
 Adding a skill:

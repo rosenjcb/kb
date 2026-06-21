@@ -1,3 +1,12 @@
+---
+type: "Guide"
+title: "Research Paper"
+description: "How to build the KB research paper, a LaTeX two-column article living in this directory."
+resource: ./research
+tags: [research, latex, paper]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Research Paper
 
 **KB: A Facts-First Codebase Knowledge System with Multi-Objective Exploration Loss Evaluation**

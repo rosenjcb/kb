@@ -1,3 +1,12 @@
+---
+type: "Module"
+title: "Tree-Sitter Code Graph Indexer"
+description: "How TreeSitterIndexer parses source into the code graph using WASM grammars with no native compile."
+resource: ./src/tools/tree-sitter-indexer.ts
+tags: [tree-sitter, indexer, code-graph]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # Tree-Sitter Code Graph Indexer
 
 `tree-sitter-indexer.ts` implements `TreeSitterIndexer` — WASM grammars via `web-tree-sitter`, no native compile. Semantic graph context: [`GRAPH.md`](GRAPH.md).

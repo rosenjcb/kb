@@ -229,6 +229,7 @@ function printInitHelp(mode: CmdMode = 'cli'): string {
     '',
     'Examples:',
     `  ${cmd('init --git https://github.com/acme/auth-svc', mode)}`,
+    `  ${cmd('init --git https://github.com/acme/auth-svc --branch develop', mode)}`,
     `  ${cmd('init --git https://github.com/acme/auth --git https://github.com/acme/web#develop --base acme', mode)}`,
   ].join('\n')
 }

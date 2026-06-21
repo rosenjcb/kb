@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   ingestSourceMarkdownFilesAsFacts,
@@ -150,6 +151,49 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
       expect(ix.searchFacts('npm run eval', 5).length).toBe(0)
     } finally {
       ix.close()
+    }
+  })
+})
+
+describe('OKF resource scoping', () => {
+  function seedCodeFact(dbPath: string, sourceRef: string, subject: string, object: string): string {
+    const ix = new SqliteKbIndexer({ dbPath })
+    const r = ix.upsertFact({
+      factText: `${subject} is a Class exported from ${object}`,
+      triplet: { subject, predicate: 'exported_from', object },
+      sourceKind: 'import_code',
+      sourceRef,
+    })
+    ix.close()
+    return r.id
+  }
+
+  it('anchors a segment to the in-resource symbol, never a global one', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-okf-anchor-'))
+    tempDirs.push(baseDir)
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    seedCodeFact(dbPath, 'ast:src/ui/widget.ts@Widget', 'Widget', 'src/ui/widget.ts')
+    seedCodeFact(dbPath, 'ast:src/other/factory.ts@WidgetFactory', 'WidgetFactory', 'src/other/factory.ts')
+
+    const doc =
+      '---\ntype: Module\ntitle: Widget\nresource: ./src/ui/widget.ts\n---\n\n' +
+      '# Widget\n\nThe widget renders the main control panel for the running application.'
+    await ingestSourceMarkdownFilesAsFacts({
+      baseDir,
+      files: { 'src/ui/WIDGET.md': doc },
+      matchAstNodes: true,
+    })
+
+    const db = new DatabaseSync(dbPath, { readOnly: true })
+    try {
+      const objs = db
+        .prepare("SELECT object FROM facts WHERE source_ref LIKE 'src/ui/WIDGET.md#%'")
+        .all()
+        .map(r => (r as { object: string }).object)
+      expect(objs).toContain('Widget')
+      expect(objs).not.toContain('WidgetFactory')
+    } finally {
+      db.close()
     }
   })
 })

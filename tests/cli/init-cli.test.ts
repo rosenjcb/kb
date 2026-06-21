@@ -331,7 +331,10 @@ describe('init-cli interview checkpoints', () => {
     }
 
     expect(checkpoint.version).toBe(3)
-    expect(questionIO.prompts).toHaveLength(0)
+    // Fresh interactive init offers the ignore-paths prompt (and nothing else); the
+    // deprecated interview questions stay gone.
+    expect(questionIO.prompts).toHaveLength(1)
+    expect(questionIO.prompts[0]).toContain('Ignore patterns')
     expect(checkpoint.interviewRounds ?? []).toHaveLength(0)
     expect(checkpoint.context.userAnswers).toEqual([])
     expect(Object.keys(checkpoint.context.sourceFiles ?? {})).toContain('README.md')

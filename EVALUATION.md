@@ -1,3 +1,12 @@
+---
+type: "Evaluation Plan"
+title: "KB Evaluation Plan"
+description: "How KB measures whether a maintained knowledge base materially improves real development work versus a raw coding agent."
+resource: ./eval
+tags: [evaluation, methodology, scoring]
+timestamp: 2026-06-20T00:00:00Z
+---
+
 # KB Evaluation Plan
 
 ## Goal
