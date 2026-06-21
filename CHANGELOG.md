@@ -1,15 +1,5 @@
 # kb
 
-## 0.10.0
-
-### Minor Changes
-
-- Use OKF `resource` to anchor doc facts to the code they describe. When an OKF doc's
-  frontmatter `resource:` resolves to a code file/dir (via the `ast:<path>@<symbol>`
-  code-fact convention), `kb init` / `kb scan` pick each doc segment's anchor symbol from
-  that file/dir's exported symbols only, instead of guessing against the global
-  nearest-symbol FTS pool. Docs without a resolvable `resource` are unchanged.
-
 ## 0.9.0
 
 ### Minor Changes
@@ -23,6 +13,10 @@
     kb stays format-agnostic and never rejects a non-OKF doc.
   - The bundled `kb:dump-context` agent skill now authors companion docs as OKF concept
     files (frontmatter + body) by default.
+  - A doc's OKF `resource:` (when it resolves to a code file/dir via the
+    `ast:<path>@<symbol>` convention) scopes each segment's anchor to that file/dir's
+    exported symbols, instead of guessing against the global nearest-symbol FTS pool.
+    Docs without a resolvable `resource` are unchanged.
 
 ## 0.8.0
 
