@@ -49,7 +49,7 @@ interface CodeFactRow {
   object: string | null
 }
 
-/** Lowercased word tokens (≥3 chars, non-numeric) — same shape as `ftsQueryFromText` terms. */
+/** Lowercased word tokens (≥3 chars, non-numeric) for deterministic symbol matching. */
 function scopeTokens(text: string): string[] {
   return text
     .toLowerCase()
@@ -138,7 +138,7 @@ function resolveResourceScope(
 /**
  * Deterministic ingest: segment each markdown source → `facts` rows (`import_doc`, `sourceRef` path#sN).
  * When `matchAstNodes` is true (requires ast-facts to have run first), each segment's triplet is
- * anchored to the nearest exported symbol via kg_nodes_fts FTS lookup instead of a placeholder.
+ * anchored to the nearest exported symbol via FTS lookup instead of a placeholder.
  * Idempotent via `normalized_text` dedupe in `SqliteKbIndexer.upsertFact`.
  */
 export async function ingestSourceMarkdownFilesAsFacts(
@@ -185,80 +185,82 @@ export async function ingestSourceMarkdownFilesAsFacts(
   let processedSegments = 0
   const yieldStride = input.yieldEverySegments ?? 50
   try {
-    const paths = Object.keys(input.files).sort()
-    for (const relPath of paths) {
-      const raw = input.files[relPath]
-      if (raw === undefined) continue
-      filesScanned += 1
-      // Namespace the source_ref by repo so two repos that both contain e.g. README.md don't
-      // tombstone each other's facts (per-file tombstoning keys off source_ref).
-      const refPath = input.gitRepo ? `${input.gitRepo}/${relPath}` : relPath
-      segmentsTombstoned += tombstoneDocFactsForFile(indexer, refPath)
-      if (!raw.trim()) continue
-      const sourceLabel = path.basename(relPath, path.extname(relPath))
+    await indexer.runInTransaction(async () => {
+      const paths = Object.keys(input.files).sort()
+      for (const relPath of paths) {
+        const raw = input.files[relPath]
+        if (raw === undefined) continue
+        filesScanned += 1
+        // Namespace the source_ref by repo so two repos that both contain e.g. README.md don't
+        // tombstone each other's facts (per-file tombstoning keys off source_ref).
+        const refPath = input.gitRepo ? `${input.gitRepo}/${relPath}` : relPath
+        segmentsTombstoned += tombstoneDocFactsForFile(indexer, refPath)
+        if (!raw.trim()) continue
+        const sourceLabel = path.basename(relPath, path.extname(relPath))
 
-      // OKF resource scoping: when a doc names a code file/dir, anchor its segments to a symbol
-      // from that file/dir only, instead of guessing against the global exported-symbol pool.
-      const resource = input.matchAstNodes
-        ? parseOkfDocument(raw).frontmatter?.resource
-        : undefined
-      const scope = resource
-        ? resolveResourceScope(indexer, relPath, resource, input.gitRepo)
-        : null
+        // OKF resource scoping: when a doc names a code file/dir, anchor its segments to a symbol
+        // from that file/dir only, instead of guessing against the global exported-symbol pool.
+        const resource = input.matchAstNodes
+          ? parseOkfDocument(raw).frontmatter?.resource
+          : undefined
+        const scope = resource
+          ? resolveResourceScope(indexer, relPath, resource, input.gitRepo)
+          : null
 
-      const segments = segmentMarkdownForFacts(raw).map(s => s.replace(/\s+/g, ' ').trim())
-      let segIdx = 0
-      for (const factText of segments) {
-        const sourceRef = `${refPath}#s${segIdx}`
-        segIdx += 1
+        const segments = segmentMarkdownForFacts(raw).map(s => s.replace(/\s+/g, ' ').trim())
+        let segIdx = 0
+        for (const factText of segments) {
+          const sourceRef = `${refPath}#s${segIdx}`
+          segIdx += 1
 
-        let triplet = placeholderTripletFromFactText(factText)
-        if (scope) {
-          // Precise: match only against the resource's symbols, never the global pool.
-          const match = scoreSegmentInScope(factText, scope)
-          if (match) {
-            triplet = { subject: sourceLabel, predicate: 'relatesTo', object: match.subject }
-          }
-        } else if (findNearest) {
-          const node = findNearest(factText)
-          if (node) {
-            triplet = {
-              subject: sourceLabel,
-              predicate: 'relatesTo',
-              object: node.subject,
+          let triplet = placeholderTripletFromFactText(factText)
+          if (scope) {
+            // Precise: match only against the resource's symbols, never the global pool.
+            const match = scoreSegmentInScope(factText, scope)
+            if (match) {
+              triplet = { subject: sourceLabel, predicate: 'relatesTo', object: match.subject }
+            }
+          } else if (findNearest) {
+            const node = findNearest(factText)
+            if (node) {
+              triplet = {
+                subject: sourceLabel,
+                predicate: 'relatesTo',
+                object: node.subject,
+              }
             }
           }
-        }
 
-        indexer.upsertFact({
-          factText,
-          triplet,
-          sourceKind: 'import_doc',
-          sourceRef,
-          confidence: 0.55,
-          gitRepo: input.gitRepo,
-        })
-        segmentsUpserted += 1
-        processedSegments += 1
+          indexer.upsertFact({
+            factText,
+            triplet,
+            sourceKind: 'import_doc',
+            sourceRef,
+            confidence: 0.55,
+            gitRepo: input.gitRepo,
+          })
+          segmentsUpserted += 1
+          processedSegments += 1
+          input.onProgress?.({
+            filesConsidered: paths.length,
+            filesCompleted: Math.max(filesScanned - 1, 0),
+            filesRemaining: Math.max(paths.length - Math.max(filesScanned - 1, 0), 0),
+            filesScanned,
+            segmentsUpserted,
+            currentFile: relPath,
+          })
+          await yieldEvery(processedSegments, yieldStride)
+        }
         input.onProgress?.({
           filesConsidered: paths.length,
-          filesCompleted: Math.max(filesScanned - 1, 0),
-          filesRemaining: Math.max(paths.length - Math.max(filesScanned - 1, 0), 0),
+          filesCompleted: filesScanned,
+          filesRemaining: Math.max(paths.length - filesScanned, 0),
           filesScanned,
           segmentsUpserted,
           currentFile: relPath,
         })
-        await yieldEvery(processedSegments, yieldStride)
       }
-      input.onProgress?.({
-        filesConsidered: paths.length,
-        filesCompleted: filesScanned,
-        filesRemaining: Math.max(paths.length - filesScanned, 0),
-        filesScanned,
-        segmentsUpserted,
-        currentFile: relPath,
-      })
-    }
+    })
   } finally {
     indexer.close()
     astDb?.close()

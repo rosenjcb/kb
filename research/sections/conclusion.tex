@@ -5,12 +5,13 @@
 We introduced KB, a local-first, facts-first codebase knowledge system.
 KB's deterministic AST indexing and multi-pond BFS retrieval provide
 agents with structured, persistent codebase knowledge without per-session re-exploration.
-\texttt{kb query} uses one-shot synthesis over a capped fact pool; on the KB
-self-check suite (run \texttt{kb-2026-06-13-1747}), KB is \textbf{ahead of control}
-($\Delta S = +0.128$; $S_K = 0.888$, $S_N = 0.760$) while answering eight
-questions in 128\,s at ${\sim}$120\,k tokens versus 416\,s and ${\sim}$569\,k
-weighted tokens for a Cursor agent (pass rate $0.75$ vs.\ $1.00$; evidence
-handling tied at 4.0).
+\texttt{kb query} uses one-shot synthesis over a capped fact pool.  In the latest
+build-under-test runs, the optimized KB build preserves pass rate on both the
+\texttt{kb} self-check suite and the external \texttt{raylib} suite while keeping
+fact and document counts stable.  The current revision does not claim a fresh
+$\Delta S$ against a real-agent control because \LatestControlStatus{}; those
+paired K/N rows should be regenerated before making a current control-vs-KB
+headline claim.
 
 We also introduced MOEL, a multi-objective evaluation framework spanning two pipelines:
 (1)~the harvest runner, whose headline grade is $\Delta S = S_K - S_N$ from a single
@@ -18,4 +19,5 @@ artifact comparing \texttt{kb query} to a real coding agent on the same eight qu
 and (2)~the deep MOEL harness ($L_\text{MOEL}$), which measures exploration loss under
 toy-tool N/K/O conditions per task.  Bias-mitigated jury ensemble, statistical calibration,
 and programmatic validators distinguish efficient exploration from expensive correctness.
-External validation on raylib remains the next empirical step.
+The immediate empirical next step is to run paired controls for both \texttt{kb}
+and \texttt{raylib} against the same latest-results source used by this paper.

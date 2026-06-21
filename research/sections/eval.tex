@@ -4,18 +4,18 @@
 
 \subsection{Evaluation Targets}
 
-\textbf{Raylib (planned external benchmark).}  We target the
+\textbf{Raylib (external benchmark).}  We target the
 \href{https://github.com/raysan5/raylib}{raylib C library}---a mature,
 well-documented game-programming framework---as the primary \emph{external}
 benchmark: it is not the KB codebase (eliminating evaluator familiarity bias),
 has rich cross-module structure for graph retrieval, and has stable upstream
-documentation.  Results in \S\ref{subsec:results} are from the KB self-check only;
-raylib paired runs are future work.
+documentation.  Latest build-under-test results in \S\ref{subsec:results}
+include both raylib and the KB self-check suite.
 
-\textbf{KB self-check (reported).}  Suite \texttt{kb} evaluates KB against its
+\textbf{KB self-check.}  Suite \texttt{kb} evaluates KB against its
 own codebase---eight architecture and workflow questions.  This smoke test
 stress-tests retrieval grounding on a repo whose structure the authors know well;
-paired $\Delta S$ here is the headline empirical claim in this paper.
+it is no longer the only reported target.
 
 \subsection{Protocol: kb vs control in one artifact}
 
@@ -129,64 +129,27 @@ the headline grade.
 \noindent\textbf{Scoring stability.}  The auto-scorer (Gemini 2.5 Flash) is
 non-deterministic even at temperature~0; we average three scorer calls per question.
 
-\subsection{Results: kb vs control}
+\subsection{Results: build-under-test and control status}
 \label{subsec:results}
 
-Table~\ref{tab:kb-vs-control} reports condition~K (\texttt{kb query}) vs.\
-condition~N (Cursor agent headless, no KB) on the \texttt{kb} self-check suite
-($n=8$ questions, same Gemini judge, same run; \texttt{kb-2026-06-15-1717},
-June 2026).
+Table~\ref{tab:latest-quality} is generated from macros in
+\texttt{research/tables/latest\_results.tex}; the abstract, table, and
+conclusion all refer to those macros so stale cross-section result drift cannot
+recur.  The current experiment fixes the target repository snapshot and changes
+only the KB binary used to index, scan, and query.  This isolates whether the
+latest indexing optimizations change retrieval behavior.
 
-\begin{center}
-\fbox{%
-  \parbox{0.92\columnwidth}{%
-    \centering
-    \textbf{Headline grade}\quad
-    $\Delta S = S_K - S_N = \mathbf{+0.045}$ \\[4pt]
-    {\small KB \textbf{ahead of control} ($\Delta S \geq 0.02$).}%
-  }%
-}
-\end{center}
+\input{tables/latest-quality}
 
-\vspace{0.4em}
-\begin{table}[t]
-\centering
-\footnotesize
-\setlength{\tabcolsep}{4pt}
-\caption{KB vs control on the \texttt{kb} suite. Top: composite $S$ and its
-parts; bottom: rubric diagnostics.}
-\label{tab:kb-vs-control}
-\begin{tabular}{@{}lrrr@{}}
-\toprule
-\textbf{Metric} & \textbf{K (kb)} & \textbf{N (ctrl)} & $\boldsymbol{\Delta}$ \\
-\midrule
-\multicolumn{4}{@{}l@{}}{\textit{Composite success score (Eq.~\ref{eq:success})}} \\
-$S$ (composite)         & 0.833 & 0.788 & $+$0.045 \\
-\quad Adequacy $Q_{\text{adeq}}$ & 0.962 & 1.000 & $-$0.038 \\
-\quad Token economy     & 0.610 & 0.465 & $+$0.145 \\
-\quad Speed             & 0.730 & 0.486 & $+$0.244 \\
-\midrule
-\multicolumn{4}{@{}l@{}}{\textit{Rubric diagnostics (secondary)}} \\
-Pass rate ($c,u \geq 3$) & 1.000 & 1.000 & $+$0.000 \\
-Correctness & 3.55 & 4.00 & $-$0.45 \\
-Usefulness  & 4.00 & 4.00 & $+$0.00 \\
-Evidence    & 4.00 & 4.00 & $+$0.00 \\
-Tokens (8Q) & 390k & 535k$^\dagger$ & \\
-Time (8Q)   & 162s & 309s & \\
-\bottomrule
-\end{tabular}
-\end{table}
+\noindent\textbf{Interpretation.}  On the KB self-check target, the optimized
+build produces identical fact, document, and edge counts and matches pass rate.
+On raylib, the optimized build produces identical fact and document counts; its
+graph differs by only two edges out of \LatestRaylibMainEdges{}, with unchanged
+pass rate and slightly higher mean correctness in this judge sample.  These
+results show no measured quality regression in the latest build-under-test runs.
 
-\noindent$^\dagger$Control weighted total:
-$311{,}619 + 31{,}046 + 0.1 \times 1{,}920{,}473 \approx 535$\,k (prompt-cache reads
-discounted at $0.1$, matching MOEL $L_\text{resource}$).
-
-\noindent\textbf{Interpretation.}  Under adequacy-weighted scoring, KB \textbf{wins
-the headline composite} ($\Delta S = +0.045$): control still leads on raw
-correctness ($\bar{c} = 4.0$ vs.\ $3.55$), but pass rate is tied at 1.0 and the
-$\varphi_\tau$ transform compresses the quality gap to $\approx 0.04$ on
-$Q_{\text{adeq}}$.  KB's ${\sim}$1.9$\times$ wall-clock advantage and ${\sim}$1.4$\times$
-lower weighted token footprint dominate under 30/10 cost weights.  KB matches
-control on usefulness and evidence handling (4.0).  Weakest kb questions vs.\
-control: overview enumeration (Q1), init indexing detail (Q2), and retrieval
-architecture (Q4).
+\medskip
+\noindent\textbf{Control status.}  The latest run does not report $\Delta S$
+because \LatestControlStatus{}.  Earlier K-vs-N numbers are therefore not used as
+headline claims in this revision; they should be regenerated as paired artifacts
+before making a current control-vs-KB claim.

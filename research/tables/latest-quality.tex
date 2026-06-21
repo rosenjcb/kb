@@ -1,0 +1,19 @@
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\caption{Latest query quality diagnostics (\LatestResultsDate; \LatestResultsJudge{}). Target repos are fixed snapshots; only the \texttt{kb} binary changes. Fresh paired real-agent controls were not collected in this run.}
+\label{tab:latest-quality}
+\begin{tabular}{@{}llrrrr@{}}
+\toprule
+\textbf{Target} & \textbf{Condition} & \textbf{Correctness} & \textbf{Pass rate} & \textbf{Docs} & \textbf{Edges} \\
+\midrule
+\LatestKbTarget & Main KB build & \LatestKbMainCorrectness & \LatestKbMainPass & \LatestKbDocs & \LatestKbEdges \\
+\LatestKbTarget & Optimized KB build & \LatestKbFeatureCorrectness & \LatestKbFeaturePass & \LatestKbDocs & \LatestKbEdges \\
+\LatestKbTarget & Control (N) & \multicolumn{4}{l}{\LatestControlStatus} \\
+\LatestRaylibTarget & Main KB build & \LatestRaylibMainCorrectness & \LatestRaylibMainPass & \LatestRaylibDocs & \LatestRaylibMainEdges \\
+\LatestRaylibTarget & Optimized KB build & \LatestRaylibFeatureCorrectness & \LatestRaylibFeaturePass & \LatestRaylibDocs & \LatestRaylibFeatureEdges \\
+\LatestRaylibTarget & Control (N) & \multicolumn{4}{l}{\LatestControlStatus} \\
+\bottomrule
+\end{tabular}
+\end{table*}

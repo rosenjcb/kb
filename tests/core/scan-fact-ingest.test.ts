@@ -196,4 +196,31 @@ describe('OKF resource scoping', () => {
       db.close()
     }
   })
+
+  it('anchors a segment to a global exported symbol when no resource is set', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-global-anchor-'))
+    tempDirs.push(baseDir)
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    seedCodeFact(dbPath, 'ast:src/ui/widget.ts@WidgetRenderer', 'WidgetRenderer', 'src/ui/widget.ts')
+
+    await ingestSourceMarkdownFilesAsFacts({
+      baseDir,
+      files: {
+        'docs/WIDGET.md':
+          '# Widget\n\nThe widget renderer owns the control panel rendering lifecycle for the application shell.',
+      },
+      matchAstNodes: true,
+    })
+
+    const db = new DatabaseSync(dbPath, { readOnly: true })
+    try {
+      const objs = db
+        .prepare("SELECT object FROM facts WHERE source_ref LIKE 'docs/WIDGET.md#%'")
+        .all()
+        .map(r => (r as { object: string }).object)
+      expect(objs).toContain('WidgetRenderer')
+    } finally {
+      db.close()
+    }
+  })
 })

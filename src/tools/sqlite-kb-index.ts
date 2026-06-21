@@ -258,6 +258,7 @@ export class SqliteKbIndexer {
   private readonly db: DatabaseSync
   private readonly modelId: string
   private readonly vectorDimensions: number
+  private transactionDepth = 0
   /** Repo slug applied to facts that don't set one explicitly (multi-repo provenance). */
   private activeGitRepo: string | null = null
 
@@ -279,10 +280,27 @@ export class SqliteKbIndexer {
     this.activeGitRepo = slug
   }
 
+  async runInTransaction<T>(fn: () => T | Promise<T>): Promise<T> {
+    if (this.transactionDepth > 0) return await fn()
+    this.db.exec('BEGIN')
+    this.transactionDepth = 1
+    try {
+      const result = await fn()
+      this.db.exec('COMMIT')
+      return result
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    } finally {
+      this.transactionDepth = 0
+    }
+  }
+
   upsertFact(input: FactUpsertInput): { id: string; operation: 'inserted' | 'updated' } {
     const now = dayjs().toISOString()
     const gitRepo = input.gitRepo ?? this.activeGitRepo
     const normalized = normalizeFactText(input.factText)
+    const factText = input.factText.trim()
     const raw = input.triplet
     let subject: string
     let predicate: string
@@ -312,7 +330,7 @@ export class SqliteKbIndexer {
         `
         )
         .run(
-          input.factText.trim(),
+          factText,
           input.sourceKind,
           input.sourceRef ?? null,
           input.confidence ?? 0.8,
@@ -324,8 +342,8 @@ export class SqliteKbIndexer {
           gitRepo,
           existing.id
         )
-      this.rebuildFactIndexes(existing.id, input.factText.trim(), now)
-      this.rebuildFactGraph(existing.id, input.factText.trim(), now)
+      this.rebuildFactIndexes(existing.id, factText, now)
+      this.rebuildFactGraph(existing.id, factText, now)
       return { id: existing.id, operation: 'updated' }
     }
 
@@ -341,7 +359,7 @@ export class SqliteKbIndexer {
       )
       .run(
         id,
-        input.factText.trim(),
+        factText,
         normalized,
         input.sourceKind,
         input.sourceRef ?? null,
@@ -355,8 +373,8 @@ export class SqliteKbIndexer {
         input.sourceText ?? null,
         gitRepo
       )
-    this.rebuildFactIndexes(id, input.factText.trim(), now)
-    this.rebuildFactGraph(id, input.factText.trim(), now)
+    this.rebuildFactIndexes(id, factText, now)
+    this.rebuildFactGraph(id, factText, now)
     return { id, operation: 'inserted' }
   }
 

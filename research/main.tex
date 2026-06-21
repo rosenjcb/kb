@@ -19,6 +19,7 @@
 
 %% ─── Version (auto-updated by scripts/update-research-version.mjs) ──────────
 \input{version}
+\input{tables/latest_results}
 
 %% ─── Title block + section spacing (SWE-agent-style rhythm) ────────────────
 \makeatletter
@@ -86,11 +87,12 @@
   diminishing returns above $\tau{=}3$) with token economy and latency, scored
   identically for KB-equipped and control runs.  The project grade is
   $\Delta S = S_K - S_N$ from a single eval artifact (Eq.~\ref{eq:delta-s}).
-  On the \texttt{kb} self-check suite, a paired harvest
-  (run \texttt{kb-2026-06-13-1747}, June 2026) yields $\Delta S = +0.128$---\textbf{ahead
-  of control} ($S_K = 0.888$, $S_N = 0.760$)---while \texttt{kb query} completes
-  eight questions in 128\,s at ${\sim}$120\,k tokens versus 416\,s for a Cursor
-  agent with no KB (control weighted tokens ${\sim}$569\,k after cache discount).
+  In the latest build-under-test evaluation (\LatestResultsDate), the optimized
+  KB build preserves query quality on both the \texttt{kb} self-check and
+  \texttt{raylib} suites while producing the same fact and document counts as the
+  main build.  Fresh real-agent control rows were \LatestControlStatus{}, so the
+  current paper reports build-to-build behavior and marks paired $\Delta S$
+  control claims as pending.
 
   \vspace{0.85em}
 ]

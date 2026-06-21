@@ -101,7 +101,7 @@ export class TsMorphIndexer {
       project.addSourceFilesAtPaths(opts.candidateFiles.map(f => path.join(repoRoot, f)))
     }
 
-    const indexFile = (sf: ReturnType<typeof project.getSourceFiles>[number]) => {
+    const indexFile = async (sf: ReturnType<typeof project.getSourceFiles>[number]) => {
       const abs = sf.getFilePath()
       const rel = relPath(repoRoot, abs)
       const contentHash = hashFile(abs)
@@ -112,114 +112,116 @@ export class TsMorphIndexer {
         return
       }
 
-      // Exported symbol facts
-      for (const [exportName, decls] of sf.getExportedDeclarations()) {
-        if (!decls.length) continue
-        const decl = decls[0]
-        if (!decl) continue
+      await this.factIndexer.runInTransaction(() => {
+        // Exported symbol facts
+        for (const [exportName, decls] of sf.getExportedDeclarations()) {
+          if (!decls.length) continue
+          const decl = decls[0]
+          if (!decl) continue
 
-        const subkind = decl.getKindName().replace(/Declaration$/, '')
-        const rawText = decl.getText()
-        const sourceText = rawText.length > 1500 ? `${rawText.slice(0, 1497)}…` : rawText
-        const sourceRef = `ast:${rel}@${exportName}`
-        stats.sourceRefs.add(sourceRef)
-
-        // For variable declarations (constants), include value in fact text
-        let factText = `${exportName} is a ${subkind} exported from ${rel}`
-        if (Node.isVariableDeclaration(decl)) {
-          const valueText = extractSimpleInitializerText(decl.getInitializer()?.getText())
-          if (valueText) factText = `${exportName} is a constant with value ${valueText} exported from ${rel}`
-        }
-
-        upsertCodeFileFact(
-          this.factIndexer,
-          sourceRef,
-          factText,
-          { subject: exportName, predicate: 'exported_from', object: rel },
-          0.65,
-          sourceText
-        )
-        stats.symbols++
-      }
-
-      // Module-level non-exported constants with literal values
-      for (const vs of sf.getVariableStatements()) {
-        if (vs.isExported()) continue
-        if (vs.getDeclarationKind().toString() !== 'const') continue
-        for (const vd of vs.getDeclarations()) {
-          const name = vd.getName()
-          const valueText = extractSimpleInitializerText(vd.getInitializer()?.getText())
-          if (!valueText) continue
-          const sourceRef = `ast:const:${rel}@${name}`
+          const subkind = decl.getKindName().replace(/Declaration$/, '')
+          const rawText = decl.getText()
+          const sourceText = rawText.length > 1500 ? `${rawText.slice(0, 1497)}…` : rawText
+          const sourceRef = `ast:${rel}@${exportName}`
           stats.sourceRefs.add(sourceRef)
+
+          // For variable declarations (constants), include value in fact text
+          let factText = `${exportName} is a ${subkind} exported from ${rel}`
+          if (Node.isVariableDeclaration(decl)) {
+            const valueText = extractSimpleInitializerText(decl.getInitializer()?.getText())
+            if (valueText) factText = `${exportName} is a constant with value ${valueText} exported from ${rel}`
+          }
+
           upsertCodeFileFact(
             this.factIndexer,
             sourceRef,
-            `${name} is a constant with value ${valueText} in ${rel}`,
-            { subject: name, predicate: 'defined_in', object: rel },
-            0.6,
-            vd.getText()
+            factText,
+            { subject: exportName, predicate: 'exported_from', object: rel },
+            0.65,
+            sourceText
           )
           stats.symbols++
         }
-      }
 
-      // IMPORTS_FILE facts (bridges between file clusters)
-      for (const imp of sf.getImportDeclarations()) {
-        const target = imp.getModuleSpecifierSourceFile()
-        if (!target || target.isDeclarationFile() || target.isInNodeModules()) continue
-        const targetRel = relPath(repoRoot, target.getFilePath())
-        const sourceRef = `ast:import:${sha1(`${rel}→${targetRel}`)}`
-        stats.sourceRefs.add(sourceRef)
-        upsertCodeFileFact(
-          this.factIndexer,
-          sourceRef,
-          `${rel} imports ${targetRel}`,
-          { subject: rel, predicate: 'imports', object: targetRel },
-          0.3
-        )
-        stats.edges++
-      }
-
-      // EXTENDS / IMPLEMENTS structural facts
-      for (const [exportName, decls] of sf.getExportedDeclarations()) {
-        if (!decls.length) continue
-        const decl = decls[0]
-        if (!decl || !Node.isClassDeclaration(decl)) continue
-
-        const base = decl.getBaseClass()
-        if (base) {
-          const baseName = base.getName()
-          const baseSourceFile = base.getSourceFile()
-          if (baseName && baseSourceFile) {
-            const sourceRef = `ast:edge:${sha1(`${rel}@${exportName}:extends:${baseName}`)}`
+        // Module-level non-exported constants with literal values
+        for (const vs of sf.getVariableStatements()) {
+          if (vs.isExported()) continue
+          if (vs.getDeclarationKind().toString() !== 'const') continue
+          for (const vd of vs.getDeclarations()) {
+            const name = vd.getName()
+            const valueText = extractSimpleInitializerText(vd.getInitializer()?.getText())
+            if (!valueText) continue
+            const sourceRef = `ast:const:${rel}@${name}`
             stats.sourceRefs.add(sourceRef)
             upsertCodeFileFact(
               this.factIndexer,
               sourceRef,
-              `${exportName} extends ${baseName} in ${rel}`,
-              { subject: exportName, predicate: 'extends', object: baseName },
+              `${name} is a constant with value ${valueText} in ${rel}`,
+              { subject: name, predicate: 'defined_in', object: rel },
+              0.6,
+              vd.getText()
+            )
+            stats.symbols++
+          }
+        }
+
+        // IMPORTS_FILE facts (bridges between file clusters)
+        for (const imp of sf.getImportDeclarations()) {
+          const target = imp.getModuleSpecifierSourceFile()
+          if (!target || target.isDeclarationFile() || target.isInNodeModules()) continue
+          const targetRel = relPath(repoRoot, target.getFilePath())
+          const sourceRef = `ast:import:${sha1(`${rel}→${targetRel}`)}`
+          stats.sourceRefs.add(sourceRef)
+          upsertCodeFileFact(
+            this.factIndexer,
+            sourceRef,
+            `${rel} imports ${targetRel}`,
+            { subject: rel, predicate: 'imports', object: targetRel },
+            0.3
+          )
+          stats.edges++
+        }
+
+        // EXTENDS / IMPLEMENTS structural facts
+        for (const [exportName, decls] of sf.getExportedDeclarations()) {
+          if (!decls.length) continue
+          const decl = decls[0]
+          if (!decl || !Node.isClassDeclaration(decl)) continue
+
+          const base = decl.getBaseClass()
+          if (base) {
+            const baseName = base.getName()
+            const baseSourceFile = base.getSourceFile()
+            if (baseName && baseSourceFile) {
+              const sourceRef = `ast:edge:${sha1(`${rel}@${exportName}:extends:${baseName}`)}`
+              stats.sourceRefs.add(sourceRef)
+              upsertCodeFileFact(
+                this.factIndexer,
+                sourceRef,
+                `${exportName} extends ${baseName} in ${rel}`,
+                { subject: exportName, predicate: 'extends', object: baseName },
+                0.7
+              )
+              stats.edges++
+            }
+          }
+
+          for (const iface of decl.getImplements()) {
+            const ifaceName = iface.getExpression().getText().split('<')[0] ?? ''
+            if (!ifaceName) continue
+            const sourceRef = `ast:edge:${sha1(`${rel}@${exportName}:implements:${ifaceName}`)}`
+            stats.sourceRefs.add(sourceRef)
+            upsertCodeFileFact(
+              this.factIndexer,
+              sourceRef,
+              `${exportName} implements ${ifaceName} in ${rel}`,
+              { subject: exportName, predicate: 'implements', object: ifaceName },
               0.7
             )
             stats.edges++
           }
         }
-
-        for (const iface of decl.getImplements()) {
-          const ifaceName = iface.getExpression().getText().split('<')[0] ?? ''
-          if (!ifaceName) continue
-          const sourceRef = `ast:edge:${sha1(`${rel}@${exportName}:implements:${ifaceName}`)}`
-          stats.sourceRefs.add(sourceRef)
-          upsertCodeFileFact(
-            this.factIndexer,
-            sourceRef,
-            `${exportName} implements ${ifaceName} in ${rel}`,
-            { subject: exportName, predicate: 'implements', object: ifaceName },
-            0.7
-          )
-          stats.edges++
-        }
-      }
+      })
 
       upsertCodeFileState(this.db, rel, contentHash, 'ts-morph')
       stats.files++
@@ -238,7 +240,7 @@ export class TsMorphIndexer {
         if (!candidateSet.has(rel)) continue
       }
       try {
-        indexFile(sf)
+        await indexFile(sf)
       } catch {
         stats.errors++
       }
