@@ -101,25 +101,18 @@ function scoreSegmentInScope(segment: string, candidates: ScopeCandidate[]): Sco
   return bestScore > 0 ? best : null
 }
 
-interface ResourceScope {
-  kind: 'file' | 'dir'
-  candidates: ScopeCandidate[]
-  /** Exported symbol names of the scope, seeded as doc-fact concepts (capped). */
-  symbols: string[]
-}
-
 /**
  * Resolve an OKF `resource` (e.g. `./src/foo.ts` or `./src/core`) to the exported-symbol code
- * facts of that file/dir in the same repo. Returns null when it does not resolve to known code
- * (caller then falls back to the global nearest-symbol match). Code facts use the
- * `ast:<relPath>@<symbol>` source_ref convention (`code-graph-indexer.ts`).
+ * facts of that file/dir in the same repo, as scorable candidates. Returns null when it does not
+ * resolve to known code (caller then falls back to the global nearest-symbol match). Code facts
+ * use the `ast:<relPath>@<symbol>` source_ref convention (`code-graph-indexer.ts`).
  */
 function resolveResourceScope(
   indexer: SqliteKbIndexer,
   docRelPath: string,
   resource: string,
   gitRepo: string | undefined
-): ResourceScope | null {
+): ScopeCandidate[] | null {
   const normalized = resource.trim().replace(/^\.\//, '').replace(/\/+$/, '')
   if (!normalized || normalized.startsWith('/') || normalized.startsWith('..')) return null
 
@@ -131,18 +124,12 @@ function resolveResourceScope(
   const sameRepo = (a: string | null) => (a ?? null) === (gitRepo ?? null)
 
   for (const p of candidatePaths) {
-    for (const [kind, prefix] of [
-      ['file', `ast:${p}@`],
-      ['dir', `ast:${p}/`],
-    ] as const) {
+    // `ast:<path>@` selects a single file's symbols; `ast:<path>/` selects a directory's.
+    for (const prefix of [`ast:${p}@`, `ast:${p}/`]) {
       const rows = indexer
         .listActiveFactsBySourceRefPrefix(prefix)
         .filter(f => f.predicate === 'exported_from' && f.tombstoned_at === null && sameRepo(f.git_repo))
-      if (rows.length > 0) {
-        const candidates = rows.map(buildScopeCandidate)
-        const symbols = [...new Set(rows.map(r => r.subject).filter(Boolean))].slice(0, 8)
-        return { kind, candidates, symbols }
-      }
+      if (rows.length > 0) return rows.map(buildScopeCandidate)
     }
   }
   return null
@@ -210,9 +197,8 @@ export async function ingestSourceMarkdownFilesAsFacts(
       if (!raw.trim()) continue
       const sourceLabel = path.basename(relPath, path.extname(relPath))
 
-      // OKF resource scoping: when a doc names a code file/dir, anchor its segments to that
-      // scope's symbols and seed those symbols as concepts so the standard `concept_overlap`
-      // join lands the doc in the right region of the one graph (no doc-specific edge type).
+      // OKF resource scoping: when a doc names a code file/dir, anchor its segments to a symbol
+      // from that file/dir only, instead of guessing against the global exported-symbol pool.
       const resource = input.matchAstNodes
         ? parseOkfDocument(raw).frontmatter?.resource
         : undefined
@@ -229,7 +215,7 @@ export async function ingestSourceMarkdownFilesAsFacts(
         let triplet = placeholderTripletFromFactText(factText)
         if (scope) {
           // Precise: match only against the resource's symbols, never the global pool.
-          const match = scoreSegmentInScope(factText, scope.candidates)
+          const match = scoreSegmentInScope(factText, scope)
           if (match) {
             triplet = { subject: sourceLabel, predicate: 'relatesTo', object: match.subject }
           }
@@ -251,8 +237,6 @@ export async function ingestSourceMarkdownFilesAsFacts(
           sourceRef,
           confidence: 0.55,
           gitRepo: input.gitRepo,
-          // Seed the file's symbols as concepts so this doc fact overlaps that file's code facts.
-          extraConcepts: scope?.symbols,
         })
         segmentsUpserted += 1
         processedSegments += 1

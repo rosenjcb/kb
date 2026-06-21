@@ -130,12 +130,6 @@ export interface FactUpsertInput {
   sourceText?: string
   /** Slug of the git repo this fact was indexed from (multi-repo provenance). */
   gitRepo?: string
-  /**
-   * Supplemental concept seeds merged into the fact's graph concepts (normalized the same
-   * way as text-derived concepts). Used to anchor a doc fact to a specific code file's
-   * symbols so the standard `concept_overlap` machinery links them in the one graph.
-   */
-  extraConcepts?: string[]
 }
 
 export interface FactRow {
@@ -331,7 +325,7 @@ export class SqliteKbIndexer {
           existing.id
         )
       this.rebuildFactIndexes(existing.id, input.factText.trim(), now)
-      this.rebuildFactGraph(existing.id, input.factText.trim(), now, input.extraConcepts)
+      this.rebuildFactGraph(existing.id, input.factText.trim(), now)
       return { id: existing.id, operation: 'updated' }
     }
 
@@ -362,7 +356,7 @@ export class SqliteKbIndexer {
         gitRepo
       )
     this.rebuildFactIndexes(id, input.factText.trim(), now)
-    this.rebuildFactGraph(id, input.factText.trim(), now, input.extraConcepts)
+    this.rebuildFactGraph(id, input.factText.trim(), now)
     return { id, operation: 'inserted' }
   }
 
@@ -1080,20 +1074,8 @@ export class SqliteKbIndexer {
       .run(factId, this.modelId, this.vectorDimensions, JSON.stringify(vector), now)
   }
 
-  private rebuildFactGraph(
-    factId: string,
-    factText: string,
-    now: string,
-    extraConcepts?: string[]
-  ): void {
-    // Seeded concepts (e.g. a doc's resource-file symbols) are normalized the same way as
-    // text-derived concepts so they line up with code facts' concept ids in `concept_overlap`.
-    const concepts = [
-      ...new Set([
-        ...extractConcepts(factText),
-        ...(extraConcepts ?? []).map(normalizeConceptId).filter(Boolean),
-      ]),
-    ].slice(0, 16)
+  private rebuildFactGraph(factId: string, factText: string, now: string): void {
+    const concepts = extractConcepts(factText)
     this.db.prepare('DELETE FROM fact_concepts WHERE fact_id = ?').run(factId)
     this.db
       .prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?')
