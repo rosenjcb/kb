@@ -1,6 +1,6 @@
 {
   "name": "kb",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "TypeScript-based agent harness with LLM provider abstraction",
   "type": "module",
   "private": true,

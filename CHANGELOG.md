@@ -1,5 +1,24 @@
 # kb
 
+## 0.10.0
+
+### Minor Changes
+
+- Use OKF `resource` to anchor doc facts to the code they describe, precisely, within
+  the one unified graph.
+
+  When an OKF doc's frontmatter `resource:` resolves to a code file/dir (via the
+  `ast:<path>@<symbol>` code-fact convention), `kb init` / `kb scan` now:
+
+  - seed that file's exported symbol names as concepts on the doc's facts, so the
+    existing `concept_overlap` machinery links them to that file's code facts — no new
+    edge type, no doc/code segregation; and
+  - pick each segment's anchor symbol from that file's symbols only, instead of the
+    global nearest-symbol FTS guess.
+
+  Docs without a resolvable `resource` are unchanged. `upsertFact` gains an optional
+  `extraConcepts` seed channel (merged into `fact_concepts` like text-derived concepts).
+
 ## 0.9.0
 
 ### Minor Changes

@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   ingestSourceMarkdownFilesAsFacts,
@@ -151,5 +152,150 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
     } finally {
       ix.close()
     }
+  })
+})
+
+describe('OKF resource scoping', () => {
+  function seedCodeFact(dbPath: string, sourceRef: string, subject: string, object: string): string {
+    const ix = new SqliteKbIndexer({ dbPath })
+    const r = ix.upsertFact({
+      factText: `${subject} is a Class exported from ${object}`,
+      triplet: { subject, predicate: 'exported_from', object },
+      sourceKind: 'import_code',
+      sourceRef,
+    })
+    ix.close()
+    return r.id
+  }
+
+  function conceptsFor(dbPath: string, factId: string): string[] {
+    const db = new DatabaseSync(dbPath, { readOnly: true })
+    try {
+      return db
+        .prepare('SELECT concept_id FROM fact_concepts WHERE fact_id = ?')
+        .all(factId)
+        .map(r => (r as { concept_id: string }).concept_id)
+    } finally {
+      db.close()
+    }
+  }
+
+  function docFactId(dbPath: string, refPrefix: string): string {
+    const db = new DatabaseSync(dbPath, { readOnly: true })
+    try {
+      const row = db
+        .prepare('SELECT id FROM facts WHERE source_ref LIKE ? LIMIT 1')
+        .get(`${refPrefix}%`) as { id: string } | undefined
+      if (!row) throw new Error(`no doc fact for ${refPrefix}`)
+      return row.id
+    } finally {
+      db.close()
+    }
+  }
+
+  it('seeds the resource file symbols as concepts and links the doc fact to its code facts', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-okf-scope-'))
+    tempDirs.push(baseDir)
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    const codeId = seedCodeFact(
+      dbPath,
+      'ast:src/tools/indexer.ts@TreeSitterIndexer',
+      'TreeSitterIndexer',
+      'src/tools/indexer.ts'
+    )
+
+    // Body intentionally shares NO token with the code fact — only the seeded symbol can link them.
+    const doc =
+      '---\ntype: Module\ntitle: Indexer\nresource: ./src/tools/indexer.ts\n---\n\n' +
+      '# Indexer\n\nThe module parses every project file into a graph during the build phase.'
+    await ingestSourceMarkdownFilesAsFacts({
+      baseDir,
+      files: { 'src/tools/INDEXER.md': doc },
+      matchAstNodes: true,
+    })
+
+    const docId = docFactId(dbPath, 'src/tools/INDEXER.md#')
+    expect(conceptsFor(dbPath, docId)).toContain('treesitterindexer')
+
+    const db = new DatabaseSync(dbPath, { readOnly: true })
+    try {
+      const edge = db
+        .prepare(
+          "SELECT 1 FROM fact_edges WHERE edge_type = 'concept_overlap' AND " +
+            '((from_fact_id = ? AND to_fact_id = ?) OR (from_fact_id = ? AND to_fact_id = ?)) LIMIT 1'
+        )
+        .get(docId, codeId, codeId, docId)
+      expect(edge).toBeTruthy()
+    } finally {
+      db.close()
+    }
+  })
+
+  it('anchors a segment to the in-resource symbol, never a global one', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-okf-anchor-'))
+    tempDirs.push(baseDir)
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    seedCodeFact(dbPath, 'ast:src/ui/widget.ts@Widget', 'Widget', 'src/ui/widget.ts')
+    seedCodeFact(dbPath, 'ast:src/other/factory.ts@WidgetFactory', 'WidgetFactory', 'src/other/factory.ts')
+
+    const doc =
+      '---\ntype: Module\ntitle: Widget\nresource: ./src/ui/widget.ts\n---\n\n' +
+      '# Widget\n\nThe widget renders the main control panel for the running application.'
+    await ingestSourceMarkdownFilesAsFacts({
+      baseDir,
+      files: { 'src/ui/WIDGET.md': doc },
+      matchAstNodes: true,
+    })
+
+    const db = new DatabaseSync(dbPath, { readOnly: true })
+    try {
+      const objs = db
+        .prepare("SELECT object FROM facts WHERE source_ref LIKE 'src/ui/WIDGET.md#%'")
+        .all()
+        .map(r => (r as { object: string }).object)
+      expect(objs).toContain('Widget')
+      expect(objs).not.toContain('WidgetFactory')
+    } finally {
+      db.close()
+    }
+  })
+
+  it('does not seed concepts when matchAstNodes is off (no regression)', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-okf-off-'))
+    tempDirs.push(baseDir)
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    seedCodeFact(
+      dbPath,
+      'ast:src/tools/indexer.ts@TreeSitterIndexer',
+      'TreeSitterIndexer',
+      'src/tools/indexer.ts'
+    )
+
+    const doc =
+      '---\ntype: Module\nresource: ./src/tools/indexer.ts\n---\n\n' +
+      '# Indexer\n\nThe module parses every project file into a graph during the build phase.'
+    await ingestSourceMarkdownFilesAsFacts({
+      baseDir,
+      files: { 'src/tools/INDEXER.md': doc },
+    })
+
+    expect(conceptsFor(dbPath, docFactId(dbPath, 'src/tools/INDEXER.md#'))).not.toContain(
+      'treesitterindexer'
+    )
+  })
+
+  it('upsertFact merges extraConcepts into fact_concepts (normalized like text concepts)', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-extra-concepts-'))
+    tempDirs.push(baseDir)
+    const dbPath = path.join(baseDir, '.kb-index.sqlite')
+    const ix = new SqliteKbIndexer({ dbPath })
+    const r = ix.upsertFact({
+      factText: 'A doc sentence about the rendering pipeline used in production here today.',
+      sourceKind: 'import_doc',
+      sourceRef: 'X.md#s0',
+      extraConcepts: ['TreeSitterIndexer'],
+    })
+    ix.close()
+    expect(conceptsFor(dbPath, r.id)).toContain('treesitterindexer')
   })
 })

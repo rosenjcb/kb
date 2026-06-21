@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import { tombstoneDocFactsForFile } from './doc-fact-writer'
 import { placeholderTripletFromFactText } from './fact-triplet-placeholder'
+import { parseOkfDocument } from './okf'
 import { segmentMarkdownForFacts } from './sentence-split'
 import { yieldEvery } from './yield'
 
@@ -46,6 +47,105 @@ interface CodeFactRow {
   id: string
   subject: string
   object: string | null
+}
+
+/** Lowercased word tokens (≥3 chars, non-numeric) — same shape as `ftsQueryFromText` terms. */
+function scopeTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/\W+/)
+    .filter(t => t.length >= 3 && !/^\d+$/.test(t))
+}
+
+interface ScopeCandidate {
+  subject: string
+  /** token → max weight it appears at (subject=3, object/fact_text=1). */
+  weights: Map<string, number>
+}
+
+function buildScopeCandidate(row: { subject: string; object: string; fact_text: string }): ScopeCandidate {
+  const weights = new Map<string, number>()
+  const add = (text: string, w: number) => {
+    for (const tok of scopeTokens(text)) {
+      if ((weights.get(tok) ?? 0) < w) weights.set(tok, w)
+    }
+  }
+  add(row.fact_text, 1)
+  add(row.object, 1)
+  add(row.subject, 3)
+  return { subject: row.subject, weights }
+}
+
+/** Best in-scope symbol for a segment by weighted token overlap; null when nothing overlaps. */
+function scoreSegmentInScope(segment: string, candidates: ScopeCandidate[]): ScopeCandidate | null {
+  const segTokens = new Set(scopeTokens(segment))
+  if (segTokens.size === 0) return null
+  let best: ScopeCandidate | null = null
+  let bestScore = 0
+  for (const cand of candidates) {
+    let score = 0
+    for (const tok of segTokens) score += cand.weights.get(tok) ?? 0
+    if (score > bestScore) {
+      best = cand
+      bestScore = score
+    } else if (score === bestScore && score > 0 && best) {
+      // Tie: prefer the more specific (shorter) symbol, then lexicographic for determinism.
+      if (
+        cand.subject.length < best.subject.length ||
+        (cand.subject.length === best.subject.length && cand.subject < best.subject)
+      ) {
+        best = cand
+      }
+    }
+  }
+  return bestScore > 0 ? best : null
+}
+
+interface ResourceScope {
+  kind: 'file' | 'dir'
+  candidates: ScopeCandidate[]
+  /** Exported symbol names of the scope, seeded as doc-fact concepts (capped). */
+  symbols: string[]
+}
+
+/**
+ * Resolve an OKF `resource` (e.g. `./src/foo.ts` or `./src/core`) to the exported-symbol code
+ * facts of that file/dir in the same repo. Returns null when it does not resolve to known code
+ * (caller then falls back to the global nearest-symbol match). Code facts use the
+ * `ast:<relPath>@<symbol>` source_ref convention (`code-graph-indexer.ts`).
+ */
+function resolveResourceScope(
+  indexer: SqliteKbIndexer,
+  docRelPath: string,
+  resource: string,
+  gitRepo: string | undefined
+): ResourceScope | null {
+  const normalized = resource.trim().replace(/^\.\//, '').replace(/\/+$/, '')
+  if (!normalized || normalized.startsWith('/') || normalized.startsWith('..')) return null
+
+  const docDir = path.posix.dirname(docRelPath.replace(/\\/g, '/'))
+  const candidatePaths = new Set<string>([normalized])
+  const joined = path.posix.normalize(path.posix.join(docDir === '.' ? '' : docDir, normalized))
+  if (joined && !joined.startsWith('..')) candidatePaths.add(joined)
+
+  const sameRepo = (a: string | null) => (a ?? null) === (gitRepo ?? null)
+
+  for (const p of candidatePaths) {
+    for (const [kind, prefix] of [
+      ['file', `ast:${p}@`],
+      ['dir', `ast:${p}/`],
+    ] as const) {
+      const rows = indexer
+        .listActiveFactsBySourceRefPrefix(prefix)
+        .filter(f => f.predicate === 'exported_from' && f.tombstoned_at === null && sameRepo(f.git_repo))
+      if (rows.length > 0) {
+        const candidates = rows.map(buildScopeCandidate)
+        const symbols = [...new Set(rows.map(r => r.subject).filter(Boolean))].slice(0, 8)
+        return { kind, candidates, symbols }
+      }
+    }
+  }
+  return null
 }
 
 /**
@@ -109,6 +209,17 @@ export async function ingestSourceMarkdownFilesAsFacts(
       segmentsTombstoned += tombstoneDocFactsForFile(indexer, refPath)
       if (!raw.trim()) continue
       const sourceLabel = path.basename(relPath, path.extname(relPath))
+
+      // OKF resource scoping: when a doc names a code file/dir, anchor its segments to that
+      // scope's symbols and seed those symbols as concepts so the standard `concept_overlap`
+      // join lands the doc in the right region of the one graph (no doc-specific edge type).
+      const resource = input.matchAstNodes
+        ? parseOkfDocument(raw).frontmatter?.resource
+        : undefined
+      const scope = resource
+        ? resolveResourceScope(indexer, relPath, resource, input.gitRepo)
+        : null
+
       const segments = segmentMarkdownForFacts(raw).map(s => s.replace(/\s+/g, ' ').trim())
       let segIdx = 0
       for (const factText of segments) {
@@ -116,7 +227,13 @@ export async function ingestSourceMarkdownFilesAsFacts(
         segIdx += 1
 
         let triplet = placeholderTripletFromFactText(factText)
-        if (findNearest) {
+        if (scope) {
+          // Precise: match only against the resource's symbols, never the global pool.
+          const match = scoreSegmentInScope(factText, scope.candidates)
+          if (match) {
+            triplet = { subject: sourceLabel, predicate: 'relatesTo', object: match.subject }
+          }
+        } else if (findNearest) {
           const node = findNearest(factText)
           if (node) {
             triplet = {
@@ -134,6 +251,8 @@ export async function ingestSourceMarkdownFilesAsFacts(
           sourceRef,
           confidence: 0.55,
           gitRepo: input.gitRepo,
+          // Seed the file's symbols as concepts so this doc fact overlaps that file's code facts.
+          extraConcepts: scope?.symbols,
         })
         segmentsUpserted += 1
         processedSegments += 1
