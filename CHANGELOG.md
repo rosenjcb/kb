@@ -1,5 +1,18 @@
 # kb
 
+## 0.9.2
+
+### Patch Changes
+
+- Speed up the `kb init`/`kb scan` write phase. Original/source docs no longer
+  re-segment their content into facts when written to the SQLite store — those
+  facts are already produced (with AST-anchored triplets and `path#sN` provenance)
+  by the dedicated `document-facts` ingest pass. The doc writes are also batched
+  into a single transaction instead of fsync-ing per statement. This removes the
+  redundant per-segment fact churn that dominated the phase and also fixes a latent
+  bug where the redundant pass overwrote the `source_ref` that per-file fact
+  tombstoning relies on during rescans.
+
 ## 0.9.1
 
 ### Patch Changes
