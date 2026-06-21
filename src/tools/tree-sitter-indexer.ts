@@ -424,7 +424,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
       ?.map(file => file.replace(/\\/g, '/'))
       .filter(file => isTreeSitterIndexablePath(file))
 
-    const indexFile = (absPath: string) => {
+    const indexFile = async (absPath: string) => {
       const rel = relPath(repoRoot, absPath)
       const ext = path.extname(rel).toLowerCase()
       const langKey = EXT_MAP[ext]
@@ -469,56 +469,58 @@ export class TreeSitterIndexer implements LanguageIndexer {
       }
       if (tree == null) return
 
-      // Imports → IMPORTS_FILE bridge facts
-      for (const q of compiled.importQueries) {
-        for (const match of q.matches(tree.rootNode)) {
-          const importPath = match.captures[0]?.node.text
-          if (!importPath) continue
-          if (!importPath.startsWith('.') && !importPath.startsWith('/')) continue
-          const resolved = path.resolve(path.dirname(absPath), importPath)
-          const candidates = [resolved, `${resolved}.ts`, `${resolved}.tsx`, `${resolved}.js`, `${resolved}/index.ts`, `${resolved}/index.js`]
-          let targetRel: string | null = null
-          for (const c of candidates) {
-            try { statSync(c); targetRel = relPath(repoRoot, c); break } catch { /* noop */ }
+      await this.factIndexer.runInTransaction(() => {
+        // Imports → IMPORTS_FILE bridge facts
+        for (const q of compiled.importQueries) {
+          for (const match of q.matches(tree.rootNode)) {
+            const importPath = match.captures[0]?.node.text
+            if (!importPath) continue
+            if (!importPath.startsWith('.') && !importPath.startsWith('/')) continue
+            const resolved = path.resolve(path.dirname(absPath), importPath)
+            const candidates = [resolved, `${resolved}.ts`, `${resolved}.tsx`, `${resolved}.js`, `${resolved}/index.ts`, `${resolved}/index.js`]
+            let targetRel: string | null = null
+            for (const c of candidates) {
+              try { statSync(c); targetRel = relPath(repoRoot, c); break } catch { /* noop */ }
+            }
+            if (!targetRel) continue
+            const sourceRef = `ast:import:${sha1(`${rel}→${targetRel}`)}`
+            stats.sourceRefs.add(sourceRef)
+            upsertCodeFileFact(
+              this.factIndexer,
+              sourceRef,
+              `${rel} imports ${targetRel}`,
+              { subject: rel, predicate: 'imports', object: targetRel },
+              0.3
+            )
+            stats.edges++
           }
-          if (!targetRel) continue
-          const sourceRef = `ast:import:${sha1(`${rel}→${targetRel}`)}`
-          stats.sourceRefs.add(sourceRef)
-          upsertCodeFileFact(
-            this.factIndexer,
-            sourceRef,
-            `${rel} imports ${targetRel}`,
-            { subject: rel, predicate: 'imports', object: targetRel },
-            0.3
-          )
-          stats.edges++
         }
-      }
 
-      // Exports → symbol facts
-      for (const q of compiled.exportQueries) {
-        for (const match of q.matches(tree.rootNode)) {
-          const capture = match.captures.find(c => c.name === 'name') ?? match.captures[0]
-          const name = capture?.node.text
-          if (!name || !capture) continue
-          if (!isExported(name, compiled.config.goExportConvention)) continue
-          const nameNode = capture.node
-          const declNode = getDeclNode(nameNode)
-          const rawText = src.slice(declNode.startIndex, declNode.endIndex)
-          const sourceText = rawText.length > 1500 ? `${rawText.slice(0, 1497)}…` : rawText
-          const sourceRef = `ast:${rel}@${name}`
-          stats.sourceRefs.add(sourceRef)
-          upsertCodeFileFact(
-            this.factIndexer,
-            sourceRef,
-            `${name} is a ${nameNode.type} exported from ${rel}`,
-            { subject: name, predicate: 'exported_from', object: rel },
-            0.65,
-            sourceText
-          )
-          stats.symbols++
+        // Exports → symbol facts
+        for (const q of compiled.exportQueries) {
+          for (const match of q.matches(tree.rootNode)) {
+            const capture = match.captures.find(c => c.name === 'name') ?? match.captures[0]
+            const name = capture?.node.text
+            if (!name || !capture) continue
+            if (!isExported(name, compiled.config.goExportConvention)) continue
+            const nameNode = capture.node
+            const declNode = getDeclNode(nameNode)
+            const rawText = src.slice(declNode.startIndex, declNode.endIndex)
+            const sourceText = rawText.length > 1500 ? `${rawText.slice(0, 1497)}…` : rawText
+            const sourceRef = `ast:${rel}@${name}`
+            stats.sourceRefs.add(sourceRef)
+            upsertCodeFileFact(
+              this.factIndexer,
+              sourceRef,
+              `${name} is a ${nameNode.type} exported from ${rel}`,
+              { subject: name, predicate: 'exported_from', object: rel },
+              0.65,
+              sourceText
+            )
+            stats.symbols++
+          }
         }
-      }
+      })
 
       upsertCodeFileState(this.db, rel, contentHash, SOURCE)
     }
@@ -539,7 +541,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
         }
       }
       try {
-        indexFile(absPath)
+        await indexFile(absPath)
       } catch {
         stats.errors++
       }
