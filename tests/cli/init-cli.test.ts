@@ -651,7 +651,7 @@ describe('init-cli interview checkpoints', () => {
     expect(sourceFileKeys).toEqual(['AGENTS.md', 'README.md', 'docs/README.md'])
   })
 
-  it('Given Jekyll-generated docs, then read-inputs excludes published snapshots and export artifacts', async () => {
+  it('Given published snapshot docs, then read-inputs excludes published snapshots and export artifacts', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nReal repo overview.\n',
     })
@@ -665,7 +665,7 @@ describe('init-cli interview checkpoints', () => {
     })
 
     const result = await runKbInit({
-      base: 'exclude-jekyll-generated-docs',
+      base: 'exclude-published-snapshot-docs',
       nonInteractive: true,
       stopAfter: 'read-inputs',
       cwd,
