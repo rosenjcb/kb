@@ -1,0 +1,43 @@
+%% Auto-curated latest results for the KB paper.
+%% Keep all headline numbers here so abstract, results, and conclusion agree.
+
+\newcommand{\LatestResultsDate}{June 21, 2026}
+\newcommand{\LatestResultsJudge}{Gemini 2.5 Flash, averaged over three scorer calls}
+\newcommand{\LatestControlStatus}{not collected in the latest run (control-agent CLI unavailable)}
+
+%% Build-under-test benchmark: same target snapshot, different kb binary.
+%% Init/scan runtime macros are retained for generated artifacts and internal
+%% reporting, but the paper intentionally does not render them.
+\newcommand{\LatestKbTarget}{\texttt{kb} self-check}
+\newcommand{\LatestKbMainInitSeconds}{406.247}
+\newcommand{\LatestKbFeatureInitSeconds}{309.041}
+\newcommand{\LatestKbMainScanSeconds}{3.666}
+\newcommand{\LatestKbFeatureScanSeconds}{3.599}
+\newcommand{\LatestKbInitSpeedup}{24\%}
+\newcommand{\LatestKbFacts}{4{,}402}
+\newcommand{\LatestKbCodeFacts}{1{,}460}
+\newcommand{\LatestKbDocFacts}{2{,}942}
+\newcommand{\LatestKbDocs}{62}
+\newcommand{\LatestKbEdges}{97{,}448}
+\newcommand{\LatestKbMainCorrectness}{3.875}
+\newcommand{\LatestKbFeatureCorrectness}{3.875}
+\newcommand{\LatestKbMainPass}{1.000}
+\newcommand{\LatestKbFeaturePass}{1.000}
+
+\newcommand{\LatestRaylibTarget}{\texttt{raylib} commit \texttt{db0870f}}
+\newcommand{\LatestRaylibMainInitSeconds}{1{,}141.197}
+\newcommand{\LatestRaylibFeatureInitSeconds}{613.468}
+\newcommand{\LatestRaylibMainScanSeconds}{1.033}
+\newcommand{\LatestRaylibFeatureScanSeconds}{1.232}
+\newcommand{\LatestRaylibInitSpeedup}{46\%}
+\newcommand{\LatestRaylibFacts}{15{,}103}
+\newcommand{\LatestRaylibCodeFacts}{12{,}756}
+\newcommand{\LatestRaylibDocFacts}{2{,}347}
+\newcommand{\LatestRaylibDocs}{36}
+\newcommand{\LatestRaylibMainEdges}{322{,}630}
+\newcommand{\LatestRaylibFeatureEdges}{322{,}628}
+\newcommand{\LatestRaylibMainCorrectness}{3.625}
+\newcommand{\LatestRaylibFeatureCorrectness}{3.750}
+\newcommand{\LatestRaylibMainPass}{0.875}
+\newcommand{\LatestRaylibFeaturePass}{0.875}
+

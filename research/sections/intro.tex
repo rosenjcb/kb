@@ -66,13 +66,11 @@ contributions are:
     $L_\text{resource}$), bias-mitigated LLM jury scoring, and
     logistic-regression calibration on a 20-sample human-annotated set.
 
-  \item \textbf{Empirical results}: harvest evaluation compares condition~K
-    (\texttt{kb query}, one-shot synthesis) to condition~N (real coding agent, no KB)
-    via $\Delta S = S_K - S_N$ in a single artifact.  On the KB self-check suite
-    (run \texttt{kb-2026-06-13-1747}), KB is \textbf{ahead of control}
-    ($\Delta S = +0.128$; $S_K = 0.888$, $S_N = 0.760$): control leads on raw
-    rubric means, but adequacy-weighted quality compresses that gap; KB leads on
-    wall-clock speed (128\,s vs.\ 416\,s) and weighted tokens (120\,k vs.\ 569\,k).
+  \item \textbf{Empirical results}: build-under-test evaluation compares the
+    main and optimized KB binaries against fixed \texttt{kb} and \texttt{raylib}
+    repository snapshots.  The optimized build preserves pass rate on both
+    targets and keeps fact/document counts stable (Table~\ref{tab:latest-quality}).
+    Fresh K-vs-control $\Delta S$ rows are pending because \LatestControlStatus{}.
 \end{enumerate}
 
 %% ─── Figure: System Overview placeholder ─────────────────────────────────────

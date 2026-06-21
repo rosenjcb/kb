@@ -280,6 +280,18 @@ function kb(cwd, args, opts = {}) {
   })
 }
 
+function timed(label, timings, fn) {
+  const startedAt = new Date().toISOString()
+  const startMs = Date.now()
+  try {
+    return fn()
+  } finally {
+    const durationMs = Date.now() - startMs
+    timings.command_durations_ms[label] = durationMs
+    timings.commands.push({ label, started_at: startedAt, duration_ms: durationMs })
+  }
+}
+
 /** Returns true if the KB session already has at least one document. */
 function sessionHasDocs(targetCwd, base) {
   try {
@@ -574,6 +586,13 @@ async function main() {
     process.exit(1)
   }
 
+  const runTiming = {
+    commands: [],
+    command_durations_ms: {},
+    query_durations_ms: [],
+    query_total_duration_ms: null,
+  }
+
   if (!args.skipCapture) {
     console.error(`[eval] workdir ${workdir}`)
     console.error(`[eval] target cwd ${targetCwd}`)
@@ -584,12 +603,15 @@ async function main() {
     if (needsInit) {
       // kb init now requires a git remote. Point it at the local snapshot clone (exact commit,
       // no extra network); kb follows the clone's own default branch (main, master, …).
-      const initLog = kb(
-        targetCwd,
-        `init --base ${base} --git "${targetCwd}" --non-interactive --debug`
+      const initLog = timed('init', runTiming, () =>
+        kb(
+          targetCwd,
+          `init --base ${base} --git "${targetCwd}" --non-interactive --debug`
+        )
       )
       fs.writeFileSync(path.join(workdir, 'init.log'), initLog, 'utf8')
     } else {
+      runTiming.command_durations_ms.init = 0
       fs.writeFileSync(
         path.join(workdir, 'init.log'),
         `{"note":"query_only_mode","base":"${base}"}\n`,
@@ -598,31 +620,45 @@ async function main() {
     }
 
     console.error(`[eval] kb scan --base ${base}`)
-    const scanLog = kb(targetCwd, `scan --base ${base} --debug`)
+    const scanLog = timed('scan', runTiming, () => kb(targetCwd, `scan --base ${base} --debug`))
     fs.writeFileSync(path.join(workdir, 'scan.log'), scanLog, 'utf8')
 
     console.error(`[eval] kb base use --default ${base}`)
-    kb(targetCwd, `base use --default ${base}`, { stdio: 'inherit' })
+    timed('base_use_default', runTiming, () =>
+      kb(targetCwd, `base use --default ${base}`, { stdio: 'inherit' })
+    )
 
     console.error('[eval] docs list')
-    const docsOut = kb(targetCwd, `docs list --base ${base}`)
+    const docsOut = timed('docs_list', runTiming, () => kb(targetCwd, `docs list --base ${base}`))
     fs.writeFileSync(path.join(workdir, 'docs.txt'), docsOut, 'utf8')
 
     console.error('[eval] graph')
-    const graphOut = kb(targetCwd, `graph --base ${base}`)
+    const graphOut = timed('graph', runTiming, () => kb(targetCwd, `graph --base ${base}`))
     fs.writeFileSync(path.join(workdir, 'graph.txt'), graphOut, 'utf8')
 
     console.error('[eval] logs list')
-    const logsOut = kb(targetCwd, logsCmd(base))
+    const logsOut = timed('logs_list', runTiming, () => kb(targetCwd, logsCmd(base)))
     fs.writeFileSync(path.join(workdir, 'logs.txt'), logsOut, 'utf8')
 
     let q = 1
+    let queryTotalMs = 0
     for (const question of questions) {
       console.error(`[eval] query ${q}/8`)
       const escaped = question.replace(/"/g, '\\"')
-      const out = kb(targetCwd, `query "${escaped}" --base ${base}`)
+      const label = `query_${q}`
+      const out = timed(label, runTiming, () => kb(targetCwd, `query "${escaped}" --base ${base}`))
+      const durationMs = runTiming.command_durations_ms[label]
+      runTiming.query_durations_ms.push(durationMs)
+      queryTotalMs += durationMs
       fs.writeFileSync(path.join(workdir, `q${q}.json`), out, 'utf8')
       q++
+    }
+    runTiming.query_total_duration_ms = queryTotalMs
+    fs.writeFileSync(path.join(workdir, 'runtime.json'), JSON.stringify(runTiming, null, 2), 'utf8')
+  } else {
+    const runtimePath = path.join(workdir, 'runtime.json')
+    if (fs.existsSync(runtimePath)) {
+      Object.assign(runTiming, JSON.parse(fs.readFileSync(runtimePath, 'utf8')))
     }
   }
 
@@ -813,6 +849,7 @@ async function main() {
       workdir,
       run_dir: runDir,
       publish_dir: null,
+      runtime: runTiming,
       init_result: {
         status:
           evalMode === 'query'

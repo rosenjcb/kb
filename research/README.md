@@ -69,6 +69,8 @@ research/
     conclusion.tex      Conclusion
   tables/
     benchmark-alignment.tex   MOEL vs SWE Atlas / ContextBench / CodeScaleBench
+    latest_results.tex        Single source for headline result macros
+    latest-quality.tex        Query quality table driven by latest_results.tex
   figures/              Drop rendered figures here (PDF or PNG)
   generated/            Scratch space for auto-generated assets
 ```
