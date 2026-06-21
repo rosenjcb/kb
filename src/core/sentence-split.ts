@@ -5,6 +5,12 @@
 
 import { parseOkfDocument } from './okf'
 
+export interface SegmentMarkdownForFactsOptions {
+  minSegmentLength?: number
+  /** Merge adjacent short prose segments until they reach this size. */
+  mergeShortSegmentsBelow?: number
+}
+
 /** Extract fenced code block content as single collapsed segments (one per block). */
 function extractFencedCodeBlocks(text: string): string[] {
   const blocks: string[] = []
@@ -30,6 +36,42 @@ function splitEnglishSentences(line: string): string[] {
   return parts.filter(s => s.length > 0)
 }
 
+function normalizedLength(segment: string): number {
+  return segment.replace(/\s+/g, ' ').trim().length
+}
+
+function mergeShortSegments(
+  segments: string[],
+  minSegmentLength: number,
+  mergeShortSegmentsBelow: number | undefined
+): string[] {
+  if (!mergeShortSegmentsBelow || mergeShortSegmentsBelow <= minSegmentLength) {
+    return segments.filter(s => normalizedLength(s) >= minSegmentLength)
+  }
+
+  const merged: string[] = []
+  const pending: string[] = []
+  const flushPending = () => {
+    const joined = pending.join(' ').replace(/\s+/g, ' ').trim()
+    pending.length = 0
+    if (joined.length >= minSegmentLength) merged.push(joined)
+  }
+
+  for (const segment of segments) {
+    const normalized = segment.replace(/\s+/g, ' ').trim()
+    if (!normalized) continue
+    if (normalized.length >= mergeShortSegmentsBelow) {
+      flushPending()
+      merged.push(normalized)
+      continue
+    }
+    pending.push(normalized)
+    if (pending.join(' ').length >= mergeShortSegmentsBelow) flushPending()
+  }
+  flushPending()
+  return merged
+}
+
 /**
  * Extract ordered segments: fenced code blocks become one segment each (preserving
  * CLI examples, config snippets, etc.); headings and prose sentences follow.
@@ -39,7 +81,11 @@ function splitEnglishSentences(line: string): string[] {
  * body is then segmented exactly like plain markdown — OKF docs get no special
  * retrieval boost, kb just reads them cleanly.
  */
-export function segmentMarkdownForFacts(markdown: string): string[] {
+export function segmentMarkdownForFacts(
+  markdown: string,
+  options: SegmentMarkdownForFactsOptions = {}
+): string[] {
+  const minSegmentLength = options.minSegmentLength ?? 8
   const { body } = parseOkfDocument(markdown)
 
   const codeBlocks = extractFencedCodeBlocks(body)
@@ -55,9 +101,10 @@ export function segmentMarkdownForFacts(markdown: string): string[] {
     }
     prose.push(...splitEnglishSentences(line))
   }
-  return [...codeBlocks, ...prose].filter(
-    s => s.replace(/\s+/g, ' ').trim().length >= 8
-  )
+  return [
+    ...codeBlocks.filter(s => normalizedLength(s) >= minSegmentLength),
+    ...mergeShortSegments(prose, minSegmentLength, options.mergeShortSegmentsBelow),
+  ]
 }
 
 /** Validate that a fact string is a single sentence (one segment after trim). */

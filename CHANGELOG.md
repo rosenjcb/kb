@@ -1,5 +1,11 @@
 # kb
 
+## 0.9.1
+
+### Patch Changes
+
+- Speed up scan doc fact ingest with batched writes, cached symbol matching, deferred graph rebuilds, and coarser scan chunks.
+
 ## 0.9.0
 
 ### Minor Changes

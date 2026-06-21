@@ -26,6 +26,24 @@ describe('segmentMarkdownForFacts', () => {
     expect(segmentMarkdownForFacts('Hi. Ok.')).toEqual([])
   })
 
+  it('can merge short adjacent prose into coarser scan chunks', () => {
+    const md = [
+      '# Scan',
+      '',
+      'First short sentence about scan facts.',
+      'Second short sentence about graph rebuild.',
+      'Third sentence closes the paragraph with enough detail to survive.',
+    ].join('\n')
+    expect(
+      segmentMarkdownForFacts(md, {
+        minSegmentLength: 50,
+        mergeShortSegmentsBelow: 100,
+      })
+    ).toEqual([
+      'Scan First short sentence about scan facts. Second short sentence about graph rebuild. Third sentence closes the paragraph with enough detail to survive.',
+    ])
+  })
+
   it('strips the OKF frontmatter block and segments only the body (no boosting facts)', () => {
     const md = [
       '---',
