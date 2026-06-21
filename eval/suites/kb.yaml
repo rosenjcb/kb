@@ -5,115 +5,73 @@ display_name: kb
 repo_url: https://github.com/rosenjcb/kb.git
 rubric_focus: the **kb** local-first knowledge CLI/repo
 questions:
-  - What is kb for, and what are the main commands and capabilities it provides?
-  - How does kb init work, including the indexing phases and what gets written to the SQLite store?
-  - How does kb scan differ from kb init, and when should a contributor use each?
-  - How does retrieval work in kb query — including the hybrid search approach, graph involvement, and facts-first architecture?
-  - How does the skills system work — how are skills defined, bundled during build, and installed into agent profiles?
-  - Which AST indexers does kb use, what languages or file types does each handle, and how do they interact during code-index?
-  - What does the query-expansion module do, how does it improve recall, and which parts of the codebase call into it?
-  - How does the eval system work — what does npm run eval do, how is the session managed, and how are results scored?
+  - What problem does kb solve, and what is the normal workflow for creating, refreshing, and querying a knowledge base?
+  - What are the main phases of kb init, and what kinds of data does each phase add to the local store?
+  - How does kb scan refresh an existing base, and how is that different from creating a base with kb init?
+  - How are markdown documents turned into import_doc facts during init or scan?
+  - How does code indexing work at a high level, including the role of the TypeScript and tree-sitter indexers?
+  - How does kb query retrieve evidence from facts, FTS/vector scoring, and graph relationships?
+  - How are kb skills packaged and installed into supported agent environments?
+  - How does the eval runner exercise kb, from suite selection through init/scan/query and automatic scoring?
 answers:
   - >
-    kb is a local-first knowledge base CLI that indexes a codebase into a SQLite-backed knowledge
-    graph and answers natural-language questions about it using hybrid retrieval. It combines
-    deterministic AST indexing (ts-morph for TS/JS, tree-sitter for Go/Python/Rust/etc.) with
-    LLM-extracted doc facts stored in `.kb-index.sqlite`. A base tracks one or more git repos and
-    folds them into a single graph. Main commands: `kb init --git <url>` (clone + index one or more
-    git repos into a base), `kb scan` (pull + re-index the base's repos), `kb query`
-    (natural-language Q&A via hybrid retrieval), `kb facts` (list/search facts), `kb docs`
-    (inspect documents), `kb graph` (inspect/edit the knowledge graph), `kb publish` (publish to
-    Notion or Jekyll, requires `--apply`), `kb submit` (add/update facts in a live base), `kb base`
-    (manage sessions and their git repos: use, delete, repo add, repo remove, repo list).
-    A React/Ink TUI launches when run in a TTY with slash-command
-    autocomplete. Skills (kb:dev-workflow, kb:dump-context, kb:evaluation-run) install into Claude
-    Code, Cursor, Codex, and Copilot agent profiles.
+    kb is a local-first knowledge CLI for turning a repository into a queryable SQLite-backed
+    knowledge base. A typical workflow is: create a base with `kb init --git <repo>`, refresh the
+    tracked repos later with `kb scan`, and ask natural-language questions with `kb query`. Bases can
+    track one or more git repos and are managed with `kb base` and `kb base repo` commands. The
+    supporting commands expose the indexed facts, documents, graph, publishing, and installed skills,
+    but the core user loop is init, scan, query.
 
   - >
-    `kb init` requires at least one `--git <url>` (repeatable; supports `url#branch`). It clones
-    each repo into `~/.kb/sessions/<base>/repos/<slug>/` and runs 5 checkpointed cycles per repo:
-    (1) read-inputs — discovers markdown sources and ingests integration signals (package.json
-    deps, .env service refs); (2) code-index — runs TsMorphIndexer (TS/JS → IMPORTS_FILE,
-    EXPORTS_SYMBOL, EXTENDS, IMPLEMENTS facts with source_kind='import_code') and TreeSitterIndexer
-    (Go, Python, Rust, Ruby, Java, C, C++, C#, CSS, Bash, PHP, Scala, HTML etc.); (3) document-facts
-    — sentence-segments markdown into the facts table; (4) import-docs — writes one is_original doc
-    per markdown file into the documents table; (5) write — upserts documents. Every fact records
-    its originating repo in a `git_repo` column. After all repos index, a reconciliation pass adds
-    cross-repo `fact_edges` (depends_on_repo, cross_repo_symbol, references_repo) so the repos form
-    one connected graph. SQLite tables written: facts (with git_repo), fact_edges, facts_fts (FTS5),
-    fact_embeddings, documents, code_file_state. There is no category interview or fact_categories
-    table — facts are organised by repo, not by user-named categories.
+    `kb init` clones or registers the requested git repo(s), creates a session directory for the
+    base, and runs checkpointed indexing phases. The read-inputs phase discovers markdown and useful
+    repo signals. The code-index phase writes import_code facts and code relationships from AST
+    indexers. The document-facts phase segments markdown into deterministic import_doc facts. The
+    import-docs/write phases preserve original markdown documents in the local SQLite store. For
+    multi-repo bases, kb also records repo provenance and reconciles cross-repo relationships so the
+    graph can connect facts across repos.
 
   - >
-    `kb scan` pulls every git repo the base tracks and re-indexes the ones with changes, then
-    rebuilds the cross-repo links. Unlike the old behavior, it does not read the current working
-    directory — it operates on the base's cloned repos (under `~/.kb/sessions/<base>/repos/`).
-    Re-indexing is incremental (only files whose content hash changed per code_file_state) and
-    always applied. Use `kb init --git <url>` to create a base from one or more repos; use `kb scan`
-    for routine refreshes; use `kb base repo add <url>` to fold an additional repo into an existing
-    base (and `kb base repo remove` to drop one). Auto-sync runs the same per-repo refresh on
-    session load and before queries.
+    `kb scan` refreshes an existing base rather than creating one. It works over the repos already
+    tracked by the base, pulls or syncs them, detects changed source/code files by stored state such
+    as content hashes, and re-runs the relevant indexing work. Use `kb init --git <url>` to create a
+    new base, `kb scan` for routine refreshes, and `kb base repo add` or `kb base repo remove` to
+    change which repos belong to an existing base.
 
   - >
-    Retrieval is facts-first and multi-stage. First, `expandQueryWithGraph()` appends related terms:
-    exported symbols found via FTS5 search + 1-hop fact_edges neighbors, plus subject/object
-    LIKE-scan from the facts table — up to 26 extra terms. The facts-loop orchestrator then iterates
-    over exploration ponds (query sub-topics). Each iteration combines lexical FTS5 search, graph
-    neighbor expansion via fact_edges, and deterministic semantic scoring (cosine similarity between
-    a query embedding and stored fact_embeddings, weighted at 35%). Final score = lexical overlap +
-    semantic×0.35 + confidence + a repo-pool boost (facts from the landed repo rank highest, then
-    sibling repos by distance along the cross-repo edge tree; single-repo bases get no boost).
-    Retrieval is repo-scoped: it exhausts the repo the strongest hit lands in before walking the
-    cross-repo edges to other repos. Iteration stops at answerable_plateau confidence or when
-    all ponds are exhausted. The answer phase is multi-round: a quick intro first, then a
-    retrieval-tool call for deep retrieval, then a final comprehensive answer. Reported as
-    `hybrid (facts-loop;passes:N;ponds:N;semantic:on)`.
+    Markdown fact ingest is deterministic. `scan-fact-ingest` reads markdown source files, strips OKF
+    frontmatter when present, splits the body into sentence-like segments, and upserts each segment
+    as an import_doc fact with a stable source reference such as `path.md#s0`. During init/scan this
+    happens after code facts are available, so doc segments can optionally be anchored to relevant
+    exported symbols. Existing segment facts for a changed file are purged or tombstoned before the
+    file is re-ingested so removed text does not linger in retrieval.
 
   - >
-    Skills are markdown files in `skills/<name>/SKILL.md`. During build (scripts/build-cli.mjs)
-    each SKILL.md is copied to `dist/bin/<name>.skill.md` alongside the bundled binary.
-    At runtime, `src/skills/loader.ts` reads the skill: tries `<loaderDir>/<name>.skill.md`
-    (prod/dist), falls back to `../../skills/<name>/SKILL.md` (dev/tsx). Three bundled skills:
-    kb:dev-workflow, kb:dump-context, kb:evaluation-run. `src/cli/skill-installer.ts` installs
-    each skill to four agent targets: Claude Code (~/.claude/skills/<name>/SKILL.md),
-    Cursor (~/.cursor/rules/<name>.mdc), Codex (~/.codex/skills/<name>.md), and
-    Copilot (~/.github/copilot-instructions/<name>.md). Installation is idempotent: a content hash
-    is embedded as an HTML comment (`<!-- kb-skill-hash: ... -->`); the file is only rewritten if
-    the hash changed.
+    Code indexing is deterministic and does not depend on an LLM. The TypeScript/JavaScript path uses
+    `TsMorphIndexer` when a tsconfig is available, while `TreeSitterIndexer` covers other supported
+    languages and text-like files. Together they write import_code facts for exported symbols,
+    imports, and structural relationships, then record enough file state to skip unchanged code on
+    future scans. The resulting code facts can also participate in graph edges and doc-fact anchoring.
 
   - >
-    Two AST indexers run sequentially during the code-index cycle. TsMorphIndexer
-    (src/tools/code-graph-indexer.ts) uses ts-morph for TypeScript and JavaScript, producing
-    IMPORTS_FILE, EXPORTS_SYMBOL, EXTENDS, and IMPLEMENTS structural edge facts. TreeSitterIndexer
-    (src/tools/tree-sitter-indexer.ts) uses web-tree-sitter with bundled WASM grammars and handles:
-    Go, TypeScript, TSX, JavaScript, JSX, Python, Rust, Ruby, Java, C, C++, C# (.cs), CSS, Bash,
-    PHP, Scala, and HTML, plus text-like formats (JSON, YAML, Markdown). Both indexers write to the
-    facts table with source_kind='import_code'. Changed files are identified by content hash from
-    code_file_state. Stale facts from deleted or changed files are tombstoned via
-    tombstoneStaleAstFacts.
+    `kb query` is facts-first: it retrieves fact rows and graph context, then asks the model to answer
+    from that evidence. Retrieval combines lexical SQLite FTS, deterministic embedding/vector-style
+    scoring, graph neighbor expansion, and repo-aware ordering for multi-repo bases. Query expansion
+    can add related terms from graph and fact relationships before search. The output reports a
+    retrieval method such as hybrid facts-loop retrieval, the number of facts considered, provenance
+    ids, and the final answer.
 
   - >
-    `expandQueryWithGraph()` in src/tools/graph-query-expansion.ts appends related terms to the
-    query before FTS search, improving recall by matching alternative names for the same concept.
-    Two-pass expansion: (1) code graph pass — FTS-searches facts_fts for exported symbols matching
-    tokenized query terms (including bigrams), then follows 1-hop fact_edges to get neighbor symbols
-    (up to MAX_CODE_EXPANSION=8 terms); (2) facts LIKE-scan — for each query slug, scans the facts
-    table subject/object for LIKE matches and appends the other side (up to MAX_SEMANTIC_EXPANSION=18
-    terms). The expanded query string is passed to FTS search, causing it to match documents
-    referencing related symbols even if the original term does not appear. Callers: src/cli/index.ts
-    (kb query command), src/cli/chat-cli.ts (two chat-turn call sites), and
-    src/tools/graph-rag-reranker.ts.
+    kb skills are authored as markdown skill documents in the repository. The build process copies
+    bundled skills next to the CLI artifact so they can be loaded in packaged installs, while dev
+    mode can load from the source tree. The skill installer writes appropriate files into supported
+    agent environments such as Claude Code, Cursor, Codex, and Copilot, using content hashes so
+    installs are repeatable and only update when skill content changes.
 
   - >
-    `npm run eval` runs scripts/eval-run.mjs. Session management: derives base name as
-    eval-{suiteId} (e.g. eval-kb), checks docs via `kb docs list --base <base>` parsing `Count: N`.
-    If no docs, runs `kb init --base <base> --git <snapshot-clone>#<branch> --non-interactive`
-    (the snapshot clone is the local git checkout); otherwise reuses the existing
-    session. Query loop: runs all 8 questions from eval/suites/<suite>.yaml, saving each output as
-    q1.json...q8.json (text format parsed by parseQueryText(), which extracts the final answer after
-    the last `stage> answer` line before the `---` separator). Auto-scoring is on by default (opt
-    out with --manual-score): runAutoScoreFile() sends all 8 Q&A pairs to Gemini
-    (gemini-2.5-flash) or OpenAI, which scores 4 axes (Correctness, Usefulness, Specificity,
-    Evidence Handling) each 0–4. Results saved to auto-scores.json and artifact.json under
-    ~/.kb/evaluations/<run-name>/. Ends with a sparkline trends summary comparing this run against
-    prior runs of the same suite.
+    `npm run eval` invokes the eval runner over a YAML suite. The runner resolves or clones the
+    target repository, ensures a base exists by running init when needed, runs scan, asks each suite
+    question with `kb query`, and saves per-question outputs plus an artifact. Auto-scoring can call a
+    judge model such as Gemini or OpenAI to score correctness, usefulness, specificity, and evidence
+    handling. The artifact records the run directory, base, suite, query results, scores, telemetry,
+    and trend information for later comparison.
