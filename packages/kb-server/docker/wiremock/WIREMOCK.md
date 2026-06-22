@@ -9,7 +9,7 @@ timestamp: 2026-06-22T00:00:00Z
 
 # WireMock LLM Sidecar
 
-`llm-mock` in `docker-compose.yml` mounts this directory into `wiremock/wiremock:3.9.1`. Integration tests and CI point `GEMINI_API_BASE_URL` at `http://llm-mock:8080` so query, chat, and fact-judge paths exercise real HTTP without billing a provider.
+`llm-mock` in `packages/kb-server/docker-compose.yml` mounts this directory into `wiremock/wiremock:3.9.1`. Integration tests and CI point `GEMINI_API_BASE_URL` at `http://llm-mock:8080` so query, chat, and fact-judge paths exercise real HTTP without billing a provider.
 
 ## Role in the stack
 
@@ -21,7 +21,7 @@ flowchart LR
   KB -.->|"stream 503 → fallback"| WM
 ```
 
-`GeminiProvider` (`src/core/llm-provider.ts`) honors `GEMINI_API_BASE_URL`. `scripts/integration-test.mjs` **forces** mock URL + dummy key and clears other provider keys so local `.env` cannot bypass the stub.
+`GeminiProvider` (`src/core/llm-provider.ts`) honors `GEMINI_API_BASE_URL`. `packages/kb-server/scripts/integration-test.mjs` **forces** mock URL + dummy key and clears other provider keys so local `.env` cannot bypass the stub.
 
 ## Mappings (`mappings/`)
 
@@ -37,7 +37,7 @@ Query params (`?key=…`) are ignored by `urlPathPattern`; no change needed for 
 
 ## Integration
 
-- **Compose:** `docker-compose.yml` service `llm-mock`, volume `./docker/wiremock:/home/wiremock`.
+- **Compose:** `packages/kb-server/docker-compose.yml` service `llm-mock`, volume `./docker/wiremock:/home/wiremock`.
 - **Host debug:** port `18080` → container `8080` (`LLM_MOCK_PORT`).
 - **Manual runs:** leave `GEMINI_API_BASE_URL` unset and set a real `GEMINI_API_KEY` in `.env` instead.
 
@@ -57,5 +57,5 @@ Query params (`?key=…`) are ignored by `urlPathPattern`; no change needed for 
 ## Related docs
 
 - [`../../http/HTTP.md`](../../http/HTTP.md) — suite that consumes these stubs
-- [`../../scripts/INTEGRATION_TEST.md`](../../scripts/INTEGRATION_TEST.md) — env wiring
+- [`../../INTEGRATION_TEST.md`](../../INTEGRATION_TEST.md) — env wiring
 - [`../../src/core/llm-provider.ts`](../../src/core/llm-provider.ts) — `GEMINI_API_BASE_URL`

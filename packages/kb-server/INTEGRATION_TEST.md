@@ -9,7 +9,7 @@ timestamp: 2026-06-22T00:00:00Z
 
 # Integration Test Runner
 
-`pnpm run integration:test` runs `scripts/integration-test.mjs`: tear down any prior stack, build and start `kb-server` + `llm-mock`, wait until the index is live, execute all requests in `http/server.http`, then `docker compose down -v`. Exit code equals httpyac's result (CI gate).
+`pnpm run integration:test` runs `packages/kb-server/scripts/integration-test.mjs` from `packages/kb-server/` compose cwd; httpyac uses `packages/kb-server/http/server.http`.
 
 ## Role in the stack
 
@@ -57,12 +57,12 @@ Timeout: 6 minutes (first boot clone + index). On failure, prints `docker compos
 ## Invariants
 
 - Integration must use WireMock — no opt-out to real providers from shell env.
-- Suite file path must remain `http/server.http`.
+- Suite file: `packages/kb-server/http/server.http` (from repo root).
 - Always `down -v` before and after to avoid stale volumes racing health checks.
 - Do not shorten health wait below index boot time on cold CI runners.
 
 ## Related docs
 
-- [`../http/HTTP.md`](../http/HTTP.md) — collection and assert conventions
-- [`../docker/wiremock/WIREMOCK.md`](../docker/wiremock/WIREMOCK.md) — LLM stubs
-- [`../src/server/SERVER.md`](../src/server/SERVER.md) — what is under test
+- [`http/HTTP.md`](http/HTTP.md) — collection and assert conventions
+- [`docker/wiremock/WIREMOCK.md`](docker/wiremock/WIREMOCK.md) — LLM stubs
+- [`../../src/server/SERVER.md`](../../src/server/SERVER.md) — what is under test

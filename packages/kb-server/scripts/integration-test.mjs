@@ -1,24 +1,14 @@
 /**
  * Integration test runner (`pnpm run integration:test`).
- *
- * Spins up the server in Docker (docker-compose), waits for it to become
- * healthy, runs the httpyac suite (http/server.http) against it, then tears the
- * container down. Exit code is the httpyac suite's result.
- *
- * Requirements: Docker + docker compose. LLM is always stubbed via the WireMock
- * sidecar (`llm-mock` in docker-compose) — locally and in CI, no real provider
- * key and no opt-out. KB_GIT_REPOS controls what gets indexed on first boot
- * (defaults to a small public repo).
- *
- * httpyac runs from devDependencies via `pnpm exec` (no interactive `dlx` prompts).
  */
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const repoRoot = path.resolve(pkgRoot, '../..')
 const baseUrl = process.env.KB_TEST_BASE_URL || 'http://localhost:8080'
-const HEALTH_TIMEOUT_MS = 6 * 60 * 1000 // first boot clones + indexes
+const HEALTH_TIMEOUT_MS = 6 * 60 * 1000
 
 const env = {
   ...process.env,
@@ -27,18 +17,14 @@ const env = {
   KB_SERVER_API_KEY: process.env.KB_SERVER_API_KEY || 'testkey',
   KB_REINDEX_INTERVAL: '0',
   PORT: process.env.PORT || '8080',
-  // Always route Gemini to the WireMock sidecar — same locally and in CI.
-  // Clear other provider keys so auto-detect cannot bypass the mock.
   GEMINI_API_KEY: 'integration-mock-key',
   GEMINI_API_BASE_URL: 'http://llm-mock:8080',
   ANTHROPIC_API_KEY: '',
   OPENAI_API_KEY: '',
 }
 
-function run(cmd, args) {
-  return (
-    spawnSync(cmd, args, { stdio: ['ignore', 'inherit', 'inherit'], cwd: root, env }).status ?? 1
-  )
+function run(cmd, args, cwd = pkgRoot) {
+  return spawnSync(cmd, args, { stdio: ['ignore', 'inherit', 'inherit'], cwd, env }).status ?? 1
 }
 
 async function waitForHealth(url, timeoutMs) {
@@ -85,17 +71,21 @@ async function main() {
       throw new Error('unhealthy')
     }
     console.log('▶ running httpyac suite (pnpm exec httpyac) …')
-    exitCode = run('pnpm', [
-      'exec',
-      'httpyac',
-      'send',
-      'http/server.http',
-      '--all',
-      '--env',
-      'local',
-      '--output',
-      'short',
-    ])
+    exitCode = run(
+      'pnpm',
+      [
+        'exec',
+        'httpyac',
+        'send',
+        'packages/kb-server/http/server.http',
+        '--all',
+        '--env',
+        'local',
+        '--output',
+        'short',
+      ],
+      repoRoot
+    )
   } catch {
     exitCode = 1
   } finally {

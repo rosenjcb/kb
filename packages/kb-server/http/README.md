@@ -13,8 +13,8 @@ OKF companion: [`HTTP.md`](HTTP.md).
 ## Quick commands
 
 ```bash
-pnpm exec httpyac send http/server.http -n query --env local
-pnpm exec httpyac send http/server.http --all --env local
+pnpm exec httpyac send packages/kb-server/http/server.http -n query --env local
+pnpm exec httpyac send packages/kb-server/http/server.http --all --env local
 pnpm run integration:test
 ```
 
@@ -23,7 +23,7 @@ pnpm run integration:test
 ```bash
 export KB_SERVER_API_KEY=testkey   # match http/.httpyac.js apiKey
 kb server start --with-mcp         # REST + POST /mcp (required for full suite)
-pnpm exec httpyac send http/server.http --all --env local
+pnpm exec httpyac send packages/kb-server/http/server.http --all --env local
 ```
 
 Without `--with-mcp`, MCP requests in `server.http` return 404.

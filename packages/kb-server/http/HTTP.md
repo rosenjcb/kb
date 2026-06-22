@@ -45,9 +45,9 @@ sequenceDiagram
 
 ## Integration
 
-- **Manual send:** `pnpm exec httpyac send http/server.http -n query --env local` (server already up on `:8080`).
+- **Manual send:** `pnpm exec httpyac send packages/kb-server/http/server.http -n query --env local` (server already up on `:8080`).
 - **Local full suite:** `kb server start --with-mcp` with `KB_SERVER_API_KEY=testkey`.
-- **Full suite:** `pnpm run integration:test` — see [`../scripts/INTEGRATION_TEST.md`](../scripts/INTEGRATION_TEST.md).
+- **Full suite:** `pnpm run integration:test` — see [`../INTEGRATION_TEST.md`](../INTEGRATION_TEST.md).
 - **CI:** `.github/workflows/integration.yml` on merge to `main` — not on feature-branch pushes or PR checks.
 - **LLM:** Integration always routes Gemini to WireMock — [`../docker/wiremock/WIREMOCK.md`](../docker/wiremock/WIREMOCK.md).
 
@@ -61,7 +61,7 @@ Post-response scripts live in `{{ }}` blocks and must **`const assert = require(
 
 - Every public HTTP route in `http-server.ts` must have a named request in `server.http` with at least one structural test.
 - `apiKey` in httpyac env must match `KB_SERVER_API_KEY` on the server under test.
-- Integration suite path in `scripts/integration-test.mjs` must stay `http/server.http`.
+- Integration suite path: `packages/kb-server/http/server.http` (from repo root).
 - OpenAPI and `server.http` must agree on paths and auth scheme.
 
 ## Extension checklist
@@ -79,6 +79,6 @@ Post-response scripts live in `{{ }}` blocks and must **`const assert = require(
 
 ## Related docs
 
-- [`../src/server/SERVER.md`](../src/server/SERVER.md) — server implementation
+- [`../../../src/server/SERVER.md`](../../../src/server/SERVER.md) — server implementation
 - [`README.md`](README.md) — quick commands
-- [`../TESTING.md`](../TESTING.md) — unit vs integration split
+- [`../../../TESTING.md`](../../../TESTING.md) — unit vs integration split

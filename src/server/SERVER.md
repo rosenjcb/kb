@@ -81,4 +81,4 @@ Auth: `Authorization: Bearer <KB_SERVER_API_KEY>` or `X-Api-Key`.
 
 ## Related docs
 
-[`../../http/HTTP.md`](../../http/HTTP.md) · [`../../scripts/INTEGRATION_TEST.md`](../../scripts/INTEGRATION_TEST.md) · [`../core/QUERY_INTERNALS.md`](../core/QUERY_INTERNALS.md)
+[`packages/kb-server/http/HTTP.md`](packages/kb-server/http/HTTP.md) · [`packages/kb-server/INTEGRATION_TEST.md`](packages/kb-server/INTEGRATION_TEST.md) · [`../core/QUERY_INTERNALS.md`](../core/QUERY_INTERNALS.md)

@@ -50,8 +50,9 @@ break.
 - `pnpm run lint` — Biome lint
 - `pnpm run unit:test` — Vitest unit/integration tests (alias: `pnpm run test`)
 - `pnpm run integration:test` — spin up the server in Docker and run the httpyac
-  suite (`http/server.http`) against it, then tear down (Docker only; LLM stubbed via
-  WireMock sidecar — see `http/HTTP.md`)
+  suite (`packages/kb-server/http/server.http`) against it, then tear down (Docker only; LLM stubbed via
+  WireMock sidecar — see `packages/kb-server/http/HTTP.md`)
 - `pnpm run server:start` / `server:stop` — Docker Compose kb-server (+ llm-mock)
 - `pnpm run build` — compile + build the CLI
 - `pnpm run changeset` — create a *pending* changeset (no version bump; see above)
+- `pnpm run changeset:check` — native `changeset status --since main` (kb vs kb-server) + policy check

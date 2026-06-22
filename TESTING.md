@@ -72,7 +72,7 @@ Additional patterns specific to eval tests:
 
 ## Integration tests (HTTP server)
 
-Black-box suite for `kb server start` — **not** Vitest. Spins up Docker (`kb-server` + WireMock `llm-mock`), runs all requests in [`http/server.http`](http/server.http) via httpyac, tears down.
+Black-box suite for `kb server start` — **not** Vitest. Spins up Docker (`kb-server` + WireMock `llm-mock`), runs [`packages/kb-server/http/server.http`](packages/kb-server/http/server.http) via httpyac, tears down.
 
 ```bash
 pnpm run integration:test
@@ -83,7 +83,7 @@ pnpm run integration:test
 - **Requirements:** Docker + `docker compose`. First boot clones `KB_GIT_REPOS` (default: small public repo) before `/healthz` reports `indexMtime`.
 - **Unit coverage:** in-process handlers live in `tests/server/`; integration exercises the full container stack.
 
-See [`http/HTTP.md`](http/HTTP.md), [`scripts/INTEGRATION_TEST.md`](scripts/INTEGRATION_TEST.md), [`docker/wiremock/WIREMOCK.md`](docker/wiremock/WIREMOCK.md).
+See [`packages/kb-server/http/HTTP.md`](packages/kb-server/http/HTTP.md), [`packages/kb-server/INTEGRATION_TEST.md`](packages/kb-server/INTEGRATION_TEST.md), [`packages/kb-server/docker/wiremock/WIREMOCK.md`](packages/kb-server/docker/wiremock/WIREMOCK.md).
 
 ## Pre-commit gate
 

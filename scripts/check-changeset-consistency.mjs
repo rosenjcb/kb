@@ -8,7 +8,7 @@
  * `research/version.tex`.
  *
  * So on a normal PR we require:
- *   - a pending `.changeset/*.md` when shipped source (`src/`/`bin/`) changed,
+ *   - a pending `.changeset/*.md` when shipped source (`src/`/`bin/`/`packages/kb-server/`) changed,
  *   - the package.json `version` is unchanged from base, and
  *   - `CHANGELOG.md` / `research/version.tex` are not hand-edited.
  *
@@ -61,7 +61,12 @@ export function evaluateChangesetConsistency(input) {
   const notes = []
 
   const changed = new Set(input.changedFiles)
-  const sourceChanged = [...changed].some(file => file.startsWith('src/') || file.startsWith('bin/'))
+  const sourceChanged = [...changed].some(
+    file =>
+      file.startsWith('src/') ||
+      file.startsWith('bin/') ||
+      file.startsWith('packages/kb-server/')
+  )
   const pending = input.pendingChangesets
   const versionBumped = input.basePackageVersion !== input.headPackageVersion
 
@@ -87,7 +92,7 @@ export function evaluateChangesetConsistency(input) {
   if (sourceChanged) {
     if (pending.length === 0) {
       errors.push(
-        'Shipped source (src/ or bin/) changed without a changeset. Run `pnpm run changeset` to add one — it stays pending until merge to main.'
+        'Shipped source (src/, bin/, or packages/kb-server/) changed without a changeset. Run `pnpm run changeset` to add one — it stays pending until merge to main.'
       )
     } else {
       notes.push(`Pending changeset(s): ${pending.join(', ')}`)

@@ -207,7 +207,7 @@ kb server start [--base <name>] [--port <n>] [--with-mcp]
 | (default) | REST only — `/v1/query`, `/v1/chat`, `/healthz`, `/v1/reindex` |
 | `--with-mcp` | Also serves MCP Streamable HTTP at `POST /mcp` |
 
-**Boot-build:** missing index → `kb init` / `kb scan` before listen. **pnpm:** `server:start` / `server:stop` (Docker). Integration: [`../../http/HTTP.md`](../../http/HTTP.md).
+**Boot-build:** missing index → `kb init` / `kb scan` before listen. **pnpm:** `server:start` / `server:stop` (Docker). Integration: [`../../packages/kb-server/http/HTTP.md`](../../packages/kb-server/http/HTTP.md).
 
 ## Gotchas
 

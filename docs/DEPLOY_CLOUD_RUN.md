@@ -67,10 +67,10 @@ Example uses Cloud Storage for brevity; production write-heavy bases should use 
 
 - Single writer instance — do not scale Cloud Run past one replica without externalizing the index.
 - `KB_HOME` must be on durable storage; ephemeral container FS loses the index on restart.
-- Boot-build can exceed default probe timeouts — configure adequate `start_period` (see `docker-compose.yml` healthcheck).
+- Boot-build can exceed default probe timeouts — configure adequate `start_period` (see `packages/kb-server/docker-compose.yml` healthcheck).
 
 ## Related docs
 
 - [`../src/server/SERVER.md`](../src/server/SERVER.md) — runtime behavior
 - [`../http/HTTP.md`](../http/HTTP.md) — API contract and smoke tests
-- [`../docker-compose.yml`](../docker-compose.yml) — local mirror of the deploy model
+- [`../packages/kb-server/docker-compose.yml`](../packages/kb-server/docker-compose.yml) — local mirror of the deploy model

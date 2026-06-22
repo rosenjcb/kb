@@ -20,7 +20,9 @@ services:
     command: ["--global-response-templating", "--verbose"]
 
   kb-server:
-    build: .
+    build:
+      context: ../..
+      dockerfile: packages/kb-server/Dockerfile
     image: kb-server
     depends_on:
       - llm-mock

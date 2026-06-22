@@ -1,15 +1,13 @@
-/**
- * Stop a running kb server (docker compose or local process on PORT).
- */
+/** Stop docker compose kb-server stack or a local process on PORT. */
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const port = process.env.PORT || '8080'
 
 function run(cmd, args, opts = {}) {
-  return spawnSync(cmd, args, { cwd: root, encoding: 'utf8', ...opts })
+  return spawnSync(cmd, args, { cwd: pkgRoot, encoding: 'utf8', ...opts })
 }
 
 function dockerServerRunning() {
