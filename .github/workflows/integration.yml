@@ -1,13 +1,21 @@
 name: Integration test
 
-# Post-merge gate on main only — not on feature-branch pushes or PR CI.
-# LLM is stubbed via WireMock (no repo secrets required today). Wire secrets
-# here later if you switch the runner to a real provider on main.
+# Pre-merge gate: runs on every PR into main, so the integration suite must pass on the
+# feature branch before it can merge. (Mark the "Integration test" check as Required in
+# branch protection for main to actually block the merge.) The pull_request event builds the
+# PR merged into base, so this validates the post-merge state ahead of time.
+# LLM is stubbed via WireMock (no repo secrets required today). Wire secrets here later if you
+# switch the runner to a real provider.
 on:
-  push:
+  pull_request:
     branches:
       - main
   workflow_dispatch:
+
+# Integration is expensive (Docker + WireMock); cancel superseded runs on the same PR.
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   integration:
