@@ -105,6 +105,7 @@ import {
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
+import { runMcpCommand, runServerCommand } from '../server/server-cli'
 import { maybeAutoSync } from './auto-sync'
 import { baseNameFromGitUrl } from './git-sync'
 import { runScanCommand } from './scan-command'
@@ -184,6 +185,8 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  sync        Install the latest published KB release',
     '  logs        Browse and compare run reports',
     '  skills      Manage agent skills',
+    '  server      Run kb as a long-lived HTTP/MCP service',
+    '  mcp         Run kb as an MCP server (stdio or HTTP)',
     '  uninstall   Remove the kb binary and optionally all user data',
     '',
     'Intent commands:',
@@ -309,6 +312,32 @@ function printDocsHelp(mode: CmdMode = 'cli'): string {
     printDocsRenameHelp(mode),
     '',
     printDocsDeleteHelp(mode),
+  ].join('\n')
+}
+
+function printServerHelp(mode: CmdMode = 'cli'): string {
+  return [
+    `${cmd('server', mode)} / ${cmd('mcp', mode)} commands`,
+    '',
+    'Usage:',
+    `  ${cmd('server start [--base <name>] [--port <n>] [--mcp]', mode)}`,
+    `  ${cmd('mcp start [--http] [--base <name>] [--port <n>]', mode)}`,
+    '',
+    'Run kb as a long-lived service:',
+    '  server start   HTTP API — POST /v1/query, GET /healthz, POST /v1/reindex',
+    '                 (add --mcp to also serve MCP at POST /mcp).',
+    '  mcp start      MCP server over stdio for local LLM clients',
+    '                 (add --http for MCP over Streamable HTTP).',
+    '',
+    'Environment:',
+    '  PORT                   HTTP port (default 8080; --port overrides)',
+    '  KB_SERVER_API_KEY      Bearer key(s) for /v1 and /mcp (comma-separated)',
+    '  KB_BASE                Base name to serve (else the active/default base)',
+    '  KB_REINDEX_INTERVAL    Reindex cadence, e.g. 1h, 30m, 10s, or 0 to disable (default 1h)',
+    '',
+    'Examples:',
+    `  ${cmd('server start --base acme --mcp', mode)}`,
+    `  ${cmd('mcp start --base acme', mode)}`,
   ].join('\n')
 }
 
@@ -851,6 +880,26 @@ export async function runMainWithOutput(
 
   if (firstArg === 'uninstall') {
     await runUninstallCommand(args.slice(1), out)
+    return
+  }
+
+  if (firstArg === 'server') {
+    const sub = args[1]
+    if (sub === 'start') {
+      await runServerCommand(args.slice(2), out, config)
+    } else {
+      out.log(printServerHelp(mode))
+    }
+    return
+  }
+
+  if (firstArg === 'mcp') {
+    const sub = args[1]
+    if (sub === 'start') {
+      await runMcpCommand(args.slice(2), out, config)
+    } else {
+      out.log(printServerHelp(mode))
+    }
     return
   }
 
