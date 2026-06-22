@@ -14,13 +14,13 @@
 
 VS Code: install the **httpyac** extension and click "send" above any request.
 
-CLI (httpyac is fetched on demand, not a repo dependency):
+CLI (httpyac is a devDependency; examples use `pnpm exec`):
 
 ```bash
 # one request
-pnpm dlx httpyac send http/kb-api.http -n query --env local
-# whole file
-pnpm dlx httpyac send http/kb-api.http --all --env local
+pnpm exec httpyac send http/kb-api.http -n query --env local
+# whole file (against a server you already started)
+pnpm exec httpyac send http/kb-api.http --all --env local
 ```
 
 ## Use as the integration suite

@@ -10,7 +10,7 @@
  * key and no opt-out. KB_GIT_REPOS controls what gets indexed on first boot
  * (defaults to a small public repo).
  *
- * httpyac is fetched on demand via `pnpm dlx` (kept out of the repo's deps).
+ * httpyac runs from devDependencies via `pnpm exec` (no interactive `dlx` prompts).
  */
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
@@ -36,7 +36,9 @@ const env = {
 }
 
 function run(cmd, args) {
-  return spawnSync(cmd, args, { stdio: 'inherit', cwd: root, env }).status ?? 1
+  return (
+    spawnSync(cmd, args, { stdio: ['ignore', 'inherit', 'inherit'], cwd: root, env }).status ?? 1
+  )
 }
 
 async function waitForHealth(url, timeoutMs) {
@@ -69,10 +71,10 @@ async function main() {
       run('docker', ['compose', 'logs', '--no-color', '--tail', '80'])
       throw new Error('unhealthy')
     }
-    console.log('▶ running httpyac suite (pnpm dlx httpyac) …')
+    console.log('▶ running httpyac suite (pnpm exec httpyac) …')
     exitCode = run('pnpm', [
-      'dlx',
-      'httpyac@6',
+      'exec',
+      'httpyac',
       'send',
       'http/kb-api.http',
       '--all',

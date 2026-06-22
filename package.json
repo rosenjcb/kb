@@ -82,6 +82,7 @@
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.28",
     "esbuild": "^0.25.0",
+    "httpyac": "^6.16.7",
     "husky": "9.1.7",
     "tsx": "^4.7.0",
     "typescript": "^5.5.0",
