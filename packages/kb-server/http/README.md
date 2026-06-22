@@ -36,4 +36,8 @@ pnpm run server:start   # docker compose; image CMD includes --with-mcp
 pnpm run server:stop
 ```
 
-Server implementation: [`../src/server/SERVER.md`](../src/server/SERVER.md).
+## MCP clients
+
+With `kb server start --with-mcp` running, connect Claude Code or Cursor Agent — see [`../../../src/server/SERVER.md`](../../../src/server/SERVER.md).
+
+Server implementation: [`../../../src/server/SERVER.md`](../../../src/server/SERVER.md).

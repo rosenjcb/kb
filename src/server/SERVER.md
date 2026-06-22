@@ -50,6 +50,49 @@ flowchart LR
 - **Docker:** `server start --with-mcp` in Dockerfile CMD.
 - **Dev:** `pnpm run server:start|stop`.
 
+### MCP clients (Claude Code & Cursor Agent)
+
+Start the server with MCP enabled (same `KB_SERVER_API_KEY` on server and client):
+
+```bash
+export KB_SERVER_API_KEY=testkey
+kb server start --with-mcp
+```
+
+**Claude Code** — Streamable HTTP at `POST /mcp`:
+
+```bash
+claude mcp add --transport http -s user kb http://localhost:8080/mcp \
+  --header "Authorization: Bearer ${KB_SERVER_API_KEY}"
+```
+
+Use your deploy URL instead of `localhost` for a remote server. Verify with `claude mcp list`.
+
+**Cursor Agent** — add to `~/.cursor/mcp.json` (project scope: `.cursor/mcp.json`), then use the Agent CLI:
+
+```bash
+mkdir -p ~/.cursor
+cat > ~/.cursor/mcp.json <<'EOF'
+{
+  "mcpServers": {
+    "kb": {
+      "url": "http://localhost:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer testkey"
+      }
+    }
+  }
+}
+EOF
+
+agent mcp list
+agent mcp list-tools kb
+```
+
+Replace `testkey` / the URL when pointing at a deployed instance. If `mcp.json` already exists, merge the `kb` entry under `mcpServers` instead of overwriting.
+
+**Tools exposed:** `kb_query`, `read_facts`, `search_code_symbols`, `get_code_neighbors`, `get_code_graph_summary`.
+
 ### Endpoints (`kb server start [--with-mcp]`)
 
 | Method / path | Auth | Purpose |

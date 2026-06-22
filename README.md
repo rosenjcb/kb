@@ -172,6 +172,7 @@ kb facts list|search|show ...
 kb graph ...
 kb logs list|show|compare ...
 kb skills install|uninstall
+kb server start [--base <name>] [--port <n>] [--with-mcp]
 kb sync
 kb publish <notion> [options]
 ```
@@ -246,6 +247,51 @@ Installs are idempotent: each skill carries a content hash, so re-running upgrad
 The skills are self-contained (workflow + full command shapes). Source: [`skills/`](skills/); see [`src/skills/SKILLS.md`](src/skills/SKILLS.md) for the bundled set and how to add one. The [CLI Reference](#cli-reference) above stays the in-repo quick reference for humans.
 
 The `kb:dump-context` skill writes in-place companion docs in the **Open Knowledge Format** (see below), so the architecture knowledge your agent captures is indexed structurally rather than as loose prose.
+
+## 🔌 MCP — Claude Code & Cursor Agent
+
+Point your coding agent at a running `kb server` over **Streamable HTTP** (`POST /mcp`). The server must be started with `--with-mcp`; REST-only mode returns 404 on `/mcp`.
+
+```bash
+export KB_SERVER_API_KEY=testkey   # server + client must match
+kb server start --with-mcp
+```
+
+### Claude Code
+
+```bash
+claude mcp add --transport http -s user kb http://localhost:8080/mcp \
+  --header "Authorization: Bearer ${KB_SERVER_API_KEY}"
+```
+
+Check: `claude mcp list`. For a deployed server, swap `localhost:8080` for your host.
+
+### Cursor Agent
+
+Cursor reads MCP config from `~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project). There is no `agent mcp add` — write the config, then use the CLI to inspect:
+
+```bash
+mkdir -p ~/.cursor
+cat > ~/.cursor/mcp.json <<'EOF'
+{
+  "mcpServers": {
+    "kb": {
+      "url": "http://localhost:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer testkey"
+      }
+    }
+  }
+}
+EOF
+
+agent mcp list
+agent mcp list-tools kb
+```
+
+Merge into an existing `mcp.json` if you already have other servers. Restart Cursor or reload the window if the IDE does not pick up the file immediately.
+
+**MCP tools:** `kb_query`, `read_facts`, `search_code_symbols`, `get_code_neighbors`, `get_code_graph_summary`. Details: [`src/server/SERVER.md`](src/server/SERVER.md).
 
 ## 📚 Open Knowledge Format (OKF)
 

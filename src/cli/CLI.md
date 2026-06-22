@@ -207,6 +207,24 @@ kb server start [--base <name>] [--port <n>] [--with-mcp]
 | (default) | REST only — `/v1/query`, `/v1/chat`, `/healthz`, `/v1/reindex` |
 | `--with-mcp` | Also serves MCP Streamable HTTP at `POST /mcp` |
 
+**MCP clients** — server must run with `--with-mcp`. Auth header must match `KB_SERVER_API_KEY`.
+
+```bash
+export KB_SERVER_API_KEY=testkey
+kb server start --with-mcp
+
+# Claude Code
+claude mcp add --transport http -s user kb http://localhost:8080/mcp \
+  --header "Authorization: Bearer ${KB_SERVER_API_KEY}"
+
+# Cursor Agent — ~/.cursor/mcp.json then:
+#   "kb": { "url": "http://localhost:8080/mcp", "headers": { "Authorization": "Bearer testkey" } }
+agent mcp list
+agent mcp list-tools kb
+```
+
+See [`../server/SERVER.md`](../server/SERVER.md) for deploy URLs and tool list.
+
 **Boot-build:** missing index → `kb init` / `kb scan` before listen. **pnpm:** `server:start` / `server:stop` (Docker). Integration: [`../../packages/kb-server/http/HTTP.md`](../../packages/kb-server/http/HTTP.md).
 
 ## Gotchas
