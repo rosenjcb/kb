@@ -10,8 +10,9 @@
 # Run as the integration suite (spins up Docker, runs all, tears down):
 #   pnpm run integration:test
 #
-# Environments + variables live in `.httpyac.json` at repo root (`{{baseUrl}}`, `{{apiKey}}`).
-# `apiKey` must match the server's KB_SERVER_API_KEY.
+# Environments: `http/.httpyac.js` + `http/http-client.env.json` ({{baseUrl}}, {{apiKey}}).
+# `http/package.json` sets `"type": "commonjs"` so httpyac can load the config in this ESM repo.
+# Post-response scripts must `require('assert')` inside the `{{ }}` block (httpyac does not inject it).
 
 # ---------------------------------------------------------------------------
 # Health (unauthenticated)
@@ -20,6 +21,7 @@
 GET {{baseUrl}}/healthz
 
 {{
+  const assert = require('assert');
   test('status 200', () => assert.strictEqual(response.statusCode, 200));
   test('health shape', () => {
     assert.strictEqual(response.parsedBody.ok, true);
@@ -42,6 +44,7 @@ Content-Type: application/json
 }
 
 {{
+  const assert = require('assert');
   test('status 200', () => assert.strictEqual(response.statusCode, 200));
   test('query result shape', () => {
     const b = response.parsedBody;
@@ -68,6 +71,7 @@ Content-Type: application/json
 }
 
 {{
+  const assert = require('assert');
   test('status 200', () => assert.strictEqual(response.statusCode, 200));
   test('results is an array', () => assert.ok(Array.isArray(response.parsedBody.results)));
 }}
@@ -86,6 +90,7 @@ Content-Type: application/json
 }
 
 {{
+  const assert = require('assert');
   test('status 401 without key', () => assert.strictEqual(response.statusCode, 401));
 }}
 
@@ -107,6 +112,7 @@ Accept: text/event-stream
 }
 
 {{
+  const assert = require('assert');
   test('status 200', () => assert.strictEqual(response.statusCode, 200));
   test('sse content type', () =>
     assert.ok(String(response.contentType?.mimeType || '').includes('text/event-stream')));
@@ -133,6 +139,7 @@ Accept: text/event-stream
 }
 
 {{
+  const assert = require('assert');
   test('status 200', () => assert.strictEqual(response.statusCode, 200));
   test('answered', () => assert.ok((response.body || '').includes('event: done')));
 }}
@@ -147,6 +154,7 @@ POST {{baseUrl}}/v1/reindex
 Authorization: Bearer {{apiKey}}
 
 {{
+  const assert = require('assert');
   test('status 200', () => assert.strictEqual(response.statusCode, 200));
   test('reindex ok', () => assert.strictEqual(response.parsedBody.status, 'ok'));
 }}
@@ -175,6 +183,7 @@ Accept: application/json, text/event-stream
 }
 
 {{
+  const assert = require('assert');
   test('status 200', () => assert.strictEqual(response.statusCode, 200));
   test('jsonrpc result', () => {
     assert.strictEqual(response.parsedBody.jsonrpc, '2.0');
@@ -199,6 +208,7 @@ Accept: application/json, text/event-stream
 }
 
 {{
+  const assert = require('assert');
   test('status 200', () => assert.strictEqual(response.statusCode, 200));
   test('tools include kb_query', () => {
     const tools = response.parsedBody.result?.tools;
@@ -227,6 +237,7 @@ Accept: application/json, text/event-stream
 }
 
 {{
+  const assert = require('assert');
   test('status 200', () => assert.strictEqual(response.statusCode, 200));
   test('tool returns content', () => assert.ok(Array.isArray(response.parsedBody.result?.content)));
 }}

@@ -43,22 +43,35 @@ function run(cmd, args) {
 
 async function waitForHealth(url, timeoutMs) {
   const deadline = Date.now() + timeoutMs
+  let consecutiveOk = 0
   while (Date.now() < deadline) {
     try {
       const res = await fetch(`${url}/healthz`)
-      if (res.ok) return true
+      if (res.ok) {
+        const body = await res.json()
+        if (body?.ok === true && typeof body.indexMtime === 'string') {
+          consecutiveOk += 1
+          if (consecutiveOk >= 2) return true
+        } else {
+          consecutiveOk = 0
+        }
+      } else {
+        consecutiveOk = 0
+      }
     } catch {
-      // not up yet
+      consecutiveOk = 0
     }
-    await new Promise(resolve => setTimeout(resolve, 3000))
+    await new Promise(resolve => setTimeout(resolve, 2000))
   }
   return false
 }
 
 async function main() {
   console.log('▶ LLM: WireMock sidecar (http://llm-mock:8080) — no real API calls')
-  console.log('▶ docker compose up -d --build …')
-  if (run('docker', ['compose', 'up', '-d', '--build']) !== 0) {
+  console.log('▶ docker compose down -v (clean slate) …')
+  run('docker', ['compose', 'down', '-v'])
+  console.log('▶ docker compose up -d --build --wait …')
+  if (run('docker', ['compose', 'up', '-d', '--build', '--wait']) !== 0) {
     console.error('❌ docker compose up failed')
     process.exit(1)
   }

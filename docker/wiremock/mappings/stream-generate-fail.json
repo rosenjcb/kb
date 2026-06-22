@@ -2,7 +2,7 @@
   "priority": 20,
   "request": {
     "method": "POST",
-    "urlPathPattern": "/v1beta/models/.*/streamGenerateContent"
+    "urlPathPattern": "/v1beta/models/.*:streamGenerateContent"
   },
   "response": {
     "status": 503,

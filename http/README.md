@@ -6,9 +6,12 @@
   (status, shape), not specific content — so they double as the integration suite.
 - **`openapi.yaml`** — OpenAPI 3.0 definition of the REST surface (and the MCP
   JSON-RPC endpoint). Load it in Swagger UI / Redoc, or generate clients.
-- **`.httpyac.json`** (repo root) — environments (`local`, `docker`, `prod`) under
-  `environments` with shared `apiKey`. Variables: `{{baseUrl}}`, `{{apiKey}}`.
-  `apiKey` must equal the server's `KB_SERVER_API_KEY`.
+- **`http/.httpyac.js`** — environments co-located with the collection (`local`, `docker`, `prod`).
+  Uses CommonJS (`module.exports`) via **`http/package.json`** (`"type": "commonjs"`) because the
+  root repo is ESM (`"type": "module"` in `package.json`).
+- **`http/http-client.env.json`** — same variables in JetBrains/httpyac env format (fallback for
+  the VS Code / Cursor httpyac extension).
+- Root **`.httpyac.json`** — same values for `pnpm exec httpyac` runs from the repo root.
 
 ## Use as examples
 
@@ -47,3 +50,20 @@ Requirements:
   public repo). First boot clones + indexes before the server reports healthy.
 
 Unit tests are separate: `pnpm run unit:test` (alias `pnpm run test`).
+
+## Run the server locally
+
+```bash
+cp .env.example .env   # provider key for manual runs (not integration:test)
+pnpm run server:start  # docker compose up
+pnpm run server:stop
+```
+
+## MCP for IDE clients (stdio)
+
+```bash
+pnpm run mcp:start     # foreground — Ctrl+C to stop
+# MCP over HTTP (same port as server):
+node --env-file=.env.local --import tsx src/cli/index.ts mcp start --http
+pnpm run mcp:stop
+```

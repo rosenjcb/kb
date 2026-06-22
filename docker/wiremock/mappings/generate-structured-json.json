@@ -2,7 +2,7 @@
   "priority": 10,
   "request": {
     "method": "POST",
-    "urlPathPattern": "/v1beta/models/.*/generateContent",
+    "urlPathPattern": "/v1beta/models/.*:generateContent",
     "bodyPatterns": [
       {
         "matchesJsonPath": "$.generationConfig.responseMimeType",
