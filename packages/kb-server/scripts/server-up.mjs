@@ -140,15 +140,17 @@ function printNextSteps(env) {
   const base = effective(env, 'KB_BASE') || 'demo'
   console.log('\n✓ kb-server is starting. First boot clones + indexes your repos — watch progress:')
   console.log('    pnpm run server:logs')
-  console.log(`\n  Health (unauthenticated):`)
+  console.log('\n  Health (unauthenticated):')
   console.log(`    curl http://localhost:${port}/healthz`)
-  console.log(`\n  Query (once healthy):`)
+  console.log('\n  Query (once healthy):')
   console.log(`    curl -s http://localhost:${port}/v1/query \\`)
   console.log(`      -H "Authorization: Bearer ${apiKey}" \\`)
   console.log(`      -H 'Content-Type: application/json' \\`)
   console.log(`      -d '{"query":"how does ${base} handle auth?"}'`)
-  console.log(`\n  Stop:    pnpm run server:stop`)
-  console.log(`  Reset:   docker compose -f packages/kb-server/docker-compose.yml down -v   # wipes the index volume`)
+  console.log('\n  Stop:    pnpm run server:stop')
+  console.log(
+    '  Reset:   docker compose -f packages/kb-server/docker-compose.yml down -v   # wipes the index volume'
+  )
 }
 
 ensureDocker()
