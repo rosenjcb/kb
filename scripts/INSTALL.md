@@ -93,6 +93,10 @@ Removes in order:
 2. `dist/` build output
 3. Prompts interactively before deleting `~/.kb/`
 
+## Related docs
+
+- [`INTEGRATION_TEST.md`](INTEGRATION_TEST.md) — `pnpm run integration:test` (Docker + httpyac)
+
 ## Invariants
 
 - `install-release.sh` must explain **why** it is installing Node 24 before it does so — users with existing Node installs must not be surprised.

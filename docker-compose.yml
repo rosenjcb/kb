@@ -5,6 +5,7 @@
 #
 # Integration / CI (`pnpm run integration:test`) points Gemini at the WireMock
 # sidecar via GEMINI_API_BASE_URL — no real provider key required.
+# Stub details: docker/wiremock/WIREMOCK.md
 #
 # Mirrors the Cloud Run model: persistent volume at /data (KB_HOME), first boot
 # builds the index from KB_GIT_REPOS, later boots reuse it.

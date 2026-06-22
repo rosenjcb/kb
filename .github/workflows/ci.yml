@@ -42,7 +42,7 @@ jobs:
       - name: Build
         run: pnpm run build
 
-  # Docker + httpyac suite against a real server (see http/README.md).
+  # Docker + httpyac suite against a real server (see http/HTTP.md).
   # LLM calls are stubbed by the WireMock sidecar in docker-compose — no API key.
   # First boot clones + indexes before /healthz goes green — allow wall time.
   integration:

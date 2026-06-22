@@ -133,7 +133,7 @@ paths:
       description: >
         Speaks the Model Context Protocol over JSON-RPC 2.0 (methods
         `initialize`, `tools/list`, `tools/call`). Not a normal REST resource —
-        use an MCP client or the examples in `http/kb-api.http`. Requires the
+        use an MCP client or the examples in `http/server.http`. Requires the
         `Accept: application/json, text/event-stream` header. Only available when
         the server runs with `--mcp`.
       requestBody:

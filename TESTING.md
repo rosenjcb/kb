@@ -70,6 +70,20 @@ Additional patterns specific to eval tests:
 - **No LLM calls in unit tests**: `MutationValidator` and `runJury` require running subprocesses or LLMs. Park these as `it.todo` or write integration fixtures instead.
 - **Pure function bias**: prefer testing `extractManifest`, `buildSummaryJson`, `computeMoel` (pure) over the git-/LLM-integrated validators.
 
+## Integration tests (HTTP server)
+
+Black-box suite for `kb server start` — **not** Vitest. Spins up Docker (`kb-server` + WireMock `llm-mock`), runs all requests in [`http/server.http`](http/server.http) via httpyac, tears down.
+
+```bash
+pnpm run integration:test
+```
+
+- **No LLM API key** — Gemini is stubbed (`GEMINI_API_BASE_URL=http://llm-mock:8080`). Same path locally and in CI (`.github/workflows/ci.yml` `integration` job).
+- **Requirements:** Docker + `docker compose`. First boot clones `KB_GIT_REPOS` (default: small public repo) before `/healthz` reports `indexMtime`.
+- **Unit coverage:** in-process handlers live in `tests/server/`; integration exercises the full container stack.
+
+See [`http/HTTP.md`](http/HTTP.md), [`scripts/INTEGRATION_TEST.md`](scripts/INTEGRATION_TEST.md), [`docker/wiremock/WIREMOCK.md`](docker/wiremock/WIREMOCK.md).
+
 ## Pre-commit gate
 
 `pnpm run precommit` runs lint, type-check, and the full test suite. All must pass before pushing.

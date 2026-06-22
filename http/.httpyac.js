@@ -1,4 +1,4 @@
-/** httpyac env for `kb-api.http`. `http/package.json` sets type=commonjs (root repo is ESM). */
+/** httpyac env for `server.http`. `http/package.json` sets type=commonjs (root repo is ESM). */
 module.exports = {
   environments: {
     $shared: {

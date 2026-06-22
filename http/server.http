@@ -5,7 +5,7 @@
 # not specific content, so they're stable across knowledge bases.
 #
 # Run as examples (VS Code httpyac extension or CLI):
-#   httpyac send http/kb-api.http -n query --env local
+#   httpyac send http/server.http -n query --env local
 #
 # Run as the integration suite (spins up Docker, runs all, tears down):
 #   pnpm run integration:test

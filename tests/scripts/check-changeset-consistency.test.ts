@@ -57,7 +57,7 @@ describe('evaluateChangesetConsistency', () => {
 
   it('passes for docs/config-only PRs with no changeset', () => {
     const result = evaluateChangesetConsistency({
-      changedFiles: ['README.md', 'docs/deploy-cloud-run.md'],
+      changedFiles: ['README.md', 'docs/DEPLOY_CLOUD_RUN.md'],
       pendingChangesets: [],
       basePackageVersion: '0.10.0',
       headPackageVersion: '0.10.0',

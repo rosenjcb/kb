@@ -2,7 +2,7 @@
  * Integration test runner (`pnpm run integration:test`).
  *
  * Spins up the server in Docker (docker-compose), waits for it to become
- * healthy, runs the httpyac suite (http/kb-api.http) against it, then tears the
+ * healthy, runs the httpyac suite (http/server.http) against it, then tears the
  * container down. Exit code is the httpyac suite's result.
  *
  * Requirements: Docker + docker compose. LLM is always stubbed via the WireMock
@@ -89,7 +89,7 @@ async function main() {
       'exec',
       'httpyac',
       'send',
-      'http/kb-api.http',
+      'http/server.http',
       '--all',
       '--env',
       'local',
