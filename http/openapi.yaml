@@ -1,0 +1,307 @@
+openapi: 3.0.3
+info:
+  title: kb server API
+  version: 0.12.0
+  description: >
+    HTTP + MCP surface for the kb knowledge base service (`kb server start`).
+    `/v1/*` is a plain REST API for apps and the Slack integration; `/mcp` is an
+    MCP (Model Context Protocol) Streamable HTTP endpoint for LLM clients and is
+    only mounted when the server runs with `--mcp`. All `/v1/*` and `/mcp`
+    requests require a bearer API key (`KB_SERVER_API_KEY`); `/healthz` is open.
+servers:
+  - url: http://localhost:8080
+    description: Local / Docker
+  - url: https://kb-server-REPLACE.run.app
+    description: Cloud Run
+
+tags:
+  - name: health
+  - name: query
+  - name: chat
+  - name: admin
+  - name: mcp
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      summary: Liveness / readiness probe
+      description: Returns 200 once the index is loaded, 503 otherwise. Unauthenticated.
+      security: []
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Not ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /v1/query:
+    post:
+      tags: [query]
+      summary: Ask a question; get a synthesized answer and sources
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QueryRequest" }
+            examples:
+              synthesized:
+                summary: Default (synthesized answer)
+                value: { q: "how does authentication work?" }
+              factsOnly:
+                summary: Facts only, deep discovery
+                value: { q: "rate limiting", synthesize: false, limit: 10, discovery: "deep" }
+      responses:
+        "200":
+          description: Query result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QueryResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "504":
+          description: Query timed out
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /v1/chat:
+    post:
+      tags: [chat]
+      summary: Multi-turn chat, streamed over Server-Sent Events
+      description: >
+        Returns `text/event-stream`. Events (each `data:` is JSON):
+        `session` `{sessionId}`, then a sequence of `reasoning` `{text}`,
+        `meta` `{text}` (stages and the model's KB queries), terminating in
+        `answer` `{text, sources[], factsRetrieved}` and `done`, or `error`
+        `{message}`. Reuse `sessionId` to retain conversation history.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChatRequest" }
+            examples:
+              turn1:
+                value: { sessionId: "demo-session", message: "how does authentication work?" }
+      responses:
+        "200":
+          description: SSE stream of chat events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: session
+                  data: {"sessionId":"demo-session"}
+
+                  event: answer
+                  data: {"type":"answer","text":"...","sources":[],"factsRetrieved":3}
+
+                  event: done
+                  data: {"type":"done"}
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/reindex:
+    post:
+      tags: [admin]
+      summary: Trigger an on-demand incremental rescan
+      responses:
+        "200":
+          description: Rescan completed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReindexResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: A reindex is already in progress
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /mcp:
+    post:
+      tags: [mcp]
+      summary: MCP Streamable HTTP endpoint (JSON-RPC 2.0)
+      description: >
+        Speaks the Model Context Protocol over JSON-RPC 2.0 (methods
+        `initialize`, `tools/list`, `tools/call`). Not a normal REST resource —
+        use an MCP client or the examples in `http/kb-api.http`. Requires the
+        `Accept: application/json, text/event-stream` header. Only available when
+        the server runs with `--mcp`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JsonRpcRequest" }
+            examples:
+              toolsList:
+                value: { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }
+              callKbQuery:
+                value:
+                  jsonrpc: "2.0"
+                  id: 2
+                  method: "tools/call"
+                  params:
+                    name: "kb_query"
+                    arguments: { q: "what enforces rate limiting?", synthesize: false }
+      responses:
+        "200":
+          description: JSON-RPC response
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JsonRpcResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer token matching one of the server's KB_SERVER_API_KEY values.
+
+  responses:
+    BadRequest:
+      description: Malformed request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ServerError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Health:
+      type: object
+      required: [ok, base]
+      properties:
+        ok: { type: boolean }
+        base: { type: string, description: Active base name }
+        provider: { type: string, nullable: true }
+        model: { type: string, nullable: true }
+        indexMtime:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last-modified time of the on-disk index, when present.
+
+    QueryRequest:
+      type: object
+      properties:
+        q:
+          type: string
+          description: The question. `query` is accepted as an alias.
+        query:
+          type: string
+          description: Alias for `q`.
+        limit:
+          type: integer
+          description: Max facts to retrieve.
+        type:
+          type: string
+          description: Optional document-type filter.
+        discovery:
+          type: string
+          enum: [shallow, deep]
+        synthesize:
+          type: boolean
+          default: true
+          description: When false, skip LLM synthesis and return facts only.
+        verbose:
+          type: boolean
+      description: Requires `q` (or `query`).
+
+    QuerySource:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        filePath: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        snippet: { type: string }
+
+    QueryResponse:
+      type: object
+      required: [status, answer, results, retrieval]
+      properties:
+        status:
+          type: string
+          enum: [accepted, valid, invalid, uncertain, error, pending_review]
+        answer:
+          type: string
+          nullable: true
+          description: Synthesized answer, or null when synthesize=false / none produced.
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/QuerySource" }
+        retrieval:
+          type: object
+          properties:
+            method: { type: string }
+            detail: { type: string }
+        confidence:
+          type: number
+          format: float
+
+    ChatRequest:
+      type: object
+      required: [message]
+      properties:
+        sessionId:
+          type: string
+          description: Conversation id. Generated and returned (via the `session` event) when omitted.
+        message:
+          type: string
+
+    ReindexResponse:
+      type: object
+      required: [status, summary]
+      properties:
+        status: { type: string, example: ok }
+        summary: { type: string }
+
+    JsonRpcRequest:
+      type: object
+      required: [jsonrpc, method]
+      properties:
+        jsonrpc: { type: string, enum: ["2.0"] }
+        id: { oneOf: [{ type: string }, { type: integer }] }
+        method: { type: string }
+        params: { type: object, additionalProperties: true }
+
+    JsonRpcResponse:
+      type: object
+      properties:
+        jsonrpc: { type: string, enum: ["2.0"] }
+        id: { oneOf: [{ type: string }, { type: integer }] }
+        result: { type: object, additionalProperties: true }
+        error:
+          type: object
+          properties:
+            code: { type: integer }
+            message: { type: string }
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+security:
+  - bearerAuth: []

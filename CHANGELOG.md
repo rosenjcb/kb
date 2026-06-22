@@ -1,41 +1,5 @@
 # kb
 
-## 0.12.0
-
-### Minor Changes
-
-- Server phase 2 + 3: streaming chat and Cloud Run packaging.
-
-  - `POST /v1/chat`: multi-turn chat streamed over SSE. Reuses the existing chat
-    synthesis loop via an injected printer adapter; reasoning, the model's
-    `query_kb` calls, the final answer (with sources), and `done` arrive as SSE
-    events. Per-session history is kept in memory (`SessionStore`, TTL + turn cap).
-  - Boot-build-if-missing: `kb server start` / `kb mcp start` build the index on
-    first boot from `KB_GIT_REPOS` (fresh volume) or by rescanning a base that
-    already tracks repos, then reuse the persisted index on later boots.
-  - Cloud Run packaging: multi-stage `Dockerfile`, `.dockerignore`, and
-    `docs/deploy-cloud-run.md` (single container + persistent volume at
-    `KB_HOME=/data`, single-writer model, env/secret wiring).
-
-## 0.11.0
-
-### Minor Changes
-
-- Add `kb server start` and `kb mcp start`: run kb as a long-lived service.
-
-  A shared, transport-agnostic service core (`src/server/kb-service.ts`) wraps the
-  existing query pipeline so the CLI, an HTTP API, and an MCP server all share one
-  code path. New surfaces:
-
-  - HTTP API (`kb server start`): `POST /v1/query` (synthesized answer for Slack and
-    apps), `GET /healthz`, and `POST /v1/reindex`, with bearer-key auth via
-    `KB_SERVER_API_KEY`.
-  - MCP server (`kb mcp start`, or `kb server start --mcp` for `POST /mcp`): exposes
-    read-only retrieval tools (`kb_query`, `kb_read_facts`, code-graph helpers) over
-    stdio and Streamable HTTP.
-  - An in-process reindex scheduler (`KB_REINDEX_INTERVAL`, default hourly) keeps the
-    served index fresh via incremental rescans.
-
 ## 0.10.0
 
 ### Minor Changes

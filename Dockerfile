@@ -11,7 +11,9 @@ FROM node:24-slim AS builder
 ENV HUSKY=0
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.8.0 --activate
-COPY package.json pnpm-lock.yaml .npmrc ./
+# scripts/.nvmrc are needed by the `preinstall` hook (check-node-version.mjs).
+COPY package.json pnpm-lock.yaml .npmrc .nvmrc ./
+COPY scripts ./scripts
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm run build
