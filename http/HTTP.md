@@ -45,9 +45,10 @@ sequenceDiagram
 
 ## Integration
 
-- **Manual send:** `pnpm exec httpyac send http/server.http -n query --env local` (server already up).
+- **Manual send:** `pnpm exec httpyac send http/server.http -n query --env local` (server already up on `:8080`).
+- **Local full suite:** `kb server start --with-mcp` with `KB_SERVER_API_KEY=testkey`.
 - **Full suite:** `pnpm run integration:test` — see [`../scripts/INTEGRATION_TEST.md`](../scripts/INTEGRATION_TEST.md).
-- **CI:** `.github/workflows/ci.yml` `integration` job runs the same script (no secrets).
+- **CI:** `.github/workflows/integration.yml` on merge to `main` — not on feature-branch pushes or PR checks.
 - **LLM:** Integration always routes Gemini to WireMock — [`../docker/wiremock/WIREMOCK.md`](../docker/wiremock/WIREMOCK.md).
 
 ### Test philosophy

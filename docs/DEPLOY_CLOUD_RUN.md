@@ -26,7 +26,7 @@ timestamp: 2026-06-22T00:00:00Z
 | `POST /v1/chat` | Multi-turn chat (SSE) |
 | `GET /healthz` | Liveness (unauthenticated) |
 | `POST /v1/reindex` | On-demand incremental rescan |
-| `POST /mcp` | MCP Streamable HTTP when started with `--mcp` |
+| `POST /mcp` | MCP Streamable HTTP when started with `--with-mcp` |
 
 `/v1/*` and `/mcp` require `Authorization: Bearer <KB_SERVER_API_KEY>`.
 

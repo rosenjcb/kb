@@ -1,9 +1,8 @@
 /**
- * CLI dispatch for `kb server start` and `kb mcp start`.
+ * CLI dispatch for `kb server start`.
  *
- * Both build the shared `KbService` once and keep the process alive until a
- * shutdown signal. The stdio MCP transport owns stdout for its JSON-RPC frames,
- * so MCP logs go to stderr only.
+ * Builds the shared `KbService` once and keeps the process alive until a
+ * shutdown signal.
  */
 
 import { existsSync } from 'node:fs'
@@ -15,8 +14,7 @@ import type { KbConfig } from '../cli/kb-config.js'
 import { runScanCommand } from '../cli/scan-command.js'
 import { kbIndexDbPath } from '../tools/graph-query-expansion.js'
 import { createHttpServer } from './http-server.js'
-import { createKbService, type KbService } from './kb-service.js'
-import { startStdioMcpServer } from './mcp-server.js'
+import { createKbService } from './kb-service.js'
 import { parseDuration, startReindexScheduler } from './reindex-scheduler.js'
 
 export interface ServerLogger {
@@ -102,13 +100,13 @@ function waitForShutdown(cleanup: () => Promise<void> | void): Promise<void> {
   })
 }
 
-/** `kb server start [--base <name>] [--port <n>] [--mcp]` */
+/** `kb server start [--base <name>] [--port <n>] [--with-mcp]` */
 export async function runServerCommand(
   args: string[],
   out: ServerLogger,
   config: KbConfig
 ): Promise<void> {
-  const enableMcp = args.includes('--mcp')
+  const enableMcp = args.includes('--with-mcp')
   const portArg = readOptionalCliValue(args, '--port')
   const port = portArg ? Number.parseInt(portArg, 10) : Number.parseInt(process.env.PORT ?? '', 10) || DEFAULT_PORT
   if (Number.isNaN(port) || port <= 0) {
@@ -156,39 +154,4 @@ export async function runServerCommand(
     await new Promise<void>(resolve => server.close(() => resolve()))
     await service.close()
   })
-}
-
-/** `kb mcp start [--http] [--base <name>] [--port <n>]` */
-export async function runMcpCommand(
-  args: string[],
-  out: ServerLogger,
-  config: KbConfig
-): Promise<void> {
-  const base = await resolveServerBaseDir(args)
-
-  if (args.includes('--http')) {
-    await ensureIndexBuilt(base, line => out.log(line))
-    const service: KbService = createKbService({ baseDir: base.baseDir, config })
-    const portArg = readOptionalCliValue(args, '--port')
-    const port = portArg ? Number.parseInt(portArg, 10) : Number.parseInt(process.env.PORT ?? '', 10) || DEFAULT_PORT
-    const apiKeys = readApiKeys()
-    const server = createHttpServer({ service, apiKeys, enableMcp: true, onLog: line => out.error(line) })
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject)
-      server.listen(port, () => resolve())
-    })
-    out.log(`🚀 kb MCP (Streamable HTTP) listening on :${port}/mcp (base "${path.basename(base.baseDir)}")`)
-    await waitForShutdown(async () => {
-      await new Promise<void>(resolve => server.close(() => resolve()))
-      await service.close()
-    })
-    return
-  }
-
-  // stdio: keep stdout clean for JSON-RPC; log to stderr only.
-  await ensureIndexBuilt(base, line => out.error(line))
-  const service: KbService = createKbService({ baseDir: base.baseDir, config })
-  await startStdioMcpServer(service)
-  process.stderr.write(`[kb] MCP stdio server ready (base "${path.basename(base.baseDir)}")\n`)
-  await waitForShutdown(() => service.close())
 }

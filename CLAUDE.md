@@ -53,7 +53,5 @@ break.
   suite (`http/server.http`) against it, then tear down (Docker only; LLM stubbed via
   WireMock sidecar — see `http/HTTP.md`)
 - `pnpm run server:start` / `server:stop` — Docker Compose kb-server (+ llm-mock)
-- `pnpm run mcp:start` / `mcp:stop` — local stdio MCP for IDE clients; stop kills
-  MCP HTTP listener on `PORT` when using `mcp start --http`
 - `pnpm run build` — compile + build the CLI
 - `pnpm run changeset` — create a *pending* changeset (no version bump; see above)

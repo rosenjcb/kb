@@ -1,14 +1,11 @@
 /**
- * MCP server surface over the shared `KbService`.
+ * MCP Streamable HTTP surface over the shared `KbService`.
  *
- * Two transports:
- *  - stdio (`kb mcp start`) for local LLM clients (Claude Desktop/Code, Cursor).
- *  - Streamable HTTP (mounted at `POST /mcp` by the HTTP server) for remote clients.
+ * Mounted at `POST /mcp` when `kb server start --with-mcp` (or Docker CMD).
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { KB_VERSION } from '../version.js'
 import { registerKbMcpHandlers } from './mcp-tools.js'
@@ -21,14 +18,6 @@ export function createKbMcpServer(service: KbService): Server {
     { capabilities: { tools: {} } }
   )
   registerKbMcpHandlers(server, service)
-  return server
-}
-
-/** Start an MCP server over stdio and resolve once connected. */
-export async function startStdioMcpServer(service: KbService): Promise<Server> {
-  const server = createKbMcpServer(service)
-  const transport = new StdioServerTransport()
-  await server.connect(transport)
   return server
 }
 

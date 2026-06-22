@@ -37,6 +37,6 @@ COPY --from=builder /app/dist ./dist
 COPY package.json ./
 RUN mkdir -p /data
 EXPOSE 8080
-# Serves /v1/* and (with --mcp) /mcp. Configure via env: KB_SERVER_API_KEY,
+# Serves /v1/* and (with --with-mcp) /mcp. Configure via env: KB_SERVER_API_KEY,
 # a provider key (e.g. GEMINI_API_KEY), KB_BASE, KB_GIT_REPOS, KB_REINDEX_INTERVAL.
-CMD ["node", "dist/bin/kb.js", "server", "start", "--mcp"]
+CMD ["node", "dist/bin/kb.js", "server", "start", "--with-mcp"]

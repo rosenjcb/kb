@@ -1,10 +1,5 @@
 /**
- * Stop a running kb server or MCP HTTP listener.
- *
- * 1. If docker compose has kb-server running → `docker compose stop …`
- * 2. Else send SIGTERM to whatever is listening on PORT (default 8080)
- *
- * Stdio MCP (`mcp start` without --http) is foreground-only; there is nothing to stop.
+ * Stop a running kb server (docker compose or local process on PORT).
  */
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
@@ -47,14 +42,8 @@ function stopLocalPort() {
   return 0
 }
 
-const mode = process.argv[2] ?? 'server'
-
 if (dockerServerRunning()) {
   process.exit(stopDocker())
-}
-
-if (mode === 'mcp') {
-  console.log('▶ no docker kb-server; checking local MCP HTTP port …')
 }
 
 process.exit(stopLocalPort())

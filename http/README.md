@@ -1,6 +1,6 @@
 # kb server — HTTP examples and integration tests
 
-OKF companion: [`HTTP.md`](HTTP.md) (contract, httpyac config, CI wiring).
+OKF companion: [`HTTP.md`](HTTP.md).
 
 | File | Purpose |
 |---|---|
@@ -13,29 +13,27 @@ OKF companion: [`HTTP.md`](HTTP.md) (contract, httpyac config, CI wiring).
 ## Quick commands
 
 ```bash
-# one request (server already running)
 pnpm exec httpyac send http/server.http -n query --env local
-
-# full file
 pnpm exec httpyac send http/server.http --all --env local
-
-# integration suite (Docker up → httpyac → down)
 pnpm run integration:test
 ```
 
-## Local server
+## Local server (manual httpyac)
 
 ```bash
-cp .env.example .env   # real provider key for manual runs (not integration:test)
-pnpm run server:start  # docker compose up
+export KB_SERVER_API_KEY=testkey   # match http/.httpyac.js apiKey
+kb server start --with-mcp         # REST + POST /mcp (required for full suite)
+pnpm exec httpyac send http/server.http --all --env local
+```
+
+Without `--with-mcp`, MCP requests in `server.http` return 404.
+
+## Docker
+
+```bash
+cp .env.example .env
+pnpm run server:start   # docker compose; image CMD includes --with-mcp
 pnpm run server:stop
 ```
 
-## MCP (stdio)
-
-```bash
-pnpm run mcp:start
-pnpm run mcp:stop
-```
-
-Unit tests: `pnpm run unit:test`. Server implementation: [`../src/server/SERVER.md`](../src/server/SERVER.md).
+Server implementation: [`../src/server/SERVER.md`](../src/server/SERVER.md).

@@ -194,24 +194,20 @@ kb base ignore clear             # remove all
 - Fresh interactive `kb init` prompts for patterns once (skippable; press Enter or `/skip`) and persists them to `meta.json` — including when a repo is passed via `--git`. The prompt is skipped when `--base` already has stored patterns, in non-interactive mode, on resume, and on `kb scan`.
 - Changing the list affects the **next** scan. Newly-ignored paths already indexed are pruned from the file manifest but their existing facts/docs are only fully purged by a fresh re-index — the same limitation as deleting a tracked file.
 
-## Long-lived server (`kb server` / `kb mcp`)
+## Long-lived server (`kb server`)
 
-Dispatch lives in [`../server/server-cli.ts`](../server/server-cli.ts). See [`../server/SERVER.md`](../server/SERVER.md) for HTTP routes, boot-build, and MCP transports.
+Dispatch: [`../server/server-cli.ts`](../server/server-cli.ts). See [`../server/SERVER.md`](../server/SERVER.md).
 
 ```text
-kb server start [--base <name>] [--port <n>] [--mcp]
-kb mcp start [--http] [--base <name>] [--port <n>]
+kb server start [--base <name>] [--port <n>] [--with-mcp]
 ```
 
-| Command | Transport | Notes |
-|---|---|---|
-| `kb server start` | HTTP on `PORT` (default 8080) | Query, chat (SSE), reindex; optional `POST /mcp` with `--mcp` |
-| `kb mcp start` | stdio JSON-RPC | IDE clients (Claude, Cursor); logs on stderr only |
-| `kb mcp start --http` | `POST /mcp` only | Same port/auth as server without full REST surface |
+| Flag | Effect |
+|---|---|
+| (default) | REST only — `/v1/query`, `/v1/chat`, `/healthz`, `/v1/reindex` |
+| `--with-mcp` | Also serves MCP Streamable HTTP at `POST /mcp` |
 
-**Boot-build:** If `.kb-index.sqlite` is missing, server runs `kb init` from `KB_GIT_REPOS` or `kb scan` from tracked repos **before** listening. **Invariants:** same retrieval path as CLI (`runQueryPipeline` / `runChatSynthesis`); server does not auto-sync git on each request.
-
-**pnpm shortcuts:** `server:start` / `server:stop` (Docker Compose), `mcp:start` / `mcp:stop` (local stdio + port kill). Integration tests: `pnpm run integration:test` — [`../../http/HTTP.md`](../../http/HTTP.md).
+**Boot-build:** missing index → `kb init` / `kb scan` before listen. **pnpm:** `server:start` / `server:stop` (Docker). Integration: [`../../http/HTTP.md`](../../http/HTTP.md).
 
 ## Gotchas
 

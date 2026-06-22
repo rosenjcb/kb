@@ -6,7 +6,7 @@ info:
     HTTP + MCP surface for the kb knowledge base service (`kb server start`).
     `/v1/*` is a plain REST API for apps and the Slack integration; `/mcp` is an
     MCP (Model Context Protocol) Streamable HTTP endpoint for LLM clients and is
-    only mounted when the server runs with `--mcp`. All `/v1/*` and `/mcp`
+    only mounted when the server runs with `--with-mcp`. All `/v1/*` and `/mcp`
     requests require a bearer API key (`KB_SERVER_API_KEY`); `/healthz` is open.
 servers:
   - url: http://localhost:8080
@@ -135,7 +135,7 @@ paths:
         `initialize`, `tools/list`, `tools/call`). Not a normal REST resource —
         use an MCP client or the examples in `http/server.http`. Requires the
         `Accept: application/json, text/event-stream` header. Only available when
-        the server runs with `--mcp`.
+        the server runs with `--with-mcp`.
       requestBody:
         required: true
         content:

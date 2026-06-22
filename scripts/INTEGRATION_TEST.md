@@ -50,7 +50,7 @@ Timeout: 6 minutes (first boot clone + index). On failure, prints `docker compos
 
 ## Integration
 
-- **CI:** `.github/workflows/ci.yml` job `integration`, 20-minute timeout, no secrets.
+- **CI:** `.github/workflows/integration.yml` on push to `main` (+ manual dispatch). Feature-branch `ci.yml` is lint/test/build only.
 - **httpyac:** `pnpm exec httpyac` from devDependency (not `dlx`).
 - **Requirements:** Docker + `docker compose` only.
 

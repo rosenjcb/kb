@@ -78,7 +78,8 @@ Black-box suite for `kb server start` — **not** Vitest. Spins up Docker (`kb-s
 pnpm run integration:test
 ```
 
-- **No LLM API key** — Gemini is stubbed (`GEMINI_API_BASE_URL=http://llm-mock:8080`). Same path locally and in CI (`.github/workflows/ci.yml` `integration` job).
+- **CI:** `.github/workflows/integration.yml` on **push to `main`** (and `workflow_dispatch`). Not part of feature-branch `ci.yml`.
+- **LLM in CI:** WireMock sidecar — no secrets required with current runner. Repo secrets can be wired in `integration.yml` if you move to a real provider on main.
 - **Requirements:** Docker + `docker compose`. First boot clones `KB_GIT_REPOS` (default: small public repo) before `/healthz` reports `indexMtime`.
 - **Unit coverage:** in-process handlers live in `tests/server/`; integration exercises the full container stack.
 
