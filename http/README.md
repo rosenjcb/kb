@@ -6,9 +6,9 @@
   (status, shape), not specific content — so they double as the integration suite.
 - **`openapi.yaml`** — OpenAPI 3.0 definition of the REST surface (and the MCP
   JSON-RPC endpoint). Load it in Swagger UI / Redoc, or generate clients.
-- **`.httpyac.json`** (repo root) — environments (`local`, `docker`, `prod`) and
-  variables (`{{baseUrl}}`, `{{apiKey}}`). `apiKey` must equal the server's
-  `KB_SERVER_API_KEY`.
+- **`.httpyac.json`** (repo root) — environments (`local`, `docker`, `prod`) under
+  `environments` with shared `apiKey`. Variables: `{{baseUrl}}`, `{{apiKey}}`.
+  `apiKey` must equal the server's `KB_SERVER_API_KEY`.
 
 ## Use as examples
 

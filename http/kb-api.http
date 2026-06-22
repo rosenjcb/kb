@@ -10,7 +10,7 @@
 # Run as the integration suite (spins up Docker, runs all, tears down):
 #   pnpm run integration:test
 #
-# Environments + variables live in .httpyac.json ({{baseUrl}}, {{apiKey}}).
+# Environments + variables live in `.httpyac.json` at repo root (`{{baseUrl}}`, `{{apiKey}}`).
 # `apiKey` must match the server's KB_SERVER_API_KEY.
 
 # ---------------------------------------------------------------------------
