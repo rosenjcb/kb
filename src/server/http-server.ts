@@ -5,12 +5,14 @@
  * is small. Serves:
  *  - `GET  /healthz`     liveness/readiness (unauthenticated)
  *  - `POST /v1/query`    request/response synthesized answer (Slack & apps)
+ *  - `POST /v1/chat`     multi-turn chat, streamed over SSE
  *  - `POST /v1/reindex`  on-demand incremental rescan
  *  - `POST /mcp`         MCP Streamable HTTP (when enabled)
  *
  * `/v1/*` and `/mcp` require a bearer API key when one is configured.
  */
 
+import { randomUUID } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { handleMcpHttpRequest } from './mcp-server.js'
 import { serializeQueryResult } from './serialize.js'
@@ -108,7 +110,8 @@ export function createHttpServer(options: HttpServerOptions): Server {
       return
     }
 
-    const protectedRoute = url === '/v1/query' || url === '/v1/reindex' || url === '/mcp'
+    const protectedRoute =
+      url === '/v1/query' || url === '/v1/chat' || url === '/v1/reindex' || url === '/mcp'
     if (protectedRoute && !isAuthorized(req, apiKeys)) {
       sendJson(res, 401, { error: 'unauthorized' })
       return
@@ -116,6 +119,11 @@ export function createHttpServer(options: HttpServerOptions): Server {
 
     if (method === 'POST' && url === '/v1/query') {
       await handleQuery(req, res)
+      return
+    }
+
+    if (method === 'POST' && url === '/v1/chat') {
+      await handleChat(req, res)
       return
     }
 
@@ -179,6 +187,45 @@ export function createHttpServer(options: HttpServerOptions): Server {
       sendJson(res, status, { error: message })
     } finally {
       if (timer) clearTimeout(timer)
+    }
+  }
+
+  async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    let body: { sessionId?: string; message?: string }
+    try {
+      body = (await readJsonBody(req)) as { sessionId?: string; message?: string }
+    } catch (error) {
+      sendJson(res, 400, { error: error instanceof Error ? error.message : 'bad request' })
+      return
+    }
+
+    const message = (body.message ?? '').trim()
+    if (!message) {
+      sendJson(res, 400, { error: 'missing "message"' })
+      return
+    }
+    const sessionId = body.sessionId?.trim() || randomUUID()
+
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+    })
+    const send = (event: string, data: unknown) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+    }
+    send('session', { sessionId })
+
+    try {
+      for await (const event of service.chat({ sessionId, message })) {
+        send(event.type, event)
+      }
+    } catch (error) {
+      const errMessage = error instanceof Error ? error.message : String(error)
+      onLog?.(`[http] /v1/chat error: ${errMessage}`)
+      send('error', { type: 'error', message: errMessage })
+    } finally {
+      res.end()
     }
   }
 

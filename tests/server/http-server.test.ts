@@ -19,6 +19,10 @@ function makeStubService(overrides: Partial<KbService> = {}): KbService {
         retrieval: { method: 'hybrid', detail: 'deep' },
       },
     }),
+    chat: async function* () {
+      yield { type: 'answer', text: 'chat answer', sources: [], factsRetrieved: 0 }
+      yield { type: 'done' }
+    },
     readFacts: async () => ({ results: [] }),
     reindex: async () => 'scanned 1 repo(s)',
     isReindexing: () => false,
@@ -107,6 +111,44 @@ describe('createHttpServer', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ status: 'ok', summary: 'scanned 2 repo(s)' })
     expect(reindex).toHaveBeenCalledOnce()
+  })
+
+  it('streams /v1/chat as SSE with a session id, answer, and done', async () => {
+    server = createHttpServer({
+      service: makeStubService({
+        chat: async function* () {
+          yield { type: 'reasoning', text: 'thinking' }
+          yield { type: 'answer', text: 'hello there', sources: [], factsRetrieved: 0 }
+          yield { type: 'done' }
+        },
+      }),
+      apiKeys: ['secret'],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/v1/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer secret' },
+      body: JSON.stringify({ message: 'hi' }),
+    })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/event-stream')
+    const text = await res.text()
+    expect(text).toContain('event: session')
+    expect(text).toContain('event: reasoning')
+    expect(text).toContain('event: answer')
+    expect(text).toContain('hello there')
+    expect(text.trimEnd().endsWith('event: done\ndata: {"type":"done"}')).toBe(true)
+  })
+
+  it('returns 400 when chat message is missing', async () => {
+    server = createHttpServer({ service: makeStubService(), apiKeys: [] })
+    const base = await listen(server)
+    const res = await fetch(`${base}/v1/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(400)
   })
 
   it('404s on unknown routes and when MCP is disabled', async () => {

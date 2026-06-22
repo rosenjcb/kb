@@ -24,6 +24,9 @@ function makeStubService(overrides: Partial<KbService> = {}): KbService {
       recommendedAction: 'read_facts',
       data: { answer: `synth:${params.synthesize}`, results: [], retrieval: {} },
     }),
+    chat: async function* () {
+      yield { type: 'done' }
+    },
     readFacts: async () => ({ results: [] }),
     reindex: async () => 'ok',
     isReindexing: () => false,
