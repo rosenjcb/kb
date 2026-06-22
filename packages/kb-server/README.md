@@ -110,6 +110,72 @@ Precedence (highest wins): `--git` flags → `KB_GIT_REPOS` env → manifest. So
 deploys are unaffected, and you can override the manifest per environment. Repos added to
 the manifest later are folded in on the next boot without a manual reindex.
 
+## Without pnpm — raw Docker
+
+The `server:*` scripts are thin wrappers; if you already have the image (built or pulled)
+and don't want pnpm, drive Docker directly. Both paths read the same env.
+
+### Raw `docker compose`
+
+Run from the **repo root** so the `.env` is picked up. These are exactly what the npm
+scripts call:
+
+| Wrapper | Raw command |
+|---|---|
+| `pnpm run server:start` | `docker compose -f packages/kb-server/docker-compose.yml up -d --build kb-server` |
+| `pnpm run server:logs` | `docker compose -f packages/kb-server/docker-compose.yml logs -f kb-server` |
+| `pnpm run server:stop` | `docker compose -f packages/kb-server/docker-compose.yml stop kb-server` |
+| reset (wipe index) | `docker compose -f packages/kb-server/docker-compose.yml down -v` |
+
+Drop `--build` once the image exists to boot the already-built image as-is. (The test-only
+`llm-mock` stays off unless you add `--profile mock`.)
+
+### Raw `docker run` (prebuilt image, no compose)
+
+If all you have is the image, you don't need the compose file at all — just map the port,
+mount a named volume at `/data`, and pass the env. With an `.env` file:
+
+```bash
+docker run -d --name kb-server \
+  --env-file .env \
+  -p 8080:8080 \
+  -v kb-data:/data \
+  kb-server                       # or REGISTRY/kb-server:TAG
+```
+
+Or pass the env explicitly (no file):
+
+```bash
+docker run -d --name kb-server \
+  -p 8080:8080 \
+  -v kb-data:/data \
+  -e KB_SERVER_API_KEY=<strong-token> \
+  -e GEMINI_API_KEY=<provider-key> \
+  -e KB_BASE=acme \
+  -e KB_GIT_REPOS=https://github.com/acme/auth,https://github.com/acme/web \
+  -e KB_REINDEX_INTERVAL=1h \
+  kb-server
+```
+
+The image already sets `KB_HOME=/data`, `PORT=8080`, and a CMD of
+`kb server start --with-mcp`, so the volume mount is what makes the index survive
+restarts. Lifecycle is plain Docker:
+
+```bash
+docker logs -f kb-server     # watch first-boot clone + index
+docker stop kb-server        # keeps the volume + index
+docker start kb-server       # reuse the persisted index
+docker rm -f kb-server && docker volume rm kb-data   # full reset
+```
+
+### Build the image standalone
+
+`server:up` / compose build for you; to build by hand (context is the **repo root**):
+
+```bash
+docker build -f packages/kb-server/Dockerfile -t kb-server .
+```
+
 ## Verify
 
 ```bash
