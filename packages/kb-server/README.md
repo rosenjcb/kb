@@ -193,6 +193,9 @@ The image starts with `--with-mcp`, so MCP clients can connect at `POST /mcp` wi
 same bearer token — see [`../../src/server/SERVER.md`](../../src/server/SERVER.md) for the
 Claude Code / Cursor wiring and the full endpoint + tool list.
 
+**Slack:** to answer `@kb <question>` in Slack, run the optional bot container that bridges
+mentions to `/v1/query` — `pnpm run slack:up`, setup in [`../kb-slack/README.md`](../kb-slack/README.md).
+
 ## Operate
 
 ```bash
