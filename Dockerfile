@@ -10,7 +10,11 @@
 FROM node:24-slim AS builder
 ENV HUSKY=0
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@11.8.0 --activate
+# Build toolchain for any native deps; pnpm 9 matches CI (no build-scripts gate).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+RUN npm install -g pnpm@9
 # scripts/.nvmrc are needed by the `preinstall` hook (check-node-version.mjs).
 COPY package.json pnpm-lock.yaml .npmrc .nvmrc ./
 COPY scripts ./scripts
