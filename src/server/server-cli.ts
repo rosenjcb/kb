@@ -7,7 +7,7 @@
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { readBaseMeta } from '../cli/base-meta.js'
+import { readBaseMeta, repoSlugFromGitUrl } from '../cli/base-meta.js'
 import { ensureOperationalBaseDir, readOptionalCliValue, resolveEffectiveBaseDir } from '../cli/base-selection.js'
 import { runKbInit } from '../cli/init-cli.js'
 import type { KbConfig } from '../cli/kb-config.js'
@@ -55,15 +55,22 @@ async function resolveServerBaseDir(plan: BootstrapPlan): Promise<ResolvedBase> 
  * Boot-build the index when the volume has none. Builds from the declared bootstrap
  * plan (`--git` flags, env, or a `kb-server.json` manifest — see `server-bootstrap.ts`)
  * on a fresh volume, or rescans the base's tracked repos when meta already exists.
- * Subsequent restarts reuse the persisted index — no reindex on boot. Runs before the
- * service so the index file exists when the tool registry opens it.
+ *
+ * When an index already exists, the persisted graph is reused for fast restarts — except
+ * that any repo newly declared in the plan but not yet tracked (e.g. added to the manifest
+ * since the last boot) is folded in via idempotent `kb init`, so a server node converges on
+ * its declared repo set without manual intervention. Runs before the service so the index
+ * file exists when the tool registry opens it.
  */
 async function ensureIndexBuilt(
   base: ResolvedBase,
   plan: BootstrapPlan,
   log: (line: string) => void
 ): Promise<void> {
-  if (existsSync(kbIndexDbPath(base.baseDir))) return
+  if (existsSync(kbIndexDbPath(base.baseDir))) {
+    await syncNewlyDeclaredRepos(base, plan, log)
+    return
+  }
 
   if (plan.gitTargets.length > 0) {
     log(
@@ -91,6 +98,33 @@ async function ensureIndexBuilt(
     '⚠  No index and no repos configured. Declare repos via --git, KB_SERVER_BASE_GIT_REPOS ' +
       '(or KB_GIT_REPOS), or a kb-server.json manifest; run `kb init`; or POST /v1/reindex once a base tracks repos.'
   )
+}
+
+/**
+ * On a warm volume, fold in any repos the plan declares that the base doesn't yet track.
+ * No-ops (fast restart) when nothing new is declared; otherwise idempotent `kb init` swaps to
+ * the base, re-syncs it, and clones + indexes the new remotes. Routine refresh of already-
+ * tracked repos is left to the reindex scheduler, not boot.
+ */
+async function syncNewlyDeclaredRepos(
+  base: ResolvedBase,
+  plan: BootstrapPlan,
+  log: (line: string) => void
+): Promise<void> {
+  if (plan.gitTargets.length === 0) return
+  const meta = await readBaseMeta(base.baseDir)
+  const tracked = new Set((meta?.repos ?? []).map(repo => repo.slug))
+  const newCount = plan.gitTargets.filter(t => !tracked.has(repoSlugFromGitUrl(t.url))).length
+  if (newCount === 0) return
+
+  log(`Index present; folding in ${newCount} newly-declared repo(s) from ${plan.source}…`)
+  await runKbInit({
+    base: base.baseRef,
+    nonInteractive: true,
+    gitTargets: plan.gitTargets,
+    ignorePatterns: plan.ignore,
+  })
+  log('Repo sync complete.')
 }
 
 /** Wait for SIGINT/SIGTERM, then run cleanup and resolve. */
