@@ -9,10 +9,11 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { readBaseMeta } from '../cli/base-meta.js'
 import { ensureOperationalBaseDir, readOptionalCliValue, resolveEffectiveBaseDir } from '../cli/base-selection.js'
-import { parseInitCommand, runKbInit } from '../cli/init-cli.js'
+import { runKbInit } from '../cli/init-cli.js'
 import type { KbConfig } from '../cli/kb-config.js'
 import { runScanCommand } from '../cli/scan-command.js'
 import { kbIndexDbPath } from '../tools/graph-query-expansion.js'
+import { type BootstrapPlan, resolveBootstrapPlan } from './server-bootstrap.js'
 import { createHttpServer } from './http-server.js'
 import { createKbService } from './kb-service.js'
 import { parseDuration, startReindexScheduler } from './reindex-scheduler.js'
@@ -33,40 +34,47 @@ function readApiKeys(): string[] {
 
 interface ResolvedBase {
   baseDir: string
-  /** The `--base`/`KB_BASE` value or resolved base name — used for init/scan args. */
+  /** The resolved base name (`--base` / env / manifest / effective) — used for init/scan args. */
   baseRef: string
 }
 
-async function resolveServerBaseDir(args: string[]): Promise<ResolvedBase> {
-  const base = readOptionalCliValue(args, '--base') ?? process.env.KB_BASE
-  if (base) return { baseDir: await ensureOperationalBaseDir(base), baseRef: base }
+/**
+ * Resolve which base to build + serve. The name comes from the bootstrap plan
+ * (`--base` flag > `KB_SERVER_BASE_NAME` / `KB_BASE` env > manifest `base`); when none is
+ * declared, fall back to the effective base from local config (`kb base use`).
+ */
+async function resolveServerBaseDir(plan: BootstrapPlan): Promise<ResolvedBase> {
+  if (plan.base) {
+    return { baseDir: await ensureOperationalBaseDir(plan.base), baseRef: plan.base }
+  }
   const resolved = await resolveEffectiveBaseDir()
   return { baseDir: resolved.baseDir, baseRef: resolved.baseName }
 }
 
-function parseGitRepos(): string[] {
-  return (process.env.KB_GIT_REPOS ?? '')
-    .split(',')
-    .map(repo => repo.trim())
-    .filter(repo => repo.length > 0)
-}
-
 /**
- * Boot-build the index when the volume has none. Builds from `KB_GIT_REPOS` (fresh
- * volume) or rescans the base's tracked repos (existing meta). Subsequent restarts
- * reuse the persisted index — no reindex on boot. Runs before the service so the
- * index file exists when the tool registry opens it.
+ * Boot-build the index when the volume has none. Builds from the declared bootstrap
+ * plan (`--git` flags, env, or a `kb-server.json` manifest — see `server-bootstrap.ts`)
+ * on a fresh volume, or rescans the base's tracked repos when meta already exists.
+ * Subsequent restarts reuse the persisted index — no reindex on boot. Runs before the
+ * service so the index file exists when the tool registry opens it.
  */
-async function ensureIndexBuilt(base: ResolvedBase, log: (line: string) => void): Promise<void> {
+async function ensureIndexBuilt(
+  base: ResolvedBase,
+  plan: BootstrapPlan,
+  log: (line: string) => void
+): Promise<void> {
   if (existsSync(kbIndexDbPath(base.baseDir))) return
 
-  const repos = parseGitRepos()
-  if (repos.length > 0) {
-    log(`No index found; building from KB_GIT_REPOS (${repos.length} repo(s))…`)
-    const initArgs = ['--base', base.baseRef, '--non-interactive', ...repos.flatMap(r => ['--git', r])]
-    const options = parseInitCommand(initArgs)
-    if (!options.base) options.base = base.baseRef
-    await runKbInit(options)
+  if (plan.gitTargets.length > 0) {
+    log(
+      `No index found; building "${base.baseRef}" from ${plan.source} (${plan.gitTargets.length} repo(s))…`
+    )
+    await runKbInit({
+      base: base.baseRef,
+      nonInteractive: true,
+      gitTargets: plan.gitTargets,
+      ignorePatterns: plan.ignore,
+    })
     log('Index build complete.')
     return
   }
@@ -80,7 +88,8 @@ async function ensureIndexBuilt(base: ResolvedBase, log: (line: string) => void)
   }
 
   log(
-    '⚠  No index and no repos configured. Set KB_GIT_REPOS, run `kb init`, or POST /v1/reindex once a base tracks repos.'
+    '⚠  No index and no repos configured. Declare repos via --git, KB_SERVER_BASE_GIT_REPOS ' +
+      '(or KB_GIT_REPOS), or a kb-server.json manifest; run `kb init`; or POST /v1/reindex once a base tracks repos.'
   )
 }
 
@@ -100,7 +109,10 @@ function waitForShutdown(cleanup: () => Promise<void> | void): Promise<void> {
   })
 }
 
-/** `kb server start [--base <name>] [--port <n>] [--with-mcp]` */
+/**
+ * `kb server start [--base <name>] [--port <n>] [--with-mcp]
+ *                  [--git <url[#branch]>]… [--branch <name>] [--bootstrap <file>]`
+ */
 export async function runServerCommand(
   args: string[],
   out: ServerLogger,
@@ -113,8 +125,9 @@ export async function runServerCommand(
     throw new Error('--port must be a positive integer')
   }
 
-  const base = await resolveServerBaseDir(args)
-  await ensureIndexBuilt(base, line => out.log(line))
+  const plan = await resolveBootstrapPlan(args)
+  const base = await resolveServerBaseDir(plan)
+  await ensureIndexBuilt(base, plan, line => out.log(line))
 
   const service = createKbService({ baseDir: base.baseDir, config })
   const apiKeys = readApiKeys()
