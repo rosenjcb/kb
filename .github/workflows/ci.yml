@@ -42,11 +42,13 @@ jobs:
       - name: Build
         run: pnpm run build
 
-  # Dedicated, independently-named status check so it can be marked "Required"
-  # in branch protection. Hard-fails when shipped source code changes without a
-  # changeset, so a missing changeset blocks the merge instead of slipping through.
+  # Dedicated, independently-named status check so it can be marked "Required" in branch
+  # protection. The version bump is applied on the branch (`pnpm run changeset:version`), not
+  # automatically after merge — this gate hard-fails a PR into main whose shipped source changed
+  # without the affected package (kb / kb-server) being bumped, or that still carries an
+  # unapplied changeset.
   changeset:
-    name: Changeset required
+    name: Version bump required
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
 
@@ -55,7 +57,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Require a changeset for source changes
+      - name: Require an applied version bump for source changes
         env:
           BASE_REF: ${{ github.base_ref }}
         run: node scripts/check-changeset-consistency.mjs --base "origin/$BASE_REF"

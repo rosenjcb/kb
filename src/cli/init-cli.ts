@@ -14,12 +14,14 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import {
+  type GitBaseMeta,
   type GitRepoMeta,
   readBaseMeta,
   repoDirForSlug,
   repoSlugFromGitUrl,
   writeBaseMeta,
 } from './base-meta'
+import { scanBaseRepos } from './auto-sync'
 import { cloneRepo, getCurrentBranch, getHeadSha } from './git-sync'
 import { type IgnoreMatcher, parseIgnoreInput, resolveIgnoreMatcher } from './kb-ignore'
 import { TsMorphIndexer, tombstoneStaleAstFacts } from '../tools/code-graph-indexer'
@@ -580,6 +582,19 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   }
   const baseDir = await ensureOperationalBaseDir(base, cwd)
 
+  // Idempotent init: when this base already exists (has an index + tracked repos),
+  // a fresh `kb init` would clobber meta.json and re-index from scratch — undefined
+  // territory. Instead swap to the existing base, re-sync its repos, and add any
+  // newly-listed `--git` remotes. Recursive per-repo runs (rescan) skip this so they
+  // can still re-index in place.
+  if (!options.rescan) {
+    const existingMeta = await readBaseMeta(baseDir)
+    const indexExists = existsSync(path.join(baseDir, '.kb-index.sqlite'))
+    if (existingMeta && existingMeta.repos.length > 0 && indexExists) {
+      return runExistingBaseSwap({ base, baseDir, options, questionIO, existingMeta })
+    }
+  }
+
   // Resolve where to scan + the repo provenance for facts written this run.
   // - rescan: index `cwd` directly (a clone managed by auto-sync / scan / repo add), tagged
   //   with the caller-supplied `options.gitRepo`.
@@ -1106,6 +1121,107 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     resumedFrom: resumedCheckpoint ? checkpointFile : undefined,
     coverageSummary:
       checkpoint.finalCoverageSummary ?? summariseCoverage(checkpoint.topicCoverage ?? []),
+  }
+}
+
+/**
+ * Idempotent `kb init` against an already-initialised base. Instead of re-running the
+ * fresh-init pipeline (which would overwrite meta.json and re-index from scratch), this
+ * swaps to the existing base, re-syncs the repos it already tracks (pull + re-index any
+ * with new commits), and clones + indexes any newly-listed `--git` remotes. The swap is
+ * announced through both `questionIO.write` (TUI) and `progressSink` (CLI) so it is
+ * explicit in either surface.
+ */
+async function runExistingBaseSwap(params: {
+  base: string
+  baseDir: string
+  options: InitOptions
+  questionIO: InitQuestionIO
+  existingMeta: GitBaseMeta
+}): Promise<InitResult> {
+  const { base, baseDir, options, questionIO, existingMeta } = params
+  const emit = (line: string) => {
+    options.progressSink?.(line)
+    questionIO.write?.(`${line}\n`)
+  }
+
+  try {
+    // Split the requested remotes into "already tracked" (will be re-synced) and "new".
+    const trackedSlugs = new Set(existingMeta.repos.map(r => r.slug))
+    const seen = new Set<string>()
+    const newTargets: GitTarget[] = []
+    for (const target of options.gitTargets ?? []) {
+      const slug = repoSlugFromGitUrl(target.url)
+      if (trackedSlugs.has(slug) || seen.has(slug)) continue
+      seen.add(slug)
+      newTargets.push(target)
+    }
+
+    const addNote = newTargets.length > 0 ? `, adding ${newTargets.length} new repo(s).` : '.'
+    emit(
+      `[kb init] Base "${base}" already exists — switching to it and re-syncing ${existingMeta.repos.length} tracked repo(s)${addNote}`
+    )
+
+    // 1) Re-sync the repos the base already tracks (pull + re-index changed, then reconcile).
+    await scanBaseRepos(baseDir, { onProgress: emit })
+
+    // 2) Clone + index any newly-listed remotes into the same base graph.
+    if (newTargets.length > 0) {
+      const ignorePatterns = options.ignorePatterns ?? existingMeta.ignore
+      for (const target of newTargets) {
+        const slug = repoSlugFromGitUrl(target.url)
+        const dir = repoDirForSlug(slug)
+        const repoDir = path.join(baseDir, dir)
+        emit(`[kb init] Adding new repo "${slug}"…`)
+        if (!existsSync(repoDir)) {
+          await cloneRepo(target.url, repoDir, target.branch)
+        }
+        const gitBranch = target.branch ?? (await getCurrentBranch(repoDir))
+        await runKbInit({
+          base,
+          cwd: repoDir,
+          rescan: true,
+          apply: true,
+          nonInteractive: true,
+          gitRepo: slug,
+          ignorePatterns,
+          provider: options.provider,
+          collector: options.collector,
+          progressSink: options.progressSink,
+          questionIO: SILENT_QUESTION_IO,
+        })
+        // Re-read meta each iteration: the rescan above rewrites it, so we append onto the
+        // latest copy instead of an in-memory snapshot.
+        const latestMeta = (await readBaseMeta(baseDir)) ?? existingMeta
+        const entry: GitRepoMeta = {
+          gitUrl: target.url,
+          gitBranch,
+          slug,
+          dir,
+          lastSyncedSha: await getHeadSha(repoDir),
+          lastSyncedAt: new Date().toISOString(),
+        }
+        await writeBaseMeta(baseDir, {
+          ...latestMeta,
+          repos: [...latestMeta.repos.filter(r => r.slug !== slug), entry],
+        })
+      }
+      // Rebuild the cross-repo bridge edges now that new repos joined the graph.
+      const reconcileIndexer = new SqliteKbIndexer({
+        dbPath: path.join(baseDir, '.kb-index.sqlite'),
+      })
+      try {
+        const linked = reconcileIndexer.reconcileCrossRepoEdges()
+        if (linked > 0) emit(`[kb init] Linked ${linked} cross-repo edge(s).`)
+      } finally {
+        reconcileIndexer.close()
+      }
+    }
+
+    emit(`[kb init] Base "${base}" is ready.`)
+    return { status: 'accepted', base, completedCycles: [] }
+  } finally {
+    await questionIO.close?.()
   }
 }
 
