@@ -1,0 +1,61 @@
+# Local / single-host run of the kb server.
+#
+#   cp .env.example .env   # then fill in a provider key
+#   docker compose up --build
+#
+# Integration / CI (`pnpm run integration:test`) points Gemini at the WireMock
+# sidecar via GEMINI_API_BASE_URL — no real provider key required.
+# Stub details: docker/wiremock/WIREMOCK.md
+#
+# Mirrors the Cloud Run model: persistent volume at /data (KB_HOME), first boot
+# builds the index from KB_GIT_REPOS, later boots reuse it.
+
+services:
+  llm-mock:
+    image: wiremock/wiremock:3.9.1
+    ports:
+      - "${LLM_MOCK_PORT:-18080}:8080"
+    volumes:
+      - ./docker/wiremock:/home/wiremock
+    command: ["--global-response-templating", "--verbose"]
+
+  kb-server:
+    build:
+      context: ../..
+      dockerfile: packages/kb-server/Dockerfile
+    image: kb-server
+    depends_on:
+      - llm-mock
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      KB_HOME: /data
+      PORT: "8080"
+      KB_BASE: "${KB_BASE:-demo}"
+      # Set on first boot to clone + index a fresh base; can be cleared afterwards.
+      KB_GIT_REPOS: "${KB_GIT_REPOS:-}"
+      KB_SERVER_API_KEY: "${KB_SERVER_API_KEY:-testkey}"
+      KB_REINDEX_INTERVAL: "${KB_REINDEX_INTERVAL:-1h}"
+      # Provide one of these (read from your .env / shell). Gemini shown as default.
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      GEMINI_API_BASE_URL: "${GEMINI_API_BASE_URL:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+    volumes:
+      - kb-data:/data
+    restart: unless-stopped
+    healthcheck:
+      # node:24-slim has no curl; use node's built-in fetch.
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      # First boot clones + indexes before listening; give it room.
+      start_period: 300s
+
+volumes:
+  kb-data:

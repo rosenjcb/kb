@@ -194,6 +194,21 @@ kb base ignore clear             # remove all
 - Fresh interactive `kb init` prompts for patterns once (skippable; press Enter or `/skip`) and persists them to `meta.json` — including when a repo is passed via `--git`. The prompt is skipped when `--base` already has stored patterns, in non-interactive mode, on resume, and on `kb scan`.
 - Changing the list affects the **next** scan. Newly-ignored paths already indexed are pruned from the file manifest but their existing facts/docs are only fully purged by a fresh re-index — the same limitation as deleting a tracked file.
 
+## Long-lived server (`kb server`)
+
+Dispatch: [`../server/server-cli.ts`](../server/server-cli.ts). See [`../server/SERVER.md`](../server/SERVER.md).
+
+```text
+kb server start [--base <name>] [--port <n>] [--with-mcp]
+```
+
+| Flag | Effect |
+|---|---|
+| (default) | REST only — `/v1/query`, `/v1/chat`, `/healthz`, `/v1/reindex` |
+| `--with-mcp` | Also serves MCP Streamable HTTP at `POST /mcp` |
+
+**Boot-build:** missing index → `kb init` / `kb scan` before listen. **pnpm:** `server:start` / `server:stop` (Docker). Integration: [`../../packages/kb-server/http/HTTP.md`](../../packages/kb-server/http/HTTP.md).
+
 ## Gotchas
 
 - **Base resolution:** Most commands flow through `base-selection.ts`; missing base → `CLI_ERROR_NO_KB_BASE` (formatted by `cli-prerequisites.ts`).

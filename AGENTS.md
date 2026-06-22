@@ -7,22 +7,33 @@ rules because Codex reads `AGENTS.md` by default.
 
 ## Changesets are mandatory for source changes
 
-Any change to shipped code under `src/` or `bin/` **must** include a version
-bump via Changesets. CI enforces this with the `Changeset required` job in
-`.github/workflows/ci.yml`. Docs/eval/research/CI/config-only PRs are exempt.
+Any change to shipped code under `src/` or `bin/` **must** include a changeset.
+CI enforces this with the `Changeset required` job in `.github/workflows/ci.yml`.
+Docs/eval/research/CI/config-only PRs are exempt.
 
-**Do not hand-author changeset markdown files or version files.** Always use:
+**The version bump happens on merge to main, NOT in your PR.** Feature PRs carry
+a *pending* `.changeset/*.md` and must **not** touch the version files
+(`package.json`, `CHANGELOG.md`, `research/version.tex`). On merge to main, the
+Changesets GitHub Action (`.github/workflows/changesets.yml`) consumes pending
+changesets and opens a "Version Packages" PR that does the bump + changelog.
+
+Add a changeset with:
 
 ```bash
 pnpm run changeset
 ```
 
-This is the only changeset command. It:
+Locally this only *creates* a pending changeset (interactive wizard); it does not
+bump the version. In a non-interactive / agent session, write the
+`.changeset/<name>.md` file directly:
 
-1. Runs the interactive changeset wizard (pick `patch` / `minor` / `major`,
-   write the summary).
-2. Consumes the changeset and bumps `package.json`, `CHANGELOG.md`, and
-   `research/version.tex`.
+```md
+---
+"kb": minor
+---
 
-Commit all three version files with your code. Do not leave pending
-`.changeset/*.md` files in the PR.
+Short summary of the change.
+```
+
+Leave the `.changeset/*.md` file in the PR. Do not run `changeset version` or
+edit `package.json` / `CHANGELOG.md` / `research/version.tex` by hand.

@@ -1,0 +1,15 @@
+{
+  "priority": 20,
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/v1beta/models/.*:streamGenerateContent"
+  },
+  "response": {
+    "status": 503,
+    "jsonBody": {
+      "error": {
+        "message": "streaming disabled in integration mock"
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "kb-server",
+  "version": "0.10.0",
+  "private": true,
+  "description": "KB HTTP/MCP server — Docker image, integration contract, WireMock stubs"
+}

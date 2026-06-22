@@ -4,31 +4,40 @@ Guidance for AI agents (Claude Code and others) working in this repository.
 
 ## Changesets are mandatory for source changes
 
-Any change to shipped code under `src/` or `bin/` **must** include a version
-bump via Changesets. CI enforces this with the `Changeset required` job in
-`.github/workflows/ci.yml`, which hard-fails a PR that touches `src/`/`bin/`
-without a consistent version bump. Docs/eval/research/CI/config-only PRs are exempt.
+Any change to shipped code under `src/` or `bin/` **must** include a changeset.
+CI enforces this with the `Changeset required` job in `.github/workflows/ci.yml`,
+which hard-fails a PR that touches `src/`/`bin/` without a pending changeset.
+Docs/eval/research/CI/config-only PRs are exempt.
 
-**Do not hand-author changeset markdown files or version files.** Always use:
+**The version bump happens on merge to main, NOT in your PR.** Feature PRs carry
+a *pending* `.changeset/*.md` and must **not** touch the version files
+(`package.json`, `CHANGELOG.md`, `research/version.tex`). On merge to main, the
+Changesets GitHub Action (`.github/workflows/changesets.yml`) consumes the pending
+changesets and opens a "Version Packages" PR that performs the bump and updates
+the changelog. Do not run `changeset version` yourself, and do not hand-edit the
+version files.
+
+Add a changeset with:
 
 ```bash
 pnpm run changeset
 ```
 
-This is the only changeset command. It wraps Changesets
-(`scripts/update-research-version.mjs`):
+Locally this only runs the interactive wizard to **create** a pending changeset
+(pick `patch` / `minor` / `major` and write the summary) — it does not bump the
+version. In a non-interactive / agent session where the wizard can't run, write
+the `.changeset/<name>.md` file directly with the correct frontmatter:
 
-1. Runs the interactive changeset wizard so you pick the bump
-   (`patch` / `minor` / `major`) and write the summary.
-2. Runs `changeset version` to consume the changeset(s) — bumping
-   `package.json`, updating `CHANGELOG.md`, and regenerating
-   `research/version.tex`.
+```md
+---
+"kb": minor
+---
 
-Commit the resulting version bump files (`package.json`, `CHANGELOG.md`,
-`research/version.tex`) along with your code. Do **not** leave pending
-`.changeset/*.md` files in the PR. CI also verifies that all three version
-files were updated together and that `research/version.tex` matches
-`package.json`.
+Short summary of the change.
+```
+
+Leave the `.changeset/*.md` file in the PR; do not commit any change to
+`package.json`, `CHANGELOG.md`, or `research/version.tex`.
 
 Pick the bump type by impact: `patch` for fixes, `minor` for new or removed
 features / behavior changes (this pre-1.0 project uses `minor` for breaking
@@ -39,6 +48,11 @@ break.
 
 - `pnpm run type-check` — TypeScript type check
 - `pnpm run lint` — Biome lint
-- `pnpm run test` — Vitest
+- `pnpm run unit:test` — Vitest unit/integration tests (alias: `pnpm run test`)
+- `pnpm run integration:test` — spin up the server in Docker and run the httpyac
+  suite (`packages/kb-server/http/server.http`) against it, then tear down (Docker only; LLM stubbed via
+  WireMock sidecar — see `packages/kb-server/http/HTTP.md`)
+- `pnpm run server:start` / `server:stop` — Docker Compose kb-server (+ llm-mock)
 - `pnpm run build` — compile + build the CLI
-- `pnpm run changeset` — create a changeset and bump the version (see above)
+- `pnpm run changeset` — create a *pending* changeset (no version bump; see above)
+- `pnpm run changeset:check` — native `changeset status --since main` (kb vs kb-server) + policy check

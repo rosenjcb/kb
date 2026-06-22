@@ -105,6 +105,7 @@ import {
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
+import { runServerCommand } from '../server/server-cli'
 import { maybeAutoSync } from './auto-sync'
 import { baseNameFromGitUrl } from './git-sync'
 import { runScanCommand } from './scan-command'
@@ -184,6 +185,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  sync        Install the latest published KB release',
     '  logs        Browse and compare run reports',
     '  skills      Manage agent skills',
+    '  server      Run kb as a long-lived HTTP service (optional MCP at POST /mcp)',
     '  uninstall   Remove the kb binary and optionally all user data',
     '',
     'Intent commands:',
@@ -309,6 +311,30 @@ function printDocsHelp(mode: CmdMode = 'cli'): string {
     printDocsRenameHelp(mode),
     '',
     printDocsDeleteHelp(mode),
+  ].join('\n')
+}
+
+function printServerHelp(mode: CmdMode = 'cli'): string {
+  return [
+    `${cmd('server', mode)} commands`,
+    '',
+    'Usage:',
+    `  ${cmd('server start [--base <name>] [--port <n>] [--with-mcp]', mode)}`,
+    '',
+    'Run kb as a long-lived HTTP service:',
+    '  server start   POST /v1/query, POST /v1/chat (SSE), GET /healthz, POST /v1/reindex.',
+    '                 Add --with-mcp to also serve MCP Streamable HTTP at POST /mcp.',
+    '',
+    'Environment:',
+    '  PORT                   HTTP port (default 8080; --port overrides)',
+    '  KB_SERVER_API_KEY      Bearer key(s) for /v1 and /mcp (comma-separated)',
+    '  KB_BASE                Base name to serve (else the active/default base)',
+    '  KB_GIT_REPOS           Repos to boot-build a fresh base (comma-separated git URLs)',
+    '  KB_REINDEX_INTERVAL    Reindex cadence, e.g. 1h, 30m, 10s, or 0 to disable (default 1h)',
+    '',
+    'Examples:',
+    `  ${cmd('server start --base acme', mode)}`,
+    `  ${cmd('server start --base acme --with-mcp', mode)}`,
   ].join('\n')
 }
 
@@ -851,6 +877,16 @@ export async function runMainWithOutput(
 
   if (firstArg === 'uninstall') {
     await runUninstallCommand(args.slice(1), out)
+    return
+  }
+
+  if (firstArg === 'server') {
+    const sub = args[1]
+    if (sub === 'start') {
+      await runServerCommand(args.slice(2), out, config)
+    } else {
+      out.log(printServerHelp(mode))
+    }
     return
   }
 

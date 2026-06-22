@@ -1,0 +1,243 @@
+# kb server — HTTP collection + integration tests (httpyac)
+#
+# These requests double as examples and as the integration suite. Each has
+# httpyac test/assert blocks that check response *structure* (status, shape),
+# not specific content, so they're stable across knowledge bases.
+#
+# Run as examples (VS Code httpyac extension or CLI):
+#   httpyac send http/server.http -n query --env local
+#
+# Run as the integration suite (spins up Docker, runs all, tears down):
+#   pnpm run integration:test
+#
+# Environments: `http/.httpyac.js` + `http/http-client.env.json` ({{baseUrl}}, {{apiKey}}).
+# `http/package.json` sets `"type": "commonjs"` so httpyac can load the config in this ESM repo.
+# Post-response scripts must `require('assert')` inside the `{{ }}` block (httpyac does not inject it).
+
+# ---------------------------------------------------------------------------
+# Health (unauthenticated)
+# ---------------------------------------------------------------------------
+# @name health
+GET {{baseUrl}}/healthz
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('health shape', () => {
+    assert.strictEqual(response.parsedBody.ok, true);
+    assert.strictEqual(typeof response.parsedBody.base, 'string');
+  });
+}}
+
+###
+
+# ---------------------------------------------------------------------------
+# Query — synthesized answer + sources (the Slack / app shape)
+# ---------------------------------------------------------------------------
+# @name query
+POST {{baseUrl}}/v1/query
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "q": "how does authentication work?"
+}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('query result shape', () => {
+    const b = response.parsedBody;
+    assert.strictEqual(typeof b.status, 'string');
+    assert.ok('answer' in b);
+    assert.ok(Array.isArray(b.results));
+    assert.ok(b.retrieval && typeof b.retrieval === 'object');
+  });
+}}
+
+###
+
+# Query — facts only (no LLM synthesis), with retrieval controls
+# @name queryFactsOnly
+POST {{baseUrl}}/v1/query
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "q": "rate limiting",
+  "synthesize": false,
+  "limit": 10,
+  "discovery": "deep"
+}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('results is an array', () => assert.ok(Array.isArray(response.parsedBody.results)));
+}}
+
+###
+
+# ---------------------------------------------------------------------------
+# Query — auth is enforced (missing key → 401)
+# ---------------------------------------------------------------------------
+# @name queryUnauthorized
+POST {{baseUrl}}/v1/query
+Content-Type: application/json
+
+{
+  "q": "anything"
+}
+
+{{
+  const assert = require('assert');
+  test('status 401 without key', () => assert.strictEqual(response.statusCode, 401));
+}}
+
+###
+
+# ---------------------------------------------------------------------------
+# Chat — multi-turn, streamed over SSE.
+# Reuse the same sessionId across requests to keep conversation history.
+# ---------------------------------------------------------------------------
+# @name chat
+POST {{baseUrl}}/v1/chat
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "sessionId": "demo-session",
+  "message": "how does authentication work?"
+}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('sse content type', () =>
+    assert.ok(String(response.contentType?.mimeType || '').includes('text/event-stream')));
+  test('sse stream has session + terminal events', () => {
+    const body = response.body || '';
+    assert.ok(body.includes('event: session'));
+    assert.ok(body.includes('event: answer'));
+    assert.ok(body.includes('event: done'));
+  });
+}}
+
+###
+
+# Chat — follow-up on the same session (exercises conversation memory)
+# @name chatFollowUp
+POST {{baseUrl}}/v1/chat
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "sessionId": "demo-session",
+  "message": "and how are those tokens refreshed?"
+}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('answered', () => assert.ok((response.body || '').includes('event: done')));
+}}
+
+###
+
+# ---------------------------------------------------------------------------
+# Reindex — trigger an on-demand incremental rescan
+# ---------------------------------------------------------------------------
+# @name reindex
+POST {{baseUrl}}/v1/reindex
+Authorization: Bearer {{apiKey}}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('reindex ok', () => assert.strictEqual(response.parsedBody.status, 'ok'));
+}}
+
+###
+
+# ---------------------------------------------------------------------------
+# MCP (Streamable HTTP) — requires `kb server start --with-mcp` (Docker CMD uses this).
+# JSON-RPC 2.0; stateless (each request is independent).
+# ---------------------------------------------------------------------------
+# @name mcpInitialize
+POST {{baseUrl}}/mcp
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2025-06-18",
+    "capabilities": {},
+    "clientInfo": { "name": "httpyac", "version": "1.0" }
+  }
+}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('jsonrpc result', () => {
+    assert.strictEqual(response.parsedBody.jsonrpc, '2.0');
+    assert.ok(response.parsedBody.result?.protocolVersion);
+  });
+}}
+
+###
+
+# MCP — list available tools (no LLM required)
+# @name mcpToolsList
+POST {{baseUrl}}/mcp
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/list",
+  "params": {}
+}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('tools include kb_query', () => {
+    const tools = response.parsedBody.result?.tools;
+    assert.ok(Array.isArray(tools));
+    assert.ok(tools.some(t => t.name === 'kb_query'));
+  });
+}}
+
+###
+
+# MCP — call kb_read_facts directly (pure retrieval, no LLM)
+# @name mcpCallReadFacts
+POST {{baseUrl}}/mcp
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "kb_read_facts",
+    "arguments": { "query": "authentication", "mode": "content", "includeContent": true }
+  }
+}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('tool returns content', () => assert.ok(Array.isArray(response.parsedBody.result?.content)));
+}}

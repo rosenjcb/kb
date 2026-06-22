@@ -70,6 +70,21 @@ Additional patterns specific to eval tests:
 - **No LLM calls in unit tests**: `MutationValidator` and `runJury` require running subprocesses or LLMs. Park these as `it.todo` or write integration fixtures instead.
 - **Pure function bias**: prefer testing `extractManifest`, `buildSummaryJson`, `computeMoel` (pure) over the git-/LLM-integrated validators.
 
+## Integration tests (HTTP server)
+
+Black-box suite for `kb server start` — **not** Vitest. Spins up Docker (`kb-server` + WireMock `llm-mock`), runs [`packages/kb-server/http/server.http`](packages/kb-server/http/server.http) via httpyac, tears down.
+
+```bash
+pnpm run integration:test
+```
+
+- **CI:** `.github/workflows/integration.yml` on **push to `main`** (and `workflow_dispatch`). Not part of feature-branch `ci.yml`.
+- **LLM in CI:** WireMock sidecar — no secrets required with current runner. Repo secrets can be wired in `integration.yml` if you move to a real provider on main.
+- **Requirements:** Docker + `docker compose`. First boot clones `KB_GIT_REPOS` (default: small public repo) before `/healthz` reports `indexMtime`.
+- **Unit coverage:** in-process handlers live in `tests/server/`; integration exercises the full container stack.
+
+See [`packages/kb-server/http/HTTP.md`](packages/kb-server/http/HTTP.md), [`packages/kb-server/INTEGRATION_TEST.md`](packages/kb-server/INTEGRATION_TEST.md), [`packages/kb-server/docker/wiremock/WIREMOCK.md`](packages/kb-server/docker/wiremock/WIREMOCK.md).
+
 ## Pre-commit gate
 
 `pnpm run precommit` runs lint, type-check, and the full test suite. All must pass before pushing.
