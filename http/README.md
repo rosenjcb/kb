@@ -33,11 +33,16 @@ This spins up the server in Docker (`docker-compose.yml`), waits for `/healthz`,
 runs the httpyac suite against it, then tears the container down. The exit code is
 the suite result.
 
+LLM calls are stubbed by the **WireMock** sidecar (`llm-mock` service). Local runs
+and CI use the same path: `pnpm run integration:test` always points Gemini at
+`http://llm-mock:8080` and ignores any real keys in your shell or `.env`.
+
+For manual `docker compose up` against a real provider, set `GEMINI_API_KEY` (and
+leave `GEMINI_API_BASE_URL` unset) in `.env` instead.
+
 Requirements:
 
 - Docker + `docker compose`.
-- An LLM provider key in your environment so `/v1/query` and `/v1/chat` can
-  synthesize: `GEMINI_API_KEY` (or `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`).
 - `KB_GIT_REPOS` controls what is indexed on first boot (defaults to a small
   public repo). First boot clones + indexes before the server reports healthy.
 

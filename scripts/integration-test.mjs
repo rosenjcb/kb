@@ -5,10 +5,10 @@
  * healthy, runs the httpyac suite (http/kb-api.http) against it, then tears the
  * container down. Exit code is the httpyac suite's result.
  *
- * Requirements: Docker + docker compose, and an LLM provider key in the
- * environment (GEMINI_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY) so the
- * /v1/query and /v1/chat assertions can pass. KB_GIT_REPOS controls what gets
- * indexed on first boot (defaults to a small public repo).
+ * Requirements: Docker + docker compose. LLM is always stubbed via the WireMock
+ * sidecar (`llm-mock` in docker-compose) — locally and in CI, no real provider
+ * key and no opt-out. KB_GIT_REPOS controls what gets indexed on first boot
+ * (defaults to a small public repo).
  *
  * httpyac is fetched on demand via `pnpm dlx` (kept out of the repo's deps).
  */
@@ -27,14 +27,16 @@ const env = {
   KB_SERVER_API_KEY: process.env.KB_SERVER_API_KEY || 'testkey',
   KB_REINDEX_INTERVAL: '0',
   PORT: process.env.PORT || '8080',
+  // Always route Gemini to the WireMock sidecar — same locally and in CI.
+  // Clear other provider keys so auto-detect cannot bypass the mock.
+  GEMINI_API_KEY: 'integration-mock-key',
+  GEMINI_API_BASE_URL: 'http://llm-mock:8080',
+  ANTHROPIC_API_KEY: '',
+  OPENAI_API_KEY: '',
 }
 
 function run(cmd, args) {
   return spawnSync(cmd, args, { stdio: 'inherit', cwd: root, env }).status ?? 1
-}
-
-function hasProviderKey() {
-  return Boolean(env.GEMINI_API_KEY || env.ANTHROPIC_API_KEY || env.OPENAI_API_KEY)
 }
 
 async function waitForHealth(url, timeoutMs) {
@@ -52,13 +54,7 @@ async function waitForHealth(url, timeoutMs) {
 }
 
 async function main() {
-  if (!hasProviderKey()) {
-    console.error(
-      '⚠  No LLM provider key set (GEMINI_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY).'
-    )
-    console.error('   /v1/query and /v1/chat assertions will fail without one.')
-  }
-
+  console.log('▶ LLM: WireMock sidecar (http://llm-mock:8080) — no real API calls')
   console.log('▶ docker compose up -d --build …')
   if (run('docker', ['compose', 'up', '-d', '--build']) !== 0) {
     console.error('❌ docker compose up failed')

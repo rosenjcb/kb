@@ -1,0 +1,37 @@
+{
+  "priority": 10,
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/v1beta/models/.*/generateContent",
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": "$.generationConfig.responseMimeType",
+        "equalTo": "application/json"
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "{\"title\":\"Integration Mock Document\",\"type\":\"reference\",\"tags\":[\"integration\",\"mock\"],\"content\":\"# Integration mock\\n\\nStub init-synthesis document for CI.\"}"
+              }
+            ]
+          },
+          "finishReason": "STOP"
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 8,
+        "candidatesTokenCount": 32
+      }
+    }
+  }
+}

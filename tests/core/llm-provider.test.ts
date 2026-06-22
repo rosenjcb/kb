@@ -71,6 +71,41 @@ describe('llm-provider', () => {
     fetchMock.mockRestore()
   })
 
+  it('Given GEMINI_API_BASE_URL, then provider calls the override host', async () => {
+    const prev = process.env.GEMINI_API_BASE_URL
+    process.env.GEMINI_API_BASE_URL = 'http://llm-mock:8080'
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+          usageMetadata: {},
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }
+      )
+    )
+
+    try {
+      const provider = new GeminiProvider('test-key', 'gemini-2.5-flash')
+      await provider.call({
+        messages: [{ role: 'user', content: 'hello' }],
+      })
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /^http:\/\/llm-mock:8080\/v1beta\/models\/gemini-2\.5-flash:generateContent\?key=test-key$/
+        ),
+        expect.any(Object)
+      )
+    } finally {
+      if (prev === undefined) delete process.env.GEMINI_API_BASE_URL
+      else process.env.GEMINI_API_BASE_URL = prev
+      fetchMock.mockRestore()
+    }
+  })
+
   it('Given a custom Gemini model, then provider calls the matching model endpoint', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(

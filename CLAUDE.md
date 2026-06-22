@@ -50,7 +50,7 @@ break.
 - `pnpm run lint` — Biome lint
 - `pnpm run unit:test` — Vitest unit/integration tests (alias: `pnpm run test`)
 - `pnpm run integration:test` — spin up the server in Docker and run the httpyac
-  suite (`http/*.http`) against it, then tear down (requires Docker + a provider
-  key; see `http/README.md`)
+  suite (`http/*.http`) against it, then tear down (Docker only; LLM stubbed via
+  WireMock sidecar — see `http/README.md`)
 - `pnpm run build` — compile + build the CLI
 - `pnpm run changeset` — create a *pending* changeset (no version bump; see above)

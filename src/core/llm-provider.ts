@@ -717,6 +717,12 @@ export class GeminiProvider implements LLMProvider {
     this.model = model
   }
 
+  /** Override via GEMINI_API_BASE_URL (e.g. WireMock in docker-compose integration runs). */
+  private apiBase(): string {
+    const override = process.env.GEMINI_API_BASE_URL?.trim()
+    return override ? override.replace(/\/$/, '') : 'https://generativelanguage.googleapis.com'
+  }
+
   async call(params: LLMCallParams): Promise<LLMResponse> {
     if (params.onReasoning && !params.structuredJson?.gemini) {
       try {
@@ -834,7 +840,7 @@ export class GeminiProvider implements LLMProvider {
     const body = this.buildBody(params, maxOutputTokens)
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
+      `${this.apiBase()}/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -899,7 +905,7 @@ export class GeminiProvider implements LLMProvider {
     const body = this.buildBody(params, params.maxTokens ?? 4096, { includeThoughts: true })
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`,
+      `${this.apiBase()}/v1beta/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
