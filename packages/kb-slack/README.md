@@ -90,6 +90,10 @@ pnpm run slack:logs    # watch it; look for "kb-slack listening on :3000"
 pnpm run slack:stop
 ```
 
+The bot is gated behind the `slack` compose profile, so it stays out of `server:up` and the
+integration suite. The npm scripts enable it for you; raw compose needs the flag:
+`docker compose -f packages/kb-server/docker-compose.yml --profile slack up -d kb-slack`.
+
 Standalone (image already built, pointing at any kb-server):
 
 ```bash

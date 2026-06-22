@@ -61,14 +61,17 @@ services:
       # First boot clones + indexes before listening; give it room.
       start_period: 300s
 
-  # Optional Slack bot. Opt in with `pnpm run slack:up` (or `docker compose … up kb-slack`);
-  # not started by `server:up`. Receives Slack Events API webhooks and answers @kb mentions
-  # by calling kb-server /v1/query. Needs a public Request URL (e.g. a tunnel) → host :3000.
+  # Optional Slack bot, gated behind the `slack` compose profile so it is inert for
+  # `server:up` and the integration suite (it intentionally exits without Slack secrets).
+  # Opt in with `pnpm run slack:up` (which enables the profile). Receives Slack Events API
+  # webhooks and answers @kb mentions by calling kb-server /v1/query. Needs a public Request
+  # URL (e.g. a tunnel) → host :3000.
   kb-slack:
     build:
       context: ../..
       dockerfile: packages/kb-slack/Dockerfile
     image: kb-slack
+    profiles: ["slack"]
     depends_on:
       - kb-server
     ports:
