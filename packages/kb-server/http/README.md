@@ -36,6 +36,9 @@ pnpm run server:start   # docker compose; image CMD includes --with-mcp
 pnpm run server:stop
 ```
 
+To stand up a real, self-hosted KB (guided `.env` + first-boot indexing), use
+`pnpm run server:up` — see [`../README.md`](../README.md).
+
 ## MCP clients
 
 With `kb server start --with-mcp` running, connect Claude Code or Cursor Agent — see [`../../../src/server/SERVER.md`](../../../src/server/SERVER.md).

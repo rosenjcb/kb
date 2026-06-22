@@ -17,7 +17,11 @@ function dockerServerRunning() {
 
 function stopDocker() {
   console.log('▶ docker compose stop kb-server llm-mock …')
-  const result = run('docker', ['compose', 'stop', 'kb-server', 'llm-mock'], { stdio: 'inherit' })
+  // `--profile mock` so the test-only llm-mock service name resolves even when it is
+  // not running (real runs never start it); stop is a no-op for an absent container.
+  const result = run('docker', ['compose', '--profile', 'mock', 'stop', 'kb-server', 'llm-mock'], {
+    stdio: 'inherit',
+  })
   return result.status ?? 1
 }
 

@@ -1,18 +1,24 @@
 # Local / single-host run of the kb server.
 #
-#   cp .env.example .env   # then fill in a provider key
-#   docker compose up --build
+# Getting started (recommended): `pnpm run server:up` — see packages/kb-server/README.md.
+# Raw compose (from the repo root):
 #
-# Integration / CI (`pnpm run integration:test`) points Gemini at the WireMock
-# sidecar via GEMINI_API_BASE_URL — no real provider key required.
-# Stub details: docker/wiremock/WIREMOCK.md
+#   cp .env.example .env   # then fill in a provider key + a strong KB_SERVER_API_KEY
+#   docker compose -f packages/kb-server/docker-compose.yml up -d --build
+#
+# The `llm-mock` service is a TEST-ONLY WireMock sidecar, gated behind the `mock`
+# compose profile so production / real runs never start it. `pnpm run integration:test`
+# enables it (`--profile mock`) and points Gemini at it via GEMINI_API_BASE_URL — no real
+# provider key required. Stub details: docker/wiremock/WIREMOCK.md
 #
 # Mirrors the Cloud Run model: persistent volume at /data (KB_HOME), first boot
 # builds the index from KB_GIT_REPOS, later boots reuse it.
 
 services:
+  # Test-only LLM stub. Inert unless the `mock` profile is enabled (integration tests).
   llm-mock:
     image: wiremock/wiremock:3.9.1
+    profiles: ["mock"]
     ports:
       - "${LLM_MOCK_PORT:-18080}:8080"
     volumes:
@@ -24,8 +30,6 @@ services:
       context: ../..
       dockerfile: packages/kb-server/Dockerfile
     image: kb-server
-    depends_on:
-      - llm-mock
     ports:
       - "${PORT:-8080}:8080"
     environment:

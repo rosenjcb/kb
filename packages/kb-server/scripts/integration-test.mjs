@@ -52,12 +52,16 @@ async function waitForHealth(url, timeoutMs) {
   return false
 }
 
+// The WireMock LLM stub lives behind the `mock` compose profile (kept out of real
+// deploys); integration runs must opt it in explicitly.
+const PROFILE = ['--profile', 'mock']
+
 async function main() {
   console.log('▶ LLM: WireMock sidecar (http://llm-mock:8080) — no real API calls')
   console.log('▶ docker compose down -v (clean slate) …')
-  run('docker', ['compose', 'down', '-v'])
+  run('docker', ['compose', ...PROFILE, 'down', '-v'])
   console.log('▶ docker compose up -d --build --wait …')
-  if (run('docker', ['compose', 'up', '-d', '--build', '--wait']) !== 0) {
+  if (run('docker', ['compose', ...PROFILE, 'up', '-d', '--build', '--wait']) !== 0) {
     console.error('❌ docker compose up failed')
     process.exit(1)
   }
@@ -67,7 +71,7 @@ async function main() {
     console.log(`▶ waiting for ${baseUrl}/healthz (first boot builds the index) …`)
     if (!(await waitForHealth(baseUrl, HEALTH_TIMEOUT_MS))) {
       console.error('❌ server did not become healthy in time')
-      run('docker', ['compose', 'logs', '--no-color', '--tail', '80'])
+      run('docker', ['compose', ...PROFILE, 'logs', '--no-color', '--tail', '80'])
       throw new Error('unhealthy')
     }
     console.log('▶ running httpyac suite (pnpm exec httpyac) …')
@@ -90,7 +94,7 @@ async function main() {
     exitCode = 1
   } finally {
     console.log('▶ docker compose down -v …')
-    run('docker', ['compose', 'down', '-v'])
+    run('docker', ['compose', ...PROFILE, 'down', '-v'])
   }
 
   process.exit(exitCode)
@@ -98,6 +102,6 @@ async function main() {
 
 main().catch(error => {
   console.error(`❌ ${error.message}`)
-  run('docker', ['compose', 'down', '-v'])
+  run('docker', ['compose', ...PROFILE, 'down', '-v'])
   process.exit(1)
 })
