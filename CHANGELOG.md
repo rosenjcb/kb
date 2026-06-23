@@ -1,5 +1,11 @@
 # kb
 
+## 0.11.1
+
+### Patch Changes
+
+- 3af609d: Improve kb server startup ergonomics by making `server:start` run locally, forwarding optional GitHub tokens to Docker and git sync, and clarifying Docker workflows in the server docs.
+
 ## 0.11.0
 
 ### Minor Changes

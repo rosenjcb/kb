@@ -15,6 +15,7 @@
  * Workspace packages (independent versions; see pnpm-workspace.yaml + .changeset/config.json):
  *   - `kb`        — CLI + src/server runtime
  *   - `kb-server` — Docker, httpyac contract, integration scripts
+ *   - `kb-slack`  — Slack bot (@slack/bolt bridge to kb-server)
  */
 import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
