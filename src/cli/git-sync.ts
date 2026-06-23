@@ -1,9 +1,44 @@
 import { spawn } from 'node:child_process'
 import { repoSlugFromGitUrl } from './base-meta'
 
+type GitCommandEnv = Record<string, string | undefined>
+
+function githubTokenFromEnv(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.GITHUB_TOKEN || env.GH_TOKEN
+}
+
+export function buildGitAuthEnv(env: NodeJS.ProcessEnv = process.env): GitCommandEnv {
+  const token = githubTokenFromEnv(env)
+  const gitEnv: GitCommandEnv = {
+    ...env,
+    GIT_TERMINAL_PROMPT: '0',
+  }
+
+  if (!token) return gitEnv
+
+  const credentials = Buffer.from(`x-access-token:${token}`).toString('base64')
+  gitEnv.GIT_CONFIG_COUNT = '1'
+  gitEnv.GIT_CONFIG_KEY_0 = 'http.https://github.com/.extraheader'
+  gitEnv.GIT_CONFIG_VALUE_0 = `AUTHORIZATION: basic ${credentials}`
+  return gitEnv
+}
+
+function formatGitError(message: string): string {
+  if (!message.includes("could not read Username for 'https://github.com'")) return message
+  return [
+    message,
+    'GitHub HTTPS authentication failed.',
+    'Set GITHUB_TOKEN (or GH_TOKEN) for private GitHub repos, switch the repo URL to SSH, or remove private repos from KB_GIT_REPOS.',
+  ].join('\n')
+}
+
 function run(cmd: string, args: string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+    const proc = spawn(cmd, args, {
+      cwd,
+      env: buildGitAuthEnv(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
     const out: Buffer[] = []
     const err: Buffer[] = []
     proc.stdout.on('data', (d: Buffer) => out.push(d))
@@ -12,7 +47,8 @@ function run(cmd: string, args: string[], cwd: string): Promise<string> {
       if (code === 0) {
         resolve(Buffer.concat(out).toString('utf8').trim())
       } else {
-        reject(new Error(Buffer.concat(err).toString('utf8').trim() || `git exited ${code}`))
+        const message = Buffer.concat(err).toString('utf8').trim() || `git exited ${code}`
+        reject(new Error(formatGitError(message)))
       }
     })
     proc.on('error', reject)

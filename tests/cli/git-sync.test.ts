@@ -4,7 +4,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { baseNameFromGitUrl, cloneRepo, getCurrentBranch, pullRepo } from '../../src/cli/git-sync'
+import {
+  baseNameFromGitUrl,
+  buildGitAuthEnv,
+  cloneRepo,
+  getCurrentBranch,
+  pullRepo,
+} from '../../src/cli/git-sync'
 
 const execFileAsync = promisify(execFile)
 
@@ -77,6 +83,41 @@ describe('git-sync', () => {
       const cloneDir = path.join(tmpRoot, 'clone-explicit')
       await cloneRepo(bareOrigin, cloneDir, 'master')
       expect(await getCurrentBranch(cloneDir)).toBe('master')
+    })
+  })
+
+  describe('buildGitAuthEnv', () => {
+    it('disables interactive git prompts even without a token', () => {
+      expect(buildGitAuthEnv({})).toMatchObject({
+        GIT_TERMINAL_PROMPT: '0',
+      })
+    })
+
+    it('uses GITHUB_TOKEN when present', () => {
+      const env = buildGitAuthEnv({ GITHUB_TOKEN: 'secret' })
+
+      expect(env.GIT_CONFIG_COUNT).toBe('1')
+      expect(env.GIT_CONFIG_KEY_0).toBe('http.https://github.com/.extraheader')
+      expect(env.GIT_CONFIG_VALUE_0).toBe(
+        `AUTHORIZATION: basic ${Buffer.from('x-access-token:secret').toString('base64')}`
+      )
+    })
+
+    it('falls back to GH_TOKEN when GITHUB_TOKEN is absent', () => {
+      const env = buildGitAuthEnv({ GH_TOKEN: 'secret' })
+
+      expect(env.GIT_CONFIG_COUNT).toBe('1')
+      expect(env.GIT_CONFIG_VALUE_0).toBe(
+        `AUTHORIZATION: basic ${Buffer.from('x-access-token:secret').toString('base64')}`
+      )
+    })
+
+    it('prefers GITHUB_TOKEN over GH_TOKEN when both are present', () => {
+      const env = buildGitAuthEnv({ GITHUB_TOKEN: 'preferred', GH_TOKEN: 'fallback' })
+
+      expect(env.GIT_CONFIG_VALUE_0).toBe(
+        `AUTHORIZATION: basic ${Buffer.from('x-access-token:preferred').toString('base64')}`
+      )
     })
   })
 

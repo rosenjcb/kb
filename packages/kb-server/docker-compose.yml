@@ -40,6 +40,8 @@ services:
       KB_GIT_REPOS: "${KB_GIT_REPOS:-}"
       KB_SERVER_API_KEY: "${KB_SERVER_API_KEY:-testkey}"
       KB_REINDEX_INTERVAL: "${KB_REINDEX_INTERVAL:-1h}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      GH_TOKEN: "${GH_TOKEN:-}"
       # Provide one of these (read from your .env / shell). Gemini shown as default.
       GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
       GEMINI_API_BASE_URL: "${GEMINI_API_BASE_URL:-}"

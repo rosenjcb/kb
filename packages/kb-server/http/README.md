@@ -22,7 +22,7 @@ pnpm run integration:test
 
 ```bash
 export KB_SERVER_API_KEY=testkey   # match http/.httpyac.js apiKey
-kb server start --with-mcp         # REST + POST /mcp (required for full suite)
+pnpm run server:start              # local REST + POST /mcp (required for full suite)
 pnpm exec httpyac send packages/kb-server/http/server.http --all --env local
 ```
 
@@ -32,8 +32,9 @@ Without `--with-mcp`, MCP requests in `server.http` return 404.
 
 ```bash
 cp .env.example .env
-pnpm run server:start   # docker compose; image CMD includes --with-mcp
-pnpm run server:stop
+pnpm run server:up              # guided Docker bootstrap
+# or raw compose:
+docker compose --env-file .env -f packages/kb-server/docker-compose.yml up -d --build kb-server
 ```
 
 To stand up a real, self-hosted KB (guided `.env` + first-boot indexing), use

@@ -78,6 +78,7 @@ function ensureEnvFile() {
   console.log('    • a provider key   — GEMINI_API_KEY (or ANTHROPIC_API_KEY / OPENAI_API_KEY)')
   console.log('    • KB_SERVER_API_KEY — a strong bearer token (not the testkey default)')
   console.log('    • KB_GIT_REPOS      — comma-separated git URLs to index on first boot')
+  console.log('    • GITHUB_TOKEN      — optional, for private GitHub repos over HTTPS')
   process.exit(0)
 }
 
@@ -139,7 +140,7 @@ function printNextSteps(env) {
   const apiKey = effective(env, 'KB_SERVER_API_KEY') || 'testkey'
   const base = effective(env, 'KB_BASE') || 'demo'
   console.log('\n✓ kb-server is starting. First boot clones + indexes your repos — watch progress:')
-  console.log('    pnpm run server:logs')
+  console.log('    pnpm run server:docker:logs')
   console.log('\n  Health (unauthenticated):')
   console.log(`    curl http://localhost:${port}/healthz`)
   console.log('\n  Query (once healthy):')
@@ -147,7 +148,7 @@ function printNextSteps(env) {
   console.log(`      -H "Authorization: Bearer ${apiKey}" \\`)
   console.log(`      -H 'Content-Type: application/json' \\`)
   console.log(`      -d '{"query":"how does ${base} handle auth?"}'`)
-  console.log('\n  Stop:    pnpm run server:stop')
+  console.log('\n  Stop:    pnpm run server:docker:stop')
   console.log(
     '  Reset:   docker compose -f packages/kb-server/docker-compose.yml down -v   # wipes the index volume'
   )

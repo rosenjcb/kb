@@ -256,7 +256,7 @@ image is deployable, not just an integration harness.
 
 ```bash
 pnpm run server:up      # seeds .env on first run; edit it, then re-run to build + boot
-pnpm run server:logs    # watch the first-boot clone + index
+pnpm run server:docker:logs
 curl http://localhost:8080/healthz
 ```
 

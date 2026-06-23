@@ -225,7 +225,7 @@ agent mcp list-tools kb
 
 See [`../server/SERVER.md`](../server/SERVER.md) for deploy URLs and tool list.
 
-**Boot-build:** missing index → `kb init` / `kb scan` before listen. **pnpm:** `server:start` / `server:stop` (Docker). Integration: [`../../packages/kb-server/http/HTTP.md`](../../packages/kb-server/http/HTTP.md).
+**Boot-build:** missing index → `kb init` / `kb scan` before listen. **pnpm:** `server:start` runs locally; `server:up` / `server:docker:*` are the Docker paths. Integration: [`../../packages/kb-server/http/HTTP.md`](../../packages/kb-server/http/HTTP.md).
 
 ## Gotchas
 

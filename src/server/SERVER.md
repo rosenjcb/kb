@@ -48,7 +48,7 @@ flowchart LR
 - **CLI:** `src/cli/index.ts` → `runServerCommand`.
 - **Boot-build:** missing `.kb-index.sqlite` → `kb init` or `kb scan` before `listen()`.
 - **Docker:** `server start --with-mcp` in Dockerfile CMD.
-- **Dev:** `pnpm run server:start|stop`.
+- **Dev:** `pnpm run server:start` for a local process; `pnpm run server:up` for the guided Docker path.
 
 ### MCP clients (Claude Code & Cursor Agent)
 

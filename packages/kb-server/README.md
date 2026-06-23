@@ -23,7 +23,7 @@ test harness see [`INTEGRATION_TEST.md`](INTEGRATION_TEST.md).
 pnpm run server:up      # seeds .env on first run, builds + starts the server
 # → edit .env (provider key + a strong KB_SERVER_API_KEY + repos), then:
 pnpm run server:up      # boots; first run clones + indexes your repos
-pnpm run server:logs    # watch the index build
+pnpm run server:docker:logs
 curl http://localhost:8080/healthz
 ```
 
@@ -49,6 +49,7 @@ Edit the generated `.env` at the repo root:
 ```ini
 KB_BASE=acme                                   # the base name to serve
 KB_GIT_REPOS=https://github.com/acme/auth,https://github.com/acme/web
+GITHUB_TOKEN=<optional-github-token>           # optional; only needed for private GitHub repos over HTTPS
 KB_SERVER_API_KEY=<a-strong-random-token>      # required to call /v1 and /mcp
 GEMINI_API_KEY=<your-provider-key>             # or ANTHROPIC_API_KEY / OPENAI_API_KEY
 KB_REINDEX_INTERVAL=1h
@@ -66,9 +67,10 @@ default, repos declared for a fresh volume), builds the image, and starts **only
 `kb-server` service. First boot clones + indexes `KB_GIT_REPOS`; later boots reuse the
 persisted index on the `/data` volume — no reindex on restart.
 
-> The `up` ↔ `start` split: `server:up` is the guided first-run (scaffolds `.env`, checks
-> config, prints next steps). `server:start` / `server:stop` / `server:logs` are the raw
-> compose lifecycle once `.env` exists.
+> The split is now explicit:
+> `server:start` runs the server locally in your shell (`tsx src/cli/index.ts server start --with-mcp`).
+> `server:up` is the guided Docker bootstrap.
+> `server:docker:start|stop|logs` are Docker convenience wrappers.
 
 ## Configuration
 
@@ -80,6 +82,7 @@ server-scoped ones; the shorter aliases are kept for back-compat.
 |---|---|---|
 | `KB_SERVER_API_KEY` | **yes** | Bearer token(s) for `/v1/*` and `/mcp`; comma-separated for rotation. Empty ⇒ unauthenticated (logs a warning). |
 | `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | **one** | LLM provider for synthesis (auto-detected). |
+| `GITHUB_TOKEN` (or `GH_TOKEN`) | private GitHub repos only | Optional GitHub HTTPS auth for clone/fetch. Public repos work without it; SSH remotes also work without it. |
 | `KB_SERVER_BASE_NAME` (alias `KB_BASE`) | recommended | Base name to build + serve. |
 | `KB_SERVER_BASE_GIT_REPOS` (alias `KB_GIT_REPOS`) | first boot | Comma/whitespace-separated `url[#branch]` list to index on an empty volume. |
 | `KB_REINDEX_INTERVAL` | no | Reindex cadence: `1h`, `30m`, `10s`, or `0` to disable (default `1h`). |
@@ -110,10 +113,14 @@ Precedence (highest wins): `--git` flags → `KB_GIT_REPOS` env → manifest. So
 deploys are unaffected, and you can override the manifest per environment. Repos added to
 the manifest later are folded in on the next boot without a manual reindex.
 
+For private GitHub repos, keep `KB_GIT_REPOS` as plain `https://github.com/...` URLs and
+set `GITHUB_TOKEN` (or `GH_TOKEN`) separately. The server forwards the token to `git`
+through an in-memory auth header, so cloned repos do not need tokenized remotes.
+
 ## Without pnpm — raw Docker
 
-The `server:*` scripts are thin wrappers; if you already have the image (built or pulled)
-and don't want pnpm, drive Docker directly. Both paths read the same env.
+The Docker scripts are thin wrappers; if you already have the image (built or pulled) and
+don't want pnpm, drive Docker directly. Both paths read the same env.
 
 ### Raw `docker compose`
 
@@ -122,10 +129,10 @@ scripts call:
 
 | Wrapper | Raw command |
 |---|---|
-| `pnpm run server:start` | `docker compose -f packages/kb-server/docker-compose.yml up -d --build kb-server` |
-| `pnpm run server:logs` | `docker compose -f packages/kb-server/docker-compose.yml logs -f kb-server` |
-| `pnpm run server:stop` | `docker compose -f packages/kb-server/docker-compose.yml stop kb-server` |
-| reset (wipe index) | `docker compose -f packages/kb-server/docker-compose.yml down -v` |
+| `pnpm run server:docker:start` | `docker compose --env-file .env -f packages/kb-server/docker-compose.yml up -d --build kb-server` |
+| `pnpm run server:docker:logs` | `docker compose --env-file .env -f packages/kb-server/docker-compose.yml logs -f kb-server` |
+| `pnpm run server:docker:stop` | `docker compose --env-file .env -f packages/kb-server/docker-compose.yml stop kb-server` |
+| reset (wipe index) | `docker compose --env-file .env -f packages/kb-server/docker-compose.yml down -v` |
 
 Drop `--build` once the image exists to boot the already-built image as-is. (The test-only
 `llm-mock` stays off unless you add `--profile mock`.)
@@ -199,12 +206,12 @@ mentions to `/v1/query` — `pnpm run slack:up`, setup in [`../kb-slack/README.m
 ## Operate
 
 ```bash
-pnpm run server:logs   # tail the server (index build, reindex, requests)
-pnpm run server:stop   # stop the container (keeps the /data volume + index)
-pnpm run server:up     # start again — reuses the persisted index
+pnpm run server:docker:logs   # tail the container logs (index build, reindex, requests)
+pnpm run server:docker:stop   # stop the container (keeps the /data volume + index)
+pnpm run server:up            # start again — reuses the persisted index
 
 # Force a fresh index (wipes the volume):
-docker compose -f packages/kb-server/docker-compose.yml down -v
+docker compose --env-file .env -f packages/kb-server/docker-compose.yml down -v
 ```
 
 On-demand reindex without a restart: `POST /v1/reindex` with the bearer token.
