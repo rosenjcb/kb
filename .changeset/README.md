@@ -1,20 +1,21 @@
 # Changesets
 
-Two workspace packages, versioned **together** (`fixed` in `config.json`):
+Two workspace packages, versioned **independently**:
 
 | Package | Directory | What it covers |
 |---------|-----------|----------------|
 | `kb` | repo root | CLI, `src/server/` runtime, core |
 | `kb-server` | `packages/kb-server/` | Dockerfile, compose, httpyac suite, WireMock stubs |
 
-One `package.json` version (`kb`) is what the binary, Docker image, and MCP report (`KB_VERSION`). `kb-server` tracks packaging/integration paths so Changesets can detect them separately.
+One `package.json` version (`kb`) is what the binary and MCP report (`KB_VERSION`).
+`kb-server` tracks Docker/integration paths so Changesets can detect them separately.
 
 ## Workflow
 
 1. `pnpm run changeset:check` — `changeset status --since main` (native: which packages changed) + policy check (no version bump in PR).
 2. `pnpm run changeset` — same check, then `changeset add --since main` (wizard only lists changed packages).
 3. Commit the pending `.changeset/*.md` — **do not** bump `package.json` / `CHANGELOG.md` in the feature PR.
-4. Merge to `main` → Changesets action runs `changeset version` → Version Packages PR → `0.11.0`.
+4. Run `pnpm run changeset:version` on your branch to apply the bump.
 
 ## Native CLI flags
 

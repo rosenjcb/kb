@@ -47,6 +47,7 @@ describe('base-meta', () => {
           gitBranch: 'develop',
           slug: 'org-web',
           dir: 'repos/org-web',
+          ignore: ['dist/', '.next/'],
           lastSyncedSha: 'def5678',
           lastSyncedAt: '2026-06-02T00:00:00.000Z',
         },
@@ -80,6 +81,7 @@ describe('base-meta', () => {
   it('round-trips an ignore list alongside repos', async () => {
     const withIgnore: GitBaseMeta = {
       ...sample,
+      repos: [{ ...sample.repos[0], ignore: ['repo-only/'] }],
       ignore: ['tests/', '**/*.spec.ts', 'vendor'],
     }
     await writeBaseMeta(tmpDir, withIgnore)

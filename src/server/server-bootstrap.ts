@@ -8,15 +8,17 @@
  * Resolution precedence (highest wins) — explicit inputs beat the declarative file:
  *   base:  `--base` flag > `KB_SERVER_BASE_NAME` / `KB_BASE` env > manifest `base`
  *   repos: `--git` flag(s) > `KB_SERVER_BASE_GIT_REPOS` / `KB_GIT_REPOS` env > manifest `repos`
+ *   ignore:`KB_SERVER_BASE_IGNORE` / `KB_IGNORE` env > manifest `ignore`
  *
  * `KB_SERVER_BASE_NAME` / `KB_SERVER_BASE_GIT_REPOS` are the server-scoped names; the
  * legacy `KB_BASE` / `KB_GIT_REPOS` remain supported as fallbacks for back-compat. Repo
  * lists accept comma- and/or whitespace/newline-separated entries (handy for multi-line
- * container env) and each entry keeps its inline `#<branch>` pin.
+ * container env) and each entry keeps its inline `#<branch>` pin. Ignore patterns accept
+ * comma- and/or newline-separated gitignore-style patterns.
  *
  * The `kb-server.json` manifest is the idiomatic artifact for container / IaC deploys:
- * declarative, version-controllable, and able to express per-repo branches plus indexing
- * ignore patterns that flat env vars cannot. It is the lowest-precedence fallback, so
+ * declarative, version-controllable, and able to express per-repo branches plus repo-local
+ * ignore patterns. It is the lowest-precedence fallback, so
  * existing env-only deployments are unaffected.
  *
  * This module is intentionally pure (parsing + plan resolution; the only I/O is reading
@@ -28,10 +30,11 @@ import path from 'node:path'
 import { getKbHomeDir, readOptionalCliValue } from '../cli/base-selection.js'
 import { type GitTarget, parseGitTarget } from '../cli/init-cli.js'
 
-/** A repository entry in a manifest: a `url[#branch]` string or `{ url, branch }` object. */
+/** A repository entry in a manifest: a `url[#branch]` string or `{ url, branch, ignore }` object. */
 export interface BootstrapRepo {
   url: string
   branch?: string
+  ignore?: string[]
 }
 
 /** Declarative shape of a `kb-server.json` manifest (every field optional). */
@@ -67,13 +70,24 @@ export function parseReposEnv(value: string | undefined, defaultBranch?: string)
     .map(entry => parseGitTarget(entry, defaultBranch))
 }
 
+/** Split a comma- and/or newline-separated ignore-pattern list into trimmed patterns. */
+export function parseIgnoreEnv(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(/[,\n]+/)
+    .map(entry => entry.trim())
+    .filter(entry => entry.length > 0)
+}
+
 /** Normalize a manifest repo entry (string or object) into a GitTarget. */
 function repoToGitTarget(repo: string | BootstrapRepo, defaultBranch?: string): GitTarget {
   if (typeof repo === 'string') return parseGitTarget(repo, defaultBranch)
   const url = repo.url?.trim()
   if (!url) throw new Error('bootstrap manifest: each repo entry needs a non-empty "url"')
   // An inline `#branch` in the url still wins; otherwise the object branch, then the default.
-  return parseGitTarget(url, repo.branch?.trim() || defaultBranch)
+  return {
+    ...parseGitTarget(url, repo.branch?.trim() || defaultBranch),
+    ignorePatterns: repo.ignore?.map(p => p.trim()).filter(p => p.length > 0),
+  }
 }
 
 /** Validate + normalize parsed JSON into a BootstrapManifest, throwing on malformed input. */
@@ -94,7 +108,30 @@ export function normalizeBootstrapManifest(parsed: unknown): BootstrapManifest {
     if (!Array.isArray(obj.repos)) {
       throw new Error('bootstrap manifest: "repos" must be an array')
     }
-    manifest.repos = obj.repos as Array<string | BootstrapRepo>
+    manifest.repos = (obj.repos as unknown[]).map(repo => {
+      if (typeof repo === 'string') return repo
+      if (!repo || typeof repo !== 'object' || Array.isArray(repo)) {
+        throw new Error('bootstrap manifest: each repo must be a string or object')
+      }
+      const record = repo as Record<string, unknown>
+      if (typeof record.url !== 'string' || !record.url.trim()) {
+        throw new Error('bootstrap manifest: each repo object needs a non-empty "url"')
+      }
+      const normalized: BootstrapRepo = { url: record.url.trim() }
+      if (record.branch !== undefined) {
+        if (typeof record.branch !== 'string') {
+          throw new Error('bootstrap manifest: repo "branch" must be a string')
+        }
+        normalized.branch = record.branch.trim()
+      }
+      if (record.ignore !== undefined) {
+        if (!Array.isArray(record.ignore) || record.ignore.some(p => typeof p !== 'string')) {
+          throw new Error('bootstrap manifest: repo "ignore" must be an array of strings')
+        }
+        normalized.ignore = (record.ignore as string[]).map(p => p.trim()).filter(p => p.length > 0)
+      }
+      return normalized
+    })
   }
   if (obj.ignore !== undefined) {
     if (!Array.isArray(obj.ignore) || obj.ignore.some(p => typeof p !== 'string')) {
@@ -165,6 +202,7 @@ export async function resolveBootstrapPlan(
   const envReposRaw = process.env.KB_SERVER_BASE_GIT_REPOS ?? process.env.KB_GIT_REPOS
   const envTargets = parseReposEnv(envReposRaw, defaultBranch)
   const manifestTargets = (manifest?.repos ?? []).map(repo => repoToGitTarget(repo, defaultBranch))
+  const envIgnore = parseIgnoreEnv(process.env.KB_SERVER_BASE_IGNORE ?? process.env.KB_IGNORE)
 
   let gitTargets: GitTarget[]
   let source: BootstrapPlan['source']
@@ -182,7 +220,12 @@ export async function resolveBootstrapPlan(
     source = 'none'
   }
 
-  const ignore = manifest?.ignore && manifest.ignore.length > 0 ? manifest.ignore : undefined
+  const ignore =
+    envIgnore.length > 0
+      ? envIgnore
+      : manifest?.ignore && manifest.ignore.length > 0
+        ? manifest.ignore
+        : undefined
   return { base, gitTargets, ignore, source }
 }
 

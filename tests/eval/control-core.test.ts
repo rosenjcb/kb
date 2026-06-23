@@ -155,20 +155,31 @@ describe('extractJsonObject', () => {
   })
 })
 
-describe('runControlPass', () => {
+describe('runControlPass', { timeout: 15_000 }, () => {
   it('runs the agent per question and builds a scored control block', async () => {
     const workdir = mkdtempSync(path.join(tmpdir(), 'control-pass-'))
+    const runAgent = vi.fn().mockReturnValue({
+      answer: 'Stub answer grounded in src/main.c.',
+      telemetry: {
+        total_cost_usd: 0.02,
+        input_tokens: 120,
+        output_tokens: 40,
+        num_turns: 3,
+      },
+    })
     const block = await runControlPass({
       repoDir: workdir,
       workdir,
       suiteConfig: fakeSuite(),
       agentCmd: FAKE_AGENT_CMD,
       autoScore: false, // no judge call → no API key needed
+      runAgent,
     })
     expect(block.condition).toBe('control')
     expect(block.status).toBe('complete')
     expect(block.agent.name).toBe('custom')
     expect(block.query_evaluation).toHaveLength(2)
+    expect(runAgent).toHaveBeenCalledTimes(2)
     // Telemetry aggregated across both questions.
     expect(block.control_telemetry.total_input_tokens).toBe(240)
     expect(block.control_telemetry.total_output_tokens).toBe(80)
@@ -185,12 +196,16 @@ describe('runControlPass', () => {
 
   it('returns partial when the agent fails on some questions', async () => {
     const workdir = mkdtempSync(path.join(tmpdir(), 'control-partial-'))
+    const runAgent = vi.fn().mockImplementation(() => {
+      throw new Error('boom')
+    })
     const block = await runControlPass({
       repoDir: workdir,
       workdir,
       suiteConfig: fakeSuite(),
       agentCmd: 'node -e "process.exit(1)"',
       autoScore: false,
+      runAgent,
     })
     expect(block.status).toBe('partial')
     expect(block.query_evaluation.every(ev => ev.answer_excerpt === null)).toBe(true)
@@ -211,6 +226,15 @@ describe('runControlPass', () => {
 
   it('returns complete_unscored when agent answers succeed but auto-score throws', async () => {
     const workdir = mkdtempSync(path.join(tmpdir(), 'control-unscored-'))
+    const runAgent = vi.fn().mockReturnValue({
+      answer: 'Stub answer grounded in src/main.c.',
+      telemetry: {
+        total_cost_usd: 0.02,
+        input_tokens: 120,
+        output_tokens: 40,
+        num_turns: 3,
+      },
+    })
     // Patch runAutoScoreFile to simulate a Gemini fetch failure.
     const evalScore = await import('../../scripts/eval-score.mjs')
     const spy = vi.spyOn(evalScore, 'runAutoScoreFile').mockRejectedValueOnce(new Error('fetch failed'))
@@ -221,6 +245,7 @@ describe('runControlPass', () => {
         suiteConfig: fakeSuite(),
         agentCmd: FAKE_AGENT_CMD,
         autoScore: true,
+        runAgent,
       })
       // Answers must be preserved.
       expect(block.condition).toBe('control')

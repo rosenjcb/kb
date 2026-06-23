@@ -251,6 +251,7 @@ export async function runControlPass({
   autoScore = true,
   scoreRuns = 1,
   scoresFile = null,
+  runAgent = runControlAgent,
 }) {
   const backend = agentCmd ? null : normalizeControlAgent(controlAgent)
   assertControlAgentAvailable({ agentCmd, controlAgent: backend ?? 'claude', controlPrompt })
@@ -270,7 +271,7 @@ export async function runControlPass({
     let answer = ''
     let telemetry = null
     try {
-      const r = runControlAgent({
+      const r = runAgent({
         repoDir,
         prompt,
         model,

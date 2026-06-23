@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   normalizeBootstrapManifest,
+  parseIgnoreEnv,
   parseReposEnv,
   resolveBootstrapPlan,
 } from '../../src/server/server-bootstrap'
@@ -13,6 +14,8 @@ const ENV_KEYS = [
   'KB_SERVER_BASE_NAME',
   'KB_GIT_REPOS',
   'KB_SERVER_BASE_GIT_REPOS',
+  'KB_IGNORE',
+  'KB_SERVER_BASE_IGNORE',
   'KB_SERVER_BOOTSTRAP',
   'KB_BOOTSTRAP_FILE',
   'KB_HOME',
@@ -47,16 +50,32 @@ describe('parseReposEnv', () => {
   })
 })
 
+describe('parseIgnoreEnv', () => {
+  it('splits on commas and newlines, trimming blanks', () => {
+    expect(parseIgnoreEnv('tests/, **/*.spec.ts\nnode_modules/')).toEqual([
+      'tests/',
+      '**/*.spec.ts',
+      'node_modules/',
+    ])
+  })
+
+  it('returns [] for undefined/empty', () => {
+    expect(parseIgnoreEnv(undefined)).toEqual([])
+    expect(parseIgnoreEnv('   ')).toEqual([])
+  })
+})
+
 describe('normalizeBootstrapManifest', () => {
   it('accepts string and object repo entries', () => {
     const m = normalizeBootstrapManifest({
       base: 'acme',
-      repos: ['a.git#dev', { url: 'b.git', branch: 'main' }],
+      repos: ['a.git#dev', { url: 'b.git', branch: 'main', ignore: ['dist/', ' coverage '] }],
       ignore: ['tests/', ' vendor '],
     })
     expect(m.base).toBe('acme')
     expect(m.repos).toHaveLength(2)
     expect(m.ignore).toEqual(['tests/', 'vendor'])
+    expect(m.repos?.[1]).toEqual({ url: 'b.git', branch: 'main', ignore: ['dist/', 'coverage'] })
   })
 
   it('throws on non-object input', () => {
@@ -68,6 +87,9 @@ describe('normalizeBootstrapManifest', () => {
     expect(() => normalizeBootstrapManifest({ base: '' })).toThrow(/"base"/)
     expect(() => normalizeBootstrapManifest({ repos: 'a.git' })).toThrow(/"repos"/)
     expect(() => normalizeBootstrapManifest({ ignore: [1] })).toThrow(/"ignore"/)
+    expect(() => normalizeBootstrapManifest({ repos: [{ url: 'a.git', ignore: [1] }] })).toThrow(
+      /repo "ignore"/
+    )
   })
 })
 
@@ -147,6 +169,43 @@ describe('resolveBootstrapPlan', () => {
       { url: 'b.git', branch: 'develop' },
     ])
     expect(plan.ignore).toEqual(['tests/'])
+  })
+
+  it('preserves per-repo ignore patterns from the manifest', async () => {
+    writeFileSync(
+      path.join(cwd, 'kb-server.json'),
+      JSON.stringify({
+        repos: [
+          { url: 'a.git', ignore: ['tests/'] },
+          { url: 'b.git', branch: 'develop', ignore: ['dist/', '.next/'] },
+        ],
+      })
+    )
+    const plan = await resolveBootstrapPlan([], cwd)
+    expect(plan.gitTargets).toEqual([
+      { url: 'a.git', branch: undefined, ignorePatterns: ['tests/'] },
+      { url: 'b.git', branch: 'develop', ignorePatterns: ['dist/', '.next/'] },
+    ])
+  })
+
+  it('reads ignore patterns from KB_SERVER_BASE_IGNORE (preferred over KB_IGNORE)', async () => {
+    process.env.KB_IGNORE = 'legacy/'
+    process.env.KB_SERVER_BASE_IGNORE = 'tests/, **/*.spec.ts'
+    const plan = await resolveBootstrapPlan([], cwd)
+    expect(plan.ignore).toEqual(['tests/', '**/*.spec.ts'])
+  })
+
+  it('lets env ignore win over manifest ignore', async () => {
+    process.env.KB_SERVER_BASE_IGNORE = 'env-only/'
+    writeFileSync(
+      path.join(cwd, 'kb-server.json'),
+      JSON.stringify({
+        repos: ['a.git'],
+        ignore: ['manifest-only/'],
+      })
+    )
+    const plan = await resolveBootstrapPlan([], cwd)
+    expect(plan.ignore).toEqual(['env-only/'])
   })
 
   it('honors an explicit --bootstrap path', async () => {

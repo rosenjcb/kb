@@ -8,6 +8,8 @@ info:
     MCP (Model Context Protocol) Streamable HTTP endpoint for LLM clients and is
     only mounted when the server runs with `--with-mcp`. All `/v1/*` and `/mcp`
     requests require a bearer API key (`KB_SERVER_API_KEY`); `/healthz` is open.
+    Slack webhook support is mounted at `/slack/events` when the server runs with
+    `--with-slack` or `KB_SERVER_ENABLE_SLACK=true`.
 servers:
   - url: http://localhost:8080
     description: Local / Docker
@@ -20,6 +22,7 @@ tags:
   - name: chat
   - name: admin
   - name: mcp
+  - name: slack
 
 paths:
   /healthz:
@@ -125,6 +128,21 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "500": { $ref: "#/components/responses/ServerError" }
+
+  /slack/events:
+    post:
+      tags: [slack]
+      summary: Slack Events API webhook
+      description: >
+        Mounted only when Slack mode is enabled on the main server. Auth is via
+        Slack request signing (`X-Slack-Signature` / `X-Slack-Request-Timestamp`),
+        not `KB_SERVER_API_KEY`.
+      security: []
+      responses:
+        "200":
+          description: URL verification challenge or fast acknowledgment
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /mcp:
     post:

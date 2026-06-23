@@ -4,6 +4,7 @@ import type { Server } from 'node:http'
 import type { IntentResult } from '../../src/intents/types'
 import { createHttpServer } from '../../src/server/http-server'
 import type { KbService } from '../../src/server/kb-service'
+import { computeSignature } from '../../src/server/slack-verify'
 
 function makeStubService(overrides: Partial<KbService> = {}): KbService {
   return {
@@ -157,5 +158,71 @@ describe('createHttpServer', () => {
     expect((await fetch(`${base}/nope`)).status).toBe(404)
     const mcp = await fetch(`${base}/mcp`, { method: 'POST', body: '{}' })
     expect(mcp.status).toBe(404)
+  })
+
+  it('answers Slack url verification when Slack mode is enabled', async () => {
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: [],
+      slack: {
+        signingSecret: 'secret',
+        botToken: 'xoxb-test',
+      },
+    })
+    const base = await listen(server)
+    const body = JSON.stringify({ type: 'url_verification', challenge: 'abc123' })
+    const timestamp = String(Math.floor(Date.now() / 1000))
+    const res = await fetch(`${base}/slack/events`, {
+      method: 'POST',
+      headers: {
+        'x-slack-request-timestamp': timestamp,
+        'x-slack-signature': computeSignature('secret', timestamp, body),
+      },
+      body,
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ challenge: 'abc123' })
+  })
+
+  it('handles Slack app mentions on the main server', async () => {
+    const postMessage = vi.fn(async () => ({}))
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: ['secret'],
+      slack: {
+        signingSecret: 'secret',
+        botToken: 'xoxb-test',
+        postMessage,
+      },
+    })
+    const base = await listen(server)
+    const body = JSON.stringify({
+      type: 'event_callback',
+      event_id: 'Ev123',
+      event: {
+        type: 'app_mention',
+        channel: 'C123',
+        ts: '123.456',
+        text: '<@U123> how does auth work?',
+      },
+    })
+    const timestamp = String(Math.floor(Date.now() / 1000))
+    const res = await fetch(`${base}/slack/events`, {
+      method: 'POST',
+      headers: {
+        'x-slack-request-timestamp': timestamp,
+        'x-slack-signature': computeSignature('secret', timestamp, body),
+      },
+      body,
+    })
+    expect(res.status).toBe(200)
+    await res.text()
+    await vi.waitFor(() => expect(postMessage).toHaveBeenCalledOnce())
+    expect(postMessage).toHaveBeenCalledWith({
+      token: 'xoxb-test',
+      channel: 'C123',
+      threadTs: '123.456',
+      text: 'answer for: how does auth work?\n\n*Sources*\n• Doc',
+    })
   })
 })

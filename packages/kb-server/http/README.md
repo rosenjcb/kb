@@ -5,7 +5,7 @@ OKF companion: [`HTTP.md`](HTTP.md).
 | File | Purpose |
 |---|---|
 | [`server.http`](server.http) | httpyac collection — examples + integration suite (10 requests) |
-| [`openapi.yaml`](openapi.yaml) | OpenAPI 3.0 for REST + MCP |
+| [`openapi.yaml`](openapi.yaml) | OpenAPI 3.0 for REST + MCP + optional Slack webhook |
 | [`.httpyac.js`](.httpyac.js) | Environments (`local`, `docker`, `prod`) |
 | [`http-client.env.json`](http-client.env.json) | VS Code / Cursor httpyac env fallback |
 | [`package.json`](package.json) | `"type": "commonjs"` for httpyac in this ESM repo |

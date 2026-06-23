@@ -1,5 +1,6 @@
 ---
-"kb": patch
+"kb": minor
+"kb-server": minor
 ---
 
-Improve kb server startup ergonomics by making `server:start` run locally, forwarding optional GitHub tokens to Docker and git sync, and clarifying Docker workflows in the server docs.
+Merge Slack webhook handling into `kb-server`, remove the separate `kb-slack` package/container flow, and improve local/Docker server startup ergonomics and GitHub repo auth.

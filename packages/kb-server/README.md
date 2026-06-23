@@ -53,6 +53,9 @@ GITHUB_TOKEN=<optional-github-token>           # optional; only needed for priva
 KB_SERVER_API_KEY=<a-strong-random-token>      # required to call /v1 and /mcp
 GEMINI_API_KEY=<your-provider-key>             # or ANTHROPIC_API_KEY / OPENAI_API_KEY
 KB_REINDEX_INTERVAL=1h
+KB_SERVER_ENABLE_SLACK=true                    # optional; mounts POST /slack/events on this server
+SLACK_SIGNING_SECRET=<optional-slack-secret>   # required when Slack mode is enabled
+SLACK_BOT_TOKEN=<optional-xoxb-token>          # required when Slack mode is enabled
 PORT=8080
 ```
 
@@ -71,6 +74,8 @@ persisted index on the `/data` volume — no reindex on restart.
 > `server:start` runs the server locally in your shell (`tsx src/cli/index.ts server start --with-mcp`).
 > `server:up` is the guided Docker bootstrap.
 > `server:docker:start|stop|logs` are Docker convenience wrappers.
+> Slack is now part of `kb-server`: enable it with `--with-slack` or
+> `KB_SERVER_ENABLE_SLACK=true`.
 
 ## Configuration
 
@@ -82,7 +87,10 @@ server-scoped ones; the shorter aliases are kept for back-compat.
 |---|---|---|
 | `KB_SERVER_API_KEY` | **yes** | Bearer token(s) for `/v1/*` and `/mcp`; comma-separated for rotation. Empty ⇒ unauthenticated (logs a warning). |
 | `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | **one** | LLM provider for synthesis (auto-detected). |
-| `GITHUB_TOKEN` (or `GH_TOKEN`) | private GitHub repos only | Optional GitHub HTTPS auth for clone/fetch. Public repos work without it; SSH remotes also work without it. |
+| `GITHUB_TOKEN` | private GitHub repos only | Optional GitHub HTTPS auth for clone/fetch. Public repos work without it; SSH remotes also work without it. |
+| `KB_SERVER_ENABLE_SLACK` | no | Enable Slack Events API handling on this same server (`POST /slack/events`). |
+| `SLACK_SIGNING_SECRET` | Slack mode only | Slack request-signing secret. Required when `KB_SERVER_ENABLE_SLACK` is enabled. |
+| `SLACK_BOT_TOKEN` | Slack mode only | Slack bot token (`xoxb-…`) used to post threaded replies. Required when Slack mode is enabled. |
 | `KB_SERVER_BASE_NAME` (alias `KB_BASE`) | recommended | Base name to build + serve. |
 | `KB_SERVER_BASE_GIT_REPOS` (alias `KB_GIT_REPOS`) | first boot | Comma/whitespace-separated `url[#branch]` list to index on an empty volume. |
 | `KB_REINDEX_INTERVAL` | no | Reindex cadence: `1h`, `30m`, `10s`, or `0` to disable (default `1h`). |
@@ -94,7 +102,7 @@ Vault in production) — never commit a real `.env`.
 
 ### Option B: a `kb-server.json` manifest
 
-Flat env vars can't express per-repo branches or index-ignore patterns. For
+Flat env vars can't express per-repo branches or per-repo ignore patterns. For
 version-controllable, declarative deploys, drop a `kb-server.json` next to the compose
 file (or in `$KB_HOME`, or point at it with `KB_SERVER_BOOTSTRAP=/path/to/file`):
 
@@ -102,10 +110,18 @@ file (or in `$KB_HOME`, or point at it with `KB_SERVER_BOOTSTRAP=/path/to/file`)
 {
   "base": "acme",
   "repos": [
-    "https://github.com/acme/auth#main",
-    { "url": "https://github.com/acme/web", "branch": "develop" }
+    {
+      "url": "https://github.com/acme/auth",
+      "branch": "main",
+      "ignore": ["tests/", "**/*.snap"]
+    },
+    {
+      "url": "https://github.com/acme/web",
+      "branch": "develop",
+      "ignore": ["dist/", ".next/", "playwright-report/"]
+    }
   ],
-  "ignore": ["**/node_modules/**", "**/*.test.ts"]
+  "ignore": ["**/node_modules/**"]
 }
 ```
 
@@ -113,9 +129,12 @@ Precedence (highest wins): `--git` flags → `KB_GIT_REPOS` env → manifest. So
 deploys are unaffected, and you can override the manifest per environment. Repos added to
 the manifest later are folded in on the next boot without a manual reindex.
 
+Top-level `ignore` remains a shared fallback for repos that do not declare their own
+`ignore`. Per-repo `ignore` wins when both are present.
+
 For private GitHub repos, keep `KB_GIT_REPOS` as plain `https://github.com/...` URLs and
-set `GITHUB_TOKEN` (or `GH_TOKEN`) separately. The server forwards the token to `git`
-through an in-memory auth header, so cloned repos do not need tokenized remotes.
+set `GITHUB_TOKEN` separately. The server forwards the token to `git` through an in-memory
+auth header, so cloned repos do not need tokenized remotes.
 
 ## Without pnpm — raw Docker
 
@@ -200,8 +219,31 @@ The image starts with `--with-mcp`, so MCP clients can connect at `POST /mcp` wi
 same bearer token — see [`../../src/server/SERVER.md`](../../src/server/SERVER.md) for the
 Claude Code / Cursor wiring and the full endpoint + tool list.
 
-**Slack:** to answer `@kb <question>` in Slack, run the optional bot container that bridges
-mentions to `/v1/query` — `pnpm run slack:up`, setup in [`../kb-slack/README.md`](../kb-slack/README.md).
+**Slack:** Slack is optional, but it now runs inside the same `kb-server` process and
+container. Enable it by setting `KB_SERVER_ENABLE_SLACK=true` and providing
+`SLACK_SIGNING_SECRET` plus `SLACK_BOT_TOKEN`. Slack's Request URL should point at the same
+host as your server, under `/slack/events`.
+
+Launch with Slack enabled using the guided Docker path:
+
+```bash
+pnpm run server:up
+pnpm run server:docker:logs
+```
+
+Or with raw compose:
+
+```bash
+docker compose --env-file .env -f packages/kb-server/docker-compose.yml up -d --build kb-server
+```
+
+For local dev without Docker:
+
+```bash
+KB_SERVER_ENABLE_SLACK=true pnpm run server:start
+```
+
+Slack mentions are handled in-process and use the same KB service instance as `/v1/query`.
 
 ## Operate
 

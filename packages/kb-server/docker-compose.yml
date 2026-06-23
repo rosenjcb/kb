@@ -41,7 +41,9 @@ services:
       KB_SERVER_API_KEY: "${KB_SERVER_API_KEY:-testkey}"
       KB_REINDEX_INTERVAL: "${KB_REINDEX_INTERVAL:-1h}"
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
-      GH_TOKEN: "${GH_TOKEN:-}"
+      KB_SERVER_ENABLE_SLACK: "${KB_SERVER_ENABLE_SLACK:-}"
+      SLACK_SIGNING_SECRET: "${SLACK_SIGNING_SECRET:-}"
+      SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN:-}"
       # Provide one of these (read from your .env / shell). Gemini shown as default.
       GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
       GEMINI_API_BASE_URL: "${GEMINI_API_BASE_URL:-}"
@@ -62,30 +64,6 @@ services:
       retries: 5
       # First boot clones + indexes before listening; give it room.
       start_period: 300s
-
-  # Optional Slack bot, gated behind the `slack` compose profile so it is inert for
-  # `server:up` and the integration suite (it intentionally exits without Slack secrets).
-  # Opt in with `pnpm run slack:up` (which enables the profile). Receives Slack Events API
-  # webhooks and answers @kb mentions by calling kb-server /v1/query. Needs a public Request
-  # URL (e.g. a tunnel) → host :3000.
-  kb-slack:
-    build:
-      context: ../..
-      dockerfile: packages/kb-slack/Dockerfile
-    image: kb-slack
-    profiles: ["slack"]
-    depends_on:
-      - kb-server
-    ports:
-      - "${SLACK_PORT:-3000}:3000"
-    environment:
-      PORT: "3000"
-      KB_SERVER_URL: "${KB_SERVER_URL:-http://kb-server:8080}"
-      KB_SERVER_API_KEY: "${KB_SERVER_API_KEY:-testkey}"
-      SLACK_SIGNING_SECRET: "${SLACK_SIGNING_SECRET:-}"
-      SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN:-}"
-      SLACK_EVENTS_PATH: "${SLACK_EVENTS_PATH:-/slack/events}"
-    restart: unless-stopped
 
 volumes:
   kb-data:

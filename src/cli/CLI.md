@@ -199,13 +199,14 @@ kb base ignore clear             # remove all
 Dispatch: [`../server/server-cli.ts`](../server/server-cli.ts). See [`../server/SERVER.md`](../server/SERVER.md).
 
 ```text
-kb server start [--base <name>] [--port <n>] [--with-mcp]
+kb server start [--base <name>] [--port <n>] [--with-mcp] [--with-slack]
 ```
 
 | Flag | Effect |
 |---|---|
 | (default) | REST only — `/v1/query`, `/v1/chat`, `/healthz`, `/v1/reindex` |
 | `--with-mcp` | Also serves MCP Streamable HTTP at `POST /mcp` |
+| `--with-slack` | Also serves Slack Events API at `POST /slack/events` |
 
 **MCP clients** — server must run with `--with-mcp`. Auth header must match `KB_SERVER_API_KEY`.
 
@@ -225,7 +226,7 @@ agent mcp list-tools kb
 
 See [`../server/SERVER.md`](../server/SERVER.md) for deploy URLs and tool list.
 
-**Boot-build:** missing index → `kb init` / `kb scan` before listen. **pnpm:** `server:start` runs locally; `server:up` / `server:docker:*` are the Docker paths. Integration: [`../../packages/kb-server/http/HTTP.md`](../../packages/kb-server/http/HTTP.md).
+**Boot-build:** missing index → `kb init` / `kb scan` before listen. **pnpm:** `server:start` runs locally; `server:up` / `server:docker:*` are the Docker paths. Set `KB_SERVER_ENABLE_SLACK=true` (or pass `--with-slack`) to mount Slack on the same server. Integration: [`../../packages/kb-server/http/HTTP.md`](../../packages/kb-server/http/HTTP.md).
 
 ## Gotchas
 

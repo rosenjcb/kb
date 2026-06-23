@@ -11,7 +11,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
 /** Compute the `v0=…` signature for a raw request body. */
-export function computeSignature(signingSecret, timestamp, rawBody) {
+export function computeSignature(signingSecret: string, timestamp: string, rawBody: string): string {
   const hmac = createHmac('sha256', signingSecret)
   hmac.update(`v0:${timestamp}:${rawBody}`)
   return `v0=${hmac.digest('hex')}`
@@ -29,8 +29,17 @@ export function isValidSlackRequest({
   rawBody,
   nowSeconds = Math.floor(Date.now() / 1000),
   maxSkewSeconds = 60 * 5,
-}) {
-  if (!signingSecret || typeof signature !== 'string' || !signature) return false
+}: {
+  signingSecret: string
+  signature: string | string[] | undefined
+  timestamp: string | string[] | undefined
+  rawBody: string
+  nowSeconds?: number
+  maxSkewSeconds?: number
+}): boolean {
+  if (!signingSecret || typeof signature !== 'string' || !signature || typeof timestamp !== 'string') {
+    return false
+  }
   const ts = Number.parseInt(timestamp, 10)
   if (!Number.isFinite(ts)) return false
   if (Math.abs(nowSeconds - ts) > maxSkewSeconds) return false

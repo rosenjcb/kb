@@ -9,6 +9,8 @@ export interface GitRepoMeta {
   slug: string
   /** Clone directory relative to the base dir (e.g. `repos/<slug>`; legacy bases use `repo`). */
   dir: string
+  /** Optional gitignore-style patterns that apply only to this repo while indexing. */
+  ignore?: string[]
   lastSyncedSha: string
   lastSyncedAt: string
 }

@@ -264,9 +264,10 @@ Full getting-started, config reference, and the `kb-server.json` manifest:
 **[`packages/kb-server/README.md`](packages/kb-server/README.md)**. Managed cloud deploy:
 [`docs/DEPLOY_CLOUD_RUN.md`](docs/DEPLOY_CLOUD_RUN.md).
 
-**Slack bot:** point a Slack workspace at the server so people can ask `@kb <question>` in
-channels. It's an optional container (`pnpm run slack:up`) that bridges Slack mentions to
-`/v1/query` — setup in [`packages/kb-slack/README.md`](packages/kb-slack/README.md).
+**Slack integration:** point a Slack workspace directly at `kb-server` so people can ask
+`@kb <question>` in channels. Enable Slack mode on the main server and use
+`POST /slack/events` on the same host — setup in
+[`packages/kb-server/README.md`](packages/kb-server/README.md).
 
 ## 🔌 MCP — Claude Code & Cursor Agent
 

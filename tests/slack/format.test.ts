@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-// @ts-expect-error — kb-slack ships plain ESM (.mjs) with no type declarations.
-import { formatReply, stripMention } from '../../packages/kb-slack/src/format.mjs'
+import { formatReply, stripMention } from '../../src/server/slack-format'
 
 describe('stripMention', () => {
   it('strips the leading bot mention and trims', () => {

@@ -4,7 +4,7 @@ import { repoSlugFromGitUrl } from './base-meta'
 type GitCommandEnv = Record<string, string | undefined>
 
 function githubTokenFromEnv(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  return env.GITHUB_TOKEN || env.GH_TOKEN
+  return env.GITHUB_TOKEN
 }
 
 export function buildGitAuthEnv(env: NodeJS.ProcessEnv = process.env): GitCommandEnv {
@@ -28,7 +28,7 @@ function formatGitError(message: string): string {
   return [
     message,
     'GitHub HTTPS authentication failed.',
-    'Set GITHUB_TOKEN (or GH_TOKEN) for private GitHub repos, switch the repo URL to SSH, or remove private repos from KB_GIT_REPOS.',
+    'Set GITHUB_TOKEN for private GitHub repos, switch the repo URL to SSH, or remove private repos from KB_GIT_REPOS.',
   ].join('\n')
 }
 

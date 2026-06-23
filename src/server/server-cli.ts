@@ -25,6 +25,11 @@ export interface ServerLogger {
 
 const DEFAULT_PORT = 8080
 
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) return false
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
+}
+
 function readApiKeys(): string[] {
   return (process.env.KB_SERVER_API_KEY ?? '')
     .split(',')
@@ -153,6 +158,7 @@ export async function runServerCommand(
   config: KbConfig
 ): Promise<void> {
   const enableMcp = args.includes('--with-mcp')
+  const enableSlack = args.includes('--with-slack') || isTruthyEnv(process.env.KB_SERVER_ENABLE_SLACK)
   const portArg = readOptionalCliValue(args, '--port')
   const port = portArg ? Number.parseInt(portArg, 10) : Number.parseInt(process.env.PORT ?? '', 10) || DEFAULT_PORT
   if (Number.isNaN(port) || port <= 0) {
@@ -167,6 +173,21 @@ export async function runServerCommand(
   const apiKeys = readApiKeys()
   if (apiKeys.length === 0) {
     out.error('⚠  KB_SERVER_API_KEY is not set — /v1 and /mcp are UNAUTHENTICATED.')
+  }
+  const slackConfig = enableSlack
+    ? {
+        signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
+        botToken: process.env.SLACK_BOT_TOKEN ?? '',
+      }
+    : undefined
+  if (enableSlack) {
+    const missing = [
+      !slackConfig?.signingSecret ? 'SLACK_SIGNING_SECRET' : '',
+      !slackConfig?.botToken ? 'SLACK_BOT_TOKEN' : '',
+    ].filter(Boolean)
+    if (missing.length > 0) {
+      throw new Error(`Slack mode requires: ${missing.join(', ')}`)
+    }
   }
 
   const intervalMs = parseDuration(process.env.KB_REINDEX_INTERVAL)
@@ -183,6 +204,7 @@ export async function runServerCommand(
     service,
     apiKeys,
     enableMcp,
+    slack: slackConfig,
     onLog: line => out.error(line),
   })
 
@@ -193,7 +215,7 @@ export async function runServerCommand(
 
   out.log(`🚀 kb server listening on :${port} (base "${path.basename(base.baseDir)}")`)
   out.log(
-    `   POST /v1/query   POST /v1/chat   GET /healthz   POST /v1/reindex${enableMcp ? '   POST /mcp' : ''}`
+    `   POST /v1/query   POST /v1/chat   GET /healthz   POST /v1/reindex${enableMcp ? '   POST /mcp' : ''}${enableSlack ? '   POST /slack/events' : ''}`
   )
 
   await waitForShutdown(async () => {

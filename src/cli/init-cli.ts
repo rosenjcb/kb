@@ -131,6 +131,7 @@ export interface InitOptions {
 export interface GitTarget {
   url: string
   branch?: string
+  ignorePatterns?: string[]
 }
 
 export interface InitResult {
@@ -622,6 +623,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         gitBranch,
         slug,
         dir,
+        ignore: target.ignorePatterns,
         lastSyncedSha: await getHeadSha(repoDir),
         lastSyncedAt: new Date().toISOString(),
       })
@@ -1065,7 +1067,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           apply: true,
           nonInteractive: true,
           gitRepo: repo.slug,
-          ignorePatterns,
+          ignorePatterns: repo.ignore ?? ignorePatterns,
           provider: rawProvider,
           collector: options.collector,
           progressSink: options.progressSink,
@@ -1184,7 +1186,7 @@ async function runExistingBaseSwap(params: {
           apply: true,
           nonInteractive: true,
           gitRepo: slug,
-          ignorePatterns,
+          ignorePatterns: target.ignorePatterns ?? ignorePatterns,
           provider: options.provider,
           collector: options.collector,
           progressSink: options.progressSink,
@@ -1198,6 +1200,7 @@ async function runExistingBaseSwap(params: {
           gitBranch,
           slug,
           dir,
+          ignore: target.ignorePatterns,
           lastSyncedSha: await getHeadSha(repoDir),
           lastSyncedAt: new Date().toISOString(),
         }

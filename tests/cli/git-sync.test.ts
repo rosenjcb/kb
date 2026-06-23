@@ -103,21 +103,11 @@ describe('git-sync', () => {
       )
     })
 
-    it('falls back to GH_TOKEN when GITHUB_TOKEN is absent', () => {
+    it('ignores unrelated token env vars', () => {
       const env = buildGitAuthEnv({ GH_TOKEN: 'secret' })
 
-      expect(env.GIT_CONFIG_COUNT).toBe('1')
-      expect(env.GIT_CONFIG_VALUE_0).toBe(
-        `AUTHORIZATION: basic ${Buffer.from('x-access-token:secret').toString('base64')}`
-      )
-    })
-
-    it('prefers GITHUB_TOKEN over GH_TOKEN when both are present', () => {
-      const env = buildGitAuthEnv({ GITHUB_TOKEN: 'preferred', GH_TOKEN: 'fallback' })
-
-      expect(env.GIT_CONFIG_VALUE_0).toBe(
-        `AUTHORIZATION: basic ${Buffer.from('x-access-token:preferred').toString('base64')}`
-      )
+      expect(env.GIT_CONFIG_COUNT).toBeUndefined()
+      expect(env.GIT_CONFIG_VALUE_0).toBeUndefined()
     })
   })
 

@@ -17,6 +17,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { handleMcpHttpRequest } from './mcp-server.js'
 import { serializeQueryResult } from './serialize.js'
 import type { KbService } from './kb-service.js'
+import { formatReply, stripMention } from './slack-format.js'
+import { isValidSlackRequest } from './slack-verify.js'
+import { postSlackMessage } from './slack-client.js'
 
 export interface HttpServerOptions {
   service: KbService
@@ -27,7 +30,16 @@ export interface HttpServerOptions {
   /** Per-request timeout for /v1/query (ms). Default 60s. */
   requestTimeoutMs?: number
   onLog?: (line: string) => void
+  slack?: SlackOptions
 }
+
+export interface SlackOptions {
+  signingSecret: string
+  botToken: string
+  postMessage?: typeof postSlackMessage
+}
+
+const SLACK_EVENTS_PATH = '/slack/events'
 
 const MAX_BODY_BYTES = 1 << 20 // 1 MiB
 
@@ -69,6 +81,24 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
   })
 }
 
+function readRawBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error('request body too large'))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
+}
+
 function isAuthorized(req: IncomingMessage, apiKeys: string[]): boolean {
   if (apiKeys.length === 0) return true
   const header = req.headers.authorization ?? ''
@@ -88,7 +118,10 @@ interface QueryRequestBody {
 }
 
 export function createHttpServer(options: HttpServerOptions): Server {
-  const { service, apiKeys, enableMcp = false, requestTimeoutMs = 60_000, onLog } = options
+  const { service, apiKeys, enableMcp = false, requestTimeoutMs = 60_000, onLog, slack } = options
+  const slackPostMessage = slack?.postMessage ?? postSlackMessage
+  const seenSlackEvents = new Set<string>()
+  const seenSlackEventsCap = 1000
 
   return createServer((req, res) => {
     void handleRequest(req, res).catch(error => {
@@ -107,6 +140,11 @@ export function createHttpServer(options: HttpServerOptions): Server {
     if (method === 'GET' && (url === '/healthz' || url === '/health')) {
       const health = service.health()
       sendJson(res, health.ok ? 200 : 503, health)
+      return
+    }
+
+    if (slack && method === 'POST' && url === SLACK_EVENTS_PATH) {
+      await handleSlackEvent(req, res)
       return
     }
 
@@ -145,6 +183,100 @@ export function createHttpServer(options: HttpServerOptions): Server {
     }
 
     sendJson(res, 404, { error: 'not found' })
+  }
+
+  function alreadyHandledSlackEvent(eventId: string | undefined): boolean {
+    if (!eventId) return false
+    if (seenSlackEvents.has(eventId)) return true
+    seenSlackEvents.add(eventId)
+    if (seenSlackEvents.size > seenSlackEventsCap) {
+      for (const id of seenSlackEvents) {
+        seenSlackEvents.delete(id)
+        if (seenSlackEvents.size <= seenSlackEventsCap / 2) break
+      }
+    }
+    return false
+  }
+
+  async function handleSlackEvent(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (!slack) {
+      sendJson(res, 404, { error: 'not found' })
+      return
+    }
+
+    let rawBody: string
+    try {
+      rawBody = await readRawBody(req)
+    } catch {
+      res.writeHead(400).end()
+      return
+    }
+
+    const valid = isValidSlackRequest({
+      signingSecret: slack.signingSecret,
+      signature: req.headers['x-slack-signature'],
+      timestamp: req.headers['x-slack-request-timestamp'],
+      rawBody,
+    })
+    if (!valid) {
+      res.writeHead(401).end()
+      return
+    }
+
+    let body: SlackEventBody
+    try {
+      body = JSON.parse(rawBody) as SlackEventBody
+    } catch {
+      res.writeHead(400).end()
+      return
+    }
+
+    if (body.type === 'url_verification') {
+      sendJson(res, 200, { challenge: body.challenge })
+      return
+    }
+
+    res.writeHead(200).end()
+    if (body.type === 'event_callback' && !alreadyHandledSlackEvent(body.event_id)) {
+      void dispatchSlackEvent(body)
+    }
+  }
+
+  async function dispatchSlackEvent(body: SlackEventBody): Promise<void> {
+    if (!slack) return
+    const event = body.event
+    if (!event || event.type !== 'app_mention' || event.bot_id) return
+
+    const threadTs = event.thread_ts ?? event.ts
+    const question = stripMention(event.text)
+    try {
+      const text = question
+        ? formatReply(
+            serializeQueryResult(
+              await service.query({
+                query: question,
+                synthesize: true,
+              })
+            )
+          )
+        : 'Ask me a question, e.g. `@kb how does auth work?`'
+
+      await slackPostMessage({
+        token: slack.botToken,
+        channel: event.channel,
+        threadTs,
+        text,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      onLog?.(`[slack] error: ${message}`)
+      await slackPostMessage({
+        token: slack.botToken,
+        channel: event.channel,
+        threadTs,
+        text: `⚠️ Sorry, I hit an error answering that (${message}).`,
+      }).catch(() => {})
+    }
   }
 
   async function handleQuery(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -243,4 +375,20 @@ export function createHttpServer(options: HttpServerOptions): Server {
       sendJson(res, 500, { error: message })
     }
   }
+}
+
+interface SlackMentionEvent {
+  type?: string
+  bot_id?: string
+  text?: string
+  channel: string
+  ts?: string
+  thread_ts?: string
+}
+
+interface SlackEventBody {
+  type?: string
+  challenge?: string
+  event_id?: string
+  event?: SlackMentionEvent
 }

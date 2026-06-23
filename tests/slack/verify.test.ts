@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-// @ts-expect-error — kb-slack ships plain ESM (.mjs) with no type declarations.
-import { computeSignature, isValidSlackRequest } from '../../packages/kb-slack/src/verify.mjs'
+import { computeSignature, isValidSlackRequest } from '../../src/server/slack-verify'
 
 const SECRET = 'top-secret-signing-key'
 const BODY = '{"type":"event_callback","event":{"type":"app_mention"}}'

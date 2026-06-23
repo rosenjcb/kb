@@ -19,7 +19,11 @@ interface RepoSyncOutcome {
 }
 
 /** Re-index `repo` from its clone, tagging facts with its slug. */
-async function reindexRepo(baseDir: string, repo: GitRepoMeta): Promise<void> {
+async function reindexRepo(
+  baseDir: string,
+  repo: GitRepoMeta,
+  fallbackIgnorePatterns?: string[]
+): Promise<void> {
   await runKbInit({
     base: path.basename(baseDir),
     cwd: path.join(baseDir, repo.dir),
@@ -27,6 +31,7 @@ async function reindexRepo(baseDir: string, repo: GitRepoMeta): Promise<void> {
     apply: true,
     nonInteractive: true,
     gitRepo: repo.slug,
+    ignorePatterns: repo.ignore ?? fallbackIgnorePatterns,
   })
 }
 
@@ -37,7 +42,8 @@ async function reindexRepo(baseDir: string, repo: GitRepoMeta): Promise<void> {
 async function syncRepo(
   baseDir: string,
   repo: GitRepoMeta,
-  opts: AutoSyncOptions
+  opts: AutoSyncOptions,
+  fallbackIgnorePatterns?: string[]
 ): Promise<RepoSyncOutcome> {
   const { onProgress } = opts
   const repoDir = path.join(baseDir, repo.dir)
@@ -58,7 +64,7 @@ async function syncRepo(
 
   onProgress?.(`[kb] ${repo.slug}: re-indexing (→ ${newSha.slice(0, 8)})…`)
   try {
-    await reindexRepo(baseDir, repo)
+    await reindexRepo(baseDir, repo, fallbackIgnorePatterns)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     onProgress?.(`[kb] Re-index failed for ${repo.slug}: ${msg}`)
@@ -106,7 +112,7 @@ export async function maybeAutoSync(baseDir: string, opts: AutoSyncOptions = {})
     }
     anyTouched = true
     opts.onProgress?.(`[kb] Auto-syncing ${repo.slug} from ${repo.gitUrl}…`)
-    const outcome = await syncRepo(baseDir, repo, opts)
+    const outcome = await syncRepo(baseDir, repo, opts, meta.ignore)
     updated.push(outcome.repo)
     anyReindexed = anyReindexed || outcome.reindexed
   }

@@ -1,7 +1,7 @@
 ---
 type: Subsystem
 title: KB HTTP and MCP Server
-description: Long-lived HTTP service with optional MCP at POST /mcp.
+description: Long-lived HTTP service with optional MCP at POST /mcp and optional Slack webhook support at POST /slack/events.
 resource: ./src/server
 tags: [server, http, mcp, cloud-run, docker]
 timestamp: 2026-06-22T00:00:00Z
@@ -9,7 +9,7 @@ timestamp: 2026-06-22T00:00:00Z
 
 # KB HTTP and MCP Server
 
-Runs `kb` as a **central, long-lived HTTP service** so indexing happens once on durable storage and clients call REST (and optionally MCP) instead of re-bootstrapping a CLI per request. Entry point: `kb server start [--with-mcp]`.
+Runs `kb` as a **central, long-lived HTTP service** so indexing happens once on durable storage and clients call REST (and optionally MCP/Slack) instead of re-bootstrapping a CLI per request. Entry point: `kb server start [--with-mcp] [--with-slack]`.
 
 ## Role in the stack
 
@@ -37,7 +37,7 @@ flowchart LR
 |---|---|
 | `server-cli.ts` | `kb server start`; boot-build; scheduler; shutdown |
 | `kb-service.ts` | Query, chat, readFacts, reindex, health |
-| `http-server.ts` | `/healthz`, `/v1/*`, optional `POST /mcp` |
+| `http-server.ts` | `/healthz`, `/v1/*`, optional `POST /mcp`, optional `POST /slack/events` |
 | `query-pipeline.ts` | Shared retrieval + synthesis with CLI |
 | `chat-stream.ts` | `runChatSynthesis` → SSE |
 | `mcp-server.ts` | Streamable HTTP MCP handler |
@@ -47,7 +47,7 @@ flowchart LR
 
 - **CLI:** `src/cli/index.ts` → `runServerCommand`.
 - **Boot-build:** missing `.kb-index.sqlite` → `kb init` or `kb scan` before `listen()`.
-- **Docker:** `server start --with-mcp` in Dockerfile CMD.
+- **Docker:** `server start --with-mcp` in Dockerfile CMD; Slack can be enabled with `KB_SERVER_ENABLE_SLACK=true`.
 - **Dev:** `pnpm run server:start` for a local process; `pnpm run server:up` for the guided Docker path.
 
 ### MCP clients (Claude Code & Cursor Agent)
@@ -93,7 +93,7 @@ Replace `testkey` / the URL when pointing at a deployed instance. If `mcp.json` 
 
 **Tools exposed:** `kb_query`, `read_facts`, `search_code_symbols`, `get_code_neighbors`, `get_code_graph_summary`.
 
-### Endpoints (`kb server start [--with-mcp]`)
+### Endpoints (`kb server start [--with-mcp] [--with-slack]`)
 
 | Method / path | Auth | Purpose |
 |---|---|---|
@@ -102,6 +102,7 @@ Replace `testkey` / the URL when pointing at a deployed instance. If `mcp.json` 
 | `POST /v1/chat` | Bearer | Multi-turn SSE chat |
 | `POST /v1/reindex` | Bearer | Incremental rescan |
 | `POST /mcp` | Bearer | MCP Streamable HTTP when `--with-mcp` |
+| `POST /slack/events` | Slack signature | Slack Events API when `--with-slack` or `KB_SERVER_ENABLE_SLACK=true` |
 
 Auth: `Authorization: Bearer <KB_SERVER_API_KEY>` or `X-Api-Key`.
 
