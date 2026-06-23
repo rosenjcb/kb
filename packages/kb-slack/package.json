@@ -1,6 +1,6 @@
 {
   "name": "kb-slack",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Slack bot that answers @kb mentions from a kb-server instance (Events API → /v1/query) and DMs via /v1/chat",
