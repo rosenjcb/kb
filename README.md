@@ -248,6 +248,26 @@ The skills are self-contained (workflow + full command shapes). Source: [`skills
 
 The `kb:dump-context` skill writes in-place companion docs in the **Open Knowledge Format** (see below), so the architecture knowledge your agent captures is indexed structurally rather than as loose prose.
 
+## 🚢 Run KB as a server (Docker)
+
+Instead of a per-machine CLI, run KB as a **central HTTP/MCP server**: index your repos
+once on a durable volume and let people, apps, and agents query over HTTP. The Docker
+image is deployable, not just an integration harness.
+
+```bash
+pnpm run server:up      # seeds .env on first run; edit it, then re-run to build + boot
+pnpm run server:logs    # watch the first-boot clone + index
+curl http://localhost:8080/healthz
+```
+
+Full getting-started, config reference, and the `kb-server.json` manifest:
+**[`packages/kb-server/README.md`](packages/kb-server/README.md)**. Managed cloud deploy:
+[`docs/DEPLOY_CLOUD_RUN.md`](docs/DEPLOY_CLOUD_RUN.md).
+
+**Slack bot:** point a Slack workspace at the server so people can ask `@kb <question>` in
+channels. It's an optional container (`pnpm run slack:up`) that bridges Slack mentions to
+`/v1/query` — setup in [`packages/kb-slack/README.md`](packages/kb-slack/README.md).
+
 ## 🔌 MCP — Claude Code & Cursor Agent
 
 Point your coding agent at a running `kb server` over **Streamable HTTP** (`POST /mcp`). The server must be started with `--with-mcp`; REST-only mode returns 404 on `/mcp`.
