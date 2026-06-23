@@ -17,6 +17,7 @@ import { type BootstrapPlan, resolveBootstrapPlan } from './server-bootstrap.js'
 import { createHttpServer } from './http-server.js'
 import { createKbService } from './kb-service.js'
 import { parseDuration, startReindexScheduler } from './reindex-scheduler.js'
+import { log } from './logger.js'
 
 export interface ServerLogger {
   log(message: string): void
@@ -134,7 +135,7 @@ function waitForShutdown(cleanup: () => Promise<void> | void): Promise<void> {
     const shutdown = async (signal: string) => {
       if (done) return
       done = true
-      process.stderr.write(`\n[kb] received ${signal}, shutting down…\n`)
+      log.info('server shutdown', { signal })
       await cleanup()
       resolve()
     }
@@ -167,6 +168,7 @@ export async function runServerCommand(
   const apiKeys = readApiKeys()
   if (apiKeys.length === 0) {
     out.error('⚠  KB_SERVER_API_KEY is not set — /v1 and /mcp are UNAUTHENTICATED.')
+    log.warn('no api key configured — /v1 and /mcp are unauthenticated')
   }
 
   const intervalMs = parseDuration(process.env.KB_REINDEX_INTERVAL)
@@ -176,19 +178,37 @@ export async function runServerCommand(
   const scheduler = startReindexScheduler({
     intervalMs,
     runReindex: onProgress => service.reindex(onProgress),
-    onLog: line => out.error(line),
+    onLog: line => {
+      out.error(line)
+      log.info(line)
+    },
   })
 
   const server = createHttpServer({
     service,
     apiKeys,
     enableMcp,
-    onLog: line => out.error(line),
+    onLog: line => {
+      out.error(line)
+      log.error(line)
+    },
   })
 
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
     server.listen(port, () => resolve())
+  })
+
+  const health = service.health()
+  log.info('server start', {
+    port,
+    base: path.basename(base.baseDir),
+    provider: health.provider,
+    model: health.model,
+    mcp: enableMcp,
+    apiKeys: apiKeys.length,
+    reindexIntervalMs: intervalMs,
+    logLevel: process.env.LOG_LEVEL ?? 'info',
   })
 
   out.log(`🚀 kb server listening on :${port} (base "${path.basename(base.baseDir)}")`)
