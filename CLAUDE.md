@@ -8,9 +8,14 @@ Any change to shipped code under `src/` or `bin/` (the **kb** package) or
 `packages/kb-server/` (the **kb-server** package) **must** ship an applied version
 bump. The version bump is a deterministic step **you run on the branch** — nothing
 bumps automatically after merge. CI enforces it with the `Version bump required`
-job in `.github/workflows/ci.yml`, which hard-fails a PR into main whose shipped
-source changed without the affected package being bumped, or that still carries an
-unapplied `.changeset/*.md`. Docs/eval/research/CI/config-only PRs are exempt.
+job in `.github/workflows/ci.yml`, which hard-fails a PR into main that:
+
+- changed shipped source without bumping the affected package, or
+- still carries an unapplied `.changeset/*.md`, or
+- carries **more than one** `.changeset/*.md` (one changeset per PR), or
+- bumped a package version by **more than one semver step** (no double-jumps).
+
+Docs/eval/research/CI/config-only PRs are exempt from the bump requirement.
 
 `kb` and `kb-server` are versioned **independently** (no `fixed`/`linked` link in
 `.changeset/config.json`) — bump only the package(s) whose source changed; their

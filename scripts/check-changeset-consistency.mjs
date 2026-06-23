@@ -10,9 +10,11 @@
  * `kb-slack` (Slack bot; `packages/kb-slack/`) are versioned independently. So when shipped
  * source changes we require:
  *   - the affected package's `version` is bumped vs the base branch, and
- *   - no pending `.changeset/*.md` remain (they must be consumed by `changeset version`).
+ *   - no pending `.changeset/*.md` remain (they must be consumed by `changeset version`),
+ *   - exactly one changeset was present before it was applied (no multi-changeset PRs), and
+ *   - the version moved by exactly one semver step (no double-jumps).
  *
- * Docs/config-only PRs need no bump.
+ * Docs/config-only PRs are exempt.
  *
  * Usage:
  *   node scripts/check-changeset-consistency.mjs --base origin/main
@@ -59,9 +61,43 @@ function readHeadVersion(file) {
   return JSON.parse(readFileSync(path.join(root, file), 'utf-8')).version
 }
 
+/** Parse a semver string into [major, minor, patch] integers. */
+function parseSemver(version) {
+  const parts = version.split('.').map(Number)
+  if (parts.length !== 3 || parts.some(n => !Number.isFinite(n) || n < 0)) {
+    throw new Error(`Cannot parse semver: ${version}`)
+  }
+  return parts
+}
+
+/**
+ * Returns true only when `head` is exactly one semver step ahead of `base`:
+ *   major+1 (with minor/patch reset to 0), minor+1 (with patch reset to 0), or patch+1.
+ */
+function isExactlyOneStep(base, head) {
+  const [bMaj, bMin, bPat] = parseSemver(base)
+  const [hMaj, hMin, hPat] = parseSemver(head)
+  return (
+    (hMaj === bMaj + 1 && hMin === 0       && hPat === 0      ) || // major bump
+    (hMaj === bMaj     && hMin === bMin + 1 && hPat === 0      ) || // minor bump
+    (hMaj === bMaj     && hMin === bMin     && hPat === bPat + 1)    // patch bump
+  )
+}
+
 export function evaluateChangesetConsistency(input) {
   const errors = []
   const notes = []
+
+  // Policy: a PR may carry at most one changeset file. Multiple changesets indicate
+  // that several independent changes were squashed into one PR — each should have had
+  // its own PR, or the extras should be removed before applying the bump.
+  if (input.pendingChangesets.length > 1) {
+    errors.push(
+      `A PR may carry at most one changeset; found ${input.pendingChangesets.length}: ${input.pendingChangesets.join(', ')}. ` +
+      'Remove or merge the extras, then run `pnpm run changeset:version`.'
+    )
+    return { ok: false, errors, notes }
+  }
 
   const changed = new Set(input.changedFiles)
   const kbSourceChanged = [...changed].some(
@@ -75,10 +111,11 @@ export function evaluateChangesetConsistency(input) {
     return { ok: true, errors, notes }
   }
 
-  // The bump is applied on the branch; by merge time the changesets must be consumed.
-  if (input.pendingChangesets.length > 0) {
+  // The bump is applied on the branch; by merge time the single changeset must be consumed.
+  if (input.pendingChangesets.length === 1) {
     errors.push(
-      `Pending changeset(s) not applied: ${input.pendingChangesets.join(', ')}. Run \`pnpm run changeset:version\` to bump the affected package(s) and consume the changeset(s), then commit the result.`
+      `Pending changeset not applied: ${input.pendingChangesets[0]}. ` +
+      'Run `pnpm run changeset:version` to bump the affected package(s) and consume the changeset, then commit the result.'
     )
   }
 
@@ -86,11 +123,26 @@ export function evaluateChangesetConsistency(input) {
     if (!changedFlag) return
     if (versions.base === versions.head) {
       errors.push(
-        `${name} source changed but its version was not bumped (still ${versions.base}). Draft a changeset (\`pnpm run changeset\`) then apply it (\`pnpm run changeset:version\`).`
+        `${name} source changed but its version was not bumped (still ${versions.base}). ` +
+        'Draft a changeset (`pnpm run changeset`) then apply it (`pnpm run changeset:version`).'
       )
-    } else {
-      notes.push(`${name} ${versions.base} → ${versions.head}`)
+      return
     }
+    // Version was bumped — verify it moved by exactly one step.
+    try {
+      if (!isExactlyOneStep(versions.base, versions.head)) {
+        errors.push(
+          `${name} version jumped more than one step (${versions.base} → ${versions.head}). ` +
+          'A PR may only bump a version by a single semver step. ' +
+          'Check whether multiple changesets were applied at once or the version was edited by hand.'
+        )
+        return
+      }
+    } catch {
+      errors.push(`${name} version is not valid semver (base: ${versions.base}, head: ${versions.head}).`)
+      return
+    }
+    notes.push(`${name} ${versions.base} → ${versions.head}`)
   }
 
   requireBump(kbSourceChanged, 'kb', input.kb)

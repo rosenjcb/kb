@@ -3,6 +3,7 @@ import { evaluateChangesetConsistency } from '../../scripts/check-changeset-cons
 
 const NO_BUMP = { base: '0.10.0', head: '0.10.0' }
 const BUMPED = { base: '0.10.0', head: '0.11.0' }
+const DOUBLE_BUMP = { base: '0.10.0', head: '0.12.0' }
 
 describe('evaluateChangesetConsistency', () => {
   it('passes when kb source is bumped and no changeset remains', () => {
@@ -80,5 +81,58 @@ describe('evaluateChangesetConsistency', () => {
       kbServer: NO_BUMP,
     })
     expect(result.ok).toBe(true)
+  })
+
+  it('fails when more than one changeset is pending', () => {
+    const result = evaluateChangesetConsistency({
+      changedFiles: ['src/cli/index.ts', 'package.json'],
+      pendingChangesets: ['.changeset/foo.md', '.changeset/bar.md'],
+      kb: BUMPED,
+      kbServer: NO_BUMP,
+    })
+    expect(result.ok).toBe(false)
+    expect(result.errors.some(e => e.includes('at most one changeset'))).toBe(true)
+  })
+
+  it('fails when the version jumped more than one step', () => {
+    const result = evaluateChangesetConsistency({
+      changedFiles: ['src/cli/index.ts', 'package.json'],
+      pendingChangesets: [],
+      kb: DOUBLE_BUMP,
+      kbServer: NO_BUMP,
+    })
+    expect(result.ok).toBe(false)
+    expect(result.errors.some(e => e.includes('jumped more than one step'))).toBe(true)
+  })
+
+  it('passes for a patch bump (exactly one step)', () => {
+    const result = evaluateChangesetConsistency({
+      changedFiles: ['src/cli/index.ts', 'package.json'],
+      pendingChangesets: [],
+      kb: { base: '0.10.1', head: '0.10.2' },
+      kbServer: NO_BUMP,
+    })
+    expect(result.ok).toBe(true)
+  })
+
+  it('passes for a major bump (exactly one step)', () => {
+    const result = evaluateChangesetConsistency({
+      changedFiles: ['src/cli/index.ts', 'package.json'],
+      pendingChangesets: [],
+      kb: { base: '0.11.3', head: '1.0.0' },
+      kbServer: NO_BUMP,
+    })
+    expect(result.ok).toBe(true)
+  })
+
+  it('fails when minor bumped but patch not reset', () => {
+    const result = evaluateChangesetConsistency({
+      changedFiles: ['src/cli/index.ts', 'package.json'],
+      pendingChangesets: [],
+      kb: { base: '0.10.1', head: '0.11.1' },
+      kbServer: NO_BUMP,
+    })
+    expect(result.ok).toBe(false)
+    expect(result.errors.some(e => e.includes('jumped more than one step'))).toBe(true)
   })
 })
