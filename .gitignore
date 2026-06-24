@@ -45,6 +45,8 @@ tmp/
 
 # Skills directories (keep workflows tracked)
 .claude/**
+!.claude/skills/
+!.claude/skills/**
 .github/SKILLS
 
 # Misc
