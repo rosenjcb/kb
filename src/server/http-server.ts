@@ -14,6 +14,11 @@
  * Every request gets a `requestId` (UUID v4) attached as the `x-request-id`
  * response header and included in every structured log line for that request,
  * making it trivial to correlate client-side errors with server traces.
+ *
+ * Tracing is route-level and uniform: every request emits a `request` line on
+ * entry and a `response` line on finish (status + `durationMs`), and each route
+ * adds its own semantic logs — query/chat/reindex/mcp emit start/complete/error,
+ * health checks log at debug, unauthorized and unknown-route hits log at warn.
  */
 
 import { randomUUID } from 'node:crypto'
@@ -156,9 +161,11 @@ export function createHttpServer(options: HttpServerOptions): Server {
       log[level]('response', { requestId, method, path: url, status, durationMs })
     })
 
-    // Unauthenticated health check (Cloud Run probes).
+    // Unauthenticated health check (Cloud Run probes). Logged at debug so the
+    // probe cadence doesn't flood info-level logs; the response line still records it.
     if (method === 'GET' && (url === '/healthz' || url === '/health')) {
       const health = service.health()
+      log.debug('health check', { requestId, ok: health.ok, indexMtime: health.indexMtime })
       sendJson(res, health.ok ? 200 : 503, health)
       return
     }
@@ -204,6 +211,8 @@ export function createHttpServer(options: HttpServerOptions): Server {
       return
     }
 
+    // Unknown route — log so probes/misconfigured clients hitting bad paths are visible.
+    log.warn('not found', { requestId, method, path: url })
     sendJson(res, 404, { error: 'not found' })
   }
 
@@ -387,5 +396,21 @@ async function handleMcpRequest(
       : undefined
 
   log.info('mcp request', { requestId: ctx.requestId, rpcMethod })
-  await handleMcpHttpRequest(service, req, res, body)
+  try {
+    await handleMcpHttpRequest(service, req, res, body)
+    log.info('mcp complete', {
+      requestId: ctx.requestId,
+      rpcMethod,
+      durationMs: Date.now() - ctx.startMs,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    log.error('mcp error', {
+      requestId: ctx.requestId,
+      rpcMethod,
+      error: message,
+      durationMs: Date.now() - ctx.startMs,
+    })
+    throw error // let the top-level handler send the 500 / end the response
+  }
 }
