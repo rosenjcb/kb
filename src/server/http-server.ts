@@ -34,6 +34,7 @@ import {
   isDuplicateEvent,
   verifySlackSignature,
 } from './slack-handler.js'
+import { ReportWriter, type RunReport } from '../core/telemetry.js'
 
 export interface HttpServerOptions {
   service: KbService
@@ -46,6 +47,10 @@ export interface HttpServerOptions {
   /** When set, mount POST /slack/events and verify Slack HMAC signatures. */
   slack?: SlackOptions
   onLog?: (line: string) => void
+  /** When set, write RunReport entries here so `kb logs` surfaces server traffic. */
+  logsDir?: string
+  /** Called after each RunReport is appended. Intended for testing. */
+  onReportWritten?: (report: RunReport) => void
 }
 
 const MAX_BODY_BYTES = 1 << 20 // 1 MiB
@@ -166,6 +171,35 @@ interface QueryRequestBody {
 export function createHttpServer(options: HttpServerOptions): Server {
   const { service, apiKeys, enableMcp = false, requestTimeoutMs = 60_000, slack, onLog } = options
 
+  const reportWriter = options.logsDir ? new ReportWriter(options.logsDir) : null
+  const baseName = service.health().base
+
+  function buildAndWriteReport(
+    command: string,
+    ctx: RequestCtx,
+    status: 'success' | 'error',
+    opts: { sessionId?: string; errorMessage?: string } = {}
+  ): void {
+    if (!reportWriter) return
+    const now = Date.now()
+    const report: RunReport = {
+      runId: `run-${ctx.startMs}-${Math.random().toString(36).slice(2, 6)}`,
+      sessionId: opts.sessionId,
+      base: baseName,
+      command,
+      startedAt: new Date(ctx.startMs).toISOString(),
+      finishedAt: new Date(now).toISOString(),
+      totalDurationMs: now - ctx.startMs,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalEstimatedCostUsd: 0,
+      stages: [],
+      status,
+      ...(opts.errorMessage ? { errorMessage: opts.errorMessage } : {}),
+    }
+    void reportWriter.append(report).then(() => options.onReportWritten?.(report))
+  }
+
   return createServer((req, res) => {
     void handleRequest(req, res).catch(error => {
       const message = error instanceof Error ? error.message : String(error)
@@ -249,7 +283,14 @@ export function createHttpServer(options: HttpServerOptions): Server {
         sendJson(res, 400, { error: error instanceof Error ? error.message : 'bad request' })
         return
       }
-      await handleMcpRequest(service, req, res, body, ctx)
+      try {
+        await handleMcpRequest(service, req, res, body, ctx)
+        buildAndWriteReport('server.mcp', ctx, 'success', { sessionId: ctx.requestId })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        buildAndWriteReport('server.mcp', ctx, 'error', { sessionId: ctx.requestId, errorMessage: message })
+        throw error
+      }
       return
     }
 
@@ -315,6 +356,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         durationMs: Date.now() - ctx.startMs,
       })
       sendJson(res, 200, serialized)
+      buildAndWriteReport('server.query', ctx, 'success', { sessionId: ctx.requestId })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       const status = message === 'query timed out' ? 504 : 500
@@ -326,6 +368,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         durationMs: Date.now() - ctx.startMs,
       })
       sendJson(res, status, { error: message })
+      buildAndWriteReport('server.query', ctx, 'error', { sessionId: ctx.requestId, errorMessage: message })
     } finally {
       if (timer) clearTimeout(timer)
     }
@@ -383,6 +426,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         factsRetrieved,
         durationMs: Date.now() - ctx.startMs,
       })
+      buildAndWriteReport('server.chat', ctx, 'success', { sessionId })
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error)
       onLog?.(`[http] /v1/chat error: ${errMessage}`)
@@ -393,6 +437,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         durationMs: Date.now() - ctx.startMs,
       })
       send('error', { type: 'error', message: errMessage })
+      buildAndWriteReport('server.chat', ctx, 'error', { sessionId, errorMessage: errMessage })
     } finally {
       res.end()
     }
@@ -416,6 +461,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         durationMs: Date.now() - ctx.startMs,
       })
       sendJson(res, 200, { status: 'ok', summary })
+      buildAndWriteReport('server.reindex', ctx, 'success', { sessionId: ctx.requestId })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       onLog?.(`[http] /v1/reindex error: ${message}`)
@@ -425,6 +471,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         durationMs: Date.now() - ctx.startMs,
       })
       sendJson(res, 500, { error: message })
+      buildAndWriteReport('server.reindex', ctx, 'error', { sessionId: ctx.requestId, errorMessage: message })
     }
   }
 
@@ -477,6 +524,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
 
     // Ack immediately — Slack requires a response within 3 seconds.
     sendJson(res, 200, {})
+    buildAndWriteReport('server.slack', ctx, 'success', { sessionId: ctx.requestId })
 
     log.info('slack event received', {
       requestId: ctx.requestId,

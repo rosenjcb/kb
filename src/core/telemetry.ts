@@ -166,8 +166,10 @@ export class ReportWriter {
   }
 }
 
-/** Resolve the default logs directory: ~/.kb/logs */
+/** Resolve the default logs directory. Prefers KB_HOME when set (important for server/container use). */
 export function defaultLogsDir(): string {
+  const kbHome = process.env.KB_HOME?.trim()
+  if (kbHome) return path.join(kbHome, 'logs')
   const home = process.env.HOME ?? process.env.USERPROFILE ?? '/tmp'
   return path.join(home, '.kb', 'logs')
 }

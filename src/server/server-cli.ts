@@ -10,7 +10,7 @@ import path from 'node:path'
 import { readBaseMeta, repoSlugFromGitUrl } from '../cli/base-meta.js'
 import { ensureOperationalBaseDir, readOptionalCliValue, resolveEffectiveBaseDir } from '../cli/base-selection.js'
 import { runKbInit } from '../cli/init-cli.js'
-import type { KbConfig } from '../cli/kb-config.js'
+import { getKbConfigDir, type KbConfig } from '../cli/kb-config.js'
 import { runScanCommand } from '../cli/scan-command.js'
 import { kbIndexDbPath } from '../tools/graph-query-expansion.js'
 import { type BootstrapPlan, resolveBootstrapPlan } from './server-bootstrap.js'
@@ -202,6 +202,7 @@ export async function runServerCommand(
     apiKeys,
     enableMcp,
     slack,
+    logsDir: path.join(getKbConfigDir(), 'logs'),
     onLog: line => {
       out.error(line)
       log.error(line)
