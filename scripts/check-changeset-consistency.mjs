@@ -1,10 +1,10 @@
 /**
  * Merge-to-main version gate.
  *
- * Policy: the version bump is a deterministic step you run ON the branch before merging
- * (`pnpm run changeset` to draft a changeset, then `pnpm run changeset:version` to apply
- * it). It is NOT performed automatically after merge. This gate, which runs on PRs into
- * main, enforces that the bump was applied.
+ * Policy: the version bump is a deterministic step you run ON the branch before merging.
+ * First create one pending `.changeset/*.md`, then run `pnpm run changeset:version` to
+ * apply it. It is NOT performed automatically after merge. This gate, which runs on PRs
+ * into main, enforces that the bump was applied.
  *
  * `kb` (CLI; `src/`, `bin/`) and `kb-server` (Docker/contract; `packages/kb-server/`) are
  * versioned independently. So when shipped source changes we require:
@@ -120,7 +120,7 @@ export function evaluateChangesetConsistency(input) {
     if (!changedFlag) return
     if (versions.base === versions.head) {
       errors.push(
-        `${name} source changed but its version was not bumped (still ${versions.base}). Draft a changeset (\`pnpm run changeset\`) then apply it (\`pnpm run changeset:version\`).`
+        `${name} source changed but its version was not bumped (still ${versions.base}). Create one pending \`.changeset/*.md\`, then run \`pnpm run changeset:version\`.`
       )
       return
     }

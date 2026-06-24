@@ -200,8 +200,9 @@ The image starts with `--with-mcp`, so MCP clients can connect at `POST /mcp` wi
 same bearer token — see [`../../src/server/SERVER.md`](../../src/server/SERVER.md) for the
 Claude Code / Cursor wiring and the full endpoint + tool list.
 
-**Slack:** to answer `@kb <question>` in Slack, run the optional bot container that bridges
-mentions to `/v1/query` — `pnpm run slack:up`, setup in [`../kb-slack/README.md`](../kb-slack/README.md).
+**Slack:** Slack handling now runs inside `kb-server` itself. Enable it with
+`KB_SERVER_ENABLE_SLACK=true` plus real `SLACK_SIGNING_SECRET` and `SLACK_BOT_TOKEN`
+to serve `POST /slack/events` on the same host.
 
 ## Operate
 
@@ -215,6 +216,8 @@ docker compose --env-file .env -f packages/kb-server/docker-compose.yml down -v
 ```
 
 On-demand reindex without a restart: `POST /v1/reindex` with the bearer token.
+This uses the same incremental sync path as the hourly scheduler: every tracked repo is
+polled, but only repos with new commits are re-indexed.
 
 ## Notes
 

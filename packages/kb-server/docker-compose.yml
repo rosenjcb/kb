@@ -42,6 +42,9 @@ services:
       KB_REINDEX_INTERVAL: "${KB_REINDEX_INTERVAL:-1h}"
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
       GH_TOKEN: "${GH_TOKEN:-}"
+      KB_SERVER_ENABLE_SLACK: "${KB_SERVER_ENABLE_SLACK:-}"
+      SLACK_SIGNING_SECRET: "${SLACK_SIGNING_SECRET:-}"
+      SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN:-}"
       # Provide one of these (read from your .env / shell). Gemini shown as default.
       GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
       GEMINI_API_BASE_URL: "${GEMINI_API_BASE_URL:-}"

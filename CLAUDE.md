@@ -23,16 +23,10 @@ numbers may drift apart.
 
 The two-step flow on your branch:
 
-1. **Draft a changeset** describing the change and bump type:
+1. **Create one pending changeset** describing the change and bump type.
 
-   ```bash
-   pnpm run changeset
-   ```
-
-   This runs the interactive wizard (changed packages only) to create a *pending*
-   `.changeset/*.md`. In a non-interactive / agent session where the wizard can't
-   run, write the file directly with the correct frontmatter — list each affected
-   package:
+   In agent / non-interactive work, write the `.changeset/*.md` file directly
+   with the correct frontmatter — list each affected package:
 
    ```md
    ---
@@ -41,6 +35,9 @@ The two-step flow on your branch:
 
    Short summary of the change.
    ```
+
+   If you want the interactive wizard, run the native Changesets CLI yourself;
+   this repo no longer wraps it in a `package.json` script.
 
 2. **Apply the bump** (consumes the changeset, bumps each package's `package.json`
    + `CHANGELOG.md`, and regenerates `research/version.tex`):
@@ -71,6 +68,5 @@ break.
   WireMock sidecar — see `packages/kb-server/http/HTTP.md`)
 - `pnpm run server:start` / `server:stop` — Docker Compose kb-server (+ llm-mock)
 - `pnpm run build` — compile + build the CLI
-- `pnpm run changeset` — draft a *pending* changeset (no version bump; see above)
 - `pnpm run changeset:version` — apply the bump (consume changesets, bump kb / kb-server, regen version.tex)
 - `pnpm run changeset:check` — run the merge-to-main version gate locally (same check CI runs)

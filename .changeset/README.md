@@ -11,10 +11,10 @@ One `package.json` version (`kb`) is what the binary, Docker image, and MCP repo
 
 ## Workflow
 
-1. `pnpm run changeset:check` — `changeset status --since main` (native: which packages changed) + policy check (no version bump in PR).
-2. `pnpm run changeset` — same check, then `changeset add --since main` (wizard only lists changed packages).
-3. Commit the pending `.changeset/*.md` — **do not** bump `package.json` / `CHANGELOG.md` in the feature PR.
-4. Merge to `main` → Changesets action runs `changeset version` → Version Packages PR → `0.11.0`.
+1. Create one pending `.changeset/*.md` file for the PR. In agent/non-interactive work, write it directly; for the wizard, run the native Changesets CLI yourself.
+2. `pnpm run changeset:version` — applies the pending changeset, bumps the affected package versions / changelogs, and rewrites `research/version.tex`.
+3. `pnpm run changeset:check` — verifies the bump was applied and no pending changeset remains.
+4. Merge once `changeset:check` passes.
 
 ## Native CLI flags
 

@@ -1,15 +1,15 @@
 ---
 type: Subsystem
-title: KB HTTP and MCP Server
-description: Long-lived HTTP service with optional MCP at POST /mcp.
+title: KB HTTP, MCP, and Slack Server
+description: Long-lived HTTP service with optional MCP at POST /mcp and optional Slack webhook handling at POST /slack/events.
 resource: ./src/server
 tags: [server, http, mcp, cloud-run, docker, tracing, logging]
 timestamp: 2026-06-24T00:00:00Z
 ---
 
-# KB HTTP and MCP Server
+# KB HTTP, MCP, and Slack Server
 
-Runs `kb` as a **central, long-lived HTTP service** so indexing happens once on durable storage and clients call REST (and optionally MCP) instead of re-bootstrapping a CLI per request. Entry point: `kb server start [--with-mcp]`.
+Runs `kb` as a **central, long-lived HTTP service** so indexing happens once on durable storage and clients call REST (and optionally MCP / Slack) instead of re-bootstrapping a CLI per request. Entry point: `kb server start [--with-mcp] [--with-slack]`.
 
 ## Role in the stack
 
@@ -29,7 +29,7 @@ flowchart LR
   HTTP --> MCP
 ```
 
-**Boundaries:** No git sync on each request (`runQueryPipeline` is stateless). Reindex is explicit (`POST /v1/reindex`) or scheduled (`KB_REINDEX_INTERVAL`). Chat history is **in-memory** per `sessionId`; restart clears sessions.
+**Boundaries:** No git sync on each request (`runQueryPipeline` is stateless). Reindex is explicit (`POST /v1/reindex`) or scheduled (`KB_REINDEX_INTERVAL`). Server reindex uses incremental auto-sync semantics: every tracked repo is polled, but only repos with new commits are re-indexed. Chat history is **in-memory** per `sessionId`; restart clears sessions.
 
 ## Core pieces
 
@@ -37,7 +37,7 @@ flowchart LR
 |---|---|
 | `server-cli.ts` | `kb server start`; boot-build; scheduler; shutdown; logs startup event |
 | `kb-service.ts` | Query, chat, readFacts, reindex, health |
-| `http-server.ts` | `/healthz`, `/v1/*`, optional `POST /mcp`; per-request tracing |
+| `http-server.ts` | `/healthz`, `/v1/*`, optional `POST /mcp`, optional `POST /slack/events`; per-request tracing |
 | `logger.ts` | Structured JSON logger — `LOG_LEVEL`-gated, one JSON line per event to stdout |
 | `query-pipeline.ts` | Shared retrieval + synthesis with CLI |
 | `chat-stream.ts` | `runChatSynthesis` → SSE |
@@ -48,7 +48,7 @@ flowchart LR
 
 - **CLI:** `src/cli/index.ts` → `runServerCommand`.
 - **Boot-build:** missing `.kb-index.sqlite` → `kb init` or `kb scan` before `listen()`.
-- **Docker:** `server start --with-mcp` in Dockerfile CMD.
+- **Docker:** `server start --with-mcp` in Dockerfile CMD; Slack is enabled by `KB_SERVER_ENABLE_SLACK=true`.
 - **Dev:** `pnpm run server:start` for a local process; `pnpm run server:up` for the guided Docker path.
 - **Observability:** Every request emits a `request` line on entry and a `response` line on finish (`status`, `durationMs`), both keyed by a UUID `requestId` also returned as the `x-request-id` response header. Each route adds semantic logs: query/chat/reindex/mcp emit start/complete/error with timings; `/healthz` logs at `debug`; auth failures and unknown routes log at `warn`. Control verbosity via `LOG_LEVEL` (`debug|info|warn|error`; default `info`). Set in `.env` / `docker-compose.yml` `LOG_LEVEL` env var.
 
@@ -95,7 +95,7 @@ Replace `testkey` / the URL when pointing at a deployed instance. If `mcp.json` 
 
 **Tools exposed:** `kb_query`, `read_facts`, `search_code_symbols`, `get_code_neighbors`, `get_code_graph_summary`.
 
-### Endpoints (`kb server start [--with-mcp]`)
+### Endpoints (`kb server start [--with-mcp] [--with-slack]`)
 
 | Method / path | Auth | Purpose |
 |---|---|---|
@@ -104,27 +104,27 @@ Replace `testkey` / the URL when pointing at a deployed instance. If `mcp.json` 
 | `POST /v1/chat` | Bearer | Multi-turn SSE chat |
 | `POST /v1/reindex` | Bearer | Incremental rescan |
 | `POST /mcp` | Bearer | MCP Streamable HTTP when `--with-mcp` |
-| `POST /slack/events` | Slack HMAC | Slack Events API webhook (when `SLACK_SIGNING_SECRET` + `SLACK_BOT_TOKEN` are set) |
+| `POST /slack/events` | Slack HMAC | Slack Events API webhook (when Slack mode is enabled) |
 
 Auth: `Authorization: Bearer <KB_SERVER_API_KEY>` or `X-Api-Key`.
 
-### Slack integration (`SLACK_SIGNING_SECRET` + `SLACK_BOT_TOKEN`)
+### Slack integration (`KB_SERVER_ENABLE_SLACK` + secrets)
 
-Set both env vars to enable the Slack webhook route:
+Set Slack mode plus both secrets to enable the webhook route:
 
 ```bash
+export KB_SERVER_ENABLE_SLACK=true
 export SLACK_SIGNING_SECRET=<from Slack app config>
 export SLACK_BOT_TOKEN=xoxb-<bot token>
-kb server start
+kb server start --with-slack
 ```
 
 Configure your Slack app's **Event Subscriptions** URL to `https://<your-host>/slack/events` and subscribe to:
 - `app_mention` — bot @-mentioned in a channel
-- `message.im` — direct messages to the bot
 
 **Routing:**
-- `app_mention` → `/v1/chat` keyed on `thread_ts ?? event.ts`; the first mention starts a new session and the bot replies in a new thread; follow-up @-mentions in that thread carry the same session key (`thread_ts` equals the root message `ts`) so conversation history is preserved across turns
-- `message` (`channel_type=im`) → `/v1/chat` keyed on the user's DM channel
+- `app_mention` → one synthesized `service.query({ synthesize: true })` call using the mention text with the bot mention stripped
+- replies are posted back to Slack in the same thread (`thread_ts ?? event.ts`)
 
 Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply loops. Slack retries are deduplicated by `event_id`.
 

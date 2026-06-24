@@ -1,5 +1,11 @@
 # kb
 
+## 0.13.1
+
+### Patch Changes
+
+- Fix kb-server's scheduled reindex behavior, restore Docker Slack env wiring, and simplify the changeset workflow so `changeset:version` is the single apply path.
+
 ## 0.13.0
 
 ### Minor Changes

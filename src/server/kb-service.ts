@@ -14,8 +14,9 @@ import type { LLMProvider, Message } from '../core/types.js'
 import type { IntentResult } from '../intents/types.js'
 import { createKBToolsRegistry } from '../tools/kb-tools-registry.js'
 import { kbIndexDbPath } from '../tools/graph-query-expansion.js'
+import { maybeAutoSync } from '../cli/auto-sync.js'
+import { readBaseMeta } from '../cli/base-meta.js'
 import { applyConfigToEnv, createLLMProviderFromConfig, type KbConfig } from '../cli/kb-config.js'
-import { runScanCommand } from '../cli/scan-command.js'
 import { type ChatEvent, streamChatTurn } from './chat-stream.js'
 import { runQueryPipeline, type QueryPipelineParams } from './query-pipeline.js'
 import { SessionStore } from './session-store.js'
@@ -119,7 +120,14 @@ export function createKbService(options: KbServiceOptions): KbService {
       }
       reindexing = true
       try {
-        return await runScanCommand(['--base', baseDir], onProgress)
+        const meta = await readBaseMeta(baseDir)
+        if (!meta || meta.repos.length === 0) {
+          throw new Error(
+            'This base has no git repos to scan. Add one with `kb base repo add <url>` or create a base with `kb init --git <url>`.'
+          )
+        }
+        await maybeAutoSync(baseDir, { onProgress, staleLimitMs: 0 })
+        return `Scanned ${meta.repos.length} repo(s) for base "${path.basename(baseDir)}".`
       } finally {
         reindexing = false
       }
