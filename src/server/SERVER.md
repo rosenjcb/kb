@@ -3,8 +3,8 @@ type: Subsystem
 title: KB HTTP and MCP Server
 description: Long-lived HTTP service with optional MCP at POST /mcp.
 resource: ./src/server
-tags: [server, http, mcp, cloud-run, docker]
-timestamp: 2026-06-22T00:00:00Z
+tags: [server, http, mcp, cloud-run, docker, tracing, logging]
+timestamp: 2026-06-24T00:00:00Z
 ---
 
 # KB HTTP and MCP Server
@@ -35,9 +35,10 @@ flowchart LR
 
 | File | Role |
 |---|---|
-| `server-cli.ts` | `kb server start`; boot-build; scheduler; shutdown |
+| `server-cli.ts` | `kb server start`; boot-build; scheduler; shutdown; logs startup event |
 | `kb-service.ts` | Query, chat, readFacts, reindex, health |
-| `http-server.ts` | `/healthz`, `/v1/*`, optional `POST /mcp` |
+| `http-server.ts` | `/healthz`, `/v1/*`, optional `POST /mcp`; per-request tracing |
+| `logger.ts` | Structured JSON logger — `LOG_LEVEL`-gated, one JSON line per event to stdout |
 | `query-pipeline.ts` | Shared retrieval + synthesis with CLI |
 | `chat-stream.ts` | `runChatSynthesis` → SSE |
 | `mcp-server.ts` | Streamable HTTP MCP handler |
@@ -49,6 +50,7 @@ flowchart LR
 - **Boot-build:** missing `.kb-index.sqlite` → `kb init` or `kb scan` before `listen()`.
 - **Docker:** `server start --with-mcp` in Dockerfile CMD.
 - **Dev:** `pnpm run server:start` for a local process; `pnpm run server:up` for the guided Docker path.
+- **Observability:** Every request emits a `request` line on entry and a `response` line on finish (`status`, `durationMs`), both keyed by a UUID `requestId` also returned as the `x-request-id` response header. Each route adds semantic logs: query/chat/reindex/mcp emit start/complete/error with timings; `/healthz` logs at `debug`; auth failures and unknown routes log at `warn`. Control verbosity via `LOG_LEVEL` (`debug|info|warn|error`; default `info`). Set in `.env` / `docker-compose.yml` `LOG_LEVEL` env var.
 
 ### MCP clients (Claude Code & Cursor Agent)
 
@@ -114,8 +116,9 @@ Auth: `Authorization: Bearer <KB_SERVER_API_KEY>` or `X-Api-Key`.
 
 ## Extension checklist
 
-1. Route in `http-server.ts` → `server.http` + `openapi.yaml` + `tests/server/`.
-2. Changeset for `src/` / `bin/` changes.
+1. Route in `http-server.ts` → add to `server.http` (or `slack.http` for Slack routes) + `openapi.yaml` + `tests/server/`.
+2. Log `start`/`complete`/`error` in the new handler using `log` from `./logger.js`, keyed by `ctx.requestId`.
+3. Changeset for `src/` / `bin/` changes.
 
 ## Gotchas
 

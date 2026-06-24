@@ -3,8 +3,8 @@ type: Contract
 title: HTTP Collection and Integration Suite
 description: httpyac requests, OpenAPI spec, and env config for the kb server REST + MCP surface.
 resource: ./http
-tags: [http, httpyac, integration-test, openapi, server]
-timestamp: 2026-06-22T00:00:00Z
+tags: [http, httpyac, integration-test, openapi, server, slack]
+timestamp: 2026-06-24T00:00:00Z
 ---
 
 # HTTP Collection and Integration Suite
@@ -37,8 +37,9 @@ sequenceDiagram
 | Artifact | Role |
 |---|---|
 | `server.http` | Named requests (`# @name health`, `query`, `chat`, …) with `{{ }}` post-response tests |
+| `slack.http` | Slack webhook surface tests — unsigned rejection, URL-verification challenge, `app_mention`, DM; HMAC-SHA256 signatures computed in pre-request scripts |
 | `openapi.yaml` | OpenAPI 3.0 for REST + MCP JSON-RPC |
-| `.httpyac.js` | Environments: `local`, `docker`, `prod` (`baseUrl`, `apiKey`) |
+| `.httpyac.js` | Environments: `local`, `docker`, `prod` (`baseUrl`, `apiKey`, `slackSigningSecret`) |
 | `http-client.env.json` | JetBrains/httpyac env fallback for VS Code/Cursor extension |
 | `package.json` | `"type": "commonjs"` — **workspace override** so httpyac loads CJS config in an ESM repo |
 | `.httpyac.json` (repo root) | Same env values when running `pnpm exec httpyac` from root |
@@ -59,15 +60,16 @@ Post-response scripts live in `{{ }}` blocks and must **`const assert = require(
 
 ## Invariants
 
-- Every public HTTP route in `http-server.ts` must have a named request in `server.http` with at least one structural test.
+- Every public HTTP route in `http-server.ts` must have a named request in `server.http` (or `slack.http` for Slack webhook routes) with at least one structural test.
 - `apiKey` in httpyac env must match `KB_SERVER_API_KEY` on the server under test.
+- `slackSigningSecret` in httpyac env must match `SLACK_SIGNING_SECRET` on the server under test; `slack.http` computes HMAC-SHA256 inline — never hardcode signatures.
 - Integration suite path: `packages/kb-server/http/server.http` (from repo root).
 - OpenAPI and `server.http` must agree on paths and auth scheme.
 
 ## Extension checklist
 
 1. Add route in `src/server/http-server.ts`.
-2. Add `# @name …` block to `server.http` with shape tests.
+2. Add `# @name …` block to `server.http` (or `slack.http` for Slack routes) with shape tests.
 3. Update `openapi.yaml`.
 4. Run `pnpm run integration:test` locally before PR.
 

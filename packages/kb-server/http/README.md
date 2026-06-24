@@ -5,8 +5,9 @@ OKF companion: [`HTTP.md`](HTTP.md).
 | File | Purpose |
 |---|---|
 | [`server.http`](server.http) | httpyac collection — examples + integration suite (10 requests) |
+| [`slack.http`](slack.http) | Slack webhook surface — unsigned rejection, challenge, app_mention, DM |
 | [`openapi.yaml`](openapi.yaml) | OpenAPI 3.0 for REST + MCP |
-| [`.httpyac.js`](.httpyac.js) | Environments (`local`, `docker`, `prod`) |
+| [`.httpyac.js`](.httpyac.js) | Environments (`local`, `docker`, `prod`) — includes `slackSigningSecret` |
 | [`http-client.env.json`](http-client.env.json) | VS Code / Cursor httpyac env fallback |
 | [`package.json`](package.json) | `"type": "commonjs"` for httpyac in this ESM repo |
 
@@ -15,6 +16,7 @@ OKF companion: [`HTTP.md`](HTTP.md).
 ```bash
 pnpm exec httpyac send packages/kb-server/http/server.http -n query --env local
 pnpm exec httpyac send packages/kb-server/http/server.http --all --env local
+pnpm exec httpyac send packages/kb-server/http/slack.http --all --env local
 pnpm run integration:test
 ```
 
