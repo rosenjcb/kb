@@ -28,7 +28,7 @@ export function setLogLevel(level: LogLevel): void {
 function emit(level: LogLevel, msg: string, fields?: Record<string, unknown>): void {
   if (LEVEL_RANK[level] < LEVEL_RANK[minLevel]) return
   const entry: Record<string, unknown> = { ts: new Date().toISOString(), level, msg, ...fields }
-  process.stdout.write(JSON.stringify(entry) + '\n')
+  process.stdout.write(`${JSON.stringify(entry)}\n`)
 }
 
 export const log = {

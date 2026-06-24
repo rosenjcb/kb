@@ -93,8 +93,7 @@ export function evaluateChangesetConsistency(input) {
   // its own PR, or the extras should be removed before applying the bump.
   if (input.pendingChangesets.length > 1) {
     errors.push(
-      `A PR may carry at most one changeset; found ${input.pendingChangesets.length}: ${input.pendingChangesets.join(', ')}. ` +
-      'Remove or merge the extras, then run `pnpm run changeset:version`.'
+      `A PR may carry at most one changeset; found ${input.pendingChangesets.length}: ${input.pendingChangesets.join(', ')}. Remove or merge the extras, then run \`pnpm run changeset:version\`.`
     )
     return { ok: false, errors, notes }
   }
@@ -114,8 +113,7 @@ export function evaluateChangesetConsistency(input) {
   // The bump is applied on the branch; by merge time the single changeset must be consumed.
   if (input.pendingChangesets.length === 1) {
     errors.push(
-      `Pending changeset not applied: ${input.pendingChangesets[0]}. ` +
-      'Run `pnpm run changeset:version` to bump the affected package(s) and consume the changeset, then commit the result.'
+      `Pending changeset not applied: ${input.pendingChangesets[0]}. Run \`pnpm run changeset:version\` to bump the affected package(s) and consume the changeset, then commit the result.`
     )
   }
 
@@ -123,8 +121,7 @@ export function evaluateChangesetConsistency(input) {
     if (!changedFlag) return
     if (versions.base === versions.head) {
       errors.push(
-        `${name} source changed but its version was not bumped (still ${versions.base}). ` +
-        'Draft a changeset (`pnpm run changeset`) then apply it (`pnpm run changeset:version`).'
+        `${name} source changed but its version was not bumped (still ${versions.base}). Draft a changeset (\`pnpm run changeset\`) then apply it (\`pnpm run changeset:version\`).`
       )
       return
     }
@@ -132,9 +129,7 @@ export function evaluateChangesetConsistency(input) {
     try {
       if (!isExactlyOneStep(versions.base, versions.head)) {
         errors.push(
-          `${name} version jumped more than one step (${versions.base} → ${versions.head}). ` +
-          'A PR may only bump a version by a single semver step. ' +
-          'Check whether multiple changesets were applied at once or the version was edited by hand.'
+          `${name} version jumped more than one step (${versions.base} → ${versions.head}). A PR may only bump a version by a single semver step. Check whether multiple changesets were applied at once or the version was edited by hand.`
         )
         return
       }

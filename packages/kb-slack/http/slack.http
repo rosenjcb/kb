@@ -1,0 +1,180 @@
+# kb-slack — HTTP collection + integration tests (httpyac)
+#
+# These requests double as examples and as the integration suite for the
+# kb-slack Slack bot HTTP surface.
+#
+# Two endpoints under test:
+#   GET  /healthz        unauthenticated liveness check
+#   POST /slack/events   Slack Events API (HMAC-SHA256 signed, handled by @slack/bolt)
+#
+# Run individual requests (bot already running on :3000):
+#   pnpm exec httpyac send packages/kb-slack/http/slack.http -n health --env local
+#
+# Run full suite:
+#   pnpm exec httpyac send packages/kb-slack/http/slack.http --all --env local
+#
+# Starting the bot for local testing:
+#   SLACK_SIGNING_SECRET=test-signing-secret SLACK_BOT_TOKEN=<real-or-any-xoxb-> \
+#     pnpm run slack:up
+#
+# The event tests (eventsChallenge, eventsAppMention, eventsDM) compute an HMAC-SHA256
+# signature from slackSigningSecret in a pre-request script and set the required
+# x-slack-signature / x-slack-request-timestamp headers.  They require the bot to be
+# started with the same signing secret (SLACK_SIGNING_SECRET env var).
+#
+# Assertions check response *structure* (status, JSON shape), not actual Slack activity.
+# The app_mention and DM handlers trigger outbound Slack API calls asynchronously after
+# bolt acknowledges 200 — those calls are not tested here.
+#
+# Environments: `http/.httpyac.js` + `http/http-client.env.json` ({{slackBaseUrl}}, {{slackSigningSecret}}).
+# `http/package.json` sets `"type": "commonjs"` so httpyac can load the config in this ESM repo.
+
+# ---------------------------------------------------------------------------
+# Health — unauthenticated liveness check
+# ---------------------------------------------------------------------------
+# @name health
+GET {{slackBaseUrl}}/healthz
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('health ok', () => assert.strictEqual(response.parsedBody.ok, true));
+}}
+
+###
+
+# ---------------------------------------------------------------------------
+# Events — unsigned requests are rejected by bolt's signature verifier
+# ---------------------------------------------------------------------------
+# @name eventsUnsigned
+POST {{slackBaseUrl}}/slack/events
+Content-Type: application/json
+
+{"type":"url_verification","challenge":"test"}
+
+{{
+  const assert = require('assert');
+  test('unsigned rejected', () => assert.ok([400, 401, 403].includes(response.statusCode)));
+}}
+
+###
+
+# ---------------------------------------------------------------------------
+# Events — URL verification challenge (Slack verifies the webhook endpoint on setup).
+# bolt responds with { challenge } when the payload type is url_verification.
+# ---------------------------------------------------------------------------
+# @name eventsChallenge
+
+{{
+  const crypto = require('crypto');
+  const secret = variables.slackSigningSecret || 'test-signing-secret';
+  const ts = String(Math.floor(Date.now() / 1000));
+  const body = '{"type":"url_verification","challenge":"kb-slack-integration-test"}';
+  const hmac = `v0=${crypto.createHmac('sha256', secret).update(`v0:${ts}:${body}`).digest('hex')}`;
+  variables.slackTs = ts;
+  variables.slackSig = hmac;
+  variables.challengeBody = body;
+}}
+
+POST {{slackBaseUrl}}/slack/events
+Content-Type: application/json
+x-slack-signature: {{slackSig}}
+x-slack-request-timestamp: {{slackTs}}
+
+{{challengeBody}}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('challenge echoed', () => assert.strictEqual(response.parsedBody.challenge, 'kb-slack-integration-test'));
+}}
+
+###
+
+# ---------------------------------------------------------------------------
+# Events — @kb mention in a channel → routes to /v1/query (single-shot answer)
+# bolt acknowledges with 200 before dispatching the handler asynchronously.
+# ---------------------------------------------------------------------------
+# @name eventsAppMention
+
+{{
+  const crypto = require('crypto');
+  const secret = variables.slackSigningSecret || 'test-signing-secret';
+  const ts = String(Math.floor(Date.now() / 1000));
+  const body = JSON.stringify({
+    type: 'event_callback',
+    team_id: 'T0001',
+    api_app_id: 'A0001',
+    event: {
+      type: 'app_mention',
+      text: '<@U0001> what is authentication?',
+      user: 'U0001',
+      channel: 'C0001',
+      ts: '1234567890.000001',
+      event_ts: '1234567890.000001',
+    },
+    event_id: 'Ev0001',
+    event_time: 1234567890,
+  });
+  const hmac = `v0=${crypto.createHmac('sha256', secret).update(`v0:${ts}:${body}`).digest('hex')}`;
+  variables.slackTs = ts;
+  variables.slackSig = hmac;
+  variables.mentionBody = body;
+}}
+
+POST {{slackBaseUrl}}/slack/events
+Content-Type: application/json
+x-slack-signature: {{slackSig}}
+x-slack-request-timestamp: {{slackTs}}
+
+{{mentionBody}}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+}}
+
+###
+
+# ---------------------------------------------------------------------------
+# Events — direct message (DM) → routes to /v1/chat (multi-turn, session per user)
+# ---------------------------------------------------------------------------
+# @name eventsDM
+
+{{
+  const crypto = require('crypto');
+  const secret = variables.slackSigningSecret || 'test-signing-secret';
+  const ts = String(Math.floor(Date.now() / 1000));
+  const body = JSON.stringify({
+    type: 'event_callback',
+    team_id: 'T0001',
+    api_app_id: 'A0001',
+    event: {
+      type: 'message',
+      channel_type: 'im',
+      text: 'how does authentication work?',
+      user: 'U0001',
+      channel: 'D0001',
+      ts: '1234567890.000002',
+      event_ts: '1234567890.000002',
+    },
+    event_id: 'Ev0002',
+    event_time: 1234567890,
+  });
+  const hmac = `v0=${crypto.createHmac('sha256', secret).update(`v0:${ts}:${body}`).digest('hex')}`;
+  variables.slackTs = ts;
+  variables.slackSig = hmac;
+  variables.dmBody = body;
+}}
+
+POST {{slackBaseUrl}}/slack/events
+Content-Type: application/json
+x-slack-signature: {{slackSig}}
+x-slack-request-timestamp: {{slackTs}}
+
+{{dmBody}}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+}}
