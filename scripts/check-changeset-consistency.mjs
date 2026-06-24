@@ -6,9 +6,8 @@
  * it). It is NOT performed automatically after merge. This gate, which runs on PRs into
  * main, enforces that the bump was applied.
  *
- * `kb` (CLI; `src/`, `bin/`), `kb-server` (Docker/contract; `packages/kb-server/`), and
- * `kb-slack` (Slack bot; `packages/kb-slack/`) are versioned independently. So when shipped
- * source changes we require:
+ * `kb` (CLI; `src/`, `bin/`) and `kb-server` (Docker/contract; `packages/kb-server/`) are
+ * versioned independently. So when shipped source changes we require:
  *   - the affected package's `version` is bumped vs the base branch, and
  *   - no pending `.changeset/*.md` remain (they must be consumed by `changeset version`),
  *   - exactly one changeset was present before it was applied (no multi-changeset PRs), and
@@ -27,7 +26,6 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const KB_SERVER_PKG = 'packages/kb-server/package.json'
-const KB_SLACK_PKG = 'packages/kb-slack/package.json'
 
 function parseArgs(argv) {
   let base = 'origin/main'
@@ -105,11 +103,8 @@ export function evaluateChangesetConsistency(input) {
   const serverSourceChanged = [...changed].some(
     file => file.startsWith('packages/kb-server/') && !file.startsWith('packages/kb-server/http/')
   )
-  const slackSourceChanged = [...changed].some(
-    file => file.startsWith('packages/kb-slack/') && !file.startsWith('packages/kb-slack/http/')
-  )
 
-  if (!kbSourceChanged && !serverSourceChanged && !slackSourceChanged) {
+  if (!kbSourceChanged && !serverSourceChanged) {
     notes.push('No shipped source changes — version bump not required.')
     return { ok: true, errors, notes }
   }
@@ -146,7 +141,6 @@ export function evaluateChangesetConsistency(input) {
 
   requireBump(kbSourceChanged, 'kb', input.kb)
   requireBump(serverSourceChanged, 'kb-server', input.kbServer)
-  requireBump(slackSourceChanged, 'kb-slack', input.kbSlack)
 
   return { ok: errors.length === 0, errors, notes }
 }
@@ -166,10 +160,6 @@ function main() {
     kbServer: {
       base: readVersionAt(base, KB_SERVER_PKG),
       head: readHeadVersion(KB_SERVER_PKG),
-    },
-    kbSlack: {
-      base: readVersionAt(base, KB_SLACK_PKG),
-      head: readHeadVersion(KB_SLACK_PKG),
     },
   })
 
