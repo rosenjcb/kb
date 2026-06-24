@@ -102,8 +102,12 @@ export function evaluateChangesetConsistency(input) {
   const kbSourceChanged = [...changed].some(
     file => file.startsWith('src/') || file.startsWith('bin/')
   )
-  const serverSourceChanged = [...changed].some(file => file.startsWith('packages/kb-server/'))
-  const slackSourceChanged = [...changed].some(file => file.startsWith('packages/kb-slack/'))
+  const serverSourceChanged = [...changed].some(
+    file => file.startsWith('packages/kb-server/') && !file.startsWith('packages/kb-server/http/')
+  )
+  const slackSourceChanged = [...changed].some(
+    file => file.startsWith('packages/kb-slack/') && !file.startsWith('packages/kb-slack/http/')
+  )
 
   if (!kbSourceChanged && !serverSourceChanged && !slackSourceChanged) {
     notes.push('No shipped source changes — version bump not required.')

@@ -83,6 +83,26 @@ describe('evaluateChangesetConsistency', () => {
     expect(result.ok).toBe(true)
   })
 
+  it('passes when only http test-collection files change under packages/kb-slack', () => {
+    const result = evaluateChangesetConsistency({
+      changedFiles: ['packages/kb-slack/http/slack.http', 'packages/kb-slack/http/.httpyac.js'],
+      pendingChangesets: [],
+      kb: NO_BUMP,
+      kbServer: NO_BUMP,
+    })
+    expect(result.ok).toBe(true)
+  })
+
+  it('passes when only http test-collection files change under packages/kb-server', () => {
+    const result = evaluateChangesetConsistency({
+      changedFiles: ['packages/kb-server/http/server.http'],
+      pendingChangesets: [],
+      kb: NO_BUMP,
+      kbServer: NO_BUMP,
+    })
+    expect(result.ok).toBe(true)
+  })
+
   it('fails when more than one changeset is pending', () => {
     const result = evaluateChangesetConsistency({
       changedFiles: ['src/cli/index.ts', 'package.json'],
