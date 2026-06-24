@@ -1,9 +1,13 @@
 import type { AddressInfo } from 'node:net'
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Server } from 'node:http'
 import type { IntentResult } from '../../src/intents/types'
 import { createHttpServer } from '../../src/server/http-server'
 import type { KbService } from '../../src/server/kb-service'
+import type { RunReport } from '../../src/core/telemetry'
 
 function makeStubService(overrides: Partial<KbService> = {}): KbService {
   return {
@@ -157,5 +161,99 @@ describe('createHttpServer', () => {
     expect((await fetch(`${base}/nope`)).status).toBe(404)
     const mcp = await fetch(`${base}/mcp`, { method: 'POST', body: '{}' })
     expect(mcp.status).toBe(404)
+  })
+})
+
+describe('server-side run report capture', () => {
+  let logsDir: string
+
+  beforeEach(async () => {
+    logsDir = await mkdtemp(path.join(os.tmpdir(), 'kb-server-logs-'))
+  })
+
+  afterEach(async () => {
+    if (server) {
+      await new Promise<void>(resolve => server?.close(() => resolve()))
+      server = undefined
+    }
+    await rm(logsDir, { recursive: true, force: true })
+  })
+
+  it('writes a RunReport to disk for /v1/query', async () => {
+    let resolveReport!: (r: RunReport) => void
+    const reportWritten = new Promise<RunReport>(resolve => { resolveReport = resolve })
+
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: [],
+      logsDir,
+      onReportWritten: resolveReport,
+    })
+    const base = await listen(server)
+
+    const res = await fetch(`${base}/v1/query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ q: 'what is kb' }),
+    })
+    expect(res.status).toBe(200)
+
+    const report = await reportWritten
+    expect(report.command).toBe('server.query')
+    expect(report.status).toBe('success')
+    expect(report.base).toBe('base')
+    expect(report.runId).toMatch(/^run-\d+-\w+$/)
+    expect(report.totalDurationMs).toBeGreaterThanOrEqual(0)
+    expect(report.stages).toEqual([])
+
+    // Verify the report was actually persisted on disk
+    const files = await readdir(logsDir)
+    const jsonlFile = files.find(f => f.endsWith('.jsonl')) ?? ''
+    expect(jsonlFile).toBeTruthy()
+    const text = await readFile(path.join(logsDir, jsonlFile), 'utf-8')
+    const parsed = JSON.parse(text.trim()) as RunReport
+    expect(parsed.command).toBe('server.query')
+    expect(parsed.status).toBe('success')
+  })
+
+  it('writes an error RunReport when /v1/query fails', async () => {
+    let resolveReport!: (r: RunReport) => void
+    const reportWritten = new Promise<RunReport>(resolve => { resolveReport = resolve })
+
+    server = createHttpServer({
+      service: makeStubService({ query: async () => { throw new Error('llm unavailable') } }),
+      apiKeys: [],
+      logsDir,
+      onReportWritten: resolveReport,
+    })
+    const base = await listen(server)
+
+    const res = await fetch(`${base}/v1/query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ q: 'what is kb' }),
+    })
+    expect(res.status).toBe(500)
+
+    const report = await reportWritten
+    expect(report.command).toBe('server.query')
+    expect(report.status).toBe('error')
+    expect(report.errorMessage).toBe('llm unavailable')
+  })
+
+  it('does not write a RunReport for /healthz', async () => {
+    const reports: RunReport[] = []
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: [],
+      logsDir,
+      onReportWritten: r => reports.push(r),
+    })
+    const base = await listen(server)
+
+    await fetch(`${base}/healthz`)
+    // Give async report writer a chance to fire (if it incorrectly does)
+    await new Promise(r => setTimeout(r, 30))
+    expect(reports).toHaveLength(0)
   })
 })

@@ -1,6 +1,6 @@
 {
   "name": "kb",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "description": "TypeScript-based agent harness with LLM provider abstraction",
   "type": "module",
   "private": true,
@@ -28,7 +28,7 @@
     "research:clean": "cd research && latexmk -C",
     "eval": "node scripts/eval-run.mjs",
     "moel": "node scripts/moel-run.mjs",
-    "test": "pnpm run unit:test",
+    "test": "NODE_OPTIONS=--no-warnings vitest run",
     "unit:test": "NODE_OPTIONS=--no-warnings vitest run",
     "integration:test": "node packages/kb-server/scripts/integration-test.mjs",
     "test:watch": "NODE_OPTIONS=--no-warnings vitest",

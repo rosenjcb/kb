@@ -1,5 +1,13 @@
 # kb
 
+## 0.14.0
+
+### Minor Changes
+
+- Add server-side run report capture so `kb logs` surfaces server traffic.
+
+  When kb-server handles requests to `/v1/query`, `/v1/chat`, `/v1/reindex`, `/mcp`, and `/slack/events`, it now writes `RunReport` entries to the same NDJSON log store used by CLI telemetry. `kb logs list`, `kb logs show`, and `kb logs compare` all surface server runs naturally alongside CLI runs. Reports include command (e.g. `server.query`), base, request ID, duration, and status. Health-check probes are excluded to avoid noise. `defaultLogsDir()` now respects `KB_HOME` so container/server deployments write to the correct path.
+
 ## 0.13.1
 
 ### Patch Changes
