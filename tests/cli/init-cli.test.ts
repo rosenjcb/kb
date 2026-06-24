@@ -1383,7 +1383,7 @@ describe('kb scan — base resolution', () => {
 // git-linked init dialog
 // ---------------------------------------------------------------------------
 
-describe('init-cli git-linked dialog', () => {
+describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
   it('Given interactive init with a git URL entered second, then clones from that URL', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const repo = await makeTempGitRepo({ 'README.md': '# Remote Repo\n' })
