@@ -99,13 +99,35 @@ Replace `testkey` / the URL when pointing at a deployed instance. If `mcp.json` 
 
 | Method / path | Auth | Purpose |
 |---|---|---|
-| `GET /healthz` | none | Liveness + `indexMtime` |
+| `GET /healthz` | none | Liveness + `indexMtime` + `reindexing` |
 | `POST /v1/query` | Bearer | Synthesized answer + sources |
 | `POST /v1/chat` | Bearer | Multi-turn SSE chat |
 | `POST /v1/reindex` | Bearer | Incremental rescan |
 | `POST /mcp` | Bearer | MCP Streamable HTTP when `--with-mcp` |
+| `POST /slack/events` | Slack HMAC | Slack Events API webhook (when `SLACK_SIGNING_SECRET` + `SLACK_BOT_TOKEN` are set) |
 
 Auth: `Authorization: Bearer <KB_SERVER_API_KEY>` or `X-Api-Key`.
+
+### Slack integration (`SLACK_SIGNING_SECRET` + `SLACK_BOT_TOKEN`)
+
+Set both env vars to enable the Slack webhook route:
+
+```bash
+export SLACK_SIGNING_SECRET=<from Slack app config>
+export SLACK_BOT_TOKEN=xoxb-<bot token>
+kb server start
+```
+
+Configure your Slack app's **Event Subscriptions** URL to `https://<your-host>/slack/events` and subscribe to:
+- `app_mention` — bot @-mentioned in a channel
+- `message.im` — direct messages to the bot
+
+**Routing:**
+- `app_mention` (no thread) → single-shot `/v1/query`; bot replies in a new thread
+- `app_mention` (in thread) → `/v1/chat` keyed on `thread_ts`; continues the conversation
+- `message` (`channel_type=im`) → `/v1/chat` keyed on the user's DM channel
+
+Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply loops. Slack retries are deduplicated by `event_id`.
 
 ## Invariants
 

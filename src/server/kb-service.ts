@@ -38,6 +38,8 @@ export interface KbHealth {
   model?: string
   /** ISO mtime of the on-disk index, when present. */
   indexMtime?: string
+  /** True while an incremental rescan is in progress; results may reflect stale data. */
+  reindexing?: boolean
 }
 
 export interface KbService {
@@ -138,6 +140,7 @@ export function createKbService(options: KbServiceOptions): KbService {
         provider: llmProvider?.name,
         model: llmProvider?.model,
         indexMtime,
+        ...(reindexing ? { reindexing: true } : {}),
       }
     },
 
