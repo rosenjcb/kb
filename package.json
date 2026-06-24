@@ -1,6 +1,6 @@
 {
   "name": "kb",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "description": "TypeScript-based agent harness with LLM provider abstraction",
   "type": "module",
   "private": true,
@@ -21,9 +21,6 @@
     "server:docker:start": "docker compose --env-file .env -f packages/kb-server/docker-compose.yml up -d --build kb-server",
     "server:docker:stop": "docker compose --env-file .env -f packages/kb-server/docker-compose.yml stop kb-server",
     "server:docker:logs": "docker compose --env-file .env -f packages/kb-server/docker-compose.yml logs -f kb-server",
-    "slack:up": "docker compose -f packages/kb-server/docker-compose.yml --profile slack up -d --build kb-slack",
-    "slack:stop": "docker compose -f packages/kb-server/docker-compose.yml --profile slack stop kb-slack",
-    "slack:logs": "docker compose -f packages/kb-server/docker-compose.yml --profile slack logs -f kb-slack",
     "build": "tsc && node scripts/build-cli.mjs",
     "install:global": "pnpm run build && bash scripts/install-global.sh",
     "uninstall:global": "bash scripts/uninstall-global.sh",

@@ -1,0 +1,154 @@
+# kb-server — Slack webhook integration (httpyac)
+#
+# Tests the Slack Events API surface built into kb-server.
+# The server handles Slack webhooks at POST /slack/events when
+# SLACK_SIGNING_SECRET and SLACK_BOT_TOKEN are configured.
+#
+# Run against a local server started with those env vars set:
+#   pnpm exec httpyac send packages/kb-server/http/slack.http -n slackEventsUnsigned --env local
+#   pnpm exec httpyac send packages/kb-server/http/slack.http --all --env local
+#
+# The signed event tests (slackEventsChallenge, slackEventsAppMention, slackEventsDM)
+# compute an HMAC-SHA256 signature in a pre-request script from slackSigningSecret in
+# the env. The server must be started with the same SLACK_SIGNING_SECRET value.
+#
+# Assertions check response *structure* only — actual Slack API callbacks happen
+# async and are not tested here.
+#
+# Same environments as server.http ({{baseUrl}}, {{slackSigningSecret}}).
+
+# ---------------------------------------------------------------------------
+# Events — unsigned requests are rejected by the signature verifier
+# ---------------------------------------------------------------------------
+# @name slackEventsUnsigned
+POST {{baseUrl}}/slack/events
+Content-Type: application/json
+
+{"type":"url_verification","challenge":"test"}
+
+{{
+  const assert = require('assert');
+  test('unsigned rejected', () => assert.ok([400, 401, 403].includes(response.statusCode)));
+}}
+
+###
+
+# ---------------------------------------------------------------------------
+# Events — URL verification challenge (Slack calls this when first registering
+# the webhook URL). Server echoes { challenge } back.
+# ---------------------------------------------------------------------------
+# @name slackEventsChallenge
+
+{{
+  const crypto = require('crypto');
+  const secret = variables.slackSigningSecret || 'test-signing-secret';
+  const ts = String(Math.floor(Date.now() / 1000));
+  const body = '{"type":"url_verification","challenge":"kb-server-integration-test"}';
+  const hmac = `v0=${crypto.createHmac('sha256', secret).update(`v0:${ts}:${body}`).digest('hex')}`;
+  variables.slackTs = ts;
+  variables.slackSig = hmac;
+  variables.slackBody = body;
+}}
+
+POST {{baseUrl}}/slack/events
+Content-Type: application/json
+x-slack-signature: {{slackSig}}
+x-slack-request-timestamp: {{slackTs}}
+
+{{slackBody}}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('challenge echoed', () => assert.strictEqual(response.parsedBody.challenge, 'kb-server-integration-test'));
+}}
+
+###
+
+# ---------------------------------------------------------------------------
+# Events — @kb mention in a channel → routes to /v1/query (single-shot answer)
+# Server acks 200 before dispatching the handler asynchronously.
+# ---------------------------------------------------------------------------
+# @name slackEventsAppMention
+
+{{
+  const crypto = require('crypto');
+  const secret = variables.slackSigningSecret || 'test-signing-secret';
+  const ts = String(Math.floor(Date.now() / 1000));
+  const body = JSON.stringify({
+    type: 'event_callback',
+    team_id: 'T0001',
+    api_app_id: 'A0001',
+    event: {
+      type: 'app_mention',
+      text: '<@U0001> what is authentication?',
+      user: 'U0001',
+      channel: 'C0001',
+      ts: '1234567890.000001',
+      event_ts: '1234567890.000001',
+    },
+    event_id: 'Ev0001',
+    event_time: 1234567890,
+  });
+  const hmac = `v0=${crypto.createHmac('sha256', secret).update(`v0:${ts}:${body}`).digest('hex')}`;
+  variables.slackTs = ts;
+  variables.slackSig = hmac;
+  variables.slackBody = body;
+}}
+
+POST {{baseUrl}}/slack/events
+Content-Type: application/json
+x-slack-signature: {{slackSig}}
+x-slack-request-timestamp: {{slackTs}}
+
+{{slackBody}}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+}}
+
+###
+
+# ---------------------------------------------------------------------------
+# Events — direct message → routes to /v1/chat (multi-turn, session per user)
+# ---------------------------------------------------------------------------
+# @name slackEventsDM
+
+{{
+  const crypto = require('crypto');
+  const secret = variables.slackSigningSecret || 'test-signing-secret';
+  const ts = String(Math.floor(Date.now() / 1000));
+  const body = JSON.stringify({
+    type: 'event_callback',
+    team_id: 'T0001',
+    api_app_id: 'A0001',
+    event: {
+      type: 'message',
+      channel_type: 'im',
+      text: 'how does authentication work?',
+      user: 'U0001',
+      channel: 'D0001',
+      ts: '1234567890.000002',
+      event_ts: '1234567890.000002',
+    },
+    event_id: 'Ev0002',
+    event_time: 1234567890,
+  });
+  const hmac = `v0=${crypto.createHmac('sha256', secret).update(`v0:${ts}:${body}`).digest('hex')}`;
+  variables.slackTs = ts;
+  variables.slackSig = hmac;
+  variables.slackBody = body;
+}}
+
+POST {{baseUrl}}/slack/events
+Content-Type: application/json
+x-slack-signature: {{slackSig}}
+x-slack-request-timestamp: {{slackTs}}
+
+{{slackBody}}
+
+{{
+  const assert = require('assert');
+  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+}}

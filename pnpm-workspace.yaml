@@ -1,7 +1,6 @@
 packages:
   - '.'
   - 'packages/kb-server'
-  - 'packages/kb-slack'
 
 # Packages that have install scripts but ship pre-built binaries or WASM files.
 # We explicitly set all of them to false so pnpm does not try to compile native
