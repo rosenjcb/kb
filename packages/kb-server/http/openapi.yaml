@@ -170,8 +170,8 @@ paths:
         `SLACK_BOT_TOKEN` are configured. Validates the `x-slack-signature`
         HMAC-SHA256 header (rejects stale timestamps >5 min to prevent replay
         attacks). Routing: `url_verification` → echoes challenge; `app_mention`
-        without `thread_ts` → single-shot `/v1/query`; `app_mention` with
-        `thread_ts` → multi-turn chat keyed on `thread_ts`; `message`
+        → multi-turn chat keyed on `thread_ts ?? event.ts` (first mention starts
+        the session, replies in that thread continue it); `message`
         (`channel_type=im`) → multi-turn chat keyed on the user's DM channel.
         Bot events (with `bot_id` or `subtype`) are silently ignored to prevent
         reply loops. Duplicate `event_id` deliveries (Slack retries) are acked

@@ -15,7 +15,6 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { serializeQueryResult } from './serialize.js'
 import { log } from './logger.js'
 import type { KbService } from './kb-service.js'
 
@@ -152,35 +151,17 @@ export async function dispatchSlackEvent(
   if (!channel) return
 
   if (event.type === 'app_mention') {
-    if (event.thread_ts) {
-      // Threaded mention → continue the thread conversation in chat mode.
-      // The thread_ts is stable across all messages in the thread, making it
-      // a natural session identifier.
-      await replyWithChat(service, slackOpts, message, channel, event.thread_ts, event.thread_ts)
-    } else {
-      // Top-level mention → single-shot query; reply starts a new thread.
-      await replyWithQuery(service, slackOpts, message, channel, event.ts)
-    }
+    // All channel mentions use chat mode so the thread stays coherent across turns.
+    // Session key = thread_ts ?? event.ts: for the first mention thread_ts is absent
+    // and event.ts becomes the thread root (Slack sets thread_ts = that ts on all replies),
+    // so the session id is stable whether this is turn 1 or turn N.
+    const sessionId = event.thread_ts ?? event.ts ?? channel
+    const replyInThread = event.thread_ts ?? event.ts
+    await replyWithChat(service, slackOpts, message, channel, replyInThread, sessionId)
   } else if (event.type === 'message' && event.channel_type === 'im') {
     // Direct message → multi-turn chat; session is per-user DM channel.
     const sessionId = `dm:${event.user ?? channel}`
     await replyWithChat(service, slackOpts, message, channel, undefined, sessionId)
-  }
-}
-
-async function replyWithQuery(
-  service: KbService,
-  slackOpts: SlackOptions,
-  message: string,
-  channel: string,
-  threadTs: string | undefined,
-): Promise<void> {
-  const result = await service.query({ query: message, synthesize: true })
-  const answer = serializeQueryResult(result).answer
-  if (answer) {
-    await postSlackMessage(slackOpts.botToken, channel, answer, threadTs)
-  } else {
-    log.warn('slack query produced no answer', { channel, message: message.slice(0, 100) })
   }
 }
 

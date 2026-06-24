@@ -123,8 +123,7 @@ Configure your Slack app's **Event Subscriptions** URL to `https://<your-host>/s
 - `message.im` — direct messages to the bot
 
 **Routing:**
-- `app_mention` (no thread) → single-shot `/v1/query`; bot replies in a new thread
-- `app_mention` (in thread) → `/v1/chat` keyed on `thread_ts`; continues the conversation
+- `app_mention` → `/v1/chat` keyed on `thread_ts ?? event.ts`; the first mention starts a new session and the bot replies in a new thread; follow-up @-mentions in that thread carry the same session key (`thread_ts` equals the root message `ts`) so conversation history is preserved across turns
 - `message` (`channel_type=im`) → `/v1/chat` keyed on the user's DM channel
 
 Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply loops. Slack retries are deduplicated by `event_id`.
