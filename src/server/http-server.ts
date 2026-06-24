@@ -27,6 +27,13 @@ import { handleMcpHttpRequest } from './mcp-server.js'
 import { serializeQueryResult } from './serialize.js'
 import { log } from './logger.js'
 import type { KbService } from './kb-service.js'
+import {
+  type SlackEventPayload,
+  type SlackOptions,
+  dispatchSlackEvent,
+  isDuplicateEvent,
+  verifySlackSignature,
+} from './slack-handler.js'
 
 export interface HttpServerOptions {
   service: KbService
@@ -36,6 +43,8 @@ export interface HttpServerOptions {
   enableMcp?: boolean
   /** Per-request timeout for /v1/query (ms). Default 60s. */
   requestTimeoutMs?: number
+  /** When set, mount POST /slack/events and verify Slack HMAC signatures. */
+  slack?: SlackOptions
   onLog?: (line: string) => void
 }
 
@@ -88,6 +97,39 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
   })
 }
 
+/**
+ * Read the request body and return both the raw string (for HMAC verification)
+ * and the parsed JSON. Does NOT trim the raw string before HMAC computation.
+ */
+function readRawAndJsonBody(req: IncomingMessage): Promise<{ raw: string; parsed: unknown }> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error('request body too large'))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8')
+      if (!raw.trim()) {
+        resolve({ raw: '', parsed: {} })
+        return
+      }
+      try {
+        resolve({ raw, parsed: JSON.parse(raw) })
+      } catch {
+        reject(new Error('invalid JSON body'))
+      }
+    })
+    req.on('error', reject)
+  })
+}
+
 function isAuthorized(req: IncomingMessage, apiKeys: string[]): boolean {
   if (apiKeys.length === 0) return true
   const header = req.headers.authorization ?? ''
@@ -122,7 +164,7 @@ interface QueryRequestBody {
 }
 
 export function createHttpServer(options: HttpServerOptions): Server {
-  const { service, apiKeys, enableMcp = false, requestTimeoutMs = 60_000, onLog } = options
+  const { service, apiKeys, enableMcp = false, requestTimeoutMs = 60_000, slack, onLog } = options
 
   return createServer((req, res) => {
     void handleRequest(req, res).catch(error => {
@@ -208,6 +250,11 @@ export function createHttpServer(options: HttpServerOptions): Server {
         return
       }
       await handleMcpRequest(service, req, res, body, ctx)
+      return
+    }
+
+    if (slack && method === 'POST' && url === '/slack/events') {
+      await handleSlackEvents(req, res, ctx, slack)
       return
     }
 
@@ -379,6 +426,71 @@ export function createHttpServer(options: HttpServerOptions): Server {
       })
       sendJson(res, 500, { error: message })
     }
+  }
+
+  async function handleSlackEvents(
+    req: IncomingMessage,
+    res: ServerResponse,
+    ctx: RequestCtx,
+    slackOpts: SlackOptions,
+  ): Promise<void> {
+    let raw: string
+    let parsed: unknown
+    try {
+      ;({ raw, parsed } = await readRawAndJsonBody(req))
+    } catch (error) {
+      sendJson(res, 400, { error: error instanceof Error ? error.message : 'bad request' })
+      return
+    }
+
+    const timestamp =
+      typeof req.headers['x-slack-request-timestamp'] === 'string'
+        ? req.headers['x-slack-request-timestamp']
+        : undefined
+    const signature =
+      typeof req.headers['x-slack-signature'] === 'string'
+        ? req.headers['x-slack-signature']
+        : undefined
+
+    if (!verifySlackSignature(slackOpts.signingSecret, raw, timestamp, signature)) {
+      log.warn('slack signature rejected', { requestId: ctx.requestId, keyPresent: !!signature })
+      sendJson(res, 401, { error: 'invalid signature' })
+      return
+    }
+
+    const payload = parsed as SlackEventPayload
+
+    // URL verification challenge — Slack sends this when first registering the webhook.
+    if (payload.type === 'url_verification') {
+      log.info('slack url_verification', { requestId: ctx.requestId })
+      sendJson(res, 200, { challenge: payload.challenge })
+      return
+    }
+
+    // Deduplicate retried events before dispatching.
+    const eventId = payload.event_id
+    if (eventId && isDuplicateEvent(eventId)) {
+      log.info('slack duplicate event ignored', { requestId: ctx.requestId, eventId })
+      sendJson(res, 200, {})
+      return
+    }
+
+    // Ack immediately — Slack requires a response within 3 seconds.
+    sendJson(res, 200, {})
+
+    log.info('slack event received', {
+      requestId: ctx.requestId,
+      eventId,
+      eventType: payload.event?.type,
+      channelType: payload.event?.channel_type,
+      hasThreadTs: !!payload.event?.thread_ts,
+    })
+
+    void dispatchSlackEvent(service, slackOpts, payload).catch(err => {
+      const message = err instanceof Error ? err.message : String(err)
+      onLog?.(`[slack] dispatch error: ${message}`)
+      log.error('slack dispatch error', { requestId: ctx.requestId, error: message })
+    })
   }
 }
 

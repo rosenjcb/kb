@@ -1,5 +1,11 @@
 # kb
 
+## 0.13.0
+
+### Minor Changes
+
+- Add `POST /slack/events` webhook handler with HMAC verification, event dedup, bot-loop guard, and thread-reply chat routing; expose `reindexing` flag on `GET /healthz`.
+
 ## 0.12.0
 
 ### Minor Changes

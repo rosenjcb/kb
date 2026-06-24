@@ -20,6 +20,7 @@ tags:
   - name: chat
   - name: admin
   - name: mcp
+  - name: slack
 
 paths:
   /healthz:
@@ -159,6 +160,59 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/JsonRpcResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /slack/events:
+    post:
+      tags: [slack]
+      summary: Slack Events API webhook
+      description: >
+        Handles Slack Events API payloads when `SLACK_SIGNING_SECRET` and
+        `SLACK_BOT_TOKEN` are configured. Validates the `x-slack-signature`
+        HMAC-SHA256 header (rejects stale timestamps >5 min to prevent replay
+        attacks). Routing: `url_verification` → echoes challenge; `app_mention`
+        → multi-turn chat keyed on `thread_ts ?? event.ts` (first mention starts
+        the session, replies in that thread continue it); `message`
+        (`channel_type=im`) → multi-turn chat keyed on the user's DM channel.
+        Bot events (with `bot_id` or `subtype`) are silently ignored to prevent
+        reply loops. Duplicate `event_id` deliveries (Slack retries) are acked
+        200 without re-processing. Responds 200 immediately; query/chat and the
+        Slack reply happen asynchronously.
+      security: []
+      parameters:
+        - in: header
+          name: x-slack-signature
+          required: true
+          schema: { type: string }
+          description: "`v0=<HMAC-SHA256>` of `v0:{timestamp}:{body}` signed with `SLACK_SIGNING_SECRET`"
+        - in: header
+          name: x-slack-request-timestamp
+          required: true
+          schema: { type: string }
+          description: Unix epoch seconds; rejected if more than 5 minutes old.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SlackEventPayload" }
+      responses:
+        "200":
+          description: Ack (or challenge response for url_verification)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  challenge: { type: string, description: "Echoed for url_verification only" }
+        "400":
+          description: Malformed body
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Invalid or missing Slack signature
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
 components:
   securitySchemes:
@@ -302,6 +356,32 @@ components:
       required: [error]
       properties:
         error: { type: string }
+
+    SlackEventPayload:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: "`url_verification` or `event_callback`"
+        challenge:
+          type: string
+          description: Present only for `url_verification`
+        event_id:
+          type: string
+          description: Unique event ID; used for deduplication on retries
+        event:
+          type: object
+          properties:
+            type: { type: string, description: "e.g. `app_mention`, `message`" }
+            text: { type: string }
+            user: { type: string }
+            channel: { type: string }
+            channel_type: { type: string, description: "`im` for direct messages" }
+            ts: { type: string }
+            thread_ts: { type: string, description: "Present when the event is part of a thread" }
+            bot_id: { type: string, description: "Present on bot-posted messages; causes the event to be ignored" }
+            subtype: { type: string, description: "Present for message subtypes; causes the event to be ignored" }
 
 security:
   - bearerAuth: []

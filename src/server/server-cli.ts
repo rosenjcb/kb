@@ -184,10 +184,24 @@ export async function runServerCommand(
     },
   })
 
+  const slackSigningSecret = process.env.SLACK_SIGNING_SECRET?.trim()
+  const slackBotToken = process.env.SLACK_BOT_TOKEN?.trim()
+  const slack =
+    slackSigningSecret && slackBotToken
+      ? { signingSecret: slackSigningSecret, botToken: slackBotToken }
+      : undefined
+  if (slackSigningSecret && !slackBotToken) {
+    out.error('⚠  SLACK_SIGNING_SECRET is set but SLACK_BOT_TOKEN is missing — Slack integration disabled.')
+  }
+  if (slackBotToken && !slackSigningSecret) {
+    out.error('⚠  SLACK_BOT_TOKEN is set but SLACK_SIGNING_SECRET is missing — Slack integration disabled.')
+  }
+
   const server = createHttpServer({
     service,
     apiKeys,
     enableMcp,
+    slack,
     onLog: line => {
       out.error(line)
       log.error(line)
@@ -206,6 +220,7 @@ export async function runServerCommand(
     provider: health.provider,
     model: health.model,
     mcp: enableMcp,
+    slack: !!slack,
     apiKeys: apiKeys.length,
     reindexIntervalMs: intervalMs,
     logLevel: process.env.LOG_LEVEL ?? 'info',
@@ -213,7 +228,7 @@ export async function runServerCommand(
 
   out.log(`🚀 kb server listening on :${port} (base "${path.basename(base.baseDir)}")`)
   out.log(
-    `   POST /v1/query   POST /v1/chat   GET /healthz   POST /v1/reindex${enableMcp ? '   POST /mcp' : ''}`
+    `   POST /v1/query   POST /v1/chat   GET /healthz   POST /v1/reindex${enableMcp ? '   POST /mcp' : ''}${slack ? '   POST /slack/events' : ''}`
   )
 
   await waitForShutdown(async () => {
