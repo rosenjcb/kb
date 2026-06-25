@@ -68,6 +68,7 @@ vi.mock('../../src/server/http-server', () => ({
 }))
 
 import { runKbInit } from '../../src/cli/init-cli'
+import { startReindexScheduler } from '../../src/server/reindex-scheduler'
 import { runServerCommand } from '../../src/server/server-cli'
 
 describe('runServerCommand bootstrap progress', () => {
@@ -95,6 +96,42 @@ describe('runServerCommand bootstrap progress', () => {
       expect(out.log).toHaveBeenCalledWith(
         '[init] @ fintary-fintary │ [====--------------------] 1/6 code-index ts/js 1/10 changed, 0 unchanged | 27 symbols, 0 edges'
       )
+    })
+
+    process.emit('SIGTERM', 'SIGTERM')
+    await serverPromise
+  })
+
+  it('starts the reindex scheduler only after bootstrap init completes', async () => {
+    let resolveInit!: () => void
+    vi.mocked(runKbInit).mockImplementationOnce(
+      async (options: { progressSink?: (line: string) => void }) =>
+        await new Promise(resolve => {
+          resolveInit = () => {
+            options.progressSink?.(
+              '[init] @ fintary-fintary │ [====--------------------] 1/6 code-index ts/js 10/10 changed, 0 unchanged | 270 symbols, 9 edges'
+            )
+            resolve({ status: 'accepted', base: 'demo', completedCycles: [] })
+          }
+        })
+    )
+
+    const out = {
+      log: vi.fn(),
+      error: vi.fn(),
+    }
+
+    const serverPromise = runServerCommand([], out, {} as never)
+
+    await vi.waitFor(() => {
+      expect(runKbInit).toHaveBeenCalledOnce()
+    })
+    expect(startReindexScheduler).not.toHaveBeenCalled()
+
+    resolveInit()
+
+    await vi.waitFor(() => {
+      expect(startReindexScheduler).toHaveBeenCalledOnce()
     })
 
     process.emit('SIGTERM', 'SIGTERM')

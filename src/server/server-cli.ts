@@ -200,20 +200,26 @@ export async function runServerCommand(
   if (intervalMs === undefined) {
     throw new Error(`Invalid KB_REINDEX_INTERVAL: ${process.env.KB_REINDEX_INTERVAL}`)
   }
-  const scheduler = startReindexScheduler({
-    intervalMs,
-    runReindex: async onProgress => {
-      if (bootstrapState.indexing) {
-        onProgress?.('skipped: bootstrap indexing still in progress')
-        return undefined
-      }
-      return await service.reindex(onProgress)
-    },
-    onLog: line => {
-      out.error(line)
-      log.info(line)
-    },
-  })
+  let scheduler = {
+    stop() {},
+    isRunning: () => false,
+  }
+  const startScheduler = (): void => {
+    scheduler = startReindexScheduler({
+      intervalMs,
+      runReindex: async onProgress => {
+        if (bootstrapState.indexing) {
+          onProgress?.('skipped: bootstrap indexing still in progress')
+          return undefined
+        }
+        return await service.reindex(onProgress)
+      },
+      onLog: line => {
+        out.error(line)
+        log.info(line)
+      },
+    })
+  }
 
   const slackSigningSecret = process.env.SLACK_SIGNING_SECRET?.trim()
   const slackBotToken = process.env.SLACK_BOT_TOKEN?.trim()
@@ -270,6 +276,7 @@ export async function runServerCommand(
       try {
         await bootstrapTask.run()
         out.log(bootstrapTask.successMessage)
+        startScheduler()
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         bootstrapState.error = message
@@ -282,6 +289,7 @@ export async function runServerCommand(
     })()
   } else {
     settleBootstrap()
+    startScheduler()
   }
 
   await waitForShutdown(async () => {
