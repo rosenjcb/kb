@@ -16,7 +16,7 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { log } from './logger.js'
-import { type KbHealth, type KbService } from './kb-service.js'
+import type { KbHealth, KbService } from './kb-service.js'
 
 export interface SlackOptions {
   signingSecret: string
