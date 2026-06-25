@@ -11,8 +11,8 @@ info:
 servers:
   - url: http://localhost:8080
     description: Local / Docker
-  - url: https://kb-server-REPLACE.run.app
-    description: Cloud Run
+  - url: https://kb-server.example.com
+    description: Hosted deployment
 
 tags:
   - name: health

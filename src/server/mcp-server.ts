@@ -23,8 +23,7 @@ export function createKbMcpServer(service: KbService): Server {
 
 /**
  * Handle a single MCP request over Streamable HTTP in stateless mode (a fresh
- * server + transport per request; no session affinity required — ideal for
- * Cloud Run autoscaling).
+ * server + transport per request; no session affinity required).
  */
 export async function handleMcpHttpRequest(
   service: KbService,

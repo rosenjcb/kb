@@ -1,6 +1,6 @@
-# Multi-stage build for the kb HTTP + MCP server (Cloud Run friendly).
+# Multi-stage build for the kb HTTP + MCP server.
 #
-# Runtime model (see docs/DEPLOY_CLOUD_RUN.md):
+# Runtime model:
 #   - Single container, persistent volume mounted at /data (KB_HOME=/data) so the
 #     SQLite index + derived docs survive restarts (no reindex on boot).
 #   - First boot builds the index from KB_GIT_REPOS (or rescans a base that already

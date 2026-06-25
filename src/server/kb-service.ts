@@ -25,6 +25,10 @@ export interface KbServiceOptions {
   /** Resolved absolute base directory (contains `.kb-index.sqlite`). */
   baseDir: string
   config: KbConfig
+  bootstrapState?: {
+    indexing: boolean
+    error?: string
+  }
 }
 
 export interface ChatParams {
@@ -39,9 +43,15 @@ export interface KbHealth {
   model?: string
   /** ISO mtime of the on-disk index, when present. */
   indexMtime?: string
+  /** True while a fresh-volume bootstrap index build is running in the background. */
+  indexing?: boolean
+  /** Sticky bootstrap failure message when the background build crashed. */
+  bootstrapError?: string
   /** True while an incremental rescan is in progress; results may reflect stale data. */
   reindexing?: boolean
 }
+
+export const BOOTSTRAP_INDEXING_MESSAGE = 'server is indexing its knowledge base; try again soon'
 
 export interface KbService {
   readonly baseDir: string
@@ -59,7 +69,7 @@ export interface KbService {
 }
 
 export function createKbService(options: KbServiceOptions): KbService {
-  const { baseDir, config } = options
+  const { baseDir, config, bootstrapState } = options
 
   // Provider keys (and feature flags) come from config/env; apply once.
   applyConfigToEnv(config)
@@ -148,6 +158,8 @@ export function createKbService(options: KbServiceOptions): KbService {
         provider: llmProvider?.name,
         model: llmProvider?.model,
         indexMtime,
+        ...(bootstrapState?.indexing ? { indexing: true } : {}),
+        ...(bootstrapState?.error ? { bootstrapError: bootstrapState.error } : {}),
         ...(reindexing ? { reindexing: true } : {}),
       }
     },

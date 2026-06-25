@@ -67,4 +67,19 @@ describe('createKbService', () => {
     expect(service.isReindexing()).toBe(false)
     await service.close()
   })
+
+  it('health reports indexing while background bootstrap is still running', async () => {
+    const baseDir = await makeBaseWithFacts()
+    const bootstrapState = { indexing: true }
+    const service = createKbService({
+      baseDir,
+      config: {} as KbConfig,
+      bootstrapState,
+    })
+
+    const health = service.health()
+    expect(health.ok).toBe(true)
+    expect(health.indexing).toBe(true)
+    await service.close()
+  })
 })

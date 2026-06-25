@@ -13,9 +13,8 @@ The same image that backs the integration suite is a **deployable server**: inde
 repos once on durable storage and have humans, apps, and agents query them over HTTP/MCP
 instead of running `kb init` on every machine.
 
-This guide is the getting-started path for a **fresh, real KB**. For the managed-cloud
-layout see [`../../docs/DEPLOY_CLOUD_RUN.md`](../../docs/DEPLOY_CLOUD_RUN.md); for the
-test harness see [`INTEGRATION_TEST.md`](INTEGRATION_TEST.md).
+This guide is the getting-started path for a **fresh, real KB**. For the test harness
+see [`INTEGRATION_TEST.md`](INTEGRATION_TEST.md).
 
 ## TL;DR
 
@@ -222,16 +221,17 @@ polled, but only repos with new commits are re-indexed.
 ## Notes
 
 - **Single writer.** One instance owns the SQLite index; don't run multiple replicas
-  against the same volume (see Cloud Run doc for the why).
-- **First boot is slow.** Cloning + indexing happens before the server listens; the
-  compose healthcheck allows a 5-minute `start_period`.
+  against the same volume unless you redesign the storage model around shared writes.
+- **First boot is slow.** Cloning + indexing can take a while; the server now starts
+  listening first, `/healthz` reports `indexing: true`, and query/chat/MCP calls return
+  a temporary `503` until the initial build finishes. The compose healthcheck allows a
+  5-minute `start_period`.
 - **The `mock` profile is test-only.** The WireMock `llm-mock` sidecar is gated behind the
   `mock` compose profile and never starts for real runs; `pnpm run integration:test` opts
   it in. Details: [`docker/wiremock/WIREMOCK.md`](docker/wiremock/WIREMOCK.md).
 
 ## Related docs
 
-- [`../../docs/DEPLOY_CLOUD_RUN.md`](../../docs/DEPLOY_CLOUD_RUN.md) — managed deploy with a cloud volume
 - [`../../src/server/SERVER.md`](../../src/server/SERVER.md) — server internals, endpoints, MCP clients
 - [`http/HTTP.md`](http/HTTP.md) — API contract + sample requests
 - [`INTEGRATION_TEST.md`](INTEGRATION_TEST.md) — the Docker-based test harness

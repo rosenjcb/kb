@@ -86,6 +86,28 @@ describe('createHttpServer', () => {
     expect(body.retrieval).toEqual({ method: 'hybrid', detail: 'deep' })
   })
 
+  it('returns 503 for /v1/query while the server is bootstrapping its first index', async () => {
+    const query = vi.fn(makeStubService().query)
+    server = createHttpServer({
+      service: makeStubService({
+        query,
+        health: () => ({ ok: true, base: 'base', indexing: true }),
+      }),
+      apiKeys: [],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/v1/query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ q: 'how does auth work' }),
+    })
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({
+      error: 'server is indexing its knowledge base; try again soon',
+    })
+    expect(query).not.toHaveBeenCalled()
+  })
+
   it('returns 400 when q is missing', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: [] })
     const base = await listen(server)
