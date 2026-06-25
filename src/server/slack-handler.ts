@@ -16,7 +16,7 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { log } from './logger.js'
-import type { KbService } from './kb-service.js'
+import { type KbHealth, type KbService } from './kb-service.js'
 
 export interface SlackOptions {
   signingSecret: string
@@ -150,19 +150,45 @@ export async function dispatchSlackEvent(
   const channel = event.channel
   if (!channel) return
 
+  const threadTs = event.thread_ts ?? event.ts
+  const bootstrapNotice = formatBootstrapSlackNotice(service.health())
+  if (bootstrapNotice) {
+    await postSlackMessage(slackOpts.botToken, channel, bootstrapNotice, threadTs)
+    await service.waitForBootstrap()
+    const afterBootstrap = service.health()
+    if (afterBootstrap.bootstrapError) {
+      await postSlackMessage(
+        slackOpts.botToken,
+        channel,
+        `KB bootstrap failed before I could answer: ${afterBootstrap.bootstrapError}`,
+        threadTs,
+      )
+      return
+    }
+  }
+
   if (event.type === 'app_mention') {
     // All channel mentions use chat mode so the thread stays coherent across turns.
     // Session key = thread_ts ?? event.ts: for the first mention thread_ts is absent
     // and event.ts becomes the thread root (Slack sets thread_ts = that ts on all replies),
     // so the session id is stable whether this is turn 1 or turn N.
     const sessionId = event.thread_ts ?? event.ts ?? channel
-    const replyInThread = event.thread_ts ?? event.ts
-    await replyWithChat(service, slackOpts, message, channel, replyInThread, sessionId)
+    await replyWithChat(service, slackOpts, message, channel, threadTs, sessionId)
   } else if (event.type === 'message' && event.channel_type === 'im') {
     // Direct message → multi-turn chat; session is per-user DM channel.
     const sessionId = `dm:${event.user ?? channel}`
     await replyWithChat(service, slackOpts, message, channel, undefined, sessionId)
   }
+}
+
+function formatBootstrapSlackNotice(health: KbHealth): string | null {
+  if (!health.indexing) return null
+  const lines = ['KB is still indexing its knowledge base.']
+  if (health.bootstrapProgress) {
+    lines.push(`Current progress: ${health.bootstrapProgress}`)
+  }
+  lines.push('I will reply with the answer once indexing is complete.')
+  return lines.join('\n')
 }
 
 async function replyWithChat(

@@ -69,7 +69,7 @@ async function planBootstrapTask(
   log: (line: string) => void
 ): Promise<BootstrapTask | null> {
   if (existsSync(kbIndexDbPath(base.baseDir))) {
-    return await planNewRepoSync(base, plan)
+    return await planNewRepoSync(base, plan, log)
   }
 
   if (plan.gitTargets.length > 0) {
@@ -82,6 +82,7 @@ async function planBootstrapTask(
           nonInteractive: true,
           gitTargets: plan.gitTargets,
           ignorePatterns: plan.ignore,
+          progressSink: log,
         })
       },
     }
@@ -114,6 +115,7 @@ async function planBootstrapTask(
 async function planNewRepoSync(
   base: ResolvedBase,
   plan: BootstrapPlan,
+  log: (line: string) => void,
 ): Promise<BootstrapTask | null> {
   if (plan.gitTargets.length === 0) return null
   const meta = await readBaseMeta(base.baseDir)
@@ -130,6 +132,7 @@ async function planNewRepoSync(
         nonInteractive: true,
         gitTargets: plan.gitTargets,
         ignorePatterns: plan.ignore,
+        progressSink: log,
       })
     },
   }
@@ -169,8 +172,21 @@ export async function runServerCommand(
 
   const plan = await resolveBootstrapPlan(args)
   const base = await resolveServerBaseDir(plan)
-  const bootstrapState = { indexing: false as boolean, error: undefined as string | undefined }
-  const bootstrapTask = await planBootstrapTask(base, plan, line => out.log(line))
+  let settleBootstrap!: () => void
+  const bootstrapSettled = new Promise<void>(resolve => {
+    settleBootstrap = resolve
+  })
+  const bootstrapState = {
+    indexing: false as boolean,
+    error: undefined as string | undefined,
+    progressLine: undefined as string | undefined,
+    settled: bootstrapSettled,
+  }
+  const recordBootstrapProgress = (line: string): void => {
+    bootstrapState.progressLine = line
+    out.log(line)
+  }
+  const bootstrapTask = await planBootstrapTask(base, plan, line => recordBootstrapProgress(line))
   if (bootstrapTask) bootstrapState.indexing = true
 
   const service = createKbService({ baseDir: base.baseDir, config, bootstrapState })
@@ -186,7 +202,13 @@ export async function runServerCommand(
   }
   const scheduler = startReindexScheduler({
     intervalMs,
-    runReindex: onProgress => service.reindex(onProgress),
+    runReindex: async onProgress => {
+      if (bootstrapState.indexing) {
+        onProgress?.('skipped: bootstrap indexing still in progress')
+        return undefined
+      }
+      return await service.reindex(onProgress)
+    },
     onLog: line => {
       out.error(line)
       log.info(line)
@@ -242,6 +264,7 @@ export async function runServerCommand(
   )
 
   if (bootstrapTask) {
+    bootstrapState.progressLine = bootstrapTask.startMessage
     out.log(bootstrapTask.startMessage)
     void (async () => {
       try {
@@ -254,8 +277,11 @@ export async function runServerCommand(
         log.error('background bootstrap failed', { error: message, base: path.basename(base.baseDir) })
       } finally {
         bootstrapState.indexing = false
+        settleBootstrap()
       }
     })()
+  } else {
+    settleBootstrap()
   }
 
   await waitForShutdown(async () => {

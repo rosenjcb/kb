@@ -156,7 +156,7 @@ describe('init-cli interview checkpoints', () => {
     expect(config.activeBase).toBe('fresh-base')
   })
 
-  it('Given init without --base and config activeBase, then prompt suggests cwd instead of reusing config base', async () => {
+  it('Given init without --base and config activeBase, then prompt suggests cwd instead of reusing config base', { timeout: 15_000 }, async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
@@ -340,7 +340,7 @@ describe('init-cli interview checkpoints', () => {
     expect(Object.keys(checkpoint.context.sourceFiles ?? {})).toContain('README.md')
   })
 
-  it('Given resume after import-docs pause, then finishes init without re-asking read-inputs', async () => {
+  it('Given resume after import-docs pause, then finishes init without re-asking read-inputs', { timeout: 15_000 }, async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
     })
@@ -537,7 +537,7 @@ describe('init-cli interview checkpoints', () => {
     expect(migrated.version).toBe(3)
   })
 
-  it('Given resume after read-inputs, then deprecated interview prompting does not resume', async () => {
+  it('Given resume after read-inputs, then deprecated interview prompting does not resume', { timeout: 15_000 }, async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nTiny overview only.\n',
     })

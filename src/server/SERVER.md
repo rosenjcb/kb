@@ -99,8 +99,8 @@ Replace `testkey` / the URL when pointing at a deployed instance. If `mcp.json` 
 
 | Method / path | Auth | Purpose |
 |---|---|---|
-| `GET /healthz` | none | Liveness + `indexMtime` + `indexing` + `reindexing` |
-| `POST /v1/query` | Bearer | Synthesized answer + sources |
+| `GET /health` / `/healthz` | none | Liveness + `indexMtime` + `indexing` + `bootstrapProgress` + `reindexing` |
+| `POST /v1/query` | Bearer | Synthesized answer + sources; returns `503` with bootstrap progress while first indexing is still running |
 | `POST /v1/chat` | Bearer | Multi-turn SSE chat |
 | `POST /v1/reindex` | Bearer | Incremental rescan |
 | `POST /mcp` | Bearer | MCP Streamable HTTP when `--with-mcp` |
@@ -123,8 +123,9 @@ Configure your Slack app's **Event Subscriptions** URL to `https://<your-host>/s
 - `app_mention` — bot @-mentioned in a channel
 
 **Routing:**
-- `app_mention` → one synthesized `service.query({ synthesize: true })` call using the mention text with the bot mention stripped
-- replies are posted back to Slack in the same thread (`thread_ts ?? event.ts`)
+- `app_mention` → multi-turn chat keyed on `thread_ts ?? event.ts`, replying in the same thread
+- `message` (`channel_type=im`) → multi-turn chat keyed on the DM user/channel
+- if bootstrap indexing is still running, Slack gets an immediate status reply with the same progress line the API exposes, then the final answer is posted once indexing settles
 
 Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply loops. Slack retries are deduplicated by `event_id`.
 

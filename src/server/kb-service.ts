@@ -28,6 +28,8 @@ export interface KbServiceOptions {
   bootstrapState?: {
     indexing: boolean
     error?: string
+    progressLine?: string
+    settled?: Promise<void>
   }
 }
 
@@ -47,6 +49,8 @@ export interface KbHealth {
   indexing?: boolean
   /** Sticky bootstrap failure message when the background build crashed. */
   bootstrapError?: string
+  /** Latest bootstrap progress line from the existing init/scan formatter. */
+  bootstrapProgress?: string
   /** True while an incremental rescan is in progress; results may reflect stale data. */
   reindexing?: boolean
 }
@@ -64,6 +68,7 @@ export interface KbService {
   /** Run one incremental rescan. Throws if a reindex is already in progress. */
   reindex(onProgress?: (line: string) => void): Promise<string>
   isReindexing(): boolean
+  waitForBootstrap(): Promise<void>
   health(): KbHealth
   close(): Promise<void>
 }
@@ -145,6 +150,10 @@ export function createKbService(options: KbServiceOptions): KbService {
 
     isReindexing: () => reindexing,
 
+    waitForBootstrap: async () => {
+      await bootstrapState?.settled
+    },
+
     health() {
       let indexMtime: string | undefined
       try {
@@ -160,6 +169,7 @@ export function createKbService(options: KbServiceOptions): KbService {
         indexMtime,
         ...(bootstrapState?.indexing ? { indexing: true } : {}),
         ...(bootstrapState?.error ? { bootstrapError: bootstrapState.error } : {}),
+        ...(bootstrapState?.progressLine ? { bootstrapProgress: bootstrapState.progressLine } : {}),
         ...(reindexing ? { reindexing: true } : {}),
       }
     },

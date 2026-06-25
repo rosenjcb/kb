@@ -168,6 +168,12 @@ interface QueryRequestBody {
   verbose?: boolean
 }
 
+interface ServiceUnavailableResponse {
+  error: string
+  status: 'indexing' | 'bootstrap_failed'
+  progress?: string
+}
+
 export function createHttpServer(options: HttpServerOptions): Server {
   const { service, apiKeys, enableMcp = false, requestTimeoutMs = 60_000, slack, onLog } = options
 
@@ -263,7 +269,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
     if (method === 'POST' && url === '/v1/query') {
       const unavailable = serviceUnavailableError()
       if (unavailable) {
-        sendJson(res, 503, { error: unavailable })
+        sendJson(res, 503, unavailable)
         return
       }
       await handleQuery(req, res, ctx)
@@ -273,7 +279,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
     if (method === 'POST' && url === '/v1/chat') {
       const unavailable = serviceUnavailableError()
       if (unavailable) {
-        sendJson(res, 503, { error: unavailable })
+        sendJson(res, 503, unavailable)
         return
       }
       await handleChat(req, res, ctx)
@@ -288,7 +294,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
     if (enableMcp && url === '/mcp') {
       const unavailable = serviceUnavailableError()
       if (unavailable) {
-        sendJson(res, 503, { error: unavailable })
+        sendJson(res, 503, unavailable)
         return
       }
       let body: unknown
@@ -319,10 +325,22 @@ export function createHttpServer(options: HttpServerOptions): Server {
     sendJson(res, 404, { error: 'not found' })
   }
 
-  function serviceUnavailableError(): string | null {
+  function serviceUnavailableError(): ServiceUnavailableResponse | null {
     const health = service.health()
-    if (health.indexing) return BOOTSTRAP_INDEXING_MESSAGE
-    if (health.bootstrapError) return `server bootstrap failed: ${health.bootstrapError}`
+    if (health.indexing) {
+      return {
+        error: BOOTSTRAP_INDEXING_MESSAGE,
+        status: 'indexing',
+        ...(health.bootstrapProgress ? { progress: health.bootstrapProgress } : {}),
+      }
+    }
+    if (health.bootstrapError) {
+      return {
+        error: `server bootstrap failed: ${health.bootstrapError}`,
+        status: 'bootstrap_failed',
+        ...(health.bootstrapProgress ? { progress: health.bootstrapProgress } : {}),
+      }
+    }
     return null
   }
 

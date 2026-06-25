@@ -30,6 +30,7 @@ function makeStubService(overrides: Partial<KbService> = {}): KbService {
     readFacts: async () => ({ results: [] }),
     reindex: async () => 'scanned 1 repo(s)',
     isReindexing: () => false,
+    waitForBootstrap: async () => {},
     health: () => ({ ok: true, base: 'base' }),
     close: async () => {},
     ...overrides,
@@ -91,7 +92,12 @@ describe('createHttpServer', () => {
     server = createHttpServer({
       service: makeStubService({
         query,
-        health: () => ({ ok: true, base: 'base', indexing: true }),
+        health: () => ({
+          ok: true,
+          base: 'base',
+          indexing: true,
+          bootstrapProgress: '[init] @ catalog-service │ [========----------------] 2/6 document-facts 18/42 docs',
+        }),
       }),
       apiKeys: [],
     })
@@ -104,6 +110,8 @@ describe('createHttpServer', () => {
     expect(res.status).toBe(503)
     expect(await res.json()).toEqual({
       error: 'server is indexing its knowledge base; try again soon',
+      status: 'indexing',
+      progress: '[init] @ catalog-service │ [========----------------] 2/6 document-facts 18/42 docs',
     })
     expect(query).not.toHaveBeenCalled()
   })
