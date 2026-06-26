@@ -1,8 +1,13 @@
 import type { DocType } from '../core/doc-taxonomy'
 import { formatFactUri } from '../core/fact-uri'
 import type { LLMProvider } from '../core/types'
+import {
+  type CuratorRequery,
+  type CurationRecord,
+  curateFacts,
+  shouldCurate,
+} from './fact-curator'
 import { DEFAULT_FACT_LIMIT, FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
-import { filterRelevantFacts, shouldRunRelevanceFilter } from './facts-relevance-filter'
 import { makeSufficiencyJudge } from './facts-sufficiency-judge'
 import { expandQuery, shouldExpandQuery } from './query-expander'
 import { type FactRow, SqliteKbIndexer } from './sqlite-kb-index'
@@ -50,6 +55,8 @@ export interface QueryResponse {
       nextAction?: string
       confidence?: number
     }>
+    /** Out-of-band curator audit — kept/dropped/re-queried decisions. Never injected into context. */
+    curation?: CurationRecord
   }
 }
 
@@ -109,12 +116,12 @@ export class FactsDocumentReader {
             )
           )
           const merged = mergeQueryResponses(responses, expansions.length)
-          return this.maybeFilterRelevance(merged, baseQuery)
+          return this.curateRelevance(merged, baseQuery, opts.includeContent, excludeIdSet)
         }
       }
 
       const response = await orchestrator.run({ query: baseQuery, ...opts, excludeIds: excludeIdSet })
-      return this.maybeFilterRelevance(response, baseQuery)
+      return this.curateRelevance(response, baseQuery, opts.includeContent, excludeIdSet)
     }
     const rows = this.readRows(input, limit)
     const results = rows.map(row => this.toResult(row, input.includeContent === true))
@@ -125,20 +132,53 @@ export class FactsDocumentReader {
     }
   }
 
-  private async maybeFilterRelevance(response: QueryResponse, query: string): Promise<QueryResponse> {
-    if (!this.llm || !shouldRunRelevanceFilter(response.results)) return response
-    // Judge already confirmed sufficiency — skip redundant relevance filter call
-    if (response.retrieval.detail?.includes('llm_judge_answerable')) return response
-    const filtered = await filterRelevantFacts(this.llm, query, response.results)
-    if (filtered === response.results) return response
+  /**
+   * Post-retrieval curation: the curator hard-drops off-topic facts from the orchestrator's
+   * island pool and, when it finds gaps, issues bounded shallow re-discovery queries to refill.
+   * Decisions land on `retrieval.curation` (out-of-band) — never in the synthesis context.
+   */
+  private async curateRelevance(
+    response: QueryResponse,
+    query: string,
+    includeContent: boolean,
+    excludeIds?: Set<string>
+  ): Promise<QueryResponse> {
+    if (!this.llm || !shouldCurate(response.results)) return response
+
+    // Bounded, cheap re-discovery: a single shallow FTS pass over the gap sub-query, skipping
+    // anything already known (incoming pool + the caller's session exclusions).
+    const requery: CuratorRequery = async (gap, knownIds, budget) => {
+      const rows = this.indexer.searchFacts(gap, budget * 3)
+      const out: QueryResult[] = []
+      for (const row of rows) {
+        if (knownIds.has(row.id) || excludeIds?.has(row.id)) continue
+        out.push(this.toResult(row, includeContent))
+        if (out.length >= budget) break
+      }
+      return out
+    }
+
+    const { results, record } = await curateFacts({
+      llm: this.llm,
+      query,
+      results: response.results,
+      requery,
+    })
+
+    if (record.fellBack && record.dropped.length === 0 && record.added === 0) return response
+
+    const detail = [
+      response.retrieval.detail ?? '',
+      `curated:kept=${results.length},dropped=${record.dropped.length},requeried=${record.requeried.length},rounds=${record.rounds}`,
+    ]
+      .filter(Boolean)
+      .join(';')
+
     return {
       ...response,
-      results: filtered,
-      total: filtered.length,
-      retrieval: {
-        ...response.retrieval,
-        detail: `${response.retrieval.detail ?? ''};relevance_filtered:${filtered.length}`,
-      },
+      results,
+      total: results.length,
+      retrieval: { ...response.retrieval, detail, curation: record },
     }
   }
 

@@ -47,8 +47,9 @@ flowchart TD
    excluded via `excludeIds`.
 
 5. **LLM context** — ranked retrieval `results[]` via `formatRetrievedFactsForLLM()`
-   (`src/core/retrieval-context.ts`), 2000 chars per fact. An optional post-retrieval relevance filter
-   (`src/tools/facts-relevance-filter.ts`) may drop off-topic facts before synthesis.
+   (`src/core/retrieval-context.ts`), 2000 chars per fact. A post-retrieval **fact curator**
+   (`src/tools/fact-curator.ts`) hard-drops off-topic facts and runs bounded re-discovery for
+   gaps before synthesis; its decisions are recorded out-of-band, not added to the prompt.
 
 6. **Answer synthesis** — chat uses **`runChatSynthesis()`** (`chat-cli.ts`): multi-turn loop
    with optional `query_kb` tool calls. This is **not** the `kb query` path — CLI query uses
