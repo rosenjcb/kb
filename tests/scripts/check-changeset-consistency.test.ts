@@ -75,7 +75,7 @@ describe('evaluateChangesetConsistency', () => {
 
   it('passes for docs/config-only PRs with no bump', () => {
     const result = evaluateChangesetConsistency({
-      changedFiles: ['README.md', 'docs/DEPLOY_CLOUD_RUN.md'],
+      changedFiles: ['docs/skill-system.md', '.changeset/README.md'],
       pendingChangesets: [],
       kb: NO_BUMP,
       kbServer: NO_BUMP,

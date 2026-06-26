@@ -6,6 +6,7 @@ import { createHttpServer } from '../../src/server/http-server'
 import type { KbService } from '../../src/server/kb-service'
 import type { IntentResult } from '../../src/intents/types'
 import {
+  dispatchSlackEvent,
   verifySlackSignature,
   stripMentions,
   isDuplicateEvent,
@@ -46,6 +47,7 @@ function makeStubService(overrides: Partial<KbService> = {}): KbService {
     readFacts: async () => ({ results: [] }),
     reindex: async () => 'scanned 1 repo(s)',
     isReindexing: () => false,
+    waitForBootstrap: async () => {},
     health: () => ({ ok: true, base: 'base' }),
     close: async () => {},
     ...overrides,
@@ -158,6 +160,7 @@ describe('POST /slack/events', () => {
   const slackOpts = { signingSecret: TEST_SECRET, botToken: 'xoxb-test' }
 
   afterEach(async () => {
+    vi.unstubAllGlobals()
     if (server) {
       await new Promise<void>(resolve => server?.close(() => resolve()))
       server = undefined
@@ -318,5 +321,71 @@ describe('POST /slack/events', () => {
     const res = await fetch(`${base}/slack/events`, { method: 'POST', body: '{}' })
     expect(res.status).toBe(404)
     await new Promise<void>(resolve => noSlackServer.close(() => resolve()))
+  })
+})
+
+describe('dispatchSlackEvent bootstrap progress', () => {
+  it('posts indexing progress first, then answers after bootstrap settles', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+    }) as unknown as Response)
+    vi.stubGlobal('fetch', fetchMock)
+
+    let settleBootstrap!: () => void
+    const bootstrapSettled = new Promise<void>(resolve => {
+      settleBootstrap = resolve
+    })
+    let indexing = true
+    const service = makeStubService({
+      health: () => ({
+        ok: true,
+        base: 'base',
+        ...(indexing
+          ? {
+              indexing: true,
+              bootstrapProgress: '[init] @ catalog-service │ [========----------------] 2/6 document-facts 18/42 docs',
+            }
+          : {}),
+      }),
+      waitForBootstrap: async () => {
+        await bootstrapSettled
+      },
+      chat: async function* () {
+        yield { type: 'answer' as const, text: 'final answer', sources: [], factsRetrieved: 0 }
+        yield { type: 'done' as const }
+      },
+    })
+
+    const dispatch = dispatchSlackEvent(
+      service,
+      { signingSecret: TEST_SECRET, botToken: 'xoxb-test' },
+      {
+        type: 'event_callback',
+        event_id: `Ev-bootstrap-${Date.now()}`,
+        event: {
+          type: 'app_mention',
+          text: '<@U0001> hello',
+          user: 'U0001',
+          channel: 'C0001',
+          ts: '1234567890.000101',
+        },
+      },
+    )
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const firstPayload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? '{}')) as { text?: string }
+    expect(firstPayload.text).toContain('KB is still indexing its knowledge base.')
+    expect(firstPayload.text).toContain('catalog-service')
+    expect(firstPayload.text).toContain('I will reply with the answer once indexing is complete.')
+
+    indexing = false
+    settleBootstrap()
+    await dispatch
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const secondPayload = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body ?? '{}')) as { text?: string }
+    expect(secondPayload.text).toBe('final answer')
   })
 })

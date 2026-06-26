@@ -30,6 +30,7 @@ function makeStubService(overrides: Partial<KbService> = {}): KbService {
     readFacts: async () => ({ results: [] }),
     reindex: async () => 'scanned 1 repo(s)',
     isReindexing: () => false,
+    waitForBootstrap: async () => {},
     health: () => ({ ok: true, base: 'base' }),
     close: async () => {},
     ...overrides,
@@ -84,6 +85,35 @@ describe('createHttpServer', () => {
     expect(body.answer).toBe('answer for: how does auth work')
     expect(body.results[0]).toMatchObject({ id: 'd1', title: 'Doc' })
     expect(body.retrieval).toEqual({ method: 'hybrid', detail: 'deep' })
+  })
+
+  it('returns 503 for /v1/query while the server is bootstrapping its first index', async () => {
+    const query = vi.fn(makeStubService().query)
+    server = createHttpServer({
+      service: makeStubService({
+        query,
+        health: () => ({
+          ok: true,
+          base: 'base',
+          indexing: true,
+          bootstrapProgress: '[init] @ catalog-service │ [========----------------] 2/6 document-facts 18/42 docs',
+        }),
+      }),
+      apiKeys: [],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/v1/query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ q: 'how does auth work' }),
+    })
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({
+      error: 'server is indexing its knowledge base; try again soon',
+      status: 'indexing',
+      progress: '[init] @ catalog-service │ [========----------------] 2/6 document-facts 18/42 docs',
+    })
+    expect(query).not.toHaveBeenCalled()
   })
 
   it('returns 400 when q is missing', async () => {

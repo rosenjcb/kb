@@ -26,7 +26,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { handleMcpHttpRequest } from './mcp-server.js'
 import { serializeQueryResult } from './serialize.js'
 import { log } from './logger.js'
-import type { KbService } from './kb-service.js'
+import { BOOTSTRAP_INDEXING_MESSAGE, type KbService } from './kb-service.js'
 import {
   type SlackEventPayload,
   type SlackOptions,
@@ -168,6 +168,12 @@ interface QueryRequestBody {
   verbose?: boolean
 }
 
+interface ServiceUnavailableResponse {
+  error: string
+  status: 'indexing' | 'bootstrap_failed'
+  progress?: string
+}
+
 export function createHttpServer(options: HttpServerOptions): Server {
   const { service, apiKeys, enableMcp = false, requestTimeoutMs = 60_000, slack, onLog } = options
 
@@ -237,7 +243,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
       log[level]('response', { requestId, method, path: url, status, durationMs })
     })
 
-    // Unauthenticated health check (Cloud Run probes). Logged at debug so the
+    // Unauthenticated health check. Logged at debug so the
     // probe cadence doesn't flood info-level logs; the response line still records it.
     if (method === 'GET' && (url === '/healthz' || url === '/health')) {
       const health = service.health()
@@ -261,11 +267,21 @@ export function createHttpServer(options: HttpServerOptions): Server {
     }
 
     if (method === 'POST' && url === '/v1/query') {
+      const unavailable = serviceUnavailableError()
+      if (unavailable) {
+        sendJson(res, 503, unavailable)
+        return
+      }
       await handleQuery(req, res, ctx)
       return
     }
 
     if (method === 'POST' && url === '/v1/chat') {
+      const unavailable = serviceUnavailableError()
+      if (unavailable) {
+        sendJson(res, 503, unavailable)
+        return
+      }
       await handleChat(req, res, ctx)
       return
     }
@@ -276,6 +292,11 @@ export function createHttpServer(options: HttpServerOptions): Server {
     }
 
     if (enableMcp && url === '/mcp') {
+      const unavailable = serviceUnavailableError()
+      if (unavailable) {
+        sendJson(res, 503, unavailable)
+        return
+      }
       let body: unknown
       try {
         body = method === 'POST' ? await readJsonBody(req) : undefined
@@ -302,6 +323,25 @@ export function createHttpServer(options: HttpServerOptions): Server {
     // Unknown route — log so probes/misconfigured clients hitting bad paths are visible.
     log.warn('not found', { requestId, method, path: url })
     sendJson(res, 404, { error: 'not found' })
+  }
+
+  function serviceUnavailableError(): ServiceUnavailableResponse | null {
+    const health = service.health()
+    if (health.indexing) {
+      return {
+        error: BOOTSTRAP_INDEXING_MESSAGE,
+        status: 'indexing',
+        ...(health.bootstrapProgress ? { progress: health.bootstrapProgress } : {}),
+      }
+    }
+    if (health.bootstrapError) {
+      return {
+        error: `server bootstrap failed: ${health.bootstrapError}`,
+        status: 'bootstrap_failed',
+        ...(health.bootstrapProgress ? { progress: health.bootstrapProgress } : {}),
+      }
+    }
+    return null
   }
 
   async function handleQuery(req: IncomingMessage, res: ServerResponse, ctx: RequestCtx): Promise<void> {

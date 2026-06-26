@@ -3,7 +3,7 @@ type: Subsystem
 title: KB HTTP, MCP, and Slack Server
 description: Long-lived HTTP service with optional MCP at POST /mcp and optional Slack webhook handling at POST /slack/events.
 resource: ./src/server
-tags: [server, http, mcp, cloud-run, docker, tracing, logging]
+tags: [server, http, mcp, docker, tracing, logging]
 timestamp: 2026-06-24T00:00:00Z
 ---
 
@@ -29,7 +29,7 @@ flowchart LR
   HTTP --> MCP
 ```
 
-**Boundaries:** No git sync on each request (`runQueryPipeline` is stateless). Reindex is explicit (`POST /v1/reindex`) or scheduled (`KB_REINDEX_INTERVAL`). Server reindex uses incremental auto-sync semantics: every tracked repo is polled, but only repos with new commits are re-indexed. Chat history is **in-memory** per `sessionId`; restart clears sessions.
+**Boundaries:** No git sync on each request (`runQueryPipeline` is stateless). Reindex is explicit (`POST /v1/reindex`) or scheduled (`KB_REINDEX_INTERVAL`). The scheduled reindex timer is armed only after the first background bootstrap index succeeds, so an empty-volume boot cannot overlap periodic rescans. Server reindex uses incremental auto-sync semantics: every tracked repo is polled, but only repos with new commits are re-indexed. Chat history is **in-memory** per `sessionId`; restart clears sessions.
 
 ## Core pieces
 
@@ -47,7 +47,7 @@ flowchart LR
 ## Integration
 
 - **CLI:** `src/cli/index.ts` → `runServerCommand`.
-- **Boot-build:** missing `.kb-index.sqlite` → `kb init` or `kb scan` before `listen()`.
+- **Boot-build:** missing `.kb-index.sqlite` now runs in the background after `listen()`. `/healthz` comes up immediately; `/v1/query`, `/v1/chat`, and `/mcp` return `503` with an indexing message until the first build finishes.
 - **Docker:** `server start --with-mcp` in Dockerfile CMD; Slack is enabled by `KB_SERVER_ENABLE_SLACK=true`.
 - **Dev:** `pnpm run server:start` for a local process; `pnpm run server:up` for the guided Docker path.
 - **Observability:** Every request emits a `request` line on entry and a `response` line on finish (`status`, `durationMs`), both keyed by a UUID `requestId` also returned as the `x-request-id` response header. Each route adds semantic logs: query/chat/reindex/mcp emit start/complete/error with timings; `/healthz` logs at `debug`; auth failures and unknown routes log at `warn`. Control verbosity via `LOG_LEVEL` (`debug|info|warn|error`; default `info`). Set in `.env` / `docker-compose.yml` `LOG_LEVEL` env var.
@@ -99,8 +99,8 @@ Replace `testkey` / the URL when pointing at a deployed instance. If `mcp.json` 
 
 | Method / path | Auth | Purpose |
 |---|---|---|
-| `GET /healthz` | none | Liveness + `indexMtime` + `reindexing` |
-| `POST /v1/query` | Bearer | Synthesized answer + sources |
+| `GET /health` / `/healthz` | none | Liveness + `indexMtime` + `indexing` + `bootstrapProgress` + `reindexing` |
+| `POST /v1/query` | Bearer | Synthesized answer + sources; returns `503` with bootstrap progress while first indexing is still running |
 | `POST /v1/chat` | Bearer | Multi-turn SSE chat |
 | `POST /v1/reindex` | Bearer | Incremental rescan |
 | `POST /mcp` | Bearer | MCP Streamable HTTP when `--with-mcp` |
@@ -123,8 +123,9 @@ Configure your Slack app's **Event Subscriptions** URL to `https://<your-host>/s
 - `app_mention` — bot @-mentioned in a channel
 
 **Routing:**
-- `app_mention` → one synthesized `service.query({ synthesize: true })` call using the mention text with the bot mention stripped
-- replies are posted back to Slack in the same thread (`thread_ts ?? event.ts`)
+- `app_mention` → multi-turn chat keyed on `thread_ts ?? event.ts`, replying in the same thread
+- `message` (`channel_type=im`) → multi-turn chat keyed on the DM user/channel
+- if bootstrap indexing is still running, Slack gets an immediate status reply with the same progress line the API exposes, then the final answer is posted once indexing settles
 
 Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply loops. Slack retries are deduplicated by `event_id`.
 
@@ -133,7 +134,7 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 - Retrieval via `runQueryPipeline` or `streamChatTurn` only.
 - `reindex` is single-flight (`isReindexing()`).
 - MCP HTTP is stateless — fresh server + transport per request.
-- Boot-build completes before `listen()`.
+- Fresh-volume bootstrap runs after `listen()` so startup probes can pass during long first indexing.
 
 ## Extension checklist
 

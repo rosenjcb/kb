@@ -70,4 +70,23 @@ describe('startReindexScheduler', () => {
       vi.useRealTimers()
     }
   })
+
+  it('does not emit a completion line when a tick is intentionally skipped', async () => {
+    vi.useFakeTimers()
+    try {
+      const runReindex = vi.fn(async () => undefined)
+      const onLog = vi.fn()
+      const scheduler = startReindexScheduler({ intervalMs: 1000, runReindex, onLog })
+
+      await vi.advanceTimersByTimeAsync(1000)
+
+      expect(runReindex).toHaveBeenCalledTimes(1)
+      expect(onLog).toHaveBeenCalledWith('[reindex] scheduled every 1000ms')
+      expect(onLog).not.toHaveBeenCalledWith(expect.stringContaining('(1'))
+
+      scheduler.stop()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

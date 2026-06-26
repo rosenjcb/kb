@@ -18,7 +18,7 @@
 # Health (unauthenticated)
 # ---------------------------------------------------------------------------
 # @name health
-GET {{baseUrl}}/healthz
+GET {{baseUrl}}/health
 
 {{
   const assert = require('assert');

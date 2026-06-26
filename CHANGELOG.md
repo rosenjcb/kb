@@ -4,7 +4,17 @@
 
 ### Minor Changes
 
-- Replace the post-retrieval relevance filter with a judge-in-the-loop **fact curator**. After the research orchestrator dumps its island pool, the curator deterministically auto-keeps high-overlap facts, asks a single structured LLM verdict (`{keep, gaps, sufficient}`) keyed on the raw user question, then hard-drops everything off-topic — no 15% floor. When the judge reports gaps, the curator issues bounded shallow re-discovery queries to refill, so aggressive dropping stays safe. It fails safe on LLM/parse errors and never returns an empty set. Curator decisions are recorded out-of-band on `retrieval.curation`; they are never injected into the synthesis context.
+- Replace the post-retrieval relevance filter with a judge-in-the-loop **fact curator**. After the research orchestrator dumps its island pool, the curator deterministically auto-keeps high-overlap facts, asks a single structured LLM verdict (`{keep, gaps, sufficient}`) keyed on the raw user question, then hard-drops everything off-topic — no 15% floor. When the judge reports gaps, the curator issues bounded shallow re-discovery queries to refill, so aggressive dropping stays safe. It fails safe on LLM/parse errors and never returns an empty set. Curator decisions are recorded out-of-band on `retrieval.curation`; they are never injected into the synthesis context. Also removes the dead chat session-pool mechanism (`chat-conversation.ts`) and refreshes the query-workflow docs.
+
+### Patch Changes
+
+- Expose live bootstrap progress in server indexing responses and mirror that status through Slack while the first index build completes.
+
+## 0.14.1
+
+### Patch Changes
+
+- Start `kb server` before first-boot indexing completes, expose indexing state on `/healthz`, and return temporary indexing errors from query/chat/MCP until the initial background build finishes.
 
 ## 0.14.0
 
