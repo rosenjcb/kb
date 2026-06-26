@@ -79,11 +79,3 @@ export function formatToolQueryFactsForLLM(
     })
     .join('\n\n')
 }
-
-export function formatSessionPoolFactsForLLM(
-  poolFacts: Array<{ id: string; text: string }>
-): string {
-  return poolFacts
-    .map((f, i) => `${i + 1}. [${f.id}]\n${formatFactContentForLLM(f.text)}`)
-    .join('\n\n')
-}

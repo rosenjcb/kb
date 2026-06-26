@@ -3,7 +3,6 @@ import { createInterface } from 'node:readline/promises'
 import dayjs from 'dayjs'
 import {
   formatRetrievedFactsForLLM,
-  formatSessionPoolFactsForLLM,
   formatToolQueryFactsForLLM,
   MAX_FACT_CONTENT_CHARS,
 } from '../core/retrieval-context'
@@ -16,7 +15,6 @@ import { DatabaseSync } from 'node:sqlite'
 import { expandQueryWithGraph, kbIndexDbPath } from '../tools/graph-query-expansion'
 import { type Printer, createPrinter, createReasoningProgressSink } from '../ui/printer'
 import { resolveEffectiveBaseDir } from './base-selection'
-import type { SessionFact } from './chat-conversation'
 import { runDocsGenerateChatFlow } from './chat-docs-generate-flow'
 import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
 import type { IntentResult } from '../intents/types.js'
@@ -890,7 +888,6 @@ export function buildChatTurnContent(input: {
   question: string
   retrieval: ReadDocumentsResult
   graphRelationBlock?: string
-  sessionPool?: SessionFact[]
   allFacts?: boolean
 }): string {
   const alreadyInContext = input.retrieval.retrieval?.detail === 'all-facts:already-in-context'
@@ -906,17 +903,9 @@ export function buildChatTurnContent(input: {
       ].join('\n')
     : ''
 
-  const priorFactIds = new Set((input.retrieval.results ?? []).map(r => r.metadata?.id))
-  const poolFacts = (input.sessionPool ?? []).filter(f => !priorFactIds.has(f.id))
-  const poolSection =
-    poolFacts.length > 0
-      ? `Session fact pool (facts retrieved in earlier turns — still relevant context):\n${formatSessionPoolFactsForLLM(poolFacts)}`
-      : ''
-
   return [
     graphSection,
     `Retrieved evidence:\n${evidence}`,
-    poolSection,
     '',
     `User question: ${input.question}`,
   ]

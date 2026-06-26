@@ -9,7 +9,7 @@ export interface ChatQueryTruthInput {
   /** Same string `kb query` would use after graph-augmented query expansion. */
   expandedQuery: string
   retrievalLimit: number
-  /** Fact IDs already accumulated in the session pool — orchestrator skips these. */
+  /** Optional fact IDs to skip during retrieval. Unused by the chat path today (no cross-turn pool). */
   excludeIds?: string[]
 }
 

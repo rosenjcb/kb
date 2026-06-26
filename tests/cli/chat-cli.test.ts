@@ -85,39 +85,6 @@ describe('chat-cli prompt', () => {
     expect(content).not.toContain(long)
   })
 
-  it('Given a session pool with prior facts not in current retrieval, then turn content includes session pool section', () => {
-    const content = buildChatTurnContent({
-      question: 'What about AST support?',
-      retrieval: {
-        results: [
-          { metadata: { id: 'fact-new' }, content: 'AST promotes symbols to facts table.' },
-        ],
-      },
-      sessionPool: [
-        { id: 'fact-prior', text: 'Agent loop orchestrates retrieval across hops.' },
-      ],
-    })
-
-    expect(content).toContain('Session fact pool')
-    expect(content).toContain('fact-prior')
-    expect(content).toContain('Agent loop orchestrates retrieval across hops.')
-  })
-
-  it('Given a session pool where all facts are already in current retrieval, then no session pool section appears', () => {
-    const content = buildChatTurnContent({
-      question: 'What about AST support?',
-      retrieval: {
-        results: [
-          { metadata: { id: 'fact-a' }, content: 'AST promotes symbols to facts table.' },
-        ],
-      },
-      sessionPool: [
-        { id: 'fact-a', text: 'AST promotes symbols to facts table.' },
-      ],
-    })
-
-    expect(content).not.toContain('Session fact pool')
-  })
 })
 
 /** Build a provider mock that first routes via query_kb, then synthesizes from tool results. */

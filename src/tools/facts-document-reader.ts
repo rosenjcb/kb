@@ -21,7 +21,7 @@ export interface QueryDocumentsInput {
   limit?: number
   includeContent?: boolean
   surface?: 'query' | 'chat'
-  /** Fact IDs already in the caller's session pool — orchestrator will skip these entirely. */
+  /** Optional fact IDs to skip during retrieval entirely (caller-supplied exclusions). */
   excludeIds?: string[]
   /** When true, bypass all query expansion and load every fact in the KB. */
   allFacts?: boolean

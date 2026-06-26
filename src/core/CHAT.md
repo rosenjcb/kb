@@ -12,6 +12,13 @@ timestamp: 2026-06-21T00:00:00Z
 This doc is the **source of truth** for how the interactive chat session works.
 Update it when behavior changes.
 
+**Mental model:** chat is currently *a series of KB queries with user input between
+turns*. Each user message drives one or more `query_kb` retrievals over the **same**
+`query_truth` path as `kb query` — including the post-retrieval **fact curator**. The only
+thing that persists across turns is the prior question/answer **prose** in `messages[]`;
+there is **no** persistent cross-turn fact pool. Relevance is therefore re-decided per query
+by the curator, not carried forward and re-filtered.
+
 ## How a chat turn works
 
 ```mermaid
@@ -43,26 +50,30 @@ flowchart TD
 
 4. **Retrieval** — `executeChatQueryTruthRetrieval()` → `runQueryTruthRetrieval()` →
    `runIntentLoop` → router → `read_facts` → `FactsQueryResearchOrchestrator` (up to 24
-   passes, plateau/frontier-based early exit). Facts already in the session pool are
-   excluded via `excludeIds`.
+   passes, plateau/frontier-based early exit). Each retrieval is independent — facts are not
+   carried over from prior turns (`query_truth` still accepts an optional `excludeIds`, but the
+   chat path does not populate it).
 
-5. **LLM context** — ranked retrieval `results[]` via `formatRetrievedFactsForLLM()`
-   (`src/core/retrieval-context.ts`), 2000 chars per fact. A post-retrieval **fact curator**
-   (`src/tools/fact-curator.ts`) hard-drops off-topic facts and runs bounded re-discovery for
-   gaps before synthesis; its decisions are recorded out-of-band, not added to the prompt.
+5. **Curation** — when the pool exceeds 12 facts, the **fact curator**
+   (`src/tools/fact-curator.ts`) judges it against the user's question, hard-drops off-topic
+   facts, and runs bounded re-discovery to refill gaps. Decisions are recorded out-of-band on
+   `retrieval.curation` — never added to the prompt. See `src/tools/FACT_CURATOR.md`.
 
-6. **Answer synthesis** — chat uses **`runChatSynthesis()`** (`chat-cli.ts`): multi-turn loop
+6. **LLM context** — surviving `results[]` via `formatRetrievedFactsForLLM()`
+   (`src/core/retrieval-context.ts`), 2000 chars per fact.
+
+7. **Answer synthesis** — chat uses **`runChatSynthesis()`** (`chat-cli.ts`): multi-turn loop
    with optional `query_kb` tool calls. This is **not** the `kb query` path — CLI query uses
    one-shot `enrichReadDocumentsAnswerWithLLM()` instead (see `QUERY_INTERNALS.md`).
 
-7. **Evidence header** — one `evidence>` summary line (count, mix, themes, leads, walk/stop/conf).
+8. **Evidence header** — one `evidence>` summary line (count, mix, themes, leads, walk/stop/conf).
    See `src/core/EVIDENCE_SUMMARY.md`.
 
-8. **Weak evidence signal** — when retrieval stops with `weak_evidence_after_exhaustion`,
+9. **Weak evidence signal** — when retrieval stops with `weak_evidence_after_exhaustion`,
    `buildToolQueryResult` appends a note telling the LLM to try different query terms before
    concluding information is unavailable.
 
-9. **Orchestration footer** — `printReadDocumentsOrchestrationFooter()` prints `retrieval>`,
+10. **Orchestration footer** — `printReadDocumentsOrchestrationFooter()` prints `retrieval>`,
    `matches>`, `sources>`, `timing>`. Use `--verbose` for `summary>`/`confidence>` rows,
    `--debug` for per-document provenance.
 
@@ -84,6 +95,8 @@ surfaces. The orchestrator module is the **same contract** as query without a fo
 - All tool calls in a single LLM round execute concurrently — never sequentially.
 - `buildToolQueryResult` always appends the weak-evidence hint when `weak_evidence_after_exhaustion` is in the retrieval detail.
 - Decompose only fires when `SYNTHESIS_QUERY_RE` matches AND input is ≥40 chars.
+- No fact pool persists across turns; each turn's retrieval is independent and the curator re-decides relevance per query.
+- Curator decisions are recorded out-of-band on `retrieval.curation` and never injected into the synthesis prompt.
 
 ## See also
 

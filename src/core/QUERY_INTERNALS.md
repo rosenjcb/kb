@@ -114,7 +114,7 @@ Terminal **`evidence>`** is a **single summary header** (`formatEvidenceSummaryH
 
 | Layer | Default |
 |-------|---------|
-| Facts sent to synthesis | Ranked pool above `MIN_FACT_SCORE` (0.20); optional relevance filter when **>20** facts |
+| Facts sent to synthesis | Ranked pool above `MIN_FACT_SCORE` (0.20); **fact curator** hard-drops off-topic facts + re-discovers gaps when **>12** facts |
 | Per-fact content | 2000 chars (`MAX_FACT_CONTENT_CHARS`) |
 | Per DB call | 50 rows (`perIterationLimit`) |
 | Loop passes | 24 (`KB_FACTS_QUERY_MAX_ITERS`; absolute max 512) |
