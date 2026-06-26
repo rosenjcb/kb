@@ -13,7 +13,7 @@ module.exports = {
       baseUrl: 'http://localhost:8080',
     },
     prod: {
-      baseUrl: 'https://kb-server-REPLACE.run.app',
+      baseUrl: 'https://kb-y47gkpkfuq-uc.a.run.app',
     },
   },
 }

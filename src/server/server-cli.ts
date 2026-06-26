@@ -52,53 +52,58 @@ async function resolveServerBaseDir(plan: BootstrapPlan): Promise<ResolvedBase> 
   return { baseDir: resolved.baseDir, baseRef: resolved.baseName }
 }
 
+interface BootstrapTask {
+  startMessage: string
+  successMessage: string
+  run(): Promise<void>
+}
+
 /**
- * Boot-build the index when the volume has none. Builds from the declared bootstrap
- * plan (`--git` flags, env, or a `kb-server.json` manifest — see `server-bootstrap.ts`)
- * on a fresh volume, or rescans the base's tracked repos when meta already exists.
- *
- * When an index already exists, the persisted graph is reused for fast restarts — except
- * that any repo newly declared in the plan but not yet tracked (e.g. added to the manifest
- * since the last boot) is folded in via idempotent `kb init`, so a server node converges on
- * its declared repo set without manual intervention. Runs before the service so the index
- * file exists when the tool registry opens it.
+ * Decide whether this node needs background bootstrap work after it begins listening.
+ * Fresh volumes build/scan in the background so `/healthz` can come up immediately for
+ * startup probes; warm volumes can optionally fold in newly declared repos.
  */
-async function ensureIndexBuilt(
+async function planBootstrapTask(
   base: ResolvedBase,
   plan: BootstrapPlan,
   log: (line: string) => void
-): Promise<void> {
+): Promise<BootstrapTask | null> {
   if (existsSync(kbIndexDbPath(base.baseDir))) {
-    await syncNewlyDeclaredRepos(base, plan, log)
-    return
+    return await planNewRepoSync(base, plan, log)
   }
 
   if (plan.gitTargets.length > 0) {
-    log(
-      `No index found; building "${base.baseRef}" from ${plan.source} (${plan.gitTargets.length} repo(s))…`
-    )
-    await runKbInit({
-      base: base.baseRef,
-      nonInteractive: true,
-      gitTargets: plan.gitTargets,
-      ignorePatterns: plan.ignore,
-    })
-    log('Index build complete.')
-    return
+    return {
+      startMessage: `No index found; building "${base.baseRef}" from ${plan.source} (${plan.gitTargets.length} repo(s)) in the background…`,
+      successMessage: 'Index build complete.',
+      run: async () => {
+        await runKbInit({
+          base: base.baseRef,
+          nonInteractive: true,
+          gitTargets: plan.gitTargets,
+          ignorePatterns: plan.ignore,
+          progressSink: log,
+        })
+      },
+    }
   }
 
   const meta = await readBaseMeta(base.baseDir)
   if (meta && meta.repos.length > 0) {
-    log(`No index found; scanning ${meta.repos.length} tracked repo(s)…`)
-    await runScanCommand(['--base', base.baseRef], log)
-    log('Index build complete.')
-    return
+    return {
+      startMessage: `No index found; scanning ${meta.repos.length} tracked repo(s) in the background…`,
+      successMessage: 'Index build complete.',
+      run: async () => {
+        await runScanCommand(['--base', base.baseRef], log)
+      },
+    }
   }
 
   log(
     '⚠  No index and no repos configured. Declare repos via --git, KB_SERVER_BASE_GIT_REPOS ' +
       '(or KB_GIT_REPOS), or a kb-server.json manifest; run `kb init`; or POST /v1/reindex once a base tracks repos.'
   )
+  return null
 }
 
 /**
@@ -107,25 +112,30 @@ async function ensureIndexBuilt(
  * the base, re-syncs it, and clones + indexes the new remotes. Routine refresh of already-
  * tracked repos is left to the reindex scheduler, not boot.
  */
-async function syncNewlyDeclaredRepos(
+async function planNewRepoSync(
   base: ResolvedBase,
   plan: BootstrapPlan,
-  log: (line: string) => void
-): Promise<void> {
-  if (plan.gitTargets.length === 0) return
+  log: (line: string) => void,
+): Promise<BootstrapTask | null> {
+  if (plan.gitTargets.length === 0) return null
   const meta = await readBaseMeta(base.baseDir)
   const tracked = new Set((meta?.repos ?? []).map(repo => repo.slug))
   const newCount = plan.gitTargets.filter(t => !tracked.has(repoSlugFromGitUrl(t.url))).length
-  if (newCount === 0) return
+  if (newCount === 0) return null
 
-  log(`Index present; folding in ${newCount} newly-declared repo(s) from ${plan.source}…`)
-  await runKbInit({
-    base: base.baseRef,
-    nonInteractive: true,
-    gitTargets: plan.gitTargets,
-    ignorePatterns: plan.ignore,
-  })
-  log('Repo sync complete.')
+  return {
+    startMessage: `Index present; folding in ${newCount} newly-declared repo(s) from ${plan.source} in the background…`,
+    successMessage: 'Repo sync complete.',
+    run: async () => {
+      await runKbInit({
+        base: base.baseRef,
+        nonInteractive: true,
+        gitTargets: plan.gitTargets,
+        ignorePatterns: plan.ignore,
+        progressSink: log,
+      })
+    },
+  }
 }
 
 /** Wait for SIGINT/SIGTERM, then run cleanup and resolve. */
@@ -162,9 +172,24 @@ export async function runServerCommand(
 
   const plan = await resolveBootstrapPlan(args)
   const base = await resolveServerBaseDir(plan)
-  await ensureIndexBuilt(base, plan, line => out.log(line))
+  let settleBootstrap!: () => void
+  const bootstrapSettled = new Promise<void>(resolve => {
+    settleBootstrap = resolve
+  })
+  const bootstrapState = {
+    indexing: false as boolean,
+    error: undefined as string | undefined,
+    progressLine: undefined as string | undefined,
+    settled: bootstrapSettled,
+  }
+  const recordBootstrapProgress = (line: string): void => {
+    bootstrapState.progressLine = line
+    out.log(line)
+  }
+  const bootstrapTask = await planBootstrapTask(base, plan, line => recordBootstrapProgress(line))
+  if (bootstrapTask) bootstrapState.indexing = true
 
-  const service = createKbService({ baseDir: base.baseDir, config })
+  const service = createKbService({ baseDir: base.baseDir, config, bootstrapState })
   const apiKeys = readApiKeys()
   if (apiKeys.length === 0) {
     out.error('⚠  KB_SERVER_API_KEY is not set — /v1 and /mcp are UNAUTHENTICATED.')
@@ -175,14 +200,26 @@ export async function runServerCommand(
   if (intervalMs === undefined) {
     throw new Error(`Invalid KB_REINDEX_INTERVAL: ${process.env.KB_REINDEX_INTERVAL}`)
   }
-  const scheduler = startReindexScheduler({
-    intervalMs,
-    runReindex: onProgress => service.reindex(onProgress),
-    onLog: line => {
-      out.error(line)
-      log.info(line)
-    },
-  })
+  let scheduler = {
+    stop() {},
+    isRunning: () => false,
+  }
+  const startScheduler = (): void => {
+    scheduler = startReindexScheduler({
+      intervalMs,
+      runReindex: async onProgress => {
+        if (bootstrapState.indexing) {
+          onProgress?.('skipped: bootstrap indexing still in progress')
+          return undefined
+        }
+        return await service.reindex(onProgress)
+      },
+      onLog: line => {
+        out.error(line)
+        log.info(line)
+      },
+    })
+  }
 
   const slackSigningSecret = process.env.SLACK_SIGNING_SECRET?.trim()
   const slackBotToken = process.env.SLACK_BOT_TOKEN?.trim()
@@ -231,6 +268,29 @@ export async function runServerCommand(
   out.log(
     `   POST /v1/query   POST /v1/chat   GET /healthz   POST /v1/reindex${enableMcp ? '   POST /mcp' : ''}${slack ? '   POST /slack/events' : ''}`
   )
+
+  if (bootstrapTask) {
+    bootstrapState.progressLine = bootstrapTask.startMessage
+    out.log(bootstrapTask.startMessage)
+    void (async () => {
+      try {
+        await bootstrapTask.run()
+        out.log(bootstrapTask.successMessage)
+        startScheduler()
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        bootstrapState.error = message
+        out.error(`⚠  Background bootstrap failed: ${message}`)
+        log.error('background bootstrap failed', { error: message, base: path.basename(base.baseDir) })
+      } finally {
+        bootstrapState.indexing = false
+        settleBootstrap()
+      }
+    })()
+  } else {
+    settleBootstrap()
+    startScheduler()
+  }
 
   await waitForShutdown(async () => {
     scheduler.stop()

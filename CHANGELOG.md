@@ -1,5 +1,11 @@
 # kb
 
+## 0.14.1
+
+### Patch Changes
+
+- Start `kb server` before first-boot indexing completes, expose indexing state on `/healthz`, and return temporary indexing errors from query/chat/MCP until the initial background build finishes.
+
 ## 0.14.0
 
 ### Minor Changes

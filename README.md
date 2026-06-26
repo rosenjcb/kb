@@ -261,8 +261,7 @@ curl http://localhost:8080/healthz
 ```
 
 Full getting-started, config reference, and the `kb-server.json` manifest:
-**[`packages/kb-server/README.md`](packages/kb-server/README.md)**. Managed cloud deploy:
-[`docs/DEPLOY_CLOUD_RUN.md`](docs/DEPLOY_CLOUD_RUN.md).
+**[`packages/kb-server/README.md`](packages/kb-server/README.md)**.
 
 **Slack bot:** point a Slack workspace at the same `kb server` so people can ask
 `@kb <question>` in channels. Slack handling now runs inside `kb-server` itself; enable

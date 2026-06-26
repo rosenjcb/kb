@@ -67,4 +67,24 @@ describe('createKbService', () => {
     expect(service.isReindexing()).toBe(false)
     await service.close()
   })
+
+  it('health reports indexing while background bootstrap is still running', async () => {
+    const baseDir = await makeBaseWithFacts()
+    const bootstrapState = {
+      indexing: true,
+      progressLine: '[init] @ catalog-service │ [========----------------] 2/6 document-facts 18/42 docs',
+      settled: Promise.resolve(),
+    }
+    const service = createKbService({
+      baseDir,
+      config: {} as KbConfig,
+      bootstrapState,
+    })
+
+    const health = service.health()
+    expect(health.ok).toBe(true)
+    expect(health.indexing).toBe(true)
+    expect(health.bootstrapProgress).toContain('catalog-service')
+    await service.close()
+  })
 })

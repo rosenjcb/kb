@@ -26,7 +26,7 @@ sequenceDiagram
   Runner->>Docker: up --build --wait
   Docker->>Mock: start
   Docker->>KB: boot-build index
-  Runner->>KB: GET /healthz (host, 2× ok)
+  Runner->>KB: GET /health (host, 2× ok)
   Runner->>Yac: send server.http --all
   Yac->>KB: 10 requests + assert blocks
   Runner->>Docker: down -v
@@ -76,7 +76,7 @@ Post-response scripts live in `{{ }}` blocks and must **`const assert = require(
 ## Gotchas
 
 - Root `"type": "module"` breaks httpyac loading `.httpyac.js` unless `http/package.json` forces CommonJS.
-- First Docker boot clones + indexes before `/healthz` returns `indexMtime` — do not run httpyac until health wait passes.
+- First Docker boot may report `indexing: true` plus `bootstrapProgress` before the initial build finishes.
 - `prod` env `baseUrl` is a placeholder; replace before real deploy smoke tests.
 
 ## Related docs

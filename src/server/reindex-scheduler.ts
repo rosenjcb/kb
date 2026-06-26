@@ -49,8 +49,8 @@ export interface ReindexScheduler {
 
 export interface ReindexSchedulerOptions {
   intervalMs: number
-  /** Runs one incremental rescan; resolves with a human summary. */
-  runReindex: (onProgress?: (line: string) => void) => Promise<string>
+  /** Runs one incremental rescan; resolves with a human summary, or `undefined` when skipped. */
+  runReindex: (onProgress?: (line: string) => void) => Promise<string | undefined>
   onLog?: (line: string) => void
 }
 
@@ -77,7 +77,9 @@ export function startReindexScheduler(options: ReindexSchedulerOptions): Reindex
     const startedAt = Date.now()
     try {
       const summary = await runReindex(line => onLog?.(`[reindex] ${line}`))
-      onLog?.(`[reindex] ${summary} (${Date.now() - startedAt}ms)`)
+      if (summary) {
+        onLog?.(`[reindex] ${summary} (${Date.now() - startedAt}ms)`)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       onLog?.(`[reindex] failed: ${message}`)
