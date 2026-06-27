@@ -113,6 +113,16 @@ export { computeWeightedTokenTotal } from './eval-shared.mjs'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const KB_REPO = path.resolve(__dirname, '..')
 
+/**
+ * The kb binary the harvest drives. Defaults to this checkout's build, but `KB_EVAL_BIN`
+ * points it at any other `kb.js` — so the *same* (new) eval scripts can score a main-built
+ * binary and a branch-built one for a fair before/after. The harness and rubric stay fixed;
+ * only the system under test changes.
+ */
+const KB_BIN = process.env.KB_EVAL_BIN
+  ? path.resolve(process.env.KB_EVAL_BIN)
+  : path.join(KB_REPO, 'dist/bin/kb.js')
+
 function resolveRepoDirInRun(runDir, repoUrl) {
   if (repoUrl && String(repoUrl).trim()) {
     return path.join(runDir, repoLeafNameFromUrl(repoUrl))
@@ -268,6 +278,8 @@ Advanced:
   --run-dir PATH          With --skip-init: reuse existing scratch dir
   --skip-init             Skip all kb commands; re-score existing q*.json
   --hypothesis TEXT
+  KB_EVAL_BIN=PATH        Drive a different kb.js (env). Lets these same scripts score a
+                          main build vs a branch build for a fair before/after.
 
 Layout (per run, snapshot clone):
   ~/.kb/evaluations/<run-name>/<repo-name>/  git clone
@@ -282,7 +294,7 @@ function kbEnv() {
 }
 
 function kb(cwd, args, opts = {}) {
-  const bin = path.join(KB_REPO, 'dist/bin/kb.js')
+  const bin = KB_BIN
   return execSync(`node "${bin}" ${args}`, {
     encoding: 'utf8',
     env: kbEnv(),
@@ -594,9 +606,13 @@ async function main() {
     process.exit(1)
   }
 
-  const kbBin = path.join(KB_REPO, 'dist/bin/kb.js')
+  const kbBin = KB_BIN
   if (!fs.existsSync(kbBin)) {
-    console.error('Missing dist/bin/kb.js — run: pnpm run build')
+    console.error(
+      process.env.KB_EVAL_BIN
+        ? `Missing kb binary at KB_EVAL_BIN=${kbBin} — build it there first (pnpm run build).`
+        : 'Missing dist/bin/kb.js — run: pnpm run build (or set KB_EVAL_BIN to another kb.js).'
+    )
     process.exit(1)
   }
 

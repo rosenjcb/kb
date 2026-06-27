@@ -88,6 +88,23 @@ pnpm run eval -- --suite raylib --base my-custom-session
 | `pnpm run eval -- --suite kb` | Self-check against `eval-kb` |
 | `pnpm run eval -- --suite generic --repo <git-url>` | Any repo (requires explicit `--repo`) |
 
+**Before/after across binaries (`KB_EVAL_BIN`).** The harness defaults to this checkout's
+`dist/bin/kb.js`, but `KB_EVAL_BIN=/path/to/other/dist/bin/kb.js` points it at any other build.
+This is how you fairly compare a **main** binary against a **branch** binary: run *these same
+scripts* (one fixed rubric + judge) against each binary in turn, then diff the two artifacts.
+
+```bash
+# "before" — main build, scored by the new rubric
+KB_EVAL_BIN=/path/to/kb-main/dist/bin/kb.js pnpm run eval -- --suite kb --auto-score
+# "after" — this branch's build (default binary)
+pnpm run eval -- --suite kb --auto-score
+```
+
+The scoring is backwards-compatible with old outputs: a main binary emits no curator audit, so
+`curation_summary` is simply omitted (other metrics, including the judged `relevance` axis, are
+unaffected), and pre-relevance artifacts already on disk render their relevance/curation columns
+as `-` rather than erroring.
+
 **Suites (`--suite`)**
 
 - `raylib` — Eight raylib-specific questions.
