@@ -49,6 +49,12 @@ import {
   allocateRunName,
   gitCloneSnapshot,
   printTrendsSummary,
+  writeResearchResultsTex,
+  findLatestSuiteArtifact,
+  conditionSideLabel,
+  conditionSideLongLabel,
+  suiteDisplayLabel,
+  RESEARCH_RESULT_SUITES,
   formatScoreDelta,
   formatCompactTokens,
   formatDurationMs,
@@ -93,6 +99,12 @@ export {
   adequacyUtility,
   computeAdequacyQuality,
   ADEQUACY_THRESHOLD,
+  writeResearchResultsTex,
+  findLatestSuiteArtifact,
+  conditionSideLabel,
+  conditionSideLongLabel,
+  suiteDisplayLabel,
+  RESEARCH_RESULT_SUITES,
 }
 export { SUCCESS_WEIGHTS, SUCCESS_BUDGETS, SUCCESS_TOKEN_CACHE_DISCOUNT } from './eval-shared.mjs'
 export { computeWeightedTokenTotal } from './eval-shared.mjs'
@@ -518,6 +530,7 @@ async function main() {
   }
 
   const suiteId = suiteConfig.id
+  const suiteLabel = suiteDisplayLabel(suiteId)
   if (!args.repo && suiteConfig.repoUrl) {
     args.repo = suiteConfig.repoUrl
   }
@@ -594,10 +607,11 @@ async function main() {
   }
 
   if (!args.skipCapture) {
+    console.error(`[eval] suite=${suiteId} (${suiteLabel}) · base=${base} · mode=${evalMode}`)
     console.error(`[eval] workdir ${workdir}`)
     console.error(`[eval] target cwd ${targetCwd}`)
     console.error(
-      `[eval] base "${base}" — ${needsInit ? 'no docs found, running kb init' : 'session exists, reusing'}; kb scan before queries`
+      `[eval] session "${base}" — ${needsInit ? 'no docs found, running kb init' : 'session exists, reusing'}; kb scan before K queries`
     )
 
     if (needsInit) {
@@ -643,7 +657,7 @@ async function main() {
     let q = 1
     let queryTotalMs = 0
     for (const question of questions) {
-      console.error(`[eval] query ${q}/8`)
+      console.error(`[eval] ${suiteLabel} · K query ${q}/8`)
       const escaped = question.replace(/"/g, '\\"')
       const label = `query_${q}`
       const out = timed(label, runTiming, () => kb(targetCwd, `query "${escaped}" --base ${base}`))
@@ -926,13 +940,14 @@ async function main() {
       ? 'custom agent cmd'
       : `${args.controlAgent} agent`
     console.error(
-      `[eval] control phase — ${controlLabel}, no kb (--skip-control to disable)`
+      `[eval] control phase · suite=${suiteId} (${suiteLabel}) · ${controlLabel}, condition N (--skip-control to disable)`
     )
     try {
       const control = await runControlPass({
         repoDir: targetCwd,
         workdir: path.join(runDir, 'control'),
         suiteConfig,
+        suiteLabel,
         model: args.controlModel,
         maxTurns: args.controlMaxTurns,
         agentCmd: args.controlAgentCmd,
@@ -957,6 +972,14 @@ async function main() {
   console.error(`[eval] wrote ${outPath}`)
 
   printTrendsSummary(suiteId, KB_REPO, { currentRunId: runName })
+
+  try {
+    const { outPath: resultsPath } = writeResearchResultsTex(KB_REPO)
+    console.error(`[eval] research results → ${resultsPath}`)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error(`[eval] research results export skipped: ${msg}`)
+  }
 }
 
 const _isMain =

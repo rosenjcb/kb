@@ -109,7 +109,7 @@ Speed claims are measured by indexing the **same target snapshot** with two
 different `kb` binaries (main build vs feature build), not by changing the target
 repo. Latest run: ~24% faster init on the kb self-check, ~46% on raylib
 (`db0870f`), with fact/doc/code-fact/docs counts identical across builds. Headline
-numbers live in `research/tables/latest_results.tex` (see `research/README.md`).
+numbers live in `research/tables/results.tex` (see `research/README.md`).
 
 ## Upfront Questions
 

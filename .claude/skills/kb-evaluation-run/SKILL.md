@@ -48,6 +48,21 @@ Flags: `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`
 
 Artifacts default under `~/.kb/evaluations/<run-name>/`.
 
+## Research paper coupling (`results.tex`)
+
+Each harvest run regenerates `research/tables/results.tex` from the latest scored
+artifacts for the `kb` and `raylib` suites. The paper (`research/main.tex`) inputs
+only that file — abstract, eval table, and conclusion share the same macros so
+result numbers cannot drift across sections.
+
+```bash
+pnpm run research:results   # re-export without re-running eval
+pnpm run research:build     # compile main.pdf
+```
+
+Eval summary output distinguishes **suite** (e.g. `raylib`) from **condition**
+(K = `kb query`, N = control agent).
+
 ## Comparing runs — always use eval:trends
 
 `npm run eval:trends` is the canonical comparison tool. **Never write ad-hoc Python or bash scripts to compare run results.** It shows structural metrics (docs, entities, relationships, avg query result count) for every run, plus score columns when `--auto-score` was used.

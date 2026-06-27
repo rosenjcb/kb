@@ -9,7 +9,7 @@
 well-documented game-programming framework---as the primary \emph{external}
 benchmark: it is not the KB codebase (eliminating evaluator familiarity bias),
 has rich cross-module structure for graph retrieval, and has stable upstream
-documentation.  Latest build-under-test results in \S\ref{subsec:results}
+documentation.  Latest harvest results in \S\ref{subsec:results}
 include both raylib and the KB self-check suite.
 
 \textbf{KB self-check.}  Suite \texttt{kb} evaluates KB against its
@@ -129,27 +129,23 @@ the headline grade.
 \noindent\textbf{Scoring stability.}  The auto-scorer (Gemini 2.5 Flash) is
 non-deterministic even at temperature~0; we average three scorer calls per question.
 
-\subsection{Results: build-under-test and control status}
+\subsection{Results: harvest K vs N}
 \label{subsec:results}
 
-Table~\ref{tab:latest-quality} is generated from macros in
-\texttt{research/tables/latest\_results.tex}; the abstract, table, and
+Table~\ref{tab:harvest-results} is generated from macros in
+\texttt{research/tables/results.tex}; the abstract, table, and
 conclusion all refer to those macros so stale cross-section result drift cannot
-recur.  The current experiment fixes the target repository snapshot and changes
-only the KB binary used to index, scan, and query.  This isolates whether the
-latest indexing optimizations change retrieval behavior.
+recur.  The file is regenerated automatically after each \texttt{pnpm run eval}
+(and via \texttt{pnpm run research:results}) from the latest scored artifacts
+under \texttt{\textasciitilde/.kb/evaluations/}.
 
-\input{tables/latest-quality}
+\input{tables/harvest-results}
 
-\noindent\textbf{Interpretation.}  On the KB self-check target, the optimized
-build produces identical fact, document, and edge counts and matches pass rate.
-On raylib, the optimized build produces identical fact and document counts; its
-graph differs by only two edges out of \LatestRaylibMainEdges{}, with unchanged
-pass rate and slightly higher mean correctness in this judge sample.  These
-results show no measured quality regression in the latest build-under-test runs.
-
-\medskip
-\noindent\textbf{Control status.}  The latest run does not report $\Delta S$
-because \LatestControlStatus{}.  Earlier K-vs-N numbers are therefore not used as
-headline claims in this revision; they should be regenerated as paired artifacts
-before making a current control-vs-KB claim.
+\noindent\textbf{Interpretation.}  On kb self-check (run \KbSelfCheckRunId{}),
+$\Delta S = \KbSelfCheckDeltaS{}$ with $S_K = \KbSelfCheckKS{}$ and $S_N = \KbSelfCheckNS{}$;
+K completes the eight-question side in \KbSelfCheckKDurationSec{}s using \KbSelfCheckKTokens{}
+weighted tokens vs.\ N at \KbSelfCheckNDurationSec{}s and \KbSelfCheckNTokens{} tokens.
+On raylib (run \RaylibRunId{}), $\Delta S = \RaylibDeltaS{}$ with $S_K = \RaylibKS{}$ and
+$S_N = \RaylibNS{}$; K is faster (\RaylibKDurationSec{}s vs.\ \RaylibNDurationSec{}s) while N
+leads on adequacy ($Q_{\text{adeq}}$: \RaylibKQadeq{} vs.\ \RaylibNQadeq{}).
+All headline numbers above come from \texttt{results.tex}; \ResultsControlStatus{}.

@@ -5,13 +5,10 @@
 We introduced KB, a local-first, facts-first codebase knowledge system.
 KB's deterministic AST indexing and multi-pond BFS retrieval provide
 agents with structured, persistent codebase knowledge without per-session re-exploration.
-\texttt{kb query} uses one-shot synthesis over a capped fact pool.  In the latest
-build-under-test runs, the optimized KB build preserves pass rate on both the
-\texttt{kb} self-check suite and the external \texttt{raylib} suite while keeping
-fact and document counts stable.  The current revision does not claim a fresh
-$\Delta S$ against a real-agent control because \LatestControlStatus{}; those
-paired K/N rows should be regenerated before making a current control-vs-KB
-headline claim.
+\texttt{kb query} uses one-shot synthesis over a capped fact pool.  Paired harvest runs
+(\ResultsUpdated{}) report $\Delta S = \KbSelfCheckDeltaS{}$ on the \texttt{kb} self-check
+suite and $\Delta S = \RaylibDeltaS{}$ on raylib (Table~\ref{tab:harvest-results}).
+\ResultsControlStatus{}.
 
 We also introduced MOEL, a multi-objective evaluation framework spanning two pipelines:
 (1)~the harvest runner, whose headline grade is $\Delta S = S_K - S_N$ from a single
@@ -19,5 +16,6 @@ artifact comparing \texttt{kb query} to a real coding agent on the same eight qu
 and (2)~the deep MOEL harness ($L_\text{MOEL}$), which measures exploration loss under
 toy-tool N/K/O conditions per task.  Bias-mitigated jury ensemble, statistical calibration,
 and programmatic validators distinguish efficient exploration from expensive correctness.
-The immediate empirical next step is to run paired controls for both \texttt{kb}
-and \texttt{raylib} against the same latest-results source used by this paper.
+The immediate empirical next step is to keep paired controls current for both \texttt{kb}
+and \texttt{raylib} by re-running \texttt{pnpm run eval -- --auto-score}; the paper macros
+in \texttt{research/tables/results.tex} track the latest artifacts automatically.

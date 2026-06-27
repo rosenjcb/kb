@@ -26,6 +26,7 @@
     "uninstall:global": "bash scripts/uninstall-global.sh",
     "research:build": "cd research && latexmk -pdf -interaction=nonstopmode main.tex && echo '→ research/main.pdf'",
     "research:clean": "cd research && latexmk -C",
+    "research:results": "node scripts/update-research-results.mjs",
     "eval": "node scripts/eval-run.mjs",
     "moel": "node scripts/moel-run.mjs",
     "test": "NODE_OPTIONS=--no-warnings vitest run",

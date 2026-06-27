@@ -69,40 +69,33 @@ research/
     conclusion.tex      Conclusion
   tables/
     benchmark-alignment.tex   MOEL vs SWE Atlas / ContextBench / CodeScaleBench
-    latest_results.tex        Single source for headline result macros
-    latest-quality.tex        Query quality table driven by latest_results.tex
+    results.tex               Auto-generated harvest macros (single source of truth)
+    harvest-results.tex       Results table driven by results.tex
+    latest_results.tex        Deprecated build-under-test macros (not input by main.tex)
   figures/              Drop rendered figures here (PDF or PNG)
   generated/            Scratch space for auto-generated assets
 ```
 
 ## Results: single source of truth
 
-Every headline number — `S`, `ΔS`, `S_K`/`S_N`, correctness, pass rate, run ID,
-KB token totals — is defined **once** as a macro in `tables/latest_results.tex`
-and referenced from `intro.tex`, `eval.tex`, and `conclusion.tex`. This exists
-because earlier drafts hardcoded numbers per section and drifted: the abstract
-quoted `ΔS = +0.128` from one run while the eval section quoted `ΔS = +0.045`
-from another and the conclusion reverted to the first — a reviewer-visible
-inconsistency.
+Every headline number — `S`, `ΔS`, `S_K`/`S_N`, rubric means, token totals, run IDs —
+is defined **once** in the auto-generated file `tables/results.tex` and referenced
+from `intro.tex`, `eval.tex`, `conclusion.tex`, and `tables/harvest-results.tex`.
+This exists because earlier drafts hardcoded numbers per section and drifted.
 
 Invariants:
 
-- **Never hardcode a result number in a prose section.** Reference the macro from
-  `tables/latest_results.tex` so abstract, results, and conclusion cannot
-  diverge. `latest-quality.tex` is generated from the same macros.
-- **One run is the source for all reported numbers** — the run named by the
-  `\LatestResults*` macros. Do not mix runs across sections.
-- **The paper does not render init/scan times.** Runtime macros exist in
-  `latest_results.tex` for internal reporting only; keep them out of prose.
-- **Results cover both targets** (`kb` self-check and `raylib`) and mark control
-  rows explicitly when control data was not collected.
+- **Never hardcode a result number in a prose section.** Reference a macro from
+  `tables/results.tex` so abstract, results, and conclusion cannot diverge.
+- **One artifact per suite is the source** — the run named by `\RaylibRunId` /
+  `\KbSelfCheckRunId` in `results.tex`. Do not mix runs across sections.
+- **Regenerate after eval runs:** `pnpm run eval -- --suite … --auto-score` updates
+  `results.tex` automatically; or run `pnpm run research:results` by hand.
+- **`latest_results.tex` is deprecated** (old build-under-test macros). Do not
+  `\input` it from `main.tex`.
 
-The eval harness (`scripts/eval-run.mjs`) writes a per-run `runtime.json` into
-each run's workdir (init/scan/docs/graph/logs and per-query durations, plus
-`query_total_duration_ms`) and folds it into the run artifact under `runtime`.
-That file is the raw timing source; `latest_results.tex` is curated from it by
-hand when the paper is refreshed. Runtimes are also a coding signal for agents —
-they show where the scan pipeline actually spends time.
+The eval harness writes per-run `artifact.json` under `~/.kb/evaluations/`; the
+export reads the latest scored artifact for each paper suite (`kb`, `raylib`).
 
 ## Figures
 
