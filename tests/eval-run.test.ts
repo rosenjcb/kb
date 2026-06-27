@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import {
   buildCoverageAudit,
   computeSuccessScore,
@@ -6,6 +9,7 @@ import {
   adequacyUtility,
   ADEQUACY_THRESHOLD,
   computeWeightedTokenTotal,
+  conditionSideLabel,
   derivedBase,
   formatScoreDelta,
   formatCompactTokens,
@@ -26,6 +30,7 @@ import {
   stripCliBanner,
   structuralMetric,
   worstQuestionGaps,
+  writeResearchResultsTex,
 } from '../scripts/eval-run.mjs'
 
 describe('sanitizeSlugPart', () => {
@@ -429,5 +434,98 @@ describe('parseLatestRunIdForCommand', () => {
 
   it('returns null when command is absent', () => {
     expect(parseLatestRunIdForCommand(sample, 'publish')).toBeNull()
+  })
+})
+
+describe('conditionSideLabel', () => {
+  it('maps kb condition to K and control to N', () => {
+    expect(conditionSideLabel('kb')).toBe('K')
+    expect(conditionSideLabel('control')).toBe('N')
+  })
+})
+
+describe('writeResearchResultsTex', () => {
+  it('writes LaTeX macros from scored artifacts', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-results-'))
+    const evalRoot = path.join(tmp, '.kb', 'evaluations')
+    const runDir = path.join(evalRoot, 'raylib-test-run')
+    fs.mkdirSync(runDir, { recursive: true })
+    const artifact = {
+      schema_version: 2,
+      status: 'complete',
+      created_at: '2026-06-26T12:00:00.000Z',
+      run_label: 'raylib-test-run',
+      repository: { name: 'raylib', commit: 'deadbeef1234567890' },
+      run: {
+        suite: 'raylib',
+        init_result: {
+          written_docs: 36,
+          graph_summary: { entities: 100, relationships: 200 },
+        },
+      },
+      query_scoring: {
+        mode: 'llm_judge_avg_3',
+        provider: 'gemini',
+        model: 'gemini-2.5-flash',
+      },
+      aggregate_scores: {
+        query: {
+          success_score: 0.7,
+          quality_score: 0.9,
+          token_efficiency: 0.3,
+          speed_score: 0.6,
+          mean_correctness: 3.5,
+          mean_usefulness: 3.2,
+          pass_rate_correctness_and_usefulness_at_least_3: 0.75,
+        },
+      },
+      kb_query_telemetry: {
+        total_input_tokens: 100000,
+        total_output_tokens: 5000,
+        total_duration_ms: 120000,
+      },
+      control: {
+        status: 'complete',
+        agent: { name: 'cursor-agent', model: 'composer-2.5' },
+        aggregate_scores: {
+          query: {
+            success_score: 0.75,
+            quality_score: 1.0,
+            token_efficiency: 0.32,
+            speed_score: 0.31,
+            mean_correctness: 4.0,
+            mean_usefulness: 4.0,
+            pass_rate_correctness_and_usefulness_at_least_3: 1.0,
+          },
+        },
+        control_telemetry: {
+          total_weighted_tokens: 678000,
+          total_duration_ms: 400000,
+        },
+      },
+    }
+    fs.writeFileSync(path.join(runDir, 'artifact.json'), JSON.stringify(artifact))
+
+    const repoRoot = path.join(tmp, 'repo')
+    fs.mkdirSync(path.join(repoRoot, 'research', 'tables'), { recursive: true })
+    fs.mkdirSync(path.join(repoRoot, 'eval', 'suites'), { recursive: true })
+    fs.writeFileSync(
+      path.join(repoRoot, 'eval', 'suites', 'raylib.yaml'),
+      `id: raylib\ndisplay_name: raylib\nrepo_url: https://github.com/raysan5/raylib.git\nrubric_focus: raylib\nquestions:\n${Array.from({ length: 8 }, (_, i) => `- q${i + 1}`).join('\n')}`
+    )
+
+    const prevHome = process.env.HOME
+    process.env.HOME = tmp
+    try {
+      const { outPath } = writeResearchResultsTex(repoRoot, { suites: ['raylib'] })
+      const tex = fs.readFileSync(outPath, 'utf8')
+      expect(tex).toContain('\\newcommand{\\RaylibRunId}{raylib-test-run}')
+      expect(tex).toContain('\\newcommand{\\RaylibDeltaS}{-0.050}')
+      expect(tex).toContain('\\newcommand{\\RaylibKS}{0.700}')
+      expect(tex).toContain('\\newcommand{\\RaylibNS}{0.750}')
+    } finally {
+      process.env.HOME = prevHome
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
   })
 })

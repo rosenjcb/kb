@@ -1,0 +1,30 @@
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{Latest harvest evaluation (\ResultsUpdated; \ResultsJudge{}).
+Each side is from a single paired artifact (\texttt{pnpm run eval -- --suite \textit{suite} --auto-score}).
+Run ids: \KbSelfCheckRunId{} (kb self-check), \RaylibRunId{} (raylib).
+Headline grades: $\Delta S = S_K - S_N$ is \KbSelfCheckDeltaS{} on kb self-check and \RaylibDeltaS{} on raylib.}
+\label{tab:harvest-results}
+\begin{tabular}{@{}llrrrrrrrr@{}}
+\toprule
+\textbf{Suite} & \textbf{Side} & $S$ & $Q_{\text{adeq}}$ & $E_{\text{tok}}$ & $E_{\text{speed}}$ &
+Pass & Corr & Tokens & Time (s) \\
+\midrule
+\KbSelfCheckTarget & K (\texttt{kb query}) &
+\KbSelfCheckKS & \KbSelfCheckKQadeq & \KbSelfCheckKEtok & \KbSelfCheckKEspeed &
+\KbSelfCheckKPass & \KbSelfCheckKCorrectness & \KbSelfCheckKTokens & \KbSelfCheckKDurationSec \\
+\KbSelfCheckTarget & N (\KbSelfCheckControlAgent{}) &
+\KbSelfCheckNS & \KbSelfCheckNQadeq & \KbSelfCheckNEtok & \KbSelfCheckNEspeed &
+\KbSelfCheckNPass & \KbSelfCheckNCorrectness & \KbSelfCheckNTokens & \KbSelfCheckNDurationSec \\
+\addlinespace
+\RaylibTarget & K (\texttt{kb query}) &
+\RaylibKS & \RaylibKQadeq & \RaylibKEtok & \RaylibKEspeed &
+\RaylibKPass & \RaylibKCorrectness & \RaylibKTokens & \RaylibKDurationSec \\
+\RaylibTarget & N (\RaylibControlAgent{}) &
+\RaylibNS & \RaylibNQadeq & \RaylibNEtok & \RaylibNEspeed &
+\RaylibNPass & \RaylibNCorrectness & \RaylibNTokens & \RaylibNDurationSec \\
+\bottomrule
+\end{tabular}
+\end{table*}

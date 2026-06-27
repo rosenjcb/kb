@@ -243,6 +243,7 @@ export async function runControlPass({
   repoDir,
   workdir,
   suiteConfig,
+  suiteLabel = null,
   model = null,
   maxTurns = DEFAULT_MAX_TURNS,
   agentCmd = null,
@@ -258,14 +259,15 @@ export async function runControlPass({
   const questions = suiteConfig.questions
   const agentName = agentCmd ? 'custom' : backend === 'cursor' ? 'cursor-agent' : 'claude-code'
   const agentDesc = describeAgentCommand({ agentCmd, controlAgent: backend ?? 'claude', model, maxTurns })
+  const tag = suiteLabel ? `${suiteLabel} · N` : 'N'
   fs.mkdirSync(workdir, { recursive: true })
-  console.error(`[control] agent ${agentDesc}`)
+  console.error(`[control] ${tag} · agent ${agentDesc}`)
 
   // One agent call per question
   const perQuestion = []
   let q = 1
   for (const question of questions) {
-    console.error(`[control] agent ${q}/${questions.length}`)
+    console.error(`[control] ${tag} · agent ${q}/${questions.length}`)
     const prompt = controlPrompt.replace('{{question}}', question)
     let answer = ''
     let telemetry = null

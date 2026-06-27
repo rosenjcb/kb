@@ -111,8 +111,14 @@ export function normalizeSuiteDoc(raw, sourceFile) {
     answers = raw.answers.map(a => a.trim())
   }
 
+  const displayName =
+    typeof raw.display_name === 'string' && raw.display_name.trim()
+      ? raw.display_name.trim()
+      : id
+
   return {
     id,
+    displayName,
     questions: qs.map(s => s.trim()),
     answers,
     rubricPhrase: rubric.trim(),
@@ -512,6 +518,30 @@ export function conditionOf(artifact) {
   return null
 }
 
+/** Paper condition shorthand: K = kb query side, N = control agent (no KB). */
+export function conditionSideLabel(cond) {
+  if (cond === 'control') return 'N'
+  return 'K'
+}
+
+/** Human-readable condition label for eval summaries (suite ≠ condition). */
+export function conditionSideLongLabel(cond) {
+  if (cond === 'control') return 'N (control agent)'
+  return 'K (kb query)'
+}
+
+/** Suite display name from eval/suites/<id>.yaml (falls back to id). */
+export function suiteDisplayLabel(suiteId) {
+  try {
+    return loadVendorSuite(suiteId).displayName ?? suiteId
+  } catch {
+    return suiteId
+  }
+}
+
+/** Suites exported to research/tables/results.tex for the paper. */
+export const RESEARCH_RESULT_SUITES = ['kb', 'raylib']
+
 // ---------------------------------------------------------------------------
 // Run directory allocation + clone (shared by eval-run.mjs and control-core.mjs)
 // ---------------------------------------------------------------------------
@@ -736,6 +766,255 @@ function _gatherArtifacts(repoRoot) {
   return rows
 }
 
+/** Most recent scored harvest artifact for a suite (K-side artifact.json). */
+export function findLatestSuiteArtifact(suiteId, repoRoot) {
+  return (
+    _gatherArtifacts(repoRoot)
+      .filter(row => matchesSuite(row, suiteId))
+      .filter(row => conditionOf(row.artifact) !== 'control')
+      .filter(row => row.artifact?.aggregate_scores?.query?.success_score != null)
+      .sort((a, b) => {
+        const ta = new Date(a.artifact?.created_at ?? 0).getTime()
+        const tb = new Date(b.artifact?.created_at ?? 0).getTime()
+        return tb - ta
+      })[0]?.artifact ?? null
+  )
+}
+
+function _texEscape(s) {
+  return String(s)
+    .replace(/\\/g, '\\textbackslash{}')
+    .replace(/_/g, '\\_')
+    .replace(/&/g, '\\&')
+    .replace(/#/g, '\\#')
+    .replace(/\{/g, '\\{')
+    .replace(/\}/g, '\\}')
+}
+
+function _texMacro(name, value) {
+  return `\\newcommand{\\${name}}{${value}}`
+}
+
+function _texNum(n, decimals = 3) {
+  if (n === null || n === undefined || Number.isNaN(Number(n))) return '---'
+  return Number(n).toFixed(decimals)
+}
+
+function _texSigned(n, decimals = 3) {
+  if (n === null || n === undefined || Number.isNaN(Number(n))) return '---'
+  const v = Number(n)
+  const s = v.toFixed(decimals)
+  return v >= 0 ? `+${s}` : s
+}
+
+function _texInt(n) {
+  if (n === null || n === undefined || Number.isNaN(Number(n))) return '---'
+  return Math.round(Number(n))
+    .toLocaleString('en-US')
+    .replace(/,/g, '{,}')
+}
+
+function _texDurationSec(ms) {
+  if (ms === null || ms === undefined || Number.isNaN(Number(ms))) return '---'
+  return String(Math.round(Number(ms) / 1000))
+}
+
+function _sideHarvestMetrics(artifact, side) {
+  const data = side === 'K' ? artifact : artifact?.control
+  if (!data?.aggregate_scores?.query) return null
+  const scores = _queryScores(data)
+  const tel = _runTelemetry(artifact, side === 'K' ? 'kb' : 'control')
+  const init = side === 'K' ? artifact?.run?.init_result : null
+  return {
+    success: scores.success,
+    quality: scores.quality,
+    tokenEfficiency: scores.tokens,
+    speed: scores.speed,
+    pass: scores.pass,
+    correctness: scores.correctness,
+    usefulness: scores.usefulness,
+    specificity: scores.specificity,
+    evidence: scores.evidence,
+    weightedTokens: tel.weightedTokens,
+    durationMs: tel.durationMs,
+    cacheReadTokens: tel.cacheReadTokens,
+    costUsd: tel.costUsd,
+    docs: init?.written_docs ?? null,
+    entities: init?.graph_summary?.entities ?? null,
+    relationships: init?.graph_summary?.relationships ?? null,
+  }
+}
+
+function _controlCollected(artifact) {
+  const st = artifact?.control?.status
+  return st === 'complete' || st === 'complete_unscored'
+}
+
+function _judgeLabel(artifact) {
+  const qs = artifact?.query_scoring
+  if (!qs?.provider || !qs?.model) return 'LLM judge (provider unknown)'
+  const mode = qs.mode === 'llm_judge_avg_3' ? ', averaged over three scorer calls' : ''
+  const model = String(qs.model).replace(/^gemini-/i, 'Gemini ').replace(/^gpt-/i, 'GPT-')
+  const prov =
+    qs.provider.toLowerCase() === 'gemini'
+      ? ''
+      : `${qs.provider.charAt(0).toUpperCase()}${qs.provider.slice(1)} `
+  return `${prov}${model}${mode}`.trim()
+}
+
+function _formatRunDate(iso) {
+  if (!iso) return 'unknown date'
+  return new Date(iso).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+function _suiteTexPrefix(suiteId) {
+  if (suiteId === 'kb') return 'KbSelfCheck'
+  if (suiteId === 'raylib') return 'Raylib'
+  return suiteId
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join('')
+}
+
+function _suiteTargetLabel(suiteId, artifact) {
+  if (suiteId === 'kb') return '\\texttt{kb} self-check'
+  if (suiteId === 'raylib') {
+    const commit = artifact?.repository?.commit
+    const short = commit ? commit.slice(0, 7) : 'unknown'
+    return `\\texttt{raylib} commit \\texttt{${_texEscape(short)}}`
+  }
+  const name = artifact?.repository?.name ?? suiteDisplayLabel(suiteId)
+  return `\\texttt{${_texEscape(name)}}`
+}
+
+function _controlAgentLabel(artifact) {
+  const agent = artifact?.control?.agent
+  if (!agent?.name) return 'unknown agent'
+  const model = agent.model ? ` ${agent.model}` : ''
+  const name = agent.name.replace(/-agent$/i, '').replace(/-/g, ' ')
+  return `${name.charAt(0).toUpperCase() + name.slice(1)}${model}`
+}
+
+function _emitSuiteResults(lines, suiteId, artifact) {
+  const prefix = _suiteTexPrefix(suiteId)
+  const k = artifact ? _sideHarvestMetrics(artifact, 'K') : null
+  const n = artifact && _controlCollected(artifact) ? _sideHarvestMetrics(artifact, 'N') : null
+  const deltaS =
+    k?.success != null && n?.success != null ? k.success - n.success : null
+
+  lines.push(`%% ── suite ${suiteId} ──`)
+  if (!artifact) {
+    lines.push(_texMacro(`${prefix}RunId`, '---'))
+    lines.push(_texMacro(`${prefix}RunDate`, 'no scored run found'))
+    lines.push(_texMacro(`${prefix}Target`, _suiteTargetLabel(suiteId, null)))
+    lines.push(_texMacro(`${prefix}ControlCollected`, 'no'))
+    lines.push(_texMacro(`${prefix}DeltaS`, '---'))
+    lines.push('')
+    return
+  }
+
+  lines.push(_texMacro(`${prefix}RunId`, _texEscape(artifact.run_label ?? artifact.run?.run_name ?? '---')))
+  lines.push(_texMacro(`${prefix}RunDate`, _formatRunDate(artifact.created_at)))
+  lines.push(_texMacro(`${prefix}Target`, _suiteTargetLabel(suiteId, artifact)))
+  lines.push(
+    _texMacro(`${prefix}ControlCollected`, _controlCollected(artifact) ? 'yes' : 'no')
+  )
+  lines.push(_texMacro(`${prefix}ControlAgent`, _texEscape(_controlAgentLabel(artifact))))
+  lines.push(_texMacro(`${prefix}DeltaS`, _texSigned(deltaS)))
+
+  for (const [side, m] of [
+    ['K', k],
+    ['N', n],
+  ]) {
+    lines.push(_texMacro(`${prefix}${side}S`, _texNum(m?.success)))
+    lines.push(_texMacro(`${prefix}${side}Qadeq`, _texNum(m?.quality)))
+    lines.push(_texMacro(`${prefix}${side}Etok`, _texNum(m?.tokenEfficiency)))
+    lines.push(_texMacro(`${prefix}${side}Espeed`, _texNum(m?.speed)))
+    lines.push(_texMacro(`${prefix}${side}Pass`, _texNum(m?.pass)))
+    lines.push(_texMacro(`${prefix}${side}Correctness`, _texNum(m?.correctness, 3)))
+    lines.push(_texMacro(`${prefix}${side}Usefulness`, _texNum(m?.usefulness, 3)))
+    lines.push(_texMacro(`${prefix}${side}Tokens`, _texInt(m?.weightedTokens)))
+    lines.push(_texMacro(`${prefix}${side}DurationSec`, _texDurationSec(m?.durationMs)))
+    lines.push(_texMacro(`${prefix}${side}Docs`, _texInt(m?.docs)))
+    lines.push(_texMacro(`${prefix}${side}Entities`, _texInt(m?.entities)))
+    lines.push(_texMacro(`${prefix}${side}Rels`, _texInt(m?.relationships)))
+  }
+  lines.push('')
+}
+
+/**
+ * Regenerate research/tables/results.tex from the latest scored harvest artifacts.
+ * Called after eval runs and via `pnpm run research:results`.
+ */
+export function writeResearchResultsTex(repoRoot, options = {}) {
+  const suites = options.suites ?? RESEARCH_RESULT_SUITES
+  const outPath =
+    options.outPath ?? path.join(repoRoot, 'research', 'tables', 'results.tex')
+
+  const suiteArtifacts = Object.fromEntries(
+    suites.map(id => [id, findLatestSuiteArtifact(id, repoRoot)])
+  )
+  const dated = suites
+    .map(id => suiteArtifacts[id]?.created_at)
+    .filter(Boolean)
+    .sort()
+    .reverse()[0]
+
+  const judgeArtifact =
+    suiteArtifacts.kb?.query_scoring?.provider != null
+      ? suiteArtifacts.kb
+      : suiteArtifacts.raylib
+
+  const allHaveControl = suites.every(id => {
+    const a = suiteArtifacts[id]
+    return a && _controlCollected(a)
+  })
+  const anyHaveControl = suites.some(id => {
+    const a = suiteArtifacts[id]
+    return a && _controlCollected(a)
+  })
+
+  let controlStatus
+  if (allHaveControl) {
+    controlStatus = 'paired K-vs-N harvest runs collected for both \\texttt{kb} and \\texttt{raylib} suites (\\ResultsUpdated)'
+  } else if (anyHaveControl) {
+    const missing = suites
+      .filter(id => {
+        const a = suiteArtifacts[id]
+        return !a || !_controlCollected(a)
+      })
+      .map(id => `\\texttt{${id}}`)
+      .join(' and ')
+    controlStatus = `control side missing or incomplete for ${missing}; see Table~\\ref{tab:harvest-results}`
+  } else {
+    controlStatus =
+      'no paired control runs in the latest scored artifacts; run \\texttt{pnpm run eval -- --auto-score} with a control agent'
+  }
+
+  const lines = [
+    '% Auto-generated by writeResearchResultsTex — do not edit by hand.',
+    '% Regenerated after eval harvest runs and via `pnpm run research:results`.',
+    '',
+    _texMacro('ResultsUpdated', _formatRunDate(dated ?? new Date().toISOString())),
+    _texMacro('ResultsJudge', _texEscape(_judgeLabel(judgeArtifact))),
+    _texMacro('ResultsControlStatus', controlStatus),
+    '',
+  ]
+
+  for (const suiteId of suites) {
+    _emitSuiteResults(lines, suiteId, suiteArtifacts[suiteId])
+  }
+
+  fs.mkdirSync(path.dirname(outPath), { recursive: true })
+  fs.writeFileSync(outPath, `${lines.join('\n')}\n`, 'utf-8')
+  return { outPath, suites: suiteArtifacts }
+}
+
 /**
  * Print a structured eval summary: this-run scorecard, kb trend, recent history.
  * `options.currentRunId` highlights the run that just finished (basename of run dir).
@@ -794,9 +1073,10 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
   const kbScores = currentKb?.scores ?? _queryScores(currentArtifact)
 
   const runLabel = currentKb?.id ?? currentRunId ?? 'latest'
+  const suiteLabel = suiteDisplayLabel(suiteId)
   console.log('')
   console.log(_summaryLine('═'))
-  console.log(` eval summary · suite=${suiteId} · ${runLabel}`)
+  console.log(` eval summary · suite=${suiteId} (${suiteLabel}) · ${runLabel}`)
   console.log(_summaryLine('═'))
 
   if (ctrlForCompare && kbScores) {
@@ -807,20 +1087,20 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
     }
     const deltaS = delta('success')
     console.log('')
-    console.log(' THIS RUN — kb vs control')
+    console.log(` THIS RUN — ${conditionSideLongLabel('kb')} vs ${conditionSideLongLabel('control')} · ${suiteLabel}`)
     console.log(
       ` ΔS = ${formatScoreDelta(deltaS).trim()}  (${kbControlVerdict(kbScores, ctrlForCompare)}, threshold ±0.02)`
     )
     console.log(' S = 0.60·Q_adeq + 0.30·E_tok + 0.10·E_speed')
     console.log('            S      Q_adeq  E_tok  E_speed')
     console.log(
-      ` control   ${_padScore(ctrlForCompare.success)}  ${_padScore(ctrlForCompare.quality)}  ${_padScore(ctrlForCompare.tokens)}  ${_padScore(ctrlForCompare.speed)}`
+      ` N (ctrl)  ${_padScore(ctrlForCompare.success)}  ${_padScore(ctrlForCompare.quality)}  ${_padScore(ctrlForCompare.tokens)}  ${_padScore(ctrlForCompare.speed)}`
     )
     console.log(
-      ` kb        ${_padScore(kbScores.success)}  ${_padScore(kbScores.quality)}  ${_padScore(kbScores.tokens)}  ${_padScore(kbScores.speed)}`
+      ` K (query) ${_padScore(kbScores.success)}  ${_padScore(kbScores.quality)}  ${_padScore(kbScores.tokens)}  ${_padScore(kbScores.speed)}`
     )
     console.log(
-      ` Δ kb−ctrl ${formatScoreDelta(delta('success'))}  ${formatScoreDelta(delta('quality'))}  ${formatScoreDelta(delta('tokens'))}  ${formatScoreDelta(delta('speed'))}`
+      ` Δ K−N     ${formatScoreDelta(delta('success'))}  ${formatScoreDelta(delta('quality'))}  ${formatScoreDelta(delta('tokens'))}  ${formatScoreDelta(delta('speed'))}`
     )
 
     const kbTel = _runTelemetry(currentArtifact, 'kb')
@@ -830,14 +1110,14 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
       console.log(' TELEMETRY (8 questions)')
       console.log('            tokens   time')
       console.log(
-        ` kb         ${formatCompactTokens(kbTel.weightedTokens).padStart(6)}  ${formatDurationMs(kbTel.durationMs).padStart(5)}`
+        ` K (query) ${formatCompactTokens(kbTel.weightedTokens).padStart(6)}  ${formatDurationMs(kbTel.durationMs).padStart(5)}`
       )
       console.log(
-        ` control    ${formatCompactTokens(ctrlTel.weightedTokens).padStart(6)}  ${formatDurationMs(ctrlTel.durationMs).padStart(5)}`
+        ` N (ctrl)  ${formatCompactTokens(ctrlTel.weightedTokens).padStart(6)}  ${formatDurationMs(ctrlTel.durationMs).padStart(5)}`
       )
       if (ctrlTel.cacheReadTokens) {
         console.log(
-          `            control weighted: input+output+0.1×cache (${formatCompactTokens(ctrlTel.cacheReadTokens)} cache read)`
+          `            N weighted: input+output+0.1×cache (${formatCompactTokens(ctrlTel.cacheReadTokens)} cache read)`
         )
       }
       if (kbTel.costUsd != null || ctrlTel.costUsd != null) {
@@ -845,7 +1125,7 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
           kbTel.costUsd != null ? `$${Number(kbTel.costUsd).toFixed(2)}` : '  -'
         const ctrlCost =
           ctrlTel.costUsd != null ? `$${Number(ctrlTel.costUsd).toFixed(2)}` : '  -'
-        console.log(`            cost  kb ${kbCost}  control ${ctrlCost}`)
+        console.log(`            cost  K ${kbCost}  N ${ctrlCost}`)
       }
     }
 
@@ -853,13 +1133,13 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
     console.log(' RUBRIC (secondary)')
     console.log('            pass    corr     use')
     console.log(
-      ` control   ${_padScore(ctrlForCompare.pass)}  ${_padScore(ctrlForCompare.correctness)}  ${_padScore(ctrlForCompare.usefulness)}`
+      ` N (ctrl)  ${_padScore(ctrlForCompare.pass)}  ${_padScore(ctrlForCompare.correctness)}  ${_padScore(ctrlForCompare.usefulness)}`
     )
     console.log(
-      ` kb        ${_padScore(kbScores.pass)}  ${_padScore(kbScores.correctness)}  ${_padScore(kbScores.usefulness)}`
+      ` K (query) ${_padScore(kbScores.pass)}  ${_padScore(kbScores.correctness)}  ${_padScore(kbScores.usefulness)}`
     )
     console.log(
-      ` Δ kb−ctrl ${formatScoreDelta(delta('pass'))}  ${formatScoreDelta(delta('correctness'))}  ${formatScoreDelta(delta('usefulness'))}`
+      ` Δ K−N     ${formatScoreDelta(delta('pass'))}  ${formatScoreDelta(delta('correctness'))}  ${formatScoreDelta(delta('usefulness'))}`
     )
     if (sameRunControl && currentArtifact?.query_evaluation?.length) {
       const worst = worstQuestionGaps(
@@ -870,10 +1150,10 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
       ).filter(g => g.gap < 0)
       if (worst.length) {
         console.log('')
-        console.log(' WEAKEST (corr gap, kb − control)')
+        console.log(' WEAKEST (corr gap, K − N)')
         for (const g of worst) {
           console.log(
-            `   Q${g.q}  ${g.topic.padEnd(42)}  kb=${g.kb.toFixed(1)}  ctrl=${g.ctrl.toFixed(1)}  Δ=${formatScoreDelta(g.gap).trim()}`
+            `   Q${g.q}  ${g.topic.padEnd(42)}  K=${g.kb.toFixed(1)}  N=${g.ctrl.toFixed(1)}  Δ=${formatScoreDelta(g.gap).trim()}`
           )
         }
       }
@@ -881,7 +1161,7 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
 
   } else if (kbScores) {
     console.log('')
-    console.log(' THIS RUN — kb only (no control in artifact)')
+    console.log(` THIS RUN — K (kb query) only · ${suiteLabel} (no control in artifact)`)
     console.log(
       ` S=${_padScore(kbScores.success).trim()}  Q_adeq=${_padScore(kbScores.quality).trim()}  E_tok=${_padScore(kbScores.tokens).trim()}  E_speed=${_padScore(kbScores.speed).trim()}`
     )
@@ -902,7 +1182,7 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
     const tokSeries = kbHistory.map(r => r.token_efficiency)
     const speedSeries = kbHistory.map(r => r.speed_score)
     console.log('')
-    console.log(' KB TREND (last runs)')
+    console.log(` K TREND · suite ${suiteLabel} (last runs)`)
     console.log(` S        ${sparkline(successSeries)}  ${_trendNote(successSeries)}`)
     console.log(` E_tok    ${sparkline(tokSeries)}  ${_trendNote(tokSeries)}`)
     console.log(` E_speed  ${sparkline(speedSeries)}  ${_trendNote(speedSeries)}`)
@@ -913,7 +1193,7 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
   console.log('')
   console.log(' RECENT RUNS')
   console.log(
-    `${'date'.padEnd(17)} ${'who'.padEnd(7)} ${'S'.padStart(6)} ${'Q'.padStart(6)} ${'tok'.padStart(6)} ${'spd'.padStart(6)}  run`
+    `${'date'.padEnd(17)} ${'side'.padEnd(7)} ${'S'.padStart(6)} ${'Q'.padStart(6)} ${'tok'.padStart(6)} ${'spd'.padStart(6)}  run`
   )
   console.log(_summaryLine())
   for (const r of recent) {
@@ -922,7 +1202,7 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
     const id =
       r.id.length > W ? `${r.id.slice(0, W - 1)}…` : r.id
     console.log(
-      `${dt.padEnd(17)} ${r.cond.padEnd(7)} ${_padScore(r.success_score).padStart(6)} ${_padScore(r.quality_score)} ${_padScore(r.token_efficiency)} ${_padScore(r.speed_score)}  ${id}${marker}`
+      `${dt.padEnd(17)} ${conditionSideLabel(r.cond).padEnd(7)} ${_padScore(r.success_score).padStart(6)} ${_padScore(r.quality_score)} ${_padScore(r.token_efficiency)} ${_padScore(r.speed_score)}  ${id}${marker}`
     )
   }
   console.log(_summaryLine('═'))

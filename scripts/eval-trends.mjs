@@ -15,6 +15,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { suiteDisplayLabel } from './eval-shared.mjs'
 
 function parseArgs(argv) {
   const out = { suite: '', limit: 50, help: false }
@@ -202,7 +203,7 @@ function main() {
     typeof r.usefulness === 'number' && (r.usefulness > 0 || r.pass_rate > 0 || r.correctness > 0)
   )
 
-  console.log(`[eval-trends] suite=${args.suite}  runs=${filtered.length}  scored=${scoredRuns.length}`)
+  console.log(`[eval-trends] suite=${args.suite} (${suiteDisplayLabel(args.suite)})  runs=${filtered.length}  scored=${scoredRuns.length}`)
   console.log(`[eval-trends] latest  docs=${fmtN(last.docs).trim()} entities=${fmtN(last.entities).trim()} rels=${fmtN(last.rels).trim()} avg_results=${last.avg_results !== null ? last.avg_results.toFixed(1) : '-'}`)
   if (scoredRuns.length) {
     const sl = scoredRuns[scoredRuns.length - 1]

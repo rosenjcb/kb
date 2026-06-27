@@ -19,7 +19,7 @@
 
 %% ─── Version (auto-updated by scripts/update-research-version.mjs) ──────────
 \input{version}
-\input{tables/latest_results}
+\input{tables/results}
 
 %% ─── Title block + section spacing (SWE-agent-style rhythm) ────────────────
 \makeatletter
@@ -87,12 +87,10 @@
   diminishing returns above $\tau{=}3$) with token economy and latency, scored
   identically for KB-equipped and control runs.  The project grade is
   $\Delta S = S_K - S_N$ from a single eval artifact (Eq.~\ref{eq:delta-s}).
-  In the latest build-under-test evaluation (\LatestResultsDate), the optimized
-  KB build preserves query quality on both the \texttt{kb} self-check and
-  \texttt{raylib} suites while producing the same fact and document counts as the
-  main build.  Fresh real-agent control rows were \LatestControlStatus{}, so the
-  current paper reports build-to-build behavior and marks paired $\Delta S$
-  control claims as pending.
+  In the latest paired harvest runs (\ResultsUpdated), KB self-check yields
+  $\Delta S = \KbSelfCheckDeltaS{}$ ($S_K = \KbSelfCheckKS{}$, $S_N = \KbSelfCheckNS{}$)
+  and raylib yields $\Delta S = \RaylibDeltaS{}$ ($S_K = \RaylibKS{}$, $S_N = \RaylibNS{}$),
+  with \ResultsControlStatus{}.
 
   \vspace{0.85em}
 ]
