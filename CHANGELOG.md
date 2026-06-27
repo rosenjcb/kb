@@ -1,5 +1,12 @@
 # kb
 
+## 0.14.2
+
+### Patch Changes
+
+- 13d6ee1: Auto-export harvest eval metrics to research/tables/results.tex and clarify eval summary labels (suite vs K/N condition).
+- d157884: Expose live bootstrap progress in server indexing responses and mirror that status through Slack while the first index build completes.
+
 ## 0.14.1
 
 ### Patch Changes
