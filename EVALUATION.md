@@ -184,8 +184,8 @@ Artifacts land in `~/.kb/evaluations/<run-name>/artifact.json`. Fields to check:
 
 - `run.init_result.written_docs` — docs created (only relevant when init ran)
 - `run.init_result.graph_summary.entities` / `.relationships`
-- `aggregate_scores.query.mean_usefulness`
-- `aggregate_scores.query.pass_rate_correctness_and_usefulness_at_least_3`
+- `aggregate_scores.query.mean_usefulness` / `.mean_relevance`
+- `aggregate_scores.query.pass_rate_quality_axes_at_least_3` (correctness + usefulness + relevance ≥ 3)
 
 ### Phase 3: Score the Results
 
@@ -281,7 +281,7 @@ success = 0.60 · quality + 0.30 · token_efficiency + 0.10 · speed
 
 | Component | Weight | Definition |
 |-----------|--------|------------|
-| `quality` | 60% | `(mean_correctness + mean_usefulness) / 8` — both axes are `0–4`, so their sum maps to `[0, 1]`. |
+| `quality` | 60% | Mean of the per-axis **adequacy utilities** φ(s) over **correctness, usefulness, and relevance** (each `0–4`). φ gives linear credit up to τ=3 ("good enough") and discounts excellence above τ by β=0.2. Folding in **relevance** means an answer that is correct and useful but padded with unrelated facts scores lower. Omitting relevance (old artifacts) falls back to the two-axis mean. |
 | `token_efficiency` | 30% | `1 − min(weighted_tokens / token_budget, 1)` — weighted total for the 8-question run: `input + output + 0.1 × cache_read` (cache discount matches MOEL / Anthropic prompt caching). kb query logs undifferentiated input+output; control agents report cache reads separately. |
 | `speed` | 10% | `1 − min(total_duration_ms / time_budget, 1)` — total wall-clock for the 8-question run. |
 
@@ -302,8 +302,9 @@ a partial number.
 For each run, compute and record:
 
 - `success_score` (primary) plus its `quality_score`, `token_efficiency`, `speed_score` parts
-- Mean score per axis for `query` (`correctness`, `usefulness`, `specificity`, `evidence_handling`)
-- Pass rate where `correctness >= 3` and `usefulness >= 3` (secondary/diagnostic)
+- Mean score per axis for `query` (`correctness`, `usefulness`, `relevance`, `specificity`, `evidence_handling`)
+- **Headline pass rate** `pass_rate_quality_axes_at_least_3` where `correctness >= 3` AND `usefulness >= 3` AND `relevance >= 3`. The legacy `pass_rate_correctness_and_usefulness_at_least_3` (no relevance gate) is still written for trend continuity.
+- `curation_summary` (kb side): the curator's retrieval-relevancy diagnostic — `total_kept`, `total_dropped`, and `retrieval_precision = kept / (kept + dropped)`, harvested from each question's `retrieval.detail`. This is a *retrieval-side* relevancy signal (what reached synthesis), complementary to the judged answer-relevance axis.
 - KB and control token/latency telemetry (`kb_query_telemetry`, `control_telemetry`)
 - Coverage notes by topic area
 
@@ -503,9 +504,12 @@ These may be omitted only if the artifact is marked `partial`.
       "speed_score": 0,
       "mean_correctness": 0,
       "mean_usefulness": 0,
+      "mean_relevance": 0,
       "mean_specificity": 0,
       "mean_evidence_handling": 0,
-      "pass_rate_correctness_and_usefulness_at_least_3": 0
+      "pass_rate_correctness_and_usefulness_at_least_3": 0,
+      "pass_rate_quality_axes_at_least_3": 0,
+      "curation_summary": { "total_kept": 0, "total_dropped": 0, "retrieval_precision": null }
     },
     "chat": {
       "success_score": null,

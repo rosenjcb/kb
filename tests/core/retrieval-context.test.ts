@@ -37,17 +37,28 @@ describe('retrieval-context', () => {
     expect(formatted).not.toContain('…')
   })
 
-  it('Given multiple ranked facts, then all are included for LLM context', () => {
+  it('Given multiple ranked facts, then all bodies are included for LLM context', () => {
     const formatted = formatRetrievedFactsForLLM([
       { metadata: { id: 'fact-1' }, content: 'First fact body.' },
       { metadata: { id: 'fact-2' }, content: 'Second fact body.' },
       { metadata: { id: 'fact-3' }, content: 'Third fact body.' },
     ])
-    expect(formatted).toContain('fact-1')
-    expect(formatted).toContain('fact-2')
-    expect(formatted).toContain('fact-3')
     expect(formatted).toContain('First fact body.')
+    expect(formatted).toContain('Second fact body.')
     expect(formatted).toContain('Third fact body.')
+  })
+
+  it('Given facts, then evidence is not framed as enumerated/citable items (no "Fact N", no id= leak)', () => {
+    const formatted = formatRetrievedFactsForLLM([
+      { metadata: { id: 'fact-a', title: 'Alpha' }, content: 'Body A.' },
+      { metadata: { id: 'fact-b', title: 'Beta' }, content: 'Body B.' },
+    ])
+    expect(formatted).not.toMatch(/Fact \d/)
+    expect(formatted).not.toContain('id=')
+    expect(formatted).not.toContain('fact-a')
+    // Natural-language titles are still allowed as plain lead-ins.
+    expect(formatted).toContain('Alpha')
+    expect(formatted).toContain('Body A.')
   })
 
   it('Given tool query results, then tool payload truncates long fact bodies by default', () => {

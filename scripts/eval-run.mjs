@@ -63,6 +63,7 @@ import {
   computeSuccessScore,
   adequacyUtility,
   computeAdequacyQuality,
+  summarizeCuration,
   ADEQUACY_THRESHOLD,
 } from './eval-shared.mjs'
 
@@ -735,10 +736,11 @@ async function main() {
       ? {
           correctness: Number(ms.correctness),
           usefulness: Number(ms.usefulness),
+          relevance: Number(ms.relevance ?? ms.usefulness),
           specificity: Number(ms.specificity),
           evidence_handling: Number(ms.evidence_handling),
         }
-      : { correctness: 0, usefulness: 0, specificity: 0, evidence_handling: 0 }
+      : { correctness: 0, usefulness: 0, relevance: 0, specificity: 0, evidence_handling: 0 }
     const notes = ms?.notes?.trim()
       ? ms.notes
       : 'Rubric scores not supplied — use --scores-file or --manual-score to skip auto-scoring.'
@@ -758,17 +760,28 @@ async function main() {
 
   const mC = mean(query_evaluation.map(q => q.scores.correctness))
   const mU = mean(query_evaluation.map(q => q.scores.usefulness))
+  const mR = mean(query_evaluation.map(q => q.scores.relevance))
   const mS = mean(query_evaluation.map(q => q.scores.specificity))
   const mE = mean(query_evaluation.map(q => q.scores.evidence_handling))
+  // Legacy gate (correctness + usefulness) kept for back-compat / trend continuity.
   const pr =
     query_evaluation.filter(q => q.scores.correctness >= 3 && q.scores.usefulness >= 3).length /
     query_evaluation.length
+  // Headline gate now also requires relevance ≥ 3 — an off-topic answer no longer passes.
+  const prq =
+    query_evaluation.filter(
+      q => q.scores.correctness >= 3 && q.scores.usefulness >= 3 && q.scores.relevance >= 3
+    ).length / query_evaluation.length
+
+  // Retrieval-side relevancy diagnostic: harvest the curator's kept/dropped audit.
+  const curationSummary = summarizeCuration(query_evaluation.map(q => q.retrieval?.detail))
 
   // KB-side query telemetry (tokens + latency) for the composite success score.
   const kbQueryTelemetry = readKbQueryTelemetry(base, 8)
   const kbSuccess = computeSuccessScore({
     meanCorrectness: mC,
     meanUsefulness: mU,
+    meanRelevance: mR,
     totalTokens: kbQueryTelemetry
       ? kbQueryTelemetry.total_input_tokens + kbQueryTelemetry.total_output_tokens
       : null,
@@ -781,9 +794,12 @@ async function main() {
     speed_score: kbSuccess.speed_score,
     mean_correctness: Number(mC.toFixed(3)),
     mean_usefulness: Number(mU.toFixed(3)),
+    mean_relevance: Number(mR.toFixed(3)),
     mean_specificity: Number(mS.toFixed(3)),
     mean_evidence_handling: Number(mE.toFixed(3)),
     pass_rate_correctness_and_usefulness_at_least_3: Number(pr.toFixed(3)),
+    pass_rate_quality_axes_at_least_3: Number(prq.toFixed(3)),
+    ...(curationSummary ? { curation_summary: curationSummary } : {}),
   }
   const coverageAuditSummary = {
     mean_coverage_ratio: Number(
@@ -915,9 +931,11 @@ async function main() {
         speed_score: null,
         mean_correctness: 0,
         mean_usefulness: 0,
+        mean_relevance: 0,
         mean_specificity: 0,
         mean_evidence_handling: 0,
         pass_rate_correctness_and_usefulness_at_least_3: 0,
+        pass_rate_quality_axes_at_least_3: 0,
       },
       combined: aggregateQueryScores,
     },

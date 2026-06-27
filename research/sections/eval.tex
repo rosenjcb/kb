@@ -46,6 +46,7 @@ four axes (0--4):
 \midrule
 Correctness      & Factually grounded in the repo/KB \\
 Usefulness       & Helps a developer act or understand \\
+Relevance        & Stays on the question; free of unrelated facts \\
 Specificity      & Uses concrete repo-specific details \\
 Evidence Handling & Constrained to evidence; acknowledges uncertainty \\
 \bottomrule
@@ -62,8 +63,8 @@ threshold $\tau$ yield diminishing marginal value---polishing a 3.5 into a 4.0
 should not dominate token or latency savings.
 
 \medskip
-\noindent\textbf{Adequacy utility.}  Each rubric axis $s \in [0,4]$ (correctness,
-usefulness) maps to a normalized utility with threshold $\tau = 3$ and excellence
+\noindent\textbf{Adequacy utility.}  Each quality axis $s \in [0,4]$ (correctness,
+usefulness, relevance) maps to a normalized utility with threshold $\tau = 3$ and excellence
 discount $\beta = 0.2$:
 
 \begin{equation}
@@ -92,13 +93,14 @@ S = w_Q \cdot Q_{\text{adeq}} + w_T \cdot E_{\text{tok}} + w_V \cdot E_{\text{sp
 \noindent with default weights $w_Q = 0.60$, $w_T = 0.30$, $w_V = 0.10$:
 
 \begin{align}
-Q_{\text{adeq}} &= \tfrac{1}{2}\bigl(\varphi_\tau(\bar{c}) + \varphi_\tau(\bar{u})\bigr), \notag \\
+Q_{\text{adeq}} &= \tfrac{1}{3}\bigl(\varphi_\tau(\bar{c}) + \varphi_\tau(\bar{u}) + \varphi_\tau(\bar{r})\bigr), \notag \\
 E_{\text{tok}} &= 1 - \min\!\Bigl(\tfrac{T}{B_T},\,1\Bigr), \notag \\
 E_{\text{speed}} &= 1 - \min\!\Bigl(\tfrac{\tau_w}{B_\tau},\,1\Bigr)
 \label{eq:success-components}
 \end{align}
 
-\noindent where $\bar{c}, \bar{u}$ are mean correctness and usefulness ($0$--$4$),
+\noindent where $\bar{c}, \bar{u}, \bar{r}$ are mean correctness, usefulness, and relevance ($0$--$4$),
+so an answer that drags in unrelated facts is penalized even when correct and useful,
 $T$ is the weighted token total for the eight-question side
 ($\text{input} + \text{output} + 0.1 \times \text{cache\_read}$ for control agents;
 kb query uses undifferentiated input$+$output), and $\tau_w$ is

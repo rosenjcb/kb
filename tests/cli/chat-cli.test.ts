@@ -66,7 +66,10 @@ describe('chat-cli prompt', () => {
     })
 
     expect(content).toContain('Retrieved evidence:')
-    expect(content).toContain('general-facts')
+    // Evidence body is present, but not framed as a citable "Fact N (id=...)" item.
+    expect(content).toContain('KB base precedence: session base, default base.')
+    expect(content).not.toMatch(/Fact \d/)
+    expect(content).not.toContain('id=')
     expect(content).toContain('User question: How does base precedence work?')
     expect(content).not.toContain('Conversation history:')
   })

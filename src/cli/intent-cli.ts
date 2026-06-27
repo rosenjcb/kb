@@ -313,6 +313,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
 
     const userContent = [
       'Answer from the evidence below. Always give a useful response — for broad questions a high-level summary is fine; for specific questions be precise. Only say evidence is insufficient if the question is completely unrelated to anything retrieved.',
+      'Write a natural-language answer in plain prose. Never cite or label the evidence: no "(fact 1)" inline references, no fact ids, and no "Sources:"/"Citations:" list. Provenance is tracked separately in metadata, not in your text.',
       '',
       `Question: ${question}`,
       graphSection,

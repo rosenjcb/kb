@@ -377,13 +377,19 @@ export function adequacyUtility(score, tau = ADEQUACY_THRESHOLD, beta = ADEQUACY
 }
 
 /**
- * Harvest adequacy quality Q ∈ [0,1]: average of correctness and usefulness
- * adequacy utilities (replaces linear (c+u)/8 in the success score).
+ * Harvest adequacy quality Q ∈ [0,1]: mean of the per-axis adequacy utilities over the
+ * quality axes. Correctness and usefulness are always included; **relevance** is folded in
+ * when provided (a finite number), so an answer that drags in unrelated facts is penalized
+ * even when it is correct and useful. Omitting `meanRelevance` preserves the original
+ * two-axis behavior — required for back-compat with pre-relevance artifacts.
  */
-export function computeAdequacyQuality(meanCorrectness, meanUsefulness) {
-  return _round3(
-    (adequacyUtility(meanCorrectness) + adequacyUtility(meanUsefulness)) / 2
-  )
+export function computeAdequacyQuality(meanCorrectness, meanUsefulness, meanRelevance) {
+  const axes = [meanCorrectness, meanUsefulness]
+  if (typeof meanRelevance === 'number' && Number.isFinite(meanRelevance)) {
+    axes.push(meanRelevance)
+  }
+  const sum = axes.reduce((s, a) => s + adequacyUtility(a), 0)
+  return _round3(sum / axes.length)
 }
 
 /**
@@ -411,7 +417,11 @@ export function computeWeightedTokenTotal(parts, cacheDiscount = SUCCESS_TOKEN_C
 export function computeSuccessScore(input, budgets = SUCCESS_BUDGETS, weights = SUCCESS_WEIGHTS) {
   const meanCorrectness = Number(input.meanCorrectness) || 0
   const meanUsefulness = Number(input.meanUsefulness) || 0
-  const quality = computeAdequacyQuality(meanCorrectness, meanUsefulness)
+  const meanRelevance =
+    typeof input.meanRelevance === 'number' && Number.isFinite(input.meanRelevance)
+      ? input.meanRelevance
+      : undefined
+  const quality = computeAdequacyQuality(meanCorrectness, meanUsefulness, meanRelevance)
 
   const totalTokens =
     typeof input.totalTokens === 'number' && Number.isFinite(input.totalTokens)
@@ -445,6 +455,7 @@ export function computeSuccessScore(input, budgets = SUCCESS_BUDGETS, weights = 
     inputs: {
       mean_correctness: _round3(meanCorrectness),
       mean_usefulness: _round3(meanUsefulness),
+      mean_relevance: meanRelevance === undefined ? null : _round3(meanRelevance),
       total_tokens: typeof totalTokens === 'number' ? Math.round(totalTokens) : null,
       total_cache_read_tokens:
         typeof input.cacheReadTokens === 'number' && Number.isFinite(input.cacheReadTokens)
@@ -462,6 +473,45 @@ export function computeSuccessScore(input, budgets = SUCCESS_BUDGETS, weights = 
 // Artifact metric accessors
 // ---------------------------------------------------------------------------
 
+/**
+ * Parse the curator's out-of-band audit from a `retrieval>` detail line. The curator appends
+ * `curated:kept=K,dropped=D,requeried=R,rounds=N` to `retrieval.detail`; this lifts those
+ * numbers back out as a retrieval-side relevancy diagnostic (precision proxy for what reached
+ * synthesis). Returns null when the line carries no curation segment (e.g. control runs).
+ */
+export function parseCurationDetail(detail) {
+  if (typeof detail !== 'string') return null
+  const m = /curated:kept=(\d+),dropped=(\d+),requeried=(\d+),rounds=(\d+)/.exec(detail)
+  if (!m) return null
+  return {
+    kept: Number(m[1]),
+    dropped: Number(m[2]),
+    requeried: Number(m[3]),
+    rounds: Number(m[4]),
+  }
+}
+
+/**
+ * Aggregate curator audits across a run's per-question retrieval details into a single
+ * retrieval-relevancy summary. `precision` = kept / (kept + dropped) — higher means less
+ * off-topic material survived into synthesis.
+ */
+export function summarizeCuration(retrievalDetails) {
+  const stats = (retrievalDetails ?? []).map(parseCurationDetail).filter(Boolean)
+  if (stats.length === 0) return null
+  const kept = stats.reduce((a, s) => a + s.kept, 0)
+  const dropped = stats.reduce((a, s) => a + s.dropped, 0)
+  const denom = kept + dropped
+  return {
+    questions_with_curation: stats.length,
+    total_kept: kept,
+    total_dropped: dropped,
+    total_requeried: stats.reduce((a, s) => a + s.requeried, 0),
+    retrieval_precision: denom > 0 ? Number((kept / denom).toFixed(3)) : null,
+    mean_drop_fraction: denom > 0 ? Number((dropped / denom).toFixed(3)) : null,
+  }
+}
+
 export function scoreMetric(artifact, key) {
   const q = artifact?.aggregate_scores?.query
   const c = artifact?.aggregate_scores?.combined
@@ -469,11 +519,15 @@ export function scoreMetric(artifact, key) {
   if (key === 'usefulness') return q?.mean_usefulness ?? c?.mean_usefulness ?? null
   if (key === 'pass_rate')
     return (
+      // Prefer the relevance-inclusive gate; fall back to the legacy field for old artifacts.
+      q?.pass_rate_quality_axes_at_least_3 ??
+      c?.pass_rate_quality_axes_at_least_3 ??
       q?.pass_rate_correctness_and_usefulness_at_least_3 ??
       c?.pass_rate_correctness_and_usefulness_at_least_3 ??
       null
     )
   if (key === 'correctness') return q?.mean_correctness ?? c?.mean_correctness ?? null
+  if (key === 'relevance') return q?.mean_relevance ?? c?.mean_relevance ?? null
   return null
 }
 
@@ -670,9 +724,13 @@ function _queryScores(artifact) {
     quality: q.quality_score ?? null,
     tokens: q.token_efficiency ?? null,
     speed: q.speed_score ?? null,
-    pass: q.pass_rate_correctness_and_usefulness_at_least_3 ?? null,
+    pass:
+      q.pass_rate_quality_axes_at_least_3 ??
+      q.pass_rate_correctness_and_usefulness_at_least_3 ??
+      null,
     correctness: q.mean_correctness ?? null,
     usefulness: q.mean_usefulness ?? null,
+    relevance: q.mean_relevance ?? null,
     specificity: q.mean_specificity ?? null,
     evidence: q.mean_evidence_handling ?? null,
   }
@@ -833,6 +891,7 @@ function _sideHarvestMetrics(artifact, side) {
     pass: scores.pass,
     correctness: scores.correctness,
     usefulness: scores.usefulness,
+    relevance: scores.relevance,
     specificity: scores.specificity,
     evidence: scores.evidence,
     weightedTokens: tel.weightedTokens,
@@ -938,6 +997,7 @@ function _emitSuiteResults(lines, suiteId, artifact) {
     lines.push(_texMacro(`${prefix}${side}Pass`, _texNum(m?.pass)))
     lines.push(_texMacro(`${prefix}${side}Correctness`, _texNum(m?.correctness, 3)))
     lines.push(_texMacro(`${prefix}${side}Usefulness`, _texNum(m?.usefulness, 3)))
+    lines.push(_texMacro(`${prefix}${side}Relevance`, _texNum(m?.relevance, 3)))
     lines.push(_texMacro(`${prefix}${side}Tokens`, _texInt(m?.weightedTokens)))
     lines.push(_texMacro(`${prefix}${side}DurationSec`, _texDurationSec(m?.durationMs)))
     lines.push(_texMacro(`${prefix}${side}Docs`, _texInt(m?.docs)))
@@ -1131,16 +1191,25 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
 
     console.log('')
     console.log(' RUBRIC (secondary)')
-    console.log('            pass    corr     use')
+    console.log('            pass    corr     use     rel')
     console.log(
-      ` N (ctrl)  ${_padScore(ctrlForCompare.pass)}  ${_padScore(ctrlForCompare.correctness)}  ${_padScore(ctrlForCompare.usefulness)}`
+      ` N (ctrl)  ${_padScore(ctrlForCompare.pass)}  ${_padScore(ctrlForCompare.correctness)}  ${_padScore(ctrlForCompare.usefulness)}  ${_padScore(ctrlForCompare.relevance)}`
     )
     console.log(
-      ` K (query) ${_padScore(kbScores.pass)}  ${_padScore(kbScores.correctness)}  ${_padScore(kbScores.usefulness)}`
+      ` K (query) ${_padScore(kbScores.pass)}  ${_padScore(kbScores.correctness)}  ${_padScore(kbScores.usefulness)}  ${_padScore(kbScores.relevance)}`
     )
     console.log(
-      ` Δ K−N     ${formatScoreDelta(delta('pass'))}  ${formatScoreDelta(delta('correctness'))}  ${formatScoreDelta(delta('usefulness'))}`
+      ` Δ K−N     ${formatScoreDelta(delta('pass'))}  ${formatScoreDelta(delta('correctness'))}  ${formatScoreDelta(delta('usefulness'))}  ${formatScoreDelta(delta('relevance'))}`
     )
+    {
+      const kbCur = currentArtifact?.aggregate_scores?.query?.curation_summary
+      if (kbCur?.retrieval_precision != null) {
+        console.log('')
+        console.log(
+          ` CURATOR (K): retrieval precision ${kbCur.retrieval_precision} (kept ${kbCur.total_kept}, dropped ${kbCur.total_dropped} across ${kbCur.questions_with_curation} q)`
+        )
+      }
+    }
     if (sameRunControl && currentArtifact?.query_evaluation?.length) {
       const worst = worstQuestionGaps(
         currentArtifact.query_evaluation,

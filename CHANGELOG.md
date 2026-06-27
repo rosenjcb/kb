@@ -4,11 +4,14 @@
 
 ### Minor Changes
 
-- Replace the post-retrieval relevance filter with a judge-in-the-loop **fact curator**. After the research orchestrator dumps its island pool, the curator deterministically auto-keeps high-overlap facts, asks a single structured LLM verdict (`{keep, gaps, sufficient}`) keyed on the raw user question, then hard-drops everything off-topic — no 15% floor. When the judge reports gaps, the curator issues bounded shallow re-discovery queries to refill, so aggressive dropping stays safe. It fails safe on LLM/parse errors and never returns an empty set. Curator decisions are recorded out-of-band on `retrieval.curation`; they are never injected into the synthesis context. Also removes the dead chat session-pool mechanism (`chat-conversation.ts`) and refreshes the query-workflow docs.
+- Overhaul the query/synthesis relevance path:
+
+  - **Fact curator** (`src/tools/fact-curator.ts`): a judge-in-the-loop replacement for the post-retrieval relevance filter. It deterministically auto-keeps high-overlap facts, asks a single structured LLM verdict (`{keep, gaps, sufficient}`) keyed on the raw user question, hard-drops everything off-topic (no 15% floor), and issues bounded shallow re-discovery for gaps so aggressive dropping stays safe. Fails safe on errors, never returns an empty set, and records decisions out-of-band on `retrieval.curation` — never injected into synthesis context. Removes the dead chat session-pool mechanism (`chat-conversation.ts`).
+  - **Natural-language answers**: synthesis evidence is no longer framed as enumerated, citable items — the "Fact N … (id=…)" headings are gone, and both synthesis prompts forbid inline "(fact 1)" references and trailing "Sources/Citations" lists. Answers are plain prose; provenance stays in metadata.
 
 ### Patch Changes
 
-- 13d6ee1: Auto-export harvest eval metrics to research/tables/results.tex and clarify eval summary labels (suite vs K/N condition).
+- Auto-export harvest eval metrics to research/tables/results.tex and clarify eval summary labels (suite vs K/N condition).
 - Expose live bootstrap progress in server indexing responses and mirror that status through Slack while the first index build completes.
 
 ## 0.14.1

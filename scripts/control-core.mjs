@@ -340,10 +340,11 @@ export async function runControlPass({
       ? {
           correctness: Number(ms.correctness),
           usefulness: Number(ms.usefulness),
+          relevance: Number(ms.relevance ?? ms.usefulness),
           specificity: Number(ms.specificity),
           evidence_handling: Number(ms.evidence_handling),
         }
-      : { correctness: 0, usefulness: 0, specificity: 0, evidence_handling: 0 }
+      : { correctness: 0, usefulness: 0, relevance: 0, specificity: 0, evidence_handling: 0 }
     return {
       question_id: idx + 1,
       question: questions[idx],
@@ -362,6 +363,11 @@ export async function runControlPass({
   const passRate =
     query_evaluation.filter(x => x.scores.correctness >= 3 && x.scores.usefulness >= 3).length /
     query_evaluation.length
+  // Headline gate now also requires relevance ≥ 3 (matches kb-side prq).
+  const passRateQuality =
+    query_evaluation.filter(
+      x => x.scores.correctness >= 3 && x.scores.usefulness >= 3 && (x.scores.relevance ?? 0) >= 3
+    ).length / query_evaluation.length
 
   const tels = perQuestion.map(qf => qf.telemetry).filter(Boolean)
   const answered = perQuestion.filter(qf => String(qf.answer ?? '').trim()).length
@@ -395,9 +401,11 @@ export async function runControlPass({
   // Composite success score from the same formula kb uses (fair comparison).
   const mCorr = agg('correctness')
   const mUse = agg('usefulness')
+  const mRel = agg('relevance')
   const controlSuccess = computeSuccessScore({
     meanCorrectness: mCorr,
     meanUsefulness: mUse,
+    meanRelevance: mRel,
     totalTokens: totalWeightedTokens,
     totalDurationMs: tels.length ? controlTelemetry.total_duration_ms : null,
   })
@@ -408,9 +416,11 @@ export async function runControlPass({
     speed_score: controlSuccess.speed_score,
     mean_correctness: Number(mCorr.toFixed(3)),
     mean_usefulness: Number(mUse.toFixed(3)),
+    mean_relevance: Number(mRel.toFixed(3)),
     mean_specificity: Number(agg('specificity').toFixed(3)),
     mean_evidence_handling: Number(agg('evidence_handling').toFixed(3)),
     pass_rate_correctness_and_usefulness_at_least_3: Number(passRate.toFixed(3)),
+    pass_rate_quality_axes_at_least_3: Number(passRateQuality.toFixed(3)),
   }
 
   return {
@@ -445,13 +455,20 @@ export function buildControlComparison(kbAggregate, control) {
     control: c[key] ?? null,
     delta_kb_minus_control: delta(k[key], c[key]),
   })
+  // Prefer the relevance-inclusive gate; fall back to the legacy field for old artifacts.
+  const passKey =
+    k.pass_rate_quality_axes_at_least_3 != null || c.pass_rate_quality_axes_at_least_3 != null
+      ? 'pass_rate_quality_axes_at_least_3'
+      : 'pass_rate_correctness_and_usefulness_at_least_3'
   return {
     success_score: axis('success_score'),
     token_efficiency: axis('token_efficiency'),
     speed_score: axis('speed_score'),
-    pass_rate: axis('pass_rate_correctness_and_usefulness_at_least_3'),
+    pass_rate: axis(passKey),
+    pass_rate_legacy: axis('pass_rate_correctness_and_usefulness_at_least_3'),
     mean_correctness: axis('mean_correctness'),
     mean_usefulness: axis('mean_usefulness'),
+    mean_relevance: axis('mean_relevance'),
     mean_specificity: axis('mean_specificity'),
     mean_evidence_handling: axis('mean_evidence_handling'),
     control_efficiency: control?.control_telemetry ?? null,
