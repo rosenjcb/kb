@@ -1,7 +1,7 @@
 /**
- * Called by the Changesets GitHub Action as the `publish` command after the
- * "Version Packages" PR is merged. Creates a git tag for the new version so
- * the existing release-cli.yml workflow picks it up and builds the CLI artifact.
+ * Called on push to main after the merge gate has ensured versions are already
+ * bumped on the branch. Creates a git tag for the current package version so
+ * release-cli.yml picks it up and builds the CLI artifact.
  */
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'

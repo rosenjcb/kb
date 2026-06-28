@@ -145,7 +145,27 @@ export function evaluateChangesetConsistency(input) {
   return { ok: errors.length === 0, errors, notes }
 }
 
+function assertNoPendingChangesets() {
+  const pending = listPendingChangesets()
+  if (pending.length === 0) {
+    console.log('✓ No pending changesets.')
+    return
+  }
+  for (const file of pending) {
+    console.error(`❌ Pending changeset on main: ${file}`)
+  }
+  console.error(
+    'Apply the bump on the PR branch (`pnpm run changeset:version`), commit, then merge. Main must never carry unconsumed changesets.'
+  )
+  process.exit(1)
+}
+
 function main() {
+  if (process.argv.includes('--assert-no-pending')) {
+    assertNoPendingChangesets()
+    return
+  }
+
   const { base } = parseArgs(process.argv)
   git(`fetch --no-tags origin ${base.replace(/^origin\//, '')}`)
   const changedFiles = git(`diff --name-only ${base}...HEAD`)

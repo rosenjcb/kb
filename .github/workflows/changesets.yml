@@ -1,8 +1,7 @@
-# Auto-PUBLISH on merge to main. Versioning is NOT automatic — it is a deterministic step
-# run on the branch (`pnpm run changeset:version`) and enforced by the merge-to-main gate, so
-# by the time code lands here the versions are already bumped and no changesets remain. With no
-# pending changesets the changesets action goes straight to publish (tag + GitHub release). The
-# `version` input is only a non-interactive safety net in case a changeset ever slips through.
+# Tag + release on merge to main. Versioning happens ON the PR branch
+# (`pnpm run changeset:version`), enforced by the merge gate in ci.yml.
+# This workflow never opens PRs or re-runs versioning — it only fails if
+# unconsumed changesets slipped onto main, then tags the current package version.
 name: Changesets
 
 on:
@@ -12,10 +11,9 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
-  changesets:
+  publish:
     name: Publish
     runs-on: ubuntu-latest
 
@@ -37,12 +35,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Publish (versions already bumped on the branch)
-        uses: changesets/action@v1
-        with:
-          version: pnpm run changeset:version
-          publish: pnpm run release
-          title: 'chore: release packages'
-          commit: 'chore: release packages'
+      - name: Require consumed changesets (no post-merge versioning)
+        run: node scripts/check-changeset-consistency.mjs --assert-no-pending
+
+      - name: Tag release
+        run: pnpm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
