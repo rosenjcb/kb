@@ -30,12 +30,13 @@ This is the composition principle: `intent → router → tools`. `runIntentLoop
 ```mermaid
 flowchart LR
   Q["kb query / /query"] --> G["expandQueryWithGraph"]
-  G --> R["read_facts"]
-  R --> RR["rerankByGraphConnectivity"]
-  RR --> A["LLM answer"]
+  G --> R["read_facts<br/>deep BFS pool"]
+  R --> C["fact curator<br/>relevance judge"]
+  C --> RR["rerankByGraphConnectivity"]
+  RR --> A["LLM answer<br/>plain prose"]
 ```
 
-Graph expansion runs in `index.ts` / `chat-cli.ts` before `runQueryTruthRetrieval()`. Optional rerank after retrieval.
+Graph expansion runs in `index.ts` / `chat-cli.ts` before `runQueryTruthRetrieval()`. The fact curator runs inside `read_facts` on the deep path when the pool exceeds 12 facts. Optional rerank after curation.
 
 ## Part 1: Intent Loop
 
@@ -84,10 +85,13 @@ sequenceDiagram
   participant L as runIntentLoop
   participant R as DefaultIntentRouter
   participant D as read_facts
+  participant C as fact curator
 
   U->>L: query_truth envelope
   L->>R: execute(query_truth)
   R->>D: read_facts(query, discoveryDepth, limit)
+  D->>C: curateRelevance (if pool > 12)
+  C-->>D: kept facts
   D-->>R: grounded retrieval results
   R-->>L: IntentResult
   L-->>U: answer-ready result

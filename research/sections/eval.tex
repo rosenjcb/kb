@@ -17,27 +17,26 @@ own codebase---eight architecture and workflow questions.  This smoke test
 stress-tests retrieval grounding on a repo whose structure the authors know well;
 it is no longer the only reported target.
 
-\subsection{Protocol: kb vs control in one artifact}
+\subsection{Protocol: paired K vs N evaluation}
 
-Each harvest run executes, in order:
-(1)~clone and index the suite repo (\texttt{kb init} or reuse session,
+Each evaluation executes, in order:
+(1)~clone and index the suite repository (\texttt{kb init} or reuse session,
 \texttt{kb scan});
 (2)~eight \texttt{kb query} calls (condition \textbf{K})---one-shot synthesis
 over the retrieved fact pool (\S\ref{subsec:synthesis});
 (3)~the same eight questions handed to a real coding agent with no KB
-(condition \textbf{N}, Claude Code headless by default);
-(4)~LLM auto-scoring ($\times 3$ averaged) on four rubric axes for both sides.
+(condition \textbf{N});
+(4)~LLM scoring ($\times 3$ averaged) on five rubric axes for both sides.
 
-Both sides are scored in one run; the headline grade is the difference
-$\Delta S = S_K - S_N$ (Eq.~\ref{eq:delta-s}).  Skipping the control phase yields
-no $\Delta S$.
+Both sides are scored under identical conditions; the headline grade is
+$\Delta S = S_K - S_N$ (Eq.~\ref{eq:delta-s}).
 
 \subsection{Scoring Rubric}
 
 Each suite covers eight questions spanning capabilities, architecture, installation,
 configuration, platform specifics, conventions, gotchas, and roadmap---topics that
 stress different retrieval paths through the fact graph.  Answers are scored on
-four axes (0--4):
+five axes (0--4):
 
 \begin{center}\small
 \begin{tabular}{@{}lp{4.2cm}@{}}
@@ -56,7 +55,7 @@ Evidence Handling & Constrained to evidence; acknowledges uncertainty \\
 \subsection{Success Score and Headline Verdict ($\Delta S$)}
 \label{subsec:success}
 
-The harvest pipeline's single scalar per side is $S \in [0,1]$ (higher is better).
+The paired harvest evaluation's single scalar per side is $S \in [0,1]$ (higher is better).
 It trades \emph{adequate} answer quality against operational cost: we care that
 responses are correct and meaningful, but rubric scores above an acceptability
 threshold $\tau$ yield diminishing marginal value---polishing a 3.5 into a 4.0
@@ -125,29 +124,36 @@ loses (e.g.\ adequate quality at lower exploration cost).
 
 \medskip
 \noindent\textbf{Secondary diagnostics.}  Pass rate and per-axis rubric means
-(correctness, usefulness, etc.) help explain a $\Delta S$ outcome but are not
-the headline grade.
+(correctness, usefulness, relevance, etc.) help explain a $\Delta S$ outcome but are
+not the headline grade.  We also report the fraction of questions where
+correctness, usefulness, \emph{and} relevance all score $\geq 3$ on the 0--4 scale.
 
-\noindent\textbf{Scoring stability.}  The auto-scorer (Gemini 2.5 Flash) is
+\medskip
+\noindent\textbf{Retrieval-side relevance.}  For condition~K, we log how many
+retrieved facts the curator kept, dropped, and re-queried (\S\ref{subsec:curation}),
+and compute retrieval precision as $\text{kept}/(\text{kept}+\text{dropped})$.
+This complements answer-level relevance in the rubric: low precision with high
+answer relevance indicates heavy pre-synthesis filtering; low answer relevance
+despite curation signals synthesis or gap-fill gaps.
+
+\medskip
+\noindent\textbf{Scoring stability.}  LLM-as-judge scoring is
 non-deterministic even at temperature~0; we average three scorer calls per question.
 
 \subsection{Results: harvest K vs N}
 \label{subsec:results}
 
-Table~\ref{tab:harvest-results} is generated from macros in
-\texttt{research/tables/results.tex}; the abstract, table, and
-conclusion all refer to those macros so stale cross-section result drift cannot
-recur.  The file is regenerated automatically after each \texttt{pnpm run eval}
-(and via \texttt{pnpm run research:results}) from the latest scored artifacts
-under \texttt{\textasciitilde/.kb/evaluations/}.
+Table~\ref{tab:harvest-results} reports the latest paired harvest results
+(\ResultsUpdated{}).  \ResultsControlStatus{}.
 
 \input{tables/harvest-results}
 
-\noindent\textbf{Interpretation.}  On kb self-check (run \KbSelfCheckRunId{}),
+\noindent\textbf{Interpretation.}  On kb self-check,
 $\Delta S = \KbSelfCheckDeltaS{}$ with $S_K = \KbSelfCheckKS{}$ and $S_N = \KbSelfCheckNS{}$;
 K completes the eight-question side in \KbSelfCheckKDurationSec{}s using \KbSelfCheckKTokens{}
-weighted tokens vs.\ N at \KbSelfCheckNDurationSec{}s and \KbSelfCheckNTokens{} tokens.
-On raylib (run \RaylibRunId{}), $\Delta S = \RaylibDeltaS{}$ with $S_K = \RaylibKS{}$ and
+weighted tokens vs.\ N at \KbSelfCheckNDurationSec{}s and \KbSelfCheckNTokens{} tokens
+(mean relevance on K: \KbSelfCheckKRelevance{}).
+On raylib, $\Delta S = \RaylibDeltaS{}$ with $S_K = \RaylibKS{}$ and
 $S_N = \RaylibNS{}$; K is faster (\RaylibKDurationSec{}s vs.\ \RaylibNDurationSec{}s) while N
 leads on adequacy ($Q_{\text{adeq}}$: \RaylibKQadeq{} vs.\ \RaylibNQadeq{}).
-All headline numbers above come from \texttt{results.tex}; \ResultsControlStatus{}.
+Mean relevance on K is \RaylibKRelevance{} (N: \RaylibNRelevance{}).

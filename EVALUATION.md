@@ -206,7 +206,7 @@ Artifacts land in `~/.kb/evaluations/<run-name>/artifact.json`. Fields to check:
 
 ### Phase 3: Score the Results
 
-Each question gets a rubric score on four axes. Use `--auto-score` for LLM judging (requires `GEMINI_API_KEY` or `OPENAI_API_KEY`), or supply a `--scores-file` for manual scoring.
+Each question gets a rubric score on five axes. Use `--auto-score` for LLM judging (requires `GEMINI_API_KEY` or `OPENAI_API_KEY`), or supply a `--scores-file` for manual scoring.
 
 The scorer is called **3 times by default** and the numeric axes are averaged (`--score-runs 3`). Single-shot Gemini scores have ~1 point of noise per question; averaging across 3 calls reduces run-to-run variance enough to make inter-run comparisons meaningful. Pass `--score-runs 1` to cut costs when you only need a rough signal.
 
@@ -225,7 +225,7 @@ Use these raylib-adapted questions for all runs. If revised, copy the old suite 
 
 ## Scoring Rubric
 
-Score each answer on four axes from `0` to `4`.
+Score each answer on five axes from `0` to `4`.
 
 ### Correctness
 
@@ -242,6 +242,14 @@ Score each answer on four axes from `0` to `4`.
 - `2`: Some signal, but requires substantial follow-up.
 - `1`: Barely helpful.
 - `0`: Not helpful.
+
+### Relevance
+
+- `4`: Stays on the question; no unrelated padding or tangents.
+- `3`: Mostly on-topic with minor digressions.
+- `2`: Mixed; significant off-topic content.
+- `1`: Mostly off-topic despite some signal.
+- `0`: Does not address the question.
 
 ### Specificity
 

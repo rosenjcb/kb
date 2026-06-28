@@ -4,7 +4,7 @@ title: Fact Curator
 description: Judge-in-the-loop post-retrieval curation — hard-drops off-topic facts and refills gaps via bounded re-discovery.
 resource: ./fact-curator.ts
 tags: [query, retrieval, facts, curation, llm-judge]
-timestamp: 2026-06-26T00:00:00Z
+timestamp: 2026-06-27T00:00:00Z
 ---
 
 # Fact Curator
@@ -77,4 +77,5 @@ passed in, so it carries no DB or network handle of its own.
 - `../core/QUERY_INTERNALS.md` — full deep-retrieval path and where the curator sits
 - `./facts-query-research-orchestrator.ts` — the island pool the curator consumes
 - `./facts-sufficiency-judge.ts` — the in-loop early-exit judge (a separate concern)
+- `../EVALUATION.md` — relevance rubric axis and `curation_summary` in harvest artifacts
 - `../core/CHAT.md` — chat synthesis pipeline

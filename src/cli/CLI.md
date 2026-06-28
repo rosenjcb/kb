@@ -81,7 +81,7 @@ Code facts are **AST-only**. Extensions in `TREE_SITTER_AST_EXTENSIONS` (from `t
 
 | Path | Synthesis | Audience |
 |------|-----------|----------|
-| **`kb query`** | One-shot **`enrichReadDocumentsAnswerWithLLM()`** — single LLM call over retrieved facts (2000 chars/fact). No `query_kb` tool loop. | Programmatic callers (agents, eval harvest) |
+| **`kb query`** | One-shot **`enrichReadDocumentsAnswerWithLLM()`** — single LLM call over curator-filtered facts (2000 chars/fact). Plain prose; no inline fact refs. No `query_kb` tool loop. | Programmatic callers (agents, eval harvest) |
 | **`kb chat`** | Multi-turn **`runChatSynthesis()`** — LLM may call `query_kb` for follow-up retrievals before answering. | Interactive TUI / REPL |
 
 Both share retrieval; only the answer phase differs. See [`../core/QUERY_INTERNALS.md`](../core/QUERY_INTERNALS.md) and [`../core/CHAT.md`](../core/CHAT.md).
