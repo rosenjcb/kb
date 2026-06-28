@@ -217,7 +217,7 @@ curl -fsSL https://github.com/rosenjcb/kb/releases/latest/download/install-kb.sh
 kb query "hybrid sqlite retrieval" --limit 5
 ```
 
-> If hybrid retrieval is unavailable or exceeds the latency budget, KB automatically falls back to lexical markdown query.
+> Retrieval is facts-first: `kb query` and chat run lexical FTS and a deep multi-pond BFS loop over the `facts` table (not markdown chunks). When the pool exceeds 12 facts, a judge-in-the-loop curator hard-drops off-topic hits before synthesis. Shallow mode (`--discovery shallow`) skips the deep loop and uses FTS only.
 
 ## 🗓️ Daily Workflow
 
@@ -388,9 +388,9 @@ A `.kbignore` file committed at a repo root is merged on top of the base's patte
 
 KB ships a multi-pipeline evaluation framework for measuring answer quality and exploration efficiency.
 
-**Query harvest** — runs all questions in a suite two ways, **side-by-side into one artifact**: the **kb side** (`kb query` over a live KB base) and the **control side** — the *same* questions answered by a **real coding agent (Claude Code, headless) with no KB**, exploring the clone itself. Both are auto-scored on four axes (Correctness, Usefulness, Specificity, Evidence Handling) via Gemini or OpenAI by the same judge, so the artifact answers the real question: *"is kb actually better than what people do today?"* Results (kb + control + a kb-vs-control comparison + both sides' token/latency telemetry) land in `~/.kb/evaluations/<run>/artifact.json`.
+**Query harvest** — runs all questions in a suite two ways, **side-by-side into one artifact**: the **kb side** (`kb query` over a live KB base) and the **control side** — the *same* questions answered by a **real coding agent with no KB**, exploring the clone itself. Both are auto-scored on five axes (Correctness, Usefulness, Relevance, Specificity, Evidence Handling) via Gemini or OpenAI by the same judge, so the artifact answers the real question: *"is kb actually better than what people do today?"* Results (kb + control + a kb-vs-control comparison + both sides' token/latency telemetry) land in `~/.kb/evaluations/<run>/artifact.json`.
 
-The headline metric is a single **success score** S ∈ `[0,1]` — a weighted blend of answer quality (60%), token economy (30%), and speed (10%): `success = 0.60·quality + 0.30·token_efficiency + 0.10·speed`, where quality is `(correctness+usefulness)/8` and the token/speed terms are budget-normalized. kb and control are scored with the same formula.
+The headline metric is a single **success score** S ∈ `[0,1]` — a weighted blend of answer quality (60%), token economy (30%), and speed (10%): `success = 0.60·Q_adeq + 0.30·token_efficiency + 0.10·speed`, where `Q_adeq` averages adequacy utilities over **correctness, usefulness, and relevance** (diminishing returns above 3/4 on each axis). kb and control are scored with the same formula.
 
 **Headline project grade:** `ΔS = success_score_kb − success_score_control` from `artifact.comparison` in the same eval run (requires control phase; omit `--skip-control`). ΔS ≥ +0.02 ⇒ kb ahead of the real-agent baseline. See [`EVALUATION.md`](EVALUATION.md#headline-verdict-kb-vs-control-δs).
 

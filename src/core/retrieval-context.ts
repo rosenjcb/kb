@@ -41,12 +41,13 @@ export function formatRetrievedFactsForLLM(
   for (const [index, fact] of facts.entries()) {
     const id = fact.metadata?.id ?? `fact-${index + 1}`
     const title = fact.metadata?.title?.trim()
-    const heading =
-      options?.heading?.(fact, index) ??
-      (title && title !== id
-        ? `Fact ${index + 1}: ${title} (id=${id})`
-        : `Fact ${index + 1} (id=${id})`)
-    sections.push(`${heading}\n${formatFactContentForLLM(fact.content, options?.maxContentChars)}`)
+    // Evidence is framed as plain knowledge, NOT as enumerated/citable items: no "Fact N"
+    // label and no "(id=...)" suffix. Exposing those tokens makes the synthesizer echo them
+    // back as "(fact 1)" inline refs or a trailing citations list. Provenance/citations are
+    // carried in result metadata and surfaced separately, never in the answer body.
+    const heading = options?.heading?.(fact, index) ?? (title && title !== id ? title : '')
+    const body = formatFactContentForLLM(fact.content, options?.maxContentChars)
+    sections.push(heading ? `${heading}\n${body}` : body)
   }
 
   const graphBlock = formatGraphEvidenceBlock(facts)
@@ -77,13 +78,5 @@ export function formatToolQueryFactsForLLM(
       const id = r.metadata?.id ?? `fact-${i + 1}`
       return `${i + 1}. [${id}]\n${formatFactContentForLLM(r.content, maxContentChars)}`
     })
-    .join('\n\n')
-}
-
-export function formatSessionPoolFactsForLLM(
-  poolFacts: Array<{ id: string; text: string }>
-): string {
-  return poolFacts
-    .map((f, i) => `${i + 1}. [${f.id}]\n${formatFactContentForLLM(f.text)}`)
     .join('\n\n')
 }

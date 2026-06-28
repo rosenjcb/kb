@@ -88,6 +88,23 @@ pnpm run eval -- --suite raylib --base my-custom-session
 | `pnpm run eval -- --suite kb` | Self-check against `eval-kb` |
 | `pnpm run eval -- --suite generic --repo <git-url>` | Any repo (requires explicit `--repo`) |
 
+**Before/after across binaries (`KB_EVAL_BIN`).** The harness defaults to this checkout's
+`dist/bin/kb.js`, but `KB_EVAL_BIN=/path/to/other/dist/bin/kb.js` points it at any other build.
+This is how you fairly compare a **main** binary against a **branch** binary: run *these same
+scripts* (one fixed rubric + judge) against each binary in turn, then diff the two artifacts.
+
+```bash
+# "before" — main build, scored by the new rubric
+KB_EVAL_BIN=/path/to/kb-main/dist/bin/kb.js pnpm run eval -- --suite kb --auto-score
+# "after" — this branch's build (default binary)
+pnpm run eval -- --suite kb --auto-score
+```
+
+The scoring is backwards-compatible with old outputs: a main binary emits no curator audit, so
+`curation_summary` is simply omitted (other metrics, including the judged `relevance` axis, are
+unaffected), and pre-relevance artifacts already on disk render their relevance/curation columns
+as `-` rather than erroring.
+
 **Suites (`--suite`)**
 
 - `raylib` — Eight raylib-specific questions.
@@ -184,12 +201,12 @@ Artifacts land in `~/.kb/evaluations/<run-name>/artifact.json`. Fields to check:
 
 - `run.init_result.written_docs` — docs created (only relevant when init ran)
 - `run.init_result.graph_summary.entities` / `.relationships`
-- `aggregate_scores.query.mean_usefulness`
-- `aggregate_scores.query.pass_rate_correctness_and_usefulness_at_least_3`
+- `aggregate_scores.query.mean_usefulness` / `.mean_relevance`
+- `aggregate_scores.query.pass_rate_quality_axes_at_least_3` (correctness + usefulness + relevance ≥ 3)
 
 ### Phase 3: Score the Results
 
-Each question gets a rubric score on four axes. Use `--auto-score` for LLM judging (requires `GEMINI_API_KEY` or `OPENAI_API_KEY`), or supply a `--scores-file` for manual scoring.
+Each question gets a rubric score on five axes. Use `--auto-score` for LLM judging (requires `GEMINI_API_KEY` or `OPENAI_API_KEY`), or supply a `--scores-file` for manual scoring.
 
 The scorer is called **3 times by default** and the numeric axes are averaged (`--score-runs 3`). Single-shot Gemini scores have ~1 point of noise per question; averaging across 3 calls reduces run-to-run variance enough to make inter-run comparisons meaningful. Pass `--score-runs 1` to cut costs when you only need a rough signal.
 
@@ -208,7 +225,7 @@ Use these raylib-adapted questions for all runs. If revised, copy the old suite 
 
 ## Scoring Rubric
 
-Score each answer on four axes from `0` to `4`.
+Score each answer on five axes from `0` to `4`.
 
 ### Correctness
 
@@ -225,6 +242,14 @@ Score each answer on four axes from `0` to `4`.
 - `2`: Some signal, but requires substantial follow-up.
 - `1`: Barely helpful.
 - `0`: Not helpful.
+
+### Relevance
+
+- `4`: Stays on the question; no unrelated padding or tangents.
+- `3`: Mostly on-topic with minor digressions.
+- `2`: Mixed; significant off-topic content.
+- `1`: Mostly off-topic despite some signal.
+- `0`: Does not address the question.
 
 ### Specificity
 
@@ -281,7 +306,7 @@ success = 0.60 · quality + 0.30 · token_efficiency + 0.10 · speed
 
 | Component | Weight | Definition |
 |-----------|--------|------------|
-| `quality` | 60% | `(mean_correctness + mean_usefulness) / 8` — both axes are `0–4`, so their sum maps to `[0, 1]`. |
+| `quality` | 60% | Mean of the per-axis **adequacy utilities** φ(s) over **correctness, usefulness, and relevance** (each `0–4`). φ gives linear credit up to τ=3 ("good enough") and discounts excellence above τ by β=0.2. Folding in **relevance** means an answer that is correct and useful but padded with unrelated facts scores lower. Omitting relevance (old artifacts) falls back to the two-axis mean. |
 | `token_efficiency` | 30% | `1 − min(weighted_tokens / token_budget, 1)` — weighted total for the 8-question run: `input + output + 0.1 × cache_read` (cache discount matches MOEL / Anthropic prompt caching). kb query logs undifferentiated input+output; control agents report cache reads separately. |
 | `speed` | 10% | `1 − min(total_duration_ms / time_budget, 1)` — total wall-clock for the 8-question run. |
 
@@ -302,8 +327,9 @@ a partial number.
 For each run, compute and record:
 
 - `success_score` (primary) plus its `quality_score`, `token_efficiency`, `speed_score` parts
-- Mean score per axis for `query` (`correctness`, `usefulness`, `specificity`, `evidence_handling`)
-- Pass rate where `correctness >= 3` and `usefulness >= 3` (secondary/diagnostic)
+- Mean score per axis for `query` (`correctness`, `usefulness`, `relevance`, `specificity`, `evidence_handling`)
+- **Headline pass rate** `pass_rate_quality_axes_at_least_3` where `correctness >= 3` AND `usefulness >= 3` AND `relevance >= 3`. The legacy `pass_rate_correctness_and_usefulness_at_least_3` (no relevance gate) is still written for trend continuity.
+- `curation_summary` (kb side): the curator's retrieval-relevancy diagnostic — `total_kept`, `total_dropped`, and `retrieval_precision = kept / (kept + dropped)`, harvested from each question's `retrieval.detail`. This is a *retrieval-side* relevancy signal (what reached synthesis), complementary to the judged answer-relevance axis.
 - KB and control token/latency telemetry (`kb_query_telemetry`, `control_telemetry`)
 - Coverage notes by topic area
 
@@ -503,9 +529,12 @@ These may be omitted only if the artifact is marked `partial`.
       "speed_score": 0,
       "mean_correctness": 0,
       "mean_usefulness": 0,
+      "mean_relevance": 0,
       "mean_specificity": 0,
       "mean_evidence_handling": 0,
-      "pass_rate_correctness_and_usefulness_at_least_3": 0
+      "pass_rate_correctness_and_usefulness_at_least_3": 0,
+      "pass_rate_quality_axes_at_least_3": 0,
+      "curation_summary": { "total_kept": 0, "total_dropped": 0, "retrieval_precision": null }
     },
     "chat": {
       "success_score": null,

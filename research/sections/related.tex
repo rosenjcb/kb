@@ -43,9 +43,9 @@ instruction-tuning evaluation.  MOEL's jury module addresses the same biases at 
 through position debiasing (swapped-order consistency), verbosity normalization
 ($\log_{1+}$ length scaling), self-enhancement down-weighting ($\times 0.5$ for
 same-family judges), and family diversity enforcement---without requiring a
-fine-tuned judge.  Unlike prior work, MOEL is not outcome-only: the deep harness combines
+fine-tuned judge.  Unlike prior work, MOEL is not outcome-only: deep MOEL evaluation combines
 the LLM jury with trajectory and resource losses so that
-efficiency failures are numerically visible; the harvest runner adds $\Delta S$
+efficiency failures are numerically visible; paired harvest evaluation adds $\Delta S$
 against a real agent baseline.
 
 \subsection{Agent Efficiency Measurement}
@@ -55,7 +55,7 @@ injection strategies; CodeScaleBench evaluates tool validity across repository
 scale classes.  Neither framework provides a unified scalar loss that spans
 correctness, trajectory, and resource consumption simultaneously.  The closest
 prior work is SWE-Atlas, which verifies agent-declared file manifests against
-live \texttt{git diff} output.  MOEL's \texttt{ManifestValidator} adopts the
+live repository diff output.  MOEL's \texttt{ManifestValidator} adopts the
 same live-diff approach and extends it with a \texttt{MutationValidator} that
 applies tree-sitter AST body stubs to confirm causal linkage between agent
 changes and test coverage.

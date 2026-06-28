@@ -71,6 +71,7 @@ export function buildRubric(phrase, hasReferenceAnswers = false) {
 
 Correctness — 4: factually correct and grounded in the supplied answer/evidence; 3: mostly correct; 2: mixed or meaningful inaccuracies; 1: mostly wrong; 0: no useful answer.
 Usefulness — 4: directly helps a developer act or understand the system; 3: helpful but incomplete; 2: some signal, needs substantial follow-up; 1: barely helpful; 0: not helpful.
+Relevance — does the answer stay on the question, free of unrelated facts or padding? 4: every claim bears on the question, nothing extraneous; 3: mostly on-topic, minor tangents; 2: noticeable unrelated material diluting the answer; 1: dominated by off-topic facts; 0: answer is essentially about something else. Judge focus, not correctness — a true but unrelated fact LOWERS this score.
 Specificity — 4: concrete project-specific APIs, paths, build flags, or mechanisms; 3: some concrete detail; 2: partly generic; 1: mostly generic; 0: purely generic or evasive.
 Evidence handling — 4: clearly tied to evidence, acknowledges gaps; 3: reasonably grounded; 2: some speculation; 1: strong speculation or unsupported claims; 0: no evidence discipline.
 
@@ -240,7 +241,7 @@ export async function runAutoScoreFile({
     return `### Question ${i + 1}\n${q}\n\nRetrieval (summary): ${clipText(JSON.stringify(ret), 2000)}\nProvenance ids: ${JSON.stringify(prov)}\n${refSection}\nAnswer:\n${clipText(ans, 6000)}\n`
   })
 
-  const schemaHint = `Return a single JSON object with exactly one key "scores" whose value is an array of exactly ${count} objects in question order (index 0 = question 1). Each object must have: "correctness", "usefulness", "specificity", "evidence_handling" (integers 0-4) and "notes" (short string rationale). No markdown fences.`
+  const schemaHint = `Return a single JSON object with exactly one key "scores" whose value is an array of exactly ${count} objects in question order (index 0 = question 1). Each object must have: "correctness", "usefulness", "relevance", "specificity", "evidence_handling" (integers 0-4) and "notes" (short string rationale). No markdown fences.`
 
   const systemInstruction = `${RUBRIC}\n\n${schemaHint}`
   const userText = `Score these ${count} question/answer pairs.\n\n${blocks.join('\n---\n')}`
@@ -290,6 +291,9 @@ export async function runAutoScoreFile({
     return scores.map((row, idx) => ({
       correctness: clampScore0to4(row.correctness),
       usefulness: clampScore0to4(row.usefulness),
+      // Fall back to usefulness when a judge omits relevance, so old/partial responses
+      // degrade gracefully instead of scoring a hard 0 on the new axis.
+      relevance: clampScore0to4(row.relevance ?? row.usefulness),
       specificity: clampScore0to4(row.specificity),
       evidence_handling: clampScore0to4(row.evidence_handling),
       notes:
@@ -308,7 +312,7 @@ export async function runAutoScoreFile({
 
   // Average numeric axes across runs; keep notes from the last run
   const normalized = questions.map((_, idx) => {
-    const axes = ['correctness', 'usefulness', 'specificity', 'evidence_handling']
+    const axes = ['correctness', 'usefulness', 'relevance', 'specificity', 'evidence_handling']
     const averaged = {}
     for (const axis of axes) {
       const m = allRuns.reduce((s, run) => s + run[idx][axis], 0) / runs

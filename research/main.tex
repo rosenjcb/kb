@@ -17,7 +17,7 @@
   urlcolor=blue!70!black,
 }
 
-%% ─── Version (auto-updated by scripts/update-research-version.mjs) ──────────
+%% Version macros (regenerated with package releases).
 \input{version}
 \input{tables/results}
 
@@ -45,9 +45,9 @@
     \vspace{1.1em}
     {\normalsize Jacob Rosenzweig\par}
     \vspace{0.45em}
-    {\normalsize\textit{Independent Research}\par}
+    {\normalsize\textit{Fintary}\par}
     \vspace{0.35em}
-    {\normalsize\texttt{rosenjcb@gmail.com}\par}
+    {\normalsize\texttt{jacob.rosenzweig@fintary.com}\par}
     \vspace{0.55em}
     {\small\texttt{KB v\kbversion} \enspace\textbullet\enspace \kbreleasedate\par}
     \vspace{1.35em}
@@ -70,7 +70,9 @@
   documentation via sentence-level fact extraction, storing atomic facts in a
   SQLite graph with typed edges.  At query time, a multi-pond BFS loop merges
   lexical (BM25/FTS5), semantic (embedding), and graph-walk evidence streams into
-  a ranked fact pool, exiting on a scored sufficiency condition.
+  a ranked fact pool, exiting on a scored sufficiency condition.  A
+  judge-in-the-loop fact curator then hard-drops off-topic facts and refills
+  reported gaps before one-shot synthesis returns plain prose.
 
   \textbf{MOEL} (Multi-Objective Exploration Loss) is a quantitative evaluation
   framework that measures agent efficiency under three controlled conditions:
@@ -78,16 +80,16 @@
   O (oracle context injection).  MOEL combines three normalized loss terms—LLM jury semantic loss ($L_\text{jury}$),
   trajectory inefficiency ($L_\text{trajectory}$), and resource consumption
   ($L_\text{resource}$)—into a single weighted scalar $L_\text{MOEL}$ in a deep
-  harness with toy-tool N/K/O conditions.  The harvest runner instead compares
+  evaluation with toy-tool N/K/O conditions.  Paired harvest evaluation instead compares
   \texttt{kb query} (K) to a real headless coding agent (N) via $\Delta S$.
 
   The headline metric is a budget-normalized success score
   $S = 0.60\,Q_{\text{adeq}} + 0.30\,E_{\text{tok}} + 0.10\,E_{\text{speed}}$ that
-  blends adequacy-weighted answer quality (correctness and usefulness with
-  diminishing returns above $\tau{=}3$) with token economy and latency, scored
-  identically for KB-equipped and control runs.  The project grade is
-  $\Delta S = S_K - S_N$ from a single eval artifact (Eq.~\ref{eq:delta-s}).
-  In the latest paired harvest runs (\ResultsUpdated), KB self-check yields
+  blends adequacy-weighted answer quality (correctness, usefulness, and
+  relevance with diminishing returns above $\tau{=}3$) with token economy and
+  latency, scored identically for KB-equipped and control runs.  The project grade is
+  $\Delta S = S_K - S_N$ from a single paired evaluation (Eq.~\ref{eq:delta-s}).
+  In the latest paired harvest evaluations (\ResultsUpdated), KB self-check yields
   $\Delta S = \KbSelfCheckDeltaS{}$ ($S_K = \KbSelfCheckKS{}$, $S_N = \KbSelfCheckNS{}$)
   and raylib yields $\Delta S = \RaylibDeltaS{}$ ($S_K = \RaylibKS{}$, $S_N = \RaylibNS{}$),
   with \ResultsControlStatus{}.

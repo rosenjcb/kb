@@ -91,6 +91,9 @@ Invariants:
   `\KbSelfCheckRunId` in `results.tex`. Do not mix runs across sections.
 - **Regenerate after eval runs:** `pnpm run eval -- --suite … --auto-score` updates
   `results.tex` automatically; or run `pnpm run research:results` by hand.
+- **Relevance macros** — `\KbSelfCheckKRelevance`, `\RaylibKRelevance`, etc. feed
+  the Rel column in `harvest-results.tex`; adequacy $Q_{\text{adeq}}$ in the paper
+  already includes relevance alongside correctness and usefulness.
 - **`latest_results.tex` is deprecated** (old build-under-test macros). Do not
   `\input` it from `main.tex`.
 

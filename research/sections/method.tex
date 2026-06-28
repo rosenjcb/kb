@@ -59,13 +59,14 @@ runs) completes in under 3 minutes on a laptop with no API cost.
       $\rightarrow$ multi-pond BFS loop (labeled with the five evidence
       streams: edge neighbors, primary FTS, pond FTS, concept frontier,
       concept rows) $\rightarrow$ scored fact pool $\rightarrow$ sufficiency
-      check ($\geq 10$ facts $\geq 0.40$) $\rightarrow$ LLM synthesis
-      $\rightarrow$ grounded prose answer with evidence header. \\
+      check ($\geq 10$ facts $\geq 0.40$) $\rightarrow$ \textbf{fact curator}
+      (relevance judge; hard-drop + gap refill when $> 12$ facts)
+      $\rightarrow$ LLM synthesis (plain prose) $\rightarrow$ evidence header. \\
     Arrow between columns labeled ``graph-augmented query expansion''.
     \vspace{0.4cm}
   }
 }
-\caption{KB indexing (left) and multi-pond BFS retrieval (right).}
+\caption{KB indexing (left) and multi-pond BFS retrieval with post-retrieval curation (right).}
 \label{fig:kb-arch}
 \end{figure}
 
@@ -99,14 +100,53 @@ string before the loop begins, based on entity relationships in the stored
 graph.  The \emph{pre-expansion} user question is preserved for answer synthesis
 so graph symbol names do not pollute scaffold or prompt text.
 
+\subsection{Post-Retrieval Curation}
+\label{subsec:curation}
+
+The deep BFS loop is deliberately \emph{broad}: graph-augmented expansion and
+multi-pond frontiers grow \emph{reachable} evidence islands that include facts
+adjacent to, but not directly about, the user's question.  A separate
+\emph{in-loop} sufficiency judge (called every few iterations once $\geq 5$
+facts score $\geq 0.50$) decides when to \emph{stop collecting}; it does not
+remove off-topic facts from the pool.
+
+When the scored pool exceeds $12$ facts, a \textbf{fact curator} runs
+\emph{before} synthesis.  It is judge-in-the-loop, not a static score floor:
+\begin{enumerate}
+  \item \textbf{Deterministic auto-keep}: facts whose token overlap with the
+    \emph{raw user question} exceeds a fixed threshold bypass the LLM (no cost,
+    stable anchors).
+  \item \textbf{Structured relevance verdict}: remaining facts are sent to a
+    single LLM call returning a structured verdict with \emph{keep} ids,
+    \emph{gap} descriptions, and a \emph{sufficient} flag.
+    The judge is keyed on the pre-expansion question---not the graph-widened
+    retrieval string---because expansion is meant to grow islands, not to define
+    relevance.
+  \item \textbf{Hard-drop}: every fact not in the keep set (except auto-kept
+    rows) is removed from the synthesis context; there is no minimum keep
+    fraction.
+  \item \textbf{Gap re-discovery}: when the judge reports gaps and the set is
+    not yet sufficient, the curator issues bounded shallow lexical
+    searches per gap (excluding already-seen ids), merges new hits, and
+    re-judges for up to a small round cap.
+\end{enumerate}
+
+On LLM or parse failure the curator \emph{fails safe} to the unfiltered pool;
+if curation would return zero facts, a deterministic top-$K$ fallback applies.
+Curator audit counts (kept, dropped, re-queried) are recorded separately from
+the synthesis context for later analysis---never injected back into the prompt.
+
 \subsection{Answer synthesis}
 \label{subsec:synthesis}
 
-After retrieval, \texttt{kb query} performs \emph{one-shot} synthesis: a single
-LLM call over at most 150 ranked facts (2000 characters each), optionally filtered
-when the pool exceeds 20 facts.  This is the path evaluated against the control
-agent in \S\ref{subsec:results}---no multi-turn tool loop, matching how an external
-agent would call KB for a standalone question.
+After retrieval (and optional curation), \texttt{kb query} performs
+\emph{one-shot} synthesis: a single LLM call over at most 150 ranked facts
+(2000 characters each).  The synthesis prompt instructs \emph{plain prose}:
+no inline ``(fact~$n$)'' citations and no trailing Sources/Citations block;
+provenance is surfaced in a separate structured evidence summary.  This is the
+path evaluated against the control agent in \S\ref{subsec:results}---no
+multi-turn retrieval loop, matching how an external agent would call KB for a
+standalone question.
 
 %% ─── MOEL ─────────────────────────────────────────────────────────────────────
 \section{MOEL: Multi-Objective Exploration Loss}
@@ -127,15 +167,15 @@ single scalar, evaluated under three controlled conditions per task.
 \subsection{Three-Condition Evaluation Design}
 \label{subsec:conditions}
 
-The \emph{deep} MOEL harness runs each task under three toy-tool conditions
-(Table~\ref{tab:moel-conditions}).  This differs from the \emph{harvest} runner
-(\S\ref{sec:experiments}), where condition~N is a real headless coding agent
-(Claude Code with Read/Grep/Glob/Bash) and condition~K is \texttt{kb query}---the
+The \emph{deep} MOEL evaluation runs each task under three toy-tool conditions
+(Table~\ref{tab:moel-conditions}).  This differs from the \emph{harvest}
+evaluation (\S\ref{sec:experiments}), where condition~N is a headless coding
+agent with filesystem exploration tools and condition~K is \texttt{kb query}---the
 pair that defines $\Delta S$.
 
 \begin{table}[h]
 \centering\small
-\caption{Deep MOEL harness: toy-tool conditions per task (not the harvest N/K pair).}
+\caption{Deep MOEL evaluation: toy-tool conditions per task (not the harvest N/K pair).}
 \label{tab:moel-conditions}
 \begin{tabular}{@{}p{1.6cm}p{3.4cm}p{1.6cm}@{}}
 \toprule
@@ -146,7 +186,7 @@ pair that defines $\Delta S$.
   \texttt{search\_file\_contents}} &
   Worst-case baseline \\[3pt]
 \textbf{K} (KB) &
-  Full KB tool registry &
+  Full KB retrieval and action tools &
   Primary experiment \\[3pt]
 \textbf{O} (Oracle) &
   Minimal facts injected in system prompt &
@@ -256,7 +296,7 @@ constraint $w_C + w_T + w_R = 1$ is validated to within $10^{-6}$ and all
 loss terms are bounded to $[0, 1]$.
 
 \medskip
-\noindent\textbf{Harvest adequacy scoring.}  The headline harvest runner
+\noindent\textbf{Harvest adequacy scoring.}  The headline harvest evaluation
 (\S\ref{subsec:success}) uses a complementary \emph{gain} formulation $S$ rather
 than $L_\text{MOEL}$, but shares the same design principle: quality is measured
 through an adequacy utility $\varphi_\tau$ (Eq.~\ref{eq:adequacy}) that treats
@@ -271,5 +311,5 @@ injection conditions; $L_\text{resource}$ replicates that benchmark's
 token-cost metric with the additional fresh/cached split.
 CodeScaleBench's tool-validity tier corresponds to MOEL's condition comparison:
 Condition N uses only primitive filesystem tools, Condition K adds the full KB
-tool registry.
+tool set.
 

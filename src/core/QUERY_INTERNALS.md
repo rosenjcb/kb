@@ -104,7 +104,7 @@ After retrieval, ranked facts are turned into prose via **`formatRetrievedFactsF
 | **`kb query`** | **`enrichReadDocumentsAnswerWithLLM()`** (`intent-cli.ts`) | **One-shot** — single LLM call; uses pre-expansion `synthesisQuestion` for prompt/scaffold checks (not graph-expanded query string). |
 | **`kb chat`** | **`runChatSynthesis()`** (`chat-cli.ts`) | **Multi-turn** — optional `query_kb` tool rounds for targeted follow-up retrieval before final answer. |
 
-An optional **post-retrieval LLM relevance filter** (`src/tools/facts-relevance-filter.ts`) fires when results exceed 20 facts: a cheap LLM call discards off-topic facts before synthesis. Falls back silently to the unfiltered list on errors or if filtering would drop below 15% of the original count.
+A **post-retrieval fact curator** (`src/tools/fact-curator.ts`) runs when the pool exceeds 12 facts. It is judge-in-the-loop, not a one-shot filter: it deterministically **auto-keeps** high-overlap facts (no LLM cost), sends the rest to a single **structured LLM verdict** (`{keep, gaps, sufficient}`) keyed on the **raw user question** (not the graph-expanded string), then **hard-drops** everything the judge did not keep — there is **no 15% floor**. When the judge reports `gaps` and the set is not yet `sufficient`, the curator issues **bounded shallow re-discovery** queries (`searchFacts`, excluding what's already known) to refill, so aggressive dropping is safe. It fails safe to the unfiltered pool on any LLM/parse error, and guards against ever returning an empty set (deterministic top-K fallback). Curator decisions are recorded **out-of-band** on `retrieval.curation` (kept/dropped/re-queried counts) for terminal + session-log surfacing — they are **never** injected into the synthesis context, since the whole point is to shrink the prompt.
 
 Terminal **`evidence>`** is a **single summary header** (`formatEvidenceSummaryHeader()` in `src/core/evidence-summary.ts`) — count, doc/code mix, top themes, lead titles, walk/stop/conf. No per-fact bullet lines. See **`src/core/EVIDENCE_SUMMARY.md`**.
 
@@ -114,7 +114,7 @@ Terminal **`evidence>`** is a **single summary header** (`formatEvidenceSummaryH
 
 | Layer | Default |
 |-------|---------|
-| Facts sent to synthesis | Ranked pool above `MIN_FACT_SCORE` (0.20); optional relevance filter when **>20** facts |
+| Facts sent to synthesis | Ranked pool above `MIN_FACT_SCORE` (0.20); **fact curator** hard-drops off-topic facts + re-discovers gaps when **>12** facts |
 | Per-fact content | 2000 chars (`MAX_FACT_CONTENT_CHARS`) |
 | Per DB call | 50 rows (`perIterationLimit`) |
 | Loop passes | 24 (`KB_FACTS_QUERY_MAX_ITERS`; absolute max 512) |
@@ -144,7 +144,7 @@ Code facts at query time come from the AST-indexed `facts` table (`source_kind='
 - `src/tools/facts-document-reader.ts` — shallow path + deep orchestrator dispatch
 - `src/tools/facts-query-research-orchestrator.ts` — deep fact retrieval loop
 - `src/tools/facts-sufficiency-judge.ts` — LLM-based early-exit judge
-- `src/tools/facts-relevance-filter.ts` — post-retrieval LLM relevance filter
+- `src/tools/fact-curator.ts` — post-retrieval judge-in-the-loop curator (hard-drop + bounded re-discovery)
 - `src/tools/sqlite-kb-index.ts` — `searchFacts`, concepts, semantic scores
 - `src/core/CHAT.md` — chat vs query alignment
 - `src/core/AGENT_LOOP.md` — intent loop wiring

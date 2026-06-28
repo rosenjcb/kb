@@ -37,7 +37,9 @@ system that:
     sentence-level fact extraction;
   \item[(2)] exposes those facts to LLM agents through a multi-pond BFS
     retrieval loop that merges lexical (BM25), semantic (embedding), and
-    graph-walk evidence streams without manual query engineering.
+    graph-walk evidence streams, then a judge-in-the-loop \emph{fact curator}
+    that hard-drops off-topic hits before one-shot synthesis---without manual
+    query engineering.
 \end{enumerate}
 
 Critically, KB's value is only as compelling as the evidence that it actually
@@ -48,10 +50,10 @@ a correct response and one that queries two facts look identical under a
 pass/fail quality signal.
 
 To fill this gap, we introduce the \textbf{Multi-Objective Exploration Loss
-(MOEL)} evaluation framework.  The harvest runner scores both KB (K) and a
+(MOEL)} evaluation framework.  Paired harvest evaluation scores both KB (K) and a
 real-agent control (N) on the same eight questions and reports the headline
 grade $\Delta S = S_K - S_N$ (Eq.~\ref{eq:delta-s}).  A complementary deep
-pipeline runs tasks under three conditions (N, K, O) and aggregates exploration
+evaluation runs tasks under three conditions (N, K, O) and aggregates exploration
 loss into $L_\text{MOEL}$.
 
 Figure~\ref{fig:system-overview} illustrates the end-to-end system.  Our
@@ -59,7 +61,8 @@ contributions are:
 
 \begin{enumerate}
   \item \textbf{KB}: a facts-first codebase knowledge system with deterministic
-    AST indexing and a multi-pond hybrid retrieval orchestrator.
+    AST indexing, a multi-pond hybrid retrieval orchestrator, and a
+    post-retrieval relevance curator that filters the fact pool before synthesis.
 
   \item \textbf{MOEL}: a multi-objective evaluation framework comprising three
     normalized loss functions ($L_\text{jury}$, $L_\text{trajectory}$,
@@ -68,8 +71,8 @@ contributions are:
 
   \item \textbf{Empirical results}: paired harvest evaluation on fixed
     \texttt{kb} and \texttt{raylib} repository snapshots compares \texttt{kb query}
-    (K) to a real coding agent (N) in one artifact per suite
-    (Table~\ref{tab:harvest-results}, macros in \texttt{research/tables/results.tex}).
+    (K) to a real coding agent (N) under identical scoring
+    (Table~\ref{tab:harvest-results}).
     Latest headline grades: $\Delta S = \KbSelfCheckDeltaS{}$ (kb self-check) and
     $\Delta S = \RaylibDeltaS{}$ (raylib), updated \ResultsUpdated{}.
 \end{enumerate}
@@ -84,21 +87,21 @@ contributions are:
     \textit{\textbf{[FIGURE 1 — System Overview]}} \\[6pt]
     A three-panel horizontal flow diagram: \\
     \textbf{Left panel} — Developer working directory with source files,
-      markdown, and git history feeding into \texttt{kb init} (AST indexer +
+      markdown, and version history feeding into \texttt{kb init} (AST indexer +
       sentence segmenter + fact extractor). \\
     \textbf{Center panel} — SQLite knowledge store: \texttt{facts} table
       (doc + code facts), \texttt{fact\_edges} graph, \texttt{fact\_embeddings}
-      semantic index, \texttt{documents} (human-readable artifacts). \\
+      semantic index, \texttt{documents} (stored prose sources). \\
     \textbf{Right panel} — LLM agent loop: \texttt{kb query} dispatches
-      multi-pond BFS retrieval, passes ranked facts to LLM, returns grounded
-      prose answer. \\
-    Below all panels: harvest runner reporting $\Delta S = S_K - S_N$ (K vs.\ real
-      agent); deep MOEL harness (N/K/O toy-tool conditions) reporting
+      multi-pond BFS retrieval, a fact curator (relevance judge) trims the pool,
+      passes kept facts to LLM synthesis, returns plain grounded prose. \\
+    Below all panels: paired harvest evaluation reporting $\Delta S = S_K - S_N$ (K vs.\ real
+      agent); deep MOEL evaluation (N/K/O toy-tool conditions) reporting
       $L_\text{MOEL}$.
     \vspace{0.4cm}
   }
 }
 \caption{End-to-end KB system.  Primary harvest grade: $\Delta S$ (K vs.\ real
-agent); deep MOEL harness adds $L_\text{MOEL}$ under toy-tool N/K/O conditions.}
+agent); deep MOEL evaluation adds $L_\text{MOEL}$ under toy-tool N/K/O conditions.}
 \label{fig:system-overview}
 \end{figure}
