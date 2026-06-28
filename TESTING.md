@@ -21,7 +21,59 @@ src/core/publish/notion-sync.ts   →   tests/core/notion-sync.test.ts
 src/tools/document-writer.ts   →   tests/tools/document-writer.test.ts
 ```
 
-## Naming
+## Behavioral specs and test tags
+
+Behavioral requirements live in sibling `*.spec.md` files (`type: Spec`) with **FR-N**
+(functional requirements) and **TC-N** (QA test cases) tables. Architecture detail stays in
+OKF companions. See [spec.md](https://github.com/rosenjcb/spec.md) and [`specs/MANIFEST.md`](specs/MANIFEST.md).
+
+### What CI enforces (hard gate)
+
+**Every `TC-N` row in a `*.spec.md` must have at least one matching test** — a Vitest `it()`
+or httpyac `test()` whose name starts with `[TC-N]`. Unit and integration tests both count.
+If a spec lists `TC-4` and no test is tagged `[TC-4]`, `pnpm run spec:check` fails.
+
+Not every test needs a spec. Tests without `[TC-N]` tags are fine. Use `[smoke]` for structural
+checks (health status codes, response shape) that are not acceptance criteria in the spec.
+
+### Tagging convention
+
+When a test proves a spec test case, prefix the name with the tag:
+
+```ts
+it('[TC-1] Given a valid request, when the order is created, then status is CREATED', () => { ... })
+it('[smoke] GET /health returns 200', () => { ... })
+```
+
+Rules:
+
+1. **`[TC-N]`** — links to row `TC-N` in the governing `*.spec.md` for that domain.
+2. **`[smoke]`** — no spec row required; optional structural/integration checks.
+3. Gherkin **Given / When / Then** phrasing is suggested when tagging with `[TC-N]`.
+4. One `TC-N` may have many tests; the same `TC-N` may appear in Vitest and `.http` suites.
+
+Run the gate locally (also in pre-commit and CI):
+
+```bash
+pnpm run spec:check
+```
+
+### HTTP integration (httpyac)
+
+Tag assertion descriptions the same way inside `{{ }}` blocks:
+
+```http
+{{
+  const assert = require('assert');
+  test('[TC-1] Given GET /health, then status is 200', () => {
+    assert.strictEqual(response.statusCode, 200);
+  });
+}}
+```
+
+## Naming (legacy style)
+
+Prefer tagged names above. When no spec exists yet, use descriptive Gherkin:
 
 ```ts
 describe('module or class name', () => {
@@ -87,4 +139,4 @@ See [`packages/kb-server/http/HTTP.md`](packages/kb-server/http/HTTP.md), [`pack
 
 ## Pre-commit gate
 
-`pnpm run precommit` runs lint, type-check, and the full test suite. All must pass before pushing.
+`pnpm run precommit` runs lint, type-check, **`spec:check`** (every spec TC row must have a test), and the full test suite. All must pass before pushing.

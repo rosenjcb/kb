@@ -41,7 +41,7 @@ function makeIndexer() {
 }
 
 describe('TsMorphIndexer', () => {
-  it('indexes exported functions and writes symbol facts', async () => {
+  it('[TC-1] indexes exported functions and writes symbol facts', async () => {
     await writeTsconfig()
     await writeFile(
       join(repoRoot, 'src', 'utils.ts'),
@@ -73,7 +73,7 @@ export const PI = 3.14`
     expect(facts[0]?.object).toMatch(/src\/utils\.ts/)
   })
 
-  it('emits IMPORTS_FILE bridge facts between files', async () => {
+  it('[TC-2] emits IMPORTS_FILE bridge facts between files', async () => {
     await writeTsconfig()
     await writeFile(join(repoRoot, 'src', 'a.ts'), 'export const x = 1')
     await writeFile(join(repoRoot, 'src', 'b.ts'), "import { x } from './a'\nexport const y = x + 1")
@@ -99,7 +99,7 @@ export const PI = 3.14`
     expect(importFacts[0]?.object).toMatch(/src\/a\.ts/)
   })
 
-  it('emits IMPLEMENTS facts for class declarations', async () => {
+  it('[TC-3] emits IMPLEMENTS facts for class declarations', async () => {
     await writeTsconfig()
     await writeFile(
       join(repoRoot, 'src', 'animal.ts'),
@@ -126,7 +126,7 @@ export class Dog implements Animal { speak() { return 'woof' } }`
     expect(implementsFacts[0]?.object).toBe('Animal')
   })
 
-  it('indexes TS files outside tsconfig include when passed as candidateFiles', async () => {
+  it('[TC-4] indexes TS files outside tsconfig include when passed as candidateFiles', async () => {
     // tsconfig only covers src/, but lib/ has TS files we want indexed
     await writeFile(
       join(repoRoot, 'tsconfig.json'),
@@ -167,7 +167,7 @@ export class Dog implements Animal { speak() { return 'woof' } }`
     expect(names).toContain('Widget')
   })
 
-  it('includes value in fact text for exported constants with simple literal initializers', async () => {
+  it('[TC-5] includes value in fact text for exported constants with simple literal initializers', async () => {
     await writeTsconfig()
     await writeFile(
       join(repoRoot, 'src', 'limits.ts'),
@@ -194,7 +194,7 @@ export class Dog implements Animal { speak() { return 'woof' } }`
     expect(texts.some(t => t.includes('DEBUG') && t.includes('false'))).toBe(true)
   })
 
-  it('extracts non-exported module-level constants with literal values', async () => {
+  it('[TC-6] extracts non-exported module-level constants with literal values', async () => {
     await writeTsconfig()
     await writeFile(
       join(repoRoot, 'src', 'config.ts'),
@@ -220,7 +220,7 @@ export class Dog implements Animal { speak() { return 'woof' } }`
     expect(texts.some(t => t.includes('THRESHOLD') && t.includes('0.58'))).toBe(true)
   })
 
-  it('does not extract non-exported constants with complex initializers', async () => {
+  it('[TC-7] does not extract non-exported constants with complex initializers', async () => {
     await writeTsconfig()
     await writeFile(
       join(repoRoot, 'src', 'computed.ts'),
@@ -246,7 +246,7 @@ export class Dog implements Animal { speak() { return 'woof' } }`
     expect(facts.every(f => !f.fact_text.includes('REGEX'))).toBe(true)
   })
 
-  it('skips unchanged files on re-index', async () => {
+  it('[TC-8] skips unchanged files on re-index', async () => {
     await writeTsconfig()
     await writeFile(join(repoRoot, 'src', 'stable.ts'), 'export const STABLE = true')
 
@@ -269,7 +269,7 @@ export class Dog implements Animal { speak() { return 'woof' } }`
 })
 
 describe('CodeGraphStore', () => {
-  it('finds exported symbols matching query terms via FTS', async () => {
+  it('[TC-9] finds exported symbols matching query terms via FTS', async () => {
     await writeTsconfig()
     await writeFile(join(repoRoot, 'src', 'engine.ts'), 'export class Engine { run() {} }')
     await writeFile(
@@ -290,7 +290,7 @@ describe('CodeGraphStore', () => {
     expect(names).toContain('Engine')
   })
 
-  it('getSummary returns correct counts', async () => {
+  it('[TC-10] getSummary returns correct counts', async () => {
     await writeTsconfig()
     await writeFile(join(repoRoot, 'src', 'a.ts'), 'export const x = 1')
     await writeFile(join(repoRoot, 'src', 'b.ts'), "import { x } from './a'\nexport const y = 2")

@@ -15,7 +15,7 @@ afterEach(async () => {
 })
 
 describe('init-ast-files-manifest', () => {
-  it('returns null diff when no manifest exists yet (first run)', async () => {
+  it('[TC-244] returns null diff when no manifest exists yet (first run)', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-ast-mf-'))
     tempDirs.push(baseDir)
     const manifest = await readAstFilesManifest(baseDir)
@@ -23,7 +23,7 @@ describe('init-ast-files-manifest', () => {
     expect(diffChangedAstFiles({ 'src/a.ts': 'hash-a' }, manifest)).toBeNull()
   })
 
-  it('round-trips manifest writes and detects changed/new files only', async () => {
+  it('[TC-245] round-trips manifest writes and detects changed/new files only', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-ast-mf-rt-'))
     tempDirs.push(baseDir)
     await writeAstFilesManifest(baseDir, {
@@ -44,7 +44,7 @@ describe('init-ast-files-manifest', () => {
     expect(new Set(diff ?? [])).toEqual(new Set(['tsconfig.json', 'src/b.ts']))
   })
 
-  it('treats unchanged contents as a no-op diff', async () => {
+  it('[TC-246] treats unchanged contents as a no-op diff', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-ast-mf-noop-'))
     tempDirs.push(baseDir)
     const current = { 'src/a.ts': 'hash-a' }

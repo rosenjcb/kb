@@ -17,22 +17,22 @@ const ENOUGH_FACTS = Array.from({ length: 6 }, (_, i) => ({
 }))
 
 describe('makeSufficiencyJudge', () => {
-  it('Given ANSWERABLE response, then returns answerable', async () => {
+  it('[TC-18] Given ANSWERABLE response, then returns answerable', async () => {
     const judge = makeSufficiencyJudge(makeLLM('ANSWERABLE'))
     expect(await judge('what is X', ENOUGH_FACTS)).toBe('answerable')
   })
 
-  it('Given INSUFFICIENT response, then returns insufficient', async () => {
+  it('[TC-19] Given INSUFFICIENT response, then returns insufficient', async () => {
     const judge = makeSufficiencyJudge(makeLLM('INSUFFICIENT'))
     expect(await judge('what is X', ENOUGH_FACTS)).toBe('insufficient')
   })
 
-  it('Given partial ANSWERABLE prefix in response, then still returns answerable', async () => {
+  it('[TC-20] Given partial ANSWERABLE prefix in response, then still returns answerable', async () => {
     const judge = makeSufficiencyJudge(makeLLM('ANSWERABLE.'))
     expect(await judge('what is X', ENOUGH_FACTS)).toBe('answerable')
   })
 
-  it('Given fewer facts than minimum threshold, then returns insufficient without calling LLM', async () => {
+  it('[TC-21] Given fewer facts than minimum threshold, then returns insufficient without calling LLM', async () => {
     let called = false
     const llm = {
       name: 'mock',
@@ -47,7 +47,7 @@ describe('makeSufficiencyJudge', () => {
     expect(called).toBe(false)
   })
 
-  it('Given LLM throws, then returns insufficient as fallback', async () => {
+  it('[TC-22] Given LLM throws, then returns insufficient as fallback', async () => {
     const llm = {
       name: 'mock',
       model: 'mock',
@@ -61,19 +61,19 @@ describe('makeSufficiencyJudge', () => {
 })
 
 describe('shouldCallJudge', () => {
-  it('Returns true when iteration is a multiple of JUDGE_CALL_INTERVAL and enough relevant facts', () => {
+  it('[TC-23] Returns true when iteration is a multiple of JUDGE_CALL_INTERVAL and enough relevant facts', () => {
     expect(shouldCallJudge(0, 5)).toBe(true)
     expect(shouldCallJudge(3, 5)).toBe(true)
     expect(shouldCallJudge(6, 10)).toBe(true)
   })
 
-  it('Returns false when not on a call interval', () => {
+  it('[TC-24] Returns false when not on a call interval', () => {
     expect(shouldCallJudge(1, 5)).toBe(false)
     expect(shouldCallJudge(2, 5)).toBe(false)
     expect(shouldCallJudge(4, 5)).toBe(false)
   })
 
-  it('Returns false when relevant facts below threshold regardless of interval', () => {
+  it('[TC-25] Returns false when relevant facts below threshold regardless of interval', () => {
     expect(shouldCallJudge(0, 0)).toBe(false)
     expect(shouldCallJudge(3, 4)).toBe(false)
   })

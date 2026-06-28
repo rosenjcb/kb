@@ -19,7 +19,7 @@ async function createTempDir(): Promise<string> {
 }
 
 describe('SQLite KB index integration', () => {
-  it('Given write_document with sqlite indexing enabled, then should upsert original_docs record', async () => {
+  it('[TC-1] Given write_document with sqlite indexing enabled, then should upsert original_docs record', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const writer = new MarkdownMDWriterTool({
@@ -51,7 +51,7 @@ describe('SQLite KB index integration', () => {
     db.close()
   })
 
-  it('Given append/update/prune mutations, then should keep original_docs markdown synchronized', async () => {
+  it('[TC-2] Given append/update/prune mutations, then should keep original_docs markdown synchronized', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const writer = new MarkdownMDWriterTool({
@@ -94,7 +94,7 @@ describe('SQLite KB index integration', () => {
     db.close()
   })
 
-  it('Given indexed content hash, then should report staleness only when content changes', async () => {
+  it('[TC-3] Given indexed content hash, then should report staleness only when content changes', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -117,7 +117,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('Given repeated miss events with candidates, then should persist miss clusters and accumulate ranking hints', async () => {
+  it('[TC-4] Given repeated miss events with candidates, then should persist miss clusters and accumulate ranking hints', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -167,7 +167,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('Given checkpoint event traces, then should compute stage metrics and promote rollout when thresholds are met', async () => {
+  it('[TC-5] Given checkpoint event traces, then should compute stage metrics and promote rollout when thresholds are met', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -208,7 +208,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('Given poor checkpoint outcomes, then rollout assessment should rollback', async () => {
+  it('[TC-6] Given poor checkpoint outcomes, then rollout assessment should rollback', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -244,7 +244,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('Given facts-first schema, then backfillDocumentLanes is a no-op', async () => {
+  it('[TC-7] Given facts-first schema, then backfillDocumentLanes is a no-op', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -268,7 +268,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('Given fact concepts, indexer can search and expand through concept graph', async () => {
+  it('[TC-8] Given fact concepts, indexer can search and expand through concept graph', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -308,7 +308,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('Given fact_edges, getFactNeighbors walks both directions and skips seen ids', async () => {
+  it('[TC-9] Given fact_edges, getFactNeighbors walks both directions and skips seen ids', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -350,7 +350,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('Given natural language query, searchFacts should match token-level evidence', async () => {
+  it('[TC-10] Given natural language query, searchFacts should match token-level evidence', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -375,7 +375,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('Given lane routing events, then should report lane-level precision and fallback indicators', async () => {
+  it('[TC-11] Given lane routing events, then should report lane-level precision and fallback indicators', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -416,7 +416,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('Given weak lane-routing metrics, then lane rollout assessment should rollback', async () => {
+  it('[TC-12] Given weak lane-routing metrics, then lane rollout assessment should rollback', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })

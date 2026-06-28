@@ -149,4 +149,6 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 
 ## Related docs
 
+- Behavioral spec → [`SERVER.spec.md`](SERVER.spec.md)
+
 [`packages/kb-server/http/HTTP.md`](packages/kb-server/http/HTTP.md) · [`packages/kb-server/INTEGRATION_TEST.md`](packages/kb-server/INTEGRATION_TEST.md) · [`../core/QUERY_INTERNALS.md`](../core/QUERY_INTERNALS.md)

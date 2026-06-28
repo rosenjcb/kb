@@ -17,38 +17,38 @@ import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/typ
 // ─── estimateCost ─────────────────────────────────────────────────
 
 describe('estimateCost', () => {
-  it('Given gemini-2.0-flash with known tokens, then returns a positive cost', () => {
+  it('[TC-149] Given gemini-2.0-flash with known tokens, then returns a positive cost', () => {
     const cost = estimateCost('gemini', 'gemini-2.0-flash', 1_000_000, 1_000_000)
     expect(cost).toBeGreaterThan(0)
   })
 
-  it('Given gemini-2.5-pro, then applies higher pricing than gemini-2.0-flash', () => {
+  it('[TC-150] Given gemini-2.5-pro, then applies higher pricing than gemini-2.0-flash', () => {
     const flash = estimateCost('gemini', 'gemini-2.0-flash', 1_000_000, 1_000_000)
     const pro = estimateCost('gemini', 'gemini-2.5-pro', 1_000_000, 1_000_000)
     expect(pro).toBeGreaterThan(flash)
   })
 
-  it('Given anthropic claude-sonnet-4-6, then returns a positive cost', () => {
+  it('[TC-151] Given anthropic claude-sonnet-4-6, then returns a positive cost', () => {
     expect(estimateCost('anthropic', 'claude-sonnet-4-6', 1_000_000, 1_000_000)).toBeGreaterThan(0)
   })
 
-  it('Given openai gpt-4o, then returns a positive cost', () => {
+  it('[TC-152] Given openai gpt-4o, then returns a positive cost', () => {
     expect(estimateCost('openai', 'gpt-4o', 100_000, 50_000)).toBeGreaterThan(0)
   })
 
-  it('Given a model not in the pricing table, then returns 0', () => {
+  it('[TC-153] Given a model not in the pricing table, then returns 0', () => {
     expect(estimateCost('openai', 'gpt-4-turbo', 100_000, 50_000)).toBe(0)
   })
 
-  it('Given ollama provider, then returns 0 (local/free)', () => {
+  it('[TC-154] Given ollama provider, then returns 0 (local/free)', () => {
     expect(estimateCost('ollama', 'mistral', 100_000, 50_000)).toBe(0)
   })
 
-  it('Given unknown provider, then returns 0', () => {
+  it('[TC-155] Given unknown provider, then returns 0', () => {
     expect(estimateCost('unknown-llm', 'some-model', 100_000, 50_000)).toBe(0)
   })
 
-  it('Given zero tokens, then returns 0', () => {
+  it('[TC-156] Given zero tokens, then returns 0', () => {
     expect(estimateCost('gemini', 'gemini-2.0-flash', 0, 0)).toBe(0)
   })
 })
@@ -56,7 +56,7 @@ describe('estimateCost', () => {
 // ─── RunCollector ─────────────────────────────────────────────────
 
 describe('RunCollector', () => {
-  it('Given a finished collector with no stages, then report totals are all zero', () => {
+  it('[TC-157] Given a finished collector with no stages, then report totals are all zero', () => {
     const c = new RunCollector('query')
     const report = c.finish('success')
     expect(report.command).toBe('query')
@@ -67,7 +67,7 @@ describe('RunCollector', () => {
     expect(report.totalEstimatedCostUsd).toBe(0)
   })
 
-  it('Given added stages, then totals accumulate correctly', () => {
+  it('[TC-158] Given added stages, then totals accumulate correctly', () => {
     const c = new RunCollector('init')
     c.addStage({
       stage: 'pass1',
@@ -96,14 +96,14 @@ describe('RunCollector', () => {
     expect(report.stages).toHaveLength(2)
   })
 
-  it('Given an error finish, then report status and message are set', () => {
+  it('[TC-159] Given an error finish, then report status and message are set', () => {
     const c = new RunCollector('submit')
     const report = c.finish('error', 'connection refused')
     expect(report.status).toBe('error')
     expect(report.errorMessage).toBe('connection refused')
   })
 
-  it('Given startStage, then calling the returned function records the stage', () => {
+  it('[TC-160] Given startStage, then calling the returned function records the stage', () => {
     const c = new RunCollector('invalidate')
     const end = c.startStage('invalidate', 'none', 'none')
     end({ inputTokens: 0, outputTokens: 0 })
@@ -113,7 +113,7 @@ describe('RunCollector', () => {
     expect(report.stages[0].durationMs).toBeGreaterThanOrEqual(0)
   })
 
-  it('Given addStage, then does not write to stderr', () => {
+  it('[TC-161] Given addStage, then does not write to stderr', () => {
     const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     const c = new RunCollector('query')
     c.addStage({
@@ -130,13 +130,13 @@ describe('RunCollector', () => {
     spy.mockRestore()
   })
 
-  it('Given a report, then runId follows expected format', () => {
+  it('[TC-162] Given a report, then runId follows expected format', () => {
     const c = new RunCollector('query')
     const report = c.finish('success')
     expect(report.runId).toMatch(/^run-\d+-[a-z0-9]{4}$/)
   })
 
-  it('Given a report, then startedAt and finishedAt are valid ISO strings', () => {
+  it('[TC-163] Given a report, then startedAt and finishedAt are valid ISO strings', () => {
     const c = new RunCollector('query')
     const report = c.finish('success')
     expect(new Date(report.startedAt).getTime()).toBeGreaterThan(0)
@@ -165,13 +165,13 @@ function makeFakeProvider(inputTokens: number, outputTokens: number): LLMProvide
 }
 
 describe('TokenCountingProvider', () => {
-  it('Given a single call, then peek returns the token counts', async () => {
+  it('[TC-164] Given a single call, then peek returns the token counts', async () => {
     const counter = new TokenCountingProvider(makeFakeProvider(400, 200))
     await counter.call({ messages: [{ role: 'user', content: 'hi' }] })
     expect(counter.peek()).toEqual({ inputTokens: 400, outputTokens: 200 })
   })
 
-  it('Given multiple calls, then peek accumulates across all calls', async () => {
+  it('[TC-165] Given multiple calls, then peek accumulates across all calls', async () => {
     const inner = {
       name: 'fake',
       model: 'fake-model',
@@ -192,7 +192,7 @@ describe('TokenCountingProvider', () => {
     expect(counter.peek()).toEqual({ inputTokens: 300, outputTokens: 150 })
   })
 
-  it('Given getAndReset, then returns accumulated totals and resets to zero', async () => {
+  it('[TC-166] Given getAndReset, then returns accumulated totals and resets to zero', async () => {
     const counter = new TokenCountingProvider(makeFakeProvider(500, 100))
     await counter.call({ messages: [{ role: 'user', content: 'x' }] })
     const first = counter.getAndReset()
@@ -200,14 +200,14 @@ describe('TokenCountingProvider', () => {
     expect(counter.peek()).toEqual({ inputTokens: 0, outputTokens: 0 })
   })
 
-  it('Given getAndReset called twice, then second call returns zeros', async () => {
+  it('[TC-167] Given getAndReset called twice, then second call returns zeros', async () => {
     const counter = new TokenCountingProvider(makeFakeProvider(300, 150))
     await counter.call({ messages: [{ role: 'user', content: 'x' }] })
     counter.getAndReset()
     expect(counter.getAndReset()).toEqual({ inputTokens: 0, outputTokens: 0 })
   })
 
-  it('Given two cycles using getAndReset between them, then each cycle is counted independently', async () => {
+  it('[TC-168] Given two cycles using getAndReset between them, then each cycle is counted independently', async () => {
     let callCount = 0
     const inner = {
       name: 'fake',
@@ -236,7 +236,7 @@ describe('TokenCountingProvider', () => {
     expect(cycle2).toEqual({ inputTokens: 400, outputTokens: 400 })
   })
 
-  it('Given delegated call, then response is passed through unmodified', async () => {
+  it('[TC-169] Given delegated call, then response is passed through unmodified', async () => {
     const expected: LLMResponse = {
       text: 'hello world',
       stopReason: 'end_turn',
@@ -256,7 +256,7 @@ describe('TokenCountingProvider', () => {
     expect(result).toEqual(expected)
   })
 
-  it('Given name/model/supportsStreaming, then delegates to inner provider', () => {
+  it('[TC-170] Given name/model/supportsStreaming, then delegates to inner provider', () => {
     const inner = makeFakeProvider(0, 0)
     const counter = new TokenCountingProvider(inner)
     expect(counter.name).toBe('fake')
@@ -268,7 +268,7 @@ describe('TokenCountingProvider', () => {
 // ─── ReportWriter ─────────────────────────────────────────────────
 
 describe('ReportWriter', () => {
-  it('Given a report, then appends NDJSON to the correct dated file', async () => {
+  it('[TC-171] Given a report, then appends NDJSON to the correct dated file', async () => {
     const logsDir = await mkdtemp(path.join(os.tmpdir(), 'kb-logs-test-'))
     const writer = new ReportWriter(logsDir)
     const c = new RunCollector('query')
@@ -296,7 +296,7 @@ describe('ReportWriter', () => {
     expect(parsed.stages[0].stage).toBe('query_truth:iter1')
   })
 
-  it('Given two appends, then both reports appear as separate NDJSON lines', async () => {
+  it('[TC-172] Given two appends, then both reports appear as separate NDJSON lines', async () => {
     const logsDir = await mkdtemp(path.join(os.tmpdir(), 'kb-logs-test-'))
     const writer = new ReportWriter(logsDir)
     await writer.append(new RunCollector('query').finish('success'))
@@ -310,7 +310,7 @@ describe('ReportWriter', () => {
     expect(JSON.parse(lines[1]).command).toBe('submit')
   })
 
-  it('Given a bad logs dir path, then append does not throw and warns on stderr', async () => {
+  it('[TC-173] Given a bad logs dir path, then append does not throw and warns on stderr', async () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     // Use a path under a non-existent root that mkdir cannot create
     const writer = new ReportWriter('/dev/null/cannot-exist/logs')
@@ -324,7 +324,7 @@ describe('ReportWriter', () => {
 // ─── TrajectoryCollector ──────────────────────────────────────────
 
 describe('TrajectoryCollector', () => {
-  it('Given a fresh collector, compileTrajectory returns empty steps and non-negative elapsedMs', () => {
+  it('[TC-174] Given a fresh collector, compileTrajectory returns empty steps and non-negative elapsedMs', () => {
     const c = new TrajectoryCollector('task-1', 'K')
     const t = c.compileTrajectory()
     expect(t.totalSteps).toBe(0)
@@ -334,7 +334,7 @@ describe('TrajectoryCollector', () => {
     expect(t.condition).toBe('K')
   })
 
-  it('Given a single step, stepIndex is 0 and fields match what was passed', () => {
+  it('[TC-175] Given a single step, stepIndex is 0 and fields match what was passed', () => {
     const c = new TrajectoryCollector('task-2', 'N')
     c.record_step('read_file', { path: '/src/foo.ts' }, { fresh: 100, cached: 50, output: 20 })
     const t = c.compileTrajectory()
@@ -348,7 +348,7 @@ describe('TrajectoryCollector', () => {
     expect(t.steps[0].timestampMs).toBeGreaterThanOrEqual(0)
   })
 
-  it('Given duplicate tool calls, both appear with sequential stepIndex values', () => {
+  it('[TC-176] Given duplicate tool calls, both appear with sequential stepIndex values', () => {
     const c = new TrajectoryCollector('task-3', 'O')
     c.record_step('read_facts', { id: 'fact-1' })
     c.record_step('read_facts', { id: 'fact-1' })
@@ -360,7 +360,7 @@ describe('TrajectoryCollector', () => {
     expect(t.steps[1].toolName).toBe('read_facts')
   })
 
-  it('Given no tokens argument, all token fields default to 0', () => {
+  it('[TC-177] Given no tokens argument, all token fields default to 0', () => {
     const c = new TrajectoryCollector('task-4', 'K')
     c.record_step('search_code', { query: 'foo' })
     const step = c.compileTrajectory().steps[0]
@@ -369,7 +369,7 @@ describe('TrajectoryCollector', () => {
     expect(step.outputTokens).toBe(0)
   })
 
-  it('Given compiled trajectory, JSON round-trip produces identical result', () => {
+  it('[TC-178] Given compiled trajectory, JSON round-trip produces identical result', () => {
     const c = new TrajectoryCollector('task-5', 'N')
     c.record_step('tool_a', { x: 1 }, { fresh: 10 })
     c.record_step('tool_b', { y: 'hello' })
@@ -378,7 +378,7 @@ describe('TrajectoryCollector', () => {
     expect(roundTripped).toEqual(t)
   })
 
-  it('Given writeTrajectory, file is written at expected path and parses back correctly', async () => {
+  it('[TC-179] Given writeTrajectory, file is written at expected path and parses back correctly', async () => {
     const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'kb-traj-test-'))
     try {
       const c = new TrajectoryCollector('task-6', 'K')

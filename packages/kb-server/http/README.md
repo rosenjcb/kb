@@ -1,6 +1,6 @@
 # kb server — HTTP examples and integration tests
 
-OKF companion: [`HTTP.md`](HTTP.md).
+OKF companion: [`HTTP.md`](HTTP.md). Behavioral spec: [`HTTP.spec.md`](HTTP.spec.md).
 
 | File | Purpose |
 |---|---|

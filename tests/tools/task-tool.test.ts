@@ -23,7 +23,7 @@ class QueuedFakeProvider implements LLMProvider {
 }
 
 describe('executeSubagentTask', () => {
-  it('Given empty prompt, then returns validation error', async () => {
+  it('[TC-83] Given empty prompt, then returns validation error', async () => {
     const base = path.join(
       process.cwd(),
       'tmp-task-validation',
@@ -45,7 +45,7 @@ describe('executeSubagentTask', () => {
     }
   })
 
-  it('Given subagent read_facts turn then text turn, then succeeds with trace', async () => {
+  it('[TC-84] Given subagent read_facts turn then text turn, then succeeds with trace', async () => {
     const base = path.join(
       process.cwd(),
       'tmp-task-test',

@@ -97,3 +97,7 @@ Placeholders work in two-part files too — call `.replace()` on `intro` or `ins
 3. Import `loadPrompt` or `loadPromptParts` from `../prompts/loader` in the consuming file.
 4. Add a row to the table above.
 5. Add a test case in `tests/prompts/loader.test.ts` if the new file uses a non-obvious format or a placeholder.
+
+## Related docs
+
+- Behavioral spec → [`PROMPTS.spec.md`](PROMPTS.spec.md)

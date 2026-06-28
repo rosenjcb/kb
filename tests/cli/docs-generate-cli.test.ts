@@ -6,7 +6,7 @@ import {
 } from '../../src/cli/docs-generate-cli'
 
 describe('parseDocsGenerateCommand', () => {
-  it('Given help flag, then throws exit 0', () => {
+  it('[TC-174] Given help flag, then throws exit 0', () => {
     try {
       parseDocsGenerateCommand(['--help'])
       expect.fail('expected throw')
@@ -16,7 +16,7 @@ describe('parseDocsGenerateCommand', () => {
     }
   })
 
-  it('Given start prompt and --type, then parses', () => {
+  it('[TC-175] Given start prompt and --type, then parses', () => {
     const parsed = parseDocsGenerateCommand(['my topic', '--type', 'howto', '--limit', '5'])
     expect(parsed).toEqual({
       mode: 'start',
@@ -27,7 +27,7 @@ describe('parseDocsGenerateCommand', () => {
     })
   })
 
-  it('Given --resume and --answer, then parses', () => {
+  it('[TC-176] Given --resume and --answer, then parses', () => {
     const parsed = parseDocsGenerateCommand([
       '--resume',
       'abc-123',
@@ -46,7 +46,7 @@ describe('parseDocsGenerateCommand', () => {
     })
   })
 
-  it('Given --resume and --accept, then parses', () => {
+  it('[TC-177] Given --resume and --accept, then parses', () => {
     expect(parseDocsGenerateCommand(['--resume', 'sid', '--accept', '--base', 'dogfood'])).toEqual({
       mode: 'resume',
       sessionId: 'sid',
@@ -56,7 +56,7 @@ describe('parseDocsGenerateCommand', () => {
     })
   })
 
-  it('Given --resume and --reject, then parses feedback', () => {
+  it('[TC-178] Given --resume and --reject, then parses feedback', () => {
     expect(
       parseDocsGenerateCommand(['--resume', 'sid', '--reject', 'no dates', '--base', 'dogfood'])
     ).toEqual({
@@ -69,21 +69,21 @@ describe('parseDocsGenerateCommand', () => {
     })
   })
 
-  it('Given --finalize and --accept with resume, then throws mutual exclusion', () => {
+  it('[TC-179] Given --finalize and --accept with resume, then throws mutual exclusion', () => {
     expect(() => parseDocsGenerateCommand(['--resume', 'x', '--finalize', '--accept'])).toThrow(
       DocsGenerateError
     )
   })
 
-  it('Given --resume without action, then throws', () => {
+  it('[TC-180] Given --resume without action, then throws', () => {
     expect(() => parseDocsGenerateCommand(['--resume', 'x'])).toThrow(DocsGenerateError)
   })
 
-  it('Given --list, then parses', () => {
+  it('[TC-181] Given --list, then parses', () => {
     expect(parseDocsGenerateCommand(['--list'])).toEqual({ mode: 'list', outputFormat: 'human' })
   })
 
-  it('Given --show id, then parses', () => {
+  it('[TC-182] Given --show id, then parses', () => {
     expect(parseDocsGenerateCommand(['--show', 'sid'])).toEqual({
       mode: 'show',
       sessionId: 'sid',
@@ -91,12 +91,12 @@ describe('parseDocsGenerateCommand', () => {
     })
   })
 
-  it('Given multiple positional tokens, then joins into prompt', () => {
+  it('[TC-183] Given multiple positional tokens, then joins into prompt', () => {
     const parsed = parseDocsGenerateCommand(['one', 'two', 'three'])
     expect(parsed).toEqual({ mode: 'start', prompt: 'one two three', outputFormat: 'human' })
   })
 
-  it('Given --output json, then parses outputFormat', () => {
+  it('[TC-184] Given --output json, then parses outputFormat', () => {
     expect(parseDocsGenerateCommand(['x', '--output', 'json'])).toMatchObject({
       mode: 'start',
       prompt: 'x',
@@ -104,7 +104,7 @@ describe('parseDocsGenerateCommand', () => {
     })
   })
 
-  it('isDocsGenerateJsonOutputArgs detects docs generate --output json', () => {
+  it('[TC-185] isDocsGenerateJsonOutputArgs detects docs generate --output json', () => {
     expect(isDocsGenerateJsonOutputArgs(['docs', 'generate', 'p', '--output', 'json'])).toBe(true)
     expect(isDocsGenerateJsonOutputArgs(['docs', 'generate', '--output', 'human'])).toBe(false)
     expect(isDocsGenerateJsonOutputArgs(['query', 'x'])).toBe(false)

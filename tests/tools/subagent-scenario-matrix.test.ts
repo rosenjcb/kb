@@ -65,7 +65,7 @@ describe('subagent scenario matrix (106)', () => {
     }
   })
 
-  it('writes evaluation/runs orchestrator matrix snapshot', async () => {
+  it('[TC-85] writes evaluation/runs orchestrator matrix snapshot', async () => {
     const rows: Array<{
       scenario: string
       status: string

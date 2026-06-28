@@ -9,7 +9,7 @@ function mockLlm(response: string): LLMProvider {
 }
 
 describe('extractFactTriplets', () => {
-  it('parses a single-element JSON array', async () => {
+  it('[TC-27] parses a single-element JSON array', async () => {
     const llm = mockLlm(
       '[{"subject":"QueryOrchestrator","predicate":"seeds","object":"hypotheses in parallel"}]'
     )
@@ -22,7 +22,7 @@ describe('extractFactTriplets', () => {
     })
   })
 
-  it('parses a multi-element array from a compound sentence', async () => {
+  it('[TC-28] parses a multi-element array from a compound sentence', async () => {
     const llm = mockLlm(
       '[{"subject":"TsMorphIndexer","predicate":"handles","object":"TypeScript and JS files"},{"subject":"TreeSitterIndexer","predicate":"handles","object":"all other files"}]'
     )
@@ -32,14 +32,14 @@ describe('extractFactTriplets', () => {
     expect(result[1]?.subject).toBe('TreeSitterIndexer')
   })
 
-  it('falls back to bare object for backwards compat', async () => {
+  it('[TC-29] falls back to bare object for backwards compat', async () => {
     const llm = mockLlm('{"subject":"kb init","predicate":"runs","object":"7 cycles"}')
     const result = await extractFactTriplets(llm, 'any input')
     expect(result).toHaveLength(1)
     expect(result[0]?.subject).toBe('kb init')
   })
 
-  it('ignores surrounding prose and extracts the JSON array', async () => {
+  it('[TC-30] ignores surrounding prose and extracts the JSON array', async () => {
     const llm = mockLlm(
       'Here are the triples:\n[{"subject":"A","predicate":"uses","object":"B"}]\nDone.'
     )
@@ -48,17 +48,17 @@ describe('extractFactTriplets', () => {
     expect(result[0]?.subject).toBe('A')
   })
 
-  it('throws when output has no JSON', async () => {
+  it('[TC-31] throws when output has no JSON', async () => {
     const llm = mockLlm('I cannot extract triples from this.')
     await expect(extractFactTriplets(llm, 'any')).rejects.toThrow('triplet-extract')
   })
 
-  it('throws when array contains no valid triples', async () => {
+  it('[TC-32] throws when array contains no valid triples', async () => {
     const llm = mockLlm('[{"foo":"bar"}]')
     await expect(extractFactTriplets(llm, 'any')).rejects.toThrow('triplet-extract')
   })
 
-  it('skips malformed rows but keeps valid ones', async () => {
+  it('[TC-33] skips malformed rows but keeps valid ones', async () => {
     const llm = mockLlm(
       '[{"subject":"A","predicate":"uses","object":"B"},{"bad":"row"},{"subject":"C","predicate":"reads","object":"D"}]'
     )
@@ -70,7 +70,7 @@ describe('extractFactTriplets', () => {
 })
 
 describe('extractFactTriplet (single convenience wrapper)', () => {
-  it('returns the first triplet from a multi-triple response', async () => {
+  it('[TC-34] returns the first triplet from a multi-triple response', async () => {
     const llm = mockLlm(
       '[{"subject":"X","predicate":"does","object":"Y"},{"subject":"A","predicate":"uses","object":"B"}]'
     )

@@ -47,3 +47,7 @@ Do not add a second retrieval path that bypasses the router for `read_facts`.
 ## High-recall queries
 
 - `requiresHighRecallQuery()` in `intent-cli.ts` detects broad identifier-style queries (telemetry only today; does not raise `read_facts` limit). Default limit is `DEFAULT_FACT_LIMIT` (500) for shallow retrieval when `--limit` is omitted.
+
+## Related docs
+
+- Behavioral spec → [`INTENTS.spec.md`](INTENTS.spec.md)

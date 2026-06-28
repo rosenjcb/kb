@@ -40,7 +40,7 @@ async function createConfigFile(initial?: unknown): Promise<string> {
 }
 
 describe('config-cli', () => {
-  it('Given get with no key, then returns normalized full config JSON', async () => {
+  it('[TC-131] Given get with no key, then returns normalized full config JSON', async () => {
     const configFile = await createConfigFile({
       defaultBase: 'dogfood',
       notion: { parentPageId: 'abc123' },
@@ -53,7 +53,7 @@ describe('config-cli', () => {
     expect(result.output).toContain('"parentPageId": "abc123"')
   })
 
-  it('Given nested notion key, then get returns scalar and unset prunes empty object', async () => {
+  it('[TC-132] Given nested notion key, then get returns scalar and unset prunes empty object', async () => {
     const configFile = await createConfigFile()
 
     await runConfigCommand(['set', 'notion.parentPageId', 'parent-123'], { configFile })
@@ -65,7 +65,7 @@ describe('config-cli', () => {
     expect(rawAfterUnset.notion).toBeUndefined()
   })
 
-  it('Given read-only or unknown keys, then returns explicit errors', async () => {
+  it('[TC-133] Given read-only or unknown keys, then returns explicit errors', async () => {
     const configFile = await createConfigFile()
 
     await expect(runConfigCommand(['set', 'updatedAt', '123'], { configFile })).rejects.toThrow(
@@ -76,7 +76,7 @@ describe('config-cli', () => {
     )
   })
 
-  it('Given supported but unset key, then get returns explicit not-set error', async () => {
+  it('[TC-134] Given supported but unset key, then get returns explicit not-set error', async () => {
     const configFile = await createConfigFile({})
 
     await expect(runConfigCommand(['get', 'defaultBase'], { configFile })).rejects.toThrow(
@@ -84,7 +84,7 @@ describe('config-cli', () => {
     )
   })
 
-  it('Given KB_HOME override and no explicit config file, then config commands use the overridden home config path', async () => {
+  it('[TC-135] Given KB_HOME override and no explicit config file, then config commands use the overridden home config path', async () => {
     await runConfigCommand(['set', 'notion.parentPageId', 'catalog-root'])
 
     const saved = await readKbConfig(getKbConfigFile())
@@ -93,7 +93,7 @@ describe('config-cli', () => {
     expect(getKbConfigFile()).toBe(path.join(kbHomeDir, 'config.json'))
   })
 
-  it('Given config help, then it excludes base keys and generated feature keys', () => {
+  it('[TC-136] Given config help, then it excludes base keys and generated feature keys', () => {
     const help = printConfigHelp()
     expect(help).not.toContain('defaultBase')
     expect(help).not.toContain('defaultBase')
@@ -103,7 +103,7 @@ describe('config-cli', () => {
     expect(help).toContain('llm.provider')
   })
 
-  it('Given supported config paths, then they omit base-selection and feature keys', () => {
+  it('[TC-137] Given supported config paths, then they omit base-selection and feature keys', () => {
     const keys = listSupportedConfigPaths()
     expect(keys).not.toContain('defaultBase')
     expect(keys).not.toContain('defaultBase')
@@ -117,7 +117,7 @@ describe('config-cli', () => {
     expect(keys).toContain('fact_retrieval_method')
   })
 
-  it('Given fact_retrieval_method key, then set/get/unset round-trips correctly', async () => {
+  it('[TC-138] Given fact_retrieval_method key, then set/get/unset round-trips correctly', async () => {
     const configFile = await createConfigFile()
 
     await runConfigCommand(['set', 'fact_retrieval_method', 'all_facts'], { configFile })
@@ -129,7 +129,7 @@ describe('config-cli', () => {
     expect(saved.factRetrievalMethod).toBeUndefined()
   })
 
-  it('Given fact_retrieval_method set to query_expansion, then get returns that value', async () => {
+  it('[TC-139] Given fact_retrieval_method set to query_expansion, then get returns that value', async () => {
     const configFile = await createConfigFile()
 
     await runConfigCommand(['set', 'fact_retrieval_method', 'query_expansion'], { configFile })
@@ -138,7 +138,7 @@ describe('config-cli', () => {
     expect(value.output).toBe('query_expansion\n')
   })
 
-  it('Given invalid fact_retrieval_method value, then set throws a descriptive error', async () => {
+  it('[TC-140] Given invalid fact_retrieval_method value, then set throws a descriptive error', async () => {
     const configFile = await createConfigFile()
 
     await expect(
@@ -146,15 +146,15 @@ describe('config-cli', () => {
     ).rejects.toThrow('fact_retrieval_method must be one of: query_expansion, all_facts')
   })
 
-  it('Given resolveFactRetrievalMethod, then it returns query_expansion by default', () => {
+  it('[TC-141] Given resolveFactRetrievalMethod, then it returns query_expansion by default', () => {
     expect(resolveFactRetrievalMethod({})).toBe('query_expansion')
   })
 
-  it('Given resolveFactRetrievalMethod with all_facts in config, then it returns all_facts', () => {
+  it('[TC-142] Given resolveFactRetrievalMethod with all_facts in config, then it returns all_facts', () => {
     expect(resolveFactRetrievalMethod({ factRetrievalMethod: 'all_facts' })).toBe('all_facts')
   })
 
-  it('Given KB_FACT_RETRIEVAL_METHOD env override, then it wins over config', () => {
+  it('[TC-143] Given KB_FACT_RETRIEVAL_METHOD env override, then it wins over config', () => {
     process.env.KB_FACT_RETRIEVAL_METHOD = 'all_facts'
     try {
       expect(resolveFactRetrievalMethod({ factRetrievalMethod: 'query_expansion' })).toBe('all_facts')
@@ -163,12 +163,12 @@ describe('config-cli', () => {
     }
   })
 
-  it('Given config help, then it includes fact_retrieval_method', () => {
+  it('[TC-144] Given config help, then it includes fact_retrieval_method', () => {
     const help = printConfigHelp()
     expect(help).toContain('fact_retrieval_method')
   })
 
-  it('Given graph.enabled key, then config set/get/unset round-trips the boolean flag', async () => {
+  it('[TC-145] Given graph.enabled key, then config set/get/unset round-trips the boolean flag', async () => {
     const configFile = await createConfigFile()
 
     await runConfigCommand(['set', 'graph.enabled', 'false'], { configFile })
@@ -180,7 +180,7 @@ describe('config-cli', () => {
     expect(saved.graph).toBeUndefined()
   })
 
-  it('Given internal chat config or env override, then conversational chat flag resolves without becoming a public config key', () => {
+  it('[TC-146] Given internal chat config or env override, then conversational chat flag resolves without becoming a public config key', () => {
     expect(
       resolveConversationalChatEnabled({ chat: { experimentalConversationalRetrieval: true } })
     ).toBe(true)
@@ -192,7 +192,7 @@ describe('config-cli', () => {
     delete process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL
   })
 
-  it('Given gemini config with a model override, then provider resolution preserves the selected model', () => {
+  it('[TC-147] Given gemini config with a model override, then provider resolution preserves the selected model', () => {
     process.env.GEMINI_API_KEY = 'test-gemini-key'
     try {
       const resolved = resolveLLMProvider({
@@ -232,14 +232,14 @@ describe('config llm subcommand', () => {
     delete process.env.GEMINI_API_KEY
   })
 
-  it('Given kb config llm --show with no keys set, then output warns about missing keys', async () => {
+  it('[TC-148] Given kb config llm --show with no keys set, then output warns about missing keys', async () => {
     const configFile = await createConfigFile()
     const result = await runConfigCommand(['llm', '--show'], { configFile })
     expect(result.output).toContain('ANTHROPIC_API_KEY')
     expect(result.output).toContain('not set')
   })
 
-  it('Given kb config llm --show with a key set, then output shows it as set', async () => {
+  it('[TC-149] Given kb config llm --show with a key set, then output shows it as set', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-test'
     const configFile = await createConfigFile({ llm: { provider: 'anthropic' } })
     const result = await runConfigCommand(['llm', '--show'], { configFile })
@@ -247,13 +247,13 @@ describe('config llm subcommand', () => {
     expect(result.output).toMatch(/✓\s*set/)
   })
 
-  it('Given kb config llm in non-TTY mode, then it falls back to show without prompting', async () => {
+  it('[TC-150] Given kb config llm in non-TTY mode, then it falls back to show without prompting', async () => {
     const configFile = await createConfigFile()
     const result = await runConfigCommand(['llm'], { configFile, isTTY: false })
     expect(result.output).toContain('ANTHROPIC_API_KEY')
   })
 
-  it('Given kb config llm --show, then provider from config is displayed', async () => {
+  it('[TC-151] Given kb config llm --show, then provider from config is displayed', async () => {
     const configFile = await createConfigFile({ llm: { provider: 'gemini' } })
     const result = await runConfigCommand(['llm', '--show'], { configFile })
     expect(result.output).toContain('gemini')

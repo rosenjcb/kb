@@ -14,37 +14,37 @@ function makeIO(responses: Array<string | null>) {
 }
 
 describe('promptUserDocSections', () => {
-  it('Given /skip, then returns skip without asking for descriptions', async () => {
+  it('[TC-187] Given /skip, then returns skip without asking for descriptions', async () => {
     const { io } = makeIO(['/skip'])
     const result = await promptUserDocSections(io)
     expect(result).toBe('skip')
   })
 
-  it('Given blank input, then returns skip', async () => {
+  it('[TC-188] Given blank input, then returns skip', async () => {
     const { io } = makeIO([''])
     const result = await promptUserDocSections(io)
     expect(result).toBe('skip')
   })
 
-  it('Given /cancel on name prompt, then returns cancel', async () => {
+  it('[TC-189] Given /cancel on name prompt, then returns cancel', async () => {
     const { io } = makeIO(['/cancel'])
     const result = await promptUserDocSections(io)
     expect(result).toBe('cancel')
   })
 
-  it('Given null read on name prompt, then returns cancel', async () => {
+  it('[TC-190] Given null read on name prompt, then returns cancel', async () => {
     const { io } = makeIO([null])
     const result = await promptUserDocSections(io)
     expect(result).toBe('cancel')
   })
 
-  it('Given name then /cancel on description, then returns cancel', async () => {
+  it('[TC-191] Given name then /cancel on description, then returns cancel', async () => {
     const { io } = makeIO(['Overview', '/cancel'])
     const result = await promptUserDocSections(io)
     expect(result).toBe('cancel')
   })
 
-  it('Given multiple sections one at a time, then returns sections after /complete', async () => {
+  it('[TC-192] Given multiple sections one at a time, then returns sections after /complete', async () => {
     const { io } = makeIO(['Overview', '', 'Usage', 'How to use it', '/complete', '/accept'])
     const result = await promptUserDocSections(io)
     expect(result).toEqual([
@@ -53,7 +53,7 @@ describe('promptUserDocSections', () => {
     ])
   })
 
-  it('Given sections with descriptions, then returns sections with user descriptions', async () => {
+  it('[TC-193] Given sections with descriptions, then returns sections with user descriptions', async () => {
     const { io } = makeIO([
       'Background',
       'Why this matters',
@@ -72,19 +72,19 @@ describe('promptUserDocSections', () => {
     ])
   })
 
-  it('Given blank description for a section, then uses default', async () => {
+  it('[TC-194] Given blank description for a section, then uses default', async () => {
     const { io } = makeIO(['API Reference', '', '/complete', '/accept'])
     const result = await promptUserDocSections(io)
     expect(result).toEqual([{ name: 'API Reference', description: 'Content about api reference' }])
   })
 
-  it('Given /complete with no sections, then returns skip', async () => {
+  it('[TC-195] Given /complete with no sections, then returns skip', async () => {
     const { io } = makeIO(['/complete'])
     const result = await promptUserDocSections(io)
     expect(result).toBe('skip')
   })
 
-  it('Given each added section, then writes running list to output', async () => {
+  it('[TC-196] Given each added section, then writes running list to output', async () => {
     const { io, lines } = makeIO(['Alpha', 'desc a', 'Beta', 'desc b', '/complete', '/accept'])
     await promptUserDocSections(io)
     const listOutput = lines.join('\n')

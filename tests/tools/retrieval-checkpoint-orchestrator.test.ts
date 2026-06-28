@@ -5,14 +5,14 @@ import {
 } from '../../src/tools/retrieval-checkpoint-orchestrator'
 
 describe('retrieval-checkpoint-orchestrator', () => {
-  it('Given result counts, then estimateConfidence returns deterministic bands', () => {
+  it('[TC-86] Given result counts, then estimateConfidence returns deterministic bands', () => {
     expect(estimateConfidence(0)).toBe(0)
     expect(estimateConfidence(1)).toBe(0.55)
     expect(estimateConfidence(2)).toBe(0.72)
     expect(estimateConfidence(3)).toBe(0.86)
   })
 
-  it('Given high-confidence hybrid hit, then next action is return', () => {
+  it('[TC-87] Given high-confidence hybrid hit, then next action is return', () => {
     const record = buildCheckpointRecord({
       stage: 'hybrid_primary',
       totalResults: 3,
@@ -25,7 +25,7 @@ describe('retrieval-checkpoint-orchestrator', () => {
     expect(record.nextAction).toBe('return')
   })
 
-  it('Given low-confidence lexical stage, then next action advances to rewrite retry', () => {
+  it('[TC-88] Given low-confidence lexical stage, then next action advances to rewrite retry', () => {
     const record = buildCheckpointRecord({
       stage: 'lexical_recovery',
       totalResults: 0,
@@ -37,7 +37,7 @@ describe('retrieval-checkpoint-orchestrator', () => {
     expect(record.nextAction).toBe('advance')
   })
 
-  it('Given rewrite retry stage, then next action always returns', () => {
+  it('[TC-89] Given rewrite retry stage, then next action always returns', () => {
     const record = buildCheckpointRecord({
       stage: 'query_rewrite_retry',
       totalResults: 0,

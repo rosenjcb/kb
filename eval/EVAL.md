@@ -127,6 +127,8 @@ The query harvest pipeline's scorer (Gemini/OpenAI) is non-deterministic even at
 
 ## Related docs
 
+- Behavioral spec → [`EVAL.spec.md`](EVAL.spec.md)
+
 - `losses/LOSSES.md` — per-function API, invariants, extension checklist
 - `../../PLAN.md` — 12-ticket backlog (all ✅ Implemented)
 - `../../TESTING.md` — test conventions including eval-specific patterns

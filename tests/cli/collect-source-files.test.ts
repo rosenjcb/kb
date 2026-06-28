@@ -16,7 +16,7 @@ afterEach(async () => {
 })
 
 describe('collectSourceFiles', () => {
-  it('walks deeply nested directories without stopping early', async () => {
+  it('[TC-125] walks deeply nested directories without stopping early', async () => {
     // Reproduce: packages/catalog/src is 3 levels down
     await mkdir(path.join(tempDir, 'packages', 'catalog', 'src'), { recursive: true })
     await writeFile(path.join(tempDir, 'README.md'), '# Root', 'utf8')
@@ -28,7 +28,7 @@ describe('collectSourceFiles', () => {
     expect(result['packages/catalog/src/OVERVIEW.md']).toBeDefined()
   })
 
-  it('collects more than 100 markdown files (no file-count cap)', async () => {
+  it('[TC-126] collects more than 100 markdown files (no file-count cap)', async () => {
     // Previously capped at MAX_MARKDOWN_SOURCE_FILES = 100; verify that cap is gone
     const count = 110
     await mkdir(path.join(tempDir, 'docs'), { recursive: true })
@@ -41,7 +41,7 @@ describe('collectSourceFiles', () => {
     expect(Object.keys(result).length).toBeGreaterThanOrEqual(count)
   })
 
-  it('skips dotfile directories', async () => {
+  it('[TC-127] skips dotfile directories', async () => {
     await mkdir(path.join(tempDir, '.hidden'), { recursive: true })
     await writeFile(path.join(tempDir, '.hidden', 'secret.md'), '# Secret', 'utf8')
     await writeFile(path.join(tempDir, 'visible.md'), '# Visible', 'utf8')
@@ -52,7 +52,7 @@ describe('collectSourceFiles', () => {
     expect(result['visible.md']).toBeDefined()
   })
 
-  it('skips excluded directories like node_modules', async () => {
+  it('[TC-128] skips excluded directories like node_modules', async () => {
     await mkdir(path.join(tempDir, 'node_modules', 'pkg'), { recursive: true })
     await writeFile(path.join(tempDir, 'node_modules', 'pkg', 'README.md'), '# Pkg', 'utf8')
     await writeFile(path.join(tempDir, 'README.md'), '# Root', 'utf8')
@@ -63,7 +63,7 @@ describe('collectSourceFiles', () => {
     expect(result['README.md']).toBeDefined()
   })
 
-  it('explores sibling directories at the same depth', async () => {
+  it('[TC-129] explores sibling directories at the same depth', async () => {
     // Verify alphabetically-later siblings are visited even when earlier ones have many files
     await mkdir(path.join(tempDir, 'aaa'), { recursive: true })
     await mkdir(path.join(tempDir, 'zzz'), { recursive: true })
@@ -77,7 +77,7 @@ describe('collectSourceFiles', () => {
     expect(result['zzz/late.md']).toBeDefined()
   })
 
-  it('respects an ignore matcher (prunes dirs and files)', async () => {
+  it('[TC-130] respects an ignore matcher (prunes dirs and files)', async () => {
     await mkdir(path.join(tempDir, 'docs', 'legacy'), { recursive: true })
     await writeFile(path.join(tempDir, 'README.md'), '# Root', 'utf8')
     await writeFile(path.join(tempDir, 'docs', 'guide.md'), '# Guide', 'utf8')

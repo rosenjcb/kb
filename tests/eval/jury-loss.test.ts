@@ -59,19 +59,19 @@ const input: JuryInput = {
 // ── parseVerdict ──────────────────────────────────────────────────────────────
 
 describe('parseVerdict', () => {
-  it('Returns null for invalid JSON', () => {
+  it('[TC-62] Returns null for invalid JSON', () => {
     expect(parseVerdict('not json')).toBeNull()
   })
 
-  it('Returns null when analysis is empty', () => {
+  it('[TC-63] Returns null when analysis is empty', () => {
     expect(parseVerdict(JSON.stringify({ analysis: '', scores: {}, veto_flag: false, veto_reason: '' }))).toBeNull()
   })
 
-  it('Returns null when veto_flag is missing', () => {
+  it('[TC-64] Returns null when veto_flag is missing', () => {
     expect(parseVerdict(JSON.stringify({ analysis: 'ok', scores: {} }))).toBeNull()
   })
 
-  it('Returns parsed verdict for valid input', () => {
+  it('[TC-65] Returns parsed verdict for valid input', () => {
     const v = makeVerdict({ rubric_1: 5 })
     expect(parseVerdict(JSON.stringify(v))).toMatchObject({ veto_flag: false })
   })
@@ -80,7 +80,7 @@ describe('parseVerdict', () => {
 // ── runJury: core cases ───────────────────────────────────────────────────────
 
 describe('runJury — core', () => {
-  it('All judges agree with score 5 → loss = 0', async () => {
+  it('[TC-66] All judges agree with score 5 → loss = 0', async () => {
     const scores = { rubric_1: 5, rubric_2: 5, rubric_3: 5 }
     const judges: JudgeConfig[] = [
       { provider: mockProvider('anthropic', [makeVerdict(scores)]) },
@@ -92,7 +92,7 @@ describe('runJury — core', () => {
     expect(result.loss).toBeCloseTo(0)
   })
 
-  it('All judges score 0 → loss = 1', async () => {
+  it('[TC-67] All judges score 0 → loss = 1', async () => {
     const scores = { rubric_1: 0, rubric_2: 0, rubric_3: 0 }
     const judges: JudgeConfig[] = [
       { provider: mockProvider('anthropic', [makeVerdict(scores)]) },
@@ -102,7 +102,7 @@ describe('runJury — core', () => {
     expect(result.loss).toBeCloseTo(1)
   })
 
-  it('One judge vetoes, 2 do not → not vetoed (count < threshold)', async () => {
+  it('[TC-68] One judge vetoes, 2 do not → not vetoed (count < threshold)', async () => {
     const good = makeVerdict({ rubric_1: 4, rubric_2: 4, rubric_3: 4 })
     const bad = makeVerdict({ rubric_1: 0 }, true)
     const judges: JudgeConfig[] = [
@@ -114,7 +114,7 @@ describe('runJury — core', () => {
     expect(result.vetoed).toBe(false)
   })
 
-  it('Two judges veto → L_jury = 1.0, vetoed = true', async () => {
+  it('[TC-69] Two judges veto → L_jury = 1.0, vetoed = true', async () => {
     const vetoV = makeVerdict({}, true)
     const good = makeVerdict({ rubric_1: 5, rubric_2: 5, rubric_3: 5 })
     const judges: JudgeConfig[] = [
@@ -127,7 +127,7 @@ describe('runJury — core', () => {
     expect(result.loss).toBe(1.0)
   })
 
-  it('Malformed JSON → counts as veto; two malformed judges → L_jury = 1.0', async () => {
+  it('[TC-70] Malformed JSON → counts as veto; two malformed judges → L_jury = 1.0', async () => {
     const judges: JudgeConfig[] = [
       { provider: mockProvider('anthropic', [null]) },
       { provider: mockProvider('openai', [null]) },
@@ -138,7 +138,7 @@ describe('runJury — core', () => {
     expect(result.loss).toBe(1.0)
   })
 
-  it('biasConfig omitted entirely → DEFAULT_BIAS_CONFIG applied, no runtime error', async () => {
+  it('[TC-71] biasConfig omitted entirely → DEFAULT_BIAS_CONFIG applied, no runtime error', async () => {
     // With default config, position debiasing is ON (2 calls per judge).
     // Supply 2 responses per provider.
     const v = makeVerdict({ rubric_1: 4, rubric_2: 4, rubric_3: 4 })
@@ -150,7 +150,7 @@ describe('runJury — core', () => {
     await expect(runJury(input, judges)).resolves.not.toThrow()
   })
 
-  it('Mixed scores produce expected L_jury (no biases)', async () => {
+  it('[TC-72] Mixed scores produce expected L_jury (no biases)', async () => {
     // judge1: rubric_1=4, rubric_2=3 → mean=3.5
     // judge2: rubric_1=5, rubric_2=4 → mean=4.5
     // weightedMean = (3.5 + 4.5) / 2 = 4.0  → loss = 1 - 4/5 = 0.20
@@ -168,7 +168,7 @@ describe('runJury — core', () => {
 // ── Verbosity normalization ───────────────────────────────────────────────────
 
 describe('runJury — verbosity normalization', () => {
-  it('raw score 5 on 1000-token candidate → adjustedScore ≈ 0.724', async () => {
+  it('[TC-73] raw score 5 on 1000-token candidate → adjustedScore ≈ 0.724', async () => {
     // Build a candidate string of ~1000 whitespace-separated tokens
     const candidateLong = Array.from({ length: 1000 }, (_, i) => `word${i}`).join(' ')
     const longInput: JuryInput = { candidate: candidateLong, reference: 'ref', rubric: ['Is it correct?'] }
@@ -187,7 +187,7 @@ describe('runJury — verbosity normalization', () => {
     }
   })
 
-  it('Normalization off → adjustedScores equal raw scores', async () => {
+  it('[TC-74] Normalization off → adjustedScores equal raw scores', async () => {
     const v = makeVerdict({ rubric_1: 3, rubric_2: 4 })
     const judges: JudgeConfig[] = [{ provider: mockProvider('anthropic', [v]) }]
     const result = await runJury(input, judges, { ...SIMPLE_BIAS, enableVerbosityNormalization: false })
@@ -198,7 +198,7 @@ describe('runJury — verbosity normalization', () => {
 // ── Position debiasing ────────────────────────────────────────────────────────
 
 describe('runJury — position debiasing', () => {
-  it('forward=5, reversed=1 → averaged=3, warning emitted', async () => {
+  it('[TC-75] forward=5, reversed=1 → averaged=3, warning emitted', async () => {
     const forward = makeVerdict({ rubric_1: 5 })
     const reversed = makeVerdict({ rubric_1: 1 })
     const judges: JudgeConfig[] = [
@@ -214,7 +214,7 @@ describe('runJury — position debiasing', () => {
     expect(result.judgeDetails[0].positionConsistencyDelta).toBe(4)
   })
 
-  it('forward=5, reversed=4 → averaged=4.5, no consistency warning', async () => {
+  it('[TC-76] forward=5, reversed=4 → averaged=4.5, no consistency warning', async () => {
     const forward = makeVerdict({ rubric_1: 5 })
     const reversed = makeVerdict({ rubric_1: 4 })
     const judges: JudgeConfig[] = [
@@ -229,7 +229,7 @@ describe('runJury — position debiasing', () => {
     expect(result.warnings.filter(w => w.includes('Position consistency'))).toHaveLength(0)
   })
 
-  it('positionConsistencyDelta absent when debiasing is off', async () => {
+  it('[TC-77] positionConsistencyDelta absent when debiasing is off', async () => {
     const v = makeVerdict({ rubric_1: 4 })
     const judges: JudgeConfig[] = [{ provider: mockProvider('anthropic', [v]) }]
     const result = await runJury(input, judges, { ...SIMPLE_BIAS, enablePositionDebiasing: false })
@@ -240,7 +240,7 @@ describe('runJury — position debiasing', () => {
 // ── Self-enhancement ──────────────────────────────────────────────────────────
 
 describe('runJury — self-enhancement', () => {
-  it('openai judge with generatorProviderName=openai → weight=0.5, warning emitted', async () => {
+  it('[TC-78] openai judge with generatorProviderName=openai → weight=0.5, warning emitted', async () => {
     const v = makeVerdict({ rubric_1: 5, rubric_2: 5, rubric_3: 5 })
     const judges: JudgeConfig[] = [{ provider: mockProvider('openai', [v]) }]
     const result = await runJury(input, judges, SIMPLE_BIAS, 'openai')
@@ -248,7 +248,7 @@ describe('runJury — self-enhancement', () => {
     expect(result.warnings.some(w => w.includes('Self-enhancement warning'))).toBe(true)
   })
 
-  it('Down-weighted judge still contributes its veto count (Example D)', async () => {
+  it('[TC-79] Down-weighted judge still contributes its veto count (Example D)', async () => {
     const vetoV = makeVerdict({}, true)
     const good = makeVerdict({ rubric_1: 5 })
     const judges: JudgeConfig[] = [
@@ -262,7 +262,7 @@ describe('runJury — self-enhancement', () => {
     expect(result.loss).toBe(1.0)
   })
 
-  it('Weighted mean correctly down-weights self-enhancement judge (Example C)', async () => {
+  it('[TC-80] Weighted mean correctly down-weights self-enhancement judge (Example C)', async () => {
     // anthropic mean=4.0, gemini mean=3.5, openai (generator) mean=5.0 weight=0.5
     // weightedMean = (4.0 + 3.5 + 0.5*5.0) / (1+1+0.5) = 10/2.5 = 4.0 → loss=0.20
     const j1 = makeVerdict({ rubric_1: 4 })
@@ -281,7 +281,7 @@ describe('runJury — self-enhancement', () => {
 // ── Model family diversity enforcement ───────────────────────────────────────
 
 describe('runJury — model family diversity', () => {
-  it('Two openai judges + generator=anthropic → throws (only 1 distinct non-generator family)', async () => {
+  it('[TC-81] Two openai judges + generator=anthropic → throws (only 1 distinct non-generator family)', async () => {
     const v = makeVerdict({ rubric_1: 5 })
     const judges: JudgeConfig[] = [
       { provider: mockProvider('openai', [v]) },
@@ -292,7 +292,7 @@ describe('runJury — model family diversity', () => {
     ).rejects.toThrow('BiasConfig requires at least 2 judge provider families')
   })
 
-  it('openai + gemini judges + generator=anthropic → does not throw', async () => {
+  it('[TC-82] openai + gemini judges + generator=anthropic → does not throw', async () => {
     const v = makeVerdict({ rubric_1: 5 })
     const judges: JudgeConfig[] = [
       { provider: mockProvider('openai', [v]) },
@@ -303,7 +303,7 @@ describe('runJury — model family diversity', () => {
     ).resolves.toBeDefined()
   })
 
-  it('enforceModelFamilyDiversity=false → skips diversity check even with same-family judges', async () => {
+  it('[TC-83] enforceModelFamilyDiversity=false → skips diversity check even with same-family judges', async () => {
     const v = makeVerdict({ rubric_1: 5 })
     const judges: JudgeConfig[] = [
       { provider: mockProvider('openai', [v]) },

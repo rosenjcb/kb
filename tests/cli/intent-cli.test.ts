@@ -31,7 +31,7 @@ afterEach(async () => {
 })
 
 describe('intent-cli parsing', () => {
-  it('parses query flags and query session support', () => {
+  it('[TC-306] parses query flags and query session support', () => {
     const parsed = parseIntentCommand([
       'query',
       'how do i install kb',
@@ -54,13 +54,13 @@ describe('intent-cli parsing', () => {
     expect(parsed.verbose).toBe(true)
   })
 
-  it('rejects unknown public commands', () => {
+  it('[TC-307] rejects unknown public commands', () => {
     expect(() => parseIntentCommand(['review', 'claim'])).toThrow(
       'Unsupported intent command: review'
     )
   })
 
-  it('only treats query as an intent command', () => {
+  it('[TC-308] only treats query as an intent command', () => {
     expect(isIntentCommand('query')).toBe(true)
     expect(isIntentCommand('submit')).toBe(false)
     expect(isIntentCommand('invalidate')).toBe(false)
@@ -70,7 +70,7 @@ describe('intent-cli parsing', () => {
 })
 
 describe('intent-cli formatting', () => {
-  it('formats read_facts results in human mode', () => {
+  it('[TC-309] formats read_facts results in human mode', () => {
     const output = formatIntentResult(
       {
         status: 'accepted',
@@ -111,14 +111,14 @@ describe('intent-cli formatting', () => {
     expect(output).toContain('sources> all 1 ranked: cli-facts')
   })
 
-  it('prints minimal intent help with only the supported commands', () => {
+  it('[TC-310] prints minimal intent help with only the supported commands', () => {
     const help = printIntentHelp()
     expect(help).toContain('query "<topic>"')
     expect(help).not.toContain('submit')
     expect(help).not.toContain('invalidate')
   })
 
-  it('renders orchestration footer through printer helpers', () => {
+  it('[TC-311] renders orchestration footer through printer helpers', () => {
     const lines: string[] = []
     const printer = createPrinter(
       {
@@ -146,7 +146,7 @@ describe('intent-cli formatting', () => {
     expect(lines.some(line => isOrchestrationMetaLine(line))).toBe(true)
   })
 
-  it('prints non-read_facts results without treating them as query results', () => {
+  it('[TC-312] prints non-read_facts results without treating them as query results', () => {
     const lines: string[] = []
     const printer = createPrinter(
       {
@@ -173,7 +173,7 @@ describe('intent-cli formatting', () => {
 })
 
 describe('intent-cli execution and enrichment', () => {
-  it('derives query confidence from retrieval checkpoints instead of a fixed router default', async () => {
+  it('[TC-313] derives query confidence from retrieval checkpoints instead of a fixed router default', async () => {
     const toolExecutor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
@@ -199,7 +199,7 @@ describe('intent-cli execution and enrichment', () => {
     expect(result.confidence).toBe(0.34)
   })
 
-  it('keeps query rewrite/session fallback scoped to query only', async () => {
+  it('[TC-314] keeps query rewrite/session fallback scoped to query only', async () => {
     const dir = await createTempDir()
     await writeFile(
       path.join(dir, 'query-session.json'),
@@ -230,7 +230,7 @@ describe('intent-cli execution and enrichment', () => {
     expect(rewritten.envelope.payload.query).toBe('How does kb base selection work?')
   })
 
-  it('enriches query answers with the LLM', async () => {
+  it('[TC-315] enriches query answers with the LLM', async () => {
     const llm: LLMProvider = {
       name: 'test',
       model: 'stub',
@@ -261,7 +261,7 @@ describe('intent-cli execution and enrichment', () => {
     expect((enriched.data as { answer?: string }).answer).toContain('session base first')
   })
 
-  it('replaces insufficient LLM answer with deterministic fallback from documents', async () => {
+  it('[TC-316] replaces insufficient LLM answer with deterministic fallback from documents', async () => {
     const llm: LLMProvider = {
       name: 'test',
       model: 'stub',
@@ -301,7 +301,7 @@ describe('intent-cli execution and enrichment', () => {
     expect(answer.length).toBeGreaterThan(0)
   })
 
-  it('keeps long sufficient LLM answer unchanged', async () => {
+  it('[TC-317] keeps long sufficient LLM answer unchanged', async () => {
     const llmText =
       'Raylib roadmap lists planned backend improvements and milestone items, while version history captures release sequence and policy changes across versions with specific chronology and context for support expectations.'
     const llm: LLMProvider = {
@@ -335,7 +335,7 @@ describe('intent-cli execution and enrichment', () => {
     expect((enriched.data as { answer?: string }).answer).toBe(llmText)
   })
 
-  it('forces build/config scaffold when answer lacks required sections', async () => {
+  it('[TC-318] forces build/config scaffold when answer lacks required sections', async () => {
     const llm: LLMProvider = {
       name: 'test',
       model: 'stub',
@@ -373,7 +373,7 @@ describe('intent-cli execution and enrichment', () => {
     expect(answer).toContain('Known Gotchas')
   })
 
-  it('keeps LLM answer when synthesisQuestion is pre-expansion text (not graph-expanded query)', async () => {
+  it('[TC-319] keeps LLM answer when synthesisQuestion is pre-expansion text (not graph-expanded query)', async () => {
     const llmText =
       'Skills are markdown files under skills/<name>/SKILL.md, copied at build time, and installed by skill-installer.ts.'
     const llm: LLMProvider = {
@@ -420,7 +420,7 @@ describe('intent-cli execution and enrichment', () => {
     )
   })
 
-  it('query synthesis allows a larger answer output budget', async () => {
+  it('[TC-320] query synthesis allows a larger answer output budget', async () => {
     const onReasoning = vi.fn()
     const call = vi.fn(async () => ({
       text: 'Full synthesized answer.',

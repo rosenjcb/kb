@@ -16,7 +16,7 @@ afterEach(async () => {
 })
 
 describe('migration v7: doctype redesign legacy remap', () => {
-  it('Given documents/derived_docs/original_docs rows with architecture or checklist, then remaps to reference and runbook', () => {
+  it('[TC-10] Given documents/derived_docs/original_docs rows with architecture or checklist, then remaps to reference and runbook', () => {
     const dbPath = path.join(tempDir, '.kb-index.sqlite')
     const db = new Database(dbPath)
 
@@ -110,7 +110,7 @@ describe('migration v7: doctype redesign legacy remap', () => {
     db.close()
   })
 
-  it('Given a fresh database with no legacy rows, then migration is a no-op and stamp is applied', () => {
+  it('[TC-11] Given a fresh database with no legacy rows, then migration is a no-op and stamp is applied', () => {
     const dbPath = path.join(tempDir, '.kb-index.sqlite')
     const db = new Database(dbPath)
 

@@ -23,7 +23,7 @@ async function createTempDir(): Promise<string> {
 }
 
 describe('buildPondQueries', () => {
-  it('Given multi-token query, then builds primary, pair, and single-token ponds', () => {
+  it('[TC-26] Given multi-token query, then builds primary, pair, and single-token ponds', () => {
     const ponds = buildPondQueries(
       'languages supported by kb init and scan tool',
       ['languages', 'supported', 'init', 'scan', 'tool'],
@@ -35,7 +35,7 @@ describe('buildPondQueries', () => {
     expect(ponds).toContain('languages scan')
   })
 
-  it('Given maxPonds -1, then returns every generated pond query', () => {
+  it('[TC-27] Given maxPonds -1, then returns every generated pond query', () => {
     const ponds = buildPondQueries(
       'rust code graph',
       ['rust', 'code', 'graph'],
@@ -48,7 +48,7 @@ describe('buildPondQueries', () => {
 })
 
 describe('assessSufficiency threshold', () => {
-  it('Given fewer than 20 relevant facts, then loop does not stop early on sufficiency', async () => {
+  it('[TC-28] Given fewer than 20 relevant facts, then loop does not stop early on sufficiency', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -75,7 +75,7 @@ describe('assessSufficiency threshold', () => {
     indexer.close()
   })
 
-  it('Given 20+ relevant high-scoring facts, then loop stops as answerable', async () => {
+  it('[TC-29] Given 20+ relevant high-scoring facts, then loop stops as answerable', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -103,7 +103,7 @@ describe('assessSufficiency threshold', () => {
 })
 
 describe('FactsQueryResearchOrchestrator ponds', () => {
-  it('Given reserved anchor and source slots overlap, then buildResponse dedupes fact ids', async () => {
+  it('[TC-30] Given reserved anchor and source slots overlap, then buildResponse dedupes fact ids', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -139,7 +139,7 @@ describe('FactsQueryResearchOrchestrator ponds', () => {
     indexer.close()
   })
 
-  it('Given generated _site code facts, then they are excluded from surfaced results', async () => {
+  it('[TC-31] Given generated _site code facts, then they are excluded from surfaced results', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -178,7 +178,7 @@ describe('FactsQueryResearchOrchestrator ponds', () => {
     indexer.close()
   })
 
-  it('Given disjoint doc and code facts, pond search keeps primary lexical anchors in results', async () => {
+  it('[TC-32] Given disjoint doc and code facts, pond search keeps primary lexical anchors in results', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -247,7 +247,7 @@ describe('FactsQueryResearchOrchestrator ponds', () => {
 })
 
 describe('FactsQueryResearchOrchestrator — hard cap', () => {
-  it('Given more facts than MAX_FACTS_FOR_LLM, then results are capped at 150', async () => {
+  it('[TC-33] Given more facts than MAX_FACTS_FOR_LLM, then results are capped at 150', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -272,7 +272,7 @@ describe('FactsQueryResearchOrchestrator — hard cap', () => {
     indexer.close()
   }, 30000)
 
-  it('Given retrieval detail, then it includes facts count', async () => {
+  it('[TC-34] Given retrieval detail, then it includes facts count', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -296,7 +296,7 @@ describe('FactsQueryResearchOrchestrator — hard cap', () => {
 })
 
 describe('FactsQueryResearchOrchestrator — relevant-facts plateau', () => {
-  it('Given plateau of low-quality facts with no new relevant facts, then loop stops within 3 extra iterations', async () => {
+  it('[TC-35] Given plateau of low-quality facts with no new relevant facts, then loop stops within 3 extra iterations', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -335,7 +335,7 @@ describe('FactsQueryResearchOrchestrator — relevant-facts plateau', () => {
 })
 
 describe('FactsQueryResearchOrchestrator — code fact graph-proximity scoring', () => {
-  it('Given code fact linked via graph to a high-scoring doc fact, then it ranks higher than an identifier-only code fact', async () => {
+  it('[TC-36] Given code fact linked via graph to a high-scoring doc fact, then it ranks higher than an identifier-only code fact', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -391,7 +391,7 @@ describe('FactsQueryResearchOrchestrator — code fact graph-proximity scoring',
 })
 
 describe('FactsQueryResearchOrchestrator — LLM sufficiency judge', () => {
-  it('Given judge returns answerable, then loop stops with llm_judge_answerable', async () => {
+  it('[TC-37] Given judge returns answerable, then loop stops with llm_judge_answerable', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -419,7 +419,7 @@ describe('FactsQueryResearchOrchestrator — LLM sufficiency judge', () => {
     indexer.close()
   })
 
-  it('Given judge returns insufficient, then loop continues past the judge call', async () => {
+  it('[TC-38] Given judge returns insufficient, then loop continues past the judge call', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -445,7 +445,7 @@ describe('FactsQueryResearchOrchestrator — LLM sufficiency judge', () => {
     indexer.close()
   })
 
-  it('Given no judge provided, then orchestrator runs without judge calls', async () => {
+  it('[TC-39] Given no judge provided, then orchestrator runs without judge calls', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })

@@ -6,13 +6,13 @@ import {
 } from '../../src/ui/orchestration-meta'
 
 describe('ui/orchestration-meta', () => {
-  it('Given human labels, then wire keys are lowercase slugs', () => {
+  it('[TC-1] Given human labels, then wire keys are lowercase slugs', () => {
     expect(orchestrationWireKey('Relevant Docs')).toBe('relevant_docs')
     expect(orchestrationWireKey('Match IDs')).toBe('match_ids')
     expect(orchestrationWireKey('retrieval')).toBe('retrieval')
   })
 
-  it('Given a line, then detects orchestration wire rows but not assistant stream', () => {
+  it('[TC-2] Given a line, then detects orchestration wire rows but not assistant stream', () => {
     expect(isOrchestrationMetaLine('summary> Found 3 docs')).toBe(true)
     expect(isOrchestrationMetaLine('  thinking> hybrid:hit->return')).toBe(true)
     expect(isOrchestrationMetaLine('relevant_docs>')).toBe(true)
@@ -22,7 +22,7 @@ describe('ui/orchestration-meta', () => {
     expect(isOrchestrationMetaLine('Plain answer text')).toBe(false)
   })
 
-  it('Given label and value, then formats wire line', () => {
+  it('[TC-3] Given label and value, then formats wire line', () => {
     expect(formatOrchestrationMetaLine('Summary', 'x')).toBe('summary> x')
   })
 })

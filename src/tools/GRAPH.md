@@ -108,3 +108,7 @@ All WASM grammars ship as npm package assets — no native compilation, no platf
 | `src/tools/code-graph-indexer.ts` | `TsMorphIndexer` — TS/JS AST indexing via ts-morph |
 | `src/tools/tree-sitter-indexer.ts` | `TreeSitterIndexer` — multi-language AST indexing via web-tree-sitter |
 | `src/tools/code-graph-store.ts` | Read-only queries over `facts`/`fact_edges` including `expandWithCodeNeighbors` |
+
+## Related docs
+
+- Behavioral spec → [`GRAPH.spec.md`](GRAPH.spec.md)

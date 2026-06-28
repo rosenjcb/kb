@@ -28,7 +28,7 @@ Content-Type: application/json
 
 {{
   const assert = require('assert');
-  test('unsigned rejected', () => assert.ok([400, 401, 403].includes(response.statusCode)));
+  test('[smoke] unsigned rejected', () => assert.ok([400, 401, 403].includes(response.statusCode)));
 }}
 
 ###
@@ -59,8 +59,8 @@ x-slack-request-timestamp: {{slackTs}}
 
 {{
   const assert = require('assert');
-  test('status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('challenge echoed', () => assert.strictEqual(response.parsedBody.challenge, 'kb-server-integration-test'));
+  test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('[TC-12] challenge echoed', () => assert.strictEqual(response.parsedBody.challenge, 'kb-server-integration-test'));
 }}
 
 ###
@@ -105,7 +105,7 @@ x-slack-request-timestamp: {{slackTs}}
 
 {{
   const assert = require('assert');
-  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
 }}
 
 ###
@@ -150,5 +150,5 @@ x-slack-request-timestamp: {{slackTs}}
 
 {{
   const assert = require('assert');
-  test('status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
 }}

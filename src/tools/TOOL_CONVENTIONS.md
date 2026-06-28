@@ -210,3 +210,7 @@ As tools grow complex, consider:
 - Ticket 047: Document operation semantics and merging strategy
 - Ticket 004: Tool invocation envelope spec
 - Ticket 018: MCP tool contract spec
+
+## Related docs
+
+- Behavioral spec → [`TOOLS.spec.md`](TOOLS.spec.md)

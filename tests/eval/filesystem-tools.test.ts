@@ -24,7 +24,7 @@ afterEach(async () => {
 // ── readFile ──────────────────────────────────────────────────────────────────
 
 describe('readFile', () => {
-  it('returns content and length for an existing file', async () => {
+  it('[TC-39] returns content and length for an existing file', async () => {
     const p = path.join(tmpDir, 'hello.txt')
     await writeFile(p, 'hello world')
     const result = readFile(p)
@@ -33,13 +33,13 @@ describe('readFile', () => {
     expect(result.error).toBeUndefined()
   })
 
-  it('returns an error for a non-existent file', () => {
+  it('[TC-40] returns an error for a non-existent file', () => {
     const result = readFile(path.join(tmpDir, 'no-such.txt'))
     expect(result.error).toBeDefined()
     expect(result.content).toBeUndefined()
   })
 
-  it('reads an empty file without error', async () => {
+  it('[TC-41] reads an empty file without error', async () => {
     const p = path.join(tmpDir, 'empty.txt')
     await writeFile(p, '')
     const result = readFile(p)
@@ -48,7 +48,7 @@ describe('readFile', () => {
     expect(result.error).toBeUndefined()
   })
 
-  it('reads multiline content correctly', async () => {
+  it('[TC-42] reads multiline content correctly', async () => {
     const p = path.join(tmpDir, 'multi.txt')
     await writeFile(p, 'line1\nline2\nline3')
     const result = readFile(p)
@@ -59,7 +59,7 @@ describe('readFile', () => {
 // ── listDirectory ─────────────────────────────────────────────────────────────
 
 describe('listDirectory', () => {
-  it('returns sorted entries for an existing directory', async () => {
+  it('[TC-43] returns sorted entries for an existing directory', async () => {
     await writeFile(path.join(tmpDir, 'b.txt'), '')
     await writeFile(path.join(tmpDir, 'a.txt'), '')
     const result = listDirectory(tmpDir)
@@ -67,21 +67,21 @@ describe('listDirectory', () => {
     expect(result.error).toBeUndefined()
   })
 
-  it('returns an empty array for an empty directory', async () => {
+  it('[TC-44] returns an empty array for an empty directory', async () => {
     const sub = path.join(tmpDir, 'empty-dir')
     await mkdir(sub)
     const result = listDirectory(sub)
     expect(result.entries).toEqual([])
   })
 
-  it('includes subdirectory names', async () => {
+  it('[TC-45] includes subdirectory names', async () => {
     const sub = path.join(tmpDir, 'subdir')
     await mkdir(sub)
     const result = listDirectory(tmpDir)
     expect(result.entries).toContain('subdir')
   })
 
-  it('returns an error for a non-existent path', () => {
+  it('[TC-46] returns an error for a non-existent path', () => {
     const result = listDirectory(path.join(tmpDir, 'no-such-dir'))
     expect(result.error).toBeDefined()
     expect(result.entries).toBeUndefined()
@@ -91,21 +91,21 @@ describe('listDirectory', () => {
 // ── searchFileContents ────────────────────────────────────────────────────────
 
 describe('searchFileContents', () => {
-  it('returns matching lines for a literal pattern', async () => {
+  it('[TC-47] returns matching lines for a literal pattern', async () => {
     const p = path.join(tmpDir, 'search.txt')
     await writeFile(p, 'foo bar\nbaz qux\nfoo again')
     const result = searchFileContents(p, 'foo')
     expect(result.lines).toEqual(['foo bar', 'foo again'])
   })
 
-  it('is case-insensitive', async () => {
+  it('[TC-48] is case-insensitive', async () => {
     const p = path.join(tmpDir, 'case.txt')
     await writeFile(p, 'Hello World\nhello lower')
     const result = searchFileContents(p, 'HELLO')
     expect(result.lines).toHaveLength(2)
   })
 
-  it('supports regex patterns', async () => {
+  it('[TC-49] supports regex patterns', async () => {
     const p = path.join(tmpDir, 'regex.txt')
     await writeFile(p, 'abc123\ndef456\nabc789')
     const result = searchFileContents(p, 'abc\\d+')
@@ -113,7 +113,7 @@ describe('searchFileContents', () => {
     expect(result.lines).toContain('abc123')
   })
 
-  it('falls back to literal match for invalid regex', async () => {
+  it('[TC-50] falls back to literal match for invalid regex', async () => {
     const p = path.join(tmpDir, 'literal.txt')
     await writeFile(p, 'a[b c\nother')
     // '[b' is invalid regex — should fall back to literal match
@@ -121,14 +121,14 @@ describe('searchFileContents', () => {
     expect(result.lines).toContain('a[b c')
   })
 
-  it('returns empty array when no lines match', async () => {
+  it('[TC-51] returns empty array when no lines match', async () => {
     const p = path.join(tmpDir, 'nomatch.txt')
     await writeFile(p, 'line one\nline two')
     const result = searchFileContents(p, 'xyz')
     expect(result.lines).toEqual([])
   })
 
-  it('returns contentLengthChars', async () => {
+  it('[TC-52] returns contentLengthChars', async () => {
     const content = 'hello\nworld'
     const p = path.join(tmpDir, 'len.txt')
     await writeFile(p, content)
@@ -136,7 +136,7 @@ describe('searchFileContents', () => {
     expect(result.contentLengthChars).toBe(content.length)
   })
 
-  it('returns an error for a non-existent file', () => {
+  it('[TC-53] returns an error for a non-existent file', () => {
     const result = searchFileContents(path.join(tmpDir, 'no-such.txt'), 'pattern')
     expect(result.error).toBeDefined()
   })
@@ -145,20 +145,20 @@ describe('searchFileContents', () => {
 // ── dispatchFilesystemTool ────────────────────────────────────────────────────
 
 describe('dispatchFilesystemTool', () => {
-  it('dispatches read_file', async () => {
+  it('[TC-54] dispatches read_file', async () => {
     const p = path.join(tmpDir, 'dispatch.txt')
     await writeFile(p, 'dispatched')
     const result = dispatchFilesystemTool('read_file', { path: p })
     expect(result.content).toBe('dispatched')
   })
 
-  it('dispatches list_directory', async () => {
+  it('[TC-55] dispatches list_directory', async () => {
     await writeFile(path.join(tmpDir, 'x.ts'), '')
     const result = dispatchFilesystemTool('list_directory', { path: tmpDir })
     expect(result.entries).toContain('x.ts')
   })
 
-  it('dispatches search_file_contents', async () => {
+  it('[TC-56] dispatches search_file_contents', async () => {
     const p = path.join(tmpDir, 'search-dispatch.txt')
     await writeFile(p, 'target line\nother line')
     const result = dispatchFilesystemTool('search_file_contents', { path: p, pattern: 'target' })
@@ -169,11 +169,11 @@ describe('dispatchFilesystemTool', () => {
 // ── FILESYSTEM_TOOL_DEFINITIONS and buildFilesystemToolsPrompt ───────────────
 
 describe('FILESYSTEM_TOOL_DEFINITIONS', () => {
-  it('has exactly three tool definitions', () => {
+  it('[TC-57] has exactly three tool definitions', () => {
     expect(FILESYSTEM_TOOL_DEFINITIONS).toHaveLength(3)
   })
 
-  it('each definition has name, description, and schema', () => {
+  it('[TC-58] each definition has name, description, and schema', () => {
     for (const def of FILESYSTEM_TOOL_DEFINITIONS) {
       expect(typeof def.name).toBe('string')
       expect(typeof def.description).toBe('string')
@@ -184,18 +184,18 @@ describe('FILESYSTEM_TOOL_DEFINITIONS', () => {
 })
 
 describe('buildFilesystemToolsPrompt', () => {
-  it('includes the repo path in the prompt', () => {
+  it('[TC-59] includes the repo path in the prompt', () => {
     const prompt = buildFilesystemToolsPrompt('/some/repo')
     expect(prompt).toContain('/some/repo')
   })
 
-  it('wraps output in filesystem-tools tags', () => {
+  it('[TC-60] wraps output in filesystem-tools tags', () => {
     const prompt = buildFilesystemToolsPrompt('/repo')
     expect(prompt).toMatch(/^<filesystem-tools>/)
     expect(prompt).toMatch(/<\/filesystem-tools>$/)
   })
 
-  it('includes tool names in the JSON', () => {
+  it('[TC-61] includes tool names in the JSON', () => {
     const prompt = buildFilesystemToolsPrompt('/repo')
     expect(prompt).toContain('read_file')
     expect(prompt).toContain('list_directory')

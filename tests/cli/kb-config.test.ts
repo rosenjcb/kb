@@ -51,18 +51,18 @@ async function tempConfig(initial?: unknown): Promise<string> {
 // ─── readKbConfig ────────────────────────────────────────────────────────────
 
 describe('readKbConfig', () => {
-  it('returns empty object when file does not exist', async () => {
+  it('[TC-321] returns empty object when file does not exist', async () => {
     const result = await readKbConfig('/nonexistent/path/config.json')
     expect(result).toEqual({})
   })
 
-  it('returns empty object when file is malformed JSON', async () => {
+  it('[TC-322] returns empty object when file is malformed JSON', async () => {
     const file = await tempConfig()
     await writeFile(file, 'not json', 'utf8')
     expect(await readKbConfig(file)).toEqual({})
   })
 
-  it('normalizes config on read', async () => {
+  it('[TC-323] normalizes config on read', async () => {
     const file = await tempConfig({ defaultBase: 'dogfood', llm: { provider: 'gemini' } })
     const result = await readKbConfig(file)
     expect(result.defaultBase).toBe('dogfood')
@@ -73,7 +73,7 @@ describe('readKbConfig', () => {
 // ─── writeDefaultConfig ──────────────────────────────────────────────────────
 
 describe('writeDefaultConfig', () => {
-  it('writes a config with all default features enabled', async () => {
+  it('[TC-324] writes a config with all default features enabled', async () => {
     const file = await tempConfig()
     const result = await writeDefaultConfig(file)
 
@@ -84,7 +84,7 @@ describe('writeDefaultConfig', () => {
     expect(result.llm).toBeUndefined()
   })
 
-  it('persists to disk and can be read back', async () => {
+  it('[TC-325] persists to disk and can be read back', async () => {
     const file = await tempConfig()
     await writeDefaultConfig(file)
     const readBack = await readKbConfig(file)
@@ -96,14 +96,14 @@ describe('writeDefaultConfig', () => {
 // ─── ensureDefaultConfig ─────────────────────────────────────────────────────
 
 describe('ensureDefaultConfig', () => {
-  it('creates fresh config when none exists', async () => {
+  it('[TC-326] creates fresh config when none exists', async () => {
     const file = path.join(kbHomeDir, 'config.json')
     const result = await ensureDefaultConfig(file)
     expect(result.features?.sqliteIndex).toBe(true)
     expect(result.createdAt).toBeDefined()
   })
 
-  it('merges defaults into existing config without overwriting user values', async () => {
+  it('[TC-327] merges defaults into existing config without overwriting user values', async () => {
     const file = await tempConfig({
       features: { sqliteIndex: false, hybridQuery: false },
       notion: { token: 'ntn_abc' },
@@ -119,7 +119,7 @@ describe('ensureDefaultConfig', () => {
     expect(result.features?.missLearning).toBe(true)
   })
 
-  it('does not overwrite existing createdAt', async () => {
+  it('[TC-328] does not overwrite existing createdAt', async () => {
     const file = await tempConfig({ createdAt: '2025-01-01T00:00:00.000Z', features: {} })
     const result = await ensureDefaultConfig(file)
     expect(result.createdAt).toBe('2025-01-01T00:00:00.000Z')
@@ -129,21 +129,21 @@ describe('ensureDefaultConfig', () => {
 // ─── isLLMConfigured ─────────────────────────────────────────────────────────
 
 describe('isLLMConfigured', () => {
-  it('returns false when no LLM env vars are set', () => {
+  it('[TC-329] returns false when no LLM env vars are set', () => {
     expect(isLLMConfigured()).toBe(false)
   })
 
-  it('returns true when ANTHROPIC_API_KEY is set', () => {
+  it('[TC-330] returns true when ANTHROPIC_API_KEY is set', () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-test'
     expect(isLLMConfigured()).toBe(true)
   })
 
-  it('returns true when OPENAI_API_KEY is set', () => {
+  it('[TC-331] returns true when OPENAI_API_KEY is set', () => {
     process.env.OPENAI_API_KEY = 'sk-openai-test'
     expect(isLLMConfigured()).toBe(true)
   })
 
-  it('returns true when GEMINI_API_KEY is set', () => {
+  it('[TC-332] returns true when GEMINI_API_KEY is set', () => {
     process.env.GEMINI_API_KEY = 'gemini-test'
     expect(isLLMConfigured()).toBe(true)
   })
@@ -152,37 +152,37 @@ describe('isLLMConfigured', () => {
 // ─── assertLLMKeyAvailable ───────────────────────────────────────────────────
 
 describe('assertLLMKeyAvailable', () => {
-  it('throws LLMKeyMissingError for anthropic when ANTHROPIC_API_KEY is not set', () => {
+  it('[TC-333] throws LLMKeyMissingError for anthropic when ANTHROPIC_API_KEY is not set', () => {
     expect(() => assertLLMKeyAvailable('anthropic')).toThrow(LLMKeyMissingError)
     expect(() => assertLLMKeyAvailable('anthropic')).toThrow('ANTHROPIC_API_KEY')
   })
 
-  it('throws LLMKeyMissingError for openai when OPENAI_API_KEY is not set', () => {
+  it('[TC-334] throws LLMKeyMissingError for openai when OPENAI_API_KEY is not set', () => {
     expect(() => assertLLMKeyAvailable('openai')).toThrow(LLMKeyMissingError)
     expect(() => assertLLMKeyAvailable('openai')).toThrow('OPENAI_API_KEY')
   })
 
-  it('throws LLMKeyMissingError for gemini when GEMINI_API_KEY is not set', () => {
+  it('[TC-335] throws LLMKeyMissingError for gemini when GEMINI_API_KEY is not set', () => {
     expect(() => assertLLMKeyAvailable('gemini')).toThrow(LLMKeyMissingError)
     expect(() => assertLLMKeyAvailable('gemini')).toThrow('GEMINI_API_KEY')
   })
 
-  it('does not throw for ollama (no key required)', () => {
+  it('[TC-336] does not throw for ollama (no key required)', () => {
     expect(() => assertLLMKeyAvailable('ollama')).not.toThrow()
   })
 
-  it('does not throw when the key for the given provider is present', () => {
+  it('[TC-337] does not throw when the key for the given provider is present', () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-test'
     expect(() => assertLLMKeyAvailable('anthropic')).not.toThrow()
   })
 
-  it('throws generic error with all provider hints when provider is unknown and none configured', () => {
+  it('[TC-338] throws generic error with all provider hints when provider is unknown and none configured', () => {
     expect(() => assertLLMKeyAvailable()).toThrow('ANTHROPIC_API_KEY')
     expect(() => assertLLMKeyAvailable()).toThrow('OPENAI_API_KEY')
     expect(() => assertLLMKeyAvailable()).toThrow('GEMINI_API_KEY')
   })
 
-  it('does not throw when called with no provider but a key is in env', () => {
+  it('[TC-339] does not throw when called with no provider but a key is in env', () => {
     process.env.GEMINI_API_KEY = 'gemini-test'
     expect(() => assertLLMKeyAvailable()).not.toThrow()
   })
@@ -191,7 +191,7 @@ describe('assertLLMKeyAvailable', () => {
 // ─── resolveLLMProvider ──────────────────────────────────────────────────────
 
 describe('resolveLLMProvider', () => {
-  it('prefers env var over config file key when provider is declared', () => {
+  it('[TC-340] prefers env var over config file key when provider is declared', () => {
     process.env.ANTHROPIC_API_KEY = 'env-key'
     const resolved = resolveLLMProvider({
       llm: { provider: 'anthropic' },
@@ -200,21 +200,21 @@ describe('resolveLLMProvider', () => {
     expect(resolved.apiKey).toBe('env-key')
   })
 
-  it('auto-detects provider from env vars when no provider is declared', () => {
+  it('[TC-341] auto-detects provider from env vars when no provider is declared', () => {
     process.env.OPENAI_API_KEY = 'openai-env'
     const resolved = resolveLLMProvider({})
     expect(resolved.provider).toBe('openai')
     expect(resolved.apiKey).toBe('openai-env')
   })
 
-  it('env var auto-detection prefers anthropic > openai > gemini order', () => {
+  it('[TC-342] env var auto-detection prefers anthropic > openai > gemini order', () => {
     process.env.ANTHROPIC_API_KEY = 'ant-key'
     process.env.OPENAI_API_KEY = 'oai-key'
     const resolved = resolveLLMProvider({})
     expect(resolved.provider).toBe('anthropic')
   })
 
-  it('preserves geminiModel from config when provider is gemini', () => {
+  it('[TC-343] preserves geminiModel from config when provider is gemini', () => {
     process.env.GEMINI_API_KEY = 'gem-key'
     const resolved = resolveLLMProvider({
       llm: { provider: 'gemini', geminiModel: 'gemini-flash-latest' },
@@ -222,7 +222,7 @@ describe('resolveLLMProvider', () => {
     expect(resolved.model).toBe('gemini-flash-latest')
   })
 
-  it('falls back to ollama when nothing is configured', () => {
+  it('[TC-344] falls back to ollama when nothing is configured', () => {
     const resolved = resolveLLMProvider({})
     expect(resolved.provider).toBe('ollama')
   })
@@ -231,7 +231,7 @@ describe('resolveLLMProvider', () => {
 // ─── persistInferredLLMProvider ───────────────────────────────────────────────
 
 describe('persistInferredLLMProvider', () => {
-  it('persists inferred provider when llm.provider is unset and env key exists', async () => {
+  it('[TC-345] persists inferred provider when llm.provider is unset and env key exists', async () => {
     process.env.OPENAI_API_KEY = 'openai-env'
     const file = await tempConfig({ features: {} })
 
@@ -245,7 +245,7 @@ describe('persistInferredLLMProvider', () => {
     expect(readBack.llm?.provider).toBe('openai')
   })
 
-  it('does not persist when llm.provider is already set', async () => {
+  it('[TC-346] does not persist when llm.provider is already set', async () => {
     process.env.OPENAI_API_KEY = 'openai-env'
     const file = await tempConfig({ llm: { provider: 'gemini' } })
     const config = await readKbConfig(file)
@@ -260,17 +260,17 @@ describe('persistInferredLLMProvider', () => {
 // ─── normalizeKbConfig ───────────────────────────────────────────────────────
 
 describe('normalizeKbConfig', () => {
-  it('preserves createdAt on round-trip', () => {
+  it('[TC-347] preserves createdAt on round-trip', () => {
     const result = normalizeKbConfig({ createdAt: '2025-01-01T00:00:00.000Z' })
     expect(result.createdAt).toBe('2025-01-01T00:00:00.000Z')
   })
 
-  it('strips empty llm object', () => {
+  it('[TC-348] strips empty llm object', () => {
     const result = normalizeKbConfig({ llm: {} })
     expect(result.llm).toBeUndefined()
   })
 
-  it('strips empty notion object', () => {
+  it('[TC-349] strips empty notion object', () => {
     const result = normalizeKbConfig({ notion: { token: '' } })
     expect(result.notion).toBeUndefined()
   })
@@ -279,7 +279,7 @@ describe('normalizeKbConfig', () => {
 // ─── writeKbConfig ───────────────────────────────────────────────────────────
 
 describe('writeKbConfig', () => {
-  it('stamps updatedAt and preserves createdAt', async () => {
+  it('[TC-350] stamps updatedAt and preserves createdAt', async () => {
     const file = await tempConfig()
     const saved = await writeKbConfig(
       { createdAt: '2025-01-01T00:00:00.000Z', llm: { provider: 'openai' } },

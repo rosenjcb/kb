@@ -34,52 +34,52 @@ import {
 } from '../scripts/eval-run.mjs'
 
 describe('sanitizeSlugPart', () => {
-  it('lowercases and replaces non-alphanumeric with hyphens', () => {
+  it('[TC-154] lowercases and replaces non-alphanumeric with hyphens', () => {
     expect(sanitizeSlugPart('My Repo!')).toBe('my-repo')
   })
-  it('trims leading and trailing hyphens', () => {
+  it('[TC-155] trims leading and trailing hyphens', () => {
     expect(sanitizeSlugPart('--hello--')).toBe('hello')
   })
-  it('truncates to 48 chars', () => {
+  it('[TC-156] truncates to 48 chars', () => {
     const long = 'a'.repeat(60)
     expect(sanitizeSlugPart(long).length).toBe(48)
   })
-  it('returns "repo" for empty input', () => {
+  it('[TC-157] returns "repo" for empty input', () => {
     expect(sanitizeSlugPart('')).toBe('repo')
     expect(sanitizeSlugPart('!!!')).toBe('repo')
   })
 })
 
 describe('repoLeafNameFromUrl', () => {
-  it('extracts leaf from https URL', () => {
+  it('[TC-158] extracts leaf from https URL', () => {
     expect(repoLeafNameFromUrl('https://github.com/raysan5/raylib.git')).toBe('raylib')
   })
-  it('extracts leaf from git@ SCP URL', () => {
+  it('[TC-159] extracts leaf from git@ SCP URL', () => {
     expect(repoLeafNameFromUrl('git@github.com:raysan5/raylib.git')).toBe('raylib')
   })
-  it('strips .git suffix', () => {
+  it('[TC-160] strips .git suffix', () => {
     expect(repoLeafNameFromUrl('https://github.com/org/myrepo.git')).toBe('myrepo')
   })
-  it('falls back to "repo" for invalid URL', () => {
+  it('[TC-161] falls back to "repo" for invalid URL', () => {
     expect(repoLeafNameFromUrl('')).toBe('repo')
   })
 })
 
 describe('derivedBase', () => {
-  it('prefixes with eval-', () => {
+  it('[TC-162] prefixes with eval-', () => {
     expect(derivedBase('raylib')).toBe('eval-raylib')
   })
-  it('sanitizes the suite id', () => {
+  it('[TC-163] sanitizes the suite id', () => {
     expect(derivedBase('My Suite!')).toBe('eval-my-suite')
   })
 })
 
 describe('parseGraphCounts', () => {
-  it('parses entities and relationships', () => {
+  it('[TC-164] parses entities and relationships', () => {
     const text = 'Entities: 42\nRelationships: 17'
     expect(parseGraphCounts(text)).toEqual({ entities: 42, relationships: 17 })
   })
-  it('returns 0 for missing counts', () => {
+  it('[TC-165] returns 0 for missing counts', () => {
     expect(parseGraphCounts('no data here')).toEqual({ entities: 0, relationships: 0 })
   })
 })
@@ -104,26 +104,26 @@ describe('parseQueryText', () => {
     'sources> top 10 of 42 ranked: fact://abc; fact://def',
   ].join('\n')
 
-  it('extracts the final answer, not the first partial one', () => {
+  it('[TC-166] extracts the final answer, not the first partial one', () => {
     const r = parseQueryText(sampleOutput)
     expect(r.answer).toBe('Full comprehensive answer here.')
     expect(r.answer).not.toContain('Intro answer only')
   })
-  it('extracts result count from matches line', () => {
+  it('[TC-167] extracts result count from matches line', () => {
     expect(parseQueryText(sampleOutput).result_count).toBe(42)
   })
-  it('extracts provenance from sources line', () => {
+  it('[TC-168] extracts provenance from sources line', () => {
     const r = parseQueryText(sampleOutput)
     expect(r.provenance).toContain('fact://abc')
     expect(r.provenance).toContain('fact://def')
   })
-  it('extracts retrieval method', () => {
+  it('[TC-169] extracts retrieval method', () => {
     expect(parseQueryText(sampleOutput).retrieval.method).toBe('hybrid')
   })
-  it('returns null answer when no --- separator found', () => {
+  it('[TC-170] returns null answer when no --- separator found', () => {
     expect(parseQueryText('no separator here').answer).toBeNull()
   })
-  it('extracts direct answer before --- when no stage> answer lines (one-shot synthesis)', () => {
+  it('[TC-171] extracts direct answer before --- when no stage> answer lines (one-shot synthesis)', () => {
     const output = [
       '🤖 KB Agent Harness',
       '',
@@ -143,29 +143,29 @@ describe('parseQueryText', () => {
 })
 
 describe('stripCliBanner', () => {
-  it('strips prefix before first {', () => {
+  it('[TC-172] strips prefix before first {', () => {
     expect(stripCliBanner('🤖 KB Agent\n{"ok":true}')).toBe('{"ok":true}')
   })
-  it('passes through text that starts with {', () => {
+  it('[TC-173] passes through text that starts with {', () => {
     expect(stripCliBanner('{"ok":true}')).toBe('{"ok":true}')
   })
-  it('returns trimmed text when no { present', () => {
+  it('[TC-174] returns trimmed text when no { present', () => {
     expect(stripCliBanner('  plain text  ')).toBe('plain text')
   })
 })
 
 describe('buildCoverageAudit', () => {
-  it('returns coverage_ratio between 0 and 1', () => {
+  it('[TC-175] returns coverage_ratio between 0 and 1', () => {
     const result = buildCoverageAudit('What are the main capabilities?', 'capabilities listed here', '')
     expect(result.coverage_ratio).toBeGreaterThanOrEqual(0)
     expect(result.coverage_ratio).toBeLessThanOrEqual(1)
   })
-  it('returns full coverage when answer contains all facets', () => {
+  it('[TC-176] returns full coverage when answer contains all facets', () => {
     const result = buildCoverageAudit('raylib graphics platform', 'raylib graphics platform support', '')
     expect(result.coverage_ratio).toBe(1)
     expect(result.missing_facets).toHaveLength(0)
   })
-  it('handles empty question gracefully', () => {
+  it('[TC-177] handles empty question gracefully', () => {
     const result = buildCoverageAudit('', '', '')
     expect(result.coverage_ratio).toBe(1)
     expect(result.facets).toHaveLength(0)
@@ -183,33 +183,33 @@ describe('scoreMetric', () => {
       },
     },
   }
-  it('extracts usefulness from query scores', () => {
+  it('[TC-178] extracts usefulness from query scores', () => {
     expect(scoreMetric(artifact, 'usefulness')).toBe(3.5)
   })
-  it('extracts correctness', () => {
+  it('[TC-179] extracts correctness', () => {
     expect(scoreMetric(artifact, 'correctness')).toBe(2.8)
   })
-  it('extracts pass_rate', () => {
+  it('[TC-180] extracts pass_rate', () => {
     expect(scoreMetric(artifact, 'pass_rate')).toBe(0.75)
   })
-  it('extracts success_score', () => {
+  it('[TC-181] extracts success_score', () => {
     expect(scoreMetric(artifact, 'success_score')).toBe(0.751)
   })
-  it('falls back to combined when query is absent', () => {
+  it('[TC-182] falls back to combined when query is absent', () => {
     const a = { aggregate_scores: { combined: { mean_usefulness: 1.5 } } }
     expect(scoreMetric(a, 'usefulness')).toBe(1.5)
   })
-  it('returns null when key is absent', () => {
+  it('[TC-183] returns null when key is absent', () => {
     expect(scoreMetric({}, 'usefulness')).toBeNull()
   })
 })
 
 describe('computeSuccessScore', () => {
-  it('weights default to 0.6 quality / 0.3 tokens / 0.1 speed summing to 1', () => {
+  it('[TC-184] weights default to 0.6 quality / 0.3 tokens / 0.1 speed summing to 1', () => {
     expect(SUCCESS_WEIGHTS.quality + SUCCESS_WEIGHTS.tokens + SUCCESS_WEIGHTS.speed).toBeCloseTo(1, 6)
   })
 
-  it('maps perfect quality, zero tokens, zero time to 1.0', () => {
+  it('[TC-185] maps perfect quality, zero tokens, zero time to 1.0', () => {
     const r = computeSuccessScore({
       meanCorrectness: 4,
       meanUsefulness: 4,
@@ -222,7 +222,7 @@ describe('computeSuccessScore', () => {
     expect(r.success_score).toBe(1)
   })
 
-  it('blends the three components with the configured weights', () => {
+  it('[TC-186] blends the three components with the configured weights', () => {
     // adequacy at c=u=3 → Q_adeq = 1/(1+β) ≈ 0.833; tokens at half budget → 0.5; time at half budget → 0.5
     const r = computeSuccessScore({
       meanCorrectness: 3,
@@ -237,7 +237,7 @@ describe('computeSuccessScore', () => {
     expect(r.success_score).toBe(0.7)
   })
 
-  it('clamps token and speed sub-scores to 0 when over budget', () => {
+  it('[TC-187] clamps token and speed sub-scores to 0 when over budget', () => {
     const r = computeSuccessScore({
       meanCorrectness: 4,
       meanUsefulness: 4,
@@ -250,7 +250,7 @@ describe('computeSuccessScore', () => {
     expect(r.success_score).toBe(0.6)
   })
 
-  it('returns null success_score when telemetry is missing', () => {
+  it('[TC-188] returns null success_score when telemetry is missing', () => {
     const r = computeSuccessScore({ meanCorrectness: 4, meanUsefulness: 4 })
     expect(r.success_score).toBeNull()
     expect(r.token_efficiency).toBeNull()
@@ -258,7 +258,7 @@ describe('computeSuccessScore', () => {
     expect(r.quality_score).toBe(1)
   })
 
-  it('weights cache reads at the MOEL discount when scoring control telemetry', () => {
+  it('[TC-189] weights cache reads at the MOEL discount when scoring control telemetry', () => {
     expect(SUCCESS_TOKEN_CACHE_DISCOUNT).toBe(0.1)
     const weighted = computeWeightedTokenTotal({
       inputTokens: 292946,
@@ -285,7 +285,7 @@ describe('computeSuccessScore', () => {
     )
   })
 
-  it('treats rubric scores at τ as adequate with diminishing returns above', () => {
+  it('[TC-190] treats rubric scores at τ as adequate with diminishing returns above', () => {
     expect(adequacyUtility(ADEQUACY_THRESHOLD)).toBeCloseTo(0.833, 3)
     expect(adequacyUtility(4)).toBe(1)
     expect(adequacyUtility(2)).toBeCloseTo(2 / 3 / 1.2, 3)
@@ -295,13 +295,13 @@ describe('computeSuccessScore', () => {
 })
 
 describe('kbControlVerdict — success-driven', () => {
-  it('reports ahead when kb success exceeds control by >= 0.02', () => {
+  it('[TC-191] reports ahead when kb success exceeds control by >= 0.02', () => {
     expect(kbControlVerdict({ success: 0.78 }, { success: 0.74 })).toBe('ahead of control')
   })
-  it('reports behind when kb success trails control by >= 0.02', () => {
+  it('[TC-192] reports behind when kb success trails control by >= 0.02', () => {
     expect(kbControlVerdict({ success: 0.70 }, { success: 0.80 })).toBe('behind control')
   })
-  it('reports on par within the 0.02 band', () => {
+  it('[TC-193] reports on par within the 0.02 band', () => {
     expect(kbControlVerdict({ success: 0.751 }, { success: 0.75 })).toBe('on par with control')
   })
 })
@@ -311,48 +311,48 @@ describe('structuralMetric', () => {
     run: { init_result: { written_docs: 10, graph_summary: { entities: 50, relationships: 80 } } },
     query_evaluation: [{ result_count: 6 }, { result_count: 4 }],
   }
-  it('extracts docs count', () => {
+  it('[TC-194] extracts docs count', () => {
     expect(structuralMetric(artifact, 'docs')).toBe(10)
   })
-  it('extracts entities', () => {
+  it('[TC-195] extracts entities', () => {
     expect(structuralMetric(artifact, 'entities')).toBe(50)
   })
-  it('computes avg_results across query_evaluation', () => {
+  it('[TC-196] computes avg_results across query_evaluation', () => {
     expect(structuralMetric(artifact, 'avg_results')).toBe(5)
   })
-  it('returns null when absent', () => {
+  it('[TC-197] returns null when absent', () => {
     expect(structuralMetric({}, 'docs')).toBeNull()
   })
 })
 
 describe('matchesSuite', () => {
-  it('matches exact run.suite field', () => {
+  it('[TC-198] matches exact run.suite field', () => {
     const row = { id: 'kb-2026-01-01', artifact: { run: { suite: 'kb' } } }
     expect(matchesSuite(row, 'kb')).toBe(true)
     expect(matchesSuite(row, 'raylib')).toBe(false)
   })
-  it('returns true for empty suite (no filter)', () => {
+  it('[TC-199] returns true for empty suite (no filter)', () => {
     const row = { id: 'anything', artifact: {} }
     expect(matchesSuite(row, '')).toBe(true)
   })
-  it('falls back to id match when run.suite is absent', () => {
+  it('[TC-200] falls back to id match when run.suite is absent', () => {
     const row = { id: 'raylib-2026-01-01', artifact: {} }
     expect(matchesSuite(row, 'raylib')).toBe(true)
   })
 })
 
 describe('formatScoreDelta', () => {
-  it('formats signed deltas', () => {
+  it('[TC-201] formats signed deltas', () => {
     expect(formatScoreDelta(0.25).trim()).toBe('+0.250')
     expect(formatScoreDelta(-0.5).trim()).toBe('-0.500')
   })
-  it('returns dash for null', () => {
+  it('[TC-202] returns dash for null', () => {
     expect(formatScoreDelta(null).trim()).toBe('-')
   })
 })
 
 describe('formatCompactTokens', () => {
-  it('formats large counts compactly', () => {
+  it('[TC-203] formats large counts compactly', () => {
     expect(formatCompactTokens(389900)).toBe('390k')
     expect(formatCompactTokens(534712)).toBe('535k')
     expect(formatCompactTokens(1_920_473)).toBe('1.9M')
@@ -360,7 +360,7 @@ describe('formatCompactTokens', () => {
 })
 
 describe('formatDurationMs', () => {
-  it('formats seconds and minutes', () => {
+  it('[TC-204] formats seconds and minutes', () => {
     expect(formatDurationMs(161935)).toBe('162s')
     expect(formatDurationMs(308582)).toBe('309s')
     expect(formatDurationMs(3600000)).toBe('60.0m')
@@ -368,7 +368,7 @@ describe('formatDurationMs', () => {
 })
 
 describe('kbControlVerdict', () => {
-  it('reports behind when all axes lose', () => {
+  it('[TC-205] reports behind when all axes lose', () => {
     expect(
       kbControlVerdict(
         { pass: 0.5, correctness: 2.5, usefulness: 3 },
@@ -376,7 +376,7 @@ describe('kbControlVerdict', () => {
       )
     ).toBe('behind control')
   })
-  it('reports ahead when all axes tie or win', () => {
+  it('[TC-206] reports ahead when all axes tie or win', () => {
     expect(
       kbControlVerdict(
         { pass: 1, correctness: 4, usefulness: 4 },
@@ -387,7 +387,7 @@ describe('kbControlVerdict', () => {
 })
 
 describe('worstQuestionGaps', () => {
-  it('returns largest negative gaps first', () => {
+  it('[TC-207] returns largest negative gaps first', () => {
     const kb = [{ scores: { correctness: 2 } }, { scores: { correctness: 4 } }]
     const ctrl = [{ scores: { correctness: 4 } }, { scores: { correctness: 3 } }]
     const gaps = worstQuestionGaps(kb, ctrl, ['a', 'b'], 2)
@@ -397,20 +397,20 @@ describe('worstQuestionGaps', () => {
 })
 
 describe('sparkline', () => {
-  it('returns empty string for empty input', () => {
+  it('[TC-208] returns empty string for empty input', () => {
     expect(sparkline([])).toBe('')
   })
-  it('returns all mid-char for flat input', () => {
+  it('[TC-209] returns all mid-char for flat input', () => {
     expect(sparkline([5, 5, 5])).toBe('▅▅▅')
   })
-  it('returns a string of the right length for varied input', () => {
+  it('[TC-210] returns a string of the right length for varied input', () => {
     const result = sparkline([1, 2, 3, 4])
     expect(result.length).toBe(4)
   })
 })
 
 describe('logsCmd', () => {
-  it('filters logs by eval base with a generous limit', () => {
+  it('[TC-211] filters logs by eval base with a generous limit', () => {
     expect(logsCmd('eval-kb')).toBe('logs list --base eval-kb --limit 10')
   })
 })
@@ -424,28 +424,28 @@ describe('parseLatestRunIdForCommand', () => {
     'run-ghi query      eval-kb 2026-06-12 10:06:00',
   ].join('\n')
 
-  it('finds the latest init run id', () => {
+  it('[TC-212] finds the latest init run id', () => {
     expect(parseLatestRunIdForCommand(sample, 'init')).toBe('run-abc')
   })
 
-  it('finds the latest scan run id', () => {
+  it('[TC-213] finds the latest scan run id', () => {
     expect(parseLatestRunIdForCommand(sample, 'scan')).toBe('run-def')
   })
 
-  it('returns null when command is absent', () => {
+  it('[TC-214] returns null when command is absent', () => {
     expect(parseLatestRunIdForCommand(sample, 'publish')).toBeNull()
   })
 })
 
 describe('conditionSideLabel', () => {
-  it('maps kb condition to K and control to N', () => {
+  it('[TC-215] maps kb condition to K and control to N', () => {
     expect(conditionSideLabel('kb')).toBe('K')
     expect(conditionSideLabel('control')).toBe('N')
   })
 })
 
 describe('writeResearchResultsTex', () => {
-  it('writes LaTeX macros from scored artifacts', () => {
+  it('[TC-216] writes LaTeX macros from scored artifacts', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-results-'))
     const evalRoot = path.join(tmp, '.kb', 'evaluations')
     const runDir = path.join(evalRoot, 'raylib-test-run')

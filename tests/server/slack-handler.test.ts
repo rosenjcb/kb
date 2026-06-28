@@ -84,29 +84,29 @@ describe('verifySlackSignature', () => {
   const body = '{"type":"url_verification","challenge":"test"}'
   const goodSig = makeSlackSig(TEST_SECRET, ts, body)
 
-  it('returns true for a valid signature', () => {
+                it('[TC-59] returns true for a valid signature', () => {
     expect(verifySlackSignature(TEST_SECRET, body, ts, goodSig)).toBe(true)
   })
 
-  it('returns false when signature is wrong', () => {
+                it('[TC-60] returns false when signature is wrong', () => {
     expect(verifySlackSignature(TEST_SECRET, body, ts, 'v0=badhash')).toBe(false)
   })
 
-  it('returns false when timestamp is missing', () => {
+                it('[TC-61] returns false when timestamp is missing', () => {
     expect(verifySlackSignature(TEST_SECRET, body, undefined, goodSig)).toBe(false)
   })
 
-  it('returns false when signature is missing', () => {
+                it('[TC-62] returns false when signature is missing', () => {
     expect(verifySlackSignature(TEST_SECRET, body, ts, undefined)).toBe(false)
   })
 
-  it('returns false when timestamp is older than 5 minutes (replay attack)', () => {
+                it('[TC-63] returns false when timestamp is older than 5 minutes (replay attack)', () => {
     const staleTs = String(Math.floor(Date.now() / 1000) - 301)
     const staleSig = makeSlackSig(TEST_SECRET, staleTs, body)
     expect(verifySlackSignature(TEST_SECRET, body, staleTs, staleSig)).toBe(false)
   })
 
-  it('returns false when signing secret is wrong', () => {
+                it('[TC-64] returns false when signing secret is wrong', () => {
     const wrongSig = makeSlackSig('other-secret', ts, body)
     expect(verifySlackSignature(TEST_SECRET, body, ts, wrongSig)).toBe(false)
   })
@@ -117,19 +117,19 @@ describe('verifySlackSignature', () => {
 // ---------------------------------------------------------------------------
 
 describe('stripMentions', () => {
-  it('strips a single leading mention', () => {
+                it('[TC-65] strips a single leading mention', () => {
     expect(stripMentions('<@U0001> what is auth?')).toBe('what is auth?')
   })
 
-  it('strips multiple leading mentions', () => {
+                it('[TC-66] strips multiple leading mentions', () => {
     expect(stripMentions('<@U0001> <@U0002> hello')).toBe('hello')
   })
 
-  it('leaves text unchanged when no mention is present', () => {
+                it('[TC-67] leaves text unchanged when no mention is present', () => {
     expect(stripMentions('how does auth work?')).toBe('how does auth work?')
   })
 
-  it('returns empty string when only a mention is present', () => {
+                it('[TC-68] returns empty string when only a mention is present', () => {
     expect(stripMentions('<@U0001>')).toBe('')
   })
 })
@@ -139,11 +139,11 @@ describe('stripMentions', () => {
 // ---------------------------------------------------------------------------
 
 describe('isDuplicateEvent', () => {
-  it('returns false the first time an event_id is seen', () => {
+                it('[TC-69] returns false the first time an event_id is seen', () => {
     expect(isDuplicateEvent(`unique-${Date.now()}-a`)).toBe(false)
   })
 
-  it('returns true for a repeated event_id', () => {
+                it('[TC-70] returns true for a repeated event_id', () => {
     const id = `unique-${Date.now()}-b`
     isDuplicateEvent(id)
     expect(isDuplicateEvent(id)).toBe(true)
@@ -167,21 +167,21 @@ describe('POST /slack/events', () => {
     }
   })
 
-  it('rejects unsigned requests with 401', async () => {
+                it('[TC-71] rejects unsigned requests with 401', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: [], slack: slackOpts })
     const base = await listen(server)
     const res = await slackPost(base, '{"type":"url_verification","challenge":"x"}', { omitSig: true })
     expect(res.status).toBe(401)
   })
 
-  it('rejects requests with a wrong secret', async () => {
+                it('[TC-72] rejects requests with a wrong secret', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: [], slack: slackOpts })
     const base = await listen(server)
     const res = await slackPost(base, '{"type":"url_verification","challenge":"x"}', { secret: 'wrong-secret' })
     expect(res.status).toBe(401)
   })
 
-  it('rejects stale-timestamp requests', async () => {
+                it('[TC-73] rejects stale-timestamp requests', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: [], slack: slackOpts })
     const base = await listen(server)
     const staleTs = String(Math.floor(Date.now() / 1000) - 400)
@@ -190,7 +190,7 @@ describe('POST /slack/events', () => {
     expect(res.status).toBe(401)
   })
 
-  it('echoes the challenge for url_verification', async () => {
+                it('[TC-74] echoes the challenge for url_verification', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: [], slack: slackOpts })
     const base = await listen(server)
     const body = JSON.stringify({ type: 'url_verification', challenge: 'kb-test-challenge' })
@@ -199,7 +199,7 @@ describe('POST /slack/events', () => {
     expect(await res.json()).toEqual({ challenge: 'kb-test-challenge' })
   })
 
-  it('acks 200 for an app_mention event', async () => {
+                it('[TC-75] acks 200 for an app_mention event', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: [], slack: slackOpts })
     const base = await listen(server)
     const body = JSON.stringify({
@@ -217,7 +217,7 @@ describe('POST /slack/events', () => {
     expect(res.status).toBe(200)
   })
 
-  it('acks 200 for a DM message event', async () => {
+                it('[TC-76] acks 200 for a DM message event', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: [], slack: slackOpts })
     const base = await listen(server)
     const body = JSON.stringify({
@@ -236,7 +236,7 @@ describe('POST /slack/events', () => {
     expect(res.status).toBe(200)
   })
 
-  it('acks 200 for a threaded app_mention (chat mode)', async () => {
+                it('[TC-77] acks 200 for a threaded app_mention (chat mode)', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: [], slack: slackOpts })
     const base = await listen(server)
     const body = JSON.stringify({
@@ -255,7 +255,7 @@ describe('POST /slack/events', () => {
     expect(res.status).toBe(200)
   })
 
-  it('ignores bot messages to prevent reply loops', async () => {
+                it('[TC-78] ignores bot messages to prevent reply loops', async () => {
     const query = vi.fn()
     const botServer = createHttpServer({
       service: makeStubService({ query }),
@@ -282,7 +282,7 @@ describe('POST /slack/events', () => {
     await new Promise<void>(resolve => botServer.close(() => resolve()))
   })
 
-  it('deduplicates events with the same event_id', async () => {
+                it('[TC-79] deduplicates events with the same event_id', async () => {
     const query = vi.fn(async (): Promise<IntentResult> => ({
       status: 'accepted',
       recommendedAction: 'read_facts',
@@ -315,7 +315,7 @@ describe('POST /slack/events', () => {
     await new Promise<void>(resolve => dedupServer.close(() => resolve()))
   })
 
-  it('returns 404 when slack is not configured', async () => {
+                it('[TC-80] returns 404 when slack is not configured', async () => {
     const noSlackServer = createHttpServer({ service: makeStubService(), apiKeys: [] })
     const base = await listen(noSlackServer)
     const res = await fetch(`${base}/slack/events`, { method: 'POST', body: '{}' })
@@ -325,7 +325,7 @@ describe('POST /slack/events', () => {
 })
 
 describe('dispatchSlackEvent bootstrap progress', () => {
-  it('posts indexing progress first, then answers after bootstrap settles', async () => {
+                it('[TC-81] posts indexing progress first, then answers after bootstrap settles', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       status: 200,

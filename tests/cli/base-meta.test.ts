@@ -34,11 +34,11 @@ const sample: GitBaseMeta = {
 }
 
 describe('base-meta', () => {
-  it('readBaseMeta returns null when meta.json does not exist', async () => {
+  it('[TC-28] readBaseMeta returns null when meta.json does not exist', async () => {
     expect(await readBaseMeta(tmpDir)).toBeNull()
   })
 
-  it('round-trips a multi-repo meta', async () => {
+  it('[TC-29] round-trips a multi-repo meta', async () => {
     const multi: GitBaseMeta = {
       repos: [
         ...sample.repos,
@@ -56,7 +56,7 @@ describe('base-meta', () => {
     expect(await readBaseMeta(tmpDir)).toEqual(multi)
   })
 
-  it('normalizes a legacy single-repo meta into one repo entry keeping the repo/ clone dir', async () => {
+  it('[TC-30] normalizes a legacy single-repo meta into one repo entry keeping the repo/ clone dir', async () => {
     await writeFile(
       path.join(tmpDir, 'meta.json'),
       JSON.stringify({
@@ -77,7 +77,7 @@ describe('base-meta', () => {
     })
   })
 
-  it('round-trips an ignore list alongside repos', async () => {
+  it('[TC-31] round-trips an ignore list alongside repos', async () => {
     const withIgnore: GitBaseMeta = {
       ...sample,
       ignore: ['tests/', '**/*.spec.ts', 'vendor'],
@@ -86,13 +86,13 @@ describe('base-meta', () => {
     expect(await readBaseMeta(tmpDir)).toEqual(withIgnore)
   })
 
-  it('repoSlugFromGitUrl handles https, ssh, and local paths', () => {
+  it('[TC-32] repoSlugFromGitUrl handles https, ssh, and local paths', () => {
     expect(repoSlugFromGitUrl('https://github.com/Acme/Auth-Svc.git')).toBe('acme-auth-svc')
     expect(repoSlugFromGitUrl('git@github.com:Acme/web.git')).toBe('acme-web')
     expect(repoSlugFromGitUrl('/tmp/fixtures/my-service')).toBe('fixtures-my-service')
   })
 
-  it('repoDirForSlug nests clones under repos/', () => {
+  it('[TC-33] repoDirForSlug nests clones under repos/', () => {
     expect(repoDirForSlug('org-repo')).toBe(path.join('repos', 'org-repo'))
   })
 })

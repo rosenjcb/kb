@@ -16,7 +16,7 @@ The renderer owns the frame loop.
 `
 
 describe('parseOkfDocument', () => {
-  it('detects an OKF doc and parses recommended fields', () => {
+  it('[TC-97] detects an OKF doc and parses recommended fields', () => {
     const { isOkf, frontmatter, body } = parseOkfDocument(OKF_DOC)
     expect(isOkf).toBe(true)
     expect(frontmatter?.type).toBe('Subsystem')
@@ -29,7 +29,7 @@ describe('parseOkfDocument', () => {
     expect(body).not.toContain('type: Subsystem')
   })
 
-  it('treats frontmatter without a type as non-OKF but still strips it', () => {
+  it('[TC-98] treats frontmatter without a type as non-OKF but still strips it', () => {
     const doc = '---\ntitle: Just metadata\n---\n\nBody text here.'
     const { isOkf, frontmatter, body } = parseOkfDocument(doc)
     expect(isOkf).toBe(false)
@@ -37,7 +37,7 @@ describe('parseOkfDocument', () => {
     expect(body).toBe('\nBody text here.')
   })
 
-  it('returns plain markdown unchanged', () => {
+  it('[TC-99] returns plain markdown unchanged', () => {
     const doc = '# Title\n\nSome prose.'
     const { isOkf, frontmatter, body } = parseOkfDocument(doc)
     expect(isOkf).toBe(false)
@@ -45,19 +45,19 @@ describe('parseOkfDocument', () => {
     expect(body).toBe(doc)
   })
 
-  it('does not mistake a leading thematic break / prose for frontmatter', () => {
+  it('[TC-100] does not mistake a leading thematic break / prose for frontmatter', () => {
     const doc = '---\nSome prose between rules.\n---\nMore text.'
     const { isOkf, body } = parseOkfDocument(doc)
     expect(isOkf).toBe(false)
     expect(body).toBe(doc)
   })
 
-  it('accepts a comma-separated tags string', () => {
+  it('[TC-101] accepts a comma-separated tags string', () => {
     const doc = '---\ntype: Playbook\ntitle: Deploy\ntags: ops, release\n---\nbody'
     expect(parseOkfDocument(doc).frontmatter?.tags).toEqual(['ops', 'release'])
   })
 
-  it('degrades gracefully on malformed YAML', () => {
+  it('[TC-102] degrades gracefully on malformed YAML', () => {
     const doc = '---\ntype: : : broken\n  bad indent\n---\nbody'
     const { isOkf, body } = parseOkfDocument(doc)
     expect(isOkf).toBe(false)
@@ -66,7 +66,7 @@ describe('parseOkfDocument', () => {
 })
 
 describe('isOkfDocument', () => {
-  it('is true only for frontmatter carrying a non-empty type', () => {
+  it('[TC-103] is true only for frontmatter carrying a non-empty type', () => {
     expect(isOkfDocument(OKF_DOC)).toBe(true)
     expect(isOkfDocument('# Plain\n\ntext')).toBe(false)
   })

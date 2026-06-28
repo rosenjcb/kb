@@ -14,11 +14,11 @@ describe('loadQuestionnaire', () => {
 })
 
 describe('parseDocTypeFlag', () => {
-  it('Given valid type, then returns DocType', () => {
+  it('[TC-35] Given valid type, then returns DocType', () => {
     expect(parseDocTypeFlag('  reference  ')).toBe('reference')
   })
 
-  it('Given invalid type, then throws', () => {
+  it('[TC-36] Given invalid type, then throws', () => {
     expect(() => parseDocTypeFlag('architecture')).toThrow('Invalid --type')
   })
 })

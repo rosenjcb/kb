@@ -27,28 +27,28 @@ const twoTasks = {
 // ── buildSummaryMarkdown ──────────────────────────────────────────────────────
 
 describe('buildSummaryMarkdown', () => {
-  it('includes run name and suite in header', () => {
+  it('[TC-129] includes run name and suite in header', () => {
     const md = buildSummaryMarkdown(singleTask)
     expect(md).toContain('test-run-1')
     expect(md).toContain('kb')
   })
 
-  it('renders task id in the table', () => {
+  it('[TC-130] renders task id in the table', () => {
     const md = buildSummaryMarkdown(singleTask)
     expect(md).toContain('task-alpha')
   })
 
-  it('shows positive N-K delta when N > K', () => {
+  it('[TC-131] shows positive N-K delta when N > K', () => {
     const md = buildSummaryMarkdown(singleTask)
     expect(md).toMatch(/\+0\.400/)
   })
 
-  it('shows hypothesisConfirmed: true when N > K for all tasks', () => {
+  it('[TC-132] shows hypothesisConfirmed: true when N > K for all tasks', () => {
     const md = buildSummaryMarkdown(singleTask)
     expect(md).toMatch(/hypothesisConfirmed.*true/)
   })
 
-  it('shows hypothesisConfirmed: false when K >= N for any task', () => {
+  it('[TC-133] shows hypothesisConfirmed: false when K >= N for any task', () => {
     const flipped = {
       ...singleTask,
       tasks: [makeResult('task-flip', 0.3, 0.9)],
@@ -57,12 +57,12 @@ describe('buildSummaryMarkdown', () => {
     expect(md).toMatch(/hypothesisConfirmed.*false/)
   })
 
-  it('renders aggregate row', () => {
+  it('[TC-134] renders aggregate row', () => {
     const md = buildSummaryMarkdown(twoTasks)
     expect(md).toContain('Aggregate')
   })
 
-  it('shows dash for null lMoel values', () => {
+  it('[TC-135] shows dash for null lMoel values', () => {
     const withNull = {
       ...singleTask,
       tasks: [makeResult('task-null', null, 0.4)],
@@ -71,7 +71,7 @@ describe('buildSummaryMarkdown', () => {
     expect(md).toContain('-')
   })
 
-  it('contains correct number of table separator rows', () => {
+  it('[TC-136] contains correct number of table separator rows', () => {
     const md = buildSummaryMarkdown(singleTask)
     const separators = md.split('\n').filter(line => /^\|[-| ]+\|$/.test(line))
     expect(separators.length).toBeGreaterThanOrEqual(2)
@@ -81,18 +81,18 @@ describe('buildSummaryMarkdown', () => {
 // ── buildSummaryJson ──────────────────────────────────────────────────────────
 
 describe('buildSummaryJson', () => {
-  it('returns correct runName and suite', () => {
+  it('[TC-137] returns correct runName and suite', () => {
     const result = buildSummaryJson(singleTask)
     expect(result.runName).toBe('test-run-1')
     expect(result.suite).toBe('kb')
   })
 
-  it('hypothesisConfirmed is true when N > K for all tasks', () => {
+  it('[TC-138] hypothesisConfirmed is true when N > K for all tasks', () => {
     const result = buildSummaryJson(singleTask)
     expect(result.hypothesisConfirmed).toBe(true)
   })
 
-  it('hypothesisConfirmed is false when K > N for any task', () => {
+  it('[TC-139] hypothesisConfirmed is false when K > N for any task', () => {
     const flipped = {
       ...singleTask,
       tasks: [makeResult('task-flip', 0.3, 0.9)],
@@ -100,19 +100,19 @@ describe('buildSummaryJson', () => {
     expect(buildSummaryJson(flipped).hypothesisConfirmed).toBe(false)
   })
 
-  it('taskRows have correct lMoel values', () => {
+  it('[TC-140] taskRows have correct lMoel values', () => {
     const result = buildSummaryJson(singleTask)
     expect(result.tasks).toHaveLength(1)
     expect(result.tasks[0].conditions.N.lMoel).toBeCloseTo(0.8)
     expect(result.tasks[0].conditions.K.lMoel).toBeCloseTo(0.4)
   })
 
-  it('nKDelta is N minus K', () => {
+  it('[TC-141] nKDelta is N minus K', () => {
     const result = buildSummaryJson(singleTask)
     expect(result.tasks[0].nKDelta).toBeCloseTo(0.4)
   })
 
-  it('nKDelta is null when either N or K is missing', () => {
+  it('[TC-142] nKDelta is null when either N or K is missing', () => {
     const withNull = {
       ...singleTask,
       tasks: [makeResult('task-null', null, 0.4)],
@@ -120,7 +120,7 @@ describe('buildSummaryJson', () => {
     expect(buildSummaryJson(withNull).tasks[0].nKDelta).toBeNull()
   })
 
-  it('per-task hypothesisConfirmed is null when either condition is missing', () => {
+  it('[TC-143] per-task hypothesisConfirmed is null when either condition is missing', () => {
     const withNull = {
       ...singleTask,
       tasks: [makeResult('task-null', null, 0.4)],
@@ -128,27 +128,27 @@ describe('buildSummaryJson', () => {
     expect(buildSummaryJson(withNull).tasks[0].hypothesisConfirmed).toBeNull()
   })
 
-  it('aggregate meanLMoelByCondition is mean across tasks', () => {
+  it('[TC-144] aggregate meanLMoelByCondition is mean across tasks', () => {
     const result = buildSummaryJson(twoTasks)
     expect(result.aggregate.meanLMoelByCondition.N).toBeCloseTo((0.8 + 0.6) / 2)
     expect(result.aggregate.meanLMoelByCondition.K).toBeCloseTo((0.4 + 0.5) / 2)
   })
 
-  it('aggregate nKDelta is mean N minus mean K', () => {
+  it('[TC-145] aggregate nKDelta is mean N minus mean K', () => {
     const result = buildSummaryJson(twoTasks)
     const expectedN = (0.8 + 0.6) / 2
     const expectedK = (0.4 + 0.5) / 2
     expect(result.aggregate.nKDelta).toBeCloseTo(expectedN - expectedK)
   })
 
-  it('handles empty tasks array without throwing', () => {
+  it('[TC-146] handles empty tasks array without throwing', () => {
     const empty = { runName: 'empty', suite: 'kb', conditions: ['N', 'K'], tasks: [] }
     const result = buildSummaryJson(empty)
     expect(result.tasks).toHaveLength(0)
     expect(result.aggregate.nKDelta).toBeNull()
   })
 
-  it('terminated conditions show lMoel null and terminated true', () => {
+  it('[TC-147] terminated conditions show lMoel null and terminated true', () => {
     const withTerminated = {
       ...singleTask,
       tasks: [makeResult('task-term', null, 0.4)],

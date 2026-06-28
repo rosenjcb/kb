@@ -52,7 +52,7 @@ function queryCodeFileState(db: Database, filePath: string): boolean {
 }
 
 describe('TreeSitterIndexer — Go', () => {
-  it('indexes exported functions and types', async () => {
+  it('[TC-1] indexes exported functions and types', async () => {
     await writeFile(
       join(repoRoot, 'server.go'),
       'package main\n\nfunc Start() error { return nil }\nfunc internalHelper() {}\ntype Server struct { Host string }\ntype privateStruct struct{}\n'
@@ -76,7 +76,7 @@ describe('TreeSitterIndexer — Go', () => {
     db.close()
   })
 
-  it('indexes exported methods', async () => {
+  it('[TC-2] indexes exported methods', async () => {
     await writeFile(
       join(repoRoot, 'handler.go'),
       'package main\n\ntype Handler struct{}\n\nfunc (h *Handler) ServeHTTP() {}\nfunc (h *Handler) internalReset() {}\n'
@@ -96,7 +96,7 @@ describe('TreeSitterIndexer — Go', () => {
     db.close()
   })
 
-  it('indexes exported constants and variables', async () => {
+  it('[TC-3] indexes exported constants and variables', async () => {
     await writeFile(
       join(repoRoot, 'config.go'),
       'package main\n\nconst MaxRetries = 3\nconst internalTimeout = 5\nvar DefaultAddr = ":8080"\nvar privateKey = "secret"\n'
@@ -116,7 +116,7 @@ describe('TreeSitterIndexer — Go', () => {
     db.close()
   })
 
-  it('emits IMPORTS_FILE edges for resolvable local Go imports', async () => {
+  it('[TC-4] emits IMPORTS_FILE edges for resolvable local Go imports', async () => {
     await mkdir(join(repoRoot, 'pkg'), { recursive: true })
     await writeFile(join(repoRoot, 'pkg', 'util.go'), 'package pkg\nfunc Helper() {}')
     await writeFile(
@@ -133,7 +133,7 @@ describe('TreeSitterIndexer — Go', () => {
     expect(stats.errors).toBe(0)
   })
 
-  it('does not emit IMPORTS_FILE edges for unresolvable Go module paths', async () => {
+  it('[TC-5] does not emit IMPORTS_FILE edges for unresolvable Go module paths', async () => {
     await writeFile(
       join(repoRoot, 'main.go'),
       'package main\nimport "github.com/some/external/pkg"\nfunc main() {}'
@@ -148,7 +148,7 @@ describe('TreeSitterIndexer — Go', () => {
     expect(stats.errors).toBe(0)
   })
 
-  it('skips unchanged files on re-index', async () => {
+  it('[TC-6] skips unchanged files on re-index', async () => {
     await writeFile(join(repoRoot, 'stable.go'), 'package main\nfunc Stable() {}')
 
     const factIndexer1 = new SqliteKbIndexer({ dbPath })
@@ -170,7 +170,7 @@ describe('TreeSitterIndexer — Go', () => {
 })
 
 describe('TreeSitterIndexer — TypeScript', () => {
-  it('indexes exported classes and functions', async () => {
+  it('[TC-7] indexes exported classes and functions', async () => {
     await writeFile(
       join(repoRoot, 'src', 'utils.ts'),
       "export class MyService {}\nexport function compute(x: number): number { return x * 2 }\nexport const VERSION = '1.0'\nfunction privateHelper() {}\n"
@@ -193,7 +193,7 @@ describe('TreeSitterIndexer — TypeScript', () => {
     db.close()
   })
 
-  it('indexes exported interfaces and type aliases', async () => {
+  it('[TC-8] indexes exported interfaces and type aliases', async () => {
     await writeFile(
       join(repoRoot, 'src', 'types.ts'),
       'export interface Config { port: number }\nexport type Handler = (req: unknown) => void\n'
@@ -211,7 +211,7 @@ describe('TreeSitterIndexer — TypeScript', () => {
     db.close()
   })
 
-  it('emits IMPORTS_FILE facts for local TS imports', async () => {
+  it('[TC-9] emits IMPORTS_FILE facts for local TS imports', async () => {
     await writeFile(join(repoRoot, 'src', 'a.ts'), 'export const x = 1')
     await writeFile(join(repoRoot, 'src', 'b.ts'), "import { x } from './a'\nexport const y = x + 1")
 
@@ -234,7 +234,7 @@ describe('TreeSitterIndexer — TypeScript', () => {
 })
 
 describe('TreeSitterIndexer — TSX', () => {
-  it('indexes exported components and functions from .tsx files', async () => {
+  it('[TC-10] indexes exported components and functions from .tsx files', async () => {
     await writeFile(
       join(repoRoot, 'src', 'Button.tsx'),
       "import React from './react'\nexport function Button() { return null }\nexport const IconButton = () => null\n"
@@ -255,7 +255,7 @@ describe('TreeSitterIndexer — TSX', () => {
 })
 
 describe('TreeSitterIndexer — Python', () => {
-  it('indexes functions and classes', async () => {
+  it('[TC-11] indexes functions and classes', async () => {
     await writeFile(
       join(repoRoot, 'app.py'),
       'def public_fn():\n    pass\n\nclass Widget:\n    pass\n'
@@ -279,7 +279,7 @@ describe('TreeSitterIndexer — Python', () => {
 })
 
 describe('TreeSitterIndexer — Rust', () => {
-  it('indexes functions and structs', async () => {
+  it('[TC-12] indexes functions and structs', async () => {
     await writeFile(
       join(repoRoot, 'lib.rs'),
       'pub fn run() {}\nstruct Engine;\n'
@@ -301,7 +301,7 @@ describe('TreeSitterIndexer — Rust', () => {
 })
 
 describe('TreeSitterIndexer — HTML', () => {
-  it('indexes elements with id attributes', async () => {
+  it('[TC-13] indexes elements with id attributes', async () => {
     await writeFile(
       join(repoRoot, 'index.html'),
       '<html><body><div id="root"></div></body></html>'
@@ -322,7 +322,7 @@ describe('TreeSitterIndexer — HTML', () => {
 })
 
 describe('TreeSitterIndexer — text fallback', () => {
-  it('creates a code_file_state entry for non-code files without extracting symbols', async () => {
+  it('[TC-14] creates a code_file_state entry for non-code files without extracting symbols', async () => {
     await writeFile(join(repoRoot, 'README.md'), '# Hello\nThis is a readme.')
     await writeFile(join(repoRoot, 'config.yaml'), 'key: value\nother: 123')
 
@@ -342,7 +342,7 @@ describe('TreeSitterIndexer — text fallback', () => {
     db.close()
   })
 
-  it('ignores unknown extensions not in the allowlist', async () => {
+  it('[TC-15] ignores unknown extensions not in the allowlist', async () => {
     await writeFile(join(repoRoot, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
     await writeFile(join(repoRoot, 'go.sum'), 'github.com/foo/bar v1.0.0 h1:abc=')
     await writeFile(join(repoRoot, 'config.yaml'), 'key: value') // .yaml IS in TEXT_EXTS
@@ -364,7 +364,7 @@ describe('TreeSitterIndexer — text fallback', () => {
     db.close()
   })
 
-  it('indexes code and text files together in one pass', async () => {
+  it('[TC-16] indexes code and text files together in one pass', async () => {
     await writeFile(join(repoRoot, 'main.go'), 'package main\nfunc Run() {}')
     await writeFile(join(repoRoot, 'README.md'), '# docs')
 

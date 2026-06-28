@@ -3,7 +3,7 @@ import type { IntentResult } from '../../src/intents/types'
 import { serializeQueryResult } from '../../src/server/serialize'
 
 describe('serializeQueryResult', () => {
-  it('maps a read_facts IntentResult into the REST response body', () => {
+                it('[TC-34] maps a read_facts IntentResult into the REST response body', () => {
     const result: IntentResult = {
       status: 'accepted',
       recommendedAction: 'read_facts',
@@ -38,7 +38,7 @@ describe('serializeQueryResult', () => {
     expect(body.results[0].snippet).not.toContain('# Heading')
   })
 
-  it('returns null answer when none is present', () => {
+                it('[TC-35] returns null answer when none is present', () => {
     const body = serializeQueryResult({ status: 'accepted', data: { results: [] } })
     expect(body.answer).toBeNull()
     expect(body.results).toEqual([])

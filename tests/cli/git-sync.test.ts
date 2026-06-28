@@ -16,27 +16,27 @@ const execFileAsync = promisify(execFile)
 
 describe('git-sync', () => {
   describe('baseNameFromGitUrl', () => {
-    it('derives name from https URL with .git suffix', () => {
+    it('[TC-217] derives name from https URL with .git suffix', () => {
       expect(baseNameFromGitUrl('https://github.com/org/repo.git')).toBe('org-repo')
     })
 
-    it('derives name from https URL without .git suffix', () => {
+    it('[TC-218] derives name from https URL without .git suffix', () => {
       expect(baseNameFromGitUrl('https://github.com/org/repo')).toBe('org-repo')
     })
 
-    it('derives name from https URL with trailing slash', () => {
+    it('[TC-219] derives name from https URL with trailing slash', () => {
       expect(baseNameFromGitUrl('https://github.com/org/repo/')).toBe('org-repo')
     })
 
-    it('derives name from ssh URL', () => {
+    it('[TC-220] derives name from ssh URL', () => {
       expect(baseNameFromGitUrl('git@github.com:org/repo.git')).toBe('org-repo')
     })
 
-    it('lowercases the result', () => {
+    it('[TC-221] lowercases the result', () => {
       expect(baseNameFromGitUrl('https://github.com/MyOrg/MyRepo')).toBe('myorg-myrepo')
     })
 
-    it('replaces special characters (but keeps underscore, dot, dash) with dashes', () => {
+    it('[TC-222] replaces special characters (but keeps underscore, dot, dash) with dashes', () => {
       // underscore and dot are allowed; spaces/colons would be replaced
       expect(baseNameFromGitUrl('https://github.com/my_org/my.repo')).toBe('my_org-my.repo')
     })
@@ -73,13 +73,13 @@ describe('git-sync', () => {
       await rm(tmpRoot, { recursive: true, force: true })
     })
 
-    it('Given no branch, then clones the remote default branch', async () => {
+    it('[TC-223] Given no branch, then clones the remote default branch', async () => {
       const cloneDir = path.join(tmpRoot, 'clone-default')
       await cloneRepo(bareOrigin, cloneDir)
       expect(await getCurrentBranch(cloneDir)).toBe('master')
     })
 
-    it('Given an explicit branch, then clones that branch', async () => {
+    it('[TC-224] Given an explicit branch, then clones that branch', async () => {
       const cloneDir = path.join(tmpRoot, 'clone-explicit')
       await cloneRepo(bareOrigin, cloneDir, 'master')
       expect(await getCurrentBranch(cloneDir)).toBe('master')
@@ -87,13 +87,13 @@ describe('git-sync', () => {
   })
 
   describe('buildGitAuthEnv', () => {
-    it('disables interactive git prompts even without a token', () => {
+    it('[TC-225] disables interactive git prompts even without a token', () => {
       expect(buildGitAuthEnv({})).toMatchObject({
         GIT_TERMINAL_PROMPT: '0',
       })
     })
 
-    it('uses GITHUB_TOKEN when present', () => {
+    it('[TC-226] uses GITHUB_TOKEN when present', () => {
       const env = buildGitAuthEnv({ GITHUB_TOKEN: 'secret' })
 
       expect(env.GIT_CONFIG_COUNT).toBe('1')
@@ -103,7 +103,7 @@ describe('git-sync', () => {
       )
     })
 
-    it('falls back to GH_TOKEN when GITHUB_TOKEN is absent', () => {
+    it('[TC-227] falls back to GH_TOKEN when GITHUB_TOKEN is absent', () => {
       const env = buildGitAuthEnv({ GH_TOKEN: 'secret' })
 
       expect(env.GIT_CONFIG_COUNT).toBe('1')
@@ -112,7 +112,7 @@ describe('git-sync', () => {
       )
     })
 
-    it('prefers GITHUB_TOKEN over GH_TOKEN when both are present', () => {
+    it('[TC-228] prefers GITHUB_TOKEN over GH_TOKEN when both are present', () => {
       const env = buildGitAuthEnv({ GITHUB_TOKEN: 'preferred', GH_TOKEN: 'fallback' })
 
       expect(env.GIT_CONFIG_VALUE_0).toBe(
@@ -165,7 +165,7 @@ describe('git-sync', () => {
       await rm(tmpRoot, { recursive: true, force: true })
     })
 
-    it('Given a dirty .kb marker in the clone, then pull succeeds', async () => {
+    it('[TC-229] Given a dirty .kb marker in the clone, then pull succeeds', async () => {
       await writeFile(path.join(cloneDir, '.kb'), 'kb-git-4\n')
 
       const seedDir = path.join(tmpRoot, 'seed')
@@ -182,7 +182,7 @@ describe('git-sync', () => {
       await expect(readFile(path.join(cloneDir, '.kb'), 'utf8')).rejects.toThrow()
     })
 
-    it('Given dirty tracked files and no new remote commits, then pull discards local edits', async () => {
+    it('[TC-230] Given dirty tracked files and no new remote commits, then pull discards local edits', async () => {
       await writeFile(path.join(cloneDir, 'README.md'), '# local edit\n')
 
       const hadNewCommits = await pullRepo(cloneDir)
@@ -191,7 +191,7 @@ describe('git-sync', () => {
       expect(await readFile(path.join(cloneDir, 'README.md'), 'utf8')).toBe('# v1\n')
     })
 
-    it('Given dirty tracked files and new remote commits, then pull succeeds', async () => {
+    it('[TC-231] Given dirty tracked files and new remote commits, then pull succeeds', async () => {
       await writeFile(path.join(cloneDir, 'README.md'), '# local edit\n')
 
       const seedDir = path.join(tmpRoot, 'seed')
@@ -233,14 +233,14 @@ describe('git-sync', () => {
       await rm(tmpRoot, { recursive: true, force: true })
     })
 
-    it('clones a repo whose default branch is master without specifying a branch', async () => {
+    it('[TC-232] clones a repo whose default branch is master without specifying a branch', async () => {
       const dest = path.join(tmpRoot, 'clone-default')
       await cloneRepo(origin, dest)
       expect(await getCurrentBranch(dest)).toBe('master')
       expect(await readFile(path.join(dest, 'README.md'), 'utf8')).toBe('# master repo\n')
     })
 
-    it('honors an explicitly requested branch', async () => {
+    it('[TC-233] honors an explicitly requested branch', async () => {
       await git(origin, 'checkout', '-b', 'dev')
       await writeFile(path.join(origin, 'README.md'), '# dev branch\n')
       await git(origin, 'commit', '-am', 'dev')
