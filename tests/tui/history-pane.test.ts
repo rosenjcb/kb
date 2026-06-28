@@ -3,7 +3,7 @@ import { partitionHistoryEntries } from '../../src/tui/components/HistoryPane.js
 import type { HistoryEntry } from '../../src/tui/types.js'
 
 describe('partitionHistoryEntries', () => {
-  it('keeps completed rows in static and loading rows live', () => {
+  it('[TC-21] keeps completed rows in static and loading rows live', () => {
     const entries: HistoryEntry[] = [
       { id: 'a', type: 'chat-you', content: 'hello' },
       { id: 'b', type: 'result', content: 'partial…', loading: true },
@@ -19,7 +19,7 @@ describe('partitionHistoryEntries', () => {
     })
   })
 
-  it('returns empty liveItems when nothing is loading', () => {
+  it('[TC-22] returns empty liveItems when nothing is loading', () => {
     const entries: HistoryEntry[] = [{ id: 'done', type: 'result', content: 'full doc body' }]
 
     expect(partitionHistoryEntries(entries)).toEqual({
@@ -28,7 +28,7 @@ describe('partitionHistoryEntries', () => {
     })
   })
 
-  it('loading entry in the middle stays in liveItems while surrounding statics go to staticItems', () => {
+  it('[TC-23] loading entry in the middle stays in liveItems while surrounding statics go to staticItems', () => {
     // Simulates: meta(static) → answer(loading) → sep(static) → timing(static)
     // The answer must stay in liveItems until finalized; meta/sep/timing go to staticItems.
     // Ink's <Static> requires new items to be appended at the tail of staticItems.
@@ -50,7 +50,7 @@ describe('partitionHistoryEntries', () => {
     expect(staticItems.map(e => e.id)).toEqual(['stage', 'sep', 'timing'])
   })
 
-  it('once answer is committed it appears in staticItems at its array position', () => {
+  it('[TC-24] once answer is committed it appears in staticItems at its array position', () => {
     // After finalizeChatResponse() the answer becomes loading: false.
     // Because App.tsx flushes the answer before adding sep/timing, the committed
     // answer lands before them in the entries array — so Static sees them in order.

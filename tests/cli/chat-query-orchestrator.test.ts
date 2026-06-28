@@ -4,7 +4,7 @@ import { isReadFactsResult } from '../../src/cli/intent-cli'
 import type { ToolExecutor } from '../../src/core/tool-registry'
 
 describe('chat-query-orchestrator', () => {
-  it('Given a mocked read_facts result, then returns accepted read_facts IntentResult', async () => {
+  it('[TC-106] Given a mocked read_facts result, then returns accepted read_facts IntentResult', async () => {
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),

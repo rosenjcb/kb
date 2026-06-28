@@ -33,25 +33,25 @@ function makeCodeStore(names: string[] = []): CodeGraphStore {
 }
 
 describe('llmExtractQueryEntities', () => {
-  it('parses a valid JSON array from LLM response', async () => {
+  it('[TC-16] parses a valid JSON array from LLM response', async () => {
     const llm = makeLLM('["TsMorphIndexer", "code-graph-indexer", "AST"]')
     const entities = await llmExtractQueryEntities('what class handles AST generation?', llm)
     expect(entities).toEqual(['TsMorphIndexer', 'code-graph-indexer', 'AST'])
   })
 
-  it('extracts array even when surrounded by prose', async () => {
+  it('[TC-17] extracts array even when surrounded by prose', async () => {
     const llm = makeLLM('Here are the entities: ["KbGraphWriter", "SQLite"] for your query.')
     const entities = await llmExtractQueryEntities('how does the graph store work?', llm)
     expect(entities).toEqual(['KbGraphWriter', 'SQLite'])
   })
 
-  it('returns empty array when LLM returns non-JSON', async () => {
+  it('[TC-18] returns empty array when LLM returns non-JSON', async () => {
     const llm = makeLLM('I cannot extract entities from this.')
     const entities = await llmExtractQueryEntities('what is the meaning of life?', llm)
     expect(entities).toEqual([])
   })
 
-  it('returns empty array when LLM call throws', async () => {
+  it('[TC-19] returns empty array when LLM call throws', async () => {
     const llm = {
       name: 'test',
       model: 'stub',
@@ -61,7 +61,7 @@ describe('llmExtractQueryEntities', () => {
     expect(entities).toEqual([])
   })
 
-  it('caps results at 8 entities', async () => {
+  it('[TC-20] caps results at 8 entities', async () => {
     const many = JSON.stringify(['a','b','c','d','e','f','g','h','i','j'])
     const llm = makeLLM(many)
     const entities = await llmExtractQueryEntities('query', llm)
@@ -70,19 +70,19 @@ describe('llmExtractQueryEntities', () => {
 })
 
 describe('rerankByGraphConnectivity', () => {
-  it('returns results unchanged when no entities given', async () => {
+  it('[TC-21] returns results unchanged when no entities given', async () => {
     const results = [makeResult('a', 'foo'), makeResult('b', 'bar')]
     const out = await rerankByGraphConnectivity(results, [], makeGraphWriter(), makeCodeStore())
     expect(out.map(r => r.metadata?.id)).toEqual(['a', 'b'])
   })
 
-  it('returns results unchanged when fewer than 2 results', async () => {
+  it('[TC-22] returns results unchanged when fewer than 2 results', async () => {
     const results = [makeResult('only', 'TsMorphIndexer handles AST')]
     const out = await rerankByGraphConnectivity(results, ['TsMorphIndexer'], makeGraphWriter(['TsMorphIndexer']), makeCodeStore())
     expect(out).toHaveLength(1)
   })
 
-  it('boosts result whose content matches graph neighborhood terms', async () => {
+  it('[TC-23] boosts result whose content matches graph neighborhood terms', async () => {
     const results = [
       makeResult('generic', 'kb maintains a knowledge graph for documents'),
       makeResult('specific', 'TsMorphIndexer builds the code graph using TypeScript compiler'),
@@ -93,7 +93,7 @@ describe('rerankByGraphConnectivity', () => {
     expect(out[0]?.metadata?.id).toBe('specific')
   })
 
-  it('boosts result whose graphEvidence matches', async () => {
+  it('[TC-24] boosts result whose graphEvidence matches', async () => {
     const results = [
       makeResult('unrelated', 'some unrelated content about nothing'),
       makeResult('connected', 'general fact', ['TsMorphIndexer implements code-graph-indexer']),
@@ -103,7 +103,7 @@ describe('rerankByGraphConnectivity', () => {
     expect(out[0]?.metadata?.id).toBe('connected')
   })
 
-  it('preserves original order when connectivity scores are equal', async () => {
+  it('[TC-25] preserves original order when connectivity scores are equal', async () => {
     const results = [
       makeResult('first', 'unrelated content one'),
       makeResult('second', 'unrelated content two'),
@@ -112,7 +112,7 @@ describe('rerankByGraphConnectivity', () => {
     expect(out.map(r => r.metadata?.id)).toEqual(['first', 'second'])
   })
 
-  it('returns original results when graphWriter.expandQuery throws', async () => {
+  it('[TC-26] returns original results when graphWriter.expandQuery throws', async () => {
     const results = [makeResult('a', 'foo'), makeResult('b', 'bar')]
     const brokenGraph = {
       expandQuery: vi.fn(async () => { throw new Error('db error') }),

@@ -17,7 +17,7 @@ async function createTempDir(): Promise<string> {
 }
 
 describe('MarkdownMDWriterTool', () => {
-  it('Given a new document input, then should write markdown file and index table entry', async () => {
+  it('[TC-90] Given a new document input, then should write markdown file and index table entry', async () => {
     const baseDir = await createTempDir()
     const writer = new MarkdownMDWriterTool({ baseDir })
 
@@ -36,7 +36,7 @@ describe('MarkdownMDWriterTool', () => {
     expect(indexContents).toContain('| first-note | First Note |')
   })
 
-  it('Given duplicate document titles without overwrite, then should create a unique suffixed file id', async () => {
+  it('[TC-91] Given duplicate document titles without overwrite, then should create a unique suffixed file id', async () => {
     const baseDir = await createTempDir()
     const writer = new MarkdownMDWriterTool({ baseDir })
 
@@ -55,7 +55,7 @@ describe('MarkdownMDWriterTool', () => {
     expect(second.id).not.toBe(first.id)
   })
 
-  it('Given overwrite true on an existing id, then should replace the same document path', async () => {
+  it('[TC-92] Given overwrite true on an existing id, then should replace the same document path', async () => {
     const baseDir = await createTempDir()
     const writer = new MarkdownMDWriterTool({ baseDir })
 

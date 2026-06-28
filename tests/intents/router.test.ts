@@ -45,7 +45,7 @@ function createExecutorMock(): ToolExecutor {
 }
 
 describe('DefaultIntentRouter', () => {
-  it('Given query_truth without discoveryDepth, then defaults to deep discovery like chat', async () => {
+  it('[TC-1] Given query_truth without discoveryDepth, then defaults to deep discovery like chat', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -60,7 +60,7 @@ describe('DefaultIntentRouter', () => {
     expect(decision.operationInput.discoveryDepth).toBe('deep')
   })
 
-  it('Given query_truth with high-recall token query, then uses default limit without floor', async () => {
+  it('[TC-2] Given query_truth with high-recall token query, then uses default limit without floor', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -76,7 +76,7 @@ describe('DefaultIntentRouter', () => {
     expect(decision.operationInput.limit).toBe(12)
   })
 
-  it('Given query_truth without explicit limit, then defaults to 500 facts', async () => {
+  it('[TC-3] Given query_truth without explicit limit, then defaults to 500 facts', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 

@@ -16,6 +16,8 @@ instead of running `kb init` on every machine.
 This guide is the getting-started path for a **fresh, real KB**. For the test harness
 see [`INTEGRATION_TEST.md`](INTEGRATION_TEST.md).
 
+Behavioral specs: [`../../src/server/SERVER.spec.md`](../../src/server/SERVER.spec.md) (unit) · [`http/HTTP.spec.md`](http/HTTP.spec.md) (integration).
+
 ## TL;DR
 
 ```bash

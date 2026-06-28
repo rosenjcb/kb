@@ -16,7 +16,7 @@ const FORBIDDEN = new Set([
 ])
 
 describe('createKBToolsRegistry', () => {
-  it('does not register markdown-era doc-write or legacy graph/read tool names', async () => {
+  it('[TC-51] does not register markdown-era doc-write or legacy graph/read tool names', async () => {
     const base = path.join(
       process.cwd(),
       'tmp-registry-surface',

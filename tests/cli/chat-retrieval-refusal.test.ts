@@ -13,11 +13,11 @@ describe('chat retrieval refusal', () => {
     else process.env.KB_CHAT_RETRIEVAL_MIN_CONFIDENCE = prev
   })
 
-  it('refuses when no results', () => {
+  it('[TC-107] refuses when no results', () => {
     expect(shouldRefuseChatTurnOnRetrieval({ results: [] })).toBe(true)
   })
 
-  it('allows when retrieval detail is all-facts:already-in-context even with zero results', () => {
+  it('[TC-108] allows when retrieval detail is all-facts:already-in-context even with zero results', () => {
     expect(
       shouldRefuseChatTurnOnRetrieval({
         results: [],
@@ -26,7 +26,7 @@ describe('chat retrieval refusal', () => {
     ).toBe(false)
   })
 
-  it('refuses when last checkpoint below default min', () => {
+  it('[TC-109] refuses when last checkpoint below default min', () => {
     expect(
       shouldRefuseChatTurnOnRetrieval({
         results: [{ metadata: { id: 'a' }, content: 'x' }],
@@ -40,7 +40,7 @@ describe('chat retrieval refusal', () => {
     ).toBe(0.3)
   })
 
-  it('allows when checkpoints missing (no signal)', () => {
+  it('[TC-110] allows when checkpoints missing (no signal)', () => {
     expect(
       shouldRefuseChatTurnOnRetrieval({
         results: [{ metadata: { id: 'a' }, content: 'x' }],
@@ -49,7 +49,7 @@ describe('chat retrieval refusal', () => {
     ).toBe(false)
   })
 
-  it('allows when last checkpoint at or above min', () => {
+  it('[TC-111] allows when last checkpoint at or above min', () => {
     expect(
       shouldRefuseChatTurnOnRetrieval({
         results: [{ metadata: { id: 'a' }, content: 'x' }],
@@ -58,7 +58,7 @@ describe('chat retrieval refusal', () => {
     ).toBe(false)
   })
 
-  it('respects KB_CHAT_RETRIEVAL_MIN_CONFIDENCE', () => {
+  it('[TC-112] respects KB_CHAT_RETRIEVAL_MIN_CONFIDENCE', () => {
     process.env.KB_CHAT_RETRIEVAL_MIN_CONFIDENCE = '0.9'
     expect(
       shouldRefuseChatTurnOnRetrieval({
@@ -70,7 +70,7 @@ describe('chat retrieval refusal', () => {
 })
 
 describe('formatChatTranscriptForDocSession', () => {
-  it('formats user/assistant pairs and tail-truncates', () => {
+  it('[TC-113] formats user/assistant pairs and tail-truncates', () => {
     const long = 'x'.repeat(500)
     const messages: Message[] = [
       { role: 'user', content: 'old' },

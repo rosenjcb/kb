@@ -41,7 +41,7 @@ afterEach(async () => {
 })
 
 describe('repo-cli', () => {
-  it('repo list reports an empty base, then the added repo', async () => {
+  it('[TC-422] repo list reports an empty base, then the added repo', async () => {
     await writeBaseMeta(baseDir, { repos: [] })
     const empty = await runRepoCommand(['list', '--base', BASE])
     expect(empty.output).toContain('no git repos')
@@ -51,18 +51,18 @@ describe('repo-cli', () => {
     expect(listed.output).toContain('org-svc')
   })
 
-  it('a bare repo command (no verb) lists', async () => {
+  it('[TC-423] a bare repo command (no verb) lists', async () => {
     await writeBaseMeta(baseDir, { repos: [] })
     const empty = await runRepoCommand(['--base', BASE])
     expect(empty.output).toContain('no git repos')
   })
 
-  it('rejects an unknown repo verb', async () => {
+  it('[TC-424] rejects an unknown repo verb', async () => {
     await writeBaseMeta(baseDir, { repos: [] })
     await expect(runRepoCommand(['frobnicate', '--base', BASE])).rejects.toThrow(/Unknown repo command/)
   })
 
-  it('repo add clones, indexes, and appends to meta.json', async () => {
+  it('[TC-425] repo add clones, indexes, and appends to meta.json', async () => {
     await writeBaseMeta(baseDir, { repos: [] })
     const res = await runRepoCommand(['add', 'https://github.com/org/svc#develop', '--base', BASE])
     expect(res.output).toContain('Added repo "org-svc"')
@@ -72,7 +72,7 @@ describe('repo-cli', () => {
     expect(meta?.repos[0]).toMatchObject({ slug: 'org-svc', gitBranch: 'develop', dir: path.join('repos', 'org-svc') })
   })
 
-  it('repo add rejects a duplicate slug', async () => {
+  it('[TC-426] repo add rejects a duplicate slug', async () => {
     await writeBaseMeta(baseDir, {
       repos: [{ gitUrl: 'https://github.com/org/svc', gitBranch: 'main', slug: 'org-svc', dir: 'repos/org-svc', lastSyncedSha: 's', lastSyncedAt: 't' }],
     })
@@ -81,7 +81,7 @@ describe('repo-cli', () => {
     )
   })
 
-  it('repo remove purges the repo facts and drops it from meta', async () => {
+  it('[TC-427] repo remove purges the repo facts and drops it from meta', async () => {
     // Two repos so removal is allowed; seed a fact for the one we remove.
     await writeBaseMeta(baseDir, {
       repos: [
@@ -104,7 +104,7 @@ describe('repo-cli', () => {
     expect(remaining).toHaveLength(0)
   })
 
-  it('repo remove refuses to remove the last repo', async () => {
+  it('[TC-428] repo remove refuses to remove the last repo', async () => {
     await writeBaseMeta(baseDir, {
       repos: [{ gitUrl: 'https://github.com/org/a', gitBranch: 'main', slug: 'org-a', dir: 'repos/org-a', lastSyncedSha: 's', lastSyncedAt: 't' }],
     })
@@ -112,7 +112,7 @@ describe('repo-cli', () => {
   })
 
   describe('ignore', () => {
-    it('lists, sets, adds, removes, and clears patterns', async () => {
+    it('[TC-429] lists, sets, adds, removes, and clears patterns', async () => {
       await writeBaseMeta(baseDir, { repos: [] })
 
       const empty = await runIgnoreCommand(['list', '--base', BASE])
@@ -141,21 +141,21 @@ describe('repo-cli', () => {
       expect((await readBaseMeta(baseDir))?.ignore).toBeUndefined()
     })
 
-    it('rejects an unknown verb', async () => {
+    it('[TC-430] rejects an unknown verb', async () => {
       await writeBaseMeta(baseDir, { repos: [] })
       await expect(runIgnoreCommand(['frobnicate', '--base', BASE])).rejects.toThrow(
         /Unknown ignore command/
       )
     })
 
-    it('requires a pattern for add/remove/set', async () => {
+    it('[TC-431] requires a pattern for add/remove/set', async () => {
       await writeBaseMeta(baseDir, { repos: [] })
       await expect(runIgnoreCommand(['add', '--base', BASE])).rejects.toThrow(
         /requires at least one pattern/
       )
     })
 
-    it('preserves repos when editing ignore patterns', async () => {
+    it('[TC-432] preserves repos when editing ignore patterns', async () => {
       await writeBaseMeta(baseDir, {
         repos: [{ gitUrl: 'https://github.com/org/a', gitBranch: 'main', slug: 'org-a', dir: 'repos/org-a', lastSyncedSha: 's', lastSyncedAt: 't' }],
       })

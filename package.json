@@ -1,6 +1,6 @@
 {
   "name": "kb",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "description": "TypeScript-based agent harness with LLM provider abstraction",
   "type": "module",
   "private": true,
@@ -43,9 +43,10 @@
     "check": "biome check --write .",
     "type-check": "tsc --noEmit",
     "changeset:check": "node scripts/check-changeset-consistency.mjs",
+    "spec:check": "node scripts/check-spec-traceability.mjs",
     "changeset:version": "node scripts/update-research-version.mjs",
     "release": "node scripts/publish.mjs",
-    "precommit": "npm run lint:fix:staged && npm run type-check && npm run lint && npm run test",
+    "precommit": "npm run lint:fix:staged && npm run type-check && npm run lint && npm run spec:check && npm run test",
     "prepare": "husky"
   },
   "dependencies": {

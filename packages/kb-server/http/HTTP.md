@@ -81,6 +81,8 @@ Post-response scripts live in `{{ }}` blocks and must **`const assert = require(
 
 ## Related docs
 
+- Behavioral spec → [`HTTP.spec.md`](./HTTP.spec.md)
+
 - [`../../../src/server/SERVER.md`](../../../src/server/SERVER.md) — server implementation
 - [`README.md`](README.md) — quick commands
 - [`../../../TESTING.md`](../../../TESTING.md) — unit vs integration split

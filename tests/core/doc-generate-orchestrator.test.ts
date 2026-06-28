@@ -21,7 +21,7 @@ afterEach(async () => {
 })
 
 describe('doc-generate-orchestrator', () => {
-  it('Given ready session, produceInitialDraft then reject then accept writes once', async () => {
+  it('[TC-17] Given ready session, produceInitialDraft then reject then accept writes once', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-orch-'))
     tempDirs.push(baseDir)
     const config = {} as KbConfig
@@ -115,7 +115,7 @@ describe('doc-generate-orchestrator', () => {
     expect(arg?.content).toContain('## References')
   })
 
-  it('second revise user prompt lists prior reviewer feedback before latest instruction', async () => {
+  it('[TC-18] second revise user prompt lists prior reviewer feedback before latest instruction', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-orch-rev-'))
     tempDirs.push(baseDir)
     const config = {} as KbConfig
@@ -192,7 +192,7 @@ describe('doc-generate-orchestrator', () => {
     expect(secondUser).toContain('second round')
   })
 
-  it('Given user-defined sections, startGenerationSession is ready immediately and skips questionnaire', async () => {
+  it('[TC-19] Given user-defined sections, startGenerationSession is ready immediately and skips questionnaire', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-orch-sections-'))
     tempDirs.push(baseDir)
     const config = {} as KbConfig
@@ -228,7 +228,7 @@ describe('doc-generate-orchestrator', () => {
     expect(mockLlm.call).not.toHaveBeenCalled()
   })
 
-  it('Given user-defined sections, produceInitialDraft sends sections block not structured answers', async () => {
+  it('[TC-20] Given user-defined sections, produceInitialDraft sends sections block not structured answers', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-orch-sectionsprompt-'))
     tempDirs.push(baseDir)
     const config = {} as KbConfig
@@ -279,7 +279,7 @@ describe('doc-generate-orchestrator', () => {
     expect(userMsg).not.toContain('Structured answers')
   })
 
-  it('Given no facts in KB, produceInitialDraft throws before calling draft LLM', async () => {
+  it('[TC-21] Given no facts in KB, produceInitialDraft throws before calling draft LLM', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-orch-empty-'))
     tempDirs.push(baseDir)
     const config = {} as KbConfig

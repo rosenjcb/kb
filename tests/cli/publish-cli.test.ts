@@ -48,7 +48,7 @@ afterEach(() => {
 })
 
 describe('publish-cli parser', () => {
-  it('Given no apply flag, then defaults to preview (apply=false)', () => {
+  it('[TC-416] Given no apply flag, then defaults to preview (apply=false)', () => {
     const parsed = parsePublishCommand(['--base', 'dogfood'])
 
     expect(parsed.base).toBe('dogfood')
@@ -56,14 +56,14 @@ describe('publish-cli parser', () => {
     expect(parsed.apply).toBe(false)
   })
 
-  it('Given apply and phase import, then parses explicit execution mode', () => {
+  it('[TC-417] Given apply and phase import, then parses explicit execution mode', () => {
     const parsed = parsePublishCommand(['--base', 'dogfood', '--phase', 'import', '--apply'])
 
     expect(parsed.phase).toBe('import')
     expect(parsed.apply).toBe(true)
   })
 
-  it('Given checkpoint and stop flags, then parses resume options', () => {
+  it('[TC-418] Given checkpoint and stop flags, then parses resume options', () => {
     const parsed = parsePublishCommand([
       '--base',
       'dogfood',
@@ -98,7 +98,7 @@ describe('publish-cli apply', () => {
     'Given stop-after package, then writes checkpoint and resume continues from it — needs checkpoint/resume publish architecture'
   )
 
-  it('Given a custom progress sink, then publish progress avoids direct stderr writes', async () => {
+  it('[TC-419] Given a custom progress sink, then publish progress avoids direct stderr writes', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'kb-publish-test-'))
     const baseDir = path.join(tempRoot, 'docs')
     const progressLines: string[] = []
@@ -169,7 +169,7 @@ describe('publish-cli apply', () => {
     }
   })
 
-  it('Given notion state with stale pages, then preview reports removedPages', async () => {
+  it('[TC-420] Given notion state with stale pages, then preview reports removedPages', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'kb-publish-preview-remove-'))
     const baseDir = path.join(tempRoot, 'base')
     const fetchMock = vi.fn()
@@ -275,7 +275,7 @@ describe('publish-cli apply', () => {
     }
   })
 
-  it('Given apply with notion state, then archives stale pages and returns removedPages', async () => {
+  it('[TC-421] Given apply with notion state, then archives stale pages and returns removedPages', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'kb-publish-apply-remove-'))
     const baseDir = path.join(tempRoot, 'base')
     const fetchMock = vi.fn()

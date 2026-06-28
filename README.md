@@ -337,6 +337,14 @@ One-paragraph what/why, role in the stack, invariants, …
 
 The bundled `kb:dump-context` agent skill authors companion docs (`TUI.md`, `INTENTS.md`, …) as OKF concept files by default, so your knowledge base grows in a portable, interoperable format. OKF reserves the filenames `index.md` (directory listing) and `log.md` (update history); concept docs use any other name.
 
+## 📋 Behavioral specs (spec.md)
+
+This repo uses the [spec.md framework](https://github.com/rosenjcb/spec.md): sibling `*.spec.md` files (`type: Spec`) sit next to OKF companions and define **FR-N** requirements and **TC-N** QA test cases. **Every `TC-N` in a spec must have at least one tagged test** (`[TC-N]` in Vitest or httpyac); not every test needs a spec row. CI and pre-commit run `pnpm run spec:check` to enforce this.
+
+- Manifest: [`specs/MANIFEST.md`](specs/MANIFEST.md)
+- Conventions: [`TESTING.md`](TESTING.md)
+- Check: `pnpm run spec:check`
+
 ## 🗄️ Swapping and deleting bases
 
 ```bash
@@ -417,6 +425,7 @@ More reading: [`eval/EVAL.md`](eval/EVAL.md) — pipeline overview, loss functio
 
 ```bash
 pnpm run test
+pnpm run spec:check
 pnpm run type-check
 pnpm run lint
 pnpm run build

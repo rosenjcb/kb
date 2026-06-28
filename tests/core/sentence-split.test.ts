@@ -5,11 +5,11 @@ import {
 } from '../../src/core/sentence-split'
 
 describe('segmentMarkdownForFacts', () => {
-  it('treats ATX heading line as one segment (title only)', () => {
+  it('[TC-118] treats ATX heading line as one segment (title only)', () => {
     expect(segmentMarkdownForFacts('## Hello World')).toEqual(['Hello World'])
   })
 
-  it('preserves fenced code blocks as collapsed segments before prose', () => {
+  it('[TC-119] preserves fenced code blocks as collapsed segments before prose', () => {
     const md = 'Intro here.\n```ts\nconst x = 1;\nconst y = 2;\n```\nSecond sentence follows.'
     const segs = segmentMarkdownForFacts(md)
     expect(segs.some(s => s.includes('const x = 1; const y = 2;'))).toBe(true)
@@ -17,16 +17,16 @@ describe('segmentMarkdownForFacts', () => {
     expect(segs).toContain('Second sentence follows.')
   })
 
-  it('splits multiple sentences on one line', () => {
+  it('[TC-120] splits multiple sentences on one line', () => {
     const segs = segmentMarkdownForFacts('First fact here. Second fact here! Third stays?')
     expect(segs.length).toBeGreaterThanOrEqual(2)
   })
 
-  it('drops segments shorter than 8 chars after normalize', () => {
+  it('[TC-121] drops segments shorter than 8 chars after normalize', () => {
     expect(segmentMarkdownForFacts('Hi. Ok.')).toEqual([])
   })
 
-  it('can merge short adjacent prose into coarser scan chunks', () => {
+  it('[TC-122] can merge short adjacent prose into coarser scan chunks', () => {
     const md = [
       '# Scan',
       '',
@@ -44,7 +44,7 @@ describe('segmentMarkdownForFacts', () => {
     ])
   })
 
-  it('strips the OKF frontmatter block and segments only the body (no boosting facts)', () => {
+  it('[TC-123] strips the OKF frontmatter block and segments only the body (no boosting facts)', () => {
     const md = [
       '---',
       'type: Subsystem',
@@ -70,31 +70,31 @@ describe('segmentMarkdownForFacts', () => {
     expect(segs).not.toContain('Runs the plateau-based retrieval orchestrator.')
   })
 
-  it('leaves plain markdown (no frontmatter) segmentation unchanged', () => {
+  it('[TC-124] leaves plain markdown (no frontmatter) segmentation unchanged', () => {
     expect(segmentMarkdownForFacts('## Hello World')).toEqual(['Hello World'])
   })
 })
 
 describe('assertSingleSentenceFact', () => {
-  it('returns trimmed single sentence', () => {
+  it('[TC-125] returns trimmed single sentence', () => {
     expect(assertSingleSentenceFact('  One clear sentence.  ')).toBe('One clear sentence.')
   })
 
-  it('throws when multiple sentences detected', () => {
+  it('[TC-126] throws when multiple sentences detected', () => {
     expect(() => assertSingleSentenceFact('First sentence. Second sentence.')).toThrow(
       /exactly one sentence/
     )
   })
 
-  it('throws on empty', () => {
+  it('[TC-127] throws on empty', () => {
     expect(() => assertSingleSentenceFact('   ')).toThrow(/empty/)
   })
 
-  it('when no segment passes length filter but text is long enough, returns full trimmed text', () => {
+  it('[TC-128] when no segment passes length filter but text is long enough, returns full trimmed text', () => {
     expect(assertSingleSentenceFact('abcdefgh')).toBe('abcdefgh')
   })
 
-  it('throws when text too short for fallback path', () => {
+  it('[TC-129] throws when text too short for fallback path', () => {
     expect(() => assertSingleSentenceFact('short')).toThrow(/too short/)
   })
 })

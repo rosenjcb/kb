@@ -50,20 +50,20 @@ describe('showLLMStatus', () => {
     }
   })
 
-  it('shows provider from config when set', async () => {
+  it('[TC-365] shows provider from config when set', async () => {
     await writeFile(configFile, JSON.stringify({ llm: { provider: 'gemini' } }), 'utf-8')
     const lines: string[] = []
     await showLLMStatus({ configFile, output: msg => lines.push(msg) })
     expect(lines.join('\n')).toContain('gemini')
   })
 
-  it('shows auto-detect when no provider configured', async () => {
+  it('[TC-366] shows auto-detect when no provider configured', async () => {
     const lines: string[] = []
     await showLLMStatus({ configFile, output: msg => lines.push(msg) })
     expect(lines.join('\n')).toContain('(auto-detect)')
   })
 
-  it('shows env var status for each provider', async () => {
+  it('[TC-367] shows env var status for each provider', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-test'
     const lines: string[] = []
     await showLLMStatus({ configFile, output: msg => lines.push(msg) })
@@ -74,13 +74,13 @@ describe('showLLMStatus', () => {
     expect(output).toContain('✗ not set')
   })
 
-  it('warns when no LLM key is configured', async () => {
+  it('[TC-368] warns when no LLM key is configured', async () => {
     const lines: string[] = []
     await showLLMStatus({ configFile, output: msg => lines.push(msg) })
     expect(lines.join('\n')).toContain('No LLM key is set')
   })
 
-  it('does not warn when a key is set', async () => {
+  it('[TC-369] does not warn when a key is set', async () => {
     process.env.GEMINI_API_KEY = 'my-key'
     const lines: string[] = []
     await showLLMStatus({ configFile, output: msg => lines.push(msg) })
@@ -112,7 +112,7 @@ describe('runLLMSetupWizard', () => {
     vi.unstubAllEnvs()
   })
 
-  it('saves chosen provider to config when user picks anthropic', async () => {
+  it('[TC-370] saves chosen provider to config when user picks anthropic', async () => {
     const lines: string[] = []
     const result = await runLLMSetupWizard({
       configFile,
@@ -125,7 +125,7 @@ describe('runLLMSetupWizard', () => {
     expect(saved.llm?.provider).toBe('anthropic')
   })
 
-  it('saves openai when user picks 2', async () => {
+  it('[TC-371] saves openai when user picks 2', async () => {
     const result = await runLLMSetupWizard({
       configFile,
       output: () => {},
@@ -136,7 +136,7 @@ describe('runLLMSetupWizard', () => {
     expect(saved.llm?.provider).toBe('openai')
   })
 
-  it('saves gemini when user picks 3', async () => {
+  it('[TC-372] saves gemini when user picks 3', async () => {
     const result = await runLLMSetupWizard({
       configFile,
       output: () => {},
@@ -145,7 +145,7 @@ describe('runLLMSetupWizard', () => {
     expect(result.provider).toBe('gemini')
   })
 
-  it('saves ollama when user picks 4 and marks configured=true', async () => {
+  it('[TC-373] saves ollama when user picks 4 and marks configured=true', async () => {
     const result = await runLLMSetupWizard({
       configFile,
       output: () => {},
@@ -155,7 +155,7 @@ describe('runLLMSetupWizard', () => {
     expect(result.configured).toBe(true)
   })
 
-  it('configured=false when provider key is absent', async () => {
+  it('[TC-374] configured=false when provider key is absent', async () => {
     const result = await runLLMSetupWizard({
       configFile,
       output: () => {},
@@ -164,7 +164,7 @@ describe('runLLMSetupWizard', () => {
     expect(result.configured).toBe(false)
   })
 
-  it('configured=true when provider key is present', async () => {
+  it('[TC-375] configured=true when provider key is present', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-test'
     const result = await runLLMSetupWizard({
       configFile,
@@ -174,7 +174,7 @@ describe('runLLMSetupWizard', () => {
     expect(result.configured).toBe(true)
   })
 
-  it('shows all four providers in the menu output', async () => {
+  it('[TC-376] shows all four providers in the menu output', async () => {
     const lines: string[] = []
     await runLLMSetupWizard({
       configFile,
@@ -188,7 +188,7 @@ describe('runLLMSetupWizard', () => {
     expect(output).toContain('Ollama')
   })
 
-  it('preserves existing config when writing provider', async () => {
+  it('[TC-377] preserves existing config when writing provider', async () => {
     await writeFile(configFile, JSON.stringify({ notion: { token: 'ntn_123' } }), 'utf-8')
     await runLLMSetupWizard({
       configFile,
@@ -200,7 +200,7 @@ describe('runLLMSetupWizard', () => {
     expect(saved.llm?.provider).toBe('gemini')
   })
 
-  it('prints env var export hint when key is missing', async () => {
+  it('[TC-378] prints env var export hint when key is missing', async () => {
     const lines: string[] = []
     await runLLMSetupWizard({
       configFile,
@@ -212,7 +212,7 @@ describe('runLLMSetupWizard', () => {
     expect(output).toContain('export ANTHROPIC_API_KEY=')
   })
 
-  it('confirms key is set when present in env', async () => {
+  it('[TC-379] confirms key is set when present in env', async () => {
     process.env.OPENAI_API_KEY = 'sk-live'
     const lines: string[] = []
     await runLLMSetupWizard({
@@ -223,7 +223,7 @@ describe('runLLMSetupWizard', () => {
     expect(lines.join('\n')).toContain('already set')
   })
 
-  it('re-prompts until the user enters a valid provider number', async () => {
+  it('[TC-380] re-prompts until the user enters a valid provider number', async () => {
     const lines: string[] = []
     const questionIO = createQuestionIO(['9', 'abc', '3'])
 

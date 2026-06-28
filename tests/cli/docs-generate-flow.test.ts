@@ -45,7 +45,7 @@ function makeMockLlm(): LLMProvider {
 }
 
 describe('docs generate flow', () => {
-  it('Given full questionnaire answered, finalize writes document with doc type', async () => {
+  it('[TC-186] Given full questionnaire answered, finalize writes document with doc type', async () => {
     const baseDir = await createTempBase()
     const mockLlm = makeMockLlm()
     const config = {} as KbConfig

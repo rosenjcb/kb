@@ -35,7 +35,7 @@ async function mkdb(): Promise<{ dbPath: string; db: Database; indexer: SqliteKb
 // Migration
 // ---------------------------------------------------------------------------
 describe('migration 12 — source_text column', () => {
-  it('source_text column exists after runMigrations', async () => {
+  it('[TC-17] source_text column exists after runMigrations', async () => {
     const { db } = await mkdb()
     const cols = (db.prepare("PRAGMA table_info(facts)").all() as Array<{ name: string }>).map(
       c => c.name
@@ -49,7 +49,7 @@ describe('migration 12 — source_text column', () => {
 // SqliteKbIndexer.upsertFact — sourceText persistence
 // ---------------------------------------------------------------------------
 describe('SqliteKbIndexer.upsertFact — sourceText', () => {
-  it('stores sourceText and returns it in FactRow', async () => {
+  it('[TC-18] stores sourceText and returns it in FactRow', async () => {
     const { db, indexer } = await mkdb()
     indexer.upsertFact({
       factText: 'add is a Function exported from src/math.ts',
@@ -66,7 +66,7 @@ describe('SqliteKbIndexer.upsertFact — sourceText', () => {
     db.close()
   })
 
-  it('stores NULL when sourceText is omitted', async () => {
+  it('[TC-19] stores NULL when sourceText is omitted', async () => {
     const { db, indexer } = await mkdb()
     indexer.upsertFact({
       factText: 'some plain fact',
@@ -79,7 +79,7 @@ describe('SqliteKbIndexer.upsertFact — sourceText', () => {
     db.close()
   })
 
-  it('updates sourceText on re-upsert of same normalized fact', async () => {
+  it('[TC-20] updates sourceText on re-upsert of same normalized fact', async () => {
     const { db, indexer } = await mkdb()
     indexer.upsertFact({
       factText: 'add is a Function exported from src/math.ts',
@@ -100,7 +100,7 @@ describe('SqliteKbIndexer.upsertFact — sourceText', () => {
     db.close()
   })
 
-  it('getActiveFactById includes source_text', async () => {
+  it('[TC-21] getActiveFactById includes source_text', async () => {
     const { indexer } = await mkdb()
     const { id } = indexer.upsertFact({
       factText: 'Foo is a Class exported from src/foo.ts',
@@ -118,7 +118,7 @@ describe('SqliteKbIndexer.upsertFact — sourceText', () => {
 // FactsDocumentReader — toResult serves source_text for import_code facts
 // ---------------------------------------------------------------------------
 describe('FactsDocumentReader — source_text served for import_code', () => {
-  it('returns source_text as content when source_kind=import_code and source_text present', async () => {
+  it('[TC-22] returns source_text as content when source_kind=import_code and source_text present', async () => {
     const { dbPath, indexer } = await mkdb()
     indexer.upsertFact({
       factText: 'Router is a Class exported from src/router.ts',
@@ -140,7 +140,7 @@ describe('FactsDocumentReader — source_text served for import_code', () => {
     expect(result?.content).toBe('export class Router { route() {} }')
   })
 
-  it('falls back to fact_text when source_kind=import_code but source_text is NULL', async () => {
+  it('[TC-23] falls back to fact_text when source_kind=import_code but source_text is NULL', async () => {
     const { dbPath, indexer } = await mkdb()
     indexer.upsertFact({
       factText: 'Legacy is a Class exported from src/legacy.ts',
@@ -161,7 +161,7 @@ describe('FactsDocumentReader — source_text served for import_code', () => {
     expect(result?.content).toBe('Legacy is a Class exported from src/legacy.ts')
   })
 
-  it('always uses fact_text for import_doc and submit facts even if source_text were set', async () => {
+  it('[TC-24] always uses fact_text for import_doc and submit facts even if source_text were set', async () => {
     const { dbPath, indexer } = await mkdb()
     // import_doc fact — no source_text (normal case)
     indexer.upsertFact({
@@ -182,7 +182,7 @@ describe('FactsDocumentReader — source_text served for import_code', () => {
     expect(result?.content).toBe('The architecture doc explains layered design')
   })
 
-  it('does not include content when includeContent=false, regardless of source_text', async () => {
+  it('[TC-25] does not include content when includeContent=false, regardless of source_text', async () => {
     const { dbPath, indexer } = await mkdb()
     indexer.upsertFact({
       factText: 'add is a Function exported from src/math.ts',
@@ -209,7 +209,7 @@ describe('FactsDocumentReader — source_text served for import_code', () => {
 // getDeclNode walk-up logic (unit test via side-effect on spans)
 // ---------------------------------------------------------------------------
 describe('tree-sitter getDeclNode — source text is full declaration, not just name', () => {
-  it('TsMorphIndexer stores full declaration text capped at 1500 chars', async () => {
+  it('[TC-26] TsMorphIndexer stores full declaration text capped at 1500 chars', async () => {
     // This is a logic invariant test: verify the cap produces the right suffix
     const longText = 'x'.repeat(2000)
     const expected = `${'x'.repeat(1497)}…`
@@ -218,7 +218,7 @@ describe('tree-sitter getDeclNode — source text is full declaration, not just 
     expect(capped.length).toBe(1498) // 1497 chars + '…' (1 char)
   })
 
-  it('source text within limit passes through unchanged', () => {
+  it('[TC-27] source text within limit passes through unchanged', () => {
     const text = 'export function foo() { return 42 }'
     const capped = text.length > 1500 ? `${text.slice(0, 1497)}…` : text
     expect(capped).toBe(text)

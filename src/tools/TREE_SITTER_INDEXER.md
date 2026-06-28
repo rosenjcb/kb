@@ -56,3 +56,7 @@ Extensions in `TREE_SITTER_TEXT_EXTENSIONS` but not `EXT_MAP` get a **file node 
 - Grammar load failure per file → falls through to text-node-only (no throw on whole project).
 - `TREE_SITTER_SKIP_DIRS` mirrors common vendor/build dirs; extend when new ecosystems add huge trees.
 - Ts-morph owns TS/JS when present; tree-sitter TS queries still exist for projects without `tsconfig.json`.
+
+## Related docs
+
+- Behavioral spec → [`TREE_SITTER_INDEXER.spec.md`](TREE_SITTER_INDEXER.spec.md)

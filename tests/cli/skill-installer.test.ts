@@ -27,7 +27,7 @@ afterEach(async () => {
 })
 
 describe('installSkillsGlobally', () => {
-  it('Given no existing skill files, then installs all agents and returns installed actions', async () => {
+  it('[TC-436] Given no existing skill files, then installs all agents and returns installed actions', async () => {
     // Override HOME so we don't touch the real ~/.claude etc.
     const fakeHome = path.join(tempDir, 'home')
     await mkdir(fakeHome)
@@ -43,7 +43,7 @@ describe('installSkillsGlobally', () => {
     }
   })
 
-  it('Given already-installed skill with matching hash, then action is skipped', async () => {
+  it('[TC-437] Given already-installed skill with matching hash, then action is skipped', async () => {
     const fakeHome = path.join(tempDir, 'home')
     const skillDir = path.join(fakeHome, '.claude', 'skills', KB_DEV_WORKFLOW_SKILL_DIR)
     await mkdir(skillDir, { recursive: true })
@@ -68,7 +68,7 @@ describe('installSkillsGlobally', () => {
     }
   })
 
-  it('Given stale skill hash, then action is updated', async () => {
+  it('[TC-438] Given stale skill hash, then action is updated', async () => {
     const fakeHome = path.join(tempDir, 'home')
     const skillDir = path.join(fakeHome, '.claude', 'skills', KB_DEV_WORKFLOW_SKILL_DIR)
     await mkdir(skillDir, { recursive: true })
@@ -106,7 +106,7 @@ describe('installSkillIntoProject', () => {
     process.env.HOME = origHome
   })
 
-  it('Given ~/.claude/CLAUDE.md exists without KB section, then injects blurb', async () => {
+  it('[TC-439] Given ~/.claude/CLAUDE.md exists without KB section, then injects blurb', async () => {
     const claudeMd = path.join(fakeHome, '.claude', 'CLAUDE.md')
     await mkdir(path.dirname(claudeMd), { recursive: true })
     await writeFile(claudeMd, '# Agent Instructions\n\nSome rules.\n', 'utf8')
@@ -120,7 +120,7 @@ describe('installSkillIntoProject', () => {
     expect(content).toContain('kb query')
   })
 
-  it('Given ~/.claude/CLAUDE.md already has KB section, then action is already-present', async () => {
+  it('[TC-440] Given ~/.claude/CLAUDE.md already has KB section, then action is already-present', async () => {
     const claudeMd = path.join(fakeHome, '.claude', 'CLAUDE.md')
     await mkdir(path.dirname(claudeMd), { recursive: true })
     await writeFile(claudeMd, '# Agent Instructions\n\n# KB dev workflow\n\nAlready here.\n', 'utf8')
@@ -130,7 +130,7 @@ describe('installSkillIntoProject', () => {
     expect(result?.action).toBe('already-present')
   })
 
-  it('Given ~/.codex/AGENTS.md exists without KB section, then injects blurb', async () => {
+  it('[TC-441] Given ~/.codex/AGENTS.md exists without KB section, then injects blurb', async () => {
     const agentsMd = path.join(fakeHome, '.codex', 'AGENTS.md')
     await mkdir(path.dirname(agentsMd), { recursive: true })
     await writeFile(agentsMd, '# Agents\n\nRules here.\n', 'utf8')
@@ -140,7 +140,7 @@ describe('installSkillIntoProject', () => {
     expect(result?.action).toBe('injected')
   })
 
-  it('Given neither profile MD exists, then creates ~/.claude/CLAUDE.md', async () => {
+  it('[TC-442] Given neither profile MD exists, then creates ~/.claude/CLAUDE.md', async () => {
     const results = await installSkillIntoProject()
     const created = results.find(r => r.action === 'created')
     expect(created?.file).toBe('~/.claude/CLAUDE.md')
@@ -149,7 +149,7 @@ describe('installSkillIntoProject', () => {
     expect(content).toContain('# KB dev workflow')
   })
 
-  it('Given both profile MDs exist, then only injects into whichever lacks the section', async () => {
+  it('[TC-443] Given both profile MDs exist, then only injects into whichever lacks the section', async () => {
     const claudeMd = path.join(fakeHome, '.claude', 'CLAUDE.md')
     await mkdir(path.dirname(claudeMd), { recursive: true })
     await writeFile(claudeMd, '# Agent Instructions\n\n# KB dev workflow\n\nPresent.\n', 'utf8')
@@ -165,7 +165,7 @@ describe('installSkillIntoProject', () => {
 })
 
 describe('formatSkillInstallReport', () => {
-  it('shows installed skill files and injected profile entries', () => {
+  it('[TC-444] shows installed skill files and injected profile entries', () => {
     const report = formatSkillInstallReport(
       [
         { agent: 'claude', action: 'installed' },
@@ -186,7 +186,7 @@ describe('formatSkillInstallReport', () => {
     expect(report).toContain('~/.codex/AGENTS.md')
   })
 
-  it('shows skipped skill files as up-to-date', () => {
+  it('[TC-445] shows skipped skill files as up-to-date', () => {
     const report = formatSkillInstallReport(
       [{ agent: 'claude', action: 'skipped' }],
       [{ file: '~/.claude/CLAUDE.md', action: 'skipped' }]
@@ -211,7 +211,7 @@ describe('uninstallSkills', () => {
     process.env.HOME = origHome
   })
 
-  it('Given installed skill files, then removes them and reports removed', async () => {
+  it('[TC-446] Given installed skill files, then removes them and reports removed', async () => {
     const skillDir = path.join(fakeHome, '.claude', 'skills', KB_DEV_WORKFLOW_SKILL_DIR)
     await mkdir(skillDir, { recursive: true })
     await writeFile(path.join(skillDir, 'SKILL.md'), '<!-- kb-skill-hash: abc -->\ncontent', 'utf8')
@@ -221,12 +221,12 @@ describe('uninstallSkills', () => {
     expect(claude?.action).toBe('removed')
   })
 
-  it('Given no skill files, then action is not-found', async () => {
+  it('[TC-447] Given no skill files, then action is not-found', async () => {
     const results = await uninstallSkills()
     expect(results.every(r => r.action === 'not-found')).toBe(true)
   })
 
-  it('Given profile MD with injected section, then removes the section', async () => {
+  it('[TC-448] Given profile MD with injected section, then removes the section', async () => {
     const claudeMd = path.join(fakeHome, '.claude', 'CLAUDE.md')
     await mkdir(path.dirname(claudeMd), { recursive: true })
     await writeFile(
@@ -244,7 +244,7 @@ describe('uninstallSkills', () => {
     expect(content).not.toContain('# KB dev workflow')
   })
 
-  it('Given profile MD without KB section, then action is not-found', async () => {
+  it('[TC-449] Given profile MD without KB section, then action is not-found', async () => {
     const claudeMd = path.join(fakeHome, '.claude', 'CLAUDE.md')
     await mkdir(path.dirname(claudeMd), { recursive: true })
     await writeFile(claudeMd, '# Agent Instructions\n\nNo KB here.\n', 'utf8')
@@ -256,7 +256,7 @@ describe('uninstallSkills', () => {
 })
 
 describe('formatSkillUninstallReport', () => {
-  it('Given removed results, then formats readable output', () => {
+  it('[TC-450] Given removed results, then formats readable output', () => {
     const report = formatSkillUninstallReport([
       { target: 'claude', action: 'removed' },
       { target: '~/.claude/CLAUDE.md', action: 'removed' },
@@ -283,12 +283,12 @@ describe('installHooks', () => {
     process.env.HOME = origHome
   })
 
-  it('Given no provider config dirs, then all results are not-installed', async () => {
+  it('[TC-451] Given no provider config dirs, then all results are not-installed', async () => {
     const results = await installHooks()
     expect(results.every(r => r.action === 'not-installed')).toBe(true)
   })
 
-  it('Given Claude config dir exists with no settings.json, then creates settings.json with hook', async () => {
+  it('[TC-452] Given Claude config dir exists with no settings.json, then creates settings.json with hook', async () => {
     await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
 
     const results = await installHooks()
@@ -303,7 +303,7 @@ describe('installHooks', () => {
     expect(group.hooks[0].command).toContain('kb-reminder.sh')
   })
 
-  it('Given hook already installed at current path, then action is skipped', async () => {
+  it('[TC-453] Given hook already installed at current path, then action is skipped', async () => {
     const scriptPath = path.join(fakeHome, '.kb', 'hooks', 'kb-reminder.sh')
     const settingsPath = path.join(fakeHome, '.claude', 'settings.json')
     await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
@@ -322,7 +322,7 @@ describe('installHooks', () => {
     expect(claude?.action).toBe('skipped')
   })
 
-  it('Given hook installed at stale path, then updates to current path', async () => {
+  it('[TC-454] Given hook installed at stale path, then updates to current path', async () => {
     const oldPath = '/old/location/kb-reminder.sh'
     const settingsPath = path.join(fakeHome, '.claude', 'settings.json')
     await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
@@ -347,7 +347,7 @@ describe('installHooks', () => {
     expect(group.hooks.some((h: { command: string }) => h.command.endsWith('kb-reminder.sh'))).toBe(true)
   })
 
-  it('Given settings.json with existing hooks, then merges without clobbering', async () => {
+  it('[TC-455] Given settings.json with existing hooks, then merges without clobbering', async () => {
     const settingsPath = path.join(fakeHome, '.claude', 'settings.json')
     await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
     await writeFile(
@@ -371,7 +371,7 @@ describe('installHooks', () => {
     expect(group.hooks.some((h: { command: string }) => h.command === '/other/hook.sh')).toBe(true)
   })
 
-  it('Given Gemini config dir exists, then installs BeforeTool hook in settings.json', async () => {
+  it('[TC-456] Given Gemini config dir exists, then installs BeforeTool hook in settings.json', async () => {
     await mkdir(path.join(fakeHome, '.gemini'), { recursive: true })
 
     const results = await installHooks()
@@ -387,7 +387,7 @@ describe('installHooks', () => {
     expect(group).toBeDefined()
   })
 
-  it('Given Codex config dir exists, then installs hook in hooks.json', async () => {
+  it('[TC-457] Given Codex config dir exists, then installs hook in hooks.json', async () => {
     await mkdir(path.join(fakeHome, '.codex'), { recursive: true })
 
     const results = await installHooks()
@@ -399,7 +399,7 @@ describe('installHooks', () => {
     expect(settings.hooks?.PreToolUse).toBeDefined()
   })
 
-  it('Writes executable hook script to ~/.kb/hooks/kb-reminder.sh', async () => {
+  it('[TC-458] Writes executable hook script to ~/.kb/hooks/kb-reminder.sh', async () => {
     await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
     await installHooks()
 
@@ -426,7 +426,7 @@ describe('uninstallHooks', () => {
     process.env.HOME = origHome
   })
 
-  it('Given hook present in settings.json, then removes it', async () => {
+  it('[TC-459] Given hook present in settings.json, then removes it', async () => {
     const scriptPath = path.join(fakeHome, '.kb', 'hooks', 'kb-reminder.sh')
     const settingsPath = path.join(fakeHome, '.claude', 'settings.json')
     await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
@@ -451,12 +451,12 @@ describe('uninstallHooks', () => {
     expect(group).toBeUndefined()
   })
 
-  it('Given no settings.json, then action is not-installed', async () => {
+  it('[TC-460] Given no settings.json, then action is not-installed', async () => {
     const results = await uninstallHooks()
     expect(results.every(r => r.action === 'not-installed')).toBe(true)
   })
 
-  it('Given settings.json without KB hook, then action is not-installed', async () => {
+  it('[TC-461] Given settings.json without KB hook, then action is not-installed', async () => {
     const settingsPath = path.join(fakeHome, '.claude', 'settings.json')
     await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
     await writeFile(settingsPath, JSON.stringify({ agentPushNotifEnabled: true }), 'utf8')
@@ -466,7 +466,7 @@ describe('uninstallHooks', () => {
     expect(claude?.action).toBe('not-installed')
   })
 
-  it('Given hook plus other hooks in same matcher group, then only removes kb hook', async () => {
+  it('[TC-462] Given hook plus other hooks in same matcher group, then only removes kb hook', async () => {
     const scriptPath = path.join(fakeHome, '.kb', 'hooks', 'kb-reminder.sh')
     const settingsPath = path.join(fakeHome, '.claude', 'settings.json')
     await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
@@ -500,7 +500,7 @@ describe('uninstallHooks', () => {
 })
 
 describe('formatSkillInstallReport with hooks', () => {
-  it('includes Agent hooks section when hook results provided', () => {
+  it('[TC-463] includes Agent hooks section when hook results provided', () => {
     const report = formatSkillInstallReport(
       [],
       [],
@@ -514,7 +514,7 @@ describe('formatSkillInstallReport with hooks', () => {
     expect(report).toContain('skipped    gemini')
   })
 
-  it('omits Agent hooks section when hook results not provided', () => {
+  it('[TC-464] omits Agent hooks section when hook results not provided', () => {
     const report = formatSkillInstallReport([], [])
     expect(report).not.toContain('Agent hooks')
   })

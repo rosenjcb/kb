@@ -37,7 +37,7 @@ function makeStubService(overrides: Partial<KbService> = {}): KbService {
 }
 
 describe('buildMcpToolList', () => {
-  it('exposes kb_query plus the read-only allowlist, prefixed and never upsert_fact', () => {
+                it('[TC-21] exposes kb_query plus the read-only allowlist, prefixed and never upsert_fact', () => {
     const tools = buildMcpToolList(makeStubService())
     const names = tools.map(t => t.name)
     expect(names).toContain('kb_query')
@@ -51,19 +51,19 @@ describe('buildMcpToolList', () => {
 })
 
 describe('dispatchMcpToolCall', () => {
-  it('runs kb_query without synthesis by default', async () => {
+                it('[TC-22] runs kb_query without synthesis by default', async () => {
     const service = makeStubService()
     const result = await dispatchMcpToolCall(service, 'kb_query', { q: 'auth' })
     expect(result.isError).toBeUndefined()
     expect(result.content[0].text).toContain('"status": "accepted"')
   })
 
-  it('errors when kb_query is missing q', async () => {
+                it('[TC-23] errors when kb_query is missing q', async () => {
     const result = await dispatchMcpToolCall(makeStubService(), 'kb_query', {})
     expect(result.isError).toBe(true)
   })
 
-  it('delegates allowlisted registry tools to the executor', async () => {
+                it('[TC-24] delegates allowlisted registry tools to the executor', async () => {
     const execute = vi.fn(async () => ({ results: ['fact-1'] }))
     const service = makeStubService({
       toolExecutor: { getTools: () => registryTools, execute, register: () => {} },
@@ -73,7 +73,7 @@ describe('dispatchMcpToolCall', () => {
     expect(result.content[0].text).toContain('fact-1')
   })
 
-  it('refuses tools outside the allowlist', async () => {
+                it('[TC-25] refuses tools outside the allowlist', async () => {
     const result = await dispatchMcpToolCall(makeStubService(), 'kb_upsert_fact', { factText: 'x' })
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('unavailable')

@@ -7,7 +7,7 @@ import { runMigrations } from '../../src/core/db-migrations'
 import { expandQueryWithGraph, toGraphQuerySlugs } from '../../src/tools/graph-query-expansion'
 
 describe('graph-query-expansion', () => {
-  it('Given a freeform query, then slug extraction produces unigrams and bigrams for graph entity matching', () => {
+  it('[TC-11] Given a freeform query, then slug extraction produces unigrams and bigrams for graph entity matching', () => {
     const slugs = toGraphQuerySlugs('How does config.json relate to kb graph?')
     expect(slugs).toContain('config')
     expect(slugs).toContain('json')
@@ -37,7 +37,7 @@ describe('graph-query-expansion', () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('Given facts in DB, then query expansion appends matching subject/object terms', () => {
+  it('[TC-12] Given facts in DB, then query expansion appends matching subject/object terms', () => {
     db.prepare(
       `INSERT INTO facts (id, fact_text, normalized_text, source_kind, lane_id, confidence, tombstoned_at, created_at, updated_at, subject, predicate, object)
        VALUES ('f1','kb query retrieves via read_facts','kb query retrieves via read_facts','submit','general',0.8,NULL,datetime('now'),datetime('now'),'kb query','retrieves_via','read_facts')`
@@ -53,12 +53,12 @@ describe('graph-query-expansion', () => {
     expect(expanded).toContain('SQLite')
   })
 
-  it('Given a DB with no matching facts, then expansion returns the original query', () => {
+  it('[TC-13] Given a DB with no matching facts, then expansion returns the original query', () => {
     const expanded = expandQueryWithGraph('config json', db)
     expect(expanded).toBe('config json')
   })
 
-  it('Given exported symbols in facts, then expansion appends matching symbol names', () => {
+  it('[TC-14] Given exported symbols in facts, then expansion appends matching symbol names', () => {
     // Insert an exported_from fact so the FTS expansion picks up 'router'
     db.prepare(
       `INSERT INTO facts (id, fact_text, normalized_text, source_kind, lane_id, confidence, tombstoned_at, created_at, updated_at, subject, predicate, object)
@@ -72,7 +72,7 @@ describe('graph-query-expansion', () => {
     expect(expanded).toContain('router')
   })
 
-  it('Given an empty DB, then expansion falls back gracefully to the original query', () => {
+  it('[TC-15] Given an empty DB, then expansion falls back gracefully to the original query', () => {
     const expanded = expandQueryWithGraph('some query that matches nothing', db)
     expect(expanded).toBe('some query that matches nothing')
   })

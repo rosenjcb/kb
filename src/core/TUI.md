@@ -157,3 +157,7 @@ Many commands need **exactly one** of these at a time, and errors must name the 
 Canonical user-facing strings live in `src/cli/cli-prerequisites.ts` (`CLI_ERROR_NO_KB_BASE`, `CLI_ERROR_NO_LLM_PROVIDER`, etc.). CLI and TUI should reuse them so `/query` and `kb query` behave the same as bare `kb` + slash commands.
 
 When a command needs both base and LLM config (e.g. the interactive session), check **base first**, then **LLM**, and surface **one** error at a time.
+
+## Related docs
+
+- Behavioral spec → [`TUI.spec.md`](TUI.spec.md)

@@ -48,19 +48,19 @@ afterEach(async () => {
 })
 
 describe('auto-sync', () => {
-  it('Given no meta.json, then no-ops', async () => {
+  it('[TC-1] Given no meta.json, then no-ops', async () => {
     await maybeAutoSync(baseDir)
     expect(mockPullRepo).not.toHaveBeenCalled()
     expect(mockRunKbInit).not.toHaveBeenCalled()
   })
 
-  it('Given a repo synced within the stale window, then skips pull', async () => {
+  it('[TC-2] Given a repo synced within the stale window, then skips pull', async () => {
     await writeBaseMeta(baseDir, staleMeta({ lastSyncedAt: new Date().toISOString() }))
     await maybeAutoSync(baseDir)
     expect(mockPullRepo).not.toHaveBeenCalled()
   })
 
-  it('Given a stale repo with no new commits, then refreshes lastSyncedAt without rescanning', async () => {
+  it('[TC-3] Given a stale repo with no new commits, then refreshes lastSyncedAt without rescanning', async () => {
     const meta = staleMeta()
     await writeBaseMeta(baseDir, meta)
     mockPullRepo.mockResolvedValue(false)
@@ -75,7 +75,7 @@ describe('auto-sync', () => {
     expect(updated?.repos[0].lastSyncedAt).not.toBe(meta.repos[0].lastSyncedAt)
   })
 
-  it('Given a stale repo with new commits, then pulls and re-indexes that repo by slug', async () => {
+  it('[TC-4] Given a stale repo with new commits, then pulls and re-indexes that repo by slug', async () => {
     await writeBaseMeta(baseDir, staleMeta())
     const newSha = 'newshanewshanewshanewshanewshanewsha'
     mockPullRepo.mockResolvedValue(true)
@@ -98,7 +98,7 @@ describe('auto-sync', () => {
     expect(progress.some(l => l.includes(newSha.slice(0, 8)))).toBe(true)
   })
 
-  it('Given multiple repos, then only the changed repo is re-indexed and others keep their sha', async () => {
+  it('[TC-5] Given multiple repos, then only the changed repo is re-indexed and others keep their sha', async () => {
     const a = repo({ slug: 'org-a', dir: path.join('repos', 'org-a'), gitUrl: 'https://github.com/org/a' })
     const b = repo({ slug: 'org-b', dir: path.join('repos', 'org-b'), gitUrl: 'https://github.com/org/b', lastSyncedSha: 'bsha' })
     await writeBaseMeta(baseDir, { repos: [a, b] })
@@ -118,7 +118,7 @@ describe('auto-sync', () => {
     expect(updated?.repos.find(r => r.slug === 'org-b')?.lastSyncedSha).toBe('bsha')
   })
 
-  it("Given one repo's pull fails, then the other repos still sync", async () => {
+  it("[TC-6] Given one repo's pull fails, then the other repos still sync", async () => {
     const a = repo({ slug: 'org-a', dir: path.join('repos', 'org-a') })
     const b = repo({ slug: 'org-b', dir: path.join('repos', 'org-b') })
     await writeBaseMeta(baseDir, { repos: [a, b] })
@@ -136,7 +136,7 @@ describe('auto-sync', () => {
     expect(progress.some(l => l.includes('network error'))).toBe(true)
   })
 
-  it('Given staleLimitMs: 0, then pulls even a freshly-synced repo', async () => {
+  it('[TC-7] Given staleLimitMs: 0, then pulls even a freshly-synced repo', async () => {
     await writeBaseMeta(baseDir, staleMeta({ lastSyncedAt: new Date().toISOString() }))
     mockPullRepo.mockResolvedValue(false)
     mockGetHeadSha.mockResolvedValue('anysha')

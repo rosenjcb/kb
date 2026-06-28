@@ -47,32 +47,32 @@ function errorLlm(): LLMProvider {
 }
 
 describe('shouldCurate', () => {
-  it('Given more than the threshold of results, then returns true', () => {
+  it('[TC-1] Given more than the threshold of results, then returns true', () => {
     const results = Array.from({ length: 13 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
     expect(shouldCurate(results)).toBe(true)
   })
 
-  it('Given few results, then returns false', () => {
+  it('[TC-2] Given few results, then returns false', () => {
     const results = Array.from({ length: 8 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
     expect(shouldCurate(results)).toBe(false)
   })
 })
 
 describe('parseVerdict', () => {
-  it('Given a JSON object embedded in prose, then it extracts keep/gaps/sufficient', () => {
+  it('[TC-3] Given a JSON object embedded in prose, then it extracts keep/gaps/sufficient', () => {
     const v = parseVerdict('Sure: {"keep":["a","b"],"gaps":["more"],"sufficient":true} done')
     expect([...v.keep]).toEqual(['a', 'b'])
     expect(v.gaps).toEqual(['more'])
     expect(v.sufficient).toBe(true)
   })
 
-  it('Given no JSON, then it throws', () => {
+  it('[TC-4] Given no JSON, then it throws', () => {
     expect(() => parseVerdict('no json here')).toThrow()
   })
 })
 
 describe('curateFacts', () => {
-  it('Given irrelevant facts, then the judge hard-drops them below the old 15% floor', async () => {
+  it('[TC-5] Given irrelevant facts, then the judge hard-drops them below the old 15% floor', async () => {
     // 20 facts; only 2 are on-topic. The old filter would refuse to drop below ~3.
     const results = [
       makeResult('keep-1', 'authentication token rotation'),
@@ -92,7 +92,7 @@ describe('curateFacts', () => {
     expect(record.sufficient).toBe(true)
   })
 
-  it('Given high token overlap, then a fact is auto-kept even if the judge omits it', async () => {
+  it('[TC-6] Given high token overlap, then a fact is auto-kept even if the judge omits it', async () => {
     const results = [
       makeResult('auto', 'authentication works via token rotation'),
       ...Array.from({ length: 15 }, (_, i) => makeResult(`x-${i}`, `unrelated ${i}`)),
@@ -110,7 +110,7 @@ describe('curateFacts', () => {
     expect(record.autoKept).toBeGreaterThanOrEqual(1)
   })
 
-  it('Given gaps and insufficiency, then it issues bounded re-discovery and admits new facts', async () => {
+  it('[TC-7] Given gaps and insufficiency, then it issues bounded re-discovery and admits new facts', async () => {
     const results = [
       makeResult('seed', 'partial detail about caching'),
       ...Array.from({ length: 14 }, (_, i) => makeResult(`o-${i}`, `off topic ${i}`)),
@@ -137,7 +137,7 @@ describe('curateFacts', () => {
     expect(out.map(r => r.metadata.id)).toContain('seed')
   })
 
-  it('Given the LLM throws, then it fails safe and returns the original set untouched', async () => {
+  it('[TC-8] Given the LLM throws, then it fails safe and returns the original set untouched', async () => {
     const results = Array.from({ length: 20 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
     const { results: out, record } = await curateFacts({
       llm: errorLlm(),
@@ -149,7 +149,7 @@ describe('curateFacts', () => {
     expect(record.dropped).toHaveLength(0)
   })
 
-  it('Given the judge drops everything, then it guards against an empty set via deterministic top-K', async () => {
+  it('[TC-9] Given the judge drops everything, then it guards against an empty set via deterministic top-K', async () => {
     const results = Array.from({ length: 16 }, (_, i) =>
       makeResult(`f-${i}`, `query topic detail ${i}`)
     )
@@ -166,7 +166,7 @@ describe('curateFacts', () => {
     expect(record.fellBack).toBe(true)
   })
 
-  it('Given re-discovery returns only known ids, then it stops without looping', async () => {
+  it('[TC-10] Given re-discovery returns only known ids, then it stops without looping', async () => {
     const results = [
       makeResult('seed', 'partial detail'),
       ...Array.from({ length: 14 }, (_, i) => makeResult(`o-${i}`, `off topic ${i}`)),

@@ -7,7 +7,7 @@ import {
 } from '../../src/cli/init-topic-coverage'
 
 describe('init topic coverage', () => {
-  it('Given grounded source, user answers, and draft docs, then marks topic sufficient', () => {
+  it('[TC-303] Given grounded source, user answers, and draft docs, then marks topic sufficient', () => {
     const context: InitContext = {
       sourceFiles: {
         'README.md': 'Install with npm install. Configure with .env.local. Run tests with vitest.',
@@ -38,7 +38,7 @@ describe('init topic coverage', () => {
     expect(installTopic?.enoughContext).toBe(true)
   })
 
-  it('Given contradictory deployment signals, then surfaces unresolved contradiction gap', () => {
+  it('[TC-304] Given contradictory deployment signals, then surfaces unresolved contradiction gap', () => {
     const context: InitContext = {
       sourceFiles: {
         'README.md': 'Deployments are manual from a local machine.',
@@ -72,7 +72,7 @@ describe('init topic coverage', () => {
     expect(deploymentGap?.reason).toBe('contradiction')
   })
 
-  it('Given weak non-interactive evidence, then marks topic inferred and summarizes unresolved topics', () => {
+  it('[TC-305] Given weak non-interactive evidence, then marks topic inferred and summarizes unresolved topics', () => {
     const context: InitContext = {
       sourceFiles: {
         'README.md': 'This project has a CLI.',

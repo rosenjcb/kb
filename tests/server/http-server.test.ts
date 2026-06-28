@@ -53,7 +53,7 @@ afterEach(async () => {
 })
 
 describe('createHttpServer', () => {
-  it('serves /healthz without auth', async () => {
+                it('[TC-3] serves /healthz without auth', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: ['secret'] })
     const base = await listen(server)
     const res = await fetch(`${base}/healthz`)
@@ -61,7 +61,7 @@ describe('createHttpServer', () => {
     expect(await res.json()).toMatchObject({ ok: true, base: 'base' })
   })
 
-  it('rejects /v1/query without a valid key', async () => {
+                it('[TC-4] rejects /v1/query without a valid key', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: ['secret'] })
     const base = await listen(server)
     const res = await fetch(`${base}/v1/query`, {
@@ -72,7 +72,7 @@ describe('createHttpServer', () => {
     expect(res.status).toBe(401)
   })
 
-  it('answers /v1/query with a serialized body when authorized', async () => {
+                it('[TC-5] answers /v1/query with a serialized body when authorized', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: ['secret'] })
     const base = await listen(server)
     const res = await fetch(`${base}/v1/query`, {
@@ -87,7 +87,7 @@ describe('createHttpServer', () => {
     expect(body.retrieval).toEqual({ method: 'hybrid', detail: 'deep' })
   })
 
-  it('returns 503 for /v1/query while the server is bootstrapping its first index', async () => {
+                it('[TC-6] returns 503 for /v1/query while the server is bootstrapping its first index', async () => {
     const query = vi.fn(makeStubService().query)
     server = createHttpServer({
       service: makeStubService({
@@ -116,7 +116,7 @@ describe('createHttpServer', () => {
     expect(query).not.toHaveBeenCalled()
   })
 
-  it('returns 400 when q is missing', async () => {
+                it('[TC-7] returns 400 when q is missing', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: [] })
     const base = await listen(server)
     const res = await fetch(`${base}/v1/query`, {
@@ -127,7 +127,7 @@ describe('createHttpServer', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 409 when a reindex is already running', async () => {
+                it('[TC-8] returns 409 when a reindex is already running', async () => {
     server = createHttpServer({
       service: makeStubService({ isReindexing: () => true }),
       apiKeys: [],
@@ -137,7 +137,7 @@ describe('createHttpServer', () => {
     expect(res.status).toBe(409)
   })
 
-  it('triggers reindex and returns the summary', async () => {
+                it('[TC-9] triggers reindex and returns the summary', async () => {
     const reindex = vi.fn(async () => 'scanned 2 repo(s)')
     server = createHttpServer({ service: makeStubService({ reindex }), apiKeys: [] })
     const base = await listen(server)
@@ -147,7 +147,7 @@ describe('createHttpServer', () => {
     expect(reindex).toHaveBeenCalledOnce()
   })
 
-  it('streams /v1/chat as SSE with a session id, answer, and done', async () => {
+                it('[TC-10] streams /v1/chat as SSE with a session id, answer, and done', async () => {
     server = createHttpServer({
       service: makeStubService({
         chat: async function* () {
@@ -174,7 +174,7 @@ describe('createHttpServer', () => {
     expect(text.trimEnd().endsWith('event: done\ndata: {"type":"done"}')).toBe(true)
   })
 
-  it('returns 400 when chat message is missing', async () => {
+                it('[TC-11] returns 400 when chat message is missing', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: [] })
     const base = await listen(server)
     const res = await fetch(`${base}/v1/chat`, {
@@ -185,7 +185,7 @@ describe('createHttpServer', () => {
     expect(res.status).toBe(400)
   })
 
-  it('404s on unknown routes and when MCP is disabled', async () => {
+                it('[TC-12] 404s on unknown routes and when MCP is disabled', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: [] })
     const base = await listen(server)
     expect((await fetch(`${base}/nope`)).status).toBe(404)
@@ -209,7 +209,7 @@ describe('server-side run report capture', () => {
     await rm(logsDir, { recursive: true, force: true })
   })
 
-  it('writes a RunReport to disk for /v1/query', async () => {
+                it('[TC-13] writes a RunReport to disk for /v1/query', async () => {
     let resolveReport!: (r: RunReport) => void
     const reportWritten = new Promise<RunReport>(resolve => { resolveReport = resolve })
 
@@ -246,7 +246,7 @@ describe('server-side run report capture', () => {
     expect(parsed.status).toBe('success')
   })
 
-  it('writes an error RunReport when /v1/query fails', async () => {
+                it('[TC-14] writes an error RunReport when /v1/query fails', async () => {
     let resolveReport!: (r: RunReport) => void
     const reportWritten = new Promise<RunReport>(resolve => { resolveReport = resolve })
 
@@ -271,7 +271,7 @@ describe('server-side run report capture', () => {
     expect(report.errorMessage).toBe('llm unavailable')
   })
 
-  it('does not write a RunReport for /healthz', async () => {
+                it('[TC-15] does not write a RunReport for /healthz', async () => {
     const reports: RunReport[] = []
     server = createHttpServer({
       service: makeStubService(),

@@ -95,6 +95,8 @@ Removes in order:
 
 ## Related docs
 
+- Behavioral spec → [`SCRIPTS.spec.md`](SCRIPTS.spec.md)
+
 - [`INTEGRATION_TEST.md`](INTEGRATION_TEST.md) — `pnpm run integration:test` (Docker + httpyac)
 
 ## Invariants

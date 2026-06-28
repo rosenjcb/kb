@@ -49,7 +49,7 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('performUninstall', () => {
-  it('removes binary symlink, runtime dir, and Python venv', async () => {
+  it('[TC-490] removes binary symlink, runtime dir, and Python venv', async () => {
     const { binLink, runtimeDir, pythonDir } = await setupFakeInstall()
     const { out, lines } = makeOut()
 
@@ -65,7 +65,7 @@ describe('performUninstall', () => {
     await expect(access(pythonDir)).rejects.toThrow()
   })
 
-  it('does not remove ~/.kb when purge is false', async () => {
+  it('[TC-491] does not remove ~/.kb when purge is false', async () => {
     await setupFakeInstall()
     const { out } = makeOut()
 
@@ -75,7 +75,7 @@ describe('performUninstall', () => {
     await expect(access(TMP_KB_HOME)).resolves.toBeUndefined()
   })
 
-  it('removes ~/.kb entirely when purge is true', async () => {
+  it('[TC-492] removes ~/.kb entirely when purge is true', async () => {
     await setupFakeInstall()
     const { out } = makeOut()
 
@@ -85,7 +85,7 @@ describe('performUninstall', () => {
     await expect(access(TMP_KB_HOME)).rejects.toThrow()
   })
 
-  it('skips missing paths silently', async () => {
+  it('[TC-493] skips missing paths silently', async () => {
     await rm(TMP_KB_HOME, { recursive: true, force: true })
     const { out, lines } = makeOut()
 
@@ -94,7 +94,7 @@ describe('performUninstall', () => {
     expect(lines).toHaveLength(0)
   })
 
-  it('removes PATH entries from rc files', async () => {
+  it('[TC-494] removes PATH entries from rc files', async () => {
     await setupFakeInstall()
     const kbBinDir = path.join(TMP_KB_HOME, 'bin')
     const fakeRcFile = path.join(TMP_KB_HOME, '.bashrc')
@@ -121,7 +121,7 @@ describe('performUninstall', () => {
 // ---------------------------------------------------------------------------
 
 describe('runUninstallCommand', () => {
-  it('rejects non-TTY without --yes', async () => {
+  it('[TC-495] rejects non-TTY without --yes', async () => {
     Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true })
     const { out, errors } = makeOut()
     await runUninstallCommand([], out)
@@ -129,7 +129,7 @@ describe('runUninstallCommand', () => {
     Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true })
   })
 
-  it('--yes removes binary, runtime, and Python env without prompting', async () => {
+  it('[TC-496] --yes removes binary, runtime, and Python env without prompting', async () => {
     const { binLink, runtimeDir, pythonDir } = await setupFakeInstall()
     const { out, lines } = makeOut()
 
@@ -144,7 +144,7 @@ describe('runUninstallCommand', () => {
     await expect(access(TMP_KB_HOME)).resolves.toBeUndefined()
   })
 
-  it('--purge removes everything including ~/.kb', async () => {
+  it('[TC-497] --purge removes everything including ~/.kb', async () => {
     await setupFakeInstall()
     const { out } = makeOut()
 
@@ -154,7 +154,7 @@ describe('runUninstallCommand', () => {
     await expect(access(TMP_KB_HOME)).rejects.toThrow()
   })
 
-  it('lists Python environment in the removal plan', async () => {
+  it('[TC-498] lists Python environment in the removal plan', async () => {
     await setupFakeInstall()
     const { out, lines } = makeOut()
 

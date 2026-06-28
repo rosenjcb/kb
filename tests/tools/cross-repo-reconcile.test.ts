@@ -50,7 +50,7 @@ function seedTwoRepos() {
 }
 
 describe('reconcileCrossRepoEdges', () => {
-  it('bridges repos via package dependency and cross-repo symbol imports', () => {
+  it('[TC-13] bridges repos via package dependency and cross-repo symbol imports', () => {
     seedTwoRepos()
     const created = indexer.reconcileCrossRepoEdges()
     expect(created).toBeGreaterThan(0)
@@ -60,7 +60,7 @@ describe('reconcileCrossRepoEdges', () => {
     expect(links.some(l => l.fromRepo === 'a' && l.toRepo === 'b')).toBe(true)
   })
 
-  it('lets graph traversal cross repo boundaries', () => {
+  it('[TC-14] lets graph traversal cross repo boundaries', () => {
     seedTwoRepos()
     indexer.reconcileCrossRepoEdges()
 
@@ -70,19 +70,19 @@ describe('reconcileCrossRepoEdges', () => {
     expect(neighbors.some(n => n.git_repo === 'b')).toBe(true)
   })
 
-  it('is idempotent on re-run', () => {
+  it('[TC-15] is idempotent on re-run', () => {
     seedTwoRepos()
     indexer.reconcileCrossRepoEdges()
     expect(indexer.reconcileCrossRepoEdges()).toBe(0)
   })
 
-  it('does not link a repo to itself', () => {
+  it('[TC-16] does not link a repo to itself', () => {
     seedTwoRepos()
     indexer.reconcileCrossRepoEdges()
     expect(indexer.listCrossRepoLinks().every(l => l.fromRepo !== l.toRepo)).toBe(true)
   })
 
-  it('removing a repo purges its facts and drops dangling cross-repo links', () => {
+  it('[TC-17] removing a repo purges its facts and drops dangling cross-repo links', () => {
     seedTwoRepos()
     indexer.reconcileCrossRepoEdges()
 

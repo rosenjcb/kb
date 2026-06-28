@@ -35,7 +35,7 @@ function fakeSuite() {
 }
 
 describe('control agent command', () => {
-  it('default Claude Code argv loads no kb/MCP (--strict-mcp-config)', () => {
+  it('[TC-13] default Claude Code argv loads no kb/MCP (--strict-mcp-config)', () => {
     const argv = defaultClaudeArgv({ model: 'claude-opus-4-8', maxTurns: 30 })
     expect(argv).not.toContain('--bare')
     expect(argv).toContain('--strict-mcp-config')
@@ -45,7 +45,7 @@ describe('control agent command', () => {
     expect(argv).toEqual(expect.arrayContaining(['--disallowedTools', 'Edit,Write']))
   })
 
-  it('describeAgentCommand prefers an explicit agent-cmd override', () => {
+  it('[TC-14] describeAgentCommand prefers an explicit agent-cmd override', () => {
     const custom = 'my-agent -p --output-format json'
     expect(describeAgentCommand({ agentCmd: custom })).toBe(custom)
     expect(describeAgentCommand({ agentCmd: null, model: null, maxTurns: 30 })).toContain(
@@ -56,7 +56,7 @@ describe('control agent command', () => {
     )
   })
 
-  it('defaultCursorArgv uses read-only ask mode with json output', () => {
+  it('[TC-15] defaultCursorArgv uses read-only ask mode with json output', () => {
     const argv = defaultCursorArgv({ model: 'composer-2.5' })
     expect(argv).toContain('-p')
     expect(argv).toContain('--mode')
@@ -67,42 +67,42 @@ describe('control agent command', () => {
 })
 
 describe('normalizeControlAgent', () => {
-  it('accepts claude and cursor', () => {
+  it('[TC-16] accepts claude and cursor', () => {
     expect(normalizeControlAgent('claude')).toBe('claude')
     expect(normalizeControlAgent('Cursor')).toBe('cursor')
   })
-  it('throws on unknown backends', () => {
+  it('[TC-17] throws on unknown backends', () => {
     expect(() => normalizeControlAgent('gpt')).toThrow(/claude, cursor/)
   })
 })
 
 describe('assertControlAgentAvailable (preflight)', () => {
-  it('resolves the agent binary (claude by default, cursor → agent, else agent-cmd)', () => {
+  it('[TC-18] resolves the agent binary (claude by default, cursor → agent, else agent-cmd)', () => {
     expect(controlAgentBinary()).toBe('claude')
     expect(controlAgentBinary({ controlAgent: 'cursor' })).toBe('agent')
     expect(controlAgentBinary({ agentCmd: 'my-agent -p --output-format json' })).toBe('my-agent')
   })
 
-  it('throws an actionable error naming the missing binary and --skip-control', () => {
+  it('[TC-19] throws an actionable error naming the missing binary and --skip-control', () => {
     expect(() =>
       assertControlAgentAvailable({ agentCmd: 'definitely-not-a-real-agent-xyz -p' })
     ).toThrow(/definitely-not-a-real-agent-xyz[\s\S]*--skip-control/)
   })
 
-  it('throws when the control prompt lacks {{question}}', () => {
+  it('[TC-20] throws when the control prompt lacks {{question}}', () => {
     // `sh` exists on PATH, so this isolates the prompt-validation failure.
     expect(() =>
       assertControlAgentAvailable({ agentCmd: 'sh', controlPrompt: 'no placeholder' })
     ).toThrow(/question/)
   })
 
-  it('passes for an available binary with a valid prompt', () => {
+  it('[TC-21] passes for an available binary with a valid prompt', () => {
     expect(() => assertControlAgentAvailable({ agentCmd: 'sh' })).not.toThrow()
   })
 })
 
 describe('formatControlAnswerLog', () => {
-  it('shows tokens and duration for Cursor-style telemetry', () => {
+  it('[TC-22] shows tokens and duration for Cursor-style telemetry', () => {
     const line = formatControlAnswerLog({
       input_tokens: 34001,
       output_tokens: 3613,
@@ -116,7 +116,7 @@ describe('formatControlAnswerLog', () => {
     expect(line).not.toContain('cost=')
   })
 
-  it('shows turns and cost for Claude-style telemetry', () => {
+  it('[TC-23] shows turns and cost for Claude-style telemetry', () => {
     const line = formatControlAnswerLog({
       input_tokens: 120,
       output_tokens: 40,
@@ -132,7 +132,7 @@ describe('formatControlAnswerLog', () => {
 })
 
 describe('normalizeAgentTelemetry', () => {
-  it('reads Cursor Agent CLI camelCase usage fields', () => {
+  it('[TC-24] reads Cursor Agent CLI camelCase usage fields', () => {
     const tel = normalizeAgentTelemetry({
       result: 'ok',
       duration_ms: 1200,
@@ -146,17 +146,17 @@ describe('normalizeAgentTelemetry', () => {
 })
 
 describe('extractJsonObject', () => {
-  it('parses the trailing JSON object even with a leading banner', () => {
+  it('[TC-25] parses the trailing JSON object even with a leading banner', () => {
     const stdout = 'some banner noise\n{"result":"hello","total_cost_usd":0.12}'
     expect(extractJsonObject(stdout)).toEqual({ result: 'hello', total_cost_usd: 0.12 })
   })
-  it('throws when there is no JSON object', () => {
+  it('[TC-26] throws when there is no JSON object', () => {
     expect(() => extractJsonObject('no json here')).toThrow()
   })
 })
 
 describe('runControlPass', () => {
-  it('runs the agent per question and builds a scored control block', async () => {
+  it('[TC-27] runs the agent per question and builds a scored control block', async () => {
     const workdir = mkdtempSync(path.join(tmpdir(), 'control-pass-'))
     const block = await runControlPass({
       repoDir: workdir,
@@ -183,7 +183,7 @@ describe('runControlPass', () => {
     expect(block.aggregate_scores.query.speed_score).not.toBeNull()
   })
 
-  it('returns partial when the agent fails on some questions', async () => {
+  it('[TC-28] returns partial when the agent fails on some questions', async () => {
     const workdir = mkdtempSync(path.join(tmpdir(), 'control-partial-'))
     const block = await runControlPass({
       repoDir: workdir,
@@ -196,7 +196,7 @@ describe('runControlPass', () => {
     expect(block.query_evaluation.every(ev => ev.answer_excerpt === null)).toBe(true)
   })
 
-  it('throws when the control prompt lacks the {{question}} placeholder', async () => {
+  it('[TC-29] throws when the control prompt lacks the {{question}} placeholder', async () => {
     await expect(
       runControlPass({
         repoDir: tmpdir(),
@@ -209,7 +209,7 @@ describe('runControlPass', () => {
     ).rejects.toThrow(/question/)
   })
 
-  it('returns complete_unscored when agent answers succeed but auto-score throws', async () => {
+  it('[TC-30] returns complete_unscored when agent answers succeed but auto-score throws', async () => {
     const workdir = mkdtempSync(path.join(tmpdir(), 'control-unscored-'))
     // Patch runAutoScoreFile to simulate a Gemini fetch failure.
     const evalScore = await import('../../scripts/eval-score.mjs')
@@ -238,7 +238,7 @@ describe('runControlPass', () => {
 })
 
 describe('buildControlComparison', () => {
-  it('computes kb-minus-control deltas per axis', () => {
+  it('[TC-31] computes kb-minus-control deltas per axis', () => {
     const kbAggregate = {
       query: {
         success_score: 0.78,
@@ -269,7 +269,7 @@ describe('buildControlComparison', () => {
 describe('readQueryResultFile', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'control-read-'))
 
-  it('reads a control JSON result (the __control__ sentinel)', () => {
+  it('[TC-32] reads a control JSON result (the __control__ sentinel)', () => {
     const f = path.join(dir, 'q1.json')
     writeFileSync(
       f,
@@ -287,7 +287,7 @@ describe('readQueryResultFile', () => {
     expect(r.telemetry?.num_turns).toBe(4)
   })
 
-  it('falls back to kb-query text parsing for non-control files', () => {
+  it('[TC-33] falls back to kb-query text parsing for non-control files', () => {
     const f = path.join(dir, 'q2.json')
     writeFileSync(
       f,
@@ -302,7 +302,7 @@ describe('readQueryResultFile', () => {
 })
 
 describe('conditionOf', () => {
-  it('tags control vs kb artifacts', () => {
+  it('[TC-34] tags control vs kb artifacts', () => {
     expect(conditionOf({ run: { condition: 'control' } })).toBe('control')
     expect(conditionOf({ run: { condition: 'kb' } })).toBe('kb')
     expect(conditionOf({ run: { mode: 'control_agent' } })).toBe('control')

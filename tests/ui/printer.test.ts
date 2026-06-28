@@ -6,7 +6,7 @@ import {
 } from '../../src/ui/printer'
 
 describe('ui/printer', () => {
-  it('Given tui mode, chat metadata keeps routing prefixes', () => {
+  it('[TC-4] Given tui mode, chat metadata keeps routing prefixes', () => {
     const lines: string[] = []
     const printer = createPrinter(
       {
@@ -24,7 +24,7 @@ describe('ui/printer', () => {
     expect(lines).toEqual(['assistant> hello', 'retrieval> hybrid', 'sources> doc-1'])
   })
 
-  it('Given tui mode, separator routes as orchestration meta', () => {
+  it('[TC-5] Given tui mode, separator routes as orchestration meta', () => {
     const lines: string[] = []
     const printer = createPrinter(
       {
@@ -38,7 +38,7 @@ describe('ui/printer', () => {
     expect(lines).toEqual(['sep> —'])
   })
 
-  it('Given cli mode without tty, metadata uses orchestration wire lines', () => {
+  it('[TC-6] Given cli mode without tty, metadata uses orchestration wire lines', () => {
     const lines: string[] = []
     const printer = createPrinter(
       {
@@ -56,7 +56,7 @@ describe('ui/printer', () => {
     expect(lines[1]).toBe('thinking> stage:hit->return')
   })
 
-  it('Given a progress sink, transient progress and clear route to it (not the transcript)', () => {
+  it('[TC-7] Given a progress sink, transient progress and clear route to it (not the transcript)', () => {
     const lines: string[] = []
     const progress: Array<string | null> = []
     const printer = createPrinter(
@@ -77,7 +77,7 @@ describe('ui/printer', () => {
     expect(progress).toEqual(['thinking about it', null])
   })
 
-  it('Given no progress sink in tui mode, progress is dropped (no transcript spam)', () => {
+  it('[TC-8] Given no progress sink in tui mode, progress is dropped (no transcript spam)', () => {
     const lines: string[] = []
     const printer = createPrinter(
       {
@@ -94,7 +94,7 @@ describe('ui/printer', () => {
     expect(lines).toEqual([])
   })
 
-  it('condenseProgressText folds whitespace and tail-truncates to the latest text', () => {
+  it('[TC-9] condenseProgressText folds whitespace and tail-truncates to the latest text', () => {
     expect(condenseProgressText('  a\n b  c \n')).toBe('a b c')
     const long = 'x'.repeat(200)
     const out = condenseProgressText(long, 10)
@@ -103,7 +103,7 @@ describe('ui/printer', () => {
     expect(out.endsWith('x')).toBe(true)
   })
 
-  it('createReasoningProgressSink accumulates deltas and pushes the running tail', () => {
+  it('[TC-10] createReasoningProgressSink accumulates deltas and pushes the running tail', () => {
     const progress: Array<string | null> = []
     const printer = createPrinter(
       {

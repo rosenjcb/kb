@@ -44,7 +44,7 @@ function meta(): GitBaseMeta {
 }
 
 describe('createKbService reindex', () => {
-  it('uses incremental auto-sync semantics instead of a forced full scan', async () => {
+                it('[TC-16] uses incremental auto-sync semantics instead of a forced full scan', async () => {
     mockReadBaseMeta.mockResolvedValue(meta())
     mockMaybeAutoSync.mockResolvedValue(undefined)
 

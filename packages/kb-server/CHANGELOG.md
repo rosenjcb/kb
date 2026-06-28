@@ -1,5 +1,11 @@
 # kb-server
 
+## 0.13.2
+
+### Patch Changes
+
+- Adopt spec.md behavioral specs (FR/TC tables), test `[TC-N]` tags, and a CI traceability gate.
+
 ## 0.13.1
 
 ### Patch Changes

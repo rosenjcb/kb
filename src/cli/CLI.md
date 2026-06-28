@@ -233,3 +233,7 @@ See [`../server/SERVER.md`](../server/SERVER.md) for deploy URLs and tool list.
 - **Apply defaults:** TUI `resolveApplyArgs()` auto-appends `--apply` for `publish` — CLI users must pass `--apply` explicitly. `scan` runs through `runScanCommand` (pull + re-index every repo the base tracks); it takes no `--apply`.
 - **Init progress:** Pass `InitProgressReporter` from TUI; do not append `[init] …` lines to chat history (see `src/tui/TUI.md`).
 - **Upfront questions:** Interactive `kb init` (no `--base`) asks for the base name (`prompts[0]`), at least one git URL (`prompts[1]`), then an optional, skippable ignore-patterns prompt (`prompts[2]`) before the scan. Git URLs are **required** — there is no blank-to-local option and no fact-category prompt. The ignore prompt accepts comma-separated gitignore-style patterns and may be skipped (Enter / `/skip`). The base-name and git-URL prompts are skipped when `--base` is set, when running `kb scan`, or when resuming from checkpoint; the ignore prompt is additionally skipped when the base already has stored ignore patterns. Tests asserting prompt order must follow this sequence.
+
+## Related docs
+
+- Behavioral spec → [`CLI.spec.md`](CLI.spec.md)

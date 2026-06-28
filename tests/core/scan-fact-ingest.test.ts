@@ -16,7 +16,7 @@ afterEach(async () => {
 })
 
 describe('ingestSourceMarkdownFilesAsFacts', () => {
-  it('Given markdown with long sentences, then upserts facts with import_doc refs', async () => {
+  it('[TC-111] Given markdown with long sentences, then upserts facts with import_doc refs', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-markdown-fact-ingest-'))
     tempDirs.push(baseDir)
     new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') }).close()
@@ -43,7 +43,7 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
     }
   })
 
-  it('Given short heading and short prose, then ingests only segments that survive markdown splitting', async () => {
+  it('[TC-112] Given short heading and short prose, then ingests only segments that survive markdown splitting', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-markdown-fact-ingest-short-'))
     tempDirs.push(baseDir)
     new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') }).close()
@@ -56,7 +56,7 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
     expect(stats.segmentsUpserted).toBe(1)
   })
 
-  it('Given multiple markdown files, then emits monotonic per-file progress with current file names', async () => {
+  it('[TC-113] Given multiple markdown files, then emits monotonic per-file progress with current file names', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-markdown-fact-progress-'))
     tempDirs.push(baseDir)
     new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') }).close()
@@ -91,7 +91,7 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
     expect(last?.filesRemaining).toBe(0)
   })
 
-  it('Given a re-ingest with fewer segments, then tombstones orphaned segment facts', async () => {
+  it('[TC-114] Given a re-ingest with fewer segments, then tombstones orphaned segment facts', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-markdown-fact-rescan-'))
     tempDirs.push(baseDir)
     new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') }).close()
@@ -126,7 +126,7 @@ describe('ingestSourceMarkdownFilesAsFacts', () => {
     }
   })
 
-  it('Given an emptied markdown file, then purges all prior segment facts', async () => {
+  it('[TC-115] Given an emptied markdown file, then purges all prior segment facts', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-markdown-fact-empty-'))
     tempDirs.push(baseDir)
     new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') }).close()
@@ -168,7 +168,7 @@ describe('OKF resource scoping', () => {
     return r.id
   }
 
-  it('anchors a segment to the in-resource symbol, never a global one', async () => {
+  it('[TC-116] anchors a segment to the in-resource symbol, never a global one', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-okf-anchor-'))
     tempDirs.push(baseDir)
     const dbPath = path.join(baseDir, '.kb-index.sqlite')
@@ -197,7 +197,7 @@ describe('OKF resource scoping', () => {
     }
   })
 
-  it('anchors a segment to a global exported symbol when no resource is set', async () => {
+  it('[TC-117] anchors a segment to a global exported symbol when no resource is set', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-global-anchor-'))
     tempDirs.push(baseDir)
     const dbPath = path.join(baseDir, '.kb-index.sqlite')

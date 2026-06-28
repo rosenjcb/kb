@@ -12,53 +12,53 @@ import {
 } from '../../scripts/check-node-version.mjs'
 
 describe('parseMinEngine', () => {
-  it('parses major-only specs', () => {
+  it('[TC-14] parses major-only specs', () => {
     expect(parseMinEngine('>=24')).toEqual([24, 0, 0])
   })
 
-  it('parses major.minor.patch specs', () => {
+  it('[TC-15] parses major.minor.patch specs', () => {
     expect(parseMinEngine('>=24.15.0')).toEqual([24, 15, 0])
   })
 
-  it('returns [0,0,0] for unrecognized specs', () => {
+  it('[TC-16] returns [0,0,0] for unrecognized specs', () => {
     expect(parseMinEngine('^24')).toEqual([0, 0, 0])
   })
 })
 
 describe('versionGte', () => {
-  it('accepts equal versions', () => {
+  it('[TC-17] accepts equal versions', () => {
     expect(versionGte([24, 15, 0], [24, 15, 0])).toBe(true)
   })
 
-  it('accepts newer major', () => {
+  it('[TC-18] accepts newer major', () => {
     expect(versionGte([25, 0, 0], [24, 99, 99])).toBe(true)
   })
 
-  it('accepts newer minor on same major', () => {
+  it('[TC-19] accepts newer minor on same major', () => {
     expect(versionGte([24, 16, 0], [24, 15, 9])).toBe(true)
   })
 
-  it('rejects older major', () => {
+  it('[TC-20] rejects older major', () => {
     expect(versionGte([22, 22, 2], [24, 0, 0])).toBe(false)
   })
 
-  it('rejects older patch when major/minor match', () => {
+  it('[TC-21] rejects older patch when major/minor match', () => {
     expect(versionGte([24, 15, 0], [24, 15, 1])).toBe(false)
   })
 })
 
 describe('evaluateNodeVersion', () => {
-  it('passes when engines.node is absent', () => {
+  it('[TC-22] passes when engines.node is absent', () => {
     expect(evaluateNodeVersion({ enginesNode: null, currentVersion: '22.0.0' })).toEqual({ ok: true })
   })
 
-  it('passes when current version meets minimum', () => {
+  it('[TC-23] passes when current version meets minimum', () => {
     expect(
       evaluateNodeVersion({ enginesNode: '>=24', currentVersion: '24.15.0', nvmrc: '24.15.0' })
     ).toEqual({ ok: true })
   })
 
-  it('fails when current version is below minimum', () => {
+  it('[TC-24] fails when current version is below minimum', () => {
     expect(
       evaluateNodeVersion({ enginesNode: '>=24', currentVersion: '22.22.2', nvmrc: '24.15.0' })
     ).toEqual({
@@ -71,7 +71,7 @@ describe('evaluateNodeVersion', () => {
 })
 
 describe('formatNodeVersionError', () => {
-  it('includes nvm/fnm hints when .nvmrc is present', () => {
+  it('[TC-25] includes nvm/fnm hints when .nvmrc is present', () => {
     const msg = formatNodeVersionError({
       ok: false,
       spec: '>=24',
@@ -84,7 +84,7 @@ describe('formatNodeVersionError', () => {
     expect(msg).toContain('fnm install && fnm use')
   })
 
-  it('falls back to generic install hint without .nvmrc', () => {
+  it('[TC-26] falls back to generic install hint without .nvmrc', () => {
     const msg = formatNodeVersionError({
       ok: false,
       spec: '>=24',
@@ -97,21 +97,21 @@ describe('formatNodeVersionError', () => {
 })
 
 describe('runFromPackageJson', () => {
-  it('returns 0 when package.json has no engines.node', () => {
+  it('[TC-27] returns 0 when package.json has no engines.node', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'check-node-ok-'))
     const pkg = path.join(dir, 'package.json')
     writeFileSync(pkg, JSON.stringify({ name: 'tmp' }))
     expect(runFromPackageJson(pkg, path.join(dir, '.nvmrc'), process.versions.node)).toBe(0)
   })
 
-  it('returns 0 when current version satisfies engines.node', () => {
+  it('[TC-28] returns 0 when current version satisfies engines.node', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'check-node-pass-'))
     const pkg = path.join(dir, 'package.json')
     writeFileSync(pkg, JSON.stringify({ name: 'tmp', engines: { node: '>=0' } }))
     expect(runFromPackageJson(pkg, path.join(dir, '.nvmrc'), process.versions.node)).toBe(0)
   })
 
-  it('returns 1 and prints nvm hints when version is too old', () => {
+  it('[TC-29] returns 1 and prints nvm hints when version is too old', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'check-node-fail-'))
     const pkg = path.join(dir, 'package.json')
     const nvmrc = path.join(dir, '.nvmrc')

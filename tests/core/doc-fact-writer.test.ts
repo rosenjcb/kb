@@ -16,14 +16,14 @@ afterEach(async () => {
 })
 
 describe('docFactSourceRefPrefix', () => {
-  it('appends # for segment refs', () => {
+  it('[TC-12] appends # for segment refs', () => {
     expect(docFactSourceRefPrefix('README.md')).toBe('README.md#')
     expect(docFactSourceRefPrefix('docs/guide.md')).toBe('docs/guide.md#')
   })
 })
 
 describe('tombstoneDocFactsForFile', () => {
-  it('removes import_doc segment facts for a file and ignores other source kinds', async () => {
+  it('[TC-13] removes import_doc segment facts for a file and ignores other source kinds', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-fact-tombstone-'))
     tempDirs.push(baseDir)
     const dbPath = path.join(baseDir, '.kb-index.sqlite')
@@ -64,7 +64,7 @@ describe('tombstoneDocFactsForFile', () => {
     }
   })
 
-  it('returns zero when the file has no segment facts', async () => {
+  it('[TC-14] returns zero when the file has no segment facts', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-fact-tombstone-empty-'))
     tempDirs.push(baseDir)
     const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
@@ -77,7 +77,7 @@ describe('tombstoneDocFactsForFile', () => {
 })
 
 describe('tombstoneRemovedDocSourceFiles', () => {
-  it('purges facts for paths dropped from the manifest', async () => {
+  it('[TC-15] purges facts for paths dropped from the manifest', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-fact-removed-'))
     tempDirs.push(baseDir)
     const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
@@ -112,7 +112,7 @@ describe('tombstoneRemovedDocSourceFiles', () => {
     }
   })
 
-  it('returns zero when manifest is empty or nothing was removed', async () => {
+  it('[TC-16] returns zero when manifest is empty or nothing was removed', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-fact-removed-none-'))
     tempDirs.push(baseDir)
     const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })

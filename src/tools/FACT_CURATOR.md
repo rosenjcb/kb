@@ -74,6 +74,8 @@ passed in, so it carries no DB or network handle of its own.
 
 ## Related docs
 
+- Behavioral spec → [`FACT_CURATOR.spec.md`](FACT_CURATOR.spec.md)
+
 - `../core/QUERY_INTERNALS.md` — full deep-retrieval path and where the curator sits
 - `./facts-query-research-orchestrator.ts` — the island pool the curator consumes
 - `./facts-sufficiency-judge.ts` — the in-loop early-exit judge (a separate concern)

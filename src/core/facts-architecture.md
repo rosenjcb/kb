@@ -144,3 +144,7 @@ Keep **`facts-architecture.md`**, **`EVALUATION.md`**, and eval harness assertio
 
 - **Ingest** fills **`facts`** deterministically from markdown sources as the default bootstrap story.
 - Tests + eval harness green; surfaces consistently describe **facts** as the live Q&A substrate.
+
+## Related docs
+
+- Behavioral spec → [`CORE.spec.md`](CORE.spec.md)

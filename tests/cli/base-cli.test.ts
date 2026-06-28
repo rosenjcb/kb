@@ -43,7 +43,7 @@ afterEach(async () => {
 })
 
 describe('kb base use', () => {
-  it('Given kb base use <base>, then sets activeBase and prints resolved path', async () => {
+  it('[TC-8] Given kb base use <base>, then sets activeBase and prints resolved path', async () => {
     await initBase('mybase')
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'use', 'mybase'], out, {} as never)
@@ -51,7 +51,7 @@ describe('kb base use', () => {
     expect(lines.join('\n')).toContain('mybase')
   })
 
-  it('Given kb base use --default <base>, then sets both defaultBase and activeBase', async () => {
+  it('[TC-9] Given kb base use --default <base>, then sets both defaultBase and activeBase', async () => {
     await initBase('mydefault')
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'use', '--default', 'mydefault'], out, {} as never)
@@ -61,21 +61,21 @@ describe('kb base use', () => {
     expect(config.activeBase).toBe('mydefault')
   })
 
-  it('Given kb base use <base> that does not exist, then errors and suggests kb init', async () => {
+  it('[TC-10] Given kb base use <base> that does not exist, then errors and suggests kb init', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'use', 'ghost'], out, {} as never)
     expect(lines.join('\n')).toContain('ghost')
     expect(lines.join('\n')).toContain('kb init')
   })
 
-  it('Given kb base use --show, then prints current base config', async () => {
+  it('[TC-11] Given kb base use --show, then prints current base config', async () => {
     await writeDefaultBase('showbase')
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'use', '--show'], out, {} as never)
     expect(lines.join('\n')).toContain('KB base configuration')
   })
 
-  it('Given kb base --help, then prints base help', async () => {
+  it('[TC-12] Given kb base --help, then prints base help', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', '--help'], out, {} as never)
     expect(lines.join('\n')).toContain('kb base commands')
@@ -84,14 +84,14 @@ describe('kb base use', () => {
 })
 
 describe('kb base delete', () => {
-  it('Given --force, then deletes the session directory', async () => {
+  it('[TC-13] Given --force, then deletes the session directory', async () => {
     await ensureOperationalBaseDir('to-delete')
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'delete', 'to-delete', '--force'], out, {} as never)
     expect(lines.join('\n')).toContain('Deleted base: to-delete')
   })
 
-  it('Given --force and base is activeBase, then clears it from config', async () => {
+  it('[TC-14] Given --force and base is activeBase, then clears it from config', async () => {
     await ensureOperationalBaseDir('active')
     await writeSessionBase('active')
     const { out } = makeOut()
@@ -100,7 +100,7 @@ describe('kb base delete', () => {
     expect(config.activeBase).toBeUndefined()
   })
 
-  it('Given --force and base is defaultBase, then clears it from config', async () => {
+  it('[TC-15] Given --force and base is defaultBase, then clears it from config', async () => {
     await ensureOperationalBaseDir('selected')
     await writeDefaultBase('selected')
     const { out } = makeOut()
@@ -109,7 +109,7 @@ describe('kb base delete', () => {
     expect(config.defaultBase).toBeUndefined()
   })
 
-  it('Given no --force in TUI mode, then does NOT hang — returns prompt to use --force', async () => {
+  it('[TC-16] Given no --force in TUI mode, then does NOT hang — returns prompt to use --force', async () => {
     await ensureOperationalBaseDir('catalog')
     const { out, lines } = makeOut()
     // Must resolve quickly (no readline prompt) — this was the hang bug
@@ -118,7 +118,7 @@ describe('kb base delete', () => {
     expect(lines.join('\n')).toContain('catalog')
   })
 
-  it('Given no --force in CLI mode with non-TTY stdin, then aborts without deleting', async () => {
+  it('[TC-17] Given no --force in CLI mode with non-TTY stdin, then aborts without deleting', async () => {
     await ensureOperationalBaseDir('safe')
     const { out, lines } = makeOut()
     // process.stdin.isTTY is false in test env — promptConfirm returns false → "Aborted."
@@ -126,13 +126,13 @@ describe('kb base delete', () => {
     expect(lines.join('\n')).toContain('Aborted')
   })
 
-  it('Given no base name, then prints help', async () => {
+  it('[TC-18] Given no base name, then prints help', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'delete'], out, {} as never)
     expect(lines.join('\n')).toContain('base delete')
   })
 
-  it('Given --help, then prints delete help', async () => {
+  it('[TC-19] Given --help, then prints delete help', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'delete', '--help'], out, {} as never)
     expect(lines.join('\n')).toContain('base delete')
@@ -141,7 +141,7 @@ describe('kb base delete', () => {
 })
 
 describe('kb base (no args) / kb base list', () => {
-  it('Given no bases, then reports no initialized bases found', async () => {
+  it('[TC-20] Given no bases, then reports no initialized bases found', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base'], out, {} as never)
     const text = lines.join('\n')
@@ -149,7 +149,7 @@ describe('kb base (no args) / kb base list', () => {
     expect(text).toContain('No initialized bases found')
   })
 
-  it('Given initialized bases, then lists them', async () => {
+  it('[TC-21] Given initialized bases, then lists them', async () => {
     await initBase('alpha')
     await initBase('beta')
     const { out, lines } = makeOut()
@@ -159,7 +159,7 @@ describe('kb base (no args) / kb base list', () => {
     expect(text).toContain('beta')
   })
 
-  it('Marks the active and default bases with tags', async () => {
+  it('[TC-22] Marks the active and default bases with tags', async () => {
     await initBase('session-base')
     await initBase('default-base')
     await writeSessionBase('session-base')
@@ -171,7 +171,7 @@ describe('kb base (no args) / kb base list', () => {
     expect(text).toMatch(/default-base\s+\[default\]/)
   })
 
-  it('kb base list produces the same output as kb base', async () => {
+  it('[TC-23] kb base list produces the same output as kb base', async () => {
     await initBase('mybase')
     const { out: out1, lines: lines1 } = makeOut()
     const { out: out2, lines: lines2 } = makeOut()
@@ -180,7 +180,7 @@ describe('kb base (no args) / kb base list', () => {
     expect(lines1.join('\n')).toBe(lines2.join('\n'))
   })
 
-  it('Shows .kb file info when present in cwd', async () => {
+  it('[TC-24] Shows .kb file info when present in cwd', async () => {
     // Write a .kb file in the current working directory
     const { out, lines } = makeOut()
     // We can't easily change cwd in tests, but we can verify the path-finding
@@ -191,7 +191,7 @@ describe('kb base (no args) / kb base list', () => {
 })
 
 describe('kb init help', () => {
-  it('Given kb init --help, then points refresh workflows to kb scan', async () => {
+  it('[TC-25] Given kb init --help, then points refresh workflows to kb scan', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['init', '--help'], out, {} as never)
 
@@ -201,7 +201,7 @@ describe('kb init help', () => {
     expect(text).not.toContain('--rescan')
   })
 
-  it('Given kb --help, then prints scan examples', async () => {
+  it('[TC-26] Given kb --help, then prints scan examples', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['--help'], out, {} as never)
 
@@ -210,7 +210,7 @@ describe('kb init help', () => {
     expect(text).toContain('kb sync')
   })
 
-  it('Given /scan --help in TUI mode, then prints slash-form scan guidance', async () => {
+  it('[TC-27] Given /scan --help in TUI mode, then prints slash-form scan guidance', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['scan', '--help'], out, {} as never, 'tui')
 

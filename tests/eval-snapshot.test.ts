@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { type Snapshot, parseCodeburnStatus } from '../scripts/eval-snapshot.js'
 
 describe('parseCodeburnStatus', () => {
-  it('parses valid codeburn status JSON', () => {
+  it('[TC-217] parses valid codeburn status JSON', () => {
     const raw = JSON.stringify({
       currency: 'USD',
       today: { cost: 12.34, calls: 100 },
@@ -16,7 +16,7 @@ describe('parseCodeburnStatus', () => {
     expect(snap.ts).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
 
-  it('throws on malformed JSON', () => {
+  it('[TC-218] throws on malformed JSON', () => {
     expect(() => parseCodeburnStatus('not json')).toThrow()
   })
 })

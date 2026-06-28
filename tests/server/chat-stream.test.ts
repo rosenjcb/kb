@@ -34,7 +34,7 @@ async function collect(gen: AsyncGenerator<ChatEvent>): Promise<ChatEvent[]> {
 }
 
 describe('streamChatTurn', () => {
-  it('streams reasoning then a terminal answer and done', async () => {
+                it('[TC-1] streams reasoning then a terminal answer and done', async () => {
     const events = await collect(
       streamChatTurn(
         { llmProvider: fakeProvider('The answer.'), toolExecutor: emptyToolExecutor, baseDir: '/tmp/none' },
@@ -49,7 +49,7 @@ describe('streamChatTurn', () => {
     expect(events.at(-1)).toEqual({ type: 'done' })
   })
 
-  it('emits an error event when synthesis throws', async () => {
+                it('[TC-2] emits an error event when synthesis throws', async () => {
     const events = await collect(
       streamChatTurn(
         { llmProvider: fakeProvider('', { fail: true }), toolExecutor: emptyToolExecutor, baseDir: '/tmp/none' },
