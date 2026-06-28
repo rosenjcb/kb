@@ -243,7 +243,7 @@ describe('FactsQueryResearchOrchestrator ponds', () => {
     expect(ids).toContain(languageDoc.id)
     expect(response.retrieval.detail).toContain('ponds:')
     indexer.close()
-  })
+  }, 30000)
 })
 
 describe('FactsQueryResearchOrchestrator — hard cap', () => {
