@@ -1,7 +1,7 @@
 ---
 type: Spec
 title: "Spec: Knowledge Graph"
-sources: ./code-graph-indexer.ts,../../tests/tools/code-graph-indexer.test.ts,../../tests/tools/graph-*.test.ts,../../tests/tools/triplet-extractor.test.ts
+sources: ./tree-sitter-indexer.ts,../../tests/tools/tree-sitter-indexer.test.ts,../../tests/tools/graph-*.test.ts,../../tests/tools/triplet-extractor.test.ts
 description: Behavioral specification for Knowledge Graph
 tags: [spec, kb]
 timestamp: 2026-06-28T04:05:29Z
@@ -27,25 +27,18 @@ See companion doc for full vocabulary where applicable.
 
 | ID | Requirement |
 |------|------------|
-| FR-1 | Code graph indexer extracts symbols and edges from source trees |
 | FR-2 | Graph query expansion broadens retrieval queries via graph neighbors |
 | FR-3 | Graph RAG reranker reorders candidates using graph proximity |
 | FR-4 | Triplet extractor parses subject-predicate-object fact triplets |
+
+> Code-graph **indexing** (symbol/edge extraction from source trees) is specified in
+> [TREE_SITTER_INDEXER.spec.md](TREE_SITTER_INDEXER.spec.md) — the single tree-sitter indexer
+> covers every language. This spec covers query expansion, reranking, and triplet extraction.
 
 ### QA Test Cases
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|------------|----------|------------------|
-| TC-1 | FR-1 | indexes exported functions and writes symbol facts | pass |
-| TC-2 | FR-1 | emits IMPORTS_FILE bridge facts between files | pass |
-| TC-3 | FR-1 | emits IMPLEMENTS facts for class declarations | pass |
-| TC-4 | FR-1 | indexes TS files outside tsconfig include when passed as candidateFiles | pass |
-| TC-5 | FR-1 | includes value in fact text for exported constants with simple literal initializers | pass |
-| TC-6 | FR-1 | extracts non-exported module-level constants with literal values | pass |
-| TC-7 | FR-1 | does not extract non-exported constants with complex initializers | pass |
-| TC-8 | FR-1 | skips unchanged files on re-index | pass |
-| TC-9 | FR-1 | finds exported symbols matching query terms via FTS | pass |
-| TC-10 | FR-1 | getSummary returns correct counts | pass |
 | TC-11 | FR-2 | Given a freeform query, then slug extraction produces unigrams and bigrams for graph entity matching | pass |
 | TC-12 | FR-2 | Given facts in DB, then query expansion appends matching subject/object terms | pass |
 | TC-13 | FR-2 | Given a DB with no matching facts, then expansion returns the original query | pass |

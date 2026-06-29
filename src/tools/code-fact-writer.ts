@@ -1,6 +1,6 @@
 /**
- * Shared helper for TsMorphIndexer and TreeSitterIndexer to write code-derived
- * facts into the facts table and manage incremental file state.
+ * Shared helper for the TreeSitterIndexer to write code-derived facts into the
+ * facts table and manage incremental file state.
  */
 
 import type { DatabaseSync } from 'node:sqlite'
@@ -13,12 +13,11 @@ export interface CodeFileStateRow {
   indexed_at: string
 }
 
-export function getCodeFileState(
-  db: DatabaseSync,
-  filePath: string
-): CodeFileStateRow | undefined {
+export function getCodeFileState(db: DatabaseSync, filePath: string): CodeFileStateRow | undefined {
   return db
-    .prepare('SELECT file_path, content_hash, extractor, indexed_at FROM code_file_state WHERE file_path = ?')
+    .prepare(
+      'SELECT file_path, content_hash, extractor, indexed_at FROM code_file_state WHERE file_path = ?'
+    )
     .get(filePath) as CodeFileStateRow | undefined
 }
 

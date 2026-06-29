@@ -1,11 +1,12 @@
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DatabaseSync as Database } from 'node:sqlite'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runMigrations } from '../../src/core/db-migrations'
-import { TreeSitterIndexer } from '../../src/tools/tree-sitter-indexer'
+import { CodeGraphStore } from '../../src/tools/code-graph-store'
 import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+import { TreeSitterIndexer } from '../../src/tools/tree-sitter-indexer'
 
 let tmpDir: string
 let repoRoot: string
@@ -30,11 +31,13 @@ function makeIndexer() {
 }
 
 function queryFacts(db: Database, name: string, filePath: string): boolean {
-  return db
-    .prepare(
-      "SELECT 1 FROM facts WHERE source_kind='import_code' AND predicate='exported_from' AND subject=? AND object=? AND tombstoned_at IS NULL"
-    )
-    .get(name, filePath) !== undefined
+  return (
+    db
+      .prepare(
+        "SELECT 1 FROM facts WHERE source_kind='import_code' AND predicate='exported_from' AND subject=? AND object=? AND tombstoned_at IS NULL"
+      )
+      .get(name, filePath) !== undefined
+  )
 }
 
 function queryImportFacts(db: Database) {
@@ -46,9 +49,7 @@ function queryImportFacts(db: Database) {
 }
 
 function queryCodeFileState(db: Database, filePath: string): boolean {
-  return db
-    .prepare('SELECT 1 FROM code_file_state WHERE file_path = ?')
-    .get(filePath) !== undefined
+  return db.prepare('SELECT 1 FROM code_file_state WHERE file_path = ?').get(filePath) !== undefined
 }
 
 describe('TreeSitterIndexer — Go', () => {
@@ -119,10 +120,7 @@ describe('TreeSitterIndexer — Go', () => {
   it('[TC-4] emits IMPORTS_FILE edges for resolvable local Go imports', async () => {
     await mkdir(join(repoRoot, 'pkg'), { recursive: true })
     await writeFile(join(repoRoot, 'pkg', 'util.go'), 'package pkg\nfunc Helper() {}')
-    await writeFile(
-      join(repoRoot, 'main.go'),
-      'package main\nimport "./pkg"\nfunc main() {}'
-    )
+    await writeFile(join(repoRoot, 'main.go'), 'package main\nimport "./pkg"\nfunc main() {}')
 
     const { indexer, factIndexer } = makeIndexer()
     const stats = await indexer.indexProject(repoRoot)
@@ -213,7 +211,10 @@ describe('TreeSitterIndexer — TypeScript', () => {
 
   it('[TC-9] emits IMPORTS_FILE facts for local TS imports', async () => {
     await writeFile(join(repoRoot, 'src', 'a.ts'), 'export const x = 1')
-    await writeFile(join(repoRoot, 'src', 'b.ts'), "import { x } from './a'\nexport const y = x + 1")
+    await writeFile(
+      join(repoRoot, 'src', 'b.ts'),
+      "import { x } from './a'\nexport const y = x + 1"
+    )
 
     const { indexer, factIndexer } = makeIndexer()
     const stats = await indexer.indexProject(repoRoot)
@@ -230,6 +231,163 @@ describe('TreeSitterIndexer — TypeScript', () => {
     expect(importFacts.length).toBeGreaterThanOrEqual(1)
     const edge = importFacts.find(e => e.subject === 'src/b.ts')
     expect(edge?.object).toBe('src/a.ts')
+  })
+
+  it('[TC-28] emits EXTENDS and IMPLEMENTS structural facts for classes', async () => {
+    await writeFile(
+      join(repoRoot, 'src', 'animal.ts'),
+      `export interface Animal { speak(): string }
+export class Dog extends Pet implements Animal, Comparable { speak() { return 'woof' } }`
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    const structural = db
+      .prepare(
+        "SELECT subject, predicate, object FROM facts WHERE source_kind='import_code' AND predicate IN ('extends','implements') AND tombstoned_at IS NULL"
+      )
+      .all() as Array<{ subject: string; predicate: string; object: string }>
+    db.close()
+
+    expect(structural).toContainEqual({ subject: 'Dog', predicate: 'extends', object: 'Pet' })
+    expect(structural).toContainEqual({ subject: 'Dog', predicate: 'implements', object: 'Animal' })
+    expect(structural).toContainEqual({
+      subject: 'Dog',
+      predicate: 'implements',
+      object: 'Comparable',
+    })
+  })
+
+  it('[TC-29] includes the value in fact text for exported constants with literal initializers', async () => {
+    await writeFile(
+      join(repoRoot, 'src', 'limits.ts'),
+      `export const MAX_RETRIES = 5\nexport const VERSION = 'v1.2.3'\nexport const DEBUG = false`
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    const texts = (
+      db
+        .prepare(
+          "SELECT fact_text FROM facts WHERE source_kind='import_code' AND predicate='exported_from' AND tombstoned_at IS NULL"
+        )
+        .all() as Array<{ fact_text: string }>
+    ).map(f => f.fact_text)
+    db.close()
+
+    expect(texts.some(t => t.includes('MAX_RETRIES') && t.includes('5'))).toBe(true)
+    expect(texts.some(t => t.includes('VERSION') && t.includes('v1.2.3'))).toBe(true)
+    expect(texts.some(t => t.includes('DEBUG') && t.includes('false'))).toBe(true)
+  })
+
+  it('[TC-30] extracts top-level non-exported constants with literal values, skipping complex ones', async () => {
+    await writeFile(
+      join(repoRoot, 'src', 'config.ts'),
+      `const ABSOLUTE_MAX_ITERATIONS = 512
+const THRESHOLD = 0.58
+const STOP_WORDS = new Set(['the', 'and'])
+let MUTABLE = 7
+export function getMax() { return ABSOLUTE_MAX_ITERATIONS }`
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    const definedTexts = (
+      db
+        .prepare(
+          "SELECT fact_text FROM facts WHERE source_kind='import_code' AND predicate='defined_in' AND tombstoned_at IS NULL"
+        )
+        .all() as Array<{ fact_text: string }>
+    ).map(f => f.fact_text)
+    db.close()
+
+    expect(definedTexts.some(t => t.includes('ABSOLUTE_MAX_ITERATIONS') && t.includes('512'))).toBe(
+      true
+    )
+    expect(definedTexts.some(t => t.includes('THRESHOLD') && t.includes('0.58'))).toBe(true)
+    // Complex initializers (Set) and `let` declarations are not captured as constants.
+    expect(definedTexts.every(t => !t.includes('STOP_WORDS'))).toBe(true)
+    expect(definedTexts.every(t => !t.includes('MUTABLE'))).toBe(true)
+  })
+
+  it('[TC-31] indexes only the files passed as candidateFiles', async () => {
+    await mkdir(join(repoRoot, 'packages', 'catalog', 'src'), { recursive: true })
+    await writeFile(join(repoRoot, 'src', 'index.ts'), 'export const ROOT = true')
+    await writeFile(
+      join(repoRoot, 'packages', 'catalog', 'src', 'widget.ts'),
+      'export class Widget { render() {} }'
+    )
+    await writeFile(join(repoRoot, 'src', 'ignored.ts'), 'export const SKIP = true')
+
+    const { indexer, factIndexer } = makeIndexer()
+    const stats = await indexer.indexProject(repoRoot, {
+      candidateFiles: ['src/index.ts', 'packages/catalog/src/widget.ts'],
+    })
+    indexer.close()
+    factIndexer.close()
+
+    expect(stats.files).toBe(2)
+    expect(stats.errors).toBe(0)
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    expect(queryFacts(db, 'ROOT', 'src/index.ts')).toBe(true)
+    expect(queryFacts(db, 'Widget', 'packages/catalog/src/widget.ts')).toBe(true)
+    expect(queryFacts(db, 'SKIP', 'src/ignored.ts')).toBe(false)
+    db.close()
+  })
+})
+
+describe('CodeGraphStore (tree-sitter backed)', () => {
+  it('[TC-32] finds exported symbols matching query terms via FTS', async () => {
+    await writeFile(join(repoRoot, 'src', 'engine.ts'), 'export class Engine { run() {} }')
+    await writeFile(
+      join(repoRoot, 'src', 'car.ts'),
+      `import { Engine } from './engine'\nexport class Car { constructor(private e: Engine) {} }`
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    const store = new CodeGraphStore(dbPath)
+    const results = store.findCodeSymbolsByName(['engine'], 10)
+    store.close()
+
+    expect(results.map(n => n.name)).toContain('Engine')
+  })
+
+  it('[TC-33] getSummary returns symbol and file counts', async () => {
+    await writeFile(join(repoRoot, 'src', 'a.ts'), 'export const x = 1')
+    await writeFile(join(repoRoot, 'src', 'b.ts'), "import { x } from './a'\nexport const y = 2")
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    const store = new CodeGraphStore(dbPath)
+    const summary = store.getSummary()
+    store.close()
+
+    expect(summary.symbols).toBeGreaterThanOrEqual(2)
+    expect(summary.files).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -280,10 +438,7 @@ describe('TreeSitterIndexer — Python', () => {
 
 describe('TreeSitterIndexer — Rust', () => {
   it('[TC-12] indexes functions and structs', async () => {
-    await writeFile(
-      join(repoRoot, 'lib.rs'),
-      'pub fn run() {}\nstruct Engine;\n'
-    )
+    await writeFile(join(repoRoot, 'lib.rs'), 'pub fn run() {}\nstruct Engine;\n')
 
     const { indexer, factIndexer } = makeIndexer()
     const stats = await indexer.indexProject(repoRoot)
@@ -302,10 +457,7 @@ describe('TreeSitterIndexer — Rust', () => {
 
 describe('TreeSitterIndexer — HTML', () => {
   it('[TC-13] indexes elements with id attributes', async () => {
-    await writeFile(
-      join(repoRoot, 'index.html'),
-      '<html><body><div id="root"></div></body></html>'
-    )
+    await writeFile(join(repoRoot, 'index.html'), '<html><body><div id="root"></div></body></html>')
 
     const { indexer, factIndexer } = makeIndexer()
     const stats = await indexer.indexProject(repoRoot)

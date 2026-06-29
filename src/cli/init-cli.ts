@@ -2,8 +2,8 @@
  * kb init / kb scan — knowledge base bootstrap and refresh commands.
  *
  * Cycle 1 (read-inputs):    Discover markdown sources under working dir (recursive).
- * Cycle 2 (code-index):     Deterministic AST indexing (ts-morph for TS/JS, tree-sitter for Go/other)
- *                            → facts table (symbols, imports, structural edges).
+ * Cycle 2 (code-index):     Deterministic AST indexing (tree-sitter WASM grammars for every
+ *                            language) → facts table (symbols, imports, structural edges).
  * Cycle 3 (document-facts): Deterministic sentence segmentation of source markdown → `facts` table.
  * Cycle 4 (import-docs):    One `is_original` SQLite doc per collected markdown file (verbatim body).
  * Cycle 5 (write):          Upsert documents.
@@ -13,6 +13,36 @@
 
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import readline from 'node:readline'
+import dayjs from 'dayjs'
+import { tombstoneRemovedDocSourceFiles } from '../core/doc-fact-writer'
+import { DOC_TYPES } from '../core/doc-taxonomy'
+import { ingestIntegrationSignals } from '../core/integration-ingest'
+import {
+  type ScanFactIngestProgress,
+  ingestSourceMarkdownFilesAsFacts,
+} from '../core/scan-fact-ingest'
+import type { RunCollector } from '../core/telemetry'
+import { TokenCountingProvider, estimateCost } from '../core/telemetry'
+import type { LLMProvider } from '../core/types'
+import type { WriteDocumentInput } from '../tools/document-writer'
+import {
+  type RescanApplyOrchestratorProgress,
+  runRescanApplyOrchestrator,
+} from '../tools/rescan-apply-orchestrator'
+import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
+import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
+import {
+  type CodeIndexStats,
+  TREE_SITTER_SKIP_DIRS,
+  TreeSitterIndexer,
+  isTreeSitterIndexablePath,
+  tombstoneStaleAstFacts,
+} from '../tools/tree-sitter-indexer'
+import type { SlashInputContext } from '../tui/slash-command-registry.js'
+import { scanBaseRepos } from './auto-sync'
 import {
   type GitBaseMeta,
   type GitRepoMeta,
@@ -21,36 +51,6 @@ import {
   repoSlugFromGitUrl,
   writeBaseMeta,
 } from './base-meta'
-import { scanBaseRepos } from './auto-sync'
-import { cloneRepo, getCurrentBranch, getHeadSha } from './git-sync'
-import { type IgnoreMatcher, parseIgnoreInput, resolveIgnoreMatcher } from './kb-ignore'
-import { TsMorphIndexer, tombstoneStaleAstFacts } from '../tools/code-graph-indexer'
-import {
-  isTreeSitterIndexablePath,
-  TreeSitterIndexer,
-  TREE_SITTER_SKIP_DIRS,
-} from '../tools/tree-sitter-indexer'
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
-import path from 'node:path'
-import readline from 'node:readline'
-import dayjs from 'dayjs'
-import { DOC_TYPES } from '../core/doc-taxonomy'
-import { tombstoneRemovedDocSourceFiles } from '../core/doc-fact-writer'
-import { ingestIntegrationSignals } from '../core/integration-ingest'
-import {
-  ingestSourceMarkdownFilesAsFacts,
-  type ScanFactIngestProgress,
-} from '../core/scan-fact-ingest'
-import type { RunCollector } from '../core/telemetry'
-import { TokenCountingProvider, estimateCost } from '../core/telemetry'
-import type { LLMProvider } from '../core/types'
-import type { WriteDocumentInput } from '../tools/document-writer'
-import {
-  runRescanApplyOrchestrator,
-  type RescanApplyOrchestratorProgress,
-} from '../tools/rescan-apply-orchestrator'
-import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
-import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import {
   ensureOperationalBaseDir,
   findKbFile,
@@ -60,30 +60,23 @@ import {
   writeSessionBase,
 } from './base-selection'
 import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from './cli-prerequisites'
-import {
-  buildSourceFileHashes,
-  diffChangedSourceFiles,
-  readSourceFilesManifest,
-  writeSourceFilesManifest,
-} from './init-source-files-manifest'
+import { cloneRepo, getCurrentBranch, getHeadSha } from './git-sync'
 import {
   diffChangedAstFiles,
   readAstFilesManifest,
   writeAstFilesManifest,
 } from './init-ast-files-manifest'
 import {
-  assessTopicCoverage,
-  summariseCoverage,
-} from './init-topic-coverage'
+  buildSourceFileHashes,
+  diffChangedSourceFiles,
+  readSourceFilesManifest,
+  writeSourceFilesManifest,
+} from './init-source-files-manifest'
+import { assessTopicCoverage, summariseCoverage } from './init-topic-coverage'
 import { createLLMProviderFromConfig, readKbConfig } from './kb-config'
-import type { SlashInputContext } from '../tui/slash-command-registry.js'
+import { type IgnoreMatcher, parseIgnoreInput, resolveIgnoreMatcher } from './kb-ignore'
 
-export type InitCycle =
-  | 'read-inputs'
-  | 'code-index'
-  | 'document-facts'
-  | 'import-docs'
-  | 'write'
+export type InitCycle = 'read-inputs' | 'code-index' | 'document-facts' | 'import-docs' | 'write'
 export type InitTopic =
   | 'project-overview'
   | 'install-setup'
@@ -359,8 +352,7 @@ function clipProgressItem(value: string | undefined, max = 64): string | undefin
 
 function formatReadInputsProgress(snapshot: ReadInputsCollectionProgress): string {
   const current = clipProgressItem(snapshot.currentItem)
-  const label =
-    snapshot.stage === 'source-files' ? 'docs' : 'code'
+  const label = snapshot.stage === 'source-files' ? 'docs' : 'code'
   return `${label} ${snapshot.itemsCompleted} collected${current ? ` | ${current}` : ''}`
 }
 
@@ -485,9 +477,7 @@ export function parseInitCommand(args: string[]): InitOptions {
   const gitTargets = readAllOptions(args, '--git').map(raw => parseGitTarget(raw, defaultBranch))
 
   const rawStopAfter = readOption(args, '--stop-after')
-  const stopAfter = rawStopAfter
-    ? (normalizeStoredCycleId(rawStopAfter) ?? undefined)
-    : undefined
+  const stopAfter = rawStopAfter ? (normalizeStoredCycleId(rawStopAfter) ?? undefined) : undefined
   const validCycles: InitCycle[] = [
     'read-inputs',
     'code-index',
@@ -759,99 +749,40 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         if (options.rescan && candidateAstFiles.length === 0) {
           await writeAstFilesManifest(baseDir, currentAstFiles)
         } else {
-          let totalFiles = 0
-          let totalSymbols = 0
-          let totalEdges = 0
-          let totalErrors = 0
-          let tsStatsSummary: import('../tools/code-graph-indexer').CodeIndexStats | undefined
-          let treeStatsSummary: import('../tools/code-graph-indexer').CodeIndexStats | undefined
-          const tsCandidateFiles = candidateAstFiles.filter(file => {
-            const ext = path.extname(file).toLowerCase()
-            return ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)
-          })
-          const totalTsFileCount = Object.keys(currentAstFiles).filter(file => {
-            const ext = path.extname(file).toLowerCase()
-            return ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)
-          }).length
-          const unchangedTsFileCount = totalTsFileCount - tsCandidateFiles.length
-
-          const tsconfigPath = path.join(scanDir, 'tsconfig.json')
-          const treeCandidateFiles = existsSync(tsconfigPath)
-            ? candidateAstFiles.filter(file => {
-                const ext = path.extname(file).toLowerCase()
-                return !['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)
-              })
-            : candidateAstFiles
-          const totalTreeFileCount = totalAstFileCount - totalTsFileCount
-          const unchangedTreeFileCount = totalTreeFileCount - treeCandidateFiles.length
+          // One AST platform for every language: tree-sitter parses a single file at a time
+          // (one WASM tree resident at once), so peak memory is bounded by the largest file
+          // rather than the whole project graph.
+          let treeStatsSummary: CodeIndexStats | undefined
 
           const astFactIndexer = new SqliteKbIndexer({ dbPath })
           astFactIndexer.setActiveGitRepo(gitRepoSlug ?? null)
           try {
-            if (existsSync(tsconfigPath) && tsCandidateFiles.length > 0) {
-              const indexer = new TsMorphIndexer(dbPath, astFactIndexer)
-              const stats = await indexer.indexProject(scanDir, tsconfigPath, {
-                candidateFiles: tsCandidateFiles,
-                onProgress: s => {
-                  progress.update(
-                    'code-index',
-                    `ts/js ${s.files}/${tsCandidateFiles.length} changed, ${unchangedTsFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
-                  )
-                },
-              })
-              indexer.close()
-              tsStatsSummary = stats
-              totalFiles += stats.files
-              totalSymbols += stats.symbols
-              totalEdges += stats.edges
-              totalErrors += stats.errors
-            }
-
             const treeIndexer = new TreeSitterIndexer(dbPath, astFactIndexer)
             const treeStats = await treeIndexer.indexProject(scanDir, {
-              candidateFiles: treeCandidateFiles,
+              candidateFiles: candidateAstFiles,
               onProgress: s => {
                 progress.update(
                   'code-index',
-                  `tree-sitter ${s.files}/${treeCandidateFiles.length} changed, ${unchangedTreeFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
+                  `${s.files}/${candidateAstFiles.length} changed, ${unchangedAstFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
                 )
               },
             })
             treeIndexer.close()
             treeStatsSummary = treeStats
-            totalFiles += treeStats.files
-            totalSymbols += treeStats.symbols
-            totalEdges += treeStats.edges
-            totalErrors += treeStats.errors
 
-            const allSourceRefs = new Set([
-              ...(tsStatsSummary?.sourceRefs ?? []),
-              ...treeStats.sourceRefs,
-            ])
-            tombstoneStaleAstFacts(astFactIndexer, allSourceRefs, gitRepoSlug)
+            tombstoneStaleAstFacts(astFactIndexer, treeStats.sourceRefs, gitRepoSlug)
             astFactIndexer.relinkCodeImportEdges()
           } finally {
             astFactIndexer.close()
           }
 
           await writeAstFilesManifest(baseDir, currentAstFiles)
-          const astParts: string[] = []
-          if (tsStatsSummary) {
-            astParts.push(
-              `ts/js ${tsStatsSummary.files} changed, ${unchangedTsFileCount} unchanged`
-            )
-          }
-          if (treeStatsSummary) {
-            astParts.push(
-              `tree-sitter ${treeStatsSummary.files} changed, ${unchangedTreeFileCount} unchanged`
-            )
-          }
+          const s = treeStatsSummary
           progress.update(
             'code-index',
-            `${astParts.join(' | ') || `${totalFiles} changed, ${unchangedAstFileCount} unchanged`} | ${totalSymbols} symbols, ${totalEdges} edges${totalErrors > 0 ? `, ${totalErrors} errors` : ''}`
+            `${s.files} changed, ${unchangedAstFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges${s.errors > 0 ? `, ${s.errors} errors` : ''}`
           )
         }
-
 
         await persist({ completedCycles: ['code-index'] })
         progress.finish('code-index', 'done')
@@ -877,7 +808,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         const endScanFacts = makeCycleTimer('document-facts', provider, options.collector, counter)
         if (options.rescan) {
           const manifest = await readSourceFilesManifest(baseDir)
-          const purgeIndexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+          const purgeIndexer = new SqliteKbIndexer({
+            dbPath: path.join(baseDir, '.kb-index.sqlite'),
+          })
           try {
             const purged = tombstoneRemovedDocSourceFiles(
               purgeIndexer,
@@ -1318,11 +1251,7 @@ export async function collectSourceFiles(
       if (entry.isDir) {
         if (MARKDOWN_SOURCE_EXCLUDE_DIRS.has(entry.name)) continue
         // Prune ignored subtrees, unless negation rules could re-include something below.
-        if (
-          ignoreMatcher &&
-          !ignoreMatcher.hasNegation &&
-          ignoreMatcher.ignores(relEntry, true)
-        ) {
+        if (ignoreMatcher && !ignoreMatcher.hasNegation && ignoreMatcher.ignores(relEntry, true)) {
           continue
         }
         await walkMarkdownTree(absPath)
@@ -1360,9 +1289,7 @@ async function collectRescanSourceFiles(options: {
   )
   const n = Object.keys(allSourceFiles).length
   if (n === 0) {
-    options.questionIO.write?.(
-      '[kb scan] found no markdown sources under the working directory.\n'
-    )
+    options.questionIO.write?.('[kb scan] found no markdown sources under the working directory.\n')
   }
   return allSourceFiles
 }
@@ -1412,7 +1339,6 @@ async function collectAstFileHashes(
   await walk(cwd)
   return astFiles
 }
-
 
 async function writeDocs(
   docs: CandidateDoc[],
@@ -1497,9 +1423,7 @@ async function resolveInitBaseName(
     // No .kb file — show a list picker so the user explicitly chooses
     const bases = await listAllBases()
     if (bases.length === 0) {
-      throw new Error(
-        'No initialized bases found. Run `kb init --base <name>` first.'
-      )
+      throw new Error('No initialized bases found. Run `kb init --base <name>` first.')
     }
     if (bases.length === 1) {
       questionIO.write?.(`[kb scan] Using base: ${bases[0].name}\n`)
@@ -1514,10 +1438,12 @@ async function resolveInitBaseName(
     }
     questionIO.write?.('\n')
 
-    const answer = (await questionIO.askQuestion(
-      '  > Base name: ',
-      { slashContext: 'scan-base-picker', suggestions: bases.map(b => b.name) }
-    )).trim()
+    const answer = (
+      await questionIO.askQuestion('  > Base name: ', {
+        slashContext: 'scan-base-picker',
+        suggestions: bases.map(b => b.name),
+      })
+    ).trim()
 
     if (answer === '/cancel') throw new InitCancelledError()
 
@@ -1529,7 +1455,7 @@ async function resolveInitBaseName(
   }
 
   const kbFileBase = await findKbFile(cwd)
-  const suggestedBase = kbFileBase ?? await resolveSuggestedInitBase(cwd)
+  const suggestedBase = kbFileBase ?? (await resolveSuggestedInitBase(cwd))
 
   if (options.nonInteractive) {
     throw new Error(CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE)

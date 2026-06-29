@@ -9,18 +9,18 @@
  */
 
 import crypto from 'node:crypto'
-import { readdirSync, readFileSync, statSync } from 'node:fs'
-import path from 'node:path'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { Parser, Language, Query } from 'web-tree-sitter'
+import { Language, Parser, Query } from 'web-tree-sitter'
 import type { Tree } from 'web-tree-sitter'
+import type { Node as TsNode } from 'web-tree-sitter'
 import { runMigrations } from '../core/db-migrations'
 import { yieldEvery } from '../core/yield'
-import type { CodeIndexStats, CodeIndexOptions, LanguageIndexer } from './code-graph-indexer'
-import type { Node as TsNode } from 'web-tree-sitter'
 import {
   getCodeFileState,
+  tombstoneStaleCodeFacts,
   upsertCodeFileFact,
   upsertCodeFileState,
 } from './code-fact-writer'
@@ -29,6 +29,103 @@ import type { SqliteKbIndexer } from './sqlite-kb-index'
 const require = createRequire(import.meta.url)
 
 const SOURCE = 'tree-sitter'
+
+// ---------------------------------------------------------------------------
+// Shared code-index types (single AST platform: tree-sitter for every language)
+// ---------------------------------------------------------------------------
+
+export interface CodeIndexStats {
+  files: number
+  symbols: number
+  edges: number
+  skipped: number
+  errors: number
+  sourceRefs: Set<string>
+}
+
+export interface CodeIndexOptions {
+  onProgress?: (stats: CodeIndexStats) => void
+  yieldEveryFiles?: number
+  candidateFiles?: string[]
+}
+
+export interface LanguageIndexer {
+  indexProject(repoRoot: string, opts?: CodeIndexOptions): Promise<CodeIndexStats>
+  close(): void
+}
+
+/** Tombstone facts for files no longer in the repo. Call after indexing finishes.
+ *  Scoped to `gitRepo` so re-indexing one repo never tombstones another repo's code facts. */
+export function tombstoneStaleAstFacts(
+  factIndexer: SqliteKbIndexer,
+  allSourceRefs: Set<string>,
+  gitRepo?: string
+): number {
+  return tombstoneStaleCodeFacts(factIndexer, allSourceRefs, gitRepo)
+}
+
+/** Human-readable kind label for a JS/TS declaration node (nicer fact text than raw grammar types). */
+const JS_KIND_LABEL: Record<string, string> = {
+  class_declaration: 'class',
+  abstract_class_declaration: 'class',
+  function_declaration: 'function',
+  generator_function_declaration: 'function',
+  interface_declaration: 'interface',
+  type_alias_declaration: 'type',
+  enum_declaration: 'enum',
+  variable_declarator: 'variable',
+  method_definition: 'method',
+}
+
+/** Strip generics and namespace qualifiers from a type reference: `ns.Base<T>` → `Base`. */
+function stripTypeName(text: string): string {
+  const noGenerics = text.split('<')[0]?.trim() ?? text.trim()
+  return (noGenerics.split('.').pop() ?? noGenerics).trim()
+}
+
+/**
+ * Extract base-class and implemented-interface names from a class declaration node.
+ * Handles the TS shape (`class_heritage` → `extends_clause`/`implements_clause`) and the
+ * JS shape (`class_heritage` → bare extends expression, no implements).
+ */
+function extractClassHeritage(classNode: TsNode): { bases: string[]; interfaces: string[] } {
+  const bases: string[] = []
+  const interfaces: string[] = []
+  const heritage = classNode.namedChildren.find(c => c?.type === 'class_heritage')
+  if (!heritage) return { bases, interfaces }
+  for (const child of heritage.namedChildren) {
+    if (!child) continue
+    if (child.type === 'extends_clause') {
+      const value = child.childForFieldName('value') ?? child.namedChildren[0]
+      if (value?.text) bases.push(stripTypeName(value.text))
+    } else if (child.type === 'implements_clause') {
+      for (const t of child.namedChildren) {
+        if (t?.text) interfaces.push(stripTypeName(t.text))
+      }
+    } else {
+      // JS: the extends target sits directly under class_heritage.
+      if (child.text) bases.push(stripTypeName(child.text))
+    }
+  }
+  return { bases, interfaces }
+}
+
+/**
+ * Returns a concise string for simple literal initializers (numbers, strings, booleans,
+ * short arithmetic/template expressions). Returns undefined for complex expressions —
+ * so `defined_in`/constant facts only capture genuinely literal values.
+ */
+function extractSimpleInitializerText(text: string | undefined): string | undefined {
+  if (!text) return undefined
+  const trimmed = text.trim()
+  if (trimmed.length > 120) return undefined
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return trimmed
+  if (/^['"`]/.test(trimmed)) return trimmed.slice(0, 80)
+  if (trimmed === 'true' || trimmed === 'false') return trimmed
+  // Short expressions that look like formulas (operators but no calls/objects).
+  if (trimmed.length <= 60 && /[\d]/.test(trimmed) && !/[({]/.test(trimmed)) return trimmed
+  return undefined
+}
 
 /** Walk up from a captured @name node to the nearest top-level declaration. */
 function getDeclNode(nameNode: TsNode): TsNode {
@@ -49,6 +146,12 @@ interface LangConfig {
   exportQueries: string[]
   // If true, only uppercase-initial names are considered "exported" (Go convention)
   goExportConvention: boolean
+  /**
+   * JS/TS-family enrichment: extract constant literal values, top-level non-exported
+   * constants (`defined_in` facts), and `extends`/`implements` structural edges. These
+   * use shared node-navigation (not per-grammar queries) so they work across ts/tsx/js/jsx.
+   */
+  jsFamily?: boolean
 }
 
 function resolveWasm(pkg: string, file: string): string {
@@ -81,6 +184,7 @@ const LANG_CONFIGS: Record<string, LangConfig> = {
       '(export_statement declaration: (enum_declaration name: (identifier) @name))',
     ],
     goExportConvention: false,
+    jsFamily: true,
   },
   tsx: {
     wasmPath: resolveWasm('tree-sitter-typescript', 'tree-sitter-tsx.wasm'),
@@ -94,6 +198,7 @@ const LANG_CONFIGS: Record<string, LangConfig> = {
       '(export_statement declaration: (abstract_class_declaration name: (type_identifier) @name))',
     ],
     goExportConvention: false,
+    jsFamily: true,
   },
   js: {
     wasmPath: resolveWasm('tree-sitter-javascript', 'tree-sitter-javascript.wasm'),
@@ -104,6 +209,7 @@ const LANG_CONFIGS: Record<string, LangConfig> = {
       '(export_statement declaration: (lexical_declaration (variable_declarator name: (identifier) @name)))',
     ],
     goExportConvention: false,
+    jsFamily: true,
   },
   jsx: {
     wasmPath: resolveWasm('tree-sitter-javascript', 'tree-sitter-javascript.wasm'),
@@ -114,6 +220,7 @@ const LANG_CONFIGS: Record<string, LangConfig> = {
       '(export_statement declaration: (lexical_declaration (variable_declarator name: (identifier) @name)))',
     ],
     goExportConvention: false,
+    jsFamily: true,
   },
   python: {
     wasmPath: resolveWasm('tree-sitter-python', 'tree-sitter-python.wasm'),
@@ -203,20 +310,13 @@ const LANG_CONFIGS: Record<string, LangConfig> = {
   css: {
     wasmPath: resolveWasm('tree-sitter-css', 'tree-sitter-css.wasm'),
     importQueries: [],
-    exportQueries: [
-      '(class_selector (class_name) @name)',
-      '(id_selector (id_name) @name)',
-    ],
+    exportQueries: ['(class_selector (class_name) @name)', '(id_selector (id_name) @name)'],
     goExportConvention: false,
   },
   bash: {
     wasmPath: resolveWasm('tree-sitter-bash', 'tree-sitter-bash.wasm'),
-    importQueries: [
-      '(source_command (word) @path)',
-    ],
-    exportQueries: [
-      '(function_definition name: (word) @name)',
-    ],
+    importQueries: ['(source_command (word) @path)'],
+    exportQueries: ['(function_definition name: (word) @name)'],
     goExportConvention: false,
   },
   php: {
@@ -310,25 +410,58 @@ export const TREE_SITTER_AST_EXTENSIONS = new Set(Object.keys(EXT_MAP))
 // Text/config extensions we index as plain file nodes (no AST, no symbols).
 // Anything not in EXT_MAP or TEXT_EXTS is ignored entirely.
 export const TREE_SITTER_TEXT_EXTENSIONS = new Set([
-  '.md', '.mdx', '.txt', '.rst',
-  '.json', '.jsonc', '.json5',
-  '.yaml', '.yml', '.toml', '.ini', '.env',
-  '.xml', '.scss', '.sass', '.less',
+  '.md',
+  '.mdx',
+  '.txt',
+  '.rst',
+  '.json',
+  '.jsonc',
+  '.json5',
+  '.yaml',
+  '.yml',
+  '.toml',
+  '.ini',
+  '.env',
+  '.xml',
+  '.scss',
+  '.sass',
+  '.less',
   '.fish',
-  '.dockerfile', '.containerfile',
-  '.graphql', '.gql',
+  '.dockerfile',
+  '.containerfile',
+  '.graphql',
+  '.gql',
   '.proto',
   '.sql',
-  '.tf', '.hcl',
-  '',         // extensionless files (Makefile, Dockerfile, etc.)
+  '.tf',
+  '.hcl',
+  '', // extensionless files (Makefile, Dockerfile, etc.)
 ])
 
 export const TREE_SITTER_SKIP_DIRS = new Set([
-  'node_modules', 'vendor', '.git', 'dist', 'build', 'out', 'target',
-  '.next', '.nuxt', '.turbo', 'coverage', '__pycache__',
-  '.cache', '.pytest_cache', '.tox', 'venv', '.venv',
+  'node_modules',
+  'vendor',
+  '.git',
+  'dist',
+  'build',
+  'out',
+  'target',
+  '.next',
+  '.nuxt',
+  '.turbo',
+  'coverage',
+  '__pycache__',
+  '.cache',
+  '.pytest_cache',
+  '.tox',
+  'venv',
+  '.venv',
   // Generated / mirrored docs — not source-of-truth for retrieval
-  '_site', '_original_docs', '_autogenerated_docs', '_data', '_graph_pages',
+  '_site',
+  '_original_docs',
+  '_autogenerated_docs',
+  '_data',
+  '_graph_pages',
 ])
 
 // ---------------------------------------------------------------------------
@@ -367,7 +500,11 @@ function* walkFiles(dir: string): Generator<string> {
     if (TREE_SITTER_SKIP_DIRS.has(name)) continue
     const full = path.join(dir, name)
     let st: ReturnType<typeof statSync> | undefined
-    try { st = statSync(full) } catch { continue }
+    try {
+      st = statSync(full)
+    } catch {
+      continue
+    }
     if (st?.isDirectory()) {
       yield* walkFiles(full)
     } else if (st?.isFile()) {
@@ -418,7 +555,14 @@ export class TreeSitterIndexer implements LanguageIndexer {
   async indexProject(repoRoot: string, opts: CodeIndexOptions = {}): Promise<CodeIndexStats> {
     await this.ensureParser()
 
-    const stats: CodeIndexStats = { files: 0, symbols: 0, edges: 0, skipped: 0, errors: 0, sourceRefs: new Set() }
+    const stats: CodeIndexStats = {
+      files: 0,
+      symbols: 0,
+      edges: 0,
+      skipped: 0,
+      errors: 0,
+      sourceRefs: new Set(),
+    }
     const yieldStride = opts.yieldEveryFiles ?? 10
     const candidateFiles = opts.candidateFiles
       ?.map(file => file.replace(/\\/g, '/'))
@@ -429,13 +573,15 @@ export class TreeSitterIndexer implements LanguageIndexer {
       const ext = path.extname(rel).toLowerCase()
       const langKey = EXT_MAP[ext]
       const contentHash = hashFile(absPath)
-      // Skip if ts-morph already handled this file
+      // Skip only when this exact content was already indexed by *this* extractor. Files left
+      // behind by the legacy ts-morph extractor are re-indexed so their facts are rewritten in
+      // the tree-sitter scheme (same source_refs, so no duplicates survive reconciliation).
       const existing = getCodeFileState(this.db, rel)
-      if (existing?.extractor === 'ts-morph') {
-        stats.skipped++
-        return
-      }
-      if (existing?.content_hash === contentHash && contentHash !== '') {
+      if (
+        existing?.content_hash === contentHash &&
+        contentHash !== '' &&
+        existing.extractor === SOURCE
+      ) {
         stats.skipped++
         return
       }
@@ -469,60 +615,158 @@ export class TreeSitterIndexer implements LanguageIndexer {
       }
       if (tree == null) return
 
-      await this.factIndexer.runInTransaction(() => {
-        // Imports → IMPORTS_FILE bridge facts
-        for (const q of compiled.importQueries) {
-          for (const match of q.matches(tree.rootNode)) {
-            const importPath = match.captures[0]?.node.text
-            if (!importPath) continue
-            if (!importPath.startsWith('.') && !importPath.startsWith('/')) continue
-            const resolved = path.resolve(path.dirname(absPath), importPath)
-            const candidates = [resolved, `${resolved}.ts`, `${resolved}.tsx`, `${resolved}.js`, `${resolved}/index.ts`, `${resolved}/index.js`]
-            let targetRel: string | null = null
-            for (const c of candidates) {
-              try { statSync(c); targetRel = relPath(repoRoot, c); break } catch { /* noop */ }
+      try {
+        await this.factIndexer.runInTransaction(() => {
+          // Imports → IMPORTS_FILE bridge facts
+          for (const q of compiled.importQueries) {
+            for (const match of q.matches(tree.rootNode)) {
+              const importPath = match.captures[0]?.node.text
+              if (!importPath) continue
+              if (!importPath.startsWith('.') && !importPath.startsWith('/')) continue
+              const resolved = path.resolve(path.dirname(absPath), importPath)
+              const candidates = [
+                resolved,
+                `${resolved}.ts`,
+                `${resolved}.tsx`,
+                `${resolved}.js`,
+                `${resolved}/index.ts`,
+                `${resolved}/index.js`,
+              ]
+              let targetRel: string | null = null
+              for (const c of candidates) {
+                try {
+                  statSync(c)
+                  targetRel = relPath(repoRoot, c)
+                  break
+                } catch {
+                  /* noop */
+                }
+              }
+              if (!targetRel) continue
+              const sourceRef = `ast:import:${sha1(`${rel}→${targetRel}`)}`
+              stats.sourceRefs.add(sourceRef)
+              upsertCodeFileFact(
+                this.factIndexer,
+                sourceRef,
+                `${rel} imports ${targetRel}`,
+                { subject: rel, predicate: 'imports', object: targetRel },
+                0.3
+              )
+              stats.edges++
             }
-            if (!targetRel) continue
-            const sourceRef = `ast:import:${sha1(`${rel}→${targetRel}`)}`
-            stats.sourceRefs.add(sourceRef)
-            upsertCodeFileFact(
-              this.factIndexer,
-              sourceRef,
-              `${rel} imports ${targetRel}`,
-              { subject: rel, predicate: 'imports', object: targetRel },
-              0.3
-            )
-            stats.edges++
           }
-        }
 
-        // Exports → symbol facts
-        for (const q of compiled.exportQueries) {
-          for (const match of q.matches(tree.rootNode)) {
-            const capture = match.captures.find(c => c.name === 'name') ?? match.captures[0]
-            const name = capture?.node.text
-            if (!name || !capture) continue
-            if (!isExported(name, compiled.config.goExportConvention)) continue
-            const nameNode = capture.node
-            const declNode = getDeclNode(nameNode)
-            const rawText = src.slice(declNode.startIndex, declNode.endIndex)
-            const sourceText = rawText.length > 1500 ? `${rawText.slice(0, 1497)}…` : rawText
-            const sourceRef = `ast:${rel}@${name}`
-            stats.sourceRefs.add(sourceRef)
-            upsertCodeFileFact(
-              this.factIndexer,
-              sourceRef,
-              `${name} is a ${nameNode.type} exported from ${rel}`,
-              { subject: name, predicate: 'exported_from', object: rel },
-              0.65,
-              sourceText
-            )
-            stats.symbols++
+          // Exports → symbol facts
+          const jsFamily = compiled.config.jsFamily === true
+          for (const q of compiled.exportQueries) {
+            for (const match of q.matches(tree.rootNode)) {
+              const capture = match.captures.find(c => c.name === 'name') ?? match.captures[0]
+              const name = capture?.node.text
+              if (!name || !capture) continue
+              if (!isExported(name, compiled.config.goExportConvention)) continue
+              const nameNode = capture.node
+              const declNode = getDeclNode(nameNode)
+              const rawText = src.slice(declNode.startIndex, declNode.endIndex)
+              const sourceText = rawText.length > 1500 ? `${rawText.slice(0, 1497)}…` : rawText
+              const sourceRef = `ast:${rel}@${name}`
+              stats.sourceRefs.add(sourceRef)
+
+              // Readable kind label for JS/TS (from the declaration node), falling back to the
+              // raw grammar node type for other languages.
+              const declParent = nameNode.parent
+              const kind =
+                jsFamily && declParent
+                  ? (JS_KIND_LABEL[declParent.type] ?? declParent.type)
+                  : nameNode.type
+              let factText = `${name} is a ${kind} exported from ${rel}`
+
+              // Exported constants with a simple literal value → carry the value in the fact text.
+              if (jsFamily && declParent?.type === 'variable_declarator') {
+                const valueText = extractSimpleInitializerText(
+                  declParent.childForFieldName('value')?.text
+                )
+                if (valueText)
+                  factText = `${name} is a constant with value ${valueText} exported from ${rel}`
+              }
+
+              upsertCodeFileFact(
+                this.factIndexer,
+                sourceRef,
+                factText,
+                { subject: name, predicate: 'exported_from', object: rel },
+                0.65,
+                sourceText
+              )
+              stats.symbols++
+
+              // Exported classes → EXTENDS / IMPLEMENTS structural edges.
+              if (
+                jsFamily &&
+                (declParent?.type === 'class_declaration' ||
+                  declParent?.type === 'abstract_class_declaration')
+              ) {
+                const { bases, interfaces } = extractClassHeritage(declParent)
+                for (const base of bases) {
+                  const edgeRef = `ast:edge:${sha1(`${rel}@${name}:extends:${base}`)}`
+                  stats.sourceRefs.add(edgeRef)
+                  upsertCodeFileFact(
+                    this.factIndexer,
+                    edgeRef,
+                    `${name} extends ${base} in ${rel}`,
+                    { subject: name, predicate: 'extends', object: base },
+                    0.7
+                  )
+                  stats.edges++
+                }
+                for (const iface of interfaces) {
+                  const edgeRef = `ast:edge:${sha1(`${rel}@${name}:implements:${iface}`)}`
+                  stats.sourceRefs.add(edgeRef)
+                  upsertCodeFileFact(
+                    this.factIndexer,
+                    edgeRef,
+                    `${name} implements ${iface} in ${rel}`,
+                    { subject: name, predicate: 'implements', object: iface },
+                    0.7
+                  )
+                  stats.edges++
+                }
+              }
+            }
           }
-        }
-      })
 
-      upsertCodeFileState(this.db, rel, contentHash, SOURCE)
+          // Top-level non-exported constants with literal values → `defined_in` facts. Only
+          // direct children of the program node (module scope), mirroring the old ts-morph pass.
+          if (jsFamily) {
+            for (const node of tree.rootNode.namedChildren) {
+              if (node?.type !== 'lexical_declaration') continue
+              if (node.firstChild?.text !== 'const') continue
+              for (const decl of node.namedChildren) {
+                if (decl?.type !== 'variable_declarator') continue
+                const constName = decl.childForFieldName('name')?.text
+                if (!constName) continue
+                const valueText = extractSimpleInitializerText(
+                  decl.childForFieldName('value')?.text
+                )
+                if (!valueText) continue
+                const constRef = `ast:const:${rel}@${constName}`
+                stats.sourceRefs.add(constRef)
+                upsertCodeFileFact(
+                  this.factIndexer,
+                  constRef,
+                  `${constName} is a constant with value ${valueText} in ${rel}`,
+                  { subject: constName, predicate: 'defined_in', object: rel },
+                  0.6,
+                  decl.text
+                )
+                stats.symbols++
+              }
+            }
+          }
+        })
+        upsertCodeFileState(this.db, rel, contentHash, SOURCE)
+      } finally {
+        tree.delete()
+      }
     }
 
     let processedFiles = 0
@@ -572,5 +816,4 @@ export class TreeSitterIndexer implements LanguageIndexer {
     }
     this.langCache.set(key, compiled)
   }
-
 }

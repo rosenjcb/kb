@@ -126,7 +126,7 @@ Fact block in prompts; refuse when no facts; **`acceptDraft`** guards zero **`su
 
 **Done:**
 - **`document-facts`** init cycle runs after **`code-index`**, calling `ingestSourceMarkdownFilesAsFacts` (`src/core/scan-fact-ingest.ts`) over `context.sourceFiles` — same segmentation policy as document writer ingest, `source_ref` like `README.md#s0`. Each segment's triplet anchors to the nearest exported AST symbol (FTS over `import_code`/`exported_from` facts), falling back to a placeholder. When an OKF doc declares a `resource:` that resolves to a code file/dir, the anchor is scoped to that file/dir's exported symbols only, instead of the global pool.
-- **`code-index`** runs deterministic AST indexing (`TsMorphIndexer` / `TreeSitterIndexer`) → `import_code` facts and `fact_edges`. No LLM code-facts fallback. Previously Swift/Kotlin were LLM-indexed when AST was unavailable — see `INIT.md` §Removed LLM code-facts fallback.
+- **`code-index`** runs deterministic AST indexing (`TreeSitterIndexer`, one WASM platform for every language) → `import_code` facts and `fact_edges`. No LLM code-facts fallback. Previously Swift/Kotlin were LLM-indexed when AST was unavailable — see `INIT.md` §Removed LLM code-facts fallback.
 
 **Surface for refreshing sources:** **`kb scan`** — pulls + re-indexes every tracked repo and rebuilds cross-repo links.
 

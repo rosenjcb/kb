@@ -88,8 +88,7 @@ The `code-graph` cycle runs during `kb init` and `kb scan` — no LLM. It indexe
 
 ### Language support
 
-- **TypeScript / JavaScript** — `TsMorphIndexer` (type-aware; runs when `tsconfig.json` is present)
-- **Tree-sitter AST** — Go, TS/TSX, JS/JSX, Python, Rust, Ruby, Java, C/C++, C#, CSS, Bash, PHP, Scala, HTML (see `LANG_CONFIGS` in `src/tools/tree-sitter-indexer.ts`; each needs a `tree-sitter-<lang>` npm package that ships `.wasm`)
+- **Tree-sitter AST (every language, including TS/JS)** — Go, TS/TSX, JS/JSX, Python, Rust, Ruby, Java, C/C++, C#, CSS, Bash, PHP, Scala, HTML (see `LANG_CONFIGS` in `src/tools/tree-sitter-indexer.ts`; each needs a `tree-sitter-<lang>` npm package that ships `.wasm`). TS/JS get extra enrichment — constant values, `defined_in` for non-exported constants, and `EXTENDS`/`IMPLEMENTS` edges — via the `jsFamily` path.
 - **Text / config files** (`.md`, `.yaml`, `.json`, `.toml`, etc.) — `TreeSitterIndexer` text fallback: file node only, no symbols
 - Adding a new language requires one entry in `LANG_CONFIGS` + `EXT_MAP` plus a WASM-shipping `tree-sitter-<lang>` package. See [`TREE_SITTER_INDEXER.md`](TREE_SITTER_INDEXER.md) for registry and query conventions.
 
@@ -105,8 +104,7 @@ All WASM grammars ship as npm package assets — no native compilation, no platf
 | `src/tools/graph-entity-extractor.ts` | LLM-based entity + relationship extraction from text |
 | `src/cli/graph-cli.ts` | `kb graph` command parsing and output formatting |
 | `src/cli/init-cli.ts` | `ast-facts` cycle in `kb init` / `kb scan` |
-| `src/tools/code-graph-indexer.ts` | `TsMorphIndexer` — TS/JS AST indexing via ts-morph |
-| `src/tools/tree-sitter-indexer.ts` | `TreeSitterIndexer` — multi-language AST indexing via web-tree-sitter |
+| `src/tools/tree-sitter-indexer.ts` | `TreeSitterIndexer` — single-platform AST indexing for every language via web-tree-sitter |
 | `src/tools/code-graph-store.ts` | Read-only queries over `facts`/`fact_edges` including `expandWithCodeNeighbors` |
 
 ## Related docs

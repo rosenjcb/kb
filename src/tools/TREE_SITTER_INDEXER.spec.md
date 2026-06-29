@@ -27,7 +27,7 @@ See companion doc for full vocabulary where applicable.
 
 | ID | Requirement |
 |------|------------|
-| FR-1 | Tree-sitter indexer parses ASTs and indexes code symbols |
+| FR-1 | Tree-sitter indexer parses ASTs (every language) and indexes code symbols, import edges, constant values, and `extends`/`implements` structural edges |
 | FR-2 | AST source text reconstruction preserves exact source spans |
 
 ### QA Test Cases
@@ -59,8 +59,14 @@ See companion doc for full vocabulary where applicable.
 | TC-23 | FR-2 | falls back to fact_text when source_kind=import_code but source_text is NULL | pass |
 | TC-24 | FR-2 | always uses fact_text for import_doc and submit facts even if source_text were set | pass |
 | TC-25 | FR-2 | does not include content when includeContent=false, regardless of source_text | pass |
-| TC-26 | FR-2 | TsMorphIndexer stores full declaration text capped at 1500 chars | pass |
+| TC-26 | FR-2 | the indexer stores full declaration text capped at 1500 chars | pass |
 | TC-27 | FR-2 | source text within limit passes through unchanged | pass |
+| TC-28 | FR-1 | emits EXTENDS and IMPLEMENTS structural facts for classes (TS/JS) | pass |
+| TC-29 | FR-1 | includes the value in fact text for exported constants with literal initializers | pass |
+| TC-30 | FR-1 | extracts top-level non-exported constants with literal values, skipping complex ones | pass |
+| TC-31 | FR-1 | indexes only the files passed as candidateFiles | pass |
+| TC-32 | FR-1 | finds exported symbols matching query terms via FTS (CodeGraphStore) | pass |
+| TC-33 | FR-1 | getSummary returns symbol and file counts (CodeGraphStore) | pass |
 
 ### Related docs
 
