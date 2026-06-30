@@ -107,7 +107,7 @@ Do not hardcode question text in prompts or scripts — always load from the YAM
 
 ## Auto-scoring
 
-`--auto-score` needs `GEMINI_API_KEY` or `OPENAI_API_KEY`. Or `--scores-file` with eight `{ correctness, usefulness, specificity, evidence_handling, notes }` objects (axes 0–4 per `EVALUATION.md`).
+`--auto-score` needs `GEMINI_API_KEY` or `OPENAI_API_KEY`. The judge picks a descriptive **label** per axis (e.g. `mostly_correct`), each mapping to an ordinal `0–4` level. Or `--scores-file` with eight `{ correctness, usefulness, relevance, specificity, evidence_handling, notes }` objects — each axis a rubric label or an equivalent raw `0–4` level per `EVALUATION.md`.
 
 ## Artifact rule
 

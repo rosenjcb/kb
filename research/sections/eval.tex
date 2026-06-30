@@ -36,7 +36,7 @@ $\Delta S = S_K - S_N$ (Eq.~\ref{eq:delta-s}).
 Each suite covers eight questions spanning capabilities, architecture, installation,
 configuration, platform specifics, conventions, gotchas, and roadmap---topics that
 stress different retrieval paths through the fact graph.  Answers are scored on
-five axes (0--4):
+five axes:
 
 \begin{center}\small
 \begin{tabular}{@{}lp{4.2cm}@{}}
@@ -51,6 +51,22 @@ Evidence Handling & Constrained to evidence; acknowledges uncertainty \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+\medskip
+\noindent\textbf{Ordinal labels, not bare numbers.}  Rather than ask the LLM
+judge for ``an integer 0--4''---which invites guessing a point on an unanchored
+scale---each axis is scored by selecting one of five \emph{named ordinal labels}.
+Correctness, for example, ranges over
+\textit{correct}~(4), \textit{mostly\_correct}~(3), \textit{mixed}~(2),
+\textit{mostly\_wrong}~(1), and \textit{no\_answer}~(0); the other axes use
+analogous per-axis vocabularies (e.g.\ relevance:
+\textit{focused}/\textit{on\_topic}/\textit{padded}/\textit{off\_topic}/\textit{unrelated}).
+This reframes scoring as classification---``which description fits this answer?''---rather
+than magnitude estimation, which is markedly more reliable for LLM judges.  Each
+label maps deterministically to its ordinal level $s \in \{0,1,2,3,4\}$, so the
+adequacy utility (Eq.~\ref{eq:adequacy}) and every downstream metric operate on the
+same $0$--$4$ scale as before and historical runs remain comparable. Deterministic
+indicators (token usage, latency) are measured numerically and are never labeled.
 
 \subsection{Success Score and Headline Verdict ($\Delta S$)}
 \label{subsec:success}
