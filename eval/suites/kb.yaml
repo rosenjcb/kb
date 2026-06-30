@@ -53,13 +53,17 @@ answers:
     imports, and structural relationships, then record enough file state to skip unchanged code on
     future scans. The resulting code facts can also participate in graph edges and doc-fact anchoring.
 
-  - >
-    `kb query` is facts-first: it retrieves fact rows and graph context, then asks the model to answer
-    from that evidence. Retrieval combines lexical SQLite FTS, deterministic embedding/vector-style
-    scoring, graph neighbor expansion, and repo-aware ordering for multi-repo bases. Query expansion
-    can add related terms from graph and fact relationships before search. The output reports a
-    retrieval method such as hybrid facts-loop retrieval, the number of facts considered, provenance
-    ids, and the final answer.
+  - |
+    `kb query` is facts-first: it retrieves fact rows plus graph context, then asks the model to
+    answer from that evidence. Retrieval blends several signals:
+
+    - **Lexical** — SQLite FTS over the `facts` table.
+    - **Semantic** — deterministic embedding/vector-style scoring (a lexical proxy, not neural embeddings).
+    - **Graph** — neighbor expansion over `fact_edges`, with repo-aware ordering for multi-repo bases.
+    - **Query expansion** — related terms drawn from graph and fact relationships before search.
+
+    The output reports a retrieval method (such as **hybrid facts-loop retrieval**), the number of
+    facts considered, provenance ids, and the final synthesized answer.
 
   - >
     kb skills are authored as markdown skill documents in the repository. The build process copies
@@ -68,10 +72,14 @@ answers:
     agent environments such as Claude Code, Cursor, Codex, and Copilot, using content hashes so
     installs are repeatable and only update when skill content changes.
 
-  - >
-    `npm run eval` invokes the eval runner over a YAML suite. The runner resolves or clones the
-    target repository, ensures a base exists by running init when needed, runs scan, asks each suite
-    question with `kb query`, and saves per-question outputs plus an artifact. Auto-scoring can call a
-    judge model such as Gemini or OpenAI to score correctness, usefulness, specificity, and evidence
-    handling. The artifact records the run directory, base, suite, query results, scores, telemetry,
-    and trend information for later comparison.
+  - |
+    `npm run eval` invokes the eval runner over a YAML suite. The run proceeds in stages:
+
+    - **Resolve repo** — clone or locate the target repository named by the suite.
+    - **Ensure base** — run `kb init` when no base exists, then `kb scan` to refresh.
+    - **Ask questions** — pose each suite question with `kb query` and save per-question outputs.
+    - **Auto-score** — optionally call a judge model (such as Gemini or OpenAI) to grade
+      correctness, usefulness, relevance, specificity, and evidence handling.
+
+    The artifact records the run directory, base, suite, query results, scores, telemetry, and
+    trend information for later comparison.

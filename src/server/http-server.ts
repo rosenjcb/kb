@@ -4,8 +4,8 @@
  * Built on `node:http` (zero extra deps, fast cold start) since the endpoint set
  * is small. Serves:
  *  - `GET  /healthz`     liveness/readiness (unauthenticated)
- *  - `POST /v1/query`    request/response synthesized answer (Slack & apps)
- *  - `POST /v1/chat`     multi-turn chat, streamed over SSE
+ *  - `POST /v1/query`    one-shot request/response synthesized answer (apps wanting a single call)
+ *  - `POST /v1/chat`     multi-turn chat loop, streamed over SSE — also the path Slack uses (via `service.chat`)
  *  - `POST /v1/reindex`  on-demand incremental rescan
  *  - `POST /mcp`         MCP Streamable HTTP (when enabled)
  *
