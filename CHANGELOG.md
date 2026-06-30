@@ -1,5 +1,21 @@
 # kb
 
+## 0.16.0
+
+### Minor Changes
+
+- Index every language (including TypeScript/JavaScript) with a single tree-sitter
+  AST platform and retire the ts-morph indexer. ts-morph loaded the entire
+  TypeScript program — all source files plus the type-checker dependency graph —
+  into memory for one pass, which dominated `kb init`/`kb scan` memory and could
+  OOM larger repos. Tree-sitter parses one file at a time (a single WASM syntax
+  tree resident at once, freed after each file), so peak memory is bounded by the
+  largest file rather than the whole project graph — indexing this repo now peaks
+  well under 200 MB. The TS/JS path keeps full parity: constant values in fact
+  text, `defined_in` facts for top-level non-exported constants, and
+  `extends`/`implements` structural edges. Files left behind by the old ts-morph
+  extractor are re-indexed on the next scan.
+
 ## 0.15.1
 
 ### Patch Changes

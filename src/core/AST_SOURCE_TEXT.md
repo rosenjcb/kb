@@ -19,7 +19,7 @@ This document describes how compact, token-efficient code snippets are extracted
 
 ```mermaid
 flowchart TD
-  IDX["TsMorphIndexer / TreeSitterIndexer"] --> W["upsertCodeFileFact (code-fact-writer.ts)"]
+  IDX["TreeSitterIndexer"] --> W["upsertCodeFileFact (code-fact-writer.ts)"]
   W -- "passes sourceText to upsertFact" --> ST["facts.source_text<br/>(actual code snippet)"]
   ST --> R["FactsDocumentReader.toResult"]
   R -- "import_code AND source_text IS NOT NULL" --> C1["content = source_text<br/>(sent to LLM)"]
@@ -29,18 +29,6 @@ flowchart TD
 ---
 
 ## Index time: capturing source text
-
-### TsMorphIndexer (`code-graph-indexer.ts`)
-
-For every exported declaration, ts-morph gives the exact source text via `decl.getText()`. This is passed directly to `upsertCodeFileFact`:
-
-```typescript
-const rawText = decl.getText()
-const sourceText = rawText.length > 1500 ? `${rawText.slice(0, 1497)}…` : rawText
-upsertCodeFileFact(indexer, sourceRef, factText, triplet, confidence, sourceText)
-```
-
-`decl.getText()` returns the full declaration including the body. For a 200-line class this would be large, so it is **capped at 1497 characters** (plus a `…` marker).
 
 ### TreeSitterIndexer (`tree-sitter-indexer.ts`)
 
@@ -109,4 +97,4 @@ A typical `import_code` fact text is ~50 chars (`"SqliteKbIndexer is a Class exp
 
 ## Re-indexing existing bases
 
-After upgrading, run `kb scan` to re-index all source files. The tree-sitter and ts-morph indexers will write `props_json.source_text` on every symbol, and `promoteAstToFactsTable` will populate `facts.source_text` on the next scan cycle. There is no data migration needed for facts already in the store — they will be updated on the next `kb scan` because `upsertFact` matches by `normalized_text` and overwrites `source_text`.
+After upgrading, run `kb scan` to re-index all source files. The tree-sitter indexer will write `props_json.source_text` on every symbol, and `promoteAstToFactsTable` will populate `facts.source_text` on the next scan cycle. There is no data migration needed for facts already in the store — they will be updated on the next `kb scan` because `upsertFact` matches by `normalized_text` and overwrites `source_text`.

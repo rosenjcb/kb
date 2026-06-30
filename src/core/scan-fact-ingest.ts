@@ -63,7 +63,11 @@ interface ScopeCandidate {
   weights: Map<string, number>
 }
 
-function buildScopeCandidate(row: { subject: string; object: string; fact_text: string }): ScopeCandidate {
+function buildScopeCandidate(row: {
+  subject: string
+  object: string
+  fact_text: string
+}): ScopeCandidate {
   const weights = new Map<string, number>()
   const add = (text: string, w: number) => {
     for (const tok of scopeTokens(text)) {
@@ -105,7 +109,7 @@ function scoreSegmentInScope(segment: string, candidates: ScopeCandidate[]): Sco
  * Resolve an OKF `resource` (e.g. `./src/foo.ts` or `./src/core`) to the exported-symbol code
  * facts of that file/dir in the same repo, as scorable candidates. Returns null when it does not
  * resolve to known code (caller then falls back to the global nearest-symbol match). Code facts
- * use the `ast:<relPath>@<symbol>` source_ref convention (`code-graph-indexer.ts`).
+ * use the `ast:<relPath>@<symbol>` source_ref convention (`tree-sitter-indexer.ts`).
  */
 function resolveResourceScope(
   indexer: SqliteKbIndexer,
@@ -128,7 +132,9 @@ function resolveResourceScope(
     for (const prefix of [`ast:${p}@`, `ast:${p}/`]) {
       const rows = indexer
         .listActiveFactsBySourceRefPrefix(prefix)
-        .filter(f => f.predicate === 'exported_from' && f.tombstoned_at === null && sameRepo(f.git_repo))
+        .filter(
+          f => f.predicate === 'exported_from' && f.tombstoned_at === null && sameRepo(f.git_repo)
+        )
       if (rows.length > 0) return rows.map(buildScopeCandidate)
     }
   }

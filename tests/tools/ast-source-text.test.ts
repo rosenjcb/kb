@@ -209,7 +209,7 @@ describe('FactsDocumentReader — source_text served for import_code', () => {
 // getDeclNode walk-up logic (unit test via side-effect on spans)
 // ---------------------------------------------------------------------------
 describe('tree-sitter getDeclNode — source text is full declaration, not just name', () => {
-  it('[TC-26] TsMorphIndexer stores full declaration text capped at 1500 chars', async () => {
+  it('[TC-26] the indexer stores full declaration text capped at 1500 chars', async () => {
     // This is a logic invariant test: verify the cap produces the right suffix
     const longText = 'x'.repeat(2000)
     const expected = `${'x'.repeat(1497)}…`

@@ -56,7 +56,7 @@ read-inputs → code-index → document-facts → import-docs → write
 | Cycle | What happens |
 |---|---|
 | `read-inputs` | Collect markdown sources from each tracked repo clone |
-| `code-index` | Deterministic AST indexing into `facts`/`fact_edges` (ts-morph + tree-sitter) |
+| `code-index` | Deterministic AST indexing into `facts`/`fact_edges` (tree-sitter, all languages) |
 | `document-facts` | Sentence-level facts from discovered markdown |
 | `import-docs` | Verbatim original docs into SQLite |
 | `write` | Persist docs; on scan, claim planner/mutations |
@@ -67,7 +67,7 @@ read-inputs → code-index → document-facts → import-docs → write
 
 ## AST source coverage
 
-Code facts are **AST-only**. Extensions in `TREE_SITTER_AST_EXTENSIONS` (from `tree-sitter-indexer.ts`) plus TS/JS via ts-morph are indexed during `code-index`. Everything else is text-only or ignored.
+Code facts are **AST-only**. Extensions in `TREE_SITTER_AST_EXTENSIONS` (from `tree-sitter-indexer.ts`) — TS/JS included — are indexed by tree-sitter during `code-index`. Everything else is text-only or ignored.
 
 **Previously LLM-fallback (removed):** Swift (`.swift`), Kotlin (`.kt`, `.kts`) — see [`../core/INIT.md`](../core/INIT.md) §Removed LLM code-facts fallback.
 

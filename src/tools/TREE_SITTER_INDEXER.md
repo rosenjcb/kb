@@ -47,7 +47,7 @@ Extensions in `TREE_SITTER_TEXT_EXTENSIONS` but not `EXT_MAP` get a **file node 
 
 ## Integration
 
-- **Init:** `code-index` cycle in `init-cli.ts` runs ts-morph first (when `tsconfig.json` exists), then tree-sitter over indexable paths.
+- **Init:** `code-index` cycle in `init-cli.ts` runs tree-sitter over every indexable path — it is the sole code indexer for all languages (TS/JS included).
 - **Incremental:** per-file content hash stored in the indexer — unchanged files increment `skipped`.
 - **Facts:** `ast-promote.ts` reads `props_json.source_text` on symbol nodes → `facts.source_text` (see [`../core/AST_SOURCE_TEXT.md`](../core/AST_SOURCE_TEXT.md)).
 
