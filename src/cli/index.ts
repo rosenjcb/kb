@@ -1057,7 +1057,9 @@ export async function runMainWithOutput(
         const enrichStarted = Date.now()
         // Stream the model's reasoning as a transient "loading" line while it synthesizes
         // the answer; it clears as soon as the answer is ready.
-        const onReasoning = createReasoningProgressSink(printer)
+        // Stream reasoning only in interactive terminals — in eval/CI, thinking tokens
+        // compete with visible output under Gemini's shared maxOutputTokens budget.
+        const onReasoning = process.stderr.isTTY ? createReasoningProgressSink(printer) : undefined
         enriched = await enrichReadDocumentsAnswerWithLLM(
           parsed,
           aligned,

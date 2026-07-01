@@ -39,8 +39,11 @@ export interface ReadDocumentsHumanOutputOptions {
 }
 
 const INTENT_COMMANDS = new Set(['query'])
-/** Visible answer output budget for kb query synthesis (reasoning stream is separate UX). */
-const INTENT_LLM_MAX_OUTPUT_TOKENS = 8192
+/** Visible answer output budget for kb query synthesis. Override via KB_QUERY_MAX_OUTPUT_TOKENS. */
+const INTENT_LLM_MAX_OUTPUT_TOKENS = (() => {
+  const n = Number(process.env.KB_QUERY_MAX_OUTPUT_TOKENS)
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 32_768
+})()
 
 export function isIntentCommand(command: string): boolean {
   return INTENT_COMMANDS.has(command)
@@ -557,7 +560,11 @@ function findEvidenceLine(
 
 function answerNeedsScaffoldRecovery(question: string, answer: string): boolean {
   if (!isBuildOrConfigQuestion(question)) return false
-  const normalized = answer.toLowerCase()
+  const trimmed = answer.trim()
+  // Structured synthesis uses headings/bullets — do not clobber a substantive answer.
+  if (trimmed.length >= 400) return false
+  if (/^#{1,3}\s/m.test(trimmed) || /^\s*[-*]\s+\S/m.test(trimmed)) return false
+  const normalized = trimmed.toLowerCase()
   const requiredSections = [
     'prerequisites',
     'commands',

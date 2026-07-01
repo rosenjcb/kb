@@ -79,7 +79,7 @@ export function listSuiteIds() {
 }
 
 /**
- * Normalize a raw YAML suite object for eval-run.mjs (strict 8-question validation).
+ * Normalize a raw YAML suite object for eval-run.mjs.
  * @returns {{ id, questions, answers, rubricPhrase, sourceFile, repoUrl }}
  */
 export function normalizeSuiteDoc(raw, sourceFile) {
@@ -87,8 +87,8 @@ export function normalizeSuiteDoc(raw, sourceFile) {
     throw new Error(`Invalid suite YAML (not an object): ${sourceFile}`)
   }
   const qs = raw.questions
-  if (!Array.isArray(qs) || qs.length !== 8 || !qs.every(q => typeof q === 'string' && q.trim())) {
-    throw new Error(`${sourceFile}: require questions: as exactly 8 non-empty strings`)
+  if (!Array.isArray(qs) || qs.length === 0 || !qs.every(q => typeof q === 'string' && q.trim())) {
+    throw new Error(`${sourceFile}: require questions: as a non-empty array of non-empty strings`)
   }
   const rubric = raw.rubric_focus
   if (typeof rubric !== 'string' || !rubric.trim()) {
@@ -1162,7 +1162,10 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
     const ctrlTel = _runTelemetry(currentArtifact, 'control')
     if (kbTel.weightedTokens != null || ctrlTel.weightedTokens != null) {
       console.log('')
-      console.log(' TELEMETRY (8 questions)')
+      const questionCount = currentArtifact?.query_evaluation?.length
+      console.log(
+        ` TELEMETRY (${questionCount != null ? `${questionCount} questions` : 'questions'})`
+      )
       console.log('            tokens   time')
       console.log(
         ` K (query) ${formatCompactTokens(kbTel.weightedTokens).padStart(6)}  ${formatDurationMs(kbTel.durationMs).padStart(5)}`

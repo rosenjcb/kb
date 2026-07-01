@@ -357,6 +357,82 @@ export async function callOpenAIJudgeJson({ apiKey, model, systemInstruction, us
 // Auto-score a workdir of q1.json…qN.json (control or KB)
 // ---------------------------------------------------------------------------
 
+/** Max questions per judge call — larger batches truncate JSON when notes are verbose. */
+export const SCORE_BATCH_SIZE = 8
+
+/**
+ * Score a contiguous slice of questions from `workdir/q{n}.json`.
+ * @returns {Promise<object[]>} normalized score rows in batch order
+ */
+async function scoreQuestionBatch({
+  workdir,
+  questions,
+  answers,
+  startIndex,
+  rubricPhrase,
+  geminiKey,
+  openaiKey,
+  modelUsed,
+}) {
+  const count = questions.length
+  const hasRef = Array.isArray(answers) && answers.length === count
+  const RUBRIC = buildRubric(rubricPhrase, hasRef)
+  const blocks = questions.map((q, i) => {
+    const qNum = startIndex + i + 1
+    const parsed = readQueryResultFile(path.join(workdir, `q${qNum}.json`))
+    const ans = parsed.answer || ''
+    const prov = parsed.provenance
+    const ret = parsed.retrieval
+    const refSection = hasRef ? `\nReference answer:\n${clipText(answers[i], 3000)}\n` : ''
+    return `### Question ${qNum}\n${q}\n\nRetrieval (summary): ${clipText(JSON.stringify(ret), 2000)}\nProvenance ids: ${JSON.stringify(prov)}\n${refSection}\nAnswer:\n${ans}\n`
+  })
+
+  const axisSchemaLines = RUBRIC_AXES.map(
+    axis => `  - "${axis.key}": one of ${JSON.stringify(allowedLabelList(axis.key))}`
+  ).join('\n')
+  const schemaHint = `Return a single JSON object with exactly one key "scores" whose value is an array of exactly ${count} objects in question order (index 0 = question ${startIndex + 1}). Each object must have these keys, each set to one of the allowed LABEL strings (not a number):\n${axisSchemaLines}\n  - "notes": one short sentence rationale (max 30 words)\nUse the exact label strings shown above. No markdown fences.`
+
+  const systemInstruction = `${RUBRIC}\n\n${schemaHint}`
+  const userText = `Score these ${count} question/answer pairs.\n\n${blocks.join('\n---\n')}`
+
+  const rawJsonText = geminiKey
+    ? await callGeminiJudgeJson({
+        apiKey: geminiKey,
+        model: modelUsed,
+        systemInstruction,
+        userText,
+      })
+    : await callOpenAIJudgeJson({
+        apiKey: openaiKey,
+        model: modelUsed,
+        systemInstruction,
+        userText,
+      })
+
+  let obj = parseJsonObjectFromLLM(rawJsonText)
+  if (Array.isArray(obj)) obj = { scores: obj }
+  const scores = obj.scores
+  if (!Array.isArray(scores) || scores.length !== count) {
+    throw new Error(
+      `[eval] Auto-score: expected { "scores": [ ... ${count} items ] } for questions ${startIndex + 1}–${startIndex + count}, got keys=${Object.keys(obj).join(',')}`
+    )
+  }
+  return scores.map((row, idx) => {
+    const usefulness = scoreFromLabel('usefulness', row.usefulness)
+    return {
+      correctness: scoreFromLabel('correctness', row.correctness),
+      usefulness,
+      relevance: row.relevance != null ? scoreFromLabel('relevance', row.relevance) : usefulness,
+      specificity: scoreFromLabel('specificity', row.specificity),
+      evidence_handling: scoreFromLabel('evidence_handling', row.evidence_handling),
+      notes:
+        typeof row.notes === 'string' && row.notes.trim()
+          ? row.notes.trim()
+          : `Auto-score question ${startIndex + idx + 1} (${geminiKey ? 'gemini' : 'openai'})`,
+    }
+  })
+}
+
 /**
  * Score `count` question/answer pairs from `workdir/q{n}.json`.
  * Works identically for control runs and KB runs because it reads via
@@ -374,23 +450,6 @@ export async function runAutoScoreFile({
 }) {
   const count = questions.length
   const hasRef = Array.isArray(answers) && answers.length === count
-  const RUBRIC = buildRubric(rubricPhrase, hasRef)
-  const blocks = questions.map((q, i) => {
-    const parsed = readQueryResultFile(path.join(workdir, `q${i + 1}.json`))
-    const ans = parsed.answer || ''
-    const prov = parsed.provenance
-    const ret = parsed.retrieval
-    const refSection = hasRef ? `\nReference answer:\n${clipText(answers[i], 3000)}\n` : ''
-    return `### Question ${i + 1}\n${q}\n\nRetrieval (summary): ${clipText(JSON.stringify(ret), 2000)}\nProvenance ids: ${JSON.stringify(prov)}\n${refSection}\nAnswer:\n${clipText(ans, 6000)}\n`
-  })
-
-  const axisSchemaLines = RUBRIC_AXES.map(
-    axis => `  - "${axis.key}": one of ${JSON.stringify(allowedLabelList(axis.key))}`
-  ).join('\n')
-  const schemaHint = `Return a single JSON object with exactly one key "scores" whose value is an array of exactly ${count} objects in question order (index 0 = question 1). Each object must have these keys, each set to one of the allowed LABEL strings (not a number):\n${axisSchemaLines}\n  - "notes": short string rationale\nUse the exact label strings shown above. No markdown fences.`
-
-  const systemInstruction = `${RUBRIC}\n\n${schemaHint}`
-  const userText = `Score these ${count} question/answer pairs.\n\n${blocks.join('\n---\n')}`
 
   const geminiKey = process.env.GEMINI_API_KEY
   const openaiKey = process.env.OPENAI_API_KEY
@@ -410,46 +469,25 @@ export async function runAutoScoreFile({
     )
   }
 
-  /** Call the LLM once and return a normalized score array of length `count`. */
+  /** Score all questions (in batches) and return a normalized score array of length `count`. */
   async function callOnce() {
-    const rawJsonText = geminiKey
-      ? await callGeminiJudgeJson({
-          apiKey: geminiKey,
-          model: modelUsed,
-          systemInstruction,
-          userText,
-        })
-      : await callOpenAIJudgeJson({
-          apiKey: openaiKey,
-          model: modelUsed,
-          systemInstruction,
-          userText,
-        })
-
-    let obj = parseJsonObjectFromLLM(rawJsonText)
-    if (Array.isArray(obj)) obj = { scores: obj }
-    const scores = obj.scores
-    if (!Array.isArray(scores) || scores.length !== count) {
-      throw new Error(
-        `[eval] Auto-score: expected { "scores": [ ... ${count} items ] }, got keys=${Object.keys(obj).join(',')}`
-      )
+    const merged = []
+    for (let start = 0; start < count; start += SCORE_BATCH_SIZE) {
+      const batchQs = questions.slice(start, start + SCORE_BATCH_SIZE)
+      const batchAnswers = hasRef ? answers.slice(start, start + SCORE_BATCH_SIZE) : null
+      const batchScores = await scoreQuestionBatch({
+        workdir,
+        questions: batchQs,
+        answers: batchAnswers,
+        startIndex: start,
+        rubricPhrase,
+        geminiKey,
+        openaiKey,
+        modelUsed,
+      })
+      merged.push(...batchScores)
     }
-    return scores.map((row, idx) => {
-      const usefulness = scoreFromLabel('usefulness', row.usefulness)
-      return {
-        correctness: scoreFromLabel('correctness', row.correctness),
-        usefulness,
-        // Fall back to usefulness when a judge omits relevance, so old/partial responses
-        // degrade gracefully instead of scoring a hard 0 on the new axis.
-        relevance: row.relevance != null ? scoreFromLabel('relevance', row.relevance) : usefulness,
-        specificity: scoreFromLabel('specificity', row.specificity),
-        evidence_handling: scoreFromLabel('evidence_handling', row.evidence_handling),
-        notes:
-          typeof row.notes === 'string' && row.notes.trim()
-            ? row.notes.trim()
-            : `Auto-score question ${idx + 1} (${providerUsed})`,
-      }
-    })
+    return merged
   }
 
   const runs = Math.max(1, scoreRuns)

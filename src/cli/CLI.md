@@ -4,7 +4,7 @@ title: "CLI Layer"
 description: "Command-line entry, argument parsing, and orchestration wiring for kb."
 resource: ./src/cli
 tags: [cli, commands, entrypoint]
-timestamp: 2026-06-20T00:00:00Z
+timestamp: 2026-06-30T00:00:00Z
 ---
 
 # CLI Layer
@@ -85,6 +85,19 @@ Code facts are **AST-only**. Extensions in `TREE_SITTER_AST_EXTENSIONS` (from `t
 | **`kb chat`** | Multi-turn **`runChatSynthesis()`** — LLM may call `query_kb` for follow-up retrievals before answering. | Interactive TUI / REPL |
 
 Both share retrieval; only the answer phase differs. See [`../core/QUERY_INTERNALS.md`](../core/QUERY_INTERNALS.md) and [`../core/CHAT.md`](../core/CHAT.md).
+
+### Query synthesis output budget
+
+`enrichReadDocumentsAnswerWithLLM()` (`intent-cli.ts`) calls the LLM with `maxTokens: INTENT_LLM_MAX_OUTPUT_TOKENS` — default **32768**, override via `KB_QUERY_MAX_OUTPUT_TOKENS`. Set `KB_INTENT_LLM_ANSWER=false` to skip synthesis entirely.
+
+**Reasoning stream:** `index.ts` passes `onReasoning` only when `stderr.isTTY`. Eval harvest, CI, and headless agents skip the thinking display so Gemini's shared `maxOutputTokens` budget is not consumed by `includeThoughts` tokens. Interactive TUI/terminal sessions still stream reasoning as a transient progress line.
+
+**Build/config scaffold recovery:** For build-or-config questions, a stub LLM answer (<3 legacy section keywords like `prerequisites`, `commands`) may be replaced by `buildBuildConfigScaffoldAnswer()` — deterministic evidence lines grouped under Prerequisites / Commands / Flags / Platform / Gotchas. Structured markdown answers (headings, bullets, or ≥400 chars) are **never** clobbered.
+
+**Invariants:**
+- `synthesisQuestion` (pre-graph-expansion user text) drives the synthesis prompt and scaffold checks — not the graph-expanded `payload.query`.
+- Non-TTY query paths must not enable `onReasoning` unless the provider separates thinking from visible output budget.
+- Eval-stored answers (`q*.json`) must reflect the full synthesized text — truncation is a provider/config bug, not an eval artifact step.
 
 ## Command reference helpers
 

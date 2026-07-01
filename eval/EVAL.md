@@ -4,7 +4,7 @@ title: "Eval Directory"
 description: "The MOEL evaluation framework — a quantitative harness proving KB-equipped agents explore less and spend fewer tokens."
 resource: ./eval
 tags: [eval, moel, harness]
-timestamp: 2026-06-20T00:00:00Z
+timestamp: 2026-06-30T00:00:00Z
 ---
 
 # Eval Directory
@@ -119,6 +119,28 @@ The query harvest pipeline's scorer (Gemini/OpenAI) is non-deterministic even at
 - Use `--score-runs 3` when running `eval-run.mjs` — scores the same answers three times and averages per question, reducing scorer noise by √3.
 - Query expansion and **`kb query` answer synthesis** both use `temperature=0` to minimize answer variation between runs.
 - **`kb query`** uses one-shot `enrichReadDocumentsAnswerWithLLM()` (no chat agent loop). **`kb chat`** uses multi-turn `runChatSynthesis()` with optional `query_kb` tool rounds.
+
+## Auto-scorer (`scripts/eval-score.mjs`)
+
+Single implementation shared by kb (K) and control (N) so rubric and judge are identical. Entry: `runAutoScoreFile({ workdir, questions, … })` — reads `workdir/q{n}.json` written by either runner (`readQueryResultFile` handles control JSON sentinel vs raw `kb query` text).
+
+```mermaid
+flowchart LR
+  Q["q1…qN.json"] --> B{"questions > 8?"}
+  B -->|no| J1["one judge call"]
+  B -->|yes| J2["batches of SCORE_BATCH_SIZE=8"]
+  J1 --> S["normalized scores[]"]
+  J2 --> S
+  S --> A["aggregate_scores + success_score"]
+```
+
+**Batching:** `SCORE_BATCH_SIZE = 8`. Larger suites (e.g. 12-question `kb.yaml`) score in multiple judge calls so the returned JSON array is not truncated mid-parse (which previously zeroed control rubrics). Batches are contiguous question slices in order.
+
+**Answer fidelity:** The judge receives each stored answer **in full** — no `clipText` on the answer body. Retrieval JSON summaries and optional reference answers are still clipped for prompt size only.
+
+**Label rubric:** `RUBRIC_AXES` defines allowed label strings per axis; `scoreFromLabel()` maps to ordinal 0–4. Judge `notes` capped at 30 words in the schema hint to keep batch JSON compact. `parseJsonObjectFromLLM()` accepts a top-level JSON array as well as `{ scores: [...] }` when the model omits the wrapper object.
+
+**Variable suite size:** `eval-shared.mjs` / `eval-run.mjs` accept any non-empty `questions[]` in suite YAML — no fixed question count.
 
 ## Invariants
 

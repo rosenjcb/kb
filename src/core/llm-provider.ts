@@ -733,10 +733,12 @@ export class GeminiProvider implements LLMProvider {
     }
 
     const initialBudget = params.maxTokens ?? 4096
-    let parsed = await this.generateContent(params, initialBudget)
-
-    if (!parsed.text && parsed.finishReason === 'MAX_TOKENS' && initialBudget < 128) {
-      parsed = await this.generateContent(params, Math.max(initialBudget * 2, 128))
+    let budget = initialBudget
+    let parsed = await this.generateContent(params, budget)
+    const outputCap = 65_536
+    for (let attempt = 0; attempt < 3 && parsed.finishReason === 'MAX_TOKENS' && budget < outputCap; attempt++) {
+      budget = Math.min(budget * 2, outputCap)
+      parsed = await this.generateContent(params, budget)
     }
 
     return {

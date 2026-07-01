@@ -241,13 +241,13 @@ Session lifecycle (automatic):
   Base is derived as eval-{suiteId} (e.g. eval-raylib, eval-kb).
   If the session has docs → reuse it (query-only run).
   If the session is empty / missing → kb init --git <snapshot-clone> first.
-  Every run: kb scan (pulls + re-indexes the base's repos), then 8× kb query.
+  Every run: kb scan (pulls + re-indexes the base's repos), then N× kb query (N = suite size).
   Ends with a trends summary across prior runs for the same suite.
 
 Suite / questions:
   --suite VENDOR          Load eval/suites/VENDOR.yaml  (raylib, kb, fzf, generic)
   --suite-yaml PATH       Load pack from arbitrary YAML path
-  --questions-file F.json Override: JSON array of exactly 8 strings
+  --questions-file F.json Override: JSON array of non-empty question strings
 
 Session:
   --base NAME             Override derived session name (default: eval-{suiteId})
@@ -263,7 +263,7 @@ Output:
   --out PATH              Override artifact JSON path
   --manual-score          Skip LLM auto-scoring (default: auto-score is ON)
   --score-runs N          Call scorer N times and average (reduces noise; default 3)
-  --scores-file PATH      Load manual rubric scores instead (JSON array of 8)
+  --scores-file PATH      Load manual rubric scores instead (JSON array, one per question)
   --auto-score-file PATH  Write auto-scores to a specific path
 
 Control baseline (runs side-by-side with kb into ONE artifact, scored by the same rubric):
@@ -441,8 +441,8 @@ function resolveEvalPaths(args) {
 function resolveQuestions(args, suiteConfig) {
   if (args.questionsFile) {
     const qs = JSON.parse(fs.readFileSync(path.resolve(args.questionsFile), 'utf8'))
-    if (!Array.isArray(qs) || qs.length !== 8 || !qs.every(x => typeof x === 'string')) {
-      throw new Error('--questions-file must be a JSON array of exactly 8 strings')
+    if (!Array.isArray(qs) || qs.length === 0 || !qs.every(x => typeof x === 'string' && x.trim())) {
+      throw new Error('--questions-file must be a JSON array of non-empty strings')
     }
     return qs
   }
@@ -674,7 +674,7 @@ async function main() {
     let q = 1
     let queryTotalMs = 0
     for (const question of questions) {
-      console.error(`[eval] ${suiteLabel} · K query ${q}/8`)
+      console.error(`[eval] ${suiteLabel} · K query ${q}/${questions.length}`)
       const escaped = question.replace(/"/g, '\\"')
       const label = `query_${q}`
       const out = timed(label, runTiming, () => kb(targetCwd, `query "${escaped}" --base ${base}`))
@@ -713,8 +713,8 @@ async function main() {
 
   if (args.scoresFile) {
     manualScores = JSON.parse(fs.readFileSync(path.resolve(args.scoresFile), 'utf8'))
-    if (!Array.isArray(manualScores) || manualScores.length !== 8) {
-      console.error('--scores-file must be a JSON array of length 8')
+    if (!Array.isArray(manualScores) || manualScores.length !== questions.length) {
+      console.error(`--scores-file must be a JSON array of length ${questions.length}`)
       process.exit(1)
     }
   } else if (args.autoScore) {
@@ -742,7 +742,7 @@ async function main() {
   }
 
   const query_evaluation = []
-  for (let n = 1; n <= 8; n++) {
+  for (let n = 1; n <= questions.length; n++) {
     const parsed = readQueryResult(path.join(workdir, `q${n}.json`))
     const { answer, result_count, provenance: prov, retrieval } = parsed
     const coverageAudit = buildCoverageAudit(questions[n - 1], answer, retrieval.detail)
@@ -797,7 +797,7 @@ async function main() {
   const curationSummary = summarizeCuration(query_evaluation.map(q => q.retrieval?.detail))
 
   // KB-side query telemetry (tokens + latency) for the composite success score.
-  const kbQueryTelemetry = readKbQueryTelemetry(base, 8)
+  const kbQueryTelemetry = readKbQueryTelemetry(base, questions.length)
   const kbSuccess = computeSuccessScore({
     meanCorrectness: mC,
     meanUsefulness: mU,
@@ -894,7 +894,7 @@ async function main() {
         `kb docs list --base ${base} --output json`,
         `kb graph --base ${base}`,
         `kb ${logsCmd(base)}`,
-        `kb query "<8 questions>" --base ${base} --output json`,
+        `kb query "<${questions.length} questions>" --base ${base} --output json`,
       ].filter(Boolean),
       workdir,
       run_dir: runDir,

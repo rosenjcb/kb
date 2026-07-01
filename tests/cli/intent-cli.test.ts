@@ -373,6 +373,53 @@ describe('intent-cli execution and enrichment', () => {
     expect(answer).toContain('Known Gotchas')
   })
 
+  it('[TC-321] keeps structured build/config LLM answer instead of scaffold', async () => {
+    const llmText = `## Prerequisites
+Install node and cmake before building.
+
+## Commands
+Run \`pnpm install\` then \`pnpm build\`.
+
+## Flags/Options
+Use \`-DFOO=ON\` for optional features.
+
+## Platform Notes
+On Linux install deps via apt.
+
+## Known Gotchas
+Static linking can fail on some distros.`
+    const llm: LLMProvider = {
+      name: 'test',
+      model: 'stub',
+      call: vi.fn(async () => ({
+        text: llmText,
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    } as unknown as LLMProvider
+
+    const parsed = parseIntentCommand(['query', 'build config flags for linux'])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      parsed,
+      {
+        status: 'accepted',
+        recommendedAction: 'read_facts',
+        data: {
+          retrieval: { method: 'hybrid' },
+          results: [
+            {
+              metadata: { id: 'build-doc', title: 'Build' },
+              content: '# Build\n\nSee package.json scripts and cmake flags.',
+            },
+          ],
+        },
+      },
+      llm
+    )
+    const answer = (enriched.data as { answer?: string }).answer ?? ''
+    expect(answer).toBe(llmText)
+    expect(answer).not.toContain('Build/config evidence scaffold:')
+  })
+
   it('[TC-319] keeps LLM answer when synthesisQuestion is pre-expansion text (not graph-expanded query)', async () => {
     const llmText =
       'Skills are markdown files under skills/<name>/SKILL.md, copied at build time, and installed by skill-installer.ts.'
@@ -450,7 +497,7 @@ describe('intent-cli execution and enrichment', () => {
     )
 
     expect(call).toHaveBeenCalledWith(
-      expect.objectContaining({ maxTokens: 8192, onReasoning })
+      expect.objectContaining({ maxTokens: 32_768, onReasoning })
     )
   })
 })
