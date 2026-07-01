@@ -13,7 +13,8 @@ documentation.  Latest harvest results in \S\ref{subsec:results}
 include both raylib and the KB self-check suite.
 
 \textbf{KB self-check.}  Suite \texttt{kb} evaluates KB against its
-own codebase---eight architecture and workflow questions.  This smoke test
+own codebase---twelve architecture, workflow, and adversarial questions (including
+fact-curator and out-of-scope probes).  This smoke test
 stress-tests retrieval grounding on a repo whose structure the authors know well;
 it is no longer the only reported target.
 
@@ -22,19 +23,22 @@ it is no longer the only reported target.
 Each evaluation executes, in order:
 (1)~clone and index the suite repository (\texttt{kb init} or reuse session,
 \texttt{kb scan});
-(2)~eight \texttt{kb query} calls (condition \textbf{K})---one-shot synthesis
+(2)~$N_{\text{q}}$ \texttt{kb query} calls (condition \textbf{K})---one-shot synthesis
 over the retrieved fact pool (\S\ref{subsec:synthesis});
-(3)~the same eight questions handed to a real coding agent with no KB
+(3)~the same questions handed to a real coding agent with no KB
 (condition \textbf{N});
 (4)~LLM scoring ($\times 3$ averaged) on five rubric axes for both sides.
+The \texttt{kb} self-check suite uses $N_{\text{q}} = 12$; the raylib benchmark uses
+$N_{\text{q}} = 8$.
 
 Both sides are scored under identical conditions; the headline grade is
 $\Delta S = S_K - S_N$ (Eq.~\ref{eq:delta-s}).
 
 \subsection{Scoring Rubric}
 
-Each suite covers eight questions spanning capabilities, architecture, installation,
-configuration, platform specifics, conventions, gotchas, and roadmap---topics that
+Each suite covers questions spanning capabilities, architecture, installation,
+configuration, platform specifics, conventions, gotchas, and (for \texttt{kb})
+adversarial or out-of-scope probes---topics that
 stress different retrieval paths through the fact graph.  Answers are scored on
 five axes:
 
@@ -116,7 +120,7 @@ E_{\text{speed}} &= 1 - \min\!\Bigl(\tfrac{\tau_w}{B_\tau},\,1\Bigr)
 
 \noindent where $\bar{c}, \bar{u}, \bar{r}$ are mean correctness, usefulness, and relevance ($0$--$4$),
 so an answer that drags in unrelated facts is penalized even when correct and useful,
-$T$ is the weighted token total for the eight-question side
+$T$ is the weighted token total for the question side
 ($\text{input} + \text{output} + 0.1 \times \text{cache\_read}$ for control agents;
 kb query uses undifferentiated input$+$output), and $\tau_w$ is
 wall-clock latency.  Budgets $B_T = 10^6$ tokens and $B_\tau = 6\times 10^5$\,ms
@@ -164,12 +168,24 @@ Table~\ref{tab:harvest-results} reports the latest paired harvest results
 
 \input{tables/harvest-results}
 
-\noindent\textbf{Interpretation.}  On kb self-check,
+\noindent\textbf{Interpretation.}  On kb self-check (12 questions),
 $\Delta S = \KbSelfCheckDeltaS{}$ with $S_K = \KbSelfCheckKS{}$ and $S_N = \KbSelfCheckNS{}$;
-K completes the eight-question side in \KbSelfCheckKDurationSec{}s using \KbSelfCheckKTokens{}
+K completes the query side in \KbSelfCheckKDurationSec{}s using \KbSelfCheckKTokens{}
 weighted tokens vs.\ N at \KbSelfCheckNDurationSec{}s and \KbSelfCheckNTokens{} tokens
-(mean relevance on K: \KbSelfCheckKRelevance{}).
-On raylib, $\Delta S = \RaylibDeltaS{}$ with $S_K = \RaylibKS{}$ and
+(mean relevance on K: \KbSelfCheckKRelevance{}; pass rate on three quality axes:
+\KbSelfCheckKPass{}).
+Compared to a same-day baseline on \texttt{main} before structured-synthesis changes
+($\Delta S = +0.065$, $S_K = 0.818$), the branch run trades $\approx$2$\times$ query
+latency for a larger control margin ($\Delta S$ up $+0.059$) and $\approx$18\% fewer
+K-side tokens, while $Q_{\text{adeq}}$ dips slightly (0.912 vs.\ 0.940).
+
+On raylib (8 questions), $\Delta S = \RaylibDeltaS{}$ with $S_K = \RaylibKS{}$ and
 $S_N = \RaylibNS{}$; K is faster (\RaylibKDurationSec{}s vs.\ \RaylibNDurationSec{}s) while N
 leads on adequacy ($Q_{\text{adeq}}$: \RaylibKQadeq{} vs.\ \RaylibNQadeq{}).
-Mean relevance on K is \RaylibKRelevance{} (N: \RaylibNRelevance{}).
+Mean relevance on K is \RaylibKRelevance{} (N: \RaylibNRelevance{}); pass rate
+\RaylibKPass{} (7/8).
+A paired before/after on the same branch moved raylib from on-par ($\Delta S = +0.005$,
+pass 5/8) to clearly ahead ($\Delta S = +0.090$, pass 7/8), with only modest
+latency increase on K ($\approx$11\%).
+Both suites show KB ahead of the real-agent control on $\Delta S$ while remaining
+substantially cheaper in weighted tokens than N.
