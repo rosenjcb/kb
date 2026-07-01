@@ -25,7 +25,7 @@ import {
   computeSuccessScore,
   computeWeightedTokenTotal,
 } from './eval-shared.mjs'
-import { runAutoScoreFile } from './eval-score.mjs'
+import { runAutoScoreFile, scoreFromLabel } from './eval-score.mjs'
 
 export const DEFAULT_CONTROL_PROMPT =
   'You are answering a question about the repository in the current working directory. ' +
@@ -336,13 +336,16 @@ export async function runControlPass({
 
   const query_evaluation = perQuestion.map((qf, idx) => {
     const ms = scores?.[idx]
+    // ms axes may be labels or raw 0–4 levels (scoreFromLabel handles both, and
+    // is idempotent on the numbers runAutoScoreFile already produced).
+    const usefulness = ms ? scoreFromLabel('usefulness', ms.usefulness) : 0
     const s = ms
       ? {
-          correctness: Number(ms.correctness),
-          usefulness: Number(ms.usefulness),
-          relevance: Number(ms.relevance ?? ms.usefulness),
-          specificity: Number(ms.specificity),
-          evidence_handling: Number(ms.evidence_handling),
+          correctness: scoreFromLabel('correctness', ms.correctness),
+          usefulness,
+          relevance: ms.relevance != null ? scoreFromLabel('relevance', ms.relevance) : usefulness,
+          specificity: scoreFromLabel('specificity', ms.specificity),
+          evidence_handling: scoreFromLabel('evidence_handling', ms.evidence_handling),
         }
       : { correctness: 0, usefulness: 0, relevance: 0, specificity: 0, evidence_handling: 0 }
     return {

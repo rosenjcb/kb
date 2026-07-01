@@ -6,11 +6,19 @@
  * judge. Keeping one copy is what makes control-vs-KB a fair comparison.
  *
  * Public API:
+ *   - RUBRIC_AXES                 // label-based axis definitions (single source of truth)
  *   - buildRubric(phrase, hasReferenceAnswers)
  *   - parseJsonObjectFromLLM(text)
+ *   - scoreFromLabel(axisKey, value)   // label string -> ordinal 0-4 (numeric fallback)
  *   - clampScore0to4(x)
  *   - readQueryResultFile(file)   // handles control JSON + kb-query text
  *   - runAutoScoreFile({ workdir, questions, answers, outScoresPath, rubricPhrase, scoreRuns })
+ *
+ * Scoring is label-based: the judge picks a named label per axis (not a bare
+ * number), which removes the "guess a number 0-4" failure mode. Each label maps
+ * to an ordinal 0-4 level under the hood, so every downstream metric (adequacy
+ * utility φ with τ=3, pass-rate ≥3 gates, success_score, the paper's equations)
+ * is unchanged and historical artifacts stay comparable.
  */
 
 import fs from 'node:fs'
@@ -54,8 +62,108 @@ export function readQueryResultFile(file) {
 }
 
 // ---------------------------------------------------------------------------
-// Rubric (identical wording for control + KB)
+// Rubric: label-based axes (identical wording for control + KB)
+//
+// Why labels, not bare numbers: asking an LLM judge for "an integer 0–4" makes
+// it guess a point on an unanchored scale. Naming each level forces it to pick
+// the *described category* that fits the answer — a classification, not a
+// magnitude estimate. Each label still carries an ordinal `score` (0–4) so all
+// downstream math (φ adequacy utility, τ=3 pass gates, success_score) and the
+// research paper's equations are unchanged. Deterministic axes (tokens, latency)
+// stay numeric — they are measured, not judged.
+//
+// `RUBRIC_AXES` is the single source of truth: the judge prompt, the JSON schema
+// hint, and the label→score maps are all derived from it.
 // ---------------------------------------------------------------------------
+
+/**
+ * Ordered worst→best is avoided on purpose: labels are listed best→worst (score
+ * 4→0) to match the prose the judges have always seen. `score` is the ordinal
+ * level the label maps to.
+ * @type {{ key: string, title: string, prompt: string, labels: { label: string, score: number, desc: string }[] }[]}
+ */
+export const RUBRIC_AXES = [
+  {
+    key: 'correctness',
+    title: 'Correctness',
+    prompt: 'Is the answer factually right and grounded in the supplied answer/evidence?',
+    labels: [
+      { label: 'correct', score: 4, desc: 'factually correct and grounded in the supplied answer/evidence' },
+      { label: 'mostly_correct', score: 3, desc: 'mostly correct; only minor omissions' },
+      { label: 'mixed', score: 2, desc: 'mixed; meaningful inaccuracies or unsupported inference' },
+      { label: 'mostly_wrong', score: 1, desc: 'mostly wrong or misleading' },
+      { label: 'no_answer', score: 0, desc: 'no useful answer' },
+    ],
+  },
+  {
+    key: 'usefulness',
+    title: 'Usefulness',
+    prompt:
+      'Does the answer help whoever asked (developer, subject-matter expert, customer support, or end user of the product) act or understand the system, and is it presented so they can act on it?',
+    labels: [
+      {
+        label: 'actionable',
+        score: 4,
+        desc: 'directly useful to its asker and well-organized for the question — multi-part questions are broken out with structure or ordering, key terms and concrete specifics are surfaced, not an undifferentiated wall of text',
+      },
+      { label: 'helpful', score: 3, desc: 'helpful but incomplete or poorly organized' },
+      { label: 'needs_followup', score: 2, desc: 'some signal, but requires substantial follow-up' },
+      { label: 'barely_helpful', score: 1, desc: 'barely helpful' },
+      { label: 'not_helpful', score: 0, desc: 'not helpful' },
+    ],
+  },
+  {
+    key: 'relevance',
+    title: 'Relevance',
+    prompt:
+      'Does the answer stay on the question, free of unrelated facts or padding? Judge focus, not correctness — a true but unrelated fact LOWERS this score.',
+    labels: [
+      { label: 'focused', score: 4, desc: 'every claim bears on the question; nothing extraneous' },
+      { label: 'on_topic', score: 3, desc: 'mostly on-topic; minor tangents' },
+      { label: 'padded', score: 2, desc: 'noticeable unrelated material diluting the answer' },
+      { label: 'off_topic', score: 1, desc: 'dominated by off-topic facts' },
+      { label: 'unrelated', score: 0, desc: 'answer is essentially about something else' },
+    ],
+  },
+  {
+    key: 'specificity',
+    title: 'Specificity',
+    prompt: 'Does the answer use concrete project-specific detail rather than generic filler?',
+    labels: [
+      { label: 'concrete', score: 4, desc: 'concrete project-specific APIs, paths, build flags, or mechanisms' },
+      { label: 'some_detail', score: 3, desc: 'some concrete detail' },
+      { label: 'partly_generic', score: 2, desc: 'partly generic' },
+      { label: 'mostly_generic', score: 1, desc: 'mostly generic' },
+      { label: 'generic', score: 0, desc: 'purely generic or evasive' },
+    ],
+  },
+  {
+    key: 'evidence_handling',
+    title: 'Evidence handling',
+    prompt: 'Is the answer constrained to evidence and honest about gaps?',
+    labels: [
+      { label: 'well_grounded', score: 4, desc: 'clearly tied to evidence; acknowledges gaps' },
+      { label: 'grounded', score: 3, desc: 'reasonably grounded' },
+      { label: 'some_speculation', score: 2, desc: 'some speculation' },
+      { label: 'speculative', score: 1, desc: 'strong speculation or unsupported claims' },
+      { label: 'ungrounded', score: 0, desc: 'no evidence discipline' },
+    ],
+  },
+]
+
+/** axisKey -> { normalizedLabel: score } */
+const LABEL_TO_SCORE = Object.fromEntries(
+  RUBRIC_AXES.map(axis => [
+    axis.key,
+    Object.fromEntries(axis.labels.map(l => [l.label, l.score])),
+  ])
+)
+
+/** axisKey -> ["label (4)", "label (3)", …] for the schema hint. */
+function allowedLabelList(axisKey) {
+  const axis = RUBRIC_AXES.find(a => a.key === axisKey)
+  return axis ? axis.labels.map(l => l.label) : []
+}
 
 export function clampScore0to4(x) {
   const n = Math.round(Number(x))
@@ -63,17 +171,40 @@ export function clampScore0to4(x) {
   return Math.min(4, Math.max(0, n))
 }
 
+/**
+ * Resolve a judge's per-axis verdict to an ordinal score 0–4.
+ *
+ * Accepts the new label strings ("mostly_correct"), tolerates spacing/casing/
+ * hyphen variants, and degrades gracefully to the legacy numeric path so a judge
+ * (or an old artifact) that still emits a bare 0–4 keeps working.
+ *
+ * @param {string} axisKey one of RUBRIC_AXES[].key
+ * @param {string|number|null|undefined} value
+ * @returns {number} integer 0–4 (0 when unrecognized)
+ */
+export function scoreFromLabel(axisKey, value) {
+  if (typeof value === 'number') return clampScore0to4(value)
+  if (typeof value === 'string') {
+    const norm = value.trim().toLowerCase().replace(/[\s-]+/g, '_')
+    const map = LABEL_TO_SCORE[axisKey]
+    if (map && Object.hasOwn(map, norm)) return map[norm]
+    const n = Number(value)
+    if (Number.isFinite(n)) return clampScore0to4(n)
+  }
+  return 0
+}
+
 export function buildRubric(phrase, hasReferenceAnswers = false) {
   const referenceNote = hasReferenceAnswers
-    ? '\n\nA reference answer is provided for each question. Use it as a factual ground-truth to assess correctness — if the actual answer contradicts or omits key facts present in the reference, lower the Correctness score accordingly. The reference answer is not a style template; answers that cover the same facts differently are still correct.'
+    ? '\n\nA reference answer is provided for each question. Use it as a factual ground-truth to assess correctness — if the actual answer contradicts or omits key facts present in the reference, pick a lower Correctness label accordingly. The reference answer is not a style template; answers that cover the same facts differently are still correct.'
     : ''
-  return `You score answers for ${phrase}. Each axis must be an integer 0–4.
+  const axisLines = RUBRIC_AXES.map(axis => {
+    const choices = axis.labels.map(l => `"${l.label}" — ${l.desc}`).join('; ')
+    return `${axis.title} — ${axis.prompt}\n  Pick exactly one label: ${choices}.`
+  }).join('\n')
+  return `You score answers for ${phrase}. For each axis below, choose the single descriptive LABEL that best fits the answer. Do not output a number — output the label string, copied exactly. The labels are ordered best to worst.
 
-Correctness — 4: factually correct and grounded in the supplied answer/evidence; 3: mostly correct; 2: mixed or meaningful inaccuracies; 1: mostly wrong; 0: no useful answer.
-Usefulness — does the answer help whoever asked the question (a developer, a subject-matter expert, customer support, or an end user of the product), AND is it presented so they can act on it? 4: directly useful to its asker and well-organized for the question — a multi-part question is broken out with structure or ordering, key terms and concrete specifics (settings, fields, conditions, files/functions where relevant) are surfaced, and it is not an undifferentiated wall of text; 3: helpful but incomplete or poorly organized; 2: some signal, needs substantial follow-up; 1: barely helpful; 0: not helpful.
-Relevance — does the answer stay on the question, free of unrelated facts or padding? 4: every claim bears on the question, nothing extraneous; 3: mostly on-topic, minor tangents; 2: noticeable unrelated material diluting the answer; 1: dominated by off-topic facts; 0: answer is essentially about something else. Judge focus, not correctness — a true but unrelated fact LOWERS this score.
-Specificity — 4: concrete project-specific APIs, paths, build flags, or mechanisms; 3: some concrete detail; 2: partly generic; 1: mostly generic; 0: purely generic or evasive.
-Evidence handling — 4: clearly tied to evidence, acknowledges gaps; 3: reasonably grounded; 2: some speculation; 1: strong speculation or unsupported claims; 0: no evidence discipline.
+${axisLines}
 
 Penalize boilerplate-only answers, stub lines that are not real explanations, and answers that miss the core of the question even if retrieval metadata looks confident.${referenceNote}`
 }
@@ -241,7 +372,10 @@ export async function runAutoScoreFile({
     return `### Question ${i + 1}\n${q}\n\nRetrieval (summary): ${clipText(JSON.stringify(ret), 2000)}\nProvenance ids: ${JSON.stringify(prov)}\n${refSection}\nAnswer:\n${clipText(ans, 6000)}\n`
   })
 
-  const schemaHint = `Return a single JSON object with exactly one key "scores" whose value is an array of exactly ${count} objects in question order (index 0 = question 1). Each object must have: "correctness", "usefulness", "relevance", "specificity", "evidence_handling" (integers 0-4) and "notes" (short string rationale). No markdown fences.`
+  const axisSchemaLines = RUBRIC_AXES.map(
+    axis => `  - "${axis.key}": one of ${JSON.stringify(allowedLabelList(axis.key))}`
+  ).join('\n')
+  const schemaHint = `Return a single JSON object with exactly one key "scores" whose value is an array of exactly ${count} objects in question order (index 0 = question 1). Each object must have these keys, each set to one of the allowed LABEL strings (not a number):\n${axisSchemaLines}\n  - "notes": short string rationale\nUse the exact label strings shown above. No markdown fences.`
 
   const systemInstruction = `${RUBRIC}\n\n${schemaHint}`
   const userText = `Score these ${count} question/answer pairs.\n\n${blocks.join('\n---\n')}`
@@ -288,19 +422,22 @@ export async function runAutoScoreFile({
         `[eval] Auto-score: expected { "scores": [ ... ${count} items ] }, got keys=${Object.keys(obj).join(',')}`
       )
     }
-    return scores.map((row, idx) => ({
-      correctness: clampScore0to4(row.correctness),
-      usefulness: clampScore0to4(row.usefulness),
-      // Fall back to usefulness when a judge omits relevance, so old/partial responses
-      // degrade gracefully instead of scoring a hard 0 on the new axis.
-      relevance: clampScore0to4(row.relevance ?? row.usefulness),
-      specificity: clampScore0to4(row.specificity),
-      evidence_handling: clampScore0to4(row.evidence_handling),
-      notes:
-        typeof row.notes === 'string' && row.notes.trim()
-          ? row.notes.trim()
-          : `Auto-score question ${idx + 1} (${providerUsed})`,
-    }))
+    return scores.map((row, idx) => {
+      const usefulness = scoreFromLabel('usefulness', row.usefulness)
+      return {
+        correctness: scoreFromLabel('correctness', row.correctness),
+        usefulness,
+        // Fall back to usefulness when a judge omits relevance, so old/partial responses
+        // degrade gracefully instead of scoring a hard 0 on the new axis.
+        relevance: row.relevance != null ? scoreFromLabel('relevance', row.relevance) : usefulness,
+        specificity: scoreFromLabel('specificity', row.specificity),
+        evidence_handling: scoreFromLabel('evidence_handling', row.evidence_handling),
+        notes:
+          typeof row.notes === 'string' && row.notes.trim()
+            ? row.notes.trim()
+            : `Auto-score question ${idx + 1} (${providerUsed})`,
+      }
+    })
   }
 
   const runs = Math.max(1, scoreRuns)

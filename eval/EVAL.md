@@ -57,6 +57,8 @@ $$\text{success} = 0.60 \cdot \text{quality} + 0.30 \cdot \text{token\_efficienc
 
 The headline **pass rate** gates on `correctness ≥ 3 AND usefulness ≥ 3 AND relevance ≥ 3` (`pass_rate_quality_axes_at_least_3`; the legacy correctness+usefulness gate is still recorded). A kb-side **`curation_summary`** (`retrieval_precision = kept/(kept+dropped)`, harvested from the curator's `retrieval.detail` audit) is reported as a retrieval-side relevancy diagnostic.
 
+**Judged axes use labels, not bare numbers.** The judge picks a named label per axis (e.g. correctness ∈ `correct`/`mostly_correct`/`mixed`/`mostly_wrong`/`no_answer`) instead of guessing an integer — a classification task, not a magnitude guess. Each label maps to an ordinal level `0–4`, so the φ utility, the `≥3` gates, and `success_score` above are computed on the same scale as before. The labels are defined once in `scripts/eval-score.mjs` (`RUBRIC_AXES`); see `EVALUATION.md` § Scoring Rubric for the full per-axis vocabulary. Deterministic indicators (tokens, latency) stay numeric.
+
 Normalization is **budget-absolute** (not relative to control), so the number is stable run-to-run. Defaults live in `scripts/eval-shared.mjs`: `token_budget = 1,000,000`, `time_budget = 600,000 ms`. Both kb and control are scored with the identical formula and budgets, so `success_score` is directly comparable head-to-head; the per-component parts (`quality_score`, `token_efficiency`, `speed_score`) show where a win or loss originates. KB-side telemetry comes from `kb_query_telemetry` (read from `~/.kb/logs`), the control's from `control_telemetry`.
 
 ## Control vs kb (the real baseline)

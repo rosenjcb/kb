@@ -206,9 +206,9 @@ Artifacts land in `~/.kb/evaluations/<run-name>/artifact.json`. Fields to check:
 
 ### Phase 3: Score the Results
 
-Each question gets a rubric score on five axes. Use `--auto-score` for LLM judging (requires `GEMINI_API_KEY` or `OPENAI_API_KEY`), or supply a `--scores-file` for manual scoring.
+Each question gets a rubric **label** per axis (see [Scoring Rubric](#scoring-rubric)). Use `--auto-score` for LLM judging (requires `GEMINI_API_KEY` or `OPENAI_API_KEY`), or supply a `--scores-file` for manual scoring.
 
-The scorer is called **3 times by default** and the numeric axes are averaged (`--score-runs 3`). Single-shot Gemini scores have ~1 point of noise per question; averaging across 3 calls reduces run-to-run variance enough to make inter-run comparisons meaningful. Pass `--score-runs 1` to cut costs when you only need a rough signal.
+The judge returns a label per axis; each label is mapped to its ordinal level (0–4) before any aggregation. The scorer is called **3 times by default** and those per-axis levels are averaged (`--score-runs 3`). Single-shot Gemini scores have ~1 point of noise per question; averaging across 3 calls reduces run-to-run variance enough to make inter-run comparisons meaningful. Pass `--score-runs 1` to cut costs when you only need a rough signal. (A `--scores-file` may supply either labels or raw 0–4 levels; both are accepted.)
 
 ## Canonical Question Set
 
@@ -225,47 +225,61 @@ Use these raylib-adapted questions for all runs. If revised, copy the old suite 
 
 ## Scoring Rubric
 
-Score each answer on five axes from `0` to `4`.
+Each answer is scored on five **judged** axes. The judge does **not** pick a
+number — it picks a named **label** per axis. Asking an LLM for "an integer 0–4"
+makes it guess a point on an unanchored scale; naming each level turns the task
+into a classification ("which description fits?") instead of a magnitude
+estimate, which is far more reliable.
+
+Each label still maps to an ordinal **level (0–4)** under the hood, so every
+downstream metric — the adequacy utility φ (τ=3), the `≥3` pass-rate gates, and
+`success_score` — is computed exactly as before, and artifacts stay comparable
+across runs. The mapping is defined once in `scripts/eval-score.mjs`
+(`RUBRIC_AXES`); the judge prompt, JSON schema, and label→level table are all
+derived from it. Deterministic indicators (token usage, latency) remain numeric
+— they are measured, not judged.
+
+Labels are listed best→worst with their ordinal level in parentheses.
 
 ### Correctness
 
-- `4`: Factually correct and grounded in the repo/KB.
-- `3`: Mostly correct with minor omissions.
-- `2`: Mixed; contains meaningful inaccuracies or unsupported inference.
-- `1`: Mostly wrong or misleading.
-- `0`: No useful answer.
+- `correct` (4): Factually correct and grounded in the repo/KB.
+- `mostly_correct` (3): Mostly correct with minor omissions.
+- `mixed` (2): Contains meaningful inaccuracies or unsupported inference.
+- `mostly_wrong` (1): Mostly wrong or misleading.
+- `no_answer` (0): No useful answer.
 
 ### Usefulness
 
-- `4`: Directly helps a developer act or understand the system.
-- `3`: Helpful but incomplete.
-- `2`: Some signal, but requires substantial follow-up.
-- `1`: Barely helpful.
-- `0`: Not helpful.
+- `actionable` (4): Directly helps a developer act or understand the system.
+- `helpful` (3): Helpful but incomplete.
+- `needs_followup` (2): Some signal, but requires substantial follow-up.
+- `barely_helpful` (1): Barely helpful.
+- `not_helpful` (0): Not helpful.
 
 ### Relevance
 
-- `4`: Stays on the question; no unrelated padding or tangents.
-- `3`: Mostly on-topic with minor digressions.
-- `2`: Mixed; significant off-topic content.
-- `1`: Mostly off-topic despite some signal.
-- `0`: Does not address the question.
+- `focused` (4): Stays on the question; no unrelated padding or tangents.
+- `on_topic` (3): Mostly on-topic with minor digressions.
+- `padded` (2): Noticeable unrelated material diluting the answer.
+- `off_topic` (1): Mostly off-topic despite some signal.
+- `unrelated` (0): Does not address the question.
 
 ### Specificity
 
-- `4`: Uses concrete repo-specific details, commands, or mechanisms.
-- `3`: Some concrete detail, but still generic in places.
-- `2`: Partly generic.
-- `1`: Mostly generic.
-- `0`: Purely generic or evasive.
+- `concrete` (4): Uses concrete repo-specific details, commands, or mechanisms.
+- `some_detail` (3): Some concrete detail, but still generic in places.
+- `partly_generic` (2): Partly generic.
+- `mostly_generic` (1): Mostly generic.
+- `generic` (0): Purely generic or evasive.
 
 ### Evidence Handling
 
-- `4`: Clearly constrained to evidence, acknowledges uncertainty appropriately.
-- `3`: Reasonably evidence-grounded.
-- `2`: Some speculation or weak grounding.
-- `1`: Strong speculation or unsupported claims.
-- `0`: No evidence discipline.
+- `well_grounded` (4): Clearly constrained to evidence, acknowledges uncertainty appropriately.
+- `grounded` (3): Reasonably evidence-grounded.
+- `some_speculation` (2): Some speculation or weak grounding.
+- `speculative` (1): Strong speculation or unsupported claims.
+- `ungrounded` (0): No evidence discipline.
 
 ## Headline verdict: kb vs control (ΔS)
 
