@@ -551,10 +551,17 @@ export function parseRetrievalDetailTrace(detail) {
 }
 
 /**
- * Split a query RunReport's stages into thinking (the retrieval/judge loop, `*:llm`) vs
- * synthesis (`*:answer-enrichment`) vs anything else, summing tokens and duration for each.
- * Loop-LLM stages are logged with `durationMs: 0`, so loop wall-time is recovered separately
- * as `retrieval_ms = total − synthesis − other` by the caller.
+ * Split a query RunReport's stages by role, summing tokens and duration for each:
+ *   - **synthesis** — the one-shot answer stage (`*:answer-enrichment`).
+ *   - **thinking** — the intent-loop LLM tokens (`*:llm`): rewrite, entity extraction,
+ *     sufficiency judge, curator. This stage is logged with `durationMs: 0` (tokens are
+ *     flushed into it), so it carries token cost but no wall-time.
+ *   - **retrieval** — the deep-loop iteration stages (`*:iterN`, emitted by the intent loop),
+ *     which carry the loop's *wall-time* but ~no tokens. This is where a query that grinds to
+ *     `weak_evidence_after_exhaustion` actually spends its seconds.
+ *   - **other** — anything else.
+ * The caller derives `retrieval_ms` from `retrieval_ms` here (loop stages), falling back to
+ * `total − synthesis − other` only for older logs that predate the per-iter stages.
  */
 export function classifyStageTokens(report) {
   const acc = {
@@ -562,6 +569,8 @@ export function classifyStageTokens(report) {
     thinking_ms: 0,
     synthesis_tokens: 0,
     synthesis_ms: 0,
+    retrieval_tokens: 0,
+    retrieval_ms: 0,
     other_tokens: 0,
     other_ms: 0,
   }
@@ -571,6 +580,9 @@ export function classifyStageTokens(report) {
     if (/:answer-enrichment$/.test(s.stage)) {
       acc.synthesis_tokens += tokens
       acc.synthesis_ms += ms
+    } else if (/:iter\d+$/.test(s.stage)) {
+      acc.retrieval_tokens += tokens
+      acc.retrieval_ms += ms
     } else if (/:llm$/.test(s.stage)) {
       acc.thinking_tokens += tokens
       acc.thinking_ms += ms
@@ -620,10 +632,14 @@ function normalizeRetrievalTrace(report, fallbackDetail) {
 export function buildQuestionTimeline(report, questionIndex, question, fallbackDetail) {
   const stages = classifyStageTokens(report)
   const totalMs = Number(report?.totalDurationMs) || 0
-  // Loop-LLM stages carry no duration; the loop's wall-time is whatever total is left after
-  // the (timed) synthesis and any other timed stages.
-  const retrievalMs = Math.max(0, totalMs - stages.synthesis_ms - stages.other_ms)
-  const queryTokens = stages.thinking_tokens + stages.synthesis_tokens + stages.other_tokens
+  // Retrieval wall-time is the sum of the loop's `:iterN` stages. Older logs predate those
+  // stages, so fall back to "everything not synthesis/other" there.
+  const retrievalMs =
+    stages.retrieval_ms > 0
+      ? stages.retrieval_ms
+      : Math.max(0, totalMs - stages.synthesis_ms - stages.other_ms)
+  const queryTokens =
+    stages.thinking_tokens + stages.synthesis_tokens + stages.retrieval_tokens + stages.other_tokens
   const share = n => (queryTokens > 0 ? Number((n / queryTokens).toFixed(3)) : null)
   return {
     question_index: questionIndex,
@@ -690,21 +706,51 @@ export function buildTimelineSummary(timeline) {
   const synthesisShare = totalQueryTokens > 0 ? totalSynthesis / totalQueryTokens : null
   const retrievalTimeShare = totalMs > 0 ? totalRetrievalMs / totalMs : null
 
+  // Loops that never satisfy the sufficiency judge run to exhaustion — the dominant slowness /
+  // token-bloat driver, since they accumulate the largest fact pools and (when the curator
+  // can't prune them) dump those pools into synthesis.
+  const EXHAUSTION_STOPS = new Set(['weak_evidence_after_exhaustion', 'frontier_exhausted'])
+  const exhausted = rows.filter(r => EXHAUSTION_STOPS.has(r.retrieval?.stop_reason))
+  const exhaustionRate = rows.length > 0 ? exhausted.length / rows.length : null
+  const meanFactsToSynthesis = meanOf(r => r.retrieval?.facts_returned)
+  // Curator "fell back": pool was large enough to curate (>12) but no curation record survived,
+  // meaning the judge failed/parsed-empty and the full pool reached synthesis unpruned.
+  const curatorFallbacks = rows.filter(
+    r => (r.retrieval?.facts_returned ?? 0) > 12 && r.retrieval?.curation == null
+  )
+
   const diagnosis = []
   if (thinkingShare != null && thinkingShare >= 0.5) {
     diagnosis.push(
       `Thinking (retrieval/judge loop) is ${(thinkingShare * 100).toFixed(0)}% of query tokens vs ${((synthesisShare ?? 0) * 100).toFixed(0)}% synthesis — the loop dominates token cost.`
     )
   }
-  if (retrievalTimeShare != null && retrievalTimeShare >= 0.6) {
+  if (retrievalTimeShare != null && retrievalTimeShare >= 0.5) {
     diagnosis.push(
-      `Retrieval loop wall-time is ${(retrievalTimeShare * 100).toFixed(0)}% of total — synthesis is cheap; slowness is in the hops.`
+      `Retrieval loop wall-time is ${(retrievalTimeShare * 100).toFixed(0)}% of total — the hops, not synthesis, are the slowness.`
+    )
+  }
+  if (exhaustionRate != null && exhaustionRate >= 0.34) {
+    diagnosis.push(
+      `${exhausted.length}/${rows.length} questions ran the loop to exhaustion (sufficiency judge never confirmed) — the early-exit is the lever for both speed and tokens.`
     )
   }
   const meanPasses = meanOf(r => r.retrieval?.passes)
   if (meanPasses != null && meanPasses >= 8) {
     diagnosis.push(
       `Mean ${meanPasses.toFixed(1)} loop passes/question — the sufficiency judge is exiting late; consider tighter early-exit.`
+    )
+  }
+  if (curatorFallbacks.length > 0) {
+    diagnosis.push(
+      `Curator fell back on ${curatorFallbacks.length} question(s) (Q${curatorFallbacks
+        .map(r => r.question_index)
+        .join(', Q')}) — the full unpruned pool reached synthesis exactly where it was largest.`
+    )
+  }
+  if (meanFactsToSynthesis != null && meanFactsToSynthesis >= 100) {
+    diagnosis.push(
+      `Mean ${Math.round(meanFactsToSynthesis)} facts reached synthesis — large evidence pools inflate synthesis input tokens.`
     )
   }
   if (curatorDenom > 0 && totalDropped / curatorDenom < 0.15) {
@@ -728,6 +774,9 @@ export function buildTimelineSummary(timeline) {
     retrieval_time_share: round(retrievalTimeShare),
     mean_passes: round(meanPasses, 1),
     mean_graph_hops: round(meanOf(r => r.retrieval?.graph_hops), 1),
+    exhaustion_rate: round(exhaustionRate),
+    mean_facts_to_synthesis: round(meanFactsToSynthesis, 0),
+    curator_fallback_questions: curatorFallbacks.map(r => r.question_index),
     total_curator_kept: totalKept,
     total_curator_dropped: totalDropped,
     curator_drop_rate: curatorDenom > 0 ? round(totalDropped / curatorDenom) : null,
@@ -759,7 +808,10 @@ export function printTimelineDiagnosis(summary, timeline) {
     `  time     retrieval ${formatDurationMs(summary.mean_retrieval_ms)} (${pct(summary.retrieval_time_share)})   synthesis ${formatDurationMs(summary.mean_synthesis_ms)}   total ${formatDurationMs(summary.mean_total_duration_ms)}`
   )
   console.log(
-    `  loop     passes ${summary.mean_passes ?? '-'}   graph_hops ${summary.mean_graph_hops ?? '-'}   curator dropped ${summary.total_curator_dropped}/${summary.total_curator_kept + summary.total_curator_dropped} (${pct(summary.curator_drop_rate)})`
+    `  loop     passes ${summary.mean_passes ?? '-'}   graph_hops ${summary.mean_graph_hops ?? '-'}   exhausted ${pct(summary.exhaustion_rate)}   facts→synth ${summary.mean_facts_to_synthesis ?? '-'}`
+  )
+  console.log(
+    `  curator  dropped ${summary.total_curator_dropped}/${summary.total_curator_kept + summary.total_curator_dropped} (${pct(summary.curator_drop_rate)})${summary.curator_fallback_questions?.length ? `   fell back on Q${summary.curator_fallback_questions.join(', Q')}` : ''}`
   )
   if (summary.slowest_question) {
     console.log(

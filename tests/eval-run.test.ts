@@ -153,6 +153,13 @@ describe('run timeline', () => {
     totalOutputTokens: 2000,
     totalEstimatedCostUsd: 0.12,
     stages: [
+      // Deep-loop iteration stage: carries the loop wall-time but ~no tokens.
+      {
+        stage: 'query_truth:iter1',
+        durationMs: 20000,
+        inputTokens: 0,
+        outputTokens: 0,
+      },
       // Loop-LLM ("thinking") stage: tokens, but durationMs is logged as 0.
       {
         stage: 'query_truth:llm',
@@ -179,12 +186,15 @@ describe('run timeline', () => {
     },
   }
 
-  it('[TC-518] classifyStageTokens splits thinking (:llm) from synthesis (:answer-enrichment)', () => {
+  it('[TC-518] classifyStageTokens splits thinking (:llm), synthesis (:answer-enrichment), and retrieval (:iterN)', () => {
     const s = classifyStageTokens(report)
     expect(s.thinking_tokens).toBe(31200)
     expect(s.synthesis_tokens).toBe(10800)
     expect(s.synthesis_ms).toBe(4000)
     expect(s.thinking_ms).toBe(0)
+    // The :iter stage carries the loop wall-time, not synthesis/other.
+    expect(s.retrieval_ms).toBe(20000)
+    expect(s.retrieval_tokens).toBe(0)
   })
 
   it('[TC-519] parseRetrievalDetailTrace lifts loop counters from a retrieval detail line', () => {
@@ -203,8 +213,8 @@ describe('run timeline', () => {
     expect(tl.question_index).toBe(1)
     expect(tl.tokens.thinking).toBe(31200)
     expect(tl.tokens.synthesis).toBe(10800)
-    // retrieval_ms = total (30000) − synthesis (4000) − other (0)
-    expect(tl.timing.retrieval_ms).toBe(26000)
+    // retrieval_ms comes from the :iter1 stage (20000ms), not total−synthesis.
+    expect(tl.timing.retrieval_ms).toBe(20000)
     expect(tl.token_share.thinking).toBeGreaterThan(0.7)
     expect(tl.retrieval?.stop_reason).toBe('llm_judge_answerable')
     expect(tl.retrieval?.curation?.dropped_fact_ids).toEqual(['fact://z'])
@@ -231,6 +241,7 @@ describe('run timeline', () => {
     expect(summary?.questions).toBe(2)
     expect(summary?.thinking_token_share).toBeGreaterThan(0.5)
     expect(summary?.total_curator_dropped).toBe(16)
+    // retrieval_time_share = iter (20s) / total (30s) per question ≈ 0.67
     expect(summary?.retrieval_time_share).toBeGreaterThan(0.6)
     expect(summary?.diagnosis.some(d => /thinking/i.test(d))).toBe(true)
     expect(buildTimelineSummary([])).toBeNull()
