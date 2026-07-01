@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   RUBRIC_AXES,
+  SCORE_BATCH_SIZE,
   buildRubric,
+  parseJsonObjectFromLLM,
+  runAutoScoreFile,
   scoreFromLabel,
   withRetry,
 } from '../../scripts/eval-score.mjs'
@@ -80,5 +83,75 @@ describe('label-based scoring', () => {
     expect(rubric).toContain('output the label string')
     expect(rubric).toContain('"mostly_correct"')
     expect(rubric).not.toContain('integer 0')
+  })
+})
+
+describe('parseJsonObjectFromLLM', () => {
+  it('[TC-231] parses a top-level JSON array', () => {
+    const arr = [{ correctness: 'correct' }]
+    expect(parseJsonObjectFromLLM(JSON.stringify(arr))).toEqual(arr)
+  })
+})
+
+describe('runAutoScoreFile batching', () => {
+  it('[TC-232] scores >8 questions in multiple judge batches', async () => {
+    const fs = await import('node:fs')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-eval-score-'))
+    for (let i = 0; i < 12; i++) {
+      fs.writeFileSync(
+        path.join(workdir, `q${i + 1}.json`),
+        JSON.stringify({
+          __control__: true,
+          answer: `answer ${i + 1}`,
+          result_count: 0,
+          provenance: [],
+          retrieval: { method: 'control-agent', detail: null, confidence: null },
+        })
+      )
+    }
+
+    const judgeCalls = vi.fn().mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body))
+      const userText = body.contents?.[0]?.parts?.[0]?.text ?? ''
+      const m = /Score these (\d+) question/.exec(userText)
+      const batchCount = Number(m?.[1] ?? 0)
+      expect(batchCount).toBeLessThanOrEqual(SCORE_BATCH_SIZE)
+      const scores = Array.from({ length: batchCount }, () => ({
+        correctness: 'correct',
+        usefulness: 'actionable',
+        relevance: 'focused',
+        specificity: 'concrete',
+        evidence_handling: 'well_grounded',
+        notes: 'ok',
+      }))
+      return {
+        ok: true,
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: JSON.stringify({ scores }) }] } }],
+        }),
+      }
+    })
+
+    const prev = process.env.GEMINI_API_KEY
+    process.env.GEMINI_API_KEY = 'test-key'
+    vi.stubGlobal('fetch', judgeCalls)
+    try {
+      const questions = Array.from({ length: 12 }, (_, i) => `question ${i + 1}?`)
+      const { normalized } = await runAutoScoreFile({
+        workdir,
+        questions,
+        outScoresPath: path.join(workdir, 'auto-scores.json'),
+        rubricPhrase: 'kb self-check',
+        scoreRuns: 1,
+      })
+      expect(normalized).toHaveLength(12)
+      expect(judgeCalls).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.unstubAllGlobals()
+      if (prev === undefined) delete process.env.GEMINI_API_KEY
+      else process.env.GEMINI_API_KEY = prev
+    }
   })
 })

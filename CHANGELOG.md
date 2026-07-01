@@ -1,5 +1,25 @@
 # kb
 
+## 0.17.0
+
+### Minor Changes
+
+- Make query/chat synthesis conversational and well-formatted instead of a flat fact dump.
+
+  - Both synthesis prompts (the one-shot `kb query`/`/v1/query` path and the `runChatSynthesis`
+    loop behind `kb chat`, `/v1/chat`, and Slack) now drop the "plain prose, never cite" mandate:
+    they structure multi-part answers (headings/bullets/tables), bold key terms, and weave concrete
+    identifiers (files, functions, settings) inline so answers are scannable and verifiable.
+  - The chat loop now reflects-and-decides after each `query_kb` result — querying again from a
+    distinct angle when a material part is unaddressed — so non-trivial questions actually loop
+    rather than collapsing to a single retrieval.
+  - The fact curator's self-assessment (`{evaluated, dropped, requeried, sufficient}`) is now surfaced
+    to synthesis as a short "research notes" framing block instead of being discarded out-of-band, so
+    the model writes from a thesis (and knows which gaps retrieval could not close).
+  - Eval: the Usefulness rubric axis now rewards actionable, well-organized answers for whoever asked
+    (developer, SME, support, or end user) and penalizes undifferentiated walls of text; two suite
+    reference answers restyled to the structured form.
+
 ## 0.16.0
 
 ### Minor Changes

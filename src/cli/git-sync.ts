@@ -55,12 +55,29 @@ function run(cmd: string, args: string[], cwd: string): Promise<string> {
   })
 }
 
+function isLocalRepoUrl(url: string): boolean {
+  return (
+    url.startsWith('/') ||
+    url.startsWith('file://') ||
+    url.startsWith('./') ||
+    url.startsWith('../')
+  )
+}
+
 /** Blobless clone of `url` into `destDir`. Tracks `branch` when given, else the remote's
  *  own default branch (HEAD) — so repos on `master` (or anything else) clone correctly. */
 export async function cloneRepo(url: string, destDir: string, branch?: string): Promise<void> {
-  const args = ['clone', '--filter=blob:none', '--single-branch']
-  if (branch) args.push('--branch', branch)
-  args.push(url, destDir)
+  const args = ['clone']
+  if (isLocalRepoUrl(url)) {
+    // --filter=blob:none is ignored on local paths and can stall on shallow snapshot clones
+    // (eval harness: shallow github clone → kb init --git <path>).
+    if (branch) args.push('--branch', branch)
+    args.push(url, destDir)
+  } else {
+    args.push('--filter=blob:none', '--single-branch')
+    if (branch) args.push('--branch', branch)
+    args.push(url, destDir)
+  }
   await run('git', args, process.cwd())
 }
 

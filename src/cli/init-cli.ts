@@ -282,6 +282,12 @@ export interface InitQuestionIO {
   close?: () => Promise<void> | void
 }
 
+function writeInitNotice(sink: InitOptions['progressSink'], message: string): void {
+  const line = `${message}\n`
+  if (sink) sink(line)
+  else process.stderr.write(line)
+}
+
 class InitProgressReporter {
   private completed = 0
   private lastUpdateMs = 0
@@ -602,7 +608,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       const dir = repoDirForSlug(slug)
       const repoDir = path.join(baseDir, dir)
       if (!existsSync(repoDir)) {
+        writeInitNotice(options.progressSink, `[init] cloning ${target.url} → ${repoDir}…`)
         await cloneRepo(target.url, repoDir, target.branch)
+        writeInitNotice(options.progressSink, '[init] clone complete.')
       }
       await mkdir(repoDir, { recursive: true })
       const gitBranch = target.branch ?? (await getCurrentBranch(repoDir))

@@ -22,7 +22,7 @@
  * Clone: suite YAML repo_url used by default; override with `--repo <git-url>`.
  */
 
-import { execSync } from 'node:child_process'
+import { execSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -241,13 +241,13 @@ Session lifecycle (automatic):
   Base is derived as eval-{suiteId} (e.g. eval-raylib, eval-kb).
   If the session has docs → reuse it (query-only run).
   If the session is empty / missing → kb init --git <snapshot-clone> first.
-  Every run: kb scan (pulls + re-indexes the base's repos), then 8× kb query.
+  Every run: kb scan (pulls + re-indexes the base's repos), then N× kb query (N = suite size).
   Ends with a trends summary across prior runs for the same suite.
 
 Suite / questions:
   --suite VENDOR          Load eval/suites/VENDOR.yaml  (raylib, kb, fzf, generic)
   --suite-yaml PATH       Load pack from arbitrary YAML path
-  --questions-file F.json Override: JSON array of exactly 8 strings
+  --questions-file F.json Override: JSON array of non-empty question strings
 
 Session:
   --base NAME             Override derived session name (default: eval-{suiteId})
@@ -263,7 +263,7 @@ Output:
   --out PATH              Override artifact JSON path
   --manual-score          Skip LLM auto-scoring (default: auto-score is ON)
   --score-runs N          Call scorer N times and average (reduces noise; default 3)
-  --scores-file PATH      Load manual rubric scores instead (JSON array of 8)
+  --scores-file PATH      Load manual rubric scores instead (JSON array, one per question)
   --auto-score-file PATH  Write auto-scores to a specific path
 
 Control baseline (runs side-by-side with kb into ONE artifact, scored by the same rubric):
@@ -300,8 +300,54 @@ function kb(cwd, args, opts = {}) {
     env: kbEnv(),
     cwd,
     maxBuffer: 50 * 1024 * 1024,
-    stdio: opts.capture === false ? 'inherit' : undefined,
+    stdio: opts.stdio === 'inherit' || opts.capture === false ? 'inherit' : undefined,
     ...opts,
+  })
+}
+
+/** Stream kb stdout/stderr live (no pipe buffer) and write a transcript to `logPath`. */
+function kbTee(cwd, args, logPath) {
+  const bin = KB_BIN
+  fs.mkdirSync(path.dirname(logPath), { recursive: true })
+  const logFd = fs.openSync(logPath, 'w')
+  return new Promise((resolve, reject) => {
+    const child = spawn(`node "${bin}" ${args}`, {
+      cwd,
+      env: kbEnv(),
+      shell: true,
+      stdio: ['inherit', 'pipe', 'pipe'],
+    })
+    const parts = []
+    const relay = (stream, mirror) => {
+      stream.on('data', chunk => {
+        mirror.write(chunk)
+        fs.writeSync(logFd, chunk)
+        parts.push(chunk)
+      })
+    }
+    relay(child.stdout, process.stdout)
+    relay(child.stderr, process.stderr)
+    child.on('error', err => {
+      try {
+        fs.closeSync(logFd)
+      } catch {
+        /* ignore */
+      }
+      reject(err)
+    })
+    child.on('close', code => {
+      try {
+        fs.closeSync(logFd)
+      } catch {
+        /* ignore */
+      }
+      const output = Buffer.concat(parts).toString('utf8')
+      if (code !== 0) {
+        reject(new Error(`kb exited ${code ?? 'unknown'}\n${output.slice(-4000)}`))
+        return
+      }
+      resolve(output)
+    })
   })
 }
 
@@ -310,6 +356,18 @@ function timed(label, timings, fn) {
   const startMs = Date.now()
   try {
     return fn()
+  } finally {
+    const durationMs = Date.now() - startMs
+    timings.command_durations_ms[label] = durationMs
+    timings.commands.push({ label, started_at: startedAt, duration_ms: durationMs })
+  }
+}
+
+async function timedAsync(label, timings, fn) {
+  const startedAt = new Date().toISOString()
+  const startMs = Date.now()
+  try {
+    return await fn()
   } finally {
     const durationMs = Date.now() - startMs
     timings.command_durations_ms[label] = durationMs
@@ -441,8 +499,8 @@ function resolveEvalPaths(args) {
 function resolveQuestions(args, suiteConfig) {
   if (args.questionsFile) {
     const qs = JSON.parse(fs.readFileSync(path.resolve(args.questionsFile), 'utf8'))
-    if (!Array.isArray(qs) || qs.length !== 8 || !qs.every(x => typeof x === 'string')) {
-      throw new Error('--questions-file must be a JSON array of exactly 8 strings')
+    if (!Array.isArray(qs) || qs.length === 0 || !qs.every(x => typeof x === 'string' && x.trim())) {
+      throw new Error('--questions-file must be a JSON array of non-empty strings')
     }
     return qs
   }
@@ -628,19 +686,24 @@ async function main() {
     console.error(`[eval] workdir ${workdir}`)
     console.error(`[eval] target cwd ${targetCwd}`)
     console.error(
-      `[eval] session "${base}" — ${needsInit ? 'no docs found, running kb init' : 'session exists, reusing'}; kb scan before K queries`
+      `[eval] session "${base}" — ${needsInit ? 'no docs found, running kb init then scan' : 'reusing session; kb scan before K queries'}`
     )
 
     if (needsInit) {
       // kb init now requires a git remote. Point it at the local snapshot clone (exact commit,
       // no extra network); kb follows the clone's own default branch (main, master, …).
-      const initLog = timed('init', runTiming, () =>
-        kb(
+      const initLogPath = path.join(workdir, 'init.log')
+      console.error(`[eval] kb init --base ${base} --git "${targetCwd}"`)
+      console.error(
+        '[eval] kb init clones snapshot into ~/.kb/sessions/… then indexes — progress lines follow'
+      )
+      await timedAsync('init', runTiming, () =>
+        kbTee(
           targetCwd,
-          `init --base ${base} --git "${targetCwd}" --non-interactive --debug`
+          `init --base ${base} --git "${targetCwd}" --non-interactive --debug`,
+          initLogPath
         )
       )
-      fs.writeFileSync(path.join(workdir, 'init.log'), initLog, 'utf8')
     } else {
       runTiming.command_durations_ms.init = 0
       fs.writeFileSync(
@@ -651,8 +714,10 @@ async function main() {
     }
 
     console.error(`[eval] kb scan --base ${base}`)
-    const scanLog = timed('scan', runTiming, () => kb(targetCwd, `scan --base ${base} --debug`))
-    fs.writeFileSync(path.join(workdir, 'scan.log'), scanLog, 'utf8')
+    const scanLogPath = path.join(workdir, 'scan.log')
+    await timedAsync('scan', runTiming, () =>
+      kbTee(targetCwd, `scan --base ${base} --debug`, scanLogPath)
+    )
 
     console.error(`[eval] kb base use --default ${base}`)
     timed('base_use_default', runTiming, () =>
@@ -674,7 +739,7 @@ async function main() {
     let q = 1
     let queryTotalMs = 0
     for (const question of questions) {
-      console.error(`[eval] ${suiteLabel} · K query ${q}/8`)
+      console.error(`[eval] ${suiteLabel} · K query ${q}/${questions.length}`)
       const escaped = question.replace(/"/g, '\\"')
       const label = `query_${q}`
       const out = timed(label, runTiming, () => kb(targetCwd, `query "${escaped}" --base ${base}`))
@@ -713,8 +778,8 @@ async function main() {
 
   if (args.scoresFile) {
     manualScores = JSON.parse(fs.readFileSync(path.resolve(args.scoresFile), 'utf8'))
-    if (!Array.isArray(manualScores) || manualScores.length !== 8) {
-      console.error('--scores-file must be a JSON array of length 8')
+    if (!Array.isArray(manualScores) || manualScores.length !== questions.length) {
+      console.error(`--scores-file must be a JSON array of length ${questions.length}`)
       process.exit(1)
     }
   } else if (args.autoScore) {
@@ -742,7 +807,7 @@ async function main() {
   }
 
   const query_evaluation = []
-  for (let n = 1; n <= 8; n++) {
+  for (let n = 1; n <= questions.length; n++) {
     const parsed = readQueryResult(path.join(workdir, `q${n}.json`))
     const { answer, result_count, provenance: prov, retrieval } = parsed
     const coverageAudit = buildCoverageAudit(questions[n - 1], answer, retrieval.detail)
@@ -797,7 +862,7 @@ async function main() {
   const curationSummary = summarizeCuration(query_evaluation.map(q => q.retrieval?.detail))
 
   // KB-side query telemetry (tokens + latency) for the composite success score.
-  const kbQueryTelemetry = readKbQueryTelemetry(base, 8)
+  const kbQueryTelemetry = readKbQueryTelemetry(base, questions.length)
   const kbSuccess = computeSuccessScore({
     meanCorrectness: mC,
     meanUsefulness: mU,
@@ -894,7 +959,7 @@ async function main() {
         `kb docs list --base ${base} --output json`,
         `kb graph --base ${base}`,
         `kb ${logsCmd(base)}`,
-        `kb query "<8 questions>" --base ${base} --output json`,
+        `kb query "<${questions.length} questions>" --base ${base} --output json`,
       ].filter(Boolean),
       workdir,
       run_dir: runDir,

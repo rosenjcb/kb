@@ -4,7 +4,7 @@ title: "Spec: MOEL Evaluation Framework"
 sources: ./,../../tests/eval,../../tests/eval-*.test.ts
 description: Behavioral specification for MOEL Evaluation Framework
 tags: [spec, kb]
-timestamp: 2026-06-28T04:05:30Z
+timestamp: 2026-06-30T00:00:00Z
 ---
 
 ### Intro
@@ -91,6 +91,8 @@ See companion doc for full vocabulary where applicable.
 | TC-228 | FR-4 | scoreFromLabel falls back to the legacy numeric path | pass |
 | TC-229 | FR-4 | scoreFromLabel returns 0 for an unrecognized verdict | pass |
 | TC-230 | FR-4 | the rubric instructs the judge to pick labels, not numbers | pass |
+| TC-231 | FR-4 | parses a top-level JSON array from judge output | pass |
+| TC-232 | FR-4 | scores more than SCORE_BATCH_SIZE questions in multiple judge batches | pass |
 | TC-39 | FR-5 | returns content and length for an existing file | pass |
 | TC-40 | FR-5 | returns an error for a non-existent file | pass |
 | TC-41 | FR-5 | reads an empty file without error | pass |

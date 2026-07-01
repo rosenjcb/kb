@@ -39,8 +39,11 @@ export interface ReadDocumentsHumanOutputOptions {
 }
 
 const INTENT_COMMANDS = new Set(['query'])
-/** Visible answer output budget for kb query synthesis (reasoning stream is separate UX). */
-const INTENT_LLM_MAX_OUTPUT_TOKENS = 8192
+/** Visible answer output budget for kb query synthesis. Override via KB_QUERY_MAX_OUTPUT_TOKENS. */
+const INTENT_LLM_MAX_OUTPUT_TOKENS = (() => {
+  const n = Number(process.env.KB_QUERY_MAX_OUTPUT_TOKENS)
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 32_768
+})()
 
 export function isIntentCommand(command: string): boolean {
   return INTENT_COMMANDS.has(command)
@@ -219,7 +222,53 @@ export interface ReadDocumentsResultData {
       nextAction?: string
       confidence?: number
     }>
+    /**
+     * Out-of-band curator audit (kept/dropped/re-queried). Surfaced to synthesis as
+     * "research notes" framing — never quoted as fact. See `formatCuratorResearchNotes`.
+     */
+    curation?: CuratorAudit
   }
+}
+
+/** Subset of the curator's {@link CurationRecord} consumed by synthesis framing. */
+export interface CuratorAudit {
+  evaluated?: number
+  dropped?: unknown[]
+  added?: number
+  requeried?: string[]
+  sufficient?: boolean
+}
+
+/**
+ * Render the curator's self-assessment as a short framing note for synthesis. This is the
+ * "comments in the loop" signal: it tells the model how focused the evidence is and which gaps
+ * the retrieval could not close, so the answer is written from a thesis rather than a flat pile.
+ * Returns '' when no curation ran. The note is framing only — the prompt forbids quoting it as fact.
+ */
+export function formatCuratorResearchNotes(curation: CuratorAudit | undefined): string {
+  if (!curation) return ''
+  const evaluated = typeof curation.evaluated === 'number' ? curation.evaluated : undefined
+  const droppedCount = Array.isArray(curation.dropped) ? curation.dropped.length : 0
+  const added = typeof curation.added === 'number' ? curation.added : 0
+  const lines: string[] = []
+  if (evaluated !== undefined) {
+    const kept = Math.max(0, evaluated - droppedCount) + added
+    const droppedNote = droppedCount > 0 ? ` (dropped ${droppedCount} off-topic).` : '.'
+    lines.push(`- Focused the evidence to the ${kept} fact(s) most relevant to the question${droppedNote}`)
+  }
+  const gaps = Array.isArray(curation.requeried)
+    ? curation.requeried.filter(g => typeof g === 'string' && g.trim().length > 0)
+    : []
+  if (curation.sufficient === false && gaps.length > 0) {
+    lines.push(`- Gaps retrieval could not fully close: ${gaps.join('; ')}.`)
+  } else if (curation.sufficient === true) {
+    lines.push('- The retrieved evidence was judged sufficient to answer.')
+  }
+  if (lines.length === 0) return ''
+  return [
+    'Research notes (retrieval self-assessment — use as framing for how confident/complete to be, NOT as facts to quote):',
+    ...lines,
+  ].join('\n')
 }
 
 function appendReadDocumentsSourcesToLines(
@@ -311,12 +360,16 @@ export async function enrichReadDocumentsAnswerWithLLM(
         ].join('\n')
       : ''
 
+    const researchNotes = formatCuratorResearchNotes(data.retrieval?.curation)
+
     const userContent = [
-      'Answer from the evidence below. Always give a useful response — for broad questions a high-level summary is fine; for specific questions be precise. Only say evidence is insufficient if the question is completely unrelated to anything retrieved.',
-      'Write a natural-language answer in plain prose. Never cite or label the evidence: no "(fact 1)" inline references, no fact ids, and no "Sources:"/"Citations:" list. Provenance is tracked separately in metadata, not in your text.',
+      'Answer from the evidence below. Use only the facts that bear on the question and ignore the rest — do not pad the answer with loosely related facts. Always give a useful response: a high-level summary for broad questions, precise detail for specific ones. Only say evidence is insufficient if the question is completely unrelated to anything retrieved.',
+      'Match the answer structure to the question. For a multi-part or comparative question, lead with the direct answer, then break the supporting detail into short headings, bullets, or a compact table so each part is answerable at a glance; bold key terms (settings, file names, flags, conditions). For a simple question, a tight paragraph is enough.',
+      'When a claim rests on a specific file, function, or setting, name it inline (e.g. `reports.ts`, `directDownlineDataAccess`) so the reader can verify it. Do not invent fact ids and do not append a separate "Sources:"/"Citations:" list — weave concrete identifiers into the prose where they help.',
       '',
       `Question: ${question}`,
       graphSection,
+      researchNotes ? `\n${researchNotes}` : '',
       '',
       `Evidence:\n${evidence}`,
     ].join('\n')
@@ -507,7 +560,11 @@ function findEvidenceLine(
 
 function answerNeedsScaffoldRecovery(question: string, answer: string): boolean {
   if (!isBuildOrConfigQuestion(question)) return false
-  const normalized = answer.toLowerCase()
+  const trimmed = answer.trim()
+  // Structured synthesis uses headings/bullets — do not clobber a substantive answer.
+  if (trimmed.length >= 400) return false
+  if (/^#{1,3}\s/m.test(trimmed) || /^\s*[-*]\s+\S/m.test(trimmed)) return false
+  const normalized = trimmed.toLowerCase()
   const requiredSections = [
     'prerequisites',
     'commands',

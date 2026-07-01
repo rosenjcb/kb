@@ -23,7 +23,12 @@ import { type CmdMode, cmd } from './cmd-ref'
 import { parseInitCommand, runKbInit, isInitCancelledError } from './init-cli.js'
 import { initCancelledNotice } from './cli-prerequisites.js'
 import { runScanCommand } from './scan-command.js'
-import { isReadFactsResult, printReadDocumentsOrchestrationFooter } from './intent-cli.js'
+import {
+  type CuratorAudit,
+  formatCuratorResearchNotes,
+  isReadFactsResult,
+  printReadDocumentsOrchestrationFooter,
+} from './intent-cli.js'
 import type { KbConfig } from './kb-config'
 import { readKbConfig, resolveFactRetrievalMethod } from './kb-config'
 import { formatReadDocumentSourceIds } from './retrieval-fallback'
@@ -86,6 +91,7 @@ export interface ReadDocumentsResult {
       nextAction?: string
       confidence?: number
     }>
+    curation?: CuratorAudit
   }
 }
 
@@ -998,16 +1004,18 @@ function buildToolQueryResult(snapshot: ReadDocumentsResult): string {
   const results = snapshot.results ?? []
   const lines = formatToolQueryFactsForLLM(results)
   if (results.length === 0) return lines
+  const notes = formatCuratorResearchNotes(snapshot.retrieval?.curation)
+  const withNotes = notes ? `${lines}\n\n${notes}` : lines
   const detail = snapshot.retrieval?.detail ?? ''
   const isWeakEvidence = detail.includes('weak_evidence_after_exhaustion')
   const isFrontierExhausted = detail.includes('frontier_exhausted')
   if (isWeakEvidence) {
-    return `${lines}\n\n[Retrieval confidence was low — the graph frontier was exhausted without strong evidence. Try querying with different or broader terms before answering.]`
+    return `${withNotes}\n\n[Retrieval confidence was low — the graph frontier was exhausted without strong evidence. Try querying with different or broader terms before answering.]`
   }
   if (isFrontierExhausted) {
-    return `${lines}\n\n[Graph frontier exhausted — all reachable nodes from initial query seeds were visited. If the above facts don't fully answer the question, try at least two more queries using specific technical identifiers (function names, file paths, constant names) rather than natural-language descriptions.]`
+    return `${withNotes}\n\n[Graph frontier exhausted — all reachable nodes from initial query seeds were visited. If the above facts don't fully answer the question, try at least two more queries using specific technical identifiers (function names, file paths, constant names) rather than natural-language descriptions.]`
   }
-  return lines
+  return withNotes
 }
 
 export function createTerminalChatIO(): ChatIO {

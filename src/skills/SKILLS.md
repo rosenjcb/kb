@@ -40,7 +40,7 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 Maintained in `SKILLS` constant inside `skill-installer.ts` (must stay in sync with `skills/` directory):
 
 - `kb:dev-workflow` — query/graph/docs conventions
-- `kb:dump-context` — in-place architecture docs in the Open Knowledge Format (OKF: YAML frontmatter + markdown body)
+- `kb:dump-context` — in-place OKF companions + sibling `*.spec.md` behavioral specs (spec.md FR/TC)
 - `kb:evaluation-run` — eval suites under `eval/`
 
 Adding a skill:
