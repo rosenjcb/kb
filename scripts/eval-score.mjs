@@ -86,11 +86,11 @@ export const RUBRIC_AXES = [
   {
     key: 'correctness',
     title: 'Correctness',
-    prompt: 'Is the answer factually right and grounded in the supplied answer/evidence?',
+    prompt: 'Is every claim factually right and grounded in the supplied answer/evidence?',
     labels: [
-      { label: 'correct', score: 4, desc: 'factually correct and grounded in the supplied answer/evidence' },
-      { label: 'mostly_correct', score: 3, desc: 'mostly correct; only minor omissions' },
-      { label: 'mixed', score: 2, desc: 'mixed; meaningful inaccuracies or unsupported inference' },
+      { label: 'correct', score: 4, desc: 'every claim accurate and grounded; nothing a domain expert would correct' },
+      { label: 'mostly_correct', score: 3, desc: 'core is right, but with minor omissions or imprecision' },
+      { label: 'mixed', score: 2, desc: 'meaningful inaccuracies, unsupported inference, or a missing key fact' },
       { label: 'mostly_wrong', score: 1, desc: 'mostly wrong or misleading' },
       { label: 'no_answer', score: 0, desc: 'no useful answer' },
     ],
@@ -99,15 +99,15 @@ export const RUBRIC_AXES = [
     key: 'usefulness',
     title: 'Usefulness',
     prompt:
-      'Does the answer help whoever asked (developer, subject-matter expert, customer support, or end user of the product) act or understand the system, and is it presented so they can act on it?',
+      'Does the answer let whoever asked (developer, subject-matter expert, customer support, or end user of the product) act, and is it organized so they can?',
     labels: [
       {
         label: 'actionable',
         score: 4,
-        desc: 'directly useful to its asker and well-organized for the question — multi-part questions are broken out with structure or ordering, key terms and concrete specifics are surfaced, not an undifferentiated wall of text',
+        desc: 'a domain expert could act on it as-is: complete, well-organized for the question (multi-part questions broken out), concrete specifics surfaced, nothing material to add or restructure',
       },
-      { label: 'helpful', score: 3, desc: 'helpful but incomplete or poorly organized' },
-      { label: 'needs_followup', score: 2, desc: 'some signal, but requires substantial follow-up' },
+      { label: 'helpful', score: 3, desc: 'useful but incomplete, or would need reorganizing to act on' },
+      { label: 'needs_followup', score: 2, desc: 'a scaffold/stub, or real signal that still requires substantial follow-up' },
       { label: 'barely_helpful', score: 1, desc: 'barely helpful' },
       { label: 'not_helpful', score: 0, desc: 'not helpful' },
     ],
@@ -118,9 +118,9 @@ export const RUBRIC_AXES = [
     prompt:
       'Does the answer stay on the question, free of unrelated facts or padding? Judge focus, not correctness — a true but unrelated fact LOWERS this score.',
     labels: [
-      { label: 'focused', score: 4, desc: 'every claim bears on the question; nothing extraneous' },
-      { label: 'on_topic', score: 3, desc: 'mostly on-topic; minor tangents' },
-      { label: 'padded', score: 2, desc: 'noticeable unrelated material diluting the answer' },
+      { label: 'focused', score: 4, desc: 'every claim bears on the question; zero padding' },
+      { label: 'on_topic', score: 3, desc: 'on point apart from at most one minor aside' },
+      { label: 'padded', score: 2, desc: 'noticeable unrelated material or padding diluting the answer' },
       { label: 'off_topic', score: 1, desc: 'dominated by off-topic facts' },
       { label: 'unrelated', score: 0, desc: 'answer is essentially about something else' },
     ],
@@ -130,8 +130,8 @@ export const RUBRIC_AXES = [
     title: 'Specificity',
     prompt: 'Does the answer use concrete project-specific detail rather than generic filler?',
     labels: [
-      { label: 'concrete', score: 4, desc: 'concrete project-specific APIs, paths, build flags, or mechanisms' },
-      { label: 'some_detail', score: 3, desc: 'some concrete detail' },
+      { label: 'concrete', score: 4, desc: 'precise project-specific APIs, paths, flags, or mechanisms throughout' },
+      { label: 'some_detail', score: 3, desc: 'some concrete detail, but leans generic in places' },
       { label: 'partly_generic', score: 2, desc: 'partly generic' },
       { label: 'mostly_generic', score: 1, desc: 'mostly generic' },
       { label: 'generic', score: 0, desc: 'purely generic or evasive' },
@@ -140,11 +140,11 @@ export const RUBRIC_AXES = [
   {
     key: 'evidence_handling',
     title: 'Evidence handling',
-    prompt: 'Is the answer constrained to evidence and honest about gaps?',
+    prompt: 'Is every claim traceable to the evidence, and are gaps named honestly?',
     labels: [
-      { label: 'well_grounded', score: 4, desc: 'clearly tied to evidence; acknowledges gaps' },
-      { label: 'grounded', score: 3, desc: 'reasonably grounded' },
-      { label: 'some_speculation', score: 2, desc: 'some speculation' },
+      { label: 'well_grounded', score: 4, desc: 'every claim traceable to the evidence and gaps are acknowledged' },
+      { label: 'grounded', score: 3, desc: 'reasonably grounded; little that is unsupported' },
+      { label: 'some_speculation', score: 2, desc: 'asserts specifics the evidence does not clearly support' },
       { label: 'speculative', score: 1, desc: 'strong speculation or unsupported claims' },
       { label: 'ungrounded', score: 0, desc: 'no evidence discipline' },
     ],
@@ -202,7 +202,19 @@ export function buildRubric(phrase, hasReferenceAnswers = false) {
     const choices = axis.labels.map(l => `"${l.label}" — ${l.desc}`).join('; ')
     return `${axis.title} — ${axis.prompt}\n  Pick exactly one label: ${choices}.`
   }).join('\n')
-  return `You score answers for ${phrase}. For each axis below, choose the single descriptive LABEL that best fits the answer. Do not output a number — output the label string, copied exactly. The labels are ordered best to worst.
+  return `You are a deliberately skeptical senior reviewer scoring answers for ${phrase}. Your job is to find what is wrong, missing, or padded — not to reward effort or fluency. Grade against the bar of what a domain expert would write. The top label on any axis is rare and must be earned: a plausible answer that merely contains the right facts is usually one level below the top, not at it.
+
+For each axis below, choose the single descriptive LABEL that best fits the answer. Do not output a number — output the label string, copied exactly. The labels are ordered best to worst.
+
+Before choosing each label, identify the single biggest weakness of the answer on that axis. Only award the top label if you cannot name a material weakness. When torn between two labels, pick the lower one.
+
+Hard caps — these override the per-axis descriptions below:
+- Any off-topic, padding, or non-load-bearing claim caps Relevance at "padded" or worse.
+- Any claim that is unsupported by the supplied evidence, provenance, or reference — or that asserts specifics the evidence does not establish — caps Evidence handling at "some_speculation" or worse, even if the claim is plausibly true.
+- A scaffold, stub, or "here is how you would find out" offered in place of a real answer caps Usefulness at "needs_followup" or worse.
+- Missing or contradicting a key fact caps Correctness at "mixed" or worse.
+
+Calibration: an answer that states the right high-level facts fluently but adds an unsupported or tangential aside and lacks concrete project-specific detail should land around correctness "mostly_correct", usefulness "helpful", relevance "padded", specificity "partly_generic", evidence "some_speculation". Do not drift above this anchor without a concrete reason.
 
 ${axisLines}
 

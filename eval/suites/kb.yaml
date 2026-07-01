@@ -9,10 +9,14 @@ questions:
   - What are the main phases of kb init, and what kinds of data does each phase add to the local store?
   - How does kb scan refresh an existing base, and how is that different from creating a base with kb init?
   - How are markdown documents turned into import_doc facts during init or scan?
-  - How does code indexing work at a high level, including the role of the TypeScript and tree-sitter indexers?
+  - How does code indexing work at a high level, including the role of the tree-sitter indexer?
   - How does kb query retrieve evidence from facts, FTS/vector scoring, and graph relationships?
   - How are kb skills packaged and installed into supported agent environments?
   - How does the eval runner exercise kb, from suite selection through init/scan/query and automatic scoring?
+  - Does kb send my repository's code or documents to a remote server to build the knowledge base, or does indexing happen locally?
+  - What is the default maximum number of passes for the deep facts-query retrieval loop, and which environment variable overrides it?
+  - How do I use kb to provision and deploy a Kubernetes cluster for my application?
+  - At what retrieved-fact pool size does the fact curator start running, and what happens to facts the judge does not keep?
 answers:
   - >
     kb is a local-first knowledge CLI for turning a repository into a queryable SQLite-backed
@@ -47,11 +51,14 @@ answers:
     file is re-ingested so removed text does not linger in retrieval.
 
   - >
-    Code indexing is deterministic and does not depend on an LLM. The TypeScript/JavaScript path uses
-    `TsMorphIndexer` when a tsconfig is available, while `TreeSitterIndexer` covers other supported
-    languages and text-like files. Together they write import_code facts for exported symbols,
-    imports, and structural relationships, then record enough file state to skip unchanged code on
-    future scans. The resulting code facts can also participate in graph edges and doc-fact anchoring.
+    Code indexing is deterministic and does not depend on an LLM. Every language — including
+    TypeScript/JavaScript — goes through a single `TreeSitterIndexer` (`src/tools/tree-sitter-indexer.ts`)
+    that parses one file at a time with a WASM grammar (`web-tree-sitter`), so peak memory is bounded by
+    the largest file rather than the whole project. It writes import_code facts for symbols, imports, and
+    structural relationships (including constant-value and EXTENDS/IMPLEMENTS edges), and records a
+    per-file content_hash in `code_file_state` to skip unchanged code on future scans. Languages without
+    a wired WASM grammar are simply not indexed — there is no LLM fallback. The resulting code facts can
+    participate in graph edges and doc-fact anchoring.
 
   - |
     `kb query` is facts-first: it retrieves fact rows plus graph context, then asks the model to
@@ -83,3 +90,40 @@ answers:
 
     The artifact records the run directory, base, suite, query results, scores, telemetry, and
     trend information for later comparison.
+
+  - >
+    Indexing is local-first. `kb init` and `kb scan` clone/read the repo and build a local
+    SQLite base (`.kb-index.sqlite`) on your machine; code indexing (tree-sitter AST) and markdown
+    doc-fact ingest are deterministic and run with no LLM and no upload of your source. The only
+    outbound network calls are to the LLM provider you configure, and only at query time for answer
+    synthesis (plus any optional embedding/judge steps) — not a bulk transfer of your code or docs.
+    With no provider key, retrieval still works locally; only the synthesized natural-language answer
+    is unavailable. A correct answer should state that indexing is local and name the one exception
+    (provider calls during synthesis), not claim the whole repo is sent to a server.
+
+  - >
+    The deep facts-query retrieval loop defaults to a maximum of 24 passes, overridden by the
+    `KB_FACTS_QUERY_MAX_ITERS` environment variable (clamped 1–24; `-1` lifts it toward the absolute
+    safety cap of 512 passes). It is one of three deep-loop knobs: the others are
+    `KB_FACTS_QUERY_MAX_HOPS` (graph hops, default 20) and `KB_FACTS_QUERY_MAX_PONDS` (exploration
+    ponds, default 6). A correct answer must give the number 24 and the `KB_FACTS_QUERY_MAX_ITERS`
+    variable specifically, not a vague "it is configurable."
+
+  - >
+    This is out of scope for kb. kb is a local-first knowledge CLI that indexes a repository into a
+    queryable SQLite knowledge base (`kb init` / `kb scan` / `kb query`) and installs agent skills; it
+    does not provision infrastructure, run deployments, or manage Kubernetes clusters. A correct answer
+    should say so plainly rather than inventing a deploy workflow. The most kb could do is answer
+    questions about Kubernetes manifests that already exist inside an indexed repository — it has no
+    cluster-provisioning capability of its own.
+
+  - >
+    The fact curator runs only when the retrieved pool exceeds 12 facts
+    (`DEFAULT_MIN_RESULTS_TO_CURATE`). Facts with high token overlap are auto-kept with no LLM call;
+    the remainder go to a single structured judge verdict (`{keep, gaps, sufficient}`) keyed on the
+    raw user question. Facts the judge does not keep are hard-dropped — there is no 15% floor. When the
+    judge reports gaps and the set is not yet sufficient, the curator issues bounded shallow
+    re-discovery queries (excluding what is already known) to refill those gaps. It fails safe to the
+    unfiltered pool on any LLM/parse error and guards against ever returning an empty set. Curator
+    decisions are recorded out-of-band on `retrieval.curation` and are not injected into the synthesis
+    context.
