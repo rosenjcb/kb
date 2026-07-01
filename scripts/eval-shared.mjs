@@ -512,6 +512,266 @@ export function summarizeCuration(retrievalDetails) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Per-question run timeline
+//
+// The headline scores say *whether* kb won; the timeline says *where a query
+// spent its budget* — how many tokens went to the retrieval/judge loop
+// ("thinking") vs the one-shot synthesis, how long each took, how many passes
+// and graph hops ran, and how many facts the curator kicked out. This is the
+// signal a cloud task session needs to answer "why are we slow / heavy now?".
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse the deep-loop counters from a `retrieval>` detail string
+ * (`facts-loop;passes:3;graph_hops:5;ponds:2;stop:llm_judge_answerable;facts:24;...`).
+ * Used as a fallback for older logs that predate the structured `report.retrieval` field.
+ * Returns null when the string carries no `facts-loop` counters.
+ */
+export function parseRetrievalDetailTrace(detail) {
+  if (typeof detail !== 'string' || !detail.includes('facts-loop')) return null
+  const num = re => {
+    const m = re.exec(detail)
+    return m ? Number(m[1]) : null
+  }
+  const stop = /(?:^|[;\s(])stop:([^;)\s]+)/.exec(detail)
+  const curation = parseCurationDetail(detail)
+  return {
+    passes: num(/(?:^|[;\s(])passes:(\d+)/),
+    graph_hops: num(/(?:^|[;\s(])graph_hops:(\d+)/),
+    ponds: num(/(?:^|[;\s(])ponds:(\d+)/),
+    stop_reason: stop ? stop[1] : null,
+    facts_returned: num(/(?:^|[;\s(])facts:(\d+)/),
+    curation: curation
+      ? { ...curation, dropped_fact_ids: [] }
+      : null,
+    hops: [],
+    checkpoints: [],
+  }
+}
+
+/**
+ * Split a query RunReport's stages into thinking (the retrieval/judge loop, `*:llm`) vs
+ * synthesis (`*:answer-enrichment`) vs anything else, summing tokens and duration for each.
+ * Loop-LLM stages are logged with `durationMs: 0`, so loop wall-time is recovered separately
+ * as `retrieval_ms = total − synthesis − other` by the caller.
+ */
+export function classifyStageTokens(report) {
+  const acc = {
+    thinking_tokens: 0,
+    thinking_ms: 0,
+    synthesis_tokens: 0,
+    synthesis_ms: 0,
+    other_tokens: 0,
+    other_ms: 0,
+  }
+  for (const s of report?.stages ?? []) {
+    const tokens = (Number(s.inputTokens) || 0) + (Number(s.outputTokens) || 0)
+    const ms = Number(s.durationMs) || 0
+    if (/:answer-enrichment$/.test(s.stage)) {
+      acc.synthesis_tokens += tokens
+      acc.synthesis_ms += ms
+    } else if (/:llm$/.test(s.stage)) {
+      acc.thinking_tokens += tokens
+      acc.thinking_ms += ms
+    } else {
+      acc.other_tokens += tokens
+      acc.other_ms += ms
+    }
+  }
+  return acc
+}
+
+/** Normalize the structured `report.retrieval` trace (or a detail-string fallback) to one shape. */
+function normalizeRetrievalTrace(report, fallbackDetail) {
+  const r = report?.retrieval
+  if (r && typeof r === 'object') {
+    return {
+      method: r.method ?? null,
+      passes: r.passes ?? null,
+      graph_hops: r.graphHops ?? null,
+      ponds: r.ponds ?? null,
+      stop_reason: r.stopReason ?? null,
+      facts_returned: r.factsReturned ?? null,
+      hops: Array.isArray(r.hops) ? r.hops : [],
+      checkpoints: Array.isArray(r.checkpoints) ? r.checkpoints : [],
+      curation: r.curation
+        ? {
+            kept: r.curation.kept ?? null,
+            dropped: r.curation.dropped ?? null,
+            requeried: r.curation.requeried ?? null,
+            rounds: r.curation.rounds ?? null,
+            sufficient: r.curation.sufficient ?? null,
+            dropped_fact_ids: Array.isArray(r.curation.droppedFactIds)
+              ? r.curation.droppedFactIds
+              : [],
+          }
+        : null,
+    }
+  }
+  return parseRetrievalDetailTrace(fallbackDetail)
+}
+
+/**
+ * Build one question's slice of the run timeline by joining its telemetry RunReport (stage
+ * token/time split) with its retrieval trace (passes, hops, curator drops). `fallbackDetail`
+ * is the parsed `retrieval.detail` text, used only when the report predates `report.retrieval`.
+ */
+export function buildQuestionTimeline(report, questionIndex, question, fallbackDetail) {
+  const stages = classifyStageTokens(report)
+  const totalMs = Number(report?.totalDurationMs) || 0
+  // Loop-LLM stages carry no duration; the loop's wall-time is whatever total is left after
+  // the (timed) synthesis and any other timed stages.
+  const retrievalMs = Math.max(0, totalMs - stages.synthesis_ms - stages.other_ms)
+  const queryTokens = stages.thinking_tokens + stages.synthesis_tokens + stages.other_tokens
+  const share = n => (queryTokens > 0 ? Number((n / queryTokens).toFixed(3)) : null)
+  return {
+    question_index: questionIndex,
+    question: question ?? null,
+    total_duration_ms: totalMs,
+    total_input_tokens: Number(report?.totalInputTokens) || 0,
+    total_output_tokens: Number(report?.totalOutputTokens) || 0,
+    cost_usd: report?.totalEstimatedCostUsd != null ? Number(report.totalEstimatedCostUsd) : null,
+    tokens: {
+      thinking: stages.thinking_tokens,
+      synthesis: stages.synthesis_tokens,
+      other: stages.other_tokens,
+    },
+    token_share: {
+      thinking: share(stages.thinking_tokens),
+      synthesis: share(stages.synthesis_tokens),
+    },
+    timing: {
+      total_ms: totalMs,
+      synthesis_ms: stages.synthesis_ms,
+      retrieval_ms: retrievalMs,
+      other_ms: stages.other_ms,
+    },
+    retrieval: normalizeRetrievalTrace(report, fallbackDetail),
+    stages: (report?.stages ?? []).map(s => ({
+      stage: s.stage,
+      duration_ms: Number(s.durationMs) || 0,
+      input_tokens: Number(s.inputTokens) || 0,
+      output_tokens: Number(s.outputTokens) || 0,
+    })),
+  }
+}
+
+/**
+ * Aggregate a run's per-question timelines into a single diagnostic block: mean token/time
+ * splits, where the budget goes (thinking vs synthesis share), curator drop rate, and the
+ * outlier questions. `diagnosis[]` are plain-language flags a task session can act on directly.
+ */
+export function buildTimelineSummary(timeline) {
+  const rows = Array.isArray(timeline) ? timeline : []
+  if (rows.length === 0) return null
+
+  const meanOf = fn => {
+    const vals = rows.map(fn).filter(v => typeof v === 'number' && !Number.isNaN(v))
+    return vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : null
+  }
+  const sumOf = fn => rows.reduce((a, r) => a + (Number(fn(r)) || 0), 0)
+  const round = (n, d = 3) => (n == null ? null : Number(Number(n).toFixed(d)))
+
+  const totalThinking = sumOf(r => r.tokens?.thinking)
+  const totalSynthesis = sumOf(r => r.tokens?.synthesis)
+  const totalOther = sumOf(r => r.tokens?.other)
+  const totalQueryTokens = totalThinking + totalSynthesis + totalOther
+  const totalRetrievalMs = sumOf(r => r.timing?.retrieval_ms)
+  const totalMs = sumOf(r => r.timing?.total_ms)
+  const totalDropped = sumOf(r => r.retrieval?.curation?.dropped)
+  const totalKept = sumOf(r => r.retrieval?.curation?.kept)
+  const curatorDenom = totalKept + totalDropped
+
+  const byDuration = [...rows].sort((a, b) => (b.total_duration_ms || 0) - (a.total_duration_ms || 0))
+  const byThinking = [...rows].sort((a, b) => (b.tokens?.thinking || 0) - (a.tokens?.thinking || 0))
+
+  const thinkingShare = totalQueryTokens > 0 ? totalThinking / totalQueryTokens : null
+  const synthesisShare = totalQueryTokens > 0 ? totalSynthesis / totalQueryTokens : null
+  const retrievalTimeShare = totalMs > 0 ? totalRetrievalMs / totalMs : null
+
+  const diagnosis = []
+  if (thinkingShare != null && thinkingShare >= 0.5) {
+    diagnosis.push(
+      `Thinking (retrieval/judge loop) is ${(thinkingShare * 100).toFixed(0)}% of query tokens vs ${((synthesisShare ?? 0) * 100).toFixed(0)}% synthesis — the loop dominates token cost.`
+    )
+  }
+  if (retrievalTimeShare != null && retrievalTimeShare >= 0.6) {
+    diagnosis.push(
+      `Retrieval loop wall-time is ${(retrievalTimeShare * 100).toFixed(0)}% of total — synthesis is cheap; slowness is in the hops.`
+    )
+  }
+  const meanPasses = meanOf(r => r.retrieval?.passes)
+  if (meanPasses != null && meanPasses >= 8) {
+    diagnosis.push(
+      `Mean ${meanPasses.toFixed(1)} loop passes/question — the sufficiency judge is exiting late; consider tighter early-exit.`
+    )
+  }
+  if (curatorDenom > 0 && totalDropped / curatorDenom < 0.15) {
+    diagnosis.push(
+      `Curator dropped only ${((totalDropped / curatorDenom) * 100).toFixed(0)}% of facts — little pruning; large prompts reach synthesis.`
+    )
+  }
+  if (diagnosis.length === 0) {
+    diagnosis.push('No dominant cost concentration detected across the run timeline.')
+  }
+
+  return {
+    questions: rows.length,
+    mean_total_duration_ms: round(meanOf(r => r.total_duration_ms), 0),
+    mean_thinking_tokens: round(meanOf(r => r.tokens?.thinking), 0),
+    mean_synthesis_tokens: round(meanOf(r => r.tokens?.synthesis), 0),
+    thinking_token_share: round(thinkingShare),
+    synthesis_token_share: round(synthesisShare),
+    mean_retrieval_ms: round(meanOf(r => r.timing?.retrieval_ms), 0),
+    mean_synthesis_ms: round(meanOf(r => r.timing?.synthesis_ms), 0),
+    retrieval_time_share: round(retrievalTimeShare),
+    mean_passes: round(meanPasses, 1),
+    mean_graph_hops: round(meanOf(r => r.retrieval?.graph_hops), 1),
+    total_curator_kept: totalKept,
+    total_curator_dropped: totalDropped,
+    curator_drop_rate: curatorDenom > 0 ? round(totalDropped / curatorDenom) : null,
+    slowest_question: byDuration[0]
+      ? { question_index: byDuration[0].question_index, total_duration_ms: byDuration[0].total_duration_ms }
+      : null,
+    heaviest_thinking_question: byThinking[0]
+      ? { question_index: byThinking[0].question_index, thinking_tokens: byThinking[0].tokens?.thinking ?? 0 }
+      : null,
+    diagnosis,
+  }
+}
+
+/**
+ * Print a compact per-run timeline diagnosis to stdout: the token/time split, curator drop
+ * rate, the slowest question, and the plain-language flags. Called at the end of a harvest so
+ * the operator (or a cloud task session reading the log) sees *where the budget went* without
+ * opening the artifact JSON.
+ */
+export function printTimelineDiagnosis(summary, timeline) {
+  if (!summary) return
+  const pct = v => (v == null ? '  -' : `${(v * 100).toFixed(0)}%`)
+  console.log('')
+  console.log(` TIMELINE (K · ${summary.questions} questions) — where the query budget went`)
+  console.log(
+    `  tokens   thinking ${formatCompactTokens(summary.mean_thinking_tokens)} (${pct(summary.thinking_token_share)})   synthesis ${formatCompactTokens(summary.mean_synthesis_tokens)} (${pct(summary.synthesis_token_share)})   [mean/question]`
+  )
+  console.log(
+    `  time     retrieval ${formatDurationMs(summary.mean_retrieval_ms)} (${pct(summary.retrieval_time_share)})   synthesis ${formatDurationMs(summary.mean_synthesis_ms)}   total ${formatDurationMs(summary.mean_total_duration_ms)}`
+  )
+  console.log(
+    `  loop     passes ${summary.mean_passes ?? '-'}   graph_hops ${summary.mean_graph_hops ?? '-'}   curator dropped ${summary.total_curator_dropped}/${summary.total_curator_kept + summary.total_curator_dropped} (${pct(summary.curator_drop_rate)})`
+  )
+  if (summary.slowest_question) {
+    console.log(
+      `  slowest  Q${summary.slowest_question.question_index} at ${formatDurationMs(summary.slowest_question.total_duration_ms)}`
+    )
+  }
+  for (const line of summary.diagnosis ?? []) {
+    console.log(`  ▶ ${line}`)
+  }
+  void timeline
+}
+
 export function scoreMetric(artifact, key) {
   const q = artifact?.aggregate_scores?.query
   const c = artifact?.aggregate_scores?.combined

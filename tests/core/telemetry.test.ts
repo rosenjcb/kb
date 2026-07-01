@@ -10,6 +10,7 @@ import {
   TokenCountingProvider,
   TrajectoryCollector,
   estimateCost,
+  summarizeQueryRetrievalTrace,
 } from '../../src/core/telemetry'
 import type { TrajectoryFile } from '../../src/core/telemetry'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
@@ -111,6 +112,18 @@ describe('RunCollector', () => {
     expect(report.stages).toHaveLength(1)
     expect(report.stages[0].stage).toBe('invalidate')
     expect(report.stages[0].durationMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('[TC-513] Given setRetrievalTrace, then the finished report carries the trace; else it is absent', () => {
+    const without = new RunCollector('query').finish('success')
+    expect(without.retrieval).toBeUndefined()
+
+    const c = new RunCollector('query')
+    c.setRetrievalTrace({ passes: 3, graphHops: 5, hops: ['i1:...', 'i2:...'] })
+    const report = c.finish('success')
+    expect(report.retrieval?.passes).toBe(3)
+    expect(report.retrieval?.graphHops).toBe(5)
+    expect(report.retrieval?.hops).toHaveLength(2)
   })
 
   it('[TC-161] Given addStage, then does not write to stderr', () => {
@@ -394,5 +407,61 @@ describe('TrajectoryCollector', () => {
     } finally {
       await rm(tmpDir, { recursive: true, force: true })
     }
+  })
+})
+
+// ─── summarizeQueryRetrievalTrace ─────────────────────────────────
+
+describe('summarizeQueryRetrievalTrace', () => {
+  it('[TC-514] Given a facts-loop detail string, then lifts passes/hops/ponds/stop/facts', () => {
+    const trace = summarizeQueryRetrievalTrace({
+      method: 'hybrid',
+      detail:
+        'facts-loop;passes:4;graph_hops:6;ponds:3;stop:llm_judge_answerable;facts:22;semantic:on',
+    })
+    expect(trace.method).toBe('hybrid')
+    expect(trace.passes).toBe(4)
+    expect(trace.graphHops).toBe(6)
+    expect(trace.ponds).toBe(3)
+    expect(trace.stopReason).toBe('llm_judge_answerable')
+    expect(trace.factsReturned).toBe(22)
+  })
+
+  it('[TC-515] Given a curated detail string and a raw curation record, then lifts counts and dropped ids', () => {
+    const trace = summarizeQueryRetrievalTrace({
+      detail:
+        'facts-loop;passes:2;facts:18;curated:kept=18,dropped=6,requeried=1,rounds=2',
+      curation: {
+        evaluated: 24,
+        dropped: [
+          { id: 'fact://x', reason: 'off-topic' },
+          { id: 'fact://y', reason: 'off-topic' },
+        ],
+        requeried: ['gap query'],
+        rounds: 2,
+        sufficient: true,
+      },
+    })
+    expect(trace.curation?.kept).toBe(18)
+    expect(trace.curation?.dropped).toBe(6)
+    expect(trace.curation?.requeried).toBe(1)
+    expect(trace.curation?.rounds).toBe(2)
+    expect(trace.curation?.sufficient).toBe(true)
+    expect(trace.curation?.droppedFactIds).toEqual(['fact://x', 'fact://y'])
+  })
+
+  it('[TC-516] Given a traceDetail string, then splits per-pass hop lines in order', () => {
+    const trace = summarizeQueryRetrievalTrace({
+      detail: 'facts-loop;passes:2',
+      traceDetail: 'repo:core;trace:i1:merged=5,hops=1|i2:merged=3,hops=2',
+    })
+    expect(trace.hops).toEqual(['i1:merged=5,hops=1', 'i2:merged=3,hops=2'])
+  })
+
+  it('[TC-517] Given an unknown shape, then degrades to empty fields without throwing', () => {
+    const trace = summarizeQueryRetrievalTrace({})
+    expect(trace.hops).toEqual([])
+    expect(trace.passes).toBeUndefined()
+    expect(trace.curation).toBeUndefined()
   })
 })

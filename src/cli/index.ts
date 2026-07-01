@@ -13,6 +13,7 @@ import {
   TokenCountingProvider,
   defaultLogsDir,
   estimateCost,
+  summarizeQueryRetrievalTrace,
 } from '../core/telemetry'
 import { DatabaseSync } from 'node:sqlite'
 import { expandQueryWithGraph, kbIndexDbPath } from '../tools/graph-query-expansion'
@@ -1100,6 +1101,14 @@ export async function runMainWithOutput(
       printIntentResult(enriched, printer, {
         verbose: parsed.verbose,
       })
+      // Persist the per-hop retrieval timeline (passes, hops, curator drops) so downstream
+      // tooling (the eval harness) can reconstruct where a query spent its effort.
+      if (isReadFactsResult(enriched)) {
+        const retrievalData = (enriched.data as ReadDocumentsResultData | undefined)?.retrieval
+        if (retrievalData) {
+          collector.setRetrievalTrace(summarizeQueryRetrievalTrace(retrievalData))
+        }
+      }
       await reporter.append(collector.finish('success'))
       return
     } catch (error) {
