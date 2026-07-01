@@ -712,7 +712,13 @@ export function buildTimelineSummary(timeline) {
   const EXHAUSTION_STOPS = new Set(['weak_evidence_after_exhaustion', 'frontier_exhausted'])
   const exhausted = rows.filter(r => EXHAUSTION_STOPS.has(r.retrieval?.stop_reason))
   const exhaustionRate = rows.length > 0 ? exhausted.length / rows.length : null
-  const meanFactsToSynthesis = meanOf(r => r.retrieval?.facts_returned)
+  // What actually reaches synthesis is the *post-curation* count (curator `kept`), not the
+  // orchestrator's raw pool. When curation didn't run/record, the raw pool is what flowed
+  // through — which is exactly the fallback pathology, so `facts_returned` is the right value
+  // there. This makes the metric move when the curator starts pruning (or stops falling back).
+  const factsToSynthesis = r =>
+    r.retrieval?.curation?.kept != null ? r.retrieval.curation.kept : r.retrieval?.facts_returned
+  const meanFactsToSynthesis = meanOf(factsToSynthesis)
   // Curator "fell back": pool was large enough to curate (>12) but no curation record survived,
   // meaning the judge failed/parsed-empty and the full pool reached synthesis unpruned.
   const curatorFallbacks = rows.filter(
@@ -748,9 +754,9 @@ export function buildTimelineSummary(timeline) {
         .join(', Q')}) — the full unpruned pool reached synthesis exactly where it was largest.`
     )
   }
-  if (meanFactsToSynthesis != null && meanFactsToSynthesis >= 100) {
+  if (meanFactsToSynthesis != null && meanFactsToSynthesis >= 60) {
     diagnosis.push(
-      `Mean ${Math.round(meanFactsToSynthesis)} facts reached synthesis — large evidence pools inflate synthesis input tokens.`
+      `Mean ${Math.round(meanFactsToSynthesis)} facts reached synthesis (post-curation) — large evidence pools inflate synthesis input tokens.`
     )
   }
   if (curatorDenom > 0 && totalDropped / curatorDenom < 0.15) {
