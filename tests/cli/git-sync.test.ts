@@ -250,5 +250,16 @@ describe('git-sync', () => {
       await cloneRepo(origin, dest, 'dev')
       expect(await getCurrentBranch(dest)).toBe('dev')
     })
+
+    it('[TC-235] clones a shallow local snapshot without blob:none filter stall', async () => {
+      const shallowSrc = path.join(tmpRoot, 'shallow-src')
+      await git(tmpRoot, 'clone', '--depth', '1', origin, shallowSrc)
+      const dest = path.join(tmpRoot, 'shallow-dest')
+      const started = Date.now()
+      await cloneRepo(shallowSrc, dest)
+      expect(Date.now() - started).toBeLessThan(15_000)
+      expect(await getCurrentBranch(dest)).toBe('master')
+      expect(await readFile(path.join(dest, 'README.md'), 'utf8')).toBe('# master repo\n')
+    })
   })
 })

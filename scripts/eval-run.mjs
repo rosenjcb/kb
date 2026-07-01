@@ -22,7 +22,7 @@
  * Clone: suite YAML repo_url used by default; override with `--repo <git-url>`.
  */
 
-import { execSync } from 'node:child_process'
+import { execSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -300,8 +300,54 @@ function kb(cwd, args, opts = {}) {
     env: kbEnv(),
     cwd,
     maxBuffer: 50 * 1024 * 1024,
-    stdio: opts.capture === false ? 'inherit' : undefined,
+    stdio: opts.stdio === 'inherit' || opts.capture === false ? 'inherit' : undefined,
     ...opts,
+  })
+}
+
+/** Stream kb stdout/stderr live (no pipe buffer) and write a transcript to `logPath`. */
+function kbTee(cwd, args, logPath) {
+  const bin = KB_BIN
+  fs.mkdirSync(path.dirname(logPath), { recursive: true })
+  const logFd = fs.openSync(logPath, 'w')
+  return new Promise((resolve, reject) => {
+    const child = spawn(`node "${bin}" ${args}`, {
+      cwd,
+      env: kbEnv(),
+      shell: true,
+      stdio: ['inherit', 'pipe', 'pipe'],
+    })
+    const parts = []
+    const relay = (stream, mirror) => {
+      stream.on('data', chunk => {
+        mirror.write(chunk)
+        fs.writeSync(logFd, chunk)
+        parts.push(chunk)
+      })
+    }
+    relay(child.stdout, process.stdout)
+    relay(child.stderr, process.stderr)
+    child.on('error', err => {
+      try {
+        fs.closeSync(logFd)
+      } catch {
+        /* ignore */
+      }
+      reject(err)
+    })
+    child.on('close', code => {
+      try {
+        fs.closeSync(logFd)
+      } catch {
+        /* ignore */
+      }
+      const output = Buffer.concat(parts).toString('utf8')
+      if (code !== 0) {
+        reject(new Error(`kb exited ${code ?? 'unknown'}\n${output.slice(-4000)}`))
+        return
+      }
+      resolve(output)
+    })
   })
 }
 
@@ -310,6 +356,18 @@ function timed(label, timings, fn) {
   const startMs = Date.now()
   try {
     return fn()
+  } finally {
+    const durationMs = Date.now() - startMs
+    timings.command_durations_ms[label] = durationMs
+    timings.commands.push({ label, started_at: startedAt, duration_ms: durationMs })
+  }
+}
+
+async function timedAsync(label, timings, fn) {
+  const startedAt = new Date().toISOString()
+  const startMs = Date.now()
+  try {
+    return await fn()
   } finally {
     const durationMs = Date.now() - startMs
     timings.command_durations_ms[label] = durationMs
@@ -628,19 +686,24 @@ async function main() {
     console.error(`[eval] workdir ${workdir}`)
     console.error(`[eval] target cwd ${targetCwd}`)
     console.error(
-      `[eval] session "${base}" — ${needsInit ? 'no docs found, running kb init' : 'session exists, reusing'}; kb scan before K queries`
+      `[eval] session "${base}" — ${needsInit ? 'no docs found, running kb init then scan' : 'reusing session; kb scan before K queries'}`
     )
 
     if (needsInit) {
       // kb init now requires a git remote. Point it at the local snapshot clone (exact commit,
       // no extra network); kb follows the clone's own default branch (main, master, …).
-      const initLog = timed('init', runTiming, () =>
-        kb(
+      const initLogPath = path.join(workdir, 'init.log')
+      console.error(`[eval] kb init --base ${base} --git "${targetCwd}"`)
+      console.error(
+        '[eval] kb init clones snapshot into ~/.kb/sessions/… then indexes — progress lines follow'
+      )
+      await timedAsync('init', runTiming, () =>
+        kbTee(
           targetCwd,
-          `init --base ${base} --git "${targetCwd}" --non-interactive --debug`
+          `init --base ${base} --git "${targetCwd}" --non-interactive --debug`,
+          initLogPath
         )
       )
-      fs.writeFileSync(path.join(workdir, 'init.log'), initLog, 'utf8')
     } else {
       runTiming.command_durations_ms.init = 0
       fs.writeFileSync(
@@ -651,8 +714,10 @@ async function main() {
     }
 
     console.error(`[eval] kb scan --base ${base}`)
-    const scanLog = timed('scan', runTiming, () => kb(targetCwd, `scan --base ${base} --debug`))
-    fs.writeFileSync(path.join(workdir, 'scan.log'), scanLog, 'utf8')
+    const scanLogPath = path.join(workdir, 'scan.log')
+    await timedAsync('scan', runTiming, () =>
+      kbTee(targetCwd, `scan --base ${base} --debug`, scanLogPath)
+    )
 
     console.error(`[eval] kb base use --default ${base}`)
     timed('base_use_default', runTiming, () =>
