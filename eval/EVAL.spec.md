@@ -85,6 +85,12 @@ See companion doc for full vocabulary where applicable.
 | TC-36 | FR-4 | retries and succeeds on a later attempt | pass |
 | TC-37 | FR-4 | throws the last error after exhausting all attempts | pass |
 | TC-38 | FR-4 | does not retry on success even with attempts > 1 | pass |
+| TC-225 | FR-4 | every rubric axis defines five labels mapping onto ordinal levels 0–4 | pass |
+| TC-226 | FR-4 | scoreFromLabel resolves a known label to its ordinal level | pass |
+| TC-227 | FR-4 | scoreFromLabel tolerates casing, spaces, and hyphens | pass |
+| TC-228 | FR-4 | scoreFromLabel falls back to the legacy numeric path | pass |
+| TC-229 | FR-4 | scoreFromLabel returns 0 for an unrecognized verdict | pass |
+| TC-230 | FR-4 | the rubric instructs the judge to pick labels, not numbers | pass |
 | TC-39 | FR-5 | returns content and length for an existing file | pass |
 | TC-40 | FR-5 | returns an error for a non-existent file | pass |
 | TC-41 | FR-5 | reads an empty file without error | pass |
