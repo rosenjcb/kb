@@ -54,11 +54,17 @@ passed in, so it carries no DB or network handle of its own.
 ## Invariants
 
 - Never inject curator decisions or dropped-fact text into the synthesis context.
-- On any LLM or JSON-parse error, return the original `results` unchanged (`fellBack = true`).
+- On any LLM or JSON-parse error, return the original `results` **bounded to `maxJudgeCandidates`**
+  (`fellBack = true`). Small pools pass through unchanged; only a pathologically large pool is
+  capped, so a failed/truncated verdict can never flush hundreds of unpruned facts into synthesis.
+- **Cap the judge input:** at most `maxJudgeCandidates` (default 100) candidates are sent to the
+  LLM in one verdict; the lower-ranked tail is hard-dropped deterministically (reason
+  `beyond curator candidate cap`). This keeps the verdict JSON from truncating on big pools — the
+  root cause of the fail-safe-to-full-pool trap — and caps what can ever reach synthesis.
 - Never return an empty set: if curation drops everything, fall back to deterministic top-K.
-- Auto-kept (high-overlap) facts survive regardless of the judge's keep list.
+- Auto-kept (high-overlap) facts survive regardless of the judge's keep list and bypass the cap.
 - Only issue re-discovery when the judge reports `gaps` AND `sufficient` is false.
-- Bound every run: `maxRounds`, `maxRequeriesPerRound`, `requeryBudget`.
+- Bound every run: `maxRounds`, `maxRequeriesPerRound`, `requeryBudget`, `maxJudgeCandidates`.
 
 ## Extension checklist
 

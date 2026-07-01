@@ -24,6 +24,13 @@ const DEFAULT_MAX_ROUNDS = 2
 const DEFAULT_MAX_REQUERIES = 2
 const DEFAULT_REQUERY_BUDGET = 12
 const DEFAULT_MIN_KEEP = 5
+// Hard bound on how many candidates the LLM judge sees in one verdict. Beyond this the judge
+// prompt explodes and — with a fixed `maxTokens` verdict — the returned `keep` JSON truncates,
+// which throws in `parseVerdict` and drops the curator into its fail-safe *full-pool* return.
+// That is exactly the pathology that dumps 600–900 unpruned facts into synthesis on the largest
+// pools. Judge the top `JUDGE_MAX_CANDIDATES` by incoming (orchestrator) rank and hard-drop the
+// tail deterministically — the orchestrator already scored them, so its tail is the noise.
+const DEFAULT_MAX_JUDGE_CANDIDATES = 100
 const JUDGE_SUMMARY_CHARS = 160
 const JUDGE_MAX_KEPT_CONTEXT = 25
 
@@ -46,6 +53,8 @@ export interface CuratorOptions {
   requeryBudget?: number
   /** Absolute floor: if curation would empty the set, fall back to this many top facts. */
   minKeep?: number
+  /** Max candidates sent to the LLM judge in one verdict; the lower-ranked tail is hard-dropped. */
+  maxJudgeCandidates?: number
 }
 
 export interface CurationRecord {
@@ -106,6 +115,7 @@ export async function curateFacts(input: CurateInput): Promise<CurateOutput> {
     maxRequeriesPerRound: input.options?.maxRequeriesPerRound ?? DEFAULT_MAX_REQUERIES,
     requeryBudget: input.options?.requeryBudget ?? DEFAULT_REQUERY_BUDGET,
     minKeep: input.options?.minKeep ?? DEFAULT_MIN_KEEP,
+    maxJudgeCandidates: input.options?.maxJudgeCandidates ?? DEFAULT_MAX_JUDGE_CANDIDATES,
   }
 
   const record: CurationRecord = {
@@ -130,6 +140,18 @@ export async function curateFacts(input: CurateInput): Promise<CurateOutput> {
     else candidates.push(r)
   }
   record.autoKept = autoKept.length
+
+  // 1b. Bound the judge input: keep the top `maxJudgeCandidates` by incoming (orchestrator)
+  // rank and hard-drop the tail here, deterministically. This is what keeps the verdict JSON
+  // from truncating on huge pools (the fail-safe-to-full-pool trap) and caps what can ever
+  // reach synthesis. Auto-kept facts are never subject to the cap.
+  if (candidates.length > opts.maxJudgeCandidates) {
+    const overflow = candidates.slice(opts.maxJudgeCandidates)
+    for (const r of overflow) {
+      record.dropped.push({ id: r.metadata.id, reason: 'beyond curator candidate cap' })
+    }
+    candidates = candidates.slice(0, opts.maxJudgeCandidates)
+  }
 
   const keptIds = new Set(autoKept.map(r => r.metadata.id))
   const knownIds = new Set(incomingIds)
@@ -171,8 +193,17 @@ export async function curateFacts(input: CurateInput): Promise<CurateOutput> {
       candidates = fresh // next round judges only the newly discovered facts
     }
   } catch {
+    // Fail safe — but bounded. Returning the *full* pool here is what let a truncated/failed
+    // verdict flush hundreds of unpruned facts into synthesis. Only the pathological large pool
+    // is capped (to the orchestrator's top `maxJudgeCandidates`); small pools pass through
+    // untouched, preserving the original fail-safe semantics.
     record.fellBack = true
-    return { results, record }
+    if (results.length <= opts.maxJudgeCandidates) return { results, record }
+    for (const r of results.slice(opts.maxJudgeCandidates)) {
+      if (record.dropped.some(d => d.id === r.metadata.id)) continue
+      record.dropped.push({ id: r.metadata.id, reason: 'curator fallback cap' })
+    }
+    return { results: results.slice(0, opts.maxJudgeCandidates), record }
   }
 
   // Stable order: original pool order for survivors, then re-discovered facts in discovery order.
@@ -227,7 +258,7 @@ async function runJudge(
       },
     ],
     temperature: 0,
-    maxTokens: 800,
+    maxTokens: 1200,
     thinkingBudget: 0,
   })
 

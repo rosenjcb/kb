@@ -166,6 +166,41 @@ describe('curateFacts', () => {
     expect(record.fellBack).toBe(true)
   })
 
+  it('[TC-11] Given a pool larger than the judge candidate cap, then the tail is hard-dropped and the judge sees at most the cap', async () => {
+    // 130 low-overlap facts → all candidates (none auto-kept), exceeding the default cap of 100.
+    const results = Array.from({ length: 130 }, (_, i) => makeResult(`f-${i}`, `unrelated topic ${i}`))
+    const call = vi.fn(async () => ({
+      text: JSON.stringify({ keep: ['f-0', 'f-1'], gaps: [], sufficient: true }),
+      stopReason: 'end_turn' as const,
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+    }))
+    const llm = { call } as unknown as LLMProvider
+
+    const { record } = await curateFacts({ llm, query: 'alpha beta gamma', results })
+
+    // The judge prompt lists at most `maxJudgeCandidates` (100) candidate id|summary lines.
+    const prompt = call.mock.calls[0][0].messages[0].content as string
+    const candidateIds = prompt.split('\n').filter(l => /^f-\d+\|/.test(l))
+    expect(candidateIds.length).toBeLessThanOrEqual(100)
+    // The 30 over-cap facts are recorded as dropped without ever reaching the judge.
+    expect(record.dropped.filter(d => d.reason === 'beyond curator candidate cap')).toHaveLength(30)
+    expect(record.fellBack).toBe(false)
+  })
+
+  it('[TC-12] Given the LLM throws on an over-cap pool, then the fallback is bounded to the cap, not the full pool', async () => {
+    const results = Array.from({ length: 250 }, (_, i) => makeResult(`f-${i}`, `unrelated topic ${i}`))
+    const { results: out, record } = await curateFacts({
+      llm: errorLlm(),
+      query: 'alpha beta gamma',
+      results,
+      options: { maxJudgeCandidates: 40 },
+    })
+    expect(record.fellBack).toBe(true)
+    // Never dump the full 250-fact pool into synthesis — bound it to the cap.
+    expect(out.length).toBe(40)
+  })
+
   it('[TC-10] Given re-discovery returns only known ids, then it stops without looping', async () => {
     const results = [
       makeResult('seed', 'partial detail'),
