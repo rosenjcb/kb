@@ -14,6 +14,8 @@ interface FactsLoopOptions {
   includeContent: boolean
   surface: 'query' | 'chat'
   excludeIds?: Set<string>
+  /** H5 ablation: score overlap+semantic against this (the raw question) instead of `query`. */
+  scoringQuery?: string
 }
 
 interface SufficiencyDecision {
@@ -93,6 +95,9 @@ export class FactsQueryResearchOrchestrator {
     const maxPonds = clampLimitInt(process.env.KB_FACTS_QUERY_MAX_PONDS, 6, 2, 12)
     const perIterationLimit = 50
     const traceEnabled = isQueryTraceEnabled()
+    // H5 ablation: discovery (FTS / ponds / frontier) still uses the (expanded) `input.query`,
+    // but overlap + semantic *scoring* is computed against `scoringQuery` (the raw question).
+    const scoringQuery = input.scoringQuery?.trim() || input.query
     const queryTokens = tokenizeQuery(input.query)
     // Repo-pool retrieval: facts are organised by the git repo they came from (not by
     // categories). We seed on the repo the first lexical hit lands in, then order results so
@@ -179,7 +184,7 @@ export class FactsQueryResearchOrchestrator {
         seenFactIds
       )
       const semanticScores = this.indexer.semanticFactScores(
-        input.query,
+        scoringQuery,
         merged.map(row => row.id)
       )
       const activePonds = ponds.filter(pond => !pond.exhausted).length
@@ -227,7 +232,7 @@ export class FactsQueryResearchOrchestrator {
           ? Math.max(...activePond.frontierFactIds.map(id => scoredFacts.get(id)?.score ?? 0))
           : 0
       this.scoreIterationFacts(
-        input.query,
+        scoringQuery,
         merged,
         scoredFacts,
         new Set([

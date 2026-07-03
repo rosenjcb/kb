@@ -963,7 +963,10 @@ export async function runMainWithOutput(
           try {
             const db = new DatabaseSync(kbIndexDbPath(intentBaseDir), { readOnly: true })
             try {
-              payload.query = expandQueryWithGraph(originalQuery, db)
+              payload.query =
+                process.env.KB_ABLATE_NO_EXPANSION === '1'
+                  ? originalQuery
+                  : expandQueryWithGraph(originalQuery, db)
               for (const qRel of [preRewriteQueryTruth, originalQuery]) {
                 if (!qRel) continue
                 try {

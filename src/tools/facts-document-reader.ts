@@ -111,9 +111,16 @@ export class FactsDocumentReader {
       const judge = this.llm ? makeSufficiencyJudge(this.llm) : undefined
       const orchestrator = new FactsQueryResearchOrchestrator(this.indexer, { judge })
       const baseQuery = input.query?.trim() ?? ''
+      // H5 ablation: score against the raw question (env-provided) while discovery stays on
+      // the (expanded) baseQuery. Curator keying below is switched to the same raw question.
+      const rawScoringQuery =
+        process.env.KB_ABLATE_RAW_SCORING === '1'
+          ? (process.env.KB_ABLATE_RAW_Q?.trim() || undefined)
+          : undefined
       const opts = {
         includeContent: input.includeContent === true,
         surface: input.surface ?? 'query',
+        ...(rawScoringQuery ? { scoringQuery: rawScoringQuery } : {}),
       } as const
 
       const excludeIdSet =
@@ -188,9 +195,13 @@ export class FactsDocumentReader {
       return out
     }
 
+    // Bonus ablation: the curator is documented to key on the *raw* question, but `query` here
+    // is the graph-expanded string. This gate feeds it the real raw question instead.
+    const curatorQuery =
+      process.env.KB_ABLATE_CURATOR_RAW_Q?.trim() ? process.env.KB_ABLATE_CURATOR_RAW_Q.trim() : query
     const { results, record } = await curateFacts({
       llm: this.llm,
-      query,
+      query: curatorQuery,
       results: response.results,
       requery,
     })
