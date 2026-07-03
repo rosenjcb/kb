@@ -82,18 +82,16 @@ pnpm run eval -- --suite kb --auto-score    # → ΔS in artifact + end summary
 
 Full spec: `EVALUATION.md` § Headline verdict.
 
-## Secondary: eval:trends (regression tracking)
+## Secondary: trends summary (regression tracking)
 
-`pnpm run eval:trends` lists prior runs for a suite (structural metrics + score columns). Use it to spot kb-side regressions — **not** as the headline kb-vs-control comparison (that requires ΔS from one artifact).
-
-```bash
-pnpm run eval:trends -- --suite kb
-pnpm run eval:trends -- --suite raylib [--limit 10]
-```
+Every `pnpm run eval` run **ends with an automatic trends summary** listing prior runs
+for the suite (structural metrics + score columns) — there is no separate `eval:trends`
+script. Use that summary to spot kb-side regressions — **not** as the headline
+kb-vs-control comparison (that requires ΔS from one artifact).
 
 Columns: `date | run | docs | ent | rels | res | success | pass | corr | use`
 
-After every eval run, copy the artifact to `evaluation/runs/<label>.json` so it is visible in `eval:trends --source repo`.
+After every eval run, copy the artifact to `evaluation/runs/<label>.json` so it stays visible to future runs' trend summaries.
 
 ## Question sets
 

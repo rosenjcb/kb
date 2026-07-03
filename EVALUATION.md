@@ -620,8 +620,9 @@ Agents should not invent their own artifact shape for future runs. If the schema
 **Primary comparison:** kb vs control in the **same** artifact (`comparison.*.delta_kb_minus_control`).
 Do not compare kb run A against control run B from different timestamps unless reproducing a regression.
 
-**Secondary (diagnostics only):** `pnpm run eval:trends -- --suite <name>` lists prior kb and control rows for
-the suite. Use trends to spot regressions in kb-side quality or token use — not as the headline verdict.
+**Secondary (diagnostics only):** every `pnpm run eval -- --suite <name>` run ends with an automatic
+trends summary listing prior kb and control rows for the suite (there is no separate `eval:trends` script).
+Use trends to spot regressions in kb-side quality or token use — not as the headline verdict.
 
 When comparing two kb-side iterations (e.g. synthesis changes):
 
