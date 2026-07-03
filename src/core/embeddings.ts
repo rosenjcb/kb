@@ -94,12 +94,62 @@ export class GeminiEmbedder implements Embedder {
 }
 
 /**
- * Build an embedder from the environment, mirroring the provider auto-detection used for the
- * chat/synthesis LLM. Returns `undefined` when no embedding-capable key is present, so every
- * caller degrades gracefully to the deterministic vector.
+ * Local, in-process embedder backed by a small ONNX sentence-transformer via
+ * `@huggingface/transformers`. Truly local: model weights run on-device, no API call, no data
+ * leaves the machine. The dependency and model are loaded lazily on first use, so environments
+ * that never select the local backend pay nothing (and installs without the optional dependency
+ * still work — {@link createEmbedder} falls back).
  */
+export class LocalEmbedder implements Embedder {
+  readonly modelId: string
+  readonly dimensions = 384 // all-MiniLM-L6-v2
+  private readonly modelName: string
+  // biome-ignore lint/suspicious/noExplicitAny: transformers.js pipeline type is loaded lazily.
+  private extractor: Promise<any> | null = null
+
+  constructor(modelName = 'Xenova/all-MiniLM-L6-v2') {
+    this.modelName = modelName
+    this.modelId = `local:${modelName}:${this.dimensions}`
+  }
+
+  private async pipeline() {
+    if (!this.extractor) {
+      this.extractor = (async () => {
+        const { pipeline } = await import('@huggingface/transformers')
+        return pipeline('feature-extraction', this.modelName)
+      })()
+    }
+    return this.extractor
+  }
+
+  async embed(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return []
+    const extractor = await this.pipeline()
+    const output = await extractor(texts, { pooling: 'mean', normalize: true })
+    // output.tolist() → number[][] (one unit-normalized row per input).
+    return output.tolist() as number[][]
+  }
+}
+
+/**
+ * Select the embedding backend. Local (on-device, no API) is the default; set
+ * `KB_EMBEDDER=gemini` to opt into hosted Gemini embeddings. Returns `undefined` when the chosen
+ * backend is unavailable (no local dependency and no Gemini key), so every caller degrades
+ * gracefully to the deterministic vector.
+ */
+export function createEmbedder(): Embedder | undefined {
+  const backend = process.env.KB_EMBEDDER?.trim().toLowerCase()
+  if (backend === 'gemini') {
+    const geminiKey = process.env.GEMINI_API_KEY?.trim()
+    if (geminiKey) return new GeminiEmbedder(geminiKey)
+    return undefined
+  }
+  if (backend === 'none') return undefined
+  // Default: local, on-device weights.
+  return new LocalEmbedder()
+}
+
+/** @deprecated use {@link createEmbedder}; kept for callers still keying off the env directly. */
 export function createEmbedderFromEnv(): Embedder | undefined {
-  const geminiKey = process.env.GEMINI_API_KEY?.trim()
-  if (geminiKey) return new GeminiEmbedder(geminiKey)
-  return undefined
+  return createEmbedder()
 }

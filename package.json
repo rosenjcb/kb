@@ -84,6 +84,9 @@
     "web-tree-sitter": "^0.26.8",
     "zod": "^3.22.0"
   },
+  "optionalDependencies": {
+    "@huggingface/transformers": "^4.2.0"
+  },
   "devDependencies": {
     "@biomejs/biome": "^1.8.0",
     "@changesets/cli": "^2.31.0",

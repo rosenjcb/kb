@@ -8,6 +8,7 @@ import {
   curateFacts,
   shouldCurate,
 } from './fact-curator'
+import { type Embedder, createEmbedder } from '../core/embeddings'
 import { DEFAULT_FACT_LIMIT, FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
 import { makeSufficiencyJudge } from './facts-sufficiency-judge'
 import { expandQuery, shouldExpandQuery } from './query-expander'
@@ -81,9 +82,13 @@ export class FactsDocumentReader {
   constructor(
     dbPath: string,
     private readonly llm?: LLMProvider,
-    private readonly defaultAllFacts?: boolean
+    private readonly defaultAllFacts?: boolean,
+    embedder?: Embedder
   ) {
-    this.indexer = new SqliteKbIndexer({ dbPath })
+    // Default to the configured embedder (local on-device weights unless KB_EMBEDDER=gemini).
+    // It is lazy: attaching it costs nothing until a real embed is requested, and every use is
+    // best-effort — any failure falls back to the deterministic hash vector.
+    this.indexer = new SqliteKbIndexer({ dbPath, embedder: embedder ?? createEmbedder() })
   }
 
   async queryDocuments(input: QueryDocumentsInput): Promise<QueryResponse> {
@@ -122,6 +127,10 @@ export class FactsDocumentReader {
         surface: input.surface ?? 'query',
         ...(rawScoringQuery ? { scoringQuery: rawScoringQuery } : {}),
       } as const
+
+      // Pre-embed the string the orchestrator scores against so per-iteration semantic scoring
+      // uses one real query vector (no re-embed per pass). Best-effort; no-op without an embedder.
+      await this.indexer.cacheQueryEmbedding(rawScoringQuery ?? baseQuery)
 
       const excludeIdSet =
         input.excludeIds && input.excludeIds.length > 0

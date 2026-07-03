@@ -3,6 +3,7 @@ import { basename } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import dayjs from 'dayjs'
 import { runMigrations } from '../core/db-migrations'
+import type { Embedder } from '../core/embeddings'
 import { type RetrievalLane, classifyDocumentLane } from './retrieval-lane-router'
 
 function runInTransaction(db: DatabaseSync, fn: () => void): void {
@@ -20,6 +21,8 @@ export interface SqliteKbIndexerOptions {
   dbPath: string
   modelId?: string
   vectorDimensions?: number
+  /** Optional real embedder; enables neural semantic scoring in place of the hash proxy. */
+  embedder?: Embedder
 }
 
 export interface RetrievalMissEventInput {
@@ -261,14 +264,83 @@ export class SqliteKbIndexer {
   private transactionDepth = 0
   /** Repo slug applied to facts that don't set one explicitly (multi-repo provenance). */
   private activeGitRepo: string | null = null
+  /** Optional real embedder. When set, semantic scoring uses real vectors over the hash proxy. */
+  private embedder: Embedder | null = null
+  /** Cache of real query vectors keyed by query string (one embed call per distinct query). */
+  private readonly queryVectorCache = new Map<string, number[]>()
 
   constructor(options: SqliteKbIndexerOptions) {
     this.db = new DatabaseSync(options.dbPath)
     this.modelId = options.modelId ?? process.env.OLLAMA_EMBED_MODEL ?? 'nomic-embed-text'
     this.vectorDimensions = options.vectorDimensions ?? 64
+    this.embedder = options.embedder ?? null
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA foreign_keys = ON')
     runMigrations(this.db)
+  }
+
+  /** Attach a real embedder for semantic scoring + ingest re-embedding. */
+  setEmbedder(embedder: Embedder | null): void {
+    this.embedder = embedder
+  }
+
+  /**
+   * Pre-compute and cache the real embedding for a query string. Call once before a retrieval
+   * loop so the per-iteration {@link semanticFactScores} calls can score against a real query
+   * vector without re-embedding. No-op (and safe) when no embedder is attached.
+   */
+  async cacheQueryEmbedding(query: string): Promise<void> {
+    const q = query.trim()
+    if (!this.embedder || !q || this.queryVectorCache.has(q)) return
+    try {
+      const [vector] = await this.embedder.embed([q])
+      if (vector && vector.length === this.embedder.dimensions) this.queryVectorCache.set(q, vector)
+    } catch {
+      // Embedding is best-effort; fall back to the deterministic vector on any failure.
+    }
+  }
+
+  /**
+   * (Re-)embed every fact whose stored embedding was not produced by the attached embedder, in
+   * batches. Idempotent: facts already carrying the current `modelId` are skipped. Returns the
+   * number of facts embedded. No-op when no embedder is attached.
+   */
+  async embedAllFacts(
+    onProgress?: (done: number, total: number) => void,
+    batchSize = 100
+  ): Promise<number> {
+    if (!this.embedder) return 0
+    const embedder = this.embedder
+    const stale = this.db
+      .prepare(
+        `SELECT f.id AS id, f.fact_text AS fact_text
+         FROM facts f
+         LEFT JOIN fact_embeddings e ON e.fact_id = f.id
+         WHERE f.tombstoned_at IS NULL AND (e.model_id IS NULL OR e.model_id != ?)`
+      )
+      .all(embedder.modelId) as Array<{ id: string; fact_text: string }>
+    if (stale.length === 0) return 0
+    const now = dayjs().toISOString()
+    const upsert = this.db.prepare(
+      `INSERT INTO fact_embeddings (fact_id, model_id, dimensions, vector_json, embedded_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(fact_id) DO UPDATE SET
+         model_id = excluded.model_id, dimensions = excluded.dimensions,
+         vector_json = excluded.vector_json, embedded_at = excluded.embedded_at`
+    )
+    let done = 0
+    for (let i = 0; i < stale.length; i += batchSize) {
+      const batch = stale.slice(i, i + batchSize)
+      const vectors = await embedder.embed(batch.map(r => r.fact_text))
+      for (let j = 0; j < batch.length; j++) {
+        const vec = vectors[j]
+        if (!vec || vec.length !== embedder.dimensions) continue
+        upsert.run(batch[j].id, embedder.modelId, embedder.dimensions, JSON.stringify(vec), now)
+      }
+      done += batch.length
+      onProgress?.(Math.min(done, stale.length), stale.length)
+    }
+    return stale.length
   }
 
   /**
@@ -536,18 +608,34 @@ export class SqliteKbIndexer {
     const rows = this.db
       .prepare(
         `
-        SELECT fact_id, vector_json, dimensions
+        SELECT fact_id, vector_json, dimensions, model_id
         FROM fact_embeddings
         WHERE fact_id IN (${placeholders})
       `
       )
-      .all(...ids) as Array<{ fact_id: string; vector_json?: string; dimensions?: number }>
+      .all(...ids) as Array<{
+      fact_id: string
+      vector_json?: string
+      dimensions?: number
+      model_id?: string
+    }>
+    // Real query vector (if the query was pre-embedded); used only for facts embedded by the
+    // same model. Everything else falls back to the deterministic hash vector, exactly as before.
+    const realQueryVec =
+      this.embedder && this.queryVectorCache.get(query.trim())
+        ? this.queryVectorCache.get(query.trim())
+        : undefined
     for (const row of rows) {
       if (!row.vector_json || !row.dimensions) continue
       try {
         const stored = JSON.parse(row.vector_json) as number[]
         if (!Array.isArray(stored) || stored.length !== row.dimensions) continue
-        const queryVec = buildDeterministicVector(query, row.dimensions)
+        const useReal =
+          realQueryVec &&
+          this.embedder &&
+          row.model_id === this.embedder.modelId &&
+          realQueryVec.length === row.dimensions
+        const queryVec = useReal ? realQueryVec : buildDeterministicVector(query, row.dimensions)
         const cosine = cosineSimilarity(queryVec, stored)
         out.set(row.fact_id, (cosine + 1) / 2)
       } catch {
