@@ -28,7 +28,7 @@ Both extend [OKF](https://github.com/rosenjcb/okf) (YAML frontmatter + markdown 
 - **Companion** = narrative architecture; link to the spec under **Related docs**.
 - **Spec** = behavioral contract; intro links back to the companion for stack context.
 - **Split rule:** if a statement is testable ("when X, then Y"), it belongs in the spec as FR/TC; the companion states *why* and *where*, not duplicate acceptance criteria.
-- After adding or extending a spec, register it in [`specs/MANIFEST.md`](../../specs/MANIFEST.md) and ensure tests use `[TC-N]` tags per [`TESTING.md`](../../TESTING.md). Run `pnpm run spec:check` when tests exist.
+- After adding or extending a spec, declare the tests it governs in its own `sources:` frontmatter (repo has no central manifest — `spec:check` derives per-spec scope from `sources:`) and ensure tests use `[TC-N]` tags per [`TESTING.md`](../../TESTING.md). Run `pnpm run spec:check` when tests exist.
 
 If no `*.spec.md` exists yet and the area has unit-tested behavior worth gating, propose creating one — but do not block companion work on it.
 

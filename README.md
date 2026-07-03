@@ -341,7 +341,7 @@ The bundled `kb:dump-context` agent skill authors companion docs (`TUI.md`, `INT
 
 This repo uses the [spec.md framework](https://github.com/rosenjcb/spec.md): sibling `*.spec.md` files (`type: Spec`) sit next to OKF companions and define **FR-N** requirements and **TC-N** QA test cases. **Every `TC-N` in a spec must have at least one tagged test** (`[TC-N]` in Vitest or httpyac); not every test needs a spec row. CI and pre-commit run `pnpm run spec:check` to enforce this.
 
-- Manifest: [`specs/MANIFEST.md`](specs/MANIFEST.md)
+- Scope: each spec declares the tests it governs in its own `sources:` frontmatter (no central manifest); `spec:check` derives per-spec scope from that.
 - Conventions: [`TESTING.md`](TESTING.md)
 - Check: `pnpm run spec:check`
 
