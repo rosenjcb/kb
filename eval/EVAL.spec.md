@@ -279,6 +279,11 @@ See companion doc for full vocabulary where applicable.
 | TC-222 | FR-15 | builds artifact with correct structure | pass |
 | TC-223 | FR-15 | sets base to null for raw agent | pass |
 | TC-224 | FR-15 | generates correct path | pass |
+| TC-518 | FR-13 | classifyStageTokens splits thinking (:llm) from synthesis (:answer-enrichment) | pass |
+| TC-519 | FR-13 | parseRetrievalDetailTrace lifts loop counters from a retrieval detail line | pass |
+| TC-520 | FR-13 | buildQuestionTimeline joins stages with the trace and derives retrieval_ms | pass |
+| TC-521 | FR-13 | buildQuestionTimeline falls back to the detail string when report.retrieval is absent | pass |
+| TC-522 | FR-13 | buildTimelineSummary aggregates shares and flags a thinking-dominant run | pass |
 
 ### Related docs
 

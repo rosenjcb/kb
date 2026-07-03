@@ -64,6 +64,11 @@ import {
   adequacyUtility,
   computeAdequacyQuality,
   summarizeCuration,
+  classifyStageTokens,
+  parseRetrievalDetailTrace,
+  buildQuestionTimeline,
+  buildTimelineSummary,
+  printTimelineDiagnosis,
   ADEQUACY_THRESHOLD,
 } from './eval-shared.mjs'
 
@@ -99,6 +104,11 @@ export {
   computeSuccessScore,
   adequacyUtility,
   computeAdequacyQuality,
+  classifyStageTokens,
+  parseRetrievalDetailTrace,
+  buildQuestionTimeline,
+  buildTimelineSummary,
+  printTimelineDiagnosis,
   ADEQUACY_THRESHOLD,
   writeResearchResultsTex,
   findLatestSuiteArtifact,
@@ -547,6 +557,9 @@ function readKbQueryTelemetry(base, limit = 8) {
     total_cost_usd: Number(sum('totalEstimatedCostUsd').toFixed(4)),
     mean_num_turns: null,
     total_duration_ms: sum('totalDurationMs'),
+    // Full recent RunReports (one per question, in ask-order) so callers can build the
+    // per-question timeline. Not summed — kept raw for stage + retrieval-trace inspection.
+    per_question_reports: recent,
   }
 }
 
@@ -862,7 +875,21 @@ async function main() {
   const curationSummary = summarizeCuration(query_evaluation.map(q => q.retrieval?.detail))
 
   // KB-side query telemetry (tokens + latency) for the composite success score.
-  const kbQueryTelemetry = readKbQueryTelemetry(base, questions.length)
+  const kbQueryTelemetryRaw = readKbQueryTelemetry(base, questions.length)
+  // Per-question run timeline: join each question's RunReport (stage token/time split) with its
+  // retrieval trace (passes, hops, curator drops). The raw reports stay out of the summary
+  // telemetry block to keep it compact; they live only in the timeline.
+  const perQuestionReports = kbQueryTelemetryRaw?.per_question_reports ?? []
+  const kbQueryTelemetry = kbQueryTelemetryRaw
+    ? (() => {
+        const { per_question_reports: _drop, ...rest } = kbQueryTelemetryRaw
+        return rest
+      })()
+    : null
+  const queryTimeline = perQuestionReports.map((report, i) =>
+    buildQuestionTimeline(report, i + 1, questions[i], query_evaluation[i]?.retrieval?.detail)
+  )
+  const timelineSummary = buildTimelineSummary(queryTimeline)
   const kbSuccess = computeSuccessScore({
     meanCorrectness: mC,
     meanUsefulness: mU,
@@ -1006,6 +1033,8 @@ async function main() {
         'Batch automation: kb chat transcripts not captured. Follow EVALUATION.md Phase 3 for interactive chat when a complete run is required.',
     },
     kb_query_telemetry: kbQueryTelemetry,
+    query_timeline: queryTimeline,
+    timeline_summary: timelineSummary,
     success_score_inputs: kbSuccess.inputs,
     aggregate_scores: {
       query: aggregateQueryScores,
@@ -1074,6 +1103,7 @@ async function main() {
   fs.writeFileSync(outPath, JSON.stringify(artifact, null, 2), 'utf8')
   console.error(`[eval] wrote ${outPath}`)
 
+  printTimelineDiagnosis(artifact.timeline_summary, artifact.query_timeline)
   printTrendsSummary(suiteId, KB_REPO, { currentRunId: runName })
 
   try {

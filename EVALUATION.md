@@ -203,6 +203,8 @@ Artifacts land in `~/.kb/evaluations/<run-name>/artifact.json`. Fields to check:
 - `run.init_result.graph_summary.entities` / `.relationships`
 - `aggregate_scores.query.mean_usefulness` / `.mean_relevance`
 - `aggregate_scores.query.pass_rate_quality_axes_at_least_3` (correctness + usefulness + relevance ≥ 3)
+- `timeline_summary` — **where the query budget went**: `thinking_token_share` vs `synthesis_token_share`, `retrieval_time_share`, `mean_passes`, `curator_drop_rate`, `slowest_question`, and a plain-language `diagnosis[]`. Start here when kb is slow or token-heavy despite good scores.
+- `query_timeline[]` — the per-question drill-down behind that summary (stage token/time split + retrieval trace: passes, graph hops, per-pass `hops[]`, and the curator's `dropped_fact_ids`). See [Run timeline](eval/EVAL.md#run-timeline-where-the-query-budget-went).
 
 ### Phase 3: Score the Results
 

@@ -61,6 +61,33 @@ The headline **pass rate** gates on `correctness ≥ 3 AND usefulness ≥ 3 AND 
 
 Normalization is **budget-absolute** (not relative to control), so the number is stable run-to-run. Defaults live in `scripts/eval-shared.mjs`: `token_budget = 1,000,000`, `time_budget = 600,000 ms`. Both kb and control are scored with the identical formula and budgets, so `success_score` is directly comparable head-to-head; the per-component parts (`quality_score`, `token_efficiency`, `speed_score`) show where a win or loss originates. KB-side telemetry comes from `kb_query_telemetry` (read from `~/.kb/logs`), the control's from `control_telemetry`.
 
+## Run timeline (where the query budget went)
+
+The headline scores say *whether* kb won; the **timeline** says *where each query spent its
+budget* — the signal a cloud task session needs to diagnose "why are we slow / heavy now?".
+Every harvest artifact carries two extra blocks:
+
+- **`query_timeline[]`** — one entry per question, joining that question's telemetry `RunReport`
+  with its retrieval trace:
+  - **`tokens`** / **`token_share`** — split into **thinking** (the retrieval + sufficiency-judge
+    + curator loop, the `*:llm` stage) vs **synthesis** (the one-shot `*:answer-enrichment` stage).
+    This is what surfaces "how many tokens went to thinking in this round."
+  - **`timing`** — `synthesis_ms` (measured) and `retrieval_ms` (= `total − synthesis − other`,
+    since loop-LLM stages are logged with `durationMs: 0`).
+  - **`retrieval`** — `passes`, `graph_hops`, `ponds`, `stop_reason`, `facts_returned`, per-pass
+    **`hops[]`** loop-trace lines, `checkpoints[]`, and a **`curation`** record
+    (`kept`/`dropped`/`requeried`/`rounds` + `dropped_fact_ids` — the facts kicked out between hops).
+  - **`stages[]`** — the raw per-stage token/duration rows.
+- **`timeline_summary`** — the run-level diagnosis: mean token/time splits, `thinking_token_share`,
+  `retrieval_time_share`, `mean_passes`, `curator_drop_rate`, the slowest / heaviest-thinking
+  question, and a plain-language **`diagnosis[]`** (e.g. *"Thinking is 62% of query tokens — the
+  loop dominates cost"*). Printed as a compact `TIMELINE` block at the end of every harvest.
+
+The per-hop trace is sourced from `RunReport.retrieval` (persisted by `kb query` via
+`summarizeQueryRetrievalTrace`, `src/core/telemetry.ts`); older logs without it fall back to
+parsing the `retrieval>` detail line (`parseRetrievalDetailTrace`), so counts still appear but
+per-hop lines / dropped ids may be empty.
+
 ## Control vs kb (the real baseline)
 
 The **control** is the thing kb is compared against: instead of querying a knowledge base, a real agent gets the *same* question and explores the codebase itself. It runs by default as part of `pnpm run eval` — no separate command.

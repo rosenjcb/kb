@@ -1,5 +1,13 @@
 # kb
 
+## 0.18.0
+
+### Minor Changes
+
+- Persist a per-hop retrieval trace on `kb query` telemetry (`RunReport.retrieval`: passes, graph hops, ponds, stop reason, per-pass loop lines, checkpoints, and the curator's kept/dropped/dropped-fact-ids). The eval harvest joins this with each question's stage token/time split to emit a `query_timeline` and a `timeline_summary` diagnosis (thinking-vs-synthesis token share, retrieval-time share, curator drop rate, slowest question) so a run's cost concentration is visible without re-instrumenting.
+
+- Bound the fact curator's judge input (`maxJudgeCandidates`, default 100). Previously the judge prompt listed every candidate, so on large pools the fixed-size verdict JSON truncated, threw, and dropped the curator into a fail-safe that returned the **full unpruned pool** to synthesis — flushing hundreds of facts into the prompt exactly where pruning mattered most. Now the top candidates by orchestrator rank are judged and the tail is hard-dropped deterministically; the error fail-safe is likewise capped instead of returning the whole pool.
+
 ## 0.17.0
 
 ### Minor Changes

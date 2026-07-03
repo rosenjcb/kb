@@ -39,6 +39,7 @@ After retrieval grows a broad fact pool, the curator is the relevance gate befor
 | FR-5 | Re-discover and admit new facts when the judge reports gaps |
 | FR-6 | Fail safe on LLM or JSON parse errors — return the original pool |
 | FR-7 | Never return an empty set after curation |
+| FR-8 | Bound the judge candidate set on large pools (cap + hard-drop the tail; bounded fail-safe) |
 
 ### QA Test Cases
 
@@ -54,6 +55,8 @@ After retrieval grows a broad fact pool, the curator is the relevance gate befor
 | TC-8 | FR-6 | LLM throws | Original pool returned, `fellBack` set |
 | TC-9 | FR-7 | Judge drops everything | Non-empty deterministic top-K fallback |
 | TC-10 | FR-5 | Re-discovery returns only known ids | Loop stops without spinning |
+| TC-11 | FR-8 | Pool larger than the candidate cap | Tail hard-dropped; judge sees at most the cap |
+| TC-12 | FR-8 | LLM throws on an over-cap pool | Fail-safe bounded to the cap, not the full pool |
 
 ### Related docs
 

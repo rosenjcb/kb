@@ -24,6 +24,55 @@ export interface StageMetrics {
   model: string
 }
 
+/**
+ * Structured per-hop record of a single `kb query` retrieval loop, persisted so the eval
+ * harness can reconstruct the *timeline* of a run (which passes ran, how the frontier grew,
+ * and which facts the curator kicked out) rather than only the end totals. Everything here is
+ * a distillation of the in-memory `retrieval` object the loop already produces — it is written
+ * once per query and never fed back into synthesis.
+ */
+export interface QueryCurationTrace {
+  /** Facts the curator inspected (auto-kept + judged). */
+  evaluated?: number
+  /** Facts that survived curation and reached synthesis. */
+  kept: number
+  /** Facts hard-dropped as off-topic. */
+  dropped: number
+  /** Bounded re-discovery gap queries issued to refill after drops. */
+  requeried: number
+  /** Judge rounds run (initial verdict + re-judges). */
+  rounds: number
+  /** Curator's own sufficiency self-assessment, when reported. */
+  sufficient?: boolean
+  /** Ids of the facts the curator kicked out (empty when none / not surfaced). */
+  droppedFactIds: string[]
+}
+
+export interface QueryRetrievalTrace {
+  method?: string
+  /** Deep-loop passes executed. */
+  passes?: number
+  /** Global BFS levels walked across ponds. */
+  graphHops?: number
+  /** Exploration ponds spun up. */
+  ponds?: number
+  /** Why the loop stopped (e.g. `llm_judge_answerable`, `frontier_exhausted`). */
+  stopReason?: string
+  /** Facts returned to synthesis after ranking + curation. */
+  factsReturned?: number
+  /** Per-pass loop trace lines (frontier / merge / hop counts), in order. */
+  hops: string[]
+  /** Per-pass checkpoint decisions (status + confidence). */
+  checkpoints?: Array<{
+    stage?: string
+    status?: string
+    nextAction?: string
+    confidence?: number
+  }>
+  /** Post-retrieval curator audit, when curation ran. */
+  curation?: QueryCurationTrace
+}
+
 export interface RunReport {
   runId: string
   /** Chat session that spawned this run, if any. */
@@ -38,6 +87,8 @@ export interface RunReport {
   totalOutputTokens: number
   totalEstimatedCostUsd: number
   stages: StageMetrics[]
+  /** Per-hop retrieval trace for `kb query` runs (absent for other commands). */
+  retrieval?: QueryRetrievalTrace
   status: 'success' | 'error'
   errorMessage?: string
 }
@@ -67,6 +118,7 @@ export class RunCollector {
   private startedAt: string
   private sessionId?: string
   private base?: string
+  private retrieval?: QueryRetrievalTrace
 
   constructor(
     readonly command: string,
@@ -83,6 +135,14 @@ export class RunCollector {
    */
   addStage(metrics: StageMetrics): void {
     this.stages.push(metrics)
+  }
+
+  /**
+   * Attach the per-hop retrieval trace for a `kb query` run. Called once after the retrieval
+   * loop finishes; overwrites any prior trace. No-op semantics if never called (report omits it).
+   */
+  setRetrievalTrace(trace: QueryRetrievalTrace): void {
+    this.retrieval = trace
   }
 
   /**
@@ -137,9 +197,102 @@ export class RunCollector {
       totalOutputTokens,
       totalEstimatedCostUsd,
       stages: this.stages,
+      ...(this.retrieval ? { retrieval: this.retrieval } : {}),
       status,
       errorMessage,
     }
+  }
+}
+
+/**
+ * Distill the in-memory retrieval object produced by the facts loop into the flat
+ * {@link QueryRetrievalTrace} persisted on the run report. Pure and defensive: unknown shapes
+ * degrade to empty/absent fields rather than throwing, so telemetry never blocks a query.
+ *
+ * `detail` carries the loop counters as a `;`-joined string
+ * (`facts-loop;passes:3;graph_hops:5;ponds:2;stop:llm_judge_answerable;facts:24;...;curated:kept=18,dropped=6,...`),
+ * `traceDetail` carries the per-pass lines as `trace:i1:...|i2:...`, and `curation` is the raw
+ * curator audit. This re-lifts all three into structured fields.
+ */
+export function summarizeQueryRetrievalTrace(retrieval: {
+  method?: string
+  detail?: string
+  traceDetail?: string
+  checkpoints?: Array<{ stage?: string; status?: string; nextAction?: string; confidence?: number }>
+  curation?: {
+    evaluated?: number
+    dropped?: unknown[]
+    added?: number
+    requeried?: string[]
+    rounds?: number
+    sufficient?: boolean
+  }
+}): QueryRetrievalTrace {
+  const detail = typeof retrieval.detail === 'string' ? retrieval.detail : ''
+  const num = (re: RegExp): number | undefined => {
+    const m = re.exec(detail)
+    return m ? Number(m[1]) : undefined
+  }
+  const stopMatch = /(?:^|;)stop:([^;]+)/.exec(detail)
+  const curatedMatch =
+    /curated:kept=(\d+),dropped=(\d+),requeried=(\d+),rounds=(\d+)/.exec(detail)
+
+  const traceDetail = typeof retrieval.traceDetail === 'string' ? retrieval.traceDetail : ''
+  const traceSegment = /(?:^|;)trace:(.+)$/.exec(traceDetail)
+  const hops = traceSegment
+    ? traceSegment[1].split('|').map(s => s.trim()).filter(Boolean)
+    : []
+
+  const rawCuration = retrieval.curation
+  let curation: QueryCurationTrace | undefined
+  if (rawCuration || curatedMatch) {
+    const droppedList = Array.isArray(rawCuration?.dropped) ? rawCuration.dropped : []
+    const droppedFactIds = droppedList
+      .map(d =>
+        d && typeof d === 'object' && 'id' in d ? String((d as { id: unknown }).id) : null
+      )
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    // kept: prefer the audited count from the detail string; else derive from the raw record
+    // (evaluated − dropped + re-discovery adds), clamped at 0.
+    const derivedKept = Math.max(
+      0,
+      (typeof rawCuration?.evaluated === 'number' ? rawCuration.evaluated : droppedList.length) -
+        droppedList.length +
+        (typeof rawCuration?.added === 'number' ? rawCuration.added : 0)
+    )
+    curation = {
+      ...(typeof rawCuration?.evaluated === 'number' ? { evaluated: rawCuration.evaluated } : {}),
+      kept: curatedMatch ? Number(curatedMatch[1]) : derivedKept,
+      dropped: curatedMatch ? Number(curatedMatch[2]) : droppedList.length,
+      requeried: curatedMatch
+        ? Number(curatedMatch[3])
+        : Array.isArray(rawCuration?.requeried)
+          ? rawCuration.requeried.length
+          : 0,
+      rounds: curatedMatch ? Number(curatedMatch[4]) : (rawCuration?.rounds ?? 0),
+      ...(typeof rawCuration?.sufficient === 'boolean'
+        ? { sufficient: rawCuration.sufficient }
+        : {}),
+      droppedFactIds,
+    }
+  }
+
+  return {
+    ...(retrieval.method ? { method: retrieval.method } : {}),
+    ...(num(/(?:^|;)passes:(\d+)/) !== undefined ? { passes: num(/(?:^|;)passes:(\d+)/) } : {}),
+    ...(num(/(?:^|;)graph_hops:(\d+)/) !== undefined
+      ? { graphHops: num(/(?:^|;)graph_hops:(\d+)/) }
+      : {}),
+    ...(num(/(?:^|;)ponds:(\d+)/) !== undefined ? { ponds: num(/(?:^|;)ponds:(\d+)/) } : {}),
+    ...(stopMatch ? { stopReason: stopMatch[1].trim() } : {}),
+    ...(num(/(?:^|;)facts:(\d+)/) !== undefined
+      ? { factsReturned: num(/(?:^|;)facts:(\d+)/) }
+      : {}),
+    hops,
+    ...(Array.isArray(retrieval.checkpoints) && retrieval.checkpoints.length > 0
+      ? { checkpoints: retrieval.checkpoints }
+      : {}),
+    ...(curation ? { curation } : {}),
   }
 }
 

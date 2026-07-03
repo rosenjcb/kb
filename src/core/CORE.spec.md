@@ -238,6 +238,11 @@ See companion doc for full vocabulary where applicable.
 | TC-177 | FR-27 | Given no tokens argument, all token fields default to 0 | pass |
 | TC-178 | FR-27 | Given compiled trajectory, JSON round-trip produces identical result | pass |
 | TC-179 | FR-27 | Given writeTrajectory, file is written at expected path and parses back correctly | pass |
+| TC-513 | FR-27 | Given setRetrievalTrace, the finished report carries the trace; else it is absent | pass |
+| TC-514 | FR-27 | Given a facts-loop detail string, summarizeQueryRetrievalTrace lifts passes/hops/ponds/stop/facts | pass |
+| TC-515 | FR-27 | Given a curated detail + raw curation record, it lifts counts and dropped fact ids | pass |
+| TC-516 | FR-27 | Given a traceDetail string, it splits per-pass hop lines in order | pass |
+| TC-517 | FR-27 | Given an unknown shape, it degrades to empty fields without throwing | pass |
 
 ### Related docs
 

@@ -4,6 +4,10 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   buildCoverageAudit,
+  buildQuestionTimeline,
+  buildTimelineSummary,
+  classifyStageTokens,
+  parseRetrievalDetailTrace,
   computeSuccessScore,
   computeAdequacyQuality,
   adequacyUtility,
@@ -139,6 +143,108 @@ describe('parseQueryText', () => {
     ].join('\n')
     expect(parseQueryText(output).answer).toContain('Build/config evidence scaffold')
     expect(parseQueryText(output).answer).toContain('Prerequisites: cmake')
+  })
+})
+
+describe('run timeline', () => {
+  const report = {
+    totalDurationMs: 30000,
+    totalInputTokens: 40000,
+    totalOutputTokens: 2000,
+    totalEstimatedCostUsd: 0.12,
+    stages: [
+      // Deep-loop iteration stage: carries the loop wall-time but ~no tokens.
+      {
+        stage: 'query_truth:iter1',
+        durationMs: 20000,
+        inputTokens: 0,
+        outputTokens: 0,
+      },
+      // Loop-LLM ("thinking") stage: tokens, but durationMs is logged as 0.
+      {
+        stage: 'query_truth:llm',
+        durationMs: 0,
+        inputTokens: 30000,
+        outputTokens: 1200,
+      },
+      // Synthesis stage: fewer tokens, real duration.
+      {
+        stage: 'query_truth:answer-enrichment',
+        durationMs: 4000,
+        inputTokens: 10000,
+        outputTokens: 800,
+      },
+    ],
+    retrieval: {
+      passes: 5,
+      graphHops: 7,
+      ponds: 2,
+      stopReason: 'llm_judge_answerable',
+      factsReturned: 20,
+      hops: ['i1:merged=5', 'i2:merged=3'],
+      curation: { kept: 20, dropped: 8, requeried: 1, rounds: 2, droppedFactIds: ['fact://z'] },
+    },
+  }
+
+  it('[TC-518] classifyStageTokens splits thinking (:llm), synthesis (:answer-enrichment), and retrieval (:iterN)', () => {
+    const s = classifyStageTokens(report)
+    expect(s.thinking_tokens).toBe(31200)
+    expect(s.synthesis_tokens).toBe(10800)
+    expect(s.synthesis_ms).toBe(4000)
+    expect(s.thinking_ms).toBe(0)
+    // The :iter stage carries the loop wall-time, not synthesis/other.
+    expect(s.retrieval_ms).toBe(20000)
+    expect(s.retrieval_tokens).toBe(0)
+  })
+
+  it('[TC-519] parseRetrievalDetailTrace lifts loop counters from a retrieval detail line', () => {
+    const t = parseRetrievalDetailTrace(
+      'hybrid (facts-loop;passes:3;graph_hops:4;ponds:2;stop:frontier_exhausted;facts:15;curated:kept=15,dropped=3,requeried=0,rounds=1)'
+    )
+    expect(t?.passes).toBe(3)
+    expect(t?.graph_hops).toBe(4)
+    expect(t?.stop_reason).toBe('frontier_exhausted')
+    expect(t?.curation?.dropped).toBe(3)
+    expect(parseRetrievalDetailTrace('no loop here')).toBeNull()
+  })
+
+  it('[TC-520] buildQuestionTimeline joins stages with the trace and derives retrieval_ms', () => {
+    const tl = buildQuestionTimeline(report, 1, 'What is X?', null)
+    expect(tl.question_index).toBe(1)
+    expect(tl.tokens.thinking).toBe(31200)
+    expect(tl.tokens.synthesis).toBe(10800)
+    // retrieval_ms comes from the :iter1 stage (20000ms), not total−synthesis.
+    expect(tl.timing.retrieval_ms).toBe(20000)
+    expect(tl.token_share.thinking).toBeGreaterThan(0.7)
+    expect(tl.retrieval?.stop_reason).toBe('llm_judge_answerable')
+    expect(tl.retrieval?.curation?.dropped_fact_ids).toEqual(['fact://z'])
+  })
+
+  it('[TC-521] buildQuestionTimeline falls back to the detail string when report.retrieval is absent', () => {
+    const legacy = { ...report, retrieval: undefined }
+    const tl = buildQuestionTimeline(
+      legacy,
+      2,
+      'q2',
+      'hybrid (facts-loop;passes:9;facts:12;curated:kept=12,dropped=1,requeried=0,rounds=1)'
+    )
+    expect(tl.retrieval?.passes).toBe(9)
+    expect(tl.retrieval?.curation?.dropped).toBe(1)
+  })
+
+  it('[TC-522] buildTimelineSummary aggregates shares and flags a thinking-dominant run', () => {
+    const timeline = [
+      buildQuestionTimeline(report, 1, 'q1', null),
+      buildQuestionTimeline(report, 2, 'q2', null),
+    ]
+    const summary = buildTimelineSummary(timeline)
+    expect(summary?.questions).toBe(2)
+    expect(summary?.thinking_token_share).toBeGreaterThan(0.5)
+    expect(summary?.total_curator_dropped).toBe(16)
+    // retrieval_time_share = iter (20s) / total (30s) per question ≈ 0.67
+    expect(summary?.retrieval_time_share).toBeGreaterThan(0.6)
+    expect(summary?.diagnosis.some(d => /thinking/i.test(d))).toBe(true)
+    expect(buildTimelineSummary([])).toBeNull()
   })
 })
 
