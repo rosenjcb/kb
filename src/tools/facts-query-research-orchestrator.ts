@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { formatFactUri } from '../core/fact-uri'
 import type { QueryResponse, QueryResult } from './facts-document-reader'
 import { type FactsSufficiencyJudge, shouldCallJudge } from './facts-sufficiency-judge'
+import { type QueryTraceLane, isQueryTraceEnabled, tracedFactFromRow } from './query-trace'
 import type { FactConceptRow, FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
 export const DEFAULT_FACT_LIMIT = 500
@@ -91,6 +92,7 @@ export class FactsQueryResearchOrchestrator {
     const maxGraphHops = clampLimitInt(process.env.KB_FACTS_QUERY_MAX_HOPS, 20, 1, 40)
     const maxPonds = clampLimitInt(process.env.KB_FACTS_QUERY_MAX_PONDS, 6, 2, 12)
     const perIterationLimit = 50
+    const traceEnabled = isQueryTraceEnabled()
     const queryTokens = tokenizeQuery(input.query)
     // Repo-pool retrieval: facts are organised by the git repo they came from (not by
     // categories). We seed on the repo the first lexical hit lands in, then order results so
@@ -356,6 +358,8 @@ export class FactsQueryResearchOrchestrator {
       checkpoints,
       primaryLexicalAnchors,
       pondCount: ponds.length,
+      traceEnabled,
+      knobs: { maxIterations, maxGraphHops, maxPonds, perIterationLimit },
     })
   }
 
@@ -447,6 +451,8 @@ export class FactsQueryResearchOrchestrator {
     checkpoints?: LoopCheckpoint[]
     primaryLexicalAnchors?: Set<string>
     pondCount?: number
+    traceEnabled?: boolean
+    knobs?: QueryTraceLane['knobs']
   }): QueryResponse {
     const repoDistance = input.repoDistance ?? new Map<string, number>()
     // Order primarily by repo pool (landed repo first, then outward along the tree), and by
@@ -528,10 +534,43 @@ export class FactsQueryResearchOrchestrator {
         : {}),
       ...(traceDetail ? { traceDetail } : {}),
     }
+    // Opt-in deep trace: dump the *whole* scored pool (not just what shipped), plus the
+    // per-pass decisions, so an offline replay can see exactly what the walk discovered and
+    // what it cut. Never propagated into synthesis — the reader strips it after writing.
+    let trace: QueryTraceLane | undefined
+    if (input.traceEnabled && input.knobs) {
+      const returnedIds = new Set(results.map(result => result.metadata.id))
+      const discovered = [...input.scoredFacts.values()]
+        .sort((a, b) => b.score - a.score)
+        .map(entry => tracedFactFromRow(entry.row, entry.score))
+      const droppedBelowFloor = [...input.scoredFacts.values()]
+        .filter(entry => !returnedIds.has(entry.row.id) && entry.score < MIN_FACT_SCORE)
+        .sort((a, b) => b.score - a.score)
+        .map(entry => tracedFactFromRow(entry.row, entry.score))
+      trace = {
+        query: input.input.query,
+        knobs: input.knobs,
+        iterations: input.iterations,
+        graphHops: input.graphHops,
+        pondCount: input.pondCount ?? 0,
+        stopReason: input.sufficiencyReason,
+        passTrace: input.loopTrace ?? [],
+        checkpoints: (input.checkpoints ?? []).map(checkpoint => ({
+          stage: checkpoint.stage,
+          status: checkpoint.status,
+          nextAction: checkpoint.nextAction,
+          confidence: checkpoint.confidence,
+        })),
+        discovered,
+        returned: [...returnedIds],
+        droppedBelowFloor,
+      }
+    }
     return {
       results,
       total: results.length,
       retrieval,
+      ...(trace ? { trace } : {}),
     }
   }
 }

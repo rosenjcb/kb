@@ -1,5 +1,11 @@
 # kb
 
+## 0.19.0
+
+### Minor Changes
+
+- Add an opt-in deep query trace. `kb query --trace` (or `KB_QUERY_TRACE=true`) writes a full content dump of the deep facts loop to `~/.kb/traces/<traceId>.json` — every fact the walk discovered (with score and content), the per-pass decision breadcrumbs, the facts cut below the score floor, and the facts the curator kicked out with the judge's reason. It is off by default, written out-of-band, and never fed into synthesis or the eval score, so you can replay a query offline and see exactly what it found and what it dropped.
+
 ## 0.18.0
 
 ### Minor Changes

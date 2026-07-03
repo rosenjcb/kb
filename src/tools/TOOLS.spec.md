@@ -42,6 +42,7 @@ See companion doc for full vocabulary where applicable.
 | FR-13 | Behaviors in subagent-eval-scenario.test.ts |
 | FR-14 | Behaviors in retrieval-checkpoint-orchestrator.test.ts |
 | FR-15 | Behaviors in markdown-md-writer-tool.test.ts |
+| FR-16 | Behaviors in query-trace.test.ts |
 
 ### QA Test Cases
 
@@ -139,6 +140,15 @@ See companion doc for full vocabulary where applicable.
 | TC-90 | FR-15 | Given a new document input, then should write markdown file and index table entry | pass |
 | TC-91 | FR-15 | Given duplicate document titles without overwrite, then should create a unique suffixed file id | pass |
 | TC-92 | FR-15 | Given overwrite true on an existing id, then should replace the same document path | pass |
+| TC-93 | FR-16 | Given KB_QUERY_TRACE unset or false, then tracing is off (default) | pass |
+| TC-94 | FR-16 | Given KB_QUERY_TRACE=true (any case), then tracing is on | pass |
+| TC-95 | FR-16 | Given a code fact, then dumps source_text (the actual code) with rounded score | pass |
+| TC-96 | FR-16 | Given a doc fact with no repo, then dumps fact_text and omits repo | pass |
+| TC-97 | FR-16 | Given a curator record, then recovers dropped fact content by id from the lanes | pass |
+| TC-98 | FR-16 | Given a dump, then writes traceId json that round-trips | pass |
+| TC-99 | FR-16 | Given KB_QUERY_TRACE=true, then run attaches a lane dumping every discovered fact | pass |
+| TC-100 | FR-16 | Given --trace on a deep query, then the reader writes a dump under KB_HOME/traces | pass |
+| TC-101 | FR-16 | Given tracing off, then run attaches no lane | pass |
 
 ### Related docs
 

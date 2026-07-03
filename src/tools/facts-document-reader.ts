@@ -1,3 +1,4 @@
+import { defaultTracesDir } from '../core/telemetry'
 import type { DocType } from '../core/doc-taxonomy'
 import { formatFactUri } from '../core/fact-uri'
 import type { LLMProvider } from '../core/types'
@@ -10,6 +11,14 @@ import {
 import { DEFAULT_FACT_LIMIT, FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
 import { makeSufficiencyJudge } from './facts-sufficiency-judge'
 import { expandQuery, shouldExpandQuery } from './query-expander'
+import {
+  type QueryTraceDump,
+  type QueryTraceLane,
+  buildCurationTrace,
+  isQueryTraceEnabled,
+  newTraceId,
+  writeQueryTrace,
+} from './query-trace'
 import { type FactRow, SqliteKbIndexer } from './sqlite-kb-index'
 
 export interface QueryDocumentsInput {
@@ -58,6 +67,11 @@ export interface QueryResponse {
     /** Out-of-band curator audit — kept/dropped/re-queried decisions. Never injected into context. */
     curation?: CurationRecord
   }
+  /**
+   * Opt-in deep trace lane (`kb query --trace`). Present only when tracing is on; the reader
+   * writes it to disk and strips it before returning, so it never reaches synthesis.
+   */
+  trace?: QueryTraceLane
 }
 
 export class FactsDocumentReader {
@@ -115,13 +129,29 @@ export class FactsDocumentReader {
               orchestrator.run({ query: q, ...opts, excludeIds: excludeIdSet })
             )
           )
+          const lanes = responses
+            .map(res => res.trace)
+            .filter((lane): lane is QueryTraceLane => Boolean(lane))
           const merged = mergeQueryResponses(responses, expansions.length)
-          return this.curateRelevance(merged, baseQuery, opts.includeContent, excludeIdSet)
+          const curated = await this.curateRelevance(
+            merged,
+            baseQuery,
+            opts.includeContent,
+            excludeIdSet
+          )
+          return this.finalizeDeep(baseQuery, lanes, curated)
         }
       }
 
       const response = await orchestrator.run({ query: baseQuery, ...opts, excludeIds: excludeIdSet })
-      return this.curateRelevance(response, baseQuery, opts.includeContent, excludeIdSet)
+      const lanes = response.trace ? [response.trace] : []
+      const curated = await this.curateRelevance(
+        response,
+        baseQuery,
+        opts.includeContent,
+        excludeIdSet
+      )
+      return this.finalizeDeep(baseQuery, lanes, curated)
     }
     const rows = this.readRows(input, limit)
     const results = rows.map(row => this.toResult(row, input.includeContent === true))
@@ -180,6 +210,38 @@ export class FactsDocumentReader {
       total: results.length,
       retrieval: { ...response.retrieval, detail, curation: record },
     }
+  }
+
+  /**
+   * When tracing is on, fold discovery + curation into one dump, write it to `~/.kb/traces/`,
+   * and point the user at the file. Always strips the heavy `trace` lane from the returned
+   * response so the full content dump never escapes the reader into synthesis or session logs.
+   */
+  private async finalizeDeep(
+    query: string,
+    lanes: QueryTraceLane[],
+    curated: QueryResponse
+  ): Promise<QueryResponse> {
+    if (lanes.length > 0 && isQueryTraceEnabled()) {
+      const record = curated.retrieval.curation
+      const dump: QueryTraceDump = {
+        traceId: newTraceId(),
+        createdAt: new Date().toISOString(),
+        query,
+        lanes,
+        ...(record ? { curation: buildCurationTrace(record, lanes, curated.results.length) } : {}),
+      }
+      try {
+        const file = await writeQueryTrace(defaultTracesDir(), dump)
+        process.stderr.write(`[kb] query trace written: ${file}\n`)
+      } catch (err) {
+        process.stderr.write(
+          `[kb] Warning: could not write query trace: ${err instanceof Error ? err.message : String(err)}\n`
+        )
+      }
+    }
+    const { trace: _trace, ...rest } = curated
+    return rest
   }
 
   private readRows(input: QueryDocumentsInput, limit: number): FactRow[] {
