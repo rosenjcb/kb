@@ -1,7 +1,7 @@
 ---
 type: Spec
 title: "Spec: KB Server HTTP Integration"
-sources: ./server.http,./slack.http,../../../tests/server
+sources: ./server.http,./slack.http
 description: Black-box HTTP and Slack contract tests for kb-server via httpyac
 tags: [spec, http, integration]
 timestamp: 2026-06-28T04:05:11Z

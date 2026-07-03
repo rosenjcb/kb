@@ -108,6 +108,17 @@ A **post-retrieval fact curator** (`src/tools/fact-curator.ts`) runs when the po
 
 Terminal **`evidence>`** is a **single summary header** (`formatEvidenceSummaryHeader()` in `src/core/evidence-summary.ts`) — count, doc/code mix, top themes, lead titles, walk/stop/conf. No per-fact bullet lines. See **`src/core/EVIDENCE_SUMMARY.md`**.
 
+## Deep query trace (opt-in)
+
+The per-run report on `~/.kb/logs/<date>.jsonl` (see `src/core/telemetry.ts`) is a **distillation** — counts, stop reason, curator drop **ids**. It answers "how far did the walk go", not "what did it actually hold". For the latter, `kb query --trace` (or `KB_QUERY_TRACE=true`) turns on a **full content dump** written out-of-band to `~/.kb/traces/<traceId>.json` (`src/tools/query-trace.ts`):
+
+- **`lanes[].discovered`** — every fact the walk scored, best score first, **with content** (code facts dump `source_text`). This is the "did it ever find fact X?" record.
+- **`lanes[].returned`** / **`lanes[].droppedBelowFloor`** — what reached curation vs. what was cut below `MIN_FACT_SCORE`.
+- **`lanes[].passTrace`** / **`checkpoints`** — the per-pass count breadcrumbs and stop/continue decisions.
+- **`curation`** — the facts the curator kicked out, **with the judge's reason and full content** (recovered by id from `discovered`).
+
+The dump is built at two seams — the orchestrator's `buildResponse` (discovery) and `FactsDocumentReader.finalizeDeep` (curation) — and is **never** fed into synthesis: `finalizeDeep` writes the file and strips the heavy lane before returning. Off by default; it never affects the answer or the eval score.
+
 ## Limits
 
 **Deep loop** (`discoveryDepth: deep` — default for `kb query`):
@@ -145,6 +156,7 @@ Code facts at query time come from the AST-indexed `facts` table (`source_kind='
 - `src/tools/facts-query-research-orchestrator.ts` — deep fact retrieval loop
 - `src/tools/facts-sufficiency-judge.ts` — LLM-based early-exit judge
 - `src/tools/fact-curator.ts` — post-retrieval judge-in-the-loop curator (hard-drop + bounded re-discovery)
+- `src/tools/query-trace.ts` — opt-in `--trace` full content dump of discovery + curation
 - `src/tools/sqlite-kb-index.ts` — `searchFacts`, concepts, semantic scores
 - `src/core/CHAT.md` — chat vs query alignment
 - `src/core/AGENT_LOOP.md` — intent loop wiring

@@ -25,7 +25,8 @@ src/tools/document-writer.ts   →   tests/tools/document-writer.test.ts
 
 Behavioral requirements live in sibling `*.spec.md` files (`type: Spec`) with **FR-N**
 (functional requirements) and **TC-N** (QA test cases) tables. Architecture detail stays in
-OKF companions. See [spec.md](https://github.com/rosenjcb/spec.md) and [`specs/MANIFEST.md`](specs/MANIFEST.md).
+OKF companions. See [spec.md](https://github.com/rosenjcb/spec.md). Each spec declares the tests it
+governs in its own `sources:` frontmatter — `spec:check` derives per-spec scope from that (no central manifest).
 
 ### What CI enforces (hard gate)
 

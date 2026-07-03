@@ -327,6 +327,17 @@ export function defaultLogsDir(): string {
   return path.join(home, '.kb', 'logs')
 }
 
+/**
+ * Resolve the default query-trace directory (opt-in `kb query --trace` dumps). Sibling of the
+ * logs dir, KB_HOME-aware for server/container use.
+ */
+export function defaultTracesDir(): string {
+  const kbHome = process.env.KB_HOME?.trim()
+  if (kbHome) return path.join(kbHome, 'traces')
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? '/tmp'
+  return path.join(home, '.kb', 'traces')
+}
+
 // ─── Trajectory Tracking ──────────────────────────────────────────
 
 export interface TrajectoryStep {

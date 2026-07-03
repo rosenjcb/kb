@@ -64,6 +64,11 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
 
   const base = readOption(rest, '--base')
   const verbose = readFlag(rest, '--verbose')
+  // `--trace` turns on the opt-in deep query trace (default off). The deep facts loop reads
+  // KB_QUERY_TRACE at run time, so surface the flag as that env var here.
+  if (readFlag(rest, '--trace')) {
+    process.env.KB_QUERY_TRACE = 'true'
+  }
 
   let envelope: ConsumerIntentEnvelope
 
@@ -875,7 +880,7 @@ function extractSnippet(content: string | undefined): string {
 export function printIntentHelp(mode: CmdMode = 'cli'): string {
   return [
     'Intent commands:',
-    `  ${cmd('query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose]', mode)}`,
+    `  ${cmd('query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--trace]', mode)}`,
   ].join('\n')
 }
 
