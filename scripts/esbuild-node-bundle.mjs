@@ -11,8 +11,6 @@ const NATIVE_EXTERNAL_EXACT = new Set([
   '@coderabbitai/ast-grep-langs',
   '@huggingface/transformers',
   'web-tree-sitter',
-  // Optional ink devtools hook — not installed in production builds.
-  'react-devtools-core',
 ])
 
 function isNativeExternal(id) {
@@ -20,16 +18,31 @@ function isNativeExternal(id) {
   return id.startsWith('tree-sitter-')
 }
 
+/**
+ * `ink` statically imports `react-devtools-core` from its `devtools.js`, which it only
+ * loads under `DEV=true`. esbuild still pulls that module into the graph and hoists the
+ * static import to the top of the bundle, so leaving it `external` makes Node eagerly
+ * resolve a package we never install and crash on *every* command. Stub it with an inert
+ * module instead — the devtools path never runs in production, so this is a no-op there.
+ */
+const STUB_MODULES = new Set(['react-devtools-core'])
+
 /** @returns {import('esbuild').Plugin} */
 export function nativeExternalsPlugin() {
+  const stubNamespace = 'kb-stub'
   return {
     name: 'kb-native-externals',
     setup(build) {
       build.onResolve({ filter: /.*/ }, (args) => {
         if (args.path.startsWith('node:')) return undefined
+        if (STUB_MODULES.has(args.path)) return { path: args.path, namespace: stubNamespace }
         if (isNativeExternal(args.path)) return { path: args.path, external: true }
         return undefined
       })
+      build.onLoad({ filter: /.*/, namespace: stubNamespace }, () => ({
+        contents: 'export default { connectToDevTools() {} }',
+        loader: 'js',
+      }))
     },
   }
 }

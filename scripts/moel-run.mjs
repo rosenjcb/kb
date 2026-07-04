@@ -95,11 +95,20 @@ function kbEnv() {
   const env = { ...process.env }
   env.KB_HOME = undefined
   env.KB_LOCAL_MODE = 'true'
+  // Local-mode indexing needs @kb/core's tree-sitter grammars, which the kb-client bundle
+  // can't resolve from its own node_modules. Mirror Docker: point NODE_PATH at kb-core's.
+  env.NODE_PATH = [
+    path.join(KB_REPO, 'packages/kb-core/node_modules'),
+    path.join(KB_REPO, 'node_modules'),
+    env.NODE_PATH,
+  ]
+    .filter(Boolean)
+    .join(path.delimiter)
   return env
 }
 
 function kb(cwd, args, opts = {}) {
-  const bin = path.join(KB_REPO, 'dist/bin/kb.js')
+  const bin = path.join(KB_REPO, 'packages/kb-client/dist/bin/kb.js')
   return execSync(`node "${bin}" ${args}`, {
     encoding: 'utf8',
     env: kbEnv(),

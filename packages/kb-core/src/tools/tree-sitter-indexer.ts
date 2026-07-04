@@ -141,6 +141,7 @@ function getDeclNode(nameNode: TsNode): TsNode {
 // ---------------------------------------------------------------------------
 
 interface LangConfig {
+  /** Grammar require-spec (e.g. `tree-sitter-go/tree-sitter-go.wasm`); resolved at load time. */
   wasmPath: string
   importQueries: string[]
   exportQueries: string[]
@@ -154,8 +155,20 @@ interface LangConfig {
   jsFamily?: boolean
 }
 
+/**
+ * Return the grammar's require-spec (e.g. `tree-sitter-go/tree-sitter-go.wasm`) WITHOUT
+ * resolving it. Resolution is deferred to `Language.load` (indexing time) so merely
+ * importing this module never touches the filesystem — otherwise every `kb` command would
+ * eager-resolve ~20 grammars at startup and crash when they aren't co-located with the
+ * bundle (e.g. the remote-mode client, which never indexes). See `resolveWasmPath`.
+ */
 function resolveWasm(pkg: string, file: string): string {
-  return require.resolve(`${pkg}/${file}`)
+  return `${pkg}/${file}`
+}
+
+/** Resolve a grammar require-spec to an absolute path at use-time. */
+function resolveWasmPath(spec: string): string {
+  return require.resolve(spec)
 }
 
 const LANG_CONFIGS: Record<string, LangConfig> = {
@@ -807,7 +820,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
     if (this.langCache.has(key)) return
     const config = LANG_CONFIGS[key]
     if (!config) throw new Error(`No config for language: ${key}`)
-    const language = await Language.load(config.wasmPath)
+    const language = await Language.load(resolveWasmPath(config.wasmPath))
     const compiled: CompiledLang = {
       language,
       importQueries: config.importQueries.map(s => new Query(language, s)),
