@@ -68,7 +68,8 @@
   converts knowledge maintenance into a side-effect of normal development work.
   KB indexes source code deterministically via AST analysis (tree-sitter) and
   documentation via sentence-level fact extraction, storing atomic facts in a
-  SQLite graph with typed edges.  At query time, a multi-pond BFS loop merges
+  SQLite graph with typed edges and optional embedding vectors computed at init.
+  At query time, a multi-pond BFS loop merges
   lexical (BM25/FTS5), semantic (embedding), and graph-walk evidence streams into
   a ranked fact pool, exiting on a scored sufficiency condition.  A
   judge-in-the-loop fact curator then hard-drops off-topic facts and refills

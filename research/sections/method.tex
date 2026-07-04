@@ -10,7 +10,8 @@ SQLite database.  Each fact is a natural-language sentence paired with:
   \item a \texttt{source\_kind} (\texttt{import\_code} for AST-derived facts,
     \texttt{import\_doc} for sentence-segmented markdown);
   \item a \texttt{source\_ref} (e.g., \texttt{code:src/tools/indexer.ts@parseAST});
-  \item optional embedding vector for semantic search;
+  \item optional embedding vector for semantic search (computed at end of
+    \texttt{kb init} when an embedder is available; see below);
   \item a soft-deletion tombstone for incremental invalidation.
 \end{itemize}
 
@@ -35,11 +36,19 @@ its qualified source reference.  Import edges between symbols are recorded in
 \noindent\textbf{Phase 2 --- Document Fact Extraction.}  Human-readable
 sources (README files, markdown documentation) are segmented into sentences via
 deterministic NLP segmentation.  Each sentence becomes a document fact stored
-verbatim in the \texttt{facts} table.  Embeddings are computed lazily at query
-time, not during init.
+verbatim in the \texttt{facts} table.
 
-The entire init pipeline for the raylib C library (373--698 entities across
-runs) completes in under 3 minutes on a laptop with no API cost.
+\medskip
+\noindent\textbf{Embeddings.}  After indexing completes, \texttt{kb init} runs a
+best-effort \texttt{embedAllFacts} pass: by default a local on-device
+sentence-transformer (\texttt{all-MiniLM-L6-v2}); set \texttt{KB\_EMBEDDER=gemini}
+to opt into hosted Gemini embeddings.  When no embedder is available, rows keep a
+legacy deterministic hash vector and semantic scoring degrades gracefully---init
+never blocks on embedding failure.
+
+The raylib snapshot indexed in our latest harvest
+(\RaylibKEntities{} entities, \RaylibKRels{} edges; Table~\ref{tab:harvest-results})
+completes init+scan in minutes on a laptop with no LLM indexing cost.
 
 %% ─── Figure: KB Architecture ─────────────────────────────────────────────────
 \begin{figure}[t]
@@ -58,9 +67,10 @@ runs) completes in under 3 minutes on a laptop with no API cost.
     \textbf{Right column (Query):} Query string $\rightarrow$ intent router
       $\rightarrow$ multi-pond BFS loop (labeled with the five evidence
       streams: edge neighbors, primary FTS, pond FTS, concept frontier,
-      concept rows) $\rightarrow$ scored fact pool $\rightarrow$ sufficiency
-      check ($\geq 10$ facts $\geq 0.40$) $\rightarrow$ \textbf{fact curator}
-      (relevance judge; hard-drop + gap refill when $> 12$ facts)
+      concept rows) $\rightarrow$ scored fact pool (lexical overlap +
+      stored embeddings on doc facts) $\rightarrow$ sufficiency
+      check ($\geq 20$ facts $\geq 0.50$) $\rightarrow$ \textbf{fact curator}
+      (relevance judge; top-100 candidate cap, hard-drop + gap refill when $> 12$ facts)
       $\rightarrow$ LLM synthesis (plain prose) $\rightarrow$ evidence header. \\
     Arrow between columns labeled ``graph-augmented query expansion''.
     \vspace{0.4cm}
@@ -90,10 +100,13 @@ Each iteration of the loop merges five candidate streams:
 \end{enumerate}
 
 Facts from the first pass are promoted as \emph{anchors} and receive a $+0.10$
-score boost in later passes, ensuring stable grounding.  The loop exits when
-any of the following conditions is satisfied: (a) $\geq 10$ facts score
-$\geq 0.40$ against the query (\emph{answerable plateau}), (b) all ponds are
-exhausted, or (c) the fact budget ($500$ facts) is reached.
+score boost in later passes, ensuring stable grounding.  Document facts also
+receive a semantic similarity term (cosine against stored embedding vectors);
+code facts lean on graph proximity instead.  The loop exits when
+any of the following conditions is satisfied: (a) $\geq 20$ facts score
+$\geq 0.50$ and concept coverage is sufficient (\emph{answerable plateau}),
+(b) an in-loop LLM sufficiency judge confirms answerability, (c) all ponds are
+exhausted, or (d) the fact budget ($500$ facts) is reached.
 
 Graph-augmented query expansion may optionally rewrite or widen the query
 string before the loop begins, based on entity relationships in the stored
@@ -116,7 +129,10 @@ When the scored pool exceeds $12$ facts, a \textbf{fact curator} runs
   \item \textbf{Deterministic auto-keep}: facts whose token overlap with the
     \emph{raw user question} exceeds a fixed threshold bypass the LLM (no cost,
     stable anchors).
-  \item \textbf{Structured relevance verdict}: remaining facts are sent to a
+  \item \textbf{Candidate cap}: only the top $100$ facts by orchestrator rank
+    enter the LLM verdict; the tail is hard-dropped deterministically so large
+    pools cannot overflow the structured keep/drop JSON.
+  \item \textbf{Structured relevance verdict}: remaining candidates are sent to a
     single LLM call returning a structured verdict with \emph{keep} ids,
     \emph{gap} descriptions, and a \emph{sufficient} flag.
     The judge is keyed on the pre-expansion question---not the graph-widened
@@ -131,8 +147,9 @@ When the scored pool exceeds $12$ facts, a \textbf{fact curator} runs
     re-judges for up to a small round cap.
 \end{enumerate}
 
-On LLM or parse failure the curator \emph{fails safe} to the unfiltered pool;
-if curation would return zero facts, a deterministic top-$K$ fallback applies.
+On LLM or parse failure the curator \emph{fails safe} to the incoming pool for
+small sets ($\leq 100$ facts); for larger pools it caps at the same top-$100$
+ranked subset rather than passing the full unfiltered pool into synthesis.
 Curator audit counts (kept, dropped, re-queried) are recorded separately from
 the synthesis context for later analysis---never injected back into the prompt.
 
@@ -140,8 +157,8 @@ the synthesis context for later analysis---never injected back into the prompt.
 \label{subsec:synthesis}
 
 After retrieval (and optional curation), \texttt{kb query} performs
-\emph{one-shot} synthesis: a single LLM call over at most 150 ranked facts
-(2000 characters each).  The synthesis prompt instructs \emph{plain prose}:
+\emph{one-shot} synthesis: a single LLM call over the curator-kept fact subset
+(up to 2000 characters per fact).  The synthesis prompt instructs \emph{plain prose}:
 no inline ``(fact~$n$)'' citations and no trailing Sources/Citations block;
 provenance is surfaced in a separate structured evidence summary.  This is the
 path evaluated against the control agent in \S\ref{subsec:results}---no
