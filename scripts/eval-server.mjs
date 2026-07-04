@@ -1,0 +1,309 @@
+/**
+ * Eval/MOEL kb-server orchestration — start (or attach to) a live kb-server for harness runs.
+ *
+ * Replaces KB_LOCAL_MODE=true in eval subprocess env with remote connection profile vars
+ * (KBHOST/KBPORT + KB_SERVER_API_KEY, or KB_EVAL_SERVER_URL / KB_SERVER_URL when attaching).
+ */
+
+import { spawn } from 'node:child_process'
+import fs from 'node:fs'
+import net from 'node:net'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+export const KB_REPO = path.resolve(__dirname, '..')
+
+const DEFAULT_SERVER_BIN = path.join(KB_REPO, 'packages/kb-server/dist/bin/kb-server.js')
+const DEFAULT_HEALTH_TIMEOUT_MS = 30 * 60 * 1000
+const DEFAULT_LISTEN_TIMEOUT_MS = 60_000
+const POLL_INTERVAL_MS = 2000
+const DEFAULT_EVAL_API_KEY = 'eval-local-key'
+
+/** @returns {string} */
+export function defaultEvalServerBin() {
+  return process.env.KB_EVAL_SERVER_BIN
+    ? path.resolve(process.env.KB_EVAL_SERVER_BIN)
+    : DEFAULT_SERVER_BIN
+}
+
+/** @returns {string} */
+export function defaultEvalApiKey() {
+  return process.env.KB_EVAL_SERVER_API_KEY?.trim() || DEFAULT_EVAL_API_KEY
+}
+
+/**
+ * Allocate an ephemeral TCP port on `host`.
+ * @param {string} [host]
+ * @returns {Promise<number>}
+ */
+export function allocateFreePort(host = '127.0.0.1') {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer()
+    probe.unref()
+    probe.on('error', reject)
+    probe.listen(0, host, () => {
+      const addr = probe.address()
+      const port = typeof addr === 'object' && addr ? addr.port : null
+      probe.close(err => {
+        if (err) reject(err)
+        else if (!port) reject(new Error('[eval-server] could not allocate a free port'))
+        else resolve(port)
+      })
+    })
+  })
+}
+
+/**
+ * Build subprocess env for remote kb client calls (no KB_LOCAL_MODE).
+ * @param {{ host?: string, port?: number | string, url?: string, apiKey?: string, kbHome?: string }} opts
+ */
+export function buildKbRemoteEnv({
+  host = '127.0.0.1',
+  port,
+  url,
+  apiKey = defaultEvalApiKey(),
+  kbHome,
+} = {}) {
+  const env = { ...process.env }
+  env.KB_LOCAL_MODE = undefined
+  env.NODE_PATH = undefined
+
+  const resolvedUrl = url?.trim()
+    ? url.trim().replace(/\/$/, '')
+    : `http://${host}:${port}`
+
+  env.KB_SERVER_URL = resolvedUrl
+  env.KB_SERVER_API_KEY = apiKey
+  env.KBHOST = undefined
+  env.KBPORT = undefined
+
+  if (kbHome) env.KB_HOME = kbHome
+  else env.KB_HOME = undefined
+
+  return env
+}
+
+/**
+ * Poll `/healthz` until the server accepts connections.
+ * @param {string} baseUrl
+ * @param {{ timeoutMs?: number }} [opts]
+ */
+export async function waitForServerListening(baseUrl, { timeoutMs = DEFAULT_LISTEN_TIMEOUT_MS } = {}) {
+  const url = baseUrl.replace(/\/$/, '')
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${url}/healthz`)
+      if (res.status < 500) return
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error
+    }
+    await sleep(POLL_INTERVAL_MS)
+  }
+  throw new Error(`[eval-server] kb-server did not start listening at ${url}/healthz within ${timeoutMs}ms`)
+}
+
+/**
+ * Poll `/healthz` until `ok: true` and an index is present (two consecutive OK reads).
+ * @param {string} baseUrl
+ * @param {{ timeoutMs?: number }} [opts]
+ */
+export async function waitForServerReady(baseUrl, { timeoutMs = DEFAULT_HEALTH_TIMEOUT_MS } = {}) {
+  const url = baseUrl.replace(/\/$/, '')
+  const deadline = Date.now() + timeoutMs
+  let consecutiveOk = 0
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${url}/healthz`)
+      if (res.ok) {
+        const body = await res.json()
+        if (body?.ok === true && typeof body.indexMtime === 'string') {
+          consecutiveOk += 1
+          if (consecutiveOk >= 2) return body
+        } else {
+          consecutiveOk = 0
+        }
+      } else {
+        consecutiveOk = 0
+      }
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error
+      consecutiveOk = 0
+    }
+    await sleep(POLL_INTERVAL_MS)
+  }
+  throw new Error(
+    `[eval-server] kb-server index not ready at ${url}/healthz (ok: true) within ${timeoutMs}ms`
+  )
+}
+
+/**
+ * Start kb-server for an eval session, or attach to an existing sidecar.
+ *
+ * @param {{
+ *   base: string,
+ *   host?: string,
+ *   port?: number,
+ *   kbHome?: string,
+ *   apiKey?: string,
+ *   serverBin?: string,
+ *   logPath?: string,
+ *   healthTimeoutMs?: number,
+ * }} opts
+ */
+export async function startEvalServer({
+  base,
+  host = '127.0.0.1',
+  port,
+  kbHome,
+  apiKey = defaultEvalApiKey(),
+  serverBin = defaultEvalServerBin(),
+  logPath,
+  healthTimeoutMs = DEFAULT_HEALTH_TIMEOUT_MS,
+}) {
+  const attachUrl =
+    process.env.KB_EVAL_SERVER_URL?.trim() || process.env.KB_EVAL_ATTACH_URL?.trim() || null
+
+  if (attachUrl) {
+    const url = attachUrl.replace(/\/$/, '')
+    const attachKey = process.env.KB_SERVER_API_KEY?.trim() || apiKey
+    console.error(`[eval-server] attaching to ${url} (sidecar)`)
+    console.error(
+      `[eval-server] server base is fixed at sidecar startup — ensure it matches "${base}" (--base / manifest)`
+    )
+    await waitForServerListening(url)
+    return createAttachedSession({ url, apiKey: attachKey, kbHome, healthTimeoutMs })
+  }
+
+  if (!fs.existsSync(serverBin)) {
+    throw new Error(
+      process.env.KB_EVAL_SERVER_BIN
+        ? `Missing kb-server binary at KB_EVAL_SERVER_BIN=${serverBin} — build it first (pnpm run build).`
+        : 'Missing packages/kb-server/dist/bin/kb-server.js — run: pnpm run build (or set KB_EVAL_SERVER_BIN).'
+    )
+  }
+
+  const resolvedPort =
+    port ??
+    (process.env.KB_EVAL_SERVER_PORT ? Number.parseInt(process.env.KB_EVAL_SERVER_PORT, 10) : null) ??
+    (await allocateFreePort(host))
+
+  if (!Number.isFinite(resolvedPort) || resolvedPort <= 0) {
+    throw new Error(`[eval-server] invalid port: ${resolvedPort}`)
+  }
+
+  const url = `http://${host}:${resolvedPort}`
+  const args = ['start', '--base', base, '--port', String(resolvedPort)]
+  const childEnv = {
+    ...process.env,
+    KB_SERVER_API_KEY: apiKey,
+    KB_REINDEX_INTERVAL: '0',
+  }
+  if (kbHome) childEnv.KB_HOME = kbHome
+  childEnv.KB_LOCAL_MODE = undefined
+
+  let logFd = null
+  if (logPath) {
+    fs.mkdirSync(path.dirname(logPath), { recursive: true })
+    logFd = fs.openSync(logPath, 'w')
+  }
+
+  console.error(`[eval-server] starting kb-server --base ${base} on ${url}`)
+  const child = spawn(process.execPath, [serverBin, ...args], {
+    env: childEnv,
+    stdio: ['ignore', logFd ?? 'inherit', logFd ?? 'inherit'],
+    detached: false,
+  })
+
+  if (logFd != null) {
+    fs.closeSync(logFd)
+  }
+
+  child.on('error', err => {
+    console.error(`[eval-server] kb-server spawn error: ${err.message}`)
+  })
+
+  await waitForServerListening(url)
+
+  return {
+    url,
+    host,
+    port: resolvedPort,
+    apiKey,
+    base,
+    attached: false,
+    child,
+    healthTimeoutMs,
+    kbEnv() {
+      return buildKbRemoteEnv({ url, apiKey, kbHome })
+    },
+    waitReady(opts = {}) {
+      return waitForServerReady(url, {
+        timeoutMs: opts.timeoutMs ?? healthTimeoutMs,
+      })
+    },
+    async stop() {
+      if (!child || child.exitCode != null) return
+      await stopChild(child)
+    },
+  }
+}
+
+/** @param {{ url: string, apiKey: string, kbHome?: string, healthTimeoutMs: number }} session */
+function createAttachedSession({ url, apiKey, kbHome, healthTimeoutMs }) {
+  return {
+    url,
+    host: null,
+    port: null,
+    apiKey,
+    base: null,
+    attached: true,
+    child: null,
+    healthTimeoutMs,
+    kbEnv() {
+      return buildKbRemoteEnv({ url, apiKey, kbHome })
+    },
+    waitReady(opts = {}) {
+      return waitForServerReady(url, {
+        timeoutMs: opts.timeoutMs ?? healthTimeoutMs,
+      })
+    },
+    async stop() {},
+  }
+}
+
+/** @param {import('node:child_process').ChildProcess} child */
+async function stopChild(child) {
+  if (child.exitCode != null) return
+  const pid = child.pid
+  if (!pid) return
+
+  child.kill('SIGTERM')
+  const exited = await waitForExit(child, 10_000)
+  if (exited) return
+
+  console.error(`[eval-server] kb-server (pid ${pid}) did not exit after SIGTERM — sending SIGKILL`)
+  child.kill('SIGKILL')
+  await waitForExit(child, 5_000)
+}
+
+/** @param {import('node:child_process').ChildProcess} child @param {number} timeoutMs */
+function waitForExit(child, timeoutMs) {
+  if (child.exitCode != null) return Promise.resolve(true)
+  return new Promise(resolve => {
+    const timer = setTimeout(() => {
+      child.removeListener('exit', onExit)
+      resolve(false)
+    }, timeoutMs)
+    const onExit = () => {
+      clearTimeout(timer)
+      resolve(true)
+    }
+    child.once('exit', onExit)
+  })
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
