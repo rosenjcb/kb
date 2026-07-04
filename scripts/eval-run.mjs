@@ -8,7 +8,7 @@
  *   - If the session already has docs → reuse it (query-only run).
  *   - If the session is empty / missing → run `kb init --git <snapshot-clone>` first.
  *   - Every harvest runs `kb scan` (pulls + re-indexes the base's repos), then query.
- *   - `--base NAME` overrides the formula. `--force-init` forces re-init even if docs exist.
+ *   - `--base NAME` overrides the formula. `--force-init` deletes the base then re-inits from scratch.
  * Ends with an automatic trends summary across prior runs for the same suite.
  *
  * Usage (kb repo root, after `pnpm run build`):
@@ -16,7 +16,7 @@
  *   node scripts/eval-run.mjs --suite kb
  *   node scripts/eval-run.mjs --suite generic --repo https://github.com/org/repo.git
  *   node scripts/eval-run.mjs --suite raylib --base my-session   # override session name
- *   node scripts/eval-run.mjs --suite raylib --force-init        # re-init even if session exists
+ *   node scripts/eval-run.mjs --suite raylib --force-init        # wipe base + fresh init
  *
  * Suites: vendor id → `eval/suites/<id>.yaml` (raylib, kb, generic). `--suite-yaml PATH` for custom.
  * Clone: suite YAML repo_url used by default; override with `--repo <git-url>`.
@@ -87,6 +87,7 @@ export {
   repoLeafNameFromUrl,
   stripCliBanner,
   derivedBase,
+  resolveEvalInitPlan,
   parseQueryText,
   parseGraphCounts,
   parseLatestRunIdForCommand,
@@ -261,7 +262,7 @@ Suite / questions:
 
 Session:
   --base NAME             Override derived session name (default: eval-{suiteId})
-  --force-init            Re-init even if session already has docs
+  --force-init            Delete the base, then kb init from scratch (not just scan)
 
 Target repo (for clone + git metadata):
   --repo URL              Override suite YAML repo_url (https or git@)
@@ -393,6 +394,19 @@ function sessionHasDocs(targetCwd, base) {
     return m ? Number(m[1]) > 0 : false
   } catch {
     return false
+  }
+}
+
+/** Decide whether eval should wipe/init vs reuse an existing session. */
+function resolveEvalInitPlan({ forceInit = false, skipCapture = false, hasDocs = false }) {
+  if (skipCapture) {
+    return { needsInit: false, wipeBase: false, evalMode: 'query' }
+  }
+  const needsInit = forceInit || !hasDocs
+  return {
+    needsInit,
+    wipeBase: forceInit,
+    evalMode: needsInit ? 'all' : 'query',
   }
 }
 
@@ -659,9 +673,12 @@ async function main() {
     if (!args.base && fs.existsSync(initLogPath)) base = readBaseFromInitLog(initLogPath) || base
   }
 
-  // Auto-detect whether init is needed: session missing docs → init; existing docs → query only
-  const needsInit = !args.skipCapture && (args.forceInit || !sessionHasDocs(targetCwd, base))
-  const evalMode = needsInit ? 'all' : 'query'
+  const hasDocs = sessionHasDocs(targetCwd, base)
+  const { needsInit, wipeBase, evalMode } = resolveEvalInitPlan({
+    forceInit: args.forceInit,
+    skipCapture: args.skipCapture,
+    hasDocs,
+  })
 
   const label = args.label || runName
   const hypothesis =
@@ -699,8 +716,21 @@ async function main() {
     console.error(`[eval] workdir ${workdir}`)
     console.error(`[eval] target cwd ${targetCwd}`)
     console.error(
-      `[eval] session "${base}" — ${needsInit ? 'no docs found, running kb init then scan' : 'reusing session; kb scan before K queries'}`
+      `[eval] session "${base}" — ${
+        wipeBase
+          ? 'force-init: deleting base then kb init + scan'
+          : needsInit
+            ? 'no docs found, running kb init then scan'
+            : 'reusing session; kb scan before K queries'
+      }`
     )
+
+    if (wipeBase) {
+      console.error(`[eval] kb base delete ${base} --force`)
+      timed('base_delete', runTiming, () =>
+        kb(targetCwd, `base delete ${base} --force`, { stdio: 'inherit' })
+      )
+    }
 
     if (needsInit) {
       // kb init now requires a git remote. Point it at the local snapshot clone (exact commit,
@@ -978,6 +1008,7 @@ async function main() {
       commands: [
         'pnpm run build (kb repo)',
         repoUrl ? `git clone (snapshot) → ${targetCwd}` : null,
+        wipeBase ? `kb base delete ${base} --force (cwd: ${targetCwd})` : null,
         evalMode === 'all'
           ? `kb init --base ${base} --git "${targetCwd}" --non-interactive --debug (cwd: ${targetCwd})`
           : null,

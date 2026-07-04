@@ -174,18 +174,17 @@ K completes the query side in \KbSelfCheckKDurationSec{}s using \KbSelfCheckKTok
 weighted tokens vs.\ N at \KbSelfCheckNDurationSec{}s and \KbSelfCheckNTokens{} tokens
 (mean relevance on K: \KbSelfCheckKRelevance{}; pass rate on three quality axes:
 \KbSelfCheckKPass{}).
-Compared to a same-day baseline on \texttt{main} before structured-synthesis changes
-($\Delta S = +0.065$, $S_K = 0.818$), the branch run trades $\approx$2$\times$ query
-latency for a larger control margin ($\Delta S$ up $+0.059$) and $\approx$18\% fewer
-K-side tokens, while $Q_{\text{adeq}}$ dips slightly (0.912 vs.\ 0.940).
+N leads on adequacy ($Q_{\text{adeq}}$: \KbSelfCheckNQadeq{} vs.\ \KbSelfCheckKQadeq{});
+K's $\Delta S$ margin comes mainly from token economy ($E_{\text{tok}}$:
+\KbSelfCheckKEtok{} vs.\ \KbSelfCheckNEtok{}) and wall-clock speed ($E_{\text{speed}}$:
+\KbSelfCheckKEspeed{} vs.\ \KbSelfCheckNEspeed{}).
 
 On raylib (8 questions), $\Delta S = \RaylibDeltaS{}$ with $S_K = \RaylibKS{}$ and
 $S_N = \RaylibNS{}$; K is faster (\RaylibKDurationSec{}s vs.\ \RaylibNDurationSec{}s) while N
-leads on adequacy ($Q_{\text{adeq}}$: \RaylibKQadeq{} vs.\ \RaylibNQadeq{}).
+leads on adequacy ($Q_{\text{adeq}}$: \RaylibNQadeq{} vs.\ \RaylibKQadeq{}).
 Mean relevance on K is \RaylibKRelevance{} (N: \RaylibNRelevance{}); pass rate
-\RaylibKPass{} (7/8).
-A paired before/after on the same branch moved raylib from on-par ($\Delta S = +0.005$,
-pass 5/8) to clearly ahead ($\Delta S = +0.090$, pass 7/8), with only modest
-latency increase on K ($\approx$11\%).
+\RaylibKPass{} (6/8).
+K uses \RaylibKTokens{} weighted tokens vs.\ N's \RaylibNTokens{} ($E_{\text{tok}}$:
+\RaylibKEtok{} vs.\ \RaylibNEtok{}).
 Both suites show KB ahead of the real-agent control on $\Delta S$ while remaining
 substantially cheaper in weighted tokens than N.
