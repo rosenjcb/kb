@@ -181,21 +181,27 @@ export function App({ config, startupNotices = [] }: Props) {
   const startChatSession = useCallback(
     (opts: { verbose?: boolean } = {}) => {
       const verbose = opts.verbose === true
-      if (!storageDirRef.current) {
+      // Remote mode: base, LLM provider, and retrieval all live server-side, so a thin client
+      // needs neither a local base nor a local API key. Only local mode requires them.
+      const remote = shouldUseRemoteServer()
+      if (!remote && !storageDirRef.current) {
         addEntry({
           type: 'error',
           content: formatPrerequisiteError(CLI_ERROR_NO_KB_BASE),
         })
         return
       }
-      const llmProvider = createLLMProviderFromConfig(config)
-      if (!llmProvider) {
+      const llmProvider = remote ? undefined : createLLMProviderFromConfig(config)
+      if (!remote && !llmProvider) {
         // Startup notice already showed the key setup instructions; don't repeat.
         return
       }
 
       const storageDir = storageDirRef.current
-      const toolExecutor = createKBToolsRegistry(storageDir, config, { taskProvider: llmProvider })
+      const toolExecutor =
+        !remote && llmProvider
+          ? createKBToolsRegistry(storageDir, config, { taskProvider: llmProvider })
+          : undefined
 
       setChatInputHint('')
       setSlashContext('idle')

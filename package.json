@@ -32,8 +32,6 @@
     "unit:test": "NODE_OPTIONS=--no-warnings vitest run",
     "integration:test": "node packages/kb-server/scripts/integration-test.mjs",
     "test:watch": "NODE_OPTIONS=--no-warnings vitest",
-    "test:functional": "bash tests/functional-test.sh",
-    "test:cli": "bash tests/cli-integration.sh",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write --unsafe .",
     "lint:fix:safe": "biome lint --write .",

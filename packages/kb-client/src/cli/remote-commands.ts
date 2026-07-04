@@ -100,6 +100,8 @@ export async function runRemoteIntentCommand(
   const discoveryDepth = payload.discoveryDepth
   const discovery =
     discoveryDepth === 'shallow' || discoveryDepth === 'deep' ? discoveryDepth : undefined
+  const type = typeof payload.type === 'string' ? payload.type : undefined
+  const verbose = parsed.verbose === true
 
   const printer = createPrinter(out, mode)
   printer.startSpinner('querying kb server...')
@@ -109,6 +111,8 @@ export async function runRemoteIntentCommand(
       synthesize: !parsed.allFacts,
       limit,
       discovery,
+      type,
+      verbose,
     })
     printer.stopSpinner()
     if (result.answer?.trim()) {
@@ -127,6 +131,9 @@ export async function runRemoteIntentCommand(
         'Retrieval',
         `${result.retrieval.method}${result.retrieval.detail ? ` (${result.retrieval.detail})` : ''}`,
       )
+    }
+    if (verbose && typeof result.confidence === 'number') {
+      printer.metadata('Confidence', result.confidence.toFixed(2))
     }
   } catch (error) {
     printer.stopSpinner()
