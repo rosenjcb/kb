@@ -132,7 +132,7 @@ const KB_REPO = path.resolve(__dirname, '..')
  */
 const KB_BIN = process.env.KB_EVAL_BIN
   ? path.resolve(process.env.KB_EVAL_BIN)
-  : path.join(KB_REPO, 'dist/bin/kb.js')
+  : path.join(KB_REPO, 'packages/kb-client/dist/bin/kb.js')
 
 function resolveRepoDirInRun(runDir, repoUrl) {
   if (repoUrl && String(repoUrl).trim()) {
@@ -304,6 +304,17 @@ function kbEnv() {
   // Harvest spawns kb as a subprocess with an isolated KB_HOME; run in-process
   // indexing/retrieval until eval orchestrates kb-server (see eval/EVAL.md).
   env.KB_LOCAL_MODE = 'true'
+  // The client bundle lives in packages/kb-client/dist and can't resolve @kb/core's
+  // tree-sitter grammars via its own node_modules walk. Point NODE_PATH at kb-core's
+  // (and the hoisted root) node_modules so local-mode indexing loads the WASM grammars —
+  // the same mechanism the Docker image uses for the server.
+  env.NODE_PATH = [
+    path.join(KB_REPO, 'packages/kb-core/node_modules'),
+    path.join(KB_REPO, 'node_modules'),
+    env.NODE_PATH,
+  ]
+    .filter(Boolean)
+    .join(path.delimiter)
   return env
 }
 
@@ -702,7 +713,7 @@ async function main() {
     console.error(
       process.env.KB_EVAL_BIN
         ? `Missing kb binary at KB_EVAL_BIN=${kbBin} — build it there first (pnpm run build).`
-        : 'Missing dist/bin/kb.js — run: pnpm run build (or set KB_EVAL_BIN to another kb.js).'
+        : 'Missing packages/kb-client/dist/bin/kb.js — run: pnpm run build (or set KB_EVAL_BIN to another kb.js).'
     )
     process.exit(1)
   }
