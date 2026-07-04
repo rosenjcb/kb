@@ -3,8 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { readKbConfig } from '../../src/cli/kb-config'
-import { runLLMSetupWizard, showLLMStatus } from '../../src/cli/llm-setup-wizard'
+import { readKbConfig } from '@kb/core/config/kb-config.js'
+import { runLLMSetupWizard, showLLMStatus } from '@kb/client/cli/llm-setup-wizard.js'
 
 function makeInput(lines: string[]): Readable {
   return Readable.from(lines.map(l => `${l}\n`))

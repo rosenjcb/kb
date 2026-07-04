@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ToolDefinition } from '../../src/core/types'
-import { buildMcpToolList, dispatchMcpToolCall } from '../../src/server/mcp-tools'
-import type { KbService } from '../../src/server/kb-service'
+import type { ToolDefinition } from '@kb/core/core/types.js'
+import { buildMcpToolList, dispatchMcpToolCall } from '@kb/server/mcp-tools.js'
+import type { KbService } from '@kb/core/service/kb-service.js'
 
 const registryTools: ToolDefinition[] = [
   { name: 'read_facts', description: 'Search facts', schema: { type: 'object', properties: {} } },

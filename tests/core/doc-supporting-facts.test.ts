@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { buildDocgenFactContext, searchSupportingFacts } from '../../src/core/doc-supporting-facts'
-import type { FactRow } from '../../src/tools/sqlite-kb-index'
+import { buildDocgenFactContext, searchSupportingFacts } from '@kb/core/core/doc-supporting-facts.js'
+import type { FactRow } from '@kb/core/tools/sqlite-kb-index.js'
 
 const makeRow = (overrides: Partial<FactRow>): FactRow =>
   ({

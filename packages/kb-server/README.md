@@ -68,8 +68,7 @@ default, repos declared for a fresh volume), builds the image, and starts **only
 `kb-server` service. First boot clones + indexes `KB_GIT_REPOS`; later boots reuse the
 persisted index on the `/data` volume — no reindex on restart.
 
-> The split is now explicit:
-> `server:start` runs the server locally in your shell (`tsx src/cli/index.ts server start --with-mcp`).
+> `server:start` runs `kb-server start --with-mcp` locally in your shell.
 > `server:up` is the guided Docker bootstrap.
 > `server:docker:start|stop|logs` are Docker convenience wrappers.
 
@@ -166,7 +165,7 @@ docker run -d --name kb-server \
 ```
 
 The image already sets `KB_HOME=/data`, `PORT=8080`, and a CMD of
-`kb server start --with-mcp`, so the volume mount is what makes the index survive
+`kb-server start --with-mcp`, so the volume mount is what makes the index survive
 restarts. Lifecycle is plain Docker:
 
 ```bash

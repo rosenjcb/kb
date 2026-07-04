@@ -2,11 +2,11 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { parseDocsGenerateCommand, runDocsGenerate } from '../../src/cli/docs-generate-cli'
-import type { KbConfig } from '../../src/cli/kb-config'
-import { loadQuestionnaire } from '../../src/core/doc-questionnaire'
-import type { LLMProvider } from '../../src/core/types'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+import { parseDocsGenerateCommand, runDocsGenerate } from '@kb/client/cli/docs-generate-cli.js'
+import type { KbConfig } from '@kb/core/config/kb-config.js'
+import { loadQuestionnaire } from '@kb/core/core/doc-questionnaire.js'
+import type { LLMProvider } from '@kb/core/core/types.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 const tempDirs: string[] = []
 

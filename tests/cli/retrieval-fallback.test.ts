@@ -3,7 +3,7 @@ import {
   TOP_SOURCE_PREVIEW_LIMIT,
   formatReadDocumentSourceIds,
   formatReadDocumentSourcesPreview,
-} from '../../src/cli/retrieval-fallback'
+} from '@kb/core/query/retrieval-fallback.js'
 
 describe('retrieval-fallback sources preview', () => {
   it('[TC-433] Given more than TOP_SOURCE_PREVIEW_LIMIT hits, then footer says top N of M ranked', () => {

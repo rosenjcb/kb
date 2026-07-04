@@ -1,6 +1,26 @@
 {
-  "name": "kb-server",
-  "version": "0.13.2",
+  "name": "@kb/server",
+  "version": "1.0.0",
+  "description": "KB HTTP/MCP server — daemon, Docker image, integration contract",
+  "type": "module",
   "private": true,
-  "description": "KB HTTP/MCP server — Docker image, integration contract, WireMock stubs"
+  "bin": {
+    "kb-server": "dist/bin/kb-server"
+  },
+  "exports": {
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-server.mjs",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kb/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.5.0"
+  }
 }

@@ -2,12 +2,12 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildChatTurnContent, printChatHelp, runChatSession, runChatSynthesis } from '../../src/cli/chat-cli'
-import * as initCli from '../../src/cli/init-cli'
-import type { ToolExecutor } from '../../src/core/tool-registry'
-import type { LLMProvider } from '../../src/core/types'
-import { invalidateFactTool } from '../../src/tools/invalidate-fact-tool'
-import { createKBToolsRegistry } from '../../src/tools/kb-tools-registry'
+import { buildChatTurnContent, printChatHelp, runChatSession, runChatSynthesis } from '@kb/client/cli/chat-cli.js'
+import * as initCli from '@kb/core/ops/init-cli.js'
+import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
+import type { LLMProvider } from '@kb/core/core/types.js'
+import { invalidateFactTool } from '@kb/core/tools/invalidate-fact-tool.js'
+import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
 
 class ScriptedIO {
   public readonly outputs: string[] = []

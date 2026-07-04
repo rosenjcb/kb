@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   partitionPublishDocsByOriginalFlag,
   type SqliteDocumentRow,
-} from '../../src/core/publish/publish-docs'
+} from '@kb/core/core/publish/publish-docs.js'
 
 const row = (id: string, isOriginal: number): SqliteDocumentRow => ({
   id,

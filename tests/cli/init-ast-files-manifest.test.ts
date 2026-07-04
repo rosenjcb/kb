@@ -6,7 +6,7 @@ import {
   diffChangedAstFiles,
   readAstFilesManifest,
   writeAstFilesManifest,
-} from '../../src/cli/init-ast-files-manifest'
+} from '@kb/core/ops/init-ast-files-manifest.js'
 
 const tempDirs: string[] = []
 

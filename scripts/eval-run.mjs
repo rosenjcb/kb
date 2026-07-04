@@ -301,6 +301,9 @@ Layout (per run, snapshot clone):
 function kbEnv() {
   const env = { ...process.env }
   env.KB_HOME = undefined
+  // Harvest spawns kb as a subprocess with an isolated KB_HOME; run in-process
+  // indexing/retrieval until eval orchestrates kb-server (see eval/EVAL.md).
+  env.KB_LOCAL_MODE = '1'
   return env
 }
 

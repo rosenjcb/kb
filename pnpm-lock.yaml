@@ -7,19 +7,58 @@ settings:
 importers:
 
   .:
+    devDependencies:
+      '@biomejs/biome':
+        specifier: ^1.8.0
+        version: 1.9.4
+      '@changesets/cli':
+        specifier: ^2.31.0
+        version: 2.31.0(@types/node@22.19.17)
+      '@types/js-yaml':
+        specifier: ^4.0.9
+        version: 4.0.9
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.17
+      '@types/react':
+        specifier: ^18.3.28
+        version: 18.3.28
+      dayjs:
+        specifier: ^1.11.13
+        version: 1.11.20
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+      httpyac:
+        specifier: ^6.16.7
+        version: 6.16.7(@types/node@22.19.17)
+      husky:
+        specifier: 9.1.7
+        version: 9.1.7
+      js-yaml:
+        specifier: ^4.1.0
+        version: 4.1.1
+      tree-sitter-typescript:
+        specifier: ^0.23.2
+        version: 0.23.2
+      tsx:
+        specifier: ^4.7.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.6
+        version: 3.2.6(@types/node@22.19.17)(tsx@4.21.0)
+      web-tree-sitter:
+        specifier: ^0.26.8
+        version: 0.26.8
+
+  packages/kb-client:
     dependencies:
-      '@ast-grep/napi':
-        specifier: ^0.42.1
-        version: 0.42.1
-      '@coderabbitai/ast-grep-langs':
-        specifier: ^1.0.0
-        version: 1.0.0
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.0.0
-        version: 1.29.0(zod@3.25.76)
-      axios:
-        specifier: ^1.6.0
-        version: 1.15.0
+      '@kb/core':
+        specifier: workspace:*
+        version: link:../kb-core
       chalk:
         specifier: ^5.3.0
         version: 5.6.2
@@ -29,12 +68,6 @@ importers:
       dayjs:
         specifier: ^1.11.13
         version: 1.11.20
-      diff:
-        specifier: ^9.0.0
-        version: 9.0.0
-      fast-glob:
-        specifier: ^3.3.3
-        version: 3.3.3
       ink:
         specifier: ^5.2.1
         version: 5.2.1(@types/react@18.3.28)(react@18.3.1)
@@ -44,6 +77,49 @@ importers:
       ink-text-input:
         specifier: ^6.0.0
         version: 6.0.0(ink@5.2.1(@types/react@18.3.28)(react@18.3.1))(react@18.3.1)
+      ora:
+        specifier: ^8.2.0
+        version: 8.2.0
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.17
+      '@types/react':
+        specifier: ^18.3.28
+        version: 18.3.28
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
+  packages/kb-core:
+    dependencies:
+      '@ast-grep/napi':
+        specifier: ^0.42.1
+        version: 0.42.1
+      '@coderabbitai/ast-grep-langs':
+        specifier: ^1.0.0
+        version: 1.0.0
+      axios:
+        specifier: ^1.6.0
+        version: 1.15.0
+      chalk:
+        specifier: ^5.4.1
+        version: 5.6.2
+      dayjs:
+        specifier: ^1.11.13
+        version: 1.11.20
+      diff:
+        specifier: ^9.0.0
+        version: 9.0.0
+      fast-glob:
+        specifier: ^3.3.3
+        version: 3.3.3
       js-yaml:
         specifier: ^4.1.0
         version: 4.1.1
@@ -53,9 +129,6 @@ importers:
       pricetoken:
         specifier: ^0.13.10
         version: 0.13.10
-      react:
-        specifier: ^18.3.1
-        version: 18.3.1
       tree-sitter-bash:
         specifier: ^0.25.1
         version: 0.25.1
@@ -108,45 +181,35 @@ importers:
         specifier: ^3.22.0
         version: 3.25.76
     devDependencies:
-      '@biomejs/biome':
-        specifier: ^1.8.0
-        version: 1.9.4
-      '@changesets/cli':
-        specifier: ^2.31.0
-        version: 2.31.0(@types/node@22.19.17)
-      '@types/js-yaml':
-        specifier: ^4.0.9
-        version: 4.0.9
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.17
-      '@types/react':
-        specifier: ^18.3.28
-        version: 18.3.28
-      esbuild:
-        specifier: ^0.25.0
-        version: 0.25.12
-      httpyac:
-        specifier: ^6.16.7
-        version: 6.16.7(@types/node@22.19.17)
-      husky:
-        specifier: 9.1.7
-        version: 9.1.7
-      tsx:
-        specifier: ^4.7.0
-        version: 4.21.0
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
-      vitest:
-        specifier: ^3.2.6
-        version: 3.2.6(@types/node@22.19.17)(tsx@4.21.0)
     optionalDependencies:
       '@huggingface/transformers':
         specifier: ^4.2.0
         version: 4.2.0
 
-  packages/kb-server: {}
+  packages/kb-server:
+    dependencies:
+      '@kb/core':
+        specifier: workspace:*
+        version: link:../kb-core
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.0.0
+        version: 1.29.0(zod@3.25.76)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.17
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
 
 packages:
 

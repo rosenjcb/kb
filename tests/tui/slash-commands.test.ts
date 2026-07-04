@@ -9,7 +9,7 @@ import {
   parseSlashInput,
   resolveSlashSuggestions,
   sanitizeSlashInput,
-} from '../../src/tui/slash-commands.js'
+} from '@kb/client/tui/slash-commands.js'
 
 describe('slash command helpers', () => {
   it('[TC-68] shows slash suggestions when input starts with slash', () => {

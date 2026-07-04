@@ -25,6 +25,19 @@ KB turns your codebase and docs into a searchable knowledge base:
 * 🔍 **Query** — Ask questions in natural language; get grounded, source-linked answers
 * 🔁 **Refresh** — Re-scan after changes to keep the knowledge base current
 
+## 🏗️ Architecture (1.0)
+
+KB splits like Postgres: a **daemon** plus a **client**.
+
+| Binary | Package | Role |
+|--------|---------|------|
+| `kb-server` | `@kb/server` | Indexing, retrieval, LLM, HTTP/MCP |
+| `kb` | `@kb/client` | CLI, TUI, HTTP client to the server |
+
+Shared domain logic lives in `@kb/core`. User data stays in **`~/.kb`** (`KB_HOME`) — not next to install binaries.
+
+Full map: [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md) · Client: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md) · Server: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md)
+
 ## ⚡ Quick Start
 
 ### 1) Install KB
@@ -42,13 +55,13 @@ What this does:
 - installs the latest `kb` release into `~/.kb/runtime`
 - links the stable launcher at `~/.kb/bin/kb`
 
-Or build and install from this checkout:
+Or build and install from this checkout (links **both** `kb` and `kb-server`):
 
 ```bash
 pnpm install
 pnpm run check
 pnpm run install:global
-command -v kb
+command -v kb && command -v kb-server
 ```
 
 > `install-kb.sh` bootstraps `nvm` and `Node 24` if they are missing.
@@ -88,13 +101,24 @@ kb uninstall --purge
 
 From the TUI, type `/uninstall` (or `/uninstall --purge` to also wipe user data). The TUI will walk you through both confirmation steps before exiting.
 
-### 2) Configure `~/.kb/config.json`
+### 2) Start the server and configure the client
 
-Provider is auto-detected from whichever key is present. To set one explicitly:
+**LLM keys and indexing run on the server.** Start it locally (or use Docker — see [Run KB as a server](#-run-kb-as-a-server-docker)):
 
 ```bash
-kb config set llm.provider openai
+kb-server start --with-mcp
+# or: pnpm run server:start   # contributors, from repo root
 ```
+
+Point the client at it in `~/.kb/config.json` (or env):
+
+```bash
+kb config set server.host localhost
+kb config set server.port 8080
+# kb config set server.apiKey <same as KB_SERVER_API_KEY on the server>
+```
+
+Provider for synthesis is configured server-side (env keys: `GEMINI_API_KEY`, `OPENAI_API_KEY`, etc.).
 
 ### 3) Initialize your KB base
 
@@ -128,10 +152,14 @@ Each repo is cloned to `~/.kb/sessions/<base>/repos/<slug>/` and recorded in the
 
 ### 4) Query your knowledge base
 
+Requires a running `kb-server` (see step 2):
+
 ```bash
 kb query "sqlite index sync behavior" --limit 5
 kb query "how does AST indexing work"
 ```
+
+Contributors running tests or eval locally use `KB_LOCAL_MODE=1` to bypass HTTP (see [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md)).
 
 ## 📖 CLI Reference
 
@@ -172,12 +200,12 @@ kb facts list|search|show ...
 kb graph ...
 kb logs list|show|compare ...
 kb skills install|uninstall
-kb server start [--base <name>] [--port <n>] [--with-mcp]
+kb-server start [--base <name>] [--port <n>] [--with-mcp]
 kb sync
 kb publish <notion> [options]
 ```
 
-**Publish** exports the active KB documents to Notion (wipe-and-replace; preview by default, `--apply` to execute). See [`src/core/publish/PUBLISH.md`](src/core/publish/PUBLISH.md) for sinks, stale-doc handling, and provider config.
+**Publish** exports the active KB documents to Notion (wipe-and-replace; preview by default, `--apply` to execute). See [`packages/kb-core/src/core/publish/PUBLISH.md`](packages/kb-core/src/core/publish/PUBLISH.md).
 
 **Interactive session commands** (type while in `kb`):
 
@@ -244,7 +272,7 @@ kb skills uninstall   # remove everything kb skills install added
 
 Installs are idempotent: each skill carries a content hash, so re-running upgrades changed skills in place and skips ones already current. `kb skills uninstall` reverses both steps.
 
-The skills are self-contained (workflow + full command shapes). Source: [`skills/`](skills/); see [`src/skills/SKILLS.md`](src/skills/SKILLS.md) for the bundled set and how to add one. The [CLI Reference](#cli-reference) above stays the in-repo quick reference for humans.
+The skills are self-contained (workflow + full command shapes). Source: [`skills/`](skills/). The [CLI Reference](#cli-reference) above and [`packages/kb-client/src/cli/CLI.md`](packages/kb-client/src/cli/CLI.md) are the in-repo quick references.
 
 The `kb:dump-context` skill writes in-place companion docs in the **Open Knowledge Format** (see below), so the architecture knowledge your agent captures is indexed structurally rather than as loose prose.
 
@@ -263,7 +291,7 @@ curl http://localhost:8080/healthz
 Full getting-started, config reference, and the `kb-server.json` manifest:
 **[`packages/kb-server/README.md`](packages/kb-server/README.md)**.
 
-**Slack bot:** point a Slack workspace at the same `kb server` so people can ask
+**Slack bot:** point a Slack workspace at the same `kb-server` daemon so people can ask
 `@kb <question>` in channels. Slack handling now runs inside `kb-server` itself; enable
 it with `KB_SERVER_ENABLE_SLACK=true` plus real `SLACK_SIGNING_SECRET` and
 `SLACK_BOT_TOKEN`. Setup details live in
@@ -271,11 +299,11 @@ it with `KB_SERVER_ENABLE_SLACK=true` plus real `SLACK_SIGNING_SECRET` and
 
 ## 🔌 MCP — Claude Code & Cursor Agent
 
-Point your coding agent at a running `kb server` over **Streamable HTTP** (`POST /mcp`). The server must be started with `--with-mcp`; REST-only mode returns 404 on `/mcp`.
+Point your coding agent at a running `kb-server` over **Streamable HTTP** (`POST /mcp`). The server must be started with `--with-mcp`; REST-only mode returns 404 on `/mcp`.
 
 ```bash
 export KB_SERVER_API_KEY=testkey   # server + client must match
-kb server start --with-mcp
+kb-server start --with-mcp
 ```
 
 ### Claude Code
@@ -312,7 +340,7 @@ agent mcp list-tools kb
 
 Merge into an existing `mcp.json` if you already have other servers. Restart Cursor or reload the window if the IDE does not pick up the file immediately.
 
-**MCP tools:** `kb_query`, `read_facts`, `search_code_symbols`, `get_code_neighbors`, `get_code_graph_summary`. Details: [`src/server/SERVER.md`](src/server/SERVER.md).
+**MCP tools:** `kb_query`, `read_facts`, `search_code_symbols`, `get_code_neighbors`, `get_code_graph_summary`. Details: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md).
 
 ## 📚 Open Knowledge Format (OKF)
 
@@ -423,6 +451,8 @@ More reading: [`eval/EVAL.md`](eval/EVAL.md) — pipeline overview, loss functio
 
 ## 🧪 Development Commands
 
+Monorepo map: [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md).
+
 ```bash
 pnpm run test
 pnpm run spec:check
@@ -431,11 +461,11 @@ pnpm run lint
 pnpm run build
 ```
 
-To install and uninstall a dev build globally (symlinks `dist/bin/kb` into `$PNPM_HOME/bin`):
+To install and uninstall a dev build globally (symlinks `kb` **and** `kb-server` into `$PNPM_HOME/bin`):
 
 ```bash
-pnpm run install:global    # build then symlink kb into $PNPM_HOME/bin
-pnpm run uninstall:global  # remove symlink, dist/, repo + global .kb-python; prompts before deleting ~/.kb
+pnpm run install:global    # build then symlink kb + kb-server into $PNPM_HOME/bin
+pnpm run uninstall:global  # remove symlinks, dist/; prompts before deleting ~/.kb
 ```
 
 > These are dev-only scripts and are not shipped in the release package. Consumer users should use `kb uninstall` instead.

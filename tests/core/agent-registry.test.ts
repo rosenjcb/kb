@@ -3,7 +3,7 @@ import {
   getAgentProfile,
   listAgentProfiles,
   resolveAgentProfile,
-} from '../../src/core/agents/agent-registry'
+} from '@kb/core/core/agents/agent-registry.js'
 
 describe('agent registry', () => {
   it('[TC-6] Given seeded profiles, then listAgentProfiles includes default and research', () => {

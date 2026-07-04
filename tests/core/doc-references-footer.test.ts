@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   appendReferencesFooter,
   renderReferencesFooter,
-} from '../../src/core/doc-references-footer'
+} from '@kb/core/core/doc-references-footer.js'
 
 describe('renderReferencesFooter', () => {
   it('[TC-37] Given facts, then renders a References section with fact:// URIs', () => {

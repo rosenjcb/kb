@@ -6,8 +6,8 @@ import {
   docFactSourceRefPrefix,
   tombstoneDocFactsForFile,
   tombstoneRemovedDocSourceFiles,
-} from '../../src/core/doc-fact-writer'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+} from '@kb/core/core/doc-fact-writer.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 const tempDirs: string[] = []
 

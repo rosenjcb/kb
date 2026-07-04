@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { FIRST_RUN_WELCOME_NOTICE } from '../../src/cli/index'
+import { FIRST_RUN_WELCOME_NOTICE } from '@kb/client/cli/index.js'
 import {
   autoInitAnnouncement,
   initCancelledNotice,
   scanCancelledNotice,
   shouldAutoInit,
   uninitializedBaseNotice,
-} from '../../src/cli/cli-prerequisites'
+} from '@kb/core/config/cli-prerequisites.js'
 
 // ---------------------------------------------------------------------------
 // FIRST_RUN_WELCOME_NOTICE

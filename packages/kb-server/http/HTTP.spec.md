@@ -9,7 +9,7 @@ timestamp: 2026-06-28T04:05:11Z
 
 ### Intro
 
-Black-box contract for `kb server start`. Runbook and env: [HTTP.md](./HTTP.md). Implementation: [SERVER.md](../../../src/server/SERVER.md). Runner: [INTEGRATION_TEST.md](../INTEGRATION_TEST.md).
+Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md). Implementation: [SERVER.md](../src/SERVER.md). Runner: [INTEGRATION_TEST.md](../INTEGRATION_TEST.md).
 
 ### Definitions
 

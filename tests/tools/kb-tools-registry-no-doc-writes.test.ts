@@ -1,7 +1,7 @@
 import { mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createKBToolsRegistry } from '../../src/tools/kb-tools-registry'
+import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
 
 const FORBIDDEN = new Set([
   'write_document',

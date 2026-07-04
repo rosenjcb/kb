@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from '../../src/cli/cmd-ref'
+import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from '@kb/core/config/cmd-ref.js'
 
 describe('cmd', () => {
   it('[TC-114] returns /name in tui mode', () => {

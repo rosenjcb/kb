@@ -2,9 +2,9 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { FactsDocumentReader } from '../../src/tools/facts-document-reader'
-import { FactsQueryResearchOrchestrator } from '../../src/tools/facts-query-research-orchestrator'
-import type { CurationRecord } from '../../src/tools/fact-curator'
+import { FactsDocumentReader } from '@kb/core/tools/facts-document-reader.js'
+import { FactsQueryResearchOrchestrator } from '@kb/core/tools/facts-query-research-orchestrator.js'
+import type { CurationRecord } from '@kb/core/tools/fact-curator.js'
 import {
   type QueryTraceDump,
   type QueryTraceLane,
@@ -13,8 +13,8 @@ import {
   newTraceId,
   tracedFactFromRow,
   writeQueryTrace,
-} from '../../src/tools/query-trace'
-import { type FactRow, SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+} from '@kb/core/tools/query-trace.js'
+import { type FactRow, SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 const tempDirs: string[] = []
 

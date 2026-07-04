@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { parseShellArgs, runCommandForTui } from '../../src/tui/runner.js'
+import { parseShellArgs, runCommandForTui } from '@kb/client/tui/runner.js'
 
 // ---------------------------------------------------------------------------
 // parseShellArgs
@@ -46,12 +46,12 @@ describe('parseShellArgs', () => {
 // runCommandForTui — output capture
 // ---------------------------------------------------------------------------
 
-vi.mock('../../src/cli/index.js', () => ({
+vi.mock('@kb/client/cli/index.js', () => ({
   runMainWithOutput: vi.fn(),
   printCliHelp: vi.fn(() => 'kb help text'),
 }))
 
-import { runMainWithOutput } from '../../src/cli/index.js'
+import { runMainWithOutput } from '@kb/client/cli/index.js'
 
 describe('runCommandForTui', () => {
   beforeEach(() => {

@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync as Database } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runMigrations } from '../../src/core/db-migrations'
+import { runMigrations } from '@kb/core/core/db-migrations.js'
 
 let tempDir: string
 

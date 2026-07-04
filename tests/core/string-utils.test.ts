@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { basenameTitle, titleFromFilePath, toTitleCase } from '../../src/core/string-utils'
+import { basenameTitle, titleFromFilePath, toTitleCase } from '@kb/core/core/string-utils.js'
 
 describe('toTitleCase', () => {
   it('[TC-132] lowercases and title-cases a normal word', () => {

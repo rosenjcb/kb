@@ -3,7 +3,7 @@ import {
   INIT_SYNTHESIS_OPENAI_JSON_SCHEMA,
   parseInitSynthesisObject,
   stripSynthesisJsonWrapper,
-} from '../../src/core/init-synthesis-json'
+} from '@kb/core/core/init-synthesis-json.js'
 
 describe('stripSynthesisJsonWrapper', () => {
   it('[TC-72] Given fenced JSON whose body contains triple backticks in a string, then does not truncate early', () => {

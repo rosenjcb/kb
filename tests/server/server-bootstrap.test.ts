@@ -6,7 +6,7 @@ import {
   normalizeBootstrapManifest,
   parseReposEnv,
   resolveBootstrapPlan,
-} from '../../src/server/server-bootstrap'
+} from '@kb/server/server-bootstrap.js'
 
 const ENV_KEYS = [
   'KB_BASE',

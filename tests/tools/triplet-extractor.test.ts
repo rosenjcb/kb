@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { LLMProvider } from '../../src/core/types'
-import { extractFactTriplet, extractFactTriplets } from '../../src/tools/triplet-extractor'
+import type { LLMProvider } from '@kb/core/core/types.js'
+import { extractFactTriplet, extractFactTriplets } from '@kb/core/tools/triplet-extractor.js'
 
 function mockLlm(response: string): LLMProvider {
   return {

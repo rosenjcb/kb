@@ -10,8 +10,8 @@ import {
   installSkillsGlobally,
   uninstallHooks,
   uninstallSkills,
-} from '../../src/cli/skill-installer'
-import { loadSkill } from '../../src/skills/loader'
+} from '@kb/client/cli/skill-installer.js'
+import { loadSkill } from '@kb/core/skills/loader.js'
 
 const KB_DEV_WORKFLOW_SKILL = loadSkill('kb:dev-workflow')
 const KB_DEV_WORKFLOW_SKILL_DIR = 'kb:dev-workflow'

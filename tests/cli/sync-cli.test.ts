@@ -2,7 +2,7 @@ import { lstat, readlink, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { printSyncHelp, runSyncCommand } from '../../src/cli/sync-cli'
+import { printSyncHelp, runSyncCommand } from '@kb/client/cli/sync-cli.js'
 
 const RELEASE_TARBALL_URL =
   'https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node24.tgz'

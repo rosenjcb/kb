@@ -7,9 +7,9 @@ import {
   resolveBaseToDir,
   writeDefaultBase,
   writeSessionBase,
-} from '../../src/cli/base-selection'
-import { runMainWithOutput } from '../../src/cli/index'
-import { readKbConfig } from '../../src/cli/kb-config'
+} from '@kb/core/storage/base-selection.js'
+import { runMainWithOutput } from '@kb/client/cli/index.js'
+import { readKbConfig } from '@kb/core/config/kb-config.js'
 
 let kbHomeDir: string
 

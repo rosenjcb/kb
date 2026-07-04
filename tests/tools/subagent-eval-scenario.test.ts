@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   type SubagentEvalScenario,
   subagentLoopTuning,
-} from '../../src/tools/subagent-eval-scenario'
+} from '@kb/core/tools/subagent-eval-scenario.js'
 
 describe('subagentLoopTuning', () => {
   it.each<[SubagentEvalScenario, ReturnType<typeof subagentLoopTuning>]>([

@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { LLMProvider } from '../../src/core/types'
+import type { LLMProvider } from '@kb/core/core/types.js'
 import {
   type CuratorRequery,
   curateFacts,
   parseVerdict,
   shouldCurate,
-} from '../../src/tools/fact-curator'
-import type { QueryResult } from '../../src/tools/facts-document-reader'
+} from '@kb/core/tools/fact-curator.js'
+import type { QueryResult } from '@kb/core/tools/facts-document-reader.js'
 
 function makeResult(id: string, title: string, content?: string): QueryResult {
   return {

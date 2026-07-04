@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { IntentResult } from '../../src/intents/types'
-import { serializeQueryResult } from '../../src/server/serialize'
+import type { IntentResult } from '@kb/core/intents/types.js'
+import { serializeQueryResult } from '@kb/core/service/serialize.js'
 
 describe('serializeQueryResult', () => {
                 it('[TC-34] maps a read_facts IntentResult into the REST response body', () => {

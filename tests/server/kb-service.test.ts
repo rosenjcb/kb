@@ -2,9 +2,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { KbConfig } from '../../src/cli/kb-config'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
-import { createKbService } from '../../src/server/kb-service'
+import type { KbConfig } from '@kb/core/config/kb-config.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
+import { createKbService } from '@kb/core/service/kb-service.js'
 
 const tempDirs: string[] = []
 

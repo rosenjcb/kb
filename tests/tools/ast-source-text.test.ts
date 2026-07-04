@@ -11,9 +11,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync as Database } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
-import { runMigrations } from '../../src/core/db-migrations'
-import { FactsDocumentReader } from '../../src/tools/facts-document-reader'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+import { runMigrations } from '@kb/core/core/db-migrations.js'
+import { FactsDocumentReader } from '@kb/core/tools/facts-document-reader.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 const tempDirs: string[] = []
 afterEach(async () => {

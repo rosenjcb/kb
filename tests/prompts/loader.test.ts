@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { loadPrompt, loadPromptParts } from '../../src/prompts/loader'
+import { loadPrompt, loadPromptParts } from '@kb/core/prompts/loader.js'
 
 describe('loadPrompt', () => {
   it('[TC-1] loads a prompt file as a trimmed string', () => {

@@ -4,10 +4,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Server } from 'node:http'
-import type { IntentResult } from '../../src/intents/types'
-import { createHttpServer } from '../../src/server/http-server'
-import type { KbService } from '../../src/server/kb-service'
-import type { RunReport } from '../../src/core/telemetry'
+import type { IntentResult } from '@kb/core/intents/types.js'
+import { createHttpServer } from '@kb/server/http-server.js'
+import type { KbService } from '@kb/core/service/kb-service.js'
+import type { RunReport } from '@kb/core/core/telemetry.js'
 
 function makeStubService(overrides: Partial<KbService> = {}): KbService {
   return {

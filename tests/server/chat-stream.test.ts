@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { LLMProvider } from '../../src/core/types'
-import type { ToolExecutor } from '../../src/core/tool-registry'
-import { type ChatEvent, streamChatTurn } from '../../src/server/chat-stream'
+import type { LLMProvider } from '@kb/core/core/types.js'
+import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
+import { type ChatEvent, streamChatTurn } from '@kb/server/chat-stream.js'
 
 const emptyToolExecutor: ToolExecutor = {
   getTools: () => [],

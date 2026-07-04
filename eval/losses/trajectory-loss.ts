@@ -12,8 +12,8 @@
  */
 
 import { DatabaseSync } from 'node:sqlite'
-import { runMigrations } from '../../src/core/db-migrations'
-import type { TrajectoryFile, TrajectoryStep } from '../../src/core/telemetry'
+import { runMigrations } from '@kb/core/core/db-migrations.js'
+import type { TrajectoryFile, TrajectoryStep } from '@kb/core/core/telemetry.js'
 
 // Normalize tool call arguments for duplicate detection: sort keys, trim strings.
 function normalizeArgs(args: Record<string, unknown>): string {

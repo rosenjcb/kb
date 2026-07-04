@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { InitContext } from '../../src/cli/init-cli'
+import type { InitContext } from '@kb/core/ops/init-cli.js'
 import {
   assessTopicCoverage,
   buildTopicCoverageGaps,
   summariseCoverage,
-} from '../../src/cli/init-topic-coverage'
+} from '@kb/core/ops/init-topic-coverage.js'
 
 describe('init topic coverage', () => {
   it('[TC-303] Given grounded source, user answers, and draft docs, then marks topic sufficient', () => {

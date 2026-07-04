@@ -2,7 +2,7 @@ import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { performUninstall, runUninstallCommand } from '../../src/cli/uninstall-cli'
+import { performUninstall, runUninstallCommand } from '@kb/client/cli/uninstall-cli.js'
 
 const TMP_KB_HOME = path.join(os.tmpdir(), 'kb-uninstall-cli-test')
 

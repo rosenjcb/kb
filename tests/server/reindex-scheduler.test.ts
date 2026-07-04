@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { parseDuration, startReindexScheduler } from '../../src/server/reindex-scheduler'
+import { parseDuration, startReindexScheduler } from '@kb/server/reindex-scheduler.js'
 
 describe('parseDuration', () => {
                 it('[TC-26] parses unit suffixes', () => {

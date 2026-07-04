@@ -13,7 +13,7 @@ import {
   saveSession,
   setSessionDraft,
   type UserDefinedDocSection,
-} from '../../src/core/doc-generate-session'
+} from '@kb/core/core/doc-generate-session.js'
 
 const tempDirs: string[] = []
 

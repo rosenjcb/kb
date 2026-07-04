@@ -2,20 +2,20 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type GitBaseMeta, type GitRepoMeta, readBaseMeta, writeBaseMeta } from '../../src/cli/base-meta'
-import { maybeAutoSync } from '../../src/cli/auto-sync'
+import { type GitBaseMeta, type GitRepoMeta, readBaseMeta, writeBaseMeta } from '@kb/core/storage/base-meta.js'
+import { maybeAutoSync } from '@kb/core/ops/auto-sync.js'
 
-vi.mock('../../src/cli/git-sync', () => ({
+vi.mock('@kb/core/ops/git-sync.js', () => ({
   pullRepo: vi.fn(),
   getHeadSha: vi.fn(),
 }))
 
-vi.mock('../../src/cli/init-cli', () => ({
+vi.mock('@kb/core/ops/init-cli.js', () => ({
   runKbInit: vi.fn(),
 }))
 
-import { getHeadSha, pullRepo } from '../../src/cli/git-sync'
-import { runKbInit } from '../../src/cli/init-cli'
+import { getHeadSha, pullRepo } from '@kb/core/ops/git-sync.js'
+import { runKbInit } from '@kb/core/ops/init-cli.js'
 
 const mockPullRepo = vi.mocked(pullRepo)
 const mockGetHeadSha = vi.mocked(getHeadSha)

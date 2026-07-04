@@ -125,7 +125,7 @@ Additional patterns specific to eval tests:
 
 ## Integration tests (HTTP server)
 
-Black-box suite for `kb server start` — **not** Vitest. Spins up Docker (`kb-server` + WireMock `llm-mock`), runs [`packages/kb-server/http/server.http`](packages/kb-server/http/server.http) via httpyac, tears down.
+Black-box suite for `kb-server start` — **not** Vitest. Spins up Docker (`kb-server` + WireMock `llm-mock`), runs [`packages/kb-server/http/server.http`](packages/kb-server/http/server.http) via httpyac, tears down.
 
 ```bash
 pnpm run integration:test

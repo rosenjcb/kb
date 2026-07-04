@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { StreamManager } from '../../src/core/runtime/stream-manager'
+import { StreamManager } from '@kb/core/core/runtime/stream-manager.js'
 
 describe('StreamManager', () => {
   it('[TC-130] Given push then snapshot, then returns copy without clearing', () => {

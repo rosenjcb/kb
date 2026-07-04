@@ -6,8 +6,8 @@
  * apply it. It is NOT performed automatically after merge. This gate, which runs on PRs
  * into main, enforces that the bump was applied.
  *
- * `kb` (CLI; `src/`, `bin/`) and `kb-server` (Docker/contract; `packages/kb-server/`) are
- * versioned independently. So when shipped source changes we require:
+ * `@kb/client`, `@kb/core`, and `@kb/server` are versioned independently. When shipped
+ * source changes we require:
  *   - the affected package's `version` is bumped vs the base branch, and
  *   - no pending `.changeset/*.md` remain (they must be consumed by `changeset version`),
  *   - exactly one changeset was present before it was applied (no multi-changeset PRs), and
@@ -25,6 +25,8 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
+const KB_CLIENT_PKG = 'packages/kb-client/package.json'
+const KB_CORE_PKG = 'packages/kb-core/package.json'
 const KB_SERVER_PKG = 'packages/kb-server/package.json'
 
 function parseArgs(argv) {
@@ -97,14 +99,21 @@ export function evaluateChangesetConsistency(input) {
   }
 
   const changed = new Set(input.changedFiles)
-  const kbSourceChanged = [...changed].some(
-    file => file.startsWith('src/') || file.startsWith('bin/')
+  const clientSourceChanged = [...changed].some(
+    file =>
+      file.startsWith('packages/kb-client/') ||
+      file.startsWith('scripts/build-client.mjs') ||
+      file.startsWith('src/') ||
+      file.startsWith('bin/')
   )
+  const coreSourceChanged = [...changed].some(file => file.startsWith('packages/kb-core/'))
   const serverSourceChanged = [...changed].some(
-    file => file.startsWith('packages/kb-server/') && !file.startsWith('packages/kb-server/http/')
+    file =>
+      (file.startsWith('packages/kb-server/') && !file.startsWith('packages/kb-server/http/')) ||
+      file.startsWith('scripts/build-server.mjs')
   )
 
-  if (!kbSourceChanged && !serverSourceChanged) {
+  if (!clientSourceChanged && !coreSourceChanged && !serverSourceChanged) {
     notes.push('No shipped source changes — version bump not required.')
     return { ok: true, errors, notes }
   }
@@ -139,8 +148,9 @@ export function evaluateChangesetConsistency(input) {
     notes.push(`${name} ${versions.base} → ${versions.head}`)
   }
 
-  requireBump(kbSourceChanged, 'kb', input.kb)
-  requireBump(serverSourceChanged, 'kb-server', input.kbServer)
+  requireBump(clientSourceChanged, '@kb/client', input.kbClient)
+  requireBump(coreSourceChanged, '@kb/core', input.kbCore)
+  requireBump(serverSourceChanged, '@kb/server', input.kbServer)
 
   return { ok: errors.length === 0, errors, notes }
 }
@@ -176,7 +186,14 @@ function main() {
   const result = evaluateChangesetConsistency({
     changedFiles,
     pendingChangesets: listPendingChangesets(),
-    kb: { base: readVersionAt(base, 'package.json'), head: readHeadVersion('package.json') },
+    kbClient: {
+      base: readVersionAt(base, KB_CLIENT_PKG),
+      head: readHeadVersion(KB_CLIENT_PKG),
+    },
+    kbCore: {
+      base: readVersionAt(base, KB_CORE_PKG),
+      head: readHeadVersion(KB_CORE_PKG),
+    },
     kbServer: {
       base: readVersionAt(base, KB_SERVER_PKG),
       head: readHeadVersion(KB_SERVER_PKG),

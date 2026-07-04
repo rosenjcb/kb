@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { awaitRefreshThenStart } from '../../src/tui/base-refresh.js'
+import { awaitRefreshThenStart } from '@kb/client/tui/base-refresh.js'
 
 describe('awaitRefreshThenStart', () => {
   it('[TC-1] Given an async refreshBase, then startSession sees the updated value', async () => {

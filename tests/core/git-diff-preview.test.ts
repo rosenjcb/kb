@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { colorizeUnifiedDiff, createUnifiedDiff } from '../../src/core/git-diff-preview'
+import { colorizeUnifiedDiff, createUnifiedDiff } from '@kb/core/core/git-diff-preview.js'
 
 describe('core/createUnifiedDiff', () => {
   it('[TC-65] produces a valid unified diff with --- and +++ headers', () => {

@@ -1,5 +1,11 @@
 # kb
 
+## 1.0.0
+
+### Major Changes
+
+- 1.0.0 client-server split: `kb` CLI/TUI client, `kb-server` daemon, `@kb/core` shared domain. Remote query/chat over REST+SSE; `kb server` subcommand removed.
+
 ## 0.21.0
 
 ### Minor Changes

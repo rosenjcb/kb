@@ -9,7 +9,7 @@ import {
   hashSourceFileContents,
   readSourceFilesManifest,
   writeSourceFilesManifest,
-} from '../../src/cli/init-source-files-manifest'
+} from '@kb/core/ops/init-source-files-manifest.js'
 
 const tempDirs: string[] = []
 

@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   ingestSourceMarkdownFilesAsFacts,
   type ScanFactIngestProgress,
-} from '../../src/core/scan-fact-ingest'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+} from '@kb/core/core/scan-fact-ingest.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 const tempDirs: string[] = []
 

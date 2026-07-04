@@ -169,6 +169,22 @@ flowchart LR
 
 **Variable suite size:** `eval-shared.mjs` / `eval-run.mjs` accept any non-empty `questions[]` in suite YAML — no fixed question count.
 
+## Client-server eval (1.0+)
+
+After the `@kb/client` / `@kb/server` split, **`kb query` defaults to remote mode** — it
+expects a live `kb-server` on `localhost:8080` (or `~/.kb/config.json` `server.host` /
+`server.port`). The harvest and MOEL harnesses still **shell-spawn `dist/bin/kb.js`** with an
+isolated `KB_HOME` per run; they do **not** start or health-check a server today.
+
+**Current workaround:** `scripts/eval-run.mjs` and `scripts/moel-run.mjs` set
+`KB_LOCAL_MODE=1` in `kbEnv()` so subprocess `kb` runs indexing and retrieval in-process via
+`@kb/core` (same behavior as pre-1.0). This keeps `pnpm run eval` working without Docker.
+
+**Target state:** orchestrate `kb-server start` (or reuse a pinned sidecar) before the kb phase,
+point the client at that instance, and drop `KB_LOCAL_MODE` so eval exercises the production
+remote path. Until then, local-mode eval does not validate REST/SSE transport or server-side
+curation latency.
+
 ## Invariants
 
 - One `TrajectoryFile` per condition per task — written by `TrajectoryCollector.writeTrajectory()`.

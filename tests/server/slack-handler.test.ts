@@ -2,15 +2,15 @@ import { createHmac } from 'node:crypto'
 import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createHttpServer } from '../../src/server/http-server'
-import type { KbService } from '../../src/server/kb-service'
-import type { IntentResult } from '../../src/intents/types'
+import { createHttpServer } from '@kb/server/http-server.js'
+import type { KbService } from '@kb/core/service/kb-service.js'
+import type { IntentResult } from '@kb/core/intents/types.js'
 import {
   dispatchSlackEvent,
   verifySlackSignature,
   stripMentions,
   isDuplicateEvent,
-} from '../../src/server/slack-handler'
+} from '@kb/server/slack-handler.js'
 
 // ---------------------------------------------------------------------------
 // Helpers

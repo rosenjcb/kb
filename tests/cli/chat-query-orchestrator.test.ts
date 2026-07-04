@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { executeChatQueryTruthRetrieval } from '../../src/cli/chat-query-orchestrator'
-import { isReadFactsResult } from '../../src/cli/intent-cli'
-import type { ToolExecutor } from '../../src/core/tool-registry'
+import { executeChatQueryTruthRetrieval } from '@kb/client/cli/chat-query-orchestrator.js'
+import { isReadFactsResult } from '@kb/core/query/intent-cli.js'
+import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
 
 describe('chat-query-orchestrator', () => {
   it('[TC-106] Given a mocked read_facts result, then returns accepted read_facts IntentResult', async () => {

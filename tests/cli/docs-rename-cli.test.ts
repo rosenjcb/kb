@@ -6,9 +6,9 @@ import {
   DocsRenameError,
   parseDocsRenameCommand,
   runDocsRename,
-} from '../../src/cli/docs-rename-cli'
-import { SqliteDocumentWriter } from '../../src/tools/sqlite-document-writer'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+} from '@kb/client/cli/docs-rename-cli.js'
+import { SqliteDocumentWriter } from '@kb/core/tools/sqlite-document-writer.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 const tempDirs: string[] = []
 

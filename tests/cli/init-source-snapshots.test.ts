@@ -4,7 +4,7 @@ import {
   appendFrozenSourceSnapshots,
   buildFrozenSourceSnapshotDoc,
   isInitReadmeHomePath,
-} from '../../src/cli/init-source-snapshots'
+} from '@kb/core/ops/init-source-snapshots.js'
 
 describe('init-source-snapshots', () => {
   it('[TC-299] Given many autogen-only docs and several source files, then append adds frozen originals per file', () => {

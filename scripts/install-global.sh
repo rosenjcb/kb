@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# pnpm v11 fatally errors on `pnpm root -g` when the global bin dir is not in
-# PATH, so we derive the bin path from PNPM_HOME instead of calling pnpm.
-#
-# pnpm v9+  : bin lives at $PNPM_HOME/bin   (default ~/.local/share/pnpm/bin)
-# pnpm v8-  : bin lives at $PNPM_HOME        (default ~/.local/share/pnpm)
 PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
 if [ -d "$PNPM_HOME/bin" ]; then
   KB_BIN="$PNPM_HOME/bin"
@@ -13,21 +8,27 @@ else
   KB_BIN="$PNPM_HOME"
 fi
 
-SOURCE_BIN="$(cd "$(dirname "$0")/.." && pwd)/dist/bin/kb"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SOURCE_KB="$ROOT/packages/kb-client/dist/bin/kb"
+SOURCE_SERVER="$ROOT/packages/kb-server/dist/bin/kb-server"
 
-if [ ! -f "$SOURCE_BIN" ]; then
-  echo "Error: dist/bin/kb not found. Run 'pnpm run build' first." >&2
+if [ ! -f "$SOURCE_KB" ]; then
+  echo "Error: packages/kb-client/dist/bin/kb not found. Run 'pnpm run build' first." >&2
+  exit 1
+fi
+if [ ! -f "$SOURCE_SERVER" ]; then
+  echo "Error: packages/kb-server/dist/bin/kb-server not found. Run 'pnpm run build' first." >&2
   exit 1
 fi
 
 mkdir -p "$KB_BIN"
-ln -sf "$SOURCE_BIN" "$KB_BIN/kb"
-echo "Linked: $KB_BIN/kb -> $SOURCE_BIN"
+ln -sf "$SOURCE_KB" "$KB_BIN/kb"
+ln -sf "$SOURCE_SERVER" "$KB_BIN/kb-server"
+echo "Linked: $KB_BIN/kb -> $SOURCE_KB"
+echo "Linked: $KB_BIN/kb-server -> $SOURCE_SERVER"
 
-# Ensure the bin directory is in PATH for the current session.
 export PATH="$KB_BIN:$PATH"
 
-# Persist the PATH entry in the user's shell rc file.
 shell_name="$(basename "${SHELL:-bash}")"
 case "$shell_name" in
   zsh)  rc_file="$HOME/.zshrc" ;;

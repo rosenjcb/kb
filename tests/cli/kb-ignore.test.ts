@@ -7,7 +7,7 @@ import {
   normalizeIgnorePatterns,
   parseIgnoreInput,
   resolveIgnoreMatcher,
-} from '../../src/cli/kb-ignore'
+} from '@kb/core/config/kb-ignore.js'
 
 describe('parseIgnoreInput', () => {
   it('[TC-351] splits on commas and newlines and trims', () => {

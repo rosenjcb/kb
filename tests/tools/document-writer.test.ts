@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { type DocumentWriter, executeWriteDocumentTool } from '../../src/tools/document-writer'
+import { type DocumentWriter, executeWriteDocumentTool } from '@kb/core/tools/document-writer.js'
 
 describe('executeWriteDocumentTool', () => {
   it('[TC-69] Given valid write_document input, then should return the writer result', async () => {

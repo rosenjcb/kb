@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildEvidenceSummaryParts,
   formatEvidenceSummaryHeader,
-} from '../../src/core/evidence-summary'
+} from '@kb/core/core/evidence-summary.js'
 
 describe('evidence-summary', () => {
   it('[TC-56] Given mixed doc and code facts, then header summarizes count, mix, themes, and leads', () => {

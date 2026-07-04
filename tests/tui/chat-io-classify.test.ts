@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CHAT_IO_CATEGORY,
   classifyChatIOLine,
-} from '../../src/tui/chat-io-classify'
+} from '@kb/client/tui/chat-io-classify.js'
 
 describe('tui/chat-io-classify', () => {
   describe('CHAT_IO_CATEGORY constants', () => {

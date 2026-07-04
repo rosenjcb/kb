@@ -4,7 +4,7 @@ import {
   GeminiProvider,
   OpenAIProvider,
   createProvider,
-} from '../../src/core/llm-provider'
+} from '@kb/core/core/llm-provider.js'
 
 /** Build a streaming fetch Response whose body emits the given text chunks. */
 function streamResponse(chunks: string[], status = 200): Response {
