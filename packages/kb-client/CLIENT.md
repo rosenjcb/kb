@@ -73,7 +73,7 @@ export KB_SERVER_API_KEY=<token matching the server>
 | `init`, `scan`, `docs`, `facts`, `graph`, `logs`, `publish`, `base` (except `use`) | `POST /v1/admin/cli` | In-process `@kb/core/cli/dispatch` |
 | `config`, `skills`, `uninstall`, `sync`, `base use` | Client-only (connection profile / install) | Same |
 
-Eval harness orchestrates a live `kb-server` per run via `scripts/eval-server.mjs` (see `eval/EVAL.md`).
+Eval harness still sets `KB_LOCAL_MODE=true` until it orchestrates a live server.
 
 ## Build
 
