@@ -1143,7 +1143,9 @@ async function main() {
 
     const hasApiKey =
       process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY
-    if (!hasApiKey) {
+    // A thin client talking to a remote kb-server synthesizes server-side, so it needs no
+    // local provider key. Only warn when running in-process (local mode).
+    if (!hasApiKey && !shouldUseRemoteServer()) {
       startupNotices.push(
         [
           '⚠  No LLM API key detected. KB needs one of:',

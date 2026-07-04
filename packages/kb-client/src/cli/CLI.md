@@ -17,7 +17,7 @@ Monorepo context → [`../../CLIENT.md`](../../CLIENT.md) · [`../../ARCHITECTUR
 
 | Concern | Package |
 |---|---|
-| `kb query`, `kb chat`, TUI | `@kb/client` → HTTP SDK → `@kb/server` |
+| `kb query`, interactive chat (TUI) | `@kb/client` → HTTP SDK → `@kb/server` |
 | `kb init`, `kb scan` (today) | `@kb/client` → `@kb/core` in-process (`KB_LOCAL_MODE` or direct import) |
 | Index, LLM, `KbService` | `@kb/core` on the server process |
 
@@ -95,7 +95,7 @@ Code facts are **AST-only**. Extensions in `TREE_SITTER_AST_EXTENSIONS` (from `t
 | Path | Synthesis | Audience |
 |------|-----------|----------|
 | **`kb query`** | One-shot **`enrichReadDocumentsAnswerWithLLM()`** — single LLM call over curator-filtered facts (2000 chars/fact). Plain prose; no inline fact refs. No `query_kb` tool loop. | Programmatic callers (agents, eval harvest) |
-| **`kb chat`** | Multi-turn **`runChatSynthesis()`** — LLM may call `query_kb` for follow-up retrievals before answering. | Interactive TUI / REPL |
+| **chat** | Multi-turn **`runChatSynthesis()`** — LLM may call `query_kb` for follow-up retrievals before answering. Chat is the interactive TUI (bare `kb` on a TTY), not a `kb chat` subcommand. | Interactive TUI / REPL |
 
 Both share retrieval via `@kb/core`; only the answer phase differs. See `@kb/core/query/chat-synthesis.ts` and `@kb/core/service/query-pipeline.ts`.
 

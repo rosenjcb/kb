@@ -1,5 +1,13 @@
 # @kb/client
 
+## 1.1.2
+
+### Patch Changes
+
+- Fix client/server split gaps: forward `--type`/`--verbose` on remote `kb query`, let the TUI chat run against a remote server without a local base or LLM key, stop nagging about a missing local API key in remote mode, and correct the server-side `kb graph --base` argument handling so it targets the requested base.
+- Updated dependencies
+  - @kb/core@1.1.2
+
 ## 1.1.1
 
 ### Patch Changes

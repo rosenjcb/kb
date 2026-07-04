@@ -243,12 +243,12 @@ export async function runServerCommandWithOutput(
       const graphTail = args.slice(1)
       let kbStorageDir: string
       try {
-        kbStorageDir = await resolveKbStorageDirFromArgs(stripCliFlagWithValue(graphTail, '--base'))
+        kbStorageDir = await resolveKbStorageDirFromArgs(graphTail)
       } catch {
         out.error('No KB base configured on the server.')
         return 1
       }
-      const opts = parseGraphCommand(graphTail, mode)
+      const opts = parseGraphCommand(stripCliFlagWithValue(graphTail, '--base'), mode)
       await runGraphCommand(kbStorageDir, opts, out, undefined, mode)
       return 0
     } catch (error) {

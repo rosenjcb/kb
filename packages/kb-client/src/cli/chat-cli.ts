@@ -46,8 +46,10 @@ export {
 } from '@kb/core/query/chat-synthesis.js'
 
 export interface ChatSessionDeps {
-  llmProvider: LLMProvider
-  toolExecutor: ToolExecutor
+  /** Required for local (`KB_LOCAL_MODE`) chat; unused in remote mode (synthesis runs server-side). */
+  llmProvider?: LLMProvider
+  /** Required for local (`KB_LOCAL_MODE`) chat; unused in remote mode (retrieval runs server-side). */
+  toolExecutor?: ToolExecutor
   mode?: CmdMode
   /** KB storage directory (`.kb` root). Resolved from cwd when omitted. */
   kbStorageDir?: string
@@ -285,6 +287,14 @@ export async function runChatSession(
   if (shouldUseRemoteServer()) {
     return runRemoteChatSession(deps, io)
   }
+  // Local mode requires the in-process LLM provider + tool executor. Remote mode
+  // returned above, so a missing provider here is a real misconfiguration.
+  const { llmProvider, toolExecutor } = deps
+  if (!llmProvider || !toolExecutor) {
+    io.error('Local chat requires an LLM provider and tool executor (set an API key, or run against a kb-server).')
+    io.close?.()
+    return
+  }
   const printer = createPrinter(
     {
       log: line => io.write(line),
@@ -301,7 +311,7 @@ export async function runChatSession(
   // Accumulated multi-turn message history — grows each turn.
   const messages: Message[] = []
   const sessionBase = deps.kbStorageDir ? path.basename(deps.kbStorageDir) : undefined
-  let sessionStats = createSessionStats(deps.llmProvider.name, deps.llmProvider.model, sessionBase)
+  let sessionStats = createSessionStats(llmProvider.name, llmProvider.model, sessionBase)
   deps.onSessionStart?.(sessionStats.sessionId)
 
   printer.chatAssistant('Type a question, or /help for commands.')
@@ -326,7 +336,7 @@ export async function runChatSession(
           read: (prompt, opts) => io.read(prompt, opts),
           writeError: line => io.error(line),
           printer,
-          llm: deps.llmProvider,
+          llm: llmProvider,
           kbStorageDir: baseDir,
           config: chatConfig,
           slashRest,
@@ -477,7 +487,7 @@ export async function runChatSession(
       if (input === '/clear') {
         await flushSessionLog(sessionStats).catch(() => {})
         messages.length = 0
-        sessionStats = createSessionStats(deps.llmProvider.name, deps.llmProvider.model, sessionBase)
+        sessionStats = createSessionStats(llmProvider.name, llmProvider.model, sessionBase)
         deps.onSessionStart?.(sessionStats.sessionId)
         if (deps.mode !== 'tui') process.stdout.write('\x1Bc')
         printer.chatAssistant('Fresh session. Ask me anything.')
@@ -505,7 +515,7 @@ export async function runChatSession(
         // Query decomposition pre-step: for synthesis/elaboration queries, retrieve from multiple
         // angles before the LLM-driven tool loop so the model has grounded context upfront.
         if (!input.startsWith('/') && SYNTHESIS_QUERY_RE.test(input)) {
-          const subQueries = await decomposeQueryForRetrieval(input, deps.llmProvider)
+          const subQueries = await decomposeQueryForRetrieval(input, llmProvider)
           if (subQueries.length > 1) {
             const preToolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> =
               subQueries.map((q, i) => ({ id: `pre-${i}`, name: 'query_kb', input: { q } }))
@@ -533,7 +543,7 @@ export async function runChatSession(
                   'retrieval-pre',
                   () =>
                     executeChatQueryTruthRetrieval({
-                      toolExecutor: deps.toolExecutor,
+                      toolExecutor: toolExecutor,
                       expandedQuery,
                       retrievalLimit,
                     }),
@@ -573,8 +583,8 @@ export async function runChatSession(
           question: input,
           retrieval: undefined,
           messages: turnMessages,
-          llmProvider: deps.llmProvider,
-          toolExecutor: deps.toolExecutor,
+          llmProvider: llmProvider,
+          toolExecutor: toolExecutor,
           kbStorageDir: deps.kbStorageDir,
           isAllFacts,
           printer,
