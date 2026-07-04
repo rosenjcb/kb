@@ -37,7 +37,8 @@ import { InitProgressBar } from './components/InitProgressBar.js'
 import { StatusBar } from './components/StatusBar.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
 import { partitionShellOutputForTui } from './partition-shell-output.js'
-import { parseShellArgs, runCommandForTui } from './runner.js'
+import { runCommandForTui, parseShellArgs } from './runner.js'
+import { shouldUseRemoteServer } from '../cli/remote-commands.js'
 import {
   applySelectedSuggestion,
   clampSuggestionIndex,
@@ -329,6 +330,18 @@ export function App({ config, startupNotices = [] }: Props) {
     setInitActive(true)
     setProgressLine(null)
     try {
+      if (shouldUseRemoteServer()) {
+        const output = await runCommandForTui(
+          ['init', ...extraArgs],
+          config,
+          line => setProgressLine(line.trimEnd()),
+          chatSessionIdRef.current,
+        )
+        setProgressLine(null)
+        if (output) addEntry({ type: 'result', content: output })
+        await awaitRefreshThenStart(refreshBase, startChatSession)
+        return
+      }
       const parsed = parseInitCommand(extraArgs)
       const result = await runKbInit({
         ...parsed,
@@ -372,7 +385,7 @@ export function App({ config, startupNotices = [] }: Props) {
       setInitActive(false)
       setIsRunning(false)
     }
-  }, [addEntry, refreshBase, startChatSession, handleInitFlowCancel, stopChatPending, finalizeChatResponse])
+  }, [addEntry, config, refreshBase, startChatSession, handleInitFlowCancel, stopChatPending, finalizeChatResponse])
 
   // Start chat session once after base dir resolves; auto-init when .kb file points at an uninitialised base
   useEffect(() => {
@@ -623,13 +636,28 @@ export function App({ config, startupNotices = [] }: Props) {
         } else {
           setIsRunning(true)
           try {
-            const summary = await runScanCommand(extraArgs, line => {
-              const text = line.trimEnd()
-              if (text) addEntry({ type: 'result', content: text })
-            })
-            setProgressLine(null)
-            addEntry({ type: 'result', content: `✅ ${summary}` })
-            await awaitRefreshThenStart(refreshBase, startChatSession)
+            if (shouldUseRemoteServer()) {
+              const output = await runCommandForTui(
+                ['scan', ...extraArgs],
+                config,
+                line => {
+                  const text = line.trimEnd()
+                  if (text) addEntry({ type: 'result', content: text })
+                },
+                chatSessionIdRef.current,
+              )
+              setProgressLine(null)
+              if (output) addEntry({ type: 'result', content: output.startsWith('✅') ? output : `✅ ${output}` })
+              await awaitRefreshThenStart(refreshBase, startChatSession)
+            } else {
+              const summary = await runScanCommand(extraArgs, line => {
+                const text = line.trimEnd()
+                if (text) addEntry({ type: 'result', content: text })
+              })
+              setProgressLine(null)
+              addEntry({ type: 'result', content: `✅ ${summary}` })
+              await awaitRefreshThenStart(refreshBase, startChatSession)
+            }
           } catch (err) {
             setProgressLine(null)
             const message = err instanceof Error ? err.message : String(err)

@@ -32,7 +32,7 @@ import {
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { readKbConfig, resolveFactRetrievalMethod } from '@kb/core/config/kb-config.js'
 import { formatReadDocumentSourceIds } from '@kb/core/query/retrieval-fallback.js'
-import { runRemoteChatSession, shouldUseRemoteServer } from './remote-commands.js'
+import { runRemoteChatSession, runRemoteSlashCommand, shouldUseRemoteServer } from './remote-commands.js'
 
 export type { ChatSynthesisResult, ReadDocumentsResult } from '@kb/core/query/chat-synthesis.js'
 export {
@@ -341,6 +341,18 @@ export async function runChatSession(
       if (scanMatch) {
         const tail = input.slice('scan'.length + 1).trim()
         const extraArgs = tail ? splitShellArgs(tail) : []
+        if (shouldUseRemoteServer()) {
+          const chatConfig = deps.kbConfig ?? (await readKbConfig())
+          io.write('Starting scan (remote server)…')
+          const { exitCode } = await runRemoteSlashCommand(['scan', ...extraArgs], line => {
+            if (io.setProgressLine) io.setProgressLine(line.trimEnd())
+            else io.write(line)
+          }, chatConfig)
+          io.setProgressLine?.(null)
+          if (exitCode === 0) deps.onBaseChanged?.()
+          printer.separator()
+          continue
+        }
         const scanCollector = new RunCollector('scan', { sessionId: sessionStats.sessionId })
         const scanReporter = new ReportWriter(defaultLogsDir())
         try {
@@ -366,6 +378,18 @@ export async function runChatSession(
         const prefix = 'init'
         const tail = input.slice(prefix.length + 1).trim()
         const extraArgs = tail ? splitShellArgs(tail) : []
+        if (shouldUseRemoteServer()) {
+          const chatConfig = deps.kbConfig ?? (await readKbConfig())
+          io.write('Starting init (remote server)…')
+          const { exitCode } = await runRemoteSlashCommand(['init', ...extraArgs], line => {
+            if (io.setProgressLine) io.setProgressLine(line.trimEnd())
+            else io.write(line)
+          }, chatConfig)
+          io.setProgressLine?.(null)
+          if (exitCode === 0) deps.onBaseChanged?.()
+          printer.separator()
+          continue
+        }
         let parsed: ReturnType<typeof parseInitCommand>
         try {
           parsed = parseInitCommand(extraArgs)

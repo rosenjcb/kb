@@ -18,7 +18,7 @@ vi.mock('@kb/core/ops/init-cli.js', () => ({
 }))
 
 import { writeBaseMeta, readBaseMeta } from '@kb/core/storage/base-meta.js'
-import { runIgnoreCommand, runRepoCommand } from '@kb/client/cli/repo-cli.js'
+import { runIgnoreCommand, runRepoCommand } from '@kb/core/cli/repo-cli.js'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 let kbHome: string

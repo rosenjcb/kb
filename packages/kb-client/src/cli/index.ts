@@ -50,7 +50,7 @@ import {
   parseDocsDeleteCommand,
   printDocsDeleteHelp,
   runDocsDelete,
-} from './docs-delete-cli'
+} from '@kb/core/cli/docs-delete-cli.js'
 import {
   DocsGenerateError,
   formatDocsGenerateHumanOutput,
@@ -58,15 +58,20 @@ import {
   parseDocsGenerateCommand,
   printDocsGenerateHelp,
   runDocsGenerate,
-} from './docs-generate-cli'
+} from '@kb/core/cli/docs-generate-cli.js'
 import {
   DocsRenameError,
   parseDocsRenameCommand,
   printDocsRenameHelp,
   runDocsRename,
-} from './docs-rename-cli'
-import { FactsCommandError, runFactsCommand } from './facts-cli'
-import { GraphCommandError, parseGraphCommand, printGraphHelp, runGraphCommand } from './graph-cli'
+} from '@kb/core/cli/docs-rename-cli.js'
+import { FactsCommandError, runFactsCommand } from '@kb/core/cli/facts-cli.js'
+import {
+  GraphCommandError,
+  parseGraphCommand,
+  printGraphHelp,
+  runGraphCommand,
+} from '@kb/core/cli/graph-cli.js'
 import { parseInitCommand, runKbInit, isInitCancelledError } from '@kb/core/ops/init-cli.js'
 import { initCancelledNotice } from '@kb/core/config/cli-prerequisites.js'
 import {
@@ -93,8 +98,8 @@ import {
   resolveFactRetrievalMethod,
 } from '@kb/core/config/kb-config.js'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
-import { printLogsHelp, runLogsCommand } from './logs-cli'
-import { parsePublishCommand, runPublishCommand } from './publish-cli'
+import { printLogsHelp, runLogsCommand } from '@kb/core/cli/logs-cli.js'
+import { parsePublishCommand, runPublishCommand } from '@kb/core/cli/publish-cli.js'
 import { runQueryTruthRetrieval } from '@kb/core/query/query-truth-retrieval.js'
 import {
   formatSkillInstallReport,
@@ -106,11 +111,15 @@ import {
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
-import { runRemoteIntentCommand, shouldUseRemoteServer } from './remote-commands.js'
+import {
+  isClientLocalCommand,
+  runRemoteCliCommand,
+  shouldUseRemoteServer,
+} from './remote-commands.js'
 import { maybeAutoSync } from '@kb/core/ops/auto-sync.js'
 import { baseNameFromGitUrl } from '@kb/core/ops/git-sync.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
-import { runIgnoreCommand, runRepoCommand } from './repo-cli'
+import { runIgnoreCommand, runRepoCommand } from '@kb/core/cli/repo-cli.js'
 import { runUninstallCommand } from './uninstall-cli'
 import {
   ViewCommandError,
@@ -118,7 +127,7 @@ import {
   printViewHelp,
   runListCommand,
   runViewCommand,
-} from './view-cli'
+} from '@kb/core/cli/view-cli.js'
 
 // ---------------------------------------------------------------------------
 // Output abstraction — lets the TUI capture output without monkey-patching
@@ -317,6 +326,11 @@ export async function runMainWithOutput(
   sessionId?: string
 ): Promise<void> {
   const firstArg = args[0]
+
+  if (shouldUseRemoteServer() && !isClientLocalCommand(args)) {
+    await runRemoteCliCommand(args, out, config, mode)
+    return
+  }
 
   if (args.length === 0 || firstArg === '--help' || firstArg === '-h' || firstArg === 'help') {
     out.log(printCliHelp(mode))
@@ -848,10 +862,6 @@ export async function runMainWithOutput(
   }
 
   if (isIntentCommand(firstArg)) {
-    if (shouldUseRemoteServer()) {
-      await runRemoteIntentCommand(args, out, config, mode)
-      return
-    }
     const reporter = new ReportWriter(defaultLogsDir())
     let collector = new RunCollector(firstArg, { sessionId })
     const printer = createPrinter(out, mode)

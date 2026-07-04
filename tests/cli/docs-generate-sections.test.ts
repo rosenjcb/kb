@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { promptUserDocSections } from '@kb/client/cli/docs-generate-sections.js'
+import { promptUserDocSections } from '@kb/core/cli/docs-generate-sections.js'
 
 function makeIO(responses: Array<string | null>) {
   const lines: string[] = []

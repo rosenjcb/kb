@@ -12,8 +12,11 @@ import type { LLMProvider } from '@kb/core/core/types.js'
 import type { SlashInputContext } from '../tui/slash-command-registry.js'
 import { parseShellArgs } from '../tui/runner.js'
 import type { Printer } from '../ui/printer'
-import { DocsGenerateError, parseDocsGenerateCommand } from './docs-generate-cli'
-import { promptUserDocSections } from './docs-generate-sections'
+import {
+  DocsGenerateError,
+  parseDocsGenerateCommand,
+} from '@kb/core/cli/docs-generate-cli.js'
+import { promptUserDocSections } from '@kb/core/cli/docs-generate-sections.js'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 
 export async function runDocsGenerateChatFlow(input: {

@@ -1,12 +1,24 @@
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { readKbConfig } from '@kb/core/config/kb-config.js'
-import { getIntentQuestion, parseIntentCommand } from '@kb/core/query/intent-cli.js'
+import { getIntentQuestion, isIntentCommand, parseIntentCommand } from '@kb/core/query/intent-cli.js'
 import type { CmdMode } from '@kb/core/config/cmd-ref.js'
 import { createKbApiClient } from '../api/kb-api-client.js'
 import { isLocalMode, resolveServerConnection } from '../api/server-connection.js'
-import type { CliOutput } from './index.js'
+import type { CliOutput } from '@kb/core/ui/cli-output.js'
 import { createPrinter } from '../ui/printer.js'
 import type { ChatIO, ChatSessionDeps } from './chat-cli.js'
+
+/** Client-only commands — never forwarded to kb-server. */
+export function isClientLocalCommand(args: string[]): boolean {
+  const command = args[0]
+  if (!command) return false
+  if (command === '--version' || command === '-v' || command === 'version') return true
+  if (command === 'config' || command === 'skills' || command === 'uninstall' || command === 'sync') {
+    return true
+  }
+  if (command === 'base' && args[1] === 'use') return true
+  return false
+}
 
 export function shouldUseRemoteServer(): boolean {
   return !isLocalMode()
@@ -16,6 +28,49 @@ export async function ensureServerReady(config: KbConfig): Promise<void> {
   const connection = resolveServerConnection(config)
   const client = createKbApiClient(connection)
   await client.connect()
+}
+
+export async function runRemoteAdminCli(
+  args: string[],
+  out: CliOutput,
+  config?: KbConfig,
+): Promise<{ exitCode: number }> {
+  const kbConfig = config ?? (await readKbConfig())
+  const client = createKbApiClient(resolveServerConnection(kbConfig))
+  await client.connect()
+  const result = await client.adminCli(args)
+  if (result.output.trim()) {
+    if (result.exitCode === 0) out.log(result.output)
+    else out.error(result.output)
+  }
+  return { exitCode: result.exitCode }
+}
+
+export async function runRemoteCliCommand(
+  args: string[],
+  out: CliOutput,
+  config: KbConfig,
+  mode: CmdMode,
+): Promise<void> {
+  if (isIntentCommand(args[0] ?? '')) {
+    await runRemoteIntentCommand(args, out, config, mode)
+    return
+  }
+
+  const client = createKbApiClient(resolveServerConnection(config))
+  await client.connect()
+  const result = await client.adminCli(args)
+  if (result.output.trim()) {
+    if (result.exitCode === 0) {
+      if (args[0] === 'docs' && (args[1] === 'view' || args[1] === 'list')) {
+        out.write(result.output)
+      } else {
+        out.log(result.output)
+      }
+    } else {
+      out.error(result.output.startsWith('❌') ? result.output : `❌ ${result.output}`)
+    }
+  }
 }
 
 export async function runRemoteIntentCommand(
@@ -30,7 +85,7 @@ export async function runRemoteIntentCommand(
 
   const parsed = parseIntentCommand(args)
   if (parsed.envelope.intent !== 'query_truth') {
-    out.error('Remote mode supports `kb query` only. Set KB_LOCAL_MODE=1 for other intent commands.')
+    out.error('Remote mode supports `kb query` for intent commands.')
     return
   }
 
@@ -68,7 +123,10 @@ export async function runRemoteIntentCommand(
       }
     }
     if (result.retrieval?.method) {
-      printer.metadata('Retrieval', `${result.retrieval.method}${result.retrieval.detail ? ` (${result.retrieval.detail})` : ''}`)
+      printer.metadata(
+        'Retrieval',
+        `${result.retrieval.method}${result.retrieval.detail ? ` (${result.retrieval.detail})` : ''}`,
+      )
     }
   } catch (error) {
     printer.stopSpinner()
@@ -125,12 +183,17 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
     if (input === '/exit' || input === '/quit') break
 
     try {
-      const { sessionId: nextSession, answer } = await runRemoteChatTurn(input, sessionId, {
-        log: line => io.write(line),
-        write: line => io.write(line),
-        error: line => io.error(line),
-        progress: line => io.setProgressLine?.(line ?? null),
-      }, kbConfig)
+      const { sessionId: nextSession, answer } = await runRemoteChatTurn(
+        input,
+        sessionId,
+        {
+          log: line => io.write(line),
+          write: line => io.write(line),
+          error: line => io.error(line),
+          progress: line => io.setProgressLine?.(line ?? null),
+        },
+        kbConfig,
+      )
       sessionId = nextSession
       io.setProgressLine?.(null)
       if (answer.trim()) io.write(answer.trim())
@@ -140,4 +203,21 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
     }
   }
   io.close?.()
+}
+
+/** Run `/init` or `/scan` (or any argv list) on kb-server via REST. */
+export async function runRemoteSlashCommand(
+  argv: string[],
+  write: (line: string) => void,
+  config: KbConfig,
+): Promise<{ exitCode: number }> {
+  const client = createKbApiClient(resolveServerConnection(config))
+  await client.connect()
+  const result = await client.adminCli(argv)
+  if (result.output.trim()) {
+    for (const line of result.output.split('\n')) {
+      write(line)
+    }
+  }
+  return { exitCode: result.exitCode }
 }

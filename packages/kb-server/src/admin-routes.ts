@@ -1,10 +1,12 @@
 /**
- * Admin + read REST routes (Phase B/C of client-server split).
+ * Admin + read REST routes — all kb operations except client-local config/skills/sync.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { KbService } from '@kb/core/service/kb-service.js'
+import { readKbConfig } from '@kb/core/config/kb-config.js'
+import { runServerCommand } from '@kb/core/cli/dispatch.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import { defaultLogsDir } from '@kb/core/core/telemetry.js'
 
@@ -111,6 +113,31 @@ export async function handleAdminRoute(
   if (method === 'POST' && pathname === '/v1/admin/scan') {
     const summary = await runScanCommand(['--base', path.basename(baseDir)])
     sendJson(res, 200, { status: 'ok', summary })
+    return true
+  }
+
+  if (method === 'POST' && pathname === '/v1/admin/cli') {
+    await service.waitForBootstrap()
+    let body: Record<string, unknown>
+    try {
+      body = await readJsonBody(req)
+    } catch (error) {
+      sendJson(res, 400, {
+        exitCode: 1,
+        output: '',
+        error: error instanceof Error ? error.message : 'invalid JSON body',
+      })
+      return true
+    }
+    const rawArgs = body.args
+    if (!Array.isArray(rawArgs) || rawArgs.length === 0) {
+      sendJson(res, 400, { exitCode: 1, output: '', error: 'body.args must be a non-empty string array' })
+      return true
+    }
+    const args = rawArgs.map(value => String(value))
+    const config = await readKbConfig()
+    const result = await runServerCommand(args, { config })
+    sendJson(res, 200, result)
     return true
   }
 

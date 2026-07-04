@@ -3,7 +3,7 @@ import {
   DocsGenerateError,
   isDocsGenerateJsonOutputArgs,
   parseDocsGenerateCommand,
-} from '@kb/client/cli/docs-generate-cli.js'
+} from '@kb/core/cli/docs-generate-cli.js'
 
 describe('parseDocsGenerateCommand', () => {
   it('[TC-174] Given help flag, then throws exit 0', () => {

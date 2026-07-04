@@ -14,19 +14,22 @@ Thin terminal front-end for kb. Taxonomy: [CLIENT.md](./CLIENT.md), [CLI.md](./s
 ### Scope
 
 ## In Scope
-- Connection profile, HTTP SDK, postgres-style connection errors
+- Connection profile, HTTP SDK, full remote command routing via kb-server
 
 ## Out of Scope
-- Full CLI command surface ([CLI.spec.md](./src/cli/CLI.spec.md)); indexing/retrieval ([@kb/core](../kb-core/CORE.md))
+- Command implementations ([`@kb/core`](../kb-core/CORE.md) + `POST /v1/admin/cli` on server)
 
 ### Functional Requirements
 
 | ID | Requirement |
 |------|------------|
 | FR-1 | Default path: resolve server host/port from env and `~/.kb/config.json`; health-check via `/healthz` |
-| FR-2 | When the server is unreachable, fail fast with a postgres-style hint (`kb-server start`, check host/port) |
-| FR-3 | `KB_LOCAL_MODE=1` runs query/chat in-process via `@kb/core` (tests, eval harness) |
-| FR-4 | `kb server` subcommand is not registered — daemon lifecycle is `kb-server` only |
+| FR-2 | When the server is unreachable, fail fast with a postgres-style hint — no silent local fallback |
+| FR-3 | `KB_LOCAL_MODE=1` runs all commands in-process (tests, eval harness) |
+| FR-4 | Remote mode forwards init/scan/docs/facts/graph/logs/publish/base to `POST /v1/admin/cli` |
+| FR-5 | Remote query uses `POST /v1/query`; chat/TUI uses `POST /v1/chat` SSE |
+| FR-6 | Client-only: `config`, `skills`, `uninstall`, `sync`, `base use` |
+| FR-7 | `kb server` subcommand is not registered — daemon lifecycle is `kb-server` only |
 
 ### Test Cases
 

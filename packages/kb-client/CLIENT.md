@@ -30,7 +30,7 @@ flowchart LR
 | Area | Path | Role |
 |---|---|---|
 | Router | `src/cli/index.ts` | Subcommand dispatch; bare `kb` → TUI |
-| Remote hot path | `src/cli/remote-commands.ts` | `kb query` / chat over HTTP when not local |
+| Remote hot path | `src/cli/remote-commands.ts` | All server ops over HTTP (`/v1/admin/cli`, `/v1/query`, `/v1/chat`) |
 | SDK | `src/api/` | Connection profile, typed client, postgres-style errors |
 | TUI | `src/tui/`, `src/ui/` | Ink session; re-exports printer from core |
 | Skills | `src/cli/skill-installer.ts` | Install bundled agent skills locally |
@@ -54,10 +54,11 @@ Env overrides: `KBHOST`, `KBPORT`, `KB_SERVER_URL`, `KB_SERVER_API_KEY`. See `se
 
 | | Remote (default) | Local (`KB_LOCAL_MODE=1`) |
 |---|---|---|
-| `kb query` / chat | HTTP `/v1/query`, `/v1/chat` | In-process `@kb/core` |
-| `init`, `scan`, admin | Still local today* | Same |
+| `kb query` / chat | `/v1/query`, `/v1/chat` | In-process `@kb/core` |
+| `init`, `scan`, `docs`, `facts`, `graph`, `logs`, `publish`, `base` (except `use`) | `POST /v1/admin/cli` | In-process `@kb/core/cli/dispatch` |
+| `config`, `skills`, `uninstall`, `sync`, `base use` | Client-only (connection profile / install) | Same |
 
-\*Admin commands migrate to server REST over time; eval uses `KB_LOCAL_MODE` until harness is server-aware.
+Eval harness still sets `KB_LOCAL_MODE=1` until it orchestrates a live server.
 
 ## Build
 

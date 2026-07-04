@@ -6,7 +6,7 @@ import {
   DocsDeleteError,
   parseDocsDeleteCommand,
   runDocsDelete,
-} from '@kb/client/cli/docs-delete-cli.js'
+} from '@kb/core/cli/docs-delete-cli.js'
 import { SqliteDocumentWriter } from '@kb/core/tools/sqlite-document-writer.js'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 

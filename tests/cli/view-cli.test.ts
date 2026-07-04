@@ -8,7 +8,7 @@ import {
   parseViewCommand,
   runListCommand,
   runViewCommand,
-} from '@kb/client/cli/view-cli.js'
+} from '@kb/core/cli/view-cli.js'
 import { SqliteDocumentWriter } from '@kb/core/tools/sqlite-document-writer.js'
 
 const tempDirs: string[] = []

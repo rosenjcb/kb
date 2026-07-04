@@ -1,5 +1,16 @@
 # kb-server
 
+## 1.1.0
+
+### Minor Changes
+
+- Route all kb commands through kb-server REST: POST /v1/admin/cli for init/scan/docs/facts/graph/logs/publish/base; client remote dispatch by default.
+
+### Patch Changes
+
+- Updated dependencies
+  - @kb/core@1.1.0
+
 ## 1.0.0
 
 ### Major Changes

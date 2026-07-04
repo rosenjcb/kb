@@ -149,6 +149,33 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "500": { $ref: "#/components/responses/ServerError" }
 
+  /v1/admin/cli:
+    post:
+      tags: [admin]
+      summary: Run kb server commands (init, scan, docs, facts, graph, logs, publish, base, …)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [args]
+              properties:
+                args:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: Command finished (check exitCode in body)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exitCode: { type: integer }
+                  output: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /mcp:
     post:
       tags: [mcp]

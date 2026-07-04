@@ -1,11 +1,9 @@
 import type { UserDefinedDocSection } from '@kb/core/core/doc-generate-session.js'
-import type { SlashInputContext } from '../tui/slash-command-registry.js'
-import { promptNamedListInterview, type NamedListInterviewIO } from './named-list-interview'
+import type { DocSectionsIO } from '@kb/core/cli/doc-sections-types.js'
+import type { NamedListInterviewIO } from '@kb/core/cli/doc-sections-types.js'
+import { promptNamedListInterview } from '@kb/core/cli/named-list-interview.js'
 
-export interface DocSectionsIO {
-  writeLine: (msg: string) => void
-  readLine: (prompt: string, opts?: { slashContext?: SlashInputContext }) => Promise<string | null>
-}
+export type { DocSectionsIO } from '@kb/core/cli/doc-sections-types.js'
 
 function toNamedListInterviewIO(io: DocSectionsIO): NamedListInterviewIO {
   return {

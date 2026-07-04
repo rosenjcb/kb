@@ -53,6 +53,10 @@ export class KbApiClient {
     return this.postJson('/v1/reindex', {})
   }
 
+  async adminCli(args: string[]): Promise<{ exitCode: number; output: string }> {
+    return this.postJson('/v1/admin/cli', { args }, { timeoutMs: 30 * 60_000 })
+  }
+
   async *chatStream(body: ChatRequest): AsyncGenerator<ChatStreamEvent> {
     const response = await this.request('/v1/chat', {
       method: 'POST',
@@ -92,18 +96,23 @@ export class KbApiClient {
     return readJsonResponse<T>(response)
   }
 
-  private async postJson<T>(path: string, body: unknown): Promise<T> {
+  private async postJson<T>(
+    path: string,
+    body: unknown,
+    opts?: { timeoutMs?: number },
+  ): Promise<T> {
     const response = await this.request(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      timeoutMs: opts?.timeoutMs,
     })
     return readJsonResponse<T>(response)
   }
 
   private async request(
     path: string,
-    init: RequestInit & { auth?: boolean },
+    init: RequestInit & { auth?: boolean; timeoutMs?: number },
   ): Promise<Response> {
     const auth = init.auth !== false
     const headers = new Headers(init.headers)
@@ -111,8 +120,9 @@ export class KbApiClient {
       headers.set('Authorization', `Bearer ${this.connection.apiKey}`)
     }
 
+    const timeoutMs = init.timeoutMs ?? this.timeoutMs
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
       return await this.fetchImpl(`${this.connection.url}${path}`, {
         ...init,
@@ -121,7 +131,7 @@ export class KbApiClient {
       })
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(`request timed out after ${this.timeoutMs}ms`)
+        throw new Error(`request timed out after ${timeoutMs}ms`)
       }
       throwConnectionError(this.connection, error)
     } finally {

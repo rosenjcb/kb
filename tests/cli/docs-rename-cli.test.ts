@@ -6,7 +6,7 @@ import {
   DocsRenameError,
   parseDocsRenameCommand,
   runDocsRename,
-} from '@kb/client/cli/docs-rename-cli.js'
+} from '@kb/core/cli/docs-rename-cli.js'
 import { SqliteDocumentWriter } from '@kb/core/tools/sqlite-document-writer.js'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 

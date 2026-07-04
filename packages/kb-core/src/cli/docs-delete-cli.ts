@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
-import type { CliOutput } from './index'
+import type { CliOutput } from '@kb/core/ui/cli-output.js'
 
 export interface ParsedDocsDeleteCommand {
   documentId: string
