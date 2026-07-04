@@ -13,12 +13,12 @@ Test runner: **Vitest**. Run with `pnpm test` (single pass) or `pnpm run test:wa
 
 ## File layout
 
-Source files mirror their tests:
+Source files mirror their tests under `packages/`:
 
 ```
-src/cli/publish-cli.ts   →   tests/cli/publish-cli.test.ts
-src/core/publish/notion-sync.ts   →   tests/core/notion-sync.test.ts
-src/tools/document-writer.ts   →   tests/tools/document-writer.test.ts
+packages/kb-client/src/cli/publish-cli.ts   →   tests/cli/publish-cli.test.ts
+packages/kb-core/src/core/publish/notion-sync.ts   →   tests/core/notion-sync.test.ts
+packages/kb-core/src/tools/document-writer.ts   →   tests/tools/document-writer.test.ts
 ```
 
 ## Behavioral specs and test tags

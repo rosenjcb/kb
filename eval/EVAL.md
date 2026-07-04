@@ -84,7 +84,7 @@ Every harvest artifact carries two extra blocks:
   loop dominates cost"*). Printed as a compact `TIMELINE` block at the end of every harvest.
 
 The per-hop trace is sourced from `RunReport.retrieval` (persisted by `kb query` via
-`summarizeQueryRetrievalTrace`, `src/core/telemetry.ts`); older logs without it fall back to
+`summarizeQueryRetrievalTrace`, `packages/kb-core/src/core/telemetry.ts`); older logs without it fall back to
 parsing the `retrieval>` detail line (`parseRetrievalDetailTrace`), so counts still appear but
 per-hop lines / dropped ids may be empty.
 

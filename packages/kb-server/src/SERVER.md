@@ -150,4 +150,4 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 
 - Monorepo → [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) · Core → [`../../kb-core/CORE.md`](../../kb-core/CORE.md)
 - HTTP contract → [`../http/HTTP.md`](../http/HTTP.md) · Deploy → [`../README.md`](../README.md)
-- Behavioral spec → [`SERVER.spec.md`](SERVER.spec.md) (legacy path: repo `src/server/SERVER.spec.md`)
+- Behavioral spec → [`SERVER.spec.md`](SERVER.spec.md)

@@ -16,7 +16,7 @@ instead of running `kb init` on every machine.
 This guide is the getting-started path for a **fresh, real KB**. For the test harness
 see [`INTEGRATION_TEST.md`](INTEGRATION_TEST.md).
 
-Behavioral specs: [`../../src/server/SERVER.spec.md`](../../src/server/SERVER.spec.md) (unit) · [`http/HTTP.spec.md`](http/HTTP.spec.md) (integration).
+Behavioral specs: [`src/SERVER.spec.md`](src/SERVER.spec.md) (unit) · [`http/HTTP.spec.md`](http/HTTP.spec.md) (integration).
 
 ## TL;DR
 
@@ -197,7 +197,7 @@ curl -s http://localhost:8080/v1/query \
 ```
 
 The image starts with `--with-mcp`, so MCP clients can connect at `POST /mcp` with the
-same bearer token — see [`../../src/server/SERVER.md`](../../src/server/SERVER.md) for the
+same bearer token — see [`src/SERVER.md`](src/SERVER.md) for the
 Claude Code / Cursor wiring and the full endpoint + tool list.
 
 **Slack:** Slack handling now runs inside `kb-server` itself. Enable it with
@@ -233,6 +233,6 @@ polled, but only repos with new commits are re-indexed.
 
 ## Related docs
 
-- [`../../src/server/SERVER.md`](../../src/server/SERVER.md) — server internals, endpoints, MCP clients
+- [`src/SERVER.md`](src/SERVER.md) — server internals, endpoints, MCP clients
 - [`http/HTTP.md`](http/HTTP.md) — API contract + sample requests
 - [`INTEGRATION_TEST.md`](INTEGRATION_TEST.md) — the Docker-based test harness

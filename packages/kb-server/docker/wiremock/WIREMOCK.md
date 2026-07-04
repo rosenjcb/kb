@@ -21,7 +21,7 @@ flowchart LR
   KB -.->|"stream 503 → fallback"| WM
 ```
 
-`GeminiProvider` (`src/core/llm-provider.ts`) honors `GEMINI_API_BASE_URL`. `packages/kb-server/scripts/integration-test.mjs` **forces** mock URL + dummy key and clears other provider keys so local `.env` cannot bypass the stub.
+`GeminiProvider` (`packages/kb-core/src/core/llm-provider.ts`) honors `GEMINI_API_BASE_URL`. `packages/kb-server/scripts/integration-test.mjs` **forces** mock URL + dummy key and clears other provider keys so local `.env` cannot bypass the stub.
 
 ## Mappings (`mappings/`)
 
@@ -58,4 +58,4 @@ Query params (`?key=…`) are ignored by `urlPathPattern`; no change needed for 
 
 - [`../../http/HTTP.md`](../../http/HTTP.md) — suite that consumes these stubs
 - [`../../INTEGRATION_TEST.md`](../../INTEGRATION_TEST.md) — env wiring
-- [`../../src/core/llm-provider.ts`](../../src/core/llm-provider.ts) — `GEMINI_API_BASE_URL`
+- [`../../packages/kb-core/src/core/llm-provider.ts`](../../packages/kb-core/src/core/llm-provider.ts) — `GEMINI_API_BASE_URL`

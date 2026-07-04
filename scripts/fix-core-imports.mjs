@@ -140,7 +140,7 @@ for (const rel of ['packages', 'tests']) {
   const abs = path.join(root, rel)
   if (!statSync(abs).isDirectory()) continue
   for (const file of walk(abs)) {
-    let content = readFileSync(file, 'utf-8')
+    const content = readFileSync(file, 'utf-8')
     let next = content
     for (const [from, to] of REPLACEMENTS) {
       next = next.replaceAll(from, to)

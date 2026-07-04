@@ -65,4 +65,4 @@ Heavy native deps (tree-sitter, ast-grep, optional transformers) live **only her
 
 - Architecture → [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
 - Server transport → [`../kb-server/src/SERVER.md`](../kb-server/src/SERVER.md)
-- Legacy deep dives (pre-split paths, still valid conceptually): repo `src/core/*.md` companions — migrate to `packages/kb-core` over time as docs are refreshed.
+- Deep dives under `packages/kb-core/src/**/*.md` — QUERY_INTERNALS, INIT, TOOLS companions

@@ -68,7 +68,7 @@ Post-response scripts live in `{{ }}` blocks and must **`const assert = require(
 
 ## Extension checklist
 
-1. Add route in `src/server/http-server.ts`.
+1. Add route in `packages/kb-server/src/http-server.ts`.
 2. Add `# @name …` block to `server.http` (or `slack.http` for Slack routes) with shape tests.
 3. Update `openapi.yaml`.
 4. Run `pnpm run integration:test` locally before PR.
@@ -83,6 +83,6 @@ Post-response scripts live in `{{ }}` blocks and must **`const assert = require(
 
 - Behavioral spec → [`HTTP.spec.md`](./HTTP.spec.md)
 
-- [`../../../src/server/SERVER.md`](../../../src/server/SERVER.md) — server implementation
+- [`../src/SERVER.md`](../src/SERVER.md) — server implementation
 - [`README.md`](README.md) — quick commands
 - [`../../../TESTING.md`](../../../TESTING.md) — unit vs integration split

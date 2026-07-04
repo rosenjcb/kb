@@ -236,4 +236,4 @@ The HTTP/MCP daemon is **`kb-server`**, not a `kb` subcommand. See [`../../../kb
 - Client package → [`../../CLIENT.md`](../../CLIENT.md)
 - Architecture → [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md)
 - Server → [`../../../kb-server/src/SERVER.md`](../../../kb-server/src/SERVER.md)
-- Behavioral spec → [`CLI.spec.md`](CLI.spec.md) (repo `src/cli/CLI.spec.md` until migrated)
+- Behavioral spec → [`CLI.spec.md`](CLI.spec.md)

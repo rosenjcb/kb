@@ -33,7 +33,7 @@ const REPLACEMENTS = [
 ]
 
 for (const file of walk(path.join(root, 'tests'))) {
-  let content = readFileSync(file, 'utf-8')
+  const content = readFileSync(file, 'utf-8')
   let next = content
   for (const [from, to] of REPLACEMENTS) next = next.replaceAll(from, to)
   if (next !== content) writeFileSync(file, next)

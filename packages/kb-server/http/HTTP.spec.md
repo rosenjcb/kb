@@ -22,7 +22,7 @@ Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md).
 - Structural assertions on REST, MCP, and Slack webhook responses (`server.http`, `slack.http`)
 
 ## Out of Scope
-- In-process handler unit tests — see [SERVER.spec.md](../../../src/server/SERVER.spec.md)
+- In-process handler unit tests — see [SERVER.spec.md](../src/SERVER.spec.md)
 
 ### Functional Requirements
 
@@ -56,5 +56,5 @@ Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md).
 ### Related docs
 
 - [HTTP.md](./HTTP.md)
-- [SERVER.md](../../../src/server/SERVER.md)
+- [SERVER.md](../src/SERVER.md)
 - [INTEGRATION_TEST.md](../INTEGRATION_TEST.md)
