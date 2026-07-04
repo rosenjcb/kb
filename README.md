@@ -319,18 +319,47 @@ Instead of a per-machine CLI, run KB as a **central HTTP/MCP server**: index you
 once on a durable volume and let people, apps, and agents query over HTTP. The Docker
 image is deployable, not just an integration harness.
 
+### Published image (GitHub Container Registry)
+
+Merges to `main` publish **`kb-server`** to GHCR:
+
+**`ghcr.io/rosenjcb/kb/kb-server`** — tags include `latest` and semver release tags.
+
+Browse: [github.com/rosenjcb/kb/pkgs/container/kb-server](https://github.com/rosenjcb/kb/pkgs/container/kb-server)
+
+```bash
+docker pull ghcr.io/rosenjcb/kb/kb-server:latest
+
+docker run -d --name kb-server \
+  -p 8080:8080 \
+  -v kb-data:/data \
+  -e KB_SERVER_API_KEY=<strong-token> \
+  -e GEMINI_API_KEY=<provider-key> \
+  -e KB_BASE=acme \
+  -e KB_GIT_REPOS=https://github.com/acme/auth \
+  ghcr.io/rosenjcb/kb/kb-server:latest
+
+curl http://localhost:8080/healthz
+```
+
+The image CMD is `kb-server start --with-mcp` (`KB_HOME=/data`, `PORT=8080`). Mount `/data`
+so the index survives restarts. Full env reference:
+[`packages/kb-server/README.md`](packages/kb-server/README.md).
+
+**Client on your laptop, server in Docker:** expose port `8080`, set matching
+`KB_SERVER_API_KEY`, then point local `kb` at it — see
+[Connect the `kb` client to a server](#connect-the-kb-client-to-a-server).
+
+### Build from this repo (contributors)
+
 ```bash
 pnpm run server:up      # seeds .env on first run; edit it, then re-run to build + boot
 pnpm run server:docker:logs
 curl http://localhost:8080/healthz
 ```
 
-Full getting-started, config reference, and the `kb-server.json` manifest:
+Compose manifest, config reference, and `kb-server.json`:
 **[`packages/kb-server/README.md`](packages/kb-server/README.md)**.
-
-**Client on your laptop, server in Docker:** expose port `8080`, set `KB_SERVER_API_KEY` on the
-container, then point local `kb` at it — see
-[Connect the `kb` client to a server](#connect-the-kb-client-to-a-server) in this README.
 
 **Slack bot:** point a Slack workspace at the same `kb-server` daemon so people can ask
 `@kb <question>` in channels. Slack handling now runs inside `kb-server` itself; enable
