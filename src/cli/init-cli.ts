@@ -1,7 +1,7 @@
 /**
  * kb init / kb scan — knowledge base bootstrap and refresh commands.
  *
- * Cycle 1 (read-inputs):    Discover markdown sources under working dir (recursive).
+ * Cycle 1 (read-inputs):    Discover markdown sources under each cloned repo (recursive).
  * Cycle 2 (code-index):     Deterministic AST indexing (tree-sitter WASM grammars for every
  *                            language) → facts table (symbols, imports, structural edges).
  * Cycle 3 (document-facts): Deterministic sentence segmentation of source markdown → `facts` table.
@@ -57,11 +57,10 @@ import {
   findKbFile,
   getKbHomeDir,
   listAllBases,
-  writeKbFile,
   writeSessionBase,
 } from './base-selection'
 import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from './cli-prerequisites'
-import { cloneRepo, getCurrentBranch, getHeadSha } from './git-sync'
+import { baseNameFromGitUrl, cloneRepo, getCurrentBranch, getHeadSha } from './git-sync'
 import {
   diffChangedAstFiles,
   readAstFilesManifest,
@@ -571,9 +570,22 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const questionIO = options.questionIO ?? createReadlineQuestionIO()
   const cwd = options.cwd ?? process.cwd()
 
-  const base = await resolveInitBaseName(options, cwd, questionIO)
+  // Fresh init indexes git clones under ~/.kb — never the caller's working directory.
+  // Resolve git remotes before base naming unless we're re-attaching to an existing base.
+  let initOptions = options
+  if (!options.rescan) {
+    const predeclaredBase = options.base?.trim()
+    const existingBaseReady =
+      predeclaredBase &&
+      (await isInitializedGitBase(await ensureOperationalBaseDir(predeclaredBase, cwd)))
+    if (!existingBaseReady) {
+      const gitTargets = await resolveGitTargetsForInit(options, questionIO)
+      initOptions = { ...options, gitTargets }
+    }
+  }
 
-  await writeKbFile(cwd, base)
+  const base = await resolveInitBaseName(initOptions, cwd, questionIO)
+
   if (!options.rescan) {
     await writeSessionBase(base)
   }
@@ -602,7 +614,12 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   let primaryRepoMeta: GitRepoMeta | undefined
   let additionalRepos: GitRepoMeta[] = []
   if (!options.rescan) {
-    const targets = await resolveGitTargetsForInit(options, questionIO)
+    const targets = initOptions.gitTargets ?? []
+    if (targets.length === 0) {
+      throw new Error(
+        'kb init requires at least one git remote. Pass `--git <url>` (repeatable; use url#branch or --branch to override the remote default).'
+      )
+    }
     const repoMetas: GitRepoMeta[] = []
     for (const target of targets) {
       const slug = repoSlugFromGitUrl(target.url)
@@ -1421,6 +1438,11 @@ function createReadlineQuestionIO(): InitQuestionIO {
   }
 }
 
+async function isInitializedGitBase(baseDir: string): Promise<boolean> {
+  const meta = await readBaseMeta(baseDir)
+  return Boolean(meta && meta.repos.length > 0 && existsSync(path.join(baseDir, '.kb-index.sqlite')))
+}
+
 async function resolveInitBaseName(
   options: InitOptions,
   cwd: string,
@@ -1478,10 +1500,13 @@ async function resolveInitBaseName(
     return matched.name
   }
 
-  const kbFileBase = await findKbFile(cwd)
-  const suggestedBase = kbFileBase ?? (await resolveSuggestedInitBase(cwd))
+  const suggestedBase =
+    options.gitTargets && options.gitTargets.length > 0
+      ? baseNameFromGitUrl(options.gitTargets[0].url)
+      : undefined
 
   if (options.nonInteractive) {
+    if (suggestedBase) return suggestedBase
     throw new Error(CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE)
   }
 
@@ -1521,19 +1546,25 @@ async function resolveGitTargetsForInit(
   }
 
   questionIO.write?.(
-    '\n[kb init] Git remote URL(s) to index (space or comma separated; use url#branch to override the default branch):\n\n'
+    '\n[kb init] Git remote URL(s) to index (required).\n' +
+      '  Space or comma separated; inline branch: url#branch\n' +
+      '  /cancel to exit without creating a base\n\n'
   )
   for (;;) {
     const answer = (
       await questionIO.askQuestion('  > Git URL(s)\n    ', { slashContext: 'init-free-text' })
     ).trim()
     if (answer === '/cancel') throw new InitCancelledError()
+    if (!answer) {
+      questionIO.write?.('  At least one git URL is required. Enter URL(s) or /cancel to exit.\n')
+      continue
+    }
     const targets = answer
       .split(/[\s,]+/)
       .filter(Boolean)
       .map(raw => parseGitTarget(raw))
     if (targets.length > 0) return targets
-    questionIO.write?.('  At least one git URL is required.\n')
+    questionIO.write?.('  At least one git URL is required. Enter URL(s) or /cancel to exit.\n')
   }
 }
 
@@ -1575,12 +1606,6 @@ const SILENT_QUESTION_IO: InitQuestionIO = {
   write: () => {},
   askQuestion: async () => '',
   close: async () => {},
-}
-
-async function resolveSuggestedInitBase(_cwd: string): Promise<string | undefined> {
-  const cwdBase = path.basename(_cwd).trim()
-  if (cwdBase) return cwdBase
-  return 'default'
 }
 
 function slugify(value: string): string {

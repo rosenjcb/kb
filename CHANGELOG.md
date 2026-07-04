@@ -1,5 +1,11 @@
 # kb
 
+## 0.21.0
+
+### Minor Changes
+
+- Require git remotes for `kb init`: prompt for URLs first, default base names from the first remote, and stop writing `.kb` markers into the caller's working directory.
+
 ## 0.20.0
 
 ### Minor Changes

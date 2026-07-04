@@ -43,12 +43,12 @@ describe('uninitializedBaseNotice', () => {
     expect(uninitializedBaseNotice('my-project')).toContain('"my-project"')
   })
 
-  it('[TC-470] points the user to /init', () => {
-    expect(uninitializedBaseNotice('any')).toContain('/init')
+  it('[TC-470] points the user to /init with a git URL', () => {
+    expect(uninitializedBaseNotice('any')).toContain('/init --git')
   })
 
-  it('[TC-471] mentions kb init as a terminal fallback', () => {
-    expect(uninitializedBaseNotice('any')).toContain('kb init')
+  it('[TC-471] mentions kb init --git as a terminal fallback', () => {
+    expect(uninitializedBaseNotice('any')).toContain('kb init --git')
   })
 
   it('[TC-472] reflects the given base name exactly', () => {
@@ -93,18 +93,19 @@ describe('autoInitAnnouncement', () => {
     expect(autoInitAnnouncement('kb')).toContain('"kb"')
   })
 
-  it('[TC-477] mentions kb init --base <name> so the user knows what is running', () => {
+  it('[TC-477] tells the user init will prompt for a git remote', () => {
     const msg = autoInitAnnouncement('my-repo')
-    expect(msg).toContain('kb init --base my-repo')
+    expect(msg).toContain('git remote URL')
+    expect(msg).toContain('"my-repo"')
   })
 
   it('[TC-478] mentions the .kb file as the trigger', () => {
     expect(autoInitAnnouncement('kb')).toContain('.kb')
   })
 
-  it('[TC-479] reflects the given base name in the init command', () => {
+  it('[TC-479] reflects the given base name in the announcement', () => {
     const msg = autoInitAnnouncement('cool-project')
-    expect(msg).toContain('--base cool-project')
+    expect(msg).toContain('"cool-project"')
   })
 })
 

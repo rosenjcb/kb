@@ -667,7 +667,7 @@ export async function runChatSession(
           [
             'Commands:',
             '  /query <text>          Search the KB',
-            '  /init [args]           Build a KB from this repo',
+            '  /init --git <url> [args]  Clone and index a git remote into a KB base',
             '  /scan [args]           Refresh the KB',
             '  /base <use|delete> …   Manage KB bases',
             '  /docs <list|view|generate|rename|delete> …',

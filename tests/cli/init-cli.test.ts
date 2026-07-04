@@ -148,7 +148,7 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.base).toBe('fresh-base')
     expect(questionIO.prompts[0]).toContain('Knowledge base name')
-    expect(questionIO.prompts[0]).toContain('[kb-init-cli-')
+    expect(questionIO.prompts[0]).toContain(repoSlugFromGitUrl(repo))
     expect(result.checkpointFile).toBe(
       path.join(kbHomeDir, 'sessions', 'fresh-base', 'checkpoints', 'init-latest.checkpoint.json')
     )
@@ -156,7 +156,7 @@ describe('init-cli interview checkpoints', () => {
     expect(config.activeBase).toBe('fresh-base')
   })
 
-  it('[TC-248] Given init without --base and config activeBase, then prompt suggests cwd instead of reusing config base', { timeout: 15_000 }, async () => {
+  it('[TC-248] Given init without --base and config activeBase, then prompt suggests the first git remote slug', { timeout: 15_000 }, async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
@@ -179,19 +179,19 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(questionIO.prompts[0]).not.toContain('[dogfood]')
-    expect(questionIO.prompts[0]).toContain('[kb-init-cli-')
-    expect(result.base).toBe(path.basename(cwd))
+    expect(questionIO.prompts[0]).toContain(`[${repoSlugFromGitUrl(repo)}]`)
+    expect(result.base).toBe(repoSlugFromGitUrl(repo))
     expect(result.checkpointFile).toBe(
       path.join(
         kbHomeDir,
         'sessions',
-        path.basename(cwd).toLowerCase(),
+        repoSlugFromGitUrl(repo).toLowerCase(),
         'checkpoints',
         'init-latest.checkpoint.json'
       )
     )
     const config = JSON.parse(await readFile(path.join(kbHomeDir, 'config.json'), 'utf8'))
-    expect(config.activeBase).toBe(path.basename(cwd))
+    expect(config.activeBase).toBe(repoSlugFromGitUrl(repo))
   })
 
   it('[TC-249] Given detach and resume flags, then parses them into init options', () => {
@@ -1360,7 +1360,7 @@ describe('kb scan — base resolution', () => {
     ).rejects.toThrow('.kb file')
   })
 
-  it('[TC-286] After scan completes, writes .kb file to cwd', async () => {
+  it('[TC-286] After rescan completes, leaves any existing .kb file in cwd unchanged', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('written-base')
     await writeKbFile(cwd, 'written-base')
@@ -1384,12 +1384,13 @@ describe('kb scan — base resolution', () => {
 // ---------------------------------------------------------------------------
 
 describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
-  it('[TC-287] Given interactive init with a git URL entered second, then clones from that URL', async () => {
+  it('[TC-287] Given interactive init with a git URL entered first, then clones from that URL', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const repo = await makeTempGitRepo({ 'README.md': '# Remote Repo\n' })
+    const slug = repoSlugFromGitUrl(repo)
     const { io, prompts } = createQuestionIO([
-      '',     // accept suggested base name (cwd-derived)
-      repo,   // git URL — second prompt
+      repo, // git URL — first prompt
+      '', // accept suggested base name (repo slug)
     ])
 
     await runKbInit({
@@ -1398,10 +1399,10 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
       questionIO: io,
     })
 
-    expect(prompts[0]).toContain('Knowledge base name')
-    expect(prompts[1]).toContain('Git URL')
+    expect(prompts[0]).toContain('Git URL')
+    expect(prompts[1]).toContain('Knowledge base name')
 
-    const baseDir = resolveBaseToDir(path.basename(cwd), cwd)
+    const baseDir = resolveBaseToDir(slug, cwd)
     const meta = await readBaseMeta(baseDir)
     expect(meta?.repos[0]?.gitUrl).toBe(repo)
 
@@ -1438,7 +1439,7 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     expect(meta?.repos[0]?.lastSyncedSha).toMatch(/^[0-9a-f]{7,40}$/)
     expect(meta?.repos[0]?.lastSyncedAt).toBeTruthy()
 
-    expect(await findKbFile(cwd)).toBe('my-remote')
+    expect(await findKbFile(cwd)).toBeNull()
   })
 
   it('[TC-289] Given --git without branch, then clones the remote default branch', async () => {
@@ -1495,7 +1496,7 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     }
   })
 
-  it('[TC-291] Given /cancel at base name prompt, throws InitCancelledError', async () => {
+  it('[TC-291] Given /cancel at git URL prompt, throws InitCancelledError', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const { io } = createQuestionIO(['/cancel'])
 
@@ -1503,6 +1504,30 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
       runKbInit({
         nonInteractive: false,
         stopAfter: 'read-inputs',
+        cwd,
+        questionIO: io,
+      })
+    ).rejects.toThrow(/cancel/i)
+  })
+
+  it('[TC-291b] Given non-interactive init without --git, throws requiring a git remote', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+
+    await expect(
+      runKbInit({
+        nonInteractive: true,
+        cwd,
+      })
+    ).rejects.toThrow(/requires at least one git remote/i)
+  })
+
+  it('[TC-291c] Given interactive init with empty git answer then /cancel, throws InitCancelledError', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+    const { io } = createQuestionIO(['', '/cancel'])
+
+    await expect(
+      runKbInit({
+        nonInteractive: false,
         cwd,
         questionIO: io,
       })

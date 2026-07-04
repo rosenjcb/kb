@@ -317,7 +317,7 @@ See companion doc for full vocabulary where applicable.
 | TC-245 | FR-20 | round-trips manifest writes and detects changed/new files only | pass |
 | TC-246 | FR-20 | treats unchanged contents as a no-op diff | pass |
 | TC-247 | FR-21 | Given init without --base, then it prompts for a base name and uses the answer | pass |
-| TC-248 | FR-21 | Given init without --base and config activeBase, then prompt suggests cwd instead of reusing config base | pass |
+| TC-248 | FR-21 | Given init without --base and config activeBase, then prompt suggests the first git remote slug | pass |
 | TC-249 | FR-21 | Given detach and resume flags, then parses them into init options | pass |
 | TC-250 | FR-21 | Given scan args, then parsing implies rescan and always applies automatically | pass |
 | TC-251 | FR-21 | Given --stop-after document-facts, then parsing returns document-facts | pass |
@@ -355,12 +355,14 @@ See companion doc for full vocabulary where applicable.
 | TC-283 | FR-21 | Given no .kb file and /cancel answer, throws InitCancelledError | pass |
 | TC-284 | FR-21 | Given no .kb file and no initialized bases, throws a helpful error | pass |
 | TC-285 | FR-21 | Given no .kb file and --non-interactive, throws without prompting | pass |
-| TC-286 | FR-21 | After scan completes, writes .kb file to cwd | pass |
-| TC-287 | FR-21 | Given interactive init with a git URL entered second, then clones from that URL | pass |
+| TC-286 | FR-21 | After rescan completes, leaves any existing .kb file in cwd unchanged | pass |
+| TC-287 | FR-21 | Given interactive init with a git URL entered first, then clones from that URL | pass |
 | TC-288 | FR-21 | Given --git flag (non-interactive), then clones and writes meta.json | pass |
 | TC-289 | FR-21 | Given --git without branch, then clones the remote default branch | pass |
 | TC-290 | FR-21 | Given multiple --git targets, then both repos index into one base and meta lists both | pass |
-| TC-291 | FR-21 | Given /cancel at base name prompt, throws InitCancelledError | pass |
+| TC-291 | FR-21 | Given /cancel at git URL prompt, throws InitCancelledError | pass |
+| TC-291b | FR-21 | Given non-interactive init without --git, throws requiring a git remote | pass |
+| TC-291c | FR-21 | Given interactive init with empty git answer then /cancel, throws InitCancelledError | pass |
 | TC-292 | FR-21 | parseInitCommand parses --git and --branch flags | pass |
 | TC-293 | FR-21 | parseInitCommand parses repeatable --git with inline branch (no branch = remote default) | pass |
 | TC-294 | FR-21 | parseInitCommand with only --git leaves the branch undefined (remote default) | pass |
@@ -539,16 +541,16 @@ See companion doc for full vocabulary where applicable.
 | TC-467 | FR-35 | tells the user how to get help | pass |
 | TC-468 | FR-35 | is a non-empty string | pass |
 | TC-469 | FR-35 | names the base in the notice | pass |
-| TC-470 | FR-35 | points the user to /init | pass |
-| TC-471 | FR-35 | mentions kb init as a terminal fallback | pass |
+| TC-470 | FR-35 | points the user to /init with a git URL | pass |
+| TC-471 | FR-35 | mentions kb init --git as a terminal fallback | pass |
 | TC-472 | FR-35 | reflects the given base name exactly | pass |
 | TC-473 | FR-35 | reassures the user and names the base when provided | pass |
 | TC-474 | FR-35 | works without a base name | pass |
 | TC-475 | FR-35 | reassures the user and names the base when provided | pass |
 | TC-476 | FR-35 | names the base | pass |
-| TC-477 | FR-35 | mentions kb init --base <name> so the user knows what is running | pass |
+| TC-477 | FR-35 | tells the user init will prompt for a git remote | pass |
 | TC-478 | FR-35 | mentions the .kb file as the trigger | pass |
-| TC-479 | FR-35 | reflects the given base name in the init command | pass |
+| TC-479 | FR-35 | reflects the given base name in the announcement | pass |
 | TC-480 | FR-35 | returns true when source is directory:.kb and there is no index | pass |
 | TC-481 | FR-35 | returns false when the index already exists (base is initialised) | pass |
 | TC-482 | FR-35 | returns false when source is config.activeBase even without an index | pass |
