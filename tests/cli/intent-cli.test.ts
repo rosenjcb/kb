@@ -12,11 +12,11 @@ import {
   printIntentResult,
   printReadDocumentsOrchestrationFooter,
   rewriteIntentInputWithSessionContext,
-} from '../../src/cli/intent-cli'
-import type { ToolExecutor } from '../../src/core/tool-registry'
-import type { LLMProvider } from '../../src/core/types'
-import { isOrchestrationMetaLine } from '../../src/ui/orchestration-meta'
-import { createPrinter } from '../../src/ui/printer'
+} from '@kb/core/query/intent-cli.js'
+import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
+import type { LLMProvider } from '@kb/core/core/types.js'
+import { isOrchestrationMetaLine } from '@kb/core/ui/orchestration-meta.js'
+import { createPrinter } from '@kb/client/ui/printer.js'
 
 const tempDirs: string[] = []
 

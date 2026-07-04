@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { makeSufficiencyJudge, shouldCallJudge } from '../../src/tools/facts-sufficiency-judge'
-import type { LLMProvider } from '../../src/core/types'
+import { makeSufficiencyJudge, shouldCallJudge } from '@kb/core/tools/facts-sufficiency-judge.js'
+import type { LLMProvider } from '@kb/core/core/types.js'
 
 function makeLLM(text: string): LLMProvider {
   return {

@@ -14,7 +14,7 @@ import {
   resolveLLMProvider,
   writeDefaultConfig,
   writeKbConfig,
-} from '../../src/cli/kb-config'
+} from '@kb/core/config/kb-config.js'
 
 const tempDirs: string[] = []
 let kbHomeDir: string

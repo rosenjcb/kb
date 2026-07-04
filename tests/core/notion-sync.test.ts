@@ -2,9 +2,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { syncDocsToNotion } from '../../src/core/publish/notion-sync'
-import type { SqliteDocumentRow } from '../../src/core/publish/publish-docs'
-import { notionPublishStatePath } from '../../src/core/publish/publish-state'
+import { syncDocsToNotion } from '@kb/core/core/publish/notion-sync.js'
+import type { SqliteDocumentRow } from '@kb/core/core/publish/publish-docs.js'
+import { notionPublishStatePath } from '@kb/core/core/publish/publish-state.js'
 
 const makeDoc = (overrides: Partial<SqliteDocumentRow> = {}): SqliteDocumentRow => ({
   id: 'doc-1',

@@ -1,16 +1,16 @@
 /**
  * Ticket 106: three subagent tuning rows (s1–s3), same fake LLM queue.
  * Compare `kb query` / init quality to a run from before your branch via `eval:init` / `evaluation/runs/` if needed.
- * Matrix file: `WRITE_ORCHESTRATOR_MATRIX=1 npx vitest run tests/tools/subagent-scenario-matrix.test.ts`
+ * Matrix file: `WRITE_ORCHESTRATOR_MATRIX=true npx vitest run tests/tools/subagent-scenario-matrix.test.ts`
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { afterEach, describe, expect, it } from 'vitest'
-import { StreamManager } from '../../src/core/runtime/stream-manager'
-import type { LLMProvider, LLMResponse } from '../../src/core/types'
-import { createKBToolsRegistry } from '../../src/tools/kb-tools-registry'
-import { executeSubagentTask } from '../../src/tools/task'
+import { StreamManager } from '@kb/core/core/runtime/stream-manager.js'
+import type { LLMProvider, LLMResponse } from '@kb/core/core/types.js'
+import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
+import { executeSubagentTask } from '@kb/core/tools/task.js'
 
 class QueuedFakeProvider implements LLMProvider {
   readonly name = 'fake'
@@ -128,7 +128,7 @@ describe('subagent scenario matrix (106)', () => {
     expect(s3Row?.readToolCalls).toBe(6)
     expect(s3Row?.profileId).toBe('research')
 
-    if (process.env.WRITE_ORCHESTRATOR_MATRIX === '1') {
+    if (process.env.WRITE_ORCHESTRATOR_MATRIX === 'true') {
       const stamp = dayjs().format('YYYY-MM-DD')
       const outDir = path.join(process.cwd(), 'evaluation', 'runs')
       const outFile = path.join(outDir, `${stamp}-orchestrator-scenario-matrix.json`)

@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ReadDocumentsResultItem } from '../../src/cli/intent-cli'
-import type { LLMProvider } from '../../src/core/types'
+import type { ReadDocumentsResultItem } from '@kb/core/query/intent-cli.js'
+import type { LLMProvider } from '@kb/core/core/types.js'
 import {
   llmExtractQueryEntities,
   rerankByGraphConnectivity,
-} from '../../src/tools/graph-rag-reranker'
-import type { KbGraphWriter } from '../../src/tools/kb-graph-writer'
-import type { CodeGraphStore } from '../../src/tools/code-graph-store'
+} from '@kb/core/tools/graph-rag-reranker.js'
+import type { KbGraphWriter } from '@kb/core/tools/kb-graph-writer.js'
+import type { CodeGraphStore } from '@kb/core/tools/code-graph-store.js'
 
 function makeResult(id: string, content: string, graphEvidence?: string[]): ReadDocumentsResultItem {
   return { metadata: { id }, content, graphEvidence }

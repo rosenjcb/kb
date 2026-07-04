@@ -8,8 +8,8 @@ import {
   parseGraphCommand,
   printGraphHelp,
   runGraphCommand,
-} from '../../src/cli/graph-cli'
-import { runMigrations } from '../../src/core/db-migrations'
+} from '@kb/core/cli/graph-cli.js'
+import { runMigrations } from '@kb/core/core/db-migrations.js'
 
 let tempDir: string
 let dbPath: string

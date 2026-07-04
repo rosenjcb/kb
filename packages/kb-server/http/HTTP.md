@@ -9,7 +9,7 @@ timestamp: 2026-06-24T00:00:00Z
 
 # HTTP Collection and Integration Suite
 
-The `http/` directory is the **contract + black-box test harness** for `kb server start`. `server.http` is both runnable examples (IDE/CLI) and the integration suite executed by `pnpm run integration:test`.
+The `http/` directory is the **contract + black-box test harness** for `kb-server start`. `server.http` is both runnable examples (IDE/CLI) and the integration suite executed by `pnpm run integration:test`.
 
 ## Role in the stack
 
@@ -47,7 +47,7 @@ sequenceDiagram
 ## Integration
 
 - **Manual send:** `pnpm exec httpyac send packages/kb-server/http/server.http -n query --env local` (server already up on `:8080`).
-- **Local full suite:** `kb server start --with-mcp` with `KB_SERVER_API_KEY=testkey`.
+- **Local full suite:** `kb-server start --with-mcp` with `KB_SERVER_API_KEY=testkey`.
 - **Full suite:** `pnpm run integration:test` — see [`../INTEGRATION_TEST.md`](../INTEGRATION_TEST.md).
 - **CI:** `.github/workflows/integration.yml` on merge to `main` — not on feature-branch pushes or PR checks.
 - **LLM:** Integration always routes Gemini to WireMock — [`../docker/wiremock/WIREMOCK.md`](../docker/wiremock/WIREMOCK.md).
@@ -68,7 +68,7 @@ Post-response scripts live in `{{ }}` blocks and must **`const assert = require(
 
 ## Extension checklist
 
-1. Add route in `src/server/http-server.ts`.
+1. Add route in `packages/kb-server/src/http-server.ts`.
 2. Add `# @name …` block to `server.http` (or `slack.http` for Slack routes) with shape tests.
 3. Update `openapi.yaml`.
 4. Run `pnpm run integration:test` locally before PR.
@@ -83,6 +83,6 @@ Post-response scripts live in `{{ }}` blocks and must **`const assert = require(
 
 - Behavioral spec → [`HTTP.spec.md`](./HTTP.spec.md)
 
-- [`../../../src/server/SERVER.md`](../../../src/server/SERVER.md) — server implementation
+- [`../src/SERVER.md`](../src/SERVER.md) — server implementation
 - [`README.md`](README.md) — quick commands
 - [`../../../TESTING.md`](../../../TESTING.md) — unit vs integration split

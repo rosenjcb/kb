@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyChatReadPromptKind,
   shouldStartChatPending,
-} from '../../src/tui/chat-read-kind'
+} from '@kb/client/tui/chat-read-kind.js'
 
 describe('tui/chat-read-kind', () => {
   describe('classifyChatReadPromptKind', () => {

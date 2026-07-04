@@ -1,11 +1,10 @@
 packages:
   - '.'
+  - 'packages/kb-core'
+  - 'packages/kb-client'
   - 'packages/kb-server'
 
 # Packages that have install scripts but ship pre-built binaries or WASM files.
-# We explicitly set all of them to false so pnpm does not try to compile native
-# addons (which would require a C++ toolchain and fail on minimal machines).
-# Platform-specific binaries are delivered via optional peer packages instead.
 allowBuilds:
   '@ast-grep/lang-angular': false
   '@ast-grep/lang-bash': false

@@ -21,9 +21,64 @@ No manual fact entry. KB reads from the source.
 
 KB turns your codebase and docs into a searchable knowledge base:
 
-* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically. Plain markdown is segmented into sentence facts; docs written in the [Open Knowledge Format (OKF)](#-open-knowledge-format-okf) are recognized and their frontmatter boilerplate is skipped, so only the document body is indexed (no `key: value` noise).
+* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically. Plain markdown is segmented into sentence facts; companion docs written per our [spec.md](#-behavioral-specs-specmd) conventions skip YAML frontmatter during indexing so metadata does not leak as raw `key: value` noise.
 * 🔍 **Query** — Ask questions in natural language; get grounded, source-linked answers
 * 🔁 **Refresh** — Re-scan after changes to keep the knowledge base current
+
+## 🏗️ Architecture (1.0)
+
+KB splits like Postgres: a **daemon** plus a **client**.
+
+| Binary | Package | Role |
+|--------|---------|------|
+| `kb-server` | `@kb/server` | Indexing, retrieval, LLM, HTTP/MCP |
+| `kb` | `@kb/client` | CLI, TUI, HTTP client to the server |
+
+Shared domain logic lives in `@kb/core`. User data stays in **`~/.kb`** (`KB_HOME`) — not next to install binaries.
+
+Full map: [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md) · Client: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md) · Server: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md)
+
+## Connect the `kb` client to a server
+
+The **`kb` CLI is a thin client**. Indexing, retrieval, and LLM calls run on **`kb-server`** — on your laptop, in Docker, or on a shared host. Install `kb` locally, point it at the server, and every command (`query`, `init`, `scan`, chat/TUI) goes over HTTP.
+
+| What | Env var | Config key (`~/.kb/config.json`) |
+|------|---------|----------------------------------|
+| Full server URL (HTTPS, custom path) | `KB_SERVER_URL` | — |
+| Host + port | `KBHOST`, `KBPORT` | `server.host`, `server.port` |
+| API key (must match server) | `KB_SERVER_API_KEY` | `server.apiKey` |
+| Default base on that server | — | `server.base`, `activeBase` |
+
+Defaults: `localhost:8080`. Use **`KB_SERVER_URL`** when the server is HTTPS or you want one string instead of host + port.
+
+**Local server:**
+
+```bash
+kb-server start --with-mcp
+kb config set server.host localhost
+kb config set server.port 8080
+kb config set server.apiKey <same as KB_SERVER_API_KEY on the server>
+kb query "how does auth work?"
+```
+
+**Remote server (Docker, k8s, another machine):** run `kb-server` there (see [Run KB as a server](#-run-kb-as-a-server-docker)), then on your laptop:
+
+```bash
+# env — good for shells and CI
+export KB_SERVER_URL=http://kb.example.com:8080   # or https://kb.example.com
+export KB_SERVER_API_KEY=<token from the container / deploy>
+
+# or persist in ~/.kb/config.json
+kb config set server.host kb.example.com
+kb config set server.port 8080
+kb config set server.apiKey <token>
+
+kb query "how does auth work?"
+```
+
+The server owns the index (`KB_HOME`, `/data` in Docker). Bootstrap repos on the server (`KB_GIT_REPOS`, `kb-server.json`, or `kb init` through the connected client). Your client does not need a local clone of those repos.
+
+Connection profile detail: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md). Postgres-style analogy (`KBHOST` / `KBPORT`): [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md).
 
 ## ⚡ Quick Start
 
@@ -42,13 +97,13 @@ What this does:
 - installs the latest `kb` release into `~/.kb/runtime`
 - links the stable launcher at `~/.kb/bin/kb`
 
-Or build and install from this checkout:
+Or build and install from this checkout (links **both** `kb` and `kb-server`):
 
 ```bash
 pnpm install
 pnpm run check
 pnpm run install:global
-command -v kb
+command -v kb && command -v kb-server
 ```
 
 > `install-kb.sh` bootstraps `nvm` and `Node 24` if they are missing.
@@ -88,13 +143,19 @@ kb uninstall --purge
 
 From the TUI, type `/uninstall` (or `/uninstall --purge` to also wipe user data). The TUI will walk you through both confirmation steps before exiting.
 
-### 2) Configure `~/.kb/config.json`
+### 2) Start the server and configure the client
 
-Provider is auto-detected from whichever key is present. To set one explicitly:
+**LLM keys and indexing run on the server.** See [Connect the `kb` client to a server](#connect-the-kb-client-to-a-server) for local vs remote (Docker) setup. Quick local path:
 
 ```bash
-kb config set llm.provider openai
+kb-server start --with-mcp
+# or: pnpm run server:start   # contributors, from repo root
+kb config set server.host localhost
+kb config set server.port 8080
+# kb config set server.apiKey <same as KB_SERVER_API_KEY on the server>
 ```
+
+Provider for synthesis is configured server-side (env keys: `GEMINI_API_KEY`, `OPENAI_API_KEY`, etc.).
 
 ### 3) Initialize your KB base
 
@@ -128,10 +189,14 @@ Each repo is cloned to `~/.kb/sessions/<base>/repos/<slug>/` and recorded in the
 
 ### 4) Query your knowledge base
 
+Requires a running `kb-server` (see step 2):
+
 ```bash
 kb query "sqlite index sync behavior" --limit 5
 kb query "how does AST indexing work"
 ```
+
+Contributors running tests or eval locally use `KB_LOCAL_MODE=true` to bypass HTTP (see [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md)).
 
 ## 📖 CLI Reference
 
@@ -172,12 +237,12 @@ kb facts list|search|show ...
 kb graph ...
 kb logs list|show|compare ...
 kb skills install|uninstall
-kb server start [--base <name>] [--port <n>] [--with-mcp]
+kb-server start [--base <name>] [--port <n>] [--with-mcp]
 kb sync
 kb publish <notion> [options]
 ```
 
-**Publish** exports the active KB documents to Notion (wipe-and-replace; preview by default, `--apply` to execute). See [`src/core/publish/PUBLISH.md`](src/core/publish/PUBLISH.md) for sinks, stale-doc handling, and provider config.
+**Publish** exports the active KB documents to Notion (wipe-and-replace; preview by default, `--apply` to execute). See [`packages/kb-core/src/core/publish/PUBLISH.md`](packages/kb-core/src/core/publish/PUBLISH.md).
 
 **Interactive session commands** (type while in `kb`):
 
@@ -244,9 +309,9 @@ kb skills uninstall   # remove everything kb skills install added
 
 Installs are idempotent: each skill carries a content hash, so re-running upgrades changed skills in place and skips ones already current. `kb skills uninstall` reverses both steps.
 
-The skills are self-contained (workflow + full command shapes). Source: [`skills/`](skills/); see [`src/skills/SKILLS.md`](src/skills/SKILLS.md) for the bundled set and how to add one. The [CLI Reference](#cli-reference) above stays the in-repo quick reference for humans.
+The skills are self-contained (workflow + full command shapes). Source: [`skills/`](skills/). The [CLI Reference](#cli-reference) above and [`packages/kb-client/src/cli/CLI.md`](packages/kb-client/src/cli/CLI.md) are the in-repo quick references.
 
-The `kb:dump-context` skill writes in-place companion docs in the **Open Knowledge Format** (see below), so the architecture knowledge your agent captures is indexed structurally rather than as loose prose.
+The `kb:dump-context` skill writes in-place companion docs and sibling `*.spec.md` files — see [Behavioral specs](#-behavioral-specs-specmd).
 
 ## 🚢 Run KB as a server (Docker)
 
@@ -254,16 +319,49 @@ Instead of a per-machine CLI, run KB as a **central HTTP/MCP server**: index you
 once on a durable volume and let people, apps, and agents query over HTTP. The Docker
 image is deployable, not just an integration harness.
 
+### Published image (GitHub Container Registry)
+
+Merges to `main` publish **`kb-server`** to GHCR:
+
+**`ghcr.io/rosenjcb/kb/kb-server`** — tags include `latest` and semver release tags.
+
+Browse: [github.com/rosenjcb/kb/pkgs/container/kb-server](https://github.com/rosenjcb/kb/pkgs/container/kb-server)
+
+```bash
+docker pull ghcr.io/rosenjcb/kb/kb-server:latest
+
+docker run -d --name kb-server \
+  -p 8080:8080 \
+  -v kb-data:/data \
+  -e KB_SERVER_API_KEY=<strong-token> \
+  -e GEMINI_API_KEY=<provider-key> \
+  -e KB_BASE=acme \
+  -e KB_GIT_REPOS=https://github.com/acme/auth \
+  ghcr.io/rosenjcb/kb/kb-server:latest
+
+curl http://localhost:8080/healthz
+```
+
+The image CMD is `kb-server start --with-mcp` (`KB_HOME=/data`, `PORT=8080`). Mount `/data`
+so the index survives restarts. Full env reference:
+[`packages/kb-server/README.md`](packages/kb-server/README.md).
+
+**Client on your laptop, server in Docker:** expose port `8080`, set matching
+`KB_SERVER_API_KEY`, then point local `kb` at it — see
+[Connect the `kb` client to a server](#connect-the-kb-client-to-a-server).
+
+### Build from this repo (contributors)
+
 ```bash
 pnpm run server:up      # seeds .env on first run; edit it, then re-run to build + boot
 pnpm run server:docker:logs
 curl http://localhost:8080/healthz
 ```
 
-Full getting-started, config reference, and the `kb-server.json` manifest:
+Compose manifest, config reference, and `kb-server.json`:
 **[`packages/kb-server/README.md`](packages/kb-server/README.md)**.
 
-**Slack bot:** point a Slack workspace at the same `kb server` so people can ask
+**Slack bot:** point a Slack workspace at the same `kb-server` daemon so people can ask
 `@kb <question>` in channels. Slack handling now runs inside `kb-server` itself; enable
 it with `KB_SERVER_ENABLE_SLACK=true` plus real `SLACK_SIGNING_SECRET` and
 `SLACK_BOT_TOKEN`. Setup details live in
@@ -271,11 +369,11 @@ it with `KB_SERVER_ENABLE_SLACK=true` plus real `SLACK_SIGNING_SECRET` and
 
 ## 🔌 MCP — Claude Code & Cursor Agent
 
-Point your coding agent at a running `kb server` over **Streamable HTTP** (`POST /mcp`). The server must be started with `--with-mcp`; REST-only mode returns 404 on `/mcp`.
+Point your coding agent at a running `kb-server` over **Streamable HTTP** (`POST /mcp`). The server must be started with `--with-mcp`; REST-only mode returns 404 on `/mcp`.
 
 ```bash
 export KB_SERVER_API_KEY=testkey   # server + client must match
-kb server start --with-mcp
+kb-server start --with-mcp
 ```
 
 ### Claude Code
@@ -312,11 +410,13 @@ agent mcp list-tools kb
 
 Merge into an existing `mcp.json` if you already have other servers. Restart Cursor or reload the window if the IDE does not pick up the file immediately.
 
-**MCP tools:** `kb_query`, `read_facts`, `search_code_symbols`, `get_code_neighbors`, `get_code_graph_summary`. Details: [`src/server/SERVER.md`](src/server/SERVER.md).
+**MCP tools:** `kb_query`, `read_facts`, `search_code_symbols`, `get_code_neighbors`, `get_code_graph_summary`. Details: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md).
 
-## 📚 Open Knowledge Format (OKF)
+## 📋 Behavioral specs (spec.md)
 
-KB encourages documenting your code in the [**Open Knowledge Format (OKF)**](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) — Google's open, vendor-neutral standard for the "LLM-wiki" pattern. An OKF concept doc is just a markdown file with a small YAML frontmatter block; the only required field is `type`:
+This repo documents behavior with the [spec.md framework](https://github.com/rosenjcb/spec.md), which extends Google's [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) with sibling `*.spec.md` files (`type: Spec`) that define **FR-N** requirements and **TC-N** QA test cases. Companion docs (`TUI.md`, `INTENTS.md`, …) use OKF-style YAML frontmatter; KB stays format-agnostic — any markdown still ingests, but recognized frontmatter is skipped on scan so only the body is indexed.
+
+Example companion doc:
 
 ```markdown
 ---
@@ -333,17 +433,13 @@ timestamp: 2026-06-20T00:00:00Z
 One-paragraph what/why, role in the stack, invariants, …
 ```
 
-**KB stays format-agnostic** — any markdown still ingests via sentence segmentation, so OKF is never required and a malformed doc is never rejected. KB gives OKF **functional support**: when it detects OKF frontmatter during `kb init` / `kb scan`, it recognizes the format and **skips the metadata block** so it never leaks in as raw `key: value` noise — then indexes the document body exactly like any markdown. OKF docs get no special retrieval boost; KB just reads them cleanly.
-
-The bundled `kb:dump-context` agent skill authors companion docs (`TUI.md`, `INTENTS.md`, …) as OKF concept files by default, so your knowledge base grows in a portable, interoperable format. OKF reserves the filenames `index.md` (directory listing) and `log.md` (update history); concept docs use any other name.
-
-## 📋 Behavioral specs (spec.md)
-
-This repo uses the [spec.md framework](https://github.com/rosenjcb/spec.md): sibling `*.spec.md` files (`type: Spec`) sit next to OKF companions and define **FR-N** requirements and **TC-N** QA test cases. **Every `TC-N` in a spec must have at least one tagged test** (`[TC-N]` in Vitest or httpyac); not every test needs a spec row. CI and pre-commit run `pnpm run spec:check` to enforce this.
+**Every `TC-N` in a spec must have at least one tagged test** (`[TC-N]` in Vitest or httpyac); not every test needs a spec row. CI and pre-commit run `pnpm run spec:check` to enforce this.
 
 - Scope: each spec declares the tests it governs in its own `sources:` frontmatter (no central manifest); `spec:check` derives per-spec scope from that.
 - Conventions: [`TESTING.md`](TESTING.md)
 - Check: `pnpm run spec:check`
+
+The bundled `kb:dump-context` skill authors companions and updates sibling specs when behavior changes.
 
 ## 🗄️ Swapping and deleting bases
 
@@ -423,6 +519,8 @@ More reading: [`eval/EVAL.md`](eval/EVAL.md) — pipeline overview, loss functio
 
 ## 🧪 Development Commands
 
+Monorepo map: [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md).
+
 ```bash
 pnpm run test
 pnpm run spec:check
@@ -431,11 +529,11 @@ pnpm run lint
 pnpm run build
 ```
 
-To install and uninstall a dev build globally (symlinks `dist/bin/kb` into `$PNPM_HOME/bin`):
+To install and uninstall a dev build globally (symlinks `kb` **and** `kb-server` into `$PNPM_HOME/bin`):
 
 ```bash
-pnpm run install:global    # build then symlink kb into $PNPM_HOME/bin
-pnpm run uninstall:global  # remove symlink, dist/, repo + global .kb-python; prompts before deleting ~/.kb
+pnpm run install:global    # build then symlink kb + kb-server into $PNPM_HOME/bin
+pnpm run uninstall:global  # remove symlinks, dist/; prompts before deleting ~/.kb
 ```
 
 > These are dev-only scripts and are not shipped in the release package. Consumer users should use `kb uninstall` instead.

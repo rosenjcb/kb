@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyFactLane, inferQueryLaneWeights } from '../../src/core/fact-taxonomy'
+import { classifyFactLane, inferQueryLaneWeights } from '@kb/core/core/fact-taxonomy.js'
 
 describe('fact taxonomy', () => {
   it('[TC-60] classifies build-heavy fact text into build lane', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { partitionShellOutputForTui } from '../../src/tui/partition-shell-output'
+import { partitionShellOutputForTui } from '@kb/client/tui/partition-shell-output.js'
 
 describe('tui/partitionShellOutputForTui', () => {
   it('[TC-46] output with no meta lines → one body segment', () => {

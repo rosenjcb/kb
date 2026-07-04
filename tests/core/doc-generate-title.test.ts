@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { DocGenerateSession } from '../../src/core/doc-generate-session'
-import { deriveDocumentTitle, squeezeKbDocumentTitle } from '../../src/core/doc-generate-title'
+import type { DocGenerateSession } from '@kb/core/core/doc-generate-session.js'
+import { deriveDocumentTitle, squeezeKbDocumentTitle } from '@kb/core/core/doc-generate-title.js'
 
 function minimalSession(answers: DocGenerateSession['answers'], prompt = 'p'): DocGenerateSession {
   return {

@@ -1,13 +1,14 @@
 # Changesets
 
-Two workspace packages, versioned **together** (`fixed` in `config.json`):
+Three workspace packages, versioned **independently**:
 
 | Package | Directory | What it covers |
 |---------|-----------|----------------|
-| `kb` | repo root | CLI, `src/server/` runtime, core |
-| `kb-server` | `packages/kb-server/` | Dockerfile, compose, httpyac suite, WireMock stubs |
+| `@kb/client` | `packages/kb-client/` | `kb` CLI/TUI, HTTP SDK |
+| `@kb/core` | `packages/kb-core/` | Indexing, retrieval, LLM, `KbService` |
+| `@kb/server` | `packages/kb-server/` | `kb-server` daemon, Docker, httpyac suite |
 
-One `package.json` version (`kb`) is what the binary, Docker image, and MCP report (`KB_VERSION`). `kb-server` tracks packaging/integration paths so Changesets can detect them separately.
+Bump only the package(s) whose shipped source changed. CI (`scripts/check-changeset-consistency.mjs`) enforces one applied changeset per PR and exactly one semver step per bumped package.
 
 ## Workflow
 
@@ -26,14 +27,17 @@ One `package.json` version (`kb`) is what the binary, Docker image, and MCP repo
 | Type | When |
 |------|------|
 | `patch` | Fixes |
-| `minor` | New features (`kb server start`, new commands) |
+| `minor` | New features |
 | `major` | Breaking CLI / API changes |
 
-When both packages change, one changeset file can list both:
+Example frontmatter for a client-only change:
 
 ```md
 ---
-"kb": minor
-"kb-server": minor
+"@kb/client": minor
 ---
+
+Short summary.
 ```
+
+Multi-package changes list each package in the frontmatter block.

@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 let baseDir: string
 let indexer: SqliteKbIndexer

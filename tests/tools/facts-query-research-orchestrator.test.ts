@@ -6,9 +6,9 @@ import {
   buildPondQueries,
   FactsQueryResearchOrchestrator,
   isUnlimitedLimit,
-} from '../../src/tools/facts-query-research-orchestrator'
-import type { FactsSufficiencyJudge } from '../../src/tools/facts-sufficiency-judge'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+} from '@kb/core/tools/facts-query-research-orchestrator.js'
+import type { FactsSufficiencyJudge } from '@kb/core/tools/facts-sufficiency-judge.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 const tempDirs: string[] = []
 

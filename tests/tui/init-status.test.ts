@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseInitOutput } from '../../src/tui/init-status.js'
+import { parseInitOutput } from '@kb/client/tui/init-status.js'
 
 describe('init status helpers', () => {
   it('[TC-31] routes init progress lines away from transcript history', () => {

@@ -5,7 +5,7 @@ import {
   LEGACY_DOC_TYPE_REMAP,
   coerceDocType,
   isDocType,
-} from '../../src/core/doc-taxonomy'
+} from '@kb/core/core/doc-taxonomy.js'
 
 describe('DOC_TYPES enum', () => {
   it('[TC-49] Given the canonical list, then contains exactly five members', () => {

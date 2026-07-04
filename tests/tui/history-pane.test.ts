@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { partitionHistoryEntries } from '../../src/tui/components/HistoryPane.js'
-import type { HistoryEntry } from '../../src/tui/types.js'
+import { partitionHistoryEntries } from '@kb/client/tui/components/HistoryPane.js'
+import type { HistoryEntry } from '@kb/client/tui/types.js'
 
 describe('partitionHistoryEntries', () => {
   it('[TC-21] keeps completed rows in static and loading rows live', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ensureScanBaseArg } from '../../src/tui/init-args'
+import { ensureScanBaseArg } from '@kb/client/tui/init-args.js'
 
 describe('ensureScanBaseArg', () => {
   it('[TC-25] Given scan args without --base and fallback exists, then appends --base fallback', () => {

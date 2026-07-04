@@ -4,7 +4,7 @@ import {
   formatRetrievedFactsForLLM,
   formatToolQueryFactsForLLM,
   MAX_FACT_CONTENT_CHARS,
-} from '../../src/core/retrieval-context'
+} from '@kb/core/core/retrieval-context.js'
 
 describe('retrieval-context', () => {
   it('[TC-105] Given long fact text with no limit, then full content is kept', () => {

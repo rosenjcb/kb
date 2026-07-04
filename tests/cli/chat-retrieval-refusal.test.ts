@@ -3,8 +3,8 @@ import {
   formatChatTranscriptForDocSession,
   lastRetrievalCheckpointConfidence,
   shouldRefuseChatTurnOnRetrieval,
-} from '../../src/cli/chat-cli'
-import type { Message } from '../../src/core/types'
+} from '@kb/client/cli/chat-cli.js'
+import type { Message } from '@kb/core/core/types.js'
 
 describe('chat retrieval refusal', () => {
   const prev = process.env.KB_CHAT_RETRIEVAL_MIN_CONFIDENCE

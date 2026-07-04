@@ -9,7 +9,7 @@ import type {
   JuryInput,
   BiasConfig,
 } from '../../eval/losses/jury-loss'
-import type { LLMProvider, LLMCallParams, LLMResponse } from '../../src/core/types'
+import type { LLMProvider, LLMCallParams, LLMResponse } from '@kb/core/core/types.js'
 
 // ── Mock helpers ─────────────────────────────────────────────────────────────
 

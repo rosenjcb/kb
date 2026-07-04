@@ -10,7 +10,7 @@ import {
   cloneRepo,
   getCurrentBranch,
   pullRepo,
-} from '../../src/cli/git-sync'
+} from '@kb/core/ops/git-sync.js'
 
 const execFileAsync = promisify(execFile)
 

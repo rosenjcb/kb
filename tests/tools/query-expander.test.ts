@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { LLMProvider } from '../../src/core/types'
-import { expandQuery, shouldExpandQuery } from '../../src/tools/query-expander'
+import type { LLMProvider } from '@kb/core/core/types.js'
+import { expandQuery, shouldExpandQuery } from '@kb/core/tools/query-expander.js'
 
 function mockLlm(response: string): LLMProvider {
   return {

@@ -4,7 +4,7 @@ import {
   promptsRootDir,
   readPromptAssetUtf8,
   resolvePromptPath,
-} from '../../src/prompts/prompt-assets'
+} from '@kb/core/prompts/prompt-assets.js'
 
 describe('prompt-assets', () => {
   it('[TC-9] resolvePromptPath nests under prompts root', () => {

@@ -2,12 +2,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { runDocsGenerateChatFlow } from '../../src/cli/chat-docs-generate-flow'
-import type { KbConfig } from '../../src/cli/kb-config'
-import { loadQuestionnaire } from '../../src/core/doc-questionnaire'
-import type { LLMProvider } from '../../src/core/types'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
-import { createPrinter } from '../../src/ui/printer'
+import { runDocsGenerateChatFlow } from '@kb/client/cli/chat-docs-generate-flow.js'
+import type { KbConfig } from '@kb/core/config/kb-config.js'
+import { loadQuestionnaire } from '@kb/core/core/doc-questionnaire.js'
+import type { LLMProvider } from '@kb/core/core/types.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
+import { createPrinter } from '@kb/client/ui/printer.js'
 
 const tempDirs: string[] = []
 

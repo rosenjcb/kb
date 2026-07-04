@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { agentLoop, runAgent } from '../../src/core/agent-loop'
-import { RunCollector } from '../../src/core/telemetry'
-import { createToolRegistry } from '../../src/core/tool-registry'
-import type { LLMProvider, LLMResponse, ToolDefinition } from '../../src/core/types'
+import { agentLoop, runAgent } from '@kb/core/core/agent-loop.js'
+import { RunCollector } from '@kb/core/core/telemetry.js'
+import { createToolRegistry } from '@kb/core/core/tool-registry.js'
+import type { LLMProvider, LLMResponse, ToolDefinition } from '@kb/core/core/types.js'
 
 class FakeProvider implements LLMProvider {
   readonly name = 'fake'

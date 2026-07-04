@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { computeResourceLoss } from '../../eval/losses/resource-loss'
-import type { TrajectoryFile } from '../../src/core/telemetry'
+import type { TrajectoryFile } from '@kb/core/core/telemetry.js'
 
 function makeTrajectory(
   steps: Array<{ fresh?: number; cached?: number; output?: number }>

@@ -3,7 +3,7 @@ import {
   formatOrchestrationMetaLine,
   isOrchestrationMetaLine,
   orchestrationWireKey,
-} from '../../src/ui/orchestration-meta'
+} from '@kb/core/ui/orchestration-meta.js'
 
 describe('ui/orchestration-meta', () => {
   it('[TC-1] Given human labels, then wire keys are lowercase slugs', () => {

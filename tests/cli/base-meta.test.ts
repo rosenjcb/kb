@@ -8,7 +8,7 @@ import {
   repoDirForSlug,
   repoSlugFromGitUrl,
   writeBaseMeta,
-} from '../../src/cli/base-meta'
+} from '@kb/core/storage/base-meta.js'
 
 let tmpDir: string
 

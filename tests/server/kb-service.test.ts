@@ -2,9 +2,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { KbConfig } from '../../src/cli/kb-config'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
-import { createKbService } from '../../src/server/kb-service'
+import type { KbConfig } from '@kb/core/config/kb-config.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
+import { createKbService } from '@kb/core/service/kb-service.js'
 
 const tempDirs: string[] = []
 
@@ -82,9 +82,27 @@ describe('createKbService', () => {
     })
 
     const health = service.health()
-    expect(health.ok).toBe(true)
+    expect(health.ok).toBe(false)
     expect(health.indexing).toBe(true)
     expect(health.bootstrapProgress).toContain('catalog-service')
+    await service.close()
+  })
+
+                it('[TC-21] health reports not ready when bootstrap failed', async () => {
+    const baseDir = await makeBaseWithFacts()
+    const service = createKbService({
+      baseDir,
+      config: {} as KbConfig,
+      bootstrapState: {
+        indexing: false,
+        error: 'clone failed',
+        settled: Promise.resolve(),
+      },
+    })
+
+    const health = service.health()
+    expect(health.ok).toBe(false)
+    expect(health.bootstrapError).toBe('clone failed')
     await service.close()
   })
 })

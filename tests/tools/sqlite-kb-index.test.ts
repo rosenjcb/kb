@@ -3,8 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync as Database } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
-import { MarkdownMDWriterTool } from '../../src/tools/markdown-md-writer-tool'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+import { MarkdownMDWriterTool } from '@kb/core/tools/markdown-md-writer-tool.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 const tempDirs: string[] = []
 

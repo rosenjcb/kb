@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatFactUri } from '../../src/core/fact-uri'
+import { formatFactUri } from '@kb/core/core/fact-uri.js'
 
 describe('formatFactUri', () => {
   it('[TC-63] strips fact- prefix before scheme so sources line does not repeat fact', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Message } from '../../src/core/types'
-import { SessionStore } from '../../src/server/session-store'
+import type { Message } from '@kb/core/core/types.js'
+import { SessionStore } from '@kb/core/service/session-store.js'
 
 const user = (content: string): Message => ({ role: 'user', content })
 const assistant = (content: string): Message => ({ role: 'assistant', content })

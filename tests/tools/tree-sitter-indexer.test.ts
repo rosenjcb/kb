@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync as Database } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runMigrations } from '../../src/core/db-migrations'
-import { CodeGraphStore } from '../../src/tools/code-graph-store'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
-import { TreeSitterIndexer } from '../../src/tools/tree-sitter-indexer'
+import { runMigrations } from '@kb/core/core/db-migrations.js'
+import { CodeGraphStore } from '@kb/core/tools/code-graph-store.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
+import { TreeSitterIndexer } from '@kb/core/tools/tree-sitter-indexer.js'
 
 let tmpDir: string
 let repoRoot: string

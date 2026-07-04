@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createIgnoreMatcher } from '../../src/cli/kb-ignore'
-import { collectSourceFiles } from '../../src/cli/init-cli'
+import { createIgnoreMatcher } from '@kb/core/config/kb-ignore.js'
+import { collectSourceFiles } from '@kb/core/ops/init-cli.js'
 
 let tempDir: string
 

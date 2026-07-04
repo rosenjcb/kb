@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import type { LLMCallParams, LLMProvider } from '../../src/core/types'
+import type { LLMCallParams, LLMProvider } from '@kb/core/core/types.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)

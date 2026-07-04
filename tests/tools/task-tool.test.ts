@@ -1,10 +1,10 @@
 import { mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { StreamManager } from '../../src/core/runtime/stream-manager'
-import type { LLMProvider, LLMResponse } from '../../src/core/types'
-import { createKBToolsRegistry } from '../../src/tools/kb-tools-registry'
-import { executeSubagentTask } from '../../src/tools/task'
+import { StreamManager } from '@kb/core/core/runtime/stream-manager.js'
+import type { LLMProvider, LLMResponse } from '@kb/core/core/types.js'
+import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
+import { executeSubagentTask } from '@kb/core/tools/task.js'
 
 class QueuedFakeProvider implements LLMProvider {
   readonly name = 'fake'

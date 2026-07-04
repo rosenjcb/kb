@@ -162,7 +162,7 @@ Authorization: Bearer {{apiKey}}
 ###
 
 # ---------------------------------------------------------------------------
-# MCP (Streamable HTTP) — requires `kb server start --with-mcp` (Docker CMD uses this).
+# MCP (Streamable HTTP) — requires `kb-server start --with-mcp` (Docker CMD uses this).
 # JSON-RPC 2.0; stateless (each request is independent).
 # ---------------------------------------------------------------------------
 # @name mcpInitialize

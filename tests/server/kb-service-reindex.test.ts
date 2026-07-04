@@ -1,29 +1,29 @@
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../src/cli/auto-sync', () => ({
+vi.mock('@kb/core/ops/auto-sync.js', () => ({
   maybeAutoSync: vi.fn(),
 }))
 
-vi.mock('../../src/cli/base-meta', () => ({
+vi.mock('@kb/core/storage/base-meta.js', () => ({
   readBaseMeta: vi.fn(),
 }))
 
-vi.mock('../../src/tools/kb-tools-registry', () => ({
+vi.mock('@kb/core/tools/kb-tools-registry.js', () => ({
   createKBToolsRegistry: vi.fn(() => ({
     execute: vi.fn(),
   })),
 }))
 
-vi.mock('../../src/cli/kb-config', () => ({
+vi.mock('@kb/core/config/kb-config.js', () => ({
   applyConfigToEnv: vi.fn(),
   createLLMProviderFromConfig: vi.fn(() => null),
 }))
 
-import { maybeAutoSync } from '../../src/cli/auto-sync'
-import { readBaseMeta, type GitBaseMeta } from '../../src/cli/base-meta'
-import type { KbConfig } from '../../src/cli/kb-config'
-import { createKbService } from '../../src/server/kb-service'
+import { maybeAutoSync } from '@kb/core/ops/auto-sync.js'
+import { readBaseMeta, type GitBaseMeta } from '@kb/core/storage/base-meta.js'
+import type { KbConfig } from '@kb/core/config/kb-config.js'
+import { createKbService } from '@kb/core/service/kb-service.js'
 
 const mockMaybeAutoSync = vi.mocked(maybeAutoSync)
 const mockReadBaseMeta = vi.mocked(readBaseMeta)

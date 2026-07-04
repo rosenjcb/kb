@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { promptNamedListInterview } from '../../src/cli/named-list-interview'
+import { promptNamedListInterview } from '@kb/core/cli/named-list-interview.js'
 
 function makeIO(responses: Array<string | null>) {
   const lines: string[] = []

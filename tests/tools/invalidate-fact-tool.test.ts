@@ -2,8 +2,8 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { invalidateFactTool } from '../../src/tools/invalidate-fact-tool'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+import { invalidateFactTool } from '@kb/core/tools/invalidate-fact-tool.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 const tempDirs: string[] = []
 

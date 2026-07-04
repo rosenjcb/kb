@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCheckpointRecord,
   estimateConfidence,
-} from '../../src/tools/retrieval-checkpoint-orchestrator'
+} from '@kb/core/tools/retrieval-checkpoint-orchestrator.js'
 
 describe('retrieval-checkpoint-orchestrator', () => {
   it('[TC-86] Given result counts, then estimateConfidence returns deterministic bands', () => {

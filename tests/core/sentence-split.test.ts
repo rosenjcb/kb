@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   assertSingleSentenceFact,
   segmentMarkdownForFacts,
-} from '../../src/core/sentence-split'
+} from '@kb/core/core/sentence-split.js'
 
 describe('segmentMarkdownForFacts', () => {
   it('[TC-118] treats ATX heading line as one segment (title only)', () => {

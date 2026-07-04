@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ToolExecutor } from '../../src/core/tool-registry'
-import { DefaultIntentRouter } from '../../src/intents/router'
+import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
+import { DefaultIntentRouter } from '@kb/core/intents/router.js'
 
 function createExecutorMock(): ToolExecutor {
   return {

@@ -15,7 +15,7 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { TrajectoryFile } from '../../src/core/telemetry'
+import type { TrajectoryFile } from '@kb/core/core/telemetry.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 

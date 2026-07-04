@@ -2,9 +2,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { LLMProvider } from '../../src/core/types'
-import { FactsDocumentReader } from '../../src/tools/facts-document-reader'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+import type { LLMProvider } from '@kb/core/core/types.js'
+import { FactsDocumentReader } from '@kb/core/tools/facts-document-reader.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 function mockLlm(expansions: string[]): LLMProvider {
   return {

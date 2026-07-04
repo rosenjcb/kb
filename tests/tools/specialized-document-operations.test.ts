@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { MarkdownMDWriterTool } from '../../src/tools/markdown-md-writer-tool'
+import { MarkdownMDWriterTool } from '@kb/core/tools/markdown-md-writer-tool.js'
 
 const tempDirs: string[] = []
 

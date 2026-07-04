@@ -21,8 +21,8 @@ import {
   writeDefaultBase,
   writeKbFile,
   writeSessionBase,
-} from '../../src/cli/base-selection'
-import { CLI_ERROR_NO_KB_BASE } from '../../src/cli/cli-prerequisites'
+} from '@kb/core/storage/base-selection.js'
+import { CLI_ERROR_NO_KB_BASE } from '@kb/core/config/cli-prerequisites.js'
 
 describe('base-selection', () => {
   let tempKbHome: string

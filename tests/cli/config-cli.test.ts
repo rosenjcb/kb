@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { printConfigHelp, runConfigCommand } from '../../src/cli/config-cli'
+import { printConfigHelp, runConfigCommand } from '@kb/client/cli/config-cli.js'
 import {
   createLLMProviderFromConfig,
   getKbConfigFile,
@@ -11,7 +11,7 @@ import {
   resolveConversationalChatEnabled,
   resolveFactRetrievalMethod,
   resolveLLMProvider,
-} from '../../src/cli/kb-config'
+} from '@kb/core/config/kb-config.js'
 
 const tempDirs: string[] = []
 let kbHomeDir: string

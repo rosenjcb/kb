@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { IntentResult } from '../../src/intents/types'
-import { serializeQueryResult } from '../../src/server/serialize'
+import type { IntentResult } from '@kb/core/intents/types.js'
+import { serializeQueryResult } from '@kb/core/service/serialize.js'
 
 describe('serializeQueryResult', () => {
                 it('[TC-34] maps a read_facts IntentResult into the REST response body', () => {
@@ -43,5 +43,16 @@ describe('serializeQueryResult', () => {
     expect(body.answer).toBeNull()
     expect(body.results).toEqual([])
     expect(body.confidence).toBeUndefined()
+  })
+
+                it('[TC-36] includes traceFile when the retrieval wrote a deep trace dump', () => {
+    const body = serializeQueryResult({
+      status: 'accepted',
+      data: {
+        results: [],
+        traceFile: '/tmp/kb/traces/qtrace-1.json',
+      },
+    })
+    expect(body.traceFile).toBe('/tmp/kb/traces/qtrace-1.json')
   })
 })

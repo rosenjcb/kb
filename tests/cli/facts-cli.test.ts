@@ -2,8 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { FactsCommandError, parseFactsCommand, runFactsCommand } from '../../src/cli/facts-cli'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+import { FactsCommandError, parseFactsCommand, runFactsCommand } from '@kb/core/cli/facts-cli.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 const tempDirs: string[] = []
 

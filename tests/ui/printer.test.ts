@@ -3,7 +3,7 @@ import {
   condenseProgressText,
   createPrinter,
   createReasoningProgressSink,
-} from '../../src/ui/printer'
+} from '@kb/client/ui/printer.js'
 
 describe('ui/printer', () => {
   it('[TC-4] Given tui mode, chat metadata keeps routing prefixes', () => {

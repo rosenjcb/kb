@@ -3,7 +3,7 @@ import {
   SPINNER_MAX_LINE_LEN,
   SPINNER_MAX_LINES,
   truncateStatusLines,
-} from '../../src/tui/components/LoadingSpinner'
+} from '@kb/client/tui/components/LoadingSpinner.js'
 
 describe('tui/LoadingSpinner — truncateStatusLines', () => {
   it('[TC-35] returns empty array for undefined', () => {

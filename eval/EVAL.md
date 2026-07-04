@@ -84,7 +84,7 @@ Every harvest artifact carries two extra blocks:
   loop dominates cost"*). Printed as a compact `TIMELINE` block at the end of every harvest.
 
 The per-hop trace is sourced from `RunReport.retrieval` (persisted by `kb query` via
-`summarizeQueryRetrievalTrace`, `src/core/telemetry.ts`); older logs without it fall back to
+`summarizeQueryRetrievalTrace`, `packages/kb-core/src/core/telemetry.ts`); older logs without it fall back to
 parsing the `retrieval>` detail line (`parseRetrievalDetailTrace`), so counts still appear but
 per-hop lines / dropped ids may be empty.
 
@@ -168,6 +168,39 @@ flowchart LR
 **Label rubric:** `RUBRIC_AXES` defines allowed label strings per axis; `scoreFromLabel()` maps to ordinal 0–4. Judge `notes` capped at 30 words in the schema hint to keep batch JSON compact. `parseJsonObjectFromLLM()` accepts a top-level JSON array as well as `{ scores: [...] }` when the model omits the wrapper object.
 
 **Variable suite size:** `eval-shared.mjs` / `eval-run.mjs` accept any non-empty `questions[]` in suite YAML — no fixed question count.
+
+## Client-server eval (1.0+)
+
+After the `@kb/client` / `@kb/server` split, **`kb query` defaults to remote mode** — it
+expects a live `kb-server` on `localhost:8080` (or `~/.kb/config.json` `server.host` /
+`server.port`). The harvest and MOEL harnesses still **shell-spawn `dist/bin/kb.js`** with an
+isolated `KB_HOME` per run; they do **not** start or health-check a server today.
+
+**Current workaround:** `scripts/eval-run.mjs` and `scripts/moel-run.mjs` set
+`KB_LOCAL_MODE=true` in `kbEnv()` so subprocess `kb` runs indexing and retrieval in-process via
+`@kb/core` (same behavior as pre-1.0). This keeps `pnpm run eval` working without Docker.
+
+**Target state:** orchestrate `kb-server start` (or reuse a pinned sidecar) before the kb phase,
+point the client at that instance, and drop `KB_LOCAL_MODE` so eval exercises the production
+remote path. Until then, local-mode eval does not validate REST/SSE transport or server-side
+curation latency. Track: [#118](https://github.com/rosenjcb/kb/issues/118).
+
+**Related remote-mode gaps (see #118):**
+
+| Prerequisite | Status | Notes |
+|--------------|--------|-------|
+| `/healthz` readiness | Done (#120) | `ok: false` → HTTP 503 while bootstrap indexing, after bootstrap failure, or before index exists. Poll until `ok: true`. |
+| `KB_QUERY_TIMEOUT` | Done (#120) | Client + server knob (e.g. `KB_QUERY_TIMEOUT=180s`). Default 60s. |
+| Remote `kb query --trace` | Done (#120) | `trace: true` on `/v1/query`; returns `traceFile`. |
+| `kb base use` in remote mode | Follow-up | Client-local only; server base fixed at startup (`--base` / manifest). Eval must set server base explicitly. |
+| Harness starts `kb-server` | Open (#118) | |
+| Drop `KB_LOCAL_MODE` from eval/MOEL | Open (#118) | |
+
+Suggested health poll once orchestration lands:
+
+```bash
+until curl -sf http://localhost:8080/healthz | jq -e '.ok == true' >/dev/null; do sleep 2; done
+```
 
 ## Invariants
 

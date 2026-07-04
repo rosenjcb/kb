@@ -2,8 +2,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ingestIntegrationSignals } from '../../src/core/integration-ingest'
-import { type FactRow, SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+import { ingestIntegrationSignals } from '@kb/core/core/integration-ingest.js'
+import { type FactRow, SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 let baseDir: string
 let scanDir: string

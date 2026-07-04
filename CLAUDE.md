@@ -4,9 +4,8 @@ Guidance for AI agents (Claude Code and others) working in this repository.
 
 ## Versioning: bump on the branch before merging (it is NOT automatic)
 
-Any change to shipped code under `src/` or `bin/` (the **kb** package) or
-`packages/kb-server/` (the **kb-server** package) **must** ship an applied version
-bump. The version bump is a deterministic step **you run on the branch** — nothing
+Any change to shipped code under `packages/kb-core/`, `packages/kb-client/`, or
+`packages/kb-server/` **must** ship an applied version bump. The version bump is a deterministic step **you run on the branch** — nothing
 bumps automatically after merge. CI enforces it with the `Version bump required`
 job in `.github/workflows/ci.yml`, which hard-fails a PR into main that:
 
@@ -17,9 +16,7 @@ job in `.github/workflows/ci.yml`, which hard-fails a PR into main that:
 
 Docs/eval/research/CI/config-only PRs are exempt from the bump requirement.
 
-`kb` and `kb-server` are versioned **independently** (no `fixed`/`linked` link in
-`.changeset/config.json`) — bump only the package(s) whose source changed; their
-numbers may drift apart.
+`@kb/client`, `@kb/server`, and `@kb/core` are versioned **independently** — bump only the package(s) whose source changed.
 
 The two-step flow on your branch:
 
@@ -30,7 +27,7 @@ The two-step flow on your branch:
 
    ```md
    ---
-   "kb": minor
+   "@kb/client": minor
    ---
 
    Short summary of the change.
@@ -54,19 +51,30 @@ On merge to main, `.github/workflows/changesets.yml` only **publishes** (tag +
 release) — it does not version, because the versions already landed on the branch.
 
 Pick the bump type by impact: `patch` for fixes, `minor` for new or removed
-features / behavior changes (this pre-1.0 project uses `minor` for breaking
-CLI changes rather than jumping to 1.0.0), `major` for an intentional 1.0+
-break.
+features / behavior changes, `major` for intentional breaking changes (1.0+).
 
 ## Common commands
 
-- `pnpm run type-check` — TypeScript type check
+- `pnpm run type-check` — TypeScript type check (all packages)
 - `pnpm run lint` — Biome lint
 - `pnpm run unit:test` — Vitest unit/integration tests (alias: `pnpm run test`)
-- `pnpm run integration:test` — spin up the server in Docker and run the httpyac
-  suite (`packages/kb-server/http/server.http`) against it, then tear down (Docker only; LLM stubbed via
-  WireMock sidecar — see `packages/kb-server/http/HTTP.md`)
-- `pnpm run server:start` / `server:stop` — Docker Compose kb-server (+ llm-mock)
-- `pnpm run build` — compile + build the CLI
-- `pnpm run changeset:version` — apply the bump (consume changesets, bump kb / kb-server, regen version.tex)
-- `pnpm run changeset:check` — run the merge-to-main version gate locally (same check CI runs)
+- `pnpm run integration:test` — Docker + httpyac against `kb-server`
+- `pnpm run server:start` / `server:up` — local kb-server
+- `pnpm run build` — compile `kb` + `kb-server` binaries
+- `pnpm run changeset:version` — apply the bump
+- `pnpm run changeset:check` — run the merge-to-main version gate locally
+
+Monorepo layout → [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md).
+
+## Boolean environment variables
+
+Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in
+`process.env.*`, `kb config`, or docs/examples. Use the strings `true` and
+`false` only (lowercase when writing env vars).
+
+- Parse flags with `@kb/core/config/env-boolean` (`isEnvTrue`, `isEnvFalse`,
+  `parseBooleanEnv`, `parseBooleanConfigValue`, `booleanEnvString`).
+- Docs and tests: `KB_LOCAL_MODE=true`, not `=1`.
+- **Exception:** when a third-party library or protocol requires a numeric
+  boolean at its API boundary, convert at that call site only — do not adopt
+  that convention for KB env vars or config.

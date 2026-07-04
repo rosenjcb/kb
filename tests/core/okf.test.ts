@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isOkfDocument, parseOkfDocument } from '../../src/core/okf'
+import { isOkfDocument, parseOkfDocument } from '@kb/core/core/okf.js'
 
 const OKF_DOC = `---
 type: Subsystem

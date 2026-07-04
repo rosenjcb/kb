@@ -44,6 +44,6 @@ To stand up a real, self-hosted KB (guided `.env` + first-boot indexing), use
 
 ## MCP clients
 
-With `kb server start --with-mcp` running, connect Claude Code or Cursor Agent — see [`../../../src/server/SERVER.md`](../../../src/server/SERVER.md).
+With `kb-server start --with-mcp` running, connect Claude Code or Cursor Agent — see [`../src/SERVER.md`](../src/SERVER.md).
 
-Server implementation: [`../../../src/server/SERVER.md`](../../../src/server/SERVER.md).
+Server implementation: [`../src/SERVER.md`](../src/SERVER.md).

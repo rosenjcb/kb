@@ -65,4 +65,4 @@ Timeout: 6 minutes (first boot clone + index). On failure, prints `docker compos
 
 - [`http/HTTP.md`](http/HTTP.md) — collection and assert conventions
 - [`docker/wiremock/WIREMOCK.md`](docker/wiremock/WIREMOCK.md) — LLM stubs
-- [`../../src/server/SERVER.md`](../../src/server/SERVER.md) — what is under test
+- [`src/SERVER.md`](src/SERVER.md) — what is under test

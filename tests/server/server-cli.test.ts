@@ -1,13 +1,13 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../src/cli/base-selection', () => ({
+vi.mock('@kb/core/storage/base-selection.js', () => ({
   ensureOperationalBaseDir: vi.fn(async () => '/tmp/demo'),
   readOptionalCliValue: vi.fn(() => undefined),
   resolveEffectiveBaseDir: vi.fn(async () => ({ baseDir: '/tmp/demo', baseName: 'demo' })),
 }))
 
-vi.mock('../../src/server/server-bootstrap', () => ({
+vi.mock('@kb/server/server-bootstrap.js', () => ({
   resolveBootstrapPlan: vi.fn(async () => ({
     base: 'demo',
     source: 'env',
@@ -16,7 +16,7 @@ vi.mock('../../src/server/server-bootstrap', () => ({
   })),
 }))
 
-vi.mock('../../src/cli/init-cli', () => ({
+vi.mock('@kb/core/ops/init-cli.js', () => ({
   runKbInit: vi.fn(async (options: { progressSink?: (line: string) => void }) => {
     options.progressSink?.(
       '[init] @ fintary-fintary │ [====--------------------] 1/6 code-index ts/js 1/10 changed, 0 unchanged | 27 symbols, 0 edges'
@@ -25,16 +25,16 @@ vi.mock('../../src/cli/init-cli', () => ({
   }),
 }))
 
-vi.mock('../../src/cli/base-meta', () => ({
+vi.mock('@kb/core/storage/base-meta.js', () => ({
   readBaseMeta: vi.fn(async () => null),
   repoSlugFromGitUrl: vi.fn((url: string) => url.split('/').slice(-2).join('-')),
 }))
 
-vi.mock('../../src/tools/graph-query-expansion', () => ({
+vi.mock('@kb/core/tools/graph-query-expansion.js', () => ({
   kbIndexDbPath: vi.fn(() => '/tmp/demo/.kb-index.sqlite'),
 }))
 
-vi.mock('../../src/server/kb-service', () => ({
+vi.mock('@kb/core/service/kb-service.js', () => ({
   createKbService: vi.fn((options: { bootstrapState: { indexing: boolean } }) => ({
     health: () => ({ ok: true, base: 'demo', ...(options.bootstrapState.indexing ? { indexing: true } : {}) }),
     reindex: vi.fn(),
@@ -42,12 +42,12 @@ vi.mock('../../src/server/kb-service', () => ({
   })),
 }))
 
-vi.mock('../../src/server/reindex-scheduler', () => ({
+vi.mock('@kb/server/reindex-scheduler.js', () => ({
   parseDuration: vi.fn(() => 0),
   startReindexScheduler: vi.fn(() => ({ stop: vi.fn(), isRunning: () => false })),
 }))
 
-vi.mock('../../src/cli/kb-config', () => ({
+vi.mock('@kb/core/config/kb-config.js', () => ({
   getKbConfigDir: vi.fn(() => '/tmp/kb-config'),
 }))
 
@@ -63,13 +63,13 @@ class FakeServer extends EventEmitter {
 
 const fakeServer = new FakeServer()
 
-vi.mock('../../src/server/http-server', () => ({
+vi.mock('@kb/server/http-server.js', () => ({
   createHttpServer: vi.fn(() => fakeServer),
 }))
 
-import { runKbInit } from '../../src/cli/init-cli'
-import { startReindexScheduler } from '../../src/server/reindex-scheduler'
-import { runServerCommand } from '../../src/server/server-cli'
+import { runKbInit } from '@kb/core/ops/init-cli.js'
+import { startReindexScheduler } from '@kb/server/reindex-scheduler.js'
+import { runServerCommand } from '@kb/server/server-cli.js'
 
 describe('runServerCommand bootstrap progress', () => {
   afterEach(() => {

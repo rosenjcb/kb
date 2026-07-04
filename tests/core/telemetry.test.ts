@@ -11,9 +11,9 @@ import {
   TrajectoryCollector,
   estimateCost,
   summarizeQueryRetrievalTrace,
-} from '../../src/core/telemetry'
-import type { TrajectoryFile } from '../../src/core/telemetry'
-import type { LLMCallParams, LLMProvider, LLMResponse } from '../../src/core/types'
+} from '@kb/core/core/telemetry.js'
+import type { TrajectoryFile } from '@kb/core/core/telemetry.js'
+import type { LLMCallParams, LLMProvider, LLMResponse } from '@kb/core/core/types.js'
 
 // ─── estimateCost ─────────────────────────────────────────────────
 

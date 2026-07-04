@@ -4,10 +4,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Server } from 'node:http'
-import type { IntentResult } from '../../src/intents/types'
-import { createHttpServer } from '../../src/server/http-server'
-import type { KbService } from '../../src/server/kb-service'
-import type { RunReport } from '../../src/core/telemetry'
+import type { IntentResult } from '@kb/core/intents/types.js'
+import { createHttpServer } from '@kb/server/http-server.js'
+import type { KbService } from '@kb/core/service/kb-service.js'
+import type { RunReport } from '@kb/core/core/telemetry.js'
 
 function makeStubService(overrides: Partial<KbService> = {}): KbService {
   return {
@@ -61,6 +61,24 @@ describe('createHttpServer', () => {
     expect(await res.json()).toMatchObject({ ok: true, base: 'base' })
   })
 
+                it('[TC-3b] returns 503 on /healthz while bootstrap indexing is in progress', async () => {
+    server = createHttpServer({
+      service: makeStubService({
+        health: () => ({
+          ok: false,
+          base: 'base',
+          indexing: true,
+          bootstrapProgress: '[init] building index…',
+        }),
+      }),
+      apiKeys: [],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/healthz`)
+    expect(res.status).toBe(503)
+    expect(await res.json()).toMatchObject({ ok: false, indexing: true })
+  })
+
                 it('[TC-4] rejects /v1/query without a valid key', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: ['secret'] })
     const base = await listen(server)
@@ -85,6 +103,19 @@ describe('createHttpServer', () => {
     expect(body.answer).toBe('answer for: how does auth work')
     expect(body.results[0]).toMatchObject({ id: 'd1', title: 'Doc' })
     expect(body.retrieval).toEqual({ method: 'hybrid', detail: 'deep' })
+  })
+
+                it('[TC-5b] forwards trace: true to the service query pipeline', async () => {
+    const query = vi.fn(makeStubService().query)
+    server = createHttpServer({ service: makeStubService({ query }), apiKeys: [] })
+    const base = await listen(server)
+    const res = await fetch(`${base}/v1/query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ q: 'trace me', trace: true }),
+    })
+    expect(res.status).toBe(200)
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({ query: 'trace me', trace: true }))
   })
 
                 it('[TC-6] returns 503 for /v1/query while the server is bootstrapping its first index', async () => {

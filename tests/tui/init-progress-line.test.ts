@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseInitProgressLine } from '../../src/tui/init-progress-line'
+import { parseInitProgressLine } from '@kb/client/tui/init-progress-line.js'
 
 describe('parseInitProgressLine', () => {
   it('[TC-28] extracts repo slug and progress body', () => {

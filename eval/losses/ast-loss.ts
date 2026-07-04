@@ -12,13 +12,17 @@
  */
 
 import { createRequire } from 'node:module'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Parser, Language, Query } from 'web-tree-sitter'
 import type { Node as TsNode } from 'web-tree-sitter'
 
-const require = createRequire(import.meta.url)
+const kbCoreRequire = createRequire(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), '../../packages/kb-core/package.json'),
+)
 
 function resolveWasm(pkg: string, file: string): string {
-  return require.resolve(`${pkg}/${file}`)
+  return kbCoreRequire.resolve(`${pkg}/${file}`)
 }
 
 // Export queries copied from LANG_CONFIGS in src/tools/tree-sitter-indexer.ts.

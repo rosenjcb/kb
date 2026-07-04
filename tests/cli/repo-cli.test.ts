@@ -3,12 +3,12 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../src/cli/git-sync', () => ({
+vi.mock('@kb/core/ops/git-sync.js', () => ({
   cloneRepo: vi.fn(async () => {}),
   getCurrentBranch: vi.fn(async () => 'main'),
   getHeadSha: vi.fn(async () => 'headsha000'),
 }))
-vi.mock('../../src/cli/init-cli', () => ({
+vi.mock('@kb/core/ops/init-cli.js', () => ({
   runKbInit: vi.fn(async () => ({ status: 'accepted', base: 'demo', completedCycles: [] })),
   // repo-cli imports parseGitTarget too — provide the real-ish behavior.
   parseGitTarget: (raw: string, def?: string) => {
@@ -17,9 +17,9 @@ vi.mock('../../src/cli/init-cli', () => ({
   },
 }))
 
-import { writeBaseMeta, readBaseMeta } from '../../src/cli/base-meta'
-import { runIgnoreCommand, runRepoCommand } from '../../src/cli/repo-cli'
-import { SqliteKbIndexer } from '../../src/tools/sqlite-kb-index'
+import { writeBaseMeta, readBaseMeta } from '@kb/core/storage/base-meta.js'
+import { runIgnoreCommand, runRepoCommand } from '@kb/core/cli/repo-cli.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 let kbHome: string
 let baseDir: string

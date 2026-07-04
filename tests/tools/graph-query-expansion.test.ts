@@ -3,8 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync as Database } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runMigrations } from '../../src/core/db-migrations'
-import { expandQueryWithGraph, toGraphQuerySlugs } from '../../src/tools/graph-query-expansion'
+import { runMigrations } from '@kb/core/core/db-migrations.js'
+import { expandQueryWithGraph, toGraphQuerySlugs } from '@kb/core/tools/graph-query-expansion.js'
 
 describe('graph-query-expansion', () => {
   it('[TC-11] Given a freeform query, then slug extraction produces unigrams and bigrams for graph entity matching', () => {

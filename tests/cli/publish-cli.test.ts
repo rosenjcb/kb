@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   parsePublishCommand,
   runPublishCommand,
-} from '../../src/cli/publish-cli'
+} from '@kb/core/cli/publish-cli.js'
 
 const originalNotionToken = process.env.NOTION_TOKEN
 const originalNotionApiKey = process.env.NOTION_API_KEY
