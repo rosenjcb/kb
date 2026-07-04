@@ -20,6 +20,7 @@ import { expandQueryWithGraph, kbIndexDbPath } from '@kb/core/tools/graph-query-
 import { formatGraphRelationBlockFromQuestion } from '@kb/core/tools/graph-relation-context.js'
 import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
 import { KB_VERSION } from '@kb/core/version.js'
+import { isEnvTrue } from '@kb/core/config/env-boolean.js'
 import { createPrinter, createReasoningProgressSink } from '../ui/printer'
 import {
   deleteBase,
@@ -922,7 +923,7 @@ export async function runMainWithOutput(
             const db = new DatabaseSync(kbIndexDbPath(intentBaseDir), { readOnly: true })
             try {
               payload.query =
-                process.env.KB_ABLATE_NO_EXPANSION === '1'
+                isEnvTrue(process.env.KB_ABLATE_NO_EXPANSION)
                   ? originalQuery
                   : expandQueryWithGraph(originalQuery, db)
               for (const qRel of [preRewriteQueryTruth, originalQuery]) {

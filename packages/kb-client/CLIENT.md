@@ -52,13 +52,13 @@ Env overrides: `KBHOST`, `KBPORT`, `KB_SERVER_URL`, `KB_SERVER_API_KEY`. See `se
 
 ## Local vs remote
 
-| | Remote (default) | Local (`KB_LOCAL_MODE=1`) |
+| | Remote (default) | Local (`KB_LOCAL_MODE=true`) |
 |---|---|---|
 | `kb query` / chat | `/v1/query`, `/v1/chat` | In-process `@kb/core` |
 | `init`, `scan`, `docs`, `facts`, `graph`, `logs`, `publish`, `base` (except `use`) | `POST /v1/admin/cli` | In-process `@kb/core/cli/dispatch` |
 | `config`, `skills`, `uninstall`, `sync`, `base use` | Client-only (connection profile / install) | Same |
 
-Eval harness still sets `KB_LOCAL_MODE=1` until it orchestrates a live server.
+Eval harness still sets `KB_LOCAL_MODE=true` until it orchestrates a live server.
 
 ## Build
 

@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.1.1
+
+### Patch Changes
+
+- Standardize boolean env vars to `true`/`false` only; bundle JS deps in CLI/server builds so global install resolves runtime modules.
+
 ## 1.1.0
 
 ### Minor Changes

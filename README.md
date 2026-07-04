@@ -159,7 +159,7 @@ kb query "sqlite index sync behavior" --limit 5
 kb query "how does AST indexing work"
 ```
 
-Contributors running tests or eval locally use `KB_LOCAL_MODE=1` to bypass HTTP (see [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md)).
+Contributors running tests or eval locally use `KB_LOCAL_MODE=true` to bypass HTTP (see [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md)).
 
 ## 📖 CLI Reference
 

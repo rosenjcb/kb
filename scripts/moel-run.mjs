@@ -94,7 +94,7 @@ Output: ~/.kb/evaluations/moel-{suite}-{timestamp}/
 function kbEnv() {
   const env = { ...process.env }
   env.KB_HOME = undefined
-  env.KB_LOCAL_MODE = '1'
+  env.KB_LOCAL_MODE = 'true'
   return env
 }
 

@@ -77,7 +77,7 @@ Binaries live on `PATH` or in `~/.kb/bin` — never inside `KB_HOME`.
 | Mode | When | Behavior |
 |---|---|---|
 | **Remote (default)** | Normal use | `kb query` / chat → HTTP to live `kb-server` |
-| **Local** | `KB_LOCAL_MODE=1`, vitest | In-process `@kb/core` (eval harness, dev) |
+| **Local** | `KB_LOCAL_MODE=true`, vitest | In-process `@kb/core` (eval harness, dev) |
 
 Server down → postgres-style error + `kb-server start` hint (`connection-error.ts`).
 

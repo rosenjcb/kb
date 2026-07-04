@@ -25,7 +25,7 @@ Thin terminal front-end for kb. Taxonomy: [CLIENT.md](./CLIENT.md), [CLI.md](./s
 |------|------------|
 | FR-1 | Default path: resolve server host/port from env and `~/.kb/config.json`; health-check via `/healthz` |
 | FR-2 | When the server is unreachable, fail fast with a postgres-style hint — no silent local fallback |
-| FR-3 | `KB_LOCAL_MODE=1` runs all commands in-process (tests, eval harness) |
+| FR-3 | `KB_LOCAL_MODE=true` runs all commands in-process (tests, eval harness) |
 | FR-4 | Remote mode forwards init/scan/docs/facts/graph/logs/publish/base to `POST /v1/admin/cli` |
 | FR-5 | Remote query uses `POST /v1/query`; chat/TUI uses `POST /v1/chat` SSE |
 | FR-6 | Client-only: `config`, `skills`, `uninstall`, `sync`, `base use` |

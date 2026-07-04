@@ -30,7 +30,7 @@ Monorepo context → [`../../CLIENT.md`](../../CLIENT.md) · [`../../ARCHITECTUR
 | `kb` / `kb <command>` | `index.ts` | Dispatches subcommands; bare `kb` in a TTY → `src/tui/index.tsx` |
 | Remote query/chat | `remote-commands.ts` | `/v1/query`, `/v1/chat` when not `KB_LOCAL_MODE` |
 | Init / scan | `@kb/core/ops/init-cli.ts` | Imported by router; runs in-process |
-| Query (local) | `@kb/core/query/intent-cli.ts` | `KB_LOCAL_MODE=1` or vitest |
+| Query (local) | `@kb/core/query/intent-cli.ts` | `KB_LOCAL_MODE=true` or vitest |
 | Chat session | `chat-cli.ts` | REPL; remote or local synthesis |
 | Skills | `skill-installer.ts` | Install bundled skills to agent homes |
 | Uninstall | `uninstall-cli.ts` | Consumer release layout removal |

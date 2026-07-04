@@ -36,10 +36,12 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/kb-client/dist ./packages/kb-client/dist
 COPY --from=builder /app/packages/kb-server/dist ./packages/kb-server/dist
 COPY --from=builder /app/packages/kb-core ./packages/kb-core
+COPY --from=builder /app/packages/kb-core/node_modules ./packages/kb-core/node_modules
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/kb-server/package.json ./packages/kb-server/
 COPY packages/kb-client/package.json ./packages/kb-client/
 COPY packages/kb-core/package.json ./packages/kb-core/
+ENV NODE_PATH=/app/packages/kb-core/node_modules:/app/node_modules
 RUN mkdir -p /data
 EXPOSE 8080
 # Serves /v1/* and (with --with-mcp) /mcp. Configure via env: KB_SERVER_API_KEY,

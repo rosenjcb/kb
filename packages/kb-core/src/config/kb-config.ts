@@ -3,6 +3,11 @@ import os from 'node:os'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { createProvider } from '@kb/core/core/llm-provider.js'
+import {
+  booleanEnvString,
+  parseBooleanConfigValue,
+  parseBooleanEnv,
+} from '@kb/core/config/env-boolean.js'
 
 export type FactRetrievalMethod = 'query_expansion' | 'all_facts'
 
@@ -631,13 +636,13 @@ export function resolveFeatureFlags(config: KbConfig): ResolvedFeatureFlags {
  */
 export function applyConfigToEnv(config: KbConfig): void {
   if (config.graph?.enabled !== undefined && !process.env.KB_GRAPH)
-    process.env.KB_GRAPH = String(config.graph.enabled)
+    process.env.KB_GRAPH = booleanEnvString(config.graph.enabled)
   if (
     config.chat?.experimentalConversationalRetrieval !== undefined &&
     !process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL
   ) {
-    process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL = String(
-      config.chat.experimentalConversationalRetrieval
+    process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL = booleanEnvString(
+      config.chat.experimentalConversationalRetrieval,
     )
   }
 
@@ -651,9 +656,9 @@ export function applyConfigToEnv(config: KbConfig): void {
 
   const f = config.features
   if (f?.sqliteIndex !== undefined && !process.env.KB_SQLITE_INDEX)
-    process.env.KB_SQLITE_INDEX = String(f.sqliteIndex)
+    process.env.KB_SQLITE_INDEX = booleanEnvString(f.sqliteIndex)
   if (f?.hybridQuery !== undefined && !process.env.KB_HYBRID_QUERY)
-    process.env.KB_HYBRID_QUERY = String(f.hybridQuery)
+    process.env.KB_HYBRID_QUERY = booleanEnvString(f.hybridQuery)
   if (f?.hybridQueryCandidates !== undefined && !process.env.KB_HYBRID_QUERY_CANDIDATES)
     process.env.KB_HYBRID_QUERY_CANDIDATES = String(f.hybridQueryCandidates)
   if (f?.hybridQueryAlpha !== undefined && !process.env.KB_HYBRID_QUERY_ALPHA)
@@ -661,15 +666,15 @@ export function applyConfigToEnv(config: KbConfig): void {
   if (f?.hybridQueryMaxMs !== undefined && !process.env.KB_HYBRID_QUERY_MAX_MS)
     process.env.KB_HYBRID_QUERY_MAX_MS = String(f.hybridQueryMaxMs)
   if (f?.checkpointObservability !== undefined && !process.env.KB_CHECKPOINT_OBSERVABILITY_ENABLED)
-    process.env.KB_CHECKPOINT_OBSERVABILITY_ENABLED = String(f.checkpointObservability)
+    process.env.KB_CHECKPOINT_OBSERVABILITY_ENABLED = booleanEnvString(f.checkpointObservability)
   if (f?.missLearning !== undefined && !process.env.KB_MISS_LEARNING_ENABLED)
-    process.env.KB_MISS_LEARNING_ENABLED = String(f.missLearning)
+    process.env.KB_MISS_LEARNING_ENABLED = booleanEnvString(f.missLearning)
   if (f?.missHints !== undefined && !process.env.KB_MISS_HINTS_ENABLED)
-    process.env.KB_MISS_HINTS_ENABLED = String(f.missHints)
+    process.env.KB_MISS_HINTS_ENABLED = booleanEnvString(f.missHints)
   if (f?.laneRouting !== undefined && !process.env.KB_LANE_ROUTING_ENABLED)
-    process.env.KB_LANE_ROUTING_ENABLED = String(f.laneRouting)
+    process.env.KB_LANE_ROUTING_ENABLED = booleanEnvString(f.laneRouting)
   if (f?.intentLlmAnswer !== undefined && !process.env.KB_INTENT_LLM_ANSWER)
-    process.env.KB_INTENT_LLM_ANSWER = String(f.intentLlmAnswer)
+    process.env.KB_INTENT_LLM_ANSWER = booleanEnvString(f.intentLlmAnswer)
 }
 
 // ─── Notion ───────────────────────────────────────────────────────────────────
@@ -804,19 +809,4 @@ function parseEnvFloat(value: string | undefined, fallback: number): number {
   if (!value) return fallback
   const n = Number.parseFloat(value)
   return Number.isNaN(n) ? fallback : n
-}
-
-function parseBooleanConfigValue(keyPath: string, value: string): boolean {
-  const normalized = value.trim().toLowerCase()
-  if (['true', '1', 'yes', 'on'].includes(normalized)) return true
-  if (['false', '0', 'no', 'off'].includes(normalized)) return false
-  throw new Error(`${keyPath} must be true or false`)
-}
-
-function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
-  if (value === undefined) return fallback
-  const normalized = value.trim().toLowerCase()
-  if (['true', '1', 'yes', 'on'].includes(normalized)) return true
-  if (['false', '0', 'no', 'off'].includes(normalized)) return false
-  return fallback
 }

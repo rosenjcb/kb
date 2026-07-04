@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
+import { isEnvTrue } from '@kb/core/config/env-boolean.js'
 import type { CurationRecord } from './fact-curator'
 import type { FactRow } from './sqlite-kb-index'
 
@@ -20,7 +21,7 @@ import type { FactRow } from './sqlite-kb-index'
 
 /** True only when `KB_QUERY_TRACE` is explicitly `true` (case-insensitive). Default: off. */
 export function isQueryTraceEnabled(): boolean {
-  return process.env.KB_QUERY_TRACE?.trim().toLowerCase() === 'true'
+  return isEnvTrue(process.env.KB_QUERY_TRACE)
 }
 
 export interface TracedFact {

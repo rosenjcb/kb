@@ -177,7 +177,7 @@ expects a live `kb-server` on `localhost:8080` (or `~/.kb/config.json` `server.h
 isolated `KB_HOME` per run; they do **not** start or health-check a server today.
 
 **Current workaround:** `scripts/eval-run.mjs` and `scripts/moel-run.mjs` set
-`KB_LOCAL_MODE=1` in `kbEnv()` so subprocess `kb` runs indexing and retrieval in-process via
+`KB_LOCAL_MODE=true` in `kbEnv()` so subprocess `kb` runs indexing and retrieval in-process via
 `@kb/core` (same behavior as pre-1.0). This keeps `pnpm run eval` working without Docker.
 
 **Target state:** orchestrate `kb-server start` (or reuse a pinned sidecar) before the kb phase,

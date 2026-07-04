@@ -1,8 +1,9 @@
+import { isEnvTrue } from '../config/env-boolean.js'
+
 export type DiagnosticLevel = 'warn' | 'error' | 'info'
 
 function diagnosticsEnabled(): boolean {
-  const raw = process.env.KB_DEBUG_DIAGNOSTICS?.trim().toLowerCase()
-  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on'
+  return isEnvTrue(process.env.KB_DEBUG_DIAGNOSTICS)
 }
 
 export function emitDiagnostic(level: DiagnosticLevel, message: string): void {

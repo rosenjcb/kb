@@ -1,3 +1,4 @@
+import { isEnvTrue } from '../config/env-boolean.js'
 import { defaultTracesDir } from '../core/telemetry'
 import type { DocType } from '../core/doc-taxonomy'
 import { formatFactUri } from '../core/fact-uri'
@@ -118,10 +119,9 @@ export class FactsDocumentReader {
       const baseQuery = input.query?.trim() ?? ''
       // H5 ablation: score against the raw question (env-provided) while discovery stays on
       // the (expanded) baseQuery. Curator keying below is switched to the same raw question.
-      const rawScoringQuery =
-        process.env.KB_ABLATE_RAW_SCORING === '1'
-          ? (process.env.KB_ABLATE_RAW_Q?.trim() || undefined)
-          : undefined
+      const rawScoringQuery = isEnvTrue(process.env.KB_ABLATE_RAW_SCORING)
+        ? (process.env.KB_ABLATE_RAW_Q?.trim() || undefined)
+        : undefined
       const opts = {
         includeContent: input.includeContent === true,
         surface: input.surface ?? 'query',

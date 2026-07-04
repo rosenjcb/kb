@@ -19,7 +19,7 @@ export default defineConfig({
     restoreMocks: true,
     clearMocks: true,
     env: {
-      KB_LOCAL_MODE: '1',
+      KB_LOCAL_MODE: 'true',
     },
   },
 })

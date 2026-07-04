@@ -1,11 +1,12 @@
 import type { KbConfig } from '@kb/core/config/kb-config.js'
+import { isEnvTrue } from '@kb/core/config/env-boolean.js'
 import type { ServerConnection } from './types.js'
 
 const DEFAULT_HOST = 'localhost'
 const DEFAULT_PORT = 8080
 
 export function isLocalMode(): boolean {
-  return process.env.KB_LOCAL_MODE === '1' || process.env.KB_LOCAL_MODE === 'true'
+  return isEnvTrue(process.env.KB_LOCAL_MODE)
 }
 
 export function resolveServerConnection(config: KbConfig): ServerConnection {
