@@ -187,14 +187,20 @@ curation latency. Track: [#118](https://github.com/rosenjcb/kb/issues/118).
 
 **Related remote-mode gaps (see #118):**
 
-- **Server base is fixed at startup** (`--base` / `KB_SERVER_BASE_NAME` / manifest). `kb base use`
-  only updates the *client* connection profile and may trigger a local auto-sync — it does not
-  change which base `kb-server` indexes or serves. Eval orchestration must pick the server base
-  explicitly, not rely on client `base use`.
-- **`/healthz` readiness:** probes should treat HTTP 503 (or `ok: false`) as not ready until
-  bootstrap indexing finishes and an on-disk index exists — not merely wait for the port to open.
-- **`KB_QUERY_TIMEOUT`:** deep-discovery queries can exceed the default 60s; raise on client and
-  server when running long eval suites against a live server.
+| Prerequisite | Status | Notes |
+|--------------|--------|-------|
+| `/healthz` readiness | Done (#120) | `ok: false` → HTTP 503 while bootstrap indexing, after bootstrap failure, or before index exists. Poll until `ok: true`. |
+| `KB_QUERY_TIMEOUT` | Done (#120) | Client + server knob (e.g. `KB_QUERY_TIMEOUT=180s`). Default 60s. |
+| Remote `kb query --trace` | Done (#120) | `trace: true` on `/v1/query`; returns `traceFile`. |
+| `kb base use` in remote mode | Follow-up | Client-local only; server base fixed at startup (`--base` / manifest). Eval must set server base explicitly. |
+| Harness starts `kb-server` | Open (#118) | |
+| Drop `KB_LOCAL_MODE` from eval/MOEL | Open (#118) | |
+
+Suggested health poll once orchestration lands:
+
+```bash
+until curl -sf http://localhost:8080/healthz | jq -e '.ok == true' >/dev/null; do sleep 2; done
+```
 
 ## Invariants
 

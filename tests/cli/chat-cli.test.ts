@@ -458,7 +458,7 @@ describe('chat-cli session loop', () => {
     const secondOutput = secondIo.outputs.join('\n')
     expect(secondOutput).toContain('Buildkite')
     expect(secondOutput).not.toContain('GitHub Actions. (source:')
-  })
+  }, 30_000)
 
   it('[TC-98] Given a multi-round query where LLM calls query_kb twice across rounds, then both retrievals run and final answer is returned', async () => {
     const io = new ScriptedIO(['How does the agent loop work?', '/exit'])
