@@ -183,7 +183,7 @@ isolated `KB_HOME` per run; they do **not** start or health-check a server today
 **Target state:** orchestrate `kb-server start` (or reuse a pinned sidecar) before the kb phase,
 point the client at that instance, and drop `KB_LOCAL_MODE` so eval exercises the production
 remote path. Until then, local-mode eval does not validate REST/SSE transport or server-side
-curation latency.
+curation latency. Track: [#118](https://github.com/rosenjcb/kb/issues/118).
 
 ## Invariants
 

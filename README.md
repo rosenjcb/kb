@@ -21,7 +21,7 @@ No manual fact entry. KB reads from the source.
 
 KB turns your codebase and docs into a searchable knowledge base:
 
-* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically. Plain markdown is segmented into sentence facts; docs written in the [Open Knowledge Format (OKF)](#-open-knowledge-format-okf) are recognized and their frontmatter boilerplate is skipped, so only the document body is indexed (no `key: value` noise).
+* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically. Plain markdown is segmented into sentence facts; companion docs written per our [spec.md](#-behavioral-specs-specmd) conventions skip YAML frontmatter during indexing so metadata does not leak as raw `key: value` noise.
 * 🔍 **Query** — Ask questions in natural language; get grounded, source-linked answers
 * 🔁 **Refresh** — Re-scan after changes to keep the knowledge base current
 
@@ -311,7 +311,7 @@ Installs are idempotent: each skill carries a content hash, so re-running upgrad
 
 The skills are self-contained (workflow + full command shapes). Source: [`skills/`](skills/). The [CLI Reference](#cli-reference) above and [`packages/kb-client/src/cli/CLI.md`](packages/kb-client/src/cli/CLI.md) are the in-repo quick references.
 
-The `kb:dump-context` skill writes in-place companion docs in the **Open Knowledge Format** (see below), so the architecture knowledge your agent captures is indexed structurally rather than as loose prose.
+The `kb:dump-context` skill writes in-place companion docs and sibling `*.spec.md` files — see [Behavioral specs](#-behavioral-specs-specmd).
 
 ## 🚢 Run KB as a server (Docker)
 
@@ -383,9 +383,11 @@ Merge into an existing `mcp.json` if you already have other servers. Restart Cur
 
 **MCP tools:** `kb_query`, `read_facts`, `search_code_symbols`, `get_code_neighbors`, `get_code_graph_summary`. Details: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md).
 
-## 📚 Open Knowledge Format (OKF)
+## 📋 Behavioral specs (spec.md)
 
-KB encourages documenting your code in the [**Open Knowledge Format (OKF)**](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) — Google's open, vendor-neutral standard for the "LLM-wiki" pattern. An OKF concept doc is just a markdown file with a small YAML frontmatter block; the only required field is `type`:
+This repo documents behavior with the [spec.md framework](https://github.com/rosenjcb/spec.md), which extends Google's [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) with sibling `*.spec.md` files (`type: Spec`) that define **FR-N** requirements and **TC-N** QA test cases. Companion docs (`TUI.md`, `INTENTS.md`, …) use OKF-style YAML frontmatter; KB stays format-agnostic — any markdown still ingests, but recognized frontmatter is skipped on scan so only the body is indexed.
+
+Example companion doc:
 
 ```markdown
 ---
@@ -402,17 +404,13 @@ timestamp: 2026-06-20T00:00:00Z
 One-paragraph what/why, role in the stack, invariants, …
 ```
 
-**KB stays format-agnostic** — any markdown still ingests via sentence segmentation, so OKF is never required and a malformed doc is never rejected. KB gives OKF **functional support**: when it detects OKF frontmatter during `kb init` / `kb scan`, it recognizes the format and **skips the metadata block** so it never leaks in as raw `key: value` noise — then indexes the document body exactly like any markdown. OKF docs get no special retrieval boost; KB just reads them cleanly.
-
-The bundled `kb:dump-context` agent skill authors companion docs (`TUI.md`, `INTENTS.md`, …) as OKF concept files by default, so your knowledge base grows in a portable, interoperable format. OKF reserves the filenames `index.md` (directory listing) and `log.md` (update history); concept docs use any other name.
-
-## 📋 Behavioral specs (spec.md)
-
-This repo uses the [spec.md framework](https://github.com/rosenjcb/spec.md): sibling `*.spec.md` files (`type: Spec`) sit next to OKF companions and define **FR-N** requirements and **TC-N** QA test cases. **Every `TC-N` in a spec must have at least one tagged test** (`[TC-N]` in Vitest or httpyac); not every test needs a spec row. CI and pre-commit run `pnpm run spec:check` to enforce this.
+**Every `TC-N` in a spec must have at least one tagged test** (`[TC-N]` in Vitest or httpyac); not every test needs a spec row. CI and pre-commit run `pnpm run spec:check` to enforce this.
 
 - Scope: each spec declares the tests it governs in its own `sources:` frontmatter (no central manifest); `spec:check` derives per-spec scope from that.
 - Conventions: [`TESTING.md`](TESTING.md)
 - Check: `pnpm run spec:check`
+
+The bundled `kb:dump-context` skill authors companions and updates sibling specs when behavior changes.
 
 ## 🗄️ Swapping and deleting bases
 
