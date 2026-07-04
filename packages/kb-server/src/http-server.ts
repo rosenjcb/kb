@@ -23,6 +23,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { resolveQueryTimeoutMs } from '@kb/core/config/query-timeout.js'
 import { handleMcpHttpRequest } from './mcp-server.js'
 import { handleAdminRoute } from './admin-routes.js'
 import { serializeQueryResult } from '@kb/core/service/serialize.js'
@@ -167,6 +168,7 @@ interface QueryRequestBody {
   discovery?: 'shallow' | 'deep'
   synthesize?: boolean
   verbose?: boolean
+  trace?: boolean
 }
 
 interface ServiceUnavailableResponse {
@@ -176,7 +178,14 @@ interface ServiceUnavailableResponse {
 }
 
 export function createHttpServer(options: HttpServerOptions): Server {
-  const { service, apiKeys, enableMcp = false, requestTimeoutMs = 60_000, slack, onLog } = options
+  const {
+    service,
+    apiKeys,
+    enableMcp = false,
+    requestTimeoutMs = resolveQueryTimeoutMs(),
+    slack,
+    onLog,
+  } = options
 
   const reportWriter = options.logsDir ? new ReportWriter(options.logsDir) : null
   const baseName = service.health().base
@@ -386,6 +395,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
       discovery: body.discovery,
       synthesize: body.synthesize !== false,
       verbose: body.verbose,
+      trace: body.trace === true,
     })
 
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -402,6 +412,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
           discovery: body.discovery,
           verbose: body.verbose,
           synthesize: body.synthesize !== false,
+          trace: body.trace === true,
         }),
         timeout,
       ])

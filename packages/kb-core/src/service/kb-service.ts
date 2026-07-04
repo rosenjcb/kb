@@ -167,13 +167,17 @@ export function createKbService(options: KbServiceOptions): KbService {
       } catch {
         indexMtime = undefined
       }
+      const indexing = bootstrapState?.indexing === true
+      const bootstrapFailed = Boolean(bootstrapState?.error)
+      const hasIndex = indexMtime !== undefined
+      const ok = !indexing && !bootstrapFailed && hasIndex
       return {
-        ok: true,
+        ok,
         base: path.basename(baseDir),
         provider: llmProvider?.name,
         model: llmProvider?.model,
         indexMtime,
-        ...(bootstrapState?.indexing ? { indexing: true } : {}),
+        ...(indexing ? { indexing: true } : {}),
         ...(bootstrapState?.error ? { bootstrapError: bootstrapState.error } : {}),
         ...(bootstrapState?.progressLine ? { bootstrapProgress: bootstrapState.progressLine } : {}),
         ...(reindexing ? { reindexing: true } : {}),

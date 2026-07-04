@@ -38,6 +38,8 @@ export interface ParsedIntentCommand {
   useQuerySession?: boolean
   /** When true (`kb query --all-facts`), bypass query expansion and load all KB facts. */
   allFacts?: boolean
+  /** When true (`kb query --trace`), enable the opt-in deep query trace dump. */
+  trace?: boolean
 }
 
 /** Human read_facts footer: default minimal; verbose adds summary/status/confidence. */
@@ -71,9 +73,9 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
 
   const base = readOption(rest, '--base')
   const verbose = readFlag(rest, '--verbose')
-  // `--trace` turns on the opt-in deep query trace (default off). The deep facts loop reads
-  // KB_QUERY_TRACE at run time, so surface the flag as that env var here.
-  if (readFlag(rest, '--trace')) {
+  const trace = readFlag(rest, '--trace')
+  // Local mode reads KB_QUERY_TRACE at run time; surface the flag as that env var here.
+  if (trace) {
     process.env.KB_QUERY_TRACE = 'true'
   }
 
@@ -100,7 +102,7 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
   const useQuerySession = command === 'query' && readFlag(rest, '--session')
   const allFacts = command === 'query' && readFlag(rest, '--all-facts')
 
-  return { envelope, base, verbose, useQuerySession, allFacts }
+  return { envelope, base, verbose, useQuerySession, allFacts, trace }
 }
 
 export interface ExecuteIntentCommandOptions {
@@ -241,6 +243,8 @@ export interface ReadDocumentsResultData {
      */
     curation?: CuratorAudit
   }
+  /** Path to the opt-in deep trace dump when `kb query --trace` ran. */
+  traceFile?: string
 }
 
 /** Subset of the curator's {@link CurationRecord} consumed by synthesis framing. */

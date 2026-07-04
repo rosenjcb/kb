@@ -1,4 +1,5 @@
 import { KbConnectionError, formatApiError, throwConnectionError } from './connection-error.js'
+import { resolveQueryTimeoutMs } from '@kb/core/config/query-timeout.js'
 import type { ServerConnection } from './types.js'
 import type {
   ApiErrorBody,
@@ -11,6 +12,15 @@ import type {
 } from './types.js'
 
 const DEFAULT_TIMEOUT_MS = 60_000
+
+function resolveClientTimeoutMs(override?: number): number {
+  if (override !== undefined) return override
+  try {
+    return resolveQueryTimeoutMs()
+  } catch {
+    return DEFAULT_TIMEOUT_MS
+  }
+}
 
 export interface KbApiClientOptions {
   connection: ServerConnection
@@ -26,7 +36,7 @@ export class KbApiClient {
   constructor(options: KbApiClientOptions) {
     this.connection = options.connection
     this.fetchImpl = options.fetchImpl ?? fetch
-    this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    this.timeoutMs = resolveClientTimeoutMs(options.timeoutMs)
   }
 
   get connectionInfo(): ServerConnection {

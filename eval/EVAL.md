@@ -185,6 +185,17 @@ point the client at that instance, and drop `KB_LOCAL_MODE` so eval exercises th
 remote path. Until then, local-mode eval does not validate REST/SSE transport or server-side
 curation latency. Track: [#118](https://github.com/rosenjcb/kb/issues/118).
 
+**Related remote-mode gaps (see #118):**
+
+- **Server base is fixed at startup** (`--base` / `KB_SERVER_BASE_NAME` / manifest). `kb base use`
+  only updates the *client* connection profile and may trigger a local auto-sync — it does not
+  change which base `kb-server` indexes or serves. Eval orchestration must pick the server base
+  explicitly, not rely on client `base use`.
+- **`/healthz` readiness:** probes should treat HTTP 503 (or `ok: false`) as not ready until
+  bootstrap indexing finishes and an on-disk index exists — not merely wait for the port to open.
+- **`KB_QUERY_TIMEOUT`:** deep-discovery queries can exceed the default 60s; raise on client and
+  server when running long eval suites against a live server.
+
 ## Invariants
 
 - One `TrajectoryFile` per condition per task — written by `TrajectoryCollector.writeTrajectory()`.

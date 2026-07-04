@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.1.3
+
+### Patch Changes
+
+- Add `KB_QUERY_TIMEOUT`, fix `/healthz` readiness during bootstrap, and restore remote `kb query --trace`.
+
 ## 1.1.2
 
 ### Patch Changes

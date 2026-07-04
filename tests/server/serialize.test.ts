@@ -44,4 +44,15 @@ describe('serializeQueryResult', () => {
     expect(body.results).toEqual([])
     expect(body.confidence).toBeUndefined()
   })
+
+                it('[TC-36] includes traceFile when the retrieval wrote a deep trace dump', () => {
+    const body = serializeQueryResult({
+      status: 'accepted',
+      data: {
+        results: [],
+        traceFile: '/tmp/kb/traces/qtrace-1.json',
+      },
+    })
+    expect(body.traceFile).toBe('/tmp/kb/traces/qtrace-1.json')
+  })
 })
