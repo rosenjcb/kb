@@ -46,15 +46,15 @@ export async function runRemoteAdminCli(
   return { exitCode: result.exitCode }
 }
 
+/** Returns the process exit code (0 = success) so the CLI can propagate failures. */
 export async function runRemoteCliCommand(
   args: string[],
   out: CliOutput,
   config: KbConfig,
   mode: CmdMode,
-): Promise<void> {
+): Promise<number> {
   if (isIntentCommand(args[0] ?? '')) {
-    await runRemoteIntentCommand(args, out, config, mode)
-    return
+    return await runRemoteIntentCommand(args, out, config, mode)
   }
 
   const client = createKbApiClient(resolveServerConnection(config))
@@ -71,14 +71,16 @@ export async function runRemoteCliCommand(
       out.error(result.output.startsWith('❌') ? result.output : `❌ ${result.output}`)
     }
   }
+  return result.exitCode
 }
 
+/** Returns the process exit code (0 = success, 1 = failure). */
 export async function runRemoteIntentCommand(
   args: string[],
   out: CliOutput,
   config: KbConfig,
   mode: CmdMode,
-): Promise<void> {
+): Promise<number> {
   const connection = resolveServerConnection(config)
   const client = createKbApiClient(connection)
   await client.connect()
@@ -86,13 +88,13 @@ export async function runRemoteIntentCommand(
   const parsed = parseIntentCommand(args)
   if (parsed.envelope.intent !== 'query_truth') {
     out.error('Remote mode supports `kb query` for intent commands.')
-    return
+    return 1
   }
 
   const question = getIntentQuestion(parsed).trim()
   if (!question) {
     out.error('Query text is required.')
-    return
+    return 1
   }
 
   const payload = parsed.envelope.payload
@@ -135,10 +137,12 @@ export async function runRemoteIntentCommand(
     if (verbose && typeof result.confidence === 'number') {
       printer.metadata('Confidence', result.confidence.toFixed(2))
     }
+    return 0
   } catch (error) {
     printer.stopSpinner()
     const message = error instanceof Error ? error.message : String(error)
     out.error(`❌ ${message}`)
+    return 1
   }
 }
 

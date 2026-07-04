@@ -328,8 +328,17 @@ export async function runMainWithOutput(
 ): Promise<void> {
   const firstArg = args[0]
 
-  if (shouldUseRemoteServer() && !isClientLocalCommand(args)) {
-    await runRemoteCliCommand(args, out, config, mode)
+  // Help and no-arg invocations are always answered locally — they must never require a
+  // running server. Everything else (that isn't a client-local command) forwards to kb-server
+  // in remote mode; a non-zero result becomes the process exit code so scripts/CI see failures.
+  if (
+    shouldUseRemoteServer() &&
+    !isClientLocalCommand(args) &&
+    args.length > 0 &&
+    !isHelpOnlyInvocation(args)
+  ) {
+    const code = await runRemoteCliCommand(args, out, config, mode)
+    if (code && mode === 'cli') process.exitCode = code
     return
   }
 
@@ -1207,4 +1216,9 @@ function isHelpOnlyInvocation(args: string[]): boolean {
   return args.includes('--help') || args.includes('-h') || args[0] === 'help' || args[1] === 'help'
 }
 
-main().catch(console.error)
+main().catch(error => {
+  // Connection errors and other thrown failures must exit non-zero so scripts/CI/eval can
+  // detect them. Print the clean message (KbConnectionError's message is the full hint).
+  console.error(error instanceof Error ? error.message : String(error))
+  process.exitCode = 1
+})

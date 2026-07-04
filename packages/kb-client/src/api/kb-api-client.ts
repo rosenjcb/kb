@@ -1,4 +1,4 @@
-import { formatApiError, throwConnectionError } from './connection-error.js'
+import { KbConnectionError, formatApiError, throwConnectionError } from './connection-error.js'
 import type { ServerConnection } from './types.js'
 import type {
   ApiErrorBody,
@@ -41,6 +41,9 @@ export class KbApiClient {
     try {
       return await this.health()
     } catch (error) {
+      // `request()` already wraps network failures into a KbConnectionError; don't wrap
+      // again (that duplicates the whole hint under a "Detail:" line).
+      if (error instanceof KbConnectionError) throw error
       throwConnectionError(this.connection, error)
     }
   }
