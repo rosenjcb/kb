@@ -35,7 +35,12 @@ paths:
       security: []
       responses:
         "200":
-          description: Service is ready
+          description: Service is ready to serve queries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Bootstrap indexing in progress, bootstrap failed, or index not yet present
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Health" }
@@ -44,11 +49,16 @@ paths:
     get:
       tags: [health]
       summary: Liveness / readiness probe alias
-      description: Alias of `/health`.
+      description: Alias of `/health`. Returns HTTP 503 until the on-disk index is ready.
       security: []
       responses:
         "200":
-          description: Service is ready
+          description: Service is ready to serve queries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Bootstrap indexing in progress, bootstrap failed, or index not yet present
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Health" }
@@ -345,6 +355,11 @@ components:
           description: When false, skip LLM synthesis and return facts only.
         verbose:
           type: boolean
+        trace:
+          type: boolean
+          description: >
+            When true, write an opt-in deep retrieval trace dump on the server
+            (`KB_HOME/traces`) and return its path as `traceFile` in the response.
       description: Requires `q` (or `query`).
 
     QuerySource:
@@ -380,6 +395,9 @@ components:
         confidence:
           type: number
           format: float
+        traceFile:
+          type: string
+          description: Server path to the deep trace dump when `trace: true` was requested.
 
     ChatRequest:
       type: object

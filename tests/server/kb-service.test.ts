@@ -82,9 +82,27 @@ describe('createKbService', () => {
     })
 
     const health = service.health()
-    expect(health.ok).toBe(true)
+    expect(health.ok).toBe(false)
     expect(health.indexing).toBe(true)
     expect(health.bootstrapProgress).toContain('catalog-service')
+    await service.close()
+  })
+
+                it('[TC-21] health reports not ready when bootstrap failed', async () => {
+    const baseDir = await makeBaseWithFacts()
+    const service = createKbService({
+      baseDir,
+      config: {} as KbConfig,
+      bootstrapState: {
+        indexing: false,
+        error: 'clone failed',
+        settled: Promise.resolve(),
+      },
+    })
+
+    const health = service.health()
+    expect(health.ok).toBe(false)
+    expect(health.bootstrapError).toBe('clone failed')
     await service.close()
   })
 })

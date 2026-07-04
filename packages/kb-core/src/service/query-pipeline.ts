@@ -44,6 +44,8 @@ export interface QueryPipelineParams {
    * MCP clients (which do their own reasoning) default to false; the REST API defaults to true.
    */
   synthesize?: boolean
+  /** Opt-in deep query trace (`kb query --trace`). */
+  trace?: boolean
 }
 
 /**
@@ -82,8 +84,15 @@ export async function runQueryPipeline(
     },
     verbose: params.verbose,
     allFacts,
+    trace: params.trace,
   }
 
+  const prevTraceEnv = process.env.KB_QUERY_TRACE
+  if (params.trace) {
+    process.env.KB_QUERY_TRACE = 'true'
+  }
+
+  try {
   // Capture the pre-expansion question so synthesis/scaffold use the user's words,
   // not the graph-expanded retrieval payload.
   const synthesisQuestion = getIntentQuestion(parsed).trim() || query
@@ -150,4 +159,10 @@ export async function runQueryPipeline(
   }
 
   return aligned
+  } finally {
+    if (params.trace) {
+      if (prevTraceEnv === undefined) process.env.KB_QUERY_TRACE = undefined
+      else process.env.KB_QUERY_TRACE = prevTraceEnv
+    }
+  }
 }

@@ -28,6 +28,7 @@ export interface QueryRequest {
   discovery?: 'shallow' | 'deep'
   synthesize?: boolean
   verbose?: boolean
+  trace?: boolean
 }
 
 export interface QuerySource {
@@ -44,6 +45,7 @@ export interface QueryResponse {
   results: QuerySource[]
   retrieval?: { method?: string; detail?: string }
   confidence?: number
+  traceFile?: string
 }
 
 export interface ChatRequest {

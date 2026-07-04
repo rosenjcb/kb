@@ -104,6 +104,7 @@ export async function runRemoteIntentCommand(
     discoveryDepth === 'shallow' || discoveryDepth === 'deep' ? discoveryDepth : undefined
   const type = typeof payload.type === 'string' ? payload.type : undefined
   const verbose = parsed.verbose === true
+  const trace = parsed.trace === true
 
   const printer = createPrinter(out, mode)
   printer.startSpinner('querying kb server...')
@@ -115,6 +116,7 @@ export async function runRemoteIntentCommand(
       discovery,
       type,
       verbose,
+      trace,
     })
     printer.stopSpinner()
     if (result.answer?.trim()) {
@@ -136,6 +138,9 @@ export async function runRemoteIntentCommand(
     }
     if (verbose && typeof result.confidence === 'number') {
       printer.metadata('Confidence', result.confidence.toFixed(2))
+    }
+    if (result.traceFile) {
+      out.log(`[kb] query trace written on server: ${result.traceFile}`)
     }
     return 0
   } catch (error) {

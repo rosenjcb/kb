@@ -24,6 +24,8 @@ export interface QueryResponseBody {
     detail?: string
   }
   confidence?: number
+  /** Server-side path to the deep trace dump when `trace: true` was requested. */
+  traceFile?: string
 }
 
 const SNIPPET_MAX_CHARS = 280
@@ -74,5 +76,6 @@ export function serializeQueryResult(result: IntentResult): QueryResponseBody {
       detail: data.retrieval?.detail,
     },
     ...(typeof result.confidence === 'number' ? { confidence: result.confidence } : {}),
+    ...(typeof data.traceFile === 'string' && data.traceFile ? { traceFile: data.traceFile } : {}),
   }
 }

@@ -74,6 +74,8 @@ export interface QueryResponse {
    * writes it to disk and strips it before returning, so it never reaches synthesis.
    */
   trace?: QueryTraceLane
+  /** Path to the written trace dump when tracing is enabled. */
+  traceFile?: string
 }
 
 export class FactsDocumentReader {
@@ -251,14 +253,17 @@ export class FactsDocumentReader {
         lanes,
         ...(record ? { curation: buildCurationTrace(record, lanes, curated.results.length) } : {}),
       }
+      let traceFile: string | undefined
       try {
-        const file = await writeQueryTrace(defaultTracesDir(), dump)
-        process.stderr.write(`[kb] query trace written: ${file}\n`)
+        traceFile = await writeQueryTrace(defaultTracesDir(), dump)
+        process.stderr.write(`[kb] query trace written: ${traceFile}\n`)
       } catch (err) {
         process.stderr.write(
           `[kb] Warning: could not write query trace: ${err instanceof Error ? err.message : String(err)}\n`
         )
       }
+      const { trace: _trace, ...rest } = curated
+      return traceFile ? { ...rest, traceFile } : rest
     }
     const { trace: _trace, ...rest } = curated
     return rest
