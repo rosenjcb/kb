@@ -166,4 +166,27 @@ describe('evaluateChangesetConsistency', () => {
       result.errors.some(e => e.includes('@kb/core source changed but its version was not bumped'))
     ).toBe(true)
   })
+
+  it('[TC-15] accepts a brand-new package with no base version on main', () => {
+    const result = evaluateChangesetConsistency({
+      changedFiles: ['packages/kb-core/src/service/kb-service.ts'],
+      pendingChangesets: [],
+      kbClient: NO_BUMP,
+      kbCore: { base: null, head: '1.1.0' },
+      kbServer: NO_BUMP,
+    })
+    expect(result.ok).toBe(true)
+    expect(result.notes.some(n => n.includes('@kb/core introduced at 1.1.0'))).toBe(true)
+  })
+
+  it('[TC-16] allows pre-1.0 → 1.x stable cut in one PR', () => {
+    const result = evaluateChangesetConsistency({
+      changedFiles: ['packages/kb-client/src/cli/index.ts'],
+      pendingChangesets: [],
+      kbClient: { base: '0.21.0', head: '1.1.1' },
+      kbCore: NO_BUMP,
+      kbServer: NO_BUMP,
+    })
+    expect(result.ok).toBe(true)
+  })
 })

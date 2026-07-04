@@ -50,6 +50,21 @@ Command detail → [`src/cli/CLI.md`](./src/cli/CLI.md).
 
 Env overrides: `KBHOST`, `KBPORT`, `KB_SERVER_URL`, `KB_SERVER_API_KEY`. See `server-connection.ts`.
 
+### Remote server (Docker / shared host)
+
+1. Run `kb-server` where the index should live (Docker, VM, k8s) — [`../kb-server/README.md`](../kb-server/README.md).
+2. On your machine, set the connection profile:
+
+```bash
+export KB_SERVER_URL=http://<host>:8080    # or https://…
+export KB_SERVER_API_KEY=<token matching the server>
+# or: kb config set server.host … / server.port … / server.apiKey …
+```
+
+3. Use `kb` as usual — `query`, `init`, `scan`, TUI all hit the remote server.
+
+`KB_SERVER_URL` wins over `KBHOST`/`KBPORT`. Use it for HTTPS or when host and port are awkward to split.
+
 ## Local vs remote
 
 | | Remote (default) | Local (`KB_LOCAL_MODE=true`) |

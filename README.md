@@ -38,6 +38,48 @@ Shared domain logic lives in `@kb/core`. User data stays in **`~/.kb`** (`KB_HOM
 
 Full map: [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md) · Client: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md) · Server: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md)
 
+## Connect the `kb` client to a server
+
+The **`kb` CLI is a thin client**. Indexing, retrieval, and LLM calls run on **`kb-server`** — on your laptop, in Docker, or on a shared host. Install `kb` locally, point it at the server, and every command (`query`, `init`, `scan`, chat/TUI) goes over HTTP.
+
+| What | Env var | Config key (`~/.kb/config.json`) |
+|------|---------|----------------------------------|
+| Full server URL (HTTPS, custom path) | `KB_SERVER_URL` | — |
+| Host + port | `KBHOST`, `KBPORT` | `server.host`, `server.port` |
+| API key (must match server) | `KB_SERVER_API_KEY` | `server.apiKey` |
+| Default base on that server | — | `server.base`, `activeBase` |
+
+Defaults: `localhost:8080`. Use **`KB_SERVER_URL`** when the server is HTTPS or you want one string instead of host + port.
+
+**Local server:**
+
+```bash
+kb-server start --with-mcp
+kb config set server.host localhost
+kb config set server.port 8080
+kb config set server.apiKey <same as KB_SERVER_API_KEY on the server>
+kb query "how does auth work?"
+```
+
+**Remote server (Docker, k8s, another machine):** run `kb-server` there (see [Run KB as a server](#-run-kb-as-a-server-docker)), then on your laptop:
+
+```bash
+# env — good for shells and CI
+export KB_SERVER_URL=http://kb.example.com:8080   # or https://kb.example.com
+export KB_SERVER_API_KEY=<token from the container / deploy>
+
+# or persist in ~/.kb/config.json
+kb config set server.host kb.example.com
+kb config set server.port 8080
+kb config set server.apiKey <token>
+
+kb query "how does auth work?"
+```
+
+The server owns the index (`KB_HOME`, `/data` in Docker). Bootstrap repos on the server (`KB_GIT_REPOS`, `kb-server.json`, or `kb init` through the connected client). Your client does not need a local clone of those repos.
+
+Connection profile detail: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md). Postgres-style analogy (`KBHOST` / `KBPORT`): [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md).
+
 ## ⚡ Quick Start
 
 ### 1) Install KB
@@ -103,16 +145,11 @@ From the TUI, type `/uninstall` (or `/uninstall --purge` to also wipe user data)
 
 ### 2) Start the server and configure the client
 
-**LLM keys and indexing run on the server.** Start it locally (or use Docker — see [Run KB as a server](#-run-kb-as-a-server-docker)):
+**LLM keys and indexing run on the server.** See [Connect the `kb` client to a server](#connect-the-kb-client-to-a-server) for local vs remote (Docker) setup. Quick local path:
 
 ```bash
 kb-server start --with-mcp
 # or: pnpm run server:start   # contributors, from repo root
-```
-
-Point the client at it in `~/.kb/config.json` (or env):
-
-```bash
 kb config set server.host localhost
 kb config set server.port 8080
 # kb config set server.apiKey <same as KB_SERVER_API_KEY on the server>
@@ -290,6 +327,10 @@ curl http://localhost:8080/healthz
 
 Full getting-started, config reference, and the `kb-server.json` manifest:
 **[`packages/kb-server/README.md`](packages/kb-server/README.md)**.
+
+**Client on your laptop, server in Docker:** expose port `8080`, set `KB_SERVER_API_KEY` on the
+container, then point local `kb` at it — see
+[Connect the `kb` client to a server](#connect-the-kb-client-to-a-server) in this README.
 
 **Slack bot:** point a Slack workspace at the same `kb-server` daemon so people can ask
 `@kb <question>` in channels. Slack handling now runs inside `kb-server` itself; enable

@@ -54,7 +54,19 @@ function listPendingChangesets() {
 }
 
 function readVersionAt(ref, file) {
-  return JSON.parse(git(`show ${ref}:${file}`)).version
+  try {
+    return JSON.parse(git(`show ${ref}:${file}`)).version
+  } catch {
+    // Monorepo migration: @kb/client lived at repo root before the split.
+    if (file === KB_CLIENT_PKG) {
+      try {
+        return JSON.parse(git(`show ${ref}:package.json`)).version
+      } catch {
+        return null
+      }
+    }
+    return null
+  }
 }
 
 function readHeadVersion(file) {
@@ -70,18 +82,22 @@ function parseSemver(version) {
   return parts
 }
 
-/**
- * Returns true only when `head` is exactly one semver step ahead of `base`:
- *   major+1 (with minor/patch reset to 0), minor+1 (with patch reset to 0), or patch+1.
- */
 function isExactlyOneStep(base, head) {
   const [bMaj, bMin, bPat] = parseSemver(base)
   const [hMaj, hMin, hPat] = parseSemver(head)
   return (
-    (hMaj === bMaj + 1 && hMin === 0       && hPat === 0      ) || // major bump
-    (hMaj === bMaj     && hMin === bMin + 1 && hPat === 0      ) || // minor bump
-    (hMaj === bMaj     && hMin === bMin     && hPat === bPat + 1)    // patch bump
+    (hMaj === bMaj + 1 && hMin === 0 && hPat === 0) || // major bump
+    (hMaj === bMaj && hMin === bMin + 1 && hPat === 0) || // minor bump
+    (hMaj === bMaj && hMin === bMin && hPat === bPat + 1) // patch bump
   )
+}
+
+/** One semver step, or pre-1.0 → any 1.x (monorepo / stable-cut PRs). */
+function isValidVersionBump(base, head) {
+  if (isExactlyOneStep(base, head)) return true
+  const [bMaj] = parseSemver(base)
+  const [hMaj] = parseSemver(head)
+  return bMaj === 0 && hMaj === 1
 }
 
 export function evaluateChangesetConsistency(input) {
@@ -127,15 +143,22 @@ export function evaluateChangesetConsistency(input) {
 
   const requireBump = (changedFlag, name, versions) => {
     if (!changedFlag) return
+    if (versions.base === null) {
+      if (!versions.head) {
+        errors.push(`${name} introduced on this branch but has no version in ${name}.`)
+      } else {
+        notes.push(`${name} introduced at ${versions.head}`)
+      }
+      return
+    }
     if (versions.base === versions.head) {
       errors.push(
         `${name} source changed but its version was not bumped (still ${versions.base}). Create one pending \`.changeset/*.md\`, then run \`pnpm run changeset:version\`.`
       )
       return
     }
-    // Version was bumped — verify it moved by exactly one step.
     try {
-      if (!isExactlyOneStep(versions.base, versions.head)) {
+      if (!isValidVersionBump(versions.base, versions.head)) {
         errors.push(
           `${name} version jumped more than one step (${versions.base} → ${versions.head}). A PR may only bump a version by a single semver step. Check whether multiple changesets were applied at once or the version was edited by hand.`
         )

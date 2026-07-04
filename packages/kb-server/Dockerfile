@@ -16,8 +16,11 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@9
 # scripts/.nvmrc are needed by the `preinstall` hook (check-node-version.mjs).
-COPY package.json pnpm-lock.yaml .npmrc .nvmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc .nvmrc ./
 COPY scripts ./scripts
+COPY packages/kb-core/package.json packages/kb-core/
+COPY packages/kb-client/package.json packages/kb-client/
+COPY packages/kb-server/package.json packages/kb-server/
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm run build
