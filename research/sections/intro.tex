@@ -36,10 +36,10 @@ system that:
     SQLite store of atomic, citable facts via deterministic AST analysis and
     sentence-level fact extraction;
   \item[(2)] exposes those facts to LLM agents through a multi-pond BFS
-    retrieval loop that merges lexical (BM25), semantic (embedding), and
-    graph-walk evidence streams, then a judge-in-the-loop \emph{fact curator}
-    that hard-drops off-topic hits before one-shot synthesis---without manual
-    query engineering.
+    retrieval loop that merges lexical (BM25), semantic (embedding similarity
+    on stored vectors), and graph-walk evidence streams, then a judge-in-the-loop
+    \emph{fact curator} that hard-drops off-topic hits before one-shot
+    synthesis---without manual query engineering.
 \end{enumerate}
 
 Critically, KB's value is only as compelling as the evidence that it actually
@@ -61,8 +61,9 @@ contributions are:
 
 \begin{enumerate}
   \item \textbf{KB}: a facts-first codebase knowledge system with deterministic
-    AST indexing, a multi-pond hybrid retrieval orchestrator, and a
-    post-retrieval relevance curator that filters the fact pool before synthesis.
+    AST indexing, init-time fact embeddings for semantic scoring, a multi-pond
+    hybrid retrieval orchestrator, and a post-retrieval relevance curator that
+    filters the fact pool before synthesis.
 
   \item \textbf{MOEL}: a multi-objective evaluation framework comprising three
     normalized loss functions ($L_\text{jury}$, $L_\text{trajectory}$,

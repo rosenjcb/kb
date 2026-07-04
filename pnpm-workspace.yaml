@@ -36,7 +36,9 @@ allowBuilds:
   '@ast-grep/lang-yaml': false
   '@biomejs/biome': false
   esbuild: false
+  onnxruntime-node: true
   protobufjs: false
+  sharp: false
   tree-sitter-bash: false
   tree-sitter-c: false
   tree-sitter-c-sharp: false

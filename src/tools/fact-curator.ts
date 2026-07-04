@@ -30,7 +30,9 @@ const DEFAULT_MIN_KEEP = 5
 // That is exactly the pathology that dumps 600–900 unpruned facts into synthesis on the largest
 // pools. Judge the top `JUDGE_MAX_CANDIDATES` by incoming (orchestrator) rank and hard-drop the
 // tail deterministically — the orchestrator already scored them, so its tail is the noise.
-const DEFAULT_MAX_JUDGE_CANDIDATES = 100
+const DEFAULT_MAX_JUDGE_CANDIDATES = process.env.KB_ABLATE_JUDGE_CAP
+  ? Number.parseInt(process.env.KB_ABLATE_JUDGE_CAP, 10)
+  : 100
 const JUDGE_SUMMARY_CHARS = 160
 const JUDGE_MAX_KEPT_CONTEXT = 25
 

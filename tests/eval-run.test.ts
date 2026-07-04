@@ -15,6 +15,7 @@ import {
   computeWeightedTokenTotal,
   conditionSideLabel,
   derivedBase,
+  resolveEvalInitPlan,
   formatScoreDelta,
   formatCompactTokens,
   formatDurationMs,
@@ -75,6 +76,32 @@ describe('derivedBase', () => {
   })
   it('[TC-163] sanitizes the suite id', () => {
     expect(derivedBase('My Suite!')).toBe('eval-my-suite')
+  })
+})
+
+describe('resolveEvalInitPlan', () => {
+  it('[TC-523] reuses an existing session when docs are present', () => {
+    expect(resolveEvalInitPlan({ hasDocs: true })).toEqual({
+      needsInit: false,
+      wipeBase: false,
+      evalMode: 'query',
+    })
+  })
+
+  it('[TC-524] force-init wipes the base and runs a full init', () => {
+    expect(resolveEvalInitPlan({ forceInit: true, hasDocs: true })).toEqual({
+      needsInit: true,
+      wipeBase: true,
+      evalMode: 'all',
+    })
+  })
+
+  it('[TC-525] missing docs still triggers init without a wipe', () => {
+    expect(resolveEvalInitPlan({ hasDocs: false })).toEqual({
+      needsInit: true,
+      wipeBase: false,
+      evalMode: 'all',
+    })
   })
 })
 

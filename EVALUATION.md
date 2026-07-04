@@ -48,7 +48,7 @@ For day-to-day kb architecture work on your checkout, use `--base dogfood` (sepa
 | `raylib` | Persistent agent comparison base — accumulates across tasks, never wiped | Permanent |
 | `dogfood` | kb's own architectural knowledge | Permanent |
 
-The `eval-{suiteId}` base is created automatically on first run and reused on subsequent runs. This means query quality improves over time as the session accumulates facts. Use `--force-init` to wipe and re-init the session from scratch if needed.
+The `eval-{suiteId}` base is created automatically on first run and reused on subsequent runs. This means query quality improves over time as the session accumulates facts. Use `--force-init` to delete the base and run a fresh `kb init` from scratch if needed.
 
 The `raylib` base is the KB that a KB-backed agent uses during real development work. Do not confuse it with `eval-raylib` — `raylib` accumulates task results, `eval-raylib` is the eval benchmark session.
 
@@ -193,7 +193,7 @@ pnpm run eval -- --suite kb --auto-score --skip-control
 Every run: `kb scan` on the snapshot clone, then 8× `kb query` (one-shot synthesis — see
 `src/core/QUERY_INTERNALS.md`), then control (unless skipped).
 
-To force a fresh init (e.g. after significant KB changes): `--force-init`.
+To force a fresh init (e.g. after significant KB changes): `--force-init` (runs `kb base delete --force`, then `kb init`).
 
 ### Phase 2: Review Artifacts
 
@@ -620,8 +620,9 @@ Agents should not invent their own artifact shape for future runs. If the schema
 **Primary comparison:** kb vs control in the **same** artifact (`comparison.*.delta_kb_minus_control`).
 Do not compare kb run A against control run B from different timestamps unless reproducing a regression.
 
-**Secondary (diagnostics only):** `pnpm run eval:trends -- --suite <name>` lists prior kb and control rows for
-the suite. Use trends to spot regressions in kb-side quality or token use — not as the headline verdict.
+**Secondary (diagnostics only):** every `pnpm run eval -- --suite <name>` run ends with an automatic
+trends summary listing prior kb and control rows for the suite (there is no separate `eval:trends` script).
+Use trends to spot regressions in kb-side quality or token use — not as the headline verdict.
 
 When comparing two kb-side iterations (e.g. synthesis changes):
 

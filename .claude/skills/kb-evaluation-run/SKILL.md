@@ -26,25 +26,35 @@ Do not invent a new scenario or JSON shape. Follow `EVALUATION.md` as the source
 
 ## Automated runner (single entry)
 
-From kb repo root (`pnpm run build` first):
+From kb repo root (`pnpm run build` first). There is **one** npm script — `eval`
+(`node scripts/eval-run.mjs`); everything else is a flag. Auto-scoring is **on by
+default** (disable with `--manual-score`). Each run reuses the derived base
+`eval-{suite}` when it already has docs (query-only) and inits it otherwise; pass
+`--force-init` to rebuild.
 
 ```bash
-# Canonical raylib disposable run + optional auto-score
-npm run eval:all -- --suite raylib [--auto-score]
+# Canonical raylib disposable run (inits eval-raylib if needed, then queries + auto-scores)
+pnpm run eval -- --suite raylib
 
-# Re-query only (existing base; no init)
-npm run eval:query -- --suite raylib --base <base> [--auto-score]
+# Re-query only: reuse the existing base (automatic when eval-raylib already has docs)
+pnpm run eval -- --suite raylib
+
+# Force a clean re-index even though the base exists
+pnpm run eval -- --suite raylib --force-init
 
 # Kb repo dogfood questions (not the raylib benchmark)
-npm run eval:all -- --suite kb [--auto-score]
+pnpm run eval -- --suite kb
 
 # Any git URL → shallow clone → init → generic eight questions
-npm run eval:all -- --suite generic --repo https://github.com/org/repo.git [--auto-score]
+pnpm run eval -- --suite generic --repo https://github.com/org/repo.git
+
+# kb-only run (skip the control-agent baseline)
+pnpm run eval -- --suite raylib --skip-control
 ```
 
-Implementation: `scripts/eval-run.mjs` (modes `all` | `query`, suites `raylib` | `kb` | `generic`). Repo URL resolves from suite YAML `repo_url`, with `--repo` as explicit override.
+Implementation: `scripts/eval-run.mjs` (flag-driven, suites `raylib` | `kb` | `generic`). Repo URL resolves from suite YAML `repo_url`, with `--repo` as explicit override.
 
-Flags: `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`, `--run-dir`, `--out`, `--scores-file`, `--auto-score`, `--skip-init`, `--hypothesis`, `--label`. See `EVALUATION.md` § Automated harvest.
+Flags: `--suite`, `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`, `--force-init`, `--skip-init` (+ `--run-dir`), `--out`, `--scores-file`, `--score-runs`, `--manual-score`, `--skip-control`, `--label`. Run `node scripts/eval-run.mjs --help` for the full list. See `EVALUATION.md` § Automated harvest.
 
 Artifacts default under `~/.kb/evaluations/<run-name>/`.
 
@@ -63,28 +73,24 @@ pnpm run research:build     # compile main.pdf
 Eval summary output distinguishes **suite** (e.g. `raylib`) from **condition**
 (K = `kb query`, N = control agent).
 
-## Comparing runs — always use eval:trends
+## Comparing runs — the trends summary is automatic
 
-`npm run eval:trends` is the canonical comparison tool. **Never write ad-hoc Python or bash scripts to compare run results.** It shows structural metrics (docs, entities, relationships, avg query result count) for every run, plus score columns when `--auto-score` was used.
-
-```bash
-# Compare all kb suite runs (structural + score trends)
-npm run eval:trends -- --suite kb
-
-# Compare all raylib suite runs
-npm run eval:trends -- --suite raylib [--limit 10]
-```
+Every `pnpm run eval` run **ends with a trends summary** across prior runs for the
+same suite — there is no separate `eval:trends` command. **Never write ad-hoc Python
+or bash scripts to compare run results;** read the summary the run prints, or re-read a
+prior run's `artifact.json`. The summary shows structural metrics (docs, entities,
+relationships, avg query result count) for every run, plus score columns when scoring ran.
 
 Output columns: `date | run | docs | ent | rels | res | use | pass | corr | src`
 
 - `docs` — documents written during init
 - `ent` / `rels` — semantic graph entities and relationships
 - `res` — average query result count (retrieval breadth proxy)
-- `use` / `pass` / `corr` — scored axes (populated only when `--auto-score` was used and scores are non-zero)
+- `use` / `pass` / `corr` — scored axes (populated only when scoring ran and scores are non-zero)
 
 Score deltas and sparkline trends are printed above the table. Structural deltas (first→latest, prev→latest) are always shown even without scoring.
 
-After every eval run, copy the artifact to `evaluation/runs/<label>.json` so it is visible in `eval:trends --source repo`.
+After every eval run, copy the artifact to `evaluation/runs/<label>.json` so it stays visible to future runs' trend summaries.
 
 ## Question sets
 

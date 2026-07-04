@@ -1,6 +1,6 @@
 {
   "name": "kb",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "TypeScript-based agent harness with LLM provider abstraction",
   "type": "module",
   "private": true,
@@ -83,6 +83,9 @@
     "tree-sitter-typescript": "^0.23.2",
     "web-tree-sitter": "^0.26.8",
     "zod": "^3.22.0"
+  },
+  "optionalDependencies": {
+    "@huggingface/transformers": "^4.2.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.8.0",

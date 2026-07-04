@@ -33,6 +33,7 @@ import {
   runRescanApplyOrchestrator,
 } from '../tools/rescan-apply-orchestrator'
 import { SqliteDocumentWriter } from '../tools/sqlite-document-writer'
+import { createEmbedder } from '../core/embeddings'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 import {
   type CodeIndexStats,
@@ -1015,13 +1016,28 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       }
     }
     if (!options.rescan) {
+      const embedder = createEmbedder()
       const reconcileIndexer = new SqliteKbIndexer({
         dbPath: path.join(baseDir, '.kb-index.sqlite'),
+        embedder,
       })
       try {
         const linked = reconcileIndexer.reconcileCrossRepoEdges()
         if (linked > 0) {
           options.progressSink?.(`[kb init] Linked ${linked} cross-repo edge(s).`)
+        }
+        // Real embeddings for semantic scoring. Best-effort: any failure (no embedder, offline,
+        // model unavailable) leaves the deterministic vectors in place, so init never blocks on it.
+        if (embedder) {
+          try {
+            const embedded = await reconcileIndexer.embedAllFacts()
+            if (embedded > 0) {
+              options.progressSink?.(`[kb init] Embedded ${embedded} fact(s) with ${embedder.modelId}.`)
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            options.progressSink?.(`[kb init] Embedding skipped (${message.slice(0, 80)}).`)
+          }
         }
       } finally {
         reconcileIndexer.close()
