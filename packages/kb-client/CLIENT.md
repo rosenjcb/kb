@@ -70,7 +70,7 @@ Indexing happens on the server via `KB_GIT_REPOS` — not `kb init` on the lapto
 | `kb query` / chat | `/v1/query`, `/v1/chat` | In-process `@kb/core` |
 | `docs`, `facts`, `graph`, … | `POST /v1/admin/cli` | In-process dispatch |
 | `init`, `scan` | **Not on client** | `@kb/core/ops` (eval/server only) |
-| `config`, `skills`, `sync`, `base use` | Client-only | Same |
+| `skills`, `sync`, `base use` | Client-only | Same |
 
 Eval harness uses `KB_LOCAL_MODE` + `scripts/eval-index.ts` until a live server takes queries.
 

@@ -16,7 +16,6 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '',
     'Core commands:',
     '  base        Manage KB bases (use, delete)',
-    '  config      Inspect or update persistent config',
     '  init        Build a KB from one or more git remotes',
     '  scan        Refresh a KB by re-indexing its tracked git repos',
     '  graph       Inspect or edit the knowledge graph',

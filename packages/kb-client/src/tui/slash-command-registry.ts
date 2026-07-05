@@ -26,7 +26,6 @@ export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
   { path: ['sync'], description: 'install the latest published KB release', contexts: ['idle'] },
   { path: ['uninstall'], description: 'remove the kb client binary and client runtime', contexts: ['idle'] },
   { path: ['skills'], description: 'manage agent skills', contexts: ['idle'] },
-  { path: ['config'], description: 'inspect or update config values', contexts: ['idle'] },
   { path: ['logs'], description: 'browse and compare run reports', contexts: ['idle'] },
   { path: ['session'], description: 'show session stats (turns, tokens, facts, timing)', contexts: ['idle'] },
   { path: ['help'], description: 'show available commands', contexts: ['idle'] },

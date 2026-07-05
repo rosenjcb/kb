@@ -68,9 +68,14 @@ Remote display: `host: hostname:port`. Local eval: `mode: local │ base: …`.
 
 Unreachable server → `KbConnectionError` with `kb-server start` and `--host` / env hints (`connection-error.ts`). **No silent fallback to local mode.**
 
-## Indexing is server-side
+## Indexing and configuration
 
-`kb init` / `kb scan` are **not** client commands. kb-server bootstraps from `KB_GIT_REPOS` and re-indexes on `KB_REINDEX_INTERVAL`. Client rejection copy: `INDEXING_SERVER_MANAGED_NOTICE` (`@kb/core/config/indexing-notice.ts`).
+| Concern | Where |
+|---|---|
+| Git clone, scan, reindex | **kb-server** — `KB_GIT_REPOS`, `KB_REINDEX_INTERVAL` |
+| Connection profile | **Environment** — `KB_HOST`, `KB_PORT`, `KB_SERVER_URL`, API keys |
+
+Operator guide copy lives in `INDEXING_SERVER_MANAGED_NOTICE` (`@kb/core/config/indexing-notice.ts`) when indexing setup is needed.
 
 ## Extension checklist
 

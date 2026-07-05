@@ -34,7 +34,7 @@ and rewrites `research/version.tex`. Do not hand-edit those version files.
 ## Boolean environment variables
 
 Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in
-`process.env.*`, `kb config`, or docs/examples. Use `true` and `false` only.
+`process.env.*` or docs/examples. Use `true` and `false` only.
 
 - Use `@kb/core/config/env-boolean` (`isEnvTrue`, `parseBooleanEnv`, etc.).
 - Docs/tests: `KB_LOCAL_MODE=true`, not `=1`.

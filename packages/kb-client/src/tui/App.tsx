@@ -53,7 +53,7 @@ function isOutputOnlyCommand(first: string, args: string[]): boolean {
   const known = new Set([
     'query', 'submit', 'invalidate',
     'facts', 'graph', 'docs',
-    'base', 'config', 'logs', 'skills', 'publish', 'sync',
+    'base', 'logs', 'skills', 'publish', 'sync',
   ])
   return known.has(first)
 }
@@ -256,7 +256,7 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
           addEntry({ type: 'error', content: line })
         },
         setProgressLine(_line: string | null) {
-          // Init/scan progress UI removed — indexing is server-managed.
+          // Progress lines from server-side indexing are not shown in the client TUI.
         },
       }
 

@@ -21,7 +21,7 @@
     "server:docker:logs": "docker compose --env-file .env -f packages/kb-server/docker-compose.yml logs -f kb-server",
     "build": "pnpm -r --filter @kb/core --filter @kb/client --filter @kb/server run build",
     "build:core": "pnpm --filter @kb/core exec tsc --noEmit",
-    "install:global": "pnpm run build && bash scripts/install-global.sh",
+    "install:global": "bash scripts/install-global.sh",
     "uninstall:global": "bash scripts/uninstall-global.sh",
     "research:build": "cd research && latexmk -pdf -interaction=nonstopmode main.tex && echo '→ research/main.pdf'",
     "research:clean": "cd research && latexmk -C",

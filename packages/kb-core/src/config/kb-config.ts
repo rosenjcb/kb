@@ -307,7 +307,7 @@ export function assertLLMKeyAvailable(provider?: string): void {
             '  export ANTHROPIC_API_KEY=<your-key>   # Anthropic Claude\n' +
             '  export OPENAI_API_KEY=<your-key>       # OpenAI\n' +
             '  export GEMINI_API_KEY=<your-key>       # Google Gemini\n\n' +
-            'Then run `kb config llm` to set your preferred provider.'
+            'Optional: export KB_LLM_PROVIDER=anthropic|openai|gemini|ollama'
         )
       }
   }
@@ -332,7 +332,7 @@ export class LLMKeyMissingError extends Error {
             ? 'Google Gemini'
             : provider
     super(
-      `${envVar} is not set.\n\n${providerName} is configured as your LLM provider but the API key is missing.\n\nFix it:\n  export ${envVar}=<your-key>\n\nThen restart kb, or run \`kb config llm\` to switch providers.`
+      `${envVar} is not set.\n\n${providerName} is configured as your LLM provider but the API key is missing.\n\nFix it:\n  export ${envVar}=<your-key>\n\nOr set KB_LLM_PROVIDER to switch providers.`
     )
     this.name = 'LLMKeyMissingError'
   }
@@ -404,8 +404,8 @@ export function setConfigValue(_config: KbConfig, keyPath: string, _value: strin
   const envKey = envVarHint(keyPath)
   throw new Error(
     envKey
-      ? `Configuration is environment-only. Set ${envKey} in your shell profile instead of \`kb config set\`.`
-      : 'Configuration is environment-only. Use KB_* environment variables instead of `kb config set`.'
+      ? `Configuration is environment-only. Set ${envKey} in your shell profile.`
+      : 'Configuration is environment-only. Use KB_* environment variables.'
   )
 }
 
@@ -414,8 +414,8 @@ export function unsetConfigValue(_config: KbConfig, keyPath: string): KbConfig {
   const envKey = envVarHint(keyPath)
   throw new Error(
     envKey
-      ? `Configuration is environment-only. Unset ${envKey} in your shell profile instead of \`kb config unset\`.`
-      : 'Configuration is environment-only. Use KB_* environment variables instead of `kb config unset`.'
+      ? `Configuration is environment-only. Unset ${envKey} in your shell profile.`
+      : 'Configuration is environment-only. Use KB_* environment variables.'
   )
 }
 

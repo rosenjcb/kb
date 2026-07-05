@@ -109,7 +109,7 @@ export async function runServerCommandWithOutput(
     return 1
   }
 
-  if (firstArg === 'config' || firstArg === 'skills' || firstArg === 'uninstall' || firstArg === 'sync') {
+  if (firstArg === 'skills' || firstArg === 'uninstall' || firstArg === 'sync') {
     out.error(`\`${firstArg}\` runs on the kb client, not the server.`)
     return 1
   }

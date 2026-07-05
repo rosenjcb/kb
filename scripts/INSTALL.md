@@ -32,7 +32,7 @@ sequenceDiagram
 | Script | Purpose | Audience |
 |---|---|---|
 | `install-release.sh` | Fresh install from GitHub Releases (`kb-client-node24.tgz` + `kb-server-node24.tgz`; `--client-only` / `--server-only`) | End users |
-| `install-global.sh` | Symlink `packages/kb-client/dist/bin/kb` **and** `packages/kb-server/dist/bin/kb-server` into `$PNPM_HOME/bin` | Contributors |
+| `install-global.sh` | From a git checkout: `pnpm install`, `pnpm run build`, symlink `kb` + `kb-server` into `$PNPM_HOME/bin`, PATH hint | Contributors |
 | `uninstall-global.sh` | Remove dev symlinks and dist/ | Contributors |
 
 Consumer uninstall: `kb uninstall` → [`../packages/kb-client/src/cli/uninstall-cli.ts`](../packages/kb-client/src/cli/uninstall-cli.ts).
@@ -59,10 +59,17 @@ KB requires **Node 24.x**. `install-release.sh` bootstraps via nvm when missing.
 
 ## Dev install
 
+From the repo root (fresh clone or after pulling):
+
 ```bash
-pnpm run build && pnpm run install:global
+pnpm run install:global
 command -v kb kb-server
+kb --version && kb-server --version
 ```
+
+Runs, in order: Node version check → `pnpm install` → `pnpm run build` → symlinks into `$PNPM_HOME/bin` → PATH entry in your shell rc (if missing).
+
+Eval harvest (`pnpm run eval`) expects this checkout to stay intact — indexing runs via `scripts/eval-index.ts` with this tree's `node_modules`, not the cloned target repo under `~/.kb/evaluations/`.
 
 Both binaries required for local client-server dev.
 

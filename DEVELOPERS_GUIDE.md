@@ -8,21 +8,22 @@ You landed here because you're **working on the KB repo itself** — not just us
 
 ## First-time setup
 
+From a fresh clone, one command installs workspace deps, builds both binaries, and symlinks `kb` + `kb-server` into `$PNPM_HOME/bin`:
+
 ```bash
 git clone https://github.com/rosenjcb/kb.git && cd kb
-pnpm install
-pnpm run check          # format + lint (Biome)
-pnpm run build
-pnpm run install:global # symlinks kb + kb-server into $PNPM_HOME/bin
+pnpm run install:global
 ```
 
-Requirements: **Node 24+** (enforced by `preinstall`). The monorepo uses pnpm workspaces.
+That also satisfies eval harness prerequisites (`node_modules`, built `packages/kb-client/dist/bin/kb`, and `scripts/eval-index.ts` runnable via `pnpm exec tsx` from this checkout).
 
-For a release-style install without symlinks, build then use the same paths as end users:
+Requirements: **Node 24+** (checked by the script). The monorepo uses pnpm workspaces.
+
+Optional checks after install:
 
 ```bash
-pnpm run build
-bash scripts/install-global.sh
+pnpm run check          # format + lint (Biome)
+pnpm run unit:test
 ```
 
 Remove dev symlinks: `pnpm run uninstall:global` (prompts before deleting `~/.kb` data).

@@ -14,7 +14,7 @@ export function isClientLocalCommand(args: string[]): boolean {
   const command = args[0]
   if (!command) return false
   if (command === '--version' || command === '-v' || command === 'version') return true
-  if (command === 'config' || command === 'skills' || command === 'uninstall' || command === 'sync') {
+  if (command === 'skills' || command === 'uninstall' || command === 'sync') {
     return true
   }
   if (command === 'base' && args[1] === 'use') return true
@@ -54,13 +54,6 @@ export async function runRemoteCliCommand(
   config: KbConfig,
   mode: CmdMode,
 ): Promise<number> {
-  const command = args[0]
-  if (command === 'init' || command === 'scan') {
-    const { INDEXING_SERVER_MANAGED_NOTICE } = await import('@kb/core/config/indexing-notice.js')
-    out.error(INDEXING_SERVER_MANAGED_NOTICE)
-    return 1
-  }
-
   if (isIntentCommand(args[0] ?? '')) {
     return await runRemoteIntentCommand(args, out, config, mode)
   }

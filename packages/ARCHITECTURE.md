@@ -86,8 +86,7 @@ Server down → connection error + `kb-server start` hint (`connection-error.ts`
 ## Build
 
 ```bash
-pnpm run build          # kb + kb-server binaries
-pnpm run install:global # symlinks both into $PNPM_HOME/bin
+pnpm run install:global   # pnpm install + build + symlinks into $PNPM_HOME/bin
 ```
 
 ## Invariants

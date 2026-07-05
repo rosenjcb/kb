@@ -2,9 +2,9 @@
 /**
  * Eval harness indexing — calls @kb/core directly (kb init/scan removed from client CLI).
  *
- * Usage:
- *   npx tsx scripts/eval-index.ts init --base <name> --git <path> [--non-interactive] [--debug]
- *   npx tsx scripts/eval-index.ts scan --base <name> [--debug]
+ * Usage (from kb repo root, after pnpm install):
+ *   pnpm exec tsx scripts/eval-index.ts init --base <name> --git <path> [--non-interactive] [--debug]
+ *   pnpm exec tsx scripts/eval-index.ts scan --base <name> [--debug]
  */
 
 import { parseInitCommand, runKbInit } from '@kb/core/ops/init-cli.js'

@@ -31,7 +31,7 @@ Or type `kb` and **chat** with your knowledge base like you would with a teammat
 
 ## What it actually does
 
-**kb-server** owns indexing. Configure git repos on the server (`KB_GIT_REPOS`); it clones, scans code and docs (including OKF companions and `*.spec.md` behavioral specs), extracts facts, and re-indexes on a schedule. The **kb client** connects to that server — you never run init or scan yourself. One server can index many repos into shared bases so cross-service questions land in one place.
+**kb-server** owns indexing. Configure git repos on the server (`KB_GIT_REPOS`); it clones, scans code and docs (including OKF companions and `*.spec.md` behavioral specs), extracts facts, and re-indexes on a schedule. The **kb client** connects to that server to query and chat. One server can index many repos into shared bases so cross-service questions land in one place.
 
 From there you have two ways in:
 
@@ -205,7 +205,6 @@ kb base use --default <base>   — save persistent default
 kb base repo list|add|remove ...
 kb facts list|search|show ...
 kb graph ...
-kb config get | kb config llm
 kb skills install|uninstall
 kb-server start [--with-mcp]
 kb sync

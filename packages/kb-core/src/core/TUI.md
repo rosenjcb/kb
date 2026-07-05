@@ -151,7 +151,7 @@ For high-risk CLI changes, validate against a live kb-server with a disposable b
 Many commands need **exactly one** of these at a time, and errors must name the missing prerequisite clearly (never “A or B” when both matter):
 
 1. **Knowledge base** — an effective base (`config.activeBase` or `config.defaultBase`), or an explicit `--base <name>` on commands that support it.
-2. **LLM** — provider from `KB_LLM_PROVIDER` + environment keys (`kb config llm`).
+2. **LLM** — provider from `KB_LLM_PROVIDER` + environment API keys.
 
 Canonical user-facing strings live in `src/cli/cli-prerequisites.ts` (`CLI_ERROR_NO_KB_BASE`, `CLI_ERROR_NO_LLM_PROVIDER`, etc.). CLI and TUI should reuse them so `/query` and `kb query` behave the same as bare `kb` + slash commands.
 

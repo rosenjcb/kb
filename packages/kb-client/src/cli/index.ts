@@ -43,11 +43,9 @@ import {
 import {
   CLI_ERROR_NO_KB_BASE,
   formatPrerequisiteError,
-  INDEXING_SERVER_MANAGED_NOTICE,
   uninitializedBaseNotice,
 } from '@kb/core/config/cli-prerequisites.js'
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from '@kb/core/config/cmd-ref.js'
-import { printConfigHelp, runConfigCommand } from './config-cli'
 import {
   DocsDeleteError,
   parseDocsDeleteCommand,
@@ -179,7 +177,6 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '',
     'Core commands:',
     '  base        Manage KB bases (use, delete)',
-    '  config      Inspect config (environment variables)',
     '  graph       Inspect or edit the knowledge graph',
     '  docs        Browse KB documents',
     '  facts       List, search, or show KB facts',
@@ -272,12 +269,6 @@ export async function runMainWithOutput(
   sessionId?: string
 ): Promise<void> {
   const firstArg = args[0]
-
-  if (firstArg === 'init' || firstArg === 'scan') {
-    out.error(INDEXING_SERVER_MANAGED_NOTICE)
-    if (mode === 'cli') process.exitCode = 1
-    return
-  }
 
   // Help and no-arg invocations are always answered locally
   if (
@@ -467,25 +458,6 @@ export async function runMainWithOutput(
     }
 
     out.error(`Unknown base subcommand: ${subCmd}\n\n${printBaseHelp(mode)}`)
-    return
-  }
-
-  if (firstArg === 'config') {
-    try {
-      const result = await runConfigCommand(args.slice(1), {
-        isTTY: Boolean(process.stdout.isTTY),
-        mode,
-      })
-      out.log(result.output)
-      return
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      if (message.startsWith(printConfigHelp(mode).split('\n')[0])) {
-        out.log(message)
-        return
-      }
-      out.error(`❌ ${message}`)
-    }
     return
   }
 

@@ -29,9 +29,9 @@ Thin terminal front-end for kb. Taxonomy: [CLIENT.md](./CLIENT.md), [CONNECTION.
 | FR-3 | `KB_LOCAL_MODE=true` runs commands in-process (tests, eval) |
 | FR-4 | Remote mode forwards docs/facts/graph/logs/publish/base (except `use`) to `POST /v1/admin/cli` |
 | FR-5 | Remote query uses `POST /v1/query`; chat/TUI uses `POST /v1/chat` SSE |
-| FR-6 | Client-only: `config`, `skills`, `uninstall`, `sync`, `base use` |
-| FR-7 | `kb server` subcommand is not registered — daemon lifecycle is `kb-server` only |
-| FR-8 | `init` and `scan` are rejected on the client with server-managed indexing notice |
+| FR-6 | Client-only: `skills`, `uninstall`, `sync`, `base use` |
+| FR-7 | Daemon lifecycle uses the `kb-server` binary, not a `kb server` subcommand |
+| FR-8 | Git-repo indexing is configured on kb-server (`KB_GIT_REPOS`) |
 | FR-9 | Global `--host` overrides connection env for one invocation |
 | FR-10 | Connection context (`host` + `base`) is shown on CLI banner, TUI status bar, and chat open |
 

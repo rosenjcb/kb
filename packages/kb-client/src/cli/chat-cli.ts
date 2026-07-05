@@ -22,7 +22,6 @@ import { executeChatQueryTruthRetrieval } from '@kb/core/query/chat-query-orches
 import type { IntentResult } from '@kb/core/intents/types.js'
 import type { SlashInputContext } from '../tui/slash-command-registry.js'
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
-import { INDEXING_SERVER_MANAGED_NOTICE } from '@kb/core/config/indexing-notice.js'
 import {
   isReadFactsResult,
   printReadDocumentsOrchestrationFooter,
@@ -355,13 +354,6 @@ export async function runChatSession(
         continue
       }
 
-      const initOrScan = input.match(/^\/(init|scan)(\s|$)/i)
-      if (initOrScan) {
-        io.error(INDEXING_SERVER_MANAGED_NOTICE)
-        printer.separator()
-        continue
-      }
-
       if (input === '/help') {
         printer.chatAssistant(
           [
@@ -371,7 +363,6 @@ export async function runChatSession(
             '  /docs <list|view|generate|rename|delete> …',
             '  /facts [args]          List or search KB facts',
             '  /graph [args]          Inspect the knowledge graph',
-            '  /config [args]         View or update config',
             '  /publish [args]        Publish KB docs',
             '  /sync                  Install latest published KB',
             '  /logs [args]           Browse run reports',

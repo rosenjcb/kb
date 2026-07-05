@@ -23,7 +23,7 @@ describe('cmd', () => {
   })
 
   it('[TC-119] handles names with flags in tui mode', () => {
-    expect(cmd('config llm --show', 'tui')).toBe('/config llm --show')
+    expect(cmd('docs list --limit 5', 'tui')).toBe('/docs list --limit 5')
   })
 })
 

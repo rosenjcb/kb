@@ -89,7 +89,7 @@ describe('runCommandForTui', () => {
 
   it('[TC-65] returns empty string when runMainWithOutput produces no output', async () => {
     vi.mocked(runMainWithOutput).mockResolvedValue(undefined)
-    const result = await runCommandForTui(['config', 'get'], {} as never)
+    const result = await runCommandForTui(['skills', 'install'], {} as never)
     expect(result).toBe('')
   })
 

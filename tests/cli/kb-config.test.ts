@@ -6,11 +6,14 @@ import {
   DEFAULT_FEATURES,
   LLMKeyMissingError,
   assertLLMKeyAvailable,
+  createLLMProviderFromConfig,
   ensureDefaultConfig,
   isLLMConfigured,
+  listSupportedConfigPaths,
   normalizeKbConfig,
   persistInferredLLMProvider,
   readKbConfig,
+  resolveFactRetrievalMethod,
   resolveLLMProvider,
   writeDefaultConfig,
   writeKbConfig,
@@ -162,6 +165,45 @@ describe('persistInferredLLMProvider', () => {
     const config = await readKbConfig()
     const result = await persistInferredLLMProvider({ config })
     expect(result.notice).toBeUndefined()
+  })
+})
+
+describe('listSupportedConfigPaths', () => {
+  it('[TC-137] omits base-selection keys', () => {
+    const keys = listSupportedConfigPaths()
+    expect(keys).not.toContain('defaultBase')
+    expect(keys).toContain('server.host')
+    expect(keys).toContain('fact_retrieval_method')
+  })
+})
+
+describe('resolveFactRetrievalMethod', () => {
+  it('[TC-141] returns query_expansion by default', () => {
+    expect(resolveFactRetrievalMethod({})).toBe('query_expansion')
+  })
+
+  it('[TC-143] KB_FACT_RETRIEVAL_METHOD env override wins', () => {
+    process.env.KB_FACT_RETRIEVAL_METHOD = 'all_facts'
+    expect(resolveFactRetrievalMethod({})).toBe('all_facts')
+    delete process.env.KB_FACT_RETRIEVAL_METHOD
+  })
+})
+
+describe('createLLMProviderFromConfig', () => {
+  it('[TC-147] preserves gemini model override', () => {
+    process.env.GEMINI_API_KEY = 'test-gemini-key'
+    try {
+      const resolved = resolveLLMProvider({
+        llm: { provider: 'gemini', geminiModel: 'gemini-flash-latest' },
+      })
+      expect(resolved.model).toBe('gemini-flash-latest')
+      const provider = createLLMProviderFromConfig({
+        llm: { provider: 'gemini', geminiModel: 'gemini-flash-latest' },
+      })
+      expect(provider?.name).toBe('gemini')
+    } finally {
+      delete process.env.GEMINI_API_KEY
+    }
   })
 })
 

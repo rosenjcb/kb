@@ -37,7 +37,6 @@ See companion doc for full vocabulary where applicable.
 | FR-8 | Chat retrieval refusal surfaces when evidence is insufficient |
 | FR-9 | Command reference generation stays in sync with registered commands |
 | FR-10 | Init collects source files from configured git targets |
-| FR-11 | Config `get`/`llm` reflect environment-only settings |
 | FR-12 | Docs delete CLI removes documents with confirmation and index cleanup |
 | FR-13 | Docs generate CLI drives the document-generation pipeline |
 | FR-14 | Docs generate flow integrates questionnaire → draft → write |
@@ -54,7 +53,6 @@ See companion doc for full vocabulary where applicable.
 | FR-25 | Intent CLI parses query envelopes and routes to retrieval |
 | FR-26 | KB config loader merges defaults, file config, and env overrides |
 | FR-27 | kb.ignore patterns exclude paths from indexing |
-| FR-28 | LLM setup wizard guides provider and model configuration |
 | FR-29 | Logs CLI reads structured run reports from the logs directory |
 | FR-30 | Named-list interview parses numbered selections in TTY prompts |
 | FR-31 | Publish CLI pushes companion docs to configured publish targets |
@@ -198,21 +196,6 @@ See companion doc for full vocabulary where applicable.
 | TC-128 | FR-10 | skips excluded directories like node_modules | pass |
 | TC-129 | FR-10 | explores sibling directories at the same depth | pass |
 | TC-130 | FR-10 | respects an ignore matcher (prunes dirs and files) | pass |
-| TC-131 | FR-11 | Given get with no key, then returns normalized full config JSON | pass |
-| TC-132 | FR-11 | Given set, then throws environment-only error | pass |
-| TC-133 | FR-11 | Given read-only or unknown keys, then returns explicit errors | pass |
-| TC-134 | FR-11 | Given supported but unset key, then get returns explicit not-set error | pass |
-| TC-135 | FR-11 | Given KB_HOME and env vars, then get reflects env | pass |
-| TC-136 | FR-11 | Given config help, then it excludes base keys and mentions environment-only | pass |
-| TC-137 | FR-11 | Given supported config paths, then they omit base-selection keys | pass |
-| TC-138 | FR-11 | Given fact_retrieval_method via env, then get returns it | pass |
-| TC-141 | FR-11 | Given resolveFactRetrievalMethod, then it returns query_expansion by default | pass |
-| TC-143 | FR-11 | Given KB_FACT_RETRIEVAL_METHOD env override, then it wins over config | pass |
-| TC-145 | FR-11 | Given graph.enabled via env, then get returns the flag | pass |
-| TC-147 | FR-11 | Given gemini config with a model override, then provider resolution preserves the selected model | pass |
-| TC-148 | FR-11 | Given kb config llm --show with no keys set, then output warns about missing keys | pass |
-| TC-149 | FR-11 | Given kb config llm --show with a key set, then output shows it as set | pass |
-| TC-150 | FR-11 | Given kb config llm in non-TTY mode, then it falls back to show without prompting | pass |
 | TC-152 | FR-12 | Given a doc id, then parses it | pass |
 | TC-153 | FR-12 | Given --force flag, then sets force true | pass |
 | TC-154 | FR-12 | Given -f shorthand, then sets force true | pass |
@@ -398,6 +381,10 @@ See companion doc for full vocabulary where applicable.
 | TC-340 | FR-26 | prefers env var when provider is declared | pass |
 | TC-341 | FR-26 | auto-detects provider from env vars when no provider is declared | pass |
 | TC-344 | FR-26 | falls back to ollama when nothing is configured | pass |
+| TC-137 | FR-26 | supported config paths omit base-selection keys | pass |
+| TC-141 | FR-26 | resolveFactRetrievalMethod defaults to query_expansion | pass |
+| TC-143 | FR-26 | KB_FACT_RETRIEVAL_METHOD env override wins | pass |
+| TC-147 | FR-26 | gemini model override preserved in provider resolution | pass |
 | TC-345 | FR-26 | returns inferred provider notice when llm.provider is unset and env key exists | pass |
 | TC-346 | FR-26 | does not persist when KB_LLM_PROVIDER is already set | pass |
 | TC-347 | FR-26 | preserves createdAt on round-trip | pass |
@@ -416,15 +403,6 @@ See companion doc for full vocabulary where applicable.
 | TC-362 | FR-27 | normalizes backslashes and leading ./ in the tested path | pass |
 | TC-363 | FR-27 | merges base patterns with a .kbignore file at the repo root | pass |
 | TC-364 | FR-27 | works with no .kbignore present | pass |
-| TC-365 | FR-28 | shows provider from KB_LLM_PROVIDER when set | pass |
-| TC-366 | FR-28 | shows auto-detect when no provider configured | pass |
-| TC-367 | FR-28 | shows env var status for each provider | pass |
-| TC-368 | FR-28 | warns when no LLM key is configured | pass |
-| TC-370 | FR-28 | prints KB_LLM_PROVIDER hint when user picks anthropic | pass |
-| TC-373 | FR-28 | saves ollama when user picks 4 and marks configured=true | pass |
-| TC-374 | FR-28 | configured=false when provider key is absent | pass |
-| TC-378 | FR-28 | prints env var export hint when key is missing | pass |
-| TC-380 | FR-28 | re-prompts until the user enters a valid provider number | pass |
 | TC-381 | FR-29 | includes all three subcommands | pass |
 | TC-382 | FR-29 | documents --since flag | pass |
 | TC-383 | FR-29 | documents --base flag | pass |

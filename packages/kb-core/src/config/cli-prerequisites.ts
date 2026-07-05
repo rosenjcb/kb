@@ -16,7 +16,7 @@ export const CLI_ERROR_NO_KB_BASE =
 
 /** Shown when an LLM provider cannot be constructed from config + environment. */
 export const CLI_ERROR_NO_LLM_PROVIDER =
-  'No LLM provider available. Set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` in your environment, or run `kb config llm`.'
+  'No LLM provider available. Set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` in your environment (or `KB_LLM_PROVIDER` to pick one).'
 
 /** @deprecated Init is server-managed; retained for eval/internal callers only. */
 export const CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE =

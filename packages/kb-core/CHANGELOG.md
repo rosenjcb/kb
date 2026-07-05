@@ -10,7 +10,7 @@
 
 - Split uninstall: client-only vs `kb-server uninstall --purge`.
 - Fix TUI bundle esbuild banner, run telemetry token counts, and query pipeline logging.
-- Support client-side indexing removal and connection-context formatting for remote-only workflows.
+- Connection-context formatting for remote-only client workflows; env-only configuration messaging.
 
 ## 1.1.4
 

@@ -73,7 +73,7 @@ Monorepo layout → [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md).
 ## Boolean environment variables
 
 Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in
-`process.env.*`, `kb config`, or docs/examples. Use the strings `true` and
+`process.env.*` or docs/examples. Use the strings `true` and
 `false` only (lowercase when writing env vars).
 
 - Parse flags with `@kb/core/config/env-boolean` (`isEnvTrue`, `isEnvFalse`,

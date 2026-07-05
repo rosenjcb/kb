@@ -44,9 +44,7 @@ KB Agent │ host: localhost:38117 │ base: my-project
 - **Interactive** (`/docs generate`): stays on chat input; questionnaire via `ChatIO.read`.
 - **Chat turns** (no `/`): `runChatSession` with `ChatIO` adapter.
 
-`/init` and `/scan` are **not** registered — indexing is kb-server-managed.
-
-`normalizeSlashCommandArgs` strips leading `/` so argv matches CLI parsing.
+Registered slash commands mirror the CLI surface in [`slash-command-registry.ts`](slash-command-registry.ts).
 
 ## `ChatIO` bridge
 

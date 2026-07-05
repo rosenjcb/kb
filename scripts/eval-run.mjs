@@ -311,13 +311,13 @@ function kbEnv() {
 }
 
 /** Stream eval-index (core init/scan) stdout/stderr live and write transcript to logPath. */
-function evalIndexTee(cwd, mode, args, logPath) {
+function evalIndexTee(mode, args, logPath) {
   fs.mkdirSync(path.dirname(logPath), { recursive: true })
   const logFd = fs.openSync(logPath, 'w')
   const quotedArgs = args.replace(/"/g, '\\"')
   return new Promise((resolve, reject) => {
-    const child = spawn(`npx tsx "${EVAL_INDEX}" ${mode} ${quotedArgs}`, {
-      cwd,
+    const child = spawn(`pnpm exec tsx "${EVAL_INDEX}" ${mode} ${quotedArgs}`, {
+      cwd: KB_REPO,
       env: kbEnv(),
       shell: true,
       stdio: ['inherit', 'pipe', 'pipe'],
@@ -709,6 +709,10 @@ async function main() {
     )
     process.exit(1)
   }
+  if (!fs.existsSync(path.join(KB_REPO, 'node_modules'))) {
+    console.error('Missing node_modules — run: pnpm install (eval-index runs from this checkout, not the cloned target repo).')
+    process.exit(1)
+  }
 
   const runTiming = {
     commands: [],
@@ -752,7 +756,6 @@ async function main() {
         )
         await timedAsync('init', runTiming, () =>
           evalIndexTee(
-            targetCwd,
             'init',
             `--base ${base} --git "${targetCwd}" --non-interactive --debug`,
             initLogPath
@@ -770,7 +773,7 @@ async function main() {
       console.error(`[eval] eval-index scan --base ${base}`)
       const scanLogPath = path.join(workdir, 'scan.log')
       await timedAsync('scan', runTiming, () =>
-        evalIndexTee(targetCwd, 'scan', `--base ${base} --debug`, scanLogPath)
+        evalIndexTee('scan', `--base ${base} --debug`, scanLogPath)
       )
 
       console.error(`[eval] kb base use --default ${base} (client profile only — server base is "${base}")`)
