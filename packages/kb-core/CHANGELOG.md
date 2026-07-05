@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.1.4
+
+### Patch Changes
+
+- Standardize the default kb-server listen port to 38117 (CLI, Docker, client fallback, eval harness).
+
 ## 1.1.3
 
 ### Patch Changes

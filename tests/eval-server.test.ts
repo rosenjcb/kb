@@ -3,6 +3,7 @@ import {
   allocateFreePort,
   buildKbRemoteEnv,
   defaultEvalApiKey,
+  DEFAULT_KB_SERVER_PORT,
 } from '../scripts/eval-server.mjs'
 
 describe('eval-server helpers', () => {
@@ -27,9 +28,13 @@ describe('eval-server helpers', () => {
     }
   })
 
-  it('[TC-527] buildKbRemoteEnv derives URL from host and port', () => {
-    const env = buildKbRemoteEnv({ host: '127.0.0.1', port: 9090, apiKey: defaultEvalApiKey() })
-    expect(env.KB_SERVER_URL).toBe('http://127.0.0.1:9090')
+  it('[TC-529] DEFAULT_KB_SERVER_PORT is 38117', () => {
+    expect(DEFAULT_KB_SERVER_PORT).toBe(38117)
+  })
+
+  it('[TC-530] buildKbRemoteEnv derives URL from host and default port', () => {
+    const env = buildKbRemoteEnv({ host: '127.0.0.1', port: DEFAULT_KB_SERVER_PORT, apiKey: defaultEvalApiKey() })
+    expect(env.KB_SERVER_URL).toBe('http://127.0.0.1:38117')
   })
 
   it('[TC-528] allocateFreePort returns a positive integer', async () => {

@@ -46,7 +46,7 @@ flowchart LR
     SVC --> LLM
   end
 
-  SDK -->|"HTTP :8080"| HTTP
+  SDK -->|"HTTP :38117"| HTTP
   OPS --> DB["KB_HOME / sessions / .kb-index.sqlite"]
 ```
 

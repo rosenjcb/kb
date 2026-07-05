@@ -7,10 +7,10 @@ module.exports = {
       slackSigningSecret: 'test-signing-secret',
     },
     local: {
-      baseUrl: 'http://localhost:8080',
+      baseUrl: 'http://localhost:38117',
     },
     docker: {
-      baseUrl: 'http://localhost:8080',
+      baseUrl: 'http://localhost:38117',
     },
     prod: {
       baseUrl: 'https://kb-y47gkpkfuq-uc.a.run.app',

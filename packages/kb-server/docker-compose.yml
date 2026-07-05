@@ -31,10 +31,10 @@ services:
       dockerfile: packages/kb-server/Dockerfile
     image: kb-server
     ports:
-      - "${PORT:-8080}:8080"
+      - "${PORT:-38117}:38117"
     environment:
       KB_HOME: /data
-      PORT: "8080"
+      PORT: "38117"
       KB_BASE: "${KB_BASE:-demo}"
       # Set on first boot to clone + index a fresh base; can be cleared afterwards.
       KB_GIT_REPOS: "${KB_GIT_REPOS:-}"
@@ -61,7 +61,7 @@ services:
         - CMD
         - node
         - -e
-        - "fetch('http://localhost:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        - "fetch('http://localhost:38117/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 5

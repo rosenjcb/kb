@@ -13,6 +13,7 @@ import { runKbInit } from '@kb/core/ops/init-cli.js'
 import { getKbConfigDir, type KbConfig } from '@kb/core/config/kb-config.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
+import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
 import { type BootstrapPlan, resolveBootstrapPlan } from './server-bootstrap.js'
 import { createHttpServer } from './http-server.js'
 import { createKbService } from '@kb/core/service/kb-service.js'
@@ -25,7 +26,7 @@ export interface ServerLogger {
   error(message: string): void
 }
 
-const DEFAULT_PORT = 8080
+const DEFAULT_PORT = DEFAULT_KB_SERVER_PORT
 
 function readApiKeys(): string[] {
   return (process.env.KB_SERVER_API_KEY ?? '')

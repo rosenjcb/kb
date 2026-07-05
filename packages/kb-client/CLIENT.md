@@ -18,7 +18,7 @@ flowchart LR
   User["Terminal / TUI"]
   Index["cli/index.ts"]
   API["api/kb-api-client.ts"]
-  Srv["kb-server :8080"]
+  Srv["kb-server :38117"]
 
   User --> Index
   Index --> API
@@ -43,7 +43,7 @@ Command detail → [`src/cli/CLI.md`](./src/cli/CLI.md).
 
 ```json
 {
-  "server": { "host": "localhost", "port": 8080, "apiKey": "…", "base": "dogfood" },
+  "server": { "host": "localhost", "port": 38117, "apiKey": "…", "base": "dogfood" },
   "activeBase": "dogfood"
 }
 ```
@@ -56,7 +56,7 @@ Env overrides: `KBHOST`, `KBPORT`, `KB_SERVER_URL`, `KB_SERVER_API_KEY`. See `se
 2. On your machine, set the connection profile:
 
 ```bash
-export KB_SERVER_URL=http://<host>:8080    # or https://…
+export KB_SERVER_URL=http://<host>:38117    # or https://…
 export KB_SERVER_API_KEY=<token matching the server>
 # or: kb config set server.host … / server.port … / server.apiKey …
 ```

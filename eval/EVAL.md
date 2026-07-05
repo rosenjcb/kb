@@ -172,7 +172,7 @@ flowchart LR
 ## Client-server eval (1.0+)
 
 After the `@kb/client` / `@kb/server` split, **`kb query` defaults to remote mode** — it
-expects a live `kb-server` on `localhost:8080` (or `~/.kb/config.json` `server.host` /
+expects a live `kb-server` on `localhost:38117` (or `~/.kb/config.json` `server.host` /
 `server.port`). The harvest and MOEL harnesses **orchestrate `kb-server` automatically** via
 `scripts/eval-server.mjs` before the kb phase of each run.
 
@@ -196,7 +196,7 @@ explicitly. The harvest logs a one-line note when calling `kb base use --default
 Skip in-process server spawn when a pinned sidecar is already running:
 
 ```bash
-export KB_EVAL_SERVER_URL=http://localhost:8080
+export KB_EVAL_SERVER_URL=http://localhost:38117
 export KB_SERVER_API_KEY=your-bearer-token   # must match the sidecar
 pnpm run eval -- --suite kb --auto-score --skip-control
 ```
@@ -210,14 +210,14 @@ Ensure the sidecar was started with the same base the harness will use (e.g.
 |----------|------|
 | `KB_EVAL_SERVER_URL` | Attach to existing server (no spawn/stop) |
 | `KB_EVAL_SERVER_BIN` | Override `packages/kb-server/dist/bin/kb-server.js` |
-| `KB_EVAL_SERVER_PORT` | Pin port when spawning (default: ephemeral) |
+| `KB_EVAL_SERVER_PORT` | Pin port when spawning (default: 38117) |
 | `KB_EVAL_SERVER_API_KEY` | Bearer token for spawned server (default: `eval-local-key`) |
 | `KB_QUERY_TIMEOUT` | Client + server query timeout (e.g. `180s`; default 60s) |
 
 ### Health poll
 
 ```bash
-until curl -sf http://localhost:8080/healthz | jq -e '.ok == true' >/dev/null; do sleep 2; done
+until curl -sf http://localhost:38117/healthz | jq -e '.ok == true' >/dev/null; do sleep 2; done
 ```
 
 The harness uses the same readiness gate (two consecutive `ok: true` reads with `indexMtime`).

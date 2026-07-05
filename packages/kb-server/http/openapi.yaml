@@ -10,7 +10,7 @@ info:
     requests require a bearer API key (`KB_SERVER_API_KEY`); `/health` and
     `/healthz` are open.
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:38117
     description: Local / Docker
   - url: https://kb-server.example.com
     description: Hosted deployment

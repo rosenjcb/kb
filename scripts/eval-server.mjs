@@ -19,6 +19,8 @@ const DEFAULT_HEALTH_TIMEOUT_MS = 30 * 60 * 1000
 const DEFAULT_LISTEN_TIMEOUT_MS = 60_000
 const POLL_INTERVAL_MS = 2000
 const DEFAULT_EVAL_API_KEY = 'eval-local-key'
+/** Match `@kb/core/config/kb-server-port` — standard kb-server listen port. */
+export const DEFAULT_KB_SERVER_PORT = 38117
 
 /** @returns {string} */
 export function defaultEvalServerBin() {
@@ -187,7 +189,7 @@ export async function startEvalServer({
   const resolvedPort =
     port ??
     (process.env.KB_EVAL_SERVER_PORT ? Number.parseInt(process.env.KB_EVAL_SERVER_PORT, 10) : null) ??
-    (await allocateFreePort(host))
+    DEFAULT_KB_SERVER_PORT
 
   if (!Number.isFinite(resolvedPort) || resolvedPort <= 0) {
     throw new Error(`[eval-server] invalid port: ${resolvedPort}`)

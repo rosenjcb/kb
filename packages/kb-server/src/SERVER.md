@@ -63,7 +63,7 @@ kb-server start --with-mcp
 **Claude Code** — Streamable HTTP at `POST /mcp`:
 
 ```bash
-claude mcp add --transport http -s user kb http://localhost:8080/mcp \
+claude mcp add --transport http -s user kb http://localhost:38117/mcp \
   --header "Authorization: Bearer ${KB_SERVER_API_KEY}"
 ```
 
@@ -77,7 +77,7 @@ cat > ~/.cursor/mcp.json <<'EOF'
 {
   "mcpServers": {
     "kb": {
-      "url": "http://localhost:8080/mcp",
+      "url": "http://localhost:38117/mcp",
       "headers": {
         "Authorization": "Bearer testkey"
       }

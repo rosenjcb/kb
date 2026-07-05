@@ -36,7 +36,7 @@ Distinct from `pnpm run unit:test` (Vitest, no Docker). Complements `tests/serve
 | `GEMINI_API_KEY` | `integration-mock-key` | Dummy |
 | `GEMINI_API_BASE_URL` | `http://llm-mock:8080` | WireMock sidecar DNS |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | cleared | Prevent auto-detect bypass |
-| `KB_TEST_BASE_URL` | `http://localhost:8080` | Host-side health + httpyac target |
+| `KB_TEST_BASE_URL` | `http://localhost:38117` | Host-side health + httpyac target |
 
 ## Health wait
 

@@ -28,7 +28,7 @@ RUN pnpm run build
 FROM node:24-slim AS runtime
 ENV NODE_ENV=production \
     HUSKY=0 \
-    PORT=8080 \
+    PORT=38117 \
     KB_HOME=/data
 WORKDIR /app
 # git is required to clone/pull repos during (re)indexing.
@@ -46,7 +46,7 @@ COPY packages/kb-client/package.json ./packages/kb-client/
 COPY packages/kb-core/package.json ./packages/kb-core/
 ENV NODE_PATH=/app/packages/kb-core/node_modules:/app/node_modules
 RUN mkdir -p /data
-EXPOSE 8080
+EXPOSE 38117
 # Serves /v1/* and (with --with-mcp) /mcp. Configure via env: KB_SERVER_API_KEY,
 # a provider key (e.g. GEMINI_API_KEY), KB_BASE, KB_GIT_REPOS, KB_REINDEX_INTERVAL.
 CMD ["node", "packages/kb-server/dist/bin/kb-server.js", "start", "--with-mcp"]

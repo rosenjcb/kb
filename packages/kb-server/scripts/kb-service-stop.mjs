@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const port = process.env.PORT || '8080'
+const port = process.env.PORT || '38117'
 
 function run(cmd, args, opts = {}) {
   return spawnSync(cmd, args, { cwd: pkgRoot, encoding: 'utf8', ...opts })
