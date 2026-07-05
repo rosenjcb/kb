@@ -30,7 +30,7 @@ async function setupDualInstall() {
   const clientRuntime = path.join(TMP_KB_HOME, 'runtime', 'client')
   const serverRuntime = path.join(TMP_KB_HOME, 'runtime', 'server')
   const sessionsDir = path.join(TMP_KB_HOME, 'sessions')
-  const configFile = path.join(TMP_KB_HOME, 'config.json')
+  const activeBaseFile = path.join(TMP_KB_HOME, 'state', 'active-base')
   const kbLink = path.join(binDir, 'kb')
   const serverLink = path.join(binDir, 'kb-server')
   const clientBin = path.join(clientRuntime, 'node_modules', '.bin', 'kb')
@@ -41,13 +41,14 @@ async function setupDualInstall() {
   await mkdir(path.dirname(clientBin), { recursive: true })
   await mkdir(path.dirname(serverBin), { recursive: true })
   await mkdir(sessionsDir, { recursive: true })
-  await writeFile(configFile, '{}')
+  await mkdir(path.dirname(activeBaseFile), { recursive: true })
+  await writeFile(activeBaseFile, 'demo\n')
   await writeFile(clientBin, '#!/bin/sh\n', 'utf8')
   await writeFile(serverBin, '#!/bin/sh\n', 'utf8')
   await symlink(clientBin, kbLink)
   await symlink(serverBin, serverLink)
 
-  return { binDir, clientRuntime, serverRuntime, sessionsDir, configFile, kbLink, serverLink }
+  return { binDir, clientRuntime, serverRuntime, sessionsDir, activeBaseFile, kbLink, serverLink }
 }
 
 beforeEach(() => {
@@ -63,7 +64,7 @@ afterEach(async () => {
 
 describe('performClientUninstall', () => {
   it('[TC-490] removes kb client only and keeps kb-server + server data', async () => {
-    const { kbLink, serverLink, clientRuntime, serverRuntime, sessionsDir, configFile } =
+    const { kbLink, serverLink, clientRuntime, serverRuntime, sessionsDir, activeBaseFile } =
       await setupDualInstall()
     const { out, lines } = makeOut()
 
@@ -79,13 +80,13 @@ describe('performClientUninstall', () => {
     await expect(access(serverLink)).resolves.toBeUndefined()
     await expect(access(serverRuntime)).resolves.toBeUndefined()
     await expect(access(sessionsDir)).resolves.toBeUndefined()
-    await expect(access(configFile)).resolves.toBeUndefined()
+    await expect(access(activeBaseFile)).resolves.toBeUndefined()
   })
 })
 
 describe('performServerUninstall', () => {
   it('[TC-537] without purge removes kb-server runtime only', async () => {
-    const { serverLink, serverRuntime, sessionsDir, configFile, kbLink } = await setupDualInstall()
+    const { serverLink, serverRuntime, sessionsDir, activeBaseFile, kbLink } = await setupDualInstall()
     const { out } = makeOut()
 
     await performServerUninstall({ purge: false }, out)
@@ -95,11 +96,11 @@ describe('performServerUninstall', () => {
     await expect(access(serverRuntime)).rejects.toThrow()
     await expect(access(kbLink)).resolves.toBeUndefined()
     await expect(access(sessionsDir)).resolves.toBeUndefined()
-    await expect(access(configFile)).resolves.toBeUndefined()
+    await expect(access(activeBaseFile)).resolves.toBeUndefined()
   })
 
   it('[TC-538] with purge removes server data but keeps kb client install', async () => {
-    const { serverLink, kbLink, clientRuntime, sessionsDir, configFile } = await setupDualInstall()
+    const { serverLink, kbLink, clientRuntime, sessionsDir, activeBaseFile } = await setupDualInstall()
     const { out } = makeOut()
 
     await performServerUninstall({ purge: true }, out)
@@ -107,7 +108,7 @@ describe('performServerUninstall', () => {
     const { access } = await import('node:fs/promises')
     await expect(access(serverLink)).rejects.toThrow()
     await expect(access(sessionsDir)).rejects.toThrow()
-    await expect(access(configFile)).rejects.toThrow()
+    await expect(access(activeBaseFile)).rejects.toThrow()
     await expect(access(kbLink)).resolves.toBeUndefined()
     await expect(access(clientRuntime)).resolves.toBeUndefined()
   })
@@ -141,7 +142,7 @@ describe('runServerUninstallCommand', () => {
 
     const { access } = await import('node:fs/promises')
     await expect(access(path.join(TMP_KB_HOME, 'sessions'))).rejects.toThrow()
-    await expect(access(path.join(TMP_KB_HOME, 'config.json'))).rejects.toThrow()
+    await expect(access(path.join(TMP_KB_HOME, 'state', 'active-base'))).rejects.toThrow()
   })
 })
 

@@ -172,8 +172,7 @@ flowchart LR
 ## Client-server eval (1.0+)
 
 After the `@kb/client` / `@kb/server` split, **`kb query` defaults to remote mode** — it
-expects a live `kb-server` on `localhost:38117` (or `~/.kb/config.json` `server.host` /
-`server.port`). The harvest and MOEL harnesses **orchestrate `kb-server` automatically** via
+expects a live `kb-server` on `localhost:38117` (or `KB_HOST` / `KB_PORT` / `KB_SERVER_URL`). The harvest and MOEL harnesses **orchestrate `kb-server` automatically** via
 `scripts/eval-server.mjs` before the kb phase of each run.
 
 ### Orchestration (default)

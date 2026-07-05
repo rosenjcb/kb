@@ -1,13 +1,19 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { createProvider } from '@kb/core/core/llm-provider.js'
 import {
   booleanEnvString,
-  parseBooleanConfigValue,
   parseBooleanEnv,
 } from '@kb/core/config/env-boolean.js'
+import { KB_ENV, envVarHint, readEnvHost, readEnvPort } from '@kb/core/config/kb-env.js'
+import {
+  migrateLegacyConfigJsonBases,
+  readActiveBaseName,
+  readDefaultBaseName,
+} from '@kb/core/storage/base-state.js'
 
 export type FactRetrievalMethod = 'query_expansion' | 'all_facts'
 
@@ -62,12 +68,25 @@ export function getKbConfigDir(): string {
   return override ? path.resolve(override) : path.join(os.homedir(), '.kb')
 }
 
+/** @internal Legacy path used only for one-time migration. */
 export function getKbConfigFile(): string {
   return path.join(getKbConfigDir(), 'config.json')
 }
 
+export function getClientFirstRunMarker(): string {
+  return path.join(getKbConfigDir(), '.client-initialized')
+}
+
+export function isFreshClientInstall(): boolean {
+  return !existsSync(getClientFirstRunMarker())
+}
+
+export async function markClientInitialized(): Promise<void> {
+  await mkdir(getKbConfigDir(), { recursive: true })
+  await writeFile(getClientFirstRunMarker(), `${dayjs().toISOString()}\n`, 'utf8')
+}
+
 export const KB_CONFIG_DIR = getKbConfigDir()
-export const KB_CONFIG_FILE = getKbConfigFile()
 
 const SUPPORTED_CONFIG_PATHS = [
   'server',
@@ -124,57 +143,126 @@ export const DEFAULT_FEATURES: Required<NonNullable<KbConfig['features']>> = {
   laneRouting: true,
 }
 
-export async function readKbConfig(configFile: string = getKbConfigFile()): Promise<KbConfig> {
+async function migrateLegacyConfigJsonOnce(): Promise<void> {
+  const legacyPath = path.join(getKbConfigDir(), 'config.json')
   try {
-    const raw = await readFile(configFile, 'utf8')
-    const parsed = JSON.parse(raw) as KbConfig
-    if (!parsed || typeof parsed !== 'object') {
-      return {}
-    }
-    return normalizeKbConfig(parsed)
+    await access(legacyPath)
   } catch {
-    return {}
+    return
   }
+  try {
+    const parsed = JSON.parse(await readFile(legacyPath, 'utf8')) as KbConfig
+    await migrateLegacyConfigJsonBases({
+      activeBase: parsed.activeBase,
+      defaultBase: parsed.defaultBase,
+    })
+  } catch {
+    await rm(legacyPath, { force: true }).catch(() => {})
+  }
+}
+
+function buildConfigFromEnv(bases: {
+  activeBase?: string
+  defaultBase?: string
+}): KbConfig {
+  const host = readEnvHost()
+  const config: KbConfig = {
+    features: { ...DEFAULT_FEATURES },
+    ...(bases.activeBase ? { activeBase: bases.activeBase } : {}),
+    ...(bases.defaultBase ? { defaultBase: bases.defaultBase } : {}),
+  }
+
+  if (
+    host ||
+    process.env.KB_SERVER_URL?.trim() ||
+    process.env.KB_SERVER_API_KEY?.trim() ||
+    process.env.KB_BASE?.trim() ||
+    process.env.KB_PORT?.trim() ||
+    process.env.KBPORT?.trim()
+  ) {
+    config.server = {
+      host: host ?? 'localhost',
+      port: readEnvPort(),
+      apiKey: process.env.KB_SERVER_API_KEY?.trim(),
+      base: process.env.KB_BASE?.trim(),
+    }
+  }
+
+  const llmProvider = process.env.KB_LLM_PROVIDER?.trim()
+  if (
+    llmProvider === 'anthropic' ||
+    llmProvider === 'openai' ||
+    llmProvider === 'gemini' ||
+    llmProvider === 'ollama'
+  ) {
+    config.llm = { provider: llmProvider }
+  }
+
+  if (process.env.NOTION_TOKEN?.trim() || process.env.NOTION_API_KEY?.trim()) {
+    config.notion = {
+      token: (process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY)?.trim(),
+    }
+  }
+  if (process.env.NOTION_PARENT_PAGE_ID?.trim()) {
+    config.notion = {
+      ...config.notion,
+      parentPageId: process.env.NOTION_PARENT_PAGE_ID.trim(),
+    }
+  }
+
+  if (process.env.GEMINI_MODEL?.trim()) {
+    config.llm = { ...config.llm, geminiModel: process.env.GEMINI_MODEL.trim() }
+  }
+  if (process.env.OPENAI_MODEL?.trim()) {
+    config.llm = { ...config.llm, openaiModel: process.env.OPENAI_MODEL.trim() }
+  }
+  if (process.env.OLLAMA_ENDPOINT?.trim()) {
+    config.llm = { ...config.llm, ollamaEndpoint: process.env.OLLAMA_ENDPOINT.trim() }
+  }
+  if (process.env.OLLAMA_EMBED_MODEL?.trim()) {
+    config.llm = { ...config.llm, ollamaEmbedModel: process.env.OLLAMA_EMBED_MODEL.trim() }
+  }
+
+  if (process.env.KB_FACT_RETRIEVAL_METHOD === 'all_facts') {
+    config.factRetrievalMethod = 'all_facts'
+  } else if (process.env.KB_FACT_RETRIEVAL_METHOD === 'query_expansion') {
+    config.factRetrievalMethod = 'query_expansion'
+  }
+
+  if (process.env.KB_GRAPH !== undefined) {
+    config.graph = { enabled: parseBooleanEnv(process.env.KB_GRAPH, false) }
+  }
+
+  if (process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL !== undefined) {
+    config.chat = {
+      experimentalConversationalRetrieval: parseBooleanEnv(
+        process.env.KB_CHAT_CONVERSATIONAL_RETRIEVAL,
+        false,
+      ),
+    }
+  }
+
+  return normalizeKbConfig(config)
+}
+
+export async function readKbConfig(_configFile?: string): Promise<KbConfig> {
+  await migrateLegacyConfigJsonOnce()
+  return buildConfigFromEnv({
+    activeBase: await readActiveBaseName(),
+    defaultBase: await readDefaultBaseName(),
+  })
 }
 
 /**
  * Write a minimum viable config for first-time users.
  * All feature flags are enabled by default; notion/llm keys come from env vars.
  */
-export async function writeDefaultConfig(
-  configFile: string = getKbConfigFile()
-): Promise<KbConfig> {
-  const now = dayjs().toISOString()
-  const defaults: KbConfig = {
-    features: { ...DEFAULT_FEATURES },
-    createdAt: now,
-    updatedAt: now,
-  }
-  await mkdir(path.dirname(configFile), { recursive: true })
-  await writeFile(configFile, `${JSON.stringify(defaults, null, 2)}\n`, 'utf8')
-  return defaults
+export async function writeDefaultConfig(): Promise<KbConfig> {
+  return readKbConfig()
 }
 
-/**
- * Merge default feature flags into an existing config without overwriting user-set values.
- * Preserves all existing config; fills in only missing feature keys.
- */
-export async function ensureDefaultConfig(
-  configFile: string = getKbConfigFile()
-): Promise<KbConfig> {
-  const existing = await readKbConfig(configFile)
-  const isNew = Object.keys(existing).length === 0
-
-  if (isNew) {
-    return writeDefaultConfig(configFile)
-  }
-
-  const mergedFeatures: KbConfig['features'] = { ...DEFAULT_FEATURES, ...existing.features }
-  const next: KbConfig = { ...existing, features: mergedFeatures }
-  if (!existing.createdAt) next.createdAt = existing.updatedAt ?? dayjs().toISOString()
-
-  await writeKbConfig(next, configFile)
-  return next
+export async function ensureDefaultConfig(): Promise<KbConfig> {
+  return readKbConfig()
 }
 
 /** Returns true if at least one LLM key is present in env (after applyConfigToEnv has run). */
@@ -252,16 +340,9 @@ export class LLMKeyMissingError extends Error {
 
 export async function writeKbConfig(
   config: KbConfig,
-  configFile: string = getKbConfigFile()
+  _configFile?: string
 ): Promise<KbConfig> {
-  const normalized = normalizeKbConfig({
-    ...config,
-    updatedAt: dayjs().toISOString(),
-  })
-
-  await mkdir(path.dirname(configFile), { recursive: true })
-  await writeFile(configFile, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8')
-  return normalized
+  return normalizeKbConfig(config)
 }
 
 export function listSupportedConfigPaths(): readonly SupportedConfigPath[] {
@@ -318,122 +399,24 @@ export function getConfigValue(config: KbConfig, keyPath?: string): unknown {
   }
 }
 
-export function setConfigValue(config: KbConfig, keyPath: string, value: string): KbConfig {
+export function setConfigValue(_config: KbConfig, keyPath: string, _value: string): KbConfig {
   assertSupportedConfigPath(keyPath)
-  if (keyPath === 'updatedAt') throw new ReadOnlyConfigKeyError(keyPath)
-
-  const next = normalizeKbConfig(config)
-  switch (keyPath) {
-    case 'fact_retrieval_method':
-      if (value !== 'query_expansion' && value !== 'all_facts') {
-        throw new Error('fact_retrieval_method must be one of: query_expansion, all_facts')
-      }
-      next.factRetrievalMethod = value as FactRetrievalMethod
-      break
-    case 'graph':
-      throw new Error('INVALID_CONFIG_WRITE: graph requires a nested key such as graph.enabled')
-    case 'graph.enabled':
-      next.graph = { ...next.graph, enabled: parseBooleanConfigValue(keyPath, value) }
-      break
-    case 'notion':
-      throw new Error('INVALID_CONFIG_WRITE: notion requires a nested key such as notion.token')
-    case 'notion.token':
-      next.notion = { ...next.notion, token: value }
-      break
-    case 'notion.parentPageId':
-      next.notion = { ...next.notion, parentPageId: value }
-      break
-    case 'llm':
-      throw new Error('INVALID_CONFIG_WRITE: llm requires a nested key such as llm.provider')
-    case 'llm.provider':
-      if (!['anthropic', 'openai', 'gemini', 'ollama'].includes(value)) {
-        throw new Error('llm.provider must be one of: anthropic, openai, gemini, ollama')
-      }
-      next.llm = { ...next.llm, provider: value as NonNullable<KbConfig['llm']>['provider'] }
-      break
-    case 'llm.geminiModel':
-      next.llm = { ...next.llm, geminiModel: value }
-      break
-    case 'llm.ollamaEndpoint':
-      next.llm = { ...next.llm, ollamaEndpoint: value }
-      break
-    case 'llm.ollamaEmbedModel':
-      next.llm = { ...next.llm, ollamaEmbedModel: value }
-      break
-    case 'llm.openaiModel':
-      next.llm = { ...next.llm, openaiModel: value }
-      break
-    case 'server':
-      throw new Error('INVALID_CONFIG_WRITE: server requires a nested key such as server.host')
-    case 'server.host':
-      next.server = { ...next.server, host: value }
-      break
-    case 'server.port': {
-      const port = Number.parseInt(value, 10)
-      if (!Number.isFinite(port) || port <= 0) throw new Error('server.port must be a positive integer')
-      next.server = { ...next.server, port }
-      break
-    }
-    case 'server.apiKey':
-      next.server = { ...next.server, apiKey: value }
-      break
-    case 'server.base':
-      next.server = { ...next.server, base: value }
-      break
-    default:
-      throw new UnknownConfigKeyError(keyPath)
-  }
-
-  return normalizeKbConfig(next)
+  const envKey = envVarHint(keyPath)
+  throw new Error(
+    envKey
+      ? `Configuration is environment-only. Set ${envKey} in your shell profile instead of \`kb config set\`.`
+      : 'Configuration is environment-only. Use KB_* environment variables instead of `kb config set`.'
+  )
 }
 
-export function unsetConfigValue(config: KbConfig, keyPath: string): KbConfig {
+export function unsetConfigValue(_config: KbConfig, keyPath: string): KbConfig {
   assertSupportedConfigPath(keyPath)
-  if (keyPath === 'updatedAt') throw new ReadOnlyConfigKeyError(keyPath)
-
-  const next = normalizeKbConfig(config)
-  switch (keyPath) {
-    case 'fact_retrieval_method':
-      next.factRetrievalMethod = undefined
-      break
-    case 'graph':
-      next.graph = undefined
-      break
-    case 'graph.enabled':
-      if (next.graph) next.graph.enabled = undefined
-      break
-    case 'notion':
-      next.notion = undefined
-      break
-    case 'notion.token':
-      if (next.notion) next.notion.token = undefined
-      break
-    case 'notion.parentPageId':
-      if (next.notion) next.notion.parentPageId = undefined
-      break
-    case 'llm':
-      next.llm = undefined
-      break
-    case 'llm.provider':
-      if (next.llm) next.llm.provider = undefined
-      break
-    case 'llm.geminiModel':
-      if (next.llm) next.llm.geminiModel = undefined
-      break
-    case 'llm.ollamaEndpoint':
-      if (next.llm) next.llm.ollamaEndpoint = undefined
-      break
-    case 'llm.ollamaEmbedModel':
-      if (next.llm) next.llm.ollamaEmbedModel = undefined
-      break
-    case 'llm.openaiModel':
-      if (next.llm) next.llm.openaiModel = undefined
-      break
-    default:
-      throw new UnknownConfigKeyError(keyPath)
-  }
-
-  return normalizeKbConfig(next)
+  const envKey = envVarHint(keyPath)
+  throw new Error(
+    envKey
+      ? `Configuration is environment-only. Unset ${envKey} in your shell profile instead of \`kb config unset\`.`
+      : 'Configuration is environment-only. Use KB_* environment variables instead of `kb config unset`.'
+  )
 }
 
 // ─── LLM resolution ───────────────────────────────────────────────────────────
@@ -452,6 +435,31 @@ export interface ResolvedLLM {
  */
 export function resolveLLMProvider(config: KbConfig): ResolvedLLM {
   const llm = config.llm
+  const envProvider = process.env.KB_LLM_PROVIDER?.trim()
+  if (
+    envProvider === 'anthropic' ||
+    envProvider === 'openai' ||
+    envProvider === 'gemini' ||
+    envProvider === 'ollama'
+  ) {
+    switch (envProvider) {
+      case 'anthropic':
+        return { provider: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY }
+      case 'openai':
+        return { provider: 'openai', apiKey: process.env.OPENAI_API_KEY }
+      case 'gemini':
+        return {
+          provider: 'gemini',
+          apiKey: process.env.GEMINI_API_KEY,
+          model: llm?.geminiModel,
+        }
+      case 'ollama':
+        return {
+          provider: 'ollama',
+          endpoint: llm?.ollamaEndpoint ?? process.env.OLLAMA_ENDPOINT ?? 'http://localhost:11434',
+        }
+    }
+  }
 
   // Explicit provider declared — check its env var first.
   if (llm?.provider) {
@@ -526,10 +534,8 @@ export interface PersistedLLMProviderResult {
  */
 export async function persistInferredLLMProvider(options: {
   config: KbConfig
-  configFile?: string
 }): Promise<PersistedLLMProviderResult> {
-  const configFile = options.configFile ?? getKbConfigFile()
-  const current = options.config.llm?.provider
+  const current = options.config.llm?.provider ?? process.env.KB_LLM_PROVIDER?.trim()
   if (current) {
     return { config: options.config }
   }
@@ -548,13 +554,6 @@ export async function persistInferredLLMProvider(options: {
     return { config: options.config }
   }
 
-  const next: KbConfig = {
-    ...options.config,
-    llm: { ...options.config.llm, provider: inferred },
-  }
-
-  const saved = await writeKbConfig(next, configFile)
-
   const envVar =
     inferred === 'anthropic'
       ? 'ANTHROPIC_API_KEY'
@@ -566,8 +565,11 @@ export async function persistInferredLLMProvider(options: {
 
   const because = envVar ? ` (detected ${envVar})` : ' (detected OLLAMA_ENDPOINT)'
   return {
-    config: saved,
-    notice: `ℹ Auto-selected LLM provider: ${inferred}${because}. Saved to ${configFile}.`,
+    config: {
+      ...options.config,
+      llm: { ...options.config.llm, provider: inferred },
+    },
+    notice: `ℹ Auto-selected LLM provider: ${inferred}${because}. Optional: export ${KB_ENV.LLM_PROVIDER}=${inferred}`,
   }
 }
 
@@ -707,6 +709,15 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
 
   if (defaultBase) {
     normalized.defaultBase = defaultBase
+  }
+
+  if (input.server && typeof input.server === 'object') {
+    const server: NonNullable<KbConfig['server']> = {}
+    if (input.server.host?.trim()) server.host = input.server.host.trim()
+    if (input.server.port !== undefined) server.port = Number(input.server.port)
+    if (input.server.apiKey?.trim()) server.apiKey = input.server.apiKey.trim()
+    if (input.server.base?.trim()) server.base = input.server.base.trim()
+    if (Object.keys(server).length > 0) normalized.server = server
   }
 
   if (input.factRetrievalMethod === 'query_expansion' || input.factRetrievalMethod === 'all_facts') {

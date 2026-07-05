@@ -39,31 +39,30 @@ Command detail → [`src/cli/CLI.md`](./src/cli/CLI.md).
 
 ## Connection profile
 
-`~/.kb/config.json`:
+All client settings are **environment variables**:
 
-```json
-{
-  "server": { "host": "localhost", "port": 38117, "apiKey": "…", "base": "dogfood" },
-  "activeBase": "dogfood"
-}
-```
+| Variable | Purpose |
+|----------|---------|
+| `KB_HOST` | Server hostname (default `localhost`) |
+| `KB_PORT` | Server port (default `38117`) |
+| `KB_SERVER_URL` | Full URL; wins over host+port |
+| `KB_SERVER_API_KEY` | Bearer token when server auth is enabled |
+| `KB_BASE` | Default base name |
+| `KB_ACTIVE_BASE` | Session active base |
 
-Env overrides: `KBHOST`, `KBPORT`, `KB_SERVER_URL`, `KB_SERVER_API_KEY`. See `server-connection.ts`.
+Base selection is also persisted in `~/.kb/state/active-base` and `~/.kb/state/default-base` (written by `kb base use`). See `server-connection.ts`.
 
 ### Remote server (Docker / shared host)
 
-1. Run `kb-server` where the index should live (Docker, VM, k8s) — [`../kb-server/README.md`](../kb-server/README.md).
-2. On your machine, set the connection profile:
+1. Run `kb-server` where the index should live — [`../kb-server/README.md`](../kb-server/README.md).
+2. On your machine:
 
 ```bash
-export KB_SERVER_URL=http://<host>:38117    # or https://…
+export KB_SERVER_URL=http://<host>:38117
 export KB_SERVER_API_KEY=<token matching the server>
-# or: kb config set server.host … / server.port … / server.apiKey …
 ```
 
 3. Use `kb` as usual — `query`, `init`, `scan`, TUI all hit the remote server.
-
-`KB_SERVER_URL` wins over `KBHOST`/`KBPORT`. Use it for HTTPS or when host and port are awkward to split.
 
 ## Local vs remote
 

@@ -4,13 +4,12 @@
  * Triggered automatically by `kb init` when no LLM is configured.
  * Replayable via `kb config llm`.
  *
- * The wizard only writes the provider *selection* to config — never the key itself.
- * API keys must be set as environment variables.
+ * API keys and provider preference are environment variables only.
  */
 
 import readline from 'node:readline'
-import type { KbConfig } from '@kb/core/config/kb-config.js'
-import { getKbConfigFile, isLLMConfigured, readKbConfig, writeKbConfig } from '@kb/core/config/kb-config.js'
+import { KB_ENV } from '@kb/core/config/kb-env.js'
+import { isLLMConfigured, readKbConfig } from '@kb/core/config/kb-config.js'
 
 export type LLMProvider = 'anthropic' | 'openai' | 'gemini' | 'ollama'
 
@@ -61,14 +60,12 @@ function createReadlineQuestionIO(options: {
  */
 export async function runLLMSetupWizard(
   options: {
-    configFile?: string
     output?: (msg: string) => void
     input?: NodeJS.ReadableStream
     outputStream?: NodeJS.WritableStream
     questionIO?: LLMQuestionIO
   } = {}
 ): Promise<LLMWizardResult> {
-  const configFile = options.configFile ?? getKbConfigFile()
   const print = options.output ?? ((msg: string) => process.stdout.write(`${msg}\n`))
   const questionIO =
     options.questionIO ??
@@ -122,20 +119,15 @@ export async function runLLMSetupWizard(
         print('')
         print(`  export ${envVar}=<your-api-key>`)
         print('')
-        print('Then restart kb. Your provider preference will be saved now.')
       }
     }
 
-    // Save provider selection to config (not the key)
-    const existingConfig = await readKbConfig(configFile)
-    const updated: KbConfig = {
-      ...existingConfig,
-      llm: { ...existingConfig.llm, provider: chosenProvider.id },
-    }
-    await writeKbConfig(updated, configFile)
-
     print('')
-    print(`✓ Provider saved: ${chosenProvider.id}`)
+    print('Add this to your shell profile to pin the provider:')
+    print('')
+    print(`  export ${KB_ENV.LLM_PROVIDER}=${chosenProvider.id}`)
+    print('')
+    print(`✓ Provider: ${chosenProvider.id}`)
     print('')
 
     const configured =
@@ -155,22 +147,22 @@ export async function runLLMSetupWizard(
  */
 export async function showLLMStatus(
   options: {
-    configFile?: string
     output?: (msg: string) => void
   } = {}
 ): Promise<void> {
-  const configFile = options.configFile ?? getKbConfigFile()
   const print = options.output ?? ((msg: string) => process.stdout.write(`${msg}\n`))
-  const config = await readKbConfig(configFile)
+  const config = await readKbConfig()
 
   print('')
   print('LLM Configuration')
   print('─────────────────')
 
-  const provider = config.llm?.provider ?? '(auto-detect)'
+  const envProvider = process.env.KB_LLM_PROVIDER?.trim()
+  const provider = envProvider || config.llm?.provider || '(auto-detect)'
   print(`Provider:  ${provider}`)
   print('')
   print('Environment variables:')
+  print(`  ${KB_ENV.LLM_PROVIDER.padEnd(20)} ${envProvider ? `✓ ${envProvider}` : '✗ not set'}`)
   for (const p of PROVIDERS) {
     if (!p.envVar) continue
     const set = Boolean(process.env[p.envVar])

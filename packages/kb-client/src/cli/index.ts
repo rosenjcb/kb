@@ -4,7 +4,7 @@
  * KB Agent Harness CLI
  */
 
-import { existsSync } from 'node:fs'
+
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -94,7 +94,8 @@ import {
   applyConfigToEnv,
   createLLMProviderFromConfig,
   ensureDefaultConfig,
-  getKbConfigFile,
+  isFreshClientInstall,
+  markClientInitialized,
   persistInferredLLMProvider,
   resolveFactRetrievalMethod,
 } from '@kb/core/config/kb-config.js'
@@ -1140,7 +1141,7 @@ async function main() {
     const [skillResults] = await Promise.all([
       installSkillsGlobally().catch(() => [] as Awaited<ReturnType<typeof installSkillsGlobally>>),
     ])
-    const isFreshInstall = !existsSync(getKbConfigFile())
+    const isFreshInstall = isFreshClientInstall()
     let kbConfig = await ensureDefaultConfig()
     const inferred = await persistInferredLLMProvider({ config: kbConfig })
     kbConfig = inferred.config
@@ -1156,6 +1157,7 @@ async function main() {
 
     if (isFreshInstall) {
       startupNotices.push(FIRST_RUN_WELCOME_NOTICE)
+      await markClientInitialized()
     }
 
     const hasApiKey =

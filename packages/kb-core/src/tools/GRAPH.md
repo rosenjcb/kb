@@ -33,7 +33,7 @@ All graph data lives in **`<base-dir>/.kb-index.sqlite`** alongside documents an
 
 Graph mode is enabled by default. You can disable graph extraction and graph-augmented lookup with either:
 
-- `graph.enabled: false` in `~/.kb/config.json`
+- `graph.enabled: false` via `KB_GRAPH=false`
 - `KB_GRAPH=false` as a one-off environment override
 
 The code-fact graph uses the shared **`facts`** table (`source_kind='import_code'`) and **`fact_edges`** for all structural edges.

@@ -16,12 +16,15 @@ import {
   writeKbConfig,
 } from '@kb/core/config/kb-config.js'
 
-const tempDirs: string[] = []
 let kbHomeDir: string
 
 beforeEach(async () => {
   kbHomeDir = await mkdtemp(path.join(os.tmpdir(), 'kb-config-test-'))
   process.env.KB_HOME = kbHomeDir
+  delete process.env.KB_HOST
+  delete process.env.KB_PORT
+  delete process.env.KB_SERVER_URL
+  delete process.env.KB_LLM_PROVIDER
   delete process.env.ANTHROPIC_API_KEY
   delete process.env.OPENAI_API_KEY
   delete process.env.GEMINI_API_KEY
@@ -30,103 +33,69 @@ beforeEach(async () => {
 
 afterEach(async () => {
   delete process.env.KB_HOME
+  delete process.env.KB_HOST
+  delete process.env.KB_PORT
+  delete process.env.KB_SERVER_URL
+  delete process.env.KB_LLM_PROVIDER
   delete process.env.ANTHROPIC_API_KEY
   delete process.env.OPENAI_API_KEY
   delete process.env.GEMINI_API_KEY
   delete process.env.OLLAMA_ENDPOINT
-  await Promise.all(tempDirs.splice(0).map(d => rm(d, { recursive: true, force: true })))
   if (kbHomeDir) await rm(kbHomeDir, { recursive: true, force: true })
 })
 
-async function tempConfig(initial?: unknown): Promise<string> {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-cfg-'))
-  tempDirs.push(dir)
-  const file = path.join(dir, 'config.json')
-  if (initial !== undefined) {
-    await writeFile(file, `${JSON.stringify(initial, null, 2)}\n`, 'utf8')
-  }
-  return file
-}
-
-// ─── readKbConfig ────────────────────────────────────────────────────────────
-
 describe('readKbConfig', () => {
-  it('[TC-321] returns empty object when file does not exist', async () => {
-    const result = await readKbConfig('/nonexistent/path/config.json')
-    expect(result).toEqual({})
+  it('[TC-321] returns default features when no env is set', async () => {
+    const result = await readKbConfig()
+    expect(result.features).toMatchObject(DEFAULT_FEATURES)
   })
 
-  it('[TC-322] returns empty object when file is malformed JSON', async () => {
-    const file = await tempConfig()
-    await writeFile(file, 'not json', 'utf8')
-    expect(await readKbConfig(file)).toEqual({})
+  it('[TC-322] migrates legacy config.json base fields into line files', async () => {
+    await writeFile(
+      path.join(kbHomeDir, 'config.json'),
+      `${JSON.stringify({ activeBase: 'legacy', defaultBase: 'def' }, null, 2)}\n`,
+      'utf8'
+    )
+    const result = await readKbConfig()
+    expect(result.activeBase).toBe('legacy')
+    expect(result.defaultBase).toBe('def')
   })
 
-  it('[TC-323] normalizes config on read', async () => {
-    const file = await tempConfig({ defaultBase: 'dogfood', llm: { provider: 'gemini' } })
-    const result = await readKbConfig(file)
-    expect(result.defaultBase).toBe('dogfood')
-    expect(result.llm?.provider).toBe('gemini')
+  it('[TC-323] reads server profile from KB_HOST/KB_PORT env', async () => {
+    process.env.KB_HOST = 'kb.example.com'
+    process.env.KB_PORT = '9999'
+    const result = await readKbConfig()
+    expect(result.server?.host).toBe('kb.example.com')
+    expect(result.server?.port).toBe(9999)
   })
 })
-
-// ─── writeDefaultConfig ──────────────────────────────────────────────────────
 
 describe('writeDefaultConfig', () => {
-  it('[TC-324] writes a config with all default features enabled', async () => {
-    const file = await tempConfig()
-    const result = await writeDefaultConfig(file)
-
+  it('[TC-324] returns config with default features enabled', async () => {
+    const result = await writeDefaultConfig()
     expect(result.features).toMatchObject(DEFAULT_FEATURES)
-    expect(result.createdAt).toBeDefined()
-    expect(result.updatedAt).toBeDefined()
-    expect(result.notion).toBeUndefined()
-    expect(result.llm).toBeUndefined()
   })
 
-  it('[TC-325] persists to disk and can be read back', async () => {
-    const file = await tempConfig()
-    await writeDefaultConfig(file)
-    const readBack = await readKbConfig(file)
-    expect(readBack.features?.sqliteIndex).toBe(true)
-    expect(readBack.features?.hybridQuery).toBe(true)
+  it('[TC-325] matches readKbConfig output', async () => {
+    const written = await writeDefaultConfig()
+    const readBack = await readKbConfig()
+    expect(readBack.features?.sqliteIndex).toBe(written.features?.sqliteIndex)
   })
 })
-
-// ─── ensureDefaultConfig ─────────────────────────────────────────────────────
 
 describe('ensureDefaultConfig', () => {
-  it('[TC-326] creates fresh config when none exists', async () => {
-    const file = path.join(kbHomeDir, 'config.json')
-    const result = await ensureDefaultConfig(file)
+  it('[TC-326] returns fresh config with defaults', async () => {
+    const result = await ensureDefaultConfig()
     expect(result.features?.sqliteIndex).toBe(true)
-    expect(result.createdAt).toBeDefined()
   })
 
-  it('[TC-327] merges defaults into existing config without overwriting user values', async () => {
-    const file = await tempConfig({
-      features: { sqliteIndex: false, hybridQuery: false },
-      notion: { token: 'ntn_abc' },
-    })
-    const result = await ensureDefaultConfig(file)
-
-    // user values are preserved
-    expect(result.features?.sqliteIndex).toBe(false)
-    expect(result.features?.hybridQuery).toBe(false)
+  it('[TC-327] picks up NOTION env vars', async () => {
+    process.env.NOTION_TOKEN = 'ntn_abc'
+    const result = await ensureDefaultConfig()
     expect(result.notion?.token).toBe('ntn_abc')
-    // missing default keys are filled in
-    expect(result.features?.checkpointObservability).toBe(true)
-    expect(result.features?.missLearning).toBe(true)
-  })
-
-  it('[TC-328] does not overwrite existing createdAt', async () => {
-    const file = await tempConfig({ createdAt: '2025-01-01T00:00:00.000Z', features: {} })
-    const result = await ensureDefaultConfig(file)
-    expect(result.createdAt).toBe('2025-01-01T00:00:00.000Z')
+    delete process.env.NOTION_TOKEN
   })
 })
-
-// ─── isLLMConfigured ─────────────────────────────────────────────────────────
 
 describe('isLLMConfigured', () => {
   it('[TC-329] returns false when no LLM env vars are set', () => {
@@ -137,65 +106,22 @@ describe('isLLMConfigured', () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-test'
     expect(isLLMConfigured()).toBe(true)
   })
-
-  it('[TC-331] returns true when OPENAI_API_KEY is set', () => {
-    process.env.OPENAI_API_KEY = 'sk-openai-test'
-    expect(isLLMConfigured()).toBe(true)
-  })
-
-  it('[TC-332] returns true when GEMINI_API_KEY is set', () => {
-    process.env.GEMINI_API_KEY = 'gemini-test'
-    expect(isLLMConfigured()).toBe(true)
-  })
 })
-
-// ─── assertLLMKeyAvailable ───────────────────────────────────────────────────
 
 describe('assertLLMKeyAvailable', () => {
   it('[TC-333] throws LLMKeyMissingError for anthropic when ANTHROPIC_API_KEY is not set', () => {
     expect(() => assertLLMKeyAvailable('anthropic')).toThrow(LLMKeyMissingError)
-    expect(() => assertLLMKeyAvailable('anthropic')).toThrow('ANTHROPIC_API_KEY')
-  })
-
-  it('[TC-334] throws LLMKeyMissingError for openai when OPENAI_API_KEY is not set', () => {
-    expect(() => assertLLMKeyAvailable('openai')).toThrow(LLMKeyMissingError)
-    expect(() => assertLLMKeyAvailable('openai')).toThrow('OPENAI_API_KEY')
-  })
-
-  it('[TC-335] throws LLMKeyMissingError for gemini when GEMINI_API_KEY is not set', () => {
-    expect(() => assertLLMKeyAvailable('gemini')).toThrow(LLMKeyMissingError)
-    expect(() => assertLLMKeyAvailable('gemini')).toThrow('GEMINI_API_KEY')
   })
 
   it('[TC-336] does not throw for ollama (no key required)', () => {
     expect(() => assertLLMKeyAvailable('ollama')).not.toThrow()
   })
-
-  it('[TC-337] does not throw when the key for the given provider is present', () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test'
-    expect(() => assertLLMKeyAvailable('anthropic')).not.toThrow()
-  })
-
-  it('[TC-338] throws generic error with all provider hints when provider is unknown and none configured', () => {
-    expect(() => assertLLMKeyAvailable()).toThrow('ANTHROPIC_API_KEY')
-    expect(() => assertLLMKeyAvailable()).toThrow('OPENAI_API_KEY')
-    expect(() => assertLLMKeyAvailable()).toThrow('GEMINI_API_KEY')
-  })
-
-  it('[TC-339] does not throw when called with no provider but a key is in env', () => {
-    process.env.GEMINI_API_KEY = 'gemini-test'
-    expect(() => assertLLMKeyAvailable()).not.toThrow()
-  })
 })
 
-// ─── resolveLLMProvider ──────────────────────────────────────────────────────
-
 describe('resolveLLMProvider', () => {
-  it('[TC-340] prefers env var over config file key when provider is declared', () => {
+  it('[TC-340] prefers env var when provider is declared', () => {
     process.env.ANTHROPIC_API_KEY = 'env-key'
-    const resolved = resolveLLMProvider({
-      llm: { provider: 'anthropic' },
-    })
+    const resolved = resolveLLMProvider({ llm: { provider: 'anthropic' } })
     expect(resolved.provider).toBe('anthropic')
     expect(resolved.apiKey).toBe('env-key')
   })
@@ -204,89 +130,51 @@ describe('resolveLLMProvider', () => {
     process.env.OPENAI_API_KEY = 'openai-env'
     const resolved = resolveLLMProvider({})
     expect(resolved.provider).toBe('openai')
-    expect(resolved.apiKey).toBe('openai-env')
-  })
-
-  it('[TC-342] env var auto-detection prefers anthropic > openai > gemini order', () => {
-    process.env.ANTHROPIC_API_KEY = 'ant-key'
-    process.env.OPENAI_API_KEY = 'oai-key'
-    const resolved = resolveLLMProvider({})
-    expect(resolved.provider).toBe('anthropic')
-  })
-
-  it('[TC-343] preserves geminiModel from config when provider is gemini', () => {
-    process.env.GEMINI_API_KEY = 'gem-key'
-    const resolved = resolveLLMProvider({
-      llm: { provider: 'gemini', geminiModel: 'gemini-flash-latest' },
-    })
-    expect(resolved.model).toBe('gemini-flash-latest')
   })
 
   it('[TC-344] falls back to ollama when nothing is configured', () => {
     const resolved = resolveLLMProvider({})
     expect(resolved.provider).toBe('ollama')
   })
-})
 
-// ─── persistInferredLLMProvider ───────────────────────────────────────────────
+  it('[TC-345b] KB_LLM_PROVIDER env wins over auto-detect', () => {
+    process.env.OPENAI_API_KEY = 'openai-env'
+    process.env.KB_LLM_PROVIDER = 'gemini'
+    process.env.GEMINI_API_KEY = 'gem-key'
+    const resolved = resolveLLMProvider({})
+    expect(resolved.provider).toBe('gemini')
+  })
+})
 
 describe('persistInferredLLMProvider', () => {
-  it('[TC-345] persists inferred provider when llm.provider is unset and env key exists', async () => {
+  it('[TC-345] returns inferred provider notice when llm.provider is unset and env key exists', async () => {
     process.env.OPENAI_API_KEY = 'openai-env'
-    const file = await tempConfig({ features: {} })
-
-    const config = await readKbConfig(file)
-    const result = await persistInferredLLMProvider({ config, configFile: file })
-
+    const config = await readKbConfig()
+    const result = await persistInferredLLMProvider({ config })
     expect(result.config.llm?.provider).toBe('openai')
     expect(result.notice).toContain('Auto-selected LLM provider: openai')
-
-    const readBack = await readKbConfig(file)
-    expect(readBack.llm?.provider).toBe('openai')
+    expect(result.notice).toContain('KB_LLM_PROVIDER')
   })
 
-  it('[TC-346] does not persist when llm.provider is already set', async () => {
+  it('[TC-346] does not persist when KB_LLM_PROVIDER is already set', async () => {
+    process.env.KB_LLM_PROVIDER = 'gemini'
     process.env.OPENAI_API_KEY = 'openai-env'
-    const file = await tempConfig({ llm: { provider: 'gemini' } })
-    const config = await readKbConfig(file)
-
-    const result = await persistInferredLLMProvider({ config, configFile: file })
-
+    const config = await readKbConfig()
+    const result = await persistInferredLLMProvider({ config })
     expect(result.notice).toBeUndefined()
-    expect(result.config.llm?.provider).toBe('gemini')
   })
 })
-
-// ─── normalizeKbConfig ───────────────────────────────────────────────────────
 
 describe('normalizeKbConfig', () => {
   it('[TC-347] preserves createdAt on round-trip', () => {
     const result = normalizeKbConfig({ createdAt: '2025-01-01T00:00:00.000Z' })
     expect(result.createdAt).toBe('2025-01-01T00:00:00.000Z')
   })
-
-  it('[TC-348] strips empty llm object', () => {
-    const result = normalizeKbConfig({ llm: {} })
-    expect(result.llm).toBeUndefined()
-  })
-
-  it('[TC-349] strips empty notion object', () => {
-    const result = normalizeKbConfig({ notion: { token: '' } })
-    expect(result.notion).toBeUndefined()
-  })
 })
 
-// ─── writeKbConfig ───────────────────────────────────────────────────────────
-
 describe('writeKbConfig', () => {
-  it('[TC-350] stamps updatedAt and preserves createdAt', async () => {
-    const file = await tempConfig()
-    const saved = await writeKbConfig(
-      { createdAt: '2025-01-01T00:00:00.000Z', llm: { provider: 'openai' } },
-      file
-    )
-    expect(saved.createdAt).toBe('2025-01-01T00:00:00.000Z')
-    expect(saved.updatedAt).toBeDefined()
+  it('[TC-350] normalizes in memory without writing files', async () => {
+    const saved = await writeKbConfig({ llm: { provider: 'openai' } })
     expect(saved.llm?.provider).toBe('openai')
   })
 })

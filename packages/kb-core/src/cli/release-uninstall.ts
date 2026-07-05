@@ -1,7 +1,6 @@
 import { access, lstat, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { getKbConfigFile } from '@kb/core/config/kb-config.js'
 import { defaultLogsDir } from '@kb/core/core/telemetry.js'
 import { getKbHomeDir } from '@kb/core/storage/base-selection.js'
 
@@ -56,11 +55,12 @@ export function resolveReleaseInstallLayout(
   }
 }
 
-/** Server-owned paths under KB_HOME (indexes, config, run reports). */
+/** Server-owned paths under KB_HOME (indexes, bases, run reports). */
 export function resolveServerDataPaths(kbHome = getKbHomeDir()) {
   return {
     kbHome,
-    configFile: getKbConfigFile(),
+    activeBaseFile: path.join(kbHome, 'state', 'active-base'),
+    defaultBaseFile: path.join(kbHome, 'state', 'default-base'),
     sessionsDir: path.join(kbHome, 'sessions'),
     logsDir: defaultLogsDir(),
     tracesDir: path.join(kbHome, 'traces'),
@@ -154,7 +154,8 @@ export async function performServerUninstall(
   if (opts.purge) {
     const data = resolveServerDataPaths(layout.kbHome)
     for (const target of [
-      data.configFile,
+      data.activeBaseFile,
+      data.defaultBaseFile,
       data.legacySessionFile,
       data.sessionsDir,
       data.logsDir,

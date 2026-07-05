@@ -23,7 +23,7 @@ Thin terminal front-end for kb. Taxonomy: [CLIENT.md](./CLIENT.md), [CLI.md](./s
 
 | ID | Requirement |
 |------|------------|
-| FR-1 | Default path: resolve server host/port from env and `~/.kb/config.json`; health-check via `/healthz` |
+| FR-1 | Default path: resolve server host/port from `KB_HOST`/`KB_PORT` env; health-check via `/healthz` |
 | FR-2 | When the server is unreachable, fail fast with an actionable connection hint — no silent local fallback |
 | FR-3 | `KB_LOCAL_MODE=true` runs all commands in-process (tests, eval harness) |
 | FR-4 | Remote mode forwards init/scan/docs/facts/graph/logs/publish/base to `POST /v1/admin/cli` |
@@ -35,7 +35,7 @@ Thin terminal front-end for kb. Taxonomy: [CLIENT.md](./CLIENT.md), [CLI.md](./s
 
 | ID | Covers | Scenario |
 |------|--------|----------|
-| TC-1 | FR-1 | `KBHOST`/`KBPORT` default to localhost:38117 |
+| TC-1 | FR-1 | `KB_HOST`/`KB_PORT` default to localhost:38117 |
 | TC-2 | FR-1 | `KB_SERVER_URL` overrides host/port |
 | TC-3 | FR-1 | `health()` calls `/healthz` |
 | TC-4 | FR-2 | Connection errors include setup hints |

@@ -20,7 +20,7 @@ export function parseBooleanEnv(value: string | undefined, fallback: boolean): b
   return fallback
 }
 
-/** Parse `kb config set <bool-key> <value>` — rejects non true/false. */
+/** Parse boolean env/config values — rejects non true/false strings. */
 export function parseBooleanConfigValue(keyPath: string, value: string): boolean {
   const normalized = value.trim().toLowerCase()
   if (normalized === 'true') return true

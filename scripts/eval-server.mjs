@@ -2,7 +2,7 @@
  * Eval/MOEL kb-server orchestration — start (or attach to) a live kb-server for harness runs.
  *
  * Replaces KB_LOCAL_MODE=true in eval subprocess env with remote connection profile vars
- * (KBHOST/KBPORT + KB_SERVER_API_KEY, or KB_EVAL_SERVER_URL / KB_SERVER_URL when attaching).
+ * (KB_HOST/KB_PORT + KB_SERVER_API_KEY, or KB_EVAL_SERVER_URL / KB_SERVER_URL when attaching).
  */
 
 import { spawn } from 'node:child_process'
@@ -65,8 +65,8 @@ export function buildKbLocalEnv({ kbHome } = {}) {
   const env = { ...process.env }
   env.KB_LOCAL_MODE = 'true'
   env.KB_SERVER_URL = undefined
-  env.KBHOST = undefined
-  env.KBPORT = undefined
+  env.KB_HOST = undefined
+  env.KB_PORT = undefined
   env.KB_SERVER_API_KEY = undefined
   env.NODE_PATH = undefined
   if (kbHome) env.KB_HOME = kbHome
@@ -95,8 +95,8 @@ export function buildKbRemoteEnv({
 
   env.KB_SERVER_URL = resolvedUrl
   env.KB_SERVER_API_KEY = apiKey
-  env.KBHOST = undefined
-  env.KBPORT = undefined
+  env.KB_HOST = undefined
+  env.KB_PORT = undefined
 
   if (kbHome) env.KB_HOME = kbHome
   else env.KB_HOME = undefined

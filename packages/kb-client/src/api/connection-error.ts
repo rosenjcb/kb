@@ -20,8 +20,8 @@ export function formatConnectionError(connection: ServerConnection, cause?: unkn
     '  Start locally:  kb-server start',
     '',
     '  Or point the client at a remote server:',
-    '    kb config set server.host <host>',
-    '    kb config set server.port <port>',
+    '    export KB_HOST=<host>',
+    '    export KB_PORT=<port>',
     '    # or: export KB_SERVER_URL=http://<host>:<port>',
   ]
   if (cause instanceof Error && cause.message && !cause.message.includes('fetch failed')) {

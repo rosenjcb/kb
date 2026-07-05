@@ -46,7 +46,7 @@ Consumer uninstall: `kb uninstall` → [`../packages/kb-client/src/cli/uninstall
   runtime/
     client/         @kb/client npm package
     server/         @kb/server npm package
-  config.json       client connection profile + prefs
+  state/            session + default base names
   sessions/<base>/  index + repo clones (server KB_HOME)
   logs/             RunReport NDJSON
 ```

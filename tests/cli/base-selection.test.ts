@@ -60,7 +60,7 @@ describe('base-selection', () => {
       defaultBase: 'config-base',
     })
 
-    expect(result.source).toBe('config.activeBase')
+    expect(result.source).toBe('activeBase')
     expect(result.baseName).toBe('session-base')
     expect(result.baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'session-base'))
   })
@@ -68,7 +68,7 @@ describe('base-selection', () => {
   it('[TC-38] config.defaultBase is used when KB_BASE is not set', async () => {
     const result = await resolveEffectiveBaseDir('/repo', { defaultBase: 'catalog' })
 
-    expect(result.source).toBe('config.defaultBase')
+    expect(result.source).toBe('defaultBase')
     expect(result.baseName).toBe('catalog')
     expect(result.baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'catalog'))
   })
@@ -100,15 +100,12 @@ describe('base-selection', () => {
 
     expect(config.defaultBase).toBe('dogfood')
     expect(config.activeBase).toBe('catalog')
-    const raw = JSON.parse(await readFile(path.join(getKbHomeDir(), 'config.json'), 'utf8')) as {
-      activeBase?: string
-      defaultBase?: string
-    }
-    expect(raw.activeBase).toBe('catalog')
-    expect(raw.defaultBase).toBe('dogfood')
+    const raw = await readFile(path.join(getKbHomeDir(), 'state', 'active-base'), 'utf8')
+    expect(raw.trim()).toBe('catalog')
+    expect(config.defaultBase).toBe('dogfood')
   })
 
-  it('[TC-43] migrates legacy session.json into config.json and removes session.json', async () => {
+  it('[TC-43] migrates legacy session.json into active-base and removes session.json', async () => {
     await writeFile(
       path.join(getKbHomeDir(), 'session.json'),
       `${JSON.stringify({ activeBase: 'legacy-base' }, null, 2)}\n`,
@@ -493,7 +490,7 @@ describe('resolveEffectiveBaseDir with .kb file', () => {
 
     const result = await resolveEffectiveBaseDir(tempDir)
 
-    expect(result.source).toBe('config.activeBase')
+    expect(result.source).toBe('activeBase')
     expect(result.baseName).toBe('session-base')
     // resolveEffectiveBaseDir does NOT write .kb — only scan/init do
     expect(await findKbFile(tempDir)).toBeNull()
@@ -504,7 +501,7 @@ describe('resolveEffectiveBaseDir with .kb file', () => {
 
     const result = await resolveEffectiveBaseDir(tempDir)
 
-    expect(result.source).toBe('config.defaultBase')
+    expect(result.source).toBe('defaultBase')
     expect(result.baseName).toBe('default-base')
     expect(await findKbFile(tempDir)).toBeNull()
   })

@@ -48,7 +48,7 @@ export async function runServerUninstallCommand(args: string[], out: ServerLogge
   out.log('  • ~/.kb/bin/kb-server symlink')
   out.log('  • ~/.kb/runtime/server')
   if (purge) {
-    out.log('  • Server data under ~/.kb: sessions, config.json, logs, traces')
+    out.log('  • Server data under ~/.kb: sessions, active-base, logs, traces')
     out.log('')
     out.log('Does NOT remove the kb client (~/.kb/bin/kb, runtime/client).')
   } else {

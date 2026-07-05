@@ -4,16 +4,16 @@ import { formatConnectionError } from '@kb/client/api/connection-error.js'
 import { resolveServerConnection } from '@kb/client/api/server-connection.js'
 
 describe('server-connection', () => {
-  it('[TC-1] resolves KBHOST/KBPORT defaults to localhost:38117', () => {
-    const prevHost = process.env.KBHOST
-    const prevPort = process.env.KBPORT
-    delete process.env.KBHOST
-    delete process.env.KBPORT
+  it('[TC-1] resolves KB_HOST/KB_PORT defaults to localhost:38117', () => {
+    const prevHost = process.env.KB_HOST
+    const prevPort = process.env.KB_PORT
+    delete process.env.KB_HOST
+    delete process.env.KB_PORT
     delete process.env.KB_SERVER_URL
     const conn = resolveServerConnection({})
     expect(conn.url).toBe('http://localhost:38117')
-    if (prevHost) process.env.KBHOST = prevHost
-    if (prevPort) process.env.KBPORT = prevPort
+    if (prevHost) process.env.KB_HOST = prevHost
+    if (prevPort) process.env.KB_PORT = prevPort
   })
 
   it('[TC-2] prefers KB_SERVER_URL override', () => {
@@ -46,7 +46,7 @@ describe('KbApiClient', () => {
   it('[TC-4] connection errors include setup hints', () => {
     const msg = formatConnectionError({ url: 'http://localhost:38117' })
     expect(msg).toContain('kb-server start')
-    expect(msg).toContain('kb config set server.host')
+    expect(msg).toContain('KB_HOST')
     expect(msg).toContain('KB_SERVER_URL')
     expect(msg).not.toContain('pnpm run server:up')
     expect(msg).not.toContain('kb-server install')

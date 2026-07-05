@@ -136,7 +136,7 @@ Separate uninstall commands:
 |---------|--------|
 | `kb uninstall` | **Client only** — `~/.kb/bin/kb`, `runtime/client`, legacy flat client runtime, `.kb-python` |
 | `kb-server uninstall` | **Server binary/runtime** — `~/.kb/bin/kb-server`, `runtime/server` |
-| `kb-server uninstall --purge` | Server **plus** `~/.kb` server data (`sessions/`, `config.json`, `logs/`, `traces/`) |
+| `kb-server uninstall --purge` | Server **plus** `~/.kb` server data (`sessions/`, `state/`, `logs/`, `traces/`) |
 
 `kb uninstall` does **not** accept `--purge` (no client-side KB data to wipe). Shared logic: `@kb/core/cli/release-uninstall.ts`; TUI `/uninstall` matches client-only `kb uninstall`.
 

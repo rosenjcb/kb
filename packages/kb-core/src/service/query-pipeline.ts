@@ -12,7 +12,7 @@ import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
 import type { LLMProvider } from '@kb/core/core/types.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
 import {
-  RunCollector,
+  type RunCollector,
   TokenCountingProvider,
   estimateCost,
   summarizeQueryRetrievalTrace,

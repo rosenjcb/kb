@@ -37,7 +37,7 @@ See companion doc for full vocabulary where applicable.
 | FR-8 | Chat retrieval refusal surfaces when evidence is insufficient |
 | FR-9 | Command reference generation stays in sync with registered commands |
 | FR-10 | Init collects source files from configured git targets |
-| FR-11 | Config subcommands read and write `~/.kb/config.json` safely |
+| FR-11 | Config `get`/`llm` reflect environment-only settings |
 | FR-12 | Docs delete CLI removes documents with confirmation and index cleanup |
 | FR-13 | Docs generate CLI drives the document-generation pipeline |
 | FR-14 | Docs generate flow integrates questionnaire → draft → write |
@@ -112,7 +112,7 @@ See companion doc for full vocabulary where applicable.
 | TC-40 | FR-4 | writeDefaultBase persists to config and readBaseConfig reads it back | pass |
 | TC-41 | FR-4 | writeDefaultBase overwrites a prior default | pass |
 | TC-42 | FR-4 | writeSessionBase persists the active base separately from the default | pass |
-| TC-43 | FR-4 | migrates legacy session.json into config.json and removes session.json | pass |
+| TC-43 | FR-4 | migrates legacy session.json into state files and removes session.json | pass |
 | TC-44 | FR-4 | ensureOperationalBaseDir migrates legacy repo sqlite into KB home | pass |
 | TC-45 | FR-4 | ensureOperationalBaseDir migrates legacy KB home base directory into sessions namespace | pass |
 | TC-46 | FR-4 | formatUseCommandHelp shows active session switching | pass |
@@ -201,26 +201,20 @@ See companion doc for full vocabulary where applicable.
 | TC-129 | FR-10 | explores sibling directories at the same depth | pass |
 | TC-130 | FR-10 | respects an ignore matcher (prunes dirs and files) | pass |
 | TC-131 | FR-11 | Given get with no key, then returns normalized full config JSON | pass |
-| TC-132 | FR-11 | Given nested notion key, then get returns scalar and unset prunes empty object | pass |
+| TC-132 | FR-11 | Given set, then throws environment-only error | pass |
 | TC-133 | FR-11 | Given read-only or unknown keys, then returns explicit errors | pass |
 | TC-134 | FR-11 | Given supported but unset key, then get returns explicit not-set error | pass |
-| TC-135 | FR-11 | Given KB_HOME override and no explicit config file, then config commands use the overridden home config path | pass |
-| TC-136 | FR-11 | Given config help, then it excludes base keys and generated feature keys | pass |
-| TC-137 | FR-11 | Given supported config paths, then they omit base-selection and feature keys | pass |
-| TC-138 | FR-11 | Given fact_retrieval_method key, then set/get/unset round-trips correctly | pass |
-| TC-139 | FR-11 | Given fact_retrieval_method set to query_expansion, then get returns that value | pass |
-| TC-140 | FR-11 | Given invalid fact_retrieval_method value, then set throws a descriptive error | pass |
+| TC-135 | FR-11 | Given KB_HOME and env vars, then get reflects env | pass |
+| TC-136 | FR-11 | Given config help, then it excludes base keys and mentions environment-only | pass |
+| TC-137 | FR-11 | Given supported config paths, then they omit base-selection keys | pass |
+| TC-138 | FR-11 | Given fact_retrieval_method via env, then get returns it | pass |
 | TC-141 | FR-11 | Given resolveFactRetrievalMethod, then it returns query_expansion by default | pass |
-| TC-142 | FR-11 | Given resolveFactRetrievalMethod with all_facts in config, then it returns all_facts | pass |
 | TC-143 | FR-11 | Given KB_FACT_RETRIEVAL_METHOD env override, then it wins over config | pass |
-| TC-144 | FR-11 | Given config help, then it includes fact_retrieval_method | pass |
-| TC-145 | FR-11 | Given graph.enabled key, then config set/get/unset round-trips the boolean flag | pass |
-| TC-146 | FR-11 | Given internal chat config or env override, then conversational chat flag resolves without becoming a public config key | pass |
+| TC-145 | FR-11 | Given graph.enabled via env, then get returns the flag | pass |
 | TC-147 | FR-11 | Given gemini config with a model override, then provider resolution preserves the selected model | pass |
 | TC-148 | FR-11 | Given kb config llm --show with no keys set, then output warns about missing keys | pass |
 | TC-149 | FR-11 | Given kb config llm --show with a key set, then output shows it as set | pass |
 | TC-150 | FR-11 | Given kb config llm in non-TTY mode, then it falls back to show without prompting | pass |
-| TC-151 | FR-11 | Given kb config llm --show, then provider from config is displayed | pass |
 | TC-152 | FR-12 | Given a doc id, then parses it | pass |
 | TC-153 | FR-12 | Given --force flag, then sets force true | pass |
 | TC-154 | FR-12 | Given -f shorthand, then sets force true | pass |
@@ -392,36 +386,24 @@ See companion doc for full vocabulary where applicable.
 | TC-318 | FR-25 | forces build/config scaffold when answer lacks required sections | pass |
 | TC-319 | FR-25 | keeps LLM answer when synthesisQuestion is pre-expansion text (not graph-expanded query) | pass |
 | TC-320 | FR-25 | query synthesis allows a larger answer output budget | pass |
-| TC-321 | FR-26 | returns empty object when file does not exist | pass |
-| TC-322 | FR-26 | returns empty object when file is malformed JSON | pass |
-| TC-323 | FR-26 | normalizes config on read | pass |
-| TC-324 | FR-26 | writes a config with all default features enabled | pass |
-| TC-325 | FR-26 | persists to disk and can be read back | pass |
-| TC-326 | FR-26 | creates fresh config when none exists | pass |
-| TC-327 | FR-26 | merges defaults into existing config without overwriting user values | pass |
-| TC-328 | FR-26 | does not overwrite existing createdAt | pass |
+| TC-321 | FR-26 | returns default features when no env is set | pass |
+| TC-322 | FR-26 | migrates legacy config.json base fields into line files | pass |
+| TC-323 | FR-26 | reads server profile from KB_HOST/KB_PORT env | pass |
+| TC-324 | FR-26 | returns config with default features enabled | pass |
+| TC-325 | FR-26 | matches readKbConfig output | pass |
+| TC-326 | FR-26 | returns fresh config with defaults | pass |
+| TC-327 | FR-26 | picks up NOTION env vars | pass |
 | TC-329 | FR-26 | returns false when no LLM env vars are set | pass |
 | TC-330 | FR-26 | returns true when ANTHROPIC_API_KEY is set | pass |
-| TC-331 | FR-26 | returns true when OPENAI_API_KEY is set | pass |
-| TC-332 | FR-26 | returns true when GEMINI_API_KEY is set | pass |
 | TC-333 | FR-26 | throws LLMKeyMissingError for anthropic when ANTHROPIC_API_KEY is not set | pass |
-| TC-334 | FR-26 | throws LLMKeyMissingError for openai when OPENAI_API_KEY is not set | pass |
-| TC-335 | FR-26 | throws LLMKeyMissingError for gemini when GEMINI_API_KEY is not set | pass |
 | TC-336 | FR-26 | does not throw for ollama (no key required) | pass |
-| TC-337 | FR-26 | does not throw when the key for the given provider is present | pass |
-| TC-338 | FR-26 | throws generic error with all provider hints when provider is unknown and none configured | pass |
-| TC-339 | FR-26 | does not throw when called with no provider but a key is in env | pass |
-| TC-340 | FR-26 | prefers env var over config file key when provider is declared | pass |
+| TC-340 | FR-26 | prefers env var when provider is declared | pass |
 | TC-341 | FR-26 | auto-detects provider from env vars when no provider is declared | pass |
-| TC-342 | FR-26 | env var auto-detection prefers anthropic > openai > gemini order | pass |
-| TC-343 | FR-26 | preserves geminiModel from config when provider is gemini | pass |
 | TC-344 | FR-26 | falls back to ollama when nothing is configured | pass |
-| TC-345 | FR-26 | persists inferred provider when llm.provider is unset and env key exists | pass |
-| TC-346 | FR-26 | does not persist when llm.provider is already set | pass |
+| TC-345 | FR-26 | returns inferred provider notice when llm.provider is unset and env key exists | pass |
+| TC-346 | FR-26 | does not persist when KB_LLM_PROVIDER is already set | pass |
 | TC-347 | FR-26 | preserves createdAt on round-trip | pass |
-| TC-348 | FR-26 | strips empty llm object | pass |
-| TC-349 | FR-26 | strips empty notion object | pass |
-| TC-350 | FR-26 | stamps updatedAt and preserves createdAt | pass |
+| TC-350 | FR-26 | normalizes in memory without writing files | pass |
 | TC-351 | FR-27 | splits on commas and newlines and trims | pass |
 | TC-352 | FR-27 | drops empties | pass |
 | TC-353 | FR-27 | trims, removes blanks, and de-duplicates preserving order | pass |
@@ -436,21 +418,14 @@ See companion doc for full vocabulary where applicable.
 | TC-362 | FR-27 | normalizes backslashes and leading ./ in the tested path | pass |
 | TC-363 | FR-27 | merges base patterns with a .kbignore file at the repo root | pass |
 | TC-364 | FR-27 | works with no .kbignore present | pass |
-| TC-365 | FR-28 | shows provider from config when set | pass |
+| TC-365 | FR-28 | shows provider from KB_LLM_PROVIDER when set | pass |
 | TC-366 | FR-28 | shows auto-detect when no provider configured | pass |
 | TC-367 | FR-28 | shows env var status for each provider | pass |
 | TC-368 | FR-28 | warns when no LLM key is configured | pass |
-| TC-369 | FR-28 | does not warn when a key is set | pass |
-| TC-370 | FR-28 | saves chosen provider to config when user picks anthropic | pass |
-| TC-371 | FR-28 | saves openai when user picks 2 | pass |
-| TC-372 | FR-28 | saves gemini when user picks 3 | pass |
+| TC-370 | FR-28 | prints KB_LLM_PROVIDER hint when user picks anthropic | pass |
 | TC-373 | FR-28 | saves ollama when user picks 4 and marks configured=true | pass |
 | TC-374 | FR-28 | configured=false when provider key is absent | pass |
-| TC-375 | FR-28 | configured=true when provider key is present | pass |
-| TC-376 | FR-28 | shows all four providers in the menu output | pass |
-| TC-377 | FR-28 | preserves existing config when writing provider | pass |
 | TC-378 | FR-28 | prints env var export hint when key is missing | pass |
-| TC-379 | FR-28 | confirms key is set when present in env | pass |
 | TC-380 | FR-28 | re-prompts until the user enters a valid provider number | pass |
 | TC-381 | FR-29 | includes all three subcommands | pass |
 | TC-382 | FR-29 | documents --since flag | pass |

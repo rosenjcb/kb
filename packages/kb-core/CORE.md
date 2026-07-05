@@ -52,8 +52,8 @@ Heavy native deps (tree-sitter, ast-grep, optional transformers) live **only her
 
 | Concern | Where |
 |---|---|
-| LLM keys, retrieval features | Server-side `config.json` under `KB_HOME` (local mode reads same file) |
-| Client connection profile | `config.json` → `server` block (client package) |
+| LLM keys, retrieval features | `KB_*` env vars on the server process |
+| Client connection profile | `KB_HOST`, `KB_PORT`, `KB_SERVER_URL`, etc. |
 
 ## Invariants
 

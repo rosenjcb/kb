@@ -1,5 +1,16 @@
 # @kb/client
 
+## 1.3.0
+
+### Minor Changes
+
+- Configuration is environment-only: standardize on `KB_HOST`/`KB_PORT`, remove `kb config set`/`unset`, migrate base selection to `~/.kb/state/`, and rewrite README quick-start.
+
+### Patch Changes
+
+- Updated dependencies
+  - @kb/core@1.2.0
+
 ## 1.2.2
 
 ### Patch Changes

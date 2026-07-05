@@ -94,7 +94,7 @@ async function main(): Promise<void> {
 
   const config = await readKbConfig()
   const llmProvider = createLLMProviderFromConfig(config)
-  if (!llmProvider) throw new Error('No LLM provider configured — check ~/.kb/config.json.')
+  if (!llmProvider) throw new Error('No LLM provider configured — set GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY.')
 
   process.stderr.write(`[eval-chat] base=${base} cwd=${cwd}\n`)
   process.stderr.write('[eval-chat] init...\n')

@@ -18,8 +18,8 @@ KB 1.0 is three workspace packages: **`@kb/client`** (`kb`), **`@kb/server`** (`
 | Server daemon | `kb-server` |
 | CLI / TUI client | `kb` |
 | Data home | `KB_HOME` (default `~/.kb`) |
-| Host / port | `KBHOST` / `KBPORT` / `KB_SERVER_URL` |
-| Client config | `~/.kb/config.json` → `server` block |
+| Host / port | `KB_HOST` / `KB_PORT` / `KB_SERVER_URL` |
+| Client settings | `KB_*` env vars + `~/.kb/state/` base files |
 
 ## Stack
 
@@ -64,7 +64,9 @@ Root `package.json` (`kb-workspace`) orchestrates build, test, eval — not ship
 
 ```
 ~/.kb/
-  config.json           # client connection + prefs (server block, activeBase, …)
+  state/
+    active-base           # session base (from kb base use)
+    default-base          # persistent default base
   sessions/<base>/      # SQLite index, docs, repos/<slug>/
   logs/                 # RunReport NDJSON (server + local-mode CLI)
   evaluations/          # eval harvest artifacts

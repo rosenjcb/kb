@@ -51,7 +51,7 @@ How facts get from the KB into a prompt is not a fixed decision — it's a confi
 
 **`all_facts`:** Every fact in the KB is loaded into the prompt. No search, no ranking. The LLM sees the full knowledge base. This works well when the KB is small, when exhaustive coverage matters more than precision, or when you're debugging retrieval quality. In multi-turn loops (chat, docs generation, agent tasks), all facts are loaded **once** per session — subsequent retrievals in the same context skip the dump since the facts are already present.
 
-The retrieval method is set via `kb config set fact_retrieval_method <method>` and applies globally across docs generation and some agentic tool loops.
+The retrieval method is set via `KB_FACT_RETRIEVAL_METHOD` and applies globally across docs generation and some agentic tool loops.
 
 **`kb query` / chat facts path (separate from the dial above):** the default Q&A path always searches atomic facts via FTS and, in deep mode, the multi-pond BFS orchestrator (`FactsQueryResearchOrchestrator`). Graph query expansion may widen the retrieval string; a post-retrieval **fact curator** then judges relevance against the raw user question, hard-drops off-topic facts, and refills reported gaps before synthesis. Answers are plain prose (no inline fact citations). See [`src/core/QUERY_INTERNALS.md`](src/core/QUERY_INTERNALS.md) and [`src/tools/FACT_CURATOR.md`](src/tools/FACT_CURATOR.md).
 

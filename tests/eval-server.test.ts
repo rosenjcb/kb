@@ -19,8 +19,8 @@ describe('eval-server helpers', () => {
       expect(env.KB_SERVER_API_KEY).toBe('test-key')
       expect(env.KB_LOCAL_MODE).toBeUndefined()
       expect(env.NODE_PATH).toBeUndefined()
-      expect(env.KBHOST).toBeUndefined()
-      expect(env.KBPORT).toBeUndefined()
+      expect(env.KB_HOST).toBeUndefined()
+      expect(env.KB_PORT).toBeUndefined()
     } finally {
       if (prevLocal === undefined) delete process.env.KB_LOCAL_MODE
       else process.env.KB_LOCAL_MODE = prevLocal
