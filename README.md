@@ -21,7 +21,7 @@ No manual fact entry. KB reads from the source.
 
 KB turns your codebase and docs into a searchable knowledge base:
 
-* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically. Plain markdown is segmented into sentence facts; companion docs written per our [spec.md](#-behavioral-specs-specmd) conventions skip YAML frontmatter during indexing so metadata does not leak as raw `key: value` noise.
+* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically. Leading YAML frontmatter (`---` blocks) is stripped before indexing — only the body becomes searchable facts
 * 🔍 **Query** — Ask questions in natural language; get grounded, source-linked answers
 * 🔁 **Refresh** — Re-scan after changes to keep the knowledge base current
 
@@ -33,8 +33,6 @@ KB splits like Postgres: a **daemon** plus a **client**.
 |--------|---------|------|
 | `kb-server` | `@kb/server` | Indexing, retrieval, LLM, HTTP/MCP |
 | `kb` | `@kb/client` | CLI, TUI, HTTP client to the server |
-
-Shared domain logic lives in `@kb/core`. User data stays in **`~/.kb`** (`KB_HOME`) — not next to install binaries.
 
 Full map: [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md) · Client: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md) · Server: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md)
 
@@ -76,9 +74,9 @@ kb config set server.apiKey <token>
 kb query "how does auth work?"
 ```
 
-The server owns the index (`KB_HOME`, `/data` in Docker). Bootstrap repos on the server (`KB_GIT_REPOS`, `kb-server.json`, or `kb init` through the connected client). Your client does not need a local clone of those repos.
+The server owns the index. Bootstrap repos on the server (`KB_GIT_REPOS`, `kb-server.json`, or `kb init` through the connected client). Your client does not need a local clone of those repos.
 
-Connection profile detail: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md). Postgres-style analogy (`KBHOST` / `KBPORT`): [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md).
+Connection profile detail: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md).
 
 ## ⚡ Quick Start
 
@@ -183,9 +181,7 @@ kb init --git https://github.com/acme/auth --git https://github.com/acme/web#dev
 
 When neither is given, the clone follows the remote's own default branch.
 
-All repos in a base fold into a **single connected graph**. After indexing, a reconciliation pass bridges the per-repo subgraphs by linking facts across repos on real integration signals — `package.json` dependencies, cross-repo symbol imports, and `.env`/service references.
-
-Each repo is cloned to `~/.kb/sessions/<base>/repos/<slug>/` and recorded in the base's `meta.json` as a `repos` array. Rescans reuse content hashes to skip unchanged docs and source files, so they stay incremental.
+Multi-repo bases fold into a single connected graph. Init and scan details: [`packages/kb-core/src/core/INIT.md`](packages/kb-core/src/core/INIT.md).
 
 ### 4) Query your knowledge base
 
@@ -257,11 +253,7 @@ kb publish <notion> [options]
 | `/init [args]` / `/scan [args]` | Build or refresh the KB without leaving the session |
 | `/session` | Show turn-by-turn token, cost, and timing stats |
 
-**How chat retrieval works:**
-- Each turn fetches facts via the same plateau-based research orchestrator used by `kb query`: it adaptively grows the result budget, lands in whichever repo the strongest hit belongs to and exhausts that repo's fact pool, then walks the cross-repo edge tree to sibling repos (depends-on links first), expanding graph hops until the evidence plateaus, the frontier is exhausted, or an internal safety budget is reached.
-- The LLM can still call the `query` tool mid-answer to fetch additional facts, but default exploration depth no longer depends on the model volunteering more searches.
-- Facts retrieved in earlier turns are excluded from subsequent retrieval — they remain available in the LLM's conversation history. Use `/clear` for a completely fresh start.
-- If a follow-up introduces 2+ new topical terms (e.g. "What about AST? How do I add Python support?"), those new terms drive retrieval instead of being appended to the previous topic.
+Chat retrieval uses the same orchestrator as `kb query`. Details: [`packages/kb-core/src/core/CHAT.md`](packages/kb-core/src/core/CHAT.md) · [`packages/kb-core/src/core/QUERY_INTERNALS.md`](packages/kb-core/src/core/QUERY_INTERNALS.md).
 
 ### 🔄 Keeping `kb` up to date
 
@@ -282,8 +274,6 @@ curl -fsSL https://github.com/rosenjcb/kb/releases/latest/download/install-kb.sh
 kb query "hybrid sqlite retrieval" --limit 5
 ```
 
-> Retrieval is facts-first: `kb query` and chat run lexical FTS and a deep multi-pond BFS loop over the `facts` table (not markdown chunks). When the pool exceeds 12 facts, a judge-in-the-loop curator hard-drops off-topic hits before synthesis. Shallow mode (`--discovery shallow`) skips the deep loop and uses FTS only.
-
 ## 🗓️ Daily Workflow
 
 ```bash
@@ -302,16 +292,9 @@ kb skills install     # install skills, then upgrade in place when KB updates th
 kb skills uninstall   # remove everything kb skills install added
 ```
 
-`kb skills install` does two things:
+`kb skills install` copies bundled skill files into each agent's skills directory and updates core agent readmes. Installs are idempotent — re-running upgrades changed skills in place.
 
-- **Installs the bundled skill files** into each agent's skills directory (`~/.claude/skills`, `~/.cursor/rules`, `~/.codex/skills`, `~/.github/copilot-instructions`).
-- **Updates the core agent readmes** — injects the KB dev-workflow into your always-on instruction files (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`) and registers a kb-first hook for agents that support one.
-
-Installs are idempotent: each skill carries a content hash, so re-running upgrades changed skills in place and skips ones already current. `kb skills uninstall` reverses both steps.
-
-The skills are self-contained (workflow + full command shapes). Source: [`skills/`](skills/). The [CLI Reference](#cli-reference) above and [`packages/kb-client/src/cli/CLI.md`](packages/kb-client/src/cli/CLI.md) are the in-repo quick references.
-
-The `kb:dump-context` skill writes in-place companion docs and sibling `*.spec.md` files — see [Behavioral specs](#-behavioral-specs-specmd).
+Source: [`skills/`](skills/) · Detail: [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md) · CLI: [`packages/kb-client/src/cli/CLI.md`](packages/kb-client/src/cli/CLI.md).
 
 ## 🚢 Run KB as a server (Docker)
 
@@ -362,9 +345,7 @@ Compose manifest, config reference, and `kb-server.json`:
 **[`packages/kb-server/README.md`](packages/kb-server/README.md)**.
 
 **Slack bot:** point a Slack workspace at the same `kb-server` daemon so people can ask
-`@kb <question>` in channels. Slack handling now runs inside `kb-server` itself; enable
-it with `KB_SERVER_ENABLE_SLACK=true` plus real `SLACK_SIGNING_SECRET` and
-`SLACK_BOT_TOKEN`. Setup details live in
+`@kb <question>` in channels. Setup details live in
 [`packages/kb-server/README.md`](packages/kb-server/README.md).
 
 ## 🔌 MCP — Claude Code & Cursor Agent
@@ -414,65 +395,31 @@ Merge into an existing `mcp.json` if you already have other servers. Restart Cur
 
 ## 📋 Behavioral specs (spec.md)
 
-This repo documents behavior with the [spec.md framework](https://github.com/rosenjcb/spec.md), which extends Google's [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) with sibling `*.spec.md` files (`type: Spec`) that define **FR-N** requirements and **TC-N** QA test cases. Companion docs (`TUI.md`, `INTENTS.md`, …) use OKF-style YAML frontmatter; KB stays format-agnostic — any markdown still ingests, but recognized frontmatter is skipped on scan so only the body is indexed.
+This repo documents its own behavior with the [spec.md framework](https://github.com/rosenjcb/spec.md) — sibling `*.spec.md` files for requirements and test cases, companion docs (`TUI.md`, `INTENTS.md`, …) for architecture notes. That is a repo convention, not a KB indexing requirement.
 
-Example companion doc:
-
-```markdown
----
-type: Subsystem
-title: TUI Renderer
-description: Drives the Ink session loop and frame diffing.
-resource: ./session.tsx
-tags: [tui, rendering]
-timestamp: 2026-06-20T00:00:00Z
----
-
-# TUI Renderer
-
-One-paragraph what/why, role in the stack, invariants, …
-```
-
-**Every `TC-N` in a spec must have at least one tagged test** (`[TC-N]` in Vitest or httpyac); not every test needs a spec row. CI and pre-commit run `pnpm run spec:check` to enforce this.
-
-- Scope: each spec declares the tests it governs in its own `sources:` frontmatter (no central manifest); `spec:check` derives per-spec scope from that.
-- Conventions: [`TESTING.md`](TESTING.md)
-- Check: `pnpm run spec:check`
-
-The bundled `kb:dump-context` skill authors companions and updates sibling specs when behavior changes.
+Conventions and CI enforcement: [`TESTING.md`](TESTING.md).
 
 ## 🗄️ Swapping and deleting bases
 
 ```bash
 kb base use foo            # switch the active base for this session
 kb base use --default foo  # save a persistent default
-kb base use --show             # show active base and config default
+kb base use --show         # show active base and config default
 kb base delete bar --force # delete a base and all its data
-kb scan --base foo              # pull + re-index every tracked repo, rebuild cross-repo links
-kb sync                           # install the latest published GitHub release
+kb scan --base foo         # pull + re-index every tracked repo, rebuild cross-repo links
+kb sync                    # install the latest published GitHub release
 kb && /base use foo
 kb && /scan
 kb && /sync
 ```
 
-Base resolution order (both live in `~/.kb/config.json`):
-
-1. `activeBase` — current working base from `kb base use <base>`
-2. `defaultBase` — persistent default from `kb base use --default <base>`
-
-Named bases store their SQLite data under `~/.kb/sessions/<base>/`, and each tracked repo's clone under `~/.kb/sessions/<base>/repos/<slug>/`. The base's `meta.json` holds a `repos` array — one entry per tracked repo (`gitUrl`, `gitBranch`, `slug`, `dir`, `lastSyncedSha`, `lastSyncedAt`).
-
 ### Adding / removing repos
-
-A base can track multiple repos; add or remove them after init with `kb base`:
 
 ```bash
 kb base repo list [--base <name>]                       # list the repos a base tracks
 kb base repo add <url[#branch]> [--branch <b>] [--base <name>]   # clone, index, and link a new repo
 kb base repo remove <url|slug> [--base <name>]          # purge a repo's facts + clone
 ```
-
-`repo add` clones the repo, indexes it, and rebuilds the cross-repo links. `repo remove` purges that repo's facts and its clone; it refuses to remove the last remaining repo.
 
 ### Ignoring paths
 
@@ -490,32 +437,14 @@ A `.kbignore` file committed at a repo root is merged on top of the base's patte
 
 ## 📊 Evaluation
 
-KB ships a multi-pipeline evaluation framework for measuring answer quality and exploration efficiency.
-
-**Query harvest** — runs all questions in a suite two ways, **side-by-side into one artifact**: the **kb side** (`kb query` over a live KB base) and the **control side** — the *same* questions answered by a **real coding agent with no KB**, exploring the clone itself. Both are auto-scored on five axes (Correctness, Usefulness, Relevance, Specificity, Evidence Handling) via Gemini or OpenAI by the same judge. The judge picks a descriptive **label** per axis (e.g. `mostly_correct`, `focused`) rather than guessing a bare number — a classification, not a magnitude guess — and each label maps to an ordinal `0–4` level for scoring. The artifact answers the real question: *"is kb actually better than what people do today?"* Results (kb + control + a kb-vs-control comparison + both sides' token/latency telemetry) land in `~/.kb/evaluations/<run>/artifact.json`.
-
-The headline metric is a single **success score** S ∈ `[0,1]` — a weighted blend of answer quality (60%), token economy (30%), and speed (10%): `success = 0.60·Q_adeq + 0.30·token_efficiency + 0.10·speed`, where `Q_adeq` averages adequacy utilities over **correctness, usefulness, and relevance** (diminishing returns above 3/4 on each axis). kb and control are scored with the same formula.
-
-**Headline project grade:** `ΔS = success_score_kb − success_score_control` from `artifact.comparison` in the same eval run (requires control phase; omit `--skip-control`). ΔS ≥ +0.02 ⇒ kb ahead of the real-agent baseline. See [`EVALUATION.md`](EVALUATION.md#headline-verdict-kb-vs-control-δs).
+KB ships a multi-pipeline evaluation framework for measuring answer quality and exploration efficiency. See [`EVALUATION.md`](EVALUATION.md) for the query-harvest pipeline (kb vs control agent), headline ΔS metric, and MOEL exploration-cost benchmarks.
 
 ```bash
-# kb + control → ΔS in artifact.comparison (default)
 pnpm run eval -- --suite raylib --auto-score
-
-# kb only — no ΔS (kb-side iteration)
-pnpm run eval -- --suite raylib --auto-score --skip-control
-
-# Average the scorer over 3 runs to reduce LLM noise
-pnpm run eval -- --suite kb --score-runs 3
-```
-
-**MOEL pipeline** — measures exploration efficiency across three conditions per task (control agent, kb-enabled, oracle). Computes a composite loss `L_MOEL` and tests the hypothesis that kb reduces exploration cost.
-
-```bash
 pnpm run moel -- --suite moel-kb
 ```
 
-More reading: [`eval/EVAL.md`](eval/EVAL.md) — pipeline overview, loss functions, scoring stability, and the three-condition design.
+More reading: [`eval/EVAL.md`](eval/EVAL.md).
 
 ## 🧪 Development Commands
 
