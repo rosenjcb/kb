@@ -21,7 +21,7 @@ No manual fact entry. KB reads from the source.
 
 KB turns your codebase and docs into a searchable knowledge base:
 
-* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically
+* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically. Leading YAML frontmatter (`---` blocks) is stripped before indexing — only the body becomes searchable facts
 * 🔍 **Query** — Ask questions in natural language; get grounded, source-linked answers
 * 🔁 **Refresh** — Re-scan after changes to keep the knowledge base current
 
@@ -395,7 +395,7 @@ Merge into an existing `mcp.json` if you already have other servers. Restart Cur
 
 ## 📋 Behavioral specs (spec.md)
 
-This repo documents behavior with the [spec.md framework](https://github.com/rosenjcb/spec.md) — sibling `*.spec.md` files define requirements and test cases; companion docs (`TUI.md`, `INTENTS.md`, …) capture architecture knowledge KB indexes on scan.
+This repo documents its own behavior with the [spec.md framework](https://github.com/rosenjcb/spec.md) — sibling `*.spec.md` files for requirements and test cases, companion docs (`TUI.md`, `INTENTS.md`, …) for architecture notes. That is a repo convention, not a KB indexing requirement.
 
 Conventions and CI enforcement: [`TESTING.md`](TESTING.md).
 
