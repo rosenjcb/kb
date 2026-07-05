@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   allocateFreePort,
+  buildKbLocalEnv,
   buildKbRemoteEnv,
   defaultEvalApiKey,
   DEFAULT_KB_SERVER_PORT,
@@ -26,6 +27,13 @@ describe('eval-server helpers', () => {
       if (prevNodePath === undefined) delete process.env.NODE_PATH
       else process.env.NODE_PATH = prevNodePath
     }
+  })
+
+  it('[TC-531] buildKbLocalEnv sets KB_LOCAL_MODE and clears remote vars', () => {
+    const env = buildKbLocalEnv()
+    expect(env.KB_LOCAL_MODE).toBe('true')
+    expect(env.KB_SERVER_URL).toBeUndefined()
+    expect(env.KB_SERVER_API_KEY).toBeUndefined()
   })
 
   it('[TC-529] DEFAULT_KB_SERVER_PORT is 38117', () => {

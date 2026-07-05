@@ -33,11 +33,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read kb version
+      - name: Read kb-server version
         id: version
         shell: bash
         run: |
-          KB_VERSION="$(node -p "require('./package.json').version")"
+          KB_VERSION="$(node -p "require('./packages/kb-server/package.json').version")"
           echo "kb_version=${KB_VERSION}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3

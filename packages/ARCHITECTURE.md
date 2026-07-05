@@ -92,7 +92,7 @@ pnpm run install:global # symlinks both into $PNPM_HOME/bin
 
 - Dependency graph is one-way: `client → core`, `server → core` — never `server → client`.
 - OpenAPI + `server.http` are the wire contract; `KbService` is the in-process contract.
-- Version each package independently via changesets (`@kb/client`, `@kb/server`, `@kb/core`, `kb-workspace`).
+- Version each package independently via changesets (`@kb/client`, `@kb/server`, `@kb/core`). GitHub CLI releases and `v*.*.*` tags follow `@kb/client`; Docker image semver tags follow `@kb/server`.
 
 ## Related docs
 

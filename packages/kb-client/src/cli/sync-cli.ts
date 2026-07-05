@@ -4,18 +4,29 @@ import os from 'node:os'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
-
-const RELEASE_TARBALL_URL =
-  'https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node24.tgz'
-const RELEASE_INSTALLER_URL =
-  'https://github.com/rosenjcb/kb/releases/latest/download/install-kb.sh'
+import {
+  KB_CLIENT_RELEASE_TARBALL_URL,
+  KB_RELEASE_INSTALLER_URL,
+  KB_SERVER_RELEASE_TARBALL_URL,
+} from '@kb/core/config/release-artifacts.js'
 
 /**
  * KB pins exactly Node 24.x (`.nvmrc`, `engines.node`, the launcher, and the
- * released `kb-cli-node24.tgz` asset all agree). Everything kb does must run on
- * this managed runtime — never the user's ambient Node/npm.
+ * released tarballs all agree). Everything kb does must run on this managed
+ * runtime — never the user's ambient Node/npm.
  */
 const PINNED_NODE_MAJOR = 24
+
+export interface KbInstallLayout {
+  kbHomeDir: string
+  clientRuntimeDir: string
+  serverRuntimeDir: string
+  binDir: string
+  kbBinLink: string
+  kbServerBinLink: string
+  kbPackageBin: string
+  kbServerPackageBin: string
+}
 
 /** A Node binary plus the `npm-cli.js` it ships with, used to drive the install. */
 export interface NodeRuntime {
@@ -23,19 +34,21 @@ export interface NodeRuntime {
   npmCli: string
 }
 
-function resolveKbInstallPaths(): {
-  kbHomeDir: string
-  runtimeDir: string
-  binDir: string
-  binLink: string
-  packageBin: string
-} {
+export function resolveKbInstallLayout(): KbInstallLayout {
   const kbHomeDir = process.env.KB_INSTALL_ROOT ?? path.join(os.homedir(), '.kb')
-  const runtimeDir = path.join(kbHomeDir, 'runtime')
+  const clientRuntimeDir = path.join(kbHomeDir, 'runtime', 'client')
+  const serverRuntimeDir = path.join(kbHomeDir, 'runtime', 'server')
   const binDir = path.join(kbHomeDir, 'bin')
-  const binLink = path.join(binDir, 'kb')
-  const packageBin = path.join(runtimeDir, 'node_modules', '.bin', 'kb')
-  return { kbHomeDir, runtimeDir, binDir, binLink, packageBin }
+  return {
+    kbHomeDir,
+    clientRuntimeDir,
+    serverRuntimeDir,
+    binDir,
+    kbBinLink: path.join(binDir, 'kb'),
+    kbServerBinLink: path.join(binDir, 'kb-server'),
+    kbPackageBin: path.join(clientRuntimeDir, 'node_modules', '.bin', 'kb'),
+    kbServerPackageBin: path.join(serverRuntimeDir, 'node_modules', '.bin', 'kb-server'),
+  }
 }
 
 export interface SyncCommandOptions {
@@ -61,9 +74,10 @@ export function printSyncHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('sync', mode)}`,
     '',
     'Behavior:',
-    '  Installs the latest published KB CLI release from GitHub Releases.',
-    `  Release asset: ${RELEASE_TARBALL_URL}`,
-    `  Fresh-machine installer: curl -fsSL ${RELEASE_INSTALLER_URL} | bash`,
+    '  Installs the latest published KB client and server from GitHub Releases.',
+    `  Client: ${KB_CLIENT_RELEASE_TARBALL_URL}`,
+    `  Server: ${KB_SERVER_RELEASE_TARBALL_URL}`,
+    `  Fresh-machine installer: curl -fsSL ${KB_RELEASE_INSTALLER_URL} | bash`,
     `  Runs on KB's managed Node ${PINNED_NODE_MAJOR} runtime — your shell's Node version does not matter.`,
     '',
     'Examples:',
@@ -82,43 +96,64 @@ export async function runSyncCommand(
   const run = options.runCommand ?? runShellCommand
   const resolveRuntime = options.resolveNodeRuntime ?? findManagedNodeRuntime
   const { onProgress } = options
-  const paths = resolveKbInstallPaths()
+  const layout = resolveKbInstallLayout()
 
-  // Use KB's managed Node 24 + its bundled npm for the install, regardless of
-  // whatever Node/npm happens to be on the user's PATH.
   const runtime = resolveRuntime()
 
-  await mkdir(paths.runtimeDir, { recursive: true })
-  await mkdir(paths.binDir, { recursive: true })
+  await mkdir(layout.clientRuntimeDir, { recursive: true })
+  await mkdir(layout.serverRuntimeDir, { recursive: true })
+  await mkdir(layout.binDir, { recursive: true })
+
+  await migrateLegacyFlatRuntime(layout)
 
   onProgress?.('Downloading and installing from GitHub Releases (this may take ~1 minute)...')
-  onProgress?.(`Release asset: ${RELEASE_TARBALL_URL}`)
+  onProgress?.(`Client: ${KB_CLIENT_RELEASE_TARBALL_URL}`)
+  onProgress?.(`Server: ${KB_SERVER_RELEASE_TARBALL_URL}`)
   onProgress?.(`Managed Node runtime: ${runtime.nodeBin}`)
-  onProgress?.(`Managed install root: ${paths.runtimeDir}`)
-  onProgress?.(`Stable binary path: ${paths.binLink}`)
+  onProgress?.(`Stable binary paths: ${layout.kbBinLink}, ${layout.kbServerBinLink}`)
 
-  // `--ignore-scripts` matches the fresh-install path (install-release.sh): all
-  // grammars ship as prebuilt WASM, so there is nothing to compile.
   const nodeBinDir = path.dirname(runtime.nodeBin)
-  const installOutput = await run(
-    runtime.nodeBin,
-    [runtime.npmCli, 'install', '--ignore-scripts', '--prefix', paths.runtimeDir, RELEASE_TARBALL_URL],
-    cwd,
-    onProgress,
-    { ...process.env, PATH: `${nodeBinDir}${path.delimiter}${process.env.PATH ?? ''}` }
-  )
+  const npmEnv = { ...process.env, PATH: `${nodeBinDir}${path.delimiter}${process.env.PATH ?? ''}` }
+  const installLines: string[] = []
 
-  await rm(paths.binLink, { force: true })
-  await symlink(paths.packageBin, paths.binLink)
+  for (const [label, prefix, tarballUrl] of [
+    ['client', layout.clientRuntimeDir, KB_CLIENT_RELEASE_TARBALL_URL],
+    ['server', layout.serverRuntimeDir, KB_SERVER_RELEASE_TARBALL_URL],
+  ] as const) {
+    onProgress?.(`Installing ${label} into ${prefix}`)
+    const output = await run(
+      runtime.nodeBin,
+      [runtime.npmCli, 'install', '--ignore-scripts', '--prefix', prefix, tarballUrl],
+      cwd,
+      onProgress,
+      npmEnv
+    )
+    if (output.trim()) installLines.push(output.trim())
+  }
+
+  await rm(layout.kbBinLink, { force: true })
+  await rm(layout.kbServerBinLink, { force: true })
+  await symlink(layout.kbPackageBin, layout.kbBinLink)
+  await symlink(layout.kbServerPackageBin, layout.kbServerBinLink)
 
   const details = [
-    installOutput.trim(),
-    `Installed to ${paths.runtimeDir}`,
-    `Linked ${paths.binLink} -> ${paths.packageBin}`,
+    ...installLines,
+    `Client runtime: ${layout.clientRuntimeDir}`,
+    `Server runtime: ${layout.serverRuntimeDir}`,
+    `Linked ${layout.kbBinLink} -> ${layout.kbPackageBin}`,
+    `Linked ${layout.kbServerBinLink} -> ${layout.kbServerPackageBin}`,
   ]
     .filter(Boolean)
     .join('\n')
   return `Sync complete.\n${details}`
+}
+
+/** Pre-split installs used a flat `runtime/node_modules`; remove before relayout. */
+async function migrateLegacyFlatRuntime(layout: KbInstallLayout): Promise<void> {
+  const legacyModules = path.join(layout.kbHomeDir, 'runtime', 'node_modules')
+  if (existsSync(legacyModules)) {
+    await rm(legacyModules, { recursive: true, force: true })
+  }
 }
 
 function parseSyncCommand(args: string[], mode: CmdMode): void {
@@ -179,7 +214,7 @@ export function findManagedNodeRuntime(): NodeRuntime {
 
   throw new Error(
     `kb sync could not find KB's managed Node ${PINNED_NODE_MAJOR} runtime. ` +
-      `Reinstall it with the bootstrap installer: curl -fsSL ${RELEASE_INSTALLER_URL} | bash`
+      `Reinstall it with the bootstrap installer: curl -fsSL ${KB_RELEASE_INSTALLER_URL} | bash`
   )
 }
 

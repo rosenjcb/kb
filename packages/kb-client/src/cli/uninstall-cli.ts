@@ -76,12 +76,18 @@ export async function performUninstall(
   const kbHome = process.env.KB_INSTALL_ROOT ?? path.join(os.homedir(), '.kb')
   const kbBinDir = path.join(kbHome, 'bin')
   const kbBinLink = path.join(kbBinDir, 'kb')
+  const kbServerBinLink = path.join(kbBinDir, 'kb-server')
   const kbRuntimeDir = path.join(kbHome, 'runtime')
   const kbPythonDir = path.join(kbHome, '.kb-python')
 
   if (await lexists(kbBinLink)) {
     await unlink(kbBinLink)
     out.log(`Removed: ${kbBinLink}`)
+  }
+
+  if (await lexists(kbServerBinLink)) {
+    await unlink(kbServerBinLink)
+    out.log(`Removed: ${kbServerBinLink}`)
   }
 
   if (await exists(kbRuntimeDir)) {
@@ -118,14 +124,16 @@ export async function runUninstallCommand(args: string[], out: CliOutput): Promi
   const kbHome = process.env.KB_INSTALL_ROOT ?? path.join(os.homedir(), '.kb')
   const kbBinDir = path.join(kbHome, 'bin')
   const kbBinLink = path.join(kbBinDir, 'kb')
+  const kbServerBinLink = path.join(kbBinDir, 'kb-server')
   const kbRuntimeDir = path.join(kbHome, 'runtime')
   const kbPythonDir = path.join(kbHome, '.kb-python')
 
   out.log('KB Uninstall')
   out.log('')
   out.log('This will remove:')
-  out.log(`  • Binary symlink:     ${kbBinLink}`)
-  out.log(`  • Installed runtime:  ${kbRuntimeDir}`)
+  out.log(`  • kb binary symlink:     ${kbBinLink}`)
+  out.log(`  • kb-server symlink:     ${kbServerBinLink}`)
+  out.log(`  • Installed runtimes:    ${kbRuntimeDir}`)
   out.log(`  • Python environment: ${kbPythonDir}`)
   out.log('  • PATH entry from shell config')
   if (!purge) {

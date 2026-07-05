@@ -37,6 +37,9 @@ import {
   derivedBase,
   parseQueryText,
   parseGraphCounts,
+  formatAnswerTelemetryLog,
+  runReportToAnswerTelemetry,
+  readLatestKbQueryRunReport,
   buildCoverageAudit,
   scoreMetric,
   structuralMetric,
@@ -73,7 +76,7 @@ import {
 } from './eval-shared.mjs'
 
 import { readQueryResultFile, runAutoScoreFile, scoreFromLabel } from './eval-score.mjs'
-import { startEvalServer } from './eval-server.mjs'
+import { startEvalServer, buildKbLocalEnv } from './eval-server.mjs'
 import {
   DEFAULT_CONTROL_PROMPT,
   DEFAULT_MAX_TURNS,
@@ -299,16 +302,11 @@ Layout (per run, snapshot clone):
 `)
 }
 
-/** Remote kb env from the orchestrated eval-server session (set before kb subprocesses). */
-let kbRemoteEnv = null
+/** kb subprocess env — local for init/scan; remote after eval-server starts for queries. */
+let kbSubprocessEnv = buildKbLocalEnv()
 
 function kbEnv() {
-  if (!kbRemoteEnv) {
-    throw new Error(
-      '[eval] kb remote env is unset — eval-server should start before kb subprocesses (see eval/EVAL.md)'
-    )
-  }
-  return kbRemoteEnv
+  return kbSubprocessEnv
 }
 
 function kb(cwd, args, opts = {}) {
@@ -733,11 +731,7 @@ async function main() {
       }`
     )
 
-    evalServer = await startEvalServer({
-      base,
-      logPath: path.join(workdir, 'eval-server.log'),
-    })
-    kbRemoteEnv = evalServer.kbEnv()
+    kbSubprocessEnv = buildKbLocalEnv()
 
     try {
       if (wipeBase) {
@@ -794,6 +788,13 @@ async function main() {
       const logsOut = timed('logs_list', runTiming, () => kb(targetCwd, logsCmd(base)))
       fs.writeFileSync(path.join(workdir, 'logs.txt'), logsOut, 'utf8')
 
+      console.error('[eval] starting kb-server for remote queries (init/scan ran in-process)')
+      evalServer = await startEvalServer({
+        base,
+        logPath: path.join(workdir, 'eval-server.log'),
+      })
+      kbSubprocessEnv = evalServer.kbEnv()
+
       console.error('[eval] waiting for kb-server index readiness (/healthz ok: true) before queries')
       await evalServer.waitReady()
 
@@ -803,11 +804,17 @@ async function main() {
         console.error(`[eval] ${suiteLabel} · K query ${q}/${questions.length}`)
         const escaped = question.replace(/"/g, '\\"')
         const label = `query_${q}`
+        const queryStartMs = Date.now()
         const out = timed(label, runTiming, () => kb(targetCwd, `query "${escaped}" --base ${base}`))
         const durationMs = runTiming.command_durations_ms[label]
         runTiming.query_durations_ms.push(durationMs)
         queryTotalMs += durationMs
         fs.writeFileSync(path.join(workdir, `q${q}.json`), out, 'utf8')
+        const report = readLatestKbQueryRunReport(base, { minFinishedAtMs: queryStartMs - 500 })
+        const telemetry =
+          runReportToAnswerTelemetry(report) ??
+          (typeof durationMs === 'number' ? { duration_ms: durationMs } : null)
+        console.error(`[eval] answer ${formatAnswerTelemetryLog(telemetry)}`)
         q++
       }
       runTiming.query_total_duration_ms = queryTotalMs
@@ -817,7 +824,7 @@ async function main() {
         console.error('[eval] stopping kb-server')
         await evalServer.stop()
         evalServer = null
-        kbRemoteEnv = null
+        kbSubprocessEnv = buildKbLocalEnv()
       }
     }
   } else {

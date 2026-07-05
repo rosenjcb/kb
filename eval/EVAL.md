@@ -178,14 +178,14 @@ expects a live `kb-server` on `localhost:38117` (or `~/.kb/config.json` `server.
 
 ### Orchestration (default)
 
-1. **`eval-run.mjs`** — one `kb-server` per harvest run, started with `--base eval-{suiteId}`
-   (or your `--base` override). Subprocess `kb` calls use `KB_SERVER_URL` +
-   `KB_SERVER_API_KEY` (no `KB_LOCAL_MODE`). The harness polls `/healthz` until `ok: true`
-   before the query loop. Server logs land in `<run-dir>/eval-server.log`; the process is
-   stopped when the kb phase finishes (including on error).
+1. **`eval-run.mjs`** — **init/scan run in-process** (`KB_LOCAL_MODE=true`) so SQLite is not
+   contended, then **`kb-server` starts** for the query loop with `--base eval-{suiteId}` (or your
+   `--base` override). Subprocess `kb query` calls use `KB_SERVER_URL` + `KB_SERVER_API_KEY`.
+   The harness polls `/healthz` until `ok: true` before queries. Server logs land in
+   `<run-dir>/eval-server.log`; the process is stopped when the kb phase finishes (including on error).
 
-2. **`moel-run.mjs`** — one `kb-server` per condition (`moel-{suite}-{N|K|O}`), restarted when
-   the base changes between conditions.
+2. **`moel-run.mjs`** — init in-process per condition, then one `kb-server` per condition
+   (`moel-{suite}-{N|K|O}`) for the remote query.
 
 **Base lifecycle:** the server serves one base chosen at startup (`--base` / manifest). Client
 `kb base use` updates the client profile only — eval starts the server with the eval base

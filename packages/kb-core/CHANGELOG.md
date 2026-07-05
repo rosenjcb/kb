@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.1.5
+
+### Patch Changes
+
+- Split GitHub release into `kb-client-node24.tgz` and `kb-server-node24.tgz`; `install-kb.sh` and `kb sync` install both by default (`--client-only` / `--server-only` for one side). Wire release CI to `@kb/client` / `@kb/server` versions and changelogs.
+
 ## 1.1.4
 
 ### Patch Changes

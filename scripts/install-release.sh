@@ -1,14 +1,62 @@
 #!/usr/bin/env bash
+# Fresh install from GitHub Releases — installs kb (client) and kb-server by default.
+# Postgres-style split: use --client-only or --server-only when you need one side.
 set -euo pipefail
 
 NODE_MAJOR="24"
-RELEASE_TARBALL_URL="https://github.com/rosenjcb/kb/releases/latest/download/kb-cli-node24.tgz"
+RELEASE_BASE="https://github.com/rosenjcb/kb/releases/latest/download"
+CLIENT_TARBALL_URL="${RELEASE_BASE}/kb-client-node24.tgz"
+SERVER_TARBALL_URL="${RELEASE_BASE}/kb-server-node24.tgz"
 NVM_INSTALL_URL="https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh"
 KB_HOME_DIR="${KB_INSTALL_ROOT:-$HOME/.kb}"
-KB_RUNTIME_DIR="$KB_HOME_DIR/runtime"
+KB_CLIENT_RUNTIME="$KB_HOME_DIR/runtime/client"
+KB_SERVER_RUNTIME="$KB_HOME_DIR/runtime/server"
 KB_BIN_DIR="$KB_HOME_DIR/bin"
 KB_BIN_LINK="$KB_BIN_DIR/kb"
-KB_PACKAGE_BIN="$KB_RUNTIME_DIR/node_modules/.bin/kb"
+KB_SERVER_BIN_LINK="$KB_BIN_DIR/kb-server"
+KB_PACKAGE_BIN="$KB_CLIENT_RUNTIME/node_modules/.bin/kb"
+KB_SERVER_PACKAGE_BIN="$KB_SERVER_RUNTIME/node_modules/.bin/kb-server"
+
+INSTALL_CLIENT=true
+INSTALL_SERVER=true
+
+usage() {
+  cat <<EOF
+Usage: install-kb.sh [--client-only | --server-only]
+
+  (default)       Install kb client and kb-server (recommended)
+  --client-only   Install kb CLI/TUI only (remote server elsewhere)
+  --server-only   Install kb-server only (headless daemon)
+  --help          Show this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --client-only)
+      INSTALL_SERVER=false
+      shift
+      ;;
+    --server-only)
+      INSTALL_CLIENT=false
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      printf '[kb-installer] Unknown option: %s\n' "$1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "$INSTALL_CLIENT" != true && "$INSTALL_SERVER" != true ]]; then
+  printf '[kb-installer] Nothing to install — pick a component or use the default (both).\n' >&2
+  exit 1
+fi
 
 log() {
   printf '[kb-installer] %s\n' "$1"
@@ -82,7 +130,18 @@ ensure_npm() {
 }
 
 ensure_kb_home() {
-  mkdir -p "$KB_RUNTIME_DIR" "$KB_BIN_DIR"
+  mkdir -p "$KB_BIN_DIR"
+  if [[ "$INSTALL_CLIENT" == true ]]; then
+    mkdir -p "$KB_CLIENT_RUNTIME"
+  fi
+  if [[ "$INSTALL_SERVER" == true ]]; then
+    mkdir -p "$KB_SERVER_RUNTIME"
+  fi
+  # Pre-split releases used a flat runtime/node_modules tree.
+  if [ -d "$KB_HOME_DIR/runtime/node_modules" ]; then
+    log "Removing legacy flat runtime layout"
+    rm -rf "$KB_HOME_DIR/runtime/node_modules"
+  fi
 }
 
 ensure_shell_path() {
@@ -104,25 +163,53 @@ ensure_shell_path() {
   fi
 }
 
+install_release_package() {
+  local label="$1"
+  local prefix="$2"
+  local url="$3"
+  log "Installing kb-${label} into ${prefix} from ${url}"
+  npm install --ignore-scripts --prefix "$prefix" "$url"
+}
+
+link_bin() {
+  local link="$1"
+  local target="$2"
+  ln -sf "$target" "$link"
+}
+
 install_kb_release() {
-  log "Installing KB into $KB_RUNTIME_DIR from $RELEASE_TARBALL_URL"
-  # --ignore-scripts prevents tree-sitter-* grammar packages from attempting
-  # native compilation.  All grammars are loaded as pre-built WASM files.
-  npm install --ignore-scripts --prefix "$KB_RUNTIME_DIR" "$RELEASE_TARBALL_URL"
-  ln -sf "$KB_PACKAGE_BIN" "$KB_BIN_LINK"
+  if [[ "$INSTALL_CLIENT" == true ]]; then
+    install_release_package client "$KB_CLIENT_RUNTIME" "$CLIENT_TARBALL_URL"
+    link_bin "$KB_BIN_LINK" "$KB_PACKAGE_BIN"
+  fi
+  if [[ "$INSTALL_SERVER" == true ]]; then
+    install_release_package server "$KB_SERVER_RUNTIME" "$SERVER_TARBALL_URL"
+    link_bin "$KB_SERVER_BIN_LINK" "$KB_SERVER_PACKAGE_BIN"
+  fi
 }
 
 verify_install() {
-  if [ ! -x "$KB_PACKAGE_BIN" ]; then
-    fail "Installation completed but the expected launcher was not found at $KB_PACKAGE_BIN."
+  if [[ "$INSTALL_CLIENT" == true ]]; then
+    if [ ! -x "$KB_PACKAGE_BIN" ]; then
+      fail "Installation completed but kb was not found at $KB_PACKAGE_BIN."
+    fi
+    log "kb installed at $KB_BIN_LINK"
+  fi
+  if [[ "$INSTALL_SERVER" == true ]]; then
+    if [ ! -x "$KB_SERVER_PACKAGE_BIN" ]; then
+      fail "Installation completed but kb-server was not found at $KB_SERVER_PACKAGE_BIN."
+    fi
+    log "kb-server installed at $KB_SERVER_BIN_LINK"
   fi
 
-  if ! command -v kb >/dev/null 2>&1; then
+  if [[ "$INSTALL_CLIENT" == true ]] && ! command -v kb >/dev/null 2>&1; then
     fail "Installation completed but 'kb' is not on PATH yet. Open a new shell and try again."
   fi
+  if [[ "$INSTALL_SERVER" == true ]] && ! command -v kb-server >/dev/null 2>&1; then
+    fail "Installation completed but 'kb-server' is not on PATH yet. Open a new shell and try again."
+  fi
 
-  log "kb installed successfully at $KB_BIN_LINK"
-  log "Managed runtime lives in $KB_RUNTIME_DIR"
+  log "Managed runtimes live under $KB_HOME_DIR/runtime/{client,server}"
   log "Use 'kb sync' for upgrades."
 }
 

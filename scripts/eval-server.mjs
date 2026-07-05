@@ -57,6 +57,24 @@ export function allocateFreePort(host = '127.0.0.1') {
 }
 
 /**
+ * Build subprocess env for in-process kb (init/scan/indexing).
+ * Use during eval capture so SQLite is not contended with a running kb-server.
+ * @param {{ kbHome?: string }} [opts]
+ */
+export function buildKbLocalEnv({ kbHome } = {}) {
+  const env = { ...process.env }
+  env.KB_LOCAL_MODE = 'true'
+  env.KB_SERVER_URL = undefined
+  env.KBHOST = undefined
+  env.KBPORT = undefined
+  env.KB_SERVER_API_KEY = undefined
+  env.NODE_PATH = undefined
+  if (kbHome) env.KB_HOME = kbHome
+  else env.KB_HOME = undefined
+  return env
+}
+
+/**
  * Build subprocess env for remote kb client calls (no KB_LOCAL_MODE).
  * @param {{ host?: string, port?: number | string, url?: string, apiKey?: string, kbHome?: string }} opts
  */

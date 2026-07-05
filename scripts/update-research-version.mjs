@@ -12,9 +12,11 @@
  * you want the wizard.
  */
 import { execSync } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { readClientVersion } from './release-package.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const changesetBin = path.join(root, 'node_modules', '.bin', 'changeset')
@@ -24,7 +26,7 @@ function runChangesetCli(args) {
 }
 
 function regenerateVersionTex() {
-  const { version } = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf-8'))
+  const version = readClientVersion()
   const releaseDate = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',

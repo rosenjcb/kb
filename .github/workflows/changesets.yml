@@ -1,7 +1,7 @@
 # Tag + release on merge to main. Versioning happens ON the PR branch
 # (`pnpm run changeset:version`), enforced by the merge gate in ci.yml.
 # This workflow never opens PRs or re-runs versioning — it only fails if
-# unconsumed changesets slipped onto main, then tags the current package version.
+# unconsumed changesets slipped onto main, then tags `@kb/client`'s version.
 name: Changesets
 
 on:
