@@ -116,30 +116,24 @@ Fresh-machine behavior:
 
 ### Uninstalling KB
 
-To remove KB from a release install:
+KB splits client and server like Postgres (`psql` vs `postgres`):
+
+| Command | Removes |
+|---------|---------|
+| `kb uninstall` | **Client only** — `~/.kb/bin/kb`, `runtime/client` |
+| `kb-server uninstall` | **Server binary/runtime** — `~/.kb/bin/kb-server`, `runtime/server` |
+| `kb-server uninstall --purge` | Server **plus all server data** under `~/.kb` (sessions, indexes, `config.json`, logs) |
 
 ```bash
-kb uninstall
+kb uninstall              # client only; warns that ~/.kb data remains
+kb uninstall --yes        # non-interactive client uninstall
+
+kb-server uninstall --purge --yes   # wipe server + data; keeps kb client if installed
 ```
 
-This removes:
-- The `~/.kb/bin/kb` binary symlink
-- The installed runtime at `~/.kb/runtime`
-- The `PATH` entry from your shell config (`.bashrc` / `.zshrc` / `.profile`)
+There is no `kb uninstall --purge` — configuration and knowledge bases live on the server side. Use `kb-server uninstall --purge` to delete them.
 
-You will be prompted whether to also delete `~/.kb` (knowledge bases, config, logs). To skip the prompt and keep user data:
-
-```bash
-kb uninstall --yes
-```
-
-To remove everything including `~/.kb` in one shot:
-
-```bash
-kb uninstall --purge
-```
-
-From the TUI, type `/uninstall` (or `/uninstall --purge` to also wipe user data). The TUI will walk you through both confirmation steps before exiting.
+From the TUI, `/uninstall` removes the **client only** (same as `kb uninstall`).
 
 ### 2) Start the server and configure the client
 

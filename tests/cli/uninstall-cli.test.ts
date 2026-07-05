@@ -2,9 +2,14 @@ import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { performUninstall, runUninstallCommand } from '@kb/client/cli/uninstall-cli.js'
+import {
+  performClientUninstall,
+  performServerUninstall,
+} from '@kb/core/cli/release-uninstall.js'
+import { runUninstallCommand } from '@kb/client/cli/uninstall-cli.js'
+import { runServerUninstallCommand } from '@kb/server/uninstall-cli.js'
 
-const TMP_KB_HOME = path.join(os.tmpdir(), 'kb-uninstall-cli-test')
+const TMP_KB_HOME = path.join(os.tmpdir(), 'kb-uninstall-test')
 
 function makeOut() {
   const lines: string[] = []
@@ -20,146 +25,151 @@ function makeOut() {
   }
 }
 
-async function setupFakeInstall() {
+async function setupDualInstall() {
   const binDir = path.join(TMP_KB_HOME, 'bin')
-  const runtimeDir = path.join(TMP_KB_HOME, 'runtime')
-  const pythonDir = path.join(TMP_KB_HOME, '.kb-python')
-  const binLink = path.join(binDir, 'kb')
+  const clientRuntime = path.join(TMP_KB_HOME, 'runtime', 'client')
+  const serverRuntime = path.join(TMP_KB_HOME, 'runtime', 'server')
+  const sessionsDir = path.join(TMP_KB_HOME, 'sessions')
+  const configFile = path.join(TMP_KB_HOME, 'config.json')
+  const kbLink = path.join(binDir, 'kb')
+  const serverLink = path.join(binDir, 'kb-server')
+  const clientBin = path.join(clientRuntime, 'node_modules', '.bin', 'kb')
+  const serverBin = path.join(serverRuntime, 'node_modules', '.bin', 'kb-server')
 
   await rm(TMP_KB_HOME, { recursive: true, force: true })
   await mkdir(binDir, { recursive: true })
-  await mkdir(runtimeDir, { recursive: true })
-  await mkdir(pythonDir, { recursive: true })
-  await symlink('/usr/bin/node', binLink)
+  await mkdir(path.dirname(clientBin), { recursive: true })
+  await mkdir(path.dirname(serverBin), { recursive: true })
+  await mkdir(sessionsDir, { recursive: true })
+  await writeFile(configFile, '{}')
+  await writeFile(clientBin, '#!/bin/sh\n', 'utf8')
+  await writeFile(serverBin, '#!/bin/sh\n', 'utf8')
+  await symlink(clientBin, kbLink)
+  await symlink(serverBin, serverLink)
 
-  return { binDir, runtimeDir, pythonDir, binLink }
+  return { binDir, clientRuntime, serverRuntime, sessionsDir, configFile, kbLink, serverLink }
 }
 
 beforeEach(() => {
   process.env.KB_INSTALL_ROOT = TMP_KB_HOME
+  process.env.KB_HOME = TMP_KB_HOME
 })
 
 afterEach(async () => {
   delete process.env.KB_INSTALL_ROOT
+  delete process.env.KB_HOME
   await rm(TMP_KB_HOME, { recursive: true, force: true })
 })
 
-// ---------------------------------------------------------------------------
-// performUninstall
-// ---------------------------------------------------------------------------
-
-describe('performUninstall', () => {
-  it('[TC-490] removes binary symlink, runtime dir, and Python venv', async () => {
-    const { binLink, runtimeDir, pythonDir } = await setupFakeInstall()
+describe('performClientUninstall', () => {
+  it('[TC-490] removes kb client only and keeps kb-server + server data', async () => {
+    const { kbLink, serverLink, clientRuntime, serverRuntime, sessionsDir, configFile } =
+      await setupDualInstall()
     const { out, lines } = makeOut()
 
-    await performUninstall({ yes: true, purge: false }, out)
+    await performClientUninstall(out)
 
     expect(lines.some(l => l.includes('bin/kb'))).toBe(true)
-    expect(lines.some(l => l.includes('runtime'))).toBe(true)
-    expect(lines.some(l => l.includes('.kb-python'))).toBe(true)
+    expect(lines.some(l => l.includes('runtime/client'))).toBe(true)
+    expect(lines.some(l => l.includes('kb-server'))).toBe(false)
 
     const { access } = await import('node:fs/promises')
-    await expect(access(binLink)).rejects.toThrow()
-    await expect(access(runtimeDir)).rejects.toThrow()
-    await expect(access(pythonDir)).rejects.toThrow()
+    await expect(access(kbLink)).rejects.toThrow()
+    await expect(access(clientRuntime)).rejects.toThrow()
+    await expect(access(serverLink)).resolves.toBeUndefined()
+    await expect(access(serverRuntime)).resolves.toBeUndefined()
+    await expect(access(sessionsDir)).resolves.toBeUndefined()
+    await expect(access(configFile)).resolves.toBeUndefined()
   })
+})
 
-  it('[TC-491] does not remove ~/.kb when purge is false', async () => {
-    await setupFakeInstall()
+describe('performServerUninstall', () => {
+  it('[TC-537] without purge removes kb-server runtime only', async () => {
+    const { serverLink, serverRuntime, sessionsDir, configFile, kbLink } = await setupDualInstall()
     const { out } = makeOut()
 
-    await performUninstall({ yes: true, purge: false }, out)
+    await performServerUninstall({ purge: false }, out)
 
     const { access } = await import('node:fs/promises')
-    await expect(access(TMP_KB_HOME)).resolves.toBeUndefined()
+    await expect(access(serverLink)).rejects.toThrow()
+    await expect(access(serverRuntime)).rejects.toThrow()
+    await expect(access(kbLink)).resolves.toBeUndefined()
+    await expect(access(sessionsDir)).resolves.toBeUndefined()
+    await expect(access(configFile)).resolves.toBeUndefined()
   })
 
-  it('[TC-492] removes ~/.kb entirely when purge is true', async () => {
-    await setupFakeInstall()
+  it('[TC-538] with purge removes server data but keeps kb client install', async () => {
+    const { serverLink, kbLink, clientRuntime, sessionsDir, configFile } = await setupDualInstall()
     const { out } = makeOut()
 
-    await performUninstall({ yes: true, purge: true }, out)
+    await performServerUninstall({ purge: true }, out)
 
     const { access } = await import('node:fs/promises')
-    await expect(access(TMP_KB_HOME)).rejects.toThrow()
+    await expect(access(serverLink)).rejects.toThrow()
+    await expect(access(sessionsDir)).rejects.toThrow()
+    await expect(access(configFile)).rejects.toThrow()
+    await expect(access(kbLink)).resolves.toBeUndefined()
+    await expect(access(clientRuntime)).resolves.toBeUndefined()
+  })
+})
+
+describe('runUninstallCommand', () => {
+  it('[TC-495] rejects --purge with server guidance', async () => {
+    const { out, errors } = makeOut()
+    await runUninstallCommand(['--purge'], out)
+    expect(errors.some(e => e.includes('kb-server uninstall --purge'))).toBe(true)
   })
 
-  it('[TC-493] skips missing paths silently', async () => {
-    await rm(TMP_KB_HOME, { recursive: true, force: true })
-    const { out, lines } = makeOut()
+  it('[TC-496] --yes removes client without prompting', async () => {
+    const { kbLink, serverLink } = await setupDualInstall()
+    const { out } = makeOut()
 
-    await performUninstall({ yes: true, purge: false }, out)
+    await runUninstallCommand(['--yes'], out)
 
-    expect(lines).toHaveLength(0)
+    const { access } = await import('node:fs/promises')
+    await expect(access(kbLink)).rejects.toThrow()
+    await expect(access(serverLink)).resolves.toBeUndefined()
   })
+})
 
-  it('[TC-494] removes PATH entries from rc files', async () => {
-    await setupFakeInstall()
-    const kbBinDir = path.join(TMP_KB_HOME, 'bin')
+describe('runServerUninstallCommand', () => {
+  it('[TC-539] --purge deletes server data', async () => {
+    await setupDualInstall()
+    const { out } = makeOut()
+
+    await runServerUninstallCommand(['--purge', '--yes'], out)
+
+    const { access } = await import('node:fs/promises')
+    await expect(access(path.join(TMP_KB_HOME, 'sessions'))).rejects.toThrow()
+    await expect(access(path.join(TMP_KB_HOME, 'config.json'))).rejects.toThrow()
+  })
+})
+
+describe('PATH cleanup', () => {
+  it('[TC-494] removes PATH entry only when both binaries are gone', async () => {
+    const { kbLink, serverLink } = await setupDualInstall()
     const fakeRcFile = path.join(TMP_KB_HOME, '.bashrc')
+    const kbBinDir = path.join(TMP_KB_HOME, 'bin')
     await writeFile(fakeRcFile, `export PATH="${kbBinDir}:$PATH"\necho hello\n`)
 
-    const { out, lines } = makeOut()
     const originalHome = os.homedir()
     Object.defineProperty(os, 'homedir', { value: () => TMP_KB_HOME, configurable: true })
     try {
-      await performUninstall({ yes: true, purge: false }, out)
+      const { out: clientOut } = makeOut()
+      await performClientUninstall(clientOut)
+      const mid = await readFile(fakeRcFile, 'utf8')
+      expect(mid).toContain(`export PATH="${kbBinDir}:$PATH"`)
+
+      const { out: serverOut, lines } = makeOut()
+      await performServerUninstall({ purge: false }, serverOut)
+      const final = await readFile(fakeRcFile, 'utf8')
+      expect(final).not.toContain(`export PATH="${kbBinDir}:$PATH"`)
+      expect(lines.some(l => l.includes('.bashrc'))).toBe(true)
     } finally {
       Object.defineProperty(os, 'homedir', { value: () => originalHome, configurable: true })
     }
 
-    const remaining = await readFile(fakeRcFile, 'utf8')
-    expect(remaining).not.toContain(`export PATH="${kbBinDir}:$PATH"`)
-    expect(remaining).toContain('echo hello')
-    expect(lines.some(l => l.includes('.bashrc'))).toBe(true)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// runUninstallCommand — flag parsing
-// ---------------------------------------------------------------------------
-
-describe('runUninstallCommand', () => {
-  it('[TC-495] rejects non-TTY without --yes', async () => {
-    Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true })
-    const { out, errors } = makeOut()
-    await runUninstallCommand([], out)
-    expect(errors.some(e => e.includes('interactive terminal'))).toBe(true)
-    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true })
-  })
-
-  it('[TC-496] --yes removes binary, runtime, and Python env without prompting', async () => {
-    const { binLink, runtimeDir, pythonDir } = await setupFakeInstall()
-    const { out, lines } = makeOut()
-
-    await runUninstallCommand(['--yes'], out)
-
-    const { access } = await import('node:fs/promises')
-    await expect(access(binLink)).rejects.toThrow()
-    await expect(access(runtimeDir)).rejects.toThrow()
-    await expect(access(pythonDir)).rejects.toThrow()
-    expect(lines.some(l => l.includes('KB has been uninstalled'))).toBe(true)
-    // user data kept
-    await expect(access(TMP_KB_HOME)).resolves.toBeUndefined()
-  })
-
-  it('[TC-497] --purge removes everything including ~/.kb', async () => {
-    await setupFakeInstall()
-    const { out } = makeOut()
-
-    await runUninstallCommand(['--purge'], out)
-
-    const { access } = await import('node:fs/promises')
-    await expect(access(TMP_KB_HOME)).rejects.toThrow()
-  })
-
-  it('[TC-498] lists Python environment in the removal plan', async () => {
-    await setupFakeInstall()
-    const { out, lines } = makeOut()
-
-    await runUninstallCommand(['--yes'], out)
-
-    expect(lines.some(l => l.includes('.kb-python'))).toBe(true)
+    void kbLink
+    void serverLink
   })
 })

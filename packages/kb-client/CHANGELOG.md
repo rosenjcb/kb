@@ -1,5 +1,13 @@
 # @kb/client
 
+## 1.2.1
+
+### Patch Changes
+
+- Split uninstall: `kb uninstall` removes client only; `kb-server uninstall --purge` removes server and ~/.kb server data.
+- Updated dependencies
+  - @kb/core@1.1.6
+
 ## 1.2.0
 
 ### Minor Changes

@@ -130,17 +130,21 @@ Adding a skill: append to `SKILLS` array, add `loadSkill()` source under `skills
 
 ## Consumer uninstall
 
-`kb uninstall` targets the **release install layout** (`scripts/install-release.sh`). Core logic is in `performUninstall()`, shared with the TUI `/uninstall` flow.
+Postgres-style split:
 
-Removes in order: `~/.kb/bin/kb` symlink (via `lstat` so broken symlinks are caught), `~/.kb/runtime/` npm package, `~/.kb/.kb-python` Python venv, and the `PATH` entry from shell rc files. Then prompts interactively before deleting `~/.kb/` user data.
+| Command | Scope |
+|---------|--------|
+| `kb uninstall` | **Client only** — `~/.kb/bin/kb`, `runtime/client`, legacy flat client runtime, `.kb-python` |
+| `kb-server uninstall` | **Server binary/runtime** — `~/.kb/bin/kb-server`, `runtime/server` |
+| `kb-server uninstall --purge` | Server **plus** `~/.kb` server data (`sessions/`, `config.json`, `logs/`, `traces/`) |
+
+`kb uninstall` does **not** accept `--purge` (no client-side KB data to wipe). Shared logic: `@kb/core/cli/release-uninstall.ts`; TUI `/uninstall` matches client-only `kb uninstall`.
 
 Flags:
-- `--yes` — skip the user-data prompt; keep `~/.kb` intact
-- `--purge` — also delete `~/.kb` without prompting (implies skipping user-data prompt)
+- `kb uninstall --yes` — non-interactive client uninstall
+- `kb-server uninstall --yes` / `--purge` — server uninstall
 
-Non-interactive callers (TUI, CI) should pass `--yes` or `--purge`; without a TTY and without a flag the command exits with an error.
-
-Distinct from `pnpm uninstall:global` (`scripts/uninstall-global.sh`), which targets the dev symlink at `$PNPM_HOME/bin/kb` and removes `dist/` + both the repo-local and global `.kb-python` venvs. **`kb uninstall` must never touch `$PNPM_HOME` paths.**
+Distinct from `pnpm uninstall:global` (`scripts/uninstall-global.sh`), which targets dev symlinks at `$PNPM_HOME/bin`. **`kb uninstall` must never touch `$PNPM_HOME` paths.**
 
 ## Publish
 

@@ -20,6 +20,7 @@ import { createKbService } from '@kb/core/service/kb-service.js'
 import { streamChatTurn } from './chat-stream.js'
 import { parseDuration, startReindexScheduler } from './reindex-scheduler.js'
 import { log } from './logger.js'
+import { runServerUninstallCommand } from './uninstall-cli.js'
 
 export interface ServerLogger {
   log(message: string): void
@@ -306,6 +307,8 @@ const SERVER_USAGE = `Usage: kb-server <command>
 Commands:
   start [--base <name>] [--port <n>] [--with-mcp] [--git <url>]…
         Run the KB HTTP/MCP daemon (default command)
+  uninstall [--purge] [--yes]
+        Remove the release-installed kb-server binary/runtime; --purge deletes ~/.kb server data
   stop          Stop a locally installed kb-server service (Phase 5)
   status        Check local kb-server service status (Phase 5)
   install       Install kb-server as a local service (Phase 5)
@@ -327,6 +330,9 @@ export async function runServerMain(argv: string[]): Promise<void> {
   switch (command) {
     case 'start':
       await runServerCommand(rest, out, config)
+      return
+    case 'uninstall':
+      await runServerUninstallCommand(rest, out)
       return
     case 'stop':
     case 'status':

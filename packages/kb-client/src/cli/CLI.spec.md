@@ -63,7 +63,7 @@ See companion doc for full vocabulary where applicable.
 | FR-34 | Skill installer copies bundled skills to agent home directories |
 | FR-35 | Startup notices print one-time migration and version hints |
 | FR-36 | Sync CLI triggers manual pull + reindex across tracked repos |
-| FR-37 | Uninstall CLI removes the release layout and optional user data |
+| FR-37 | Client uninstall removes release client layout; server uninstall removes server layout and optional ~/.kb data |
 | FR-38 | View CLI renders documents and facts for terminal inspection |
 
 ### QA Test Cases
@@ -561,15 +561,13 @@ See companion doc for full vocabulary where applicable.
 | TC-487 | FR-36 | Given no flags, then sync installs the latest release tarball into ~/.kb and links a stable binary | pass |
 | TC-488 | FR-36 | Given legacy no-build flag, then sync rejects it | pass |
 | TC-489 | FR-36 | Given positional args, then sync rejects them | pass |
-| TC-490 | FR-37 | removes binary symlink, runtime dir, and Python venv | pass |
-| TC-491 | FR-37 | does not remove ~/.kb when purge is false | pass |
-| TC-492 | FR-37 | removes ~/.kb entirely when purge is true | pass |
-| TC-493 | FR-37 | skips missing paths silently | pass |
-| TC-494 | FR-37 | removes PATH entries from rc files | pass |
-| TC-495 | FR-37 | rejects non-TTY without --yes | pass |
-| TC-496 | FR-37 | --yes removes binary, runtime, and Python env without prompting | pass |
-| TC-497 | FR-37 | --purge removes everything including ~/.kb | pass |
-| TC-498 | FR-37 | lists Python environment in the removal plan | pass |
+| TC-490 | FR-37 | client uninstall removes kb only and preserves kb-server + server data | pass |
+| TC-494 | FR-37 | removes PATH entries from rc files only when both binaries are gone | pass |
+| TC-495 | FR-37 | kb uninstall rejects --purge with kb-server guidance | pass |
+| TC-496 | FR-37 | --yes removes client without prompting | pass |
+| TC-537 | FR-37 | kb-server uninstall without purge keeps ~/.kb server data | pass |
+| TC-538 | FR-37 | kb-server uninstall --purge removes server data but keeps kb client install | pass |
+| TC-539 | FR-37 | kb-server uninstall --purge --yes deletes server data | pass |
 | TC-499 | FR-38 | Given id selector, then parses normalized id mode | pass |
 | TC-500 | FR-38 | Given title and base flags, then parses title mode with base | pass |
 | TC-501 | FR-38 | Given id and title selectors together, then throws explicit error | pass |

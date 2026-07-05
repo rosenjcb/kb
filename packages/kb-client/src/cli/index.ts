@@ -187,7 +187,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  sync        Install the latest published KB release',
     '  logs        Browse and compare run reports',
     '  skills      Manage agent skills',
-    '  uninstall   Remove the kb binary and optionally all user data',
+    '  uninstall   Remove the kb client binary (server/data untouched; see kb-server uninstall)',
     '',
     'Intent commands:',
     '  query       Search the knowledge base',
