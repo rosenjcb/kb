@@ -31,7 +31,7 @@ flowchart LR
 |---|---|---|
 | Router | `src/cli/index.ts` | Subcommand dispatch; bare `kb` → TUI |
 | Remote hot path | `src/cli/remote-commands.ts` | All server ops over HTTP (`/v1/admin/cli`, `/v1/query`, `/v1/chat`) |
-| SDK | `src/api/` | Connection profile, typed client, postgres-style errors |
+| SDK | `src/api/` | Connection profile, typed client, connection errors with start hint |
 | TUI | `src/tui/`, `src/ui/` | Ink session; re-exports printer from core |
 | Skills | `src/cli/skill-installer.ts` | Install bundled agent skills locally |
 

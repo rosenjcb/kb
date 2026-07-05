@@ -117,6 +117,7 @@ import {
   runRemoteCliCommand,
   shouldUseRemoteServer,
 } from './remote-commands.js'
+import { resolveReportHost } from '../api/server-connection.js'
 import { maybeAutoSync } from '@kb/core/ops/auto-sync.js'
 import { baseNameFromGitUrl } from '@kb/core/ops/git-sync.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
@@ -704,11 +705,12 @@ export async function runMainWithOutput(
       out.log(printInitHelp(mode))
       return
     }
+    const reportHost = resolveReportHost(config)
     const reporter = new ReportWriter(defaultLogsDir())
-    const collector = new RunCollector('init', { sessionId })
+    const collector = new RunCollector('init', { sessionId, host: reportHost })
     try {
       const parsed = parseInitCommand(args.slice(1))
-      const initCollector = new RunCollector('init', { sessionId })
+      const initCollector = new RunCollector('init', { sessionId, host: reportHost })
 
       // Default the base name to the first repo's slug when not given (CLI parity with the
       // interactive prompt). runKbInit owns cloning, indexing, reconciliation, and meta.json.
@@ -748,8 +750,9 @@ export async function runMainWithOutput(
       out.log(printScanHelp(mode))
       return
     }
+    const reportHost = resolveReportHost(config)
     const reporter = new ReportWriter(defaultLogsDir())
-    const collector = new RunCollector('scan', { sessionId })
+    const collector = new RunCollector('scan', { sessionId, host: reportHost })
     try {
       // Scan now means "pull + re-index every git repo this base tracks", then reconcile the
       // cross-repo graph. It no longer reads the caller's working directory.
@@ -872,8 +875,9 @@ export async function runMainWithOutput(
   }
 
   if (isIntentCommand(firstArg)) {
+    const reportHost = resolveReportHost(config)
     const reporter = new ReportWriter(defaultLogsDir())
-    let collector = new RunCollector(firstArg, { sessionId })
+    let collector = new RunCollector(firstArg, { sessionId, host: reportHost })
     const printer = createPrinter(out, mode)
     try {
       let parsed = parseIntentCommand(args)
@@ -897,7 +901,11 @@ export async function runMainWithOutput(
         return
       }
       await maybeAutoSync(intentBaseDir, { onProgress: line => out.log(line) })
-      collector = new RunCollector(firstArg, { sessionId, base: path.basename(intentBaseDir) })
+      collector = new RunCollector(firstArg, {
+        sessionId,
+        base: path.basename(intentBaseDir),
+        host: reportHost,
+      })
       const rawLlmProvider = createLLMProviderFromConfig(config)
       const llmCounter = rawLlmProvider ? new TokenCountingProvider(rawLlmProvider) : undefined
       const llmProvider = llmCounter ?? rawLlmProvider

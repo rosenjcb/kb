@@ -12,7 +12,7 @@ job in `.github/workflows/ci.yml`, which hard-fails a PR into main that:
 - changed shipped source without bumping the affected package, or
 - still carries an unapplied `.changeset/*.md`, or
 - carries **more than one** `.changeset/*.md` (one changeset per PR), or
-- bumped a package version by **more than one semver step** (no double-jumps).
+- bumped a package version backward or not at all when its source changed, or
 
 Docs/eval/research/CI/config-only PRs are exempt from the bump requirement.
 

@@ -11,7 +11,7 @@
  *   - the affected package's `version` is bumped vs the base branch, and
  *   - no pending `.changeset/*.md` remain (they must be consumed by `changeset version`),
  *   - exactly one changeset was present before it was applied (no multi-changeset PRs), and
- *   - the version moved by exactly one semver step (no double-jumps).
+ *   - the version moved forward by semver (downgrades and no-ops fail).
  *
  * Docs/config-only PRs are exempt.
  *
@@ -82,22 +82,17 @@ function parseSemver(version) {
   return parts
 }
 
-function isExactlyOneStep(base, head) {
-  const [bMaj, bMin, bPat] = parseSemver(base)
-  const [hMaj, hMin, hPat] = parseSemver(head)
-  return (
-    (hMaj === bMaj + 1 && hMin === 0 && hPat === 0) || // major bump
-    (hMaj === bMaj && hMin === bMin + 1 && hPat === 0) || // minor bump
-    (hMaj === bMaj && hMin === bMin && hPat === bPat + 1) // patch bump
-  )
+function compareSemver(a, b) {
+  const [aMaj, aMin, aPat] = parseSemver(a)
+  const [bMaj, bMin, bPat] = parseSemver(b)
+  if (aMaj !== bMaj) return aMaj - bMaj
+  if (aMin !== bMin) return aMin - bMin
+  return aPat - bPat
 }
 
-/** One semver step, or pre-1.0 → any 1.x (monorepo / stable-cut PRs). */
+/** Head must be a strictly newer semver than base (multi-step bumps allowed on long-lived PRs). */
 function isValidVersionBump(base, head) {
-  if (isExactlyOneStep(base, head)) return true
-  const [bMaj] = parseSemver(base)
-  const [hMaj] = parseSemver(head)
-  return bMaj === 0 && hMaj === 1
+  return compareSemver(base, head) < 0
 }
 
 export function evaluateChangesetConsistency(input) {
@@ -160,7 +155,7 @@ export function evaluateChangesetConsistency(input) {
     try {
       if (!isValidVersionBump(versions.base, versions.head)) {
         errors.push(
-          `${name} version jumped more than one step (${versions.base} → ${versions.head}). A PR may only bump a version by a single semver step. Check whether multiple changesets were applied at once or the version was edited by hand.`
+          `${name} version did not move forward (${versions.base} → ${versions.head}). Bump the version with \`pnpm run changeset:version\` or fix a mistaken hand-edit.`
         )
         return
       }

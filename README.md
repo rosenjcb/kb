@@ -27,7 +27,7 @@ KB turns your codebase and docs into a searchable knowledge base:
 
 ## 🏗️ Architecture (1.0)
 
-KB splits like Postgres: a **daemon** plus a **client**.
+KB ships two binaries: a **server daemon** and a **client**.
 
 | Binary | Package | Role |
 |--------|---------|------|
@@ -116,7 +116,7 @@ Fresh-machine behavior:
 
 ### Uninstalling KB
 
-KB splits client and server like Postgres (`psql` vs `postgres`):
+Client and server uninstall separately:
 
 | Command | Removes |
 |---------|---------|

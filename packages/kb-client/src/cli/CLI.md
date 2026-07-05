@@ -130,7 +130,7 @@ Adding a skill: append to `SKILLS` array, add `loadSkill()` source under `skills
 
 ## Consumer uninstall
 
-Postgres-style split:
+Separate uninstall commands:
 
 | Command | Scope |
 |---------|--------|

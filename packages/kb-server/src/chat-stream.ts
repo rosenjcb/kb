@@ -49,6 +49,8 @@ export async function* streamChatTurn(
   let answer = ''
   let sources: QuerySource[] = []
   let factsRetrieved = 0
+  let inputTokens = 0
+  let outputTokens = 0
 
   const run = runChatSynthesis({
     question: params.question,
@@ -61,6 +63,8 @@ export async function* streamChatTurn(
     .then(result => {
       answer = result.answer
       factsRetrieved = result.factsRetrieved
+      inputTokens = result.inputTokens
+      outputTokens = result.outputTokens
       if (result.lastIntentResult && isReadFactsResult(result.lastIntentResult)) {
         sources = serializeQueryResult(result.lastIntentResult).results
       }
@@ -91,5 +95,5 @@ export async function* streamChatTurn(
     return
   }
   yield { type: 'answer', text: answer, sources, factsRetrieved }
-  yield { type: 'done' }
+  yield { type: 'done', inputTokens, outputTokens }
 }

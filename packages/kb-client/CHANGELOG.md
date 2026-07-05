@@ -1,5 +1,13 @@
 # @kb/client
 
+## 1.2.2
+
+### Patch Changes
+
+- Fix TUI esbuild assert crash, server run telemetry (tokens, host/target column, plain command names), connection-error hints, and relax the CI version-jump gate for long-lived PRs.
+- Updated dependencies
+  - @kb/core@1.1.7
+
 ## 1.2.1
 
 ### Patch Changes

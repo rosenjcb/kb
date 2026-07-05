@@ -9,7 +9,7 @@ timestamp: 2026-07-03T00:00:00Z
 
 # Install / Uninstall Scripts
 
-Shell scripts for KB lifecycle. Release install ships **`kb`** and **`kb-server`** as separate tarballs; `install-kb.sh` installs both by default (Postgres-style).
+Shell scripts for KB lifecycle. Release install ships **`kb`** and **`kb-server`** as separate tarballs; `install-kb.sh` installs both by default.
 
 ## Role in the stack
 

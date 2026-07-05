@@ -11,6 +11,12 @@ import { DatabaseSync } from 'node:sqlite'
 import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
 import type { LLMProvider } from '@kb/core/core/types.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
+import {
+  RunCollector,
+  TokenCountingProvider,
+  estimateCost,
+  summarizeQueryRetrievalTrace,
+} from '@kb/core/core/telemetry.js'
 import { expandQueryWithGraph, kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
 import { llmExtractQueryEntities, rerankByGraphConnectivity } from '@kb/core/tools/graph-rag-reranker.js'
 import { formatGraphRelationBlockFromQuestion } from '@kb/core/tools/graph-relation-context.js'
@@ -46,6 +52,8 @@ export interface QueryPipelineParams {
   synthesize?: boolean
   /** Opt-in deep query trace (`kb query --trace`). */
   trace?: boolean
+  /** When set, LLM token usage is recorded on the collector (server / telemetry paths). */
+  collector?: RunCollector
 }
 
 /**
@@ -60,10 +68,35 @@ export async function runQueryPipeline(
   deps: QueryPipelineDeps,
   params: QueryPipelineParams
 ): Promise<IntentResult> {
-  const { toolExecutor, llmProvider, baseDir, config } = deps
+  const { toolExecutor, llmProvider: rawLlmProvider, baseDir, config } = deps
   const query = params.query.trim()
   if (!query) {
     throw new Error('query is required')
+  }
+
+  const llmCounter =
+    rawLlmProvider && params.collector ? new TokenCountingProvider(rawLlmProvider) : undefined
+  const llmProvider = llmCounter ?? rawLlmProvider
+
+  const recordLlmStage = (stage: string, durationMs: number, startedAt: string) => {
+    if (!params.collector || !llmCounter || !llmProvider) return
+    const tokens = llmCounter.getAndReset()
+    if (tokens.inputTokens === 0 && tokens.outputTokens === 0) return
+    params.collector.addStage({
+      stage,
+      startedAt,
+      durationMs,
+      inputTokens: tokens.inputTokens,
+      outputTokens: tokens.outputTokens,
+      estimatedCostUsd: estimateCost(
+        llmProvider.name,
+        llmProvider.model,
+        tokens.inputTokens,
+        tokens.outputTokens
+      ),
+      provider: llmProvider.name,
+      model: llmProvider.model,
+    })
   }
 
   const allFacts = resolveFactRetrievalMethod(config) === 'all_facts'
@@ -124,6 +157,7 @@ export async function runQueryPipeline(
     toolExecutor,
     llmProvider,
     kbStorageDir: baseDir,
+    collector: params.collector,
   })
 
   // LLM-driven graph RAG: extract entities from the question, re-rank retrieved
@@ -152,10 +186,27 @@ export async function runQueryPipeline(
 
   const shouldSynthesize = params.synthesize !== false
   if (shouldSynthesize && llmProvider && isReadFactsResult(aligned)) {
-    return enrichReadDocumentsAnswerWithLLM(parsed, aligned, llmProvider, undefined, undefined, {
+    const enrichStarted = Date.now()
+    const enrichStartedAt = new Date().toISOString()
+    const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, aligned, llmProvider, undefined, undefined, {
       graphRelationContext,
       synthesisQuestion,
     })
+    recordLlmStage('query_truth:answer-enrichment', Date.now() - enrichStarted, enrichStartedAt)
+    if (params.collector && isReadFactsResult(enriched)) {
+      const retrievalData = (enriched.data as ReadDocumentsResultData | undefined)?.retrieval
+      if (retrievalData) {
+        params.collector.setRetrievalTrace(summarizeQueryRetrievalTrace(retrievalData))
+      }
+    }
+    return enriched
+  }
+
+  if (params.collector && isReadFactsResult(aligned)) {
+    const retrievalData = (aligned.data as ReadDocumentsResultData | undefined)?.retrieval
+    if (retrievalData) {
+      params.collector.setRetrievalTrace(summarizeQueryRetrievalTrace(retrievalData))
+    }
   }
 
   return aligned

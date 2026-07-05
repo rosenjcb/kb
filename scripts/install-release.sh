@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fresh install from GitHub Releases — installs kb (client) and kb-server by default.
-# Postgres-style split: use --client-only or --server-only when you need one side.
+# Use --client-only or --server-only when you need one side.
 set -euo pipefail
 
 NODE_MAJOR="24"

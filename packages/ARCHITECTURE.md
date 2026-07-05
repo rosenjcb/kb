@@ -11,15 +11,15 @@ timestamp: 2026-07-03T00:00:00Z
 
 KB 1.0 is three workspace packages: **`@kb/client`** (`kb`), **`@kb/server`** (`kb-server`), and **`@kb/core`** (shared domain). The client is a thin terminal front-end; the server owns indexing, retrieval, and LLM work; core has no transport.
 
-## Postgres analogy
+## Client / server roles
 
-| Postgres | KB |
+| Role | KB |
 |---|---|
-| `postgres` daemon | `kb-server` |
-| `psql` client | `kb` |
-| data directory | `KB_HOME` (default `~/.kb`) |
-| `PGHOST` / `PGPORT` | `KBHOST` / `KBPORT` / `KB_SERVER_URL` |
-| `~/.pgpass` | `~/.kb/config.json` → `server` block |
+| Server daemon | `kb-server` |
+| CLI / TUI client | `kb` |
+| Data home | `KB_HOME` (default `~/.kb`) |
+| Host / port | `KBHOST` / `KBPORT` / `KB_SERVER_URL` |
+| Client config | `~/.kb/config.json` → `server` block |
 
 ## Stack
 
@@ -79,7 +79,7 @@ Binaries live on `PATH` or in `~/.kb/bin` — never inside `KB_HOME`.
 | **Remote (default)** | Normal use | `kb query` / chat → HTTP to live `kb-server` |
 | **Local** | `KB_LOCAL_MODE=true`, vitest | In-process `@kb/core` (eval harness, dev) |
 
-Server down → postgres-style error + `kb-server start` hint (`connection-error.ts`).
+Server down → connection error + `kb-server start` hint (`connection-error.ts`).
 
 ## Build
 

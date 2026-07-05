@@ -18,9 +18,11 @@ export function formatConnectionError(connection: ServerConnection, cause?: unkn
     'Is the kb server running?',
     '',
     '  Start locally:  kb-server start',
-    '  Or with Docker: pnpm run server:up',
-    '  Install service: kb-server install',
-    '  Docs: packages/kb-server/README.md',
+    '',
+    '  Or point the client at a remote server:',
+    '    kb config set server.host <host>',
+    '    kb config set server.port <port>',
+    '    # or: export KB_SERVER_URL=http://<host>:<port>',
   ]
   if (cause instanceof Error && cause.message && !cause.message.includes('fetch failed')) {
     lines.push('', `  Detail: ${cause.message}`)

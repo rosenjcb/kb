@@ -49,3 +49,9 @@ export function formatServerAddress(connection: ServerConnection): string {
     return connection.url
   }
 }
+
+/** Host label persisted on RunReports from the client side. */
+export function resolveReportHost(config: KbConfig = {}): string {
+  if (isLocalMode()) return 'local'
+  return formatServerAddress(resolveServerConnection(config))
+}

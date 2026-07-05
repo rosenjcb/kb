@@ -46,6 +46,10 @@ describe('KbApiClient', () => {
   it('[TC-4] connection errors include setup hints', () => {
     const msg = formatConnectionError({ url: 'http://localhost:38117' })
     expect(msg).toContain('kb-server start')
+    expect(msg).toContain('kb config set server.host')
+    expect(msg).toContain('KB_SERVER_URL')
+    expect(msg).not.toContain('pnpm run server:up')
+    expect(msg).not.toContain('kb-server install')
     expect(msg).toContain('Is the kb server running?')
   })
 })

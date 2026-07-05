@@ -33,6 +33,7 @@ import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { readKbConfig, resolveFactRetrievalMethod } from '@kb/core/config/kb-config.js'
 import { formatReadDocumentSourceIds } from '@kb/core/query/retrieval-fallback.js'
 import { runRemoteChatSession, runRemoteSlashCommand, shouldUseRemoteServer } from './remote-commands.js'
+import { resolveReportHost } from '../api/server-connection.js'
 
 export type { ChatSynthesisResult, ReadDocumentsResult } from '@kb/core/query/chat-synthesis.js'
 export {
@@ -113,16 +114,23 @@ export interface ChatSessionStats {
   provider: string
   model: string
   base?: string
+  host?: string
   turns: ChatTurnStats[]
 }
 
-function createSessionStats(provider: string, model: string, base?: string): ChatSessionStats {
+function createSessionStats(
+  provider: string,
+  model: string,
+  base?: string,
+  host?: string
+): ChatSessionStats {
   return {
     sessionId: `chat-${dayjs().valueOf()}-${Math.random().toString(36).slice(2, 6)}`,
     startedAt: dayjs().toISOString(),
     provider,
     model,
     base,
+    host,
     turns: [],
   }
 }
@@ -143,6 +151,7 @@ async function flushSessionLog(stats: ChatSessionStats): Promise<void> {
     runId: stats.sessionId,
     sessionId: stats.sessionId,
     ...(stats.base ? { base: stats.base } : {}),
+    ...(stats.host ? { host: stats.host } : {}),
     command: 'chat',
     startedAt: stats.startedAt,
     finishedAt: dayjs().toISOString(),
@@ -311,7 +320,8 @@ export async function runChatSession(
   // Accumulated multi-turn message history — grows each turn.
   const messages: Message[] = []
   const sessionBase = deps.kbStorageDir ? path.basename(deps.kbStorageDir) : undefined
-  let sessionStats = createSessionStats(llmProvider.name, llmProvider.model, sessionBase)
+  const reportHost = resolveReportHost(deps.kbConfig)
+  let sessionStats = createSessionStats(llmProvider.name, llmProvider.model, sessionBase, reportHost)
   deps.onSessionStart?.(sessionStats.sessionId)
 
   printer.chatAssistant('Type a question, or /help for commands.')
@@ -487,7 +497,7 @@ export async function runChatSession(
       if (input === '/clear') {
         await flushSessionLog(sessionStats).catch(() => {})
         messages.length = 0
-        sessionStats = createSessionStats(llmProvider.name, llmProvider.model, sessionBase)
+        sessionStats = createSessionStats(llmProvider.name, llmProvider.model, sessionBase, reportHost)
         deps.onSessionStart?.(sessionStats.sessionId)
         if (deps.mode !== 'tui') process.stdout.write('\x1Bc')
         printer.chatAssistant('Fresh session. Ask me anything.')

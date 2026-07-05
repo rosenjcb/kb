@@ -107,7 +107,7 @@ describe('evaluateChangesetConsistency', () => {
     expect(result.errors.some(e => e.includes('at most one changeset'))).toBe(true)
   })
 
-  it('[TC-10] fails when the version jumped more than one step', () => {
+  it('[TC-10] allows a multi-step forward bump', () => {
     const result = evaluateChangesetConsistency({
       changedFiles: ['packages/kb-client/src/cli/index.ts'],
       pendingChangesets: [],
@@ -115,8 +115,7 @@ describe('evaluateChangesetConsistency', () => {
       kbCore: NO_BUMP,
       kbServer: NO_BUMP,
     })
-    expect(result.ok).toBe(false)
-    expect(result.errors.some(e => e.includes('jumped more than one step'))).toBe(true)
+    expect(result.ok).toBe(true)
   })
 
   it('[TC-11] passes for a patch bump (exactly one step)', () => {
@@ -141,7 +140,7 @@ describe('evaluateChangesetConsistency', () => {
     expect(result.ok).toBe(true)
   })
 
-  it('[TC-13] fails when minor bumped but patch not reset', () => {
+  it('[TC-13] allows minor bump with non-zero patch when head is still forward', () => {
     const result = evaluateChangesetConsistency({
       changedFiles: ['packages/kb-client/src/cli/index.ts'],
       pendingChangesets: [],
@@ -149,8 +148,19 @@ describe('evaluateChangesetConsistency', () => {
       kbCore: NO_BUMP,
       kbServer: NO_BUMP,
     })
+    expect(result.ok).toBe(true)
+  })
+
+  it('[TC-13b] fails when the version was downgraded', () => {
+    const result = evaluateChangesetConsistency({
+      changedFiles: ['packages/kb-client/src/cli/index.ts'],
+      pendingChangesets: [],
+      kbClient: { base: '1.2.1', head: '1.2.0' },
+      kbCore: NO_BUMP,
+      kbServer: NO_BUMP,
+    })
     expect(result.ok).toBe(false)
-    expect(result.errors.some(e => e.includes('jumped more than one step'))).toBe(true)
+    expect(result.errors.some(e => e.includes('did not move forward'))).toBe(true)
   })
 
   it('[TC-14] requires kb-core bump when core source changes', () => {

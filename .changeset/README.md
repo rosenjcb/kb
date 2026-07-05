@@ -8,7 +8,7 @@ Three workspace packages, versioned **independently**:
 | `@kb/core` | `packages/kb-core/` | Indexing, retrieval, LLM, `KbService` |
 | `@kb/server` | `packages/kb-server/` | `kb-server` daemon, Docker, httpyac suite |
 
-Bump only the package(s) whose shipped source changed. CI (`scripts/check-changeset-consistency.mjs`) enforces one applied changeset per PR and exactly one semver step per bumped package.
+Bump only the package(s) whose shipped source changed. CI (`scripts/check-changeset-consistency.mjs`) enforces one applied changeset per PR and a forward semver bump for each affected package.
 
 ## Workflow
 

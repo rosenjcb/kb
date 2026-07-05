@@ -12,7 +12,11 @@ import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import type { RunReport, StageMetrics } from '@kb/core/core/telemetry.js'
-import { defaultLogsDir } from '@kb/core/core/telemetry.js'
+import {
+  defaultLogsDir,
+  formatLogTarget,
+  normalizeRunCommand,
+} from '@kb/core/core/telemetry.js'
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
 
 // ─── Public entry ─────────────────────────────────────────────────
@@ -61,24 +65,24 @@ async function runLogsList(args: string[], logsDir: string): Promise<string> {
   }
 
   const hasSession = recent.some(r => r.sessionId)
-  const hasBase = recent.some(r => r.base)
+  const hasTarget = recent.some(r => r.host || r.base)
   const SESSION_W = 14
-  const BASE_W = 16
+  const TARGET_W = 34
   const sessionCol = hasSession ? padR('Session', SESSION_W) : ''
-  const baseCol = hasBase ? padR('Knowledge Base', BASE_W) : ''
-  const header = `${sessionCol}${padR('Run ID', 26)}${padR('Command', 12)}${baseCol}${padR('Started', 22)}${padR('Duration', 10)}${padR('In tok', 8)}${padR('Out tok', 8)}Cost`
+  const targetCol = hasTarget ? padR('Target', TARGET_W) : ''
+  const header = `${sessionCol}${padR('Run ID', 26)}${padR('Command', 10)}${targetCol}${padR('Started', 22)}${padR('Duration', 10)}${padR('In tok', 8)}${padR('Out tok', 8)}Cost`
   const divider = '─'.repeat(header.length)
   const rows = recent.map(r => {
     const started = dayjs(r.startedAt).format('YYYY-MM-DD HH:mm:ss')
     const duration = formatDuration(r.totalDurationMs)
     const cost = r.totalEstimatedCostUsd > 0 ? `$${r.totalEstimatedCostUsd.toFixed(5)}` : '-'
     const sess = hasSession ? padR(r.sessionId ? r.sessionId.slice(-10) : '-', SESSION_W) : ''
-    const base = hasBase ? padR(r.base ?? '-', BASE_W) : ''
+    const target = hasTarget ? padR(formatLogTarget(r.host, r.base), TARGET_W) : ''
     return (
       sess +
       padR(r.runId, 26) +
-      padR(r.command, 12) +
-      base +
+      padR(normalizeRunCommand(r.command), 10) +
+      target +
       padR(started, 22) +
       padR(duration, 10) +
       padR(String(r.totalInputTokens), 8) +
@@ -94,8 +98,8 @@ async function runLogsList(args: string[], logsDir: string): Promise<string> {
   const totalRow =
     (hasSession ? padR('', SESSION_W) : '') +
     padR('Total', 26) +
-    padR(`${recent.length} run(s)`, 12) +
-    (hasBase ? padR('', BASE_W) : '') +
+    padR(`${recent.length} run(s)`, 10) +
+    (hasTarget ? padR('', TARGET_W) : '') +
     padR('-', 22) +
     padR(formatDuration(totalDuration), 10) +
     padR(String(totalInput), 8) +
@@ -122,10 +126,10 @@ function formatSingleReport(report: RunReport): string {
   if (report.sessionId && report.sessionId !== report.runId) {
     lines.push(`Session:  ${report.sessionId}`)
   }
-  if (report.base) {
-    lines.push(`Base:     ${report.base}`)
+  if (report.base || report.host) {
+    lines.push(`Target:   ${formatLogTarget(report.host, report.base)}`)
   }
-  lines.push(`Command:  ${report.command}`)
+  lines.push(`Command:  ${normalizeRunCommand(report.command)}`)
   lines.push(`Started:  ${dayjs(report.startedAt).format('YYYY-MM-DD HH:mm:ss')}`)
   lines.push(`Duration: ${formatDuration(report.totalDurationMs)}`)
   lines.push(`Status:   ${report.status}${report.errorMessage ? ` — ${report.errorMessage}` : ''}`)
@@ -333,7 +337,12 @@ async function loadReports(
     for (const line of text.split('\n').filter(Boolean)) {
       try {
         const report = JSON.parse(line) as RunReport
-        if (filters.command && report.command !== filters.command) continue
+        if (
+          filters.command &&
+          normalizeRunCommand(report.command) !== normalizeRunCommand(filters.command)
+        ) {
+          continue
+        }
         if (sinceMs > 0 && new Date(report.startedAt).getTime() < sinceMs) continue
         if (filters.base && report.base !== filters.base) continue
         reports.push(report)

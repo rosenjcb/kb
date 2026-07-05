@@ -36,7 +36,7 @@ import {
   isDuplicateEvent,
   verifySlackSignature,
 } from './slack-handler.js'
-import { ReportWriter, type RunReport } from '@kb/core/core/telemetry.js'
+import { ReportWriter, RunCollector, estimateCost, type RunReport } from '@kb/core/core/telemetry.js'
 
 export interface HttpServerOptions {
   service: KbService
@@ -51,6 +51,8 @@ export interface HttpServerOptions {
   onLog?: (line: string) => void
   /** When set, write RunReport entries here so `kb logs` surfaces server traffic. */
   logsDir?: string
+  /** Host:port label for persisted run reports (e.g. localhost:38117). */
+  reportHost?: string
   /** Called after each RunReport is appended. Intended for testing. */
   onReportWritten?: (report: RunReport) => void
 }
@@ -188,32 +190,73 @@ export function createHttpServer(options: HttpServerOptions): Server {
   } = options
 
   const reportWriter = options.logsDir ? new ReportWriter(options.logsDir) : null
+  const reportHost = options.reportHost
   const baseName = service.health().base
+  const health = service.health()
+
+  function writeReport(report: RunReport): void {
+    if (!reportWriter) return
+    const withHost = reportHost && !report.host ? { ...report, host: reportHost } : report
+    void reportWriter.append(withHost).then(() => options.onReportWritten?.(withHost))
+  }
 
   function buildAndWriteReport(
     command: string,
     ctx: RequestCtx,
     status: 'success' | 'error',
-    opts: { sessionId?: string; errorMessage?: string } = {}
+    opts: {
+      sessionId?: string
+      errorMessage?: string
+      inputTokens?: number
+      outputTokens?: number
+      provider?: string
+      model?: string
+    } = {}
   ): void {
     if (!reportWriter) return
     const now = Date.now()
-    const report: RunReport = {
-      runId: `run-${ctx.startMs}-${Math.random().toString(36).slice(2, 6)}`,
+    const collector = new RunCollector(command, {
       sessionId: opts.sessionId,
       base: baseName,
-      command,
-      startedAt: new Date(ctx.startMs).toISOString(),
-      finishedAt: new Date(now).toISOString(),
-      totalDurationMs: now - ctx.startMs,
-      totalInputTokens: 0,
-      totalOutputTokens: 0,
-      totalEstimatedCostUsd: 0,
-      stages: [],
-      status,
-      ...(opts.errorMessage ? { errorMessage: opts.errorMessage } : {}),
+      host: reportHost,
+    })
+    const inputTokens = opts.inputTokens ?? 0
+    const outputTokens = opts.outputTokens ?? 0
+    if (inputTokens > 0 || outputTokens > 0) {
+      const provider = opts.provider ?? health.provider ?? 'unknown'
+      const model = opts.model ?? health.model ?? 'unknown'
+      collector.addStage({
+        stage: command,
+        startedAt: new Date(ctx.startMs).toISOString(),
+        durationMs: now - ctx.startMs,
+        inputTokens,
+        outputTokens,
+        estimatedCostUsd: estimateCost(provider, model, inputTokens, outputTokens),
+        provider,
+        model,
+      })
     }
-    void reportWriter.append(report).then(() => options.onReportWritten?.(report))
+    const report = collector.finish(status, opts.errorMessage)
+    report.runId = `run-${ctx.startMs}-${Math.random().toString(36).slice(2, 6)}`
+    report.totalDurationMs = now - ctx.startMs
+    report.startedAt = new Date(ctx.startMs).toISOString()
+    report.finishedAt = new Date(now).toISOString()
+    writeReport(report)
+  }
+
+  function finalizeHttpReport(
+    collector: RunCollector,
+    ctx: RequestCtx,
+    status: 'success' | 'error',
+    errorMessage?: string
+  ): RunReport {
+    const now = Date.now()
+    const report = collector.finish(status, errorMessage)
+    report.runId = `run-${ctx.startMs}-${Math.random().toString(36).slice(2, 6)}`
+    report.totalDurationMs = now - ctx.startMs
+    report.startedAt = new Date(ctx.startMs).toISOString()
+    report.finishedAt = new Date(now).toISOString()
+    return report
   }
 
   return createServer((req, res) => {
@@ -334,10 +377,10 @@ export function createHttpServer(options: HttpServerOptions): Server {
       }
       try {
         await handleMcpRequest(service, req, res, body, ctx)
-        buildAndWriteReport('server.mcp', ctx, 'success', { sessionId: ctx.requestId })
+        buildAndWriteReport('mcp', ctx, 'success', { sessionId: ctx.requestId })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        buildAndWriteReport('server.mcp', ctx, 'error', { sessionId: ctx.requestId, errorMessage: message })
+        buildAndWriteReport('mcp', ctx, 'error', { sessionId: ctx.requestId, errorMessage: message })
         throw error
       }
       return
@@ -403,6 +446,12 @@ export function createHttpServer(options: HttpServerOptions): Server {
       timer = setTimeout(() => reject(new Error('query timed out')), requestTimeoutMs)
     })
 
+    const collector = new RunCollector('query', {
+      sessionId: ctx.requestId,
+      base: baseName,
+      host: reportHost,
+    })
+
     try {
       const result = await Promise.race([
         service.query({
@@ -413,6 +462,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
           verbose: body.verbose,
           synthesize: body.synthesize !== false,
           trace: body.trace === true,
+          collector,
         }),
         timeout,
       ])
@@ -426,7 +476,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         durationMs: Date.now() - ctx.startMs,
       })
       sendJson(res, 200, serialized)
-      buildAndWriteReport('server.query', ctx, 'success', { sessionId: ctx.requestId })
+      writeReport(finalizeHttpReport(collector, ctx, 'success'))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       const status = message === 'query timed out' ? 504 : 500
@@ -438,7 +488,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         durationMs: Date.now() - ctx.startMs,
       })
       sendJson(res, status, { error: message })
-      buildAndWriteReport('server.query', ctx, 'error', { sessionId: ctx.requestId, errorMessage: message })
+      writeReport(finalizeHttpReport(collector, ctx, 'error', message))
     } finally {
       if (timer) clearTimeout(timer)
     }
@@ -479,6 +529,8 @@ export function createHttpServer(options: HttpServerOptions): Server {
 
     let answerLen = 0
     let factsRetrieved = 0
+    let inputTokens = 0
+    let outputTokens = 0
 
     try {
       for await (const event of service.chat({ sessionId, message })) {
@@ -488,6 +540,10 @@ export function createHttpServer(options: HttpServerOptions): Server {
           answerLen = event.text.length
           factsRetrieved = event.factsRetrieved
         }
+        if (event.type === 'done') {
+          inputTokens = event.inputTokens ?? 0
+          outputTokens = event.outputTokens ?? 0
+        }
       }
       log.info('chat complete', {
         requestId: ctx.requestId,
@@ -496,7 +552,13 @@ export function createHttpServer(options: HttpServerOptions): Server {
         factsRetrieved,
         durationMs: Date.now() - ctx.startMs,
       })
-      buildAndWriteReport('server.chat', ctx, 'success', { sessionId })
+      buildAndWriteReport('chat', ctx, 'success', {
+        sessionId,
+        inputTokens,
+        outputTokens,
+        provider: health.provider,
+        model: health.model,
+      })
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error)
       onLog?.(`[http] /v1/chat error: ${errMessage}`)
@@ -507,7 +569,14 @@ export function createHttpServer(options: HttpServerOptions): Server {
         durationMs: Date.now() - ctx.startMs,
       })
       send('error', { type: 'error', message: errMessage })
-      buildAndWriteReport('server.chat', ctx, 'error', { sessionId, errorMessage: errMessage })
+      buildAndWriteReport('chat', ctx, 'error', {
+        sessionId,
+        errorMessage: errMessage,
+        inputTokens,
+        outputTokens,
+        provider: health.provider,
+        model: health.model,
+      })
     } finally {
       res.end()
     }
@@ -531,7 +600,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         durationMs: Date.now() - ctx.startMs,
       })
       sendJson(res, 200, { status: 'ok', summary })
-      buildAndWriteReport('server.reindex', ctx, 'success', { sessionId: ctx.requestId })
+      buildAndWriteReport('reindex', ctx, 'success', { sessionId: ctx.requestId })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       onLog?.(`[http] /v1/reindex error: ${message}`)
@@ -541,7 +610,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         durationMs: Date.now() - ctx.startMs,
       })
       sendJson(res, 500, { error: message })
-      buildAndWriteReport('server.reindex', ctx, 'error', { sessionId: ctx.requestId, errorMessage: message })
+      buildAndWriteReport('reindex', ctx, 'error', { sessionId: ctx.requestId, errorMessage: message })
     }
   }
 
@@ -594,7 +663,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
 
     // Ack immediately — Slack requires a response within 3 seconds.
     sendJson(res, 200, {})
-    buildAndWriteReport('server.slack', ctx, 'success', { sessionId: ctx.requestId })
+    buildAndWriteReport('slack', ctx, 'success', { sessionId: ctx.requestId })
 
     log.info('slack event received', {
       requestId: ctx.requestId,

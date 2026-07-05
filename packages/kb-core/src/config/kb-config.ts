@@ -14,7 +14,7 @@ export type FactRetrievalMethod = 'query_expansion' | 'all_facts'
 export interface KbConfig {
   activeBase?: string
   defaultBase?: string
-  /** Remote kb-server connection (psql-style client profile). */
+  /** Remote kb-server connection profile. */
   server?: {
     host?: string
     port?: number

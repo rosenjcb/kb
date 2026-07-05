@@ -243,6 +243,7 @@ export async function runServerCommand(
     enableMcp,
     slack,
     logsDir: path.join(getKbConfigDir(), 'logs'),
+    reportHost: `localhost:${port}`,
     onLog: line => {
       out.error(line)
       log.error(line)
@@ -315,7 +316,7 @@ Commands:
   init          Bootstrap KB_HOME and server config (Phase 5)
 `
 
-/** Standalone `kb-server` binary entry (postgres-style daemon). */
+/** Standalone `kb-server` binary entry. */
 export async function runServerMain(argv: string[]): Promise<void> {
   const out: ServerLogger = {
     log: message => console.log(message),
