@@ -86,7 +86,7 @@ async function main(): Promise<void> {
 
   const config = await readKbConfig()
   const llmProvider = createLLMProviderFromConfig(config)
-  if (!llmProvider) throw new Error('No LLM provider configured. Check ~/.kb/config.json.')
+  if (!llmProvider) throw new Error('No LLM provider configured. Set a provider API key in the environment.')
 
   const scenarios: Array<{ prompt: string; expectDecompose: boolean }> = [
     // Elaboration — should trigger decompose and multi-angle retrieval

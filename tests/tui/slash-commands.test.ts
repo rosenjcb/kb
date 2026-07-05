@@ -14,20 +14,18 @@ import {
 describe('slash command helpers', () => {
   it('[TC-68] shows slash suggestions when input starts with slash', () => {
     const suggestions = getSlashCommandSuggestions('/c', 'chat')
-    expect(suggestions.some(s => s.command === '/config')).toBe(true)
     expect(suggestions.some(s => s.command === '/clear')).toBe(true)
+    expect(suggestions.some(s => s.command === '/config')).toBe(false)
   })
 
   it('[TC-69] returns the full command list for chat mode', () => {
     const commands = getSlashCommands('chat')
-    expect(commands.some(c => c.command === '/init')).toBe(true)
-    expect(commands.some(c => c.command === '/scan')).toBe(true)
     expect(commands.some(c => c.command === '/query')).toBe(true)
     expect(commands.some(c => c.command === '/docs')).toBe(true)
     expect(commands.some(c => c.command === '/facts')).toBe(true)
     expect(commands.some(c => c.command === '/graph')).toBe(true)
     expect(commands.some(c => c.command === '/base')).toBe(true)
-    expect(commands.some(c => c.command === '/config')).toBe(true)
+    expect(commands.some(c => c.command === '/config')).toBe(false)
     expect(commands.some(c => c.command === '/skills')).toBe(true)
     expect(commands.some(c => c.command === '/sync')).toBe(true)
     expect(commands.some(c => c.command === '/session')).toBe(true)
@@ -80,25 +78,6 @@ describe('slash command helpers', () => {
     const { visible, startIndex } = getSuggestionWindow(suggestions, 4, 4)
     expect(visible.length).toBe(4)
     expect(startIndex).toBeGreaterThanOrEqual(0)
-  })
-
-  it('[TC-80] includes /init in the command list with correct description', () => {
-    const commands = getSlashCommands('chat')
-    const initCmd = commands.find(c => c.command === '/init')
-    expect(initCmd).toBeDefined()
-    expect(initCmd?.description).toContain('build a knowledge base')
-  })
-
-  it('[TC-81] includes /scan in the command list with correct description', () => {
-    const commands = getSlashCommands('chat')
-    const scanCmd = commands.find(c => c.command === '/scan')
-    expect(scanCmd).toBeDefined()
-    expect(scanCmd?.description).toContain('re-index')
-  })
-
-  it('[TC-82] suggests /init when typing /in', () => {
-    const suggestions = getSlashCommandSuggestions('/in', 'chat')
-    expect(suggestions.some(s => s.command === '/init')).toBe(true)
   })
 
   it('[TC-83] suggests /skills when typing /sk', () => {

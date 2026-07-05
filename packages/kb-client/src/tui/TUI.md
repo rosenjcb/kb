@@ -1,61 +1,73 @@
+---
+type: Subsystem
+title: TUI Implementation
+description: Ink chat shell — connection status bar, slash routing, and chat bridge.
+resource: ./packages/kb-client/src/tui
+tags: [tui, ink, chat]
+timestamp: 2026-07-05T00:00:00Z
+---
+
 # TUI Implementation (Ink)
 
-React/Ink chat shell launched when the user runs bare `kb` in a TTY. Product-wide output tiers and slash-command contract: [`../core/TUI.md`](../core/TUI.md).
+React/Ink chat shell launched when the user runs bare `kb` in a TTY. Product-wide output tiers: [`../../kb-core/src/core/TUI.md`](../../kb-core/src/core/TUI.md).
+
+## Connection context (first thing users see)
+
+Pinned **`StatusBar`** (`components/StatusBar.tsx`):
+
+```text
+KB Agent │ host: localhost:38117 │ base: my-project
+```
+
+- `serverHost` — from `formatServerAddress(resolveServerConnection(config))`, passed by `launchTui` in `index.tsx`.
+- `baseName` — async from `resolveEffectiveBaseDir()`; shows `…` until resolved, `(none)` if unset.
+- Same `formatConnectionContext` string also prepended to TUI startup notices.
+
+**Invariant:** host and base must stay visible for the whole session — do not hide the status bar during chat turns.
 
 ## Layout
 
 | Component | File | Role |
 |---|---|---|
-| Root | `App.tsx` | Input routing, history, init/scan progress slot, slash interception |
-| History | `components/HistoryPane.tsx` | `<Static>` for meta lines; scrollable transcript |
+| Root | `App.tsx` | Input routing, history, slash interception |
+| Status | `components/StatusBar.tsx` | **host + base** (always visible) |
+| History | `components/HistoryPane.tsx` | `<Static>` meta; scrollable transcript |
 | Input | `components/InputBar.tsx` | Prompt + slash suggestions |
-| Init status | `components/InitProgressBar.tsx` + `init-status.ts` | Dedicated live row for `/init` and `/scan` |
-| Status bar | `components/StatusBar.tsx` | Base name, mode hints |
-| Runner | `runner.ts` | Spawn `kb <args>` subprocess for output-only commands |
-| Base refresh | `base-refresh.ts` | `awaitRefreshThenStart` — sequences async base resolution before session start |
+| Runner | `runner.ts` | Subprocess `kb <args>` for output-only slash commands |
+| Registry | `slash-command-registry.ts` | Autocomplete source of truth |
 
 ## Slash command routing
 
-[`slash-command-registry.ts`](slash-command-registry.ts) is the single source of truth for autocomplete and command metadata. [`slash-commands.ts`](slash-commands.ts) exposes resolver helpers; `App.tsx` decides routing:
+[`slash-command-registry.ts`](slash-command-registry.ts) drives autocomplete. `App.tsx` routes:
 
-- **Output-only** (`query`, `facts`, `graph`, `docs list`, `base`, `config`, …): `runCommandForTui` → stdout partitioned via `partition-shell-output.ts` → transcript entries. No LLM loop.
-- **Interactive** (`/init`, `/scan`, `/docs generate`): stay on chat input surface; progress uses `InitProgressBar`, not history spam.
-- **Chat turns** (no leading `/`): `runChatSession` with `ChatIO` adapter classifying each line (`chat-io-classify.ts`).
+- **Output-only** (`query`, `facts`, `graph`, `docs list`, `base`, …): `runCommandForTui` → transcript. No LLM loop.
+- **Interactive** (`/docs generate`): stays on chat input; questionnaire via `ChatIO.read`.
+- **Chat turns** (no `/`): `runChatSession` with `ChatIO` adapter.
 
-`App.tsx` tracks `slashContext` from `ChatIO.read(..., { slashContext })` and `InitQuestionIO.askQuestion(..., { slashContext })` so contextual commands (`/accept`, `/skip`, …) autocomplete without per-flow suggestion logic.
-
-`normalizeSlashCommandArgs` strips redundant leading `/` on first token so `kb` argv matches CLI parsing.
-
-## Extension checklist
-
-1. Add one `SlashCommandSpec` row to [`slash-command-registry.ts`](slash-command-registry.ts) (`path`, `description`, `contexts`).
-2. If output-only: add to `isOutputOnlyCommand()` in `App.tsx` and ensure CLI supports the same argv shape.
-3. If confirmation-required (destructive, multi-step): handle inline in `App.tsx` **before** the `isOutputOnlyCommand` block using `setPendingConfirm`. Chain a second `setPendingConfirm` from inside `onConfirm` for two-step flows (e.g. `/uninstall`: first removes binary/runtime/Python, second offers to purge `~/.kb`). Do not route through `runCommandForTui` for flows that need TTY prompts — call the exported logic function directly.
-4. If interactive with contextual slash commands: pass `slashContext` on `ChatIO.read()` or `InitQuestionIO.askQuestion()` — do not add suggestion logic in the flow.
-5. Respect three output tiers from `../core/TUI.md`.
-6. User-facing success copy: slash form via `cmd('…', 'tui')`.
+Registered slash commands mirror the CLI surface in [`slash-command-registry.ts`](slash-command-registry.ts).
 
 ## `ChatIO` bridge
 
 `App.tsx` implements `ChatIO` for `chat-cli.ts`:
 
-- `write()` → classify line → meta (`chat-meta`), loading spinner state, or assistant content
-- Meta lines (`retrieval>`, `evidence>`, …) go to `<Static>` immediately — **never** held in loading accumulator
-
-`chat-read-kind.ts` decides whether a user message starts a pending read vs immediate shell dispatch.
-
-## Init / scan from TUI
-
-`/init` calls `runKbInit` directly (cloning + indexing the base's git repos); `/scan` calls
-`runScanCommand` (pull + re-index every repo the base tracks). Both wire:
-
-- `InitProgressReporter` wired to `InitProgressBar`
-- `CliOutput` capture where needed
-
-**Invariant:** init progress strings match `init-status.ts` parsing (`[init]`, `[scan]` prefixes) so the bar can parse `6/6 ast-facts …` style lines without polluting `HistoryPane`.
-
-**Invariant:** after `/init` or `/scan` completes, `awaitRefreshThenStart(refreshBase, startChatSession)` must be used — not bare `refreshBase(); startChatSession()`. `refreshBase` is async (`resolveEffectiveBaseDir` I/O); the chat session reads `storageDirRef.current` on startup, so the refresh must fully resolve first or the session opens against the old base.
+- Remote chat: `runRemoteChatSession` prints `formatConnectionContext` first.
+- Local chat: same string via `printer.chatAssistant` before the prompt hint.
+- Meta lines (`retrieval>`, …) → `chat-meta` tier — never held in loading accumulator.
 
 ## Subprocess commands
 
-`runner.ts` runs `node …/kb` (or packaged binary) with inherited env. `partitionShellOutputForTui` splits orchestration meta vs body so tier-1 grey lines render correctly.
+`runner.ts` runs packaged `kb` with inherited env (including `--host` overrides from the parent process). `partitionShellOutputForTui` splits meta vs body.
+
+## Extension checklist
+
+1. Add `SlashCommandSpec` row if new slash command.
+2. Output-only → `isOutputOnlyCommand()` in `App.tsx`.
+3. Destructive flows → `setPendingConfirm` before `runCommandForTui`.
+4. New surface → keep **StatusBar** host/base visible; do not add init/scan progress UI on client.
+
+## Related docs
+
+- Connection → [`../api/CONNECTION.md`](../api/CONNECTION.md)
+- CLI router → [`../cli/CLI.md`](../cli/CLI.md)
+- Output tiers → [`../../kb-core/src/core/TUI.md`](../../kb-core/src/core/TUI.md)
+- Client package → [`../../CLIENT.md`](../../CLIENT.md)

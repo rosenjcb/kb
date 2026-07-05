@@ -5,7 +5,7 @@ export type ChatEvent =
   | { type: 'meta'; text: string }
   | { type: 'answer'; text: string; sources: QuerySource[]; factsRetrieved: number }
   | { type: 'error'; message: string }
-  | { type: 'done' }
+  | { type: 'done'; inputTokens?: number; outputTokens?: number }
 
 export interface ChatStreamDeps {
   llmProvider: import('../core/types.js').LLMProvider

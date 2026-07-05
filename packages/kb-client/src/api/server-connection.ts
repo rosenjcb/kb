@@ -1,10 +1,9 @@
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { isEnvTrue } from '@kb/core/config/env-boolean.js'
-import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
+import { readEnvHost, readEnvPort } from '@kb/core/config/kb-env.js'
 import type { ServerConnection } from './types.js'
 
 const DEFAULT_HOST = 'localhost'
-const DEFAULT_PORT = DEFAULT_KB_SERVER_PORT
 
 export function isLocalMode(): boolean {
   return isEnvTrue(process.env.KB_LOCAL_MODE)
@@ -20,12 +19,8 @@ export function resolveServerConnection(config: KbConfig): ServerConnection {
     }
   }
 
-  const host = process.env.KBHOST?.trim() || config.server?.host?.trim() || DEFAULT_HOST
-  const portRaw = process.env.KBPORT?.trim() || String(config.server?.port ?? DEFAULT_PORT)
-  const port = Number.parseInt(portRaw, 10)
-  if (!Number.isFinite(port) || port <= 0) {
-    throw new Error(`Invalid KBPORT: ${portRaw}`)
-  }
+  const host = readEnvHost() || config.server?.host?.trim() || DEFAULT_HOST
+  const port = readEnvPort()
 
   const scheme = host.includes('://') ? '' : 'http://'
   const hostPart = host.includes('://') ? host : `${scheme}${host}:${port}`
@@ -48,4 +43,18 @@ export function formatServerAddress(connection: ServerConnection): string {
   } catch {
     return connection.url
   }
+}
+
+/** User-facing `host: … │ base: …` label (TUI status bar, CLI banner, chat header). */
+export function formatConnectionContext(config: KbConfig, baseName?: string): string {
+  const base = baseName?.trim() || '(none)'
+  if (isLocalMode()) return `mode: local │ base: ${base}`
+  const host = formatServerAddress(resolveServerConnection(config))
+  return `host: ${host} │ base: ${base}`
+}
+
+/** Host label persisted on RunReports from the client side. */
+export function resolveReportHost(config: KbConfig = {}): string {
+  if (isLocalMode()) return 'local'
+  return formatServerAddress(resolveServerConnection(config))
 }

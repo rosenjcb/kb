@@ -1,4 +1,4 @@
-name: Release CLI
+name: Release packages
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   release:
-    name: Build And Publish CLI Package
+    name: Build and publish client + server
     runs-on: ubuntu-latest
 
     steps:
@@ -36,13 +36,20 @@ jobs:
           pnpm run type-check
           pnpm run build
 
-      - name: Pack npm artifact
+      - name: Pack client artifact
+        working-directory: packages/kb-client
         run: npm pack
 
-      - name: Rename release package
+      - name: Pack server artifact
+        working-directory: packages/kb-server
+        run: npm pack
+
+      - name: Rename release packages
         run: |
-          PACKAGE="$(ls kb-*.tgz | head -n 1)"
-          mv "$PACKAGE" kb-cli-node24.tgz
+          CLIENT="$(ls packages/kb-client/kb-client-*.tgz | head -n 1)"
+          SERVER="$(ls packages/kb-server/kb-server-*.tgz | head -n 1)"
+          mv "$CLIENT" kb-client-node24.tgz
+          mv "$SERVER" kb-server-node24.tgz
 
       - name: Prepare bootstrap installer
         run: |
@@ -53,26 +60,25 @@ jobs:
         id: meta
         shell: bash
         run: |
-          PKG_VERSION="$(node -p "require('./package.json').version")"
+          CLIENT_VERSION="$(node -p "require('./packages/kb-client/package.json').version")"
+          SERVER_VERSION="$(node -p "require('./packages/kb-server/package.json').version")"
 
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            # Versioned release published via Changesets (v*.*.*).
             TAG_NAME="${GITHUB_REF#refs/tags/}"
-            RELEASE_NAME="KB CLI ${TAG_NAME}"
+            RELEASE_NAME="KB ${TAG_NAME} (client + server)"
             PRERELEASE="false"
           else
-            # Rolling build for every push to main, named after the current
-            # (Changesets-managed) version so the changeset version is visible.
             SHORT_SHA="${GITHUB_SHA::7}"
             TAG_NAME="main-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
-            RELEASE_NAME="KB CLI v${PKG_VERSION} (build ${SHORT_SHA})"
+            RELEASE_NAME="KB v${CLIENT_VERSION} client + v${SERVER_VERSION} server (build ${SHORT_SHA})"
             PRERELEASE="false"
           fi
 
           {
             echo "tag_name=${TAG_NAME}"
             echo "release_name=${RELEASE_NAME}"
-            echo "pkg_version=${PKG_VERSION}"
+            echo "client_version=${CLIENT_VERSION}"
+            echo "server_version=${SERVER_VERSION}"
             echo "prerelease=${PRERELEASE}"
           } >> "$GITHUB_OUTPUT"
 
@@ -80,15 +86,22 @@ jobs:
         id: notes
         shell: bash
         run: |
-          # Pull the latest CHANGELOG section (changeset-generated notes) for the
-          # current version so the release body reflects what changed.
-          NOTES="$(node scripts/extract-changelog.mjs "${{ steps.meta.outputs.pkg_version }}")"
+          CLIENT_NOTES="$(node scripts/extract-changelog.mjs "${{ steps.meta.outputs.client_version }}" client)"
+          SERVER_NOTES="$(node scripts/extract-changelog.mjs "${{ steps.meta.outputs.server_version }}" server)"
           {
             echo 'changelog<<EOF'
-            if [ -n "$NOTES" ]; then
-              echo "$NOTES"
+            echo "### @kb/client v${{ steps.meta.outputs.client_version }}"
+            if [ -n "$CLIENT_NOTES" ]; then
+              echo "$CLIENT_NOTES"
             else
-              echo "_No changeset notes recorded for this version._"
+              echo "_No changeset notes recorded for this client version._"
+            fi
+            echo ""
+            echo "### @kb/server v${{ steps.meta.outputs.server_version }}"
+            if [ -n "$SERVER_NOTES" ]; then
+              echo "$SERVER_NOTES"
+            else
+              echo "_No changeset notes recorded for this server version._"
             fi
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
@@ -96,9 +109,10 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kb-cli-node24
+          name: kb-release-node24
           path: |
-            kb-cli-node24.tgz
+            kb-client-node24.tgz
+            kb-server-node24.tgz
             install-kb.sh
 
       - name: Publish GitHub release assets
@@ -108,12 +122,21 @@ jobs:
           name: ${{ steps.meta.outputs.release_name }}
           prerelease: ${{ steps.meta.outputs.prerelease }}
           files: |
-            kb-cli-node24.tgz
+            kb-client-node24.tgz
+            kb-server-node24.tgz
             install-kb.sh
           generate_release_notes: true
           target_commitish: ${{ github.sha }}
           body: |
-            KB CLI **v${{ steps.meta.outputs.pkg_version }}** — CI-built package for Node 24+.
+            KB release — **@kb/client v${{ steps.meta.outputs.client_version }}** and **@kb/server v${{ steps.meta.outputs.server_version }}** (Node 24+).
+
+            ## Artifacts
+
+            | Asset | Role |
+            |-------|------|
+            | `kb-client-node24.tgz` | `kb` CLI/TUI |
+            | `kb-server-node24.tgz` | `kb-server` daemon |
+            | `install-kb.sh` | One-shot installer (both by default; `--client-only` / `--server-only`) |
 
             ## What's changed (changeset notes)
 
@@ -121,8 +144,8 @@ jobs:
 
             ---
 
-            Install on a fresh machine with:
+            Install both on a fresh machine:
             `curl -fsSL https://github.com/rosenjcb/kb/releases/latest/download/install-kb.sh | bash`
 
-            Upgrade an existing install with:
+            Upgrade an existing install:
             `kb sync`

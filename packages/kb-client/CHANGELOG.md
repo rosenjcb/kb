@@ -1,5 +1,22 @@
 # @kb/client
 
+## 1.2.0
+
+### Minor Changes
+
+- Split GitHub release into `kb-client-node24.tgz` and `kb-server-node24.tgz`; `install-kb.sh` and `kb sync` install both by default. Wire release CI to `@kb/client` / `@kb/server` versions and changelogs.
+- Configuration is environment-only: `KB_HOST`/`KB_PORT`, base selection in `~/.kb/state/`. README and DEVELOPERS_GUIDE describe server-managed indexing.
+- Server-managed indexing on kb-server (`KB_GIT_REPOS`); client adds global `kb --host` and shows connected host/base in the TUI status bar and CLI banner.
+
+### Patch Changes
+
+- Split uninstall: `kb uninstall` removes client only; `kb-server uninstall --purge` removes server and `~/.kb` data.
+- Fix TUI esbuild assert crash, server run telemetry (tokens, host/target column, plain command names), and connection-error hints.
+- Enforce strict single-step semver version bumps in CI and git hooks (pre-commit staged guard, pre-push merge gate).
+- `pnpm run install:global` installs deps, builds, and symlinks `kb` + `kb-server` for local dev and eval.
+- Updated dependencies
+  - @kb/core@1.2.0
+
 ## 1.1.4
 
 ### Patch Changes

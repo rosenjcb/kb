@@ -6,6 +6,12 @@
  * WASM grammar packages external — they load via createRequire at runtime.
  */
 
+/** Top-level `require` so esbuild's __require shim resolves Node built-ins in bundled CJS (signal-exit, etc.). */
+const REQUIRE_BANNER = [
+  `import { createRequire as __kbCreateRequire } from 'node:module';`,
+  'var require = __kbCreateRequire(import.meta.url);',
+].join('\n')
+
 const NATIVE_EXTERNAL_EXACT = new Set([
   '@ast-grep/napi',
   '@coderabbitai/ast-grep-langs',
@@ -57,6 +63,7 @@ export function nodeBundleOptions(extra = {}) {
     target: 'node24',
     sourcemap: true,
     packages: 'bundle',
+    banner: { js: REQUIRE_BANNER },
     plugins: [nativeExternalsPlugin(), ...extraPlugins],
     ...rest,
   }

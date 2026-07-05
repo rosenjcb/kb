@@ -1,6 +1,4 @@
 import { existsSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
 import { Box, useApp, useInput } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -11,29 +9,21 @@ import {
 } from '@kb/core/storage/base-selection.js'
 import type { ChatIO, ChatReadOptions } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
-import { performUninstall } from '../cli/uninstall-cli.js'
+import { performClientUninstall } from '@kb/core/cli/release-uninstall.js'
 import {
   CLI_ERROR_NO_KB_BASE,
-  autoInitAnnouncement,
   formatPrerequisiteError,
-  initCancelledNotice,
-  scanCancelledNotice,
-  shouldAutoInit,
   uninitializedBaseNotice,
 } from '@kb/core/config/cli-prerequisites.js'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import {
   createLLMProviderFromConfig,
 } from '@kb/core/config/kb-config.js'
-import { isInitCancelledError, parseInitCommand, runKbInit } from '@kb/core/ops/init-cli.js'
-import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
-import { awaitRefreshThenStart } from './base-refresh.js'
 import { classifyChatReadPromptKind, shouldStartChatPending } from './chat-read-kind.js'
 import { classifyChatIOLine } from './chat-io-classify.js'
 import { HistoryPane } from './components/HistoryPane.js'
 import { InputBar } from './components/InputBar.js'
-import { InitProgressBar } from './components/InitProgressBar.js'
 import { StatusBar } from './components/StatusBar.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
 import { partitionShellOutputForTui } from './partition-shell-output.js'
@@ -54,18 +44,16 @@ function resolveApplyArgs(args: string[]): string[] | null {
   const first = args[0]
   if (first === 'publish') return [...args, '--apply']
   if (first === 'invalidate') return [...args, '--apply']
-  if (first === 'scan') return [...args, '--apply']
   return null
 }
 
 /** Commands handled inline as transcript-only output; interactive flows stay out of this path. */
 function isOutputOnlyCommand(first: string, args: string[]): boolean {
-  if (first === 'init' || first === 'scan') return false
   if (first === 'docs' && args[1] === 'generate') return false
   const known = new Set([
     'query', 'submit', 'invalidate',
     'facts', 'graph', 'docs',
-    'base', 'config', 'logs', 'skills', 'publish', 'sync',
+    'base', 'logs', 'skills', 'publish', 'sync',
   ])
   return known.has(first)
 }
@@ -73,9 +61,10 @@ function isOutputOnlyCommand(first: string, args: string[]): boolean {
 interface Props {
   config: KbConfig
   startupNotices?: string[]
+  serverHost?: string
 }
 
-export function App({ config, startupNotices = [] }: Props) {
+export function App({ config, startupNotices = [], serverHost = 'localhost' }: Props) {
   const { exit } = useApp()
 
   const mode: TuiMode = 'chat'
@@ -97,9 +86,6 @@ export function App({ config, startupNotices = [] }: Props) {
   const [chatInputHint, setChatInputHint] = useState('')
   const [slashContext, setSlashContext] = useState<SlashInputContext>('idle')
   const [inlineSuggestions, setInlineSuggestions] = useState<string[]>([])
-
-  const [progressLine, setProgressLine] = useState<string | null>(null)
-  const [initActive, setInitActive] = useState(false)
 
   const chatInputResolverRef = useRef<((v: string | null) => void) | null>(null)
   const chatPendingEntryIdRef = useRef<string | null>(null)
@@ -269,9 +255,8 @@ export function App({ config, startupNotices = [] }: Props) {
           stopChatPending()
           addEntry({ type: 'error', content: line })
         },
-        setProgressLine(line: string | null) {
-          if (line) finalizeChatResponse()
-          setProgressLine(line?.trimEnd() || null)
+        setProgressLine(_line: string | null) {
+          // Progress lines from server-side indexing are not shown in the client TUI.
         },
       }
 
@@ -308,110 +293,20 @@ export function App({ config, startupNotices = [] }: Props) {
     [config, addEntry, updateEntry, stopChatPending, finalizeChatResponse, refreshBase, exit]
   )
 
-  const handleInitFlowCancel = useCallback(
-    async (flow: 'init' | 'scan') => {
-      try {
-        const { baseName } = await resolveEffectiveBaseDir()
-        addEntry({
-          type: 'info',
-          content: flow === 'init' ? initCancelledNotice(baseName) : scanCancelledNotice(baseName),
-        })
-      } catch {
-        addEntry({
-          type: 'info',
-          content: flow === 'init' ? initCancelledNotice() : scanCancelledNotice(),
-        })
-      }
-      if (!chatSessionIdRef.current) {
-        startChatSession()
-      }
-    },
-    [addEntry, startChatSession]
-  )
-
-  const runInitFlow = useCallback(async (extraArgs: string[] = []) => {
-    stopChatPending()
-    finalizeChatResponse()
-    setIsRunning(true)
-    setInitActive(true)
-    setProgressLine(null)
-    try {
-      if (shouldUseRemoteServer()) {
-        const output = await runCommandForTui(
-          ['init', ...extraArgs],
-          config,
-          line => setProgressLine(line.trimEnd()),
-          chatSessionIdRef.current,
-        )
-        setProgressLine(null)
-        if (output) addEntry({ type: 'result', content: output })
-        await awaitRefreshThenStart(refreshBase, startChatSession)
-        return
-      }
-      const parsed = parseInitCommand(extraArgs)
-      const result = await runKbInit({
-        ...parsed,
-        questionIO: {
-          write: (msg: string) => {
-            const text = msg.trimEnd()
-            if (text) addEntry({ type: 'result', content: text })
-          },
-          askQuestion: async (question, opts) => {
-            setProgressLine(question.trimEnd())
-            setSlashContext(opts?.slashContext ?? 'idle')
-            setInlineSuggestions(opts?.suggestions ?? [])
-            return new Promise(resolve => {
-              chatInputResolverRef.current = value => {
-                chatInputResolverRef.current = null
-                setSlashContext('idle')
-                setInlineSuggestions([])
-                resolve(value ?? '')
-              }
-            })
-          },
-        },
-        progressSink: (line: string) => setProgressLine(line.trimEnd()),
-      })
-      setProgressLine(null)
-      const docCount = result.writtenDocIds?.length ?? 0
-      addEntry({
-        type: 'result',
-        content: `✅ Init complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`,
-      })
-      await awaitRefreshThenStart(refreshBase, startChatSession)
-    } catch (err) {
-      setProgressLine(null)
-      if (isInitCancelledError(err)) {
-        await handleInitFlowCancel('init')
-        return
-      }
-      const message = err instanceof Error ? err.message : String(err)
-      addEntry({ type: 'error', content: message })
-    } finally {
-      setInitActive(false)
-      setIsRunning(false)
-    }
-  }, [addEntry, config, refreshBase, startChatSession, handleInitFlowCancel, stopChatPending, finalizeChatResponse])
-
-  // Start chat session once after base dir resolves; auto-init when .kb file points at an uninitialised base
+  // Start chat session once after base dir resolves
   useEffect(() => {
     if (!baseResolved || chatStartedRef.current) return
     chatStartedRef.current = true
     resolveEffectiveBaseDir()
-      .then(({ baseDir, baseName: effectiveBaseName, source }) => {
+      .then(({ baseDir, baseName: effectiveBaseName }) => {
         const hasIndex = existsSync(path.join(baseDir, '.kb-index.sqlite'))
-        if (shouldAutoInit(source, hasIndex)) {
-          addEntry({ type: 'info', content: autoInitAnnouncement(effectiveBaseName) })
-          runInitFlow(['--base', effectiveBaseName])
-        } else if (!hasIndex) {
+        if (!hasIndex) {
           addEntry({ type: 'info', content: uninitializedBaseNotice(effectiveBaseName) })
-          startChatSession()
-        } else {
-          startChatSession()
         }
+        startChatSession()
       })
       .catch(() => startChatSession())
-  }, [baseResolved, startChatSession, runInitFlow, addEntry])
+  }, [baseResolved, startChatSession, addEntry])
 
   const handleSubmit = useCallback(
     async (value: string) => {
@@ -477,47 +372,46 @@ export function App({ config, startupNotices = [] }: Props) {
       const args = normalizeSlashCommandArgs(parseShellArgs(trimmed))
       const firstArg = args[0]
 
-      // ── /uninstall — two-step confirmation ──
+      // ── /uninstall — client-only confirmation ──
       if (isSlash && firstArg === 'uninstall') {
+        if (args.includes('--purge')) {
+          addEntry({
+            type: 'error',
+            content:
+              'kb uninstall removes the client only. To delete server data, exit and run: kb-server uninstall --purge',
+          })
+          return
+        }
         addEntry({ type: 'chat-you', content: trimmed })
-        const purge = args.includes('--purge')
-        const kbHome = process.env.KB_INSTALL_ROOT ?? path.join(os.homedir(), '.kb')
         addEntry({
           type: 'info',
-          content: purge
-            ? `⚠️  Uninstall KB and permanently delete all user data at ${kbHome}? This cannot be undone. [y/N]`
-            : `⚠️  Remove the KB binary, Python environment, and runtime? Knowledge bases at ${kbHome} will be kept (you can delete them after). [y/N]`,
+          content:
+            '⚠️  Uninstall the kb **client** only? kb-server and ~/.kb data (indexes, config, logs) will be kept. [y/N]',
         })
         setPendingConfirm({
-          question: purge ? 'Uninstall KB and delete all data?' : 'Uninstall KB?',
+          question: 'Uninstall kb client?',
           onConfirm: async () => {
             const lines: string[] = []
             const uninstallOut = {
-              log: (msg: string) => { lines.push(msg) },
-              error: (msg: string) => { lines.push(msg) },
-              write: (chunk: string) => { lines.push(chunk) },
+              log: (msg: string) => {
+                lines.push(msg)
+              },
+              error: (msg: string) => {
+                lines.push(msg)
+              },
+              write: (chunk: string) => {
+                lines.push(chunk)
+              },
             }
-            await performUninstall({ yes: true, purge }, uninstallOut)
+            await performClientUninstall(uninstallOut)
             const output = lines.filter(l => l.trim()).join('\n')
             if (output) addEntry({ type: 'result', content: output })
-
-            if (!purge) {
-              addEntry({
-                type: 'info',
-                content: `Delete all KB user data at ${kbHome}? (knowledge bases, config, logs) [y/N]`,
-              })
-              setPendingConfirm({
-                question: `Delete ${kbHome}?`,
-                onConfirm: async () => {
-                  await rm(kbHome, { recursive: true, force: true })
-                  addEntry({ type: 'result', content: `Removed: ${kbHome}\n\nDone. KB has been uninstalled.` })
-                  exit()
-                },
-              })
-            } else {
-              addEntry({ type: 'result', content: 'Done. KB has been uninstalled.' })
-              exit()
-            }
+            addEntry({
+              type: 'result',
+              content:
+                'Done. kb client uninstalled. To remove kb-server and data: kb-server uninstall [--purge]',
+            })
+            exit()
           },
         })
         return
@@ -633,49 +527,7 @@ export function App({ config, startupNotices = [] }: Props) {
         return
       }
 
-      // ── /init and /scan with no active chat session — run directly ──
-      if (isSlash && (firstArg === 'init' || firstArg === 'scan') && !chatInputResolverRef.current) {
-        addEntry({ type: 'chat-you', content: trimmed })
-        const extraArgs = args.slice(1)
-        if (firstArg === 'init') {
-          await runInitFlow(extraArgs)
-        } else {
-          setIsRunning(true)
-          try {
-            if (shouldUseRemoteServer()) {
-              const output = await runCommandForTui(
-                ['scan', ...extraArgs],
-                config,
-                line => {
-                  const text = line.trimEnd()
-                  if (text) addEntry({ type: 'result', content: text })
-                },
-                chatSessionIdRef.current,
-              )
-              setProgressLine(null)
-              if (output) addEntry({ type: 'result', content: output.startsWith('✅') ? output : `✅ ${output}` })
-              await awaitRefreshThenStart(refreshBase, startChatSession)
-            } else {
-              const summary = await runScanCommand(extraArgs, line => {
-                const text = line.trimEnd()
-                if (text) addEntry({ type: 'result', content: text })
-              })
-              setProgressLine(null)
-              addEntry({ type: 'result', content: `✅ ${summary}` })
-              await awaitRefreshThenStart(refreshBase, startChatSession)
-            }
-          } catch (err) {
-            setProgressLine(null)
-            const message = err instanceof Error ? err.message : String(err)
-            addEntry({ type: 'error', content: message })
-          } finally {
-            setIsRunning(false)
-          }
-        }
-        return
-      }
-
-      // ── Everything else → chat session (LLM queries, /init, /scan, /docs generate) ──
+      // ── Everything else → chat session (LLM queries, /docs generate) ──
       addEntry({ type: 'chat-you', content: trimmed })
       if (shouldStartChatPending({ isSlash, readKind: chatReadKindRef.current })) {
         startChatPending()
@@ -694,8 +546,6 @@ export function App({ config, startupNotices = [] }: Props) {
       addEntry,
       updateEntry,
       startChatPending,
-      startChatSession,
-      runInitFlow,
       refreshBase,
       exit,
     ]
@@ -748,10 +598,7 @@ export function App({ config, startupNotices = [] }: Props) {
 
   return (
     <Box flexDirection="column">
-      <StatusBar baseName={baseName} />
-      {progressLine || initActive ? (
-        <InitProgressBar line={progressLine} idle={initActive && !progressLine} />
-      ) : null}
+      <StatusBar serverHost={serverHost} baseName={baseName} />
       <HistoryPane entries={history} />
       <InputBar
         value={inputValue}

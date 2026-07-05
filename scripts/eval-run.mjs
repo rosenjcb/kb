@@ -6,8 +6,8 @@
  * Session lifecycle is fully automatic:
  *   - Base name is derived from the suite id: `eval-{suiteId}` (e.g. `eval-raylib`, `eval-kb`).
  *   - If the session already has docs → reuse it (query-only run).
- *   - If the session is empty / missing → run `kb init --git <snapshot-clone>` first.
- *   - Every harvest runs `kb scan` (pulls + re-indexes the base's repos), then query.
+ *   - If the session is empty / missing → run core init via scripts/eval-index.ts first.
+ *   - Every harvest runs core scan (eval-index), then query.
  *   - `--base NAME` overrides the formula. `--force-init` deletes the base then re-inits from scratch.
  * Ends with an automatic trends summary across prior runs for the same suite.
  *
@@ -37,6 +37,9 @@ import {
   derivedBase,
   parseQueryText,
   parseGraphCounts,
+  formatAnswerTelemetryLog,
+  runReportToAnswerTelemetry,
+  readLatestKbQueryRunReport,
   buildCoverageAudit,
   scoreMetric,
   structuralMetric,
@@ -73,7 +76,7 @@ import {
 } from './eval-shared.mjs'
 
 import { readQueryResultFile, runAutoScoreFile, scoreFromLabel } from './eval-score.mjs'
-import { startEvalServer } from './eval-server.mjs'
+import { startEvalServer, buildKbLocalEnv } from './eval-server.mjs'
 import {
   DEFAULT_CONTROL_PROMPT,
   DEFAULT_MAX_TURNS,
@@ -124,6 +127,7 @@ export { computeWeightedTokenTotal } from './eval-shared.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const KB_REPO = path.resolve(__dirname, '..')
+const EVAL_INDEX = path.join(KB_REPO, 'scripts/eval-index.ts')
 
 /**
  * The kb binary the harvest drives. Defaults to this checkout's build, but `KB_EVAL_BIN`
@@ -299,38 +303,21 @@ Layout (per run, snapshot clone):
 `)
 }
 
-/** Remote kb env from the orchestrated eval-server session (set before kb subprocesses). */
-let kbRemoteEnv = null
+/** kb subprocess env — local for init/scan; remote after eval-server starts for queries. */
+let kbSubprocessEnv = buildKbLocalEnv()
 
 function kbEnv() {
-  if (!kbRemoteEnv) {
-    throw new Error(
-      '[eval] kb remote env is unset — eval-server should start before kb subprocesses (see eval/EVAL.md)'
-    )
-  }
-  return kbRemoteEnv
+  return kbSubprocessEnv
 }
 
-function kb(cwd, args, opts = {}) {
-  const bin = KB_BIN
-  return execSync(`node "${bin}" ${args}`, {
-    encoding: 'utf8',
-    env: kbEnv(),
-    cwd,
-    maxBuffer: 50 * 1024 * 1024,
-    stdio: opts.stdio === 'inherit' || opts.capture === false ? 'inherit' : undefined,
-    ...opts,
-  })
-}
-
-/** Stream kb stdout/stderr live (no pipe buffer) and write a transcript to `logPath`. */
-function kbTee(cwd, args, logPath) {
-  const bin = KB_BIN
+/** Stream eval-index (core init/scan) stdout/stderr live and write transcript to logPath. */
+function evalIndexTee(mode, args, logPath) {
   fs.mkdirSync(path.dirname(logPath), { recursive: true })
   const logFd = fs.openSync(logPath, 'w')
+  const quotedArgs = args.replace(/"/g, '\\"')
   return new Promise((resolve, reject) => {
-    const child = spawn(`node "${bin}" ${args}`, {
-      cwd,
+    const child = spawn(`pnpm exec tsx "${EVAL_INDEX}" ${mode} ${quotedArgs}`, {
+      cwd: KB_REPO,
       env: kbEnv(),
       shell: true,
       stdio: ['inherit', 'pipe', 'pipe'],
@@ -361,11 +348,23 @@ function kbTee(cwd, args, logPath) {
       }
       const output = Buffer.concat(parts).toString('utf8')
       if (code !== 0) {
-        reject(new Error(`kb exited ${code ?? 'unknown'}\n${output.slice(-4000)}`))
+        reject(new Error(`eval-index ${mode} exited ${code ?? 'unknown'}\n${output.slice(-4000)}`))
         return
       }
       resolve(output)
     })
+  })
+}
+
+function kb(cwd, args, opts = {}) {
+  const bin = KB_BIN
+  return execSync(`node "${bin}" ${args}`, {
+    encoding: 'utf8',
+    env: kbEnv(),
+    cwd,
+    maxBuffer: 50 * 1024 * 1024,
+    stdio: opts.stdio === 'inherit' || opts.capture === false ? 'inherit' : undefined,
+    ...opts,
   })
 }
 
@@ -710,6 +709,10 @@ async function main() {
     )
     process.exit(1)
   }
+  if (!fs.existsSync(path.join(KB_REPO, 'node_modules'))) {
+    console.error('Missing node_modules — run: pnpm install (eval-index runs from this checkout, not the cloned target repo).')
+    process.exit(1)
+  }
 
   const runTiming = {
     commands: [],
@@ -726,18 +729,14 @@ async function main() {
     console.error(
       `[eval] session "${base}" — ${
         wipeBase
-          ? 'force-init: deleting base then kb init + scan'
+          ? 'force-init: deleting base then eval-index init + scan'
           : needsInit
-            ? 'no docs found, running kb init then scan'
-            : 'reusing session; kb scan before K queries'
+            ? 'no docs found, running eval-index init then scan'
+            : 'reusing session; eval-index scan before K queries'
       }`
     )
 
-    evalServer = await startEvalServer({
-      base,
-      logPath: path.join(workdir, 'eval-server.log'),
-    })
-    kbRemoteEnv = evalServer.kbEnv()
+    kbSubprocessEnv = buildKbLocalEnv()
 
     try {
       if (wipeBase) {
@@ -751,14 +750,14 @@ async function main() {
         // kb init now requires a git remote. Point it at the local snapshot clone (exact commit,
         // no extra network); kb follows the clone's own default branch (main, master, …).
         const initLogPath = path.join(workdir, 'init.log')
-        console.error(`[eval] kb init --base ${base} --git "${targetCwd}"`)
+        console.error(`[eval] eval-index init --base ${base} --git "${targetCwd}"`)
         console.error(
-          '[eval] kb init clones snapshot into ~/.kb/sessions/… then indexes — progress lines follow'
+          '[eval] eval-index clones snapshot into ~/.kb/sessions/… then indexes — progress lines follow'
         )
         await timedAsync('init', runTiming, () =>
-          kbTee(
-            targetCwd,
-            `init --base ${base} --git "${targetCwd}" --non-interactive --debug`,
+          evalIndexTee(
+            'init',
+            `--base ${base} --git "${targetCwd}" --non-interactive --debug`,
             initLogPath
           )
         )
@@ -771,10 +770,10 @@ async function main() {
         )
       }
 
-      console.error(`[eval] kb scan --base ${base}`)
+      console.error(`[eval] eval-index scan --base ${base}`)
       const scanLogPath = path.join(workdir, 'scan.log')
       await timedAsync('scan', runTiming, () =>
-        kbTee(targetCwd, `scan --base ${base} --debug`, scanLogPath)
+        evalIndexTee('scan', `--base ${base} --debug`, scanLogPath)
       )
 
       console.error(`[eval] kb base use --default ${base} (client profile only — server base is "${base}")`)
@@ -794,6 +793,13 @@ async function main() {
       const logsOut = timed('logs_list', runTiming, () => kb(targetCwd, logsCmd(base)))
       fs.writeFileSync(path.join(workdir, 'logs.txt'), logsOut, 'utf8')
 
+      console.error('[eval] starting kb-server for remote queries (init/scan ran in-process)')
+      evalServer = await startEvalServer({
+        base,
+        logPath: path.join(workdir, 'eval-server.log'),
+      })
+      kbSubprocessEnv = evalServer.kbEnv()
+
       console.error('[eval] waiting for kb-server index readiness (/healthz ok: true) before queries')
       await evalServer.waitReady()
 
@@ -803,11 +809,17 @@ async function main() {
         console.error(`[eval] ${suiteLabel} · K query ${q}/${questions.length}`)
         const escaped = question.replace(/"/g, '\\"')
         const label = `query_${q}`
+        const queryStartMs = Date.now()
         const out = timed(label, runTiming, () => kb(targetCwd, `query "${escaped}" --base ${base}`))
         const durationMs = runTiming.command_durations_ms[label]
         runTiming.query_durations_ms.push(durationMs)
         queryTotalMs += durationMs
         fs.writeFileSync(path.join(workdir, `q${q}.json`), out, 'utf8')
+        const report = readLatestKbQueryRunReport(base, { minFinishedAtMs: queryStartMs - 500 })
+        const telemetry =
+          runReportToAnswerTelemetry(report) ??
+          (typeof durationMs === 'number' ? { duration_ms: durationMs } : null)
+        console.error(`[eval] answer ${formatAnswerTelemetryLog(telemetry)}`)
         q++
       }
       runTiming.query_total_duration_ms = queryTotalMs
@@ -817,7 +829,7 @@ async function main() {
         console.error('[eval] stopping kb-server')
         await evalServer.stop()
         evalServer = null
-        kbRemoteEnv = null
+        kbSubprocessEnv = buildKbLocalEnv()
       }
     }
   } else {

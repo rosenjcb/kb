@@ -24,6 +24,7 @@ import {
   buildCoverageAudit,
   computeSuccessScore,
   computeWeightedTokenTotal,
+  formatAnswerTelemetryLog,
 } from './eval-shared.mjs'
 import { runAutoScoreFile, scoreFromLabel } from './eval-score.mjs'
 
@@ -142,26 +143,8 @@ export function assertControlAgentAvailable({
   }
 }
 
-/** One-line progress log after a control answer (tokens-first; turns/cost when present). */
-export function formatControlAnswerLog(telemetry) {
-  const parts = []
-  const inTok = telemetry?.input_tokens
-  const outTok = telemetry?.output_tokens
-  if (typeof inTok === 'number' || typeof outTok === 'number') {
-    parts.push(`in=${inTok ?? '?'} out=${outTok ?? '?'}`)
-  }
-  const cache = telemetry?.cache_read_tokens
-  if (typeof cache === 'number' && cache > 0) parts.push(`cache=${cache}`)
-  if (typeof telemetry?.num_turns === 'number') parts.push(`turns=${telemetry.num_turns}`)
-  if (typeof telemetry?.total_cost_usd === 'number') {
-    parts.push(`cost=$${telemetry.total_cost_usd.toFixed(4)}`)
-  }
-  if (typeof telemetry?.duration_ms === 'number') {
-    const s = telemetry.duration_ms / 1000
-    parts.push(s >= 10 ? `${s.toFixed(0)}s` : `${s.toFixed(1)}s`)
-  }
-  return parts.length ? parts.join(' ') : 'no telemetry'
-}
+/** @deprecated alias — use `formatAnswerTelemetryLog` from eval-shared.mjs */
+export const formatControlAnswerLog = formatAnswerTelemetryLog
 
 /** Normalize agent JSON telemetry (Claude Code + Cursor Agent CLI shapes). */
 export function normalizeAgentTelemetry(j) {

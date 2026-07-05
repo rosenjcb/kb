@@ -11,458 +11,244 @@
 
 ---
 
-**KB** is a local-first knowledge layer for development workflows.
+Claude Code, Cursor, and Codex *can* grep a huge repo and answer "how does auth work?" — if you spend the tokens. Every session starts cold; every question retraces the filesystem. On our benchmarks, a headless coding agent uses **roughly an order of magnitude more tokens** and more wall time than `kb query` on the same questions ([research paper](research/main.pdf)).
 
-It reads your code and documentation, extracts structured facts, and gives you a fast, queryable knowledge base — so decisions, architecture details, and project context are always at your fingertips.
+**KB** keeps a **persistent, facts-first index** of your codebases — answers in plain English, tied to real files and facts, not vibes:
 
-No manual fact entry. KB reads from the source.
+- **Cheaper & faster** — pre-indexed facts instead of re-exploring the tree each time
+- **Multi-repo** — one server, many git repos; follow auth (or any flow) across services, not just one checkout
+- **Client/server** — developers use `kb` and chat mode; Product, QA, and leadership query the same grounded knowledge without an IDE or agent subscription
+- **Spec-aligned** — ingests [spec.md](https://github.com/rosenjcb/spec.md) OKF companions and behavioral `*.spec.md` specs so intent, tests, and code stay linked
 
-## 🧠 What it actually does
-
-KB turns your codebase and docs into a searchable knowledge base:
-
-* 📥 **Index** — Parse code (AST) and markdown docs to extract facts automatically. Leading YAML frontmatter (`---` blocks) is stripped before indexing — only the body becomes searchable facts
-* 🔍 **Query** — Ask questions in natural language; get grounded, source-linked answers
-* 🔁 **Refresh** — Re-scan after changes to keep the knowledge base current
-
-## 🏗️ Architecture (1.0)
-
-KB splits like Postgres: a **daemon** plus a **client**.
-
-| Binary | Package | Role |
-|--------|---------|------|
-| `kb-server` | `@kb/server` | Indexing, retrieval, LLM, HTTP/MCP |
-| `kb` | `@kb/client` | CLI, TUI, HTTP client to the server |
-
-Full map: [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md) · Client: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md) · Server: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md)
-
-## Connect the `kb` client to a server
-
-The **`kb` CLI is a thin client**. Indexing, retrieval, and LLM calls run on **`kb-server`** — on your laptop, in Docker, or on a shared host. Install `kb` locally, point it at the server, and every command (`query`, `init`, `scan`, chat/TUI) goes over HTTP.
-
-| What | Env var | Config key (`~/.kb/config.json`) |
-|------|---------|----------------------------------|
-| Full server URL (HTTPS, custom path) | `KB_SERVER_URL` | — |
-| Host + port | `KBHOST`, `KBPORT` | `server.host`, `server.port` |
-| API key (must match server) | `KB_SERVER_API_KEY` | `server.apiKey` |
-| Default base on that server | — | `server.base`, `activeBase` |
-
-Defaults: `localhost:38117`. Use **`KB_SERVER_URL`** when the server is HTTPS or you want one string instead of host + port.
-
-**Local server:**
+Point kb-server at your repos once. Then ask:
 
 ```bash
-kb-server start --with-mcp
-kb config set server.host localhost
-kb config set server.port 38117
-kb config set server.apiKey <same as KB_SERVER_API_KEY on the server>
-kb query "how does auth work?"
+kb query "how does token refresh work?"
+kb query "what calls the sqlite indexer?"
 ```
 
-**Remote server (Docker, k8s, another machine):** run `kb-server` there (see [Run KB as a server](#-run-kb-as-a-server-docker)), then on your laptop:
+Or type `kb` and **chat** with your knowledge base like you would with a teammate who already read everything — across every repo the server indexes.
 
-```bash
-# env — good for shells and CI
-export KB_SERVER_URL=http://kb.example.com:38117   # or https://kb.example.com
-export KB_SERVER_API_KEY=<token from the container / deploy>
+## What it actually does
 
-# or persist in ~/.kb/config.json
-kb config set server.host kb.example.com
-kb config set server.port 38117
-kb config set server.apiKey <token>
+**kb-server** owns indexing. Configure git repos on the server (`KB_GIT_REPOS`); it clones, scans code and docs (including OKF companions and `*.spec.md` behavioral specs), extracts facts, and re-indexes on a schedule. The **kb client** connects to that server to query and chat. One server can index many repos into shared bases so cross-service questions land in one place.
 
-kb query "how does auth work?"
-```
+From there you have two ways in:
 
-The server owns the index. Bootstrap repos on the server (`KB_GIT_REPOS`, `kb-server.json`, or `kb init` through the connected client). Your client does not need a local clone of those repos.
+**One-shot questions** — `kb query "…"` from any terminal. Good for a quick lookup, a CI script, or piping into another tool.
 
-Connection profile detail: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md).
+**Chat mode** — run `kb` with no arguments. You get a full-screen session: type a question, get an answer with sources, ask follow-ups, run `/docs list` or `/graph summary` without leaving the conversation. Same brain as `kb query`, but you stay in flow.
 
-## ⚡ Quick Start
+Both modes search the same index. Answers come back **grounded** — KB shows you which facts and files it used, so you can click through instead of trusting a hallucination.
 
-### 1) Install KB
+## Quick start
 
-Default first install for users: install from GitHub Releases on a fresh machine.
+Four steps: install → start the server with repos → connect the client → ask something.
+
+### 1) Install
 
 ```bash
 curl -fsSL https://github.com/rosenjcb/kb/releases/latest/download/install-kb.sh | bash
-command -v kb
-```
-
-What this does:
-- installs `nvm` if needed
-- installs `Node 24`
-- installs the latest `kb` release into `~/.kb/runtime`
-- links the stable launcher at `~/.kb/bin/kb`
-
-Or build and install from this checkout (links **both** `kb` and `kb-server`):
-
-```bash
-pnpm install
-pnpm run check
-pnpm run install:global
 command -v kb && command -v kb-server
 ```
 
-> `install-kb.sh` bootstraps `nvm` and `Node 24` if they are missing.
-> KB installs its managed runtime under `~/.kb/runtime` and exposes `~/.kb/bin/kb`.
-> After the first install, use `kb sync` for upgrades.
-> If you later switch Node versions, rerun `kb sync` or reinstall with the bootstrap script.
+The script installs both `kb` (what you type) and `kb-server` (what does the heavy lifting) into `~/.kb/`. Open a new shell if `command -v` fails. Upgrade later with `kb sync`.
 
-Fresh-machine behavior:
-- before install, `kb` will not exist yet
-- after running the release installer, open a new shell if needed and run `kb`
-- if you are working on KB itself, use the source install flow below instead
+Building from a git checkout instead? See [DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE.md).
 
-### Uninstalling KB
+### 2) Start the server
 
-To remove KB from a release install:
+The server needs an LLM API key to synthesize answers and git repos to index:
 
 ```bash
-kb uninstall
-```
-
-This removes:
-- The `~/.kb/bin/kb` binary symlink
-- The installed runtime at `~/.kb/runtime`
-- The `PATH` entry from your shell config (`.bashrc` / `.zshrc` / `.profile`)
-
-You will be prompted whether to also delete `~/.kb` (knowledge bases, config, logs). To skip the prompt and keep user data:
-
-```bash
-kb uninstall --yes
-```
-
-To remove everything including `~/.kb` in one shot:
-
-```bash
-kb uninstall --purge
-```
-
-From the TUI, type `/uninstall` (or `/uninstall --purge` to also wipe user data). The TUI will walk you through both confirmation steps before exiting.
-
-### 2) Start the server and configure the client
-
-**LLM keys and indexing run on the server.** See [Connect the `kb` client to a server](#connect-the-kb-client-to-a-server) for local vs remote (Docker) setup. Quick local path:
-
-```bash
+export GEMINI_API_KEY=<your-key>    # or OPENAI_API_KEY, ANTHROPIC_API_KEY, or OLLAMA_ENDPOINT
+export KB_GIT_REPOS=https://github.com/acme/auth-svc
 kb-server start --with-mcp
-# or: pnpm run server:start   # contributors, from repo root
-kb config set server.host localhost
-kb config set server.port 38117
-# kb config set server.apiKey <same as KB_SERVER_API_KEY on the server>
 ```
 
-Provider for synthesis is configured server-side (env keys: `GEMINI_API_KEY`, `OPENAI_API_KEY`, etc.).
+Leave that terminal running (or run it in the background). Default address: `localhost:38117`. The server clones and indexes your repos automatically — first run takes a minute depending on repo size.
 
-### 3) Initialize your KB base
-
-Create a knowledge base from one or more git repositories. **At least one git remote is required** — KB clones each repo and keeps the base fresh for you, auto-pulling and re-indexing on new commits whenever you open a session or switch to the base, so you never run a scan by hand.
+Multiple repos in one base:
 
 ```bash
-# single repo (follows the remote's default branch)
-kb init --git https://github.com/acme/auth-svc
-
-# pin a branch for every --git that has no inline #branch
-kb init --git https://github.com/acme/auth-svc --branch develop
-
-# multiple repos into one base, with a per-repo inline #branch override
-kb init --git https://github.com/acme/auth --git https://github.com/acme/web#develop --base acme
+export KB_GIT_REPOS="https://github.com/acme/auth,https://github.com/acme/web#develop"
+export KB_BASE=acme
+kb-server start --with-mcp
 ```
 
-#### Choosing a branch
+Pin branches per-repo with `<url>#branch`. Details: [`packages/kb-core/src/core/INIT.md`](packages/kb-core/src/core/INIT.md).
 
-`--git` is repeatable, and you can target a specific branch two ways:
+### 3) Connect the client
 
-| Form | Scope | Example |
-|------|-------|---------|
-| `--branch <name>` | Default for **all** `--git` targets that omit an inline branch | `kb init --git <url> --branch develop` |
-| `<url>#<branch>` (inline) | **Per repo**, overrides `--branch` for that one | `kb init --git <url>#release-2.0` |
-
-When neither is given, the clone follows the remote's own default branch.
-
-Multi-repo bases fold into a single connected graph. Init and scan details: [`packages/kb-core/src/core/INIT.md`](packages/kb-core/src/core/INIT.md).
-
-### 4) Query your knowledge base
-
-Requires a running `kb-server` (see step 2):
+Tell `kb` where the server is (once per shell, or add to your profile):
 
 ```bash
-kb query "sqlite index sync behavior" --limit 5
-kb query "how does AST indexing work"
+kb --host localhost:38117 query "how does auth work?"
 ```
 
-Contributors running tests or eval locally use `KB_LOCAL_MODE=true` to bypass HTTP (see [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md)).
-
-## 📖 CLI Reference
-
-### 🎯 KB query
-
-```
-kb query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose]
-```
-
-### 📂 Documents
-
-```
-kb docs list [--base <name>] [--limit <n>]
-kb docs view <document-id> [--base <name>]
-kb docs view --title "<exact title>" [--base <name>]
-kb docs generate "<prompt>" [--type howto|introduction|reference|decision|runbook] [--limit <n>] [--base <name>]
-kb docs rename <document-id> "<new title>" [--base <name>]
-kb docs delete <document-id> [--base <name>] [--force]
-```
-
-### 🛠️ Other commands
-
-```
-kb base use <base>             — switch the active base for the current session
-kb base use --default <base>   — save persistent default to ~/.kb/config.json
-kb base use --show             — show active base and config default
-kb base delete <base>          — delete a base and all its data (prompts unless --force)
-kb config get
-kb config set <key> <value>
-kb config unset <key>
-kb init --git <url[#branch]> [--git <url[#branch]> ...] [--branch <default>] [--base <name>] [--detach | --resume] [--stop-after <cycle>]
-kb scan [--base <name>]
-kb base repo list [--base <name>]
-kb base repo add <url[#branch]> [--branch <b>] [--base <name>]
-kb base repo remove <url|slug> [--base <name>]
-kb base ignore list|add|remove|set|clear [<patterns…>] [--base <name>]
-kb facts list|search|show ...
-kb graph ...
-kb logs list|show|compare ...
-kb skills install|uninstall
-kb-server start [--base <name>] [--port <n>] [--with-mcp]
-kb sync
-kb publish <notion> [options]
-```
-
-**Publish** exports the active KB documents to Notion (wipe-and-replace; preview by default, `--apply` to execute). See [`packages/kb-core/src/core/publish/PUBLISH.md`](packages/kb-core/src/core/publish/PUBLISH.md).
-
-**Interactive session commands** (type while in `kb`):
-
-| Command | Effect |
-|---------|--------|
-| `/query` | Run a KB query inline |
-| `/base`, `/docs`, `/facts`, `/graph`, `/publish`, `/sync`, `/config`, `/logs`, `/skills` | Use the same command families you get in the CLI |
-| `/clear` | Wipe screen, reset fact pool and full conversation history — start fresh |
-| `/exit` | Leave the session |
-| `/help` | List all in-session commands |
-| `/docs generate "<prompt>"` | Guided doc-draft wizard |
-| `/init [args]` / `/scan [args]` | Build or refresh the KB without leaving the session |
-| `/session` | Show turn-by-turn token, cost, and timing stats |
-
-Chat retrieval uses the same orchestrator as `kb query`. Details: [`packages/kb-core/src/core/CHAT.md`](packages/kb-core/src/core/CHAT.md) · [`packages/kb-core/src/core/QUERY_INTERNALS.md`](packages/kb-core/src/core/QUERY_INTERNALS.md).
-
-### 🔄 Keeping `kb` up to date
+Or set env vars so you can omit `--host`:
 
 ```bash
-kb sync
+export KB_HOST=localhost
+export KB_PORT=38117
 ```
 
-`kb sync` installs the latest published `kb-cli-node24.tgz` release into KB's managed runtime under `~/.kb/runtime`, refreshes the stable launcher at `~/.kb/bin/kb`, and does not use your current project directory. It runs on KB's managed `Node 24` runtime, so your shell's Node version doesn't matter.
-For a fresh machine with no supported Node runtime yet, use:
+Remote server or HTTPS? See [Connect to a remote server](#connect-to-a-remote-server) below.
+
+### 4) Use your knowledge base
+
+Sanity check — one question from the shell:
 
 ```bash
-curl -fsSL https://github.com/rosenjcb/kb/releases/latest/download/install-kb.sh | bash
+kb query "how does authentication work?" --limit 5
 ```
 
-### Verify
+You should get an answer plus a list of source facts. If that works, you're live.
+
+**Try chat mode** — the thing most people stick with:
 
 ```bash
-kb query "hybrid sqlite retrieval" --limit 5
+kb --host localhost:38117
 ```
 
-## 🗓️ Daily Workflow
+No arguments. KB opens an interactive session (status bar shows **host** and **base**):
+
+- **Type a question** like you would in ChatGPT — "where is the retry logic?", "summarize the init flow", "what depends on sqlite?"
+- **Follow up** — context carries across turns; ask "show me the file" or "what about error handling?"
+- **Slash commands** — `/help` lists everything. Useful ones early on:
+  - `/query <question>` — run a structured lookup inline
+  - `/docs list` — browse generated docs for the base
+  - `/graph summary` — see how modules connect
+  - `/exit` — leave
+
+The first time you run `kb`, you'll see a short welcome. If the server hasn't finished indexing yet, wait for kb-server logs to settle, then try again.
+
+**Questions worth trying on your own repo:**
 
 ```bash
-kb query "topic"
-kb scan   # pull + re-index every repo the base tracks, then rebuild cross-repo links
+kb query "what are the main entry points?"
+kb query "where is configuration loaded?"
+kb query "recent architectural decisions" --type decision
 ```
 
-`kb scan` no longer reads the current working directory — it refreshes every git repo the base tracks and rebuilds the cross-repo graph links. Auto-sync (on session load, `kb base use`, and queries) syncs all of a base's repos the same way.
+When code changes on the remote, kb-server re-indexes on its schedule (`KB_REINDEX_INTERVAL`). You don't babysit it.
 
-## 🤖 Agent Skills: use KB while you develop
+## Connect to a remote server
 
-KB ships first-party **agent skills** that teach your coding agent (Claude Code, Cursor, Codex, Copilot) to reach for `kb` first when exploring a codebase. Install them with one command:
+Everything above assumes server + client on the same laptop. Common alternative: **server in Docker**, **client on your machine**.
 
-```bash
-kb skills install     # install skills, then upgrade in place when KB updates them
-kb skills uninstall   # remove everything kb skills install added
-```
-
-`kb skills install` copies bundled skill files into each agent's skills directory and updates core agent readmes. Installs are idempotent — re-running upgrades changed skills in place.
-
-Source: [`skills/`](skills/) · Detail: [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md) · CLI: [`packages/kb-client/src/cli/CLI.md`](packages/kb-client/src/cli/CLI.md).
-
-## 🚢 Run KB as a server (Docker)
-
-Instead of a per-machine CLI, run KB as a **central HTTP/MCP server**: index your repos
-once on a durable volume and let people, apps, and agents query over HTTP. The Docker
-image is deployable, not just an integration harness.
-
-### Published image (GitHub Container Registry)
-
-Merges to `main` publish **`kb-server`** to GHCR:
-
-**`ghcr.io/rosenjcb/kb/kb-server`** — tags include `latest` and semver release tags.
-
-Browse: [github.com/rosenjcb/kb/pkgs/container/kb-server](https://github.com/rosenjcb/kb/pkgs/container/kb-server)
+On the server host:
 
 ```bash
-docker pull ghcr.io/rosenjcb/kb/kb-server:latest
-
 docker run -d --name kb-server \
   -p 38117:38117 \
   -v kb-data:/data \
   -e KB_SERVER_API_KEY=<strong-token> \
   -e GEMINI_API_KEY=<provider-key> \
-  -e KB_BASE=acme \
   -e KB_GIT_REPOS=https://github.com/acme/auth \
   ghcr.io/rosenjcb/kb/kb-server:latest
-
-curl http://localhost:38117/healthz
 ```
 
-The image CMD is `kb-server start --with-mcp` (`KB_HOME=/data`, `PORT=38117`). Mount `/data`
-so the index survives restarts. Full env reference:
-[`packages/kb-server/README.md`](packages/kb-server/README.md).
-
-**Client on your laptop, server in Docker:** expose port `38117`, set matching
-`KB_SERVER_API_KEY`, then point local `kb` at it — see
-[Connect the `kb` client to a server](#connect-the-kb-client-to-a-server).
-
-### Build from this repo (contributors)
+On your laptop:
 
 ```bash
-pnpm run server:up      # seeds .env on first run; edit it, then re-run to build + boot
-pnpm run server:docker:logs
-curl http://localhost:38117/healthz
+kb --host your-host:38117 query "how does auth work?"
+# authenticated remote:
+export KB_SERVER_API_KEY=<same token>
+kb --host http://your-host:38117 query "how does auth work?"
 ```
 
-Compose manifest, config reference, and `kb-server.json`:
-**[`packages/kb-server/README.md`](packages/kb-server/README.md)**.
+Your laptop doesn't need a clone of those repos — the server owns the index.
 
-**Slack bot:** point a Slack workspace at the same `kb-server` daemon so people can ask
-`@kb <question>` in channels. Setup details live in
-[`packages/kb-server/README.md`](packages/kb-server/README.md).
+**All client env vars:** `KB_HOST`, `KB_PORT`, `KB_SERVER_URL`, `KB_SERVER_API_KEY`, `KB_BASE`, `KB_ACTIVE_BASE`. Full reference: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md).
 
-## 🔌 MCP — Claude Code & Cursor Agent
+**Docker image:** `ghcr.io/rosenjcb/kb/kb-server` — see [`packages/kb-server/README.md`](packages/kb-server/README.md).
 
-Point your coding agent at a running `kb-server` over **Streamable HTTP** (`POST /mcp`). The server must be started with `--with-mcp`; REST-only mode returns 404 on `/mcp`.
+## Uninstalling
+
+| Command | Removes |
+|---------|---------|
+| `kb uninstall` | Client only |
+| `kb-server uninstall` | Server binary |
+| `kb-server uninstall --purge` | Server **plus** all data under `~/.kb` |
 
 ```bash
-export KB_SERVER_API_KEY=testkey   # server + client must match
-kb-server start --with-mcp
+kb uninstall --yes
+kb-server uninstall --purge --yes
 ```
 
-### Claude Code
+## CLI reference
+
+Global flag (any command):
+
+```
+kb --host <host:port|url>   …   # overrides KB_HOST / KB_SERVER_URL for this invocation
+```
+
+### Query
+
+```
+kb query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--verbose]
+```
+
+### Documents
+
+```
+kb docs list|view|generate|rename|delete ...
+```
+
+### Other commands
+
+```
+kb base use <base>             — switch active base
+kb base use --default <base>   — save persistent default
+kb base repo list|add|remove ...
+kb facts list|search|show ...
+kb graph ...
+kb skills install|uninstall
+kb-server start [--with-mcp]
+kb sync
+```
+
+Indexing is **server-managed** — configure `KB_GIT_REPOS` on kb-server, not `kb init` on the client.
+
+Chat mode (`kb` with no args): `/help` for in-session commands. Deep dive: [`packages/kb-core/src/core/CHAT.md`](packages/kb-core/src/core/CHAT.md).
+
+### Keeping up to date
 
 ```bash
-claude mcp add --transport http -s user kb http://localhost:38117/mcp \
-  --header "Authorization: Bearer ${KB_SERVER_API_KEY}"
+kb sync
 ```
 
-Check: `claude mcp list`. For a deployed server, swap `localhost:38117` for your host.
+## Agent skills
 
-### Cursor Agent
-
-Cursor reads MCP config from `~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project). There is no `agent mcp add` — write the config, then use the CLI to inspect:
+Install skills so Claude Code, Cursor, and Codex query KB **before** spelunking — same answers, far fewer tokens:
 
 ```bash
-mkdir -p ~/.cursor
-cat > ~/.cursor/mcp.json <<'EOF'
-{
-  "mcpServers": {
-    "kb": {
-      "url": "http://localhost:38117/mcp",
-      "headers": {
-        "Authorization": "Bearer testkey"
-      }
-    }
-  }
-}
-EOF
-
-agent mcp list
-agent mcp list-tools kb
+kb skills install
 ```
 
-Merge into an existing `mcp.json` if you already have other servers. Restart Cursor or reload the window if the IDE does not pick up the file immediately.
+[`skills/`](skills/) · [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md)
 
-**MCP tools:** `kb_query`, `read_facts`, `search_code_symbols`, `get_code_neighbors`, `get_code_graph_summary`. Details: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md).
+## MCP — Claude Code & Cursor
 
-## 📋 Behavioral specs (spec.md)
+With `kb-server start --with-mcp`, register the server as an MCP tool so your editor can call `kb_query` directly. Setup: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md).
 
-This repo documents its own behavior with the [spec.md framework](https://github.com/rosenjcb/spec.md) — sibling `*.spec.md` files for requirements and test cases, companion docs (`TUI.md`, `INTENTS.md`, …) for architecture notes. That is a repo convention, not a KB indexing requirement.
+## Managing bases & repos
 
-Conventions and CI enforcement: [`TESTING.md`](TESTING.md).
-
-## 🗄️ Swapping and deleting bases
+Server-side repos come from `KB_GIT_REPOS`. Operators can also add repos to a base:
 
 ```bash
-kb base use foo            # switch the active base for this session
-kb base use --default foo  # save a persistent default
-kb base use --show         # show active base and config default
-kb base delete bar --force # delete a base and all its data
-kb scan --base foo         # pull + re-index every tracked repo, rebuild cross-repo links
-kb sync                    # install the latest published GitHub release
-kb && /base use foo
-kb && /scan
-kb && /sync
+kb base use foo
+kb base repo add <url[#branch]> [--base <name>]
+kb base repo remove <url|slug> [--base <name>]
+kb base ignore add "tests/, **/*.spec.ts"
 ```
 
-### Adding / removing repos
+`.kbignore` at a repo root merges with base ignore patterns at index time.
 
-```bash
-kb base repo list [--base <name>]                       # list the repos a base tracks
-kb base repo add <url[#branch]> [--branch <b>] [--base <name>]   # clone, index, and link a new repo
-kb base repo remove <url|slug> [--base <name>]          # purge a repo's facts + clone
-```
+## Building & contributing
 
-### Ignoring paths
+The [Quick start](#quick-start) above is for **using** KB. The repo itself is a pnpm monorepo — if you're fixing bugs, adding features, or running eval harnesses, you'll work from a checkout with `pnpm run test`, Docker-backed `kb-server`, and changeset-driven version bumps.
 
-Skip files/dirs that aren't relevant to the knowledge base with gitignore-style patterns stored per base. `kb init` also prompts for these (skippable), and every scan respects them:
-
-```bash
-kb base ignore list [--base <name>]                     # show current patterns
-kb base ignore add "tests/, **/*.spec.ts, vendor"       # append (comma-separated ok)
-kb base ignore remove vendor                            # drop a pattern
-kb base ignore set "docs/legacy/**"                     # replace the whole list
-kb base ignore clear                                    # remove all
-```
-
-A `.kbignore` file committed at a repo root is merged on top of the base's patterns at scan time.
-
-## 📊 Evaluation
-
-KB ships a multi-pipeline evaluation framework for measuring answer quality and exploration efficiency. See [`EVALUATION.md`](EVALUATION.md) for the query-harvest pipeline (kb vs control agent), headline ΔS metric, and MOEL exploration-cost benchmarks.
-
-```bash
-pnpm run eval -- --suite raylib --auto-score
-pnpm run moel -- --suite moel-kb
-```
-
-More reading: [`eval/EVAL.md`](eval/EVAL.md).
-
-## 🧪 Development Commands
-
-Monorepo map: [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md).
-
-```bash
-pnpm run test
-pnpm run spec:check
-pnpm run type-check
-pnpm run lint
-pnpm run build
-```
-
-To install and uninstall a dev build globally (symlinks `kb` **and** `kb-server` into `$PNPM_HOME/bin`):
-
-```bash
-pnpm run install:global    # build then symlink kb + kb-server into $PNPM_HOME/bin
-pnpm run uninstall:global  # remove symlinks, dist/; prompts before deleting ~/.kb
-```
-
-> These are dev-only scripts and are not shipped in the release package. Consumer users should use `kb uninstall` instead.
+**[DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE.md)** — setup, daily scripts, local server, evaluations, spec/CI gates, and release workflow. Deeper references: [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md), [`TESTING.md`](TESTING.md), [`EVALUATION.md`](EVALUATION.md).

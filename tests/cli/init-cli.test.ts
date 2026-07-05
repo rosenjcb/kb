@@ -152,19 +152,16 @@ describe('init-cli interview checkpoints', () => {
     expect(result.checkpointFile).toBe(
       path.join(kbHomeDir, 'sessions', 'fresh-base', 'checkpoints', 'init-latest.checkpoint.json')
     )
-    const config = JSON.parse(await readFile(path.join(kbHomeDir, 'config.json'), 'utf8'))
-    expect(config.activeBase).toBe('fresh-base')
+    const activeBase = (await readFile(path.join(kbHomeDir, 'state', 'active-base'), 'utf8')).trim()
+    expect(activeBase).toBe('fresh-base')
   })
 
   it('[TC-248] Given init without --base and config activeBase, then prompt suggests the first git remote slug', { timeout: 15_000 }, async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
-    await writeFile(
-      path.join(kbHomeDir, 'config.json'),
-      `${JSON.stringify({ activeBase: 'dogfood' }, null, 2)}\n`,
-      'utf8'
-    )
+    await mkdir(path.join(kbHomeDir, 'state'), { recursive: true })
+    await writeFile(path.join(kbHomeDir, 'state', 'active-base'), 'dogfood\n', 'utf8')
     const repo = await makeTempGitRepo({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
@@ -190,8 +187,8 @@ describe('init-cli interview checkpoints', () => {
         'init-latest.checkpoint.json'
       )
     )
-    const config = JSON.parse(await readFile(path.join(kbHomeDir, 'config.json'), 'utf8'))
-    expect(config.activeBase).toBe(repoSlugFromGitUrl(repo))
+    const activeBase = (await readFile(path.join(kbHomeDir, 'state', 'active-base'), 'utf8')).trim()
+    expect(activeBase).toBe(repoSlugFromGitUrl(repo))
   })
 
   it('[TC-249] Given detach and resume flags, then parses them into init options', () => {

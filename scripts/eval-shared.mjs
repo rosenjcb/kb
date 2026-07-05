@@ -248,6 +248,82 @@ export function parseQueryText(text) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Per-answer telemetry logging (K query RunReports + control agent JSON)
+// ---------------------------------------------------------------------------
+
+/**
+ * One-line progress log after a kb query or control answer (tokens-first; turns/cost when present).
+ * @param {{ input_tokens?: number|null, output_tokens?: number|null, cache_read_tokens?: number|null, num_turns?: number|null, total_cost_usd?: number|null, duration_ms?: number|null }|null|undefined} telemetry
+ */
+export function formatAnswerTelemetryLog(telemetry) {
+  const parts = []
+  const inTok = telemetry?.input_tokens
+  const outTok = telemetry?.output_tokens
+  if (typeof inTok === 'number' || typeof outTok === 'number') {
+    parts.push(`in=${inTok ?? '?'} out=${outTok ?? '?'}`)
+  }
+  const cache = telemetry?.cache_read_tokens
+  if (typeof cache === 'number' && cache > 0) parts.push(`cache=${cache}`)
+  if (typeof telemetry?.num_turns === 'number') parts.push(`turns=${telemetry.num_turns}`)
+  if (typeof telemetry?.total_cost_usd === 'number') {
+    parts.push(`cost=$${telemetry.total_cost_usd.toFixed(4)}`)
+  }
+  if (typeof telemetry?.duration_ms === 'number') {
+    const s = telemetry.duration_ms / 1000
+    parts.push(s >= 10 ? `${s.toFixed(0)}s` : `${s.toFixed(1)}s`)
+  }
+  return parts.length ? parts.join(' ') : 'no telemetry'
+}
+
+/** Map a kb query RunReport to the shared answer-telemetry shape. */
+export function runReportToAnswerTelemetry(report) {
+  if (!report) return null
+  return {
+    input_tokens: Number.isFinite(Number(report.totalInputTokens)) ? Number(report.totalInputTokens) : null,
+    output_tokens: Number.isFinite(Number(report.totalOutputTokens)) ? Number(report.totalOutputTokens) : null,
+    cache_read_tokens: null,
+    num_turns: null,
+    total_cost_usd: Number.isFinite(Number(report.totalEstimatedCostUsd))
+      ? Number(report.totalEstimatedCostUsd)
+      : null,
+    duration_ms: Number.isFinite(Number(report.totalDurationMs)) ? Number(report.totalDurationMs) : null,
+  }
+}
+
+/**
+ * Latest `query` RunReport for a base from ~/.kb/logs/*.jsonl.
+ * @param {string} [base]
+ * @param {{ minFinishedAtMs?: number }} [opts]
+ */
+export function readLatestKbQueryRunReport(base, { minFinishedAtMs } = {}) {
+  const logsDir = path.join(os.homedir(), '.kb', 'logs')
+  if (!fs.existsSync(logsDir)) return null
+  let latest = null
+  let latestTime = 0
+  for (const file of fs.readdirSync(logsDir).filter(f => f.endsWith('.jsonl')).sort()) {
+    const text = fs.readFileSync(path.join(logsDir, file), 'utf8')
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue
+      try {
+        const r = JSON.parse(line)
+        if (r.command !== 'query') continue
+        if (base && r.base !== base) continue
+        const t = new Date(r.finishedAt).getTime()
+        if (!Number.isFinite(t)) continue
+        if (typeof minFinishedAtMs === 'number' && t < minFinishedAtMs) continue
+        if (t >= latestTime) {
+          latestTime = t
+          latest = r
+        }
+      } catch {
+        /* skip malformed line */
+      }
+    }
+  }
+  return latest
+}
+
 export function parseGraphCounts(graphText) {
   const em = /Triplets:\s*(\d+)/.exec(graphText) ?? /Entities:\s*(\d+)/.exec(graphText)
   const rm = /Symbols:\s*(\d+)/.exec(graphText) ?? /Relationships:\s*(\d+)/.exec(graphText)

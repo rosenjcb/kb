@@ -260,7 +260,7 @@ describe('server-side run report capture', () => {
     expect(res.status).toBe(200)
 
     const report = await reportWritten
-    expect(report.command).toBe('server.query')
+    expect(report.command).toBe('query')
     expect(report.status).toBe('success')
     expect(report.base).toBe('base')
     expect(report.runId).toMatch(/^run-\d+-\w+$/)
@@ -273,7 +273,7 @@ describe('server-side run report capture', () => {
     expect(jsonlFile).toBeTruthy()
     const text = await readFile(path.join(logsDir, jsonlFile), 'utf-8')
     const parsed = JSON.parse(text.trim()) as RunReport
-    expect(parsed.command).toBe('server.query')
+    expect(parsed.command).toBe('query')
     expect(parsed.status).toBe('success')
   })
 
@@ -297,7 +297,7 @@ describe('server-side run report capture', () => {
     expect(res.status).toBe(500)
 
     const report = await reportWritten
-    expect(report.command).toBe('server.query')
+    expect(report.command).toBe('query')
     expect(report.status).toBe('error')
     expect(report.errorMessage).toBe('llm unavailable')
   })

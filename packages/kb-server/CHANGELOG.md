@@ -1,5 +1,18 @@
 # kb-server
 
+## 1.2.0
+
+### Minor Changes
+
+- Split uninstall: `kb-server uninstall --purge` removes server binary and `~/.kb` data; client uninstall is client-only.
+
+### Patch Changes
+
+- Fix run telemetry on `/v1/query` and `/v1/chat` (real LLM token counts, plain command names).
+- Align with env-only client configuration and release CI version wiring.
+- Updated dependencies
+  - @kb/core@1.2.0
+
 ## 1.1.4
 
 ### Patch Changes

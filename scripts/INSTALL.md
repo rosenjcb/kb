@@ -9,7 +9,7 @@ timestamp: 2026-07-03T00:00:00Z
 
 # Install / Uninstall Scripts
 
-Shell scripts for KB lifecycle. Release install ships **`kb`** only (via tarball); contributors link **`kb`** and **`kb-server`** from a dev build.
+Shell scripts for KB lifecycle. Release install ships **`kb`** and **`kb-server`** as separate tarballs; `install-kb.sh` installs both by default.
 
 ## Role in the stack
 
@@ -21,17 +21,18 @@ sequenceDiagram
   participant Shell rc
 
   User->>install-release.sh: curl … | bash
-  install-release.sh->>npm: npm install --prefix ~/.kb/runtime <tarball>
+  install-release.sh->>npm: npm install --prefix ~/.kb/runtime/client <client.tgz>
+  install-release.sh->>npm: npm install --prefix ~/.kb/runtime/server <server.tgz>
   install-release.sh->>Shell rc: PATH=~/.kb/bin
-  install-release.sh-->>User: kb at ~/.kb/bin/kb
+  install-release.sh-->>User: kb + kb-server at ~/.kb/bin/
 ```
 
 ## Scripts
 
 | Script | Purpose | Audience |
 |---|---|---|
-| `install-release.sh` | Fresh install from GitHub Releases tarball (`kb` client) | End users |
-| `install-global.sh` | Symlink `packages/kb-client/dist/bin/kb` **and** `packages/kb-server/dist/bin/kb-server` into `$PNPM_HOME/bin` | Contributors |
+| `install-release.sh` | Fresh install from GitHub Releases (`kb-client-node24.tgz` + `kb-server-node24.tgz`; `--client-only` / `--server-only`) | End users |
+| `install-global.sh` | From a git checkout: `pnpm install`, `pnpm run build`, symlink `kb` + `kb-server` into `$PNPM_HOME/bin`, PATH hint | Contributors |
 | `uninstall-global.sh` | Remove dev symlinks and dist/ | Contributors |
 
 Consumer uninstall: `kb uninstall` → [`../packages/kb-client/src/cli/uninstall-cli.ts`](../packages/kb-client/src/cli/uninstall-cli.ts).
@@ -40,9 +41,12 @@ Consumer uninstall: `kb uninstall` → [`../packages/kb-client/src/cli/uninstall
 
 ```
 ~/.kb/
-  bin/kb            → release launcher (or dev symlink target)
-  runtime/          npm package (kb-cli-node24.tgz)
-  config.json       client connection profile + prefs
+  bin/kb            → runtime/client/node_modules/.bin/kb
+  bin/kb-server     → runtime/server/node_modules/.bin/kb-server
+  runtime/
+    client/         @kb/client npm package
+    server/         @kb/server npm package
+  state/            session + default base names
   sessions/<base>/  index + repo clones (server KB_HOME)
   logs/             RunReport NDJSON
 ```
@@ -55,10 +59,17 @@ KB requires **Node 24.x**. `install-release.sh` bootstraps via nvm when missing.
 
 ## Dev install
 
+From the repo root (fresh clone or after pulling):
+
 ```bash
-pnpm run build && pnpm run install:global
+pnpm run install:global
 command -v kb kb-server
+kb --version && kb-server --version
 ```
+
+Runs, in order: Node version check → `pnpm install` → `pnpm run build` → symlinks into `$PNPM_HOME/bin` → PATH entry in your shell rc (if missing).
+
+Eval harvest (`pnpm run eval`) expects this checkout to stay intact — indexing runs via `scripts/eval-index.ts` with this tree's `node_modules`, not the cloned target repo under `~/.kb/evaluations/`.
 
 Both binaries required for local client-server dev.
 
@@ -66,7 +77,7 @@ Both binaries required for local client-server dev.
 
 - `install-global.sh` requires built `packages/kb-client/dist/bin/kb` and `packages/kb-server/dist/bin/kb-server`.
 - `uninstall-global.sh` never deletes `~/.kb/` without `[y/N]`.
-- Release tarball is client-only; run `kb-server` via Docker or a future server release artifact.
+- Release tarballs are split; `install-kb.sh` / `kb sync` install both unless you opt into one side only.
 
 ## Related docs
 

@@ -18,17 +18,14 @@ export interface SlashCommand {
 export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
   // Top-level
   { path: ['query'], description: 'search the knowledge base', contexts: ['idle'] },
-  { path: ['init'], description: 'build a knowledge base from one or more git repos', contexts: ['idle'] },
-  { path: ['scan'], description: "pull + re-index the base's git repos", contexts: ['idle'] },
   { path: ['base'], description: 'manage KB bases and their git repos', contexts: ['idle'] },
   { path: ['docs'], description: 'browse or generate KB documents', contexts: ['idle'] },
   { path: ['facts'], description: 'list, search, or show KB facts', contexts: ['idle'] },
   { path: ['graph'], description: 'inspect or edit the knowledge graph', contexts: ['idle'] },
   { path: ['publish'], description: 'publish docs to the external sink', contexts: ['idle'] },
   { path: ['sync'], description: 'install the latest published KB release', contexts: ['idle'] },
-  { path: ['uninstall'], description: 'remove the kb binary, Python env, and runtime', contexts: ['idle'] },
+  { path: ['uninstall'], description: 'remove the kb client binary and client runtime', contexts: ['idle'] },
   { path: ['skills'], description: 'manage agent skills', contexts: ['idle'] },
-  { path: ['config'], description: 'inspect or update config values', contexts: ['idle'] },
   { path: ['logs'], description: 'browse and compare run reports', contexts: ['idle'] },
   { path: ['session'], description: 'show session stats (turns, tokens, facts, timing)', contexts: ['idle'] },
   { path: ['help'], description: 'show available commands', contexts: ['idle'] },

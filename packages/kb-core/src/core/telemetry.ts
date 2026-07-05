@@ -79,6 +79,8 @@ export interface RunReport {
   sessionId?: string
   /** KB base name used for this run, if known. */
   base?: string
+  /** Server host:port the run executed against (e.g. localhost:38117). */
+  host?: string
   command: string
   startedAt: string
   finishedAt: string
@@ -91,6 +93,19 @@ export interface RunReport {
   retrieval?: QueryRetrievalTrace
   status: 'success' | 'error'
   errorMessage?: string
+}
+
+/** Strip legacy `server.` prefix from stored command names. */
+export function normalizeRunCommand(command: string): string {
+  return command.startsWith('server.') ? command.slice('server.'.length) : command
+}
+
+/** Display target for `kb logs list` — `${host}/${base}` when both are known. */
+export function formatLogTarget(host?: string, base?: string): string {
+  if (!host && !base) return '-'
+  if (host && base) return `${host}/${base}`
+  if (host) return host
+  return `-/${base}`
 }
 
 export function estimateCost(
@@ -118,16 +133,18 @@ export class RunCollector {
   private startedAt: string
   private sessionId?: string
   private base?: string
+  private host?: string
   private retrieval?: QueryRetrievalTrace
 
   constructor(
     readonly command: string,
-    opts: { sessionId?: string; base?: string } = {}
+    opts: { sessionId?: string; base?: string; host?: string } = {}
   ) {
     this.runId = `run-${dayjs().valueOf()}-${Math.random().toString(36).slice(2, 6)}`
     this.startedAt = dayjs().toISOString()
     this.sessionId = opts.sessionId
     this.base = opts.base
+    this.host = opts.host
   }
 
   /**
@@ -189,7 +206,8 @@ export class RunCollector {
       runId: this.runId,
       ...(this.sessionId ? { sessionId: this.sessionId } : {}),
       ...(this.base ? { base: this.base } : {}),
-      command: this.command,
+      ...(this.host ? { host: this.host } : {}),
+      command: normalizeRunCommand(this.command),
       startedAt: this.startedAt,
       finishedAt,
       totalDurationMs,

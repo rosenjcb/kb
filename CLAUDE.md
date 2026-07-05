@@ -12,7 +12,8 @@ job in `.github/workflows/ci.yml`, which hard-fails a PR into main that:
 - changed shipped source without bumping the affected package, or
 - still carries an unapplied `.changeset/*.md`, or
 - carries **more than one** `.changeset/*.md` (one changeset per PR), or
-- bumped a package version by **more than one semver step** (no double-jumps).
+- bumped a package version backward or not at all when its source changed, or
+- bumped a package version by **more than one semver step** (no double-jumps — e.g. `1.1.4 → 1.3.0` fails; one changeset + one bump per PR), or
 
 Docs/eval/research/CI/config-only PRs are exempt from the bump requirement.
 
@@ -62,14 +63,17 @@ features / behavior changes, `major` for intentional breaking changes (1.0+).
 - `pnpm run server:start` / `server:up` — local kb-server
 - `pnpm run build` — compile `kb` + `kb-server` binaries
 - `pnpm run changeset:version` — apply the bump
-- `pnpm run changeset:check` — run the merge-to-main version gate locally
+- `pnpm run changeset:check` — merge-to-main version gate (same as CI + `pre-push`)
+- `pnpm run changeset:check:staged` — staged-source guard (`pre-commit`)
+
+Git hooks: **pre-commit** → staged guard + lint/tests; **pre-push** → `changeset:check` vs `origin/main`.
 
 Monorepo layout → [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md).
 
 ## Boolean environment variables
 
 Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in
-`process.env.*`, `kb config`, or docs/examples. Use the strings `true` and
+`process.env.*` or docs/examples. Use the strings `true` and
 `false` only (lowercase when writing env vars).
 
 - Parse flags with `@kb/core/config/env-boolean` (`isEnvTrue`, `isEnvFalse`,

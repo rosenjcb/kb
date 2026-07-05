@@ -46,7 +46,7 @@ describe('streamChatTurn', () => {
     const answer = events.find(e => e.type === 'answer')
     expect(answer).toBeDefined()
     if (answer?.type === 'answer') expect(answer.text).toBe('The answer.')
-    expect(events.at(-1)).toEqual({ type: 'done' })
+    expect(events.at(-1)).toEqual({ type: 'done', inputTokens: 4, outputTokens: 2 })
   })
 
                 it('[TC-2] emits an error event when synthesis throws', async () => {

@@ -1,5 +1,17 @@
 # @kb/core
 
+## 1.2.0
+
+### Minor Changes
+
+- Split GitHub release artifacts and versioning for `@kb/client` / `@kb/server`; shared release-uninstall helpers and env-only client configuration (`KB_HOST`/`KB_PORT`, base state under `~/.kb/state/`).
+
+### Patch Changes
+
+- Split uninstall: client-only vs `kb-server uninstall --purge`.
+- Fix TUI bundle esbuild banner, run telemetry token counts, and query pipeline logging.
+- Connection-context formatting for remote-only client workflows; env-only configuration messaging.
+
 ## 1.1.4
 
 ### Patch Changes

@@ -11,15 +11,15 @@ timestamp: 2026-07-03T00:00:00Z
 
 KB 1.0 is three workspace packages: **`@kb/client`** (`kb`), **`@kb/server`** (`kb-server`), and **`@kb/core`** (shared domain). The client is a thin terminal front-end; the server owns indexing, retrieval, and LLM work; core has no transport.
 
-## Postgres analogy
+## Client / server roles
 
-| Postgres | KB |
+| Role | KB |
 |---|---|
-| `postgres` daemon | `kb-server` |
-| `psql` client | `kb` |
-| data directory | `KB_HOME` (default `~/.kb`) |
-| `PGHOST` / `PGPORT` | `KBHOST` / `KBPORT` / `KB_SERVER_URL` |
-| `~/.pgpass` | `~/.kb/config.json` → `server` block |
+| Server daemon | `kb-server` |
+| CLI / TUI client | `kb` |
+| Data home | `KB_HOME` (default `~/.kb`) |
+| Host / port | `KB_HOST` / `KB_PORT` / `KB_SERVER_URL` / `kb --host` |
+| Client settings | `KB_*` env vars + `~/.kb/state/` base files |
 
 ## Stack
 
@@ -64,7 +64,9 @@ Root `package.json` (`kb-workspace`) orchestrates build, test, eval — not ship
 
 ```
 ~/.kb/
-  config.json           # client connection + prefs (server block, activeBase, …)
+  state/
+    active-base           # session base (from kb base use)
+    default-base          # persistent default base
   sessions/<base>/      # SQLite index, docs, repos/<slug>/
   logs/                 # RunReport NDJSON (server + local-mode CLI)
   evaluations/          # eval harvest artifacts
@@ -79,22 +81,22 @@ Binaries live on `PATH` or in `~/.kb/bin` — never inside `KB_HOME`.
 | **Remote (default)** | Normal use | `kb query` / chat → HTTP to live `kb-server` |
 | **Local** | `KB_LOCAL_MODE=true`, vitest | In-process `@kb/core` (eval harness, dev) |
 
-Server down → postgres-style error + `kb-server start` hint (`connection-error.ts`).
+Server down → connection error + `kb-server start` hint (`connection-error.ts`).
 
 ## Build
 
 ```bash
-pnpm run build          # kb + kb-server binaries
-pnpm run install:global # symlinks both into $PNPM_HOME/bin
+pnpm run install:global   # pnpm install + build + symlinks into $PNPM_HOME/bin
 ```
 
 ## Invariants
 
 - Dependency graph is one-way: `client → core`, `server → core` — never `server → client`.
+- Client surfaces **host + base** on every session; indexing runs on kb-server only.
 - OpenAPI + `server.http` are the wire contract; `KbService` is the in-process contract.
-- Version each package independently via changesets (`@kb/client`, `@kb/server`, `@kb/core`, `kb-workspace`).
+- Version each package independently via changesets (`@kb/client`, `@kb/server`, `@kb/core`). GitHub CLI releases and `v*.*.*` tags follow `@kb/client`; Docker image semver tags follow `@kb/server`.
 
 ## Related docs
 
-- [`kb-client/CLIENT.md`](./kb-client/CLIENT.md) · [`kb-core/CORE.md`](./kb-core/CORE.md) · [`kb-server/src/SERVER.md`](./kb-server/src/SERVER.md)
+- [`kb-client/CLIENT.md`](./kb-client/CLIENT.md) · [`kb-client/src/api/CONNECTION.md`](./kb-client/src/api/CONNECTION.md) · [`kb-core/CORE.md`](./kb-core/CORE.md) · [`kb-server/src/SERVER.md`](./kb-server/src/SERVER.md)
 - Deploy → [`kb-server/README.md`](./kb-server/README.md) · Install → [`../scripts/INSTALL.md`](../scripts/INSTALL.md)

@@ -3,7 +3,8 @@ import { readKbConfig } from '@kb/core/config/kb-config.js'
 import { getIntentQuestion, isIntentCommand, parseIntentCommand } from '@kb/core/query/intent-cli.js'
 import type { CmdMode } from '@kb/core/config/cmd-ref.js'
 import { createKbApiClient } from '../api/kb-api-client.js'
-import { isLocalMode, resolveServerConnection } from '../api/server-connection.js'
+import { isLocalMode, resolveServerConnection, formatConnectionContext } from '../api/server-connection.js'
+import { resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
 import type { CliOutput } from '@kb/core/ui/cli-output.js'
 import { createPrinter } from '../ui/printer.js'
 import type { ChatIO, ChatSessionDeps } from './chat-cli.js'
@@ -13,7 +14,7 @@ export function isClientLocalCommand(args: string[]): boolean {
   const command = args[0]
   if (!command) return false
   if (command === '--version' || command === '-v' || command === 'version') return true
-  if (command === 'config' || command === 'skills' || command === 'uninstall' || command === 'sync') {
+  if (command === 'skills' || command === 'uninstall' || command === 'sync') {
     return true
   }
   if (command === 'base' && args[1] === 'use') return true
@@ -188,8 +189,15 @@ export async function runRemoteChatTurn(
 export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): Promise<void> {
   const kbConfig = deps.kbConfig ?? (await readKbConfig())
 
+  let sessionBase: string | undefined
+  try {
+    sessionBase = (await resolveEffectiveBaseDir()).baseName
+  } catch {
+    // no base selected
+  }
+  io.write(formatConnectionContext(kbConfig, sessionBase))
+
   let sessionId: string | undefined
-  io.write('Chat mode (remote server) — type /exit to quit.')
 
   while (true) {
     const raw = await io.read('you> ')

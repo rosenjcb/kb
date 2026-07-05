@@ -108,7 +108,7 @@ export async function runPublishCommand(
   const token = options.apply ? resolveNotionToken(config) : undefined
   if (options.apply && !token) {
     throw new Error(
-      'Missing Notion token. Set notion.token in ~/.kb/config.json or NOTION_TOKEN/NOTION_API_KEY in env.'
+      'Missing Notion token. Set NOTION_TOKEN or NOTION_API_KEY in the environment.'
     )
   }
 
@@ -117,7 +117,7 @@ export async function runPublishCommand(
 
   if (options.apply && !parentPageId) {
     throw new Error(
-      'Missing Notion parent page ID. Set notion.parentPageId in ~/.kb/config.json or --parent-page-id flag.'
+      'Missing Notion parent page ID. Set NOTION_PARENT_PAGE_ID in the environment or pass --parent-page-id.'
     )
   }
 

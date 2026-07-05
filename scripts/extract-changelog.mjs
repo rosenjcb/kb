@@ -1,30 +1,40 @@
 /**
- * Prints the changelog entry for the most recent version in CHANGELOG.md
- * (the changeset-generated notes for the current package.json version).
+ * Prints a changelog section from `packages/kb-client/CHANGELOG.md` or
+ * `packages/kb-server/CHANGELOG.md` (changeset-generated release notes).
  *
- * Used by .github/workflows/release-cli.yml to populate release notes so every
- * release surfaces the changeset notes for the version it ships.
- *
- * Usage: node scripts/extract-changelog.mjs [version]
- *   - With a version arg, extracts that version's section.
- *   - Without one, extracts the top-most version section.
+ * Usage: node scripts/extract-changelog.mjs [version] [client|server]
  */
 import { readFileSync } from 'node:fs'
-import path from 'node:path'
 
-const root = new URL('..', import.meta.url).pathname
+import {
+  CLIENT_CHANGELOG,
+  SERVER_CHANGELOG,
+} from './release-package.mjs'
+
 const wanted = process.argv[2]?.replace(/^v/, '')
+const packageName = (process.argv[3] ?? 'client').toLowerCase()
+
+const changelogPath =
+  packageName === 'server'
+    ? SERVER_CHANGELOG
+    : packageName === 'client'
+      ? CLIENT_CHANGELOG
+      : null
+
+if (!changelogPath) {
+  console.error(`Unknown package "${packageName}" — use client or server`)
+  process.exit(1)
+}
 
 let changelog = ''
 try {
-  changelog = readFileSync(path.join(root, 'CHANGELOG.md'), 'utf-8')
+  changelog = readFileSync(changelogPath, 'utf-8')
 } catch {
-  // No changelog yet — nothing to emit.
   process.exit(0)
 }
 
 const lines = changelog.split('\n')
-const isVersionHeading = (line) => /^##\s+/.test(line)
+const isVersionHeading = line => /^##\s+/.test(line)
 
 let start = -1
 for (let i = 0; i < lines.length; i++) {
@@ -46,7 +56,6 @@ for (let i = start + 1; i < lines.length; i++) {
   }
 }
 
-// Skip the version heading itself; the workflow renders its own header.
 const body = lines
   .slice(start + 1, end)
   .join('\n')

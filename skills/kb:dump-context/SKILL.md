@@ -3,7 +3,7 @@ name: kb:dump-context
 description: >-
   Is the user asking me to write in-place companion docs near code — README-tier
   knowledge (purpose, integration, invariants) that expand on the implementation?
-  Files like TUI.md or INTENTS.md that kb scan ingests later. Author OKF companions
+  Files like TUI.md or INTENTS.md that kb-server indexing ingests later. Author OKF companions
   and, when a sibling *.spec.md exists or behavior changed, update the behavioral
   spec per the spec.md framework (FR/TC tables).
 ---
@@ -17,7 +17,7 @@ Write **two-layer docs** beside the code they describe:
 | **Companion** | `SUBSYSTEM.md`, `CLI.md`, … | `Subsystem`, `Module`, `Guide`, … | Architecture — why, integration, invariants, gotchas |
 | **Behavioral spec** | `*.spec.md` | `Spec` | Testable requirements — **FR-N** + **TC-N** tables |
 
-Both extend [OKF](https://github.com/rosenjcb/okf) (YAML frontmatter + markdown body). The [spec.md framework](https://github.com/rosenjcb/spec.md) adds the FR/TC structure on top of OKF for `*.spec.md` files. `kb init` / `kb scan` ingest both; OKF frontmatter is skipped at index time.
+Both extend [OKF](https://github.com/rosenjcb/okf) (YAML frontmatter + markdown body). The [spec.md framework](https://github.com/rosenjcb/spec.md) adds the FR/TC structure on top of OKF for `*.spec.md` files. kb-server indexing ingests both; OKF frontmatter is skipped at index time.
 
 **Sources:** Open files, Read/Grep/Glob, user-named paths, and conversation scope — disk and session context only.
 

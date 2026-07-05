@@ -122,9 +122,6 @@ See companion doc for full vocabulary where applicable.
 | TC-77 | FR-11 | normalizes slash commands before handing off to the CLI runner | pass |
 | TC-78 | FR-11 | leaves normal commands unchanged | pass |
 | TC-79 | FR-11 | scrolls the visible suggestion window with the selected row | pass |
-| TC-80 | FR-11 | includes /init in the command list with correct description | pass |
-| TC-81 | FR-11 | includes /scan in the command list with correct description | pass |
-| TC-82 | FR-11 | suggests /init when typing /in | pass |
 | TC-83 | FR-11 | suggests /skills when typing /sk | pass |
 | TC-84 | FR-11 | suggests docs subcommands when typing /docs g | pass |
 | TC-85 | FR-11 | suggests /facts list when typing /facts li | pass |

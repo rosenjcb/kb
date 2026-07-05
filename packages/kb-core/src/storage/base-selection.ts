@@ -3,7 +3,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { CLI_ERROR_NO_KB_BASE } from '@kb/core/config/cli-prerequisites.js'
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
-import { type KbConfig, readKbConfig, writeKbConfig } from '@kb/core/config/kb-config.js'
+import { type KbConfig, readKbConfig } from '@kb/core/config/kb-config.js'
+import {
+  readActiveBaseName,
+  readDefaultBaseName,
+  writeActiveBaseName,
+  writeDefaultBaseName,
+} from '@kb/core/storage/base-state.js'
 
 export interface BaseSelectionConfig {
   activeBase?: string
@@ -29,14 +35,13 @@ export function getKbHomeDir(): string {
   return override ? path.resolve(override) : path.join(os.homedir(), '.kb')
 }
 
-/** Legacy file; migrated into `config.json` as `activeBase` and then removed. */
+/** Legacy file; migrated into `active-base` and removed. */
 function getLegacySessionStateFile(): string {
   return path.join(getKbHomeDir(), 'session.json')
 }
 
 /**
- * One-time migration: `~/.kb/session.json` → `config.json` (`activeBase`), then delete legacy file.
- * Call early at process startup so later `readKbConfig()` sees merged state.
+ * One-time migration: `~/.kb/session.json` → `active-base`, then delete legacy file.
  */
 export async function migrateLegacyKbSessionJson(): Promise<void> {
   const legacyPath = getLegacySessionStateFile()
@@ -60,9 +65,8 @@ export async function migrateLegacyKbSessionJson(): Promise<void> {
       ? (parsed as { activeBase: string }).activeBase.trim()
       : undefined
 
-  const config = await readKbConfig()
-  if (legacyActive && !config.activeBase) {
-    await writeKbConfig({ ...config, activeBase: legacyActive })
+  if (legacyActive && !(await readActiveBaseName())) {
+    await writeActiveBaseName(legacyActive)
   }
 
   await rm(legacyPath, { force: true })
@@ -113,37 +117,25 @@ export async function ensureOperationalBaseDir(
 
 export async function readBaseConfig(): Promise<BaseSelectionConfig> {
   await migrateLegacyKbSessionJson()
-  const config = await readKbConfig()
   return {
-    activeBase: config.activeBase,
-    defaultBase: config.defaultBase,
-    updatedAt: config.updatedAt,
+    activeBase: await readActiveBaseName(),
+    defaultBase: await readDefaultBaseName(),
   }
 }
 
 export async function writeDefaultBase(base: string): Promise<BaseSelectionConfig> {
-  const config = await readKbConfig()
-  const saved = await writeKbConfig({ ...config, defaultBase: base })
-  return {
-    activeBase: saved.activeBase,
-    defaultBase: saved.defaultBase,
-    updatedAt: saved.updatedAt,
-  }
+  await writeDefaultBaseName(base)
+  return readBaseConfig()
 }
 
 export async function writeSessionBase(base: string): Promise<BaseSelectionConfig> {
-  const config = await readKbConfig()
-  const saved = await writeKbConfig({ ...config, activeBase: base })
-  return {
-    activeBase: saved.activeBase,
-    defaultBase: saved.defaultBase,
-    updatedAt: saved.updatedAt,
-  }
+  await writeActiveBaseName(base)
+  return readBaseConfig()
 }
 
 export interface EffectiveBaseResolution {
   baseDir: string
-  source: 'directory:.kb' | 'config.activeBase' | 'config.defaultBase'
+  source: 'directory:.kb' | 'activeBase' | 'defaultBase'
   baseName: string
 }
 
@@ -217,8 +209,8 @@ export async function listAllBases(): Promise<BaseInfo[]> {
  *
  * Priority:
  *   1. directory `.kb` file — found by walking CWD up to filesystem root.
- *   2. config.activeBase — current working base from `kb base use <base>`.
- *   3. config.defaultBase — default from `kb base use --default <base>`.
+ *   2. active base — from `kb base use` (`~/.kb/state/active-base` or `KB_ACTIVE_BASE`).
+ *   3. default base — from `kb base use --default` (`~/.kb/state/default-base` or `KB_BASE`).
  *
  * configOverride is accepted only for testing — real callers omit it.
  */
@@ -248,7 +240,7 @@ export async function resolveEffectiveBaseDir(
   if (activeBase) {
     return {
       baseDir: await ensureOperationalBaseDir(activeBase, cwd),
-      source: 'config.activeBase',
+      source: 'activeBase',
       baseName: activeBase,
     }
   }
@@ -263,7 +255,7 @@ export async function resolveEffectiveBaseDir(
   if (selected) {
     return {
       baseDir: await ensureOperationalBaseDir(selected, cwd),
-      source: 'config.defaultBase',
+      source: 'defaultBase',
       baseName: selected,
     }
   }
@@ -369,12 +361,11 @@ export async function deleteBase(
   const clearedActive = config.activeBase === trimmed
   const clearedSelected = config.defaultBase === trimmed
 
-  if (clearedActive || clearedSelected) {
-    await writeKbConfig({
-      ...config,
-      activeBase: clearedActive ? undefined : config.activeBase,
-      defaultBase: clearedSelected ? undefined : config.defaultBase,
-    })
+  if (clearedActive) {
+    await rm(path.join(getKbHomeDir(), 'state', 'active-base'), { force: true }).catch(() => {})
+  }
+  if (clearedSelected) {
+    await rm(path.join(getKbHomeDir(), 'state', 'default-base'), { force: true }).catch(() => {})
   }
 
   return { basePath, clearedActive, clearedSelected, purgedPaths }

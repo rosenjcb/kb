@@ -3,6 +3,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import {
+  formatAnswerTelemetryLog,
+  readLatestKbQueryRunReport,
+  runReportToAnswerTelemetry,
+} from '../scripts/eval-shared.mjs'
+import {
   buildCoverageAudit,
   buildQuestionTimeline,
   buildTimelineSummary,
@@ -656,6 +661,71 @@ describe('writeResearchResultsTex', () => {
       expect(tex).toContain('\\newcommand{\\RaylibDeltaS}{-0.050}')
       expect(tex).toContain('\\newcommand{\\RaylibKS}{0.700}')
       expect(tex).toContain('\\newcommand{\\RaylibNS}{0.750}')
+    } finally {
+      process.env.HOME = prevHome
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('answer telemetry logging', () => {
+  it('[TC-532] runReportToAnswerTelemetry maps RunReport fields', () => {
+    expect(
+      runReportToAnswerTelemetry({
+        totalInputTokens: 1200,
+        totalOutputTokens: 340,
+        totalEstimatedCostUsd: 0.0123,
+        totalDurationMs: 45000,
+      })
+    ).toEqual({
+      input_tokens: 1200,
+      output_tokens: 340,
+      cache_read_tokens: null,
+      num_turns: null,
+      total_cost_usd: 0.0123,
+      duration_ms: 45000,
+    })
+  })
+
+  it('[TC-533] formatAnswerTelemetryLog matches control-style kb query lines', () => {
+    const line = formatAnswerTelemetryLog({
+      input_tokens: 1200,
+      output_tokens: 340,
+      total_cost_usd: 0.0123,
+      duration_ms: 45000,
+    })
+    expect(line).toBe('in=1200 out=340 cost=$0.0123 45s')
+  })
+
+  it('[TC-534] readLatestKbQueryRunReport returns newest query for base', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-eval-logs-'))
+    const logsDir = path.join(tmp, '.kb', 'logs')
+    fs.mkdirSync(logsDir, { recursive: true })
+    const older = {
+      command: 'query',
+      base: 'eval-raylib',
+      finishedAt: '2026-07-05T12:00:00.000Z',
+      totalInputTokens: 1,
+      totalOutputTokens: 1,
+      totalDurationMs: 1000,
+    }
+    const newer = {
+      command: 'query',
+      base: 'eval-raylib',
+      finishedAt: '2026-07-05T13:00:00.000Z',
+      totalInputTokens: 99,
+      totalOutputTokens: 11,
+      totalDurationMs: 2000,
+    }
+    fs.writeFileSync(
+      path.join(logsDir, '2026-07-05.jsonl'),
+      `${JSON.stringify(older)}\n${JSON.stringify(newer)}\n`
+    )
+    const prevHome = process.env.HOME
+    process.env.HOME = tmp
+    try {
+      expect(readLatestKbQueryRunReport('eval-raylib')?.totalInputTokens).toBe(99)
+      expect(readLatestKbQueryRunReport('eval-kb')).toBeNull()
     } finally {
       process.env.HOME = prevHome
       fs.rmSync(tmp, { recursive: true, force: true })

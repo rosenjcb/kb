@@ -37,7 +37,6 @@ See companion doc for full vocabulary where applicable.
 | FR-8 | Chat retrieval refusal surfaces when evidence is insufficient |
 | FR-9 | Command reference generation stays in sync with registered commands |
 | FR-10 | Init collects source files from configured git targets |
-| FR-11 | Config subcommands read and write `~/.kb/config.json` safely |
 | FR-12 | Docs delete CLI removes documents with confirmation and index cleanup |
 | FR-13 | Docs generate CLI drives the document-generation pipeline |
 | FR-14 | Docs generate flow integrates questionnaire → draft → write |
@@ -54,7 +53,6 @@ See companion doc for full vocabulary where applicable.
 | FR-25 | Intent CLI parses query envelopes and routes to retrieval |
 | FR-26 | KB config loader merges defaults, file config, and env overrides |
 | FR-27 | kb.ignore patterns exclude paths from indexing |
-| FR-28 | LLM setup wizard guides provider and model configuration |
 | FR-29 | Logs CLI reads structured run reports from the logs directory |
 | FR-30 | Named-list interview parses numbered selections in TTY prompts |
 | FR-31 | Publish CLI pushes companion docs to configured publish targets |
@@ -63,8 +61,9 @@ See companion doc for full vocabulary where applicable.
 | FR-34 | Skill installer copies bundled skills to agent home directories |
 | FR-35 | Startup notices print one-time migration and version hints |
 | FR-36 | Sync CLI triggers manual pull + reindex across tracked repos |
-| FR-37 | Uninstall CLI removes the release layout and optional user data |
+| FR-37 | Client uninstall removes release client layout; server uninstall removes server layout and optional ~/.kb data |
 | FR-38 | View CLI renders documents and facts for terminal inspection |
+| FR-39 | Connection context (host + base) is printed on CLI banner, TUI status bar, and chat session open |
 
 ### QA Test Cases
 
@@ -79,7 +78,7 @@ See companion doc for full vocabulary where applicable.
 | TC-7 | FR-1 | Given staleLimitMs: 0, then pulls even a freshly-synced repo | pass |
 | TC-8 | FR-2 | Given kb base use <base>, then sets activeBase and prints resolved path | pass |
 | TC-9 | FR-2 | Given kb base use --default <base>, then sets both defaultBase and activeBase | pass |
-| TC-10 | FR-2 | Given kb base use <base> that does not exist, then errors and suggests kb init | pass |
+| TC-10 | FR-2 | Given kb base use <base> that does not exist, then errors with server-managed guidance | pass |
 | TC-11 | FR-2 | Given kb base use --show, then prints current base config | pass |
 | TC-12 | FR-2 | Given kb base --help, then prints base help | pass |
 | TC-13 | FR-2 | Given --force, then deletes the session directory | pass |
@@ -89,14 +88,12 @@ See companion doc for full vocabulary where applicable.
 | TC-17 | FR-2 | Given no --force in CLI mode with non-TTY stdin, then aborts without deleting | pass |
 | TC-18 | FR-2 | Given no base name, then prints help | pass |
 | TC-19 | FR-2 | Given --help, then prints delete help | pass |
-| TC-20 | FR-2 | Given no bases, then reports no initialized bases found | pass |
+| TC-20 | FR-2 | Given no bases, then reports no bases on server | pass |
 | TC-21 | FR-2 | Given initialized bases, then lists them | pass |
 | TC-22 | FR-2 | Marks the active and default bases with tags | pass |
 | TC-23 | FR-2 | kb base list produces the same output as kb base | pass |
 | TC-24 | FR-2 | Shows .kb file info when present in cwd | pass |
-| TC-25 | FR-2 | Given kb init --help, then points refresh workflows to kb scan | pass |
-| TC-26 | FR-2 | Given kb --help, then prints scan examples | pass |
-| TC-27 | FR-2 | Given /scan --help in TUI mode, then prints slash-form scan guidance | pass |
+| TC-26 | FR-2 | Given kb --help, then prints --host and core commands | pass |
 | TC-28 | FR-3 | readBaseMeta returns null when meta.json does not exist | pass |
 | TC-29 | FR-3 | round-trips a multi-repo meta | pass |
 | TC-30 | FR-3 | normalizes a legacy single-repo meta into one repo entry keeping the repo/ clone dir | pass |
@@ -112,7 +109,7 @@ See companion doc for full vocabulary where applicable.
 | TC-40 | FR-4 | writeDefaultBase persists to config and readBaseConfig reads it back | pass |
 | TC-41 | FR-4 | writeDefaultBase overwrites a prior default | pass |
 | TC-42 | FR-4 | writeSessionBase persists the active base separately from the default | pass |
-| TC-43 | FR-4 | migrates legacy session.json into config.json and removes session.json | pass |
+| TC-43 | FR-4 | migrates legacy session.json into state files and removes session.json | pass |
 | TC-44 | FR-4 | ensureOperationalBaseDir migrates legacy repo sqlite into KB home | pass |
 | TC-45 | FR-4 | ensureOperationalBaseDir migrates legacy KB home base directory into sessions namespace | pass |
 | TC-46 | FR-4 | formatUseCommandHelp shows active session switching | pass |
@@ -156,7 +153,6 @@ See companion doc for full vocabulary where applicable.
 | TC-84 | FR-5 | Given long retrieved fact bodies, then turn content truncates each fact for synthesis | pass |
 | TC-85 | FR-5 | Given /help and /exit, then prints commands and exits without tool calls | pass |
 | TC-86 | FR-5 | Given /clear, then prints fresh session message and subsequent turn uses empty message history | pass |
-| TC-87 | FR-5 | Given /init in chat mode, then progress updates use the dedicated progress hook instead of transcript history | pass |
 | TC-88 | FR-5 | Given a simple greeting, then LLM answers directly without calling executor | pass |
 | TC-89 | FR-5 | Given a KB question, then LLM calls query_kb, retrieval runs, and LLM synthesizes the answer | pass |
 | TC-90 | FR-5 | Given provider failure, then loop reports error and remains interactive | pass |
@@ -200,27 +196,6 @@ See companion doc for full vocabulary where applicable.
 | TC-128 | FR-10 | skips excluded directories like node_modules | pass |
 | TC-129 | FR-10 | explores sibling directories at the same depth | pass |
 | TC-130 | FR-10 | respects an ignore matcher (prunes dirs and files) | pass |
-| TC-131 | FR-11 | Given get with no key, then returns normalized full config JSON | pass |
-| TC-132 | FR-11 | Given nested notion key, then get returns scalar and unset prunes empty object | pass |
-| TC-133 | FR-11 | Given read-only or unknown keys, then returns explicit errors | pass |
-| TC-134 | FR-11 | Given supported but unset key, then get returns explicit not-set error | pass |
-| TC-135 | FR-11 | Given KB_HOME override and no explicit config file, then config commands use the overridden home config path | pass |
-| TC-136 | FR-11 | Given config help, then it excludes base keys and generated feature keys | pass |
-| TC-137 | FR-11 | Given supported config paths, then they omit base-selection and feature keys | pass |
-| TC-138 | FR-11 | Given fact_retrieval_method key, then set/get/unset round-trips correctly | pass |
-| TC-139 | FR-11 | Given fact_retrieval_method set to query_expansion, then get returns that value | pass |
-| TC-140 | FR-11 | Given invalid fact_retrieval_method value, then set throws a descriptive error | pass |
-| TC-141 | FR-11 | Given resolveFactRetrievalMethod, then it returns query_expansion by default | pass |
-| TC-142 | FR-11 | Given resolveFactRetrievalMethod with all_facts in config, then it returns all_facts | pass |
-| TC-143 | FR-11 | Given KB_FACT_RETRIEVAL_METHOD env override, then it wins over config | pass |
-| TC-144 | FR-11 | Given config help, then it includes fact_retrieval_method | pass |
-| TC-145 | FR-11 | Given graph.enabled key, then config set/get/unset round-trips the boolean flag | pass |
-| TC-146 | FR-11 | Given internal chat config or env override, then conversational chat flag resolves without becoming a public config key | pass |
-| TC-147 | FR-11 | Given gemini config with a model override, then provider resolution preserves the selected model | pass |
-| TC-148 | FR-11 | Given kb config llm --show with no keys set, then output warns about missing keys | pass |
-| TC-149 | FR-11 | Given kb config llm --show with a key set, then output shows it as set | pass |
-| TC-150 | FR-11 | Given kb config llm in non-TTY mode, then it falls back to show without prompting | pass |
-| TC-151 | FR-11 | Given kb config llm --show, then provider from config is displayed | pass |
 | TC-152 | FR-12 | Given a doc id, then parses it | pass |
 | TC-153 | FR-12 | Given --force flag, then sets force true | pass |
 | TC-154 | FR-12 | Given -f shorthand, then sets force true | pass |
@@ -392,36 +367,28 @@ See companion doc for full vocabulary where applicable.
 | TC-318 | FR-25 | forces build/config scaffold when answer lacks required sections | pass |
 | TC-319 | FR-25 | keeps LLM answer when synthesisQuestion is pre-expansion text (not graph-expanded query) | pass |
 | TC-320 | FR-25 | query synthesis allows a larger answer output budget | pass |
-| TC-321 | FR-26 | returns empty object when file does not exist | pass |
-| TC-322 | FR-26 | returns empty object when file is malformed JSON | pass |
-| TC-323 | FR-26 | normalizes config on read | pass |
-| TC-324 | FR-26 | writes a config with all default features enabled | pass |
-| TC-325 | FR-26 | persists to disk and can be read back | pass |
-| TC-326 | FR-26 | creates fresh config when none exists | pass |
-| TC-327 | FR-26 | merges defaults into existing config without overwriting user values | pass |
-| TC-328 | FR-26 | does not overwrite existing createdAt | pass |
+| TC-321 | FR-26 | returns default features when no env is set | pass |
+| TC-322 | FR-26 | migrates legacy config.json base fields into line files | pass |
+| TC-323 | FR-26 | reads server profile from KB_HOST/KB_PORT env | pass |
+| TC-324 | FR-26 | returns config with default features enabled | pass |
+| TC-325 | FR-26 | matches readKbConfig output | pass |
+| TC-326 | FR-26 | returns fresh config with defaults | pass |
+| TC-327 | FR-26 | picks up NOTION env vars | pass |
 | TC-329 | FR-26 | returns false when no LLM env vars are set | pass |
 | TC-330 | FR-26 | returns true when ANTHROPIC_API_KEY is set | pass |
-| TC-331 | FR-26 | returns true when OPENAI_API_KEY is set | pass |
-| TC-332 | FR-26 | returns true when GEMINI_API_KEY is set | pass |
 | TC-333 | FR-26 | throws LLMKeyMissingError for anthropic when ANTHROPIC_API_KEY is not set | pass |
-| TC-334 | FR-26 | throws LLMKeyMissingError for openai when OPENAI_API_KEY is not set | pass |
-| TC-335 | FR-26 | throws LLMKeyMissingError for gemini when GEMINI_API_KEY is not set | pass |
 | TC-336 | FR-26 | does not throw for ollama (no key required) | pass |
-| TC-337 | FR-26 | does not throw when the key for the given provider is present | pass |
-| TC-338 | FR-26 | throws generic error with all provider hints when provider is unknown and none configured | pass |
-| TC-339 | FR-26 | does not throw when called with no provider but a key is in env | pass |
-| TC-340 | FR-26 | prefers env var over config file key when provider is declared | pass |
+| TC-340 | FR-26 | prefers env var when provider is declared | pass |
 | TC-341 | FR-26 | auto-detects provider from env vars when no provider is declared | pass |
-| TC-342 | FR-26 | env var auto-detection prefers anthropic > openai > gemini order | pass |
-| TC-343 | FR-26 | preserves geminiModel from config when provider is gemini | pass |
 | TC-344 | FR-26 | falls back to ollama when nothing is configured | pass |
-| TC-345 | FR-26 | persists inferred provider when llm.provider is unset and env key exists | pass |
-| TC-346 | FR-26 | does not persist when llm.provider is already set | pass |
+| TC-137 | FR-26 | supported config paths omit base-selection keys | pass |
+| TC-141 | FR-26 | resolveFactRetrievalMethod defaults to query_expansion | pass |
+| TC-143 | FR-26 | KB_FACT_RETRIEVAL_METHOD env override wins | pass |
+| TC-147 | FR-26 | gemini model override preserved in provider resolution | pass |
+| TC-345 | FR-26 | returns inferred provider notice when llm.provider is unset and env key exists | pass |
+| TC-346 | FR-26 | does not persist when KB_LLM_PROVIDER is already set | pass |
 | TC-347 | FR-26 | preserves createdAt on round-trip | pass |
-| TC-348 | FR-26 | strips empty llm object | pass |
-| TC-349 | FR-26 | strips empty notion object | pass |
-| TC-350 | FR-26 | stamps updatedAt and preserves createdAt | pass |
+| TC-350 | FR-26 | normalizes in memory without writing files | pass |
 | TC-351 | FR-27 | splits on commas and newlines and trims | pass |
 | TC-352 | FR-27 | drops empties | pass |
 | TC-353 | FR-27 | trims, removes blanks, and de-duplicates preserving order | pass |
@@ -436,22 +403,6 @@ See companion doc for full vocabulary where applicable.
 | TC-362 | FR-27 | normalizes backslashes and leading ./ in the tested path | pass |
 | TC-363 | FR-27 | merges base patterns with a .kbignore file at the repo root | pass |
 | TC-364 | FR-27 | works with no .kbignore present | pass |
-| TC-365 | FR-28 | shows provider from config when set | pass |
-| TC-366 | FR-28 | shows auto-detect when no provider configured | pass |
-| TC-367 | FR-28 | shows env var status for each provider | pass |
-| TC-368 | FR-28 | warns when no LLM key is configured | pass |
-| TC-369 | FR-28 | does not warn when a key is set | pass |
-| TC-370 | FR-28 | saves chosen provider to config when user picks anthropic | pass |
-| TC-371 | FR-28 | saves openai when user picks 2 | pass |
-| TC-372 | FR-28 | saves gemini when user picks 3 | pass |
-| TC-373 | FR-28 | saves ollama when user picks 4 and marks configured=true | pass |
-| TC-374 | FR-28 | configured=false when provider key is absent | pass |
-| TC-375 | FR-28 | configured=true when provider key is present | pass |
-| TC-376 | FR-28 | shows all four providers in the menu output | pass |
-| TC-377 | FR-28 | preserves existing config when writing provider | pass |
-| TC-378 | FR-28 | prints env var export hint when key is missing | pass |
-| TC-379 | FR-28 | confirms key is set when present in env | pass |
-| TC-380 | FR-28 | re-prompts until the user enters a valid provider number | pass |
 | TC-381 | FR-29 | includes all three subcommands | pass |
 | TC-382 | FR-29 | documents --since flag | pass |
 | TC-383 | FR-29 | documents --base flag | pass |
@@ -541,35 +492,20 @@ See companion doc for full vocabulary where applicable.
 | TC-467 | FR-35 | tells the user how to get help | pass |
 | TC-468 | FR-35 | is a non-empty string | pass |
 | TC-469 | FR-35 | names the base in the notice | pass |
-| TC-470 | FR-35 | points the user to /init with a git URL | pass |
-| TC-471 | FR-35 | mentions kb init --git as a terminal fallback | pass |
+| TC-470 | FR-35 | points the user to server-managed indexing (KB_GIT_REPOS) | pass |
+| TC-471 | FR-35 | suggests switching base via kb base use | pass |
 | TC-472 | FR-35 | reflects the given base name exactly | pass |
-| TC-473 | FR-35 | reassures the user and names the base when provided | pass |
-| TC-474 | FR-35 | works without a base name | pass |
-| TC-475 | FR-35 | reassures the user and names the base when provided | pass |
-| TC-476 | FR-35 | names the base | pass |
-| TC-477 | FR-35 | tells the user init will prompt for a git remote | pass |
-| TC-478 | FR-35 | mentions the .kb file as the trigger | pass |
-| TC-479 | FR-35 | reflects the given base name in the announcement | pass |
-| TC-480 | FR-35 | returns true when source is directory:.kb and there is no index | pass |
-| TC-481 | FR-35 | returns false when the index already exists (base is initialised) | pass |
-| TC-482 | FR-35 | returns false when source is config.activeBase even without an index | pass |
-| TC-483 | FR-35 | returns false when source is config.defaultBase even without an index | pass |
-| TC-484 | FR-35 | returns false when source is config.activeBase and index exists | pass |
-| TC-485 | FR-35 | returns false for an unknown source | pass |
 | TC-486 | FR-36 | Given --help, then prints release-based sync help | pass |
 | TC-487 | FR-36 | Given no flags, then sync installs the latest release tarball into ~/.kb and links a stable binary | pass |
 | TC-488 | FR-36 | Given legacy no-build flag, then sync rejects it | pass |
 | TC-489 | FR-36 | Given positional args, then sync rejects them | pass |
-| TC-490 | FR-37 | removes binary symlink, runtime dir, and Python venv | pass |
-| TC-491 | FR-37 | does not remove ~/.kb when purge is false | pass |
-| TC-492 | FR-37 | removes ~/.kb entirely when purge is true | pass |
-| TC-493 | FR-37 | skips missing paths silently | pass |
-| TC-494 | FR-37 | removes PATH entries from rc files | pass |
-| TC-495 | FR-37 | rejects non-TTY without --yes | pass |
-| TC-496 | FR-37 | --yes removes binary, runtime, and Python env without prompting | pass |
-| TC-497 | FR-37 | --purge removes everything including ~/.kb | pass |
-| TC-498 | FR-37 | lists Python environment in the removal plan | pass |
+| TC-490 | FR-37 | client uninstall removes kb only and preserves kb-server + server data | pass |
+| TC-494 | FR-37 | removes PATH entries from rc files only when both binaries are gone | pass |
+| TC-495 | FR-37 | kb uninstall rejects --purge with kb-server guidance | pass |
+| TC-496 | FR-37 | --yes removes client without prompting | pass |
+| TC-537 | FR-37 | kb-server uninstall without purge keeps ~/.kb server data | pass |
+| TC-538 | FR-37 | kb-server uninstall --purge removes server data but keeps kb client install | pass |
+| TC-539 | FR-37 | kb-server uninstall --purge --yes deletes server data | pass |
 | TC-499 | FR-38 | Given id selector, then parses normalized id mode | pass |
 | TC-500 | FR-38 | Given title and base flags, then parses title mode with base | pass |
 | TC-501 | FR-38 | Given id and title selectors together, then throws explicit error | pass |

@@ -1,27 +1,9 @@
-import { access, lstat, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { createInterface } from 'node:readline'
-import os from 'node:os'
-import path from 'node:path'
+import {
+  performClientUninstall,
+  type UninstallLogger,
+} from '@kb/core/cli/release-uninstall.js'
 import type { CliOutput } from './index.js'
-
-async function exists(p: string): Promise<boolean> {
-  try {
-    await access(p)
-    return true
-  } catch {
-    return false
-  }
-}
-
-/** Like exists but doesn't follow symlinks — catches broken symlinks too. */
-async function lexists(p: string): Promise<boolean> {
-  try {
-    await lstat(p)
-    return true
-  } catch {
-    return false
-  }
-}
 
 async function prompt(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout })
@@ -33,126 +15,64 @@ async function prompt(question: string): Promise<string> {
   })
 }
 
-async function removePathFromRcFiles(kbBinDir: string): Promise<string[]> {
-  const rcFiles = [
-    path.join(os.homedir(), '.bashrc'),
-    path.join(os.homedir(), '.zshrc'),
-    path.join(os.homedir(), '.profile'),
-  ]
-  const patterns = [
-    `export PATH="${kbBinDir}:$PATH"`,
-    'export PATH="$HOME/.kb/bin:$PATH"',
-  ]
-  const modified: string[] = []
-  for (const rc of rcFiles) {
-    if (!(await exists(rc))) continue
-    const content = await readFile(rc, 'utf8')
-    const lines = content.split('\n')
-    const filtered = lines.filter(line => !patterns.includes(line.trim()))
-    if (filtered.length !== lines.length) {
-      await writeFile(rc, filtered.join('\n'), 'utf8')
-      modified.push(rc)
-    }
+function asLogger(out: CliOutput): UninstallLogger {
+  return {
+    log: msg => out.log(msg),
+    error: msg => out.error(msg),
   }
-  return modified
-}
-
-export interface UninstallOptions {
-  /** Skip the interactive user-data prompt; keep ~/.kb intact. */
-  yes: boolean
-  /** Delete all user data at ~/.kb after removing the tool (implies yes). */
-  purge: boolean
 }
 
 /**
- * Core uninstall logic shared by CLI and TUI.
- * Removes the binary symlink, Python venv, and installed runtime.
- * Does NOT delete ~/.kb user data unless opts.purge is true.
+ * Remove the release-installed kb **client** only.
+ * Server binary, runtime, and ~/.kb data are left intact.
  */
-export async function performUninstall(
-  opts: UninstallOptions,
-  out: CliOutput
-): Promise<void> {
-  const kbHome = process.env.KB_INSTALL_ROOT ?? path.join(os.homedir(), '.kb')
-  const kbBinDir = path.join(kbHome, 'bin')
-  const kbBinLink = path.join(kbBinDir, 'kb')
-  const kbRuntimeDir = path.join(kbHome, 'runtime')
-  const kbPythonDir = path.join(kbHome, '.kb-python')
-
-  if (await lexists(kbBinLink)) {
-    await unlink(kbBinLink)
-    out.log(`Removed: ${kbBinLink}`)
-  }
-
-  if (await exists(kbRuntimeDir)) {
-    await rm(kbRuntimeDir, { recursive: true, force: true })
-    out.log(`Removed: ${kbRuntimeDir}`)
-  }
-
-  if (await exists(kbPythonDir)) {
-    await rm(kbPythonDir, { recursive: true, force: true })
-    out.log(`Removed: ${kbPythonDir}`)
-  }
-
-  const rcModified = await removePathFromRcFiles(kbBinDir)
-  for (const rc of rcModified) {
-    out.log(`Removed PATH entry from: ${rc}`)
-  }
-
-  if (opts.purge && (await exists(kbHome))) {
-    await rm(kbHome, { recursive: true, force: true })
-    out.log(`Removed: ${kbHome}`)
-  }
-}
-
 export async function runUninstallCommand(args: string[], out: CliOutput): Promise<void> {
   const yes = args.includes('--yes') || args.includes('-y')
   const purge = args.includes('--purge')
 
-  if (!yes && !purge && !process.stdin.isTTY) {
+  if (purge) {
+    out.error(
+      'kb uninstall removes the client only — there is no client-side data to purge.\n' +
+        'To delete server indexes, sessions, and logs, run: kb-server uninstall --purge'
+    )
+    process.exitCode = 1
+    return
+  }
+
+  const unknown = args.find(arg => arg.startsWith('--') && arg !== '--yes' && arg !== '-y')
+  if (unknown) {
+    out.error(`Unknown uninstall flag: ${unknown}`)
+    process.exitCode = 1
+    return
+  }
+
+  if (!yes && !process.stdin.isTTY) {
     out.error('kb uninstall requires an interactive terminal. Pass --yes to skip prompts.')
     process.exitCode = 1
     return
   }
 
-  const kbHome = process.env.KB_INSTALL_ROOT ?? path.join(os.homedir(), '.kb')
-  const kbBinDir = path.join(kbHome, 'bin')
-  const kbBinLink = path.join(kbBinDir, 'kb')
-  const kbRuntimeDir = path.join(kbHome, 'runtime')
-  const kbPythonDir = path.join(kbHome, '.kb-python')
-
-  out.log('KB Uninstall')
+  out.log('KB client uninstall')
   out.log('')
-  out.log('This will remove:')
-  out.log(`  • Binary symlink:     ${kbBinLink}`)
-  out.log(`  • Installed runtime:  ${kbRuntimeDir}`)
-  out.log(`  • Python environment: ${kbPythonDir}`)
-  out.log('  • PATH entry from shell config')
-  if (!purge) {
-    out.log(`  Knowledge bases in ${kbHome} will be preserved unless you opt in below.`)
-  }
+  out.log('This removes the kb CLI/TUI client only:')
+  out.log('  • ~/.kb/bin/kb symlink')
+  out.log('  • ~/.kb/runtime/client (and legacy client runtime if present)')
+  out.log('  • ~/.kb/.kb-python (legacy)')
+  out.log('')
+  out.log('Does NOT remove:')
+  out.log('  • kb-server (use kb-server uninstall)')
+  out.log('  • Knowledge bases, config, or logs under ~/.kb (use kb-server uninstall --purge)')
   out.log('')
 
-  await performUninstall({ yes, purge }, out)
-
-  out.log('')
-
-  if (!purge && !yes) {
-    if (await exists(kbHome)) {
-      const answer = await prompt(
-        `Delete all KB user data at ${kbHome}? (knowledge bases, config, logs) [y/N]: `
-      )
-      if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
-        await rm(kbHome, { recursive: true, force: true })
-        out.log(`Removed: ${kbHome}`)
-      } else {
-        out.log(`Kept: ${kbHome}`)
-      }
+  if (!yes) {
+    const answer = await prompt('Uninstall the kb client? [y/N]: ')
+    if (answer.toLowerCase() !== 'y' && answer.toLowerCase() !== 'yes') {
+      out.log('Cancelled.')
+      return
     }
-  } else if (!purge && yes) {
-    out.log(`Kept: ${kbHome}`)
   }
 
+  await performClientUninstall(asLogger(out))
   out.log('')
-  out.log('Done. KB has been uninstalled.')
+  out.log('Done. kb client uninstalled. kb-server and ~/.kb data were not modified.')
 }

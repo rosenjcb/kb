@@ -27,8 +27,11 @@ import {
   loadMoelSuite,
   parseQueryText,
   parseGraphCounts,
+  formatAnswerTelemetryLog,
+  runReportToAnswerTelemetry,
+  readLatestKbQueryRunReport,
 } from './eval-shared.mjs'
-import { startEvalServer } from './eval-server.mjs'
+import { startEvalServer, buildKbLocalEnv } from './eval-server.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const KB_REPO = path.resolve(__dirname, '..')
@@ -92,16 +95,11 @@ Output: ~/.kb/evaluations/moel-{suite}-{timestamp}/
 // KB subprocess helper
 // ---------------------------------------------------------------------------
 
-/** Remote kb env from the active eval-server session (per condition). */
-let kbRemoteEnv = null
+/** kb subprocess env — local for init; remote after eval-server starts for queries. */
+let kbSubprocessEnv = buildKbLocalEnv()
 
 function kbEnv() {
-  if (!kbRemoteEnv) {
-    throw new Error(
-      '[moel] kb remote env is unset — eval-server should start before kb subprocesses (see eval/EVAL.md)'
-    )
-  }
-  return kbRemoteEnv
+  return kbSubprocessEnv
 }
 
 function kb(cwd, args, opts = {}) {
@@ -237,13 +235,8 @@ async function runCondition(condition, task, suite, repoPath, runDir, opts) {
 
   let evalServer = null
   try {
-    evalServer = await startEvalServer({
-      base,
-      logPath: path.join(runDir, `eval-server-${condition}.log`),
-    })
-    kbRemoteEnv = evalServer.kbEnv()
+    kbSubprocessEnv = buildKbLocalEnv()
 
-    // Ensure session is initialized
     if (!sessionHasDocs(repoPath, base)) {
       console.log(`  [${condition}] Initializing kb session (base=${base})…`)
       try {
@@ -272,6 +265,13 @@ async function runCondition(condition, task, suite, repoPath, runDir, opts) {
       }
     }
 
+    console.log(`  [${condition}] starting kb-server for remote query`)
+    evalServer = await startEvalServer({
+      base,
+      logPath: path.join(runDir, `eval-server-${condition}.log`),
+    })
+    kbSubprocessEnv = evalServer.kbEnv()
+
     console.log(`  [${condition}] waiting for kb-server index readiness before query`)
     await evalServer.waitReady()
 
@@ -280,11 +280,12 @@ async function runCondition(condition, task, suite, repoPath, runDir, opts) {
     let queryResult = null
     try {
       const question = task.question ?? suite.questions[0]
+      const queryStartMs = Date.now()
       queryOutput = kb(repoPath, `query "${question.replace(/"/g, '\\"')}" --base ${base}`)
       queryResult = parseQueryText(queryOutput)
-      console.log(
-        `  [${condition}] answer (${queryResult.answer?.length ?? 0} chars), result_count=${queryResult.result_count}`
-      )
+      const report = readLatestKbQueryRunReport(base, { minFinishedAtMs: queryStartMs - 500 })
+      const telemetry = runReportToAnswerTelemetry(report)
+      console.log(`  [${condition}] answer ${formatAnswerTelemetryLog(telemetry)}`)
     } catch (err) {
       console.error(`  [${condition}] Query failed: ${err.message}`)
     }
@@ -317,7 +318,7 @@ async function runCondition(condition, task, suite, repoPath, runDir, opts) {
     if (evalServer) {
       await evalServer.stop()
     }
-    kbRemoteEnv = null
+    kbSubprocessEnv = buildKbLocalEnv()
   }
 }
 
