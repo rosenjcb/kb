@@ -9,10 +9,14 @@ import { App } from './App.js'
  */
 export async function launchTui(
   config: KbConfig,
-  options: { startupNotices?: string[] } = {}
+  options: { startupNotices?: string[]; serverHost?: string } = {}
 ): Promise<void> {
   const { waitUntilExit } = render(
-    createElement(App, { config, startupNotices: options.startupNotices ?? [] })
+    createElement(App, {
+      config,
+      startupNotices: options.startupNotices ?? [],
+      serverHost: options.serverHost ?? 'localhost',
+    })
   )
   await waitUntilExit()
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { KbApiClient } from '@kb/client/api/kb-api-client.js'
 import { formatConnectionError } from '@kb/client/api/connection-error.js'
-import { resolveServerConnection } from '@kb/client/api/server-connection.js'
+import { resolveServerConnection, formatConnectionContext } from '@kb/client/api/server-connection.js'
 
 describe('server-connection', () => {
   it('[TC-1] resolves KB_HOST/KB_PORT defaults to localhost:38117', () => {
@@ -23,6 +23,26 @@ describe('server-connection', () => {
     expect(conn.url).toBe('https://kb.example.com')
     if (prev) process.env.KB_SERVER_URL = prev
     else delete process.env.KB_SERVER_URL
+  })
+
+  it('[TC-505] formatConnectionContext shows host and base in remote mode', () => {
+    const prevLocal = process.env.KB_LOCAL_MODE
+    delete process.env.KB_LOCAL_MODE
+    delete process.env.KB_SERVER_URL
+    const line = formatConnectionContext({}, 'dogfood')
+    expect(line).toContain('host: localhost:38117')
+    expect(line).toContain('base: dogfood')
+    if (prevLocal) process.env.KB_LOCAL_MODE = prevLocal
+  })
+
+  it('[TC-506] formatConnectionContext shows local mode label', () => {
+    const prevLocal = process.env.KB_LOCAL_MODE
+    process.env.KB_LOCAL_MODE = 'true'
+    const line = formatConnectionContext({}, 'eval-raylib')
+    expect(line).toContain('mode: local')
+    expect(line).toContain('base: eval-raylib')
+    if (prevLocal) process.env.KB_LOCAL_MODE = prevLocal
+    else delete process.env.KB_LOCAL_MODE
   })
 })
 
@@ -48,6 +68,7 @@ describe('KbApiClient', () => {
     expect(msg).toContain('kb-server start')
     expect(msg).toContain('KB_HOST')
     expect(msg).toContain('KB_SERVER_URL')
+    expect(msg).toContain('--host')
     expect(msg).not.toContain('pnpm run server:up')
     expect(msg).not.toContain('kb-server install')
     expect(msg).toContain('Is the kb server running?')

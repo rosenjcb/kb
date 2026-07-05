@@ -45,6 +45,14 @@ export function formatServerAddress(connection: ServerConnection): string {
   }
 }
 
+/** User-facing `host: … │ base: …` label (TUI status bar, CLI banner, chat header). */
+export function formatConnectionContext(config: KbConfig, baseName?: string): string {
+  const base = baseName?.trim() || '(none)'
+  if (isLocalMode()) return `mode: local │ base: ${base}`
+  const host = formatServerAddress(resolveServerConnection(config))
+  return `host: ${host} │ base: ${base}`
+}
+
 /** Host label persisted on RunReports from the client side. */
 export function resolveReportHost(config: KbConfig = {}): string {
   if (isLocalMode()) return 'local'

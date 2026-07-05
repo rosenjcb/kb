@@ -20,7 +20,8 @@ Do not invent a new scenario or JSON shape. Follow `EVALUATION.md` as the source
 **Any other upstream:** suite `generic` + `--repo <git-url>`.
 
 - Default disposable **KB base** = **run folder basename** (`<repo-leaf>-YYYY-MM-DD-HHmm`, e.g. `raylib-2026-04-27-1303`); same as `~/.kb/evaluations/<run-name>/`. Override with `--base`.
-- `kb init` cwd = snapshot clone under `~/.kb/evaluations/<run-name>/repo/`
+- Indexing uses `scripts/eval-index.ts` (`@kb/core` init/scan) — not the kb client CLI (server-managed for users).
+- Snapshot clone cwd = `~/.kb/evaluations/<run-name>/repo/`
 - No publish step inside eval-run (artifacts only)
 - Artifact: `~/.kb/evaluations/<run-name>/artifact.json` by default
 

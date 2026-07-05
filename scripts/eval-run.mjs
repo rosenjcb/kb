@@ -6,8 +6,8 @@
  * Session lifecycle is fully automatic:
  *   - Base name is derived from the suite id: `eval-{suiteId}` (e.g. `eval-raylib`, `eval-kb`).
  *   - If the session already has docs → reuse it (query-only run).
- *   - If the session is empty / missing → run `kb init --git <snapshot-clone>` first.
- *   - Every harvest runs `kb scan` (pulls + re-indexes the base's repos), then query.
+ *   - If the session is empty / missing → run core init via scripts/eval-index.ts first.
+ *   - Every harvest runs core scan (eval-index), then query.
  *   - `--base NAME` overrides the formula. `--force-init` deletes the base then re-inits from scratch.
  * Ends with an automatic trends summary across prior runs for the same suite.
  *
@@ -127,6 +127,7 @@ export { computeWeightedTokenTotal } from './eval-shared.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const KB_REPO = path.resolve(__dirname, '..')
+const EVAL_INDEX = path.join(KB_REPO, 'scripts/eval-index.ts')
 
 /**
  * The kb binary the harvest drives. Defaults to this checkout's build, but `KB_EVAL_BIN`
@@ -309,25 +310,13 @@ function kbEnv() {
   return kbSubprocessEnv
 }
 
-function kb(cwd, args, opts = {}) {
-  const bin = KB_BIN
-  return execSync(`node "${bin}" ${args}`, {
-    encoding: 'utf8',
-    env: kbEnv(),
-    cwd,
-    maxBuffer: 50 * 1024 * 1024,
-    stdio: opts.stdio === 'inherit' || opts.capture === false ? 'inherit' : undefined,
-    ...opts,
-  })
-}
-
-/** Stream kb stdout/stderr live (no pipe buffer) and write a transcript to `logPath`. */
-function kbTee(cwd, args, logPath) {
-  const bin = KB_BIN
+/** Stream eval-index (core init/scan) stdout/stderr live and write transcript to logPath. */
+function evalIndexTee(cwd, mode, args, logPath) {
   fs.mkdirSync(path.dirname(logPath), { recursive: true })
   const logFd = fs.openSync(logPath, 'w')
+  const quotedArgs = args.replace(/"/g, '\\"')
   return new Promise((resolve, reject) => {
-    const child = spawn(`node "${bin}" ${args}`, {
+    const child = spawn(`npx tsx "${EVAL_INDEX}" ${mode} ${quotedArgs}`, {
       cwd,
       env: kbEnv(),
       shell: true,
@@ -359,11 +348,23 @@ function kbTee(cwd, args, logPath) {
       }
       const output = Buffer.concat(parts).toString('utf8')
       if (code !== 0) {
-        reject(new Error(`kb exited ${code ?? 'unknown'}\n${output.slice(-4000)}`))
+        reject(new Error(`eval-index ${mode} exited ${code ?? 'unknown'}\n${output.slice(-4000)}`))
         return
       }
       resolve(output)
     })
+  })
+}
+
+function kb(cwd, args, opts = {}) {
+  const bin = KB_BIN
+  return execSync(`node "${bin}" ${args}`, {
+    encoding: 'utf8',
+    env: kbEnv(),
+    cwd,
+    maxBuffer: 50 * 1024 * 1024,
+    stdio: opts.stdio === 'inherit' || opts.capture === false ? 'inherit' : undefined,
+    ...opts,
   })
 }
 
@@ -724,10 +725,10 @@ async function main() {
     console.error(
       `[eval] session "${base}" — ${
         wipeBase
-          ? 'force-init: deleting base then kb init + scan'
+          ? 'force-init: deleting base then eval-index init + scan'
           : needsInit
-            ? 'no docs found, running kb init then scan'
-            : 'reusing session; kb scan before K queries'
+            ? 'no docs found, running eval-index init then scan'
+            : 'reusing session; eval-index scan before K queries'
       }`
     )
 
@@ -745,14 +746,15 @@ async function main() {
         // kb init now requires a git remote. Point it at the local snapshot clone (exact commit,
         // no extra network); kb follows the clone's own default branch (main, master, …).
         const initLogPath = path.join(workdir, 'init.log')
-        console.error(`[eval] kb init --base ${base} --git "${targetCwd}"`)
+        console.error(`[eval] eval-index init --base ${base} --git "${targetCwd}"`)
         console.error(
-          '[eval] kb init clones snapshot into ~/.kb/sessions/… then indexes — progress lines follow'
+          '[eval] eval-index clones snapshot into ~/.kb/sessions/… then indexes — progress lines follow'
         )
         await timedAsync('init', runTiming, () =>
-          kbTee(
+          evalIndexTee(
             targetCwd,
-            `init --base ${base} --git "${targetCwd}" --non-interactive --debug`,
+            'init',
+            `--base ${base} --git "${targetCwd}" --non-interactive --debug`,
             initLogPath
           )
         )
@@ -765,10 +767,10 @@ async function main() {
         )
       }
 
-      console.error(`[eval] kb scan --base ${base}`)
+      console.error(`[eval] eval-index scan --base ${base}`)
       const scanLogPath = path.join(workdir, 'scan.log')
       await timedAsync('scan', runTiming, () =>
-        kbTee(targetCwd, `scan --base ${base} --debug`, scanLogPath)
+        evalIndexTee(targetCwd, 'scan', `--base ${base} --debug`, scanLogPath)
       )
 
       console.error(`[eval] kb base use --default ${base} (client profile only — server base is "${base}")`)

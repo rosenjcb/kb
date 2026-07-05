@@ -61,11 +61,11 @@ describe('kb base use', () => {
     expect(config.activeBase).toBe('mydefault')
   })
 
-  it('[TC-10] Given kb base use <base> that does not exist, then errors and suggests kb init', async () => {
+  it('[TC-10] Given kb base use <base> that does not exist, then errors with server-managed guidance', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'use', 'ghost'], out, {} as never)
     expect(lines.join('\n')).toContain('ghost')
-    expect(lines.join('\n')).toContain('kb init')
+    expect(lines.join('\n')).toContain('KB_GIT_REPOS')
   })
 
   it('[TC-11] Given kb base use --show, then prints current base config', async () => {
@@ -141,12 +141,12 @@ describe('kb base delete', () => {
 })
 
 describe('kb base (no args) / kb base list', () => {
-  it('[TC-20] Given no bases, then reports no initialized bases found', async () => {
+  it('[TC-20] Given no bases, then reports no bases on server', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base'], out, {} as never)
     const text = lines.join('\n')
     expect(text).toContain('KB base status')
-    expect(text).toContain('No initialized bases found')
+    expect(text).toContain('No bases found on this server')
   })
 
   it('[TC-21] Given initialized bases, then lists them', async () => {
@@ -190,32 +190,14 @@ describe('kb base (no args) / kb base list', () => {
   })
 })
 
-describe('kb init help', () => {
-  it('[TC-25] Given kb init --help, then points refresh workflows to kb scan', async () => {
-    const { out, lines } = makeOut()
-    await runMainWithOutput(['init', '--help'], out, {} as never)
-
-    const text = lines.join('\n')
-    expect(text).toContain('kb init command')
-    expect(text).toContain('Use kb scan')
-    expect(text).not.toContain('--rescan')
-  })
-
-  it('[TC-26] Given kb --help, then prints scan examples', async () => {
+describe('kb --help', () => {
+  it('[TC-26] Given kb --help, then prints --host and core commands', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['--help'], out, {} as never)
 
     const text = lines.join('\n')
-    expect(text).toContain('kb scan --base dogfood')
+    expect(text).toContain('--host')
     expect(text).toContain('kb sync')
-  })
-
-  it('[TC-27] Given /scan --help in TUI mode, then prints slash-form scan guidance', async () => {
-    const { out, lines } = makeOut()
-    await runMainWithOutput(['scan', '--help'], out, {} as never, 'tui')
-
-    const text = lines.join('\n')
-    expect(text).toContain('/scan --base acme')
-    expect(text).toContain('/base repo add <url>')
+    expect(text).toContain('kb query')
   })
 })

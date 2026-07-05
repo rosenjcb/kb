@@ -1,42 +1,20 @@
 # @kb/client
 
-## 1.3.0
-
-### Minor Changes
-
-- Configuration is environment-only: standardize on `KB_HOST`/`KB_PORT`, remove `kb config set`/`unset`, migrate base selection to `~/.kb/state/`, and rewrite README quick-start.
-
-### Patch Changes
-
-- Updated dependencies
-  - @kb/core@1.2.0
-
-## 1.2.2
-
-### Patch Changes
-
-- Fix TUI esbuild assert crash, server run telemetry (tokens, host/target column, plain command names), connection-error hints, and relax the CI version-jump gate for long-lived PRs.
-- Updated dependencies
-  - @kb/core@1.1.7
-
-## 1.2.1
-
-### Patch Changes
-
-- Split uninstall: `kb uninstall` removes client only; `kb-server uninstall --purge` removes server and ~/.kb server data.
-- Updated dependencies
-  - @kb/core@1.1.6
-
 ## 1.2.0
 
 ### Minor Changes
 
-- Split GitHub release into `kb-client-node24.tgz` and `kb-server-node24.tgz`; `install-kb.sh` and `kb sync` install both by default (`--client-only` / `--server-only` for one side). Wire release CI to `@kb/client` / `@kb/server` versions and changelogs.
+- Split GitHub release into `kb-client-node24.tgz` and `kb-server-node24.tgz`; `install-kb.sh` and `kb sync` install both by default. Wire release CI to `@kb/client` / `@kb/server` versions and changelogs.
+- Configuration is environment-only: `KB_HOST`/`KB_PORT`, remove `kb config set`/`unset`, migrate base selection to `~/.kb/state/`. Rewrite README and DEVELOPERS_GUIDE for server-managed indexing.
+- Remove `kb init` and `kb scan` from the client CLI and TUI (indexing is kb-server-managed via `KB_GIT_REPOS`). Add global `kb --host` and show connected host/base in the TUI status bar and CLI banner.
 
 ### Patch Changes
 
+- Split uninstall: `kb uninstall` removes client only; `kb-server uninstall --purge` removes server and `~/.kb` data.
+- Fix TUI esbuild assert crash, server run telemetry (tokens, host/target column, plain command names), and connection-error hints.
+- Enforce strict single-step semver version bumps in CI and git hooks (pre-commit staged guard, pre-push merge gate).
 - Updated dependencies
-  - @kb/core@1.1.5
+  - @kb/core@1.2.0
 
 ## 1.1.4
 

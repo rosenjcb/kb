@@ -65,6 +65,7 @@ See companion doc for full vocabulary where applicable.
 | FR-36 | Sync CLI triggers manual pull + reindex across tracked repos |
 | FR-37 | Client uninstall removes release client layout; server uninstall removes server layout and optional ~/.kb data |
 | FR-38 | View CLI renders documents and facts for terminal inspection |
+| FR-39 | Connection context (host + base) is printed on CLI banner, TUI status bar, and chat session open |
 
 ### QA Test Cases
 
@@ -79,7 +80,7 @@ See companion doc for full vocabulary where applicable.
 | TC-7 | FR-1 | Given staleLimitMs: 0, then pulls even a freshly-synced repo | pass |
 | TC-8 | FR-2 | Given kb base use <base>, then sets activeBase and prints resolved path | pass |
 | TC-9 | FR-2 | Given kb base use --default <base>, then sets both defaultBase and activeBase | pass |
-| TC-10 | FR-2 | Given kb base use <base> that does not exist, then errors and suggests kb init | pass |
+| TC-10 | FR-2 | Given kb base use <base> that does not exist, then errors with server-managed guidance | pass |
 | TC-11 | FR-2 | Given kb base use --show, then prints current base config | pass |
 | TC-12 | FR-2 | Given kb base --help, then prints base help | pass |
 | TC-13 | FR-2 | Given --force, then deletes the session directory | pass |
@@ -89,14 +90,12 @@ See companion doc for full vocabulary where applicable.
 | TC-17 | FR-2 | Given no --force in CLI mode with non-TTY stdin, then aborts without deleting | pass |
 | TC-18 | FR-2 | Given no base name, then prints help | pass |
 | TC-19 | FR-2 | Given --help, then prints delete help | pass |
-| TC-20 | FR-2 | Given no bases, then reports no initialized bases found | pass |
+| TC-20 | FR-2 | Given no bases, then reports no bases on server | pass |
 | TC-21 | FR-2 | Given initialized bases, then lists them | pass |
 | TC-22 | FR-2 | Marks the active and default bases with tags | pass |
 | TC-23 | FR-2 | kb base list produces the same output as kb base | pass |
 | TC-24 | FR-2 | Shows .kb file info when present in cwd | pass |
-| TC-25 | FR-2 | Given kb init --help, then points refresh workflows to kb scan | pass |
-| TC-26 | FR-2 | Given kb --help, then prints scan examples | pass |
-| TC-27 | FR-2 | Given /scan --help in TUI mode, then prints slash-form scan guidance | pass |
+| TC-26 | FR-2 | Given kb --help, then prints --host and core commands | pass |
 | TC-28 | FR-3 | readBaseMeta returns null when meta.json does not exist | pass |
 | TC-29 | FR-3 | round-trips a multi-repo meta | pass |
 | TC-30 | FR-3 | normalizes a legacy single-repo meta into one repo entry keeping the repo/ clone dir | pass |
@@ -156,7 +155,6 @@ See companion doc for full vocabulary where applicable.
 | TC-84 | FR-5 | Given long retrieved fact bodies, then turn content truncates each fact for synthesis | pass |
 | TC-85 | FR-5 | Given /help and /exit, then prints commands and exits without tool calls | pass |
 | TC-86 | FR-5 | Given /clear, then prints fresh session message and subsequent turn uses empty message history | pass |
-| TC-87 | FR-5 | Given /init in chat mode, then progress updates use the dedicated progress hook instead of transcript history | pass |
 | TC-88 | FR-5 | Given a simple greeting, then LLM answers directly without calling executor | pass |
 | TC-89 | FR-5 | Given a KB question, then LLM calls query_kb, retrieval runs, and LLM synthesizes the answer | pass |
 | TC-90 | FR-5 | Given provider failure, then loop reports error and remains interactive | pass |
@@ -516,22 +514,9 @@ See companion doc for full vocabulary where applicable.
 | TC-467 | FR-35 | tells the user how to get help | pass |
 | TC-468 | FR-35 | is a non-empty string | pass |
 | TC-469 | FR-35 | names the base in the notice | pass |
-| TC-470 | FR-35 | points the user to /init with a git URL | pass |
-| TC-471 | FR-35 | mentions kb init --git as a terminal fallback | pass |
+| TC-470 | FR-35 | points the user to server-managed indexing (KB_GIT_REPOS) | pass |
+| TC-471 | FR-35 | suggests switching base via kb base use | pass |
 | TC-472 | FR-35 | reflects the given base name exactly | pass |
-| TC-473 | FR-35 | reassures the user and names the base when provided | pass |
-| TC-474 | FR-35 | works without a base name | pass |
-| TC-475 | FR-35 | reassures the user and names the base when provided | pass |
-| TC-476 | FR-35 | names the base | pass |
-| TC-477 | FR-35 | tells the user init will prompt for a git remote | pass |
-| TC-478 | FR-35 | mentions the .kb file as the trigger | pass |
-| TC-479 | FR-35 | reflects the given base name in the announcement | pass |
-| TC-480 | FR-35 | returns true when source is directory:.kb and there is no index | pass |
-| TC-481 | FR-35 | returns false when the index already exists (base is initialised) | pass |
-| TC-482 | FR-35 | returns false when source is config.activeBase even without an index | pass |
-| TC-483 | FR-35 | returns false when source is config.defaultBase even without an index | pass |
-| TC-484 | FR-35 | returns false when source is config.activeBase and index exists | pass |
-| TC-485 | FR-35 | returns false for an unknown source | pass |
 | TC-486 | FR-36 | Given --help, then prints release-based sync help | pass |
 | TC-487 | FR-36 | Given no flags, then sync installs the latest release tarball into ~/.kb and links a stable binary | pass |
 | TC-488 | FR-36 | Given legacy no-build flag, then sync rejects it | pass |

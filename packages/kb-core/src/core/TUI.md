@@ -18,7 +18,7 @@ Every meaningful CLI feature must be usable in the right mode surfaces:
 - Interactive chat TUI when the user starts with bare `kb` (chat is the primary experience)
 - One-shot non-interactive CLI entry when the user runs `kb <command> ...`
 - Help entry via `--help`
-- TUI slash entry such as `/init` when the feature is available from the chat interface
+- TUI slash entry when the feature is available from chat (e.g. `/docs generate`)
 
 Do not treat the TUI path as extra polish. It is part of the product surface.
 
@@ -28,10 +28,11 @@ Do not treat the TUI path as extra polish. It is part of the product surface.
 - `kb --help` should print top-level help and exit.
 - `kb <command> ...` should be non-interactive by default unless that command intentionally runs a session flow.
 - `kb <command> --help` should print help and exit without starting real work.
-- All commands are available as slash commands inside the chat interface. Slash commands that are output-only (query, facts, graph, docs list/view, base, config, etc.) are intercepted at the TUI layer and display inline without involving the LLM loop. Interactive slash commands (`/init`, `/scan`, `/docs generate`) still use the chat session input surface, but init/scan progress should render in a dedicated live status row rather than being appended to transcript history. If no chat read is active, the TUI may run `/init` or `/scan` directly and preserve the same dedicated progress-line behavior.
+- All commands are available as slash commands inside the chat interface. Output-only commands (query, facts, graph, docs list/view, base, config, etc.) are intercepted at the TUI layer and display inline without involving the LLM loop. Interactive slash commands (`/docs generate`) use the chat session input surface for questionnaires.
+- **Connection context** (`host: … │ base: …`) must appear on the TUI status bar, CLI banner, and chat open — see [`../../kb-client/src/api/CONNECTION.md`](../../kb-client/src/api/CONNECTION.md).
+- `/init` and `/scan` are **not** client slash commands; indexing is kb-server-managed.
 - Success or follow-up copy in the TUI transcript should use **slash form** (`/base use …`), not `kb …`, so users are not told to leave the chat interface. Shared formatters take `CmdMode` and build hints via `cmd()` in `src/cli/cmd-ref.ts`.
 - `/docs generate` review uses slash commands only: `/accept`, `/reject <feedback>`, `/cancel`.
-- `/init` and `/scan` question answering uses `/skip` and `/cancel` as slash commands.
 
 ## Output Model — Three Tiers
 
@@ -67,7 +68,6 @@ The final result of an operation — the answer text, a document body, a diff, c
 - Goes through `<Static>` — permanent in terminal scrollback.
 - For **output-only commands** (docs view/list, query, facts, etc.): the full output is held in `resultId` with `loading: true` during the run, then `loading: false` flipped when done. `LoadingSpinner` shows only the grey tail while running.
 - For **chat responses**: assistant lines accumulate in `chatResponseIdRef` (a single `loading: true` entry). `finalizeChatResponse()` flips it to `loading: false` when `chatIO.read()` is called (the turn boundary). This means the full response — whether two words or a 200-line document — is committed to scrollback exactly once.
-- For **init/scan progress**: shown via `InitProgressBar` in the live area (spinner + grey status line), never written to history.
 
 ### Applying the model to new features
 
@@ -75,26 +75,25 @@ The final result of an operation — the answer text, a document body, a diff, c
 |---|---|---|
 | Orchestration status (retrieval, routing) | 1 | `printer.orchestrationMeta()` → `chatIO.write()` |
 | LLM answer / doc body / diff | 3 | `printer.chatAssistant()` → accumulates in loading entry |
-| Init/scan phase progress | 2 | `progressSink` → `setProgressLine` → `InitProgressBar` |
 | Output-only command result | 3 | `out.write()` → `runCommandForTui` loading entry |
 | Error | — | `chatIO.error()` → finalizes any open response, then `addEntry` |
+| Connection context (host + base) | 1 | `formatConnectionContext` → status bar / banner / chat header |
 
 When adding a new tool, agent, or orchestrator output path: ask "is this metadata the user needs for context (T1), transient progress (T2), or the final result (T3)?" Wire accordingly. **Do not mix tiers on the same output path.**
 
 ## Terminal scrollback (Ink)
 
 - Completed transcript rows should go through Ink `<Static>` where they must not be redrawn every frame, so the host TTY keeps them in normal scrollback (see `src/tui/components/HistoryPane.tsx`).
-- Init/scan progress bars are not chat history. Keep them in a dedicated live component near the input area (for example `InitProgressBar`) so rapid progress updates do not pollute scrollback with transient `[init]` / `[scan]` frames.
+- **Connection context** (`host: … │ base: …`) lives in the pinned TUI status bar — not in scrollback history.
 - **Cursor’s integrated terminal** can behave differently from iTerm, Terminal.app, or VS Code’s terminal panel (e.g. scrollback feels “stuck”). If the issue appears only there, try an external terminal to confirm; the `<Static>` split is still the right default for real TTYs.
-- `read()` in `ChatIO` echoes any **non-idle** prompt into the transcript and reuses a short form as the input placeholder so questionnaire / review steps (docs generate, init questions) read as a normal back-and-forth.
+- `read()` in `ChatIO` echoes any **non-idle** prompt into the transcript and reuses a short form as the input placeholder so questionnaire / review steps (docs generate) read as a normal back-and-forth.
 
 Examples:
 
-- `kb init` must support both its command-line path and the TUI `/init` path (runs interactively inside the chat session).
-- `kb scan` must support both its command-line path and the TUI `/scan` path.
 - `kb base use` / `kb base delete` must work as both `kb base …` (CLI) and `/base use …` / `/base delete …` (TUI).
 - `kb sync` must work as both `kb sync` (CLI) and `/sync` (TUI).
-- A help flag should work from both `kb --help` and `kb init --help`.
+- Global `kb --host <host:port>` must apply before TUI launch and one-shot commands.
+- A help flag should work from both `kb --help` and `kb query --help`.
 - A normal intent command like `kb query “topic”` is already non-interactive by shape and should not need an extra mode flag.
 - The public intent surface is `kb query`, mirrored by `/query` in chat.
 - **`kb query` vs chat are intentionally different synthesis paths.** Shared retrieval (`runQueryTruthRetrieval`); divergent answer phase. `kb query` = one-shot `enrichReadDocumentsAnswerWithLLM()` (single LLM call, eval harvest). Chat = multi-turn `runChatSynthesis()` with optional `query_kb` follow-ups. Do not collapse these paths.
@@ -106,7 +105,7 @@ Examples:
 - Prefer entrypoint-driven behavior:
   - bare `kb` => interactive shell
   - `kb <command>` => one-shot non-interactive command
-- Reserve `--non-interactive` for commands that otherwise prompt the user during their own command flow (e.g. `kb init`).
+- Reserve `--non-interactive` for commands that otherwise prompt the user during their own command flow (e.g. `kb docs generate`).
 - Before renaming or removing any existing flag, verify current semantics, help output, scripts, tests, and TUI dispatch paths.
 
 Current repo guidance:
@@ -126,7 +125,7 @@ For commands that can mutate durable KB state or external systems, prefer a cons
 Current repo direction:
 
 - `kb publish ...` previews by default and only writes on `--apply`.
-- `kb scan` applies its refresh plan immediately; it should not stop for a separate proceed/apply ceremony.
+- Indexing/reindex is **server-managed** (`KB_GIT_REPOS` on kb-server) — not a client command.
 - Any preview-by-default command should, in interactive mode, show the plan then ask "Apply? [y/N]" rather than requiring the user to re-run with `--apply` manually.
 - Avoid inventing command-specific synonyms for "really do it" when `--apply` already fits.
 
@@ -138,14 +137,14 @@ For any new or changed user-facing command, verify the relevant subset of:
 - `kb --help`
 - `kb <command> --help`
 - `kb <command> ...`
-- TUI slash invocation such as `/init`
+- TUI slash invocation such as `/docs generate`
 - Real-TTY behavior, not only unit tests
 
-For high-risk CLI changes, keep the repository rule from `AGENTS.md`: run end-to-end validation with `kb init` using a disposable `ci-*` base before declaring completion.
+For high-risk CLI changes, validate against a live kb-server with a disposable base before declaring completion.
 
 ## Known Gaps to Watch
 
-- `kb init --help` should behave like help, not kick off or resume init work.
+- Connection context must stay accurate when the user runs `/base use` mid-session (status bar should refresh).
 
 ## Prerequisites and errors (DRY)
 

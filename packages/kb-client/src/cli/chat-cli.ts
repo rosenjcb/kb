@@ -2,7 +2,7 @@ import path from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import dayjs from 'dayjs'
 import { DEFAULT_FACT_LIMIT } from '@kb/core/tools/facts-query-research-orchestrator.js'
-import { ReportWriter, RunCollector, defaultLogsDir, estimateCost } from '@kb/core/core/telemetry.js'
+import { ReportWriter, defaultLogsDir, estimateCost } from '@kb/core/core/telemetry.js'
 import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
 import type { LLMProvider, Message, ToolResultBlock } from '@kb/core/core/types.js'
 import { loadPrompt } from '@kb/core/prompts/loader.js'
@@ -22,9 +22,7 @@ import { executeChatQueryTruthRetrieval } from '@kb/core/query/chat-query-orches
 import type { IntentResult } from '@kb/core/intents/types.js'
 import type { SlashInputContext } from '../tui/slash-command-registry.js'
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
-import { parseInitCommand, runKbInit, isInitCancelledError } from '@kb/core/ops/init-cli.js'
-import { initCancelledNotice } from '@kb/core/config/cli-prerequisites.js'
-import { runScanCommand } from '@kb/core/ops/scan-command.js'
+import { INDEXING_SERVER_MANAGED_NOTICE } from '@kb/core/config/indexing-notice.js'
 import {
   isReadFactsResult,
   printReadDocumentsOrchestrationFooter,
@@ -32,8 +30,8 @@ import {
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { readKbConfig, resolveFactRetrievalMethod } from '@kb/core/config/kb-config.js'
 import { formatReadDocumentSourceIds } from '@kb/core/query/retrieval-fallback.js'
-import { runRemoteChatSession, runRemoteSlashCommand, shouldUseRemoteServer } from './remote-commands.js'
-import { resolveReportHost } from '../api/server-connection.js'
+import { runRemoteChatSession, shouldUseRemoteServer } from './remote-commands.js'
+import { resolveReportHost, formatConnectionContext } from '../api/server-connection.js'
 
 export type { ChatSynthesisResult, ReadDocumentsResult } from '@kb/core/query/chat-synthesis.js'
 export {
@@ -70,7 +68,7 @@ export interface ChatSessionDeps {
   progressHeartbeatMs?: number
   /** Emit a "still working" notice after this delay. Default: 12000ms. */
   progressNoticeMs?: number
-  /** Called after /init or /scan completes so the caller can refresh base metadata. */
+  /** Called when base metadata may have changed (e.g. after server reindex). */
   onBaseChanged?: () => void
 }
 
@@ -324,6 +322,7 @@ export async function runChatSession(
   let sessionStats = createSessionStats(llmProvider.name, llmProvider.model, sessionBase, reportHost)
   deps.onSessionStart?.(sessionStats.sessionId)
 
+  printer.chatAssistant(formatConnectionContext(deps.kbConfig ?? {}, sessionBase))
   printer.chatAssistant('Type a question, or /help for commands.')
 
 
@@ -356,109 +355,9 @@ export async function runChatSession(
         continue
       }
 
-      const initMatch = input.match(/^\/init(\s|$)/i)
-      const scanMatch = !initMatch && input.match(/^\/scan(\s|$)/i)
-      if (scanMatch) {
-        const tail = input.slice('scan'.length + 1).trim()
-        const extraArgs = tail ? splitShellArgs(tail) : []
-        if (shouldUseRemoteServer()) {
-          const chatConfig = deps.kbConfig ?? (await readKbConfig())
-          io.write('Starting scan (remote server)…')
-          const { exitCode } = await runRemoteSlashCommand(['scan', ...extraArgs], line => {
-            if (io.setProgressLine) io.setProgressLine(line.trimEnd())
-            else io.write(line)
-          }, chatConfig)
-          io.setProgressLine?.(null)
-          if (exitCode === 0) deps.onBaseChanged?.()
-          printer.separator()
-          continue
-        }
-        const scanCollector = new RunCollector('scan', { sessionId: sessionStats.sessionId })
-        const scanReporter = new ReportWriter(defaultLogsDir())
-        try {
-          io.write('Starting scan…')
-          const summary = await runScanCommand(extraArgs, line => {
-            if (io.setProgressLine) io.setProgressLine(line.trimEnd())
-            else io.write(line)
-          })
-          io.setProgressLine?.(null)
-          io.write(`✅ ${summary}`)
-          await scanReporter.append(scanCollector.finish('success', undefined))
-          deps.onBaseChanged?.()
-        } catch (err) {
-          io.setProgressLine?.(null)
-          const errMsg = err instanceof Error ? err.message : String(err)
-          await scanReporter.append(scanCollector.finish('error', errMsg)).catch(() => {})
-          io.error(`Scan error: ${errMsg}`)
-        }
-        printer.separator()
-        continue
-      }
-      if (initMatch) {
-        const prefix = 'init'
-        const tail = input.slice(prefix.length + 1).trim()
-        const extraArgs = tail ? splitShellArgs(tail) : []
-        if (shouldUseRemoteServer()) {
-          const chatConfig = deps.kbConfig ?? (await readKbConfig())
-          io.write('Starting init (remote server)…')
-          const { exitCode } = await runRemoteSlashCommand(['init', ...extraArgs], line => {
-            if (io.setProgressLine) io.setProgressLine(line.trimEnd())
-            else io.write(line)
-          }, chatConfig)
-          io.setProgressLine?.(null)
-          if (exitCode === 0) deps.onBaseChanged?.()
-          printer.separator()
-          continue
-        }
-        let parsed: ReturnType<typeof parseInitCommand>
-        try {
-          parsed = parseInitCommand(extraArgs)
-        } catch (e) {
-          io.error(`❌ ${e instanceof Error ? e.message : String(e)}`)
-          continue
-        }
-        io.write(`Starting ${prefix}…`)
-        const initScanCollector = new RunCollector(prefix, { sessionId: sessionStats.sessionId })
-        const initScanReporter = new ReportWriter(defaultLogsDir())
-        try {
-          const result = await runKbInit({
-            ...parsed,
-            collector: initScanCollector,
-            questionIO: {
-              write: (msg: string) => io.write(msg),
-              askQuestion: async (question, opts): Promise<string> => {
-                io.setProgressLine?.(null)
-                const answer = await io.read(question, { slashContext: opts?.slashContext })
-                return answer ?? ''
-              },
-            },
-            progressSink: (line: string) => {
-              if (io.setProgressLine) {
-                io.setProgressLine(line.trimEnd())
-                return
-              }
-              io.write(line)
-            },
-          })
-          io.setProgressLine?.(null)
-          await initScanReporter.append(initScanCollector.finish('success', undefined, result.base))
-          const docCount = result.writtenDocIds?.length ?? 0
-          io.write(
-            `✅ Init complete — ${docCount} doc${docCount === 1 ? '' : 's'} written to "${result.base}"`
-          )
-          deps.onBaseChanged?.()
-        } catch (err) {
-          io.setProgressLine?.(null)
-          if (isInitCancelledError(err)) {
-            const baseName = deps.kbStorageDir ? path.basename(deps.kbStorageDir) : undefined
-            io.write(initCancelledNotice(baseName))
-            await initScanReporter.append(initScanCollector.finish('success', undefined)).catch(() => {})
-          } else {
-            const errMsg = err instanceof Error ? err.message : String(err)
-            await initScanReporter.append(initScanCollector.finish('error', errMsg)).catch(() => {})
-            io.error(`Init error: ${errMsg}`)
-          }
-        }
+      const initOrScan = input.match(/^\/(init|scan)(\s|$)/i)
+      if (initOrScan) {
+        io.error(INDEXING_SERVER_MANAGED_NOTICE)
         printer.separator()
         continue
       }
@@ -468,8 +367,6 @@ export async function runChatSession(
           [
             'Commands:',
             '  /query <text>          Search the KB',
-            '  /init --git <url> [args]  Clone and index a git remote into a KB base',
-            '  /scan [args]           Refresh the KB',
             '  /base <use|delete> …   Manage KB bases',
             '  /docs <list|view|generate|rename|delete> …',
             '  /facts [args]          List or search KB facts',
@@ -657,36 +554,6 @@ export async function runChatSession(
     await flushSessionLog(sessionStats).catch(() => {})
     io.close?.()
   }
-}
-
-function splitShellArgs(input: string): string[] {
-  const args: string[] = []
-  let current = ''
-  let inQuote = false
-  let quoteChar = ''
-  for (const char of input) {
-    if (inQuote) {
-      if (char === quoteChar) {
-        inQuote = false
-        args.push(current)
-        current = ''
-      } else current += char
-    } else if (char === '"' || char === "'") {
-      if (current) {
-        args.push(current)
-        current = ''
-      }
-      inQuote = true
-      quoteChar = char
-    } else if (char === ' ') {
-      if (current) {
-        args.push(current)
-        current = ''
-      }
-    } else current += char
-  }
-  if (current) args.push(current)
-  return args
 }
 
 const SYNTHESIS_QUERY_RE =

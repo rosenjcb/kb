@@ -4,25 +4,13 @@
 
 ### Minor Changes
 
-- Configuration is environment-only: standardize on `KB_HOST`/`KB_PORT`, remove `kb config set`/`unset`, migrate base selection to `~/.kb/state/`, and rewrite README quick-start.
-
-## 1.1.7
+- Split GitHub release artifacts and versioning for `@kb/client` / `@kb/server`; shared release-uninstall helpers and env-only client configuration (`KB_HOST`/`KB_PORT`, base state under `~/.kb/state/`).
 
 ### Patch Changes
 
-- Fix TUI esbuild assert crash, server run telemetry (tokens, host/target column, plain command names), connection-error hints, and relax the CI version-jump gate for long-lived PRs.
-
-## 1.1.6
-
-### Patch Changes
-
-- Split uninstall: `kb uninstall` removes client only; `kb-server uninstall --purge` removes server and ~/.kb server data.
-
-## 1.1.5
-
-### Patch Changes
-
-- Split GitHub release into `kb-client-node24.tgz` and `kb-server-node24.tgz`; `install-kb.sh` and `kb sync` install both by default (`--client-only` / `--server-only` for one side). Wire release CI to `@kb/client` / `@kb/server` versions and changelogs.
+- Split uninstall: client-only vs `kb-server uninstall --purge`.
+- Fix TUI bundle esbuild banner, run telemetry token counts, and query pipeline logging.
+- Support client-side indexing removal and connection-context formatting for remote-only workflows.
 
 ## 1.1.4
 

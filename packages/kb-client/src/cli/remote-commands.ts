@@ -3,7 +3,8 @@ import { readKbConfig } from '@kb/core/config/kb-config.js'
 import { getIntentQuestion, isIntentCommand, parseIntentCommand } from '@kb/core/query/intent-cli.js'
 import type { CmdMode } from '@kb/core/config/cmd-ref.js'
 import { createKbApiClient } from '../api/kb-api-client.js'
-import { isLocalMode, resolveServerConnection } from '../api/server-connection.js'
+import { isLocalMode, resolveServerConnection, formatConnectionContext } from '../api/server-connection.js'
+import { resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
 import type { CliOutput } from '@kb/core/ui/cli-output.js'
 import { createPrinter } from '../ui/printer.js'
 import type { ChatIO, ChatSessionDeps } from './chat-cli.js'
@@ -53,6 +54,13 @@ export async function runRemoteCliCommand(
   config: KbConfig,
   mode: CmdMode,
 ): Promise<number> {
+  const command = args[0]
+  if (command === 'init' || command === 'scan') {
+    const { INDEXING_SERVER_MANAGED_NOTICE } = await import('@kb/core/config/indexing-notice.js')
+    out.error(INDEXING_SERVER_MANAGED_NOTICE)
+    return 1
+  }
+
   if (isIntentCommand(args[0] ?? '')) {
     return await runRemoteIntentCommand(args, out, config, mode)
   }
@@ -188,8 +196,15 @@ export async function runRemoteChatTurn(
 export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): Promise<void> {
   const kbConfig = deps.kbConfig ?? (await readKbConfig())
 
+  let sessionBase: string | undefined
+  try {
+    sessionBase = (await resolveEffectiveBaseDir()).baseName
+  } catch {
+    // no base selected
+  }
+  io.write(formatConnectionContext(kbConfig, sessionBase))
+
   let sessionId: string | undefined
-  io.write('Chat mode (remote server) — type /exit to quit.')
 
   while (true) {
     const raw = await io.read('you> ')

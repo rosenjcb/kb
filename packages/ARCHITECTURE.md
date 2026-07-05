@@ -18,7 +18,7 @@ KB 1.0 is three workspace packages: **`@kb/client`** (`kb`), **`@kb/server`** (`
 | Server daemon | `kb-server` |
 | CLI / TUI client | `kb` |
 | Data home | `KB_HOME` (default `~/.kb`) |
-| Host / port | `KB_HOST` / `KB_PORT` / `KB_SERVER_URL` |
+| Host / port | `KB_HOST` / `KB_PORT` / `KB_SERVER_URL` / `kb --host` |
 | Client settings | `KB_*` env vars + `~/.kb/state/` base files |
 
 ## Stack
@@ -93,10 +93,11 @@ pnpm run install:global # symlinks both into $PNPM_HOME/bin
 ## Invariants
 
 - Dependency graph is one-way: `client → core`, `server → core` — never `server → client`.
+- Client surfaces **host + base** on every session; indexing runs on kb-server only.
 - OpenAPI + `server.http` are the wire contract; `KbService` is the in-process contract.
 - Version each package independently via changesets (`@kb/client`, `@kb/server`, `@kb/core`). GitHub CLI releases and `v*.*.*` tags follow `@kb/client`; Docker image semver tags follow `@kb/server`.
 
 ## Related docs
 
-- [`kb-client/CLIENT.md`](./kb-client/CLIENT.md) · [`kb-core/CORE.md`](./kb-core/CORE.md) · [`kb-server/src/SERVER.md`](./kb-server/src/SERVER.md)
+- [`kb-client/CLIENT.md`](./kb-client/CLIENT.md) · [`kb-client/src/api/CONNECTION.md`](./kb-client/src/api/CONNECTION.md) · [`kb-core/CORE.md`](./kb-core/CORE.md) · [`kb-server/src/SERVER.md`](./kb-server/src/SERVER.md)
 - Deploy → [`kb-server/README.md`](./kb-server/README.md) · Install → [`../scripts/INSTALL.md`](../scripts/INSTALL.md)

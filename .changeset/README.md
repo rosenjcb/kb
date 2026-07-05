@@ -8,14 +8,16 @@ Three workspace packages, versioned **independently**:
 | `@kb/core` | `packages/kb-core/` | Indexing, retrieval, LLM, `KbService` |
 | `@kb/server` | `packages/kb-server/` | `kb-server` daemon, Docker, httpyac suite |
 
-Bump only the package(s) whose shipped source changed. CI (`scripts/check-changeset-consistency.mjs`) enforces one applied changeset per PR and a forward semver bump for each affected package.
+Bump only the package(s) whose shipped source changed. CI and git hooks enforce one applied changeset per PR and **exactly one semver step** per affected package (patch, minor, or major — no skipping versions).
 
 ## Workflow
 
 1. Create one pending `.changeset/*.md` file for the PR. In agent/non-interactive work, write it directly; for the wizard, run the native Changesets CLI yourself.
 2. `pnpm run changeset:version` — applies the pending changeset, bumps the affected package versions / changelogs, and rewrites `research/version.tex`.
-3. `pnpm run changeset:check` — verifies the bump was applied and no pending changeset remains.
+3. `pnpm run changeset:check` — verifies the bump was applied and no pending changeset remains (same check as CI and the `pre-push` hook vs `origin/main`).
 4. Merge once `changeset:check` passes.
+
+**Git hooks:** `pre-commit` runs the staged guard (`changeset:check:staged`); `pre-push` runs the merge gate vs `origin/main`.
 
 ## Native CLI flags
 

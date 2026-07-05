@@ -29,6 +29,8 @@ pnpm run changeset:version
 This consumes the pending changeset, bumps `package.json` / `CHANGELOG.md`,
 and rewrites `research/version.tex`. Do not hand-edit those version files.
 
+**Strict semver:** each affected package moves exactly one step (patch, minor, or major) vs the merge base — no `1.1.4 → 1.3.0`. Enforced by CI, `pre-commit` (`--staged`), and `pre-push` (`--push`) via `scripts/check-changeset-consistency.mjs`.
+
 ## Boolean environment variables
 
 Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in

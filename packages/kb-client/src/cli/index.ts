@@ -43,6 +43,8 @@ import {
 import {
   CLI_ERROR_NO_KB_BASE,
   formatPrerequisiteError,
+  INDEXING_SERVER_MANAGED_NOTICE,
+  uninitializedBaseNotice,
 } from '@kb/core/config/cli-prerequisites.js'
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from '@kb/core/config/cmd-ref.js'
 import { printConfigHelp, runConfigCommand } from './config-cli'
@@ -73,8 +75,6 @@ import {
   printGraphHelp,
   runGraphCommand,
 } from '@kb/core/cli/graph-cli.js'
-import { parseInitCommand, runKbInit, isInitCancelledError } from '@kb/core/ops/init-cli.js'
-import { initCancelledNotice } from '@kb/core/config/cli-prerequisites.js'
 import {
   isIntentCommand,
   isReadFactsResult,
@@ -118,10 +118,8 @@ import {
   runRemoteCliCommand,
   shouldUseRemoteServer,
 } from './remote-commands.js'
-import { resolveReportHost } from '../api/server-connection.js'
-import { maybeAutoSync } from '@kb/core/ops/auto-sync.js'
-import { baseNameFromGitUrl } from '@kb/core/ops/git-sync.js'
-import { runScanCommand } from '@kb/core/ops/scan-command.js'
+import { resolveReportHost, resolveServerConnection, formatServerAddress, formatConnectionContext } from '../api/server-connection.js'
+import { applyHostCliOverride, parseGlobalCliFlags } from '../api/cli-global-flags.js'
 import { runIgnoreCommand, runRepoCommand } from '@kb/core/cli/repo-cli.js'
 import { runUninstallCommand } from './uninstall-cli'
 import {
@@ -152,16 +150,15 @@ const defaultCliOutput: CliOutput = {
 export const FIRST_RUN_WELCOME_NOTICE = [
   '👋 Welcome to KB!',
   '',
-  'KB is a knowledge base that indexes git repositories so you can ask questions,',
-  'explore relationships, and generate docs — all from the terminal.',
+  'KB connects to a kb-server that indexes your git repos. You ask questions;',
+  'the server returns grounded answers with sources.',
   '',
   'Quick start:',
-  '  kb init        index a project',
-  '  kb query       ask questions about your code',
-  '  kb graph       explore symbol relationships',
-  '  kb docs        generate documentation',
+  '  kb query       ask a question about your codebase',
+  '  kb graph       explore how modules connect',
+  '  kb docs        browse or generate documentation',
   '',
-  'Type a message below or press ? for help.',
+  'Type a question below or press ? for help.',
 ].join('\n')
 
 // ---------------------------------------------------------------------------
@@ -173,15 +170,16 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     cmdIntro(mode),
     '',
     'Usage:',
-    '  kb',
-    `  ${cmd('<command>', mode)} [options]`,
-    `  ${cmd('<intent-command>', mode)} "<input>" [options]`,
+    '  kb [--host <host[:port]|url>]',
+    `  kb [--host <host[:port]|url>] ${cmd('<command>', mode)} [options]`,
+    `  kb [--host <host[:port]|url>] ${cmd('<intent-command>', mode)} "<input>" [options]`,
+    '',
+    'Global flags:',
+    '  --host <host[:port]|url>   kb-server to use (else KB_HOST / KB_SERVER_URL env)',
     '',
     'Core commands:',
     '  base        Manage KB bases (use, delete)',
-    '  config      Inspect or update persistent config',
-    '  init        Build a KB from one or more git remotes',
-    '  scan        Refresh a KB by re-indexing its tracked git repos',
+    '  config      Inspect config (environment variables)',
     '  graph       Inspect or edit the knowledge graph',
     '  docs        Browse KB documents',
     '  facts       List, search, or show KB facts',
@@ -197,65 +195,10 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     cmdHelpHint(mode),
     '',
     'Examples:',
-    `  ${cmd('init --git https://github.com/acme/auth-svc', mode)}`,
-    `  ${cmd('scan --base dogfood', mode)}`,
+    `  kb --host localhost:38117 ${cmd('query "how does auth work?"', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
-    `  ${cmd('scan', mode)}`,
     `  ${cmd('sync', mode)}`,
-    `  ${cmd('base use --default dogfood', mode)}`,
-    `  ${cmd('base delete ci-test --force', mode)}`,
     `  ${cmd('docs list --base dogfood', mode)}`,
-    `  ${cmd('docs view kb-base-selection-and-usage', mode)}`,
-  ].join('\n')
-}
-
-function printInitHelp(mode: CmdMode = 'cli'): string {
-  return [
-    `${cmd('init', mode)} command`,
-    '',
-    'Usage:',
-    `  ${cmd('init --git <url> [--git <url2#branch> …] [--base <name>] [--branch <default>]', mode)}`,
-    '',
-    'Flags:',
-    '  --git <url[#branch]>            Git remote to index (REQUIRED; repeatable for multiple repos)',
-    "  --branch <name>                Default branch for repos without an inline #branch (else the remote's default)",
-    '  --base <name>                  Base name (defaults to the first repo)',
-    '  --non-interactive              Skip interview prompts when possible',
-    '  --detach                       Pause after the current cycle and save a checkpoint',
-    '  --resume                       Resume from the latest init checkpoint',
-    '  --stop-after <cycle>           Stop after read-inputs|code-index|document-facts|import-docs|write',
-    '',
-    'Notes:',
-    '  At least one --git URL is required — a base clones and indexes its repos. Multiple repos',
-    '  are folded into one graph and linked by their cross-repo references (deps, imports, env).',
-    `  Add or remove repos later with ${cmd('base repo add', mode)} / ${cmd('base repo remove', mode)}.`,
-    `  Use ${cmd('scan', mode)} to pull + re-index the base's repos.`,
-    '',
-    'Examples:',
-    `  ${cmd('init --git https://github.com/acme/auth-svc', mode)}`,
-    `  ${cmd('init --git https://github.com/acme/auth-svc --branch develop', mode)}`,
-    `  ${cmd('init --git https://github.com/acme/auth --git https://github.com/acme/web#develop --base acme', mode)}`,
-  ].join('\n')
-}
-
-function printScanHelp(mode: CmdMode = 'cli'): string {
-  return [
-    `${cmd('scan', mode)} command`,
-    '',
-    'Usage:',
-    `  ${cmd('scan', mode)} [--base <name>]`,
-    '',
-    'Flags:',
-    '  --base <name>                   Choose which base to refresh (defaults to active, then default)',
-    '',
-    'Notes:',
-    "  Scan pulls every git repo the base tracks, re-indexes them, and rebuilds the cross-repo",
-    '  graph links. It does not read the current working directory.',
-    `  To track another repo, use ${cmd('base repo add <url>', mode)}.`,
-    '',
-    'Examples:',
-    `  ${cmd('scan', mode)}`,
-    `  ${cmd('scan --base acme', mode)}`,
   ].join('\n')
 }
 
@@ -330,9 +273,13 @@ export async function runMainWithOutput(
 ): Promise<void> {
   const firstArg = args[0]
 
-  // Help and no-arg invocations are always answered locally — they must never require a
-  // running server. Everything else (that isn't a client-local command) forwards to kb-server
-  // in remote mode; a non-zero result becomes the process exit code so scripts/CI see failures.
+  if (firstArg === 'init' || firstArg === 'scan') {
+    out.error(INDEXING_SERVER_MANAGED_NOTICE)
+    if (mode === 'cli') process.exitCode = 1
+    return
+  }
+
+  // Help and no-arg invocations are always answered locally
   if (
     shouldUseRemoteServer() &&
     !isClientLocalCommand(args) &&
@@ -384,8 +331,8 @@ export async function runMainWithOutput(
       const bases = await listAllBases()
       lines.push('')
       if (bases.length === 0) {
-        lines.push('No initialized bases found.')
-        lines.push(`  Run \`${cmd('init --base <name>', mode)}\` to create one.`)
+        lines.push('No bases found on this server.')
+        lines.push('  Configure KB_GIT_REPOS on kb-server, or run kb base use <base>.')
       } else {
         lines.push('Bases:')
         for (const b of bases) {
@@ -447,15 +394,11 @@ export async function runMainWithOutput(
       try {
         await stat(sqlitePath)
       } catch {
-        out.error(`Base "${base}" has not been initialized. Run: kb init --base ${base}`)
+        out.error(uninitializedBaseNotice(base))
         return
       }
 
       await writeSessionBase(base)
-      await maybeAutoSync(baseDir, {
-        staleLimitMs: 0,
-        onProgress: msg => out.log(msg),
-      })
       const resolved = await ensureOperationalBaseDir(base)
       const kbFileBase = await findKbFile(process.cwd())
       if (makeDefault) {
@@ -701,74 +644,6 @@ export async function runMainWithOutput(
     return
   }
 
-  if (firstArg === 'init') {
-    if (args.includes('--help') || args.includes('-h') || args[1] === 'help') {
-      out.log(printInitHelp(mode))
-      return
-    }
-    const reportHost = resolveReportHost(config)
-    const reporter = new ReportWriter(defaultLogsDir())
-    const collector = new RunCollector('init', { sessionId, host: reportHost })
-    try {
-      const parsed = parseInitCommand(args.slice(1))
-      const initCollector = new RunCollector('init', { sessionId, host: reportHost })
-
-      // Default the base name to the first repo's slug when not given (CLI parity with the
-      // interactive prompt). runKbInit owns cloning, indexing, reconciliation, and meta.json.
-      if (!parsed.base && parsed.gitTargets && parsed.gitTargets.length > 0) {
-        parsed.base = baseNameFromGitUrl(parsed.gitTargets[0].url)
-      }
-
-      const result = await runKbInit({
-        ...parsed,
-        collector: initCollector,
-        progressSink: line => out.log(line),
-      })
-      out.log(JSON.stringify(result, null, 2))
-      await reporter.append(initCollector.finish('success', undefined, result.base))
-      return
-    } catch (error) {
-      if (isInitCancelledError(error)) {
-        let baseName: string | undefined
-        try {
-          baseName = (await resolveEffectiveBaseDir()).baseName
-        } catch {
-          baseName = undefined
-        }
-        await reporter.append(collector.finish('success', undefined, baseName))
-        out.log(initCancelledNotice(baseName))
-        return
-      }
-      const message = error instanceof Error ? error.message : String(error)
-      await reporter.append(collector.finish('error', message))
-      out.error(`❌ ${message}`)
-    }
-    return
-  }
-
-  if (firstArg === 'scan') {
-    if (args.includes('--help') || args.includes('-h') || args[1] === 'help') {
-      out.log(printScanHelp(mode))
-      return
-    }
-    const reportHost = resolveReportHost(config)
-    const reporter = new ReportWriter(defaultLogsDir())
-    const collector = new RunCollector('scan', { sessionId, host: reportHost })
-    try {
-      // Scan now means "pull + re-index every git repo this base tracks", then reconcile the
-      // cross-repo graph. It no longer reads the caller's working directory.
-      const summary = await runScanCommand(args.slice(1), line => out.log(line))
-      out.log(summary)
-      await reporter.append(collector.finish('success', undefined))
-      return
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      await reporter.append(collector.finish('error', message))
-      out.error(`❌ ${message}`)
-    }
-    return
-  }
-
   if (firstArg === 'logs') {
     try {
       out.log(await runLogsCommand(args.slice(1)))
@@ -901,7 +776,6 @@ export async function runMainWithOutput(
         await reporter.append(collector.finish('error', CLI_ERROR_NO_KB_BASE))
         return
       }
-      await maybeAutoSync(intentBaseDir, { onProgress: line => out.log(line) })
       collector = new RunCollector(firstArg, {
         sessionId,
         base: path.basename(intentBaseDir),
@@ -1126,13 +1000,16 @@ async function promptBaseDeleteConfirm(base: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const args = process.argv.slice(2)
+  const rawArgv = process.argv.slice(2)
   const isTTY = Boolean(process.stdout.isTTY)
 
-  if (args.includes('--version') || args.includes('-V')) {
+  if (rawArgv.includes('--version') || rawArgv.includes('-V')) {
     console.log(`kb v${KB_VERSION}`)
     return
   }
+
+  const { args, host } = parseGlobalCliFlags(rawArgv)
+  if (host) applyHostCliOverride(host)
 
   await migrateLegacyKbSessionJson()
 
@@ -1176,21 +1053,16 @@ async function main() {
       )
     }
 
+    const serverHost = formatServerAddress(resolveServerConnection(kbConfig))
+    let sessionBase: string | undefined
     try {
-      const effective = await resolveEffectiveBaseDir()
-      await maybeAutoSync(effective.baseDir, {
-        staleLimitMs: 0,
-        onProgress: msg => {
-          process.stderr.write(`${msg}\n`)
-          startupNotices.push(msg)
-        },
-      })
+      sessionBase = (await resolveEffectiveBaseDir()).baseName
     } catch {
-      // No base configured yet – fine
+      // no base selected yet
     }
-
+    startupNotices.unshift(formatConnectionContext(kbConfig, sessionBase))
     const { launchTui } = await import('../tui/index.js')
-    await launchTui(kbConfig, { startupNotices })
+    await launchTui(kbConfig, { startupNotices, serverHost })
     return
   }
 
@@ -1214,6 +1086,14 @@ async function main() {
       console.log(inferred.notice)
       console.log('')
     }
+    let cliBase: string | undefined
+    try {
+      cliBase = (await resolveEffectiveBaseDir()).baseName
+    } catch {
+      // no base yet
+    }
+    console.log(formatConnectionContext(kbConfig, cliBase))
+    console.log('')
   } else if (inferred.notice) {
     console.error(inferred.notice)
     console.error('')

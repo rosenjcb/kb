@@ -11,22 +11,27 @@
 
 ---
 
-You're on a new team. The repo is huge. The README is stale. You grep for an hour and still aren't sure how auth works.
+Claude Code, Cursor, and Codex *can* grep a huge repo and answer "how does auth work?" — if you spend the tokens. Every session starts cold; every question retraces the filesystem. On our benchmarks, a headless coding agent uses **roughly an order of magnitude more tokens** and more wall time than `kb query` on the same questions ([research paper](research/main.pdf)).
 
-**KB** reads your git repos, pulls out what matters, and lets you **ask questions in plain English** — with answers tied to real files and facts, not vibes.
+**KB** keeps a **persistent, facts-first index** of your codebases — answers in plain English, tied to real files and facts, not vibes:
 
-Point it at a remote once. Then ask:
+- **Cheaper & faster** — pre-indexed facts instead of re-exploring the tree each time
+- **Multi-repo** — one server, many git repos; follow auth (or any flow) across services, not just one checkout
+- **Client/server** — developers use `kb` and chat mode; Product, QA, and leadership query the same grounded knowledge without an IDE or agent subscription
+- **Spec-aligned** — ingests [spec.md](https://github.com/rosenjcb/spec.md) OKF companions and behavioral `*.spec.md` specs so intent, tests, and code stay linked
+
+Point kb-server at your repos once. Then ask:
 
 ```bash
 kb query "how does token refresh work?"
 kb query "what calls the sqlite indexer?"
 ```
 
-Or just type `kb` and **chat** with your codebase like you would with a teammate who actually read everything.
+Or type `kb` and **chat** with your knowledge base like you would with a teammate who already read everything — across every repo the server indexes.
 
 ## What it actually does
 
-You give KB one or more git URLs. It clones them, reads the code and docs, and builds a searchable knowledge base — **you never write facts by hand**.
+**kb-server** owns indexing. Configure git repos on the server (`KB_GIT_REPOS`); it clones, scans code and docs (including OKF companions and `*.spec.md` behavioral specs), extracts facts, and re-indexes on a schedule. The **kb client** connects to that server — you never run init or scan yourself. One server can index many repos into shared bases so cross-service questions land in one place.
 
 From there you have two ways in:
 
@@ -36,11 +41,9 @@ From there you have two ways in:
 
 Both modes search the same index. Answers come back **grounded** — KB shows you which facts and files it used, so you can click through instead of trusting a hallucination.
 
-KB also keeps the index fresh: when you open a session or run a query, it pulls the latest commits from your tracked repos and re-indexes if something changed. You don't babysit it.
-
 ## Quick start
 
-Five steps: install → start the server → connect the client → index a repo → ask something.
+Four steps: install → start the server with repos → connect the client → ask something.
 
 ### 1) Install
 
@@ -55,45 +58,44 @@ Building from a git checkout instead? See [DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE
 
 ### 2) Start the server
 
-The server needs an LLM API key to synthesize answers. Pick one provider:
+The server needs an LLM API key to synthesize answers and git repos to index:
 
 ```bash
 export GEMINI_API_KEY=<your-key>    # or OPENAI_API_KEY, ANTHROPIC_API_KEY, or OLLAMA_ENDPOINT
+export KB_GIT_REPOS=https://github.com/acme/auth-svc
 kb-server start --with-mcp
 ```
 
-Leave that terminal running (or run it in the background). Default address: `localhost:38117`.
+Leave that terminal running (or run it in the background). Default address: `localhost:38117`. The server clones and indexes your repos automatically — first run takes a minute depending on repo size.
+
+Multiple repos in one base:
+
+```bash
+export KB_GIT_REPOS="https://github.com/acme/auth,https://github.com/acme/web#develop"
+export KB_BASE=acme
+kb-server start --with-mcp
+```
+
+Pin branches per-repo with `<url>#branch`. Details: [`packages/kb-core/src/core/INIT.md`](packages/kb-core/src/core/INIT.md).
 
 ### 3) Connect the client
 
-Tell `kb` where the server is:
+Tell `kb` where the server is (once per shell, or add to your profile):
+
+```bash
+kb --host localhost:38117 query "how does auth work?"
+```
+
+Or set env vars so you can omit `--host`:
 
 ```bash
 export KB_HOST=localhost
 export KB_PORT=38117
 ```
 
-Add these to your `~/.zshrc` or `~/.bashrc` so you don't repeat them. Remote server or HTTPS? See [Connect to a remote server](#connect-to-a-remote-server) below.
+Remote server or HTTPS? See [Connect to a remote server](#connect-to-a-remote-server) below.
 
-### 4) Index a repo
-
-Pick **your** project — or any public repo you want to explore:
-
-```bash
-kb init --git https://github.com/acme/auth-svc
-```
-
-KB clones the repo, scans code and markdown, and extracts facts. First run takes a minute depending on repo size. When it finishes, you have a **base** (named from the repo by default).
-
-Multiple repos in one base:
-
-```bash
-kb init --git https://github.com/acme/auth --git https://github.com/acme/web#develop --base acme
-```
-
-Pin branches with `--branch <name>` or per-repo with `<url>#branch`. Details: [`packages/kb-core/src/core/INIT.md`](packages/kb-core/src/core/INIT.md).
-
-### 5) Use your knowledge base
+### 4) Use your knowledge base
 
 Sanity check — one question from the shell:
 
@@ -106,10 +108,10 @@ You should get an answer plus a list of source facts. If that works, you're live
 **Try chat mode** — the thing most people stick with:
 
 ```bash
-kb
+kb --host localhost:38117
 ```
 
-No arguments. KB opens an interactive session:
+No arguments. KB opens an interactive session (status bar shows **host** and **base**):
 
 - **Type a question** like you would in ChatGPT — "where is the retry logic?", "summarize the init flow", "what depends on sqlite?"
 - **Follow up** — context carries across turns; ask "show me the file" or "what about error handling?"
@@ -117,10 +119,9 @@ No arguments. KB opens an interactive session:
   - `/query <question>` — run a structured lookup inline
   - `/docs list` — browse generated docs for the base
   - `/graph summary` — see how modules connect
-  - `/scan` — force a refresh after you push new commits
   - `/exit` — leave
 
-The first time you run `kb`, you'll see a short welcome. Run `kb init` first if you haven't indexed anything yet — chat and query both need a base with facts in it.
+The first time you run `kb`, you'll see a short welcome. If the server hasn't finished indexing yet, wait for kb-server logs to settle, then try again.
 
 **Questions worth trying on your own repo:**
 
@@ -130,7 +131,7 @@ kb query "where is configuration loaded?"
 kb query "recent architectural decisions" --type decision
 ```
 
-When code changes on the remote, KB picks it up on the next query or session open. To force a full re-pull and re-index: `kb scan`.
+When code changes on the remote, kb-server re-indexes on its schedule (`KB_REINDEX_INTERVAL`). You don't babysit it.
 
 ## Connect to a remote server
 
@@ -151,10 +152,10 @@ docker run -d --name kb-server \
 On your laptop:
 
 ```bash
-export KB_SERVER_URL=http://your-host:38117
+kb --host your-host:38117 query "how does auth work?"
+# authenticated remote:
 export KB_SERVER_API_KEY=<same token>
-kb init --git https://github.com/acme/auth    # indexes on the server, not locally
-kb query "how does auth work?"
+kb --host http://your-host:38117 query "how does auth work?"
 ```
 
 Your laptop doesn't need a clone of those repos — the server owns the index.
@@ -178,6 +179,12 @@ kb-server uninstall --purge --yes
 
 ## CLI reference
 
+Global flag (any command):
+
+```
+kb --host <host:port|url>   …   # overrides KB_HOST / KB_SERVER_URL for this invocation
+```
+
 ### Query
 
 ```
@@ -195,8 +202,6 @@ kb docs list|view|generate|rename|delete ...
 ```
 kb base use <base>             — switch active base
 kb base use --default <base>   — save persistent default
-kb init --git <url[#branch]> ...
-kb scan [--base <name>]        — pull + re-index all tracked repos
 kb base repo list|add|remove ...
 kb facts list|search|show ...
 kb graph ...
@@ -205,6 +210,8 @@ kb skills install|uninstall
 kb-server start [--with-mcp]
 kb sync
 ```
+
+Indexing is **server-managed** — configure `KB_GIT_REPOS` on kb-server, not `kb init` on the client.
 
 Chat mode (`kb` with no args): `/help` for in-session commands. Deep dive: [`packages/kb-core/src/core/CHAT.md`](packages/kb-core/src/core/CHAT.md).
 
@@ -216,7 +223,7 @@ kb sync
 
 ## Agent skills
 
-Install skills so Claude Code, Cursor, and Codex query KB before spelunking:
+Install skills so Claude Code, Cursor, and Codex query KB **before** spelunking — same answers, far fewer tokens:
 
 ```bash
 kb skills install
@@ -230,6 +237,8 @@ With `kb-server start --with-mcp`, register the server as an MCP tool so your ed
 
 ## Managing bases & repos
 
+Server-side repos come from `KB_GIT_REPOS`. Operators can also add repos to a base:
+
 ```bash
 kb base use foo
 kb base repo add <url[#branch]> [--base <name>]
@@ -237,7 +246,7 @@ kb base repo remove <url|slug> [--base <name>]
 kb base ignore add "tests/, **/*.spec.ts"
 ```
 
-`.kbignore` at a repo root merges with base ignore patterns at scan time.
+`.kbignore` at a repo root merges with base ignore patterns at index time.
 
 ## Building & contributing
 

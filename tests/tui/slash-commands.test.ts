@@ -20,8 +20,6 @@ describe('slash command helpers', () => {
 
   it('[TC-69] returns the full command list for chat mode', () => {
     const commands = getSlashCommands('chat')
-    expect(commands.some(c => c.command === '/init')).toBe(true)
-    expect(commands.some(c => c.command === '/scan')).toBe(true)
     expect(commands.some(c => c.command === '/query')).toBe(true)
     expect(commands.some(c => c.command === '/docs')).toBe(true)
     expect(commands.some(c => c.command === '/facts')).toBe(true)
@@ -80,25 +78,6 @@ describe('slash command helpers', () => {
     const { visible, startIndex } = getSuggestionWindow(suggestions, 4, 4)
     expect(visible.length).toBe(4)
     expect(startIndex).toBeGreaterThanOrEqual(0)
-  })
-
-  it('[TC-80] includes /init in the command list with correct description', () => {
-    const commands = getSlashCommands('chat')
-    const initCmd = commands.find(c => c.command === '/init')
-    expect(initCmd).toBeDefined()
-    expect(initCmd?.description).toContain('build a knowledge base')
-  })
-
-  it('[TC-81] includes /scan in the command list with correct description', () => {
-    const commands = getSlashCommands('chat')
-    const scanCmd = commands.find(c => c.command === '/scan')
-    expect(scanCmd).toBeDefined()
-    expect(scanCmd?.description).toContain('re-index')
-  })
-
-  it('[TC-82] suggests /init when typing /in', () => {
-    const suggestions = getSlashCommandSuggestions('/in', 'chat')
-    expect(suggestions.some(s => s.command === '/init')).toBe(true)
   })
 
   it('[TC-83] suggests /skills when typing /sk', () => {

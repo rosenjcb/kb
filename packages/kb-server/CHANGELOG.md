@@ -1,38 +1,17 @@
 # kb-server
 
-## 1.2.2
-
-### Patch Changes
-
-- Configuration is environment-only: standardize on `KB_HOST`/`KB_PORT`, remove `kb config set`/`unset`, migrate base selection to `~/.kb/state/`, and rewrite README quick-start.
-- Updated dependencies
-  - @kb/core@1.2.0
-
-## 1.2.1
-
-### Patch Changes
-
-- Fix TUI esbuild assert crash, server run telemetry (tokens, host/target column, plain command names), connection-error hints, and relax the CI version-jump gate for long-lived PRs.
-- Updated dependencies
-  - @kb/core@1.1.7
-
 ## 1.2.0
 
 ### Minor Changes
 
-- Split uninstall: `kb uninstall` removes client only; `kb-server uninstall --purge` removes server and ~/.kb server data.
+- Split uninstall: `kb-server uninstall --purge` removes server binary and `~/.kb` data; client uninstall is client-only.
 
 ### Patch Changes
 
+- Fix run telemetry on `/v1/query` and `/v1/chat` (real LLM token counts, plain command names).
+- Align with env-only client configuration and release CI version wiring.
 - Updated dependencies
-  - @kb/core@1.1.6
-
-## 1.1.5
-
-### Patch Changes
-
-- Updated dependencies
-  - @kb/core@1.1.5
+  - @kb/core@1.2.0
 
 ## 1.1.4
 

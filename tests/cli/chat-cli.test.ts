@@ -3,7 +3,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildChatTurnContent, printChatHelp, runChatSession, runChatSynthesis } from '@kb/client/cli/chat-cli.js'
-import * as initCli from '@kb/core/ops/init-cli.js'
 import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
 import type { LLMProvider } from '@kb/core/core/types.js'
 import { invalidateFactTool } from '@kb/core/tools/invalidate-fact-tool.js'
@@ -166,48 +165,6 @@ describe('chat-cli session loop', () => {
 
     expect(io.outputs.join('\n')).toContain('Fresh session')
     expect(executor.execute).not.toHaveBeenCalled()
-  })
-
-  it('[TC-87] Given /init in chat mode, then progress updates use the dedicated progress hook instead of transcript history', async () => {
-    const io = new ScriptedIO(['/init', 'crawler-3', '/exit'])
-    const executor: ToolExecutor = {
-      register: vi.fn(),
-      getTools: vi.fn(() => []),
-      execute: vi.fn(),
-    }
-    const provider: LLMProvider = {
-      name: 'test-provider',
-      model: 'test-model',
-      supportsStreaming: false,
-      call: vi.fn(),
-    }
-
-    const initSpy = vi.spyOn(initCli, 'runKbInit').mockImplementation(async options => {
-      options.questionIO?.write?.('\n[kb init] Choose a knowledge base name for this run.\n\n')
-      const answer = await options.questionIO?.askQuestion?.('> Knowledge base name [crawlee] ')
-      expect(answer).toBe('crawler-3')
-      options.progressSink?.('[init] [------------------------] 0/7 read-inputs discovering docs…')
-      options.progressSink?.('[init] [===---------------------] 1/7 document-facts 📄 indexing document sentences into facts…')
-      return {
-        status: 'accepted',
-        base: 'crawler-3',
-        completedCycles: ['read-inputs'],
-        writtenDocIds: ['doc-1'],
-      }
-    })
-
-    await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
-
-    expect(io.outputs.join('\n')).toContain('Starting init…')
-    expect(io.outputs.join('\n')).toContain('Choose a knowledge base name')
-    expect(io.outputs.join('\n')).toContain('✅ Init complete — 1 doc written to "crawler-3"')
-    expect(io.outputs.some(line => line.startsWith('[init]'))).toBe(false)
-    expect(io.progressLines).toContain(
-      '[init] [===---------------------] 1/7 document-facts 📄 indexing document sentences into facts…'
-    )
-    expect(io.progressLines.filter(line => line === null).length).toBeGreaterThanOrEqual(2)
-
-    initSpy.mockRestore()
   })
 
   it('[TC-88] Given a simple greeting, then LLM answers directly without calling executor', async () => {
