@@ -136,7 +136,7 @@ function composeUp() {
 }
 
 function printNextSteps(env) {
-  const port = effective(env, 'PORT') || '8080'
+  const port = effective(env, 'PORT') || '38117'
   const apiKey = effective(env, 'KB_SERVER_API_KEY') || 'testkey'
   const base = effective(env, 'KB_BASE') || 'demo'
   console.log('\n✓ kb-server is starting. First boot clones + indexes your repos — watch progress:')

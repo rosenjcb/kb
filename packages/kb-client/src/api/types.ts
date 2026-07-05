@@ -1,7 +1,7 @@
 /** Wire types mirroring packages/kb-server/http/openapi.yaml */
 
 export interface ServerConnection {
-  /** Base URL without trailing slash, e.g. http://localhost:8080 */
+  /** Base URL without trailing slash, e.g. http://localhost:38117 */
   url: string
   apiKey?: string
   /** Optional base name hint for client display */

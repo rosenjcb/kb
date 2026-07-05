@@ -35,7 +35,7 @@ Thin terminal front-end for kb. Taxonomy: [CLIENT.md](./CLIENT.md), [CLI.md](./s
 
 | ID | Covers | Scenario |
 |------|--------|----------|
-| TC-1 | FR-1 | `KBHOST`/`KBPORT` default to localhost:8080 |
+| TC-1 | FR-1 | `KBHOST`/`KBPORT` default to localhost:38117 |
 | TC-2 | FR-1 | `KB_SERVER_URL` overrides host/port |
 | TC-3 | FR-1 | `health()` calls `/healthz` |
 | TC-4 | FR-2 | Connection errors include setup hints |

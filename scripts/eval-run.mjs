@@ -73,6 +73,7 @@ import {
 } from './eval-shared.mjs'
 
 import { readQueryResultFile, runAutoScoreFile, scoreFromLabel } from './eval-score.mjs'
+import { startEvalServer } from './eval-server.mjs'
 import {
   DEFAULT_CONTROL_PROMPT,
   DEFAULT_MAX_TURNS,
@@ -298,24 +299,16 @@ Layout (per run, snapshot clone):
 `)
 }
 
+/** Remote kb env from the orchestrated eval-server session (set before kb subprocesses). */
+let kbRemoteEnv = null
+
 function kbEnv() {
-  const env = { ...process.env }
-  env.KB_HOME = undefined
-  // Harvest spawns kb as a subprocess with an isolated KB_HOME; run in-process
-  // indexing/retrieval until eval orchestrates kb-server (see eval/EVAL.md).
-  env.KB_LOCAL_MODE = 'true'
-  // The client bundle lives in packages/kb-client/dist and can't resolve @kb/core's
-  // tree-sitter grammars via its own node_modules walk. Point NODE_PATH at kb-core's
-  // (and the hoisted root) node_modules so local-mode indexing loads the WASM grammars —
-  // the same mechanism the Docker image uses for the server.
-  env.NODE_PATH = [
-    path.join(KB_REPO, 'packages/kb-core/node_modules'),
-    path.join(KB_REPO, 'node_modules'),
-    env.NODE_PATH,
-  ]
-    .filter(Boolean)
-    .join(path.delimiter)
-  return env
+  if (!kbRemoteEnv) {
+    throw new Error(
+      '[eval] kb remote env is unset — eval-server should start before kb subprocesses (see eval/EVAL.md)'
+    )
+  }
+  return kbRemoteEnv
 }
 
 function kb(cwd, args, opts = {}) {
@@ -725,6 +718,7 @@ async function main() {
     query_total_duration_ms: null,
   }
 
+  let evalServer = null
   if (!args.skipCapture) {
     console.error(`[eval] suite=${suiteId} (${suiteLabel}) · base=${base} · mode=${evalMode}`)
     console.error(`[eval] workdir ${workdir}`)
@@ -739,75 +733,93 @@ async function main() {
       }`
     )
 
-    if (wipeBase) {
-      console.error(`[eval] kb base delete ${base} --force`)
-      timed('base_delete', runTiming, () =>
-        kb(targetCwd, `base delete ${base} --force`, { stdio: 'inherit' })
-      )
-    }
+    evalServer = await startEvalServer({
+      base,
+      logPath: path.join(workdir, 'eval-server.log'),
+    })
+    kbRemoteEnv = evalServer.kbEnv()
 
-    if (needsInit) {
-      // kb init now requires a git remote. Point it at the local snapshot clone (exact commit,
-      // no extra network); kb follows the clone's own default branch (main, master, …).
-      const initLogPath = path.join(workdir, 'init.log')
-      console.error(`[eval] kb init --base ${base} --git "${targetCwd}"`)
-      console.error(
-        '[eval] kb init clones snapshot into ~/.kb/sessions/… then indexes — progress lines follow'
-      )
-      await timedAsync('init', runTiming, () =>
-        kbTee(
-          targetCwd,
-          `init --base ${base} --git "${targetCwd}" --non-interactive --debug`,
-          initLogPath
+    try {
+      if (wipeBase) {
+        console.error(`[eval] kb base delete ${base} --force`)
+        timed('base_delete', runTiming, () =>
+          kb(targetCwd, `base delete ${base} --force`, { stdio: 'inherit' })
         )
+      }
+
+      if (needsInit) {
+        // kb init now requires a git remote. Point it at the local snapshot clone (exact commit,
+        // no extra network); kb follows the clone's own default branch (main, master, …).
+        const initLogPath = path.join(workdir, 'init.log')
+        console.error(`[eval] kb init --base ${base} --git "${targetCwd}"`)
+        console.error(
+          '[eval] kb init clones snapshot into ~/.kb/sessions/… then indexes — progress lines follow'
+        )
+        await timedAsync('init', runTiming, () =>
+          kbTee(
+            targetCwd,
+            `init --base ${base} --git "${targetCwd}" --non-interactive --debug`,
+            initLogPath
+          )
+        )
+      } else {
+        runTiming.command_durations_ms.init = 0
+        fs.writeFileSync(
+          path.join(workdir, 'init.log'),
+          `{"note":"query_only_mode","base":"${base}"}\n`,
+          'utf8'
+        )
+      }
+
+      console.error(`[eval] kb scan --base ${base}`)
+      const scanLogPath = path.join(workdir, 'scan.log')
+      await timedAsync('scan', runTiming, () =>
+        kbTee(targetCwd, `scan --base ${base} --debug`, scanLogPath)
       )
-    } else {
-      runTiming.command_durations_ms.init = 0
-      fs.writeFileSync(
-        path.join(workdir, 'init.log'),
-        `{"note":"query_only_mode","base":"${base}"}\n`,
-        'utf8'
+
+      console.error(`[eval] kb base use --default ${base} (client profile only — server base is "${base}")`)
+      timed('base_use_default', runTiming, () =>
+        kb(targetCwd, `base use --default ${base}`, { stdio: 'inherit' })
       )
+
+      console.error('[eval] docs list')
+      const docsOut = timed('docs_list', runTiming, () => kb(targetCwd, `docs list --base ${base}`))
+      fs.writeFileSync(path.join(workdir, 'docs.txt'), docsOut, 'utf8')
+
+      console.error('[eval] graph')
+      const graphOut = timed('graph', runTiming, () => kb(targetCwd, `graph --base ${base}`))
+      fs.writeFileSync(path.join(workdir, 'graph.txt'), graphOut, 'utf8')
+
+      console.error('[eval] logs list')
+      const logsOut = timed('logs_list', runTiming, () => kb(targetCwd, logsCmd(base)))
+      fs.writeFileSync(path.join(workdir, 'logs.txt'), logsOut, 'utf8')
+
+      console.error('[eval] waiting for kb-server index readiness (/healthz ok: true) before queries')
+      await evalServer.waitReady()
+
+      let q = 1
+      let queryTotalMs = 0
+      for (const question of questions) {
+        console.error(`[eval] ${suiteLabel} · K query ${q}/${questions.length}`)
+        const escaped = question.replace(/"/g, '\\"')
+        const label = `query_${q}`
+        const out = timed(label, runTiming, () => kb(targetCwd, `query "${escaped}" --base ${base}`))
+        const durationMs = runTiming.command_durations_ms[label]
+        runTiming.query_durations_ms.push(durationMs)
+        queryTotalMs += durationMs
+        fs.writeFileSync(path.join(workdir, `q${q}.json`), out, 'utf8')
+        q++
+      }
+      runTiming.query_total_duration_ms = queryTotalMs
+      fs.writeFileSync(path.join(workdir, 'runtime.json'), JSON.stringify(runTiming, null, 2), 'utf8')
+    } finally {
+      if (evalServer) {
+        console.error('[eval] stopping kb-server')
+        await evalServer.stop()
+        evalServer = null
+        kbRemoteEnv = null
+      }
     }
-
-    console.error(`[eval] kb scan --base ${base}`)
-    const scanLogPath = path.join(workdir, 'scan.log')
-    await timedAsync('scan', runTiming, () =>
-      kbTee(targetCwd, `scan --base ${base} --debug`, scanLogPath)
-    )
-
-    console.error(`[eval] kb base use --default ${base}`)
-    timed('base_use_default', runTiming, () =>
-      kb(targetCwd, `base use --default ${base}`, { stdio: 'inherit' })
-    )
-
-    console.error('[eval] docs list')
-    const docsOut = timed('docs_list', runTiming, () => kb(targetCwd, `docs list --base ${base}`))
-    fs.writeFileSync(path.join(workdir, 'docs.txt'), docsOut, 'utf8')
-
-    console.error('[eval] graph')
-    const graphOut = timed('graph', runTiming, () => kb(targetCwd, `graph --base ${base}`))
-    fs.writeFileSync(path.join(workdir, 'graph.txt'), graphOut, 'utf8')
-
-    console.error('[eval] logs list')
-    const logsOut = timed('logs_list', runTiming, () => kb(targetCwd, logsCmd(base)))
-    fs.writeFileSync(path.join(workdir, 'logs.txt'), logsOut, 'utf8')
-
-    let q = 1
-    let queryTotalMs = 0
-    for (const question of questions) {
-      console.error(`[eval] ${suiteLabel} · K query ${q}/${questions.length}`)
-      const escaped = question.replace(/"/g, '\\"')
-      const label = `query_${q}`
-      const out = timed(label, runTiming, () => kb(targetCwd, `query "${escaped}" --base ${base}`))
-      const durationMs = runTiming.command_durations_ms[label]
-      runTiming.query_durations_ms.push(durationMs)
-      queryTotalMs += durationMs
-      fs.writeFileSync(path.join(workdir, `q${q}.json`), out, 'utf8')
-      q++
-    }
-    runTiming.query_total_duration_ms = queryTotalMs
-    fs.writeFileSync(path.join(workdir, 'runtime.json'), JSON.stringify(runTiming, null, 2), 'utf8')
   } else {
     const runtimePath = path.join(workdir, 'runtime.json')
     if (fs.existsSync(runtimePath)) {
@@ -1021,6 +1033,7 @@ async function main() {
       mode: evalMode === 'query' ? 'query_only_harvest' : 'non_interactive_cli_init',
       commands: [
         'pnpm run build (kb repo)',
+        `kb-server start --base ${base} (eval orchestration)`,
         repoUrl ? `git clone (snapshot) → ${targetCwd}` : null,
         wipeBase ? `kb base delete ${base} --force (cwd: ${targetCwd})` : null,
         evalMode === 'all'

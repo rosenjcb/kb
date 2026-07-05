@@ -25,7 +25,7 @@ pnpm run server:up      # seeds .env on first run, builds + starts the server
 # → edit .env (provider key + a strong KB_SERVER_API_KEY + repos), then:
 pnpm run server:up      # boots; first run clones + indexes your repos
 pnpm run server:docker:logs
-curl http://localhost:8080/healthz
+curl http://localhost:38117/healthz
 ```
 
 ## Prerequisites
@@ -54,7 +54,7 @@ GITHUB_TOKEN=<optional-github-token>           # optional; only needed for priva
 KB_SERVER_API_KEY=<a-strong-random-token>      # required to call /v1 and /mcp
 GEMINI_API_KEY=<your-provider-key>             # or ANTHROPIC_API_KEY / OPENAI_API_KEY
 KB_REINDEX_INTERVAL=1h
-PORT=8080
+PORT=38117
 ```
 
 Then run it again to build and start:
@@ -87,7 +87,7 @@ server-scoped ones; the shorter aliases are kept for back-compat.
 | `KB_SERVER_BASE_GIT_REPOS` (alias `KB_GIT_REPOS`) | first boot | Comma/whitespace-separated `url[#branch]` list to index on an empty volume. |
 | `KB_REINDEX_INTERVAL` | no | Reindex cadence: `1h`, `30m`, `10s`, or `0` to disable (default `1h`). |
 | `KB_HOME` | no | Data dir on the mounted volume (image default `/data`). |
-| `PORT` | no | Host port to expose (container always listens on `8080`). |
+| `PORT` | no | Host port to expose (container always listens on `38117`). |
 
 Secrets belong in your platform's secret store (Compose `.env` locally, Secret Manager /
 Vault in production) — never commit a real `.env`.
@@ -145,7 +145,7 @@ mount a named volume at `/data`, and pass the env. With an `.env` file:
 ```bash
 docker run -d --name kb-server \
   --env-file .env \
-  -p 8080:8080 \
+  -p 38117:38117 \
   -v kb-data:/data \
   kb-server                       # or REGISTRY/kb-server:TAG
 ```
@@ -154,7 +154,7 @@ Or pass the env explicitly (no file):
 
 ```bash
 docker run -d --name kb-server \
-  -p 8080:8080 \
+  -p 38117:38117 \
   -v kb-data:/data \
   -e KB_SERVER_API_KEY=<strong-token> \
   -e GEMINI_API_KEY=<provider-key> \
@@ -164,7 +164,7 @@ docker run -d --name kb-server \
   kb-server
 ```
 
-The image already sets `KB_HOME=/data`, `PORT=8080`, and a CMD of
+The image already sets `KB_HOME=/data`, `PORT=38117`, and a CMD of
 `kb-server start --with-mcp`, so the volume mount is what makes the index survive
 restarts. Lifecycle is plain Docker:
 
@@ -187,10 +187,10 @@ docker build -f packages/kb-server/Dockerfile -t kb-server .
 
 ```bash
 # Liveness (no auth). `ok:true` + an indexMtime means the index is built and serving.
-curl http://localhost:8080/healthz
+curl http://localhost:38117/healthz
 
 # A real query (use your KB_SERVER_API_KEY).
-curl -s http://localhost:8080/v1/query \
+curl -s http://localhost:38117/v1/query \
   -H "Authorization: Bearer $KB_SERVER_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"query":"how does auth work?"}'

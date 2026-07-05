@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(pkgRoot, '../..')
-const baseUrl = process.env.KB_TEST_BASE_URL || 'http://localhost:8080'
+const baseUrl = process.env.KB_TEST_BASE_URL || 'http://localhost:38117'
 const HEALTH_TIMEOUT_MS = 6 * 60 * 1000
 
 const env = {
@@ -16,7 +16,7 @@ const env = {
   KB_GIT_REPOS: process.env.KB_GIT_REPOS || 'https://github.com/sindresorhus/is',
   KB_SERVER_API_KEY: process.env.KB_SERVER_API_KEY || 'testkey',
   KB_REINDEX_INTERVAL: '0',
-  PORT: process.env.PORT || '8080',
+  PORT: process.env.PORT || '38117',
   GEMINI_API_KEY: 'integration-mock-key',
   GEMINI_API_BASE_URL: 'http://llm-mock:8080',
   ANTHROPIC_API_KEY: '',

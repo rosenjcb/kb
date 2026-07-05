@@ -172,35 +172,76 @@ flowchart LR
 ## Client-server eval (1.0+)
 
 After the `@kb/client` / `@kb/server` split, **`kb query` defaults to remote mode** — it
-expects a live `kb-server` on `localhost:8080` (or `~/.kb/config.json` `server.host` /
-`server.port`). The harvest and MOEL harnesses still **shell-spawn `dist/bin/kb.js`** with an
-isolated `KB_HOME` per run; they do **not** start or health-check a server today.
+expects a live `kb-server` on `localhost:38117` (or `~/.kb/config.json` `server.host` /
+`server.port`). The harvest and MOEL harnesses **orchestrate `kb-server` automatically** via
+`scripts/eval-server.mjs` before the kb phase of each run.
 
-**Current workaround:** `scripts/eval-run.mjs` and `scripts/moel-run.mjs` set
-`KB_LOCAL_MODE=true` in `kbEnv()` so subprocess `kb` runs indexing and retrieval in-process via
-`@kb/core` (same behavior as pre-1.0). This keeps `pnpm run eval` working without Docker.
+### Orchestration (default)
 
-**Target state:** orchestrate `kb-server start` (or reuse a pinned sidecar) before the kb phase,
-point the client at that instance, and drop `KB_LOCAL_MODE` so eval exercises the production
-remote path. Until then, local-mode eval does not validate REST/SSE transport or server-side
-curation latency. Track: [#118](https://github.com/rosenjcb/kb/issues/118).
+1. **`eval-run.mjs`** — one `kb-server` per harvest run, started with `--base eval-{suiteId}`
+   (or your `--base` override). Subprocess `kb` calls use `KB_SERVER_URL` +
+   `KB_SERVER_API_KEY` (no `KB_LOCAL_MODE`). The harness polls `/healthz` until `ok: true`
+   before the query loop. Server logs land in `<run-dir>/eval-server.log`; the process is
+   stopped when the kb phase finishes (including on error).
 
-**Related remote-mode gaps (see #118):**
+2. **`moel-run.mjs`** — one `kb-server` per condition (`moel-{suite}-{N|K|O}`), restarted when
+   the base changes between conditions.
+
+**Base lifecycle:** the server serves one base chosen at startup (`--base` / manifest). Client
+`kb base use` updates the client profile only — eval starts the server with the eval base
+explicitly. The harvest logs a one-line note when calling `kb base use --default`.
+
+### Attach to a sidecar (optional)
+
+Skip in-process server spawn when a pinned sidecar is already running:
+
+```bash
+export KB_EVAL_SERVER_URL=http://localhost:38117
+export KB_SERVER_API_KEY=your-bearer-token   # must match the sidecar
+pnpm run eval -- --suite kb --auto-score --skip-control
+```
+
+Ensure the sidecar was started with the same base the harness will use (e.g.
+`kb-server start --base eval-kb`). The harness still health-checks before queries.
+
+### Env knobs
+
+| Variable | Role |
+|----------|------|
+| `KB_EVAL_SERVER_URL` | Attach to existing server (no spawn/stop) |
+| `KB_EVAL_SERVER_BIN` | Override `packages/kb-server/dist/bin/kb-server.js` |
+| `KB_EVAL_SERVER_PORT` | Pin port when spawning (default: 38117) |
+| `KB_EVAL_SERVER_API_KEY` | Bearer token for spawned server (default: `eval-local-key`) |
+| `KB_QUERY_TIMEOUT` | Client + server query timeout (e.g. `180s`; default 60s) |
+
+### Health poll
+
+```bash
+until curl -sf http://localhost:38117/healthz | jq -e '.ok == true' >/dev/null; do sleep 2; done
+```
+
+The harness uses the same readiness gate (two consecutive `ok: true` reads with `indexMtime`).
+
+### CI
+
+| Path | When |
+|------|------|
+| **In-process server** (default for `pnpm run eval` / `moel`) | Harness spawns built `kb-server.js` on an ephemeral port — no Docker required. Needs LLM provider keys in env like any kb run. |
+| **Docker sidecar** (`pnpm run integration:test`) | Full REST/SSE suite via httpyac against compose; set `KB_EVAL_SERVER_URL` to reuse that container for eval without respawning. |
+
+`KB_LOCAL_MODE=true` remains for **Vitest unit tests** and other fast in-process paths — not
+for harvest/MOEL.
+
+### Remote-mode prerequisites
 
 | Prerequisite | Status | Notes |
 |--------------|--------|-------|
 | `/healthz` readiness | Done (#120) | `ok: false` → HTTP 503 while bootstrap indexing, after bootstrap failure, or before index exists. Poll until `ok: true`. |
 | `KB_QUERY_TIMEOUT` | Done (#120) | Client + server knob (e.g. `KB_QUERY_TIMEOUT=180s`). Default 60s. |
 | Remote `kb query --trace` | Done (#120) | `trace: true` on `/v1/query`; returns `traceFile`. |
-| `kb base use` in remote mode | Follow-up | Client-local only; server base fixed at startup (`--base` / manifest). Eval must set server base explicitly. |
-| Harness starts `kb-server` | Open (#118) | |
-| Drop `KB_LOCAL_MODE` from eval/MOEL | Open (#118) | |
-
-Suggested health poll once orchestration lands:
-
-```bash
-until curl -sf http://localhost:8080/healthz | jq -e '.ok == true' >/dev/null; do sleep 2; done
-```
+| `kb base use` in remote mode | Follow-up | Client-local only; server base fixed at startup. Eval sets server base via orchestration. |
+| Harness starts `kb-server` | Done (#118) | `scripts/eval-server.mjs` |
+| Drop `KB_LOCAL_MODE` from eval/MOEL | Done (#118) | |
 
 ## Invariants
 

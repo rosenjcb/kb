@@ -46,7 +46,7 @@ sequenceDiagram
 
 ## Integration
 
-- **Manual send:** `pnpm exec httpyac send packages/kb-server/http/server.http -n query --env local` (server already up on `:8080`).
+- **Manual send:** `pnpm exec httpyac send packages/kb-server/http/server.http -n query --env local` (server already up on `:38117`).
 - **Local full suite:** `kb-server start --with-mcp` with `KB_SERVER_API_KEY=testkey`.
 - **Full suite:** `pnpm run integration:test` — see [`../INTEGRATION_TEST.md`](../INTEGRATION_TEST.md).
 - **CI:** `.github/workflows/integration.yml` on merge to `main` — not on feature-branch pushes or PR checks.

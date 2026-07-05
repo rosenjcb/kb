@@ -4,14 +4,14 @@ import { formatConnectionError } from '@kb/client/api/connection-error.js'
 import { resolveServerConnection } from '@kb/client/api/server-connection.js'
 
 describe('server-connection', () => {
-  it('[TC-1] resolves KBHOST/KBPORT defaults to localhost:8080', () => {
+  it('[TC-1] resolves KBHOST/KBPORT defaults to localhost:38117', () => {
     const prevHost = process.env.KBHOST
     const prevPort = process.env.KBPORT
     delete process.env.KBHOST
     delete process.env.KBPORT
     delete process.env.KB_SERVER_URL
     const conn = resolveServerConnection({})
-    expect(conn.url).toBe('http://localhost:8080')
+    expect(conn.url).toBe('http://localhost:38117')
     if (prevHost) process.env.KBHOST = prevHost
     if (prevPort) process.env.KBPORT = prevPort
   })
@@ -44,7 +44,7 @@ describe('KbApiClient', () => {
   })
 
   it('[TC-4] connection errors include setup hints', () => {
-    const msg = formatConnectionError({ url: 'http://localhost:8080' })
+    const msg = formatConnectionError({ url: 'http://localhost:38117' })
     expect(msg).toContain('kb-server start')
     expect(msg).toContain('Is the kb server running?')
   })

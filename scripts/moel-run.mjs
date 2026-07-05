@@ -28,6 +28,7 @@ import {
   parseQueryText,
   parseGraphCounts,
 } from './eval-shared.mjs'
+import { startEvalServer } from './eval-server.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const KB_REPO = path.resolve(__dirname, '..')
@@ -91,20 +92,16 @@ Output: ~/.kb/evaluations/moel-{suite}-{timestamp}/
 // KB subprocess helper
 // ---------------------------------------------------------------------------
 
+/** Remote kb env from the active eval-server session (per condition). */
+let kbRemoteEnv = null
+
 function kbEnv() {
-  const env = { ...process.env }
-  env.KB_HOME = undefined
-  env.KB_LOCAL_MODE = 'true'
-  // Local-mode indexing needs @kb/core's tree-sitter grammars, which the kb-client bundle
-  // can't resolve from its own node_modules. Mirror Docker: point NODE_PATH at kb-core's.
-  env.NODE_PATH = [
-    path.join(KB_REPO, 'packages/kb-core/node_modules'),
-    path.join(KB_REPO, 'node_modules'),
-    env.NODE_PATH,
-  ]
-    .filter(Boolean)
-    .join(path.delimiter)
-  return env
+  if (!kbRemoteEnv) {
+    throw new Error(
+      '[moel] kb remote env is unset — eval-server should start before kb subprocesses (see eval/EVAL.md)'
+    )
+  }
+  return kbRemoteEnv
 }
 
 function kb(cwd, args, opts = {}) {
@@ -238,70 +235,89 @@ async function runCondition(condition, task, suite, repoPath, runDir, opts) {
     }
   }
 
-  // Ensure session is initialized
-  if (!sessionHasDocs(repoPath, base)) {
-    console.log(`  [${condition}] Initializing kb session (base=${base})…`)
-    try {
-      kb(repoPath, `init --base ${base} --non-interactive`, { stdio: 'inherit' })
-    } catch (err) {
-      console.error(`  [${condition}] Init failed: ${err.message}`)
-    }
-  } else {
-    console.log(`  [${condition}] Session exists, reusing (base=${base})`)
-  }
+  let evalServer = null
+  try {
+    evalServer = await startEvalServer({
+      base,
+      logPath: path.join(runDir, `eval-server-${condition}.log`),
+    })
+    kbRemoteEnv = evalServer.kbEnv()
 
-  // Check ceilings before running (read existing trajectory if any)
-  const existingTraj = readTrajectory(trajPath)
-  const preCheck = checkCeilings(existingTraj, stepCeiling, tokenBudget)
-  if (preCheck) {
-    console.warn(`  [${condition}] Ceiling hit before run: ${preCheck.reason}`)
+    // Ensure session is initialized
+    if (!sessionHasDocs(repoPath, base)) {
+      console.log(`  [${condition}] Initializing kb session (base=${base})…`)
+      try {
+        kb(repoPath, `init --base ${base} --non-interactive`, { stdio: 'inherit' })
+      } catch (err) {
+        console.error(`  [${condition}] Init failed: ${err.message}`)
+      }
+    } else {
+      console.log(`  [${condition}] Session exists, reusing (base=${base})`)
+    }
+
+    // Check ceilings before running (read existing trajectory if any)
+    const existingTraj = readTrajectory(trajPath)
+    const preCheck = checkCeilings(existingTraj, stepCeiling, tokenBudget)
+    if (preCheck) {
+      console.warn(`  [${condition}] Ceiling hit before run: ${preCheck.reason}`)
+      return {
+        condition,
+        taskId: task.id,
+        base,
+        queryResult: null,
+        trajectory: existingTraj,
+        terminated: true,
+        terminatedBy: preCheck.reason,
+        loss: computeSimpleMoelLoss(null, true, preCheck.reason),
+      }
+    }
+
+    console.log(`  [${condition}] waiting for kb-server index readiness before query`)
+    await evalServer.waitReady()
+
+    // Run the query
+    let queryOutput = ''
+    let queryResult = null
+    try {
+      const question = task.question ?? suite.questions[0]
+      queryOutput = kb(repoPath, `query "${question.replace(/"/g, '\\"')}" --base ${base}`)
+      queryResult = parseQueryText(queryOutput)
+      console.log(
+        `  [${condition}] answer (${queryResult.answer?.length ?? 0} chars), result_count=${queryResult.result_count}`
+      )
+    } catch (err) {
+      console.error(`  [${condition}] Query failed: ${err.message}`)
+    }
+
+    // Read trajectory written by kb session
+    const trajectory = readTrajectory(trajPath)
+
+    // Post-run ceiling check
+    const postCheck = checkCeilings(trajectory, stepCeiling, tokenBudget)
+    const terminated = postCheck !== null
+    const terminatedBy = postCheck?.reason ?? null
+
+    if (terminated) {
+      console.warn(`  [${condition}] Ceiling hit after run: ${terminatedBy}`)
+    }
+
+    const loss = computeSimpleMoelLoss(queryResult, terminated, terminatedBy)
+
     return {
       condition,
       taskId: task.id,
       base,
-      queryResult: null,
-      trajectory: existingTraj,
-      terminated: true,
-      terminatedBy: preCheck.reason,
-      loss: computeSimpleMoelLoss(null, true, preCheck.reason),
+      queryResult,
+      trajectory,
+      terminated,
+      terminatedBy,
+      loss,
     }
-  }
-
-  // Run the query
-  let queryOutput = ''
-  let queryResult = null
-  try {
-    const question = task.question ?? suite.questions[0]
-    queryOutput = kb(repoPath, `query "${question.replace(/"/g, '\\"')}" --base ${base}`)
-    queryResult = parseQueryText(queryOutput)
-    console.log(`  [${condition}] answer (${queryResult.answer?.length ?? 0} chars), result_count=${queryResult.result_count}`)
-  } catch (err) {
-    console.error(`  [${condition}] Query failed: ${err.message}`)
-  }
-
-  // Read trajectory written by kb session
-  const trajectory = readTrajectory(trajPath)
-
-  // Post-run ceiling check
-  const postCheck = checkCeilings(trajectory, stepCeiling, tokenBudget)
-  const terminated = postCheck !== null
-  const terminatedBy = postCheck?.reason ?? null
-
-  if (terminated) {
-    console.warn(`  [${condition}] Ceiling hit after run: ${terminatedBy}`)
-  }
-
-  const loss = computeSimpleMoelLoss(queryResult, terminated, terminatedBy)
-
-  return {
-    condition,
-    taskId: task.id,
-    base,
-    queryResult,
-    trajectory,
-    terminated,
-    terminatedBy,
-    loss,
+  } finally {
+    if (evalServer) {
+      await evalServer.stop()
+    }
+    kbRemoteEnv = null
   }
 }
 
