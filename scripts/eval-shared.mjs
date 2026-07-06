@@ -219,6 +219,31 @@ function extractDirectQueryAnswer(beforeSep) {
   return answer || null
 }
 
+/** Parse provenance ids from local CLI or remote-client query wire output. */
+function parseQueryProvenance(text, answer) {
+  const ids = new Set()
+
+  const rankedInline =
+    /^sources>\s*(?:top \d+ of \d+|all \d+) ranked:\s*(.+)$/m.exec(text)?.[1] ?? ''
+  for (const part of rankedInline.split(';')) {
+    const trimmed = part.trim()
+    if (trimmed) ids.add(trimmed)
+  }
+
+  for (const line of text.split('\n')) {
+    const sourceLine = /^source>\s*(.+)$/i.exec(line.trim())?.[1]?.trim()
+    if (sourceLine) ids.add(sourceLine)
+  }
+
+  if (answer) {
+    for (const match of answer.matchAll(/\((fact-[a-f0-9]{16})\)/gi)) {
+      ids.add(match[1])
+    }
+  }
+
+  return [...ids]
+}
+
 export function parseQueryText(text) {
   let answer = null
   const sepIdx = text.indexOf('\n---\n')
@@ -234,12 +259,10 @@ export function parseQueryText(text) {
   }
   const retrievalLine = /^retrieval>\s*(.+)$/m.exec(text)?.[1]?.trim() ?? null
   const method = /^(\w+)/.exec(retrievalLine ?? '')?.[1] ?? null
-  const resultCount = Number(/^matches>\s*(\d+)\s+ranked/m.exec(text)?.[1] ?? 0)
-  const sourcesRaw = /^sources>\s*top \d+ of \d+ ranked:\s*(.+)$/m.exec(text)?.[1] ?? ''
-  const provenance = sourcesRaw
-    .split(';')
-    .map(s => s.trim())
-    .filter(Boolean)
+  const matchesCount = Number(/^matches>\s*(\d+)\s+ranked/m.exec(text)?.[1] ?? 0)
+  const sourcesCount = Number(/^sources>\s*(\d+)\s*$/m.exec(text)?.[1] ?? 0)
+  const resultCount = matchesCount || sourcesCount
+  const provenance = parseQueryProvenance(text, answer)
   return {
     answer,
     result_count: resultCount,

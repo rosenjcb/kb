@@ -176,6 +176,27 @@ describe('parseQueryText', () => {
     expect(parseQueryText(output).answer).toContain('Build/config evidence scaffold')
     expect(parseQueryText(output).answer).toContain('Prerequisites: cmake')
   })
+
+  it('[TC-172] parses remote-client sources> count and source> preview lines', () => {
+    const output = [
+      '🤖 KB Agent Harness',
+      '',
+      'host: 127.0.0.1:38117 │ base: eval-kb',
+      '',
+      'querying kb server...',
+      'Default max passes is 24 (fact-abcdef1234567890).',
+      '---',
+      'sources> 3',
+      'source> Environment knobs (facts deep loop)',
+      'source> KB_FACTS_QUERY_MAX_ITERS',
+      'retrieval> hybrid (facts-loop;passes:1)',
+    ].join('\n')
+    const r = parseQueryText(output)
+    expect(r.answer).toContain('Default max passes is 24')
+    expect(r.result_count).toBe(3)
+    expect(r.provenance).toContain('Environment knobs (facts deep loop)')
+    expect(r.provenance).toContain('fact-abcdef1234567890')
+  })
 })
 
 describe('run timeline', () => {
