@@ -60,7 +60,6 @@ describe('doc-generate-orchestrator', () => {
     const started = await startGenerationSession({
       baseDir,
       prompt: 'orch topic',
-      type: 'reference',
       config,
       deps: { llm: mockLlm },
     })
@@ -154,7 +153,6 @@ describe('doc-generate-orchestrator', () => {
     const started = await startGenerationSession({
       baseDir,
       prompt: 'topic',
-      type: 'reference',
       config,
       deps: { llm: mockLlm },
     })
@@ -212,7 +210,6 @@ describe('doc-generate-orchestrator', () => {
     const started = await startGenerationSession({
       baseDir,
       prompt: 'Custom sections doc',
-      type: 'reference',
       config,
       deps: { llm: mockLlm },
       sections: [
@@ -224,8 +221,8 @@ describe('doc-generate-orchestrator', () => {
     expect(started.status).toBe('ready')
     expect(started.questionIndex).toBeNull()
     expect(started.question).toBeUndefined()
-    // LLM should NOT be called for classification since type was provided
-    expect(mockLlm.call).not.toHaveBeenCalled()
+    // Exactly one LLM call: doc-type classification. Sections skip the questionnaire.
+    expect(mockLlm.call).toHaveBeenCalledTimes(1)
   })
 
   it('[TC-20] Given user-defined sections, produceInitialDraft sends sections block not structured answers', async () => {
@@ -257,7 +254,6 @@ describe('doc-generate-orchestrator', () => {
     const started = await startGenerationSession({
       baseDir,
       prompt: 'My custom doc',
-      type: 'howto',
       config,
       deps: { llm: mockLlm },
       sections: [
@@ -301,7 +297,6 @@ describe('doc-generate-orchestrator', () => {
     const started = await startGenerationSession({
       baseDir,
       prompt: 'topic with no kb overlap zzzuniquezzz',
-      type: 'reference',
       config,
       deps: { llm: mockLlm },
     })
@@ -314,6 +309,7 @@ describe('doc-generate-orchestrator', () => {
     await expect(
       produceInitialDraft({ baseDir, sessionId, llm: mockLlm, factLimit: 5 })
     ).rejects.toThrow(/no supporting facts/)
-    expect(mockLlm.call).not.toHaveBeenCalled()
+    // The single LLM call is doc-type classification at session start; no draft call happened.
+    expect(mockLlm.call).toHaveBeenCalledTimes(1)
   })
 })

@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Remove the unintentional `--type` filter flag from `kb query`: CLI parsing and help text, remote client forwarding, the HTTP `QueryRequest.type` field, and its OpenAPI schema entry. The internal fact-retrieval tooling and the unrelated `docs generate --type` / `graph node --type` options are unchanged.
+- Remove unintentional flags that were never meant to ship: `--type` and `--limit` on `kb query` (CLI parsing and help, remote client forwarding, HTTP query request fields, OpenAPI schema, and the `kb_query` MCP tool input), and `--type` on `docs generate` (the doc type is now always classified from the prompt). Fact retrieval uses the server-side defaults. The separate `docs list`/`docs generate`/`facts`/`logs` `--limit` options and `graph node --type` are unchanged.
 - Updated dependencies
   - @kb/core@1.2.2
 

@@ -63,7 +63,7 @@ describe('chat-docs-generate-flow', () => {
       llm: mockLlm,
       kbStorageDir: baseDir,
       config: {} as KbConfig,
-      slashRest: 'chat topic --type reference',
+      slashRest: 'chat topic',
       chatTranscript: 'User:\nKeep the diagram section.\n',
     })
 

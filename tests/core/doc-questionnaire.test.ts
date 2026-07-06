@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { loadQuestionnaire, parseDocTypeFlag } from '@kb/core/core/doc-questionnaire.js'
+import { loadQuestionnaire } from '@kb/core/core/doc-questionnaire.js'
 import { DOC_TYPES } from '@kb/core/core/doc-taxonomy.js'
 
 describe('loadQuestionnaire', () => {
@@ -10,15 +10,5 @@ describe('loadQuestionnaire', () => {
       expect(item.key.length).toBeGreaterThan(0)
       expect(item.question.length).toBeGreaterThan(0)
     }
-  })
-})
-
-describe('parseDocTypeFlag', () => {
-  it('[TC-35] Given valid type, then returns DocType', () => {
-    expect(parseDocTypeFlag('  reference  ')).toBe('reference')
-  })
-
-  it('[TC-36] Given invalid type, then throws', () => {
-    expect(() => parseDocTypeFlag('architecture')).toThrow('Invalid --type')
   })
 })

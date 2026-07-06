@@ -165,7 +165,6 @@ function truncate(s: string, max = QUERY_LOG_MAX): string {
 interface QueryRequestBody {
   q?: string
   query?: string
-  limit?: number
   discovery?: 'shallow' | 'deep'
   synthesize?: boolean
   verbose?: boolean
@@ -432,7 +431,6 @@ export function createHttpServer(options: HttpServerOptions): Server {
     log.info('query start', {
       requestId: ctx.requestId,
       q: truncate(query),
-      limit: body.limit,
       discovery: body.discovery,
       synthesize: body.synthesize !== false,
       verbose: body.verbose,
@@ -454,7 +452,6 @@ export function createHttpServer(options: HttpServerOptions): Server {
       const result = await Promise.race([
         service.query({
           query,
-          limit: body.limit,
           discovery: body.discovery,
           verbose: body.verbose,
           synthesize: body.synthesize !== false,

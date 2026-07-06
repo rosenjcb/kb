@@ -197,7 +197,6 @@ async function draftDocumentRevision(
 export async function startGenerationSession(input: {
   baseDir: string
   prompt: string
-  type?: DocType
   config: KbConfig
   deps?: DocGenerateOrchestratorDeps
   /** When starting from chat, persist for draft + all revision prompts. */
@@ -212,8 +211,7 @@ export async function startGenerationSession(input: {
   question: string | undefined
   key: string | undefined
 }> {
-  const docType =
-    input.type ?? (await classifyDocType(input.config, input.deps ?? {}, input.prompt))
+  const docType = await classifyDocType(input.config, input.deps ?? {}, input.prompt)
   const items = input.sections?.length ? [] : loadQuestionnaire(docType)
   const session = createSessionRecord({
     prompt: input.prompt,

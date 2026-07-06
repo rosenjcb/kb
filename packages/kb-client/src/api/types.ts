@@ -23,7 +23,6 @@ export interface HealthResponse {
 export interface QueryRequest {
   q?: string
   query?: string
-  limit?: number
   discovery?: 'shallow' | 'deep'
   synthesize?: boolean
   verbose?: boolean

@@ -13,8 +13,6 @@ import {
   listSessionSummaries,
   loadSession,
 } from '@kb/core/core/doc-generate-session.js'
-import { parseDocTypeFlag } from '@kb/core/core/doc-questionnaire.js'
-import type { DocType } from '@kb/core/core/doc-taxonomy.js'
 import { colorizeUnifiedDiff } from '@kb/core/core/git-diff-preview.js'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
 import { CLI_ERROR_NO_LLM_PROVIDER, formatPrerequisiteError } from '@kb/core/config/cli-prerequisites.js'
@@ -32,7 +30,6 @@ export type ParsedDocsGenerateCommand =
       mode: 'start'
       prompt: string
       base?: string
-      type?: DocType
       factLimit?: number
       outputFormat: DocsGenerateOutputFormat
     }
@@ -72,8 +69,8 @@ export function printDocsGenerateHelp(mode: CmdMode = 'cli'): string {
   return [
     `${cmd('docs generate', mode)} — guided document draft (questionnaire + LLM draft + fact references)`,
     '',
-    'Start a session (classifies doc type unless --type is set):',
-    `  ${cmd('docs generate "<prompt>" [--type howto|introduction|reference|decision|runbook] [--limit <n>] [--base <name>]', mode)}`,
+    'Start a session (the doc type is classified from your prompt):',
+    `  ${cmd('docs generate "<prompt>" [--limit <n>] [--base <name>]', mode)}`,
     '',
     'Continue:',
     `  ${cmd('docs generate --resume <session-id> --answer "<text>" [--base <name>] [--limit <n>]', mode)}`,
@@ -101,7 +98,6 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
   }
 
   let base: string | undefined
-  let typeFlag: DocType | undefined
   let factLimit: number | undefined
   let resumeId: string | undefined
   let showId: string | undefined
@@ -127,12 +123,6 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
     if (token === '--base') {
       const { value, next } = readValue('--base', i)
       base = value
-      i = next
-      continue
-    }
-    if (token === '--type') {
-      const { value, next } = readValue('--type', i)
-      typeFlag = parseDocTypeFlag(value)
       i = next
       continue
     }
@@ -212,7 +202,7 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
   ].filter(Boolean).length
 
   if (list) {
-    if (resumeId || showId || positional.length || resumeActions > 0 || typeFlag !== undefined) {
+    if (resumeId || showId || positional.length || resumeActions > 0) {
       throw new DocsGenerateError(
         `--list does not combine with other generate actions.\n\n${printDocsGenerateHelp()}`
       )
@@ -221,7 +211,7 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
   }
 
   if (showId) {
-    if (resumeId || positional.length || resumeActions > 0 || list || typeFlag !== undefined) {
+    if (resumeId || positional.length || resumeActions > 0 || list) {
       throw new DocsGenerateError(
         `--show does not combine with other generate actions.\n\n${printDocsGenerateHelp()}`
       )
@@ -230,9 +220,9 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
   }
 
   if (resumeId) {
-    if (positional.length || typeFlag !== undefined) {
+    if (positional.length) {
       throw new DocsGenerateError(
-        `--resume does not accept extra positional args or --type.\n\n${printDocsGenerateHelp()}`
+        `--resume does not accept extra positional args.\n\n${printDocsGenerateHelp()}`
       )
     }
     if (resumeActions !== 1) {
@@ -303,7 +293,7 @@ export function parseDocsGenerateCommand(args: string[]): ParsedDocsGenerateComm
     )
   }
 
-  return { mode: 'start', prompt, base, type: typeFlag, factLimit, outputFormat }
+  return { mode: 'start', prompt, base, factLimit, outputFormat }
 }
 
 export type RunDocsGenerateDeps = DocGenerateOrchestratorDeps
@@ -418,7 +408,6 @@ async function runStart(
   return startGenerationSession({
     baseDir,
     prompt: parsed.prompt,
-    type: parsed.type,
     config,
     deps,
     sections: sections === 'skip' ? undefined : sections,

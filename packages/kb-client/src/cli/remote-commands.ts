@@ -99,7 +99,6 @@ export async function runRemoteIntentCommand(
   }
 
   const payload = parsed.envelope.payload
-  const limit = typeof payload.limit === 'number' ? payload.limit : undefined
   const discoveryDepth = payload.discoveryDepth
   const discovery =
     discoveryDepth === 'shallow' || discoveryDepth === 'deep' ? discoveryDepth : undefined
@@ -112,7 +111,6 @@ export async function runRemoteIntentCommand(
     const result = await client.query({
       q: question,
       synthesize: !parsed.allFacts,
-      limit,
       discovery,
       verbose,
       trace,

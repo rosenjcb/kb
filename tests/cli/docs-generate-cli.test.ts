@@ -16,12 +16,11 @@ describe('parseDocsGenerateCommand', () => {
     }
   })
 
-  it('[TC-175] Given start prompt and --type, then parses', () => {
-    const parsed = parseDocsGenerateCommand(['my topic', '--type', 'howto', '--limit', '5'])
+  it('[TC-175] Given start prompt and --limit, then parses', () => {
+    const parsed = parseDocsGenerateCommand(['my topic', '--limit', '5'])
     expect(parsed).toEqual({
       mode: 'start',
       prompt: 'my topic',
-      type: 'howto',
       factLimit: 5,
       outputFormat: 'human',
     })

@@ -220,7 +220,7 @@ See companion doc for full vocabulary where applicable.
 | TC-172 | FR-12 | Given a wildcard with no matches, then throws DocsDeleteError | pass |
 | TC-173 | FR-12 | Given wildcard and non-interactive stdin without --force, then aborts without deleting | pass |
 | TC-174 | FR-13 | Given help flag, then throws exit 0 | pass |
-| TC-175 | FR-13 | Given start prompt and --type, then parses | pass |
+| TC-175 | FR-13 | Given start prompt and --limit, then parses | pass |
 | TC-176 | FR-13 | Given --resume and --answer, then parses | pass |
 | TC-177 | FR-13 | Given --resume and --accept, then parses | pass |
 | TC-178 | FR-13 | Given --resume and --reject, then parses feedback | pass |

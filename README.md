@@ -98,7 +98,7 @@ Remote server or HTTPS? See [Connect to a remote server](#connect-to-a-remote-se
 First, a sanity check. Ask one question from the shell:
 
 ```bash
-kb query "how does authentication work?" --limit 5
+kb query "how does authentication work?"
 ```
 
 You should get an answer plus a list of source facts. If that works, you're live.
@@ -185,7 +185,7 @@ kb --host <host:port|url>   …   # overrides KB_HOST / KB_SERVER_URL for this i
 ### Query
 
 ```
-kb query "<topic>" [--base <name>] [--limit <n>] [--discovery shallow|deep] [--verbose]
+kb query "<topic>" [--base <name>] [--discovery shallow|deep] [--verbose]
 ```
 
 ### Documents
