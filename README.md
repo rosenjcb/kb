@@ -22,9 +22,9 @@ Every team has the person who has read all the code. Questions route through the
 | Remembers anything next session | no | yes |
 | Works without an IDE or agent seat | no | yes |
 
-(On our dogfood benchmark the token gap was 21x.)
+(On our dogfood benchmark, the token gap was 21x.)
 
-The trick is old and boring: read the code once, keep what you learned. **kb-server** clones your git repos, extracts facts (what exists, what calls what, why decisions were made), and keeps the index fresh on a schedule. The **kb** client asks questions against that index and gets plain-English answers pinned to real files and facts, with sources listed, so nobody has to take anything on faith.
+KB earns those numbers by doing the reading up front. **kb-server** clones your git repos, extracts facts (what exists, what calls what, why decisions were made), and keeps the index fresh on a schedule. The **kb** client asks questions against that index and gets plain-English answers pinned to real files and facts, with sources listed, so nobody has to take anything on faith.
 
 **If you write code:** run `kb query "what calls the sqlite indexer?"` from any terminal, or type `kb` and chat: ask, follow up, pull `/graph summary`, stay in flow.
 
