@@ -42,7 +42,6 @@ export interface QueryPipelineDeps {
 export interface QueryPipelineParams {
   query: string
   limit?: number
-  type?: string
   discovery?: 'shallow' | 'deep'
   verbose?: boolean
   /**
@@ -104,7 +103,6 @@ export async function runQueryPipeline(
   const payload: Record<string, unknown> = {
     query,
     limit: params.limit,
-    type: params.type,
     discoveryDepth: params.discovery,
   }
   if (allFacts) payload.allFacts = true

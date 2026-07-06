@@ -89,7 +89,6 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
         payload: {
           query: readPositional(rest, 0, 'query requires a topic/query string'),
           limit: parseLimit(readOption(rest, '--limit')),
-          type: readOption(rest, '--type'),
           discoveryDepth: parseDiscoveryDepth(readOption(rest, '--discovery')),
         },
       }
@@ -888,7 +887,7 @@ function extractSnippet(content: string | undefined): string {
 export function printIntentHelp(mode: CmdMode = 'cli'): string {
   return [
     'Intent commands:',
-    `  ${cmd('query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--trace]', mode)}`,
+    `  ${cmd('query "<topic>" [--base <name>] [--limit <n>] [--discovery shallow|deep] [--session] [--verbose] [--trace]', mode)}`,
   ].join('\n')
 }
 

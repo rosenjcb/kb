@@ -166,7 +166,6 @@ interface QueryRequestBody {
   q?: string
   query?: string
   limit?: number
-  type?: string
   discovery?: 'shallow' | 'deep'
   synthesize?: boolean
   verbose?: boolean
@@ -434,7 +433,6 @@ export function createHttpServer(options: HttpServerOptions): Server {
       requestId: ctx.requestId,
       q: truncate(query),
       limit: body.limit,
-      type: body.type,
       discovery: body.discovery,
       synthesize: body.synthesize !== false,
       verbose: body.verbose,
@@ -457,7 +455,6 @@ export function createHttpServer(options: HttpServerOptions): Server {
         service.query({
           query,
           limit: body.limit,
-          type: body.type,
           discovery: body.discovery,
           verbose: body.verbose,
           synthesize: body.synthesize !== false,

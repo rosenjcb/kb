@@ -343,9 +343,6 @@ components:
         limit:
           type: integer
           description: Max facts to retrieve.
-        type:
-          type: string
-          description: Optional document-type filter.
         discovery:
           type: string
           enum: [shallow, deep]

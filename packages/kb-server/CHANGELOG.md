@@ -1,5 +1,13 @@
 # kb-server
 
+## 1.2.2
+
+### Patch Changes
+
+- Remove the unintentional `--type` filter flag from `kb query`: CLI parsing and help text, remote client forwarding, the HTTP `QueryRequest.type` field, and its OpenAPI schema entry. The internal fact-retrieval tooling and the unrelated `docs generate --type` / `graph node --type` options are unchanged.
+- Updated dependencies
+  - @kb/core@1.2.2
+
 ## 1.2.1
 
 ### Patch Changes

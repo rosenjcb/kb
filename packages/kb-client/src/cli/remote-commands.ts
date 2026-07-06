@@ -103,7 +103,6 @@ export async function runRemoteIntentCommand(
   const discoveryDepth = payload.discoveryDepth
   const discovery =
     discoveryDepth === 'shallow' || discoveryDepth === 'deep' ? discoveryDepth : undefined
-  const type = typeof payload.type === 'string' ? payload.type : undefined
   const verbose = parsed.verbose === true
   const trace = parsed.trace === true
 
@@ -115,7 +114,6 @@ export async function runRemoteIntentCommand(
       synthesize: !parsed.allFacts,
       limit,
       discovery,
-      type,
       verbose,
       trace,
     })
