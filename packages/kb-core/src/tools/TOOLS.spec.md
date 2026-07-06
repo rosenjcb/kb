@@ -1,7 +1,8 @@
 ---
 type: Spec
 title: "Spec: KB Tools"
-sources: ./,../../tests/tools
+sources: ./
+tests: ../../../../tests/tools
 description: Behavioral specification for KB Tools
 tags: [spec, kb]
 timestamp: 2026-06-28T04:05:29Z

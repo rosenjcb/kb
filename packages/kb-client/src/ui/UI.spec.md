@@ -1,7 +1,8 @@
 ---
 type: Spec
 title: "Spec: UI Primitives"
-sources: ../ui,../../tests/ui
+sources: ../ui
+tests: ../../../../tests/ui
 description: Behavioral specification for UI Primitives
 tags: [spec, kb]
 timestamp: 2026-06-28T04:05:31Z

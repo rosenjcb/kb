@@ -1,7 +1,8 @@
 ---
 type: Spec
 title: "Spec: CLI Layer"
-sources: ./,../../tests/cli
+sources: ./
+tests: ../../../../tests/cli
 description: Behavioral specification for CLI Layer
 tags: [spec, kb]
 timestamp: 2026-06-28T04:05:29Z

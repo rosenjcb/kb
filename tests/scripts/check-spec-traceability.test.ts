@@ -8,7 +8,7 @@ import {
 describe('check-spec-traceability', () => {
   it('[TC-30] Given FACT_CURATOR spec, then all TC rows are covered by tests', () => {
     const result = evaluateSpecTraceability({
-      manifest: [{ spec: 'packages/kb-core/src/tools/FACT_CURATOR.spec.md', testGlobs: ['tests/tools/fact-curator.test.ts'] }],
+      specEntries: [{ spec: 'packages/kb-core/src/tools/FACT_CURATOR.spec.md', testGlobs: ['tests/tools/fact-curator.test.ts'] }],
     })
     expect(result.ok).toBe(true)
   })
