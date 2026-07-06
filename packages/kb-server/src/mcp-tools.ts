@@ -32,7 +32,6 @@ const KB_QUERY_TOOL = {
     type: 'object',
     properties: {
       q: { type: 'string', description: 'Natural-language question' },
-      limit: { type: 'number', description: 'Max facts to retrieve' },
       synthesize: {
         type: 'boolean',
         description: 'Include an LLM-synthesized answer (default false; MCP clients usually reason themselves)',
@@ -90,7 +89,6 @@ export async function dispatchMcpToolCall(
       if (!q.trim()) return errorResult('kb_query requires a non-empty "q"')
       const result = await service.query({
         query: q,
-        limit: typeof args.limit === 'number' ? args.limit : undefined,
         synthesize: args.synthesize === true,
       })
       return textResult(serializeQueryResult(result))

@@ -58,13 +58,7 @@ describe('docs generate flow', () => {
       confidence: 0.9,
     })
 
-    const start = parseDocsGenerateCommand([
-      'auth overview',
-      '--type',
-      'reference',
-      '--base',
-      baseDir,
-    ])
+    const start = parseDocsGenerateCommand(['auth overview', '--base', baseDir])
     const startOut = (await runDocsGenerate(start, baseDir, config, {
       llm: mockLlm,
     })) as { sessionId: string }
@@ -111,7 +105,7 @@ describe('docs generate flow', () => {
     expect(content).toContain('## References')
     expect(content).toContain('fact://')
 
-    expect(mockLlm.call).toHaveBeenCalledTimes(1)
+    expect(mockLlm.call).toHaveBeenCalledTimes(2)
     indexer.close()
   })
 })

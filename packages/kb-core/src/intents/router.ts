@@ -44,7 +44,6 @@ export class DefaultIntentRouter implements IntentRouter {
             mode: 'content',
             includeContent: true,
             limit: allFacts ? 99999 : effectiveLimit,
-            type: payload.type,
             discoveryDepth: allFacts ? 'shallow' : effectiveDiscoveryDepth,
             surface: payload.surface === 'chat' ? 'chat' : 'query',
             excludeIds: Array.isArray(payload.excludeIds) ? payload.excludeIds : undefined,

@@ -1,5 +1,13 @@
 # kb-server
 
+## 1.2.2
+
+### Patch Changes
+
+- Remove unintentional flags that were never meant to ship: `--type` and `--limit` on `kb query` (CLI parsing and help, remote client forwarding, HTTP query request fields, OpenAPI schema, and the `kb_query` MCP tool input), and `--type` on `docs generate` (the doc type is now always classified from the prompt). Fact retrieval uses the server-side defaults. The separate `docs list`/`docs generate`/`facts`/`logs` `--limit` options and `graph node --type` are unchanged.
+- Updated dependencies
+  - @kb/core@1.2.2
+
 ## 1.2.1
 
 ### Patch Changes

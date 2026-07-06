@@ -131,7 +131,7 @@ The dump is built at two seams — the orchestrator's `buildResponse` (discovery
 | Loop passes | 24 (`KB_FACTS_QUERY_MAX_ITERS`; absolute max 512) |
 | Graph hops | 20 (`KB_FACTS_QUERY_MAX_HOPS`) |
 
-**Shallow** (`--discovery shallow`): lexical FTS; **`--limit`** defaults to 500 (`DEFAULT_FACT_LIMIT`).
+**Shallow** (`--discovery shallow`): lexical FTS; retrieval defaults to 500 facts (`DEFAULT_FACT_LIMIT`).
 
 ## Graph expansion
 

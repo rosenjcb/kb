@@ -37,8 +37,6 @@ describe('intent-cli parsing', () => {
       'how do i install kb',
       '--base',
       'test-init',
-      '--limit',
-      '3',
       '--discovery',
       'deep',
       '--session',
@@ -48,7 +46,6 @@ describe('intent-cli parsing', () => {
     expect(parsed.base).toBe('test-init')
     expect(parsed.envelope.intent).toBe('query_truth')
     expect(parsed.envelope.payload.query).toBe('how do i install kb')
-    expect(parsed.envelope.payload.limit).toBe(3)
     expect(parsed.envelope.payload.discoveryDepth).toBe('deep')
     expect(parsed.useQuerySession).toBe(true)
     expect(parsed.verbose).toBe(true)

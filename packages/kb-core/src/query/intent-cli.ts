@@ -88,8 +88,6 @@ export function parseIntentCommand(args: string[]): ParsedIntentCommand {
         requestId: `req-${dayjs().valueOf()}`,
         payload: {
           query: readPositional(rest, 0, 'query requires a topic/query string'),
-          limit: parseLimit(readOption(rest, '--limit')),
-          type: readOption(rest, '--type'),
           discoveryDepth: parseDiscoveryDepth(readOption(rest, '--discovery')),
         },
       }
@@ -888,17 +886,8 @@ function extractSnippet(content: string | undefined): string {
 export function printIntentHelp(mode: CmdMode = 'cli'): string {
   return [
     'Intent commands:',
-    `  ${cmd('query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--session] [--verbose] [--trace]', mode)}`,
+    `  ${cmd('query "<topic>" [--base <name>] [--discovery shallow|deep] [--session] [--verbose] [--trace]', mode)}`,
   ].join('\n')
-}
-
-function parseLimit(value: string | undefined): number | undefined {
-  if (!value) return undefined
-  const parsed = Number.parseInt(value, 10)
-  if (Number.isNaN(parsed) || parsed <= 0) {
-    throw new Error('--limit must be a positive integer')
-  }
-  return parsed
 }
 
 function parseDiscoveryDepth(value: string | undefined): 'shallow' | 'deep' | undefined {

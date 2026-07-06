@@ -94,8 +94,6 @@ See companion doc for full vocabulary where applicable.
 | TC-32 | FR-7 | uses first line only | pass |
 | TC-33 | FR-7 | prefers documentTitle over oneLineThesis | pass |
 | TC-34 | FR-7 | falls back to squeezed thesis when documentTitle missing | pass |
-| TC-35 | FR-8 | Given valid type, then returns DocType | pass |
-| TC-36 | FR-8 | Given invalid type, then throws | pass |
 | TC-37 | FR-9 | Given facts, then renders a References section with fact:// URIs | pass |
 | TC-38 | FR-9 | Given empty facts array, then returns empty string (no orphan heading) | pass |
 | TC-39 | FR-9 | Given a fact id that is not prefixed, then formatFactUri returns the id unchanged | pass |

@@ -78,7 +78,7 @@ paths:
                 value: { q: "how does authentication work?" }
               factsOnly:
                 summary: Facts only, deep discovery
-                value: { q: "rate limiting", synthesize: false, limit: 10, discovery: "deep" }
+                value: { q: "rate limiting", synthesize: false, discovery: "deep" }
       responses:
         "200":
           description: Query result
@@ -340,12 +340,6 @@ components:
         query:
           type: string
           description: Alias for `q`.
-        limit:
-          type: integer
-          description: Max facts to retrieve.
-        type:
-          type: string
-          description: Optional document-type filter.
         discovery:
           type: string
           enum: [shallow, deep]

@@ -47,7 +47,7 @@ export async function runDocsGenerateChatFlow(input: {
 
   if (parsed.mode !== 'start') {
     printer.chatAssistant(
-      'In chat, use: /docs generate "<prompt>" [--type howto|...] [--limit N]. Resume/list/show are CLI-only here.'
+      'In chat, use: /docs generate "<prompt>" [--limit N]. Resume/list/show are CLI-only here.'
     )
     return
   }
@@ -80,7 +80,6 @@ export async function runDocsGenerateChatFlow(input: {
   const started = await startGenerationSession({
     baseDir: kbStorageDir,
     prompt,
-    type: parsed.type,
     config,
     deps: { llm },
     chatTranscript: input.chatTranscript?.trim() || undefined,

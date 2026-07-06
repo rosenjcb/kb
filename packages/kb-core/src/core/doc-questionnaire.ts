@@ -1,5 +1,5 @@
 import { readPromptAssetUtf8 } from '../prompts/prompt-assets'
-import { DOC_TYPES, type DocType, isDocType } from './doc-taxonomy'
+import type { DocType } from './doc-taxonomy'
 
 export interface QuestionnaireItem {
   key: string
@@ -32,12 +32,4 @@ export function loadQuestionnaire(docType: DocType): QuestionnaireItem[] {
   }
 
   return items
-}
-
-export function parseDocTypeFlag(value: string): DocType {
-  const v = value.trim().toLowerCase()
-  if (!isDocType(v)) {
-    throw new Error(`Invalid --type "${value}". Must be one of: ${DOC_TYPES.join(', ')}`)
-  }
-  return v
 }
