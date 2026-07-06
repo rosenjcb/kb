@@ -111,7 +111,8 @@ function isValidVersionBump(base, head) {
 }
 
 export function shippedSourceChanged(changedFiles) {
-  const changed = new Set(changedFiles)
+  const shipped = changedFiles.filter(file => !file.endsWith('.spec.md'))
+  const changed = new Set(shipped)
   const clientSourceChanged = [...changed].some(
     file =>
       file.startsWith('packages/kb-client/') ||

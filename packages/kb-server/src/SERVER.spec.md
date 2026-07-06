@@ -1,7 +1,8 @@
 ---
 type: Spec
 title: "Spec: KB HTTP, MCP, and Slack Server"
-sources: ./src/server,../../tests/server
+sources: ./
+tests: ../../../tests/server
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
 timestamp: 2026-06-28T04:04:52Z

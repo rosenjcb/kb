@@ -25,8 +25,7 @@ packages/kb-core/src/tools/document-writer.ts   →   tests/tools/document-write
 
 Behavioral requirements live in sibling `*.spec.md` files (`type: Spec`) with **FR-N**
 (functional requirements) and **TC-N** (QA test cases) tables. Architecture detail stays in
-OKF companions. See [spec.md](https://github.com/rosenjcb/spec.md). Each spec declares the tests it
-governs in its own `sources:` frontmatter — `spec:check` derives per-spec scope from that (no central manifest).
+OKF companions. See [spec.md](https://github.com/rosenjcb/spec.md). Each spec declares implementation in `sources:` and verification in `tests:` (comma-separated paths relative to the spec file). `spec:check` discovers `*.spec.md` files across the repo and derives per-spec scope from `tests:` (no central manifest).
 
 ### What CI enforces (hard gate)
 

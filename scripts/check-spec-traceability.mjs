@@ -5,12 +5,12 @@
  * matching [TC-N] test (Vitest or httpyac) in that spec's scope.
  *
  * Scope is **decentralized** — each spec declares the tests it governs in its own
- * `sources:` frontmatter (per the spec.md / OKF standard); there is no central
- * manifest. A test file is owned by the spec whose `sources:` claims it most
- * specifically (exact file > glob > directory), so specs sharing a directory
- * (e.g. everything under `tests/tools`) stay isolated. Ambiguous ownership (two
- * specs claiming the same file at equal specificity) is a hard error — tighten the
- * `sources:` lists.
+ * `tests:` frontmatter (per the spec.md / OKF standard); there is no central
+ * manifest. Spec files are discovered by walking the repo for `*.spec.md`.
+ * A test file is owned by the spec whose `tests:` claims it most specifically
+ * (exact file > glob > directory), so specs sharing a directory (e.g. everything
+ * under `tests/tools`) stay isolated. Ambiguous ownership (two specs claiming the
+ * same file at equal specificity) is a hard error — tighten the `tests:` lists.
  *
  * Tests without [TC-N] tags are fine. [smoke] tests are fine. Only spec TC rows
  * must be covered.
@@ -89,27 +89,17 @@ function findSpecFiles(dir = root, out = []) {
 }
 
 /**
- * Read the `sources:` frontmatter of a spec and return the repo-relative test paths it
- * declares (test dirs, `*.test.ts` globs, or `.http` files). Implementation-source entries
- * (the spec's own `.ts`, its directory) are ignored — they carry OKF retrieval context, not
- * test scope.
+ * Read the `tests:` frontmatter of a spec and return repo-relative test paths
+ * (test dirs, `*.test.ts` globs, or `.http` files). Paths are spec-relative per OKF.
  */
-function parseSourcesTestPaths(specAbsPath) {
+function parseTestsFrontmatter(specAbsPath) {
   const specDir = path.dirname(specAbsPath)
   const content = readFileSync(specAbsPath, 'utf-8')
-  const m = content.match(/^sources:\s*(.+)$/m)
+  const m = content.match(/^tests:\s*(.+)$/m)
   if (!m) return []
   const out = []
   for (const raw of m[1].split(',').map(s => s.trim()).filter(Boolean)) {
-    // `tests/…` entries are normalized to repo-relative regardless of the leading `../` prefix:
-    // specs at different directory depths write inconsistent prefixes, but the `tests/…` tail is
-    // unambiguous. `.http` / `.test.ts` entries without a `tests/` segment resolve spec-relative.
-    const ti = raw.indexOf('tests/')
-    if (ti >= 0) {
-      out.push(raw.slice(ti))
-    } else if (raw.endsWith('.http') || raw.endsWith('.test.ts')) {
-      out.push(rel(path.resolve(specDir, raw)))
-    }
+    out.push(rel(path.resolve(specDir, raw)))
   }
   return out
 }
@@ -131,15 +121,15 @@ function claimSpecificity(pattern, file) {
 }
 
 /**
- * Build the per-spec test scope from every spec's `sources:` frontmatter, assigning each test
+ * Build the per-spec test scope from every spec's `tests:` frontmatter, assigning each test
  * file to the spec that claims it most specifically. Throws on ambiguous ownership so the fix
- * (tighten a `sources:` list) is forced rather than silently mis-scored.
+ * (tighten a `tests:` list) is forced rather than silently mis-scored.
  * @returns {SpecEntry[]}
  */
 export function discoverSpecEntries() {
   const specs = findSpecFiles().map(abs => ({
     spec: rel(abs),
-    sources: parseSourcesTestPaths(abs),
+    tests: parseTestsFrontmatter(abs),
   }))
   const testFiles = [
     ...walkFiles(path.join(root, 'tests'), '.test.ts'),
@@ -154,7 +144,7 @@ export function discoverSpecEntries() {
     let tied = false
     for (const s of specs) {
       let score = -1
-      for (const p of s.sources) score = Math.max(score, claimSpecificity(p, file))
+      for (const p of s.tests) score = Math.max(score, claimSpecificity(p, file))
       if (score < 0) continue
       if (score > bestScore) {
         bestScore = score
@@ -170,7 +160,7 @@ export function discoverSpecEntries() {
   }
   if (conflicts.length > 0) {
     throw new Error(
-      `Ambiguous spec ownership — tighten sources: for these test files:\n  ${conflicts.join('\n  ')}`
+      `Ambiguous spec ownership — tighten tests: for these test files:\n  ${conflicts.join('\n  ')}`
     )
   }
   return specs
@@ -206,19 +196,19 @@ function parseSpecTcRows(specPath) {
   return rows
 }
 
-/** Collect [TC-N] tags from all tests in a spec's manifest scope. */
+function testFileKind(filePath) {
+  return filePath.endsWith('.http') ? 'http' : 'vitest'
+}
+
+/** Collect [TC-N] tags from all tests in a spec's declared scope. */
 export function collectTcTagsForSpec(entry) {
   const tags = new Set()
-  for (const f of walkFiles(path.join(root, 'tests'), '.test.ts')) {
-    const r = rel(f)
-    if (fileInSpecScope(r, entry)) {
-      for (const t of collectTcTagsFromFile(f, 'vitest')) tags.add(t)
-    }
-  }
-  if (entry.spec.includes('HTTP.spec.md')) {
-    for (const f of walkFiles(path.join(root, 'packages/kb-server/http'), '.http')) {
-      for (const t of collectTcTagsFromFile(f, 'http')) tags.add(t)
-    }
+  const vitestFiles = walkFiles(path.join(root, 'tests'), '.test.ts').map(rel)
+  const httpFiles = walkFiles(path.join(root, 'packages'), '.http').map(rel)
+  for (const r of [...vitestFiles, ...httpFiles]) {
+    if (!fileInSpecScope(r, entry)) continue
+    const abs = path.join(root, r)
+    for (const t of collectTcTagsFromFile(abs, testFileKind(r))) tags.add(t)
   }
   return tags
 }
@@ -231,9 +221,9 @@ export function uncoveredTcRows(tcRows, testTags) {
 export function evaluateSpecTraceability(input) {
   const errors = []
   const notes = []
-  const manifest = input.manifest ?? discoverSpecEntries()
+  const specEntries = input.specEntries ?? discoverSpecEntries()
 
-  for (const entry of manifest) {
+  for (const entry of specEntries) {
     const specPath = path.join(root, entry.spec)
     if (!existsSync(specPath)) {
       errors.push(`Missing spec file: ${entry.spec}`)

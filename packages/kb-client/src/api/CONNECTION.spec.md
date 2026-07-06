@@ -1,7 +1,8 @@
 ---
 type: Spec
 title: "Spec: Client ↔ Server Connection"
-sources: ./server-connection.ts,./cli-global-flags.ts,./connection-error.ts,../../tests/cli/kb-api-client.test.ts,../../tests/cli/cli-global-flags.test.ts
+sources: ./server-connection.ts,./cli-global-flags.ts,./connection-error.ts
+tests: ../../../../tests/cli/kb-api-client.test.ts,../../../../tests/cli/cli-global-flags.test.ts
 description: Connection profile, --host override, and user-visible host/base context
 tags: [spec, kb, client, connection]
 timestamp: 2026-07-05T00:00:00Z

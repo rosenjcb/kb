@@ -1,7 +1,8 @@
 ---
 type: Spec
 title: "Spec: TUI"
-sources: ../tui,../../tests/tui
+sources: ../tui
+tests: ../../../../tests/tui
 description: Behavioral specification for TUI
 tags: [spec, kb]
 timestamp: 2026-06-28T04:05:30Z
