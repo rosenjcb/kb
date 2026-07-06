@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.2.1
+
+### Patch Changes
+
+- c204d60: Fixed small eval test issue.
+
 ## 1.2.0
 
 ### Minor Changes

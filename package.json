@@ -1,6 +1,6 @@
 {
   "name": "kb-workspace",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "KB monorepo — client, server, and core packages",
   "private": true,
   "type": "module",

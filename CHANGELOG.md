@@ -1,5 +1,11 @@
 # kb
 
+## 1.0.1
+
+### Patch Changes
+
+- c204d60: Fixed small eval test issue.
+
 ## 1.0.0
 
 ### Major Changes
