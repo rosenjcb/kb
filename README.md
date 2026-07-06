@@ -11,35 +11,33 @@
 
 ---
 
-Claude Code, Cursor, and Codex *can* grep a huge repo and answer "how does auth work?" — if you spend the tokens. Every session starts cold; every question retraces the filesystem. On our benchmarks, a headless coding agent uses **roughly an order of magnitude more tokens** and more wall time than `kb query` on the same questions ([research paper](research/main.pdf)).
+Every team has the person who has read all the code. Questions route through them: a PM wants to know if exports handle timezones, QA is hunting for the retry logic before filing a bug, a new hire asks how auth works for the third time. That person answers slowly, or the asker points a coding agent at the repo and pays it to rediscover what a teammate already knew.
 
-**KB** keeps a **persistent, facts-first index** of your codebases — answers in plain English, tied to real files and facts, not vibes:
+**KB turns that person into a server.** It answers the same questions as a coding agent for a fraction of the cost ([research paper](research/main.pdf)):
 
-- **Cheaper & faster** — pre-indexed facts instead of re-exploring the tree each time
-- **Multi-repo** — one server, many git repos; follow auth (or any flow) across services, not just one checkout
-- **Client/server** — developers use `kb` and chat mode; Product, QA, and leadership query the same grounded knowledge without an IDE or agent subscription
-- **Spec-aligned** — ingests [spec.md](https://github.com/rosenjcb/spec.md) OKF companions and behavioral `*.spec.md` specs so intent, tests, and code stay linked
+| Same questions, same repo | Headless coding agent | `kb query` |
+|---|---|---|
+| Tokens | 676,311 | 64,952 (**10x fewer**) |
+| Wall time | 402s | 159s (**2.5x faster**) |
+| Remembers anything next session | no | yes |
+| Works without an IDE or agent seat | no | yes |
 
-Point kb-server at your repos once. Then ask:
+(On our dogfood benchmark the token gap was 21x.)
+
+The trick is old and boring: read the code once, keep what you learned. **kb-server** clones your git repos, extracts facts (what exists, what calls what, why decisions were made), and keeps the index fresh on a schedule. The **kb** client asks questions against that index and gets plain-English answers pinned to real files and facts, with sources listed, so nobody has to take anything on faith.
+
+**If you write code:** run `kb query "what calls the sqlite indexer?"` from any terminal, or type `kb` and chat: ask, follow up, pull `/graph summary`, stay in flow.
+
+**If you don't:** you still get the whole knowledge base. Product, QA, design, and leadership chat with `kb` directly. No IDE, no checkout, no per-seat agent subscription. "Does the mobile app cache credentials?" becomes a question you ask a tool, not a ticket you file.
+
+**If you run agents:** point Claude Code or Cursor at KB (via [agent skills](#agent-skills) or MCP) and they query the index instead of re-exploring the tree every session.
+
+One server indexes many repos into shared bases, so "follow a login from the web app through auth-svc" is one question, not three checkouts. KB also ingests [spec.md](https://github.com/rosenjcb/spec.md) OKF companions and behavioral `*.spec.md` specs, keeping intent, tests, and code linked.
 
 ```bash
 kb query "how does token refresh work?"
-kb query "what calls the sqlite indexer?"
+kb          # chat with everything the server has read
 ```
-
-Or type `kb` and **chat** with your knowledge base like you would with a teammate who already read everything — across every repo the server indexes.
-
-## What it actually does
-
-**kb-server** owns indexing. Configure git repos on the server (`KB_GIT_REPOS`); it clones, scans code and docs (including OKF companions and `*.spec.md` behavioral specs), extracts facts, and re-indexes on a schedule. The **kb client** connects to that server to query and chat. One server can index many repos into shared bases so cross-service questions land in one place.
-
-From there you have two ways in:
-
-**One-shot questions** — `kb query "…"` from any terminal. Good for a quick lookup, a CI script, or piping into another tool.
-
-**Chat mode** — run `kb` with no arguments. You get a full-screen session: type a question, get an answer with sources, ask follow-ups, run `/docs list` or `/graph summary` without leaving the conversation. Same brain as `kb query`, but you stay in flow.
-
-Both modes search the same index. Answers come back **grounded** — KB shows you which facts and files it used, so you can click through instead of trusting a hallucination.
 
 ## Quick start
 
@@ -66,7 +64,7 @@ export KB_GIT_REPOS=https://github.com/acme/auth-svc
 kb-server start --with-mcp
 ```
 
-Leave that terminal running (or run it in the background). Default address: `localhost:38117`. The server clones and indexes your repos automatically — first run takes a minute depending on repo size.
+Leave that terminal running (or run it in the background). Default address: `localhost:38117`. The server clones and indexes your repos automatically; the first run takes a minute depending on repo size.
 
 Multiple repos in one base:
 
@@ -97,7 +95,7 @@ Remote server or HTTPS? See [Connect to a remote server](#connect-to-a-remote-se
 
 ### 4) Use your knowledge base
 
-Sanity check — one question from the shell:
+First, a sanity check. Ask one question from the shell:
 
 ```bash
 kb query "how does authentication work?" --limit 5
@@ -105,7 +103,7 @@ kb query "how does authentication work?" --limit 5
 
 You should get an answer plus a list of source facts. If that works, you're live.
 
-**Try chat mode** — the thing most people stick with:
+**Try chat mode**, the thing most people stick with:
 
 ```bash
 kb --host localhost:38117
@@ -113,13 +111,13 @@ kb --host localhost:38117
 
 No arguments. KB opens an interactive session (status bar shows **host** and **base**):
 
-- **Type a question** like you would in ChatGPT — "where is the retry logic?", "summarize the init flow", "what depends on sqlite?"
-- **Follow up** — context carries across turns; ask "show me the file" or "what about error handling?"
-- **Slash commands** — `/help` lists everything. Useful ones early on:
-  - `/query <question>` — run a structured lookup inline
-  - `/docs list` — browse generated docs for the base
-  - `/graph summary` — see how modules connect
-  - `/exit` — leave
+- **Type a question** like you would in ChatGPT: "where is the retry logic?", "summarize the init flow", "what depends on sqlite?"
+- **Follow up**: context carries across turns; ask "show me the file" or "what about error handling?"
+- **Slash commands**: `/help` lists everything. Useful ones early on:
+  - `/query <question>`: run a structured lookup inline
+  - `/docs list`: browse generated docs for the base
+  - `/graph summary`: see how modules connect
+  - `/exit`: leave
 
 The first time you run `kb`, you'll see a short welcome. If the server hasn't finished indexing yet, wait for kb-server logs to settle, then try again.
 
@@ -128,10 +126,9 @@ The first time you run `kb`, you'll see a short welcome. If the server hasn't fi
 ```bash
 kb query "what are the main entry points?"
 kb query "where is configuration loaded?"
-kb query "recent architectural decisions" --type decision
 ```
 
-When code changes on the remote, kb-server re-indexes on its schedule (`KB_REINDEX_INTERVAL`). You don't babysit it.
+kb-server re-indexes on a schedule (`KB_REINDEX_INTERVAL`), so the knowledge base tracks the remote as code changes land.
 
 ## Connect to a remote server
 
@@ -158,11 +155,11 @@ export KB_SERVER_API_KEY=<same token>
 kb --host http://your-host:38117 query "how does auth work?"
 ```
 
-Your laptop doesn't need a clone of those repos — the server owns the index.
+The server owns the clones and the index; your laptop just talks to it.
 
 **All client env vars:** `KB_HOST`, `KB_PORT`, `KB_SERVER_URL`, `KB_SERVER_API_KEY`, `KB_BASE`, `KB_ACTIVE_BASE`. Full reference: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md).
 
-**Docker image:** `ghcr.io/rosenjcb/kb/kb-server` — see [`packages/kb-server/README.md`](packages/kb-server/README.md).
+**Docker image:** `ghcr.io/rosenjcb/kb/kb-server`; see [`packages/kb-server/README.md`](packages/kb-server/README.md).
 
 ## Uninstalling
 
@@ -188,7 +185,7 @@ kb --host <host:port|url>   …   # overrides KB_HOST / KB_SERVER_URL for this i
 ### Query
 
 ```
-kb query "<topic>" [--base <name>] [--limit <n>] [--type decision] [--discovery shallow|deep] [--verbose]
+kb query "<topic>" [--base <name>] [--limit <n>] [--discovery shallow|deep] [--verbose]
 ```
 
 ### Documents
@@ -210,7 +207,7 @@ kb-server start [--with-mcp]
 kb sync
 ```
 
-Indexing is **server-managed** — configure `KB_GIT_REPOS` on kb-server, not `kb init` on the client.
+Indexing is **server-managed**: configure `KB_GIT_REPOS` on kb-server, not `kb init` on the client.
 
 Chat mode (`kb` with no args): `/help` for in-session commands. Deep dive: [`packages/kb-core/src/core/CHAT.md`](packages/kb-core/src/core/CHAT.md).
 
@@ -222,7 +219,7 @@ kb sync
 
 ## Agent skills
 
-Install skills so Claude Code, Cursor, and Codex query KB **before** spelunking — same answers, far fewer tokens:
+Install skills so Claude Code, Cursor, and Codex query KB **before** spelunking. Same answers, far fewer tokens:
 
 ```bash
 kb skills install
@@ -230,7 +227,7 @@ kb skills install
 
 [`skills/`](skills/) · [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md)
 
-## MCP — Claude Code & Cursor
+## MCP (Claude Code & Cursor)
 
 With `kb-server start --with-mcp`, register the server as an MCP tool so your editor can call `kb_query` directly. Setup: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md).
 
@@ -249,6 +246,6 @@ kb base ignore add "tests/, **/*.spec.ts"
 
 ## Building & contributing
 
-The [Quick start](#quick-start) above is for **using** KB. The repo itself is a pnpm monorepo — if you're fixing bugs, adding features, or running eval harnesses, you'll work from a checkout with `pnpm run test`, Docker-backed `kb-server`, and changeset-driven version bumps.
+The [Quick start](#quick-start) above is for **using** KB. The repo itself is a pnpm monorepo; if you're fixing bugs, adding features, or running eval harnesses, you'll work from a checkout with `pnpm run test`, Docker-backed `kb-server`, and changeset-driven version bumps.
 
-**[DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE.md)** — setup, daily scripts, local server, evaluations, spec/CI gates, and release workflow. Deeper references: [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md), [`TESTING.md`](TESTING.md), [`EVALUATION.md`](EVALUATION.md).
+**[DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE.md)**: setup, daily scripts, local server, evaluations, spec/CI gates, and release workflow. Deeper references: [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md), [`TESTING.md`](TESTING.md), [`EVALUATION.md`](EVALUATION.md).
