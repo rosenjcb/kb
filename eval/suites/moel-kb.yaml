@@ -49,8 +49,8 @@ tasks:
       - "reconcileCrossRepoEdges"     # src/tools/sqlite-kb-index.ts — bridges per-repo subgraphs
       - "listCrossRepoLinks"          # collapses cross-repo fact_edges to repo→repo pairs
       - "ingestIntegrationSignals"    # src/core/integration-ingest.ts — package.json/.env signals
-      - "deleteFactsByRepo"           # purges a repo's facts (kb base repo remove)
-      - "repoSlugFromGitUrl"          # src/cli/base-meta.ts — provenance slug
+      - "deleteFactsByRepo"           # purges a repo's facts when it is dropped from a base
+      - "repoSlugFromGitUrl"          # src/storage/repo-slug.ts — provenance slug
     rubric:
       - axis: correctness
         check: "Names the three bridge edge types: depends_on_repo, cross_repo_symbol, references_repo."

@@ -186,7 +186,7 @@ expects a live `kb-server` on `localhost:38117` (or `KB_HOST` / `KB_PORT` / `KB_
 2. **`moel-run.mjs`** — init in-process per condition, then one `kb-server` per condition
    (`moel-{suite}-{N|K|O}`) for the remote query.
 
-**Base lifecycle:** the server serves one base chosen at startup (`--base` / manifest). Client
+**Base lifecycle:** the server serves one base chosen at startup (`--base` / env). Client
 `kb base use` updates the client profile only — eval starts the server with the eval base
 explicitly. The harvest logs a one-line note when calling `kb base use --default`.
 

@@ -36,7 +36,7 @@ flowchart TB
 | `ops/` | `init-cli`, `scan-command`, git sync |
 | `query/` | Intent CLI helpers, retrieval, `chat-synthesis` |
 | `service/` | `KbService`, `query-pipeline`, serialize, session store |
-| `storage/` | Base selection, `meta.json`, paths |
+| `storage/` | Base selection, repo slugs + on-volume repo discovery, paths |
 | `config/` | `kb-config`, cmd-ref, prerequisites |
 | `ui/` | `CliOutput`, `Printer`, orchestration meta (shared with client) |
 

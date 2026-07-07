@@ -64,8 +64,6 @@ export function printBaseHelp(mode: CmdMode = 'cli'): string {
     'Usage:',
     `  ${cmd('base list', mode)}`,
     `  ${cmd('base delete <base> [--force]', mode)}`,
-    `  ${cmd('base repo list|add|remove', mode)}`,
-    `  ${cmd('base ignore list|add|remove|set|clear', mode)}`,
   ].join('\n')
 }
 

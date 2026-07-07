@@ -2,10 +2,9 @@
  * Gitignore-style ignore matching for KB scans.
  *
  * Ignore patterns let a base skip files/directories that are irrelevant to the knowledge
- * base (tests, vendored code, generated docs, …). They come from two places, merged at
- * scan time:
- *   1. the base's `meta.json` `ignore` list (set via `kb init`'s prompt or `kb base set-ignore`)
- *   2. an optional `.kbignore` file at a repo root (handy for committing repo-specific rules)
+ * base (tests, vendored code, generated docs, …). The server takes them from the
+ * `KB_SERVER_IGNORE` environment variable (see `readIgnorePatternsFromEnv`), applied on
+ * the initial index build and every reindex.
  *
  * Matching follows `.gitignore` semantics closely enough to be unsurprising:
  *   - blank lines and `#` comments are skipped
@@ -16,11 +15,6 @@
  *   - `*` matches within a path segment, `**` across segments, `?` matches one character
  *   - ignoring a directory also ignores everything under it
  */
-
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
-
-export const KB_IGNORE_FILENAME = '.kbignore'
 
 export interface IgnoreMatcher {
   /** Normalized source patterns (blank lines removed, de-duplicated, order preserved). */
@@ -49,6 +43,14 @@ export function parseIgnoreInput(input: string): string[] {
     .split(/[\n,]/)
     .map(part => part.trim())
     .filter(part => part.length > 0)
+}
+
+/**
+ * Resolve the base's ignore patterns from the environment. `KB_SERVER_IGNORE` is a
+ * comma- and/or newline-separated gitignore-style list; empty/unset → no patterns.
+ */
+export function readIgnorePatternsFromEnv(env: NodeJS.ProcessEnv = process.env): string[] {
+  return parseIgnoreInput(env.KB_SERVER_IGNORE ?? '')
 }
 
 /** Trim, drop blank lines, and de-duplicate while preserving order. */
@@ -171,26 +173,4 @@ export function createIgnoreMatcher(patterns: readonly string[]): IgnoreMatcher 
       return ignored
     },
   }
-}
-
-/** Read patterns from a `.kbignore` file at `dir`, if present. Missing file → no patterns. */
-export async function readKbIgnoreFile(dir: string): Promise<string[]> {
-  try {
-    const raw = await readFile(path.join(dir, KB_IGNORE_FILENAME), 'utf8')
-    return raw.split(/\r?\n/)
-  } catch {
-    return []
-  }
-}
-
-/**
- * Build the effective ignore matcher for a scan: the base's stored patterns plus any
- * `.kbignore` file committed at the repo root being scanned.
- */
-export async function resolveIgnoreMatcher(
-  scanDir: string,
-  basePatterns: readonly string[]
-): Promise<IgnoreMatcher> {
-  const filePatterns = await readKbIgnoreFile(scanDir)
-  return createIgnoreMatcher([...basePatterns, ...filePatterns])
 }

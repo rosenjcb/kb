@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { readBaseMeta, repoSlugFromGitUrl } from '@kb/core/storage/base-meta.js'
+import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
+import { repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
 import { findKbFile, resolveBaseToDir, writeKbFile } from '@kb/core/storage/base-selection.js'
 import { parseInitCommand, parseScanCommand, runKbInit } from '@kb/core/ops/init-cli.js'
 import { buildFrozenSourceSnapshotDoc } from '@kb/core/ops/init-source-snapshots.js'
@@ -328,10 +329,9 @@ describe('init-cli interview checkpoints', () => {
     }
 
     expect(checkpoint.version).toBe(3)
-    // Fresh interactive init offers the ignore-paths prompt (and nothing else); the
-    // deprecated interview questions stay gone.
-    expect(questionIO.prompts).toHaveLength(1)
-    expect(questionIO.prompts[0]).toContain('Ignore patterns')
+    // Init no longer prompts for anything when base + git targets are supplied — ignore
+    // patterns come from KB_SERVER_IGNORE, and the deprecated interview questions stay gone.
+    expect(questionIO.prompts).toHaveLength(0)
     expect(checkpoint.interviewRounds ?? []).toHaveLength(0)
     expect(checkpoint.context.userAnswers).toEqual([])
     expect(Object.keys(checkpoint.context.sourceFiles ?? {})).toContain('README.md')
@@ -1400,8 +1400,8 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     expect(prompts[1]).toContain('Knowledge base name')
 
     const baseDir = resolveBaseToDir(slug, cwd)
-    const meta = await readBaseMeta(baseDir)
-    expect(meta?.repos[0]?.gitUrl).toBe(repo)
+    const repos = await discoverBaseRepos(baseDir)
+    expect(repos[0]?.gitUrl).toBe(repo)
 
     const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
     try {
@@ -1411,7 +1411,7 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     }
   })
 
-  it('[TC-288] Given --git flag (non-interactive), then clones and writes meta.json', async () => {
+  it('[TC-288] Given --git flag (non-interactive), then clones the repo onto the base volume', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const repo = await makeTempGitRepo({ 'README.md': '# Remote Repo\n' })
 
@@ -1423,18 +1423,16 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     })
 
     const baseDir = resolveBaseToDir('my-remote', cwd)
-    const meta = await readBaseMeta(baseDir)
-    expect(meta?.repos).toHaveLength(1)
-    expect(meta?.repos[0]).toEqual(
+    const repos = await discoverBaseRepos(baseDir)
+    expect(repos).toHaveLength(1)
+    expect(repos[0]).toEqual(
       expect.objectContaining({
         gitUrl: repo,
         gitBranch: 'main',
         slug: repoSlugFromGitUrl(repo),
       })
     )
-    expect(meta?.repos[0]?.dir).toBeTruthy()
-    expect(meta?.repos[0]?.lastSyncedSha).toMatch(/^[0-9a-f]{7,40}$/)
-    expect(meta?.repos[0]?.lastSyncedAt).toBeTruthy()
+    expect(repos[0]?.dir).toBeTruthy()
 
     expect(await findKbFile(cwd)).toBeNull()
   })
@@ -1451,11 +1449,11 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     })
 
     const baseDir = resolveBaseToDir('master-remote', cwd)
-    const meta = await readBaseMeta(baseDir)
-    expect(meta?.repos[0]?.gitBranch).toBe('master')
+    const repos = await discoverBaseRepos(baseDir)
+    expect(repos[0]?.gitBranch).toBe('master')
   })
 
-  it('[TC-290] Given multiple --git targets, then both repos index into one base and meta lists both', async () => {
+  it('[TC-290] Given multiple --git targets, then both repos index into one base and the volume lists both', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const repoA = await makeTempGitRepo({
       'README.md': '# Repo A\n\nAlpha service documentation lives here.\n',
@@ -1475,9 +1473,9 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     })
 
     const baseDir = resolveBaseToDir('multi-remote', cwd)
-    const meta = await readBaseMeta(baseDir)
-    expect(meta?.repos).toHaveLength(2)
-    const urls = meta?.repos.map(r => r.gitUrl).sort()
+    const repos = await discoverBaseRepos(baseDir)
+    expect(repos).toHaveLength(2)
+    const urls = repos.map(r => r.gitUrl).sort()
     expect(urls).toEqual([repoA, repoB].sort())
 
     const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })

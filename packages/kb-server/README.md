@@ -85,6 +85,7 @@ server-scoped ones; the shorter aliases are kept for back-compat.
 | `GITHUB_TOKEN` (or `GH_TOKEN`) | private GitHub repos only | Optional GitHub HTTPS auth for clone/fetch. Public repos work without it; SSH remotes also work without it. |
 | `KB_SERVER_BASE_NAME` (alias `KB_BASE`) | recommended | Base name to build + serve. |
 | `KB_SERVER_BASE_GIT_REPOS` (alias `KB_GIT_REPOS`) | first boot | Comma/whitespace-separated `url[#branch]` list to index on an empty volume. |
+| `KB_SERVER_IGNORE` | no | Comma/newline-separated gitignore-style patterns to skip while indexing (e.g. `tests/, **/*.spec.ts, vendor`). Applied on the first build and every reindex. |
 | `KB_REINDEX_INTERVAL` | no | Reindex cadence: `1h`, `30m`, `10s`, or `0` to disable (default `1h`). |
 | `KB_HOME` | no | Data dir on the mounted volume (image default `/data`). |
 | `PORT` | no | Host port to expose (container always listens on `38117`). |
@@ -92,26 +93,20 @@ server-scoped ones; the shorter aliases are kept for back-compat.
 Secrets belong in your platform's secret store (Compose `.env` locally, Secret Manager /
 Vault in production) — never commit a real `.env`.
 
-### Option B: a `kb-server.json` manifest
+### Per-repo branches and ignore patterns
 
-Flat env vars can't express per-repo branches or index-ignore patterns. For
-version-controllable, declarative deploys, drop a `kb-server.json` next to the compose
-file (or in `$KB_HOME`, or point at it with `KB_SERVER_BOOTSTRAP=/path/to/file`):
+Everything is an environment variable — these are Docker service nodes, not local
+checkouts, so there is no config file to manage. Per-repo branches ride inline in the repo
+list, and index-ignore patterns come from `KB_SERVER_IGNORE`:
 
-```json
-{
-  "base": "acme",
-  "repos": [
-    "https://github.com/acme/auth#main",
-    { "url": "https://github.com/acme/web", "branch": "develop" }
-  ],
-  "ignore": ["**/node_modules/**", "**/*.test.ts"]
-}
+```ini
+KB_SERVER_BASE_GIT_REPOS=https://github.com/acme/auth#main, https://github.com/acme/web#develop
+KB_SERVER_IGNORE=**/node_modules/**, **/*.test.ts
 ```
 
-Precedence (highest wins): `--git` flags → `KB_GIT_REPOS` env → manifest. So env-only
-deploys are unaffected, and you can override the manifest per environment. Repos added to
-the manifest later are folded in on the next boot without a manual reindex.
+Precedence (highest wins): `--git` flags → `KB_SERVER_BASE_GIT_REPOS` / `KB_GIT_REPOS`
+env. Repos added to the env list later are folded in on the next boot without a manual
+reindex.
 
 For private GitHub repos, keep `KB_GIT_REPOS` as plain `https://github.com/...` URLs and
 set `GITHUB_TOKEN` (or `GH_TOKEN`) separately. The server forwards the token to `git`

@@ -28,10 +28,10 @@ See companion doc for full vocabulary where applicable.
 
 | ID | Requirement |
 |------|------------|
-| FR-1 | Auto-sync polls remotes and triggers incremental reindex when commits change |
+| FR-1 | Repo sync pulls each clone on the volume and re-indexes those with new commits |
 | FR-2 | Global CLI routing parses flags, defaults, and dispatches subcommands |
-| FR-3 | Base metadata commands expose active base name and selection state |
-| FR-4 | Base selection resolves `--base`, config default, and manifest precedence |
+| FR-3 | Repo slug/dir helpers and on-volume repo discovery |
+| FR-4 | Base selection resolves `--base`, config default, and effective-base precedence |
 | FR-5 | Chat REPL parses turns, streams output, and manages session lifecycle |
 | FR-6 | Chat document-generation flow wires doc tools into chat turns |
 | FR-7 | Chat query orchestrator delegates QUERY turns to shared retrieval |
@@ -57,7 +57,6 @@ See companion doc for full vocabulary where applicable.
 | FR-29 | Logs CLI reads structured run reports from the logs directory |
 | FR-30 | Named-list interview parses numbered selections in TTY prompts |
 | FR-31 | Publish CLI pushes companion docs to configured publish targets |
-| FR-32 | Repo CLI manages tracked git remotes on a base |
 | FR-33 | Retrieval fallback degrades gracefully when deep retrieval fails |
 | FR-34 | Skill installer copies bundled skills to agent home directories |
 | FR-35 | Startup notices print one-time migration and version hints |
@@ -70,13 +69,11 @@ See companion doc for full vocabulary where applicable.
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|------------|----------|------------------|
-| TC-1 | FR-1 | Given no meta.json, then no-ops | pass |
-| TC-2 | FR-1 | Given a repo synced within the stale window, then skips pull | pass |
-| TC-3 | FR-1 | Given a stale repo with no new commits, then refreshes lastSyncedAt without rescanning | pass |
-| TC-4 | FR-1 | Given a stale repo with new commits, then pulls and re-indexes that repo by slug | pass |
-| TC-5 | FR-1 | Given multiple repos, then only the changed repo is re-indexed and others keep their sha | pass |
+| TC-1 | FR-1 | Given no clones on the volume, then no-ops and returns 0 | pass |
+| TC-3 | FR-1 | Given a repo with no new commits, then pulls but does not re-index | pass |
+| TC-4 | FR-1 | Given a repo with new commits, then pulls and re-indexes that repo by slug | pass |
+| TC-5 | FR-1 | Given multiple repos, then only the changed repo is re-indexed | pass |
 | TC-6 | FR-1 | Given one repo's pull fails, then the other repos still sync | pass |
-| TC-7 | FR-1 | Given staleLimitMs: 0, then pulls even a freshly-synced repo | pass |
 | TC-8 | FR-2 | Given kb base use <base>, then sets activeBase and prints resolved path | pass |
 | TC-9 | FR-2 | Given kb base use --default <base>, then sets both defaultBase and activeBase | pass |
 | TC-10 | FR-2 | Given kb base use <base> that does not exist, then errors with server-managed guidance | pass |
@@ -95,10 +92,9 @@ See companion doc for full vocabulary where applicable.
 | TC-23 | FR-2 | kb base list produces the same output as kb base | pass |
 | TC-24 | FR-2 | Shows .kb file info when present in cwd | pass |
 | TC-26 | FR-2 | Given kb --help, then prints --host and core commands | pass |
-| TC-28 | FR-3 | readBaseMeta returns null when meta.json does not exist | pass |
-| TC-29 | FR-3 | round-trips a multi-repo meta | pass |
-| TC-30 | FR-3 | normalizes a legacy single-repo meta into one repo entry keeping the repo/ clone dir | pass |
-| TC-31 | FR-3 | round-trips an ignore list alongside repos | pass |
+| TC-28 | FR-3 | returns [] when the repos/ dir is absent | pass |
+| TC-29 | FR-3 | lists each git clone under repos/, deriving slug + dir from the layout | pass |
+| TC-30 | FR-3 | skips non-git directories under repos/ | pass |
 | TC-32 | FR-3 | repoSlugFromGitUrl handles https, ssh, and local paths | pass |
 | TC-33 | FR-3 | repoDirForSlug nests clones under repos/ | pass |
 | TC-34 | FR-4 | alias base resolves to namespaced sessions directory | pass |
@@ -333,9 +329,9 @@ See companion doc for full vocabulary where applicable.
 | TC-285 | FR-21 | Given no .kb file and --non-interactive, throws without prompting | pass |
 | TC-286 | FR-21 | After rescan completes, leaves any existing .kb file in cwd unchanged | pass |
 | TC-287 | FR-21 | Given interactive init with a git URL entered first, then clones from that URL | pass |
-| TC-288 | FR-21 | Given --git flag (non-interactive), then clones and writes meta.json | pass |
+| TC-288 | FR-21 | Given --git flag (non-interactive), then clones the repo onto the base volume | pass |
 | TC-289 | FR-21 | Given --git without branch, then clones the remote default branch | pass |
-| TC-290 | FR-21 | Given multiple --git targets, then both repos index into one base and meta lists both | pass |
+| TC-290 | FR-21 | Given multiple --git targets, then both repos index into one base and the volume lists both | pass |
 | TC-291 | FR-21 | Given /cancel at git URL prompt, throws InitCancelledError | pass |
 | TC-291b | FR-21 | Given non-interactive init without --git, throws requiring a git remote | pass |
 | TC-291c | FR-21 | Given interactive init with empty git answer then /cancel, throws InitCancelledError | pass |
@@ -402,8 +398,8 @@ See companion doc for full vocabulary where applicable.
 | TC-360 | FR-27 | skips comments and blank lines | pass |
 | TC-361 | FR-27 | an empty matcher ignores nothing | pass |
 | TC-362 | FR-27 | normalizes backslashes and leading ./ in the tested path | pass |
-| TC-363 | FR-27 | merges base patterns with a .kbignore file at the repo root | pass |
-| TC-364 | FR-27 | works with no .kbignore present | pass |
+| TC-363 | FR-27 | parses KB_SERVER_IGNORE (comma/newline separated) into patterns | pass |
+| TC-364 | FR-27 | returns [] when KB_SERVER_IGNORE is unset or empty | pass |
 | TC-381 | FR-29 | includes all three subcommands | pass |
 | TC-382 | FR-29 | documents --since flag | pass |
 | TC-383 | FR-29 | documents --base flag | pass |
@@ -445,17 +441,6 @@ See companion doc for full vocabulary where applicable.
 | TC-419 | FR-31 | Given a custom progress sink, then publish progress avoids direct stderr writes | pass |
 | TC-420 | FR-31 | Given notion state with stale pages, then preview reports removedPages | pass |
 | TC-421 | FR-31 | Given apply with notion state, then archives stale pages and returns removedPages | pass |
-| TC-422 | FR-32 | repo list reports an empty base, then the added repo | pass |
-| TC-423 | FR-32 | a bare repo command (no verb) lists | pass |
-| TC-424 | FR-32 | rejects an unknown repo verb | pass |
-| TC-425 | FR-32 | repo add clones, indexes, and appends to meta.json | pass |
-| TC-426 | FR-32 | repo add rejects a duplicate slug | pass |
-| TC-427 | FR-32 | repo remove purges the repo facts and drops it from meta | pass |
-| TC-428 | FR-32 | repo remove refuses to remove the last repo | pass |
-| TC-429 | FR-32 | lists, sets, adds, removes, and clears patterns | pass |
-| TC-430 | FR-32 | rejects an unknown verb | pass |
-| TC-431 | FR-32 | requires a pattern for add/remove/set | pass |
-| TC-432 | FR-32 | preserves repos when editing ignore patterns | pass |
 | TC-433 | FR-33 | Given more than TOP_SOURCE_PREVIEW_LIMIT hits, then footer says top N of M ranked | pass |
 | TC-434 | FR-33 | Given at most TOP_SOURCE_PREVIEW_LIMIT hits, then footer says all M ranked | pass |
 | TC-435 | FR-33 | Given no hits, then footer is (none) | pass |

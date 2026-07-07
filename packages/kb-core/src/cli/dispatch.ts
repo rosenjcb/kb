@@ -50,7 +50,6 @@ import {
 } from '@kb/core/cli/graph-cli.js'
 import { runLogsCommand } from '@kb/core/cli/logs-cli.js'
 import { parsePublishCommand, runPublishCommand } from '@kb/core/cli/publish-cli.js'
-import { runIgnoreCommand, runRepoCommand } from '@kb/core/cli/repo-cli.js'
 import {
   ViewCommandError,
   runListCommand,
@@ -325,31 +324,6 @@ async function runServerBaseCommand(
     const result = await deleteBase(base)
     out.log(formatDeleteBaseResult(base, result, mode))
     return 0
-  }
-
-  if (subCmd === 'repo') {
-    try {
-      const result = await runRepoCommand(subArgs.slice(1), {
-        mode,
-        onProgress: line => out.log(line),
-      })
-      out.log(result.output)
-      return 0
-    } catch (error) {
-      out.error(`❌ ${error instanceof Error ? error.message : String(error)}`)
-      return 1
-    }
-  }
-
-  if (subCmd === 'ignore') {
-    try {
-      const result = await runIgnoreCommand(subArgs.slice(1), { mode })
-      out.log(result.output)
-      return 0
-    } catch (error) {
-      out.error(`❌ ${error instanceof Error ? error.message : String(error)}`)
-      return 1
-    }
   }
 
   out.error(`Unknown base subcommand: ${subCmd}\n\n${printBaseHelp(mode)}`)

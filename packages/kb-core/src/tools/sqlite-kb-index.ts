@@ -834,8 +834,8 @@ export class SqliteKbIndexer {
   }
 
   /**
-   * Hard-delete every fact tagged with `gitRepo` (and its derived index rows). Used by
-   * `kb base repo remove` so a removed repo leaves no facts behind. Returns the count.
+   * Hard-delete every fact tagged with `gitRepo` (and its derived index rows), so a repo
+   * dropped from a base leaves no facts behind. Returns the count.
    */
   deleteFactsByRepo(gitRepo: string): number {
     const rows = this.db

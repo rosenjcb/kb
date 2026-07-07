@@ -1,0 +1,59 @@
+/**
+ * Repo registry, derived from the clones on a base's volume.
+ *
+ * The git clones under `<baseDir>/repos/*` ARE a base's repo registry. Each clone's
+ * `origin` remote is the durable record of where it came from, so nothing needs to be
+ * persisted alongside it — the boot env declares what to clone, and from then on the
+ * volume is self-describing. `slug` is the clone dir name (kept in step with
+ * `repoDirForSlug`), which is also the `git_repo` provenance tag on every fact indexed
+ * from that repo.
+ */
+
+import { existsSync } from 'node:fs'
+import { readdir } from 'node:fs/promises'
+import path from 'node:path'
+import { getCurrentBranch, getRemoteUrl } from '@kb/core/ops/git-sync.js'
+import { REPOS_SUBDIR } from '@kb/core/storage/repo-slug.js'
+
+/** One git clone tracked by a base, as read back off the volume. */
+export interface BaseRepo {
+  gitUrl: string
+  gitBranch: string
+  /** Stable provenance slug (also the clone dir name and the `git_repo` value on facts). */
+  slug: string
+  /** Clone directory relative to the base dir (`repos/<slug>`). */
+  dir: string
+}
+
+/**
+ * Enumerate the git clones under `<baseDir>/repos/*` as the base's tracked-repo registry.
+ * Missing/empty `repos/` dir → no repos. Non-git or unreadable entries are skipped.
+ */
+export async function discoverBaseRepos(baseDir: string): Promise<BaseRepo[]> {
+  const reposDir = path.join(baseDir, REPOS_SUBDIR)
+  let entries: Array<{ name: string; isDir: boolean }>
+  try {
+    const raw = await readdir(reposDir, { withFileTypes: true })
+    entries = raw.map(e => ({ name: e.name, isDir: e.isDirectory() }))
+  } catch {
+    return []
+  }
+
+  const repos: BaseRepo[] = []
+  for (const entry of entries) {
+    if (!entry.isDir) continue
+    const repoDir = path.join(reposDir, entry.name)
+    if (!existsSync(path.join(repoDir, '.git'))) continue
+    try {
+      repos.push({
+        gitUrl: await getRemoteUrl(repoDir),
+        gitBranch: await getCurrentBranch(repoDir),
+        slug: entry.name,
+        dir: path.join(REPOS_SUBDIR, entry.name),
+      })
+    } catch {
+      // Not a readable clone (no origin remote, detached, …) — skip it.
+    }
+  }
+  return repos
+}

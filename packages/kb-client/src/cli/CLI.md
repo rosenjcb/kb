@@ -56,7 +56,7 @@ Parsed in `main()` before subcommand dispatch. Equivalent to setting `KB_SERVER_
 
 ## Command style (noun → verb)
 
-Multi-action commands use **noun then verb** (`kb base repo add …`). TUI slash registry mirrors the same paths (`/base repo add`).
+Multi-action commands use **noun then verb** (`kb facts search …`). TUI slash registry mirrors the same paths (`/facts search`).
 
 ## `CliOutput` abstraction
 
@@ -76,8 +76,10 @@ Multi-action commands use **noun then verb** (`kb base repo add …`). TUI slash
 ```text
 kb base                          # status + list (server admin CLI in remote mode)
 kb base use <name>               # client-local: writes ~/.kb/state/active-base
-kb base repo list|add|remove …   # server-side repo CRUD (indexes on server)
 ```
+
+The repos a base indexes come from the server's `KB_SERVER_BASE_GIT_REPOS`; ignore
+patterns from `KB_SERVER_IGNORE`. There is no client-side repo/ignore CRUD.
 
 Uninitialized base → `uninitializedBaseNotice` (points to `KB_GIT_REPOS`, not `kb init`).
 

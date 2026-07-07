@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { repoSlugFromGitUrl } from '@kb/core/storage/base-meta.js'
+import { repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
 
 type GitCommandEnv = Record<string, string | undefined>
 
@@ -84,6 +84,11 @@ export async function cloneRepo(url: string, destDir: string, branch?: string): 
 /** Current branch name of a clone (e.g. `main`, `master`). */
 export async function getCurrentBranch(repoDir: string): Promise<string> {
   return run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], repoDir)
+}
+
+/** Fetch URL of a clone's `origin` remote — the durable record of where it came from. */
+export async function getRemoteUrl(repoDir: string): Promise<string> {
+  return run('git', ['remote', 'get-url', 'origin'], repoDir)
 }
 
 /** Discard kb's local `.kb` marker so ff-only pulls in hidden clones don't fail. */

@@ -14,8 +14,7 @@ import type { LLMProvider, Message } from '@kb/core/core/types.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
 import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
 import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
-import { maybeAutoSync } from '@kb/core/ops/auto-sync.js'
-import { readBaseMeta } from '@kb/core/storage/base-meta.js'
+import { scanBaseRepos } from '@kb/core/ops/auto-sync.js'
 import { applyConfigToEnv, createLLMProviderFromConfig, type KbConfig } from '@kb/core/config/kb-config.js'
 import type { ChatEvent, ChatStreamFn } from './chat-types.js'
 import { runQueryPipeline, type QueryPipelineParams } from './query-pipeline.js'
@@ -141,14 +140,14 @@ export function createKbService(options: KbServiceOptions): KbService {
       }
       reindexing = true
       try {
-        const meta = await readBaseMeta(baseDir)
-        if (!meta || meta.repos.length === 0) {
+        const count = await scanBaseRepos(baseDir, { onProgress })
+        if (count === 0) {
           throw new Error(
-            'This base has no git repos to scan. Add one with `kb base repo add <url>` or create a base with `kb init --git <url>`.'
+            'This base has no indexed repos to scan. Declare repos via KB_SERVER_BASE_GIT_REPOS ' +
+              '(or KB_GIT_REPOS) and restart to build the index.'
           )
         }
-        await maybeAutoSync(baseDir, { onProgress, staleLimitMs: 0 })
-        return `Scanned ${meta.repos.length} repo(s) for base "${path.basename(baseDir)}".`
+        return `Scanned ${count} repo(s) for base "${path.basename(baseDir)}".`
       } finally {
         reindexing = false
       }
