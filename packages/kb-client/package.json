@@ -1,6 +1,6 @@
 {
   "name": "@kb/client",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "KB client — CLI and TUI front-end",
   "type": "module",
   "private": true,

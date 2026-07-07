@@ -1,24 +1,26 @@
 /**
- * `kb-server export` / `kb-server import` — the prepared-state handoff mechanics.
+ * `kb-server export` / `kb-server import` — the snapshot handoff mechanics.
  *
  * A high-resource *builder* runs `export` to snapshot a fully-built base into a
- * portable bundle (a directory that mirrors the base layout plus a
- * `kb-prepared.json` manifest). A low-resource *server* runs `import` to restore
- * that bundle into a base and then `kb-server start` serves it without repeating
- * the expensive build.
+ * portable directory (mirroring the base layout plus a `kb-snapshot.json`
+ * manifest). A low-resource *server* consumes that snapshot — either via the
+ * explicit `import` step, or directly at boot with `kb-server start --from <dir>`
+ * — and serves it without repeating the expensive build.
  *
- * The bundle is a plain directory so it is transport-agnostic: tar it, rsync it,
- * push it to an object store, or mount it — the manifest travels with the bytes
- * and lets the consumer verify provenance, integrity, and compatibility.
+ * The snapshot is a plain directory so it is transport-agnostic: tar it, rsync
+ * it, push it to an object store, or mount it — the manifest travels with the
+ * bytes and lets the consumer verify provenance, integrity, and compatibility.
+ * The consumer never downloads anything: it reads state already present on the
+ * local filesystem.
  *
- * Layout of an exported bundle:
+ * Layout of an exported snapshot:
  *
  *   <out>/
- *     kb-prepared.json      # manifest (provenance, compat, digest)
- *     .kb-index.sqlite       # the built index (+ any -wal/-shm present)
+ *     kb-snapshot.json      # manifest (provenance, compat, digest)
+ *     .kb-index.sqlite       # the built index (one consistent file, no sidecars)
  *     repos/<slug>/         # source working trees — only with --with-repos
  *
- * Serve-only bundles (the default) drop `repos/` because serving needs only the
+ * Serve-only snapshots (the default) drop `repos/` because serving needs only the
  * index; `--with-repos` keeps them so the consumer can also refresh. Repo
  * provenance is discovered from the clones at export time and recorded in the
  * manifest, so it travels even when the working trees are excluded.
@@ -33,15 +35,16 @@ import {
   readOptionalCliValue,
   resolveEffectiveBaseDir,
 } from '@kb/core/storage/base-selection.js'
-import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
 import {
-  buildPreparedStateManifest,
-  checkPreparedStateCompatibility,
+  SNAPSHOT_MANIFEST_FILE,
+  type SnapshotManifest,
+  buildSnapshotManifest,
+  checkSnapshotCompatibility,
   computeFileDigest,
-  PREPARED_STATE_MANIFEST_FILE,
-  readPreparedStateManifest,
-  writePreparedStateManifest,
-} from '@kb/core/storage/prepared-state.js'
+  readSnapshotManifest,
+  writeSnapshotManifest,
+} from '@kb/core/storage/snapshot.js'
+import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
 import type { ServerLogger } from './server-cli.js'
 
 const INDEX_BASENAME = '.kb-index.sqlite'
@@ -60,7 +63,7 @@ async function pathExists(target: string): Promise<boolean> {
  * Snapshot the live index into a single, crash-consistent file via SQLite's
  * `VACUUM INTO`. This takes a read transaction, so it is safe against a running
  * builder (no quiesce needed) and folds any WAL back into the main file — the
- * bundle therefore carries exactly one `.kb-index.sqlite` with no sidecars, and
+ * snapshot therefore carries exactly one `.kb-index.sqlite` with no sidecars, and
  * the manifest digest covers the whole state.
  */
 function snapshotIndex(srcIndexPath: string, destIndexPath: string): void {
@@ -81,9 +84,9 @@ async function resolveBaseDir(args: string[], cwd: string): Promise<string> {
 }
 
 export interface ExportOptions {
-  /** Bundle output directory. */
+  /** Snapshot output directory. */
   out: string
-  /** Include `repos/<slug>/` working trees (builder bundle) instead of serve-only. */
+  /** Include `repos/<slug>/` working trees (builder snapshot) instead of serve-only. */
   withRepos: boolean
   /** Overwrite a non-empty output directory. */
   force: boolean
@@ -102,7 +105,7 @@ function parseExportOptions(args: string[]): ExportOptions {
 /**
  * `kb-server export [--base <name>] --out <dir> [--with-repos] [--force]`
  *
- * Snapshots a built base into a portable prepared-state bundle.
+ * Snapshots a built base into a portable snapshot directory.
  */
 export async function runExportCommand(
   args: string[],
@@ -139,10 +142,12 @@ export async function runExportCommand(
 
   const includesRepos = opts.withRepos && (await pathExists(path.join(baseDir, REPOS_DIRNAME)))
   if (includesRepos) {
-    await cp(path.join(baseDir, REPOS_DIRNAME), path.join(opts.out, REPOS_DIRNAME), { recursive: true })
+    await cp(path.join(baseDir, REPOS_DIRNAME), path.join(opts.out, REPOS_DIRNAME), {
+      recursive: true,
+    })
   }
 
-  const manifest = buildPreparedStateManifest({
+  const manifest = buildSnapshotManifest({
     base: baseName,
     repos,
     indexFiles,
@@ -151,22 +156,92 @@ export async function runExportCommand(
     tool: 'kb-server',
     toolVersion: await readServerVersion(),
   })
-  await writePreparedStateManifest(opts.out, manifest)
+  await writeSnapshotManifest(opts.out, manifest)
 
-  out.log(`📦 Exported prepared state for base "${baseName}" → ${opts.out}`)
-  out.log(`   index schema ${manifest.compat.indexSchema} · ${manifest.provenance.repos.length} repo(s) · repos ${includesRepos ? 'included' : 'excluded (serve-only)'}`)
+  out.log(`📦 Exported snapshot for base "${baseName}" → ${opts.out}`)
+  out.log(
+    `   index schema ${manifest.compat.indexSchema} · ${manifest.provenance.repos.length} repo(s) · repos ${includesRepos ? 'included' : 'excluded (serve-only)'}`
+  )
   for (const repo of manifest.provenance.repos) {
     out.log(`   ${repo.slug} @ ${repo.gitBranch} (${repo.gitUrl})`)
   }
-  out.log(`   manifest: ${path.join(opts.out, PREPARED_STATE_MANIFEST_FILE)}`)
+  out.log(`   manifest: ${path.join(opts.out, SNAPSHOT_MANIFEST_FILE)}`)
+}
+
+export interface AdoptSnapshotOptions {
+  /** Snapshot source directory (already present on the local filesystem). */
+  from: string
+  /** Target base directory to restore into. */
+  baseDir: string
+  /** Overwrite an existing index in the target base. */
+  force: boolean
+  /** Check the sha256 integrity of the snapshot index before restoring. */
+  verify: boolean
+}
+
+/**
+ * Restore a local snapshot directory into a base after verifying its manifest,
+ * compatibility, and (optionally) index integrity. Refuses to clobber an
+ * existing index unless `force`. Never downloads — the snapshot must already be
+ * on local disk. Shared by `kb-server import` and `kb-server start --from`.
+ */
+export async function adoptSnapshot(opts: AdoptSnapshotOptions): Promise<SnapshotManifest> {
+  const manifest = await readSnapshotManifest(opts.from)
+  if (!manifest) {
+    throw new Error(`No ${SNAPSHOT_MANIFEST_FILE} in ${opts.from} — not a kb snapshot.`)
+  }
+
+  const compat = checkSnapshotCompatibility(manifest)
+  if (!compat.ok) {
+    throw new Error(`Incompatible snapshot: ${compat.reason}`)
+  }
+
+  const primaryIndex = manifest.contents.index[0] ?? INDEX_BASENAME
+  const bundledIndexPath = path.join(opts.from, primaryIndex)
+  if (!(await pathExists(bundledIndexPath))) {
+    throw new Error(
+      `Snapshot manifest lists ${primaryIndex} but the file is missing from ${opts.from}.`
+    )
+  }
+  if (opts.verify) {
+    const digest = await computeFileDigest(bundledIndexPath)
+    if (digest !== manifest.digest.index) {
+      throw new Error(
+        `Integrity check failed for ${primaryIndex}: expected ${manifest.digest.index.slice(0, 12)}…, got ${digest.slice(0, 12)}… (pass --no-verify to override).`
+      )
+    }
+  }
+
+  const targetIndex = kbIndexDbPath(opts.baseDir)
+  const baseName = path.basename(opts.baseDir)
+  if ((await pathExists(targetIndex)) && !opts.force) {
+    throw new Error(
+      `Base "${baseName}" already has an index at ${targetIndex}; pass --force to replace it.`
+    )
+  }
+
+  // Restore index files, the manifest, and (if present) repo working trees.
+  for (const name of manifest.contents.index) {
+    const src = path.join(opts.from, name)
+    if (await pathExists(src)) await cp(src, path.join(opts.baseDir, name))
+  }
+  const manifestSrc = path.join(opts.from, SNAPSHOT_MANIFEST_FILE)
+  if (await pathExists(manifestSrc))
+    await cp(manifestSrc, path.join(opts.baseDir, SNAPSHOT_MANIFEST_FILE))
+  const reposSrc = path.join(opts.from, REPOS_DIRNAME)
+  if (manifest.contents.includesRepos && (await pathExists(reposSrc))) {
+    await cp(reposSrc, path.join(opts.baseDir, REPOS_DIRNAME), { recursive: true })
+  }
+
+  return manifest
 }
 
 export interface ImportOptions {
-  /** Bundle source directory. */
+  /** Snapshot source directory. */
   from: string
   /** Overwrite an existing index in the target base. */
   force: boolean
-  /** Skip the sha256 integrity check of the bundled index. */
+  /** Skip the sha256 integrity check of the snapshot index. */
   noVerify: boolean
 }
 
@@ -183,9 +258,8 @@ function parseImportOptions(args: string[]): ImportOptions {
 /**
  * `kb-server import --from <dir> [--base <name>] [--force] [--no-verify]`
  *
- * Restores a prepared-state bundle into a base after verifying its manifest,
- * compatibility, and index integrity. Refuses to clobber an existing index
- * unless `--force`.
+ * Restores a snapshot into a base for a later `kb-server start`. This is the
+ * explicit two-step path; `kb-server start --from <dir>` fuses restore + serve.
  */
 export async function runImportCommand(
   args: string[],
@@ -193,55 +267,17 @@ export async function runImportCommand(
   cwd: string = process.cwd()
 ): Promise<void> {
   const opts = parseImportOptions(args)
-
-  const manifest = await readPreparedStateManifest(opts.from)
-  if (!manifest) {
-    throw new Error(
-      `No ${PREPARED_STATE_MANIFEST_FILE} in ${opts.from} — not a prepared-state bundle.`
-    )
-  }
-
-  const compat = checkPreparedStateCompatibility(manifest)
-  if (!compat.ok) {
-    throw new Error(`Incompatible prepared state: ${compat.reason}`)
-  }
-
-  const primaryIndex = manifest.contents.index[0] ?? INDEX_BASENAME
-  const bundledIndexPath = path.join(opts.from, primaryIndex)
-  if (!(await pathExists(bundledIndexPath))) {
-    throw new Error(`Bundle manifest lists ${primaryIndex} but the file is missing from ${opts.from}.`)
-  }
-  if (!opts.noVerify) {
-    const digest = await computeFileDigest(bundledIndexPath)
-    if (digest !== manifest.digest.index) {
-      throw new Error(
-        `Integrity check failed for ${primaryIndex}: expected ${manifest.digest.index.slice(0, 12)}…, got ${digest.slice(0, 12)}… (pass --no-verify to override).`
-      )
-    }
-  }
-
   const baseDir = await resolveBaseDir(args, cwd)
   const baseName = path.basename(baseDir)
-  const targetIndex = kbIndexDbPath(baseDir)
-  if ((await pathExists(targetIndex)) && !opts.force) {
-    throw new Error(
-      `Base "${baseName}" already has an index at ${targetIndex}; pass --force to replace it.`
-    )
-  }
 
-  // Restore index files, the manifest, and (if present) repo working trees.
-  for (const name of manifest.contents.index) {
-    const src = path.join(opts.from, name)
-    if (await pathExists(src)) await cp(src, path.join(baseDir, name))
-  }
-  const manifestSrc = path.join(opts.from, PREPARED_STATE_MANIFEST_FILE)
-  if (await pathExists(manifestSrc)) await cp(manifestSrc, path.join(baseDir, PREPARED_STATE_MANIFEST_FILE))
-  const reposSrc = path.join(opts.from, REPOS_DIRNAME)
-  if (manifest.contents.includesRepos && (await pathExists(reposSrc))) {
-    await cp(reposSrc, path.join(baseDir, REPOS_DIRNAME), { recursive: true })
-  }
+  const manifest = await adoptSnapshot({
+    from: opts.from,
+    baseDir,
+    force: opts.force,
+    verify: !opts.noVerify,
+  })
 
-  out.log(`📥 Imported prepared state into base "${baseName}" (${baseDir})`)
+  out.log(`📥 Imported snapshot into base "${baseName}" (${baseDir})`)
   out.log(
     `   built by ${manifest.producer.tool}@${manifest.producer.coreVersion} · index schema ${manifest.compat.indexSchema} · ${manifest.provenance.repos.length} repo(s)`
   )

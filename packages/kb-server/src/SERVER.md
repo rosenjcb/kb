@@ -12,8 +12,9 @@ timestamp: 2026-07-03T00:00:00Z
 Runs as a **central, long-lived HTTP service** (`kb-server`) so indexing happens once on durable storage and clients call REST (and optionally MCP / Slack) instead of re-bootstrapping a CLI per request. Entry point: `kb-server start [--with-mcp] [--with-slack]`.
 
 For splitting heavy KB preparation from lightweight serving — build once on a big
-worker, `kb-server export` a portable bundle, then `kb-server import` + `start
---bootstrap-policy prepared-only` on a small worker — see the
+worker, `kb-server export` a portable snapshot, then serve it on a small worker
+with `kb-server start --from <dir> --bootstrap-policy snapshot-only` (the worker
+adopts a local snapshot already on disk; it never downloads) — see the
 [build-to-serve handoff model](../HANDOFF.md).
 
 ## Role in the stack
@@ -40,9 +41,9 @@ flowchart LR
 
 | File | Role |
 |---|---|
-| `server-cli.ts` | `kb-server start`/`export`/`import`; boot-build; scheduler; shutdown |
-| `prepared-state-cli.ts` | `kb-server export`/`import` — prepared-state handoff mechanics |
-| `@kb/core/storage/prepared-state.ts` | Prepared-state artifact contract (`kb-prepared.json`) |
+| `server-cli.ts` | `kb-server start` (+ `--from` snapshot adopt)/`export`/`import`; boot-build; scheduler; shutdown |
+| `snapshot-cli.ts` | `kb-server export`/`import` + `adoptSnapshot` — snapshot handoff mechanics |
+| `@kb/core/storage/snapshot.ts` | Snapshot artifact contract (`kb-snapshot.json`) |
 | `@kb/core/service/kb-service.ts` | Query, chat, readFacts, reindex, health |
 | `http-server.ts` | `/healthz`, `/v1/*`, admin routes, optional MCP/Slack |
 | `@kb/core/service/query-pipeline.ts` | Shared retrieval + synthesis |
