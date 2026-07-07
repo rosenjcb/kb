@@ -11,6 +11,11 @@ timestamp: 2026-07-03T00:00:00Z
 
 Runs as a **central, long-lived HTTP service** (`kb-server`) so indexing happens once on durable storage and clients call REST (and optionally MCP / Slack) instead of re-bootstrapping a CLI per request. Entry point: `kb-server start [--with-mcp] [--with-slack]`.
 
+For splitting heavy KB preparation from lightweight serving — build once on a big
+worker, `kb-server export` a portable bundle, then `kb-server import` + `start
+--bootstrap-policy prepared-only` on a small worker — see the
+[build-to-serve handoff model](../HANDOFF.md).
+
 ## Role in the stack
 
 ```mermaid
@@ -35,7 +40,9 @@ flowchart LR
 
 | File | Role |
 |---|---|
-| `server-cli.ts` | `kb-server start`; boot-build; scheduler; shutdown |
+| `server-cli.ts` | `kb-server start`/`export`/`import`; boot-build; scheduler; shutdown |
+| `prepared-state-cli.ts` | `kb-server export`/`import` — prepared-state handoff mechanics |
+| `@kb/core/storage/prepared-state.ts` | Prepared-state artifact contract (`kb-prepared.json`) |
 | `@kb/core/service/kb-service.ts` | Query, chat, readFacts, reindex, health |
 | `http-server.ts` | `/healthz`, `/v1/*`, admin routes, optional MCP/Slack |
 | `@kb/core/service/query-pipeline.ts` | Shared retrieval + synthesis |
@@ -149,5 +156,6 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 ## Related docs
 
 - Monorepo → [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) · Core → [`../../kb-core/CORE.md`](../../kb-core/CORE.md)
+- Build-to-serve handoff → [`../HANDOFF.md`](../HANDOFF.md)
 - HTTP contract → [`../http/HTTP.md`](../http/HTTP.md) · Deploy → [`../README.md`](../README.md)
 - Behavioral spec → [`SERVER.spec.md`](SERVER.spec.md)

@@ -1,5 +1,22 @@
 # kb-server
 
+## 1.3.0
+
+### Minor Changes
+
+- f22e369: Add a generic build-to-serve handoff model. `@kb/core` gains a versioned
+  prepared-state artifact contract (`kb-prepared.json`) with provenance,
+  integrity digest, and a forward-only index-schema compatibility check.
+  `kb-server` gains `export`/`import` subcommands to snapshot a built base into a
+  portable bundle and restore it elsewhere, plus a `--bootstrap-policy`
+  (`KB_SERVER_BOOTSTRAP_POLICY`) `prepared-only` mode so a lightweight worker
+  serves pre-built state without ever running the heavy build.
+
+### Patch Changes
+
+- Updated dependencies [f22e369]
+  - @kb/core@1.3.0
+
 ## 1.2.3
 
 ### Patch Changes

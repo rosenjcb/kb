@@ -37,6 +37,35 @@ export interface BootstrapPlan {
   source: 'flags' | 'env' | 'none'
 }
 
+/**
+ * How the server treats a cold start with no prepared index.
+ *
+ * - `auto` (default): build/scan from declared repos on an empty volume, and
+ *   fold newly-declared repos into a warm volume — the historical behavior.
+ * - `prepared-only`: never run the heavy build. Serve an existing index as-is
+ *   and, when none exists, refuse and surface "no prepared state available" so a
+ *   lightweight serving worker cannot accidentally do builder-sized work. The
+ *   prepared state must be supplied out of band (`kb-server import`, a mounted
+ *   volume, or a restored snapshot).
+ */
+export type BootstrapPolicy = 'auto' | 'prepared-only'
+
+/**
+ * Resolve the bootstrap policy: `--bootstrap-policy` flag > `KB_SERVER_BOOTSTRAP_POLICY`
+ * env > default `auto`. Throws on an unrecognized value so a typo fails fast.
+ */
+export function resolveBootstrapPolicy(
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env
+): BootstrapPolicy {
+  const raw = (readOptionalCliValue(args, '--bootstrap-policy') ?? env.KB_SERVER_BOOTSTRAP_POLICY ?? '')
+    .trim()
+    .toLowerCase()
+  if (raw === '' || raw === 'auto') return 'auto'
+  if (raw === 'prepared-only') return 'prepared-only'
+  throw new Error(`Invalid bootstrap policy "${raw}" — expected "auto" or "prepared-only".`)
+}
+
 /** Split a comma- and/or whitespace/newline-separated `url[#branch]` list into git targets. */
 export function parseReposEnv(value: string | undefined, defaultBranch?: string): GitTarget[] {
   return (value ?? '')

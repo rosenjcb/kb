@@ -1,6 +1,6 @@
 {
   "name": "@kb/server",
-  "version": "1.2.3",
+  "version": "1.3.0",
   "description": "KB HTTP/MCP server — daemon, Docker image, integration contract",
   "type": "module",
   "private": true,
