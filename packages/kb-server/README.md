@@ -127,11 +127,18 @@ fresh** with cheap incremental reindex. The snapshot is a portable directory (+ 
 # On the builder (large machine / CI job), after the index is built:
 kb-server export --base acme --out ./acme.kb      # faithful: index + settings + repos
 tar czf acme.kb.tgz -C ./acme.kb .
+# …or, when the builder runs in a container, one command does export + copy-out + du:
+scripts/export-snapshot.sh --base acme --out ./acme.kb   # run from the repo root
 
 # On each serving node (small machine / slim image), with the snapshot on local disk:
 tar xzf acme.kb.tgz -C /mnt/kb-state
 kb-server start --base acme --from /mnt/kb-state
 ```
+
+The serving node reads the snapshot from a **mounted volume or local path** — mount it
+in (Docker volume, bind mount, K8s volume) or unpack a tarball onto disk. It never pulls
+from a bucket itself; object storage, if you use it, is just where your pipeline stages
+the bytes before placing them on the node. Full model → [`HANDOFF.md`](./HANDOFF.md).
 
 `export` is a faithful snapshot by default — the index, all base settings, and the repo
 working trees. `start --from <dir>` adopts it (verifies digest + compatibility, restores
