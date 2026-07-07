@@ -15,7 +15,7 @@ import { getKbConfigDir, type KbConfig } from '@kb/core/config/kb-config.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
 import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
-import { type BootstrapPlan, resolveBootstrapPlan } from './server-bootstrap.js'
+import { type BootstrapPlan, type BootstrapPolicy, resolveBootstrapPlan, resolveBootstrapPolicy } from './server-bootstrap.js'
 import { createHttpServer } from './http-server.js'
 import { createKbService } from '@kb/core/service/kb-service.js'
 import { streamChatTurn } from './chat-stream.js'
@@ -70,9 +70,13 @@ interface BootstrapTask {
 async function planBootstrapTask(
   base: ResolvedBase,
   plan: BootstrapPlan,
+  policy: BootstrapPolicy,
   log: (line: string) => void
 ): Promise<BootstrapTask | null> {
   if (existsSync(kbIndexDbPath(base.baseDir))) {
+    // Under prepared-only we serve the existing index as-is: no cloning/indexing
+    // of newly-declared repos on boot (refresh stays an explicit operation).
+    if (policy === 'prepared-only') return null
     return await planNewRepoSync(base, plan, log)
   }
 
@@ -190,8 +194,20 @@ export async function runServerCommand(
     bootstrapState.progressLine = line
     out.log(line)
   }
-  const bootstrapTask = await planBootstrapTask(base, plan, line => recordBootstrapProgress(line))
-  if (bootstrapTask) bootstrapState.indexing = true
+  const policy = resolveBootstrapPolicy(args)
+  let bootstrapTask: BootstrapTask | null = null
+  if (policy === 'prepared-only' && !existsSync(kbIndexDbPath(base.baseDir))) {
+    // Serve-from-prepared-state with nothing to serve: refuse to build and make
+    // the missing state observable in /healthz and /v1 responses (503).
+    const message =
+      'no prepared state available: --bootstrap-policy prepared-only is set but no index was found. ' +
+      'Supply one with `kb-server import`, mount a prepared volume, or use --bootstrap-policy auto to build.'
+    bootstrapState.error = message
+    recordBootstrapProgress(`⚠  ${message}`)
+  } else {
+    bootstrapTask = await planBootstrapTask(base, plan, policy, line => recordBootstrapProgress(line))
+    if (bootstrapTask) bootstrapState.indexing = true
+  }
 
   const service = createKbService({ baseDir: base.baseDir, config, bootstrapState, chatStream: streamChatTurn })
   const apiKeys = readApiKeys()
@@ -209,6 +225,13 @@ export async function runServerCommand(
     isRunning: () => false,
   }
   const startScheduler = (): void => {
+    // Under prepared-only, refresh is explicit (re-import a new bundle): never
+    // arm the periodic reindex, which would otherwise fail on a serve-only base
+    // that has no cloned working trees to pull.
+    if (policy === 'prepared-only') {
+      out.log('   periodic reindex disabled (--bootstrap-policy prepared-only); refresh by re-importing a bundle.')
+      return
+    }
     scheduler = startReindexScheduler({
       intervalMs,
       runReindex: async onProgress => {
@@ -266,6 +289,7 @@ export async function runServerCommand(
     slack: !!slack,
     apiKeys: apiKeys.length,
     reindexIntervalMs: intervalMs,
+    bootstrapPolicy: policy,
     logLevel: process.env.LOG_LEVEL ?? 'info',
   })
 
@@ -308,7 +332,12 @@ const SERVER_USAGE = `Usage: kb-server <command>
 
 Commands:
   start [--base <name>] [--port <n>] [--with-mcp] [--git <url>]…
+        [--bootstrap-policy auto|prepared-only]
         Run the KB HTTP/MCP daemon (default command)
+  export [--base <name>] --out <dir> [--with-repos] [--force]
+        Snapshot a built base into a portable prepared-state bundle
+  import --from <dir> [--base <name>] [--force] [--no-verify]
+        Restore a prepared-state bundle into a base for serving
   uninstall [--purge] [--yes]
         Remove the release-installed kb-server binary/runtime; --purge deletes ~/.kb server data
   stop          Stop a locally installed kb-server service (Phase 5)
@@ -336,6 +365,16 @@ export async function runServerMain(argv: string[]): Promise<void> {
     case 'uninstall':
       await runServerUninstallCommand(rest, out)
       return
+    case 'export': {
+      const { runExportCommand } = await import('./prepared-state-cli.js')
+      await runExportCommand(rest, out)
+      return
+    }
+    case 'import': {
+      const { runImportCommand } = await import('./prepared-state-cli.js')
+      await runImportCommand(rest, out)
+      return
+    }
     case 'stop':
     case 'status':
     case 'install':

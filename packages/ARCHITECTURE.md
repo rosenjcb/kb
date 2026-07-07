@@ -100,3 +100,4 @@ pnpm run install:global   # pnpm install + build + symlinks into $PNPM_HOME/bin
 
 - [`kb-client/CLIENT.md`](./kb-client/CLIENT.md) · [`kb-client/src/api/CONNECTION.md`](./kb-client/src/api/CONNECTION.md) · [`kb-core/CORE.md`](./kb-core/CORE.md) · [`kb-server/src/SERVER.md`](./kb-server/src/SERVER.md)
 - Deploy → [`kb-server/README.md`](./kb-server/README.md) · Install → [`../scripts/INSTALL.md`](../scripts/INSTALL.md)
+- Build-to-serve handoff (prepare on a big worker, serve on a small one) → [`kb-server/HANDOFF.md`](./kb-server/HANDOFF.md)

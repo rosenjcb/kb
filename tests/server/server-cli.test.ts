@@ -14,6 +14,7 @@ vi.mock('@kb/server/server-bootstrap.js', () => ({
     gitTargets: [{ url: 'https://github.com/fintary/fintary', branch: undefined }],
     ignore: [],
   })),
+  resolveBootstrapPolicy: vi.fn(() => 'auto'),
 }))
 
 vi.mock('@kb/core/ops/init-cli.js', () => ({
@@ -72,6 +73,7 @@ vi.mock('@kb/server/http-server.js', () => ({
 
 import { runKbInit } from '@kb/core/ops/init-cli.js'
 import { startReindexScheduler } from '@kb/server/reindex-scheduler.js'
+import { resolveBootstrapPolicy } from '@kb/server/server-bootstrap.js'
 import { runServerCommand } from '@kb/server/server-cli.js'
 
 describe('runServerCommand bootstrap progress', () => {
@@ -136,6 +138,24 @@ describe('runServerCommand bootstrap progress', () => {
     await vi.waitFor(() => {
       expect(startReindexScheduler).toHaveBeenCalledOnce()
     })
+
+    process.emit('SIGTERM', 'SIGTERM')
+    await serverPromise
+  })
+
+  it('under prepared-only policy with no index, refuses to build and surfaces the missing state', async () => {
+    vi.mocked(resolveBootstrapPolicy).mockReturnValueOnce('prepared-only')
+    const out = {
+      log: vi.fn(),
+      error: vi.fn(),
+    }
+
+    const serverPromise = runServerCommand([], out, {} as never)
+
+    await vi.waitFor(() => {
+      expect(out.log).toHaveBeenCalledWith(expect.stringContaining('no prepared state available'))
+    })
+    expect(runKbInit).not.toHaveBeenCalled()
 
     process.emit('SIGTERM', 'SIGTERM')
     await serverPromise
