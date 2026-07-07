@@ -11,11 +11,11 @@ timestamp: 2026-07-03T00:00:00Z
 
 Runs as a **central, long-lived HTTP service** (`kb-server`) so indexing happens once on durable storage and clients call REST (and optionally MCP / Slack) instead of re-bootstrapping a CLI per request. Entry point: `kb-server start [--with-mcp] [--with-slack]`.
 
-For splitting heavy KB preparation from lightweight serving — build once on a big
-worker, `kb-server export` a portable snapshot, then serve it on a small worker
-with `kb-server start --from <dir> --bootstrap-policy snapshot-only` (the worker
-adopts a local snapshot already on disk; it never downloads) — see the
-[build-to-serve handoff model](../HANDOFF.md).
+For offloading the heavy one-time build from lightweight serving — build once on a
+big worker, `kb-server export --with-repos` a portable snapshot, then warm-start
+small serving nodes with `kb-server start --from <dir>` (adopts a local snapshot
+already on disk — never downloads; keeps the index fresh via incremental reindex) —
+see the [build-to-serve handoff model](../HANDOFF.md).
 
 ## Role in the stack
 

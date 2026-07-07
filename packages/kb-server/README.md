@@ -114,33 +114,37 @@ For private GitHub repos, keep `KB_GIT_REPOS` as plain `https://github.com/...` 
 set `GITHUB_TOKEN` (or `GH_TOKEN`) separately. The server forwards the token to `git`
 through an in-memory auth header, so cloned repos do not need tokenized remotes.
 
-### Separate build from serve (snapshot handoff)
+### Build once, warm-start serving nodes (snapshot handoff)
 
-When the initial index build is much heavier than steady-state serving, build once on
-a big worker and serve from a small one. The prepared state is a portable **snapshot**
-(a directory + a `kb-snapshot.json` manifest); ship it by any transport, then place it
-on the serving host's disk — the server adopts it from a local path and never downloads.
+The expensive work is the **initial build** (clone + scan + index + facts + embeddings).
+Do it once on a big worker, snapshot the result, and warm-start any number of small
+serving nodes from it — each skips the heavy build and then serves **and keeps its index
+fresh** with cheap incremental reindex. The snapshot is a portable directory (+ a
+`kb-snapshot.json` manifest); ship it by any transport, then place it on the node's disk
+— `kb-server` adopts it from a local path and never downloads the prepared state.
 
 ```bash
 # On the builder (large machine / CI job), after the index is built:
-kb-server export --base acme --out ./acme.kb           # serve-only snapshot (small)
+kb-server export --base acme --with-repos --out ./acme.kb   # index + source trees
 tar czf acme.kb.tgz -C ./acme.kb .
 
-# On the serving worker (small machine / slim image), with the snapshot on local disk:
+# On each serving node (small machine / slim image), with the snapshot on local disk:
 tar xzf acme.kb.tgz -C /mnt/kb-state
-kb-server start --base acme --from /mnt/kb-state --bootstrap-policy snapshot-only
+kb-server start --base acme --from /mnt/kb-state
 ```
 
 `start --from <dir>` adopts a local snapshot (verifies its digest + compatibility, then
-restores it into the base) before serving — no separate `import` step, no network. On a
-restart where the volume already carries the index, `--from` is a no-op. `snapshot-only`
-guarantees the serving worker never does builder-sized work: with no index it reports
-`503` + a `bootstrapError` on `/healthz` instead of rebuilding.
+restores it into the base) before serving — no separate `import` step, no network fetch
+for the state. It keeps the default `auto` policy, so a `--with-repos` snapshot lets the
+node `git fetch` + incrementally reindex on the usual schedule; it just never re-runs the
+heavy initial build. On a restart where the volume already carries the index, `--from`
+is a no-op.
 
-The explicit two-step path (`kb-server import --from <dir>` then `kb-server start`) still
-works when you prefer restore and serve as separate operations. Add `--with-repos` to
-`export` if the consumer should also be able to `POST /v1/reindex`.
-Full model → [`HANDOFF.md`](./HANDOFF.md).
+For a **frozen, locked-down worker** (serve-only snapshot, no git access, no reindex),
+add `--bootstrap-policy snapshot-only`: with no index it reports `503` + a
+`bootstrapError` on `/healthz` instead of building. The explicit two-step path
+(`kb-server import --from <dir>` then `kb-server start`) also works when you prefer
+restore and serve as separate operations. Full model → [`HANDOFF.md`](./HANDOFF.md).
 
 ## Without pnpm — raw Docker
 
