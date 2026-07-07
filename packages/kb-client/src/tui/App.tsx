@@ -255,8 +255,14 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
           stopChatPending()
           addEntry({ type: 'error', content: line })
         },
-        setProgressLine(_line: string | null) {
-          // Progress lines from server-side indexing are not shown in the client TUI.
+        setProgressLine(line: string | null) {
+          // Stream the server's reasoning/progress into the pending "thinking..." spinner so
+          // the user sees live status instead of a frozen "thinking...". Falls back to the
+          // generic label when a turn stage clears its progress (null/empty).
+          const pendingId = chatPendingEntryIdRef.current
+          if (!pendingId) return
+          const status = line?.trim()
+          updateEntry(pendingId, { content: status ? status : 'thinking...' })
         },
       }
 
@@ -477,12 +483,20 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
 
         try {
           let streamedLines = ''
+          let commandError: string | null = null
           const output = await runCommandForTui(args, config, line => {
             streamedLines = streamedLines ? `${streamedLines}\n${line}` : line
             updateEntry(resultId, { content: streamedLines, loading: true })
-          }, chatSessionIdRef.current)
+          }, chatSessionIdRef.current, message => { commandError = message })
 
           if (firstArg === 'base') refreshBase()
+
+          // A thrown command failure (e.g. unauthorized / connection refused) must render red,
+          // not as a plain result. Errors shown to the user are always styled as errors.
+          if (commandError) {
+            updateEntry(resultId, { type: 'error', content: output || commandError, loading: false })
+            return
+          }
 
           const { segments, emptyPrimaryContent } = partitionShellOutputForTui(output)
 

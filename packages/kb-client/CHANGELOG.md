@@ -1,5 +1,14 @@
 # @kb/client
 
+## 1.2.7
+
+### Patch Changes
+
+- Fix two client bugs: surface a clear, red, actionable message (pointing at
+  `KB_SERVER_API_KEY`) when the server rejects a request for want of an API key
+  instead of a bare "unauthorized", and stream the server's reasoning/progress
+  into the chat spinner so it shows live status rather than a frozen "thinking...".
+
 ## 1.2.6
 
 ### Patch Changes

@@ -19,7 +19,13 @@ export async function runCommandForTui(
   args: string[],
   config: KbConfig,
   onChunk?: (line: string) => void,
-  sessionId?: string
+  sessionId?: string,
+  /**
+   * Invoked when the command throws (e.g. a connection or auth failure). The message is
+   * still included in the returned string, but this signals the caller to render it as an
+   * error (red) rather than plain result output.
+   */
+  onError?: (message: string) => void
 ): Promise<string> {
   const { runMainWithOutput } = await loadIndex()
   const chunks: string[] = []
@@ -44,6 +50,7 @@ export async function runCommandForTui(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     chunks.push(message)
+    onError?.(message)
   }
 
   return chunks
