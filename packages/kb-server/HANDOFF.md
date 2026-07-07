@@ -158,6 +158,14 @@ kb-server export --base myproject --out ./myproject.kb
 tar czf myproject.kb.tgz -C ./myproject.kb .
 ```
 
+When the builder runs in a container, [`scripts/export-snapshot.sh`](../../scripts/export-snapshot.sh)
+does the whole builder-side dance in one command — `export --no-repos` inside the
+container, copy the artifact out to the host, and report its size:
+
+```bash
+scripts/export-snapshot.sh --base myproject --out ./myproject.kb   # add --with-repos to keep trees
+```
+
 `kb-server export [--base <name>] --out <dir> [--no-repos] [--force]`
 - Refuses when the base has no index (nothing to hand off).
 - Copies the whole base faithfully; `--no-repos` drops only the working trees for a
@@ -253,6 +261,28 @@ failure instead of a silent heavy build.
 | `snapshot-only` with no index and no `--from` | `503 { bootstrapError: "no snapshot available…" }` | `503` |
 | `--from` snapshot invalid / incompatible | non-zero exit before bind | — |
 | Re-clone remote unreachable / history diverged | `200` (serves), `⚠` in logs | `200` |
+
+## Transport: getting the snapshot onto the node
+
+The node adopts a snapshot **from local disk** — it never authenticates to or pulls
+from a store itself. So the model is always **"place the bytes, then start,"** and the
+"place" step is whatever your platform already does:
+
+- **Mounted volume** (the common case): put the snapshot on a volume — a Docker
+  named volume, a host bind mount, a Kubernetes `PersistentVolume`/CSI volume — and
+  mount it into the serving container at a path like `/mnt/kb-state`. Start with
+  `--from /mnt/kb-state`. Nothing about the runtime needs store credentials.
+- **Unpacked artifact / tarball**: `tar xzf myproject.kb.tgz -C /mnt/kb-state`, then
+  `--from /mnt/kb-state`.
+
+Object storage (an S3/GCS bucket, an OCI/registry blob, a CI artifact store) is a fine
+place to **keep** snapshots and version them behind a prefix (`.../snapshots/myproject/2026-07-07/`).
+But that store is the deployment system's staging area, not something the server talks
+to: your pipeline (an init container, a `cp`/`rsync`/download step, a volume-populating
+job) fetches the bytes onto the node's disk **out of band**, and only then does
+`kb-server start --from <local-path>` run. Keeping the download out of the server means
+the serving runtime needs no object-store IAM, no bucket auth, and no network path to the
+store — it just reads a directory.
 
 ## Deployment shapes
 

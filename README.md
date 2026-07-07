@@ -161,6 +161,16 @@ The server owns the clones and the index; your laptop just talks to it.
 
 **Docker image:** `ghcr.io/rosenjcb/kb/kb-server`; see [`packages/kb-server/README.md`](packages/kb-server/README.md).
 
+### Build once, serve cheap
+
+The expensive work is the **initial build** (clone + scan + index + facts + embeddings). Do it once on a high-memory builder, snapshot the result, and warm-start any number of small, request-only serving nodes from it — each skips the heavy build. A snapshot is a plain directory (+ a manifest); you place it on the node as a **mounted volume or local path** and the server reads it from disk — it never pulls from a store itself. One command to produce a serve-only artifact:
+
+```bash
+scripts/export-snapshot.sh --base acme --out ./acme.kb   # from a running builder container
+```
+
+The full, host-agnostic model (works on any VM, container platform, or orchestrator): [`packages/kb-server/HANDOFF.md`](packages/kb-server/HANDOFF.md).
+
 ## Uninstalling
 
 | Command | Removes |
