@@ -498,11 +498,11 @@ const MIGRATIONS: Migration[] = [
 /**
  * Highest migration version defined here — the KB index schema version.
  *
- * This is the compatibility token stamped into a prepared-state manifest
+ * This is the compatibility token stamped into a kb snapshot manifest
  * (`compat.indexSchema`). Migrations are forward-only, so a consumer whose
- * `LATEST_SCHEMA_VERSION` is >= a bundle's `indexSchema` can open and migrate
+ * `LATEST_SCHEMA_VERSION` is >= a snapshot's `indexSchema` can open and migrate
  * it; a consumer that is older cannot (it lacks the newer migrations) and must
- * reject the bundle rather than silently misread it.
+ * reject the snapshot rather than silently misread it.
  */
 export const LATEST_SCHEMA_VERSION: number = MIGRATIONS.reduce(
   (max, migration) => Math.max(max, migration.version),

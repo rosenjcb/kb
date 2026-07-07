@@ -1,19 +1,19 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { LATEST_SCHEMA_VERSION } from '@kb/core/core/db-migrations.js'
 import type { BaseRepo } from '@kb/core/storage/base-repos.js'
 import {
-  PREPARED_STATE_KIND,
-  PREPARED_STATE_SCHEMA_VERSION,
-  buildPreparedStateManifest,
-  checkPreparedStateCompatibility,
+  SNAPSHOT_KIND,
+  SNAPSHOT_SCHEMA_VERSION,
+  buildSnapshotManifest,
+  checkSnapshotCompatibility,
   computeFileDigest,
-  normalizePreparedStateManifest,
-  readPreparedStateManifest,
-  writePreparedStateManifest,
-} from '@kb/core/storage/prepared-state.js'
+  normalizeSnapshotManifest,
+  readSnapshotManifest,
+  writeSnapshotManifest,
+} from '@kb/core/storage/snapshot.js'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 const REPOS: BaseRepo[] = [
   {
@@ -24,9 +24,9 @@ const REPOS: BaseRepo[] = [
   },
 ]
 
-describe('buildPreparedStateManifest', () => {
+describe('buildSnapshotManifest', () => {
   it('stamps kind, schema, provenance, compat, and digest', () => {
-    const manifest = buildPreparedStateManifest({
+    const manifest = buildSnapshotManifest({
       base: 'demo',
       repos: REPOS,
       indexFiles: ['.kb-index.sqlite'],
@@ -36,8 +36,8 @@ describe('buildPreparedStateManifest', () => {
       toolVersion: '9.9.9',
       createdAt: '2026-07-07T12:00:00.000Z',
     })
-    expect(manifest.kind).toBe(PREPARED_STATE_KIND)
-    expect(manifest.schemaVersion).toBe(PREPARED_STATE_SCHEMA_VERSION)
+    expect(manifest.kind).toBe(SNAPSHOT_KIND)
+    expect(manifest.schemaVersion).toBe(SNAPSHOT_SCHEMA_VERSION)
     expect(manifest.createdAt).toBe('2026-07-07T12:00:00.000Z')
     expect(manifest.compat.indexSchema).toBe(LATEST_SCHEMA_VERSION)
     expect(manifest.contents).toEqual({ index: ['.kb-index.sqlite'], includesRepos: false })
@@ -53,8 +53,20 @@ describe('buildPreparedStateManifest', () => {
     expect(manifest.digest).toEqual({ algorithm: 'sha256', index: 'deadbeef' })
   })
 
-  it('omits toolVersion when not provided and tolerates null meta', () => {
-    const manifest = buildPreparedStateManifest({
+  it('carries each repo built SHA into provenance when present', () => {
+    const manifest = buildSnapshotManifest({
+      base: 'demo',
+      repos: [{ ...REPOS[0], headSha: 'a'.repeat(40) }],
+      indexFiles: ['.kb-index.sqlite'],
+      indexDigest: 'x',
+      includesRepos: true,
+      tool: 'kb-server',
+    })
+    expect(manifest.provenance.repos[0]?.headSha).toBe('a'.repeat(40))
+  })
+
+  it('omits toolVersion when not provided and tolerates empty repos', () => {
+    const manifest = buildSnapshotManifest({
       base: 'demo',
       repos: [],
       indexFiles: ['.kb-index.sqlite'],
@@ -68,8 +80,8 @@ describe('buildPreparedStateManifest', () => {
   })
 })
 
-describe('checkPreparedStateCompatibility', () => {
-  const base = buildPreparedStateManifest({
+describe('checkSnapshotCompatibility', () => {
+  const base = buildSnapshotManifest({
     base: 'demo',
     repos: REPOS,
     indexFiles: ['.kb-index.sqlite'],
@@ -78,46 +90,46 @@ describe('checkPreparedStateCompatibility', () => {
     tool: 'kb-server',
   })
 
-  it('accepts a bundle the consumer is new enough to open', () => {
-    expect(checkPreparedStateCompatibility(base)).toEqual({ ok: true })
+  it('accepts a snapshot the consumer is new enough to open', () => {
+    expect(checkSnapshotCompatibility(base)).toEqual({ ok: true })
     expect(
-      checkPreparedStateCompatibility(base, {
+      checkSnapshotCompatibility(base, {
         indexSchema: LATEST_SCHEMA_VERSION + 5,
-        manifestSchema: PREPARED_STATE_SCHEMA_VERSION,
+        manifestSchema: SNAPSHOT_SCHEMA_VERSION,
       })
     ).toEqual({ ok: true })
   })
 
-  it('rejects a bundle whose index schema is newer than the consumer', () => {
-    const result = checkPreparedStateCompatibility(base, {
+  it('rejects a snapshot whose index schema is newer than the consumer', () => {
+    const result = checkSnapshotCompatibility(base, {
       indexSchema: LATEST_SCHEMA_VERSION - 1,
-      manifestSchema: PREPARED_STATE_SCHEMA_VERSION,
+      manifestSchema: SNAPSHOT_SCHEMA_VERSION,
     })
     expect(result.ok).toBe(false)
     expect(result.reason).toMatch(/index schema/)
   })
 
   it('rejects a manifest newer than the consumer understands', () => {
-    const result = checkPreparedStateCompatibility(
-      { ...base, schemaVersion: PREPARED_STATE_SCHEMA_VERSION + 1 },
-      { indexSchema: LATEST_SCHEMA_VERSION, manifestSchema: PREPARED_STATE_SCHEMA_VERSION }
+    const result = checkSnapshotCompatibility(
+      { ...base, schemaVersion: SNAPSHOT_SCHEMA_VERSION + 1 },
+      { indexSchema: LATEST_SCHEMA_VERSION, manifestSchema: SNAPSHOT_SCHEMA_VERSION }
     )
     expect(result.ok).toBe(false)
     expect(result.reason).toMatch(/manifest schema/)
   })
 
   it('rejects a foreign artifact whose kind is wrong', () => {
-    const result = checkPreparedStateCompatibility({
+    const result = checkSnapshotCompatibility({
       ...base,
-      kind: 'something-else' as typeof PREPARED_STATE_KIND,
+      kind: 'something-else' as typeof SNAPSHOT_KIND,
     })
     expect(result.ok).toBe(false)
-    expect(result.reason).toMatch(/not a prepared-state manifest/)
+    expect(result.reason).toMatch(/not a kb snapshot manifest/)
   })
 })
 
-describe('normalizePreparedStateManifest', () => {
-  const valid = buildPreparedStateManifest({
+describe('normalizeSnapshotManifest', () => {
+  const valid = buildSnapshotManifest({
     base: 'demo',
     repos: REPOS,
     indexFiles: ['.kb-index.sqlite'],
@@ -127,7 +139,7 @@ describe('normalizePreparedStateManifest', () => {
   })
 
   it('round-trips a valid manifest', () => {
-    expect(normalizePreparedStateManifest(JSON.parse(JSON.stringify(valid)))).toEqual(valid)
+    expect(normalizeSnapshotManifest(JSON.parse(JSON.stringify(valid)))).toEqual(valid)
   })
 
   it.each([
@@ -137,21 +149,21 @@ describe('normalizePreparedStateManifest', () => {
     ['bad digest', { ...valid, digest: { algorithm: 'md5', index: 'x' } }],
     ['missing provenance', { ...valid, provenance: undefined }],
   ])('throws on %s', (_label, input) => {
-    expect(() => normalizePreparedStateManifest(input)).toThrow()
+    expect(() => normalizeSnapshotManifest(input)).toThrow()
   })
 })
 
 describe('read/write manifest + digest (IO)', () => {
   let dir: string
   beforeEach(() => {
-    dir = mkdtempSync(path.join(tmpdir(), 'kb-prepared-'))
+    dir = mkdtempSync(path.join(tmpdir(), 'kb-snapshot-'))
   })
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true })
   })
 
   it('round-trips a manifest through the filesystem', async () => {
-    const manifest = buildPreparedStateManifest({
+    const manifest = buildSnapshotManifest({
       base: 'demo',
       repos: REPOS,
       indexFiles: ['.kb-index.sqlite'],
@@ -159,12 +171,12 @@ describe('read/write manifest + digest (IO)', () => {
       includesRepos: false,
       tool: 'kb-server',
     })
-    await writePreparedStateManifest(dir, manifest)
-    expect(await readPreparedStateManifest(dir)).toEqual(manifest)
+    await writeSnapshotManifest(dir, manifest)
+    expect(await readSnapshotManifest(dir)).toEqual(manifest)
   })
 
   it('returns null when no manifest is present', async () => {
-    expect(await readPreparedStateManifest(dir)).toBeNull()
+    expect(await readSnapshotManifest(dir)).toBeNull()
   })
 
   it('computes a stable sha256 digest of a file', async () => {

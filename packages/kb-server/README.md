@@ -87,7 +87,8 @@ server-scoped ones; the shorter aliases are kept for back-compat.
 | `KB_SERVER_BASE_GIT_REPOS` (alias `KB_GIT_REPOS`) | first boot | Comma/whitespace-separated `url[#branch]` list to index on an empty volume. |
 | `KB_SERVER_IGNORE` | no | Comma/newline-separated gitignore-style patterns to skip while indexing (e.g. `tests/, **/*.spec.ts, vendor`). Applied on the first build and every reindex. |
 | `KB_REINDEX_INTERVAL` | no | Reindex cadence: `1h`, `30m`, `10s`, or `0` to disable (default `1h`). |
-| `KB_SERVER_BOOTSTRAP_POLICY` | no | `auto` (default) builds on an empty volume; `prepared-only` refuses to build and serves only pre-supplied state (see [handoff](#separate-build-from-serve-prepared-state-handoff)). |
+| `KB_SERVER_BOOTSTRAP_POLICY` | no | `auto` (default) builds on an empty volume; `snapshot-only` refuses to build and serves only pre-supplied state (see [handoff](#separate-build-from-serve-snapshot-handoff)). |
+| `KB_SERVER_SNAPSHOT` (flag `--from <dir>`) | no | Local snapshot directory to adopt at startup (a mounted volume or unpacked artifact). Restored into the base before serving; never downloaded. See [handoff](#separate-build-from-serve-snapshot-handoff). |
 | `KB_HOME` | no | Data dir on the mounted volume (image default `/data`). |
 | `PORT` | no | Host port to expose (container always listens on `38117`). |
 
@@ -113,26 +114,38 @@ For private GitHub repos, keep `KB_GIT_REPOS` as plain `https://github.com/...` 
 set `GITHUB_TOKEN` (or `GH_TOKEN`) separately. The server forwards the token to `git`
 through an in-memory auth header, so cloned repos do not need tokenized remotes.
 
-### Separate build from serve (prepared-state handoff)
+### Build once, warm-start serving nodes (snapshot handoff)
 
-When the initial index build is much heavier than steady-state serving, build once on
-a big worker and serve from a small one. The prepared state is a portable bundle
-(a directory + a `kb-prepared.json` manifest); ship it by any transport.
+The expensive work is the **initial build** (clone + scan + index + facts + embeddings).
+Do it once on a big worker, snapshot the result, and warm-start any number of small
+serving nodes from it — each skips the heavy build and then serves **and keeps its index
+fresh** with cheap incremental reindex. The snapshot is a portable directory (+ a
+`kb-snapshot.json` manifest); ship it by any transport, then place it on the node's disk
+— `kb-server` adopts it from a local path and never downloads the prepared state.
 
 ```bash
 # On the builder (large machine / CI job), after the index is built:
-kb-server export --base acme --out ./acme.kb           # serve-only bundle (small)
+kb-server export --base acme --out ./acme.kb      # faithful: index + settings + repos
 tar czf acme.kb.tgz -C ./acme.kb .
 
-# On the serving worker (small machine / slim image):
-tar xzf acme.kb.tgz -C ./incoming
-kb-server import --from ./incoming --base acme          # verifies digest + compat
-kb-server start --base acme --bootstrap-policy prepared-only
+# On each serving node (small machine / slim image), with the snapshot on local disk:
+tar xzf acme.kb.tgz -C /mnt/kb-state
+kb-server start --base acme --from /mnt/kb-state
 ```
 
-`prepared-only` guarantees the serving worker never does builder-sized work: with no
-index it reports `503` + a `bootstrapError` on `/healthz` instead of rebuilding. Add
-`--with-repos` to `export` if the consumer should also be able to `POST /v1/reindex`.
+`export` is a faithful snapshot by default — the index, all base settings, and the repo
+working trees. `start --from <dir>` adopts it (verifies digest + compatibility, restores
+the base) before serving — no separate `import` step, no network fetch for the state. It
+keeps the default `auto` policy, so the node `git fetch`es + incrementally reindexes on
+the usual schedule; it just never re-runs the heavy initial build. On a restart where the
+volume already carries the index, `--from` is a no-op.
+
+Use `export --no-repos` for a small serve-only artifact; the manifest still records each
+repo's URL + built SHA, so an `auto` node **re-clones the repos from provenance** on
+warm-start and keeps indexing. If a remote is unreachable or its history has diverged from
+the snapshot (force-push), the node **warns and serves the built index as-is** rather than
+failing. For a **frozen, no-git worker**, add `--bootstrap-policy snapshot-only`. The
+explicit two-step path (`kb-server import --from <dir>` then `kb-server start`) also works.
 Full model → [`HANDOFF.md`](./HANDOFF.md).
 
 ## Without pnpm — raw Docker
@@ -252,6 +265,6 @@ polled, but only repos with new commits are re-indexed.
 ## Related docs
 
 - [`src/SERVER.md`](src/SERVER.md) — server internals, endpoints, MCP clients
-- [`HANDOFF.md`](HANDOFF.md) — build-to-serve handoff: prepared-state export/import
+- [`HANDOFF.md`](HANDOFF.md) — build-to-serve handoff: snapshot export + local-disk adopt
 - [`http/HTTP.md`](http/HTTP.md) — API contract + sample requests
 - [`INTEGRATION_TEST.md`](INTEGRATION_TEST.md) — the Docker-based test harness

@@ -7,20 +7,32 @@
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
-import { repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
-import { ensureOperationalBaseDir, readOptionalCliValue, resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
-import { runKbInit } from '@kb/core/ops/init-cli.js'
-import { getKbConfigDir, type KbConfig } from '@kb/core/config/kb-config.js'
-import { runScanCommand } from '@kb/core/ops/scan-command.js'
-import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
+import { type KbConfig, getKbConfigDir } from '@kb/core/config/kb-config.js'
 import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
-import { type BootstrapPlan, type BootstrapPolicy, resolveBootstrapPlan, resolveBootstrapPolicy } from './server-bootstrap.js'
-import { createHttpServer } from './http-server.js'
+import { cloneRepo, isAncestorOfHead, resetToSha } from '@kb/core/ops/git-sync.js'
+import { runKbInit } from '@kb/core/ops/init-cli.js'
+import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import { createKbService } from '@kb/core/service/kb-service.js'
+import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
+import {
+  ensureOperationalBaseDir,
+  readOptionalCliValue,
+  resolveEffectiveBaseDir,
+} from '@kb/core/storage/base-selection.js'
+import { REPOS_SUBDIR, repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
+import { type SnapshotRepoProvenance, readSnapshotManifest } from '@kb/core/storage/snapshot.js'
+import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
 import { streamChatTurn } from './chat-stream.js'
-import { parseDuration, startReindexScheduler } from './reindex-scheduler.js'
+import { createHttpServer } from './http-server.js'
 import { log } from './logger.js'
+import { parseDuration, startReindexScheduler } from './reindex-scheduler.js'
+import {
+  type BootstrapPlan,
+  type BootstrapPolicy,
+  resolveBootstrapPlan,
+  resolveBootstrapPolicy,
+  resolveSnapshotSource,
+} from './server-bootstrap.js'
 import { runServerUninstallCommand } from './uninstall-cli.js'
 
 export interface ServerLogger {
@@ -74,10 +86,10 @@ async function planBootstrapTask(
   log: (line: string) => void
 ): Promise<BootstrapTask | null> {
   if (existsSync(kbIndexDbPath(base.baseDir))) {
-    // Under prepared-only we serve the existing index as-is: no cloning/indexing
-    // of newly-declared repos on boot (refresh stays an explicit operation).
-    if (policy === 'prepared-only') return null
-    return await planNewRepoSync(base, plan, log)
+    // Under snapshot-only we serve the existing index as-is: no cloning/indexing
+    // on boot (refresh stays an explicit operation — adopt a new snapshot).
+    if (policy === 'snapshot-only') return null
+    return await planWarmVolumeTask(base, plan, log)
   }
 
   if (plan.gitTargets.length > 0) {
@@ -115,35 +127,131 @@ async function planBootstrapTask(
 }
 
 /**
- * On a warm volume, fold in any repos the plan declares that the base doesn't yet track.
- * No-ops (fast restart) when nothing new is declared; otherwise idempotent `kb init` swaps to
- * the base, re-syncs it, and clones + indexes the new remotes. Routine refresh of already-
- * tracked repos is left to the reindex scheduler, not boot.
+ * On a warm volume (index already present), reconcile the working trees so the node
+ * can keep indexing:
+ *   1. **Re-clone from provenance** — repos the snapshot recorded but whose working
+ *      tree is missing (a serve-only snapshot, or a lost clone). Each is cloned from
+ *      its `gitUrl` and reset to the built SHA so incremental reindex advances from
+ *      there; a diverged/unreachable remote warns instead of failing.
+ *   2. **Fold in newly-declared repos** — `--git` / env repos the base doesn't track
+ *      yet (idempotent `kb init`).
+ * Routine refresh of already-tracked repos is left to the reindex scheduler, not boot.
+ * No-ops (fast restart) when there is nothing to hydrate or add.
  */
-async function planNewRepoSync(
+async function planWarmVolumeTask(
   base: ResolvedBase,
   plan: BootstrapPlan,
-  log: (line: string) => void,
+  log: (line: string) => void
 ): Promise<BootstrapTask | null> {
-  if (plan.gitTargets.length === 0) return null
-  const repos = await discoverBaseRepos(base.baseDir)
-  const tracked = new Set(repos.map(repo => repo.slug))
-  const newCount = plan.gitTargets.filter(t => !tracked.has(repoSlugFromGitUrl(t.url))).length
-  if (newCount === 0) return null
+  const tracked = new Set((await discoverBaseRepos(base.baseDir)).map(repo => repo.slug))
+
+  const manifest = await readSnapshotManifest(base.baseDir)
+  const toHydrate = (manifest?.provenance.repos ?? []).filter(repo => !tracked.has(repo.slug))
+  const hydrateSlugs = new Set(toHydrate.map(repo => repo.slug))
+
+  const newTargets = plan.gitTargets.filter(target => {
+    const slug = repoSlugFromGitUrl(target.url)
+    return !tracked.has(slug) && !hydrateSlugs.has(slug)
+  })
+
+  if (toHydrate.length === 0 && newTargets.length === 0) return null
+
+  const parts: string[] = []
+  if (toHydrate.length > 0)
+    parts.push(`re-cloning ${toHydrate.length} repo(s) from snapshot provenance`)
+  if (newTargets.length > 0)
+    parts.push(`folding in ${newTargets.length} newly-declared repo(s) from ${plan.source}`)
 
   return {
-    startMessage: `Index present; folding in ${newCount} newly-declared repo(s) from ${plan.source} in the background…`,
+    startMessage: `Index present; ${parts.join(' and ')} in the background…`,
     successMessage: 'Repo sync complete.',
     run: async () => {
-      await runKbInit({
-        base: base.baseRef,
-        nonInteractive: true,
-        gitTargets: plan.gitTargets,
-        ignorePatterns: plan.ignore,
-        progressSink: log,
-      })
+      for (const repo of toHydrate) await hydrateRepoFromProvenance(base.baseDir, repo, log)
+      if (newTargets.length > 0) {
+        await runKbInit({
+          base: base.baseRef,
+          nonInteractive: true,
+          gitTargets: newTargets,
+          ignorePatterns: plan.ignore,
+          progressSink: log,
+        })
+      }
     },
   }
+}
+
+/**
+ * Restore one repo's working tree from its snapshot provenance so a serve-only
+ * snapshot can still keep indexing. Clones from the recorded `gitUrl`, then aligns
+ * the clone to the built SHA when the remote's history still contains it (linear,
+ * fast-forwardable). Warns — rather than fails — when the remote is unreachable or
+ * its history has diverged from the snapshot, since the built index is still valid
+ * to serve as-is.
+ */
+async function hydrateRepoFromProvenance(
+  baseDir: string,
+  repo: SnapshotRepoProvenance,
+  log: (line: string) => void
+): Promise<void> {
+  const dest = path.join(baseDir, REPOS_SUBDIR, repo.slug)
+  const branch = repo.gitBranch || undefined
+  try {
+    log(
+      `   re-cloning ${repo.slug} from ${repo.gitUrl}${branch ? `@${branch}` : ''} to restore its working tree…`
+    )
+    await cloneRepo(repo.gitUrl, dest, branch)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    log(
+      `⚠  cannot reach ${repo.gitUrl} to restore ${repo.slug}: ${message}. Serving the snapshot index as-is; ${repo.slug} will not refresh until the remote is reachable.`
+    )
+    return
+  }
+  if (repo.headSha) {
+    if (await isAncestorOfHead(dest, repo.headSha)) {
+      await resetToSha(dest, repo.headSha)
+    } else {
+      log(
+        `⚠  snapshot may be stale or corrupted for ${repo.slug}: the built commit ${repo.headSha.slice(0, 12)} is not in ${repo.gitBranch}'s history on ${repo.gitUrl} (force-push or diverged history?). Re-export from the builder to resync.`
+      )
+    }
+  }
+}
+
+/**
+ * Adopt a local snapshot already present on disk (a mounted volume or an
+ * unpacked artifact) before the server decides its bootstrap plan, so a serving
+ * worker can start straight from prepared state without a separate `import`
+ * step. The snapshot is read from the local filesystem only — the server never
+ * downloads it. No-ops when `--from` / `KB_SERVER_SNAPSHOT` is unset, and skips
+ * (idempotent restart) when the base already carries an index. A malformed,
+ * incompatible, or corrupt snapshot throws here and fails startup loudly, before
+ * the server binds — an observable misconfiguration rather than a silent build.
+ */
+async function adoptLocalSnapshotIfProvided(
+  args: string[],
+  base: ResolvedBase,
+  out: ServerLogger
+): Promise<void> {
+  const source = resolveSnapshotSource(args)
+  if (!source) return
+  if (existsSync(kbIndexDbPath(base.baseDir))) {
+    out.log(
+      `   base "${base.baseRef}" already has an index; ignoring --from ${source} (wipe the volume to re-adopt).`
+    )
+    return
+  }
+  out.log(`   adopting local snapshot from ${source} …`)
+  const { adoptSnapshot } = await import('./snapshot-cli.js')
+  const manifest = await adoptSnapshot({
+    from: path.resolve(source),
+    baseDir: base.baseDir,
+    force: false,
+    verify: true,
+  })
+  out.log(
+    `   adopted snapshot for base "${base.baseRef}" (built by ${manifest.producer.tool}@${manifest.producer.coreVersion}, index schema ${manifest.compat.indexSchema}, ${manifest.provenance.repos.length} repo(s)).`
+  )
 }
 
 /** Wait for SIGINT/SIGTERM, then run cleanup and resolve. */
@@ -173,13 +281,20 @@ export async function runServerCommand(
 ): Promise<void> {
   const enableMcp = args.includes('--with-mcp')
   const portArg = readOptionalCliValue(args, '--port')
-  const port = portArg ? Number.parseInt(portArg, 10) : Number.parseInt(process.env.PORT ?? '', 10) || DEFAULT_PORT
+  const port = portArg
+    ? Number.parseInt(portArg, 10)
+    : Number.parseInt(process.env.PORT ?? '', 10) || DEFAULT_PORT
   if (Number.isNaN(port) || port <= 0) {
     throw new Error('--port must be a positive integer')
   }
 
   const plan = await resolveBootstrapPlan(args)
   const base = await resolveServerBaseDir(plan)
+
+  // Bring in locally-supplied prepared state (mounted volume / unpacked artifact)
+  // before planning bootstrap, so `start --from <dir>` serves it without building.
+  await adoptLocalSnapshotIfProvided(args, base, out)
+
   let settleBootstrap!: () => void
   const bootstrapSettled = new Promise<void>(resolve => {
     settleBootstrap = resolve
@@ -196,20 +311,28 @@ export async function runServerCommand(
   }
   const policy = resolveBootstrapPolicy(args)
   let bootstrapTask: BootstrapTask | null = null
-  if (policy === 'prepared-only' && !existsSync(kbIndexDbPath(base.baseDir))) {
-    // Serve-from-prepared-state with nothing to serve: refuse to build and make
-    // the missing state observable in /healthz and /v1 responses (503).
+  if (policy === 'snapshot-only' && !existsSync(kbIndexDbPath(base.baseDir))) {
+    // Serve-from-snapshot with nothing to serve: refuse to build and make the
+    // missing state observable in /healthz and /v1 responses (503).
     const message =
-      'no prepared state available: --bootstrap-policy prepared-only is set but no index was found. ' +
-      'Supply one with `kb-server import`, mount a prepared volume, or use --bootstrap-policy auto to build.'
+      'no snapshot available: --bootstrap-policy snapshot-only is set but no index was found. ' +
+      'Supply one with `kb-server start --from <dir>` or `kb-server import`, mount a prepared volume, ' +
+      'or use --bootstrap-policy auto to build.'
     bootstrapState.error = message
     recordBootstrapProgress(`⚠  ${message}`)
   } else {
-    bootstrapTask = await planBootstrapTask(base, plan, policy, line => recordBootstrapProgress(line))
+    bootstrapTask = await planBootstrapTask(base, plan, policy, line =>
+      recordBootstrapProgress(line)
+    )
     if (bootstrapTask) bootstrapState.indexing = true
   }
 
-  const service = createKbService({ baseDir: base.baseDir, config, bootstrapState, chatStream: streamChatTurn })
+  const service = createKbService({
+    baseDir: base.baseDir,
+    config,
+    bootstrapState,
+    chatStream: streamChatTurn,
+  })
   const apiKeys = readApiKeys()
   if (apiKeys.length === 0) {
     out.error('⚠  KB_SERVER_API_KEY is not set — /v1 and /mcp are UNAUTHENTICATED.')
@@ -225,11 +348,13 @@ export async function runServerCommand(
     isRunning: () => false,
   }
   const startScheduler = (): void => {
-    // Under prepared-only, refresh is explicit (re-import a new bundle): never
-    // arm the periodic reindex, which would otherwise fail on a serve-only base
-    // that has no cloned working trees to pull.
-    if (policy === 'prepared-only') {
-      out.log('   periodic reindex disabled (--bootstrap-policy prepared-only); refresh by re-importing a bundle.')
+    // Under snapshot-only, refresh is explicit (adopt a new snapshot): never arm
+    // the periodic reindex, which would otherwise fail on a serve-only base that
+    // has no cloned working trees to pull.
+    if (policy === 'snapshot-only') {
+      out.log(
+        '   periodic reindex disabled (--bootstrap-policy snapshot-only); refresh by adopting a new snapshot.'
+      )
       return
     }
     scheduler = startReindexScheduler({
@@ -255,10 +380,14 @@ export async function runServerCommand(
       ? { signingSecret: slackSigningSecret, botToken: slackBotToken }
       : undefined
   if (slackSigningSecret && !slackBotToken) {
-    out.error('⚠  SLACK_SIGNING_SECRET is set but SLACK_BOT_TOKEN is missing — Slack integration disabled.')
+    out.error(
+      '⚠  SLACK_SIGNING_SECRET is set but SLACK_BOT_TOKEN is missing — Slack integration disabled.'
+    )
   }
   if (slackBotToken && !slackSigningSecret) {
-    out.error('⚠  SLACK_BOT_TOKEN is set but SLACK_SIGNING_SECRET is missing — Slack integration disabled.')
+    out.error(
+      '⚠  SLACK_BOT_TOKEN is set but SLACK_SIGNING_SECRET is missing — Slack integration disabled.'
+    )
   }
 
   const server = createHttpServer({
@@ -310,7 +439,10 @@ export async function runServerCommand(
         const message = error instanceof Error ? error.message : String(error)
         bootstrapState.error = message
         out.error(`⚠  Background bootstrap failed: ${message}`)
-        log.error('background bootstrap failed', { error: message, base: path.basename(base.baseDir) })
+        log.error('background bootstrap failed', {
+          error: message,
+          base: path.basename(base.baseDir),
+        })
       } finally {
         bootstrapState.indexing = false
         settleBootstrap()
@@ -332,12 +464,16 @@ const SERVER_USAGE = `Usage: kb-server <command>
 
 Commands:
   start [--base <name>] [--port <n>] [--with-mcp] [--git <url>]…
-        [--bootstrap-policy auto|prepared-only]
-        Run the KB HTTP/MCP daemon (default command)
-  export [--base <name>] --out <dir> [--with-repos] [--force]
-        Snapshot a built base into a portable prepared-state bundle
+        [--from <dir>] [--bootstrap-policy auto|snapshot-only]
+        Run the KB HTTP/MCP daemon (default command). --from <dir> adopts a
+        local snapshot already on disk (mounted volume / unpacked artifact)
+        before serving — pair with --bootstrap-policy snapshot-only for a
+        serving worker that never builds.
+  export [--base <name>] --out <dir> [--no-repos] [--force]
+        Snapshot a built base into a portable snapshot directory (repos + all
+        settings by default; --no-repos for a small, frozen serve-only artifact)
   import --from <dir> [--base <name>] [--force] [--no-verify]
-        Restore a prepared-state bundle into a base for serving
+        Restore a snapshot into a base for a later start
   uninstall [--purge] [--yes]
         Remove the release-installed kb-server binary/runtime; --purge deletes ~/.kb server data
   stop          Stop a locally installed kb-server service (Phase 5)
@@ -366,12 +502,12 @@ export async function runServerMain(argv: string[]): Promise<void> {
       await runServerUninstallCommand(rest, out)
       return
     case 'export': {
-      const { runExportCommand } = await import('./prepared-state-cli.js')
+      const { runExportCommand } = await import('./snapshot-cli.js')
       await runExportCommand(rest, out)
       return
     }
     case 'import': {
-      const { runImportCommand } = await import('./prepared-state-cli.js')
+      const { runImportCommand } = await import('./snapshot-cli.js')
       await runImportCommand(rest, out)
       return
     }
@@ -385,7 +521,9 @@ export async function runServerMain(argv: string[]): Promise<void> {
         const scriptPath = fileURLToPath(new URL('../scripts/install-service.mjs', import.meta.url))
         await new Promise<void>((resolve, reject) => {
           const child = spawn(process.execPath, [scriptPath], { stdio: 'inherit' })
-          child.on('exit', code => (code === 0 ? resolve() : reject(new Error(`install exited ${code}`))))
+          child.on('exit', code =>
+            code === 0 ? resolve() : reject(new Error(`install exited ${code}`))
+          )
         })
         return
       }

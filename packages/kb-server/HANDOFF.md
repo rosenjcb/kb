@@ -1,40 +1,45 @@
 ---
 type: Guide
 title: Build-to-Serve Handoff Model
-description: A vendor-agnostic model for preparing KB state on a high-resource builder and serving it from a low-resource worker via a portable prepared-state artifact.
+description: A vendor-agnostic model for building KB state once on a high-resource builder and warm-starting low-resource serving nodes from a portable snapshot they adopt from local disk.
 resource: ./packages/kb-server
-tags: [architecture, handoff, prepared-state, deployment, builder, server]
+tags: [architecture, handoff, snapshot, deployment, builder, server]
 timestamp: 2026-07-07T00:00:00Z
 ---
 
 # Build-to-Serve Handoff Model
 
-KB preparation (clone → scan → index → extract facts → write SQLite) can cost far
-more memory and time than steady-state serving. This document defines a **generic,
-vendor-agnostic** way to split those two phases: a high-resource **builder**
-produces a prepared-state artifact, and a low-resource **server** consumes it and
-serves requests **without repeating the heavy build**.
+The expensive part of KB is the **initial build** — clone → scan → index → extract
+facts → embed → write SQLite — which can cost far more memory and time than
+steady-state serving. This document defines a **generic, vendor-agnostic** way to do
+that heavy work **once** and then **warm-start any number of lightweight serving
+nodes** from its output: a high-resource **builder** produces a **snapshot**, and a
+serving node adopts it from a local path, skips the heavy build, and then runs
+normally — serving requests **and keeping its index fresh** with cheap incremental
+reindex across every tracked repo.
 
-Nothing here is tied to a cloud provider, container platform, or orchestrator. The
-prepared state is a plain directory + a JSON manifest, so it moves by any transport
-you already have — `cp`, `rsync`, `scp`, `tar`, an object store, a mounted volume, or
-a CI artifact.
+Nothing here is tied to a cloud provider, container platform, or orchestrator. A
+snapshot is a plain directory + a JSON manifest, so it moves by any transport you
+already have — `cp`, `rsync`, `scp`, `tar`, an object store, a mounted volume, or a
+CI artifact. The deployment system owns transport; `kb-server` only ever reads a
+snapshot that is **already present on the local filesystem** at startup — it never
+downloads the prepared state itself.
 
-## Lifecycle: four explicit phases
+## Lifecycle: build once → hand off → warm-start many
 
 ```mermaid
 flowchart LR
-  subgraph builder ["Builder (high resource)"]
-    B1["prepare: clone + scan + index"]
+  subgraph builder ["Builder (high resource, one-time)"]
+    B1["prepare: clone + scan + index + facts"]
     B2["export: snapshot + manifest"]
     B1 --> B2
   end
-  subgraph transport ["Transport (any)"]
-    T["bundle dir / tarball / volume / artifact"]
+  subgraph transport ["Transport (deployment system's job)"]
+    T["dir / tarball / volume / artifact"]
   end
-  subgraph server ["Server (low resource)"]
-    S1["import: verify + restore"]
-    S2["serve: kb-server start"]
+  subgraph server ["Serving node (low resource, scale out)"]
+    S1["adopt local snapshot: verify + restore"]
+    S2["serve + keep fresh (incremental reindex)"]
     S1 --> S2
   end
   B2 --> T --> S1
@@ -42,41 +47,50 @@ flowchart LR
 
 | Phase | Command | Who | Cost |
 |---|---|---|---|
-| **Prepare** | `kb init` / `kb-server start` (auto) | builder | heavy |
+| **Build** | `kb init` / `kb-server start` (auto) | builder | heavy (one-time) |
 | **Export** | `kb-server export` | builder | cheap (copy + hash) |
-| **Import** | `kb-server import` | server | cheap (copy + verify) |
-| **Serve** | `kb-server start --bootstrap-policy prepared-only` | server | light |
+| **Warm-start + serve** | `kb-server start --from <dir>` | serving node | light |
 
-The phases are deliberately decoupled: preparation is not a side effect of serving,
-and refresh is an explicit operation (see [Refresh](#refresh-rebuild-is-explicit)).
+`start --from <dir>` fuses "adopt the snapshot" and "serve it" into one startup, so a
+serving node needs a single flag. It **defaults to the `auto` bootstrap policy**, so
+after warm-starting the node behaves like any normal node: it serves and keeps its
+index fresh via the incremental reindex scheduler. The expensive initial build is what
+the snapshot skips — not the cheap ongoing refresh.
 
-## Prepared-state artifact contract
+The explicit two-step path (`kb-server import --from <dir>` then `kb-server start`)
+still exists when you want restore and serve as separate, independently observable
+operations.
 
-The prepared state is a directory that mirrors a KB base, plus a manifest at its
-root. The manifest — `kb-prepared.json` — is what lets a server **locate**,
-**trust**, and **verify** state produced elsewhere.
+## Snapshot contract
+
+A snapshot is a **faithful copy of a base** — the consistent index plus every other
+base file (scan/AST manifests, checkpoints, any settings) and, unless you opt out, the
+repo working trees — with a manifest at its root. The manifest — `kb-snapshot.json` —
+is what lets a node **locate**, **trust**, and **verify** state produced elsewhere.
 
 ```
-<bundle>/
-  kb-prepared.json      # manifest: provenance, compat, digest (the contract)
-  .kb-index.sqlite       # the built index — one consistent file, no WAL sidecars
-  repos/<slug>/         # source working trees — ONLY in --with-repos bundles
+<snapshot>/
+  kb-snapshot.json         # manifest: provenance, compat, digest (the contract)
+  .kb-index.sqlite          # the built index — one consistent file, no WAL sidecars
+  source-files-manifest.json, ast-files-manifest.json, checkpoints/, …  # settings/state
+  repos/<slug>/            # source working trees — omitted by `export --no-repos`
 ```
 
 The index is captured with SQLite's `VACUUM INTO`, which takes a read
 transaction and folds any write-ahead log back into a single file. So export is
-**safe against a live builder** (no quiesce needed), the bundle carries exactly
+**safe against a live builder** (no quiesce needed), the snapshot carries exactly
 one `.kb-index.sqlite` with no `-wal`/`-shm` sidecars, and the manifest digest
-covers the whole state. Repo provenance is read from each clone's `origin`
-remote at export time and recorded in the manifest, so it travels even in a
-serve-only bundle that drops the working trees.
+covers the whole index. Per-repo provenance — the `origin` URL, branch, and the
+**built SHA** (the commit the index reflects) — is read from each clone at export time
+and recorded in the manifest, so it travels even in a `--no-repos` snapshot that drops
+the working trees.
 
-`kb-prepared.json` shape (schema `1`, defined in
-[`@kb/core/storage/prepared-state.ts`](../kb-core/src/storage/prepared-state.ts)):
+`kb-snapshot.json` shape (schema `1`, defined in
+[`@kb/core/storage/snapshot.ts`](../kb-core/src/storage/snapshot.ts)):
 
 ```jsonc
 {
-  "kind": "kb-prepared-state",   // discriminator — nothing else is a bundle
+  "kind": "kb-snapshot",          // discriminator — nothing else is a snapshot
   "schemaVersion": 1,             // manifest schema; consumers reject newer
   "createdAt": "2026-07-07T12:00:00.000Z",
   "producer": {
@@ -89,14 +103,14 @@ serve-only bundle that drops the working trees.
   },
   "provenance": {
     "base": "myproject",
-    "repos": [
-      { "gitUrl": "...", "gitBranch": "main",
-        "slug": "org-repo", "lastSyncedSha": "abc123", "lastSyncedAt": "..." }
+    "repos": [                    // multi-repo: one entry per tracked clone
+      { "gitUrl": "...", "gitBranch": "main", "slug": "org-repo",
+        "headSha": "abc123…" }    // the commit the index was built at
     ]
   },
   "contents": {
     "index": [".kb-index.sqlite"],
-    "includesRepos": false        // serve-only bundle drops the working trees
+    "includesRepos": true          // working trees travel unless --no-repos
   },
   "digest": { "algorithm": "sha256", "index": "<hex>" }  // integrity
 }
@@ -109,134 +123,207 @@ The KB index schema is versioned by the highest applied SQLite migration
 [`db-migrations.ts`](../kb-core/src/core/db-migrations.ts)). Migrations only go
 forward, so:
 
-> A consumer may serve a bundle **iff** its own `LATEST_SCHEMA_VERSION` ≥ the
-> bundle's `compat.indexSchema`, **and** it understands the manifest
+> A consumer may serve a snapshot **iff** its own `LATEST_SCHEMA_VERSION` ≥ the
+> snapshot's `compat.indexSchema`, **and** it understands the manifest
 > `schemaVersion`.
 
-An older server refuses a newer bundle rather than silently misreading it —
-`checkPreparedStateCompatibility()` returns the reason, and `kb-server import`
-fails with it. This is the required "prepared state import failed / incompatible"
-signal.
+An older node refuses a newer snapshot rather than silently misreading it —
+`checkSnapshotCompatibility()` returns the reason, and both `kb-server import` and
+`kb-server start --from` fail with it. This is the required "snapshot adoption
+failed / incompatible" signal.
 
-### Serve-only vs builder bundles
+### Full snapshot vs `--no-repos`
 
-Serving needs only `.kb-index.sqlite`. The `repos/<slug>/` working trees are
-needed **only** to refresh/reindex. So:
+An export is faithful by default: it carries the working trees so a node has
+everything to serve **and** keep indexing immediately. `--no-repos` trades that for
+size:
 
-- **`kb-server export`** (default) → *serve-only* bundle: small, no working trees.
-- **`kb-server export --with-repos`** → *builder* bundle: also carries the clones so
-  the consumer can refresh in place.
+- **`kb-server export`** (default) → the index, all base settings, **and** the
+  `repos/<slug>/` working trees. A node serves and reindexes with no network round-trip.
+- **`kb-server export --no-repos`** → index + settings only, no working trees. Small.
+  The manifest still records each repo's `gitUrl` + built SHA, so an `auto` node
+  **re-clones the repos from provenance** on warm-start (see below) and keeps indexing;
+  a `snapshot-only` node serves the index frozen and never touches git.
 
-This is the answer to "what parts of KB state are required for serving vs optional":
-the index is required; the checked-out source is optional.
+The index is always required; the working trees are either shipped or re-cloned.
 
 ## Commands
 
 ### Export (on the builder)
 
 ```bash
-# Build once (heavy), then snapshot the base:
+# Build once (heavy), then snapshot the base (repos + all settings by default):
 kb-server export --base myproject --out ./myproject.kb
 # Ship it however you like:
 tar czf myproject.kb.tgz -C ./myproject.kb .
 ```
 
-`kb-server export [--base <name>] --out <dir> [--with-repos] [--force]`
+`kb-server export [--base <name>] --out <dir> [--no-repos] [--force]`
 - Refuses when the base has no index (nothing to hand off).
-- Writes the manifest with provenance + a sha256 digest of the index.
+- Copies the whole base faithfully; `--no-repos` drops only the working trees for a
+  small, frozen serve-only artifact.
+- Writes the manifest with provenance (incl. each repo's built SHA) + a sha256 digest.
 
-### Import + serve (on the server)
+### Warm-start a serving node
+
+The deployment system places the snapshot on the node's disk (a mounted volume, an
+unpacked tarball, a restored artifact). Then one command adopts it and serves:
+
+```bash
+tar xzf myproject.kb.tgz -C /mnt/kb-state
+kb-server start --base myproject --from /mnt/kb-state
+```
+
+`kb-server start --from <dir>` (env `KB_SERVER_SNAPSHOT`):
+- Adopts a snapshot **already on local disk** — it never downloads the prepared state.
+  The serving runtime needs no object-store auth and no network fetch for the state.
+- Verifies the manifest, checks compatibility, verifies the index sha256, then
+  restores the whole base — index, settings, and (if present) working trees.
+- **Keeps the default `auto` policy**: after warm-starting, the node serves and keeps
+  its index fresh with the incremental reindex scheduler. It skips only the expensive
+  *initial* build.
+- **Re-clones missing working trees from provenance.** For a `--no-repos` snapshot (or a
+  lost clone), an `auto` node clones each repo from its recorded `gitUrl` and resets it
+  to the **built SHA**, so the working tree matches the index and incremental reindex
+  advances from there. This is what keeps a tiny serve-only snapshot self-refreshing.
+- Is a **no-op on a warm restart**: if the base already has an index (a persistent
+  volume survived the restart), `--from` is ignored so a reboot doesn't re-import.
+- Fails **loudly before binding** on a malformed/incompatible/corrupt snapshot — an
+  observable misconfiguration (non-zero exit) rather than a silent rebuild.
+
+#### When a re-clone can't reconcile
+
+Re-cloning depends on the remote still matching the snapshot. Both failure modes
+**warn and keep serving the built index as-is** — they never crash the node or trigger
+a heavy rebuild:
+
+- **Remote unreachable** (network/auth) → `⚠ cannot reach <gitUrl> to restore <repo>;
+  … will not refresh until the remote is reachable.` The index still serves; refresh
+  resumes once the remote is back.
+- **History diverged** — the built SHA is no longer on the branch (force-push /
+  rewritten history) → `⚠ snapshot may be stale or corrupted for <repo>: the built
+  commit … is not in <branch>'s history …; re-export from the builder to resync.`
+  Reconcile relies on **linear history**: as long as the built commit is still an
+  ancestor of the branch tip, the re-clone aligns cleanly and reindex fast-forwards.
+
+### Import + serve as two explicit steps (alternative)
+
+When you prefer restore and serve as separate operations:
 
 ```bash
 tar xzf myproject.kb.tgz -C ./incoming
-kb-server import --from ./incoming --base myproject
-kb-server start --base myproject --bootstrap-policy prepared-only
+kb-server import --from ./incoming --base myproject   # verify + restore only
+kb-server start --base myproject
 ```
 
 `kb-server import --from <dir> [--base <name>] [--force] [--no-verify]`
-- Rejects a directory with no `kb-prepared.json` (not a bundle).
+- Rejects a directory with no `kb-snapshot.json` (not a snapshot).
 - Checks manifest compatibility, then verifies the index sha256 (`--no-verify`
-  overrides), then restores the index + manifest (+ repos if present).
+  overrides), then restores the base faithfully.
 - Refuses to clobber an existing index unless `--force`.
 
-## Bootstrap policy: serve without building
+`import` and `start --from` share one restore path (`adoptSnapshot`), so their
+verification and safety guarantees are identical.
+
+## Bootstrap policy: warm-start vs frozen
 
 `kb-server start` takes `--bootstrap-policy` (or `KB_SERVER_BOOTSTRAP_POLICY`):
 
-| Policy | Empty volume | Warm volume |
+| Policy | Empty volume | Warm volume (index present) |
 |---|---|---|
-| `auto` (default) | build/scan from declared repos | fold in newly-declared repos |
-| `prepared-only` | **refuse**; surface "no prepared state available" | serve the existing index as-is (no boot-time cloning/indexing) |
+| `auto` (default) | build/scan from declared repos | re-clone missing trees from provenance, incrementally reindex, fold in newly-declared repos |
+| `snapshot-only` | **refuse**; surface "no snapshot available" | serve the index frozen; **no** re-clone, no reindex, no git access |
 
-Under `prepared-only`, a lightweight worker can never accidentally do builder-sized
-work. When no index is present the server still binds and `/healthz` responds, but
-reports **not ready** with a `bootstrapError`, and `/v1/query` / `/v1/chat` return
-`503` with the same message — an observable, safe failure instead of a silent heavy
-rebuild.
+`auto` is the default for a warm-started node: it does the cheap ongoing refresh but,
+because the index is already present from the snapshot, it never re-runs the heavy
+initial build.
 
-### Safe failure modes (observable in `/healthz` + logs)
+`snapshot-only` is the **opt-in freeze** for a minimal serve-only worker: no git, no
+reindex. When no index is present (a `snapshot-only` node with no snapshot supplied) the
+node still binds and `/healthz` responds, but reports **not ready** with a
+`bootstrapError`, and `/v1/query` / `/v1/chat` return `503` — an observable, safe
+failure instead of a silent heavy build.
+
+### Observable states (in `/healthz` + logs)
 
 | Condition | `/healthz` | `/v1/*` |
 |---|---|---|
-| Prepared state ready | `200 { ok: true }` | `200` |
-| Import in progress (`auto` first build) | `503 { indexing: true, bootstrapProgress }` | `503` indexing |
-| No prepared state (`prepared-only`, no index) | `503 { bootstrapError: "no prepared state available…" }` | `503` |
-| Import failed / incompatible | non-zero exit on `kb-server import` | — |
+| Snapshot adopted / index present | `200 { ok: true }` | `200` |
+| First build in progress (`auto`, empty volume) | `503 { indexing: true, bootstrapProgress }` | `503` indexing |
+| `snapshot-only` with no index and no `--from` | `503 { bootstrapError: "no snapshot available…" }` | `503` |
+| `--from` snapshot invalid / incompatible | non-zero exit before bind | — |
+| Re-clone remote unreachable / history diverged | `200` (serves), `⚠` in logs | `200` |
 
-## Deployment shapes (all use the same contract)
+## Deployment shapes
 
-- **Local** — `kb-server export --out ./bundle`; on the same or another machine
-  `kb-server import --from ./bundle && kb-server start --bootstrap-policy prepared-only`.
-- **Docker** — a builder image runs `export` to a shared volume or pushes a tarball;
-  a slim serving image runs `import` then `start --bootstrap-policy prepared-only`.
-  The serving image can drop git and build toolchains.
-- **VM** — build on a large VM, `scp`/`rsync` the bundle to a small VM, serve.
-- **Serverless / container service** — build in a large execution environment,
-  publish the bundle to object storage, restore it into a low-cost serving env on
-  cold start.
-- **CI/CD artifact** — a CI job runs `export`, uploads `kb-prepared.json` + bundle as
-  a build artifact; deploy workers `import` it. Provenance (source SHAs, builder
-  version) travels in the manifest.
+- **Local** — `kb-server export --out ./snapshot`; on the same or another machine
+  `kb-server start --from ./snapshot`.
+- **Docker** — a builder image runs `export` to a shared volume or produces a tarball;
+  serving images mount/unpack it and boot with `KB_SERVER_SNAPSHOT=/mnt/kb-state`.
+  Scale the serving image horizontally; each replica warm-starts from the same snapshot.
+- **VM** — build on a large VM, `scp`/`rsync` the snapshot to small VMs, `start --from`.
+- **Kubernetes** — an init container / CSI volume places the snapshot at a mount path;
+  the serving container starts with `--from <mount>`. Scale the Deployment out.
+- **CI/CD artifact** — a CI job runs `export --no-repos`, uploads the small snapshot as a
+  build artifact; deploy workers download it *out of band* into a local path and
+  `start --from`, which re-clones the repos from provenance to keep indexing.
+- **Frozen / air-gapped serve** — `export --no-repos` + `start --from <dir> --bootstrap-policy snapshot-only`
+  for a worker that never touches git and only ever serves the shipped index.
 
-## Refresh / rebuild is explicit
+In every shape, fetching the snapshot bytes is the deployment system's job; `kb-server`
+only consumes a path that is already on local disk.
 
-Refreshing prepared state is a deliberate act, never an implicit startup side
-effect:
+> **Single writer.** Multiple `auto` nodes each keep their **own** volume fresh (each
+> owns its SQLite index); they do not share one index. Warm-start each from the snapshot
+> and let each reindex independently — do not point several writers at one volume.
 
-- Re-run the builder and re-`export` a new bundle (artifact/release flow), **or**
-- `POST /v1/reindex` (or `KB_REINDEX_INTERVAL`) on an `auto`-policy worker that has
-  the working trees.
+## Refresh
 
-`prepared-only` **disables the periodic reindex scheduler entirely** — a serve-only
-bundle has no source trees to pull, so refresh happens by importing a new bundle,
-not by rescanning. This is what keeps the serving footprint minimal and avoids a
-scheduler that would only ever error.
+A warm-started `auto` node keeps **itself** fresh: the scheduler (`KB_REINDEX_INTERVAL`,
+or `POST /v1/reindex`) `git fetch`es every tracked repo — those shipped in the snapshot
+and those re-cloned from provenance — and incrementally reindexes only the repos with
+new commits.
 
-## Design decisions (resolving the ticket's open questions)
+To roll out a larger change (schema bump, full rebuild, new repo set), re-run the builder,
+re-`export` a fresh snapshot, and warm-start new nodes from it — the artifact/release flow.
 
-- **Canonical format?** A directory bundle mirroring the base layout + a
-  `kb-prepared.json` manifest. Transport-agnostic; tar is one optional wrapper, not
-  the format.
-- **Import inside the server or a wrapper?** A separate `kb-server import` step
-  (wrapper/bootstrap), so serving stays a pure consumer and import failures are
-  observable before the server takes traffic.
+`snapshot-only` **disables the reindex scheduler entirely** — a frozen node refreshes only
+by adopting a new snapshot, not by rescanning.
+
+## Design decisions
+
+- **Canonical format?** A faithful directory copy of the base + a `kb-snapshot.json`
+  manifest. Transport-agnostic; tar is one optional wrapper, not the format.
+- **How does the node get the state?** It **adopts it from a local path** at startup
+  (`start --from`) or via an explicit `import` — never by downloading. Transport is the
+  deployment system's responsibility, so the serving runtime needs no cloud/object-store
+  auth for the prepared state.
+- **What does a warm-started node do after restore?** By default (`auto`) it serves,
+  re-clones any missing working trees from provenance, and keeps its index fresh with
+  cheap incremental reindex — it only skips the expensive *initial* build. `snapshot-only`
+  is the opt-in freeze.
+- **What if the remote diverged from the snapshot?** Reconcile assumes linear history:
+  the built SHA must still be an ancestor of the branch tip. If it is (or the remote is
+  reachable at all), the node aligns and keeps indexing; otherwise it warns that the
+  snapshot is stale/corrupted and serves the built index as-is.
 - **Compatibility guarantees?** Forward-only index schema token + manifest schema
   version; consumers refuse anything newer than they understand.
-- **Separate commands, binaries, or modes?** Separate **modes/subcommands** of the
-  existing `kb-server` binary (`export`, `import`, `start --bootstrap-policy`) — no
-  new binary, minimal surface.
-- **Required vs optional state?** The index is required to serve; `repos/` working
-  trees are optional, needed only to refresh.
+- **Separate commands, binaries, or modes?** Subcommands/flags of the existing
+  `kb-server` binary (`export`, `import`, `start --from`, `start --bootstrap-policy`) —
+  no new binary, minimal surface.
+- **Required vs optional state?** The index is required to serve; the working trees are
+  either shipped (default) or re-cloned from provenance — they are what let a node keep
+  indexing rather than serve a frozen index.
 
 ## Future work (not in this cut)
 
-- First-class tarball/object-store transports built into `export`/`import`.
-- Incremental / delta bundles instead of full snapshots.
-- A `kb-server prepare` mode that builds and exits (pure builder, never listens).
+- First-class tarball/object-store transports built into `export` (still
+  deployment-owned by design, but a convenience wrapper).
+- Incremental / delta snapshots instead of full snapshots.
 - Signed manifests for stronger provenance/trust.
 
 ## Related docs
 
 - Server → [`src/SERVER.md`](./src/SERVER.md) · Deploy → [`README.md`](./README.md)
-- Contract → [`@kb/core/storage/prepared-state.ts`](../kb-core/src/storage/prepared-state.ts)
+- Contract → [`@kb/core/storage/snapshot.ts`](../kb-core/src/storage/snapshot.ts)
 - Monorepo → [`../ARCHITECTURE.md`](../ARCHITECTURE.md)

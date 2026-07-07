@@ -12,7 +12,7 @@
 import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import path from 'node:path'
-import { getCurrentBranch, getRemoteUrl } from '@kb/core/ops/git-sync.js'
+import { getCurrentBranch, getHeadSha, getRemoteUrl } from '@kb/core/ops/git-sync.js'
 import { REPOS_SUBDIR } from '@kb/core/storage/repo-slug.js'
 
 /** One git clone tracked by a base, as read back off the volume. */
@@ -23,6 +23,8 @@ export interface BaseRepo {
   slug: string
   /** Clone directory relative to the base dir (`repos/<slug>`). */
   dir: string
+  /** Full SHA of the clone's HEAD — the commit the index reflects (undefined if unreadable). */
+  headSha?: string
 }
 
 /**
@@ -45,11 +47,22 @@ export async function discoverBaseRepos(baseDir: string): Promise<BaseRepo[]> {
     const repoDir = path.join(reposDir, entry.name)
     if (!existsSync(path.join(repoDir, '.git'))) continue
     try {
+      const gitUrl = await getRemoteUrl(repoDir)
+      const gitBranch = await getCurrentBranch(repoDir)
+      // headSha is optional provenance (used to reconcile a re-clone) — a repo
+      // stays tracked even when the commit can't be read.
+      let headSha: string | undefined
+      try {
+        headSha = await getHeadSha(repoDir)
+      } catch {
+        headSha = undefined
+      }
       repos.push({
-        gitUrl: await getRemoteUrl(repoDir),
-        gitBranch: await getCurrentBranch(repoDir),
+        gitUrl,
+        gitBranch,
         slug: entry.name,
         dir: path.join(REPOS_SUBDIR, entry.name),
+        ...(headSha ? { headSha } : {}),
       })
     } catch {
       // Not a readable clone (no origin remote, detached, …) — skip it.

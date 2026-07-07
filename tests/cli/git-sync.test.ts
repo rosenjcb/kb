@@ -3,14 +3,17 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   baseNameFromGitUrl,
   buildGitAuthEnv,
   cloneRepo,
   getCurrentBranch,
+  getHeadSha,
+  isAncestorOfHead,
   pullRepo,
+  resetToSha,
 } from '@kb/core/ops/git-sync.js'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 const execFileAsync = promisify(execFile)
 
@@ -131,7 +134,13 @@ describe('git-sync', () => {
     }
 
     async function setBareHead(branch: string): Promise<void> {
-      await execFileAsync('git', ['--git-dir', bareOrigin, 'symbolic-ref', 'HEAD', `refs/heads/${branch}`])
+      await execFileAsync('git', [
+        '--git-dir',
+        bareOrigin,
+        'symbolic-ref',
+        'HEAD',
+        `refs/heads/${branch}`,
+      ])
     }
 
     beforeEach(async () => {
@@ -204,6 +213,54 @@ describe('git-sync', () => {
 
       expect(hadNewCommits).toBe(true)
       expect(await readFile(path.join(cloneDir, 'README.md'), 'utf8')).toBe('# v2\n')
+    })
+  })
+
+  describe('isAncestorOfHead / resetToSha (snapshot reconcile)', () => {
+    let tmpRoot: string
+    let repo: string
+    let firstSha: string
+    let secondSha: string
+
+    async function git(cwd: string, ...args: string[]): Promise<string> {
+      const { stdout } = await execFileAsync('git', args, { cwd, encoding: 'utf8' })
+      return stdout.trim()
+    }
+
+    beforeEach(async () => {
+      tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'kb-git-sync-reconcile-'))
+      repo = path.join(tmpRoot, 'repo')
+      await mkdir(repo, { recursive: true })
+      await git(repo, 'init', '-b', 'main')
+      await git(repo, 'config', 'user.email', 'test@test.com')
+      await git(repo, 'config', 'user.name', 'Test')
+      await git(repo, 'config', 'commit.gpgsign', 'false')
+      await writeFile(path.join(repo, 'f.txt'), 'v1\n')
+      await git(repo, 'add', '.')
+      await git(repo, 'commit', '-m', 'v1')
+      firstSha = await git(repo, 'rev-parse', 'HEAD')
+      await writeFile(path.join(repo, 'f.txt'), 'v2\n')
+      await git(repo, 'commit', '-am', 'v2')
+      secondSha = await git(repo, 'rev-parse', 'HEAD')
+    })
+
+    afterEach(async () => {
+      await rm(tmpRoot, { recursive: true, force: true })
+    })
+
+    it('reports an earlier commit as an ancestor of HEAD (linear history)', async () => {
+      expect(await isAncestorOfHead(repo, firstSha)).toBe(true)
+      expect(await isAncestorOfHead(repo, secondSha)).toBe(true) // a commit is its own ancestor
+    })
+
+    it('reports an unknown / diverged commit as not an ancestor', async () => {
+      expect(await isAncestorOfHead(repo, 'f'.repeat(40))).toBe(false)
+    })
+
+    it('resetToSha aligns the working tree to the built commit', async () => {
+      await resetToSha(repo, firstSha)
+      expect(await getHeadSha(repo)).toBe(firstSha)
+      expect(await readFile(path.join(repo, 'f.txt'), 'utf8')).toBe('v1\n')
     })
   })
 

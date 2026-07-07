@@ -1,5 +1,20 @@
 # kb-server
 
+## 1.3.1
+
+### Patch Changes
+
+- Rename the build-to-serve prepared-state vocabulary to "snapshot" and add
+  `kb-server start --from <dir>` (env `KB_SERVER_SNAPSHOT`) to adopt a local
+  snapshot already on disk before serving — no separate `import` step and no
+  network download. The bootstrap policy `prepared-only` becomes `snapshot-only`,
+  the manifest is `kb-snapshot.json` (`kind: "kb-snapshot"`), and `export`/`import`
+  share one restore path with the new startup flag. A serving worker can now boot
+  straight from prepared state on a mounted volume with
+  `kb-server start --from /mnt/kb-state --bootstrap-policy snapshot-only`.
+- Updated dependencies
+  - @kb/core@1.3.1
+
 ## 1.3.0
 
 ### Minor Changes

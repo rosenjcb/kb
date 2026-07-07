@@ -15,6 +15,7 @@ vi.mock('@kb/server/server-bootstrap.js', () => ({
     ignore: [],
   })),
   resolveBootstrapPolicy: vi.fn(() => 'auto'),
+  resolveSnapshotSource: vi.fn(() => undefined),
 }))
 
 vi.mock('@kb/core/ops/init-cli.js', () => ({
@@ -40,7 +41,11 @@ vi.mock('@kb/core/tools/graph-query-expansion.js', () => ({
 
 vi.mock('@kb/core/service/kb-service.js', () => ({
   createKbService: vi.fn((options: { bootstrapState: { indexing: boolean } }) => ({
-    health: () => ({ ok: true, base: 'demo', ...(options.bootstrapState.indexing ? { indexing: true } : {}) }),
+    health: () => ({
+      ok: true,
+      base: 'demo',
+      ...(options.bootstrapState.indexing ? { indexing: true } : {}),
+    }),
     reindex: vi.fn(),
     close: vi.fn(async () => {}),
   })),
@@ -81,7 +86,7 @@ describe('runServerCommand bootstrap progress', () => {
     vi.clearAllMocks()
   })
 
-                it('[TC-52] forwards background init progress lines into server logging', async () => {
+  it('[TC-52] forwards background init progress lines into server logging', async () => {
     const out = {
       log: vi.fn(),
       error: vi.fn(),
@@ -107,7 +112,7 @@ describe('runServerCommand bootstrap progress', () => {
     await serverPromise
   })
 
-                it('[TC-53] starts the reindex scheduler only after bootstrap init completes', async () => {
+  it('[TC-53] starts the reindex scheduler only after bootstrap init completes', async () => {
     let resolveInit!: () => void
     vi.mocked(runKbInit).mockImplementationOnce(
       async (options: { progressSink?: (line: string) => void }) =>
@@ -143,8 +148,8 @@ describe('runServerCommand bootstrap progress', () => {
     await serverPromise
   })
 
-  it('under prepared-only policy with no index, refuses to build and surfaces the missing state', async () => {
-    vi.mocked(resolveBootstrapPolicy).mockReturnValueOnce('prepared-only')
+  it('under snapshot-only policy with no index, refuses to build and surfaces the missing state', async () => {
+    vi.mocked(resolveBootstrapPolicy).mockReturnValueOnce('snapshot-only')
     const out = {
       log: vi.fn(),
       error: vi.fn(),
@@ -153,7 +158,7 @@ describe('runServerCommand bootstrap progress', () => {
     const serverPromise = runServerCommand([], out, {} as never)
 
     await vi.waitFor(() => {
-      expect(out.log).toHaveBeenCalledWith(expect.stringContaining('no prepared state available'))
+      expect(out.log).toHaveBeenCalledWith(expect.stringContaining('no snapshot available'))
     })
     expect(runKbInit).not.toHaveBeenCalled()
 

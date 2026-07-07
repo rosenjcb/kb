@@ -22,8 +22,8 @@
  */
 
 import { readIgnorePatternsFromEnv } from '@kb/core/config/kb-ignore.js'
-import { readOptionalCliValue } from '@kb/core/storage/base-selection.js'
 import { type GitTarget, parseGitTarget } from '@kb/core/ops/init-cli.js'
+import { readOptionalCliValue } from '@kb/core/storage/base-selection.js'
 
 /** Resolved, normalized bootstrap plan consumed by the server boot-build. */
 export interface BootstrapPlan {
@@ -42,13 +42,13 @@ export interface BootstrapPlan {
  *
  * - `auto` (default): build/scan from declared repos on an empty volume, and
  *   fold newly-declared repos into a warm volume — the historical behavior.
- * - `prepared-only`: never run the heavy build. Serve an existing index as-is
- *   and, when none exists, refuse and surface "no prepared state available" so a
+ * - `snapshot-only`: never run the heavy build. Serve an existing index as-is
+ *   and, when none exists, refuse and surface "no snapshot available" so a
  *   lightweight serving worker cannot accidentally do builder-sized work. The
- *   prepared state must be supplied out of band (`kb-server import`, a mounted
- *   volume, or a restored snapshot).
+ *   snapshot must be supplied out of band (`kb-server start --from <dir>`,
+ *   `kb-server import`, or a mounted volume).
  */
-export type BootstrapPolicy = 'auto' | 'prepared-only'
+export type BootstrapPolicy = 'auto' | 'snapshot-only'
 
 /**
  * Resolve the bootstrap policy: `--bootstrap-policy` flag > `KB_SERVER_BOOTSTRAP_POLICY`
@@ -58,12 +58,30 @@ export function resolveBootstrapPolicy(
   args: string[],
   env: NodeJS.ProcessEnv = process.env
 ): BootstrapPolicy {
-  const raw = (readOptionalCliValue(args, '--bootstrap-policy') ?? env.KB_SERVER_BOOTSTRAP_POLICY ?? '')
+  const raw = (
+    readOptionalCliValue(args, '--bootstrap-policy') ??
+    env.KB_SERVER_BOOTSTRAP_POLICY ??
+    ''
+  )
     .trim()
     .toLowerCase()
   if (raw === '' || raw === 'auto') return 'auto'
-  if (raw === 'prepared-only') return 'prepared-only'
-  throw new Error(`Invalid bootstrap policy "${raw}" — expected "auto" or "prepared-only".`)
+  if (raw === 'snapshot-only') return 'snapshot-only'
+  throw new Error(`Invalid bootstrap policy "${raw}" — expected "auto" or "snapshot-only".`)
+}
+
+/**
+ * Resolve the local snapshot directory to adopt at boot: `--from` flag >
+ * `KB_SERVER_SNAPSHOT` env. This is a path already present on the local
+ * filesystem (a mounted volume, an unpacked artifact) — the server never
+ * downloads it. Returns undefined when no snapshot is supplied.
+ */
+export function resolveSnapshotSource(
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env
+): string | undefined {
+  const raw = (readOptionalCliValue(args, '--from') ?? env.KB_SERVER_SNAPSHOT ?? '').trim()
+  return raw.length > 0 ? raw : undefined
 }
 
 /** Split a comma- and/or whitespace/newline-separated `url[#branch]` list into git targets. */
