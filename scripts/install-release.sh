@@ -14,8 +14,8 @@ KB_SERVER_RUNTIME="$KB_HOME_DIR/runtime/server"
 KB_BIN_DIR="$KB_HOME_DIR/bin"
 KB_BIN_LINK="$KB_BIN_DIR/kb"
 KB_SERVER_BIN_LINK="$KB_BIN_DIR/kb-server"
-KB_PACKAGE_BIN="$KB_CLIENT_RUNTIME/node_modules/.bin/kb"
-KB_SERVER_PACKAGE_BIN="$KB_SERVER_RUNTIME/node_modules/.bin/kb-server"
+KB_PACKAGE_BIN="$KB_CLIENT_RUNTIME/bin/kb"
+KB_SERVER_PACKAGE_BIN="$KB_SERVER_RUNTIME/bin/kb-server"
 
 INSTALL_CLIENT=true
 INSTALL_SERVER=true
@@ -125,10 +125,6 @@ ensure_node() {
   log "Your shell will use Node $NODE_MAJOR automatically after opening a new terminal."
 }
 
-ensure_npm() {
-  require_command npm
-}
-
 ensure_kb_home() {
   mkdir -p "$KB_BIN_DIR"
   if [[ "$INSTALL_CLIENT" == true ]]; then
@@ -163,12 +159,19 @@ ensure_shell_path() {
   fi
 }
 
-install_release_package() {
+install_release_runtime() {
   local label="$1"
   local prefix="$2"
   local url="$3"
+  local tmp_dir archive_path
+  tmp_dir="$(mktemp -d)"
+  archive_path="$tmp_dir/runtime.tgz"
   log "Installing kb-${label} into ${prefix} from ${url}"
-  npm install --ignore-scripts --prefix "$prefix" "$url"
+  curl -fsSL "$url" -o "$archive_path"
+  rm -rf "$prefix"
+  mkdir -p "$prefix"
+  tar -xzf "$archive_path" -C "$prefix"
+  rm -rf "$tmp_dir"
 }
 
 link_bin() {
@@ -179,11 +182,11 @@ link_bin() {
 
 install_kb_release() {
   if [[ "$INSTALL_CLIENT" == true ]]; then
-    install_release_package client "$KB_CLIENT_RUNTIME" "$CLIENT_TARBALL_URL"
+    install_release_runtime client "$KB_CLIENT_RUNTIME" "$CLIENT_TARBALL_URL"
     link_bin "$KB_BIN_LINK" "$KB_PACKAGE_BIN"
   fi
   if [[ "$INSTALL_SERVER" == true ]]; then
-    install_release_package server "$KB_SERVER_RUNTIME" "$SERVER_TARBALL_URL"
+    install_release_runtime server "$KB_SERVER_RUNTIME" "$SERVER_TARBALL_URL"
     link_bin "$KB_SERVER_BIN_LINK" "$KB_SERVER_PACKAGE_BIN"
   fi
 }
@@ -214,7 +217,8 @@ verify_install() {
 }
 
 ensure_node
-ensure_npm
+require_command curl
+require_command tar
 ensure_kb_home
 ensure_shell_path
 install_kb_release

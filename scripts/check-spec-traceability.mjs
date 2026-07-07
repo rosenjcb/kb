@@ -22,6 +22,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const IGNORED_DIR_NAMES = new Set(['.git', '.tmp', 'dist', 'node_modules'])
 
 /** @typedef {{ spec: string, testGlobs: string[] }} SpecEntry */
 
@@ -36,7 +37,7 @@ function walkFiles(dir, ext, out = []) {
     let st
     try { st = statSync(full) } catch { continue }
     if (st.isDirectory()) {
-      if (name === 'node_modules' || name === 'dist') continue
+      if (IGNORED_DIR_NAMES.has(name)) continue
       walkFiles(full, ext, out)
     } else if (name.endsWith(ext)) out.push(full)
   }
@@ -75,10 +76,10 @@ function collectTcTagsFromFile(filePath, kind) {
   return tags
 }
 
-/** Recursively find every `*.spec.md` in the repo (skips node_modules / dist / .git). */
+/** Recursively find every `*.spec.md` in the repo (skips generated/temp artifact trees). */
 function findSpecFiles(dir = root, out = []) {
   for (const name of readdirSync(dir)) {
-    if (name === 'node_modules' || name === 'dist' || name === '.git') continue
+    if (IGNORED_DIR_NAMES.has(name)) continue
     const full = path.join(dir, name)
     let st
     try { st = statSync(full) } catch { continue }

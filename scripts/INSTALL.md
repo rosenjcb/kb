@@ -17,12 +17,13 @@ Shell scripts for KB lifecycle. Release install ships **`kb`** and **`kb-server`
 sequenceDiagram
   participant User
   participant install-release.sh
-  participant npm
+  participant GitHubRelease
+  participant tar
   participant Shell rc
 
   User->>install-release.sh: curl … | bash
-  install-release.sh->>npm: npm install --prefix ~/.kb/runtime/client <client.tgz>
-  install-release.sh->>npm: npm install --prefix ~/.kb/runtime/server <server.tgz>
+  install-release.sh->>GitHubRelease: download client/server runtime tarballs
+  install-release.sh->>tar: extract into ~/.kb/runtime/{client,server}
   install-release.sh->>Shell rc: PATH=~/.kb/bin
   install-release.sh-->>User: kb + kb-server at ~/.kb/bin/
 ```
@@ -41,11 +42,15 @@ Consumer uninstall: `kb uninstall` → [`../packages/kb-client/src/cli/uninstall
 
 ```
 ~/.kb/
-  bin/kb            → runtime/client/node_modules/.bin/kb
-  bin/kb-server     → runtime/server/node_modules/.bin/kb-server
+  bin/kb            → runtime/client/bin/kb
+  bin/kb-server     → runtime/server/bin/kb-server
   runtime/
-    client/         @kb/client npm package
-    server/         @kb/server npm package
+    client/
+      bin/
+      node_modules/
+    server/
+      bin/
+      node_modules/
   state/            session + default base names
   sessions/<base>/  index + repo clones (server KB_HOME)
   logs/             RunReport NDJSON

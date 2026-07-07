@@ -36,20 +36,11 @@ jobs:
           pnpm run type-check
           pnpm run build
 
-      - name: Pack client artifact
-        working-directory: packages/kb-client
-        run: npm pack
+      - name: Build client runtime artifact
+        run: node scripts/build-release-runtime.mjs client .
 
-      - name: Pack server artifact
-        working-directory: packages/kb-server
-        run: npm pack
-
-      - name: Rename release packages
-        run: |
-          CLIENT="$(ls packages/kb-client/kb-client-*.tgz | head -n 1)"
-          SERVER="$(ls packages/kb-server/kb-server-*.tgz | head -n 1)"
-          mv "$CLIENT" kb-client-node24.tgz
-          mv "$SERVER" kb-server-node24.tgz
+      - name: Build server runtime artifact
+        run: node scripts/build-release-runtime.mjs server .
 
       - name: Prepare bootstrap installer
         run: |

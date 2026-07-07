@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   collectTcTagsForSpec,
+  discoverSpecEntries,
   evaluateSpecTraceability,
   uncoveredTcRows,
 } from '../../scripts/check-spec-traceability.mjs'
@@ -25,5 +26,10 @@ describe('check-spec-traceability', () => {
     for (let i = 1; i <= 10; i++) {
       expect(tags.has(`TC-${i}`)).toBe(true)
     }
+  })
+
+  it('[TC-33] Given generated .tmp spec copies, then discovery ignores them', () => {
+    const entries = discoverSpecEntries()
+    expect(entries.some(entry => entry.spec.startsWith('.tmp/'))).toBe(false)
   })
 })

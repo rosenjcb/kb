@@ -20,7 +20,7 @@ Monorepo context → [`../../CLIENT.md`](../../CLIENT.md) · Connection detail �
 | Git clone + index + reindex | **kb-server** (`KB_GIT_REPOS`, `KB_REINDEX_INTERVAL`) |
 | `kb query`, chat TUI | Client → HTTP → server (`/v1/query`, `/v1/chat`) |
 | `kb docs`, `facts`, `graph`, … | Client → `POST /v1/admin/cli` on server |
-| `kb base use`, `skills`, `sync` | Client-only (local state / install) |
+| `kb base use`, `skills`, `sync` | Client-only (local state / release-runtime install) |
 
 **Server daemon:** `kb-server start` (not a `kb` subcommand). **Indexing:** configure `KB_GIT_REPOS` on kb-server. **Configuration:** `KB_*` environment variables in your shell profile.
 
@@ -87,6 +87,14 @@ Uninitialized base → `uninitializedBaseNotice` (points to `KB_GIT_REPOS`, not 
 
 Unchanged — see prior [`CLI.spec.md`](CLI.spec.md) FR/TC for skills installer, publish preview/apply, and split `kb uninstall` vs `kb-server uninstall`.
 
+## `kb sync`
+
+`kb sync` is a release-runtime refresh, not a source build. It downloads the
+published client and server tarballs from GitHub Releases, extracts them into
+`~/.kb/runtime/{client,server}`, and rewires the stable `~/.kb/bin/kb` and
+`~/.kb/bin/kb-server` symlinks. The managed Node 24 runtime is still required
+for execution, but sync no longer shells out to `npm install`.
+
 ## kb-server (separate binary)
 
 HTTP/MCP daemon: [`../../../kb-server/src/SERVER.md`](../../../kb-server/src/SERVER.md).
@@ -96,6 +104,7 @@ HTTP/MCP daemon: [`../../../kb-server/src/SERVER.md`](../../../kb-server/src/SER
 - **`--host` vs env:** flag wins for one invocation only; shell profile env persists.
 - **Apply defaults:** TUI auto-appends `--apply` for `publish` preview — CLI users pass `--apply` explicitly.
 - **Base resolution:** `@kb/core/storage/base-selection.ts`; missing base → `CLI_ERROR_NO_KB_BASE`.
+- **Sync layout:** release installs expect `runtime/*/bin/*` plus sibling `node_modules/`, not `node_modules/.bin/*`.
 - **Help copy:** TUI hints use slash form via `cmd(name, 'tui')`; CLI uses `kb …`.
 
 ## Related docs

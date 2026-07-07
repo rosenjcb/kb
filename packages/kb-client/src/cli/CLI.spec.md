@@ -60,7 +60,7 @@ See companion doc for full vocabulary where applicable.
 | FR-33 | Retrieval fallback degrades gracefully when deep retrieval fails |
 | FR-34 | Skill installer copies bundled skills to agent home directories |
 | FR-35 | Startup notices print one-time migration and version hints |
-| FR-36 | Sync CLI triggers manual pull + reindex across tracked repos |
+| FR-36 | Sync CLI refreshes the split GitHub Release runtimes and rewires stable client/server binary links |
 | FR-37 | Client uninstall removes release client layout; server uninstall removes server layout and optional ~/.kb data |
 | FR-38 | View CLI renders documents and facts for terminal inspection |
 | FR-39 | Connection context (host + base) is printed on CLI banner, TUI status bar, and chat session open |
@@ -482,7 +482,7 @@ See companion doc for full vocabulary where applicable.
 | TC-471 | FR-35 | suggests switching base via kb base use | pass |
 | TC-472 | FR-35 | reflects the given base name exactly | pass |
 | TC-486 | FR-36 | Given --help, then prints release-based sync help | pass |
-| TC-487 | FR-36 | Given no flags, then sync installs the latest release tarball into ~/.kb and links a stable binary | pass |
+| TC-487 | FR-36 | Given no flags, then sync downloads and extracts both release runtimes and links stable client/server binaries | pass |
 | TC-488 | FR-36 | Given legacy no-build flag, then sync rejects it | pass |
 | TC-489 | FR-36 | Given positional args, then sync rejects them | pass |
 | TC-490 | FR-37 | client uninstall removes kb only and preserves kb-server + server data | pass |

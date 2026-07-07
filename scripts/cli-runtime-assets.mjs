@@ -43,10 +43,23 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
 done
 SCRIPT_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
-# tree-sitter WASM + other @kb/core runtime deps live under the core package.
-KB_CORE_NODE_MODULES="$(cd "$SCRIPT_DIR/../../../kb-core/node_modules" && pwd)"
-KB_ROOT_NODE_MODULES="$(cd "$SCRIPT_DIR/../../../../node_modules" && pwd)"
-export NODE_PATH="$KB_CORE_NODE_MODULES:$KB_ROOT_NODE_MODULES\${NODE_PATH:+:$NODE_PATH}"
+# Prefer a colocated runtime node_modules (release installs), then fall back to
+# the monorepo layout used during local development.
+KB_NODE_PATHS=()
+if [ -d "$SCRIPT_DIR/../node_modules" ]; then
+  KB_NODE_PATHS+=("$(cd "$SCRIPT_DIR/../node_modules" && pwd)")
+fi
+if [ -d "$SCRIPT_DIR/../../../kb-core/node_modules" ]; then
+  KB_NODE_PATHS+=("$(cd "$SCRIPT_DIR/../../../kb-core/node_modules" && pwd)")
+fi
+if [ -d "$SCRIPT_DIR/../../../../node_modules" ]; then
+  KB_NODE_PATHS+=("$(cd "$SCRIPT_DIR/../../../../node_modules" && pwd)")
+fi
+
+if [ "\${#KB_NODE_PATHS[@]}" -gt 0 ]; then
+  KB_JOINED_NODE_PATH="$(IFS=:; printf '%s' "\${KB_NODE_PATHS[*]}")"
+  export NODE_PATH="$KB_JOINED_NODE_PATH\${NODE_PATH:+:$NODE_PATH}"
+fi
 KB_NODE=""
 NVM_DIR="\${NVM_DIR:-\$HOME/.nvm}"
 if [ -d "$NVM_DIR/versions/node" ]; then

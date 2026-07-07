@@ -14,16 +14,11 @@ const TEST_CLIENT_RUNTIME = path.join(TEST_KB_HOME, 'runtime', 'client')
 const TEST_SERVER_RUNTIME = path.join(TEST_KB_HOME, 'runtime', 'server')
 const TEST_KB_BIN_LINK = path.join(TEST_KB_HOME, 'bin', 'kb')
 const TEST_SERVER_BIN_LINK = path.join(TEST_KB_HOME, 'bin', 'kb-server')
-const TEST_KB_PACKAGE_BIN = path.join(TEST_CLIENT_RUNTIME, 'node_modules', '.bin', 'kb')
-const TEST_SERVER_PACKAGE_BIN = path.join(TEST_SERVER_RUNTIME, 'node_modules', '.bin', 'kb-server')
+const TEST_KB_PACKAGE_BIN = path.join(TEST_CLIENT_RUNTIME, 'bin', 'kb')
+const TEST_SERVER_PACKAGE_BIN = path.join(TEST_SERVER_RUNTIME, 'bin', 'kb-server')
 
 const FAKE_NODE_BIN = '/fake/nvm/versions/node/v24.15.0/bin/node'
-const FAKE_NPM_CLI = '/fake/nvm/versions/node/v24.15.0/lib/node_modules/npm/bin/npm-cli.js'
-const FAKE_RUNTIME = { nodeBin: FAKE_NODE_BIN, npmCli: FAKE_NPM_CLI }
-
-function expectedInstallArgs(prefix: string, tarballUrl: string) {
-  return [FAKE_NPM_CLI, 'install', '--ignore-scripts', '--prefix', prefix, tarballUrl]
-}
+const FAKE_RUNTIME = { nodeBin: FAKE_NODE_BIN }
 
 describe('sync-cli', () => {
   it('[TC-486] Given --help, then prints release-based sync help', () => {
@@ -40,27 +35,27 @@ describe('sync-cli', () => {
     process.env.KB_INSTALL_ROOT = TEST_KB_HOME
     await rm(TEST_KB_HOME, { recursive: true, force: true })
 
-    const calls: Array<{ command: string; args: string[]; env?: NodeJS.ProcessEnv }> = []
+    const calls: Array<{ command: string; args: string[] }> = []
     const runCommand = vi.fn(
       async (
         command: string,
         args: string[],
-        _cwd: string,
-        _onProgress?: (line: string) => void,
-        env?: NodeJS.ProcessEnv
+        _cwd: string
       ) => {
-        calls.push({ command, args, env })
-        if (command !== FAKE_NODE_BIN) {
-          throw new Error(`Unexpected command: ${command} ${args.join(' ')}`)
+        calls.push({ command, args })
+        if (command === 'curl') {
+          expect(args[0]).toBe('-fsSL')
+          expect(args[2]).toBe('-o')
+          expect(args[3]).toMatch(/kb-sync-.*\/(client|server)\.tgz$/)
+          return ''
         }
-        const joined = args.join(' ')
-        if (
-          joined === expectedInstallArgs(TEST_CLIENT_RUNTIME, KB_CLIENT_RELEASE_TARBALL_URL).join(' ') ||
-          joined === expectedInstallArgs(TEST_SERVER_RUNTIME, KB_SERVER_RELEASE_TARBALL_URL).join(' ')
-        ) {
-          return 'install ok'
+        if (command === 'tar') {
+          expect(args[0]).toBe('-xzf')
+          expect(args[2]).toBe('-C')
+          expect([TEST_CLIENT_RUNTIME, TEST_SERVER_RUNTIME]).toContain(args[3])
+          return 'extract ok'
         }
-        throw new Error(`Unexpected args: ${joined}`)
+        throw new Error(`Unexpected command: ${command} ${args.join(' ')}`)
       }
     )
 
@@ -77,14 +72,23 @@ describe('sync-cli', () => {
     expect(output).toContain('Sync complete.')
     expect(output).toContain(`Linked ${TEST_KB_BIN_LINK} -> ${TEST_KB_PACKAGE_BIN}`)
     expect(output).toContain(`Linked ${TEST_SERVER_BIN_LINK} -> ${TEST_SERVER_PACKAGE_BIN}`)
-    expect(calls).toHaveLength(2)
-    expect(calls[0]?.args).toEqual(
-      expectedInstallArgs(TEST_CLIENT_RUNTIME, KB_CLIENT_RELEASE_TARBALL_URL)
-    )
-    expect(calls[1]?.args).toEqual(
-      expectedInstallArgs(TEST_SERVER_RUNTIME, KB_SERVER_RELEASE_TARBALL_URL)
-    )
-    expect(calls[0]?.env?.PATH?.startsWith(path.dirname(FAKE_NODE_BIN) + path.delimiter)).toBe(true)
+    expect(calls).toHaveLength(4)
+    expect(calls[0]).toEqual({
+      command: 'curl',
+      args: ['-fsSL', KB_CLIENT_RELEASE_TARBALL_URL, '-o', calls[0]?.args[3] ?? ''],
+    })
+    expect(calls[1]).toEqual({
+      command: 'tar',
+      args: ['-xzf', calls[0]?.args[3] ?? '', '-C', TEST_CLIENT_RUNTIME],
+    })
+    expect(calls[2]).toEqual({
+      command: 'curl',
+      args: ['-fsSL', KB_SERVER_RELEASE_TARBALL_URL, '-o', calls[2]?.args[3] ?? ''],
+    })
+    expect(calls[3]).toEqual({
+      command: 'tar',
+      args: ['-xzf', calls[2]?.args[3] ?? '', '-C', TEST_SERVER_RUNTIME],
+    })
 
     expect((await lstat(TEST_KB_BIN_LINK)).isSymbolicLink()).toBe(true)
     expect(await readlink(TEST_KB_BIN_LINK)).toBe(TEST_KB_PACKAGE_BIN)

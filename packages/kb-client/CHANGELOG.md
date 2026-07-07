@@ -1,5 +1,11 @@
 # @kb/client
 
+## 1.2.6
+
+### Patch Changes
+
+- Fix release runtime packaging so install and sync extract self-contained release artifacts instead of relying on npm workspace tarballs.
+
 ## 1.2.5
 
 ### Patch Changes

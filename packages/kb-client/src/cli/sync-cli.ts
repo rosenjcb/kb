@@ -28,10 +28,8 @@ export interface KbInstallLayout {
   kbServerPackageBin: string
 }
 
-/** A Node binary plus the `npm-cli.js` it ships with, used to drive the install. */
 export interface NodeRuntime {
   nodeBin: string
-  npmCli: string
 }
 
 export function resolveKbInstallLayout(): KbInstallLayout {
@@ -46,8 +44,8 @@ export function resolveKbInstallLayout(): KbInstallLayout {
     binDir,
     kbBinLink: path.join(binDir, 'kb'),
     kbServerBinLink: path.join(binDir, 'kb-server'),
-    kbPackageBin: path.join(clientRuntimeDir, 'node_modules', '.bin', 'kb'),
-    kbServerPackageBin: path.join(serverRuntimeDir, 'node_modules', '.bin', 'kb-server'),
+    kbPackageBin: path.join(clientRuntimeDir, 'bin', 'kb'),
+    kbServerPackageBin: path.join(serverRuntimeDir, 'bin', 'kb-server'),
   }
 }
 
@@ -112,23 +110,26 @@ export async function runSyncCommand(
   onProgress?.(`Managed Node runtime: ${runtime.nodeBin}`)
   onProgress?.(`Stable binary paths: ${layout.kbBinLink}, ${layout.kbServerBinLink}`)
 
-  const nodeBinDir = path.dirname(runtime.nodeBin)
-  const npmEnv = { ...process.env, PATH: `${nodeBinDir}${path.delimiter}${process.env.PATH ?? ''}` }
+  const tmpRoot = path.join(os.tmpdir(), `kb-sync-${Date.now()}-${Math.random().toString(16).slice(2)}`)
   const installLines: string[] = []
 
-  for (const [label, prefix, tarballUrl] of [
-    ['client', layout.clientRuntimeDir, KB_CLIENT_RELEASE_TARBALL_URL],
-    ['server', layout.serverRuntimeDir, KB_SERVER_RELEASE_TARBALL_URL],
-  ] as const) {
-    onProgress?.(`Installing ${label} into ${prefix}`)
-    const output = await run(
-      runtime.nodeBin,
-      [runtime.npmCli, 'install', '--ignore-scripts', '--prefix', prefix, tarballUrl],
-      cwd,
-      onProgress,
-      npmEnv
-    )
-    if (output.trim()) installLines.push(output.trim())
+  await mkdir(tmpRoot, { recursive: true })
+  try {
+    for (const [label, prefix, tarballUrl] of [
+      ['client', layout.clientRuntimeDir, KB_CLIENT_RELEASE_TARBALL_URL],
+      ['server', layout.serverRuntimeDir, KB_SERVER_RELEASE_TARBALL_URL],
+    ] as const) {
+      const archivePath = path.join(tmpRoot, `${label}.tgz`)
+      onProgress?.(`Downloading ${label} runtime`)
+      await run('curl', ['-fsSL', tarballUrl, '-o', archivePath], cwd, onProgress)
+      onProgress?.(`Extracting ${label} into ${prefix}`)
+      await rm(prefix, { recursive: true, force: true })
+      await mkdir(prefix, { recursive: true })
+      const output = await run('tar', ['-xzf', archivePath, '-C', prefix], cwd, onProgress)
+      if (output.trim()) installLines.push(output.trim())
+    }
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true })
   }
 
   await rm(layout.kbBinLink, { force: true })
@@ -174,17 +175,12 @@ function parseSyncCommand(args: string[], mode: CmdMode): void {
   }
 }
 
-/** `npm-cli.js` location relative to a Node binary (`<prefix>/bin/node`). */
-function npmCliForNode(nodeBin: string): string {
-  return path.resolve(path.dirname(nodeBin), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
-}
-
 function currentNodeMajor(): number {
   return Number.parseInt(process.versions.node.split('.')[0] ?? '', 10)
 }
 
 /**
- * Locate KB's managed Node 24 runtime and the npm it ships with. Preference:
+ * Locate KB's managed Node 24 runtime. Preference:
  *   1. An nvm-managed Node 24.x (what the bootstrap installer provisions).
  *   2. The Node already running kb, if it is Node 24.x.
  * Throws with installer guidance when no Node 24 runtime can be found, so sync
@@ -207,9 +203,7 @@ export function findManagedNodeRuntime(): NodeRuntime {
   if (currentNodeMajor() === PINNED_NODE_MAJOR) candidates.push(process.execPath)
 
   for (const nodeBin of candidates) {
-    if (!existsSync(nodeBin)) continue
-    const npmCli = npmCliForNode(nodeBin)
-    if (existsSync(npmCli)) return { nodeBin, npmCli }
+    if (existsSync(nodeBin)) return { nodeBin }
   }
 
   throw new Error(
@@ -235,8 +229,7 @@ async function runShellCommand(
     let stdout = ''
     let stderr = ''
 
-    // Package managers can buffer output when stdout is not a TTY, so data events may only
-    // fire at the end.
+    // Download/extract commands can stay silent for a while when stdout is not a TTY.
     // Emit elapsed-time heartbeats so the caller knows the process is alive.
     let elapsed = 0
     const heartbeat = onProgress
