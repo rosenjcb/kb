@@ -62,6 +62,13 @@ export interface SnapshotRepoProvenance {
   gitUrl: string
   gitBranch: string
   slug: string
+  /**
+   * Full SHA the index was built at. Lets a node that re-clones this repo
+   * (serve-only snapshot, or a lost working tree) align the clone to the built
+   * commit and detect when the remote's history has diverged from the snapshot.
+   * Optional: older snapshots and unreadable clones omit it.
+   */
+  headSha?: string
 }
 
 /** Where the snapshot came from — base name and source repos. */
@@ -129,6 +136,7 @@ function repoProvenanceFromRepos(repos: BaseRepo[]): SnapshotRepoProvenance[] {
     gitUrl: repo.gitUrl,
     gitBranch: repo.gitBranch,
     slug: repo.slug,
+    ...(repo.headSha ? { headSha: repo.headSha } : {}),
   }))
 }
 

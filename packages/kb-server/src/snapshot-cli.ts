@@ -13,17 +13,18 @@
  * The consumer never downloads anything: it reads state already present on the
  * local filesystem.
  *
- * Layout of an exported snapshot:
+ * Layout of an exported snapshot (a faithful copy of the base):
  *
  *   <out>/
  *     kb-snapshot.json      # manifest (provenance, compat, digest)
  *     .kb-index.sqlite       # the built index (one consistent file, no sidecars)
- *     repos/<slug>/         # source working trees — only with --with-repos
+ *     source-files-manifest.json, ast-files-manifest.json, checkpoints/, …  # settings
+ *     repos/<slug>/         # source working trees — dropped by --no-repos
  *
- * Serve-only snapshots (the default) drop `repos/` because serving needs only the
- * index; `--with-repos` keeps them so the consumer can also refresh. Repo
- * provenance is discovered from the clones at export time and recorded in the
- * manifest, so it travels even when the working trees are excluded.
+ * An export carries the whole base by default. `--no-repos` drops the working
+ * trees for a small serve-only artifact; the manifest still records each repo's
+ * URL, branch, and built SHA (from the clones at export time), so a consumer can
+ * re-clone them from provenance and keep indexing even when the trees are excluded.
  */
 
 import { cp, mkdir, readdir, rm, stat } from 'node:fs/promises'
@@ -86,8 +87,8 @@ async function resolveBaseDir(args: string[], cwd: string): Promise<string> {
 export interface ExportOptions {
   /** Snapshot output directory. */
   out: string
-  /** Include `repos/<slug>/` working trees (builder snapshot) instead of serve-only. */
-  withRepos: boolean
+  /** Carry the `repos/<slug>/` working trees. Default true; `--no-repos` opts out. */
+  includeRepos: boolean
   /** Overwrite a non-empty output directory. */
   force: boolean
 }
@@ -95,17 +96,32 @@ export interface ExportOptions {
 function parseExportOptions(args: string[]): ExportOptions {
   const out = readOptionalCliValue(args, '--out')
   if (!out) throw new Error('kb-server export requires --out <dir>')
+  // A snapshot is a faithful export: repos and all base settings travel by default.
+  // `--no-repos` drops the working trees for a small, frozen serve-only artifact;
+  // `--with-repos` is accepted as a no-op for back-compat.
   return {
     out: path.resolve(out),
-    withRepos: args.includes('--with-repos'),
+    includeRepos: !args.includes('--no-repos'),
     force: args.includes('--force'),
   }
 }
 
+/** True for base entries the export handles specially (the live index, replaced by a
+ *  VACUUM'd copy; the manifest, rewritten fresh; the repos dir when `--no-repos`). */
+function skipBaseEntry(name: string, includeRepos: boolean): boolean {
+  if (name === INDEX_BASENAME || name.startsWith(`${INDEX_BASENAME}-`)) return true // sqlite + -wal/-shm
+  if (name === SNAPSHOT_MANIFEST_FILE) return true
+  if (!includeRepos && name === REPOS_DIRNAME) return true
+  return false
+}
+
 /**
- * `kb-server export [--base <name>] --out <dir> [--with-repos] [--force]`
+ * `kb-server export [--base <name>] --out <dir> [--no-repos] [--force]`
  *
- * Snapshots a built base into a portable snapshot directory.
+ * Snapshots a built base into a portable snapshot directory. The export is
+ * faithful: the consistent index plus every other base file — the scan/AST
+ * manifests, checkpoints, and (unless `--no-repos`) the repo working trees — so a
+ * consumer restores the full built state and can keep indexing from it.
  */
 export async function runExportCommand(
   args: string[],
@@ -132,7 +148,7 @@ export async function runExportCommand(
   }
   await mkdir(opts.out, { recursive: true })
 
-  // Capture provenance from the base's clones before (optionally) dropping them.
+  // Capture provenance (incl. each clone's built SHA) before we copy anything.
   const repos = await discoverBaseRepos(baseDir)
 
   // Snapshot the index into one consistent file (safe against a live base).
@@ -140,12 +156,15 @@ export async function runExportCommand(
   snapshotIndex(indexPath, bundledIndexPath)
   const indexFiles = [INDEX_BASENAME]
 
-  const includesRepos = opts.withRepos && (await pathExists(path.join(baseDir, REPOS_DIRNAME)))
-  if (includesRepos) {
-    await cp(path.join(baseDir, REPOS_DIRNAME), path.join(opts.out, REPOS_DIRNAME), {
-      recursive: true,
-    })
+  // Faithfully carry the rest of the base: scan/AST manifests, checkpoints, any
+  // settings, and the repo working trees (unless --no-repos). The live sqlite
+  // files and the old manifest are skipped — they are re-derived above/below.
+  const baseHasRepos = await pathExists(path.join(baseDir, REPOS_DIRNAME))
+  for (const name of await readdir(baseDir)) {
+    if (skipBaseEntry(name, opts.includeRepos)) continue
+    await cp(path.join(baseDir, name), path.join(opts.out, name), { recursive: true })
   }
+  const includesRepos = opts.includeRepos && baseHasRepos
 
   const manifest = buildSnapshotManifest({
     base: baseName,
@@ -220,17 +239,12 @@ export async function adoptSnapshot(opts: AdoptSnapshotOptions): Promise<Snapsho
     )
   }
 
-  // Restore index files, the manifest, and (if present) repo working trees.
-  for (const name of manifest.contents.index) {
-    const src = path.join(opts.from, name)
-    if (await pathExists(src)) await cp(src, path.join(opts.baseDir, name))
-  }
-  const manifestSrc = path.join(opts.from, SNAPSHOT_MANIFEST_FILE)
-  if (await pathExists(manifestSrc))
-    await cp(manifestSrc, path.join(opts.baseDir, SNAPSHOT_MANIFEST_FILE))
-  const reposSrc = path.join(opts.from, REPOS_DIRNAME)
-  if (manifest.contents.includesRepos && (await pathExists(reposSrc))) {
-    await cp(reposSrc, path.join(opts.baseDir, REPOS_DIRNAME), { recursive: true })
+  // Restore the snapshot faithfully: the index, the manifest, and every other
+  // file it carries (scan/AST manifests, checkpoints, settings, and — when
+  // present — the repo working trees). Mirrors the faithful export above.
+  await mkdir(opts.baseDir, { recursive: true })
+  for (const name of await readdir(opts.from)) {
+    await cp(path.join(opts.from, name), path.join(opts.baseDir, name), { recursive: true })
   }
 
   return manifest

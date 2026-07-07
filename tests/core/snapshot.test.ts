@@ -53,6 +53,18 @@ describe('buildSnapshotManifest', () => {
     expect(manifest.digest).toEqual({ algorithm: 'sha256', index: 'deadbeef' })
   })
 
+  it('carries each repo built SHA into provenance when present', () => {
+    const manifest = buildSnapshotManifest({
+      base: 'demo',
+      repos: [{ ...REPOS[0], headSha: 'a'.repeat(40) }],
+      indexFiles: ['.kb-index.sqlite'],
+      indexDigest: 'x',
+      includesRepos: true,
+      tool: 'kb-server',
+    })
+    expect(manifest.provenance.repos[0]?.headSha).toBe('a'.repeat(40))
+  })
+
   it('omits toolVersion when not provided and tolerates empty repos', () => {
     const manifest = buildSnapshotManifest({
       base: 'demo',

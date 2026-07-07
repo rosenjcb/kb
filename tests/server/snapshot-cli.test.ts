@@ -34,12 +34,14 @@ function readIndexMarker(indexPath: string): string {
   }
 }
 
-/** Seed a base with a real index and a git clone whose origin remote gives provenance. */
+/** Seed a base with a real index, a settings file, and a git clone whose origin gives provenance. */
 function seedBase(kbHome: string, name: string, marker = 'INDEX'): string {
   const baseDir = path.join(kbHome, 'sessions', name)
   const clone = path.join(baseDir, 'repos', 'org-repo')
   mkdirSync(clone, { recursive: true })
   writeIndex(path.join(baseDir, '.kb-index.sqlite'), marker)
+  // A non-index base file that a faithful export must carry (scan manifest, etc.).
+  writeFileSync(path.join(baseDir, 'source-files-manifest.json'), `{"marker":"${marker}"}`)
 
   const git = (...args: string[]) => execFileSync('git', args, { cwd: clone, stdio: 'ignore' })
   git('init', '-b', 'main')
@@ -69,33 +71,41 @@ describe('kb-server export / import', () => {
     rmSync(path.dirname(bundle), { recursive: true, force: true })
   })
 
-  it('exports a serve-only snapshot by default (index + manifest, no repos)', async () => {
+  it('exports repos + all settings by default (faithful export)', async () => {
     seedBase(kbHome, 'src')
     const { logger } = capturingLogger()
     await runExportCommand(['--base', 'src', '--out', bundle], logger, kbHome)
 
     const manifest = await readSnapshotManifest(bundle)
     expect(manifest?.provenance.base).toBe('src')
-    expect(manifest?.contents.includesRepos).toBe(false)
-    // Provenance is discovered from the clone even though the tree is excluded.
-    expect(manifest?.provenance.repos).toEqual([
-      { gitUrl: 'https://example.com/org/repo.git', gitBranch: 'main', slug: 'org-repo' },
-    ])
-    // The snapshot is a valid, self-contained index.
-    expect(readIndexMarker(path.join(bundle, '.kb-index.sqlite'))).toBe('INDEX')
-    expect(() => readFileSync(path.join(bundle, 'repos', 'org-repo', 'file.ts'))).toThrow()
-  })
-
-  it('includes repos with --with-repos', async () => {
-    seedBase(kbHome, 'src')
-    const { logger } = capturingLogger()
-    await runExportCommand(['--base', 'src', '--out', bundle, '--with-repos'], logger, kbHome)
-
-    const manifest = await readSnapshotManifest(bundle)
     expect(manifest?.contents.includesRepos).toBe(true)
+    // Provenance records the built SHA so a consumer can reconcile a re-clone.
+    expect(manifest?.provenance.repos[0]).toMatchObject({
+      gitUrl: 'https://example.com/org/repo.git',
+      gitBranch: 'main',
+      slug: 'org-repo',
+    })
+    expect(manifest?.provenance.repos[0]?.headSha).toMatch(/^[0-9a-f]{40}$/)
+    // The index, the working tree, AND non-index settings all travel.
+    expect(readIndexMarker(path.join(bundle, '.kb-index.sqlite'))).toBe('INDEX')
     expect(readFileSync(path.join(bundle, 'repos', 'org-repo', 'file.ts'), 'utf8')).toContain(
       'x = 1'
     )
+    expect(readFileSync(path.join(bundle, 'source-files-manifest.json'), 'utf8')).toContain('INDEX')
+  })
+
+  it('--no-repos produces a small serve-only snapshot (index + settings, no trees)', async () => {
+    seedBase(kbHome, 'src')
+    const { logger } = capturingLogger()
+    await runExportCommand(['--base', 'src', '--out', bundle, '--no-repos'], logger, kbHome)
+
+    const manifest = await readSnapshotManifest(bundle)
+    expect(manifest?.contents.includesRepos).toBe(false)
+    // Working trees dropped, but provenance (incl. built SHA) still travels for re-clone.
+    expect(() => readFileSync(path.join(bundle, 'repos', 'org-repo', 'file.ts'))).toThrow()
+    expect(manifest?.provenance.repos[0]?.headSha).toMatch(/^[0-9a-f]{40}$/)
+    // Non-index settings still travel even in a serve-only snapshot.
+    expect(readFileSync(path.join(bundle, 'source-files-manifest.json'), 'utf8')).toContain('INDEX')
   })
 
   it('round-trips export → import into a fresh base', async () => {
@@ -200,8 +210,12 @@ describe('adoptSnapshot (start --from mechanics)', () => {
 
     expect(manifest.provenance.base).toBe('src')
     expect(readIndexMarker(path.join(targetBase, '.kb-index.sqlite'))).toBe('ADOPTED')
-    // The manifest travels into the served base too.
+    // The manifest, settings, and working tree all travel into the served base.
     expect(existsSync(path.join(targetBase, 'kb-snapshot.json'))).toBe(true)
+    expect(readFileSync(path.join(targetBase, 'source-files-manifest.json'), 'utf8')).toContain(
+      'ADOPTED'
+    )
+    expect(existsSync(path.join(targetBase, 'repos', 'org-repo', 'file.ts'))).toBe(true)
   })
 
   it('refuses to clobber an existing index unless forced', async () => {

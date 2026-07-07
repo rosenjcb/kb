@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { type KbConfig, getKbConfigDir } from '@kb/core/config/kb-config.js'
 import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
+import { cloneRepo, isAncestorOfHead, resetToSha } from '@kb/core/ops/git-sync.js'
 import { runKbInit } from '@kb/core/ops/init-cli.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import { createKbService } from '@kb/core/service/kb-service.js'
@@ -18,7 +19,8 @@ import {
   readOptionalCliValue,
   resolveEffectiveBaseDir,
 } from '@kb/core/storage/base-selection.js'
-import { repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
+import { REPOS_SUBDIR, repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
+import { type SnapshotRepoProvenance, readSnapshotManifest } from '@kb/core/storage/snapshot.js'
 import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
 import { streamChatTurn } from './chat-stream.js'
 import { createHttpServer } from './http-server.js'
@@ -85,9 +87,9 @@ async function planBootstrapTask(
 ): Promise<BootstrapTask | null> {
   if (existsSync(kbIndexDbPath(base.baseDir))) {
     // Under snapshot-only we serve the existing index as-is: no cloning/indexing
-    // of newly-declared repos on boot (refresh stays an explicit operation).
+    // on boot (refresh stays an explicit operation — adopt a new snapshot).
     if (policy === 'snapshot-only') return null
-    return await planNewRepoSync(base, plan, log)
+    return await planWarmVolumeTask(base, plan, log)
   }
 
   if (plan.gitTargets.length > 0) {
@@ -125,34 +127,94 @@ async function planBootstrapTask(
 }
 
 /**
- * On a warm volume, fold in any repos the plan declares that the base doesn't yet track.
- * No-ops (fast restart) when nothing new is declared; otherwise idempotent `kb init` swaps to
- * the base, re-syncs it, and clones + indexes the new remotes. Routine refresh of already-
- * tracked repos is left to the reindex scheduler, not boot.
+ * On a warm volume (index already present), reconcile the working trees so the node
+ * can keep indexing:
+ *   1. **Re-clone from provenance** — repos the snapshot recorded but whose working
+ *      tree is missing (a serve-only snapshot, or a lost clone). Each is cloned from
+ *      its `gitUrl` and reset to the built SHA so incremental reindex advances from
+ *      there; a diverged/unreachable remote warns instead of failing.
+ *   2. **Fold in newly-declared repos** — `--git` / env repos the base doesn't track
+ *      yet (idempotent `kb init`).
+ * Routine refresh of already-tracked repos is left to the reindex scheduler, not boot.
+ * No-ops (fast restart) when there is nothing to hydrate or add.
  */
-async function planNewRepoSync(
+async function planWarmVolumeTask(
   base: ResolvedBase,
   plan: BootstrapPlan,
   log: (line: string) => void
 ): Promise<BootstrapTask | null> {
-  if (plan.gitTargets.length === 0) return null
-  const repos = await discoverBaseRepos(base.baseDir)
-  const tracked = new Set(repos.map(repo => repo.slug))
-  const newCount = plan.gitTargets.filter(t => !tracked.has(repoSlugFromGitUrl(t.url))).length
-  if (newCount === 0) return null
+  const tracked = new Set((await discoverBaseRepos(base.baseDir)).map(repo => repo.slug))
+
+  const manifest = await readSnapshotManifest(base.baseDir)
+  const toHydrate = (manifest?.provenance.repos ?? []).filter(repo => !tracked.has(repo.slug))
+  const hydrateSlugs = new Set(toHydrate.map(repo => repo.slug))
+
+  const newTargets = plan.gitTargets.filter(target => {
+    const slug = repoSlugFromGitUrl(target.url)
+    return !tracked.has(slug) && !hydrateSlugs.has(slug)
+  })
+
+  if (toHydrate.length === 0 && newTargets.length === 0) return null
+
+  const parts: string[] = []
+  if (toHydrate.length > 0)
+    parts.push(`re-cloning ${toHydrate.length} repo(s) from snapshot provenance`)
+  if (newTargets.length > 0)
+    parts.push(`folding in ${newTargets.length} newly-declared repo(s) from ${plan.source}`)
 
   return {
-    startMessage: `Index present; folding in ${newCount} newly-declared repo(s) from ${plan.source} in the background…`,
+    startMessage: `Index present; ${parts.join(' and ')} in the background…`,
     successMessage: 'Repo sync complete.',
     run: async () => {
-      await runKbInit({
-        base: base.baseRef,
-        nonInteractive: true,
-        gitTargets: plan.gitTargets,
-        ignorePatterns: plan.ignore,
-        progressSink: log,
-      })
+      for (const repo of toHydrate) await hydrateRepoFromProvenance(base.baseDir, repo, log)
+      if (newTargets.length > 0) {
+        await runKbInit({
+          base: base.baseRef,
+          nonInteractive: true,
+          gitTargets: newTargets,
+          ignorePatterns: plan.ignore,
+          progressSink: log,
+        })
+      }
     },
+  }
+}
+
+/**
+ * Restore one repo's working tree from its snapshot provenance so a serve-only
+ * snapshot can still keep indexing. Clones from the recorded `gitUrl`, then aligns
+ * the clone to the built SHA when the remote's history still contains it (linear,
+ * fast-forwardable). Warns — rather than fails — when the remote is unreachable or
+ * its history has diverged from the snapshot, since the built index is still valid
+ * to serve as-is.
+ */
+async function hydrateRepoFromProvenance(
+  baseDir: string,
+  repo: SnapshotRepoProvenance,
+  log: (line: string) => void
+): Promise<void> {
+  const dest = path.join(baseDir, REPOS_SUBDIR, repo.slug)
+  const branch = repo.gitBranch || undefined
+  try {
+    log(
+      `   re-cloning ${repo.slug} from ${repo.gitUrl}${branch ? `@${branch}` : ''} to restore its working tree…`
+    )
+    await cloneRepo(repo.gitUrl, dest, branch)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    log(
+      `⚠  cannot reach ${repo.gitUrl} to restore ${repo.slug}: ${message}. Serving the snapshot index as-is; ${repo.slug} will not refresh until the remote is reachable.`
+    )
+    return
+  }
+  if (repo.headSha) {
+    if (await isAncestorOfHead(dest, repo.headSha)) {
+      await resetToSha(dest, repo.headSha)
+    } else {
+      log(
+        `⚠  snapshot may be stale or corrupted for ${repo.slug}: the built commit ${repo.headSha.slice(0, 12)} is not in ${repo.gitBranch}'s history on ${repo.gitUrl} (force-push or diverged history?). Re-export from the builder to resync.`
+      )
+    }
   }
 }
 
@@ -407,8 +469,9 @@ Commands:
         local snapshot already on disk (mounted volume / unpacked artifact)
         before serving — pair with --bootstrap-policy snapshot-only for a
         serving worker that never builds.
-  export [--base <name>] --out <dir> [--with-repos] [--force]
-        Snapshot a built base into a portable snapshot directory
+  export [--base <name>] --out <dir> [--no-repos] [--force]
+        Snapshot a built base into a portable snapshot directory (repos + all
+        settings by default; --no-repos for a small, frozen serve-only artifact)
   import --from <dir> [--base <name>] [--force] [--no-verify]
         Restore a snapshot into a base for a later start
   uninstall [--purge] [--yes]

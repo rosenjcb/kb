@@ -125,7 +125,7 @@ fresh** with cheap incremental reindex. The snapshot is a portable directory (+ 
 
 ```bash
 # On the builder (large machine / CI job), after the index is built:
-kb-server export --base acme --with-repos --out ./acme.kb   # index + source trees
+kb-server export --base acme --out ./acme.kb      # faithful: index + settings + repos
 tar czf acme.kb.tgz -C ./acme.kb .
 
 # On each serving node (small machine / slim image), with the snapshot on local disk:
@@ -133,18 +133,20 @@ tar xzf acme.kb.tgz -C /mnt/kb-state
 kb-server start --base acme --from /mnt/kb-state
 ```
 
-`start --from <dir>` adopts a local snapshot (verifies its digest + compatibility, then
-restores it into the base) before serving — no separate `import` step, no network fetch
-for the state. It keeps the default `auto` policy, so a `--with-repos` snapshot lets the
-node `git fetch` + incrementally reindex on the usual schedule; it just never re-runs the
-heavy initial build. On a restart where the volume already carries the index, `--from`
-is a no-op.
+`export` is a faithful snapshot by default — the index, all base settings, and the repo
+working trees. `start --from <dir>` adopts it (verifies digest + compatibility, restores
+the base) before serving — no separate `import` step, no network fetch for the state. It
+keeps the default `auto` policy, so the node `git fetch`es + incrementally reindexes on
+the usual schedule; it just never re-runs the heavy initial build. On a restart where the
+volume already carries the index, `--from` is a no-op.
 
-For a **frozen, locked-down worker** (serve-only snapshot, no git access, no reindex),
-add `--bootstrap-policy snapshot-only`: with no index it reports `503` + a
-`bootstrapError` on `/healthz` instead of building. The explicit two-step path
-(`kb-server import --from <dir>` then `kb-server start`) also works when you prefer
-restore and serve as separate operations. Full model → [`HANDOFF.md`](./HANDOFF.md).
+Use `export --no-repos` for a small serve-only artifact; the manifest still records each
+repo's URL + built SHA, so an `auto` node **re-clones the repos from provenance** on
+warm-start and keeps indexing. If a remote is unreachable or its history has diverged from
+the snapshot (force-push), the node **warns and serves the built index as-is** rather than
+failing. For a **frozen, no-git worker**, add `--bootstrap-policy snapshot-only`. The
+explicit two-step path (`kb-server import --from <dir>` then `kb-server start`) also works.
+Full model → [`HANDOFF.md`](./HANDOFF.md).
 
 ## Without pnpm — raw Docker
 

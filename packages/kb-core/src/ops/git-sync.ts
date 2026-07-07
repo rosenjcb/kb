@@ -43,7 +43,7 @@ function run(cmd: string, args: string[], cwd: string): Promise<string> {
     const err: Buffer[] = []
     proc.stdout.on('data', (d: Buffer) => out.push(d))
     proc.stderr.on('data', (d: Buffer) => err.push(d))
-    proc.on('close', (code) => {
+    proc.on('close', code => {
       if (code === 0) {
         resolve(Buffer.concat(out).toString('utf8').trim())
       } else {
@@ -129,6 +129,29 @@ export async function pullRepo(repoDir: string): Promise<boolean> {
 /** Return the full SHA of HEAD in the given repo dir. */
 export async function getHeadSha(repoDir: string): Promise<string> {
   return run('git', ['rev-parse', 'HEAD'], repoDir)
+}
+
+/**
+ * True when `sha` is an ancestor of (or equal to) the clone's current HEAD — i.e.
+ * the history is linear-forward from `sha`. Used to reconcile a re-cloned repo
+ * against the commit a snapshot's index was built at: if the built commit is not
+ * on the fetched branch (force-push / diverged / rewritten history), this is
+ * false and the caller warns that the snapshot no longer matches the remote.
+ * Returns false on any git error (missing commit, unreadable repo).
+ */
+export async function isAncestorOfHead(repoDir: string, sha: string): Promise<boolean> {
+  try {
+    await run('git', ['merge-base', '--is-ancestor', sha, 'HEAD'], repoDir)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Hard-reset a clone to a specific commit (used to align a re-clone with the
+ *  snapshot's built SHA so incremental reindex advances from that point). */
+export async function resetToSha(repoDir: string, sha: string): Promise<void> {
+  await run('git', ['reset', '--hard', sha], repoDir)
 }
 
 /** Derive a normalised base name from a git remote URL.
