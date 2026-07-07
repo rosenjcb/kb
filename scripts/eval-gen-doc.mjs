@@ -150,7 +150,7 @@ const HOWTO = {
     ['prereqs', 'Node 24, kb on PATH, git remote URL(s), ~/.kb write access, optional LLM keys.'],
     [
       'steps',
-      'kb init --base NAME --git <url> [--git <url2#branch>]; kb base use NAME; kb base repo add <url> to fold in another repo; kb scan --base NAME to refresh; kb docs list --base NAME.',
+      'kb init --base NAME --git <url> [--git <url2#branch>]; kb base use NAME; add another --git <url> and re-run init to fold in another repo; kb scan --base NAME to refresh; kb docs list --base NAME.',
     ],
     [
       'gotchas',

@@ -1,12 +1,7 @@
-import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@kb/core/ops/auto-sync.js', () => ({
-  maybeAutoSync: vi.fn(),
-}))
-
-vi.mock('@kb/core/storage/base-meta.js', () => ({
-  readBaseMeta: vi.fn(),
+  scanBaseRepos: vi.fn(),
 }))
 
 vi.mock('@kb/core/tools/kb-tools-registry.js', () => ({
@@ -20,33 +15,15 @@ vi.mock('@kb/core/config/kb-config.js', () => ({
   createLLMProviderFromConfig: vi.fn(() => null),
 }))
 
-import { maybeAutoSync } from '@kb/core/ops/auto-sync.js'
-import { readBaseMeta, type GitBaseMeta } from '@kb/core/storage/base-meta.js'
+import { scanBaseRepos } from '@kb/core/ops/auto-sync.js'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { createKbService } from '@kb/core/service/kb-service.js'
 
-const mockMaybeAutoSync = vi.mocked(maybeAutoSync)
-const mockReadBaseMeta = vi.mocked(readBaseMeta)
-
-function meta(): GitBaseMeta {
-  return {
-    repos: [
-      {
-        gitUrl: 'https://github.com/fintary/fintary',
-        gitBranch: 'main',
-        slug: 'fintary-fintary',
-        dir: path.join('repos', 'fintary-fintary'),
-        lastSyncedSha: 'abc123',
-        lastSyncedAt: new Date(0).toISOString(),
-      },
-    ],
-  }
-}
+const mockScanBaseRepos = vi.mocked(scanBaseRepos)
 
 describe('createKbService reindex', () => {
-                it('[TC-16] uses incremental auto-sync semantics instead of a forced full scan', async () => {
-    mockReadBaseMeta.mockResolvedValue(meta())
-    mockMaybeAutoSync.mockResolvedValue(undefined)
+  it('[TC-16] scans the repos discovered on the base volume', async () => {
+    mockScanBaseRepos.mockResolvedValue(1)
 
     const service = createKbService({
       baseDir: '/tmp/demo',
@@ -54,6 +31,11 @@ describe('createKbService reindex', () => {
     })
 
     await expect(service.reindex()).resolves.toBe('Scanned 1 repo(s) for base "demo".')
-    expect(mockMaybeAutoSync).toHaveBeenCalledWith('/tmp/demo', { staleLimitMs: 0 })
+    expect(mockScanBaseRepos).toHaveBeenCalledWith('/tmp/demo', expect.anything())
+
+    // With no repos on the volume, reindex surfaces a clear "declare repos via env" error.
+    mockScanBaseRepos.mockResolvedValue(0)
+    const empty = createKbService({ baseDir: '/tmp/empty', config: {} as KbConfig })
+    await expect(empty.reindex()).rejects.toThrow(/no indexed repos/)
   })
 })

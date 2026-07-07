@@ -124,7 +124,7 @@ Git URLs are mandatory; there is no blank-to-local option and no fact-category p
 
 ## Multi-repo clone + index
 
-After the upfront questions, each `--git` repo is cloned into `~/.kb/sessions/<base>/repos/<slug>/` and recorded in `meta.json`'s `repos` array (`{ gitUrl, gitBranch, slug, dir, lastSyncedSha, lastSyncedAt }`). The per-repo loop runs `read-inputs → code-index → document-facts → import-docs → write` against each clone, tagging every fact with its `git_repo` origin.
+After the upfront questions, each `--git` repo is cloned into `~/.kb/sessions/<base>/repos/<slug>/`. The clones under `repos/*` are the base's tracked-repo registry — each clone's `origin` remote records where it came from, so nothing is persisted alongside them (see `storage/base-repos.ts`, `discoverBaseRepos`). The per-repo loop runs `read-inputs → code-index → document-facts → import-docs → write` against each clone, tagging every fact with its `git_repo` origin.
 
 ## Integration-ingest reconciliation
 

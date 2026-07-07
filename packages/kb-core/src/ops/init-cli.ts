@@ -44,14 +44,8 @@ import {
 } from '@kb/core/tools/tree-sitter-indexer.js'
 import type { SlashInputContext } from '@kb/core/ui/slash-context.js'
 import { scanBaseRepos } from '@kb/core/ops/auto-sync.js'
-import {
-  type GitBaseMeta,
-  type GitRepoMeta,
-  readBaseMeta,
-  repoDirForSlug,
-  repoSlugFromGitUrl,
-  writeBaseMeta,
-} from '@kb/core/storage/base-meta.js'
+import { type BaseRepo, discoverBaseRepos } from '@kb/core/storage/base-repos.js'
+import { repoDirForSlug, repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
 import {
   ensureOperationalBaseDir,
   findKbFile,
@@ -60,7 +54,7 @@ import {
   writeSessionBase,
 } from '@kb/core/storage/base-selection.js'
 import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from '@kb/core/config/cli-prerequisites.js'
-import { baseNameFromGitUrl, cloneRepo, getCurrentBranch, getHeadSha } from '@kb/core/ops/git-sync.js'
+import { baseNameFromGitUrl, cloneRepo } from '@kb/core/ops/git-sync.js'
 import {
   diffChangedAstFiles,
   readAstFilesManifest,
@@ -74,7 +68,7 @@ import {
 } from '@kb/core/ops/init-source-files-manifest.js'
 import { assessTopicCoverage, summariseCoverage } from '@kb/core/ops/init-topic-coverage.js'
 import { createLLMProviderFromConfig, readKbConfig } from '@kb/core/config/kb-config.js'
-import { type IgnoreMatcher, parseIgnoreInput, resolveIgnoreMatcher } from '@kb/core/config/kb-ignore.js'
+import { type IgnoreMatcher, createIgnoreMatcher, readIgnorePatternsFromEnv } from '@kb/core/config/kb-ignore.js'
 
 export type InitCycle = 'read-inputs' | 'code-index' | 'document-facts' | 'import-docs' | 'write'
 export type InitTopic =
@@ -113,8 +107,8 @@ export interface InitOptions {
   gitRepo?: string
   /**
    * Gitignore-style patterns for paths to skip while indexing. Supplied internally to
-   * recursive per-repo runs; for top-level runs the patterns are prompted (fresh init) or
-   * read from the base's `meta.json` (rescan).
+   * recursive per-repo runs; top-level runs fall back to `KB_SERVER_IGNORE`
+   * (see `readIgnorePatternsFromEnv`).
    */
   ignorePatterns?: string[]
 }
@@ -124,6 +118,14 @@ export interface InitOptions {
 export interface GitTarget {
   url: string
   branch?: string
+}
+
+/** A repo cloned during an init run. Just enough to drive per-repo indexing; nothing is
+ *  persisted — the clone on the volume is its own record (see `discoverBaseRepos`). */
+interface InitRepoClone {
+  gitUrl: string
+  slug: string
+  dir: string
 }
 
 export interface InitResult {
@@ -591,16 +593,15 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   }
   const baseDir = await ensureOperationalBaseDir(base, cwd)
 
-  // Idempotent init: when this base already exists (has an index + tracked repos),
-  // a fresh `kb init` would clobber meta.json and re-index from scratch — undefined
-  // territory. Instead swap to the existing base, re-sync its repos, and add any
-  // newly-listed `--git` remotes. Recursive per-repo runs (rescan) skip this so they
-  // can still re-index in place.
+  // Idempotent init: when this base already exists (has an index + cloned repos on the
+  // volume), a fresh `kb init` would re-index from scratch — undefined territory. Instead
+  // swap to the existing base, re-sync its repos, and add any newly-listed `--git` remotes.
+  // Recursive per-repo runs (rescan) skip this so they can still re-index in place.
   if (!options.rescan) {
-    const existingMeta = await readBaseMeta(baseDir)
+    const existingRepos = await discoverBaseRepos(baseDir)
     const indexExists = existsSync(path.join(baseDir, '.kb-index.sqlite'))
-    if (existingMeta && existingMeta.repos.length > 0 && indexExists) {
-      return runExistingBaseSwap({ base, baseDir, options, questionIO, existingMeta })
+    if (existingRepos.length > 0 && indexExists) {
+      return runExistingBaseSwap({ base, baseDir, options, questionIO, existingRepos })
     }
   }
 
@@ -611,8 +612,8 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   //   here and the rest via recursive rescan calls below, then reconcile + write meta.
   let scanDir = cwd
   let gitRepoSlug = options.gitRepo
-  let primaryRepoMeta: GitRepoMeta | undefined
-  let additionalRepos: GitRepoMeta[] = []
+  let primaryRepo: InitRepoClone | undefined
+  let additionalRepos: InitRepoClone[] = []
   if (!options.rescan) {
     const targets = initOptions.gitTargets ?? []
     if (targets.length === 0) {
@@ -620,7 +621,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         'kb init requires at least one git remote. Pass `--git <url>` (repeatable; use url#branch or --branch to override the remote default).'
       )
     }
-    const repoMetas: GitRepoMeta[] = []
+    const clones: InitRepoClone[] = []
     for (const target of targets) {
       const slug = repoSlugFromGitUrl(target.url)
       const dir = repoDirForSlug(slug)
@@ -631,37 +632,18 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         writeInitNotice(options.progressSink, '[init] clone complete.')
       }
       await mkdir(repoDir, { recursive: true })
-      const gitBranch = target.branch ?? (await getCurrentBranch(repoDir))
-      repoMetas.push({
-        gitUrl: target.url,
-        // Record the branch actually checked out (the remote default when none was pinned).
-        gitBranch,
-        slug,
-        dir,
-        lastSyncedSha: await getHeadSha(repoDir),
-        lastSyncedAt: new Date().toISOString(),
-      })
+      clones.push({ gitUrl: target.url, slug, dir })
     }
-    primaryRepoMeta = repoMetas[0]
-    additionalRepos = repoMetas.slice(1)
-    scanDir = path.join(baseDir, primaryRepoMeta.dir)
-    gitRepoSlug = primaryRepoMeta.slug
+    primaryRepo = clones[0]
+    additionalRepos = clones.slice(1)
+    scanDir = path.join(baseDir, primaryRepo.dir)
+    gitRepoSlug = primaryRepo.slug
   }
 
   // Resolve the ignore patterns for this run. Recursive per-repo runs receive them
-  // explicitly; rescans inherit the base's stored list; a fresh init prompts (skippable)
-  // unless a prior (resumed) run already recorded them in meta.json.
-  let ignorePatterns: string[]
-  if (options.ignorePatterns) {
-    ignorePatterns = options.ignorePatterns
-  } else if (options.rescan) {
-    ignorePatterns = (await readBaseMeta(baseDir))?.ignore ?? []
-  } else {
-    ignorePatterns =
-      (await readBaseMeta(baseDir))?.ignore ??
-      (await resolveIgnorePatternsForInit(options, questionIO))
-  }
-  const ignoreMatcher = await resolveIgnoreMatcher(scanDir, ignorePatterns)
+  // explicitly; everything else reads `KB_SERVER_IGNORE` from the environment.
+  const ignorePatterns = options.ignorePatterns ?? readIgnorePatternsFromEnv()
+  const ignoreMatcher = createIgnoreMatcher(ignorePatterns)
 
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
@@ -752,7 +734,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         baseDir,
         scanDir,
         gitRepo: gitRepoSlug,
-        gitUrl: primaryRepoMeta?.gitUrl,
+        gitUrl: primaryRepo?.gitUrl,
       })
     }
 
@@ -1013,8 +995,8 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     }
 
     // Multi-repo init: index the remaining repos into this same base, then bridge them all
-    // into one connected graph. (Additional repos reuse the rescan path; they tag their own
-    // facts and write no meta — the primary run owns meta.json below.)
+    // into one connected graph. (Additional repos reuse the rescan path and tag their own
+    // facts; each repo is self-describing via its clone, so nothing is persisted here.)
     if (!options.rescan && additionalRepos.length > 0) {
       for (const repo of additionalRepos) {
         await runKbInit({
@@ -1079,12 +1061,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     }
   } finally {
     await questionIO.close?.()
-    if (!options.rescan && primaryRepoMeta) {
-      await writeBaseMeta(baseDir, {
-        repos: [primaryRepoMeta, ...additionalRepos],
-        ignore: ignorePatterns.length > 0 ? ignorePatterns : undefined,
-      })
-    }
   }
 
   return {
@@ -1100,20 +1076,19 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
 
 /**
  * Idempotent `kb init` against an already-initialised base. Instead of re-running the
- * fresh-init pipeline (which would overwrite meta.json and re-index from scratch), this
- * swaps to the existing base, re-syncs the repos it already tracks (pull + re-index any
- * with new commits), and clones + indexes any newly-listed `--git` remotes. The swap is
- * announced through both `questionIO.write` (TUI) and `progressSink` (CLI) so it is
- * explicit in either surface.
+ * fresh-init pipeline (which would re-index from scratch), this swaps to the existing base,
+ * re-syncs the repos already cloned on its volume (pull + re-index any with new commits),
+ * and clones + indexes any newly-listed `--git` remotes. The swap is announced through both
+ * `questionIO.write` (TUI) and `progressSink` (CLI) so it is explicit in either surface.
  */
 async function runExistingBaseSwap(params: {
   base: string
   baseDir: string
   options: InitOptions
   questionIO: InitQuestionIO
-  existingMeta: GitBaseMeta
+  existingRepos: BaseRepo[]
 }): Promise<InitResult> {
-  const { base, baseDir, options, questionIO, existingMeta } = params
+  const { base, baseDir, options, questionIO, existingRepos } = params
   const emit = (line: string) => {
     options.progressSink?.(line)
     questionIO.write?.(`${line}\n`)
@@ -1121,7 +1096,7 @@ async function runExistingBaseSwap(params: {
 
   try {
     // Split the requested remotes into "already tracked" (will be re-synced) and "new".
-    const trackedSlugs = new Set(existingMeta.repos.map(r => r.slug))
+    const trackedSlugs = new Set(existingRepos.map(r => r.slug))
     const seen = new Set<string>()
     const newTargets: GitTarget[] = []
     for (const target of options.gitTargets ?? []) {
@@ -1133,15 +1108,16 @@ async function runExistingBaseSwap(params: {
 
     const addNote = newTargets.length > 0 ? `, adding ${newTargets.length} new repo(s).` : '.'
     emit(
-      `[kb init] Base "${base}" already exists — switching to it and re-syncing ${existingMeta.repos.length} tracked repo(s)${addNote}`
+      `[kb init] Base "${base}" already exists — switching to it and re-syncing ${existingRepos.length} tracked repo(s)${addNote}`
     )
 
     // 1) Re-sync the repos the base already tracks (pull + re-index changed, then reconcile).
     await scanBaseRepos(baseDir, { onProgress: emit })
 
-    // 2) Clone + index any newly-listed remotes into the same base graph.
+    // 2) Clone + index any newly-listed remotes into the same base graph. The new clone
+    //    becomes part of the on-volume registry, so nothing needs recording afterward.
     if (newTargets.length > 0) {
-      const ignorePatterns = options.ignorePatterns ?? existingMeta.ignore
+      const ignorePatterns = options.ignorePatterns ?? readIgnorePatternsFromEnv()
       for (const target of newTargets) {
         const slug = repoSlugFromGitUrl(target.url)
         const dir = repoDirForSlug(slug)
@@ -1150,7 +1126,6 @@ async function runExistingBaseSwap(params: {
         if (!existsSync(repoDir)) {
           await cloneRepo(target.url, repoDir, target.branch)
         }
-        const gitBranch = target.branch ?? (await getCurrentBranch(repoDir))
         await runKbInit({
           base,
           cwd: repoDir,
@@ -1163,21 +1138,6 @@ async function runExistingBaseSwap(params: {
           collector: options.collector,
           progressSink: options.progressSink,
           questionIO: SILENT_QUESTION_IO,
-        })
-        // Re-read meta each iteration: the rescan above rewrites it, so we append onto the
-        // latest copy instead of an in-memory snapshot.
-        const latestMeta = (await readBaseMeta(baseDir)) ?? existingMeta
-        const entry: GitRepoMeta = {
-          gitUrl: target.url,
-          gitBranch,
-          slug,
-          dir,
-          lastSyncedSha: await getHeadSha(repoDir),
-          lastSyncedAt: new Date().toISOString(),
-        }
-        await writeBaseMeta(baseDir, {
-          ...latestMeta,
-          repos: [...latestMeta.repos.filter(r => r.slug !== slug), entry],
         })
       }
       // Rebuild the cross-repo bridge edges now that new repos joined the graph.
@@ -1439,8 +1399,8 @@ function createReadlineQuestionIO(): InitQuestionIO {
 }
 
 async function isInitializedGitBase(baseDir: string): Promise<boolean> {
-  const meta = await readBaseMeta(baseDir)
-  return Boolean(meta && meta.repos.length > 0 && existsSync(path.join(baseDir, '.kb-index.sqlite')))
+  const repos = await discoverBaseRepos(baseDir)
+  return repos.length > 0 && existsSync(path.join(baseDir, '.kb-index.sqlite'))
 }
 
 async function resolveInitBaseName(
@@ -1566,39 +1526,6 @@ async function resolveGitTargetsForInit(
     if (targets.length > 0) return targets
     questionIO.write?.('  At least one git URL is required. Enter URL(s) or /cancel to exit.\n')
   }
-}
-
-/**
- * Skippable prompt for gitignore-style ignore patterns during a fresh `kb init`. Returns an
- * empty list when skipped or non-interactive. Patterns are persisted to the base's meta.json
- * and respected on every subsequent scan.
- */
-async function resolveIgnorePatternsForInit(
-  options: InitOptions,
-  questionIO: InitQuestionIO
-): Promise<string[]> {
-  if (options.ignorePatterns) return options.ignorePatterns
-  if (options.nonInteractive) return []
-  // Resume inherits the base's stored ignores (or none) instead of re-prompting.
-  if (options.resume || options.resumeFrom) return []
-  // Otherwise prompt whenever we're interactive. Supplying --git no longer suppresses this,
-  // so a fresh `kb init --git <url>` still gives you the chance to exclude paths (e.g. `docs/`).
-  // Non-interactive / piped / CI stdin is already short-circuited above (and forced to
-  // non-interactive upstream), and programmatic callers pass `ignorePatterns` explicitly.
-
-  questionIO.write?.(
-    '\n[kb init] Ignore paths/globs to skip while indexing (gitignore-style; optional).\n' +
-      '  Comma-separated; press Enter (or /skip) to index everything.\n' +
-      '  Examples: tests/, **/*.spec.ts, vendor, docs/legacy\n\n'
-  )
-  const answer = (
-    await questionIO.askQuestion('  > Ignore patterns (optional)\n    ', {
-      slashContext: 'init-free-text',
-    })
-  ).trim()
-  if (!answer || answer === '/skip') return []
-  if (answer === '/cancel') throw new InitCancelledError()
-  return parseIgnoreInput(answer)
 }
 
 /** A questionIO that never prompts — used for recursive rescans of additional repos. */

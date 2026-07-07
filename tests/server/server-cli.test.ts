@@ -25,8 +25,11 @@ vi.mock('@kb/core/ops/init-cli.js', () => ({
   }),
 }))
 
-vi.mock('@kb/core/storage/base-meta.js', () => ({
-  readBaseMeta: vi.fn(async () => null),
+vi.mock('@kb/core/storage/base-repos.js', () => ({
+  discoverBaseRepos: vi.fn(async () => []),
+}))
+
+vi.mock('@kb/core/storage/repo-slug.js', () => ({
   repoSlugFromGitUrl: vi.fn((url: string) => url.split('/').slice(-2).join('-')),
 }))
 

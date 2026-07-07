@@ -199,7 +199,6 @@ kb docs list|view|generate|rename|delete ...
 ```
 kb base use <base>             — switch active base
 kb base use --default <base>   — save persistent default
-kb base repo list|add|remove ...
 kb facts list|search|show ...
 kb graph ...
 kb skills install|uninstall
@@ -233,16 +232,10 @@ With `kb-server start --with-mcp`, register the server as an MCP tool so your ed
 
 ## Managing bases & repos
 
-Server-side repos come from `KB_GIT_REPOS`. Operators can also add repos to a base:
-
-```bash
-kb base use foo
-kb base repo add <url[#branch]> [--base <name>]
-kb base repo remove <url|slug> [--base <name>]
-kb base ignore add "tests/, **/*.spec.ts"
-```
-
-`.kbignore` at a repo root merges with base ignore patterns at index time.
+The repos a base indexes and the paths it skips are declared on the server through
+environment variables — `KB_SERVER_BASE_GIT_REPOS` (repos, each with an optional inline
+`#branch`) and `KB_SERVER_IGNORE` (gitignore-style ignore patterns) — not through local
+files. See [`packages/kb-server/README.md`](packages/kb-server/README.md).
 
 ## Building & contributing
 

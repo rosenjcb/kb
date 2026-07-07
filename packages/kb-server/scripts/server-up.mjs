@@ -100,13 +100,11 @@ function checkConfig() {
   }
 
   // First boot needs something to index; a warm volume (already-built index) does not.
-  const hasRepos = Boolean(effective(env, 'KB_GIT_REPOS'))
-  const hasManifest =
-    existsSync(path.join(repoRoot, 'kb-server.json')) || existsSync(path.join(pkgRoot, 'kb-server.json'))
-  if (!hasRepos && !hasManifest) {
+  const hasRepos = Boolean(effective(env, 'KB_SERVER_BASE_GIT_REPOS') || effective(env, 'KB_GIT_REPOS'))
+  if (!hasRepos) {
     warnings.push(
-      'No KB_GIT_REPOS and no kb-server.json — a fresh volume will start with an empty index ' +
-        '(set repos, or POST /v1/reindex once the base tracks some).'
+      'No KB_SERVER_BASE_GIT_REPOS / KB_GIT_REPOS — a fresh volume will start with an empty index ' +
+        '(set repos, or POST /v1/reindex once the base has some).'
     )
   }
 

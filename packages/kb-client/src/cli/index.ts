@@ -118,7 +118,6 @@ import {
 } from './remote-commands.js'
 import { resolveReportHost, resolveServerConnection, formatServerAddress, formatConnectionContext } from '../api/server-connection.js'
 import { applyHostCliOverride, parseGlobalCliFlags } from '../api/cli-global-flags.js'
-import { runIgnoreCommand, runRepoCommand } from '@kb/core/cli/repo-cli.js'
 import { runUninstallCommand } from './uninstall-cli'
 import {
   ViewCommandError,
@@ -211,26 +210,13 @@ function printBaseHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('base use --show', mode)}               Show current base configuration`,
     `  ${cmd('base delete <base> [--force]', mode)}  Delete a base`,
     '',
-    'Git repos (a base tracks one or more):',
-    `  ${cmd('base repo list [--base <name>]', mode)}            List the repos a base tracks`,
-    `  ${cmd('base repo add <url[#branch]> [--branch <b>] [--base <name>]', mode)}   Clone + index another repo`,
-    `  ${cmd('base repo remove <url|slug> [--base <name>]', mode)}    Remove a repo and its facts`,
-    '',
-    'Ignore patterns (gitignore-style; skip files/dirs while indexing):',
-    `  ${cmd('base ignore [list] [--base <name>]', mode)}                Show the ignore patterns`,
-    `  ${cmd('base ignore add <patterns…> [--base <name>]', mode)}       Append ignore patterns`,
-    `  ${cmd('base ignore remove <patterns…> [--base <name>]', mode)}    Drop ignore patterns`,
-    `  ${cmd('base ignore set <patterns…> [--base <name>]', mode)}       Replace the whole list`,
-    `  ${cmd('base ignore clear [--base <name>]', mode)}                 Remove all ignore patterns`,
+    'The repos a base indexes and the paths it skips are declared on the server via',
+    'KB_SERVER_BASE_GIT_REPOS and KB_SERVER_IGNORE — see packages/kb-server/README.md.',
     '',
     'Examples:',
     `  ${cmd('base', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
     `  ${cmd('base delete ci-test --force', mode)}`,
-    `  ${cmd('base repo list', mode)}`,
-    `  ${cmd('base repo add https://github.com/acme/pdf-service', mode)}`,
-    `  ${cmd('base repo remove acme-pdf-service', mode)}`,
-    `  ${cmd('base ignore add "tests/, **/*.spec.ts, vendor"', mode)}`,
   ].join('\n')
 }
 
@@ -431,29 +417,6 @@ export async function runMainWithOutput(
 
       const result = await deleteBase(base)
       out.log(formatDeleteBaseResult(base, result, mode))
-      return
-    }
-
-    if (subCmd === 'repo') {
-      try {
-        const result = await runRepoCommand(subArgs.slice(1), {
-          mode,
-          onProgress: line => out.log(line),
-        })
-        out.log(result.output)
-      } catch (error) {
-        out.error(`❌ ${error instanceof Error ? error.message : String(error)}`)
-      }
-      return
-    }
-
-    if (subCmd === 'ignore') {
-      try {
-        const result = await runIgnoreCommand(subArgs.slice(1), { mode })
-        out.log(result.output)
-      } catch (error) {
-        out.error(`❌ ${error instanceof Error ? error.message : String(error)}`)
-      }
       return
     }
 

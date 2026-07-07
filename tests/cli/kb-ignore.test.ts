@@ -1,12 +1,9 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import os from 'node:os'
-import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   createIgnoreMatcher,
   normalizeIgnorePatterns,
   parseIgnoreInput,
-  resolveIgnoreMatcher,
+  readIgnorePatternsFromEnv,
 } from '@kb/core/config/kb-ignore.js'
 
 describe('parseIgnoreInput', () => {
@@ -96,25 +93,16 @@ describe('createIgnoreMatcher', () => {
   })
 })
 
-describe('resolveIgnoreMatcher', () => {
-  let dir: string
-  beforeEach(async () => {
-    dir = await mkdtemp(path.join(os.tmpdir(), 'kb-ignore-'))
-  })
-  afterEach(async () => {
-    await rm(dir, { recursive: true, force: true })
-  })
-
-  it('[TC-363] merges base patterns with a .kbignore file at the repo root', async () => {
-    await writeFile(path.join(dir, '.kbignore'), '# repo rules\nfixtures/\n', 'utf8')
-    const m = await resolveIgnoreMatcher(dir, ['vendor'])
-    expect(m.ignores('vendor', true)).toBe(true)
-    expect(m.ignores('fixtures/data.json')).toBe(true)
+describe('readIgnorePatternsFromEnv', () => {
+  it('[TC-363] parses KB_SERVER_IGNORE (comma/newline separated) into patterns', () => {
+    const patterns = readIgnorePatternsFromEnv({
+      KB_SERVER_IGNORE: 'tests/, **/*.spec.ts\nvendor',
+    } as NodeJS.ProcessEnv)
+    expect(patterns).toEqual(['tests/', '**/*.spec.ts', 'vendor'])
   })
 
-  it('[TC-364] works with no .kbignore present', async () => {
-    const m = await resolveIgnoreMatcher(dir, ['vendor'])
-    expect(m.ignores('vendor', true)).toBe(true)
-    expect(m.ignores('src/main.ts')).toBe(false)
+  it('[TC-364] returns [] when KB_SERVER_IGNORE is unset or empty', () => {
+    expect(readIgnorePatternsFromEnv({} as NodeJS.ProcessEnv)).toEqual([])
+    expect(readIgnorePatternsFromEnv({ KB_SERVER_IGNORE: '' } as NodeJS.ProcessEnv)).toEqual([])
   })
 })

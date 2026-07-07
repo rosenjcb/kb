@@ -24,9 +24,10 @@ answers:
     (`KB_GIT_REPOS`, optional `KB_BASE`), run `kb-server start`, and the server clones, indexes code
     and docs, and re-indexes on a schedule. The **kb client** connects with `kb --host` or
     `KB_HOST` / `KB_PORT` / `KB_SERVER_URL` and asks natural-language questions via `kb query` or
-    interactive chat (`kb`). Bases and repo membership are managed with `kb base` and
-    `kb base repo`; supporting commands expose facts, documents, graph, publishing, and installed
-    skills. The core user loop is: start/configure kb-server → connect the client → query or chat.
+    interactive chat (`kb`). Bases are managed with `kb base`; repo membership and ignore patterns
+    are declared on the server via `KB_SERVER_BASE_GIT_REPOS` and `KB_SERVER_IGNORE`. Supporting
+    commands expose facts, documents, graph, publishing, and installed skills. The core user loop
+    is: start/configure kb-server → connect the client → query or chat.
 
   - >
     Indexing runs inside **@kb/core** on kb-server (or in the eval harness via
@@ -45,9 +46,9 @@ answers:
     such as content hashes in `code_file_state`, and re-runs the relevant indexing phases. Initial
     **bootstrap** (first-time build) clones repos and runs the full phase pipeline; routine
     **scan** / kb-server **reindex** (`POST /v1/reindex` or `KB_REINDEX_INTERVAL`) updates changed
-    files and rebuilds cross-repo links. Operators add or remove tracked repos with `kb base repo
-    add` / `remove` (server-side membership); kb-server picks up configured repos from
-    `KB_GIT_REPOS` on boot.
+    files and rebuilds cross-repo links. Operators change tracked repos by updating
+    `KB_SERVER_BASE_GIT_REPOS` (or `KB_GIT_REPOS`) and restarting; kb-server picks up configured
+    repos from the env on boot and folds in any newly-declared ones.
 
   - >
     Markdown fact ingest is deterministic (`packages/kb-core/src/core/scan-fact-ingest.ts`).

@@ -1,5 +1,13 @@
 # @kb/client
 
+## 1.2.3
+
+### Patch Changes
+
+- Purge the `meta.json` / `.kbignore` / `kb-server.json` config layer — the server is now configured entirely through environment variables (these are Docker service nodes, not local checkouts). Repos and their branches come from `KB_SERVER_BASE_GIT_REPOS` (inline `url#branch`), index-ignore patterns from the new `KB_SERVER_IGNORE`, and a base's tracked repos are discovered from the git clones on its volume rather than a persisted sidecar file. Drops the `kb base repo` and `kb base ignore` commands and the `kb-server.json` bootstrap manifest.
+- Updated dependencies
+  - @kb/core@1.2.3
+
 ## 1.2.2
 
 ### Patch Changes
