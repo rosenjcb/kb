@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { KbApiClient } from '@kb/client/api/kb-api-client.js'
-import { formatConnectionError } from '@kb/client/api/connection-error.js'
+import { formatApiError, formatConnectionError } from '@kb/client/api/connection-error.js'
 import { resolveServerConnection, formatConnectionContext } from '@kb/client/api/server-connection.js'
 
 describe('server-connection', () => {
@@ -72,5 +72,28 @@ describe('KbApiClient', () => {
     expect(msg).not.toContain('pnpm run server:up')
     expect(msg).not.toContain('kb-server install')
     expect(msg).toContain('Is the kb server running?')
+  })
+})
+
+describe('formatApiError', () => {
+  it('[TC-620] turns a 401 into an actionable KB_SERVER_API_KEY hint', () => {
+    const msg = formatApiError(401, JSON.stringify({ error: 'unauthorized' }))
+    expect(msg).toContain('requires an API key')
+    expect(msg).toContain('KB_SERVER_API_KEY')
+    // The bare server payload alone must never be what the user sees.
+    expect(msg).not.toBe('unauthorized')
+  })
+
+  it('[TC-621] gives the API-key hint even when the 401 body is not JSON', () => {
+    const msg = formatApiError(401, 'Unauthorized')
+    expect(msg).toContain('KB_SERVER_API_KEY')
+  })
+
+  it('[TC-622] passes through other server error messages unchanged', () => {
+    expect(formatApiError(404, JSON.stringify({ error: 'base not found' }))).toBe('base not found')
+  })
+
+  it('[TC-623] falls back to a status code when the body has no error field', () => {
+    expect(formatApiError(500, 'boom')).toBe('server error (500)')
   })
 })

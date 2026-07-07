@@ -30,13 +30,31 @@ export function formatConnectionError(connection: ServerConnection, cause?: unkn
   return lines.join('\n')
 }
 
+/** Actionable hint shown when the server rejects a request for want of an API key. */
+export function unauthorizedHint(): string {
+  return [
+    'unauthorized: this kb server requires an API key.',
+    'Set one for the client and retry:',
+    '  export KB_SERVER_API_KEY=<key>',
+    '  # or add server.apiKey to your kb config',
+  ].join('\n')
+}
+
 export function formatApiError(status: number, body: string): string {
+  let serverError: string | undefined
   try {
     const parsed = JSON.parse(body) as { error?: string }
-    if (parsed.error) return parsed.error
+    serverError = parsed.error
   } catch {
-    // fall through
+    // fall through — non-JSON body
   }
+  // A 401 (or an explicit `unauthorized` payload) means the client sent no key or a
+  // wrong one. The bare "unauthorized" the server returns is useless to a user, so
+  // replace it with an actionable hint pointing at KB_SERVER_API_KEY.
+  if (status === 401 || serverError === 'unauthorized') {
+    return unauthorizedHint()
+  }
+  if (serverError) return serverError
   return `server error (${status})`
 }
 

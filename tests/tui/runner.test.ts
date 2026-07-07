@@ -99,6 +99,24 @@ describe('runCommandForTui', () => {
     expect(result).toBe('provider not configured')
   })
 
+  it('[TC-68] signals thrown errors via the onError callback', async () => {
+    vi.mocked(runMainWithOutput).mockRejectedValue(new Error('unauthorized'))
+    const onError = vi.fn()
+    const result = await runCommandForTui(['base', 'list'], {} as never, undefined, undefined, onError)
+    expect(onError).toHaveBeenCalledWith('unauthorized')
+    // The message is still returned so the entry has content to render.
+    expect(result).toBe('unauthorized')
+  })
+
+  it('[TC-69] does not invoke onError when the command succeeds', async () => {
+    vi.mocked(runMainWithOutput).mockImplementation(async (_args, out) => {
+      out.log('ok')
+    })
+    const onError = vi.fn()
+    await runCommandForTui(['base', 'list'], {} as never, undefined, undefined, onError)
+    expect(onError).not.toHaveBeenCalled()
+  })
+
   it('[TC-67] passes args through to runMainWithOutput', async () => {
     vi.mocked(runMainWithOutput).mockResolvedValue(undefined)
     await runCommandForTui(['docs', 'list', '--limit', '5'], {} as never)

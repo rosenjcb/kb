@@ -5,6 +5,7 @@
  */
 
 
+import chalk from 'chalk'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -1043,7 +1044,8 @@ function isHelpOnlyInvocation(args: string[]): boolean {
 
 main().catch(error => {
   // Connection errors and other thrown failures must exit non-zero so scripts/CI/eval can
-  // detect them. Print the clean message (KbConnectionError's message is the full hint).
-  console.error(error instanceof Error ? error.message : String(error))
+  // detect them. Print the clean message (KbConnectionError's message is the full hint),
+  // in red — errors shown to the user are always styled as errors.
+  console.error(chalk.red(error instanceof Error ? error.message : String(error)))
   process.exitCode = 1
 })
