@@ -2,7 +2,10 @@
 type: Spec
 title: "Spec: Knowledge Graph"
 sources: ./tree-sitter-indexer.ts
-tests: ../../../../tests/tools/graph-*.test.ts,../../../../tests/tools/triplet-extractor.test.ts
+tests:
+  - ../../../../tests/tools/graph-query-expansion.test.ts
+  - ../../../../tests/tools/graph-rag-reranker.test.ts
+  - ../../../../tests/tools/triplet-extractor.test.ts
 description: Behavioral specification for Knowledge Graph
 tags: [spec, kb]
 timestamp: 2026-06-28T04:05:29Z

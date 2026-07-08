@@ -74,7 +74,7 @@ pnpm run type-check && pnpm run lint && pnpm run spec:check && pnpm run test
 
 ### Behavioral specs
 
-Requirements live in sibling `*.spec.md` files (FR/TC tables). Tests that prove a TC must be tagged `[TC-N]` in the test name. CI enforces traceability via:
+Requirements live in sibling `*.spec.md` files (FR/TC tables). Tests that prove a TC must be tagged `[TC-N]` in the test name. CI enforces coverage with the [`spec-md`](https://github.com/rosenjcb/spec.md/tree/main/cli) CLI via:
 
 ```bash
 pnpm run spec:check

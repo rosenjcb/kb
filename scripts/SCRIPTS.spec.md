@@ -30,7 +30,6 @@ See companion doc for full vocabulary where applicable.
 |------|------------|
 | FR-1 | Changeset consistency gate enforces version bump policy on PRs |
 | FR-2 | Node version check enforces engines.node before install |
-| FR-3 | Spec traceability discovery ignores generated temp/runtime artifact specs |
 
 ### QA Test Cases
 
@@ -65,10 +64,6 @@ See companion doc for full vocabulary where applicable.
 | TC-27 | FR-2 | returns 0 when package.json has no engines.node | pass |
 | TC-28 | FR-2 | returns 0 when current version satisfies engines.node | pass |
 | TC-29 | FR-2 | returns 1 and prints nvm hints when version is too old | pass |
-| TC-30 | FR-3 | FACT_CURATOR spec traceability | evaluateSpecTraceability passes |
-| TC-31 | FR-3 | TC row with no matching test tag | uncoveredTcRows reports missing id |
-| TC-32 | FR-3 | fact-curator test tags | TC-1 through TC-10 present in scope |
-| TC-33 | FR-3 | generated .tmp spec copies are ignored during spec discovery | pass |
 
 ### Related docs
 

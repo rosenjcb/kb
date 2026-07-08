@@ -41,7 +41,7 @@
     "type-check": "pnpm -r --filter @kb/core --filter @kb/client --filter @kb/server run type-check",
     "changeset:check": "node scripts/check-changeset-consistency.mjs",
     "changeset:check:staged": "node scripts/check-changeset-consistency.mjs --staged",
-    "spec:check": "node scripts/check-spec-traceability.mjs",
+    "spec:check": "spec-md coverage --strict .",
     "changeset:version": "node scripts/update-research-version.mjs",
     "release": "node scripts/publish.mjs",
     "precommit": "node scripts/check-changeset-consistency.mjs --staged && npm run lint:fix:staged && npm run type-check && npm run lint && npm run spec:check && npm run test",
@@ -51,6 +51,7 @@
   "devDependencies": {
     "@biomejs/biome": "^1.8.0",
     "@changesets/cli": "^2.31.0",
+    "@rosenjcb/spec-md": "^0.2.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.28",

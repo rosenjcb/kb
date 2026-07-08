@@ -2,7 +2,47 @@
 type: Spec
 title: "Spec: CLI Layer"
 sources: ./
-tests: ../../../../tests/cli
+# Precise, disjoint scope: tests/cli minus the files owned by CONNECTION.spec.md
+# (kb-api-client.test.ts, cli-global-flags.test.ts). TC ids are per-spec, so a
+# whole-dir claim would over-select CONNECTION's [TC-N] tags. Add new tests/cli
+# files here when they carry CLI [TC-N] tags.
+tests:
+  - ../../../../tests/cli/auto-sync.test.ts
+  - ../../../../tests/cli/base-cli.test.ts
+  - ../../../../tests/cli/base-repos.test.ts
+  - ../../../../tests/cli/base-selection.test.ts
+  - ../../../../tests/cli/chat-cli.test.ts
+  - ../../../../tests/cli/chat-docs-generate-flow.test.ts
+  - ../../../../tests/cli/chat-query-orchestrator.test.ts
+  - ../../../../tests/cli/chat-retrieval-refusal.test.ts
+  - ../../../../tests/cli/cmd-ref.test.ts
+  - ../../../../tests/cli/collect-source-files.test.ts
+  - ../../../../tests/cli/docs-delete-cli.test.ts
+  - ../../../../tests/cli/docs-generate-cli.test.ts
+  - ../../../../tests/cli/docs-generate-flow.test.ts
+  - ../../../../tests/cli/docs-generate-sections.test.ts
+  - ../../../../tests/cli/docs-rename-cli.test.ts
+  - ../../../../tests/cli/facts-cli.test.ts
+  - ../../../../tests/cli/git-sync.test.ts
+  - ../../../../tests/cli/graph-cli.test.ts
+  - ../../../../tests/cli/init-ast-files-manifest.test.ts
+  - ../../../../tests/cli/init-cli.test.ts
+  - ../../../../tests/cli/init-source-files-manifest.test.ts
+  - ../../../../tests/cli/init-source-snapshots.test.ts
+  - ../../../../tests/cli/init-topic-coverage.test.ts
+  - ../../../../tests/cli/intent-cli.test.ts
+  - ../../../../tests/cli/kb-config.test.ts
+  - ../../../../tests/cli/kb-ignore.test.ts
+  - ../../../../tests/cli/logs-cli.test.ts
+  - ../../../../tests/cli/named-list-interview.test.ts
+  - ../../../../tests/cli/publish-cli.test.ts
+  - ../../../../tests/cli/repo-slug.test.ts
+  - ../../../../tests/cli/retrieval-fallback.test.ts
+  - ../../../../tests/cli/skill-installer.test.ts
+  - ../../../../tests/cli/startup-notices.test.ts
+  - ../../../../tests/cli/sync-cli.test.ts
+  - ../../../../tests/cli/uninstall-cli.test.ts
+  - ../../../../tests/cli/view-cli.test.ts
 description: Behavioral specification for CLI Layer
 tags: [spec, kb]
 timestamp: 2026-06-28T04:05:29Z

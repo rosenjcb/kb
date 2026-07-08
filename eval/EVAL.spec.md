@@ -2,7 +2,12 @@
 type: Spec
 title: "Spec: MOEL Evaluation Framework"
 sources: ./
-tests: ../tests/eval,../tests/eval-*.test.ts
+tests:
+  - ../tests/eval
+  - ../tests/eval-run.test.ts
+  - ../tests/eval-server.test.ts
+  - ../tests/eval-snapshot.test.ts
+  - ../tests/eval-task-artifact.test.ts
 description: Behavioral specification for MOEL Evaluation Framework
 tags: [spec, kb]
 timestamp: 2026-06-30T00:00:00Z

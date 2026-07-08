@@ -25,7 +25,9 @@ packages/kb-core/src/tools/document-writer.ts   →   tests/tools/document-write
 
 Behavioral requirements live in sibling `*.spec.md` files (`type: Spec`) with **FR-N**
 (functional requirements) and **TC-N** (QA test cases) tables. Architecture detail stays in
-OKF companions. See [spec.md](https://github.com/rosenjcb/spec.md). Each spec declares implementation in `sources:` and verification in `tests:` (comma-separated paths relative to the spec file). `spec:check` discovers `*.spec.md` files across the repo and derives per-spec scope from `tests:` (no central manifest).
+OKF companions. See [spec.md](https://github.com/rosenjcb/spec.md). Each spec declares implementation in `sources:` and verification in `tests:` (paths relative to the spec file — a comma-separated string or a YAML block list). `spec:check` runs the [`spec-md`](https://github.com/rosenjcb/spec.md/tree/main/cli) CLI (`spec-md coverage --strict .`), which discovers every `*.spec.md` and scans each spec's own `tests:` paths for `[TC-N]` tags — no central manifest.
+
+**Keep each spec's `tests:` precise and disjoint.** The CLI matches `[TC-N]` tags within a spec's declared paths only, and `TC-N` ids are namespaced per spec (every spec has its own `TC-1`). When several specs share a directory (e.g. `tests/tools`, `tests/cli`), do **not** point them all at the whole directory — that over-selects a sibling spec's tags and can mask a genuinely missing test. List the exact files each spec owns instead (see `CLI.spec.md` / `TOOLS.spec.md`).
 
 ### What CI enforces (hard gate)
 
