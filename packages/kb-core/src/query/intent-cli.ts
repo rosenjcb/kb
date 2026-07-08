@@ -7,6 +7,7 @@ import { assertConsumerSafeCommand } from '@kb/core/intents/policy.js'
 import { DefaultIntentRouter } from '@kb/core/intents/router.js'
 import type { ConsumerIntent, ConsumerIntentEnvelope, IntentResult } from '@kb/core/intents/types.js'
 import { formatOrchestrationMetaLine } from '../ui/orchestration-meta.js'
+import { PROCEDURAL_SYNTHESIS_GUIDANCE, isProceduralQuestion } from './procedural-intent.js'
 
 /** Minimal printer surface for intent result rendering (implemented by client Printer). */
 export interface IntentResultPrinter {
@@ -377,11 +378,14 @@ export async function enrichReadDocumentsAnswerWithLLM(
 
     const researchNotes = formatCuratorResearchNotes(data.retrieval?.curation)
 
+    const proceduralGuidance = isProceduralQuestion(question) ? PROCEDURAL_SYNTHESIS_GUIDANCE : ''
+
     const userContent = [
       'Answer from the evidence below. Use only the facts that bear on the question and ignore the rest — do not pad the answer with loosely related facts. Always give a useful response: a high-level summary for broad questions, precise detail for specific ones. Only say evidence is insufficient if the question is completely unrelated to anything retrieved.',
       'Match the answer structure to the question. For a multi-part or comparative question, lead with the direct answer, then break the supporting detail into short headings, bullets, or a compact table so each part is answerable at a glance; bold key terms (settings, file names, flags, conditions). For a simple question, a tight paragraph is enough.',
       'When a claim rests on a specific file, function, or setting, name it inline (e.g. `reports.ts`, `directDownlineDataAccess`) so the reader can verify it. Do not invent fact ids, do not cite evidence as "Document N", and do not append a separate "Sources:"/"Citations:" list — weave concrete identifiers into the prose where they help.',
       'If the question asks kb to perform a capability it does not have (provision infrastructure, deploy unrelated services, etc.), lead with a brief boundary answer — do not substitute a long guide to a different task just because retrieved facts share words like "deploy" or "kubernetes".',
+      ...(proceduralGuidance ? ['', proceduralGuidance] : []),
       '',
       `Question: ${question}`,
       graphSection,

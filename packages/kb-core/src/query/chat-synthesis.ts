@@ -20,6 +20,7 @@ import {
   formatCuratorResearchNotes,
   isReadFactsResult,
 } from './intent-cli.js'
+import { PROCEDURAL_SYNTHESIS_GUIDANCE, isProceduralQuestion } from './procedural-intent.js'
 
 export interface ReadDocumentsResult {
   results?: Array<{
@@ -319,8 +320,13 @@ export function buildChatTurnContent(input: {
       ].join('\n')
     : ''
 
+  const proceduralGuidance = isProceduralQuestion(input.question)
+    ? PROCEDURAL_SYNTHESIS_GUIDANCE
+    : ''
+
   return [
     graphSection,
+    proceduralGuidance,
     `Retrieved evidence:\n${evidence}`,
     '',
     `User question: ${input.question}`,

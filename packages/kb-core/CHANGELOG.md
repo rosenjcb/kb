@@ -1,5 +1,16 @@
 # @kb/core
 
+## 1.4.0
+
+### Minor Changes
+
+- Procedural-answer support for query and chat synthesis. How-to / step-by-step
+  questions now trigger an ordering-focused synthesis directive that reconstructs a
+  numbered sequence from the retrieved facts, cites the backing symbol per step, and
+  flags gaps instead of fabricating order. Detection and guidance live in the shared
+  `query/procedural-intent` helper, wired into both `enrichReadDocumentsAnswerWithLLM`
+  (kb query) and `buildChatTurnContent` (chat). No index/retrieval changes.
+
 ## 1.3.1
 
 ### Patch Changes
