@@ -314,9 +314,12 @@ function kbEnv() {
 function evalIndexTee(mode, args, logPath) {
   fs.mkdirSync(path.dirname(logPath), { recursive: true })
   const logFd = fs.openSync(logPath, 'w')
-  const quotedArgs = args.replace(/"/g, '\\"')
+  // `args` already contains shell-quoting around paths (e.g. --git "<path>"); it is built
+  // internally, not from user input. Escaping those quotes turns them into literal `"`
+  // characters in argv (git then fails on a path that literally contains quotes), so pass
+  // the string through unescaped and let the shell consume the quotes as delimiters.
   return new Promise((resolve, reject) => {
-    const child = spawn(`pnpm exec tsx "${EVAL_INDEX}" ${mode} ${quotedArgs}`, {
+    const child = spawn(`pnpm exec tsx "${EVAL_INDEX}" ${mode} ${args}`, {
       cwd: KB_REPO,
       env: kbEnv(),
       shell: true,
