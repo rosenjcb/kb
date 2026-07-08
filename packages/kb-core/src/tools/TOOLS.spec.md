@@ -2,7 +2,27 @@
 type: Spec
 title: "Spec: KB Tools"
 sources: ./
-tests: ../../../../tests/tools
+# Precise, disjoint scope: tests/tools minus the files owned by the per-tool
+# specs (FACT_CURATOR, GRAPH, TREE_SITTER_INDEXER). TC ids are per-spec, so a
+# whole-dir claim would over-select their [TC-N] tags. Add new tests/tools files
+# here when they carry TOOLS [TC-N] tags.
+tests:
+  - ../../../../tests/tools/cross-repo-reconcile.test.ts
+  - ../../../../tests/tools/document-writer.test.ts
+  - ../../../../tests/tools/facts-document-reader.test.ts
+  - ../../../../tests/tools/facts-query-research-orchestrator.test.ts
+  - ../../../../tests/tools/facts-sufficiency-judge.test.ts
+  - ../../../../tests/tools/invalidate-fact-tool.test.ts
+  - ../../../../tests/tools/kb-tools-registry-no-doc-writes.test.ts
+  - ../../../../tests/tools/markdown-md-writer-tool.test.ts
+  - ../../../../tests/tools/query-expander.test.ts
+  - ../../../../tests/tools/query-trace.test.ts
+  - ../../../../tests/tools/retrieval-checkpoint-orchestrator.test.ts
+  - ../../../../tests/tools/specialized-document-operations.test.ts
+  - ../../../../tests/tools/sqlite-kb-index.test.ts
+  - ../../../../tests/tools/subagent-eval-scenario.test.ts
+  - ../../../../tests/tools/subagent-scenario-matrix.test.ts
+  - ../../../../tests/tools/task-tool.test.ts
 description: Behavioral specification for KB Tools
 tags: [spec, kb]
 timestamp: 2026-06-28T04:05:29Z

@@ -2,6 +2,10 @@
 type: Spec
 title: "Spec: KB Client"
 sources: ./CLIENT.md,./src/cli/index.ts
+# Umbrella spec: FR/TC detail is delegated to CONNECTION/CLI/UI sub-specs, so this
+# file declares no TC rows. Scope coverage to its own (tag-free) source tree rather
+# than letting it fall back to a whole-repo [TC-N] scan.
+tests: ./src
 description: Behavioral specification for the kb CLI client (remote default, connection visibility)
 tags: [spec, kb, client]
 timestamp: 2026-07-05T00:00:00Z
