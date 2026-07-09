@@ -176,8 +176,7 @@ export class AnthropicProvider implements LLMProvider {
           content: (m.content as ToolResultBlock[]).map(block => ({
             type: 'tool_result' as const,
             tool_use_id: block.toolUseId,
-            content:
-              typeof block.result === 'string' ? block.result : JSON.stringify(block.result),
+            content: typeof block.result === 'string' ? block.result : JSON.stringify(block.result),
             ...(block.isError ? { is_error: true } : {}),
           })),
         }
@@ -741,7 +740,11 @@ export class GeminiProvider implements LLMProvider {
     let budget = initialBudget
     let parsed = await this.generateContent(params, budget)
     const outputCap = 65_536
-    for (let attempt = 0; attempt < 3 && parsed.finishReason === 'MAX_TOKENS' && budget < outputCap; attempt++) {
+    for (
+      let attempt = 0;
+      attempt < 3 && parsed.finishReason === 'MAX_TOKENS' && budget < outputCap;
+      attempt++
+    ) {
       budget = Math.min(budget * 2, outputCap)
       parsed = await this.generateContent(params, budget)
     }
@@ -756,7 +759,10 @@ export class GeminiProvider implements LLMProvider {
       geminiModelSupportsThinkingBudget(this.model) &&
       params.thinkingBudget !== 0
     ) {
-      parsed = await this.generateContent({ ...params, thinkingBudget: 0 }, Math.max(budget, initialBudget))
+      parsed = await this.generateContent(
+        { ...params, thinkingBudget: 0 },
+        Math.max(budget, initialBudget)
+      )
     }
 
     return {
@@ -817,12 +823,16 @@ export class GeminiProvider implements LLMProvider {
     const thinkingConfig: Record<string, unknown> = {}
     if (supportsThinking) {
       if (opts.includeThoughts) {
-        // Reasoning explicitly requested (e.g. query expansion): keep thinking on.
-        // Honor an explicit budget; otherwise let the model think dynamically.
+        // Reasoning explicitly requested (e.g. query expansion): keep thinking on,
+        // but BOUND it. gemini-3.x otherwise thinks dynamically and can spend the
+        // entire output budget reasoning, leaving no answer text (the chat "I don't
+        // have enough information" fallback). Cap at ~1/4 of the output budget so
+        // there is always room for the answer; honor an explicit budget if given.
         thinkingConfig.includeThoughts = true
-        if (typeof params.thinkingBudget === 'number' && params.thinkingBudget > 0) {
-          thinkingConfig.thinkingBudget = params.thinkingBudget
-        }
+        thinkingConfig.thinkingBudget =
+          typeof params.thinkingBudget === 'number' && params.thinkingBudget > 0
+            ? params.thinkingBudget
+            : Math.min(1024, Math.max(256, Math.floor(maxOutputTokens / 4)))
       } else {
         // No reasoning requested → default thinking OFF. gemini-3.x otherwise thinks
         // by default and consumes terse/classifier budgets (e.g. the sufficiency
