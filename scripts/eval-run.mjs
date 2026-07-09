@@ -1006,9 +1006,8 @@ async function main() {
       if (trials > 1) {
         // Score each query trial independently, then average the per-axis levels across
         // trials so run-to-run retrieval/judge noise cancels. Each trial's answers live in
-        // q{n}.t{t}.json; score them from a per-trial view dir of q{n}.json files.
-        const perTrialNormalized = []
-        let meta = null
+        // q{n}.t{t}.json; score them from a per-trial view dir of q{n}.json files. The trials
+        // are independent, so score them concurrently (bounded) rather than one at a time.
         for (let t = 1; t <= trials; t++) {
           const trialDir = path.join(workdir, `.score-t${t}`)
           fs.mkdirSync(trialDir, { recursive: true })
@@ -1018,18 +1017,25 @@ async function main() {
               path.join(trialDir, `q${n}.json`)
             )
           }
-          console.error(`[eval] auto-score trial ${t}/${trials}`)
-          const res = await runAutoScoreFile({
-            workdir: trialDir,
-            questions,
-            answers: suiteConfig?.answers ?? null,
-            outScoresPath: path.join(trialDir, 'auto-scores.json'),
-            rubricPhrase,
-            scoreRuns: args.scoreRuns,
-          })
-          perTrialNormalized.push(res.normalized)
-          meta = res
         }
+        console.error(`[eval] auto-score ${trials} trials (concurrent)`)
+        const trialResults = await mapWithConcurrency(
+          Array.from({ length: trials }, (_, i) => i + 1),
+          evalQueryConcurrency(),
+          t => {
+            const trialDir = path.join(workdir, `.score-t${t}`)
+            return runAutoScoreFile({
+              workdir: trialDir,
+              questions,
+              answers: suiteConfig?.answers ?? null,
+              outScoresPath: path.join(trialDir, 'auto-scores.json'),
+              rubricPhrase,
+              scoreRuns: args.scoreRuns,
+            })
+          }
+        )
+        const perTrialNormalized = trialResults.map(r => r.normalized)
+        const meta = trialResults[0]
         manualScores = averageTrialScores(perTrialNormalized, questions.length)
         fs.writeFileSync(outScores, JSON.stringify(manualScores, null, 2), 'utf8')
         queryScoringMeta = {
