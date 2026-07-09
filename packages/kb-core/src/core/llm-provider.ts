@@ -712,7 +712,7 @@ export class GeminiProvider implements LLMProvider {
 
   constructor(
     private apiKey: string,
-    model = 'gemini-2.5-flash'
+    model = 'gemini-3.5-flash'
   ) {
     this.model = model
   }
@@ -726,7 +726,12 @@ export class GeminiProvider implements LLMProvider {
   async call(params: LLMCallParams): Promise<LLMResponse> {
     if (params.onReasoning && !params.structuredJson?.gemini) {
       try {
-        return await this.callWithReasoning(params, params.onReasoning)
+        const reasoned = await this.callWithReasoning(params, params.onReasoning)
+        // Accept only if it actually produced output. An empty result means the
+        // thinking budget consumed the whole response (thinking models can spend
+        // the entire output cap reasoning); fall through to the budget-escalating
+        // path below rather than returning nothing.
+        if (reasoned.text.trim() || (reasoned.toolUses?.length ?? 0) > 0) return reasoned
       } catch {
         // Fall back transparently if streaming fails.
       }
@@ -739,6 +744,19 @@ export class GeminiProvider implements LLMProvider {
     for (let attempt = 0; attempt < 3 && parsed.finishReason === 'MAX_TOKENS' && budget < outputCap; attempt++) {
       budget = Math.min(budget * 2, outputCap)
       parsed = await this.generateContent(params, budget)
+    }
+
+    // Guarantee a visible answer. If reasoning still exhausted the entire budget
+    // (empty text, no tool call, truncated by MAX_TOKENS), retry once with
+    // thinking disabled — that reliably yields a direct answer within budget.
+    if (
+      !parsed.text.trim() &&
+      !(parsed.toolUses?.length ?? 0) &&
+      parsed.finishReason === 'MAX_TOKENS' &&
+      geminiModelSupportsThinkingBudget(this.model) &&
+      params.thinkingBudget !== 0
+    ) {
+      parsed = await this.generateContent({ ...params, thinkingBudget: 0 }, Math.max(budget, initialBudget))
     }
 
     return {
