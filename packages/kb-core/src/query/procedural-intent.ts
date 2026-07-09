@@ -102,4 +102,5 @@ export const PROCEDURAL_SYNTHESIS_GUIDANCE = [
   'Present the answer as a numbered list of concrete steps in the order they must happen. Keep each step to a single action and name the backing file, function, command, or setting inline so the reader can verify it.',
   'When a prerequisite must hold before a step, fold it into that step. A one-line summary of the overall flow before the list is welcome only when it aids scanning.',
   'Where the evidence does not establish the order of a step, or a step appears to be missing, say so plainly (e.g. "order not established by the available evidence") instead of inventing a sequence. Do not fabricate steps to fill gaps.',
+  'If the question asks for a procedure the system does not support (a capability it does not have, or a task outside what the evidence covers), lead with that boundary plainly and do not manufacture a step-by-step guide for the unsupported task — a correct refusal beats an invented procedure.',
 ].join('\n')
