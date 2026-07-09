@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.4.1
+
+### Patch Changes
+
+- Fix silent "no answer" from a retired model. Google removed `gemini-2.5-flash`, so every generation 404'd and synthesis returned null while retrieval still worked — producing empty answers with no error. Default the Gemini provider to `gemini-3.5-flash`, and surface chat errors in the Slack handler (post the failure into the thread and log it) instead of collapsing them into the generic "produced no answer" warning.
+
 ## 1.4.0
 
 ### Minor Changes

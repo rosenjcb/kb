@@ -1,12 +1,17 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildChatTurnContent, printChatHelp, runChatSession, runChatSynthesis } from '@kb/client/cli/chat-cli.js'
+import {
+  buildChatTurnContent,
+  printChatHelp,
+  runChatSession,
+  runChatSynthesis,
+} from '@kb/client/cli/chat-cli.js'
 import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
 import type { LLMProvider } from '@kb/core/core/types.js'
 import { invalidateFactTool } from '@kb/core/tools/invalidate-fact-tool.js'
 import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 class ScriptedIO {
   public readonly outputs: string[] = []
@@ -86,7 +91,6 @@ describe('chat-cli prompt', () => {
     expect(content).toContain('…')
     expect(content).not.toContain(long)
   })
-
 })
 
 /** Build a provider mock that first routes via query_kb, then synthesizes from tool results. */
@@ -113,7 +117,12 @@ function makeKBProvider(answer: string, query: string): LLMProvider {
 }
 
 /** Build an executor that returns a single result with the given content. */
-function makeExecutor(content: string, id = 'fact-1', method = 'hybrid', detail = 'research-orchestrator'): ToolExecutor {
+function makeExecutor(
+  content: string,
+  id = 'fact-1',
+  method = 'hybrid',
+  detail = 'research-orchestrator'
+): ToolExecutor {
   return {
     register: vi.fn(),
     getTools: vi.fn(() => []),
@@ -204,25 +213,35 @@ describe('chat-cli session loop', () => {
         retrieval: {
           method: 'hybrid',
           detail: 'fts+vector-rerank',
-          checkpoints: [{ stage: 'hybrid_primary', status: 'hit', nextAction: 'return', confidence: 0.86 }],
+          checkpoints: [
+            { stage: 'hybrid_primary', status: 'hit', nextAction: 'return', confidence: 0.86 },
+          ],
         },
-        results: [{ metadata: { id: 'session-log-2026-04-12' }, content: 'Hybrid retrieval details.' }],
+        results: [
+          { metadata: { id: 'session-log-2026-04-12' }, content: 'Hybrid retrieval details.' },
+        ],
       })),
     }
 
-    const provider = makeKBProvider('The KB uses a hybrid path with lexical fallback.', 'How retrieval works?')
+    const provider = makeKBProvider(
+      'The KB uses a hybrid path with lexical fallback.',
+      'How retrieval works?'
+    )
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
     expect(executor.execute).toHaveBeenCalledTimes(1)
-    expect(provider.call).toHaveBeenCalledTimes(2)
+    // route→query_kb, route→done, then the dedicated thinking-off synthesis pass.
+    expect(provider.call).toHaveBeenCalledTimes(3)
     expect(provider.call).toHaveBeenCalledWith(
       expect.objectContaining({
         maxTokens: 4096,
         systemPrompt: expect.stringContaining('knowledge base assistant'),
       })
     )
-    expect(io.outputs.join('\n')).toContain('assistant> The KB uses a hybrid path with lexical fallback.')
+    expect(io.outputs.join('\n')).toContain(
+      'assistant> The KB uses a hybrid path with lexical fallback.'
+    )
     expect(io.outputs.join('\n')).toContain('retrieval> hybrid (fts+vector-rerank)')
     expect(io.outputs.join('\n')).toContain('session-log-2026-04-12')
   })
@@ -230,12 +249,18 @@ describe('chat-cli session loop', () => {
   it('[TC-90] Given provider failure, then loop reports error and remains interactive', async () => {
     const io = new ScriptedIO(['What now?', '/exit'])
 
-    const executor: ToolExecutor = { register: vi.fn(), getTools: vi.fn(() => []), execute: vi.fn() }
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi.fn(),
+    }
     const provider: LLMProvider = {
       name: 'test-provider',
       model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn(async () => { throw new Error('provider offline') }),
+      call: vi.fn(async () => {
+        throw new Error('provider offline')
+      }),
     }
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
@@ -261,7 +286,10 @@ describe('chat-cli session loop', () => {
     const io = new ScriptedIO(['what is the rollout strategy?', '/exit'])
 
     const executor = makeExecutor('- Rollout strategy is immediate.', 'rollout-facts')
-    const provider = makeKBProvider('Rollout strategy is immediate.', 'what is the rollout strategy?')
+    const provider = makeKBProvider(
+      'Rollout strategy is immediate.',
+      'what is the rollout strategy?'
+    )
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
@@ -283,33 +311,53 @@ describe('chat-cli session loop', () => {
       name: 'test-provider',
       model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn()
-        .mockResolvedValueOnce({  // turn 1: route → query_kb
-          text: '', stopReason: 'tool_use' as const,
+      call: vi
+        .fn()
+        .mockResolvedValueOnce({
+          // turn 1: route → query_kb
+          text: '',
+          stopReason: 'tool_use' as const,
           toolUses: [{ id: 'tu-1', name: 'query_kb', input: { q: 'What is the agent loop?' } }],
           usage: { inputTokens: 1, outputTokens: 1 },
         })
-        .mockResolvedValueOnce({  // turn 1: synthesize
-          text: 'Agent loop answer.',
-          stopReason: 'end_turn' as const, toolUses: [],
+        .mockResolvedValueOnce({
+          // turn 1: route → done (no more tools)
+          text: '',
+          stopReason: 'end_turn' as const,
+          toolUses: [],
           usage: { inputTokens: 1, outputTokens: 1 },
         })
-        .mockResolvedValueOnce({  // turn 2: route → query_kb
-          text: '', stopReason: 'tool_use' as const,
+        .mockResolvedValueOnce({
+          // turn 1: dedicated synthesis
+          text: 'Agent loop answer.',
+          stopReason: 'end_turn' as const,
+          toolUses: [],
+          usage: { inputTokens: 1, outputTokens: 1 },
+        })
+        .mockResolvedValueOnce({
+          // turn 2: route → query_kb
+          text: '',
+          stopReason: 'tool_use' as const,
           toolUses: [{ id: 'tu-2', name: 'query_kb', input: { q: 'What about AST?' } }],
           usage: { inputTokens: 1, outputTokens: 1 },
         })
-        .mockResolvedValue({  // turn 2: synthesize
+        .mockResolvedValue({
+          // turn 2: route → done, then synthesis
           text: 'AST answer.',
-          stopReason: 'end_turn' as const, toolUses: [],
+          stopReason: 'end_turn' as const,
+          toolUses: [],
           usage: { inputTokens: 1, outputTokens: 1 },
         }),
     }
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
-    const turn2RoutingCall = (provider.call as ReturnType<typeof vi.fn>).mock.calls[2]
-    const messagesInTurn2 = turn2RoutingCall?.[0]?.messages as Array<{ role: string; content: unknown }>
+    // Turn 2's first routing call (index 3: turn 1 used 3 calls — route/done/synthesis).
+    const turn2RoutingCall = (provider.call as ReturnType<typeof vi.fn>).mock.calls[3]
+    const messagesInTurn2 = turn2RoutingCall?.[0]?.messages as Array<{
+      role: string
+      content: unknown
+    }>
     // Prior user message and assistant answer should be in history
     const roles = messagesInTurn2?.map(m => m.role)
     expect(roles).toContain('user')
@@ -321,8 +369,14 @@ describe('chat-cli session loop', () => {
   it('[TC-94] Given a process question, then query_kb tool is called and answer is surfaced', async () => {
     const io = new ScriptedIO(['What is the release process?', '/exit'])
 
-    const executor = makeExecutor('# ops facts\n\n- Release process uses GitHub Actions.\n', 'ops-facts')
-    const provider = makeKBProvider('Release process uses GitHub Actions.', 'What is the release process?')
+    const executor = makeExecutor(
+      '# ops facts\n\n- Release process uses GitHub Actions.\n',
+      'ops-facts'
+    )
+    const provider = makeKBProvider(
+      'Release process uses GitHub Actions.',
+      'What is the release process?'
+    )
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
@@ -337,18 +391,30 @@ describe('chat-cli session loop', () => {
       register: vi.fn(),
       getTools: vi.fn(() => []),
       execute: vi.fn().mockResolvedValueOnce({
-        retrieval: { method: 'hybrid', detail: 'research-orchestrator',
-          checkpoints: [{ stage: 'research_loop', status: 'hit', nextAction: 'return', confidence: 0.75 }] },
-        results: [{ metadata: { id: 'known-runbook' }, content: 'Known runbook recovery content.' }],
+        retrieval: {
+          method: 'hybrid',
+          detail: 'research-orchestrator',
+          checkpoints: [
+            { stage: 'research_loop', status: 'hit', nextAction: 'return', confidence: 0.75 },
+          ],
+        },
+        results: [
+          { metadata: { id: 'known-runbook' }, content: 'Known runbook recovery content.' },
+        ],
       }),
     }
 
-    const provider = makeKBProvider('Try the known runbook recovery steps first.', 'What should I do for unknown runtime warning?')
+    const provider = makeKBProvider(
+      'Try the known runbook recovery steps first.',
+      'What should I do for unknown runtime warning?'
+    )
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
     expect(executor.execute).toHaveBeenCalledTimes(1)
-    expect(io.outputs.join('\n')).toContain('assistant> Try the known runbook recovery steps first.')
+    expect(io.outputs.join('\n')).toContain(
+      'assistant> Try the known runbook recovery steps first.'
+    )
     expect(io.outputs.join('\n')).toContain('known-runbook')
   })
 
@@ -394,9 +460,15 @@ describe('chat-cli session loop', () => {
       },
     })
 
-    const firstProvider = makeKBProvider('Release process uses GitHub Actions.', 'What is the release process?')
+    const firstProvider = makeKBProvider(
+      'Release process uses GitHub Actions.',
+      'What is the release process?'
+    )
     const firstIo = new ScriptedIO(['What is the release process?', '/exit'])
-    await runChatSession({ llmProvider: firstProvider, toolExecutor, graphWriter: undefined }, firstIo)
+    await runChatSession(
+      { llmProvider: firstProvider, toolExecutor, graphWriter: undefined },
+      firstIo
+    )
     expect(firstIo.outputs.join('\n')).toContain('GitHub Actions')
 
     await invalidateFactTool(
@@ -408,9 +480,15 @@ describe('chat-cli session loop', () => {
       baseDir
     )
 
-    const secondProvider = makeKBProvider('Release process uses Buildkite.', 'What is the release process?')
+    const secondProvider = makeKBProvider(
+      'Release process uses Buildkite.',
+      'What is the release process?'
+    )
     const secondIo = new ScriptedIO(['What is the release process?', '/exit'])
-    await runChatSession({ llmProvider: secondProvider, toolExecutor, graphWriter: undefined }, secondIo)
+    await runChatSession(
+      { llmProvider: secondProvider, toolExecutor, graphWriter: undefined },
+      secondIo
+    )
 
     const secondOutput = secondIo.outputs.join('\n')
     expect(secondOutput).toContain('Buildkite')
@@ -425,7 +503,8 @@ describe('chat-cli session loop', () => {
       name: 'test-provider',
       model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn()
+      call: vi
+        .fn()
         .mockResolvedValueOnce({
           text: '',
           stopReason: 'tool_use' as const,
@@ -448,9 +527,9 @@ describe('chat-cli session loop', () => {
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
-    // Two retrieval rounds → executor called twice, provider called three times
+    // Two retrieval rounds (executor twice) → 3 routing calls + 1 synthesis call
     expect(executor.execute).toHaveBeenCalledTimes(2)
-    expect(provider.call).toHaveBeenCalledTimes(3)
+    expect(provider.call).toHaveBeenCalledTimes(4)
     expect(io.outputs.join('\n')).toContain('The agent loop runs until no tool calls are produced.')
   })
 
@@ -470,7 +549,8 @@ describe('chat-cli session loop', () => {
       name: 'test-provider',
       model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn()
+      call: vi
+        .fn()
         .mockResolvedValueOnce({
           text: '',
           stopReason: 'tool_use' as const,
@@ -509,7 +589,8 @@ describe('chat-cli session loop', () => {
       name: 'test-provider',
       model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn()
+      call: vi
+        .fn()
         // First call: decompose → returns two sub-query lines
         .mockResolvedValueOnce({
           text: 'kb init command behavior\nread-inputs cycle during init',
@@ -544,8 +625,8 @@ describe('chat-cli session loop', () => {
 
     await runChatSession({ llmProvider: provider, toolExecutor: executor }, io)
 
-    // No decompose call — provider called exactly twice (route → synthesize), executor once
-    expect(provider.call).toHaveBeenCalledTimes(2)
+    // No decompose call — route→query_kb, route→done, synthesis (3), executor once
+    expect(provider.call).toHaveBeenCalledTimes(3)
     expect(executor.execute).toHaveBeenCalledTimes(1)
   })
 })
@@ -617,7 +698,8 @@ describe('runChatSynthesis', () => {
       name: 'test-provider',
       model: 'test-model',
       supportsStreaming: false,
-      call: vi.fn()
+      call: vi
+        .fn()
         .mockResolvedValueOnce({
           text: '',
           stopReason: 'tool_use' as const,
@@ -646,7 +728,8 @@ describe('runChatSynthesis', () => {
 
     // Both parallel tool calls triggered executor twice
     expect(executor.execute).toHaveBeenCalledTimes(2)
-    expect(provider.call).toHaveBeenCalledTimes(2)
+    // one round with two parallel tool calls, route→done, then synthesis
+    expect(provider.call).toHaveBeenCalledTimes(3)
     expect(result.answer).toBe('Full answer after parallel retrieval.')
     // lastIntentResult populated from tool retrieval
     expect(result.lastIntentResult).toBeDefined()

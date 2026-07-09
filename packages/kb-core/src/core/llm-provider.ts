@@ -176,8 +176,7 @@ export class AnthropicProvider implements LLMProvider {
           content: (m.content as ToolResultBlock[]).map(block => ({
             type: 'tool_result' as const,
             tool_use_id: block.toolUseId,
-            content:
-              typeof block.result === 'string' ? block.result : JSON.stringify(block.result),
+            content: typeof block.result === 'string' ? block.result : JSON.stringify(block.result),
             ...(block.isError ? { is_error: true } : {}),
           })),
         }
@@ -712,7 +711,7 @@ export class GeminiProvider implements LLMProvider {
 
   constructor(
     private apiKey: string,
-    model = 'gemini-2.5-flash'
+    model = 'gemini-3.5-flash'
   ) {
     this.model = model
   }
@@ -726,7 +725,12 @@ export class GeminiProvider implements LLMProvider {
   async call(params: LLMCallParams): Promise<LLMResponse> {
     if (params.onReasoning && !params.structuredJson?.gemini) {
       try {
-        return await this.callWithReasoning(params, params.onReasoning)
+        const reasoned = await this.callWithReasoning(params, params.onReasoning)
+        // Accept only if it actually produced output. An empty result means the
+        // thinking budget consumed the whole response (thinking models can spend
+        // the entire output cap reasoning); fall through to the budget-escalating
+        // path below rather than returning nothing.
+        if (reasoned.text.trim() || (reasoned.toolUses?.length ?? 0) > 0) return reasoned
       } catch {
         // Fall back transparently if streaming fails.
       }
@@ -736,9 +740,29 @@ export class GeminiProvider implements LLMProvider {
     let budget = initialBudget
     let parsed = await this.generateContent(params, budget)
     const outputCap = 65_536
-    for (let attempt = 0; attempt < 3 && parsed.finishReason === 'MAX_TOKENS' && budget < outputCap; attempt++) {
+    for (
+      let attempt = 0;
+      attempt < 3 && parsed.finishReason === 'MAX_TOKENS' && budget < outputCap;
+      attempt++
+    ) {
       budget = Math.min(budget * 2, outputCap)
       parsed = await this.generateContent(params, budget)
+    }
+
+    // Guarantee a visible answer. If reasoning still exhausted the entire budget
+    // (empty text, no tool call, truncated by MAX_TOKENS), retry once with
+    // thinking disabled — that reliably yields a direct answer within budget.
+    if (
+      !parsed.text.trim() &&
+      !(parsed.toolUses?.length ?? 0) &&
+      parsed.finishReason === 'MAX_TOKENS' &&
+      geminiModelSupportsThinkingBudget(this.model) &&
+      params.thinkingBudget !== 0
+    ) {
+      parsed = await this.generateContent(
+        { ...params, thinkingBudget: 0 },
+        Math.max(budget, initialBudget)
+      )
     }
 
     return {
@@ -772,7 +796,12 @@ export class GeminiProvider implements LLMProvider {
           parts.push({ text: m.content })
         }
         for (const tu of m.toolUses) {
-          parts.push({ functionCall: { name: tu.name, args: tu.input } })
+          parts.push({
+            functionCall: { name: tu.name, args: tu.input },
+            // gemini-3.x rejects a tool round-trip (400) unless the model's own
+            // thoughtSignature is echoed back on the functionCall it emitted.
+            ...(tu.thoughtSignature ? { thoughtSignature: tu.thoughtSignature } : {}),
+          })
         }
         geminiContents.push({ role: 'model', parts })
       } else {
@@ -792,13 +821,26 @@ export class GeminiProvider implements LLMProvider {
   ): Record<string, unknown> {
     const supportsThinking = geminiModelSupportsThinkingBudget(this.model)
     const thinkingConfig: Record<string, unknown> = {}
-    if (opts.includeThoughts && supportsThinking) {
-      thinkingConfig.includeThoughts = true
-      if (typeof params.thinkingBudget === 'number' && params.thinkingBudget > 0) {
-        thinkingConfig.thinkingBudget = params.thinkingBudget
+    if (supportsThinking) {
+      if (opts.includeThoughts) {
+        // Reasoning explicitly requested (e.g. query expansion): keep thinking on,
+        // but BOUND it. gemini-3.x otherwise thinks dynamically and can spend the
+        // entire output budget reasoning, leaving no answer text (the chat "I don't
+        // have enough information" fallback). Cap at ~1/4 of the output budget so
+        // there is always room for the answer; honor an explicit budget if given.
+        thinkingConfig.includeThoughts = true
+        thinkingConfig.thinkingBudget =
+          typeof params.thinkingBudget === 'number' && params.thinkingBudget > 0
+            ? params.thinkingBudget
+            : Math.min(1024, Math.max(256, Math.floor(maxOutputTokens / 4)))
+      } else {
+        // No reasoning requested → default thinking OFF. gemini-3.x otherwise thinks
+        // by default and consumes terse/classifier budgets (e.g. the sufficiency
+        // judge's maxTokens:10), returning empty and silently breaking them. Callers
+        // opt in with an explicit positive `thinkingBudget`.
+        thinkingConfig.thinkingBudget =
+          typeof params.thinkingBudget === 'number' ? params.thinkingBudget : 0
       }
-    } else if (params.thinkingBudget !== undefined && supportsThinking) {
-      thinkingConfig.thinkingBudget = params.thinkingBudget
     }
 
     return {
@@ -835,7 +877,12 @@ export class GeminiProvider implements LLMProvider {
   ): Promise<{
     text: string
     stopReason: 'tool_use' | 'end_turn'
-    toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }>
+    toolUses: Array<{
+      id: string
+      name: string
+      input: Record<string, unknown>
+      thoughtSignature?: string
+    }>
     usage: { inputTokens: number; outputTokens: number }
     finishReason?: string
   }> {
@@ -885,6 +932,11 @@ export class GeminiProvider implements LLMProvider {
             id: `${dayjs().valueOf()}-${Math.random()}`,
             name: typeof call.name === 'string' ? call.name : 'unknown_tool',
             input: asRecord(call.args),
+            // gemini-3.x attaches a thoughtSignature to each functionCall; capture
+            // it so buildContents can echo it back on the tool round-trip turn.
+            ...(typeof p.thoughtSignature === 'string'
+              ? { thoughtSignature: p.thoughtSignature }
+              : {}),
           }
         }),
       usage: {
@@ -918,7 +970,12 @@ export class GeminiProvider implements LLMProvider {
     let text = ''
     let inputTokens = 0
     let outputTokens = 0
-    const toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> = []
+    const toolUses: Array<{
+      id: string
+      name: string
+      input: Record<string, unknown>
+      thoughtSignature?: string
+    }> = []
 
     for await (const event of iterateSseData(response, 'gemini')) {
       const candidates = Array.isArray(event.candidates) ? event.candidates : []
@@ -932,6 +989,9 @@ export class GeminiProvider implements LLMProvider {
             id: `${dayjs().valueOf()}-${Math.random()}`,
             name: typeof call.name === 'string' ? call.name : 'unknown_tool',
             input: asRecord(call.args),
+            ...(typeof part.thoughtSignature === 'string'
+              ? { thoughtSignature: part.thoughtSignature }
+              : {}),
           })
         } else if (typeof part.text === 'string' && part.text.length > 0) {
           if (part.thought === true) onReasoning(part.text)

@@ -200,11 +200,18 @@ async function replyWithChat(
   sessionId: string,
 ): Promise<void> {
   let answer = ''
+  let errorMessage = ''
   for await (const event of service.chat({ sessionId, message })) {
     if (event.type === 'answer') answer = event.text
+    else if (event.type === 'error') errorMessage = event.message
   }
   if (answer) {
     await postSlackMessage(slackOpts.botToken, channel, answer, threadTs)
+  } else if (errorMessage) {
+    // Surface the real failure (e.g. a retired-model 404) instead of silently
+    // dropping it — otherwise a broken pipeline looks identical to "no result".
+    log.error('slack chat failed', { channel, sessionId, error: errorMessage })
+    await postSlackMessage(slackOpts.botToken, channel, `⚠️ Sorry, I hit an error: ${errorMessage}`, threadTs)
   } else {
     log.warn('slack chat produced no answer', { channel, sessionId, message: message.slice(0, 100) })
   }

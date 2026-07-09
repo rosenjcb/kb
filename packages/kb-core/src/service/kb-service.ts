@@ -9,15 +9,19 @@
 
 import { statSync } from 'node:fs'
 import path from 'node:path'
+import {
+  type KbConfig,
+  applyConfigToEnv,
+  createLLMProviderFromConfig,
+} from '@kb/core/config/kb-config.js'
 import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
 import type { LLMProvider, Message } from '@kb/core/core/types.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
-import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
-import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
 import { scanBaseRepos } from '@kb/core/ops/auto-sync.js'
-import { applyConfigToEnv, createLLMProviderFromConfig, type KbConfig } from '@kb/core/config/kb-config.js'
+import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
+import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
 import type { ChatEvent, ChatStreamFn } from './chat-types.js'
-import { runQueryPipeline, type QueryPipelineParams } from './query-pipeline.js'
+import { type QueryPipelineParams, runQueryPipeline } from './query-pipeline.js'
 import { SessionStore } from './session-store.js'
 
 export interface KbServiceOptions {
@@ -95,7 +99,10 @@ export function createKbService(options: KbServiceOptions): KbService {
     llmProvider: llmProvider ?? undefined,
 
     async query(params) {
-      return runQueryPipeline({ toolExecutor, llmProvider: llmProvider ?? undefined, baseDir, config }, params)
+      return runQueryPipeline(
+        { toolExecutor, llmProvider: llmProvider ?? undefined, baseDir, config },
+        params
+      )
     },
 
     async *chat(params) {
@@ -119,7 +126,7 @@ export function createKbService(options: KbServiceOptions): KbService {
 
       for await (const event of chatStream(
         { llmProvider, toolExecutor, baseDir },
-        { question: message, messages: [...history, userMessage] },
+        { question: message, messages: [...history, userMessage], traceId: params.sessionId }
       )) {
         if (event.type === 'answer') answer = event.text
         yield event

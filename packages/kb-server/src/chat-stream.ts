@@ -8,12 +8,18 @@
  * because a turn is request-driven (one message → one streamed answer).
  */
 
-import type { CliOutput } from '@kb/core/ui/cli-output.js'
 import { runChatSynthesis } from '@kb/core/query/chat-synthesis.js'
 import { isReadFactsResult } from '@kb/core/query/intent-cli.js'
+import type {
+  ChatEvent,
+  ChatStreamDeps,
+  ChatStreamParams,
+  ChatTrace,
+} from '@kb/core/service/chat-types.js'
+import { type QuerySource, serializeQueryResult } from '@kb/core/service/serialize.js'
+import type { CliOutput } from '@kb/core/ui/cli-output.js'
 import { createPrinter } from '@kb/core/ui/printer.js'
-import { serializeQueryResult, type QuerySource } from '@kb/core/service/serialize.js'
-import type { ChatEvent, ChatStreamDeps, ChatStreamParams } from '@kb/core/service/chat-types.js'
+import { log } from './logger.js'
 
 export type { ChatEvent, ChatStreamDeps, ChatStreamParams }
 
@@ -44,6 +50,11 @@ export async function* streamChatTurn(
   // 'tui' mode routes transient progress to out.progress and avoids the ora spinner.
   const printer = createPrinter(out, 'tui')
 
+  // Standardized per-turn trace → Cloud Logging. Every routing decision, tool call,
+  // and answer becomes a `chat.<action>` line correlated by traceId (the session id).
+  const traceId = params.traceId ?? 'chat'
+  const trace: ChatTrace = (action, detail) => log.info(`chat.${action}`, { traceId, ...detail })
+
   let finished = false
   let failure: Error | undefined
   let answer = ''
@@ -59,6 +70,7 @@ export async function* streamChatTurn(
     toolExecutor: deps.toolExecutor,
     kbStorageDir: deps.baseDir,
     printer,
+    trace,
   })
     .then(result => {
       answer = result.answer
