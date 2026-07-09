@@ -17,6 +17,9 @@ questions:
   - What is the default maximum number of passes for the deep facts-query retrieval loop, and which environment variable overrides it?
   - How do I use kb to provision and deploy a Kubernetes cluster for my application?
   - At what retrieved-fact pool size does the fact curator start running, and what happens to facts the judge does not keep?
+  - Walk through a single kb query in order, from the deep retrieval loop to the final answer — what does each stage (retrieval orchestrator, sufficiency judge, fact curator, synthesis) receive and produce?
+  - Step by step, how does one interactive chat turn work, from the user's message through retrieval to the synthesized reply?
+  - How would I add support for a new programming language to kb's code indexing, from grammar to queryable facts?
 answers:
   - >
     kb is a client/server knowledge system for turning git repositories into a queryable
@@ -142,3 +145,51 @@ answers:
     unfiltered pool on any LLM/parse error and guards against ever returning an empty set. Curator
     decisions are recorded out-of-band on `retrieval.curation` and are not injected into the synthesis
     context.
+
+  - >
+    A kb query runs the shared `runQueryTruthRetrieval` path and answers facts-first, in order:
+    (1) the query string is optionally graph-expanded (`expandQueryWithGraph`) to widen terms via
+    `fact_edges`; (2) the **FactsQueryResearchOrchestrator** deep loop runs adaptive passes over
+    exploration "ponds", each pass merging BFS edge-neighbors over `fact_edges`, lexical FTS, and
+    concept-frontier rows, then scoring facts (doc facts weight text overlap; code facts weight
+    graph proximity); (3) each iteration checks early exit — a heuristic (≥20 facts scoring ≥0.5),
+    an LLM **sufficiency judge** every 3 iterations, or a plateau / frontier-exhausted stop; (4) it
+    produces a ranked pool above `MIN_FACT_SCORE` (0.20); (5) when that pool exceeds 12 facts the
+    **fact curator** runs — auto-keeping high-overlap facts, sending the rest to one structured
+    verdict `{keep, gaps, sufficient}` keyed on the raw question, hard-dropping non-kept facts, and
+    issuing bounded re-discovery to refill gaps; (6) surviving facts are formatted with
+    `formatRetrievedFactsForLLM` (~2000 chars/fact); (7) `enrichReadDocumentsAnswerWithLLM` makes a
+    single synthesis call to write the answer. Curator decisions are recorded out-of-band on
+    `retrieval.curation` and never injected into synthesis. A correct answer should give the stages
+    in order and note the >12-fact curator trigger and the one-shot synthesis.
+
+  - >
+    An interactive chat turn is handled by `runChatSynthesis` — a multi-turn loop whose only tool is
+    `query_kb` — in order: (1) for synthesis/elaboration inputs (≥40 chars matching
+    `SYNTHESIS_QUERY_RE`) a lightweight **decompose** pre-step splits the message into 1–4
+    sub-queries that run in parallel and are injected as synthetic tool turns for grounding; (2) an
+    **agentic while loop** calls the LLM with the `query_kb` tool, up to `MAX_CHAT_TURNS` (12); (3)
+    when the model calls `query_kb` the query is graph-expanded and retrieved through the same
+    `executeChatQueryTruthRetrieval` → `runQueryTruthRetrieval` path as `kb query` (deep orchestrator
+    + fact curator), with all tool calls in a round run concurrently; (4) weak-evidence retrieval
+    appends a retry hint telling the model to try different terms; (5) the loop breaks when the model
+    returns no `tool_use` (or the cap is hit) and its final text is the answer. Each turn's retrieval
+    is independent — no fact pool persists across turns; only prior question/answer prose persists in
+    `messages[]`, so relevance is re-decided per query by the curator. A correct answer should cover
+    decompose → agentic `query_kb` loop → shared retrieval/curation → final synthesis, and note that
+    there is no cross-turn fact pool.
+
+  - >
+    kb code indexing is deterministic and runs every language through a single `TreeSitterIndexer`
+    (`packages/kb-core/src/tools/tree-sitter-indexer.ts`) using `web-tree-sitter` WASM grammars —
+    there is no LLM fallback. To add a language, end to end: (1) add the `tree-sitter-<lang>` npm
+    package that ships a bundled `.wasm` grammar; (2) wire it into the language registry
+    `LANG_CONFIGS`, giving its grammar require-spec via `resolveWasm('tree-sitter-<lang>',
+    '<lang>.wasm')` (resolved at use-time, not eagerly at startup); (3) map the language's file
+    extensions to that language key in `EXT_MAP` so code-index knows which files to parse; (4) ensure
+    the grammar's AST nodes map to import_code facts (symbols, imports) and structural edges — the
+    JS/TS family shares node-navigation, other grammars may need their node kinds handled; (5)
+    rebuild and run `kb scan` (or `kb init`) so files of the new extension are parsed into facts and
+    edges, with a per-file `content_hash` recorded in `code_file_state` to skip unchanged files
+    later. A language without a wired grammar is simply not indexed. A correct answer should name the
+    `LANG_CONFIGS` / `EXT_MAP` wiring and the rescan step, and note the deterministic no-LLM path.
