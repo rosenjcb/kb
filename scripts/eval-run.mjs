@@ -381,16 +381,33 @@ function kb(cwd, args, opts = {}) {
   })
 }
 
-/** Non-blocking `kb` (used to run independent queries concurrently). Returns stdout. */
-async function kbAsync(cwd, args) {
+/**
+ * Non-blocking `kb` (used to run independent queries concurrently). Returns stdout.
+ * Retries transient failures (e.g. a query that times out under concurrent load) with
+ * backoff so a single slow query does not abort a whole multi-trial harvest.
+ */
+async function kbAsync(cwd, args, { attempts = 3 } = {}) {
   const bin = KB_BIN
-  const { stdout } = await execAsync(`node "${bin}" ${args}`, {
-    encoding: 'utf8',
-    env: kbEnv(),
-    cwd,
-    maxBuffer: 50 * 1024 * 1024,
-  })
-  return stdout
+  let lastErr
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const { stdout } = await execAsync(`node "${bin}" ${args}`, {
+        encoding: 'utf8',
+        env: kbEnv(),
+        cwd,
+        maxBuffer: 50 * 1024 * 1024,
+      })
+      return stdout
+    } catch (err) {
+      lastErr = err
+      if (attempt < attempts) {
+        const backoffMs = 2000 * 2 ** (attempt - 1)
+        console.error(`[eval] query attempt ${attempt}/${attempts} failed; retrying in ${backoffMs}ms`)
+        await new Promise(r => setTimeout(r, backoffMs))
+      }
+    }
+  }
+  throw lastErr
 }
 
 /**
@@ -697,6 +714,9 @@ async function main() {
     console.error(e instanceof Error ? e.message : e)
     process.exit(1)
   }
+  // Under concurrent harvest (esp. multi-trial) queries contend on the single kb-server and
+  // can exceed the 60s default; give them more headroom (child procs inherit process.env).
+  if (!process.env.KB_QUERY_TIMEOUT) process.env.KB_QUERY_TIMEOUT = '180s'
   if (args.help) {
     printHelp()
     process.exit(0)
