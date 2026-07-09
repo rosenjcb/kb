@@ -14,3 +14,6 @@ questions:
   - What are the coding conventions and style guidelines for contributing to raylib?
   - What are the main gotchas, constraints, and known limitations of raylib?
   - Which header files does raylib.h directly include, and what subsystems do those dependencies cover?
+  - Step by step, what happens inside InitWindow() to open a window and set up the graphics context?
+  - Trace raylib's standard render loop in order — what do BeginDrawing, the drawing calls, and EndDrawing each do, and in what sequence?
+  - How do I add a new example program to raylib and get it built, step by step?

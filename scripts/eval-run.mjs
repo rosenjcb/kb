@@ -22,7 +22,10 @@
  * Clone: suite YAML repo_url used by default; override with `--repo <git-url>`.
  */
 
-import { execSync, spawn } from 'node:child_process'
+import { exec, execSync, spawn } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execAsync = promisify(exec)
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -37,9 +40,6 @@ import {
   derivedBase,
   parseQueryText,
   parseGraphCounts,
-  formatAnswerTelemetryLog,
-  runReportToAnswerTelemetry,
-  readLatestKbQueryRunReport,
   buildCoverageAudit,
   scoreMetric,
   structuralMetric,
@@ -186,6 +186,12 @@ function parseArgs(argv) {
     autoScore: true, // on by default; disable with --manual-score
     autoScoreFile: null,
     scoreRuns: 3,
+    // Query trials: run each question K times and average the per-axis scores across
+    // trials to cancel run-to-run retrieval/judge nondeterminism (default 1 = off).
+    queryTrials: Math.max(
+      1,
+      Number.parseInt(process.env.KB_EVAL_QUERY_TRIALS ?? '', 10) || 1
+    ),
     // Control condition (the real-agent baseline) runs side-by-side with kb by default.
     skipControl: false,
     controlModel: null,
@@ -217,6 +223,8 @@ function parseArgs(argv) {
     } else if (a === '--auto-score') out.autoScore = true
     else if (a === '--score-runs' && argv[i + 1])
       out.scoreRuns = Math.max(1, Number.parseInt(argv[++i], 10) || 1)
+    else if (a === '--query-trials' && argv[i + 1])
+      out.queryTrials = Math.max(1, Number.parseInt(argv[++i], 10) || 1)
     else if (a === '--manual-score') out.autoScore = false
     else if (a === '--skip-init') out.skipCapture = true
     else if (a === '--force-init') out.forceInit = true
@@ -279,6 +287,8 @@ Output:
   --out PATH              Override artifact JSON path
   --manual-score          Skip LLM auto-scoring (default: auto-score is ON)
   --score-runs N          Call scorer N times and average (reduces noise; default 3)
+  --query-trials K        Run each question K times and average scores across trials to
+                          cancel retrieval/judge nondeterminism (default 1; env KB_EVAL_QUERY_TRIALS)
   --scores-file PATH      Load manual rubric scores instead (JSON array, one per question)
   --auto-score-file PATH  Write auto-scores to a specific path
 
@@ -314,9 +324,12 @@ function kbEnv() {
 function evalIndexTee(mode, args, logPath) {
   fs.mkdirSync(path.dirname(logPath), { recursive: true })
   const logFd = fs.openSync(logPath, 'w')
-  const quotedArgs = args.replace(/"/g, '\\"')
+  // `args` already contains shell-quoting around paths (e.g. --git "<path>"); it is built
+  // internally, not from user input. Escaping those quotes turns them into literal `"`
+  // characters in argv (git then fails on a path that literally contains quotes), so pass
+  // the string through unescaped and let the shell consume the quotes as delimiters.
   return new Promise((resolve, reject) => {
-    const child = spawn(`pnpm exec tsx "${EVAL_INDEX}" ${mode} ${quotedArgs}`, {
+    const child = spawn(`pnpm exec tsx "${EVAL_INDEX}" ${mode} ${args}`, {
       cwd: KB_REPO,
       env: kbEnv(),
       shell: true,
@@ -366,6 +379,94 @@ function kb(cwd, args, opts = {}) {
     stdio: opts.stdio === 'inherit' || opts.capture === false ? 'inherit' : undefined,
     ...opts,
   })
+}
+
+/**
+ * Non-blocking `kb` (used to run independent queries concurrently). Returns stdout.
+ * Retries transient failures (e.g. a query that times out under concurrent load) with
+ * backoff so a single slow query does not abort a whole multi-trial harvest.
+ */
+async function kbAsync(cwd, args, { attempts = 3 } = {}) {
+  const bin = KB_BIN
+  let lastErr
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const { stdout } = await execAsync(`node "${bin}" ${args}`, {
+        encoding: 'utf8',
+        env: kbEnv(),
+        cwd,
+        maxBuffer: 50 * 1024 * 1024,
+      })
+      return stdout
+    } catch (err) {
+      lastErr = err
+      if (attempt < attempts) {
+        const backoffMs = 2000 * 2 ** (attempt - 1)
+        console.error(`[eval] query attempt ${attempt}/${attempts} failed; retrying in ${backoffMs}ms`)
+        await new Promise(r => setTimeout(r, backoffMs))
+      }
+    }
+  }
+  throw lastErr
+}
+
+/**
+ * Run `fn` over `items` with at most `limit` in flight at once, preserving input
+ * order in the returned results array. Used to parallelize independent eval
+ * queries against kb-server without unbounded fan-out (which would trip provider
+ * rate limits and overload the local server).
+ */
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length)
+  let next = 0
+  const worker = async () => {
+    while (true) {
+      const i = next++
+      if (i >= items.length) return
+      results[i] = await fn(items[i], i)
+    }
+  }
+  const n = Math.max(1, Math.min(limit, items.length))
+  await Promise.all(Array.from({ length: n }, () => worker()))
+  return results
+}
+
+/** Query concurrency for the harvest loop (bounded; default 4). Override with KB_EVAL_QUERY_CONCURRENCY. */
+function evalQueryConcurrency() {
+  const raw = Number(process.env.KB_EVAL_QUERY_CONCURRENCY)
+  if (Number.isFinite(raw) && raw >= 1) return Math.floor(raw)
+  return 4
+}
+
+const SCORE_AXES = ['correctness', 'usefulness', 'relevance', 'specificity', 'evidence_handling']
+
+/**
+ * Average per-axis score levels across query trials. Each trial's normalized scores may be
+ * rubric labels or raw 0–4 levels; resolve both to levels, then mean them. Relevance falls
+ * back to usefulness when a trial omits it (mirrors the single-run path). Output levels are
+ * fractional on purpose — the whole point of trials is a less-noisy, finer-grained mean.
+ */
+function averageTrialScores(perTrialNormalized, count) {
+  const trials = perTrialNormalized.length
+  const out = []
+  for (let i = 0; i < count; i++) {
+    const acc = { correctness: 0, usefulness: 0, relevance: 0, specificity: 0, evidence_handling: 0 }
+    let notes = ''
+    for (let t = 0; t < trials; t++) {
+      const ms = perTrialNormalized[t][i] ?? {}
+      const usefulness = scoreFromLabel('usefulness', ms.usefulness)
+      acc.correctness += scoreFromLabel('correctness', ms.correctness)
+      acc.usefulness += usefulness
+      acc.relevance += ms.relevance != null ? scoreFromLabel('relevance', ms.relevance) : usefulness
+      acc.specificity += scoreFromLabel('specificity', ms.specificity)
+      acc.evidence_handling += scoreFromLabel('evidence_handling', ms.evidence_handling)
+      if (!notes && ms.notes?.trim()) notes = ms.notes.trim()
+    }
+    const avg = { notes: notes || `averaged over ${trials} query trials` }
+    for (const axis of SCORE_AXES) avg[axis] = Number((acc[axis] / trials).toFixed(3))
+    out.push(avg)
+  }
+  return out
 }
 
 function timed(label, timings, fn) {
@@ -550,7 +651,7 @@ function logsCmd(base) {
  *
  * @returns {{ questions_answered:number, total_input_tokens:number, total_output_tokens:number, total_cost_usd:number, mean_num_turns:number|null, total_duration_ms:number }|null}
  */
-function readKbQueryTelemetry(base, limit = 8) {
+function readKbQueryTelemetry(base, limit = 8, trials = 1) {
   const logsDir = path.join(os.homedir(), '.kb', 'logs')
   if (!fs.existsSync(logsDir)) return null
   const reports = []
@@ -568,18 +669,22 @@ function readKbQueryTelemetry(base, limit = 8) {
   }
   if (reports.length === 0) return null
   reports.sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime())
-  const recent = reports.slice(-limit)
+  // With K query trials there are limit×K recent reports; sum them all but divide the
+  // totals by K so token/latency represent ONE representative run (trials are a measurement
+  // device, not the product's cost — they must not K×-inflate the budgets).
+  const t = Math.max(1, trials)
+  const recent = reports.slice(-limit * t)
   const sum = key => recent.reduce((a, r) => a + (Number(r[key]) || 0), 0)
   return {
-    questions_answered: recent.length,
-    total_input_tokens: sum('totalInputTokens'),
-    total_output_tokens: sum('totalOutputTokens'),
-    total_cost_usd: Number(sum('totalEstimatedCostUsd').toFixed(4)),
+    questions_answered: Math.round(recent.length / t),
+    total_input_tokens: Math.round(sum('totalInputTokens') / t),
+    total_output_tokens: Math.round(sum('totalOutputTokens') / t),
+    total_cost_usd: Number((sum('totalEstimatedCostUsd') / t).toFixed(4)),
     mean_num_turns: null,
-    total_duration_ms: sum('totalDurationMs'),
-    // Full recent RunReports (one per question, in ask-order) so callers can build the
+    total_duration_ms: Math.round(sum('totalDurationMs') / t),
+    // Most-recent one-trial slice of RunReports (one per question) so callers can build the
     // per-question timeline. Not summed — kept raw for stage + retrieval-trace inspection.
-    per_question_reports: recent,
+    per_question_reports: recent.slice(-limit),
   }
 }
 
@@ -609,6 +714,9 @@ async function main() {
     console.error(e instanceof Error ? e.message : e)
     process.exit(1)
   }
+  // Under concurrent harvest (esp. multi-trial) queries contend on the single kb-server and
+  // can exceed the 60s default; give them more headroom (child procs inherit process.env).
+  if (!process.env.KB_QUERY_TIMEOUT) process.env.KB_QUERY_TIMEOUT = '180s'
   if (args.help) {
     printHelp()
     process.exit(0)
@@ -803,26 +911,49 @@ async function main() {
       console.error('[eval] waiting for kb-server index readiness (/healthz ok: true) before queries')
       await evalServer.waitReady()
 
-      let q = 1
-      let queryTotalMs = 0
-      for (const question of questions) {
-        console.error(`[eval] ${suiteLabel} · K query ${q}/${questions.length}`)
-        const escaped = question.replace(/"/g, '\\"')
-        const label = `query_${q}`
-        const queryStartMs = Date.now()
-        const out = timed(label, runTiming, () => kb(targetCwd, `query "${escaped}" --base ${base}`))
-        const durationMs = runTiming.command_durations_ms[label]
-        runTiming.query_durations_ms.push(durationMs)
-        queryTotalMs += durationMs
-        fs.writeFileSync(path.join(workdir, `q${q}.json`), out, 'utf8')
-        const report = readLatestKbQueryRunReport(base, { minFinishedAtMs: queryStartMs - 500 })
-        const telemetry =
-          runReportToAnswerTelemetry(report) ??
-          (typeof durationMs === 'number' ? { duration_ms: durationMs } : null)
-        console.error(`[eval] answer ${formatAnswerTelemetryLog(telemetry)}`)
-        q++
+      // Queries are independent, so run them with bounded concurrency to cut wall-clock.
+      // Order is preserved: results are written to q{n}.json by index, and per-question
+      // durations land at their own index. Aggregate token/latency telemetry is summed
+      // later from the NDJSON run reports (order-independent); per-question timeline
+      // reports are matched in ask-order, which the in-order launch preserves.
+      const concurrency = evalQueryConcurrency()
+      const trials = args.queryTrials
+      const wallStartMs = Date.now()
+      runTiming.query_durations_ms = new Array(questions.length)
+      runTiming.query_trials = trials
+      let done = 0
+      // One work item per (question, trial). Trial 1 of each question is the representative
+      // answer stored as q{n}.json (and its duration is the per-question timing); every trial
+      // is also written to q{n}.t{t}.json so scoring can average across trials.
+      const work = []
+      for (let idx = 0; idx < questions.length; idx++) {
+        for (let t = 1; t <= trials; t++) work.push({ idx, t })
       }
-      runTiming.query_total_duration_ms = queryTotalMs
+      const total = work.length
+      console.error(
+        `[eval] ${suiteLabel} · running ${questions.length} K queries × ${trials} trial(s) = ${total} (concurrency ${concurrency})`
+      )
+      await mapWithConcurrency(work, concurrency, async ({ idx, t }) => {
+        const q = idx + 1
+        const escaped = questions[idx].replace(/"/g, '\\"')
+        const label = `query_${q}_t${t}`
+        const out = await timedAsync(label, runTiming, () =>
+          kbAsync(targetCwd, `query "${escaped}" --base ${base}`)
+        )
+        const durationMs = runTiming.command_durations_ms[label]
+        fs.writeFileSync(path.join(workdir, `q${q}.t${t}.json`), out, 'utf8')
+        if (t === 1) {
+          fs.writeFileSync(path.join(workdir, `q${q}.json`), out, 'utf8')
+          runTiming.query_durations_ms[idx] = durationMs
+        }
+        done++
+        console.error(
+          `[eval] ${suiteLabel} · query ${q}/${questions.length} trial ${t}/${trials} done (${done}/${total}, ${durationMs}ms)`
+        )
+      })
+      // Wall-clock of the parallel batch (not the summed per-query time) drives the run's
+      // speed budget, so parallelism actually improves the reported speed sub-score.
+      runTiming.query_total_duration_ms = Date.now() - wallStartMs
       fs.writeFileSync(path.join(workdir, 'runtime.json'), JSON.stringify(runTiming, null, 2), 'utf8')
     } finally {
       if (evalServer) {
@@ -865,21 +996,70 @@ async function main() {
     }
   } else if (args.autoScore) {
     const outScores = args.autoScoreFile || path.join(workdir, 'auto-scores.json')
+    // Trial averaging needs the per-trial answer files; a rescore-only path (--skip-init on
+    // an old single-answer run) won't have them, so fall back to single-file scoring there.
+    const trials =
+      (args.queryTrials ?? 1) > 1 && fs.existsSync(path.join(workdir, 'q1.t1.json'))
+        ? args.queryTrials
+        : 1
     try {
-      const res = await runAutoScoreFile({
-        workdir,
-        questions,
-        answers: suiteConfig?.answers ?? null,
-        outScoresPath: outScores,
-        rubricPhrase,
-        scoreRuns: args.scoreRuns,
-      })
-      manualScores = res.normalized
-      queryScoringMeta = {
-        mode: args.scoreRuns > 1 ? `llm_judge_avg_${args.scoreRuns}` : 'llm_judge_single_shot',
-        provider: res.providerUsed,
-        model: res.modelUsed,
-        scores_file: res.outScoresPath,
+      if (trials > 1) {
+        // Score each query trial independently, then average the per-axis levels across
+        // trials so run-to-run retrieval/judge noise cancels. Each trial's answers live in
+        // q{n}.t{t}.json; score them from a per-trial view dir of q{n}.json files. The trials
+        // are independent, so score them concurrently (bounded) rather than one at a time.
+        for (let t = 1; t <= trials; t++) {
+          const trialDir = path.join(workdir, `.score-t${t}`)
+          fs.mkdirSync(trialDir, { recursive: true })
+          for (let n = 1; n <= questions.length; n++) {
+            fs.copyFileSync(
+              path.join(workdir, `q${n}.t${t}.json`),
+              path.join(trialDir, `q${n}.json`)
+            )
+          }
+        }
+        console.error(`[eval] auto-score ${trials} trials (concurrent)`)
+        const trialResults = await mapWithConcurrency(
+          Array.from({ length: trials }, (_, i) => i + 1),
+          evalQueryConcurrency(),
+          t => {
+            const trialDir = path.join(workdir, `.score-t${t}`)
+            return runAutoScoreFile({
+              workdir: trialDir,
+              questions,
+              answers: suiteConfig?.answers ?? null,
+              outScoresPath: path.join(trialDir, 'auto-scores.json'),
+              rubricPhrase,
+              scoreRuns: args.scoreRuns,
+            })
+          }
+        )
+        const perTrialNormalized = trialResults.map(r => r.normalized)
+        const meta = trialResults[0]
+        manualScores = averageTrialScores(perTrialNormalized, questions.length)
+        fs.writeFileSync(outScores, JSON.stringify(manualScores, null, 2), 'utf8')
+        queryScoringMeta = {
+          mode: `llm_judge_avg_${args.scoreRuns}x_trials_${trials}`,
+          provider: meta.providerUsed,
+          model: meta.modelUsed,
+          scores_file: outScores,
+        }
+      } else {
+        const res = await runAutoScoreFile({
+          workdir,
+          questions,
+          answers: suiteConfig?.answers ?? null,
+          outScoresPath: outScores,
+          rubricPhrase,
+          scoreRuns: args.scoreRuns,
+        })
+        manualScores = res.normalized
+        queryScoringMeta = {
+          mode: args.scoreRuns > 1 ? `llm_judge_avg_${args.scoreRuns}` : 'llm_judge_single_shot',
+          provider: res.providerUsed,
+          model: res.modelUsed,
+          scores_file: res.outScoresPath,
+        }
       }
     } catch (e) {
       console.error(e instanceof Error ? e.message : e)
@@ -894,17 +1074,21 @@ async function main() {
     const coverageAudit = buildCoverageAudit(questions[n - 1], answer, retrieval.detail)
 
     const ms = manualScores?.[n - 1]
-    // ms axes may be labels ("mostly_correct") or raw 0–4 levels; scoreFromLabel
-    // resolves either to an ordinal level (and is idempotent on the numbers that
-    // the auto-scorer already produced).
-    const usefulness = ms ? scoreFromLabel('usefulness', ms.usefulness) : 0
+    // ms axes may be labels ("mostly_correct"), raw 0–4 levels, or fractional levels from
+    // trial averaging. Resolve labels via scoreFromLabel, but preserve an already-finite
+    // number (clamped, NOT rounded) so trial-averaged fractions survive into the means.
+    const toLevel = (axis, v) =>
+      typeof v === 'number' && Number.isFinite(v)
+        ? Math.min(4, Math.max(0, v))
+        : scoreFromLabel(axis, v)
+    const usefulness = ms ? toLevel('usefulness', ms.usefulness) : 0
     const scores = ms
       ? {
-          correctness: scoreFromLabel('correctness', ms.correctness),
+          correctness: toLevel('correctness', ms.correctness),
           usefulness,
-          relevance: ms.relevance != null ? scoreFromLabel('relevance', ms.relevance) : usefulness,
-          specificity: scoreFromLabel('specificity', ms.specificity),
-          evidence_handling: scoreFromLabel('evidence_handling', ms.evidence_handling),
+          relevance: ms.relevance != null ? toLevel('relevance', ms.relevance) : usefulness,
+          specificity: toLevel('specificity', ms.specificity),
+          evidence_handling: toLevel('evidence_handling', ms.evidence_handling),
         }
       : { correctness: 0, usefulness: 0, relevance: 0, specificity: 0, evidence_handling: 0 }
     const notes = ms?.notes?.trim()
@@ -943,7 +1127,7 @@ async function main() {
   const curationSummary = summarizeCuration(query_evaluation.map(q => q.retrieval?.detail))
 
   // KB-side query telemetry (tokens + latency) for the composite success score.
-  const kbQueryTelemetryRaw = readKbQueryTelemetry(base, questions.length)
+  const kbQueryTelemetryRaw = readKbQueryTelemetry(base, questions.length, args.queryTrials ?? 1)
   // Per-question run timeline: join each question's RunReport (stage token/time split) with its
   // retrieval trace (passes, hops, curator drops). The raw reports stay out of the summary
   // telemetry block to keep it compact; they live only in the timeline.
