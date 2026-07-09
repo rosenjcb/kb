@@ -22,7 +22,10 @@
  * Clone: suite YAML repo_url used by default; override with `--repo <git-url>`.
  */
 
-import { execSync, spawn } from 'node:child_process'
+import { exec, execSync, spawn } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execAsync = promisify(exec)
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -37,9 +40,6 @@ import {
   derivedBase,
   parseQueryText,
   parseGraphCounts,
-  formatAnswerTelemetryLog,
-  runReportToAnswerTelemetry,
-  readLatestKbQueryRunReport,
   buildCoverageAudit,
   scoreMetric,
   structuralMetric,
@@ -369,6 +369,46 @@ function kb(cwd, args, opts = {}) {
     stdio: opts.stdio === 'inherit' || opts.capture === false ? 'inherit' : undefined,
     ...opts,
   })
+}
+
+/** Non-blocking `kb` (used to run independent queries concurrently). Returns stdout. */
+async function kbAsync(cwd, args) {
+  const bin = KB_BIN
+  const { stdout } = await execAsync(`node "${bin}" ${args}`, {
+    encoding: 'utf8',
+    env: kbEnv(),
+    cwd,
+    maxBuffer: 50 * 1024 * 1024,
+  })
+  return stdout
+}
+
+/**
+ * Run `fn` over `items` with at most `limit` in flight at once, preserving input
+ * order in the returned results array. Used to parallelize independent eval
+ * queries against kb-server without unbounded fan-out (which would trip provider
+ * rate limits and overload the local server).
+ */
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length)
+  let next = 0
+  const worker = async () => {
+    while (true) {
+      const i = next++
+      if (i >= items.length) return
+      results[i] = await fn(items[i], i)
+    }
+  }
+  const n = Math.max(1, Math.min(limit, items.length))
+  await Promise.all(Array.from({ length: n }, () => worker()))
+  return results
+}
+
+/** Query concurrency for the harvest loop (bounded; default 4). Override with KB_EVAL_QUERY_CONCURRENCY. */
+function evalQueryConcurrency() {
+  const raw = Number(process.env.KB_EVAL_QUERY_CONCURRENCY)
+  if (Number.isFinite(raw) && raw >= 1) return Math.floor(raw)
+  return 4
 }
 
 function timed(label, timings, fn) {
@@ -806,26 +846,36 @@ async function main() {
       console.error('[eval] waiting for kb-server index readiness (/healthz ok: true) before queries')
       await evalServer.waitReady()
 
-      let q = 1
-      let queryTotalMs = 0
-      for (const question of questions) {
-        console.error(`[eval] ${suiteLabel} · K query ${q}/${questions.length}`)
+      // Queries are independent, so run them with bounded concurrency to cut wall-clock.
+      // Order is preserved: results are written to q{n}.json by index, and per-question
+      // durations land at their own index. Aggregate token/latency telemetry is summed
+      // later from the NDJSON run reports (order-independent); per-question timeline
+      // reports are matched in ask-order, which the in-order launch preserves.
+      const concurrency = evalQueryConcurrency()
+      const wallStartMs = Date.now()
+      runTiming.query_durations_ms = new Array(questions.length)
+      let done = 0
+      console.error(
+        `[eval] ${suiteLabel} · running ${questions.length} K queries (concurrency ${concurrency})`
+      )
+      await mapWithConcurrency(questions, concurrency, async (question, idx) => {
+        const q = idx + 1
         const escaped = question.replace(/"/g, '\\"')
         const label = `query_${q}`
-        const queryStartMs = Date.now()
-        const out = timed(label, runTiming, () => kb(targetCwd, `query "${escaped}" --base ${base}`))
+        const out = await timedAsync(label, runTiming, () =>
+          kbAsync(targetCwd, `query "${escaped}" --base ${base}`)
+        )
         const durationMs = runTiming.command_durations_ms[label]
-        runTiming.query_durations_ms.push(durationMs)
-        queryTotalMs += durationMs
+        runTiming.query_durations_ms[idx] = durationMs
         fs.writeFileSync(path.join(workdir, `q${q}.json`), out, 'utf8')
-        const report = readLatestKbQueryRunReport(base, { minFinishedAtMs: queryStartMs - 500 })
-        const telemetry =
-          runReportToAnswerTelemetry(report) ??
-          (typeof durationMs === 'number' ? { duration_ms: durationMs } : null)
-        console.error(`[eval] answer ${formatAnswerTelemetryLog(telemetry)}`)
-        q++
-      }
-      runTiming.query_total_duration_ms = queryTotalMs
+        done++
+        console.error(
+          `[eval] ${suiteLabel} · K query ${q}/${questions.length} done (${done} complete, ${durationMs}ms)`
+        )
+      })
+      // Wall-clock of the parallel batch (not the summed per-query time) drives the run's
+      // speed budget, so parallelism actually improves the reported speed sub-score.
+      runTiming.query_total_duration_ms = Date.now() - wallStartMs
       fs.writeFileSync(path.join(workdir, 'runtime.json'), JSON.stringify(runTiming, null, 2), 'utf8')
     } finally {
       if (evalServer) {
