@@ -1,8 +1,8 @@
 ---
 type: Spec
 title: "Spec: KB Core"
-sources: ./
-tests: ../../../../tests/core
+sources: [./]
+tests: [../../../../tests/core]
 description: Behavioral specification for KB Core
 tags: [spec, kb]
 timestamp: 2026-06-28T04:05:29Z

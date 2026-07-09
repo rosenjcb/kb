@@ -65,8 +65,8 @@ One-paragraph what/why …
 ---
 type: Spec
 title: "Spec: Fact Curator"
-sources: ./fact-curator.ts
-tests: ../../../../tests/tools/fact-curator.test.ts
+sources: [./fact-curator.ts]
+tests: [../../../../tests/tools/fact-curator.test.ts]
 description: Post-retrieval relevance curation
 resource: ./fact-curator.ts
 tags: [spec, kb]
@@ -104,7 +104,7 @@ Domain terms not obvious from code.
 
 - Continue **FR-N** / **TC-N** numbering from the existing spec — never renumber or reset.
 - Every new **TC-N** row needs a matching `[TC-N]` test (agent may note the gap; user or a follow-up adds the test).
-- `sources` frontmatter lists implementation + test paths the spec governs.
+- `sources` frontmatter lists implementation paths the spec governs (YAML list, spec-relative).
 
 ## When to invoke
 

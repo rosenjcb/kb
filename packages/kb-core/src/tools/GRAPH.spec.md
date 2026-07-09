@@ -1,7 +1,7 @@
 ---
 type: Spec
 title: "Spec: Knowledge Graph"
-sources: ./tree-sitter-indexer.ts
+sources: [./tree-sitter-indexer.ts]
 tests:
   - ../../../../tests/tools/graph-query-expansion.test.ts
   - ../../../../tests/tools/graph-rag-reranker.test.ts
