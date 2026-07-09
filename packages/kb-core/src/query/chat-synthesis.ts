@@ -53,10 +53,10 @@ export interface ChatSynthesisResult {
   lastIntentResult?: IntentResult
 }
 
-// Headroom for thinking models: reasoning tokens count against the output cap,
-// so a tight budget can be fully consumed by thinking and leave no answer. 8192
-// comfortably fits thinking + a full synthesized answer for gemini-3.x.
-const CHAT_MAX_OUTPUT_TOKENS = 8192
+// If a thinking model consumes this whole budget reasoning and leaves no answer,
+// GeminiProvider.call() escalates the budget (and, failing that, retries with
+// thinking disabled), so this stays at the lean default.
+const CHAT_MAX_OUTPUT_TOKENS = 4096
 const MAX_SYNTHESIS_TURNS = 12
 
 const CHAT_QUERY_KB_TOOL: ToolDefinition = {

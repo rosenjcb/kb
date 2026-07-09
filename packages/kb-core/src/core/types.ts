@@ -9,7 +9,14 @@ export interface Message {
   role: 'user' | 'assistant'
   content: string | ToolResultBlock[]
   /** Tool calls made by an assistant message (used to round-trip tool_use through providers). */
-  toolUses?: Array<{ id: string; name: string; input: Record<string, unknown> }>
+  toolUses?: Array<{
+    id: string
+    name: string
+    input: Record<string, unknown>
+    /** Gemini 2.5+/3.x return an opaque signature per function call that must be
+     *  echoed back verbatim on the next turn, or tool round-trips fail with a 400. */
+    thoughtSignature?: string
+  }>
   metadata?: {
     timestamp: number
     tokenCount?: number
@@ -84,6 +91,7 @@ export interface LLMResponse {
     id: string
     name: string
     input: Record<string, unknown>
+    thoughtSignature?: string
   }>
   usage: {
     inputTokens: number

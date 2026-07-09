@@ -218,9 +218,7 @@ describe('chat-cli session loop', () => {
     expect(provider.call).toHaveBeenCalledTimes(2)
     expect(provider.call).toHaveBeenCalledWith(
       expect.objectContaining({
-        // Headroom for thinking models: reasoning tokens count against the output
-        // cap, so synthesis budgets 8192 to fit thinking + a full answer.
-        maxTokens: 8192,
+        maxTokens: 4096,
         systemPrompt: expect.stringContaining('knowledge base assistant'),
       })
     )

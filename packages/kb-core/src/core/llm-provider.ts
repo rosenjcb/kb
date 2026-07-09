@@ -790,7 +790,12 @@ export class GeminiProvider implements LLMProvider {
           parts.push({ text: m.content })
         }
         for (const tu of m.toolUses) {
-          parts.push({ functionCall: { name: tu.name, args: tu.input } })
+          parts.push({
+            functionCall: { name: tu.name, args: tu.input },
+            // gemini-3.x rejects a tool round-trip (400) unless the model's own
+            // thoughtSignature is echoed back on the functionCall it emitted.
+            ...(tu.thoughtSignature ? { thoughtSignature: tu.thoughtSignature } : {}),
+          })
         }
         geminiContents.push({ role: 'model', parts })
       } else {
@@ -810,13 +815,22 @@ export class GeminiProvider implements LLMProvider {
   ): Record<string, unknown> {
     const supportsThinking = geminiModelSupportsThinkingBudget(this.model)
     const thinkingConfig: Record<string, unknown> = {}
-    if (opts.includeThoughts && supportsThinking) {
-      thinkingConfig.includeThoughts = true
-      if (typeof params.thinkingBudget === 'number' && params.thinkingBudget > 0) {
-        thinkingConfig.thinkingBudget = params.thinkingBudget
+    if (supportsThinking) {
+      if (opts.includeThoughts) {
+        // Reasoning explicitly requested (e.g. query expansion): keep thinking on.
+        // Honor an explicit budget; otherwise let the model think dynamically.
+        thinkingConfig.includeThoughts = true
+        if (typeof params.thinkingBudget === 'number' && params.thinkingBudget > 0) {
+          thinkingConfig.thinkingBudget = params.thinkingBudget
+        }
+      } else {
+        // No reasoning requested → default thinking OFF. gemini-3.x otherwise thinks
+        // by default and consumes terse/classifier budgets (e.g. the sufficiency
+        // judge's maxTokens:10), returning empty and silently breaking them. Callers
+        // opt in with an explicit positive `thinkingBudget`.
+        thinkingConfig.thinkingBudget =
+          typeof params.thinkingBudget === 'number' ? params.thinkingBudget : 0
       }
-    } else if (params.thinkingBudget !== undefined && supportsThinking) {
-      thinkingConfig.thinkingBudget = params.thinkingBudget
     }
 
     return {
@@ -853,7 +867,12 @@ export class GeminiProvider implements LLMProvider {
   ): Promise<{
     text: string
     stopReason: 'tool_use' | 'end_turn'
-    toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }>
+    toolUses: Array<{
+      id: string
+      name: string
+      input: Record<string, unknown>
+      thoughtSignature?: string
+    }>
     usage: { inputTokens: number; outputTokens: number }
     finishReason?: string
   }> {
@@ -903,6 +922,11 @@ export class GeminiProvider implements LLMProvider {
             id: `${dayjs().valueOf()}-${Math.random()}`,
             name: typeof call.name === 'string' ? call.name : 'unknown_tool',
             input: asRecord(call.args),
+            // gemini-3.x attaches a thoughtSignature to each functionCall; capture
+            // it so buildContents can echo it back on the tool round-trip turn.
+            ...(typeof p.thoughtSignature === 'string'
+              ? { thoughtSignature: p.thoughtSignature }
+              : {}),
           }
         }),
       usage: {
@@ -936,7 +960,12 @@ export class GeminiProvider implements LLMProvider {
     let text = ''
     let inputTokens = 0
     let outputTokens = 0
-    const toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> = []
+    const toolUses: Array<{
+      id: string
+      name: string
+      input: Record<string, unknown>
+      thoughtSignature?: string
+    }> = []
 
     for await (const event of iterateSseData(response, 'gemini')) {
       const candidates = Array.isArray(event.candidates) ? event.candidates : []
@@ -950,6 +979,9 @@ export class GeminiProvider implements LLMProvider {
             id: `${dayjs().valueOf()}-${Math.random()}`,
             name: typeof call.name === 'string' ? call.name : 'unknown_tool',
             input: asRecord(call.args),
+            ...(typeof part.thoughtSignature === 'string'
+              ? { thoughtSignature: part.thoughtSignature }
+              : {}),
           })
         } else if (typeof part.text === 'string' && part.text.length > 0) {
           if (part.thought === true) onReasoning(part.text)
