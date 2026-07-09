@@ -50,6 +50,34 @@ describe('isProceduralQuestion', () => {
     expect(isProceduralQuestion('What are the steps to configure the backend?')).toBe(true)
   })
 
+  it('matches sequence-framing questions (trace / in order / sequence of)', () => {
+    const sequence = [
+      'Trace raylib\'s standard render loop in order — what do BeginDrawing and EndDrawing each do?',
+      'What happens inside InitWindow, in order?',
+      'Describe the sequence of events when a base is bootstrapped.',
+      'Explain the order in which the init cycles run.',
+    ]
+    for (const q of sequence) {
+      expect(isProceduralQuestion(q), q).toBe(true)
+    }
+  })
+
+  it('does not treat the purpose phrase "in order to" as sequence framing', () => {
+    // "in order to" is purpose, not sequence; nothing else here is procedural.
+    expect(isProceduralQuestion('What flags do you pass in order to enable vsync?')).toBe(false)
+  })
+
+  it('can be disabled with KB_PROCEDURAL_SYNTHESIS=false', () => {
+    const prev = process.env.KB_PROCEDURAL_SYNTHESIS
+    try {
+      process.env.KB_PROCEDURAL_SYNTHESIS = 'false'
+      expect(isProceduralQuestion('How do I install and build raylib?')).toBe(false)
+    } finally {
+      if (prev === undefined) delete process.env.KB_PROCEDURAL_SYNTHESIS
+      else process.env.KB_PROCEDURAL_SYNTHESIS = prev
+    }
+  })
+
   it('exposes non-empty ordering guidance for wiring into synthesis prompts', () => {
     expect(PROCEDURAL_SYNTHESIS_GUIDANCE).toContain('ordered')
     expect(PROCEDURAL_SYNTHESIS_GUIDANCE.length).toBeGreaterThan(200)

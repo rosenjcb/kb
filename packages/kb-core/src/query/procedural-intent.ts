@@ -10,7 +10,13 @@
  * the facts already retrieved, not walked over dedicated `precedes` edges. It is
  * deliberately conservative — it changes how the answer is shaped, never what is
  * retrieved — so it is safe to ship ahead of any index-side work.
+ *
+ * Kill-switch: set `KB_PROCEDURAL_SYNTHESIS=false` to disable detection entirely
+ * (answers fall back to the default synthesis shape). Used for A/B measurement
+ * and as a production safety valve.
  */
+
+import { isEnvFalse } from '../config/env-boolean.js'
 
 /**
  * Phrasings that signal the reader wants a procedure (an ordered sequence of
@@ -33,6 +39,12 @@ const PROCEDURAL_PATTERNS: RegExp[] = [
   /\bworkflow\b/,
   /\bin what order\b/,
   /\bwhat order\b/,
+  // Sequence framing: "in order" (but not the purpose phrase "in order to"),
+  // "order in which", "sequence of", and "trace … <flow/loop/order/…>".
+  /\bin order\b(?!\s+to\b)/,
+  /\border (?:in which|of operations)\b/,
+  /\bsequence of\b/,
+  /\btrace\b[^.?!]*\b(?:sequence|order|flow|lifecycle|pipeline|path|loop)\b/,
   /\bhow (?:is|does) .* (?:configured|initialized|bootstrapped|wired)\b/,
   /\b(?:install|build|compile|configure|deploy|provision) (?:and|&) /,
 ]
@@ -50,6 +62,12 @@ const STRONG_PROCEDURAL: RegExp[] = [
   /\bwalk (?:me )?through\b/,
   /\bin what order\b/,
   /\bget(?:ting)? started\b/,
+  // Sequence framing is a strong cue — "What happens …, in order?" wants a sequence,
+  // not a definition, so it overrides the definitional-lead guard.
+  /\bin order\b(?!\s+to\b)/,
+  /\border (?:in which|of operations)\b/,
+  /\bsequence of\b/,
+  /\btrace\b[^.?!]*\b(?:sequence|order|flow|lifecycle|pipeline|path|loop)\b/,
 ]
 
 /**
@@ -64,6 +82,7 @@ const DEFINITIONAL_LEAD = /^\s*(?:what|which|who|whose|why|when)\b/
 
 /** True when the question reads as a how-to / procedural request. */
 export function isProceduralQuestion(question: string): boolean {
+  if (isEnvFalse(process.env.KB_PROCEDURAL_SYNTHESIS)) return false
   const q = question.toLowerCase().trim()
   if (!q) return false
   if (!PROCEDURAL_PATTERNS.some(re => re.test(q))) return false
