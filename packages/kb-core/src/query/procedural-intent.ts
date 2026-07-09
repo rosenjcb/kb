@@ -37,11 +37,39 @@ const PROCEDURAL_PATTERNS: RegExp[] = [
   /\b(?:install|build|compile|configure|deploy|provision) (?:and|&) /,
 ]
 
+/**
+ * Unambiguous procedural triggers. These carry a how-to / sequence intent strong
+ * enough to fire even when the question also opens with a definitional wh-word.
+ */
+const STRONG_PROCEDURAL: RegExp[] = [
+  /\bhow (?:do|would|can|should|might) (?:i|we|you|one)\b/,
+  /\bhow to\b/,
+  /\bstep[-\s]?by[-\s]?step\b/,
+  /\bsteps (?:to|for|involved|needed|required)\b/,
+  /\bwhat (?:are|were) the (?:steps|stages|phases)\b/,
+  /\bwalk (?:me )?through\b/,
+  /\bin what order\b/,
+  /\bget(?:ting)? started\b/,
+]
+
+/**
+ * A question that opens with a definitional wh-word ("What problem does…",
+ * "Which files…") asks to explain a thing, not to perform a procedure — even if
+ * it later mentions a "workflow" or "setup". Firing procedural formatting on
+ * those over-constrains an explanatory answer (observed on the kb eval: a "What
+ * problem does kb solve, and the workflow…" question lost usefulness/specificity
+ * when forced into numbered steps).
+ */
+const DEFINITIONAL_LEAD = /^\s*(?:what|which|who|whose|why|when)\b/
+
 /** True when the question reads as a how-to / procedural request. */
 export function isProceduralQuestion(question: string): boolean {
   const q = question.toLowerCase().trim()
   if (!q) return false
-  return PROCEDURAL_PATTERNS.some(re => re.test(q))
+  if (!PROCEDURAL_PATTERNS.some(re => re.test(q))) return false
+  // Definitional lead without a strong how-to/sequence cue → explain, don't sequence.
+  if (DEFINITIONAL_LEAD.test(q) && !STRONG_PROCEDURAL.some(re => re.test(q))) return false
+  return true
 }
 
 /**

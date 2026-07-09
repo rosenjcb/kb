@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
 import {
   PROCEDURAL_SYNTHESIS_GUIDANCE,
   isProceduralQuestion,
 } from '@kb/core/query/procedural-intent.js'
+import { describe, expect, it } from 'vitest'
 
 describe('isProceduralQuestion', () => {
   it('matches how-to / step-by-step phrasings', () => {
@@ -12,7 +12,7 @@ describe('isProceduralQuestion', () => {
       'What are the steps to configure the graphics backend?',
       'Walk me through the kb init flow',
       'In what order does the query orchestrator run its passes?',
-      'What is the workflow for publishing docs?',
+      'What are the steps to publish the docs?',
       'How to add a new intent',
       'Getting started with the eval harness',
     ]
@@ -32,6 +32,22 @@ describe('isProceduralQuestion', () => {
     for (const q of nonProcedural) {
       expect(isProceduralQuestion(q), q).toBe(false)
     }
+  })
+
+  it('does not fire on a definitional-lead question that merely mentions workflow/setup', () => {
+    // Opens with "What" and only carries weak cues (workflow / setting up) — should
+    // stay explanatory, not be forced into numbered steps.
+    expect(
+      isProceduralQuestion(
+        'What problem does kb solve, and what is the normal workflow for setting up indexing and querying?'
+      )
+    ).toBe(false)
+  })
+
+  it('still fires on a how-to question even when it opens with a wh-word phrase', () => {
+    // Strong trigger ("how do I") overrides the definitional-lead guard.
+    expect(isProceduralQuestion('How do I install and build raylib?')).toBe(true)
+    expect(isProceduralQuestion('What are the steps to configure the backend?')).toBe(true)
   })
 
   it('exposes non-empty ordering guidance for wiring into synthesis prompts', () => {
