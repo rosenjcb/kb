@@ -15,8 +15,8 @@ importers:
         specifier: ^2.31.0
         version: 2.31.0(@types/node@22.19.17)
       '@rosenjcb/spec-md':
-        specifier: github:rosenjcb/spec.md#v0.3.0&path:cli
-        version: https://codeload.github.com/rosenjcb/spec.md/tar.gz/72589a525239b0296ca904b08442bb9dd428ba0a#path:cli
+        specifier: 0.3.0
+        version: 0.3.0
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
@@ -1476,9 +1476,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@rosenjcb/spec-md@https://codeload.github.com/rosenjcb/spec.md/tar.gz/72589a525239b0296ca904b08442bb9dd428ba0a#path:cli':
-    resolution: {path: cli, tarball: https://codeload.github.com/rosenjcb/spec.md/tar.gz/72589a525239b0296ca904b08442bb9dd428ba0a}
-    version: 0.3.0
+  '@rosenjcb/spec-md@0.3.0':
+    resolution: {integrity: sha512-3JJ1BNCpG45ooe37/+uyJAhCHGzpbqiB8sVlVEC9qnkqSg2rI6vdk+B9PUnl7m67S9DZtrzo77MycOHf01QyGg==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -4418,7 +4417,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.1':
     optional: true
 
-  '@rosenjcb/spec-md@https://codeload.github.com/rosenjcb/spec.md/tar.gz/72589a525239b0296ca904b08442bb9dd428ba0a#path:cli': {}
+  '@rosenjcb/spec-md@0.3.0': {}
 
   '@sindresorhus/is@4.6.0': {}
 
