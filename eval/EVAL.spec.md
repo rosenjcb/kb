@@ -1,7 +1,7 @@
 ---
 type: Spec
 title: "Spec: MOEL Evaluation Framework"
-sources: ./
+sources: [./]
 tests:
   - ../tests/eval
   - ../tests/eval-run.test.ts

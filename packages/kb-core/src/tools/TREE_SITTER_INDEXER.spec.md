@@ -1,8 +1,10 @@
 ---
 type: Spec
 title: "Spec: Tree-Sitter Code Graph Indexer"
-sources: ./tree-sitter-indexer.ts
-tests: ../../../../tests/tools/tree-sitter-indexer.test.ts,../../../../tests/tools/ast-source-text.test.ts
+sources: [./tree-sitter-indexer.ts]
+tests:
+  - ../../../../tests/tools/tree-sitter-indexer.test.ts
+  - ../../../../tests/tools/ast-source-text.test.ts
 description: Behavioral specification for Tree-Sitter Code Graph Indexer
 tags: [spec, kb]
 timestamp: 2026-06-28T04:05:29Z

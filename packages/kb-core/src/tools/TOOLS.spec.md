@@ -1,7 +1,7 @@
 ---
 type: Spec
 title: "Spec: KB Tools"
-sources: ./
+sources: [./]
 # Precise, disjoint scope: tests/tools minus the files owned by the per-tool
 # specs (FACT_CURATOR, GRAPH, TREE_SITTER_INDEXER). TC ids are per-spec, so a
 # whole-dir claim would over-select their [TC-N] tags. Add new tests/tools files

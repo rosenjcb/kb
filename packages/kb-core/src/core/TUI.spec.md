@@ -1,8 +1,8 @@
 ---
 type: Spec
 title: "Spec: TUI"
-sources: ../tui
-tests: ../../../../tests/tui
+sources: [../../../kb-client/src/tui, ./TUI.md]
+tests: [../../../../tests/tui]
 description: Behavioral specification for TUI
 tags: [spec, kb]
 timestamp: 2026-06-28T04:05:30Z

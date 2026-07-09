@@ -1,8 +1,8 @@
 ---
 type: Spec
 title: "Spec: Repo Scripts"
-sources: ./
-tests: ../tests/scripts
+sources: [./]
+tests: [../tests/scripts]
 description: Behavioral specification for Repo Scripts
 tags: [spec, kb]
 timestamp: 2026-06-28T04:06:57Z

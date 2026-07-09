@@ -1,8 +1,8 @@
 ---
 type: Spec
 title: "Spec: Intent Routing"
-sources: ./
-tests: ../../../../tests/intents
+sources: [./]
+tests: [../../../../tests/intents]
 description: Behavioral specification for Intent Routing
 tags: [spec, kb]
 timestamp: 2026-06-28T04:05:30Z

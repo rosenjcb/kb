@@ -1505,7 +1505,7 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     ).rejects.toThrow(/cancel/i)
   })
 
-  it('[TC-291b] Given non-interactive init without --git, throws requiring a git remote', async () => {
+  it('[TC-540] Given non-interactive init without --git, throws requiring a git remote', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
 
     await expect(
@@ -1516,7 +1516,7 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     ).rejects.toThrow(/requires at least one git remote/i)
   })
 
-  it('[TC-291c] Given interactive init with empty git answer then /cancel, throws InitCancelledError', async () => {
+  it('[TC-541] Given interactive init with empty git answer then /cancel, throws InitCancelledError', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const { io } = createQuestionIO(['', '/cancel'])
 

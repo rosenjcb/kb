@@ -1,7 +1,7 @@
 ---
 type: Spec
 title: "Spec: CLI Layer"
-sources: ./
+sources: [./]
 # Precise, disjoint scope: tests/cli minus the files owned by CONNECTION.spec.md
 # (kb-api-client.test.ts, cli-global-flags.test.ts). TC ids are per-spec, so a
 # whole-dir claim would over-select CONNECTION's [TC-N] tags. Add new tests/cli
@@ -373,8 +373,8 @@ See companion doc for full vocabulary where applicable.
 | TC-289 | FR-21 | Given --git without branch, then clones the remote default branch | pass |
 | TC-290 | FR-21 | Given multiple --git targets, then both repos index into one base and the volume lists both | pass |
 | TC-291 | FR-21 | Given /cancel at git URL prompt, throws InitCancelledError | pass |
-| TC-291b | FR-21 | Given non-interactive init without --git, throws requiring a git remote | pass |
-| TC-291c | FR-21 | Given interactive init with empty git answer then /cancel, throws InitCancelledError | pass |
+| TC-540 | FR-21 | Given non-interactive init without --git, throws requiring a git remote | pass |
+| TC-541 | FR-21 | Given interactive init with empty git answer then /cancel, throws InitCancelledError | pass |
 | TC-292 | FR-21 | parseInitCommand parses --git and --branch flags | pass |
 | TC-293 | FR-21 | parseInitCommand parses repeatable --git with inline branch (no branch = remote default) | pass |
 | TC-294 | FR-21 | parseInitCommand with only --git leaves the branch undefined (remote default) | pass |

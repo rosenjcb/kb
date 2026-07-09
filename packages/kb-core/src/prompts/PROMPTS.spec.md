@@ -1,8 +1,8 @@
 ---
 type: Spec
 title: "Spec: Prompt Assets"
-sources: ./
-tests: ../../../../tests/prompts
+sources: [./]
+tests: [../../../../tests/prompts]
 description: Behavioral specification for Prompt Assets
 tags: [spec, kb]
 timestamp: 2026-06-28T04:05:30Z

@@ -1,8 +1,8 @@
 ---
 type: Spec
 title: "Spec: Fact Curator"
-sources: ./fact-curator.ts
-tests: ../../../../tests/tools/fact-curator.test.ts
+sources: [./fact-curator.ts]
+tests: [../../../../tests/tools/fact-curator.test.ts]
 description: Post-retrieval relevance curation — judge-in-the-loop fact filtering before synthesis
 resource: ./fact-curator.ts
 tags: [query, retrieval, facts, curation, spec]
