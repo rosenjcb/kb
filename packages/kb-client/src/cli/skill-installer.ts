@@ -3,6 +3,12 @@ import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { loadSkill } from '@kb/core/skills/loader.js'
+import {
+  formatMcpSyncReport,
+  type McpSyncResult,
+  syncKbMcpConfigs,
+  uninstallKbMcpConfigs,
+} from '../api/mcp-config-sync.js'
 
 const KB_DEV_WORKFLOW_SKILL = loadSkill('kb:dev-workflow')
 const KB_DUMP_CONTEXT_SKILL = loadSkill('kb:dump-context')
@@ -188,7 +194,8 @@ export async function installSkillIntoProject(): Promise<ProjectInstallResult[]>
 export function formatSkillInstallReport(
   skillResults: SkillInstallResult[],
   profileResults: ProjectInstallResult[],
-  hookResults?: HookInstallResult[]
+  hookResults?: HookInstallResult[],
+  mcpResults?: McpSyncResult[]
 ): string {
   const lines: string[] = ['Skill files:']
   for (const r of skillResults) {
@@ -210,6 +217,10 @@ export function formatSkillInstallReport(
       else if (r.action === 'updated') lines.push(`  ↑ updated    ${r.provider}`)
       else lines.push(`  • up-to-date ${r.provider}`)
     }
+  }
+  if (mcpResults && mcpResults.length > 0) {
+    const mcpReport = formatMcpSyncReport(mcpResults)
+    if (mcpReport) lines.push('', mcpReport)
   }
   return lines.join('\n')
 }
@@ -437,7 +448,8 @@ export async function uninstallSkills(): Promise<SkillUninstallResult[]> {
 
 export function formatSkillUninstallReport(
   results: SkillUninstallResult[],
-  hookResults?: HookInstallResult[]
+  hookResults?: HookInstallResult[],
+  mcpResults?: McpSyncResult[]
 ): string {
   const lines = results
     .filter(r => r.action === 'removed')
@@ -447,5 +459,20 @@ export function formatSkillUninstallReport(
       if (r.action === 'updated') lines.push(`✓ Removed KB hook from ${r.provider}`)
     }
   }
+  if (mcpResults) {
+    for (const r of mcpResults) {
+      if (r.action === 'removed') lines.push(`✓ Removed KB MCP entry from ${r.agent}`)
+    }
+  }
   return lines.join('\n')
+}
+
+/** Sync Cursor/Claude MCP `kb` entries to the current CLI connection profile. */
+export async function installMcpConfigs(): Promise<McpSyncResult[]> {
+  return syncKbMcpConfigs()
+}
+
+/** Remove managed Cursor/Claude MCP `kb` entries. */
+export async function uninstallMcpConfigs(): Promise<McpSyncResult[]> {
+  return uninstallKbMcpConfigs()
 }

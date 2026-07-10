@@ -106,9 +106,11 @@ import {
   formatSkillInstallReport,
   formatSkillUninstallReport,
   installHooks,
+  installMcpConfigs,
   installSkillIntoProject,
   installSkillsGlobally,
   uninstallHooks,
+  uninstallMcpConfigs,
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
@@ -119,6 +121,7 @@ import {
 } from './remote-commands.js'
 import { resolveReportHost, resolveServerConnection, formatServerAddress, formatConnectionContext } from '../api/server-connection.js'
 import { applyHostCliOverride, parseGlobalCliFlags } from '../api/cli-global-flags.js'
+import { syncKbMcpConfigs } from '../api/mcp-config-sync.js'
 import { runUninstallCommand } from './uninstall-cli'
 import {
   ViewCommandError,
@@ -644,20 +647,25 @@ export async function runMainWithOutput(
     const subcommand = args[1]
     if (subcommand === 'install') {
       try {
-        const [skillResults, profileResults, hookResults] = await Promise.all([
+        const [skillResults, profileResults, hookResults, mcpResults] = await Promise.all([
           installSkillsGlobally(),
           installSkillIntoProject(),
           installHooks(),
+          installMcpConfigs(),
         ])
-        out.log(formatSkillInstallReport(skillResults, profileResults, hookResults))
+        out.log(formatSkillInstallReport(skillResults, profileResults, hookResults, mcpResults))
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)
       }
     } else if (subcommand === 'uninstall') {
       try {
-        const [results, hookResults] = await Promise.all([uninstallSkills(), uninstallHooks()])
-        const report = formatSkillUninstallReport(results, hookResults)
+        const [results, hookResults, mcpResults] = await Promise.all([
+          uninstallSkills(),
+          uninstallHooks(),
+          uninstallMcpConfigs(),
+        ])
+        const report = formatSkillUninstallReport(results, hookResults, mcpResults)
         if (report) out.log(report)
         else out.log('No KB skill files found to remove.')
       } catch (error) {
@@ -674,7 +682,8 @@ export async function runMainWithOutput(
           'Subcommands:',
           '  install     Install the skill files for each agent CLI and update the core',
           '              agent readmes (~/.claude/CLAUDE.md, ~/.codex/AGENTS.md) + kb-first hook',
-          '  uninstall   Remove the installed skill files, readme entries, and hook',
+          '              + sync Cursor/Claude MCP `kb` entries to the current server URL',
+          '  uninstall   Remove the installed skill files, readme entries, hook, and MCP entries',
         ].join('\n')
       )
     }
@@ -959,6 +968,8 @@ async function main() {
     const inferred = await persistInferredLLMProvider({ config: kbConfig })
     kbConfig = inferred.config
     applyConfigToEnv(kbConfig)
+    // After env is applied so MCP URL matches the same profile as the CLI/TUI.
+    void syncKbMcpConfigs(kbConfig).catch(() => {})
 
     const startupNotices: string[] = []
     if (inferred.notice) startupNotices.push(inferred.notice)
@@ -1013,6 +1024,8 @@ async function main() {
   const inferred = await persistInferredLLMProvider({ config: kbConfig })
   kbConfig = inferred.config
   applyConfigToEnv(kbConfig)
+  // Keep Cursor/Claude MCP `kb` URL aligned with this process's connection profile.
+  syncKbMcpConfigs(kbConfig).catch(() => {})
 
   // One-shot CLI path — skip banner when docs generate --output json (stdout must be parseable JSON only).
   const machineJsonStdout = isDocsGenerateJsonOutputArgs(args)

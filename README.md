@@ -228,17 +228,17 @@ kb sync
 
 ## Agent skills
 
-Install skills so Claude Code, Cursor, and Codex query KB **before** spelunking. Same answers, far fewer tokens:
+Install skills so Claude Code, Cursor, and Codex query KB **before** spelunking. Same answers, far fewer tokens. Prefer MCP `kb_query` when the server is connected; fall back to the `kb` CLI otherwise:
 
 ```bash
 kb skills install
 ```
 
-[`skills/`](skills/) · [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md)
+That also rewrites Cursor/Claude `kb` MCP entries to match `KB_SERVER_URL` / `KB_HOST` (same node as the CLI). [`skills/`](skills/) · [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md)
 
 ## MCP (Claude Code & Cursor)
 
-With `kb-server start --with-mcp`, register the server as an MCP tool so your editor can call `kb_query` directly. Setup: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md).
+With `kb-server start --with-mcp`, agents call `kb_query` over Streamable HTTP. `kb skills install` (and normal `kb` startup) keeps `~/.cursor/mcp.json` + `~/.claude.json` pointed at `${server}/mcp`. Details: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md).
 
 ## Managing bases & repos
 

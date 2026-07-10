@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.4.2
+
+### Patch Changes
+
+- Document MCP-first kb:dev-workflow and client-driven MCP URL sync to the CLI connection profile.
+
 ## 1.4.1
 
 ### Patch Changes

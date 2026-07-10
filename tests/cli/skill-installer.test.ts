@@ -194,6 +194,18 @@ describe('formatSkillInstallReport', () => {
     expect(report).toContain('up-to-date')
     expect(report).toContain('skipped')
   })
+
+  it('[TC-518] includes MCP sync section when mcp results provided', () => {
+    const report = formatSkillInstallReport(
+      [{ skill: 'kb:dev-workflow', agent: 'claude', action: 'skipped' }],
+      [{ file: '~/.claude/CLAUDE.md', action: 'already-present' }],
+      undefined,
+      [{ agent: 'cursor', action: 'installed', url: 'http://localhost:38117/mcp' }]
+    )
+    expect(report).toContain('MCP client configs')
+    expect(report).toContain('[cursor]')
+    expect(report).toContain('http://localhost:38117/mcp')
+  })
 })
 
 describe('uninstallSkills', () => {
@@ -265,6 +277,19 @@ describe('formatSkillUninstallReport', () => {
     expect(report).toContain('✓ Removed KB skill from claude')
     expect(report).toContain('✓ Removed KB skill from ~/.claude/CLAUDE.md')
     expect(report).not.toContain('cursor')
+  })
+
+  it('[TC-519] includes MCP removals when mcp results provided', () => {
+    const report = formatSkillUninstallReport(
+      [{ target: 'claude', action: 'removed' }],
+      undefined,
+      [
+        { agent: 'cursor', action: 'removed' },
+        { agent: 'claude', action: 'not-found' },
+      ]
+    )
+    expect(report).toContain('✓ Removed KB MCP entry from cursor')
+    expect(report).not.toContain('not-found')
   })
 })
 

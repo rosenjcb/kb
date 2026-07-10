@@ -1,5 +1,13 @@
 # kb-server
 
+## 1.3.4
+
+### Patch Changes
+
+- Document MCP-first kb:dev-workflow and client-driven MCP URL sync to the CLI connection profile.
+- Updated dependencies
+  - @kb/core@1.4.2
+
 ## 1.3.3
 
 ### Patch Changes

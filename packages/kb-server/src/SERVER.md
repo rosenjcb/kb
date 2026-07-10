@@ -66,42 +66,35 @@ Start the server with MCP enabled (same `KB_SERVER_API_KEY` on server and client
 
 ```bash
 export KB_SERVER_API_KEY=testkey
+# Point the thin client at this node (remote example):
+# export KB_SERVER_URL=https://kb.example.com:38117
 kb-server start --with-mcp
 ```
 
-**Claude Code** — Streamable HTTP at `POST /mcp`:
+**Preferred setup** — let the client rewrite agent MCP configs from the same connection profile:
+
+```bash
+kb skills install
+# or any normal `kb` / `kb query` invocation — syncs fire-and-forget after env apply
+```
+
+That writes/updates the `kb` entry in:
+
+| Client | File | Shape |
+|---|---|---|
+| Cursor | `~/.cursor/mcp.json` | `{ "url": "<server>/mcp", "headers": { "Authorization": "Bearer …" } }` |
+| Claude Code | `~/.claude.json` (`mcpServers`) | `{ "type": "http", "url": "<server>/mcp", "headers": { … } }` |
+
+URL comes from `KB_SERVER_URL` or `KB_HOST`/`KB_PORT` (same resolution as the CLI). Other MCP servers in those files are left alone. Verify with `claude mcp list` / `agent mcp list-tools kb`.
+
+**Manual fallback** (only if you cannot run the client):
 
 ```bash
 claude mcp add --transport http -s user kb http://localhost:38117/mcp \
   --header "Authorization: Bearer ${KB_SERVER_API_KEY}"
 ```
 
-Use your deploy URL instead of `localhost` for a remote server. Verify with `claude mcp list`.
-
-**Cursor Agent** — add to `~/.cursor/mcp.json` (project scope: `.cursor/mcp.json`), then use the Agent CLI:
-
-```bash
-mkdir -p ~/.cursor
-cat > ~/.cursor/mcp.json <<'EOF'
-{
-  "mcpServers": {
-    "kb": {
-      "url": "http://localhost:38117/mcp",
-      "headers": {
-        "Authorization": "Bearer testkey"
-      }
-    }
-  }
-}
-EOF
-
-agent mcp list
-agent mcp list-tools kb
-```
-
-Replace `testkey` / the URL when pointing at a deployed instance. If `mcp.json` already exists, merge the `kb` entry under `mcpServers` instead of overwriting.
-
-**Tools exposed:** `kb_query`, `read_facts`, `search_code_symbols`, `get_code_neighbors`, `get_code_graph_summary`.
+**Tools exposed:** `kb_query`, `kb_read_facts`, `kb_search_code_symbols`, `kb_get_code_neighbors`, `kb_get_code_graph_summary` (registry tools are `kb_`-prefixed on the wire).
 
 ### Endpoints (`kb-server start [--with-mcp] [--with-slack]`)
 

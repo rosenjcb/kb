@@ -32,7 +32,7 @@ Monorepo context → [`../../CLIENT.md`](../../CLIENT.md) · Connection detail �
 | Global flags | `../api/cli-global-flags.ts` | `--host` → env override for this process |
 | Remote ops | `remote-commands.ts` | Query, chat, admin CLI over HTTP |
 | Chat REPL | `chat-cli.ts` | Local or remote synthesis loop |
-| Skills | `skill-installer.ts` | Install bundled skills to agent homes |
+| Skills | `skill-installer.ts` | Install bundled skills + sync MCP client configs |
 
 ## Connection visibility
 
@@ -85,7 +85,7 @@ Uninitialized base → `uninitializedBaseNotice` (points to `KB_GIT_REPOS`, not 
 
 ## Skills, uninstall, publish
 
-Unchanged — see prior [`CLI.spec.md`](CLI.spec.md) FR/TC for skills installer, publish preview/apply, and split `kb uninstall` vs `kb-server uninstall`.
+`kb skills install` also runs `syncKbMcpConfigs()` so Cursor/Claude `kb` MCP entries track `KB_SERVER_URL` / `KB_HOST` (see [`../api/CONNECTION.md`](../api/CONNECTION.md)). Startup does the same fire-and-forget after env apply. Spec: [`CLI.spec.md`](CLI.spec.md) FR-34.
 
 ## `kb sync`
 

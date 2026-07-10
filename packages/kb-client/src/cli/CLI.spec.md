@@ -39,6 +39,7 @@ tests:
   - ../../../../tests/cli/repo-slug.test.ts
   - ../../../../tests/cli/retrieval-fallback.test.ts
   - ../../../../tests/cli/skill-installer.test.ts
+  - ../../../../tests/cli/mcp-config-sync.test.ts
   - ../../../../tests/cli/startup-notices.test.ts
   - ../../../../tests/cli/sync-cli.test.ts
   - ../../../../tests/cli/uninstall-cli.test.ts
@@ -98,7 +99,7 @@ See companion doc for full vocabulary where applicable.
 | FR-30 | Named-list interview parses numbered selections in TTY prompts |
 | FR-31 | Publish CLI pushes companion docs to configured publish targets |
 | FR-33 | Retrieval fallback degrades gracefully when deep retrieval fails |
-| FR-34 | Skill installer copies bundled skills to agent home directories |
+| FR-34 | Skill installer copies bundled skills to agent home directories, installs hooks, and syncs Cursor/Claude MCP `kb` entries to the CLI connection profile |
 | FR-35 | Startup notices print one-time migration and version hints |
 | FR-36 | Sync CLI refreshes the split GitHub Release runtimes and rewires stable client/server binary links |
 | FR-37 | Client uninstall removes release client layout; server uninstall removes server layout and optional ~/.kb data |
@@ -513,6 +514,8 @@ See companion doc for full vocabulary where applicable.
 | TC-462 | FR-34 | Given hook plus other hooks in same matcher group, then only removes kb hook | pass |
 | TC-463 | FR-34 | includes Agent hooks section when hook results provided | pass |
 | TC-464 | FR-34 | omits Agent hooks section when hook results not provided | pass |
+| TC-518 | FR-34 | includes MCP sync section when mcp results provided | pass |
+| TC-519 | FR-34 | includes MCP removals when mcp results provided | pass |
 | TC-465 | FR-35 | greets the user | pass |
 | TC-466 | FR-35 | lists the core commands | pass |
 | TC-467 | FR-35 | tells the user how to get help | pass |

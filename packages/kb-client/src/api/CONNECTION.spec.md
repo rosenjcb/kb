@@ -1,11 +1,14 @@
 ---
 type: Spec
 title: "Spec: Client ↔ Server Connection"
-sources: [./server-connection.ts, ./cli-global-flags.ts, ./connection-error.ts]
-tests: [../../../../tests/cli/kb-api-client.test.ts, ../../../../tests/cli/cli-global-flags.test.ts]
-description: Connection profile, --host override, and user-visible host/base context
+sources: [./server-connection.ts, ./cli-global-flags.ts, ./connection-error.ts, ./mcp-config-sync.ts]
+tests:
+  - ../../../../tests/cli/kb-api-client.test.ts
+  - ../../../../tests/cli/cli-global-flags.test.ts
+  - ../../../../tests/cli/mcp-config-sync.test.ts
+description: Connection profile, --host override, MCP client sync, and user-visible host/base context
 tags: [spec, kb, client, connection]
-timestamp: 2026-07-05T00:00:00Z
+timestamp: 2026-07-10T00:00:00Z
 ---
 
 ### Intro
@@ -16,12 +19,14 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 
 - **Connection profile** — resolved `ServerConnection` (`url`, optional `apiKey`, optional `base` hint).
 - **Connection context** — user-facing `host: … │ base: …` or `mode: local │ base: …` string.
+- **MCP endpoint** — `${connection.url}/mcp` written into agent MCP client configs.
 
 ### Scope
 
 ## In Scope
 - Host/port/URL resolution, `--host` CLI override, health probe, connection error hints
 - `formatConnectionContext` for banner, TUI status bar, and chat headers
+- Syncing Cursor/Claude `kb` MCP entries to the resolved connection profile
 
 ## Out of Scope
 - Server-side indexing (`KB_GIT_REPOS`) — see [SERVER.md](../../../kb-server/src/SERVER.md)
@@ -39,6 +44,9 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | FR-6 | One-shot CLI (non-JSON stdout) prints connection context under the version banner |
 | FR-7 | TUI status bar always shows host and base on one pinned row |
 | FR-8 | Chat sessions print connection context before the first user prompt |
+| FR-9 | `syncKbMcpConfigs` writes Cursor + Claude `kb` entries to `${server}/mcp` from the connection profile |
+| FR-10 | MCP sync is idempotent, preserves sibling MCP servers, and no-ops under `KB_LOCAL_MODE` |
+| FR-11 | `uninstallKbMcpConfigs` removes only the managed `kb` MCP entries |
 
 ### QA Test Cases
 
@@ -55,3 +63,14 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-504 | FR-3 | Given `--host http://remote/` | Sets `KB_SERVER_URL` |
 | TC-505 | FR-5 | Given remote config + base name | `formatConnectionContext` → `host: … │ base: …` |
 | TC-506 | FR-5 | Given `KB_LOCAL_MODE` | `formatConnectionContext` → `mode: local │ base: …` |
+| TC-507 | FR-9 | Given server URL with trailing slash | `resolveMcpEndpointUrl` → `…/mcp` |
+| TC-508 | FR-9 | Given Cursor entry builder | url + optional Bearer header |
+| TC-509 | FR-9 | Given Claude entry builder | includes `type: "http"` |
+| TC-510 | FR-9 | Given default host + API key | installs Cursor + Claude `kb` entries |
+| TC-511 | FR-9 | Given `KB_SERVER_URL` | MCP URL uses that host `/mcp` |
+| TC-512 | FR-10 | Given matching entry | action is skipped |
+| TC-513 | FR-10 | Given stale URL + sibling server | updates `kb` only |
+| TC-514 | FR-10 | Given `KB_LOCAL_MODE` | sync returns `[]` |
+| TC-515 | FR-11 | Given `kb` + other servers | uninstall removes only `kb` |
+| TC-516 | FR-11 | Given no `kb` entry | action is not-found |
+| TC-517 | FR-9 | Given sync results | `formatMcpSyncReport` lists agents |

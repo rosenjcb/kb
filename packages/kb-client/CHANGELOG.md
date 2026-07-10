@@ -1,5 +1,16 @@
 # @kb/client
 
+## 1.3.0
+
+### Minor Changes
+
+- Prefer MCP tools in kb:dev-workflow when the server is up, and sync Cursor/Claude MCP `kb` entries to the CLI connection profile on skills install and startup.
+
+### Patch Changes
+
+- Updated dependencies
+  - @kb/core@1.4.2
+
 ## 1.2.9
 
 ### Patch Changes

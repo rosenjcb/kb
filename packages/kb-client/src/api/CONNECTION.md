@@ -40,6 +40,21 @@ Auth: `KB_SERVER_API_KEY` → Bearer on every request (`kb-api-client.ts`).
 
 Base: `resolveEffectiveBaseDir()` — session file `~/.kb/state/active-base`, default base, `.kb` marker, or `KB_BASE` / `KB_ACTIVE_BASE`. Server-side index lives under `~/.kb/sessions/<base>/` on the **server host**, not the laptop.
 
+## MCP client config sync
+
+Agents (Cursor / Claude Code) talk to kb-server over Streamable HTTP at `POST /mcp`. That URL must stay aligned with the CLI connection profile — otherwise `kb query` and MCP `kb_query` hit different nodes.
+
+`syncKbMcpConfigs()` in `mcp-config-sync.ts`:
+
+| Trigger | Behavior |
+|---------|----------|
+| `kb skills install` | Sync + report in install output |
+| Normal `kb` / TUI startup | Fire-and-forget after `applyConfigToEnv` |
+| `KB_LOCAL_MODE=true` | No-op (no remote MCP endpoint) |
+| `kb skills uninstall` | Removes managed `kb` entries only |
+
+Writes `mcpServers.kb` → `${resolvedServerUrl}/mcp` with Bearer header when `KB_SERVER_API_KEY` is set. Merges into existing JSON; never clobbers other servers.
+
 ## User-visible connection context
 
 Shared formatter: `formatConnectionContext(config, baseName?)` in `server-connection.ts`.
@@ -83,6 +98,7 @@ Operator guide copy lives in `INDEXING_SERVER_MANAGED_NOTICE` (`@kb/core/config/
 2. New remote endpoint → `KbApiClient` method + `remote-commands` wrapper.
 3. Any new interactive surface → call `formatConnectionContext` on open.
 4. Connection errors → mention `--host` and env vars.
+5. New MCP client target → extend `mcp-config-sync.ts` + keep skill/docs in sync.
 
 ## Gotchas
 
