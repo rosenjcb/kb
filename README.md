@@ -30,7 +30,7 @@ KB earns those numbers by doing the reading up front. **kb-server** clones your 
 
 **If you don't:** you still get the whole knowledge base. Product, QA, design, and leadership chat with `kb` directly. No IDE, no checkout, no per-seat agent subscription. "Does the mobile app cache credentials?" becomes a question you ask a tool, not a ticket you file.
 
-**If you run agents:** point Claude Code or Cursor at KB (via [agent skills](#agent-skills) or MCP) and they query the index instead of re-exploring the tree every session.
+**If you run agents:** point Claude Code or Cursor at a **team kb-server** (often remote) via MCP — agents use `kb_query`, not the `kb` CLI. Setup: [Connect agents (Claude / Cursor)](#connect-agents-claude--cursor).
 
 One server indexes many repos into shared bases, so "follow a login from the web app through auth-svc" is one question, not three checkouts. KB also ingests [spec.md](https://github.com/rosenjcb/spec.md) OKF companions and behavioral `*.spec.md` specs, keeping intent, tests, and code linked.
 
@@ -91,7 +91,7 @@ export KB_HOST=localhost
 export KB_PORT=38117
 ```
 
-Remote server or HTTPS? See [Connect to a remote server](#connect-to-a-remote-server) below.
+Remote / team server? See [Connect to a remote / team server](#connect-to-a-remote--team-server) below (humans + agents).
 
 ### 4) Use your knowledge base
 
@@ -130,11 +130,11 @@ kb query "where is configuration loaded?"
 
 kb-server re-indexes on a schedule (`KB_REINDEX_INTERVAL`), so the knowledge base tracks the remote as code changes land.
 
-## Connect to a remote server
+## Connect to a remote / team server
 
-Everything above assumes server + client on the same laptop. Common alternative: **server in Docker**, **client on your machine**.
+Most teams run **one shared kb-server** (Docker, VM, or cluster) and connect many laptops + agents to it. The server owns clones and the index; clients only talk HTTP/MCP.
 
-On the server host:
+### 1) Run the shared server
 
 ```bash
 docker run -d --name kb-server \
@@ -146,20 +146,40 @@ docker run -d --name kb-server \
   ghcr.io/rosenjcb/kb/kb-server:latest
 ```
 
-On your laptop:
+Image starts with `--with-mcp`, so agents can use `POST /mcp`. Details: [`packages/kb-server/README.md`](packages/kb-server/README.md).
+
+Give teammates a reachable URL (VPN, internal DNS, HTTPS reverse proxy, etc.) — e.g. `https://kb.acme.internal:38117` — plus the same `KB_SERVER_API_KEY`.
+
+### 2) Humans — `kb` CLI / TUI on a laptop
 
 ```bash
-kb --host your-host:38117 query "how does auth work?"
-# authenticated remote:
-export KB_SERVER_API_KEY=<same token>
-kb --host http://your-host:38117 query "how does auth work?"
+export KB_SERVER_URL=https://kb.acme.internal:38117
+export KB_SERVER_API_KEY=<same-token>
+
+kb query "how does auth work?"
+kb          # chat TUI against the team server
 ```
 
-The server owns the clones and the index; your laptop just talks to it.
+Or one-shot: `kb --host https://kb.acme.internal:38117 query "…"`.
+
+### 3) Agents — Claude Code / Cursor (MCP only)
+
+Agents must **not** use `kb query` for investigation. Point their MCP config at the **same** team URL:
+
+```bash
+export KB_SERVER_URL=https://kb.acme.internal:38117
+export KB_SERVER_API_KEY=<same-token>
+
+kb skills install
+kb mcp sync --host https://kb.acme.internal:38117
+kb mcp status
+```
+
+That writes `mcpServers.kb` → `${url}/mcp` in `~/.claude.json` and `~/.cursor/mcp.json`. **Reconnect MCP** in Claude/Cursor, then ask coding questions — the agent should call `kb_query` against the team node.
+
+Switch nodes anytime: `kb mcp sync --host <other-url>` and reconnect. Without an explicit host (`--host` / `KB_SERVER_URL` / `KB_HOST`), sync refuses to invent localhost.
 
 **All client env vars:** `KB_HOST`, `KB_PORT`, `KB_SERVER_URL`, `KB_SERVER_API_KEY`, `KB_BASE`, `KB_ACTIVE_BASE`. Full reference: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md).
-
-**Docker image:** `ghcr.io/rosenjcb/kb/kb-server`; see [`packages/kb-server/README.md`](packages/kb-server/README.md).
 
 ### Build once, serve cheap
 
@@ -212,6 +232,7 @@ kb base use --default <base>   — save persistent default
 kb facts list|search|show ...
 kb graph ...
 kb skills install|uninstall
+kb mcp sync|status|uninstall   — point Claude/Cursor MCP at a local or team host
 kb-server start [--with-mcp]
 kb sync
 ```
@@ -226,27 +247,30 @@ Chat mode (`kb` with no args): `/help` for in-session commands. Deep dive: [`pac
 kb sync
 ```
 
-## Agent skills
+## Connect agents (Claude / Cursor)
 
-**Humans** use the `kb` CLI/TUI. **Agents** use the MCP connector only (`kb_query`, …) — never CLI/TUI for investigation.
+| Who | How |
+|-----|-----|
+| **Humans** | `kb` CLI / TUI → REST (`/v1/query`, chat) |
+| **Agents** | MCP only (`kb_query`, …) → `POST /mcp` |
 
-```bash
-kb skills install
-kb mcp sync --host localhost:38117   # or a remote URL — setup only
-```
-
-[`skills/`](skills/) · [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md)
-
-## MCP (Claude Code & Cursor)
-
-With `kb-server start --with-mcp`, agents talk to KB **only** over Streamable HTTP MCP. Point MCP at a **local or remote** node explicitly:
+**Team remote (typical):**
 
 ```bash
-kb mcp sync --host <host[:port]|url>
+export KB_SERVER_URL=https://kb.acme.internal:38117
+export KB_SERVER_API_KEY=<token>
+
+kb skills install                                    # skill + Claude hooks
+kb mcp sync --host https://kb.acme.internal:38117  # or: kb mcp sync (uses env)
 kb mcp status
+# reconnect MCP in Claude Code / Cursor, then code as usual
 ```
 
-Details: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md) · connection: [`packages/kb-client/src/api/CONNECTION.md`](packages/kb-client/src/api/CONNECTION.md).
+**Local laptop server:** same commands with `--host localhost:38117`.
+
+Claude Code picks up `~/.claude.json`; Cursor uses `~/.cursor/mcp.json`. After sync, reload MCP so tools appear. If the agent shells out to Grep/`kb query`, the installed PreToolUse hook reminds it to use MCP.
+
+Deep dive: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md) · [`packages/kb-client/src/api/CONNECTION.md`](packages/kb-client/src/api/CONNECTION.md) · [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md).
 
 ## Managing bases & repos
 

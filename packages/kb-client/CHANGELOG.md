@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Agents investigate via the kb MCP connection only (CLI/TUI is for humans). Add `kb mcp sync|status|uninstall` so Cursor/Claude `mcpServers.kb` points at an **explicit** local or remote host (`--host`, `KB_SERVER_URL`, or `KB_HOST`) — never an invented localhost default. Fix Claude Code hooks: emit PreToolUse JSON `additionalContext` (plain stdout was ignored), match `Bash|Grep|Glob`, and always create `~/.claude` on install.
+- Agents investigate via the kb MCP connection only (CLI/TUI is for humans). Add `kb mcp sync|status|uninstall` so Cursor/Claude `mcpServers.kb` points at an **explicit** local or remote host (`--host`, `KB_SERVER_URL`, or `KB_HOST`) — never an invented localhost default. Fix Claude Code hooks: emit PreToolUse JSON `additionalContext` (plain stdout was ignored), match `Bash|Grep|Glob`, and always create `~/.claude` on install. Document team remote setup in the README (shared server → human CLI + agent MCP).
 - Updated dependencies
   - @kb/core@1.4.2
 
