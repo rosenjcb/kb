@@ -717,7 +717,7 @@ export async function runMainWithOutput(
           '',
           'Subcommands:',
           '  install     Install skill files, profile readmes, kb-first hook;',
-          '              syncs MCP only when KB_SERVER_URL / KB_HOST / --host is set',
+          '              installs MCP only when KB_SERVER_URL / KB_HOST / --host is set',
           '  uninstall   Remove skill files, readme entries, hook, and MCP entries',
           '',
           'Point MCP at a host explicitly with: kb mcp install --host <host|url>',
