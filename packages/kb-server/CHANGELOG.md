@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Document agents=MCP-only / humans=CLI-TUI split and explicit-host MCP sync (`kb mcp sync --host`).
+- Document agents=MCP-only / humans=CLI-TUI split and explicit-host MCP install (`kb mcp install --host`).
 - Updated dependencies
   - @kb/core@1.4.2
 

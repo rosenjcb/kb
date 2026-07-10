@@ -40,23 +40,23 @@ Auth: `KB_SERVER_API_KEY` → Bearer on every request (`kb-api-client.ts`).
 
 Base: `resolveEffectiveBaseDir()` — session file `~/.kb/state/active-base`, default base, `.kb` marker, or `KB_BASE` / `KB_ACTIVE_BASE`. Server-side index lives under `~/.kb/sessions/<base>/` on the **server host**, not the laptop.
 
-## MCP client config sync
+## MCP client config install
 
 **Humans** use the `kb` CLI/TUI (REST). **Agents** (Cursor / Claude Code) use Streamable HTTP MCP at `POST /mcp` only — the **kb:dev-workflow** skill never investigates via CLI/TUI.
 The MCP URL must be an **explicit** local or remote host — never an invented localhost default.
 
-`syncKbMcpConfigs()` in `mcp-config-sync.ts`:
+`syncKbMcpConfigs()` in `mcp-config-sync.ts` (used by `kb mcp install`):
 
 | Trigger | Behavior |
 |---------|----------|
-| `kb mcp sync --host …` | Write Cursor/Claude `kb` → `${server}/mcp` |
-| `kb mcp sync` | Same, using `KB_SERVER_URL` / `KB_HOST` (errors with `needs-host` if unset) |
-| `kb skills install` | Sync only when an explicit host env is already set |
-| Normal `kb` / TUI startup | Fire-and-forget sync **only** when explicit host env is set |
+| `kb mcp install --host …` | Write Cursor/Claude `kb` → `${server}/mcp` |
+| `kb mcp install` | Same, using `KB_SERVER_URL` / `KB_HOST` (errors with `needs-host` if unset) |
+| `kb skills install` | Install MCP only when an explicit host env is already set |
+| Normal `kb` / TUI startup | Fire-and-forget install **only** when explicit host env is set |
 | `KB_LOCAL_MODE=true` | No-op |
 | `kb mcp uninstall` / `kb skills uninstall` | Removes managed `kb` entries only |
 
-Host resolution for sync: `--host` → `KB_SERVER_URL` → `KB_HOST`+`KB_PORT`. Refuses the implicit CLI localhost default unless the operator passed `--host` or set env.
+Host resolution: `--host` → `KB_SERVER_URL` → `KB_HOST`+`KB_PORT`. Refuses the implicit CLI localhost default unless the operator passed `--host` or set env.
 
 Writes `mcpServers.kb` with Bearer header when `KB_SERVER_API_KEY` is set. Merges into existing JSON; never clobbers other servers. Inspect with `kb mcp status`.
 

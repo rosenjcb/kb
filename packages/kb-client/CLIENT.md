@@ -66,7 +66,7 @@ kb query "how does auth work?"
 
 ```bash
 kb skills install
-kb mcp sync --host https://kb.acme.internal:38117
+kb mcp install --host https://kb.acme.internal:38117
 kb mcp status
 # reconnect MCP in the agent
 ```

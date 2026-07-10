@@ -75,15 +75,15 @@ kb-server start --with-mcp
 
 ```bash
 # Local node
-kb mcp sync --host localhost:38117
+kb mcp install --host localhost:38117
 
 # Remote node
-kb mcp sync --host https://kb.example.com:38117
+kb mcp install --host https://kb.example.com:38117
 
 # Or set session env, then:
 export KB_SERVER_URL=https://kb.example.com:38117
 export KB_SERVER_API_KEY=testkey
-kb mcp sync
+kb mcp install
 kb mcp status
 ```
 

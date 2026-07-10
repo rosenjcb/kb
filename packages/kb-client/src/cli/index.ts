@@ -193,7 +193,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  sync        Install the latest published KB release',
     '  logs        Browse and compare run reports',
     '  skills      Manage agent skills',
-    '  mcp         Point Cursor/Claude MCP at a local or remote kb-server',
+    '  mcp         Install/remove Claude Code + Cursor MCP kb entries',
     '  uninstall   Remove the kb client binary (server/data untouched; see kb-server uninstall)',
     '',
     'Intent commands:',
@@ -206,8 +206,8 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
       ? `  /query "how does auth work?"`
       : `  kb query "how does auth work?"`,
     mode === 'cli' ? `  kb --host localhost:38117 query "how does auth work?"` : null,
-    `  ${cmd('mcp sync --host localhost:38117', mode)}`,
-    `  ${cmd('mcp sync --host https://kb.example.com:38117', mode)}`,
+    `  ${cmd('mcp install --host localhost:38117', mode)}`,
+    `  ${cmd('mcp install --host https://kb.example.com:38117', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
     `  ${cmd('sync', mode)}`,
     `  ${cmd('docs list --base dogfood', mode)}`,
@@ -220,20 +220,21 @@ function printMcpHelp(): string {
   return [
     'Usage: kb mcp <subcommand>',
     '',
-    'Point agent MCP clients (Cursor / Claude Code) at an explicit kb-server',
+    'Install or remove the kb MCP entry for Claude Code and Cursor',
     '(localhost or remote). Agents use MCP only; humans use the kb CLI/TUI.',
     '',
     'Subcommands:',
-    '  sync [--host <host[:port]|url>]   Write mcpServers.kb → ${server}/mcp',
-    '                                    Host from --host, else KB_SERVER_URL / KB_HOST',
-    '  status                            Show env host + current MCP kb URLs',
-    '  uninstall                         Remove managed kb MCP entries',
+    '  install [--host <host[:port]|url>]  Write mcpServers.kb → ${server}/mcp',
+    '                                      Host from --host, else KB_SERVER_URL / KB_HOST',
+    '  status                              Show env host + current MCP kb URLs',
+    '  uninstall                           Remove managed kb MCP entries',
     '',
     'Examples:',
-    '  kb mcp sync --host localhost:38117',
-    '  kb mcp sync --host https://kb.example.com:38117',
-    '  export KB_SERVER_URL=http://remote:38117 && kb mcp sync',
+    '  kb mcp install --host localhost:38117',
+    '  kb mcp install --host https://kb.example.com:38117',
+    '  export KB_SERVER_URL=http://remote:38117 && kb mcp install',
     '  kb mcp status',
+    '  kb mcp uninstall',
   ].join('\n')
 }
 
@@ -719,7 +720,7 @@ export async function runMainWithOutput(
           '              syncs MCP only when KB_SERVER_URL / KB_HOST / --host is set',
           '  uninstall   Remove skill files, readme entries, hook, and MCP entries',
           '',
-          'Point MCP at a host explicitly with: kb mcp sync --host <host|url>',
+          'Point MCP at a host explicitly with: kb mcp install --host <host|url>',
         ].join('\n')
       )
     }
@@ -728,7 +729,7 @@ export async function runMainWithOutput(
 
   if (firstArg === 'mcp') {
     const subcommand = args[1]
-    if (subcommand === 'sync') {
+    if (subcommand === 'install') {
       try {
         let host: string | undefined
         for (let i = 2; i < args.length; i += 1) {

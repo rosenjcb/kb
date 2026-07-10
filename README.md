@@ -171,13 +171,13 @@ export KB_SERVER_URL=https://kb.acme.internal:38117
 export KB_SERVER_API_KEY=<same-token>
 
 kb skills install
-kb mcp sync --host https://kb.acme.internal:38117
+kb mcp install --host https://kb.acme.internal:38117
 kb mcp status
 ```
 
 That writes `mcpServers.kb` → `${url}/mcp` for **Claude Code** (`~/.claude.json`) and **Cursor** (`~/.cursor/mcp.json`) only. **Reconnect MCP** in those apps, then ask coding questions — the agent should call `kb_query` against the team node.
 
-Switch nodes anytime: `kb mcp sync --host <other-url>` and reconnect. Without an explicit host (`--host` / `KB_SERVER_URL` / `KB_HOST`), sync refuses to invent localhost.
+Switch nodes anytime: `kb mcp install --host <other-url>` and reconnect. Without an explicit host (`--host` / `KB_SERVER_URL` / `KB_HOST`), install refuses to invent localhost.
 
 **All client env vars:** `KB_HOST`, `KB_PORT`, `KB_SERVER_URL`, `KB_SERVER_API_KEY`, `KB_BASE`, `KB_ACTIVE_BASE`. Full reference: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md).
 
@@ -232,7 +232,7 @@ kb base use --default <base>   — save persistent default
 kb facts list|search|show ...
 kb graph ...
 kb skills install|uninstall
-kb mcp sync|status|uninstall   — point Claude/Cursor MCP at a local or team host
+kb mcp install|status|uninstall   — point Claude/Cursor MCP at a local or team host
 kb-server start [--with-mcp]
 kb sync
 ```
@@ -254,14 +254,14 @@ kb sync
 | **Humans** | `kb` CLI / TUI → REST (`/v1/query`, chat) |
 | **Agents** | MCP only (`kb_query`, …) → `POST /mcp` |
 
-**`kb mcp sync` configures MCP for:**
+**`kb mcp install` configures MCP for:**
 
 | Agent | File written |
 |-------|----------------|
 | Claude Code | `~/.claude.json` (`mcpServers.kb`) |
 | Cursor | `~/.cursor/mcp.json` (`mcpServers.kb`) |
 
-(Codex / Gemini / Copilot are **not** wired by `mcp sync`. `kb skills install` still installs the skill text / hooks where those agents look.)
+(Codex / Gemini / Copilot are **not** wired by `mcp install`. `kb skills install` still installs the skill text / hooks where those agents look.)
 
 **Team remote (typical):**
 
@@ -270,7 +270,7 @@ export KB_SERVER_URL=https://kb.acme.internal:38117
 export KB_SERVER_API_KEY=<token>
 
 kb skills install                                    # skill + Claude hooks
-kb mcp sync --host https://kb.acme.internal:38117  # or: kb mcp sync (uses env)
+kb mcp install --host https://kb.acme.internal:38117  # or: kb mcp install (uses env)
 kb mcp status
 # reconnect MCP in Claude Code and/or Cursor, then code as usual
 ```

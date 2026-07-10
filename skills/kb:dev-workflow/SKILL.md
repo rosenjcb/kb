@@ -65,20 +65,20 @@ Do not assume localhost when env is unset and the user has not confirmed.
 
 ## Point MCP at that host (setup only)
 
-The one allowed `kb` CLI use for agents is **MCP config sync** — not query:
+The one allowed `kb` CLI use for agents is **MCP config install** — not query:
 
 ```bash
-kb mcp sync --host <host[:port]|url>
+kb mcp install --host <host[:port]|url>
 # or, with session env already set:
-kb mcp sync
+kb mcp install
 kb mcp status
 ```
 
 That rewrites `mcpServers.kb` in `~/.cursor/mcp.json` and `~/.claude.json` to
 `${server}/mcp` (Bearer from `KB_SERVER_API_KEY` when set).
 
-If sync ran mid-session, tell the user once to **reload / reconnect MCP** so
+If install ran mid-session, tell the user once to **reload / reconnect MCP** so
 tools appear, then call `kb_query`.
 
-Wrong host mid-task → ask again or re-run `kb mcp sync --host …`; do not keep
+Wrong host mid-task → ask again or re-run `kb mcp install --host …`; do not keep
 querying the wrong node.

@@ -22,7 +22,7 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 
 ## Installer (`../cli/skill-installer.ts`)
 
-`kb skills install` runs skill files, profile readmes, hooks, **and** MCP client sync together; `kb skills uninstall` reverses those.
+`kb skills install` runs skill files, profile readmes, hooks, **and** MCP client install together; `kb skills uninstall` reverses those.
 
 | Function | Target |
 |---|---|
@@ -36,7 +36,7 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 
 **Cursor:** `.mdc` targets get `alwaysApply: true` injected into YAML frontmatter.
 
-**MCP sync:** `mcp-config-sync.ts` writes `~/.cursor/mcp.json` and `~/.claude.json` `mcpServers.kb` only when the host is **explicit** (`kb mcp sync --host …`, or `KB_SERVER_URL` / `KB_HOST`). Never invents localhost. Prefer `kb mcp sync` / `kb mcp status` over relying on skills install.
+**MCP install:** `mcp-config-sync.ts` writes `~/.cursor/mcp.json` and `~/.claude.json` `mcpServers.kb` only when the host is **explicit** (`kb mcp install --host …`, or `KB_SERVER_URL` / `KB_HOST`). Never invents localhost. Prefer `kb mcp install` / `kb mcp status` over relying on skills install.
 
 ## Bundled set
 
@@ -58,5 +58,5 @@ Adding a skill:
 - Skill bodies should stay **short and imperative** — they are always-on context when installed to profile MDs.
 - Do not embed secrets or repo-specific paths in skills; use MCP tools / base flags in examples.
 - Hash header must remain first line after install so upgrades are detectable.
-- Dev-workflow: agents use the MCP connection only; CLI/TUI is the human surface (agents may run `kb mcp sync` for setup, never `kb query`).
-- MCP `kb` URL must come from an explicit host (prompt, env, or `kb mcp sync --host`) — never hard-code.
+- Dev-workflow: agents use the MCP connection only; CLI/TUI is the human surface (agents may run `kb mcp install` for setup, never `kb query`).
+- MCP `kb` URL must come from an explicit host (prompt, env, or `kb mcp install --host`) — never hard-code.

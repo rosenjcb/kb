@@ -32,8 +32,8 @@ Monorepo context → [`../../CLIENT.md`](../../CLIENT.md) · Connection detail �
 | Global flags | `../api/cli-global-flags.ts` | `--host` → env override for this process |
 | Remote ops | `remote-commands.ts` | Query, chat, admin CLI over HTTP |
 | Chat REPL | `chat-cli.ts` | Local or remote synthesis loop |
-| Skills | `skill-installer.ts` | Install bundled skills; MCP sync only with explicit host |
-| MCP | `../api/mcp-config-sync.ts` | `kb mcp sync|status|uninstall` — point agents at local/remote node |
+| Skills | `skill-installer.ts` | Install bundled skills; MCP install only with explicit host |
+| MCP | `../api/mcp-config-sync.ts` | `kb mcp install|status|uninstall` — point agents at local/remote node |
 
 ## Connection visibility
 
@@ -86,7 +86,7 @@ Uninitialized base → `uninitializedBaseNotice` (points to `KB_GIT_REPOS`, not 
 
 ## Skills, uninstall, publish
 
-`kb skills install` may sync MCP when `KB_SERVER_URL` / `KB_HOST` is already set. Prefer **`kb mcp sync --host …`** so local vs remote is explicit. Spec: [`CLI.spec.md`](CLI.spec.md) FR-34 · connection: [`../api/CONNECTION.md`](../api/CONNECTION.md).
+`kb skills install` may install MCP when `KB_SERVER_URL` / `KB_HOST` is already set. Prefer **`kb mcp install --host …`** so local vs remote is explicit. Spec: [`CLI.spec.md`](CLI.spec.md) FR-34 · connection: [`../api/CONNECTION.md`](../api/CONNECTION.md).
 
 ## `kb sync`
 
