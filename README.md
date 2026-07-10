@@ -228,18 +228,18 @@ kb sync
 
 ## Agent skills
 
-Install skills so Claude Code, Cursor, and Codex investigate via the **kb MCP connector** before spelunking. Same answers, far fewer tokens. **No CLI fallback for investigation** — MCP only:
+**Humans** use the `kb` CLI/TUI. **Agents** use the MCP connector only (`kb_query`, …) — never CLI/TUI for investigation.
 
 ```bash
 kb skills install
-kb mcp sync --host localhost:38117   # or a remote URL
+kb mcp sync --host localhost:38117   # or a remote URL — setup only
 ```
 
 [`skills/`](skills/) · [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md)
 
 ## MCP (Claude Code & Cursor)
 
-With `kb-server start --with-mcp`, agents call `kb_query` over Streamable HTTP. Point MCP at a **local or remote** node explicitly:
+With `kb-server start --with-mcp`, agents talk to KB **only** over Streamable HTTP MCP. Point MCP at a **local or remote** node explicitly:
 
 ```bash
 kb mcp sync --host <host[:port]|url>

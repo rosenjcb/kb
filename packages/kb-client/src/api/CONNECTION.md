@@ -42,8 +42,7 @@ Base: `resolveEffectiveBaseDir()` — session file `~/.kb/state/active-base`, de
 
 ## MCP client config sync
 
-Agents (Cursor / Claude Code) talk to kb-server over Streamable HTTP at `POST /mcp`.
-The **kb:dev-workflow** skill investigates **only via MCP** (never the `kb` CLI).
+**Humans** use the `kb` CLI/TUI (REST). **Agents** (Cursor / Claude Code) use Streamable HTTP MCP at `POST /mcp` only — the **kb:dev-workflow** skill never investigates via CLI/TUI.
 The MCP URL must be an **explicit** local or remote host — never an invented localhost default.
 
 `syncKbMcpConfigs()` in `mcp-config-sync.ts`:

@@ -3,10 +3,19 @@ name: kb:dev-workflow
 description: >-
   Is the user giving me a coding task in a project that uses the KB knowledge
   store? Should I investigate via the kb MCP connector (kb_query and related
-  tools) before reading files or exploring the repo — never via the kb CLI?
+  tools) before reading files or exploring the repo — never via the kb CLI/TUI?
 ---
 
 # KB dev workflow (agent skill)
+
+## Audience split
+
+| Who | How they talk to KB |
+|-----|---------------------|
+| **Agents** (this skill) | **MCP only** — `kb_query` and related MCP tools |
+| **Humans** | `kb` CLI / TUI (`kb query`, chat, docs, …) |
+
+Do **not** use the CLI/TUI as an agent investigation path. That surface is for people.
 
 ## When to use this skill
 
@@ -14,15 +23,15 @@ When a user gives you **any coding task**, develop an understanding of the
 project (and your task) via the **kb MCP connector** **before** exploring the
 codebase with grep, sed, awk, broad file reads, etc.
 
-**ALWAYS USE THE KB MCP CONNECTOR — NEVER THE `kb` CLI FOR INVESTIGATION**
+**ALWAYS USE THE KB MCP CONNECTOR — NEVER THE `kb` CLI/TUI TO INVESTIGATE**
 **DO NOT EXCESSIVELY READ FILES**
 **ONLY SEARCH FOR THE BARE MINIMUM BEFORE WORKING**
 **KEEP CHIT CHAT TO A MINIMUM - NO TALKY**
 
-## Investigation = MCP only
+## Investigation = MCP connection only
 
-Use these MCP tools. Do **not** shell out to `kb query`, `kb graph`, `kb docs`,
-`kb facts`, or any other `kb` subcommand to learn the codebase.
+Call these MCP tools. Do **not** shell out to `kb query`, `kb graph`, `kb docs`,
+`kb facts`, open the TUI, or run any other `kb` subcommand to learn the codebase.
 
 | Need | MCP tool |
 |------|----------|
@@ -34,8 +43,8 @@ Use these MCP tools. Do **not** shell out to `kb query`, `kb graph`, `kb docs`,
 
 Primary intent: **`kb_query`**.
 
-If kb MCP tools are unavailable in this session, **stop and fix the connection**
-(below). Do not fall back to the CLI. Do not pretend you queried KB.
+If kb MCP tools are unavailable in this session, **stop and fix the MCP
+connection** (below). Do not switch to the CLI/TUI. Do not pretend you queried KB.
 
 ## Host must be explicit (local or remote)
 
@@ -46,7 +55,7 @@ host. Resolve the target in this order:
    use them. Host is whatever the agent MCP config already points at.
 2. **Session env** — `KB_SERVER_URL` (full URL) or `KB_HOST` (+ optional
    `KB_PORT`, default `38117`), plus `KB_SERVER_API_KEY` when the server
-   requires auth. Endpoint is `${KB_SERVER_URL|/http://$KB_HOST:$KB_PORT}/mcp`.
+   requires auth. Endpoint is `${KB_SERVER_URL|http://$KB_HOST:$KB_PORT}/mcp`.
 3. **Ask the user** — one short question: which kb-server?
    - local: `http://localhost:38117` (or `localhost:38117`)
    - remote: full URL, e.g. `https://kb.example.com:38117`
@@ -54,19 +63,19 @@ host. Resolve the target in this order:
 
 Do not assume localhost when env is unset and the user has not confirmed.
 
-## Point MCP at that host
+## Point MCP at that host (setup only)
 
-After env is set or the user names a host, sync agent MCP configs:
+The one allowed `kb` CLI use for agents is **MCP config sync** — not query:
 
 ```bash
 kb mcp sync --host <host[:port]|url>
 # or, with session env already set:
 kb mcp sync
+kb mcp status
 ```
 
 That rewrites `mcpServers.kb` in `~/.cursor/mcp.json` and `~/.claude.json` to
-`${server}/mcp` (Bearer from `KB_SERVER_API_KEY` when set). Check with
-`kb mcp status`.
+`${server}/mcp` (Bearer from `KB_SERVER_API_KEY` when set).
 
 If sync ran mid-session, tell the user once to **reload / reconnect MCP** so
 tools appear, then call `kb_query`.

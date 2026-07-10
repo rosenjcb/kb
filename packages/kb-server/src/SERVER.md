@@ -94,7 +94,7 @@ That writes/updates the `kb` entry in:
 | Cursor | `~/.cursor/mcp.json` | `{ "url": "<server>/mcp", "headers": { "Authorization": "Bearer …" } }` |
 | Claude Code | `~/.claude.json` (`mcpServers`) | `{ "type": "http", "url": "<server>/mcp", "headers": { … } }` |
 
-URL comes only from `--host` / `KB_SERVER_URL` / `KB_HOST` — never an invented localhost default. Other MCP servers in those files are left alone. Reload MCP in the agent after sync, then use `kb_query` (dev-workflow is MCP-only). Verify with `claude mcp list` / `agent mcp list-tools kb` / `kb mcp status`.
+URL comes only from `--host` / `KB_SERVER_URL` / `KB_HOST` — never an invented localhost default. Other MCP servers in those files are left alone. Reload MCP in the agent after sync, then use `kb_query` (agents: MCP connection only; humans: CLI/TUI). Verify with `claude mcp list` / `agent mcp list-tools kb` / `kb mcp status`.
 
 **Manual fallback** (only if you cannot run the client):
 

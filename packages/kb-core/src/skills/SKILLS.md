@@ -42,7 +42,7 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 
 Maintained in `SKILLS` constant inside `skill-installer.ts` (must stay in sync with `skills/` directory):
 
-- `kb:dev-workflow` — **MCP-only** investigation; explicit local/remote host protocol
+- `kb:dev-workflow` — agents investigate via **MCP connection only** (CLI/TUI is for humans); explicit local/remote host protocol
 - `kb:dump-context` — in-place OKF companions + sibling `*.spec.md` behavioral specs (spec.md FR/TC)
 - `kb:evaluation-run` — eval suites under `eval/`
 
@@ -58,5 +58,5 @@ Adding a skill:
 - Skill bodies should stay **short and imperative** — they are always-on context when installed to profile MDs.
 - Do not embed secrets or repo-specific paths in skills; use MCP tools / base flags in examples.
 - Hash header must remain first line after install so upgrades are detectable.
-- Dev-workflow must not instruct agents to use the `kb` CLI for investigation — MCP only.
+- Dev-workflow: agents use the MCP connection only; CLI/TUI is the human surface (agents may run `kb mcp sync` for setup, never `kb query`).
 - MCP `kb` URL must come from an explicit host (prompt, env, or `kb mcp sync --host`) — never hard-code.

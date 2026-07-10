@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Rewrite kb:dev-workflow to **always** investigate via the kb MCP connector (no CLI fallback). Add `kb mcp sync|status|uninstall` so Cursor/Claude `mcpServers.kb` points at an **explicit** local or remote host (`--host`, `KB_SERVER_URL`, or `KB_HOST`) — never an invented localhost default.
+- Agents investigate via the kb MCP connection only (CLI/TUI is for humans). Add `kb mcp sync|status|uninstall` so Cursor/Claude `mcpServers.kb` points at an **explicit** local or remote host (`--host`, `KB_SERVER_URL`, or `KB_HOST`) — never an invented localhost default.
 - Updated dependencies
   - @kb/core@1.4.2
 

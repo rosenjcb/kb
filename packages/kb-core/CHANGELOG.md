@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Document MCP-only kb:dev-workflow and explicit-host MCP sync (`kb mcp sync --host`).
+- Document agents=MCP-only / humans=CLI-TUI split and explicit-host MCP sync (`kb mcp sync --host`).
 
 ## 1.4.1
 

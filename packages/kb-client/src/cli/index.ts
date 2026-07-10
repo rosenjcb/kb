@@ -221,7 +221,7 @@ function printMcpHelp(): string {
     'Usage: kb mcp <subcommand>',
     '',
     'Point agent MCP clients (Cursor / Claude Code) at an explicit kb-server',
-    '(localhost or remote). Investigation via agents uses MCP only — not the CLI.',
+    '(localhost or remote). Agents use MCP only; humans use the kb CLI/TUI.',
     '',
     'Subcommands:',
     '  sync [--host <host[:port]|url>]   Write mcpServers.kb → ${server}/mcp',
