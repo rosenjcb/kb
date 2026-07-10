@@ -6,7 +6,7 @@
 
 - Document agents=MCP-only / humans=CLI-TUI split and explicit-host MCP install (`kb mcp install --host`).
 - Updated dependencies
-  - @kb/core@1.4.2
+  - @kb/core@1.4.2 (Gemini default → `gemini-3.0-flash`)
 
 ## 1.3.3
 

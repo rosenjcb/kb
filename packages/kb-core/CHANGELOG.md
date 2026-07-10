@@ -5,6 +5,7 @@
 ### Patch Changes
 
 - Document agents=MCP-only / humans=CLI-TUI split and explicit-host MCP install (`kb mcp install --host`).
+- Default Gemini model to `gemini-3.0-flash` (was `gemini-3.5-flash`) for ~3x lower cost.
 
 ## 1.4.1
 
