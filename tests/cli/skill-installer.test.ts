@@ -432,7 +432,8 @@ describe('installHooks', () => {
     const content = await readFile(scriptPath, 'utf8')
     expect(content).toContain('#!/bin/bash')
     expect(content).toContain('grep')
-    expect(content).toContain('kb query')
+    expect(content).toContain('kb MCP connector')
+    expect(content).toContain('kb_query')
   })
 })
 

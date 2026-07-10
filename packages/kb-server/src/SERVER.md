@@ -71,11 +71,20 @@ export KB_SERVER_API_KEY=testkey
 kb-server start --with-mcp
 ```
 
-**Preferred setup** — let the client rewrite agent MCP configs from the same connection profile:
+**Preferred setup** — pick an explicit host (local or remote), then sync agent MCP configs:
 
 ```bash
-kb skills install
-# or any normal `kb` / `kb query` invocation — syncs fire-and-forget after env apply
+# Local node
+kb mcp sync --host localhost:38117
+
+# Remote node
+kb mcp sync --host https://kb.example.com:38117
+
+# Or set session env, then:
+export KB_SERVER_URL=https://kb.example.com:38117
+export KB_SERVER_API_KEY=testkey
+kb mcp sync
+kb mcp status
 ```
 
 That writes/updates the `kb` entry in:
@@ -85,7 +94,7 @@ That writes/updates the `kb` entry in:
 | Cursor | `~/.cursor/mcp.json` | `{ "url": "<server>/mcp", "headers": { "Authorization": "Bearer …" } }` |
 | Claude Code | `~/.claude.json` (`mcpServers`) | `{ "type": "http", "url": "<server>/mcp", "headers": { … } }` |
 
-URL comes from `KB_SERVER_URL` or `KB_HOST`/`KB_PORT` (same resolution as the CLI). Other MCP servers in those files are left alone. Verify with `claude mcp list` / `agent mcp list-tools kb`.
+URL comes only from `--host` / `KB_SERVER_URL` / `KB_HOST` — never an invented localhost default. Other MCP servers in those files are left alone. Reload MCP in the agent after sync, then use `kb_query` (dev-workflow is MCP-only). Verify with `claude mcp list` / `agent mcp list-tools kb` / `kb mcp status`.
 
 **Manual fallback** (only if you cannot run the client):
 

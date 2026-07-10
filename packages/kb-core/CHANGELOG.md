@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Document MCP-first kb:dev-workflow and client-driven MCP URL sync to the CLI connection profile.
+- Document MCP-only kb:dev-workflow and explicit-host MCP sync (`kb mcp sync --host`).
 
 ## 1.4.1
 

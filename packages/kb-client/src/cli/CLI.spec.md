@@ -99,7 +99,7 @@ See companion doc for full vocabulary where applicable.
 | FR-30 | Named-list interview parses numbered selections in TTY prompts |
 | FR-31 | Publish CLI pushes companion docs to configured publish targets |
 | FR-33 | Retrieval fallback degrades gracefully when deep retrieval fails |
-| FR-34 | Skill installer copies bundled skills to agent home directories, installs hooks, and syncs Cursor/Claude MCP `kb` entries to the CLI connection profile |
+| FR-34 | Skill installer copies bundled skills to agent home directories, installs hooks, and syncs Cursor/Claude MCP `kb` entries only when an explicit host is configured |
 | FR-35 | Startup notices print one-time migration and version hints |
 | FR-36 | Sync CLI refreshes the split GitHub Release runtimes and rewires stable client/server binary links |
 | FR-37 | Client uninstall removes release client layout; server uninstall removes server layout and optional ~/.kb data |

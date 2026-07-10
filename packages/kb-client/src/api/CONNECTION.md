@@ -42,18 +42,24 @@ Base: `resolveEffectiveBaseDir()` — session file `~/.kb/state/active-base`, de
 
 ## MCP client config sync
 
-Agents (Cursor / Claude Code) talk to kb-server over Streamable HTTP at `POST /mcp`. That URL must stay aligned with the CLI connection profile — otherwise `kb query` and MCP `kb_query` hit different nodes.
+Agents (Cursor / Claude Code) talk to kb-server over Streamable HTTP at `POST /mcp`.
+The **kb:dev-workflow** skill investigates **only via MCP** (never the `kb` CLI).
+The MCP URL must be an **explicit** local or remote host — never an invented localhost default.
 
 `syncKbMcpConfigs()` in `mcp-config-sync.ts`:
 
 | Trigger | Behavior |
 |---------|----------|
-| `kb skills install` | Sync + report in install output |
-| Normal `kb` / TUI startup | Fire-and-forget after `applyConfigToEnv` |
-| `KB_LOCAL_MODE=true` | No-op (no remote MCP endpoint) |
-| `kb skills uninstall` | Removes managed `kb` entries only |
+| `kb mcp sync --host …` | Write Cursor/Claude `kb` → `${server}/mcp` |
+| `kb mcp sync` | Same, using `KB_SERVER_URL` / `KB_HOST` (errors with `needs-host` if unset) |
+| `kb skills install` | Sync only when an explicit host env is already set |
+| Normal `kb` / TUI startup | Fire-and-forget sync **only** when explicit host env is set |
+| `KB_LOCAL_MODE=true` | No-op |
+| `kb mcp uninstall` / `kb skills uninstall` | Removes managed `kb` entries only |
 
-Writes `mcpServers.kb` → `${resolvedServerUrl}/mcp` with Bearer header when `KB_SERVER_API_KEY` is set. Merges into existing JSON; never clobbers other servers.
+Host resolution for sync: `--host` → `KB_SERVER_URL` → `KB_HOST`+`KB_PORT`. Refuses the implicit CLI localhost default unless the operator passed `--host` or set env.
+
+Writes `mcpServers.kb` with Bearer header when `KB_SERVER_API_KEY` is set. Merges into existing JSON; never clobbers other servers. Inspect with `kb mcp status`.
 
 ## User-visible connection context
 

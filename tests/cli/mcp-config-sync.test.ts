@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   buildClaudeKbMcpEntry,
   buildCursorKbMcpEntry,
+  formatMcpStatusReport,
   formatMcpSyncReport,
+  hasExplicitServerHost,
+  readKbMcpStatus,
   resolveMcpEndpointUrl,
   syncKbMcpConfigs,
   uninstallKbMcpConfigs,
@@ -75,10 +78,40 @@ describe('build*KbMcpEntry', () => {
   })
 })
 
+describe('hasExplicitServerHost', () => {
+  it('[TC-520] false when env unset; true for KB_HOST or KB_SERVER_URL', () => {
+    expect(hasExplicitServerHost()).toBe(false)
+    process.env.KB_HOST = 'localhost'
+    expect(hasExplicitServerHost()).toBe(true)
+    delete process.env.KB_HOST
+    process.env.KB_SERVER_URL = 'https://kb.example.com'
+    expect(hasExplicitServerHost()).toBe(true)
+  })
+})
+
 describe('syncKbMcpConfigs', () => {
-  it('[TC-510] Given default host, installs kb MCP entries for Cursor and Claude', async () => {
+  it('[TC-510] Given no explicit host, refuses to default MCP to localhost', async () => {
     process.env.KB_SERVER_API_KEY = 'testkey'
+    const results = await syncKbMcpConfigs({ requireExplicitHost: true })
+    expect(results).toEqual([
+      expect.objectContaining({ agent: 'all', action: 'needs-host' }),
+    ])
+  })
+
+  it('[TC-511] Given KB_SERVER_URL, points MCP at that host /mcp', async () => {
+    process.env.KB_SERVER_URL = 'https://kb.example.com:8443'
+    process.env.KB_SERVER_API_KEY = 'prod'
     const results = await syncKbMcpConfigs()
+    expect(results.every(r => r.url === 'https://kb.example.com:8443/mcp')).toBe(true)
+    expect(results.every(r => r.action === 'installed')).toBe(true)
+
+    const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
+    expect(cursor.mcpServers.kb.url).toBe('https://kb.example.com:8443/mcp')
+  })
+
+  it('[TC-521] Given --host override, installs even when env unset', async () => {
+    process.env.KB_SERVER_API_KEY = 'testkey'
+    const results = await syncKbMcpConfigs({ host: 'localhost:38117' })
     expect(results).toEqual([
       { agent: 'cursor', action: 'installed', url: 'http://localhost:38117/mcp' },
       { agent: 'claude', action: 'installed', url: 'http://localhost:38117/mcp' },
@@ -96,16 +129,6 @@ describe('syncKbMcpConfigs', () => {
       url: 'http://localhost:38117/mcp',
       headers: { Authorization: 'Bearer testkey' },
     })
-  })
-
-  it('[TC-511] Given KB_SERVER_URL, points MCP at that host /mcp', async () => {
-    process.env.KB_SERVER_URL = 'https://kb.example.com:8443'
-    process.env.KB_SERVER_API_KEY = 'prod'
-    const results = await syncKbMcpConfigs()
-    expect(results.every(r => r.url === 'https://kb.example.com:8443/mcp')).toBe(true)
-
-    const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
-    expect(cursor.mcpServers.kb.url).toBe('https://kb.example.com:8443/mcp')
   })
 
   it('[TC-512] Given matching entry, action is skipped', async () => {
@@ -144,6 +167,7 @@ describe('syncKbMcpConfigs', () => {
 
   it('[TC-514] Given KB_LOCAL_MODE, skips MCP sync', async () => {
     process.env.KB_LOCAL_MODE = 'true'
+    process.env.KB_HOST = 'localhost'
     const results = await syncKbMcpConfigs()
     expect(results).toEqual([])
   })
@@ -189,7 +213,7 @@ describe('uninstallKbMcpConfigs', () => {
   })
 })
 
-describe('formatMcpSyncReport', () => {
+describe('formatMcpSyncReport / status', () => {
   it('[TC-517] formats install/update/skip lines', () => {
     const report = formatMcpSyncReport([
       { agent: 'cursor', action: 'installed', url: 'http://localhost:38117/mcp' },
@@ -200,5 +224,21 @@ describe('formatMcpSyncReport', () => {
     expect(report).toContain('[cursor]')
     expect(report).toContain('updated')
     expect(report).toContain('[claude]')
+  })
+
+  it('[TC-522] formats needs-host warning', () => {
+    const report = formatMcpSyncReport([
+      { agent: 'all', action: 'needs-host', detail: 'Set KB_SERVER_URL' },
+    ])
+    expect(report).toContain('needs host')
+    expect(report).toContain('KB_SERVER_URL')
+  })
+
+  it('[TC-523] readKbMcpStatus reports missing entries when unset', async () => {
+    const status = await readKbMcpStatus()
+    expect(status.explicitEnvHost).toBe(false)
+    expect(status.entries.every(e => !e.present)).toBe(true)
+    const report = formatMcpStatusReport(status)
+    expect(report).toContain('unset')
   })
 })

@@ -241,7 +241,7 @@ except Exception:
     pass
 " 2>/dev/null)
 if [ -n "$cmd" ] && echo "$cmd" | grep -qE '\\b(grep|awk|sed|find)\\b'; then
-  echo "Reminder: kb query should be your first step for codebase exploration — use grep/awk/sed/find only as a last resort when kb cannot answer the question."
+  echo "Reminder: use the kb MCP connector (kb_query) first for codebase exploration — use grep/awk/sed/find only as a last resort when KB cannot answer."
 fi
 exit 0
 `
@@ -467,9 +467,9 @@ export function formatSkillUninstallReport(
   return lines.join('\n')
 }
 
-/** Sync Cursor/Claude MCP `kb` entries to the current CLI connection profile. */
+/** Sync Cursor/Claude MCP `kb` entries when an explicit host is configured. */
 export async function installMcpConfigs(): Promise<McpSyncResult[]> {
-  return syncKbMcpConfigs()
+  return syncKbMcpConfigs({ requireExplicitHost: true })
 }
 
 /** Remove managed Cursor/Claude MCP `kb` entries. */

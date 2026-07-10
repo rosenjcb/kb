@@ -228,17 +228,25 @@ kb sync
 
 ## Agent skills
 
-Install skills so Claude Code, Cursor, and Codex query KB **before** spelunking. Same answers, far fewer tokens. Prefer MCP `kb_query` when the server is connected; fall back to the `kb` CLI otherwise:
+Install skills so Claude Code, Cursor, and Codex investigate via the **kb MCP connector** before spelunking. Same answers, far fewer tokens. **No CLI fallback for investigation** — MCP only:
 
 ```bash
 kb skills install
+kb mcp sync --host localhost:38117   # or a remote URL
 ```
 
-That also rewrites Cursor/Claude `kb` MCP entries to match `KB_SERVER_URL` / `KB_HOST` (same node as the CLI). [`skills/`](skills/) · [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md)
+[`skills/`](skills/) · [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md)
 
 ## MCP (Claude Code & Cursor)
 
-With `kb-server start --with-mcp`, agents call `kb_query` over Streamable HTTP. `kb skills install` (and normal `kb` startup) keeps `~/.cursor/mcp.json` + `~/.claude.json` pointed at `${server}/mcp`. Details: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md).
+With `kb-server start --with-mcp`, agents call `kb_query` over Streamable HTTP. Point MCP at a **local or remote** node explicitly:
+
+```bash
+kb mcp sync --host <host[:port]|url>
+kb mcp status
+```
+
+Details: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md) · connection: [`packages/kb-client/src/api/CONNECTION.md`](packages/kb-client/src/api/CONNECTION.md).
 
 ## Managing bases & repos
 

@@ -36,13 +36,13 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 
 **Cursor:** `.mdc` targets get `alwaysApply: true` injected into YAML frontmatter.
 
-**MCP sync:** `mcp-config-sync.ts` keeps `~/.cursor/mcp.json` and `~/.claude.json` `mcpServers.kb` pointed at the same node as the CLI. Also runs fire-and-forget on normal `kb` startup (after connection env is applied). Skipped when `KB_LOCAL_MODE=true`.
+**MCP sync:** `mcp-config-sync.ts` writes `~/.cursor/mcp.json` and `~/.claude.json` `mcpServers.kb` only when the host is **explicit** (`kb mcp sync --host …`, or `KB_SERVER_URL` / `KB_HOST`). Never invents localhost. Prefer `kb mcp sync` / `kb mcp status` over relying on skills install.
 
 ## Bundled set
 
 Maintained in `SKILLS` constant inside `skill-installer.ts` (must stay in sync with `skills/` directory):
 
-- `kb:dev-workflow` — MCP-first query/graph/docs conventions (CLI fallback)
+- `kb:dev-workflow` — **MCP-only** investigation; explicit local/remote host protocol
 - `kb:dump-context` — in-place OKF companions + sibling `*.spec.md` behavioral specs (spec.md FR/TC)
 - `kb:evaluation-run` — eval suites under `eval/`
 
@@ -56,6 +56,7 @@ Adding a skill:
 ## Invariants
 
 - Skill bodies should stay **short and imperative** — they are always-on context when installed to profile MDs.
-- Do not embed secrets or repo-specific paths in skills; use `kb query` / MCP tools / base flags in examples.
+- Do not embed secrets or repo-specific paths in skills; use MCP tools / base flags in examples.
 - Hash header must remain first line after install so upgrades are detectable.
-- MCP `kb` URL must track the CLI connection profile — never hard-code a host in the skill body.
+- Dev-workflow must not instruct agents to use the `kb` CLI for investigation — MCP only.
+- MCP `kb` URL must come from an explicit host (prompt, env, or `kb mcp sync --host`) — never hard-code.

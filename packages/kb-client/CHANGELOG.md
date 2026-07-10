@@ -4,7 +4,7 @@
 
 ### Minor Changes
 
-- Prefer MCP tools in kb:dev-workflow when the server is up, and sync Cursor/Claude MCP `kb` entries to the CLI connection profile on skills install and startup.
+- Rewrite kb:dev-workflow to **always** investigate via the kb MCP connector (no CLI fallback). Add `kb mcp sync|status|uninstall` so Cursor/Claude `mcpServers.kb` points at an **explicit** local or remote host (`--host`, `KB_SERVER_URL`, or `KB_HOST`) — never an invented localhost default.
 
 ### Patch Changes
 

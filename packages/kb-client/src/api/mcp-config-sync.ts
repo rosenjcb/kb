@@ -1,6 +1,10 @@
 /**
- * Keep agent MCP client configs pointed at the same kb-server as the CLI
- * connection profile (`KB_SERVER_URL` / `KB_HOST`+`KB_PORT` + `KB_SERVER_API_KEY`).
+ * Keep agent MCP client configs pointed at an **explicit** kb-server host
+ * (local or remote). Never invent localhost when the operator has not set a
+ * connection profile.
+ *
+ * Host sources (same as CLI): `--host` / `KB_SERVER_URL` / `KB_HOST`+`KB_PORT`
+ * + `KB_SERVER_API_KEY`.
  *
  * Targets (user scope):
  * - Cursor: `~/.cursor/mcp.json`
@@ -11,22 +15,50 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
+import { KB_ENV, readEnvHost } from '@kb/core/config/kb-env.js'
 import { isLocalMode, resolveServerConnection } from '../api/server-connection.js'
+import { applyHostCliOverride } from './cli-global-flags.js'
 
 export const KB_MCP_SERVER_NAME = 'kb'
 
-export type McpSyncAction = 'installed' | 'updated' | 'skipped' | 'removed' | 'not-found'
+export type McpSyncAction =
+  | 'installed'
+  | 'updated'
+  | 'skipped'
+  | 'removed'
+  | 'not-found'
+  | 'needs-host'
 
 export interface McpSyncResult {
-  agent: 'cursor' | 'claude'
+  agent: 'cursor' | 'claude' | 'all'
   action: McpSyncAction
   url?: string
+  detail?: string
+}
+
+export interface SyncKbMcpOptions {
+  /** Override host for this sync (`host:port`, hostname, or full URL). */
+  host?: string
+  /**
+   * When true (default), refuse to write configs unless `host` is passed or
+   * `KB_SERVER_URL` / `KB_HOST` is set in the environment. Prevents silent
+   * localhost defaults from hijacking agent MCP.
+   */
+  requireExplicitHost?: boolean
+  config?: KbConfig
 }
 
 type JsonObject = Record<string, unknown>
 
 function isPlainObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** True when the process has an operator-chosen server (not the implicit localhost default). */
+export function hasExplicitServerHost(): boolean {
+  if (process.env[KB_ENV.SERVER_URL]?.trim()) return true
+  if (readEnvHost()) return true
+  return false
 }
 
 /** `${serverUrl}/mcp` with no trailing slash on the server root. */
@@ -88,11 +120,11 @@ async function writeJsonObject(filePath: string, value: JsonObject): Promise<voi
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
 }
 
-function cursorMcpPath(home = os.homedir()): string {
+export function cursorMcpPath(home = os.homedir()): string {
   return path.join(home, '.cursor', 'mcp.json')
 }
 
-function claudeConfigPath(home = os.homedir()): string {
+export function claudeConfigPath(home = os.homedir()): string {
   return path.join(home, '.claude.json')
 }
 
@@ -100,7 +132,7 @@ async function upsertKbMcpEntry(opts: {
   filePath: string
   expected: JsonObject
   requireType?: boolean
-  agent: McpSyncResult['agent']
+  agent: 'cursor' | 'claude'
   mcpUrl: string
 }): Promise<McpSyncResult> {
   const doc = await readJsonObject(opts.filePath)
@@ -123,7 +155,7 @@ async function upsertKbMcpEntry(opts: {
 
 async function removeKbMcpEntry(
   filePath: string,
-  agent: McpSyncResult['agent']
+  agent: 'cursor' | 'claude'
 ): Promise<McpSyncResult> {
   let doc: JsonObject
   try {
@@ -142,14 +174,32 @@ async function removeKbMcpEntry(
   return { agent, action: 'removed' }
 }
 
+function needsHostResult(): McpSyncResult[] {
+  return [
+    {
+      agent: 'all',
+      action: 'needs-host',
+      detail:
+        'Set KB_SERVER_URL or KB_HOST, or pass --host <host[:port]|url> (local or remote). Refusing to default MCP to localhost.',
+    },
+  ]
+}
+
 /**
- * Rewrite Cursor + Claude `kb` MCP entries to match the resolved connection profile.
- * No-op in `KB_LOCAL_MODE` (no remote MCP endpoint).
+ * Rewrite Cursor + Claude `kb` MCP entries to match an explicit connection profile.
+ * No-op in `KB_LOCAL_MODE`. Refuses implicit localhost unless `requireExplicitHost` is false.
  */
-export async function syncKbMcpConfigs(config: KbConfig = {}): Promise<McpSyncResult[]> {
+export async function syncKbMcpConfigs(options: SyncKbMcpOptions = {}): Promise<McpSyncResult[]> {
   if (isLocalMode()) return []
 
-  const connection = resolveServerConnection(config)
+  const requireExplicit = options.requireExplicitHost !== false
+  if (options.host?.trim()) {
+    applyHostCliOverride(options.host.trim())
+  } else if (requireExplicit && !hasExplicitServerHost()) {
+    return needsHostResult()
+  }
+
+  const connection = resolveServerConnection(options.config ?? {})
   const mcpUrl = resolveMcpEndpointUrl(connection.url)
   const apiKey = connection.apiKey
 
@@ -173,7 +223,7 @@ export async function syncKbMcpConfigs(config: KbConfig = {}): Promise<McpSyncRe
   ])
 }
 
-/** Remove the managed `kb` MCP entries (used by `kb skills uninstall`). */
+/** Remove the managed `kb` MCP entries (used by `kb skills uninstall` / `kb mcp uninstall`). */
 export async function uninstallKbMcpConfigs(): Promise<McpSyncResult[]> {
   return Promise.all([
     removeKbMcpEntry(cursorMcpPath(), 'cursor'),
@@ -181,16 +231,78 @@ export async function uninstallKbMcpConfigs(): Promise<McpSyncResult[]> {
   ])
 }
 
+export interface McpStatusEntry {
+  agent: 'cursor' | 'claude'
+  path: string
+  url: string | null
+  present: boolean
+}
+
+/** Read current `kb` MCP URLs from agent configs (no writes). */
+export async function readKbMcpStatus(): Promise<{
+  explicitEnvHost: boolean
+  resolvedServerUrl: string | null
+  entries: McpStatusEntry[]
+}> {
+  const explicitEnvHost = hasExplicitServerHost()
+  let resolvedServerUrl: string | null = null
+  if (!isLocalMode() && explicitEnvHost) {
+    resolvedServerUrl = resolveServerConnection({}).url
+  }
+
+  const readEntry = async (
+    agent: 'cursor' | 'claude',
+    filePath: string
+  ): Promise<McpStatusEntry> => {
+    const doc = await readJsonObject(filePath)
+    const servers = isPlainObject(doc.mcpServers) ? doc.mcpServers : {}
+    const entry = servers[KB_MCP_SERVER_NAME]
+    const url =
+      isPlainObject(entry) && typeof entry.url === 'string' ? entry.url : null
+    return { agent, path: filePath, url, present: url !== null }
+  }
+
+  const entries = await Promise.all([
+    readEntry('cursor', cursorMcpPath()),
+    readEntry('claude', claudeConfigPath()),
+  ])
+
+  return { explicitEnvHost, resolvedServerUrl, entries }
+}
+
 export function formatMcpSyncReport(results: McpSyncResult[]): string {
   if (results.length === 0) return ''
-  const lines: string[] = ['MCP client configs (same host as CLI):']
+  const lines: string[] = ['MCP client configs (explicit host → /mcp):']
   for (const r of results) {
+    if (r.action === 'needs-host') {
+      lines.push(`  ⚠ needs host  ${r.detail ?? ''}`)
+      continue
+    }
     const url = r.url ? ` → ${r.url}` : ''
     if (r.action === 'installed') lines.push(`  ✓ installed  kb [${r.agent}]${url}`)
     else if (r.action === 'updated') lines.push(`  ↑ updated    kb [${r.agent}]${url}`)
     else if (r.action === 'skipped') lines.push(`  • up-to-date kb [${r.agent}]${url}`)
     else if (r.action === 'removed') lines.push(`  ✓ removed    kb [${r.agent}]`)
     else lines.push(`  - not found  kb [${r.agent}]`)
+  }
+  return lines.join('\n')
+}
+
+export function formatMcpStatusReport(
+  status: Awaited<ReturnType<typeof readKbMcpStatus>>
+): string {
+  const lines: string[] = ['KB MCP status:']
+  lines.push(
+    status.explicitEnvHost
+      ? `  env host:   ${status.resolvedServerUrl ?? '(set)'}`
+      : '  env host:   (unset — set KB_SERVER_URL / KB_HOST or pass --host)'
+  )
+  for (const e of status.entries) {
+    lines.push(
+      e.present
+        ? `  ${e.agent.padEnd(8)} ${e.url}`
+        : `  ${e.agent.padEnd(8)} (no kb entry in ${e.path})`
+    )
   }
   return lines.join('\n')
 }

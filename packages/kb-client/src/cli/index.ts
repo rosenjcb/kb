@@ -121,7 +121,13 @@ import {
 } from './remote-commands.js'
 import { resolveReportHost, resolveServerConnection, formatServerAddress, formatConnectionContext } from '../api/server-connection.js'
 import { applyHostCliOverride, parseGlobalCliFlags } from '../api/cli-global-flags.js'
-import { syncKbMcpConfigs } from '../api/mcp-config-sync.js'
+import {
+  formatMcpStatusReport,
+  formatMcpSyncReport,
+  readKbMcpStatus,
+  syncKbMcpConfigs,
+  uninstallKbMcpConfigs,
+} from '../api/mcp-config-sync.js'
 import { runUninstallCommand } from './uninstall-cli'
 import {
   ViewCommandError,
@@ -187,6 +193,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  sync        Install the latest published KB release',
     '  logs        Browse and compare run reports',
     '  skills      Manage agent skills',
+    '  mcp         Point Cursor/Claude MCP at a local or remote kb-server',
     '  uninstall   Remove the kb client binary (server/data untouched; see kb-server uninstall)',
     '',
     'Intent commands:',
@@ -195,10 +202,38 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     cmdHelpHint(mode),
     '',
     'Examples:',
-    `  kb --host localhost:38117 ${cmd('query "how does auth work?"', mode)}`,
+    mode === 'tui'
+      ? `  /query "how does auth work?"`
+      : `  kb query "how does auth work?"`,
+    mode === 'cli' ? `  kb --host localhost:38117 query "how does auth work?"` : null,
+    `  ${cmd('mcp sync --host localhost:38117', mode)}`,
+    `  ${cmd('mcp sync --host https://kb.example.com:38117', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
     `  ${cmd('sync', mode)}`,
     `  ${cmd('docs list --base dogfood', mode)}`,
+  ]
+    .filter((line): line is string => line !== null)
+    .join('\n')
+}
+
+function printMcpHelp(): string {
+  return [
+    'Usage: kb mcp <subcommand>',
+    '',
+    'Point agent MCP clients (Cursor / Claude Code) at an explicit kb-server',
+    '(localhost or remote). Investigation via agents uses MCP only — not the CLI.',
+    '',
+    'Subcommands:',
+    '  sync [--host <host[:port]|url>]   Write mcpServers.kb → ${server}/mcp',
+    '                                    Host from --host, else KB_SERVER_URL / KB_HOST',
+    '  status                            Show env host + current MCP kb URLs',
+    '  uninstall                         Remove managed kb MCP entries',
+    '',
+    'Examples:',
+    '  kb mcp sync --host localhost:38117',
+    '  kb mcp sync --host https://kb.example.com:38117',
+    '  export KB_SERVER_URL=http://remote:38117 && kb mcp sync',
+    '  kb mcp status',
   ].join('\n')
 }
 
@@ -680,12 +715,66 @@ export async function runMainWithOutput(
           'Manage the bundled KB agent skills for Claude, Cursor, Codex, and Copilot.',
           '',
           'Subcommands:',
-          '  install     Install the skill files for each agent CLI and update the core',
-          '              agent readmes (~/.claude/CLAUDE.md, ~/.codex/AGENTS.md) + kb-first hook',
-          '              + sync Cursor/Claude MCP `kb` entries to the current server URL',
-          '  uninstall   Remove the installed skill files, readme entries, hook, and MCP entries',
+          '  install     Install skill files, profile readmes, kb-first hook;',
+          '              syncs MCP only when KB_SERVER_URL / KB_HOST / --host is set',
+          '  uninstall   Remove skill files, readme entries, hook, and MCP entries',
+          '',
+          'Point MCP at a host explicitly with: kb mcp sync --host <host|url>',
         ].join('\n')
       )
+    }
+    return
+  }
+
+  if (firstArg === 'mcp') {
+    const subcommand = args[1]
+    if (subcommand === 'sync') {
+      try {
+        let host: string | undefined
+        for (let i = 2; i < args.length; i += 1) {
+          const token = args[i]
+          if (token === '--host') {
+            host = args[i + 1]?.trim()
+            if (!host) throw new Error('--host requires a value (host:port, hostname, or URL)')
+            i += 1
+            continue
+          }
+          if (token?.startsWith('--host=')) {
+            host = token.slice('--host='.length).trim()
+            if (!host) throw new Error('--host requires a value')
+            continue
+          }
+          throw new Error(`Unknown argument: ${token}\n\n${printMcpHelp()}`)
+        }
+        const results = await syncKbMcpConfigs({ host, requireExplicitHost: true })
+        const report = formatMcpSyncReport(results)
+        if (report) out.log(report)
+        if (results.some(r => r.action === 'needs-host')) {
+          out.error('Pass --host or set KB_SERVER_URL / KB_HOST first.')
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        out.error(`❌ ${message}`)
+      }
+    } else if (subcommand === 'status') {
+      try {
+        out.log(formatMcpStatusReport(await readKbMcpStatus()))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        out.error(`❌ ${message}`)
+      }
+    } else if (subcommand === 'uninstall') {
+      try {
+        const results = await uninstallKbMcpConfigs()
+        const report = formatMcpSyncReport(results)
+        if (report) out.log(report)
+        else out.log('No KB MCP entries found.')
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        out.error(`❌ ${message}`)
+      }
+    } else {
+      out.log(printMcpHelp())
     }
     return
   }
@@ -968,8 +1057,8 @@ async function main() {
     const inferred = await persistInferredLLMProvider({ config: kbConfig })
     kbConfig = inferred.config
     applyConfigToEnv(kbConfig)
-    // After env is applied so MCP URL matches the same profile as the CLI/TUI.
-    void syncKbMcpConfigs(kbConfig).catch(() => {})
+    // Only rewrite agent MCP when the operator set an explicit host (never invent localhost).
+    void syncKbMcpConfigs({ config: kbConfig, requireExplicitHost: true }).catch(() => {})
 
     const startupNotices: string[] = []
     if (inferred.notice) startupNotices.push(inferred.notice)
@@ -1024,8 +1113,8 @@ async function main() {
   const inferred = await persistInferredLLMProvider({ config: kbConfig })
   kbConfig = inferred.config
   applyConfigToEnv(kbConfig)
-  // Keep Cursor/Claude MCP `kb` URL aligned with this process's connection profile.
-  syncKbMcpConfigs(kbConfig).catch(() => {})
+  // Keep Cursor/Claude MCP aligned only when KB_SERVER_URL / KB_HOST / --host is set.
+  syncKbMcpConfigs({ config: kbConfig, requireExplicitHost: true }).catch(() => {})
 
   // One-shot CLI path — skip banner when docs generate --output json (stdout must be parseable JSON only).
   const machineJsonStdout = isDocsGenerateJsonOutputArgs(args)
