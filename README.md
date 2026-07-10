@@ -175,7 +175,7 @@ kb mcp sync --host https://kb.acme.internal:38117
 kb mcp status
 ```
 
-That writes `mcpServers.kb` → `${url}/mcp` in `~/.claude.json` and `~/.cursor/mcp.json`. **Reconnect MCP** in Claude/Cursor, then ask coding questions — the agent should call `kb_query` against the team node.
+That writes `mcpServers.kb` → `${url}/mcp` for **Claude Code** (`~/.claude.json`) and **Cursor** (`~/.cursor/mcp.json`) only. **Reconnect MCP** in those apps, then ask coding questions — the agent should call `kb_query` against the team node.
 
 Switch nodes anytime: `kb mcp sync --host <other-url>` and reconnect. Without an explicit host (`--host` / `KB_SERVER_URL` / `KB_HOST`), sync refuses to invent localhost.
 
@@ -254,6 +254,15 @@ kb sync
 | **Humans** | `kb` CLI / TUI → REST (`/v1/query`, chat) |
 | **Agents** | MCP only (`kb_query`, …) → `POST /mcp` |
 
+**`kb mcp sync` configures MCP for:**
+
+| Agent | File written |
+|-------|----------------|
+| Claude Code | `~/.claude.json` (`mcpServers.kb`) |
+| Cursor | `~/.cursor/mcp.json` (`mcpServers.kb`) |
+
+(Codex / Gemini / Copilot are **not** wired by `mcp sync`. `kb skills install` still installs the skill text / hooks where those agents look.)
+
 **Team remote (typical):**
 
 ```bash
@@ -263,12 +272,12 @@ export KB_SERVER_API_KEY=<token>
 kb skills install                                    # skill + Claude hooks
 kb mcp sync --host https://kb.acme.internal:38117  # or: kb mcp sync (uses env)
 kb mcp status
-# reconnect MCP in Claude Code / Cursor, then code as usual
+# reconnect MCP in Claude Code and/or Cursor, then code as usual
 ```
 
 **Local laptop server:** same commands with `--host localhost:38117`.
 
-Claude Code picks up `~/.claude.json`; Cursor uses `~/.cursor/mcp.json`. After sync, reload MCP so tools appear. If the agent shells out to Grep/`kb query`, the installed PreToolUse hook reminds it to use MCP.
+After sync, reload MCP so `kb_query` appears. If the agent shells out to Grep/`kb query`, the Claude PreToolUse hook reminds it to use MCP.
 
 Deep dive: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md) · [`packages/kb-client/src/api/CONNECTION.md`](packages/kb-client/src/api/CONNECTION.md) · [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md).
 
