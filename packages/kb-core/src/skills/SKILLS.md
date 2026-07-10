@@ -28,7 +28,7 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 |---|---|
 | `installSkillsGlobally()` | Per-agent skill files under `~/.claude`, `~/.cursor/rules`, `~/.codex`, `~/.github` |
 | `installSkillIntoProject()` | Injects `kb:dev-workflow` body into profile MDs (`CLAUDE.md`, `AGENTS.md`) |
-| `installHooks()` | Registers a kb-first pre-tool hook (`~/.kb/hooks/kb-reminder.sh`) in Claude / Gemini / Codex settings |
+| `installHooks()` | Registers kb-first PreToolUse hook (`~/.kb/hooks/kb-reminder.sh`) — Claude matcher `Bash\|Grep\|Glob`, JSON `additionalContext` (plain stdout is ignored) |
 | `installMcpConfigs()` | Rewrites Cursor/Claude `kb` MCP entries to `${KB_SERVER_URL\|host:port}/mcp` |
 | `uninstallSkills()` / `uninstallHooks()` / `uninstallMcpConfigs()` | Removes installed files, profile MD entries, hooks, and managed MCP entries |
 

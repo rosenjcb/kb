@@ -500,14 +500,16 @@ See companion doc for full vocabulary where applicable.
 | TC-448 | FR-34 | Given profile MD with injected section, then removes the section | pass |
 | TC-449 | FR-34 | Given profile MD without KB section, then action is not-found | pass |
 | TC-450 | FR-34 | Given removed results, then formats readable output | pass |
-| TC-451 | FR-34 | Given no provider config dirs, then all results are not-installed | pass |
+| TC-451 | FR-34 | Given no provider config dirs, then Claude installs (ensureConfigDir) and others are not-installed | pass |
 | TC-452 | FR-34 | Given Claude config dir exists with no settings.json, then creates settings.json with hook | pass |
 | TC-453 | FR-34 | Given hook already installed at current path, then action is skipped | pass |
 | TC-454 | FR-34 | Given hook installed at stale path, then updates to current path | pass |
 | TC-455 | FR-34 | Given settings.json with existing hooks, then merges without clobbering | pass |
 | TC-456 | FR-34 | Given Gemini config dir exists, then installs BeforeTool hook in settings.json | pass |
 | TC-457 | FR-34 | Given Codex config dir exists, then installs hook in hooks.json | pass |
-| TC-458 | FR-34 | Writes executable hook script to ~/.kb/hooks/kb-reminder.sh | pass |
+| TC-458 | FR-34 | Writes executable hook script that emits Claude JSON additionalContext | pass |
+| TC-524 | FR-34 | Given Grep tool input, hook emits additionalContext JSON | pass |
+| TC-525 | FR-34 | Given Read tool, hook stays silent | pass |
 | TC-459 | FR-34 | Given hook present in settings.json, then removes it | pass |
 | TC-460 | FR-34 | Given no settings.json, then action is not-installed | pass |
 | TC-461 | FR-34 | Given settings.json without KB hook, then action is not-installed | pass |

@@ -308,9 +308,12 @@ describe('installHooks', () => {
     process.env.HOME = origHome
   })
 
-  it('[TC-451] Given no provider config dirs, then all results are not-installed', async () => {
+  it('[TC-451] Given no provider config dirs, then Claude is still installed (ensureConfigDir) and others are not-installed', async () => {
     const results = await installHooks()
-    expect(results.every(r => r.action === 'not-installed')).toBe(true)
+    expect(results.find(r => r.provider === 'claude')?.action).toBe('installed')
+    expect(results.filter(r => r.provider !== 'claude').every(r => r.action === 'not-installed')).toBe(
+      true
+    )
   })
 
   it('[TC-452] Given Claude config dir exists with no settings.json, then creates settings.json with hook', async () => {
@@ -323,7 +326,9 @@ describe('installHooks', () => {
     const raw = await readFile(path.join(fakeHome, '.claude', 'settings.json'), 'utf8')
     const settings = JSON.parse(raw)
     expect(settings.hooks?.PreToolUse).toBeDefined()
-    const group = settings.hooks.PreToolUse.find((g: { matcher: string }) => g.matcher === 'Bash')
+    const group = settings.hooks.PreToolUse.find(
+      (g: { matcher: string }) => g.matcher === 'Bash|Grep|Glob'
+    )
     expect(group).toBeDefined()
     expect(group.hooks[0].command).toContain('kb-reminder.sh')
   })
@@ -336,7 +341,9 @@ describe('installHooks', () => {
       settingsPath,
       JSON.stringify({
         hooks: {
-          PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: scriptPath }] }],
+          PreToolUse: [
+            { matcher: 'Bash|Grep|Glob', hooks: [{ type: 'command', command: scriptPath }] },
+          ],
         },
       }),
       'utf8'
@@ -367,7 +374,10 @@ describe('installHooks', () => {
 
     const raw = await readFile(settingsPath, 'utf8')
     const settings = JSON.parse(raw)
-    const group = settings.hooks.PreToolUse.find((g: { matcher: string }) => g.matcher === 'Bash')
+    const group = settings.hooks.PreToolUse.find(
+      (g: { matcher: string }) => g.matcher === 'Bash|Grep|Glob'
+    )
+    expect(group).toBeDefined()
     expect(group.hooks.some((h: { command: string }) => h.command === oldPath)).toBe(false)
     expect(group.hooks.some((h: { command: string }) => h.command.endsWith('kb-reminder.sh'))).toBe(true)
   })
@@ -391,9 +401,12 @@ describe('installHooks', () => {
     const raw = await readFile(settingsPath, 'utf8')
     const settings = JSON.parse(raw)
     expect(settings.agentPushNotifEnabled).toBe(true)
-    const group = settings.hooks.PreToolUse.find((g: { matcher: string }) => g.matcher === 'Bash')
-    expect(group.hooks.length).toBe(2)
-    expect(group.hooks.some((h: { command: string }) => h.command === '/other/hook.sh')).toBe(true)
+    const other = settings.hooks.PreToolUse.find((g: { matcher: string }) => g.matcher === 'Bash')
+    const kb = settings.hooks.PreToolUse.find(
+      (g: { matcher: string }) => g.matcher === 'Bash|Grep|Glob'
+    )
+    expect(other.hooks.some((h: { command: string }) => h.command === '/other/hook.sh')).toBe(true)
+    expect(kb.hooks.some((h: { command: string }) => h.command.endsWith('kb-reminder.sh'))).toBe(true)
   })
 
   it('[TC-456] Given Gemini config dir exists, then installs BeforeTool hook in settings.json', async () => {
@@ -424,16 +437,57 @@ describe('installHooks', () => {
     expect(settings.hooks?.PreToolUse).toBeDefined()
   })
 
-  it('[TC-458] Writes executable hook script to ~/.kb/hooks/kb-reminder.sh', async () => {
+  it('[TC-458] Writes executable hook script that emits Claude JSON additionalContext', async () => {
     await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
     await installHooks()
 
     const scriptPath = path.join(fakeHome, '.kb', 'hooks', 'kb-reminder.sh')
     const content = await readFile(scriptPath, 'utf8')
-    expect(content).toContain('#!/bin/bash')
-    expect(content).toContain('grep')
-    expect(content).toContain('kb MCP connector')
+    expect(content).toContain('#!/usr/bin/env bash')
+    expect(content).toContain('additionalContext')
+    expect(content).toContain('hookSpecificOutput')
     expect(content).toContain('kb_query')
+
+    const { spawnSync } = await import('node:child_process')
+    const ran = spawnSync(scriptPath, [], {
+      input: JSON.stringify({
+        tool_name: 'Bash',
+        tool_input: { command: 'grep -r foo .' },
+      }),
+      encoding: 'utf8',
+    })
+    expect(ran.status).toBe(0)
+    const parsed = JSON.parse((ran.stdout ?? '').trim())
+    expect(parsed.hookSpecificOutput.hookEventName).toBe('PreToolUse')
+    expect(parsed.hookSpecificOutput.additionalContext).toContain('kb MCP')
+  })
+
+  it('[TC-524] Given Grep tool input, hook emits additionalContext JSON', async () => {
+    await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
+    await installHooks()
+    const scriptPath = path.join(fakeHome, '.kb', 'hooks', 'kb-reminder.sh')
+    const { spawnSync } = await import('node:child_process')
+    const ran = spawnSync(scriptPath, [], {
+      input: JSON.stringify({ tool_name: 'Grep', tool_input: { pattern: 'foo' } }),
+      encoding: 'utf8',
+    })
+    expect(ran.status).toBe(0)
+    expect(JSON.parse((ran.stdout ?? '').trim()).hookSpecificOutput.additionalContext).toContain(
+      'kb_query'
+    )
+  })
+
+  it('[TC-525] Given Read tool, hook stays silent', async () => {
+    await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
+    await installHooks()
+    const scriptPath = path.join(fakeHome, '.kb', 'hooks', 'kb-reminder.sh')
+    const { spawnSync } = await import('node:child_process')
+    const ran = spawnSync(scriptPath, [], {
+      input: JSON.stringify({ tool_name: 'Read', tool_input: { file_path: '/tmp/x' } }),
+      encoding: 'utf8',
+    })
+    expect(ran.status).toBe(0)
+    expect((ran.stdout ?? '').trim()).toBe('')
   })
 })
 
@@ -460,7 +514,9 @@ describe('uninstallHooks', () => {
       settingsPath,
       JSON.stringify({
         hooks: {
-          PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: scriptPath }] }],
+          PreToolUse: [
+            { matcher: 'Bash|Grep|Glob', hooks: [{ type: 'command', command: scriptPath }] },
+          ],
         },
       }),
       'utf8'
@@ -473,7 +529,7 @@ describe('uninstallHooks', () => {
     const raw = await readFile(settingsPath, 'utf8')
     const settings = JSON.parse(raw)
     const groups: Array<{ matcher: string; hooks: unknown[] }> = settings.hooks?.PreToolUse ?? []
-    const group = groups.find(g => g.matcher === 'Bash')
+    const group = groups.find(g => g.matcher === 'Bash|Grep|Glob')
     expect(group).toBeUndefined()
   })
 
