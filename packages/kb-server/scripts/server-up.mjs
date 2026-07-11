@@ -6,8 +6,8 @@
  *      stops so you can fill in secrets — we never boot with placeholder keys).
  *   2. Sanity-checks the config (a provider key is present; the bearer key is not the
  *      insecure default; a fresh volume has repos to index) and warns, not blocks.
- *   3. Builds + starts only the `kb-server` service (the test-only `mock` profile stays
- *      off) and prints the next steps (health, logs, a sample query, stop).
+ *   3. Builds + starts only the `kb-server` service with `--with-mcp` (the test-only
+ *      `mock` profile stays off) and prints the next steps (health, logs, a sample query, stop).
  *
  * Raw `docker compose` still works (see README); this just removes the footguns for a
  * fresh KB. Pure orchestration — no app imports — so it runs against the built image.

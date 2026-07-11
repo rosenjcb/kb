@@ -13,11 +13,17 @@ export interface HealthResponse {
   base: string
   provider?: string | null
   model?: string | null
+  /** ISO mtime of `.kb-index.sqlite` (last index DB write: init/scan/reindex). */
   indexMtime?: string | null
   indexing?: boolean
   bootstrapError?: string | null
   bootstrapProgress?: string | null
   reindexing?: boolean
+  /** Package versions served by this node. */
+  version?: {
+    server: string
+    core: string
+  }
 }
 
 export interface QueryRequest {

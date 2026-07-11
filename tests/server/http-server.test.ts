@@ -58,7 +58,12 @@ describe('createHttpServer', () => {
     const base = await listen(server)
     const res = await fetch(`${base}/healthz`)
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ ok: true, base: 'base' })
+    const body = await res.json()
+    expect(body).toMatchObject({ ok: true, base: 'base' })
+    expect(body.version).toEqual({
+      server: expect.stringMatching(/^\d+\.\d+\.\d+/),
+      core: expect.stringMatching(/^\d+\.\d+\.\d+/),
+    })
   })
 
                 it('[TC-3b] returns 503 on /healthz while bootstrap indexing is in progress', async () => {

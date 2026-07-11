@@ -68,8 +68,9 @@ default, repos declared for a fresh volume), builds the image, and starts **only
 `kb-server` service. First boot clones + indexes `KB_GIT_REPOS`; later boots reuse the
 persisted index on the `/data` volume — no reindex on restart.
 
-> `server:start` runs `kb-server start --with-mcp` locally in your shell.
-> `server:up` is the guided Docker bootstrap.
+> `server:start` / `dev:server` free `:38117`, then run `kb-server start --with-mcp` via tsx.
+> `server:up` is the guided Docker bootstrap (also `--with-mcp` by default).
+> Local process logs go to that terminal; Docker logs: `pnpm run server:docker:logs`.
 > `server:docker:start|stop|logs` are Docker convenience wrappers.
 
 ## Configuration

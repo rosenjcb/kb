@@ -49,9 +49,8 @@ Source layout mirrors tests — `packages/kb-core/src/...` → `tests/...`. See 
 ## Daily development loop
 
 ```bash
-pnpm run dev              # kb TUI from TypeScript (no build)
-pnpm run dev:local        # kb with .env.local loaded
-pnpm run dev:server       # kb-server from TypeScript
+pnpm run dev              # kb client from TS; loads .env.local when present
+pnpm run dev:server       # alias of server:start (kill :38117, then --with-mcp)
 
 pnpm run build            # compile all three packages
 pnpm run type-check       # tsc across packages
@@ -90,7 +89,7 @@ Conventions and enforcement detail: [`TESTING.md`](TESTING.md).
 
 ```bash
 export GEMINI_API_KEY=<key>   # or another provider
-pnpm run server:start         # kb-server start --with-mcp on :38117
+pnpm run server:start         # kill whatever holds :38117, then kb-server start --with-mcp
 ```
 
 **Docker Compose** (integration parity, WireMock LLM stub):

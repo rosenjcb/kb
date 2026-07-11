@@ -5,7 +5,7 @@
  * shutdown signal.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { type KbConfig, getKbConfigDir } from '@kb/core/config/kb-config.js'
 import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
@@ -34,6 +34,7 @@ import {
   resolveSnapshotSource,
 } from './server-bootstrap.js'
 import { runServerUninstallCommand } from './uninstall-cli.js'
+import { resolveServerVersion } from './version.js'
 
 export interface ServerLogger {
   log(message: string): void
@@ -41,21 +42,6 @@ export interface ServerLogger {
 }
 
 const DEFAULT_PORT = DEFAULT_KB_SERVER_PORT
-
-// Replaced by esbuild's `define` at build time; package.json fallback for tsx/dev.
-declare const __KB_SERVER_VERSION__: string | undefined
-
-function resolveServerVersion(): string {
-  if (typeof __KB_SERVER_VERSION__ !== 'undefined') return __KB_SERVER_VERSION__
-  try {
-    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')) as {
-      version?: string
-    }
-    return typeof pkg.version === 'string' ? pkg.version : '0.0.0'
-  } catch {
-    return '0.0.0'
-  }
-}
 
 function isVersionArg(argv: string[]): boolean {
   return (

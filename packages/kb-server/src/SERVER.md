@@ -109,7 +109,7 @@ claude mcp add --transport http -s user kb http://localhost:38117/mcp \
 
 | Method / path | Auth | Purpose |
 |---|---|---|
-| `GET /health` / `/healthz` | none | Liveness + `indexMtime` + `indexing` + `bootstrapProgress` + `reindexing` |
+| `GET /health` / `/healthz` | none | Liveness + `indexMtime` (SQLite mtime = last index write) + `version.{server,core}` + `indexing` / `bootstrapProgress` / `reindexing` |
 | `POST /v1/query` | Bearer | Synthesized answer + sources; returns `503` with bootstrap progress while first indexing is still running |
 | `POST /v1/chat` | Bearer | Multi-turn SSE chat |
 | `POST /v1/reindex` | Bearer | Incremental rescan |

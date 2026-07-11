@@ -18,14 +18,24 @@
 # Health (unauthenticated)
 # ---------------------------------------------------------------------------
 # @name health
-GET {{baseUrl}}/health
+GET {{baseUrl}}/healthz
 
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
   test('[TC-1] health shape', () => {
-    assert.strictEqual(response.parsedBody.ok, true);
-    assert.strictEqual(typeof response.parsedBody.base, 'string');
+    const body = response.parsedBody;
+    assert.strictEqual(body.ok, true);
+    assert.strictEqual(typeof body.base, 'string');
+    assert.ok(body.base.length > 0);
+    // indexMtime is ISO mtime of .kb-index.sqlite (last init/scan/reindex write)
+    assert.strictEqual(typeof body.indexMtime, 'string');
+    assert.ok(!Number.isNaN(Date.parse(body.indexMtime)));
+    assert.ok(body.version && typeof body.version === 'object');
+    assert.strictEqual(typeof body.version.server, 'string');
+    assert.strictEqual(typeof body.version.core, 'string');
+    assert.ok(/^\d+\.\d+\.\d+/.test(body.version.server), `server version: ${body.version.server}`);
+    assert.ok(/^\d+\.\d+\.\d+/.test(body.version.core), `core version: ${body.version.core}`);
   });
 }}
 
