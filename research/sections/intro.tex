@@ -71,10 +71,12 @@ contributions are:
     logistic-regression calibration on a 20-sample human-annotated set.
 
   \item \textbf{Empirical results}: paired harvest evaluation on fixed
-    \texttt{kb} and \texttt{raylib} repository snapshots compares \texttt{kb query}
-    (K) to a real coding agent (N) under identical scoring
-    (Table~\ref{tab:harvest-results}).
-    Latest headline grades: $\Delta S = \KbSelfCheckDeltaS{}$ (kb self-check) and
+    \texttt{kb} and \texttt{raylib} snapshots, plus K-side harvests on seven
+    expanded repositories (\texttt{nifi}, \texttt{shellcheck}, \texttt{lazygit},
+    \texttt{duckdb}, \texttt{mitmproxy}, \texttt{fish-shell}, \texttt{brew}),
+    compares \texttt{kb query} (K) to a real coding agent (N) under identical
+    scoring when N is collected (Table~\ref{tab:harvest-results}).
+    Latest paired grades: $\Delta S = \KbSelfCheckDeltaS{}$ (kb self-check) and
     $\Delta S = \RaylibDeltaS{}$ (raylib), updated \ResultsUpdated{}.
 \end{enumerate}
 

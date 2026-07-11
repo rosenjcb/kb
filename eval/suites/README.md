@@ -11,10 +11,29 @@ timestamp: 2026-06-20T00:00:00Z
 
 `--suite <name>` loads `eval/suites/<name>.yaml` (or `.yml`). `--suite` can also be a path to a YAML file.
 
-Each file needs: `id`, `rubric_focus`, exactly **8** `questions`, and optionally:
+Each file needs: `id`, `rubric_focus`, a non-empty `questions` array, and optionally:
 - `repo_url` (default clone URL used when `--repo` is omitted)
+- `answers` (same length as `questions`; golden answers for the LLM judge)
+- `display_name`
 
-Disposable KB base names are **not** configured here — `eval-run.mjs` defaults `--base` to the run folder name (`<repo-leaf>-YYYY-MM-DD-HHmm`, same string as `~/.kb/evaluations/<that>/`). Override with `--base` if needed.
+Disposable KB base names are **not** configured here — `eval-run.mjs` defaults `--base` to
+`eval-{suiteId}` (reuse across runs). Override with `--base` if needed.
+
+## Suites
+
+| Suite | Repo | Notes |
+|-------|------|-------|
+| `kb` | this repo | self-check / dogfood |
+| `raylib` | raysan5/raylib | primary external C benchmark |
+| `fzf` | junegunn/fzf | Go fuzzy finder |
+| `nifi` | apache/nifi | Java dataflow / NAR classloading |
+| `shellcheck` | koalaman/shellcheck | Haskell AST linter |
+| `lazygit` | jesseduffield/lazygit | Go TUI |
+| `duckdb` | duckdb/duckdb | C++ OLAP engine |
+| `mitmproxy` | mitmproxy/mitmproxy | Python proxy / TUI |
+| `fish-shell` | fish-shell/fish-shell | Rust shell |
+| `brew` | Homebrew/brew | Ruby package manager DSL |
+| `generic` | `--repo` required | repo-neutral questions |
 
 ## Headline grade (ΔS)
 
@@ -23,4 +42,5 @@ Each suite run (with `--auto-score`, control phase on) produces **`artifact.comp
 ```bash
 pnpm run eval -- --suite kb --auto-score          # kb + control → ΔS
 pnpm run eval -- --suite raylib --auto-score      # primary external benchmark
+pnpm run eval -- --suite duckdb --skip-control    # K-only (control later)
 ```

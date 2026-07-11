@@ -1,0 +1,56 @@
+# lazygit repo / dogfood question pack. Use: --suite lazygit
+schema_version: 1
+id: lazygit
+display_name: lazygit
+repo_url: https://github.com/jesseduffield/lazygit.git
+rubric_focus: lazygit terminal user interface and Go execution core
+questions:
+  - What is the structural layout of the lazygit interface, and what are its primary interactive panels?
+  - Where are the global configuration YAML files of lazygit located across different operating systems, and what is the legacy fallback path?
+  - How are custom shell commands and keybindings declared and executed dynamically inside the lazygit YAML configuration?
+  - What rendering library forms the foundation of lazygit's UI, and how does the code handle dynamic confirmation window calculations?
+  - Detail how lazygit manages background Git processes and executes commands concurrently without locking the UI thread.
+  - Explain the architecture of the lazygit integration test framework and how tests are executed.
+  - How are worktrees managed inside lazygit and what files govern their state?
+answers:
+  - >
+    Lazygit operates as a terminal user interface wrapper for Git command execution. Its terminal layout is
+    divided into six interactive panels: the Status panel, tracking active repository state and upstream branches;
+    the Files panel, displaying unstaged or modified files; the Branches panel, listing local and upstream branch
+    selections; the Commits panel, rendering history and allowing interactive rebasing; the Stashes panel, for
+    managing stashed diffs; and the large main information panel on the right side of the screen, which displays
+    diffs, logs, and interactive file merges.
+  - >
+    The active global configuration file for lazygit is named config.yml and is stored under standard XDG directories.
+    On Linux, the standard path is ~/.config/lazygit/config.yml; on macOS, it resides under
+    ~/Library/Application\ Support/lazygit/config.yml; and on Windows, it is mapped to
+    %LOCALAPPDATA%\lazygit\config.yml (falling back to %APPDATA%\lazygit\config.yml). Legacy installations may fallback
+    to paths containing the developer's name, such as ~/.config/jesseduffield/lazygit/config.yml, representing early versions
+    before the redundant vendor prefix was dropped.
+  - >
+    Lazygit supports an extensible custom command engine defined inside its YAML configurations under the keybindings block.
+    Users can declare custom keyboard strokes linked to commands. These blocks configure: (1) target views (e.g., branch
+    or files pane); (2) the binding key and modifier; and (3) shell command executions that run inside the system shell,
+    using contextual environment variables such as WORKTREE_BRANCH or WORKTREE_PATH to dynamically operate on the active Git state.
+  - >
+    Lazygit builds its visual grid on top of the gocui library, which manages screen rendering and console view cycles.
+    In cases where the UI displays confirmation modals, the height is dynamically calculated inside the confirmation helper
+    code via getMessageHeight inside pkg/gui/controllers/helpers/confirmation_helper.go. The code parses the confirmation text,
+    evaluates whether word wrap is active, and matches the text boundary against the console panel width to compute the necessary
+    height boundaries, preventing text clipping during display.
+  - >
+    Lazygit decouples UI rendering from slow Git file IO using Go's native goroutines and channel coordination.
+    Commands are spawned as background child processes inside pkg/commands/oscommands/cmd_obj_runner.go. The UI thread registers
+    asynchronous tasks and immediately returns control to gocui's rendering loop. When the background Git process completes, the
+    resulting stdout or stderr is channeled back via callbacks that trigger atomic UI updates on the main thread, keeping the
+    TUI responsive.
+  - >
+    Lazygit features an integration testing framework located under pkg/integration/ and cmd/integration_test/. Tests are written in Go
+    and describe end-to-end Git operations. The framework launches lazygit in a sandbox Git environment, uses an automated controller
+    to simulate precise key presses, and captures mock terminal outputs. This enables testing reflog interactions, rebase scenarios,
+    and merge conflict states without manual manual validation.
+  - >
+    Worktrees are managed within the commands layer and the git structures in pkg/commands/git_commands/worktree.go. Lazygit utilizes
+    native 'git worktree' commands to add, list, and prune directories. State is evaluated by reading the layout configuration schema.
+    This allows developers to maintain multiple active branches concurrently across separate directories without needing to stash modifications
+    or create placeholder commits.

@@ -10,7 +10,9 @@ A post-retrieval fact curator enforces relevance on the scored pool before
 Init-time embeddings (local by default) feed semantic scoring during retrieval.
 Paired harvest evaluations
 (\ResultsUpdated{}) report $\Delta S = \KbSelfCheckDeltaS{}$ on the \texttt{kb} self-check
-suite and $\Delta S = \RaylibDeltaS{}$ on raylib (Table~\ref{tab:harvest-results}).
+suite and $\Delta S = \RaylibDeltaS{}$ on raylib, with K-side scores on seven expanded
+suites (\texttt{nifi}, \texttt{shellcheck}, \texttt{lazygit}, \texttt{duckdb},
+\texttt{mitmproxy}, \texttt{fish-shell}, \texttt{brew}; Table~\ref{tab:harvest-results}).
 \ResultsControlStatus{}.
 
 We also introduced MOEL, a multi-objective evaluation framework spanning two settings:
@@ -19,5 +21,5 @@ runs comparing \texttt{kb query} to a real coding agent on the same suite questi
 and (2)~deep MOEL evaluation ($L_\text{MOEL}$), which measures exploration loss under
 toy-tool N/K/O conditions per task.  Bias-mitigated jury ensemble, statistical calibration,
 and programmatic validators distinguish efficient exploration from expensive correctness.
-Future work includes extending paired harvest evaluation to additional codebases and
+Future work includes completing paired control harvests for the expanded suite portfolio and
 tracking whether $\Delta S$ gains persist as KB indexing and curation mature.

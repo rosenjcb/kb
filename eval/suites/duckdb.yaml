@@ -1,0 +1,56 @@
+# duckdb repo / dogfood question pack. Use: --suite duckdb
+schema_version: 1
+id: duckdb
+display_name: duckdb
+repo_url: https://github.com/duckdb/duckdb.git
+rubric_focus: DuckDB vectorized database architecture and physical planning execution
+questions:
+  - Detail the complete query execution journey in DuckDB from a raw SQL string to physical pipeline execution.
+  - Explain the vectorized execution model used by DuckDB and how selection vectors are used inside data chunks.
+  - What are the roles of the Planner, Binder, and logical optimizer, and which subdirectories contain these components?
+  - How does DuckDB's in-process, embeddable execution paradigm differ from traditional client-server DBMS architectures?
+  - Detail the memory and buffer pool management architecture implemented in DuckDB.
+  - How are user-defined extensions built, compiled, and autoloaded at runtime within DuckDB?
+  - Explain the purpose and implementation of the compaction threshold for data chunks in the hash join execution pipeline.
+answers:
+  - >
+    The query execution path in DuckDB compiles raw SQL into optimized physical execution tasks.
+    The query first goes through a PostgreSQL-derived parser (src/parser/) to generate an abstract syntax tree (AST).
+    The Binder (src/planner/binder.cpp) binds this AST to database schema objects in the catalog, generating a BoundStatement.
+    The Planner (src/planner/) translates the BoundStatement into an initial logical plan tree of LogicalOperator nodes.
+    The Optimizer (src/optimizer/) applies rule-based and cost-based optimizations to produce an optimized logical plan.
+    Finally, the Physical Plan Generator (src/execution/physical_plan_generator.cpp) converts the logical plan into a tree of physical
+    operators grouped into pipelines, which are scheduled as tasks in the task queue and executed by worker threads.
+  - >
+    DuckDB employs a vectorized query execution engine. Instead of processing queries row-by-row, operators process columnar data batches
+    encapsulated as "Data Chunks," which typically hold a maximum of 2048 tuples. Individual columns are stored inside "Vector" structures.
+    When operators (such as highly selective filters or joins) reduce the active rows, they update a "Selection Vector" (SV) within the Data Chunk
+    instead of physically copying or deleting memory. The selection vector lists only the indices of valid tuples, allowing downstream
+    execution operators to skip inactive indices in tight, vectorized CPU loops.
+  - >
+    The DuckDB query compilation layer is cleanly split into specialized directories inside src/: src/parser/ converts SQL string inputs
+    into ParsedExpression and TableRef nodes; src/planner/ contains the Binder, which acts as the type-checking and schema-binding layer, and
+    the Planner, which builds the logical query plan tree using LogicalOperator objects; src/optimizer/ contains modules that apply rule-based
+    and cost-based transformations, such as join ordering, filter pushdowns (join_order/ and pushdown/), and statistics propagation.
+  - >
+    Unlike traditional database systems that run as independent processes communicating over sockets or network IPC, DuckDB is an embeddable,
+    in-process database. The entire engine core runs directly within the client's memory space. This eliminates network serialization overhead,
+    allows DuckDB to directly query client-side data structures (such as Python pandas DataFrames or Arrow tables) with zero-copy mechanisms, and
+    provides fast analytical query execution.
+  - >
+    DuckDB manages physical database storage and memory caching using a block-based Buffer Manager implemented in src/storage/buffer/. It manages
+    fixed-size data blocks and maintains a configurable memory limit (the buffer pool). When memory requests exceed this limit, the buffer manager
+    applies LRU eviction rules to flush dirty blocks to disk (writing to the database file or the temporary write-ahead log) and reclaim RAM,
+    preventing out-of-memory crashes during large queries.
+  - >
+    DuckDB features a modular extension system allowing third-party features to be dynamically compiled, downloaded, and loaded at runtime.
+    Extensions (like JSON, Parquet, or spatial indexes) declare their functions and types, which register with DuckDB's catalog. When a query uses
+    a feature from an unloaded extension (or when explicitly running 'LOAD <extension_name>;'), DuckDB fetches the precompiled binary from its
+    distribution repository (or community repository), validates its signature, and dynamically links the library into the active database process.
+  - >
+    Data compaction is critical inside vectorized execution pipelines to handle chunk-reducing operators like filters or hash joins.
+    When an operator's filter yields a sparse output (for example, with a high Chunk-Reducing Factor), subsequent vectors may contain very few
+    valid tuples. Processing many small, sparse vectors degrades CPU pipelining and vectorization benefits. DuckDB manages this using a compaction
+    threshold (by default set to 128 tuples). When an output data chunk's active tuple count falls below this limit, the system copies the active
+    rows into a buffer block, and only forwards the accumulated chunk to downstream operators when it reaches near-full capacity (2048 tuples),
+    amortizing interpretation and processing costs.

@@ -1011,7 +1011,17 @@ export function suiteDisplayLabel(suiteId) {
 }
 
 /** Suites exported to research/tables/results.tex for the paper. */
-export const RESEARCH_RESULT_SUITES = ['kb', 'raylib']
+export const RESEARCH_RESULT_SUITES = [
+  'kb',
+  'raylib',
+  'nifi',
+  'shellcheck',
+  'lazygit',
+  'duckdb',
+  'mitmproxy',
+  'fish-shell',
+  'brew',
+]
 
 // ---------------------------------------------------------------------------
 // Run directory allocation + clone (shared by eval-run.mjs and control-core.mjs)
@@ -1381,24 +1391,23 @@ function _emitSuiteResults(lines, suiteId, artifact) {
     lines.push(_texMacro(`${prefix}RunDate`, 'no scored run found'))
     lines.push(_texMacro(`${prefix}Target`, _suiteTargetLabel(suiteId, null)))
     lines.push(_texMacro(`${prefix}ControlCollected`, 'no'))
+    lines.push(_texMacro(`${prefix}ControlAgent`, '---'))
     lines.push(_texMacro(`${prefix}DeltaS`, '---'))
-    lines.push('')
-    return
-  }
-
-  lines.push(
-    _texMacro(
-      `${prefix}RunId`,
-      _texEscape(artifact.run?.run_name ?? artifact.run_label ?? '---')
+  } else {
+    lines.push(
+      _texMacro(
+        `${prefix}RunId`,
+        _texEscape(artifact.run?.run_name ?? artifact.run_label ?? '---')
+      )
     )
-  )
-  lines.push(_texMacro(`${prefix}RunDate`, _formatRunDate(artifact.created_at)))
-  lines.push(_texMacro(`${prefix}Target`, _suiteTargetLabel(suiteId, artifact)))
-  lines.push(
-    _texMacro(`${prefix}ControlCollected`, _controlCollected(artifact) ? 'yes' : 'no')
-  )
-  lines.push(_texMacro(`${prefix}ControlAgent`, _texEscape(_controlAgentLabel(artifact))))
-  lines.push(_texMacro(`${prefix}DeltaS`, _texSigned(deltaS)))
+    lines.push(_texMacro(`${prefix}RunDate`, _formatRunDate(artifact.created_at)))
+    lines.push(_texMacro(`${prefix}Target`, _suiteTargetLabel(suiteId, artifact)))
+    lines.push(
+      _texMacro(`${prefix}ControlCollected`, _controlCollected(artifact) ? 'yes' : 'no')
+    )
+    lines.push(_texMacro(`${prefix}ControlAgent`, _texEscape(_controlAgentLabel(artifact))))
+    lines.push(_texMacro(`${prefix}DeltaS`, _texSigned(deltaS)))
+  }
 
   for (const [side, m] of [
     ['K', k],
@@ -1452,9 +1461,10 @@ export function writeResearchResultsTex(repoRoot, options = {}) {
     return a && _controlCollected(a)
   })
 
+  const suiteListTex = suites.map(id => `\\texttt{${id}}`).join(', ')
   let controlStatus
   if (allHaveControl) {
-    controlStatus = 'paired K-vs-N evaluations on both \\texttt{kb} and \\texttt{raylib} suites (\\ResultsUpdated)'
+    controlStatus = `paired K-vs-N evaluations on ${suiteListTex} (\\ResultsUpdated)`
   } else if (anyHaveControl) {
     const missing = suites
       .filter(id => {
@@ -1462,11 +1472,11 @@ export function writeResearchResultsTex(repoRoot, options = {}) {
         return !a || !_controlCollected(a)
       })
       .map(id => `\\texttt{${id}}`)
-      .join(' and ')
-    controlStatus = `control side missing or incomplete for ${missing}; see Table~\\ref{tab:harvest-results}`
+      .join(', ')
+    controlStatus = `control side pending for ${missing}; K-side results reported (\\ResultsUpdated); see Table~\\ref{tab:harvest-results}`
   } else {
     controlStatus =
-      'no paired control evaluations in the latest scored runs; see Table~\\ref{tab:harvest-results}'
+      'no paired control evaluations in the latest scored runs; K-side only; see Table~\\ref{tab:harvest-results}'
   }
 
   const lines = [

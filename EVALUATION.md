@@ -107,12 +107,19 @@ as `-` rather than erroring.
 
 **Suites (`--suite`)**
 
-- `raylib` — Eight raylib-specific questions.
-- `kb` — Eight kb-repo / product questions (contributor dogfood).
-- `fzf` — Eight fzf-specific questions.
-- `generic` — Eight repo-neutral questions. Use with `--repo` for arbitrary upstreams.
+- `raylib` — raylib-specific questions (primary external C benchmark).
+- `kb` — kb-repo / product questions (contributor dogfood).
+- `fzf` — fzf-specific questions.
+- `nifi` — Apache NiFi (Java dataflow / NAR classloading).
+- `shellcheck` — ShellCheck (Haskell AST linter).
+- `lazygit` — lazygit (Go TUI).
+- `duckdb` — DuckDB (C++ OLAP).
+- `mitmproxy` — mitmproxy (Python proxy / TUI).
+- `fish-shell` — fish-shell (Rust shell).
+- `brew` — Homebrew (Ruby DSL / package manager).
+- `generic` — repo-neutral questions. Use with `--repo` for arbitrary upstreams.
 
-Override questions with `--questions-file path.json` (JSON array of exactly eight strings).
+Override questions with `--questions-file path.json` (JSON array of strings matching suite length).
 
 **Artifacts**
 
