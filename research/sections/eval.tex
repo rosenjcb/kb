@@ -18,10 +18,10 @@ stress-tests retrieval grounding on a repo whose structure the authors know well
 
 \textbf{Expanded portfolio.}  To stress parsers and retrieval across languages and
 architectural paradigms, we add seven production-grade suites:
-\texttt{nifi} (Java NAR classloading / dataflow),
+\texttt{kestra} (Java/UI orchestration — YAML flows + execute console),
 \texttt{shellcheck} (Haskell monadic AST linting),
 \texttt{lazygit} (Go TUI),
-\texttt{duckdb} (C++ vectorized OLAP),
+\texttt{datasette} (Python explore/publish UI + CLI),
 \texttt{mitmproxy} (Python async proxy / TUI),
 \texttt{fish-shell} (Rust systems shell), and
 \texttt{brew} (Ruby package-manager DSL).
@@ -202,16 +202,16 @@ K uses \RaylibKTokens{} weighted tokens vs.\ N's \RaylibNTokens{} ($E_{\text{tok
 \noindent\textbf{Expanded suites (K-only).}
 Table~\ref{tab:harvest-results} also reports K-side harvest scores for the seven
 expanded repositories (control N pending):
-\texttt{nifi} ($S_K{=}\NifiKS$, pass~\NifiKPass, corr~\NifiKCorrectness),
+\texttt{kestra} ($S_K{=}\KestraKS$, pass~\KestraKPass, corr~\KestraKCorrectness),
 \texttt{shellcheck} ($S_K{=}\ShellcheckKS$, pass~\ShellcheckKPass, corr~\ShellcheckKCorrectness),
 \texttt{lazygit} ($S_K{=}\LazygitKS$, pass~\LazygitKPass, corr~\LazygitKCorrectness),
-\texttt{duckdb} ($S_K{=}\DuckdbKS$, pass~\DuckdbKPass, corr~\DuckdbKCorrectness),
+\texttt{datasette} ($S_K{=}\DatasetteKS$, pass~\DatasetteKPass, corr~\DatasetteKCorrectness),
 \texttt{mitmproxy} ($S_K{=}\MitmproxyKS$, pass~\MitmproxyKPass, corr~\MitmproxyKCorrectness),
 \texttt{fish-shell} ($S_K{=}\FishShellKS$, pass~\FishShellKPass, corr~\FishShellKCorrectness),
 and \texttt{brew} ($S_K{=}\BrewKS$, pass~\BrewKPass, corr~\BrewKCorrectness).
-These runs exercise Java classloading, Haskell AST analysis, Go/Python TUIs,
-C++ vectorized planning, Rust systems code, and Ruby DSL packaging---stressing
-language coverage and architectural retrieval beyond the original kb/raylib pair.
+These runs exercise Java/UI orchestration workflows, Haskell AST analysis, Go/Python TUIs,
+Python data-explore products, Rust systems code, and Ruby DSL packaging---stressing
+language coverage and product/UI retrieval beyond the original kb/raylib pair.
 Paired $\Delta S$ for these suites will be filled once control (N) harvests complete.
 
 \medskip

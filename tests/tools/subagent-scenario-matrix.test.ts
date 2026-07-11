@@ -1,9 +1,10 @@
 /**
  * Ticket 106: three subagent tuning rows (s1–s3), same fake LLM queue.
- * Compare `kb query` / init quality to a run from before your branch via `eval:init` / `evaluation/runs/` if needed.
- * Matrix file: `WRITE_ORCHESTRATOR_MATRIX=true npx vitest run tests/tools/subagent-scenario-matrix.test.ts`
+ * Optional snapshot: `WRITE_ORCHESTRATOR_MATRIX=true` writes under
+ * `~/.kb/evaluations/_matrix/` (never under the repo tree).
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -65,7 +66,7 @@ describe('subagent scenario matrix (106)', () => {
     }
   })
 
-  it('[TC-85] writes evaluation/runs orchestrator matrix snapshot', async () => {
+  it('[TC-85] runs orchestrator scenario matrix (optional home snapshot)', async () => {
     const rows: Array<{
       scenario: string
       status: string
@@ -130,7 +131,8 @@ describe('subagent scenario matrix (106)', () => {
 
     if (process.env.WRITE_ORCHESTRATOR_MATRIX === 'true') {
       const stamp = dayjs().format('YYYY-MM-DD')
-      const outDir = path.join(process.cwd(), 'evaluation', 'runs')
+      const outDir = path.join(homedir(), '.kb', 'evaluations', '_matrix')
+      await mkdir(outDir, { recursive: true })
       const outFile = path.join(outDir, `${stamp}-orchestrator-scenario-matrix.json`)
       await writeFile(
         outFile,

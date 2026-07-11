@@ -20,7 +20,7 @@ At the start of a new chat the user will specify:
 
 If not specified, ask: **"Am I running as Agent A (raw) or Agent B (KB-backed)?"**
 
-Also confirm the **run number** (e.g. `--run 3`). If not specified, inspect `evaluation/runs/agent-compare/` to find the next unused run number for today.
+Also confirm the **run number** (e.g. `--run 3`). If not specified, inspect `~/.kb/evaluations/agent-compare/` to find the next unused run number for today.
 
 ## Canonical task sequence
 
@@ -44,7 +44,7 @@ npx tsx scripts/eval-snapshot.ts /tmp/snap-before-t${TASK}.json
 # 3. Snapshot AFTER
 npx tsx scripts/eval-snapshot.ts /tmp/snap-after-t${TASK}.json
 
-# 4. Write artifact + commit (LLM fills --notes and --queries-made)
+# 4. Write artifact (LLM fills --notes and --queries-made)
 npx tsx scripts/eval-task-artifact.ts \
   --before  /tmp/snap-before-t${TASK}.json \
   --after   /tmp/snap-after-t${TASK}.json  \
@@ -56,7 +56,7 @@ npx tsx scripts/eval-task-artifact.ts \
   --notes   "what you did, what you read, what the KB did or didn't have"
 ```
 
-**Do not start the next task until the artifact for the current task is committed.**
+**Do not start the next task until the artifact for the current task is written.**
 
 ## Agent A (raw) protocol
 
@@ -81,9 +81,9 @@ Never use `ci-*` names for the agent-compare base.
 
 ## Artifact location
 
-`evaluation/runs/agent-compare/YYYY-MM-DD-run<N>-task-<N>-<agent>.json`
+`~/.kb/evaluations/agent-compare/YYYY-MM-DD-run<N>-task-<N>-<agent>.json`
 
-`scripts/eval-task-artifact.ts` generates the filename automatically from today's date, `--run`, `--task`, and `--agent`.
+`scripts/eval-task-artifact.ts` generates the filename automatically from today's date, `--run`, `--task`, and `--agent`. Never write under the repo tree.
 
 ## Artifact schema
 
@@ -107,12 +107,12 @@ That script builds this from the two snapshots; the operator (or LLM) supplies `
 
 ## End-of-session comparison report
 
-After all 4 tasks are committed, generate a summary across all runs on today's date:
+After all 4 tasks are written, generate a summary across all runs on today's date:
 
 ```bash
 node -e "
-const fs = require('fs'), path = require('path');
-const dir = 'evaluation/runs/agent-compare';
+const fs = require('fs'), path = require('path'), os = require('os');
+const dir = path.join(os.homedir(), '.kb', 'evaluations', 'agent-compare');
 const today = new Date().toISOString().slice(0,10);
 const files = fs.readdirSync(dir).filter(f => f.startsWith(today));
 const rows = files.map(f => JSON.parse(fs.readFileSync(path.join(dir, f))));

@@ -41,6 +41,14 @@ import {
   structuralMetric,
   worstQuestionGaps,
   writeResearchResultsTex,
+  DEFAULT_BENCHMARK_SUITES,
+  parseArgs,
+  parseSuiteListToken,
+  dedupeSuites,
+  resolveSuiteList,
+  resolveParallelism,
+  assertMultiSuiteArgsOk,
+  buildChildArgv,
 } from '../scripts/eval-run.mjs'
 
 describe('sanitizeSlugPart', () => {
@@ -751,5 +759,108 @@ describe('answer telemetry logging', () => {
       process.env.HOME = prevHome
       fs.rmSync(tmp, { recursive: true, force: true })
     }
+  })
+})
+
+describe('multi-suite parallel batch', () => {
+  it('parseSuiteListToken splits commas and whitespace', () => {
+    expect(parseSuiteListToken('raylib,kb, fzf')).toEqual(['raylib', 'kb', 'fzf'])
+    expect(parseSuiteListToken('raylib kb')).toEqual(['raylib', 'kb'])
+  })
+
+  it('dedupeSuites preserves first-seen order', () => {
+    expect(dedupeSuites(['kb', 'raylib', 'kb', 'fzf'])).toEqual(['kb', 'raylib', 'fzf'])
+  })
+
+  it('parseArgs accepts --suites, repeated --suite, --all-suites, --parallel, --sequential', () => {
+    const multi = parseArgs(['node', 'eval-run.mjs', '--suites', 'raylib,kb', '--parallel', '3'])
+    expect(multi.suites).toEqual(['raylib', 'kb'])
+    expect(multi.parallel).toBe(3)
+
+    const repeated = parseArgs(['node', 'eval-run.mjs', '--suite', 'raylib', '--suite', 'kb'])
+    expect(repeated.suites).toEqual(['raylib', 'kb'])
+
+    const all = parseArgs(['node', 'eval-run.mjs', '--all-suites', '--sequential'])
+    expect(all.allSuites).toBe(true)
+    expect(all.sequential).toBe(true)
+
+    const bareParallel = parseArgs(['node', 'eval-run.mjs', '--all-suites', '--parallel'])
+    expect(bareParallel.parallel).toBe(0)
+
+    const single = parseArgs(['node', 'eval-run.mjs', '--suite', 'raylib'])
+    expect(single.suite).toBe('raylib')
+    expect(single.suites).toEqual(['raylib'])
+  })
+
+  it('resolveSuiteList: --all-suites returns the 10 benchmark suites', () => {
+    expect(DEFAULT_BENCHMARK_SUITES).toHaveLength(10)
+    expect(DEFAULT_BENCHMARK_SUITES).not.toContain('generic')
+    expect(DEFAULT_BENCHMARK_SUITES).toContain('kestra')
+    expect(DEFAULT_BENCHMARK_SUITES).toContain('datasette')
+    expect(DEFAULT_BENCHMARK_SUITES).not.toContain('nifi')
+    expect(DEFAULT_BENCHMARK_SUITES).not.toContain('duckdb')
+    expect(resolveSuiteList({ allSuites: true, suites: ['kb'] })).toEqual([
+      ...DEFAULT_BENCHMARK_SUITES,
+    ])
+    expect(resolveSuiteList({ allSuites: false, suites: ['kb', 'raylib', 'kb'] })).toEqual([
+      'kb',
+      'raylib',
+    ])
+  })
+
+  it('resolveParallelism defaults to full parallel; --sequential and caps work', () => {
+    expect(resolveParallelism({ suiteCount: 10, parallel: null, sequential: false, env: {} })).toBe(
+      10
+    )
+    expect(resolveParallelism({ suiteCount: 10, parallel: null, sequential: true, env: {} })).toBe(1)
+    expect(resolveParallelism({ suiteCount: 10, parallel: 4, sequential: false, env: {} })).toBe(4)
+    expect(resolveParallelism({ suiteCount: 10, parallel: 0, sequential: false, env: {} })).toBe(10)
+    expect(
+      resolveParallelism({
+        suiteCount: 10,
+        parallel: null,
+        sequential: false,
+        env: { KB_EVAL_PARALLEL: '3' },
+      })
+    ).toBe(3)
+    expect(resolveParallelism({ suiteCount: 1, parallel: 99, sequential: false, env: {} })).toBe(1)
+  })
+
+  it('assertMultiSuiteArgsOk rejects single-suite-only flags', () => {
+    expect(() =>
+      assertMultiSuiteArgsOk({ repo: 'https://example.com/r.git' }, ['raylib', 'kb'])
+    ).toThrow(/--repo/)
+    expect(() =>
+      assertMultiSuiteArgsOk({ repo: 'https://example.com/r.git' }, ['raylib'])
+    ).not.toThrow()
+  })
+
+  it('buildChildArgv forwards control knobs and strips multi-suite flags', () => {
+    const argv = buildChildArgv('raylib', {
+      label: 'composer-2.5',
+      autoScore: true,
+      scoreRuns: 3,
+      controlAgent: 'cursor',
+      controlModel: 'composer-2.5',
+      skipControl: false,
+      forceInit: true,
+    })
+    expect(argv).toEqual(
+      expect.arrayContaining([
+        '--suite',
+        'raylib',
+        '--label',
+        'composer-2.5',
+        '--control-agent',
+        'cursor',
+        '--control-model',
+        'composer-2.5',
+        '--force-init',
+        '--auto-score',
+      ])
+    )
+    expect(argv).not.toContain('--all-suites')
+    expect(argv).not.toContain('--parallel')
+    expect(argv).not.toContain('--sequential')
   })
 })

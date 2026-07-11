@@ -1,6 +1,6 @@
 ---
 name: kb:evaluation-run
-description: "Is the user asking me to run a KB evaluation — the canonical raylib benchmark, the kb dogfood self-check, or a custom repo? Should I score kb query results or write evaluation artifacts under ~/.kb/evaluations/ following EVALUATION.md?"
+description: "Is the user asking me to run a KB evaluation — the canonical raylib benchmark, the kb dogfood self-check, all/multiple suites (parallel by default), or a custom repo? Should I score kb query results or write evaluation artifacts under ~/.kb/evaluations/ following EVALUATION.md?"
 ---
 
 # KB Evaluation Run
@@ -30,26 +30,33 @@ Do not invent a new scenario or JSON shape. Follow `EVALUATION.md` as the source
 From kb repo root (`pnpm run build` first):
 
 ```bash
-# Canonical raylib run: clone → init → 8 queries + optional auto-score
-pnpm run eval -- --suite raylib [--auto-score]
+# Canonical raylib run: clone → init → queries + auto-score (on by default)
+pnpm run eval -- --suite raylib
 
 # Kb repo dogfood questions
-pnpm run eval -- --suite kb [--auto-score]
+pnpm run eval -- --suite kb
 
-# Control baseline (Condition N) runs side-by-side with kb BY DEFAULT: the SAME questions
-# answered by a real agent (Claude Code, no kb) exploring the clone. Both land in one artifact.
+# Multi-suite — Node-native, **parallel by default** (no bash/xargs):
+pnpm run eval -- --suites raylib,kb,fzf
+pnpm run eval -- --all-suites --control-agent cursor --control-model composer-2.5
+pnpm run eval -- --all-suites --sequential     # one at a time
+pnpm run eval -- --all-suites --parallel 4     # cap concurrency
+
+# Control baseline (Condition N) runs side-by-side with kb BY DEFAULT.
 pnpm run eval -- --suite raylib --skip-control   # opt out → kb-only artifact
 
 # Any git URL → shallow clone → init → generic eight questions
-pnpm run eval -- --suite generic --repo https://github.com/org/repo.git [--auto-score]
+pnpm run eval -- --suite generic --repo https://github.com/org/repo.git
 
 # Conversational chat eval: init + 3 scenarios + retrieval scoring
 pnpm run eval:chat -- --base <name> --cwd <repo-path>
 ```
 
-Implementation: `scripts/eval-run.mjs` (suites `raylib` | `kb` | `generic`). Repo URL resolves from suite YAML `repo_url`, with `--repo` as explicit override.
+**Agent rule:** when the user asks for multiple suites (or "all suites"), use `--suites …` or `--all-suites`. Do **not** write OS-specific bash/`xargs` loops — the runner parallelizes in Node. Only pass `--sequential` if the user asks for serial runs.
 
-Flags: `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`, `--run-dir`, `--out`, `--scores-file`, `--auto-score`, `--hypothesis`, `--label`. See `EVALUATION.md` § Automated harvest.
+Implementation: `scripts/eval-run.mjs`. Repo URL resolves from suite YAML `repo_url`, with `--repo` as explicit override (single-suite only).
+
+Flags: `--suite`, `--suites`, `--all-suites`, `--parallel`, `--sequential`, `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`, `--run-dir`, `--out`, `--scores-file`, `--auto-score`, `--hypothesis`, `--label`, `--control-agent`, `--control-model`. See `EVALUATION.md` § Automated harvest.
 
 Artifacts default under `~/.kb/evaluations/<run-name>/`.
 
@@ -92,7 +99,7 @@ kb-vs-control comparison (that requires ΔS from one artifact).
 
 Columns: `date | run | docs | ent | rels | res | success | pass | corr | use`
 
-After every eval run, copy the artifact to `evaluation/runs/<label>.json` so it stays visible to future runs' trend summaries.
+After every eval run, leave the artifact at `~/.kb/evaluations/<run-name>/artifact.json`. Do **not** copy into the git checkout — trends and `results.tex` already read the home workspace.
 
 ## Question sets
 
@@ -114,7 +121,7 @@ Always write the artifact, even for weak or partial runs.
 
 - Everything captured → `status: "complete"`
 - Something missed → `status: "partial"`
-- Store the JSON under `evaluation/runs/`; do not treat `tmp-*` scratch trees as the artifact
+- Canonical artifact path: `~/.kb/evaluations/<run-name>/artifact.json` (never an in-repo `evaluation/` mirror)
 
 ## JSON rule
 
@@ -132,11 +139,12 @@ Not part of eval-run. Keep eval artifacts only; publish flows run separately.
 ## Output paths
 
 - Spec: `EVALUATION.md`
-- Artifacts: `evaluation/runs/*.json` (default: not in git — see `EVALUATION.md` § Artifact Storage)
+- Artifacts: `~/.kb/evaluations/<run-name>/artifact.json` (see `EVALUATION.md` § Artifact Storage)
+- Paper export: `research/tables/results.tex` (from home-dir artifacts)
 
 ## Notes
 
 - `EVALUATION.md` is singular. If the user says `EVALUATIONS.md`, treat it as `EVALUATION.md`.
 - Keep `ci-raylib-*` / disposable bases ephemeral; never pollute `dogfood`.
 - A low score is a valid result — comparability over optics.
-- Reference baseline: `evaluation/runs/2026-04-19-raylib-baseline.json` (pass rate 0.50, 14 docs, 404 entities).
+- Prefer the latest scored raylib artifact under `~/.kb/evaluations/` over any retired in-repo baseline path.

@@ -1014,10 +1014,10 @@ export function suiteDisplayLabel(suiteId) {
 export const RESEARCH_RESULT_SUITES = [
   'kb',
   'raylib',
-  'nifi',
+  'kestra',
   'shellcheck',
   'lazygit',
-  'duckdb',
+  'datasette',
   'mitmproxy',
   'fish-shell',
   'brew',
@@ -1220,32 +1220,17 @@ function _trendNote(values) {
   return `${prev.toFixed(3)} → ${last.toFixed(3)} (${sign}${d.toFixed(3)} vs prev)`
 }
 
-function _gatherArtifacts(repoRoot) {
+function _gatherArtifacts(_repoRoot) {
   const rows = []
   const homeRoot = path.join(os.homedir(), '.kb', 'evaluations')
-  const repoRuns = path.join(repoRoot, 'evaluation', 'runs')
   if (fs.existsSync(homeRoot)) {
     for (const entry of fs.readdirSync(homeRoot, { withFileTypes: true })) {
-      if (!entry.isDirectory() || entry.name === 'repos') continue
+      if (!entry.isDirectory() || entry.name === 'repos' || entry.name.startsWith('_')) continue
       const artifactPath = path.join(homeRoot, entry.name, 'artifact.json')
       if (!fs.existsSync(artifactPath)) continue
       const artifact = _safeJson(artifactPath)
       if (!artifact?.status) continue
       rows.push({ source: 'home', id: entry.name, file: artifactPath, artifact })
-    }
-  }
-  if (fs.existsSync(repoRuns)) {
-    for (const entry of fs.readdirSync(repoRuns, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith('.json')) continue
-      const artifactPath = path.join(repoRuns, entry.name)
-      const artifact = _safeJson(artifactPath)
-      if (!artifact?.status) continue
-      rows.push({
-        source: 'repo',
-        id: entry.name.replace(/\.json$/i, ''),
-        file: artifactPath,
-        artifact,
-      })
     }
   }
   return rows

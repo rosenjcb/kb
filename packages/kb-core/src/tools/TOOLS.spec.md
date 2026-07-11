@@ -153,7 +153,7 @@ See companion doc for full vocabulary where applicable.
 | TC-82 | FR-10 | Given reconcileFacts with includeSessionLogs true, then updates session-log documents too | pass |
 | TC-83 | FR-11 | Given empty prompt, then returns validation error | pass |
 | TC-84 | FR-11 | Given subagent read_facts turn then text turn, then succeeds with trace | pass |
-| TC-85 | FR-12 | writes evaluation/runs orchestrator matrix snapshot | pass |
+| TC-85 | FR-12 | runs orchestrator scenario matrix (optional ~/.kb/evaluations/_matrix snapshot) | pass |
 | TC-86 | FR-14 | Given result counts, then estimateConfidence returns deterministic bands | pass |
 | TC-87 | FR-14 | Given high-confidence hybrid hit, then next action is return | pass |
 | TC-88 | FR-14 | Given low-confidence lexical stage, then next action advances to rewrite retry | pass |

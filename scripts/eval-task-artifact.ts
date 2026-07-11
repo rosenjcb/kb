@@ -1,8 +1,9 @@
 #!/usr/bin/env tsx
 /**
- * Compute a codeburn delta, generate a per-task agent-compare artifact, and commit it.
+ * Compute a codeburn delta and write a per-task agent-compare artifact under
+ * `~/.kb/evaluations/agent-compare/` (same home workspace as harvest eval — not the repo tree).
  *
- * Usage (repo root, optional — for agent-compare artifacts only; not part of `eval:init`):
+ * Usage (repo root):
  *   npx tsx scripts/eval-task-artifact.ts \
  *     --before  /tmp/snap-before.json \
  *     --after   /tmp/snap-after.json  \
@@ -15,18 +16,14 @@
  *     [--completed true]              \
  *     [--notes  "free text ..."]
  *
- * Writes: evaluation/runs/agent-compare/YYYY-MM-DD-run<N>-task-<N>-<agent>.json
- * Then commits the file via git.
+ * Writes: ~/.kb/evaluations/agent-compare/YYYY-MM-DD-run<N>-task-<N>-<agent>.json
  */
 
-import { execSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { pathToFileURL } from 'node:url'
 import type { Snapshot } from './eval-snapshot.js'
-
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const REPO_ROOT = resolve(__dirname, '..')
 
 export interface TaskArtifactOptions {
   before: Snapshot
@@ -86,16 +83,13 @@ export function buildArtifact(opts: TaskArtifactOptions): TaskArtifact {
   }
 }
 
-export function artifactPath(
-  repoRoot: string,
-  date: string,
-  run: number,
-  taskId: number,
-  agent: string
-): string {
+/** Agent-compare artifacts live under ~/.kb/evaluations — never under the repo tree. */
+export function artifactPath(date: string, run: number, taskId: number, agent: string): string {
   return resolve(
-    repoRoot,
-    'evaluation/runs/agent-compare',
+    homedir(),
+    '.kb',
+    'evaluations',
+    'agent-compare',
     `${date}-run${run}-task-${taskId}-${agent}.json`
   )
 }
@@ -105,7 +99,6 @@ function round4(n: number): number {
 }
 
 // --- CLI entry (only runs when executed directly, not when imported by tests) ---
-import { pathToFileURL } from 'node:url'
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   runCli()
 }
@@ -149,7 +142,7 @@ function runCli(): void {
 
   const artifact = buildArtifact(opts)
   const today = new Date().toISOString().slice(0, 10)
-  const outPath = artifactPath(REPO_ROOT, today, opts.run, opts.taskId, opts.agent)
+  const outPath = artifactPath(today, opts.run, opts.taskId, opts.agent)
 
   mkdirSync(dirname(outPath), { recursive: true })
   writeFileSync(outPath, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8')
@@ -157,11 +150,4 @@ function runCli(): void {
   console.log(`artifact  -> ${outPath}`)
   console.log(`  cost delta:   $${artifact.codeburn_cost_usd_delta.toFixed(4)}`)
   console.log(`  calls delta:  ${artifact.codeburn_calls_delta}`)
-
-  execSync(`git add "${outPath}"`, { cwd: REPO_ROOT, stdio: 'inherit' })
-  execSync(
-    `git commit -m "eval: agent-compare run${opts.run} task${opts.taskId} ${opts.agent} (${today})\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"`,
-    { cwd: REPO_ROOT, stdio: 'inherit' }
-  )
-  console.log(`committed ${outPath}`)
 }

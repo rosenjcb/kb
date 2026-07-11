@@ -81,8 +81,10 @@ describe('buildArtifact', () => {
 })
 
 describe('artifactPath', () => {
-  it('[TC-232] generates correct path', () => {
-    const p = artifactPath('/repo', '2026-04-20', 3, 4, 'raw')
-    expect(p).toBe('/repo/evaluation/runs/agent-compare/2026-04-20-run3-task-4-raw.json')
+  it('[TC-232] writes under ~/.kb/evaluations/agent-compare (not the repo tree)', () => {
+    const p = artifactPath('2026-04-20', 3, 4, 'raw')
+    expect(p).toContain('.kb/evaluations/agent-compare')
+    expect(p.endsWith('2026-04-20-run3-task-4-raw.json')).toBe(true)
+    expect(p).not.toContain('/evaluation/runs/')
   })
 })

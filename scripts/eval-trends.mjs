@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * Aggregate and compare evaluation artifacts across:
+ * Aggregate and compare evaluation artifacts under:
  * - ~/.kb/evaluations/<run>/artifact.json
- * - ./evaluation/runs/*.json
  *
  * Shows structural metrics (docs, entities, avg results) for every run,
  * plus score columns when auto-scoring was used. This is the canonical
@@ -81,29 +80,18 @@ function structuralMetric(artifact, key) {
   return null
 }
 
-function gatherAllArtifacts(repoRoot) {
+function gatherAllArtifacts(_repoRoot) {
   const rows = []
   const homeRoot = path.join(os.homedir(), '.kb', 'evaluations')
-  const repoRuns = path.join(repoRoot, 'evaluation', 'runs')
 
   if (fs.existsSync(homeRoot)) {
     for (const entry of fs.readdirSync(homeRoot, { withFileTypes: true })) {
-      if (!entry.isDirectory() || entry.name === 'repos') continue
+      if (!entry.isDirectory() || entry.name === 'repos' || entry.name.startsWith('_')) continue
       const artifactPath = path.join(homeRoot, entry.name, 'artifact.json')
       if (!fs.existsSync(artifactPath)) continue
       const artifact = safeJson(artifactPath)
       if (!artifact?.status) continue
       rows.push({ source: 'home', id: entry.name, file: artifactPath, artifact })
-    }
-  }
-
-  if (fs.existsSync(repoRuns)) {
-    for (const entry of fs.readdirSync(repoRuns, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith('.json')) continue
-      const artifactPath = path.join(repoRuns, entry.name)
-      const artifact = safeJson(artifactPath)
-      if (!artifact?.status) continue
-      rows.push({ source: 'repo', id: entry.name.replace(/\.json$/i, ''), file: artifactPath, artifact })
     }
   }
 

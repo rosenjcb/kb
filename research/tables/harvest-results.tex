@@ -4,7 +4,7 @@
 \setlength{\tabcolsep}{3pt}
 \caption{Harvest evaluation results (\ResultsUpdated; \ResultsJudge{}).
 Suites: \KbSelfCheckTarget{}, \RaylibTarget{}, plus expanded portfolio
-(\texttt{nifi}, \texttt{shellcheck}, \texttt{lazygit}, \texttt{duckdb},
+(\texttt{kestra}, \texttt{shellcheck}, \texttt{lazygit}, \texttt{datasette},
 \texttt{mitmproxy}, \texttt{fish-shell}, \texttt{brew}).
 Control (N) cells are \texttt{---} when the paired agent phase has not yet run.
 Headline grade $\Delta S = S_K - S_N$ when both sides are present.}
@@ -28,12 +28,12 @@ Pass & Corr & Rel & Tokens & Time (s) \\
 \RaylibNS & \RaylibNQadeq & \RaylibNEtok & \RaylibNEspeed &
 \RaylibNPass & \RaylibNCorrectness & \RaylibNRelevance & \RaylibNTokens & \RaylibNDurationSec \\
 \addlinespace
-\NifiTarget & K (\texttt{kb query}) &
-\NifiKS & \NifiKQadeq & \NifiKEtok & \NifiKEspeed &
-\NifiKPass & \NifiKCorrectness & \NifiKRelevance & \NifiKTokens & \NifiKDurationSec \\
-\NifiTarget & N (pending) &
-\NifiNS & \NifiNQadeq & \NifiNEtok & \NifiNEspeed &
-\NifiNPass & \NifiNCorrectness & \NifiNRelevance & \NifiNTokens & \NifiNDurationSec \\
+\KestraTarget & K (\texttt{kb query}) &
+\KestraKS & \KestraKQadeq & \KestraKEtok & \KestraKEspeed &
+\KestraKPass & \KestraKCorrectness & \KestraKRelevance & \KestraKTokens & \KestraKDurationSec \\
+\KestraTarget & N (pending) &
+\KestraNS & \KestraNQadeq & \KestraNEtok & \KestraNEspeed &
+\KestraNPass & \KestraNCorrectness & \KestraNRelevance & \KestraNTokens & \KestraNDurationSec \\
 \addlinespace
 \ShellcheckTarget & K (\texttt{kb query}) &
 \ShellcheckKS & \ShellcheckKQadeq & \ShellcheckKEtok & \ShellcheckKEspeed &
@@ -49,12 +49,12 @@ Pass & Corr & Rel & Tokens & Time (s) \\
 \LazygitNS & \LazygitNQadeq & \LazygitNEtok & \LazygitNEspeed &
 \LazygitNPass & \LazygitNCorrectness & \LazygitNRelevance & \LazygitNTokens & \LazygitNDurationSec \\
 \addlinespace
-\DuckdbTarget & K (\texttt{kb query}) &
-\DuckdbKS & \DuckdbKQadeq & \DuckdbKEtok & \DuckdbKEspeed &
-\DuckdbKPass & \DuckdbKCorrectness & \DuckdbKRelevance & \DuckdbKTokens & \DuckdbKDurationSec \\
-\DuckdbTarget & N (pending) &
-\DuckdbNS & \DuckdbNQadeq & \DuckdbNEtok & \DuckdbNEspeed &
-\DuckdbNPass & \DuckdbNCorrectness & \DuckdbNRelevance & \DuckdbNTokens & \DuckdbNDurationSec \\
+\DatasetteTarget & K (\texttt{kb query}) &
+\DatasetteKS & \DatasetteKQadeq & \DatasetteKEtok & \DatasetteKEspeed &
+\DatasetteKPass & \DatasetteKCorrectness & \DatasetteKRelevance & \DatasetteKTokens & \DatasetteKDurationSec \\
+\DatasetteTarget & N (pending) &
+\DatasetteNS & \DatasetteNQadeq & \DatasetteNEtok & \DatasetteNEspeed &
+\DatasetteNPass & \DatasetteNCorrectness & \DatasetteNRelevance & \DatasetteNTokens & \DatasetteNDurationSec \\
 \addlinespace
 \MitmproxyTarget & K (\texttt{kb query}) &
 \MitmproxyKS & \MitmproxyKQadeq & \MitmproxyKEtok & \MitmproxyKEspeed &

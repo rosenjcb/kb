@@ -1,0 +1,65 @@
+# datasette repo / dogfood question pack. Use: --suite datasette
+# Product-oriented: CLI serve/publish + interactive HTML explore UI + JSON API.
+schema_version: 1
+id: datasette
+display_name: datasette
+repo_url: https://github.com/simonw/datasette.git
+rubric_focus: Datasette data exploration product — CLI, HTML UI, plugins, and publish flow
+questions:
+  - "What is Datasette for, and what product surfaces does it expose when you point it at a SQLite database?"
+  - "Walk through the CLI path to explore a database locally: which module owns the CLI, what does `datasette serve` (or bare `datasette db.sqlite`) start, and what URL does an operator open?"
+  - "Step by step, what happens in the web UI when a user opens a database, clicks into a table, applies a facet or filter, and views matching rows?"
+  - "How do metadata.json (title, license, source, …) and canned/stored queries show up in the HTML UI and API?"
+  - "Explain Datasette’s plugin system: where are hooks declared, how do plugins register, and how can a plugin add UI actions or change rendering?"
+  - "Infer the request path for a table page: from ASGI/app routing through permissions/filters/facets to the HTML template (or JSON) response."
+  - "What does `datasette publish` do product-wise (e.g. Heroku / Cloud Run), and which package area implements publish providers?"
+  - "How do table actions, query actions, and the debug/jump menus extend the UI without forking core templates?"
+answers:
+  - >
+    Datasette is an open-source multi-tool for exploring and publishing data. Pointed at one or
+    more SQLite databases it serves an interactive website (index → database → table → row) plus a
+    matching JSON API, with facets, filters, canned queries, and optional auth/permissions. It
+    targets journalists, archivists, researchers, and anyone who needs to share structured data as
+    a browsable product, not only as raw files.
+  - >
+    The CLI lives in `datasette/cli.py` (entrypoint via `datasette/__main__.py` / console script).
+    `datasette serve path/to/database.db` (serve is the default subcommand) boots the ASGI web app
+    — by default on port 8001 — so the operator opens http://localhost:8001/ to reach the index UI
+    listing databases and tables. Flags such as `-m metadata.json` attach site metadata at serve
+    time.
+  - >
+    From the index page the user selects a database, then a table. The table view renders columns
+    and rows; facet controls and filter query-string parameters narrow the SQL under the hood.
+    Applying a facet or filter reloads the table page with the filtered result set and updated
+    facet counts. Row links drill into individual records. The same filters are available via the
+    JSON API for programmatic clients.
+  - >
+    A `metadata.json` file supplies titles, licenses, sources, per-table descriptions, and canned
+    query definitions. Passed with `-m` / configured metadata, those fields appear on index and
+    table pages (and footers) and are included in JSON responses. Stored/canned queries show up as
+    named query entry points in the UI so operators can re-run editorial SQL without writing it
+    each visit.
+  - >
+    Datasette uses a pluggy-style hook system declared in `hookspecs.py` and loaded via
+    `plugins.py`. Plugins register implementations for hooks (extra template variables, extra CSS,
+    actor auth, custom renderers, etc.). That lets third-party packages add menu items, change how
+    cells render, or inject authentication without modifying core. Default action modules
+    (`default_table_actions`, `default_query_actions`, …) are the built-in side of the same
+    extension model.
+  - >
+    An HTTP request hits the ASGI app in `app.py`, which routes database/table/query URLs. The
+    handler resolves the Database/table resources, applies permissions, builds filtered SQL using
+    filters/facets helpers, then selects an HTML renderer/template context or a JSON representation.
+    Templates under `datasette/templates` (plus static assets) produce the product UI the operator
+    sees.
+  - >
+    `datasette publish` packages selected SQLite files (and Datasette itself) into a deployable
+    image/app and pushes to a provider such as Heroku or Google Cloud Run, returning a public URL
+    for the same explore UI/API. Provider implementations live under `datasette/publish/`, invoked
+    from the CLI publish subcommands so “publish this DB as a website” is a first-class product
+    flow.
+  - >
+    Extension points such as table actions, query actions, database actions, jump items, and the
+    debug menu are populated through hook/default_action modules. Plugins and core defaults
+    contribute links/buttons the templates render, so new UI affordances appear beside tables or in
+    menus without forking the base Jinja templates for every feature.

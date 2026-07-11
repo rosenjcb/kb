@@ -80,6 +80,12 @@ pnpm run eval -- --suite raylib --force-init
 
 # Override session name:
 pnpm run eval -- --suite raylib --base my-custom-session
+
+# Multi-suite (Node-native; parallel by default — no bash/xargs):
+pnpm run eval -- --suites raylib,kb,fzf
+pnpm run eval -- --all-suites --control-agent cursor --control-model composer-2.5
+pnpm run eval -- --all-suites --sequential          # one suite at a time
+pnpm run eval -- --all-suites --parallel 4          # cap concurrency
 ```
 
 | npm script | Maps to |
@@ -87,6 +93,8 @@ pnpm run eval -- --suite raylib --base my-custom-session
 | `pnpm run eval -- --suite raylib` | 8× query eval against `eval-raylib`, then trends |
 | `pnpm run eval -- --suite kb` | Self-check against `eval-kb` |
 | `pnpm run eval -- --suite generic --repo <git-url>` | Any repo (requires explicit `--repo`) |
+| `pnpm run eval -- --suites a,b,c` | Multi-suite batch; **parallel by default** |
+| `pnpm run eval -- --all-suites` | All 10 benchmark suites (parallel by default) |
 
 **Before/after across binaries (`KB_EVAL_BIN`).** The harness defaults to this checkout's
 `dist/bin/kb.js`, but `KB_EVAL_BIN=/path/to/other/dist/bin/kb.js` points it at any other build.
@@ -105,21 +113,26 @@ The scoring is backwards-compatible with old outputs: a main binary emits no cur
 unaffected), and pre-relevance artifacts already on disk render their relevance/curation columns
 as `-` rather than erroring.
 
-**Suites (`--suite`)**
+**Suites (`--suite` / `--suites` / `--all-suites`)**
 
 - `raylib` — raylib-specific questions (primary external C benchmark).
 - `kb` — kb-repo / product questions (contributor dogfood).
 - `fzf` — fzf-specific questions.
-- `nifi` — Apache NiFi (Java dataflow / NAR classloading).
+- `kestra` — Kestra (Java/UI orchestration; YAML flows + execute console). Replaces the oversized `nifi` pack in the default 10.
 - `shellcheck` — ShellCheck (Haskell AST linter).
 - `lazygit` — lazygit (Go TUI).
-- `duckdb` — DuckDB (C++ OLAP).
+- `datasette` — Datasette (Python; `serve` CLI + explore/publish HTML UI). Replaces the oversized `duckdb` pack in the default 10.
 - `mitmproxy` — mitmproxy (Python proxy / TUI).
 - `fish-shell` — fish-shell (Rust shell).
 - `brew` — Homebrew (Ruby DSL / package manager).
 - `generic` — repo-neutral questions. Use with `--repo` for arbitrary upstreams.
+- `nifi` / `duckdb` — still loadable via `--suite` for historical runs; **not** in `--all-suites` (too large to index in ~1h).
 
-Override questions with `--questions-file path.json` (JSON array of strings matching suite length).
+`--all-suites` runs the ten benchmark suites above (everything except `generic`, `moel-kb`, and the retired-from-default `nifi`/`duckdb` packs).
+
+**Multi-suite parallelism.** Passing more than one suite (`--suites a,b`, repeated `--suite`, or `--all-suites`) runs a **Node-native** batch: one child `eval-run` process per suite, **parallel by default**. Each suite still uses its own ephemeral kb-server port and `eval-{suite}` base. Cap with `--parallel N` or `KB_EVAL_PARALLEL`; force serial with `--sequential`. Do not combine multi-suite mode with single-suite-only flags (`--repo`, `--base`, `--run-dir`, `--out`, `--suite-yaml`, `--questions-file`).
+
+Override questions with `--questions-file path.json` (JSON array of strings matching suite length; single-suite only).
 
 **Artifacts**
 
@@ -372,12 +385,13 @@ deltas in `artifact.comparison` show *where* the win or loss comes from.
 
 ## Artifact Storage
 
-Every run — even weak or partial ones — should still **emit** a JSON artifact so comparisons stay reproducible. Default layout: `evaluation/runs/YYYY-MM-DD-<label>.json`. The repo **gitignores `evaluation/`** by default, so these files are not part of normal commits unless you force-add or change ignore rules.
+Every run — even weak or partial ones — should still **emit** a JSON artifact so comparisons stay reproducible.
 
-Filename convention: `evaluation/runs/YYYY-MM-DD-<label>.json`
+**Canonical location:** `~/.kb/evaluations/<run-name>/artifact.json` (written by `pnpm run eval`). Trends summaries and `research/tables/results.tex` read **only** from that home workspace. Do **not** copy artifacts into the git checkout.
 
-Reference baseline (historical example path): `evaluation/runs/2026-04-19-raylib-baseline.json`
+There is no in-repo `evaluation/runs/` mirror. (`eval/` holds suite YAML and harness code; that is unrelated.)
 
+Historical note: older docs mentioned `evaluation/runs/2026-04-19-raylib-baseline.json`; that path is retired — use home-dir artifacts only.
 ## Artifact Format
 
 Each artifact should include:
@@ -648,13 +662,9 @@ When comparing two kb-side iterations (e.g. synthesis changes):
 
 ## Current Baseline
 
-The reference raylib baseline artifact is:
-
-- `evaluation/runs/2026-04-19-raylib-baseline.json`
-- Init: 14 docs, 404 entities, 470 relationships, $0.025, 170s
-- Query pass rate: 0.50 (5/8 hybrid retrieval; 1 tokenization-empty miss on install/build query)
-
-That artifact is the reference point for the next comparison run.
+Prefer the latest scored raylib artifact under `~/.kb/evaluations/raylib-*/artifact.json`
+(trends summary / `results.tex` pick this automatically). Older in-repo baseline paths under
+`evaluation/runs/` are retired.
 
 ---
 
@@ -709,7 +719,8 @@ Capture before and after each task. The metric is **tokens consumed per task**, 
 
 ### Artifact
 
-Store results under `evaluation/runs/agent-compare/YYYY-MM-DD-task-N-<agent>.json`.
+Store results under `~/.kb/evaluations/agent-compare/YYYY-MM-DD-run<N>-task-<N>-<agent>.json`
+(via `scripts/eval-task-artifact.ts`). Never under the repo tree.
 
 Each artifact records:
 

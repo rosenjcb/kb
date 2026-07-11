@@ -26,13 +26,15 @@ Disposable KB base names are **not** configured here — `eval-run.mjs` defaults
 | `kb` | this repo | self-check / dogfood |
 | `raylib` | raysan5/raylib | primary external C benchmark |
 | `fzf` | junegunn/fzf | Go fuzzy finder |
-| `nifi` | apache/nifi | Java dataflow / NAR classloading |
+| `kestra` | kestra-io/kestra | Java/UI orchestration (default-10; NiFi-shaped workflows) |
 | `shellcheck` | koalaman/shellcheck | Haskell AST linter |
 | `lazygit` | jesseduffield/lazygit | Go TUI |
-| `duckdb` | duckdb/duckdb | C++ OLAP engine |
+| `datasette` | simonw/datasette | Python explore/publish UI + CLI (default-10) |
 | `mitmproxy` | mitmproxy/mitmproxy | Python proxy / TUI |
 | `fish-shell` | fish-shell/fish-shell | Rust shell |
 | `brew` | Homebrew/brew | Ruby package manager DSL |
+| `nifi` | apache/nifi | optional — large; not in `--all-suites` |
+| `duckdb` | duckdb/duckdb | optional — large; not in `--all-suites` |
 | `generic` | `--repo` required | repo-neutral questions |
 
 ## Headline grade (ΔS)
@@ -42,5 +44,6 @@ Each suite run (with `--auto-score`, control phase on) produces **`artifact.comp
 ```bash
 pnpm run eval -- --suite kb --auto-score          # kb + control → ΔS
 pnpm run eval -- --suite raylib --auto-score      # primary external benchmark
-pnpm run eval -- --suite duckdb --skip-control    # K-only (control later)
+pnpm run eval -- --suite datasette --skip-control # K-only (control later)
+pnpm run eval -- --all-suites                     # 10 default suites (parallel)
 ```
