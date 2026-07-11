@@ -39,6 +39,7 @@ tests:
   - ../../../../tests/cli/repo-slug.test.ts
   - ../../../../tests/cli/retrieval-fallback.test.ts
   - ../../../../tests/cli/skill-installer.test.ts
+  - ../../../../tests/cli/mcp-config-sync.test.ts
   - ../../../../tests/cli/startup-notices.test.ts
   - ../../../../tests/cli/sync-cli.test.ts
   - ../../../../tests/cli/uninstall-cli.test.ts
@@ -98,7 +99,7 @@ See companion doc for full vocabulary where applicable.
 | FR-30 | Named-list interview parses numbered selections in TTY prompts |
 | FR-31 | Publish CLI pushes companion docs to configured publish targets |
 | FR-33 | Retrieval fallback degrades gracefully when deep retrieval fails |
-| FR-34 | Skill installer copies bundled skills to agent home directories |
+| FR-34 | Skill installer copies bundled skills to agent home directories, installs hooks, and syncs Cursor/Claude MCP `kb` entries only when an explicit host is configured — opt-in via `kb skills install` / `kb mcp install`; CLI and TUI startup never auto-install skills or rewrite MCP configs |
 | FR-35 | Startup notices print one-time migration and version hints |
 | FR-36 | Sync CLI refreshes the split GitHub Release runtimes and rewires stable client/server binary links |
 | FR-37 | Client uninstall removes release client layout; server uninstall removes server layout and optional ~/.kb data |
@@ -499,20 +500,24 @@ See companion doc for full vocabulary where applicable.
 | TC-448 | FR-34 | Given profile MD with injected section, then removes the section | pass |
 | TC-449 | FR-34 | Given profile MD without KB section, then action is not-found | pass |
 | TC-450 | FR-34 | Given removed results, then formats readable output | pass |
-| TC-451 | FR-34 | Given no provider config dirs, then all results are not-installed | pass |
+| TC-451 | FR-34 | Given no provider config dirs, then Claude installs (ensureConfigDir) and others are not-installed | pass |
 | TC-452 | FR-34 | Given Claude config dir exists with no settings.json, then creates settings.json with hook | pass |
 | TC-453 | FR-34 | Given hook already installed at current path, then action is skipped | pass |
 | TC-454 | FR-34 | Given hook installed at stale path, then updates to current path | pass |
 | TC-455 | FR-34 | Given settings.json with existing hooks, then merges without clobbering | pass |
 | TC-456 | FR-34 | Given Gemini config dir exists, then installs BeforeTool hook in settings.json | pass |
 | TC-457 | FR-34 | Given Codex config dir exists, then installs hook in hooks.json | pass |
-| TC-458 | FR-34 | Writes executable hook script to ~/.kb/hooks/kb-reminder.sh | pass |
+| TC-458 | FR-34 | Writes executable hook script that emits Claude JSON additionalContext | pass |
+| TC-630 | FR-34 | Given Grep tool input, hook emits additionalContext JSON | pass |
+| TC-631 | FR-34 | Given Read tool, hook stays silent | pass |
 | TC-459 | FR-34 | Given hook present in settings.json, then removes it | pass |
 | TC-460 | FR-34 | Given no settings.json, then action is not-installed | pass |
 | TC-461 | FR-34 | Given settings.json without KB hook, then action is not-installed | pass |
 | TC-462 | FR-34 | Given hook plus other hooks in same matcher group, then only removes kb hook | pass |
 | TC-463 | FR-34 | includes Agent hooks section when hook results provided | pass |
 | TC-464 | FR-34 | omits Agent hooks section when hook results not provided | pass |
+| TC-632 | FR-34 | includes MCP sync section when mcp results provided | pass |
+| TC-633 | FR-34 | includes MCP removals when mcp results provided | pass |
 | TC-465 | FR-35 | greets the user | pass |
 | TC-466 | FR-35 | lists the core commands | pass |
 | TC-467 | FR-35 | tells the user how to get help | pass |

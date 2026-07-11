@@ -14,7 +14,13 @@ export function isClientLocalCommand(args: string[]): boolean {
   const command = args[0]
   if (!command) return false
   if (command === '--version' || command === '-v' || command === 'version') return true
-  if (command === 'skills' || command === 'uninstall' || command === 'sync') {
+  // mcp / skills / uninstall / sync rewrite local agent configs — server has no handlers.
+  if (
+    command === 'mcp' ||
+    command === 'skills' ||
+    command === 'uninstall' ||
+    command === 'sync'
+  ) {
     return true
   }
   if (command === 'base' && args[1] === 'use') return true

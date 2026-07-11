@@ -30,6 +30,8 @@ services:
       context: ../..
       dockerfile: packages/kb-server/Dockerfile
     image: kb-server
+    # Explicit so server:up / docker:start stay MCP-on even if image CMD drifts.
+    command: ["node", "packages/kb-server/dist/bin/kb-server.js", "start", "--with-mcp"]
     ports:
       - "${PORT:-38117}:38117"
     environment:

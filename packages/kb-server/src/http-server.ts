@@ -24,10 +24,12 @@
 import { randomUUID } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { resolveQueryTimeoutMs } from '@kb/core/config/query-timeout.js'
+import { KB_VERSION } from '@kb/core/version.js'
 import { handleMcpHttpRequest } from './mcp-server.js'
 import { handleAdminRoute } from './admin-routes.js'
 import { serializeQueryResult } from '@kb/core/service/serialize.js'
 import { log } from './logger.js'
+import { resolveServerVersion } from './version.js'
 import { BOOTSTRAP_INDEXING_MESSAGE, type KbService } from '@kb/core/service/kb-service.js'
 import {
   type SlackEventPayload,
@@ -298,8 +300,20 @@ export function createHttpServer(options: HttpServerOptions): Server {
     // probe cadence doesn't flood info-level logs; the response line still records it.
     if (method === 'GET' && (url === '/healthz' || url === '/health')) {
       const health = service.health()
-      log.debug('health check', { requestId, ok: health.ok, indexMtime: health.indexMtime })
-      sendJson(res, health.ok ? 200 : 503, health)
+      const body = {
+        ...health,
+        version: {
+          server: resolveServerVersion(),
+          core: KB_VERSION,
+        },
+      }
+      log.debug('health check', {
+        requestId,
+        ok: body.ok,
+        indexMtime: body.indexMtime,
+        version: body.version,
+      })
+      sendJson(res, body.ok ? 200 : 503, body)
       return
     }
 

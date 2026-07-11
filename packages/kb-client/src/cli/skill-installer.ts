@@ -2,7 +2,14 @@ import { createHash } from 'node:crypto'
 import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { loadSkill } from '@kb/core/skills/loader.js'
+import {
+  formatMcpSyncReport,
+  type McpSyncResult,
+  syncKbMcpConfigs,
+  uninstallKbMcpConfigs,
+} from '../api/mcp-config-sync.js'
 
 const KB_DEV_WORKFLOW_SKILL = loadSkill('kb:dev-workflow')
 const KB_DUMP_CONTEXT_SKILL = loadSkill('kb:dump-context')
@@ -188,7 +195,8 @@ export async function installSkillIntoProject(): Promise<ProjectInstallResult[]>
 export function formatSkillInstallReport(
   skillResults: SkillInstallResult[],
   profileResults: ProjectInstallResult[],
-  hookResults?: HookInstallResult[]
+  hookResults?: HookInstallResult[],
+  mcpResults?: McpSyncResult[]
 ): string {
   const lines: string[] = ['Skill files:']
   for (const r of skillResults) {
@@ -211,6 +219,10 @@ export function formatSkillInstallReport(
       else lines.push(`  • up-to-date ${r.provider}`)
     }
   }
+  if (mcpResults && mcpResults.length > 0) {
+    const mcpReport = formatMcpSyncReport(mcpResults)
+    if (mcpReport) lines.push('', mcpReport)
+  }
   return lines.join('\n')
 }
 
@@ -218,19 +230,51 @@ export function formatSkillInstallReport(
 
 const KB_HOOK_SCRIPT_NAME = 'kb-reminder.sh'
 
-const KB_HOOK_SCRIPT_CONTENT = `#!/bin/bash
-input=$(cat)
-cmd=$(echo "$input" | python3 -c "
-import sys, json
+/** Claude PreToolUse matcher — Bash spelunking + native Grep/Glob tools. */
+export const CLAUDE_KB_HOOK_MATCHER = 'Bash|Grep|Glob'
+
+/**
+ * Claude Code PreToolUse ignores plain stdout for context. Reminder must be
+ * JSON with `hookSpecificOutput.additionalContext` (and optional `systemMessage`).
+ * See https://code.claude.com/docs/en/hooks
+ */
+export const KB_HOOK_SCRIPT_CONTENT = `#!/usr/bin/env bash
+# kb-reminder.sh — remind agents to use kb MCP (kb_query) before spelunking.
+# Claude Code PreToolUse: plain stdout is ignored — emit JSON additionalContext.
+# Docs: https://code.claude.com/docs/en/hooks
+set -euo pipefail
+input=$(cat || true)
+payload=$(printf '%s' "$input" | python3 -c '
+import json, re, sys
+raw = sys.stdin.read()
 try:
-    d = json.load(sys.stdin)
-    c = d.get('command') or d.get('tool_input', {}).get('command') or ''
-    print(c)
+    d = json.loads(raw) if raw.strip() else {}
 except Exception:
-    pass
-" 2>/dev/null)
-if [ -n "$cmd" ] && echo "$cmd" | grep -qE '\\b(grep|awk|sed|find)\\b'; then
-  echo "Reminder: kb query should be your first step for codebase exploration — use grep/awk/sed/find only as a last resort when kb cannot answer the question."
+    d = {}
+tool = str(d.get("tool_name") or d.get("toolName") or "")
+ti = d.get("tool_input") or d.get("toolInput") or {}
+if not isinstance(ti, dict):
+    ti = {}
+cmd = str(d.get("command") or ti.get("command") or ti.get("cmd") or "")
+bash_spelunk = bool(re.search(r"\\b(grep|egrep|fgrep|rg|awk|sed|find)\\b", cmd))
+cli_query = bool(re.search(r"\\bkb\\s+(query|graph|docs|facts)\\b", cmd))
+native_search = tool in ("Grep", "Glob")
+if not (native_search or bash_spelunk or cli_query):
+    sys.exit(0)
+msg = (
+    "Use the kb MCP connector (kb_query / kb_read_facts / kb_search_code_symbols) "
+    "before Grep/Glob/find/rg or kb query. CLI/TUI is for humans; agents investigate via MCP only."
+)
+print(json.dumps({
+    "systemMessage": msg,
+    "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "additionalContext": msg,
+    },
+}))
+' 2>/dev/null || true)
+if [ -n "\${payload:-}" ]; then
+  printf '%s\\n' "$payload"
 fi
 exit 0
 `
@@ -241,6 +285,8 @@ interface HookProvider {
   settingsFile: string
   event: string
   matcher: string
+  /** When true, create configDir if missing (Claude Code expects ~/.claude). */
+  ensureConfigDir?: boolean
 }
 
 function hookProviders(): HookProvider[] {
@@ -251,7 +297,8 @@ function hookProviders(): HookProvider[] {
       configDir: path.join(home, '.claude'),
       settingsFile: path.join(home, '.claude', 'settings.json'),
       event: 'PreToolUse',
-      matcher: 'Bash',
+      matcher: CLAUDE_KB_HOOK_MATCHER,
+      ensureConfigDir: true,
     },
     {
       name: 'gemini',
@@ -265,6 +312,7 @@ function hookProviders(): HookProvider[] {
       configDir: path.join(home, '.codex'),
       settingsFile: path.join(home, '.codex', 'hooks.json'),
       event: 'PreToolUse',
+      // Codex Bash-oriented; keep Bash-only matcher for that client.
       matcher: 'Bash',
     },
   ]
@@ -290,14 +338,27 @@ type MatcherGroup = { matcher: string; hooks: HookEntry[] }
 type HooksSection = Record<string, MatcherGroup[]>
 type SettingsJson = { hooks?: HooksSection } & Record<string, unknown>
 
+function isKbHookCommand(command: string): boolean {
+  return command === KB_HOOK_SCRIPT_NAME || command.endsWith(`/${KB_HOOK_SCRIPT_NAME}`)
+}
+
+/** Find matcher group that already owns the kb reminder hook (any matcher). */
+function findGroupWithKbHook(groups: MatcherGroup[]): MatcherGroup | undefined {
+  return groups.find(g => g.hooks.some(h => isKbHookCommand(h.command)))
+}
+
 async function installHookForProvider(
   provider: HookProvider,
   scriptPath: string
 ): Promise<HookInstallResult> {
-  try {
-    await stat(provider.configDir)
-  } catch {
-    return { provider: provider.name, action: 'not-installed' }
+  if (provider.ensureConfigDir) {
+    await mkdir(provider.configDir, { recursive: true })
+  } else {
+    try {
+      await stat(provider.configDir)
+    } catch {
+      return { provider: provider.name, action: 'not-installed' }
+    }
   }
 
   let settings: SettingsJson = {}
@@ -309,26 +370,37 @@ async function installHookForProvider(
   }
 
   const hooksSection: HooksSection = (settings.hooks as HooksSection) ?? {}
-  const eventGroups: MatcherGroup[] = hooksSection[provider.event] ?? []
-  const existingGroup = eventGroups.find(g => g.matcher === provider.matcher)
+  const eventGroups: MatcherGroup[] = [...(hooksSection[provider.event] ?? [])]
+  const owned = findGroupWithKbHook(eventGroups)
 
-  if (existingGroup) {
-    const alreadyPresent = existingGroup.hooks.some(h => h.command.endsWith(KB_HOOK_SCRIPT_NAME))
-    if (alreadyPresent) {
-      // Update path if it changed (e.g. reinstall to different location)
-      const needsUpdate = !existingGroup.hooks.some(h => h.command === scriptPath)
-      if (!needsUpdate) return { provider: provider.name, action: 'skipped' }
-      existingGroup.hooks = existingGroup.hooks.map(h =>
-        h.command.endsWith(KB_HOOK_SCRIPT_NAME) ? { type: 'command', command: scriptPath } : h
-      )
-    } else {
-      existingGroup.hooks.push({ type: 'command', command: scriptPath })
+  let action: HookInstallResult['action'] = 'installed'
+  const hadEvent = Boolean(hooksSection[provider.event]?.length)
+
+  if (owned) {
+    const pathOk = owned.hooks.some(h => h.command === scriptPath)
+    const matcherOk = owned.matcher === provider.matcher
+    if (pathOk && matcherOk) {
+      return { provider: provider.name, action: 'skipped' }
     }
+    owned.matcher = provider.matcher
+    owned.hooks = owned.hooks.map(h =>
+      isKbHookCommand(h.command) ? { type: 'command', command: scriptPath } : h
+    )
+    action = 'updated'
   } else {
-    eventGroups.push({ matcher: provider.matcher, hooks: [{ type: 'command', command: scriptPath }] })
+    const sameMatcher = eventGroups.find(g => g.matcher === provider.matcher)
+    if (sameMatcher) {
+      sameMatcher.hooks.push({ type: 'command', command: scriptPath })
+      action = hadEvent ? 'updated' : 'installed'
+    } else {
+      eventGroups.push({
+        matcher: provider.matcher,
+        hooks: [{ type: 'command', command: scriptPath }],
+      })
+      action = hadEvent ? 'updated' : 'installed'
+    }
   }
 
-  const isNew = !settings.hooks || !hooksSection[provider.event]
   const updated: SettingsJson = {
     ...settings,
     hooks: { ...hooksSection, [provider.event]: eventGroups },
@@ -337,7 +409,7 @@ async function installHookForProvider(
   await mkdir(path.dirname(provider.settingsFile), { recursive: true })
   await writeFile(provider.settingsFile, `${JSON.stringify(updated, null, 2)}\n`, 'utf8')
 
-  return { provider: provider.name, action: isNew ? 'installed' : 'updated' }
+  return { provider: provider.name, action }
 }
 
 export async function installHooks(): Promise<HookInstallResult[]> {
@@ -363,7 +435,7 @@ async function uninstallHookForProvider(provider: HookProvider): Promise<HookIns
   const next = eventGroups
     .map(g => ({
       ...g,
-      hooks: g.hooks.filter(h => !h.command.endsWith(KB_HOOK_SCRIPT_NAME)),
+      hooks: g.hooks.filter(h => !isKbHookCommand(h.command)),
     }))
     .filter(g => g.hooks.length > 0)
 
@@ -437,7 +509,8 @@ export async function uninstallSkills(): Promise<SkillUninstallResult[]> {
 
 export function formatSkillUninstallReport(
   results: SkillUninstallResult[],
-  hookResults?: HookInstallResult[]
+  hookResults?: HookInstallResult[],
+  mcpResults?: McpSyncResult[]
 ): string {
   const lines = results
     .filter(r => r.action === 'removed')
@@ -447,5 +520,20 @@ export function formatSkillUninstallReport(
       if (r.action === 'updated') lines.push(`✓ Removed KB hook from ${r.provider}`)
     }
   }
+  if (mcpResults) {
+    for (const r of mcpResults) {
+      if (r.action === 'removed') lines.push(`✓ Removed KB MCP entry from ${r.agent}`)
+    }
+  }
   return lines.join('\n')
+}
+
+/** Sync Cursor/Claude MCP `kb` entries when an explicit host is configured. */
+export async function installMcpConfigs(config: KbConfig = {}): Promise<McpSyncResult[]> {
+  return syncKbMcpConfigs({ requireExplicitHost: true, config })
+}
+
+/** Remove managed Cursor/Claude MCP `kb` entries. */
+export async function uninstallMcpConfigs(): Promise<McpSyncResult[]> {
+  return uninstallKbMcpConfigs()
 }

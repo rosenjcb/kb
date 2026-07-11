@@ -106,9 +106,11 @@ import {
   formatSkillInstallReport,
   formatSkillUninstallReport,
   installHooks,
+  installMcpConfigs,
   installSkillIntoProject,
   installSkillsGlobally,
   uninstallHooks,
+  uninstallMcpConfigs,
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
@@ -119,6 +121,13 @@ import {
 } from './remote-commands.js'
 import { resolveReportHost, resolveServerConnection, formatServerAddress, formatConnectionContext } from '../api/server-connection.js'
 import { applyHostCliOverride, parseGlobalCliFlags } from '../api/cli-global-flags.js'
+import {
+  formatMcpStatusReport,
+  formatMcpSyncReport,
+  readKbMcpStatus,
+  syncKbMcpConfigs,
+  uninstallKbMcpConfigs,
+} from '../api/mcp-config-sync.js'
 import { runUninstallCommand } from './uninstall-cli'
 import {
   ViewCommandError,
@@ -184,6 +193,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  sync        Install the latest published KB release',
     '  logs        Browse and compare run reports',
     '  skills      Manage agent skills',
+    '  mcp         Install/remove Claude Code + Cursor MCP kb entries',
     '  uninstall   Remove the kb client binary (server/data untouched; see kb-server uninstall)',
     '',
     'Intent commands:',
@@ -192,10 +202,39 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     cmdHelpHint(mode),
     '',
     'Examples:',
-    `  kb --host localhost:38117 ${cmd('query "how does auth work?"', mode)}`,
+    mode === 'tui'
+      ? `  /query "how does auth work?"`
+      : `  kb query "how does auth work?"`,
+    mode === 'cli' ? `  kb --host localhost:38117 query "how does auth work?"` : null,
+    `  ${cmd('mcp install --host localhost:38117', mode)}`,
+    `  ${cmd('mcp install --host https://kb.example.com:38117', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
     `  ${cmd('sync', mode)}`,
     `  ${cmd('docs list --base dogfood', mode)}`,
+  ]
+    .filter((line): line is string => line !== null)
+    .join('\n')
+}
+
+function printMcpHelp(): string {
+  return [
+    'Usage: kb mcp <subcommand>',
+    '',
+    'Install or remove the kb MCP entry for Claude Code and Cursor',
+    '(localhost or remote). Agents use MCP only; humans use the kb CLI/TUI.',
+    '',
+    'Subcommands:',
+    '  install [--host <host[:port]|url>]  Write mcpServers.kb → ${server}/mcp',
+    '                                      Host from --host, else KB_SERVER_URL / KB_HOST',
+    '  status                              Show env host + current MCP kb URLs',
+    '  uninstall                           Remove managed kb MCP entries',
+    '',
+    'Examples:',
+    '  kb mcp install --host localhost:38117',
+    '  kb mcp install --host https://kb.example.com:38117',
+    '  export KB_SERVER_URL=http://remote:38117 && kb mcp install',
+    '  kb mcp status',
+    '  kb mcp uninstall',
   ].join('\n')
 }
 
@@ -644,25 +683,36 @@ export async function runMainWithOutput(
     const subcommand = args[1]
     if (subcommand === 'install') {
       try {
-        const [skillResults, profileResults, hookResults] = await Promise.all([
+        const [skillResults, profileResults, hookResults, mcpResults] = await Promise.all([
           installSkillsGlobally(),
           installSkillIntoProject(),
           installHooks(),
+          installMcpConfigs(config),
         ])
-        out.log(formatSkillInstallReport(skillResults, profileResults, hookResults))
+        out.log(formatSkillInstallReport(skillResults, profileResults, hookResults, mcpResults))
+        if (mcpResults.some(r => r.action === 'needs-host')) {
+          out.error('MCP skipped: pass --host or set KB_SERVER_URL / KB_HOST (or config.server.host).')
+          if (mode === 'cli') process.exitCode = 1
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)
+        if (mode === 'cli') process.exitCode = 1
       }
     } else if (subcommand === 'uninstall') {
       try {
-        const [results, hookResults] = await Promise.all([uninstallSkills(), uninstallHooks()])
-        const report = formatSkillUninstallReport(results, hookResults)
+        const [results, hookResults, mcpResults] = await Promise.all([
+          uninstallSkills(),
+          uninstallHooks(),
+          uninstallMcpConfigs(),
+        ])
+        const report = formatSkillUninstallReport(results, hookResults, mcpResults)
         if (report) out.log(report)
         else out.log('No KB skill files found to remove.')
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)
+        if (mode === 'cli') process.exitCode = 1
       }
     } else {
       out.log(
@@ -672,11 +722,70 @@ export async function runMainWithOutput(
           'Manage the bundled KB agent skills for Claude, Cursor, Codex, and Copilot.',
           '',
           'Subcommands:',
-          '  install     Install the skill files for each agent CLI and update the core',
-          '              agent readmes (~/.claude/CLAUDE.md, ~/.codex/AGENTS.md) + kb-first hook',
-          '  uninstall   Remove the installed skill files, readme entries, and hook',
+          '  install     Install skill files, profile readmes, kb-first hook;',
+          '              installs MCP only when KB_SERVER_URL / KB_HOST / --host is set',
+          '  uninstall   Remove skill files, readme entries, hook, and MCP entries',
+          '',
+          'Point MCP at a host explicitly with: kb mcp install --host <host|url>',
         ].join('\n')
       )
+    }
+    return
+  }
+
+  if (firstArg === 'mcp') {
+    const subcommand = args[1]
+    if (subcommand === 'install') {
+      try {
+        let host: string | undefined
+        for (let i = 2; i < args.length; i += 1) {
+          const token = args[i]
+          if (token === '--host') {
+            host = args[i + 1]?.trim()
+            if (!host) throw new Error('--host requires a value (host:port, hostname, or URL)')
+            i += 1
+            continue
+          }
+          if (token?.startsWith('--host=')) {
+            host = token.slice('--host='.length).trim()
+            if (!host) throw new Error('--host requires a value')
+            continue
+          }
+          throw new Error(`Unknown argument: ${token}\n\n${printMcpHelp()}`)
+        }
+        const results = await syncKbMcpConfigs({ host, requireExplicitHost: true, config })
+        const report = formatMcpSyncReport(results)
+        if (report) out.log(report)
+        if (results.some(r => r.action === 'needs-host')) {
+          out.error('Pass --host or set KB_SERVER_URL / KB_HOST (or config.server.host) first.')
+          if (mode === 'cli') process.exitCode = 1
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        out.error(`❌ ${message}`)
+        if (mode === 'cli') process.exitCode = 1
+      }
+    } else if (subcommand === 'status') {
+      try {
+        out.log(formatMcpStatusReport(await readKbMcpStatus()))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        out.error(`❌ ${message}`)
+        if (mode === 'cli') process.exitCode = 1
+      }
+    } else if (subcommand === 'uninstall') {
+      try {
+        const results = await uninstallKbMcpConfigs()
+        const report = formatMcpSyncReport(results)
+        if (report) out.log(report)
+        else out.log('No KB MCP entries found.')
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        out.error(`❌ ${message}`)
+        if (mode === 'cli') process.exitCode = 1
+      }
+    } else {
+      out.log(printMcpHelp())
     }
     return
   }
@@ -951,9 +1060,6 @@ async function main() {
 
   // Launch TUI when invoked interactively with no arguments
   if (isTTY && args.length === 0) {
-    const [skillResults] = await Promise.all([
-      installSkillsGlobally().catch(() => [] as Awaited<ReturnType<typeof installSkillsGlobally>>),
-    ])
     const isFreshInstall = isFreshClientInstall()
     let kbConfig = await ensureDefaultConfig()
     const inferred = await persistInferredLLMProvider({ config: kbConfig })
@@ -962,11 +1068,6 @@ async function main() {
 
     const startupNotices: string[] = []
     if (inferred.notice) startupNotices.push(inferred.notice)
-
-    for (const r of skillResults) {
-      if (r.action === 'installed') startupNotices.push(`✓ KB skill ${r.skill} installed for ${r.agent}`)
-      else if (r.action === 'updated') startupNotices.push(`↑ KB skill ${r.skill} updated for ${r.agent}`)
-    }
 
     if (isFreshInstall) {
       startupNotices.push(FIRST_RUN_WELCOME_NOTICE)
@@ -1008,7 +1109,6 @@ async function main() {
     return
   }
 
-  installSkillsGlobally().catch(() => {}) // fire and forget — never block startup
   let kbConfig = await ensureDefaultConfig()
   const inferred = await persistInferredLLMProvider({ config: kbConfig })
   kbConfig = inferred.config

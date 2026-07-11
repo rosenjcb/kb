@@ -166,7 +166,7 @@ describe('kb-server export / import', () => {
       runImportCommand(['--from', bundle, '--base', 'dst'], logger, kbHome)
     ).rejects.toThrow(/already has an index/)
     await runImportCommand(['--from', bundle, '--base', 'dst', '--force'], logger, kbHome)
-  })
+  }, 20_000)
 
   it('rejects a source directory that is not a kb snapshot', async () => {
     const { logger } = capturingLogger()

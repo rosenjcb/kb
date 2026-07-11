@@ -58,6 +58,7 @@ vi.mock('@kb/server/reindex-scheduler.js', () => ({
 
 vi.mock('@kb/core/config/kb-config.js', () => ({
   getKbConfigDir: vi.fn(() => '/tmp/kb-config'),
+  ensureDefaultConfig: vi.fn(async () => ({})),
 }))
 
 class FakeServer extends EventEmitter {
@@ -76,10 +77,30 @@ vi.mock('@kb/server/http-server.js', () => ({
   createHttpServer: vi.fn(() => fakeServer),
 }))
 
+import { ensureDefaultConfig } from '@kb/core/config/kb-config.js'
 import { runKbInit } from '@kb/core/ops/init-cli.js'
+import { createHttpServer } from '@kb/server/http-server.js'
 import { startReindexScheduler } from '@kb/server/reindex-scheduler.js'
 import { resolveBootstrapPolicy } from '@kb/server/server-bootstrap.js'
-import { runServerCommand } from '@kb/server/server-cli.js'
+import { runServerCommand, runServerMain } from '@kb/server/server-cli.js'
+
+describe('runServerMain version', () => {
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('[TC-53a] prints version for --version and does not start the daemon', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await runServerMain(['--version'])
+
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/^kb-server v\d+\.\d+\.\d+/))
+    expect(ensureDefaultConfig).not.toHaveBeenCalled()
+    expect(createHttpServer).not.toHaveBeenCalled()
+
+    log.mockRestore()
+  })
+})
 
 describe('runServerCommand bootstrap progress', () => {
   afterEach(() => {

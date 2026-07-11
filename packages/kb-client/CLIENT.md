@@ -51,16 +51,27 @@ Deep dive on HTTP wiring → [`src/api/CONNECTION.md`](./src/api/CONNECTION.md).
 
 **User visibility:** every session prints `host: … │ base: …` (CLI banner, TUI status bar, chat header). See [CONNECTION.md](./src/api/CONNECTION.md).
 
-### Remote server (Docker / shared host)
+### Remote / team server (Docker / shared host)
+
+**Humans** (CLI/TUI):
 
 ```bash
-kb --host your-host:38117 query "how does auth work?"
-# or persist:
-export KB_SERVER_URL=http://your-host:38117
+export KB_SERVER_URL=https://kb.acme.internal:38117
 export KB_SERVER_API_KEY=<token>
+kb query "how does auth work?"
+# or: kb --host https://kb.acme.internal:38117 query "…"
 ```
 
-Indexing happens on the server via `KB_GIT_REPOS` — not `kb init` on the laptop.
+**Agents** (Claude Code / Cursor) — same URL, MCP only:
+
+```bash
+kb skills install
+kb mcp install --host https://kb.acme.internal:38117
+kb mcp status
+# reconnect MCP in the agent
+```
+
+Indexing happens on the server via `KB_GIT_REPOS` — not `kb init` on the laptop. README walkthrough: [Connect to a remote / team server](../../README.md#connect-to-a-remote--team-server).
 
 ## Local vs remote
 

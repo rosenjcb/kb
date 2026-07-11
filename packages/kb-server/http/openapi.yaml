@@ -315,7 +315,20 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: Last-modified time of the on-disk index, when present.
+          description: >
+            Last-modified time of `.kb-index.sqlite` (updated by init, scan, and
+            reindex — not first-boot-only).
+        version:
+          type: object
+          required: [server, core]
+          description: Package versions running on this node.
+          properties:
+            server:
+              type: string
+              description: `@kb/server` semver
+            core:
+              type: string
+              description: `@kb/core` semver
         indexing:
           type: boolean
           description: True while a fresh bootstrap build is running in the background.

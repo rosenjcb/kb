@@ -66,48 +66,50 @@ Start the server with MCP enabled (same `KB_SERVER_API_KEY` on server and client
 
 ```bash
 export KB_SERVER_API_KEY=testkey
+# Point the thin client at this node (remote example):
+# export KB_SERVER_URL=https://kb.example.com:38117
 kb-server start --with-mcp
 ```
 
-**Claude Code** — Streamable HTTP at `POST /mcp`:
+**Preferred setup** — pick an explicit host (local or remote), then sync agent MCP configs:
+
+```bash
+# Local node
+kb mcp install --host localhost:38117
+
+# Remote node
+kb mcp install --host https://kb.example.com:38117
+
+# Or set session env, then:
+export KB_SERVER_URL=https://kb.example.com:38117
+export KB_SERVER_API_KEY=testkey
+kb mcp install
+kb mcp status
+```
+
+That writes/updates the `kb` entry in:
+
+| Client | File | Shape |
+|---|---|---|
+| Cursor | `~/.cursor/mcp.json` | `{ "url": "<server>/mcp", "headers": { "Authorization": "Bearer …" } }` |
+| Claude Code | `~/.claude.json` (`mcpServers`) | `{ "type": "http", "url": "<server>/mcp", "headers": { … } }` |
+
+URL comes only from `--host` / `KB_SERVER_URL` / `KB_HOST` — never an invented localhost default. Other MCP servers in those files are left alone. Reload MCP in the agent after sync, then use `kb_query` (agents: MCP connection only; humans: CLI/TUI). Verify with `claude mcp list` / `agent mcp list-tools kb` / `kb mcp status`.
+
+**Manual fallback** (only if you cannot run the client):
 
 ```bash
 claude mcp add --transport http -s user kb http://localhost:38117/mcp \
   --header "Authorization: Bearer ${KB_SERVER_API_KEY}"
 ```
 
-Use your deploy URL instead of `localhost` for a remote server. Verify with `claude mcp list`.
-
-**Cursor Agent** — add to `~/.cursor/mcp.json` (project scope: `.cursor/mcp.json`), then use the Agent CLI:
-
-```bash
-mkdir -p ~/.cursor
-cat > ~/.cursor/mcp.json <<'EOF'
-{
-  "mcpServers": {
-    "kb": {
-      "url": "http://localhost:38117/mcp",
-      "headers": {
-        "Authorization": "Bearer testkey"
-      }
-    }
-  }
-}
-EOF
-
-agent mcp list
-agent mcp list-tools kb
-```
-
-Replace `testkey` / the URL when pointing at a deployed instance. If `mcp.json` already exists, merge the `kb` entry under `mcpServers` instead of overwriting.
-
-**Tools exposed:** `kb_query`, `read_facts`, `search_code_symbols`, `get_code_neighbors`, `get_code_graph_summary`.
+**Tools exposed:** `kb_query`, `kb_read_facts`, `kb_search_code_symbols`, `kb_get_code_neighbors`, `kb_get_code_graph_summary` (registry tools are `kb_`-prefixed on the wire).
 
 ### Endpoints (`kb-server start [--with-mcp] [--with-slack]`)
 
 | Method / path | Auth | Purpose |
 |---|---|---|
-| `GET /health` / `/healthz` | none | Liveness + `indexMtime` + `indexing` + `bootstrapProgress` + `reindexing` |
+| `GET /health` / `/healthz` | none | Liveness + `indexMtime` (SQLite mtime = last index write) + `version.{server,core}` + `indexing` / `bootstrapProgress` / `reindexing` |
 | `POST /v1/query` | Bearer | Synthesized answer + sources; returns `503` with bootstrap progress while first indexing is still running |
 | `POST /v1/chat` | Bearer | Multi-turn SSE chat |
 | `POST /v1/reindex` | Bearer | Incremental rescan |

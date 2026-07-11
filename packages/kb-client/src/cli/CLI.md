@@ -4,7 +4,7 @@ title: CLI Layer
 description: kb client command router, global --host flag, and remote HTTP dispatch.
 resource: ./packages/kb-client/src/cli
 tags: [cli, commands, client, entrypoint]
-timestamp: 2026-07-05T00:00:00Z
+timestamp: 2026-07-11T00:00:00Z
 ---
 
 # CLI Layer (`@kb/client`)
@@ -32,7 +32,8 @@ Monorepo context → [`../../CLIENT.md`](../../CLIENT.md) · Connection detail �
 | Global flags | `../api/cli-global-flags.ts` | `--host` → env override for this process |
 | Remote ops | `remote-commands.ts` | Query, chat, admin CLI over HTTP |
 | Chat REPL | `chat-cli.ts` | Local or remote synthesis loop |
-| Skills | `skill-installer.ts` | Install bundled skills to agent homes |
+| Skills | `skill-installer.ts` | Install bundled skills; MCP install only with explicit host |
+| MCP | `../api/mcp-config-sync.ts` | `kb mcp install|status|uninstall` — point agents at local/remote node |
 
 ## Connection visibility
 
@@ -85,7 +86,12 @@ Uninitialized base → `uninitializedBaseNotice` (points to `KB_GIT_REPOS`, not 
 
 ## Skills, uninstall, publish
 
-Unchanged — see prior [`CLI.spec.md`](CLI.spec.md) FR/TC for skills installer, publish preview/apply, and split `kb uninstall` vs `kb-server uninstall`.
+Skills and MCP client wiring are **opt-in**:
+
+- `kb skills install` — skill files, profile readmes, hooks; MCP only if host env already set
+- `kb mcp install --host …` — preferred for pointing Cursor/Claude at a node
+
+CLI/TUI startup does **not** auto-install skills or rewrite MCP configs. Spec: [`CLI.spec.md`](CLI.spec.md) FR-34 · connection: [`../api/CONNECTION.md`](../api/CONNECTION.md).
 
 ## `kb sync`
 

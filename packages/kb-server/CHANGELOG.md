@@ -1,5 +1,15 @@
 # kb-server
 
+## 1.3.4
+
+### Patch Changes
+
+- Document agents=MCP-only / humans=CLI-TUI split and explicit-host MCP install (`kb mcp install --host`).
+- Fix `kb-server --version` so it prints the package version and exits instead of starting the daemon (broke `install:global` smoke when port 38117 was already in use).
+- Include `version.server` and `version.core` on `GET /healthz` (and `/health`); bake `@kb/core` semver into the server binary via esbuild `define`.
+- Updated dependencies
+  - @kb/core@1.4.2 (Gemini default → `gemini-3-flash-preview`)
+
 ## 1.3.3
 
 ### Patch Changes

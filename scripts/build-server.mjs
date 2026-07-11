@@ -7,7 +7,11 @@ import { nodeBundleOptions } from './esbuild-node-bundle.mjs'
 
 const projectRoot = path.resolve(import.meta.dirname, '..')
 const pkgRoot = path.join(projectRoot, 'packages', 'kb-server')
+const corePkgRoot = path.join(projectRoot, 'packages', 'kb-core')
 const { version } = JSON.parse(readFileSync(path.join(pkgRoot, 'package.json'), 'utf-8'))
+const { version: coreVersion } = JSON.parse(
+  readFileSync(path.join(corePkgRoot, 'package.json'), 'utf-8')
+)
 const binDir = path.join(pkgRoot, 'dist', 'bin')
 const outFile = path.join(binDir, 'kb-server.js')
 const launcherFile = path.join(binDir, 'kb-server')
@@ -20,6 +24,8 @@ await build(
     outfile: outFile,
     define: {
       __KB_SERVER_VERSION__: JSON.stringify(version),
+      // `@kb/core/version` reads `__KB_VERSION__` — bake core semver into the server binary.
+      __KB_VERSION__: JSON.stringify(coreVersion),
     },
   }),
 )

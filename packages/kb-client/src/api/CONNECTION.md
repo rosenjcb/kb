@@ -4,7 +4,7 @@ title: Client ↔ Server Connection
 description: How kb resolves kb-server address, overrides via --host, and surfaces host/base to the user.
 resource: ./packages/kb-client/src/api
 tags: [client, server, http, connection]
-timestamp: 2026-07-05T00:00:00Z
+timestamp: 2026-07-11T00:00:00Z
 ---
 
 # Client ↔ Server Connection
@@ -39,6 +39,26 @@ sequenceDiagram
 Auth: `KB_SERVER_API_KEY` → Bearer on every request (`kb-api-client.ts`).
 
 Base: `resolveEffectiveBaseDir()` — session file `~/.kb/state/active-base`, default base, `.kb` marker, or `KB_BASE` / `KB_ACTIVE_BASE`. Server-side index lives under `~/.kb/sessions/<base>/` on the **server host**, not the laptop.
+
+## MCP client config install
+
+**Humans** use the `kb` CLI/TUI (REST). **Agents** (Cursor / Claude Code) use Streamable HTTP MCP at `POST /mcp` only — the **kb:dev-workflow** skill never investigates via CLI/TUI.
+The MCP URL must be an **explicit** local or remote host — never an invented localhost default.
+
+`syncKbMcpConfigs()` in `mcp-config-sync.ts` (used by `kb mcp install`):
+
+| Trigger | Behavior |
+|---------|----------|
+| `kb mcp install --host …` | Write Cursor/Claude `kb` → `${server}/mcp` |
+| `kb mcp install` | Same, using `KB_SERVER_URL` / `KB_HOST` / `config.server.host` (errors with `needs-host` if unset) |
+| `kb skills install` | Install MCP only when an explicit host (env or config) is already set |
+| Normal `kb` / TUI startup | **No** MCP rewrite — opt-in via `kb mcp install` / `kb skills install` only |
+| `KB_LOCAL_MODE=true` | No-op |
+| `kb mcp uninstall` / `kb skills uninstall` | Removes managed `kb` entries only |
+
+Host resolution: `--host` → `KB_SERVER_URL` → `KB_HOST`+`KB_PORT` → `config.server.host`. Refuses the implicit CLI localhost default unless the operator passed `--host`, set env, or configured `server.host`.
+
+Writes `mcpServers.kb` with Bearer header when `KB_SERVER_API_KEY` or `config.server.apiKey` is set (clears a stale Bearer when neither is set). Merges into existing JSON; never clobbers other servers. Inspect with `kb mcp status`. `needs-host` / install failures exit non-zero.
 
 ## User-visible connection context
 
@@ -83,6 +103,7 @@ Operator guide copy lives in `INDEXING_SERVER_MANAGED_NOTICE` (`@kb/core/config/
 2. New remote endpoint → `KbApiClient` method + `remote-commands` wrapper.
 3. Any new interactive surface → call `formatConnectionContext` on open.
 4. Connection errors → mention `--host` and env vars.
+5. New MCP client target → extend `mcp-config-sync.ts` + keep skill/docs in sync.
 
 ## Gotchas
 
@@ -90,6 +111,8 @@ Operator guide copy lives in `INDEXING_SERVER_MANAGED_NOTICE` (`@kb/core/config/
 - `formatServerAddress` strips scheme/path — display is `host:port`, not full URL.
 - TUI `serverHost` prop is the host segment only; base updates async after `resolveEffectiveBaseDir`.
 - `base use` is client-local (writes state files); other `base` subcommands hit server admin CLI in remote mode.
+- `mcp`, `skills`, `uninstall`, and `sync` are always client-local — they rewrite agent configs on the laptop, not server state.
+- Startup is read-only for agent wiring: no skill install, no MCP rewrite until the operator runs `kb skills install` / `kb mcp install`.
 
 ## Related docs
 

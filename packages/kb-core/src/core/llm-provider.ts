@@ -711,7 +711,7 @@ export class GeminiProvider implements LLMProvider {
 
   constructor(
     private apiKey: string,
-    model = 'gemini-3.5-flash'
+    model = 'gemini-3-flash-preview'
   ) {
     this.model = model
   }

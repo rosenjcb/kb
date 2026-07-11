@@ -29,13 +29,14 @@ See companion doc for full vocabulary where applicable.
 | ID | Requirement |
 |------|------------|
 | FR-1 | Stream chat synthesis over SSE |
-| FR-2 | Expose authenticated REST routes for query, chat, reindex, and health |
+| FR-2 | Expose authenticated REST routes for query, chat, reindex, and health; `/healthz` includes `version.server` and `version.core` |
 | FR-3 | KbService reads facts, reports health, and serializes reindex |
 | FR-4 | Expose MCP tools with read-only allowlist |
 | FR-5 | Parse and run periodic reindex scheduler |
 | FR-6 | Serialize IntentResult to REST JSON |
 | FR-7 | Resolve bootstrap base, repos, branch, and ignore patterns from env and flags |
 | FR-8 | Start server CLI with bootstrap logging and deferred scheduler |
+| FR-8a | Print package version for `--version` / `-V` without starting the daemon |
 | FR-9 | Store in-memory chat session history with TTL and caps |
 | FR-10 | Verify Slack signatures, route events, and deduplicate retries |
 
@@ -91,6 +92,7 @@ See companion doc for full vocabulary where applicable.
 | TC-51 | FR-7 | applies --branch as the default branch for targets without an inline pin | pass |
 | TC-52 | FR-8 | forwards background init progress lines into server logging | pass |
 | TC-53 | FR-8 | starts the reindex scheduler only after bootstrap init completes | pass |
+| TC-53a | FR-8a | Given `kb-server --version`, prints version and does not listen | pass |
 | TC-54 | FR-9 | returns empty history for an unknown session | pass |
 | TC-55 | FR-9 | appends user/assistant turns and reads them back | pass |
 | TC-56 | FR-9 | trims to the configured turn cap | pass |
