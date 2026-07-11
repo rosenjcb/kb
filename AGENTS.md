@@ -31,6 +31,8 @@ and rewrites `research/version.tex`. Do not hand-edit those version files.
 
 **Strict semver:** each affected package moves exactly one step (patch, minor, or major) vs the merge base — no `1.1.4 → 1.3.0`. Enforced by CI, `pre-commit` (`--staged`), and `pre-push` (`--push`) via `scripts/check-changeset-consistency.mjs`.
 
+**`@kb/core` version is internal-only.** Still bump via changesets when core source changes. Never print it on user-facing surfaces (CLI/TUI, `kb-server` start/`--version`, `/healthz`, MCP metadata, operator logs) — those show `@kb/client` / `@kb/server` only. Core semver is for workspace dependency tracking and snapshot manifest provenance.
+
 ## Boolean environment variables
 
 Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: kb server API
-  version: 0.12.0
+  version: 0.13.0
   description: >
     HTTP + MCP surface for the kb knowledge base service (`kb-server start`).
     `/v1/*` is a plain REST API for apps and the Slack integration; `/mcp` is an
@@ -320,15 +320,12 @@ components:
             reindex — not first-boot-only).
         version:
           type: object
-          required: [server, core]
-          description: Package versions running on this node.
+          required: [server]
+          description: User-facing package version running on this node (`@kb/server`).
           properties:
             server:
               type: string
               description: `@kb/server` semver
-            core:
-              type: string
-              description: `@kb/core` semver
         indexing:
           type: boolean
           description: True while a fresh bootstrap build is running in the background.

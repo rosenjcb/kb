@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.4.3
+
+### Patch Changes
+
+- Keep `@kb/core` version internal: CLI/TUI and `kb-server` surfaces show client/server semver only; drop `version.core` from `/healthz` and MCP metadata.
+
 ## 1.4.2
 
 ### Patch Changes

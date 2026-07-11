@@ -23,7 +23,7 @@ await build({
   jsx: 'automatic',
   jsxImportSource: 'react',
   define: {
-    __KB_VERSION__: JSON.stringify(version),
+    __KB_CLIENT_VERSION__: JSON.stringify(version),
   },
 })
 

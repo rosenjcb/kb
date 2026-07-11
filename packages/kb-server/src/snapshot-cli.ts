@@ -39,6 +39,7 @@ import {
 import {
   SNAPSHOT_MANIFEST_FILE,
   type SnapshotManifest,
+  type SnapshotProducer,
   buildSnapshotManifest,
   checkSnapshotCompatibility,
   computeFileDigest,
@@ -50,6 +51,11 @@ import type { ServerLogger } from './server-cli.js'
 
 const INDEX_BASENAME = '.kb-index.sqlite'
 const REPOS_DIRNAME = 'repos'
+
+/** User-facing producer label — binary + toolVersion only (never coreVersion). */
+export function formatSnapshotProducer(producer: SnapshotProducer): string {
+  return producer.toolVersion ? `${producer.tool}@${producer.toolVersion}` : producer.tool
+}
 
 async function pathExists(target: string): Promise<boolean> {
   try {
@@ -293,7 +299,7 @@ export async function runImportCommand(
 
   out.log(`📥 Imported snapshot into base "${baseName}" (${baseDir})`)
   out.log(
-    `   built by ${manifest.producer.tool}@${manifest.producer.coreVersion} · index schema ${manifest.compat.indexSchema} · ${manifest.provenance.repos.length} repo(s)`
+    `   built by ${formatSnapshotProducer(manifest.producer)} · index schema ${manifest.compat.indexSchema} · ${manifest.provenance.repos.length} repo(s)`
   )
   out.log(`   start serving: kb-server start --base ${baseName}`)
 }

@@ -95,7 +95,7 @@ the working trees.
   "createdAt": "2026-07-07T12:00:00.000Z",
   "producer": {
     "tool": "kb-server",
-    "coreVersion": "1.2.3",       // @kb/core that built the on-disk format
+    "coreVersion": "1.2.3",       // internal @kb/core provenance (not user-facing)
     "toolVersion": "1.2.3"        // producing binary (optional)
   },
   "compat": {
