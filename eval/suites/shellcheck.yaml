@@ -5,60 +5,64 @@ display_name: shellcheck
 repo_url: https://github.com/koalaman/shellcheck.git
 rubric_focus: ShellCheck static analysis tool and Haskell AST parsing engine
 questions:
-  - What are the three primary functional goals of ShellCheck when executing static analysis on shell scripts?
-  - What are the core source files in the shellcheck codebase that implement parsing, syntax tree representation, and static analysis checks?
-  - Why is ShellCheck support for Zsh syntax highly constrained compared to its comprehensive Bash parsing capabilities?
-  - Step by step, infer the analysis pipeline for a script snippet: from raw text through Parser.hs tokenization, AST.hs node construction, AnalyzerLib variable tracing, and Analytics/Checks rule evaluation — what artifacts exist at each stage?
-  - Explain how variable flow tracing and modification detection are handled inside the analyzer libraries, and how a check would detect an uninitialized variable use.
-  - How are tests organized and executed inside the ShellCheck repository to verify parsing correctness?
-  - Walk through the disable-comment path: how does an inline `shellcheck disable=SCxxxx` annotation get associated with an AST node and suppress a matching warning during analysis?
-  - Detail the structural compilation process of ShellCheck from source utilizing the Cabal build utility.
+  - "What are the three primary functional goals of ShellCheck when executing static analysis on shell scripts?"
+  - "What are the core source files in the shellcheck codebase that implement parsing, syntax tree representation, and static analysis checks?"
+  - "Why is ShellCheck support for Zsh syntax highly constrained compared to its comprehensive Bash parsing capabilities?"
+  - "Step by step, infer the analysis pipeline for a script snippet: from raw text through Parser.hs tokenization, AST.hs node construction, AnalyzerLib variable tracing, and Analytics/Checks rule evaluation — what artifacts exist at each stage?"
+  - "Explain how variable flow tracing and modification detection are handled inside the analyzer libraries, and how a check would detect an uninitialized variable use."
+  - "How are tests organized and executed inside the ShellCheck repository to verify parsing correctness?"
+  - "Walk through the disable-comment path: how does an inline shellcheck disable=SCxxxx annotation get associated with an AST node and suppress a matching warning during analysis?"
+  - "Detail the structural compilation process of ShellCheck from source utilizing the Cabal build utility."
 answers:
   - >
-    ShellCheck is a static analysis tool designed to inspect shell scripts and provide linting reports.
-    Its analytical goals are: (1) to identify and clarify typical beginner-level syntax issues that
-    cause shells to emit cryptic errors; (2) to isolate and explain intermediate-level semantic bugs
-    where scripts exhibit unexpected or counter-intuitive execution behavior; and (3) to point out
-    subtle edge cases, portability issues, and safety pitfalls that may cause an advanced user's script
-    to fail under future operating circumstances.
+    ShellCheck is a static analysis tool designed to inspect shell scripts and provide linting
+    reports. Its analytical goals are: (1) to identify and clarify typical beginner-level syntax
+    issues that cause shells to emit cryptic errors; (2) to isolate and explain intermediate-level
+    semantic bugs where scripts exhibit unexpected or counter-intuitive execution behavior; and (3)
+    to point out subtle edge cases, portability issues, and safety pitfalls that may cause an
+    advanced user's script to fail under future operating circumstances.
   - >
     The ShellCheck source architecture is built around key Haskell modules in the src/ directory:
-    Parser.hs handles lexical tokenization and syntactic parsing of raw shell script lines into tokens;
-    AST.hs defines the algebraic data types and structured nodes representing the abstract syntax tree
-    of the script; and Analytics.hs (along with specific modules in the Checks/ directory) implements
-    the core analysis engines and linting rules that walk the AST to flag violations and issue warnings.
+    Parser.hs handles lexical tokenization and syntactic parsing of raw shell script lines into
+    tokens; AST.hs defines the algebraic data types and structured nodes representing the abstract
+    syntax tree of the script; and Analytics.hs (along with specific modules in the Checks/
+    directory) implements the core analysis engines and linting rules that walk the AST to flag
+    violations and issue warnings.
   - >
-    ShellCheck focuses on POSIX-compliant shells, Bash, and ksh because they share cohesive syntax structures.
-    Supporting Zsh syntax is structurally difficult as Zsh introduces a highly custom, unique grammar
-    that does not align with standard Bash AST definitions. Implementing Zsh parsing would require writing
-    extensive custom monadic parsing rules in Parser.hs to avoid parsing errors, and extending variable-tracing
-    engines like AnalyzerLib.hs to handle Zsh's distinct array patterns and word-splitting behaviors.
+    ShellCheck focuses on POSIX-compliant shells, Bash, and ksh because they share cohesive syntax
+    structures. Supporting Zsh syntax is structurally difficult as Zsh introduces a highly custom,
+    unique grammar that does not align with standard Bash AST definitions. Implementing Zsh parsing
+    would require writing extensive custom monadic parsing rules in Parser.hs to avoid parsing
+    errors, and extending variable-tracing engines like AnalyzerLib.hs to handle Zsh's distinct
+    array patterns and word-splitting behaviors.
   - >
-    Raw script text enters the monadic parser in Parser.hs, which tokenizes shell constructs (subshells,
-    arithmetic, expansions) into tokens. Those tokens are assembled into algebraic AST nodes defined in
-    AST.hs. AnalyzerLib.hs then walks the tree to build scope maps and track assignments/uses. Finally
-    Analytics.hs and Checks/* run declarative rules over the annotated tree, emitting SC codes for
-    violations. Intermediate artifacts are tokens → AST → analyzer maps → warning list.
+    Raw script text enters the monadic parser in Parser.hs, which tokenizes shell constructs
+    (subshells, arithmetic, expansions) into tokens. Those tokens are assembled into algebraic AST
+    nodes defined in AST.hs. AnalyzerLib.hs then walks the tree to build scope maps and track
+    assignments/uses. Finally Analytics.hs and Checks/* run declarative rules over the annotated
+    tree, emitting SC codes for violations. Intermediate artifacts are tokens → AST → analyzer maps
+    → warning list.
   - >
-    Variable flow tracing is handled inside src/AnalyzerLib.hs. The analyzer performs lexical scope tracking
-    and constant propagation by traversing the AST nodes. It monitors assignment commands (like x=value,
-    read x, or local x), records when variables are declared, tracking whether they are ever modified,
-    re-assigned, or left unused. Checks consult these maps to flag uninitialized references (e.g. SC2154),
-    read-only modifications, or dead assignments.
+    Variable flow tracing is handled inside src/AnalyzerLib.hs. The analyzer performs lexical scope
+    tracking and constant propagation by traversing the AST nodes. It monitors assignment commands
+    (like x=value, read x, or local x), records when variables are declared, tracking whether they
+    are ever modified, re-assigned, or left unused. Checks consult these maps to flag uninitialized
+    references (e.g. SC2154), read-only modifications, or dead assignments.
   - >
-    Tests are managed within Haskell test suites in the test/ and src/ folders, including specific checks inside
-    Checks/*.hs and Analytics.hs. Tests use inline assertions that execute shellcheck against short code snippets.
-    These tests declare a specific shell target, execute the parser and analyzer over the sample, and assert
-    that target error codes (like SC2002 or SC2154) are either triggered or correctly suppressed based on the
-    checked AST rules.
+    Tests are managed within Haskell test suites in the test/ and src/ folders, including specific
+    checks inside Checks/*.hs and Analytics.hs. Tests use inline assertions that execute shellcheck
+    against short code snippets. These tests declare a specific shell target, execute the parser and
+    analyzer over the sample, and assert that target error codes (like SC2002 or SC2154) are either
+    triggered or correctly suppressed based on the checked AST rules.
   - >
-    Users insert inline comment annotations preceded by 'shellcheck disable=SCxxxx'. The parser in Parser.hs
-    reads these comment strings adjacent to AST nodes, associates suppression metadata with the target node
-    block, and Analytics.hs filters matching error codes during the analysis pass so suppressed warnings
-    are omitted from the report.
+    Users insert inline comment annotations preceded by 'shellcheck disable=SCxxxx'. The parser in
+    Parser.hs reads these comment strings adjacent to AST nodes, associates suppression metadata
+    with the target node block, and Analytics.hs filters matching error codes during the analysis
+    pass so suppressed warnings are omitted from the report.
   - >
-    To compile ShellCheck from source, the system must have a functional GHC Haskell compiler and at least
-    2GB of RAM. The process relies on the Cabal packaging utility: first, running 'cabal update' synchronizes
-    the system's local package indexes; then, executing 'cabal install' inside the shellcheck root directory
-    triggers the compiler to parse dependencies, build the core Haskell modules, generate the executable
-    target, and install the compiled binary to the user's local path at ~/.cabal/bin/.
+    To compile ShellCheck from source, the system must have a functional GHC Haskell compiler and at
+    least 2GB of RAM. The process relies on the Cabal packaging utility: first, running 'cabal
+    update' synchronizes the system's local package indexes; then, executing 'cabal install' inside
+    the shellcheck root directory triggers the compiler to parse dependencies, build the core
+    Haskell modules, generate the executable target, and install the compiled binary to the user's
+    local path at ~/.cabal/bin/.

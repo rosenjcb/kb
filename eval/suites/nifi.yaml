@@ -5,67 +5,69 @@ display_name: nifi
 repo_url: https://github.com/apache/nifi.git
 rubric_focus: Apache NiFi modular dataflow and runtime classloading architecture
 questions:
-  - What is the primary operational architecture of Apache NiFi, and how does it automate data routing and ingestion?
-  - Describe the directory structure of an unpacked NiFi Archive (NAR) bundle and explain where runtime dependencies are isolated.
-  - Explain the class delegation model implemented by the NarClassLoader and how it differs from standard Java ClassLoader delegation.
-  - What are the essential requirements for a custom Processor implementation to be discovered and registered by the NiFi runtime?
-  - Step by step, walk through what happens from the moment a user drops a Processor onto the canvas until the first FlowFile is processed — which lifecycle hooks fire, in what order, and what each prepares.
-  - Infer the UI-to-runtime path: when an operator starts a processor in the web UI, which server-side components receive the request and how does that reach @OnScheduled / onTrigger?
-  - What is the purpose of a ControllerService and how does it optimize resource usage inside NiFi?
-  - How does NiFi support running data processing pipelines using native Python?
+  - "What is the primary operational architecture of Apache NiFi, and how does it automate data routing and ingestion?"
+  - "Describe the directory structure of an unpacked NiFi Archive (NAR) bundle and explain where runtime dependencies are isolated."
+  - "Explain the class delegation model implemented by the NarClassLoader and how it differs from standard Java ClassLoader delegation."
+  - "What are the essential requirements for a custom Processor implementation to be discovered and registered by the NiFi runtime?"
+  - "Step by step, walk through what happens from the moment a user drops a Processor onto the canvas until the first FlowFile is processed — which lifecycle hooks fire, in what order, and what each prepares."
+  - "Infer the UI-to-runtime path: when an operator starts a processor in the web UI, which server-side components receive the request and how does that reach @OnScheduled / onTrigger?"
+  - "What is the purpose of a ControllerService and how does it optimize resource usage inside NiFi?"
+  - "How does NiFi support running data processing pipelines using native Python?"
 answers:
   - >
-    Apache NiFi is an enterprise-scale system designed to automate, control, and monitor the flow
-    of data between disparate systems. It provides an intuitive browser-based user interface for the
-    design, control, and real-time monitoring of highly scalable directed graphs of data routing, system
-    mediation, and transformation logic. Secure by default with HTTPS, NiFi supports horizontal scaling
-    via cluster coordination, guarantees delivery using configurable prioritization and backpressure rules,
-    and maintains data provenance tracking to record transactional metadata and content changes at
-    every processing stage.
+    Apache NiFi is an enterprise-scale system designed to automate, control, and monitor the flow of
+    data between disparate systems. It provides an intuitive browser-based user interface for the
+    design, control, and real-time monitoring of highly scalable directed graphs of data routing,
+    system mediation, and transformation logic. Secure by default with HTTPS, NiFi supports
+    horizontal scaling via cluster coordination, guarantees delivery using configurable
+    prioritization and backpressure rules, and maintains data provenance tracking to record
+    transactional metadata and content changes at every processing stage.
   - >
     An unpacked NiFi Archive (NAR) bundle utilizes a structured ZIP format containing a defined
     hierarchy. At the root of the structure is the META-INF/ folder, which contains the crucial
-    MANIFEST.MF file declaring metadata such as the unique Nar-Id and the optional Nar-Dependency-Id.
-    Runtime binaries and dependencies are strictly isolated inside the NAR-INF/bundled-dependencies/
-    subdirectory, which holds third-party JAR files and an optional native/ folder containing native
-    dynamic-link libraries (.so, .dll, or .dylib files) needed by the bundle.
+    MANIFEST.MF file declaring metadata such as the unique Nar-Id and the optional
+    Nar-Dependency-Id. Runtime binaries and dependencies are strictly isolated inside the
+    NAR-INF/bundled-dependencies/ subdirectory, which holds third-party JAR files and an optional
+    native/ folder containing native dynamic-link libraries (.so, .dll, or .dylib files) needed by
+    the bundle.
   - >
-    The NarClassLoader extends URLClassLoader and modifies standard parent-first classloader delegation.
-    When loading a class, NarClassLoader first delegates the lookup to the parent ClassLoader (which
-    corresponds to the ClassLoader of the dependency NAR specified by Nar-Dependency-Id in the manifest).
-    If the class is not resolved in the parent tree, it searches the NAR's local classpath inside
-    NAR-INF/bundled-dependencies/*.jar. This architecture isolates individual processor dependencies,
-    allowing multiple NAR bundles to bring conflicting, incompatible versions of the same library
-    and run them concurrently within the same JVM.
+    The NarClassLoader extends URLClassLoader and modifies standard parent-first classloader
+    delegation. When loading a class, NarClassLoader first delegates the lookup to the parent
+    ClassLoader (which corresponds to the ClassLoader of the dependency NAR specified by
+    Nar-Dependency-Id in the manifest). If the class is not resolved in the parent tree, it searches
+    the NAR's local classpath inside NAR-INF/bundled-dependencies/*.jar. This architecture isolates
+    individual processor dependencies, allowing multiple NAR bundles to bring conflicting,
+    incompatible versions of the same library and run them concurrently within the same JVM.
   - >
-    For a custom Java-based Processor to be discovered and registered by the NiFi runtime on startup:
-    (1) the class must expose a public default constructor; (2) it must extend the base
-    org.apache.nifi.processor.AbstractProcessor class; and (3) its JAR must contain a text file inside
-    META-INF/services/ named org.apache.nifi.processor.Processor. This file must contain the fully
-    qualified classname of the custom processor, enabling the framework's service loading engine to index
-    and load the component.
+    For a custom Java-based Processor to be discovered and registered by the NiFi runtime on
+    startup: (1) the class must expose a public default constructor; (2) it must extend the base
+    org.apache.nifi.processor.AbstractProcessor class; and (3) its JAR must contain a text file
+    inside META-INF/services/ named org.apache.nifi.processor.Processor. This file must contain the
+    fully qualified classname of the custom processor, enabling the framework's service loading
+    engine to index and load the component.
   - >
-    When a processor is added to the canvas, init() runs with a ProcessorInitializationContext to register
-    logs and property descriptors. Configuration is validated before the component can be started. On start,
-    @OnScheduled methods prepare connections and shared state. During active execution, onTrigger() runs
-    inside a concurrent process session that pulls FlowFiles, transforms them, and transfers them to
-    relationships. When stopped, @OnUnscheduled then @OnStopped clean up resources. Provenance and
-    FlowFile attributes are updated throughout the session commit path.
+    When a processor is added to the canvas, init() runs with a ProcessorInitializationContext to
+    register logs and property descriptors. Configuration is validated before the component can be
+    started. On start, @OnScheduled methods prepare connections and shared state. During active
+    execution, onTrigger() runs inside a concurrent process session that pulls FlowFiles, transforms
+    them, and transfers them to relationships. When stopped, @OnUnscheduled then @OnStopped clean up
+    resources. Provenance and FlowFile attributes are updated throughout the session commit path.
   - >
-    Starting a processor in the UI issues a REST API call into the NiFi web/API layer, which updates the
-    flow controller / processor node state. The scheduling agent then marks the component runnable and
-    invokes lifecycle annotations (@OnScheduled) before the timer-driven or event-driven engine begins
-    calling onTrigger on worker threads. The UI observes status via component state and bulletins rather
-    than executing processor logic itself.
+    Starting a processor in the UI issues a REST API call into the NiFi web/API layer, which updates
+    the flow controller / processor node state. The scheduling agent then marks the component
+    runnable and invokes lifecycle annotations (@OnScheduled) before the timer-driven or
+    event-driven engine begins calling onTrigger on worker threads. The UI observes status via
+    component state and bulletins rather than executing processor logic itself.
   - >
-    A ControllerService provides shared state, database connections, SSL contexts, and utility methods
-    across multiple Processors, ReportingTasks, and other ControllerServices inside a single JVM.
-    Instead of requiring each independent processor to open database connections or cache large datasets
-    privately, a single instance of a ControllerService is initialized once and exposed as an injected
-    property, reducing connection counts, saving RAM, and coordinating transactional state.
+    A ControllerService provides shared state, database connections, SSL contexts, and utility
+    methods across multiple Processors, ReportingTasks, and other ControllerServices inside a single
+    JVM. Instead of requiring each independent processor to open database connections or cache large
+    datasets privately, a single instance of a ControllerService is initialized once and exposed as
+    an injected property, reducing connection counts, saving RAM, and coordinating transactional
+    state.
   - >
-    NiFi supports running native Python processors directly inside its execution graph. This is powered
-    by launching an out-of-process Python runtime linked to the primary Java engine via bidirectional
-    gRPC and protocol buffers. Python processes run isolated from the JVM, allowing developers to import
-    data science libraries (like NumPy, Pandas, or PyTorch) and build custom data transformation steps
-    without needing JNI compilation or JVM classloader wrapping.
+    NiFi supports running native Python processors directly inside its execution graph. This is
+    powered by launching an out-of-process Python runtime linked to the primary Java engine via
+    bidirectional gRPC and protocol buffers. Python processes run isolated from the JVM, allowing
+    developers to import data science libraries (like NumPy, Pandas, or PyTorch) and build custom
+    data transformation steps without needing JNI compilation or JVM classloader wrapping.

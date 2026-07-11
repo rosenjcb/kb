@@ -5,54 +5,66 @@ display_name: mitmproxy
 repo_url: https://github.com/mitmproxy/mitmproxy.git
 rubric_focus: mitmproxy SSL/TLS interception framework and Python event-loop execution
 questions:
-  - Detail the primary operating modes of mitmproxy and explain how it performs HTTPS decryption.
-  - What is the FlowReader component, and how does it deserialize network traffic programmatically?
-  - Describe the architecture of the mitmproxy addon framework and detail the execution hook flow.
-  - Infer the console UI process for intercepting and editing a request: from urwid keybinding in tools/console, through flow selection, to addon hooks that mutate the HTTPFlow before it resumes upstream.
-  - Explain how mitmproxy manages its asynchronous event loop and handles multiple proxies programmatically.
-  - How are custom HTTP mock responses generated and mapped dynamically using mitmproxy addons?
-  - Step by step, what happens when a client issues HTTPS CONNECT: SNI extraction, dynamic cert generation, dual handshakes, and when request/response addon hooks fire relative to those steps.
-  - What library drives the console terminal UI of mitmproxy, and how does the application handle console startup errors?
+  - "Detail the primary operating modes of mitmproxy and explain how it performs HTTPS decryption."
+  - "What is the FlowReader component, and how does it deserialize network traffic programmatically?"
+  - "Describe the architecture of the mitmproxy addon framework and detail the execution hook flow."
+  - "Infer the console UI process for intercepting and editing a request: from urwid keybinding in tools/console, through flow selection, to addon hooks that mutate the HTTPFlow before it resumes upstream."
+  - "Explain how mitmproxy manages its asynchronous event loop and handles multiple proxies programmatically."
+  - "How are custom HTTP mock responses generated and mapped dynamically using mitmproxy addons?"
+  - "Step by step, what happens when a client issues HTTPS CONNECT: SNI extraction, dynamic cert generation, dual handshakes, and when request/response addon hooks fire relative to those steps."
+  - "What library drives the console terminal UI of mitmproxy, and how does the application handle console startup errors?"
 answers:
   - >
-    Mitmproxy operates as an intercepting proxy supporting several modes: Regular (explicit client configuration),
-    Transparent (routing-level redirection), Reverse Proxy, SOCKS Proxy, WireGuard, and DNS Server modes. To perform HTTPS
-    decryption, it executes a Man-in-the-Middle handshake: when a client requests a secure connection via an HTTP CONNECT command,
-    mitmproxy establishes a handshake, extracts the target host's Server Name Indication (SNI), connects to the upstream server
-    to fetch its certificate parameters, dynamically generates a matching certificate signed by its own trusted root CA, and
-    establishes two separate secure handshakes (client-to-proxy and proxy-to-server), allowing it to read and log raw text.
+    Mitmproxy operates as an intercepting proxy supporting several modes: Regular (explicit client
+    configuration), Transparent (routing-level redirection), Reverse Proxy, SOCKS Proxy, WireGuard,
+    and DNS Server modes. To perform HTTPS decryption, it executes a Man-in-the-Middle handshake:
+    when a client requests a secure connection via an HTTP CONNECT command, mitmproxy establishes a
+    handshake, extracts the target host's Server Name Indication (SNI), connects to the upstream
+    server to fetch its certificate parameters, dynamically generates a matching certificate signed
+    by its own trusted root CA, and establishes two separate secure handshakes (client-to-proxy and
+    proxy-to-server), allowing it to read and log raw text.
   - >
-    The FlowReader is a programmatic utility in mitmproxy.io for reading and deserializing raw .mitm binary capture files. Instead
-    of parsing raw text streams or command stdout, FlowReader reads binary files and yields fully hydrated HTTPFlow objects.
-    These Python objects expose structured properties, including HTTPRequest and HTTPResponse data (cookies, query parameters,
-    header dictionaries, and decompressed body bytes), enabling robust program-level analysis without text parsing errors.
+    The FlowReader is a programmatic utility in mitmproxy.io for reading and deserializing raw .mitm
+    binary capture files. Instead of parsing raw text streams or command stdout, FlowReader reads
+    binary files and yields fully hydrated HTTPFlow objects. These Python objects expose structured
+    properties, including HTTPRequest and HTTPResponse data (cookies, query parameters, header
+    dictionaries, and decompressed body bytes), enabling robust program-level analysis without text
+    parsing errors.
   - >
-    The mitmproxy addon architecture is class-based and designed around a reactive hook structure. Addons declare custom option schemas
-    and registers methods matching specific event hooks. When network traffic flows through the proxy, the engine invokes these hooks
-    sequentially: 'request' is called when client headers and body are fully read; 'response' executes when server responses are
-    received but before they are sent back to clients; and 'websocket_message' monitors frames inside active WS sessions.
+    The mitmproxy addon architecture is class-based and designed around a reactive hook structure.
+    Addons declare custom option schemas and registers methods matching specific event hooks. When
+    network traffic flows through the proxy, the engine invokes these hooks sequentially: 'request'
+    is called when client headers and body are fully read; 'response' executes when server responses
+    are received but before they are sent back to clients; and 'websocket_message' monitors frames
+    inside active WS sessions.
   - >
-    In console mode, urwid bindings in tools/console select a flow and enter intercept/edit views managed by the console master.
-    Edits update the in-memory HTTPFlow; resuming the flow re-enters the addon hook sequence (request/response) so scripts can
-    further mutate headers or body before the proxy forwards the message. The console render loop stays integrated with asyncio
-    so UI updates remain atomic with event-loop progress.
+    In console mode, urwid bindings in tools/console select a flow and enter intercept/edit views
+    managed by the console master. Edits update the in-memory HTTPFlow; resuming the flow re-enters
+    the addon hook sequence (request/response) so scripts can further mutate headers or body before
+    the proxy forwards the message. The console render loop stays integrated with asyncio so UI
+    updates remain atomic with event-loop progress.
   - >
-    Mitmproxy integrates its Master execution class directly with Python's asyncio event loop. For programmatic integration, running
-    multiple proxy instances requires executing them inside distinct processes rather than threads, utilizing Python's multiprocessing
-    capabilities. This avoids Global Interpreter Lock (GIL) bottlenecks, coordinates isolated asyncio loop instances, and allows setting up
-    shared state managers to update upstream proxy configurations dynamically on the fly.
+    Mitmproxy integrates its Master execution class directly with Python's asyncio event loop. For
+    programmatic integration, running multiple proxy instances requires executing them inside
+    distinct processes rather than threads, utilizing Python's multiprocessing capabilities. This
+    avoids Global Interpreter Lock (GIL) bottlenecks, coordinates isolated asyncio loop instances,
+    and allows setting up shared state managers to update upstream proxy configurations dynamically
+    on the fly.
   - >
-    Addons can dynamically map mock responses by intercepting requests and substituting response objects. For example, a script can
-    evaluate request URLs against regular expression pattern files, import headers and body data from local JSON mockup files, and call the
-    Response.make() factory to generate mock response objects. Injecting this object directly into the active flow bypasses upstream connection
-    routing, returning the mock content directly to the client.
+    Addons can dynamically map mock responses by intercepting requests and substituting response
+    objects. For example, a script can evaluate request URLs against regular expression pattern
+    files, import headers and body data from local JSON mockup files, and call the Response.make()
+    factory to generate mock response objects. Injecting this object directly into the active flow
+    bypasses upstream connection routing, returning the mock content directly to the client.
   - >
-    On HTTPS CONNECT, mitmproxy accepts the tunnel request, reads SNI from the ClientHello, obtains upstream certificate parameters,
-    mints a matching CA-signed cert, and completes separate TLS sessions to client and server. After decryption, fully read client
-    requests trigger the request addon hook; upstream responses trigger response before bytes return to the client. Interception
+    On HTTPS CONNECT, mitmproxy accepts the tunnel request, reads SNI from the ClientHello, obtains
+    upstream certificate parameters, mints a matching CA-signed cert, and completes separate TLS
+    sessions to client and server. After decryption, fully read client requests trigger the request
+    addon hook; upstream responses trigger response before bytes return to the client. Interception
     can pause the flow between these hooks for interactive editing.
   - >
-    The interactive terminal UI of mitmproxy is built on the urwid console library, managed inside mitmproxy/tools/console/master.py.
-    On startup, the framework checks if it is running within an interactive shell; if not, it exits with an error. It verifies UTF-8 encoding
-    support, maps color themes via set_palette, and integrates urwid's screen render loop with Python's asyncio event loop to draw visual
-    changes on the console screen atomically.
+    The interactive terminal UI of mitmproxy is built on the urwid console library, managed inside
+    mitmproxy/tools/console/master.py. On startup, the framework checks if it is running within an
+    interactive shell; if not, it exits with an error. It verifies UTF-8 encoding support, maps
+    color themes via set_palette, and integrates urwid's screen render loop with Python's asyncio
+    event loop to draw visual changes on the console screen atomically.

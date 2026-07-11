@@ -5,50 +5,66 @@ display_name: fish-shell
 repo_url: https://github.com/fish-shell/fish-shell.git
 rubric_focus: fish-shell systems command-line shell and Rust execution architecture
 questions:
-  - What were the primary engineering drivers that prompted the complete rewrite of fish-shell from C++ to Rust?
-  - Detail the build system requirements and CMake/Cargo compiler configurations for building fish-shell from source.
-  - Infer the interactive autocomplete UI process as the user types: which components read history/completions, how suggestions are ranked/rendered, and when man-page-generated completions enter the path.
-  - What approaches were taken to execute the progressive migration of the C++ codebase to the Rust architecture?
-  - Detail how fish-shell manages background jobs and monitors pipeline process groups.
-  - Step by step, how does fish_config's web UI change a theme in a live shell session — from browser action through the local HTTP server to shell stdin/state updates?
-  - How can developers add and register a new built-in shell command in the Rust-based codebase?
-  - How does fish-shell implement its signature autocomplete suggestions and command history lookups?
+  - "What were the primary engineering drivers that prompted the complete rewrite of fish-shell from C++ to Rust?"
+  - "Detail the build system requirements and CMake/Cargo compiler configurations for building fish-shell from source."
+  - "Infer the interactive autocomplete UI process as the user types: which components read history/completions, how suggestions are ranked/rendered, and when man-page-generated completions enter the path."
+  - "What approaches were taken to execute the progressive migration of the C++ codebase to the Rust architecture?"
+  - "Detail how fish-shell manages background jobs and monitors pipeline process groups."
+  - "Step by step, how does fish_config's web UI change a theme in a live shell session — from browser action through the local HTTP server to shell stdin/state updates?"
+  - "How can developers add and register a new built-in shell command in the Rust-based codebase?"
+  - "How does fish-shell implement its signature autocomplete suggestions and command history lookups?"
 answers:
   - >
-    The complete rewrite of fish-shell from C++ to Rust (a project spanning two years and involving thousands of commits) was driven by several core goals:
-    (1) enforcing strict concurrency safety via Rust's 'Send' and 'Sync' traits, which was critical for implementing concurrent function execution
-    without memory races; (2) replacing old, complex CMake and C++ compiler toolchains that were hard to maintain on older target architectures;
-    (3) making the codebase more accessible to modern open-source contributors; and (4) ensuring the project was perceived as modern and relevant.
+    The complete rewrite of fish-shell from C++ to Rust (a project spanning two years and involving
+    thousands of commits) was driven by several core goals: (1) enforcing strict concurrency safety
+    via Rust's 'Send' and 'Sync' traits, which was critical for implementing concurrent function
+    execution without memory races; (2) replacing old, complex CMake and C++ compiler toolchains
+    that were hard to maintain on older target architectures; (3) making the codebase more
+    accessible to modern open-source contributors; and (4) ensuring the project was perceived as
+    modern and relevant.
   - >
-    Building fish-shell from source requires a Rust compiler (minimum MSRV is managed in rust-toolchain.toml), Cargo, CMake, and a Python environment.
-    The CMake build system exposes several customizable compiler options: 'Rust_COMPILER' allows defining the path to rustc; 'WITH_DOCS=ON|OFF'
-    controls whether Sphinx is used to build the HTML and man documentation; and 'FISH_USE_SYSTEM_PCRE2=ON|OFF' configures whether to compile using
-    an installed PCRE2 library or fallback to an internal build. Developers can alternatively compile fish directly using standard Cargo build commands.
+    Building fish-shell from source requires a Rust compiler (minimum MSRV is managed in
+    rust-toolchain.toml), Cargo, CMake, and a Python environment. The CMake build system exposes
+    several customizable compiler options: 'Rust_COMPILER' allows defining the path to rustc;
+    'WITH_DOCS=ON|OFF' controls whether Sphinx is used to build the HTML and man documentation; and
+    'FISH_USE_SYSTEM_PCRE2=ON|OFF' configures whether to compile using an installed PCRE2 library or
+    fallback to an internal build. Developers can alternatively compile fish directly using standard
+    Cargo build commands.
   - >
-    As the user types, the interactive reader updates the command line buffer and requests completions from history, abbreviations, and
-    completion scripts (including those generated from man pages via Python helpers). Matching candidates are filtered/ranked and rendered
-    inline as autosuggestions or a completion pager. Accepting a suggestion rewrites the buffer; history search walks prior execution logs
-    for prefix/fuzzy matches without blocking the input loop.
+    As the user types, the interactive reader updates the command line buffer and requests
+    completions from history, abbreviations, and completion scripts (including those generated from
+    man pages via Python helpers). Matching candidates are filtered/ranked and rendered inline as
+    autosuggestions or a completion pager. Accepting a suggestion rewrites the buffer; history
+    search walks prior execution logs for prefix/fuzzy matches without blocking the input loop.
   - >
-    The porting team executed a progressive, in-place migration instead of starting from scratch, allowing the shell to remain compile-ready throughout the process.
-    The migration relied on: (1) creating Rust implementations of low-level utility libraries (such as the getopt options parser) and leaving them as FFI-callable
-    C++ structures; (2) adding FFI glue to C++ models to expose them to newly ported Rust modules; and (3) progressively porting standalone shell commands
-    and built-in functions to Rust, linking them back to the core C++ engine loop until no C++ dependencies remained.
+    The porting team executed a progressive, in-place migration instead of starting from scratch,
+    allowing the shell to remain compile-ready throughout the process. The migration relied on: (1)
+    creating Rust implementations of low-level utility libraries (such as the getopt options parser)
+    and leaving them as FFI-callable C++ structures; (2) adding FFI glue to C++ models to expose
+    them to newly ported Rust modules; and (3) progressively porting standalone shell commands and
+    built-in functions to Rust, linking them back to the core C++ engine loop until no C++
+    dependencies remained.
   - >
-    Fish-shell manages asynchronous background processes using native UNIX process groups and signal execution handlers. When a command pipeline
-    is run with the '&' operator, fish forks child processes, establishes a dedicated process group identifier (PGID), and associates terminal control
-    with the background job. Signals like SIGCHLD are monitored via loop loops that update active background job lists, notifying users when processes
-    terminate or pause.
+    Fish-shell manages asynchronous background processes using native UNIX process groups and signal
+    execution handlers. When a command pipeline is run with the '&' operator, fish forks child
+    processes, establishes a dedicated process group identifier (PGID), and associates terminal
+    control with the background job. Signals like SIGCHLD are monitored via loop loops that update
+    active background job lists, notifying users when processes terminate or pause.
   - >
-    fish_config starts a local Python HTTP server and opens a browser page. Theme/color changes in the UI POST to that server, which emits
-    fish commands back to the active shell session (via stdin / eval pathways) to set universal/global variables and reload prompt/theme
-    functions in real time without restarting the shell.
+    fish_config starts a local Python HTTP server and opens a browser page. Theme/color changes in
+    the UI POST to that server, which emits fish commands back to the active shell session (via
+    stdin / eval pathways) to set universal/global variables and reload prompt/theme functions in
+    real time without restarting the shell.
   - >
-    To implement a new built-in command in the Rust architecture: (1) developers implement a command handler function inside the builtins module (src/builtins/);
-    (2) the function must return a standard shell status result; and (3) the command name and function pointer must be registered inside the global
-    builtins map within src/builtins.rs, allowing the shell's execution dispatcher to resolve and route execution to the Rust handler.
+    To implement a new built-in command in the Rust architecture: (1) developers implement a command
+    handler function inside the builtins module (src/builtins/); (2) the function must return a
+    standard shell status result; and (3) the command name and function pointer must be registered
+    inside the global builtins map within src/builtins.rs, allowing the shell's execution dispatcher
+    to resolve and route execution to the Rust handler.
   - >
-    Fish-shell delivers syntax highlighting and interactive autocomplete suggestions dynamically as the user types. The system reads historical execution
-    logs, parsed command completions, and shell abbreviations. Completions are generated dynamically from system manual pages using specialized
-    Python scripts. Additionally, fish includes a web-based configuration tool ('fish_config') written in Python, which launches an interactive page in a browser,
-    allowing users to set terminal colors and view global variables.
+    Fish-shell delivers syntax highlighting and interactive autocomplete suggestions dynamically as
+    the user types. The system reads historical execution logs, parsed command completions, and
+    shell abbreviations. Completions are generated dynamically from system manual pages using
+    specialized Python scripts. Additionally, fish includes a web-based configuration tool
+    ('fish_config') written in Python, which launches an interactive page in a browser, allowing
+    users to set terminal colors and view global variables.
