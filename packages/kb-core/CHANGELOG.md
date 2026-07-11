@@ -9,6 +9,9 @@
   - MCP `kb_query` is now a single, answer-first agent-to-agent tool: it always
     synthesizes a direct answer (no `synthesize` flag) and surfaces the physical
     source files behind each fact instead of opaque `fact://` URIs.
+  - Facts-loop query results now set `sourcePath` via `sourceRefToPath` (the
+    research orchestrator previously left only `fact://` filePaths); path
+    segments with colons (e.g. `skills/kb:dev-workflow/…`) resolve correctly.
   - kb-server gains a real daemon lifecycle — `start -d` / `stop` / `status` /
     `restart` (pid file under `~/.kb/run`, with a pid-reuse guard on stop) — plus
     `kb-server init` and `kb-server service install|uninstall|status` for

@@ -38,5 +38,12 @@ describe('sourceRefToPath', () => {
     expect(sourceRefToPath(null)).toBeUndefined()
     expect(sourceRefToPath('')).toBeUndefined()
     expect(sourceRefToPath('replace:fact-123')).toBeUndefined()
+    expect(sourceRefToPath('https://example.com/doc.md')).toBeUndefined()
+  })
+
+  it('[TC-70] allows colons in later path segments (skill folder names)', () => {
+    expect(
+      sourceRefToPath('rosenjcb-kb/skills/kb:dev-workflow/SKILL.md#s53', 'rosenjcb-kb')
+    ).toEqual({ path: 'rosenjcb-kb/skills/kb:dev-workflow/SKILL.md' })
   })
 })

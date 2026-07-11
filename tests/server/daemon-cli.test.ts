@@ -34,7 +34,7 @@ describe('resolveDaemonPort', () => {
     expect(resolveDaemonPort(['--port', '4000'])).toBe(4000)
     process.env.PORT = '5000'
     expect(resolveDaemonPort([])).toBe(5000)
-    process.env.PORT = undefined
+    delete process.env.PORT
     expect(resolveDaemonPort([])).toBe(38117)
   })
 })

@@ -38,8 +38,9 @@ export function sourceRefToPath(
     const at = body.lastIndexOf('@')
     relPath = at === -1 ? body : body.slice(0, at)
     symbol = at === -1 ? undefined : body.slice(at + 1) || undefined
-  } else if (ref.includes('://') || ref.includes(':')) {
-    // Synthetic/opaque refs (e.g. `replace:<id>`) or URIs are not physical files.
+  } else if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(ref)) {
+    // Scheme-like at the start only (e.g. `replace:<id>`, `https://…`).
+    // Colons in later path segments are fine (`skills/kb:dev-workflow/SKILL.md`).
     return undefined
   } else {
     // Doc segment anchor `<relPath>#s<N>` — drop the fragment.
