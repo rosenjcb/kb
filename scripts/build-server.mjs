@@ -24,7 +24,7 @@ await build(
     outfile: outFile,
     define: {
       __KB_SERVER_VERSION__: JSON.stringify(version),
-      // `@kb/core/version` reads `__KB_VERSION__` — bake core semver into the server binary.
+      // Internal: snapshot manifest `producer.coreVersion` via `@kb/core/version`.
       __KB_VERSION__: JSON.stringify(coreVersion),
     },
   }),

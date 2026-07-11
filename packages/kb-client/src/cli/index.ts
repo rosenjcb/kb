@@ -20,7 +20,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { expandQueryWithGraph, kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
 import { formatGraphRelationBlockFromQuestion } from '@kb/core/tools/graph-relation-context.js'
 import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
-import { KB_VERSION } from '@kb/core/version.js'
+import { CLIENT_VERSION } from '../version.js'
 import { isEnvTrue } from '@kb/core/config/env-boolean.js'
 import { createPrinter, createReasoningProgressSink } from '../ui/printer'
 import {
@@ -1049,7 +1049,7 @@ async function main() {
   const isTTY = Boolean(process.stdout.isTTY)
 
   if (rawArgv.includes('--version') || rawArgv.includes('-V')) {
-    console.log(`kb v${KB_VERSION}`)
+    console.log(`kb v${CLIENT_VERSION}`)
     return
   }
 
@@ -1104,7 +1104,7 @@ async function main() {
   }
 
   if (isHelpOnlyInvocation(args)) {
-    console.log(`🤖 KB Agent Harness v${KB_VERSION}\n`)
+    console.log(`🤖 KB Agent Harness v${CLIENT_VERSION}\n`)
     await runMainWithOutput(args, defaultCliOutput, {} as KbConfig)
     return
   }
@@ -1117,7 +1117,7 @@ async function main() {
   // One-shot CLI path — skip banner when docs generate --output json (stdout must be parseable JSON only).
   const machineJsonStdout = isDocsGenerateJsonOutputArgs(args)
   if (!machineJsonStdout) {
-    console.log(`🤖 KB Agent Harness v${KB_VERSION}\n`)
+    console.log(`🤖 KB Agent Harness v${CLIENT_VERSION}\n`)
     if (inferred.notice) {
       console.log(inferred.notice)
       console.log('')

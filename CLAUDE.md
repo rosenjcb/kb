@@ -19,6 +19,8 @@ Docs/eval/research/CI/config-only PRs are exempt from the bump requirement.
 
 `@kb/client`, `@kb/server`, and `@kb/core` are versioned **independently** — bump only the package(s) whose source changed.
 
+**`@kb/core` version is internal-only.** Bump it when core source changes (changeset + `package.json`), and it may appear in snapshot manifest provenance (`producer.coreVersion`). Do **not** surface it in user-facing CLI/TUI banners, `kb --version` / `kb-server --version`, server start lines, `/healthz`, MCP server metadata, or operator log lines — those use `@kb/client` / `@kb/server` only.
+
 The two-step flow on your branch:
 
 1. **Create one pending changeset** describing the change and bump type.

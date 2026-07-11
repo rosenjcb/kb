@@ -62,7 +62,6 @@ describe('createHttpServer', () => {
     expect(body).toMatchObject({ ok: true, base: 'base' })
     expect(body.version).toEqual({
       server: expect.stringMatching(/^\d+\.\d+\.\d+/),
-      core: expect.stringMatching(/^\d+\.\d+\.\d+/),
     })
   })
 
