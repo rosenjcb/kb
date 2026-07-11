@@ -7,7 +7,7 @@ import {
 } from '@kb/core/ops/init-source-snapshots.js'
 
 describe('init-source-snapshots', () => {
-  it('[TC-299] Given many autogen-only docs and several source files, then append adds frozen originals per file', () => {
+  it('[TC-274] Given many autogen-only docs and several source files, then append adds frozen originals per file', () => {
     const autogen = Array.from({ length: 8 }, (_, i) => ({
       title: `Topic ${i}`,
       content: `# Topic ${i}\n\nBody.`,
@@ -26,7 +26,7 @@ describe('init-source-snapshots', () => {
     expect(originals.every(d => d.content.includes('frozen snapshot'))).toBe(true)
   })
 
-  it('[TC-300] Given an original shard already exists for a file title, then append does not duplicate that file', () => {
+  it('[TC-275] Given an original shard already exists for a file title, then append does not duplicate that file', () => {
     const shard = buildFrozenSourceSnapshotDoc(
       'AGENTS.md',
       '# Agents\n',
@@ -44,13 +44,13 @@ describe('init-source-snapshots', () => {
     expect(merged.some(d => d.title === 'NOTE.md')).toBe(true)
   })
 
-  it('[TC-301] Given README path, then isInitReadmeHomePath is true only for readme.md basename', () => {
+  it('[TC-276] Given README path, then isInitReadmeHomePath is true only for readme.md basename', () => {
     expect(isInitReadmeHomePath('README.md')).toBe(true)
     expect(isInitReadmeHomePath('docs/README.md')).toBe(true)
     expect(isInitReadmeHomePath('AGENTS.md')).toBe(false)
   })
 
-  it('[TC-302] Given oversized file body, then snapshot content is clipped with truncation marker', () => {
+  it('[TC-277] Given oversized file body, then snapshot content is clipped with truncation marker', () => {
     const huge = 'x'.repeat(INIT_SOURCE_SNAPSHOT_MAX_CHARS + 500)
     const doc = buildFrozenSourceSnapshotDoc('big.txt', huge, 'b', 'collected-on-init')
     expect(doc.content).toContain('…(truncated during init split)…')

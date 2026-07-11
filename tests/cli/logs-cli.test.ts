@@ -119,18 +119,18 @@ beforeEach(() => {
 // ─── printLogsHelp ────────────────────────────────────────────────
 
 describe('printLogsHelp', () => {
-  it('[TC-381] includes all three subcommands', () => {
+  it('[TC-332] includes all three subcommands', () => {
     const help = printLogsHelp()
     expect(help).toContain('kb logs list')
     expect(help).toContain('kb logs show')
     expect(help).toContain('kb logs compare')
   })
 
-  it('[TC-382] documents --since flag', () => {
+  it('[TC-333] documents --since flag', () => {
     expect(printLogsHelp()).toContain('--since')
   })
 
-  it('[TC-383] documents --base flag', () => {
+  it('[TC-334] documents --base flag', () => {
     expect(printLogsHelp()).toContain('--base')
   })
 })
@@ -138,7 +138,7 @@ describe('printLogsHelp', () => {
 // ─── kb logs list ─────────────────────────────────────────────────
 
 describe('runLogsCommand list', () => {
-  it('[TC-384] Given no reports, then returns empty message', async () => {
+  it('[TC-335] Given no reports, then returns empty message', async () => {
     vi.doMock('node:fs', async importOriginal => {
       const actual = await importOriginal<typeof import('node:fs')>()
       return { ...actual, existsSync: vi.fn().mockReturnValue(false) }
@@ -149,7 +149,7 @@ describe('runLogsCommand list', () => {
     vi.resetModules()
   })
 
-  it('[TC-385] Given reports, then list includes run ID, command, and duration', async () => {
+  it('[TC-336] Given reports, then list includes run ID, command, and duration', async () => {
     mockLogsDir([initReportA, queryReport])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     const output = await run(['list'])
@@ -161,7 +161,7 @@ describe('runLogsCommand list', () => {
     vi.resetModules()
   })
 
-  it('[TC-386] Given --command filter, then only matching command appears', async () => {
+  it('[TC-337] Given --command filter, then only matching command appears', async () => {
     mockLogsDir([initReportA, queryReport])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     const output = await run(['list', '--command', 'query'])
@@ -170,7 +170,7 @@ describe('runLogsCommand list', () => {
     vi.resetModules()
   })
 
-  it('[TC-387] Given --limit 1, then only one row appears', async () => {
+  it('[TC-338] Given --limit 1, then only one row appears', async () => {
     mockLogsDir([initReportA, initReportB, queryReport])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     const output = await run(['list', '--limit', '1'])
@@ -184,7 +184,7 @@ describe('runLogsCommand list', () => {
 // ─── kb logs show ─────────────────────────────────────────────────
 
 describe('runLogsCommand show', () => {
-  it('[TC-388] Given a known runId, then displays stage table', async () => {
+  it('[TC-339] Given a known runId, then displays stage table', async () => {
     mockLogsDir([initReportA])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     const output = await run(['show', 'run-100-aaaa'])
@@ -194,7 +194,7 @@ describe('runLogsCommand show', () => {
     vi.resetModules()
   })
 
-  it('[TC-389] Given a prefix of runId, then matches by prefix', async () => {
+  it('[TC-340] Given a prefix of runId, then matches by prefix', async () => {
     mockLogsDir([initReportA])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     const output = await run(['show', 'run-100'])
@@ -202,14 +202,14 @@ describe('runLogsCommand show', () => {
     vi.resetModules()
   })
 
-  it('[TC-390] Given unknown runId, then throws not found error', async () => {
+  it('[TC-341] Given unknown runId, then throws not found error', async () => {
     mockLogsDir([initReportA])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     await expect(run(['show', 'run-999-zzzz'])).rejects.toThrow('Run not found')
     vi.resetModules()
   })
 
-  it('[TC-391] Given show with no runId, then throws usage error', async () => {
+  it('[TC-342] Given show with no runId, then throws usage error', async () => {
     mockLogsDir([])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     await expect(run(['show'])).rejects.toThrow('Usage:')
@@ -220,7 +220,7 @@ describe('runLogsCommand show', () => {
 // ─── kb logs compare ─────────────────────────────────────────────
 
 describe('runLogsCommand compare', () => {
-  it('[TC-392] Given two init runs, then compare output contains stage names and deltas', async () => {
+  it('[TC-343] Given two init runs, then compare output contains stage names and deltas', async () => {
     mockLogsDir([initReportA, initReportB])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     const output = await run(['compare'])
@@ -232,7 +232,7 @@ describe('runLogsCommand compare', () => {
     vi.resetModules()
   })
 
-  it('[TC-393] Given compare with --command init, then uses only init runs', async () => {
+  it('[TC-344] Given compare with --command init, then uses only init runs', async () => {
     mockLogsDir([initReportA, initReportB, queryReport])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     const output = await run(['compare', '--command', 'init'])
@@ -242,7 +242,7 @@ describe('runLogsCommand compare', () => {
     vi.resetModules()
   })
 
-  it('[TC-394] Given explicit runIds, then compares those two runs', async () => {
+  it('[TC-345] Given explicit runIds, then compares those two runs', async () => {
     mockLogsDir([initReportA, initReportB, queryReport])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     const output = await run(['compare', 'run-100-aaaa', 'run-300-cccc'])
@@ -251,14 +251,14 @@ describe('runLogsCommand compare', () => {
     vi.resetModules()
   })
 
-  it('[TC-395] Given fewer than 2 runs, then throws with helpful message', async () => {
+  it('[TC-346] Given fewer than 2 runs, then throws with helpful message', async () => {
     mockLogsDir([initReportA])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     await expect(run(['compare'])).rejects.toThrow('Need at least 2 runs')
     vi.resetModules()
   })
 
-  it('[TC-396] Given two runs with different stage sets, then union of stages appears in output', async () => {
+  it('[TC-347] Given two runs with different stage sets, then union of stages appears in output', async () => {
     const withExtraStage = makeReport({
       ...initReportB,
       runId: 'run-200-bbbb',
@@ -285,7 +285,7 @@ describe('runLogsCommand compare', () => {
     vi.resetModules()
   })
 
-  it('[TC-397] Given compare output totals row, then Δms matches difference between runs', async () => {
+  it('[TC-348] Given compare output totals row, then Δms matches difference between runs', async () => {
     mockLogsDir([initReportA, initReportB])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     const output = await run(['compare'])
@@ -298,7 +298,7 @@ describe('runLogsCommand compare', () => {
 // ─── kb logs list --base filter ──────────────────────────────────
 
 describe('runLogsCommand list --base', () => {
-  it('[TC-398] Given --base filter, then only reports matching that base appear', async () => {
+  it('[TC-349] Given --base filter, then only reports matching that base appear', async () => {
     const repoA = makeReport({ runId: 'run-400-dddd', command: 'query', base: 'project-alpha' })
     const repoB = makeReport({ runId: 'run-500-eeee', command: 'query', base: 'project-beta' })
     mockLogsDir([repoA, repoB])
@@ -309,7 +309,7 @@ describe('runLogsCommand list --base', () => {
     vi.resetModules()
   })
 
-  it('[TC-399] Given --base filter that matches nothing, then returns empty message', async () => {
+  it('[TC-350] Given --base filter that matches nothing, then returns empty message', async () => {
     const repoA = makeReport({ runId: 'run-400-dddd', command: 'query', base: 'project-alpha' })
     mockLogsDir([repoA])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
@@ -318,7 +318,7 @@ describe('runLogsCommand list --base', () => {
     vi.resetModules()
   })
 
-  it('[TC-400] Given --base combined with --command, then both filters apply', async () => {
+  it('[TC-351] Given --base combined with --command, then both filters apply', async () => {
     const initAlpha = makeReport({ runId: 'run-410-ffff', command: 'init', base: 'project-alpha' })
     const queryAlpha = makeReport({ runId: 'run-420-gggg', command: 'query', base: 'project-alpha' })
     const initBeta = makeReport({ runId: 'run-430-hhhh', command: 'init', base: 'project-beta' })
@@ -335,7 +335,7 @@ describe('runLogsCommand list --base', () => {
 // ─── kb logs compare --base filter ───────────────────────────────
 
 describe('runLogsCommand compare --base', () => {
-  it('[TC-401] Given --base filter, then compare uses only runs from that base', async () => {
+  it('[TC-352] Given --base filter, then compare uses only runs from that base', async () => {
     const alphaA = makeReport({
       runId: 'run-600-iiii',
       command: 'query',
@@ -382,21 +382,21 @@ describe('runLogsCommand compare --base', () => {
 // ─── help / unknown subcommand ────────────────────────────────────
 
 describe('runLogsCommand routing', () => {
-  it('[TC-402] Given no subcommand, then returns help text', async () => {
+  it('[TC-353] Given no subcommand, then returns help text', async () => {
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     const output = await run([])
     expect(output).toContain('kb logs list')
     vi.resetModules()
   })
 
-  it('[TC-403] Given --help, then returns help text', async () => {
+  it('[TC-354] Given --help, then returns help text', async () => {
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     const output = await run(['--help'])
     expect(output).toContain('kb logs list')
     vi.resetModules()
   })
 
-  it('[TC-404] Given unknown subcommand, then throws with the subcommand name', async () => {
+  it('[TC-355] Given unknown subcommand, then throws with the subcommand name', async () => {
     mockLogsDir([])
     const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
     await expect(run(['bogus'])).rejects.toThrow('bogus')

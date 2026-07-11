@@ -49,7 +49,7 @@ function makeOut() {
 // ─── Parser ──────────────────────────────────────────────────────────────────
 
 describe('parseDocsDeleteCommand', () => {
-  it('[TC-152] Given a doc id, then parses it', () => {
+  it('[TC-125] Given a doc id, then parses it', () => {
     const parsed = parseDocsDeleteCommand(['my-doc'])
     expect(parsed.documentId).toBe('my-doc')
     expect(parsed.isWildcard).toBe(false)
@@ -57,45 +57,45 @@ describe('parseDocsDeleteCommand', () => {
     expect(parsed.base).toBeUndefined()
   })
 
-  it('[TC-153] Given --force flag, then sets force true', () => {
+  it('[TC-126] Given --force flag, then sets force true', () => {
     const parsed = parseDocsDeleteCommand(['my-doc', '--force'])
     expect(parsed.force).toBe(true)
   })
 
-  it('[TC-154] Given -f shorthand, then sets force true', () => {
+  it('[TC-127] Given -f shorthand, then sets force true', () => {
     const parsed = parseDocsDeleteCommand(['my-doc', '-f'])
     expect(parsed.force).toBe(true)
   })
 
-  it('[TC-155] Given --base flag, then captures base', () => {
+  it('[TC-128] Given --base flag, then captures base', () => {
     const parsed = parseDocsDeleteCommand(['my-doc', '--base', 'dogfood'])
     expect(parsed.base).toBe('dogfood')
   })
 
-  it('[TC-156] Given id with caps/spaces, then normalizes to slug', () => {
+  it('[TC-129] Given id with caps/spaces, then normalizes to slug', () => {
     const parsed = parseDocsDeleteCommand(['My Doc ID'])
     expect(parsed.documentId).toBe('my-doc-id')
     expect(parsed.isWildcard).toBe(false)
   })
 
-  it('[TC-157] Given a wildcard pattern, then sets isWildcard true and preserves *', () => {
+  it('[TC-130] Given a wildcard pattern, then sets isWildcard true and preserves *', () => {
     const parsed = parseDocsDeleteCommand(['ci-*'])
     expect(parsed.documentId).toBe('ci-*')
     expect(parsed.isWildcard).toBe(true)
   })
 
-  it('[TC-158] Given a wildcard pattern with caps, then lowercases and preserves *', () => {
+  it('[TC-131] Given a wildcard pattern with caps, then lowercases and preserves *', () => {
     const parsed = parseDocsDeleteCommand(['CI-*'])
     expect(parsed.documentId).toBe('ci-*')
     expect(parsed.isWildcard).toBe(true)
   })
 
-  it('[TC-159] Given a bare wildcard *, then isWildcard is true', () => {
+  it('[TC-132] Given a bare wildcard *, then isWildcard is true', () => {
     const parsed = parseDocsDeleteCommand(['*'])
     expect(parsed.isWildcard).toBe(true)
   })
 
-  it('[TC-160] Given no args, then throws with exit code 0', () => {
+  it('[TC-133] Given no args, then throws with exit code 0', () => {
     try {
       parseDocsDeleteCommand([])
     } catch (e) {
@@ -104,7 +104,7 @@ describe('parseDocsDeleteCommand', () => {
     }
   })
 
-  it('[TC-161] Given --help, then throws with exit code 0', () => {
+  it('[TC-134] Given --help, then throws with exit code 0', () => {
     try {
       parseDocsDeleteCommand(['--help'])
     } catch (e) {
@@ -113,15 +113,15 @@ describe('parseDocsDeleteCommand', () => {
     }
   })
 
-  it('[TC-162] Given two positional args, then throws', () => {
+  it('[TC-135] Given two positional args, then throws', () => {
     expect(() => parseDocsDeleteCommand(['doc-a', 'doc-b'])).toThrow(DocsDeleteError)
   })
 
-  it('[TC-163] Given unknown flag, then throws', () => {
+  it('[TC-136] Given unknown flag, then throws', () => {
     expect(() => parseDocsDeleteCommand(['my-doc', '--unknown'])).toThrow(DocsDeleteError)
   })
 
-  it('[TC-164] Given --base with no value, then throws', () => {
+  it('[TC-137] Given --base with no value, then throws', () => {
     expect(() => parseDocsDeleteCommand(['my-doc', '--base'])).toThrow(DocsDeleteError)
   })
 })
@@ -129,7 +129,7 @@ describe('parseDocsDeleteCommand', () => {
 // ─── runDocsDelete ────────────────────────────────────────────────────────────
 
 describe('runDocsDelete', () => {
-  it('[TC-165] Given --force and existing doc, then removes the document', async () => {
+  it('[TC-138] Given --force and existing doc, then removes the document', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, { title: 'To Delete', documentId: 'to-delete', content: 'Body.' })
 
@@ -140,7 +140,7 @@ describe('runDocsDelete', () => {
     expect(indexer.getDocumentContent('to-delete')).toBeUndefined()
   })
 
-  it('[TC-166] Given --force, then output confirms deletion with title and id', async () => {
+  it('[TC-139] Given --force, then output confirms deletion with title and id', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, { title: 'My Doc', documentId: 'my-doc', content: 'Body.' })
 
@@ -152,7 +152,7 @@ describe('runDocsDelete', () => {
     expect(output).toContain('my-doc')
   })
 
-  it('[TC-167] Given --force, then other documents are unaffected', async () => {
+  it('[TC-140] Given --force, then other documents are unaffected', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, { title: 'Keep Me', documentId: 'keep-me', content: 'Body.' })
     await seedDocument(baseDir, { title: 'Delete Me', documentId: 'delete-me', content: 'Body.' })
@@ -164,7 +164,7 @@ describe('runDocsDelete', () => {
     expect(indexer.getDocumentContent('keep-me')).toBeDefined()
   })
 
-  it('[TC-168] Given non-existent doc id, then throws DocsDeleteError', async () => {
+  it('[TC-141] Given non-existent doc id, then throws DocsDeleteError', async () => {
     const baseDir = await createTempBase()
     const { out } = makeOut()
 
@@ -173,7 +173,7 @@ describe('runDocsDelete', () => {
     ).rejects.toThrow(DocsDeleteError)
   })
 
-  it('[TC-169] Given non-interactive stdin and no --force, then aborts without deleting', async () => {
+  it('[TC-142] Given non-interactive stdin and no --force, then aborts without deleting', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, { title: 'Safe Doc', documentId: 'safe-doc', content: 'Body.' })
 
@@ -190,7 +190,7 @@ describe('runDocsDelete', () => {
 // ─── runDocsDelete (wildcard) ─────────────────────────────────────────────────
 
 describe('runDocsDelete (wildcard)', () => {
-  it('[TC-170] Given a prefix wildcard, then deletes all matching documents', async () => {
+  it('[TC-143] Given a prefix wildcard, then deletes all matching documents', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, { title: 'CI Alpha', documentId: 'ci-alpha', content: 'Body.' })
     await seedDocument(baseDir, { title: 'CI Beta', documentId: 'ci-beta', content: 'Body.' })
@@ -205,7 +205,7 @@ describe('runDocsDelete (wildcard)', () => {
     expect(indexer.getDocumentContent('keep-me')).toBeDefined()
   })
 
-  it('[TC-171] Given a wildcard match, then output lists matched ids and confirms each deletion', async () => {
+  it('[TC-144] Given a wildcard match, then output lists matched ids and confirms each deletion', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, { title: 'CI Alpha', documentId: 'ci-alpha', content: 'Body.' })
     await seedDocument(baseDir, { title: 'CI Beta', documentId: 'ci-beta', content: 'Body.' })
@@ -219,7 +219,7 @@ describe('runDocsDelete (wildcard)', () => {
     expect(output).toContain('Deleted')
   })
 
-  it('[TC-172] Given a wildcard with no matches, then throws DocsDeleteError', async () => {
+  it('[TC-145] Given a wildcard with no matches, then throws DocsDeleteError', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, { title: 'Keep Me', documentId: 'keep-me', content: 'Body.' })
 
@@ -229,7 +229,7 @@ describe('runDocsDelete (wildcard)', () => {
     ).rejects.toThrow(DocsDeleteError)
   })
 
-  it('[TC-173] Given wildcard and non-interactive stdin without --force, then aborts without deleting', async () => {
+  it('[TC-146] Given wildcard and non-interactive stdin without --force, then aborts without deleting', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, { title: 'CI Alpha', documentId: 'ci-alpha', content: 'Body.' })
 

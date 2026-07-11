@@ -44,7 +44,7 @@ describe('withRetry', () => {
 })
 
 describe('label-based scoring', () => {
-  it('[TC-225] every rubric axis defines five labels mapping onto ordinal levels 0–4', () => {
+  it('[TC-39] every rubric axis defines five labels mapping onto ordinal levels 0–4', () => {
     expect(RUBRIC_AXES).toHaveLength(5)
     for (const axis of RUBRIC_AXES) {
       const scores = axis.labels.map(l => l.score).sort((a, b) => a - b)
@@ -54,31 +54,31 @@ describe('label-based scoring', () => {
     }
   })
 
-  it('[TC-226] scoreFromLabel resolves a known label to its ordinal level', () => {
+  it('[TC-40] scoreFromLabel resolves a known label to its ordinal level', () => {
     expect(scoreFromLabel('correctness', 'correct')).toBe(4)
     expect(scoreFromLabel('correctness', 'mostly_correct')).toBe(3)
     expect(scoreFromLabel('relevance', 'unrelated')).toBe(0)
     expect(scoreFromLabel('evidence_handling', 'well_grounded')).toBe(4)
   })
 
-  it('[TC-227] scoreFromLabel tolerates casing, spaces, and hyphens', () => {
+  it('[TC-41] scoreFromLabel tolerates casing, spaces, and hyphens', () => {
     expect(scoreFromLabel('usefulness', 'Needs-Followup')).toBe(2)
     expect(scoreFromLabel('relevance', 'On Topic')).toBe(3)
   })
 
-  it('[TC-228] scoreFromLabel falls back to the legacy numeric path', () => {
+  it('[TC-42] scoreFromLabel falls back to the legacy numeric path', () => {
     expect(scoreFromLabel('correctness', 3)).toBe(3)
     expect(scoreFromLabel('correctness', '4')).toBe(4)
     expect(scoreFromLabel('correctness', 9)).toBe(4) // clamped
   })
 
-  it('[TC-229] scoreFromLabel returns 0 for an unrecognized verdict', () => {
+  it('[TC-43] scoreFromLabel returns 0 for an unrecognized verdict', () => {
     expect(scoreFromLabel('correctness', 'banana')).toBe(0)
     expect(scoreFromLabel('correctness', null)).toBe(0)
     expect(scoreFromLabel('correctness', undefined)).toBe(0)
   })
 
-  it('[TC-230] the rubric instructs the judge to pick labels, not numbers', () => {
+  it('[TC-44] the rubric instructs the judge to pick labels, not numbers', () => {
     const rubric = buildRubric('the kb self-check', false)
     expect(rubric).toContain('output the label string')
     expect(rubric).toContain('"mostly_correct"')
@@ -87,14 +87,14 @@ describe('label-based scoring', () => {
 })
 
 describe('parseJsonObjectFromLLM', () => {
-  it('[TC-231] parses a top-level JSON array', () => {
+  it('[TC-45] parses a top-level JSON array', () => {
     const arr = [{ correctness: 'correct' }]
     expect(parseJsonObjectFromLLM(JSON.stringify(arr))).toEqual(arr)
   })
 })
 
 describe('runAutoScoreFile batching', () => {
-  it('[TC-232] scores >8 questions in multiple judge batches', async () => {
+  it('[TC-46] scores >8 questions in multiple judge batches', async () => {
     const fs = await import('node:fs')
     const os = await import('node:os')
     const path = await import('node:path')

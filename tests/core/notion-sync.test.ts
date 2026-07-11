@@ -43,7 +43,7 @@ function mockJsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('syncDocsToNotion preview', () => {
-  it('[TC-93] Given existing state with stale pages, then reports removed titles', async () => {
+  it('[TC-92] Given existing state with stale pages, then reports removed titles', async () => {
     await writeFile(
       notionPublishStatePath(tempDir),
       `${JSON.stringify({
@@ -91,7 +91,7 @@ describe('syncDocsToNotion preview', () => {
     expect(result.written).toHaveLength(1)
   })
 
-  it('[TC-94] Given a doc with no title, then skips it with reason', async () => {
+  it('[TC-93] Given a doc with no title, then skips it with reason', async () => {
     const result = await syncDocsToNotion({
       token: 'token',
       parentPageId: 'parent-1',
@@ -107,7 +107,7 @@ describe('syncDocsToNotion preview', () => {
 })
 
 describe('syncDocsToNotion apply', () => {
-  it('[TC-95] Given existing section pages, then archives stale children and recreates current docs', async () => {
+  it('[TC-94] Given existing section pages, then archives stale children and recreates current docs', async () => {
     await mkdir(tempDir, { recursive: true })
     await writeFile(
       notionPublishStatePath(tempDir),
@@ -185,7 +185,7 @@ describe('syncDocsToNotion apply', () => {
     expect(result.publishedPages.some(p => p.id === 'doc-1')).toBe(true)
   })
 
-  it('[TC-96] Given no state file, then creates container and section pages once', async () => {
+  it('[TC-95] Given no state file, then creates container and section pages once', async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       const method = init?.method ?? 'GET'

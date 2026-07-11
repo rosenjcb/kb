@@ -28,7 +28,7 @@ function liveFacts(): FactRow[] {
 }
 
 describe('ingestIntegrationSignals', () => {
-  it('[TC-76] emits package_name_of, depends_on, and is_repo facts from package.json', async () => {
+  it('[TC-74] emits package_name_of, depends_on, and is_repo facts from package.json', async () => {
     await writeFile(
       path.join(scanDir, 'package.json'),
       JSON.stringify({ name: '@acme/auth', dependencies: { '@acme/shared': '1.0.0' }, devDependencies: { vitest: '3' } })
@@ -53,7 +53,7 @@ describe('ingestIntegrationSignals', () => {
     expect(facts.every(f => f.git_repo === 'acme-auth')).toBe(true)
   })
 
-  it('[TC-77] extracts service hosts from .env URL values', async () => {
+  it('[TC-75] extracts service hosts from .env URL values', async () => {
     await writeFile(
       path.join(scanDir, '.env'),
       ['# comment', 'PORT=3000', 'AUTH_URL=https://auth-svc.internal/login', 'LOCAL=http://localhost:5432'].join('\n')
@@ -66,7 +66,7 @@ describe('ingestIntegrationSignals', () => {
     expect(refs[0]?.object).toBe('auth-svc.internal')
   })
 
-  it('[TC-78] re-ingest clears stale integration facts (removed dependency disappears)', async () => {
+  it('[TC-76] re-ingest clears stale integration facts (removed dependency disappears)', async () => {
     await writeFile(path.join(scanDir, 'package.json'), JSON.stringify({ name: 'svc', dependencies: { old: '1' } }))
     await ingestIntegrationSignals({ baseDir, scanDir, gitRepo: 'svc' })
     expect(liveFacts().some(f => f.predicate === 'depends_on' && f.object === 'old')).toBe(true)

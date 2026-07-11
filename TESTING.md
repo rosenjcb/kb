@@ -27,7 +27,9 @@ Behavioral requirements live in sibling `*.spec.md` files (`type: Spec`) with **
 (functional requirements) and **TC-N** (QA test cases) tables. Architecture detail stays in
 OKF companions. See [spec.md](https://github.com/rosenjcb/spec.md). Each spec declares implementation in `sources:` and verification in `tests:` as YAML lists of paths relative to the spec file (inline `[./src]` or a block list). `spec:check` runs the [`spec-md`](https://github.com/rosenjcb/spec.md/tree/main/cli) CLI (`spec-md coverage --strict .`), which scans each spec's own `tests:` paths for `[TC-N]` tags — no central manifest. Run `pnpm run spec:lint` for frontmatter and FR/TC structure lint (`spec-md lint --strict .`); use `spec-md check --strict .` for lint + coverage in one pass.
 
-**Keep each spec's `tests:` precise and disjoint.** The CLI matches `[TC-N]` tags within a spec's declared paths only, and `TC-N` ids are namespaced per spec (every spec has its own `TC-1`). When several specs share a directory (e.g. `tests/tools`, `tests/cli`), do **not** point them all at the whole directory — that over-selects a sibling spec's tags and can mask a genuinely missing test. List the exact files each spec owns instead (see `CLI.spec.md` / `TOOLS.spec.md`).
+**Keep each spec's `tests:` precise and disjoint.** The CLI matches `[TC-N]` tags within a spec's declared paths only, and `TC-N` ids are namespaced per spec (every spec has its own `TC-1`). When several specs share a directory (e.g. `tests/tools`, `tests/cli`), do **not** point them all at the whole directory — that over-selects a sibling spec's tags and can mask a genuinely missing test. List the exact files each spec owns instead (see `CLI.spec.md` / `TOOLS.spec.md`). Never list the same test file under two specs.
+
+**FR/TC ids must be contiguous and ascending** (`FR-1..FR-n`, `TC-1..TC-n` in table order, no skips). `pnpm run spec:lint` fails otherwise. Append new rows at the end; if you reorder or remove rows, renumber `1..n` and update matching `[TC-N]` tags in the same change.
 
 ### What CI enforces (hard gate)
 

@@ -80,22 +80,22 @@ describe('slash command helpers', () => {
     expect(startIndex).toBeGreaterThanOrEqual(0)
   })
 
-  it('[TC-83] suggests /skills when typing /sk', () => {
+  it('[TC-80] suggests /skills when typing /sk', () => {
     const suggestions = getSlashCommandSuggestions('/sk', 'chat')
     expect(suggestions.some(s => s.command === '/skills')).toBe(true)
   })
 
-  it('[TC-84] suggests docs subcommands when typing /docs g', () => {
+  it('[TC-81] suggests docs subcommands when typing /docs g', () => {
     const suggestions = resolveSlashSuggestions('/docs g', 'idle')
     expect(suggestions.some(s => s.command === '/docs generate')).toBe(true)
   })
 
-  it('[TC-85] suggests /facts list when typing /facts li', () => {
+  it('[TC-82] suggests /facts list when typing /facts li', () => {
     const suggestions = resolveSlashSuggestions('/facts li', 'idle')
     expect(suggestions.some(s => s.command === '/facts list')).toBe(true)
   })
 
-  it('[TC-86] shows /accept in docs-generate-review and named-list-confirm contexts', () => {
+  it('[TC-83] shows /accept in docs-generate-review and named-list-confirm contexts', () => {
     expect(resolveSlashSuggestions('/ac', 'docs-generate-review').some(s => s.command === '/accept')).toBe(
       true
     )
@@ -106,7 +106,7 @@ describe('slash command helpers', () => {
     expect(resolveSlashSuggestions('/ac', 'init-question').some(s => s.command === '/accept')).toBe(false)
   })
 
-  it('[TC-87] shows /complete in init-question and docs-generate-question contexts', () => {
+  it('[TC-84] shows /complete in init-question and docs-generate-question contexts', () => {
     expect(resolveSlashSuggestions('/co', 'init-question').some(s => s.command === '/complete')).toBe(true)
     expect(resolveSlashSuggestions('/co', 'docs-generate-question').some(s => s.command === '/complete')).toBe(
       true
@@ -114,25 +114,25 @@ describe('slash command helpers', () => {
     expect(resolveSlashSuggestions('/co', 'idle').some(s => s.command === '/complete')).toBe(false)
   })
 
-  it('[TC-88] shows /skip in docs-generate-question context', () => {
+  it('[TC-85] shows /skip in docs-generate-question context', () => {
     expect(resolveSlashSuggestions('/sk', 'docs-generate-question').some(s => s.command === '/skip')).toBe(
       true
     )
   })
 
-  it('[TC-89] shows /cancel in every context', () => {
+  it('[TC-86] shows /cancel in every context', () => {
     expect(resolveSlashSuggestions('/ca', 'docs-generate-review').some(s => s.command === '/cancel')).toBe(
       true
     )
     expect(resolveSlashSuggestions('/ca', 'idle').some(s => s.command === '/cancel')).toBe(true)
   })
 
-  it('[TC-90] completes multi-segment commands', () => {
+  it('[TC-87] completes multi-segment commands', () => {
     const [suggestion] = resolveSlashSuggestions('/docs g', 'idle')
     expect(applySelectedSuggestion(suggestion, '/docs g')).toBe('/docs generate ')
   })
 
-  it('[TC-91] suppresses suggestions after complete path with trailing args', () => {
+  it('[TC-88] suppresses suggestions after complete path with trailing args', () => {
     expect(parseSlashInput('/docs generate "foo"').hasTrailingArgs).toBe(true)
     expect(resolveSlashSuggestions('/docs generate "foo"', 'idle')).toEqual([])
   })

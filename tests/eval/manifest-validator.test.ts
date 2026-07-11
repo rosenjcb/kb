@@ -11,15 +11,15 @@ const execFileAsync = promisify(execFile)
 // ── extractManifest ───────────────────────────────────────────────────────────
 
 describe('extractManifest', () => {
-  it('[TC-84] returns empty array for empty string', () => {
+  it('[TC-92] returns empty array for empty string', () => {
     expect(extractManifest('')).toEqual([])
   })
 
-  it('[TC-85] returns empty array when no manifest block present', () => {
+  it('[TC-93] returns empty array when no manifest block present', () => {
     expect(extractManifest('I changed some things')).toEqual([])
   })
 
-  it('[TC-86] extracts files from a fenced JSON block with manifest key', () => {
+  it('[TC-94] extracts files from a fenced JSON block with manifest key', () => {
     const msg = `
 Here is what I changed:
 
@@ -35,7 +35,7 @@ Here is what I changed:
     expect(extractManifest(msg)).toEqual(['src/foo.ts', 'src/bar.ts', 'src/baz.ts'])
   })
 
-  it('[TC-87] handles deleted-only manifest', () => {
+  it('[TC-95] handles deleted-only manifest', () => {
     const msg = `
 \`\`\`json
 {"manifest": {"deleted": ["old.ts"]}}
@@ -44,7 +44,7 @@ Here is what I changed:
     expect(extractManifest(msg)).toEqual(['old.ts'])
   })
 
-  it('[TC-88] combines modified, created, deleted in that order', () => {
+  it('[TC-96] combines modified, created, deleted in that order', () => {
     const msg = `
 \`\`\`json
 {
@@ -59,7 +59,7 @@ Here is what I changed:
     expect(extractManifest(msg)).toEqual(['a.ts', 'b.ts', 'c.ts'])
   })
 
-  it('[TC-89] filters out blank entries', () => {
+  it('[TC-97] filters out blank entries', () => {
     const msg = `
 \`\`\`json
 {"manifest": {"modified": ["", "src/valid.ts", "  "]}}
@@ -68,7 +68,7 @@ Here is what I changed:
     expect(extractManifest(msg)).toEqual(['src/valid.ts'])
   })
 
-  it('[TC-90] trims whitespace from file paths', () => {
+  it('[TC-98] trims whitespace from file paths', () => {
     const msg = `
 \`\`\`json
 {"manifest": {"modified": ["  src/foo.ts  "]}}
@@ -77,14 +77,14 @@ Here is what I changed:
     expect(extractManifest(msg)).toEqual(['src/foo.ts'])
   })
 
-  it('[TC-91] inline fallback returns empty for nested JSON (lazy regex stops at first inner })', () => {
+  it('[TC-99] inline fallback returns empty for nested JSON (lazy regex stops at first inner })', () => {
     // The inline pattern uses lazy [\s\S]*?\} which stops at the closing } of the
     // inner object, producing invalid JSON. Nested manifests require a fenced block.
     const msg = `The changes are {"manifest": {"created": ["inline.ts"]}} as listed.`
     expect(extractManifest(msg)).toEqual([])
   })
 
-  it('[TC-92] prefers fenced block over inline JSON when both present', () => {
+  it('[TC-100] prefers fenced block over inline JSON when both present', () => {
     const msg = `
 \`\`\`json
 {"manifest": {"modified": ["fenced.ts"]}}
@@ -94,17 +94,17 @@ Also see {"manifest": {"created": ["inline.ts"]}}
     expect(extractManifest(msg)).toEqual(['fenced.ts'])
   })
 
-  it('[TC-93] returns empty array when JSON is invalid', () => {
+  it('[TC-101] returns empty array when JSON is invalid', () => {
     const msg = '```json\n{bad json}\n```'
     expect(extractManifest(msg)).toEqual([])
   })
 
-  it('[TC-94] returns empty array when JSON lacks manifest key', () => {
+  it('[TC-102] returns empty array when JSON lacks manifest key', () => {
     const msg = '```json\n{"other": {"modified": ["x.ts"]}}\n```'
     expect(extractManifest(msg)).toEqual([])
   })
 
-  it('[TC-95] handles non-array values in manifest fields gracefully', () => {
+  it('[TC-103] handles non-array values in manifest fields gracefully', () => {
     const msg = '```json\n{"manifest": {"modified": "not-an-array"}}\n```'
     expect(extractManifest(msg)).toEqual([])
   })
@@ -136,7 +136,7 @@ describe('ManifestValidator', () => {
     await rm(tmpDir, { recursive: true, force: true })
   })
 
-  it('[TC-96] passes when declared matches actual changes', async () => {
+  it('[TC-104] passes when declared matches actual changes', async () => {
     await writeFile(path.join(tmpDir, 'README.md'), '# changed\n')
     const result = await validator.validate(['README.md'], tmpDir)
     expect(result.passed).toBe(true)
@@ -144,28 +144,28 @@ describe('ManifestValidator', () => {
     expect(result.actual).toContain('README.md')
   })
 
-  it('[TC-97] fails when an actual change is not declared', async () => {
+  it('[TC-105] fails when an actual change is not declared', async () => {
     await writeFile(path.join(tmpDir, 'README.md'), '# changed\n')
     const result = await validator.validate([], tmpDir)
     expect(result.passed).toBe(false)
     expect(result.undeclaredChanges).toContain('README.md')
   })
 
-  it('[TC-98] passes with phantom declaration (declared but not changed)', async () => {
+  it('[TC-106] passes with phantom declaration (declared but not changed)', async () => {
     await writeFile(path.join(tmpDir, 'README.md'), '# changed\n')
     const result = await validator.validate(['README.md', 'phantom.ts'], tmpDir)
     expect(result.passed).toBe(true)
     expect(result.phantomDeclarations).toContain('phantom.ts')
   })
 
-  it('[TC-99] passes with no changes and empty manifest', async () => {
+  it('[TC-107] passes with no changes and empty manifest', async () => {
     const result = await validator.validate([], tmpDir)
     expect(result.passed).toBe(true)
     expect(result.actual).toEqual([])
     expect(result.undeclaredChanges).toEqual([])
   })
 
-  it('[TC-100] reports declared and actual on the result', async () => {
+  it('[TC-108] reports declared and actual on the result', async () => {
     await writeFile(path.join(tmpDir, 'README.md'), '# updated\n')
     const result = await validator.validate(['README.md'], tmpDir)
     expect(result.declared).toEqual(['README.md'])

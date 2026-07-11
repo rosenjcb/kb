@@ -35,7 +35,7 @@ function restore(key: string, value: string | undefined): void {
 }
 
 describe('runServiceCommand install --no-start', () => {
-  it('[TC-85] writes a service unit that launches the resolved binary, without starting it', async () => {
+  it('[TC-81] writes a service unit that launches the resolved binary, without starting it', async () => {
     const { logger } = silentLogger()
     await runServiceCommand(['install', '--no-start'], logger)
 

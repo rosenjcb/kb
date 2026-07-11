@@ -17,7 +17,7 @@ const makeSnap = (overrides: Partial<Snapshot> = {}): Snapshot => ({
 })
 
 describe('computeDelta', () => {
-  it('[TC-219] computes today delta when no midnight crossing', () => {
+  it('[TC-227] computes today delta when no midnight crossing', () => {
     const before = makeSnap({ today_cost: 10.0, today_calls: 100 })
     const after = makeSnap({ today_cost: 10.5, today_calls: 105 })
     const delta = computeDelta(before, after)
@@ -25,7 +25,7 @@ describe('computeDelta', () => {
     expect(delta.calls).toBe(5)
   })
 
-  it('[TC-220] falls back to month delta when today delta is negative (midnight crossing)', () => {
+  it('[TC-228] falls back to month delta when today delta is negative (midnight crossing)', () => {
     const before = makeSnap({
       today_cost: 9.9,
       today_calls: 200,
@@ -38,7 +38,7 @@ describe('computeDelta', () => {
     expect(delta.calls).toBe(6)
   })
 
-  it('[TC-221] rounds cost delta to 4 decimal places', () => {
+  it('[TC-229] rounds cost delta to 4 decimal places', () => {
     const before = makeSnap({ today_cost: 1.0 })
     const after = makeSnap({ today_cost: 1.00005 })
     const delta = computeDelta(before, after)
@@ -60,7 +60,7 @@ describe('buildArtifact', () => {
     notes: 'test run',
   }
 
-  it('[TC-222] builds artifact with correct structure', () => {
+  it('[TC-230] builds artifact with correct structure', () => {
     const a = buildArtifact(baseOpts)
     expect(a.task_id).toBe(2)
     expect(a.run).toBe(1)
@@ -74,14 +74,14 @@ describe('buildArtifact', () => {
     expect(a.notes).toBe('test run')
   })
 
-  it('[TC-223] sets base to null for raw agent', () => {
+  it('[TC-231] sets base to null for raw agent', () => {
     const a = buildArtifact({ ...baseOpts, agent: 'raw', base: null })
     expect(a.base).toBeNull()
   })
 })
 
 describe('artifactPath', () => {
-  it('[TC-224] generates correct path', () => {
+  it('[TC-232] generates correct path', () => {
     const p = artifactPath('/repo', '2026-04-20', 3, 4, 'raw')
     expect(p).toBe('/repo/evaluation/runs/agent-compare/2026-04-20-run3-task-4-raw.json')
   })

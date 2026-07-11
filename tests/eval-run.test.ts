@@ -44,42 +44,42 @@ import {
 } from '../scripts/eval-run.mjs'
 
 describe('sanitizeSlugPart', () => {
-  it('[TC-154] lowercases and replaces non-alphanumeric with hyphens', () => {
+  it('[TC-162] lowercases and replaces non-alphanumeric with hyphens', () => {
     expect(sanitizeSlugPart('My Repo!')).toBe('my-repo')
   })
-  it('[TC-155] trims leading and trailing hyphens', () => {
+  it('[TC-163] trims leading and trailing hyphens', () => {
     expect(sanitizeSlugPart('--hello--')).toBe('hello')
   })
-  it('[TC-156] truncates to 48 chars', () => {
+  it('[TC-164] truncates to 48 chars', () => {
     const long = 'a'.repeat(60)
     expect(sanitizeSlugPart(long).length).toBe(48)
   })
-  it('[TC-157] returns "repo" for empty input', () => {
+  it('[TC-165] returns "repo" for empty input', () => {
     expect(sanitizeSlugPart('')).toBe('repo')
     expect(sanitizeSlugPart('!!!')).toBe('repo')
   })
 })
 
 describe('repoLeafNameFromUrl', () => {
-  it('[TC-158] extracts leaf from https URL', () => {
+  it('[TC-166] extracts leaf from https URL', () => {
     expect(repoLeafNameFromUrl('https://github.com/raysan5/raylib.git')).toBe('raylib')
   })
-  it('[TC-159] extracts leaf from git@ SCP URL', () => {
+  it('[TC-167] extracts leaf from git@ SCP URL', () => {
     expect(repoLeafNameFromUrl('git@github.com:raysan5/raylib.git')).toBe('raylib')
   })
-  it('[TC-160] strips .git suffix', () => {
+  it('[TC-168] strips .git suffix', () => {
     expect(repoLeafNameFromUrl('https://github.com/org/myrepo.git')).toBe('myrepo')
   })
-  it('[TC-161] falls back to "repo" for invalid URL', () => {
+  it('[TC-169] falls back to "repo" for invalid URL', () => {
     expect(repoLeafNameFromUrl('')).toBe('repo')
   })
 })
 
 describe('derivedBase', () => {
-  it('[TC-162] prefixes with eval-', () => {
+  it('[TC-170] prefixes with eval-', () => {
     expect(derivedBase('raylib')).toBe('eval-raylib')
   })
-  it('[TC-163] sanitizes the suite id', () => {
+  it('[TC-171] sanitizes the suite id', () => {
     expect(derivedBase('My Suite!')).toBe('eval-my-suite')
   })
 })
@@ -111,11 +111,11 @@ describe('resolveEvalInitPlan', () => {
 })
 
 describe('parseGraphCounts', () => {
-  it('[TC-164] parses entities and relationships', () => {
+  it('[TC-172] parses entities and relationships', () => {
     const text = 'Entities: 42\nRelationships: 17'
     expect(parseGraphCounts(text)).toEqual({ entities: 42, relationships: 17 })
   })
-  it('[TC-165] returns 0 for missing counts', () => {
+  it('[TC-173] returns 0 for missing counts', () => {
     expect(parseGraphCounts('no data here')).toEqual({ entities: 0, relationships: 0 })
   })
 })
@@ -140,26 +140,26 @@ describe('parseQueryText', () => {
     'sources> top 10 of 42 ranked: fact://abc; fact://def',
   ].join('\n')
 
-  it('[TC-166] extracts the final answer, not the first partial one', () => {
+  it('[TC-174] extracts the final answer, not the first partial one', () => {
     const r = parseQueryText(sampleOutput)
     expect(r.answer).toBe('Full comprehensive answer here.')
     expect(r.answer).not.toContain('Intro answer only')
   })
-  it('[TC-167] extracts result count from matches line', () => {
+  it('[TC-175] extracts result count from matches line', () => {
     expect(parseQueryText(sampleOutput).result_count).toBe(42)
   })
-  it('[TC-168] extracts provenance from sources line', () => {
+  it('[TC-176] extracts provenance from sources line', () => {
     const r = parseQueryText(sampleOutput)
     expect(r.provenance).toContain('fact://abc')
     expect(r.provenance).toContain('fact://def')
   })
-  it('[TC-169] extracts retrieval method', () => {
+  it('[TC-177] extracts retrieval method', () => {
     expect(parseQueryText(sampleOutput).retrieval.method).toBe('hybrid')
   })
-  it('[TC-170] returns null answer when no --- separator found', () => {
+  it('[TC-178] returns null answer when no --- separator found', () => {
     expect(parseQueryText('no separator here').answer).toBeNull()
   })
-  it('[TC-171] extracts direct answer before --- when no stage> answer lines (one-shot synthesis)', () => {
+  it('[TC-179] extracts direct answer before --- when no stage> answer lines (one-shot synthesis)', () => {
     const output = [
       '🤖 KB Agent Harness',
       '',
@@ -177,7 +177,7 @@ describe('parseQueryText', () => {
     expect(parseQueryText(output).answer).toContain('Prerequisites: cmake')
   })
 
-  it('[TC-172] parses remote-client sources> count and source> preview lines', () => {
+  it('[TC-180] parses remote-client sources> count and source> preview lines', () => {
     const output = [
       '🤖 KB Agent Harness',
       '',
@@ -239,7 +239,7 @@ describe('run timeline', () => {
     },
   }
 
-  it('[TC-518] classifyStageTokens splits thinking (:llm), synthesis (:answer-enrichment), and retrieval (:iterN)', () => {
+  it('[TC-233] classifyStageTokens splits thinking (:llm), synthesis (:answer-enrichment), and retrieval (:iterN)', () => {
     const s = classifyStageTokens(report)
     expect(s.thinking_tokens).toBe(31200)
     expect(s.synthesis_tokens).toBe(10800)
@@ -250,7 +250,7 @@ describe('run timeline', () => {
     expect(s.retrieval_tokens).toBe(0)
   })
 
-  it('[TC-519] parseRetrievalDetailTrace lifts loop counters from a retrieval detail line', () => {
+  it('[TC-234] parseRetrievalDetailTrace lifts loop counters from a retrieval detail line', () => {
     const t = parseRetrievalDetailTrace(
       'hybrid (facts-loop;passes:3;graph_hops:4;ponds:2;stop:frontier_exhausted;facts:15;curated:kept=15,dropped=3,requeried=0,rounds=1)'
     )
@@ -261,7 +261,7 @@ describe('run timeline', () => {
     expect(parseRetrievalDetailTrace('no loop here')).toBeNull()
   })
 
-  it('[TC-520] buildQuestionTimeline joins stages with the trace and derives retrieval_ms', () => {
+  it('[TC-235] buildQuestionTimeline joins stages with the trace and derives retrieval_ms', () => {
     const tl = buildQuestionTimeline(report, 1, 'What is X?', null)
     expect(tl.question_index).toBe(1)
     expect(tl.tokens.thinking).toBe(31200)
@@ -273,7 +273,7 @@ describe('run timeline', () => {
     expect(tl.retrieval?.curation?.dropped_fact_ids).toEqual(['fact://z'])
   })
 
-  it('[TC-521] buildQuestionTimeline falls back to the detail string when report.retrieval is absent', () => {
+  it('[TC-236] buildQuestionTimeline falls back to the detail string when report.retrieval is absent', () => {
     const legacy = { ...report, retrieval: undefined }
     const tl = buildQuestionTimeline(
       legacy,
@@ -285,7 +285,7 @@ describe('run timeline', () => {
     expect(tl.retrieval?.curation?.dropped).toBe(1)
   })
 
-  it('[TC-522] buildTimelineSummary aggregates shares and flags a thinking-dominant run', () => {
+  it('[TC-237] buildTimelineSummary aggregates shares and flags a thinking-dominant run', () => {
     const timeline = [
       buildQuestionTimeline(report, 1, 'q1', null),
       buildQuestionTimeline(report, 2, 'q2', null),
@@ -302,29 +302,29 @@ describe('run timeline', () => {
 })
 
 describe('stripCliBanner', () => {
-  it('[TC-172] strips prefix before first {', () => {
+  it('[TC-180] strips prefix before first {', () => {
     expect(stripCliBanner('🤖 KB Agent\n{"ok":true}')).toBe('{"ok":true}')
   })
-  it('[TC-173] passes through text that starts with {', () => {
+  it('[TC-181] passes through text that starts with {', () => {
     expect(stripCliBanner('{"ok":true}')).toBe('{"ok":true}')
   })
-  it('[TC-174] returns trimmed text when no { present', () => {
+  it('[TC-182] returns trimmed text when no { present', () => {
     expect(stripCliBanner('  plain text  ')).toBe('plain text')
   })
 })
 
 describe('buildCoverageAudit', () => {
-  it('[TC-175] returns coverage_ratio between 0 and 1', () => {
+  it('[TC-183] returns coverage_ratio between 0 and 1', () => {
     const result = buildCoverageAudit('What are the main capabilities?', 'capabilities listed here', '')
     expect(result.coverage_ratio).toBeGreaterThanOrEqual(0)
     expect(result.coverage_ratio).toBeLessThanOrEqual(1)
   })
-  it('[TC-176] returns full coverage when answer contains all facets', () => {
+  it('[TC-184] returns full coverage when answer contains all facets', () => {
     const result = buildCoverageAudit('raylib graphics platform', 'raylib graphics platform support', '')
     expect(result.coverage_ratio).toBe(1)
     expect(result.missing_facets).toHaveLength(0)
   })
-  it('[TC-177] handles empty question gracefully', () => {
+  it('[TC-185] handles empty question gracefully', () => {
     const result = buildCoverageAudit('', '', '')
     expect(result.coverage_ratio).toBe(1)
     expect(result.facets).toHaveLength(0)
@@ -342,33 +342,33 @@ describe('scoreMetric', () => {
       },
     },
   }
-  it('[TC-178] extracts usefulness from query scores', () => {
+  it('[TC-186] extracts usefulness from query scores', () => {
     expect(scoreMetric(artifact, 'usefulness')).toBe(3.5)
   })
-  it('[TC-179] extracts correctness', () => {
+  it('[TC-187] extracts correctness', () => {
     expect(scoreMetric(artifact, 'correctness')).toBe(2.8)
   })
-  it('[TC-180] extracts pass_rate', () => {
+  it('[TC-188] extracts pass_rate', () => {
     expect(scoreMetric(artifact, 'pass_rate')).toBe(0.75)
   })
-  it('[TC-181] extracts success_score', () => {
+  it('[TC-189] extracts success_score', () => {
     expect(scoreMetric(artifact, 'success_score')).toBe(0.751)
   })
-  it('[TC-182] falls back to combined when query is absent', () => {
+  it('[TC-190] falls back to combined when query is absent', () => {
     const a = { aggregate_scores: { combined: { mean_usefulness: 1.5 } } }
     expect(scoreMetric(a, 'usefulness')).toBe(1.5)
   })
-  it('[TC-183] returns null when key is absent', () => {
+  it('[TC-191] returns null when key is absent', () => {
     expect(scoreMetric({}, 'usefulness')).toBeNull()
   })
 })
 
 describe('computeSuccessScore', () => {
-  it('[TC-184] weights default to 0.6 quality / 0.3 tokens / 0.1 speed summing to 1', () => {
+  it('[TC-192] weights default to 0.6 quality / 0.3 tokens / 0.1 speed summing to 1', () => {
     expect(SUCCESS_WEIGHTS.quality + SUCCESS_WEIGHTS.tokens + SUCCESS_WEIGHTS.speed).toBeCloseTo(1, 6)
   })
 
-  it('[TC-185] maps perfect quality, zero tokens, zero time to 1.0', () => {
+  it('[TC-193] maps perfect quality, zero tokens, zero time to 1.0', () => {
     const r = computeSuccessScore({
       meanCorrectness: 4,
       meanUsefulness: 4,
@@ -381,7 +381,7 @@ describe('computeSuccessScore', () => {
     expect(r.success_score).toBe(1)
   })
 
-  it('[TC-186] blends the three components with the configured weights', () => {
+  it('[TC-194] blends the three components with the configured weights', () => {
     // adequacy at c=u=3 → Q_adeq = 1/(1+β) ≈ 0.833; tokens at half budget → 0.5; time at half budget → 0.5
     const r = computeSuccessScore({
       meanCorrectness: 3,
@@ -396,7 +396,7 @@ describe('computeSuccessScore', () => {
     expect(r.success_score).toBe(0.7)
   })
 
-  it('[TC-187] clamps token and speed sub-scores to 0 when over budget', () => {
+  it('[TC-195] clamps token and speed sub-scores to 0 when over budget', () => {
     const r = computeSuccessScore({
       meanCorrectness: 4,
       meanUsefulness: 4,
@@ -409,7 +409,7 @@ describe('computeSuccessScore', () => {
     expect(r.success_score).toBe(0.6)
   })
 
-  it('[TC-188] returns null success_score when telemetry is missing', () => {
+  it('[TC-196] returns null success_score when telemetry is missing', () => {
     const r = computeSuccessScore({ meanCorrectness: 4, meanUsefulness: 4 })
     expect(r.success_score).toBeNull()
     expect(r.token_efficiency).toBeNull()
@@ -417,7 +417,7 @@ describe('computeSuccessScore', () => {
     expect(r.quality_score).toBe(1)
   })
 
-  it('[TC-189] weights cache reads at the MOEL discount when scoring control telemetry', () => {
+  it('[TC-197] weights cache reads at the MOEL discount when scoring control telemetry', () => {
     expect(SUCCESS_TOKEN_CACHE_DISCOUNT).toBe(0.1)
     const weighted = computeWeightedTokenTotal({
       inputTokens: 292946,
@@ -444,7 +444,7 @@ describe('computeSuccessScore', () => {
     )
   })
 
-  it('[TC-190] treats rubric scores at τ as adequate with diminishing returns above', () => {
+  it('[TC-198] treats rubric scores at τ as adequate with diminishing returns above', () => {
     expect(adequacyUtility(ADEQUACY_THRESHOLD)).toBeCloseTo(0.833, 3)
     expect(adequacyUtility(4)).toBe(1)
     expect(adequacyUtility(2)).toBeCloseTo(2 / 3 / 1.2, 3)
@@ -454,13 +454,13 @@ describe('computeSuccessScore', () => {
 })
 
 describe('kbControlVerdict — success-driven', () => {
-  it('[TC-191] reports ahead when kb success exceeds control by >= 0.02', () => {
+  it('[TC-199] reports ahead when kb success exceeds control by >= 0.02', () => {
     expect(kbControlVerdict({ success: 0.78 }, { success: 0.74 })).toBe('ahead of control')
   })
-  it('[TC-192] reports behind when kb success trails control by >= 0.02', () => {
+  it('[TC-200] reports behind when kb success trails control by >= 0.02', () => {
     expect(kbControlVerdict({ success: 0.70 }, { success: 0.80 })).toBe('behind control')
   })
-  it('[TC-193] reports on par within the 0.02 band', () => {
+  it('[TC-201] reports on par within the 0.02 band', () => {
     expect(kbControlVerdict({ success: 0.751 }, { success: 0.75 })).toBe('on par with control')
   })
 })
@@ -470,48 +470,48 @@ describe('structuralMetric', () => {
     run: { init_result: { written_docs: 10, graph_summary: { entities: 50, relationships: 80 } } },
     query_evaluation: [{ result_count: 6 }, { result_count: 4 }],
   }
-  it('[TC-194] extracts docs count', () => {
+  it('[TC-202] extracts docs count', () => {
     expect(structuralMetric(artifact, 'docs')).toBe(10)
   })
-  it('[TC-195] extracts entities', () => {
+  it('[TC-203] extracts entities', () => {
     expect(structuralMetric(artifact, 'entities')).toBe(50)
   })
-  it('[TC-196] computes avg_results across query_evaluation', () => {
+  it('[TC-204] computes avg_results across query_evaluation', () => {
     expect(structuralMetric(artifact, 'avg_results')).toBe(5)
   })
-  it('[TC-197] returns null when absent', () => {
+  it('[TC-205] returns null when absent', () => {
     expect(structuralMetric({}, 'docs')).toBeNull()
   })
 })
 
 describe('matchesSuite', () => {
-  it('[TC-198] matches exact run.suite field', () => {
+  it('[TC-206] matches exact run.suite field', () => {
     const row = { id: 'kb-2026-01-01', artifact: { run: { suite: 'kb' } } }
     expect(matchesSuite(row, 'kb')).toBe(true)
     expect(matchesSuite(row, 'raylib')).toBe(false)
   })
-  it('[TC-199] returns true for empty suite (no filter)', () => {
+  it('[TC-207] returns true for empty suite (no filter)', () => {
     const row = { id: 'anything', artifact: {} }
     expect(matchesSuite(row, '')).toBe(true)
   })
-  it('[TC-200] falls back to id match when run.suite is absent', () => {
+  it('[TC-208] falls back to id match when run.suite is absent', () => {
     const row = { id: 'raylib-2026-01-01', artifact: {} }
     expect(matchesSuite(row, 'raylib')).toBe(true)
   })
 })
 
 describe('formatScoreDelta', () => {
-  it('[TC-201] formats signed deltas', () => {
+  it('[TC-209] formats signed deltas', () => {
     expect(formatScoreDelta(0.25).trim()).toBe('+0.250')
     expect(formatScoreDelta(-0.5).trim()).toBe('-0.500')
   })
-  it('[TC-202] returns dash for null', () => {
+  it('[TC-210] returns dash for null', () => {
     expect(formatScoreDelta(null).trim()).toBe('-')
   })
 })
 
 describe('formatCompactTokens', () => {
-  it('[TC-203] formats large counts compactly', () => {
+  it('[TC-211] formats large counts compactly', () => {
     expect(formatCompactTokens(389900)).toBe('390k')
     expect(formatCompactTokens(534712)).toBe('535k')
     expect(formatCompactTokens(1_920_473)).toBe('1.9M')
@@ -519,7 +519,7 @@ describe('formatCompactTokens', () => {
 })
 
 describe('formatDurationMs', () => {
-  it('[TC-204] formats seconds and minutes', () => {
+  it('[TC-212] formats seconds and minutes', () => {
     expect(formatDurationMs(161935)).toBe('162s')
     expect(formatDurationMs(308582)).toBe('309s')
     expect(formatDurationMs(3600000)).toBe('60.0m')
@@ -527,7 +527,7 @@ describe('formatDurationMs', () => {
 })
 
 describe('kbControlVerdict', () => {
-  it('[TC-205] reports behind when all axes lose', () => {
+  it('[TC-213] reports behind when all axes lose', () => {
     expect(
       kbControlVerdict(
         { pass: 0.5, correctness: 2.5, usefulness: 3 },
@@ -535,7 +535,7 @@ describe('kbControlVerdict', () => {
       )
     ).toBe('behind control')
   })
-  it('[TC-206] reports ahead when all axes tie or win', () => {
+  it('[TC-214] reports ahead when all axes tie or win', () => {
     expect(
       kbControlVerdict(
         { pass: 1, correctness: 4, usefulness: 4 },
@@ -546,7 +546,7 @@ describe('kbControlVerdict', () => {
 })
 
 describe('worstQuestionGaps', () => {
-  it('[TC-207] returns largest negative gaps first', () => {
+  it('[TC-215] returns largest negative gaps first', () => {
     const kb = [{ scores: { correctness: 2 } }, { scores: { correctness: 4 } }]
     const ctrl = [{ scores: { correctness: 4 } }, { scores: { correctness: 3 } }]
     const gaps = worstQuestionGaps(kb, ctrl, ['a', 'b'], 2)
@@ -556,20 +556,20 @@ describe('worstQuestionGaps', () => {
 })
 
 describe('sparkline', () => {
-  it('[TC-208] returns empty string for empty input', () => {
+  it('[TC-216] returns empty string for empty input', () => {
     expect(sparkline([])).toBe('')
   })
-  it('[TC-209] returns all mid-char for flat input', () => {
+  it('[TC-217] returns all mid-char for flat input', () => {
     expect(sparkline([5, 5, 5])).toBe('▅▅▅')
   })
-  it('[TC-210] returns a string of the right length for varied input', () => {
+  it('[TC-218] returns a string of the right length for varied input', () => {
     const result = sparkline([1, 2, 3, 4])
     expect(result.length).toBe(4)
   })
 })
 
 describe('logsCmd', () => {
-  it('[TC-211] filters logs by eval base with a generous limit', () => {
+  it('[TC-219] filters logs by eval base with a generous limit', () => {
     expect(logsCmd('eval-kb')).toBe('logs list --base eval-kb --limit 10')
   })
 })
@@ -583,28 +583,28 @@ describe('parseLatestRunIdForCommand', () => {
     'run-ghi query      eval-kb 2026-06-12 10:06:00',
   ].join('\n')
 
-  it('[TC-212] finds the latest init run id', () => {
+  it('[TC-220] finds the latest init run id', () => {
     expect(parseLatestRunIdForCommand(sample, 'init')).toBe('run-abc')
   })
 
-  it('[TC-213] finds the latest scan run id', () => {
+  it('[TC-221] finds the latest scan run id', () => {
     expect(parseLatestRunIdForCommand(sample, 'scan')).toBe('run-def')
   })
 
-  it('[TC-214] returns null when command is absent', () => {
+  it('[TC-222] returns null when command is absent', () => {
     expect(parseLatestRunIdForCommand(sample, 'publish')).toBeNull()
   })
 })
 
 describe('conditionSideLabel', () => {
-  it('[TC-215] maps kb condition to K and control to N', () => {
+  it('[TC-223] maps kb condition to K and control to N', () => {
     expect(conditionSideLabel('kb')).toBe('K')
     expect(conditionSideLabel('control')).toBe('N')
   })
 })
 
 describe('writeResearchResultsTex', () => {
-  it('[TC-216] writes LaTeX macros from scored artifacts', () => {
+  it('[TC-224] writes LaTeX macros from scored artifacts', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-results-'))
     const evalRoot = path.join(tmp, '.kb', 'evaluations')
     const runDir = path.join(evalRoot, 'raylib-test-run')

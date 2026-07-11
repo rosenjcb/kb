@@ -5,7 +5,7 @@ import {
 } from '@kb/core/core/evidence-summary.js'
 
 describe('evidence-summary', () => {
-  it('[TC-56] Given mixed doc and code facts, then header summarizes count, mix, themes, and leads', () => {
+  it('[TC-54] Given mixed doc and code facts, then header summarizes count, mix, themes, and leads', () => {
     const header = formatEvidenceSummaryHeader({
       results: [
         {
@@ -45,11 +45,11 @@ describe('evidence-summary', () => {
     expect(header).toContain('conf: 0.71')
   })
 
-  it('[TC-57] Given empty results, then header is omitted', () => {
+  it('[TC-55] Given empty results, then header is omitted', () => {
     expect(formatEvidenceSummaryHeader({ results: [] })).toBeUndefined()
   })
 
-  it('[TC-58] Given homogenous source kind, then mix uses all-doc shorthand', () => {
+  it('[TC-56] Given homogenous source kind, then mix uses all-doc shorthand', () => {
     const parts = buildEvidenceSummaryParts({
       results: [
         { metadata: { title: 'A', tags: ['import_doc', 'fact'] } },
@@ -59,7 +59,7 @@ describe('evidence-summary', () => {
     expect(parts?.sourceMix).toBe('mix: all doc')
   })
 
-  it('[TC-59] Given duplicate lead titles, then leads are deduped', () => {
+  it('[TC-57] Given duplicate lead titles, then leads are deduped', () => {
     const parts = buildEvidenceSummaryParts({
       results: [
         { metadata: { title: 'TsMorphIndexer', tags: ['import_doc', 'fact'] } },

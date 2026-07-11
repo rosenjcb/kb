@@ -53,3 +53,6 @@ allowBuilds:
   tree-sitter-rust: false
   tree-sitter-scala: false
   tree-sitter-typescript: false
+
+minimumReleaseAgeExclude:
+  - '@rosenjcb/spec-md@0.3.3'

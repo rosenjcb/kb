@@ -1,5 +1,13 @@
 # kb-server
 
+## 1.4.2
+
+### Patch Changes
+
+- Compact FR/TC ids for spec-md contiguous ordering and remap matching [TC-N] tags.
+- Updated dependencies
+  - @kb/core@1.4.5
+
 ## 1.4.1
 
 ### Patch Changes

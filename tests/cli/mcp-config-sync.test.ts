@@ -52,14 +52,14 @@ afterEach(async () => {
 })
 
 describe('resolveMcpEndpointUrl', () => {
-  it('[TC-507] appends /mcp and strips trailing slash', () => {
+  it('[TC-12] appends /mcp and strips trailing slash', () => {
     expect(resolveMcpEndpointUrl('http://remote:38117/')).toBe('http://remote:38117/mcp')
     expect(resolveMcpEndpointUrl('http://remote:38117')).toBe('http://remote:38117/mcp')
   })
 })
 
 describe('build*KbMcpEntry', () => {
-  it('[TC-508] Cursor entry is url + optional Bearer header', () => {
+  it('[TC-13] Cursor entry is url + optional Bearer header', () => {
     expect(buildCursorKbMcpEntry('http://localhost:38117/mcp')).toEqual({
       url: 'http://localhost:38117/mcp',
     })
@@ -69,7 +69,7 @@ describe('build*KbMcpEntry', () => {
     })
   })
 
-  it('[TC-509] Claude entry requires type http', () => {
+  it('[TC-14] Claude entry requires type http', () => {
     expect(buildClaudeKbMcpEntry('http://localhost:38117/mcp', 'k')).toEqual({
       type: 'http',
       url: 'http://localhost:38117/mcp',
@@ -79,7 +79,7 @@ describe('build*KbMcpEntry', () => {
 })
 
 describe('hasExplicitServerHost', () => {
-  it('[TC-520] false when env unset; true for KB_HOST, KB_SERVER_URL, or config.server.host', () => {
+  it('[TC-23] false when env unset; true for KB_HOST, KB_SERVER_URL, or config.server.host', () => {
     expect(hasExplicitServerHost()).toBe(false)
     process.env.KB_HOST = 'localhost'
     expect(hasExplicitServerHost()).toBe(true)
@@ -92,7 +92,7 @@ describe('hasExplicitServerHost', () => {
 })
 
 describe('syncKbMcpConfigs', () => {
-  it('[TC-510] Given no explicit host, defaults MCP to localhost like the CLI/TUI', async () => {
+  it('[TC-15] Given no explicit host, defaults MCP to localhost like the CLI/TUI', async () => {
     process.env.KB_SERVER_API_KEY = 'testkey'
     const results = await syncKbMcpConfigs()
     expect(results.every(r => r.action === 'installed')).toBe(true)
@@ -113,7 +113,7 @@ describe('syncKbMcpConfigs', () => {
     ])
   })
 
-  it('[TC-511] Given KB_SERVER_URL, points MCP at that host /mcp', async () => {
+  it('[TC-16] Given KB_SERVER_URL, points MCP at that host /mcp', async () => {
     process.env.KB_SERVER_URL = 'https://kb.example.com:8443'
     process.env.KB_SERVER_API_KEY = 'prod'
     const results = await syncKbMcpConfigs()
@@ -124,7 +124,7 @@ describe('syncKbMcpConfigs', () => {
     expect(cursor.mcpServers.kb.url).toBe('https://kb.example.com:8443/mcp')
   })
 
-  it('[TC-627] Given only config.server.host + apiKey, installs with Bearer', async () => {
+  it('[TC-30] Given only config.server.host + apiKey, installs with Bearer', async () => {
     const results = await syncKbMcpConfigs({
       requireExplicitHost: true,
       config: { server: { host: 'kb.internal', apiKey: 'from-config' } },
@@ -139,7 +139,7 @@ describe('syncKbMcpConfigs', () => {
     })
   })
 
-  it('[TC-521] Given --host override, installs even when env unset', async () => {
+  it('[TC-24] Given --host override, installs even when env unset', async () => {
     process.env.KB_SERVER_API_KEY = 'testkey'
     const results = await syncKbMcpConfigs({ host: 'localhost:38117' })
     expect(results).toEqual([
@@ -163,7 +163,7 @@ describe('syncKbMcpConfigs', () => {
     })
   })
 
-  it('[TC-512] Given matching entry, action is skipped', async () => {
+  it('[TC-17] Given matching entry, action is skipped', async () => {
     process.env.KB_SERVER_URL = 'http://remote:38117'
     process.env.KB_SERVER_API_KEY = 'k'
     await syncKbMcpConfigs()
@@ -171,7 +171,7 @@ describe('syncKbMcpConfigs', () => {
     expect(second.every(r => r.action === 'skipped')).toBe(true)
   })
 
-  it('[TC-513] Given stale URL, updates without clobbering other MCP servers', async () => {
+  it('[TC-18] Given stale URL, updates without clobbering other MCP servers', async () => {
     await mkdir(path.join(fakeHome, '.cursor'), { recursive: true })
     await writeFile(
       path.join(fakeHome, '.cursor', 'mcp.json'),
@@ -197,7 +197,7 @@ describe('syncKbMcpConfigs', () => {
     })
   })
 
-  it('[TC-628] Given no API key but existing Bearer, clears Authorization', async () => {
+  it('[TC-31] Given no API key but existing Bearer, clears Authorization', async () => {
     await mkdir(path.join(fakeHome, '.cursor'), { recursive: true })
     await writeFile(
       path.join(fakeHome, '.cursor', 'mcp.json'),
@@ -220,7 +220,7 @@ describe('syncKbMcpConfigs', () => {
     expect(doc.mcpServers.kb.headers).toBeUndefined()
   })
 
-  it('[TC-514] Given KB_LOCAL_MODE, skips MCP sync', async () => {
+  it('[TC-19] Given KB_LOCAL_MODE, skips MCP sync', async () => {
     process.env.KB_LOCAL_MODE = 'true'
     process.env.KB_HOST = 'localhost'
     const results = await syncKbMcpConfigs()
@@ -229,7 +229,7 @@ describe('syncKbMcpConfigs', () => {
 })
 
 describe('uninstallKbMcpConfigs', () => {
-  it('[TC-515] removes kb entries and leaves other servers', async () => {
+  it('[TC-20] removes kb entries and leaves other servers', async () => {
     await mkdir(path.join(fakeHome, '.cursor'), { recursive: true })
     await writeFile(
       path.join(fakeHome, '.cursor', 'mcp.json'),
@@ -278,14 +278,14 @@ describe('uninstallKbMcpConfigs', () => {
     expect(claude.theme).toBe('dark')
   })
 
-  it('[TC-516] Given no kb entry, action is not-found', async () => {
+  it('[TC-21] Given no kb entry, action is not-found', async () => {
     const results = await uninstallKbMcpConfigs()
     expect(results.every(r => r.action === 'not-found')).toBe(true)
   })
 })
 
 describe('formatMcpSyncReport / status', () => {
-  it('[TC-517] formats install/update/skip lines', () => {
+  it('[TC-22] formats install/update/skip lines', () => {
     const report = formatMcpSyncReport([
       { agent: 'cursor', action: 'installed', url: 'http://localhost:38117/mcp' },
       { agent: 'claude', action: 'updated', url: 'http://remote:38117/mcp' },
@@ -297,7 +297,7 @@ describe('formatMcpSyncReport / status', () => {
     expect(report).toContain('[claude]')
   })
 
-  it('[TC-522] formats needs-host warning', () => {
+  it('[TC-25] formats needs-host warning', () => {
     const report = formatMcpSyncReport([
       { agent: 'all', action: 'needs-host', detail: 'Set KB_SERVER_URL' },
     ])
@@ -305,7 +305,7 @@ describe('formatMcpSyncReport / status', () => {
     expect(report).toContain('KB_SERVER_URL')
   })
 
-  it('[TC-523] readKbMcpStatus reports missing entries when unset', async () => {
+  it('[TC-26] readKbMcpStatus reports missing entries when unset', async () => {
     const status = await readKbMcpStatus()
     expect(status.explicitEnvHost).toBe(false)
     expect(status.entries.every(e => !e.present)).toBe(true)
