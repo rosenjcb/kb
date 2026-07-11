@@ -1050,24 +1050,14 @@ async function main() {
 
   // Launch TUI when invoked interactively with no arguments
   if (isTTY && args.length === 0) {
-    const [skillResults] = await Promise.all([
-      installSkillsGlobally().catch(() => [] as Awaited<ReturnType<typeof installSkillsGlobally>>),
-    ])
     const isFreshInstall = isFreshClientInstall()
     let kbConfig = await ensureDefaultConfig()
     const inferred = await persistInferredLLMProvider({ config: kbConfig })
     kbConfig = inferred.config
     applyConfigToEnv(kbConfig)
-    // Only rewrite agent MCP when the operator set an explicit host (never invent localhost).
-    void syncKbMcpConfigs({ config: kbConfig, requireExplicitHost: true }).catch(() => {})
 
     const startupNotices: string[] = []
     if (inferred.notice) startupNotices.push(inferred.notice)
-
-    for (const r of skillResults) {
-      if (r.action === 'installed') startupNotices.push(`✓ KB skill ${r.skill} installed for ${r.agent}`)
-      else if (r.action === 'updated') startupNotices.push(`↑ KB skill ${r.skill} updated for ${r.agent}`)
-    }
 
     if (isFreshInstall) {
       startupNotices.push(FIRST_RUN_WELCOME_NOTICE)
@@ -1109,13 +1099,10 @@ async function main() {
     return
   }
 
-  installSkillsGlobally().catch(() => {}) // fire and forget — never block startup
   let kbConfig = await ensureDefaultConfig()
   const inferred = await persistInferredLLMProvider({ config: kbConfig })
   kbConfig = inferred.config
   applyConfigToEnv(kbConfig)
-  // Keep Cursor/Claude MCP aligned only when KB_SERVER_URL / KB_HOST / --host is set.
-  syncKbMcpConfigs({ config: kbConfig, requireExplicitHost: true }).catch(() => {})
 
   // One-shot CLI path — skip banner when docs generate --output json (stdout must be parseable JSON only).
   const machineJsonStdout = isDocsGenerateJsonOutputArgs(args)

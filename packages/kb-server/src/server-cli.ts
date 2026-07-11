@@ -5,7 +5,7 @@
  * shutdown signal.
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { type KbConfig, getKbConfigDir } from '@kb/core/config/kb-config.js'
 import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
@@ -41,6 +41,30 @@ export interface ServerLogger {
 }
 
 const DEFAULT_PORT = DEFAULT_KB_SERVER_PORT
+
+// Replaced by esbuild's `define` at build time; package.json fallback for tsx/dev.
+declare const __KB_SERVER_VERSION__: string | undefined
+
+function resolveServerVersion(): string {
+  if (typeof __KB_SERVER_VERSION__ !== 'undefined') return __KB_SERVER_VERSION__
+  try {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')) as {
+      version?: string
+    }
+    return typeof pkg.version === 'string' ? pkg.version : '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+}
+
+function isVersionArg(argv: string[]): boolean {
+  return (
+    argv.includes('--version') ||
+    argv.includes('-V') ||
+    argv[0] === 'version' ||
+    argv[0] === '-v'
+  )
+}
 
 function readApiKeys(): string[] {
   return (process.env.KB_SERVER_API_KEY ?? '')
@@ -480,6 +504,10 @@ Commands:
   status        Check local kb-server service status (Phase 5)
   install       Install kb-server as a local service (Phase 5)
   init          Bootstrap KB_HOME and server config (Phase 5)
+
+Global flags:
+  --version, -V   Print kb-server version and exit (does not start the daemon)
+  --help, -h      Show this help
 `
 
 /** Standalone `kb-server` binary entry. */
@@ -488,10 +516,21 @@ export async function runServerMain(argv: string[]): Promise<void> {
     log: message => console.log(message),
     error: message => console.error(message),
   }
-  const { ensureDefaultConfig } = await import('@kb/core/config/kb-config.js')
-  const config = await ensureDefaultConfig()
+
+  // Before config / listen: smoke checks and `kb-server --version` must not start the daemon.
+  if (isVersionArg(argv)) {
+    out.log(`kb-server v${resolveServerVersion()}`)
+    return
+  }
 
   const command = argv[0] ?? 'start'
+  if (command === '--help' || command === '-h' || command === 'help') {
+    out.log(SERVER_USAGE.trim())
+    return
+  }
+
+  const { ensureDefaultConfig } = await import('@kb/core/config/kb-config.js')
+  const config = await ensureDefaultConfig()
   const rest = command === 'start' ? argv.slice(1) : argv.slice(1)
 
   switch (command) {
@@ -528,11 +567,6 @@ export async function runServerMain(argv: string[]): Promise<void> {
         return
       }
       throw new Error(`kb-server ${command} is not yet implemented — use kb-server start for now`)
-    case '--help':
-    case '-h':
-    case 'help':
-      out.log(SERVER_USAGE.trim())
-      return
     default:
       if (command.startsWith('-')) {
         await runServerCommand(argv, out, config)

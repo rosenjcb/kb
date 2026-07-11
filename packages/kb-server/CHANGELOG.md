@@ -5,6 +5,7 @@
 ### Patch Changes
 
 - Document agents=MCP-only / humans=CLI-TUI split and explicit-host MCP install (`kb mcp install --host`).
+- Fix `kb-server --version` so it prints the package version and exits instead of starting the daemon (broke `install:global` smoke when port 38117 was already in use).
 - Updated dependencies
   - @kb/core@1.4.2 (Gemini default → `gemini-3.0-flash`)
 

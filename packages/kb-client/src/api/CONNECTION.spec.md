@@ -6,6 +6,7 @@ tests:
   - ../../../../tests/cli/kb-api-client.test.ts
   - ../../../../tests/cli/cli-global-flags.test.ts
   - ../../../../tests/cli/mcp-config-sync.test.ts
+  - ../../../../tests/cli/remote-commands.test.ts
 description: Connection profile, --host override, MCP client sync, and user-visible host/base context
 tags: [spec, kb, client, connection]
 timestamp: 2026-07-10T00:00:00Z
@@ -48,6 +49,8 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | FR-10 | MCP sync is idempotent, preserves sibling MCP servers, no-ops under `KB_LOCAL_MODE`, and returns `needs-host` instead of inventing localhost |
 | FR-11 | `uninstallKbMcpConfigs` removes only the managed `kb` MCP entries |
 | FR-12 | `readKbMcpStatus` / `kb mcp status` reports env host + current agent MCP URLs |
+| FR-13 | `mcp`, `skills`, `uninstall`, `sync`, and `base use` stay client-local — never forwarded to `/v1/admin/cli` |
+| FR-14 | CLI and TUI startup never call `syncKbMcpConfigs` — MCP install is opt-in via `kb mcp install` / `kb skills install` only |
 
 ### QA Test Cases
 
@@ -79,3 +82,5 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-521 | FR-9 | Given `--host` with env unset | installs Cursor + Claude entries |
 | TC-522 | FR-10 | Given `needs-host` result | report includes warning |
 | TC-523 | FR-12 | Given no MCP files | status shows unset / missing entries |
+| TC-524 | FR-13 | Given `mcp status` / `skills` / `base use` | `isClientLocalCommand` is true (not admin CLI) |
+| TC-525 | FR-14 | Given bare `kb` / one-shot CLI startup | Does not call `syncKbMcpConfigs` |

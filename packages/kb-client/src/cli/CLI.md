@@ -4,7 +4,7 @@ title: CLI Layer
 description: kb client command router, global --host flag, and remote HTTP dispatch.
 resource: ./packages/kb-client/src/cli
 tags: [cli, commands, client, entrypoint]
-timestamp: 2026-07-05T00:00:00Z
+timestamp: 2026-07-11T00:00:00Z
 ---
 
 # CLI Layer (`@kb/client`)
@@ -86,7 +86,12 @@ Uninitialized base → `uninitializedBaseNotice` (points to `KB_GIT_REPOS`, not 
 
 ## Skills, uninstall, publish
 
-`kb skills install` may install MCP when `KB_SERVER_URL` / `KB_HOST` is already set. Prefer **`kb mcp install --host …`** so local vs remote is explicit. Spec: [`CLI.spec.md`](CLI.spec.md) FR-34 · connection: [`../api/CONNECTION.md`](../api/CONNECTION.md).
+Skills and MCP client wiring are **opt-in**:
+
+- `kb skills install` — skill files, profile readmes, hooks; MCP only if host env already set
+- `kb mcp install --host …` — preferred for pointing Cursor/Claude at a node
+
+CLI/TUI startup does **not** auto-install skills or rewrite MCP configs. Spec: [`CLI.spec.md`](CLI.spec.md) FR-34 · connection: [`../api/CONNECTION.md`](../api/CONNECTION.md).
 
 ## `kb sync`
 

@@ -4,7 +4,7 @@ title: "Bundled Agent Skills"
 description: "The first-party agent skills KB ships for dogfooding and kb skills install, and how to add one."
 resource: ./src/skills
 tags: [skills, agents, install]
-timestamp: 2026-06-20T00:00:00Z
+timestamp: 2026-07-11T00:00:00Z
 ---
 
 # Bundled Agent Skills
@@ -22,7 +22,7 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 
 ## Installer (`../cli/skill-installer.ts`)
 
-`kb skills install` runs skill files, profile readmes, hooks, **and** MCP client install together; `kb skills uninstall` reverses those.
+`kb skills install` runs skill files, profile readmes, hooks, **and** MCP client install together; `kb skills uninstall` reverses those. Opt-in only — CLI/TUI startup does **not** auto-install skills or rewrite MCP configs.
 
 | Function | Target |
 |---|---|
@@ -60,3 +60,4 @@ Adding a skill:
 - Hash header must remain first line after install so upgrades are detectable.
 - Dev-workflow: agents use the MCP connection only; CLI/TUI is the human surface (agents may run `kb mcp install` for setup, never `kb query`).
 - MCP `kb` URL must come from an explicit host (prompt, env, or `kb mcp install --host`) — never hard-code.
+- Do not auto-install skills or MCP from CLI/TUI startup — opt-in commands only.

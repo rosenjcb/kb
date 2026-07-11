@@ -4,7 +4,7 @@ title: Client ↔ Server Connection
 description: How kb resolves kb-server address, overrides via --host, and surfaces host/base to the user.
 resource: ./packages/kb-client/src/api
 tags: [client, server, http, connection]
-timestamp: 2026-07-05T00:00:00Z
+timestamp: 2026-07-11T00:00:00Z
 ---
 
 # Client ↔ Server Connection
@@ -52,7 +52,7 @@ The MCP URL must be an **explicit** local or remote host — never an invented l
 | `kb mcp install --host …` | Write Cursor/Claude `kb` → `${server}/mcp` |
 | `kb mcp install` | Same, using `KB_SERVER_URL` / `KB_HOST` (errors with `needs-host` if unset) |
 | `kb skills install` | Install MCP only when an explicit host env is already set |
-| Normal `kb` / TUI startup | Fire-and-forget install **only** when explicit host env is set |
+| Normal `kb` / TUI startup | **No** MCP rewrite — opt-in via `kb mcp install` / `kb skills install` only |
 | `KB_LOCAL_MODE=true` | No-op |
 | `kb mcp uninstall` / `kb skills uninstall` | Removes managed `kb` entries only |
 
@@ -111,6 +111,8 @@ Operator guide copy lives in `INDEXING_SERVER_MANAGED_NOTICE` (`@kb/core/config/
 - `formatServerAddress` strips scheme/path — display is `host:port`, not full URL.
 - TUI `serverHost` prop is the host segment only; base updates async after `resolveEffectiveBaseDir`.
 - `base use` is client-local (writes state files); other `base` subcommands hit server admin CLI in remote mode.
+- `mcp`, `skills`, `uninstall`, and `sync` are always client-local — they rewrite agent configs on the laptop, not server state.
+- Startup is read-only for agent wiring: no skill install, no MCP rewrite until the operator runs `kb skills install` / `kb mcp install`.
 
 ## Related docs
 
