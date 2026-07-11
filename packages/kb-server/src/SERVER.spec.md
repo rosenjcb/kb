@@ -31,7 +31,7 @@ See companion doc for full vocabulary where applicable.
 | FR-1 | Stream chat synthesis over SSE |
 | FR-2 | Expose authenticated REST routes for query, chat, reindex, and health; `/healthz` includes `version.server` and `version.core` |
 | FR-3 | KbService reads facts, reports health, and serializes reindex |
-| FR-4 | Expose MCP tools with read-only allowlist |
+| FR-4 | Expose a single answer-first MCP tool (`kb_query`) that always synthesizes and never exposes other tools |
 | FR-5 | Parse and run periodic reindex scheduler |
 | FR-6 | Serialize IntentResult to REST JSON |
 | FR-7 | Resolve bootstrap base, repos, branch, and ignore patterns from env and flags |
@@ -39,6 +39,8 @@ See companion doc for full vocabulary where applicable.
 | FR-8a | Print package version for `--version` / `-V` without starting the daemon |
 | FR-9 | Store in-memory chat session history with TTL and caps |
 | FR-10 | Verify Slack signatures, route events, and deduplicate retries |
+| FR-11 | Manage the daemon by pid file: resolve the bind port, write/read the pid, and treat a dead pid as stopped |
+| FR-12 | Generate a launchd/systemd service that launches the release binary (never a repo dist path) |
 
 ### QA Test Cases
 
@@ -64,10 +66,10 @@ See companion doc for full vocabulary where applicable.
 | TC-18 | FR-3 | health reports the base name and a present index mtime | pass |
 | TC-19 | FR-3 | serializes concurrent reindex calls via the in-process guard | pass |
 | TC-20 | FR-3 | health reports indexing while background bootstrap is still running | pass |
-| TC-21 | FR-4 | exposes kb_query plus the read-only allowlist, prefixed and never upsert_fact | pass |
-| TC-22 | FR-4 | runs kb_query without synthesis by default | pass |
+| TC-21 | FR-4 | exposes kb_query only, never the former registry tools or upsert_fact | pass |
+| TC-22 | FR-4 | always synthesizes an answer (answer-first, no synthesize flag) | pass |
 | TC-23 | FR-4 | errors when kb_query is missing q | pass |
-| TC-24 | FR-4 | delegates allowlisted registry tools to the executor | pass |
+| TC-24 | FR-4 | refuses former registry tools like kb_read_facts | pass |
 | TC-25 | FR-4 | refuses tools outside the allowlist | pass |
 | TC-26 | FR-5 | parses unit suffixes | pass |
 | TC-27 | FR-5 | treats bare numbers as milliseconds | pass |
@@ -121,6 +123,10 @@ See companion doc for full vocabulary where applicable.
 | TC-79 | FR-10 | deduplicates events with the same event_id | pass |
 | TC-80 | FR-10 | returns 404 when slack is not configured | pass |
 | TC-81 | FR-10 | posts indexing progress first, then answers after bootstrap settles | pass |
+| TC-82 | FR-11 | resolveDaemonPort reads --port, then PORT, then the default | pass |
+| TC-83 | FR-11 | writePidFile/readLivePid round-trips the running pid | pass |
+| TC-84 | FR-11 | readLivePid returns null for a stale pid file (dead process) | pass |
+| TC-85 | FR-12 | service install --no-start writes a unit that invokes the resolved binary | pass |
 
 ### Related docs
 

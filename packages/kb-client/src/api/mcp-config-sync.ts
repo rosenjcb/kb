@@ -30,7 +30,7 @@ export type McpSyncAction =
   | 'needs-host'
 
 export interface McpSyncResult {
-  agent: 'cursor' | 'claude' | 'all'
+  agent: 'cursor' | 'claude' | 'antigravity' | 'antigravity-cli' | 'all'
   action: McpSyncAction
   url?: string
   detail?: string
@@ -91,13 +91,26 @@ export function buildClaudeKbMcpEntry(mcpUrl: string, apiKey?: string): JsonObje
   return entry
 }
 
+/** Antigravity uses serverUrl key for HTTP/SSE MCP connections. */
+export function buildAntigravityKbMcpEntry(mcpUrl: string, apiKey?: string): JsonObject {
+  const entry: JsonObject = {
+    serverUrl: mcpUrl,
+    url: mcpUrl,
+  }
+  if (apiKey) {
+    entry.headers = { Authorization: `Bearer ${apiKey}` }
+  }
+  return entry
+}
+
 function mcpEntryMatches(
   existing: unknown,
   expected: JsonObject,
   requireType?: boolean
 ): boolean {
   if (!isPlainObject(existing)) return false
-  if (existing.url !== expected.url) return false
+  if (expected.serverUrl !== undefined && existing.serverUrl !== expected.serverUrl) return false
+  if (expected.url !== undefined && existing.url !== expected.url) return false
   if (requireType && existing.type !== expected.type) return false
 
   const expectedHeaders = expected.headers
@@ -133,11 +146,19 @@ export function claudeConfigPath(home = os.homedir()): string {
   return path.join(home, '.claude.json')
 }
 
+export function antigravityMcpConfigPath(home = os.homedir()): string {
+  return path.join(home, '.gemini', 'config', 'mcp_config.json')
+}
+
+export function antigravityCliMcpConfigPath(home = os.homedir()): string {
+  return path.join(home, '.gemini', 'antigravity-cli', 'mcp_config.json')
+}
+
 async function upsertKbMcpEntry(opts: {
   filePath: string
   expected: JsonObject
   requireType?: boolean
-  agent: 'cursor' | 'claude'
+  agent: 'cursor' | 'claude' | 'antigravity' | 'antigravity-cli'
   mcpUrl: string
 }): Promise<McpSyncResult> {
   const doc = await readJsonObject(opts.filePath)
@@ -160,7 +181,7 @@ async function upsertKbMcpEntry(opts: {
 
 async function removeKbMcpEntry(
   filePath: string,
-  agent: 'cursor' | 'claude'
+  agent: 'cursor' | 'claude' | 'antigravity' | 'antigravity-cli'
 ): Promise<McpSyncResult> {
   let doc: JsonObject
   try {
@@ -191,7 +212,7 @@ function needsHostResult(): McpSyncResult[] {
 }
 
 /**
- * Rewrite Cursor + Claude `kb` MCP entries to match an explicit connection profile.
+ * Rewrite Cursor + Claude + Antigravity `kb` MCP entries to match an explicit connection profile.
  * No-op in `KB_LOCAL_MODE`. Refuses implicit localhost unless `requireExplicitHost` is false.
  */
 export async function syncKbMcpConfigs(options: SyncKbMcpOptions = {}): Promise<McpSyncResult[]> {
@@ -211,6 +232,7 @@ export async function syncKbMcpConfigs(options: SyncKbMcpOptions = {}): Promise<
 
   const cursorExpected = buildCursorKbMcpEntry(mcpUrl, apiKey)
   const claudeExpected = buildClaudeKbMcpEntry(mcpUrl, apiKey)
+  const antigravityExpected = buildAntigravityKbMcpEntry(mcpUrl, apiKey)
 
   return Promise.all([
     upsertKbMcpEntry({
@@ -226,6 +248,18 @@ export async function syncKbMcpConfigs(options: SyncKbMcpOptions = {}): Promise<
       agent: 'claude',
       mcpUrl,
     }),
+    upsertKbMcpEntry({
+      filePath: antigravityMcpConfigPath(),
+      expected: antigravityExpected,
+      agent: 'antigravity',
+      mcpUrl,
+    }),
+    upsertKbMcpEntry({
+      filePath: antigravityCliMcpConfigPath(),
+      expected: antigravityExpected,
+      agent: 'antigravity-cli',
+      mcpUrl,
+    }),
   ])
 }
 
@@ -234,11 +268,13 @@ export async function uninstallKbMcpConfigs(): Promise<McpSyncResult[]> {
   return Promise.all([
     removeKbMcpEntry(cursorMcpPath(), 'cursor'),
     removeKbMcpEntry(claudeConfigPath(), 'claude'),
+    removeKbMcpEntry(antigravityMcpConfigPath(), 'antigravity'),
+    removeKbMcpEntry(antigravityCliMcpConfigPath(), 'antigravity-cli'),
   ])
 }
 
 export interface McpStatusEntry {
-  agent: 'cursor' | 'claude'
+  agent: 'cursor' | 'claude' | 'antigravity' | 'antigravity-cli'
   path: string
   url: string | null
   present: boolean
@@ -257,20 +293,23 @@ export async function readKbMcpStatus(): Promise<{
   }
 
   const readEntry = async (
-    agent: 'cursor' | 'claude',
+    agent: 'cursor' | 'claude' | 'antigravity' | 'antigravity-cli',
     filePath: string
   ): Promise<McpStatusEntry> => {
     const doc = await readJsonObject(filePath)
     const servers = isPlainObject(doc.mcpServers) ? doc.mcpServers : {}
     const entry = servers[KB_MCP_SERVER_NAME]
     const url =
-      isPlainObject(entry) && typeof entry.url === 'string' ? entry.url : null
+      isPlainObject(entry) && typeof entry.url === 'string' ? entry.url :
+      isPlainObject(entry) && typeof entry.serverUrl === 'string' ? entry.serverUrl : null
     return { agent, path: filePath, url, present: url !== null }
   }
 
   const entries = await Promise.all([
     readEntry('cursor', cursorMcpPath()),
     readEntry('claude', claudeConfigPath()),
+    readEntry('antigravity', antigravityMcpConfigPath()),
+    readEntry('antigravity-cli', antigravityCliMcpConfigPath()),
   ])
 
   return { explicitEnvHost, resolvedServerUrl, entries }
@@ -306,8 +345,8 @@ export function formatMcpStatusReport(
   for (const e of status.entries) {
     lines.push(
       e.present
-        ? `  ${e.agent.padEnd(8)} ${e.url}`
-        : `  ${e.agent.padEnd(8)} (no kb entry in ${e.path})`
+        ? `  ${e.agent.padEnd(16)} ${e.url}`
+        : `  ${e.agent.padEnd(16)} (no kb entry in ${e.path})`
     )
   }
   return lines.join('\n')

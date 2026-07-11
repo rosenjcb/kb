@@ -27,7 +27,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 ## In Scope
 - Host/port/URL resolution, `--host` CLI override, health probe, connection error hints
 - `formatConnectionContext` for banner, TUI status bar, and chat headers
-- Syncing Cursor/Claude `kb` MCP entries to the resolved connection profile
+- Syncing Cursor/Claude/Antigravity `kb` MCP entries to the resolved connection profile
 
 ## Out of Scope
 - Server-side indexing (`KB_GIT_REPOS`) — see [SERVER.md](../../../kb-server/src/SERVER.md)
@@ -45,7 +45,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | FR-6 | One-shot CLI (non-JSON stdout) prints connection context under the version banner |
 | FR-7 | TUI status bar always shows host and base on one pinned row |
 | FR-8 | Chat sessions print connection context before the first user prompt |
-| FR-9 | `syncKbMcpConfigs` writes Cursor + Claude `kb` entries to `${server}/mcp` from an explicit host (`--host` / `KB_SERVER_URL` / `KB_HOST` / `config.server.host`) and Bearer from env or `config.server.apiKey` |
+| FR-9 | `syncKbMcpConfigs` writes Cursor + Claude + Antigravity `kb` entries to `${server}/mcp` from an explicit host (`--host` / `KB_SERVER_URL` / `KB_HOST` / `config.server.host`) and Bearer from env or `config.server.apiKey` |
 | FR-10 | MCP sync is idempotent, preserves sibling MCP servers, no-ops under `KB_LOCAL_MODE`, returns `needs-host` instead of inventing localhost, and clears a stale Bearer when no API key is configured |
 | FR-11 | `uninstallKbMcpConfigs` removes only the managed `kb` MCP entries |
 | FR-12 | `readKbMcpStatus` / `kb mcp status` reports env host + current agent MCP URLs |
@@ -79,7 +79,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-516 | FR-11 | Given no `kb` entry | action is not-found |
 | TC-517 | FR-9 | Given sync results | `formatMcpSyncReport` lists agents |
 | TC-520 | FR-10 | Given env unset / set / `config.server.host` | `hasExplicitServerHost` false then true |
-| TC-521 | FR-9 | Given `--host` with env unset | installs Cursor + Claude entries |
+| TC-521 | FR-9 | Given `--host` with env unset | installs Cursor + Claude + Antigravity entries |
 | TC-522 | FR-10 | Given `needs-host` result | report includes warning |
 | TC-523 | FR-12 | Given no MCP files | status shows unset / missing entries |
 | TC-524 | FR-13 | Given `mcp status` / `skills` / `base use` | `isClientLocalCommand` is true (not admin CLI) |

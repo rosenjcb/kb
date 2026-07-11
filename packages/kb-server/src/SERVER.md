@@ -103,7 +103,12 @@ claude mcp add --transport http -s user kb http://localhost:38117/mcp \
   --header "Authorization: Bearer ${KB_SERVER_API_KEY}"
 ```
 
-**Tools exposed:** `kb_query`, `kb_read_facts`, `kb_search_code_symbols`, `kb_get_code_neighbors`, `kb_get_code_graph_summary` (registry tools are `kb_`-prefixed on the wire).
+**Tool exposed:** a single `kb_query` (`kb_`-prefixed on the wire). It is an
+**agent-to-agent** channel: the client asks a direct natural-language question
+and always gets an answer-first response — a synthesized answer plus the
+**physical source files** the answer draws from (each result's `filePath` is an
+openable path, not an opaque `fact://` id). No `synthesize` flag; it always
+synthesizes. A fact-id drill-down tool may return later.
 
 ### Endpoints (`kb-server start [--with-mcp] [--with-slack]`)
 
@@ -155,7 +160,7 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 ## Gotchas
 
 - Chat SSE may fall back from Gemini stream to non-streaming.
-- REST `synthesize` defaults true; MCP `kb_query` defaults false.
+- REST `synthesize` defaults true; MCP `kb_query` **always** synthesizes (answer + source files).
 
 ## Related docs
 

@@ -68,10 +68,14 @@ default, repos declared for a fresh volume), builds the image, and starts **only
 `kb-server` service. First boot clones + indexes `KB_GIT_REPOS`; later boots reuse the
 persisted index on the `/data` volume — no reindex on restart.
 
-> `server:start` / `dev:server` free `:38117`, then run `kb-server start --with-mcp` via tsx.
-> `server:up` is the guided Docker bootstrap (also `--with-mcp` by default).
-> Local process logs go to that terminal; Docker logs: `pnpm run server:docker:logs`.
+> `server:start` / `dev:server` free `:38117`, then run `kb-server start --with-mcp`
+> as a **background daemon** (via tsx) and return your shell — manage it with
+> `pnpm run server:status` / `server:stop`. Logs stream to `~/.kb/logs/`.
+> `server:up` is the guided Docker bootstrap (also `--with-mcp` by default);
 > `server:docker:start|stop|logs` are Docker convenience wrappers.
+>
+> To run kb-server as a **native launchd/systemd service** (no Docker, no pnpm)
+> — the Postgres-style path for a binary install — see [`SERVICE.md`](SERVICE.md).
 
 ## Configuration
 
@@ -272,6 +276,7 @@ polled, but only repos with new commits are re-indexed.
 
 ## Related docs
 
+- [`SERVICE.md`](SERVICE.md) — run kb-server as a native launchd/systemd service (daemon lifecycle)
 - [`src/SERVER.md`](src/SERVER.md) — server internals, endpoints, MCP clients
 - [`HANDOFF.md`](HANDOFF.md) — build-to-serve handoff: snapshot export + local-disk adopt
 - [`http/HTTP.md`](http/HTTP.md) — API contract + sample requests

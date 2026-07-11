@@ -215,6 +215,10 @@ export interface ReadDocumentsResultItem {
     id?: string
     title?: string
     filePath?: string
+    /** Physical source file the fact was extracted from, when resolvable. */
+    sourcePath?: string
+    /** For code facts, the exported symbol the fact describes. */
+    symbol?: string
     tags?: string[]
   }
   content?: string

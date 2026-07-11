@@ -1,7 +1,7 @@
 import { isEnvTrue } from '../config/env-boolean.js'
 import { defaultTracesDir } from '../core/telemetry'
 import type { DocType } from '../core/doc-taxonomy'
-import { formatFactUri } from '../core/fact-uri'
+import { formatFactUri, sourceRefToPath } from '../core/fact-uri'
 import type { LLMProvider } from '../core/types'
 import {
   type CuratorRequery,
@@ -43,6 +43,10 @@ export interface QueryResult {
     id: string
     title: string
     filePath: string
+    /** Physical source file the fact was extracted from (`source_ref` resolved), when known. */
+    sourcePath?: string
+    /** For code facts, the exported symbol the fact describes. */
+    symbol?: string
     createdAt: string
     updatedAt: string
     tags?: string[]
@@ -281,11 +285,14 @@ export class FactsDocumentReader {
         ? row.source_text
         : row.fact_text
       : undefined
+    const source = sourceRefToPath(row.source_ref, row.git_repo)
     return {
       metadata: {
         id: row.id,
         title: summarizeFactTitle(row.fact_text),
         filePath: formatFactUri(row.id),
+        ...(source ? { sourcePath: source.path } : {}),
+        ...(source?.symbol ? { symbol: source.symbol } : {}),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         tags: [row.source_kind, ...(row.git_repo ? [row.git_repo] : []), 'fact'],

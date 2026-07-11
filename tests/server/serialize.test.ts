@@ -45,6 +45,41 @@ describe('serializeQueryResult', () => {
     expect(body.confidence).toBeUndefined()
   })
 
+                it('[TC-39] surfaces the physical sourcePath (+symbol) as the location, not the fact:// URI', () => {
+    const body = serializeQueryResult({
+      status: 'accepted',
+      data: {
+        results: [
+          {
+            metadata: {
+              id: 'fact-1',
+              title: 'AST parsers',
+              filePath: 'fact://abc123',
+              sourcePath: 'src/ast/langs/typescript.ts',
+              symbol: 'parseModule',
+              tags: ['import_code', 'fact'],
+            },
+            content: 'Parses a TypeScript module into AST nodes.',
+          },
+        ],
+      },
+    })
+    // filePath must be the openable physical path, never the opaque fact:// id.
+    expect(body.results[0].filePath).toBe('src/ast/langs/typescript.ts')
+    expect(body.results[0].symbol).toBe('parseModule')
+    expect(body.results[0].filePath).not.toContain('fact://')
+  })
+
+                it('[TC-40] falls back to the fact:// URI when no physical sourcePath is known', () => {
+    const body = serializeQueryResult({
+      status: 'accepted',
+      data: {
+        results: [{ metadata: { id: 'fact-2', title: 't', filePath: 'fact://def456' } }],
+      },
+    })
+    expect(body.results[0].filePath).toBe('fact://def456')
+  })
+
                 it('[TC-36] includes traceFile when the retrieval wrote a deep trace dump', () => {
     const body = serializeQueryResult({
       status: 'accepted',

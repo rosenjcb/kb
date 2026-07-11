@@ -23,6 +23,14 @@ import { REPOS_SUBDIR, repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
 import { type SnapshotRepoProvenance, readSnapshotManifest } from '@kb/core/storage/snapshot.js'
 import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
 import { streamChatTurn } from './chat-stream.js'
+import {
+  removePidFile,
+  runServerRestart,
+  runServerStartDaemon,
+  runServerStatus,
+  runServerStop,
+  writePidFile,
+} from './daemon-cli.js'
 import { createHttpServer } from './http-server.js'
 import { log } from './logger.js'
 import { parseDuration, startReindexScheduler } from './reindex-scheduler.js'
@@ -432,6 +440,9 @@ export async function runServerCommand(
     logLevel: process.env.LOG_LEVEL ?? 'info',
   })
 
+  // Own the pid file so `kb-server stop`/`status` can find us, however we were launched.
+  writePidFile()
+
   out.log(`🚀 kb-server listening on :${port} (base "${path.basename(base.baseDir)}")`)
   out.log(
     `   POST /v1/query   POST /v1/chat   GET /healthz   POST /v1/reindex${enableMcp ? '   POST /mcp' : ''}${slack ? '   POST /slack/events' : ''}`
@@ -465,6 +476,7 @@ export async function runServerCommand(
 
   await waitForShutdown(async () => {
     scheduler.stop()
+    removePidFile()
     await new Promise<void>(resolve => server.close(() => resolve()))
     await service.close()
   })
@@ -473,12 +485,20 @@ export async function runServerCommand(
 const SERVER_USAGE = `Usage: kb-server <command>
 
 Commands:
-  start [--base <name>] [--port <n>] [--with-mcp] [--git <url>]…
+  start [-d|--daemon] [--base <name>] [--port <n>] [--with-mcp] [--git <url>]…
         [--from <dir>] [--bootstrap-policy auto|snapshot-only]
-        Run the KB HTTP/MCP daemon (default command). --from <dir> adopts a
-        local snapshot already on disk (mounted volume / unpacked artifact)
-        before serving — pair with --bootstrap-policy snapshot-only for a
-        serving worker that never builds.
+        Run the KB HTTP/MCP daemon (default command). Foreground by default;
+        -d/--daemon backgrounds it (pid in ~/.kb/run, logs in ~/.kb/logs).
+        --from <dir> adopts a local snapshot already on disk (mounted volume /
+        unpacked artifact) before serving — pair with --bootstrap-policy
+        snapshot-only for a serving worker that never builds.
+  stop          Stop the running kb-server (SIGTERM, then SIGKILL).
+  restart       Stop then start -d.
+  status        Report whether kb-server is running (pid + /healthz).
+  init          Bootstrap KB_HOME and server config, then print next steps.
+  service <install|uninstall|status> [--no-start]
+        Register/manage kb-server as a launchd (macOS) / systemd --user (Linux)
+        service that starts on login. (install is an alias for service install.)
   export [--base <name>] --out <dir> [--no-repos] [--force]
         Snapshot a built base into a portable snapshot directory (repos + all
         settings by default; --no-repos for a small, frozen serve-only artifact)
@@ -486,10 +506,6 @@ Commands:
         Restore a snapshot into a base for a later start
   uninstall [--purge] [--yes]
         Remove the release-installed kb-server binary/runtime; --purge deletes ~/.kb server data
-  stop          Stop a locally installed kb-server service (Phase 5)
-  status        Check local kb-server service status (Phase 5)
-  install       Install kb-server as a local service (Phase 5)
-  init          Bootstrap KB_HOME and server config (Phase 5)
 
 Global flags:
   --version, -V   Print kb-server version and exit (does not start the daemon)
@@ -521,8 +537,37 @@ export async function runServerMain(argv: string[]): Promise<void> {
 
   switch (command) {
     case 'start':
+      if (rest.includes('--daemon') || rest.includes('-d')) {
+        await runServerStartDaemon(rest, out)
+        return
+      }
       await runServerCommand(rest, out, config)
       return
+    case 'stop':
+      await runServerStop(out)
+      return
+    case 'status':
+      await runServerStatus(rest, out)
+      return
+    case 'restart':
+      await runServerRestart(rest, out)
+      return
+    case 'init': {
+      const { runServerInit } = await import('./init-cli.js')
+      await runServerInit(out)
+      return
+    }
+    case 'service': {
+      const { runServiceCommand } = await import('./service-cli.js')
+      await runServiceCommand(rest, out)
+      return
+    }
+    case 'install': {
+      // Back-compat alias for `service install`.
+      const { runServiceCommand } = await import('./service-cli.js')
+      await runServiceCommand(['install', ...rest], out)
+      return
+    }
     case 'uninstall':
       await runServerUninstallCommand(rest, out)
       return
@@ -536,23 +581,6 @@ export async function runServerMain(argv: string[]): Promise<void> {
       await runImportCommand(rest, out)
       return
     }
-    case 'stop':
-    case 'status':
-    case 'install':
-    case 'init':
-      if (command === 'install') {
-        const { spawn } = await import('node:child_process')
-        const { fileURLToPath } = await import('node:url')
-        const scriptPath = fileURLToPath(new URL('../scripts/install-service.mjs', import.meta.url))
-        await new Promise<void>((resolve, reject) => {
-          const child = spawn(process.execPath, [scriptPath], { stdio: 'inherit' })
-          child.on('exit', code =>
-            code === 0 ? resolve() : reject(new Error(`install exited ${code}`))
-          )
-        })
-        return
-      }
-      throw new Error(`kb-server ${command} is not yet implemented — use kb-server start for now`)
     default:
       if (command.startsWith('-')) {
         await runServerCommand(argv, out, config)

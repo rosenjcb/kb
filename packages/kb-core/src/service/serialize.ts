@@ -10,7 +10,13 @@ import type { IntentResult } from '@kb/core/intents/types.js'
 export interface QuerySource {
   id?: string
   title?: string
+  /**
+   * Openable location of the evidence: the physical source file the fact was
+   * extracted from when known, otherwise the fact's `fact://` id as a last resort.
+   */
   filePath?: string
+  /** For code facts, the exported symbol the fact describes. */
+  symbol?: string
   tags?: string[]
   snippet?: string
 }
@@ -53,10 +59,14 @@ function buildSnippet(content: string | undefined): string | undefined {
 }
 
 function toSource(item: ReadDocumentsResultItem): QuerySource {
+  // Prefer the physical source file (what an agent can open/grep) over the
+  // opaque `fact://` URI; fall back to the URI only when provenance is unknown.
+  const location = item.metadata?.sourcePath ?? item.metadata?.filePath
   return {
     id: item.metadata?.id,
     title: item.metadata?.title,
-    filePath: item.metadata?.filePath,
+    filePath: location,
+    ...(item.metadata?.symbol ? { symbol: item.metadata.symbol } : {}),
     tags: item.metadata?.tags,
     snippet: buildSnippet(item.content),
   }

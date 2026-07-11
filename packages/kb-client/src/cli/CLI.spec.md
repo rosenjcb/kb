@@ -99,7 +99,7 @@ See companion doc for full vocabulary where applicable.
 | FR-30 | Named-list interview parses numbered selections in TTY prompts |
 | FR-31 | Publish CLI pushes companion docs to configured publish targets |
 | FR-33 | Retrieval fallback degrades gracefully when deep retrieval fails |
-| FR-34 | Skill installer copies bundled skills to agent home directories, installs hooks, and syncs Cursor/Claude MCP `kb` entries only when an explicit host is configured — opt-in via `kb skills install` / `kb mcp install`; CLI and TUI startup never auto-install skills or rewrite MCP configs |
+| FR-34 | Skill installer copies bundled skills to agent home directories, installs hooks, and syncs Cursor/Claude/Antigravity MCP `kb` entries only when an explicit host is configured — opt-in via `kb skills install` / `kb mcp install`; CLI and TUI startup never auto-install skills or rewrite MCP configs |
 | FR-35 | Startup notices print one-time migration and version hints |
 | FR-36 | Sync CLI refreshes the split GitHub Release runtimes and rewires stable client/server binary links |
 | FR-37 | Client uninstall removes release client layout; server uninstall removes server layout and optional ~/.kb data |
@@ -500,7 +500,7 @@ See companion doc for full vocabulary where applicable.
 | TC-448 | FR-34 | Given profile MD with injected section, then removes the section | pass |
 | TC-449 | FR-34 | Given profile MD without KB section, then action is not-found | pass |
 | TC-450 | FR-34 | Given removed results, then formats readable output | pass |
-| TC-451 | FR-34 | Given no provider config dirs, then Claude installs (ensureConfigDir) and others are not-installed | pass |
+| TC-451 | FR-34 | Given no provider config dirs, then Claude and antigravity-cli are still installed (ensureConfigDir) and others are not-installed | pass |
 | TC-452 | FR-34 | Given Claude config dir exists with no settings.json, then creates settings.json with hook | pass |
 | TC-453 | FR-34 | Given hook already installed at current path, then action is skipped | pass |
 | TC-454 | FR-34 | Given hook installed at stale path, then updates to current path | pass |

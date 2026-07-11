@@ -2,8 +2,8 @@
 name: kb:dev-workflow
 description: >-
   Is the user giving me a coding task in a project that uses the KB knowledge
-  store? Should I investigate via the kb MCP connector (kb_query and related
-  tools) before reading files or exploring the repo — never via the kb CLI/TUI?
+  store? Should I investigate by asking the kb MCP connector (kb_query) a direct
+  question before reading files or exploring the repo — never via the kb CLI/TUI?
 ---
 
 # KB dev workflow (agent skill)
@@ -12,38 +12,49 @@ description: >-
 
 | Who | How they talk to KB |
 |-----|---------------------|
-| **Agents** (this skill) | **MCP only** — `kb_query` and related MCP tools |
+| **Agents** (this skill) | **MCP only** — the `kb_query` tool |
 | **Humans** | `kb` CLI / TUI (`kb query`, chat, docs, …) |
 
 Do **not** use the CLI/TUI as an agent investigation path. That surface is for people.
 
+## The model: KB is another agent you talk to
+
+`kb_query` is an **agent-to-agent conversation**. You (the coding agent) ask the
+knowledge-base agent a **direct question in plain terms**, and it answers you
+directly — a synthesized answer, plus the **source files** that answer is drawn
+from so you know exactly what to open next. It is not a search index that dumps
+facts for you to sift; ask for what you actually want.
+
+```
+You:  "Where are the language parsers for AST stored?"
+KB:   "In src/ast/langs/… — one module per language, registered in …"
+      evidence: src/ast/langs/typescript.ts, src/ast/registry.ts
+```
+
+Then read only the files it points you at. Don't blast broad greps or read whole
+trees "to be sure" — ask a sharper question instead.
+
 ## When to use this skill
 
 When a user gives you **any coding task**, develop an understanding of the
-project (and your task) via the **kb MCP connector** **before** exploring the
+project (and your task) by **asking `kb_query`** **before** exploring the
 codebase with grep, sed, awk, broad file reads, etc.
 
-**ALWAYS USE THE KB MCP CONNECTOR — NEVER THE `kb` CLI/TUI TO INVESTIGATE**
-**DO NOT EXCESSIVELY READ FILES**
+**ALWAYS ASK `kb_query` FIRST — NEVER THE `kb` CLI/TUI TO INVESTIGATE**
+**ASK A DIRECT QUESTION; READ ONLY THE FILES IT CITES**
 **ONLY SEARCH FOR THE BARE MINIMUM BEFORE WORKING**
 **KEEP CHIT CHAT TO A MINIMUM - NO TALKY**
 
-## Investigation = MCP connection only
+## Investigation = the `kb_query` MCP tool
 
-Call these MCP tools. Do **not** shell out to `kb query`, `kb graph`, `kb docs`,
-`kb facts`, open the TUI, or run any other `kb` subcommand to learn the codebase.
+Ask `kb_query` a natural-language question. Do **not** shell out to `kb query`,
+`kb graph`, `kb docs`, `kb facts`, open the TUI, or run any other `kb` subcommand
+to learn the codebase.
 
-| Need | MCP tool |
-|------|----------|
-| Natural-language investigation | `kb_query` |
-| Fact search | `kb_read_facts` |
-| Symbol / code search | `kb_search_code_symbols` |
-| Call-graph neighbors | `kb_get_code_neighbors` |
-| Graph overview | `kb_get_code_graph_summary` |
+The response is answer-first: a direct answer with **source file** evidence.
+Follow those `filePath`s to read the exact code, rather than searching blind.
 
-Primary intent: **`kb_query`**.
-
-If kb MCP tools are unavailable in this session, **stop and fix the MCP
+If the `kb_query` MCP tool is unavailable in this session, **stop and fix the MCP
 connection** (below). Do not switch to the CLI/TUI. Do not pretend you queried KB.
 
 ## Host must be explicit (local or remote)
