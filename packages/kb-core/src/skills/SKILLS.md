@@ -59,5 +59,5 @@ Adding a skill:
 - Do not embed secrets or repo-specific paths in skills; use MCP tools / base flags in examples.
 - Hash header must remain first line after install so upgrades are detectable.
 - Dev-workflow: agents use the MCP connection only; CLI/TUI is the human surface (agents may run `kb mcp install` for setup, never `kb query`).
-- MCP `kb` URL must come from an explicit host (prompt, env, or `kb mcp install --host`) — never hard-code.
+- MCP `kb` URL follows the active CLI/TUI connection (`--host` / env / localhost default).
 - Do not auto-install skills or MCP from CLI/TUI startup — opt-in commands only.

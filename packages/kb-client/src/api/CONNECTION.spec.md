@@ -45,8 +45,8 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | FR-6 | One-shot CLI (non-JSON stdout) prints connection context under the version banner |
 | FR-7 | TUI status bar always shows host and base on one pinned row |
 | FR-8 | Chat sessions print connection context before the first user prompt |
-| FR-9 | `syncKbMcpConfigs` writes Cursor + Claude + Antigravity `kb` entries to `${server}/mcp` from an explicit host (`--host` / `KB_SERVER_URL` / `KB_HOST` / `config.server.host`) and Bearer from env or `config.server.apiKey` |
-| FR-10 | MCP sync is idempotent, preserves sibling MCP servers, no-ops under `KB_LOCAL_MODE`, returns `needs-host` instead of inventing localhost, and clears a stale Bearer when no API key is configured |
+| FR-9 | `syncKbMcpConfigs` writes Cursor + Claude + Antigravity `kb` entries to `${server}/mcp` from the active connection (`--host` / `KB_SERVER_URL` / `KB_HOST` / `config.server.host` / localhost default) and Bearer from env or `config.server.apiKey` |
+| FR-10 | MCP sync is idempotent, preserves sibling MCP servers, no-ops under `KB_LOCAL_MODE`, defaults to localhost when no host is set (matching CLI/TUI), optionally returns `needs-host` when `requireExplicitHost` is set, and clears a stale Bearer when no API key is configured |
 | FR-11 | `uninstallKbMcpConfigs` removes only the managed `kb` MCP entries |
 | FR-12 | `readKbMcpStatus` / `kb mcp status` reports env host + current agent MCP URLs |
 | FR-13 | `mcp`, `skills`, `uninstall`, `sync`, and `base use` stay client-local — never forwarded to `/v1/admin/cli` |
@@ -70,7 +70,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-507 | FR-9 | Given server URL with trailing slash | `resolveMcpEndpointUrl` → `…/mcp` |
 | TC-508 | FR-9 | Given Cursor entry builder | url + optional Bearer header |
 | TC-509 | FR-9 | Given Claude entry builder | includes `type: "http"` |
-| TC-510 | FR-10 | Given no explicit host | sync returns `needs-host` (no localhost write) |
+| TC-510 | FR-10 | Given no explicit host | sync installs `http://localhost:38117/mcp` |
 | TC-511 | FR-9 | Given `KB_SERVER_URL` | MCP URL uses that host `/mcp` |
 | TC-512 | FR-10 | Given matching entry | action is skipped |
 | TC-513 | FR-10 | Given stale URL + sibling server | updates `kb` only |

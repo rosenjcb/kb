@@ -92,7 +92,20 @@ describe('hasExplicitServerHost', () => {
 })
 
 describe('syncKbMcpConfigs', () => {
-  it('[TC-510] Given no explicit host, refuses to default MCP to localhost', async () => {
+  it('[TC-510] Given no explicit host, defaults MCP to localhost like the CLI/TUI', async () => {
+    process.env.KB_SERVER_API_KEY = 'testkey'
+    const results = await syncKbMcpConfigs()
+    expect(results.every(r => r.action === 'installed')).toBe(true)
+    expect(results.every(r => r.url === 'http://localhost:38117/mcp')).toBe(true)
+
+    const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
+    expect(cursor.mcpServers.kb).toEqual({
+      url: 'http://localhost:38117/mcp',
+      headers: { Authorization: 'Bearer testkey' },
+    })
+  })
+
+  it('[TC-510b] requireExplicitHost still refuses the implicit localhost default', async () => {
     process.env.KB_SERVER_API_KEY = 'testkey'
     const results = await syncKbMcpConfigs({ requireExplicitHost: true })
     expect(results).toEqual([

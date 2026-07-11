@@ -43,22 +43,22 @@ Base: `resolveEffectiveBaseDir()` — session file `~/.kb/state/active-base`, de
 ## MCP client config install
 
 **Humans** use the `kb` CLI/TUI (REST). **Agents** (Cursor / Claude Code) use Streamable HTTP MCP at `POST /mcp` only — the **kb:dev-workflow** skill never investigates via CLI/TUI.
-The MCP URL must be an **explicit** local or remote host — never an invented localhost default.
+The MCP URL follows the same connection profile as the CLI/TUI (`resolveServerConnection`): `--host` / env / `config.server.host`, defaulting to `localhost:38117`.
 
-`syncKbMcpConfigs()` in `mcp-config-sync.ts` (used by `kb mcp install`):
+`syncKbMcpConfigs()` in `mcp-config-sync.ts` (used by `kb mcp install` / `kb skills install`):
 
 | Trigger | Behavior |
 |---------|----------|
 | `kb mcp install --host …` | Write Cursor/Claude `kb` → `${server}/mcp` |
-| `kb mcp install` | Same, using `KB_SERVER_URL` / `KB_HOST` / `config.server.host` (errors with `needs-host` if unset) |
-| `kb skills install` | Install MCP only when an explicit host (env or config) is already set |
+| `kb mcp install` | Same, using the active connection (localhost default) |
+| `kb skills install` | Same MCP sync as `kb mcp install`, using the active connection |
 | Normal `kb` / TUI startup | **No** MCP rewrite — opt-in via `kb mcp install` / `kb skills install` only |
 | `KB_LOCAL_MODE=true` | No-op |
 | `kb mcp uninstall` / `kb skills uninstall` | Removes managed `kb` entries only |
 
-Host resolution: `--host` → `KB_SERVER_URL` → `KB_HOST`+`KB_PORT` → `config.server.host`. Refuses the implicit CLI localhost default unless the operator passed `--host`, set env, or configured `server.host`.
+Host resolution: `--host` → `KB_SERVER_URL` → `KB_HOST`+`KB_PORT` → `config.server.host` → `localhost` (same as CLI/TUI). TUI `/skills install` therefore points MCP at whatever host the session is connected to.
 
-Writes `mcpServers.kb` with Bearer header when `KB_SERVER_API_KEY` or `config.server.apiKey` is set (clears a stale Bearer when neither is set). Merges into existing JSON; never clobbers other servers. Inspect with `kb mcp status`. `needs-host` / install failures exit non-zero.
+Writes `mcpServers.kb` with Bearer header when `KB_SERVER_API_KEY` or `config.server.apiKey` is set (clears a stale Bearer when neither is set). Merges into existing JSON; never clobbers other servers. Inspect with `kb mcp status`.
 
 ## User-visible connection context
 

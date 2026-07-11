@@ -32,7 +32,7 @@ Monorepo context → [`../../CLIENT.md`](../../CLIENT.md) · Connection detail �
 | Global flags | `../api/cli-global-flags.ts` | `--host` → env override for this process |
 | Remote ops | `remote-commands.ts` | Query, chat, admin CLI over HTTP |
 | Chat REPL | `chat-cli.ts` | Local or remote synthesis loop |
-| Skills | `skill-installer.ts` | Install bundled skills; MCP install only with explicit host |
+| Skills | `skill-installer.ts` | Install bundled skills; MCP follows active connection |
 | MCP | `../api/mcp-config-sync.ts` | `kb mcp install|status|uninstall` — point agents at local/remote node |
 
 ## Connection visibility
@@ -88,7 +88,7 @@ Uninitialized base → `uninitializedBaseNotice` (points to `KB_GIT_REPOS`, not 
 
 Skills and MCP client wiring are **opt-in**:
 
-- `kb skills install` — skill files, profile readmes, hooks; MCP only if host env already set
+- `kb skills install` — skill files, profile readmes, hooks, and MCP for the active connection (localhost default)
 - `kb mcp install --host …` — preferred for pointing Cursor/Claude at a node
 
 CLI/TUI startup does **not** auto-install skills or rewrite MCP configs. Spec: [`CLI.spec.md`](CLI.spec.md) FR-34 · connection: [`../api/CONNECTION.md`](../api/CONNECTION.md).

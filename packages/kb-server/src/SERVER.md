@@ -71,13 +71,15 @@ export KB_SERVER_API_KEY=testkey
 kb-server start --with-mcp
 ```
 
-**Preferred setup** — pick an explicit host (local or remote), then sync agent MCP configs:
+**Preferred setup** — sync agent MCP configs to the active connection (localhost by default):
 
 ```bash
-# Local node
-kb mcp install --host localhost:38117
+# Uses whatever the CLI/TUI is connected to (localhost:38117 when unset)
+kb mcp install
+# or, from the TUI: /skills install
 
-# Remote node
+# Pin a host
+kb mcp install --host localhost:38117
 kb mcp install --host https://kb.example.com:38117
 
 # Or set session env, then:
@@ -94,7 +96,7 @@ That writes/updates the `kb` entry in:
 | Cursor | `~/.cursor/mcp.json` | `{ "url": "<server>/mcp", "headers": { "Authorization": "Bearer …" } }` |
 | Claude Code | `~/.claude.json` (`mcpServers`) | `{ "type": "http", "url": "<server>/mcp", "headers": { … } }` |
 
-URL comes only from `--host` / `KB_SERVER_URL` / `KB_HOST` — never an invented localhost default. Other MCP servers in those files are left alone. Reload MCP in the agent after sync, then use `kb_query` (agents: MCP connection only; humans: CLI/TUI). Verify with `claude mcp list` / `agent mcp list-tools kb` / `kb mcp status`.
+URL follows the same host resolution as the CLI/TUI (`--host` / `KB_SERVER_URL` / `KB_HOST` / localhost default). Other MCP servers in those files are left alone. Reload MCP in the agent after sync, then use `kb_query` (agents: MCP connection only; humans: CLI/TUI). Verify with `claude mcp list` / `agent mcp list-tools kb` / `kb mcp status`.
 
 **Manual fallback** (only if you cannot run the client):
 

@@ -15,6 +15,9 @@
     launchd/systemd. `server:start` now backgrounds the server.
   - Add Google Antigravity / Antigravity CLI support for MCP config sync, global
     skill installation, and BeforeTool hooks.
+  - `kb skills install` / `kb mcp install` write MCP configs for the active
+    CLI/TUI connection (localhost default) instead of requiring an explicit
+    `--host` / env and printing `needs-host`.
 
 - Updated dependencies
   - @kb/core@1.4.4

@@ -177,7 +177,7 @@ kb mcp status
 
 That writes `mcpServers.kb` → `${url}/mcp` for **Claude Code** (`~/.claude.json`) and **Cursor** (`~/.cursor/mcp.json`) only. **Reconnect MCP** in those apps, then ask coding questions — the agent should call `kb_query` against the team node.
 
-Switch nodes anytime: `kb mcp install --host <other-url>` and reconnect. Without an explicit host (`--host` / `KB_SERVER_URL` / `KB_HOST`), install refuses to invent localhost.
+Switch nodes anytime: `kb mcp install --host <other-url>` (or `kb --host <other-url> skills install`) and reconnect. With no host set, install defaults to `localhost:38117` — the same default as the CLI/TUI.
 
 **All client env vars:** `KB_HOST`, `KB_PORT`, `KB_SERVER_URL`, `KB_SERVER_API_KEY`, `KB_BASE`, `KB_ACTIVE_BASE`. Full reference: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md).
 

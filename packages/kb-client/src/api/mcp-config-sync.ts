@@ -1,10 +1,10 @@
 /**
- * Keep agent MCP client configs pointed at an **explicit** kb-server host
- * (local or remote). Never invent localhost when the operator has not set a
- * connection profile.
+ * Keep agent MCP client configs pointed at the same kb-server the CLI/TUI uses.
  *
  * Host sources (same as CLI): `--host` / `KB_SERVER_URL` / `KB_HOST`+`KB_PORT`
- * / `config.server.host` + `KB_SERVER_API_KEY` / `config.server.apiKey`.
+ * / `config.server.host`, falling back to `localhost` (same as
+ * `resolveServerConnection`). Bearer from `KB_SERVER_API_KEY` /
+ * `config.server.apiKey`.
  *
  * Targets (user scope):
  * - Cursor: `~/.cursor/mcp.json`
@@ -40,9 +40,10 @@ export interface SyncKbMcpOptions {
   /** Override host for this sync (`host:port`, hostname, or full URL). */
   host?: string
   /**
-   * When true (default), refuse to write configs unless `host` is passed or
-   * `KB_SERVER_URL` / `KB_HOST` is set in the environment. Prevents silent
-   * localhost defaults from hijacking agent MCP.
+   * When true, refuse to write configs unless `host` is passed or
+   * `KB_SERVER_URL` / `KB_HOST` / `config.server.host` is set. Default is
+   * false — MCP install follows `resolveServerConnection` (localhost when
+   * unset), matching the CLI/TUI connection banner.
    */
   requireExplicitHost?: boolean
   config?: KbConfig
@@ -212,17 +213,17 @@ function needsHostResult(): McpSyncResult[] {
 }
 
 /**
- * Rewrite Cursor + Claude + Antigravity `kb` MCP entries to match an explicit connection profile.
- * No-op in `KB_LOCAL_MODE`. Refuses implicit localhost unless `requireExplicitHost` is false.
+ * Rewrite Cursor + Claude + Antigravity `kb` MCP entries to match the active
+ * connection profile (`resolveServerConnection`). No-op in `KB_LOCAL_MODE`.
+ * Pass `requireExplicitHost: true` to refuse the implicit localhost default.
  */
 export async function syncKbMcpConfigs(options: SyncKbMcpOptions = {}): Promise<McpSyncResult[]> {
   if (isLocalMode()) return []
 
   const config = options.config ?? {}
-  const requireExplicit = options.requireExplicitHost !== false
   if (options.host?.trim()) {
     applyHostCliOverride(options.host.trim())
-  } else if (requireExplicit && !hasExplicitServerHost(config)) {
+  } else if (options.requireExplicitHost && !hasExplicitServerHost(config)) {
     return needsHostResult()
   }
 
@@ -317,7 +318,7 @@ export async function readKbMcpStatus(): Promise<{
 
 export function formatMcpSyncReport(results: McpSyncResult[]): string {
   if (results.length === 0) return ''
-  const lines: string[] = ['MCP client configs (explicit host → /mcp):']
+  const lines: string[] = ['MCP client configs (active connection → /mcp):']
   for (const r of results) {
     if (r.action === 'needs-host') {
       lines.push(`  ⚠ needs host  ${r.detail ?? ''}`)

@@ -554,9 +554,9 @@ export function formatSkillUninstallReport(
   return lines.join('\n')
 }
 
-/** Sync Cursor/Claude MCP `kb` entries when an explicit host is configured. */
+/** Sync Cursor/Claude MCP `kb` entries to the active CLI/TUI connection (localhost default). */
 export async function installMcpConfigs(config: KbConfig = {}): Promise<McpSyncResult[]> {
-  return syncKbMcpConfigs({ requireExplicitHost: true, config })
+  return syncKbMcpConfigs({ config })
 }
 
 /** Remove managed Cursor/Claude MCP `kb` entries. */
