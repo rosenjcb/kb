@@ -137,6 +137,7 @@ See companion doc for full vocabulary where applicable.
 | TC-77 | FR-17 | extracts service hosts from .env URL values | pass |
 | TC-78 | FR-17 | re-ingest clears stale integration facts (removed dependency disappears) | pass |
 | TC-79 | FR-18 | Given each provider name in factory config, then should return a provider with matching name | pass |
+| TC-634 | FR-18 | Given GeminiProvider with no model arg, then defaults to documented gemini-3-flash-preview | pass |
 | TC-80 | FR-18 | Given an anthropic non-ok response, then should throw a readable api error instead of crashing on undefined content | pass |
 | TC-81 | FR-18 | Given an openai malformed but successful payload, then should return safe defaults rather than throw | pass |
 | TC-82 | FR-18 | Given GEMINI_API_BASE_URL, then provider calls the override host | pass |

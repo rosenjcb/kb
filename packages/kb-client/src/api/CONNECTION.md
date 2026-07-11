@@ -50,15 +50,15 @@ The MCP URL must be an **explicit** local or remote host — never an invented l
 | Trigger | Behavior |
 |---------|----------|
 | `kb mcp install --host …` | Write Cursor/Claude `kb` → `${server}/mcp` |
-| `kb mcp install` | Same, using `KB_SERVER_URL` / `KB_HOST` (errors with `needs-host` if unset) |
-| `kb skills install` | Install MCP only when an explicit host env is already set |
+| `kb mcp install` | Same, using `KB_SERVER_URL` / `KB_HOST` / `config.server.host` (errors with `needs-host` if unset) |
+| `kb skills install` | Install MCP only when an explicit host (env or config) is already set |
 | Normal `kb` / TUI startup | **No** MCP rewrite — opt-in via `kb mcp install` / `kb skills install` only |
 | `KB_LOCAL_MODE=true` | No-op |
 | `kb mcp uninstall` / `kb skills uninstall` | Removes managed `kb` entries only |
 
-Host resolution: `--host` → `KB_SERVER_URL` → `KB_HOST`+`KB_PORT`. Refuses the implicit CLI localhost default unless the operator passed `--host` or set env.
+Host resolution: `--host` → `KB_SERVER_URL` → `KB_HOST`+`KB_PORT` → `config.server.host`. Refuses the implicit CLI localhost default unless the operator passed `--host`, set env, or configured `server.host`.
 
-Writes `mcpServers.kb` with Bearer header when `KB_SERVER_API_KEY` is set. Merges into existing JSON; never clobbers other servers. Inspect with `kb mcp status`.
+Writes `mcpServers.kb` with Bearer header when `KB_SERVER_API_KEY` or `config.server.apiKey` is set (clears a stale Bearer when neither is set). Merges into existing JSON; never clobbers other servers. Inspect with `kb mcp status`. `needs-host` / install failures exit non-zero.
 
 ## User-visible connection context
 

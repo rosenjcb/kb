@@ -30,6 +30,10 @@ describe('llm-provider', () => {
     )
   })
 
+  it('[TC-634] Given GeminiProvider with no model arg, then defaults to documented gemini-3-flash-preview', () => {
+    expect(new GeminiProvider('k').model).toBe('gemini-3-flash-preview')
+  })
+
   it('[TC-80] Given an anthropic non-ok response, then should throw a readable api error instead of crashing on undefined content', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ error: { message: 'invalid key' } }), {

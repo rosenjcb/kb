@@ -4,9 +4,10 @@
 
 ### Patch Changes
 
-- Agents investigate via the kb MCP connection only (CLI/TUI is for humans). Add `kb mcp install|status|uninstall` so Cursor/Claude `mcpServers.kb` points at an **explicit** local or remote host (`--host`, `KB_SERVER_URL`, or `KB_HOST`) — never an invented localhost default. Fix Claude Code hooks: emit PreToolUse JSON `additionalContext` (plain stdout was ignored), match `Bash|Grep|Glob`, and always create `~/.claude` on install. Document team remote setup in the README (shared server → human CLI + agent MCP).
+- Agents investigate via the kb MCP connection only (CLI/TUI is for humans). Add `kb mcp install|status|uninstall` so Cursor/Claude `mcpServers.kb` points at an **explicit** local or remote host (`--host`, `KB_SERVER_URL`, `KB_HOST`, or `config.server.host`) — never an invented localhost default. Pass loaded `KbConfig` into MCP sync (Bearer from `config.server.apiKey`), exit non-zero on `needs-host` / install failures, and clear stale Authorization when no API key is set. Fix Claude Code hooks: emit PreToolUse JSON `additionalContext` (plain stdout was ignored), match `Bash|Grep|Glob`, and always create `~/.claude` on install. Document team remote setup in the README (shared server → human CLI + agent MCP).
 - Keep `kb mcp` client-local so remote mode does not forward it to `/v1/admin/cli`. Stop auto-installing agent skills and rewriting MCP configs on CLI/TUI startup (opt-in via `kb skills install` / `kb mcp install` only).
 - Type `HealthResponse.version` for `/healthz` (`server` + `core` package versions).
+- Renumber colliding skill-installer / remote-command TC IDs (TC-630–633, TC-626) so CONNECTION vs CLI ownership is unique.
 - Updated dependencies
   - @kb/core@1.4.2
 

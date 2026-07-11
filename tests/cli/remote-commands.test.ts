@@ -14,7 +14,7 @@ describe('isClientLocalCommand', () => {
     expect(isClientLocalCommand(['base', 'use', 'demo'])).toBe(true)
   })
 
-  it('[TC-524] still forwards server-backed commands remotely', () => {
+  it('[TC-626] still forwards server-backed commands remotely', () => {
     expect(isClientLocalCommand(['query', 'hi'])).toBe(false)
     expect(isClientLocalCommand(['base', 'list'])).toBe(false)
     expect(isClientLocalCommand(['docs', 'list'])).toBe(false)

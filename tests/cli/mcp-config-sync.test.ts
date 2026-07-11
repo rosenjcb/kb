@@ -79,13 +79,15 @@ describe('build*KbMcpEntry', () => {
 })
 
 describe('hasExplicitServerHost', () => {
-  it('[TC-520] false when env unset; true for KB_HOST or KB_SERVER_URL', () => {
+  it('[TC-520] false when env unset; true for KB_HOST, KB_SERVER_URL, or config.server.host', () => {
     expect(hasExplicitServerHost()).toBe(false)
     process.env.KB_HOST = 'localhost'
     expect(hasExplicitServerHost()).toBe(true)
     delete process.env.KB_HOST
     process.env.KB_SERVER_URL = 'https://kb.example.com'
     expect(hasExplicitServerHost()).toBe(true)
+    delete process.env.KB_SERVER_URL
+    expect(hasExplicitServerHost({ server: { host: 'kb.internal' } })).toBe(true)
   })
 })
 
@@ -107,6 +109,21 @@ describe('syncKbMcpConfigs', () => {
 
     const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
     expect(cursor.mcpServers.kb.url).toBe('https://kb.example.com:8443/mcp')
+  })
+
+  it('[TC-627] Given only config.server.host + apiKey, installs with Bearer', async () => {
+    const results = await syncKbMcpConfigs({
+      requireExplicitHost: true,
+      config: { server: { host: 'kb.internal', apiKey: 'from-config' } },
+    })
+    expect(results.every(r => r.action === 'installed')).toBe(true)
+    expect(results.every(r => r.url === 'http://kb.internal:38117/mcp')).toBe(true)
+
+    const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
+    expect(cursor.mcpServers.kb).toEqual({
+      url: 'http://kb.internal:38117/mcp',
+      headers: { Authorization: 'Bearer from-config' },
+    })
   })
 
   it('[TC-521] Given --host override, installs even when env unset', async () => {
@@ -163,6 +180,29 @@ describe('syncKbMcpConfigs', () => {
       url: 'http://new:38117/mcp',
       headers: { Authorization: 'Bearer newkey' },
     })
+  })
+
+  it('[TC-628] Given no API key but existing Bearer, clears Authorization', async () => {
+    await mkdir(path.join(fakeHome, '.cursor'), { recursive: true })
+    await writeFile(
+      path.join(fakeHome, '.cursor', 'mcp.json'),
+      JSON.stringify({
+        mcpServers: {
+          kb: {
+            url: 'http://remote:38117/mcp',
+            headers: { Authorization: 'Bearer stale' },
+          },
+        },
+      }),
+      'utf8'
+    )
+    process.env.KB_SERVER_URL = 'http://remote:38117'
+    const results = await syncKbMcpConfigs()
+    expect(results.find(r => r.agent === 'cursor')?.action).toBe('updated')
+
+    const doc = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
+    expect(doc.mcpServers.kb).toEqual({ url: 'http://remote:38117/mcp' })
+    expect(doc.mcpServers.kb.headers).toBeUndefined()
   })
 
   it('[TC-514] Given KB_LOCAL_MODE, skips MCP sync', async () => {

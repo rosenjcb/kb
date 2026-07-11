@@ -687,12 +687,17 @@ export async function runMainWithOutput(
           installSkillsGlobally(),
           installSkillIntoProject(),
           installHooks(),
-          installMcpConfigs(),
+          installMcpConfigs(config),
         ])
         out.log(formatSkillInstallReport(skillResults, profileResults, hookResults, mcpResults))
+        if (mcpResults.some(r => r.action === 'needs-host')) {
+          out.error('MCP skipped: pass --host or set KB_SERVER_URL / KB_HOST (or config.server.host).')
+          if (mode === 'cli') process.exitCode = 1
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)
+        if (mode === 'cli') process.exitCode = 1
       }
     } else if (subcommand === 'uninstall') {
       try {
@@ -707,6 +712,7 @@ export async function runMainWithOutput(
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)
+        if (mode === 'cli') process.exitCode = 1
       }
     } else {
       out.log(
@@ -747,15 +753,17 @@ export async function runMainWithOutput(
           }
           throw new Error(`Unknown argument: ${token}\n\n${printMcpHelp()}`)
         }
-        const results = await syncKbMcpConfigs({ host, requireExplicitHost: true })
+        const results = await syncKbMcpConfigs({ host, requireExplicitHost: true, config })
         const report = formatMcpSyncReport(results)
         if (report) out.log(report)
         if (results.some(r => r.action === 'needs-host')) {
-          out.error('Pass --host or set KB_SERVER_URL / KB_HOST first.')
+          out.error('Pass --host or set KB_SERVER_URL / KB_HOST (or config.server.host) first.')
+          if (mode === 'cli') process.exitCode = 1
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)
+        if (mode === 'cli') process.exitCode = 1
       }
     } else if (subcommand === 'status') {
       try {
@@ -763,6 +771,7 @@ export async function runMainWithOutput(
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)
+        if (mode === 'cli') process.exitCode = 1
       }
     } else if (subcommand === 'uninstall') {
       try {
@@ -773,6 +782,7 @@ export async function runMainWithOutput(
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)
+        if (mode === 'cli') process.exitCode = 1
       }
     } else {
       out.log(printMcpHelp())

@@ -4,7 +4,7 @@
  * connection profile.
  *
  * Host sources (same as CLI): `--host` / `KB_SERVER_URL` / `KB_HOST`+`KB_PORT`
- * + `KB_SERVER_API_KEY`.
+ * / `config.server.host` + `KB_SERVER_API_KEY` / `config.server.apiKey`.
  *
  * Targets (user scope):
  * - Cursor: `~/.cursor/mcp.json`
@@ -54,10 +54,14 @@ function isPlainObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** True when the process has an operator-chosen server (not the implicit localhost default). */
-export function hasExplicitServerHost(): boolean {
+/**
+ * True when the operator chose a server (env or `config.server.host`) —
+ * not the implicit localhost default from `resolveServerConnection`.
+ */
+export function hasExplicitServerHost(config?: KbConfig): boolean {
   if (process.env[KB_ENV.SERVER_URL]?.trim()) return true
   if (readEnvHost()) return true
+  if (config?.server?.host?.trim()) return true
   return false
 }
 
@@ -98,8 +102,9 @@ function mcpEntryMatches(
 
   const expectedHeaders = expected.headers
   if (expectedHeaders === undefined) {
-    // No key configured — do not force-clear an existing header (user may have set one).
-    return true
+    // No key configured — treat a leftover Authorization as stale so sync clears it.
+    if (!isPlainObject(existing.headers)) return true
+    return existing.headers.Authorization === undefined
   }
   if (!isPlainObject(existing.headers)) return false
   return existing.headers.Authorization === (expectedHeaders as JsonObject).Authorization
@@ -192,14 +197,15 @@ function needsHostResult(): McpSyncResult[] {
 export async function syncKbMcpConfigs(options: SyncKbMcpOptions = {}): Promise<McpSyncResult[]> {
   if (isLocalMode()) return []
 
+  const config = options.config ?? {}
   const requireExplicit = options.requireExplicitHost !== false
   if (options.host?.trim()) {
     applyHostCliOverride(options.host.trim())
-  } else if (requireExplicit && !hasExplicitServerHost()) {
+  } else if (requireExplicit && !hasExplicitServerHost(config)) {
     return needsHostResult()
   }
 
-  const connection = resolveServerConnection(options.config ?? {})
+  const connection = resolveServerConnection(config)
   const mcpUrl = resolveMcpEndpointUrl(connection.url)
   const apiKey = connection.apiKey
 

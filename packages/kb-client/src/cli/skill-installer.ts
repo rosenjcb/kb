@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { loadSkill } from '@kb/core/skills/loader.js'
 import {
   formatMcpSyncReport,
@@ -528,8 +529,8 @@ export function formatSkillUninstallReport(
 }
 
 /** Sync Cursor/Claude MCP `kb` entries when an explicit host is configured. */
-export async function installMcpConfigs(): Promise<McpSyncResult[]> {
-  return syncKbMcpConfigs({ requireExplicitHost: true })
+export async function installMcpConfigs(config: KbConfig = {}): Promise<McpSyncResult[]> {
+  return syncKbMcpConfigs({ requireExplicitHost: true, config })
 }
 
 /** Remove managed Cursor/Claude MCP `kb` entries. */

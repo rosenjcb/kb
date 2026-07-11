@@ -195,7 +195,7 @@ describe('formatSkillInstallReport', () => {
     expect(report).toContain('skipped')
   })
 
-  it('[TC-518] includes MCP sync section when mcp results provided', () => {
+  it('[TC-632] includes MCP sync section when mcp results provided', () => {
     const report = formatSkillInstallReport(
       [{ skill: 'kb:dev-workflow', agent: 'claude', action: 'skipped' }],
       [{ file: '~/.claude/CLAUDE.md', action: 'already-present' }],
@@ -279,7 +279,7 @@ describe('formatSkillUninstallReport', () => {
     expect(report).not.toContain('cursor')
   })
 
-  it('[TC-519] includes MCP removals when mcp results provided', () => {
+  it('[TC-633] includes MCP removals when mcp results provided', () => {
     const report = formatSkillUninstallReport(
       [{ target: 'claude', action: 'removed' }],
       undefined,
@@ -462,7 +462,7 @@ describe('installHooks', () => {
     expect(parsed.hookSpecificOutput.additionalContext).toContain('kb MCP')
   })
 
-  it('[TC-524] Given Grep tool input, hook emits additionalContext JSON', async () => {
+  it('[TC-630] Given Grep tool input, hook emits additionalContext JSON', async () => {
     await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
     await installHooks()
     const scriptPath = path.join(fakeHome, '.kb', 'hooks', 'kb-reminder.sh')
@@ -477,7 +477,7 @@ describe('installHooks', () => {
     )
   })
 
-  it('[TC-525] Given Read tool, hook stays silent', async () => {
+  it('[TC-631] Given Read tool, hook stays silent', async () => {
     await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
     await installHooks()
     const scriptPath = path.join(fakeHome, '.kb', 'hooks', 'kb-reminder.sh')

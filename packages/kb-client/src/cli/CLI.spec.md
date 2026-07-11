@@ -508,16 +508,16 @@ See companion doc for full vocabulary where applicable.
 | TC-456 | FR-34 | Given Gemini config dir exists, then installs BeforeTool hook in settings.json | pass |
 | TC-457 | FR-34 | Given Codex config dir exists, then installs hook in hooks.json | pass |
 | TC-458 | FR-34 | Writes executable hook script that emits Claude JSON additionalContext | pass |
-| TC-524 | FR-34 | Given Grep tool input, hook emits additionalContext JSON | pass |
-| TC-525 | FR-34 | Given Read tool, hook stays silent | pass |
+| TC-630 | FR-34 | Given Grep tool input, hook emits additionalContext JSON | pass |
+| TC-631 | FR-34 | Given Read tool, hook stays silent | pass |
 | TC-459 | FR-34 | Given hook present in settings.json, then removes it | pass |
 | TC-460 | FR-34 | Given no settings.json, then action is not-installed | pass |
 | TC-461 | FR-34 | Given settings.json without KB hook, then action is not-installed | pass |
 | TC-462 | FR-34 | Given hook plus other hooks in same matcher group, then only removes kb hook | pass |
 | TC-463 | FR-34 | includes Agent hooks section when hook results provided | pass |
 | TC-464 | FR-34 | omits Agent hooks section when hook results not provided | pass |
-| TC-518 | FR-34 | includes MCP sync section when mcp results provided | pass |
-| TC-519 | FR-34 | includes MCP removals when mcp results provided | pass |
+| TC-632 | FR-34 | includes MCP sync section when mcp results provided | pass |
+| TC-633 | FR-34 | includes MCP removals when mcp results provided | pass |
 | TC-465 | FR-35 | greets the user | pass |
 | TC-466 | FR-35 | lists the core commands | pass |
 | TC-467 | FR-35 | tells the user how to get help | pass |
