@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.5.0
+
+### Minor Changes
+
+- Add Haskell AST indexing via tree-sitter-haskell (.hs/.lhs).
+
 ## 1.4.5
 
 ### Patch Changes

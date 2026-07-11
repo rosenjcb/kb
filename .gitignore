@@ -52,4 +52,4 @@ tmp/
 # Misc
 tickets/
 evaluation/
-.kb
+.eval-logs/

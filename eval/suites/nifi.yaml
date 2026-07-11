@@ -9,8 +9,8 @@ questions:
   - Describe the directory structure of an unpacked NiFi Archive (NAR) bundle and explain where runtime dependencies are isolated.
   - Explain the class delegation model implemented by the NarClassLoader and how it differs from standard Java ClassLoader delegation.
   - What are the essential requirements for a custom Processor implementation to be discovered and registered by the NiFi runtime?
-  - Detail the role and purpose of the core flowfile attributes defined within the NiFi framework APIs.
-  - How are processors initialized and what lifecycle hooks govern their activation?
+  - Step by step, walk through what happens from the moment a user drops a Processor onto the canvas until the first FlowFile is processed — which lifecycle hooks fire, in what order, and what each prepares.
+  - Infer the UI-to-runtime path: when an operator starts a processor in the web UI, which server-side components receive the request and how does that reach @OnScheduled / onTrigger?
   - What is the purpose of a ControllerService and how does it optimize resource usage inside NiFi?
   - How does NiFi support running data processing pipelines using native Python?
 answers:
@@ -45,19 +45,18 @@ answers:
     qualified classname of the custom processor, enabling the framework's service loading engine to index
     and load the component.
   - >
-    FlowFiles represent the discrete data packets moving through the NiFi processing graph, consisting of
-    unstructured content and structured key-value metadata attributes. Core attributes are defined within
-    the org.apache.nifi.flowfile.attributes.CoreAttributes enumeration: "filename" indicates the file's
-    name; "uuid" is a universally unique identifier automatically assigned to distinguish the packet;
-    and "path" / "absolute.path" represents the relative or absolute directory path representing the asset.
-    These attributes drive expression language evaluations and routing decisions.
+    When a processor is added to the canvas, init() runs with a ProcessorInitializationContext to register
+    logs and property descriptors. Configuration is validated before the component can be started. On start,
+    @OnScheduled methods prepare connections and shared state. During active execution, onTrigger() runs
+    inside a concurrent process session that pulls FlowFiles, transforms them, and transfers them to
+    relationships. When stopped, @OnUnscheduled then @OnStopped clean up resources. Provenance and
+    FlowFile attributes are updated throughout the session commit path.
   - >
-    Processors go through a managed lifecycle driven by annotation-decorated hooks inside the
-    org.apache.nifi.annotation.lifecycle package. When a processor is added to the canvas, its
-    init() method is called with a ProcessorInitializationContext to register logs and properties.
-    When started, the @OnScheduled method is invoked to prepare connections and load shared state.
-    During active execution, the onTrigger() method runs inside a concurrent process session. When
-    stopped, @OnUnscheduled and @OnStopped methods execute to safely clean up and release resources.
+    Starting a processor in the UI issues a REST API call into the NiFi web/API layer, which updates the
+    flow controller / processor node state. The scheduling agent then marks the component runnable and
+    invokes lifecycle annotations (@OnScheduled) before the timer-driven or event-driven engine begins
+    calling onTrigger on worker threads. The UI observes status via component state and bulletins rather
+    than executing processor logic itself.
   - >
     A ControllerService provides shared state, database connections, SSL contexts, and utility methods
     across multiple Processors, ReportingTasks, and other ControllerServices inside a single JVM.

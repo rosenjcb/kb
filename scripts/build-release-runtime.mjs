@@ -20,6 +20,7 @@ const runtimeDeps = [
   'tree-sitter-cpp',
   'tree-sitter-css',
   'tree-sitter-go',
+  'tree-sitter-haskell',
   'tree-sitter-html',
   'tree-sitter-java',
   'tree-sitter-javascript',

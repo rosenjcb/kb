@@ -8,10 +8,11 @@ questions:
   - Detail the complete query execution journey in DuckDB from a raw SQL string to physical pipeline execution.
   - Explain the vectorized execution model used by DuckDB and how selection vectors are used inside data chunks.
   - What are the roles of the Planner, Binder, and logical optimizer, and which subdirectories contain these components?
-  - How does DuckDB's in-process, embeddable execution paradigm differ from traditional client-server DBMS architectures?
+  - Infer the step-by-step path of a selective filter + hash join query: how do selection vectors, the compaction threshold, and pipeline scheduling interact from PhysicalPlanGenerator through worker tasks?
   - Detail the memory and buffer pool management architecture implemented in DuckDB.
   - How are user-defined extensions built, compiled, and autoloaded at runtime within DuckDB?
   - Explain the purpose and implementation of the compaction threshold for data chunks in the hash join execution pipeline.
+  - How does DuckDB's in-process, embeddable execution paradigm differ from traditional client-server DBMS architectures?
 answers:
   - >
     The query execution path in DuckDB compiles raw SQL into optimized physical execution tasks.
@@ -33,10 +34,10 @@ answers:
     the Planner, which builds the logical query plan tree using LogicalOperator objects; src/optimizer/ contains modules that apply rule-based
     and cost-based transformations, such as join ordering, filter pushdowns (join_order/ and pushdown/), and statistics propagation.
   - >
-    Unlike traditional database systems that run as independent processes communicating over sockets or network IPC, DuckDB is an embeddable,
-    in-process database. The entire engine core runs directly within the client's memory space. This eliminates network serialization overhead,
-    allows DuckDB to directly query client-side data structures (such as Python pandas DataFrames or Arrow tables) with zero-copy mechanisms, and
-    provides fast analytical query execution.
+    After physical plan generation, filter and hash-join operators emit sparse chunks by updating selection vectors rather than
+    compacting immediately. When active tuples in a chunk fall below the compaction threshold (default 128), active rows are
+    copied into an accumulation buffer until near-full capacity (~2048). Pipeline events schedule worker-thread tasks that
+    pull these chunks through the operator chain, amortizing interpretation overhead across denser batches.
   - >
     DuckDB manages physical database storage and memory caching using a block-based Buffer Manager implemented in src/storage/buffer/. It manages
     fixed-size data blocks and maintains a configurable memory limit (the buffer pool). When memory requests exceed this limit, the buffer manager
@@ -54,3 +55,8 @@ answers:
     threshold (by default set to 128 tuples). When an output data chunk's active tuple count falls below this limit, the system copies the active
     rows into a buffer block, and only forwards the accumulated chunk to downstream operators when it reaches near-full capacity (2048 tuples),
     amortizing interpretation and processing costs.
+  - >
+    Unlike traditional database systems that run as independent processes communicating over sockets or network IPC, DuckDB is an embeddable,
+    in-process database. The entire engine core runs directly within the client's memory space. This eliminates network serialization overhead,
+    allows DuckDB to directly query client-side data structures (such as Python pandas DataFrames or Arrow tables) with zero-copy mechanisms, and
+    provides fast analytical query execution.

@@ -146,7 +146,7 @@ describe('FactsQueryResearchOrchestrator ponds', () => {
 
     const languageList = indexer.upsertFact({
       factText:
-        'Code-graph indexing supported languages include Go, TS/TSX, JS/JSX, Python, Rust, Ruby, Java, C/C++, C#, CSS, Bash, PHP via EXT_MAP.',
+        'Code-graph indexing supported languages include Go, TS/TSX, JS/JSX, Python, Rust, Ruby, Java, C/C++, C#, CSS, Bash, PHP, Scala, HTML, Haskell via EXT_MAP.',
       sourceKind: 'import_doc',
       sourceRef: 'src/core/INIT.md#languages',
       confidence: 0.95,
