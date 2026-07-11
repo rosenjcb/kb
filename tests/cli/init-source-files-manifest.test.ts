@@ -18,7 +18,7 @@ afterEach(async () => {
 })
 
 describe('init-source-files-manifest', () => {
-  it('[TC-295] returns null diff when no manifest exists yet (first run)', async () => {
+  it('[TC-270] returns null diff when no manifest exists yet (first run)', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-src-mf-'))
     tempDirs.push(baseDir)
     const manifest = await readSourceFilesManifest(baseDir)
@@ -27,7 +27,7 @@ describe('init-source-files-manifest', () => {
     expect(diff).toBeNull()
   })
 
-  it('[TC-296] round-trips manifest writes and detects changed/new source files only', async () => {
+  it('[TC-271] round-trips manifest writes and detects changed/new source files only', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-src-mf-rt-'))
     tempDirs.push(baseDir)
     const v1 = { 'README.md': '# Alpha\n', 'docs/guide.md': '# Beta\n' }
@@ -45,7 +45,7 @@ describe('init-source-files-manifest', () => {
     expect(new Set(diff)).toEqual(new Set(['docs/guide.md', 'notes.txt']))
   })
 
-  it('[TC-297] detects source files removed since the last manifest', () => {
+  it('[TC-272] detects source files removed since the last manifest', () => {
     const manifest = {
       version: 1 as const,
       files: { 'README.md': 'a', 'docs/old.md': 'b' },
@@ -59,7 +59,7 @@ describe('init-source-files-manifest', () => {
     expect(diffRemovedSourceFiles({ 'README.md': '# stay\n' }, { version: 1, files: {}, updatedAt: '' })).toEqual([])
   })
 
-  it('[TC-298] treats unchanged contents as a no-op diff', async () => {
+  it('[TC-273] treats unchanged contents as a no-op diff', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-src-mf-noop-'))
     tempDirs.push(baseDir)
     const v1 = { 'README.md': '# Alpha\n' }

@@ -55,7 +55,7 @@ Content-Type: application/json
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-2] query result shape', () => {
+  test('[TC-3] query result shape', () => {
     const b = response.parsedBody;
     assert.strictEqual(typeof b.status, 'string');
     assert.ok('answer' in b);
@@ -82,7 +82,7 @@ Content-Type: application/json
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-3] results is an array', () => assert.ok(Array.isArray(response.parsedBody.results)));
+  test('[TC-4] results is an array', () => assert.ok(Array.isArray(response.parsedBody.results)));
 }}
 
 ###
@@ -100,7 +100,7 @@ Content-Type: application/json
 
 {{
   const assert = require('assert');
-  test('[TC-4] status 401 without key', () => assert.strictEqual(response.statusCode, 401));
+  test('[TC-5] status 401 without key', () => assert.strictEqual(response.statusCode, 401));
 }}
 
 ###
@@ -123,9 +123,9 @@ Accept: text/event-stream
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-5] sse content type', () =>
+  test('[TC-6] sse content type', () =>
     assert.ok(String(response.contentType?.mimeType || '').includes('text/event-stream')));
-  test('[TC-6] sse stream has session + terminal events', () => {
+  test('[TC-7] sse stream has session + terminal events', () => {
     const body = response.body || '';
     assert.ok(body.includes('event: session'));
     assert.ok(body.includes('event: answer'));
@@ -150,7 +150,7 @@ Accept: text/event-stream
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-7] answered', () => assert.ok((response.body || '').includes('event: done')));
+  test('[TC-8] answered', () => assert.ok((response.body || '').includes('event: done')));
 }}
 
 ###
@@ -165,7 +165,7 @@ Authorization: Bearer {{apiKey}}
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-8] reindex ok', () => assert.strictEqual(response.parsedBody.status, 'ok'));
+  test('[TC-9] reindex ok', () => assert.strictEqual(response.parsedBody.status, 'ok'));
 }}
 
 ###
@@ -194,7 +194,7 @@ Accept: application/json, text/event-stream
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-9] jsonrpc result', () => {
+  test('[TC-10] jsonrpc result', () => {
     assert.strictEqual(response.parsedBody.jsonrpc, '2.0');
     assert.ok(response.parsedBody.result?.protocolVersion);
   });
@@ -219,7 +219,7 @@ Accept: application/json, text/event-stream
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-10] tools include kb_query', () => {
+  test('[TC-11] tools include kb_query', () => {
     const tools = response.parsedBody.result?.tools;
     assert.ok(Array.isArray(tools));
     assert.ok(tools.some(t => t.name === 'kb_query'));
@@ -248,5 +248,5 @@ Accept: application/json, text/event-stream
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-11] tool returns content', () => assert.ok(Array.isArray(response.parsedBody.result?.content)));
+  test('[TC-12] tool returns content', () => assert.ok(Array.isArray(response.parsedBody.result?.content)));
 }}

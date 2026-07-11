@@ -91,7 +91,7 @@ Skills and MCP client wiring are **opt-in**:
 - `kb skills install` — skill files, profile readmes, hooks, and MCP for the active connection (localhost default)
 - `kb mcp install --host …` — preferred for pointing Cursor/Claude at a node
 
-CLI/TUI startup does **not** auto-install skills or rewrite MCP configs. Spec: [`CLI.spec.md`](CLI.spec.md) FR-34 · connection: [`../api/CONNECTION.md`](../api/CONNECTION.md).
+CLI/TUI startup does **not** auto-install skills or rewrite MCP configs. Spec: [`CLI.spec.md`](CLI.spec.md) FR-31 · connection: [`../api/CONNECTION.md`](../api/CONNECTION.md).
 
 ## `kb sync`
 

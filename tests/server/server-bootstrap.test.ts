@@ -53,20 +53,20 @@ describe('resolveBootstrapPlan', () => {
     }
   })
 
-  it('[TC-43] resolves base from KB_SERVER_BASE_NAME (preferred over KB_BASE)', async () => {
+  it('[TC-40] resolves base from KB_SERVER_BASE_NAME (preferred over KB_BASE)', async () => {
     process.env.KB_BASE = 'legacy'
     process.env.KB_SERVER_BASE_NAME = 'preferred'
     const plan = await resolveBootstrapPlan([])
     expect(plan.base).toBe('preferred')
   })
 
-  it('[TC-44] lets the --base flag win over env', async () => {
+  it('[TC-41] lets the --base flag win over env', async () => {
     process.env.KB_SERVER_BASE_NAME = 'fromenv'
     const plan = await resolveBootstrapPlan(['--base', 'fromflag'])
     expect(plan.base).toBe('fromflag')
   })
 
-  it('[TC-46] reads repos from KB_SERVER_BASE_GIT_REPOS (preferred over KB_GIT_REPOS)', async () => {
+  it('[TC-42] reads repos from KB_SERVER_BASE_GIT_REPOS (preferred over KB_GIT_REPOS)', async () => {
     process.env.KB_GIT_REPOS = 'legacy.git'
     process.env.KB_SERVER_BASE_GIT_REPOS = 'a.git, b.git#dev'
     const plan = await resolveBootstrapPlan([])
@@ -77,21 +77,21 @@ describe('resolveBootstrapPlan', () => {
     ])
   })
 
-  it('[TC-47] lets --git flags win over env repos', async () => {
+  it('[TC-43] lets --git flags win over env repos', async () => {
     process.env.KB_SERVER_BASE_GIT_REPOS = 'env.git'
     const plan = await resolveBootstrapPlan(['--git', 'flag.git#main'])
     expect(plan.source).toBe('flags')
     expect(plan.gitTargets).toEqual([{ url: 'flag.git', branch: 'main' }])
   })
 
-  it('[TC-48] reads ignore patterns from KB_SERVER_IGNORE', async () => {
+  it('[TC-44] reads ignore patterns from KB_SERVER_IGNORE', async () => {
     process.env.KB_SERVER_BASE_GIT_REPOS = 'a.git'
     process.env.KB_SERVER_IGNORE = 'tests/, **/*.spec.ts'
     const plan = await resolveBootstrapPlan([])
     expect(plan.ignore).toEqual(['tests/', '**/*.spec.ts'])
   })
 
-  it('[TC-50] reports source "none" and no ignore when nothing is declared', async () => {
+  it('[TC-45] reports source "none" and no ignore when nothing is declared', async () => {
     const plan = await resolveBootstrapPlan([])
     expect(plan.source).toBe('none')
     expect(plan.gitTargets).toEqual([])
@@ -99,7 +99,7 @@ describe('resolveBootstrapPlan', () => {
     expect(plan.ignore).toBeUndefined()
   })
 
-  it('[TC-51] applies --branch as the default branch for targets without an inline pin', async () => {
+  it('[TC-46] applies --branch as the default branch for targets without an inline pin', async () => {
     const plan = await resolveBootstrapPlan(['--git', 'a.git', '--git', 'b.git#x', '--branch', 'rel'])
     expect(plan.gitTargets).toEqual([
       { url: 'a.git', branch: 'rel' },

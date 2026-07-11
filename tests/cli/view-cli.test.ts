@@ -44,7 +44,7 @@ async function seedDocument(
 }
 
 describe('view-cli parsing', () => {
-  it('[TC-499] Given id selector, then parses normalized id mode', () => {
+  it('[TC-428] Given id selector, then parses normalized id mode', () => {
     const parsed = parseViewCommand(['KB Base Selection And Usage'])
 
     expect(parsed.selector).toEqual({
@@ -53,7 +53,7 @@ describe('view-cli parsing', () => {
     })
   })
 
-  it('[TC-500] Given title and base flags, then parses title mode with base', () => {
+  it('[TC-429] Given title and base flags, then parses title mode with base', () => {
     const parsed = parseViewCommand([
       '--title',
       'KB Base Selection and Usage',
@@ -68,32 +68,32 @@ describe('view-cli parsing', () => {
     expect(parsed.base).toBe('dogfood')
   })
 
-  it('[TC-501] Given id and title selectors together, then throws explicit error', () => {
+  it('[TC-430] Given id and title selectors together, then throws explicit error', () => {
     expect(() => parseViewCommand(['doc-id', '--title', 'Title'])).toThrow(
       'kb docs view accepts either <document-id> or --title, not both.'
     )
   })
 
-  it('[TC-502] Given unknown flag, then throws explicit error', () => {
+  it('[TC-431] Given unknown flag, then throws explicit error', () => {
     expect(() => parseViewCommand(['doc-id', '--output', 'yaml'])).toThrow('Unknown option: --output')
   })
 })
 
 describe('list-cli parsing', () => {
-  it('[TC-503] Given no flags, then parses unlimited output by default', () => {
+  it('[TC-432] Given no flags, then parses unlimited output by default', () => {
     const parsed = parseListCommand([])
 
     expect(parsed.limit).toBeUndefined()
   })
 
-  it('[TC-504] Given flags, then parses limit and base', () => {
+  it('[TC-433] Given flags, then parses limit and base', () => {
     const parsed = parseListCommand(['--base', 'dogfood', '--limit', '5'])
 
     expect(parsed.base).toBe('dogfood')
     expect(parsed.limit).toBe(5)
   })
 
-  it('[TC-505] Given positional arg, then throws explicit error', () => {
+  it('[TC-434] Given positional arg, then throws explicit error', () => {
     expect(() => parseListCommand(['extra'])).toThrow(
       'kb docs list does not accept positional arguments.'
     )
@@ -101,7 +101,7 @@ describe('list-cli parsing', () => {
 })
 
 describe('view-cli runtime', () => {
-  it('[TC-506] Given document id, then prints full document body with metadata header', async () => {
+  it('[TC-435] Given document id, then prints full document body with metadata header', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, {
       title: 'CLI Facts',
@@ -121,7 +121,7 @@ describe('view-cli runtime', () => {
     expect(result.output.match(/^Created:/gm)).toHaveLength(1)
   })
 
-  it('[TC-507] Given exact title selector, then returns matching document', async () => {
+  it('[TC-436] Given exact title selector, then returns matching document', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, {
       title: 'KB Base Selection and Usage',
@@ -141,7 +141,7 @@ describe('view-cli runtime', () => {
     expect(result.output).toContain('Base selection uses kb base use and kb base use --default.')
   })
 
-  it('[TC-508] Given missing document, then throws not found error', async () => {
+  it('[TC-437] Given missing document, then throws not found error', async () => {
     const baseDir = await createTempBase()
 
     await expect(runViewCommand(['missing-doc', '--base', baseDir])).rejects.toThrow(
@@ -149,7 +149,7 @@ describe('view-cli runtime', () => {
     )
   })
 
-  it('[TC-509] Given duplicate exact title matches, then throws ambiguity error with exit code 2', async () => {
+  it('[TC-438] Given duplicate exact title matches, then throws ambiguity error with exit code 2', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, {
       title: 'Shared Title',
@@ -179,7 +179,7 @@ describe('view-cli runtime', () => {
 })
 
 describe('list-cli runtime', () => {
-  it('[TC-510] Given documents in a base, then lists metadata in human output', async () => {
+  it('[TC-439] Given documents in a base, then lists metadata in human output', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, {
       title: 'CLI Facts',
@@ -205,7 +205,7 @@ describe('list-cli runtime', () => {
     )
   })
 
-  it('[TC-511] Given base filter, then returns document list for that base', async () => {
+  it('[TC-440] Given base filter, then returns document list for that base', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, {
       title: 'CLI Facts',
@@ -219,7 +219,7 @@ describe('list-cli runtime', () => {
     expect(result.output).toContain('cli-facts')
   })
 
-  it('[TC-512] Given more than twenty documents, then docs list shows all by default', async () => {
+  it('[TC-441] Given more than twenty documents, then docs list shows all by default', async () => {
     const baseDir = await createTempBase()
     for (let index = 1; index <= 25; index += 1) {
       await seedDocument(baseDir, {

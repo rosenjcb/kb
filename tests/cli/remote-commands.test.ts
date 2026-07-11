@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { isClientLocalCommand } from '@kb/client/cli/remote-commands.js'
 
 describe('isClientLocalCommand', () => {
-  it('[TC-524] keeps mcp/skills/uninstall/sync/base use on the client', () => {
+  it('[TC-27] keeps mcp/skills/uninstall/sync/base use on the client', () => {
     expect(isClientLocalCommand(['mcp', 'status'])).toBe(true)
     expect(isClientLocalCommand(['mcp', 'install', '--host', 'localhost:38117'])).toBe(true)
     expect(isClientLocalCommand(['skills', 'install'])).toBe(true)
@@ -14,7 +14,7 @@ describe('isClientLocalCommand', () => {
     expect(isClientLocalCommand(['base', 'use', 'demo'])).toBe(true)
   })
 
-  it('[TC-626] still forwards server-backed commands remotely', () => {
+  it('[TC-29] still forwards server-backed commands remotely', () => {
     expect(isClientLocalCommand(['query', 'hi'])).toBe(false)
     expect(isClientLocalCommand(['base', 'list'])).toBe(false)
     expect(isClientLocalCommand(['docs', 'list'])).toBe(false)
@@ -22,7 +22,7 @@ describe('isClientLocalCommand', () => {
 })
 
 describe('CLI startup wiring', () => {
-  it('[TC-525] does not auto-sync MCP or install skills from main()', () => {
+  it('[TC-28] does not auto-sync MCP or install skills from main()', () => {
     const indexPath = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
       '../../packages/kb-client/src/cli/index.ts'

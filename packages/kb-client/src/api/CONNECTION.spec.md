@@ -36,7 +36,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 ### Functional Requirements
 
 | ID | Requirement |
-|------|------------|
+| ------ | ------------ |
 | FR-1 | Default remote connection resolves to `http://localhost:38117` when env unset |
 | FR-2 | `KB_SERVER_URL` overrides `KB_HOST`/`KB_PORT` |
 | FR-3 | `--host` accepts `host:port`, bare hostname, or full URL and overrides env for one process |
@@ -55,35 +55,35 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 ### QA Test Cases
 
 | Test ID | Requirement | Scenario | Expected Outcome |
-|---------|------------|----------|------------------|
+| --------- | ------------ | ---------- | ------------------ |
 | TC-1 | FR-1 | Given no env overrides | `resolveServerConnection` → `http://localhost:38117` |
 | TC-2 | FR-2 | Given `KB_SERVER_URL` | URL wins over host/port |
 | TC-3 | FR-1 | Given `health()` | Calls `/healthz` |
 | TC-4 | FR-4 | Given connection failure message | Includes `kb-server start`, `--host`, env vars |
-| TC-500 | FR-3 | Given `kb --host h:38117 query …` | Strips flag; sets host env |
-| TC-501 | FR-3 | Given `--host=value` | Parses inline form |
-| TC-502 | FR-3 | Given bare `--host` | Throws requiring a value |
-| TC-503 | FR-3 | Given `--host myhost:12345` | Sets `KB_HOST` and `KB_PORT` |
-| TC-504 | FR-3 | Given `--host http://remote/` | Sets `KB_SERVER_URL` |
-| TC-505 | FR-5 | Given remote config + base name | `formatConnectionContext` → `host: … │ base: …` |
-| TC-506 | FR-5 | Given `KB_LOCAL_MODE` | `formatConnectionContext` → `mode: local │ base: …` |
-| TC-507 | FR-9 | Given server URL with trailing slash | `resolveMcpEndpointUrl` → `…/mcp` |
-| TC-508 | FR-9 | Given Cursor entry builder | url + optional Bearer header |
-| TC-509 | FR-9 | Given Claude entry builder | includes `type: "http"` |
-| TC-510 | FR-10 | Given no explicit host | sync installs `http://localhost:38117/mcp` |
-| TC-511 | FR-9 | Given `KB_SERVER_URL` | MCP URL uses that host `/mcp` |
-| TC-512 | FR-10 | Given matching entry | action is skipped |
-| TC-513 | FR-10 | Given stale URL + sibling server | updates `kb` only |
-| TC-514 | FR-10 | Given `KB_LOCAL_MODE` | sync returns `[]` |
-| TC-515 | FR-11 | Given `kb` + other servers | uninstall removes only `kb` |
-| TC-516 | FR-11 | Given no `kb` entry | action is not-found |
-| TC-517 | FR-9 | Given sync results | `formatMcpSyncReport` lists agents |
-| TC-520 | FR-10 | Given env unset / set / `config.server.host` | `hasExplicitServerHost` false then true |
-| TC-521 | FR-9 | Given `--host` with env unset | installs Cursor + Claude + Antigravity entries |
-| TC-522 | FR-10 | Given `needs-host` result | report includes warning |
-| TC-523 | FR-12 | Given no MCP files | status shows unset / missing entries |
-| TC-524 | FR-13 | Given `mcp status` / `skills` / `base use` | `isClientLocalCommand` is true (not admin CLI) |
-| TC-525 | FR-14 | Given bare `kb` / one-shot CLI startup | Does not call `syncKbMcpConfigs` |
-| TC-626 | FR-13 | Given `query` / `docs list` | `isClientLocalCommand` is false (forwarded remotely) |
-| TC-627 | FR-9 | Given only `config.server.host` + apiKey | sync installs with Bearer (no env host) |
-| TC-628 | FR-10 | Given no API key but existing Bearer | sync updates and clears Authorization |
+| TC-5 | FR-3 | Given `kb --host h:38117 query …` | Strips flag; sets host env |
+| TC-6 | FR-3 | Given `--host=value` | Parses inline form |
+| TC-7 | FR-3 | Given bare `--host` | Throws requiring a value |
+| TC-8 | FR-3 | Given `--host myhost:12345` | Sets `KB_HOST` and `KB_PORT` |
+| TC-9 | FR-3 | Given `--host http://remote/` | Sets `KB_SERVER_URL` |
+| TC-10 | FR-5 | Given remote config + base name | `formatConnectionContext` → `host: … │ base: …` |
+| TC-11 | FR-5 | Given `KB_LOCAL_MODE` | `formatConnectionContext` → `mode: local │ base: …` |
+| TC-12 | FR-9 | Given server URL with trailing slash | `resolveMcpEndpointUrl` → `…/mcp` |
+| TC-13 | FR-9 | Given Cursor entry builder | url + optional Bearer header |
+| TC-14 | FR-9 | Given Claude entry builder | includes `type: "http"` |
+| TC-15 | FR-10 | Given no explicit host | sync installs `http://localhost:38117/mcp` |
+| TC-16 | FR-9 | Given `KB_SERVER_URL` | MCP URL uses that host `/mcp` |
+| TC-17 | FR-10 | Given matching entry | action is skipped |
+| TC-18 | FR-10 | Given stale URL + sibling server | updates `kb` only |
+| TC-19 | FR-10 | Given `KB_LOCAL_MODE` | sync returns `[]` |
+| TC-20 | FR-11 | Given `kb` + other servers | uninstall removes only `kb` |
+| TC-21 | FR-11 | Given no `kb` entry | action is not-found |
+| TC-22 | FR-9 | Given sync results | `formatMcpSyncReport` lists agents |
+| TC-23 | FR-10 | Given env unset / set / `config.server.host` | `hasExplicitServerHost` false then true |
+| TC-24 | FR-9 | Given `--host` with env unset | installs Cursor + Claude + Antigravity entries |
+| TC-25 | FR-10 | Given `needs-host` result | report includes warning |
+| TC-26 | FR-12 | Given no MCP files | status shows unset / missing entries |
+| TC-27 | FR-13 | Given `mcp status` / `skills` / `base use` | `isClientLocalCommand` is true (not admin CLI) |
+| TC-28 | FR-14 | Given bare `kb` / one-shot CLI startup | Does not call `syncKbMcpConfigs` |
+| TC-29 | FR-13 | Given `query` / `docs list` | `isClientLocalCommand` is false (forwarded remotely) |
+| TC-30 | FR-9 | Given only `config.server.host` + apiKey | sync installs with Bearer (no env host) |
+| TC-31 | FR-10 | Given no API key but existing Bearer | sync updates and clears Authorization |

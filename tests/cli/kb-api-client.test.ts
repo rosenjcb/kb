@@ -25,7 +25,7 @@ describe('server-connection', () => {
     else delete process.env.KB_SERVER_URL
   })
 
-  it('[TC-505] formatConnectionContext shows host and base in remote mode', () => {
+  it('[TC-10] formatConnectionContext shows host and base in remote mode', () => {
     const prevLocal = process.env.KB_LOCAL_MODE
     delete process.env.KB_LOCAL_MODE
     delete process.env.KB_SERVER_URL
@@ -35,7 +35,7 @@ describe('server-connection', () => {
     if (prevLocal) process.env.KB_LOCAL_MODE = prevLocal
   })
 
-  it('[TC-506] formatConnectionContext shows local mode label', () => {
+  it('[TC-11] formatConnectionContext shows local mode label', () => {
     const prevLocal = process.env.KB_LOCAL_MODE
     process.env.KB_LOCAL_MODE = 'true'
     const line = formatConnectionContext({}, 'eval-raylib')

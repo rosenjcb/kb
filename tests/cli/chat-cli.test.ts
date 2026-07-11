@@ -46,7 +46,7 @@ async function createTempDir(): Promise<string> {
 }
 
 describe('chat-cli prompt', () => {
-  it('[TC-82] Given chat help printer, then returns grouped usage and interactive commands including /clear', () => {
+  it('[TC-77] Given chat help printer, then returns grouped usage and interactive commands including /clear', () => {
     const help = printChatHelp()
     expect(help).toContain('kb chat')
     expect(help).toContain('Usage:')
@@ -56,7 +56,7 @@ describe('chat-cli prompt', () => {
     expect(help).toContain('--verbose')
   })
 
-  it('[TC-83] Given evidence and question, then turn content includes evidence block and question without embedded history', () => {
+  it('[TC-78] Given evidence and question, then turn content includes evidence block and question without embedded history', () => {
     const content = buildChatTurnContent({
       question: 'How does base precedence work?',
       retrieval: {
@@ -78,7 +78,7 @@ describe('chat-cli prompt', () => {
     expect(content).not.toContain('Conversation history:')
   })
 
-  it('[TC-84] Given long retrieved fact bodies, then turn content truncates each fact for synthesis', () => {
+  it('[TC-79] Given long retrieved fact bodies, then turn content truncates each fact for synthesis', () => {
     const long = 'z'.repeat(2500)
     const content = buildChatTurnContent({
       question: 'What is kb?',
@@ -134,7 +134,7 @@ function makeExecutor(
 }
 
 describe('chat-cli session loop', () => {
-  it('[TC-85] Given /help and /exit, then prints commands and exits without tool calls', async () => {
+  it('[TC-80] Given /help and /exit, then prints commands and exits without tool calls', async () => {
     const io = new ScriptedIO(['/help', '/exit'])
     const executor: ToolExecutor = {
       register: vi.fn(),
@@ -156,7 +156,7 @@ describe('chat-cli session loop', () => {
     expect(executor.execute).not.toHaveBeenCalled()
   })
 
-  it('[TC-86] Given /clear, then prints fresh session message and subsequent turn uses empty message history', async () => {
+  it('[TC-81] Given /clear, then prints fresh session message and subsequent turn uses empty message history', async () => {
     const io = new ScriptedIO(['/clear', '/exit'])
     const executor: ToolExecutor = {
       register: vi.fn(),
@@ -176,7 +176,7 @@ describe('chat-cli session loop', () => {
     expect(executor.execute).not.toHaveBeenCalled()
   })
 
-  it('[TC-88] Given a simple greeting, then LLM answers directly without calling executor', async () => {
+  it('[TC-82] Given a simple greeting, then LLM answers directly without calling executor', async () => {
     const io = new ScriptedIO(['hi', '/exit'])
 
     const executor: ToolExecutor = {
@@ -203,7 +203,7 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('assistant> Hello! Ask me anything about the codebase.')
   })
 
-  it('[TC-89] Given a KB question, then LLM calls query_kb, retrieval runs, and LLM synthesizes the answer', async () => {
+  it('[TC-83] Given a KB question, then LLM calls query_kb, retrieval runs, and LLM synthesizes the answer', async () => {
     const io = new ScriptedIO(['How retrieval works?', '/exit'])
 
     const executor: ToolExecutor = {
@@ -246,7 +246,7 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('session-log-2026-04-12')
   })
 
-  it('[TC-90] Given provider failure, then loop reports error and remains interactive', async () => {
+  it('[TC-84] Given provider failure, then loop reports error and remains interactive', async () => {
     const io = new ScriptedIO(['What now?', '/exit'])
 
     const executor: ToolExecutor = {
@@ -268,7 +268,7 @@ describe('chat-cli session loop', () => {
     expect(io.errors.join('\n')).toContain('Chat turn failed: provider offline')
   })
 
-  it('[TC-91] Given a KB question, then retrieval always uses deep discovery policy', async () => {
+  it('[TC-85] Given a KB question, then retrieval always uses deep discovery policy', async () => {
     const io = new ScriptedIO(['explain the cli', '/exit'])
 
     const executor = makeExecutor('- CLI: kb --help.')
@@ -282,7 +282,7 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('assistant> The CLI starts with kb --help.')
   })
 
-  it('[TC-92] Given a KB question, then retrieval call has correct read_facts shape', async () => {
+  it('[TC-86] Given a KB question, then retrieval call has correct read_facts shape', async () => {
     const io = new ScriptedIO(['what is the rollout strategy?', '/exit'])
 
     const executor = makeExecutor('- Rollout strategy is immediate.', 'rollout-facts')
@@ -303,7 +303,7 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('rollout-facts')
   })
 
-  it('[TC-93] Given a two-turn session, then second LLM call includes first-turn context in message history', async () => {
+  it('[TC-87] Given a two-turn session, then second LLM call includes first-turn context in message history', async () => {
     const io = new ScriptedIO(['What is the agent loop?', 'What about AST?', '/exit'])
 
     const executor = makeExecutor('Agent loop content.', 'fact-agent-loop')
@@ -366,7 +366,7 @@ describe('chat-cli session loop', () => {
     expect(String(assistantMsg?.content)).toContain('Agent loop answer.')
   })
 
-  it('[TC-94] Given a process question, then query_kb tool is called and answer is surfaced', async () => {
+  it('[TC-88] Given a process question, then query_kb tool is called and answer is surfaced', async () => {
     const io = new ScriptedIO(['What is the release process?', '/exit'])
 
     const executor = makeExecutor(
@@ -384,7 +384,7 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('assistant> Release process uses GitHub Actions.')
   })
 
-  it('[TC-95] Given an unknown runtime question, then query_kb retrieves runbook and surfaces the answer', async () => {
+  it('[TC-89] Given an unknown runtime question, then query_kb retrieves runbook and surfaces the answer', async () => {
     const io = new ScriptedIO(['What should I do for unknown runtime warning?', '/exit'])
 
     const executor: ToolExecutor = {
@@ -418,7 +418,7 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('known-runbook')
   })
 
-  it('[TC-96] Given user message that is just a follow-up phrase, then LLM can answer directly without retrieval', async () => {
+  it('[TC-90] Given user message that is just a follow-up phrase, then LLM can answer directly without retrieval', async () => {
     const io = new ScriptedIO(["Yeah let's do the search", '/exit'])
 
     const executor: ToolExecutor = {
@@ -445,7 +445,7 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('I can continue if you want me to search the KB')
   })
 
-  it('[TC-97] Given fact upsert and invalidate changes in the same base, then conversational chat reflects updated facts across turns', async () => {
+  it('[TC-91] Given fact upsert and invalidate changes in the same base, then conversational chat reflects updated facts across turns', async () => {
     const baseDir = await createTempDir()
     const config = { graph: { enabled: false } }
     const toolExecutor = createKBToolsRegistry(baseDir, config)
@@ -495,7 +495,7 @@ describe('chat-cli session loop', () => {
     expect(secondOutput).not.toContain('GitHub Actions. (source:')
   }, 30_000)
 
-  it('[TC-98] Given a multi-round query where LLM calls query_kb twice across rounds, then both retrievals run and final answer is returned', async () => {
+  it('[TC-92] Given a multi-round query where LLM calls query_kb twice across rounds, then both retrievals run and final answer is returned', async () => {
     const io = new ScriptedIO(['How does the agent loop work?', '/exit'])
     const executor = makeExecutor('Agent loop content.', 'agent-loop-doc')
 
@@ -533,7 +533,7 @@ describe('chat-cli session loop', () => {
     expect(io.outputs.join('\n')).toContain('The agent loop runs until no tool calls are produced.')
   })
 
-  it('[TC-99] Given a turn where LLM returns two tool calls in one round, then both execute and results are returned', async () => {
+  it('[TC-93] Given a turn where LLM returns two tool calls in one round, then both execute and results are returned', async () => {
     const io = new ScriptedIO(['Compare retrieval strategies', '/exit'])
 
     const executor: ToolExecutor = {
@@ -579,7 +579,7 @@ describe('chat-cli session loop', () => {
     expect(out).toContain('Hybrid and vector retrieval both available.')
   })
 
-  it('[TC-100] Given a synthesis keyword query, then decompose pre-step fires and sub-queries are logged before main loop', async () => {
+  it('[TC-94] Given a synthesis keyword query, then decompose pre-step fires and sub-queries are logged before main loop', async () => {
     // Query must be ≥40 chars to pass the decompose length guard
     const io = new ScriptedIO(['Give me an overview of how the kb init process works', '/exit'])
 
@@ -618,7 +618,7 @@ describe('chat-cli session loop', () => {
     expect(out).toContain('The init process reads inputs then writes documents.')
   })
 
-  it('[TC-101] Given a short or non-synthesis query, then decompose pre-step is skipped', async () => {
+  it('[TC-95] Given a short or non-synthesis query, then decompose pre-step is skipped', async () => {
     const io = new ScriptedIO(['What is kb?', '/exit'])
     const executor = makeExecutor('kb is a knowledge base tool.', 'kb-doc')
     const provider = makeKBProvider('kb is a knowledge base tool.', 'What is kb?')
@@ -649,7 +649,7 @@ describe('runChatSynthesis', () => {
     }
   }
 
-  it('[TC-102] Given retrieval provided, then synthesizes answer from pre-fetched context without extra retrieval', async () => {
+  it('[TC-96] Given retrieval provided, then synthesizes answer from pre-fetched context without extra retrieval', async () => {
     const { printer } = makePrinter()
     const executor: ToolExecutor = {
       register: vi.fn(),
@@ -684,7 +684,7 @@ describe('runChatSynthesis', () => {
     expect(executor.execute).not.toHaveBeenCalled()
   })
 
-  it('[TC-103] Given multi-round loop, then calls query_kb in parallel and populates lastIntentResult', async () => {
+  it('[TC-97] Given multi-round loop, then calls query_kb in parallel and populates lastIntentResult', async () => {
     const { printer } = makePrinter()
     const executor: ToolExecutor = {
       register: vi.fn(),
@@ -737,7 +737,7 @@ describe('runChatSynthesis', () => {
     expect(result.factsRetrieved).toBeGreaterThanOrEqual(3)
   })
 
-  it('[TC-104] Given retrieval undefined (chat path), then starts loop from provided messages directly', async () => {
+  it('[TC-98] Given retrieval undefined (chat path), then starts loop from provided messages directly', async () => {
     const { printer } = makePrinter()
     const executor: ToolExecutor = {
       register: vi.fn(),

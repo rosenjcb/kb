@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.4.5
+
+### Patch Changes
+
+- Compact FR/TC ids for spec-md contiguous ordering and remap matching [TC-N] tags.
+
 ## 1.4.4
 
 ### Patch Changes

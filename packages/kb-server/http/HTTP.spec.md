@@ -28,7 +28,7 @@ Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md).
 ### Functional Requirements
 
 | ID | Requirement |
-|------|------------|
+| ------ | ------------ |
 | FR-1 | Health endpoint returns liveness without auth, including `version.server` and `indexMtime` when ready |
 | FR-2 | Query endpoint returns synthesized answers with sources when authorized |
 | FR-3 | Query rejects missing or invalid API keys |
@@ -40,19 +40,19 @@ Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md).
 ### QA Test Cases
 
 | Test ID | Requirement | Scenario | Expected Outcome |
-|---------|------------|----------|------------------|
+| --------- | ------------ | ---------- | ------------------ |
 | TC-1 | FR-1 | GET /health response shape | ok, base, and version.server present |
-| TC-12 | FR-7 | Slack url_verification challenge | Challenge value echoed in response |
-| TC-2 | FR-2 | query result shape | pass (packages/kb-server/http/server.http) |
-| TC-3 | FR-2 | results is an array | pass (packages/kb-server/http/server.http) |
-| TC-4 | FR-3 | status 401 without key | pass (packages/kb-server/http/server.http) |
-| TC-5 | FR-4 | sse content type | pass (packages/kb-server/http/server.http) |
-| TC-6 | FR-4 | sse stream has session + terminal events | pass (packages/kb-server/http/server.http) |
-| TC-7 | FR-4 | answered | pass (packages/kb-server/http/server.http) |
-| TC-8 | FR-5 | reindex ok | pass (packages/kb-server/http/server.http) |
-| TC-9 | FR-6 | jsonrpc result | pass (packages/kb-server/http/server.http) |
-| TC-10 | FR-6 | tools include kb_query | pass (packages/kb-server/http/server.http) |
-| TC-11 | FR-6 | tool returns content | pass (packages/kb-server/http/server.http) |
+| TC-2 | FR-7 | Slack url_verification challenge | Challenge value echoed in response |
+| TC-3 | FR-2 | query result shape | pass (packages/kb-server/http/server.http) |
+| TC-4 | FR-2 | results is an array | pass (packages/kb-server/http/server.http) |
+| TC-5 | FR-3 | status 401 without key | pass (packages/kb-server/http/server.http) |
+| TC-6 | FR-4 | sse content type | pass (packages/kb-server/http/server.http) |
+| TC-7 | FR-4 | sse stream has session + terminal events | pass (packages/kb-server/http/server.http) |
+| TC-8 | FR-4 | answered | pass (packages/kb-server/http/server.http) |
+| TC-9 | FR-5 | reindex ok | pass (packages/kb-server/http/server.http) |
+| TC-10 | FR-6 | jsonrpc result | pass (packages/kb-server/http/server.http) |
+| TC-11 | FR-6 | tools include kb_query | pass (packages/kb-server/http/server.http) |
+| TC-12 | FR-6 | tool returns content | pass (packages/kb-server/http/server.http) |
 
 ### Related docs
 

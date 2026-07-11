@@ -27,7 +27,7 @@ See companion doc for full vocabulary where applicable.
 ### Functional Requirements
 
 | ID | Requirement |
-|------|------------|
+| ------ | ------------ |
 | FR-1 | Behaviors in base-refresh.test.ts |
 | FR-2 | Behaviors in chat-io-classify.test.ts |
 | FR-3 | Behaviors in chat-read-kind.test.ts |
@@ -43,7 +43,7 @@ See companion doc for full vocabulary where applicable.
 ### QA Test Cases
 
 | Test ID | Requirement | Scenario | Expected Outcome |
-|---------|------------|----------|------------------|
+| --------- | ------------ | ---------- | ------------------ |
 | TC-1 | FR-1 | Given an async refreshBase, then startSession sees the updated value | pass |
 | TC-2 | FR-1 | Given refreshBase not awaited, then startSession would see stale value (regression scenario) | pass |
 | TC-3 | FR-1 | Given refreshBase rejects, then error propagates and startSession is not called | pass |
@@ -123,15 +123,15 @@ See companion doc for full vocabulary where applicable.
 | TC-77 | FR-11 | normalizes slash commands before handing off to the CLI runner | pass |
 | TC-78 | FR-11 | leaves normal commands unchanged | pass |
 | TC-79 | FR-11 | scrolls the visible suggestion window with the selected row | pass |
-| TC-83 | FR-11 | suggests /skills when typing /sk | pass |
-| TC-84 | FR-11 | suggests docs subcommands when typing /docs g | pass |
-| TC-85 | FR-11 | suggests /facts list when typing /facts li | pass |
-| TC-86 | FR-11 | shows /accept in docs-generate-review and named-list-confirm contexts | pass |
-| TC-87 | FR-11 | shows /complete in init-question and docs-generate-question contexts | pass |
-| TC-88 | FR-11 | shows /skip in docs-generate-question context | pass |
-| TC-89 | FR-11 | shows /cancel in every context | pass |
-| TC-90 | FR-11 | completes multi-segment commands | pass |
-| TC-91 | FR-11 | suppresses suggestions after complete path with trailing args | pass |
+| TC-80 | FR-11 | suggests /skills when typing /sk | pass |
+| TC-81 | FR-11 | suggests docs subcommands when typing /docs g | pass |
+| TC-82 | FR-11 | suggests /facts list when typing /facts li | pass |
+| TC-83 | FR-11 | shows /accept in docs-generate-review and named-list-confirm contexts | pass |
+| TC-84 | FR-11 | shows /complete in init-question and docs-generate-question contexts | pass |
+| TC-85 | FR-11 | shows /skip in docs-generate-question context | pass |
+| TC-86 | FR-11 | shows /cancel in every context | pass |
+| TC-87 | FR-11 | completes multi-segment commands | pass |
+| TC-88 | FR-11 | suppresses suggestions after complete path with trailing args | pass |
 
 ### Related docs
 

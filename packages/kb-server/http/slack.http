@@ -60,7 +60,7 @@ x-slack-request-timestamp: {{slackTs}}
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-12] challenge echoed', () => assert.strictEqual(response.parsedBody.challenge, 'kb-server-integration-test'));
+  test('[TC-2] challenge echoed', () => assert.strictEqual(response.parsedBody.challenge, 'kb-server-integration-test'));
 }}
 
 ###

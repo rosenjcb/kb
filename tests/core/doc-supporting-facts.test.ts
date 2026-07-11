@@ -33,7 +33,7 @@ function makeIndexer(rows: FactRow[] = []) {
 }
 
 describe('searchSupportingFacts', () => {
-  it('[TC-43] Given a query, then forwards to indexer.searchFacts and projects id/factText', async () => {
+  it('[TC-41] Given a query, then forwards to indexer.searchFacts and projects id/factText', async () => {
     const rows = [
       makeRow({ id: 'fact-1', fact_text: 'First fact' }),
       makeRow({ id: 'fact-2', fact_text: 'Second fact' }),
@@ -46,18 +46,18 @@ describe('searchSupportingFacts', () => {
     expect(result.map(r => r.id)).toEqual(expect.arrayContaining(['fact-1', 'fact-2']))
   })
 
-  it('[TC-44] Given an empty query, then returns no results without calling the indexer', async () => {
+  it('[TC-42] Given an empty query, then returns no results without calling the indexer', async () => {
     const indexer = makeIndexer()
     expect(await searchSupportingFacts(indexer as never, '   ', 10)).toEqual([])
     expect(indexer.searchFacts).not.toHaveBeenCalled()
   })
 
-  it('[TC-45] Given no rows, then returns empty array', async () => {
+  it('[TC-43] Given no rows, then returns empty array', async () => {
     const indexer = makeIndexer([])
     expect(await searchSupportingFacts(indexer as never, 'topic', 10)).toEqual([])
   })
 
-  it('[TC-46] Given no explicit limit, then defaults to 20', async () => {
+  it('[TC-44] Given no explicit limit, then defaults to 20', async () => {
     const indexer = makeIndexer([])
     await searchSupportingFacts(indexer as never, 'topic')
     expect(indexer.searchFacts).toHaveBeenCalled()
@@ -65,7 +65,7 @@ describe('searchSupportingFacts', () => {
 })
 
 describe('buildDocgenFactContext', () => {
-  it('[TC-47] Given facts, then formats numbered id lines', () => {
+  it('[TC-45] Given facts, then formats numbered id lines', () => {
     const text = buildDocgenFactContext([
       { id: 'fact-aaaaaaaaaaaaaaaa', factText: 'Alpha claim.' },
       { id: 'fact-bbbbbbbbbbbbbbbb', factText: 'Beta\nline' },
@@ -75,7 +75,7 @@ describe('buildDocgenFactContext', () => {
     expect(text).toContain('[fact-bbbbbbbbbbbbbbbb] Beta line')
   })
 
-  it('[TC-48] Given empty facts, then returns refusal hint block', () => {
+  it('[TC-46] Given empty facts, then returns refusal hint block', () => {
     expect(buildDocgenFactContext([])).toContain('none')
   })
 })

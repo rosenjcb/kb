@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { StreamManager } from '@kb/core/core/runtime/stream-manager.js'
 
 describe('StreamManager', () => {
-  it('[TC-130] Given push then snapshot, then returns copy without clearing', () => {
+  it('[TC-129] Given push then snapshot, then returns copy without clearing', () => {
     const sm = new StreamManager()
     sm.push('c1', { type: 'text', content: 'a' })
     expect(sm.snapshot('c1')).toHaveLength(1)
     expect(sm.snapshot('c1')).toHaveLength(1)
   })
 
-  it('[TC-131] Given drain, then removes buffer for channel', () => {
+  it('[TC-130] Given drain, then removes buffer for channel', () => {
     const sm = new StreamManager()
     sm.push('c1', { type: 'text', content: 'x' })
     const first = sm.drain('c1')

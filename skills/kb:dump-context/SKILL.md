@@ -102,9 +102,10 @@ Domain terms not obvious from code.
 | TC-1 | FR-1 | Given … | … |
 ```
 
-- Continue **FR-N** / **TC-N** numbering from the existing spec — never renumber or reset.
+- **FR-N / TC-N must stay contiguous and ascending** (`FR-1..FR-n`, `TC-1..TC-n` in table order). `spec-md lint` enforces this. Default: append `n+1` at the end. Cleanup that reorders/removes rows must renumber `1..n` and update matching `[TC-N]` tags in the same change — never leave gaps or mid-table inserts.
 - Every new **TC-N** row needs a matching `[TC-N]` test (agent may note the gap; user or a follow-up adds the test).
 - `sources` frontmatter lists implementation paths the spec governs (YAML list, spec-relative).
+- Keep each spec's `tests:` **precise and disjoint** — do not share test files across specs (same `[TC-N]` numbers mean different rows per spec).
 
 ## When to invoke
 

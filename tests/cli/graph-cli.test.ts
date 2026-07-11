@@ -27,7 +27,7 @@ afterEach(async () => {
 })
 
 describe('graph-cli parsing', () => {
-  it('[TC-234] Given graph help flag, then parser returns graph-specific help text', () => {
+  it('[TC-207] Given graph help flag, then parser returns graph-specific help text', () => {
     try {
       parseGraphCommand(['--help'])
       throw new Error('expected help error')
@@ -39,24 +39,24 @@ describe('graph-cli parsing', () => {
     }
   })
 
-  it('[TC-235] Given graph entity flag, then parser returns entity lookup options', () => {
+  it('[TC-208] Given graph entity flag, then parser returns entity lookup options', () => {
     expect(parseGraphCommand(['--entity', 'KB'])).toEqual({ entity: 'KB' })
   })
 
-  it('[TC-236] Given graph path flag, then parser returns path lookup options', () => {
+  it('[TC-209] Given graph path flag, then parser returns path lookup options', () => {
     expect(parseGraphCommand(['--path', 'KB', 'SQLite'])).toEqual({
       pathFrom: 'KB',
       pathTo: 'SQLite',
     })
   })
 
-  it('[TC-237] Given graph format flag, then parser returns export format option', () => {
+  it('[TC-210] Given graph format flag, then parser returns export format option', () => {
     expect(parseGraphCommand(['--format', 'json'])).toEqual({ format: 'json' })
   })
 })
 
 describe('graph-cli help', () => {
-  it('[TC-238] prints grouped graph usage and examples', () => {
+  it('[TC-211] prints grouped graph usage and examples', () => {
     const help = printGraphHelp()
     expect(help).toContain('kb graph commands')
     expect(help).toContain('Inspect:')
@@ -65,7 +65,7 @@ describe('graph-cli help', () => {
 })
 
 describe('runGraphCommand — output routing', () => {
-  it('[TC-239] routes default summary output through the out parameter, not console.log', async () => {
+  it('[TC-212] routes default summary output through the out parameter, not console.log', async () => {
     const consoleSpy = vi.spyOn(console, 'log')
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
@@ -78,7 +78,7 @@ describe('runGraphCommand — output routing', () => {
     expect(consoleSpy).not.toHaveBeenCalled()
   })
 
-  it('[TC-240] routes --format dot output through the out parameter', async () => {
+  it('[TC-213] routes --format dot output through the out parameter', async () => {
     const consoleSpy = vi.spyOn(console, 'log')
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
@@ -89,7 +89,7 @@ describe('runGraphCommand — output routing', () => {
     expect(consoleSpy).not.toHaveBeenCalled()
   })
 
-  it('[TC-241] routes --format json output through the out parameter', async () => {
+  it('[TC-214] routes --format json output through the out parameter', async () => {
     const consoleSpy = vi.spyOn(console, 'log')
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
@@ -100,7 +100,7 @@ describe('runGraphCommand — output routing', () => {
     expect(consoleSpy).not.toHaveBeenCalled()
   })
 
-  it('[TC-242] reports no-path-found through the out parameter', async () => {
+  it('[TC-215] reports no-path-found through the out parameter', async () => {
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
 
@@ -109,7 +109,7 @@ describe('runGraphCommand — output routing', () => {
     expect(lines.some(l => l.includes('No path found'))).toBe(true)
   })
 
-  it('[TC-243] reports entity-not-found through the out parameter', async () => {
+  it('[TC-216] reports entity-not-found through the out parameter', async () => {
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
 
