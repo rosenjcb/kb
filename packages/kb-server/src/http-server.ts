@@ -24,7 +24,6 @@
 import { randomUUID } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { resolveQueryTimeoutMs } from '@kb/core/config/query-timeout.js'
-import { KB_VERSION } from '@kb/core/version.js'
 import { handleMcpHttpRequest } from './mcp-server.js'
 import { handleAdminRoute } from './admin-routes.js'
 import { serializeQueryResult } from '@kb/core/service/serialize.js'
@@ -304,7 +303,6 @@ export function createHttpServer(options: HttpServerOptions): Server {
         ...health,
         version: {
           server: resolveServerVersion(),
-          core: KB_VERSION,
         },
       }
       log.debug('health check', {

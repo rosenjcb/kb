@@ -126,9 +126,11 @@ function statusLaunchd(out: ServerLogger): void {
 async function installSystemd(out: ServerLogger, start: boolean): Promise<void> {
   const p = systemdUnitPath()
   await mkdir(path.dirname(p), { recursive: true })
-  const execStart = serverProgramArgs()
-    .map(a => (a.includes(' ') ? `"${a}"` : a))
-    .join(' ')
+  // Double-quote every ExecStart arg so paths with spaces survive systemd's
+  // word-splitting; escape backslashes and quotes per systemd's C-style rules.
+  const execStart = serverProgramArgs().map(systemdQuote).join(' ')
+  // Environment= values with spaces must be quoted as a single VAR=value token.
+  const kbHomeEnv = systemdQuote(`KB_HOME=${getKbConfigDir()}`)
   const unit = `[Unit]
 Description=KB knowledge base server (HTTP + MCP)
 After=network.target
@@ -137,7 +139,7 @@ After=network.target
 Type=simple
 ExecStart=${execStart}
 Restart=on-failure
-Environment=KB_HOME=${getKbConfigDir()}
+Environment=${kbHomeEnv}
 
 [Install]
 WantedBy=default.target
@@ -190,6 +192,16 @@ function escapeXml(value: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+}
+
+/**
+ * Quote a single systemd command/Environment token. systemd applies C-style
+ * unescaping inside double quotes, so escape backslashes and double quotes and
+ * wrap the whole token — this keeps paths with spaces (common on Linux home
+ * dirs) and unusual characters intact.
+ */
+function systemdQuote(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 }
 
 function warnSecrets(out: ServerLogger): void {

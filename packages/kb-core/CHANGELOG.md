@@ -1,6 +1,6 @@
 # @kb/core
 
-## 1.4.3
+## 1.4.4
 
 ### Patch Changes
 
@@ -10,11 +10,17 @@
     synthesizes a direct answer (no `synthesize` flag) and surfaces the physical
     source files behind each fact instead of opaque `fact://` URIs.
   - kb-server gains a real daemon lifecycle — `start -d` / `stop` / `status` /
-    `restart` (pid file under `~/.kb/run`) — plus `kb-server init` and
-    `kb-server service install|uninstall|status` for launchd/systemd. `server:start`
-    now backgrounds the server.
+    `restart` (pid file under `~/.kb/run`, with a pid-reuse guard on stop) — plus
+    `kb-server init` and `kb-server service install|uninstall|status` for
+    launchd/systemd. `server:start` now backgrounds the server.
   - Add Google Antigravity / Antigravity CLI support for MCP config sync, global
     skill installation, and BeforeTool hooks.
+
+## 1.4.3
+
+### Patch Changes
+
+- Keep `@kb/core` version internal: CLI/TUI and `kb-server` surfaces show client/server semver only; drop `version.core` from `/healthz` and MCP metadata.
 
 ## 1.4.2
 

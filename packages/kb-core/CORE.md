@@ -60,6 +60,7 @@ Heavy native deps (tree-sitter, ast-grep, optional transformers) live **only her
 - `@kb/core` must not depend on `@kb/client` or `@kb/server`.
 - Domain ops (`init`, `scan`) stay in `ops/` — not in client CLI files.
 - `getKbHomeDir()` / `KB_HOME` resolve all durable paths.
+- Core package semver is **internal** (changeset bumps + snapshot `producer.coreVersion`). Never print it on user-facing CLI/TUI/`kb-server`/`/healthz`/MCP surfaces.
 
 ## Related docs
 

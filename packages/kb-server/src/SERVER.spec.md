@@ -29,7 +29,7 @@ See companion doc for full vocabulary where applicable.
 | ID | Requirement |
 |------|------------|
 | FR-1 | Stream chat synthesis over SSE |
-| FR-2 | Expose authenticated REST routes for query, chat, reindex, and health; `/healthz` includes `version.server` and `version.core` |
+| FR-2 | Expose authenticated REST routes for query, chat, reindex, and health; `/healthz` includes `version.server` (not `@kb/core`) |
 | FR-3 | KbService reads facts, reports health, and serializes reindex |
 | FR-4 | Expose a single answer-first MCP tool (`kb_query`) that always synthesizes and never exposes other tools |
 | FR-5 | Parse and run periodic reindex scheduler |

@@ -267,8 +267,11 @@ async function adoptLocalSnapshotIfProvided(
     force: false,
     verify: true,
   })
+  const producer = manifest.producer.toolVersion
+    ? `${manifest.producer.tool}@${manifest.producer.toolVersion}`
+    : manifest.producer.tool
   out.log(
-    `   adopted snapshot for base "${base.baseRef}" (built by ${manifest.producer.tool}@${manifest.producer.coreVersion}, index schema ${manifest.compat.indexSchema}, ${manifest.provenance.repos.length} repo(s)).`
+    `   adopted snapshot for base "${base.baseRef}" (built by ${producer}, index schema ${manifest.compat.indexSchema}, ${manifest.provenance.repos.length} repo(s)).`
   )
 }
 

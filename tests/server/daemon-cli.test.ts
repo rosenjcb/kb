@@ -17,15 +17,15 @@ const prevPort = process.env.PORT
 beforeEach(() => {
   tmpHome = mkdtempSync(path.join(os.tmpdir(), 'kb-daemon-'))
   process.env.KB_HOME = tmpHome
-  process.env.PORT = undefined
+  delete process.env.PORT
 })
 
 afterEach(() => {
   removePidFile()
   rmSync(tmpHome, { recursive: true, force: true })
-  if (prevKbHome === undefined) process.env.KB_HOME = undefined
+  if (prevKbHome === undefined) delete process.env.KB_HOME
   else process.env.KB_HOME = prevKbHome
-  if (prevPort === undefined) process.env.PORT = undefined
+  if (prevPort === undefined) delete process.env.PORT
   else process.env.PORT = prevPort
 })
 

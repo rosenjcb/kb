@@ -15,7 +15,7 @@
 import { openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { getKbConfigDir } from '@kb/core/config/kb-config.js'
 import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
 import type { ServerLogger } from './server-cli.js'
@@ -47,6 +47,23 @@ function isProcessAlive(pid: number): boolean {
     // ESRCH = no such process; EPERM = alive but not ours (still "running").
     return (error as NodeJS.ErrnoException).code === 'EPERM'
   }
+}
+
+/**
+ * Best-effort ownership check so `stop` never signals an unrelated process that
+ * reused a stale pid. Returns:
+ *   - `true`  — the pid's command line clearly looks like kb-server
+ *   - `false` — it clearly does not (a reused pid → treat the pid file as stale)
+ *   - `undefined` — indeterminate (no `ps`, empty output): caller proceeds
+ * The running server is either the compiled `kb-server[.js]` or the tsx dev
+ * entry `packages/kb-server/src/index.ts`; both contain `kb-server` in argv.
+ */
+function pidIsKbServer(pid: number): boolean | undefined {
+  const result = spawnSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' })
+  if (result.error || (result.status ?? 1) !== 0) return undefined
+  const command = (result.stdout ?? '').trim()
+  if (!command) return undefined
+  return /kb-server/.test(command)
 }
 
 /** Read the pid file. Returns `null` when absent, unreadable, or stale (dead pid). */
@@ -152,6 +169,13 @@ export async function runServerStop(out: ServerLogger): Promise<void> {
   const pid = readLivePid()
   if (pid === null) {
     out.log('kb-server is not running.')
+    removePidFile()
+    return
+  }
+  // Guard against pid reuse: if the live pid clearly isn't kb-server, the pid
+  // file is stale — clear it rather than signalling an unrelated process.
+  if (pidIsKbServer(pid) === false) {
+    out.error(`⚠  pid ${pid} is not kb-server (stale pid file); not stopping it.`)
     removePidFile()
     return
   }

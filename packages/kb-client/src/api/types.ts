@@ -19,10 +19,9 @@ export interface HealthResponse {
   bootstrapError?: string | null
   bootstrapProgress?: string | null
   reindexing?: boolean
-  /** Package versions served by this node. */
+  /** Package versions served by this node (user-facing binaries only). */
   version?: {
     server: string
-    core: string
   }
 }
 

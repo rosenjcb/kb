@@ -7,14 +7,14 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { KB_VERSION } from '@kb/core/version.js'
 import { registerKbMcpHandlers } from './mcp-tools.js'
+import { resolveServerVersion } from './version.js'
 import type { KbService } from '@kb/core/service/kb-service.js'
 
 /** Construct an MCP `Server` with KB tool handlers registered. */
 export function createKbMcpServer(service: KbService): Server {
   const server = new Server(
-    { name: 'kb', version: KB_VERSION },
+    { name: 'kb', version: resolveServerVersion() },
     { capabilities: { tools: {} } }
   )
   registerKbMcpHandlers(server, service)

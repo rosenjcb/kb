@@ -30,7 +30,7 @@ afterEach(() => {
 })
 
 function restore(key: string, value: string | undefined): void {
-  if (value === undefined) process.env[key] = undefined
+  if (value === undefined) delete process.env[key]
   else process.env[key] = value
 }
 

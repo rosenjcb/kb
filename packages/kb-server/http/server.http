@@ -33,9 +33,8 @@ GET {{baseUrl}}/healthz
     assert.ok(!Number.isNaN(Date.parse(body.indexMtime)));
     assert.ok(body.version && typeof body.version === 'object');
     assert.strictEqual(typeof body.version.server, 'string');
-    assert.strictEqual(typeof body.version.core, 'string');
+    assert.strictEqual(body.version.core, undefined);
     assert.ok(/^\d+\.\d+\.\d+/.test(body.version.server), `server version: ${body.version.server}`);
-    assert.ok(/^\d+\.\d+\.\d+/.test(body.version.core), `core version: ${body.version.core}`);
   });
 }}
 

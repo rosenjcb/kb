@@ -29,7 +29,7 @@ Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md).
 
 | ID | Requirement |
 |------|------------|
-| FR-1 | Health endpoint returns liveness without auth, including `version.server` / `version.core` and `indexMtime` when ready |
+| FR-1 | Health endpoint returns liveness without auth, including `version.server` and `indexMtime` when ready |
 | FR-2 | Query endpoint returns synthesized answers with sources when authorized |
 | FR-3 | Query rejects missing or invalid API keys |
 | FR-4 | Chat endpoint streams multi-turn SSE sessions |
@@ -41,7 +41,7 @@ Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md).
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|------------|----------|------------------|
-| TC-1 | FR-1 | GET /health response shape | ok, base, and version.server/core present |
+| TC-1 | FR-1 | GET /health response shape | ok, base, and version.server present |
 | TC-12 | FR-7 | Slack url_verification challenge | Challenge value echoed in response |
 | TC-2 | FR-2 | query result shape | pass (packages/kb-server/http/server.http) |
 | TC-3 | FR-2 | results is an array | pass (packages/kb-server/http/server.http) |

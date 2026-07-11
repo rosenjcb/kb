@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink'
 import { useEffect, useState } from 'react'
-import { KB_VERSION } from '@kb/core/version.js'
+import { CLIENT_VERSION } from '../../version.js'
 import { BLUE, ORANGE } from '../theme.js'
 
 const BANNER_LINES = [
@@ -38,7 +38,7 @@ export function WelcomeBanner({ providerLabel }: Props) {
       ))}
       <Text color="gray">
         A Knowledge Base for your Agent{' '}
-        <Text color={ORANGE}>v{KB_VERSION}</Text>
+        <Text color={ORANGE}>v{CLIENT_VERSION}</Text>
         {' '}— type a question or /help for commands
       </Text>
       {providerLabel ? (
