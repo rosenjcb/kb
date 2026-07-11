@@ -5,7 +5,7 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @kb/core@1.5.0
+  - @kb/core@1.4.6
 
 ## 1.4.2
 
