@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { formatFactUri } from '../core/fact-uri'
+import { formatFactUri, sourceRefToPath } from '../core/fact-uri'
 import type { QueryResponse, QueryResult } from './facts-document-reader'
 import { type FactsSufficiencyJudge, shouldCallJudge } from './facts-sufficiency-judge'
 import { type QueryTraceLane, isQueryTraceEnabled, tracedFactFromRow } from './query-trace'
@@ -502,18 +502,23 @@ export class FactsQueryResearchOrchestrator {
     const filteredRemainder = sorted
       .filter(e => !reservedIds.has(e.row.id) && e.score >= MIN_FACT_SCORE)
     const ranked = dedupeRankedFacts([...reserved, ...filteredRemainder])
-    const results: QueryResult[] = ranked.map(({ row }) => ({
-      metadata: {
-        id: row.id,
-        title: summarizeFactTitle(row.fact_text),
-        filePath: formatFactUri(row.id),
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        tags: [row.source_kind, ...(row.git_repo ? [row.git_repo] : []), 'fact'],
-        type: 'reference',
-      },
-      content: input.input.includeContent ? row.fact_text : undefined,
-    }))
+    const results: QueryResult[] = ranked.map(({ row }) => {
+      const source = sourceRefToPath(row.source_ref, row.git_repo)
+      return {
+        metadata: {
+          id: row.id,
+          title: summarizeFactTitle(row.fact_text),
+          filePath: formatFactUri(row.id),
+          ...(source ? { sourcePath: source.path } : {}),
+          ...(source?.symbol ? { symbol: source.symbol } : {}),
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          tags: [row.source_kind, ...(row.git_repo ? [row.git_repo] : []), 'fact'],
+          type: 'reference',
+        },
+        content: input.input.includeContent ? row.fact_text : undefined,
+      }
+    })
     const retrievalDetail = [
       'facts-loop',
       `passes:${input.iterations}`,

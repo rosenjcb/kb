@@ -92,7 +92,20 @@ describe('hasExplicitServerHost', () => {
 })
 
 describe('syncKbMcpConfigs', () => {
-  it('[TC-510] Given no explicit host, refuses to default MCP to localhost', async () => {
+  it('[TC-510] Given no explicit host, defaults MCP to localhost like the CLI/TUI', async () => {
+    process.env.KB_SERVER_API_KEY = 'testkey'
+    const results = await syncKbMcpConfigs()
+    expect(results.every(r => r.action === 'installed')).toBe(true)
+    expect(results.every(r => r.url === 'http://localhost:38117/mcp')).toBe(true)
+
+    const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
+    expect(cursor.mcpServers.kb).toEqual({
+      url: 'http://localhost:38117/mcp',
+      headers: { Authorization: 'Bearer testkey' },
+    })
+  })
+
+  it('[TC-510b] requireExplicitHost still refuses the implicit localhost default', async () => {
     process.env.KB_SERVER_API_KEY = 'testkey'
     const results = await syncKbMcpConfigs({ requireExplicitHost: true })
     expect(results).toEqual([
@@ -132,6 +145,8 @@ describe('syncKbMcpConfigs', () => {
     expect(results).toEqual([
       { agent: 'cursor', action: 'installed', url: 'http://localhost:38117/mcp' },
       { agent: 'claude', action: 'installed', url: 'http://localhost:38117/mcp' },
+      { agent: 'antigravity', action: 'installed', url: 'http://localhost:38117/mcp' },
+      { agent: 'antigravity-cli', action: 'installed', url: 'http://localhost:38117/mcp' },
     ])
 
     const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
@@ -231,6 +246,22 @@ describe('uninstallKbMcpConfigs', () => {
       JSON.stringify({
         mcpServers: { kb: { type: 'http', url: 'http://localhost:38117/mcp' } },
         theme: 'dark',
+      }),
+      'utf8'
+    )
+    await mkdir(path.join(fakeHome, '.gemini', 'config'), { recursive: true })
+    await writeFile(
+      path.join(fakeHome, '.gemini', 'config', 'mcp_config.json'),
+      JSON.stringify({
+        mcpServers: { kb: { serverUrl: 'http://localhost:38117/mcp', url: 'http://localhost:38117/mcp' } },
+      }),
+      'utf8'
+    )
+    await mkdir(path.join(fakeHome, '.gemini', 'antigravity-cli'), { recursive: true })
+    await writeFile(
+      path.join(fakeHome, '.gemini', 'antigravity-cli', 'mcp_config.json'),
+      JSON.stringify({
+        mcpServers: { kb: { serverUrl: 'http://localhost:38117/mcp', url: 'http://localhost:38117/mcp' } },
       }),
       'utf8'
     )

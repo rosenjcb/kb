@@ -308,12 +308,13 @@ describe('installHooks', () => {
     process.env.HOME = origHome
   })
 
-  it('[TC-451] Given no provider config dirs, then Claude is still installed (ensureConfigDir) and others are not-installed', async () => {
+  it('[TC-451] Given no provider config dirs, then Claude and antigravity-cli are still installed (ensureConfigDir) and others are not-installed', async () => {
     const results = await installHooks()
     expect(results.find(r => r.provider === 'claude')?.action).toBe('installed')
-    expect(results.filter(r => r.provider !== 'claude').every(r => r.action === 'not-installed')).toBe(
-      true
-    )
+    expect(results.find(r => r.provider === 'antigravity-cli')?.action).toBe('installed')
+    expect(
+      results.filter(r => r.provider !== 'claude' && r.provider !== 'antigravity-cli').every(r => r.action === 'not-installed')
+    ).toBe(true)
   })
 
   it('[TC-452] Given Claude config dir exists with no settings.json, then creates settings.json with hook', async () => {

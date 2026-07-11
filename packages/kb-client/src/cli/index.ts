@@ -225,11 +225,13 @@ function printMcpHelp(): string {
     '',
     'Subcommands:',
     '  install [--host <host[:port]|url>]  Write mcpServers.kb → ${server}/mcp',
-    '                                      Host from --host, else KB_SERVER_URL / KB_HOST',
+    '                                      Host from --host, else active connection',
+    '                                      (KB_SERVER_URL / KB_HOST / localhost)',
     '  status                              Show env host + current MCP kb URLs',
     '  uninstall                           Remove managed kb MCP entries',
     '',
     'Examples:',
+    '  kb mcp install',
     '  kb mcp install --host localhost:38117',
     '  kb mcp install --host https://kb.example.com:38117',
     '  export KB_SERVER_URL=http://remote:38117 && kb mcp install',
@@ -690,10 +692,6 @@ export async function runMainWithOutput(
           installMcpConfigs(config),
         ])
         out.log(formatSkillInstallReport(skillResults, profileResults, hookResults, mcpResults))
-        if (mcpResults.some(r => r.action === 'needs-host')) {
-          out.error('MCP skipped: pass --host or set KB_SERVER_URL / KB_HOST (or config.server.host).')
-          if (mode === 'cli') process.exitCode = 1
-        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)
@@ -722,11 +720,12 @@ export async function runMainWithOutput(
           'Manage the bundled KB agent skills for Claude, Cursor, Codex, and Copilot.',
           '',
           'Subcommands:',
-          '  install     Install skill files, profile readmes, kb-first hook;',
-          '              installs MCP only when KB_SERVER_URL / KB_HOST / --host is set',
+          '  install     Install skill files, profile readmes, kb-first hook,',
+          '              and MCP configs for the active connection (localhost default)',
           '  uninstall   Remove skill files, readme entries, hook, and MCP entries',
           '',
-          'Point MCP at a host explicitly with: kb mcp install --host <host|url>',
+          'Override the MCP host with: kb --host <host|url> skills install',
+          '                        or: kb mcp install --host <host|url>',
         ].join('\n')
       )
     }
@@ -753,13 +752,9 @@ export async function runMainWithOutput(
           }
           throw new Error(`Unknown argument: ${token}\n\n${printMcpHelp()}`)
         }
-        const results = await syncKbMcpConfigs({ host, requireExplicitHost: true, config })
+        const results = await syncKbMcpConfigs({ host, config })
         const report = formatMcpSyncReport(results)
         if (report) out.log(report)
-        if (results.some(r => r.action === 'needs-host')) {
-          out.error('Pass --host or set KB_SERVER_URL / KB_HOST (or config.server.host) first.')
-          if (mode === 'cli') process.exitCode = 1
-        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         out.error(`❌ ${message}`)

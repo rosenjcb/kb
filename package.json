@@ -14,6 +14,8 @@
     "server:up": "node packages/kb-server/scripts/server-up.mjs",
     "server:start": "node packages/kb-server/scripts/server-start.mjs",
     "server:stop": "node packages/kb-server/scripts/kb-service-stop.mjs",
+    "server:status": "tsx packages/kb-server/src/index.ts status",
+    "server:restart": "pnpm run server:stop && pnpm run server:start",
     "server:docker:start": "docker compose --env-file .env -f packages/kb-server/docker-compose.yml up -d --build kb-server",
     "server:docker:stop": "docker compose --env-file .env -f packages/kb-server/docker-compose.yml stop kb-server",
     "server:docker:logs": "docker compose --env-file .env -f packages/kb-server/docker-compose.yml logs -f kb-server",

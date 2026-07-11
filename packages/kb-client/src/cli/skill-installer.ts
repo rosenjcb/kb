@@ -62,6 +62,16 @@ function agentTargets(skillName: string): AgentTarget[] {
       skillPath: path.join(home, '.github', 'copilot-instructions', `${skillName}.md`),
       format: 'skill-md',
     },
+    {
+      name: 'antigravity',
+      skillPath: path.join(home, '.gemini', 'config', 'skills', skillName, 'SKILL.md'),
+      format: 'skill-md',
+    },
+    {
+      name: 'antigravity-cli',
+      skillPath: path.join(home, '.gemini', 'antigravity-cli', 'skills', skillName, 'SKILL.md'),
+      format: 'skill-md',
+    },
   ]
 }
 
@@ -262,8 +272,9 @@ native_search = tool in ("Grep", "Glob")
 if not (native_search or bash_spelunk or cli_query):
     sys.exit(0)
 msg = (
-    "Use the kb MCP connector (kb_query / kb_read_facts / kb_search_code_symbols) "
-    "before Grep/Glob/find/rg or kb query. CLI/TUI is for humans; agents investigate via MCP only."
+    "Ask the kb MCP tool kb_query a direct question before Grep/Glob/find/rg or kb query. "
+    "It answers agent-to-agent: a direct answer plus the source files to open. "
+    "CLI/TUI is for humans; agents investigate via MCP only."
 )
 print(json.dumps({
     "systemMessage": msg,
@@ -306,6 +317,21 @@ function hookProviders(): HookProvider[] {
       settingsFile: path.join(home, '.gemini', 'settings.json'),
       event: 'BeforeTool',
       matcher: 'run_shell_command',
+    },
+    {
+      name: 'antigravity',
+      configDir: path.join(home, '.gemini'),
+      settingsFile: path.join(home, '.gemini', 'settings.json'),
+      event: 'BeforeTool',
+      matcher: 'run_shell_command',
+    },
+    {
+      name: 'antigravity-cli',
+      configDir: path.join(home, '.gemini', 'antigravity-cli'),
+      settingsFile: path.join(home, '.gemini', 'antigravity-cli', 'settings.json'),
+      event: 'BeforeTool',
+      matcher: 'run_shell_command',
+      ensureConfigDir: true,
     },
     {
       name: 'codex',
@@ -528,9 +554,9 @@ export function formatSkillUninstallReport(
   return lines.join('\n')
 }
 
-/** Sync Cursor/Claude MCP `kb` entries when an explicit host is configured. */
+/** Sync Cursor/Claude MCP `kb` entries to the active CLI/TUI connection (localhost default). */
 export async function installMcpConfigs(config: KbConfig = {}): Promise<McpSyncResult[]> {
-  return syncKbMcpConfigs({ requireExplicitHost: true, config })
+  return syncKbMcpConfigs({ config })
 }
 
 /** Remove managed Cursor/Claude MCP `kb` entries. */
