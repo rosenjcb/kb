@@ -44,6 +44,7 @@ allowBuilds:
   tree-sitter-cpp: false
   tree-sitter-css: false
   tree-sitter-go: false
+  tree-sitter-haskell: false
   tree-sitter-html: false
   tree-sitter-java: false
   tree-sitter-javascript: false

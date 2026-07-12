@@ -372,6 +372,21 @@ const LANG_CONFIGS: Record<string, LangConfig> = {
     ],
     goExportConvention: false,
   },
+  haskell: {
+    wasmPath: resolveWasm('tree-sitter-haskell', 'tree-sitter-haskell.wasm'),
+    // Module imports are logical (e.g. ShellCheck.AST), not relative paths — skip
+    // IMPORTS_FILE edges; symbol extraction still covers functions/types/classes.
+    importQueries: [],
+    exportQueries: [
+      '(function name: (variable) @name)',
+      '(signature name: (variable) @name)',
+      '(data_type name: (name) @name)',
+      '(newtype name: (name) @name)',
+      '(type_synomym name: (name) @name)',
+      '(class name: (name) @name)',
+    ],
+    goExportConvention: false,
+  },
 }
 
 // Extension → language key (known AST-able extensions)
@@ -415,6 +430,9 @@ const EXT_MAP: Record<string, string> = {
   // HTML
   '.html': 'html',
   '.htm': 'html',
+  // Haskell
+  '.hs': 'haskell',
+  '.lhs': 'haskell',
 }
 
 /** File extensions with a WASM grammar in LANG_CONFIGS (leading dot). */

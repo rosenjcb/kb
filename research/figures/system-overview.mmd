@@ -1,0 +1,21 @@
+flowchart TB
+    subgraph P1["Index"]
+        direction LR
+        A["Codebase<br/>(source + docs + history)"] --> B["kb init:<br/>extract atomic facts"]
+        B --> C[("Fact graph")]
+    end
+
+    subgraph P2["Locate"]
+        direction LR
+        D["Question<br/>arrives"] --> E["Find a seed<br/>island of facts"]
+        E --> F["Hop across the graph<br/>to grow the island"]
+    end
+
+    subgraph P3["Answer"]
+        direction LR
+        G["Curate: keep<br/>what's relevant"] --> H["Synthesize a<br/>grounded answer"]
+        H --> I["Harvest eval:<br/>ΔS = S_K − S_N"]
+    end
+
+    P1 --> P2
+    P2 --> P3

@@ -1,0 +1,63 @@
+# kestra repo / dogfood question pack. Use: --suite kestra
+# Product-oriented: declarative flows + built-in UI editor / execution console.
+schema_version: 1
+id: kestra
+display_name: kestra
+repo_url: https://github.com/kestra-io/kestra.git
+rubric_focus: Kestra orchestration platform — YAML flows, UI editor, and execution path
+questions:
+  - "What is Kestra, and how do flows relate to namespaces, tasks, and triggers in its product model?"
+  - "Which top-level modules (webserver, executor, worker, scheduler, cli, ui, …) make up the Kestra distribution, and what is each responsible for?"
+  - "How does the built-in UI workflow editor keep the on-screen graph synchronized with the declarative YAML flow definition?"
+  - "Step by step, what happens when a user clicks Execute on a flow in the UI: which API/server components receive the request, how is an Execution created, and how do executor/worker pick up tasks?"
+  - "Explain how plugins extend Kestra tasks and how a plugin task type becomes available for selection in the UI palette / YAML autocomplete."
+  - "Infer the path from editing a trigger (schedule or event) in the UI to the scheduler actually firing a new execution."
+  - "What are inputs, outputs, and the UI execution Gantt/logs views for — how do task results surface back to the operator after a run?"
+  - "How does Kestra support starting a local all-in-one server from the CLI (e.g. server local), and which components does that mode wire together?"
+answers:
+  - >
+    Kestra is an open-source, event-driven orchestration platform for data, AI, and infrastructure
+    workflows. A Flow is a declarative YAML definition living in a Namespace; it composes Tasks
+    (units of work, often plugin-backed) and optional Triggers (schedule or event) that create
+    Executions. Labels, inputs, outputs, retries, and error handlers structure resilience. The same
+    flow can be authored from the UI or as code; the product treats YAML as the source of truth.
+  - >
+    The monorepo splits runtime concerns into modules such as webserver (HTTP/API + UI hosting),
+    executor (orchestrates execution graphs), worker (runs task workloads), scheduler (evaluates
+    triggers / schedules), indexer (search/index of executions and flows), jdbc-* persistence
+    backends, cli (server entrypoints), and ui (Vue/TypeScript front-end). Together they form the
+    product: author in UI/YAML, persist flows, schedule or manually run executions, and observe
+    results.
+  - >
+    The UI embeds a flow editor that edits the declarative YAML and renders a visual graph of tasks
+    and topology. Changes in the visual builder rewrite the YAML (and vice versa) so the stored
+    flow definition stays declarative even when operators drag tasks, set properties, or use the
+    code pane. Validation/autocomplete in the editor reflect the flow schema and available plugin
+    task types.
+  - >
+    Execute in the UI issues an API call to the webserver to create an Execution for the flow
+    (with any inputs). Persistence records the execution; the executor expands the flow graph into
+    runnable tasks and dispatches work. Workers claim and run tasks (including plugin tasks),
+    reporting state transitions. The UI polls or streams execution status so the operator sees
+    running/success/failed tasks without leaving the console.
+  - >
+    Plugins package additional task (and often trigger) types. They register with Kestra’s plugin
+    system so the runtime can instantiate them by type id in YAML. Once loaded, those types appear
+    in UI task pickers and editor completion lists; selecting a plugin task in the UI writes the
+    corresponding type/properties into the flow YAML that the executor later resolves.
+  - >
+    Saving a trigger on a flow persists it with the flow definition. The scheduler component
+    evaluates schedule/event triggers, and when conditions match it creates a new Execution the
+    same way a manual UI run would. UI edits to cron expressions, conditions, or disabled flags
+    therefore change what the scheduler will fire on subsequent ticks.
+  - >
+    Flow Inputs parameterize a run (collected in the Execute dialog); task Outputs and flow-level
+    outputs are artifacts the UI surfaces after completion. The execution view (Gantt/timeline plus
+    per-task logs) lets operators drill from a failed node to stdout/stderr and output values —
+    closing the loop from “click Execute” to inspectable results.
+  - >
+    The CLI entrypoint (`kestra server local` via the published image/binary) starts an all-in-one
+    local mode that wires webserver, executor, worker, and scheduler together against local
+    storage/DB defaults so the UI on the exposed port can author and run flows without a full
+    multi-service deploy. Docker quickstart mounts storage and optionally the Docker socket for
+    tasks that need it.

@@ -27,7 +27,7 @@ flowchart LR
 
 Two evaluation pipelines co-exist:
 
-1. **Query harvest** (`scripts/eval-run.mjs`, suites `raylib`/`kb`/`generic`) — runs the **kb side** (condition **K**) and, by default, the **control side** (condition **N**) side-by-side into one unified artifact. kb scores `kb query` answers via auto-score (Gemini/OpenAI); the control hands each question to a *real coding agent* (Claude Code headless, no kb) and scores it with the **same rubric/judge**. Artifacts under `~/.kb/evaluations/<run>/artifact.json` hold both (kb at top level + a `control` block + a `comparison`). `--skip-control` runs kb only; `--score-runs N` averages the scorer. See [Control vs kb](#control-vs-kb-the-real-baseline).
+1. **Query harvest** (`scripts/eval-run.mjs`, suites `raylib`/`kb`/`fzf`/…/`generic`) — runs the **kb side** (condition **K**) and, by default, the **control side** (condition **N**) side-by-side into one unified artifact. kb scores `kb query` answers via auto-score (Gemini/OpenAI); the control hands each question to a *real coding agent* (Claude Code headless, no kb) and scores it with the **same rubric/judge**. Artifacts under `~/.kb/evaluations/<run>/artifact.json` hold both (kb at top level + a `control` block + a `comparison`). `--skip-control` runs kb only; `--score-runs N` averages the scorer. **Multi-suite:** `--suites a,b` / `--all-suites` runs a Node-native parallel batch (default); `--sequential` or `--parallel N` to tune. See [Control vs kb](#control-vs-kb-the-real-baseline).
 
 2. **MOEL pipeline** (`scripts/moel-run.mjs`, suite `moel-kb`) — measures exploration efficiency across conditions per task. Loss functions live in `eval/losses/`; the harness is `scripts/moel-run.mjs`.
 
@@ -98,6 +98,9 @@ pnpm run eval -- --suite raylib --auto-score
 
 # kb only — no ΔS verdict (iteration / CI without agent binary)
 pnpm run eval -- --suite raylib --auto-score --skip-control
+
+# All 10 benchmark suites — Node-native parallel by default
+pnpm run eval -- --all-suites --control-agent cursor --control-model composer-2.5
 ```
 
 The single `~/.kb/evaluations/<run>/artifact.json` holds the kb results (top level, `run.condition = "kb"`), a `control` block (real agent, no kb — its own `aggregate_scores` + `control_telemetry`), and a `comparison` block of kb-minus-control deltas including **`success_score.delta_kb_minus_control` (ΔS)**. Both sides answer the same questions and are scored by the same rubric/judge. The end-of-run summary prints **this run's** kb vs control row first; the trends table is diagnostic only.

@@ -1,0 +1,21 @@
+flowchart TB
+    subgraph S1["Facts"]
+        direction LR
+        A["Source + docs"] --> B["Facts<br/>(atomic, graph-linked)"]
+    end
+
+    B --> D
+
+    subgraph S2["Retrieval loop"]
+        direction LR
+        D["Seed: locate an<br/>island of facts"] --> E["Hop: expand the island<br/>across graph edges"]
+        E --> F{"Island<br/>sufficient?"}
+        F -- "no, more hops" --> D
+    end
+
+    subgraph S3["Answer"]
+        direction LR
+        G["Curate: drop<br/>what's off-topic"] --> H["Synthesize<br/>the answer"]
+    end
+
+    F -- "yes" --> G

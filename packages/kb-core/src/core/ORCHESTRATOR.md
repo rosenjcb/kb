@@ -232,6 +232,6 @@ Optional env for nested `task` / `agentLoop` A/B (does not change KB storage `--
 
 Implementation: `src/tools/subagent-eval-scenario.ts` and `executeSubagentTask` in `src/tools/task.ts`.
 
-**Matrix artifact:** `WRITE_ORCHESTRATOR_MATRIX=1 npx vitest run tests/tools/subagent-scenario-matrix.test.ts` writes `evaluation/runs/<date>-orchestrator-scenario-matrix.json` (three rows `s1`–`s3`).
+**Matrix artifact:** `WRITE_ORCHESTRATOR_MATRIX=true npx vitest run tests/tools/subagent-scenario-matrix.test.ts` writes `~/.kb/evaluations/_matrix/<date>-orchestrator-scenario-matrix.json` (three rows `s1`–`s3`).
 
-**`eval:kb-proper`:** still the path for init + `kb query` artifacts under `evaluation/runs/` (see `EVALUATION.md`). That flow does not call `task` today. The matrix above is only subagent loop tuning.
+**Harvest eval:** `pnpm run eval` writes artifacts under `~/.kb/evaluations/<run>/artifact.json` (see `EVALUATION.md`). That flow does not call `task` today. The matrix above is only subagent loop tuning.

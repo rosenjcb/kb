@@ -1,0 +1,73 @@
+# brew repo / dogfood question pack. Use: --suite brew
+schema_version: 1
+id: brew
+display_name: brew
+repo_url: https://github.com/Homebrew/brew.git
+rubric_focus: Homebrew core package manager and Ruby DSL execution environment
+questions:
+  - "What are Homebrew Formulae, and what rules map a package name to its corresponding Ruby class?"
+  - "Detail the initialization and execution sequence of the main entry point file, brew.rb."
+  - "Infer the end-to-end install UI/CLI process for brew install foo: from argument parsing in brew.rb, through formula resolution (API vs local), dependency DAG ordering, sandbox execution, and Cellar linking."
+  - "How does Homebrew sandbox formula execution and enforce directory write restrictions during installation?"
+  - "Describe the cache system architecture of Homebrew and how it tracks downloaded assets and dependencies."
+  - "Explain the core differences between a Formula and a Cask within the Homebrew framework."
+  - "Step by step, what changed in Homebrew 4.0's API-first install path versus cloning homebrew-core, and how does that alter the formula lookup sequence?"
+  - "Detail how formula dependency trees are evaluated and resolved during installations."
+answers:
+  - >
+    Homebrew Formulae are package definitions written in a custom Ruby Domain-Specific Language
+    (DSL). Each formula file contains metadata and instructions required to fetch, build, test, and
+    install software packages from upstream source targets. Subclasses of Formula must be declared
+    as UpperCamelCase and avoid dash separators. The filename on disk must correspond directly to
+    the class name using a strict naming translation: a file named 'foo-bar.rb' maps to class
+    'FooBar', while a file named 'foobar.rb' maps to class 'Foobar'.
+  - >
+    The primary execution entry point of the Homebrew system is brew.rb, located inside the
+    Library/Homebrew/ directory. When a user runs a command, brew.rb boots the core environment: it
+    sets up load paths, configures global system settings, imports essential modules, and resolves
+    command targets. It dynamically determines if the input points to a built-in internal command
+    (such as 'install' or 'upgrade'), a formula file path, or an external command tapped from a
+    custom git repository, and dispatches execution to the corresponding command module via public
+    send interfaces.
+  - >
+    `brew install foo` enters via brew.rb, which dispatches to the install command. Formula `foo` is
+    resolved from the formulae.brew.sh API JSON (Homebrew 4+) or local taps, dependencies are
+    expanded into a DAG and topologically ordered, each prerequisite is fetched into the cache
+    (URL-hash named archives), then built/installed inside sandbox.rb restrictions writing only to
+    temp/cache/Cellar paths, and finally linked into the prefix. Progress and errors surface through
+    the CLI formatter rather than a separate GUI.
+  - >
+    To prevent un-trusted install scripts from modifying system directories or executing malicious
+    code, Homebrew utilizes a custom sandboxing implementation inside sandbox.rb. When compiling or
+    installing a formula, the system forks a child process and wraps execution with native OS
+    sandbox tools (such as macOS's sandbox-exec). The rules allow directory writes only to temporary
+    build paths, caching paths, and the designated Cellar prefix, while optionally denying network
+    access inside the sandboxed space to ensure reproducible build isolation.
+  - >
+    Homebrew manages downloaded software packages and formula details inside a persistent local
+    cache hierarchy. Downloaded source archives are saved in the downloads directory (e.g.,
+    ~/Library/Caches/Homebrew) and renamed using unique URL hashes to maintain reference mappings.
+    Metadata, formula configurations, and linkage state are monitored via persistent key-value cache
+    stores (like cache_store.rb and linkage_cache_store.rb), which track active library mappings,
+    verifying dependencies and alerting operators when broken library links are detected after
+    package updates.
+  - >
+    Formulae and Casks serve fundamentally different packaging strategies in Homebrew. A Formula
+    defines instructions for building, compiling, and linking command-line utilities directly from
+    source code or source packages, installing targets into the local Cellar path. A Cask represents
+    precompiled binaries and desktop applications (like Google Chrome or VLC) built and signed by
+    upstream maintainers. Casks are installed by directly copying application bundles into standard
+    directories (like /Applications) rather than linking libraries into the default Homebrew prefix.
+  - >
+    Starting in Homebrew 4.0.0, brew fetches formula/cask JSON from https://formulae.brew.sh instead
+    of requiring a full homebrew-core git clone. Lookup hits the API catalog first for metadata and
+    bottle URLs, reducing disk and clone time; local taps remain for custom formulae. The install
+    command then proceeds with the same dependency resolution and sandbox build/link stages using
+    the fetched definition.
+  - >
+    Dependency trees are evaluated recursively within the Formula dependency resolution layers. When
+    a formula installation is triggered, Homebrew traverses its declared 'depends_on' blocks,
+    checking the local formulas or API catalogs for specified dependencies. It constructs a directed
+    acyclic graph (DAG) of the dependency tree, re-orders the DAG to ensure prerequisite
+    dependencies are built first, checks for version conflicts and circular references, and triggers
+    sandboxed compilation tasks sequentially down the sorted graph path.

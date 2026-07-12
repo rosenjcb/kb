@@ -1011,7 +1011,18 @@ export function suiteDisplayLabel(suiteId) {
 }
 
 /** Suites exported to research/tables/results.tex for the paper. */
-export const RESEARCH_RESULT_SUITES = ['kb', 'raylib']
+export const RESEARCH_RESULT_SUITES = [
+  'kb',
+  'raylib',
+  'fzf',
+  'kestra',
+  'shellcheck',
+  'lazygit',
+  'datasette',
+  'mitmproxy',
+  'fish-shell',
+  'brew',
+]
 
 // ---------------------------------------------------------------------------
 // Run directory allocation + clone (shared by eval-run.mjs and control-core.mjs)
@@ -1210,32 +1221,17 @@ function _trendNote(values) {
   return `${prev.toFixed(3)} → ${last.toFixed(3)} (${sign}${d.toFixed(3)} vs prev)`
 }
 
-function _gatherArtifacts(repoRoot) {
+function _gatherArtifacts(_repoRoot) {
   const rows = []
   const homeRoot = path.join(os.homedir(), '.kb', 'evaluations')
-  const repoRuns = path.join(repoRoot, 'evaluation', 'runs')
   if (fs.existsSync(homeRoot)) {
     for (const entry of fs.readdirSync(homeRoot, { withFileTypes: true })) {
-      if (!entry.isDirectory() || entry.name === 'repos') continue
+      if (!entry.isDirectory() || entry.name === 'repos' || entry.name.startsWith('_')) continue
       const artifactPath = path.join(homeRoot, entry.name, 'artifact.json')
       if (!fs.existsSync(artifactPath)) continue
       const artifact = _safeJson(artifactPath)
       if (!artifact?.status) continue
       rows.push({ source: 'home', id: entry.name, file: artifactPath, artifact })
-    }
-  }
-  if (fs.existsSync(repoRuns)) {
-    for (const entry of fs.readdirSync(repoRuns, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith('.json')) continue
-      const artifactPath = path.join(repoRuns, entry.name)
-      const artifact = _safeJson(artifactPath)
-      if (!artifact?.status) continue
-      rows.push({
-        source: 'repo',
-        id: entry.name.replace(/\.json$/i, ''),
-        file: artifactPath,
-        artifact,
-      })
     }
   }
   return rows
@@ -1334,7 +1330,10 @@ function _judgeLabel(artifact) {
   return 'LLM-as-judge'
 }
 
-function _controlAgentLabel(_artifact) {
+function _controlAgentLabel(artifact) {
+  const agent = artifact?.control?.agent
+  if (agent?.name && agent?.model) return `Headless agent: ${agent.name} (${agent.model})`
+  if (agent?.name) return `Headless agent: ${agent.name}`
   return 'Headless coding agent'
 }
 
@@ -1358,14 +1357,11 @@ function _suiteTexPrefix(suiteId) {
 }
 
 function _suiteTargetLabel(suiteId, artifact) {
-  if (suiteId === 'kb') return '\\texttt{kb} self-check'
-  if (suiteId === 'raylib') {
-    const commit = artifact?.repository?.commit
-    const short = commit ? commit.slice(0, 7) : 'unknown'
-    return `\\texttt{raylib} commit \\texttt{${_texEscape(short)}}`
-  }
   const name = artifact?.repository?.name ?? suiteDisplayLabel(suiteId)
-  return `\\texttt{${_texEscape(name)}}`
+  const commit = artifact?.repository?.commit
+  const short = commit ? commit.slice(0, 7) : 'unknown'
+  const label = suiteId === 'kb' ? '\\texttt{kb} self-check' : `\\texttt{${_texEscape(name)}}`
+  return `${label} commit \\texttt{${_texEscape(short)}}`
 }
 
 function _emitSuiteResults(lines, suiteId, artifact) {
@@ -1381,24 +1377,23 @@ function _emitSuiteResults(lines, suiteId, artifact) {
     lines.push(_texMacro(`${prefix}RunDate`, 'no scored run found'))
     lines.push(_texMacro(`${prefix}Target`, _suiteTargetLabel(suiteId, null)))
     lines.push(_texMacro(`${prefix}ControlCollected`, 'no'))
+    lines.push(_texMacro(`${prefix}ControlAgent`, '---'))
     lines.push(_texMacro(`${prefix}DeltaS`, '---'))
-    lines.push('')
-    return
-  }
-
-  lines.push(
-    _texMacro(
-      `${prefix}RunId`,
-      _texEscape(artifact.run?.run_name ?? artifact.run_label ?? '---')
+  } else {
+    lines.push(
+      _texMacro(
+        `${prefix}RunId`,
+        _texEscape(artifact.run?.run_name ?? artifact.run_label ?? '---')
+      )
     )
-  )
-  lines.push(_texMacro(`${prefix}RunDate`, _formatRunDate(artifact.created_at)))
-  lines.push(_texMacro(`${prefix}Target`, _suiteTargetLabel(suiteId, artifact)))
-  lines.push(
-    _texMacro(`${prefix}ControlCollected`, _controlCollected(artifact) ? 'yes' : 'no')
-  )
-  lines.push(_texMacro(`${prefix}ControlAgent`, _texEscape(_controlAgentLabel(artifact))))
-  lines.push(_texMacro(`${prefix}DeltaS`, _texSigned(deltaS)))
+    lines.push(_texMacro(`${prefix}RunDate`, _formatRunDate(artifact.created_at)))
+    lines.push(_texMacro(`${prefix}Target`, _suiteTargetLabel(suiteId, artifact)))
+    lines.push(
+      _texMacro(`${prefix}ControlCollected`, _controlCollected(artifact) ? 'yes' : 'no')
+    )
+    lines.push(_texMacro(`${prefix}ControlAgent`, _texEscape(_controlAgentLabel(artifact))))
+    lines.push(_texMacro(`${prefix}DeltaS`, _texSigned(deltaS)))
+  }
 
   for (const [side, m] of [
     ['K', k],
@@ -1452,9 +1447,10 @@ export function writeResearchResultsTex(repoRoot, options = {}) {
     return a && _controlCollected(a)
   })
 
+  const suiteListTex = suites.map(id => `\\texttt{${id}}`).join(', ')
   let controlStatus
   if (allHaveControl) {
-    controlStatus = 'paired K-vs-N evaluations on both \\texttt{kb} and \\texttt{raylib} suites (\\ResultsUpdated)'
+    controlStatus = `paired K-vs-N evaluations on ${suiteListTex} (\\ResultsUpdated)`
   } else if (anyHaveControl) {
     const missing = suites
       .filter(id => {
@@ -1462,11 +1458,11 @@ export function writeResearchResultsTex(repoRoot, options = {}) {
         return !a || !_controlCollected(a)
       })
       .map(id => `\\texttt{${id}}`)
-      .join(' and ')
-    controlStatus = `control side missing or incomplete for ${missing}; see Table~\\ref{tab:harvest-results}`
+      .join(', ')
+    controlStatus = `control side pending for ${missing}; K-side results reported (\\ResultsUpdated); see Table~\\ref{tab:harvest-results}`
   } else {
     controlStatus =
-      'no paired control evaluations in the latest scored runs; see Table~\\ref{tab:harvest-results}'
+      'no paired control evaluations in the latest scored runs; K-side only; see Table~\\ref{tab:harvest-results}'
   }
 
   const lines = [

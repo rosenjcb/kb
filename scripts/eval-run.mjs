@@ -15,11 +15,15 @@
  *   node scripts/eval-run.mjs --suite raylib [--auto-score]
  *   node scripts/eval-run.mjs --suite kb
  *   node scripts/eval-run.mjs --suite generic --repo https://github.com/org/repo.git
+ *   node scripts/eval-run.mjs --suites raylib,kb,fzf            # multi-suite (parallel by default)
+ *   node scripts/eval-run.mjs --all-suites                      # 10 benchmark suites, parallel
+ *   node scripts/eval-run.mjs --all-suites --sequential         # same, one at a time
  *   node scripts/eval-run.mjs --suite raylib --base my-session   # override session name
  *   node scripts/eval-run.mjs --suite raylib --force-init        # wipe base + fresh init
  *
  * Suites: vendor id → `eval/suites/<id>.yaml` (raylib, kb, generic). `--suite-yaml PATH` for custom.
  * Clone: suite YAML repo_url used by default; override with `--repo <git-url>`.
+ * Multi-suite: Node spawns one child eval per suite (portable — no bash/xargs). Parallel by default.
  */
 
 import { exec, execSync, spawn } from 'node:child_process'
@@ -121,6 +125,7 @@ export {
   conditionSideLongLabel,
   suiteDisplayLabel,
   RESEARCH_RESULT_SUITES,
+  parseArgs,
 }
 export { SUCCESS_WEIGHTS, SUCCESS_BUDGETS, SUCCESS_TOKEN_CACHE_DISCOUNT } from './eval-shared.mjs'
 export { computeWeightedTokenTotal } from './eval-shared.mjs'
@@ -128,6 +133,24 @@ export { computeWeightedTokenTotal } from './eval-shared.mjs'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const KB_REPO = path.resolve(__dirname, '..')
 const EVAL_INDEX = path.join(KB_REPO, 'scripts/eval-index.ts')
+const THIS_SCRIPT = fileURLToPath(import.meta.url)
+
+/**
+ * Canonical 10-suite benchmark pack from EVALUATION.md (excludes `generic` which needs
+ * `--repo`, and `moel-kb` which is the separate MOEL harness).
+ */
+export const DEFAULT_BENCHMARK_SUITES = [
+  'raylib',
+  'kb',
+  'fzf',
+  'kestra',
+  'shellcheck',
+  'lazygit',
+  'datasette',
+  'mitmproxy',
+  'fish-shell',
+  'brew',
+]
 
 /**
  * The kb binary the harvest drives. Defaults to this checkout's build, but `KB_EVAL_BIN`
@@ -162,6 +185,195 @@ function loadSuiteFromPath(absPath) {
   return normalizeSuiteDoc(raw, resolved)
 }
 
+/** Split a suite list token: `a,b,c` or `a b c`. */
+export function parseSuiteListToken(value) {
+  return String(value ?? '')
+    .split(/[,\s]+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+}
+
+/** Dedupe suite ids, preserve first-seen order. */
+export function dedupeSuites(suites) {
+  const seen = new Set()
+  const out = []
+  for (const s of suites) {
+    const id = String(s).trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
+/**
+ * Resolve the suite id list for this invocation.
+ * `--all-suites` wins over explicit `--suite` / `--suites` lists.
+ */
+export function resolveSuiteList(args) {
+  if (args.allSuites) return [...DEFAULT_BENCHMARK_SUITES]
+  return dedupeSuites(args.suites ?? [])
+}
+
+/**
+ * Concurrency for multi-suite batch.
+ * Default = one worker per suite (full parallel). `--sequential` forces 1.
+ * `--parallel N` caps concurrency; bare `--parallel` (=0) means suite count.
+ * Env `KB_EVAL_PARALLEL` applies when `--parallel` was not passed.
+ */
+export function resolveParallelism({
+  suiteCount,
+  parallel = null,
+  sequential = false,
+  env = process.env,
+} = {}) {
+  if (suiteCount <= 1) return 1
+  if (sequential) return 1
+  if (parallel != null) {
+    if (parallel <= 0) return suiteCount
+    return Math.min(parallel, suiteCount)
+  }
+  const envN = Number.parseInt(env.KB_EVAL_PARALLEL ?? '', 10)
+  if (Number.isFinite(envN) && envN > 0) return Math.min(envN, suiteCount)
+  return suiteCount
+}
+
+/** Flags that only make sense for a single-suite run. */
+export function assertMultiSuiteArgsOk(args, suites) {
+  if (suites.length <= 1) return
+  const bad = []
+  if (args.suiteYaml) bad.push('--suite-yaml')
+  if (args.repo) bad.push('--repo')
+  if (args.base) bad.push('--base')
+  if (args.runDir) bad.push('--run-dir')
+  if (args.outFile) bad.push('--out')
+  if (args.questionsFile) bad.push('--questions-file')
+  if (bad.length) {
+    throw new Error(
+      `[eval] multi-suite mode cannot combine with: ${bad.join(', ')} (pass per-suite via separate runs)`
+    )
+  }
+}
+
+/**
+ * Child argv for one suite under a multi-suite parent.
+ * Strips multi-suite-only flags; forwards shared harvest/control knobs.
+ */
+export function buildChildArgv(suite, args) {
+  const argv = ['--suite', suite]
+  if (args.label) argv.push('--label', args.label)
+  if (args.hypothesis) argv.push('--hypothesis', args.hypothesis)
+  if (args.forceInit) argv.push('--force-init')
+  if (args.skipCapture) argv.push('--skip-init')
+  if (args.skipControl) argv.push('--skip-control')
+  if (args.autoScore === false) argv.push('--manual-score')
+  else argv.push('--auto-score')
+  if (args.autoScoreFile) argv.push('--auto-score-file', args.autoScoreFile)
+  if (args.scoresFile) argv.push('--scores-file', args.scoresFile)
+  if (args.scoreRuns != null) argv.push('--score-runs', String(args.scoreRuns))
+  if (args.queryTrials != null && args.queryTrials !== 1)
+    argv.push('--query-trials', String(args.queryTrials))
+  if (args.cloneBranch) argv.push('--clone-branch', args.cloneBranch)
+  if (args.cloneDepth != null && args.cloneDepth !== 1)
+    argv.push('--clone-depth', String(args.cloneDepth))
+  if (args.controlModel) argv.push('--control-model', args.controlModel)
+  if (args.controlMaxTurns != null && args.controlMaxTurns !== DEFAULT_MAX_TURNS)
+    argv.push('--control-max-turns', String(args.controlMaxTurns))
+  if (args.controlPrompt && args.controlPrompt !== DEFAULT_CONTROL_PROMPT)
+    argv.push('--control-prompt', args.controlPrompt)
+  if (args.controlAgent && args.controlAgent !== 'claude')
+    argv.push('--control-agent', args.controlAgent)
+  if (args.controlAgentCmd) argv.push('--control-agent-cmd', args.controlAgentCmd)
+  return argv
+}
+
+function prefixChildStream(stream, suite, write) {
+  let buf = ''
+  stream.setEncoding('utf8')
+  stream.on('data', chunk => {
+    buf += chunk
+    while (true) {
+      const idx = buf.indexOf('\n')
+      if (idx === -1) break
+      const line = buf.slice(0, idx)
+      buf = buf.slice(idx + 1)
+      write(`[${suite}] ${line}\n`)
+    }
+  })
+  stream.on('end', () => {
+    if (buf.length) write(`[${suite}] ${buf}\n`)
+  })
+}
+
+/** Spawn one single-suite eval child; resolve `{ suite, code, signal }`. */
+export function spawnSuiteChild(suite, args, { scriptPath = THIS_SCRIPT, cwd = KB_REPO, env = process.env } = {}) {
+  return new Promise(resolve => {
+    const childArgv = buildChildArgv(suite, args)
+    console.error(`[eval] multi-suite · starting ${suite}`)
+    const child = spawn(process.execPath, [scriptPath, ...childArgv], {
+      cwd,
+      env: { ...env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    prefixChildStream(child.stdout, suite, s => process.stdout.write(s))
+    prefixChildStream(child.stderr, suite, s => process.stderr.write(s))
+    child.on('error', err => {
+      console.error(`[eval] multi-suite · ${suite} spawn failed: ${err.message}`)
+      resolve({ suite, code: 1, signal: null, error: err.message })
+    })
+    child.on('close', (code, signal) => {
+      const ok = code === 0 && !signal
+      console.error(
+        ok
+          ? `[eval] multi-suite · OK ${suite}`
+          : `[eval] multi-suite · FAIL ${suite} exit=${code}${signal ? ` signal=${signal}` : ''}`
+      )
+      resolve({ suite, code: code ?? 1, signal })
+    })
+  })
+}
+
+/**
+ * Run many suites via child processes. Parallel by default (Node-native, portable).
+ * @returns {Promise<{ suites: string[], parallel: number, results: object[], failed: string[] }>}
+ */
+export async function runSuiteBatch(args, opts = {}) {
+  const suites = resolveSuiteList(args)
+  if (suites.length === 0) {
+    throw new Error(
+      `[eval] require --suite <vendor>, --suites a,b,…, or --all-suites (vendors: ${listSuiteIds().join(', ')})`
+    )
+  }
+  assertMultiSuiteArgsOk(args, suites)
+  const known = new Set(listSuiteIds())
+  for (const id of suites) {
+    if (!known.has(id)) {
+      throw new Error(`[eval] unknown suite "${id}" (vendors: ${[...known].join(', ')})`)
+    }
+  }
+  const parallel = resolveParallelism({
+    suiteCount: suites.length,
+    parallel: args.parallel,
+    sequential: args.sequential,
+    env: opts.env ?? process.env,
+  })
+  console.error(
+    `[eval] multi-suite batch · ${suites.length} suite(s) · concurrency ${parallel}${
+      args.sequential ? ' (--sequential)' : parallel === suites.length ? ' (default parallel)' : ''
+    }\n[eval] suites: ${suites.join(', ')}`
+  )
+  const results = await mapWithConcurrency(suites, parallel, suite =>
+    spawnSuiteChild(suite, args, opts)
+  )
+  const failed = results.filter(r => r.code !== 0 || r.signal).map(r => r.suite)
+  console.error(
+    `[eval] multi-suite done · ok=${suites.length - failed.length} fail=${failed.length}${
+      failed.length ? ` (${failed.join(', ')})` : ''
+    }`
+  )
+  return { suites, parallel, results, failed }
+}
+
 function parseArgs(argv) {
   // Accept optional legacy mode positional (init/all/query) for backward compat
   const legacyModes = new Set(['init', 'all', 'query'])
@@ -170,7 +382,12 @@ function parseArgs(argv) {
   const out = {
     // init/all legacy → treat as --force-init; query legacy → no-op
     forceInit: first === 'init' || first === 'all',
-    suite: null,
+    /** @type {string[]} */
+    suites: [],
+    allSuites: false,
+    /** null = auto; 0 = all suites; >0 = cap */
+    parallel: null,
+    sequential: false,
     suiteYaml: null,
     repo: null,
     cloneBranch: null,
@@ -204,8 +421,23 @@ function parseArgs(argv) {
   let i = hasLegacyMode ? 3 : 2
   while (i < argv.length) {
     const a = argv[i]
-    if (a === '--suite') out.suite = argv[++i]
-    else if (a === '--suite-yaml') out.suiteYaml = argv[++i]
+    if (a === '--suite' || a === '--suites') {
+      const next = argv[++i]
+      if (!next || next.startsWith('--')) {
+        throw new Error(`[eval] ${a} requires a suite id or comma-separated list`)
+      }
+      out.suites.push(...parseSuiteListToken(next))
+    } else if (a === '--all-suites') out.allSuites = true
+    else if (a === '--sequential') out.sequential = true
+    else if (a === '--parallel') {
+      const next = argv[i + 1]
+      if (next && !next.startsWith('--') && /^\d+$/.test(next)) {
+        out.parallel = Math.max(1, Number.parseInt(argv[++i], 10) || 1)
+      } else {
+        // bare --parallel → run all suites concurrently
+        out.parallel = 0
+      }
+    } else if (a === '--suite-yaml') out.suiteYaml = argv[++i]
     else if (a === '--repo') out.repo = argv[++i]
     else if (a === '--clone-branch') out.cloneBranch = argv[++i]
     else if (a === '--clone-depth') out.cloneDepth = Number(argv[++i]) || 0
@@ -238,6 +470,8 @@ function parseArgs(argv) {
     else if (a === '--help' || a === '-h') out.help = true
     i++
   }
+  // Backward-compat alias used by single-suite path
+  out.suite = out.suites.length === 1 ? out.suites[0] : out.suites[0] ?? null
   return out
 }
 
@@ -259,7 +493,10 @@ function printHelp() {
   console.log(`eval-run.mjs — kb query eval harvest (EVALUATION.md schema)
 
   node scripts/eval-run.mjs --suite <vendor-id> [options]
-  npm run eval -- --suite raylib [--auto-score]
+  node scripts/eval-run.mjs --suites a,b,c [options]     # parallel by default
+  node scripts/eval-run.mjs --all-suites [options]       # 10 benchmark suites, parallel
+  npm run eval -- --suite raylib
+  npm run eval -- --all-suites --control-agent cursor --control-model composer-2.5
 
 Session lifecycle (automatic):
   Base is derived as eval-{suiteId} (e.g. eval-raylib, eval-kb).
@@ -269,22 +506,26 @@ Session lifecycle (automatic):
   Ends with a trends summary across prior runs for the same suite.
 
 Suite / questions:
-  --suite VENDOR          Load eval/suites/VENDOR.yaml  (raylib, kb, fzf, generic)
-  --suite-yaml PATH       Load pack from arbitrary YAML path
-  --questions-file F.json Override: JSON array of non-empty question strings
+  --suite VENDOR          Load eval/suites/VENDOR.yaml  (also accepts comma lists)
+  --suites a,b,c          Multiple suites (alias of repeated/comma --suite). Parallel by default.
+  --all-suites            Run the 10 EVALUATION.md benchmark suites (excludes generic, moel-kb)
+  --parallel [N]          Multi-suite concurrency (default: all suites at once; env KB_EVAL_PARALLEL)
+  --sequential            Multi-suite: run one suite at a time (overrides --parallel)
+  --suite-yaml PATH       Load pack from arbitrary YAML path (single-suite only)
+  --questions-file F.json Override: JSON array of non-empty question strings (single-suite only)
 
 Session:
-  --base NAME             Override derived session name (default: eval-{suiteId})
+  --base NAME             Override derived session name (default: eval-{suiteId}; single-suite only)
   --force-init            Delete the base, then kb init from scratch (not just scan)
 
 Target repo (for clone + git metadata):
-  --repo URL              Override suite YAML repo_url (https or git@)
+  --repo URL              Override suite YAML repo_url (https or git@; single-suite only)
   --clone-branch BR
   --clone-depth N         Shallow depth (default 1; use 0 for full clone)
 
 Output:
   --label SLUG            Stored as run_label in artifact
-  --out PATH              Override artifact JSON path
+  --out PATH              Override artifact JSON path (single-suite only)
   --manual-score          Skip LLM auto-scoring (default: auto-score is ON)
   --score-runs N          Call scorer N times and average (reduces noise; default 3)
   --query-trials K        Run each question K times and average scores across trials to
@@ -301,11 +542,12 @@ Control baseline (runs side-by-side with kb into ONE artifact, scored by the sam
   --control-agent-cmd CMD Full override of --control-agent (prompt on stdin, JSON on stdout). Env: KB_CONTROL_AGENT_CMD
 
 Advanced:
-  --run-dir PATH          With --skip-init: reuse existing scratch dir
+  --run-dir PATH          With --skip-init: reuse existing scratch dir (single-suite only)
   --skip-init             Skip all kb commands; re-score existing q*.json
   --hypothesis TEXT
   KB_EVAL_BIN=PATH        Drive a different kb.js (env). Lets these same scripts score a
                           main build vs a branch build for a fair before/after.
+  KB_EVAL_PARALLEL=N      Default multi-suite concurrency when --parallel is omitted
 
 Layout (per run, snapshot clone):
   ~/.kb/evaluations/<run-name>/<repo-name>/  git clone
@@ -722,13 +964,33 @@ async function main() {
     process.exit(0)
   }
 
+  // Multi-suite batch: Node-native parallel children (default when >1 suite or --all-suites).
+  const suiteList = resolveSuiteList(args)
+  const multiSuite = args.allSuites || suiteList.length > 1
+  if (multiSuite) {
+    if (args.suiteYaml) {
+      console.error('[eval] --suite-yaml cannot combine with --suites / --all-suites')
+      process.exit(1)
+    }
+    try {
+      const { failed } = await runSuiteBatch(args)
+      process.exit(failed.length ? 1 : 0)
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : e)
+      process.exit(1)
+    }
+  }
+
+  // Single-suite path: prefer first resolved id (supports --suite a,b when somehow length 1 after dedupe)
+  if (suiteList.length === 1) args.suite = suiteList[0]
+
   if (args.suiteYaml && args.suite) {
     console.error('[eval] use only one of --suite and --suite-yaml')
     process.exit(1)
   }
   if (!args.suiteYaml && !args.suite) {
     console.error(
-      `[eval] require --suite <vendor> or --suite-yaml <path.yaml> (vendors: ${listSuiteIds().join(', ')})`
+      `[eval] require --suite <vendor>, --suites a,b,…, --all-suites, or --suite-yaml <path.yaml> (vendors: ${listSuiteIds().join(', ')})`
     )
     process.exit(1)
   }

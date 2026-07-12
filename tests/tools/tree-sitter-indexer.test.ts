@@ -455,6 +455,39 @@ describe('TreeSitterIndexer — Rust', () => {
   })
 })
 
+describe('TreeSitterIndexer — Haskell', () => {
+  it('[TC-16] indexes functions, data types, classes, and type aliases', async () => {
+    await writeFile(
+      join(repoRoot, 'Ast.hs'),
+      `module Ast (Token(..), parse) where
+data Token = TWord String | TOp String deriving (Eq, Show)
+newtype Id = Id Int
+type Name = String
+class Analyzer a where
+  analyze :: a -> Bool
+parse :: String -> Token
+parse s = TWord s
+`
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    const stats = await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    expect(stats.errors).toBe(0)
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    expect(queryFacts(db, 'parse', 'Ast.hs')).toBe(true)
+    expect(queryFacts(db, 'Token', 'Ast.hs')).toBe(true)
+    expect(queryFacts(db, 'Id', 'Ast.hs')).toBe(true)
+    expect(queryFacts(db, 'Name', 'Ast.hs')).toBe(true)
+    expect(queryFacts(db, 'Analyzer', 'Ast.hs')).toBe(true)
+    db.close()
+  })
+})
+
 describe('TreeSitterIndexer — HTML', () => {
   it('[TC-13] indexes elements with id attributes', async () => {
     await writeFile(join(repoRoot, 'index.html'), '<html><body><div id="root"></div></body></html>')

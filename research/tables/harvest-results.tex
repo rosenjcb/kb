@@ -1,10 +1,13 @@
 \begin{table*}[t]
 \centering
-\small
-\setlength{\tabcolsep}{4pt}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
 \caption{Harvest evaluation results (\ResultsUpdated; \ResultsJudge{}).
-Paired K-vs-N runs on \KbSelfCheckTarget{} and \RaylibTarget{}.
-Headline grades: $\Delta S = S_K - S_N$ is \KbSelfCheckDeltaS{} on kb self-check and \RaylibDeltaS{} on raylib.}
+Suites: \KbSelfCheckTarget{}, \RaylibTarget{}, plus expanded portfolio
+(\texttt{fzf}, \texttt{kestra}, \texttt{shellcheck}, \texttt{lazygit}, \texttt{datasette},
+\texttt{mitmproxy}, \texttt{fish-shell}, \texttt{brew}).
+Control (N) cells are \texttt{---} when the paired agent phase has not yet run.
+Headline grade $\Delta S = S_K - S_N$ when both sides are present.}
 \label{tab:harvest-results}
 \begin{tabular}{@{}llrrrrrrrrr@{}}
 \toprule
@@ -24,6 +27,62 @@ Pass & Corr & Rel & Tokens & Time (s) \\
 \RaylibTarget & N (\RaylibControlAgent{}) &
 \RaylibNS & \RaylibNQadeq & \RaylibNEtok & \RaylibNEspeed &
 \RaylibNPass & \RaylibNCorrectness & \RaylibNRelevance & \RaylibNTokens & \RaylibNDurationSec \\
+\addlinespace
+\FzfTarget & K (\texttt{kb query}) &
+\FzfKS & \FzfKQadeq & \FzfKEtok & \FzfKEspeed &
+\FzfKPass & \FzfKCorrectness & \FzfKRelevance & \FzfKTokens & \FzfKDurationSec \\
+\FzfTarget & N (\FzfControlAgent{}) &
+\FzfNS & \FzfNQadeq & \FzfNEtok & \FzfNEspeed &
+\FzfNPass & \FzfNCorrectness & \FzfNRelevance & \FzfNTokens & \FzfNDurationSec \\
+\addlinespace
+\KestraTarget & K (\texttt{kb query}) &
+\KestraKS & \KestraKQadeq & \KestraKEtok & \KestraKEspeed &
+\KestraKPass & \KestraKCorrectness & \KestraKRelevance & \KestraKTokens & \KestraKDurationSec \\
+\KestraTarget & N (\KestraControlAgent{}) &
+\KestraNS & \KestraNQadeq & \KestraNEtok & \KestraNEspeed &
+\KestraNPass & \KestraNCorrectness & \KestraNRelevance & \KestraNTokens & \KestraNDurationSec \\
+\addlinespace
+\ShellcheckTarget & K (\texttt{kb query}) &
+\ShellcheckKS & \ShellcheckKQadeq & \ShellcheckKEtok & \ShellcheckKEspeed &
+\ShellcheckKPass & \ShellcheckKCorrectness & \ShellcheckKRelevance & \ShellcheckKTokens & \ShellcheckKDurationSec \\
+\ShellcheckTarget & N (\ShellcheckControlAgent{}) &
+\ShellcheckNS & \ShellcheckNQadeq & \ShellcheckNEtok & \ShellcheckNEspeed &
+\ShellcheckNPass & \ShellcheckNCorrectness & \ShellcheckNRelevance & \ShellcheckNTokens & \ShellcheckNDurationSec \\
+\addlinespace
+\LazygitTarget & K (\texttt{kb query}) &
+\LazygitKS & \LazygitKQadeq & \LazygitKEtok & \LazygitKEspeed &
+\LazygitKPass & \LazygitKCorrectness & \LazygitKRelevance & \LazygitKTokens & \LazygitKDurationSec \\
+\LazygitTarget & N (\LazygitControlAgent{}) &
+\LazygitNS & \LazygitNQadeq & \LazygitNEtok & \LazygitNEspeed &
+\LazygitNPass & \LazygitNCorrectness & \LazygitNRelevance & \LazygitNTokens & \LazygitNDurationSec \\
+\addlinespace
+\DatasetteTarget & K (\texttt{kb query}) &
+\DatasetteKS & \DatasetteKQadeq & \DatasetteKEtok & \DatasetteKEspeed &
+\DatasetteKPass & \DatasetteKCorrectness & \DatasetteKRelevance & \DatasetteKTokens & \DatasetteKDurationSec \\
+\DatasetteTarget & N (\DatasetteControlAgent{}) &
+\DatasetteNS & \DatasetteNQadeq & \DatasetteNEtok & \DatasetteNEspeed &
+\DatasetteNPass & \DatasetteNCorrectness & \DatasetteNRelevance & \DatasetteNTokens & \DatasetteNDurationSec \\
+\addlinespace
+\MitmproxyTarget & K (\texttt{kb query}) &
+\MitmproxyKS & \MitmproxyKQadeq & \MitmproxyKEtok & \MitmproxyKEspeed &
+\MitmproxyKPass & \MitmproxyKCorrectness & \MitmproxyKRelevance & \MitmproxyKTokens & \MitmproxyKDurationSec \\
+\MitmproxyTarget & N (\MitmproxyControlAgent{}) &
+\MitmproxyNS & \MitmproxyNQadeq & \MitmproxyNEtok & \MitmproxyNEspeed &
+\MitmproxyNPass & \MitmproxyNCorrectness & \MitmproxyNRelevance & \MitmproxyNTokens & \MitmproxyNDurationSec \\
+\addlinespace
+\FishShellTarget & K (\texttt{kb query}) &
+\FishShellKS & \FishShellKQadeq & \FishShellKEtok & \FishShellKEspeed &
+\FishShellKPass & \FishShellKCorrectness & \FishShellKRelevance & \FishShellKTokens & \FishShellKDurationSec \\
+\FishShellTarget & N (\FishShellControlAgent{}) &
+\FishShellNS & \FishShellNQadeq & \FishShellNEtok & \FishShellNEspeed &
+\FishShellNPass & \FishShellNCorrectness & \FishShellNRelevance & \FishShellNTokens & \FishShellNDurationSec \\
+\addlinespace
+\BrewTarget & K (\texttt{kb query}) &
+\BrewKS & \BrewKQadeq & \BrewKEtok & \BrewKEspeed &
+\BrewKPass & \BrewKCorrectness & \BrewKRelevance & \BrewKTokens & \BrewKDurationSec \\
+\BrewTarget & N (\BrewControlAgent{}) &
+\BrewNS & \BrewNQadeq & \BrewNEtok & \BrewNEspeed &
+\BrewNPass & \BrewNCorrectness & \BrewNRelevance & \BrewNTokens & \BrewNDurationSec \\
 \bottomrule
 \end{tabular}
 \end{table*}

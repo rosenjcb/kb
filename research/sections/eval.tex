@@ -9,14 +9,24 @@
 well-documented game-programming framework---as the primary \emph{external}
 benchmark: it is not the KB codebase (eliminating evaluator familiarity bias),
 has rich cross-module structure for graph retrieval, and has stable upstream
-documentation.  Latest harvest results in \S\ref{subsec:results}
-include both raylib and the KB self-check suite.
+documentation.
 
 \textbf{KB self-check.}  Suite \texttt{kb} evaluates KB against its
 own codebase---twelve architecture, workflow, and adversarial questions (including
 fact-curator and out-of-scope probes).  This smoke test
-stress-tests retrieval grounding on a repo whose structure the authors know well;
-it is no longer the only reported target.
+stress-tests retrieval grounding on a repo whose structure the authors know well.
+
+\textbf{Expanded portfolio.}  To stress parsers and retrieval across languages and
+architectural paradigms, we add seven production-grade suites:
+\texttt{kestra} (Java/UI orchestration — YAML flows + execute console),
+\texttt{shellcheck} (Haskell monadic AST linting),
+\texttt{lazygit} (Go TUI),
+\texttt{datasette} (Python explore/publish UI + CLI),
+\texttt{mitmproxy} (Python async proxy / TUI),
+\texttt{fish-shell} (Rust systems shell), and
+\texttt{brew} (Ruby package-manager DSL).
+Latest harvest results in \S\ref{subsec:results} report K-side scores for these
+suites; paired control (N) runs are pending where marked.
 
 \subsection{Protocol: paired K vs N evaluation}
 
@@ -27,13 +37,13 @@ deletes the base and re-runs \texttt{kb init} from scratch);
 (2)~$N_{\text{q}}$ \texttt{kb query} calls (condition \textbf{K})---one-shot synthesis
 over the curator-kept fact pool (\S\ref{subsec:synthesis});
 (3)~the same questions handed to a real coding agent with no KB
-(condition \textbf{N});
+(condition \textbf{N}), when collected;
 (4)~LLM scoring ($\times 3$ averaged) on five rubric axes for both sides.
-The \texttt{kb} self-check suite uses $N_{\text{q}} = 12$; the raylib benchmark uses
-$N_{\text{q}} = 8$.
+Question counts vary by suite (e.g.\ $N_{\text{q}} = 12$ for \texttt{kb};
+expanded suites use $N_{\text{q}} = 8$ with multi-step process/UI-inference items).
 
-Both sides are scored under identical conditions; the headline grade is
-$\Delta S = S_K - S_N$ (Eq.~\ref{eq:delta-s}).
+Both sides are scored under identical conditions when N is present; the headline
+grade is $\Delta S = S_K - S_N$ (Eq.~\ref{eq:delta-s}).
 
 \subsection{Scoring Rubric}
 
@@ -180,18 +190,39 @@ K's $\Delta S$ margin comes mainly from token economy ($E_{\text{tok}}$:
 \KbSelfCheckKEtok{} vs.\ \KbSelfCheckNEtok{}) and wall-clock speed ($E_{\text{speed}}$:
 \KbSelfCheckKEspeed{} vs.\ \KbSelfCheckNEspeed{}).
 
-On raylib (8 questions), $\Delta S = \RaylibDeltaS{}$ with $S_K = \RaylibKS{}$ and
+On raylib, $\Delta S = \RaylibDeltaS{}$ with $S_K = \RaylibKS{}$ and
 $S_N = \RaylibNS{}$; K is faster (\RaylibKDurationSec{}s vs.\ \RaylibNDurationSec{}s) while N
 leads on adequacy ($Q_{\text{adeq}}$: \RaylibNQadeq{} vs.\ \RaylibKQadeq{}).
 Mean relevance on K is \RaylibKRelevance{} (N: \RaylibNRelevance{}); pass rate
-\RaylibKPass{} (6/8).
+\RaylibKPass{}.
 K uses \RaylibKTokens{} weighted tokens vs.\ N's \RaylibNTokens{} ($E_{\text{tok}}$:
 \RaylibKEtok{} vs.\ \RaylibNEtok{}).
-Both suites show KB ahead of the real-agent control on $\Delta S$ while remaining
-substantially cheaper in weighted tokens than N.
 
 \medskip
-\noindent\textbf{Quality vs.\ efficiency trade-off.}  On both suites the control
+\noindent\textbf{Expanded suites.}
+All eight expanded repositories now have both sides collected and report a full
+$\Delta S$: \texttt{fzf} ($\Delta S{=}\FzfDeltaS$, $S_K{=}\FzfKS$, pass~\FzfKPass),
+\texttt{kestra} ($\Delta S{=}\KestraDeltaS$, $S_K{=}\KestraKS$, pass~\KestraKPass),
+\texttt{shellcheck} ($\Delta S{=}\ShellcheckDeltaS$, $S_K{=}\ShellcheckKS$, pass~\ShellcheckKPass),
+\texttt{lazygit} ($\Delta S{=}\LazygitDeltaS$, $S_K{=}\LazygitKS$, pass~\LazygitKPass),
+\texttt{datasette} ($\Delta S{=}\DatasetteDeltaS$, $S_K{=}\DatasetteKS$, pass~\DatasetteKPass),
+\texttt{mitmproxy} ($\Delta S{=}\MitmproxyDeltaS$, $S_K{=}\MitmproxyKS$, pass~\MitmproxyKPass),
+\texttt{fish-shell} ($\Delta S{=}\FishShellDeltaS$, $S_K{=}\FishShellKS$, pass~\FishShellKPass),
+and \texttt{brew} ($\Delta S{=}\BrewDeltaS$, $S_K{=}\BrewKS$, pass~\BrewKPass).
+Together they exercise Rust CLI tooling, Java/UI orchestration workflows, Haskell
+AST analysis, Go/Python TUIs, Python data-explore products, Rust proxy/networking
+code, and Ruby DSL packaging---stressing language coverage and product/UI
+retrieval beyond the original kb/raylib pair. Note the control (N) baseline is
+not uniform across suites: \texttt{kb}, \texttt{raylib}, \texttt{fzf},
+\texttt{shellcheck}, \texttt{lazygit}, and \texttt{fish-shell} used Cursor Agent
+(\texttt{composer-2.5}); \texttt{kestra}, \texttt{datasette}, \texttt{mitmproxy},
+and \texttt{brew} used Claude Code (\texttt{claude-sonnet-5}) after the former hit
+a provider usage cap mid-batch. Each suite's own $\Delta S$ is still a valid
+same-agent paired comparison; only cross-suite N-side comparisons should account
+for the agent difference.
+
+\medskip
+\noindent\textbf{Quality vs.\ efficiency trade-off.}  On the paired suites the control
 agent leads on adequacy ($Q_{\text{adeq}} = 1.0$) and mean rubric scores
 (correctness/usefulness/relevance at or near 4.0), while K trails slightly on
 answer quality (e.g.\ kb self-check correctness \KbSelfCheckKCorrectness{},
