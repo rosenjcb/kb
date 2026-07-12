@@ -2,38 +2,38 @@
 
 \newcommand{\ResultsUpdated}{July 11, 2026}
 \newcommand{\ResultsJudge}{LLM-as-judge, averaged over three scorer calls}
-\newcommand{\ResultsControlStatus}{control side pending for \texttt{nifi}, \texttt{lazygit}, \texttt{duckdb}, \texttt{mitmproxy}, \texttt{fish-shell}, \texttt{brew}; K-side results reported (\ResultsUpdated); see Table~\ref{tab:harvest-results}}
+\newcommand{\ResultsControlStatus}{paired K-vs-N evaluations on \texttt{kb}, \texttt{raylib}, \texttt{fzf}, \texttt{kestra}, \texttt{shellcheck}, \texttt{lazygit}, \texttt{datasette}, \texttt{mitmproxy}, \texttt{fish-shell}, \texttt{brew} (\ResultsUpdated)}
 
 %% ── suite kb ──
-\newcommand{\KbSelfCheckRunId}{kb-2026-07-05-1733}
-\newcommand{\KbSelfCheckRunDate}{July 5, 2026}
-\newcommand{\KbSelfCheckTarget}{\texttt{kb} self-check}
+\newcommand{\KbSelfCheckRunId}{kb-2026-07-11-1051}
+\newcommand{\KbSelfCheckRunDate}{July 11, 2026}
+\newcommand{\KbSelfCheckTarget}{\texttt{kb} self-check commit \texttt{6824f15}}
 \newcommand{\KbSelfCheckControlCollected}{yes}
-\newcommand{\KbSelfCheckControlAgent}{Headless coding agent}
-\newcommand{\KbSelfCheckDeltaS}{+0.166}
-\newcommand{\KbSelfCheckKS}{0.869}
-\newcommand{\KbSelfCheckKQadeq}{0.877}
-\newcommand{\KbSelfCheckKEtok}{0.964}
-\newcommand{\KbSelfCheckKEspeed}{0.539}
-\newcommand{\KbSelfCheckKPass}{0.750}
-\newcommand{\KbSelfCheckKCorrectness}{2.917}
-\newcommand{\KbSelfCheckKUsefulness}{3.250}
-\newcommand{\KbSelfCheckKRelevance}{3.667}
-\newcommand{\KbSelfCheckKTokens}{36{,}453}
-\newcommand{\KbSelfCheckKDurationSec}{276}
+\newcommand{\KbSelfCheckControlAgent}{Headless agent: cursor-agent (composer-2.5)}
+\newcommand{\KbSelfCheckDeltaS}{+0.272}
+\newcommand{\KbSelfCheckKS}{0.901}
+\newcommand{\KbSelfCheckKQadeq}{0.906}
+\newcommand{\KbSelfCheckKEtok}{0.978}
+\newcommand{\KbSelfCheckKEspeed}{0.642}
+\newcommand{\KbSelfCheckKPass}{0.800}
+\newcommand{\KbSelfCheckKCorrectness}{3.200}
+\newcommand{\KbSelfCheckKUsefulness}{3.327}
+\newcommand{\KbSelfCheckKRelevance}{3.780}
+\newcommand{\KbSelfCheckKTokens}{22{,}175}
+\newcommand{\KbSelfCheckKDurationSec}{215}
 \newcommand{\KbSelfCheckKDocs}{0}
 \newcommand{\KbSelfCheckKEntities}{1{,}634}
 \newcommand{\KbSelfCheckKRels}{18}
-\newcommand{\KbSelfCheckNS}{0.703}
+\newcommand{\KbSelfCheckNS}{0.629}
 \newcommand{\KbSelfCheckNQadeq}{1.000}
-\newcommand{\KbSelfCheckNEtok}{0.220}
-\newcommand{\KbSelfCheckNEspeed}{0.370}
+\newcommand{\KbSelfCheckNEtok}{0.095}
+\newcommand{\KbSelfCheckNEspeed}{0.000}
 \newcommand{\KbSelfCheckNPass}{1.000}
 \newcommand{\KbSelfCheckNCorrectness}{4.000}
 \newcommand{\KbSelfCheckNUsefulness}{4.000}
 \newcommand{\KbSelfCheckNRelevance}{4.000}
-\newcommand{\KbSelfCheckNTokens}{780{,}023}
-\newcommand{\KbSelfCheckNDurationSec}{378}
+\newcommand{\KbSelfCheckNTokens}{904{,}842}
+\newcommand{\KbSelfCheckNDurationSec}{841}
 \newcommand{\KbSelfCheckNDocs}{---}
 \newcommand{\KbSelfCheckNEntities}{---}
 \newcommand{\KbSelfCheckNRels}{---}
@@ -43,7 +43,7 @@
 \newcommand{\RaylibRunDate}{July 11, 2026}
 \newcommand{\RaylibTarget}{\texttt{raylib} commit \texttt{f00317b}}
 \newcommand{\RaylibControlCollected}{yes}
-\newcommand{\RaylibControlAgent}{Headless coding agent}
+\newcommand{\RaylibControlAgent}{Headless agent: cursor-agent (composer-2.5)}
 \newcommand{\RaylibDeltaS}{+0.149}
 \newcommand{\RaylibKS}{0.796}
 \newcommand{\RaylibKQadeq}{0.724}
@@ -72,46 +72,80 @@
 \newcommand{\RaylibNEntities}{---}
 \newcommand{\RaylibNRels}{---}
 
-%% ── suite nifi ──
-\newcommand{\NifiRunId}{---}
-\newcommand{\NifiRunDate}{no scored run found}
-\newcommand{\NifiTarget}{\texttt{nifi}}
-\newcommand{\NifiControlCollected}{no}
-\newcommand{\NifiControlAgent}{---}
-\newcommand{\NifiDeltaS}{---}
-\newcommand{\NifiKS}{---}
-\newcommand{\NifiKQadeq}{---}
-\newcommand{\NifiKEtok}{---}
-\newcommand{\NifiKEspeed}{---}
-\newcommand{\NifiKPass}{---}
-\newcommand{\NifiKCorrectness}{---}
-\newcommand{\NifiKUsefulness}{---}
-\newcommand{\NifiKRelevance}{---}
-\newcommand{\NifiKTokens}{---}
-\newcommand{\NifiKDurationSec}{---}
-\newcommand{\NifiKDocs}{---}
-\newcommand{\NifiKEntities}{---}
-\newcommand{\NifiKRels}{---}
-\newcommand{\NifiNS}{---}
-\newcommand{\NifiNQadeq}{---}
-\newcommand{\NifiNEtok}{---}
-\newcommand{\NifiNEspeed}{---}
-\newcommand{\NifiNPass}{---}
-\newcommand{\NifiNCorrectness}{---}
-\newcommand{\NifiNUsefulness}{---}
-\newcommand{\NifiNRelevance}{---}
-\newcommand{\NifiNTokens}{---}
-\newcommand{\NifiNDurationSec}{---}
-\newcommand{\NifiNDocs}{---}
-\newcommand{\NifiNEntities}{---}
-\newcommand{\NifiNRels}{---}
+%% ── suite fzf ──
+\newcommand{\FzfRunId}{fzf-2026-07-11-1051}
+\newcommand{\FzfRunDate}{July 11, 2026}
+\newcommand{\FzfTarget}{\texttt{fzf} commit \texttt{24832e9}}
+\newcommand{\FzfControlCollected}{yes}
+\newcommand{\FzfControlAgent}{Headless agent: cursor-agent (composer-2.5)}
+\newcommand{\FzfDeltaS}{+0.234}
+\newcommand{\FzfKS}{0.969}
+\newcommand{\FzfKQadeq}{0.981}
+\newcommand{\FzfKEtok}{0.981}
+\newcommand{\FzfKEspeed}{0.855}
+\newcommand{\FzfKPass}{1.000}
+\newcommand{\FzfKCorrectness}{3.825}
+\newcommand{\FzfKUsefulness}{3.825}
+\newcommand{\FzfKRelevance}{4.000}
+\newcommand{\FzfKTokens}{18{,}610}
+\newcommand{\FzfKDurationSec}{87}
+\newcommand{\FzfKDocs}{0}
+\newcommand{\FzfKEntities}{3{,}890}
+\newcommand{\FzfKRels}{1{,}242}
+\newcommand{\FzfNS}{0.735}
+\newcommand{\FzfNQadeq}{1.000}
+\newcommand{\FzfNEtok}{0.452}
+\newcommand{\FzfNEspeed}{0.000}
+\newcommand{\FzfNPass}{1.000}
+\newcommand{\FzfNCorrectness}{4.000}
+\newcommand{\FzfNUsefulness}{4.000}
+\newcommand{\FzfNRelevance}{4.000}
+\newcommand{\FzfNTokens}{548{,}463}
+\newcommand{\FzfNDurationSec}{626}
+\newcommand{\FzfNDocs}{---}
+\newcommand{\FzfNEntities}{---}
+\newcommand{\FzfNRels}{---}
+
+%% ── suite kestra ──
+\newcommand{\KestraRunId}{kestra-2026-07-11-1205}
+\newcommand{\KestraRunDate}{July 11, 2026}
+\newcommand{\KestraTarget}{\texttt{kestra} commit \texttt{2f63c5b}}
+\newcommand{\KestraControlCollected}{yes}
+\newcommand{\KestraControlAgent}{Headless agent: claude-code (claude-sonnet-5)}
+\newcommand{\KestraDeltaS}{+0.143}
+\newcommand{\KestraKS}{0.952}
+\newcommand{\KestraKQadeq}{0.966}
+\newcommand{\KestraKEtok}{0.984}
+\newcommand{\KestraKEspeed}{0.769}
+\newcommand{\KestraKPass}{1.000}
+\newcommand{\KestraKCorrectness}{3.625}
+\newcommand{\KestraKUsefulness}{3.800}
+\newcommand{\KestraKRelevance}{3.962}
+\newcommand{\KestraKTokens}{15{,}806}
+\newcommand{\KestraKDurationSec}{138}
+\newcommand{\KestraKDocs}{0}
+\newcommand{\KestraKEntities}{17{,}373}
+\newcommand{\KestraKRels}{14{,}858}
+\newcommand{\KestraNS}{0.809}
+\newcommand{\KestraNQadeq}{1.000}
+\newcommand{\KestraNEtok}{0.657}
+\newcommand{\KestraNEspeed}{0.119}
+\newcommand{\KestraNPass}{1.000}
+\newcommand{\KestraNCorrectness}{4.000}
+\newcommand{\KestraNUsefulness}{4.000}
+\newcommand{\KestraNRelevance}{4.000}
+\newcommand{\KestraNTokens}{343{,}158}
+\newcommand{\KestraNDurationSec}{529}
+\newcommand{\KestraNDocs}{---}
+\newcommand{\KestraNEntities}{---}
+\newcommand{\KestraNRels}{---}
 
 %% ── suite shellcheck ──
 \newcommand{\ShellcheckRunId}{shellcheck-2026-07-11-1051}
 \newcommand{\ShellcheckRunDate}{July 11, 2026}
-\newcommand{\ShellcheckTarget}{\texttt{shellcheck}}
+\newcommand{\ShellcheckTarget}{\texttt{shellcheck} commit \texttt{9af7ee2}}
 \newcommand{\ShellcheckControlCollected}{yes}
-\newcommand{\ShellcheckControlAgent}{Headless coding agent}
+\newcommand{\ShellcheckControlAgent}{Headless agent: cursor-agent (composer-2.5)}
 \newcommand{\ShellcheckDeltaS}{+0.212}
 \newcommand{\ShellcheckKS}{0.909}
 \newcommand{\ShellcheckKQadeq}{0.875}
@@ -141,171 +175,171 @@
 \newcommand{\ShellcheckNRels}{---}
 
 %% ── suite lazygit ──
-\newcommand{\LazygitRunId}{---}
-\newcommand{\LazygitRunDate}{no scored run found}
-\newcommand{\LazygitTarget}{\texttt{lazygit}}
-\newcommand{\LazygitControlCollected}{no}
-\newcommand{\LazygitControlAgent}{---}
-\newcommand{\LazygitDeltaS}{---}
-\newcommand{\LazygitKS}{---}
-\newcommand{\LazygitKQadeq}{---}
-\newcommand{\LazygitKEtok}{---}
-\newcommand{\LazygitKEspeed}{---}
-\newcommand{\LazygitKPass}{---}
-\newcommand{\LazygitKCorrectness}{---}
-\newcommand{\LazygitKUsefulness}{---}
-\newcommand{\LazygitKRelevance}{---}
-\newcommand{\LazygitKTokens}{---}
-\newcommand{\LazygitKDurationSec}{---}
-\newcommand{\LazygitKDocs}{---}
-\newcommand{\LazygitKEntities}{---}
-\newcommand{\LazygitKRels}{---}
-\newcommand{\LazygitNS}{---}
-\newcommand{\LazygitNQadeq}{---}
-\newcommand{\LazygitNEtok}{---}
-\newcommand{\LazygitNEspeed}{---}
-\newcommand{\LazygitNPass}{---}
-\newcommand{\LazygitNCorrectness}{---}
-\newcommand{\LazygitNUsefulness}{---}
-\newcommand{\LazygitNRelevance}{---}
-\newcommand{\LazygitNTokens}{---}
-\newcommand{\LazygitNDurationSec}{---}
+\newcommand{\LazygitRunId}{lazygit-2026-07-11-1051}
+\newcommand{\LazygitRunDate}{July 11, 2026}
+\newcommand{\LazygitTarget}{\texttt{lazygit} commit \texttt{bea025f}}
+\newcommand{\LazygitControlCollected}{yes}
+\newcommand{\LazygitControlAgent}{Headless agent: cursor-agent (composer-2.5)}
+\newcommand{\LazygitDeltaS}{+0.291}
+\newcommand{\LazygitKS}{0.906}
+\newcommand{\LazygitKQadeq}{0.877}
+\newcommand{\LazygitKEtok}{0.983}
+\newcommand{\LazygitKEspeed}{0.851}
+\newcommand{\LazygitKPass}{0.625}
+\newcommand{\LazygitKCorrectness}{2.875}
+\newcommand{\LazygitKUsefulness}{3.250}
+\newcommand{\LazygitKRelevance}{3.750}
+\newcommand{\LazygitKTokens}{16{,}590}
+\newcommand{\LazygitKDurationSec}{90}
+\newcommand{\LazygitKDocs}{0}
+\newcommand{\LazygitKEntities}{7{,}553}
+\newcommand{\LazygitKRels}{4{,}326}
+\newcommand{\LazygitNS}{0.615}
+\newcommand{\LazygitNQadeq}{1.000}
+\newcommand{\LazygitNEtok}{0.050}
+\newcommand{\LazygitNEspeed}{0.000}
+\newcommand{\LazygitNPass}{1.000}
+\newcommand{\LazygitNCorrectness}{4.000}
+\newcommand{\LazygitNUsefulness}{4.000}
+\newcommand{\LazygitNRelevance}{4.000}
+\newcommand{\LazygitNTokens}{950{,}247}
+\newcommand{\LazygitNDurationSec}{617}
 \newcommand{\LazygitNDocs}{---}
 \newcommand{\LazygitNEntities}{---}
 \newcommand{\LazygitNRels}{---}
 
-%% ── suite duckdb ──
-\newcommand{\DuckdbRunId}{---}
-\newcommand{\DuckdbRunDate}{no scored run found}
-\newcommand{\DuckdbTarget}{\texttt{duckdb}}
-\newcommand{\DuckdbControlCollected}{no}
-\newcommand{\DuckdbControlAgent}{---}
-\newcommand{\DuckdbDeltaS}{---}
-\newcommand{\DuckdbKS}{---}
-\newcommand{\DuckdbKQadeq}{---}
-\newcommand{\DuckdbKEtok}{---}
-\newcommand{\DuckdbKEspeed}{---}
-\newcommand{\DuckdbKPass}{---}
-\newcommand{\DuckdbKCorrectness}{---}
-\newcommand{\DuckdbKUsefulness}{---}
-\newcommand{\DuckdbKRelevance}{---}
-\newcommand{\DuckdbKTokens}{---}
-\newcommand{\DuckdbKDurationSec}{---}
-\newcommand{\DuckdbKDocs}{---}
-\newcommand{\DuckdbKEntities}{---}
-\newcommand{\DuckdbKRels}{---}
-\newcommand{\DuckdbNS}{---}
-\newcommand{\DuckdbNQadeq}{---}
-\newcommand{\DuckdbNEtok}{---}
-\newcommand{\DuckdbNEspeed}{---}
-\newcommand{\DuckdbNPass}{---}
-\newcommand{\DuckdbNCorrectness}{---}
-\newcommand{\DuckdbNUsefulness}{---}
-\newcommand{\DuckdbNRelevance}{---}
-\newcommand{\DuckdbNTokens}{---}
-\newcommand{\DuckdbNDurationSec}{---}
-\newcommand{\DuckdbNDocs}{---}
-\newcommand{\DuckdbNEntities}{---}
-\newcommand{\DuckdbNRels}{---}
+%% ── suite datasette ──
+\newcommand{\DatasetteRunId}{datasette-2026-07-11-1231}
+\newcommand{\DatasetteRunDate}{July 11, 2026}
+\newcommand{\DatasetteTarget}{\texttt{datasette} commit \texttt{db82123}}
+\newcommand{\DatasetteControlCollected}{yes}
+\newcommand{\DatasetteControlAgent}{Headless agent: claude-code (claude-sonnet-5)}
+\newcommand{\DatasetteDeltaS}{+0.099}
+\newcommand{\DatasetteKS}{0.946}
+\newcommand{\DatasetteKQadeq}{0.938}
+\newcommand{\DatasetteKEtok}{0.980}
+\newcommand{\DatasetteKEspeed}{0.889}
+\newcommand{\DatasetteKPass}{0.875}
+\newcommand{\DatasetteKCorrectness}{3.625}
+\newcommand{\DatasetteKUsefulness}{3.500}
+\newcommand{\DatasetteKRelevance}{3.750}
+\newcommand{\DatasetteKTokens}{19{,}981}
+\newcommand{\DatasetteKDurationSec}{66}
+\newcommand{\DatasetteKDocs}{0}
+\newcommand{\DatasetteKEntities}{3{,}642}
+\newcommand{\DatasetteKRels}{3{,}280}
+\newcommand{\DatasetteNS}{0.847}
+\newcommand{\DatasetteNQadeq}{1.000}
+\newcommand{\DatasetteNEtok}{0.776}
+\newcommand{\DatasetteNEspeed}{0.143}
+\newcommand{\DatasetteNPass}{1.000}
+\newcommand{\DatasetteNCorrectness}{4.000}
+\newcommand{\DatasetteNUsefulness}{4.000}
+\newcommand{\DatasetteNRelevance}{4.000}
+\newcommand{\DatasetteNTokens}{223{,}862}
+\newcommand{\DatasetteNDurationSec}{514}
+\newcommand{\DatasetteNDocs}{---}
+\newcommand{\DatasetteNEntities}{---}
+\newcommand{\DatasetteNRels}{---}
 
 %% ── suite mitmproxy ──
-\newcommand{\MitmproxyRunId}{---}
-\newcommand{\MitmproxyRunDate}{no scored run found}
-\newcommand{\MitmproxyTarget}{\texttt{mitmproxy}}
-\newcommand{\MitmproxyControlCollected}{no}
-\newcommand{\MitmproxyControlAgent}{---}
-\newcommand{\MitmproxyDeltaS}{---}
-\newcommand{\MitmproxyKS}{---}
-\newcommand{\MitmproxyKQadeq}{---}
-\newcommand{\MitmproxyKEtok}{---}
-\newcommand{\MitmproxyKEspeed}{---}
-\newcommand{\MitmproxyKPass}{---}
-\newcommand{\MitmproxyKCorrectness}{---}
-\newcommand{\MitmproxyKUsefulness}{---}
-\newcommand{\MitmproxyKRelevance}{---}
-\newcommand{\MitmproxyKTokens}{---}
-\newcommand{\MitmproxyKDurationSec}{---}
-\newcommand{\MitmproxyKDocs}{---}
-\newcommand{\MitmproxyKEntities}{---}
-\newcommand{\MitmproxyKRels}{---}
-\newcommand{\MitmproxyNS}{---}
-\newcommand{\MitmproxyNQadeq}{---}
-\newcommand{\MitmproxyNEtok}{---}
-\newcommand{\MitmproxyNEspeed}{---}
-\newcommand{\MitmproxyNPass}{---}
-\newcommand{\MitmproxyNCorrectness}{---}
-\newcommand{\MitmproxyNUsefulness}{---}
-\newcommand{\MitmproxyNRelevance}{---}
-\newcommand{\MitmproxyNTokens}{---}
-\newcommand{\MitmproxyNDurationSec}{---}
+\newcommand{\MitmproxyRunId}{mitmproxy-2026-07-11-1255}
+\newcommand{\MitmproxyRunDate}{July 11, 2026}
+\newcommand{\MitmproxyTarget}{\texttt{mitmproxy} commit \texttt{a67fc64}}
+\newcommand{\MitmproxyControlCollected}{yes}
+\newcommand{\MitmproxyControlAgent}{Headless agent: claude-code (claude-sonnet-5)}
+\newcommand{\MitmproxyDeltaS}{+0.105}
+\newcommand{\MitmproxyKS}{0.933}
+\newcommand{\MitmproxyKQadeq}{0.931}
+\newcommand{\MitmproxyKEtok}{0.986}
+\newcommand{\MitmproxyKEspeed}{0.792}
+\newcommand{\MitmproxyKPass}{0.875}
+\newcommand{\MitmproxyKCorrectness}{3.375}
+\newcommand{\MitmproxyKUsefulness}{3.500}
+\newcommand{\MitmproxyKRelevance}{3.875}
+\newcommand{\MitmproxyKTokens}{14{,}377}
+\newcommand{\MitmproxyKDurationSec}{125}
+\newcommand{\MitmproxyKDocs}{0}
+\newcommand{\MitmproxyKEntities}{13{,}886}
+\newcommand{\MitmproxyKRels}{9{,}094}
+\newcommand{\MitmproxyNS}{0.828}
+\newcommand{\MitmproxyNQadeq}{1.000}
+\newcommand{\MitmproxyNEtok}{0.758}
+\newcommand{\MitmproxyNEspeed}{0.000}
+\newcommand{\MitmproxyNPass}{1.000}
+\newcommand{\MitmproxyNCorrectness}{4.000}
+\newcommand{\MitmproxyNUsefulness}{4.000}
+\newcommand{\MitmproxyNRelevance}{4.000}
+\newcommand{\MitmproxyNTokens}{241{,}588}
+\newcommand{\MitmproxyNDurationSec}{656}
 \newcommand{\MitmproxyNDocs}{---}
 \newcommand{\MitmproxyNEntities}{---}
 \newcommand{\MitmproxyNRels}{---}
 
 %% ── suite fish-shell ──
-\newcommand{\FishShellRunId}{---}
-\newcommand{\FishShellRunDate}{no scored run found}
-\newcommand{\FishShellTarget}{\texttt{fish-shell}}
-\newcommand{\FishShellControlCollected}{no}
-\newcommand{\FishShellControlAgent}{---}
-\newcommand{\FishShellDeltaS}{---}
-\newcommand{\FishShellKS}{---}
-\newcommand{\FishShellKQadeq}{---}
-\newcommand{\FishShellKEtok}{---}
-\newcommand{\FishShellKEspeed}{---}
-\newcommand{\FishShellKPass}{---}
-\newcommand{\FishShellKCorrectness}{---}
-\newcommand{\FishShellKUsefulness}{---}
-\newcommand{\FishShellKRelevance}{---}
-\newcommand{\FishShellKTokens}{---}
-\newcommand{\FishShellKDurationSec}{---}
-\newcommand{\FishShellKDocs}{---}
-\newcommand{\FishShellKEntities}{---}
-\newcommand{\FishShellKRels}{---}
-\newcommand{\FishShellNS}{---}
-\newcommand{\FishShellNQadeq}{---}
-\newcommand{\FishShellNEtok}{---}
-\newcommand{\FishShellNEspeed}{---}
-\newcommand{\FishShellNPass}{---}
-\newcommand{\FishShellNCorrectness}{---}
-\newcommand{\FishShellNUsefulness}{---}
-\newcommand{\FishShellNRelevance}{---}
-\newcommand{\FishShellNTokens}{---}
-\newcommand{\FishShellNDurationSec}{---}
+\newcommand{\FishShellRunId}{fish-shell-2026-07-11-1051}
+\newcommand{\FishShellRunDate}{July 11, 2026}
+\newcommand{\FishShellTarget}{\texttt{fish-shell} commit \texttt{c5042d9}}
+\newcommand{\FishShellControlCollected}{yes}
+\newcommand{\FishShellControlAgent}{Headless agent: cursor-agent (composer-2.5)}
+\newcommand{\FishShellDeltaS}{+0.266}
+\newcommand{\FishShellKS}{0.916}
+\newcommand{\FishShellKQadeq}{0.895}
+\newcommand{\FishShellKEtok}{0.987}
+\newcommand{\FishShellKEspeed}{0.832}
+\newcommand{\FishShellKPass}{0.625}
+\newcommand{\FishShellKCorrectness}{3.325}
+\newcommand{\FishShellKUsefulness}{3.125}
+\newcommand{\FishShellKRelevance}{3.663}
+\newcommand{\FishShellKTokens}{13{,}288}
+\newcommand{\FishShellKDurationSec}{101}
+\newcommand{\FishShellKDocs}{0}
+\newcommand{\FishShellKEntities}{5{,}443}
+\newcommand{\FishShellKRels}{5{,}102}
+\newcommand{\FishShellNS}{0.650}
+\newcommand{\FishShellNQadeq}{1.000}
+\newcommand{\FishShellNEtok}{0.168}
+\newcommand{\FishShellNEspeed}{0.000}
+\newcommand{\FishShellNPass}{1.000}
+\newcommand{\FishShellNCorrectness}{4.000}
+\newcommand{\FishShellNUsefulness}{4.000}
+\newcommand{\FishShellNRelevance}{4.000}
+\newcommand{\FishShellNTokens}{831{,}714}
+\newcommand{\FishShellNDurationSec}{775}
 \newcommand{\FishShellNDocs}{---}
 \newcommand{\FishShellNEntities}{---}
 \newcommand{\FishShellNRels}{---}
 
 %% ── suite brew ──
-\newcommand{\BrewRunId}{---}
-\newcommand{\BrewRunDate}{no scored run found}
-\newcommand{\BrewTarget}{\texttt{brew}}
-\newcommand{\BrewControlCollected}{no}
-\newcommand{\BrewControlAgent}{---}
-\newcommand{\BrewDeltaS}{---}
-\newcommand{\BrewKS}{---}
-\newcommand{\BrewKQadeq}{---}
-\newcommand{\BrewKEtok}{---}
-\newcommand{\BrewKEspeed}{---}
-\newcommand{\BrewKPass}{---}
-\newcommand{\BrewKCorrectness}{---}
-\newcommand{\BrewKUsefulness}{---}
-\newcommand{\BrewKRelevance}{---}
-\newcommand{\BrewKTokens}{---}
-\newcommand{\BrewKDurationSec}{---}
-\newcommand{\BrewKDocs}{---}
-\newcommand{\BrewKEntities}{---}
-\newcommand{\BrewKRels}{---}
-\newcommand{\BrewNS}{---}
-\newcommand{\BrewNQadeq}{---}
-\newcommand{\BrewNEtok}{---}
-\newcommand{\BrewNEspeed}{---}
-\newcommand{\BrewNPass}{---}
-\newcommand{\BrewNCorrectness}{---}
-\newcommand{\BrewNUsefulness}{---}
-\newcommand{\BrewNRelevance}{---}
-\newcommand{\BrewNTokens}{---}
-\newcommand{\BrewNDurationSec}{---}
+\newcommand{\BrewRunId}{brew-2026-07-11-1718}
+\newcommand{\BrewRunDate}{July 11, 2026}
+\newcommand{\BrewTarget}{\texttt{brew} commit \texttt{34c40c1}}
+\newcommand{\BrewControlCollected}{yes}
+\newcommand{\BrewControlAgent}{Headless agent: claude-code (claude-sonnet-5)}
+\newcommand{\BrewDeltaS}{+0.143}
+\newcommand{\BrewKS}{0.926}
+\newcommand{\BrewKQadeq}{0.931}
+\newcommand{\BrewKEtok}{0.973}
+\newcommand{\BrewKEspeed}{0.758}
+\newcommand{\BrewKPass}{0.875}
+\newcommand{\BrewKCorrectness}{3.500}
+\newcommand{\BrewKUsefulness}{3.462}
+\newcommand{\BrewKRelevance}{3.788}
+\newcommand{\BrewKTokens}{26{,}896}
+\newcommand{\BrewKDurationSec}{145}
+\newcommand{\BrewKDocs}{0}
+\newcommand{\BrewKEntities}{18{,}904}
+\newcommand{\BrewKRels}{9{,}198}
+\newcommand{\BrewNS}{0.783}
+\newcommand{\BrewNQadeq}{0.931}
+\newcommand{\BrewNEtok}{0.749}
+\newcommand{\BrewNEspeed}{0.000}
+\newcommand{\BrewNPass}{0.875}
+\newcommand{\BrewNCorrectness}{3.500}
+\newcommand{\BrewNUsefulness}{3.625}
+\newcommand{\BrewNRelevance}{3.625}
+\newcommand{\BrewNTokens}{250{,}795}
+\newcommand{\BrewNDurationSec}{605}
 \newcommand{\BrewNDocs}{---}
 \newcommand{\BrewNEntities}{---}
 \newcommand{\BrewNRels}{---}

@@ -50,33 +50,11 @@ The raylib snapshot indexed in our latest harvest
 (\RaylibKEntities{} entities, \RaylibKRels{} edges; Table~\ref{tab:harvest-results})
 completes init+scan in minutes on a laptop with no LLM indexing cost.
 
-%% ─── Figure: KB Architecture ─────────────────────────────────────────────────
+%% ─── Figure: KB Architecture (auto-rendered from figures/kb-arch.mmd) ─────────
 \begin{figure}[t]
 \centering
-\fbox{
-  \parbox{0.92\columnwidth}{
-    \centering
-    \vspace{0.4cm}
-    \textit{\textbf{[FIGURE 2 — KB Indexing and Retrieval Architecture]}} \\[6pt]
-    A two-column diagram. \\
-    \textbf{Left column (Init):} Source files $\rightarrow$ tree-sitter AST
-      parser $\rightarrow$ named declarations $\rightarrow$ \texttt{facts}
-      (code). Markdown/README $\rightarrow$ sentence segmenter $\rightarrow$
-      \texttt{facts} (doc). Both feed into \texttt{fact\_edges} (graph) and
-      \texttt{fact\_embeddings} (semantic). \\
-    \textbf{Right column (Query):} Query string $\rightarrow$ intent router
-      $\rightarrow$ multi-pond BFS loop (labeled with the five evidence
-      streams: edge neighbors, primary FTS, pond FTS, concept frontier,
-      concept rows) $\rightarrow$ scored fact pool (lexical overlap +
-      stored embeddings on doc facts) $\rightarrow$ sufficiency
-      check ($\geq 20$ facts $\geq 0.50$) $\rightarrow$ \textbf{fact curator}
-      (relevance judge; top-100 candidate cap, hard-drop + gap refill when $> 12$ facts)
-      $\rightarrow$ LLM synthesis (plain prose) $\rightarrow$ evidence header. \\
-    Arrow between columns labeled ``graph-augmented query expansion''.
-    \vspace{0.4cm}
-  }
-}
-\caption{KB indexing (left) and multi-pond BFS retrieval with post-retrieval curation (right).}
+\includegraphics[width=\columnwidth]{figures/kb-arch.pdf}
+\caption{KB indexing (top) feeds the multi-pond BFS retrieval loop, which hops the fact graph until the island is sufficient, then curates before answering (bottom).}
 \label{fig:kb-arch}
 \end{figure}
 

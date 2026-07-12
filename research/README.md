@@ -13,6 +13,21 @@ timestamp: 2026-06-21T00:00:00Z
 
 The paper lives in this directory as a standard LaTeX two-column article.
 
+## Philosophy: big ideas, not implementation details
+
+The paper (prose *and* figures) should read as the durable core strategy, not
+today's tunable knobs. KB's core idea doesn't change release to release: index
+code + doc facts into a graph, then on query locate a seed island of facts and
+hop across graph edges to grow it, curate, synthesize. What *does* change
+constantly — which judge model scores curation, how many facts get dropped per
+round, sufficiency thresholds, candidate caps — belongs in body prose (where it
+can be caveated and dated), never baked into a figure. A diagram full of this
+run's magic numbers goes stale before the next eval run finishes.
+
+When adding or editing a figure, ask: would this line still be true after we
+retune the retrieval loop? If not, it's an implementation detail — cut it from
+the diagram and, if it matters, say it in text instead.
+
 ## Prerequisites
 
 You need a TeX Live installation with `latexmk`. On macOS:
@@ -98,22 +113,61 @@ Invariants:
   `\input` it from `main.tex`.
 
 The eval harness writes per-run `artifact.json` under `~/.kb/evaluations/`; the
-export reads the latest scored artifact for each paper suite (`kb`, `raylib`).
+export reads the latest scored artifact for each paper suite.
 
-## Figures
+## The 10 benchmark suites
 
-Three figures are currently placeholder boxes in the PDF. To replace them,
-drop a PDF or PNG into `figures/` and swap the `\fbox{\parbox{...}}` block
-in the relevant section with:
+The paper's harvest table (`tab:harvest-results`) reports on a fixed set of 10
+suites: `kb`, `raylib`, `fzf`, `kestra`, `shellcheck`, `lazygit`, `datasette`,
+`mitmproxy`, `fish-shell`, `brew`. Each is a question pack at
+`eval/suites/<suite>.yaml` (repo URL, questions, display name); `nifi` and
+`duckdb` also have YAML files but are retired from the paper's suite list
+(swapped for `kestra`/`datasette`) — their files stay for reference, they're
+just no longer harvested.
 
-```latex
-\includegraphics[width=\columnwidth]{figures/your-figure.pdf}
+The list the paper actually exports is
+`RESEARCH_RESULT_SUITES` in `scripts/eval-shared.mjs` — **that array, not the
+contents of `eval/suites/`, decides which suites appear in `results.tex`.**
+Adding a suite YAML alone does nothing for the paper; it also has to join that
+array. Run the harvest with:
+
+```bash
+pnpm run eval -- --all-suites --control-agent cursor --control-model composer-2.5
 ```
 
-| Label | Description |
-|-------|-------------|
-| `fig:system-overview` | End-to-end KB + MOEL flow (intro.tex) |
-| `fig:kb-arch` | KB indexing and multi-pond BFS retrieval (method.tex) |
+(parallel by default; each suite gets kb-side (K) + control-agent-side (N)
+answers scored by the same rubric, written to its own `~/.kb/evaluations/<run>/artifact.json`.
+`pnpm run research:results` — or the automatic call at the end of `pnpm run eval`
+— then re-reads every suite in `RESEARCH_RESULT_SUITES` and regenerates
+`results.tex` from scratch, so a stale suite (retired, or renamed) silently
+drops out and a newly-added one silently appears the next time it runs.
+
+## Figures: Mermaid, auto-rendered
+
+Figures are **Mermaid diagrams**, not hand-drawn boxes or committed images.
+Source lives in `figures/*.mmd`; `pnpm run research:figures` (wired into
+`research:build`, so it always runs first) renders every `.mmd` to a same-named
+`.pdf` via `scripts/render-figures.mjs` (`@mermaid-js/mermaid-cli`, fit to the
+diagram's own bounding box — no oversized canvas padding). `main.tex` sections
+just `\includegraphics[width=\columnwidth]{figures/your-figure.pdf}` the result.
+
+| Source | Label | Description |
+|--------|-------|-------------|
+| `figures/system-overview.mmd` | `fig:system-overview` | End-to-end KB + MOEL flow (intro.tex) |
+| `figures/kb-arch.mmd` | `fig:kb-arch` | KB indexing feeding the multi-pond retrieval loop (method.tex) |
+
+To add a figure: write `figures/name.mmd`, run `pnpm run research:figures` to
+check its rendered aspect ratio (`pdfinfo figures/name.pdf | grep -i "page size"`
+— a single LaTeX column is portrait-ish, so a wide-and-short diagram will render
+tiny with wasted whitespace; prefer stacking sections top-to-bottom over
+side-by-side), then `\includegraphics` it from the relevant section. Keep the
+diagram itself at the [conceptual altitude described above](#philosophy-big-ideas-not-implementation-details) —
+a handful of labeled stages, not a transcription of every tunable step.
+
+Rendering needs a local Chrome/Chromium (puppeteer can't launch headless
+Chrome from cold in this environment). `render-figures.mjs` looks for a system
+install automatically; override with `MERMAID_CHROME_PATH` if yours isn't in
+one of the default locations.
 
 ## Output
 

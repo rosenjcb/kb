@@ -1014,6 +1014,7 @@ export function suiteDisplayLabel(suiteId) {
 export const RESEARCH_RESULT_SUITES = [
   'kb',
   'raylib',
+  'fzf',
   'kestra',
   'shellcheck',
   'lazygit',
@@ -1329,7 +1330,10 @@ function _judgeLabel(artifact) {
   return 'LLM-as-judge'
 }
 
-function _controlAgentLabel(_artifact) {
+function _controlAgentLabel(artifact) {
+  const agent = artifact?.control?.agent
+  if (agent?.name && agent?.model) return `Headless agent: ${agent.name} (${agent.model})`
+  if (agent?.name) return `Headless agent: ${agent.name}`
   return 'Headless coding agent'
 }
 
@@ -1353,14 +1357,11 @@ function _suiteTexPrefix(suiteId) {
 }
 
 function _suiteTargetLabel(suiteId, artifact) {
-  if (suiteId === 'kb') return '\\texttt{kb} self-check'
-  if (suiteId === 'raylib') {
-    const commit = artifact?.repository?.commit
-    const short = commit ? commit.slice(0, 7) : 'unknown'
-    return `\\texttt{raylib} commit \\texttt{${_texEscape(short)}}`
-  }
   const name = artifact?.repository?.name ?? suiteDisplayLabel(suiteId)
-  return `\\texttt{${_texEscape(name)}}`
+  const commit = artifact?.repository?.commit
+  const short = commit ? commit.slice(0, 7) : 'unknown'
+  const label = suiteId === 'kb' ? '\\texttt{kb} self-check' : `\\texttt{${_texEscape(name)}}`
+  return `${label} commit \\texttt{${_texEscape(short)}}`
 }
 
 function _emitSuiteResults(lines, suiteId, artifact) {

@@ -71,40 +71,20 @@ contributions are:
     logistic-regression calibration on a 20-sample human-annotated set.
 
   \item \textbf{Empirical results}: paired harvest evaluation on fixed
-    \texttt{kb} and \texttt{raylib} snapshots, plus K-side harvests on seven
-    expanded repositories (\texttt{nifi}, \texttt{shellcheck}, \texttt{lazygit},
-    \texttt{duckdb}, \texttt{mitmproxy}, \texttt{fish-shell}, \texttt{brew}),
-    compares \texttt{kb query} (K) to a real coding agent (N) under identical
-    scoring when N is collected (Table~\ref{tab:harvest-results}).
+    \texttt{kb} and \texttt{raylib} snapshots, plus K-side harvests on eight
+    expanded repositories (\texttt{fzf}, \texttt{kestra}, \texttt{shellcheck},
+    \texttt{lazygit}, \texttt{datasette}, \texttt{mitmproxy}, \texttt{fish-shell},
+    \texttt{brew}), compares \texttt{kb query} (K) to a real coding agent (N) under
+    identical scoring when N is collected (Table~\ref{tab:harvest-results}).
     Latest paired grades: $\Delta S = \KbSelfCheckDeltaS{}$ (kb self-check) and
     $\Delta S = \RaylibDeltaS{}$ (raylib), updated \ResultsUpdated{}.
 \end{enumerate}
 
-%% ─── Figure: System Overview placeholder ─────────────────────────────────────
-\begin{figure}[t]
+%% ─── Figure: System Overview (auto-rendered from figures/system-overview.mmd) ──
+\begin{figure*}[t]
 \centering
-\fbox{
-  \parbox{0.92\columnwidth}{
-    \centering
-    \vspace{0.4cm}
-    \textit{\textbf{[FIGURE 1 — System Overview]}} \\[6pt]
-    A three-panel horizontal flow diagram: \\
-    \textbf{Left panel} — Developer working directory with source files,
-      markdown, and version history feeding into \texttt{kb init} (AST indexer +
-      sentence segmenter + fact extractor). \\
-    \textbf{Center panel} — SQLite knowledge store: \texttt{facts} table
-      (doc + code facts), \texttt{fact\_edges} graph, \texttt{fact\_embeddings}
-      semantic index, \texttt{documents} (stored prose sources). \\
-    \textbf{Right panel} — LLM agent loop: \texttt{kb query} dispatches
-      multi-pond BFS retrieval, a fact curator (relevance judge) trims the pool,
-      passes kept facts to LLM synthesis, returns plain grounded prose. \\
-    Below all panels: paired harvest evaluation reporting $\Delta S = S_K - S_N$ (K vs.\ real
-      agent); deep MOEL evaluation (N/K/O toy-tool conditions) reporting
-      $L_\text{MOEL}$.
-    \vspace{0.4cm}
-  }
-}
+\includegraphics[width=0.6\textwidth]{figures/system-overview.pdf}
 \caption{End-to-end KB system.  Primary harvest grade: $\Delta S$ (K vs.\ real
 agent); deep MOEL evaluation adds $L_\text{MOEL}$ under toy-tool N/K/O conditions.}
 \label{fig:system-overview}
-\end{figure}
+\end{figure*}

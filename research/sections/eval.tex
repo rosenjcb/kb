@@ -199,20 +199,27 @@ K uses \RaylibKTokens{} weighted tokens vs.\ N's \RaylibNTokens{} ($E_{\text{tok
 \RaylibKEtok{} vs.\ \RaylibNEtok{}).
 
 \medskip
-\noindent\textbf{Expanded suites (K-only).}
-Table~\ref{tab:harvest-results} also reports K-side harvest scores for the seven
-expanded repositories (control N pending):
-\texttt{kestra} ($S_K{=}\KestraKS$, pass~\KestraKPass, corr~\KestraKCorrectness),
-\texttt{shellcheck} ($S_K{=}\ShellcheckKS$, pass~\ShellcheckKPass, corr~\ShellcheckKCorrectness),
-\texttt{lazygit} ($S_K{=}\LazygitKS$, pass~\LazygitKPass, corr~\LazygitKCorrectness),
-\texttt{datasette} ($S_K{=}\DatasetteKS$, pass~\DatasetteKPass, corr~\DatasetteKCorrectness),
-\texttt{mitmproxy} ($S_K{=}\MitmproxyKS$, pass~\MitmproxyKPass, corr~\MitmproxyKCorrectness),
-\texttt{fish-shell} ($S_K{=}\FishShellKS$, pass~\FishShellKPass, corr~\FishShellKCorrectness),
-and \texttt{brew} ($S_K{=}\BrewKS$, pass~\BrewKPass, corr~\BrewKCorrectness).
-These runs exercise Java/UI orchestration workflows, Haskell AST analysis, Go/Python TUIs,
-Python data-explore products, Rust systems code, and Ruby DSL packaging---stressing
-language coverage and product/UI retrieval beyond the original kb/raylib pair.
-Paired $\Delta S$ for these suites will be filled once control (N) harvests complete.
+\noindent\textbf{Expanded suites.}
+All eight expanded repositories now have both sides collected and report a full
+$\Delta S$: \texttt{fzf} ($\Delta S{=}\FzfDeltaS$, $S_K{=}\FzfKS$, pass~\FzfKPass),
+\texttt{kestra} ($\Delta S{=}\KestraDeltaS$, $S_K{=}\KestraKS$, pass~\KestraKPass),
+\texttt{shellcheck} ($\Delta S{=}\ShellcheckDeltaS$, $S_K{=}\ShellcheckKS$, pass~\ShellcheckKPass),
+\texttt{lazygit} ($\Delta S{=}\LazygitDeltaS$, $S_K{=}\LazygitKS$, pass~\LazygitKPass),
+\texttt{datasette} ($\Delta S{=}\DatasetteDeltaS$, $S_K{=}\DatasetteKS$, pass~\DatasetteKPass),
+\texttt{mitmproxy} ($\Delta S{=}\MitmproxyDeltaS$, $S_K{=}\MitmproxyKS$, pass~\MitmproxyKPass),
+\texttt{fish-shell} ($\Delta S{=}\FishShellDeltaS$, $S_K{=}\FishShellKS$, pass~\FishShellKPass),
+and \texttt{brew} ($\Delta S{=}\BrewDeltaS$, $S_K{=}\BrewKS$, pass~\BrewKPass).
+Together they exercise Rust CLI tooling, Java/UI orchestration workflows, Haskell
+AST analysis, Go/Python TUIs, Python data-explore products, Rust proxy/networking
+code, and Ruby DSL packaging---stressing language coverage and product/UI
+retrieval beyond the original kb/raylib pair. Note the control (N) baseline is
+not uniform across suites: \texttt{kb}, \texttt{raylib}, \texttt{fzf},
+\texttt{shellcheck}, \texttt{lazygit}, and \texttt{fish-shell} used Cursor Agent
+(\texttt{composer-2.5}); \texttt{kestra}, \texttt{datasette}, \texttt{mitmproxy},
+and \texttt{brew} used Claude Code (\texttt{claude-sonnet-5}) after the former hit
+a provider usage cap mid-batch. Each suite's own $\Delta S$ is still a valid
+same-agent paired comparison; only cross-suite N-side comparisons should account
+for the agent difference.
 
 \medskip
 \noindent\textbf{Quality vs.\ efficiency trade-off.}  On the paired suites the control
