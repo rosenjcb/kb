@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { RunCollector } from '@kb/core/core/telemetry.js'
 import type { LLMProvider } from '@kb/core/core/types.js'
 import {
   type CuratorRequery,
@@ -25,6 +26,8 @@ function makeResult(id: string, title: string, content?: string): QueryResult {
 function verdictLlm(...verdicts: object[]): LLMProvider {
   let i = 0
   return {
+    name: 'test-provider',
+    model: 'test-model',
     call: vi.fn(async () => {
       const v = verdicts[Math.min(i, verdicts.length - 1)]
       i++
@@ -219,5 +222,43 @@ describe('curateFacts', () => {
 
     expect(record.added).toBe(0)
     expect(record.rounds).toBe(1)
+  })
+
+  it('[TC-13] Given a collector, then each judge round is recorded as a telemetry stage', async () => {
+    const results = [
+      makeResult('seed', 'partial detail about caching'),
+      ...Array.from({ length: 14 }, (_, i) => makeResult(`o-${i}`, `off topic ${i}`)),
+    ]
+    const llm = verdictLlm(
+      { keep: ['seed'], gaps: ['cache eviction policy'], sufficient: false },
+      { keep: ['found-1'], gaps: [], sufficient: true }
+    )
+    const requery: CuratorRequery = vi.fn(async () => [
+      makeResult('found-1', 'cache eviction uses LRU policy'),
+    ])
+    const addStage = vi.fn()
+    const collector = { addStage } as unknown as RunCollector
+
+    await curateFacts({
+      llm,
+      query: 'how does caching work',
+      results,
+      requery,
+      collector,
+    })
+
+    expect(addStage).toHaveBeenCalledTimes(2)
+    expect(addStage.mock.calls[0][0]).toMatchObject({
+      stage: 'fact-curator:judge:round1',
+      inputTokens: 10,
+      outputTokens: 5,
+      provider: 'test-provider',
+      model: 'test-model',
+    })
+    expect(addStage.mock.calls[1][0]).toMatchObject({
+      stage: 'fact-curator:judge:round2',
+      inputTokens: 10,
+      outputTokens: 5,
+    })
   })
 })

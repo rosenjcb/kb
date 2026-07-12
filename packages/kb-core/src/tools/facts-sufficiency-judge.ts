@@ -1,3 +1,5 @@
+import type { RunCollector } from '../core/telemetry'
+import { estimateCost } from '../core/telemetry'
 import type { LLMProvider } from '../core/types'
 
 /** Minimum relevant facts (score >= 0.5) before calling the judge. */
@@ -15,7 +17,10 @@ export type FactsSufficiencyJudge = (
   relevantFacts: Array<{ id: string; text: string }>
 ) => Promise<SufficiencyVerdict>
 
-export function makeSufficiencyJudge(llm: LLMProvider): FactsSufficiencyJudge {
+export function makeSufficiencyJudge(
+  llm: LLMProvider,
+  collector?: RunCollector
+): FactsSufficiencyJudge {
   return async (query, relevantFacts) => {
     if (relevantFacts.length < JUDGE_MIN_RELEVANT_FACTS) return 'insufficient'
 
@@ -24,6 +29,8 @@ export function makeSufficiencyJudge(llm: LLMProvider): FactsSufficiencyJudge {
       .map((f, i) => `${i + 1}. ${f.text.slice(0, JUDGE_MAX_CHARS_PER_FACT).replace(/\n/g, ' ')}`)
       .join('\n')
 
+    const startMs = Date.now()
+    const startedAt = new Date().toISOString()
     try {
       const response = await llm.call({
         messages: [
@@ -42,6 +49,24 @@ export function makeSufficiencyJudge(llm: LLMProvider): FactsSufficiencyJudge {
         temperature: 0,
         maxTokens: 10,
       })
+
+      if (collector) {
+        collector.addStage({
+          stage: 'facts-sufficiency-judge:check',
+          startedAt,
+          durationMs: Date.now() - startMs,
+          inputTokens: response.usage.inputTokens,
+          outputTokens: response.usage.outputTokens,
+          estimatedCostUsd: estimateCost(
+            llm.name,
+            llm.model,
+            response.usage.inputTokens,
+            response.usage.outputTokens
+          ),
+          provider: llm.name,
+          model: llm.model,
+        })
+      }
 
       return response.text.trim().toUpperCase().startsWith('ANSWERABLE')
         ? 'answerable'

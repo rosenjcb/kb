@@ -1,4 +1,5 @@
 import dayjs from 'dayjs'
+import type { RunCollector } from '../core/telemetry'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, ToolUseRequest } from '../core/types'
 import { DEFAULT_FACT_LIMIT } from '../tools/facts-query-research-orchestrator'
@@ -23,7 +24,8 @@ export class DefaultIntentRouter implements IntentRouter {
   constructor(
     private readonly toolExecutor: ToolExecutor,
     _intentLlm?: LLMProvider,
-    _kbStorageDir?: string
+    _kbStorageDir?: string,
+    private readonly collector?: RunCollector
   ) {}
 
   async route(intentEnvelope: ConsumerIntentEnvelope): Promise<RouteDecision> {
@@ -48,6 +50,7 @@ export class DefaultIntentRouter implements IntentRouter {
             surface: payload.surface === 'chat' ? 'chat' : 'query',
             excludeIds: Array.isArray(payload.excludeIds) ? payload.excludeIds : undefined,
             ...(allFacts ? { allFacts: true } : {}),
+            ...(this.collector ? { collector: this.collector } : {}),
           },
           policyReason: allFacts
             ? 'query intent with --all-facts: load all KB facts without query expansion'
