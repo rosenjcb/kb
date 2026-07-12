@@ -120,10 +120,10 @@ export reads the latest scored artifact for each paper suite.
 The paper's harvest table (`tab:harvest-results`) reports on a fixed set of 10
 suites: `kb`, `raylib`, `fzf`, `kestra`, `shellcheck`, `lazygit`, `datasette`,
 `mitmproxy`, `fish-shell`, `brew`. Each is a question pack at
-`eval/suites/<suite>.yaml` (repo URL, questions, display name); `nifi` and
-`duckdb` also have YAML files but are retired from the paper's suite list
-(swapped for `kestra`/`datasette`) — their files stay for reference, they're
-just no longer harvested.
+`eval/suites/<suite>.yaml` (repo URL, questions, display name). `nifi` and
+`duckdb` were retired and their YAML files removed (swapped for
+`kestra`/`datasette` — oversized repos, replaced with product UI/CLI workflow
+questions instead).
 
 The list the paper actually exports is
 `RESEARCH_RESULT_SUITES` in `scripts/eval-shared.mjs` — **that array, not the

@@ -6,11 +6,9 @@ tests:
   - ../tests/eval
   - ../tests/eval-run.test.ts
   - ../tests/eval-server.test.ts
-  - ../tests/eval-snapshot.test.ts
-  - ../tests/eval-task-artifact.test.ts
 description: Behavioral specification for MOEL Evaluation Framework
 tags: [spec, kb]
-timestamp: 2026-06-30T00:00:00Z
+timestamp: 2026-07-11T00:00:00Z
 ---
 
 ### Intro
@@ -46,8 +44,8 @@ See companion doc for full vocabulary where applicable.
 | FR-11 | Behaviors in summary.test.ts |
 | FR-12 | Behaviors in trajectory-loss.test.ts |
 | FR-13 | Behaviors in eval-run.test.ts |
-| FR-14 | Behaviors in eval-snapshot.test.ts |
-| FR-15 | Behaviors in eval-task-artifact.test.ts |
+| FR-14 | [REMOVED] Behaviors in eval-snapshot.test.ts — agent-compare-eval skill retired, folded into kb:evaluation-run |
+| FR-15 | [REMOVED] Behaviors in eval-task-artifact.test.ts — agent-compare-eval skill retired, folded into kb:evaluation-run |
 
 ### QA Test Cases
 
@@ -277,14 +275,14 @@ See companion doc for full vocabulary where applicable.
 | TC-222 | FR-13 | returns null when command is absent | pass |
 | TC-223 | FR-13 | maps kb condition to K and control to N | pass |
 | TC-224 | FR-13 | writes LaTeX macros from scored artifacts | pass |
-| TC-225 | FR-14 | parses valid codeburn status JSON | pass |
-| TC-226 | FR-14 | throws on malformed JSON | pass |
-| TC-227 | FR-15 | computes today delta when no midnight crossing | pass |
-| TC-228 | FR-15 | falls back to month delta when today delta is negative (midnight crossing) | pass |
-| TC-229 | FR-15 | rounds cost delta to 4 decimal places | pass |
-| TC-230 | FR-15 | builds artifact with correct structure | pass |
-| TC-231 | FR-15 | sets base to null for raw agent | pass |
-| TC-232 | FR-15 | generates correct path | pass |
+| TC-225 | FR-14 | [REMOVED] parses valid codeburn status JSON | n/a |
+| TC-226 | FR-14 | [REMOVED] throws on malformed JSON | n/a |
+| TC-227 | FR-15 | [REMOVED] computes today delta when no midnight crossing | n/a |
+| TC-228 | FR-15 | [REMOVED] falls back to month delta when today delta is negative (midnight crossing) | n/a |
+| TC-229 | FR-15 | [REMOVED] rounds cost delta to 4 decimal places | n/a |
+| TC-230 | FR-15 | [REMOVED] builds artifact with correct structure | n/a |
+| TC-231 | FR-15 | [REMOVED] sets base to null for raw agent | n/a |
+| TC-232 | FR-15 | [REMOVED] generates correct path | n/a |
 | TC-233 | FR-13 | classifyStageTokens splits thinking (:llm) from synthesis (:answer-enrichment) | pass |
 | TC-234 | FR-13 | parseRetrievalDetailTrace lifts loop counters from a retrieval detail line | pass |
 | TC-235 | FR-13 | buildQuestionTimeline joins stages with the trace and derives retrieval_ms | pass |
