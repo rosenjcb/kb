@@ -1,8 +1,8 @@
 # @kb/core
 
-## 1.5.0
+## 1.4.7
 
-### Minor Changes
+### Patch Changes
 
 - Record fact-curator judge and facts-sufficiency-judge LLM calls as telemetry stages, so `RunReport.totalInputTokens`/`totalOutputTokens` no longer undercount query-path token usage.
 
