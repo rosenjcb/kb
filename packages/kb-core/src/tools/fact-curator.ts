@@ -229,7 +229,7 @@ export async function curateFacts(input: CurateInput): Promise<CurateOutput> {
 
   // Stable order: original pool order for survivors, then re-discovered facts in discovery order.
   const survivors = results.filter(r => keptIds.has(r.metadata.id))
-  let kept = [...survivors, ...discovered.filter(r => keptIds.has(r.metadata.id))]
+  const kept = [...survivors, ...discovered.filter(r => keptIds.has(r.metadata.id))]
 
   // Soft floor: if the judge was too aggressive, top up from orchestrator rank order.
   if (kept.length < opts.minKeep) {
