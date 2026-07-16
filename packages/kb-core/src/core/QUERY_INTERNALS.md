@@ -130,6 +130,8 @@ The dump is built at two seams — the orchestrator's `buildResponse` (discovery
 | Per DB call | 50 rows (`perIterationLimit`) |
 | Loop passes | 24 (`KB_FACTS_QUERY_MAX_ITERS`; absolute max 512) |
 | Graph hops | 20 (`KB_FACTS_QUERY_MAX_HOPS`) |
+| Relevant-fact bar | score ≥ `RELEVANT_FACT_SCORE` (0.35) for plateau / judge gating |
+| Plateau min relevant | `PLATEAU_MIN_RELEVANT` (12); 18 when concept coverage is low |
 
 **Shallow** (`--discovery shallow`): lexical FTS; retrieval defaults to 500 facts (`DEFAULT_FACT_LIMIT`).
 

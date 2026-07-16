@@ -25,7 +25,9 @@ const DEFAULT_AUTO_KEEP_OVERLAP = 0.5
 const DEFAULT_MAX_ROUNDS = 2
 const DEFAULT_MAX_REQUERIES = 2
 const DEFAULT_REQUERY_BUDGET = 12
-const DEFAULT_MIN_KEEP = 5
+const DEFAULT_MIN_KEEP = 10
+/** Always preserve the orchestrator's top-N by incoming rank (before LLM judge). */
+const DEFAULT_RANK_AUTO_KEEP = 10
 // Hard bound on how many candidates the LLM judge sees in one verdict. Beyond this the judge
 // prompt explodes and — with a fixed `maxTokens` verdict — the returned `keep` JSON truncates,
 // which throws in `parseVerdict` and drops the curator into its fail-safe *full-pool* return.
@@ -49,6 +51,8 @@ export interface CuratorOptions {
   minResultsToCurate?: number
   /** Token-overlap fraction at/above which a fact is auto-kept without the LLM. */
   autoKeepOverlap?: number
+  /** Always auto-keep this many top-ranked incoming facts (orchestrator order). */
+  rankAutoKeep?: number
   /** Hard cap on judge rounds (initial verdict + re-discovery re-judges). */
   maxRounds?: number
   /** Max re-discovery sub-queries issued per round. */
@@ -117,6 +121,7 @@ export async function curateFacts(input: CurateInput): Promise<CurateOutput> {
   const { llm, query, results, collector } = input
   const opts = {
     autoKeepOverlap: input.options?.autoKeepOverlap ?? DEFAULT_AUTO_KEEP_OVERLAP,
+    rankAutoKeep: input.options?.rankAutoKeep ?? DEFAULT_RANK_AUTO_KEEP,
     maxRounds: input.options?.maxRounds ?? DEFAULT_MAX_ROUNDS,
     maxRequeriesPerRound: input.options?.maxRequeriesPerRound ?? DEFAULT_MAX_REQUERIES,
     requeryBudget: input.options?.requeryBudget ?? DEFAULT_REQUERY_BUDGET,
@@ -138,12 +143,22 @@ export async function curateFacts(input: CurateInput): Promise<CurateOutput> {
   const queryTokens = tokenize(query)
   const incomingIds = new Set(results.map(r => r.metadata.id))
 
-  // 1. Deterministic partition: obvious keeps skip the LLM entirely.
+  // 1. Deterministic partition: top-ranked + high-overlap facts skip the LLM entirely.
   const autoKept: QueryResult[] = []
+  const autoKeptIds = new Set<string>()
+  for (const r of results.slice(0, Math.max(0, opts.rankAutoKeep))) {
+    autoKept.push(r)
+    autoKeptIds.add(r.metadata.id)
+  }
   let candidates: QueryResult[] = []
   for (const r of results) {
-    if (overlapFraction(queryTokens, factText(r)) >= opts.autoKeepOverlap) autoKept.push(r)
-    else candidates.push(r)
+    if (autoKeptIds.has(r.metadata.id)) continue
+    if (overlapFraction(queryTokens, factText(r)) >= opts.autoKeepOverlap) {
+      autoKept.push(r)
+      autoKeptIds.add(r.metadata.id)
+    } else {
+      candidates.push(r)
+    }
   }
   record.autoKept = autoKept.length
 
@@ -215,6 +230,18 @@ export async function curateFacts(input: CurateInput): Promise<CurateOutput> {
   // Stable order: original pool order for survivors, then re-discovered facts in discovery order.
   const survivors = results.filter(r => keptIds.has(r.metadata.id))
   const kept = [...survivors, ...discovered.filter(r => keptIds.has(r.metadata.id))]
+
+  // Soft floor: if the judge was too aggressive, top up from orchestrator rank order.
+  if (kept.length < opts.minKeep) {
+    for (const r of results) {
+      if (kept.length >= opts.minKeep) break
+      if (keptIds.has(r.metadata.id)) continue
+      keptIds.add(r.metadata.id)
+      kept.push(r)
+      // Remove from dropped audit if we rescued it
+      record.dropped = record.dropped.filter(d => d.id !== r.metadata.id)
+    }
+  }
 
   if (kept.length === 0) {
     record.fellBack = true

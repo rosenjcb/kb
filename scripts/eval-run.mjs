@@ -266,6 +266,7 @@ export function buildChildArgv(suite, args) {
   if (args.forceInit) argv.push('--force-init')
   if (args.skipCapture) argv.push('--skip-init')
   if (args.skipControl) argv.push('--skip-control')
+  if (args.queryTrace) argv.push('--trace')
   if (args.autoScore === false) argv.push('--manual-score')
   else argv.push('--auto-score')
   if (args.autoScoreFile) argv.push('--auto-score-file', args.autoScoreFile)
@@ -430,6 +431,7 @@ function parseArgs(argv) {
     controlPrompt: process.env.KB_CONTROL_PROMPT || DEFAULT_CONTROL_PROMPT,
     controlAgent: process.env.KB_CONTROL_AGENT || 'claude',
     controlAgentCmd: process.env.KB_CONTROL_AGENT_CMD || null,
+    queryTrace: false,
     help: false,
   }
   let i = hasLegacyMode ? 3 : 2
@@ -475,6 +477,7 @@ function parseArgs(argv) {
     else if (a === '--skip-init') out.skipCapture = true
     else if (a === '--force-init') out.forceInit = true
     else if (a === '--skip-control') out.skipControl = true
+    else if (a === '--trace') out.queryTrace = true
     else if (a === '--control-model') out.controlModel = argv[++i]
     else if (a === '--control-max-turns')
       out.controlMaxTurns = Math.max(1, Number.parseInt(argv[++i], 10) || DEFAULT_MAX_TURNS)
@@ -552,6 +555,8 @@ Output:
 
 Control baseline (runs side-by-side with kb into ONE artifact, scored by the same rubric):
   --skip-control          Do NOT run the control; emit a kb-only artifact (control data omitted)
+  --trace                 Pass kb query --trace so the server writes full retrieval dumps
+                          under ~/.kb/traces/ (needed for discovery-vs-drop audits)
   --control-agent NAME    Built-in control agent: claude (default) or cursor (Cursor Agent CLI). Env: KB_CONTROL_AGENT
   --control-model NAME    Pin the control agent model (e.g. claude-opus-4-8, composer-2.5)
   --control-max-turns N   Per-question turn ceiling — claude only (default ${DEFAULT_MAX_TURNS})
@@ -1217,7 +1222,10 @@ async function main() {
         const escaped = questions[idx].replace(/"/g, '\\"')
         const label = `query_${q}_t${t}`
         const out = await timedAsync(label, runTiming, () =>
-          kbAsync(targetCwd, `query "${escaped}" --base ${base}`)
+          kbAsync(
+            targetCwd,
+            `query "${escaped}" --base ${base}${args.queryTrace ? ' --trace' : ''}`
+          )
         )
         const durationMs = runTiming.command_durations_ms[label]
         fs.writeFileSync(path.join(workdir, `q${q}.t${t}.json`), out, 'utf8')

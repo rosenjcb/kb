@@ -41,6 +41,7 @@ After retrieval grows a broad fact pool, the curator is the relevance gate befor
 | FR-6 | Fail safe on LLM or JSON parse errors — return the original pool |
 | FR-7 | Never return an empty set after curation |
 | FR-8 | Bound the judge candidate set on large pools (cap + hard-drop the tail; bounded fail-safe) |
+| FR-9 | Rank auto-keep: preserve orchestrator top-N before the LLM judge |
 
 ### QA Test Cases
 
@@ -58,6 +59,7 @@ After retrieval grows a broad fact pool, the curator is the relevance gate befor
 | TC-10 | FR-5 | Re-discovery returns only known ids | Loop stops without spinning |
 | TC-11 | FR-8 | Pool larger than the candidate cap | Tail hard-dropped; judge sees at most the cap |
 | TC-12 | FR-8 | LLM throws on an over-cap pool | Fail-safe bounded to the cap, not the full pool |
+| TC-14 | FR-9 | Rank auto-keep enabled, judge keeps nothing | Top-N incoming facts still in keep set |
 
 ### Related docs
 

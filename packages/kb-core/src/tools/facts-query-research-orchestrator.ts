@@ -8,6 +8,16 @@ import type { FactConceptRow, FactRow, SqliteKbIndexer } from './sqlite-kb-index
 export const DEFAULT_FACT_LIMIT = 500
 /** Minimum score for remainder facts (excludes near-zero-signal tail; reserved entries bypass this). */
 const MIN_FACT_SCORE = 0.20
+/**
+ * Score at/above which a fact counts as "relevant" for plateau / LLM-judge gating.
+ * Identifier-only matches land ~0.25–0.39; the old 0.50 bar meant most walks never
+ * accumulated enough "relevant" facts → perpetual `weak_evidence_after_exhaustion`.
+ */
+export const RELEVANT_FACT_SCORE = 0.35
+/** Heuristic plateau: need this many facts at/above {@link RELEVANT_FACT_SCORE}. */
+export const PLATEAU_MIN_RELEVANT = 12
+/** When concept coverage is low, require a larger relevant pool before plateau. */
+export const PLATEAU_MIN_RELEVANT_LOW_COVERAGE = 18
 
 interface FactsLoopOptions {
   query: string
@@ -202,7 +212,8 @@ export class FactsQueryResearchOrchestrator {
           previousMetrics ??
           ({
             uniqueFacts: scoredFacts.size,
-            relevantFacts: [...scoredFacts.values()].filter(e => e.score >= 0.5).length,
+            relevantFacts: [...scoredFacts.values()].filter(e => e.score >= RELEVANT_FACT_SCORE)
+              .length,
             conceptCoverage: 0,
             avgTop: averageTopScores(scoredFacts),
             queryTokenCoverage: queryTokens.length,
@@ -253,7 +264,9 @@ export class FactsQueryResearchOrchestrator {
       const factConcepts = this.indexer.listFactConcepts(topRows.map(row => row.id))
       const conceptCoverage = computeCoverage(queryTokens, factConcepts)
       const avgTop = averageTopScores(scoredFacts)
-      const relevantFacts = [...scoredFacts.values()].filter(e => e.score >= 0.5).length
+      const relevantFacts = [...scoredFacts.values()].filter(
+        e => e.score >= RELEVANT_FACT_SCORE
+      ).length
       const metrics: LoopMetrics = {
         uniqueFacts: scoredFacts.size,
         relevantFacts,
@@ -277,7 +290,7 @@ export class FactsQueryResearchOrchestrator {
         stopReason = 'answerable_plateau'
       } else if (this.options?.judge && shouldCallJudge(iter, relevantFacts)) {
         const judgeInput = [...scoredFacts.values()]
-          .filter(e => e.score >= 0.5)
+          .filter(e => e.score >= RELEVANT_FACT_SCORE)
           .sort((a, b) => b.score - a.score)
           .slice(0, 40)
           .map(e => ({ id: e.row.id, text: e.row.fact_text }))
@@ -373,11 +386,16 @@ export class FactsQueryResearchOrchestrator {
     scoredFacts: Map<string, { row: FactRow; score: number }>
     conceptCoverage?: number
   }): SufficiencyDecision {
-    const relevantFacts = [...input.scoredFacts.values()].filter(entry => entry.score >= 0.50)
-    if (relevantFacts.length < 20) {
+    const relevantFacts = [...input.scoredFacts.values()].filter(
+      entry => entry.score >= RELEVANT_FACT_SCORE
+    )
+    if (relevantFacts.length < PLATEAU_MIN_RELEVANT) {
       return { decision: 'not_answerable_yet', reason: 'insufficient-facts' }
     }
-    if ((input.conceptCoverage ?? 0) < 0.3 && relevantFacts.length < 30) {
+    if (
+      (input.conceptCoverage ?? 0) < 0.3 &&
+      relevantFacts.length < PLATEAU_MIN_RELEVANT_LOW_COVERAGE
+    ) {
       return { decision: 'not_answerable_yet', reason: 'low-concept-coverage' }
     }
     return { decision: 'answerable', reason: 'coverage-sufficient' }
@@ -407,8 +425,9 @@ export class FactsQueryResearchOrchestrator {
       const qualityPenalty = retrievalFactPenalty(row)
 
       // Code facts: swap SHA256 semantic weight for graph proximity score.
-      // Identifier-only matches score ~0.25-0.39 (below "relevant" threshold of 0.5).
+      // Identifier-only matches score ~0.25-0.39 (below the old 0.5 "relevant" bar).
       // Facts discovered via graph traversal from a high-scoring parent score 0.55+.
+      // RELEVANT_FACT_SCORE (0.35) counts strong identifier hits as relevant for plateau/judge.
       const isCodeFact = row.source_kind === 'import_code'
       let score: number
       if (isCodeFact) {
@@ -843,7 +862,7 @@ function computeCheckpointConfidence(metrics: LoopMetrics): number {
 
 function hasMeaningfulProgress(previous: LoopMetrics | undefined, current: LoopMetrics): boolean {
   if (!previous) return true
-  // Require at least one new high-quality (score >= 0.5) fact — prevents iterating on junk
+  // Require at least one new high-quality (score >= RELEVANT_FACT_SCORE) fact — prevents iterating on junk
   if (current.relevantFacts >= previous.relevantFacts + 1) return true
   if (current.conceptCoverage >= previous.conceptCoverage + 0.08) return true
   if (current.avgTop >= previous.avgTop + 0.04) return true

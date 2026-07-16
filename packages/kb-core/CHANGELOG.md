@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.5.0
+
+### Minor Changes
+
+- Retrieval P0 for kb query: lower relevant-score bar for sufficiency plateau/judge gating; curator rank auto-keep + softer minKeep (#155–#158). Eval harness `--trace` is scripts-only (#165).
+
 ## 1.4.7
 
 ### Patch Changes
