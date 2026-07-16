@@ -1317,9 +1317,9 @@ function _sideHarvestMetrics(artifact, side) {
   }
 }
 
-function _controlCollected(artifact) {
-  const st = artifact?.control?.status
-  return st === 'complete' || st === 'complete_unscored'
+/** True when artifact control is fully answered and may overwrite N-side macros. */
+function _controlCompleteForOverwrite(artifact) {
+  return artifact?.control?.status === 'complete'
 }
 
 function _judgeLabel(artifact) {
@@ -1356,73 +1356,159 @@ function _suiteTexPrefix(suiteId) {
     .join('')
 }
 
-function _suiteTargetLabel(suiteId, artifact) {
-  const name = artifact?.repository?.name ?? suiteDisplayLabel(suiteId)
-  const commit = artifact?.repository?.commit
-  const short = commit ? commit.slice(0, 7) : 'unknown'
-  const label = suiteId === 'kb' ? '\\texttt{kb} self-check' : `\\texttt{${_texEscape(name)}}`
-  return `${label} commit \\texttt{${_texEscape(short)}}`
+function _suiteNameLabel(suiteId) {
+  if (suiteId === 'kb') return '\\texttt{kb} self-check'
+  return `\\texttt{${_texEscape(suiteDisplayLabel(suiteId))}}`
 }
 
-function _emitSuiteResults(lines, suiteId, artifact) {
+function _suiteCommitLabel(artifact) {
+  const commit = artifact?.repository?.commit
+  const short = commit ? commit.slice(0, 7) : 'unknown'
+  return `\\texttt{${_texEscape(short)}}`
+}
+
+/** @deprecated Combined label; prefer Suite + Commit macros for the paper table. */
+function _suiteTargetLabel(suiteId, artifact) {
+  return `${_suiteNameLabel(suiteId)} commit ${_suiteCommitLabel(artifact)}`
+}
+
+/** Parse `\\newcommand{\\Name}{value}` macros (brace-balanced values). */
+export function parseResultsTexMacros(content) {
+  const map = new Map()
+  if (!content) return map
+  const re = /\\newcommand\{\\([A-Za-z0-9]+)\}\{/g
+  for (let m = re.exec(content); m !== null; m = re.exec(content)) {
+    const name = m[1]
+    let i = re.lastIndex
+    let depth = 1
+    const start = i
+    while (i < content.length && depth > 0) {
+      const c = content[i++]
+      if (c === '{') depth++
+      else if (c === '}') depth--
+    }
+    map.set(name, content.slice(start, i - 1))
+  }
+  return map
+}
+
+function _readPriorResultsMacros(outPath) {
+  if (!fs.existsSync(outPath)) return new Map()
+  try {
+    return parseResultsTexMacros(fs.readFileSync(outPath, 'utf-8'))
+  } catch {
+    return new Map()
+  }
+}
+
+function _parseTexNum(s) {
+  if (s == null || s === '' || s === '---') return null
+  const n = Number(String(s).replace(/^\+/, ''))
+  return Number.isFinite(n) ? n : null
+}
+
+/** Prefer newValue; otherwise keep prior macro text; otherwise `---`. */
+function _pushMacro(lines, prior, name, newValue) {
+  if (newValue != null) {
+    lines.push(_texMacro(name, newValue))
+    return
+  }
+  if (prior?.has(name)) {
+    lines.push(_texMacro(name, prior.get(name)))
+    return
+  }
+  lines.push(_texMacro(name, '---'))
+}
+
+function _pushSideMacros(lines, prior, prefix, side, metrics) {
+  const defs = [
+    ['S', metrics ? _texNum(metrics.success) : null],
+    ['Qadeq', metrics ? _texNum(metrics.quality) : null],
+    ['Etok', metrics ? _texNum(metrics.tokenEfficiency) : null],
+    ['Espeed', metrics ? _texNum(metrics.speed) : null],
+    ['Pass', metrics ? _texNum(metrics.pass) : null],
+    ['Correctness', metrics ? _texNum(metrics.correctness, 3) : null],
+    ['Usefulness', metrics ? _texNum(metrics.usefulness, 3) : null],
+    ['Relevance', metrics ? _texNum(metrics.relevance, 3) : null],
+    ['Tokens', metrics ? _texInt(metrics.weightedTokens) : null],
+    ['DurationSec', metrics ? _texDurationSec(metrics.durationMs) : null],
+    ['Docs', metrics ? _texInt(metrics.docs) : null],
+    ['Entities', metrics ? _texInt(metrics.entities) : null],
+    ['Rels', metrics ? _texInt(metrics.relationships) : null],
+  ]
+  for (const [suffix, value] of defs) {
+    // Only overwrite when this side was actually measured; never blank prior.
+    _pushMacro(lines, prior, `${prefix}${side}${suffix}`, metrics ? value : null)
+  }
+}
+
+function _emitSuiteResults(lines, suiteId, artifact, prior) {
   const prefix = _suiteTexPrefix(suiteId)
   const k = artifact ? _sideHarvestMetrics(artifact, 'K') : null
-  const n = artifact && _controlCollected(artifact) ? _sideHarvestMetrics(artifact, 'N') : null
+  const overwriteN = Boolean(artifact && _controlCompleteForOverwrite(artifact))
+  const n = overwriteN ? _sideHarvestMetrics(artifact, 'N') : null
+
+  const kSuccess = k?.success ?? _parseTexNum(prior?.get(`${prefix}KS`))
+  const nSuccess = n?.success ?? _parseTexNum(prior?.get(`${prefix}NS`))
   const deltaS =
-    k?.success != null && n?.success != null ? k.success - n.success : null
+    kSuccess != null && nSuccess != null ? kSuccess - nSuccess : null
+  const controlCollected =
+    overwriteN || nSuccess != null || prior?.get(`${prefix}ControlCollected`) === 'yes'
+      ? 'yes'
+      : prior?.has(`${prefix}ControlCollected`)
+        ? null // preserve whatever prior said (usually "no")
+        : 'no'
 
   lines.push(`%% ── suite ${suiteId} ──`)
-  if (!artifact) {
-    lines.push(_texMacro(`${prefix}RunId`, '---'))
-    lines.push(_texMacro(`${prefix}RunDate`, 'no scored run found'))
-    lines.push(_texMacro(`${prefix}Target`, _suiteTargetLabel(suiteId, null)))
-    lines.push(_texMacro(`${prefix}ControlCollected`, 'no'))
-    lines.push(_texMacro(`${prefix}ControlAgent`, '---'))
-    lines.push(_texMacro(`${prefix}DeltaS`, '---'))
+
+  if (k) {
+    _pushMacro(
+      lines,
+      prior,
+      `${prefix}RunId`,
+      _texEscape(artifact.run?.run_name ?? artifact.run_label ?? '---')
+    )
+    _pushMacro(lines, prior, `${prefix}RunDate`, _formatRunDate(artifact.created_at))
+    _pushMacro(lines, prior, `${prefix}Suite`, _suiteNameLabel(suiteId))
+    _pushMacro(lines, prior, `${prefix}Commit`, _suiteCommitLabel(artifact))
   } else {
-    lines.push(
-      _texMacro(
-        `${prefix}RunId`,
-        _texEscape(artifact.run?.run_name ?? artifact.run_label ?? '---')
-      )
-    )
-    lines.push(_texMacro(`${prefix}RunDate`, _formatRunDate(artifact.created_at)))
-    lines.push(_texMacro(`${prefix}Target`, _suiteTargetLabel(suiteId, artifact)))
-    lines.push(
-      _texMacro(`${prefix}ControlCollected`, _controlCollected(artifact) ? 'yes' : 'no')
-    )
-    lines.push(_texMacro(`${prefix}ControlAgent`, _texEscape(_controlAgentLabel(artifact))))
-    lines.push(_texMacro(`${prefix}DeltaS`, _texSigned(deltaS)))
+    _pushMacro(lines, prior, `${prefix}RunId`, null)
+    _pushMacro(lines, prior, `${prefix}RunDate`, null)
+    _pushMacro(lines, prior, `${prefix}Suite`, null)
+    _pushMacro(lines, prior, `${prefix}Commit`, null)
   }
 
-  for (const [side, m] of [
-    ['K', k],
-    ['N', n],
-  ]) {
-    lines.push(_texMacro(`${prefix}${side}S`, _texNum(m?.success)))
-    lines.push(_texMacro(`${prefix}${side}Qadeq`, _texNum(m?.quality)))
-    lines.push(_texMacro(`${prefix}${side}Etok`, _texNum(m?.tokenEfficiency)))
-    lines.push(_texMacro(`${prefix}${side}Espeed`, _texNum(m?.speed)))
-    lines.push(_texMacro(`${prefix}${side}Pass`, _texNum(m?.pass)))
-    lines.push(_texMacro(`${prefix}${side}Correctness`, _texNum(m?.correctness, 3)))
-    lines.push(_texMacro(`${prefix}${side}Usefulness`, _texNum(m?.usefulness, 3)))
-    lines.push(_texMacro(`${prefix}${side}Relevance`, _texNum(m?.relevance, 3)))
-    lines.push(_texMacro(`${prefix}${side}Tokens`, _texInt(m?.weightedTokens)))
-    lines.push(_texMacro(`${prefix}${side}DurationSec`, _texDurationSec(m?.durationMs)))
-    lines.push(_texMacro(`${prefix}${side}Docs`, _texInt(m?.docs)))
-    lines.push(_texMacro(`${prefix}${side}Entities`, _texInt(m?.entities)))
-    lines.push(_texMacro(`${prefix}${side}Rels`, _texInt(m?.relationships)))
-  }
+  _pushMacro(
+    lines,
+    prior,
+    `${prefix}ControlCollected`,
+    overwriteN ? 'yes' : controlCollected
+  )
+  _pushMacro(
+    lines,
+    prior,
+    `${prefix}ControlAgent`,
+    overwriteN ? _texEscape(_controlAgentLabel(artifact)) : null
+  )
+  _pushMacro(lines, prior, `${prefix}DeltaS`, deltaS != null ? _texSigned(deltaS) : null)
+
+  _pushSideMacros(lines, prior, prefix, 'K', k)
+  _pushSideMacros(lines, prior, prefix, 'N', n)
   lines.push('')
 }
 
 /**
  * Regenerate research/tables/results.tex from the latest scored harvest evaluations.
+ *
+ * Merges with the existing file: K-side macros update from the latest scored kb
+ * artifact; N-side macros update only when that artifact has a *complete* control
+ * run. `--skip-control`, partial control, or missing suites never blank prior N.
  */
 export function writeResearchResultsTex(repoRoot, options = {}) {
   const suites = options.suites ?? RESEARCH_RESULT_SUITES
   const outPath =
     options.outPath ?? path.join(repoRoot, 'research', 'tables', 'results.tex')
+  const prior = _readPriorResultsMacros(outPath)
 
   const suiteArtifacts = Object.fromEntries(
     suites.map(id => [id, findLatestSuiteArtifact(id, repoRoot)])
@@ -1438,25 +1524,21 @@ export function writeResearchResultsTex(repoRoot, options = {}) {
       ? suiteArtifacts.kb
       : suiteArtifacts.raylib
 
-  const allHaveControl = suites.every(id => {
+  // Control status reflects the *merged* paper table (prior N counts), not only
+  // whether the newest artifact happened to re-run control.
+  const suitesWithN = suites.filter(id => {
     const a = suiteArtifacts[id]
-    return a && _controlCollected(a)
+    if (a && _controlCompleteForOverwrite(a)) return true
+    const prefix = _suiteTexPrefix(id)
+    return _parseTexNum(prior.get(`${prefix}NS`)) != null
   })
-  const anyHaveControl = suites.some(id => {
-    const a = suiteArtifacts[id]
-    return a && _controlCollected(a)
-  })
-
   const suiteListTex = suites.map(id => `\\texttt{${id}}`).join(', ')
   let controlStatus
-  if (allHaveControl) {
+  if (suitesWithN.length === suites.length) {
     controlStatus = `paired K-vs-N evaluations on ${suiteListTex} (\\ResultsUpdated)`
-  } else if (anyHaveControl) {
+  } else if (suitesWithN.length > 0) {
     const missing = suites
-      .filter(id => {
-        const a = suiteArtifacts[id]
-        return !a || !_controlCollected(a)
-      })
+      .filter(id => !suitesWithN.includes(id))
       .map(id => `\\texttt{${id}}`)
       .join(', ')
     controlStatus = `control side pending for ${missing}; K-side results reported (\\ResultsUpdated); see Table~\\ref{tab:harvest-results}`
@@ -1465,17 +1547,25 @@ export function writeResearchResultsTex(repoRoot, options = {}) {
       'no paired control evaluations in the latest scored runs; K-side only; see Table~\\ref{tab:harvest-results}'
   }
 
+  // Prefer prior ResultsJudge when no new scored artifact carries judge metadata.
+  const judgeLabel = judgeArtifact
+    ? _judgeLabel(judgeArtifact)
+    : prior.get('ResultsJudge')?.replace(/\\_/g, '_') || 'LLM-as-judge'
+
   const lines = [
     '% Auto-generated harvest result macros — do not edit by hand.',
     '',
-    _texMacro('ResultsUpdated', _formatRunDate(dated ?? new Date().toISOString())),
-    _texMacro('ResultsJudge', _texEscape(_judgeLabel(judgeArtifact))),
+    _texMacro(
+      'ResultsUpdated',
+      dated ? _formatRunDate(dated) : (prior.get('ResultsUpdated') ?? _formatRunDate(new Date().toISOString()))
+    ),
+    _texMacro('ResultsJudge', _texEscape(judgeLabel)),
     _texMacro('ResultsControlStatus', controlStatus),
     '',
   ]
 
   for (const suiteId of suites) {
-    _emitSuiteResults(lines, suiteId, suiteArtifacts[suiteId])
+    _emitSuiteResults(lines, suiteId, suiteArtifacts[suiteId], prior)
   }
 
   fs.mkdirSync(path.dirname(outPath), { recursive: true })

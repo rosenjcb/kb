@@ -50,4 +50,14 @@ describe('eval-server helpers', () => {
     expect(Number.isInteger(port)).toBe(true)
     expect(port).toBeGreaterThan(0)
   })
+
+  it('[TC-535] allocateFreePort yields distinct ports for concurrent callers', async () => {
+    const ports = await Promise.all([
+      allocateFreePort('127.0.0.1'),
+      allocateFreePort('127.0.0.1'),
+      allocateFreePort('127.0.0.1'),
+      allocateFreePort('127.0.0.1'),
+    ])
+    expect(new Set(ports).size).toBe(ports.length)
+  })
 })

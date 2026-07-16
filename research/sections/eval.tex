@@ -4,29 +4,36 @@
 
 \subsection{Evaluation Targets}
 
-\textbf{Raylib (external benchmark).}  We target the
-\href{https://github.com/raysan5/raylib}{raylib C library}---a mature,
-well-documented game-programming framework---as the primary \emph{external}
-benchmark: it is not the KB codebase (eliminating evaluator familiarity bias),
-has rich cross-module structure for graph retrieval, and has stable upstream
-documentation.
+Harvest evaluation uses a fixed portfolio of ten upstream repositories
+(Table~\ref{tab:harvest-results}).  Each suite is a version-pinned git snapshot
+with a curated question pack scored by the same LLM-as-judge rubric.
 
-\textbf{KB self-check.}  Suite \texttt{kb} evaluates KB against its
+\medskip
+\noindent\textbf{Raylib (external benchmark).}  The
+\href{https://github.com/raysan5/raylib}{raylib C library} is the primary
+\emph{external} target: it is not the KB codebase (eliminating evaluator familiarity
+bias), has rich cross-module structure for graph retrieval, and ships stable
+upstream documentation.  $N_{\text{q}} = 11$.
+
+\medskip
+\noindent\textbf{KB self-check.}  Suite \texttt{kb} evaluates KB against its
 own codebase---twelve architecture, workflow, and adversarial questions (including
-fact-curator and out-of-scope probes).  This smoke test
-stress-tests retrieval grounding on a repo whose structure the authors know well.
+fact-curator and out-of-scope probes).  This smoke test stress-tests retrieval
+grounding on a repo whose structure the authors know well.
 
-\textbf{Expanded portfolio.}  To stress parsers and retrieval across languages and
-architectural paradigms, we add seven production-grade suites:
-\texttt{kestra} (Java/UI orchestration — YAML flows + execute console),
+\medskip
+\noindent\textbf{Cross-language portfolio.}  Eight additional suites stress parsers,
+retrieval, and product/UI inference across languages and architectural styles:
+\texttt{fzf} (Rust CLI fuzzy finder),
+\texttt{kestra} (Java orchestration with YAML flows and execute console),
 \texttt{shellcheck} (Haskell monadic AST linting),
 \texttt{lazygit} (Go TUI),
-\texttt{datasette} (Python explore/publish UI + CLI),
-\texttt{mitmproxy} (Python async proxy / TUI),
+\texttt{datasette} (Python data-explore/publish UI and CLI),
+\texttt{mitmproxy} (Python async proxy and TUI),
 \texttt{fish-shell} (Rust systems shell), and
 \texttt{brew} (Ruby package-manager DSL).
-Latest harvest results in \S\ref{subsec:results} report K-side scores for these
-suites; paired control (N) runs are pending where marked.
+Each uses $N_{\text{q}} = 8$ multi-step questions spanning capabilities,
+architecture, installation, conventions, and gotchas.
 
 \subsection{Protocol: paired K vs N evaluation}
 
@@ -36,52 +43,71 @@ the named session and \texttt{kb scan} on subsequent runs; \texttt{--force-init}
 deletes the base and re-runs \texttt{kb init} from scratch);
 (2)~$N_{\text{q}}$ \texttt{kb query} calls (condition \textbf{K})---one-shot synthesis
 over the curator-kept fact pool (\S\ref{subsec:synthesis});
-(3)~the same questions handed to a real coding agent with no KB
-(condition \textbf{N}), when collected;
-(4)~LLM scoring ($\times 3$ averaged) on five rubric axes for both sides.
-Question counts vary by suite (e.g.\ $N_{\text{q}} = 12$ for \texttt{kb};
-expanded suites use $N_{\text{q}} = 8$ with multi-step process/UI-inference items).
+(3)~the same questions handed to a headless coding agent with no KB
+(condition \textbf{N});
+(4)~LLM scoring ($\times 3$ averaged) on the five quality axes for both sides,
+plus measured token and latency totals;
+Question counts vary by suite ($N_{\text{q}} = 12$ for \texttt{kb};
+$N_{\text{q}} = 11$ for \texttt{raylib}; $N_{\text{q}} = 8$ for the remaining
+suites).
 
-Both sides are scored under identical conditions when N is present; the headline
-grade is $\Delta S = S_K - S_N$ (Eq.~\ref{eq:delta-s}).
+Both sides are scored under identical rubric and success-score formulas; the
+headline grade is $\Delta S = S_K - S_N$ (Eq.~\ref{eq:delta-s}).
 
 \subsection{Scoring Rubric}
 
 Each suite covers questions spanning capabilities, architecture, installation,
 configuration, platform specifics, conventions, gotchas, and (for \texttt{kb})
 adversarial or out-of-scope probes---topics that
-stress different retrieval paths through the fact graph.  Answers are scored on
-five axes:
+stress different retrieval paths through the fact graph.
+Scoring has two families that both enter the harvest grade $S$
+(Eq.~\ref{eq:success}):
 
 \begin{center}\small
-\begin{tabular}{@{}lp{4.2cm}@{}}
+\begin{tabular}{@{}lp{4.0cm}@{}}
 \toprule
-\textbf{Axis} & \textbf{Criterion} \\
+\textbf{Axis} & \textbf{Criterion / measurement} \\
 \midrule
-Correctness      & Factually grounded in the repo/KB \\
-Usefulness       & Helps a developer act or understand \\
-Relevance        & Stays on the question; free of unrelated facts \\
-Specificity      & Uses concrete repo-specific details \\
+\multicolumn{2}{@{}l@{}}{\textit{LLM-judged quality (ordinal labels $0$--$4$)}} \\
+Correctness       & Factually grounded in the repo/KB \\
+Usefulness        & Helps a developer act or understand \\
+Relevance         & Stays on the question; free of unrelated facts \\
+Specificity       & Uses concrete repo-specific details \\
 Evidence Handling & Constrained to evidence; acknowledges uncertainty \\
+\addlinespace
+\multicolumn{2}{@{}l@{}}{\textit{Measured efficiency (numeric telemetry)}} \\
+Token usage       & Weighted $T$ (in$+$out; N adds $0.1\times$cache\_read) \\
+Latency           & Wall-clock duration $\tau_w$ \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \medskip
+\noindent\textbf{How axes feed $S$.}
+Correctness, usefulness, and relevance enter the adequacy term
+$Q_{\text{adeq}}$ via $\varphi_\tau$ (Eq.~\ref{eq:adequacy}).
+Token usage and latency become the efficiency terms $E_{\text{tok}}$ and
+$E_{\text{speed}}$ (Eq.~\ref{eq:success-components}).
+Specificity and evidence handling are scored and reported as diagnostics but
+do not enter $Q_{\text{adeq}}$ or $S$.
+The secondary pass rate counts questions where correctness, usefulness,
+\emph{and} relevance are all $\geq 3$.
+
+\medskip
 \noindent\textbf{Ordinal labels, not bare numbers.}  Rather than ask the LLM
 judge for ``an integer 0--4''---which invites guessing a point on an unanchored
-scale---each axis is scored by selecting one of five \emph{named ordinal labels}.
+scale---each quality axis is scored by selecting one of five \emph{named ordinal labels}.
 Correctness, for example, ranges over
 \textit{correct}~(4), \textit{mostly\_correct}~(3), \textit{mixed}~(2),
-\textit{mostly\_wrong}~(1), and \textit{no\_answer}~(0); the other axes use
+\textit{mostly\_wrong}~(1), and \textit{no\_answer}~(0); the other quality axes use
 analogous per-axis vocabularies (e.g.\ relevance:
 \textit{focused}/\textit{on\_topic}/\textit{padded}/\textit{off\_topic}/\textit{unrelated}).
 This reframes scoring as classification---``which description fits this answer?''---rather
 than magnitude estimation, which is markedly more reliable for LLM judges.  Each
 label maps deterministically to its ordinal level $s \in \{0,1,2,3,4\}$, so the
 adequacy utility (Eq.~\ref{eq:adequacy}) and every downstream metric operate on the
-same $0$--$4$ scale as before and historical runs remain comparable. Deterministic
-indicators (token usage, latency) are measured numerically and are never labeled.
+same $0$--$4$ scale as before and historical runs remain comparable.
+Token usage and latency are measured from run telemetry and are never labeled.
 
 \subsection{Success Score and Headline Verdict ($\Delta S$)}
 \label{subsec:success}
@@ -174,7 +200,7 @@ non-deterministic even at temperature~0; we average three scorer calls per quest
 \subsection{Results: harvest K vs N}
 \label{subsec:results}
 
-Table~\ref{tab:harvest-results} reports the latest paired harvest results
+Table~\ref{tab:harvest-results} reports paired harvest results
 (\ResultsUpdated{}).  \ResultsControlStatus{}.
 
 \input{tables/harvest-results}
@@ -199,45 +225,43 @@ K uses \RaylibKTokens{} weighted tokens vs.\ N's \RaylibNTokens{} ($E_{\text{tok
 \RaylibKEtok{} vs.\ \RaylibNEtok{}).
 
 \medskip
-\noindent\textbf{Expanded suites.}
-All eight expanded repositories now have both sides collected and report a full
-$\Delta S$: \texttt{fzf} ($\Delta S{=}\FzfDeltaS$, $S_K{=}\FzfKS$, pass~\FzfKPass),
-\texttt{kestra} ($\Delta S{=}\KestraDeltaS$, $S_K{=}\KestraKS$, pass~\KestraKPass),
-\texttt{shellcheck} ($\Delta S{=}\ShellcheckDeltaS$, $S_K{=}\ShellcheckKS$, pass~\ShellcheckKPass),
-\texttt{lazygit} ($\Delta S{=}\LazygitDeltaS$, $S_K{=}\LazygitKS$, pass~\LazygitKPass),
-\texttt{datasette} ($\Delta S{=}\DatasetteDeltaS$, $S_K{=}\DatasetteKS$, pass~\DatasetteKPass),
-\texttt{mitmproxy} ($\Delta S{=}\MitmproxyDeltaS$, $S_K{=}\MitmproxyKS$, pass~\MitmproxyKPass),
-\texttt{fish-shell} ($\Delta S{=}\FishShellDeltaS$, $S_K{=}\FishShellKS$, pass~\FishShellKPass),
-and \texttt{brew} ($\Delta S{=}\BrewDeltaS$, $S_K{=}\BrewKS$, pass~\BrewKPass).
-Together they exercise Rust CLI tooling, Java/UI orchestration workflows, Haskell
-AST analysis, Go/Python TUIs, Python data-explore products, Rust proxy/networking
-code, and Ruby DSL packaging---stressing language coverage and product/UI
-retrieval beyond the original kb/raylib pair. Note the control (N) baseline is
-not uniform across suites: \texttt{kb}, \texttt{raylib}, \texttt{fzf},
-\texttt{shellcheck}, \texttt{lazygit}, and \texttt{fish-shell} used Cursor Agent
+\noindent\textbf{Portfolio suites.}
+The remaining eight repositories report paired $\Delta S$ values of
+\texttt{fzf}~\FzfDeltaS, \texttt{kestra}~\KestraDeltaS,
+\texttt{shellcheck}~\ShellcheckDeltaS, \texttt{lazygit}~\LazygitDeltaS,
+\texttt{datasette}~\DatasetteDeltaS, \texttt{mitmproxy}~\MitmproxyDeltaS,
+\texttt{fish-shell}~\FishShellDeltaS, and \texttt{brew}~\BrewDeltaS{}
+($S_K$ and pass rates in Table~\ref{tab:harvest-results}).
+They span Rust CLI tooling, Java/UI orchestration, Haskell AST analysis,
+Go and Python TUIs, Python data products, proxy/networking code, and Ruby DSL
+packaging---exercising parsers, graph retrieval, and UI/product inference beyond
+monolithic C libraries.
+Control agents vary by suite: \texttt{kb}, \texttt{raylib}, \texttt{fzf},
+\texttt{shellcheck}, \texttt{lazygit}, and \texttt{fish-shell} use Cursor Agent
 (\texttt{composer-2.5}); \texttt{kestra}, \texttt{datasette}, \texttt{mitmproxy},
-and \texttt{brew} used Claude Code (\texttt{claude-sonnet-5}) after the former hit
-a provider usage cap mid-batch. Each suite's own $\Delta S$ is still a valid
-same-agent paired comparison; only cross-suite N-side comparisons should account
-for the agent difference.
+and \texttt{brew} use Claude Code (\texttt{claude-sonnet-5}).
+Each $\Delta S$ is a within-suite paired comparison; cross-suite N-side
+comparisons should treat the agent backend as a confound.
 
 \medskip
-\noindent\textbf{Quality vs.\ efficiency trade-off.}  On the paired suites the control
-agent leads on adequacy ($Q_{\text{adeq}} = 1.0$) and mean rubric scores
-(correctness/usefulness/relevance at or near 4.0), while K trails slightly on
-answer quality (e.g.\ kb self-check correctness \KbSelfCheckKCorrectness{},
-raylib \RaylibKCorrectness{}).  K nonetheless wins $\Delta S$ because the success
-score weights token economy and latency heavily ($w_T{=}0.30$, $w_V{=}0.10$):
-K's weighted token totals are an order of magnitude smaller than N's on both
-suites, and K completes the query phase faster on raylib.
+\noindent\textbf{Quality vs.\ efficiency trade-off.}  Across the portfolio the
+control agent typically leads on adequacy ($Q_{\text{adeq}}$) and mean rubric
+scores, while K trails on answer quality (e.g.\ kb self-check correctness
+\KbSelfCheckKCorrectness{}, raylib \RaylibKCorrectness{}).
+K nonetheless wins $\Delta S$ on every suite because the success score weights
+token economy and latency ($w_T{=}0.30$, $w_V{=}0.10$): K's weighted token totals
+are an order of magnitude smaller than N's, and K completes the query phase
+faster.  The adequacy gap remains the main headroom for future retrieval and
+curation work; under the fixed $S$ weights it does not overturn the efficiency
+margin.
 
 \medskip
-\noindent\textbf{Retrieval cost profile.}  Per-question telemetry from these runs
-shows the deep BFS loop and curator dominate K-side cost: thinking (retrieval +
-in-loop judges) accounts for $\approx$72--73\% of query tokens vs.\ $\approx$27--28\%
-for final synthesis; the curator drops $\approx$97\% of facts that reach it before
-synthesis (typical kept counts in the single digits to low teens).  On kb
-self-check, 6/12 questions and on raylib 5/8 questions ran the loop to exhaustion
-(mean $\approx$7.8 and 10.8 passes per question respectively) rather than exiting
-early on the sufficiency judge---so $\Delta S$ gains coexist with a retrieval loop
-that still spends most of its budget exploring rather than synthesizing.
+\noindent\textbf{Retrieval cost profile.}  Per-question telemetry from the kb
+and raylib runs shows the deep BFS loop and curator dominate K-side cost:
+thinking (retrieval + in-loop judges) accounts for $\approx$72--73\% of query
+tokens vs.\ $\approx$27--28\% for final synthesis; the curator drops
+$\approx$97\% of facts that reach it before synthesis (typical kept counts in
+the single digits to low teens).  Many questions exit only after the loop
+reaches exhaustion rather than early on the sufficiency judge---so token
+efficiency on kb self-check and raylib coexists with a retrieval path that still
+spends most of its budget exploring rather than synthesizing.

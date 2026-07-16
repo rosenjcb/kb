@@ -3,84 +3,82 @@
 \scriptsize
 \setlength{\tabcolsep}{3pt}
 \caption{Harvest evaluation results (\ResultsUpdated; \ResultsJudge{}).
-Suites: \KbSelfCheckTarget{}, \RaylibTarget{}, plus expanded portfolio
-(\texttt{fzf}, \texttt{kestra}, \texttt{shellcheck}, \texttt{lazygit}, \texttt{datasette},
-\texttt{mitmproxy}, \texttt{fish-shell}, \texttt{brew}).
-Control (N) cells are \texttt{---} when the paired agent phase has not yet run.
-Headline grade $\Delta S = S_K - S_N$ when both sides are present.}
+Ten version-pinned upstream suites; each row pair reports K (\texttt{kb query}) and
+N (headless coding agent) under identical scoring.
+Headline grade $\Delta S = S_K - S_N$.}
 \label{tab:harvest-results}
 \begin{tabular}{@{}llrrrrrrrrr@{}}
 \toprule
 \textbf{Suite} & \textbf{Side} & $S$ & $Q_{\text{adeq}}$ & $E_{\text{tok}}$ & $E_{\text{speed}}$ &
 Pass & Corr & Rel & Tokens & Time (s) \\
 \midrule
-\KbSelfCheckTarget & K (\texttt{kb query}) &
+\shortstack{\KbSelfCheckSuite\\[-2pt]{\scriptsize\KbSelfCheckCommit}} & K (\texttt{kb query}) &
 \KbSelfCheckKS & \KbSelfCheckKQadeq & \KbSelfCheckKEtok & \KbSelfCheckKEspeed &
 \KbSelfCheckKPass & \KbSelfCheckKCorrectness & \KbSelfCheckKRelevance & \KbSelfCheckKTokens & \KbSelfCheckKDurationSec \\
-\KbSelfCheckTarget & N (\KbSelfCheckControlAgent{}) &
+& N (\KbSelfCheckControlAgent{}) &
 \KbSelfCheckNS & \KbSelfCheckNQadeq & \KbSelfCheckNEtok & \KbSelfCheckNEspeed &
 \KbSelfCheckNPass & \KbSelfCheckNCorrectness & \KbSelfCheckNRelevance & \KbSelfCheckNTokens & \KbSelfCheckNDurationSec \\
 \addlinespace
-\RaylibTarget & K (\texttt{kb query}) &
+\shortstack{\RaylibSuite\\[-2pt]{\scriptsize\RaylibCommit}} & K (\texttt{kb query}) &
 \RaylibKS & \RaylibKQadeq & \RaylibKEtok & \RaylibKEspeed &
 \RaylibKPass & \RaylibKCorrectness & \RaylibKRelevance & \RaylibKTokens & \RaylibKDurationSec \\
-\RaylibTarget & N (\RaylibControlAgent{}) &
+& N (\RaylibControlAgent{}) &
 \RaylibNS & \RaylibNQadeq & \RaylibNEtok & \RaylibNEspeed &
 \RaylibNPass & \RaylibNCorrectness & \RaylibNRelevance & \RaylibNTokens & \RaylibNDurationSec \\
 \addlinespace
-\FzfTarget & K (\texttt{kb query}) &
+\shortstack{\FzfSuite\\[-2pt]{\scriptsize\FzfCommit}} & K (\texttt{kb query}) &
 \FzfKS & \FzfKQadeq & \FzfKEtok & \FzfKEspeed &
 \FzfKPass & \FzfKCorrectness & \FzfKRelevance & \FzfKTokens & \FzfKDurationSec \\
-\FzfTarget & N (\FzfControlAgent{}) &
+& N (\FzfControlAgent{}) &
 \FzfNS & \FzfNQadeq & \FzfNEtok & \FzfNEspeed &
 \FzfNPass & \FzfNCorrectness & \FzfNRelevance & \FzfNTokens & \FzfNDurationSec \\
 \addlinespace
-\KestraTarget & K (\texttt{kb query}) &
+\shortstack{\KestraSuite\\[-2pt]{\scriptsize\KestraCommit}} & K (\texttt{kb query}) &
 \KestraKS & \KestraKQadeq & \KestraKEtok & \KestraKEspeed &
 \KestraKPass & \KestraKCorrectness & \KestraKRelevance & \KestraKTokens & \KestraKDurationSec \\
-\KestraTarget & N (\KestraControlAgent{}) &
+& N (\KestraControlAgent{}) &
 \KestraNS & \KestraNQadeq & \KestraNEtok & \KestraNEspeed &
 \KestraNPass & \KestraNCorrectness & \KestraNRelevance & \KestraNTokens & \KestraNDurationSec \\
 \addlinespace
-\ShellcheckTarget & K (\texttt{kb query}) &
+\shortstack{\ShellcheckSuite\\[-2pt]{\scriptsize\ShellcheckCommit}} & K (\texttt{kb query}) &
 \ShellcheckKS & \ShellcheckKQadeq & \ShellcheckKEtok & \ShellcheckKEspeed &
 \ShellcheckKPass & \ShellcheckKCorrectness & \ShellcheckKRelevance & \ShellcheckKTokens & \ShellcheckKDurationSec \\
-\ShellcheckTarget & N (\ShellcheckControlAgent{}) &
+& N (\ShellcheckControlAgent{}) &
 \ShellcheckNS & \ShellcheckNQadeq & \ShellcheckNEtok & \ShellcheckNEspeed &
 \ShellcheckNPass & \ShellcheckNCorrectness & \ShellcheckNRelevance & \ShellcheckNTokens & \ShellcheckNDurationSec \\
 \addlinespace
-\LazygitTarget & K (\texttt{kb query}) &
+\shortstack{\LazygitSuite\\[-2pt]{\scriptsize\LazygitCommit}} & K (\texttt{kb query}) &
 \LazygitKS & \LazygitKQadeq & \LazygitKEtok & \LazygitKEspeed &
 \LazygitKPass & \LazygitKCorrectness & \LazygitKRelevance & \LazygitKTokens & \LazygitKDurationSec \\
-\LazygitTarget & N (\LazygitControlAgent{}) &
+& N (\LazygitControlAgent{}) &
 \LazygitNS & \LazygitNQadeq & \LazygitNEtok & \LazygitNEspeed &
 \LazygitNPass & \LazygitNCorrectness & \LazygitNRelevance & \LazygitNTokens & \LazygitNDurationSec \\
 \addlinespace
-\DatasetteTarget & K (\texttt{kb query}) &
+\shortstack{\DatasetteSuite\\[-2pt]{\scriptsize\DatasetteCommit}} & K (\texttt{kb query}) &
 \DatasetteKS & \DatasetteKQadeq & \DatasetteKEtok & \DatasetteKEspeed &
 \DatasetteKPass & \DatasetteKCorrectness & \DatasetteKRelevance & \DatasetteKTokens & \DatasetteKDurationSec \\
-\DatasetteTarget & N (\DatasetteControlAgent{}) &
+& N (\DatasetteControlAgent{}) &
 \DatasetteNS & \DatasetteNQadeq & \DatasetteNEtok & \DatasetteNEspeed &
 \DatasetteNPass & \DatasetteNCorrectness & \DatasetteNRelevance & \DatasetteNTokens & \DatasetteNDurationSec \\
 \addlinespace
-\MitmproxyTarget & K (\texttt{kb query}) &
+\shortstack{\MitmproxySuite\\[-2pt]{\scriptsize\MitmproxyCommit}} & K (\texttt{kb query}) &
 \MitmproxyKS & \MitmproxyKQadeq & \MitmproxyKEtok & \MitmproxyKEspeed &
 \MitmproxyKPass & \MitmproxyKCorrectness & \MitmproxyKRelevance & \MitmproxyKTokens & \MitmproxyKDurationSec \\
-\MitmproxyTarget & N (\MitmproxyControlAgent{}) &
+& N (\MitmproxyControlAgent{}) &
 \MitmproxyNS & \MitmproxyNQadeq & \MitmproxyNEtok & \MitmproxyNEspeed &
 \MitmproxyNPass & \MitmproxyNCorrectness & \MitmproxyNRelevance & \MitmproxyNTokens & \MitmproxyNDurationSec \\
 \addlinespace
-\FishShellTarget & K (\texttt{kb query}) &
+\shortstack{\FishShellSuite\\[-2pt]{\scriptsize\FishShellCommit}} & K (\texttt{kb query}) &
 \FishShellKS & \FishShellKQadeq & \FishShellKEtok & \FishShellKEspeed &
 \FishShellKPass & \FishShellKCorrectness & \FishShellKRelevance & \FishShellKTokens & \FishShellKDurationSec \\
-\FishShellTarget & N (\FishShellControlAgent{}) &
+& N (\FishShellControlAgent{}) &
 \FishShellNS & \FishShellNQadeq & \FishShellNEtok & \FishShellNEspeed &
 \FishShellNPass & \FishShellNCorrectness & \FishShellNRelevance & \FishShellNTokens & \FishShellNDurationSec \\
 \addlinespace
-\BrewTarget & K (\texttt{kb query}) &
+\shortstack{\BrewSuite\\[-2pt]{\scriptsize\BrewCommit}} & K (\texttt{kb query}) &
 \BrewKS & \BrewKQadeq & \BrewKEtok & \BrewKEspeed &
 \BrewKPass & \BrewKCorrectness & \BrewKRelevance & \BrewKTokens & \BrewKDurationSec \\
-\BrewTarget & N (\BrewControlAgent{}) &
+& N (\BrewControlAgent{}) &
 \BrewNS & \BrewNQadeq & \BrewNEtok & \BrewNEspeed &
 \BrewNPass & \BrewNCorrectness & \BrewNRelevance & \BrewNTokens & \BrewNDurationSec \\
 \bottomrule

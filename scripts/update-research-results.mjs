@@ -2,6 +2,10 @@
 /**
  * Regenerate research/tables/results.tex from the latest scored harvest artifacts.
  *
+ * Merges with the existing file: updates K-side macros from newest scored kb
+ * runs; updates N-side only when that run's control status is `complete`.
+ * `--skip-control` / partial control never blanks prior N values.
+ *
  *   pnpm run research:results
  *
  * Also invoked automatically at the end of `pnpm run eval`.

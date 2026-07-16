@@ -49,6 +49,7 @@ import {
   resolveParallelism,
   assertMultiSuiteArgsOk,
   buildChildArgv,
+  buildMultiSuiteChildEnv,
 } from '../scripts/eval-run.mjs'
 
 describe('sanitizeSlugPart', () => {
@@ -612,11 +613,22 @@ describe('conditionSideLabel', () => {
 })
 
 describe('writeResearchResultsTex', () => {
+  function seedSuiteYaml(repoRoot: string, suiteId: string) {
+    fs.mkdirSync(path.join(repoRoot, 'eval', 'suites'), { recursive: true })
+    fs.writeFileSync(
+      path.join(repoRoot, 'eval', 'suites', `${suiteId}.yaml`),
+      `id: ${suiteId}\ndisplay_name: ${suiteId}\nrepo_url: https://example.com/${suiteId}.git\nrubric_focus: ${suiteId}\nquestions:\n${Array.from({ length: 8 }, (_, i) => `- q${i + 1}`).join('\n')}`
+    )
+  }
+
+  function writeArtifact(home: string, runName: string, artifact: object) {
+    const runDir = path.join(home, '.kb', 'evaluations', runName)
+    fs.mkdirSync(runDir, { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'artifact.json'), JSON.stringify(artifact))
+  }
+
   it('[TC-224] writes LaTeX macros from scored artifacts', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-results-'))
-    const evalRoot = path.join(tmp, '.kb', 'evaluations')
-    const runDir = path.join(evalRoot, 'raylib-test-run')
-    fs.mkdirSync(runDir, { recursive: true })
     const artifact = {
       schema_version: 2,
       status: 'complete',
@@ -671,15 +683,11 @@ describe('writeResearchResultsTex', () => {
         },
       },
     }
-    fs.writeFileSync(path.join(runDir, 'artifact.json'), JSON.stringify(artifact))
+    writeArtifact(tmp, 'raylib-test-run', artifact)
 
     const repoRoot = path.join(tmp, 'repo')
     fs.mkdirSync(path.join(repoRoot, 'research', 'tables'), { recursive: true })
-    fs.mkdirSync(path.join(repoRoot, 'eval', 'suites'), { recursive: true })
-    fs.writeFileSync(
-      path.join(repoRoot, 'eval', 'suites', 'raylib.yaml'),
-      `id: raylib\ndisplay_name: raylib\nrepo_url: https://github.com/raysan5/raylib.git\nrubric_focus: raylib\nquestions:\n${Array.from({ length: 8 }, (_, i) => `- q${i + 1}`).join('\n')}`
-    )
+    seedSuiteYaml(repoRoot, 'raylib')
 
     const prevHome = process.env.HOME
     process.env.HOME = tmp
@@ -690,6 +698,128 @@ describe('writeResearchResultsTex', () => {
       expect(tex).toContain('\\newcommand{\\RaylibDeltaS}{-0.050}')
       expect(tex).toContain('\\newcommand{\\RaylibKS}{0.700}')
       expect(tex).toContain('\\newcommand{\\RaylibNS}{0.750}')
+    } finally {
+      process.env.HOME = prevHome
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('[TC-225] preserves prior N macros when latest run skips or partially completes control', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-results-merge-'))
+    const repoRoot = path.join(tmp, 'repo')
+    const outPath = path.join(repoRoot, 'research', 'tables', 'results.tex')
+    fs.mkdirSync(path.dirname(outPath), { recursive: true })
+    seedSuiteYaml(repoRoot, 'raylib')
+
+    // Prior paper row: complete K+N from an older control agent.
+    fs.writeFileSync(
+      outPath,
+      [
+        '% Auto-generated harvest result macros — do not edit by hand.',
+        '',
+        '\\newcommand{\\ResultsUpdated}{July 11, 2026}',
+        '\\newcommand{\\ResultsJudge}{LLM-as-judge}',
+        '\\newcommand{\\ResultsControlStatus}{paired}',
+        '',
+        '%% ── suite raylib ──',
+        '\\newcommand{\\RaylibRunId}{raylib-old}',
+        '\\newcommand{\\RaylibRunDate}{July 11, 2026}',
+        '\\newcommand{\\RaylibSuite}{\\texttt{raylib}}',
+        '\\newcommand{\\RaylibCommit}{\\texttt{aaaaaaa}}',
+        '\\newcommand{\\RaylibControlCollected}{yes}',
+        '\\newcommand{\\RaylibControlAgent}{Headless agent: cursor-agent (composer-2.5)}',
+        '\\newcommand{\\RaylibDeltaS}{+0.100}',
+        '\\newcommand{\\RaylibKS}{0.800}',
+        '\\newcommand{\\RaylibKQadeq}{0.700}',
+        '\\newcommand{\\RaylibKEtok}{0.900}',
+        '\\newcommand{\\RaylibKEspeed}{0.600}',
+        '\\newcommand{\\RaylibKPass}{0.500}',
+        '\\newcommand{\\RaylibKCorrectness}{3.000}',
+        '\\newcommand{\\RaylibKUsefulness}{3.000}',
+        '\\newcommand{\\RaylibKRelevance}{3.000}',
+        '\\newcommand{\\RaylibKTokens}{10{,}000}',
+        '\\newcommand{\\RaylibKDurationSec}{100}',
+        '\\newcommand{\\RaylibKDocs}{1}',
+        '\\newcommand{\\RaylibKEntities}{2}',
+        '\\newcommand{\\RaylibKRels}{3}',
+        '\\newcommand{\\RaylibNS}{0.700}',
+        '\\newcommand{\\RaylibNQadeq}{1.000}',
+        '\\newcommand{\\RaylibNEtok}{0.200}',
+        '\\newcommand{\\RaylibNEspeed}{0.000}',
+        '\\newcommand{\\RaylibNPass}{1.000}',
+        '\\newcommand{\\RaylibNCorrectness}{4.000}',
+        '\\newcommand{\\RaylibNUsefulness}{4.000}',
+        '\\newcommand{\\RaylibNRelevance}{4.000}',
+        '\\newcommand{\\RaylibNTokens}{800{,}000}',
+        '\\newcommand{\\RaylibNDurationSec}{900}',
+        '\\newcommand{\\RaylibNDocs}{---}',
+        '\\newcommand{\\RaylibNEntities}{---}',
+        '\\newcommand{\\RaylibNRels}{---}',
+        '',
+      ].join('\n')
+    )
+
+    // Newest harvest: refreshed K scores, control only partial (must not overwrite N).
+    writeArtifact(tmp, 'raylib-new-k', {
+      schema_version: 2,
+      status: 'complete',
+      created_at: '2026-07-15T12:00:00.000Z',
+      run_label: 'raylib-new-k',
+      repository: { name: 'raylib', commit: 'bbbbbbb1234567890' },
+      run: { suite: 'raylib', init_result: { written_docs: 0, graph_summary: { entities: 9, relationships: 8 } } },
+      query_scoring: { mode: 'llm_judge_avg_3', provider: 'gemini', model: 'gemini-2.5-flash' },
+      aggregate_scores: {
+        query: {
+          success_score: 0.65,
+          quality_score: 0.48,
+          token_efficiency: 0.98,
+          speed_score: 0.66,
+          mean_correctness: 1.2,
+          mean_usefulness: 1.1,
+          mean_relevance: 2.8,
+          pass_rate_correctness_and_usefulness_at_least_3: 0.09,
+        },
+      },
+      kb_query_telemetry: {
+        total_input_tokens: 10000,
+        total_output_tokens: 1000,
+        total_duration_ms: 50000,
+      },
+      control: {
+        status: 'partial',
+        agent: { name: 'claude-code', model: 'claude-sonnet-5' },
+        aggregate_scores: {
+          query: {
+            success_score: 0.1,
+            quality_score: 0.1,
+            token_efficiency: 0.9,
+            speed_score: 0.5,
+            mean_correctness: 0.5,
+            mean_usefulness: 0.5,
+            mean_relevance: 0.5,
+            pass_rate_correctness_and_usefulness_at_least_3: 0,
+          },
+        },
+        control_telemetry: { total_weighted_tokens: 1, total_duration_ms: 1 },
+      },
+    })
+
+    const prevHome = process.env.HOME
+    process.env.HOME = tmp
+    try {
+      writeResearchResultsTex(repoRoot, { suites: ['raylib'], outPath })
+      const tex = fs.readFileSync(outPath, 'utf8')
+      expect(tex).toContain('\\newcommand{\\RaylibRunId}{raylib-new-k}')
+      expect(tex).toContain('\\newcommand{\\RaylibKS}{0.650}')
+      // Prior complete N preserved; partial control must not replace it.
+      expect(tex).toContain('\\newcommand{\\RaylibNS}{0.700}')
+      expect(tex).toContain('\\newcommand{\\RaylibNTokens}{800{,}000}')
+      expect(tex).toContain(
+        '\\newcommand{\\RaylibControlAgent}{Headless agent: cursor-agent (composer-2.5)}'
+      )
+      // ΔS recomputed from new K − preserved N: 0.650 − 0.700 = −0.050
+      expect(tex).toContain('\\newcommand{\\RaylibDeltaS}{-0.050}')
+      expect(tex).toContain('\\newcommand{\\RaylibControlCollected}{yes}')
     } finally {
       process.env.HOME = prevHome
       fs.rmSync(tmp, { recursive: true, force: true })
@@ -862,5 +992,20 @@ describe('multi-suite parallel batch', () => {
     expect(argv).not.toContain('--all-suites')
     expect(argv).not.toContain('--parallel')
     expect(argv).not.toContain('--sequential')
+  })
+
+  it('buildMultiSuiteChildEnv strips shared server attach/port pins', () => {
+    const env = buildMultiSuiteChildEnv({
+      PATH: '/usr/bin',
+      KB_EVAL_SERVER_URL: 'http://127.0.0.1:38117',
+      KB_EVAL_ATTACH_URL: 'http://127.0.0.1:38117',
+      KB_EVAL_SERVER_PORT: '38117',
+      GEMINI_API_KEY: 'x',
+    })
+    expect(env.PATH).toBe('/usr/bin')
+    expect(env.GEMINI_API_KEY).toBe('x')
+    expect(env.KB_EVAL_SERVER_URL).toBeUndefined()
+    expect(env.KB_EVAL_ATTACH_URL).toBeUndefined()
+    expect(env.KB_EVAL_SERVER_PORT).toBeUndefined()
   })
 })
