@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.5.0
+
+### Minor Changes
+
+- Retrieval-time type checklists: reuse doc-questionnaires in sufficiency, query expand, and chat decompose (#151).
+
 ## 1.4.7
 
 ### Patch Changes

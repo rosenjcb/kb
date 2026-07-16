@@ -1,6 +1,7 @@
 import type { RunCollector } from '../core/telemetry'
 import { estimateCost } from '../core/telemetry'
 import type { LLMProvider } from '../core/types'
+import { retrievalChecklistPromptBlock } from '../query/retrieval-checklists.js'
 
 /** Minimum relevant facts (score >= 0.5) before calling the judge. */
 const JUDGE_MIN_RELEVANT_FACTS = 5
@@ -29,6 +30,8 @@ export function makeSufficiencyJudge(
       .map((f, i) => `${i + 1}. ${f.text.slice(0, JUDGE_MAX_CHARS_PER_FACT).replace(/\n/g, ' ')}`)
       .join('\n')
 
+    const { promptBlock: checklistBlock } = retrievalChecklistPromptBlock(query)
+
     const startMs = Date.now()
     const startedAt = new Date().toISOString()
     try {
@@ -39,7 +42,10 @@ export function makeSufficiencyJudge(
             content: [
               `Query: ${query}`,
               '',
+              checklistBlock,
+              '',
               'Do the facts below contain enough information to give a complete, accurate answer to the query?',
+              'Mark ANSWERABLE only when the facts cover the checklist dimensions that matter for this question (ignore irrelevant checklist keys).',
               'Reply with exactly one word: ANSWERABLE or INSUFFICIENT',
               '',
               factLines,

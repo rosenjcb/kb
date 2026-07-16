@@ -95,6 +95,11 @@ Three stopping criteria, checked in this order each iteration:
 
 The judge requires an `LLMProvider` to be wired into `FactsDocumentReader` (via `createKBToolsRegistry(..., { taskProvider: llm })`). When no LLM is available, only the heuristic and plateau checks apply.
 
+Before calling the LLM, the sufficiency judge classifies the question to a `DocType` and
+injects the matching **retrieval checklist** from `doc-questionnaires/` (see
+`src/query/RETRIEVAL_CHECKLISTS.md`) so early-exit requires coverage of the dimensions that
+matter for that answer type — not a generic “enough facts” vibe.
+
 ## Answer enrichment
 
 After retrieval, ranked facts are turned into prose via **`formatRetrievedFactsForLLM()`** (`src/core/retrieval-context.ts`) with `maxContentChars: 2000` per fact.

@@ -1,5 +1,16 @@
 # @kb/client
 
+## 1.4.0
+
+### Minor Changes
+
+- Retrieval-time type checklists: reuse doc-questionnaires in sufficiency, query expand, and chat decompose (#151).
+
+### Patch Changes
+
+- Updated dependencies
+  - @kb/core@1.5.0
+
 ## 1.3.4
 
 ### Patch Changes

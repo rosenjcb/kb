@@ -1,5 +1,6 @@
 import type { LLMProvider } from '../core/types'
 import { loadPrompt } from '../prompts/loader'
+import { retrievalChecklistPromptBlock } from '../query/retrieval-checklists.js'
 
 const EXPANSION_STOP_WORDS = new Set([
   'what',
@@ -49,9 +50,15 @@ export function shouldExpandQuery(query: string): boolean {
 /** LLM: rewrite a generic query into up to 4 targeted sub-query strings. */
 export async function expandQuery(llm: LLMProvider, query: string): Promise<string[]> {
   const systemPrompt = loadPrompt('query-expand.md')
+  const { promptBlock: checklistBlock } = retrievalChecklistPromptBlock(query)
   const res = await llm.call({
     systemPrompt,
-    messages: [{ role: 'user', content: `Query: ${query.trim()}` }],
+    messages: [
+      {
+        role: 'user',
+        content: [`Query: ${query.trim()}`, '', checklistBlock].join('\n'),
+      },
+    ],
     maxTokens: 256,
     temperature: 0,
   })

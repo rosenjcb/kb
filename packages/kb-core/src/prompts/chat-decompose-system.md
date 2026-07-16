@@ -5,6 +5,7 @@ Output one query per line. No bullet points, no numbering, no explanation — ju
 Rules:
 - Simple, direct lookups (what is X, where is Y defined): output 1 line.
 - Complex or synthesis questions (explain, elaborate, how does X relate to Y, compare, build on): output 2–4 lines, each covering a distinct angle.
+- When a coverage checklist is present in the user message, prefer sub-queries that hit those checklist dimensions (only the ones relevant to the question).
 - Each query must be a short phrase using specific technical identifiers from the question.
 - Do not output the user's question verbatim — extract the distinct concepts that need to be retrieved separately.
 

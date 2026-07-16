@@ -19,6 +19,7 @@ import {
   type ReadDocumentsResult,
 } from '@kb/core/query/chat-synthesis.js'
 import { executeChatQueryTruthRetrieval } from '@kb/core/query/chat-query-orchestrator.js'
+import { retrievalChecklistPromptBlock } from '@kb/core/query/retrieval-checklists.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
 import type { SlashInputContext } from '../tui/slash-command-registry.js'
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
@@ -556,8 +557,9 @@ async function decomposeQueryForRetrieval(
 ): Promise<string[]> {
   if (input.length < 40 || !SYNTHESIS_QUERY_RE.test(input)) return [input]
   try {
+    const { promptBlock: checklistBlock } = retrievalChecklistPromptBlock(input)
     const response = await llmProvider.call({
-      messages: [{ role: 'user', content: input }],
+      messages: [{ role: 'user', content: [input, '', checklistBlock].join('\n') }],
       systemPrompt: CHAT_DECOMPOSE_SYSTEM_PROMPT,
       temperature: 0,
       maxTokens: 150,

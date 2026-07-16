@@ -38,9 +38,11 @@ flowchart TD
 
 1. **Decompose pre-step** — for synthesis/elaboration queries (≥40 chars matching
    `SYNTHESIS_QUERY_RE`), a lightweight LLM call (`chat-decompose-system.md`) splits the
-   query into 2–4 targeted sub-queries. All run in parallel via `Promise.all` and are
-   injected as a synthetic assistant+user message pair before the main loop, giving the LLM
-   grounded context from multiple angles before it starts reasoning.
+   query into 2–4 targeted sub-queries. The user message includes a **retrieval checklist**
+   for the inferred answer type (`src/query/RETRIEVAL_CHECKLISTS.md`) so sub-queries cover
+   howto/reference/decision/runbook dimensions when relevant. All run in parallel via
+   `Promise.all` and are injected as a synthetic assistant+user message pair before the main
+   loop, giving the LLM grounded context from multiple angles before it starts reasoning.
 
 2. **Agentic while loop** — replaces the old fixed `MAX_CHAT_TOOL_ROUNDS`. Runs until the
    LLM returns no `tool_use` blocks OR `MAX_CHAT_TURNS` (12) is hit. Each round calls the

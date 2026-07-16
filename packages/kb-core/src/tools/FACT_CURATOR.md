@@ -84,6 +84,7 @@ passed in, so it carries no DB or network handle of its own.
 
 - `../core/QUERY_INTERNALS.md` — full deep-retrieval path and where the curator sits
 - `./facts-query-research-orchestrator.ts` — the island pool the curator consumes
-- `./facts-sufficiency-judge.ts` — the in-loop early-exit judge (a separate concern)
+- `./facts-sufficiency-judge.ts` — the in-loop early-exit judge (a separate concern; injects retrieval-time type checklists from `doc-questionnaires/`)
+- `../query/RETRIEVAL_CHECKLISTS.md` — type checklists live in doc-questionnaires (not here); used at plan/judge time
 - `../EVALUATION.md` — relevance rubric axis and `curation_summary` in harvest artifacts
 - `../core/CHAT.md` — chat synthesis pipeline
