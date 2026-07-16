@@ -71,6 +71,19 @@ export interface QueryRetrievalTrace {
   }>
   /** Post-retrieval curator audit, when curation ran. */
   curation?: QueryCurationTrace
+  /** Post-draft contradiction search (#146), when the stage ran. */
+  contradiction?: {
+    ran: boolean
+    found: boolean
+    used: boolean
+    hitCount?: number
+    queries?: string[]
+    factIds?: string[]
+    supportCount?: number
+    contradictCount?: number
+    confidenceBefore?: number
+    confidenceAfter?: number
+  }
 }
 
 export interface RunReport {
@@ -245,6 +258,18 @@ export function summarizeQueryRetrievalTrace(retrieval: {
     rounds?: number
     sufficient?: boolean
   }
+  contradiction?: {
+    ran?: boolean
+    found?: boolean
+    used?: boolean
+    hitCount?: number
+    queries?: string[]
+    factIds?: string[]
+    supportCount?: number
+    contradictCount?: number
+    confidenceBefore?: number
+    confidenceAfter?: number
+  }
 }): QueryRetrievalTrace {
   const detail = typeof retrieval.detail === 'string' ? retrieval.detail : ''
   const num = (re: RegExp): number | undefined => {
@@ -252,13 +277,15 @@ export function summarizeQueryRetrievalTrace(retrieval: {
     return m ? Number(m[1]) : undefined
   }
   const stopMatch = /(?:^|;)stop:([^;]+)/.exec(detail)
-  const curatedMatch =
-    /curated:kept=(\d+),dropped=(\d+),requeried=(\d+),rounds=(\d+)/.exec(detail)
+  const curatedMatch = /curated:kept=(\d+),dropped=(\d+),requeried=(\d+),rounds=(\d+)/.exec(detail)
 
   const traceDetail = typeof retrieval.traceDetail === 'string' ? retrieval.traceDetail : ''
   const traceSegment = /(?:^|;)trace:(.+)$/.exec(traceDetail)
   const hops = traceSegment
-    ? traceSegment[1].split('|').map(s => s.trim()).filter(Boolean)
+    ? traceSegment[1]
+        .split('|')
+        .map(s => s.trim())
+        .filter(Boolean)
     : []
 
   const rawCuration = retrieval.curation
@@ -295,6 +322,45 @@ export function summarizeQueryRetrievalTrace(retrieval: {
     }
   }
 
+  const rawContradiction = retrieval.contradiction
+  const contradiction =
+    rawContradiction && typeof rawContradiction.ran === 'boolean'
+      ? {
+          ran: rawContradiction.ran,
+          found: rawContradiction.found === true,
+          used: rawContradiction.used === true,
+          ...(typeof rawContradiction.hitCount === 'number'
+            ? { hitCount: rawContradiction.hitCount }
+            : {}),
+          ...(Array.isArray(rawContradiction.queries)
+            ? {
+                queries: rawContradiction.queries.filter(
+                  (q): q is string => typeof q === 'string' && q.length > 0
+                ),
+              }
+            : {}),
+          ...(Array.isArray(rawContradiction.factIds)
+            ? {
+                factIds: rawContradiction.factIds.filter(
+                  (id): id is string => typeof id === 'string' && id.length > 0
+                ),
+              }
+            : {}),
+          ...(typeof rawContradiction.supportCount === 'number'
+            ? { supportCount: rawContradiction.supportCount }
+            : {}),
+          ...(typeof rawContradiction.contradictCount === 'number'
+            ? { contradictCount: rawContradiction.contradictCount }
+            : {}),
+          ...(typeof rawContradiction.confidenceBefore === 'number'
+            ? { confidenceBefore: rawContradiction.confidenceBefore }
+            : {}),
+          ...(typeof rawContradiction.confidenceAfter === 'number'
+            ? { confidenceAfter: rawContradiction.confidenceAfter }
+            : {}),
+        }
+      : undefined
+
   return {
     ...(retrieval.method ? { method: retrieval.method } : {}),
     ...(num(/(?:^|;)passes:(\d+)/) !== undefined ? { passes: num(/(?:^|;)passes:(\d+)/) } : {}),
@@ -311,6 +377,7 @@ export function summarizeQueryRetrievalTrace(retrieval: {
       ? { checkpoints: retrieval.checkpoints }
       : {}),
     ...(curation ? { curation } : {}),
+    ...(contradiction ? { contradiction } : {}),
   }
 }
 

@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.5.0
+
+### Minor Changes
+
+- Add post-draft contradiction search on the live query path: extract claims, shallow adversarial retrieval, filter true contradictions, optionally revise the answer, and record found/used telemetry. Extend FR-24 answer confidence with support vs contradict evidence counts (`base * support / (support + contradict)`).
+
 ## 1.4.7
 
 ### Patch Changes

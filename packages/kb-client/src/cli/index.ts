@@ -4,49 +4,9 @@
  * KB Agent Harness CLI
  */
 
-
-import chalk from 'chalk'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
-import {
-  ReportWriter,
-  RunCollector,
-  TokenCountingProvider,
-  defaultLogsDir,
-  estimateCost,
-  summarizeQueryRetrievalTrace,
-} from '@kb/core/core/telemetry.js'
 import { DatabaseSync } from 'node:sqlite'
-import { expandQueryWithGraph, kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
-import { formatGraphRelationBlockFromQuestion } from '@kb/core/tools/graph-relation-context.js'
-import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
-import { CLIENT_VERSION } from '../version.js'
-import { isEnvTrue } from '@kb/core/config/env-boolean.js'
-import { createPrinter, createReasoningProgressSink } from '../ui/printer'
-import {
-  deleteBase,
-  ensureOperationalBaseDir,
-  findKbFile,
-  formatDefaultCommandHelp,
-  formatDeleteBaseResult,
-  formatUseCommandHelp,
-  listAllBases,
-  migrateLegacyKbSessionJson,
-  printBaseDeleteHelp,
-  readBaseConfig,
-  resolveBaseToDir,
-  resolveEffectiveBaseDir,
-  resolveKbStorageDirFromArgs,
-  stripCliFlagWithValue,
-  writeDefaultBase,
-  writeSessionBase,
-} from '@kb/core/storage/base-selection.js'
-import {
-  CLI_ERROR_NO_KB_BASE,
-  formatPrerequisiteError,
-  uninitializedBaseNotice,
-} from '@kb/core/config/cli-prerequisites.js'
-import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from '@kb/core/config/cmd-ref.js'
 import {
   DocsDeleteError,
   parseDocsDeleteCommand,
@@ -74,21 +34,22 @@ import {
   printGraphHelp,
   runGraphCommand,
 } from '@kb/core/cli/graph-cli.js'
+import { printLogsHelp, runLogsCommand } from '@kb/core/cli/logs-cli.js'
+import { parsePublishCommand, runPublishCommand } from '@kb/core/cli/publish-cli.js'
 import {
-  isIntentCommand,
-  isReadFactsResult,
-  parseIntentCommand,
-  printIntentHelp,
-  printIntentResult,
-  enrichReadDocumentsAnswerWithLLM,
-  getIntentQuestion,
-  rewriteIntentInputWithSessionContext,
-  type ReadDocumentsResultData,
-} from '@kb/core/query/intent-cli.js'
+  ViewCommandError,
+  printListHelp,
+  printViewHelp,
+  runListCommand,
+  runViewCommand,
+} from '@kb/core/cli/view-cli.js'
 import {
-  llmExtractQueryEntities,
-  rerankByGraphConnectivity,
-} from '@kb/core/tools/graph-rag-reranker.js'
+  CLI_ERROR_NO_KB_BASE,
+  formatPrerequisiteError,
+  uninitializedBaseNotice,
+} from '@kb/core/config/cli-prerequisites.js'
+import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from '@kb/core/config/cmd-ref.js'
+import { isEnvTrue } from '@kb/core/config/env-boolean.js'
 import {
   applyConfigToEnv,
   createLLMProviderFromConfig,
@@ -99,9 +60,74 @@ import {
   resolveFactRetrievalMethod,
 } from '@kb/core/config/kb-config.js'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
-import { printLogsHelp, runLogsCommand } from '@kb/core/cli/logs-cli.js'
-import { parsePublishCommand, runPublishCommand } from '@kb/core/cli/publish-cli.js'
+import {
+  ReportWriter,
+  RunCollector,
+  TokenCountingProvider,
+  defaultLogsDir,
+  estimateCost,
+  summarizeQueryRetrievalTrace,
+} from '@kb/core/core/telemetry.js'
+import { runContradictionSearch } from '@kb/core/query/contradiction-search.js'
+import {
+  type ReadDocumentsResultData,
+  enrichReadDocumentsAnswerWithLLM,
+  getIntentQuestion,
+  isIntentCommand,
+  isReadFactsResult,
+  parseIntentCommand,
+  printIntentHelp,
+  printIntentResult,
+  rewriteIntentInputWithSessionContext,
+} from '@kb/core/query/intent-cli.js'
 import { runQueryTruthRetrieval } from '@kb/core/query/query-truth-retrieval.js'
+import {
+  deleteBase,
+  ensureOperationalBaseDir,
+  findKbFile,
+  formatDefaultCommandHelp,
+  formatDeleteBaseResult,
+  formatUseCommandHelp,
+  listAllBases,
+  migrateLegacyKbSessionJson,
+  printBaseDeleteHelp,
+  readBaseConfig,
+  resolveBaseToDir,
+  resolveEffectiveBaseDir,
+  resolveKbStorageDirFromArgs,
+  stripCliFlagWithValue,
+  writeDefaultBase,
+  writeSessionBase,
+} from '@kb/core/storage/base-selection.js'
+import { expandQueryWithGraph, kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
+import {
+  llmExtractQueryEntities,
+  rerankByGraphConnectivity,
+} from '@kb/core/tools/graph-rag-reranker.js'
+import { formatGraphRelationBlockFromQuestion } from '@kb/core/tools/graph-relation-context.js'
+import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
+import chalk from 'chalk'
+import { applyHostCliOverride, parseGlobalCliFlags } from '../api/cli-global-flags.js'
+import {
+  formatMcpStatusReport,
+  formatMcpSyncReport,
+  readKbMcpStatus,
+  syncKbMcpConfigs,
+  uninstallKbMcpConfigs,
+} from '../api/mcp-config-sync.js'
+import {
+  formatConnectionContext,
+  formatServerAddress,
+  resolveReportHost,
+  resolveServerConnection,
+} from '../api/server-connection.js'
+import { createPrinter, createReasoningProgressSink } from '../ui/printer'
+import { CLIENT_VERSION } from '../version.js'
+import {
+  isClientLocalCommand,
+  runRemoteCliCommand,
+  shouldUseRemoteServer,
+} from './remote-commands.js'
 import {
   formatSkillInstallReport,
   formatSkillUninstallReport,
@@ -114,28 +140,7 @@ import {
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
-import {
-  isClientLocalCommand,
-  runRemoteCliCommand,
-  shouldUseRemoteServer,
-} from './remote-commands.js'
-import { resolveReportHost, resolveServerConnection, formatServerAddress, formatConnectionContext } from '../api/server-connection.js'
-import { applyHostCliOverride, parseGlobalCliFlags } from '../api/cli-global-flags.js'
-import {
-  formatMcpStatusReport,
-  formatMcpSyncReport,
-  readKbMcpStatus,
-  syncKbMcpConfigs,
-  uninstallKbMcpConfigs,
-} from '../api/mcp-config-sync.js'
 import { runUninstallCommand } from './uninstall-cli'
-import {
-  ViewCommandError,
-  printListHelp,
-  printViewHelp,
-  runListCommand,
-  runViewCommand,
-} from '@kb/core/cli/view-cli.js'
 
 // ---------------------------------------------------------------------------
 // Output abstraction — lets the TUI capture output without monkey-patching
@@ -202,9 +207,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     cmdHelpHint(mode),
     '',
     'Examples:',
-    mode === 'tui'
-      ? `  /query "how does auth work?"`
-      : `  kb query "how does auth work?"`,
+    mode === 'tui' ? `  /query "how does auth work?"` : `  kb query "how does auth work?"`,
     mode === 'cli' ? `  kb --host localhost:38117 query "how does auth work?"` : null,
     `  ${cmd('mcp install --host localhost:38117', mode)}`,
     `  ${cmd('mcp install --host https://kb.example.com:38117', mode)}`,
@@ -797,7 +800,10 @@ export async function runMainWithOutput(
     const printer = createPrinter(out, mode)
     try {
       let parsed = parseIntentCommand(args)
-      if (parsed.envelope.intent === 'query_truth' && resolveFactRetrievalMethod(config) === 'all_facts') {
+      if (
+        parsed.envelope.intent === 'query_truth' &&
+        resolveFactRetrievalMethod(config) === 'all_facts'
+      ) {
         parsed = {
           ...parsed,
           allFacts: true,
@@ -854,10 +860,9 @@ export async function runMainWithOutput(
           try {
             const db = new DatabaseSync(kbIndexDbPath(intentBaseDir), { readOnly: true })
             try {
-              payload.query =
-                isEnvTrue(process.env.KB_ABLATE_NO_EXPANSION)
-                  ? originalQuery
-                  : expandQueryWithGraph(originalQuery, db)
+              payload.query = isEnvTrue(process.env.KB_ABLATE_NO_EXPANSION)
+                ? originalQuery
+                : expandQueryWithGraph(originalQuery, db)
               for (const qRel of [preRewriteQueryTruth, originalQuery]) {
                 if (!qRel) continue
                 try {
@@ -990,6 +995,18 @@ export async function runMainWithOutput(
             })
           }
         }
+
+        // Post-draft contradiction search (#146). Stages recorded inside the helper.
+        enriched = await runContradictionSearch({
+          question: synthesisQuestion || preRewriteQueryTruth,
+          result: enriched,
+          llm: llmProvider,
+          baseDir: intentBaseDir,
+          collector,
+          intent: parsed.envelope.intent,
+        })
+        // Discard TokenCountingProvider leftovers — contradiction stages already on collector.
+        llmCounter?.getAndReset()
       }
 
       printIntentResult(enriched, printer, {

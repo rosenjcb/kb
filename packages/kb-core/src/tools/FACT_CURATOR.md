@@ -83,6 +83,7 @@ passed in, so it carries no DB or network handle of its own.
 - Behavioral spec → [`FACT_CURATOR.spec.md`](FACT_CURATOR.spec.md)
 
 - `../core/QUERY_INTERNALS.md` — full deep-retrieval path and where the curator sits
+- `../query/CONTRADICTION_SEARCH.md` — post-draft adversarial search (after synthesis; not gap-fill)
 - `./facts-query-research-orchestrator.ts` — the island pool the curator consumes
 - `./facts-sufficiency-judge.ts` — the in-loop early-exit judge (a separate concern)
 - `../EVALUATION.md` — relevance rubric axis and `curation_summary` in harvest artifacts

@@ -156,6 +156,8 @@ Code facts at query time come from the AST-indexed `facts` table (`source_kind='
 - `src/tools/facts-query-research-orchestrator.ts` — deep fact retrieval loop
 - `src/tools/facts-sufficiency-judge.ts` — LLM-based early-exit judge
 - `src/tools/fact-curator.ts` — post-retrieval judge-in-the-loop curator (hard-drop + bounded re-discovery)
+- `src/query/contradiction-search.ts` — post-draft adversarial retrieval + optional revise (#146)
+- `src/query/CONTRADICTION_SEARCH.md` — companion for contradiction search
 - `src/tools/query-trace.ts` — opt-in `--trace` full content dump of discovery + curation
 - `src/tools/sqlite-kb-index.ts` — `searchFacts`, concepts, semantic scores
 - `src/core/CHAT.md` — chat vs query alignment

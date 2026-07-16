@@ -18,6 +18,8 @@ export interface EvidenceSummaryFact {
 export interface EvidenceSummaryRetrieval {
   detail?: string
   checkpoints?: Array<{ confidence?: number; status?: string }>
+  /** Prefer this when set (e.g. contradiction-adjusted confidence #153). */
+  confidence?: number
 }
 
 export interface EvidenceSummaryInput {
@@ -39,10 +41,7 @@ export function formatEvidenceSummaryHeader(input: EvidenceSummaryInput): string
   const parts = buildEvidenceSummaryParts(input)
   if (!parts || parts.count === 0) return undefined
 
-  const segments: string[] = [
-    `${parts.count} facts → LLM (full text)`,
-    parts.sourceMix,
-  ]
+  const segments: string[] = [`${parts.count} facts → LLM (full text)`, parts.sourceMix]
 
   if (parts.themes.length > 0) {
     segments.push(`themes: ${parts.themes.join(', ')}`)
@@ -100,7 +99,10 @@ export function buildEvidenceSummaryParts(
     leads: leads.slice(0, 3),
     walk: formatRetrievalWalk(input.retrieval?.detail),
     stop: parseRetrievalStop(input.retrieval?.detail),
-    confidence: lastCheckpointConfidence(input.retrieval?.checkpoints),
+    confidence:
+      typeof input.retrieval?.confidence === 'number' && Number.isFinite(input.retrieval.confidence)
+        ? Math.max(0, Math.min(1, input.retrieval.confidence))
+        : lastCheckpointConfidence(input.retrieval?.checkpoints),
   }
 }
 

@@ -8,28 +8,32 @@
  */
 
 import { DatabaseSync } from 'node:sqlite'
-import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
-import type { LLMProvider } from '@kb/core/core/types.js'
-import type { IntentResult } from '@kb/core/intents/types.js'
+import type { KbConfig } from '@kb/core/config/kb-config.js'
+import { resolveFactRetrievalMethod } from '@kb/core/config/kb-config.js'
 import {
   type RunCollector,
   TokenCountingProvider,
   estimateCost,
   summarizeQueryRetrievalTrace,
 } from '@kb/core/core/telemetry.js'
-import { expandQueryWithGraph, kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
-import { llmExtractQueryEntities, rerankByGraphConnectivity } from '@kb/core/tools/graph-rag-reranker.js'
-import { formatGraphRelationBlockFromQuestion } from '@kb/core/tools/graph-relation-context.js'
-import type { KbConfig } from '@kb/core/config/kb-config.js'
-import { resolveFactRetrievalMethod } from '@kb/core/config/kb-config.js'
+import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
+import type { LLMProvider } from '@kb/core/core/types.js'
+import type { IntentResult } from '@kb/core/intents/types.js'
+import { runContradictionSearch } from '@kb/core/query/contradiction-search.js'
 import {
+  type ParsedIntentCommand,
+  type ReadDocumentsResultData,
   enrichReadDocumentsAnswerWithLLM,
   getIntentQuestion,
   isReadFactsResult,
-  type ParsedIntentCommand,
-  type ReadDocumentsResultData,
 } from '@kb/core/query/intent-cli.js'
 import { runQueryTruthRetrieval } from '@kb/core/query/query-truth-retrieval.js'
+import { expandQueryWithGraph, kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
+import {
+  llmExtractQueryEntities,
+  rerankByGraphConnectivity,
+} from '@kb/core/tools/graph-rag-reranker.js'
+import { formatGraphRelationBlockFromQuestion } from '@kb/core/tools/graph-relation-context.js'
 
 export interface QueryPipelineDeps {
   toolExecutor: ToolExecutor
@@ -122,90 +126,109 @@ export async function runQueryPipeline(
   }
 
   try {
-  // Capture the pre-expansion question so synthesis/scaffold use the user's words,
-  // not the graph-expanded retrieval payload.
-  const synthesisQuestion = getIntentQuestion(parsed).trim() || query
+    // Capture the pre-expansion question so synthesis/scaffold use the user's words,
+    // not the graph-expanded retrieval payload.
+    const synthesisQuestion = getIntentQuestion(parsed).trim() || query
 
-  // Graph augmentation (best-effort): expand the retrieval query with neighboring
-  // concepts and capture a relation-path block for relational questions.
-  let graphRelationContext: string | undefined
-  if (!allFacts) {
-    try {
-      const db = new DatabaseSync(kbIndexDbPath(baseDir), { readOnly: true })
+    // Graph augmentation (best-effort): expand the retrieval query with neighboring
+    // concepts and capture a relation-path block for relational questions.
+    let graphRelationContext: string | undefined
+    if (!allFacts) {
       try {
-        ;(parsed.envelope.payload as { query?: string }).query = expandQueryWithGraph(query, db)
-        try {
-          const block = formatGraphRelationBlockFromQuestion(db, query)
-          if (block) graphRelationContext = block
-        } catch {
-          // Relation-path block is best-effort; never block the query.
-        }
-      } finally {
-        db.close()
-      }
-    } catch {
-      // Graph augmentation unavailable; fall back to plain retrieval.
-    }
-  }
-
-  let aligned = await runQueryTruthRetrieval({
-    parsed,
-    toolExecutor,
-    llmProvider,
-    kbStorageDir: baseDir,
-    collector: params.collector,
-  })
-
-  // LLM-driven graph RAG: extract entities from the question, re-rank retrieved
-  // facts by graph connectivity.
-  if (llmProvider && isReadFactsResult(aligned) && !allFacts) {
-    try {
-      const entities = await llmExtractQueryEntities(query, llmProvider)
-      if (entities.length > 0) {
         const db = new DatabaseSync(kbIndexDbPath(baseDir), { readOnly: true })
         try {
-          const data = (aligned.data ?? {}) as ReadDocumentsResultData
-          const reranked = rerankByGraphConnectivity(
-            Array.isArray(data.results) ? data.results : [],
-            entities,
-            db
-          )
-          aligned = { ...aligned, data: { ...data, results: reranked } }
+          ;(parsed.envelope.payload as { query?: string }).query = expandQueryWithGraph(query, db)
+          try {
+            const block = formatGraphRelationBlockFromQuestion(db, query)
+            if (block) graphRelationContext = block
+          } catch {
+            // Relation-path block is best-effort; never block the query.
+          }
         } finally {
           db.close()
         }
+      } catch {
+        // Graph augmentation unavailable; fall back to plain retrieval.
       }
-    } catch {
-      // Re-ranking is best-effort; never block the answer.
     }
-  }
 
-  const shouldSynthesize = params.synthesize !== false
-  if (shouldSynthesize && llmProvider && isReadFactsResult(aligned)) {
-    const enrichStarted = Date.now()
-    const enrichStartedAt = new Date().toISOString()
-    const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, aligned, llmProvider, undefined, undefined, {
-      graphRelationContext,
-      synthesisQuestion,
+    let aligned = await runQueryTruthRetrieval({
+      parsed,
+      toolExecutor,
+      llmProvider,
+      kbStorageDir: baseDir,
+      collector: params.collector,
     })
-    recordLlmStage('query_truth:answer-enrichment', Date.now() - enrichStarted, enrichStartedAt)
-    if (params.collector && isReadFactsResult(enriched)) {
-      const retrievalData = (enriched.data as ReadDocumentsResultData | undefined)?.retrieval
+
+    // LLM-driven graph RAG: extract entities from the question, re-rank retrieved
+    // facts by graph connectivity.
+    if (llmProvider && isReadFactsResult(aligned) && !allFacts) {
+      try {
+        const entities = await llmExtractQueryEntities(query, llmProvider)
+        if (entities.length > 0) {
+          const db = new DatabaseSync(kbIndexDbPath(baseDir), { readOnly: true })
+          try {
+            const data = (aligned.data ?? {}) as ReadDocumentsResultData
+            const reranked = rerankByGraphConnectivity(
+              Array.isArray(data.results) ? data.results : [],
+              entities,
+              db
+            )
+            aligned = { ...aligned, data: { ...data, results: reranked } }
+          } finally {
+            db.close()
+          }
+        }
+      } catch {
+        // Re-ranking is best-effort; never block the answer.
+      }
+    }
+
+    const shouldSynthesize = params.synthesize !== false
+    if (shouldSynthesize && llmProvider && isReadFactsResult(aligned)) {
+      const enrichStarted = Date.now()
+      const enrichStartedAt = new Date().toISOString()
+      let enriched = await enrichReadDocumentsAnswerWithLLM(
+        parsed,
+        aligned,
+        llmProvider,
+        undefined,
+        undefined,
+        {
+          graphRelationContext,
+          synthesisQuestion,
+        }
+      )
+      recordLlmStage('query_truth:answer-enrichment', Date.now() - enrichStarted, enrichStartedAt)
+
+      // Post-draft contradiction search (#146): adversarial retrieval + optional revise.
+      if (isReadFactsResult(enriched)) {
+        enriched = await runContradictionSearch({
+          question: synthesisQuestion,
+          result: enriched,
+          llm: llmProvider,
+          baseDir,
+          collector: params.collector,
+        })
+      }
+
+      if (params.collector && isReadFactsResult(enriched)) {
+        const retrievalData = (enriched.data as ReadDocumentsResultData | undefined)?.retrieval
+        if (retrievalData) {
+          params.collector.setRetrievalTrace(summarizeQueryRetrievalTrace(retrievalData))
+        }
+      }
+      return enriched
+    }
+
+    if (params.collector && isReadFactsResult(aligned)) {
+      const retrievalData = (aligned.data as ReadDocumentsResultData | undefined)?.retrieval
       if (retrievalData) {
         params.collector.setRetrievalTrace(summarizeQueryRetrievalTrace(retrievalData))
       }
     }
-    return enriched
-  }
 
-  if (params.collector && isReadFactsResult(aligned)) {
-    const retrievalData = (aligned.data as ReadDocumentsResultData | undefined)?.retrieval
-    if (retrievalData) {
-      params.collector.setRetrievalTrace(summarizeQueryRetrievalTrace(retrievalData))
-    }
-  }
-
-  return aligned
+    return aligned
   } finally {
     if (params.trace) {
       if (prevTraceEnv === undefined) process.env.KB_QUERY_TRACE = undefined

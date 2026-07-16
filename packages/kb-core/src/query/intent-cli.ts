@@ -245,6 +245,21 @@ export interface ReadDocumentsResultData {
      * "research notes" framing — never quoted as fact. See `formatCuratorResearchNotes`.
      */
     curation?: CuratorAudit
+    /** Post-draft contradiction search audit (#146). */
+    contradiction?: {
+      ran: boolean
+      found: boolean
+      used: boolean
+      hitCount?: number
+      queries?: string[]
+      factIds?: string[]
+      supportCount?: number
+      contradictCount?: number
+      confidenceBefore?: number
+      confidenceAfter?: number
+    }
+    /** Answer confidence after contradiction adjustment (#153), when present. */
+    confidence?: number
   }
   /** Path to the opt-in deep trace dump when `kb query --trace` ran. */
   traceFile?: string
