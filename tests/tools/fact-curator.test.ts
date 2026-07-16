@@ -88,6 +88,8 @@ describe('curateFacts', () => {
       llm,
       query: 'how does authentication work',
       results,
+      // Isolate judge hard-drop behavior from rank auto-keep / soft minKeep floor.
+      options: { rankAutoKeep: 0, minKeep: 2 },
     })
 
     expect(out.map(r => r.metadata.id).sort()).toEqual(['keep-1', 'keep-2'])
@@ -163,10 +165,13 @@ describe('curateFacts', () => {
       // Low overlap so nothing is auto-kept, forcing the empty-set guard.
       query: 'zzz nonmatching',
       results,
+      options: { rankAutoKeep: 0, minKeep: 5 },
     })
 
     expect(out.length).toBeGreaterThan(0)
-    expect(record.fellBack).toBe(true)
+    // Soft minKeep floor rescues ranked facts without the empty-set fellBack path.
+    expect(out.length).toBeGreaterThanOrEqual(5)
+    expect(record.fellBack).toBe(false)
   })
 
   it('[TC-11] Given a pool larger than the judge candidate cap, then the tail is hard-dropped and the judge sees at most the cap', async () => {
@@ -180,7 +185,12 @@ describe('curateFacts', () => {
     }))
     const llm = { call } as unknown as LLMProvider
 
-    const { record } = await curateFacts({ llm, query: 'alpha beta gamma', results })
+    const { record } = await curateFacts({
+      llm,
+      query: 'alpha beta gamma',
+      results,
+      options: { rankAutoKeep: 0, minKeep: 2 },
+    })
 
     // The judge prompt lists at most `maxJudgeCandidates` (100) candidate id|summary lines.
     const prompt = call.mock.calls[0][0].messages[0].content as string
@@ -206,22 +216,45 @@ describe('curateFacts', () => {
 
   it('[TC-10] Given re-discovery returns only known ids, then it stops without looping', async () => {
     const results = [
-      makeResult('seed', 'partial detail'),
-      ...Array.from({ length: 14 }, (_, i) => makeResult(`o-${i}`, `off topic ${i}`)),
+      makeResult('seed', 'partial detail about caching'),
+      ...Array.from({ length: 14 }, (_, i) => makeResult(`o-${i}`, `unrelated rendering ${i}`)),
     ]
     const llm = verdictLlm({ keep: ['seed'], gaps: ['more detail'], sufficient: false })
     // Re-discovery returns a fact already in the pool → no new admissions, loop must end.
-    const requery: CuratorRequery = vi.fn(async () => [makeResult('seed', 'partial detail')])
+    const requery: CuratorRequery = vi.fn(async () => [
+      makeResult('seed', 'partial detail about caching'),
+    ])
 
     const { record } = await curateFacts({
       llm,
-      query: 'topic',
+      query: 'cache eviction policy',
       results,
       requery,
+      options: { rankAutoKeep: 0, minKeep: 1 },
     })
 
     expect(record.added).toBe(0)
     expect(record.rounds).toBe(1)
+  })
+
+  it('[TC-14] Given rank auto-keep, then top-N incoming facts survive even when the judge keeps nothing', async () => {
+    const results = Array.from({ length: 20 }, (_, i) =>
+      makeResult(`f-${i}`, `unrelated rendering buffer ${i}`)
+    )
+    const llm = verdictLlm({ keep: [], gaps: [], sufficient: true })
+
+    const { results: out, record } = await curateFacts({
+      llm,
+      query: 'zzz nonmatching query',
+      results,
+      options: { rankAutoKeep: 10, minKeep: 10 },
+    })
+
+    expect(record.autoKept).toBeGreaterThanOrEqual(10)
+    expect(out.map(r => r.metadata.id).slice(0, 10)).toEqual(
+      results.slice(0, 10).map(r => r.metadata.id)
+    )
+    expect(out.length).toBeGreaterThanOrEqual(10)
   })
 
   it('[TC-13] Given a collector, then each judge round is recorded as a telemetry stage', async () => {

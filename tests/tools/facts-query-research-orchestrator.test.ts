@@ -48,13 +48,13 @@ describe('buildPondQueries', () => {
 })
 
 describe('assessSufficiency threshold', () => {
-  it('[TC-28] Given fewer than 20 relevant facts, then loop does not stop early on sufficiency', async () => {
+  it('[TC-28] Given fewer than PLATEAU_MIN_RELEVANT relevant facts, then loop does not stop early on sufficiency', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
 
-    // Insert exactly 15 highly-relevant facts (old threshold was 10@0.40, new is 20@0.50)
-    for (let i = 0; i < 15; i++) {
+    // Insert 8 highly-relevant facts (below PLATEAU_MIN_RELEVANT=12)
+    for (let i = 0; i < 8; i++) {
       indexer.upsertFact({
         factText: `query expansion mechanism step ${i} calls expandQueryWithGraph in orchestrator`,
         sourceKind: 'import_doc',
@@ -70,18 +70,18 @@ describe('assessSufficiency threshold', () => {
       surface: 'query',
     })
 
-    // Should NOT stop with answerable_plateau when only 15 facts found
+    // Should NOT stop with answerable_plateau when only 8 facts found
     expect(response.retrieval.detail).not.toContain('stop:answerable_plateau')
     indexer.close()
   })
 
-  it('[TC-29] Given 20+ relevant high-scoring facts, then loop stops as answerable', async () => {
+  it('[TC-29] Given PLATEAU_MIN_RELEVANT+ relevant high-scoring facts, then loop stops as answerable', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
 
-    // Insert 25 highly-relevant facts
-    for (let i = 0; i < 25; i++) {
+    // Insert 18 highly-relevant facts (above PLATEAU_MIN_RELEVANT=12)
+    for (let i = 0; i < 18; i++) {
       indexer.upsertFact({
         factText: `query expansion mechanism step ${i} calls expandQueryWithGraph in orchestrator pipeline`,
         sourceKind: 'import_doc',
@@ -97,7 +97,8 @@ describe('assessSufficiency threshold', () => {
       surface: 'query',
     })
 
-    expect(response.results.length).toBeGreaterThanOrEqual(20)
+    expect(response.results.length).toBeGreaterThanOrEqual(12)
+    expect(response.retrieval.detail).toContain('stop:answerable_plateau')
     indexer.close()
   })
 })

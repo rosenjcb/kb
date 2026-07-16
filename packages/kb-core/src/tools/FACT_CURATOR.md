@@ -50,6 +50,8 @@ passed in, so it carries no DB or network handle of its own.
 - Re-discovery is a shallow `SqliteKbIndexer.searchFacts` pass excluding already-known ids
   **and** the caller's session `excludeIds`.
 - Tunable via `CuratorOptions`; defaults live as `DEFAULT_*` constants in the module.
+  Rank auto-keep preserves the orchestrator's top-N facts before the LLM judge; overlap
+  auto-keep and a soft `minKeep` floor further protect answer-critical facts from over-drop.
 
 ## Invariants
 
