@@ -1,3 +1,5 @@
+import type { RunCollector } from '../core/telemetry'
+import { estimateCost } from '../core/telemetry'
 import type { LLMProvider } from '../core/types'
 import type { QueryResult } from './facts-document-reader'
 
@@ -92,6 +94,8 @@ export interface CurateInput {
   results: QueryResult[]
   requery?: CuratorRequery
   options?: CuratorOptions
+  /** Telemetry collector — when set, each judge round is recorded as a stage. */
+  collector?: RunCollector
 }
 
 export interface CurateOutput {
@@ -110,7 +114,7 @@ export function shouldCurate(results: QueryResult[], options?: CuratorOptions): 
 }
 
 export async function curateFacts(input: CurateInput): Promise<CurateOutput> {
-  const { llm, query, results } = input
+  const { llm, query, results, collector } = input
   const opts = {
     autoKeepOverlap: input.options?.autoKeepOverlap ?? DEFAULT_AUTO_KEEP_OVERLAP,
     maxRounds: input.options?.maxRounds ?? DEFAULT_MAX_ROUNDS,
@@ -163,7 +167,7 @@ export async function curateFacts(input: CurateInput): Promise<CurateOutput> {
     while (record.rounds < opts.maxRounds) {
       if (candidates.length === 0) break
 
-      const verdict = await runJudge(llm, query, autoKept, candidates)
+      const verdict = await runJudge(llm, query, autoKept, candidates, collector, record.rounds + 1)
       record.rounds++
 
       for (const r of candidates) {
@@ -224,7 +228,9 @@ async function runJudge(
   llm: LLMProvider,
   query: string,
   kept: QueryResult[],
-  candidates: QueryResult[]
+  candidates: QueryResult[],
+  collector?: RunCollector,
+  round?: number
 ): Promise<JudgeVerdict> {
   const keptContext =
     kept.length > 0
@@ -237,6 +243,8 @@ async function runJudge(
 
   const candidateLines = candidates.map(r => `${r.metadata.id}|${summary(r)}`)
 
+  const startMs = Date.now()
+  const startedAt = new Date().toISOString()
   const response = await llm.call({
     messages: [
       {
@@ -263,6 +271,24 @@ async function runJudge(
     maxTokens: 1200,
     thinkingBudget: 0,
   })
+
+  if (collector) {
+    collector.addStage({
+      stage: `fact-curator:judge:round${round ?? 1}`,
+      startedAt,
+      durationMs: Date.now() - startMs,
+      inputTokens: response.usage.inputTokens,
+      outputTokens: response.usage.outputTokens,
+      estimatedCostUsd: estimateCost(
+        llm.name,
+        llm.model,
+        response.usage.inputTokens,
+        response.usage.outputTokens
+      ),
+      provider: llm.name,
+      model: llm.model,
+    })
+  }
 
   return parseVerdict(response.text)
 }

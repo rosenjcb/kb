@@ -17,3 +17,137 @@ questions:
   - Step by step, what happens inside InitWindow() to open a window and set up the graphics context?
   - Trace raylib's standard render loop in order — what do BeginDrawing, the drawing calls, and EndDrawing each do, and in what sequence?
   - How do I add a new example program to raylib and get it built, step by step?
+answers:
+  - >
+    raylib is a simple, C99 library "to enjoy videogames programming," inspired by Borland BGI
+    and the XNA framework, aimed at prototyping, tooling, small-to-mid 2D/3D games, embedded
+    systems, and teaching. It ships with NO external dependencies (everything needed is vendored
+    under src/external), and it hardware-accelerates rendering through OpenGL 1.1/2.1/3.3/4.3/ES
+    2.0/ES 3.0 via its own abstraction layer, rlgl (usable standalone), plus a software-renderer
+    fallback (rlsw) that needs no GPU at all. Capabilities span window/input management (rcore),
+    2D/3D shapes and text (rshapes, rtext), textures and image formats including compressed ones
+    like DXT/ETC/ASTC (rtextures), full 3D with models, animation (IQM/M3D/glTF), materials and
+    PBR, shaders (rmodels/rlgl), math (raymath, rcamera), and streaming audio for WAV/QOA/OGG/
+    MP3/FLAC/XM/MOD (raudio). It also supports VR stereo rendering, ships 140+ examples, and has
+    bindings for 70+ languages.
+  - >
+    raylib's source under src/ is organized into cooperating modules gated by SUPPORT_MODULE_*
+    flags in config.h: rcore.c (mandatory - window, input, timing, filesystem), rlgl.h (mandatory
+    - OpenGL 1.1/2.1/3.3/4.3/ES abstraction with an immediate-mode-style API and internal vertex
+    batching), and optional modules rshapes.c, rtextures.c, rtext.c, rmodels.c, and raudio.c, plus
+    header-only helpers raymath.h and rcamera.h. Platform support lives entirely inside rcore.c,
+    which #includes exactly one backend from src/platforms/ chosen by a preprocessor define:
+    rcore_desktop_glfw.c (default PLATFORM_DESKTOP, via bundled rglfw.c), rcore_desktop_sdl.c,
+    rcore_desktop_rgfw.c, rcore_desktop_win32.c (native Win32), rcore_web.c/rcore_web_emscripten.c
+    (HTML5/WebAssembly), rcore_drm.c (Raspberry Pi/native DRM-KMS), rcore_android.c (NDK), and
+    rcore_memory.c (headless framebuffer, no OS). Each backend implements the same InitPlatform/
+    ClosePlatform/PollInputEvents/SwapScreenBuffer contract that rcore.c calls into.
+  - >
+    raylib has zero required external dependencies -- vendored libraries live under src/external
+    (GLFW is bundled as rglfw.c, for example). The primary build is GNU Make: src/Makefile builds
+    the library (PLATFORM=PLATFORM_DESKTOP by default, defaulting further to
+    PLATFORM_DESKTOP_GLFW; also PLATFORM_DESKTOP_SDL/RGFW/WIN32, PLATFORM_WEB[_EMSCRIPTEN/_RGFW],
+    PLATFORM_DRM, PLATFORM_ANDROID, PLATFORM_MEMORY) and RAYLIB_LIBTYPE=STATIC|SHARED selects
+    static (.a) vs shared (.so/.dylib/.dll) output. CMake is the alternative (top-level
+    CMakeLists.txt calls add_subdirectory(src raylib), with options declared in
+    CMakeOptions.txt), and there's also a build.zig/build.zig.zon for the Zig toolchain. The
+    examples/ tree has its own Makefile, Makefile.Android, Makefile.Web and CMakeLists.txt that
+    link against the already-built library in ../src. Platform-specific toolchain prerequisites
+    (MinGW, Emscripten SDK, Android NDK, X11/Wayland dev headers) are documented per-OS on the
+    raylib Wiki, referenced from README.md.
+  - >
+    src/platforms/ holds one .c file per backend: rcore_desktop_glfw.c, rcore_desktop_sdl.c,
+    rcore_desktop_rgfw.c, rcore_desktop_win32.c, rcore_web.c, rcore_web_emscripten.c, rcore_drm.c,
+    rcore_android.c, rcore_memory.c, and a documentation rcore_template.c for authoring new
+    backends. rcore.c does not compile them independently -- it textually #includes exactly one
+    of them based on the active PLATFORM_* define (e.g. `#if defined(PLATFORM_DESKTOP_GLFW) ...
+    #include "platforms/rcore_desktop_glfw.c"`), so the backend file is compiled inline as part of
+    rcore.c's translation unit. Each backend must implement the same internal contract rcore.c
+    calls into -- InitPlatform(), ClosePlatform(), PollInputEvents(), SwapScreenBuffer(), and
+    related window/cursor/monitor functions -- while rcore.c itself owns the platform-agnostic
+    CORE global state, window flags, and public API dispatch. The GLFW backend additionally pairs
+    with src/rglfw.c, which compiles the vendored GLFW library sources it links against.
+  - >
+    rcore.c defines the CORE global struct (window/input/time state) and a large set of functions
+    other modules depend on: TRACELOG()/TraceLog() for logging (used dozens of times across
+    rtext.c, rtextures.c, rmodels.c, raudio.c), file-system helpers like LoadFileData(),
+    SaveFileData(), IsFileExtension(), GetFileExtension(), GetWorkingDirectory(), timing functions
+    GetTime()/GetFrameTime()/WaitTime(), and memory helpers under the RL_MALLOC/RL_FREE macros.
+    rtextures.c, rmodels.c and rtext.c all call into these rcore.c-provided file I/O and logging
+    utilities to load images, models and fonts and report errors. rcore.c also exposes the window/
+    input query API (IsWindowReady(), GetScreenWidth/Height(), input polling functions) that
+    application code and other modules query, and it calls out to rlgl (rlglInit, rlLoadExtensions)
+    and rtext's LoadFontDefault()/UnloadFontDefault() during InitWindow()/CloseWindow().
+  - >
+    raylib's CONVENTIONS.md and CONTRIBUTING.md define a deliberate, non-Hungarian Pascal/camel
+    style: defines and macros are ALL_CAPS (`#define PLATFORM_DESKTOP`), variables/struct members/
+    function parameters are lowerCase, enums and structs are TitleCase with ALL_CAPS members (e.g.
+    `PIXELFORMAT_UNCOMPRESSED_R8G8B8`), and functions are TitleCase (`InitWindow()`,
+    `LoadImageFromMemory()`). Rules include: always initialize variables, no tabs (4 spaces), no
+    trailing whitespace, comments start with a capital letter and never end in a period and sit
+    before the code they describe, control statements are followed by a space, all conditions are
+    parenthesized, braces are aligned/non-K&R, and float literals always include the leading digit
+    (`10.0f`, not `10.f`). Directories and files use snake_case. CONTRIBUTING.md adds project-level
+    guidance: keep PRs small and focused, verify the build isn't broken (at least on Windows), tag
+    issues with the affected module, and favor small/simple functions over complex ones -- "every
+    function in raylib is designed as a mini-tutorial on itself."
+  - >
+    FAQ.md and ROADMAP.md spell out raylib's deliberate constraints: it targets OpenGL only and
+    has no plans to support Vulkan (rlgl is the abstraction layer, and adding a Vulkan backend
+    "would imply a considerable amount of work"); raylib is explicitly not a game engine -- it
+    provides no screen manager, entity/GameObject manager, or resource manager, leaving those to
+    the user. There's no standard API reference, only the online cheatsheet and the heavily
+    commented source/examples ("Learn by reading code and examples"). ROADMAP.md shows several
+    platform backends are still in-progress or unfinished, e.g. rcore_desktop_win32 and an
+    emscripten-only web backend need improved input/HighDPI handling, and X11/Wayland/Cocoa-native
+    backends don't exist yet (GLFW/SDL/RGFW currently cover those OSes). Other noted rough edges
+    include the N-patch texture system being considered for removal and a still-evolving blending-
+    modes system in rtextures.
+  - >
+    raylib.h itself is deliberately dependency-light: scanning its #include directives shows only
+    `<stdarg.h>` (for `va_list`, used solely by the TraceLogCallback typedef) unconditionally
+    included, plus a conditional `<stdbool.h>` pulled in only on C99/MSVC-2013+ non-C++ builds to
+    get the `bool` type (a hand-rolled `enum bool` typedef is used otherwise). This reflects
+    raylib's "NO external dependencies" design goal: raylib.h is meant to be a self-contained
+    public API surface with no OpenGL, platform, or third-party headers leaking into user code.
+    The heavier includes (`rlgl.h` for OpenGL abstraction, `raymath.h` for vector/matrix math,
+    `config.h` for the SUPPORT_MODULE_* feature flags, and platform/system headers like
+    `<math.h>`, `<stdlib.h>`, `<string.h>`) are pulled in by the .c implementation files
+    (rcore.c, rshapes.c, rtextures.c, rtext.c, rmodels.c), not by raylib.h.
+  - >
+    InitWindow(width, height, title) in rcore.c first logs the raylib version and active platform
+    backend, then zero-initializes CORE.Window (screen size, title, scale matrix) and CORE.Input
+    (keyboard exit key, mouse cursor/scale, gamepad state). It then calls the backend's
+    InitPlatform() -- for the default GLFW backend this calls glfwInit(), sets window hints from
+    CORE.Window.flags (visibility, decoration, resizability, transparency, MSAA, HighDPI, OpenGL
+    version/profile from rlGetVersion()), calls glfwCreateWindow(), glfwMakeContextCurrent(), sets
+    the swap interval, and calls rlLoadExtensions(glfwGetProcAddress) to load GL function pointers.
+    Back in InitWindow(), if render dimensions weren't set by the platform it defaults them to the
+    screen size, then calls rlglInit() to set up rlgl's default framebuffer/shader/batch state,
+    SetupViewport() to configure the OpenGL viewport, LoadFontDefault() (if rtext is enabled) to
+    load the built-in bitmap font and wire its glyph texture into SetShapesTexture() for batching,
+    and finally SetRandomSeed(time(NULL)) before returning.
+  - >
+    Per-frame, BeginDrawing() records frame timing (CORE.Time.current/update/previous) and resets
+    rlgl's modelview matrix via rlLoadIdentity()/rlMultMatrixf() applying CORE.Window.screenScale.
+    Drawing calls such as ClearBackground() (rlClearColor + rlClearScreenBuffers), DrawText(),
+    DrawRectangle(), etc. don't issue immediate GPU draws -- they push vertices into rlgl's active
+    rlRenderBatch, flushing automatically via rlCheckRenderBatchLimit() when a mode/texture/shader
+    change would overflow it. EndDrawing() then calls rlDrawRenderBatchActive() to flush and render
+    any remaining batched vertices (uploading vertex/texcoord/color buffers with glBufferSubData
+    and issuing the GL draw calls per rlDrawRenderBatch()), optionally records automation events,
+    calls SwapScreenBuffer() to present the back buffer (unless SUPPORT_CUSTOM_FRAME_CONTROL is
+    set), computes CORE.Time.draw/frame, sleeps via WaitTime() to hit the target frame time, calls
+    PollInputEvents() to prepare input state for the next frame, and increments CORE.Time.frameCounter.
+  - >
+    Per examples/README.md, an example lives under examples/<category>/ (core, shapes, textures,
+    text, models, shaders, audio, others) as a single self-contained .c file, typically copied from
+    examples/examples_template.c and named `<category>_<description>.c` (snake_case, per
+    CONVENTIONS.md). No manual build-file wiring is required for compiling: examples/Makefile has a
+    generic `%: %.c` rule so `make core/my_new_example` builds it directly against the already-built
+    ../src library, and examples/CMakeLists.txt globs `file(GLOB sources ${example_dir}/*.c)` per
+    category directory, so any new .c file is picked up automatically. To have it appear in the
+    public examples collection/cheatsheet and web listing, its metadata (category, name, difficulty
+    stars, raylib version created/updated, author) should also be appended as a row to
+    examples/examples_list.txt, which is the canonical list used to regenerate examples/README.md
+    and the raylib.com examples page.

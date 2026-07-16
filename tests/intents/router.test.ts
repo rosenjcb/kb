@@ -89,4 +89,17 @@ describe('DefaultIntentRouter', () => {
 
     expect(decision.operationInput.limit).toBe(500)
   })
+
+  it('[TC-4] Given a collector passed to the constructor, then query_truth operationInput carries it through', async () => {
+    const executor = createExecutorMock()
+    const collector = { addStage: vi.fn() } as unknown as import('@kb/core/core/telemetry.js').RunCollector
+    const router = new DefaultIntentRouter(executor, undefined, undefined, collector)
+
+    const decision = await router.route({
+      intent: 'query_truth',
+      payload: { query: 'how does hybrid retrieval work in kb' },
+    })
+
+    expect(decision.operationInput.collector).toBe(collector)
+  })
 })

@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { makeSufficiencyJudge, shouldCallJudge } from '@kb/core/tools/facts-sufficiency-judge.js'
+import type { RunCollector } from '@kb/core/core/telemetry.js'
 import type { LLMProvider } from '@kb/core/core/types.js'
 
 function makeLLM(text: string): LLMProvider {
@@ -57,6 +58,34 @@ describe('makeSufficiencyJudge', () => {
 
     const judge = makeSufficiencyJudge(llm)
     expect(await judge('what is X', ENOUGH_FACTS)).toBe('insufficient')
+  })
+
+  it('[TC-26] Given a collector, then the judge call is recorded as a telemetry stage', async () => {
+    const llm = {
+      name: 'mock',
+      model: 'mock',
+      supportsStreaming: false,
+      call: async () => ({
+        text: 'ANSWERABLE',
+        stopReason: 'end_turn' as const,
+        toolUses: [],
+        usage: { inputTokens: 10, outputTokens: 2 },
+      }),
+    } as unknown as LLMProvider
+    const addStage = vi.fn()
+    const collector = { addStage } as unknown as RunCollector
+
+    const judge = makeSufficiencyJudge(llm, collector)
+    await judge('what is X', ENOUGH_FACTS)
+
+    expect(addStage).toHaveBeenCalledTimes(1)
+    expect(addStage.mock.calls[0][0]).toMatchObject({
+      stage: 'facts-sufficiency-judge:check',
+      inputTokens: 10,
+      outputTokens: 2,
+      provider: 'mock',
+      model: 'mock',
+    })
   })
 })
 

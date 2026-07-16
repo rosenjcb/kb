@@ -48,9 +48,8 @@ export async function runIntentLoop(
 ): Promise<IntentLoopResult> {
   const maxIterations = config.maxIterations ?? DEFAULT_INTENT_LOOP_MAX_ITERATIONS
   const confidenceThreshold = config.confidenceThreshold ?? DEFAULT_INTENT_LOOP_CONFIDENCE_THRESHOLD
-  const router = new DefaultIntentRouter(toolExecutor, config.provider, config.kbStorageDir)
-
   const { collector } = config
+  const router = new DefaultIntentRouter(toolExecutor, config.provider, config.kbStorageDir, collector)
   const providerName = config.provider?.name ?? 'gemini'
   const providerModel = config.provider?.model ?? 'unknown'
 

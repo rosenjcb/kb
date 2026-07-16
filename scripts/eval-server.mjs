@@ -204,10 +204,19 @@ export async function startEvalServer({
     )
   }
 
-  const resolvedPort =
+  // Default to an ephemeral free port. Hard-coding 38117 makes parallel
+  // --all-suites children collide: the losing process still sees /healthz
+  // succeed (against the winner's server) and then queries the wrong base.
+  // Pin with `port` or KB_EVAL_SERVER_PORT only for single-suite attach/debug.
+  let resolvedPort =
     port ??
-    (process.env.KB_EVAL_SERVER_PORT ? Number.parseInt(process.env.KB_EVAL_SERVER_PORT, 10) : null) ??
-    DEFAULT_KB_SERVER_PORT
+    (process.env.KB_EVAL_SERVER_PORT
+      ? Number.parseInt(process.env.KB_EVAL_SERVER_PORT, 10)
+      : null)
+
+  if (resolvedPort == null) {
+    resolvedPort = await allocateFreePort(host)
+  }
 
   if (!Number.isFinite(resolvedPort) || resolvedPort <= 0) {
     throw new Error(`[eval-server] invalid port: ${resolvedPort}`)
@@ -246,6 +255,15 @@ export async function startEvalServer({
 
   await waitForServerListening(url)
 
+  if (child.exitCode != null) {
+    throw new Error(
+      `[eval-server] kb-server exited with code ${child.exitCode} before becoming ready ` +
+        `(base=${base} url=${url}) — likely a port bind race; refusing to query a foreign server`
+    )
+  }
+
+  await assertEvalServerBase(url, base)
+
   return {
     url,
     host,
@@ -267,6 +285,30 @@ export async function startEvalServer({
       if (!child || child.exitCode != null) return
       await stopChild(child)
     },
+  }
+}
+
+/**
+ * Confirm /healthz reports the expected session base before queries run.
+ * Prevents the parallel-suite failure mode where healthz is live but belongs
+ * to another child's kb-server.
+ * @param {string} baseUrl
+ * @param {string} expectedBase
+ */
+export async function assertEvalServerBase(baseUrl, expectedBase) {
+  const url = baseUrl.replace(/\/$/, '')
+  const res = await fetch(`${url}/healthz`)
+  if (res.status >= 500) {
+    throw new Error(`[eval-server] /healthz returned ${res.status} at ${url}`)
+  }
+  const body = await res.json()
+  const got = typeof body?.base === 'string' ? body.base : null
+  if (got !== expectedBase) {
+    throw new Error(
+      `[eval-server] /healthz base mismatch at ${url}: expected "${expectedBase}", got ${
+        got == null ? 'null' : `"${got}"`
+      } — parallel suites must not share a kb-server`
+    )
   }
 }
 

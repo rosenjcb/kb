@@ -10,17 +10,19 @@ A post-retrieval fact curator enforces relevance on the scored pool before
 Init-time embeddings (local by default) feed semantic scoring during retrieval.
 Paired harvest evaluations
 (\ResultsUpdated{}) report $\Delta S = \KbSelfCheckDeltaS{}$ on the \texttt{kb} self-check
-suite and $\Delta S = \RaylibDeltaS{}$ on raylib, with paired K-vs-N scores on eight
-further expanded suites (\texttt{fzf}, \texttt{kestra}, \texttt{shellcheck},
-\texttt{lazygit}, \texttt{datasette}, \texttt{mitmproxy}, \texttt{fish-shell},
-\texttt{brew}; Table~\ref{tab:harvest-results}). \ResultsControlStatus{}; $\Delta S$
-is positive (K ahead of control) on all ten.
+suite and $\Delta S = \RaylibDeltaS{}$ on raylib; the full ten-suite portfolio
+(\texttt{fzf}, \texttt{kestra}, \texttt{shellcheck}, \texttt{lazygit},
+\texttt{datasette}, \texttt{mitmproxy}, \texttt{fish-shell}, \texttt{brew};
+Table~\ref{tab:harvest-results}) shows K ahead of control on every suite under
+the fixed $S$ weights, despite N leading on adequacy.
+\ResultsControlStatus{}.
 
 We also introduced MOEL, a multi-objective evaluation framework spanning two settings:
 (1)~paired harvest evaluation, whose headline grade is $\Delta S = S_K - S_N$ from
-runs comparing \texttt{kb query} to a real coding agent on the same suite questions;
+runs comparing \texttt{kb query} to a headless coding agent on the same suite questions;
 and (2)~deep MOEL evaluation ($L_\text{MOEL}$), which measures exploration loss under
 toy-tool N/K/O conditions per task.  Bias-mitigated jury ensemble, statistical calibration,
 and programmatic validators distinguish efficient exploration from expensive correctness.
-Future work includes tracking whether $\Delta S$ gains persist as KB indexing and
-curation mature, and extending the suite portfolio further.
+Future work includes closing the adequacy gap on portfolio suites while preserving
+K's token and latency advantages, and extending deep MOEL coverage beyond the
+current task set.

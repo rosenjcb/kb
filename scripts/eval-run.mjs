@@ -305,6 +305,20 @@ function prefixChildStream(stream, suite, write) {
   })
 }
 
+/**
+ * Env for a multi-suite child: inherit parent env but strip attach/port pins so
+ * each child allocates its own ephemeral kb-server (see eval-server.mjs).
+ * Shared KB_EVAL_SERVER_URL / KB_EVAL_SERVER_PORT would make every suite query
+ * the same process — the Jul 15 parallel contamination failure mode.
+ */
+export function buildMultiSuiteChildEnv(env = process.env) {
+  const out = { ...env }
+  out.KB_EVAL_SERVER_URL = undefined
+  out.KB_EVAL_ATTACH_URL = undefined
+  out.KB_EVAL_SERVER_PORT = undefined
+  return out
+}
+
 /** Spawn one single-suite eval child; resolve `{ suite, code, signal }`. */
 export function spawnSuiteChild(suite, args, { scriptPath = THIS_SCRIPT, cwd = KB_REPO, env = process.env } = {}) {
   return new Promise(resolve => {
@@ -312,7 +326,7 @@ export function spawnSuiteChild(suite, args, { scriptPath = THIS_SCRIPT, cwd = K
     console.error(`[eval] multi-suite · starting ${suite}`)
     const child = spawn(process.execPath, [scriptPath, ...childArgv], {
       cwd,
-      env: { ...env },
+      env: buildMultiSuiteChildEnv(env),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     prefixChildStream(child.stdout, suite, s => process.stdout.write(s))
@@ -510,6 +524,9 @@ Suite / questions:
   --suites a,b,c          Multiple suites (alias of repeated/comma --suite). Parallel by default.
   --all-suites            Run the 10 EVALUATION.md benchmark suites (excludes generic, moel-kb)
   --parallel [N]          Multi-suite concurrency (default: all suites at once; env KB_EVAL_PARALLEL)
+                          Each suite child starts its own kb-server on an ephemeral port so
+                          queries cannot cross-contaminate bases (do not set KB_EVAL_SERVER_PORT
+                          when running --all-suites / --suites in parallel).
   --sequential            Multi-suite: run one suite at a time (overrides --parallel)
   --suite-yaml PATH       Load pack from arbitrary YAML path (single-suite only)
   --questions-file F.json Override: JSON array of non-empty question strings (single-suite only)
@@ -1146,10 +1163,10 @@ async function main() {
         evalIndexTee('scan', `--base ${base} --debug`, scanLogPath)
       )
 
-      console.error(`[eval] kb base use --default ${base} (client profile only — server base is "${base}")`)
-      timed('base_use_default', runTiming, () =>
-        kb(targetCwd, `base use --default ${base}`, { stdio: 'inherit' })
-      )
+      // Do NOT run `kb base use --default` here. It mutates the shared client
+      // profile under ~/.kb and races under --all-suites parallel children
+      // (banner shows the last writer). Queries already pass `--base` explicitly;
+      // the server is started with the same base.
 
       console.error('[eval] docs list')
       const docsOut = timed('docs_list', runTiming, () => kb(targetCwd, `docs list --base ${base}`))

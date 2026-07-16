@@ -1,4 +1,5 @@
 import { isEnvTrue } from '../config/env-boolean.js'
+import type { RunCollector } from '../core/telemetry'
 import { defaultTracesDir } from '../core/telemetry'
 import type { DocType } from '../core/doc-taxonomy'
 import { formatFactUri, sourceRefToPath } from '../core/fact-uri'
@@ -36,6 +37,8 @@ export interface QueryDocumentsInput {
   excludeIds?: string[]
   /** When true, bypass all query expansion and load every fact in the KB. */
   allFacts?: boolean
+  /** Telemetry collector — when set, curator/sufficiency-judge LLM calls are recorded on it. */
+  collector?: RunCollector
 }
 
 export interface QueryResult {
@@ -120,7 +123,7 @@ export class FactsDocumentReader {
     }
 
     if (input.discoveryDepth === 'deep') {
-      const judge = this.llm ? makeSufficiencyJudge(this.llm) : undefined
+      const judge = this.llm ? makeSufficiencyJudge(this.llm, input.collector) : undefined
       const orchestrator = new FactsQueryResearchOrchestrator(this.indexer, { judge })
       const baseQuery = input.query?.trim() ?? ''
       // H5 ablation: score against the raw question (env-provided) while discovery stays on
@@ -159,7 +162,8 @@ export class FactsDocumentReader {
             merged,
             baseQuery,
             opts.includeContent,
-            excludeIdSet
+            excludeIdSet,
+            input.collector
           )
           return this.finalizeDeep(baseQuery, lanes, curated)
         }
@@ -171,7 +175,8 @@ export class FactsDocumentReader {
         response,
         baseQuery,
         opts.includeContent,
-        excludeIdSet
+        excludeIdSet,
+        input.collector
       )
       return this.finalizeDeep(baseQuery, lanes, curated)
     }
@@ -193,7 +198,8 @@ export class FactsDocumentReader {
     response: QueryResponse,
     query: string,
     includeContent: boolean,
-    excludeIds?: Set<string>
+    excludeIds?: Set<string>,
+    collector?: RunCollector
   ): Promise<QueryResponse> {
     if (!this.llm || !shouldCurate(response.results)) return response
 
@@ -219,6 +225,7 @@ export class FactsDocumentReader {
       query: curatorQuery,
       results: response.results,
       requery,
+      collector,
     })
 
     if (record.fellBack && record.dropped.length === 0 && record.added === 0) return response
