@@ -49,7 +49,7 @@ The MCP URL follows the same connection profile as the CLI/TUI (`resolveServerCo
 
 | Trigger | Behavior |
 |---------|----------|
-| `kb mcp install --host …` | Write Cursor/Claude `kb` → `${server}/mcp` |
+| `kb mcp install --host … [--key …]` | Write Cursor/Claude `kb` → `${server}/mcp` (`--key`/`--api-key` sets the Bearer without exporting env) |
 | `kb mcp install` | Same, using the active connection (localhost default) |
 | `kb skills install` | Same MCP sync as `kb mcp install`, using the active connection |
 | Normal `kb` / TUI startup | **No** MCP rewrite — opt-in via `kb mcp install` / `kb skills install` only |
@@ -58,7 +58,7 @@ The MCP URL follows the same connection profile as the CLI/TUI (`resolveServerCo
 
 Host resolution: `--host` → `KB_SERVER_URL` → `KB_HOST`+`KB_PORT` → `config.server.host` → `localhost` (same as CLI/TUI). TUI `/skills install` therefore points MCP at whatever host the session is connected to.
 
-Writes `mcpServers.kb` with Bearer header when `KB_SERVER_API_KEY` or `config.server.apiKey` is set (clears a stale Bearer when neither is set). Merges into existing JSON; never clobbers other servers. Inspect with `kb mcp status`.
+Writes `mcpServers.kb` with Bearer header from `--key`/`--api-key`, else `KB_SERVER_API_KEY` / `config.server.apiKey` (the flag wins when both are set; clears a stale Bearer when none is set). Merges into existing JSON; never clobbers other servers. Inspect with `kb mcp status`.
 
 ## User-visible connection context
 

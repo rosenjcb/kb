@@ -46,6 +46,12 @@ export interface SyncKbMcpOptions {
    * unset), matching the CLI/TUI connection banner.
    */
   requireExplicitHost?: boolean
+  /**
+   * API key for the Bearer header. Overrides `KB_SERVER_API_KEY` /
+   * `config.server.apiKey` for this sync, so `kb mcp install --key <key>`
+   * can write the auth header without exporting the env var first.
+   */
+  apiKey?: string
   config?: KbConfig
 }
 
@@ -229,7 +235,7 @@ export async function syncKbMcpConfigs(options: SyncKbMcpOptions = {}): Promise<
 
   const connection = resolveServerConnection(config)
   const mcpUrl = resolveMcpEndpointUrl(connection.url)
-  const apiKey = connection.apiKey
+  const apiKey = options.apiKey?.trim() || connection.apiKey
 
   const cursorExpected = buildCursorKbMcpEntry(mcpUrl, apiKey)
   const claudeExpected = buildClaudeKbMcpEntry(mcpUrl, apiKey)

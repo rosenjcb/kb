@@ -224,16 +224,18 @@ function printMcpHelp(): string {
     '(localhost or remote). Agents use MCP only; humans use the kb CLI/TUI.',
     '',
     'Subcommands:',
-    '  install [--host <host[:port]|url>]  Write mcpServers.kb → ${server}/mcp',
+    '  install [--host <host[:port]|url>] [--key <api-key>]',
+    '                                      Write mcpServers.kb → ${server}/mcp',
     '                                      Host from --host, else active connection',
-    '                                      (KB_SERVER_URL / KB_HOST / localhost)',
+    '                                      (KB_SERVER_URL / KB_HOST / localhost).',
+    '                                      Bearer from --key, else KB_SERVER_API_KEY.',
     '  status                              Show env host + current MCP kb URLs',
     '  uninstall                           Remove managed kb MCP entries',
     '',
     'Examples:',
     '  kb mcp install',
     '  kb mcp install --host localhost:38117',
-    '  kb mcp install --host https://kb.example.com:38117',
+    '  kb mcp install --host https://kb.example.com:38117 --key <api-key>',
     '  export KB_SERVER_URL=http://remote:38117 && kb mcp install',
     '  kb mcp status',
     '  kb mcp uninstall',
@@ -737,6 +739,7 @@ export async function runMainWithOutput(
     if (subcommand === 'install') {
       try {
         let host: string | undefined
+        let apiKey: string | undefined
         for (let i = 2; i < args.length; i += 1) {
           const token = args[i]
           if (token === '--host') {
@@ -750,9 +753,20 @@ export async function runMainWithOutput(
             if (!host) throw new Error('--host requires a value')
             continue
           }
+          if (token === '--key' || token === '--api-key') {
+            apiKey = args[i + 1]?.trim()
+            if (!apiKey) throw new Error(`${token} requires a value (the server API key)`)
+            i += 1
+            continue
+          }
+          if (token?.startsWith('--key=') || token?.startsWith('--api-key=')) {
+            apiKey = token.slice(token.indexOf('=') + 1).trim()
+            if (!apiKey) throw new Error('--key requires a value')
+            continue
+          }
           throw new Error(`Unknown argument: ${token}\n\n${printMcpHelp()}`)
         }
-        const results = await syncKbMcpConfigs({ host, config })
+        const results = await syncKbMcpConfigs({ host, apiKey, config })
         const report = formatMcpSyncReport(results)
         if (report) out.log(report)
       } catch (error) {
