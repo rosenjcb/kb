@@ -41,8 +41,7 @@ sequenceDiagram
 ## What it does
 
 - Streams `POST /v1/chat`; connection pill probes `GET /healthz` (timeout +
-  generation guard so “Checking…” cannot stick over a live Connected state;
-  Test connection updates the pill too).
+  generation guard so “Checking…” cannot stick over a live Connected state).
 - **First-boot:** pill shows progress; a sent message waits (Slack-shaped:
   notice → poll until ready → one retry) then answers. **Hourly scheduler
   reindex** keeps serving the existing index (chat stays up).

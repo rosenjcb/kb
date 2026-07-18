@@ -365,10 +365,9 @@
     .field .help { font-size: 11.5px; color: var(--text-dim); margin-top: 6px; line-height: 1.4; }
     .dlg-foot {
       padding: 14px 20px; border-top: 1px solid var(--border);
-      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+      display: flex; justify-content: flex-end; align-items: center; gap: 10px;
     }
-    .dlg-foot .save,
-    .dlg-foot .ghost {
+    .dlg-foot .save {
       height: var(--ctrl);
       border-radius: var(--radius-ctrl);
       padding: 0 14px;
@@ -379,24 +378,8 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      background: var(--accent-strong); color: #fff; border: none;
     }
-    .dlg-foot .save { background: var(--accent-strong); color: #fff; border: none; }
-    .dlg-foot .ghost {
-      background: transparent; color: var(--text-dim); border: 1px solid var(--border);
-    }
-    .dlg-foot .ghost:disabled { opacity: 0.65; cursor: wait; }
-    .dlg-test-result {
-      margin: 0 20px 16px;
-      padding: 10px 12px;
-      border-radius: var(--radius-ctrl);
-      font-size: 12.5px;
-      line-height: 1.4;
-      border: 1px solid var(--border);
-    }
-    .dlg-test-result.ok { color: var(--ok, #1a7f37); background: color-mix(in srgb, #1a7f37 12%, transparent); }
-    .dlg-test-result.bad { color: var(--bad, #cf222e); background: color-mix(in srgb, #cf222e 10%, transparent); }
-    .dlg-test-result.wait { color: var(--text-dim); background: var(--bg-elev); }
-    .dlg-test-result code { font-size: 11.5px; word-break: break-word; }
 
     @media (max-width: 560px) {
       header .title { display: none; }
@@ -469,10 +452,8 @@
         </div>
       </div>
       <div class="dlg-foot">
-        <button class="ghost" id="testBtn" type="button">Test connection</button>
         <button class="save" id="saveBtn" value="save">Save</button>
       </div>
-      <div class="dlg-test-result" id="testResult" hidden></div>
     </form>
   </dialog>
 
@@ -944,8 +925,7 @@
      *  2) GET /v1/bases — auth check (401 when key missing/wrong); healthz alone
      *     cannot see this because it is unauthenticated
      *
-     * opts.healthTimeoutMs / opts.authTimeoutMs — Settings "Test" uses short
-     * budgets so the button never sits on Testing… for 15s.
+     * opts.healthTimeoutMs / opts.authTimeoutMs override the default budgets.
      */
     async function probeConnection(url, headers, opts) {
       const healthTimeoutMs = (opts && opts.healthTimeoutMs) || 15000;
@@ -990,20 +970,6 @@
       if (indexing) return { state: "indexing", progress, reindexing };
       if (res.ok) return { state: "ready", progress: "", reindexing };
       return { state: "bad", progress: "", status: res.status };
-    }
-
-    /**
-     * Let the browser paint (e.g. "Testing…") before a fetch starts.
-     * MUST fall back to setTimeout — Cursor's Simple Browser / some embeds
-     * never fire requestAnimationFrame, which would leave the button stuck.
-     */
-    function paintFrame() {
-      return Promise.race([
-        new Promise((resolve) => {
-          requestAnimationFrame(() => requestAnimationFrame(resolve));
-        }),
-        sleep(32),
-      ]);
     }
 
     function applyHealthStatus(h) {
@@ -1129,68 +1095,6 @@
       sessionId = null; // new connection → new session
       dlg.close();
       checkHealth();
-    });
-    function showTestResult(kind, title, detail) {
-      const el = $("testResult");
-      el.hidden = false;
-      el.className = "dlg-test-result " + kind;
-      el.innerHTML = "<b>" + escapeHtml(title) + "</b>" +
-        (detail ? "<br><code>" + escapeHtml(detail) + "</code>" : "");
-    }
-
-    $("testBtn").addEventListener("click", async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const btn = $("testBtn");
-      if (btn.disabled) return;
-      const idleLabel = "Test connection";
-      btn.disabled = true;
-      btn.textContent = "Testing…";
-      showTestResult("wait", "Testing connection…", "");
-      // Paint before fetch (rAF + setTimeout fallback for embeds that skip rAF).
-      await paintFrame();
-      const probe = {
-        serverUrl: trimUrl($("serverUrl").value) || DEFAULTS.serverUrl,
-        apiKey: $("apiKey").value.trim(),
-        base: $("base").value.trim(),
-      };
-      const h = {};
-      if (probe.apiKey) h["Authorization"] = "Bearer " + probe.apiKey;
-      if (probe.base) h["X-KB-Base"] = probe.base;
-      // Bump gen so an older in-flight checkHealth cannot overwrite the pill.
-      healthGen++;
-      let result = { state: "offline" };
-      try {
-        result = await Promise.race([
-          probeConnection(probe.serverUrl, h, {
-            healthTimeoutMs: 3000,
-            authTimeoutMs: 2000,
-          }),
-          sleep(4500).then(() => ({ state: "offline" })),
-        ]);
-      } catch {
-        result = { state: "offline" };
-      }
-      applyHealthStatus(result);
-      // Sticky result line — button label alone was too easy to miss when the
-      // probe finishes in <100ms (unknown base / 401 return instantly).
-      if (result.state === "ready") {
-        showTestResult("ok", "Reachable", probe.serverUrl + (probe.base ? " · base " + probe.base : ""));
-      } else if (result.state === "indexing") {
-        showTestResult("wait", "Server is indexing", result.progress || "First-boot index still running");
-      } else if (result.state === "unauthorized") {
-        showTestResult("bad", "Unauthorized (401)", "API key missing or wrong for this server.");
-      } else if (result.state === "unknown_base") {
-        showTestResult("bad", "Unknown base", result.detail || ("No index named \"" + probe.base + "\" on this server."));
-      } else if (result.state === "failed") {
-        showTestResult("bad", "Index failed", result.bootstrapError || "Bootstrap error");
-      } else if (result.state === "offline") {
-        showTestResult("bad", "Unreachable", "Timed out talking to " + probe.serverUrl);
-      } else {
-        showTestResult("bad", "HTTP " + (result.status || "?"), result.detail || "");
-      }
-      btn.textContent = idleLabel;
-      btn.disabled = false;
     });
 
     // Init
