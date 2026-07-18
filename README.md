@@ -14,8 +14,7 @@
 </p>
 
 <p align="center">
-  <b>⭐ Don’t clone first — <a href="https://rosenjcb.github.io/kb/">ask the repo in the browser</a>.</b><br/>
-  <sub>GitHub Pages UI → Fly <code>kb-demo</code> · no API key · sources on every answer</sub>
+  <b>⭐ Don’t clone first — <a href="https://rosenjcb.github.io/kb/">ask the repo in the browser</a>.
 </p>
 
 ---
