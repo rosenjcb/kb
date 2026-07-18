@@ -45,7 +45,7 @@ flowchart TB
 - **`createKbService()`** (`service/kb-service.ts`) — transport-agnostic query/chat/reindex/health.
 - **`runQueryPipeline()`** (`service/query-pipeline.ts`) — shared retrieval path for CLI local mode and server.
 - **`runChatSynthesis()`** (`query/chat-synthesis.ts`) — multi-turn chat loop; server streams via `chat-stream.ts`.
-- **`formatChatReply()`** (`service/chat-reply.ts`) — shared answer + Sources footer (Slack mrkdwn via `markdown-to-slack.ts`).
+- **`formatChatReply()`** (`service/chat-reply.ts`) — shared answer + Sources footer; blob links from `discoverBaseRepos` per slug (clone `gitUrl` + primary branch).
 
 Heavy native deps (tree-sitter, ast-grep, optional transformers) live **only here**.
 

@@ -481,7 +481,8 @@
           statusDot = $("statusDot"), statusText = $("statusText"), hint = $("hint");
 
     // ---- Helpers -------------------------------------------------------------
-    // Sources link to this repo's main branch (Pages demo is for github.com/rosenjcb/kb).
+    // Dogfood hardcode: static Pages demo has no volume registry. Server Slack uses
+    // discoverBaseRepos (per-slug gitUrl + primary branch) via formatChatReply.
     const SOURCE_REPO = "https://github.com/rosenjcb/kb";
     const SOURCE_BRANCH = "main";
     function trimUrl(u) { return (u || "").trim().replace(/\/+$/, ""); }

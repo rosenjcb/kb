@@ -111,6 +111,11 @@ KB_SERVER_BASE_GIT_REPOS=https://github.com/acme/auth#main, https://github.com/a
 KB_SERVER_IGNORE=**/node_modules/**, **/*.test.ts
 ```
 
+Each `url[#branch]` (or `--branch` fallback, else the remote's default HEAD) becomes that
+slug's primary branch on disk. Slack **Sources** blob links use that per-clone branch +
+`origin` URL — not a global `KB_SOURCE_BRANCH`. Adding a new repo to the list clones it
+the same way on the next boot.
+
 Precedence (highest wins): `--git` flags → `KB_SERVER_BASE_GIT_REPOS` / `KB_GIT_REPOS`
 env. Repos added to the env list later are folded in on the next boot without a manual
 reindex.

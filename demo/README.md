@@ -26,8 +26,9 @@ Brand mark: the same `KB` ASCII banner as the TUI
 - Renders the answer plus its **sources** from the same `/v1/chat` `answer.sources`
   payload Slack uses. Server-side formatting lives in
   [`@kb/core/service/chat-reply`](../packages/kb-core/src/service/chat-reply.ts)
-  (`formatChatReply`); this page mirrors the same rules in-browser:
-  strip index prefixes, dedupe, link to `https://github.com/rosenjcb/kb/blob/main/…`.
+  (`formatChatReply` + volume `sourceRepos`). This static page cannot see the
+  server's repo registry, so it dogfoods a single-repo hardcode:
+  `https://github.com/rosenjcb/kb` @ `main` (strip/dedupe only).
 - Answers go through a tiny dependency-free markdown renderer (ATX headers,
   GFM pipe tables, fences, inline code, bold/italic, links, lists, paragraphs).
 - While waiting, SSE `meta` (stages) and `reasoning` (model thinking) render in

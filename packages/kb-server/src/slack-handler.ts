@@ -15,23 +15,14 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { formatChatReply } from '@kb/core/service/chat-reply.js'
+import {
+  chatSourceReposFromBaseRepos,
+  formatChatReply,
+} from '@kb/core/service/chat-reply.js'
 import type { QuerySource } from '@kb/core/service/serialize.js'
 import type { KbHealth, KbService } from '@kb/core/service/kb-service.js'
+import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
 import { log } from './logger.js'
-
-/** Optional GitHub (or other) blob base for clickable Slack source links. */
-function slackSourceLinkOptions(): {
-  sourceRepoUrl?: string
-  sourceBranch?: string
-} {
-  const sourceRepoUrl = process.env.KB_SOURCE_REPO_URL?.trim()
-  const sourceBranch = process.env.KB_SOURCE_BRANCH?.trim()
-  return {
-    ...(sourceRepoUrl ? { sourceRepoUrl } : {}),
-    ...(sourceBranch ? { sourceBranch } : {}),
-  }
-}
 
 export interface SlackOptions {
   signingSecret: string
@@ -227,10 +218,12 @@ async function replyWithChat(
     }
   }
   if (answer) {
-    // Shared formatter with the chat demo: deduped Sources footer from answer.sources.
+    // Per-repo blob links from the volume registry (clone gitUrl + gitBranch).
+    // No global KB_SOURCE_* — each slug uses its own primary branch.
+    const sourceRepos = chatSourceReposFromBaseRepos(await discoverBaseRepos(service.baseDir))
     const text = formatChatReply(answer, sources, {
       flavor: 'slack',
-      ...slackSourceLinkOptions(),
+      sourceRepos,
     })
     await postSlackMessage(slackOpts.botToken, channel, text, threadTs)
   } else if (errorMessage) {

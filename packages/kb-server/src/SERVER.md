@@ -181,7 +181,7 @@ Configure your Slack app's **Event Subscriptions** URL to `https://<your-host>/s
 - `app_mention` → multi-turn chat keyed on `thread_ts ?? event.ts`, replying in the same thread
 - `message` (`channel_type=im`) → multi-turn chat keyed on the DM user/channel
 - if bootstrap indexing is still running, Slack gets an immediate status reply with the same progress line the API exposes, then the final answer is posted once indexing settles
-- replies use the same `service.chat` stream as `POST /v1/chat` (and the Pages demo): `formatChatReply({ flavor: 'slack' })` runs the answer through `markdownToSlackMrkdwn` (headers → bold lines, GFM tables → `·`-separated rows, `**bold**` → `*bold*`) and appends a deduped **Sources** footer from `answer.sources`. Optional clickable blob links: `KB_SOURCE_REPO_URL` (+ `KB_SOURCE_BRANCH`, default `main`)
+- replies use the same `service.chat` stream as `POST /v1/chat`: `formatChatReply({ flavor: 'slack', sourceRepos })` runs the answer through `markdownToSlackMrkdwn` and appends a deduped **Sources** footer. Clickable blob links come from `discoverBaseRepos` — each source slug maps to that clone's `gitUrl` + primary branch (`url#branch` / `--branch` / remote HEAD at clone time). There is no global `KB_SOURCE_BRANCH`.
 
 Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply loops. Slack retries are deduplicated by `event_id`.
 

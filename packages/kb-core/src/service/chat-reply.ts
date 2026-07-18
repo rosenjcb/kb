@@ -4,53 +4,140 @@
  *
  * The wire contract stays structured (`answer` + `sources[]`); this module turns
  * that payload into a user-visible message with a deduped Sources footer.
+ *
+ * Blob links are per-repo: each indexed path's `slug` maps to that clone's
+ * `gitUrl` + `gitBranch` from the base volume registry (`discoverBaseRepos`).
+ * There is no global source branch — each repo's primary is the branch it was
+ * cloned on (`url#branch`, `--branch`, or the remote's default HEAD).
  */
 
+import { gitRemoteToBrowseUrl } from '@kb/core/ops/git-sync.js'
+import type { BaseRepo } from '@kb/core/storage/base-repos.js'
 import { markdownToSlackMrkdwn } from './markdown-to-slack.js'
 import type { QuerySource } from './serialize.js'
 
 export type ChatReplyFlavor = 'plain' | 'slack'
 
+/** One tracked clone, ready for blob-link construction. */
+export interface ChatSourceRepo {
+  slug: string
+  /** HTTPS browse root (no trailing slash), e.g. `https://github.com/org/repo`. */
+  browseUrl: string
+  /** Clone HEAD branch — that repo's primary for blob links. */
+  branch: string
+}
+
 export interface ChatReplyFormatOptions {
   /** `plain` = markdown-ish text; `slack` = Slack mrkdwn. */
   flavor?: ChatReplyFlavor
   /**
-   * When set, file sources link to `{sourceRepoUrl}/blob/{sourceBranch}/{path}`.
-   * Slack uses `<url|label>`; plain uses markdown links.
+   * Per-repo registry from `discoverBaseRepos` / `chatSourceReposFromBaseRepos`.
+   * Required for clickable blob links. Multi-repo: each source uses its own slug.
    */
-  sourceRepoUrl?: string
-  sourceBranch?: string
-  /**
-   * Leading path segments to strip (indexed form is often `<gitRepo>/<relPath>`).
-   * Compared case-sensitively against the first path segment.
-   */
-  stripPrefixes?: string[]
+  sourceRepos?: ChatSourceRepo[]
 }
 
 export interface ChatSourceDisplay {
-  /** Repo-relative (or fact://) label shown to the user. */
+  /** Repo-relative (or `slug/path` when multi-repo) label shown to the user. */
   label: string
-  /** Optional deep link (GitHub blob URL, etc.). */
+  /** Optional deep link (GitHub/GitLab blob URL, etc.). */
   href?: string
   symbol?: string
 }
 
-const DEFAULT_STRIP = ['rosenjcb-kb', 'kb']
+/** Build browsable source-repo entries from the base volume registry. */
+export function chatSourceReposFromBaseRepos(repos: BaseRepo[]): ChatSourceRepo[] {
+  const out: ChatSourceRepo[] = []
+  for (const repo of repos) {
+    const browseUrl = gitRemoteToBrowseUrl(repo.gitUrl)
+    if (!browseUrl) continue
+    const branch = (repo.gitBranch || '').trim()
+    if (!branch || branch === 'HEAD') continue
+    const slug = repo.slug.trim()
+    if (!slug) continue
+    out.push({ slug, browseUrl, branch })
+  }
+  return out
+}
 
-/** Strip index/git-repo prefix → display path, or null when not a usable source. */
-export function repoRelativeSourcePath(
-  filePath: string | undefined,
-  stripPrefixes: string[] = DEFAULT_STRIP,
-): string | null {
+function cleanPath(filePath: string | undefined): string | null {
   let p = String(filePath || '')
     .trim()
     .replace(/\\/g, '/')
     .replace(/^\.\//, '')
   if (!p) return null
   if (p.startsWith('fact://')) return p
-  // Scheme-like at the start only (http:, replace:, …) — not mid-path colons.
   if (/^[a-z][a-z0-9+.-]*:/i.test(p) && !p.startsWith('fact://')) return null
+  p = p.replace(/#.*$/, '')
+  return p || null
+}
 
+/**
+ * Resolve display label + optional blob href for one source against the
+ * per-repo registry. Prefer `source.gitRepo`; else match the first path segment
+ * to a known slug.
+ */
+export function resolveChatSourceDisplay(
+  source: QuerySource,
+  sourceRepos: ChatSourceRepo[] = [],
+): ChatSourceDisplay | null {
+  const raw = cleanPath(source.filePath || source.title || source.id)
+  if (!raw) return null
+
+  if (raw.startsWith('fact://')) {
+    return {
+      label: raw,
+      ...(source.symbol ? { symbol: source.symbol } : {}),
+    }
+  }
+
+  const bySlug = new Map(sourceRepos.map(r => [r.slug, r]))
+  const multi = sourceRepos.length > 1
+  const hinted = (source.gitRepo || '').trim()
+  const firstSeg = raw.split('/')[0] || ''
+  const slug =
+    (hinted && bySlug.has(hinted) ? hinted : undefined) ||
+    (firstSeg && bySlug.has(firstSeg) ? firstSeg : undefined)
+  const repo = slug ? bySlug.get(slug) : undefined
+
+  let relPath = raw
+  if (slug && raw === slug) {
+    relPath = ''
+  } else if (slug && raw.startsWith(`${slug}/`)) {
+    relPath = raw.slice(slug.length + 1)
+  }
+
+  if (!relPath && !slug) return null
+
+  const label =
+    slug && multi && relPath
+      ? `${slug}/${relPath}`
+      : relPath || slug || raw
+
+  let href: string | undefined
+  if (repo && relPath) {
+    const encoded = relPath
+      .split('/')
+      .map(seg => encodeURIComponent(seg))
+      .join('/')
+    href = `${repo.browseUrl}/blob/${encodeURIComponent(repo.branch)}/${encoded}`
+  }
+
+  return {
+    label,
+    ...(href ? { href } : {}),
+    ...(source.symbol ? { symbol: source.symbol } : {}),
+  }
+}
+
+/** @deprecated Prefer {@link resolveChatSourceDisplay} with `sourceRepos`. */
+export function repoRelativeSourcePath(
+  filePath: string | undefined,
+  stripPrefixes: string[] = [],
+): string | null {
+  const cleaned = cleanPath(filePath)
+  if (!cleaned || cleaned.startsWith('fact://')) return cleaned
+  let p = cleaned
   for (const raw of stripPrefixes) {
     const prefix = raw.replace(/\/+$/, '')
     if (!prefix) continue
@@ -60,7 +147,6 @@ export function repoRelativeSourcePath(
       break
     }
   }
-  p = p.replace(/#.*$/, '')
   return p || null
 }
 
@@ -68,32 +154,17 @@ export function normalizeChatSources(
   sources: QuerySource[] | undefined,
   options: ChatReplyFormatOptions = {},
 ): ChatSourceDisplay[] {
-  const strip = options.stripPrefixes?.length ? options.stripPrefixes : DEFAULT_STRIP
-  const repo = (options.sourceRepoUrl || '').trim().replace(/\/+$/, '')
-  const branch = (options.sourceBranch || 'main').trim() || 'main'
+  const sourceRepos = options.sourceRepos ?? []
   const seen = new Set<string>()
   const out: ChatSourceDisplay[] = []
 
   for (const src of sources ?? []) {
-    const raw = src.filePath || src.title || src.id || ''
-    const label = repoRelativeSourcePath(raw, strip) || raw || 'unknown'
-    const key = `${label.toLowerCase()}#${(src.symbol || '').toLowerCase()}`
+    const display = resolveChatSourceDisplay(src, sourceRepos)
+    if (!display) continue
+    const key = `${display.label.toLowerCase()}#${(display.symbol || '').toLowerCase()}`
     if (seen.has(key)) continue
     seen.add(key)
-
-    let href: string | undefined
-    if (repo && label && !label.startsWith('fact://') && !/^[a-z][a-z0-9+.-]*:/i.test(label)) {
-      href = `${repo}/blob/${branch}/${label
-        .split('/')
-        .map(seg => encodeURIComponent(seg))
-        .join('/')}`
-    }
-
-    out.push({
-      label,
-      ...(href ? { href } : {}),
-      ...(src.symbol ? { symbol: src.symbol } : {}),
-    })
+    out.push(display)
   }
   return out
 }

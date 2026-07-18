@@ -38,7 +38,7 @@ See companion doc for full vocabulary where applicable.
 | FR-8 | Start server CLI with bootstrap logging and deferred scheduler |
 | FR-9 | Print package version for `--version` / `-V` without starting the daemon |
 | FR-10 | Store in-memory chat session history with TTL and caps |
-| FR-11 | Verify Slack signatures, route events, and deduplicate retries; chat replies use `formatChatReply({ flavor: 'slack' })` on the same `service.chat` answer event as `/v1/chat` (Markdown→mrkdwn + deduped Sources footer) |
+| FR-11 | Verify Slack signatures, route events, and deduplicate retries; chat replies use `formatChatReply({ flavor: 'slack', sourceRepos })` on the same `service.chat` answer event as `/v1/chat` (Markdown→mrkdwn + deduped Sources footer; blob links from `discoverBaseRepos` per slug) |
 | FR-12 | Manage the daemon by pid file: resolve the bind port, write/read the pid, and treat a dead pid as stopped |
 | FR-13 | Generate a launchd/systemd service that launches the release binary (never a repo dist path) |
 | FR-14 | Serve many bases from one process: select per request via `X-KB-Base` (or `?base=` / body `base`); omitted ⇒ default base, unknown ⇒ `404 unknown_base`; `GET /v1/bases` lists served bases |
@@ -148,6 +148,7 @@ See companion doc for full vocabulary where applicable.
 | TC-98 | FR-15 | --json emits { ok: false } on stdout before rethrowing | pass |
 | TC-99 | FR-15 | --from replaces an existing base index without --force | pass |
 | TC-100 | FR-11 | appends a Sources footer from the chat answer event (shared with HTTP chat) | pass |
+| TC-101 | FR-11 | posts per-repo blob links from discoverBaseRepos (slug → gitUrl + primary branch) | pass |
 
 ### Related docs
 

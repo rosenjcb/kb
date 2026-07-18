@@ -1,9 +1,11 @@
 # @kb/core
 
+
 ## 1.5.3
 
 ### Patch Changes
 
+- Per-repo Sources blob links from the volume registry (slug → gitUrl + primary clone branch); remove global KB_SOURCE_* env; expose QuerySource.gitRepo on the wire.
 - GitHub Pages chat demo + CORS; shared chat Sources footer and Slack mrkdwn conversion; keep remote chat thinking when stage meta arrives.
 
 ## 1.5.2

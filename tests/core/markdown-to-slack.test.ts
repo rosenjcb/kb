@@ -54,13 +54,24 @@ describe('formatChatReply slack flavor', () => {
   it('[TC-6] converts the answer body to mrkdwn before appending Sources', () => {
     const text = formatChatReply(
       '### Overview\n\n**Chat** uses tools.',
-      [{ filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md' }],
-      { flavor: 'slack' },
+      [{ filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' }],
+      {
+        flavor: 'slack',
+        sourceRepos: [
+          {
+            slug: 'rosenjcb-kb',
+            browseUrl: 'https://github.com/rosenjcb/kb',
+            branch: 'main',
+          },
+        ],
+      },
     )
     expect(text).toContain('*Overview*')
     expect(text).toContain('*Chat* uses tools.')
     expect(text).toContain('*Sources*')
-    expect(text).toContain('`packages/kb-core/src/core/CHAT.md`')
+    expect(text).toContain(
+      '<https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md|packages/kb-core/src/core/CHAT.md>',
+    )
     expect(text).not.toContain('###')
     expect(text).not.toContain('**Chat**')
   })

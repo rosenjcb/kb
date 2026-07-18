@@ -40,6 +40,9 @@ export interface QuerySource {
   id?: string
   title?: string
   filePath?: string
+  /** Origin repo slug (`facts.git_repo`) when known — used for per-repo source links. */
+  gitRepo?: string
+  symbol?: string
   tags?: string[]
   snippet?: string
 }
