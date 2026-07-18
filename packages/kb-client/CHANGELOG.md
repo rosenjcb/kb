@@ -4,6 +4,11 @@
 
 ### Patch Changes
 
+- Facelift `kb:dev-workflow` skill: ask semantically meaningful natural-language
+  questions via MCP `kb_query` only (not keyword salad); verify against returned
+  source facts / `filePath`s. No CLI/TUI mentions — agents must not think that
+  surface exists for investigation.
+
 - Multi-base support in kb-server plus first-class base/connection-string selection
   on the client.
 

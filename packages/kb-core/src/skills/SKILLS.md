@@ -4,7 +4,7 @@ title: "Bundled Agent Skills"
 description: "The first-party agent skills KB ships for dogfooding and kb skills install, and how to add one."
 resource: ./src/skills
 tags: [skills, agents, install]
-timestamp: 2026-07-11T00:00:00Z
+timestamp: 2026-07-18T00:00:00Z
 ---
 
 # Bundled Agent Skills
@@ -42,7 +42,7 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 
 Maintained in `SKILLS` constant inside `skill-installer.ts` (must stay in sync with `skills/` directory):
 
-- `kb:dev-workflow` — agents investigate via **MCP connection only** (CLI/TUI is for humans); explicit local/remote host protocol
+- `kb:dev-workflow` — agents ask **semantic NL questions** via MCP `kb_query` only (not keyword dumps); verify against cited `filePath`s; skill body never mentions CLI/TUI
 - `kb:dump-context` — in-place OKF companions + sibling `*.spec.md` behavioral specs (spec.md FR/TC)
 - `kb:evaluation-run` — eval suites under `eval/`
 
@@ -58,6 +58,6 @@ Adding a skill:
 - Skill bodies should stay **short and imperative** — they are always-on context when installed to profile MDs.
 - Do not embed secrets or repo-specific paths in skills; use MCP tools / base flags in examples.
 - Hash header must remain first line after install so upgrades are detectable.
-- Dev-workflow: agents use the MCP connection only; CLI/TUI is the human surface (agents may run `kb mcp install` for setup, never `kb query`).
+- Dev-workflow skill: MCP `kb_query` only — real questions, verify sources; never mention CLI/TUI in the skill body (agents otherwise try to use it).
 - MCP `kb` URL follows the active CLI/TUI connection (`--host` / env / localhost default).
 - Do not auto-install skills or MCP from CLI/TUI startup — opt-in commands only.
