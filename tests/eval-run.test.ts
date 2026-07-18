@@ -994,7 +994,7 @@ describe('multi-suite parallel batch', () => {
     expect(argv).not.toContain('--sequential')
   })
 
-  it('buildMultiSuiteChildEnv keeps shared multi-base attach URL by default', () => {
+  it('[TC-238] buildMultiSuiteChildEnv keeps shared multi-base attach URL by default', () => {
     const env = buildMultiSuiteChildEnv({
       PATH: '/usr/bin',
       KB_EVAL_SERVER_URL: 'http://127.0.0.1:38117',
@@ -1009,7 +1009,7 @@ describe('multi-suite parallel batch', () => {
     expect(env.KB_EVAL_SERVER_PORT).toBeUndefined()
   })
 
-  it('buildMultiSuiteChildEnv strips attach pins in --per-suite-server mode', () => {
+  it('[TC-239] buildMultiSuiteChildEnv strips attach pins in --per-suite-server mode', () => {
     const env = buildMultiSuiteChildEnv(
       {
         PATH: '/usr/bin',
@@ -1025,7 +1025,7 @@ describe('multi-suite parallel batch', () => {
     expect(env.KB_EVAL_SERVER_PORT).toBeUndefined()
   })
 
-  it('buildChildArgv forwards --skip-scan', () => {
+  it('[TC-240] buildChildArgv forwards --skip-scan', () => {
     const argv = buildChildArgv('raylib', {
       skipScan: true,
       skipControl: true,

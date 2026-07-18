@@ -141,8 +141,9 @@ on `/healthz`, or a body `base` on `/v1/query` / `/v1/chat`):
 - Bases are separate SQLite files, so cross-base reads are naturally concurrent and the
   reindex write-guard is per-base.
 
-This lets one server back parallel `kb eval` suites: each suite connects with its own
-`--base` / `--connection-string` instead of spawning a server per port.
+This lets one server back parallel `kb eval` suites (`scripts/eval-run.mjs` multi-suite
+batch): the parent starts one process; each child attaches with its own `--base` /
+`X-KB-Base` instead of spawning a server per port. See [`eval/EVAL.md`](../../../eval/EVAL.md).
 
 ### Slack integration (`KB_SERVER_ENABLE_SLACK` + secrets)
 
@@ -188,4 +189,6 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 - Monorepo → [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) · Core → [`../../kb-core/CORE.md`](../../kb-core/CORE.md)
 - Build-to-serve handoff → [`../HANDOFF.md`](../HANDOFF.md)
 - HTTP contract → [`../http/HTTP.md`](../http/HTTP.md) · Deploy → [`../README.md`](../README.md)
+- Client wire base → [`../../kb-client/src/api/CONNECTION.md`](../../kb-client/src/api/CONNECTION.md)
+- Eval multi-suite harness → [`../../../eval/EVAL.md`](../../../eval/EVAL.md)
 - Behavioral spec → [`SERVER.spec.md`](SERVER.spec.md)

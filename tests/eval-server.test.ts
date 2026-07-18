@@ -9,7 +9,7 @@ import {
 } from '../scripts/eval-server.mjs'
 
 describe('eval-server helpers', () => {
-  it('[TC-526] buildKbRemoteEnv sets KB_SERVER_URL and drops KB_LOCAL_MODE', () => {
+  it('[TC-526][TC-242] buildKbRemoteEnv sets KB_SERVER_URL, KB_BASE, and drops KB_LOCAL_MODE', () => {
     const prevLocal = process.env.KB_LOCAL_MODE
     const prevNodePath = process.env.NODE_PATH
     process.env.KB_LOCAL_MODE = 'true'
@@ -35,7 +35,7 @@ describe('eval-server helpers', () => {
     }
   })
 
-  it('healthzUrl appends ?base= for multi-base probes', () => {
+  it('[TC-241] healthzUrl appends ?base= for multi-base probes', () => {
     expect(healthzUrl('http://127.0.0.1:38117/', 'eval-kb')).toBe(
       'http://127.0.0.1:38117/healthz?base=eval-kb'
     )

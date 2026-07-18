@@ -336,6 +336,15 @@ Kb-only runs still record `aggregate_scores.query.success_score` but cannot emit
 
 ## Success Score (primary metric)
 
+**S vs pass@3 (do not conflate):**
+
+| Symbol | Artifact field | Meaning |
+|--------|----------------|---------|
+| **S** | `aggregate_scores.query.success_score` | Continuous `[0,1]` blend of quality + tokens + speed (below) |
+| **pass@3** | `aggregate_scores.query.pass_rate_quality_axes_at_least_3` | Fraction of questions with corr≥3 AND use≥3 AND rel≥3 — quality floor only |
+
+High S with low pass@3 means cheap/fast answers that often miss the ≥3 bar (or vice versa).
+
 `success_score` (also written **S** in the research paper) is the per-side scalar in `[0, 1]` (higher is better) that
 blends answer quality, token economy, and speed:
 

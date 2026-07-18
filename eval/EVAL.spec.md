@@ -7,8 +7,8 @@ tests:
   - ../tests/eval-run.test.ts
   - ../tests/eval-server.test.ts
 description: Behavioral specification for MOEL Evaluation Framework
-tags: [spec, kb]
-timestamp: 2026-07-11T00:00:00Z
+tags: [spec, kb, multi-base]
+timestamp: 2026-07-18T00:00:00Z
 ---
 
 ### Intro
@@ -46,6 +46,7 @@ See companion doc for full vocabulary where applicable.
 | FR-13 | Behaviors in eval-run.test.ts |
 | FR-14 | [REMOVED] Behaviors in eval-snapshot.test.ts — agent-compare-eval skill retired, folded into kb:evaluation-run |
 | FR-15 | [REMOVED] Behaviors in eval-task-artifact.test.ts — agent-compare-eval skill retired, folded into kb:evaluation-run |
+| FR-16 | Multi-suite harvest shares one multi-base kb-server by default: children keep `KB_EVAL_SERVER_URL`, select `eval-{suite}` via `--base` / `X-KB-Base`, probe `/healthz?base=`; `--per-suite-server` restores ephemeral per-child servers; `--skip-scan` is forwarded to children |
 
 ### QA Test Cases
 
@@ -288,8 +289,15 @@ See companion doc for full vocabulary where applicable.
 | TC-235 | FR-13 | buildQuestionTimeline joins stages with the trace and derives retrieval_ms | pass |
 | TC-236 | FR-13 | buildQuestionTimeline falls back to the detail string when report.retrieval is absent | pass |
 | TC-237 | FR-13 | buildTimelineSummary aggregates shares and flags a thinking-dominant run | pass |
+| TC-238 | FR-16 | buildMultiSuiteChildEnv keeps shared multi-base attach URL by default | pass |
+| TC-239 | FR-16 | buildMultiSuiteChildEnv strips attach pins in --per-suite-server mode | pass |
+| TC-240 | FR-16 | buildChildArgv forwards --skip-scan | pass |
+| TC-241 | FR-16 | healthzUrl appends ?base= for multi-base probes | pass |
+| TC-242 | FR-16 | buildKbRemoteEnv carries KB_BASE for X-KB-Base | pass |
 
 ### Related docs
 
 - [EVAL.md](EVAL.md)
+- [SERVER.md](../packages/kb-server/src/SERVER.md) (multi-base registry)
+- [CONNECTION.md](../packages/kb-client/src/api/CONNECTION.md) (`X-KB-Base`)
 

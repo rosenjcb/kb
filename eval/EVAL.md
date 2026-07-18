@@ -3,8 +3,8 @@ type: "Subsystem"
 title: "Eval Directory"
 description: "The MOEL evaluation framework — a quantitative harness proving KB-equipped agents explore less and spend fewer tokens."
 resource: ./eval
-tags: [eval, moel, harness]
-timestamp: 2026-06-30T00:00:00Z
+tags: [eval, moel, harness, multi-base]
+timestamp: 2026-07-18T00:00:00Z
 ---
 
 # Eval Directory
@@ -27,7 +27,7 @@ flowchart LR
 
 Two evaluation pipelines co-exist:
 
-1. **Query harvest** (`scripts/eval-run.mjs`, suites `raylib`/`kb`/`fzf`/…/`generic`) — runs the **kb side** (condition **K**) and, by default, the **control side** (condition **N**) side-by-side into one unified artifact. kb scores `kb query` answers via auto-score (Gemini/OpenAI); the control hands each question to a *real coding agent* (Claude Code headless, no kb) and scores it with the **same rubric/judge**. Artifacts under `~/.kb/evaluations/<run>/artifact.json` hold both (kb at top level + a `control` block + a `comparison`). `--skip-control` runs kb only; `--score-runs N` averages the scorer. **Multi-suite:** `--suites a,b` / `--all-suites` runs a Node-native parallel batch (default); `--sequential` or `--parallel N` to tune. See [Control vs kb](#control-vs-kb-the-real-baseline).
+1. **Query harvest** (`scripts/eval-run.mjs`, suites `raylib`/`kb`/`fzf`/…/`generic`) — runs the **kb side** (condition **K**) and, by default, the **control side** (condition **N**) side-by-side into one unified artifact. kb scores `kb query` answers via auto-score (Gemini/OpenAI); the control hands each question to a *real coding agent* (Claude Code headless, no kb) and scores it with the **same rubric/judge**. Artifacts under `~/.kb/evaluations/<run>/artifact.json` hold both (kb at top level + a `control` block + a `comparison`). `--skip-control` runs kb only; `--score-runs N` averages the scorer. **Multi-suite:** Node-native parallel batch against **one shared multi-base `kb-server`** (see [Client-server eval](#client-server-eval-10)). See [Control vs kb](#control-vs-kb-the-real-baseline).
 
 2. **MOEL pipeline** (`scripts/moel-run.mjs`, suite `moel-kb`) — measures exploration efficiency across conditions per task. Loss functions live in `eval/losses/`; the harness is `scripts/moel-run.mjs`.
 
@@ -174,83 +174,53 @@ flowchart LR
 
 ## Client-server eval (1.0+)
 
-After the `@kb/client` / `@kb/server` split, **`kb query` defaults to remote mode** — it
-expects a live `kb-server` on `localhost:38117` (or `KB_HOST` / `KB_PORT` / `KB_SERVER_URL`). The harvest and MOEL harnesses **orchestrate `kb-server` automatically** via
-`scripts/eval-server.mjs` before the kb phase of each run.
+`kb query` is remote by default. Harness orchestrates `kb-server` via `scripts/eval-server.mjs`.
+Multi-suite uses the server's **multi-base registry** ([SERVER.md](../packages/kb-server/src/SERVER.md)):
+one process, many `eval-{suite}` indexes selected per request.
 
-### Orchestration (default)
+```mermaid
+flowchart LR
+  P["eval-run parent\n--all-suites"] -->|start once| S["kb-server\ndefault=eval-first"]
+  P -->|spawn| C1["child suite A"]
+  P -->|spawn| C2["child suite B"]
+  C1 -->|"KB_EVAL_SERVER_URL\n--base eval-A"| S
+  C2 -->|"KB_EVAL_SERVER_URL\n--base eval-B"| S
+  S -->|"X-KB-Base /healthz?base="| I["~/.kb/sessions/eval-*"]
+```
 
-1. **`eval-run.mjs`** — **init/scan run in-process** (`KB_LOCAL_MODE=true`) so SQLite is not
-   contended, then **`kb-server` starts** for the query loop. Subprocess `kb query` calls use
-   `KB_SERVER_URL` + `KB_SERVER_API_KEY` + `--base` (`X-KB-Base`). The harness polls
-   `/healthz?base=<slug>` until `ok: true` before queries. Server logs land in
-   `<run-dir>/eval-server.log` (or `_batch-*/eval-server.log` for shared multi-suite);
-   the process is stopped when the kb phase (or whole batch) finishes.
+### Orchestration
 
-2. **Multi-suite batch** — parent starts **one shared multi-base `kb-server`** (boot default =
-   first suite's `eval-{suite}`); children attach via `KB_EVAL_SERVER_URL` and select their
-   own `eval-{suite}` per request. Opt out with `--per-suite-server` (legacy ephemeral port
-   per child). `--skip-scan` reuses existing indexes (no eval-index refresh).
+| Mode | Server | Base selection |
+|------|--------|----------------|
+| Single-suite | Spawn (or attach) one server | Boot `--base eval-{suite}`; probes `/healthz?base=` |
+| Multi-suite (default) | Parent spawns **one** shared server; children attach | Each child `--base eval-{suite}` → `X-KB-Base` |
+| `--per-suite-server` | Legacy: one ephemeral port per child | Same as pre-multi-base |
+| `--skip-scan` | n/a | Skip eval-index scan when reusing built indexes (fresh init still scans) |
 
-3. **`moel-run.mjs`** — init in-process per condition, then one `kb-server` per condition
-   (`moel-{suite}-{N|K|O}`) for the remote query.
+1. **Init/scan** — in-process (`KB_LOCAL_MODE=true`) before attach, so SQLite writes do not race the shared server.
+2. **Query phase** — remote: `KB_SERVER_URL` + API key + `--base`. docs/graph/logs also run remote after attach.
+3. **MOEL** (`moel-run.mjs`) — still one server per condition (`moel-{suite}-{N|K|O}`).
 
-**Base lifecycle:** one process can serve many already-built bases (registry + `X-KB-Base`).
-Client `kb base use` updates the client profile only — eval selects the server base per
-request via `--base` / `KB_BASE`.
+Logs: `<run-dir>/eval-server.log` (single) or `~/.kb/evaluations/_batch-*/eval-server.log` (shared batch).
 
-### Attach to a sidecar (optional)
-
-Skip in-process server spawn when a pinned sidecar is already running:
+### Attach / env
 
 ```bash
 export KB_EVAL_SERVER_URL=http://localhost:38117
-export KB_SERVER_API_KEY=your-bearer-token   # must match the sidecar
+export KB_SERVER_API_KEY=your-bearer-token
 pnpm run eval -- --suite kb --auto-score --skip-control
+# multi-suite reuse: --all-suites --skip-control --skip-scan
 ```
-
-The sidecar may be multi-base; the harness probes `/healthz?base=eval-{suite}` and sends
-`X-KB-Base` on every request.
-
-### Env knobs
 
 | Variable | Role |
 |----------|------|
-| `KB_EVAL_SERVER_URL` | Attach to existing server (no spawn/stop) |
-| `KB_EVAL_SERVER_BIN` | Override `packages/kb-server/dist/bin/kb-server.js` |
-| `KB_EVAL_SERVER_PORT` | Pin port when spawning (single-suite / `--per-suite-server` only) |
-| `KB_EVAL_SERVER_API_KEY` | Bearer token for spawned server (default: `eval-local-key`) |
-| `KB_QUERY_TIMEOUT` | Client + server query timeout (e.g. `180s`; default 60s) |
+| `KB_EVAL_SERVER_URL` | Attach (no spawn/stop); multi-suite parent sets this for children |
+| `KB_EVAL_SERVER_BIN` | Override built `kb-server.js` |
+| `KB_EVAL_SERVER_PORT` | Pin port when **spawning** (single-suite / `--per-suite-server` only) |
+| `KB_EVAL_SERVER_API_KEY` | Bearer for spawned server (default `eval-local-key`) |
+| `KB_QUERY_TIMEOUT` | Client + server query timeout (e.g. `180s`) |
 
-### Health poll
-
-```bash
-until curl -sf 'http://localhost:38117/healthz?base=eval-kb' | jq -e '.ok == true' >/dev/null; do sleep 2; done
-```
-
-The harness uses the same readiness gate (two consecutive `ok: true` reads with `indexMtime`),
-scoped to the suite base via `?base=`.
-
-### CI
-
-| Path | When |
-|------|------|
-| **In-process server** (default for `pnpm run eval` / `moel`) | Harness spawns built `kb-server.js` on an ephemeral port — no Docker required. Needs LLM provider keys in env like any kb run. |
-| **Docker sidecar** (`pnpm run integration:test`) | Full REST/SSE suite via httpyac against compose; set `KB_EVAL_SERVER_URL` to reuse that container for eval without respawning. |
-
-`KB_LOCAL_MODE=true` remains for **Vitest unit tests** and other fast in-process paths — not
-for harvest/MOEL.
-
-### Remote-mode prerequisites
-
-| Prerequisite | Status | Notes |
-|--------------|--------|-------|
-| `/healthz` readiness | Done (#120) | `ok: false` → HTTP 503 while bootstrap indexing, after bootstrap failure, or before index exists. Poll until `ok: true`. |
-| `KB_QUERY_TIMEOUT` | Done (#120) | Client + server knob (e.g. `KB_QUERY_TIMEOUT=180s`). Default 60s. |
-| Remote `kb query --trace` | Done (#120) | `trace: true` on `/v1/query`; returns `traceFile`. |
-| `kb base use` in remote mode | Follow-up | Client-local only; server base fixed at startup. Eval sets server base via orchestration. |
-| Harness starts `kb-server` | Done (#118) | `scripts/eval-server.mjs` |
-| Drop `KB_LOCAL_MODE` from eval/MOEL | Done (#118) | |
+Readiness: two consecutive `/healthz?base=<slug>` responses with `ok: true` + `indexMtime`.
 
 ## Invariants
 
@@ -258,12 +228,21 @@ for harvest/MOEL.
 - `initAstLossParser()` must be called once per process before any `computeAstLoss` call.
 - The query harvest pipeline and the MOEL pipeline are independent — neither replaces the other.
 - Do not hardcode question text; always load from `eval/suites/<suite>.yaml`.
+- Multi-suite default: **one** shared multi-base server; children must not strip `KB_EVAL_SERVER_URL`.
+- Non-default bases are serve-only — missing `.kb-index.sqlite` ⇒ `404 unknown_base` (build via init/scan first).
+- Never run local-mode SQLite writes against a base the shared server already holds open.
+
+## Gotchas
+
+- `--skip-init` = rescore-only (needs `--run-dir`); `--skip-scan` = reuse index but still query.
+- Auto-score can flake on judge JSON — suite exit 1 with `q*.json` present; retry the suite alone.
+- `kb base use` is client-local; eval never relies on it for remote routing (always pass `--base`).
 
 ## Related docs
 
 - Behavioral spec → [`EVAL.spec.md`](EVAL.spec.md)
-
-- `losses/LOSSES.md` — per-function API, invariants, extension checklist
-- `../../PLAN.md` — 12-ticket backlog (all ✅ Implemented)
-- `../../TESTING.md` — test conventions including eval-specific patterns
-- `../../skills/kb:evaluation-run/SKILL.md` — agent-facing evaluation run instructions
+- Plan / harvest schema → [`../EVALUATION.md`](../EVALUATION.md)
+- Server multi-base → [`../packages/kb-server/src/SERVER.md`](../packages/kb-server/src/SERVER.md)
+- Client wire base → [`../packages/kb-client/src/api/CONNECTION.md`](../packages/kb-client/src/api/CONNECTION.md)
+- Agent skill → [`../skills/kb:evaluation-run/SKILL.md`](../skills/kb:evaluation-run/SKILL.md)
+- `losses/LOSSES.md` · [`../TESTING.md`](../TESTING.md)

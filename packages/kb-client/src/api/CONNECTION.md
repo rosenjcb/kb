@@ -135,4 +135,5 @@ Operator guide copy lives in `INDEXING_SERVER_MANAGED_NOTICE` (`@kb/core/config/
 - Package overview → [`../../CLIENT.md`](../../CLIENT.md)
 - CLI routing → [`../cli/CLI.md`](../cli/CLI.md)
 - Behavioral spec → [`CONNECTION.spec.md`](./CONNECTION.spec.md)
-- Server daemon → [`../../../kb-server/src/SERVER.md`](../../../kb-server/src/SERVER.md)
+- Server multi-base → [`../../../kb-server/src/SERVER.md`](../../../kb-server/src/SERVER.md)
+- Eval harness (shared multi-base batch) → [`../../../../eval/EVAL.md`](../../../../eval/EVAL.md)
