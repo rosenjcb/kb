@@ -84,7 +84,7 @@ describe('kb-server scan (one-shot batch reindex)', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('adopt(--from) → scan → export(--out) round-trips on local paths', async () => {
+  it('[TC-92] adopt(--from) → scan → export(--out) round-trips on local paths', async () => {
     // Build a snapshot from a source base, then reindex a *fresh* base from it.
     seedBase(root, kbHome, 'src', 'BATCH')
     const bundle = path.join(root, 'snap')
@@ -104,7 +104,7 @@ describe('kb-server scan (one-shot batch reindex)', () => {
     expect(manifest?.provenance.repos).toHaveLength(1)
   }, 30_000)
 
-  it('scans a warm base in place with no --from / --out', async () => {
+  it('[TC-93] scans a warm base in place with no --from / --out', async () => {
     seedBase(root, kbHome, 'warm', 'WARM')
     const { logger, stdout } = capturingLogger()
     await runServerScanCommand(['--base', 'warm'], logger, kbHome)
@@ -114,7 +114,7 @@ describe('kb-server scan (one-shot batch reindex)', () => {
     expect(stdout.join('\n')).toMatch(/Reindex complete/)
   }, 30_000)
 
-  it('--json emits a single machine-readable summary on stdout', async () => {
+  it('[TC-94] --json emits a single machine-readable summary on stdout', async () => {
     seedBase(root, kbHome, 'warm', 'JSON')
     const outDir = path.join(root, 'out')
     const { logger, stdout } = capturingLogger()
@@ -135,38 +135,35 @@ describe('kb-server scan (one-shot batch reindex)', () => {
     expect(summary.indexDigest).toMatch(/^[0-9a-f]{64}$/)
   }, 30_000)
 
-  it('rejects object-store URIs for --from (cloud-agnostic guardrail)', async () => {
+  it('[TC-95] rejects object-store URIs for --from (cloud-agnostic guardrail)', async () => {
     const { logger } = capturingLogger()
     await expect(
       runServerScanCommand(['--base', 'batch', '--from', 'gs://bucket/snap'], logger, kbHome)
     ).rejects.toThrow(/LOCAL path only/)
   })
 
-  it('rejects object-store URIs for --out (cloud-agnostic guardrail)', async () => {
+  it('[TC-96] rejects object-store URIs for --out (cloud-agnostic guardrail)', async () => {
     const { logger } = capturingLogger()
     await expect(
       runServerScanCommand(['--base', 'batch', '--out', 's3://bucket/out'], logger, kbHome)
     ).rejects.toThrow(/LOCAL path only/)
   })
 
-  it('fails fast on non-empty --out without --force (before scan work)', async () => {
-    seedBase(root, kbHome, 'warm', 'FAST')
+  it('[TC-97] overwrites a non-empty --out without --force (batch default)', async () => {
+    seedBase(root, kbHome, 'warm', 'OVER')
     const outDir = path.join(root, 'stale-out')
     mkdirSync(outDir, { recursive: true })
     writeFileSync(path.join(outDir, 'leftover.txt'), 'stale')
 
-    const { logger, stdout } = capturingLogger()
-    await expect(
-      runServerScanCommand(['--base', 'warm', '--out', outDir, '--json'], logger, kbHome)
-    ).rejects.toThrow(/not empty/)
+    const { logger } = capturingLogger()
+    await runServerScanCommand(['--base', 'warm', '--out', outDir], logger, kbHome)
 
-    const summary = JSON.parse(stdout[0] as string)
-    expect(summary).toMatchObject({ ok: false, error: expect.stringMatching(/not empty/) })
-    // Index marker unchanged — we never reached a destructive export wipe.
-    expect(readIndexMarker(path.join(kbHome, 'sessions', 'warm', '.kb-index.sqlite'))).toBe('FAST')
+    expect(readIndexMarker(path.join(outDir, '.kb-index.sqlite'))).toBe('OVER')
+    const manifest = await readSnapshotManifest(outDir)
+    expect(manifest?.provenance.base).toBe('warm')
   }, 30_000)
 
-  it('--json emits { ok: false } on stdout before rethrowing', async () => {
+  it('[TC-98] --json emits { ok: false } on stdout before rethrowing', async () => {
     const { logger, stdout } = capturingLogger()
     await expect(
       runServerScanCommand(['--base', 'missing-base-xyz', '--json'], logger, kbHome)
@@ -178,4 +175,17 @@ describe('kb-server scan (one-shot batch reindex)', () => {
     expect(typeof summary.error).toBe('string')
     expect(summary.error.length).toBeGreaterThan(0)
   })
+
+  it('[TC-99] --from replaces an existing base index without --force (batch default)', async () => {
+    seedBase(root, kbHome, 'src', 'SRC')
+    seedBase(root, kbHome, 'dest', 'OLD')
+    const bundle = path.join(root, 'snap')
+    const { logger: exp } = capturingLogger()
+    await runExportCommand(['--base', 'src', '--out', bundle], exp, kbHome)
+
+    const { logger } = capturingLogger()
+    await runServerScanCommand(['--base', 'dest', '--from', bundle], logger, kbHome)
+
+    expect(readIndexMarker(path.join(kbHome, 'sessions', 'dest', '.kb-index.sqlite'))).toBe('SRC')
+  }, 30_000)
 })

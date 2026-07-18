@@ -16,6 +16,13 @@
  *   kb-server scan --from /snap --out /out --base acme
  *   <object-store> cp /out           <remote> # deploy's job
  *
+ * ## Batch defaults (no `--force`)
+ *
+ * Scan always replaces an existing base index on `--from` and always overwrites
+ * a non-empty `--out`. That is the batch contract — ephemeral staging dirs and
+ * adopt→refresh→export loops should not require a ceremony flag every cron tick.
+ * Interactive `kb-server import` / `export` still require `--force` for humans.
+ *
  * ## Cloud-agnostic guardrail (non-negotiable)
  *
  * `--from` / `--out` accept LOCAL paths only. This command must never learn
@@ -26,7 +33,6 @@
  * stays portable across GCP / AWS / Azure / bare metal.
  */
 
-import { readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import {
@@ -81,25 +87,6 @@ function assertLocalPath(flag: string, value: string): void {
   }
 }
 
-/**
- * Fail-fast: `--out` emptiness / `--force` must be checked *before* adopt + scan,
- * not only inside `runExportCommand` after the expensive reindex has already run.
- */
-async function assertOutReady(outDir: string, force: boolean): Promise<void> {
-  const resolved = path.resolve(outDir)
-  let existing: string[]
-  try {
-    existing = await readdir(resolved)
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code
-    if (code === 'ENOENT') return
-    throw err
-  }
-  if (existing.length > 0 && !force) {
-    throw new Error(`Output directory ${resolved} is not empty; pass --force to overwrite.`)
-  }
-}
-
 /** Pull the repo count out of `runScanCommand`'s summary line (single source of truth). */
 function repoCountFromScanSummary(summary: string): number {
   const match = /^Scanned (\d+) repo\(s\)/.exec(summary)
@@ -112,14 +99,13 @@ function errorMessage(err: unknown): string {
 
 /**
  * `kb-server scan --base <name> [--from <dir>] [--out <dir>]
- *                 [--force] [--no-verify] [--no-repos] [--json]`
+ *                 [--no-verify] [--no-repos] [--json]`
  *
- *   --from <dir>   adopt/restore a LOCAL snapshot into the base first (import path)
+ *   --from <dir>   adopt/restore a LOCAL snapshot into the base first (import path).
+ *                  Always replaces an existing index (batch default; no --force).
  *   --base <name>  base to scan (else the active / effective base)
- *   --out <dir>    export the refreshed snapshot to a LOCAL dir (export path)
- *   --force        clobber an existing index on adopt AND a non-empty --out on export
- *                  (two decisions, one flag — see HANDOFF.md; operators who only want
- *                  export overwrite still accept adopt-clobber)
+ *   --out <dir>    export the refreshed snapshot to a LOCAL dir (export path).
+ *                  Always overwrites a non-empty dir (batch default; no --force).
  *   --no-verify    skip the adopted snapshot's sha256 integrity check
  *   --no-repos     export a small serve-only snapshot (drops the working trees)
  *   --json         emit a machine-readable summary on stdout (progress → stderr).
@@ -139,7 +125,6 @@ export async function runServerScanCommand(
   const from = readOptionalCliValue(args, '--from')
   const outDir = readOptionalCliValue(args, '--out')
   const baseArg = readOptionalCliValue(args, '--base')
-  const force = args.includes('--force')
   const noVerify = args.includes('--no-verify')
   const noRepos = args.includes('--no-repos')
   const emitJson = args.includes('--json')
@@ -155,10 +140,7 @@ export async function runServerScanCommand(
 
   try {
     if (from) assertLocalPath('--from', from)
-    if (outDir) {
-      assertLocalPath('--out', outDir)
-      await assertOutReady(outDir, force)
-    }
+    if (outDir) assertLocalPath('--out', outDir)
 
     const baseDir = baseArg
       ? await ensureOperationalBaseDir(baseArg, cwd)
@@ -166,12 +148,13 @@ export async function runServerScanCommand(
     baseName = path.basename(baseDir)
 
     // 1. Optionally adopt a local snapshot into the base (reuses the import path).
+    //    Batch default: always clobber an existing index (force: true).
     if (from) {
       progress(`📥 Adopting local snapshot from ${path.resolve(from)} …`)
       const manifest = await adoptSnapshot({
         from: path.resolve(from),
         baseDir,
-        force,
+        force: true,
         verify: !noVerify,
       })
       progress(
@@ -190,9 +173,9 @@ export async function runServerScanCommand(
     const indexDigest = await computeFileDigest(kbIndexDbPath(baseDir))
 
     // 3. Optionally export the refreshed base to a local snapshot dir (export path).
+    //    Batch default: always overwrite a non-empty --out (--force on the export path).
     if (outDir) {
-      const exportArgs = ['--out', outDir, '--base', baseDir]
-      if (force) exportArgs.push('--force')
+      const exportArgs = ['--out', outDir, '--base', baseDir, '--force']
       if (noRepos) exportArgs.push('--no-repos')
       await runExportCommand(exportArgs, { log: progress, error: out.error }, cwd)
     }

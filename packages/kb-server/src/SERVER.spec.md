@@ -5,7 +5,7 @@ sources: [./]
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-06-28T04:04:52Z
+timestamp: 2026-07-18T00:00:00Z
 ---
 
 ### Intro
@@ -42,6 +42,7 @@ See companion doc for full vocabulary where applicable.
 | FR-12 | Manage the daemon by pid file: resolve the bind port, write/read the pid, and treat a dead pid as stopped |
 | FR-13 | Generate a launchd/systemd service that launches the release binary (never a repo dist path) |
 | FR-14 | Serve many bases from one process: select per request via `X-KB-Base` (or `?base=` / body `base`); omitted ⇒ default base, unknown ⇒ `404 unknown_base`; `GET /v1/bases` lists served bases |
+| FR-15 | One-shot `kb-server scan` runs adopt(optional) → scan → export(optional) then exits (no HTTP); `--from`/`--out` are local paths only; batch always replaces an existing adopt index and overwrites `--out` (no `--force`); `--json` emits ok true/false summary on stdout |
 
 ### QA Test Cases
 
@@ -138,6 +139,14 @@ See companion doc for full vocabulary where applicable.
 | TC-89 | FR-14 | registry lazily creates and caches another built base | pass |
 | TC-90 | FR-14 | registry throws BaseNotFoundError for a base with no index | pass |
 | TC-91 | FR-14 | registry list() advertises the default plus every built base | pass |
+| TC-92 | FR-15 | adopt(--from) → scan → export(--out) round-trips on local paths | pass |
+| TC-93 | FR-15 | scans a warm base in place with no --from / --out | pass |
+| TC-94 | FR-15 | --json emits a single machine-readable success summary on stdout | pass |
+| TC-95 | FR-15 | rejects object-store URIs for --from | pass |
+| TC-96 | FR-15 | rejects object-store URIs for --out | pass |
+| TC-97 | FR-15 | overwrites a non-empty --out without --force | pass |
+| TC-98 | FR-15 | --json emits { ok: false } on stdout before rethrowing | pass |
+| TC-99 | FR-15 | --from replaces an existing base index without --force | pass |
 
 ### Related docs
 

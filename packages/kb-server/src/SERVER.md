@@ -4,7 +4,7 @@ title: KB HTTP, MCP, and Slack Server
 description: Long-lived HTTP service with optional MCP at POST /mcp and optional Slack webhook handling at POST /slack/events.
 resource: ./packages/kb-server/src
 tags: [server, http, mcp, docker, tracing, logging]
-timestamp: 2026-07-03T00:00:00Z
+timestamp: 2026-07-18T00:00:00Z
 ---
 
 # KB HTTP, MCP, and Slack Server
@@ -16,7 +16,8 @@ big worker, `kb-server export` a portable snapshot (index + settings + repos), t
 warm-start small serving nodes with `kb-server start --from <dir>` (adopts a local
 snapshot already on disk — never downloads; keeps the index fresh via incremental
 reindex, re-cloning repos from provenance for `--no-repos` snapshots) — see the
-[build-to-serve handoff model](../HANDOFF.md).
+[build-to-serve handoff model](../HANDOFF.md). Scheduled batch refresh without an
+HTTP daemon: `kb-server scan --from <dir> --out <dir>` (adopt → scan → export → exit).
 
 ## Role in the stack
 
@@ -42,7 +43,8 @@ flowchart LR
 
 | File | Role |
 |---|---|
-| `server-cli.ts` | `kb-server start` (+ `--from` snapshot adopt)/`export`/`import`; boot-build; scheduler; shutdown |
+| `server-cli.ts` | `kb-server start` (+ `--from` snapshot adopt)/`scan`/`export`/`import`; boot-build; scheduler; shutdown |
+| `scan-cli.ts` | `kb-server scan` — one-shot adopt→scan→export batch reindex (no HTTP) |
 | `snapshot-cli.ts` | `kb-server export`/`import` + `adoptSnapshot` — snapshot handoff mechanics |
 | `@kb/core/storage/snapshot.ts` | Snapshot artifact contract (`kb-snapshot.json`) |
 | `@kb/core/service/kb-service.ts` | Query, chat, readFacts, reindex, health |
@@ -172,6 +174,7 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 - `reindex` is single-flight (`isReindexing()`).
 - MCP HTTP is stateless — fresh server + transport per request.
 - Fresh-volume bootstrap runs after `listen()` so startup probes can pass during long first indexing.
+- `kb-server scan` never opens an HTTP listener; `--from`/`--out` are local paths only; batch always replaces adopt index and overwrites `--out` (no `--force`).
 
 ## Extension checklist
 

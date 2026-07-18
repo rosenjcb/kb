@@ -4,7 +4,7 @@ title: Build-to-Serve Handoff Model
 description: A vendor-agnostic model for building KB state once on a high-resource builder and warm-starting low-resource serving nodes from a portable snapshot they adopt from local disk.
 resource: ./packages/kb-server
 tags: [architecture, handoff, snapshot, deployment, builder, server]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-18T00:00:00Z
 ---
 
 # Build-to-Serve Handoff Model
@@ -192,19 +192,14 @@ kb-server scan --from /snap --out /out --base myproject
 <object-store> cp /out           <remote>     # deploy's job
 ```
 
-`kb-server scan [--base <name>] [--from <dir>] [--out <dir>] [--force] [--no-verify] [--no-repos] [--json]`
+`kb-server scan [--base <name>] [--from <dir>] [--out <dir>] [--no-verify] [--no-repos] [--json]`
 - `--from <dir>` — adopt/restore a **local** snapshot into the base first (the `import`
-  path; verifies compatibility + sha256 unless `--no-verify`, refuses to clobber an
-  existing index unless `--force`).
+  path; verifies compatibility + sha256 unless `--no-verify`). **Always replaces** an
+  existing index — batch default; no `--force` (interactive `import` still requires it).
 - `--base <name>` — the base to scan (else the active / effective base).
 - `--out <dir>` — export the refreshed snapshot to a **local** dir afterward (the
-  `export` path; `--no-repos` for a small serve-only artifact). Emptiness is checked
-  **up-front** (before adopt/scan) so a stale non-empty `--out` fails fast.
-- `--force` — **one flag, two destructive behaviors:** (1) clobber an existing index
-  on `--from` adopt, and (2) overwrite a non-empty `--out` on export. Batch jobs that
-  only want export overwrite still opt into adopt-clobber; treat a surprise existing
-  index as an upstream error and omit `--from`, or clear the base first, if you do not
-  want (1).
+  `export` path; `--no-repos` for a small serve-only artifact). **Always overwrites** a
+  non-empty dir — batch default; no `--force` (interactive `export` still requires it).
 - `--json` — emit a machine-readable summary on stdout (progress → stderr) so a
   scheduler can log/alert. Success:
   `{ ok: true, base, adopted, from, repos, exported, out, indexDigest }`. Failure:
