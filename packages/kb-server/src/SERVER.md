@@ -121,9 +121,28 @@ synthesizes. A fact-id drill-down tool may return later.
 | `POST /v1/chat` | Bearer | Multi-turn SSE chat |
 | `POST /v1/reindex` | Bearer | Incremental rescan |
 | `POST /mcp` | Bearer | MCP Streamable HTTP when `--with-mcp` |
+| `GET /v1/bases` | Bearer | List the bases this server can serve (default + built bases under `~/.kb/sessions`) |
 | `POST /slack/events` | Slack HMAC | Slack Events API webhook (when Slack mode is enabled) |
 
 Auth: `Authorization: Bearer <KB_SERVER_API_KEY>` or `X-Api-Key`.
+
+### Multi-base (one process, many bases)
+
+The server resolves + bootstraps one **default** base at boot, but can serve any
+already-built base on the same host — the psql/libpq postmaster model (one process,
+many databases). Selection is **per request** via the `X-KB-Base` header (or `?base=`
+on `/healthz`, or a body `base` on `/v1/query` / `/v1/chat`):
+
+- `service-registry.ts` keeps a `Map<baseDir, KbService>` — the default keeps its
+  bootstrap/indexing lifecycle; other bases are created **lazily on first touch** and
+  are **serve-only** (never built on connect).
+- An omitted base ⇒ the default base. An unknown base (no `.kb-index.sqlite`) ⇒ `404`
+  with `status: unknown_base` — base creation stays a `kb init` / scan concern.
+- Bases are separate SQLite files, so cross-base reads are naturally concurrent and the
+  reindex write-guard is per-base.
+
+This lets one server back parallel `kb eval` suites: each suite connects with its own
+`--base` / `--connection-string` instead of spawning a server per port.
 
 ### Slack integration (`KB_SERVER_ENABLE_SLACK` + secrets)
 

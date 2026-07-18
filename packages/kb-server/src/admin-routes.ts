@@ -9,10 +9,13 @@ import { readKbConfig } from '@kb/core/config/kb-config.js'
 import { runServerCommand } from '@kb/core/cli/dispatch.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import { defaultLogsDir } from '@kb/core/core/telemetry.js'
+import type { KbServiceRegistry } from './service-registry.js'
 
 export interface AdminRouteContext {
   service: KbService
   baseDir: string
+  /** Multi-base registry, when the server serves more than its boot base. */
+  registry?: KbServiceRegistry
 }
 
 function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -47,7 +50,7 @@ export async function handleAdminRoute(
   res: ServerResponse,
   ctx: AdminRouteContext,
 ): Promise<boolean> {
-  const { service, baseDir } = ctx
+  const { service, baseDir, registry } = ctx
 
   if (method === 'POST' && pathname === '/v1/facts/search') {
     const body = await readJsonBody(req)
@@ -142,7 +145,19 @@ export async function handleAdminRoute(
   }
 
   if (method === 'GET' && pathname === '/v1/bases') {
-    sendJson(res, 200, { bases: [{ name: path.basename(baseDir), path: baseDir }] })
+    if (registry) {
+      const bases = await registry.list()
+      sendJson(res, 200, {
+        default: registry.defaultBaseName,
+        bases: bases.map(base => ({ name: base.name, path: base.path, default: base.default })),
+      })
+      return true
+    }
+    // Single-base server: advertise just the boot base.
+    sendJson(res, 200, {
+      default: path.basename(baseDir),
+      bases: [{ name: path.basename(baseDir), path: baseDir, default: true }],
+    })
     return true
   }
 

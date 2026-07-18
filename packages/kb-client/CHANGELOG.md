@@ -1,5 +1,26 @@
 # @kb/client
 
+## 1.3.7
+
+### Patch Changes
+
+- Multi-base support in kb-server plus first-class base/connection-string selection
+  on the client.
+
+  - Server: one process can now serve many bases (psql/libpq postmaster model). A
+    new base-keyed `KbService` registry resolves the base per request from the
+    `X-KB-Base` header (or `?base=` on `/healthz`, or a body `base` on
+    `/v1/query` / `/v1/chat`). The default base keeps its bootstrap lifecycle;
+    other built bases are created lazily and serve-only. Unknown base ⇒ 404
+    `unknown_base`. `GET /v1/bases` now lists the real set of served bases.
+  - Client: new `--base` and `--connection-string` global flags (+
+    `KB_CONNECTION_STRING`). Connection strings use a libpq-style
+    `kb://[apikey@]host[:port]/[base][?sslmode=]` grammar. The resolved connection
+    carries the base and `kb-api-client` sends it as `X-KB-Base` on every request.
+
+- Updated dependencies
+  - @kb/core@1.5.1
+
 ## 1.3.6
 
 ### Patch Changes

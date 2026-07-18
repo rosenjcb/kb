@@ -15,7 +15,7 @@ export function resolveServerConnection(config: KbConfig): ServerConnection {
     return {
       url: urlOverride.replace(/\/$/, ''),
       apiKey: resolveApiKey(config),
-      base: config.server?.base,
+      base: resolveConnectionBase(config),
     }
   }
 
@@ -28,12 +28,26 @@ export function resolveServerConnection(config: KbConfig): ServerConnection {
   return {
     url: hostPart.replace(/\/$/, ''),
     apiKey: resolveApiKey(config),
-    base: config.server?.base,
+    base: resolveConnectionBase(config),
   }
 }
 
 function resolveApiKey(config: KbConfig): string | undefined {
   return process.env.KB_SERVER_API_KEY?.trim() || config.server?.apiKey?.trim() || undefined
+}
+
+/**
+ * The base slug carried on the wire (`X-KB-Base`). Sourced from `--base` /
+ * `--connection-string` (both land in `KB_BASE`), then `KB_ACTIVE_BASE`, then
+ * `config.server.base`. Undefined ⇒ the server serves its own boot/default base.
+ */
+function resolveConnectionBase(config: KbConfig): string | undefined {
+  return (
+    process.env.KB_BASE?.trim() ||
+    process.env.KB_ACTIVE_BASE?.trim() ||
+    config.server?.base?.trim() ||
+    undefined
+  )
 }
 
 export function formatServerAddress(connection: ServerConnection): string {

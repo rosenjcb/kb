@@ -44,6 +44,16 @@ describe('server-connection', () => {
     if (prevLocal) process.env.KB_LOCAL_MODE = prevLocal
     else delete process.env.KB_LOCAL_MODE
   })
+
+  it('[TC-50] resolveServerConnection carries KB_BASE as the wire base', () => {
+    const prevBase = process.env.KB_BASE
+    delete process.env.KB_SERVER_URL
+    process.env.KB_BASE = 'raylib'
+    const conn = resolveServerConnection({})
+    expect(conn.base).toBe('raylib')
+    if (prevBase === undefined) delete process.env.KB_BASE
+    else process.env.KB_BASE = prevBase
+  })
 })
 
 describe('KbApiClient', () => {
@@ -61,6 +71,17 @@ describe('KbApiClient', () => {
       'http://127.0.0.1:9/healthz',
       expect.objectContaining({ method: 'GET' }),
     )
+  })
+
+  it('[TC-49] sends X-KB-Base when the connection carries a base', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true, base: 'raylib' }), { status: 200 }))
+    const client = new KbApiClient({
+      connection: { url: 'http://127.0.0.1:9', base: 'raylib' },
+      fetchImpl,
+    })
+    await client.health()
+    const headers = (fetchImpl.mock.calls[0][1] as RequestInit).headers as Headers
+    expect(headers.get('X-KB-Base')).toBe('raylib')
   })
 
   it('[TC-4] connection errors include setup hints', () => {
