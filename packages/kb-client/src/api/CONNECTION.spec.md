@@ -51,6 +51,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | FR-12 | `readKbMcpStatus` / `kb mcp status` reports env host + current agent MCP URLs |
 | FR-13 | `mcp`, `skills`, `uninstall`, `sync`, and `base use` stay client-local — never forwarded to `/v1/admin/cli` |
 | FR-14 | CLI and TUI startup never call `syncKbMcpConfigs` — MCP install is opt-in via `kb mcp install` / `kb skills install` only |
+| FR-15 | `kb mcp install --key`/`--api-key` (and the `syncKbMcpConfigs` `apiKey` option) writes the Bearer header without requiring `KB_SERVER_API_KEY` in the environment, and takes precedence over the env/config key when both are set |
 
 ### QA Test Cases
 
@@ -87,3 +88,5 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-29 | FR-13 | Given `query` / `docs list` | `isClientLocalCommand` is false (forwarded remotely) |
 | TC-30 | FR-9 | Given only `config.server.host` + apiKey | sync installs with Bearer (no env host) |
 | TC-31 | FR-10 | Given no API key but existing Bearer | sync updates and clears Authorization |
+| TC-32 | FR-15 | Given `apiKey` option and env unset | writes Bearer header from the option |
+| TC-33 | FR-15 | Given `apiKey` option and `KB_SERVER_API_KEY` set | option key overrides the env key |

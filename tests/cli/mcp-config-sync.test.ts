@@ -163,6 +163,28 @@ describe('syncKbMcpConfigs', () => {
     })
   })
 
+  it('[TC-32] Given apiKey option, writes Bearer without KB_SERVER_API_KEY env', async () => {
+    const results = await syncKbMcpConfigs({ host: 'https://kb.example.com', apiKey: 'from-flag' })
+    expect(results.every(r => r.action === 'installed')).toBe(true)
+
+    const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
+    expect(cursor.mcpServers.kb).toEqual({
+      url: 'https://kb.example.com/mcp',
+      headers: { Authorization: 'Bearer from-flag' },
+    })
+    const claude = JSON.parse(await readFile(path.join(fakeHome, '.claude.json'), 'utf8'))
+    expect(claude.mcpServers.kb.headers).toEqual({ Authorization: 'Bearer from-flag' })
+  })
+
+  it('[TC-33] apiKey option overrides KB_SERVER_API_KEY env', async () => {
+    process.env.KB_SERVER_API_KEY = 'from-env'
+    const results = await syncKbMcpConfigs({ host: 'https://kb.example.com', apiKey: 'from-flag' })
+    expect(results.every(r => r.action === 'installed')).toBe(true)
+
+    const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
+    expect(cursor.mcpServers.kb.headers).toEqual({ Authorization: 'Bearer from-flag' })
+  })
+
   it('[TC-17] Given matching entry, action is skipped', async () => {
     process.env.KB_SERVER_URL = 'http://remote:38117'
     process.env.KB_SERVER_API_KEY = 'k'

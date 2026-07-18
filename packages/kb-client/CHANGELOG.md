@@ -1,5 +1,11 @@
 # @kb/client
 
+## 1.3.6
+
+### Patch Changes
+
+- `kb mcp install` now accepts `--key`/`--api-key` to write the Bearer header without exporting `KB_SERVER_API_KEY` first (the flag wins over env/config when both are set). Fixes the remote-install flow that previously required setting the env var upfront.
+
 ## 1.3.5
 
 ### Patch Changes
