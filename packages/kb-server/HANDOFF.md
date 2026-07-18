@@ -4,7 +4,7 @@ title: Build-to-Serve Handoff Model
 description: A vendor-agnostic model for building KB state once on a high-resource builder and warm-starting low-resource serving nodes from a portable snapshot they adopt from local disk.
 resource: ./packages/kb-server
 tags: [architecture, handoff, snapshot, deployment, builder, server]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-18T00:00:00Z
 ---
 
 # Build-to-Serve Handoff Model
@@ -49,6 +49,7 @@ flowchart LR
 |---|---|---|---|
 | **Build** | `kb init` / `kb-server start` (auto) | builder | heavy (one-time) |
 | **Export** | `kb-server export` | builder | cheap (copy + hash) |
+| **Scheduled reindex** | `kb-server scan --from <dir> --out <dir>` | batch job (cron) | one-shot; adopt → scan → export → exit |
 | **Warm-start + serve** | `kb-server start --from <dir>` | serving node | light |
 
 `start --from <dir>` fuses "adopt the snapshot" and "serve it" into one startup, so a
@@ -171,6 +172,55 @@ scripts/export-snapshot.sh --base myproject --out ./myproject.kb   # add --with-
 - Copies the whole base faithfully; `--no-repos` drops only the working trees for a
   small, frozen serve-only artifact.
 - Writes the manifest with provenance (incl. each repo's built SHA) + a sha256 digest.
+
+### Scheduled reindex as a one-shot batch job
+
+The refresh above is what a **long-lived** node does to keep itself current. But some
+deployments have no persistent home for the index — it lives only in an object store,
+and a **scheduled job** (Cloud Run Job + Cloud Scheduler, an ECS scheduled task, a
+Kubernetes `CronJob`, a plain cron box) spins up periodically to rebuild it and exits.
+For that shape, standing up the HTTP server just to `curl POST /v1/admin/scan` and then
+`export` is pure orchestration overhead. `kb-server scan` collapses the whole dance into
+one run-to-completion process — *adopt a local store → scan once → write the refreshed
+store → exit* — with **no HTTP listener, no `/healthz` polling, no reindex scheduler, and
+no `curl`**:
+
+```bash
+# The deployment stages the bytes in/out — kb-server only touches LOCAL paths.
+<object-store> cp <remote>/snap  /snap        # gsutil / aws s3 / az — deploy's job
+kb-server scan --from /snap --out /out --base myproject
+<object-store> cp /out           <remote>     # deploy's job
+```
+
+`kb-server scan [--base <name>] [--from <dir>] [--out <dir>] [--no-verify] [--no-repos] [--json]`
+- `--from <dir>` — adopt/restore a **local** snapshot into the base first (the `import`
+  path; verifies compatibility + sha256 unless `--no-verify`). **Always replaces** an
+  existing index — batch default; no `--force` (interactive `import` still requires it).
+- `--base <name>` — the base to scan (else the active / effective base).
+- `--out <dir>` — export the refreshed snapshot to a **local** dir afterward (the
+  `export` path; `--no-repos` for a small serve-only artifact). **Always overwrites** a
+  non-empty dir — batch default; no `--force` (interactive `export` still requires it).
+- `--json` — emit a machine-readable summary on stdout (progress → stderr) so a
+  scheduler can log/alert. Success:
+  `{ ok: true, base, adopted, from, repos, exported, out, indexDigest }`. Failure:
+  `{ ok: false, base, error }` on stdout **and** a non-zero exit (thrown after emit).
+- Composes the exact standalone code paths `kb scan`, `kb-server import`, and
+  `kb-server export` already use — same scan, same snapshot contract — just fused into a
+  single process. One-shot mode has no interval scheduler to arm (equivalent to
+  `KB_REINDEX_INTERVAL=0`), so there is no overlap with a periodic reindex.
+- Exits non-zero on failure (an unreadable base, an incompatible/corrupt snapshot, a
+  failed export), so a batch runner sees the failure.
+
+**Cloud-agnostic guardrail:** `--from` / `--out` accept **local paths only**. The command
+rejects `gs://` / `s3://` / any `scheme://` value loudly — it never learns about buckets,
+object-store clients, or credentials. Staging the bytes to/from a store stays 100% the
+deployment system's job, exactly like `start --from` (see *Transport* below). That keeps
+the binary portable across GCP / AWS / Azure / bare metal.
+
+This is the run-to-completion counterpart of the long-lived
+[`scripts/export-snapshot.sh`](../../scripts/export-snapshot.sh), which drives a
+*running* builder container; `kb-server scan` instead starts, does the work against local
+dirs, and exits.
 
 ### Warm-start a serving node
 

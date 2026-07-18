@@ -512,6 +512,14 @@ Commands:
   service <install|uninstall|status> [--no-start]
         Register/manage kb-server as a launchd (macOS) / systemd --user (Linux)
         service that starts on login. (install is an alias for service install.)
+  scan [--base <name>] [--from <dir>] [--out <dir>] [--no-verify]
+       [--no-repos] [--json]
+        One-shot reindex for scheduled batch jobs: adopt(optional) → scan →
+        export(optional), then exit. No HTTP listener, no reindex scheduler, no
+        curl. --from/--out are LOCAL paths only (object-store transport is the
+        deployment's job). Batch defaults: --from always replaces an existing
+        index; --out always overwrites (no --force). --json emits
+        { ok:true|false, … } on stdout (failure still exits non-zero).
   export [--base <name>] --out <dir> [--no-repos] [--force]
         Snapshot a built base into a portable snapshot directory (repos + all
         settings by default; --no-repos for a small, frozen serve-only artifact)
@@ -584,6 +592,11 @@ export async function runServerMain(argv: string[]): Promise<void> {
     case 'uninstall':
       await runServerUninstallCommand(rest, out)
       return
+    case 'scan': {
+      const { runServerScanCommand } = await import('./scan-cli.js')
+      await runServerScanCommand(rest, out)
+      return
+    }
     case 'export': {
       const { runExportCommand } = await import('./snapshot-cli.js')
       await runExportCommand(rest, out)
