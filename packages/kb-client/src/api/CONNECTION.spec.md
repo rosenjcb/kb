@@ -1,7 +1,7 @@
 ---
 type: Spec
 title: "Spec: Client ↔ Server Connection"
-sources: [./server-connection.ts, ./cli-global-flags.ts, ./connection-string.ts, ./connection-error.ts, ./mcp-config-sync.ts]
+sources: [./server-connection.ts, ./cli-global-flags.ts, ./connection-string.ts, ./connection-error.ts, ./mcp-config-sync.ts, ../cli/remote-commands.ts]
 tests:
   - ../../../../tests/cli/kb-api-client.test.ts
   - ../../../../tests/cli/cli-global-flags.test.ts
@@ -31,10 +31,12 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 - Host/port/URL resolution, `--host` CLI override, health probe, connection error hints
 - `formatConnectionContext` for banner, TUI status bar, and chat headers
 - Syncing Cursor/Claude/Antigravity `kb` MCP entries to the resolved connection profile
+- Remote chat SSE event routing (`dispatchRemoteChatStreamEvent`)
 
 ## Out of Scope
 - Server-side indexing (`KB_GIT_REPOS`) — see [SERVER.md](../../../kb-server/src/SERVER.md)
 - Base selection precedence — see `@kb/core/storage/base-selection.ts`
+- Chat answer presentation / Sources footer — see [CHAT_REPLY.md](../../../kb-core/src/service/CHAT_REPLY.md)
 
 ### Functional Requirements
 
@@ -59,6 +61,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | FR-17 | `parseKbConnectionString` parses `kb://[apikey@]host[:port]/[base][?sslmode=]`: credential from userinfo, base from path, TLS from `sslmode` (default `prefer`, loopback ⇒ http), rejecting non-`kb://` schemes and unknown `sslmode` |
 | FR-18 | `applyConnectionOverrides` applies precedence `--connection-string` / `KB_CONNECTION_STRING` > `--host` + `--base` > env, expanding a connection string into `KB_SERVER_URL` / `KB_SERVER_API_KEY` / `KB_BASE` |
 | FR-19 | `resolveServerConnection` carries `base` (`KB_BASE` > `KB_ACTIVE_BASE` > `config.server.base`); `kb-api-client` sends it as `X-KB-Base` on every request |
+| FR-20 | `dispatchRemoteChatStreamEvent` routes chat SSE `reasoning` to progress and `meta` to log (never both to progress) |
 
 ### QA Test Cases
 
@@ -114,3 +117,4 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-48 | FR-18 | Given connection string + `--base` | `--base` refines the base |
 | TC-49 | FR-19 | Given a connection with `base` | `kb-api-client` sends `X-KB-Base` |
 | TC-50 | FR-19 | Given `KB_BASE` set | `resolveServerConnection` carries it as `base` |
+| TC-51 | FR-20 | Given interleaved meta + reasoning SSE events | meta → log; reasoning → progress only |

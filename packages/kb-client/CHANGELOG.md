@@ -1,5 +1,13 @@
 # @kb/client
 
+## 1.3.8
+
+### Patch Changes
+
+- GitHub Pages chat demo + CORS; shared chat Sources footer and Slack mrkdwn conversion; keep remote chat thinking when stage meta arrives.
+- Updated dependencies
+  - @kb/core@1.5.2
+
 ## 1.3.7
 
 ### Patch Changes

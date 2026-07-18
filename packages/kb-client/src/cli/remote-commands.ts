@@ -3,6 +3,7 @@ import { readKbConfig } from '@kb/core/config/kb-config.js'
 import { getIntentQuestion, isIntentCommand, parseIntentCommand } from '@kb/core/query/intent-cli.js'
 import type { CmdMode } from '@kb/core/config/cmd-ref.js'
 import { createKbApiClient } from '../api/kb-api-client.js'
+import type { ChatStreamEvent } from '../api/types.js'
 import { isLocalMode, resolveServerConnection, formatConnectionContext } from '../api/server-connection.js'
 import { resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
 import type { CliOutput } from '@kb/core/ui/cli-output.js'
@@ -154,6 +155,39 @@ export async function runRemoteIntentCommand(
   }
 }
 
+/**
+ * Route one `/v1/chat` SSE event to CLI/TUI sinks.
+ * `reasoning` → progress (thinking spinner); `meta` → log (stage lines).
+ * Must stay split — merging both into progress lets stage heartbeats wipe thinking.
+ */
+export function dispatchRemoteChatStreamEvent(
+  event: ChatStreamEvent,
+  out: Pick<CliOutput, 'log' | 'progress'>,
+  hooks: {
+    onSession?: (sessionId: string) => void
+    onAnswer?: (text: string) => void
+  } = {},
+): void {
+  switch (event.type) {
+    case 'session':
+      hooks.onSession?.(event.sessionId)
+      break
+    case 'reasoning':
+      out.progress?.(event.text)
+      break
+    case 'meta':
+      out.log(event.text)
+      break
+    case 'answer':
+      hooks.onAnswer?.(event.text)
+      break
+    case 'error':
+      throw new Error(event.message)
+    case 'done':
+      break
+  }
+}
+
 export async function runRemoteChatTurn(
   message: string,
   sessionId: string | undefined,
@@ -167,22 +201,14 @@ export async function runRemoteChatTurn(
   let answer = ''
 
   for await (const event of client.chatStream({ sessionId, message })) {
-    switch (event.type) {
-      case 'session':
-        activeSession = event.sessionId
-        break
-      case 'reasoning':
-      case 'meta':
-        out.progress?.(event.text)
-        break
-      case 'answer':
-        answer = event.text
-        break
-      case 'error':
-        throw new Error(event.message)
-      case 'done':
-        break
-    }
+    dispatchRemoteChatStreamEvent(event, out, {
+      onSession: id => {
+        activeSession = id
+      },
+      onAnswer: text => {
+        answer = text
+      },
+    })
   }
 
   return { sessionId: activeSession ?? sessionId ?? 'default', answer }

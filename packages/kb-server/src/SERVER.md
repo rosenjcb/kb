@@ -50,7 +50,8 @@ flowchart LR
 | `@kb/core/service/kb-service.ts` | Query, chat, readFacts, reindex, health |
 | `http-server.ts` | `/healthz`, `/v1/*`, admin routes, optional MCP/Slack |
 | `@kb/core/service/query-pipeline.ts` | Shared retrieval + synthesis |
-| `chat-stream.ts` | `runChatSynthesis` → SSE |
+| `chat-stream.ts` | `runChatSynthesis` → SSE (`reasoning` / `meta` / `answer`+`sources`) |
+| `@kb/core/service/chat-reply.ts` | Shared answer + Sources footer (+ Slack mrkdwn) |
 | `mcp-server.ts` | Streamable HTTP MCP handler |
 | `reindex-scheduler.ts` | `KB_REINDEX_INTERVAL` |
 
@@ -118,7 +119,7 @@ synthesizes. A fact-id drill-down tool may return later.
 
 | Method / path | Auth | Purpose |
 |---|---|---|
-| `GET /health` / `/healthz` | none | Liveness + `indexMtime` (SQLite mtime = last index write) + `version.{server,core}` + `indexing` / `bootstrapProgress` / `reindexing` |
+| `GET /health` / `/healthz` | none | Liveness + `indexMtime` (SQLite mtime = last index write) + `version.server` (never `@kb/core`) + `indexing` / `bootstrapProgress` / `reindexing` |
 | `POST /v1/query` | Bearer | Synthesized answer + sources; returns `503` with bootstrap progress while first indexing is still running |
 | `POST /v1/chat` | Bearer | Multi-turn SSE chat |
 | `POST /v1/reindex` | Bearer | Incremental rescan |
@@ -127,6 +128,18 @@ synthesizes. A fact-id drill-down tool may return later.
 | `POST /slack/events` | Slack HMAC | Slack Events API webhook (when Slack mode is enabled) |
 
 Auth: `Authorization: Bearer <KB_SERVER_API_KEY>` or `X-Api-Key`.
+
+### Browser CORS (Pages / local chat demo)
+
+CORS is **off by default**. Browser UIs (GitHub Pages `demo/`, `pnpm run demo`) must allow-list their origin:
+
+```bash
+# env (comma-separated) or repeatable CLI flags
+KB_SERVER_ALLOWED_ORIGINS=http://localhost:8000,https://rosenjcb.github.io
+kb-server start --allow-origin http://localhost:8000
+```
+
+`*` allows any origin (logs a warning). Preflight `OPTIONS` is answered without auth when an origin matches.
 
 ### Multi-base (one process, many bases)
 
@@ -165,6 +178,7 @@ Configure your Slack app's **Event Subscriptions** URL to `https://<your-host>/s
 - `app_mention` → multi-turn chat keyed on `thread_ts ?? event.ts`, replying in the same thread
 - `message` (`channel_type=im`) → multi-turn chat keyed on the DM user/channel
 - if bootstrap indexing is still running, Slack gets an immediate status reply with the same progress line the API exposes, then the final answer is posted once indexing settles
+- replies use the same `service.chat` stream as `POST /v1/chat` (and the Pages demo): `formatChatReply({ flavor: 'slack' })` runs the answer through `markdownToSlackMrkdwn` (headers → bold lines, GFM tables → `·`-separated rows, `**bold**` → `*bold*`) and appends a deduped **Sources** footer from `answer.sources`. Optional clickable blob links: `KB_SOURCE_REPO_URL` (+ `KB_SOURCE_BRANCH`, default `main`)
 
 Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply loops. Slack retries are deduplicated by `event_id`.
 
@@ -190,6 +204,9 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 ## Related docs
 
 - Monorepo → [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) · Core → [`../../kb-core/CORE.md`](../../kb-core/CORE.md)
+- Chat reply presentation → [`../../kb-core/src/service/CHAT_REPLY.md`](../../kb-core/src/service/CHAT_REPLY.md)
+- Chat design → [`../../kb-core/src/core/CHAT.md`](../../kb-core/src/core/CHAT.md)
+- Pages demo → [`../../../demo/README.md`](../../../demo/README.md)
 - Build-to-serve handoff → [`../HANDOFF.md`](../HANDOFF.md)
 - HTTP contract → [`../http/HTTP.md`](../http/HTTP.md) · Deploy → [`../README.md`](../README.md)
 - Client wire base → [`../../kb-client/src/api/CONNECTION.md`](../../kb-client/src/api/CONNECTION.md)

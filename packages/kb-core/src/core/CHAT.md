@@ -2,22 +2,19 @@
 type: "Design Doc"
 title: "Chat Session Design"
 description: "The source-of-truth design for how the interactive KB chat session and its turn lifecycle work."
-resource: ./src/core
+resource: ../query/chat-synthesis.ts
 tags: [chat, tui, retrieval]
-timestamp: 2026-06-21T00:00:00Z
+timestamp: 2026-07-18T00:00:00Z
 ---
 
 # Chat session — design
 
-This doc is the **source of truth** for how the interactive chat session works.
-Update it when behavior changes.
+Source of truth for interactive chat turns. Update when behavior changes.
 
-**Mental model:** chat is currently *a series of KB queries with user input between
-turns*. Each user message drives one or more `query_kb` retrievals over the **same**
-`query_truth` path as `kb query` — including the post-retrieval **fact curator**. The only
-thing that persists across turns is the prior question/answer **prose** in `messages[]`;
-there is **no** persistent cross-turn fact pool. Relevance is therefore re-decided per query
-by the curator, not carried forward and re-filtered.
+**Mental model:** each user message drives one or more `query_kb` retrievals on the same
+`query_truth` path as `kb query` (including the **fact curator**). Only Q/A prose in
+`messages[]` persists across turns — no cross-turn fact pool; curator re-decides relevance
+per query.
 
 ## How a chat turn works
 
@@ -77,31 +74,30 @@ flowchart TD
    `matches>`, `sources>`, `timing>`. Use `--verbose` for `summary>`/`confidence>` rows,
    `--debug` for per-document provenance.
 
+11. **Presentation** — wire stays `answer` + `sources[]`; text surfaces use
+    `formatChatReply` ([CHAT_REPLY.md](../service/CHAT_REPLY.md)). Demo mirrors rules in-browser.
+
 ## Prompts
 
 | File | Role |
 |------|------|
-| `chat-router-system.md` | Main system prompt — when to call `query_kb`, multi-angle policy, weak-evidence retry rule |
-| `chat-decompose-system.md` | Decompose call — outputs 1–4 retrieval sub-queries, one per line |
+| `chat-router-system.md` | When to call `query_kb`, multi-angle + weak-evidence retry |
+| `chat-decompose-system.md` | 1–4 retrieval sub-queries, one per line |
 
 ## Why not shell out to `kb query`?
 
-Calling the CLI in a loop duplicates process startup, env, base resolution, and error
-surfaces. The orchestrator module is the **same contract** as query without a fork/exec boundary.
+CLI loop would duplicate process/env/base/errors. Orchestrator = same contract, in-process.
 
 ## Invariants
 
-- The while loop always breaks on `end_turn` or when tool count is 0; `MAX_CHAT_TURNS` is a safety cap only.
-- All tool calls in a single LLM round execute concurrently — never sequentially.
-- `buildToolQueryResult` always appends the weak-evidence hint when `weak_evidence_after_exhaustion` is in the retrieval detail.
-- Decompose only fires when `SYNTHESIS_QUERY_RE` matches AND input is ≥40 chars.
-- No fact pool persists across turns; each turn's retrieval is independent and the curator re-decides relevance per query.
-- Curator decisions are recorded out-of-band on `retrieval.curation` and never injected into the synthesis prompt.
+- Break on `end_turn` or zero tools; `MAX_CHAT_TURNS` is safety only.
+- Tool calls in one LLM round run concurrently.
+- Always append weak-evidence hint when `weak_evidence_after_exhaustion` is set.
+- Decompose only when `SYNTHESIS_QUERY_RE` matches and input ≥40 chars.
+- No cross-turn fact pool; curator re-decides per query; decisions stay out-of-band.
 
 ## See also
 
-- `src/cli/chat-query-orchestrator.ts` — builds chat `query_truth` envelope
-- `src/cli/query-truth-retrieval.ts` — shared retrieval for both `kb query` and chat
-- `src/tools/facts-query-research-orchestrator.ts` — deep retrieval loop (24-pass max)
-- `src/core/QUERY_INTERNALS.md` — retrieval internals
-- `src/core/TUI.md` — TUI command surface
+- [`../query/chat-synthesis.ts`](../query/chat-synthesis.ts) · [CHAT_REPLY.md](../service/CHAT_REPLY.md) · [FACT_CURATOR.md](../tools/FACT_CURATOR.md)
+- [QUERY_INTERNALS.md](./QUERY_INTERNALS.md) · [TUI.md](./TUI.md)
+- [SERVER.md](../../../kb-server/src/SERVER.md) · [demo/README.md](../../../../demo/README.md)

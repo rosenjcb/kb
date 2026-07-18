@@ -10,7 +10,7 @@ timestamp: 2026-07-18T00:00:00Z
 
 ### Intro
 
-Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and invariants: [SERVER.md](./SERVER.md). Query pipeline: [QUERY_INTERNALS.md](../core/QUERY_INTERNALS.md).
+Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and invariants: [SERVER.md](./SERVER.md). Query pipeline: [QUERY_INTERNALS.md](../../kb-core/src/core/QUERY_INTERNALS.md). Chat reply presentation: [CHAT_REPLY.md](../../kb-core/src/service/CHAT_REPLY.md).
 
 ### Definitions
 
@@ -38,7 +38,7 @@ See companion doc for full vocabulary where applicable.
 | FR-8 | Start server CLI with bootstrap logging and deferred scheduler |
 | FR-9 | Print package version for `--version` / `-V` without starting the daemon |
 | FR-10 | Store in-memory chat session history with TTL and caps |
-| FR-11 | Verify Slack signatures, route events, and deduplicate retries |
+| FR-11 | Verify Slack signatures, route events, and deduplicate retries; chat replies use `formatChatReply({ flavor: 'slack' })` on the same `service.chat` answer event as `/v1/chat` (Markdown→mrkdwn + deduped Sources footer) |
 | FR-12 | Manage the daemon by pid file: resolve the bind port, write/read the pid, and treat a dead pid as stopped |
 | FR-13 | Generate a launchd/systemd service that launches the release binary (never a repo dist path) |
 | FR-14 | Serve many bases from one process: select per request via `X-KB-Base` (or `?base=` / body `base`); omitted ⇒ default base, unknown ⇒ `404 unknown_base`; `GET /v1/bases` lists served bases |
@@ -147,8 +147,10 @@ See companion doc for full vocabulary where applicable.
 | TC-97 | FR-15 | overwrites a non-empty --out without --force | pass |
 | TC-98 | FR-15 | --json emits { ok: false } on stdout before rethrowing | pass |
 | TC-99 | FR-15 | --from replaces an existing base index without --force | pass |
+| TC-100 | FR-11 | appends a Sources footer from the chat answer event (shared with HTTP chat) | pass |
 
 ### Related docs
 
 - [SERVER.md](SERVER.md)
-- [QUERY_INTERNALS.md](../core/QUERY_INTERNALS.md)
+- [CHAT_REPLY.md](../../kb-core/src/service/CHAT_REPLY.md) — shared answer/sources presentation
+- [QUERY_INTERNALS.md](../../kb-core/src/core/QUERY_INTERNALS.md)

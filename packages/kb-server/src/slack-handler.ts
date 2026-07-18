@@ -15,8 +15,23 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { log } from './logger.js'
+import { formatChatReply } from '@kb/core/service/chat-reply.js'
+import type { QuerySource } from '@kb/core/service/serialize.js'
 import type { KbHealth, KbService } from '@kb/core/service/kb-service.js'
+import { log } from './logger.js'
+
+/** Optional GitHub (or other) blob base for clickable Slack source links. */
+function slackSourceLinkOptions(): {
+  sourceRepoUrl?: string
+  sourceBranch?: string
+} {
+  const sourceRepoUrl = process.env.KB_SOURCE_REPO_URL?.trim()
+  const sourceBranch = process.env.KB_SOURCE_BRANCH?.trim()
+  return {
+    ...(sourceRepoUrl ? { sourceRepoUrl } : {}),
+    ...(sourceBranch ? { sourceBranch } : {}),
+  }
+}
 
 export interface SlackOptions {
   signingSecret: string
@@ -199,14 +214,25 @@ async function replyWithChat(
   threadTs: string | undefined,
   sessionId: string,
 ): Promise<void> {
+  // Same chat stream as HTTP `/v1/chat` / the Pages demo: answer + sources[].
   let answer = ''
+  let sources: QuerySource[] = []
   let errorMessage = ''
   for await (const event of service.chat({ sessionId, message })) {
-    if (event.type === 'answer') answer = event.text
-    else if (event.type === 'error') errorMessage = event.message
+    if (event.type === 'answer') {
+      answer = event.text
+      sources = event.sources ?? []
+    } else if (event.type === 'error') {
+      errorMessage = event.message
+    }
   }
   if (answer) {
-    await postSlackMessage(slackOpts.botToken, channel, answer, threadTs)
+    // Shared formatter with the chat demo: deduped Sources footer from answer.sources.
+    const text = formatChatReply(answer, sources, {
+      flavor: 'slack',
+      ...slackSourceLinkOptions(),
+    })
+    await postSlackMessage(slackOpts.botToken, channel, text, threadTs)
   } else if (errorMessage) {
     // Surface the real failure (e.g. a retired-model 404) instead of silently
     // dropping it — otherwise a broken pipeline looks identical to "no result".

@@ -324,6 +324,60 @@ describe('POST /slack/events', () => {
   })
 })
 
+describe('dispatchSlackEvent chat sources', () => {
+                it('[TC-100] appends a Sources footer from the chat answer event (shared with HTTP chat)', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+    }) as unknown as Response)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const service = makeStubService({
+      chat: async function* () {
+        yield {
+          type: 'answer' as const,
+          text: 'Chat uses multi-turn synthesis.',
+          sources: [
+            { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md' },
+            { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md' },
+            { filePath: 'rosenjcb-kb/packages/kb-core/src/core/EVIDENCE_SUMMARY.md' },
+          ],
+          factsRetrieved: 2,
+        }
+        yield { type: 'done' as const }
+      },
+    })
+
+    await dispatchSlackEvent(
+      service,
+      { signingSecret: TEST_SECRET, botToken: 'xoxb-test' },
+      {
+        type: 'event_callback',
+        event_id: `Ev-sources-${Date.now()}`,
+        event: {
+          type: 'app_mention',
+          text: '<@U0001> how does chat work?',
+          user: 'U0001',
+          channel: 'C0001',
+          ts: '1234567890.000202',
+        },
+      },
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? '{}')) as { text?: string }
+    expect(payload.text).toContain('Chat uses multi-turn synthesis.')
+    expect(payload.text).toContain('*Sources*')
+    expect(payload.text).toContain('`packages/kb-core/src/core/CHAT.md`')
+    expect(payload.text).toContain('`packages/kb-core/src/core/EVIDENCE_SUMMARY.md`')
+    // Deduped — CHAT.md once only
+    expect(payload.text?.match(/CHAT\.md/g)?.length).toBe(1)
+
+    vi.unstubAllGlobals()
+  })
+})
+
 describe('dispatchSlackEvent bootstrap progress', () => {
                 it('[TC-77] posts indexing progress first, then answers after bootstrap settles', async () => {
     const fetchMock = vi.fn(async () => ({

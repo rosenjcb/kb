@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.5.2
+
+### Patch Changes
+
+- GitHub Pages chat demo + CORS; shared chat Sources footer and Slack mrkdwn conversion; keep remote chat thinking when stage meta arrives.
+
 ## 1.5.1
 
 ### Patch Changes
