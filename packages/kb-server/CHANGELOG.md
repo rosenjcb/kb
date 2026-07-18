@@ -1,5 +1,15 @@
 # kb-server
 
+## 1.5.0
+
+### Minor Changes
+
+- Add configurable CORS support to kb-server so browser pages on other origins
+  (e.g. the hosted GitHub Pages chat demo) can call the HTTP API. Origins are
+  allow-listed via `KB_SERVER_ALLOWED_ORIGINS` or repeatable `--allow-origin`
+  flags (`*` allows any origin); preflight `OPTIONS` requests are answered without
+  auth. CORS is disabled by default.
+
 ## 1.4.7
 
 ### Patch Changes

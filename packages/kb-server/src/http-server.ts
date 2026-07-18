@@ -51,6 +51,14 @@ export interface HttpServerOptions {
   registry?: KbServiceRegistry
   /** Accepted bearer keys. Empty array disables auth (with a startup warning). */
   apiKeys: string[]
+  /**
+   * Browser origins allowed to call the API cross-origin (CORS). Empty/omitted
+   * disables CORS entirely (same-origin/native clients only). A single `*`
+   * entry allows any origin; otherwise the request `Origin` is echoed back only
+   * when it matches an allow-list entry. Enables the hosted "try it" chat page
+   * (e.g. GitHub Pages) to reach a kb-server.
+   */
+  allowedOrigins?: string[]
   /** Mount the MCP Streamable HTTP endpoint at POST /mcp. */
   enableMcp?: boolean
   /** Per-request timeout for /v1/query (ms). Default 60s. */
@@ -68,6 +76,13 @@ export interface HttpServerOptions {
 
 const MAX_BODY_BYTES = 1 << 20 // 1 MiB
 const QUERY_LOG_MAX = 300      // truncate logged query/message text at this many chars
+
+/** Request headers a browser may send to the API (echoed in preflight). */
+const CORS_ALLOW_HEADERS = 'authorization, content-type, x-api-key, x-kb-base'
+/** Methods the API exposes to browsers. */
+const CORS_ALLOW_METHODS = 'GET, POST, OPTIONS'
+/** Cache the preflight result for 24h to avoid an OPTIONS on every call. */
+const CORS_MAX_AGE = '86400'
 
 /** Per-request tracing context threaded through all handler functions. */
 interface RequestCtx {
@@ -156,6 +171,22 @@ function isAuthorized(req: IncomingMessage, apiKeys: string[]): boolean {
   return apiKey !== '' && apiKeys.includes(apiKey)
 }
 
+/**
+ * Resolve the `Access-Control-Allow-Origin` value for a request, or null when
+ * CORS is disabled or the origin isn't allowed. `*` in the allow-list echoes
+ * `*`; otherwise the request `Origin` is reflected only on an exact match.
+ * Auth uses a bearer token (not cookies), so credentialed CORS isn't needed —
+ * `*` is safe here.
+ */
+function resolveCorsOrigin(req: IncomingMessage, allowedOrigins: string[]): string | null {
+  if (allowedOrigins.length === 0) return null
+  if (allowedOrigins.includes('*')) return '*'
+  const header = req.headers.origin
+  const origin = Array.isArray(header) ? header[0] : header
+  if (origin && allowedOrigins.includes(origin)) return origin
+  return null
+}
+
 /** Resolve the best available client IP for logging (proxy-aware). */
 function clientIp(req: IncomingMessage): string {
   const forwarded = req.headers['x-forwarded-for']
@@ -197,6 +228,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
     requestTimeoutMs = resolveQueryTimeoutMs(),
     slack,
     onLog,
+    allowedOrigins = [],
   } = options
 
   const reportWriter = options.logsDir ? new ReportWriter(options.logsDir) : null
@@ -319,6 +351,28 @@ export function createHttpServer(options: HttpServerOptions): Server {
 
     // Propagate request ID to caller so they can correlate server logs with their own.
     res.setHeader('x-request-id', requestId)
+
+    // CORS: set before any writeHead so the headers ride every response (JSON,
+    // SSE, errors). Answer preflight OPTIONS here — it carries no auth and must
+    // succeed before the browser will send the real request.
+    const corsOrigin = resolveCorsOrigin(req, allowedOrigins)
+    if (corsOrigin) {
+      res.setHeader('access-control-allow-origin', corsOrigin)
+      // Reflected (non-`*`) origins are cache-key-sensitive; vary so shared
+      // caches don't serve one origin's headers to another.
+      if (corsOrigin !== '*') res.setHeader('vary', 'Origin')
+    }
+    if (method === 'OPTIONS') {
+      const headers: Record<string, string> = { 'content-length': '0' }
+      if (corsOrigin) {
+        headers['access-control-allow-methods'] = CORS_ALLOW_METHODS
+        headers['access-control-allow-headers'] = CORS_ALLOW_HEADERS
+        headers['access-control-max-age'] = CORS_MAX_AGE
+      }
+      res.writeHead(corsOrigin ? 204 : 405, headers)
+      res.end()
+      return
+    }
 
     log.info('request', {
       requestId,

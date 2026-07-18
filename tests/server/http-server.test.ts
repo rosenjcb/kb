@@ -321,4 +321,83 @@ describe('server-side run report capture', () => {
     await new Promise(r => setTimeout(r, 30))
     expect(reports).toHaveLength(0)
   })
+
+                it('[TC-16] omits CORS headers when no origins are allowed', async () => {
+    server = createHttpServer({ service: makeStubService(), apiKeys: [] })
+    const base = await listen(server)
+    const res = await fetch(`${base}/healthz`, { headers: { origin: 'https://example.com' } })
+    expect(res.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
+                it('[TC-17] reflects an allow-listed origin and varies on Origin', async () => {
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: [],
+      allowedOrigins: ['https://rosenjcb.github.io'],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/healthz`, {
+      headers: { origin: 'https://rosenjcb.github.io' },
+    })
+    expect(res.headers.get('access-control-allow-origin')).toBe('https://rosenjcb.github.io')
+    expect(res.headers.get('vary')).toContain('Origin')
+  })
+
+                it('[TC-18] does not reflect an origin outside the allow-list', async () => {
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: [],
+      allowedOrigins: ['https://rosenjcb.github.io'],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/healthz`, { headers: { origin: 'https://evil.example' } })
+    expect(res.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
+                it('[TC-19] echoes * when any origin is allowed', async () => {
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: [],
+      allowedOrigins: ['*'],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/healthz`, { headers: { origin: 'https://anything.example' } })
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
+  })
+
+                it('[TC-20] answers preflight OPTIONS with 204 and no auth for an allowed origin', async () => {
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: ['secret'],
+      allowedOrigins: ['https://rosenjcb.github.io'],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/v1/chat`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://rosenjcb.github.io',
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'authorization, content-type',
+      },
+    })
+    expect(res.status).toBe(204)
+    expect(res.headers.get('access-control-allow-origin')).toBe('https://rosenjcb.github.io')
+    expect(res.headers.get('access-control-allow-methods')).toContain('POST')
+    expect(res.headers.get('access-control-allow-headers')).toContain('authorization')
+  })
+
+                it('[TC-21] rejects preflight OPTIONS from a disallowed origin with 405', async () => {
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: [],
+      allowedOrigins: ['https://rosenjcb.github.io'],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/v1/chat`, {
+      method: 'OPTIONS',
+      headers: { origin: 'https://evil.example', 'access-control-request-method': 'POST' },
+    })
+    expect(res.status).toBe(405)
+    expect(res.headers.get('access-control-allow-origin')).toBeNull()
+  })
 })
