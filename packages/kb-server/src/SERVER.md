@@ -132,7 +132,10 @@ Auth: `Authorization: Bearer <KB_SERVER_API_KEY>` or `X-Api-Key`.
 
 The server resolves + bootstraps one **default** base at boot, but can serve any
 already-built base on the same host — the psql/libpq postmaster model (one process,
-many databases). Selection is **per request** via the `X-KB-Base` header (or `?base=`
+many databases). The boot base name is `--base` > `KB_SERVER_BASE_NAME` / `KB_BASE` >
+a locally-selected base (`kb base use`) > the golden default slug **`base`** (à la
+Postgres's `postgres` maintenance DB) — so `kb-server start` never requires naming a
+base. Selection is **per request** via the `X-KB-Base` header (or `?base=`
 on `/healthz`, or a body `base` on `/v1/query` / `/v1/chat`):
 
 - `service-registry.ts` keeps a `Map<baseDir, KbService>` — the default keeps its
