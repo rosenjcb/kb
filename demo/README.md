@@ -11,7 +11,7 @@ timestamp: 2026-07-18T00:00:00Z
 
 Dependency-free HTML “try it” surface — ChatGPT-style chat against a running
 [`kb-server`](../packages/kb-server) over `POST /v1/chat` (SSE). Published from
-this folder via [GitHub Pages](https://rosenjcb.github.io) (workflow
+this folder via [GitHub Pages](https://rosenjcb.github.io/kb/) (workflow
 [`.github/workflows/pages.yml`](../.github/workflows/pages.yml)).
 
 Hosted backend for this demo: Fly app **`kb-demo`** →

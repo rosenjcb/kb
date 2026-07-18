@@ -10,11 +10,11 @@
 </p>
 
 <p align="center">
-  <a href="https://rosenjcb.github.io/"><img src="https://img.shields.io/badge/✨_Try_the_chat_demo-live-00a2ff?style=for-the-badge&labelColor=0b1220" alt="Try the chat demo" /></a>
+  <a href="https://rosenjcb.github.io/kb/"><img src="https://img.shields.io/badge/✨_Try_the_chat_demo-live-00a2ff?style=for-the-badge&labelColor=0b1220" alt="Try the chat demo" /></a>
 </p>
 
 <p align="center">
-  <b>⭐ Don’t clone first — <a href="https://rosenjcb.github.io/">ask the repo in the browser</a>.</b><br/>
+  <b>⭐ Don’t clone first — <a href="https://rosenjcb.github.io/kb/">ask the repo in the browser</a>.</b><br/>
   <sub>GitHub Pages UI → Fly <code>kb-demo</code> · no API key · sources on every answer</sub>
 </p>
 
