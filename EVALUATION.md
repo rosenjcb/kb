@@ -63,8 +63,8 @@ One runner drives all eval runs. Session lifecycle is fully automatic:
 1. Base is derived as `eval-{suiteId}` (e.g. `eval-raylib`).
 2. If the session already has docs → reuse it (query-only run).
 3. If the session is empty / missing → run `kb init` first.
-4. **Always** run `kb scan --non-interactive` on the snapshot clone (refresh facts/tombstones), then query.
-4. After writing `artifact.json`, prints a **kb vs control** summary for this run (`success_score`, ΔS, verdict). A secondary trends table lists prior runs for the same suite (diagnostic only — not the headline comparison).
+4. Run `kb scan` (refresh facts/tombstones), then query — unless `--skip-scan` (reuse existing index).
+5. After writing `artifact.json`, prints a **kb vs control** summary for this run (`success_score`, ΔS, verdict). A secondary trends table lists prior runs for the same suite (diagnostic only — not the headline comparison).
 
 **Quick start** (from kb repo root, after `pnpm run build`):
 
@@ -82,10 +82,13 @@ pnpm run eval -- --suite raylib --force-init
 pnpm run eval -- --suite raylib --base my-custom-session
 
 # Multi-suite (Node-native; parallel by default — no bash/xargs):
+# One shared multi-base kb-server; each suite selects eval-{suite} via X-KB-Base.
 pnpm run eval -- --suites raylib,kb,fzf
 pnpm run eval -- --all-suites --control-agent cursor --control-model composer-2.5
+pnpm run eval -- --all-suites --skip-control --skip-scan   # reuse indexes, kb-only
 pnpm run eval -- --all-suites --sequential          # one suite at a time
 pnpm run eval -- --all-suites --parallel 4          # cap concurrency
+pnpm run eval -- --all-suites --per-suite-server    # legacy: one kb-server per suite
 ```
 
 | npm script | Maps to |
@@ -130,7 +133,7 @@ as `-` rather than erroring.
 
 `--all-suites` runs the ten benchmark suites above (everything except `generic`, `moel-kb`, and the retired-from-default `nifi`/`duckdb` packs).
 
-**Multi-suite parallelism.** Passing more than one suite (`--suites a,b`, repeated `--suite`, or `--all-suites`) runs a **Node-native** batch: one child `eval-run` process per suite, **parallel by default**. Each suite still uses its own ephemeral kb-server port and `eval-{suite}` base. Cap with `--parallel N` or `KB_EVAL_PARALLEL`; force serial with `--sequential`. Do not combine multi-suite mode with single-suite-only flags (`--repo`, `--base`, `--run-dir`, `--out`, `--suite-yaml`, `--questions-file`).
+**Multi-suite parallelism.** Passing more than one suite (`--suites a,b`, repeated `--suite`, or `--all-suites`) runs a **Node-native** batch: one child `eval-run` process per suite, **parallel by default**. The parent starts **one shared multi-base `kb-server`**; each child attaches (`KB_EVAL_SERVER_URL`) and selects its `eval-{suite}` base per request via `--base` / `X-KB-Base` (and probes `/healthz?base=`). Cap with `--parallel N` or `KB_EVAL_PARALLEL`; force serial with `--sequential`. Legacy isolation: `--per-suite-server` (one ephemeral port per suite). Do not combine multi-suite mode with single-suite-only flags (`--repo`, `--base`, `--run-dir`, `--out`, `--suite-yaml`, `--questions-file`).
 
 Override questions with `--questions-file path.json` (JSON array of strings matching suite length; single-suite only).
 

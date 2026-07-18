@@ -7,7 +7,7 @@
  *   - Base name is derived from the suite id: `eval-{suiteId}` (e.g. `eval-raylib`, `eval-kb`).
  *   - If the session already has docs → reuse it (query-only run).
  *   - If the session is empty / missing → run core init via scripts/eval-index.ts first.
- *   - Every harvest runs core scan (eval-index), then query.
+ *   - Every harvest runs core scan (eval-index), then query — unless `--skip-scan`.
  *   - `--base NAME` overrides the formula. `--force-init` deletes the base then re-inits from scratch.
  * Ends with an automatic trends summary across prior runs for the same suite.
  *
@@ -17,6 +17,7 @@
  *   node scripts/eval-run.mjs --suite generic --repo https://github.com/org/repo.git
  *   node scripts/eval-run.mjs --suites raylib,kb,fzf            # multi-suite (parallel by default)
  *   node scripts/eval-run.mjs --all-suites                      # 10 benchmark suites, parallel
+ *   node scripts/eval-run.mjs --all-suites --skip-control --skip-scan
  *   node scripts/eval-run.mjs --all-suites --sequential         # same, one at a time
  *   node scripts/eval-run.mjs --suite raylib --base my-session   # override session name
  *   node scripts/eval-run.mjs --suite raylib --force-init        # wipe base + fresh init
@@ -24,6 +25,8 @@
  * Suites: vendor id → `eval/suites/<id>.yaml` (raylib, kb, generic). `--suite-yaml PATH` for custom.
  * Clone: suite YAML repo_url used by default; override with `--repo <git-url>`.
  * Multi-suite: Node spawns one child eval per suite (portable — no bash/xargs). Parallel by default.
+ * Multi-suite servers: one shared multi-base kb-server (X-KB-Base / --base per suite). Use
+ * `--per-suite-server` to restore the old one-process-per-suite ephemeral-port model.
  */
 
 import { exec, execSync, spawn } from 'node:child_process'
@@ -80,7 +83,11 @@ import {
 } from './eval-shared.mjs'
 
 import { readQueryResultFile, runAutoScoreFile, scoreFromLabel } from './eval-score.mjs'
-import { startEvalServer, buildKbLocalEnv } from './eval-server.mjs'
+import {
+  startEvalServer,
+  buildKbLocalEnv,
+  defaultEvalApiKey,
+} from './eval-server.mjs'
 import {
   DEFAULT_CONTROL_PROMPT,
   DEFAULT_MAX_TURNS,
@@ -265,6 +272,7 @@ export function buildChildArgv(suite, args) {
   if (args.hypothesis) argv.push('--hypothesis', args.hypothesis)
   if (args.forceInit) argv.push('--force-init')
   if (args.skipCapture) argv.push('--skip-init')
+  if (args.skipScan) argv.push('--skip-scan')
   if (args.skipControl) argv.push('--skip-control')
   if (args.queryTrace) argv.push('--trace')
   if (args.autoScore === false) argv.push('--manual-score')
@@ -307,27 +315,41 @@ function prefixChildStream(stream, suite, write) {
 }
 
 /**
- * Env for a multi-suite child: inherit parent env but strip attach/port pins so
- * each child allocates its own ephemeral kb-server (see eval-server.mjs).
- * Shared KB_EVAL_SERVER_URL / KB_EVAL_SERVER_PORT would make every suite query
- * the same process — the Jul 15 parallel contamination failure mode.
+ * Env for a multi-suite child.
+ *
+ * Shared multi-base mode (default): keep `KB_EVAL_SERVER_URL` so children attach to the
+ * parent-spawned server and select `eval-{suite}` via `--base` / `X-KB-Base`.
+ *
+ * Per-suite server mode (`--per-suite-server`): strip attach/port pins so each child
+ * allocates its own ephemeral kb-server (legacy isolation).
+ *
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {{ sharedServer?: boolean }} [opts]
  */
-export function buildMultiSuiteChildEnv(env = process.env) {
+export function buildMultiSuiteChildEnv(env = process.env, { sharedServer = true } = {}) {
   const out = { ...env }
+  out.KB_EVAL_SERVER_PORT = undefined
+  if (sharedServer) {
+    // Parent sets KB_EVAL_SERVER_URL (+ API key). Keep attach; never pin a port.
+    return out
+  }
   out.KB_EVAL_SERVER_URL = undefined
   out.KB_EVAL_ATTACH_URL = undefined
-  out.KB_EVAL_SERVER_PORT = undefined
   return out
 }
 
 /** Spawn one single-suite eval child; resolve `{ suite, code, signal }`. */
-export function spawnSuiteChild(suite, args, { scriptPath = THIS_SCRIPT, cwd = KB_REPO, env = process.env } = {}) {
+export function spawnSuiteChild(
+  suite,
+  args,
+  { scriptPath = THIS_SCRIPT, cwd = KB_REPO, env = process.env, sharedServer = true } = {}
+) {
   return new Promise(resolve => {
     const childArgv = buildChildArgv(suite, args)
     console.error(`[eval] multi-suite · starting ${suite}`)
     const child = spawn(process.execPath, [scriptPath, ...childArgv], {
       cwd,
-      env: buildMultiSuiteChildEnv(env),
+      env: buildMultiSuiteChildEnv(env, { sharedServer }),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     prefixChildStream(child.stdout, suite, s => process.stdout.write(s))
@@ -350,7 +372,10 @@ export function spawnSuiteChild(suite, args, { scriptPath = THIS_SCRIPT, cwd = K
 
 /**
  * Run many suites via child processes. Parallel by default (Node-native, portable).
- * @returns {Promise<{ suites: string[], parallel: number, results: object[], failed: string[] }>}
+ * By default starts one shared multi-base kb-server for the whole batch; children attach
+ * and select their `eval-{suite}` base per request. Pass `--per-suite-server` for the
+ * legacy one-server-per-suite model.
+ * @returns {Promise<{ suites: string[], parallel: number, results: object[], failed: string[], sharedServer: boolean }>}
  */
 export async function runSuiteBatch(args, opts = {}) {
   const suites = resolveSuiteList(args)
@@ -372,21 +397,55 @@ export async function runSuiteBatch(args, opts = {}) {
     sequential: args.sequential,
     env: opts.env ?? process.env,
   })
+  const sharedServer = !args.perSuiteServer
   console.error(
     `[eval] multi-suite batch · ${suites.length} suite(s) · concurrency ${parallel}${
       args.sequential ? ' (--sequential)' : parallel === suites.length ? ' (default parallel)' : ''
-    }\n[eval] suites: ${suites.join(', ')}`
+    } · server=${sharedServer ? 'shared multi-base' : 'per-suite ephemeral'}\n[eval] suites: ${suites.join(', ')}`
   )
-  const results = await mapWithConcurrency(suites, parallel, suite =>
-    spawnSuiteChild(suite, args, opts)
-  )
-  const failed = results.filter(r => r.code !== 0 || r.signal).map(r => r.suite)
-  console.error(
-    `[eval] multi-suite done · ok=${suites.length - failed.length} fail=${failed.length}${
-      failed.length ? ` (${failed.join(', ')})` : ''
-    }`
-  )
-  return { suites, parallel, results, failed }
+
+  let shared = null
+  let childEnv = opts.env ?? process.env
+  if (sharedServer) {
+    const defaultBase = derivedBase(suites[0])
+    const batchStamp = dayjs().format('YYYY-MM-DD-HHmm')
+    const batchLogDir = path.join(evaluationsRoot(), `_batch-${batchStamp}`)
+    fs.mkdirSync(batchLogDir, { recursive: true })
+    console.error(
+      `[eval] starting shared multi-base kb-server (default base=${defaultBase}); children attach via X-KB-Base`
+    )
+    shared = await startEvalServer({
+      base: defaultBase,
+      apiKey: defaultEvalApiKey(),
+      logPath: path.join(batchLogDir, 'eval-server.log'),
+    })
+    await shared.waitReady()
+    childEnv = {
+      ...(opts.env ?? process.env),
+      KB_EVAL_SERVER_URL: shared.url,
+      KB_EVAL_ATTACH_URL: shared.url,
+      KB_SERVER_API_KEY: shared.apiKey,
+    }
+    console.error(`[eval] shared server ready at ${shared.url}`)
+  }
+
+  try {
+    const results = await mapWithConcurrency(suites, parallel, suite =>
+      spawnSuiteChild(suite, args, { ...opts, env: childEnv, sharedServer })
+    )
+    const failed = results.filter(r => r.code !== 0 || r.signal).map(r => r.suite)
+    console.error(
+      `[eval] multi-suite done · ok=${suites.length - failed.length} fail=${failed.length}${
+        failed.length ? ` (${failed.join(', ')})` : ''
+      }`
+    )
+    return { suites, parallel, results, failed, sharedServer }
+  } finally {
+    if (shared) {
+      console.error('[eval] stopping shared multi-base kb-server')
+      await shared.stop()
+    }
+  }
 }
 
 function parseArgs(argv) {
@@ -415,6 +474,8 @@ function parseArgs(argv) {
     outFile: null,
     scoresFile: null,
     skipCapture: false,
+    skipScan: false,
+    perSuiteServer: false,
     autoScore: true, // on by default; disable with --manual-score
     autoScoreFile: null,
     scoreRuns: 3,
@@ -475,6 +536,8 @@ function parseArgs(argv) {
       out.queryTrials = Math.max(1, Number.parseInt(argv[++i], 10) || 1)
     else if (a === '--manual-score') out.autoScore = false
     else if (a === '--skip-init') out.skipCapture = true
+    else if (a === '--skip-scan') out.skipScan = true
+    else if (a === '--per-suite-server') out.perSuiteServer = true
     else if (a === '--force-init') out.forceInit = true
     else if (a === '--skip-control') out.skipControl = true
     else if (a === '--trace') out.queryTrace = true
@@ -519,7 +582,8 @@ Session lifecycle (automatic):
   Base is derived as eval-{suiteId} (e.g. eval-raylib, eval-kb).
   If the session has docs → reuse it (query-only run).
   If the session is empty / missing → kb init --git <snapshot-clone> first.
-  Every run: kb scan (pulls + re-indexes the base's repos), then N× kb query (N = suite size).
+  Every run: kb scan (unless --skip-scan), then N× kb query (N = suite size).
+  Multi-suite: one shared multi-base kb-server (override with --per-suite-server).
   Ends with a trends summary across prior runs for the same suite.
 
 Suite / questions:
@@ -527,16 +591,18 @@ Suite / questions:
   --suites a,b,c          Multiple suites (alias of repeated/comma --suite). Parallel by default.
   --all-suites            Run the 10 EVALUATION.md benchmark suites (excludes generic, moel-kb)
   --parallel [N]          Multi-suite concurrency (default: all suites at once; env KB_EVAL_PARALLEL)
-                          Each suite child starts its own kb-server on an ephemeral port so
-                          queries cannot cross-contaminate bases (do not set KB_EVAL_SERVER_PORT
-                          when running --all-suites / --suites in parallel).
+                          Default: one shared multi-base kb-server; each child selects
+                          eval-{suite} via --base / X-KB-Base.
   --sequential            Multi-suite: run one suite at a time (overrides --parallel)
+  --per-suite-server      Legacy: one ephemeral kb-server process per suite child
   --suite-yaml PATH       Load pack from arbitrary YAML path (single-suite only)
   --questions-file F.json Override: JSON array of non-empty question strings (single-suite only)
 
 Session:
   --base NAME             Override derived session name (default: eval-{suiteId}; single-suite only)
   --force-init            Delete the base, then kb init from scratch (not just scan)
+  --skip-scan             Skip eval-index scan (reuse existing index; still queries). Forced scan
+                          after a fresh init.
 
 Target repo (for clone + git metadata):
   --repo URL              Override suite YAML repo_url (https or git@; single-suite only)
@@ -757,8 +823,16 @@ async function timedAsync(label, timings, fn) {
   }
 }
 
-/** Returns true if the KB session already has at least one document. */
+/**
+ * Returns true if the KB session already has an index (or at least one document).
+ * Prefer the on-disk index check so a shared multi-base server holding SQLite open
+ * does not race with a local-mode `docs list`.
+ */
 function sessionHasDocs(targetCwd, base) {
+  const kbHome = process.env.KB_HOME || path.join(os.homedir(), '.kb')
+  if (fs.existsSync(path.join(kbHome, 'sessions', base, '.kb-index.sqlite'))) {
+    return true
+  }
   try {
     const out = kb(targetCwd, `docs list --base ${base}`)
     const m = /Count:\s*(\d+)/.exec(out)
@@ -1118,13 +1192,16 @@ async function main() {
     console.error(`[eval] suite=${suiteId} (${suiteLabel}) · base=${base} · mode=${evalMode}`)
     console.error(`[eval] workdir ${workdir}`)
     console.error(`[eval] target cwd ${targetCwd}`)
+    const willScan = needsInit || !args.skipScan
     console.error(
       `[eval] session "${base}" — ${
         wipeBase
           ? 'force-init: deleting base then eval-index init + scan'
           : needsInit
             ? 'no docs found, running eval-index init then scan'
-            : 'reusing session; eval-index scan before K queries'
+            : willScan
+              ? 'reusing session; eval-index scan before K queries'
+              : 'reusing session; --skip-scan (no index rebuild)'
       }`
     )
 
@@ -1162,17 +1239,47 @@ async function main() {
         )
       }
 
-      console.error(`[eval] eval-index scan --base ${base}`)
-      const scanLogPath = path.join(workdir, 'scan.log')
-      await timedAsync('scan', runTiming, () =>
-        evalIndexTee('scan', `--base ${base} --debug`, scanLogPath)
-      )
+      // Fresh init always scans once so the index exists; --skip-scan only skips reuse refresh.
+      if (willScan) {
+        console.error(`[eval] eval-index scan --base ${base}`)
+        const scanLogPath = path.join(workdir, 'scan.log')
+        await timedAsync('scan', runTiming, () =>
+          evalIndexTee('scan', `--base ${base} --debug`, scanLogPath)
+        )
+      } else {
+        runTiming.command_durations_ms.scan = 0
+        fs.writeFileSync(
+          path.join(workdir, 'scan.log'),
+          `{"note":"skip_scan","base":"${base}"}\n`,
+          'utf8'
+        )
+      }
 
       // Do NOT run `kb base use --default` here. It mutates the shared client
       // profile under ~/.kb and races under --all-suites parallel children
       // (banner shows the last writer). Queries already pass `--base` explicitly;
-      // the server is started with the same base.
+      // the shared multi-base server selects via X-KB-Base.
 
+      const attaching =
+        !!(process.env.KB_EVAL_SERVER_URL?.trim() || process.env.KB_EVAL_ATTACH_URL?.trim())
+      console.error(
+        attaching
+          ? `[eval] attaching to shared multi-base kb-server for base=${base}`
+          : '[eval] starting kb-server for remote queries (init/scan ran in-process)'
+      )
+      evalServer = await startEvalServer({
+        base,
+        logPath: path.join(workdir, 'eval-server.log'),
+      })
+      kbSubprocessEnv = evalServer.kbEnv()
+
+      console.error(
+        `[eval] waiting for kb-server index readiness (/healthz?base=${base} ok: true) before queries`
+      )
+      await evalServer.waitReady({ base })
+
+      // docs/graph/logs after server attach so they hit the same multi-base process via --base
+      // (avoids opening SQLite locally while the shared server holds the index).
       console.error('[eval] docs list')
       const docsOut = timed('docs_list', runTiming, () => kb(targetCwd, `docs list --base ${base}`))
       fs.writeFileSync(path.join(workdir, 'docs.txt'), docsOut, 'utf8')
@@ -1184,16 +1291,6 @@ async function main() {
       console.error('[eval] logs list')
       const logsOut = timed('logs_list', runTiming, () => kb(targetCwd, logsCmd(base)))
       fs.writeFileSync(path.join(workdir, 'logs.txt'), logsOut, 'utf8')
-
-      console.error('[eval] starting kb-server for remote queries (init/scan ran in-process)')
-      evalServer = await startEvalServer({
-        base,
-        logPath: path.join(workdir, 'eval-server.log'),
-      })
-      kbSubprocessEnv = evalServer.kbEnv()
-
-      console.error('[eval] waiting for kb-server index readiness (/healthz ok: true) before queries')
-      await evalServer.waitReady()
 
       // Queries are independent, so run them with bounded concurrency to cut wall-clock.
       // Order is preserved: results are written to q{n}.json by index, and per-question

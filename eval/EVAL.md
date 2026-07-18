@@ -181,17 +181,23 @@ expects a live `kb-server` on `localhost:38117` (or `KB_HOST` / `KB_PORT` / `KB_
 ### Orchestration (default)
 
 1. **`eval-run.mjs`** — **init/scan run in-process** (`KB_LOCAL_MODE=true`) so SQLite is not
-   contended, then **`kb-server` starts** for the query loop with `--base eval-{suiteId}` (or your
-   `--base` override). Subprocess `kb query` calls use `KB_SERVER_URL` + `KB_SERVER_API_KEY`.
-   The harness polls `/healthz` until `ok: true` before queries. Server logs land in
-   `<run-dir>/eval-server.log`; the process is stopped when the kb phase finishes (including on error).
+   contended, then **`kb-server` starts** for the query loop. Subprocess `kb query` calls use
+   `KB_SERVER_URL` + `KB_SERVER_API_KEY` + `--base` (`X-KB-Base`). The harness polls
+   `/healthz?base=<slug>` until `ok: true` before queries. Server logs land in
+   `<run-dir>/eval-server.log` (or `_batch-*/eval-server.log` for shared multi-suite);
+   the process is stopped when the kb phase (or whole batch) finishes.
 
-2. **`moel-run.mjs`** — init in-process per condition, then one `kb-server` per condition
+2. **Multi-suite batch** — parent starts **one shared multi-base `kb-server`** (boot default =
+   first suite's `eval-{suite}`); children attach via `KB_EVAL_SERVER_URL` and select their
+   own `eval-{suite}` per request. Opt out with `--per-suite-server` (legacy ephemeral port
+   per child). `--skip-scan` reuses existing indexes (no eval-index refresh).
+
+3. **`moel-run.mjs`** — init in-process per condition, then one `kb-server` per condition
    (`moel-{suite}-{N|K|O}`) for the remote query.
 
-**Base lifecycle:** the server serves one base chosen at startup (`--base` / env). Client
-`kb base use` updates the client profile only — eval starts the server with the eval base
-explicitly. The harvest logs a one-line note when calling `kb base use --default`.
+**Base lifecycle:** one process can serve many already-built bases (registry + `X-KB-Base`).
+Client `kb base use` updates the client profile only — eval selects the server base per
+request via `--base` / `KB_BASE`.
 
 ### Attach to a sidecar (optional)
 
@@ -203,8 +209,8 @@ export KB_SERVER_API_KEY=your-bearer-token   # must match the sidecar
 pnpm run eval -- --suite kb --auto-score --skip-control
 ```
 
-Ensure the sidecar was started with the same base the harness will use (e.g.
-`kb-server start --base eval-kb`). The harness still health-checks before queries.
+The sidecar may be multi-base; the harness probes `/healthz?base=eval-{suite}` and sends
+`X-KB-Base` on every request.
 
 ### Env knobs
 
@@ -212,17 +218,18 @@ Ensure the sidecar was started with the same base the harness will use (e.g.
 |----------|------|
 | `KB_EVAL_SERVER_URL` | Attach to existing server (no spawn/stop) |
 | `KB_EVAL_SERVER_BIN` | Override `packages/kb-server/dist/bin/kb-server.js` |
-| `KB_EVAL_SERVER_PORT` | Pin port when spawning (default: 38117) |
+| `KB_EVAL_SERVER_PORT` | Pin port when spawning (single-suite / `--per-suite-server` only) |
 | `KB_EVAL_SERVER_API_KEY` | Bearer token for spawned server (default: `eval-local-key`) |
 | `KB_QUERY_TIMEOUT` | Client + server query timeout (e.g. `180s`; default 60s) |
 
 ### Health poll
 
 ```bash
-until curl -sf http://localhost:38117/healthz | jq -e '.ok == true' >/dev/null; do sleep 2; done
+until curl -sf 'http://localhost:38117/healthz?base=eval-kb' | jq -e '.ok == true' >/dev/null; do sleep 2; done
 ```
 
-The harness uses the same readiness gate (two consecutive `ok: true` reads with `indexMtime`).
+The harness uses the same readiness gate (two consecutive `ok: true` reads with `indexMtime`),
+scoped to the suite base via `?base=`.
 
 ### CI
 
