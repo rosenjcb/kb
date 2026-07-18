@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KB — try the chat</title>
+  <meta name="description" content="Chat with a kb-server over its HTTP API — a live demo of KB." />
+  <link rel="icon" href="kb-ascii.svg" type="image/svg+xml" />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg-elev: #161b22;
+      --bg-input: #1c2230;
+      --border: #2a3140;
+      --text: #e6edf3;
+      --text-dim: #9aa4b2;
+      --accent: #6ea8fe;
+      --accent-strong: #3b82f6;
+      --brand: #00a2ff;
+      --brand-accent: #ff9a00;
+      --user-bubble: #1f6feb;
+      --assistant-bubble: #1c2230;
+      --danger: #f8737f;
+      --ok: #3fb950;
+      --radius: 14px;
+      --radius-ctrl: 10px;
+      --ctrl: 32px;
+      --avatar: 32px;
+      --maxw: 820px;
+    }
+    :root[data-theme="light"] {
+      --bg: #f6f8fa;
+      --bg-elev: #ffffff;
+      --bg-input: #ffffff;
+      --border: #d4dae1;
+      --text: #1f2328;
+      --text-dim: #656d76;
+      --accent: #2f6feb;
+      --accent-strong: #2f6feb;
+      --user-bubble: #2f6feb;
+      --assistant-bubble: #eef1f4;
+      --danger: #cf222e;
+      --ok: #1a7f37;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+    a { color: var(--accent); }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 56px;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-elev);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+    header .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    header .kb-ascii {
+      font-size: 5.5px;
+      line-height: 1.1;
+      display: block;
+    }
+    header .title {
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: .2px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .kb-ascii {
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-weight: 700;
+      color: var(--brand);
+      letter-spacing: 0;
+      white-space: pre;
+      user-select: none;
+    }
+    /* Portal blue letters + orange chip (same as TUI WelcomeBanner / kb-logo.png). */
+    .kb-ascii .brand-dot { color: var(--brand-accent); }
+    .empty .kb-ascii { font-size: 13px; line-height: 1.05; display: inline-block; text-align: left; }
+    header .spacer { flex: 1; min-width: 8px; }
+    header .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: none;
+    }
+    .status,
+    .icon-btn {
+      box-sizing: border-box;
+      height: var(--ctrl);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-ctrl);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      padding: 0;
+    }
+    .status {
+      gap: 7px;
+      font-size: 12px;
+      color: var(--text-dim);
+      padding: 0 11px;
+      cursor: default;
+      white-space: nowrap;
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); flex: none; }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+    .dot.bad { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 25%, transparent); }
+    .dot.wait { background: #d29922; }
+    .icon-btn {
+      background: transparent;
+      color: var(--text);
+      width: var(--ctrl);
+      cursor: pointer;
+      font-size: 15px;
+    }
+    .icon-btn:hover { border-color: var(--accent); }
+
+    /* Chat area */
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 18px 140px;
+    }
+    .thread { max-width: var(--maxw); margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+
+    .empty {
+      max-width: var(--maxw);
+      margin: 8vh auto 0;
+      text-align: center;
+      color: var(--text-dim);
+    }
+    .empty h1 { color: var(--text); font-size: 22px; margin: 14px 0 6px; }
+    .empty p { margin: 4px 0; }
+    .suggestions {
+      display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
+      margin: 22px auto 0; max-width: 720px;
+    }
+    .suggestions button {
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 10px 14px;
+      font-size: 13px;
+      line-height: 1.35;
+      text-align: left;
+      white-space: normal;
+      max-width: 100%;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .suggestions button:hover { border-color: var(--accent); }
+
+    .msg { display: flex; gap: 10px; align-items: flex-start; }
+    .msg .avatar {
+      flex: none;
+      width: var(--avatar);
+      height: var(--avatar);
+      border-radius: var(--radius-ctrl);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      letter-spacing: 0;
+      margin-top: 10px; /* align with bubble text, not bubble border */
+      padding: 0;
+    }
+    .msg.user .avatar { background: var(--user-bubble); color: #fff; }
+    .msg.assistant .avatar {
+      background: var(--assistant-bubble); border: 1px solid var(--border);
+      color: var(--brand); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-weight: 700;
+    }
+    .bubble {
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      max-width: calc(100% - var(--avatar) - 10px);
+      overflow-wrap: anywhere;
+      min-height: var(--avatar);
+    }
+    .msg.user { flex-direction: row-reverse; }
+    .msg.user .bubble { background: var(--user-bubble); color: #fff; }
+    .msg.assistant .bubble { background: var(--assistant-bubble); border: 1px solid var(--border); }
+    .bubble p { margin: 0 0 10px; }
+    .bubble h1, .bubble h2, .bubble h3, .bubble h4, .bubble h5, .bubble h6 {
+      margin: 14px 0 8px; font-weight: 600; line-height: 1.3; color: var(--text);
+    }
+    .bubble h1:first-child, .bubble h2:first-child, .bubble h3:first-child,
+    .bubble h4:first-child, .bubble p:first-child, .bubble ul:first-child,
+    .bubble ol:first-child, .bubble pre:first-child, .bubble .table-wrap:first-child { margin-top: 0; }
+    .bubble h1 { font-size: 1.35em; }
+    .bubble h2 { font-size: 1.2em; }
+    .bubble h3 { font-size: 1.08em; }
+    .bubble h4, .bubble h5, .bubble h6 { font-size: 1em; }
+    .bubble p:last-child, .bubble ul:last-child, .bubble ol:last-child,
+    .bubble pre:last-child, .bubble h1:last-child, .bubble h2:last-child,
+    .bubble h3:last-child, .bubble .table-wrap:last-child { margin-bottom: 0; }
+    .bubble .table-wrap {
+      overflow-x: auto; margin: 0 0 10px;
+      border: 1px solid var(--border); border-radius: 10px;
+    }
+    .bubble table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+    }
+    .bubble th, .bubble td {
+      padding: 7px 10px; text-align: left; vertical-align: top;
+      border-bottom: 1px solid var(--border);
+    }
+    .bubble th {
+      background: color-mix(in srgb, var(--bg) 55%, transparent);
+      font-weight: 600; color: var(--text); white-space: nowrap;
+    }
+    .bubble tr:last-child td { border-bottom: none; }
+    .bubble td { color: var(--text); }
+    .bubble pre {
+      background: color-mix(in srgb, var(--bg) 60%, #000 8%);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 10px 12px;
+      overflow-x: auto;
+      font-size: 13px;
+      margin: 0 0 10px;
+    }
+    .bubble code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12.5px;
+      background: color-mix(in srgb, var(--bg) 55%, #000 10%);
+      padding: 1px 5px; border-radius: 5px;
+    }
+    .bubble pre code { background: none; padding: 0; }
+    .bubble ul, .bubble ol { margin: 0 0 10px; padding-left: 22px; }
+    .bubble li { margin: 3px 0; }
+    .bubble li > p { margin: 0; }
+
+    .status-line { color: var(--text-dim); font-size: 13px; font-style: italic; }
+    .pending { display: flex; flex-direction: column; gap: 8px; }
+    .pending .stage {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px; color: var(--text-dim); font-style: normal;
+    }
+    .pending .thinking {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12.5px; color: var(--text-dim); font-style: normal;
+      white-space: pre-wrap; word-break: break-word;
+      max-height: 9.5em; overflow-y: auto;
+      border-left: 2px solid var(--brand-accent);
+      padding-left: 10px; margin-top: 2px;
+    }
+    .pending .thinking-label {
+      display: inline-block; color: var(--brand-accent);
+      font-size: 11px; font-weight: 600; letter-spacing: .3px;
+      margin-bottom: 4px;
+    }
+    .typing { display: inline-flex; gap: 4px; align-items: center; }
+    .typing span {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim);
+      animation: blink 1.2s infinite ease-in-out;
+    }
+    .typing span:nth-child(2) { animation-delay: .2s; }
+    .typing span:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+
+    .sources { margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 10px; }
+    .sources .label { font-size: 11.5px; letter-spacing: .2px; color: var(--text-dim); margin-bottom: 6px; }
+    .source {
+      font-size: 12.5px; color: var(--text-dim);
+      padding: 3px 0; display: flex; gap: 7px; align-items: baseline;
+    }
+    .source .num { color: var(--accent); font-variant-numeric: tabular-nums; }
+    .source .path { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text); word-break: break-all; }
+    .source a.path { color: var(--accent); text-decoration: none; }
+    .source a.path:hover { text-decoration: underline; }
+
+    .err {
+      background: color-mix(in srgb, var(--danger) 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+      color: var(--text);
+      border-radius: var(--radius);
+      padding: 11px 15px;
+      font-size: 13.5px;
+    }
+    .err b { color: var(--danger); }
+    .err code { font-size: 12px; }
+
+    /* Composer */
+    .composer-wrap {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      padding: 14px 18px calc(14px + env(safe-area-inset-bottom));
+      background: linear-gradient(to top, var(--bg) 60%, transparent);
+    }
+    .composer {
+      max-width: var(--maxw); margin: 0 auto;
+      display: flex; gap: 8px; align-items: flex-end;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 8px;
+      box-shadow: 0 6px 24px rgba(0,0,0,.18);
+    }
+    .composer textarea {
+      flex: 1; resize: none; border: none; outline: none; background: transparent;
+      color: var(--text); font: inherit; line-height: 1.45;
+      max-height: 180px; padding: 7px 6px 7px 8px;
+      min-height: var(--ctrl);
+    }
+    .composer textarea::placeholder { color: var(--text-dim); }
+    .send {
+      flex: none;
+      width: var(--ctrl); height: var(--ctrl);
+      border-radius: var(--radius-ctrl); border: none;
+      background: var(--accent-strong); color: #fff; cursor: pointer;
+      font-size: 16px; line-height: 1;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: opacity .15s;
+    }
+    .send:disabled { opacity: .4; cursor: not-allowed; }
+    .composer-hint { max-width: var(--maxw); margin: 7px auto 0; font-size: 11.5px; color: var(--text-dim); text-align: center; }
+
+    /* Settings dialog */
+    dialog {
+      border: 1px solid var(--border); background: var(--bg-elev); color: var(--text);
+      border-radius: 16px; padding: 0; width: min(440px, 92vw);
+      margin: auto; /* center in viewport */
+    }
+    dialog::backdrop { background: rgba(0,0,0,.5); }
+    .dlg-head {
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+      font-weight: 600; font-size: 15px; line-height: 1.2;
+    }
+    .dlg-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+    .field label {
+      display: block; font-size: 12.5px; margin-bottom: 6px;
+      color: var(--text-dim); line-height: 1.2;
+    }
+    .field input {
+      width: 100%; height: 38px; padding: 0 12px;
+      border-radius: var(--radius-ctrl); border: 1px solid var(--border);
+      background: var(--bg-input); color: var(--text); font: inherit;
+      outline: none; line-height: 1;
+    }
+    .field input:focus { border-color: var(--accent); }
+    .field .help { font-size: 11.5px; color: var(--text-dim); margin-top: 6px; line-height: 1.4; }
+    .dlg-foot {
+      padding: 14px 20px; border-top: 1px solid var(--border);
+      display: flex; justify-content: flex-end; align-items: center; gap: 10px;
+    }
+    .dlg-foot .save {
+      height: var(--ctrl);
+      border-radius: var(--radius-ctrl);
+      padding: 0 14px;
+      font: inherit;
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent-strong); color: #fff; border: none;
+    }
+
+    @media (max-width: 560px) {
+      header .title { display: none; }
+      main { padding: 18px 12px 140px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <pre class="kb-ascii" aria-label="KB">██╗  ██╗██████╗
+██║ ██╔╝██╔══██╗
+█████╔╝ ██████╔╝<span class="brand-dot"> [█]</span>
+██╔═██╗ ██╔══██╗
+██║  ██╗██████╔╝</pre>
+      <span class="title">Chat demo</span>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <span class="status" id="status" title="Server connectivity">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">Checking…</span>
+      </span>
+      <button class="icon-btn" id="themeBtn" title="Toggle theme" type="button">◐</button>
+      <button class="icon-btn" id="settingsBtn" title="Open settings" type="button">⚙</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="empty" id="empty">
+      <pre class="kb-ascii" aria-label="KB">██╗  ██╗██████╗
+██║ ██╔╝██╔══██╗
+█████╔╝ ██████╔╝<span class="brand-dot"> [█]</span>
+██╔═██╗ ██╔══██╗
+██║  ██╗██████╔╝</pre>
+      <h1>Ask KB anything about the codebase</h1>
+      <p>This page talks to a running <code>kb-server</code> over its HTTP API.</p>
+      <p>Point it at your server in <b>⚙ settings</b>, then ask away.</p>
+      <div class="suggestions" id="suggestions"></div>
+    </div>
+    <div class="thread" id="thread"></div>
+  </main>
+
+  <div class="composer-wrap">
+    <form class="composer" id="composer">
+      <textarea id="input" rows="1" placeholder="Message KB…" autocomplete="off"></textarea>
+      <button class="send" id="send" type="submit" title="Send" aria-label="Send">↑</button>
+    </form>
+    <div class="composer-hint" id="hint"></div>
+  </div>
+
+  <dialog id="settings">
+    <form method="dialog">
+      <div class="dlg-head">Connection settings</div>
+      <div class="dlg-body">
+        <div class="field">
+          <label for="serverUrl">kb-server URL</label>
+          <input type="text" id="serverUrl" placeholder="https://kb-demo.fly.dev" spellcheck="false" />
+          <div class="help" id="serverUrlHelp">The base URL of your running <code>kb-server</code>.</div>
+        </div>
+        <div class="field">
+          <label for="apiKey">API key <span style="opacity:.7">(optional)</span></label>
+          <input type="password" id="apiKey" placeholder="Only if the server sets KB_SERVER_API_KEY" spellcheck="false" />
+          <div class="help">Sent as <code>Authorization: Bearer …</code>. Leave blank if the server is unauthenticated. Stored only in your browser.</div>
+        </div>
+        <div class="field">
+          <label for="base">Base <span style="opacity:.7">(optional)</span></label>
+          <input type="text" id="base" placeholder="Default base" spellcheck="false" />
+          <div class="help">Sent as <code>X-KB-Base</code> to target a specific indexed base.</div>
+        </div>
+      </div>
+      <div class="dlg-foot">
+        <button class="save" id="saveBtn" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    "use strict";
+
+    // ---- Config (persisted in localStorage) ----------------------------------
+    const LS_KEY = "kb-chat-settings.v1";
+    // Local `pnpm run demo` → localhost API. GitHub Pages → public Fly demo.
+    const isLocalDemo = /^(localhost|127\.0\.0\.1)$/i.test(location.hostname);
+    const DEFAULT_SERVER_URL = isLocalDemo
+      ? "http://localhost:38117"
+      : "https://kb-demo.fly.dev";
+    const DEFAULTS = { serverUrl: DEFAULT_SERVER_URL, apiKey: "", base: "" };
+    const LEGACY_LOCAL_DEFAULT = "http://localhost:38117";
+    function trimUrl(u) { return (u || "").trim().replace(/\/+$/, ""); }
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (!raw) return { ...DEFAULTS };
+        const merged = { ...DEFAULTS, ...JSON.parse(raw) };
+        // Pages visitors who still have the old hardcoded localhost default → Fly.
+        if (!isLocalDemo && trimUrl(merged.serverUrl || "") === LEGACY_LOCAL_DEFAULT) {
+          merged.serverUrl = DEFAULT_SERVER_URL;
+          try { localStorage.setItem(LS_KEY, JSON.stringify(merged)); } catch {}
+        }
+        return merged;
+      } catch {
+        return { ...DEFAULTS };
+      }
+    }
+    function saveSettings(s) { localStorage.setItem(LS_KEY, JSON.stringify(s)); }
+    let settings = loadSettings();
+    let sessionId = null; // set by the server on the first turn, reused after
+
+    // ---- DOM refs ------------------------------------------------------------
+    const $ = (id) => document.getElementById(id);
+    const thread = $("thread"), empty = $("empty"), input = $("input"),
+          sendBtn = $("send"), form = $("composer"), main = $("main"),
+          statusDot = $("statusDot"), statusText = $("statusText"), hint = $("hint");
+
+    // ---- Helpers -------------------------------------------------------------
+    // Dogfood hardcode: static Pages demo has no volume registry. Server Slack uses
+    // discoverBaseRepos (per-slug gitUrl + primary branch) via formatChatReply.
+    const SOURCE_REPO = "https://github.com/rosenjcb/kb";
+    const SOURCE_BRANCH = "main";
+    function authHeaders(extra) {
+      const h = { ...(extra || {}) };
+      if (settings.apiKey.trim()) h["Authorization"] = "Bearer " + settings.apiKey.trim();
+      if (settings.base.trim()) h["X-KB-Base"] = settings.base.trim();
+      return h;
+    }
+    /** Strip index base / git-repo prefix → repo-relative path, or null if not a file. */
+    function repoRelativePath(filePath) {
+      let p = String(filePath || "").trim().replace(/\\/g, "/").replace(/^\.\//, "");
+      if (!p || p.startsWith("fact://") || /^[a-z][a-z0-9+.-]*:/i.test(p)) return null;
+      const base = settings.base.trim().replace(/\/+$/, "");
+      if (base && (p === base || p.startsWith(base + "/"))) {
+        p = p.slice(base.length).replace(/^\//, "");
+      }
+      // Common indexed form: `<gitRepo>/<relPath>` (e.g. rosenjcb-kb/TESTING.md)
+      if (/^(rosenjcb-kb|kb)\//.test(p)) p = p.replace(/^(rosenjcb-kb|kb)\//, "");
+      p = p.replace(/#.*$/, ""); // drop segment anchors
+      return p || null;
+    }
+    function sourceGithubUrl(filePath) {
+      const rel = repoRelativePath(filePath);
+      if (!rel) return null;
+      return SOURCE_REPO + "/blob/" + SOURCE_BRANCH + "/" +
+        rel.split("/").map(encodeURIComponent).join("/");
+    }
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+    function applyInlineMarkdown(s) {
+      // Already HTML-escaped. Order: code → bold → italic → links.
+      s = s.replace(/`([^`]+)`/g, (_, c) => "<code>" + c + "</code>");
+      s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      // Italic: avoid turning list markers (`* item`) into <em>.
+      s = s.replace(/(?<![\w*])\*([^*\n]+)\*(?![\w*])/g, "<em>$1</em>");
+      s = s.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g,
+        '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+      return s;
+    }
+    /**
+     * Tiny safe markdown → HTML for chat bubbles (no deps).
+     * Supports: ATX headers, GFM tables, fenced code, inline code, bold/italic,
+     * links, ul/ol, paragraphs. Fence placeholders avoid colliding with digits.
+     */
+    function renderMarkdown(src) {
+      const FENCE = "\uE000";
+      const fences = [];
+      let text = String(src || "").replace(/\r\n?/g, "\n");
+      text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, _lang, code) => {
+        const i = fences.length;
+        fences.push("<pre><code>" + escapeHtml(code.replace(/\n$/, "")) + "</code></pre>");
+        return "\n" + FENCE + i + FENCE + "\n";
+      });
+
+      const lines = text.split("\n");
+      const out = [];
+      let i = 0;
+
+      function isFence(line) {
+        const m = new RegExp("^" + FENCE + "(\\d+)" + FENCE + "$").exec(line.trim());
+        return m ? fences[+m[1]] : null;
+      }
+      function isBlank(line) { return /^\s*$/.test(line); }
+      function isUl(line) { return /^\s*[-*]\s+/.test(line); }
+      function isOl(line) { return /^\s*\d+\.\s+/.test(line); }
+      function isHeading(line) { return /^(#{1,6})\s+(.+)$/.exec(line); }
+      function isTableRow(line) {
+        const t = line.trim();
+        return t.startsWith("|") && t.indexOf("|", 1) !== -1;
+      }
+      // GFM separator: | :--- | :---: | ---: | --- |
+      function isTableSep(line) {
+        return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+      }
+      function splitTableCells(line) {
+        let t = line.trim();
+        if (t.startsWith("|")) t = t.slice(1);
+        if (t.endsWith("|")) t = t.slice(0, -1);
+        return t.split("|").map((c) => c.trim());
+      }
+      function startsTable(idx) {
+        return isTableRow(lines[idx]) && idx + 1 < lines.length && isTableSep(lines[idx + 1]);
+      }
+      function inline(line) { return applyInlineMarkdown(escapeHtml(line)); }
+
+      while (i < lines.length) {
+        const line = lines[i];
+        const fenceHtml = isFence(line);
+        if (fenceHtml != null) { out.push(fenceHtml); i++; continue; }
+        if (isBlank(line)) { i++; continue; }
+
+        const heading = isHeading(line);
+        if (heading) {
+          const level = heading[1].length;
+          out.push("<h" + level + ">" + inline(heading[2].trim()) + "</h" + level + ">");
+          i++;
+          continue;
+        }
+
+        if (startsTable(i)) {
+          const headers = splitTableCells(lines[i]);
+          i += 2; // skip header + separator
+          const rows = [];
+          while (i < lines.length && isTableRow(lines[i]) && !isTableSep(lines[i])) {
+            rows.push(splitTableCells(lines[i]));
+            i++;
+          }
+          let table = '<div class="table-wrap"><table><thead><tr>';
+          for (const h of headers) table += "<th>" + inline(h) + "</th>";
+          table += "</tr></thead><tbody>";
+          for (const row of rows) {
+            table += "<tr>";
+            for (let c = 0; c < headers.length; c++) {
+              table += "<td>" + inline(row[c] || "") + "</td>";
+            }
+            table += "</tr>";
+          }
+          table += "</tbody></table></div>";
+          out.push(table);
+          continue;
+        }
+
+        if (isUl(line)) {
+          const items = [];
+          while (i < lines.length && isUl(lines[i])) {
+            items.push("<li>" + inline(lines[i].replace(/^\s*[-*]\s+/, "")) + "</li>");
+            i++;
+          }
+          out.push("<ul>" + items.join("") + "</ul>");
+          continue;
+        }
+
+        if (isOl(line)) {
+          const items = [];
+          while (i < lines.length && isOl(lines[i])) {
+            items.push("<li>" + inline(lines[i].replace(/^\s*\d+\.\s+/, "")) + "</li>");
+            i++;
+          }
+          out.push("<ol>" + items.join("") + "</ol>");
+          continue;
+        }
+
+        const para = [];
+        while (
+          i < lines.length &&
+          !isBlank(lines[i]) &&
+          !isFence(lines[i]) &&
+          !isHeading(lines[i]) &&
+          !startsTable(i) &&
+          !isUl(lines[i]) &&
+          !isOl(lines[i])
+        ) {
+          para.push(inline(lines[i]));
+          i++;
+        }
+        out.push("<p>" + para.join("<br>") + "</p>");
+      }
+
+      return out.join("") || "<p></p>";
+    }
+    function scrollDown() { main.scrollTop = main.scrollHeight; }
+
+    // ---- Message rendering ---------------------------------------------------
+    function addUserMessage(text) {
+      empty.style.display = "none";
+      const el = document.createElement("div");
+      el.className = "msg user";
+      el.innerHTML = '<div class="avatar">You</div><div class="bubble"></div>';
+      el.querySelector(".bubble").textContent = text;
+      thread.appendChild(el);
+      scrollDown();
+    }
+    // Returns a controller for the assistant turn currently streaming.
+    function addAssistantMessage() {
+      empty.style.display = "none";
+      const el = document.createElement("div");
+      el.className = "msg assistant";
+      el.innerHTML =
+        '<div class="avatar" aria-label="KB">KB</div>' +
+        '<div class="bubble"><div class="pending">' +
+          '<div class="status-line"><span class="typing"><span></span><span></span><span></span></span></div>' +
+        '</div></div>';
+      thread.appendChild(el);
+      scrollDown();
+      const bubble = el.querySelector(".bubble");
+      // Keep stage (meta) and thinking (reasoning) in separate slots — stages used to
+      // overwrite model thinking when both shared one status line.
+      let stageText = "";
+      let thinkingText = "";
+      function renderPending() {
+        let html = '<div class="pending">';
+        html += '<div class="status-line"><span class="typing"><span></span><span></span><span></span></span></div>';
+        if (stageText) html += '<div class="stage">' + escapeHtml(stageText) + "</div>";
+        if (thinkingText) {
+          html += '<div class="thinking"><div class="thinking-label">Thinking</div>' +
+            escapeHtml(thinkingText) + "</div>";
+        }
+        html += "</div>";
+        bubble.innerHTML = html;
+        const thinkEl = bubble.querySelector(".thinking");
+        if (thinkEl) thinkEl.scrollTop = thinkEl.scrollHeight;
+        scrollDown();
+      }
+      return {
+        setStage(txt) { stageText = (txt || "").trim(); renderPending(); },
+        setThinking(txt) { thinkingText = (txt || "").trim(); renderPending(); },
+        setAnswer(txt, sources) {
+          bubble.innerHTML = renderMarkdown(txt || "_(no answer)_");
+          if (sources && sources.length) {
+            const s = document.createElement("div");
+            s.className = "sources";
+            const seen = new Set();
+            const unique = [];
+            for (const src of sources) {
+              const raw = src.filePath || src.title || src.id || "unknown";
+              const rel = repoRelativePath(raw) || raw;
+              const key = (rel + (src.symbol ? "#" + src.symbol : "")).toLowerCase();
+              if (seen.has(key)) continue;
+              seen.add(key);
+              unique.push(src);
+            }
+            s.innerHTML = '<div class="label">Sources</div>' + unique.map((src, i) => {
+              const raw = src.filePath || src.title || src.id || "unknown";
+              const rel = repoRelativePath(raw) || raw;
+              const href = sourceGithubUrl(raw);
+              const sym = src.symbol ? ' · <span class="path">' + escapeHtml(src.symbol) + "</span>" : "";
+              const pathHtml = href
+                ? '<a class="path" href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">' +
+                  escapeHtml(rel) + "</a>"
+                : '<span class="path">' + escapeHtml(rel) + "</span>";
+              return '<div class="source"><span class="num">' + (i + 1) + ".</span>" + pathHtml + sym + "</div>";
+            }).join("");
+            bubble.appendChild(s);
+          }
+          scrollDown();
+        },
+        setError(title, detail) {
+          bubble.innerHTML = '<div class="err"><b>' + escapeHtml(title) + "</b>" +
+            (detail ? "<br><code>" + escapeHtml(detail) + "</code>" : "") + "</div>";
+          scrollDown();
+        },
+      };
+    }
+
+    // ---- SSE chat call -------------------------------------------------------
+    // First-boot bootstrap 503s chat (like Slack). Hourly reindex does not — chat stays up.
+    async function postChat(message) {
+      return fetch(trimUrl(settings.serverUrl) + "/v1/chat", {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ message, sessionId: sessionId || undefined }),
+      });
+    }
+
+    /** Poll /healthz until bootstrap finishes (Slack's waitForBootstrap). */
+    async function waitForBootstrap(turn, deadlineMs) {
+      const deadline = Date.now() + deadlineMs;
+      while (Date.now() < deadline) {
+        const h = await probeConnection(settings.serverUrl, authHeaders());
+        applyHealthStatus(h);
+        if (h.state === "failed") {
+          turn.setError("Index build failed", h.bootstrapError || "bootstrap failed");
+          return false;
+        }
+        if (h.state === "unauthorized") {
+          turn.setError("Unauthorized (401)", h.detail || "API key missing or wrong. Fix it in ⚙ Settings.");
+          return false;
+        }
+        if (h.state === "unknown_base") {
+          turn.setError("Unknown base", h.detail || "That base is not on this server.");
+          return false;
+        }
+        if (h.state === "ready") return true;
+        const prog = h.progress ? " — " + h.progress : "";
+        turn.setStage("Still indexing" + prog + ". I'll answer when ready…");
+        await sleep(4000);
+      }
+      turn.setError("Still indexing", "Timed out waiting for the first index. Try again in a minute.");
+      return false;
+    }
+
+    async function sendChat(message) {
+      const turn = addAssistantMessage();
+      let res;
+      try {
+        res = await postChat(message);
+      } catch (e) {
+        // First-boot can drop TCP while the event loop is saturated — treat like
+        // Slack's indexing wait instead of failing the turn immediately.
+        turn.setStage("Server busy (likely indexing). Waiting until it's ready…");
+        const ready = await waitForBootstrap(turn, 10 * 60 * 1000);
+        if (!ready) return;
+        turn.setStage("Index ready — answering…");
+        try { res = await postChat(message); }
+        catch (e2) { turn.setError("Couldn't reach the server", describeNetworkError(e2)); return; }
+      }
+      if (res.status === 401) {
+        turn.setError("Unauthorized (401)", "API key missing or wrong. Set KB_SERVER_API_KEY in ⚙ Settings.");
+        setStatus("bad", "Unauthorized");
+        return;
+      }
+      if (res.status === 404) {
+        let body = {};
+        try { body = await res.json(); } catch {}
+        if (body.status === "unknown_base" || /unknown base/i.test(body.error || "")) {
+          turn.setError("Unknown base", body.error || "That base is not on this server. Check ⚙ Settings → Base.");
+          setStatus("bad", "Unknown base");
+          return;
+        }
+      }
+      if (res.status === 503) {
+        let body = {};
+        try { body = await res.json(); } catch {}
+        const indexing = body.status === "indexing" || /index/i.test(body.error || "");
+        if (indexing) {
+          // Match Slack: notice + wait + then answer (one retry after ready).
+          const prog = body.progress ? " (" + body.progress + ")" : "";
+          turn.setStage("KB is still indexing" + prog + ". I'll answer once it's ready…");
+          const ready = await waitForBootstrap(turn, 10 * 60 * 1000);
+          if (!ready) return;
+          turn.setStage("Index ready — answering…");
+          try { res = await postChat(message); }
+          catch (e) { turn.setError("Couldn't reach the server", describeNetworkError(e)); return; }
+          if (res.status === 503) {
+            let msg = "Server is still unavailable after indexing.";
+            try { const b = await res.json(); msg = b.error || msg; } catch {}
+            turn.setError("Service unavailable (503)", msg); return;
+          }
+        } else {
+          let msg = body.error || "Server is unavailable.";
+          if (body.progress) msg += " (" + body.progress + ")";
+          turn.setError("Service unavailable (503)", msg); return;
+        }
+      }
+      if (!res.ok || !res.body) {
+        let detail = "HTTP " + res.status;
+        try { const b = await res.json(); if (b.error) detail = b.error; } catch {}
+        turn.setError("Request failed", detail); return;
+      }
+
+      // Parse the SSE stream: blocks separated by \n\n, each with event:/data: lines.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let answered = false;
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let idx;
+          while ((idx = buf.indexOf("\n\n")) !== -1) {
+            const raw = buf.slice(0, idx); buf = buf.slice(idx + 2);
+            const ev = parseSseBlock(raw);
+            if (!ev) continue;
+            if (ev.event === "session" && ev.data.sessionId) sessionId = ev.data.sessionId;
+            else if (ev.event === "meta") { if (!answered) turn.setStage(ev.data.text || ""); }
+            else if (ev.event === "reasoning") { if (!answered) turn.setThinking(ev.data.text || "Thinking…"); }
+            else if (ev.event === "answer") { answered = true; turn.setAnswer(ev.data.text, ev.data.sources); }
+            else if (ev.event === "error") { turn.setError("The server returned an error", ev.data.message || "unknown error"); answered = true; }
+            // 'done' → stream ends
+          }
+        }
+        if (!answered) turn.setError("No answer", "The server closed the stream without an answer.");
+      } catch (e) {
+        if (!answered) turn.setError("Stream interrupted", describeNetworkError(e));
+      }
+    }
+
+    function parseSseBlock(raw) {
+      let event = "message"; const dataLines = [];
+      for (const line of raw.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+      }
+      if (!dataLines.length) return null;
+      try { return { event, data: JSON.parse(dataLines.join("\n")) }; }
+      catch { return { event, data: {} }; }
+    }
+
+    function describeNetworkError(e) {
+      const msg = (e && e.message) || String(e);
+      const mixed = location.protocol === "https:" && trimUrl(settings.serverUrl).startsWith("http://") &&
+                    !/^https?:\/\/(localhost|127\.0\.0\.1)/.test(trimUrl(settings.serverUrl));
+      if (mixed) return "This page is served over HTTPS but the server URL is HTTP. Browsers block that (mixed content). Use an HTTPS server URL.";
+      return msg + " — check the URL, that the server is running, and that it allows this origin (CORS: start kb-server with --allow-origin " + location.origin + ").";
+    }
+
+    // ---- Health check --------------------------------------------------------
+    // First-boot: health.ok=false / 503 + indexing. Hourly reindex: ok stays true,
+    // health.reindexing may be true — chat/query keep working (no 503).
+    let healthTimer = null;
+    let healthGen = 0;
+    let lastHealthKind = null; // avoid flashing "Checking…" over a known-good Connected
+    function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+    async function fetchJson(url, headers, timeoutMs) {
+      const ctrl = new AbortController();
+      let timer;
+      // Explicit race — don't rely on AbortSignal alone (embeds can be flaky).
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          ctrl.abort();
+          reject(new Error("timeout"));
+        }, timeoutMs);
+      });
+      try {
+        return await Promise.race([
+          (async () => {
+            const res = await fetch(url, { headers, signal: ctrl.signal });
+            const body = await res.json().catch(() => ({}));
+            return { res, body };
+          })(),
+          timeout,
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    /**
+     * Fast connection probe:
+     *  1) /healthz — unknown base → 404 immediately; indexing/ready otherwise
+     *  2) GET /v1/bases — auth check (401 when key missing/wrong); healthz alone
+     *     cannot see this because it is unauthenticated
+     *
+     * opts.healthTimeoutMs / opts.authTimeoutMs override the default budgets.
+     */
+    async function probeConnection(url, headers, opts) {
+      const healthTimeoutMs = (opts && opts.healthTimeoutMs) || 15000;
+      const authTimeoutMs = (opts && opts.authTimeoutMs) || 4000;
+      const base = trimUrl(url);
+      let health;
+      try {
+        health = await fetchJson(base + "/healthz", headers, healthTimeoutMs);
+      } catch {
+        return { state: "offline" };
+      }
+      const { res, body } = health;
+      if (res.status === 404 || body.status === "unknown_base") {
+        return {
+          state: "unknown_base",
+          detail: body.error || ("Unknown base (HTTP " + res.status + ")"),
+          progress: "",
+        };
+      }
+      if (body.bootstrapError) {
+        return { state: "failed", bootstrapError: body.bootstrapError, progress: body.bootstrapProgress || "" };
+      }
+      const indexing = !!(body.indexing || res.status === 503);
+      const reindexing = !!body.reindexing;
+      const progress = body.bootstrapProgress || body.progress || "";
+
+      // Auth probe — short timeout; 401/200 come back immediately on a live server.
+      try {
+        const auth = await fetchJson(base + "/v1/bases", headers, authTimeoutMs);
+        if (auth.res.status === 401) {
+          return {
+            state: "unauthorized",
+            detail: auth.body.error || "unauthorized",
+            progress,
+            reindexing,
+          };
+        }
+      } catch {
+        // If auth probe times out during heavy index, fall through on health alone.
+      }
+
+      if (indexing) return { state: "indexing", progress, reindexing };
+      if (res.ok) return { state: "ready", progress: "", reindexing };
+      return { state: "bad", progress: "", status: res.status };
+    }
+
+    function applyHealthStatus(h) {
+      if (h.state === "ready") {
+        setStatus("ok", h.reindexing ? "Connected · syncing" : "Connected");
+        return;
+      }
+      if (h.state === "indexing") {
+        const short = h.progress ? truncateStatus(h.progress, 42) : "Indexing…";
+        setStatus("wait", short);
+        return;
+      }
+      if (h.state === "unauthorized") {
+        setStatus("bad", "Unauthorized — check API key");
+        return;
+      }
+      if (h.state === "unknown_base") {
+        setStatus("bad", "Unknown base");
+        return;
+      }
+      if (h.state === "failed") setStatus("bad", "Index failed");
+      // Timeout/refused often means the node is CPU-bound on first-boot index —
+      // keep the amber "wait" state so we don't look permanently dead.
+      else if (h.state === "offline") setStatus("wait", "Busy / unreachable…");
+      else setStatus("bad", "Unreachable");
+    }
+
+    function truncateStatus(s, n) {
+      const t = String(s).replace(/\s+/g, " ").trim();
+      return t.length <= n ? t : t.slice(0, n - 1) + "…";
+    }
+
+    async function checkHealth() {
+      const gen = ++healthGen;
+      if (healthTimer) { clearTimeout(healthTimer); healthTimer = null; }
+      // Only flash "Checking…" when we don't already know we're connected.
+      if (lastHealthKind !== "ok") setStatus("wait", "Checking…");
+      const h = await probeConnection(settings.serverUrl, authHeaders());
+      if (gen !== healthGen) return; // superseded by a newer check
+      applyHealthStatus(h);
+      // Keep polling through first-boot index (and brief offline blips while Fly boots).
+      // Do NOT keep polling hard config errors (401 / unknown base) — surface them once.
+      if (h.state === "indexing" || h.state === "offline") {
+        healthTimer = setTimeout(() => { checkHealth(); }, 4000);
+      }
+    }
+    function setStatus(kind, text) {
+      lastHealthKind = kind;
+      statusDot.className = "dot " + kind;
+      statusText.textContent = text;
+      status.title = text;
+    }
+
+    // ---- Events --------------------------------------------------------------
+    function autoGrow() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 180) + "px"; }
+    input.addEventListener("input", autoGrow);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+    });
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = ""; autoGrow();
+      addUserMessage(text);
+      sendChat(text);
+    });
+    // Starter chips — copied from eval/suites/kb.yaml (dogfood pack). Later each
+    // suite may become a selectable base; for now these are static strings only.
+    // Skips the intentional out-of-scope Kubernetes trap question.
+    const SUGGESTIONS = [
+      "What problem does kb solve, and what is the normal workflow for setting up indexing and querying a knowledge base?",
+      "How are markdown documents turned into import_doc facts during indexing?",
+      "How does code indexing work at a high level, including the role of the tree-sitter indexer?",
+      "How does kb query retrieve evidence from facts, FTS/vector scoring, and graph relationships?",
+      "Does kb send my repository's code or documents to a remote server to build the knowledge base, or does indexing happen locally?",
+      "Step by step, how does one interactive chat turn work, from the user's message through retrieval to the synthesized reply?",
+    ];
+    {
+      const box = $("suggestions");
+      for (const q of SUGGESTIONS) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = q;
+        box.appendChild(b);
+      }
+      box.addEventListener("click", (e) => {
+        if (e.target.tagName === "BUTTON") { input.value = e.target.textContent; form.requestSubmit(); }
+      });
+    }
+
+    // Theme
+    function applyTheme(t) { document.documentElement.setAttribute("data-theme", t); localStorage.setItem("kb-chat-theme", t); }
+    $("themeBtn").addEventListener("click", () => {
+      applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
+    });
+    applyTheme(localStorage.getItem("kb-chat-theme") || "dark");
+
+    // Settings dialog
+    const dlg = $("settings");
+    function openSettings() {
+      $("serverUrl").value = settings.serverUrl;
+      $("serverUrl").placeholder = DEFAULT_SERVER_URL;
+      $("serverUrlHelp").innerHTML =
+        "The base URL of your running <code>kb-server</code>. Default here: <code>" +
+        escapeHtml(DEFAULT_SERVER_URL) + "</code>" +
+        (isLocalDemo
+          ? " (local demo). Hosted Pages defaults to <code>https://kb-demo.fly.dev</code>."
+          : " (GitHub Pages → Fly).");
+      $("apiKey").value = settings.apiKey;
+      $("base").value = settings.base;
+      dlg.showModal();
+    }
+    $("settingsBtn").addEventListener("click", openSettings);
+    $("saveBtn").addEventListener("click", (e) => {
+      e.preventDefault();
+      settings = {
+        serverUrl: trimUrl($("serverUrl").value) || DEFAULTS.serverUrl,
+        apiKey: $("apiKey").value.trim(),
+        base: $("base").value.trim(),
+      };
+      saveSettings(settings);
+      sessionId = null; // new connection → new session
+      dlg.close();
+      checkHealth();
+    });
+
+    // Init
+    hint.innerHTML = "Server: <code>" + escapeHtml(settings.serverUrl) + "</code> — change in ⚙ settings. Press Enter to send, Shift+Enter for a newline.";
+    checkHealth();
+    input.focus();
+  </script>
+</body>
+</html>

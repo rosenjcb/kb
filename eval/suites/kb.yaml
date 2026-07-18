@@ -48,7 +48,7 @@ answers:
     tracked by the base, pulls or syncs them, detects changed source/code files via stored state
     such as content hashes in `code_file_state`, and re-runs the relevant indexing phases. Initial
     **bootstrap** (first-time build) clones repos and runs the full phase pipeline; routine
-    **scan** / kb-server **reindex** (`POST /v1/reindex` or `KB_REINDEX_INTERVAL`) updates changed
+    **scan** / kb-server scheduled reindex (`KB_REINDEX_INTERVAL`) updates changed
     files and rebuilds cross-repo links. Operators change tracked repos by updating
     `KB_SERVER_BASE_GIT_REPOS` (or `KB_GIT_REPOS`) and restarting; kb-server picks up configured
     repos from the env on boot and folds in any newly-declared ones.

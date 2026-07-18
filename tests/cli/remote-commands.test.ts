@@ -1,8 +1,11 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
-import { isClientLocalCommand } from '@kb/client/cli/remote-commands.js'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  dispatchRemoteChatStreamEvent,
+  isClientLocalCommand,
+} from '@kb/client/cli/remote-commands.js'
 
 describe('isClientLocalCommand', () => {
   it('[TC-27] keeps mcp/skills/uninstall/sync/base use on the client', () => {
@@ -18,6 +21,25 @@ describe('isClientLocalCommand', () => {
     expect(isClientLocalCommand(['query', 'hi'])).toBe(false)
     expect(isClientLocalCommand(['base', 'list'])).toBe(false)
     expect(isClientLocalCommand(['docs', 'list'])).toBe(false)
+  })
+})
+
+describe('dispatchRemoteChatStreamEvent', () => {
+  it('[TC-51] routes reasoning to progress and meta to log (keeps thinking alive)', () => {
+    const log = vi.fn()
+    const progress = vi.fn()
+    dispatchRemoteChatStreamEvent({ type: 'meta', text: 'stage> route:start' }, { log, progress })
+    dispatchRemoteChatStreamEvent({ type: 'reasoning', text: 'considering Lua…' }, { log, progress })
+    dispatchRemoteChatStreamEvent(
+      { type: 'meta', text: 'stage> route:still-working 12s' },
+      { log, progress },
+    )
+
+    expect(log.mock.calls.map(c => c[0])).toEqual([
+      'stage> route:start',
+      'stage> route:still-working 12s',
+    ])
+    expect(progress.mock.calls.map(c => c[0])).toEqual(['considering Lua…'])
   })
 })
 

@@ -299,6 +299,7 @@ export class FactsDocumentReader {
         title: summarizeFactTitle(row.fact_text),
         filePath: formatFactUri(row.id),
         ...(source ? { sourcePath: source.path } : {}),
+        ...(row.git_repo ? { gitRepo: row.git_repo } : {}),
         ...(source?.symbol ? { symbol: source.symbol } : {}),
         createdAt: row.created_at,
         updatedAt: row.updated_at,

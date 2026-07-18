@@ -217,6 +217,8 @@ export interface ReadDocumentsResultItem {
     filePath?: string
     /** Physical source file the fact was extracted from, when resolvable. */
     sourcePath?: string
+    /** Origin repo slug (`facts.git_repo` / clone dir name). */
+    gitRepo?: string
     /** For code facts, the exported symbol the fact describes. */
     symbol?: string
     tags?: string[]

@@ -23,21 +23,34 @@ HTTP daemon: `kb-server scan --from <dir> --out <dir>` (adopt → scan → expor
 
 ```mermaid
 flowchart LR
-  Client["Slack / apps / MCP clients"]
+  Pages["GitHub Pages demo/"]
+  Slack["Slack Events"]
+  Apps["CLI / MCP / apps"]
   HTTP["http-server.ts"]
   Svc["KbService"]
   Pipe["query-pipeline.ts"]
   Chat["chat-stream.ts"]
   MCP["mcp-server.ts"]
 
-  Client --> HTTP
+  Pages -->|CORS + /v1/chat| HTTP
+  Slack -->|/slack/events| HTTP
+  Apps --> HTTP
   HTTP --> Svc
   Svc --> Pipe
   Svc --> Chat
   HTTP --> MCP
 ```
 
-**Boundaries:** No git sync on each request (`runQueryPipeline` is stateless). Reindex is explicit (`POST /v1/reindex`) or scheduled (`KB_REINDEX_INTERVAL`). The scheduled reindex timer is armed only after the first background bootstrap index succeeds, so an empty-volume boot cannot overlap periodic rescans. Server reindex uses incremental auto-sync semantics: every tracked repo is polled, but only repos with new commits are re-indexed. Chat history is **in-memory** per `sessionId`; restart clears sessions.
+**Boundaries:** No git sync on each request (`runQueryPipeline` is stateless). Index refresh is **scheduled** (`KB_REINDEX_INTERVAL`) or offline (`kb-server scan`). The scheduler arms only after the first background bootstrap succeeds, so an empty-volume boot cannot overlap periodic rescans. Scheduled reindex is incremental: every tracked repo is polled, but only repos with new commits are re-indexed. Chat history is **in-memory** per `sessionId`; restart clears sessions.
+
+**Bootstrap vs scheduled reindex (availability):**
+
+| Phase | `health` | `/v1/query` · `/v1/chat` · `/mcp` |
+|-------|----------|-----------------------------------|
+| First-boot bootstrap (no index yet) | `ok: false`, `indexing: true`, progress line | **503** until settled |
+| Hourly scheduler reindex | `ok: true`, may set `reindexing: true` | **served** off existing SQLite |
+
+Slack and the Pages demo both **wait** through first-boot (notice + progress, then answer). They do not block on hourly sync.
 
 ## Core pieces
 
@@ -50,7 +63,8 @@ flowchart LR
 | `@kb/core/service/kb-service.ts` | Query, chat, readFacts, reindex, health |
 | `http-server.ts` | `/healthz`, `/v1/*`, admin routes, optional MCP/Slack |
 | `@kb/core/service/query-pipeline.ts` | Shared retrieval + synthesis |
-| `chat-stream.ts` | `runChatSynthesis` → SSE |
+| `chat-stream.ts` | `runChatSynthesis` → SSE (`reasoning` / `meta` / `answer`+`sources`) |
+| `@kb/core/service/chat-reply.ts` | Shared answer + Sources footer (+ Slack mrkdwn) |
 | `mcp-server.ts` | Streamable HTTP MCP handler |
 | `reindex-scheduler.ts` | `KB_REINDEX_INTERVAL` |
 
@@ -60,7 +74,7 @@ flowchart LR
 - **Boot-build:** missing `.kb-index.sqlite` now runs in the background after `listen()`. `/healthz` comes up immediately; `/v1/query`, `/v1/chat`, and `/mcp` return `503` with an indexing message until the first build finishes.
 - **Docker:** `kb-server start --with-mcp` in Dockerfile CMD; Slack is enabled by `KB_SERVER_ENABLE_SLACK=true`.
 - **Dev:** `pnpm run server:start` for a local process; `pnpm run server:up` for the guided Docker path.
-- **Observability:** Every request emits a `request` line on entry and a `response` line on finish (`status`, `durationMs`), both keyed by a UUID `requestId` also returned as the `x-request-id` response header. Each route adds semantic logs: query/chat/reindex/mcp emit start/complete/error with timings; `/healthz` logs at `debug`; auth failures and unknown routes log at `warn`. Control verbosity via `LOG_LEVEL` (`debug|info|warn|error`; default `info`). Set in `.env` / `docker-compose.yml` `LOG_LEVEL` env var.
+- **Observability:** Every request emits a `request` line on entry and a `response` line on finish (`status`, `durationMs`), both keyed by a UUID `requestId` also returned as the `x-request-id` response header. Each route adds semantic logs: query/chat/mcp emit start/complete/error with timings; `/healthz` logs at `debug`; auth failures and unknown routes log at `warn`. Control verbosity via `LOG_LEVEL` (`debug|info|warn|error`; default `info`). Set in `.env` / `docker-compose.yml` `LOG_LEVEL` env var.
 
 ### MCP clients (Claude Code & Cursor Agent)
 
@@ -118,15 +132,31 @@ synthesizes. A fact-id drill-down tool may return later.
 
 | Method / path | Auth | Purpose |
 |---|---|---|
-| `GET /health` / `/healthz` | none | Liveness + `indexMtime` (SQLite mtime = last index write) + `version.{server,core}` + `indexing` / `bootstrapProgress` / `reindexing` |
-| `POST /v1/query` | Bearer | Synthesized answer + sources; returns `503` with bootstrap progress while first indexing is still running |
-| `POST /v1/chat` | Bearer | Multi-turn SSE chat |
-| `POST /v1/reindex` | Bearer | Incremental rescan |
-| `POST /mcp` | Bearer | MCP Streamable HTTP when `--with-mcp` |
-| `GET /v1/bases` | Bearer | List the bases this server can serve (default + built bases under `~/.kb/sessions`) |
+| `GET /health` / `/healthz` | none | Liveness + `indexMtime` (SQLite mtime = last index write) + `version.server` (never `@kb/core`) + `indexing` / `bootstrapProgress` / `reindexing` |
+| `POST /v1/query` | optional Bearer | Synthesized answer + sources; **503 only during first-boot** bootstrap (not during hourly reindex) |
+| `POST /v1/chat` | optional Bearer | Multi-turn SSE chat (same 503 rule as query) |
+| `POST /mcp` | optional Bearer | MCP Streamable HTTP when `--with-mcp` |
+| `GET /v1/bases` | optional Bearer | List the bases this server can serve (default + built bases under `~/.kb/sessions`) |
 | `POST /slack/events` | Slack HMAC | Slack Events API webhook (when Slack mode is enabled) |
 
-Auth: `Authorization: Bearer <KB_SERVER_API_KEY>` or `X-Api-Key`.
+Auth: `Authorization: Bearer <KB_SERVER_API_KEY>` or `X-Api-Key` when a key is
+configured. When `KB_SERVER_API_KEY` is **unset/empty**, protected routes are
+open (public Pages demo).
+
+### Browser CORS (Pages / local chat demo)
+
+CORS is **off by default**. Browser UIs (GitHub Pages `demo/`, `pnpm run demo`) must allow-list their origin:
+
+```bash
+# env (comma-separated) or repeatable CLI flags
+KB_SERVER_ALLOWED_ORIGINS=http://localhost:8000,https://rosenjcb.github.io
+kb-server start --allow-origin http://localhost:8000
+```
+
+`*` allows any origin (logs a warning). Preflight `OPTIONS` is answered without auth when an origin matches.
+
+Hosted demo backend on Fly (`kb-demo`): root [`fly.toml`](../../../fly.toml) sets
+`KB_SERVER_ALLOWED_ORIGINS=https://rosenjcb.github.io`. Ops guide → [`../FLY.md`](../FLY.md).
 
 ### Multi-base (one process, many bases)
 
@@ -168,6 +198,7 @@ Configure your Slack app's **Event Subscriptions** URL to `https://<your-host>/s
 - `app_mention` → multi-turn chat keyed on `thread_ts ?? event.ts`, replying in the same thread
 - `message` (`channel_type=im`) → multi-turn chat keyed on the DM user/channel
 - if bootstrap indexing is still running, Slack gets an immediate status reply with the same progress line the API exposes, then the final answer is posted once indexing settles
+- replies use the same `service.chat` stream as `POST /v1/chat`: `formatChatReply({ flavor: 'slack', sourceRepos })` runs the answer through `markdownToSlackMrkdwn` and appends a deduped **Sources** footer. Clickable blob links come from `discoverBaseRepos` — each source slug maps to that clone's `gitUrl` + primary branch (`url#branch` / `--branch` / remote HEAD at clone time). There is no global `KB_SOURCE_BRANCH`.
 
 Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply loops. Slack retries are deduplicated by `event_id`.
 
@@ -177,6 +208,8 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 - `reindex` is single-flight (`isReindexing()`).
 - MCP HTTP is stateless — fresh server + transport per request.
 - Fresh-volume bootstrap runs after `listen()` so startup probes can pass during long first indexing.
+- **503 on query/chat/MCP only when `health.indexing` (bootstrap)** — never solely because `reindexing` is true.
+- Empty `apiKeys` ⇒ authorize all protected routes; non-empty ⇒ Bearer / `X-Api-Key` required.
 - `kb-server scan` never opens an HTTP listener; `--from`/`--out` are local paths only; batch always replaces adopt index and overwrites `--out` (no `--force`).
 
 ## Extension checklist
@@ -189,10 +222,16 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 
 - Chat SSE may fall back from Gemini stream to non-streaming.
 - REST `synthesize` defaults true; MCP `kb_query` **always** synthesizes (answer + source files).
+- Fly `kb-demo` is **Pages chatbot only** — no Slack secrets on that app; see [`../FLY.md`](../FLY.md).
+- Volume at `/data` is clones + SQLite only; image rootfs holds `node_modules`.
 
 ## Related docs
 
 - Monorepo → [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) · Core → [`../../kb-core/CORE.md`](../../kb-core/CORE.md)
+- Chat reply presentation → [`../../kb-core/src/service/CHAT_REPLY.md`](../../kb-core/src/service/CHAT_REPLY.md)
+- Chat design → [`../../kb-core/src/core/CHAT.md`](../../kb-core/src/core/CHAT.md)
+- Pages demo → [`../../../demo/README.md`](../../../demo/README.md)
+- Fly host (`kb-demo`) → [`../FLY.md`](../FLY.md)
 - Build-to-serve handoff → [`../HANDOFF.md`](../HANDOFF.md)
 - HTTP contract → [`../http/HTTP.md`](../http/HTTP.md) · Deploy → [`../README.md`](../README.md)
 - Client wire base → [`../../kb-client/src/api/CONNECTION.md`](../../kb-client/src/api/CONNECTION.md)

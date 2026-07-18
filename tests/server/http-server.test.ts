@@ -122,6 +122,31 @@ describe('createHttpServer', () => {
     expect(query).toHaveBeenCalledWith(expect.objectContaining({ query: 'trace me', trace: true }))
   })
 
+                it('[TC-108] serves /v1/query while scheduled reindex is in progress (not bootstrap)', async () => {
+    const query = vi.fn(makeStubService().query)
+    server = createHttpServer({
+      service: makeStubService({
+        query,
+        isReindexing: () => true,
+        health: () => ({
+          ok: true,
+          base: 'base',
+          reindexing: true,
+          indexMtime: '2026-07-18T00:00:00.000Z',
+        }),
+      }),
+      apiKeys: [],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/v1/query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ q: 'how does auth work?' }),
+    })
+    expect(res.status).toBe(200)
+    expect(query).toHaveBeenCalled()
+  })
+
                 it('[TC-6] returns 503 for /v1/query while the server is bootstrapping its first index', async () => {
     const query = vi.fn(makeStubService().query)
     server = createHttpServer({
@@ -160,26 +185,6 @@ describe('createHttpServer', () => {
       body: JSON.stringify({}),
     })
     expect(res.status).toBe(400)
-  })
-
-                it('[TC-8] returns 409 when a reindex is already running', async () => {
-    server = createHttpServer({
-      service: makeStubService({ isReindexing: () => true }),
-      apiKeys: [],
-    })
-    const base = await listen(server)
-    const res = await fetch(`${base}/v1/reindex`, { method: 'POST' })
-    expect(res.status).toBe(409)
-  })
-
-                it('[TC-9] triggers reindex and returns the summary', async () => {
-    const reindex = vi.fn(async () => 'scanned 2 repo(s)')
-    server = createHttpServer({ service: makeStubService({ reindex }), apiKeys: [] })
-    const base = await listen(server)
-    const res = await fetch(`${base}/v1/reindex`, { method: 'POST' })
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ status: 'ok', summary: 'scanned 2 repo(s)' })
-    expect(reindex).toHaveBeenCalledOnce()
   })
 
                 it('[TC-10] streams /v1/chat as SSE with a session id, answer, and done', async () => {
@@ -320,5 +325,84 @@ describe('server-side run report capture', () => {
     // Give async report writer a chance to fire (if it incorrectly does)
     await new Promise(r => setTimeout(r, 30))
     expect(reports).toHaveLength(0)
+  })
+
+                it('[TC-102] omits CORS headers when no origins are allowed', async () => {
+    server = createHttpServer({ service: makeStubService(), apiKeys: [] })
+    const base = await listen(server)
+    const res = await fetch(`${base}/healthz`, { headers: { origin: 'https://example.com' } })
+    expect(res.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
+                it('[TC-103] reflects an allow-listed origin and varies on Origin', async () => {
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: [],
+      allowedOrigins: ['https://rosenjcb.github.io'],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/healthz`, {
+      headers: { origin: 'https://rosenjcb.github.io' },
+    })
+    expect(res.headers.get('access-control-allow-origin')).toBe('https://rosenjcb.github.io')
+    expect(res.headers.get('vary')).toContain('Origin')
+  })
+
+                it('[TC-104] does not reflect an origin outside the allow-list', async () => {
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: [],
+      allowedOrigins: ['https://rosenjcb.github.io'],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/healthz`, { headers: { origin: 'https://evil.example' } })
+    expect(res.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
+                it('[TC-105] echoes * when any origin is allowed', async () => {
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: [],
+      allowedOrigins: ['*'],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/healthz`, { headers: { origin: 'https://anything.example' } })
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
+  })
+
+                it('[TC-106] answers preflight OPTIONS with 204 and no auth for an allowed origin', async () => {
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: ['secret'],
+      allowedOrigins: ['https://rosenjcb.github.io'],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/v1/chat`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://rosenjcb.github.io',
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'authorization, content-type',
+      },
+    })
+    expect(res.status).toBe(204)
+    expect(res.headers.get('access-control-allow-origin')).toBe('https://rosenjcb.github.io')
+    expect(res.headers.get('access-control-allow-methods')).toContain('POST')
+    expect(res.headers.get('access-control-allow-headers')).toContain('authorization')
+  })
+
+                it('[TC-107] rejects preflight OPTIONS from a disallowed origin with 405', async () => {
+    server = createHttpServer({
+      service: makeStubService(),
+      apiKeys: [],
+      allowedOrigins: ['https://rosenjcb.github.io'],
+    })
+    const base = await listen(server)
+    const res = await fetch(`${base}/v1/chat`, {
+      method: 'OPTIONS',
+      headers: { origin: 'https://evil.example', 'access-control-request-method': 'POST' },
+    })
+    expect(res.status).toBe(405)
+    expect(res.headers.get('access-control-allow-origin')).toBeNull()
   })
 })

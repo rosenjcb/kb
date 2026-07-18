@@ -12,6 +12,17 @@ import {
   isDuplicateEvent,
 } from '@kb/server/slack-handler.js'
 
+vi.mock('@kb/core/storage/base-repos.js', () => ({
+  discoverBaseRepos: vi.fn(async () => [
+    {
+      gitUrl: 'https://github.com/rosenjcb/kb.git',
+      gitBranch: 'main',
+      slug: 'rosenjcb-kb',
+      dir: 'repos/rosenjcb-kb',
+    },
+  ]),
+}))
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -321,6 +332,114 @@ describe('POST /slack/events', () => {
     const res = await fetch(`${base}/slack/events`, { method: 'POST', body: '{}' })
     expect(res.status).toBe(404)
     await new Promise<void>(resolve => noSlackServer.close(() => resolve()))
+  })
+})
+
+describe('dispatchSlackEvent chat sources', () => {
+  it('[TC-100] appends a Sources footer from the chat answer event (shared with HTTP chat)', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+    }) as unknown as Response)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const service = makeStubService({
+      chat: async function* () {
+        yield {
+          type: 'answer' as const,
+          text: 'Chat uses multi-turn synthesis.',
+          sources: [
+            { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
+            { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
+            {
+              filePath: 'rosenjcb-kb/packages/kb-core/src/core/EVIDENCE_SUMMARY.md',
+              gitRepo: 'rosenjcb-kb',
+            },
+          ],
+          factsRetrieved: 2,
+        }
+        yield { type: 'done' as const }
+      },
+    })
+
+    await dispatchSlackEvent(
+      service,
+      { signingSecret: TEST_SECRET, botToken: 'xoxb-test' },
+      {
+        type: 'event_callback',
+        event_id: `Ev-sources-${Date.now()}`,
+        event: {
+          type: 'app_mention',
+          text: '<@U0001> how does chat work?',
+          user: 'U0001',
+          channel: 'C0001',
+          ts: '1234567890.000202',
+        },
+      },
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? '{}')) as { text?: string }
+    expect(payload.text).toContain('Chat uses multi-turn synthesis.')
+    expect(payload.text).toContain('*Sources*')
+    expect(payload.text).toContain(
+      '<https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md|packages/kb-core/src/core/CHAT.md>',
+    )
+    expect(payload.text).toContain(
+      '<https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/EVIDENCE_SUMMARY.md|packages/kb-core/src/core/EVIDENCE_SUMMARY.md>',
+    )
+    // Deduped — one Sources line for CHAT.md
+    expect(payload.text?.match(/\|packages\/kb-core\/src\/core\/CHAT\.md>/g)?.length).toBe(1)
+
+    vi.unstubAllGlobals()
+  })
+
+  it('[TC-101] posts per-repo blob links from discoverBaseRepos (slug → gitUrl + primary branch)', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+    }) as unknown as Response)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const service = makeStubService({
+      chat: async function* () {
+        yield {
+          type: 'answer' as const,
+          text: 'See the chat design.',
+          sources: [
+            { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
+          ],
+          factsRetrieved: 1,
+        }
+        yield { type: 'done' as const }
+      },
+    })
+
+    await dispatchSlackEvent(
+      service,
+      { signingSecret: TEST_SECRET, botToken: 'xoxb-test' },
+      {
+        type: 'event_callback',
+        event_id: `Ev-blob-${Date.now()}`,
+        event: {
+          type: 'app_mention',
+          text: '<@U0001> sources?',
+          user: 'U0001',
+          channel: 'C0001',
+          ts: '1234567890.000303',
+        },
+      },
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? '{}')) as { text?: string }
+    expect(payload.text).toContain(
+      '<https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md|packages/kb-core/src/core/CHAT.md>',
+    )
+
+    vi.unstubAllGlobals()
   })
 })
 

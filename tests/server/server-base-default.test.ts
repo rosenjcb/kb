@@ -11,23 +11,31 @@ import { resolveServerBaseDir } from '@kb/server/server-cli.js'
  * the golden default slug `base` (issue #173, Postgres's maintenance-DB model).
  */
 describe('resolveServerBaseDir golden default', () => {
-  const ENV_KEYS = ['KB_HOME', 'KB_BASE', 'KB_ACTIVE_BASE'] as const
+  const ENV_KEYS = ['KB_HOME', 'KB_BASE', 'KB_ACTIVE_BASE', 'KB_SERVER_BASE_NAME'] as const
   let saved: Record<string, string | undefined>
   let home: string
+  let cwd: string
+  let prevCwd: string
 
   beforeEach(async () => {
     saved = Object.fromEntries(ENV_KEYS.map(k => [k, process.env[k]]))
     for (const k of ENV_KEYS) delete process.env[k]
     home = await mkdtemp(path.join(tmpdir(), 'kb-base-default-'))
+    cwd = await mkdtemp(path.join(tmpdir(), 'kb-base-default-cwd-'))
     process.env.KB_HOME = home
+    // Avoid picking up the repo `.kb` / selected base from the workspace cwd.
+    prevCwd = process.cwd()
+    process.chdir(cwd)
   })
 
   afterEach(async () => {
+    process.chdir(prevCwd)
     for (const k of ENV_KEYS) {
       if (saved[k] === undefined) delete process.env[k]
       else process.env[k] = saved[k]
     }
     await rm(home, { recursive: true, force: true })
+    await rm(cwd, { recursive: true, force: true })
   })
 
   const emptyPlan: BootstrapPlan = { gitTargets: [], source: 'none' }

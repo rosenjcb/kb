@@ -13,8 +13,14 @@ export interface QuerySource {
   /**
    * Openable location of the evidence: the physical source file the fact was
    * extracted from when known, otherwise the fact's `fact://` id as a last resort.
+   * Multi-repo bases usually prefix with `<gitRepo>/…`.
    */
   filePath?: string
+  /**
+   * Origin repo slug (`facts.git_repo` / clone dir name). Lets consumers build
+   * per-repo blob links without re-parsing `filePath`.
+   */
+  gitRepo?: string
   /** For code facts, the exported symbol the fact describes. */
   symbol?: string
   tags?: string[]
@@ -58,14 +64,33 @@ function buildSnippet(content: string | undefined): string | undefined {
     : `${normalized.slice(0, SNIPPET_MAX_CHARS - 1)}…`
 }
 
+function gitRepoFromItem(item: ReadDocumentsResultItem): string | undefined {
+  const direct = item.metadata?.gitRepo?.trim()
+  if (direct) return direct
+  // tags are typically `[source_kind, git_repo, 'fact']` — prefer an explicit field.
+  const tags = item.metadata?.tags
+  if (!Array.isArray(tags)) return undefined
+  for (const tag of tags) {
+    if (typeof tag !== 'string') continue
+    const t = tag.trim()
+    if (!t || t === 'fact' || t.startsWith('import_')) continue
+    // Heuristic: slug-like tag that also prefixes sourcePath.
+    const location = item.metadata?.sourcePath ?? item.metadata?.filePath
+    if (location?.startsWith(`${t}/`) || location === t) return t
+  }
+  return undefined
+}
+
 function toSource(item: ReadDocumentsResultItem): QuerySource {
   // Prefer the physical source file (what an agent can open/grep) over the
   // opaque `fact://` URI; fall back to the URI only when provenance is unknown.
   const location = item.metadata?.sourcePath ?? item.metadata?.filePath
+  const gitRepo = gitRepoFromItem(item)
   return {
     id: item.metadata?.id,
     title: item.metadata?.title,
     filePath: location,
+    ...(gitRepo ? { gitRepo } : {}),
     ...(item.metadata?.symbol ? { symbol: item.metadata.symbol } : {}),
     tags: item.metadata?.tags,
     snippet: buildSnippet(item.content),

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { CLIENT_VERSION } from '../../version.js'
 import { BLUE, ORANGE } from '../theme.js'
 
+/** Keep in sync with assets/kb-ascii.txt (+ demo/kb-ascii.svg). */
 const BANNER_LINES = [
   '██╗  ██╗██████╗',
   '██║ ██╔╝██╔══██╗',

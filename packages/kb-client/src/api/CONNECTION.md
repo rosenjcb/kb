@@ -102,6 +102,8 @@ Remote display: `host: hostname:port`. Local eval: `mode: local │ base: …`.
 | Chat SSE | `POST /v1/chat` | `remote-commands.runRemoteChatTurn` |
 | Admin CLI | `POST /v1/admin/cli` | `remote-commands.runRemoteCliCommand` |
 
+Chat SSE events route through `dispatchRemoteChatStreamEvent`: `reasoning` → `progress` (thinking), `meta` → `log` (stage lines). **Do not merge both into progress** — stage heartbeats wipe the thinking spinner.
+
 Unreachable server → `KbConnectionError` with `kb-server start` and `--host` / env hints (`connection-error.ts`). **No silent fallback to local mode.**
 
 ## Indexing and configuration
@@ -129,11 +131,13 @@ Operator guide copy lives in `INDEXING_SERVER_MANAGED_NOTICE` (`@kb/core/config/
 - `base use` is client-local (writes state files); other `base` subcommands hit server admin CLI in remote mode.
 - `mcp`, `skills`, `uninstall`, and `sync` are always client-local — they rewrite agent configs on the laptop, not server state.
 - Startup is read-only for agent wiring: no skill install, no MCP rewrite until the operator runs `kb skills install` / `kb mcp install`.
+- Remote chat: keep `meta` and `reasoning` on separate output channels (`dispatchRemoteChatStreamEvent`).
 
 ## Related docs
 
 - Package overview → [`../../CLIENT.md`](../../CLIENT.md)
 - CLI routing → [`../cli/CLI.md`](../cli/CLI.md)
 - Behavioral spec → [`CONNECTION.spec.md`](./CONNECTION.spec.md)
+- Chat reply presentation → [`../../../kb-core/src/service/CHAT_REPLY.md`](../../../kb-core/src/service/CHAT_REPLY.md)
 - Server multi-base → [`../../../kb-server/src/SERVER.md`](../../../kb-server/src/SERVER.md)
 - Eval harness (shared multi-base batch) → [`../../../../eval/EVAL.md`](../../../../eval/EVAL.md)

@@ -55,13 +55,52 @@ function run(cmd: string, args: string[], cwd: string): Promise<string> {
   })
 }
 
-function isLocalRepoUrl(url: string): boolean {
+export function isLocalRepoUrl(url: string): boolean {
   return (
     url.startsWith('/') ||
     url.startsWith('file://') ||
     url.startsWith('./') ||
     url.startsWith('../')
   )
+}
+
+/**
+ * Normalize a git remote into an HTTPS browse root (no trailing slash) for
+ * GitHub/GitLab-shaped hosts. Local/`file://` remotes → `null` (no web blob link).
+ *
+ * Examples:
+ * - `https://github.com/org/repo.git` → `https://github.com/org/repo`
+ * - `git@github.com:org/repo.git` → `https://github.com/org/repo`
+ */
+export function gitRemoteToBrowseUrl(gitUrl: string): string | null {
+  const raw = gitUrl.trim()
+  if (!raw || isLocalRepoUrl(raw)) return null
+
+  const scp = raw.match(/^git@([^:]+):(.+)$/i)
+  if (scp) {
+    const host = scp[1]
+    const repoPath = scp[2].replace(/\.git$/i, '').replace(/\/+$/, '')
+    if (!host || !repoPath) return null
+    return `https://${host}/${repoPath}`
+  }
+
+  const ssh = raw.match(/^ssh:\/\/(?:git@)?([^/]+)\/(.+)$/i)
+  if (ssh) {
+    const host = ssh[1]
+    const repoPath = ssh[2].replace(/\.git$/i, '').replace(/\/+$/, '')
+    if (!host || !repoPath) return null
+    return `https://${host}/${repoPath}`
+  }
+
+  try {
+    const u = new URL(raw)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
+    const repoPath = u.pathname.replace(/\.git$/i, '').replace(/\/+$/, '')
+    if (!repoPath || repoPath === '/') return null
+    return `${u.protocol}//${u.host}${repoPath}`
+  } catch {
+    return null
+  }
 }
 
 /** Blobless clone of `url` into `destDir`. Tracks `branch` when given, else the remote's

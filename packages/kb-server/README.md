@@ -111,6 +111,11 @@ KB_SERVER_BASE_GIT_REPOS=https://github.com/acme/auth#main, https://github.com/a
 KB_SERVER_IGNORE=**/node_modules/**, **/*.test.ts
 ```
 
+Each `url[#branch]` (or `--branch` fallback, else the remote's default HEAD) becomes that
+slug's primary branch on disk. Slack **Sources** blob links use that per-clone branch +
+`origin` URL — not a global `KB_SOURCE_BRANCH`. Adding a new repo to the list clones it
+the same way on the next boot.
+
 Precedence (highest wins): `--git` flags → `KB_SERVER_BASE_GIT_REPOS` / `KB_GIT_REPOS`
 env. Repos added to the env list later are folded in on the next boot without a manual
 reindex.
@@ -258,9 +263,9 @@ pnpm run server:up            # start again — reuses the persisted index
 docker compose --env-file .env -f packages/kb-server/docker-compose.yml down -v
 ```
 
-On-demand reindex without a restart: `POST /v1/reindex` with the bearer token.
-This uses the same incremental sync path as the hourly scheduler: every tracked repo is
-polled, but only repos with new commits are re-indexed.
+Index refresh is the hourly scheduler (`KB_REINDEX_INTERVAL`) or offline
+`kb-server scan`. The scheduler polls every tracked repo and re-indexes only
+those with new commits.
 
 ## Notes
 
@@ -274,8 +279,20 @@ polled, but only repos with new commits are re-indexed.
   `mock` compose profile and never starts for real runs; `pnpm run integration:test` opts
   it in. Details: [`docker/wiremock/WIREMOCK.md`](docker/wiremock/WIREMOCK.md).
 
+## Deploy on Fly.io
+
+Production-style host for the same Docker image (app `kb-demo`, region `ams`):
+
+→ **[`FLY.md`](FLY.md)** — volume, secrets, `fly deploy` (Pages chatbot backend; not Slack).
+
+Config lives at the **repo root** [`fly.toml`](../../fly.toml) so Fly GitHub /
+`fly deploy` from root find `packages/kb-server/Dockerfile`. First-boot
+indexing 503s chat until ready (demo waits like Slack); hourly reindex does not
+— see [`src/SERVER.md`](src/SERVER.md).
+
 ## Related docs
 
+- [`FLY.md`](FLY.md) — deploy kb-server on Fly.io (`kb-demo`)
 - [`SERVICE.md`](SERVICE.md) — run kb-server as a native launchd/systemd service (daemon lifecycle)
 - [`src/SERVER.md`](src/SERVER.md) — server internals, endpoints, MCP clients
 - [`HANDOFF.md`](HANDOFF.md) — build-to-serve handoff: snapshot export + local-disk adopt

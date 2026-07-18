@@ -104,7 +104,7 @@ function checkConfig() {
   if (!hasRepos) {
     warnings.push(
       'No KB_SERVER_BASE_GIT_REPOS / KB_GIT_REPOS — a fresh volume will start with an empty index ' +
-        '(set repos, or POST /v1/reindex once the base has some).'
+        '(set repos before first boot, or use kb-server scan / the reindex scheduler later).'
     )
   }
 

@@ -156,21 +156,6 @@ Accept: text/event-stream
 ###
 
 # ---------------------------------------------------------------------------
-# Reindex — trigger an on-demand incremental rescan
-# ---------------------------------------------------------------------------
-# @name reindex
-POST {{baseUrl}}/v1/reindex
-Authorization: Bearer {{apiKey}}
-
-{{
-  const assert = require('assert');
-  test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-9] reindex ok', () => assert.strictEqual(response.parsedBody.status, 'ok'));
-}}
-
-###
-
-# ---------------------------------------------------------------------------
 # MCP (Streamable HTTP) — requires `kb-server start --with-mcp` (Docker CMD uses this).
 # JSON-RPC 2.0; stateless (each request is independent).
 # ---------------------------------------------------------------------------

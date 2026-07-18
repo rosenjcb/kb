@@ -70,6 +70,31 @@ function readApiKeys(): string[] {
     .filter(key => key.length > 0)
 }
 
+/**
+ * Browser origins allowed to call the API cross-origin, from
+ * `KB_SERVER_ALLOWED_ORIGINS` and/or repeatable `--allow-origin` flags
+ * (each comma-separated). Enables the hosted "try it" chat page to reach this
+ * server. A single `*` allows any origin. De-duplicated, order preserved.
+ */
+function readAllowedOrigins(args: string[]): string[] {
+  const fromEnv = process.env.KB_SERVER_ALLOWED_ORIGINS ?? ''
+  const fromFlags: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--allow-origin' && i + 1 < args.length) fromFlags.push(args[i + 1])
+  }
+  const seen = new Set<string>()
+  const origins: string[] = []
+  for (const raw of [fromEnv, ...fromFlags]) {
+    for (const origin of raw.split(',').map(o => o.trim()).filter(o => o.length > 0)) {
+      if (!seen.has(origin)) {
+        seen.add(origin)
+        origins.push(origin)
+      }
+    }
+  }
+  return origins
+}
+
 interface ResolvedBase {
   baseDir: string
   /** The resolved base name (`--base` / env / effective) — used for init/scan args. */
@@ -382,6 +407,11 @@ export async function runServerCommand(
     out.error('⚠  KB_SERVER_API_KEY is not set — /v1 and /mcp are UNAUTHENTICATED.')
     log.warn('no api key configured — /v1 and /mcp are unauthenticated')
   }
+  const allowedOrigins = readAllowedOrigins(args)
+  if (allowedOrigins.includes('*')) {
+    out.error('⚠  CORS allows ANY origin (--allow-origin "*") — any website can call this server.')
+    log.warn('cors allows any origin')
+  }
 
   const intervalMs = parseDuration(process.env.KB_REINDEX_INTERVAL)
   if (intervalMs === undefined) {
@@ -438,6 +468,7 @@ export async function runServerCommand(
     service,
     registry,
     apiKeys,
+    allowedOrigins,
     enableMcp,
     slack,
     logsDir: path.join(getKbConfigDir(), 'logs'),
@@ -462,6 +493,7 @@ export async function runServerCommand(
     mcp: enableMcp,
     slack: !!slack,
     apiKeys: apiKeys.length,
+    allowedOrigins: allowedOrigins.length,
     reindexIntervalMs: intervalMs,
     bootstrapPolicy: policy,
     logLevel: process.env.LOG_LEVEL ?? 'info',
@@ -472,7 +504,7 @@ export async function runServerCommand(
 
   out.log(`🚀 kb-server listening on :${port} (base "${path.basename(base.baseDir)}")`)
   out.log(
-    `   POST /v1/query   POST /v1/chat   GET /healthz   POST /v1/reindex${enableMcp ? '   POST /mcp' : ''}${slack ? '   POST /slack/events' : ''}`
+    `   POST /v1/query   POST /v1/chat   GET /healthz${enableMcp ? '   POST /mcp' : ''}${slack ? '   POST /slack/events' : ''}`
   )
 
   if (bootstrapTask) {

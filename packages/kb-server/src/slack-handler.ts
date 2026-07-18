@@ -15,8 +15,14 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { log } from './logger.js'
+import {
+  chatSourceReposFromBaseRepos,
+  formatChatReply,
+} from '@kb/core/service/chat-reply.js'
+import type { QuerySource } from '@kb/core/service/serialize.js'
 import type { KbHealth, KbService } from '@kb/core/service/kb-service.js'
+import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
+import { log } from './logger.js'
 
 export interface SlackOptions {
   signingSecret: string
@@ -199,14 +205,27 @@ async function replyWithChat(
   threadTs: string | undefined,
   sessionId: string,
 ): Promise<void> {
+  // Same chat stream as HTTP `/v1/chat` / the Pages demo: answer + sources[].
   let answer = ''
+  let sources: QuerySource[] = []
   let errorMessage = ''
   for await (const event of service.chat({ sessionId, message })) {
-    if (event.type === 'answer') answer = event.text
-    else if (event.type === 'error') errorMessage = event.message
+    if (event.type === 'answer') {
+      answer = event.text
+      sources = event.sources ?? []
+    } else if (event.type === 'error') {
+      errorMessage = event.message
+    }
   }
   if (answer) {
-    await postSlackMessage(slackOpts.botToken, channel, answer, threadTs)
+    // Per-repo blob links from the volume registry (clone gitUrl + gitBranch).
+    // No global KB_SOURCE_* — each slug uses its own primary branch.
+    const sourceRepos = chatSourceReposFromBaseRepos(await discoverBaseRepos(service.baseDir))
+    const text = formatChatReply(answer, sources, {
+      flavor: 'slack',
+      sourceRepos,
+    })
+    await postSlackMessage(slackOpts.botToken, channel, text, threadTs)
   } else if (errorMessage) {
     // Surface the real failure (e.g. a retired-model 404) instead of silently
     // dropping it — otherwise a broken pipeline looks identical to "no result".

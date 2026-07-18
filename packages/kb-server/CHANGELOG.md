@@ -1,5 +1,22 @@
 # kb-server
 
+## 1.4.9
+
+### Patch Changes
+
+- Index refresh is scheduler- and `kb-server scan`-driven.
+- Per-repo Sources blob links from the volume registry (slug → gitUrl + primary clone branch); remove global KB*SOURCE*\* env; expose QuerySource.gitRepo on the wire.
+- GitHub Pages chat demo + CORS; shared chat Sources footer and Slack mrkdwn conversion; keep remote chat thinking when stage meta arrives.
+- Demo treats health timeouts / dropped chat as “busy indexing” and waits; pairs with core wall-clock yields so `/healthz` can answer during first-boot.
+- Demo connection Test fails fast on unknown base (404) and bad/missing API key (401 via `/v1/bases`), instead of hanging on “Testing…”.
+- Demo Test button paints “Testing…” before the probe and uses a 3s/2s timeout budget so the click feels instant.
+- Demo defaults the server URL by host: localhost → `:38117`, GitHub Pages → `https://kb-demo.fly.dev`.
+- Demo Test button no longer sticks on “Testing…” in embeds that skip `requestAnimationFrame` (Cursor Simple Browser); hard timeout + `finally` reset.
+- Demo suggestion chips use questions from `eval/suites/kb.yaml` (static copy for now).
+- Demo settings: drop the flaky Test connection button for now (pill still probes on Save / load).
+- Updated dependencies
+  - @kb/core@1.5.3
+
 ## 1.4.8
 
 ### Patch Changes
@@ -283,7 +300,7 @@
   - **Auth failures**: whether a key was present (not the key value), path, method
   - **`/v1/query`**: query text (truncated to 300 chars), params, and on completion: results count, answer presence, retrieval method, duration
   - **`/v1/chat`**: session ID, message text (truncated), and on completion: answer length, facts retrieved, duration; per-SSE-event detail at `debug` level
-  - **`/v1/reindex`**: start, per-progress lines (`debug`), summary and duration on completion
+  - **Scheduled index refresh**: start, per-progress lines (`debug`), summary and duration on completion
   - **`/mcp`**: JSON-RPC method name
   - **Server startup**: port, base, LLM provider/model, MCP enabled, API key count, reindex interval
   - **Server shutdown**: signal received
@@ -300,4 +317,4 @@
 
 ### Minor Changes
 
-- df35234: Add `kb server start`: HTTP API (`/v1/query`, `/v1/chat` SSE, `/healthz`, `/v1/reindex`) with optional MCP at `POST /mcp` via `--with-mcp`. `kb-server` package: Docker image, WireMock integration suite (`packages/kb-server/http/server.http`), and compose wiring.
+- df35234: Add `kb server start`: HTTP API (`/v1/query`, `/v1/chat` SSE, `/healthz`) with optional MCP at `POST /mcp` via `--with-mcp`. `kb-server` package: Docker image, WireMock integration suite (`packages/kb-server/http/server.http`), and compose wiring.

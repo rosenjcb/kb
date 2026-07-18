@@ -6,12 +6,15 @@ import { tombstoneDocFactsForFile } from './doc-fact-writer'
 import { placeholderTripletFromFactText } from './fact-triplet-placeholder'
 import { parseOkfDocument } from './okf'
 import { segmentMarkdownForFacts } from './sentence-split'
-import { yieldEvery } from './yield'
+import { createRateLimitedYielder, yieldEvery } from './yield'
 
 export interface ScanFactIngestInput {
   baseDir: string
   files: Record<string, string>
+  /** Count-based yield stride (also yields on a wall-clock timer — see yieldEveryMs). */
   yieldEverySegments?: number
+  /** Wall-clock yield interval so /healthz stays responsive when each segment is slow. */
+  yieldEveryMs?: number
   /** When true, look up the nearest exported AST symbol for each segment and attach a relatesTo triplet. */
   matchAstNodes?: boolean
   /** Repo slug — prefixes `source_ref` and tags the `git_repo` column (multi-repo provenance). */
@@ -189,7 +192,10 @@ export async function ingestSourceMarkdownFilesAsFacts(
   let segmentsUpserted = 0
   let segmentsTombstoned = 0
   let processedSegments = 0
-  const yieldStride = input.yieldEverySegments ?? 50
+  // Count stride alone is not enough: slow FTS matches can spend >8s on <50 segments,
+  // which starves kb-server /healthz during first-boot bootstrap.
+  const yieldStride = input.yieldEverySegments ?? 10
+  const maybeYieldByTime = createRateLimitedYielder(input.yieldEveryMs ?? 50)
   try {
     await indexer.runInTransaction(async () => {
       const paths = Object.keys(input.files).sort()
@@ -256,6 +262,7 @@ export async function ingestSourceMarkdownFilesAsFacts(
             currentFile: relPath,
           })
           await yieldEvery(processedSegments, yieldStride)
+          await maybeYieldByTime()
         }
         input.onProgress?.({
           filesConsidered: paths.length,
@@ -265,6 +272,7 @@ export async function ingestSourceMarkdownFilesAsFacts(
           segmentsUpserted,
           currentFile: relPath,
         })
+        await maybeYieldByTime()
       }
     })
   } finally {

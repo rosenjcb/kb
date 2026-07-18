@@ -22,6 +22,7 @@
     "build": "pnpm -r --filter @kb/core --filter @kb/client --filter @kb/server run build",
     "install:global": "bash scripts/install-global.sh",
     "uninstall:global": "bash scripts/uninstall-global.sh",
+    "demo": "node scripts/demo-serve.mjs",
     "research:figures": "node scripts/render-figures.mjs",
     "research:build": "pnpm run research:figures && cd research && latexmk -pdf -interaction=nonstopmode main.tex && echo '→ research/main.pdf'",
     "research:clean": "cd research && latexmk -C",

@@ -10,7 +10,7 @@ timestamp: 2026-07-18T00:00:00Z
 
 ### Intro
 
-Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and invariants: [SERVER.md](./SERVER.md). Query pipeline: [QUERY_INTERNALS.md](../core/QUERY_INTERNALS.md).
+Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and invariants: [SERVER.md](./SERVER.md). Query pipeline: [QUERY_INTERNALS.md](../../kb-core/src/core/QUERY_INTERNALS.md). Chat reply presentation: [CHAT_REPLY.md](../../kb-core/src/service/CHAT_REPLY.md).
 
 ### Definitions
 
@@ -29,8 +29,8 @@ See companion doc for full vocabulary where applicable.
 | ID | Requirement |
 | ------ | ------------ |
 | FR-1 | Stream chat synthesis over SSE |
-| FR-2 | Expose authenticated REST routes for query, chat, reindex, and health; `/healthz` includes `version.server` (not `@kb/core`) |
-| FR-3 | KbService reads facts, reports health, and serializes reindex |
+| FR-2 | Expose authenticated REST routes for query, chat, and health; `/healthz` includes `version.server` (not `@kb/core`); empty API-key list allows open access |
+| FR-3 | KbService reads facts, reports health (`indexing` / `bootstrapProgress` / `reindexing`), and serializes reindex |
 | FR-4 | Expose a single answer-first MCP tool (`kb_query`) that always synthesizes and never exposes other tools |
 | FR-5 | Parse and run periodic reindex scheduler |
 | FR-6 | Serialize IntentResult to REST JSON |
@@ -38,11 +38,13 @@ See companion doc for full vocabulary where applicable.
 | FR-8 | Start server CLI with bootstrap logging and deferred scheduler |
 | FR-9 | Print package version for `--version` / `-V` without starting the daemon |
 | FR-10 | Store in-memory chat session history with TTL and caps |
-| FR-11 | Verify Slack signatures, route events, and deduplicate retries |
+| FR-11 | Verify Slack signatures, route events, and deduplicate retries; chat replies use `formatChatReply({ flavor: 'slack', sourceRepos })` on the same `service.chat` answer event as `/v1/chat` (Markdown→mrkdwn + deduped Sources footer; blob links from `discoverBaseRepos` per slug) |
 | FR-12 | Manage the daemon by pid file: resolve the bind port, write/read the pid, and treat a dead pid as stopped |
 | FR-13 | Generate a launchd/systemd service that launches the release binary (never a repo dist path) |
 | FR-14 | Serve many bases from one process: select per request via `X-KB-Base` (or `?base=` / body `base`); omitted ⇒ default base, unknown ⇒ `404 unknown_base`; `GET /v1/bases` lists served bases |
 | FR-15 | One-shot `kb-server scan` runs adopt(optional) → scan → export(optional) then exits (no HTTP); `--from`/`--out` are local paths only; batch always replaces an existing adopt index and overwrites `--out` (no `--force`); `--json` emits ok true/false summary on stdout |
+| FR-16 | Browser CORS: reflect allow-listed `Origin` (or `*`); omit headers when CORS off / origin not listed; answer preflight `OPTIONS` with 204 without auth for allowed origins |
+| FR-17 | First-boot bootstrap (`health.indexing`) returns 503 on `/v1/query`, `/v1/chat`, and `/mcp` with progress; scheduled reindex (`health.reindexing`) does **not** block those routes |
 
 ### QA Test Cases
 
@@ -55,8 +57,6 @@ See companion doc for full vocabulary where applicable.
 | TC-5 | FR-2 | answers /v1/query with a serialized body when authorized | pass |
 | TC-6 | FR-2 | returns 503 for /v1/query while the server is bootstrapping its first index | pass |
 | TC-7 | FR-2 | returns 400 when q is missing | pass |
-| TC-8 | FR-2 | returns 409 when a reindex is already running | pass |
-| TC-9 | FR-2 | triggers reindex and returns the summary | pass |
 | TC-10 | FR-2 | streams /v1/chat as SSE with a session id, answer, and done | pass |
 | TC-11 | FR-2 | returns 400 when chat message is missing | pass |
 | TC-12 | FR-2 | 404s on unknown routes and when MCP is disabled | pass |
@@ -147,8 +147,20 @@ See companion doc for full vocabulary where applicable.
 | TC-97 | FR-15 | overwrites a non-empty --out without --force | pass |
 | TC-98 | FR-15 | --json emits { ok: false } on stdout before rethrowing | pass |
 | TC-99 | FR-15 | --from replaces an existing base index without --force | pass |
+| TC-100 | FR-11 | appends a Sources footer from the chat answer event (shared with HTTP chat) | pass |
+| TC-101 | FR-11 | posts per-repo blob links from discoverBaseRepos (slug → gitUrl + primary branch) | pass |
+| TC-102 | FR-16 | omits CORS headers when no origins are allowed | pass |
+| TC-103 | FR-16 | reflects an allow-listed origin and varies on Origin | pass |
+| TC-104 | FR-16 | does not reflect an origin outside the allow-list | pass |
+| TC-105 | FR-16 | echoes `*` when any origin is allowed | pass |
+| TC-106 | FR-16 | answers preflight OPTIONS with 204 and no auth for an allowed origin | pass |
+| TC-107 | FR-16 | rejects preflight OPTIONS from a disallowed origin with 405 | pass |
+| TC-108 | FR-17 | serves `/v1/query` while scheduled reindex is in progress (not bootstrap) | pass |
 
 ### Related docs
 
 - [SERVER.md](SERVER.md)
-- [QUERY_INTERNALS.md](../core/QUERY_INTERNALS.md)
+- [FLY.md](../FLY.md) — Pages chatbot host (`kb-demo`)
+- [demo/README.md](../../../demo/README.md) — browser client wait-for-bootstrap
+- [CHAT_REPLY.md](../../kb-core/src/service/CHAT_REPLY.md) — shared answer/sources presentation
+- [QUERY_INTERNALS.md](../../kb-core/src/core/QUERY_INTERNALS.md)

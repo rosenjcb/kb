@@ -35,7 +35,7 @@ flowchart TB
 | `prompts/` | `.md` templates + loader |
 | `ops/` | `init-cli`, `scan-command`, git sync |
 | `query/` | Intent CLI helpers, retrieval, `chat-synthesis` |
-| `service/` | `KbService`, `query-pipeline`, serialize, session store |
+| `service/` | `KbService`, `query-pipeline`, serialize, session store, `chat-reply` / `markdown-to-slack` |
 | `storage/` | Base selection, repo slugs + on-volume repo discovery, paths |
 | `config/` | `kb-config`, cmd-ref, prerequisites |
 | `ui/` | `CliOutput`, `Printer`, orchestration meta (shared with client) |
@@ -45,6 +45,7 @@ flowchart TB
 - **`createKbService()`** (`service/kb-service.ts`) — transport-agnostic query/chat/reindex/health.
 - **`runQueryPipeline()`** (`service/query-pipeline.ts`) — shared retrieval path for CLI local mode and server.
 - **`runChatSynthesis()`** (`query/chat-synthesis.ts`) — multi-turn chat loop; server streams via `chat-stream.ts`.
+- **`formatChatReply()`** (`service/chat-reply.ts`) — shared answer + Sources footer; blob links from `discoverBaseRepos` per slug (clone `gitUrl` + primary branch).
 
 Heavy native deps (tree-sitter, ast-grep, optional transformers) live **only here**.
 
@@ -66,4 +67,4 @@ Heavy native deps (tree-sitter, ast-grep, optional transformers) live **only her
 
 - Architecture → [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
 - Server transport → [`../kb-server/src/SERVER.md`](../kb-server/src/SERVER.md)
-- Deep dives under `packages/kb-core/src/**/*.md` — QUERY_INTERNALS, INIT, TOOLS companions
+- Deep dives under `packages/kb-core/src/**/*.md` — QUERY_INTERNALS, INIT, TOOLS, [CHAT_REPLY](src/service/CHAT_REPLY.md) companions
