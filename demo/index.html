@@ -384,6 +384,19 @@
     .dlg-foot .ghost {
       background: transparent; color: var(--text-dim); border: 1px solid var(--border);
     }
+    .dlg-foot .ghost:disabled { opacity: 0.65; cursor: wait; }
+    .dlg-test-result {
+      margin: 0 20px 16px;
+      padding: 10px 12px;
+      border-radius: var(--radius-ctrl);
+      font-size: 12.5px;
+      line-height: 1.4;
+      border: 1px solid var(--border);
+    }
+    .dlg-test-result.ok { color: var(--ok, #1a7f37); background: color-mix(in srgb, #1a7f37 12%, transparent); }
+    .dlg-test-result.bad { color: var(--bad, #cf222e); background: color-mix(in srgb, #cf222e 10%, transparent); }
+    .dlg-test-result.wait { color: var(--text-dim); background: var(--bg-elev); }
+    .dlg-test-result code { font-size: 11.5px; word-break: break-word; }
 
     @media (max-width: 560px) {
       header .title { display: none; }
@@ -459,6 +472,7 @@
         <button class="ghost" id="testBtn" type="button">Test connection</button>
         <button class="save" id="saveBtn" value="save">Save</button>
       </div>
+      <div class="dlg-test-result" id="testResult" hidden></div>
     </form>
   </dialog>
 
@@ -1116,14 +1130,24 @@
       dlg.close();
       checkHealth();
     });
+    function showTestResult(kind, title, detail) {
+      const el = $("testResult");
+      el.hidden = false;
+      el.className = "dlg-test-result " + kind;
+      el.innerHTML = "<b>" + escapeHtml(title) + "</b>" +
+        (detail ? "<br><code>" + escapeHtml(detail) + "</code>" : "");
+    }
+
     $("testBtn").addEventListener("click", async (e) => {
       e.preventDefault();
+      e.stopPropagation();
       const btn = $("testBtn");
       if (btn.disabled) return;
       const idleLabel = "Test connection";
       btn.disabled = true;
       btn.textContent = "Testing…";
-      // Paint the label before any fetch (rAF + setTimeout fallback).
+      showTestResult("wait", "Testing connection…", "");
+      // Paint before fetch (rAF + setTimeout fallback for embeds that skip rAF).
       await paintFrame();
       const probe = {
         serverUrl: trimUrl($("serverUrl").value) || DEFAULTS.serverUrl,
@@ -1137,8 +1161,6 @@
       healthGen++;
       let result = { state: "offline" };
       try {
-        // Interactive Test: fail fast (3s / 2s), plus a hard ceiling so the
-        // button can never stick on "Testing…" even if a fetch misbehaves.
         result = await Promise.race([
           probeConnection(probe.serverUrl, h, {
             healthTimeoutMs: 3000,
@@ -1149,20 +1171,26 @@
       } catch {
         result = { state: "offline" };
       }
-      try {
-        applyHealthStatus(result);
-        if (result.state === "ready") btn.textContent = "✓ Reachable";
-        else if (result.state === "indexing") btn.textContent = "⏳ Indexing…";
-        else if (result.state === "unauthorized") btn.textContent = "✗ Unauthorized (API key)";
-        else if (result.state === "unknown_base") btn.textContent = "✗ Unknown base";
-        else if (result.state === "offline") btn.textContent = "✗ Unreachable (timeout)";
-        else if (result.state === "failed") btn.textContent = "✗ Index failed";
-        else btn.textContent = "✗ HTTP " + (result.status || "?");
-        await sleep(2200);
-      } finally {
-        btn.textContent = idleLabel;
-        btn.disabled = false;
+      applyHealthStatus(result);
+      // Sticky result line — button label alone was too easy to miss when the
+      // probe finishes in <100ms (unknown base / 401 return instantly).
+      if (result.state === "ready") {
+        showTestResult("ok", "Reachable", probe.serverUrl + (probe.base ? " · base " + probe.base : ""));
+      } else if (result.state === "indexing") {
+        showTestResult("wait", "Server is indexing", result.progress || "First-boot index still running");
+      } else if (result.state === "unauthorized") {
+        showTestResult("bad", "Unauthorized (401)", "API key missing or wrong for this server.");
+      } else if (result.state === "unknown_base") {
+        showTestResult("bad", "Unknown base", result.detail || ("No index named \"" + probe.base + "\" on this server."));
+      } else if (result.state === "failed") {
+        showTestResult("bad", "Index failed", result.bootstrapError || "Bootstrap error");
+      } else if (result.state === "offline") {
+        showTestResult("bad", "Unreachable", "Timed out talking to " + probe.serverUrl);
+      } else {
+        showTestResult("bad", "HTTP " + (result.status || "?"), result.detail || "");
       }
+      btn.textContent = idleLabel;
+      btn.disabled = false;
     });
 
     // Init

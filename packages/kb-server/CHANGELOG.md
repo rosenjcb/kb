@@ -13,6 +13,7 @@
 - Demo defaults the server URL by host: localhost → `:38117`, GitHub Pages → `https://kb-demo.fly.dev`.
 - Demo Test button no longer sticks on “Testing…” in embeds that skip `requestAnimationFrame` (Cursor Simple Browser); hard timeout + `finally` reset.
 - Demo suggestion chips use questions from `eval/suites/kb.yaml` (static copy for now).
+- Demo Test connection shows a sticky result banner (unknown base / 401 / ok) so fast probes are not mistaken for a no-op.
 - Updated dependencies
   - @kb/core@1.5.3
 
