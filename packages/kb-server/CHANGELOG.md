@@ -12,6 +12,7 @@
 - Demo Test button paints “Testing…” before the probe and uses a 3s/2s timeout budget so the click feels instant.
 - Demo defaults the server URL by host: localhost → `:38117`, GitHub Pages → `https://kb-demo.fly.dev`.
 - Demo Test button no longer sticks on “Testing…” in embeds that skip `requestAnimationFrame` (Cursor Simple Browser); hard timeout + `finally` reset.
+- Demo suggestion chips use questions from `eval/suites/kb.yaml` (static copy for now).
 - Updated dependencies
   - @kb/core@1.5.3
 

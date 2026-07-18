@@ -152,14 +152,21 @@
     }
     .empty h1 { color: var(--text); font-size: 22px; margin: 14px 0 6px; }
     .empty p { margin: 4px 0; }
-    .suggestions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 22px; }
+    .suggestions {
+      display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
+      margin: 22px auto 0; max-width: 720px;
+    }
     .suggestions button {
       background: var(--bg-elev);
       border: 1px solid var(--border);
       color: var(--text);
-      border-radius: 999px;
-      padding: 9px 15px;
-      font-size: 13.5px;
+      border-radius: 14px;
+      padding: 10px 14px;
+      font-size: 13px;
+      line-height: 1.35;
+      text-align: left;
+      white-space: normal;
+      max-width: 100%;
       cursor: pointer;
       transition: border-color .15s;
     }
@@ -415,12 +422,7 @@
       <h1>Ask KB anything about the codebase</h1>
       <p>This page talks to a running <code>kb-server</code> over its HTTP API.</p>
       <p>Point it at your server in <b>⚙ settings</b>, then ask away.</p>
-      <div class="suggestions" id="suggestions">
-        <button>How does token refresh work?</button>
-        <button>What calls the sqlite indexer?</button>
-        <button>Where is auth handled?</button>
-        <button>Give me an overview of the architecture.</button>
-      </div>
+      <div class="suggestions" id="suggestions"></div>
     </div>
     <div class="thread" id="thread"></div>
   </main>
@@ -1055,9 +1057,29 @@
       addUserMessage(text);
       sendChat(text);
     });
-    $("suggestions").addEventListener("click", (e) => {
-      if (e.target.tagName === "BUTTON") { input.value = e.target.textContent; form.requestSubmit(); }
-    });
+    // Starter chips — copied from eval/suites/kb.yaml (dogfood pack). Later each
+    // suite may become a selectable base; for now these are static strings only.
+    // Skips the intentional out-of-scope Kubernetes trap question.
+    const SUGGESTIONS = [
+      "What problem does kb solve, and what is the normal workflow for setting up indexing and querying a knowledge base?",
+      "How are markdown documents turned into import_doc facts during indexing?",
+      "How does code indexing work at a high level, including the role of the tree-sitter indexer?",
+      "How does kb query retrieve evidence from facts, FTS/vector scoring, and graph relationships?",
+      "Does kb send my repository's code or documents to a remote server to build the knowledge base, or does indexing happen locally?",
+      "Step by step, how does one interactive chat turn work, from the user's message through retrieval to the synthesized reply?",
+    ];
+    {
+      const box = $("suggestions");
+      for (const q of SUGGESTIONS) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = q;
+        box.appendChild(b);
+      }
+      box.addEventListener("click", (e) => {
+        if (e.target.tagName === "BUTTON") { input.value = e.target.textContent; form.requestSubmit(); }
+      });
+    }
 
     // Theme
     function applyTheme(t) { document.documentElement.setAttribute("data-theme", t); localStorage.setItem("kb-chat-theme", t); }

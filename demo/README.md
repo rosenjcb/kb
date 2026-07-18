@@ -51,6 +51,9 @@ sequenceDiagram
 - Tiny markdown renderer (headers, tables, fences, lists, …).
 - SSE `meta` (stages) and `reasoning` stay in separate slots.
 - Settings (URL, optional API key, optional base) in `localStorage` only.
+- Empty-state suggestion chips are copied from the dogfood pack
+  [`eval/suites/kb.yaml`](../eval/suites/kb.yaml) (static for now; later each
+  eval suite may map to a selectable base).
 
 ## Run it locally
 
