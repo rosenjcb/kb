@@ -1,10 +1,31 @@
 # kb-server
 
+## 1.4.7
+
+### Patch Changes
+
+- Add one-shot `kb-server scan --base [--from] [--out]` batch reindex for scheduled jobs (adopt → scan → export, then exit; local paths only).
+
 ## 1.4.6
 
 ### Patch Changes
 
-- Add a one-shot `kb-server scan --base <name> [--from <dir>] [--out <dir>]` batch subcommand for scheduled reindex. It runs adopt(optional) → scan → export(optional) in a single run-to-completion process and exits — no HTTP listener, no `/healthz` polling, no reindex scheduler, no `curl`. `--from`/`--out` accept local paths only (object-store transport stays the deployment system's job), keeping the binary cloud-agnostic. `--json` emits a machine-readable summary for CI/schedulers.
+- Multi-base support in kb-server plus first-class base/connection-string selection
+  on the client.
+
+  - Server: one process can now serve many bases (psql/libpq postmaster model). A
+    new base-keyed `KbService` registry resolves the base per request from the
+    `X-KB-Base` header (or `?base=` on `/healthz`, or a body `base` on
+    `/v1/query` / `/v1/chat`). The default base keeps its bootstrap lifecycle;
+    other built bases are created lazily and serve-only. Unknown base ⇒ 404
+    `unknown_base`. `GET /v1/bases` now lists the real set of served bases.
+  - Client: new `--base` and `--connection-string` global flags (+
+    `KB_CONNECTION_STRING`). Connection strings use a libpq-style
+    `kb://[apikey@]host[:port]/[base][?sslmode=]` grammar. The resolved connection
+    carries the base and `kb-api-client` sends it as `X-KB-Base` on every request.
+
+- Updated dependencies
+  - @kb/core@1.5.1
 
 ## 1.4.5
 

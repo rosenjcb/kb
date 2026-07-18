@@ -32,6 +32,8 @@ export interface QueryRequest {
   synthesize?: boolean
   verbose?: boolean
   trace?: boolean
+  /** Optional per-call base override (else the connection's `X-KB-Base`). */
+  base?: string
 }
 
 export interface QuerySource {
@@ -54,6 +56,8 @@ export interface QueryResponse {
 export interface ChatRequest {
   sessionId?: string
   message: string
+  /** Optional per-call base override (else the connection's `X-KB-Base`). */
+  base?: string
 }
 
 export type ChatStreamEvent =

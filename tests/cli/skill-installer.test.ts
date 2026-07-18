@@ -117,7 +117,7 @@ describe('installSkillIntoProject', () => {
 
     const content = await readFile(claudeMd, 'utf8')
     expect(content).toContain('# KB dev workflow')
-    expect(content).toContain('kb query')
+    expect(content).toContain('kb_query')
   })
 
   it('[TC-380] Given ~/.claude/CLAUDE.md already has KB section, then action is already-present', async () => {

@@ -121,9 +121,29 @@ synthesizes. A fact-id drill-down tool may return later.
 | `POST /v1/chat` | Bearer | Multi-turn SSE chat |
 | `POST /v1/reindex` | Bearer | Incremental rescan |
 | `POST /mcp` | Bearer | MCP Streamable HTTP when `--with-mcp` |
+| `GET /v1/bases` | Bearer | List the bases this server can serve (default + built bases under `~/.kb/sessions`) |
 | `POST /slack/events` | Slack HMAC | Slack Events API webhook (when Slack mode is enabled) |
 
 Auth: `Authorization: Bearer <KB_SERVER_API_KEY>` or `X-Api-Key`.
+
+### Multi-base (one process, many bases)
+
+The server resolves + bootstraps one **default** base at boot, but can serve any
+already-built base on the same host — the psql/libpq postmaster model (one process,
+many databases). Selection is **per request** via the `X-KB-Base` header (or `?base=`
+on `/healthz`, or a body `base` on `/v1/query` / `/v1/chat`):
+
+- `service-registry.ts` keeps a `Map<baseDir, KbService>` — the default keeps its
+  bootstrap/indexing lifecycle; other bases are created **lazily on first touch** and
+  are **serve-only** (never built on connect).
+- An omitted base ⇒ the default base. An unknown base (no `.kb-index.sqlite`) ⇒ `404`
+  with `status: unknown_base` — base creation stays a `kb init` / scan concern.
+- Bases are separate SQLite files, so cross-base reads are naturally concurrent and the
+  reindex write-guard is per-base.
+
+This lets one server back parallel `kb eval` suites (`scripts/eval-run.mjs` multi-suite
+batch): the parent starts one process; each child attaches with its own `--base` /
+`X-KB-Base` instead of spawning a server per port. See [`eval/EVAL.md`](../../../eval/EVAL.md).
 
 ### Slack integration (`KB_SERVER_ENABLE_SLACK` + secrets)
 
@@ -169,4 +189,6 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 - Monorepo → [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) · Core → [`../../kb-core/CORE.md`](../../kb-core/CORE.md)
 - Build-to-serve handoff → [`../HANDOFF.md`](../HANDOFF.md)
 - HTTP contract → [`../http/HTTP.md`](../http/HTTP.md) · Deploy → [`../README.md`](../README.md)
+- Client wire base → [`../../kb-client/src/api/CONNECTION.md`](../../kb-client/src/api/CONNECTION.md)
+- Eval multi-suite harness → [`../../../eval/EVAL.md`](../../../eval/EVAL.md)
 - Behavioral spec → [`SERVER.spec.md`](SERVER.spec.md)

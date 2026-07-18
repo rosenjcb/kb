@@ -32,6 +32,7 @@ import {
   writePidFile,
 } from './daemon-cli.js'
 import { createHttpServer } from './http-server.js'
+import { createKbServiceRegistry } from './service-registry.js'
 import { log } from './logger.js'
 import { parseDuration, startReindexScheduler } from './reindex-scheduler.js'
 import {
@@ -354,6 +355,13 @@ export async function runServerCommand(
     bootstrapState,
     chatStream: streamChatTurn,
   })
+  // One process can serve any already-built base under ~/.kb/sessions, selected
+  // per request via X-KB-Base (the default base keeps its bootstrap lifecycle).
+  const registry = createKbServiceRegistry({
+    defaultService: service,
+    config,
+    chatStream: streamChatTurn,
+  })
   const apiKeys = readApiKeys()
   if (apiKeys.length === 0) {
     out.error('⚠  KB_SERVER_API_KEY is not set — /v1 and /mcp are UNAUTHENTICATED.')
@@ -413,6 +421,7 @@ export async function runServerCommand(
 
   const server = createHttpServer({
     service,
+    registry,
     apiKeys,
     enableMcp,
     slack,
@@ -481,6 +490,7 @@ export async function runServerCommand(
     scheduler.stop()
     removePidFile()
     await new Promise<void>(resolve => server.close(() => resolve()))
+    await registry.closeAll()
     await service.close()
   })
 }

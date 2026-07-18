@@ -41,6 +41,7 @@ See companion doc for full vocabulary where applicable.
 | FR-11 | Verify Slack signatures, route events, and deduplicate retries |
 | FR-12 | Manage the daemon by pid file: resolve the bind port, write/read the pid, and treat a dead pid as stopped |
 | FR-13 | Generate a launchd/systemd service that launches the release binary (never a repo dist path) |
+| FR-14 | Serve many bases from one process: select per request via `X-KB-Base` (or `?base=` / body `base`); omitted ⇒ default base, unknown ⇒ `404 unknown_base`; `GET /v1/bases` lists served bases |
 
 ### QA Test Cases
 
@@ -127,6 +128,16 @@ See companion doc for full vocabulary where applicable.
 | TC-79 | FR-12 | writePidFile/readLivePid round-trips the running pid | pass |
 | TC-80 | FR-12 | readLivePid returns null for a stale pid file (dead process) | pass |
 | TC-81 | FR-13 | service install --no-start writes a unit that invokes the resolved binary | pass |
+| TC-82 | FR-14 | routes /v1/query to the base named by X-KB-Base | pass |
+| TC-83 | FR-14 | falls back to the default base when no header is sent | pass |
+| TC-84 | FR-14 | returns 404 unknown_base for a base with no index | pass |
+| TC-85 | FR-14 | honors a body base override on /v1/query | pass |
+| TC-86 | FR-14 | /healthz?base= reports the named base | pass |
+| TC-87 | FR-14 | GET /v1/bases lists every served base | pass |
+| TC-88 | FR-14 | registry resolves the default base without building | pass |
+| TC-89 | FR-14 | registry lazily creates and caches another built base | pass |
+| TC-90 | FR-14 | registry throws BaseNotFoundError for a base with no index | pass |
+| TC-91 | FR-14 | registry list() advertises the default plus every built base | pass |
 
 ### Related docs
 

@@ -9,6 +9,12 @@ info:
     only mounted when the server runs with `--with-mcp`. All `/v1/*` and `/mcp`
     requests require a bearer API key (`KB_SERVER_API_KEY`); `/health` and
     `/healthz` are open.
+
+
+    One server process can serve many bases (psql-style). Select the base per
+    request with the `X-KB-Base` header (or `?base=` on `/healthz`, or a body
+    `base` on `/v1/query` and `/v1/chat`). An omitted base uses the server's
+    boot/default base; an unknown base returns `404` with `status: unknown_base`.
 servers:
   - url: http://localhost:38117
     description: Local / Docker
@@ -49,8 +55,17 @@ paths:
     get:
       tags: [health]
       summary: Liveness / readiness probe alias
-      description: Alias of `/health`. Returns HTTP 503 until the on-disk index is ready.
+      description: >
+        Alias of `/health`. Returns HTTP 503 until the on-disk index is ready.
+        `X-KB-Base` or `?base=<slug>` reports a specific served base's readiness.
       security: []
+      parameters:
+        - $ref: "#/components/parameters/XKbBase"
+        - in: query
+          name: base
+          required: false
+          schema: { type: string }
+          description: Report readiness for this base (else the default base).
       responses:
         "200":
           description: Service is ready to serve queries
@@ -67,6 +82,8 @@ paths:
     post:
       tags: [query]
       summary: Ask a question; get a synthesized answer and sources
+      parameters:
+        - $ref: "#/components/parameters/XKbBase"
       requestBody:
         required: true
         content:
@@ -87,6 +104,7 @@ paths:
               schema: { $ref: "#/components/schemas/QueryResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UnknownBase" }
         "503":
           description: Bootstrap indexing is still in progress or failed
           content:
@@ -109,6 +127,8 @@ paths:
         `meta` `{text}` (stages and the model's KB queries), terminating in
         `answer` `{text, sources[], factsRetrieved}` and `done`, or `error`
         `{message}`. Reuse `sessionId` to retain conversation history.
+      parameters:
+        - $ref: "#/components/parameters/XKbBase"
       requestBody:
         required: true
         content:
@@ -135,6 +155,7 @@ paths:
                   data: {"type":"done"}
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UnknownBase" }
         "503":
           description: Bootstrap indexing is still in progress or failed
           content:
@@ -145,6 +166,8 @@ paths:
     post:
       tags: [admin]
       summary: Trigger an on-demand incremental rescan
+      parameters:
+        - $ref: "#/components/parameters/XKbBase"
       responses:
         "200":
           description: Rescan completed
@@ -158,6 +181,22 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "500": { $ref: "#/components/responses/ServerError" }
+
+  /v1/bases:
+    get:
+      tags: [admin]
+      summary: List the bases this server can serve
+      description: >
+        Returns every built base addressable on this host (the boot/default base
+        plus any base with a `.kb-index.sqlite` under `~/.kb/sessions`). Select
+        one per request with the `X-KB-Base` header.
+      responses:
+        "200":
+          description: Served bases
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BasesResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /v1/admin/cli:
     post:
@@ -285,6 +324,16 @@ components:
       scheme: bearer
       description: Bearer token matching one of the server's KB_SERVER_API_KEY values.
 
+  parameters:
+    XKbBase:
+      in: header
+      name: X-KB-Base
+      required: false
+      schema: { type: string }
+      description: >
+        Select the server-side base (slug) for this request. Omit to use the
+        server's boot/default base. Unknown base ⇒ 404 `unknown_base`.
+
   responses:
     BadRequest:
       description: Malformed request
@@ -293,6 +342,11 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     Unauthorized:
       description: Missing or invalid API key
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    UnknownBase:
+      description: The requested `X-KB-Base` has no built index on this server
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -364,6 +418,9 @@ components:
           description: >
             When true, write an opt-in deep retrieval trace dump on the server
             (`KB_HOME/traces`) and return its path as `traceFile` in the response.
+        base:
+          type: string
+          description: Per-call base override (else the `X-KB-Base` header).
       description: Requires `q` (or `query`).
 
     QuerySource:
@@ -412,6 +469,9 @@ components:
           description: Conversation id. Generated and returned (via the `session` event) when omitted.
         message:
           type: string
+        base:
+          type: string
+          description: Per-call base override (else the `X-KB-Base` header).
 
     ReindexResponse:
       type: object
@@ -419,6 +479,21 @@ components:
       properties:
         status: { type: string, example: ok }
         summary: { type: string }
+
+    BasesResponse:
+      type: object
+      required: [default, bases]
+      properties:
+        default: { type: string, description: The server's boot/default base name. }
+        bases:
+          type: array
+          items:
+            type: object
+            required: [name, path]
+            properties:
+              name: { type: string }
+              path: { type: string }
+              default: { type: boolean }
 
     JsonRpcRequest:
       type: object
