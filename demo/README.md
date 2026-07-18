@@ -63,8 +63,10 @@ pnpm run demo
 ```
 
 Port override: `DEMO_PORT=9000 pnpm run demo` (match `--allow-origin`).
-Default Settings URL: `http://localhost:38117`. Against Fly: set
-`https://kb-demo.fly.dev`, leave API key blank.
+
+Default Settings URL is **host-aware**:
+- `pnpm run demo` on localhost → `http://localhost:38117`
+- GitHub Pages → `https://kb-demo.fly.dev` (API key blank; open demo)
 
 ## CORS + auth
 

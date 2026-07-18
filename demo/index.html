@@ -439,8 +439,8 @@
       <div class="dlg-body">
         <div class="field">
           <label for="serverUrl">kb-server URL</label>
-          <input type="text" id="serverUrl" placeholder="http://localhost:38117" spellcheck="false" />
-          <div class="help">The base URL of your running <code>kb-server</code>. Default: <code>http://localhost:38117</code></div>
+          <input type="text" id="serverUrl" placeholder="https://kb-demo.fly.dev" spellcheck="false" />
+          <div class="help" id="serverUrlHelp">The base URL of your running <code>kb-server</code>.</div>
         </div>
         <div class="field">
           <label for="apiKey">API key <span style="opacity:.7">(optional)</span></label>
@@ -465,10 +465,28 @@
 
     // ---- Config (persisted in localStorage) ----------------------------------
     const LS_KEY = "kb-chat-settings.v1";
-    const DEFAULTS = { serverUrl: "http://localhost:38117", apiKey: "", base: "" };
+    // Local `pnpm run demo` → localhost API. GitHub Pages → public Fly demo.
+    const isLocalDemo = /^(localhost|127\.0\.0\.1)$/i.test(location.hostname);
+    const DEFAULT_SERVER_URL = isLocalDemo
+      ? "http://localhost:38117"
+      : "https://kb-demo.fly.dev";
+    const DEFAULTS = { serverUrl: DEFAULT_SERVER_URL, apiKey: "", base: "" };
+    const LEGACY_LOCAL_DEFAULT = "http://localhost:38117";
+    function trimUrl(u) { return (u || "").trim().replace(/\/+$/, ""); }
     function loadSettings() {
-      try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(LS_KEY) || "{}") }; }
-      catch { return { ...DEFAULTS }; }
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (!raw) return { ...DEFAULTS };
+        const merged = { ...DEFAULTS, ...JSON.parse(raw) };
+        // Pages visitors who still have the old hardcoded localhost default → Fly.
+        if (!isLocalDemo && trimUrl(merged.serverUrl || "") === LEGACY_LOCAL_DEFAULT) {
+          merged.serverUrl = DEFAULT_SERVER_URL;
+          try { localStorage.setItem(LS_KEY, JSON.stringify(merged)); } catch {}
+        }
+        return merged;
+      } catch {
+        return { ...DEFAULTS };
+      }
     }
     function saveSettings(s) { localStorage.setItem(LS_KEY, JSON.stringify(s)); }
     let settings = loadSettings();
@@ -485,7 +503,6 @@
     // discoverBaseRepos (per-slug gitUrl + primary branch) via formatChatReply.
     const SOURCE_REPO = "https://github.com/rosenjcb/kb";
     const SOURCE_BRANCH = "main";
-    function trimUrl(u) { return (u || "").trim().replace(/\/+$/, ""); }
     function authHeaders(extra) {
       const h = { ...(extra || {}) };
       if (settings.apiKey.trim()) h["Authorization"] = "Bearer " + settings.apiKey.trim();
@@ -1034,6 +1051,13 @@
     const dlg = $("settings");
     function openSettings() {
       $("serverUrl").value = settings.serverUrl;
+      $("serverUrl").placeholder = DEFAULT_SERVER_URL;
+      $("serverUrlHelp").innerHTML =
+        "The base URL of your running <code>kb-server</code>. Default here: <code>" +
+        escapeHtml(DEFAULT_SERVER_URL) + "</code>" +
+        (isLocalDemo
+          ? " (local demo). Hosted Pages defaults to <code>https://kb-demo.fly.dev</code>."
+          : " (GitHub Pages → Fly).");
       $("apiKey").value = settings.apiKey;
       $("base").value = settings.base;
       dlg.showModal();
@@ -1097,7 +1121,6 @@
     // Init
     hint.innerHTML = "Server: <code>" + escapeHtml(settings.serverUrl) + "</code> — change in ⚙ settings. Press Enter to send, Shift+Enter for a newline.";
     checkHealth();
-    // First-run: nudge to settings if still on the default localhost.
     input.focus();
   </script>
 </body>
