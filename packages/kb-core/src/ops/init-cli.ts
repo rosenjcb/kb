@@ -296,6 +296,8 @@ class InitProgressReporter {
   private static readonly THROTTLE_MS = 120
   private readonly sink: (line: string) => void
   private readonly ttyMode: boolean
+  /** False for injected sinks (tests / callers); true when writing stderr (TTY or Fly logs). */
+  private readonly throttleUpdates: boolean
   private repoSlug?: string
 
   constructor(
@@ -306,9 +308,13 @@ class InitProgressReporter {
     if (sinkArg) {
       this.sink = sinkArg
       this.ttyMode = false
+      this.throttleUpdates = false
     } else {
       this.sink = line => process.stderr.write(line)
       this.ttyMode = process.stderr.isTTY === true
+      // Throttle TTY redraws and daemon/Fly stderr — otherwise one line per segment
+      // floods I/O and starves /healthz during document-facts.
+      this.throttleUpdates = true
     }
   }
 
@@ -326,14 +332,12 @@ class InitProgressReporter {
   }
 
   update(label: string, detail?: string) {
-    if (!this.ttyMode) {
-      this.render(label, detail, false)
-      return
+    if (this.throttleUpdates) {
+      const now = Date.now()
+      if (now - this.lastUpdateMs < InitProgressReporter.THROTTLE_MS) return
+      this.lastUpdateMs = now
     }
-    const now = Date.now()
-    if (now - this.lastUpdateMs < InitProgressReporter.THROTTLE_MS) return
-    this.lastUpdateMs = now
-    this.render(label, detail, true)
+    this.render(label, detail, this.ttyMode)
   }
 
   private render(label: string, detail?: string, inPlace = false) {

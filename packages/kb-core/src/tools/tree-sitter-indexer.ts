@@ -17,7 +17,7 @@ import { Language, Parser, Query } from 'web-tree-sitter'
 import type { Tree } from 'web-tree-sitter'
 import type { Node as TsNode } from 'web-tree-sitter'
 import { runMigrations } from '../core/db-migrations'
-import { yieldEvery } from '../core/yield'
+import { createRateLimitedYielder, yieldEvery } from '../core/yield'
 import {
   getCodeFileState,
   tombstoneStaleCodeFacts,
@@ -46,6 +46,8 @@ export interface CodeIndexStats {
 export interface CodeIndexOptions {
   onProgress?: (stats: CodeIndexStats) => void
   yieldEveryFiles?: number
+  /** Wall-clock yield so HTTP stays responsive during large AST index runs. */
+  yieldEveryMs?: number
   candidateFiles?: string[]
 }
 
@@ -595,6 +597,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
       sourceRefs: new Set(),
     }
     const yieldStride = opts.yieldEveryFiles ?? 10
+    const maybeYieldByTime = createRateLimitedYielder(opts.yieldEveryMs ?? 50)
     const candidateFiles = opts.candidateFiles
       ?.map(file => file.replace(/\\/g, '/'))
       .filter(file => isTreeSitterIndexablePath(file))
@@ -823,6 +826,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
       processedFiles += 1
       opts.onProgress?.(stats)
       await yieldEvery(processedFiles, yieldStride)
+      await maybeYieldByTime()
     }
 
     return stats

@@ -7,6 +7,7 @@
 
 - Per-repo Sources blob links from the volume registry (slug → gitUrl + primary clone branch); remove global KB_SOURCE_* env; expose QuerySource.gitRepo on the wire.
 - GitHub Pages chat demo + CORS; shared chat Sources footer and Slack mrkdwn conversion; keep remote chat thinking when stage meta arrives.
+- Yield the event loop on a wall-clock timer during document-facts / AST index (not just every N items) and throttle non-TTY init progress lines so kb-server `/healthz` stays responsive during first-boot bootstrap.
 
 ## 1.5.2
 

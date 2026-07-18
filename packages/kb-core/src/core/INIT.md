@@ -192,7 +192,7 @@ WASM grammars ship in `tree-sitter-*` npm packages — no native compilation, al
 
 The indexer stores a `content_hash` (and the extractor name) per file in `code_file_state`. On re-run (including `kb scan`), files whose hash hasn't changed **and** were indexed by the same extractor are counted as `skipped` and not re-processed. Only changed or new files — or files left behind by the legacy ts-morph extractor — are re-indexed.
 
-To keep the TUI responsive, the deterministic ingest/index loops yield back to the Node.js event loop between batches. That lets progress updates paint incrementally and gives `Ctrl-C` / terminal interrupts a chance to land between chunks instead of waiting for an entire repo walk to finish.
+To keep the TUI **and** kb-server HTTP responsive, the deterministic ingest/index loops yield back to the Node.js event loop between batches **and** on a short wall-clock timer. Count-only strides are not enough when each unit of work is slow (e.g. FTS-backed `document-facts`): without time-based yields, `/healthz` and chat can time out for many seconds during first-boot bootstrap. Yielding also lets progress updates paint incrementally and gives `Ctrl-C` / terminal interrupts a chance to land between chunks.
 
 ## Language Support
 

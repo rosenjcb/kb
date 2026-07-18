@@ -7,6 +7,8 @@
 - Index refresh is scheduler- and `kb-server scan`-driven.
 - Per-repo Sources blob links from the volume registry (slug → gitUrl + primary clone branch); remove global KB*SOURCE*\* env; expose QuerySource.gitRepo on the wire.
 - GitHub Pages chat demo + CORS; shared chat Sources footer and Slack mrkdwn conversion; keep remote chat thinking when stage meta arrives.
+- Demo treats health timeouts / dropped chat as “busy indexing” and waits; pairs with core wall-clock yields so `/healthz` can answer during first-boot.
+- Demo connection Test fails fast on unknown base (404) and bad/missing API key (401 via `/v1/bases`), instead of hanging on “Testing…”.
 - Updated dependencies
   - @kb/core@1.5.3
 

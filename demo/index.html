@@ -743,10 +743,18 @@
     async function waitForBootstrap(turn, deadlineMs) {
       const deadline = Date.now() + deadlineMs;
       while (Date.now() < deadline) {
-        const h = await probeHealth(settings.serverUrl, authHeaders());
+        const h = await probeConnection(settings.serverUrl, authHeaders());
         applyHealthStatus(h);
         if (h.state === "failed") {
           turn.setError("Index build failed", h.bootstrapError || "bootstrap failed");
+          return false;
+        }
+        if (h.state === "unauthorized") {
+          turn.setError("Unauthorized (401)", h.detail || "API key missing or wrong. Fix it in ⚙ Settings.");
+          return false;
+        }
+        if (h.state === "unknown_base") {
+          turn.setError("Unknown base", h.detail || "That base is not on this server.");
           return false;
         }
         if (h.state === "ready") return true;
@@ -764,10 +772,29 @@
       try {
         res = await postChat(message);
       } catch (e) {
-        turn.setError("Couldn't reach the server", describeNetworkError(e));
+        // First-boot can drop TCP while the event loop is saturated — treat like
+        // Slack's indexing wait instead of failing the turn immediately.
+        turn.setStage("Server busy (likely indexing). Waiting until it's ready…");
+        const ready = await waitForBootstrap(turn, 10 * 60 * 1000);
+        if (!ready) return;
+        turn.setStage("Index ready — answering…");
+        try { res = await postChat(message); }
+        catch (e2) { turn.setError("Couldn't reach the server", describeNetworkError(e2)); return; }
+      }
+      if (res.status === 401) {
+        turn.setError("Unauthorized (401)", "API key missing or wrong. Set KB_SERVER_API_KEY in ⚙ Settings.");
+        setStatus("bad", "Unauthorized");
         return;
       }
-      if (res.status === 401) { turn.setError("Unauthorized (401)", "The server requires an API key. Set it in ⚙ Settings."); return; }
+      if (res.status === 404) {
+        let body = {};
+        try { body = await res.json(); } catch {}
+        if (body.status === "unknown_base" || /unknown base/i.test(body.error || "")) {
+          turn.setError("Unknown base", body.error || "That base is not on this server. Check ⚙ Settings → Base.");
+          setStatus("bad", "Unknown base");
+          return;
+        }
+      }
       if (res.status === 503) {
         let body = {};
         try { body = await res.json(); } catch {}
@@ -854,27 +881,66 @@
     let lastHealthKind = null; // avoid flashing "Checking…" over a known-good Connected
     function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-    async function probeHealth(url, headers) {
+    async function fetchJson(url, headers, timeoutMs) {
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 8000);
+      const t = setTimeout(() => ctrl.abort(), timeoutMs);
       try {
-        const res = await fetch(trimUrl(url) + "/healthz", { headers, signal: ctrl.signal });
-        const b = await res.json().catch(() => ({}));
-        if (b.bootstrapError) {
-          return { state: "failed", bootstrapError: b.bootstrapError, progress: b.bootstrapProgress || "" };
-        }
-        if (b.indexing || res.status === 503) {
-          return { state: "indexing", progress: b.bootstrapProgress || b.progress || "", reindexing: !!b.reindexing };
-        }
-        if (res.ok) {
-          return { state: "ready", progress: "", reindexing: !!b.reindexing };
-        }
-        return { state: "bad", progress: "", status: res.status };
-      } catch {
-        return { state: "offline" };
+        const res = await fetch(url, { headers, signal: ctrl.signal });
+        const body = await res.json().catch(() => ({}));
+        return { res, body };
       } finally {
         clearTimeout(t);
       }
+    }
+
+    /**
+     * Fast connection probe:
+     *  1) /healthz — unknown base → 404 immediately; indexing/ready otherwise
+     *  2) GET /v1/bases — auth check (401 when key missing/wrong); healthz alone
+     *     cannot see this because it is unauthenticated
+     */
+    async function probeConnection(url, headers) {
+      const base = trimUrl(url);
+      let health;
+      try {
+        // First-boot can briefly starve the event loop — allow a longer hang here.
+        health = await fetchJson(base + "/healthz", headers, 15000);
+      } catch {
+        return { state: "offline" };
+      }
+      const { res, body } = health;
+      if (res.status === 404 || body.status === "unknown_base") {
+        return {
+          state: "unknown_base",
+          detail: body.error || ("Unknown base (HTTP " + res.status + ")"),
+          progress: "",
+        };
+      }
+      if (body.bootstrapError) {
+        return { state: "failed", bootstrapError: body.bootstrapError, progress: body.bootstrapProgress || "" };
+      }
+      const indexing = !!(body.indexing || res.status === 503);
+      const reindexing = !!body.reindexing;
+      const progress = body.bootstrapProgress || body.progress || "";
+
+      // Auth probe — short timeout; 401/200 come back immediately on a live server.
+      try {
+        const auth = await fetchJson(base + "/v1/bases", headers, 4000);
+        if (auth.res.status === 401) {
+          return {
+            state: "unauthorized",
+            detail: auth.body.error || "unauthorized",
+            progress,
+            reindexing,
+          };
+        }
+      } catch {
+        // If auth probe times out during heavy index, fall through on health alone.
+      }
+
+      if (indexing) return { state: "indexing", progress, reindexing };
+      if (res.ok) return { state: "ready", progress: "", reindexing };
+      return { state: "bad", progress: "", status: res.status };
     }
 
     function applyHealthStatus(h) {
@@ -887,8 +953,18 @@
         setStatus("wait", short);
         return;
       }
+      if (h.state === "unauthorized") {
+        setStatus("bad", "Unauthorized — check API key");
+        return;
+      }
+      if (h.state === "unknown_base") {
+        setStatus("bad", "Unknown base");
+        return;
+      }
       if (h.state === "failed") setStatus("bad", "Index failed");
-      else if (h.state === "offline") setStatus("bad", "Offline");
+      // Timeout/refused often means the node is CPU-bound on first-boot index —
+      // keep the amber "wait" state so we don't look permanently dead.
+      else if (h.state === "offline") setStatus("wait", "Busy / unreachable…");
       else setStatus("bad", "Unreachable");
     }
 
@@ -902,10 +978,11 @@
       if (healthTimer) { clearTimeout(healthTimer); healthTimer = null; }
       // Only flash "Checking…" when we don't already know we're connected.
       if (lastHealthKind !== "ok") setStatus("wait", "Checking…");
-      const h = await probeHealth(settings.serverUrl, authHeaders());
+      const h = await probeConnection(settings.serverUrl, authHeaders());
       if (gen !== healthGen) return; // superseded by a newer check
       applyHealthStatus(h);
       // Keep polling through first-boot index (and brief offline blips while Fly boots).
+      // Do NOT keep polling hard config errors (401 / unknown base) — surface them once.
       if (h.state === "indexing" || h.state === "offline") {
         healthTimer = setTimeout(() => { checkHealth(); }, 4000);
       }
@@ -971,13 +1048,16 @@
       if (probe.base) h["X-KB-Base"] = probe.base;
       // Bump gen so an older in-flight checkHealth cannot overwrite the pill.
       healthGen++;
-      const result = await probeHealth(probe.serverUrl, h);
+      const result = await probeConnection(probe.serverUrl, h);
       applyHealthStatus(result);
       if (result.state === "ready") btn.textContent = "✓ Reachable";
       else if (result.state === "indexing") btn.textContent = "⏳ Indexing…";
-      else if (result.state === "offline") btn.textContent = "✗ Unreachable";
-      else btn.textContent = "✗ " + (result.state === "failed" ? "Index failed" : "HTTP " + (result.status || "?"));
-      setTimeout(() => { btn.textContent = prev; }, 2200);
+      else if (result.state === "unauthorized") btn.textContent = "✗ Unauthorized (API key)";
+      else if (result.state === "unknown_base") btn.textContent = "✗ Unknown base";
+      else if (result.state === "offline") btn.textContent = "⏳ Busy / unreachable";
+      else if (result.state === "failed") btn.textContent = "✗ Index failed";
+      else btn.textContent = "✗ HTTP " + (result.status || "?");
+      setTimeout(() => { btn.textContent = prev; }, 2800);
     });
 
     // Init
