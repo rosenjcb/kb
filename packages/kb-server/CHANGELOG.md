@@ -9,6 +9,7 @@
 - GitHub Pages chat demo + CORS; shared chat Sources footer and Slack mrkdwn conversion; keep remote chat thinking when stage meta arrives.
 - Demo treats health timeouts / dropped chat as “busy indexing” and waits; pairs with core wall-clock yields so `/healthz` can answer during first-boot.
 - Demo connection Test fails fast on unknown base (404) and bad/missing API key (401 via `/v1/bases`), instead of hanging on “Testing…”.
+- Demo Test button paints “Testing…” before the probe and uses a 3s/2s timeout budget so the click feels instant.
 - Updated dependencies
   - @kb/core@1.5.3
 

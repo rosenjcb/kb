@@ -898,13 +898,17 @@
      *  1) /healthz — unknown base → 404 immediately; indexing/ready otherwise
      *  2) GET /v1/bases — auth check (401 when key missing/wrong); healthz alone
      *     cannot see this because it is unauthenticated
+     *
+     * opts.healthTimeoutMs / opts.authTimeoutMs — Settings "Test" uses short
+     * budgets so the button never sits on Testing… for 15s.
      */
-    async function probeConnection(url, headers) {
+    async function probeConnection(url, headers, opts) {
+      const healthTimeoutMs = (opts && opts.healthTimeoutMs) || 15000;
+      const authTimeoutMs = (opts && opts.authTimeoutMs) || 4000;
       const base = trimUrl(url);
       let health;
       try {
-        // First-boot can briefly starve the event loop — allow a longer hang here.
-        health = await fetchJson(base + "/healthz", headers, 15000);
+        health = await fetchJson(base + "/healthz", headers, healthTimeoutMs);
       } catch {
         return { state: "offline" };
       }
@@ -925,7 +929,7 @@
 
       // Auth probe — short timeout; 401/200 come back immediately on a live server.
       try {
-        const auth = await fetchJson(base + "/v1/bases", headers, 4000);
+        const auth = await fetchJson(base + "/v1/bases", headers, authTimeoutMs);
         if (auth.res.status === 401) {
           return {
             state: "unauthorized",
@@ -941,6 +945,13 @@
       if (indexing) return { state: "indexing", progress, reindexing };
       if (res.ok) return { state: "ready", progress: "", reindexing };
       return { state: "bad", progress: "", status: res.status };
+    }
+
+    /** Let the browser paint (e.g. "Testing…") before a blocking fetch starts. */
+    function paintFrame() {
+      return new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      });
     }
 
     function applyHealthStatus(h) {
@@ -1040,24 +1051,47 @@
       dlg.close();
       checkHealth();
     });
-    $("testBtn").addEventListener("click", async () => {
-      const btn = $("testBtn"); const prev = btn.textContent; btn.textContent = "Testing…";
-      const probe = { serverUrl: trimUrl($("serverUrl").value) || DEFAULTS.serverUrl, apiKey: $("apiKey").value.trim(), base: $("base").value.trim() };
+    $("testBtn").addEventListener("click", async (e) => {
+      e.preventDefault();
+      const btn = $("testBtn");
+      if (btn.disabled) return;
+      const idleLabel = "Test connection";
+      btn.disabled = true;
+      btn.textContent = "Testing…";
+      // Paint the label before any fetch — otherwise the click handler's sync
+      // work + first await can skip a frame and the button looks stuck on "Test".
+      await paintFrame();
+      const probe = {
+        serverUrl: trimUrl($("serverUrl").value) || DEFAULTS.serverUrl,
+        apiKey: $("apiKey").value.trim(),
+        base: $("base").value.trim(),
+      };
       const h = {};
       if (probe.apiKey) h["Authorization"] = "Bearer " + probe.apiKey;
       if (probe.base) h["X-KB-Base"] = probe.base;
       // Bump gen so an older in-flight checkHealth cannot overwrite the pill.
       healthGen++;
-      const result = await probeConnection(probe.serverUrl, h);
+      let result;
+      try {
+        // Interactive Test: fail fast (3s / 2s), not the background 15s budget.
+        result = await probeConnection(probe.serverUrl, h, {
+          healthTimeoutMs: 3000,
+          authTimeoutMs: 2000,
+        });
+      } catch {
+        result = { state: "offline" };
+      }
       applyHealthStatus(result);
       if (result.state === "ready") btn.textContent = "✓ Reachable";
       else if (result.state === "indexing") btn.textContent = "⏳ Indexing…";
       else if (result.state === "unauthorized") btn.textContent = "✗ Unauthorized (API key)";
       else if (result.state === "unknown_base") btn.textContent = "✗ Unknown base";
-      else if (result.state === "offline") btn.textContent = "⏳ Busy / unreachable";
+      else if (result.state === "offline") btn.textContent = "✗ Unreachable (timeout)";
       else if (result.state === "failed") btn.textContent = "✗ Index failed";
       else btn.textContent = "✗ HTTP " + (result.status || "?");
-      setTimeout(() => { btn.textContent = prev; }, 2800);
+      await sleep(2200);
+      btn.textContent = idleLabel;
+      btn.disabled = false;
     });
 
     // Init
