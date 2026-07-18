@@ -900,13 +900,25 @@
 
     async function fetchJson(url, headers, timeoutMs) {
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), timeoutMs);
+      let timer;
+      // Explicit race — don't rely on AbortSignal alone (embeds can be flaky).
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          ctrl.abort();
+          reject(new Error("timeout"));
+        }, timeoutMs);
+      });
       try {
-        const res = await fetch(url, { headers, signal: ctrl.signal });
-        const body = await res.json().catch(() => ({}));
-        return { res, body };
+        return await Promise.race([
+          (async () => {
+            const res = await fetch(url, { headers, signal: ctrl.signal });
+            const body = await res.json().catch(() => ({}));
+            return { res, body };
+          })(),
+          timeout,
+        ]);
       } finally {
-        clearTimeout(t);
+        clearTimeout(timer);
       }
     }
 
@@ -964,11 +976,18 @@
       return { state: "bad", progress: "", status: res.status };
     }
 
-    /** Let the browser paint (e.g. "Testing…") before a blocking fetch starts. */
+    /**
+     * Let the browser paint (e.g. "Testing…") before a fetch starts.
+     * MUST fall back to setTimeout — Cursor's Simple Browser / some embeds
+     * never fire requestAnimationFrame, which would leave the button stuck.
+     */
     function paintFrame() {
-      return new Promise((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(resolve));
-      });
+      return Promise.race([
+        new Promise((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(resolve));
+        }),
+        sleep(32),
+      ]);
     }
 
     function applyHealthStatus(h) {
@@ -1082,8 +1101,7 @@
       const idleLabel = "Test connection";
       btn.disabled = true;
       btn.textContent = "Testing…";
-      // Paint the label before any fetch — otherwise the click handler's sync
-      // work + first await can skip a frame and the button looks stuck on "Test".
+      // Paint the label before any fetch (rAF + setTimeout fallback).
       await paintFrame();
       const probe = {
         serverUrl: trimUrl($("serverUrl").value) || DEFAULTS.serverUrl,
@@ -1095,27 +1113,34 @@
       if (probe.base) h["X-KB-Base"] = probe.base;
       // Bump gen so an older in-flight checkHealth cannot overwrite the pill.
       healthGen++;
-      let result;
+      let result = { state: "offline" };
       try {
-        // Interactive Test: fail fast (3s / 2s), not the background 15s budget.
-        result = await probeConnection(probe.serverUrl, h, {
-          healthTimeoutMs: 3000,
-          authTimeoutMs: 2000,
-        });
+        // Interactive Test: fail fast (3s / 2s), plus a hard ceiling so the
+        // button can never stick on "Testing…" even if a fetch misbehaves.
+        result = await Promise.race([
+          probeConnection(probe.serverUrl, h, {
+            healthTimeoutMs: 3000,
+            authTimeoutMs: 2000,
+          }),
+          sleep(4500).then(() => ({ state: "offline" })),
+        ]);
       } catch {
         result = { state: "offline" };
       }
-      applyHealthStatus(result);
-      if (result.state === "ready") btn.textContent = "✓ Reachable";
-      else if (result.state === "indexing") btn.textContent = "⏳ Indexing…";
-      else if (result.state === "unauthorized") btn.textContent = "✗ Unauthorized (API key)";
-      else if (result.state === "unknown_base") btn.textContent = "✗ Unknown base";
-      else if (result.state === "offline") btn.textContent = "✗ Unreachable (timeout)";
-      else if (result.state === "failed") btn.textContent = "✗ Index failed";
-      else btn.textContent = "✗ HTTP " + (result.status || "?");
-      await sleep(2200);
-      btn.textContent = idleLabel;
-      btn.disabled = false;
+      try {
+        applyHealthStatus(result);
+        if (result.state === "ready") btn.textContent = "✓ Reachable";
+        else if (result.state === "indexing") btn.textContent = "⏳ Indexing…";
+        else if (result.state === "unauthorized") btn.textContent = "✗ Unauthorized (API key)";
+        else if (result.state === "unknown_base") btn.textContent = "✗ Unknown base";
+        else if (result.state === "offline") btn.textContent = "✗ Unreachable (timeout)";
+        else if (result.state === "failed") btn.textContent = "✗ Index failed";
+        else btn.textContent = "✗ HTTP " + (result.status || "?");
+        await sleep(2200);
+      } finally {
+        btn.textContent = idleLabel;
+        btn.disabled = false;
+      }
     });
 
     // Init
