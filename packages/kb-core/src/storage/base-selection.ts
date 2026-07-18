@@ -17,6 +17,14 @@ export interface BaseSelectionConfig {
   updatedAt?: string
 }
 
+/**
+ * Golden default base slug — the cluster's well-known base, the way Postgres
+ * ships a `postgres` maintenance database. `kb-server start` binds this when no
+ * base is named, so operators never have to pick one just to boot, and clients
+ * that omit a base land here. See issue #173 / the Postgres analogy in README.
+ */
+export const DEFAULT_BASE_SLUG = 'base'
+
 function isPathLike(base: string): boolean {
   return base.startsWith('/') || base.startsWith('.') || base.startsWith('~')
 }

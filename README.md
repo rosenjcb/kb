@@ -41,7 +41,7 @@ kb          # chat with everything the server has read
 
 ## Quick start
 
-Four steps: install → start the server with repos → connect the client → ask something.
+Three steps: install → start the server with your repos → ask something.
 
 ### 1) Install
 
@@ -56,46 +56,29 @@ Building from a git checkout instead? See [DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE
 
 ### 2) Start the server
 
-The server needs an LLM API key to synthesize answers and git repos to index:
+The server needs an LLM API key to synthesize answers and at least one git repo to index:
 
 ```bash
 export GEMINI_API_KEY=<your-key>    # or OPENAI_API_KEY, ANTHROPIC_API_KEY, or OLLAMA_ENDPOINT
-export KB_GIT_REPOS=https://github.com/acme/auth-svc
-kb-server start --with-mcp
+kb-server start --git https://github.com/acme/auth-svc --with-mcp
 ```
 
-Leave that terminal running (or run it in the background). Default address: `localhost:38117`. The server clones and indexes your repos automatically; the first run takes a minute depending on repo size.
+Leave that terminal running (or add `-d` to background it). The server clones and indexes into a base named **`base`** — KB's default, the way Postgres ships a `postgres` database. You never name a base just to start one. Default address: `localhost:38117`; the first run takes a minute depending on repo size.
 
-Multiple repos in one base:
+Index several repos at once — and name the base if you like:
 
 ```bash
-export KB_GIT_REPOS="https://github.com/acme/auth,https://github.com/acme/web#develop"
-export KB_BASE=acme
-kb-server start --with-mcp
+kb-server start --base acme \
+  --git https://github.com/acme/auth \
+  --git https://github.com/acme/web#develop \
+  --with-mcp
 ```
 
-Pin branches per-repo with `<url>#branch`. Details: [`packages/kb-core/src/core/INIT.md`](packages/kb-core/src/core/INIT.md).
+Pin a branch per repo with `<url>#branch`. In containers you can declare repos with `KB_SERVER_BASE_GIT_REPOS` instead of `--git` flags. Details: [`packages/kb-core/src/core/INIT.md`](packages/kb-core/src/core/INIT.md).
 
-### 3) Connect the client
+### 3) Ask something
 
-Tell `kb` where the server is (once per shell, or add to your profile):
-
-```bash
-kb --host localhost:38117 query "how does auth work?"
-```
-
-Or set env vars so you can omit `--host`:
-
-```bash
-export KB_HOST=localhost
-export KB_PORT=38117
-```
-
-Remote / team server? See [Connect to a remote / team server](#connect-to-a-remote--team-server) below (humans + agents).
-
-### 4) Use your knowledge base
-
-First, a sanity check. Ask one question from the shell:
+No client setup — `kb` talks to `localhost:38117` by default. Sanity-check with one question:
 
 ```bash
 kb query "how does authentication work?"
@@ -106,7 +89,7 @@ You should get an answer plus a list of source facts. If that works, you're live
 **Try chat mode**, the thing most people stick with:
 
 ```bash
-kb --host localhost:38117
+kb
 ```
 
 No arguments. KB opens an interactive session (status bar shows **host** and **base**):
@@ -130,11 +113,13 @@ kb query "where is configuration loaded?"
 
 kb-server re-indexes on a schedule (`KB_REINDEX_INTERVAL`), so the knowledge base tracks the remote as code changes land.
 
+Connecting to a server someone else runs? See [Connect to a remote / team server](#connect-to-a-remote--team-server).
+
 ## Connect to a remote / team server
 
-Most teams run **one shared kb-server** (Docker, VM, or cluster) and connect many laptops + agents to it. The server owns clones and the index; clients only talk HTTP/MCP.
+Most teams run **one shared kb-server** (Docker, VM, or cluster) and point every laptop and agent at it. The server owns the clones and the index; clients only talk HTTP/MCP.
 
-### 1) Run the shared server
+Run it with an API key and a reachable URL:
 
 ```bash
 docker run -d --name kb-server \
@@ -142,42 +127,23 @@ docker run -d --name kb-server \
   -v kb-data:/data \
   -e KB_SERVER_API_KEY=<strong-token> \
   -e GEMINI_API_KEY=<provider-key> \
-  -e KB_GIT_REPOS=https://github.com/acme/auth \
+  -e KB_SERVER_BASE_GIT_REPOS=https://github.com/acme/auth \
   ghcr.io/rosenjcb/kb/kb-server:latest
 ```
 
-Image starts with `--with-mcp`, so agents can use `POST /mcp`. Details: [`packages/kb-server/README.md`](packages/kb-server/README.md).
+The image starts with `--with-mcp`, so agents can reach `POST /mcp` out of the box. Give teammates a reachable URL (VPN, internal DNS, HTTPS reverse proxy) — e.g. `https://kb.acme.internal:38117` — plus the same `KB_SERVER_API_KEY`. Details: [`packages/kb-server/README.md`](packages/kb-server/README.md).
 
-Give teammates a reachable URL (VPN, internal DNS, HTTPS reverse proxy, etc.) — e.g. `https://kb.acme.internal:38117` — plus the same `KB_SERVER_API_KEY`.
-
-### 2) Humans — `kb` CLI / TUI on a laptop
+Then point any client at it with two env vars. Everything in [Quick start](#quick-start) and [Connect agents](#connect-agents-claude--cursor) works unchanged — only the address differs:
 
 ```bash
 export KB_SERVER_URL=https://kb.acme.internal:38117
 export KB_SERVER_API_KEY=<same-token>
 
-kb query "how does auth work?"
-kb          # chat TUI against the team server
+kb query "how does auth work?"    # humans: CLI / TUI
+kb                                # chat against the team server
 ```
 
-Or one-shot: `kb --host https://kb.acme.internal:38117 query "…"`.
-
-### 3) Agents — Claude Code / Cursor (MCP only)
-
-Agents must **not** use `kb query` for investigation. Point their MCP config at the **same** team URL:
-
-```bash
-export KB_SERVER_URL=https://kb.acme.internal:38117
-export KB_SERVER_API_KEY=<same-token>
-
-kb skills install
-kb mcp install --host https://kb.acme.internal:38117
-kb mcp status
-```
-
-That writes `mcpServers.kb` → `${url}/mcp` for **Claude Code** (`~/.claude.json`) and **Cursor** (`~/.cursor/mcp.json`) only. **Reconnect MCP** in those apps, then ask coding questions — the agent should call `kb_query` against the team node.
-
-Switch nodes anytime: `kb mcp install --host <other-url>` (or `kb --host <other-url> skills install`) and reconnect. With no host set, install defaults to `localhost:38117` — the same default as the CLI/TUI.
+Prefer not to export? One-shot with `kb --host https://kb.acme.internal:38117 query "…"`. Agents (Claude Code / Cursor) use the same URL over MCP — see [Connect agents](#connect-agents-claude--cursor).
 
 **All client env vars:** `KB_HOST`, `KB_PORT`, `KB_SERVER_URL`, `KB_SERVER_API_KEY`, `KB_BASE`, `KB_ACTIVE_BASE`. Full reference: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md).
 
@@ -237,7 +203,7 @@ kb-server start [--with-mcp]
 kb sync
 ```
 
-Indexing is **server-managed**: configure `KB_GIT_REPOS` on kb-server, not `kb init` on the client.
+Indexing is **server-managed**: configure repos on kb-server (`--git` or `KB_SERVER_BASE_GIT_REPOS`), not `kb init` on the client.
 
 Chat mode (`kb` with no args): `/help` for in-session commands. Deep dive: [`packages/kb-core/src/core/CHAT.md`](packages/kb-core/src/core/CHAT.md).
 
@@ -263,6 +229,8 @@ kb sync
 
 (Codex / Gemini / Copilot are **not** wired by `mcp install`. `kb skills install` still installs the skill text / hooks where those agents look.)
 
+> **The server must expose MCP.** Start it with `kb-server start --with-mcp` (the Docker image already does) so `POST /mcp` is live — otherwise `kb_query` won't connect. Agents always hit the server's **default base** (`base`); MCP connections don't carry a per-base selector yet.
+
 **Team remote (typical):**
 
 ```bash
@@ -281,12 +249,21 @@ After sync, reload MCP so `kb_query` appears. If the agent shells out to Grep/`k
 
 Deep dive: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md) · [`packages/kb-client/src/api/CONNECTION.md`](packages/kb-client/src/api/CONNECTION.md) · [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md).
 
-## Managing bases & repos
+## Bases & repos
 
-The repos a base indexes and the paths it skips are declared on the server through
-environment variables — `KB_SERVER_BASE_GIT_REPOS` (repos, each with an optional inline
-`#branch`) and `KB_SERVER_IGNORE` (gitignore-style ignore patterns) — not through local
-files. See [`packages/kb-server/README.md`](packages/kb-server/README.md).
+One kb-server process serves many **bases** — like databases on a single Postgres cluster. A base is a built index over one or more repos.
+
+- **The default base is `base`.** `kb-server start` with no `--base` builds and serves it, and clients that don't ask for a base land on it. You don't name a base to connect — you name one only to create additional ones.
+- **More bases:** `kb-server start` (or `kb-server scan`) with `--base <name>` (or `KB_SERVER_BASE_NAME`), each built from its own repos.
+- **Pick a base from a client:** `kb --base <name> query "…"`, or a connection string `kb --connection-string kb://<key>@<host>:<port>/<name>`. Omit it to use the server's default.
+- **List what a server has:** `curl <host>/v1/bases`.
+
+Repos and ignore paths are declared **on the server**, not in local files:
+
+- **Repos** — `--git <url[#branch]>` flags, or `KB_SERVER_BASE_GIT_REPOS` (comma / whitespace / newline-separated, each with an optional inline `#branch`).
+- **Ignore** — `KB_SERVER_IGNORE` (gitignore-style patterns).
+
+A base must be **built before you can query it** — building is `CREATE DATABASE`, querying is `CONNECT`. Asking for a base that was never built returns `404 unknown_base`; the server never silently builds one on connect. Full reference: [`packages/kb-server/README.md`](packages/kb-server/README.md).
 
 ## Building & contributing
 

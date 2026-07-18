@@ -14,7 +14,9 @@ import { runKbInit } from '@kb/core/ops/init-cli.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import { createKbService } from '@kb/core/service/kb-service.js'
 import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
+import { CLI_ERROR_NO_KB_BASE } from '@kb/core/config/cli-prerequisites.js'
 import {
+  DEFAULT_BASE_SLUG,
   ensureOperationalBaseDir,
   readOptionalCliValue,
   resolveEffectiveBaseDir,
@@ -102,14 +104,27 @@ interface ResolvedBase {
 /**
  * Resolve which base to build + serve. The name comes from the bootstrap plan
  * (`--base` flag > `KB_SERVER_BASE_NAME` / `KB_BASE` env); when none is
- * declared, fall back to the effective base from local config (`kb base use`).
+ * declared, prefer a base the operator already selected locally (`kb base use`),
+ * and otherwise bind the golden default slug `base` — the cluster's well-known
+ * default, à la Postgres's `postgres` maintenance DB. `kb-server start` never
+ * requires naming a base to boot.
  */
-async function resolveServerBaseDir(plan: BootstrapPlan): Promise<ResolvedBase> {
+export async function resolveServerBaseDir(plan: BootstrapPlan): Promise<ResolvedBase> {
   if (plan.base) {
     return { baseDir: await ensureOperationalBaseDir(plan.base), baseRef: plan.base }
   }
-  const resolved = await resolveEffectiveBaseDir()
-  return { baseDir: resolved.baseDir, baseRef: resolved.baseName }
+  try {
+    const resolved = await resolveEffectiveBaseDir()
+    return { baseDir: resolved.baseDir, baseRef: resolved.baseName }
+  } catch (error) {
+    if (error instanceof Error && error.message === CLI_ERROR_NO_KB_BASE) {
+      return {
+        baseDir: await ensureOperationalBaseDir(DEFAULT_BASE_SLUG),
+        baseRef: DEFAULT_BASE_SLUG,
+      }
+    }
+    throw error
+  }
 }
 
 interface BootstrapTask {

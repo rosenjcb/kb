@@ -1,10 +1,20 @@
 # @kb/core
 
-## 1.5.2
+## 1.5.3
 
 ### Patch Changes
 
 - GitHub Pages chat demo + CORS; shared chat Sources footer and Slack mrkdwn conversion; keep remote chat thinking when stage meta arrives.
+
+## 1.5.2
+
+### Patch Changes
+
+- `kb-server start` no longer requires naming a base. When no `--base`,
+  `KB_SERVER_BASE_NAME`/`KB_BASE`, or locally-selected base is present, the server
+  binds the golden default slug `base` (Postgres's `postgres`-style maintenance DB)
+  instead of failing with "No knowledge base selected". Clients that omit a base
+  still land on the boot/default base.
 
 ## 1.5.1
 
