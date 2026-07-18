@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Add one-shot `kb-server scan --base [--from] [--out]` batch reindex for scheduled jobs (adopt → scan → export, then exit; local paths only).
+- Add one-shot `kb-server scan --base [--from] [--out]` batch reindex for scheduled jobs (adopt → scan → export, then exit; local paths only). Fail-fast `--out` checks, `--json` failure objects, and resolved-base scan targeting included.
 
 ## 1.4.6
 

@@ -26,9 +26,9 @@
  * stays portable across GCP / AWS / Azure / bare metal.
  */
 
+import { readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
-import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
 import {
   ensureOperationalBaseDir,
   readOptionalCliValue,
@@ -40,23 +40,31 @@ import type { ServerLogger } from './server-cli.js'
 import { adoptSnapshot, formatSnapshotProducer, runExportCommand } from './snapshot-cli.js'
 
 /** Machine-readable summary emitted on `--json` for CI/schedulers to log or alert on. */
-export interface ScanRunSummary {
-  ok: true
-  /** The base that was reindexed. */
-  base: string
-  /** Whether a snapshot was adopted from `--from` before scanning. */
-  adopted: boolean
-  /** The local `--from` snapshot dir, when one was adopted. */
-  from: string | null
-  /** Number of tracked repos the scan pulled + hash-diffed. */
-  repos: number
-  /** Whether the refreshed snapshot was exported to `--out`. */
-  exported: boolean
-  /** The local `--out` snapshot dir, when one was written. */
-  out: string | null
-  /** sha256 of the refreshed on-disk index (`.kb-index.sqlite`) after the scan. */
-  indexDigest: string
-}
+export type ScanRunSummary =
+  | {
+      ok: true
+      /** The base that was reindexed. */
+      base: string
+      /** Whether a snapshot was adopted from `--from` before scanning. */
+      adopted: boolean
+      /** The local `--from` snapshot dir, when one was adopted. */
+      from: string | null
+      /** Number of tracked repos the scan pulled + hash-diffed. */
+      repos: number
+      /** Whether the refreshed snapshot was exported to `--out`. */
+      exported: boolean
+      /** The local `--out` snapshot dir, when one was written. */
+      out: string | null
+      /** sha256 of the refreshed on-disk index (`.kb-index.sqlite`) after the scan. */
+      indexDigest: string
+    }
+  | {
+      ok: false
+      /** The base that was targeted, when resolution got that far. */
+      base: string | null
+      /** Failure message (also on stderr / thrown for non-zero exit). */
+      error: string
+    }
 
 /**
  * Reject object-store URIs (or any `scheme://` value) for `--from` / `--out`.
@@ -74,6 +82,35 @@ function assertLocalPath(flag: string, value: string): void {
 }
 
 /**
+ * Fail-fast: `--out` emptiness / `--force` must be checked *before* adopt + scan,
+ * not only inside `runExportCommand` after the expensive reindex has already run.
+ */
+async function assertOutReady(outDir: string, force: boolean): Promise<void> {
+  const resolved = path.resolve(outDir)
+  let existing: string[]
+  try {
+    existing = await readdir(resolved)
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'ENOENT') return
+    throw err
+  }
+  if (existing.length > 0 && !force) {
+    throw new Error(`Output directory ${resolved} is not empty; pass --force to overwrite.`)
+  }
+}
+
+/** Pull the repo count out of `runScanCommand`'s summary line (single source of truth). */
+function repoCountFromScanSummary(summary: string): number {
+  const match = /^Scanned (\d+) repo\(s\)/.exec(summary)
+  return match ? Number(match[1]) : 0
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+/**
  * `kb-server scan --base <name> [--from <dir>] [--out <dir>]
  *                 [--force] [--no-verify] [--no-repos] [--json]`
  *
@@ -81,9 +118,14 @@ function assertLocalPath(flag: string, value: string): void {
  *   --base <name>  base to scan (else the active / effective base)
  *   --out <dir>    export the refreshed snapshot to a LOCAL dir (export path)
  *   --force        clobber an existing index on adopt AND a non-empty --out on export
+ *                  (two decisions, one flag — see HANDOFF.md; operators who only want
+ *                  export overwrite still accept adopt-clobber)
  *   --no-verify    skip the adopted snapshot's sha256 integrity check
  *   --no-repos     export a small serve-only snapshot (drops the working trees)
- *   --json         emit only a machine-readable summary on stdout (progress → stderr)
+ *   --json         emit a machine-readable summary on stdout (progress → stderr).
+ *                  Success → `{ ok: true, … }`; failure → `{ ok: false, base, error }`
+ *                  then still throw (non-zero exit). Schedulers should parse stdout
+ *                  and/or the exit code.
  *
  * Runs in a single process and exits: no HTTP listener, no reindex scheduler
  * (one-shot mode has no interval to arm — equivalent to `KB_REINDEX_INTERVAL=0`),
@@ -102,9 +144,6 @@ export async function runServerScanCommand(
   const noRepos = args.includes('--no-repos')
   const emitJson = args.includes('--json')
 
-  if (from) assertLocalPath('--from', from)
-  if (outDir) assertLocalPath('--out', outDir)
-
   // In --json mode, human progress goes to stderr so stdout carries only the
   // summary object; otherwise progress is ordinary stdout output.
   const progress = (line: string): void => {
@@ -112,57 +151,76 @@ export async function runServerScanCommand(
     else out.log(line)
   }
 
-  const baseDir = baseArg
-    ? await ensureOperationalBaseDir(baseArg, cwd)
-    : (await resolveEffectiveBaseDir(cwd)).baseDir
-  const baseName = path.basename(baseDir)
+  let baseName: string | null = null
 
-  // 1. Optionally adopt a local snapshot into the base (reuses the import path).
-  if (from) {
-    progress(`📥 Adopting local snapshot from ${path.resolve(from)} …`)
-    const manifest = await adoptSnapshot({
-      from: path.resolve(from),
-      baseDir,
-      force,
-      verify: !noVerify,
-    })
-    progress(
-      `   restored base "${baseName}" (built by ${formatSnapshotProducer(manifest.producer)} · ` +
-        `index schema ${manifest.compat.indexSchema} · ${manifest.provenance.repos.length} repo(s))`
-    )
-  }
-
-  // 2. Scan once: git pull + hash-diffed incremental reindex + cross-repo relink.
-  //    Same standalone code path as the client's `kb scan` — no server involved.
-  const scanArgs = baseArg ? ['--base', baseArg] : []
-  const scanSummary = await runScanCommand(scanArgs, progress)
-  progress(`🔎 ${scanSummary}`)
-
-  const repos = (await discoverBaseRepos(baseDir)).length
-  const indexDigest = await computeFileDigest(kbIndexDbPath(baseDir))
-
-  // 3. Optionally export the refreshed base to a local snapshot dir (export path).
-  if (outDir) {
-    const exportArgs = ['--out', outDir]
-    if (baseArg) exportArgs.push('--base', baseArg)
-    if (force) exportArgs.push('--force')
-    if (noRepos) exportArgs.push('--no-repos')
-    await runExportCommand(exportArgs, { log: progress, error: out.error }, cwd)
-  }
-
-  if (emitJson) {
-    const summary: ScanRunSummary = {
-      ok: true,
-      base: baseName,
-      adopted: Boolean(from),
-      from: from ? path.resolve(from) : null,
-      repos,
-      exported: Boolean(outDir),
-      out: outDir ? path.resolve(outDir) : null,
-      indexDigest,
+  try {
+    if (from) assertLocalPath('--from', from)
+    if (outDir) {
+      assertLocalPath('--out', outDir)
+      await assertOutReady(outDir, force)
     }
-    out.log(JSON.stringify(summary))
-  } else {
-    progress(`✅ Reindex complete for base "${baseName}".`)
+
+    const baseDir = baseArg
+      ? await ensureOperationalBaseDir(baseArg, cwd)
+      : (await resolveEffectiveBaseDir(cwd)).baseDir
+    baseName = path.basename(baseDir)
+
+    // 1. Optionally adopt a local snapshot into the base (reuses the import path).
+    if (from) {
+      progress(`📥 Adopting local snapshot from ${path.resolve(from)} …`)
+      const manifest = await adoptSnapshot({
+        from: path.resolve(from),
+        baseDir,
+        force,
+        verify: !noVerify,
+      })
+      progress(
+        `   restored base "${baseName}" (built by ${formatSnapshotProducer(manifest.producer)} · ` +
+          `index schema ${manifest.compat.indexSchema} · ${manifest.provenance.repos.length} repo(s))`
+      )
+    }
+
+    // 2. Scan once: git pull + hash-diffed incremental reindex + cross-repo relink.
+    //    Pass the already-resolved absolute baseDir so adopt/scan/export always
+    //    target the same base — even when the caller injects a non-process cwd and
+    //    omits `--base` (resolveBaseToDir returns path-like values verbatim).
+    const scanSummary = await runScanCommand(['--base', baseDir], progress)
+    progress(`🔎 ${scanSummary}`)
+    const repos = repoCountFromScanSummary(scanSummary)
+    const indexDigest = await computeFileDigest(kbIndexDbPath(baseDir))
+
+    // 3. Optionally export the refreshed base to a local snapshot dir (export path).
+    if (outDir) {
+      const exportArgs = ['--out', outDir, '--base', baseDir]
+      if (force) exportArgs.push('--force')
+      if (noRepos) exportArgs.push('--no-repos')
+      await runExportCommand(exportArgs, { log: progress, error: out.error }, cwd)
+    }
+
+    if (emitJson) {
+      const summary: ScanRunSummary = {
+        ok: true,
+        base: baseName,
+        adopted: Boolean(from),
+        from: from ? path.resolve(from) : null,
+        repos,
+        exported: Boolean(outDir),
+        out: outDir ? path.resolve(outDir) : null,
+        indexDigest,
+      }
+      out.log(JSON.stringify(summary))
+    } else {
+      progress(`✅ Reindex complete for base "${baseName}".`)
+    }
+  } catch (err) {
+    if (emitJson) {
+      const failure: ScanRunSummary = {
+        ok: false,
+        base: baseName,
+        error: errorMessage(err),
+      }
+      out.log(JSON.stringify(failure))
+    }
+    throw err
   }
 }

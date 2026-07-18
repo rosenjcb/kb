@@ -198,10 +198,17 @@ kb-server scan --from /snap --out /out --base myproject
   existing index unless `--force`).
 - `--base <name>` — the base to scan (else the active / effective base).
 - `--out <dir>` — export the refreshed snapshot to a **local** dir afterward (the
-  `export` path; `--no-repos` for a small serve-only artifact, `--force` to overwrite a
-  non-empty dir).
-- `--json` — emit a machine-readable summary on stdout (progress goes to stderr) so a
-  scheduler can log/alert: `{ ok, base, adopted, from, repos, exported, out, indexDigest }`.
+  `export` path; `--no-repos` for a small serve-only artifact). Emptiness is checked
+  **up-front** (before adopt/scan) so a stale non-empty `--out` fails fast.
+- `--force` — **one flag, two destructive behaviors:** (1) clobber an existing index
+  on `--from` adopt, and (2) overwrite a non-empty `--out` on export. Batch jobs that
+  only want export overwrite still opt into adopt-clobber; treat a surprise existing
+  index as an upstream error and omit `--from`, or clear the base first, if you do not
+  want (1).
+- `--json` — emit a machine-readable summary on stdout (progress → stderr) so a
+  scheduler can log/alert. Success:
+  `{ ok: true, base, adopted, from, repos, exported, out, indexDigest }`. Failure:
+  `{ ok: false, base, error }` on stdout **and** a non-zero exit (thrown after emit).
 - Composes the exact standalone code paths `kb scan`, `kb-server import`, and
   `kb-server export` already use — same scan, same snapshot contract — just fused into a
   single process. One-shot mode has no interval scheduler to arm (equivalent to

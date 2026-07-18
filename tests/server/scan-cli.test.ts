@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -147,5 +147,35 @@ describe('kb-server scan (one-shot batch reindex)', () => {
     await expect(
       runServerScanCommand(['--base', 'batch', '--out', 's3://bucket/out'], logger, kbHome)
     ).rejects.toThrow(/LOCAL path only/)
+  })
+
+  it('fails fast on non-empty --out without --force (before scan work)', async () => {
+    seedBase(root, kbHome, 'warm', 'FAST')
+    const outDir = path.join(root, 'stale-out')
+    mkdirSync(outDir, { recursive: true })
+    writeFileSync(path.join(outDir, 'leftover.txt'), 'stale')
+
+    const { logger, stdout } = capturingLogger()
+    await expect(
+      runServerScanCommand(['--base', 'warm', '--out', outDir, '--json'], logger, kbHome)
+    ).rejects.toThrow(/not empty/)
+
+    const summary = JSON.parse(stdout[0] as string)
+    expect(summary).toMatchObject({ ok: false, error: expect.stringMatching(/not empty/) })
+    // Index marker unchanged — we never reached a destructive export wipe.
+    expect(readIndexMarker(path.join(kbHome, 'sessions', 'warm', '.kb-index.sqlite'))).toBe('FAST')
+  }, 30_000)
+
+  it('--json emits { ok: false } on stdout before rethrowing', async () => {
+    const { logger, stdout } = capturingLogger()
+    await expect(
+      runServerScanCommand(['--base', 'missing-base-xyz', '--json'], logger, kbHome)
+    ).rejects.toThrow()
+
+    expect(stdout).toHaveLength(1)
+    const summary = JSON.parse(stdout[0] as string)
+    expect(summary.ok).toBe(false)
+    expect(typeof summary.error).toBe('string')
+    expect(summary.error.length).toBeGreaterThan(0)
   })
 })

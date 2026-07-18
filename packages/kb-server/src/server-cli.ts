@@ -517,7 +517,8 @@ Commands:
         One-shot reindex for scheduled batch jobs: adopt(optional) → scan →
         export(optional), then exit. No HTTP listener, no reindex scheduler, no
         curl. --from/--out are LOCAL paths only (object-store transport is the
-        deployment's job); --json emits a machine-readable summary on stdout.
+        deployment's job). --force clobbers adopt index AND non-empty --out.
+        --json emits { ok:true|false, … } on stdout (failure still exits non-zero).
   export [--base <name>] --out <dir> [--no-repos] [--force]
         Snapshot a built base into a portable snapshot directory (repos + all
         settings by default; --no-repos for a small, frozen serve-only artifact)
