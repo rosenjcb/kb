@@ -1,5 +1,11 @@
 # kb-server
 
+## 1.4.6
+
+### Patch Changes
+
+- Add a one-shot `kb-server scan --base <name> [--from <dir>] [--out <dir>]` batch subcommand for scheduled reindex. It runs adopt(optional) → scan → export(optional) in a single run-to-completion process and exits — no HTTP listener, no `/healthz` polling, no reindex scheduler, no `curl`. `--from`/`--out` accept local paths only (object-store transport stays the deployment system's job), keeping the binary cloud-agnostic. `--json` emits a machine-readable summary for CI/schedulers.
+
 ## 1.4.5
 
 ### Patch Changes
