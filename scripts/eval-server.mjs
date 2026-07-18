@@ -3,6 +3,10 @@
  *
  * Replaces KB_LOCAL_MODE=true in eval subprocess env with remote connection profile vars
  * (KB_HOST/KB_PORT + KB_SERVER_API_KEY, or KB_EVAL_SERVER_URL / KB_SERVER_URL when attaching).
+ *
+ * Multi-suite batches share one multi-base kb-server (psql/postmaster model): the parent
+ * spawns once, children attach via KB_EVAL_SERVER_URL and select `eval-{suite}` per request
+ * with `--base` / `X-KB-Base`. Per-base readiness uses `/healthz?base=<slug>`.
  */
 
 import { spawn } from 'node:child_process'
@@ -76,7 +80,7 @@ export function buildKbLocalEnv({ kbHome } = {}) {
 
 /**
  * Build subprocess env for remote kb client calls (no KB_LOCAL_MODE).
- * @param {{ host?: string, port?: number | string, url?: string, apiKey?: string, kbHome?: string }} opts
+ * @param {{ host?: string, port?: number | string, url?: string, apiKey?: string, kbHome?: string, base?: string }} opts
  */
 export function buildKbRemoteEnv({
   host = '127.0.0.1',
@@ -84,6 +88,7 @@ export function buildKbRemoteEnv({
   url,
   apiKey = defaultEvalApiKey(),
   kbHome,
+  base,
 } = {}) {
   const env = { ...process.env }
   env.KB_LOCAL_MODE = undefined
@@ -98,44 +103,56 @@ export function buildKbRemoteEnv({
   env.KB_HOST = undefined
   env.KB_PORT = undefined
 
+  if (base?.trim()) env.KB_BASE = base.trim()
+  else env.KB_BASE = undefined
+
   if (kbHome) env.KB_HOME = kbHome
   else env.KB_HOME = undefined
 
   return env
 }
 
+/** @param {string} baseUrl @param {string} [base] */
+export function healthzUrl(baseUrl, base) {
+  const url = baseUrl.replace(/\/$/, '')
+  if (!base?.trim()) return `${url}/healthz`
+  return `${url}/healthz?base=${encodeURIComponent(base.trim())}`
+}
+
 /**
  * Poll `/healthz` until the server accepts connections.
  * @param {string} baseUrl
- * @param {{ timeoutMs?: number }} [opts]
+ * @param {{ timeoutMs?: number, base?: string }} [opts]
  */
-export async function waitForServerListening(baseUrl, { timeoutMs = DEFAULT_LISTEN_TIMEOUT_MS } = {}) {
-  const url = baseUrl.replace(/\/$/, '')
+export async function waitForServerListening(baseUrl, { timeoutMs = DEFAULT_LISTEN_TIMEOUT_MS, base } = {}) {
+  const url = healthzUrl(baseUrl, base)
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${url}/healthz`)
+      const res = await fetch(url)
+      // 404 unknown_base means the process is up but that slug is missing — still "listening".
       if (res.status < 500) return
     } catch (error) {
       if (!(error instanceof TypeError)) throw error
     }
     await sleep(POLL_INTERVAL_MS)
   }
-  throw new Error(`[eval-server] kb-server did not start listening at ${url}/healthz within ${timeoutMs}ms`)
+  throw new Error(`[eval-server] kb-server did not start listening at ${url} within ${timeoutMs}ms`)
 }
 
 /**
  * Poll `/healthz` until `ok: true` and an index is present (two consecutive OK reads).
+ * Pass `base` to probe a specific multi-base slug (`/healthz?base=`).
  * @param {string} baseUrl
- * @param {{ timeoutMs?: number }} [opts]
+ * @param {{ timeoutMs?: number, base?: string }} [opts]
  */
-export async function waitForServerReady(baseUrl, { timeoutMs = DEFAULT_HEALTH_TIMEOUT_MS } = {}) {
-  const url = baseUrl.replace(/\/$/, '')
+export async function waitForServerReady(baseUrl, { timeoutMs = DEFAULT_HEALTH_TIMEOUT_MS, base } = {}) {
+  const url = healthzUrl(baseUrl, base)
   const deadline = Date.now() + timeoutMs
   let consecutiveOk = 0
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${url}/healthz`)
+      const res = await fetch(url)
       if (res.ok) {
         const body = await res.json()
         if (body?.ok === true && typeof body.indexMtime === 'string') {
@@ -154,12 +171,12 @@ export async function waitForServerReady(baseUrl, { timeoutMs = DEFAULT_HEALTH_T
     await sleep(POLL_INTERVAL_MS)
   }
   throw new Error(
-    `[eval-server] kb-server index not ready at ${url}/healthz (ok: true) within ${timeoutMs}ms`
+    `[eval-server] kb-server index not ready at ${url} (ok: true) within ${timeoutMs}ms`
   )
 }
 
 /**
- * Start kb-server for an eval session, or attach to an existing sidecar.
+ * Start kb-server for an eval session, or attach to an existing sidecar / shared multi-base parent.
  *
  * @param {{
  *   base: string,
@@ -188,12 +205,10 @@ export async function startEvalServer({
   if (attachUrl) {
     const url = attachUrl.replace(/\/$/, '')
     const attachKey = process.env.KB_SERVER_API_KEY?.trim() || apiKey
-    console.error(`[eval-server] attaching to ${url} (sidecar)`)
-    console.error(
-      `[eval-server] server base is fixed at sidecar startup — ensure it matches "${base}" (--base / manifest)`
-    )
+    console.error(`[eval-server] attaching to ${url} (multi-base sidecar) for base=${base}`)
     await waitForServerListening(url)
-    return createAttachedSession({ url, apiKey: attachKey, kbHome, healthTimeoutMs })
+    await assertEvalServerBase(url, base)
+    return createAttachedSession({ url, apiKey: attachKey, kbHome, healthTimeoutMs, base })
   }
 
   if (!fs.existsSync(serverBin)) {
@@ -205,8 +220,7 @@ export async function startEvalServer({
   }
 
   // Default to an ephemeral free port. Hard-coding 38117 makes parallel
-  // --all-suites children collide: the losing process still sees /healthz
-  // succeed (against the winner's server) and then queries the wrong base.
+  // --all-suites children collide when --per-suite-server is used.
   // Pin with `port` or KB_EVAL_SERVER_PORT only for single-suite attach/debug.
   let resolvedPort =
     port ??
@@ -238,7 +252,7 @@ export async function startEvalServer({
     logFd = fs.openSync(logPath, 'w')
   }
 
-  console.error(`[eval-server] starting kb-server --base ${base} on ${url}`)
+  console.error(`[eval-server] starting kb-server --base ${base} on ${url} (multi-base registry on)`)
   const child = spawn(process.execPath, [serverBin, ...args], {
     env: childEnv,
     stdio: ['ignore', logFd ?? 'inherit', logFd ?? 'inherit'],
@@ -274,11 +288,12 @@ export async function startEvalServer({
     child,
     healthTimeoutMs,
     kbEnv() {
-      return buildKbRemoteEnv({ url, apiKey, kbHome })
+      return buildKbRemoteEnv({ url, apiKey, kbHome, base })
     },
     waitReady(opts = {}) {
       return waitForServerReady(url, {
         timeoutMs: opts.timeoutMs ?? healthTimeoutMs,
+        base: opts.base ?? base,
       })
     },
     async stop() {
@@ -289,15 +304,26 @@ export async function startEvalServer({
 }
 
 /**
- * Confirm /healthz reports the expected session base before queries run.
- * Prevents the parallel-suite failure mode where healthz is live but belongs
- * to another child's kb-server.
+ * Confirm `/healthz?base=` reports the expected session base before queries run.
+ * Works for both single-base servers and shared multi-base parents.
  * @param {string} baseUrl
  * @param {string} expectedBase
  */
 export async function assertEvalServerBase(baseUrl, expectedBase) {
-  const url = baseUrl.replace(/\/$/, '')
-  const res = await fetch(`${url}/healthz`)
+  const url = healthzUrl(baseUrl, expectedBase)
+  const res = await fetch(url)
+  if (res.status === 404) {
+    let detail = ''
+    try {
+      const body = await res.json()
+      detail = body?.status ? ` status=${body.status}` : ''
+    } catch {
+      /* ignore */
+    }
+    throw new Error(
+      `[eval-server] unknown base "${expectedBase}" at ${url}${detail} — build the index first (kb init / scan)`
+    )
+  }
   if (res.status >= 500) {
     throw new Error(`[eval-server] /healthz returned ${res.status} at ${url}`)
   }
@@ -307,28 +333,29 @@ export async function assertEvalServerBase(baseUrl, expectedBase) {
     throw new Error(
       `[eval-server] /healthz base mismatch at ${url}: expected "${expectedBase}", got ${
         got == null ? 'null' : `"${got}"`
-      } — parallel suites must not share a kb-server`
+      }`
     )
   }
 }
 
-/** @param {{ url: string, apiKey: string, kbHome?: string, healthTimeoutMs: number }} session */
-function createAttachedSession({ url, apiKey, kbHome, healthTimeoutMs }) {
+/** @param {{ url: string, apiKey: string, kbHome?: string, healthTimeoutMs: number, base: string }} session */
+function createAttachedSession({ url, apiKey, kbHome, healthTimeoutMs, base }) {
   return {
     url,
     host: null,
     port: null,
     apiKey,
-    base: null,
+    base,
     attached: true,
     child: null,
     healthTimeoutMs,
     kbEnv() {
-      return buildKbRemoteEnv({ url, apiKey, kbHome })
+      return buildKbRemoteEnv({ url, apiKey, kbHome, base })
     },
     waitReady(opts = {}) {
       return waitForServerReady(url, {
         timeoutMs: opts.timeoutMs ?? healthTimeoutMs,
+        base: opts.base ?? base,
       })
     },
     async stop() {},

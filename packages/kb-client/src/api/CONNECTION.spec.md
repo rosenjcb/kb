@@ -1,10 +1,11 @@
 ---
 type: Spec
 title: "Spec: Client ↔ Server Connection"
-sources: [./server-connection.ts, ./cli-global-flags.ts, ./connection-error.ts, ./mcp-config-sync.ts]
+sources: [./server-connection.ts, ./cli-global-flags.ts, ./connection-string.ts, ./connection-error.ts, ./mcp-config-sync.ts]
 tests:
   - ../../../../tests/cli/kb-api-client.test.ts
   - ../../../../tests/cli/cli-global-flags.test.ts
+  - ../../../../tests/cli/connection-string.test.ts
   - ../../../../tests/cli/mcp-config-sync.test.ts
   - ../../../../tests/cli/remote-commands.test.ts
 description: Connection profile, --host override, MCP client sync, and user-visible host/base context
@@ -18,8 +19,10 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 
 ### Definitions
 
-- **Connection profile** — resolved `ServerConnection` (`url`, optional `apiKey`, optional `base` hint).
+- **Connection profile** — resolved `ServerConnection` (`url`, optional `apiKey`, optional `base`).
 - **Connection context** — user-facing `host: … │ base: …` or `mode: local │ base: …` string.
+- **Connection string** — `kb://[apikey@]host[:port]/[base][?sslmode=]` URI (libpq-modelled).
+- **Base on the wire** — `connection.base` sent as the `X-KB-Base` request header.
 - **MCP endpoint** — `${connection.url}/mcp` written into agent MCP client configs.
 
 ### Scope
@@ -52,6 +55,10 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | FR-13 | `mcp`, `skills`, `uninstall`, `sync`, and `base use` stay client-local — never forwarded to `/v1/admin/cli` |
 | FR-14 | CLI and TUI startup never call `syncKbMcpConfigs` — MCP install is opt-in via `kb mcp install` / `kb skills install` only |
 | FR-15 | `kb mcp install --key`/`--api-key` (and the `syncKbMcpConfigs` `apiKey` option) writes the Bearer header without requiring `KB_SERVER_API_KEY` in the environment, and takes precedence over the env/config key when both are set |
+| FR-16 | `parseGlobalCliFlags` strips `--base` and `--connection-string` (space and `=` forms) and throws on a missing value |
+| FR-17 | `parseKbConnectionString` parses `kb://[apikey@]host[:port]/[base][?sslmode=]`: credential from userinfo, base from path, TLS from `sslmode` (default `prefer`, loopback ⇒ http), rejecting non-`kb://` schemes and unknown `sslmode` |
+| FR-18 | `applyConnectionOverrides` applies precedence `--connection-string` / `KB_CONNECTION_STRING` > `--host` + `--base` > env, expanding a connection string into `KB_SERVER_URL` / `KB_SERVER_API_KEY` / `KB_BASE` |
+| FR-19 | `resolveServerConnection` carries `base` (`KB_BASE` > `KB_ACTIVE_BASE` > `config.server.base`); `kb-api-client` sends it as `X-KB-Base` on every request |
 
 ### QA Test Cases
 
@@ -90,3 +97,20 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-31 | FR-10 | Given no API key but existing Bearer | sync updates and clears Authorization |
 | TC-32 | FR-15 | Given `apiKey` option and env unset | writes Bearer header from the option |
 | TC-33 | FR-15 | Given `apiKey` option and `KB_SERVER_API_KEY` set | option key overrides the env key |
+| TC-34 | FR-17 | Given `kb://localhost:38117/raylib` | url `http://localhost:38117`, base `raylib` |
+| TC-35 | FR-17 | Given a remote host under `prefer` | scheme defaults to `https` |
+| TC-36 | FR-17 | Given `apikey@host` userinfo | `apiKey` parsed from userinfo |
+| TC-37 | FR-17 | Given `user:secret@host` userinfo | password slot taken as `apiKey` |
+| TC-38 | FR-17 | Given `?sslmode=disable` on a remote host | scheme forced to `http` |
+| TC-39 | FR-17 | Given `?sslmode=require` on loopback | scheme forced to `https` |
+| TC-40 | FR-17 | Given an empty path | `base` omitted |
+| TC-41 | FR-17 | Given a bare plaintext remote host | defaults to the KB server port |
+| TC-42 | FR-17 | Given a non-`kb://` scheme | parser throws |
+| TC-43 | FR-17 | Given an unknown `sslmode` | parser throws |
+| TC-44 | FR-16 | Given `--base` + `--connection-string` + args | flags stripped, args preserved |
+| TC-45 | FR-16 | Given `--base=` / `--connection-string=` inline forms | values parsed |
+| TC-46 | FR-16 | Given bare `--base` | throws requiring a value |
+| TC-47 | FR-18 | Given a connection string | expands into `KB_SERVER_URL`/`API_KEY`/`BASE` |
+| TC-48 | FR-18 | Given connection string + `--base` | `--base` refines the base |
+| TC-49 | FR-19 | Given a connection with `base` | `kb-api-client` sends `X-KB-Base` |
+| TC-50 | FR-19 | Given `KB_BASE` set | `resolveServerConnection` carries it as `base` |

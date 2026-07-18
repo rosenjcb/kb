@@ -132,6 +132,10 @@ export class KbApiClient {
     if (auth && this.connection.apiKey) {
       headers.set('Authorization', `Bearer ${this.connection.apiKey}`)
     }
+    // Select the server-side base per request; omitted ⇒ server default base.
+    if (this.connection.base) {
+      headers.set('X-KB-Base', this.connection.base)
+    }
 
     const timeoutMs = init.timeoutMs ?? this.timeoutMs
     const controller = new AbortController()

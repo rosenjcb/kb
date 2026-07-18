@@ -19,7 +19,7 @@ Do not invent a new scenario or JSON shape. Follow `EVALUATION.md` as the source
 
 **Any other upstream:** suite `generic` + `--repo <git-url>`.
 
-- Default disposable **KB base** = **run folder basename** (`<repo-leaf>-YYYY-MM-DD-HHmm`, e.g. `raylib-2026-04-27-1303`); same as `~/.kb/evaluations/<run-name>/`. Override with `--base`.
+- Default disposable **KB base** = **`eval-{suiteId}`** (e.g. `eval-raylib`); reused across runs. Override with `--base`.
 - Indexing uses `scripts/eval-index.ts` (`@kb/core` init/scan) — not the kb client CLI (server-managed for users).
 - Snapshot clone cwd = `~/.kb/evaluations/<run-name>/repo/`
 - No publish step inside eval-run (artifacts only)
@@ -36,11 +36,15 @@ pnpm run eval -- --suite raylib
 # Kb repo dogfood questions
 pnpm run eval -- --suite kb
 
-# Multi-suite — Node-native, **parallel by default** (no bash/xargs):
+# Multi-suite — Node-native, **parallel by default** (no bash/xargs).
+# Parent starts ONE shared multi-base kb-server; each child attaches and selects
+# eval-{suite} via --base / X-KB-Base (probes /healthz?base=).
 pnpm run eval -- --suites raylib,kb,fzf
 pnpm run eval -- --all-suites --control-agent cursor --control-model composer-2.5
+pnpm run eval -- --all-suites --skip-control --skip-scan   # reuse indexes, kb-only
 pnpm run eval -- --all-suites --sequential     # one at a time
 pnpm run eval -- --all-suites --parallel 4     # cap concurrency
+pnpm run eval -- --all-suites --per-suite-server  # legacy: one kb-server per suite
 
 # Control baseline (Condition N) runs side-by-side with kb BY DEFAULT.
 pnpm run eval -- --suite raylib --skip-control   # opt out → kb-only artifact
@@ -54,9 +58,11 @@ pnpm run eval:chat -- --base <name> --cwd <repo-path>
 
 **Agent rule:** when the user asks for multiple suites (or "all suites"), use `--suites …` or `--all-suites`. Do **not** write OS-specific bash/`xargs` loops — the runner parallelizes in Node. Only pass `--sequential` if the user asks for serial runs.
 
-Implementation: `scripts/eval-run.mjs`. Repo URL resolves from suite YAML `repo_url`, with `--repo` as explicit override (single-suite only).
+**Multi-base server:** default multi-suite path shares one `kb-server` process (PR #172 registry). Do **not** restart a server per suite unless the user asks for `--per-suite-server`. Prefer `--skip-scan` when `~/.kb/sessions/eval-*` indexes already exist and the user does not want a rebuild.
 
-Flags: `--suite`, `--suites`, `--all-suites`, `--parallel`, `--sequential`, `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`, `--run-dir`, `--out`, `--scores-file`, `--auto-score`, `--hypothesis`, `--label`, `--control-agent`, `--control-model`. See `EVALUATION.md` § Automated harvest.
+Implementation: `scripts/eval-run.mjs` + `scripts/eval-server.mjs`. Repo URL resolves from suite YAML `repo_url`, with `--repo` as explicit override (single-suite only).
+
+Flags: `--suite`, `--suites`, `--all-suites`, `--parallel`, `--sequential`, `--per-suite-server`, `--skip-scan`, `--skip-control`, `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`, `--run-dir`, `--out`, `--scores-file`, `--auto-score`, `--hypothesis`, `--label`, `--control-agent`, `--control-model`. See `EVALUATION.md` § Automated harvest.
 
 Artifacts default under `~/.kb/evaluations/<run-name>/`.
 

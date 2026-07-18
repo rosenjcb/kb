@@ -994,7 +994,7 @@ describe('multi-suite parallel batch', () => {
     expect(argv).not.toContain('--sequential')
   })
 
-  it('buildMultiSuiteChildEnv strips shared server attach/port pins', () => {
+  it('[TC-238] buildMultiSuiteChildEnv keeps shared multi-base attach URL by default', () => {
     const env = buildMultiSuiteChildEnv({
       PATH: '/usr/bin',
       KB_EVAL_SERVER_URL: 'http://127.0.0.1:38117',
@@ -1004,8 +1004,34 @@ describe('multi-suite parallel batch', () => {
     })
     expect(env.PATH).toBe('/usr/bin')
     expect(env.GEMINI_API_KEY).toBe('x')
+    expect(env.KB_EVAL_SERVER_URL).toBe('http://127.0.0.1:38117')
+    expect(env.KB_EVAL_ATTACH_URL).toBe('http://127.0.0.1:38117')
+    expect(env.KB_EVAL_SERVER_PORT).toBeUndefined()
+  })
+
+  it('[TC-239] buildMultiSuiteChildEnv strips attach pins in --per-suite-server mode', () => {
+    const env = buildMultiSuiteChildEnv(
+      {
+        PATH: '/usr/bin',
+        KB_EVAL_SERVER_URL: 'http://127.0.0.1:38117',
+        KB_EVAL_ATTACH_URL: 'http://127.0.0.1:38117',
+        KB_EVAL_SERVER_PORT: '38117',
+        GEMINI_API_KEY: 'x',
+      },
+      { sharedServer: false }
+    )
     expect(env.KB_EVAL_SERVER_URL).toBeUndefined()
     expect(env.KB_EVAL_ATTACH_URL).toBeUndefined()
     expect(env.KB_EVAL_SERVER_PORT).toBeUndefined()
+  })
+
+  it('[TC-240] buildChildArgv forwards --skip-scan', () => {
+    const argv = buildChildArgv('raylib', {
+      skipScan: true,
+      skipControl: true,
+      autoScore: true,
+    })
+    expect(argv).toContain('--skip-scan')
+    expect(argv).toContain('--skip-control')
   })
 })

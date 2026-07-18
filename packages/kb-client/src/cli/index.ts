@@ -120,7 +120,7 @@ import {
   shouldUseRemoteServer,
 } from './remote-commands.js'
 import { resolveReportHost, resolveServerConnection, formatServerAddress, formatConnectionContext } from '../api/server-connection.js'
-import { applyHostCliOverride, parseGlobalCliFlags } from '../api/cli-global-flags.js'
+import { applyConnectionOverrides, parseGlobalCliFlags } from '../api/cli-global-flags.js'
 import {
   formatMcpStatusReport,
   formatMcpSyncReport,
@@ -183,6 +183,8 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '',
     'Global flags:',
     '  --host <host[:port]|url>   kb-server to use (else KB_HOST / KB_SERVER_URL env)',
+    '  --base <slug>             server-side base to use (sent as X-KB-Base; else KB_BASE)',
+    '  --connection-string <uri>  kb://[apikey@]host[:port]/[base][?sslmode=] (else KB_CONNECTION_STRING)',
     '',
     'Core commands:',
     '  base        Manage KB bases (use, delete)',
@@ -206,6 +208,10 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
       ? `  /query "how does auth work?"`
       : `  kb query "how does auth work?"`,
     mode === 'cli' ? `  kb --host localhost:38117 query "how does auth work?"` : null,
+    mode === 'cli' ? `  kb --host localhost:38117 --base raylib query "what is a Vector2?"` : null,
+    mode === 'cli'
+      ? `  kb --connection-string kb://localhost:38117/raylib?sslmode=disable query "…"`
+      : null,
     `  ${cmd('mcp install --host localhost:38117', mode)}`,
     `  ${cmd('mcp install --host https://kb.example.com:38117', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
@@ -1062,8 +1068,9 @@ async function main() {
     return
   }
 
-  const { args, host } = parseGlobalCliFlags(rawArgv)
-  if (host) applyHostCliOverride(host)
+  const globalFlags = parseGlobalCliFlags(rawArgv)
+  const { args } = globalFlags
+  applyConnectionOverrides(globalFlags)
 
   await migrateLegacyKbSessionJson()
 

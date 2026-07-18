@@ -133,13 +133,13 @@ pnpm run eval -- --suite kb --auto-score       # dogfood smoke on this repo
 pnpm run moel -- --suite moel-kb               # exploration-cost benchmark
 ```
 
-`eval-run.mjs` orchestrates init/scan (local mode), starts `kb-server` for the query phase, and writes artifacts under `~/.kb/evaluations/`. Override bases, repos, and scoring in suite YAML under `eval/suites/`.
+`eval-run.mjs` orchestrates init/scan (local mode), then remote queries. Multi-suite batches share **one multi-base `kb-server`** (children attach with `--base` / `X-KB-Base`); `--per-suite-server` restores one process per suite. Artifacts land under `~/.kb/evaluations/`. Override bases, repos, and scoring in suite YAML under `eval/suites/`.
 
 | Doc | Contents |
 |-----|----------|
-| [`EVALUATION.md`](EVALUATION.md) | Methodology, ΔS metric, base naming (`eval-{suiteId}` vs `dogfood`) |
-| [`eval/EVAL.md`](eval/EVAL.md) | Harness internals, suite format, MOEL pipelines |
-| [`scripts/eval-server.mjs`](scripts/eval-server.mjs) | Server orchestration for eval subprocesses |
+| [`EVALUATION.md`](EVALUATION.md) | Methodology, ΔS / S / pass@3, base naming (`eval-{suiteId}` vs `dogfood`) |
+| [`eval/EVAL.md`](eval/EVAL.md) | Harness internals, multi-base batch, MOEL pipelines |
+| [`scripts/eval-server.mjs`](scripts/eval-server.mjs) | Start/attach kb-server; `/healthz?base=` readiness |
 
 **Dogfood base** for architecture work on your checkout: `kb base use dogfood` (separate from disposable `eval-*` bases).
 

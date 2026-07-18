@@ -30,6 +30,7 @@ import { serializeQueryResult } from '@kb/core/service/serialize.js'
 import { log } from './logger.js'
 import { resolveServerVersion } from './version.js'
 import { BOOTSTRAP_INDEXING_MESSAGE, type KbService } from '@kb/core/service/kb-service.js'
+import { BaseNotFoundError, type KbServiceRegistry } from './service-registry.js'
 import {
   type SlackEventPayload,
   type SlackOptions,
@@ -40,7 +41,14 @@ import {
 import { ReportWriter, RunCollector, estimateCost, type RunReport } from '@kb/core/core/telemetry.js'
 
 export interface HttpServerOptions {
+  /** The boot/default base service (serves requests with no `X-KB-Base`). */
   service: KbService
+  /**
+   * Multi-base registry. When present, `X-KB-Base` (or `?base=` / body `base`)
+   * selects a service; an unknown base ⇒ 404. When absent the server is
+   * single-base and every request uses `service`.
+   */
+  registry?: KbServiceRegistry
   /** Accepted bearer keys. Empty array disables auth (with a startup warning). */
   apiKeys: string[]
   /** Mount the MCP Streamable HTTP endpoint at POST /mcp. */
@@ -170,6 +178,8 @@ interface QueryRequestBody {
   synthesize?: boolean
   verbose?: boolean
   trace?: boolean
+  /** Per-call base override (else the connection's `X-KB-Base`). */
+  base?: string
 }
 
 interface ServiceUnavailableResponse {
@@ -181,6 +191,7 @@ interface ServiceUnavailableResponse {
 export function createHttpServer(options: HttpServerOptions): Server {
   const {
     service,
+    registry,
     apiKeys,
     enableMcp = false,
     requestTimeoutMs = resolveQueryTimeoutMs(),
@@ -190,8 +201,37 @@ export function createHttpServer(options: HttpServerOptions): Server {
 
   const reportWriter = options.logsDir ? new ReportWriter(options.logsDir) : null
   const reportHost = options.reportHost
-  const baseName = service.health().base
-  const health = service.health()
+
+  /** The base slug requested via header or `?base=` query, if any. */
+  function requestedBaseSlug(req: IncomingMessage): string | undefined {
+    const header = req.headers['x-kb-base']
+    const headerVal = Array.isArray(header) ? header[0] : header
+    if (headerVal?.trim()) return headerVal.trim()
+    const q = (req.url ?? '').split('?')[1]
+    if (q) {
+      const value = new URLSearchParams(q).get('base')
+      if (value?.trim()) return value.trim()
+    }
+    return undefined
+  }
+
+  /**
+   * Resolve the service for a request's base slug. Returns null (and sends 404)
+   * when a registry is present and the base is unknown. Falls back to the boot
+   * `service` when no slug is given or no registry is configured.
+   */
+  function resolveServiceOr404(slug: string | undefined, res: ServerResponse): KbService | null {
+    if (!slug || !registry) return service
+    try {
+      return registry.resolve(slug)
+    } catch (error) {
+      if (error instanceof BaseNotFoundError) {
+        sendJson(res, 404, { error: error.message, status: 'unknown_base' })
+        return null
+      }
+      throw error
+    }
+  }
 
   function writeReport(report: RunReport): void {
     if (!reportWriter) return
@@ -203,6 +243,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
     command: string,
     ctx: RequestCtx,
     status: 'success' | 'error',
+    svc: KbService,
     opts: {
       sessionId?: string
       errorMessage?: string
@@ -214,16 +255,17 @@ export function createHttpServer(options: HttpServerOptions): Server {
   ): void {
     if (!reportWriter) return
     const now = Date.now()
+    const svcHealth = svc.health()
     const collector = new RunCollector(command, {
       sessionId: opts.sessionId,
-      base: baseName,
+      base: svcHealth.base,
       host: reportHost,
     })
     const inputTokens = opts.inputTokens ?? 0
     const outputTokens = opts.outputTokens ?? 0
     if (inputTokens > 0 || outputTokens > 0) {
-      const provider = opts.provider ?? health.provider ?? 'unknown'
-      const model = opts.model ?? health.model ?? 'unknown'
+      const provider = opts.provider ?? svcHealth.provider ?? 'unknown'
+      const model = opts.model ?? svcHealth.model ?? 'unknown'
       collector.addStage({
         stage: command,
         startedAt: new Date(ctx.startMs).toISOString(),
@@ -298,7 +340,11 @@ export function createHttpServer(options: HttpServerOptions): Server {
     // Unauthenticated health check. Logged at debug so the
     // probe cadence doesn't flood info-level logs; the response line still records it.
     if (method === 'GET' && (url === '/healthz' || url === '/health')) {
-      const health = service.health()
+      // `?base=` / `X-KB-Base` reports a specific served base's readiness so a
+      // multi-base client can probe the exact base it will query.
+      const healthSvc = resolveServiceOr404(requestedBaseSlug(req), res)
+      if (!healthSvc) return
+      const health = healthSvc.health()
       const body = {
         ...health,
         version: {
@@ -338,42 +384,47 @@ export function createHttpServer(options: HttpServerOptions): Server {
       return
     }
 
+    // Select the base for this request (X-KB-Base / ?base=); 404 on unknown base.
+    const svc = resolveServiceOr404(requestedBaseSlug(req), res)
+    if (!svc) return
+
     if (method === 'POST' && url === '/v1/query') {
-      const unavailable = serviceUnavailableError()
+      const unavailable = serviceUnavailableError(svc)
       if (unavailable) {
         sendJson(res, 503, unavailable)
         return
       }
-      await handleQuery(req, res, ctx)
+      await handleQuery(req, res, ctx, svc)
       return
     }
 
     if (method === 'POST' && url === '/v1/chat') {
-      const unavailable = serviceUnavailableError()
+      const unavailable = serviceUnavailableError(svc)
       if (unavailable) {
         sendJson(res, 503, unavailable)
         return
       }
-      await handleChat(req, res, ctx)
+      await handleChat(req, res, ctx, svc)
       return
     }
 
     if (method === 'POST' && url === '/v1/reindex') {
-      await handleReindex(res, ctx)
+      await handleReindex(res, ctx, svc)
       return
     }
 
     if (
       await handleAdminRoute(method, url, req, res, {
-        service,
-        baseDir: service.baseDir,
+        service: svc,
+        baseDir: svc.baseDir,
+        registry,
       })
     ) {
       return
     }
 
     if (enableMcp && url === '/mcp') {
-      const unavailable = serviceUnavailableError()
+      const unavailable = serviceUnavailableError(svc)
       if (unavailable) {
         sendJson(res, 503, unavailable)
         return
@@ -386,11 +437,14 @@ export function createHttpServer(options: HttpServerOptions): Server {
         return
       }
       try {
-        await handleMcpRequest(service, req, res, body, ctx)
-        buildAndWriteReport('mcp', ctx, 'success', { sessionId: ctx.requestId })
+        await handleMcpRequest(svc, req, res, body, ctx)
+        buildAndWriteReport('mcp', ctx, 'success', svc, { sessionId: ctx.requestId })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        buildAndWriteReport('mcp', ctx, 'error', { sessionId: ctx.requestId, errorMessage: message })
+        buildAndWriteReport('mcp', ctx, 'error', svc, {
+          sessionId: ctx.requestId,
+          errorMessage: message,
+        })
         throw error
       }
       return
@@ -406,8 +460,8 @@ export function createHttpServer(options: HttpServerOptions): Server {
     sendJson(res, 404, { error: 'not found' })
   }
 
-  function serviceUnavailableError(): ServiceUnavailableResponse | null {
-    const health = service.health()
+  function serviceUnavailableError(svc: KbService): ServiceUnavailableResponse | null {
+    const health = svc.health()
     if (health.indexing) {
       return {
         error: BOOTSTRAP_INDEXING_MESSAGE,
@@ -425,13 +479,31 @@ export function createHttpServer(options: HttpServerOptions): Server {
     return null
   }
 
-  async function handleQuery(req: IncomingMessage, res: ServerResponse, ctx: RequestCtx): Promise<void> {
+  async function handleQuery(
+    req: IncomingMessage,
+    res: ServerResponse,
+    ctx: RequestCtx,
+    resolvedSvc: KbService
+  ): Promise<void> {
     let body: QueryRequestBody
     try {
       body = (await readJsonBody(req)) as QueryRequestBody
     } catch (error) {
       sendJson(res, 400, { error: error instanceof Error ? error.message : 'bad request' })
       return
+    }
+
+    // A body `base` overrides the header selection for this call.
+    let svc = resolvedSvc
+    if (body.base?.trim()) {
+      const overridden = resolveServiceOr404(body.base.trim(), res)
+      if (!overridden) return
+      svc = overridden
+      const unavailable = serviceUnavailableError(svc)
+      if (unavailable) {
+        sendJson(res, 503, unavailable)
+        return
+      }
     }
 
     const query = (body.q ?? body.query ?? '').trim()
@@ -456,13 +528,13 @@ export function createHttpServer(options: HttpServerOptions): Server {
 
     const collector = new RunCollector('query', {
       sessionId: ctx.requestId,
-      base: baseName,
+      base: svc.health().base,
       host: reportHost,
     })
 
     try {
       const result = await Promise.race([
-        service.query({
+        svc.query({
           query,
           discovery: body.discovery,
           verbose: body.verbose,
@@ -500,13 +572,31 @@ export function createHttpServer(options: HttpServerOptions): Server {
     }
   }
 
-  async function handleChat(req: IncomingMessage, res: ServerResponse, ctx: RequestCtx): Promise<void> {
-    let body: { sessionId?: string; message?: string }
+  async function handleChat(
+    req: IncomingMessage,
+    res: ServerResponse,
+    ctx: RequestCtx,
+    resolvedSvc: KbService
+  ): Promise<void> {
+    let body: { sessionId?: string; message?: string; base?: string }
     try {
-      body = (await readJsonBody(req)) as { sessionId?: string; message?: string }
+      body = (await readJsonBody(req)) as { sessionId?: string; message?: string; base?: string }
     } catch (error) {
       sendJson(res, 400, { error: error instanceof Error ? error.message : 'bad request' })
       return
+    }
+
+    // A body `base` overrides the header selection for this call.
+    let svc = resolvedSvc
+    if (body.base?.trim()) {
+      const overridden = resolveServiceOr404(body.base.trim(), res)
+      if (!overridden) return
+      svc = overridden
+      const unavailable = serviceUnavailableError(svc)
+      if (unavailable) {
+        sendJson(res, 503, unavailable)
+        return
+      }
     }
 
     const message = (body.message ?? '').trim()
@@ -538,8 +628,9 @@ export function createHttpServer(options: HttpServerOptions): Server {
     let inputTokens = 0
     let outputTokens = 0
 
+    const svcHealth = svc.health()
     try {
-      for await (const event of service.chat({ sessionId, message })) {
+      for await (const event of svc.chat({ sessionId, message })) {
         send(event.type, event)
         log.debug('chat event', { requestId: ctx.requestId, sessionId, event: event.type })
         if (event.type === 'answer') {
@@ -558,12 +649,12 @@ export function createHttpServer(options: HttpServerOptions): Server {
         factsRetrieved,
         durationMs: Date.now() - ctx.startMs,
       })
-      buildAndWriteReport('chat', ctx, 'success', {
+      buildAndWriteReport('chat', ctx, 'success', svc, {
         sessionId,
         inputTokens,
         outputTokens,
-        provider: health.provider,
-        model: health.model,
+        provider: svcHealth.provider,
+        model: svcHealth.model,
       })
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error)
@@ -575,28 +666,32 @@ export function createHttpServer(options: HttpServerOptions): Server {
         durationMs: Date.now() - ctx.startMs,
       })
       send('error', { type: 'error', message: errMessage })
-      buildAndWriteReport('chat', ctx, 'error', {
+      buildAndWriteReport('chat', ctx, 'error', svc, {
         sessionId,
         errorMessage: errMessage,
         inputTokens,
         outputTokens,
-        provider: health.provider,
-        model: health.model,
+        provider: svcHealth.provider,
+        model: svcHealth.model,
       })
     } finally {
       res.end()
     }
   }
 
-  async function handleReindex(res: ServerResponse, ctx: RequestCtx): Promise<void> {
-    if (service.isReindexing()) {
+  async function handleReindex(
+    res: ServerResponse,
+    ctx: RequestCtx,
+    svc: KbService
+  ): Promise<void> {
+    if (svc.isReindexing()) {
       log.warn('reindex already in progress', { requestId: ctx.requestId })
       sendJson(res, 409, { error: 'reindex already in progress' })
       return
     }
     log.info('reindex start', { requestId: ctx.requestId })
     try {
-      const summary = await service.reindex(line => {
+      const summary = await svc.reindex(line => {
         onLog?.(`[reindex] ${line}`)
         log.debug('reindex progress', { requestId: ctx.requestId, line })
       })
@@ -606,7 +701,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         durationMs: Date.now() - ctx.startMs,
       })
       sendJson(res, 200, { status: 'ok', summary })
-      buildAndWriteReport('reindex', ctx, 'success', { sessionId: ctx.requestId })
+      buildAndWriteReport('reindex', ctx, 'success', svc, { sessionId: ctx.requestId })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       onLog?.(`[http] /v1/reindex error: ${message}`)
@@ -616,7 +711,10 @@ export function createHttpServer(options: HttpServerOptions): Server {
         durationMs: Date.now() - ctx.startMs,
       })
       sendJson(res, 500, { error: message })
-      buildAndWriteReport('reindex', ctx, 'error', { sessionId: ctx.requestId, errorMessage: message })
+      buildAndWriteReport('reindex', ctx, 'error', svc, {
+        sessionId: ctx.requestId,
+        errorMessage: message,
+      })
     }
   }
 
@@ -668,8 +766,9 @@ export function createHttpServer(options: HttpServerOptions): Server {
     }
 
     // Ack immediately — Slack requires a response within 3 seconds.
+    // Slack always uses the boot/default base (no per-request base selection).
     sendJson(res, 200, {})
-    buildAndWriteReport('slack', ctx, 'success', { sessionId: ctx.requestId })
+    buildAndWriteReport('slack', ctx, 'success', service, { sessionId: ctx.requestId })
 
     log.info('slack event received', {
       requestId: ctx.requestId,

@@ -4,19 +4,25 @@ import {
   buildKbLocalEnv,
   buildKbRemoteEnv,
   defaultEvalApiKey,
+  healthzUrl,
   DEFAULT_KB_SERVER_PORT,
 } from '../scripts/eval-server.mjs'
 
 describe('eval-server helpers', () => {
-  it('[TC-526] buildKbRemoteEnv sets KB_SERVER_URL and drops KB_LOCAL_MODE', () => {
+  it('[TC-526][TC-242] buildKbRemoteEnv sets KB_SERVER_URL, KB_BASE, and drops KB_LOCAL_MODE', () => {
     const prevLocal = process.env.KB_LOCAL_MODE
     const prevNodePath = process.env.NODE_PATH
     process.env.KB_LOCAL_MODE = 'true'
     process.env.NODE_PATH = '/tmp/node_path'
     try {
-      const env = buildKbRemoteEnv({ url: 'http://127.0.0.1:4242', apiKey: 'test-key' })
+      const env = buildKbRemoteEnv({
+        url: 'http://127.0.0.1:4242',
+        apiKey: 'test-key',
+        base: 'eval-raylib',
+      })
       expect(env.KB_SERVER_URL).toBe('http://127.0.0.1:4242')
       expect(env.KB_SERVER_API_KEY).toBe('test-key')
+      expect(env.KB_BASE).toBe('eval-raylib')
       expect(env.KB_LOCAL_MODE).toBeUndefined()
       expect(env.NODE_PATH).toBeUndefined()
       expect(env.KB_HOST).toBeUndefined()
@@ -27,6 +33,15 @@ describe('eval-server helpers', () => {
       if (prevNodePath === undefined) delete process.env.NODE_PATH
       else process.env.NODE_PATH = prevNodePath
     }
+  })
+
+  it('[TC-241] healthzUrl appends ?base= for multi-base probes', () => {
+    expect(healthzUrl('http://127.0.0.1:38117/', 'eval-kb')).toBe(
+      'http://127.0.0.1:38117/healthz?base=eval-kb'
+    )
+    expect(healthzUrl('http://127.0.0.1:38117', undefined)).toBe(
+      'http://127.0.0.1:38117/healthz'
+    )
   })
 
   it('[TC-531] buildKbLocalEnv sets KB_LOCAL_MODE and clears remote vars', () => {

@@ -40,7 +40,8 @@ vi.mock('@kb/core/tools/graph-query-expansion.js', () => ({
 }))
 
 vi.mock('@kb/core/service/kb-service.js', () => ({
-  createKbService: vi.fn((options: { bootstrapState: { indexing: boolean } }) => ({
+  createKbService: vi.fn((options: { baseDir?: string; bootstrapState: { indexing: boolean } }) => ({
+    baseDir: options.baseDir ?? '/tmp/demo',
     health: () => ({
       ok: true,
       base: 'demo',

@@ -31,18 +31,34 @@ sequenceDiagram
 
 | Priority | Source | Effect |
 |----------|--------|--------|
-| 1 | `--host` on this invocation | Sets `KB_SERVER_URL` or `KB_HOST`/`KB_PORT` for the process (`cli-global-flags.ts`) |
-| 2 | `KB_SERVER_URL` | Full URL (wins over host+port) |
-| 3 | `KB_HOST` + `KB_PORT` | Default `localhost:38117` |
-| 4 | `KB_LOCAL_MODE=true` | **No HTTP** — in-process `@kb/core` (tests, eval harness) |
+| 1 | `--connection-string` / `KB_CONNECTION_STRING` | `kb://apikey@host:port/base` expands into `KB_SERVER_URL` (+ `KB_SERVER_API_KEY`, `KB_BASE`) (`cli-global-flags.ts`) |
+| 2 | `--host` + `--base` on this invocation | `--host` sets `KB_SERVER_URL` or `KB_HOST`/`KB_PORT`; `--base` sets `KB_BASE` (refine an explicit connection string) |
+| 3 | `KB_SERVER_URL` | Full URL (wins over host+port) |
+| 4 | `KB_HOST` + `KB_PORT` | Default `localhost:38117` |
+| 5 | `KB_LOCAL_MODE=true` | **No HTTP** — in-process `@kb/core` (tests, eval harness) |
 
 Auth: `KB_SERVER_API_KEY` → Bearer on every request (`kb-api-client.ts`).
 
-Base: `resolveEffectiveBaseDir()` — session file `~/.kb/state/active-base`, default base, `.kb` marker, or `KB_BASE` / `KB_ACTIVE_BASE`. Server-side index lives under `~/.kb/sessions/<base>/` on the **server host**, not the laptop.
+### Base on the wire (`X-KB-Base`)
+
+One `kb-server` process can serve **many bases** (psql/libpq's one-postmaster-many-databases model). The client selects the base **per request**: `resolveServerConnection` resolves `ServerConnection.base` (from `--base` / `--connection-string` → `KB_BASE`, then `KB_ACTIVE_BASE`, then `config.server.base`) and `kb-api-client` stamps it as the `X-KB-Base` header on every request. An **omitted** header ⇒ the server uses its boot/default base (libpq's behavior when `dbname` is omitted); an **unknown** base ⇒ `404 unknown_base`.
+
+The server-side index for `<base>` lives under `~/.kb/sessions/<base>/` on the **server host**, not the laptop. Local base selection (`resolveEffectiveBaseDir()` — `.kb` marker, `~/.kb/state/active-base`, `KB_BASE`/`KB_ACTIVE_BASE`) still governs local/`KB_LOCAL_MODE` runs.
+
+### Connection string grammar
+
+```
+kb://[apikey@]host[:port]/[base][?sslmode=require|prefer|disable]
+kb://localhost:38117/raylib                 # loopback ⇒ http
+kb://TESTKEY@kb.example.com/raylib           # apikey in userinfo; remote ⇒ https
+kb://localhost:38117/eval-raylib?sslmode=disable
+```
+
+Modelled on the libpq URI: the credential lives in userinfo (not `host:port`), TLS is chosen by `sslmode` (default `prefer`: TLS for remote hosts, plaintext for loopback) rather than the scheme, and `base` is the path segment (libpq's `dbname`). Parser: `connection-string.ts`.
 
 ## MCP client config install
 
-**Humans** use the `kb` CLI/TUI (REST). **Agents** (Cursor / Claude Code) use Streamable HTTP MCP at `POST /mcp` only — the **kb:dev-workflow** skill never investigates via CLI/TUI.
+**Humans** use the `kb` CLI/TUI (REST). **Agents** (Cursor / Claude Code) use Streamable HTTP MCP at `POST /mcp` only — the **kb:dev-workflow** skill teaches real NL `kb_query` + source verification and deliberately never mentions the human CLI/TUI surface.
 The MCP URL follows the same connection profile as the CLI/TUI (`resolveServerConnection`): `--host` / env / `config.server.host`, defaulting to `localhost:38117`.
 
 `syncKbMcpConfigs()` in `mcp-config-sync.ts` (used by `kb mcp install` / `kb skills install`):
@@ -99,7 +115,7 @@ Operator guide copy lives in `INDEXING_SERVER_MANAGED_NOTICE` (`@kb/core/config/
 
 ## Extension checklist
 
-1. New global flag → extend `parseGlobalCliFlags` + help in `printCliHelp`.
+1. New global flag → extend `parseGlobalCliFlags` (+ `applyConnectionOverrides`) + help in `printCliHelp`.
 2. New remote endpoint → `KbApiClient` method + `remote-commands` wrapper.
 3. Any new interactive surface → call `formatConnectionContext` on open.
 4. Connection errors → mention `--host` and env vars.
@@ -119,4 +135,5 @@ Operator guide copy lives in `INDEXING_SERVER_MANAGED_NOTICE` (`@kb/core/config/
 - Package overview → [`../../CLIENT.md`](../../CLIENT.md)
 - CLI routing → [`../cli/CLI.md`](../cli/CLI.md)
 - Behavioral spec → [`CONNECTION.spec.md`](./CONNECTION.spec.md)
-- Server daemon → [`../../../kb-server/src/SERVER.md`](../../../kb-server/src/SERVER.md)
+- Server multi-base → [`../../../kb-server/src/SERVER.md`](../../../kb-server/src/SERVER.md)
+- Eval harness (shared multi-base batch) → [`../../../../eval/EVAL.md`](../../../../eval/EVAL.md)
