@@ -279,8 +279,18 @@ polled, but only repos with new commits are re-indexed.
   `mock` compose profile and never starts for real runs; `pnpm run integration:test` opts
   it in. Details: [`docker/wiremock/WIREMOCK.md`](docker/wiremock/WIREMOCK.md).
 
+## Deploy on Fly.io
+
+Production-style host for the same Docker image (app `kb-demo`, region `ams`):
+
+→ **[`FLY.md`](FLY.md)** — volume, secrets, `fly deploy` (Pages chatbot backend; not Slack).
+
+Config lives at the **repo root** [`fly.toml`](../../fly.toml) so Fly GitHub /
+`fly deploy` from root find `packages/kb-server/Dockerfile`.
+
 ## Related docs
 
+- [`FLY.md`](FLY.md) — deploy kb-server on Fly.io (`kb-demo`)
 - [`SERVICE.md`](SERVICE.md) — run kb-server as a native launchd/systemd service (daemon lifecycle)
 - [`src/SERVER.md`](src/SERVER.md) — server internals, endpoints, MCP clients
 - [`HANDOFF.md`](HANDOFF.md) — build-to-serve handoff: snapshot export + local-disk adopt
