@@ -504,7 +504,7 @@ export async function runServerCommand(
 
   out.log(`🚀 kb-server listening on :${port} (base "${path.basename(base.baseDir)}")`)
   out.log(
-    `   POST /v1/query   POST /v1/chat   GET /healthz   POST /v1/reindex${enableMcp ? '   POST /mcp' : ''}${slack ? '   POST /slack/events' : ''}`
+    `   POST /v1/query   POST /v1/chat   GET /healthz${enableMcp ? '   POST /mcp' : ''}${slack ? '   POST /slack/events' : ''}`
   )
 
   if (bootstrapTask) {

@@ -359,10 +359,11 @@ only consumes a path that is already on local disk.
 
 ## Refresh
 
-A warm-started `auto` node keeps **itself** fresh: the scheduler (`KB_REINDEX_INTERVAL`,
-or `POST /v1/reindex`) `git fetch`es every tracked repo — those shipped in the snapshot
-and those re-cloned from provenance — and incrementally reindexes only the repos with
-new commits.
+A warm-started `auto` node keeps **itself** fresh: the scheduler
+(`KB_REINDEX_INTERVAL`) `git fetch`es every tracked repo — those shipped in the
+snapshot and those re-cloned from provenance — and incrementally reindexes only
+the repos with new commits. Batch refresh without a long-lived daemon:
+`kb-server scan`.
 
 To roll out a larger change (schema bump, full rebuild, new repo set), re-run the builder,
 re-`export` a fresh snapshot, and warm-start new nodes from it — the artifact/release flow.

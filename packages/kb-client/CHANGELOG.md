@@ -1,11 +1,11 @@
 # @kb/client
 
-
 ## 1.3.9
 
 ### Patch Changes
 
-- Per-repo Sources blob links from the volume registry (slug → gitUrl + primary clone branch); remove global KB_SOURCE_* env; expose QuerySource.gitRepo on the wire.
+- Drop unused HTTP client helper for admin rescan; index refresh is scheduler- and `kb-server scan`-driven.
+- Per-repo Sources blob links from the volume registry (slug → gitUrl + primary clone branch); remove global KB*SOURCE*\* env; expose QuerySource.gitRepo on the wire.
 - GitHub Pages chat demo + CORS; shared chat Sources footer and Slack mrkdwn conversion; keep remote chat thinking when stage meta arrives.
 - Updated dependencies
   - @kb/core@1.5.3

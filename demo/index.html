@@ -730,25 +730,67 @@
     }
 
     // ---- SSE chat call -------------------------------------------------------
+    // First-boot bootstrap 503s chat (like Slack). Hourly reindex does not — chat stays up.
+    async function postChat(message) {
+      return fetch(trimUrl(settings.serverUrl) + "/v1/chat", {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ message, sessionId: sessionId || undefined }),
+      });
+    }
+
+    /** Poll /healthz until bootstrap finishes (Slack's waitForBootstrap). */
+    async function waitForBootstrap(turn, deadlineMs) {
+      const deadline = Date.now() + deadlineMs;
+      while (Date.now() < deadline) {
+        const h = await probeHealth(settings.serverUrl, authHeaders());
+        applyHealthStatus(h);
+        if (h.state === "failed") {
+          turn.setError("Index build failed", h.bootstrapError || "bootstrap failed");
+          return false;
+        }
+        if (h.state === "ready") return true;
+        const prog = h.progress ? " — " + h.progress : "";
+        turn.setStage("Still indexing" + prog + ". I'll answer when ready…");
+        await sleep(4000);
+      }
+      turn.setError("Still indexing", "Timed out waiting for the first index. Try again in a minute.");
+      return false;
+    }
+
     async function sendChat(message) {
       const turn = addAssistantMessage();
-      const url = trimUrl(settings.serverUrl) + "/v1/chat";
       let res;
       try {
-        res = await fetch(url, {
-          method: "POST",
-          headers: authHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ message, sessionId: sessionId || undefined }),
-        });
+        res = await postChat(message);
       } catch (e) {
         turn.setError("Couldn't reach the server", describeNetworkError(e));
         return;
       }
       if (res.status === 401) { turn.setError("Unauthorized (401)", "The server requires an API key. Set it in ⚙ Settings."); return; }
       if (res.status === 503) {
-        let msg = "Server is indexing or unavailable.";
-        try { const b = await res.json(); msg = b.error || msg; if (b.progress) msg += " (" + b.progress + ")"; } catch {}
-        turn.setError("Service unavailable (503)", msg); return;
+        let body = {};
+        try { body = await res.json(); } catch {}
+        const indexing = body.status === "indexing" || /index/i.test(body.error || "");
+        if (indexing) {
+          // Match Slack: notice + wait + then answer (one retry after ready).
+          const prog = body.progress ? " (" + body.progress + ")" : "";
+          turn.setStage("KB is still indexing" + prog + ". I'll answer once it's ready…");
+          const ready = await waitForBootstrap(turn, 10 * 60 * 1000);
+          if (!ready) return;
+          turn.setStage("Index ready — answering…");
+          try { res = await postChat(message); }
+          catch (e) { turn.setError("Couldn't reach the server", describeNetworkError(e)); return; }
+          if (res.status === 503) {
+            let msg = "Server is still unavailable after indexing.";
+            try { const b = await res.json(); msg = b.error || msg; } catch {}
+            turn.setError("Service unavailable (503)", msg); return;
+          }
+        } else {
+          let msg = body.error || "Server is unavailable.";
+          if (body.progress) msg += " (" + body.progress + ")";
+          turn.setError("Service unavailable (503)", msg); return;
+        }
       }
       if (!res.ok || !res.body) {
         let detail = "HTTP " + res.status;
@@ -805,26 +847,74 @@
     }
 
     // ---- Health check --------------------------------------------------------
-    async function checkHealth() {
-      setStatus("wait", "Checking…");
+    // First-boot: health.ok=false / 503 + indexing. Hourly reindex: ok stays true,
+    // health.reindexing may be true — chat/query keep working (no 503).
+    let healthTimer = null;
+    let healthGen = 0;
+    let lastHealthKind = null; // avoid flashing "Checking…" over a known-good Connected
+    function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+    async function probeHealth(url, headers) {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
       try {
-        const res = await fetch(trimUrl(settings.serverUrl) + "/healthz", { headers: authHeaders() });
-        if (res.ok) {
-          const b = await res.json().catch(() => ({}));
-          if (b && b.indexing) setStatus("wait", "Indexing…");
-          else setStatus("ok", "Connected");
-        } else if (res.status === 503) {
-          setStatus("wait", "Indexing…");
-        } else {
-          setStatus("bad", "Unreachable");
+        const res = await fetch(trimUrl(url) + "/healthz", { headers, signal: ctrl.signal });
+        const b = await res.json().catch(() => ({}));
+        if (b.bootstrapError) {
+          return { state: "failed", bootstrapError: b.bootstrapError, progress: b.bootstrapProgress || "" };
         }
+        if (b.indexing || res.status === 503) {
+          return { state: "indexing", progress: b.bootstrapProgress || b.progress || "", reindexing: !!b.reindexing };
+        }
+        if (res.ok) {
+          return { state: "ready", progress: "", reindexing: !!b.reindexing };
+        }
+        return { state: "bad", progress: "", status: res.status };
       } catch {
-        setStatus("bad", "Offline");
+        return { state: "offline" };
+      } finally {
+        clearTimeout(t);
+      }
+    }
+
+    function applyHealthStatus(h) {
+      if (h.state === "ready") {
+        setStatus("ok", h.reindexing ? "Connected · syncing" : "Connected");
+        return;
+      }
+      if (h.state === "indexing") {
+        const short = h.progress ? truncateStatus(h.progress, 42) : "Indexing…";
+        setStatus("wait", short);
+        return;
+      }
+      if (h.state === "failed") setStatus("bad", "Index failed");
+      else if (h.state === "offline") setStatus("bad", "Offline");
+      else setStatus("bad", "Unreachable");
+    }
+
+    function truncateStatus(s, n) {
+      const t = String(s).replace(/\s+/g, " ").trim();
+      return t.length <= n ? t : t.slice(0, n - 1) + "…";
+    }
+
+    async function checkHealth() {
+      const gen = ++healthGen;
+      if (healthTimer) { clearTimeout(healthTimer); healthTimer = null; }
+      // Only flash "Checking…" when we don't already know we're connected.
+      if (lastHealthKind !== "ok") setStatus("wait", "Checking…");
+      const h = await probeHealth(settings.serverUrl, authHeaders());
+      if (gen !== healthGen) return; // superseded by a newer check
+      applyHealthStatus(h);
+      // Keep polling through first-boot index (and brief offline blips while Fly boots).
+      if (h.state === "indexing" || h.state === "offline") {
+        healthTimer = setTimeout(() => { checkHealth(); }, 4000);
       }
     }
     function setStatus(kind, text) {
+      lastHealthKind = kind;
       statusDot.className = "dot " + kind;
       statusText.textContent = text;
+      status.title = text;
     }
 
     // ---- Events --------------------------------------------------------------
@@ -876,13 +966,17 @@
     $("testBtn").addEventListener("click", async () => {
       const btn = $("testBtn"); const prev = btn.textContent; btn.textContent = "Testing…";
       const probe = { serverUrl: trimUrl($("serverUrl").value) || DEFAULTS.serverUrl, apiKey: $("apiKey").value.trim(), base: $("base").value.trim() };
-      try {
-        const h = {};
-        if (probe.apiKey) h["Authorization"] = "Bearer " + probe.apiKey;
-        if (probe.base) h["X-KB-Base"] = probe.base;
-        const res = await fetch(probe.serverUrl + "/healthz", { headers: h });
-        btn.textContent = res.ok ? "✓ Reachable" : "✗ HTTP " + res.status;
-      } catch { btn.textContent = "✗ Unreachable"; }
+      const h = {};
+      if (probe.apiKey) h["Authorization"] = "Bearer " + probe.apiKey;
+      if (probe.base) h["X-KB-Base"] = probe.base;
+      // Bump gen so an older in-flight checkHealth cannot overwrite the pill.
+      healthGen++;
+      const result = await probeHealth(probe.serverUrl, h);
+      applyHealthStatus(result);
+      if (result.state === "ready") btn.textContent = "✓ Reachable";
+      else if (result.state === "indexing") btn.textContent = "⏳ Indexing…";
+      else if (result.state === "offline") btn.textContent = "✗ Unreachable";
+      else btn.textContent = "✗ " + (result.state === "failed" ? "Index failed" : "HTTP " + (result.status || "?"));
       setTimeout(() => { btn.textContent = prev; }, 2200);
     });
 

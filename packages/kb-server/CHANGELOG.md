@@ -1,11 +1,11 @@
 # kb-server
 
-
 ## 1.4.9
 
 ### Patch Changes
 
-- Per-repo Sources blob links from the volume registry (slug → gitUrl + primary clone branch); remove global KB_SOURCE_* env; expose QuerySource.gitRepo on the wire.
+- Index refresh is scheduler- and `kb-server scan`-driven.
+- Per-repo Sources blob links from the volume registry (slug → gitUrl + primary clone branch); remove global KB*SOURCE*\* env; expose QuerySource.gitRepo on the wire.
 - GitHub Pages chat demo + CORS; shared chat Sources footer and Slack mrkdwn conversion; keep remote chat thinking when stage meta arrives.
 - Updated dependencies
   - @kb/core@1.5.3
@@ -293,7 +293,7 @@
   - **Auth failures**: whether a key was present (not the key value), path, method
   - **`/v1/query`**: query text (truncated to 300 chars), params, and on completion: results count, answer presence, retrieval method, duration
   - **`/v1/chat`**: session ID, message text (truncated), and on completion: answer length, facts retrieved, duration; per-SSE-event detail at `debug` level
-  - **`/v1/reindex`**: start, per-progress lines (`debug`), summary and duration on completion
+  - **Scheduled index refresh**: start, per-progress lines (`debug`), summary and duration on completion
   - **`/mcp`**: JSON-RPC method name
   - **Server startup**: port, base, LLM provider/model, MCP enabled, API key count, reindex interval
   - **Server shutdown**: signal received
@@ -310,4 +310,4 @@
 
 ### Minor Changes
 
-- df35234: Add `kb server start`: HTTP API (`/v1/query`, `/v1/chat` SSE, `/healthz`, `/v1/reindex`) with optional MCP at `POST /mcp` via `--with-mcp`. `kb-server` package: Docker image, WireMock integration suite (`packages/kb-server/http/server.http`), and compose wiring.
+- df35234: Add `kb server start`: HTTP API (`/v1/query`, `/v1/chat` SSE, `/healthz`) with optional MCP at `POST /mcp` via `--with-mcp`. `kb-server` package: Docker image, WireMock integration suite (`packages/kb-server/http/server.http`), and compose wiring.

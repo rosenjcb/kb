@@ -122,7 +122,7 @@
 
 - Add server-side run report capture so `kb logs` surfaces server traffic.
 
-  When kb-server handles requests to `/v1/query`, `/v1/chat`, `/v1/reindex`, `/mcp`, and `/slack/events`, it now writes `RunReport` entries to the same NDJSON log store used by CLI telemetry. `kb logs list`, `kb logs show`, and `kb logs compare` all surface server runs naturally alongside CLI runs. Reports include command (e.g. `server.query`), base, request ID, duration, and status. Health-check probes are excluded to avoid noise. `defaultLogsDir()` now respects `KB_HOME` so container/server deployments write to the correct path.
+  When kb-server handles requests to `/v1/query`, `/v1/chat`, `/mcp`, and `/slack/events`, it now writes `RunReport` entries to the same NDJSON log store used by CLI telemetry. `kb logs list`, `kb logs show`, and `kb logs compare` all surface server runs naturally alongside CLI runs. Reports include command (e.g. `server.query`), base, request ID, duration, and status. Health-check probes are excluded to avoid noise. `defaultLogsDir()` now respects `KB_HOME` so container/server deployments write to the correct path.
 
 ## 0.13.1
 
@@ -151,7 +151,7 @@
   - **Auth failures**: whether a key was present (not the key value), path, method
   - **`/v1/query`**: query text (truncated to 300 chars), params, and on completion: results count, answer presence, retrieval method, duration
   - **`/v1/chat`**: session ID, message text (truncated), and on completion: answer length, facts retrieved, duration; per-SSE-event detail at `debug` level
-  - **`/v1/reindex`**: start, per-progress lines (`debug`), summary and duration on completion
+  - **Scheduled index refresh**: start, per-progress lines (`debug`), summary and duration on completion
   - **`/mcp`**: JSON-RPC method name
   - **Server startup**: port, base, LLM provider/model, MCP enabled, API key count, reindex interval
   - **Server shutdown**: signal received
@@ -168,7 +168,7 @@
 
 ### Minor Changes
 
-- df35234: Add `kb server start`: HTTP API (`/v1/query`, `/v1/chat` SSE, `/healthz`, `/v1/reindex`) with optional MCP at `POST /mcp` via `--with-mcp`. `kb-server` package: Docker image, WireMock integration suite (`packages/kb-server/http/server.http`), and compose wiring.
+- df35234: Add `kb server start`: HTTP API (`/v1/query`, `/v1/chat` SSE, `/healthz`) with optional MCP at `POST /mcp` via `--with-mcp`. `kb-server` package: Docker image, WireMock integration suite (`packages/kb-server/http/server.http`), and compose wiring.
 - a23e85a: Make `kb server start` self-bootstrapping and `kb init` idempotent so a server node can be
   launched in a fresh container without the manual `kb init` / `kb base` flow.
 

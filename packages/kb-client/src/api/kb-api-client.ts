@@ -62,10 +62,6 @@ export class KbApiClient {
     return this.postJson<QueryResponse>('/v1/query', body)
   }
 
-  async reindex(): Promise<{ status: string; summary: string }> {
-    return this.postJson('/v1/reindex', {})
-  }
-
   async adminCli(args: string[]): Promise<{ exitCode: number; output: string }> {
     return this.postJson('/v1/admin/cli', { args }, { timeoutMs: 30 * 60_000 })
   }

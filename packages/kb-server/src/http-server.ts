@@ -6,10 +6,11 @@
  *  - `GET  /healthz`     liveness/readiness (unauthenticated)
  *  - `POST /v1/query`    one-shot request/response synthesized answer (apps wanting a single call)
  *  - `POST /v1/chat`     multi-turn chat loop, streamed over SSE — also the path Slack uses (via `service.chat`)
- *  - `POST /v1/reindex`  on-demand incremental rescan
  *  - `POST /mcp`         MCP Streamable HTTP (when enabled)
  *
- * `/v1/*` and `/mcp` require a bearer API key when one is configured.
+ * Index refresh is **not** an HTTP route — use `KB_REINDEX_INTERVAL` (scheduler)
+ * or `kb-server scan` offline. `/v1/*` and `/mcp` require a bearer API key when
+ * one is configured.
  *
  * Every request gets a `requestId` (UUID v4) attached as the `x-request-id`
  * response header and included in every structured log line for that request,
@@ -17,7 +18,7 @@
  *
  * Tracing is route-level and uniform: every request emits a `request` line on
  * entry and a `response` line on finish (status + `durationMs`), and each route
- * adds its own semantic logs — query/chat/reindex/mcp emit start/complete/error,
+ * adds its own semantic logs — query/chat/mcp emit start/complete/error,
  * health checks log at debug, unauthorized and unknown-route hits log at warn.
  */
 
@@ -418,7 +419,6 @@ export function createHttpServer(options: HttpServerOptions): Server {
     const protectedRoute =
       url === '/v1/query' ||
       url === '/v1/chat' ||
-      url === '/v1/reindex' ||
       url === '/mcp' ||
       url.startsWith('/v1/facts') ||
       url.startsWith('/v1/docs') ||
@@ -459,11 +459,6 @@ export function createHttpServer(options: HttpServerOptions): Server {
         return
       }
       await handleChat(req, res, ctx, svc)
-      return
-    }
-
-    if (method === 'POST' && url === '/v1/reindex') {
-      await handleReindex(res, ctx, svc)
       return
     }
 
@@ -730,45 +725,6 @@ export function createHttpServer(options: HttpServerOptions): Server {
       })
     } finally {
       res.end()
-    }
-  }
-
-  async function handleReindex(
-    res: ServerResponse,
-    ctx: RequestCtx,
-    svc: KbService
-  ): Promise<void> {
-    if (svc.isReindexing()) {
-      log.warn('reindex already in progress', { requestId: ctx.requestId })
-      sendJson(res, 409, { error: 'reindex already in progress' })
-      return
-    }
-    log.info('reindex start', { requestId: ctx.requestId })
-    try {
-      const summary = await svc.reindex(line => {
-        onLog?.(`[reindex] ${line}`)
-        log.debug('reindex progress', { requestId: ctx.requestId, line })
-      })
-      log.info('reindex complete', {
-        requestId: ctx.requestId,
-        summary,
-        durationMs: Date.now() - ctx.startMs,
-      })
-      sendJson(res, 200, { status: 'ok', summary })
-      buildAndWriteReport('reindex', ctx, 'success', svc, { sessionId: ctx.requestId })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      onLog?.(`[http] /v1/reindex error: ${message}`)
-      log.error('reindex error', {
-        requestId: ctx.requestId,
-        error: message,
-        durationMs: Date.now() - ctx.startMs,
-      })
-      sendJson(res, 500, { error: message })
-      buildAndWriteReport('reindex', ctx, 'error', svc, {
-        sessionId: ctx.requestId,
-        errorMessage: message,
-      })
     }
   }
 

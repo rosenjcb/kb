@@ -2,10 +2,12 @@
 # Build context is the repo root — same as `docker build -f packages/kb-server/Dockerfile .`
 #
 # First-time setup (once):
-#   fly volumes create kb_data --region ams --size 5 --app kb-demo
-#   fly secrets set -a kb-demo KB_SERVER_API_KEY=... GEMINI_API_KEY=...
+#   fly volumes create kb_data --region ams --size 1 --app kb-demo
+#   fly secrets set -a kb-demo GEMINI_API_KEY=...
 #   fly deploy -a kb-demo
 # Guide: packages/kb-server/FLY.md
+#
+# Volume holds KB_HOME only (clones + SQLite). Node deps live in the image rootfs.
 
 app = "kb-demo"
 primary_region = "ams"
@@ -19,8 +21,8 @@ primary_region = "ams"
   KB_BASE = "demo"
   KB_GIT_REPOS = "https://github.com/rosenjcb/kb#main"
   KB_REINDEX_INTERVAL = "1h"
-  # Pages chat demo (demo/ on GitHub Pages). Add more origins comma-separated if needed.
-  KB_SERVER_ALLOWED_ORIGINS = "https://rosenjcb.github.io"
+  # Pages + local `pnpm run demo` (http://localhost:8000 → this Fly host).
+  KB_SERVER_ALLOWED_ORIGINS = "https://rosenjcb.github.io,http://localhost:8000"
   LOG_LEVEL = "info"
 
 [http_service]
@@ -32,19 +34,25 @@ primary_region = "ams"
   min_machines_running = 1
   processes = ["app"]
 
-  [[http_service.checks]]
-    grace_period = "5m"
-    interval = "30s"
-    method = "GET"
-    path = "/healthz"
-    timeout = "10s"
+  # No HTTP service check: /healthz returns 503 while first-boot indexing, and Fly
+  # would mark the machine critical / block deploys. Liveness = TCP below.
 
 [[mounts]]
   source = "kb_data"
   destination = "/data"
   processes = ["app"]
 
+# Stay on 1gb for a clean first index. Shrink later (orchestration TBD).
 [[vm]]
-  size = "shared-cpu-2x"
-  memory = "2gb"
+  size = "shared-cpu-1x"
+  memory = "1gb"
   processes = ["app"]
+
+# Process up on :38117 (does not require /healthz 200).
+[checks]
+  [checks.tcp]
+    port = 38117
+    type = "tcp"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "2m"

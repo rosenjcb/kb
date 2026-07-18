@@ -162,26 +162,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
-  /v1/reindex:
-    post:
-      tags: [admin]
-      summary: Trigger an on-demand incremental rescan
-      parameters:
-        - $ref: "#/components/parameters/XKbBase"
-      responses:
-        "200":
-          description: Rescan completed
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ReindexResponse" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "409":
-          description: A reindex is already in progress
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-        "500": { $ref: "#/components/responses/ServerError" }
-
   /v1/bases:
     get:
       tags: [admin]
@@ -472,13 +452,6 @@ components:
         base:
           type: string
           description: Per-call base override (else the `X-KB-Base` header).
-
-    ReindexResponse:
-      type: object
-      required: [status, summary]
-      properties:
-        status: { type: string, example: ok }
-        summary: { type: string }
 
     BasesResponse:
       type: object

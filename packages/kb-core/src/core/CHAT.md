@@ -77,6 +77,14 @@ flowchart TD
 11. **Presentation** — wire stays `answer` + `sources[]`; text surfaces use
     `formatChatReply` ([CHAT_REPLY.md](../service/CHAT_REPLY.md)). Demo mirrors rules in-browser.
 
+12. **First-boot vs hourly sync (HTTP / Slack / Pages)** — while the server’s
+    **bootstrap** index is running, `/v1/chat` returns **503** with progress.
+    Slack posts a “still indexing” notice then `waitForBootstrap()` before
+    answering. The Pages `demo/` polls `/healthz` and waits the same way, then
+    retries once. A later **scheduled reindex** (`health.reindexing`) does
+    **not** 503 chat — clients keep talking to the existing index. Details:
+    [SERVER.md](../../../kb-server/src/SERVER.md).
+
 ## Prompts
 
 | File | Role |

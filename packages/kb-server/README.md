@@ -263,9 +263,9 @@ pnpm run server:up            # start again — reuses the persisted index
 docker compose --env-file .env -f packages/kb-server/docker-compose.yml down -v
 ```
 
-On-demand reindex without a restart: `POST /v1/reindex` with the bearer token.
-This uses the same incremental sync path as the hourly scheduler: every tracked repo is
-polled, but only repos with new commits are re-indexed.
+Index refresh is the hourly scheduler (`KB_REINDEX_INTERVAL`) or offline
+`kb-server scan`. The scheduler polls every tracked repo and re-indexes only
+those with new commits.
 
 ## Notes
 
@@ -286,7 +286,9 @@ Production-style host for the same Docker image (app `kb-demo`, region `ams`):
 → **[`FLY.md`](FLY.md)** — volume, secrets, `fly deploy` (Pages chatbot backend; not Slack).
 
 Config lives at the **repo root** [`fly.toml`](../../fly.toml) so Fly GitHub /
-`fly deploy` from root find `packages/kb-server/Dockerfile`.
+`fly deploy` from root find `packages/kb-server/Dockerfile`. First-boot
+indexing 503s chat until ready (demo waits like Slack); hourly reindex does not
+— see [`src/SERVER.md`](src/SERVER.md).
 
 ## Related docs
 

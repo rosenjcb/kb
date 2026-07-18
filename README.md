@@ -9,6 +9,15 @@
   <a href="#cli-reference"><img src="https://img.shields.io/badge/CLI-reference-orange.svg" alt="CLI reference" /></a>
 </p>
 
+<p align="center">
+  <a href="https://rosenjcb.github.io/"><img src="https://img.shields.io/badge/✨_Try_the_chat_demo-live-00a2ff?style=for-the-badge&labelColor=0b1220" alt="Try the chat demo" /></a>
+</p>
+
+<p align="center">
+  <b>⭐ Don’t clone first — <a href="https://rosenjcb.github.io/">ask the repo in the browser</a>.</b><br/>
+  <sub>GitHub Pages UI → Fly <code>kb-demo</code> · no API key · sources on every answer</sub>
+</p>
+
 ---
 
 Every team has the person who has read all the code. Questions route through them: a PM wants to know if exports handle timezones, QA is hunting for the retry logic before filing a bug, a new hire asks how auth works for the third time. That person answers slowly, or the asker points a coding agent at the repo and pays it to rediscover what a teammate already knew.
