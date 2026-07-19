@@ -1,52 +1,62 @@
-# Fly.io app for kb-server (https://kb-demo.fly.dev).
-# Build context is the repo root — same as `docker build -f packages/kb-server/Dockerfile .`
+# Fly.io SERVING node for the kb chat demo (https://kb-demo.fly.dev).
+#
+# Low-budget, always-warm, and STATELESS: it holds no volume. On every boot it
+# downloads the latest sha256-verified snapshot from Tigris and warm-starts
+# frozen (`--bootstrap-policy snapshot-only`) — no cloning, no indexing, no
+# reindex scheduler. All the heavy work happens hourly on a separate 1GB builder
+# machine, which publishes a fresh snapshot and rolls this node onto it.
+#
+# Because there is no durable volume and the index is verified on adopt, the
+# served index cannot be torn or corrupted. Full model + setup:
+#   FLY_ORCHESTRATION.md   ·   packages/kb-server/HANDOFF.md
 #
 # First-time setup (once):
-#   fly volumes create kb_data --region ams --size 1 --app kb-demo
+#   fly storage create --app kb-demo                 # provisions Tigris → AWS_* + BUCKET_NAME secrets
 #   fly secrets set -a kb-demo GEMINI_API_KEY=...
+#   scripts/fly/refresh.sh (run once via the builder) to seed latest.json
 #   fly deploy -a kb-demo
-# Guide: packages/kb-server/FLY.md
-#
-# Volume holds KB_HOME only (clones + SQLite). Node deps live in the image rootfs.
 
 app = "kb-demo"
 primary_region = "ams"
 
 [build]
-  dockerfile = "packages/kb-server/Dockerfile"
+  dockerfile = "Dockerfile.fly"
 
 [env]
   PORT = "38117"
   KB_HOME = "/data"
   KB_BASE = "demo"
-  KB_GIT_REPOS = "https://github.com/rosenjcb/kb#main"
-  KB_REINDEX_INTERVAL = "1h"
+  # Frozen serve: no git, no reindex. Refresh comes only from adopting a new
+  # snapshot (published hourly by the builder), never from in-process rescans.
+  KB_SERVER_BOOTSTRAP_POLICY = "snapshot-only"
   # Pages + local `pnpm run demo` (http://localhost:8000 → this Fly host).
   KB_SERVER_ALLOWED_ORIGINS = "https://rosenjcb.github.io,http://localhost:8000"
   LOG_LEVEL = "info"
+  # BUCKET_NAME + AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_ENDPOINT_URL_S3 come
+  # from `fly storage create` as secrets — do not hard-code them here.
 
 [http_service]
   internal_port = 38117
   force_https = true
-  # Keep one machine warm — Pages chatbot hates cold starts mid-index.
+  # Keep one machine warm — Pages chatbot hates cold starts. Run 2+ for a truly
+  # zero-downtime hourly swap (the builder rolls them one at a time).
   auto_stop_machines = "off"
   auto_start_machines = true
   min_machines_running = 1
   processes = ["app"]
 
-  # No HTTP service check: heavy ingest can still starve the event loop briefly;
-  # TCP liveness avoids blackholing the sole machine. /healthz is HTTP 200 when
-  # it can answer (readiness in JSON body).
+  # No HTTP service check: snapshot-only boot downloads + opens SQLite quickly,
+  # but TCP liveness avoids blackholing the sole machine. /healthz is HTTP 200
+  # when reachable (readiness — ok:true — is in the JSON body).
 
-[[mounts]]
-  source = "kb_data"
-  destination = "/data"
-  processes = ["app"]
+# No [[mounts]] — the serving node is stateless by design (source of truth is
+# the snapshot in object storage). Nothing to corrupt on a volume.
 
-# Stay on 1gb for a clean first index. Shrink later (orchestration TBD).
+# 256MB is plenty to serve a prebuilt SQLite index; the heavy build lives on the
+# 1GB builder. Shrink/grow here without touching the builder.
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "1gb"
+  memory = "256mb"
   processes = ["app"]
 
 # Process up on :38117 (does not require /healthz 200).
