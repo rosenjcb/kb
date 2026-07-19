@@ -37,6 +37,10 @@ function saveSettings(s) {
 }
 let settings = loadSettings()
 let sessionId = null // set by the server on the first turn, reused after
+/** Bumped on "new chat" so an in-flight turn stops updating the cleared thread. */
+let chatEpoch = 0
+/** Abort the active /v1/chat fetch when starting a new session. */
+let chatAbort = null
 
 // ---- DOM refs ------------------------------------------------------------
 const $ = id => document.getElementById(id)
@@ -50,6 +54,23 @@ const statusDot = $('statusDot')
 const statusText = $('statusText')
 const hint = $('hint')
 const statusEl = $('status')
+
+/** Clear the thread and drop the server session id (settings / theme stay). */
+function startNewChat() {
+  chatEpoch++
+  if (chatAbort) {
+    chatAbort.abort()
+    chatAbort = null
+  }
+  sessionId = null
+  thread.replaceChildren()
+  empty.style.display = ''
+  input.value = ''
+  input.disabled = false
+  _sendBtn.disabled = false
+  main.scrollTop = 0
+  input.focus()
+}
 
 // ---- Helpers -------------------------------------------------------------
 // Dogfood hardcode: static Pages demo has no volume registry. Server Slack uses
@@ -335,11 +356,12 @@ function addAssistantMessage() {
 
 // ---- SSE chat call -------------------------------------------------------
 // First-boot bootstrap 503s chat (like Slack). Hourly reindex does not — chat stays up.
-async function postChat(message) {
+async function postChat(message, signal) {
   return fetch(`${trimUrl(settings.serverUrl)}/v1/chat`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ message, sessionId: sessionId || undefined }),
+    signal,
   })
 }
 
@@ -377,12 +399,18 @@ async function waitForBootstrap(turn, deadlineMs) {
 }
 
 async function sendChat(message) {
+  const epoch = chatEpoch
+  if (chatAbort) chatAbort.abort()
+  chatAbort = new AbortController()
+  const { signal } = chatAbort
+  const stillCurrent = () => epoch === chatEpoch
   const turn = addAssistantMessage()
   // If /healthz already says first-boot indexing, wait like Slack before chat.
   const pre = await probeConnection(settings.serverUrl, authHeaders(), {
     healthTimeoutMs: 4000,
     authTimeoutMs: 2000,
   })
+  if (!stillCurrent()) return
   applyHealthStatus(pre)
   if (pre.state === 'indexing') {
     const prog = pre.progress ? `\nCurrent progress: ${pre.progress}` : ''
@@ -390,28 +418,31 @@ async function sendChat(message) {
       `KB is still indexing its knowledge base.${prog}\nI will reply with the answer once indexing is complete.`
     )
     const ready = await waitForBootstrap(turn, 10 * 60 * 1000)
-    if (!ready) return
+    if (!stillCurrent() || !ready) return
     turn.setStage('Index ready — answering…')
   }
   let res
   try {
-    res = await postChat(message)
+    res = await postChat(message, signal)
   } catch (_e) {
+    if (!stillCurrent() || signal.aborted) return
     // First-boot can drop TCP while the event loop is saturated — treat like
     // Slack's indexing wait instead of failing the turn immediately.
     turn.setStage(
       'KB is still indexing its knowledge base.\nI will reply with the answer once indexing is complete.'
     )
     const ready = await waitForBootstrap(turn, 10 * 60 * 1000)
-    if (!ready) return
+    if (!stillCurrent() || !ready) return
     turn.setStage('Index ready — answering…')
     try {
-      res = await postChat(message)
+      res = await postChat(message, signal)
     } catch (e2) {
+      if (!stillCurrent() || signal.aborted) return
       turn.setError("Couldn't reach the server", describeNetworkError(e2))
       return
     }
   }
+  if (!stillCurrent()) return
   if (res.status === 401) {
     turn.setError(
       'Unauthorized (401)',
@@ -450,11 +481,13 @@ async function sendChat(message) {
       if (!ready) return
       turn.setStage('Index ready — answering…')
       try {
-        res = await postChat(message)
+        res = await postChat(message, signal)
       } catch (e) {
+        if (!stillCurrent() || signal.aborted) return
         turn.setError("Couldn't reach the server", describeNetworkError(e))
         return
       }
+      if (!stillCurrent()) return
       if (res.status === 503) {
         let msg = 'Server is still unavailable after indexing.'
         try {
@@ -488,6 +521,12 @@ async function sendChat(message) {
   let answered = false
   try {
     for (;;) {
+      if (!stillCurrent()) {
+        try {
+          await reader.cancel()
+        } catch {}
+        return
+      }
       const { value, done } = await reader.read()
       if (done) break
       buf += decoder.decode(value, { stream: true })
@@ -513,8 +552,10 @@ async function sendChat(message) {
         // 'done' → stream ends
       }
     }
+    if (!stillCurrent()) return
     if (!answered) turn.setError('No answer', 'The server closed the stream without an answer.')
   } catch (e) {
+    if (!stillCurrent() || signal.aborted) return
     if (!answered) turn.setError('Stream interrupted', describeNetworkError(e))
   }
 }
@@ -781,6 +822,14 @@ $('themeBtn').addEventListener('click', () => {
   applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark')
 })
 applyTheme(localStorage.getItem('kb-chat-theme') || 'dark')
+
+// Header brand → new chat (keeps settings / theme / connection pill).
+$('brandHome').addEventListener('click', e => {
+  // Allow modified clicks (new tab / middle-click) to follow href="./".
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+  e.preventDefault()
+  startNewChat()
+})
 
 // Settings dialog
 const dlg = $('settings')

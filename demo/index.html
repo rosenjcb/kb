@@ -71,6 +71,17 @@
       align-items: center;
       gap: 10px;
       min-width: 0;
+      color: inherit;
+      text-decoration: none;
+      border-radius: 6px;
+      padding: 2px 4px 2px 2px;
+      margin: -2px -4px -2px -2px;
+      cursor: pointer;
+    }
+    header .brand:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+    header .brand:focus-visible {
+      outline: 2px solid var(--brand);
+      outline-offset: 2px;
     }
     header .kb-ascii {
       font-size: 5.5px;
@@ -407,14 +418,14 @@
 </head>
 <body>
   <header>
-    <div class="brand">
-      <pre class="kb-ascii" aria-label="KB">██╗  ██╗██████╗
+    <a class="brand" id="brandHome" href="./" title="New chat" aria-label="KB Chat demo — start a new chat">
+      <pre class="kb-ascii" aria-hidden="true">██╗  ██╗██████╗
 ██║ ██╔╝██╔══██╗
 █████╔╝ ██████╔╝<span class="brand-dot"> [█]</span>
 ██╔═██╗ ██╔══██╗
 ██║  ██╗██████╔╝</pre>
       <span class="title">Chat demo</span>
-    </div>
+    </a>
     <span class="spacer"></span>
     <div class="actions">
       <span class="status" id="status" title="Server connectivity">
