@@ -1,0 +1,73 @@
+name: Deploy Fly.io chat demo
+
+# Redeploys the two Fly apps behind the chat demo whenever their server code
+# changes on main. See FLY_ORCHESTRATION.md for the full model.
+#
+#   kb-demo (serving)         — plain `fly deploy`, safe: it has a normal
+#                               [http_service] release process.
+#   kb-demo-builder (builder) — build+push only, THEN destroy+recreate the
+#                               scheduled machine explicitly. A plain
+#                               `fly deploy` on an app with no
+#                               [http_service]/[processes] instead creates or
+#                               replaces a running machine using the image's
+#                               default CMD, clobbering the scheduled
+#                               machine's --schedule/refresh.sh command — see
+#                               scripts/fly/deploy.sh, which this mirrors.
+#                               A scheduled machine also pins its image *and*
+#                               vm size at creation time, so recreating it is
+#                               the only way it picks up either.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/kb-core/**"
+      - "packages/kb-client/**"
+      - "packages/kb-server/**"
+      - "Dockerfile.fly"
+      - "fly.toml"
+      - "fly.builder.toml"
+      - "scripts/fly/**"
+
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-serving:
+    name: Deploy kb-demo (serving)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy -a kb-demo -c fly.toml
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_KB_DEMO }}
+
+  deploy-builder:
+    name: Deploy kb-demo-builder (recreate scheduler)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Build + push image (no release — see header comment)
+        run: flyctl deploy -a kb-demo-builder -c fly.builder.toml --build-only --push
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_KB_DEMO_BUILDER }}
+      - name: Recreate the scheduled machine
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_KB_DEMO_BUILDER }}
+        run: |
+          set -euo pipefail
+          scheduler_id="$(flyctl machine list -a kb-demo-builder --json | node -e '
+            let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+              const m = JSON.parse(s || "[]");
+              process.stdout.write((m[0] && m[0].id) || "");
+            });
+          ')"
+          if [ -n "$scheduler_id" ]; then
+            flyctl machine destroy "$scheduler_id" -a kb-demo-builder --force
+          fi
+          flyctl machine run . -c fly.builder.toml -a kb-demo-builder --detach \
+            --vm-size shared-cpu-2x --vm-memory 4096 \
+            --schedule daily --restart no \
+            bash /app/scripts/fly/refresh.sh

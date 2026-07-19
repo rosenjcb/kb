@@ -21,7 +21,7 @@ SEED=1
 # `fly machine run -c fly.builder.toml` does NOT inherit this block — it must
 # be passed explicitly on every machine-creating command below, or you silently
 # get Fly's bare platform default (shared-cpu-1x/256mb).
-BUILDER_VM_SIZE="shared-cpu-2x"
+BUILDER_VM_SIZE="performance-2x"
 BUILDER_VM_MEMORY="4096"
 
 echo "==> 1/4 building + pushing builder image ($BUILDER_APP)"

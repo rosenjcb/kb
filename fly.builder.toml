@@ -51,6 +51,11 @@ primary_region = "ams"
 # scripts/fly/refresh.sh to completion and stops until the next day. 4GB gives
 # cloning + indexing ~10 repos (incl. large ones like Homebrew/brew, kestra)
 # headroom; the machine still stops between runs, so it only bills while building.
+# performance-2x (dedicated, unthrottled cores) over shared-cpu-2x: the indexing
+# pipeline (tree-sitter AST parsing + SQLite FTS matching) is single-threaded
+# CPU-bound work, so a faster core — not more shared cores — is what actually
+# speeds it up. At a few minutes/day this costs cents/month either way, so the
+# tier choice is effectively free; take the speed.
 [[vm]]
-  size = "shared-cpu-2x"
+  size = "performance-2x"
   memory = "4096mb"

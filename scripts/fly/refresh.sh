@@ -36,6 +36,18 @@ source "$SELF_DIR/lib.sh"
 
 require_bucket
 
+# Guard against a second overlapping invocation (e.g. the machine's entrypoint
+# got respawned after a crash mid-run while the old process tree survived as
+# orphans) — without this, two copies iterate the same base list concurrently,
+# double every cold build's resource usage, and neither one reliably wins.
+# mkdir is atomic across POSIX filesystems, so this needs no extra dependency.
+LOCK_DIR="${LOCK_DIR:-/tmp/refresh.lock}"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  echo "error: another refresh.sh is already running (lock: $LOCK_DIR) — exiting." >&2
+  exit 1
+fi
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+
 WORK="${WORK_DIR:-/work}"
 # SNAPSHOT_NO_REPOS=true ships tiny serve-only artifacts (drops the repo working
 # trees) — the right default when serving many bases on a small node. Answers come
@@ -48,6 +60,23 @@ if [[ "${SNAPSHOT_NO_REPOS:-true}" == "true" ]]; then REPOS_FLAG="--no-repos"; f
 VERSION="$(date -u +%Y%m%dT%H%M%SZ)"
 
 rm -rf "$WORK"; mkdir -p "$WORK"
+
+# Send SIGTERM, then escalate to SIGKILL if the process outlives a short grace
+# period. A plain SIGTERM alone was observed leaving cold-build servers running
+# indefinitely after their base's step returned, competing with later bases for
+# the same CPUs (interleaved logs from bases that should already be done).
+force_kill() {
+  local pid="$1" waited=0
+  kill "$pid" 2>/dev/null || return 0
+  while kill -0 "$pid" 2>/dev/null; do
+    if (( waited >= 10 )); then
+      kill -9 "$pid" 2>/dev/null || true
+      break
+    fi
+    sleep 1
+    (( waited++ ))
+  done
+}
 
 # Build, snapshot, and publish one base. Runs in a subshell (see the loop) so a
 # failure is isolated to that base. Args: <name> <repo-url> <branch>.
@@ -93,7 +122,7 @@ build_base() {
       node "$KB_SERVER_JS" start --base "$base" --bootstrap-policy auto &
     server_pid=$!
     # shellcheck disable=SC2064
-    trap "kill $server_pid 2>/dev/null || true" RETURN
+    trap "force_kill $server_pid" RETURN
     echo "  · waiting for first index (GET /healthz ok:true) …"
     deadline=$(( $(date +%s) + ${COLD_BUILD_TIMEOUT:-1800} ))
     until health="$(curl -fsS "http://127.0.0.1:${port}/healthz" 2>/dev/null)" \
@@ -106,7 +135,7 @@ build_base() {
     done
     echo "  · first index ready; exporting"
     KB_HOME="$kb_home" kb_server export --base "$base" --out "$new" ${REPOS_FLAG} --force
-    kill "$server_pid" 2>/dev/null || true
+    force_kill "$server_pid"
     trap - RETURN
   fi
 
