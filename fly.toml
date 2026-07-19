@@ -1,10 +1,13 @@
 # Fly.io SERVING node for the kb chat demo (https://kb-demo.fly.dev).
 #
 # Low-budget, always-warm, and STATELESS: it holds no volume. On every boot it
-# downloads the latest sha256-verified snapshot from Tigris and warm-starts
-# frozen (`--bootstrap-policy snapshot-only`) — no cloning, no indexing, no
-# reindex scheduler. All the heavy work happens hourly on a separate 1GB builder
-# machine, which publishes a fresh snapshot and rolls this node onto it.
+# downloads every base's latest sha256-verified snapshot from Tigris (default via
+# `start --from`, the rest via verified `import`) and warm-starts frozen
+# (`--bootstrap-policy snapshot-only`) — no cloning, no indexing, no reindex
+# scheduler. One process serves all bases; clients pick one with `X-KB-Base`
+# (the chat demo's header picker). All the heavy work happens once a day on a
+# separate 4GB builder machine, which publishes fresh per-base snapshots and
+# rolls this node onto them.
 #
 # Because there is no durable volume and the index is verified on adopt, the
 # served index cannot be torn or corrupted. Full model + setup:
@@ -27,7 +30,7 @@ primary_region = "ams"
   KB_HOME = "/data"
   KB_BASE = "demo"
   # Frozen serve: no git, no reindex. Refresh comes only from adopting a new
-  # snapshot (published hourly by the builder), never from in-process rescans.
+  # snapshot (published daily by the builder), never from in-process rescans.
   KB_SERVER_BOOTSTRAP_POLICY = "snapshot-only"
   # Pages + local `pnpm run demo` (http://localhost:8000 → this Fly host).
   KB_SERVER_ALLOWED_ORIGINS = "https://rosenjcb.github.io,http://localhost:8000"
@@ -39,7 +42,7 @@ primary_region = "ams"
   internal_port = 38117
   force_https = true
   # Keep one machine warm — Pages chatbot hates cold starts. Run 2+ for a truly
-  # zero-downtime hourly swap (the builder rolls them one at a time).
+  # zero-downtime daily swap (the builder rolls them one at a time).
   auto_stop_machines = "off"
   auto_start_machines = true
   min_machines_running = 1
@@ -52,11 +55,13 @@ primary_region = "ams"
 # No [[mounts]] — the serving node is stateless by design (source of truth is
 # the snapshot in object storage). Nothing to corrupt on a volume.
 
-# 256MB is plenty to serve a prebuilt SQLite index; the heavy build lives on the
-# 1GB builder. Shrink/grow here without touching the builder.
+# The heavy build lives on the 4GB builder, not here — but this node now holds
+# up to 10 bases' worth of imported SQLite indexes at once (scripts/fly/bases.json),
+# not the single `demo` base this was originally sized for. 256MB OOM-killed the
+# machine mid-multi-base-import; bump this (not the builder) if it recurs.
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "256mb"
+  memory = "1024mb"
   processes = ["app"]
 
 # Process up on :38117 (does not require /healthz 200).

@@ -1,15 +1,58 @@
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 /**
  * Admin + read REST routes — all kb operations except client-local config/skills/sync.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import type { KbService } from '@kb/core/service/kb-service.js'
-import { readKbConfig } from '@kb/core/config/kb-config.js'
 import { runServerCommand } from '@kb/core/cli/dispatch.js'
-import { runScanCommand } from '@kb/core/ops/scan-command.js'
+import { readKbConfig } from '@kb/core/config/kb-config.js'
 import { defaultLogsDir } from '@kb/core/core/telemetry.js'
+import { gitRemoteToBrowseUrl } from '@kb/core/ops/git-sync.js'
+import { runScanCommand } from '@kb/core/ops/scan-command.js'
+import type { KbService } from '@kb/core/service/kb-service.js'
+import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
+import { readSnapshotManifest } from '@kb/core/storage/snapshot.js'
 import type { KbServiceRegistry } from './service-registry.js'
+
+/** One source repo advertised for a base, ready for client-side blob links. */
+interface BaseRepoSummary {
+  slug: string
+  /** HTTPS browse root (no trailing slash), or null when it can't be derived. */
+  url: string | null
+  branch: string
+}
+
+/**
+ * Source repos for a base, for building per-base source links in clients like the
+ * chat demo (which shows a base picker and needs each base's `gitRepo` slug →
+ * browse URL). Prefers the snapshot manifest's provenance — it is present even in
+ * serve-only (`--no-repos`) snapshots, which carry no working trees — and falls
+ * back to the live git clones for full/unsnapshotted bases.
+ */
+async function baseReposFor(basePath: string): Promise<BaseRepoSummary[]> {
+  try {
+    const manifest = await readSnapshotManifest(basePath)
+    if (manifest && manifest.provenance.repos.length > 0) {
+      return manifest.provenance.repos.map(repo => ({
+        slug: repo.slug,
+        url: gitRemoteToBrowseUrl(repo.gitUrl),
+        branch: repo.gitBranch,
+      }))
+    }
+  } catch {
+    // fall through to live-clone discovery
+  }
+  try {
+    const repos = await discoverBaseRepos(basePath)
+    return repos.map(repo => ({
+      slug: repo.slug,
+      url: gitRemoteToBrowseUrl(repo.gitUrl),
+      branch: repo.gitBranch,
+    }))
+  } catch {
+    return []
+  }
+}
 
 export interface AdminRouteContext {
   service: KbService
@@ -48,7 +91,7 @@ export async function handleAdminRoute(
   pathname: string,
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: AdminRouteContext,
+  ctx: AdminRouteContext
 ): Promise<boolean> {
   const { service, baseDir, registry } = ctx
 
@@ -134,7 +177,11 @@ export async function handleAdminRoute(
     }
     const rawArgs = body.args
     if (!Array.isArray(rawArgs) || rawArgs.length === 0) {
-      sendJson(res, 400, { exitCode: 1, output: '', error: 'body.args must be a non-empty string array' })
+      sendJson(res, 400, {
+        exitCode: 1,
+        output: '',
+        error: 'body.args must be a non-empty string array',
+      })
       return true
     }
     const args = rawArgs.map(value => String(value))
@@ -147,16 +194,31 @@ export async function handleAdminRoute(
   if (method === 'GET' && pathname === '/v1/bases') {
     if (registry) {
       const bases = await registry.list()
+      const withRepos = await Promise.all(
+        bases.map(async base => ({
+          name: base.name,
+          path: base.path,
+          default: base.default,
+          repos: await baseReposFor(base.path),
+        }))
+      )
       sendJson(res, 200, {
         default: registry.defaultBaseName,
-        bases: bases.map(base => ({ name: base.name, path: base.path, default: base.default })),
+        bases: withRepos,
       })
       return true
     }
     // Single-base server: advertise just the boot base.
     sendJson(res, 200, {
       default: path.basename(baseDir),
-      bases: [{ name: path.basename(baseDir), path: baseDir, default: true }],
+      bases: [
+        {
+          name: path.basename(baseDir),
+          path: baseDir,
+          default: true,
+          repos: await baseReposFor(baseDir),
+        },
+      ],
     })
     return true
   }

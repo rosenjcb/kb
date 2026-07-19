@@ -1,5 +1,14 @@
 # kb-server
 
+## 1.4.11
+
+### Patch Changes
+
+- `GET /v1/bases` now includes each base's source `repos` (`slug` → browse `url` +
+  `branch`), read from the snapshot manifest provenance (present even for
+  serve-only snapshots) or the live git clones. This lets multi-base clients — like
+  the chat demo's header base picker — build correct per-base source links.
+
 ## 1.4.10
 
 ### Patch Changes

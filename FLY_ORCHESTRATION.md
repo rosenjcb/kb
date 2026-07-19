@@ -1,10 +1,30 @@
+---
+type: Guide
+title: Fly.io multi-base build-to-serve orchestration
+description: >-
+  Serve many kb bases from one Fly app. A daily one-shot builder publishes a
+  per-base sha256-verified snapshot; a cheap always-warm serving node imports
+  them all and answers chat, picking a base per request via X-KB-Base.
+resource: ./scripts/fly/refresh.sh
+tags: [fly, deployment, snapshots, multi-base, ops, build-to-serve]
+timestamp: 2026-07-19T00:00:00Z
+---
+
 # Fly.io build-to-serve orchestration for the kb chat demo
 
 This is the automated, corruption-safe orchestration behind
 [`https://kb-demo.fly.dev`](https://kb-demo.fly.dev). It splits the demo into a
-cheap always-warm **serving node** and an hourly one-shot **builder**, so the
+cheap always-warm **serving node** and a daily one-shot **builder**, so the
 expensive index build never happens on the machine answering chat, and the
 served index can never be torn or corrupted.
+
+It serves **many bases** from one process: the golden default `demo` (this repo)
+plus one base per eval-suite repo. The full set is the committed manifest
+[`scripts/fly/bases.json`](scripts/fly/bases.json), generated from
+`eval/suites/*.yaml` by [`scripts/fly/gen-bases.mjs`](scripts/fly/gen-bases.mjs)
+(deduped by repo, excluding the repo-neutral `generic`/`course` packs). The
+builder builds and publishes each base independently; the serving node downloads
+them all and the chat demo picks one per request via `X-KB-Base`.
 
 It is a concrete Fly.io mapping of the vendor-agnostic
 [build-to-serve handoff model](packages/kb-server/HANDOFF.md).
@@ -14,20 +34,21 @@ It is a concrete Fly.io mapping of the vendor-agnostic
 | | Serving node (`kb-demo`) | Builder (`kb-demo-builder`) |
 |---|---|---|
 | Config | [`fly.toml`](fly.toml) | [`fly.builder.toml`](fly.builder.toml) |
-| Size | `shared-cpu-1x` / **256MB**, always-warm | `shared-cpu-1x` / **1GB**, hourly one-shot |
+| Size | `shared-cpu-1x` / **1024MB**, always-warm | `shared-cpu-2x` / **4GB**, daily one-shot |
 | Volume | **none** (stateless) | none (ephemeral `/work`) |
 | Command | [`scripts/fly/serve-entrypoint.sh`](scripts/fly/serve-entrypoint.sh) | [`scripts/fly/refresh.sh`](scripts/fly/refresh.sh) |
+| Bases | imports **all** of [`bases.json`](scripts/fly/bases.json) (default via `start --from`, rest via verified `import`) | builds + publishes **each** base in [`bases.json`](scripts/fly/bases.json) |
 | Policy | `--bootstrap-policy snapshot-only` (frozen: no git, no reindex) | `auto` (clones/pulls + indexes) |
-| Cost | one tiny machine 24/7 | ~minutes of 1GB per hour |
+| Cost | one tiny machine 24/7 | ~minutes of 4GB per day |
 
 Both run the **same image** ([`Dockerfile.fly`](Dockerfile.fly)); the Fly config
 picks the command and VM size.
 
-## The hourly loop
+## The daily loop
 
 ```mermaid
 flowchart LR
-  subgraph B ["Builder (1GB, scheduled hourly, one-shot)"]
+  subgraph B ["Builder (4GB, scheduled daily, one-shot)"]
     B1["download current snapshot"]
     B2["kb-server scan --from cur --out new<br/>(git pull + incremental reindex + VACUUM INTO)"]
     B3["upload → immutable version prefix"]
@@ -50,7 +71,7 @@ flowchart LR
   P --> S2
 ```
 
-1. **Rescan (builder).** The scheduled 1GB machine downloads the current
+1. **Rescan (builder).** The scheduled 4GB machine downloads the current
    snapshot, then `kb-server scan --from cur --out new` adopts it, `git pull`s
    every tracked repo, incrementally reindexes only what changed, and exports a
    fresh snapshot via SQLite `VACUUM INTO` (one consistent `.kb-index.sqlite`,
@@ -64,7 +85,7 @@ flowchart LR
    `KB_HOME`, downloads the version `latest.json` now points at, and warm-starts
    frozen. The old machine keeps serving until the new one is healthy.
 4. **Stop (builder).** `refresh.sh` exits; the scheduled machine stops until the
-   next hour.
+   next day.
 
 ## Why it cannot corrupt the index (your requirement #4)
 
@@ -117,23 +138,93 @@ fly secrets set -a kb-demo-builder \
     SERVE_APP=kb-demo \
     FLY_API_TOKEN="$(fly tokens create deploy -a kb-demo --expiry 8760h | tail -n1)"
 
-# 4. Seed the first snapshot (cold build) + create the hourly scheduler machine
+# 4. Seed all bases (cold build) + create the daily scheduler machine (4GB)
 fly machine run . -c fly.builder.toml -a kb-demo-builder \
-    --schedule hourly --restart no --vm-memory 1024 \
+    --schedule daily --restart no --vm-memory 4096 \
     bash /app/scripts/fly/refresh.sh
 ```
 
-The first builder run takes the **cold path** (no `latest.json` yet): it boots
-`kb-server start` to clone `KB_GIT_REPOS` and build, then exports and publishes.
-Every subsequent hourly run takes the cheap **warm path** (`scan --from cur`).
+The first builder run takes the **cold path** for every base (no `latest.json`
+yet): for each base in [`bases.json`](scripts/fly/bases.json) it boots
+`kb-server start` to clone that base's repo and build, then exports and
+publishes. Every subsequent daily run takes the cheap **warm path**
+(`scan --from cur`) per base. Because each base is isolated, a single flaky
+clone leaves that base's previous snapshot live while the rest still refresh.
 
 To seed immediately without waiting for the first schedule tick, run the machine
-once on demand:
+once on demand (the first full cold build of ~10 repos takes a while):
 
 ```bash
-fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-memory 1024 \
+fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-memory 4096 \
     bash /app/scripts/fly/refresh.sh
 ```
+
+### Bases
+
+The base set is data-driven from the eval suites. To add or remove a base, edit
+`eval/suites/*.yaml` and regenerate the manifest, then redeploy the builder:
+
+```bash
+node scripts/fly/gen-bases.mjs        # rewrite scripts/fly/bases.json
+node scripts/fly/gen-bases.mjs --check # verify it is up to date (CI-friendly)
+```
+
+## Deploying an update in your org (worked example)
+
+This is the exact flow used to grow the public demo from a **single `demo` base**
+into a **multi-base** deployment that indexes every eval-suite repo — reuse it
+whenever you roll a change (new bases, a bigger builder, a schedule change) into
+your own copy. The apps/bucket/secrets already exist; this is an *upgrade*, not a
+first-time setup. Two facts make it safe:
+
+- `fly deploy` builds from your **local checkout**, so you can deploy from a
+  branch without merging. Merging to `main` only republishes the static chat page
+  ([`.github/workflows/pages.yml`](.github/workflows/pages.yml)).
+- The default base keeps its snapshot prefix, so its existing snapshot stays
+  valid; new bases only *add* `snapshots/<name>/`. The serving node **skips bases
+  that aren't built yet**, so nothing breaks mid-rollout.
+
+**1. Point the manifest at the repos you want** (org deployers swap the eval
+suites for their own repos — edit `eval/suites/*.yaml` or hand-edit
+`scripts/fly/bases.json`), then regenerate + sanity-check:
+
+```bash
+node scripts/fly/gen-bases.mjs
+node scripts/fly/gen-bases.mjs --check   # 0 exit ⇒ manifest committed & fresh
+```
+
+**2-4. Ship builder + serving, recreate the scheduler, seed every base** — one
+command, [`scripts/fly/deploy.sh`](scripts/fly/deploy.sh), does all of it:
+
+```bash
+scripts/fly/deploy.sh            # deploy builder, recreate scheduler, deploy serving, seed all bases
+scripts/fly/deploy.sh --no-seed  # skip the immediate seed; bases populate on the next daily tick
+```
+
+It deploys `kb-demo-builder` (`-c fly.builder.toml`), destroys and recreates the
+scheduled machine (`--schedule daily --restart no`; the vm size/memory comes
+from `fly.builder.toml`'s `[[vm]]` block, not a CLI flag — a scheduled machine
+pins its image *and* size, so destroy+recreate is how it picks up both), deploys
+`kb-demo` (`-c fly.toml`), then seeds every base immediately instead of waiting
+for the schedule (publishes each and auto-rolls the serving node onto the full
+set). Override the app names with `SERVE_APP=... BUILDER_APP=...` if you're
+running this against your own copy. Watch the seed with:
+
+```bash
+fly logs -a kb-demo-builder     # a base that fails to clone is skipped, others proceed
+```
+
+**5. Verify**, then merge to republish the page:
+
+```bash
+curl -s https://<serve-app>.fly.dev/healthz | jq            # ok:true
+curl -s https://<serve-app>.fly.dev/v1/bases | jq '.bases[].name'   # all bases present
+```
+
+Open the chat page, confirm the header **base picker** lists every base, switch
+base, and click a Source link — it should point at *that base's* repo (proof the
+per-base `/v1/bases` repos wired through). During the first seed the page works
+with just the default base until the rest finish — expected.
 
 ## Configuration knobs
 
@@ -142,15 +233,18 @@ Set as env/secrets on the relevant app.
 | Var | Where | Default | Meaning |
 |---|---|---|---|
 | `BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3` | both | from `fly storage create` | Tigris / S3 transport |
-| `KB_BASE` | both | `demo` | base to serve/build |
-| `SNAPSHOT_PREFIX` | both | `snapshots/<KB_BASE>` | object-store key prefix |
-| `SNAPSHOT_KEEP` | builder | `6` | immutable versions retained |
-| `SNAPSHOT_NO_REPOS` | builder | unset (full) | set to `1`-ish truthy to ship tiny serve-only snapshots (drops working trees) |
-| `KB_GIT_REPOS` | builder | kb repo | repos to (re)index |
+| `KB_BASE` | both | `demo` | default base name (fallback when `bases.json` has no `default`) |
+| `BASES_MANIFEST` | both | `scripts/fly/bases.json` | the base set to build/serve |
+| `SNAPSHOT_ROOT` | both | `snapshots` | object-store root; each base lives at `<root>/<base>` |
+| `SNAPSHOT_KEEP` | builder | `6` | immutable versions retained **per base** |
+| `SNAPSHOT_NO_REPOS` | builder | `true` | ship tiny serve-only snapshots (drops working trees); set `false` for full trees |
 | `SERVE_APP` | builder | — | serving app to roll |
 | `FLY_API_TOKEN` | builder | — | deploy token scoped to `SERVE_APP` |
 | `SERVE_HEALTH_URL` | builder | `https://<SERVE_APP>.fly.dev/healthz` | health gate for the roll |
-| `COLD_BUILD_TIMEOUT` | builder | `1800` | seconds to wait for the first cold build |
+| `COLD_BUILD_TIMEOUT` | builder | `1800` | seconds to wait for each base's cold build |
+
+The repo each base indexes is read from `bases.json`, not an env var — cold
+builds clone per-base.
 
 Using a non-Tigris S3 endpoint (R2/MinIO/AWS): set the same `BUCKET_NAME` +
 `AWS_*` vars — the transport in [`scripts/fly/lib.sh`](scripts/fly/lib.sh) is a
@@ -165,8 +259,8 @@ fly logs -a kb-demo-builder         # last builder run
 fly machine list -a kb-demo-builder # the scheduled machine (stopped between runs)
 curl -sS https://kb-demo.fly.dev/healthz   # ok:true when serving a snapshot
 
-# Force a refresh now (outside the hourly schedule):
-fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-memory 1024 \
+# Force a refresh now (outside the daily schedule):
+fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-memory 4096 \
     bash /app/scripts/fly/refresh.sh
 ```
 
@@ -175,10 +269,13 @@ fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-memory 1024 \
 | Path | Role |
 |---|---|
 | [`fly.toml`](fly.toml) | serving app (256MB, stateless, snapshot-only) |
-| [`fly.builder.toml`](fly.builder.toml) | builder app (1GB, scheduled one-shot) |
+| [`fly.builder.toml`](fly.builder.toml) | builder app (4GB, scheduled one-shot) |
 | [`Dockerfile.fly`](Dockerfile.fly) | shared image: server + AWS CLI + `scripts/fly` |
-| [`scripts/fly/serve-entrypoint.sh`](scripts/fly/serve-entrypoint.sh) | serving boot: wipe → download → warm-start frozen |
-| [`scripts/fly/refresh.sh`](scripts/fly/refresh.sh) | builder: rescan → publish → roll → prune |
+| [`scripts/fly/bases.json`](scripts/fly/bases.json) | committed base manifest (default + one per eval-suite repo) |
+| [`scripts/fly/gen-bases.mjs`](scripts/fly/gen-bases.mjs) | regenerate `bases.json` from `eval/suites/*.yaml` |
+| [`scripts/fly/serve-entrypoint.sh`](scripts/fly/serve-entrypoint.sh) | serving boot: wipe → import every base → warm-start frozen on the default |
+| [`scripts/fly/refresh.sh`](scripts/fly/refresh.sh) | builder: for each base rescan → publish → prune, then roll once |
+| [`scripts/fly/deploy.sh`](scripts/fly/deploy.sh) | one command: deploy builder + recreate scheduler + deploy serving + seed all bases |
 | [`scripts/fly/roll-serving.mjs`](scripts/fly/roll-serving.mjs) | health-gated rolling restart via Fly Machines API |
 | [`scripts/fly/lib.sh`](scripts/fly/lib.sh) | shared config + S3 transport helpers |
 

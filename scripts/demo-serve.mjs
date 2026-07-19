@@ -8,6 +8,12 @@
  *   pnpm run server:start -- --allow-origin http://localhost:8000
  *
  * Port: DEMO_PORT (default 8000). Open http://localhost:<port>/
+ *
+ * To point at a deployed server (e.g. the Fly demo) instead of a local
+ * kb-server, set KB_DEMO_SERVER_URL — same repo variable the Pages workflow
+ * bakes in for hosted deploys (see .github/workflows/pages.yml):
+ *
+ *   KB_DEMO_SERVER_URL=https://kb-demo.fly.dev pnpm run demo
  */
 import { createServer } from 'node:http'
 import { readFile, stat } from 'node:fs/promises'
@@ -18,6 +24,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '../demo')
 const port = Number(process.env.DEMO_PORT || 8000)
 const origin = `http://localhost:${port}`
+const overrideServerUrl = (process.env.KB_DEMO_SERVER_URL || '').trim()
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -42,6 +49,11 @@ const server = createServer(async (req, res) => {
   const file = safeJoin(root, req.url || '/')
   if (!file) {
     res.writeHead(403).end('Forbidden')
+    return
+  }
+  if (overrideServerUrl && file === path.join(root, 'config.js')) {
+    res.writeHead(200, { 'content-type': TYPES['.js'] })
+    res.end(`window.__KB_SERVER__ = '${overrideServerUrl}'\nwindow.__KB_SERVER_FORCE__ = true\n`)
     return
   }
   try {

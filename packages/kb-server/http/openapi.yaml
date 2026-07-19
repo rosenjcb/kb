@@ -461,6 +461,21 @@ components:
               name: { type: string }
               path: { type: string }
               default: { type: boolean }
+              repos:
+                type: array
+                description: >
+                  Source repos indexed into this base, for building per-base source
+                  links. Sourced from the snapshot manifest provenance (present even
+                  for serve-only snapshots) or the live git clones.
+                items:
+                  type: object
+                  required: [slug, branch]
+                  properties:
+                    slug: { type: string, description: Origin repo slug (matches a source's gitRepo). }
+                    url:
+                      type: [string, "null"]
+                      description: HTTPS browse root (no trailing slash), or null when not derivable.
+                    branch: { type: string, description: Clone HEAD branch, for blob links. }
 
     JsonRpcRequest:
       type: object

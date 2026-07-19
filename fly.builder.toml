@@ -1,13 +1,14 @@
-# Fly.io BUILDER for the kb chat demo — the hourly, one-shot 1GB machine.
+# Fly.io BUILDER for the kb chat demo — the daily, one-shot 4GB machine.
 #
-# This app has NO http service. Its single job: once an hour, spawn a 1GB
-# machine that rescans the base + git(s), publishes a fresh sha256-verified
-# snapshot to Tigris, and rolls the serving app (kb-demo) onto it — then stops.
-# Because it runs as a Fly *scheduled* machine that exits when done, the 1GB
-# node only costs money for the few minutes it actually builds each hour.
+# This app has NO http service. Its single job: once a day, spawn a 4GB
+# machine that rescans EVERY base in scripts/fly/bases.json + its git(s),
+# publishes a fresh sha256-verified snapshot per base to Tigris, and rolls the
+# serving app (kb-demo) onto them — then stops. Because it runs as a Fly
+# *scheduled* machine that exits when done, the big node only costs money for the
+# few minutes it actually builds each day.
 #
 # It shares the serving image (Dockerfile.fly) but overrides the command to the
-# builder script and runs at 1GB.
+# builder script and runs at 4GB.
 #
 # Setup (once):
 #   fly apps create kb-demo-builder
@@ -18,9 +19,9 @@
 #   fly secrets set -a kb-demo-builder GEMINI_API_KEY=... \
 #       SERVE_APP=kb-demo \
 #       FLY_API_TOKEN="$(fly tokens create deploy -a kb-demo --expiry 8760h | tail -n1)"
-#   # Create the hourly, run-to-completion machine (this is the scheduler):
+#   # Create the daily, run-to-completion machine (this is the scheduler):
 #   fly machine run . -c fly.builder.toml -a kb-demo-builder \
-#       --schedule hourly --restart no --vm-memory 1024 \
+#       --schedule daily --restart no --vm-memory 4096 \
 #       bash /app/scripts/fly/refresh.sh
 #
 # Full model + operations: FLY_ORCHESTRATION.md
@@ -34,16 +35,22 @@ primary_region = "ams"
 [env]
   KB_HOME = "/data"
   KB_BASE = "demo"
-  # The repo(s) to (re)index. Cold-path first run clones these; warm path pulls
-  # them incrementally. Matches the serving demo's source of truth.
-  KB_GIT_REPOS = "https://github.com/rosenjcb/kb#main"
+  # Which bases to build is driven by scripts/fly/bases.json (the golden default
+  # `demo` = this repo, plus one base per eval suite repo). Each base's cold build
+  # clones its own repo; there is no single KB_GIT_REPOS anymore.
+  # Ship tiny serve-only snapshots (drop working trees) so the 256MB serving node
+  # can hold ~10 bases; per-base source links still resolve from snapshot manifest
+  # provenance. Set to "false" to carry full working trees.
+  SNAPSHOT_NO_REPOS = "true"
   LOG_LEVEL = "info"
   # SERVE_APP, FLY_API_TOKEN, GEMINI_API_KEY, and the Tigris AWS_*/BUCKET_NAME
   # values are set as secrets (see setup above) — never hard-code them here.
 
 # The builder is a batch job, not a service: no [http_service], no checks. The
-# scheduled machine (created with `fly machine run --schedule hourly`) runs
-# scripts/fly/refresh.sh to completion and stops until the next hour.
+# scheduled machine (created with `fly machine run --schedule daily`) runs
+# scripts/fly/refresh.sh to completion and stops until the next day. 4GB gives
+# cloning + indexing ~10 repos (incl. large ones like Homebrew/brew, kestra)
+# headroom; the machine still stops between runs, so it only bills while building.
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "1024mb"
+  size = "shared-cpu-2x"
+  memory = "4096mb"
