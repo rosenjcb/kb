@@ -4,9 +4,9 @@
 //
 // Each eval suite under eval/suites/*.yaml that names a `repo_url` becomes a
 // selectable base (the suite `id` is the base slug). The list is deduped by repo
-// URL and always starts with the golden default base `demo` = this repo
+// URL and always starts with the golden default base `kb` = this repo
 // (rosenjcb/kb), so the suites that point back at kb (`kb`, `moel-kb`) collapse
-// into `demo` instead of re-indexing the same tree.
+// into `kb` instead of re-indexing the same tree.
 //
 // Suites without a `repo_url` (e.g. `generic`, which is a repo-neutral question
 // pack) and anything in EXCLUDE are skipped.
@@ -30,7 +30,7 @@ const OUT_FILE = path.join(HERE, 'bases.json')
 // The golden default base: this repo, served when no `X-KB-Base` is given. Its
 // repo URL also de-dupes the `kb` / `moel-kb` suites (same tree) out of the set.
 const DEFAULT_BASE = {
-  name: 'demo',
+  name: 'kb',
   repo: 'https://github.com/rosenjcb/kb.git',
   branch: 'main',
   default: true,

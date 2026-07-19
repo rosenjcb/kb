@@ -28,7 +28,7 @@ primary_region = "ams"
 [env]
   PORT = "38117"
   KB_HOME = "/data"
-  KB_BASE = "demo"
+  KB_BASE = "kb"
   # Frozen serve: no git, no reindex. Refresh comes only from adopting a new
   # snapshot (published daily by the builder), never from in-process rescans.
   KB_SERVER_BOOTSTRAP_POLICY = "snapshot-only"

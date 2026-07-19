@@ -1,8 +1,8 @@
 {
-  "default": "demo",
+  "default": "kb",
   "bases": [
     {
-      "name": "demo",
+      "name": "kb",
       "repo": "https://github.com/rosenjcb/kb.git",
       "branch": "main",
       "default": true

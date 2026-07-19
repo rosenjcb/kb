@@ -18,7 +18,7 @@ cheap always-warm **serving node** and a daily one-shot **builder**, so the
 expensive index build never happens on the machine answering chat, and the
 served index can never be torn or corrupted.
 
-It serves **many bases** from one process: the golden default `demo` (this repo)
+It serves **many bases** from one process: the golden default `kb` (this repo)
 plus one base per eval-suite repo. The full set is the committed manifest
 [`scripts/fly/bases.json`](scripts/fly/bases.json), generated from
 `eval/suites/*.yaml` by [`scripts/fly/gen-bases.mjs`](scripts/fly/gen-bases.mjs)
@@ -57,7 +57,7 @@ flowchart LR
     B1 --> B2 --> B3 --> B4 --> B5
   end
   subgraph T ["Tigris (S3)"]
-    P["snapshots/demo/&lt;version&gt;/ (immutable)<br/>snapshots/demo/latest.json (pointer)"]
+    P["snapshots/kb/&lt;version&gt;/ (immutable)<br/>snapshots/kb/latest.json (pointer)"]
   end
   subgraph S ["Serving node (256MB, always-warm)"]
     S1["restart → wipe KB_HOME"]
@@ -77,8 +77,8 @@ flowchart LR
    fresh snapshot via SQLite `VACUUM INTO` (one consistent `.kb-index.sqlite`,
    no WAL sidecars, sha256 recorded in `kb-snapshot.json`).
 2. **Publish (builder).** It uploads the fresh snapshot to an **immutable**
-   `snapshots/demo/<version>/` prefix, then — as the single commit point —
-   atomically overwrites the tiny `snapshots/demo/latest.json` pointer.
+   `snapshots/kb/<version>/` prefix, then — as the single commit point —
+   atomically overwrites the tiny `snapshots/kb/latest.json` pointer.
 3. **Swap (builder → serving).** It calls the Fly Machines API to restart the
    serving machine(s) **one at a time**, waiting for `/healthz` `ok:true` before
    touching the next. Restart re-runs the serving entrypoint, which wipes
@@ -99,7 +99,7 @@ This design has neither:
   folds the WAL into a single file, so an export is safe even against a live
   writer and yields exactly one `.kb-index.sqlite`.
 - **Immutable versions + atomic pointer.** Readers only ever see a
-  fully-uploaded `snapshots/demo/<version>/` prefix; the pointer flip is a single
+  fully-uploaded `snapshots/kb/<version>/` prefix; the pointer flip is a single
   small-object PUT. A torn or half-uploaded snapshot is never pointed at.
 - **Verified on adopt.** `kb-server import` / `start --from` verify the
   manifest's sha256 before serving and refuse an incompatible or corrupt
@@ -171,7 +171,7 @@ node scripts/fly/gen-bases.mjs --check # verify it is up to date (CI-friendly)
 
 ## Deploying an update in your org (worked example)
 
-This is the exact flow used to grow the public demo from a **single `demo` base**
+This is the exact flow used to grow the public demo from a **single `kb` base**
 into a **multi-base** deployment that indexes every eval-suite repo — reuse it
 whenever you roll a change (new bases, a bigger builder, a schedule change) into
 your own copy. The apps/bucket/secrets already exist; this is an *upgrade*, not a
@@ -233,7 +233,7 @@ Set as env/secrets on the relevant app.
 | Var | Where | Default | Meaning |
 |---|---|---|---|
 | `BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3` | both | from `fly storage create` | Tigris / S3 transport |
-| `KB_BASE` | both | `demo` | default base name (fallback when `bases.json` has no `default`) |
+| `KB_BASE` | both | `kb` | default base name (fallback when `bases.json` has no `default`) |
 | `BASES_MANIFEST` | both | `scripts/fly/bases.json` | the base set to build/serve |
 | `SNAPSHOT_ROOT` | both | `snapshots` | object-store root; each base lives at `<root>/<base>` |
 | `SNAPSHOT_KEEP` | builder | `6` | immutable versions retained **per base** |

@@ -23,7 +23,7 @@ KB_SERVER_JS="${KB_SERVER_JS:-/app/packages/kb-server/dist/bin/kb-server.js}"
 kb_server() { node "$KB_SERVER_JS" "$@"; }
 
 # ---- Configuration (env, with sensible demo defaults) ----------------------
-KB_BASE="${KB_BASE:-demo}"
+KB_BASE="${KB_BASE:-kb}"
 # Shared object-store root. Each base gets its own prefix underneath:
 #   <SNAPSHOT_ROOT>/<base>/<version>/…  + <SNAPSHOT_ROOT>/<base>/latest.json
 # (SNAPSHOT_PREFIX stays as the default base's prefix for back-compat/overrides.)

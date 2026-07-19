@@ -34,7 +34,7 @@ primary_region = "ams"
 
 [env]
   KB_HOME = "/data"
-  KB_BASE = "demo"
+  KB_BASE = "kb"
   # Which bases to build is driven by scripts/fly/bases.json (the golden default
   # `demo` = this repo, plus one base per eval suite repo). Each base's cold build
   # clones its own repo; there is no single KB_GIT_REPOS anymore.
