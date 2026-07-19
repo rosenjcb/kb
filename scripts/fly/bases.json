@@ -1,0 +1,47 @@
+{
+  "default": "demo",
+  "bases": [
+    {
+      "name": "demo",
+      "repo": "https://github.com/rosenjcb/kb.git",
+      "branch": "main",
+      "default": true
+    },
+    {
+      "name": "brew",
+      "repo": "https://github.com/Homebrew/brew.git"
+    },
+    {
+      "name": "datasette",
+      "repo": "https://github.com/simonw/datasette.git"
+    },
+    {
+      "name": "fish-shell",
+      "repo": "https://github.com/fish-shell/fish-shell.git"
+    },
+    {
+      "name": "fzf",
+      "repo": "https://github.com/junegunn/fzf.git"
+    },
+    {
+      "name": "kestra",
+      "repo": "https://github.com/kestra-io/kestra.git"
+    },
+    {
+      "name": "lazygit",
+      "repo": "https://github.com/jesseduffield/lazygit.git"
+    },
+    {
+      "name": "mitmproxy",
+      "repo": "https://github.com/mitmproxy/mitmproxy.git"
+    },
+    {
+      "name": "raylib",
+      "repo": "https://github.com/raysan5/raylib.git"
+    },
+    {
+      "name": "shellcheck",
+      "repo": "https://github.com/koalaman/shellcheck.git"
+    }
+  ]
+}

@@ -33,6 +33,19 @@ jobs:
         uses: actions/checkout@v4
       - name: Configure Pages
         uses: actions/configure-pages@v5
+      - name: Bake the server URL into demo/config.js
+        # The chat page talks to ONE baked kb-server. Override the committed
+        # default (https://kb-demo.fly.dev) by setting the `KB_DEMO_SERVER_URL`
+        # repo variable; otherwise the committed default ships unchanged.
+        env:
+          KB_DEMO_SERVER_URL: ${{ vars.KB_DEMO_SERVER_URL }}
+        run: |
+          if [ -n "${KB_DEMO_SERVER_URL}" ]; then
+            printf "window.__KB_SERVER__ = '%s'\n" "${KB_DEMO_SERVER_URL}" > demo/config.js
+            echo "Baked KB_DEMO_SERVER_URL=${KB_DEMO_SERVER_URL} into demo/config.js"
+          else
+            echo "No KB_DEMO_SERVER_URL variable set — shipping the committed demo/config.js default."
+          fi
       - name: Upload demo/ as the Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

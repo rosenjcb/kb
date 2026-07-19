@@ -24,10 +24,45 @@ kb_server() { node "$KB_SERVER_JS" "$@"; }
 
 # ---- Configuration (env, with sensible demo defaults) ----------------------
 KB_BASE="${KB_BASE:-demo}"
-# Object-store key layout: <SNAPSHOT_PREFIX>/<version>/…  + <SNAPSHOT_PREFIX>/latest.json
-SNAPSHOT_PREFIX="${SNAPSHOT_PREFIX:-snapshots/${KB_BASE}}"
-# Keep this many immutable snapshot versions in the bucket; older ones are pruned.
+# Shared object-store root. Each base gets its own prefix underneath:
+#   <SNAPSHOT_ROOT>/<base>/<version>/…  + <SNAPSHOT_ROOT>/<base>/latest.json
+# (SNAPSHOT_PREFIX stays as the default base's prefix for back-compat/overrides.)
+SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-snapshots}"
+SNAPSHOT_PREFIX="${SNAPSHOT_PREFIX:-${SNAPSHOT_ROOT}/${KB_BASE}}"
+# Keep this many immutable snapshot versions per base; older ones are pruned.
 SNAPSHOT_KEEP="${SNAPSHOT_KEEP:-6}"
+
+# Committed base manifest (scripts/fly/bases.json) — the single source of truth
+# for which bases the orchestration builds and serves. Generated from the eval
+# suites by scripts/fly/gen-bases.mjs; shipped in the image next to this file.
+BASES_MANIFEST="${BASES_MANIFEST:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/bases.json}"
+
+# Object-store prefix for one base: <SNAPSHOT_ROOT>/<base>.
+snapshot_prefix_for() { printf '%s/%s' "$SNAPSHOT_ROOT" "$1"; }
+
+# Emit one TSV row per base from the manifest: `name<TAB>repo<TAB>branch<TAB>default`.
+# `branch` is empty when the suite pins no branch (remote HEAD is used); `default`
+# is `true` for exactly one base (the golden default served without X-KB-Base).
+each_base() {
+  node -e '
+    const fs = require("fs");
+    const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    for (const b of m.bases || []) {
+      process.stdout.write([b.name, b.repo || "", b.branch || "", b.default ? "true" : ""].join("\t") + "\n");
+    }
+  ' "$BASES_MANIFEST"
+}
+
+# The default base name recorded in the manifest (fallback: KB_BASE).
+default_base_name() {
+  node -e '
+    const fs = require("fs");
+    try {
+      const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      process.stdout.write(String(m.default || (m.bases||[]).find(b=>b.default)?.name || ""));
+    } catch { process.stdout.write(""); }
+  ' "$BASES_MANIFEST" || true
+}
 
 # Bucket + endpoint come from `fly storage create` (Tigris) or your own S3.
 BUCKET_NAME="${BUCKET_NAME:-${AWS_BUCKET_NAME:-}}"
@@ -69,15 +104,18 @@ s3_push_prefix() {
   _s3 cp --recursive "$src/" "s3://${BUCKET_NAME}/${prefix}/"
 }
 
-# Read the current pointer JSON to stdout (empty string if none exists yet).
+# Read a base's pointer JSON to stdout (empty string if none exists yet).
+#   s3_read_pointer [<prefix>]   (defaults to the default base's SNAPSHOT_PREFIX)
 s3_read_pointer() {
-  _s3 cp "s3://${BUCKET_NAME}/${SNAPSHOT_PREFIX}/latest.json" - 2>/dev/null || true
+  local prefix="${1:-$SNAPSHOT_PREFIX}"
+  _s3 cp "s3://${BUCKET_NAME}/${prefix}/latest.json" - 2>/dev/null || true
 }
 
-# Atomically publish the pointer (single small-object PUT is the commit point).
-#   s3_write_pointer <local-json-file>
+# Atomically publish a base's pointer (single small-object PUT is the commit point).
+#   s3_write_pointer <local-json-file> [<prefix>]
 s3_write_pointer() {
-  _s3 cp "$1" "s3://${BUCKET_NAME}/${SNAPSHOT_PREFIX}/latest.json" \
+  local prefix="${2:-$SNAPSHOT_PREFIX}"
+  _s3 cp "$1" "s3://${BUCKET_NAME}/${prefix}/latest.json" \
     --content-type application/json
 }
 

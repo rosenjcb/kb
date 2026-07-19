@@ -136,7 +136,7 @@ synthesizes. A fact-id drill-down tool may return later.
 | `POST /v1/query` | optional Bearer | Synthesized answer + sources; **503 only during first-boot** bootstrap (not during hourly reindex) |
 | `POST /v1/chat` | optional Bearer | Multi-turn SSE chat (same 503 rule as query) |
 | `POST /mcp` | optional Bearer | MCP Streamable HTTP when `--with-mcp` |
-| `GET /v1/bases` | optional Bearer | List the bases this server can serve (default + built bases under `~/.kb/sessions`) |
+| `GET /v1/bases` | optional Bearer | List the bases this server can serve (default + built bases under `~/.kb/sessions`), each with its source `repos` (`slug`/`url`/`branch`) for per-base source links |
 | `POST /slack/events` | Slack HMAC | Slack Events API webhook (when Slack mode is enabled) |
 
 Auth: `Authorization: Bearer <KB_SERVER_API_KEY>` or `X-Api-Key` when a key is

@@ -45,16 +45,23 @@ sequenceDiagram
 - **First-boot:** pill shows progress; a sent message waits (Slack-shaped:
   notice → poll until ready → one retry) then answers. **Hourly scheduler
   reindex** keeps serving the existing index (chat stays up).
-- Sources from `answer.sources` (same payload Slack uses). Page cannot see the
-  volume registry, so blob links dogfood `https://github.com/rosenjcb/kb` @ `main`.
+- **Base picker** in the header (order: status · base · theme · settings) lists
+  every base the server advertises on `GET /v1/bases` and sends the choice as
+  `X-KB-Base`. The connected server is **baked into the page** (`config.js` →
+  `window.__KB_SERVER__`), not typed in settings.
+- Sources from `answer.sources` (same payload Slack uses). Blob links are
+  **per base**: each source's `gitRepo` slug → the browse `url`/`branch` the
+  server returns for the selected base in `/v1/bases`.
 - Tiny markdown renderer (headers, tables, fences, lists, …).
 - SSE `meta` (stages) and `reasoning` stay in separate slots.
-- Settings (URL, optional API key, optional base) in `localStorage` only.
+- Settings holds only the optional API key (in `localStorage`); the selected base
+  is remembered too. The server URL is compiled in, not editable.
 - Header brand click starts a **new chat** (clears thread + server `sessionId`;
-  settings/theme stay). Modified-click still opens a fresh page via `href="./"`.
-- Empty-state suggestion chips are copied from the dogfood pack
-  [`eval/suites/kb.yaml`](../eval/suites/kb.yaml) (static for now; later each
-  eval suite may map to a selectable base).
+  settings/theme/base stay). Modified-click still opens a fresh page via `href="./"`.
+- Empty-state suggestion chips are base-aware: the kb dogfood pack
+  ([`eval/suites/kb.yaml`](../eval/suites/kb.yaml)) for the `demo` base, a
+  repo-neutral pack ([`eval/suites/generic.yaml`](../eval/suites/generic.yaml))
+  for the rest.
 
 ## Run it locally
 
@@ -68,9 +75,12 @@ pnpm run demo
 
 Port override: `DEMO_PORT=9000 pnpm run demo` (match `--allow-origin`).
 
-Default Settings URL is **host-aware**:
-- `pnpm run demo` on localhost → `http://localhost:38117`
-- GitHub Pages → `https://kb-demo.fly.dev` (API key blank; open demo)
+The server URL is baked in `config.js` (`window.__KB_SERVER__`), not a setting:
+- `pnpm run demo` on localhost → `http://localhost:38117` (when `config.js` still
+  holds the Fly default, local dev auto-targets localhost)
+- GitHub Pages → the baked `https://kb-demo.fly.dev` (API key blank; open demo).
+  Override per-deploy with the `KB_DEMO_SERVER_URL` repo variable (the Pages
+  workflow rewrites `config.js` from it).
 
 ## CORS + auth
 
