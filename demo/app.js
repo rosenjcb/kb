@@ -6,10 +6,10 @@ addEventListener('error', e => console.error('[kb-demo] error:', e.error || e.me
 addEventListener('unhandledrejection', e => console.error('[kb-demo] unhandled:', e.reason))
 
 // ---- Config --------------------------------------------------------------
-// The server URL is BAKED into the page (demo/config.js → window.__KB_SERVER__),
-// not typed into settings. Only the optional API key is user-configurable and
-// persisted. The knowledge base is chosen from the header picker, driven by the
-// server's own /v1/bases list.
+// The server URL and the optional API key are both BAKED into the page
+// (demo/config.js → window.__KB_SERVER__ / window.__KB_API_KEY__) — there is no
+// settings dialog. The knowledge base is chosen from the header picker, driven by
+// the server's own /v1/bases list.
 function trimUrl(u) {
   return (u || '').trim().replace(/\/+$/, '')
 }
@@ -27,22 +27,10 @@ const SERVER_URL =
     ? 'http://localhost:38117'
     : BAKED_SERVER_URL || FLY_DEFAULT_URL
 
-const LS_API_KEY = 'kb-chat-apikey.v1'
 const LS_BASE = 'kb-chat-base.v1'
-function loadApiKey() {
-  try {
-    return (localStorage.getItem(LS_API_KEY) || '').trim()
-  } catch {
-    return ''
-  }
-}
-function saveApiKey(key) {
-  try {
-    if (key) localStorage.setItem(LS_API_KEY, key)
-    else localStorage.removeItem(LS_API_KEY)
-  } catch {}
-}
-let apiKey = loadApiKey()
+// The API key is BAKED into the page (demo/config.js → window.__KB_API_KEY__),
+// not typed into a settings dialog. Empty ⇒ unauthenticated (public demo default).
+const apiKey = ((typeof window !== 'undefined' && window.__KB_API_KEY__) || '').trim()
 
 // Currently selected knowledge base (server slug) + the /v1/bases metadata that
 // backs the header picker and per-base source links.
@@ -73,7 +61,7 @@ const statusEl = $('status')
 const basePicker = $('basePicker')
 const baseSelect = $('baseSelect')
 
-/** Clear the thread and drop the server session id (settings / theme stay). */
+/** Clear the thread and drop the server session id (theme / base stay). */
 function startNewChat() {
   chatEpoch++
   if (chatAbort) {
@@ -418,7 +406,7 @@ async function waitForBootstrap(turn, deadlineMs) {
     if (h.state === 'unauthorized') {
       turn.setError(
         'Unauthorized (401)',
-        h.detail || 'API key missing or wrong. Fix it in ⚙ Settings.'
+        h.detail || 'API key missing or wrong. Bake the right key into demo/config.js.'
       )
       return false
     }
@@ -486,7 +474,7 @@ async function sendChat(message) {
   if (res.status === 401) {
     turn.setError(
       'Unauthorized (401)',
-      'API key missing or wrong. Set KB_SERVER_API_KEY in ⚙ Settings.'
+      'API key missing or wrong. Bake the key matching KB_SERVER_API_KEY into demo/config.js.'
     )
     setStatus('bad', 'Unauthorized')
     return
@@ -499,7 +487,7 @@ async function sendChat(message) {
     if (body.status === 'unknown_base' || /unknown base/i.test(body.error || '')) {
       turn.setError(
         'Unknown base',
-        body.error || 'That base is not on this server. Check ⚙ Settings → Base.'
+        body.error || 'That base is not on this server. Pick another from the base picker.'
       )
       setStatus('bad', 'Unknown base')
       return
@@ -747,33 +735,6 @@ function applyHealthStatus(h) {
   else setStatus('bad', 'Unreachable')
 }
 
-// Same state → message mapping as applyHealthStatus, but returns a value so the
-// "Test connection" button can render inline feedback without touching the pill.
-function describeHealth(h) {
-  switch (h.state) {
-    case 'ready':
-      return { kind: 'ok', text: h.reindexing ? 'Connected · syncing' : 'Connected' }
-    case 'indexing':
-      return {
-        kind: 'wait',
-        text: h.progress ? truncateStatus(`Indexing… ${h.progress}`, 40) : 'Indexing…',
-      }
-    case 'unauthorized':
-      return { kind: 'bad', text: 'Unauthorized — check API key' }
-    case 'unknown_base':
-      return { kind: 'bad', text: 'Unknown base' }
-    case 'failed':
-      return { kind: 'bad', text: 'Index failed' }
-    case 'offline':
-      return { kind: 'wait', text: 'Unreachable (offline / CORS / timeout)' }
-    default:
-      return {
-        kind: 'bad',
-        text: h.status ? `Server error (HTTP ${h.status})` : 'Server error',
-      }
-  }
-}
-
 function truncateStatus(s, n) {
   const t = String(s).replace(/\s+/g, ' ').trim()
   return t.length <= n ? t : `${t.slice(0, n - 1)}…`
@@ -831,17 +792,11 @@ form.addEventListener('submit', e => {
   addUserMessage(text)
   sendChat(text)
 })
-// Starter chips. kb-focused for the demo/kb base (from eval/suites/kb.yaml,
-// skipping the out-of-scope trap question); a repo-neutral pack for every other
-// base (mirrors eval/suites/generic.yaml).
-const KB_SUGGESTIONS = [
-  'What problem does kb solve, and what is the normal workflow for setting up indexing and querying a knowledge base?',
-  'How are markdown documents turned into import_doc facts during indexing?',
-  'How does code indexing work at a high level, including the role of the tree-sitter indexer?',
-  'How does kb query retrieve evidence from facts, FTS/vector scoring, and graph relationships?',
-  "Does kb send my repository's code or documents to a remote server to build the knowledge base, or does indexing happen locally?",
-  "Step by step, how does one interactive chat turn work, from the user's message through retrieval to the synthesized reply?",
-]
+// Starter chips are per-base: each base's pack is hard-coded here from that
+// repo's eval suite question pack (eval/suites/<base>.yaml), lightly trimmed for
+// chip length and skipping out-of-scope trap questions. Keyed by the server base
+// slug from /v1/bases (the golden `demo`/`kb` base is this repo). Bases without a
+// dedicated pack fall back to GENERIC_SUGGESTIONS (eval/suites/generic.yaml).
 const GENERIC_SUGGESTIONS = [
   'What is this project for, and what are its main capabilities?',
   "How does this project's architecture work, including its major modules?",
@@ -850,8 +805,92 @@ const GENERIC_SUGGESTIONS = [
   'What are the main gotchas, constraints, and known limitations?',
   'What does the roadmap or changelog say about recent history and future plans?',
 ]
+const BASE_SUGGESTIONS = {
+  // demo === this repo (kb dogfood pack, eval/suites/kb.yaml).
+  kb: [
+    'What problem does kb solve, and what is the normal workflow for setting up indexing and querying a knowledge base?',
+    'How are markdown documents turned into import_doc facts during indexing?',
+    'How does code indexing work at a high level, including the role of the tree-sitter indexer?',
+    'How does kb query retrieve evidence from facts, FTS/vector scoring, and graph relationships?',
+    "Does kb send my repository's code or documents to a remote server to build the knowledge base, or does indexing happen locally?",
+    "Step by step, how does one interactive chat turn work, from the user's message through retrieval to the synthesized reply?",
+  ],
+  brew: [
+    'What are Homebrew Formulae, and what rules map a package name to its Ruby class?',
+    'Explain the core differences between a Formula and a Cask within Homebrew.',
+    'How does Homebrew sandbox formula execution and enforce directory write restrictions during installation?',
+    "Describe Homebrew's cache system architecture and how it tracks downloaded assets and dependencies.",
+    'How are formula dependency trees evaluated and resolved during installations?',
+    "Step by step, what changed in Homebrew 4.0's API-first install path versus cloning homebrew-core?",
+  ],
+  datasette: [
+    'What is Datasette for, and what product surfaces does it expose when you point it at a SQLite database?',
+    'What does `datasette serve` start, and what URL does an operator open to explore a database?',
+    'Step by step, what happens in the web UI when a user opens a table and applies a facet or filter?',
+    'How do metadata.json and canned/stored queries show up in the HTML UI and API?',
+    "Explain Datasette's plugin system: where are hooks declared, and how do plugins register?",
+    'What does `datasette publish` do (e.g. Heroku / Cloud Run), and which area implements publish providers?',
+  ],
+  'fish-shell': [
+    'What were the primary engineering drivers that prompted the rewrite of fish-shell from C++ to Rust?',
+    'What are the build system requirements for building fish-shell from source?',
+    'How does fish-shell implement its signature autocomplete suggestions and command history lookups?',
+    'How does fish-shell manage background jobs and monitor pipeline process groups?',
+    "Step by step, how does fish_config's web UI change a theme in a live shell session?",
+    'How can developers add and register a new built-in shell command in the Rust-based codebase?',
+  ],
+  fzf: [
+    'What is fzf for, and what are its main capabilities and use cases?',
+    "How does fzf's architecture relate the fuzzy matching core to the TUI and shell integration?",
+    'How do I install and build fzf, including platform support and build systems?',
+    'What fuzzy matching algorithm and scoring scheme does fzf use?',
+    'How does fzf integrate with shells (bash, zsh, fish) and editors like Vim/Neovim?',
+    'What are the main gotchas, constraints, and known limitations of fzf?',
+  ],
+  kestra: [
+    'What is Kestra, and how do flows relate to namespaces, tasks, and triggers?',
+    'Which top-level modules (webserver, executor, worker, scheduler, cli, ui) make up Kestra, and what is each responsible for?',
+    'How does the UI workflow editor keep the on-screen graph synchronized with the YAML flow definition?',
+    'Step by step, what happens when a user clicks Execute on a flow in the UI?',
+    'Explain how plugins extend Kestra tasks and become available in the UI palette / YAML autocomplete.',
+    'How does Kestra support starting a local all-in-one server from the CLI, and what does that mode wire together?',
+  ],
+  lazygit: [
+    'What is the structural layout of the lazygit interface, and what are its primary interactive panels?',
+    "Where are lazygit's global configuration YAML files located across different operating systems?",
+    'Infer the end-to-end UI process for staging a file and committing: focus, keybindings, controllers, and the confirmation modal.',
+    "What rendering library forms the foundation of lazygit's UI?",
+    'How does lazygit run background Git commands concurrently without locking the UI thread?',
+    'How are custom shell commands and keybindings declared inside the lazygit YAML configuration?',
+  ],
+  mitmproxy: [
+    'Detail the primary operating modes of mitmproxy and explain how it performs HTTPS decryption.',
+    'What is the FlowReader component, and how does it deserialize network traffic programmatically?',
+    'Describe the architecture of the mitmproxy addon framework and detail the execution hook flow.',
+    'Step by step, what happens when a client issues HTTPS CONNECT (SNI, cert generation, handshakes, hooks)?',
+    'How does mitmproxy manage its asynchronous event loop and handle multiple proxies programmatically?',
+    'How are custom HTTP mock responses generated and mapped dynamically using mitmproxy addons?',
+  ],
+  raylib: [
+    'What is raylib for, and what are its main capabilities?',
+    "How does raylib's architecture work, including modules and platform support?",
+    'How do I install and build raylib, including dependencies and build systems?',
+    'Step by step, what happens inside InitWindow() to open a window and set up the graphics context?',
+    "Trace raylib's standard render loop — what do BeginDrawing, the drawing calls, and EndDrawing each do?",
+    'How do I add a new example program to raylib and get it built, step by step?',
+  ],
+  shellcheck: [
+    "What are the three primary functional goals of ShellCheck's static analysis on shell scripts?",
+    'What are the core source files that implement parsing, syntax tree representation, and static analysis checks?',
+    "Why is ShellCheck's Zsh support so constrained compared to its Bash parsing capabilities?",
+    'Step by step, infer the analysis pipeline from raw text through tokenization, AST construction, variable tracing, and checks.',
+    'How does an inline `shellcheck disable=SCxxxx` annotation suppress a matching warning during analysis?',
+    'How are tests organized and executed to verify parsing correctness?',
+  ],
+}
 function suggestionsForBase(base) {
-  return base === 'demo' || base === 'kb' ? KB_SUGGESTIONS : GENERIC_SUGGESTIONS
+  if (base === 'demo') return BASE_SUGGESTIONS.kb
+  return BASE_SUGGESTIONS[base] || GENERIC_SUGGESTIONS
 }
 const suggestionsBox = $('suggestions')
 function renderSuggestions() {
@@ -880,7 +919,7 @@ $('themeBtn').addEventListener('click', () => {
 })
 applyTheme(localStorage.getItem('kb-chat-theme') || 'dark')
 
-// Header brand → new chat (keeps settings / theme / connection pill).
+// Header brand → new chat (keeps theme / base / connection pill).
 $('brandHome').addEventListener('click', e => {
   // Allow modified clicks (new tab / middle-click) to follow href="./".
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
@@ -902,11 +941,8 @@ function saveBase(name) {
     else localStorage.removeItem(LS_BASE)
   } catch {}
 }
-function updateServerInfo() {
+function updateHint() {
   const suffix = currentBase ? ` · base <code>${escapeHtml(currentBase)}</code>` : ''
-  const info = $('serverInfo')
-  if (info)
-    info.innerHTML = `Connected to <code>${escapeHtml(SERVER_URL)}</code>${suffix}. Switch knowledge base from the picker in the header.`
   hint.innerHTML = `Server <code>${escapeHtml(SERVER_URL)}</code>${suffix}. Press Enter to send, Shift+Enter for a newline.`
 }
 function populateBaseSelect() {
@@ -940,67 +976,23 @@ async function fetchBases() {
   if (!next || !baseNames.includes(next)) next = defaultBase
   currentBase = next
   populateBaseSelect()
-  updateServerInfo()
+  updateHint()
 }
 baseSelect.addEventListener('change', () => {
   const name = baseSelect.value
   if (!name || name === currentBase) return
   currentBase = name
   saveBase(name)
-  updateServerInfo()
+  updateHint()
   renderSuggestions()
   startNewChat() // base switch → fresh server session + cleared thread
   checkHealth()
 })
 
-// Settings dialog (API key only — URL is baked, base is the header picker)
-const dlg = $('settings')
-const testBtn = $('testBtn')
-const testResult = $('testResult')
-function setTestResult(kind, text) {
-  testResult.className = `test-result${kind ? ` ${kind}` : ''}`
-  testResult.textContent = text
-}
-function openSettings() {
-  setTestResult('', '') // clear stale result from a previous open
-  $('apiKey').value = apiKey
-  updateServerInfo()
-  dlg.showModal()
-}
-$('settingsBtn').addEventListener('click', openSettings)
-// Test the key currently typed in the dialog against the baked server + base.
-testBtn.addEventListener('click', async () => {
-  const headers = {}
-  const key = $('apiKey').value.trim()
-  if (key) headers.Authorization = `Bearer ${key}`
-  if (currentBase) headers['X-KB-Base'] = currentBase
-  testBtn.disabled = true
-  setTestResult('wait', 'Testing…')
-  try {
-    const d = describeHealth(await probeConnection(SERVER_URL, headers))
-    setTestResult(d.kind, d.text)
-  } catch (err) {
-    setTestResult('bad', `Test failed: ${err?.message ? err.message : String(err)}`)
-  } finally {
-    testBtn.disabled = false
-  }
-})
-$('saveBtn').addEventListener('click', e => {
-  e.preventDefault()
-  apiKey = $('apiKey').value.trim()
-  saveApiKey(apiKey)
-  sessionId = null // new credentials → new session
-  dlg.close()
-  fetchBases().then(() => {
-    populateBaseSelect()
-    checkHealth()
-  })
-})
-
 // Init
 currentBase = loadSavedBase()
 renderSuggestions()
-updateServerInfo()
+updateHint()
 ;(async () => {
   await fetchBases()
   renderSuggestions()

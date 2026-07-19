@@ -45,23 +45,28 @@ sequenceDiagram
 - **First-boot:** pill shows progress; a sent message waits (Slack-shaped:
   notice → poll until ready → one retry) then answers. The **daily scheduler
   reindex** keeps serving the existing index (chat stays up).
-- **Base picker** in the header (order: status · base · theme · settings) lists
+- **Base picker** in the header (order: status · base · theme) lists
   every base the server advertises on `GET /v1/bases` and sends the choice as
   `X-KB-Base`. The connected server is **baked into the page** (`config.js` →
-  `window.__KB_SERVER__`), not typed in settings.
+  `window.__KB_SERVER__`), never typed in.
 - Sources from `answer.sources` (same payload Slack uses). Blob links are
   **per base**: each source's `gitRepo` slug → the browse `url`/`branch` the
   server returns for the selected base in `/v1/bases`.
 - Tiny markdown renderer (headers, tables, fences, lists, …).
 - SSE `meta` (stages) and `reasoning` stay in separate slots.
-- Settings holds only the optional API key (in `localStorage`); the selected base
-  is remembered too. The server URL is compiled in, not editable.
+- **No settings dialog.** The server URL and the optional API key are both baked
+  into `config.js` (`window.__KB_SERVER__` / `window.__KB_API_KEY__`). The API
+  key is empty for the open public demo; bake in the matching key only if the
+  server sets `KB_SERVER_API_KEY`. The selected base is remembered in
+  `localStorage`.
 - Header brand click starts a **new chat** (clears thread + server `sessionId`;
-  settings/theme/base stay). Modified-click still opens a fresh page via `href="./"`.
-- Empty-state suggestion chips are base-aware: the kb dogfood pack
-  ([`eval/suites/kb.yaml`](../eval/suites/kb.yaml)) for the `demo` base, a
-  repo-neutral pack ([`eval/suites/generic.yaml`](../eval/suites/generic.yaml))
-  for the rest.
+  theme/base stay). Modified-click still opens a fresh page via `href="./"`.
+- Empty-state suggestion chips are **per base**: each base gets a hard-coded pack
+  drawn from that repo's eval suite question set
+  ([`eval/suites/<base>.yaml`](../eval/suites/), e.g. `demo` → `kb.yaml`), so
+  swapping the base swaps the starter questions. Bases without a dedicated pack
+  fall back to the repo-neutral
+  [`eval/suites/generic.yaml`](../eval/suites/generic.yaml) set.
 
 ## Run it locally
 
@@ -89,7 +94,9 @@ KB_SERVER_ALLOWED_ORIGINS=https://rosenjcb.github.io,http://localhost:8000
 ```
 
 - HTTPS Pages cannot call `http://` remotes (mixed content) — use Fly HTTPS.
-- Empty server `KB_SERVER_API_KEY` ⇒ open chat (demo default). Non-empty ⇒ enter key in Settings.
+- Empty server `KB_SERVER_API_KEY` ⇒ open chat (demo default). Non-empty ⇒ bake
+  the matching key into `config.js` (`window.__KB_API_KEY__`); the Pages workflow
+  can inject it from the `KB_DEMO_API_KEY` secret.
 
 ## Deployment
 

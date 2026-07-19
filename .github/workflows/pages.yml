@@ -33,18 +33,30 @@ jobs:
         uses: actions/checkout@v4
       - name: Configure Pages
         uses: actions/configure-pages@v5
-      - name: Bake the server URL into demo/config.js
-        # The chat page talks to ONE baked kb-server. Override the committed
-        # default (https://kb-demo.fly.dev) by setting the `KB_DEMO_SERVER_URL`
-        # repo variable; otherwise the committed default ships unchanged.
+      - name: Bake the server URL + API key into demo/config.js
+        # The chat page talks to ONE baked kb-server with an optional baked API
+        # key (there is no settings dialog). Override the committed defaults by
+        # setting the `KB_DEMO_SERVER_URL` repo variable and/or the
+        # `KB_DEMO_API_KEY` secret; each line is rewritten in place so the rest of
+        # config.js (and whichever value is left unset) is preserved.
         env:
           KB_DEMO_SERVER_URL: ${{ vars.KB_DEMO_SERVER_URL }}
+          KB_DEMO_API_KEY: ${{ secrets.KB_DEMO_API_KEY }}
         run: |
+          set -euo pipefail
           if [ -n "${KB_DEMO_SERVER_URL}" ]; then
-            printf "window.__KB_SERVER__ = '%s'\n" "${KB_DEMO_SERVER_URL}" > demo/config.js
+            esc=$(printf '%s' "${KB_DEMO_SERVER_URL}" | sed -e "s/[\\/&]/\\\\&/g")
+            sed -i "s|^window.__KB_SERVER__ = .*|window.__KB_SERVER__ = '${esc}'|" demo/config.js
             echo "Baked KB_DEMO_SERVER_URL=${KB_DEMO_SERVER_URL} into demo/config.js"
           else
-            echo "No KB_DEMO_SERVER_URL variable set — shipping the committed demo/config.js default."
+            echo "No KB_DEMO_SERVER_URL variable set — shipping the committed server URL."
+          fi
+          if [ -n "${KB_DEMO_API_KEY}" ]; then
+            esc=$(printf '%s' "${KB_DEMO_API_KEY}" | sed -e "s/[\\/&]/\\\\&/g")
+            sed -i "s|^window.__KB_API_KEY__ = .*|window.__KB_API_KEY__ = '${esc}'|" demo/config.js
+            echo "Baked KB_DEMO_API_KEY (secret) into demo/config.js"
+          else
+            echo "No KB_DEMO_API_KEY secret set — shipping the committed (empty) API key."
           fi
       - name: Upload demo/ as the Pages artifact
         uses: actions/upload-pages-artifact@v3
