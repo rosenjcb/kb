@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Builder run (the hourly, one-shot big machine).
+# Builder run (the daily, one-shot big machine).
 #
 # This is the "spawn a big node, rescan every base + its git(s), publish fresh
 # indexes, then swap them under the little node" step — done the corruption-safe
 # way. It runs to completion and exits; on a Fly *scheduled* machine (--schedule
-# hourly --restart no) the machine then stops until the next tick, so the big
+# daily --restart no) the machine then stops until the next tick, so the big
 # node only costs money for the few minutes it actually builds.
 #
 # It builds EVERY base listed in scripts/fly/bases.json (the golden default

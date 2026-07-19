@@ -43,7 +43,7 @@ sequenceDiagram
 - Streams `POST /v1/chat`; connection pill probes `GET /healthz` body flags
   (`ok` / `indexing` / `reindexing` — HTTP status is always 200 when reachable).
 - **First-boot:** pill shows progress; a sent message waits (Slack-shaped:
-  notice → poll until ready → one retry) then answers. **Hourly scheduler
+  notice → poll until ready → one retry) then answers. The **daily scheduler
   reindex** keeps serving the existing index (chat stays up).
 - **Base picker** in the header (order: status · base · theme · settings) lists
   every base the server advertises on `GET /v1/bases` and sends the choice as

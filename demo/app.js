@@ -391,7 +391,7 @@ function addAssistantMessage() {
 }
 
 // ---- SSE chat call -------------------------------------------------------
-// First-boot bootstrap 503s chat (like Slack). Hourly reindex does not — chat stays up.
+// First-boot bootstrap 503s chat (like Slack). Scheduled reindex does not — chat stays up.
 async function postChat(message, signal) {
   return fetch(`${trimUrl(SERVER_URL)}/v1/chat`, {
     method: 'POST',
@@ -624,7 +624,7 @@ function describeNetworkError(e) {
 
 // ---- Health check --------------------------------------------------------
 // /healthz is always HTTP 200 when reachable (liveness). Readiness is in the
-// body: ok / indexing / reindexing. First-boot: ok=false + indexing. Hourly
+// body: ok / indexing / reindexing. First-boot: ok=false + indexing. Scheduled
 // reindex: ok=true + reindexing — chat stays up (no 503).
 let healthTimer = null
 let healthGen = 0
