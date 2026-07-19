@@ -16,10 +16,14 @@ function trimUrl(u) {
 const FLY_DEFAULT_URL = 'https://kb-demo.fly.dev'
 const isLocalDemo = /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)
 const BAKED_SERVER_URL = trimUrl(typeof window !== 'undefined' ? window.__KB_SERVER__ || '' : '')
+// scripts/demo-serve.mjs sets this when KB_DEMO_SERVER_URL is passed, so local
+// dev can explicitly opt into a deployed server (incl. the Fly default) instead
+// of falling back to localhost below.
+const FORCE_BAKED = typeof window !== 'undefined' && window.__KB_SERVER_FORCE__ === true
 // Local `pnpm run demo` talks to a localhost server unless the page was baked
 // with a non-default URL; hosted copies always use the baked (or Fly) URL.
 const SERVER_URL =
-  isLocalDemo && (!BAKED_SERVER_URL || BAKED_SERVER_URL === FLY_DEFAULT_URL)
+  isLocalDemo && !FORCE_BAKED && (!BAKED_SERVER_URL || BAKED_SERVER_URL === FLY_DEFAULT_URL)
     ? 'http://localhost:38117'
     : BAKED_SERVER_URL || FLY_DEFAULT_URL
 

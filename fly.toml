@@ -55,11 +55,13 @@ primary_region = "ams"
 # No [[mounts]] — the serving node is stateless by design (source of truth is
 # the snapshot in object storage). Nothing to corrupt on a volume.
 
-# 256MB is plenty to serve a prebuilt SQLite index; the heavy build lives on the
-# 4GB builder. Shrink/grow here without touching the builder.
+# The heavy build lives on the 4GB builder, not here — but this node now holds
+# up to 10 bases' worth of imported SQLite indexes at once (scripts/fly/bases.json),
+# not the single `demo` base this was originally sized for. 256MB OOM-killed the
+# machine mid-multi-base-import; bump this (not the builder) if it recurs.
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "256mb"
+  memory = "1024mb"
   processes = ["app"]
 
 # Process up on :38117 (does not require /healthz 200).

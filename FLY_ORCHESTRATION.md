@@ -34,7 +34,7 @@ It is a concrete Fly.io mapping of the vendor-agnostic
 | | Serving node (`kb-demo`) | Builder (`kb-demo-builder`) |
 |---|---|---|
 | Config | [`fly.toml`](fly.toml) | [`fly.builder.toml`](fly.builder.toml) |
-| Size | `shared-cpu-1x` / **256MB**, always-warm | `shared-cpu-2x` / **4GB**, daily one-shot |
+| Size | `shared-cpu-1x` / **1024MB**, always-warm | `shared-cpu-2x` / **4GB**, daily one-shot |
 | Volume | **none** (stateless) | none (ephemeral `/work`) |
 | Command | [`scripts/fly/serve-entrypoint.sh`](scripts/fly/serve-entrypoint.sh) | [`scripts/fly/refresh.sh`](scripts/fly/refresh.sh) |
 | Bases | imports **all** of [`bases.json`](scripts/fly/bases.json) (default via `start --from`, rest via verified `import`) | builds + publishes **each** base in [`bases.json`](scripts/fly/bases.json) |
@@ -193,33 +193,25 @@ node scripts/fly/gen-bases.mjs
 node scripts/fly/gen-bases.mjs --check   # 0 exit ⇒ manifest committed & fresh
 ```
 
-**2. Ship the builder image and (re)create the scheduler at the right size.** A
-scheduled machine pins its image + size, so destroy and recreate it to pick up
-new code *and* memory (a cold build of many repos OOMs at 1GB):
+**2-4. Ship builder + serving, recreate the scheduler, seed every base** — one
+command, [`scripts/fly/deploy.sh`](scripts/fly/deploy.sh), does all of it:
 
 ```bash
-fly deploy -a kb-demo-builder -c fly.builder.toml
-fly machine list -a kb-demo-builder                        # find the scheduled machine
-fly machine destroy <scheduler-id> -a kb-demo-builder --force
-fly machine run . -c fly.builder.toml -a kb-demo-builder \
-    --schedule daily --restart no --vm-memory 4096 \
-    bash /app/scripts/fly/refresh.sh
+scripts/fly/deploy.sh            # deploy builder, recreate scheduler, deploy serving, seed all bases
+scripts/fly/deploy.sh --no-seed  # skip the immediate seed; bases populate on the next daily tick
 ```
 
-**3. Ship the serving image** (now multi-base; serves the default + skips
-unbuilt bases):
+It deploys `kb-demo-builder` (`-c fly.builder.toml`), destroys and recreates the
+scheduled machine (`--schedule daily --restart no`; the vm size/memory comes
+from `fly.builder.toml`'s `[[vm]]` block, not a CLI flag — a scheduled machine
+pins its image *and* size, so destroy+recreate is how it picks up both), deploys
+`kb-demo` (`-c fly.toml`), then seeds every base immediately instead of waiting
+for the schedule (publishes each and auto-rolls the serving node onto the full
+set). Override the app names with `SERVE_APP=... BUILDER_APP=...` if you're
+running this against your own copy. Watch the seed with:
 
 ```bash
-fly deploy -a kb-demo -c fly.toml
-```
-
-**4. Seed every base now** instead of waiting for the schedule; it publishes each
-base and auto-rolls the serving node onto the full set:
-
-```bash
-fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-memory 4096 \
-    bash /app/scripts/fly/refresh.sh
-fly logs -a kb-demo-builder     # watch; a base that fails to clone is skipped, others proceed
+fly logs -a kb-demo-builder     # a base that fails to clone is skipped, others proceed
 ```
 
 **5. Verify**, then merge to republish the page:
@@ -283,6 +275,7 @@ fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-memory 4096 \
 | [`scripts/fly/gen-bases.mjs`](scripts/fly/gen-bases.mjs) | regenerate `bases.json` from `eval/suites/*.yaml` |
 | [`scripts/fly/serve-entrypoint.sh`](scripts/fly/serve-entrypoint.sh) | serving boot: wipe → import every base → warm-start frozen on the default |
 | [`scripts/fly/refresh.sh`](scripts/fly/refresh.sh) | builder: for each base rescan → publish → prune, then roll once |
+| [`scripts/fly/deploy.sh`](scripts/fly/deploy.sh) | one command: deploy builder + recreate scheduler + deploy serving + seed all bases |
 | [`scripts/fly/roll-serving.mjs`](scripts/fly/roll-serving.mjs) | health-gated rolling restart via Fly Machines API |
 | [`scripts/fly/lib.sh`](scripts/fly/lib.sh) | shared config + S3 transport helpers |
 
