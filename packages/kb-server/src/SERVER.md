@@ -45,12 +45,12 @@ flowchart LR
 
 **Bootstrap vs scheduled reindex (availability):**
 
-| Phase | `health` | `/v1/query` · `/v1/chat` · `/mcp` |
-|-------|----------|-----------------------------------|
-| First-boot bootstrap (no index yet) | `ok: false`, `indexing: true`, progress line | **503** until settled |
-| Hourly scheduler reindex | `ok: true`, may set `reindexing: true` | **served** off existing SQLite |
+| Phase | `GET /healthz` | body | `/v1/query` · `/v1/chat` · `/mcp` |
+|-------|----------------|------|-----------------------------------|
+| First-boot bootstrap (no index yet) | **200** (liveness) | `ok: false`, `indexing: true`, progress | **503** until settled |
+| Hourly scheduler reindex | **200** | `ok: true`, may set `reindexing: true` | **served** off existing SQLite |
 
-Slack and the Pages demo both **wait** through first-boot (notice + progress, then answer). They do not block on hourly sync.
+Slack and the Pages demo both **wait** through first-boot (notice + progress, then answer). They do not block on hourly sync. Clients read readiness from the health **body** (`ok` / `indexing`), not from the `/healthz` HTTP status.
 
 ## Core pieces
 
@@ -71,7 +71,7 @@ Slack and the Pages demo both **wait** through first-boot (notice + progress, th
 ## Integration
 
 - **CLI:** `kb-server` binary → `runServerCommand` in `server-cli.ts`.
-- **Boot-build:** missing `.kb-index.sqlite` now runs in the background after `listen()`. `/healthz` comes up immediately; `/v1/query`, `/v1/chat`, and `/mcp` return `503` with an indexing message until the first build finishes.
+- **Boot-build:** missing `.kb-index.sqlite` now runs in the background after `listen()`. `/healthz` stays HTTP 200 with `indexing: true` / `ok: false`; `/v1/query`, `/v1/chat`, and `/mcp` return `503` with an indexing message until the first build finishes.
 - **Docker:** `kb-server start --with-mcp` in Dockerfile CMD; Slack is enabled by `KB_SERVER_ENABLE_SLACK=true`.
 - **Dev:** `pnpm run server:start` for a local process; `pnpm run server:up` for the guided Docker path.
 - **Observability:** Every request emits a `request` line on entry and a `response` line on finish (`status`, `durationMs`), both keyed by a UUID `requestId` also returned as the `x-request-id` response header. Each route adds semantic logs: query/chat/mcp emit start/complete/error with timings; `/healthz` logs at `debug`; auth failures and unknown routes log at `warn`. Control verbosity via `LOG_LEVEL` (`debug|info|warn|error`; default `info`). Set in `.env` / `docker-compose.yml` `LOG_LEVEL` env var.
@@ -132,7 +132,7 @@ synthesizes. A fact-id drill-down tool may return later.
 
 | Method / path | Auth | Purpose |
 |---|---|---|
-| `GET /health` / `/healthz` | none | Liveness + `indexMtime` (SQLite mtime = last index write) + `version.server` (never `@kb/core`) + `indexing` / `bootstrapProgress` / `reindexing` |
+| `GET /health` / `/healthz` | none | Liveness (always **200** when reachable) + readiness in body (`ok`, `indexMtime`, `indexing` / `bootstrapProgress` / `reindexing`) + `version.server` (never `@kb/core`) |
 | `POST /v1/query` | optional Bearer | Synthesized answer + sources; **503 only during first-boot** bootstrap (not during hourly reindex) |
 | `POST /v1/chat` | optional Bearer | Multi-turn SSE chat (same 503 rule as query) |
 | `POST /mcp` | optional Bearer | MCP Streamable HTTP when `--with-mcp` |

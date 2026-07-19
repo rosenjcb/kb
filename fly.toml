@@ -34,8 +34,9 @@ primary_region = "ams"
   min_machines_running = 1
   processes = ["app"]
 
-  # No HTTP service check: /healthz returns 503 while first-boot indexing, and Fly
-  # would mark the machine critical / block deploys. Liveness = TCP below.
+  # No HTTP service check: heavy ingest can still starve the event loop briefly;
+  # TCP liveness avoids blackholing the sole machine. /healthz is HTTP 200 when
+  # it can answer (readiness in JSON body).
 
 [[mounts]]
   source = "kb_data"

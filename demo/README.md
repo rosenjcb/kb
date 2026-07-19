@@ -30,9 +30,9 @@ sequenceDiagram
   participant S as kb-server
   U->>S: GET /healthz
   alt first-boot indexing
-    S-->>U: 503 / indexing + progress
+    S-->>U: 200 + indexing + progress
     U->>U: pill polls; chat waits
-    U->>S: GET /healthz until ready
+    U->>S: GET /healthz until ok
   end
   U->>S: POST /v1/chat SSE
   S-->>U: meta / reasoning / answer+sources
@@ -40,8 +40,8 @@ sequenceDiagram
 
 ## What it does
 
-- Streams `POST /v1/chat`; connection pill probes `GET /healthz` (timeout +
-  generation guard so “Checking…” cannot stick over a live Connected state).
+- Streams `POST /v1/chat`; connection pill probes `GET /healthz` body flags
+  (`ok` / `indexing` / `reindexing` — HTTP status is always 200 when reachable).
 - **First-boot:** pill shows progress; a sent message waits (Slack-shaped:
   notice → poll until ready → one retry) then answers. **Hourly scheduler
   reindex** keeps serving the existing index (chat stays up).
@@ -50,6 +50,8 @@ sequenceDiagram
 - Tiny markdown renderer (headers, tables, fences, lists, …).
 - SSE `meta` (stages) and `reasoning` stay in separate slots.
 - Settings (URL, optional API key, optional base) in `localStorage` only.
+- Header brand click starts a **new chat** (clears thread + server `sessionId`;
+  settings/theme stay). Modified-click still opens a fresh page via `href="./"`.
 - Empty-state suggestion chips are copied from the dogfood pack
   [`eval/suites/kb.yaml`](../eval/suites/kb.yaml) (static for now; later each
   eval suite may map to a selectable base).
@@ -88,7 +90,8 @@ KB_SERVER_ALLOWED_ORIGINS=https://rosenjcb.github.io,http://localhost:8000
 ## Invariants
 
 - No bundler / npm deps in this folder — keep `index.html` self-contained.
-- Bootstrap wait is **client-side**; server contract is 503 + `status: indexing`.
+- Bootstrap wait is **client-side**; chat 503 + `status: indexing` during
+  first-boot; `/healthz` stays 200 with `indexing: true` in the body.
 - Do not assume Slack is on the same host as the public demo.
 
 ## Related docs

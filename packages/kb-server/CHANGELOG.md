@@ -1,5 +1,13 @@
 # kb-server
 
+## 1.4.10
+
+### Patch Changes
+
+- `/healthz` is liveness (always HTTP 200 when reachable) with readiness in the body (`ok` / `indexing`); tighten document-facts wall-clock yields so the probe can answer mid-index; Pages demo reads body flags and matches Slack indexing copy; header brand starts a new chat session.
+- Updated dependencies
+  - @kb/core@1.5.4
+
 ## 1.4.9
 
 ### Patch Changes

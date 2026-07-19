@@ -3,7 +3,7 @@
  *
  * Built on `node:http` (zero extra deps, fast cold start) since the endpoint set
  * is small. Serves:
- *  - `GET  /healthz`     liveness/readiness (unauthenticated)
+ *  - `GET  /healthz`     liveness (unauthenticated; always 200 when reachable)
  *  - `POST /v1/query`    one-shot request/response synthesized answer (apps wanting a single call)
  *  - `POST /v1/chat`     multi-turn chat loop, streamed over SSE — also the path Slack uses (via `service.chat`)
  *  - `POST /mcp`         MCP Streamable HTTP (when enabled)
@@ -412,7 +412,10 @@ export function createHttpServer(options: HttpServerOptions): Server {
         indexMtime: body.indexMtime,
         version: body.version,
       })
-      sendJson(res, body.ok ? 200 : 503, body)
+      // Always HTTP 200 when the process can answer (liveness). Readiness is in
+      // the body: `ok`, `indexing`, `reindexing`, `bootstrapError`. Query/chat
+      // still 503 during first-boot indexing via serviceUnavailableError.
+      sendJson(res, 200, body)
       return
     }
 

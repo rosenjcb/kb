@@ -138,7 +138,7 @@ systemctl --user disable --now kb-server.service
 ## Verify
 
 ```bash
-curl http://localhost:38117/healthz        # liveness; ok:true once the index is built
+curl http://localhost:38117/healthz        # always 200 when up; ok:true once the index is ready
 curl -s http://localhost:38117/v1/query \
   -H "Authorization: Bearer $KB_SERVER_API_KEY" \
   -H 'Content-Type: application/json' \
@@ -152,8 +152,9 @@ started with `--with-mcp`. Wiring for Claude Code / Cursor: [`src/SERVER.md`](sr
 
 - **Single writer.** One instance owns the SQLite index; don't run two against
   the same `KB_HOME`.
-- **First boot is slow.** Cloning + indexing takes a while; `/healthz` reports
-  `indexing: true` and query/MCP calls return `503` until the first build lands.
+- **First boot is slow.** Cloning + indexing takes a while; `/healthz` stays
+  HTTP 200 with `indexing: true` / `ok: false`, and query/MCP calls return `503`
+  until the first build lands.
 - **Prefer Docker?** See [`README.md`](./README.md) for the containerized path.
 
 ## Related docs

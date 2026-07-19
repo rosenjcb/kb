@@ -79,10 +79,12 @@ flowchart TD
 
 12. **First-boot vs hourly sync (HTTP / Slack / Pages)** — while the server’s
     **bootstrap** index is running, `/v1/chat` returns **503** with progress.
-    Slack posts a “still indexing” notice then `waitForBootstrap()` before
-    answering. The Pages `demo/` polls `/healthz` and waits the same way, then
-    retries once. A later **scheduled reindex** (`health.reindexing`) does
-    **not** 503 chat — clients keep talking to the existing index. Details:
+    `/healthz` stays **HTTP 200** (liveness) with `ok: false` / `indexing: true`
+    so clients can read progress without treating the host as down. Slack posts
+    a “still indexing” notice then `waitForBootstrap()` before answering. The
+    Pages `demo/` polls `/healthz` body flags the same way, then retries chat
+    once. A later **scheduled reindex** (`health.reindexing`) does **not** 503
+    chat — clients keep talking to the existing index. Details:
     [SERVER.md](../../../kb-server/src/SERVER.md).
 
 ## Prompts

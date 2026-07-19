@@ -76,7 +76,8 @@ Post-response scripts live in `{{ }}` blocks and must **`const assert = require(
 ## Gotchas
 
 - Root `"type": "module"` breaks httpyac loading `.httpyac.js` unless `http/package.json` forces CommonJS.
-- First Docker boot may report `indexing: true` plus `bootstrapProgress` before the initial build finishes.
+- First Docker boot: `/healthz` stays HTTP 200 with `indexing: true` / `ok: false`
+  plus `bootstrapProgress`; query/chat/MCP return 503 until the first build finishes.
 - `prod` env `baseUrl` is a placeholder; replace before real deploy smoke tests.
 
 ## Related docs
