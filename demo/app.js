@@ -315,7 +315,7 @@ function addAssistantMessage() {
             const raw = src.filePath || src.title || src.id || 'unknown'
             const rel = repoRelativePath(raw) || raw
             const href = sourceGithubUrl(raw)
-            const sym = src.symbol ? ` · <span class="path">${escapeHtml(src.symbol)}</span>` : ''
+            const sym = src.symbol ? ` <span class="sym">· ${escapeHtml(src.symbol)}</span>` : ''
             const pathHtml = href
               ? `<a class="path" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(rel)}</a>`
               : `<span class="path">${escapeHtml(rel)}</span>`
