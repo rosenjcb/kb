@@ -29,7 +29,7 @@ Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md).
 
 | ID | Requirement |
 | ------ | ------------ |
-| FR-1 | Health endpoint returns liveness without auth, including `version.server` and `indexMtime` when ready |
+| FR-1 | Health endpoint is unauthenticated liveness (HTTP 200 when reachable) with readiness in the body (`ok` / `indexing`); includes `version.server` and `indexMtime` when ready |
 | FR-2 | Query endpoint returns synthesized answers with sources when authorized |
 | FR-3 | Query rejects missing or invalid API keys |
 | FR-4 | Chat endpoint streams multi-turn SSE sessions |

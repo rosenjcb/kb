@@ -29,7 +29,7 @@ See companion doc for full vocabulary where applicable.
 | ID | Requirement |
 | ------ | ------------ |
 | FR-1 | Stream chat synthesis over SSE |
-| FR-2 | Expose authenticated REST routes for query, chat, and health; `/healthz` includes `version.server` (not `@kb/core`); empty API-key list allows open access |
+| FR-2 | Expose authenticated REST routes for query, chat, and health; `/healthz` is liveness (HTTP 200 when reachable) with readiness in body (`ok` / `indexing`); includes `version.server` (not `@kb/core`); empty API-key list allows open access |
 | FR-3 | KbService reads facts, reports health (`indexing` / `bootstrapProgress` / `reindexing`), and serializes reindex |
 | FR-4 | Expose a single answer-first MCP tool (`kb_query`) that always synthesizes and never exposes other tools |
 | FR-5 | Parse and run periodic reindex scheduler |
@@ -53,6 +53,7 @@ See companion doc for full vocabulary where applicable.
 | TC-1 | FR-1 | streams reasoning then a terminal answer and done | pass |
 | TC-2 | FR-1 | emits an error event when synthesis throws | pass |
 | TC-3 | FR-2 | serves /healthz without auth | pass |
+| TC-3b | FR-2 | returns 200 on /healthz while bootstrap indexing (liveness; ok=false in body) | pass |
 | TC-4 | FR-2 | rejects /v1/query without a valid key | pass |
 | TC-5 | FR-2 | answers /v1/query with a serialized body when authorized | pass |
 | TC-6 | FR-2 | returns 503 for /v1/query while the server is bootstrapping its first index | pass |

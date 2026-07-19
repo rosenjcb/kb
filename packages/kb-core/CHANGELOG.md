@@ -1,11 +1,16 @@
 # @kb/core
 
+## 1.5.4
+
+### Patch Changes
+
+- `/healthz` is liveness (always HTTP 200 when reachable) with readiness in the body (`ok` / `indexing`); tighten document-facts wall-clock yields so the probe can answer mid-index; Pages demo reads body flags and matches Slack indexing copy.
 
 ## 1.5.3
 
 ### Patch Changes
 
-- Per-repo Sources blob links from the volume registry (slug → gitUrl + primary clone branch); remove global KB_SOURCE_* env; expose QuerySource.gitRepo on the wire.
+- Per-repo Sources blob links from the volume registry (slug → gitUrl + primary clone branch); remove global KB*SOURCE*\* env; expose QuerySource.gitRepo on the wire.
 - GitHub Pages chat demo + CORS; shared chat Sources footer and Slack mrkdwn conversion; keep remote chat thinking when stage meta arrives.
 - Yield the event loop on a wall-clock timer during document-facts / AST index (not just every N items) and throttle non-TTY init progress lines so kb-server `/healthz` stays responsive during first-boot bootstrap.
 

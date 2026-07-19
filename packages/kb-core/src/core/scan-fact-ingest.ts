@@ -195,7 +195,8 @@ export async function ingestSourceMarkdownFilesAsFacts(
   // Count stride alone is not enough: slow FTS matches can spend >8s on <50 segments,
   // which starves kb-server /healthz during first-boot bootstrap.
   const yieldStride = input.yieldEverySegments ?? 10
-  const maybeYieldByTime = createRateLimitedYielder(input.yieldEveryMs ?? 50)
+  // ~25ms so /healthz stays snappy when each FTS-backed segment is slow.
+  const maybeYieldByTime = createRateLimitedYielder(input.yieldEveryMs ?? 25)
   try {
     await indexer.runInTransaction(async () => {
       const paths = Object.keys(input.files).sort()

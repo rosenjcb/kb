@@ -271,10 +271,10 @@ those with new commits.
 
 - **Single writer.** One instance owns the SQLite index; don't run multiple replicas
   against the same volume unless you redesign the storage model around shared writes.
-- **First boot is slow.** Cloning + indexing can take a while; the server now starts
-  listening first, `/healthz` reports `indexing: true`, and query/chat/MCP calls return
-  a temporary `503` until the initial build finishes. The compose healthcheck allows a
-  5-minute `start_period`.
+- **First boot is slow.** Cloning + indexing can take a while; the server starts
+  listening first, `/healthz` stays HTTP **200** with `indexing: true` / `ok: false`,
+  and query/chat/MCP calls return a temporary `503` until the initial build finishes.
+  The compose healthcheck allows a 5-minute `start_period`.
 - **The `mock` profile is test-only.** The WireMock `llm-mock` sidecar is gated behind the
   `mock` compose profile and never starts for real runs; `pnpm run integration:test` opts
   it in. Details: [`docker/wiremock/WIREMOCK.md`](docker/wiremock/WIREMOCK.md).

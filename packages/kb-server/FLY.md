@@ -80,11 +80,12 @@ Prefer CLI `fly deploy` over Fly UI “launch propose” if the UI still ignores
 `fly.toml`. After `fly.toml` is on the branch Fly’s GitHub integration should
 build with the configured Dockerfile path.
 
-First boot clones `KB_GIT_REPOS` and indexes into the volume. `/healthz` reports
-`indexing: true` (HTTP 503) until ready; query/chat 503 the same way. Fly
-`fly.toml` skips HTTP service checks so that readiness 503 does not blackhole
-the sole machine. The Pages demo **waits** through bootstrap; hourly scheduler
-reindex does **not** block chat — see [`src/SERVER.md`](./src/SERVER.md).
+First boot clones `KB_GIT_REPOS` and indexes into the volume. `/healthz` stays
+HTTP **200** with `indexing: true` / `ok: false` until ready; query/chat return
+**503** until the first index settles. Fly `fly.toml` uses TCP checks (not HTTP)
+so a busy event loop during heavy ingest cannot blackhole the sole machine.
+The Pages demo **waits** through bootstrap; hourly scheduler reindex does **not**
+block chat — see [`src/SERVER.md`](./src/SERVER.md).
 
 ## Wire clients
 

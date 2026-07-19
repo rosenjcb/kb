@@ -365,8 +365,11 @@ async function waitForBootstrap(turn, deadlineMs) {
       return false
     }
     if (h.state === 'ready') return true
-    const prog = h.progress ? ` — ${h.progress}` : ''
-    turn.setStage(`Still indexing${prog}. I'll answer when ready…`)
+    // Match Slack formatBootstrapSlackNotice wording.
+    const prog = h.progress ? `\nCurrent progress: ${h.progress}` : ''
+    turn.setStage(
+      `KB is still indexing its knowledge base.${prog}\nI will reply with the answer once indexing is complete.`
+    )
     await sleep(4000)
   }
   turn.setError('Still indexing', 'Timed out waiting for the first index. Try again in a minute.')
@@ -375,13 +378,30 @@ async function waitForBootstrap(turn, deadlineMs) {
 
 async function sendChat(message) {
   const turn = addAssistantMessage()
+  // If /healthz already says first-boot indexing, wait like Slack before chat.
+  const pre = await probeConnection(settings.serverUrl, authHeaders(), {
+    healthTimeoutMs: 4000,
+    authTimeoutMs: 2000,
+  })
+  applyHealthStatus(pre)
+  if (pre.state === 'indexing') {
+    const prog = pre.progress ? `\nCurrent progress: ${pre.progress}` : ''
+    turn.setStage(
+      `KB is still indexing its knowledge base.${prog}\nI will reply with the answer once indexing is complete.`
+    )
+    const ready = await waitForBootstrap(turn, 10 * 60 * 1000)
+    if (!ready) return
+    turn.setStage('Index ready — answering…')
+  }
   let res
   try {
     res = await postChat(message)
   } catch (_e) {
     // First-boot can drop TCP while the event loop is saturated — treat like
     // Slack's indexing wait instead of failing the turn immediately.
-    turn.setStage("Server busy (likely indexing). Waiting until it's ready…")
+    turn.setStage(
+      'KB is still indexing its knowledge base.\nI will reply with the answer once indexing is complete.'
+    )
     const ready = await waitForBootstrap(turn, 10 * 60 * 1000)
     if (!ready) return
     turn.setStage('Index ready — answering…')
@@ -421,9 +441,11 @@ async function sendChat(message) {
     } catch {}
     const indexing = body.status === 'indexing' || /index/i.test(body.error || '')
     if (indexing) {
-      // Match Slack: notice + wait + then answer (one retry after ready).
-      const prog = body.progress ? ` (${body.progress})` : ''
-      turn.setStage(`KB is still indexing${prog}. I'll answer once it's ready…`)
+      // Match Slack formatBootstrapSlackNotice + wait + then answer.
+      const prog = body.progress ? `\nCurrent progress: ${body.progress}` : ''
+      turn.setStage(
+        `KB is still indexing its knowledge base.${prog}\nI will reply with the answer once indexing is complete.`
+      )
       const ready = await waitForBootstrap(turn, 10 * 60 * 1000)
       if (!ready) return
       turn.setStage('Index ready — answering…')
@@ -524,8 +546,9 @@ function describeNetworkError(e) {
 }
 
 // ---- Health check --------------------------------------------------------
-// First-boot: health.ok=false / 503 + indexing. Hourly reindex: ok stays true,
-// health.reindexing may be true — chat/query keep working (no 503).
+// /healthz is always HTTP 200 when reachable (liveness). Readiness is in the
+// body: ok / indexing / reindexing. First-boot: ok=false + indexing. Hourly
+// reindex: ok=true + reindexing — chat stays up (no 503).
 let healthTimer = null
 let healthGen = 0
 let lastHealthKind = null // avoid flashing "Checking…" over a known-good Connected
@@ -559,9 +582,11 @@ async function fetchJson(url, headers, timeoutMs) {
 
 /**
  * Fast connection probe:
- *  1) /healthz — unknown base → 404 immediately; indexing/ready otherwise
- *  2) GET /v1/bases — auth check (401 when key missing/wrong); healthz alone
- *     cannot see this because it is unauthenticated
+ *  1) /healthz — body flags (indexing / ok); unknown base → 404
+ *  2) GET /v1/bases — auth check (401 when key missing/wrong)
+ *
+ * Readiness comes from the JSON body, not the HTTP status (/healthz is always
+ * 200 when the process answers).
  *
  * opts.healthTimeoutMs / opts.authTimeoutMs override the default budgets.
  */
@@ -590,7 +615,8 @@ async function probeConnection(url, headers, opts) {
       progress: body.bootstrapProgress || '',
     }
   }
-  const indexing = !!(body.indexing || res.status === 503)
+  // Body is source of truth — do not treat HTTP status as readiness.
+  const indexing = body.indexing === true
   const reindexing = !!body.reindexing
   const progress = body.bootstrapProgress || body.progress || ''
 
@@ -610,7 +636,9 @@ async function probeConnection(url, headers, opts) {
   }
 
   if (indexing) return { state: 'indexing', progress, reindexing }
-  if (res.ok) return { state: 'ready', progress: '', reindexing }
+  if (body.ok === true) return { state: 'ready', progress: '', reindexing }
+  // Reachable JSON but not ready and not indexing (rare race before flag flips).
+  if (res.ok) return { state: 'indexing', progress: progress || 'Starting index…', reindexing }
   return { state: 'bad', progress: '', status: res.status }
 }
 
@@ -620,7 +648,7 @@ function applyHealthStatus(h) {
     return
   }
   if (h.state === 'indexing') {
-    const short = h.progress ? truncateStatus(h.progress, 42) : 'Indexing…'
+    const short = h.progress ? truncateStatus(`Indexing… ${h.progress}`, 42) : 'Indexing…'
     setStatus('wait', short)
     return
   }
@@ -633,8 +661,7 @@ function applyHealthStatus(h) {
     return
   }
   if (h.state === 'failed') setStatus('bad', 'Index failed')
-  // Timeout/refused often means the node is CPU-bound on first-boot index —
-  // keep the amber "wait" state so we don't look permanently dead.
+  // Timeout/refused — may still be CPU-bound; keep amber, not hard Offline.
   else if (h.state === 'offline') setStatus('wait', 'Busy / unreachable…')
   else setStatus('bad', 'Unreachable')
 }

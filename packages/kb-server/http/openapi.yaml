@@ -33,20 +33,18 @@ paths:
   /health:
     get:
       tags: [health]
-      summary: Liveness / readiness probe
+      summary: Liveness probe (readiness in body)
       description: >
-        Unauthenticated health endpoint. Returns the active base plus index
-        metadata. During a fresh bootstrap build, `indexing: true` and the
-        latest CLI/TUI-style progress line are surfaced as `bootstrapProgress`.
+        Unauthenticated liveness endpoint — always HTTP 200 when the process can
+        answer. Readiness is in the JSON body (`ok`, `indexing`, `reindexing`,
+        `bootstrapError`). During a fresh bootstrap build, `indexing: true` and
+        the latest progress line are surfaced as `bootstrapProgress`. Query/chat
+        still return 503 while first-boot indexing is in progress.
       security: []
       responses:
         "200":
-          description: Service is ready to serve queries
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Health" }
-        "503":
-          description: Bootstrap indexing in progress, bootstrap failed, or index not yet present
+          description: >
+            Process is alive. Check `ok` / `indexing` / `reindexing` for readiness.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Health" }
@@ -54,10 +52,10 @@ paths:
   /healthz:
     get:
       tags: [health]
-      summary: Liveness / readiness probe alias
+      summary: Liveness probe alias
       description: >
-        Alias of `/health`. Returns HTTP 503 until the on-disk index is ready.
-        `X-KB-Base` or `?base=<slug>` reports a specific served base's readiness.
+        Alias of `/health`. Always HTTP 200 when reachable; readiness is in the
+        body. `X-KB-Base` or `?base=<slug>` reports a specific served base.
       security: []
       parameters:
         - $ref: "#/components/parameters/XKbBase"
@@ -68,12 +66,8 @@ paths:
           description: Report readiness for this base (else the default base).
       responses:
         "200":
-          description: Service is ready to serve queries
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Health" }
-        "503":
-          description: Bootstrap indexing in progress, bootstrap failed, or index not yet present
+          description: >
+            Process is alive. Check `ok` / `indexing` / `reindexing` for readiness.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Health" }
