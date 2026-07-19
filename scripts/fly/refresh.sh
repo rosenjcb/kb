@@ -74,8 +74,15 @@ force_kill() {
       break
     fi
     sleep 1
-    (( waited++ ))
+    # NOT `(( waited++ ))`: under `set -e` that command's exit status is the
+    # PRE-increment value, so at waited=0 it "fails" (status 1) — and since
+    # this is often the last thing the function runs (the process is usually
+    # already dead by the next loop check), that false failure became
+    # force_kill's own return status, aborting build_base right after a
+    # successful export/publish. Arithmetic assignment avoids the gotcha.
+    waited=$((waited + 1))
   done
+  return 0
 }
 
 # Build, snapshot, and publish one base. Runs in a subshell (see the loop) so a
