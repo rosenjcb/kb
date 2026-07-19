@@ -287,10 +287,13 @@
     .sources .label { font-size: 11.5px; letter-spacing: .2px; color: var(--text-dim); margin-bottom: 6px; }
     .source {
       font-size: 12.5px; color: var(--text-dim);
-      padding: 3px 0; display: flex; gap: 7px; align-items: baseline;
+      padding: 3px 0; display: flex; flex-wrap: wrap; gap: 2px 7px; align-items: baseline;
     }
-    .source .num { color: var(--accent); font-variant-numeric: tabular-nums; }
+    /* flex: none + nowrap keeps "20." intact — .bubble's inherited overflow-wrap:anywhere
+       would otherwise let the number break mid-digit on narrow (mobile) widths. */
+    .source .num { color: var(--accent); font-variant-numeric: tabular-nums; flex: none; white-space: nowrap; }
     .source .path { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text); word-break: break-all; }
+    .source .sym { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text); word-break: break-all; }
     .source a.path { color: var(--accent); text-decoration: none; }
     .source a.path:hover { text-decoration: underline; }
 
