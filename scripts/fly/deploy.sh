@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# One-command update flow for the Fly.io build-to-serve orchestration: ship the
-# builder image, recreate its daily scheduler (so it picks up the new image +
-# vm size from fly.builder.toml), ship the serving image, then seed every base
-# now instead of waiting for the next daily tick.
+# One-command update flow for the Fly.io build-to-serve orchestration: build +
+# push the builder image, recreate its daily scheduler (so it picks up the new
+# image at the right vm size), ship the serving image, then seed every base now
+# instead of waiting for the next daily tick.
 #
 # Mirrors "Deploying an update" in FLY_ORCHESTRATION.md. Assumes the one-time
 # setup already happened (fly apps create, fly storage create, secrets) — see
@@ -17,8 +17,20 @@ BUILDER_APP="${BUILDER_APP:-kb-demo-builder}"
 SEED=1
 [[ "${1:-}" == "--no-seed" ]] && SEED=0
 
-echo "==> 1/4 deploying builder image ($BUILDER_APP)"
-fly deploy -a "$BUILDER_APP" -c fly.builder.toml
+# kb-demo-builder's [[vm]] size in fly.builder.toml (see there for why 4GB).
+# `fly machine run -c fly.builder.toml` does NOT inherit this block — it must
+# be passed explicitly on every machine-creating command below, or you silently
+# get Fly's bare platform default (shared-cpu-1x/256mb).
+BUILDER_VM_SIZE="shared-cpu-2x"
+BUILDER_VM_MEMORY="4096"
+
+echo "==> 1/4 building + pushing builder image ($BUILDER_APP)"
+# --build-only --push: build and push the image WITHOUT deploying/releasing it.
+# A plain `fly deploy` on an app with no [processes]/[http_service] still
+# creates/replaces a running machine using the image's default CMD
+# (serve-entrypoint.sh) — which clobbers the scheduled machine's custom
+# --schedule/--restart/cmd. Building only avoids that entirely.
+fly deploy -a "$BUILDER_APP" -c fly.builder.toml --build-only --push
 
 echo "==> 2/4 recreating the daily scheduler machine"
 # kb-demo-builder runs exactly one machine (the scheduled one) between deploys.
@@ -34,9 +46,8 @@ if [[ -n "$scheduler_id" ]]; then
 else
   echo "    no existing scheduler found; creating one"
 fi
-# --vm-memory/--vm-size deliberately omitted: shared-cpu-2x/4096mb comes from
-# fly.builder.toml's [[vm]] block via -c.
-fly machine run . -c fly.builder.toml -a "$BUILDER_APP" \
+fly machine run . -c fly.builder.toml -a "$BUILDER_APP" --detach \
+    --vm-size "$BUILDER_VM_SIZE" --vm-memory "$BUILDER_VM_MEMORY" \
     --schedule daily --restart no \
     bash /app/scripts/fly/refresh.sh
 
@@ -46,6 +57,7 @@ fly deploy -a "$SERVE_APP" -c fly.toml
 if [[ "$SEED" -eq 1 ]]; then
   echo "==> 4/4 seeding every base now (skip with --no-seed)"
   fly machine run . -c fly.builder.toml -a "$BUILDER_APP" --rm \
+      --vm-size "$BUILDER_VM_SIZE" --vm-memory "$BUILDER_VM_MEMORY" \
       bash /app/scripts/fly/refresh.sh
   fly logs -a "$BUILDER_APP"
 else
