@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <b>⭐ Don’t clone first — <a href="https://rosenjcb.github.io/kb/">ask the repo in the browser</a>.
+  <b>⭐ Don’t clone first — <a href="https://rosenjcb.github.io/kb/">ask the repo in the browser</a></b>.
 </p>
 
 ---
