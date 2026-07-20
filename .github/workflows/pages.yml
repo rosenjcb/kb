@@ -62,6 +62,12 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: demo
+          # Unique per run+attempt so a re-run never leaves two artifacts named
+          # "github-pages" in the same run — deploy-pages@v4 matches by name and
+          # hard-fails on >1 match ("Multiple artifacts named ... Artifact count is N").
+          name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
