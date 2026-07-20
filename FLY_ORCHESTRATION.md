@@ -34,7 +34,7 @@ It is a concrete Fly.io mapping of the vendor-agnostic
 | | Serving node (`kb-demo`) | Builder (`kb-demo-builder`) |
 |---|---|---|
 | Config | [`fly.toml`](fly.toml) | [`fly.builder.toml`](fly.builder.toml) |
-| Size | `shared-cpu-1x` / **1024MB**, always-warm | `shared-cpu-2x` / **4GB**, daily one-shot |
+| Size | `shared-cpu-1x` / **1024MB**, always-warm | `performance-2x` / **4GB**, daily one-shot |
 | Volume | **none** (stateless) | none (ephemeral `/work`) |
 | Command | [`scripts/fly/serve-entrypoint.sh`](scripts/fly/serve-entrypoint.sh) | [`scripts/fly/refresh.sh`](scripts/fly/refresh.sh) |
 | Bases | imports **all** of [`bases.json`](scripts/fly/bases.json) (default via `start --from`, rest via verified `import`) | builds + publishes **each** base in [`bases.json`](scripts/fly/bases.json) |
@@ -140,7 +140,7 @@ fly secrets set -a kb-demo-builder \
 
 # 4. Seed all bases (cold build) + create the daily scheduler machine (4GB)
 fly machine run . -c fly.builder.toml -a kb-demo-builder \
-    --schedule daily --restart no --vm-memory 4096 \
+    --schedule daily --restart no --vm-size performance-2x --vm-memory 4096 \
     bash /app/scripts/fly/refresh.sh
 ```
 
@@ -155,7 +155,7 @@ To seed immediately without waiting for the first schedule tick, run the machine
 once on demand (the first full cold build of ~10 repos takes a while):
 
 ```bash
-fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-memory 4096 \
+fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-size performance-2x --vm-memory 4096 \
     bash /app/scripts/fly/refresh.sh
 ```
 
@@ -201,10 +201,14 @@ scripts/fly/deploy.sh            # deploy builder, recreate scheduler, deploy se
 scripts/fly/deploy.sh --no-seed  # skip the immediate seed; bases populate on the next daily tick
 ```
 
-It deploys `kb-demo-builder` (`-c fly.builder.toml`), destroys and recreates the
-scheduled machine (`--schedule daily --restart no`; the vm size/memory comes
-from `fly.builder.toml`'s `[[vm]]` block, not a CLI flag — a scheduled machine
-pins its image *and* size, so destroy+recreate is how it picks up both), deploys
+It builds + pushes the `kb-demo-builder` image (`--build-only --push` — a plain
+`fly deploy` on an app with no `[processes]`/`[http_service]` still creates or
+replaces a running machine using the image's default `CMD`, which would clobber
+the scheduled machine's custom command), destroys and recreates the scheduled
+machine (`--schedule daily --restart no`; **`[[vm]]` in `fly.builder.toml` is
+not inherited by `fly machine run -c`** — vm size/memory must be passed
+explicitly as `--vm-size performance-2x --vm-memory 4096` every time, or you
+silently get Fly's bare platform default of `shared-cpu-1x`/256MB), deploys
 `kb-demo` (`-c fly.toml`), then seeds every base immediately instead of waiting
 for the schedule (publishes each and auto-rolls the serving node onto the full
 set). Override the app names with `SERVE_APP=... BUILDER_APP=...` if you're
@@ -241,7 +245,7 @@ Set as env/secrets on the relevant app.
 | `SERVE_APP` | builder | — | serving app to roll |
 | `FLY_API_TOKEN` | builder | — | deploy token scoped to `SERVE_APP` |
 | `SERVE_HEALTH_URL` | builder | `https://<SERVE_APP>.fly.dev/healthz` | health gate for the roll |
-| `COLD_BUILD_TIMEOUT` | builder | `1800` | seconds to wait for each base's cold build |
+| `COLD_BUILD_TIMEOUT` | builder | `5400` (set in `fly.builder.toml`; code default is `1800`) | seconds to wait for each base's cold build |
 
 The repo each base indexes is read from `bases.json`, not an env var — cold
 builds clone per-base.
@@ -260,7 +264,7 @@ fly machine list -a kb-demo-builder # the scheduled machine (stopped between run
 curl -sS https://kb-demo.fly.dev/healthz   # ok:true when serving a snapshot
 
 # Force a refresh now (outside the daily schedule):
-fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-memory 4096 \
+fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-size performance-2x --vm-memory 4096 \
     bash /app/scripts/fly/refresh.sh
 ```
 

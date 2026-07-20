@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.5.5
+
+### Patch Changes
+
+- Show repo provenance as "org/repo" (matching GitHub) in init/scan progress lines and messages, instead of the internal "org-repo" slug. The slug itself is unchanged — it's still used as the clone directory name and the `git_repo` provenance value — this only affects human-facing text.
+
 ## 1.5.4
 
 ### Patch Changes

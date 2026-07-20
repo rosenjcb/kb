@@ -45,7 +45,11 @@ import {
 import type { SlashInputContext } from '@kb/core/ui/slash-context.js'
 import { scanBaseRepos } from '@kb/core/ops/auto-sync.js'
 import { type BaseRepo, discoverBaseRepos } from '@kb/core/storage/base-repos.js'
-import { repoDirForSlug, repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
+import {
+  repoDirForSlug,
+  repoDisplayFromGitUrl,
+  repoSlugFromGitUrl,
+} from '@kb/core/storage/repo-slug.js'
 import {
   ensureOperationalBaseDir,
   findKbFile,
@@ -616,6 +620,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   //   here and the rest via recursive rescan calls below, then reconcile + write meta.
   let scanDir = cwd
   let gitRepoSlug = options.gitRepo
+  // Display-only label ("org/repo", matching GitHub) for the progress line below —
+  // never used as the `git_repo` identifier, which stays the filesystem-safe slug.
+  let gitRepoDisplay = options.gitRepo
   let primaryRepo: InitRepoClone | undefined
   let additionalRepos: InitRepoClone[] = []
   if (!options.rescan) {
@@ -642,6 +649,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     additionalRepos = clones.slice(1)
     scanDir = path.join(baseDir, primaryRepo.dir)
     gitRepoSlug = primaryRepo.slug
+    gitRepoDisplay = repoDisplayFromGitUrl(primaryRepo.gitUrl)
   }
 
   // Resolve the ignore patterns for this run. Recursive per-repo runs receive them
@@ -653,8 +661,8 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
   const progress = new InitProgressReporter(6, progressPrefix(options), options.progressSink)
-  if (options.gitRepo ?? gitRepoSlug) {
-    progress.setRepo(options.gitRepo ?? gitRepoSlug)
+  if (options.gitRepo ?? gitRepoDisplay) {
+    progress.setRepo(options.gitRepo ?? gitRepoDisplay)
   }
   const rawProvider = options.provider ?? (await resolveProvider())
   const counter =
@@ -1126,7 +1134,7 @@ async function runExistingBaseSwap(params: {
         const slug = repoSlugFromGitUrl(target.url)
         const dir = repoDirForSlug(slug)
         const repoDir = path.join(baseDir, dir)
-        emit(`[kb init] Adding new repo "${slug}"…`)
+        emit(`[kb init] Adding new repo "${repoDisplayFromGitUrl(target.url)}"…`)
         if (!existsSync(repoDir)) {
           await cloneRepo(target.url, repoDir, target.branch)
         }

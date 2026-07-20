@@ -43,6 +43,11 @@ primary_region = "ams"
   # provenance. Set to "false" to carry full working trees.
   SNAPSHOT_NO_REPOS = "true"
   LOG_LEVEL = "info"
+  # Default (1800s/30min) was too tight for the biggest cold builds (brew,
+  # kestra, lazygit's huge docs corpus, and this repo itself) — they missed
+  # the window while smaller repos in the same run finished fine. Bumped once
+  # empirically confirmed against the largest repos in bases.json.
+  COLD_BUILD_TIMEOUT = "5400"
   # SERVE_APP, FLY_API_TOKEN, GEMINI_API_KEY, and the Tigris AWS_*/BUCKET_NAME
   # values are set as secrets (see setup above) — never hard-code them here.
 
@@ -51,6 +56,11 @@ primary_region = "ams"
 # scripts/fly/refresh.sh to completion and stops until the next day. 4GB gives
 # cloning + indexing ~10 repos (incl. large ones like Homebrew/brew, kestra)
 # headroom; the machine still stops between runs, so it only bills while building.
+# performance-2x (dedicated, unthrottled cores) over shared-cpu-2x: the indexing
+# pipeline (tree-sitter AST parsing + SQLite FTS matching) is single-threaded
+# CPU-bound work, so a faster core — not more shared cores — is what actually
+# speeds it up. At a few minutes/day this costs cents/month either way, so the
+# tier choice is effectively free; take the speed.
 [[vm]]
-  size = "shared-cpu-2x"
+  size = "performance-2x"
   memory = "4096mb"
