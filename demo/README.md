@@ -49,6 +49,11 @@ sequenceDiagram
   every base the server advertises on `GET /v1/bases` and sends the choice as
   `X-KB-Base`. The connected server is **baked into the page** (`config.js` →
   `window.__KB_SERVER__`), never typed in.
+- The empty-state title, tab title, and base picker all name the selected base
+  so it's clear which codebase you're asking about (not the KB tool itself);
+  if `/v1/bases` gives that base a repo, its browse `url` is linked under the
+  title. The server's own dogfood base is literally named `demo` — it's shown
+  as `kb` everywhere in the UI instead.
 - Sources from `answer.sources` (same payload Slack uses). Blob links are
   **per base**: each source's `gitRepo` slug → the browse `url`/`branch` the
   server returns for the selected base in `/v1/bases`.

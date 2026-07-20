@@ -199,6 +199,10 @@
     }
     .empty h1 { color: var(--text); font-size: 22px; margin: 14px 0 6px; }
     .empty p { margin: 4px 0; }
+    .empty-repo a {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
     .suggestions {
       display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
       margin: 22px auto 0; max-width: 720px;
@@ -426,7 +430,8 @@
 █████╔╝ ██████╔╝<span class="brand-dot"> [█]</span>
 ██╔═██╗ ██╔══██╗
 ██║  ██╗██████╔╝</pre>
-      <h1>Ask KB anything about the codebase</h1>
+      <h1 id="emptyTitle">Ask KB anything about the codebase</h1>
+      <p class="empty-repo" id="emptyRepo" hidden>Indexing <a id="emptyRepoLink" href="#" target="_blank" rel="noopener"></a></p>
       <p>This page talks to a running <code>kb-server</code> over its HTTP API.</p>
       <p>Pick a knowledge base from the <b>base</b> picker up top, then ask away.</p>
       <div class="suggestions" id="suggestions"></div>

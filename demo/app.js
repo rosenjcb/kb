@@ -60,6 +60,34 @@ const hint = $('hint')
 const statusEl = $('status')
 const basePicker = $('basePicker')
 const baseSelect = $('baseSelect')
+const emptyTitle = $('emptyTitle')
+const emptyRepo = $('emptyRepo')
+const emptyRepoLink = $('emptyRepoLink')
+
+// The server's own dogfood base is literally named "demo" — show it as "kb" so
+// it isn't mistaken for a target codebase (every other base names a real repo).
+function displayBaseName(base) {
+  return base === 'demo' ? 'kb' : base
+}
+
+/** Keep the empty-state title, repo link, and tab title honest about which
+ *  codebase (not the KB tool itself) the selected base is asking about. */
+function renderEmptyHeader() {
+  if (currentBase) {
+    emptyTitle.innerHTML = `Ask KB anything about the <b>${escapeHtml(displayBaseName(currentBase))}</b> codebase`
+  } else {
+    emptyTitle.textContent = 'Ask KB anything about the codebase'
+  }
+  const repo = (baseRepos[currentBase] || [])[0]
+  if (repo?.url) {
+    emptyRepoLink.href = repo.url
+    emptyRepoLink.textContent = repo.url
+    emptyRepo.hidden = false
+  } else {
+    emptyRepo.hidden = true
+  }
+  document.title = currentBase ? `KB — ${displayBaseName(currentBase)} chat` : 'KB — try the chat'
+}
 
 /** Clear the thread and drop the server session id (theme / base stay). */
 function startNewChat() {
@@ -942,7 +970,9 @@ function saveBase(name) {
   } catch {}
 }
 function updateHint() {
-  const suffix = currentBase ? ` · base <code>${escapeHtml(currentBase)}</code>` : ''
+  const suffix = currentBase
+    ? ` · base <code>${escapeHtml(displayBaseName(currentBase))}</code>`
+    : ''
   hint.innerHTML = `Server <code>${escapeHtml(SERVER_URL)}</code>${suffix}. Press Enter to send, Shift+Enter for a newline.`
 }
 function populateBaseSelect() {
@@ -950,7 +980,8 @@ function populateBaseSelect() {
   for (const name of baseNames) {
     const opt = document.createElement('option')
     opt.value = name
-    opt.textContent = name === defaultBase ? `${name} (default)` : name
+    const label = displayBaseName(name)
+    opt.textContent = name === defaultBase ? `${label} (default)` : label
     if (name === currentBase) opt.selected = true
     baseSelect.appendChild(opt)
   }
@@ -977,6 +1008,7 @@ async function fetchBases() {
   currentBase = next
   populateBaseSelect()
   updateHint()
+  renderEmptyHeader()
 }
 baseSelect.addEventListener('change', () => {
   const name = baseSelect.value
@@ -985,6 +1017,7 @@ baseSelect.addEventListener('change', () => {
   saveBase(name)
   updateHint()
   renderSuggestions()
+  renderEmptyHeader()
   startNewChat() // base switch → fresh server session + cleared thread
   checkHealth()
 })
@@ -993,6 +1026,7 @@ baseSelect.addEventListener('change', () => {
 currentBase = loadSavedBase()
 renderSuggestions()
 updateHint()
+renderEmptyHeader()
 ;(async () => {
   await fetchBases()
   renderSuggestions()
