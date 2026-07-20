@@ -245,7 +245,7 @@ Set as env/secrets on the relevant app.
 | `SERVE_APP` | builder | — | serving app to roll |
 | `FLY_API_TOKEN` | builder | — | deploy token scoped to `SERVE_APP` |
 | `SERVE_HEALTH_URL` | builder | `https://<SERVE_APP>.fly.dev/healthz` | health gate for the roll |
-| `COLD_BUILD_TIMEOUT` | builder | `1800` | seconds to wait for each base's cold build |
+| `COLD_BUILD_TIMEOUT` | builder | `5400` (set in `fly.builder.toml`; code default is `1800`) | seconds to wait for each base's cold build |
 
 The repo each base indexes is read from `bases.json`, not an env var — cold
 builds clone per-base.

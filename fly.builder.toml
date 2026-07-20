@@ -43,6 +43,11 @@ primary_region = "ams"
   # provenance. Set to "false" to carry full working trees.
   SNAPSHOT_NO_REPOS = "true"
   LOG_LEVEL = "info"
+  # Default (1800s/30min) was too tight for the biggest cold builds (brew,
+  # kestra, lazygit's huge docs corpus, and this repo itself) — they missed
+  # the window while smaller repos in the same run finished fine. Bumped once
+  # empirically confirmed against the largest repos in bases.json.
+  COLD_BUILD_TIMEOUT = "5400"
   # SERVE_APP, FLY_API_TOKEN, GEMINI_API_KEY, and the Tigris AWS_*/BUCKET_NAME
   # values are set as secrets (see setup above) — never hard-code them here.
 
