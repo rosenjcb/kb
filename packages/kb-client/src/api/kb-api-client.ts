@@ -44,7 +44,18 @@ export class KbApiClient {
   }
 
   async health(): Promise<HealthResponse> {
-    return this.getJson<HealthResponse>('/healthz', { auth: false })
+    // Prefer `/health` over `/healthz`: on Cloud Run (`*.run.app`) Google's frontend
+    // intercepts `/healthz` and returns its own 404 before the request reaches
+    // kb-server, so a client probing `/healthz` reports "could not connect" against
+    // a perfectly healthy server. `/health` (the same handler) passes through the
+    // edge. Fall back to `/healthz` only when `/health` 404s, for older servers that
+    // predate the `/health` alias. Network failures propagate from `request()`.
+    const primary = await this.request('/health', { method: 'GET', auth: false })
+    if (primary.status === 404) {
+      const fallback = await this.request('/healthz', { method: 'GET', auth: false })
+      return readJsonResponse<HealthResponse>(fallback)
+    }
+    return readJsonResponse<HealthResponse>(primary)
   }
 
   async connect(): Promise<HealthResponse> {
@@ -98,11 +109,6 @@ export class KbApiClient {
       const event = parseSsePart(buffer)
       if (event) yield event
     }
-  }
-
-  private async getJson<T>(path: string, opts: { auth: boolean }): Promise<T> {
-    const response = await this.request(path, { method: 'GET', auth: opts.auth })
-    return readJsonResponse<T>(response)
   }
 
   private async postJson<T>(

@@ -1,5 +1,11 @@
 # @kb/client
 
+## 1.3.12
+
+### Patch Changes
+
+- Fix CLI "could not connect (404)" against Cloud Run servers: the health probe now prefers `/health` (which passes through Google's frontend) and falls back to `/healthz` for older servers. Google's edge intercepts `/healthz` on `*.run.app` and 404s it before it reaches kb-server, which made a healthy remote server look unreachable.
+
 ## 1.3.11
 
 ### Patch Changes

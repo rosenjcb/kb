@@ -57,7 +57,7 @@ describe('server-connection', () => {
 })
 
 describe('KbApiClient', () => {
-  it('[TC-3] health() calls /healthz', async () => {
+  it('[TC-3] health() calls /health (passes through Cloud Run edge)', async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(JSON.stringify({ ok: true, base: 'demo' }), { status: 200 }),
     )
@@ -67,7 +67,33 @@ describe('KbApiClient', () => {
     })
     const health = await client.health()
     expect(health.base).toBe('demo')
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
     expect(fetchImpl).toHaveBeenCalledWith(
+      'http://127.0.0.1:9/health',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('[TC-3b] health() falls back to /healthz when /health 404s (older servers)', async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      const path = String(url)
+      if (path.endsWith('/health')) return new Response('not found', { status: 404 })
+      return new Response(JSON.stringify({ ok: true, base: 'legacy' }), { status: 200 })
+    })
+    const client = new KbApiClient({
+      connection: { url: 'http://127.0.0.1:9' },
+      fetchImpl,
+    })
+    const health = await client.health()
+    expect(health.base).toBe('legacy')
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      'http://127.0.0.1:9/health',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
       'http://127.0.0.1:9/healthz',
       expect.objectContaining({ method: 'GET' }),
     )

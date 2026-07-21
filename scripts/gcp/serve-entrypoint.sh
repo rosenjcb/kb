@@ -6,8 +6,10 @@
 #   1. wipes KB_HOME so a stale index can never shadow a fresh snapshot,
 #   2. imports EVERY non-default base from its latest immutable snapshot
 #      (`kb-server import --from …`, sha256-verified),
-#   3. warm-starts frozen on the DEFAULT base (`start --from … --bootstrap-policy
-#      snapshot-only`, sha256-verified before bind, no git, no reindex).
+#   3. adopts the DEFAULT base (`import --from …`), frees the staging copy, then
+#      warm-starts frozen on it in place (`start --bootstrap-policy snapshot-only`,
+#      sha256-verified before bind, no git, no reindex). Freeing the staging copy
+#      before serving keeps only ONE copy of the snapshot in tmpfs (RAM).
 #
 # A base whose snapshot is not published yet is skipped; the server still boots.
 set -euo pipefail
@@ -99,8 +101,19 @@ if [[ ! -f "$SNAPSHOT_DIR/kb-snapshot.json" ]]; then
   exit 1
 fi
 
-echo "  · kb-server start --from $SNAPSHOT_DIR --base $DEFAULT_BASE --bootstrap-policy $BOOTSTRAP_POLICY"
+# Adopt the default base into KB_HOME, then free the staging copy BEFORE serving.
+# On Cloud Run the filesystem is tmpfs (RAM-backed): if the long-running server
+# holds BOTH the /snapshot staging copy AND the adopted base dir, the snapshot's
+# RAM footprint doubles and OOM-kills a lean node. So — exactly as the non-default
+# loop above does — `import` copies /snapshot → the base dir and exits, we delete
+# /snapshot, and only then does `start` serve the now-present index in place
+# (no --from: server-cli ignores --from when the base already has an index, and
+# snapshot-only serves it as-is). Steady-state RAM = one copy, not two.
+echo "  · kb-server import --base $DEFAULT_BASE --from $SNAPSHOT_DIR"
+node "$KB_SERVER_JS" import --base "$DEFAULT_BASE" --from "$SNAPSHOT_DIR" --force
+rm -rf "$SNAPSHOT_DIR"
+
+echo "  · kb-server start --base $DEFAULT_BASE --bootstrap-policy $BOOTSTRAP_POLICY (serving in place)"
 exec node "$KB_SERVER_JS" start --with-mcp \
   --base "$DEFAULT_BASE" \
-  --from "$SNAPSHOT_DIR" \
   --bootstrap-policy "$BOOTSTRAP_POLICY"
