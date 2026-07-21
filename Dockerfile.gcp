@@ -1,0 +1,61 @@
+# GCP image for the build-to-serve KB deployment (serving node AND builder share
+# one image; the Cloud Run config selects the command + size).
+#
+#   * Serving service: CMD below → scripts/gcp/serve-entrypoint.sh
+#   * Builder Job:      command override → scripts/gcp/refresh.sh
+#
+# It is the monorepo Dockerfile plus (a) the Google Cloud CLI for NATIVE GCS
+# transport (`gcloud storage`, authenticated by the Cloud Run service account —
+# no keys, no AWS) and (b) the scripts/gcp orchestration.
+#
+# Build context is the repo root.  Ops: deploy-kb.sh
+
+FROM node:24-slim AS builder
+ENV HUSKY=0
+WORKDIR /app
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+RUN npm install -g pnpm@9
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc .nvmrc ./
+COPY scripts ./scripts
+COPY packages/kb-core/package.json packages/kb-core/
+COPY packages/kb-client/package.json packages/kb-client/
+COPY packages/kb-server/package.json packages/kb-server/
+RUN pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm run build
+
+FROM node:24-slim AS runtime
+ENV NODE_ENV=production \
+    HUSKY=0 \
+    PORT=38117 \
+    KB_HOME=/data
+WORKDIR /app
+# git: builder cold-clone / incremental pull. google-cloud-cli: NATIVE GCS
+# transport (`gcloud storage`), auth via the Cloud Run service account (ADC) —
+# no static keys, no AWS. bash/gawk/coreutils: the orchestration scripts.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates curl gnupg bash gawk \
+ && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+      > /etc/apt/sources.list.d/google-cloud-sdk.list \
+ && curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends google-cloud-cli \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages/kb-client/dist ./packages/kb-client/dist
+COPY --from=builder /app/packages/kb-server/dist ./packages/kb-server/dist
+COPY --from=builder /app/packages/kb-core ./packages/kb-core
+COPY --from=builder /app/packages/kb-core/node_modules ./packages/kb-core/node_modules
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/kb-server/package.json ./packages/kb-server/
+COPY packages/kb-client/package.json ./packages/kb-client/
+COPY packages/kb-core/package.json ./packages/kb-core/
+COPY scripts/gcp ./scripts/gcp
+RUN chmod +x ./scripts/gcp/*.sh
+ENV NODE_PATH=/app/packages/kb-core/node_modules:/app/node_modules
+RUN mkdir -p /data
+EXPOSE 38117
+# Default command = serving node. The builder Job overrides it (see deploy-kb.sh).
+CMD ["bash", "/app/scripts/gcp/serve-entrypoint.sh"]
