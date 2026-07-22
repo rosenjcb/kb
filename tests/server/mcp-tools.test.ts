@@ -22,7 +22,22 @@ function makeStubService(overrides: Partial<KbService> = {}): KbService {
     query: async params => ({
       status: 'accepted',
       recommendedAction: 'read_facts',
-      data: { answer: `synth:${params.synthesize}`, results: [], retrieval: {} },
+      data: {
+        answer: `synth:${params.synthesize}`,
+        results: [
+          {
+            metadata: {
+              id: 'fact-1',
+              title: 'Auth flow',
+              sourcePath: 'src/auth/login.ts',
+              symbol: 'loginHandler',
+              tags: ['import_code', 'fact'],
+            },
+            content: 'Handles login.',
+          },
+        ],
+        retrieval: { method: 'facts-loop', detail: 'passes:1;ponds:6;facts:104' },
+      },
     }),
     chat: async function* () {
       yield { type: 'done' }
@@ -52,6 +67,39 @@ describe('dispatchMcpToolCall', () => {
     expect(result.content[0].text).toContain('"status": "accepted"')
     // The stub echoes params.synthesize into the answer; MCP must always pass true.
     expect(result.content[0].text).toContain('synth:true')
+  })
+
+  it('[TC-109] default response is answer + compact citations, no fact dump or retrieval metadata', async () => {
+    const result = await dispatchMcpToolCall(makeStubService(), 'kb_query', { q: 'auth' })
+    expect(result.isError).toBeUndefined()
+    const body = JSON.parse(result.content[0].text)
+    expect(body.answer).toBe('synth:true')
+    expect(body.sources).toEqual(['src/auth/login.ts (loginHandler)'])
+    // The noise the trimmed payload exists to drop:
+    expect(body.retrieval).toBeUndefined()
+    expect(body.results).toBeUndefined()
+    expect(result.content[0].text).not.toContain('facts-loop')
+    expect(result.content[0].text).not.toContain('snippet')
+  })
+
+  it('[TC-110] verbose:true opts into the full evidence payload', async () => {
+    const result = await dispatchMcpToolCall(makeStubService(), 'kb_query', {
+      q: 'auth',
+      verbose: true,
+    })
+    expect(result.isError).toBeUndefined()
+    const body = JSON.parse(result.content[0].text)
+    expect(body.answer).toBe('synth:true')
+    expect(body.results).toHaveLength(1)
+    expect(body.results[0].filePath).toBe('src/auth/login.ts')
+    expect(body.retrieval).toEqual({ method: 'facts-loop', detail: 'passes:1;ponds:6;facts:104' })
+  })
+
+  it('[TC-109b] advertises the verbose flag in the tool schema', () => {
+    const tools = buildMcpToolList(makeStubService())
+    const schema = tools[0].inputSchema as { properties: Record<string, unknown>; required: string[] }
+    expect(Object.keys(schema.properties)).toEqual(['q', 'verbose'])
+    expect(schema.required).toEqual(['q'])
   })
 
   it('[TC-23] errors when kb_query is missing q', async () => {

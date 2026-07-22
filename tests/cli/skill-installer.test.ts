@@ -438,57 +438,140 @@ describe('installHooks', () => {
     expect(settings.hooks?.PreToolUse).toBeDefined()
   })
 
-  it('[TC-398] Writes executable hook script that emits Claude JSON additionalContext', async () => {
+  /** Run the installed hook script with an isolated throttle-state dir. */
+  async function runHook(
+    scriptPath: string,
+    input: Record<string, unknown>,
+    env: Record<string, string> = {}
+  ): Promise<string> {
+    const { spawnSync } = await import('node:child_process')
+    const stateDir = path.join(tempDir, `hook-state-${Math.random().toString(36).slice(2)}`)
+    const ran = spawnSync(scriptPath, [], {
+      input: JSON.stringify(input),
+      encoding: 'utf8',
+      env: { ...process.env, KB_HOOK_STATE_DIR: stateDir, ...env },
+    })
+    expect(ran.status).toBe(0)
+    return (ran.stdout ?? '').trim()
+  }
+
+  async function installedHookScript(): Promise<string> {
     await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
     await installHooks()
+    return path.join(fakeHome, '.kb', 'hooks', 'kb-reminder.sh')
+  }
 
-    const scriptPath = path.join(fakeHome, '.kb', 'hooks', 'kb-reminder.sh')
+  it('[TC-398] Writes executable hook script that emits Claude JSON additionalContext', async () => {
+    const scriptPath = await installedHookScript()
     const content = await readFile(scriptPath, 'utf8')
     expect(content).toContain('#!/usr/bin/env bash')
     expect(content).toContain('additionalContext')
     expect(content).toContain('hookSpecificOutput')
     expect(content).toContain('kb_query')
 
-    const { spawnSync } = await import('node:child_process')
-    const ran = spawnSync(scriptPath, [], {
-      input: JSON.stringify({
-        tool_name: 'Bash',
-        tool_input: { command: 'grep -r foo .' },
-      }),
-      encoding: 'utf8',
+    const stdout = await runHook(scriptPath, {
+      tool_name: 'Bash',
+      tool_input: { command: 'grep -r foo .' },
     })
-    expect(ran.status).toBe(0)
-    const parsed = JSON.parse((ran.stdout ?? '').trim())
+    const parsed = JSON.parse(stdout)
     expect(parsed.hookSpecificOutput.hookEventName).toBe('PreToolUse')
     expect(parsed.hookSpecificOutput.additionalContext).toContain('kb MCP')
   })
 
   it('[TC-399] Given Grep tool input, hook emits additionalContext JSON', async () => {
-    await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
-    await installHooks()
-    const scriptPath = path.join(fakeHome, '.kb', 'hooks', 'kb-reminder.sh')
-    const { spawnSync } = await import('node:child_process')
-    const ran = spawnSync(scriptPath, [], {
-      input: JSON.stringify({ tool_name: 'Grep', tool_input: { pattern: 'foo' } }),
-      encoding: 'utf8',
-    })
-    expect(ran.status).toBe(0)
-    expect(JSON.parse((ran.stdout ?? '').trim()).hookSpecificOutput.additionalContext).toContain(
-      'kb_query'
-    )
+    const scriptPath = await installedHookScript()
+    const stdout = await runHook(scriptPath, { tool_name: 'Grep', tool_input: { pattern: 'foo' } })
+    expect(JSON.parse(stdout).hookSpecificOutput.additionalContext).toContain('kb_query')
   })
 
   it('[TC-400] Given Read tool, hook stays silent', async () => {
-    await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
-    await installHooks()
-    const scriptPath = path.join(fakeHome, '.kb', 'hooks', 'kb-reminder.sh')
-    const { spawnSync } = await import('node:child_process')
-    const ran = spawnSync(scriptPath, [], {
-      input: JSON.stringify({ tool_name: 'Read', tool_input: { file_path: '/tmp/x' } }),
-      encoding: 'utf8',
+    const scriptPath = await installedHookScript()
+    const stdout = await runHook(scriptPath, {
+      tool_name: 'Read',
+      tool_input: { file_path: '/tmp/x' },
     })
-    expect(ran.status).toBe(0)
-    expect((ran.stdout ?? '').trim()).toBe('')
+    expect(stdout).toBe('')
+  })
+
+  it('[TC-442] Given non-search Bash commands, hook stays silent', async () => {
+    const scriptPath = await installedHookScript()
+    const commands = [
+      'git status',
+      'gcloud run deploy api --region us-east1',
+      'tsc --noEmit',
+      'gh pr view 42',
+      'pnpm run biome check .',
+      'npm run find-deps', // "find" inside a script name is not a search
+      'sed -i s/a/b/ src/foo.ts', // transforms are not repo search anymore
+      "awk NF file.txt",
+    ]
+    for (const command of commands) {
+      const stdout = await runHook(scriptPath, { tool_name: 'Bash', tool_input: { command } })
+      expect(stdout, command).toBe('')
+    }
+  })
+
+  it('[TC-443] Given grep only filtering another command output, hook stays silent', async () => {
+    const scriptPath = await installedHookScript()
+    const commands = ['tsc --noEmit | grep error', 'git log --oneline | grep fix', 'ps aux | rg node']
+    for (const command of commands) {
+      const stdout = await runHook(scriptPath, { tool_name: 'Bash', tool_input: { command } })
+      expect(stdout, command).toBe('')
+    }
+  })
+
+  it('[TC-444] Given repo-search commands in command position, hook fires', async () => {
+    const scriptPath = await installedHookScript()
+    const commands = [
+      'grep -r foo src/',
+      'rg pattern .',
+      'find . -name "*.ts"',
+      'git grep TODO',
+      'kb query "how does auth work"',
+      'cd packages && grep -r foo .',
+      'find . -name "*.ts" | xargs grep foo',
+    ]
+    for (const command of commands) {
+      const stdout = await runHook(scriptPath, { tool_name: 'Bash', tool_input: { command } })
+      expect(stdout, command).toContain('kb_query')
+    }
+  })
+
+  it('[TC-445] Given a repeat search in the same session window, hook reminds only once', async () => {
+    const scriptPath = await installedHookScript()
+    const stateDir = path.join(tempDir, 'hook-state-shared')
+    const input = {
+      tool_name: 'Bash',
+      tool_input: { command: 'grep -r foo .' },
+      session_id: 'session-1',
+    }
+    const { spawnSync } = await import('node:child_process')
+    const run = () =>
+      spawnSync(scriptPath, [], {
+        input: JSON.stringify(input),
+        encoding: 'utf8',
+        env: { ...process.env, KB_HOOK_STATE_DIR: stateDir },
+      })
+    expect((run().stdout ?? '').trim()).toContain('kb_query')
+    expect((run().stdout ?? '').trim()).toBe('')
+
+    // A different session gets its own reminder.
+    const other = spawnSync(scriptPath, [], {
+      input: JSON.stringify({ ...input, session_id: 'session-2' }),
+      encoding: 'utf8',
+      env: { ...process.env, KB_HOOK_STATE_DIR: stateDir },
+    })
+    expect((other.stdout ?? '').trim()).toContain('kb_query')
+  })
+
+  it('[TC-446] Given KB_HOOK_REMINDER=false, hook stays silent even for searches', async () => {
+    const scriptPath = await installedHookScript()
+    const stdout = await runHook(
+      scriptPath,
+      { tool_name: 'Grep', tool_input: { pattern: 'foo' } },
+      { KB_HOOK_REMINDER: 'false' }
+    )
+    expect(stdout).toBe('')
   })
 })
 

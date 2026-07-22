@@ -1,5 +1,20 @@
 # @kb/client
 
+## 1.4.0
+
+### Minor Changes
+
+- Trim the `kb_query` MCP response and scope the kb-first reminder hook (#186).
+
+  - `kb_query` now returns a trimmed agent payload by default: `answer` + compact `sources` citations (`path (symbol)`, deduped per file, capped at 5) + `confidence`, with actionable `notes` (verify hint below 0.7 confidence; warning when the prose names files absent from the cited sources). The full fact dump and retrieval metadata are opt-in via `verbose: true`.
+  - New `serializeMcpQueryResult` / `findUngroundedFileReferences` in `@kb/core`; synthesis prompts now require file references to be copied exactly from the evidence, never guessed.
+  - The `kb mcp install` PreToolUse reminder is scoped to real repo-search commands in command position (grep/rg/find/fd/ag/ack, `git grep`, `kb query`) — VCS/build/cloud tooling and pipeline-filter greps (`tsc | grep error`) no longer trigger it. Reminders are throttled to once per session per 15-minute window and can be disabled with `KB_HOOK_REMINDER=false`.
+
+### Patch Changes
+
+- Updated dependencies
+  - @kb/core@1.6.0
+
 ## 1.3.12
 
 ### Patch Changes

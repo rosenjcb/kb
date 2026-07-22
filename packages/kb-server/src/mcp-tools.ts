@@ -3,10 +3,11 @@
  *
  * `kb_query` is an **agent-to-agent** channel: a coding agent asks the knowledge
  * base a direct question in plain terms and gets a direct, synthesized answer
- * plus the source files that answer is drawn from — not a raw fact dump to grep
+ * plus compact source citations (`path (symbol)`) — not a raw fact dump to grep
  * through. We deliberately expose a **single** tool and always synthesize; the
- * evidence carries physical `filePath`s so the caller knows exactly what to open.
- * (A fact-id drill-down tool may return later.)
+ * citations are physical file paths so the caller knows exactly what to open.
+ * The full evidence payload (per-fact snippets, tags, retrieval metadata) is
+ * opt-in via `verbose: true`. (A fact-id drill-down tool may return later.)
  */
 
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js'
@@ -15,20 +16,27 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
-import { serializeQueryResult } from '@kb/core/service/serialize.js'
+import { serializeMcpQueryResult, serializeQueryResult } from '@kb/core/service/serialize.js'
 import type { KbService } from '@kb/core/service/kb-service.js'
 
 const KB_QUERY_TOOL = {
   name: 'kb_query',
   description:
     'Ask the knowledge base a direct question in plain language, agent-to-agent. ' +
-    'Returns a synthesized answer plus the source files it is drawn from (each ' +
-    'result carries an openable filePath) — ask for exactly what you want instead ' +
-    'of retrieving raw facts to sift through.',
+    'Returns a synthesized answer plus compact source citations ("path (symbol)") ' +
+    'to open and verify — ask for exactly what you want instead of retrieving raw ' +
+    'facts to sift through. Set verbose:true only when you need the full evidence ' +
+    'payload (per-fact snippets, tags, retrieval metadata).',
   inputSchema: {
     type: 'object',
     properties: {
       q: { type: 'string', description: 'Natural-language question' },
+      verbose: {
+        type: 'boolean',
+        description:
+          'Return the full evidence payload (every fact with snippet/tags plus retrieval ' +
+          'metadata) instead of the default trimmed answer + sources. Default false.',
+      },
     },
     required: ['q'],
     additionalProperties: false,
@@ -71,9 +79,12 @@ export async function dispatchMcpToolCall(
     }
     const q = typeof args.q === 'string' ? args.q : ''
     if (!q.trim()) return errorResult('kb_query requires a non-empty "q"')
+    const verbose = args.verbose === true
     // Always answer-first: synthesize a direct answer, with source files as evidence.
     const result = await service.query({ query: q, synthesize: true })
-    return textResult(serializeQueryResult(result))
+    // Default is the trimmed agent payload (answer + citations + notes); the full
+    // fact dump and retrieval metadata are opt-in via verbose.
+    return textResult(verbose ? serializeQueryResult(result) : serializeMcpQueryResult(result))
   } catch (error) {
     return errorResult(error instanceof Error ? error.message : String(error))
   }

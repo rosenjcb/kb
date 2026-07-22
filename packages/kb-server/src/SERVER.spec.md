@@ -31,9 +31,9 @@ See companion doc for full vocabulary where applicable.
 | FR-1 | Stream chat synthesis over SSE |
 | FR-2 | Expose authenticated REST routes for query, chat, and health; `/healthz` is liveness (HTTP 200 when reachable) with readiness in body (`ok` / `indexing`); includes `version.server` (not `@kb/core`); empty API-key list allows open access |
 | FR-3 | KbService reads facts, reports health (`indexing` / `bootstrapProgress` / `reindexing`), and serializes reindex |
-| FR-4 | Expose a single answer-first MCP tool (`kb_query`) that always synthesizes and never exposes other tools |
+| FR-4 | Expose a single answer-first MCP tool (`kb_query`) that always synthesizes and never exposes other tools; the default payload is trimmed to answer + source citations, with the full evidence dump behind `verbose: true` |
 | FR-5 | Parse and run periodic reindex scheduler |
-| FR-6 | Serialize IntentResult to REST JSON |
+| FR-6 | Serialize IntentResult to REST JSON, and to the trimmed MCP payload (answer + deduped/capped citations + verify/grounding notes) |
 | FR-7 | Resolve bootstrap base, repos, branch, and ignore patterns from env and flags |
 | FR-8 | Start server CLI with bootstrap logging and deferred scheduler |
 | FR-9 | Print package version for `--version` / `-V` without starting the daemon |
@@ -157,6 +157,17 @@ See companion doc for full vocabulary where applicable.
 | TC-106 | FR-16 | answers preflight OPTIONS with 204 and no auth for an allowed origin | pass |
 | TC-107 | FR-16 | rejects preflight OPTIONS from a disallowed origin with 405 | pass |
 | TC-108 | FR-17 | serves `/v1/query` while scheduled reindex is in progress (not bootstrap) | pass |
+| TC-109 | FR-4 | default response is answer + compact citations, no fact dump or retrieval metadata | pass |
+| TC-109b | FR-4 | advertises the verbose flag in the tool schema | pass |
+| TC-110 | FR-4 | verbose:true opts into the full evidence payload | pass |
+| TC-111 | FR-6 | trims to answer + citations and drops retrieval metadata and the fact dump | pass |
+| TC-112 | FR-6 | adds a verify note when confidence is below the threshold | pass |
+| TC-113 | FR-6 | dedupes citations per file, folds in symbols, and caps the list at 5 | pass |
+| TC-114 | FR-6 | flags answer file references that match no cited source path | pass |
+| TC-115 | FR-6 | notes when sources exist but no answer was synthesized | pass |
+| TC-116 | FR-6 | grounding matches by basename so relative prose paths ground against absolute evidence paths | pass |
+| TC-117 | FR-6 | grounding ignores non-file tokens: product names, property access, bare words | pass |
+| TC-118 | FR-6 | grounding reports each ungrounded file once | pass |
 
 ### Related docs
 

@@ -98,7 +98,7 @@ See companion doc for full vocabulary where applicable.
 | FR-28 | Named-list interview parses numbered selections in TTY prompts |
 | FR-29 | Publish CLI pushes companion docs to configured publish targets |
 | FR-30 | Retrieval fallback degrades gracefully when deep retrieval fails |
-| FR-31 | Skill installer copies bundled skills to agent home directories, installs hooks, and syncs Cursor/Claude/Antigravity MCP `kb` entries to the active connection (localhost default) — opt-in via `kb skills install` / `kb mcp install`; CLI and TUI startup never auto-install skills or rewrite MCP configs |
+| FR-31 | Skill installer copies bundled skills to agent home directories, installs hooks, and syncs Cursor/Claude/Antigravity MCP `kb` entries to the active connection (localhost default) — opt-in via `kb skills install` / `kb mcp install`; CLI and TUI startup never auto-install skills or rewrite MCP configs. The kb-first reminder hook fires only on repo-search commands in command position (grep/rg/find/…, `git grep`, `kb query` — never VCS/build/cloud tooling or pipeline-filter greps), throttles to one reminder per session per 15-minute window, and honors `KB_HOOK_REMINDER=false` |
 | FR-32 | Startup notices print one-time migration and version hints |
 | FR-33 | Sync CLI refreshes the split GitHub Release runtimes and rewires stable client/server binary links |
 | FR-34 | Client uninstall removes release client layout; server uninstall removes server layout and optional ~/.kb data |
@@ -550,6 +550,11 @@ See companion doc for full vocabulary where applicable.
 | TC-439 | FR-35 | Given documents in a base, then lists metadata in human output | pass |
 | TC-440 | FR-35 | Given base filter, then returns document list for that base | pass |
 | TC-441 | FR-35 | Given more than twenty documents, then docs list shows all by default | pass |
+| TC-442 | FR-31 | Given non-search Bash commands, hook stays silent | pass |
+| TC-443 | FR-31 | Given grep only filtering another command output, hook stays silent | pass |
+| TC-444 | FR-31 | Given repo-search commands in command position, hook fires | pass |
+| TC-445 | FR-31 | Given a repeat search in the same session window, hook reminds only once | pass |
+| TC-446 | FR-31 | Given KB_HOOK_REMINDER=false, hook stays silent even for searches | pass |
 
 ### Related docs
 
