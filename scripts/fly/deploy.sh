@@ -52,7 +52,10 @@ fly machine run . -c fly.builder.toml -a "$BUILDER_APP" --detach \
     bash /app/scripts/fly/refresh.sh
 
 echo "==> 3/4 deploying serving image ($SERVE_APP)"
-fly deploy -a "$SERVE_APP" -c fly.toml
+# --wait-timeout: boot now serially imports up to 10 bases before the port
+# opens, which can exceed flyctl's 5m default — see fly.toml's [checks.tcp]
+# comment.
+fly deploy -a "$SERVE_APP" -c fly.toml --wait-timeout 15m
 
 if [[ "$SEED" -eq 1 ]]; then
   echo "==> 4/4 seeding every base now (skip with --no-seed)"
