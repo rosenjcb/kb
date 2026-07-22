@@ -1,8 +1,8 @@
 # @kb/client
 
-## 1.4.0
+## 1.3.13
 
-### Minor Changes
+### Patch Changes
 
 - Trim the `kb_query` MCP response and scope the kb-first reminder hook (#186).
 
@@ -10,10 +10,8 @@
   - New `serializeMcpQueryResult` / `findUngroundedFileReferences` in `@kb/core`; synthesis prompts now require file references to be copied exactly from the evidence, never guessed.
   - The `kb mcp install` PreToolUse reminder is scoped to real repo-search commands in command position (grep/rg/find/fd/ag/ack, `git grep`, `kb query`) — VCS/build/cloud tooling and pipeline-filter greps (`tsc | grep error`) no longer trigger it. Reminders are throttled to once per session per 15-minute window and can be disabled with `KB_HOOK_REMINDER=false`.
 
-### Patch Changes
-
 - Updated dependencies
-  - @kb/core@1.6.0
+  - @kb/core@1.5.6
 
 ## 1.3.12
 

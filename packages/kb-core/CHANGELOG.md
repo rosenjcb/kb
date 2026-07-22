@@ -1,8 +1,8 @@
 # @kb/core
 
-## 1.6.0
+## 1.5.6
 
-### Minor Changes
+### Patch Changes
 
 - Trim the `kb_query` MCP response and scope the kb-first reminder hook (#186).
 
