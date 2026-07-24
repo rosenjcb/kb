@@ -39,7 +39,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy -a kb-demo -c fly.toml
+      # --wait-timeout: flyctl's default (5m) is shorter than the serving
+      # node's boot, which now serially downloads + imports up to 10 bases
+      # (scripts/fly/bases.json) before the port opens — see fly.toml's
+      # [checks.tcp] comment. Without this, flyctl aborts the release while
+      # the machine is still healthy but mid-import.
+      - run: flyctl deploy -a kb-demo -c fly.toml --wait-timeout 15m
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_KB_DEMO }}
 

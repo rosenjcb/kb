@@ -28,7 +28,7 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 |---|---|
 | `installSkillsGlobally()` | Per-agent skill files under `~/.claude`, `~/.cursor/rules`, `~/.codex`, `~/.github` |
 | `installSkillIntoProject()` | Injects `kb:dev-workflow` body into profile MDs (`CLAUDE.md`, `AGENTS.md`) |
-| `installHooks()` | Registers kb-first PreToolUse hook (`~/.kb/hooks/kb-reminder.sh`) — Claude matcher `Bash\|Grep\|Glob`, JSON `additionalContext` (plain stdout is ignored) |
+| `installHooks()` | Registers kb-first PreToolUse hook (`~/.kb/hooks/kb-reminder.sh`) — Claude matcher `Bash\|Grep\|Glob`, JSON `additionalContext` (plain stdout is ignored). The script itself scopes the reminder: only repo-search commands in command position (grep/rg/find/…, `git grep`, `kb query`) or native Grep/Glob fire it; pipeline-filter greps and VCS/build/cloud tooling stay silent; one reminder per session per 15-min window; `KB_HOOK_REMINDER=false` disables |
 | `installMcpConfigs()` | Rewrites Cursor/Claude `kb` MCP entries to `${KB_SERVER_URL\|host:port}/mcp` |
 | `uninstallSkills()` / `uninstallHooks()` / `uninstallMcpConfigs()` | Removes installed files, profile MD entries, hooks, and managed MCP entries |
 

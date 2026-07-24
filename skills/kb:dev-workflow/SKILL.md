@@ -12,8 +12,8 @@ description: >-
 ## MCP connection → `kb_query` for discovery
 
 This session has a **kb MCP** connection. Use **`kb_query`** to discover how the
-codebase works: ask a real question, get an answer plus evidence (`filePath`s /
-source facts), then verify by opening those files.
+codebase works: ask a real question, get an answer plus compact source citations
+(`path (symbol)`), then verify by opening those files.
 
 KB is not a keyword box. Ask like a teammate. Use follow-up questions to dig —
 not repo-wide fishing first.
@@ -43,8 +43,13 @@ Thin answer → ask a **narrower** follow-up. Do not switch to broad grep yet.
 | Part | Use it to… |
 |------|------------|
 | Synthesized **answer** | Working hypothesis / plan |
-| **results[]** facts | Claims to double-check |
-| **`filePath`** | Open *only* these files next |
+| **sources[]** citations (`path (symbol)`) | Open *only* these files next |
+| **notes[]** | Verify hints — act on them before relying on the answer |
+
+`notes` may warn that confidence is mid/low or that the prose named a file not
+in the sources — when it does, trust `sources` over prose paths. Pass
+`verbose: true` only if you genuinely need the raw evidence payload (per-fact
+snippets, tags, retrieval metadata); the default response is the signal.
 
 Loop: ask → read cited paths → confirm or correct → ask again for gaps → only
 then minimal grep/read outside citations.
@@ -55,7 +60,7 @@ On every coding task, before broad exploration:
 
 ```
 ALWAYS: kb_query with a real question first
-THEN:   open cited filePaths and verify
+THEN:   open cited sources and verify
 THEN:   follow-up questions for remaining gaps
 ONLY THEN: minimal grep/read outside citations
 ```

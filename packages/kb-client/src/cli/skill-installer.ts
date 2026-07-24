@@ -250,27 +250,99 @@ export const CLAUDE_KB_HOOK_MATCHER = 'Bash|Grep|Glob'
  */
 export const KB_HOOK_SCRIPT_CONTENT = `#!/usr/bin/env bash
 # kb-reminder.sh — remind agents to use kb MCP (kb_query) before spelunking.
+# Scoped: fires only on repo-search commands in command position (grep/rg/find/…,
+# git grep, kb query) and the native Grep/Glob tools — never on VCS/build/cloud
+# tooling — and is throttled per session so it nudges instead of nagging.
+# Opt out with KB_HOOK_REMINDER=false; override marker dir with KB_HOOK_STATE_DIR.
 # Claude Code PreToolUse: plain stdout is ignored — emit JSON additionalContext.
 # Docs: https://code.claude.com/docs/en/hooks
 set -euo pipefail
 input=$(cat || true)
 payload=$(printf '%s' "$input" | python3 -c '
-import json, re, sys
+import hashlib, json, os, re, sys, tempfile, time
+
 raw = sys.stdin.read()
 try:
     d = json.loads(raw) if raw.strip() else {}
 except Exception:
     d = {}
+if not isinstance(d, dict):
+    d = {}
+if os.environ.get("KB_HOOK_REMINDER", "").strip().lower() == "false":
+    sys.exit(0)
 tool = str(d.get("tool_name") or d.get("toolName") or "")
 ti = d.get("tool_input") or d.get("toolInput") or {}
 if not isinstance(ti, dict):
     ti = {}
 cmd = str(d.get("command") or ti.get("command") or ti.get("cmd") or "")
-bash_spelunk = bool(re.search(r"\\b(grep|egrep|fgrep|rg|awk|sed|find)\\b", cmd))
-cli_query = bool(re.search(r"\\bkb\\s+(query|graph|docs|facts)\\b", cmd))
+
+SEARCH_FILTERS = ("grep", "egrep", "fgrep", "rg", "ag", "ack")
+SEARCH_WALKERS = ("find", "fd", "fdfind")
+WRAPPERS = ("sudo", "command", "nohup", "nice", "xargs", "time", "env")
+
+def head_tokens(stage):
+    toks = stage.strip().split()
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", t):
+            i += 1
+            continue
+        if t in WRAPPERS:
+            i += 1
+            continue
+        if t == "timeout":
+            i += 2
+            continue
+        return toks[i:]
+    return []
+
+def is_repo_search(cmd):
+    # Statements first (&&, ||, ;, newline), then pipeline stages within each.
+    for stmt in re.split(r"&&|\\|\\||;|\\n", cmd):
+        stages = stmt.split("|")
+        for si, stage in enumerate(stages):
+            toks = head_tokens(stage)
+            if not toks:
+                continue
+            head = os.path.basename(toks[0])
+            if head in SEARCH_WALKERS:
+                return True
+            # grep-family only counts when it initiates the pipeline — filtering
+            # another command output (git log | grep …) is not repo spelunking.
+            if head in SEARCH_FILTERS and si == 0:
+                return True
+            if head == "git" and len(toks) > 1 and toks[1] == "grep":
+                return True
+            if head == "kb" and len(toks) > 1 and toks[1] in ("query", "graph", "docs", "facts"):
+                return True
+    return False
+
 native_search = tool in ("Grep", "Glob")
-if not (native_search or bash_spelunk or cli_query):
+if not (native_search or is_repo_search(cmd)):
     sys.exit(0)
+
+# Throttle: at most one reminder per session per window — nudge, not nag.
+TTL_SECONDS = 900
+session = str(d.get("session_id") or d.get("sessionId") or "global")
+state_dir = os.environ.get("KB_HOOK_STATE_DIR", "").strip() or os.path.join(
+    tempfile.gettempdir(), "kb-hook-reminders"
+)
+key = hashlib.sha256(session.encode("utf-8", "replace")).hexdigest()[:16]
+marker = os.path.join(state_dir, "kb-reminder-" + key)
+now = time.time()
+try:
+    if now - os.path.getmtime(marker) < TTL_SECONDS:
+        sys.exit(0)
+except OSError:
+    pass
+try:
+    os.makedirs(state_dir, exist_ok=True)
+    with open(marker, "w") as f:
+        f.write(str(int(now)))
+except OSError:
+    pass  # an unwritable state dir must not suppress the reminder
+
 msg = (
     "Ask the kb MCP tool kb_query a direct question before Grep/Glob/find/rg or kb query. "
     "It answers agent-to-agent: a direct answer plus the source files to open. "

@@ -65,10 +65,15 @@ primary_region = "ams"
   processes = ["app"]
 
 # Process up on :38117 (does not require /healthz 200).
+# grace_period is long because boot now serially downloads + imports up to 10
+# bases (see the [[vm]] comment above) before the default base starts and the
+# port opens — a short grace period flags the machine unhealthy mid-import and
+# flyctl deploy (see .github/workflows/fly-deploy.yml --wait-timeout) aborts
+# the release even though the boot was still proceeding normally.
 [checks]
   [checks.tcp]
     port = 38117
     type = "tcp"
     interval = "15s"
     timeout = "5s"
-    grace_period = "2m"
+    grace_period = "12m"

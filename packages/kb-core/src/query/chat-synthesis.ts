@@ -86,6 +86,7 @@ const CHAT_SYNTHESIS_SYSTEM_PROMPT = [
   '',
   '- Answer directly as a domain expert. Never mention retrieval, tools, or "the facts provided".',
   '- Name concrete files, functions, flags, or settings inline so the reader can verify.',
+  '- Only name files that appear in the gathered facts, copying paths exactly — never guess or alias a file name.',
   '- Format for the reader: a tight paragraph for simple questions; headings/bullets/a compact',
   '  table for multi-part ones. Bold key terms.',
   '- If the gathered facts genuinely do not contain the answer, say so briefly and suggest',

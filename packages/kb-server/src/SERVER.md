@@ -123,10 +123,13 @@ claude mcp add --transport http -s user kb http://localhost:38117/mcp \
 
 **Tool exposed:** a single `kb_query` (`kb_`-prefixed on the wire). It is an
 **agent-to-agent** channel: the client asks a direct natural-language question
-and always gets an answer-first response — a synthesized answer plus the
-**physical source files** the answer draws from (each result's `filePath` is an
-openable path, not an opaque `fact://` id). No `synthesize` flag; it always
-synthesizes. A fact-id drill-down tool may return later.
+and always gets an answer-first response. The **default payload is trimmed** to
+`answer` + `sources` (compact citations, `path (symbol)`, deduped per file and
+capped at 5) plus `confidence` and optional `notes` — a verify hint when
+confidence is below 0.7, and a warning when the prose names a file absent from
+the cited sources. The full evidence payload (per-fact snippets, tags,
+`retrieval` metadata) is opt-in via `verbose: true`. No `synthesize` flag; it
+always synthesizes. A fact-id drill-down tool may return later.
 
 ### Endpoints (`kb-server start [--with-mcp] [--with-slack]`)
 
@@ -221,7 +224,7 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 ## Gotchas
 
 - Chat SSE may fall back from Gemini stream to non-streaming.
-- REST `synthesize` defaults true; MCP `kb_query` **always** synthesizes (answer + source files).
+- REST `synthesize` defaults true; MCP `kb_query` **always** synthesizes and returns the trimmed answer + citations payload by default (`verbose: true` for the full evidence dump).
 - Fly `kb-demo` is **Pages chatbot only** — no Slack secrets on that app; see [`../FLY.md`](../FLY.md).
 - Volume at `/data` is clones + SQLite only; image rootfs holds `node_modules`.
 

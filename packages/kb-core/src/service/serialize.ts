@@ -97,6 +97,127 @@ function toSource(item: ReadDocumentsResultItem): QuerySource {
   }
 }
 
+// ─── MCP lean response (kb_query default) ─────────────────────────────────────
+//
+// Agent consumers want the synthesized answer plus a handful of openable
+// citations — not the fact dump or retrieval telemetry. The full payload stays
+// available behind the tool's `verbose` flag (`serializeQueryResult`).
+
+export interface McpQueryResponseBody {
+  status: IntentResult['status']
+  answer: string | null
+  /** Compact citations, `path (symbol, …)` — open these files to verify the answer. */
+  sources: string[]
+  confidence?: number
+  /** Actionable caveats: verify hints, answer/evidence path mismatches. */
+  notes?: string[]
+}
+
+const MCP_MAX_SOURCES = 5
+const MCP_MAX_SYMBOLS_PER_SOURCE = 3
+/** Below this, tell the caller to verify the cited files before relying on the answer. */
+const MCP_VERIFY_CONFIDENCE_BELOW = 0.7
+
+/** File extensions that make a token in prose read as a source-file reference. */
+const FILE_REF_EXTENSIONS = new Set([
+  'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'mts', 'cts', 'py', 'go', 'rs', 'java',
+  'kt', 'rb', 'php', 'cs', 'c', 'h', 'cc', 'cpp', 'hpp', 'swift', 'scala', 'sql',
+  'sh', 'bash', 'md', 'json', 'yaml', 'yml', 'toml', 'css', 'scss', 'html', 'vue',
+  'svelte', 'proto', 'tf', 'ini', 'env',
+])
+
+/** Prose tokens that look like files but are product names, never citations. */
+const NON_FILE_TOKENS = new Set([
+  'node.js', 'next.js', 'vue.js', 'nuxt.js', 'express.js', 'three.js', 'd3.js',
+  'ember.js', 'backbone.js', 'chart.js',
+])
+
+/**
+ * File-looking tokens in `answer` whose basename matches none of the evidence
+ * paths. These are the "prose cites `dto.ts`, evidence says `reversal.ts`"
+ * mismatches — the caller should trust the sources list, not the prose path.
+ */
+export function findUngroundedFileReferences(answer: string, sourcePaths: string[]): string[] {
+  const knownBasenames = new Set<string>()
+  for (const p of sourcePaths) {
+    const base = p.trim().toLowerCase().split('/').pop()
+    if (base) knownBasenames.add(base)
+  }
+  const tokens = answer.match(/[\w@][\w.@/-]*\.[A-Za-z]+/g) ?? []
+  const ungrounded: string[] = []
+  const seen = new Set<string>()
+  for (const token of tokens) {
+    const normalized = token.replace(/^\.?\//, '').toLowerCase()
+    if (NON_FILE_TOKENS.has(normalized)) continue
+    const ext = normalized.split('.').pop()
+    if (!ext || !FILE_REF_EXTENSIONS.has(ext)) continue
+    const base = normalized.split('/').pop() ?? normalized
+    if (seen.has(base)) continue
+    seen.add(base)
+    if (!knownBasenames.has(base)) ungrounded.push(token)
+  }
+  return ungrounded
+}
+
+/** Dedupe evidence by file (order preserved), fold in symbols, cap the list. */
+function formatMcpSources(results: QuerySource[]): string[] {
+  const byPath = new Map<string, string[]>()
+  for (const r of results) {
+    const p = r.filePath?.trim()
+    if (!p) continue
+    let symbols = byPath.get(p)
+    if (!symbols) {
+      symbols = []
+      byPath.set(p, symbols)
+    }
+    const symbol = r.symbol?.trim()
+    if (symbol && !symbols.includes(symbol) && symbols.length < MCP_MAX_SYMBOLS_PER_SOURCE) {
+      symbols.push(symbol)
+    }
+  }
+  return [...byPath.entries()]
+    .slice(0, MCP_MAX_SOURCES)
+    .map(([p, symbols]) => (symbols.length > 0 ? `${p} (${symbols.join(', ')})` : p))
+}
+
+/**
+ * Map an `IntentResult` to the trimmed MCP `kb_query` payload: answer + top
+ * cited files, no fact dump, no retrieval metadata. Adds `notes` when the
+ * answer needs verification (mid/low confidence) or when the prose names files
+ * absent from the evidence.
+ */
+export function serializeMcpQueryResult(result: IntentResult): McpQueryResponseBody {
+  const full = serializeQueryResult(result)
+  const sources = formatMcpSources(full.results)
+  const notes: string[] = []
+
+  if (typeof full.confidence === 'number' && full.confidence < MCP_VERIFY_CONFIDENCE_BELOW) {
+    notes.push(
+      `Confidence ${full.confidence.toFixed(2)} — verify the cited sources before relying on this answer.`
+    )
+  }
+
+  if (full.answer) {
+    const evidencePaths = full.results.flatMap(r => (r.filePath ? [r.filePath] : []))
+    const ungrounded = findUngroundedFileReferences(full.answer, evidencePaths)
+    if (ungrounded.length > 0) {
+      notes.push(
+        `The answer names file(s) not in the cited sources (${ungrounded.join(', ')}) — trust the sources list for exact paths.`
+      )
+    }
+  } else if (sources.length > 0) {
+    notes.push('No synthesized answer was produced — open the cited sources directly.')
+  }
+
+  return {
+    status: full.status,
+    answer: full.answer,
+    sources,
+    ...(typeof full.confidence === 'number' ? { confidence: full.confidence } : {}),
+    ...(notes.length > 0 ? { notes } : {}),
+  }
+}
+
 /** Map an `IntentResult` to the REST `POST /v1/query` response body. */
 export function serializeQueryResult(result: IntentResult): QueryResponseBody {
   const data = (result.data ?? {}) as ReadDocumentsResultData
