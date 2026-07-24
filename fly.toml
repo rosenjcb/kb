@@ -1,10 +1,11 @@
 # Fly.io SERVING node for the kb chat demo (https://kb-demo.fly.dev).
 #
 # Low-budget, always-warm, and STATELESS: it holds no volume. On every boot it
-# downloads every base's latest sha256-verified snapshot from Tigris (default via
-# `start --from`, the rest via verified `import`) and warm-starts frozen
-# (`--bootstrap-policy snapshot-only`) — no cloning, no indexing, no reindex
-# scheduler. One process serves all bases; clients pick one with `X-KB-Base`
+# downloads every base's latest sha256-verified snapshot from Tigris and adopts
+# it via verified `import` (default base included — freeing the staging copy
+# before serving keeps only one copy of each snapshot on disk) and warm-starts
+# frozen (`--bootstrap-policy snapshot-only`) — no cloning, no indexing, no
+# reindex scheduler. One process serves all bases; clients pick one with `X-KB-Base`
 # (the chat demo's header picker). All the heavy work happens once a day on a
 # separate 4GB builder machine, which publishes fresh per-base snapshots and
 # rolls this node onto them.
