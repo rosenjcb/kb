@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.5.7
+
+### Patch Changes
+
+- Fix rescan hash lost during init
+
 ## 1.5.6
 
 ### Patch Changes

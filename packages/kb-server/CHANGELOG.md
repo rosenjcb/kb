@@ -1,5 +1,13 @@
 # kb-server
 
+## 1.4.14
+
+### Patch Changes
+
+- Fix rescan hash lost during init
+- Updated dependencies
+  - @kb/core@1.5.7
+
 ## 1.4.13
 
 ### Patch Changes

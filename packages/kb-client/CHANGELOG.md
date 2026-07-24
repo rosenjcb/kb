@@ -1,5 +1,13 @@
 # @kb/client
 
+## 1.3.14
+
+### Patch Changes
+
+- Fix rescan hash lost during init
+- Updated dependencies
+  - @kb/core@1.5.7
+
 ## 1.3.13
 
 ### Patch Changes
