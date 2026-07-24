@@ -36,13 +36,26 @@ BUCKET_NAME="${BUCKET_NAME:-}"
 # Object-store prefix for one base: <SNAPSHOT_ROOT>/<base>.
 snapshot_prefix_for() { printf '%s/%s' "$SNAPSHOT_ROOT" "$1"; }
 
-# Emit one TSV row per base from the manifest: name<TAB>repo<TAB>branch<TAB>default.
+# Emit one TSV row per base from the manifest: name<TAB>repos<TAB>reserved<TAB>default.
+# `repos` is a SPACE-separated list of git targets (`url` or `url#branch`) — feed
+# it straight to KB_GIT_REPOS for a multi-repo base. Supports the `repos: [...]`
+# array (entries: "url", "url#branch", or {url,branch}) and the legacy single
+# `repo`(+`branch`) fields. Column 3 is reserved (branches are folded into col 2).
 each_base() {
   node -e '
     const fs = require("fs");
     const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const target = (url, branch) => (branch ? String(url) + "#" + branch : String(url));
     for (const b of m.bases || []) {
-      process.stdout.write([b.name, b.repo || "", b.branch || "", b.default ? "true" : ""].join("\t") + "\n");
+      let repos = [];
+      if (Array.isArray(b.repos)) {
+        repos = b.repos
+          .map(r => (typeof r === "string" ? r : target(r.url, r.branch)))
+          .filter(Boolean);
+      } else if (b.repo) {
+        repos = [target(b.repo, b.branch)];
+      }
+      process.stdout.write([b.name, repos.join(" "), "", b.default ? "true" : ""].join("\t") + "\n");
     }
   ' "$BASES_MANIFEST"
 }

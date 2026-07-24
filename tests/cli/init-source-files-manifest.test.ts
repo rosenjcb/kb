@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -66,5 +66,39 @@ describe('init-source-files-manifest', () => {
     await writeSourceFilesManifest(baseDir, buildSourceFileHashes(v1))
     const manifest = await readSourceFilesManifest(baseDir)
     expect(diffChangedSourceFiles(v1, manifest)).toEqual([])
+  })
+
+  it('[TC-627] scopes manifests per repo slug so one repo never clobbers another', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-src-mf-multi-'))
+    tempDirs.push(baseDir)
+
+    // Two repos with a COLLIDING repo-relative key (`README.md`) and different contents.
+    await writeSourceFilesManifest(baseDir, buildSourceFileHashes({ 'README.md': '# A\n' }), 'repo-a')
+    await writeSourceFilesManifest(baseDir, buildSourceFileHashes({ 'README.md': '# B\n' }), 'repo-b')
+
+    const manifestA = await readSourceFilesManifest(baseDir, 'repo-a')
+    const manifestB = await readSourceFilesManifest(baseDir, 'repo-b')
+    expect(manifestA.files['README.md']).toBe(hashSourceFileContents('# A\n'))
+    expect(manifestB.files['README.md']).toBe(hashSourceFileContents('# B\n'))
+
+    // Each repo sees its own content as unchanged (the bug produced "0 unchanged").
+    expect(diffChangedSourceFiles({ 'README.md': '# A\n' }, manifestA)).toEqual([])
+    expect(diffChangedSourceFiles({ 'README.md': '# B\n' }, manifestB)).toEqual([])
+
+    const entries = await readdir(baseDir)
+    expect(entries).toContain('source-files-manifest.repo-a.json')
+    expect(entries).toContain('source-files-manifest.repo-b.json')
+    expect(entries).not.toContain('source-files-manifest.json')
+  })
+
+  it('[TC-628] undefined slug falls back to the un-suffixed legacy filename', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-src-mf-legacy-'))
+    tempDirs.push(baseDir)
+    await writeSourceFilesManifest(baseDir, buildSourceFileHashes({ 'README.md': '# A\n' }))
+    const entries = await readdir(baseDir)
+    expect(entries).toEqual(['source-files-manifest.json'])
+    // A slug read must NOT fall back to the legacy file — it is a distinct namespace.
+    const slugManifest = await readSourceFilesManifest(baseDir, 'repo-a')
+    expect(slugManifest.files).toEqual({})
   })
 })

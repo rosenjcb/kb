@@ -66,40 +66,92 @@ force_kill() {
 # Build, snapshot, and publish one base. Runs in a subshell (see the loop) so a
 # failure is isolated to that base. Args: <name> <repo-url> <branch>.
 build_base() {
-  local base="$1" repo="$2" branch="$3"
-  local prefix cur new pointer prev digest
+  local base="$1" repos="$2"
+  local prefix cur new pointer prev digest force_cold
   prefix="$(snapshot_prefix_for "$base")"
   cur="$WORK/$base/cur"
   new="$WORK/$base/new"
   rm -rf "$WORK/$base"; mkdir -p "$cur" "$new"
 
-  echo "▶ building base=$base repo=${repo:-<none>} version=$VERSION repos_flag=${REPOS_FLAG:-<full>}"
+  echo "▶ building base=$base repos=[${repos:-<none>}] version=$VERSION repos_flag=${REPOS_FLAG:-<full>}"
   pointer="$(gcs_read_pointer "$prefix")"
 
-  if [[ -n "$pointer" ]]; then
-    # ---- Warm path: incremental rescan from the previous snapshot -----------
+  # A one-off full rebuild — onboarding new repos, which the warm rescan does NOT
+  # fold in — is requested per-execution via FORCE_COLD=true or REBUILD_BASES
+  # (space/comma list of base names). We take the cold clone-all path but never
+  # touch the live pointer/snapshot until the atomic flip at the end, so serving
+  # keeps running the old snapshot with zero downtime until kb-roll swaps it.
+  force_cold=false
+  if [[ "${FORCE_COLD:-false}" == "true" ]] || [[ " ${REBUILD_BASES:-} " == *" $base "* ]]; then
+    force_cold=true
+    echo "  · force-cold requested for base=$base (ignoring live pointer; old snapshot stays until flip)"
+  fi
+
+  if [[ -n "$pointer" && "$force_cold" != "true" ]]; then
+    # ---- Warm path: adopt previous snapshot, rehydrate + fold declared repos,
+    #      reindex changed files, then export. --------------------------------
+    # Snapshots ship WITHOUT repo clones (--no-repos), so a plain `scan` has
+    # nothing on disk to reindex. Instead: adopt the previous index, then boot
+    # `start --bootstrap-policy auto` — its warm-volume task re-clones every repo
+    # from manifest provenance AND folds in any newly-declared `KB_GIT_REPOS`
+    # (incrementally, without rebuilding the big repo from scratch). Once that
+    # settles (health ok:true, indexing:false), a `scan` pass does the git pull +
+    # hash-diff reindex so new commits land too, then exports the fresh snapshot.
     prev="$(printf '%s' "$pointer" | json_get version)"
-    echo "  · warm path: adopting previous snapshot version=$prev"
+    echo "  · warm path: adopting previous snapshot version=$prev, then rehydrate+fold+reindex"
     gcs_pull_prefix "$prefix/$prev" "$cur"
-    kb_server scan \
+
+    local kb_home port server_pid deadline health berr
+    kb_home="$WORK/$base/home"
+    port="${PORT:-38117}"
+    mkdir -p "$kb_home"
+    # Adopt the previous index into the base (no clones yet — snapshot is --no-repos).
+    KB_HOME="$kb_home" node "$KB_SERVER_JS" import --base "$base" --from "$cur" --force
+    # Boot frozen-auto: re-clone provenance repos + fold in newly-declared ones.
+    KB_HOME="$kb_home" KB_BASE="$base" KB_GIT_REPOS="$repos" PORT="$port" \
+      node "$KB_SERVER_JS" start --base "$base" --bootstrap-policy auto &
+    server_pid=$!
+    # shellcheck disable=SC2064
+    trap "force_kill $server_pid" RETURN
+    echo "  · waiting for rehydrate/fold-in to settle (GET /healthz ok:true, indexing:false) …"
+    deadline=$(( $(date +%s) + ${COLD_BUILD_TIMEOUT:-1800} ))
+    sleep 3
+    until health="$(curl -fsS "http://127.0.0.1:${port}/healthz" 2>/dev/null)" \
+          && [[ "$(printf '%s' "$health" | json_get ok)" == "true" ]] \
+          && [[ "$(printf '%s' "$health" | json_get indexing)" != "true" ]]; do
+      berr="$(printf '%s' "${health:-}" | json_get bootstrapError)"
+      if [[ -n "$berr" ]]; then
+        echo "error: warm bootstrap failed for base '$base': $berr" >&2
+        return 1
+      fi
+      if (( $(date +%s) > deadline )); then
+        echo "error: warm rehydrate/fold for base '$base' did not settle before COLD_BUILD_TIMEOUT." >&2
+        return 1
+      fi
+      sleep 5
+    done
+    force_kill "$server_pid"
+    trap - RETURN
+    # Clones are on disk now — pull + hash-diff reindex (catches new commits), then export.
+    echo "  · rehydrate/fold settled; scanning for new commits + exporting"
+    KB_HOME="$kb_home" kb_server scan \
       --base "$base" \
-      --from "$cur" \
       --out "$new" \
       ${REPOS_FLAG} \
       --json
   else
     # ---- Cold path: first-ever build from the base's repo --------------------
-    if [[ -z "$repo" ]]; then
-      echo "error: base '$base' has no repo_url and no existing snapshot — cannot cold-build." >&2
+    if [[ -z "$repos" ]]; then
+      echo "error: base '$base' has no repos and no existing snapshot — cannot cold-build." >&2
       return 1
     fi
-    echo "  · cold path: no pointer yet — building from $repo"
+    echo "  · cold path: building base from repos: $repos"
     local kb_home port server_pid deadline health
     kb_home="$WORK/$base/home"
     port="${PORT:-38117}"
     mkdir -p "$kb_home"
     KB_HOME="$kb_home" KB_BASE="$base" \
-      KB_GIT_REPOS="${repo}${branch:+#$branch}" \
+      KB_GIT_REPOS="$repos" \
       PORT="$port" \
       node "$KB_SERVER_JS" start --base "$base" --bootstrap-policy auto &
     server_pid=$!
@@ -163,10 +215,10 @@ JSON
 # ---- Build every base (isolated; one failure doesn't sink the others) -------
 built=()
 failures=()
-while IFS=$'\t' read -r name repo branch _is_default; do
+while IFS=$'\t' read -r name repos _reserved _is_default; do
   [[ -z "${name:-}" ]] && continue
   set +e
-  ( set -euo pipefail; build_base "$name" "$repo" "$branch" )
+  ( set -euo pipefail; build_base "$name" "$repos" )
   rc=$?
   set -e
   if (( rc == 0 )); then

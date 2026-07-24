@@ -18,6 +18,7 @@ import path from 'node:path'
 import readline from 'node:readline'
 import dayjs from 'dayjs'
 import { tombstoneRemovedDocSourceFiles } from '@kb/core/core/doc-fact-writer.js'
+import { tombstoneRemovedCodeFiles } from '@kb/core/tools/code-fact-writer.js'
 import { DOC_TYPES } from '@kb/core/core/doc-taxonomy.js'
 import { ingestIntegrationSignals } from '@kb/core/core/integration-ingest.js'
 import {
@@ -61,6 +62,7 @@ import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from '@kb/core/config/c
 import { baseNameFromGitUrl, cloneRepo } from '@kb/core/ops/git-sync.js'
 import {
   diffChangedAstFiles,
+  diffRemovedAstFiles,
   readAstFilesManifest,
   writeAstFilesManifest,
 } from '@kb/core/ops/init-ast-files-manifest.js'
@@ -751,7 +753,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     }
 
     const changedSourceFiles = options.rescan
-      ? await selectChangedSourceFiles(baseDir, context.sourceFiles)
+      ? await selectChangedSourceFiles(baseDir, context.sourceFiles, gitRepoSlug)
       : context.sourceFiles
     const totalSourceFileCount = Object.keys(context.sourceFiles).length
     const unchangedSourceFileCount = totalSourceFileCount - Object.keys(changedSourceFiles).length
@@ -763,11 +765,17 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         const currentAstFiles = await collectAstFileHashes(scanDir, ignoreMatcher)
         const totalAstFileCount = Object.keys(currentAstFiles).length
         const candidateAstFiles = options.rescan
-          ? await selectChangedAstFiles(baseDir, currentAstFiles)
+          ? await selectChangedAstFiles(baseDir, currentAstFiles, gitRepoSlug)
           : Object.keys(currentAstFiles)
         const unchangedAstFileCount = totalAstFileCount - candidateAstFiles.length
-        if (options.rescan && candidateAstFiles.length === 0) {
-          await writeAstFilesManifest(baseDir, currentAstFiles)
+        // Files dropped from this repo since its last manifest must have their facts purged
+        // even when no surviving file changed (a pure-deletion rescan), so removals are
+        // computed up front and factor into whether the whole cycle can be skipped.
+        const removedAstFiles = options.rescan
+          ? diffRemovedAstFiles(currentAstFiles, await readAstFilesManifest(baseDir, gitRepoSlug))
+          : []
+        if (options.rescan && candidateAstFiles.length === 0 && removedAstFiles.length === 0) {
+          await writeAstFilesManifest(baseDir, currentAstFiles, gitRepoSlug)
         } else {
           // One AST platform for every language: tree-sitter parses a single file at a time
           // (one WASM tree resident at once), so peak memory is bounded by the largest file
@@ -790,13 +798,23 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             treeIndexer.close()
             treeStatsSummary = treeStats
 
-            tombstoneStaleAstFacts(astFactIndexer, treeStats.sourceRefs, gitRepoSlug)
+            // Reconcile stale code facts. On a FULL index (fresh init, or a rescan where
+            // every file changed) `treeStats.sourceRefs` covers the whole repo, so the blanket
+            // reconciliation is safe. On a PARTIAL incremental rescan it only covers the changed
+            // files — using it would wrongly tombstone every unchanged file's facts — so we
+            // instead purge only files that disappeared since the last per-repo AST manifest.
+            const indexedFullTree = candidateAstFiles.length === totalAstFileCount
+            if (indexedFullTree) {
+              tombstoneStaleAstFacts(astFactIndexer, treeStats.sourceRefs, gitRepoSlug)
+            } else {
+              tombstoneRemovedCodeFiles(astFactIndexer, removedAstFiles, gitRepoSlug)
+            }
             astFactIndexer.relinkCodeImportEdges()
           } finally {
             astFactIndexer.close()
           }
 
-          await writeAstFilesManifest(baseDir, currentAstFiles)
+          await writeAstFilesManifest(baseDir, currentAstFiles, gitRepoSlug)
           const s = treeStatsSummary
           progress.update(
             'code-index',
@@ -827,7 +845,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         progress.start('document-facts', '📄 indexing document sentences into facts…')
         const endScanFacts = makeCycleTimer('document-facts', provider, options.collector, counter)
         if (options.rescan) {
-          const manifest = await readSourceFilesManifest(baseDir)
+          const manifest = await readSourceFilesManifest(baseDir, gitRepoSlug)
           const purgeIndexer = new SqliteKbIndexer({
             dbPath: path.join(baseDir, '.kb-index.sqlite'),
           })
@@ -995,7 +1013,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       }
       const finalCoverageSummary =
         checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
-      await writeSourceFilesManifest(baseDir, buildSourceFileHashes(context.sourceFiles))
+      await writeSourceFilesManifest(baseDir, buildSourceFileHashes(context.sourceFiles), gitRepoSlug)
       await persist({
         completedCycles: ['write'],
         finalCoverageSummary,
@@ -1590,9 +1608,10 @@ function buildOriginalDocumentsFromSourceFiles(
 
 async function selectChangedSourceFiles(
   baseDir: string,
-  sourceFiles: Record<string, string>
+  sourceFiles: Record<string, string>,
+  repoSlug?: string
 ): Promise<Record<string, string>> {
-  const manifest = await readSourceFilesManifest(baseDir)
+  const manifest = await readSourceFilesManifest(baseDir, repoSlug)
   const changedPaths = diffChangedSourceFiles(sourceFiles, manifest)
   if (changedPaths === null) return sourceFiles
   const changed: Record<string, string> = {}
@@ -1605,9 +1624,10 @@ async function selectChangedSourceFiles(
 
 async function selectChangedAstFiles(
   baseDir: string,
-  astFiles: Record<string, string>
+  astFiles: Record<string, string>,
+  repoSlug?: string
 ): Promise<string[]> {
-  const manifest = await readAstFilesManifest(baseDir)
+  const manifest = await readAstFilesManifest(baseDir, repoSlug)
   return diffChangedAstFiles(astFiles, manifest) ?? Object.keys(astFiles)
 }
 
