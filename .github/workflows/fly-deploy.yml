@@ -72,7 +72,12 @@ jobs:
           if [ -n "$scheduler_id" ]; then
             flyctl machine destroy "$scheduler_id" -a kb-demo-builder --force
           fi
+          # --vm-size/--vm-memory must match fly.builder.toml's [[vm]] block —
+          # `fly machine run` does NOT read it (see fly.builder.toml comment).
+          # Previously shared-cpu-2x/4096 here diverged from performance-2x in
+          # the toml; cold builds were then OOM-killed on whichever tier
+          # actually got used. performance-4x/8192mb now matches on both.
           flyctl machine run . -c fly.builder.toml -a kb-demo-builder --detach \
-            --vm-size shared-cpu-2x --vm-memory 4096 \
+            --vm-size performance-4x --vm-memory 8192 \
             --schedule daily --restart no \
             bash /app/scripts/fly/refresh.sh

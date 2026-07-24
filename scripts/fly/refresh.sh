@@ -99,14 +99,56 @@ build_base() {
   pointer="$(s3_read_pointer "$prefix")"
 
   if [[ -n "$pointer" ]]; then
-    # ---- Warm path: incremental rescan from the previous snapshot -----------
+    # ---- Warm path: adopt previous snapshot, rehydrate the repo from
+    #      provenance, reindex changed files, then export. --------------------
+    # Snapshots ship WITHOUT repo clones (--no-repos), so a plain `scan --from`
+    # has nothing on disk to reindex against — it silently no-ops on the git
+    # step. Instead: adopt the previous index, then boot `start
+    # --bootstrap-policy auto` — its warm-volume task re-clones the repo from
+    # manifest provenance. Once that settles (health ok:true, indexing:false),
+    # a `scan` pass does the git pull + hash-diff reindex so new commits land
+    # too, then exports the fresh snapshot. Mirrors scripts/gcp/refresh.sh.
     prev="$(printf '%s' "$pointer" | json_get version)"
-    echo "  · warm path: adopting previous snapshot version=$prev"
+    echo "  · warm path: adopting previous snapshot version=$prev, then rehydrate+reindex"
     s3_pull_prefix "$prefix/$prev" "$cur"
-    # scan = adopt (--from, sha256-verified) → git pull + incremental reindex → export.
-    kb_server scan \
+
+    local kb_home port server_pid deadline health berr
+    kb_home="$WORK/$base/home"
+    port="${PORT:-38117}"
+    mkdir -p "$kb_home"
+    # Adopt the previous index into the base (no clone yet — snapshot is --no-repos).
+    KB_HOME="$kb_home" node "$KB_SERVER_JS" import --base "$base" --from "$cur" --force
+    # Boot frozen-auto: re-clone the provenance repo.
+    KB_HOME="$kb_home" KB_BASE="$base" \
+      KB_GIT_REPOS="${repo}${branch:+#$branch}" \
+      PORT="$port" \
+      node "$KB_SERVER_JS" start --base "$base" --bootstrap-policy auto &
+    server_pid=$!
+    # shellcheck disable=SC2064
+    trap "force_kill $server_pid" RETURN
+    echo "  · waiting for rehydrate to settle (GET /healthz ok:true, indexing:false) …"
+    deadline=$(( $(date +%s) + ${COLD_BUILD_TIMEOUT:-1800} ))
+    sleep 3
+    until health="$(curl -fsS "http://127.0.0.1:${port}/healthz" 2>/dev/null)" \
+          && [[ "$(printf '%s' "$health" | json_get ok)" == "true" ]] \
+          && [[ "$(printf '%s' "$health" | json_get indexing)" != "true" ]]; do
+      berr="$(printf '%s' "${health:-}" | json_get bootstrapError)"
+      if [[ -n "$berr" ]]; then
+        echo "error: warm bootstrap failed for base '$base': $berr" >&2
+        return 1
+      fi
+      if (( $(date +%s) > deadline )); then
+        echo "error: warm rehydrate for base '$base' did not settle before COLD_BUILD_TIMEOUT." >&2
+        return 1
+      fi
+      sleep 5
+    done
+    force_kill "$server_pid"
+    trap - RETURN
+    # Clone is on disk now — pull + hash-diff reindex (catches new commits), then export.
+    echo "  · rehydrate settled; scanning for new commits + exporting"
+    KB_HOME="$kb_home" kb_server scan \
       --base "$base" \
-      --from "$cur" \
       --out "$new" \
       ${REPOS_FLAG} \
       --json
@@ -195,6 +237,15 @@ built=()
 failures=()
 while IFS=$'\t' read -r name repo branch _is_default; do
   [[ -z "${name:-}" ]] && continue
+  # ONLY_BASES: comma-separated allowlist for scoping a run to specific bases
+  # (e.g. incident recovery/debugging one base without paying for a full
+  # 10-base run). Unset/empty means "build everything" — unchanged default.
+  if [[ -n "${ONLY_BASES:-}" ]]; then
+    case ",${ONLY_BASES}," in
+      *",${name},"*) ;;
+      *) continue ;;
+    esac
+  fi
   # Isolate each base in its own subshell. `set +e` around it keeps a base
   # failure from aborting the whole run; the explicit `set -e` INSIDE the
   # subshell (honored because the subshell is not an if/&&/|| operand) makes

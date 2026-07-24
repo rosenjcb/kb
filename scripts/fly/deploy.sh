@@ -17,12 +17,16 @@ BUILDER_APP="${BUILDER_APP:-kb-demo-builder}"
 SEED=1
 [[ "${1:-}" == "--no-seed" ]] && SEED=0
 
-# kb-demo-builder's [[vm]] size in fly.builder.toml (see there for why 4GB).
+# kb-demo-builder's [[vm]] size in fly.builder.toml (see there for why 8GB).
 # `fly machine run -c fly.builder.toml` does NOT inherit this block — it must
 # be passed explicitly on every machine-creating command below, or you silently
-# get Fly's bare platform default (shared-cpu-1x/256mb).
-BUILDER_VM_SIZE="performance-2x"
-BUILDER_VM_MEMORY="4096"
+# get Fly's bare platform default (shared-cpu-1x/256mb). Keep this in sync with
+# fly.builder.toml AND .github/workflows/fly-deploy.yml's recreate-scheduler
+# step — they drifted apart once already (shared-cpu-2x/4096 vs
+# performance-2x/4096) and cold builds got OOM-killed on whichever one a given
+# path actually used.
+BUILDER_VM_SIZE="performance-4x"
+BUILDER_VM_MEMORY="8192"
 
 echo "==> 1/4 building + pushing builder image ($BUILDER_APP)"
 # --build-only --push: build and push the image WITHOUT deploying/releasing it.
