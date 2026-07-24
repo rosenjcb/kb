@@ -95,7 +95,6 @@ import {
   ensureDefaultConfig,
   isFreshClientInstall,
   markClientInitialized,
-  persistInferredLLMProvider,
   resolveFactRetrievalMethod,
 } from '@kb/core/config/kb-config.js'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
@@ -1077,14 +1076,10 @@ async function main() {
   // Launch TUI when invoked interactively with no arguments
   if (isTTY && args.length === 0) {
     const isFreshInstall = isFreshClientInstall()
-    let kbConfig = await ensureDefaultConfig()
-    const inferred = await persistInferredLLMProvider({ config: kbConfig })
-    kbConfig = inferred.config
+    const kbConfig = await ensureDefaultConfig()
     applyConfigToEnv(kbConfig)
 
     const startupNotices: string[] = []
-    if (inferred.notice) startupNotices.push(inferred.notice)
-
     if (isFreshInstall) {
       startupNotices.push(FIRST_RUN_WELCOME_NOTICE)
       await markClientInitialized()
@@ -1125,19 +1120,13 @@ async function main() {
     return
   }
 
-  let kbConfig = await ensureDefaultConfig()
-  const inferred = await persistInferredLLMProvider({ config: kbConfig })
-  kbConfig = inferred.config
+  const kbConfig = await ensureDefaultConfig()
   applyConfigToEnv(kbConfig)
 
   // One-shot CLI path — skip banner when docs generate --output json (stdout must be parseable JSON only).
   const machineJsonStdout = isDocsGenerateJsonOutputArgs(args)
   if (!machineJsonStdout) {
     console.log(`🤖 KB Agent Harness v${CLIENT_VERSION}\n`)
-    if (inferred.notice) {
-      console.log(inferred.notice)
-      console.log('')
-    }
     let cliBase: string | undefined
     try {
       cliBase = (await resolveEffectiveBaseDir()).baseName
@@ -1146,9 +1135,6 @@ async function main() {
     }
     console.log(formatConnectionContext(kbConfig, cliBase))
     console.log('')
-  } else if (inferred.notice) {
-    console.error(inferred.notice)
-    console.error('')
   }
   await runMainWithOutput(args, defaultCliOutput, kbConfig)
 }

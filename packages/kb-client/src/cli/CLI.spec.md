@@ -425,8 +425,6 @@ See companion doc for full vocabulary where applicable.
 | TC-311 | FR-25 | resolveFactRetrievalMethod defaults to query_expansion | pass |
 | TC-312 | FR-25 | KB_FACT_RETRIEVAL_METHOD env override wins | pass |
 | TC-313 | FR-25 | gemini model override preserved in provider resolution | pass |
-| TC-314 | FR-25 | returns inferred provider notice when llm.provider is unset and env key exists | pass |
-| TC-315 | FR-25 | does not persist when KB_LLM_PROVIDER is already set | pass |
 | TC-316 | FR-25 | preserves createdAt on round-trip | pass |
 | TC-317 | FR-25 | normalizes in memory without writing files | pass |
 | TC-318 | FR-26 | splits on commas and newlines and trims | pass |

@@ -68,10 +68,8 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
   const { exit } = useApp()
 
   const mode: TuiMode = 'chat'
-  const llmProvider = createLLMProviderFromConfig(config)
-  const providerLabel = llmProvider ? `${llmProvider.name} ${llmProvider.model}` : ''
   const [history, setHistory] = useState<HistoryEntry[]>([
-    { id: 'welcome', type: 'banner', content: providerLabel },
+    { id: 'welcome', type: 'banner', content: '' },
   ])
   const [inputValue, setInputValue] = useState('')
   const [isRunning, setIsRunning] = useState(false)

@@ -8,7 +8,7 @@ import {
   booleanEnvString,
   parseBooleanEnv,
 } from '@kb/core/config/env-boolean.js'
-import { KB_ENV, envVarHint, readEnvHost, readEnvPort } from '@kb/core/config/kb-env.js'
+import { envVarHint, readEnvHost, readEnvPort } from '@kb/core/config/kb-env.js'
 import {
   migrateLegacyConfigJsonBases,
   readActiveBaseName,
@@ -518,58 +518,6 @@ export function createLLMProviderFromConfig(
     }
   } catch {
     return undefined
-  }
-}
-
-export interface PersistedLLMProviderResult {
-  config: KbConfig
-  notice?: string
-}
-
-/**
- * If config.llm.provider is unset but we can infer a provider from environment keys,
- * persist that inferred provider into the config file and return a user-facing notice.
- *
- * This makes implicit provider selection explicit and durable across commands/surfaces.
- */
-export async function persistInferredLLMProvider(options: {
-  config: KbConfig
-}): Promise<PersistedLLMProviderResult> {
-  const current = options.config.llm?.provider ?? process.env.KB_LLM_PROVIDER?.trim()
-  if (current) {
-    return { config: options.config }
-  }
-
-  const inferred = process.env.ANTHROPIC_API_KEY
-    ? 'anthropic'
-    : process.env.OPENAI_API_KEY
-      ? 'openai'
-      : process.env.GEMINI_API_KEY
-        ? 'gemini'
-        : process.env.OLLAMA_ENDPOINT
-          ? 'ollama'
-          : undefined
-
-  if (!inferred) {
-    return { config: options.config }
-  }
-
-  const envVar =
-    inferred === 'anthropic'
-      ? 'ANTHROPIC_API_KEY'
-      : inferred === 'openai'
-        ? 'OPENAI_API_KEY'
-        : inferred === 'gemini'
-          ? 'GEMINI_API_KEY'
-          : undefined
-
-  const because = envVar ? ` (detected ${envVar})` : ' (detected OLLAMA_ENDPOINT)'
-  return {
-    config: {
-      ...options.config,
-      llm: { ...options.config.llm, provider: inferred },
-    },
-    notice: `ℹ Auto-selected LLM provider: ${inferred}${because}. Optional: export ${KB_ENV.LLM_PROVIDER}=${inferred}`,
   }
 }
 

@@ -12,11 +12,7 @@ const BANNER_LINES = [
   '██║  ██╗██████╔╝',
 ]
 
-interface Props {
-  providerLabel?: string
-}
-
-export function WelcomeBanner({ providerLabel }: Props) {
+export function WelcomeBanner() {
   const [cursorOn, setCursorOn] = useState(true)
 
   useEffect(() => {
@@ -41,10 +37,6 @@ export function WelcomeBanner({ providerLabel }: Props) {
         A Knowledge Base for your Agent{' '}
         <Text color={ORANGE}>v{CLIENT_VERSION}</Text>
         {' '}— type a question or /help for commands
-      </Text>
-      {providerLabel ? (
-        <Text color="gray">using <Text color={ORANGE}>{providerLabel}</Text></Text>
-      ) : null}
-    </Box>
+      </Text>    </Box>
   )
 }

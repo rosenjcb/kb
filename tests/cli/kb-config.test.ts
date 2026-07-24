@@ -11,7 +11,6 @@ import {
   isLLMConfigured,
   listSupportedConfigPaths,
   normalizeKbConfig,
-  persistInferredLLMProvider,
   readKbConfig,
   resolveFactRetrievalMethod,
   resolveLLMProvider,
@@ -146,25 +145,6 @@ describe('resolveLLMProvider', () => {
     process.env.GEMINI_API_KEY = 'gem-key'
     const resolved = resolveLLMProvider({})
     expect(resolved.provider).toBe('gemini')
-  })
-})
-
-describe('persistInferredLLMProvider', () => {
-  it('[TC-314] returns inferred provider notice when llm.provider is unset and env key exists', async () => {
-    process.env.OPENAI_API_KEY = 'openai-env'
-    const config = await readKbConfig()
-    const result = await persistInferredLLMProvider({ config })
-    expect(result.config.llm?.provider).toBe('openai')
-    expect(result.notice).toContain('Auto-selected LLM provider: openai')
-    expect(result.notice).toContain('KB_LLM_PROVIDER')
-  })
-
-  it('[TC-315] does not persist when KB_LLM_PROVIDER is already set', async () => {
-    process.env.KB_LLM_PROVIDER = 'gemini'
-    process.env.OPENAI_API_KEY = 'openai-env'
-    const config = await readKbConfig()
-    const result = await persistInferredLLMProvider({ config })
-    expect(result.notice).toBeUndefined()
   })
 })
 

@@ -1,5 +1,16 @@
 # @kb/client
 
+## 1.4.0
+
+### Minor Changes
+
+- Remove client-side LLM provider surfaces: the TUI welcome banner no longer shows a `using <provider> <model>` line, and the CLI no longer auto-selects/persists an LLM provider from local env keys (the `ℹ Auto-selected LLM provider` notice is gone). Provider selection is server-side; local mode still resolves its provider from config/env at creation time. The now-unused `persistInferredLLMProvider` was removed from `@kb/core`.
+
+### Patch Changes
+
+- Updated dependencies
+  - @kb/core@1.6.0
+
 ## 1.3.14
 
 ### Patch Changes
