@@ -55,6 +55,7 @@ See companion doc for full vocabulary where applicable.
 | FR-25 | Behaviors in stream-manager.test.ts |
 | FR-26 | Behaviors in string-utils.test.ts |
 | FR-27 | Behaviors in telemetry.test.ts |
+| FR-28 | Behaviors in code-fact-writer.test.ts |
 
 ### QA Test Cases
 
@@ -243,6 +244,9 @@ See companion doc for full vocabulary where applicable.
 | TC-181 | FR-27 | Given a curated detail + raw curation record, it lifts counts and dropped fact ids | pass |
 | TC-182 | FR-27 | Given a traceDetail string, it splits per-pass hop lines in order | pass |
 | TC-183 | FR-27 | Given an unknown shape, it degrades to empty fields without throwing | pass |
+| TC-629 | FR-28 | tombstones only the removed file, scoped to its repo, leaving siblings and other repos intact | pass |
+| TC-630 | FR-28 | is a no-op when nothing was removed | pass |
+| TC-631 | FR-28 | contrast: blanket tombstoneStaleCodeFacts would purge unchanged files on a partial rescan | pass |
 
 ### Related docs
 

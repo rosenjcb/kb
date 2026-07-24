@@ -26,6 +26,7 @@ tests:
   - ../../../../tests/cli/git-sync.test.ts
   - ../../../../tests/cli/graph-cli.test.ts
   - ../../../../tests/cli/init-ast-files-manifest.test.ts
+  - ../../../../tests/cli/init-cli-rescan-multi-repo.test.ts
   - ../../../../tests/cli/init-cli.test.ts
   - ../../../../tests/cli/init-source-files-manifest.test.ts
   - ../../../../tests/cli/init-source-snapshots.test.ts
@@ -104,6 +105,8 @@ See companion doc for full vocabulary where applicable.
 | FR-34 | Client uninstall removes release client layout; server uninstall removes server layout and optional ~/.kb data |
 | FR-35 | View CLI renders documents and facts for terminal inspection |
 | FR-36 | Connection context (host + base) is printed on CLI banner, TUI status bar, and chat session open |
+| FR-37 | Change-detection manifests are isolated per git-repo slug (base-level, surviving `--no-repos` snapshots); a warm rescan of an unchanged multi-repo base detects 0 changed per repo without clobbering sibling repos, so unchanged files are skipped instead of fully re-embedded |
+| FR-38 | A partial rescan re-indexes only files whose content hash changed for that repo and tombstones only files removed from that repo since its last manifest — never unchanged files' facts nor another repo's facts |
 
 ### QA Test Cases
 
@@ -555,6 +558,13 @@ See companion doc for full vocabulary where applicable.
 | TC-444 | FR-31 | Given repo-search commands in command position, hook fires | pass |
 | TC-445 | FR-31 | Given a repeat search in the same session window, hook reminds only once | pass |
 | TC-446 | FR-31 | Given KB_HOOK_REMINDER=false, hook stays silent even for searches | pass |
+| TC-624 | FR-37 | Given two repos with a colliding repo-relative AST key, then per-slug manifests do not clobber each other and each repo sees its own hashes as unchanged | pass |
+| TC-625 | FR-37 | Given an undefined slug, then the AST manifest uses the un-suffixed legacy filename and a slug read does not fall back to it | pass |
+| TC-626 | FR-38 | Given a prior AST manifest, then diffRemovedAstFiles reports only paths dropped from the current tree | pass |
+| TC-627 | FR-37 | Given two repos with a colliding repo-relative source key, then per-slug source manifests do not clobber each other and each repo sees its own content as unchanged | pass |
+| TC-628 | FR-37 | Given an undefined slug, then the source manifest uses the un-suffixed legacy filename and a slug read does not fall back to it | pass |
+| TC-632 | FR-37 | Given a warm rescan of an unchanged multi-repo base, then each repo detects 0 changed and no facts are lost | pass |
+| TC-633 | FR-38 | Given a changed or deleted file in one repo, then only that repo is reindexed and unchanged files' and sibling repos' facts survive | pass |
 
 ### Related docs
 

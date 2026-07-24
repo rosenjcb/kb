@@ -85,3 +85,49 @@ export function tombstoneStaleCodeFacts(
   }
   return count
 }
+
+/**
+ * Recover the repo-relative file path a per-file AST fact belongs to, or `null` when the
+ * ref is not file-scoped. Symbol/export facts are `ast:<rel>@<name>` and constant facts are
+ * `ast:const:<rel>@<name>`, so the path is the segment before the final `@`. Import and
+ * heritage edges (`ast:import:<sha1>`, `ast:edge:<sha1>`) hash the path away and cannot be
+ * mapped back to a single file — they return `null`.
+ */
+function codeFactRelPath(sourceRef: string): string | null {
+  if (sourceRef.startsWith('ast:import:') || sourceRef.startsWith('ast:edge:')) return null
+  let body: string
+  if (sourceRef.startsWith('ast:const:')) body = sourceRef.slice('ast:const:'.length)
+  else if (sourceRef.startsWith('ast:')) body = sourceRef.slice('ast:'.length)
+  else return null
+  const at = body.lastIndexOf('@')
+  if (at <= 0) return null
+  return body.slice(0, at)
+}
+
+/**
+ * Tombstone code facts for files that were removed since the last per-repo AST manifest.
+ * Used on a PARTIAL incremental rescan, where {@link tombstoneStaleCodeFacts} cannot be used
+ * (the current source-ref set only covers changed files, so it would wrongly purge every
+ * unchanged file's facts). Scoped by `gitRepo` and matched by parsed file path — never by a
+ * LIKE prefix — so no other repo or `_`-bearing sibling path can be caught by accident.
+ *
+ * Caveat: hashed import/heritage edges (`ast:import:*` / `ast:edge:*`) for a removed file are
+ * not file-mappable and remain active until the next full re-index reconciles them.
+ */
+export function tombstoneRemovedCodeFiles(
+  indexer: SqliteKbIndexer,
+  removedRelPaths: string[],
+  gitRepo?: string
+): number {
+  if (removedRelPaths.length === 0) return 0
+  const removed = new Set(removedRelPaths)
+  const existing = indexer.listActiveFactsBySourceRefPrefix('ast:')
+  let count = 0
+  for (const fact of existing) {
+    if (gitRepo !== undefined && fact.git_repo !== gitRepo) continue
+    if (!fact.source_ref) continue
+    const rel = codeFactRelPath(fact.source_ref)
+    if (rel !== null && removed.has(rel) && indexer.tombstoneFactById(fact.id)) count++
+  }
+  return count
+}

@@ -12,16 +12,21 @@ export interface SourceFilesManifest {
 
 export const SOURCE_FILES_MANIFEST_FILENAME = 'source-files-manifest.json'
 
-function manifestPath(baseDir: string): string {
-  return path.join(baseDir, SOURCE_FILES_MANIFEST_FILENAME)
+function manifestPath(baseDir: string, repoSlug?: string): string {
+  if (!repoSlug) return path.join(baseDir, SOURCE_FILES_MANIFEST_FILENAME)
+  const safe = repoSlug.replace(/[^a-zA-Z0-9._-]/g, '_')
+  return path.join(baseDir, `source-files-manifest.${safe}.json`)
 }
 
 export function hashSourceFileContents(contents: string): string {
   return createHash('sha256').update(contents).digest('hex')
 }
 
-export async function readSourceFilesManifest(baseDir: string): Promise<SourceFilesManifest> {
-  const file = manifestPath(baseDir)
+export async function readSourceFilesManifest(
+  baseDir: string,
+  repoSlug?: string
+): Promise<SourceFilesManifest> {
+  const file = manifestPath(baseDir, repoSlug)
   if (!existsSync(file)) {
     return { version: 1, files: {}, updatedAt: '' }
   }
@@ -48,14 +53,15 @@ export async function readSourceFilesManifest(baseDir: string): Promise<SourceFi
 
 export async function writeSourceFilesManifest(
   baseDir: string,
-  files: Record<string, string>
+  files: Record<string, string>,
+  repoSlug?: string
 ): Promise<void> {
   const manifest: SourceFilesManifest = {
     version: 1,
     files,
     updatedAt: new Date().toISOString(),
   }
-  await writeFile(manifestPath(baseDir), `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8')
+  await writeFile(manifestPath(baseDir, repoSlug), `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8')
 }
 
 /**
