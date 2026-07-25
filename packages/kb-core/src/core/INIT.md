@@ -111,6 +111,103 @@ repo. Latest run: ~24% faster init on the kb self-check, ~46% on raylib
 (`db0870f`), with fact/doc/code-fact/docs counts identical across builds. Headline
 numbers live in `research/tables/results.tex` (see `research/README.md`).
 
+## Memory scaling on large cold indexes (issue #191)
+
+The Fly builder (`scripts/fly/refresh.sh` → `kb-server refresh`, see
+`FLY_ORCHESTRATION.md`) OOM-killed on a cold index of the `brew`
+(`Homebrew/brew.git`) base even at 8 GiB, while the other 9 bases in
+`scripts/fly/bases.json` built fine. Investigation found several places where
+memory scales with **total repo size** rather than staying bounded — some fixed,
+some still open. Treat this section as the map for the next repo that's bigger
+than whatever the machine was last bumped to.
+
+### Fixed
+
+- **`SqliteKbIndexer.embedAllFacts` (`tools/sqlite-kb-index.ts`)** used to run one
+  `SELECT` pulling *every* not-yet-embedded fact (id + fact_text) into a single JS
+  array before slicing it into embed-API batches of 100. The embed calls were
+  already batched — the **read** wasn't. For a repo the size of `brew` (thousands
+  of Ruby files → hundreds of thousands of AST facts, all generated before this
+  runs once at the end of a cold `kb init`), that one array landed right on top of
+  whatever else was already resident. It's now keyset-paginated by fact id (`id >
+  cursor ORDER BY id LIMIT ?`), so peak memory for this stage is
+  O(`KB_EMBED_FETCH_PAGE_SIZE`), not O(total facts). Page size defaults to 1000
+  and is configurable via `KB_EMBED_FETCH_PAGE_SIZE`
+  (`config/indexing-batch-size.ts`) independent of the embed-call batch size.
+- **`assessTopicCoverage` (`ops/init-topic-coverage.ts`)** used to
+  `Object.values(context.sourceFiles).join('\n').toLowerCase()` — one extra
+  full-repo-sized string, on top of `context.sourceFiles` itself, just to do
+  keyword `.includes()` checks. It now checks keywords against each file's
+  content directly (`.some(text => text.toLowerCase().includes(needle))`),
+  trading a little repeated per-call lowercasing (topic/keyword count is small,
+  ~8 topics × ~5 keywords) for never holding a second full-repo copy.
+
+### Known, not fixed — the next place to look
+
+These are real, evidenced accumulation points that weren't in scope for this
+pass (each would touch a currently-tested contract — `InitContext`,
+`collectSourceFiles`, the checkpoint schema — see the tests listed below before
+changing them):
+
+- **Checkpoint content duplication (`ops/init-cli.ts` `writeCheckpoint`,
+  `persist()`).** `read-inputs` persists the *entire* `context.sourceFiles`
+  (path → full content) and `import-docs` persists the entire `candidateDocs`
+  array (duplicate content again) to a JSON checkpoint file via
+  `JSON.stringify(checkpoint, null, 2)` — **unconditionally**, on every cold
+  `kb init`/`kb-server refresh` run, not just when `--stop-after`/`--resume-from`
+  is explicitly used. This is intentional and tested (`tests/cli/init-cli.test.ts`
+  asserts the checkpoint file contains `context.sourceFiles` and
+  `candidateDocs`) — it's what lets an interactive session pause after one cycle
+  and resume in a later process. But for an automated, non-interactive cold
+  bootstrap (the Fly builder never passes `--stop-after`/`--resume-from`/
+  `--checkpoint-file`), it means a third and fourth full copy of every
+  markdown/text source file's content exist simultaneously (in-memory context +
+  in-memory candidateDocs + their `JSON.stringify` output), for repos with a lot
+  of doc content. `brew`'s own docs are small (~97 markdown/text files, ~a few
+  hundred KB total) so this wasn't the dominant factor in the incident, but a
+  doc-heavy repo would hit it hard. A real fix needs the checkpoint's heavy
+  fields to be skippable when no pause/resume was requested, **plus** a
+  recompute-on-missing-content fallback on resume (both `read-inputs` and
+  `import-docs` are pure/local — no LLM or network calls — so recomputing them is
+  safe/cheap, just not implemented today).
+- **`context.sourceFiles: Record<string,string>` (`ops/init-cli.ts`
+  `collectSourceFiles`) and its duplicate, `candidateDocs`.** Both hold every
+  markdown/text file's full content in memory for the whole `runKbInit` call on a
+  cold (non-rescan) build — `collectSourceFiles` builds the first copy,
+  `buildOriginalDocumentsFromSourceFiles` builds the second. Rescans are fine
+  (they already operate on `selectChangedSourceFiles`'s filtered-down delta, not
+  the whole repo) — it's specifically the cold/first-index path that's
+  unbounded. Not changed here because `InitContext`'s shape and
+  `collectSourceFiles`'s return type are exercised directly by
+  `tests/cli/collect-source-files.test.ts`, `tests/cli/init-topic-coverage.test.ts`,
+  and `tests/cli/init-cli-rescan-multi-repo.test.ts` — bounding this for real
+  means batching `collectSourceFiles` → `buildOriginalDocumentsFromSourceFiles` →
+  `writeDocs` end-to-end (read N files, build+write+discard, repeat), which is a
+  bigger, riskier change than fit in this pass.
+- **`CodeIndexStats.sourceRefs: Set<string>` (`tools/tree-sitter-indexer.ts`)**
+  accumulates one entry per exported symbol/edge/import across every file
+  `indexProject` touches, for the blanket stale-fact tombstone reconciliation
+  (`init-cli.ts` `tombstoneStaleAstFacts`). The per-file AST parse/write loop
+  itself already streams correctly (one WASM tree resident at a time, freed per
+  file, facts committed per file) — this Set is the one piece of code-index state
+  that's still O(total symbols in the repo). Bounding it means moving the
+  reconciliation from an in-memory Set diff to a SQL-based "touched in this run"
+  marker, which wasn't attempted here.
+- **`deleteFactsByRepo` (`tools/sqlite-kb-index.ts`)** `SELECT`s every fact id for
+  a repo into memory before deleting. Only runs when a repo is removed from a
+  base (not on the cold-index path this issue is about), so left as-is.
+
+### Regression benchmark
+
+`scripts/bench/large-repo-memory-bench.sh` runs a real cold `kb-server refresh`
+against a shallow clone of `Homebrew/brew.git` (~3k files, the actual `brew` base
+from `scripts/fly/bases.json`) inside `docker run --memory=2g
+--memory-swap=2g`, sampling cgroup memory every 10s and checking `docker inspect
+... State.OOMKilled` on exit. It's a manual/on-demand check (network + Docker +
+several minutes), not wired into `pnpm test` — run it after touching anything in
+this file's "Fixed"/"Known, not fixed" lists above. See the script header for
+usage and current pass/fail numbers from the last run.
+
 ## Upfront Questions
 
 Before the scan begins, interactive `kb init` (no `--base`, not `kb scan`, not `--non-interactive`) asks two questions in order:
