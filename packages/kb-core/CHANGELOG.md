@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.5.8
+
+### Patch Changes
+
+- Stop printing LLM provider auto-selection on the thin `kb` client (`kb query` / TUI). Announce provider selection only on `kb-server` startup (human logs + `LLM:` line).
+
 ## 1.5.7
 
 ### Patch Changes

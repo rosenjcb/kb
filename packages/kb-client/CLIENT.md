@@ -89,6 +89,7 @@ Eval harness uses `KB_LOCAL_MODE` + `scripts/eval-index.ts` until a live server 
 
 - Never import `@kb/server` — server is a separate binary.
 - Show connection context before retrieval or chat (except machine JSON stdout).
+- Never print LLM provider auto-selection / API-key detection on the thin client — that belongs to `kb-server` startup logs.
 - Remote mode requires live server; no silent in-process fallback.
 - Long-running TUI output uses `CliOutput`, not raw `console.log`.
 

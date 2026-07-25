@@ -92,7 +92,7 @@ pnpm run install:global   # pnpm install + build + symlinks into $PNPM_HOME/bin
 ## Invariants
 
 - Dependency graph is one-way: `client → core`, `server → core` — never `server → client`.
-- Client surfaces **host + base** on every session; indexing runs on kb-server only.
+- Client surfaces **host + base** on every session; indexing and LLM provider selection run on kb-server only (never print `Auto-selected LLM provider` from `kb`).
 - OpenAPI + `server.http` are the wire contract; `KbService` is the in-process contract.
 - Version `@kb/client` and `@kb/server` independently via changesets (user-facing). `@kb/core` is also changeset-versioned but **internal only** — never print it in CLI/TUI/`kb-server` logs/`/healthz`/MCP; it matters for workspace `package.json` bumps and snapshot manifest provenance. GitHub CLI releases and `v*.*.*` tags follow `@kb/client`; Docker image semver tags follow `@kb/server`.
 

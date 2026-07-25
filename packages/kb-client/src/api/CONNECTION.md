@@ -9,7 +9,7 @@ timestamp: 2026-07-11T00:00:00Z
 
 # Client ↔ Server Connection
 
-The **`kb` client is a terminal front-end**. Default path: HTTP to **`kb-server`**, which owns indexing, retrieval, and LLM synthesis. The user must always see **which server** and **which base** a session uses — never infer it from env alone.
+The **`kb` client is a terminal front-end**. Default path: HTTP to **`kb-server`**, which owns indexing, retrieval, and LLM synthesis. The user must always see **which server** and **which base** a session uses — never infer it from env alone. LLM provider auto-selection is printed at **kb-server** startup only, not by `kb query` / TUI.
 
 ## Role in the stack
 

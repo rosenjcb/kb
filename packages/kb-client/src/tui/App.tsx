@@ -68,7 +68,10 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
   const { exit } = useApp()
 
   const mode: TuiMode = 'chat'
-  const llmProvider = createLLMProviderFromConfig(config)
+  // Remote mode: synthesis runs on kb-server — do not advertise a local provider/key.
+  // Local mode (`KB_LOCAL_MODE=true`): the in-process provider is the real one.
+  const remote = shouldUseRemoteServer()
+  const llmProvider = remote ? undefined : createLLMProviderFromConfig(config)
   const providerLabel = llmProvider ? `${llmProvider.name} ${llmProvider.model}` : ''
   const [history, setHistory] = useState<HistoryEntry[]>([
     { id: 'welcome', type: 'banner', content: providerLabel },

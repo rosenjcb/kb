@@ -528,9 +528,10 @@ export interface PersistedLLMProviderResult {
 
 /**
  * If config.llm.provider is unset but we can infer a provider from environment keys,
- * persist that inferred provider into the config file and return a user-facing notice.
+ * return an in-memory config with that provider set, plus an operator-facing notice.
  *
- * This makes implicit provider selection explicit and durable across commands/surfaces.
+ * The notice is for **kb-server** startup logs / interface only — never print it from
+ * the thin `kb` client (`kb query`, TUI, etc.). Synthesis keys live on the server.
  */
 export async function persistInferredLLMProvider(options: {
   config: KbConfig
