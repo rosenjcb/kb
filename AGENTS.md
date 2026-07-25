@@ -42,3 +42,40 @@ Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in
 - Docs/tests: `KB_GRAPH=true`, not `=1`.
 - **Exception:** third-party APIs that require numeric booleans — convert at
   the boundary only; KB env vars stay `true`/`false`.
+
+## Cursor Cloud specific instructions
+
+Environment is pre-provisioned. The startup update script runs `pnpm install`
+from the repo root. Standard dev commands live in
+[`DEVELOPERS_GUIDE.md`](DEVELOPERS_GUIDE.md) and root `package.json` (`build`,
+`type-check`, `lint`, `test`/`unit:test`, `server:start`). Do not re-document them.
+
+- **Node/pnpm resolution (non-obvious).** The VM's default `node` on `PATH`
+  (`/exec-daemon/node`) is v22, but this repo requires Node 24 (`preinstall`
+  hard-fails otherwise). Setup made **Node 24.15.0 + pnpm 10.33.3** the default
+  by symlinking `node`/`npm`/`npx`/`corepack`/`pnpm` into `/usr/local/cargo/bin`
+  (first on `PATH`) and setting `nvm alias default 24.15.0`, so plain `node` /
+  `pnpm` already resolve to 24 in login and non-interactive shells — no `nvm use`
+  needed. If a fresh pod ever shows Node 22, re-run
+  `corepack prepare pnpm@10.33.3 --activate` and re-create those symlinks from
+  `~/.nvm/versions/node/v24.15.0/bin`.
+- **Package manager is pnpm.** A stray `package-lock.json` exists alongside
+  `pnpm-lock.yaml` / `pnpm-workspace.yaml`; ignore npm and always use pnpm.
+- **The built client `packages/kb-client/dist/bin/kb` is a bash wrapper** — run
+  it directly (`./packages/kb-client/dist/bin/kb ...`), never `node <path>`.
+- **Running kb-server end-to-end without a real LLM key or Docker.** Docker is
+  not installed, so `integration:test` / `server:up` won't run as-is. To exercise
+  the full query path locally, replicate the WireMock LLM stub with the installed
+  JDK: `java -jar <wiremock-standalone.jar> --port 8080 --root-dir
+  packages/kb-server/docker/wiremock --global-response-templating`, then start the
+  server with `GEMINI_API_KEY=integration-mock-key`,
+  `GEMINI_API_BASE_URL=http://localhost:8080`, plus `KB_GIT_REPOS=<repo>`,
+  `KB_BASE=demo`, `KB_SERVER_API_KEY=testkey`, `KB_REINDEX_INTERVAL=0`, and
+  `pnpm run server:start`. First boot clones + indexes the repo (embeddings run
+  locally via `Xenova/all-MiniLM-L6-v2`, no API needed); only answer synthesis
+  hits the mock. Then query: `KB_SERVER_API_KEY=testkey
+  ./packages/kb-client/dist/bin/kb query "..."`. Provide a real provider key
+  instead (e.g. `GEMINI_API_KEY`) for genuine answers.
+- **Server runs as a detached daemon.** `pnpm run server:start` backgrounds it;
+  logs at `~/.kb/logs/kb-server.{out,err}.log`; manage via `pnpm run
+  server:status` / `server:stop`. Health: `curl localhost:38117/healthz`.
