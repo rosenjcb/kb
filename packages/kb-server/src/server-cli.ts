@@ -572,6 +572,14 @@ Commands:
         settings by default; --no-repos for a small, frozen serve-only artifact)
   import --from <dir> [--base <name>] [--force] [--no-verify]
         Restore a snapshot into a base for a later start
+  refresh --base <name> --out <dir> [--from <dir>] [--repos "<url>[#branch] …"]
+          [--branch <b>] [--no-repos] [--timeout <ms>] [--json]
+        Build a fresh snapshot dir for a builder run: adopt+rehydrate+rescan
+        (warm, --from given) or clone fresh (cold, --repos only), then export
+        to --out. Manages its own throwaway bootstrap child (spawn, health-wait,
+        kill) — no HTTP listener stays up after. --from/--out/--repos are LOCAL
+        paths / plain url[#branch] values only (object-store transport is the
+        deployment's job, same as scan/export/import).
   uninstall [--purge] [--yes]
         Remove the release-installed kb-server binary/runtime; --purge deletes ~/.kb server data
 
@@ -652,6 +660,11 @@ export async function runServerMain(argv: string[]): Promise<void> {
     case 'import': {
       const { runImportCommand } = await import('./snapshot-cli.js')
       await runImportCommand(rest, out)
+      return
+    }
+    case 'refresh': {
+      const { runServerRefreshCommand } = await import('./refresh-cli.js')
+      await runServerRefreshCommand(rest, out)
       return
     }
     default:

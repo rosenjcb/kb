@@ -15,11 +15,15 @@
 # down.
 #
 # Per-base flow:
-#   1. Warm path (a latest.json pointer exists): download the current snapshot
-#      and run `kb-server scan --from cur --out new` — adopt → git pull +
-#      hash-diffed incremental reindex → VACUUM INTO export. Cheap and incremental.
-#   2. Cold path (first run, no pointer): boot `kb-server start` (auto) which
-#      clones the base's repo and builds, wait for /healthz ok, then export.
+#   1. Warm path (a latest.json pointer exists): download the current snapshot,
+#      then `kb-server refresh --from cur --repos ... --out new` does the
+#      adopt → rehydrate-from-provenance → git pull + hash-diffed incremental
+#      reindex → VACUUM INTO export, all in one typed subcommand (packages/
+#      kb-server/src/refresh-cli.ts, FR-18) — the same one scripts/gcp/refresh.sh
+#      calls, so this warm-path fix lands once for both platforms.
+#   2. Cold path (first run, no pointer): `kb-server refresh --repos ... --out
+#      new` (no --from) clones fresh and exports. Object-store transport stays
+#      here in shell — kb-server never learns about gs://\s3:// (see FR-18).
 #   3. Publish: upload the fresh snapshot to an IMMUTABLE version prefix, then
 #      atomically flip latest.json (the single commit point).
 #   4. Prune old immutable versions (keep SNAPSHOT_KEEP).
@@ -61,55 +65,38 @@ VERSION="$(date -u +%Y%m%dT%H%M%SZ)"
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 
-# Send SIGTERM, then escalate to SIGKILL if the process outlives a short grace
-# period. A plain SIGTERM alone was observed leaving cold-build servers running
-# indefinitely after their base's step returned, competing with later bases for
-# the same CPUs (interleaved logs from bases that should already be done).
-force_kill() {
-  local pid="$1" waited=0
-  kill "$pid" 2>/dev/null || return 0
-  while kill -0 "$pid" 2>/dev/null; do
-    if (( waited >= 10 )); then
-      kill -9 "$pid" 2>/dev/null || true
-      break
-    fi
-    sleep 1
-    # NOT `(( waited++ ))`: under `set -e` that command's exit status is the
-    # PRE-increment value, so at waited=0 it "fails" (status 1) — and since
-    # this is often the last thing the function runs (the process is usually
-    # already dead by the next loop check), that false failure became
-    # force_kill's own return status, aborting build_base right after a
-    # successful export/publish. Arithmetic assignment avoids the gotcha.
-    waited=$((waited + 1))
-  done
-  return 0
-}
-
 # Build, snapshot, and publish one base. Runs in a subshell (see the loop) so a
 # failure is isolated to that base. Args: <name> <repo-url> <branch>.
 build_base() {
   local base="$1" repo="$2" branch="$3"
-  local prefix cur new pointer prev digest
+  local prefix cur new pointer prev digest kb_home repos_arg
   prefix="$(snapshot_prefix_for "$base")"
   cur="$WORK/$base/cur"
   new="$WORK/$base/new"
-  rm -rf "$WORK/$base"; mkdir -p "$cur" "$new"
+  kb_home="$WORK/$base/home"
+  rm -rf "$WORK/$base"; mkdir -p "$new" "$kb_home"
 
   echo "▶ building base=$base repo=${repo:-<none>} version=$VERSION repos_flag=${REPOS_FLAG:-<full>}"
   pointer="$(s3_read_pointer "$prefix")"
+  repos_arg="${repo}${branch:+#$branch}"
+
+  # `kb-server refresh` owns the adopt/rehydrate/reindex-or-clone/export
+  # sequence (and its own throwaway bootstrap-child spawn+health-wait+kill) —
+  # see packages/kb-server/src/refresh-cli.ts (FR-18 in SERVER.spec.md). This
+  # script's only remaining job is object-store transport (kb-server never
+  # touches gs://\s3://) and the publish/pointer-flip/prune below.
+  local refresh_args=(--base "$base" --out "$new" --json
+    --timeout "$(( ${COLD_BUILD_TIMEOUT:-1800} * 1000 ))")
+  [[ -n "$REPOS_FLAG" ]] && refresh_args+=("$REPOS_FLAG")
 
   if [[ -n "$pointer" ]]; then
-    # ---- Warm path: incremental rescan from the previous snapshot -----------
+    # ---- Warm path: adopt previous snapshot, rehydrate the repo from
+    #      provenance, reindex changed files, then export. --------------------
     prev="$(printf '%s' "$pointer" | json_get version)"
-    echo "  · warm path: adopting previous snapshot version=$prev"
+    echo "  · warm path: adopting previous snapshot version=$prev, then rehydrate+reindex"
+    mkdir -p "$cur"
     s3_pull_prefix "$prefix/$prev" "$cur"
-    # scan = adopt (--from, sha256-verified) → git pull + incremental reindex → export.
-    kb_server scan \
-      --base "$base" \
-      --from "$cur" \
-      --out "$new" \
-      ${REPOS_FLAG} \
-      --json
+    refresh_args+=(--from "$cur" --repos "$repos_arg")
   else
     # ---- Cold path: first-ever build from the base's repo --------------------
     if [[ -z "$repo" ]]; then
@@ -117,34 +104,10 @@ build_base() {
       return 1
     fi
     echo "  · cold path: no pointer yet — building from $repo"
-    local kb_home port server_pid deadline health
-    kb_home="$WORK/$base/home"
-    port="${PORT:-38117}"
-    mkdir -p "$kb_home"
-    # Per-base cold build: KB_HOME + KB_BASE + KB_GIT_REPOS scoped to this base so
-    # the auto bootstrap clones exactly this repo into ~/.kb/sessions/<base>.
-    KB_HOME="$kb_home" KB_BASE="$base" \
-      KB_GIT_REPOS="${repo}${branch:+#$branch}" \
-      PORT="$port" \
-      node "$KB_SERVER_JS" start --base "$base" --bootstrap-policy auto &
-    server_pid=$!
-    # shellcheck disable=SC2064
-    trap "force_kill $server_pid" RETURN
-    echo "  · waiting for first index (GET /healthz ok:true) …"
-    deadline=$(( $(date +%s) + ${COLD_BUILD_TIMEOUT:-1800} ))
-    until health="$(curl -fsS "http://127.0.0.1:${port}/healthz" 2>/dev/null)" \
-          && [[ "$(printf '%s' "$health" | json_get ok)" == "true" ]]; do
-      if (( $(date +%s) > deadline )); then
-        echo "error: cold build for base '$base' did not become ready before COLD_BUILD_TIMEOUT." >&2
-        return 1
-      fi
-      sleep 5
-    done
-    echo "  · first index ready; exporting"
-    KB_HOME="$kb_home" kb_server export --base "$base" --out "$new" ${REPOS_FLAG} --force
-    force_kill "$server_pid"
-    trap - RETURN
+    refresh_args+=(--repos "$repos_arg")
   fi
+
+  KB_HOME="$kb_home" kb_server refresh "${refresh_args[@]}"
 
   if [[ ! -f "$new/kb-snapshot.json" ]]; then
     echo "error: builder produced no snapshot for base '$base' at $new." >&2
@@ -195,12 +158,29 @@ built=()
 failures=()
 while IFS=$'\t' read -r name repo branch _is_default; do
   [[ -z "${name:-}" ]] && continue
+  # ONLY_BASES: comma-separated allowlist for scoping a run to specific bases
+  # (e.g. incident recovery/debugging one base without paying for a full
+  # 10-base run). Unset/empty means "build everything" — unchanged default.
+  if [[ -n "${ONLY_BASES:-}" ]]; then
+    case ",${ONLY_BASES}," in
+      *",${name},"*) ;;
+      *) continue ;;
+    esac
+  fi
   # Isolate each base in its own subshell. `set +e` around it keeps a base
   # failure from aborting the whole run; the explicit `set -e` INSIDE the
   # subshell (honored because the subshell is not an if/&&/|| operand) makes
   # build_base stop at its first failing step.
+  # `< /dev/null`: the outer loop's stdin is the `each_base` process-
+  # substitution pipe (`done < <(each_base)`). `kb-server refresh` spawns its
+  # own bootstrap child, which inherits stdio by default — if it (or anything
+  # else in this subshell's tree) so much as touches fd 0, it can steal bytes
+  # meant for the loop's next `read`, silently truncating the run after a
+  # base picked at random by timing (observed: after 1 base one run, after 4
+  # the next). Detaching this subshell's stdin from that pipe entirely makes
+  # it impossible for anything inside build_base to interfere with it.
   set +e
-  ( set -euo pipefail; build_base "$name" "$repo" "$branch" )
+  ( set -euo pipefail; build_base "$name" "$repo" "$branch" ) < /dev/null
   rc=$?
   set -e
   if (( rc == 0 )); then

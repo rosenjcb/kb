@@ -117,11 +117,22 @@ if [[ ! -f "$SNAPSHOT_DIR/kb-snapshot.json" ]]; then
   exit 1
 fi
 
-# `start --from` verifies the manifest sha256 and refuses an incompatible/corrupt
-# snapshot before it ever binds the port. The other bases were already imported
-# above; the registry lists + serves them alongside this default.
-echo "  · kb-server start --from $SNAPSHOT_DIR --base $DEFAULT_BASE --bootstrap-policy $BOOTSTRAP_POLICY"
+# Adopt the default base into KB_HOME, then free the staging copy BEFORE serving.
+# `start --from` verifies sha256 too, but it does so by copying $SNAPSHOT_DIR
+# into KB_HOME and then keeping the source dir around for the process lifetime
+# — so a long-running server ends up holding BOTH the /snapshot staging copy
+# AND the adopted base dir at once, doubling the on-disk (and, if KB_HOME sits
+# on tmpfs, RAM) footprint of the snapshot. Exactly as the non-default-base
+# loop above does: `import` copies /snapshot → the base dir and exits, we
+# delete /snapshot, and only then does `start` serve the now-present index in
+# place (no --from: server-cli ignores --from once the base already has an
+# index, and snapshot-only serves it as-is). Steady-state footprint = one
+# copy, not two. Mirrors scripts/gcp/serve-entrypoint.sh.
+echo "  · kb-server import --base $DEFAULT_BASE --from $SNAPSHOT_DIR"
+node "$KB_SERVER_JS" import --base "$DEFAULT_BASE" --from "$SNAPSHOT_DIR" --force
+rm -rf "$SNAPSHOT_DIR"
+
+echo "  · kb-server start --base $DEFAULT_BASE --bootstrap-policy $BOOTSTRAP_POLICY (serving in place)"
 exec node "$KB_SERVER_JS" start --with-mcp \
   --base "$DEFAULT_BASE" \
-  --from "$SNAPSHOT_DIR" \
   --bootstrap-policy "$BOOTSTRAP_POLICY"

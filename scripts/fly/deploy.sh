@@ -17,12 +17,16 @@ BUILDER_APP="${BUILDER_APP:-kb-demo-builder}"
 SEED=1
 [[ "${1:-}" == "--no-seed" ]] && SEED=0
 
-# kb-demo-builder's [[vm]] size in fly.builder.toml (see there for why 4GB).
+# kb-demo-builder's [[vm]] size in fly.builder.toml (see there for why 8GB).
 # `fly machine run -c fly.builder.toml` does NOT inherit this block — it must
 # be passed explicitly on every machine-creating command below, or you silently
-# get Fly's bare platform default (shared-cpu-1x/256mb).
-BUILDER_VM_SIZE="performance-2x"
-BUILDER_VM_MEMORY="4096"
+# get Fly's bare platform default (shared-cpu-1x/256mb). Keep this in sync with
+# fly.builder.toml AND .github/workflows/fly-deploy.yml's recreate-scheduler
+# step — they drifted apart once already (shared-cpu-2x/4096 vs
+# performance-2x/4096) and cold builds got OOM-killed on whichever one a given
+# path actually used.
+BUILDER_VM_SIZE="performance-4x"
+BUILDER_VM_MEMORY="8192"
 
 echo "==> 1/4 building + pushing builder image ($BUILDER_APP)"
 # --build-only --push: build and push the image WITHOUT deploying/releasing it.
@@ -46,8 +50,15 @@ if [[ -n "$scheduler_id" ]]; then
 else
   echo "    no existing scheduler found; creating one"
 fi
+# -e COLD_BUILD_TIMEOUT: same non-inheritance problem as [[vm]] above —
+# `fly machine run -c fly.builder.toml` does NOT apply fly.builder.toml's
+# [env] block either. Without this, refresh.sh silently falls back to its
+# own 1800s default instead of the 5400s the toml declares, and the biggest
+# cold builds (brew, kestra) get killed as a false "timeout" well before
+# they'd actually finish.
 fly machine run . -c fly.builder.toml -a "$BUILDER_APP" --detach \
     --vm-size "$BUILDER_VM_SIZE" --vm-memory "$BUILDER_VM_MEMORY" \
+    -e COLD_BUILD_TIMEOUT=5400 \
     --schedule daily --restart no \
     bash /app/scripts/fly/refresh.sh
 
@@ -61,6 +72,7 @@ if [[ "$SEED" -eq 1 ]]; then
   echo "==> 4/4 seeding every base now (skip with --no-seed)"
   fly machine run . -c fly.builder.toml -a "$BUILDER_APP" --rm \
       --vm-size "$BUILDER_VM_SIZE" --vm-memory "$BUILDER_VM_MEMORY" \
+      -e COLD_BUILD_TIMEOUT=5400 \
       bash /app/scripts/fly/refresh.sh
   fly logs -a "$BUILDER_APP"
 else
