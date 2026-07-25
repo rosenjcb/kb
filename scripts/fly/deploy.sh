@@ -50,8 +50,15 @@ if [[ -n "$scheduler_id" ]]; then
 else
   echo "    no existing scheduler found; creating one"
 fi
+# -e COLD_BUILD_TIMEOUT: same non-inheritance problem as [[vm]] above —
+# `fly machine run -c fly.builder.toml` does NOT apply fly.builder.toml's
+# [env] block either. Without this, refresh.sh silently falls back to its
+# own 1800s default instead of the 5400s the toml declares, and the biggest
+# cold builds (brew, kestra) get killed as a false "timeout" well before
+# they'd actually finish.
 fly machine run . -c fly.builder.toml -a "$BUILDER_APP" --detach \
     --vm-size "$BUILDER_VM_SIZE" --vm-memory "$BUILDER_VM_MEMORY" \
+    -e COLD_BUILD_TIMEOUT=5400 \
     --schedule daily --restart no \
     bash /app/scripts/fly/refresh.sh
 
@@ -65,6 +72,7 @@ if [[ "$SEED" -eq 1 ]]; then
   echo "==> 4/4 seeding every base now (skip with --no-seed)"
   fly machine run . -c fly.builder.toml -a "$BUILDER_APP" --rm \
       --vm-size "$BUILDER_VM_SIZE" --vm-memory "$BUILDER_VM_MEMORY" \
+      -e COLD_BUILD_TIMEOUT=5400 \
       bash /app/scripts/fly/refresh.sh
   fly logs -a "$BUILDER_APP"
 else

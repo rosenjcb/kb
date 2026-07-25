@@ -77,7 +77,11 @@ jobs:
           # Previously shared-cpu-2x/4096 here diverged from performance-2x in
           # the toml; cold builds were then OOM-killed on whichever tier
           # actually got used. performance-4x/8192mb now matches on both.
+          # -e COLD_BUILD_TIMEOUT: same non-inheritance problem for [env] —
+          # without this it silently falls back to refresh.sh's own 1800s
+          # default instead of the 5400s the toml declares.
           flyctl machine run . -c fly.builder.toml -a kb-demo-builder --detach \
             --vm-size performance-4x --vm-memory 8192 \
+            -e COLD_BUILD_TIMEOUT=5400 \
             --schedule daily --restart no \
             bash /app/scripts/fly/refresh.sh
