@@ -5,7 +5,7 @@ sources: [./]
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-07-18T00:00:00Z
+timestamp: 2026-07-24T00:00:00Z
 ---
 
 ### Intro
@@ -45,6 +45,11 @@ See companion doc for full vocabulary where applicable.
 | FR-15 | One-shot `kb-server scan` runs adopt(optional) → scan → export(optional) then exits (no HTTP); `--from`/`--out` are local paths only; batch always replaces an existing adopt index and overwrites `--out` (no `--force`); `--json` emits ok true/false summary on stdout |
 | FR-16 | Browser CORS: reflect allow-listed `Origin` (or `*`); omit headers when CORS off / origin not listed; answer preflight `OPTIONS` with 204 without auth for allowed origins |
 | FR-17 | First-boot bootstrap (`health.indexing`) returns 503 on `/v1/query`, `/v1/chat`, and `/mcp` with progress; scheduled reindex (`health.reindexing`) does **not** block those routes |
+| FR-18 | One-shot `kb-server refresh` builds a fresh local snapshot dir for one base, from either a previous local snapshot (`--from`: adopt, re-clone/hydrate repos from `--repos`/`--branch`, incremental reindex) or bare repos with no previous snapshot (`--repos` only: full clone + index); `--from`/`--out` are local paths only (never object storage — no `gs://`/`s3://` awareness, no bucket credentials — matching the existing invariant `scan`/`export`/`import` already hold), while `--repos` is a plain `url[#branch]` list (the `KB_GIT_REPOS` convention). It manages its own throwaway bootstrap child process (spawn, health-poll, SIGTERM-then-SIGKILL on completion or timeout) internally so callers no longer hand-roll that in shell. `--json` emits an ok/error summary on stdout, same contract style as `scan` |
+
+### Known issues
+
+- **Scope boundary**: `refresh` deliberately does *not* replace the object-store pull/push/pointer-flip/prune steps in `scripts/gcp/refresh.sh` / `scripts/fly/refresh.sh` — those stay in the shell layer by design, so this FR only covers the "build one fresh snapshot dir" portion of the builder flow, not the whole publish pipeline.
 
 ### QA Test Cases
 
@@ -168,6 +173,15 @@ See companion doc for full vocabulary where applicable.
 | TC-116 | FR-6 | grounding matches by basename so relative prose paths ground against absolute evidence paths | pass |
 | TC-117 | FR-6 | grounding ignores non-file tokens: product names, property access, bare words | pass |
 | TC-118 | FR-6 | grounding reports each ungrounded file once | pass |
+| TC-119 | FR-18 | warm: given `--from <prior-snapshot>` and `--repo`/`--branch`, adopts the prior index, re-clones the repo, and reindexes only changed files at `--out` | pass |
+| TC-120 | FR-18 | cold: given `--repo` with no `--from`, clones fresh and produces a full index at `--out` | pass |
+| TC-121 | FR-18 | cold mode with neither `--from` nor `--repo` errors instead of hanging | pass |
+| TC-122 | FR-18 | surfaces the child bootstrap's `bootstrapError` as a failure instead of waiting out the full timeout | pass |
+| TC-123 | FR-18 | returns a timeout error (not a hang) when bootstrap never reaches `ok:true` | pass |
+| TC-124 | FR-18 | `--json` emits a single `{ ok: true, ... }` summary on stdout on success | pass |
+| TC-125 | FR-18 | `--json` emits `{ ok: false, error }` on stdout before the process exits non-zero on failure | pass |
+| TC-126 | FR-18 | rejects `gs://`/`s3://`-scheme values for `--from`/`--out` (local-paths-only invariant; `--repos` legitimately holds `https://`/`git@` git URLs and is exempt) | pass |
+| TC-127 | FR-18 | terminates its bootstrap child process (no orphan) after both success and timeout | pass |
 
 ### Related docs
 

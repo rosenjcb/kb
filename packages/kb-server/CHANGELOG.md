@@ -1,5 +1,11 @@
 # kb-server
 
+## 1.4.15
+
+### Patch Changes
+
+- Add `kb-server refresh` subcommand consolidating the GCP/Fly builder orchestration (adopt/rehydrate/reindex-or-clone/export + throwaway bootstrap-child lifecycle) into one typed, tested command; fix the Fly warm-path rehydration bug and the default-base snapshot double-copy on serve boot.
+
 ## 1.4.14
 
 ### Patch Changes

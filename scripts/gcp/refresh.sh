@@ -5,11 +5,16 @@
 # then exit — the corruption-safe way. Native `gcloud storage`, no AWS.
 #
 # Per-base flow:
-#   1. Warm path (a latest.json pointer exists): download the current snapshot
-#      and run `kb-server scan --from cur --out new` — adopt → git pull +
-#      hash-diffed incremental reindex → VACUUM INTO export. Cheap and incremental.
-#   2. Cold path (first run, no pointer): boot `kb-server start` (auto), which
-#      clones the base's repo and builds, wait for /healthz ok, then export.
+#   1. Warm path (a latest.json pointer exists): download the current snapshot,
+#      then `kb-server refresh --from cur --repos ... --out new` does the
+#      adopt → rehydrate-from-provenance (+ fold in newly-declared repos) → git
+#      pull + hash-diffed incremental reindex → VACUUM INTO export, all in one
+#      typed subcommand (packages/kb-server/src/refresh-cli.ts, FR-18 in
+#      SERVER.spec.md) — the same one scripts/fly/refresh.sh calls, so this
+#      warm-path logic lands once for both platforms instead of drifting.
+#   2. Cold path (first run, no pointer): `kb-server refresh --repos ... --out
+#      new` (no --from) clones fresh and exports. Object-store transport stays
+#      here in shell — kb-server never learns about gs://\s3:// (see FR-18).
 #   3. Publish: upload the fresh snapshot to an IMMUTABLE version prefix, then
 #      atomically flip latest.json (the single commit point).
 #   4. Prune old immutable versions (keep SNAPSHOT_KEEP).
@@ -48,30 +53,16 @@ VERSION="$(date -u +%Y%m%dT%H%M%SZ)"
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 
-# SIGTERM then escalate to SIGKILL if the process outlives a short grace period.
-force_kill() {
-  local pid="$1" waited=0
-  kill "$pid" 2>/dev/null || return 0
-  while kill -0 "$pid" 2>/dev/null; do
-    if (( waited >= 10 )); then
-      kill -9 "$pid" 2>/dev/null || true
-      break
-    fi
-    sleep 1
-    waited=$((waited + 1))
-  done
-  return 0
-}
-
 # Build, snapshot, and publish one base. Runs in a subshell (see the loop) so a
 # failure is isolated to that base. Args: <name> <repo-url> <branch>.
 build_base() {
   local base="$1" repos="$2"
-  local prefix cur new pointer prev digest force_cold
+  local prefix cur new pointer prev digest force_cold kb_home
   prefix="$(snapshot_prefix_for "$base")"
   cur="$WORK/$base/cur"
   new="$WORK/$base/new"
-  rm -rf "$WORK/$base"; mkdir -p "$cur" "$new"
+  kb_home="$WORK/$base/home"
+  rm -rf "$WORK/$base"; mkdir -p "$new" "$kb_home"
 
   echo "▶ building base=$base repos=[${repos:-<none>}] version=$VERSION repos_flag=${REPOS_FLAG:-<full>}"
   pointer="$(gcs_read_pointer "$prefix")"
@@ -87,58 +78,23 @@ build_base() {
     echo "  · force-cold requested for base=$base (ignoring live pointer; old snapshot stays until flip)"
   fi
 
+  # `kb-server refresh` owns the adopt/rehydrate-and-fold/reindex-or-clone/export
+  # sequence (and its own throwaway bootstrap-child spawn+health-wait+kill) —
+  # see packages/kb-server/src/refresh-cli.ts (FR-18 in SERVER.spec.md). This
+  # script's only remaining job is object-store transport (kb-server never
+  # touches gs://\s3://) and the publish/pointer-flip/prune below.
+  local refresh_args=(--base "$base" --out "$new" --json
+    --timeout "$(( ${COLD_BUILD_TIMEOUT:-1800} * 1000 ))")
+  [[ -n "$REPOS_FLAG" ]] && refresh_args+=("$REPOS_FLAG")
+  [[ -n "$repos" ]] && refresh_args+=(--repos "$repos")
+
   if [[ -n "$pointer" && "$force_cold" != "true" ]]; then
     # ---- Warm path: adopt previous snapshot, rehydrate + fold declared repos,
     #      reindex changed files, then export. --------------------------------
-    # Snapshots ship WITHOUT repo clones (--no-repos), so a plain `scan` has
-    # nothing on disk to reindex. Instead: adopt the previous index, then boot
-    # `start --bootstrap-policy auto` — its warm-volume task re-clones every repo
-    # from manifest provenance AND folds in any newly-declared `KB_GIT_REPOS`
-    # (incrementally, without rebuilding the big repo from scratch). Once that
-    # settles (health ok:true, indexing:false), a `scan` pass does the git pull +
-    # hash-diff reindex so new commits land too, then exports the fresh snapshot.
     prev="$(printf '%s' "$pointer" | json_get version)"
     echo "  · warm path: adopting previous snapshot version=$prev, then rehydrate+fold+reindex"
     gcs_pull_prefix "$prefix/$prev" "$cur"
-
-    local kb_home port server_pid deadline health berr
-    kb_home="$WORK/$base/home"
-    port="${PORT:-38117}"
-    mkdir -p "$kb_home"
-    # Adopt the previous index into the base (no clones yet — snapshot is --no-repos).
-    KB_HOME="$kb_home" node "$KB_SERVER_JS" import --base "$base" --from "$cur" --force
-    # Boot frozen-auto: re-clone provenance repos + fold in newly-declared ones.
-    KB_HOME="$kb_home" KB_BASE="$base" KB_GIT_REPOS="$repos" PORT="$port" \
-      node "$KB_SERVER_JS" start --base "$base" --bootstrap-policy auto &
-    server_pid=$!
-    # shellcheck disable=SC2064
-    trap "force_kill $server_pid" RETURN
-    echo "  · waiting for rehydrate/fold-in to settle (GET /healthz ok:true, indexing:false) …"
-    deadline=$(( $(date +%s) + ${COLD_BUILD_TIMEOUT:-1800} ))
-    sleep 3
-    until health="$(curl -fsS "http://127.0.0.1:${port}/healthz" 2>/dev/null)" \
-          && [[ "$(printf '%s' "$health" | json_get ok)" == "true" ]] \
-          && [[ "$(printf '%s' "$health" | json_get indexing)" != "true" ]]; do
-      berr="$(printf '%s' "${health:-}" | json_get bootstrapError)"
-      if [[ -n "$berr" ]]; then
-        echo "error: warm bootstrap failed for base '$base': $berr" >&2
-        return 1
-      fi
-      if (( $(date +%s) > deadline )); then
-        echo "error: warm rehydrate/fold for base '$base' did not settle before COLD_BUILD_TIMEOUT." >&2
-        return 1
-      fi
-      sleep 5
-    done
-    force_kill "$server_pid"
-    trap - RETURN
-    # Clones are on disk now — pull + hash-diff reindex (catches new commits), then export.
-    echo "  · rehydrate/fold settled; scanning for new commits + exporting"
-    KB_HOME="$kb_home" kb_server scan \
-      --base "$base" \
-      --out "$new" \
-      ${REPOS_FLAG} \
-      --json
+    refresh_args+=(--from "$cur")
   else
     # ---- Cold path: first-ever build from the base's repo --------------------
     if [[ -z "$repos" ]]; then
@@ -146,32 +102,9 @@ build_base() {
       return 1
     fi
     echo "  · cold path: building base from repos: $repos"
-    local kb_home port server_pid deadline health
-    kb_home="$WORK/$base/home"
-    port="${PORT:-38117}"
-    mkdir -p "$kb_home"
-    KB_HOME="$kb_home" KB_BASE="$base" \
-      KB_GIT_REPOS="$repos" \
-      PORT="$port" \
-      node "$KB_SERVER_JS" start --base "$base" --bootstrap-policy auto &
-    server_pid=$!
-    # shellcheck disable=SC2064
-    trap "force_kill $server_pid" RETURN
-    echo "  · waiting for first index (GET /healthz ok:true) …"
-    deadline=$(( $(date +%s) + ${COLD_BUILD_TIMEOUT:-1800} ))
-    until health="$(curl -fsS "http://127.0.0.1:${port}/healthz" 2>/dev/null)" \
-          && [[ "$(printf '%s' "$health" | json_get ok)" == "true" ]]; do
-      if (( $(date +%s) > deadline )); then
-        echo "error: cold build for base '$base' did not become ready before COLD_BUILD_TIMEOUT." >&2
-        return 1
-      fi
-      sleep 5
-    done
-    echo "  · first index ready; exporting"
-    KB_HOME="$kb_home" kb_server export --base "$base" --out "$new" ${REPOS_FLAG} --force
-    force_kill "$server_pid"
-    trap - RETURN
   fi
+
+  KB_HOME="$kb_home" kb_server refresh "${refresh_args[@]}"
 
   if [[ ! -f "$new/kb-snapshot.json" ]]; then
     echo "error: builder produced no snapshot for base '$base' at $new." >&2
