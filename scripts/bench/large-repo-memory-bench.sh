@@ -55,6 +55,7 @@ REFRESH_TIMEOUT_MS="${REFRESH_TIMEOUT_MS:-3600000}"
 WORK_DIR="${WORK_DIR:-$HOME/.kb-membench}"
 IMAGE_TAG="kb-membench:latest"
 CONTAINER=membench-run
+BASE_NAME=membench
 
 REPO_SRC="$WORK_DIR/repo-src"
 OUT_DIR="$WORK_DIR/out"
@@ -91,16 +92,39 @@ docker run -d \
   -e KB_HOME=/data \
   -e KB_EMBEDDER=local \
   "$IMAGE_TAG" \
-  bash -lc "packages/kb-server/dist/bin/kb-server refresh --base membench --out /bench/out --repos 'file:///bench/repo' --timeout $REFRESH_TIMEOUT_MS --json" \
+  bash -lc "packages/kb-server/dist/bin/kb-server refresh --base $BASE_NAME --out /bench/out --repos 'file:///bench/repo' --timeout $REFRESH_TIMEOUT_MS --json" \
   >/dev/null
 
 echo "  · container: $CONTAINER"
+echo "  · NOTE: the refresh command's bootstrap child runs with stdio:'ignore'"
+echo "    (packages/kb-server/src/refresh-cli.ts) by design, so \`docker logs\`"
+echo "    never shows per-file progress — this loop reads the init checkpoint"
+echo "    + live fact count from the container's own SQLite index instead."
+
+# Small inline script, run via `docker exec ... node`: reports which init
+# cycle just completed (read-inputs/code-index/document-facts/import-docs/
+# write) and how many facts exist so far, so a benchmark run shows real
+# progress instead of just a memory number climbing in the dark.
+read -r -d '' PROGRESS_JS <<'EOF' || true
+const fs = require('fs')
+const path = `/data/sessions/${process.argv[1]}/checkpoints/init-latest.checkpoint.json`
+let cycles = '(no checkpoint yet)'
+try { cycles = JSON.parse(fs.readFileSync(path, 'utf8')).completedCycles?.join(',') || '(none)' } catch {}
+let facts = '?'
+try {
+  const { DatabaseSync } = require('node:sqlite')
+  const db = new DatabaseSync(`/data/sessions/${process.argv[1]}/.kb-index.sqlite`, { readOnly: true })
+  facts = db.prepare('SELECT COUNT(*) AS c FROM facts').get().c
+} catch {}
+console.log(`cycles=[${cycles}] facts=${facts}`)
+EOF
 
 while docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null | grep -q true; do
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   mem_bytes="$(docker exec "$CONTAINER" cat /sys/fs/cgroup/memory.current 2>/dev/null || echo "")"
   mem_human="$(docker stats "$CONTAINER" --no-stream --format '{{.MemUsage}}' 2>/dev/null || echo "")"
-  echo "$ts mem_bytes=$mem_bytes ($mem_human)" | tee -a "$SAMPLES"
+  progress="$(docker exec "$CONTAINER" node -e "$PROGRESS_JS" "$BASE_NAME" 2>/dev/null || echo "cycles=[?] facts=?")"
+  echo "$ts mem_bytes=$mem_bytes ($mem_human) $progress" | tee -a "$SAMPLES"
   sleep "$SAMPLE_INTERVAL_SECONDS"
 done
 
