@@ -37,12 +37,11 @@ beforeEach(async () => {
   await mkdir(fakeHome)
   origHome = process.env.HOME
   process.env.HOME = fakeHome
-  snapshotEnv(['KB_HOST', 'KB_PORT', 'KB_SERVER_URL', 'KB_SERVER_API_KEY', 'KB_LOCAL_MODE'])
+  snapshotEnv(['KB_HOST', 'KB_PORT', 'KB_SERVER_URL', 'KB_SERVER_API_KEY'])
   delete process.env.KB_HOST
   delete process.env.KB_PORT
   delete process.env.KB_SERVER_URL
   delete process.env.KB_SERVER_API_KEY
-  delete process.env.KB_LOCAL_MODE
 })
 
 afterEach(async () => {
@@ -242,12 +241,6 @@ describe('syncKbMcpConfigs', () => {
     expect(doc.mcpServers.kb.headers).toBeUndefined()
   })
 
-  it('[TC-19] Given KB_LOCAL_MODE, skips MCP sync', async () => {
-    process.env.KB_LOCAL_MODE = 'true'
-    process.env.KB_HOST = 'localhost'
-    const results = await syncKbMcpConfigs()
-    expect(results).toEqual([])
-  })
 })
 
 describe('uninstallKbMcpConfigs', () => {

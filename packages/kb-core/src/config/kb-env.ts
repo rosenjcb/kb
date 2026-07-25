@@ -3,7 +3,6 @@ import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
 /** Canonical KB client/server environment variables (see README). */
 export const KB_ENV = {
   HOME: 'KB_HOME',
-  LOCAL_MODE: 'KB_LOCAL_MODE',
   SERVER_URL: 'KB_SERVER_URL',
   CONNECTION_STRING: 'KB_CONNECTION_STRING',
   HOST: 'KB_HOST',

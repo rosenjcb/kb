@@ -29,11 +29,11 @@ Thin terminal front-end for kb. Taxonomy: [CLIENT.md](./CLIENT.md), [CONNECTION.
 | ID | Requirement |
 |------|------------|
 | FR-1 | Default path: resolve server from env; health-check via `/healthz` |
-| FR-2 | When the server is unreachable, fail fast with actionable hints — no silent local fallback |
-| FR-3 | `KB_LOCAL_MODE=true` runs commands in-process (tests, eval) |
-| FR-4 | Remote mode forwards docs/facts/graph/logs/publish/base (except `use`) to `POST /v1/admin/cli` |
-| FR-5 | Remote query uses `POST /v1/query`; chat/TUI uses `POST /v1/chat` SSE |
-| FR-6 | Client-only: `skills`, `uninstall`, `sync`, `base use` |
+| FR-2 | When the server is unreachable, fail fast with actionable hints |
+| FR-3 | Client always uses HTTP to a host |
+| FR-4 | Forwards docs/facts/graph/logs/publish/base (except `use`) to `POST /v1/admin/cli` |
+| FR-5 | Query uses `POST /v1/query`; chat/TUI uses `POST /v1/chat` SSE |
+| FR-6 | Client-only: `skills`, `uninstall`, `sync`, `base use`, `mcp` |
 | FR-7 | Daemon lifecycle uses the `kb-server` binary, not a `kb server` subcommand |
 | FR-8 | Git-repo indexing is configured on kb-server (`KB_GIT_REPOS`) |
 | FR-9 | Global `--host` overrides connection env for one invocation |

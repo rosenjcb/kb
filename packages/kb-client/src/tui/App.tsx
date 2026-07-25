@@ -10,16 +10,8 @@ import {
 import type { ChatIO, ChatReadOptions } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
 import { performClientUninstall } from '@kb/core/cli/release-uninstall.js'
-import {
-  CLI_ERROR_NO_KB_BASE,
-  formatPrerequisiteError,
-  uninitializedBaseNotice,
-} from '@kb/core/config/cli-prerequisites.js'
+import { uninitializedBaseNotice } from '@kb/core/config/cli-prerequisites.js'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
-import {
-  createLLMProviderFromConfig,
-} from '@kb/core/config/kb-config.js'
-import { createKBToolsRegistry } from '@kb/core/tools/kb-tools-registry.js'
 import { classifyChatReadPromptKind, shouldStartChatPending } from './chat-read-kind.js'
 import { classifyChatIOLine } from './chat-io-classify.js'
 import { HistoryPane } from './components/HistoryPane.js'
@@ -28,7 +20,6 @@ import { StatusBar } from './components/StatusBar.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
 import { partitionShellOutputForTui } from './partition-shell-output.js'
 import { runCommandForTui, parseShellArgs } from './runner.js'
-import { shouldUseRemoteServer } from '../cli/remote-commands.js'
 import {
   applySelectedSuggestion,
   clampSuggestionIndex,
@@ -68,10 +59,8 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
   const { exit } = useApp()
 
   const mode: TuiMode = 'chat'
-  const llmProvider = createLLMProviderFromConfig(config)
-  const providerLabel = llmProvider ? `${llmProvider.name} ${llmProvider.model}` : ''
   const [history, setHistory] = useState<HistoryEntry[]>([
-    { id: 'welcome', type: 'banner', content: providerLabel },
+    { id: 'welcome', type: 'banner', content: '' },
   ])
   const [inputValue, setInputValue] = useState('')
   const [isRunning, setIsRunning] = useState(false)
@@ -167,27 +156,8 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
   const startChatSession = useCallback(
     (opts: { verbose?: boolean } = {}) => {
       const verbose = opts.verbose === true
-      // Remote mode: base, LLM provider, and retrieval all live server-side, so a thin client
-      // needs neither a local base nor a local API key. Only local mode requires them.
-      const remote = shouldUseRemoteServer()
-      if (!remote && !storageDirRef.current) {
-        addEntry({
-          type: 'error',
-          content: formatPrerequisiteError(CLI_ERROR_NO_KB_BASE),
-        })
-        return
-      }
-      const llmProvider = remote ? undefined : createLLMProviderFromConfig(config)
-      if (!remote && !llmProvider) {
-        // Startup notice already showed the key setup instructions; don't repeat.
-        return
-      }
-
+      // Base, LLM provider, and retrieval all live server-side.
       const storageDir = storageDirRef.current
-      const toolExecutor =
-        !remote && llmProvider
-          ? createKBToolsRegistry(storageDir, config, { taskProvider: llmProvider })
-          : undefined
 
       setChatInputHint('')
       setSlashContext('idle')
@@ -268,10 +238,8 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
 
       runChatSession(
         {
-          llmProvider,
-          toolExecutor,
           mode: 'tui',
-          kbStorageDir: storageDir,
+          kbStorageDir: storageDir || undefined,
           kbConfig: config,
           verbose,
           onBaseChanged: refreshBase,

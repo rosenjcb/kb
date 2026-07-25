@@ -45,6 +45,8 @@ vi.mock('@kb/core/service/kb-service.js', () => ({
     health: () => ({
       ok: true,
       base: 'demo',
+      provider: 'gemini',
+      model: 'gemini-3.5-flash',
       ...(options.bootstrapState.indexing ? { indexing: true } : {}),
     }),
     reindex: vi.fn(),
@@ -60,6 +62,10 @@ vi.mock('@kb/server/reindex-scheduler.js', () => ({
 vi.mock('@kb/core/config/kb-config.js', () => ({
   getKbConfigDir: vi.fn(() => '/tmp/kb-config'),
   ensureDefaultConfig: vi.fn(async () => ({})),
+  persistInferredLLMProvider: vi.fn(async ({ config }: { config: unknown }) => ({
+    config,
+    notice: 'ℹ Auto-selected LLM provider: gemini (detected GEMINI_API_KEY). Optional: export KB_LLM_PROVIDER=gemini',
+  })),
 }))
 
 class FakeServer extends EventEmitter {
@@ -78,7 +84,7 @@ vi.mock('@kb/server/http-server.js', () => ({
   createHttpServer: vi.fn(() => fakeServer),
 }))
 
-import { ensureDefaultConfig } from '@kb/core/config/kb-config.js'
+import { ensureDefaultConfig, persistInferredLLMProvider } from '@kb/core/config/kb-config.js'
 import { runKbInit } from '@kb/core/ops/init-cli.js'
 import { createHttpServer } from '@kb/server/http-server.js'
 import { startReindexScheduler } from '@kb/server/reindex-scheduler.js'
@@ -183,6 +189,25 @@ describe('runServerCommand bootstrap progress', () => {
       expect(out.log).toHaveBeenCalledWith(expect.stringContaining('no snapshot available'))
     })
     expect(runKbInit).not.toHaveBeenCalled()
+
+    process.emit('SIGTERM', 'SIGTERM')
+    await serverPromise
+  })
+
+  it('prints LLM provider auto-selection and LLM line on server start', async () => {
+    const out = {
+      log: vi.fn(),
+      error: vi.fn(),
+    }
+
+    const serverPromise = runServerCommand([], out, {} as never)
+
+    await vi.waitFor(() => {
+      expect(persistInferredLLMProvider).toHaveBeenCalledOnce()
+      expect(out.log).toHaveBeenCalledWith(expect.stringContaining('Auto-selected LLM provider: gemini'))
+      expect(out.log).toHaveBeenCalledWith(expect.stringContaining('LLM: gemini (gemini-3.5-flash)'))
+      expect(out.log).toHaveBeenCalledWith(expect.stringContaining('kb-server listening'))
+    })
 
     process.emit('SIGTERM', 'SIGTERM')
     await serverPromise
