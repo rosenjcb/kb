@@ -20,7 +20,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 ### Definitions
 
 - **Connection profile** — resolved `ServerConnection` (`url`, optional `apiKey`, optional `base`).
-- **Connection context** — user-facing `host: … │ base: …` or `mode: local │ base: …` string.
+- **Connection context** — user-facing `host: … │ base: …` string.
 - **Connection string** — `kb://[apikey@]host[:port]/[base][?sslmode=]` URI (libpq-modelled).
 - **Base on the wire** — `connection.base` sent as the `X-KB-Base` request header.
 - **MCP endpoint** — `${connection.url}/mcp` written into agent MCP client configs.
@@ -46,12 +46,12 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | FR-2 | `KB_SERVER_URL` overrides `KB_HOST`/`KB_PORT` |
 | FR-3 | `--host` accepts `host:port`, bare hostname, or full URL and overrides env for one process |
 | FR-4 | Unreachable server fails fast with actionable hints including `--host` |
-| FR-5 | `formatConnectionContext` shows `host:` + `base:` in remote mode and `mode: local` when `KB_LOCAL_MODE` |
+| FR-5 | `formatConnectionContext` shows `host:` + `base:` (always — client has no local-mode label) |
 | FR-6 | One-shot CLI (non-JSON stdout) prints connection context under the version banner |
 | FR-7 | TUI status bar always shows host and base on one pinned row |
 | FR-8 | Chat sessions print connection context before the first user prompt |
 | FR-9 | `syncKbMcpConfigs` writes Cursor + Claude + Antigravity `kb` entries to `${server}/mcp` from the active connection (`--host` / `KB_SERVER_URL` / `KB_HOST` / `config.server.host` / localhost default) and Bearer from env or `config.server.apiKey` |
-| FR-10 | MCP sync is idempotent, preserves sibling MCP servers, no-ops under `KB_LOCAL_MODE`, defaults to localhost when no host is set (matching CLI/TUI), optionally returns `needs-host` when `requireExplicitHost` is set, and clears a stale Bearer when no API key is configured |
+| FR-10 | MCP sync is idempotent, preserves sibling MCP servers, defaults to localhost when no host is set (matching CLI/TUI), optionally returns `needs-host` when `requireExplicitHost` is set, and clears a stale Bearer when no API key is configured |
 | FR-11 | `uninstallKbMcpConfigs` removes only the managed `kb` MCP entries |
 | FR-12 | `readKbMcpStatus` / `kb mcp status` reports env host + current agent MCP URLs |
 | FR-13 | `mcp`, `skills`, `uninstall`, `sync`, and `base use` stay client-local — never forwarded to `/v1/admin/cli` |
@@ -76,8 +76,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-7 | FR-3 | Given bare `--host` | Throws requiring a value |
 | TC-8 | FR-3 | Given `--host myhost:12345` | Sets `KB_HOST` and `KB_PORT` |
 | TC-9 | FR-3 | Given `--host http://remote/` | Sets `KB_SERVER_URL` |
-| TC-10 | FR-5 | Given remote config + base name | `formatConnectionContext` → `host: … │ base: …` |
-| TC-11 | FR-5 | Given `KB_LOCAL_MODE` | `formatConnectionContext` → `mode: local │ base: …` |
+| TC-10 | FR-5 | Given config + base name | `formatConnectionContext` → `host: … │ base: …` |
 | TC-12 | FR-9 | Given server URL with trailing slash | `resolveMcpEndpointUrl` → `…/mcp` |
 | TC-13 | FR-9 | Given Cursor entry builder | url + optional Bearer header |
 | TC-14 | FR-9 | Given Claude entry builder | includes `type: "http"` |
@@ -85,7 +84,6 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-16 | FR-9 | Given `KB_SERVER_URL` | MCP URL uses that host `/mcp` |
 | TC-17 | FR-10 | Given matching entry | action is skipped |
 | TC-18 | FR-10 | Given stale URL + sibling server | updates `kb` only |
-| TC-19 | FR-10 | Given `KB_LOCAL_MODE` | sync returns `[]` |
 | TC-20 | FR-11 | Given `kb` + other servers | uninstall removes only `kb` |
 | TC-21 | FR-11 | Given no `kb` entry | action is not-found |
 | TC-22 | FR-9 | Given sync results | `formatMcpSyncReport` lists agents |

@@ -117,9 +117,7 @@ pnpm run integration:test
 
 Manifest and env reference: [`packages/kb-server/README.md`](packages/kb-server/README.md) · [`packages/kb-server/http/HTTP.md`](packages/kb-server/http/HTTP.md).
 
-### `KB_LOCAL_MODE`
-
-Tests and eval indexing phases set `KB_LOCAL_MODE=true` to run `@kb/core` in-process and skip HTTP. Normal `kb query` / chat use the live server. Do not set this for manual dogfooding unless you're debugging core without a daemon.
+The `kb` client always talks HTTP to a host (`KB_HOST` / `KB_SERVER_URL` / `--host`). There is no in-process “local mode” flag. Eval indexing uses `scripts/eval-index.ts` (direct `@kb/core`) before attaching a live `kb-server`.
 
 ---
 
@@ -133,7 +131,7 @@ pnpm run eval -- --suite kb --auto-score       # dogfood smoke on this repo
 pnpm run moel -- --suite moel-kb               # exploration-cost benchmark
 ```
 
-`eval-run.mjs` orchestrates init/scan (local mode), then remote queries. Multi-suite batches share **one multi-base `kb-server`** (children attach with `--base` / `X-KB-Base`); `--per-suite-server` restores one process per suite. Artifacts land under `~/.kb/evaluations/`. Override bases, repos, and scoring in suite YAML under `eval/suites/`.
+`eval-run.mjs` orchestrates init/scan via `scripts/eval-index.ts` (offline `@kb/core`), then remote queries against a live `kb-server`. Multi-suite batches share **one multi-base `kb-server`** (children attach with `--base` / `X-KB-Base`); `--per-suite-server` restores one process per suite. Artifacts land under `~/.kb/evaluations/`. Override bases, repos, and scoring in suite YAML under `eval/suites/`.
 
 | Doc | Contents |
 |-----|----------|

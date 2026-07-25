@@ -85,7 +85,7 @@ import {
 import { readQueryResultFile, runAutoScoreFile, scoreFromLabel } from './eval-score.mjs'
 import {
   startEvalServer,
-  buildKbLocalEnv,
+  buildEvalOfflineEnv,
   defaultEvalApiKey,
 } from './eval-server.mjs'
 import {
@@ -643,8 +643,8 @@ Layout (per run, snapshot clone):
 `)
 }
 
-/** kb subprocess env — local for init/scan; remote after eval-server starts for queries. */
-let kbSubprocessEnv = buildKbLocalEnv()
+/** kb subprocess env — offline for init/scan; remote after eval-server starts for queries. */
+let kbSubprocessEnv = buildEvalOfflineEnv()
 
 function kbEnv() {
   return kbSubprocessEnv
@@ -826,7 +826,7 @@ async function timedAsync(label, timings, fn) {
 /**
  * Returns true if the KB session already has an index (or at least one document).
  * Prefer the on-disk index check so a shared multi-base server holding SQLite open
- * does not race with a local-mode `docs list`.
+ * does not race with an offline `docs list` before the query-phase server attach.
  */
 function sessionHasDocs(targetCwd, base) {
   const kbHome = process.env.KB_HOME || path.join(os.homedir(), '.kb')
@@ -1205,7 +1205,7 @@ async function main() {
       }`
     )
 
-    kbSubprocessEnv = buildKbLocalEnv()
+    kbSubprocessEnv = buildEvalOfflineEnv()
 
     try {
       if (wipeBase) {
@@ -1344,7 +1344,7 @@ async function main() {
         console.error('[eval] stopping kb-server')
         await evalServer.stop()
         evalServer = null
-        kbSubprocessEnv = buildKbLocalEnv()
+        kbSubprocessEnv = buildEvalOfflineEnv()
       }
     }
   } else {

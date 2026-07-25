@@ -1,8 +1,9 @@
 /**
  * Eval/MOEL kb-server orchestration — start (or attach to) a live kb-server for harness runs.
  *
- * Replaces KB_LOCAL_MODE=true in eval subprocess env with remote connection profile vars
- * (KB_HOST/KB_PORT + KB_SERVER_API_KEY, or KB_EVAL_SERVER_URL / KB_SERVER_URL when attaching).
+ * Pre-server phases (init/scan via scripts/eval-index.ts) use buildEvalOfflineEnv() to clear
+ * remote connection vars. Query phases use buildKbRemoteEnv() / session.kbEnv() with
+ * KB_SERVER_URL + KB_SERVER_API_KEY (or KB_EVAL_SERVER_URL when attaching).
  *
  * Multi-suite batches share one multi-base kb-server (psql/postmaster model): the parent
  * spawns once, children attach via KB_EVAL_SERVER_URL and select `eval-{suite}` per request
@@ -61,13 +62,14 @@ export function allocateFreePort(host = '127.0.0.1') {
 }
 
 /**
- * Build subprocess env for in-process kb (init/scan/indexing).
+ * Build subprocess env for offline eval indexing children (eval-index init/scan).
+ * Clears remote connection vars so children do not hit a live server; does not set
+ * KB_LOCAL_MODE — indexing goes through scripts/eval-index.ts → @kb/core directly.
  * Use during eval capture so SQLite is not contended with a running kb-server.
  * @param {{ kbHome?: string }} [opts]
  */
-export function buildKbLocalEnv({ kbHome } = {}) {
+export function buildEvalOfflineEnv({ kbHome } = {}) {
   const env = { ...process.env }
-  env.KB_LOCAL_MODE = 'true'
   env.KB_SERVER_URL = undefined
   env.KB_HOST = undefined
   env.KB_PORT = undefined
@@ -79,7 +81,7 @@ export function buildKbLocalEnv({ kbHome } = {}) {
 }
 
 /**
- * Build subprocess env for remote kb client calls (no KB_LOCAL_MODE).
+ * Build subprocess env for remote kb client calls (query / docs / graph after server attach).
  * @param {{ host?: string, port?: number | string, url?: string, apiKey?: string, kbHome?: string, base?: string }} opts
  */
 export function buildKbRemoteEnv({
@@ -91,7 +93,6 @@ export function buildKbRemoteEnv({
   base,
 } = {}) {
   const env = { ...process.env }
-  env.KB_LOCAL_MODE = undefined
   env.NODE_PATH = undefined
 
   const resolvedUrl = url?.trim()
@@ -244,7 +245,6 @@ export async function startEvalServer({
     KB_REINDEX_INTERVAL: '0',
   }
   if (kbHome) childEnv.KB_HOME = kbHome
-  childEnv.KB_LOCAL_MODE = undefined
 
   let logFd = null
   if (logPath) {

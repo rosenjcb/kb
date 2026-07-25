@@ -80,7 +80,7 @@ Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in
 
 - Parse flags with `@kb/core/config/env-boolean` (`isEnvTrue`, `isEnvFalse`,
   `parseBooleanEnv`, `parseBooleanConfigValue`, `booleanEnvString`).
-- Docs and tests: `KB_LOCAL_MODE=true`, not `=1`.
+- Docs and tests: `KB_GRAPH=true`, not `=1`.
 - **Exception:** when a third-party library or protocol requires a numeric
   boolean at its API boundary, convert at that call site only — do not adopt
   that convention for KB env vars or config.

@@ -73,7 +73,7 @@ See companion doc for full vocabulary where applicable.
 | FR-2 | Global CLI routing parses flags, defaults, and dispatches subcommands |
 | FR-3 | Repo slug/dir helpers and on-volume repo discovery |
 | FR-4 | Base selection resolves `--base`, config default, and effective-base precedence |
-| FR-5 | Chat REPL parses turns, streams output, and manages session lifecycle |
+| FR-5 | Chat REPL delegates to kb-server `/v1/chat`; synthesis helpers stay unit-tested in-client |
 | FR-6 | Chat document-generation flow wires doc tools into chat turns |
 | FR-7 | Chat query orchestrator delegates QUERY turns to shared retrieval |
 | FR-8 | Chat retrieval refusal surfaces when evidence is insufficient |
@@ -122,18 +122,9 @@ See companion doc for full vocabulary where applicable.
 | TC-8 | FR-2 | Given kb base use <base> that does not exist, then errors with server-managed guidance | pass |
 | TC-9 | FR-2 | Given kb base use --show, then prints current base config | pass |
 | TC-10 | FR-2 | Given kb base --help, then prints base help | pass |
-| TC-11 | FR-2 | Given --force, then deletes the session directory | pass |
-| TC-12 | FR-2 | Given --force and base is activeBase, then clears it from config | pass |
-| TC-13 | FR-2 | Given --force and base is defaultBase, then clears it from config | pass |
-| TC-14 | FR-2 | Given no --force in TUI mode, then does NOT hang — returns prompt to use --force | pass |
-| TC-15 | FR-2 | Given no --force in CLI mode with non-TTY stdin, then aborts without deleting | pass |
-| TC-16 | FR-2 | Given no base name, then prints help | pass |
-| TC-17 | FR-2 | Given --help, then prints delete help | pass |
-| TC-18 | FR-2 | Given no bases, then reports no bases on server | pass |
-| TC-19 | FR-2 | Given initialized bases, then lists them | pass |
-| TC-20 | FR-2 | Marks the active and default bases with tags | pass |
-| TC-21 | FR-2 | kb base list produces the same output as kb base | pass |
-| TC-22 | FR-2 | Shows .kb file info when present in cwd | pass |
+| TC-11 | FR-2 | Given kb base list, then forwards to runRemoteCliCommand | pass |
+| TC-12 | FR-2 | Given kb base delete --force, then forwards to runRemoteCliCommand | pass |
+| TC-14 | FR-2 | Given base delete without --force in TUI, then forwards to remote (server enforces --force) | pass |
 | TC-23 | FR-2 | Given kb --help, then prints --host and core commands | pass |
 | TC-24 | FR-3 | returns [] when the repos/ dir is absent | pass |
 | TC-25 | FR-3 | lists each git clone under repos/, deriving slug + dir from the layout | pass |
@@ -191,22 +182,10 @@ See companion doc for full vocabulary where applicable.
 | TC-77 | FR-5 | Given chat help printer, then returns grouped usage and interactive commands including /clear | pass |
 | TC-78 | FR-5 | Given evidence and question, then turn content includes evidence block and question without embedded history | pass |
 | TC-79 | FR-5 | Given long retrieved fact bodies, then turn content truncates each fact for synthesis | pass |
-| TC-80 | FR-5 | Given /help and /exit, then prints commands and exits without tool calls | pass |
-| TC-81 | FR-5 | Given /clear, then prints fresh session message and subsequent turn uses empty message history | pass |
-| TC-82 | FR-5 | Given a simple greeting, then LLM answers directly without calling executor | pass |
-| TC-83 | FR-5 | Given a KB question, then LLM calls query_kb, retrieval runs, and LLM synthesizes the answer | pass |
-| TC-84 | FR-5 | Given provider failure, then loop reports error and remains interactive | pass |
-| TC-85 | FR-5 | Given a KB question, then retrieval always uses deep discovery policy | pass |
-| TC-86 | FR-5 | Given a KB question, then retrieval call has correct read_facts shape | pass |
-| TC-87 | FR-5 | Given a two-turn session, then second LLM call includes first-turn context in message history | pass |
-| TC-88 | FR-5 | Given a process question, then query_kb tool is called and answer is surfaced | pass |
-| TC-89 | FR-5 | Given an unknown runtime question, then query_kb retrieves runbook and surfaces the answer | pass |
-| TC-90 | FR-5 | Given user message that is just a follow-up phrase, then LLM can answer directly without retrieval | pass |
-| TC-91 | FR-5 | Given fact upsert and invalidate changes in the same base, then conversational chat reflects updated facts across turns | pass |
-| TC-92 | FR-5 | Given a multi-round query where LLM calls query_kb twice across rounds, then both retrievals run and final answer is returned | pass |
-| TC-93 | FR-5 | Given a turn where LLM returns two tool calls in one round, then both execute and results are returned | pass |
-| TC-94 | FR-5 | Given a synthesis keyword query, then decompose pre-step fires and sub-queries are logged before main loop | pass |
-| TC-95 | FR-5 | Given a short or non-synthesis query, then decompose pre-step is skipped | pass |
+| TC-80 | FR-5 | Given runChatSession, then delegates to runRemoteChatSession | pass |
+| TC-96 | FR-5 | Given retrieval provided, then synthesizes answer from pre-fetched context without extra retrieval | pass |
+| TC-97 | FR-5 | Given multi-round loop, then calls query_kb in parallel and populates lastIntentResult | pass |
+| TC-98 | FR-5 | Given retrieval undefined (chat path), then starts loop from provided messages directly | pass |
 | TC-96 | FR-5 | Given retrieval provided, then synthesizes answer from pre-fetched context without extra retrieval | pass |
 | TC-97 | FR-5 | Given multi-round loop, then calls query_kb in parallel and populates lastIntentResult | pass |
 | TC-98 | FR-5 | Given retrieval undefined (chat path), then starts loop from provided messages directly | pass |

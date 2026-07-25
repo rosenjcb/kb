@@ -15,11 +15,13 @@ describe('isClientLocalCommand', () => {
     expect(isClientLocalCommand(['uninstall'])).toBe(true)
     expect(isClientLocalCommand(['sync'])).toBe(true)
     expect(isClientLocalCommand(['base', 'use', 'demo'])).toBe(true)
+    expect(isClientLocalCommand(['base', '--help'])).toBe(true)
   })
 
   it('[TC-29] still forwards server-backed commands remotely', () => {
     expect(isClientLocalCommand(['query', 'hi'])).toBe(false)
     expect(isClientLocalCommand(['base', 'list'])).toBe(false)
+    expect(isClientLocalCommand(['base', 'delete', 'x', '--force'])).toBe(false)
     expect(isClientLocalCommand(['docs', 'list'])).toBe(false)
   })
 })

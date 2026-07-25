@@ -73,24 +73,24 @@ kb mcp status
 
 Indexing happens on the server via `KB_GIT_REPOS` — not `kb init` on the laptop. README walkthrough: [Connect to a remote / team server](../../README.md#connect-to-a-remote--team-server).
 
-## Local vs remote
+## Always a host
 
-| | Remote (default) | Local (`KB_LOCAL_MODE=true`) |
-|---|---|---|
-| Connection label | `host: hostname:port` | `mode: local` |
-| `kb query` / chat | `/v1/query`, `/v1/chat` | In-process `@kb/core` |
-| `docs`, `facts`, `graph`, … | `POST /v1/admin/cli` | In-process dispatch |
-| `init`, `scan` | **Not on client** | `@kb/core/ops` (eval/server only) |
-| `skills`, `sync`, `base use` | Client-only | Same |
+The client always uses HTTP to a kb-server (`localhost:38117` by default, or `--host` / `KB_SERVER_URL`).
 
-Eval harness uses `KB_LOCAL_MODE` + `scripts/eval-index.ts` until a live server takes queries.
+| Concern | Where |
+|---|---|
+| Connection label | `host: hostname:port │ base: …` |
+| `kb query` / chat | `/v1/query`, `/v1/chat` |
+| `docs`, `facts`, `graph`, `base list/delete`, … | `POST /v1/admin/cli` |
+| `init`, `scan` | **kb-server only** (eval uses `scripts/eval-index.ts` → `@kb/core`) |
+| `skills`, `sync`, `base use`, `mcp` | Client-only |
 
 ## Invariants
 
 - Never import `@kb/server` — server is a separate binary.
 - Show connection context before retrieval or chat (except machine JSON stdout).
 - Never print LLM provider auto-selection / API-key detection on the thin client — that belongs to `kb-server` startup logs.
-- Remote mode requires live server; no silent in-process fallback.
+- Always requires a live server for server-owned commands; no silent in-process fallback.
 - Long-running TUI output uses `CliOutput`, not raw `console.log`.
 
 ## Related docs

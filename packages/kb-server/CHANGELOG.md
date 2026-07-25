@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Stop printing LLM provider auto-selection on the thin `kb` client (`kb query` / TUI). Announce provider selection only on `kb-server` startup (human logs + `LLM:` line).
+- Thin client always talks HTTP to a kb-server host — remove transitional `KB_LOCAL_MODE` and stop printing LLM provider auto-selection on `kb query` / TUI (server startup only).
 - Updated dependencies
   - @kb/core@1.5.8
 

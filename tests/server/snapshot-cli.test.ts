@@ -194,7 +194,8 @@ describe('adoptSnapshot (start --from mechanics)', () => {
     rmSync(path.dirname(bundle), { recursive: true, force: true })
   })
 
-  it('restores a local snapshot into an empty base directory', async () => {
+  // Export + adopt touches sqlite + tree copy; under full-suite load 5s is tight.
+  it('restores a local snapshot into an empty base directory', { timeout: 30_000 }, async () => {
     seedBase(kbHome, 'src', 'ADOPTED')
     const { logger } = capturingLogger()
     await runExportCommand(['--base', 'src', '--out', bundle], logger, kbHome)

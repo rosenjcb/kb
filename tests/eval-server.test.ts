@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   allocateFreePort,
-  buildKbLocalEnv,
+  buildEvalOfflineEnv,
   buildKbRemoteEnv,
   defaultEvalApiKey,
   healthzUrl,
@@ -9,10 +9,8 @@ import {
 } from '../scripts/eval-server.mjs'
 
 describe('eval-server helpers', () => {
-  it('[TC-526][TC-242] buildKbRemoteEnv sets KB_SERVER_URL, KB_BASE, and drops KB_LOCAL_MODE', () => {
-    const prevLocal = process.env.KB_LOCAL_MODE
+  it('[TC-526][TC-242] buildKbRemoteEnv sets KB_SERVER_URL, KB_BASE, and clears host/port', () => {
     const prevNodePath = process.env.NODE_PATH
-    process.env.KB_LOCAL_MODE = 'true'
     process.env.NODE_PATH = '/tmp/node_path'
     try {
       const env = buildKbRemoteEnv({
@@ -23,13 +21,10 @@ describe('eval-server helpers', () => {
       expect(env.KB_SERVER_URL).toBe('http://127.0.0.1:4242')
       expect(env.KB_SERVER_API_KEY).toBe('test-key')
       expect(env.KB_BASE).toBe('eval-raylib')
-      expect(env.KB_LOCAL_MODE).toBeUndefined()
       expect(env.NODE_PATH).toBeUndefined()
       expect(env.KB_HOST).toBeUndefined()
       expect(env.KB_PORT).toBeUndefined()
     } finally {
-      if (prevLocal === undefined) delete process.env.KB_LOCAL_MODE
-      else process.env.KB_LOCAL_MODE = prevLocal
       if (prevNodePath === undefined) delete process.env.NODE_PATH
       else process.env.NODE_PATH = prevNodePath
     }
@@ -44,11 +39,37 @@ describe('eval-server helpers', () => {
     )
   })
 
-  it('[TC-531] buildKbLocalEnv sets KB_LOCAL_MODE and clears remote vars', () => {
-    const env = buildKbLocalEnv()
-    expect(env.KB_LOCAL_MODE).toBe('true')
-    expect(env.KB_SERVER_URL).toBeUndefined()
-    expect(env.KB_SERVER_API_KEY).toBeUndefined()
+  it('[TC-531] buildEvalOfflineEnv clears remote vars and does not set KB_LOCAL_MODE', () => {
+    const prevLocal = process.env.KB_LOCAL_MODE
+    const prevUrl = process.env.KB_SERVER_URL
+    const prevHost = process.env.KB_HOST
+    const prevPort = process.env.KB_PORT
+    const prevKey = process.env.KB_SERVER_API_KEY
+    delete process.env.KB_LOCAL_MODE
+    process.env.KB_SERVER_URL = 'http://127.0.0.1:9999'
+    process.env.KB_HOST = '127.0.0.1'
+    process.env.KB_PORT = '9999'
+    process.env.KB_SERVER_API_KEY = 'stale-key'
+    try {
+      const env = buildEvalOfflineEnv()
+      // Must not inject KB_LOCAL_MODE; indexing uses eval-index.ts → @kb/core.
+      expect(env.KB_LOCAL_MODE).toBeUndefined()
+      expect(env.KB_SERVER_URL).toBeUndefined()
+      expect(env.KB_HOST).toBeUndefined()
+      expect(env.KB_PORT).toBeUndefined()
+      expect(env.KB_SERVER_API_KEY).toBeUndefined()
+    } finally {
+      if (prevLocal === undefined) delete process.env.KB_LOCAL_MODE
+      else process.env.KB_LOCAL_MODE = prevLocal
+      if (prevUrl === undefined) delete process.env.KB_SERVER_URL
+      else process.env.KB_SERVER_URL = prevUrl
+      if (prevHost === undefined) delete process.env.KB_HOST
+      else process.env.KB_HOST = prevHost
+      if (prevPort === undefined) delete process.env.KB_PORT
+      else process.env.KB_PORT = prevPort
+      if (prevKey === undefined) delete process.env.KB_SERVER_API_KEY
+      else process.env.KB_SERVER_API_KEY = prevKey
+    }
   })
 
   it('[TC-529] DEFAULT_KB_SERVER_PORT is 38117', () => {
