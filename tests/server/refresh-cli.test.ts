@@ -261,4 +261,27 @@ describe('kb-server refresh (builder orchestration)', () => {
 
     expect(killSpy).toHaveBeenCalledWith(DEAD_PID, 'SIGTERM')
   }, 30_000)
+
+  it('[TC-634] routes the bootstrap child stdout/stderr into this process\'s own stderr instead of discarding it (#195)', async () => {
+    const origin = makeOrigin(root, 'log-src')
+    const outDir = path.join(root, 'out')
+    fakeBootstrapChild(fetchMock, () => {
+      seedBaseWithClone(kbHome, 'logbase', origin, 'L')
+    })
+
+    const { logger } = capturingLogger()
+    await runServerRefreshCommand(
+      ['--base', 'logbase', '--repos', origin, '--out', outDir, '--json'],
+      logger,
+      kbHome
+    )
+
+    expect(spawnMock).toHaveBeenCalledTimes(1)
+    const opts = spawnMock.mock.calls[0]?.[2] as { stdio?: unknown }
+    // Never 'ignore' — both child streams land on this process's own stderr (fd 2), so they
+    // show up live in `docker logs`/the container's own log stream instead of being discarded
+    // or requiring a separate file to go find.
+    expect(opts.stdio).not.toBe('ignore')
+    expect(opts.stdio).toEqual(['ignore', 2, 2])
+  }, 30_000)
 })

@@ -5,7 +5,7 @@ sources: [./]
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-07-24T00:00:00Z
+timestamp: 2026-07-25T00:00:00Z
 ---
 
 ### Intro
@@ -45,7 +45,7 @@ See companion doc for full vocabulary where applicable.
 | FR-15 | One-shot `kb-server scan` runs adopt(optional) → scan → export(optional) then exits (no HTTP); `--from`/`--out` are local paths only; batch always replaces an existing adopt index and overwrites `--out` (no `--force`); `--json` emits ok true/false summary on stdout |
 | FR-16 | Browser CORS: reflect allow-listed `Origin` (or `*`); omit headers when CORS off / origin not listed; answer preflight `OPTIONS` with 204 without auth for allowed origins |
 | FR-17 | First-boot bootstrap (`health.indexing`) returns 503 on `/v1/query`, `/v1/chat`, and `/mcp` with progress; scheduled reindex (`health.reindexing`) does **not** block those routes |
-| FR-18 | One-shot `kb-server refresh` builds a fresh local snapshot dir for one base, from either a previous local snapshot (`--from`: adopt, re-clone/hydrate repos from `--repos`/`--branch`, incremental reindex) or bare repos with no previous snapshot (`--repos` only: full clone + index); `--from`/`--out` are local paths only (never object storage — no `gs://`/`s3://` awareness, no bucket credentials — matching the existing invariant `scan`/`export`/`import` already hold), while `--repos` is a plain `url[#branch]` list (the `KB_GIT_REPOS` convention). It manages its own throwaway bootstrap child process (spawn, health-poll, SIGTERM-then-SIGKILL on completion or timeout) internally so callers no longer hand-roll that in shell. `--json` emits an ok/error summary on stdout, same contract style as `scan` |
+| FR-18 | One-shot `kb-server refresh` builds a fresh local snapshot dir for one base, from either a previous local snapshot (`--from`: adopt, re-clone/hydrate repos from `--repos`/`--branch`, incremental reindex) or bare repos with no previous snapshot (`--repos` only: full clone + index); `--from`/`--out` are local paths only (never object storage — no `gs://`/`s3://` awareness, no bucket credentials — matching the existing invariant `scan`/`export`/`import` already hold), while `--repos` is a plain `url[#branch]` list (the `KB_GIT_REPOS` convention). It manages its own throwaway bootstrap child process (spawn, health-poll, SIGTERM-then-SIGKILL on completion or timeout) internally so callers no longer hand-roll that in shell. The child's stdout/stderr are routed into this process's own stderr (fd 2) rather than discarded, so a long-running cold index of a large repo stays observable live in `docker logs`/the container's own log stream instead of silently vanishing; `--json` emits an ok/error summary on stdout, same contract style as `scan`, and is unaffected since the child's output never touches this process's own stdout (fd 1) |
 
 ### Known issues
 
@@ -182,6 +182,7 @@ See companion doc for full vocabulary where applicable.
 | TC-125 | FR-18 | `--json` emits `{ ok: false, error }` on stdout before the process exits non-zero on failure | pass |
 | TC-126 | FR-18 | rejects `gs://`/`s3://`-scheme values for `--from`/`--out` (local-paths-only invariant; `--repos` legitimately holds `https://`/`git@` git URLs and is exempt) | pass |
 | TC-127 | FR-18 | terminates its bootstrap child process (no orphan) after both success and timeout | pass |
+| TC-634 | FR-18 | routes the bootstrap child's stdout/stderr into this process's own stderr (fd 2) instead of `stdio: 'ignore'` | pass |
 
 ### Related docs
 
