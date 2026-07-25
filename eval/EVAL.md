@@ -197,9 +197,9 @@ flowchart LR
 | `--per-suite-server` | Legacy: one ephemeral port per child | Same as pre-multi-base |
 | `--skip-scan` | n/a | Skip eval-index scan when reusing built indexes (fresh init still scans) |
 
-1. **Init/scan** — in-process (`KB_LOCAL_MODE=true`) before attach, so SQLite writes do not race the shared server.
+1. **Init/scan** — offline via `scripts/eval-index.ts` (`@kb/core` directly) before attach, so SQLite writes do not race the shared server. Subprocess env from `buildEvalOfflineEnv()` clears remote connection vars.
 2. **Query phase** — remote: `KB_SERVER_URL` + API key + `--base`. docs/graph/logs also run remote after attach.
-3. **MOEL** (`moel-run.mjs`) — still one server per condition (`moel-{suite}-{N|K|O}`).
+3. **MOEL** (`moel-run.mjs`) — still one server per condition (`moel-{suite}-{N|K|O}`); init/scan also goes through `eval-index.ts`.
 
 Logs: `<run-dir>/eval-server.log` (single) or `~/.kb/evaluations/_batch-*/eval-server.log` (shared batch).
 
@@ -230,7 +230,7 @@ Readiness: two consecutive `/healthz?base=<slug>` responses with `ok: true` + `i
 - Do not hardcode question text; always load from `eval/suites/<suite>.yaml`.
 - Multi-suite default: **one** shared multi-base server; children must not strip `KB_EVAL_SERVER_URL`.
 - Non-default bases are serve-only — missing `.kb-index.sqlite` ⇒ `404 unknown_base` (build via init/scan first).
-- Never run local-mode SQLite writes against a base the shared server already holds open.
+- Never run offline SQLite writes (eval-index init/scan) against a base the shared server already holds open.
 
 ## Gotchas
 

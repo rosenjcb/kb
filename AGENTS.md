@@ -39,6 +39,6 @@ Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in
 `process.env.*` or docs/examples. Use `true` and `false` only.
 
 - Use `@kb/core/config/env-boolean` (`isEnvTrue`, `parseBooleanEnv`, etc.).
-- Docs/tests: `KB_LOCAL_MODE=true`, not `=1`.
+- Docs/tests: `KB_GRAPH=true`, not `=1`.
 - **Exception:** third-party APIs that require numeric booleans — convert at
   the boundary only; KB env vars stay `true`/`false`.

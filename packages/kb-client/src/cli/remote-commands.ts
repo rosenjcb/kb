@@ -4,7 +4,7 @@ import { getIntentQuestion, isIntentCommand, parseIntentCommand } from '@kb/core
 import type { CmdMode } from '@kb/core/config/cmd-ref.js'
 import { createKbApiClient } from '../api/kb-api-client.js'
 import type { ChatStreamEvent } from '../api/types.js'
-import { isLocalMode, resolveServerConnection, formatConnectionContext } from '../api/server-connection.js'
+import { resolveServerConnection, formatConnectionContext } from '../api/server-connection.js'
 import { resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
 import type { CliOutput } from '@kb/core/ui/cli-output.js'
 import { createPrinter } from '../ui/printer.js'
@@ -24,12 +24,14 @@ export function isClientLocalCommand(args: string[]): boolean {
   ) {
     return true
   }
-  if (command === 'base' && args[1] === 'use') return true
+  // `base use` is client connection-profile state; `base --help` stays offline.
+  // `base list` / `base delete` run on kb-server.
+  if (command === 'base') {
+    const sub = args[1]
+    if (sub === 'use') return true
+    if (sub === '--help' || sub === '-h' || sub === 'help') return true
+  }
   return false
-}
-
-export function shouldUseRemoteServer(): boolean {
-  return !isLocalMode()
 }
 
 export async function ensureServerReady(config: KbConfig): Promise<void> {

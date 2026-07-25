@@ -1,5 +1,13 @@
 # kb-server
 
+## 1.4.16
+
+### Patch Changes
+
+- Thin client always talks HTTP to a kb-server host. LLM provider auto-selection is announced at kb-server startup.
+- Updated dependencies
+  - @kb/core@1.5.8
+
 ## 1.4.15
 
 ### Patch Changes

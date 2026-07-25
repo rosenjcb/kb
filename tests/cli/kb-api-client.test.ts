@@ -25,24 +25,11 @@ describe('server-connection', () => {
     else delete process.env.KB_SERVER_URL
   })
 
-  it('[TC-10] formatConnectionContext shows host and base in remote mode', () => {
-    const prevLocal = process.env.KB_LOCAL_MODE
-    delete process.env.KB_LOCAL_MODE
+  it('[TC-10] formatConnectionContext shows host and base', () => {
     delete process.env.KB_SERVER_URL
     const line = formatConnectionContext({}, 'dogfood')
     expect(line).toContain('host: localhost:38117')
     expect(line).toContain('base: dogfood')
-    if (prevLocal) process.env.KB_LOCAL_MODE = prevLocal
-  })
-
-  it('[TC-11] formatConnectionContext shows local mode label', () => {
-    const prevLocal = process.env.KB_LOCAL_MODE
-    process.env.KB_LOCAL_MODE = 'true'
-    const line = formatConnectionContext({}, 'eval-raylib')
-    expect(line).toContain('mode: local')
-    expect(line).toContain('base: eval-raylib')
-    if (prevLocal) process.env.KB_LOCAL_MODE = prevLocal
-    else delete process.env.KB_LOCAL_MODE
   })
 
   it('[TC-50] resolveServerConnection carries KB_BASE as the wire base', () => {

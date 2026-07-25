@@ -35,15 +35,14 @@ sequenceDiagram
 | 2 | `--host` + `--base` on this invocation | `--host` sets `KB_SERVER_URL` or `KB_HOST`/`KB_PORT`; `--base` sets `KB_BASE` (refine an explicit connection string) |
 | 3 | `KB_SERVER_URL` | Full URL (wins over host+port) |
 | 4 | `KB_HOST` + `KB_PORT` | Default `localhost:38117` |
-| 5 | `KB_LOCAL_MODE=true` | **No HTTP** — in-process `@kb/core` (tests, eval harness) |
 
-Auth: `KB_SERVER_API_KEY` → Bearer on every request (`kb-api-client.ts`).
+Auth: `KB_SERVER_API_KEY` → Bearer on every request (`kb-api-client.ts`). The client always uses HTTP.
 
 ### Base on the wire (`X-KB-Base`)
 
 One `kb-server` process can serve **many bases** (psql/libpq's one-postmaster-many-databases model). The client selects the base **per request**: `resolveServerConnection` resolves `ServerConnection.base` (from `--base` / `--connection-string` → `KB_BASE`, then `KB_ACTIVE_BASE`, then `config.server.base`) and `kb-api-client` stamps it as the `X-KB-Base` header on every request. An **omitted** header ⇒ the server uses its boot/default base (libpq's behavior when `dbname` is omitted); an **unknown** base ⇒ `404 unknown_base`.
 
-The server-side index for `<base>` lives under `~/.kb/sessions/<base>/` on the **server host**, not the laptop. Local base selection (`resolveEffectiveBaseDir()` — `.kb` marker, `~/.kb/state/active-base`, `KB_BASE`/`KB_ACTIVE_BASE`) still governs local/`KB_LOCAL_MODE` runs.
+The server-side index for `<base>` lives under `~/.kb/sessions/<base>/` on the **server host**, not the laptop. Client-side `kb base use` only updates the local connection-profile hint (`~/.kb/state/active-base`).
 
 ### Connection string grammar
 
@@ -69,7 +68,6 @@ The MCP URL follows the same connection profile as the CLI/TUI (`resolveServerCo
 | `kb mcp install` | Same, using the active connection (localhost default) |
 | `kb skills install` | Same MCP sync as `kb mcp install`, using the active connection |
 | Normal `kb` / TUI startup | **No** MCP rewrite — opt-in via `kb mcp install` / `kb skills install` only |
-| `KB_LOCAL_MODE=true` | No-op |
 | `kb mcp uninstall` / `kb skills uninstall` | Removes managed `kb` entries only |
 
 Host resolution: `--host` → `KB_SERVER_URL` → `KB_HOST`+`KB_PORT` → `config.server.host` → `localhost` (same as CLI/TUI). TUI `/skills install` therefore points MCP at whatever host the session is connected to.
@@ -85,11 +83,10 @@ Shared formatter: `formatConnectionContext(config, baseName?)` in `server-connec
 | One-shot CLI | Line under `🤖 KB Agent Harness` banner (`index.ts`) |
 | TUI | `StatusBar`: `host: … │ base: …` (pinned top row) |
 | TUI startup | Same string prepended to startup notices |
-| Chat (local) | First assistant line before the prompt hint |
-| Chat (remote) | First line when `runRemoteChatSession` starts |
+| Chat | First line when `runRemoteChatSession` starts |
 | Run reports | `resolveReportHost()` → telemetry `host` column |
 
-Remote display: `host: hostname:port`. Local eval: `mode: local │ base: …`.
+Display: `host: hostname:port │ base: …`.
 
 **Invariant:** Do not start retrieval or chat without showing connection context first (except machine JSON stdout paths like `docs generate --output json`).
 

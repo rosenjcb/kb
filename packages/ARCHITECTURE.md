@@ -78,10 +78,9 @@ Binaries live on `PATH` or in `~/.kb/bin` — never inside `KB_HOME`.
 
 | Mode | When | Behavior |
 |---|---|---|
-| **Remote (default)** | Normal use | `kb query` / chat → HTTP to live `kb-server` |
-| **Local** | `KB_LOCAL_MODE=true`, vitest | In-process `@kb/core` (eval harness, dev) |
+| **Client → host** | Always | `kb query` / chat → HTTP to live `kb-server` (localhost or remote URL) |
 
-Server down → connection error + `kb-server start` hint (`connection-error.ts`).
+Eval indexing uses `scripts/eval-index.ts` (direct `@kb/core`) before attaching a server. Server down → connection error + `kb-server start` hint (`connection-error.ts`).
 
 ## Build
 
@@ -92,7 +91,7 @@ pnpm run install:global   # pnpm install + build + symlinks into $PNPM_HOME/bin
 ## Invariants
 
 - Dependency graph is one-way: `client → core`, `server → core` — never `server → client`.
-- Client surfaces **host + base** on every session; indexing runs on kb-server only.
+- Client surfaces **host + base** on every session; always HTTP to a host — indexing and LLM provider selection run on kb-server.
 - OpenAPI + `server.http` are the wire contract; `KbService` is the in-process contract.
 - Version `@kb/client` and `@kb/server` independently via changesets (user-facing). `@kb/core` is also changeset-versioned but **internal only** — never print it in CLI/TUI/`kb-server` logs/`/healthz`/MCP; it matters for workspace `package.json` bumps and snapshot manifest provenance. GitHub CLI releases and `v*.*.*` tags follow `@kb/client`; Docker image semver tags follow `@kb/server`.
 

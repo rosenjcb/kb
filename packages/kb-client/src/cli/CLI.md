@@ -65,12 +65,12 @@ Multi-action commands use **noun then verb** (`kb facts search …`). TUI slash 
 
 ## Shared retrieval
 
-`kb query` and chat QUERY both use `runQueryTruthRetrieval()` → `@kb/core` intent loop. Remote mode runs retrieval server-side; local mode in-process when `KB_LOCAL_MODE=true`.
+`kb query` and chat always hit kb-server (`/v1/query`, `/v1/chat`). Retrieval + synthesis run server-side.
 
-| Path | Synthesis |
+| Path | Transport |
 |------|-----------|
-| `kb query` | One-shot `enrichReadDocumentsAnswerWithLLM()` |
-| chat (bare `kb`) | Multi-turn `runChatSynthesis()` with optional `query_kb` tool loop |
+| `kb query` | `POST /v1/query` |
+| chat (bare `kb`) | `POST /v1/chat` SSE |
 
 ## Base management (client view)
 

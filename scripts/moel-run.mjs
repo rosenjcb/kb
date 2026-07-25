@@ -13,7 +13,7 @@
  *   moel_results.json, comparison_report.json
  */
 
-import { execSync } from 'node:child_process'
+import { execSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -31,10 +31,11 @@ import {
   runReportToAnswerTelemetry,
   readLatestKbQueryRunReport,
 } from './eval-shared.mjs'
-import { startEvalServer, buildKbLocalEnv } from './eval-server.mjs'
+import { startEvalServer, buildEvalOfflineEnv } from './eval-server.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const KB_REPO = path.resolve(__dirname, '..')
+const EVAL_INDEX = path.join(KB_REPO, 'scripts/eval-index.ts')
 
 // ---------------------------------------------------------------------------
 // Default limits (overridable per-task via YAML)
@@ -95,8 +96,8 @@ Output: ~/.kb/evaluations/moel-{suite}-{timestamp}/
 // KB subprocess helper
 // ---------------------------------------------------------------------------
 
-/** kb subprocess env — local for init; remote after eval-server starts for queries. */
-let kbSubprocessEnv = buildKbLocalEnv()
+/** kb subprocess env — offline for init/scan; remote after eval-server starts for queries. */
+let kbSubprocessEnv = buildEvalOfflineEnv()
 
 function kbEnv() {
   return kbSubprocessEnv
@@ -113,14 +114,57 @@ function kb(cwd, args, opts = {}) {
   })
 }
 
-function sessionHasDocs(targetCwd, base) {
-  try {
-    const out = kb(targetCwd, `docs list --base ${base}`)
-    const m = /Count:\s*(\d+)/.exec(out)
-    return m ? Number(m[1]) > 0 : false
-  } catch {
-    return false
+/** Stream eval-index (core init/scan) — kb init/scan are not on the client CLI. */
+function evalIndexTee(mode, args, logPath) {
+  fs.mkdirSync(path.dirname(logPath), { recursive: true })
+  const logFd = fs.openSync(logPath, 'w')
+  return new Promise((resolve, reject) => {
+    const child = spawn(`pnpm exec tsx "${EVAL_INDEX}" ${mode} ${args}`, {
+      cwd: KB_REPO,
+      env: kbEnv(),
+      shell: true,
+      stdio: ['inherit', 'pipe', 'pipe'],
+    })
+    const parts = []
+    const relay = (stream, mirror) => {
+      stream.on('data', chunk => {
+        mirror.write(chunk)
+        fs.writeSync(logFd, chunk)
+        parts.push(chunk)
+      })
+    }
+    relay(child.stdout, process.stdout)
+    relay(child.stderr, process.stderr)
+    child.on('error', err => {
+      try {
+        fs.closeSync(logFd)
+      } catch {
+        /* ignore */
+      }
+      reject(err)
+    })
+    child.on('close', code => {
+      try {
+        fs.closeSync(logFd)
+      } catch {
+        /* ignore */
+      }
+      const output = Buffer.concat(parts).toString('utf8')
+      if (code !== 0) {
+        reject(new Error(`eval-index ${mode} exited ${code ?? 'unknown'}\n${output.slice(-4000)}`))
+        return
+      }
+      resolve(output)
+    })
+  })
+}
+
+function sessionHasDocs(_targetCwd, base) {
+  const kbHome = process.env.KB_HOME || path.join(os.homedir(), '.kb')
+  if (fs.existsSync(path.join(kbHome, 'sessions', base, '.kb-index.sqlite'))) {
+    return true
   }
+  return false
 }
 
 // ---------------------------------------------------------------------------
@@ -235,14 +279,21 @@ async function runCondition(condition, task, suite, repoPath, runDir, opts) {
 
   let evalServer = null
   try {
-    kbSubprocessEnv = buildKbLocalEnv()
+    kbSubprocessEnv = buildEvalOfflineEnv()
 
     if (!sessionHasDocs(repoPath, base)) {
-      console.log(`  [${condition}] Initializing kb session (base=${base})…`)
+      console.log(`  [${condition}] Initializing kb session via eval-index (base=${base})…`)
       try {
-        kb(repoPath, `init --base ${base} --non-interactive`, { stdio: 'inherit' })
+        const initLogPath = path.join(runDir, `init-${condition}.log`)
+        await evalIndexTee(
+          'init',
+          `--base ${base} --git "${repoPath}" --non-interactive --debug`,
+          initLogPath
+        )
+        const scanLogPath = path.join(runDir, `scan-${condition}.log`)
+        await evalIndexTee('scan', `--base ${base} --debug`, scanLogPath)
       } catch (err) {
-        console.error(`  [${condition}] Init failed: ${err.message}`)
+        console.error(`  [${condition}] Init/scan failed: ${err.message}`)
       }
     } else {
       console.log(`  [${condition}] Session exists, reusing (base=${base})`)
@@ -318,7 +369,7 @@ async function runCondition(condition, task, suite, repoPath, runDir, opts) {
     if (evalServer) {
       await evalServer.stop()
     }
-    kbSubprocessEnv = buildKbLocalEnv()
+    kbSubprocessEnv = buildEvalOfflineEnv()
   }
 }
 

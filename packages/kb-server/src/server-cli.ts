@@ -7,7 +7,11 @@
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { type KbConfig, getKbConfigDir } from '@kb/core/config/kb-config.js'
+import {
+  type KbConfig,
+  getKbConfigDir,
+  persistInferredLLMProvider,
+} from '@kb/core/config/kb-config.js'
 import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
 import { cloneRepo, isAncestorOfHead, resetToSha } from '@kb/core/ops/git-sync.js'
 import { runKbInit } from '@kb/core/ops/init-cli.js'
@@ -350,6 +354,13 @@ export async function runServerCommand(
     throw new Error('--port must be a positive integer')
   }
 
+  // Infer + announce LLM provider once at server boot.
+  const inferred = await persistInferredLLMProvider({ config })
+  const resolvedConfig = inferred.config
+  if (inferred.notice) {
+    out.log(inferred.notice)
+  }
+
   const plan = await resolveBootstrapPlan(args)
   const base = await resolveServerBaseDir(plan)
 
@@ -391,7 +402,7 @@ export async function runServerCommand(
 
   const service = createKbService({
     baseDir: base.baseDir,
-    config,
+    config: resolvedConfig,
     bootstrapState,
     chatStream: streamChatTurn,
   })
@@ -399,7 +410,7 @@ export async function runServerCommand(
   // per request via X-KB-Base (the default base keeps its bootstrap lifecycle).
   const registry = createKbServiceRegistry({
     defaultService: service,
-    config,
+    config: resolvedConfig,
     chatStream: streamChatTurn,
   })
   const apiKeys = readApiKeys()
@@ -506,6 +517,11 @@ export async function runServerCommand(
   out.log(
     `   POST /v1/query   POST /v1/chat   GET /healthz${enableMcp ? '   POST /mcp' : ''}${slack ? '   POST /slack/events' : ''}`
   )
+  if (health.provider) {
+    out.log(`   LLM: ${health.provider}${health.model ? ` (${health.model})` : ''}`)
+  } else {
+    out.log('   LLM: none configured (set GEMINI_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY)')
+  }
 
   if (bootstrapTask) {
     bootstrapState.progressLine = bootstrapTask.startMessage

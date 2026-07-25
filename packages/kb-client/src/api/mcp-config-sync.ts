@@ -16,7 +16,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { KB_ENV, readEnvHost } from '@kb/core/config/kb-env.js'
-import { isLocalMode, resolveServerConnection } from '../api/server-connection.js'
+import { resolveServerConnection } from '../api/server-connection.js'
 import { applyHostCliOverride } from './cli-global-flags.js'
 
 export const KB_MCP_SERVER_NAME = 'kb'
@@ -220,12 +220,10 @@ function needsHostResult(): McpSyncResult[] {
 
 /**
  * Rewrite Cursor + Claude + Antigravity `kb` MCP entries to match the active
- * connection profile (`resolveServerConnection`). No-op in `KB_LOCAL_MODE`.
+ * connection profile (`resolveServerConnection`).
  * Pass `requireExplicitHost: true` to refuse the implicit localhost default.
  */
 export async function syncKbMcpConfigs(options: SyncKbMcpOptions = {}): Promise<McpSyncResult[]> {
-  if (isLocalMode()) return []
-
   const config = options.config ?? {}
   if (options.host?.trim()) {
     applyHostCliOverride(options.host.trim())
@@ -295,7 +293,7 @@ export async function readKbMcpStatus(): Promise<{
 }> {
   const explicitEnvHost = hasExplicitServerHost()
   let resolvedServerUrl: string | null = null
-  if (!isLocalMode() && explicitEnvHost) {
+  if (explicitEnvHost) {
     resolvedServerUrl = resolveServerConnection({}).url
   }
 
