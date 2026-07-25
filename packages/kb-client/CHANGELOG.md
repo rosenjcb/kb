@@ -1,13 +1,10 @@
 # @kb/client
 
-## 1.4.0
-
-### Minor Changes
-
-- Thin client always talks HTTP to a kb-server host — remove transitional `KB_LOCAL_MODE` and stop printing LLM provider auto-selection on `kb query` / TUI (server startup only).
+## 1.3.15
 
 ### Patch Changes
 
+- Thin client always talks HTTP to a kb-server host — remove transitional `KB_LOCAL_MODE` and stop printing LLM provider auto-selection on `kb query` / TUI (server startup only).
 - Updated dependencies
   - @kb/core@1.5.8
 
