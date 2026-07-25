@@ -1,5 +1,13 @@
 # @kb/client
 
+## 1.3.16
+
+### Patch Changes
+
+- Remove `kb:dump-context` (superseded by the `spec-md` skill) and `kb:evaluation-run` (now maintained as a user-level skill outside this repo) from the bundled skill set. Fixes a real crash: `skill-installer.ts` called `loadSkill()` for both at module load time, so `kb skills install` (and anything importing it) threw `ENOENT` once the `skills/kb:dump-context/` and `skills/kb:evaluation-run/` source directories were removed from the repo.
+- Updated dependencies
+  - @kb/core@1.5.9
+
 ## 1.3.15
 
 ### Patch Changes

@@ -4,7 +4,7 @@ import yaml from 'js-yaml'
  * Open Knowledge Format (OKF v0.1) awareness.
  *
  * OKF is the LLM-wiki standard kb encourages for companion docs (see the
- * `kb:dump-context` skill): a markdown file with a leading YAML frontmatter
+ * `spec-md` skill): a markdown file with a leading YAML frontmatter
  * block whose only required field is `type`. kb gives OKF **functional support
  * only** — it recognizes the format and strips the frontmatter boilerplate so
  * the metadata block is not indexed as raw `key: value` facts, then ingests the

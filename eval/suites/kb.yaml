@@ -93,7 +93,7 @@ answers:
     Codex (`.codex/skills/<name>.md`), and GitHub Copilot
     (`.github/copilot-instructions/<name>.md`). Installs embed a content hash
     (`<!-- kb-skill-hash:… -->`) so repeat runs skip unchanged files and update only when skill
-    content changes. Bundled skills include kb:dev-workflow, kb:dump-context, and kb:evaluation-run.
+    content changes. The bundled set is kb:dev-workflow.
 
   - |
     `pnpm run eval` invokes `scripts/eval-run.mjs` over a YAML suite. The run proceeds in stages:

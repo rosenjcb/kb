@@ -43,8 +43,8 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 Maintained in `SKILLS` constant inside `skill-installer.ts` (must stay in sync with `skills/` directory):
 
 - `kb:dev-workflow` — agents ask **semantic NL questions** via MCP `kb_query` only (not keyword dumps); verify against cited `filePath`s; skill body never mentions CLI/TUI
-- `kb:dump-context` — in-place OKF companions + sibling `*.spec.md` behavioral specs (spec.md FR/TC)
-- `kb:evaluation-run` — eval suites under `eval/`
+
+`kb:dump-context` was removed — superseded by the `spec-md` skill (OKF companions + `*.spec.md` behavioral specs). `kb:evaluation-run` was removed from the repo-bundled set — it's maintained as a user-level skill outside this repo, not installed via `kb skills install`.
 
 Adding a skill:
 

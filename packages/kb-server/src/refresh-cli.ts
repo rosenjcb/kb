@@ -152,8 +152,15 @@ async function hydrateReposViaBootstrapChild(
     ...(branch ? ['--branch', branch] : []),
   ]
   const env = { ...process.env, KB_GIT_REPOS: repos }
+  // The child's own progress (init/scan cycle lines) is otherwise lost entirely — `stdio:
+  // 'ignore'` would silently discard it, and a cold index of a large repo can run for a long
+  // time with zero visibility (see #195). Route both of the child's streams into *this*
+  // process's own stderr (fd 2) instead: it shows up live in `docker logs`/the container's own
+  // log stream with no extra file to go find, and `refresh --json`'s one clean JSON object stays
+  // untouched on stdout (fd 1) since progress already goes to stderr in `--json` mode (see
+  // `progress()` above).
   progress('🌱 booting throwaway bootstrap child to hydrate repos from provenance …')
-  const child = spawn(process.execPath, childArgs, { env, stdio: 'ignore' })
+  const child = spawn(process.execPath, childArgs, { env, stdio: ['ignore', 2, 2] })
 
   let settled = false
   let bootstrapError: string | undefined

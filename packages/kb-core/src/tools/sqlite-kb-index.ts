@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import dayjs from 'dayjs'
+import { resolveEmbedFetchPageSize } from '../config/indexing-batch-size'
 import { runMigrations } from '../core/db-migrations'
 import type { Embedder } from '../core/embeddings'
 import { type RetrievalLane, classifyDocumentLane } from './retrieval-lane-router'
@@ -307,19 +308,36 @@ export class SqliteKbIndexer {
    */
   async embedAllFacts(
     onProgress?: (done: number, total: number) => void,
-    batchSize = 100
+    batchSize = 100,
+    fetchPageSize: number = resolveEmbedFetchPageSize()
   ): Promise<number> {
     if (!this.embedder) return 0
     const embedder = this.embedder
-    const stale = this.db
-      .prepare(
-        `SELECT f.id AS id, f.fact_text AS fact_text
-         FROM facts f
-         LEFT JOIN fact_embeddings e ON e.fact_id = f.id
-         WHERE f.tombstoned_at IS NULL AND (e.model_id IS NULL OR e.model_id != ?)`
-      )
-      .all(embedder.modelId) as Array<{ id: string; fact_text: string }>
-    if (stale.length === 0) return 0
+    const total = (
+      this.db
+        .prepare(
+          `SELECT COUNT(*) AS c
+           FROM facts f
+           LEFT JOIN fact_embeddings e ON e.fact_id = f.id
+           WHERE f.tombstoned_at IS NULL AND (e.model_id IS NULL OR e.model_id != ?)`
+        )
+        .get(embedder.modelId) as { c: number }
+    ).c
+    if (total === 0) return 0
+
+    // Bounded-memory pagination (issue #191): keyset-paginate by fact id instead of loading
+    // every stale fact row into one array up front. Peak memory is O(fetchPageSize), not
+    // O(total facts) — this is what let a cold index of a large repo (e.g. Homebrew/brew,
+    // hundreds of thousands of facts) OOM even though the actual embed() calls were already
+    // batched at 100 texts/request.
+    const selectPage = this.db.prepare(
+      `SELECT f.id AS id, f.fact_text AS fact_text
+       FROM facts f
+       LEFT JOIN fact_embeddings e ON e.fact_id = f.id
+       WHERE f.tombstoned_at IS NULL AND (e.model_id IS NULL OR e.model_id != ?) AND f.id > ?
+       ORDER BY f.id
+       LIMIT ?`
+    )
     const now = dayjs().toISOString()
     const upsert = this.db.prepare(
       `INSERT INTO fact_embeddings (fact_id, model_id, dimensions, vector_json, embedded_at)
@@ -328,19 +346,29 @@ export class SqliteKbIndexer {
          model_id = excluded.model_id, dimensions = excluded.dimensions,
          vector_json = excluded.vector_json, embedded_at = excluded.embedded_at`
     )
+
     let done = 0
-    for (let i = 0; i < stale.length; i += batchSize) {
-      const batch = stale.slice(i, i + batchSize)
-      const vectors = await embedder.embed(batch.map(r => r.fact_text))
-      for (let j = 0; j < batch.length; j++) {
-        const vec = vectors[j]
-        if (!vec || vec.length !== embedder.dimensions) continue
-        upsert.run(batch[j].id, embedder.modelId, embedder.dimensions, JSON.stringify(vec), now)
+    let cursor = ''
+    while (true) {
+      const page = selectPage.all(embedder.modelId, cursor, fetchPageSize) as Array<{
+        id: string
+        fact_text: string
+      }>
+      if (page.length === 0) break
+      for (let i = 0; i < page.length; i += batchSize) {
+        const batch = page.slice(i, i + batchSize)
+        const vectors = await embedder.embed(batch.map(r => r.fact_text))
+        for (let j = 0; j < batch.length; j++) {
+          const vec = vectors[j]
+          if (!vec || vec.length !== embedder.dimensions) continue
+          upsert.run(batch[j].id, embedder.modelId, embedder.dimensions, JSON.stringify(vec), now)
+        }
       }
-      done += batch.length
-      onProgress?.(Math.min(done, stale.length), stale.length)
+      done += page.length
+      cursor = page[page.length - 1].id
+      onProgress?.(Math.min(done, total), total)
     }
-    return stale.length
+    return done
   }
 
   /**

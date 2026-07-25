@@ -123,12 +123,17 @@ export function assessTopicCoverage(
   candidateDocs: CandidateDocShape[] | undefined,
   nonInteractive: boolean
 ): TopicCoverageAssessment[] {
-  const sourceText = Object.values(context.sourceFiles).join('\n').toLowerCase()
+  // Check keywords against source files on demand instead of joining every file's content into
+  // one giant lowercased string (issue #191): that extra copy scaled linearly with total repo
+  // doc size and stayed resident for the whole call, on top of `context.sourceFiles` itself.
+  const sourceFileTexts = Object.values(context.sourceFiles)
+  const containsInSource = (needle: string): boolean =>
+    sourceFileTexts.some(text => text.toLowerCase().includes(needle))
   const docCorpus = (candidateDocs ?? []).map(doc => `${doc.title}\n${doc.content}`.toLowerCase())
   const answersByTopic = buildAnswersByTopic(context.userAnswers)
 
   return INIT_TOPIC_DEFINITIONS.map(definition => {
-    const sourceHit = definition.keywords.some(keyword => sourceText.includes(keyword))
+    const sourceHit = definition.keywords.some(keyword => containsInSource(keyword))
     const topicAnswers = answersByTopic.get(definition.topic) ?? []
     const answerText = topicAnswers.map(answer => answer.answer.toLowerCase()).join('\n')
     const docMatches = docCorpus.filter(
@@ -138,7 +143,7 @@ export function assessTopicCoverage(
     )
 
     const contradictorySignals = detectContradictions({
-      sourceText,
+      containsSource: containsInSource,
       answerText,
       docMatches,
       definition,
@@ -280,16 +285,19 @@ function buildAnswersByTopic(userAnswers: InitUserAnswer[]): Map<InitTopic, Init
 }
 
 function detectContradictions(input: {
-  sourceText: string
+  containsSource: (needle: string) => boolean
   answerText: string
   docMatches: string[]
   definition: TopicDefinition
 }): string[] {
-  const corpus = [input.sourceText, input.answerText, ...input.docMatches].join('\n')
+  const containsInCorpus = (needle: string): boolean =>
+    input.containsSource(needle) ||
+    input.answerText.includes(needle) ||
+    input.docMatches.some(doc => doc.includes(needle))
   const contradictions: string[] = []
   for (const termPair of input.definition.contradictionTerms ?? []) {
     const [left, right] = termPair
-    if (corpus.includes(left) && corpus.includes(right)) {
+    if (containsInCorpus(left) && containsInCorpus(right)) {
       contradictions.push(`${left}/${right}`)
     }
   }
