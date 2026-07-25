@@ -23,20 +23,19 @@ export {
 } from '@kb/core/query/chat-synthesis.js'
 
 export interface ChatSessionDeps {
-  /** Unused on the thin client (server synthesizes). Kept for call-site compatibility. */
+  /** @deprecated Unused — synthesis runs on kb-server. */
   llmProvider?: LLMProvider
-  /** Unused on the thin client (server retrieves). Kept for call-site compatibility. */
+  /** @deprecated Unused — retrieval runs on kb-server. */
   toolExecutor?: ToolExecutor
   mode?: CmdMode
-  /** Local base name hint for connection context display only. */
+  /** Optional local base path for connection-context display. */
   kbStorageDir?: string
   kbConfig?: KbConfig
   retrievalLimit?: number
   maxHistoryTurns?: number
   workspaceDir?: string
-  /** @deprecated No longer used — routing is LLM-driven. Kept for API compatibility. */
+  /** @deprecated Unused — routing is LLM-driven. */
   conversationalRetrieval?: boolean
-  /** When true, request verbose orchestration from the server when supported. */
   verbose?: boolean
   onTurnComplete?: (turn: ChatTurnTrace) => void
   onSessionStart?: (sessionId: string) => void
@@ -112,7 +111,7 @@ export function printChatHelp(mode: CmdMode = 'cli'): string {
   ].join('\n')
 }
 
-/** Always uses kb-server `/v1/chat` — there is no in-process client chat path. */
+/** Chat session over kb-server `/v1/chat`. */
 export async function runChatSession(
   deps: ChatSessionDeps,
   io: ChatIO = createTerminalChatIO()

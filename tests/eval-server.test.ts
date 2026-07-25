@@ -39,28 +39,22 @@ describe('eval-server helpers', () => {
     )
   })
 
-  it('[TC-531] buildEvalOfflineEnv clears remote vars and does not set KB_LOCAL_MODE', () => {
-    const prevLocal = process.env.KB_LOCAL_MODE
+  it('[TC-531] buildEvalOfflineEnv clears remote connection vars', () => {
     const prevUrl = process.env.KB_SERVER_URL
     const prevHost = process.env.KB_HOST
     const prevPort = process.env.KB_PORT
     const prevKey = process.env.KB_SERVER_API_KEY
-    delete process.env.KB_LOCAL_MODE
     process.env.KB_SERVER_URL = 'http://127.0.0.1:9999'
     process.env.KB_HOST = '127.0.0.1'
     process.env.KB_PORT = '9999'
     process.env.KB_SERVER_API_KEY = 'stale-key'
     try {
       const env = buildEvalOfflineEnv()
-      // Must not inject KB_LOCAL_MODE; indexing uses eval-index.ts → @kb/core.
-      expect(env.KB_LOCAL_MODE).toBeUndefined()
       expect(env.KB_SERVER_URL).toBeUndefined()
       expect(env.KB_HOST).toBeUndefined()
       expect(env.KB_PORT).toBeUndefined()
       expect(env.KB_SERVER_API_KEY).toBeUndefined()
     } finally {
-      if (prevLocal === undefined) delete process.env.KB_LOCAL_MODE
-      else process.env.KB_LOCAL_MODE = prevLocal
       if (prevUrl === undefined) delete process.env.KB_SERVER_URL
       else process.env.KB_SERVER_URL = prevUrl
       if (prevHost === undefined) delete process.env.KB_HOST

@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Thin client always talks HTTP to a kb-server host — remove transitional `KB_LOCAL_MODE` and stop printing LLM provider auto-selection on `kb query` / TUI (server startup only).
+- Thin client always talks HTTP to a kb-server host. LLM provider auto-selection is announced at kb-server startup.
 - Updated dependencies
   - @kb/core@1.5.8
 

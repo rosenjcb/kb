@@ -43,8 +43,6 @@ Before work starts (except machine JSON stdout):
 2. **TUI** — pinned `StatusBar` + startup notice with same string.
 3. **Chat** — first assistant line: `host: … │ base: …` then prompt hint.
 
-The client shows **host + base** only. LLM provider auto-selection (`Auto-selected LLM provider: …`) is a **kb-server** startup concern — never printed by `kb query` / TUI.
-
 Telemetry: `resolveReportHost(config)` on run reports.
 
 ## Global `--host`

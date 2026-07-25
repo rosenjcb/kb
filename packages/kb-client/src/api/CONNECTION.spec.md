@@ -46,7 +46,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | FR-2 | `KB_SERVER_URL` overrides `KB_HOST`/`KB_PORT` |
 | FR-3 | `--host` accepts `host:port`, bare hostname, or full URL and overrides env for one process |
 | FR-4 | Unreachable server fails fast with actionable hints including `--host` |
-| FR-5 | `formatConnectionContext` shows `host:` + `base:` (always — client has no local-mode label) |
+| FR-5 | `formatConnectionContext` shows `host:` + `base:` |
 | FR-6 | One-shot CLI (non-JSON stdout) prints connection context under the version banner |
 | FR-7 | TUI status bar always shows host and base on one pinned row |
 | FR-8 | Chat sessions print connection context before the first user prompt |

@@ -63,9 +63,8 @@ export function allocateFreePort(host = '127.0.0.1') {
 
 /**
  * Build subprocess env for offline eval indexing children (eval-index init/scan).
- * Clears remote connection vars so children do not hit a live server; does not set
- * KB_LOCAL_MODE — indexing goes through scripts/eval-index.ts → @kb/core directly.
- * Use during eval capture so SQLite is not contended with a running kb-server.
+ * Clears remote connection vars so children index via `@kb/core` without hitting a
+ * live server (avoids SQLite contention during eval capture).
  * @param {{ kbHome?: string }} [opts]
  */
 export function buildEvalOfflineEnv({ kbHome } = {}) {

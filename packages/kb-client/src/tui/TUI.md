@@ -25,8 +25,6 @@ KB Agent │ host: localhost:38117 │ base: my-project
 
 **Invariant:** host and base must stay visible for the whole session — do not hide the status bar during chat turns.
 
-Do **not** show LLM provider auto-selection (`Auto-selected LLM provider: …`) in TUI startup notices — that is a kb-server startup log. The welcome banner does not advertise a local provider (synthesis is always server-side).
-
 ## Layout
 
 | Component | File | Role |

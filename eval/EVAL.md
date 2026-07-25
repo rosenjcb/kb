@@ -197,7 +197,7 @@ flowchart LR
 | `--per-suite-server` | Legacy: one ephemeral port per child | Same as pre-multi-base |
 | `--skip-scan` | n/a | Skip eval-index scan when reusing built indexes (fresh init still scans) |
 
-1. **Init/scan** — offline via `scripts/eval-index.ts` (`@kb/core` directly) before attach, so SQLite writes do not race the shared server. Subprocess env from `buildEvalOfflineEnv()` clears remote connection vars; does not use `KB_LOCAL_MODE`.
+1. **Init/scan** — offline via `scripts/eval-index.ts` (`@kb/core` directly) before attach, so SQLite writes do not race the shared server. Subprocess env from `buildEvalOfflineEnv()` clears remote connection vars.
 2. **Query phase** — remote: `KB_SERVER_URL` + API key + `--base`. docs/graph/logs also run remote after attach.
 3. **MOEL** (`moel-run.mjs`) — still one server per condition (`moel-{suite}-{N|K|O}`); init/scan also goes through `eval-index.ts`.
 

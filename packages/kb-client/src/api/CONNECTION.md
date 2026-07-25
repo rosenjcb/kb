@@ -9,7 +9,7 @@ timestamp: 2026-07-11T00:00:00Z
 
 # Client ↔ Server Connection
 
-The **`kb` client is a terminal front-end**. Default path: HTTP to **`kb-server`**, which owns indexing, retrieval, and LLM synthesis. The user must always see **which server** and **which base** a session uses — never infer it from env alone. LLM provider auto-selection is printed at **kb-server** startup only, not by `kb query` / TUI.
+The **`kb` client is a terminal front-end**. Default path: HTTP to **`kb-server`**, which owns indexing, retrieval, and LLM synthesis. The user must always see **which server** and **which base** a session uses — never infer it from env alone.
 
 ## Role in the stack
 
@@ -36,7 +36,7 @@ sequenceDiagram
 | 3 | `KB_SERVER_URL` | Full URL (wins over host+port) |
 | 4 | `KB_HOST` + `KB_PORT` | Default `localhost:38117` |
 
-Auth: `KB_SERVER_API_KEY` → Bearer on every request (`kb-api-client.ts`). The client **always** uses HTTP — there is no in-process bypass flag.
+Auth: `KB_SERVER_API_KEY` → Bearer on every request (`kb-api-client.ts`). The client always uses HTTP.
 
 ### Base on the wire (`X-KB-Base`)
 

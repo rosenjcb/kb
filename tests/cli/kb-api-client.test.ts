@@ -30,7 +30,6 @@ describe('server-connection', () => {
     const line = formatConnectionContext({}, 'dogfood')
     expect(line).toContain('host: localhost:38117')
     expect(line).toContain('base: dogfood')
-    expect(line).not.toContain('mode: local')
   })
 
   it('[TC-50] resolveServerConnection carries KB_BASE as the wire base', () => {

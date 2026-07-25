@@ -71,7 +71,7 @@ Slack and the Pages demo both **wait** through first-boot (notice + progress, th
 ## Integration
 
 - **CLI:** `kb-server` binary → `runServerCommand` in `server-cli.ts`.
-- **LLM provider:** at start, `persistInferredLLMProvider` may print `ℹ Auto-selected LLM provider: …` and the listening banner includes `LLM: <provider> (<model>)`. This is **server-only** — the thin `kb` client never prints provider auto-selection on `kb query` / TUI.
+- **LLM provider:** at start, `persistInferredLLMProvider` may print `ℹ Auto-selected LLM provider: …` and the listening banner includes `LLM: <provider> (<model>)`.
 - **Boot-build:** missing `.kb-index.sqlite` now runs in the background after `listen()`. `/healthz` stays HTTP 200 with `indexing: true` / `ok: false`; `/v1/query`, `/v1/chat`, and `/mcp` return `503` with an indexing message until the first build finishes.
 - **Docker:** `kb-server start --with-mcp` in Dockerfile CMD; Slack is enabled by `KB_SERVER_ENABLE_SLACK=true`.
 - **Dev:** `pnpm run server:start` for a local process; `pnpm run server:up` for the guided Docker path.

@@ -117,7 +117,7 @@ pnpm run integration:test
 
 Manifest and env reference: [`packages/kb-server/README.md`](packages/kb-server/README.md) · [`packages/kb-server/http/HTTP.md`](packages/kb-server/http/HTTP.md).
 
-The `kb` client always talks HTTP to a host (`KB_HOST` / `KB_SERVER_URL` / `--host`). There is no in-process “local mode” flag. Eval indexing uses `scripts/eval-index.ts` (direct `@kb/core`) before attaching a live `kb-server`.
+The `kb` client always talks HTTP to a host (`KB_HOST` / `KB_SERVER_URL` / `--host`). Eval indexing uses `scripts/eval-index.ts` (direct `@kb/core`) before attaching a live `kb-server`.
 
 ---
 

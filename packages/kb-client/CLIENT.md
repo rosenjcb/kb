@@ -89,8 +89,7 @@ The client always uses HTTP to a kb-server (`localhost:38117` by default, or `--
 
 - Never import `@kb/server` — server is a separate binary.
 - Show connection context before retrieval or chat (except machine JSON stdout).
-- Never print LLM provider auto-selection / API-key detection on the thin client — that belongs to `kb-server` startup logs.
-- Always requires a live server for server-owned commands; no silent in-process fallback.
+- Server-owned commands require a live kb-server.
 - Long-running TUI output uses `CliOutput`, not raw `console.log`.
 
 ## Related docs

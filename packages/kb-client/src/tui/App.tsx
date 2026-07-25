@@ -59,7 +59,6 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
   const { exit } = useApp()
 
   const mode: TuiMode = 'chat'
-  // Thin client: synthesis runs on kb-server — never advertise a local provider.
   const [history, setHistory] = useState<HistoryEntry[]>([
     { id: 'welcome', type: 'banner', content: '' },
   ])

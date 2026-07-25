@@ -354,7 +354,7 @@ export async function runServerCommand(
     throw new Error('--port must be a positive integer')
   }
 
-  // Infer + announce LLM provider once at server boot (not on thin-client `kb query`).
+  // Infer + announce LLM provider once at server boot.
   const inferred = await persistInferredLLMProvider({ config })
   const resolvedConfig = inferred.config
   if (inferred.notice) {

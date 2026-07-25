@@ -194,7 +194,7 @@ describe('runServerCommand bootstrap progress', () => {
     await serverPromise
   })
 
-  it('prints LLM provider auto-selection and LLM line on server start only', async () => {
+  it('prints LLM provider auto-selection and LLM line on server start', async () => {
     const out = {
       log: vi.fn(),
       error: vi.fn(),
