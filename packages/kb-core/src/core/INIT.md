@@ -199,14 +199,32 @@ changing them):
 
 ### Regression benchmark
 
-`scripts/bench/large-repo-memory-bench.sh` runs a real cold `kb-server refresh`
-against a shallow clone of `Homebrew/brew.git` (~3k files, the actual `brew` base
-from `scripts/fly/bases.json`) inside `docker run --memory=2g
---memory-swap=2g`, sampling cgroup memory every 10s and checking `docker inspect
-... State.OOMKilled` on exit. It's a manual/on-demand check (network + Docker +
-several minutes), not wired into `pnpm test` — run it after touching anything in
-this file's "Fixed"/"Known, not fixed" lists above. See the script header for
-usage and current pass/fail numbers from the last run.
+Two complementary scripts, both manual/on-demand (not wired into `pnpm test`)
+— run them after touching anything in this file's "Fixed"/"Known, not fixed"
+lists above:
+
+- **`scripts/bench/embed-all-facts-fetch-bench.mjs`** — fast, targeted check of
+  the `embedAllFacts` fix specifically. Seeds a throwaway SQLite index with N
+  synthetic facts via raw SQL (bypassing `upsertFact`'s per-call graph-rebuild
+  cost, which is real but unrelated to this check) and runs `embedAllFacts`
+  with a fake instant embedder, printing RSS at intervals. Real run: **1,000,000
+  facts → peak RSS 163.7 MiB, completed in 158s** (vs. what would have been one
+  multi-hundred-MB JS array allocated up front pre-fix). This is the direct
+  evidence the pagination fix works, independent of how long a real repo's
+  earlier phases take to reach the embedding step.
+- **`scripts/bench/large-repo-memory-bench.sh`** — real-world end-to-end check:
+  cold `kb-server refresh` against a shallow clone of `Homebrew/brew.git` (~3k
+  files, the actual `brew` base from `scripts/fly/bases.json`) inside `docker
+  run --memory=2g --memory-swap=2g`, sampling cgroup memory every 10s and
+  checking `docker inspect ... State.OOMKilled` on exit. Slower than expected
+  to reach the embedding phase on this repo specifically — `document-facts`
+  symbol-anchors each of `brew`'s ~95 doc segments against every already-indexed
+  AST fact (~9.5k for this repo), which is slow at this repo's symbol count (a
+  pre-existing, unrelated cost) — so `--timeout` needs to be generous (default
+  here: 60 min, vs. the CLI's own 30 min default). Not OOM-killed in the runs
+  observed; memory stayed flat (~215–250 MiB) through code-index and well into
+  document-facts, consistent with the `embed-all-facts-fetch-bench.mjs` result
+  above.
 
 ## Upfront Questions
 

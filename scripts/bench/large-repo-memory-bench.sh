@@ -36,6 +36,14 @@
 #                          paths from ephemeral sandboxes are often NOT shared)
 #   SKIP_BUILD             set "true" to reuse an existing kb-membench:latest
 #                          image instead of rebuilding from Dockerfile.fly
+#   REFRESH_TIMEOUT_MS     `kb-server refresh --timeout` (default: 3600000 = 60min).
+#                          The 30min CLI default is too short for `brew`: its
+#                          document-facts phase symbol-anchors each doc segment
+#                          against every already-indexed AST fact (~9.5k for
+#                          brew), which is slow at this repo's symbol count —
+#                          a pre-existing cost unrelated to the memory fix this
+#                          benchmark validates, but it means the run needs a
+#                          longer budget to actually reach the embedding phase.
 set -euo pipefail
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
@@ -43,6 +51,7 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 REPO_URL="${REPO_URL:-https://github.com/Homebrew/brew.git}"
 MEMORY_LIMIT="${MEMORY_LIMIT:-2g}"
 SAMPLE_INTERVAL_SECONDS="${SAMPLE_INTERVAL_SECONDS:-10}"
+REFRESH_TIMEOUT_MS="${REFRESH_TIMEOUT_MS:-3600000}"
 WORK_DIR="${WORK_DIR:-$HOME/.kb-membench}"
 IMAGE_TAG="kb-membench:latest"
 CONTAINER=membench-run
@@ -82,7 +91,7 @@ docker run -d \
   -e KB_HOME=/data \
   -e KB_EMBEDDER=local \
   "$IMAGE_TAG" \
-  bash -lc "packages/kb-server/dist/bin/kb-server refresh --base membench --out /bench/out --repos 'file:///bench/repo' --json" \
+  bash -lc "packages/kb-server/dist/bin/kb-server refresh --base membench --out /bench/out --repos 'file:///bench/repo' --timeout $REFRESH_TIMEOUT_MS --json" \
   >/dev/null
 
 echo "  · container: $CONTAINER"
