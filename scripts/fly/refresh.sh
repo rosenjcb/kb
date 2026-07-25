@@ -171,8 +171,16 @@ while IFS=$'\t' read -r name repo branch _is_default; do
   # failure from aborting the whole run; the explicit `set -e` INSIDE the
   # subshell (honored because the subshell is not an if/&&/|| operand) makes
   # build_base stop at its first failing step.
+  # `< /dev/null`: the outer loop's stdin is the `each_base` process-
+  # substitution pipe (`done < <(each_base)`). `kb-server refresh` spawns its
+  # own bootstrap child, which inherits stdio by default — if it (or anything
+  # else in this subshell's tree) so much as touches fd 0, it can steal bytes
+  # meant for the loop's next `read`, silently truncating the run after a
+  # base picked at random by timing (observed: after 1 base one run, after 4
+  # the next). Detaching this subshell's stdin from that pipe entirely makes
+  # it impossible for anything inside build_base to interfere with it.
   set +e
-  ( set -euo pipefail; build_base "$name" "$repo" "$branch" )
+  ( set -euo pipefail; build_base "$name" "$repo" "$branch" ) < /dev/null
   rc=$?
   set -e
   if (( rc == 0 )); then

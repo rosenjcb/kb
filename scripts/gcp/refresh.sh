@@ -150,8 +150,12 @@ built=()
 failures=()
 while IFS=$'\t' read -r name repos _reserved _is_default; do
   [[ -z "${name:-}" ]] && continue
+  # < /dev/null: detach this subshell's stdin from the `each_base` process-
+  # substitution pipe feeding the loop's own `read` — see scripts/fly/refresh.sh
+  # for why (kb-server refresh's bootstrap child can otherwise steal bytes
+  # from it and silently truncate the run after a random number of bases).
   set +e
-  ( set -euo pipefail; build_base "$name" "$repos" )
+  ( set -euo pipefail; build_base "$name" "$repos" ) < /dev/null
   rc=$?
   set -e
   if (( rc == 0 )); then
