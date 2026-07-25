@@ -4,6 +4,7 @@
 
 ### Patch Changes
 
+- `kb-server refresh`'s throwaway bootstrap child (#195) no longer discards its stdout/stderr — both streams are now routed into this process's own stderr (fd 2) instead of `stdio: 'ignore'`, so a long-running cold index of a large repo shows up live in `docker logs`/the container's own log stream. `--json` output stays unaffected since progress already goes to stderr there and the child's output never touches this process's own stdout (fd 1).
 - Updated dependencies
   - @kb/core@1.5.9
 

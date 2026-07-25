@@ -244,5 +244,4 @@ Readiness: two consecutive `/healthz?base=<slug>` responses with `ok: true` + `i
 - Plan / harvest schema → [`../EVALUATION.md`](../EVALUATION.md)
 - Server multi-base → [`../packages/kb-server/src/SERVER.md`](../packages/kb-server/src/SERVER.md)
 - Client wire base → [`../packages/kb-client/src/api/CONNECTION.md`](../packages/kb-client/src/api/CONNECTION.md)
-- Agent skill → [`../skills/kb:evaluation-run/SKILL.md`](../skills/kb:evaluation-run/SKILL.md)
 - `losses/LOSSES.md` · [`../TESTING.md`](../TESTING.md)

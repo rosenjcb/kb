@@ -5,6 +5,7 @@
 ### Patch Changes
 
 - Fix cold-index OOMs on large repos (#191): `SqliteKbIndexer.embedAllFacts` no longer loads every not-yet-embedded fact into one array before batching — it now keyset-paginates the SELECT (page size configurable via `KB_EMBED_FETCH_PAGE_SIZE`, default 1000), so peak memory stays bounded regardless of total fact count. Also removed a redundant full-repo string join/lowercase in `assessTopicCoverage`.
+- Remove `kb:dump-context` (superseded by the `spec-md` skill) and `kb:evaluation-run` (now maintained as a user-level skill outside this repo) from the bundled skill set. Fixes a real crash: `skill-installer.ts` called `loadSkill()` for both at module load time, so `kb skills install` (and anything importing it) threw `ENOENT` once the `skills/kb:dump-context/` and `skills/kb:evaluation-run/` source directories were removed from the repo.
 
 ## 1.5.8
 

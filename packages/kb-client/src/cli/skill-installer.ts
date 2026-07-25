@@ -12,8 +12,6 @@ import {
 } from '../api/mcp-config-sync.js'
 
 const KB_DEV_WORKFLOW_SKILL = loadSkill('kb:dev-workflow')
-const KB_DUMP_CONTEXT_SKILL = loadSkill('kb:dump-context')
-const KB_EVALUATION_RUN_SKILL = loadSkill('kb:evaluation-run')
 
 /** Strip YAML frontmatter (---...---) so the skill body can be embedded in a CLAUDE.md/AGENTS.md. */
 function stripFrontmatter(content: string): string {
@@ -29,8 +27,6 @@ const HASH_PREFIX = '<!-- kb-skill-hash:'
 
 const SKILLS: Array<{ name: string; content: string }> = [
   { name: 'kb:dev-workflow', content: KB_DEV_WORKFLOW_SKILL },
-  { name: 'kb:dump-context', content: KB_DUMP_CONTEXT_SKILL },
-  { name: 'kb:evaluation-run', content: KB_EVALUATION_RUN_SKILL },
 ]
 
 interface AgentTarget {
