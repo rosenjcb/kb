@@ -50,13 +50,14 @@ Thin answer → ask a **narrower** follow-up. Do not switch to broad grep yet.
 
 `notes` may warn that confidence is mid/low or that the prose named a file not
 in the sources — when it does, trust `sources` over prose paths. Feedback asks
-are still gated by `KB_FEEDBACK_SAMPLE_RATE` (default off). When the server uses
-form elicitation, the user may answer yes/partial/no in a UI and the payload
-carries `feedback.via=elicitation` instead of `AGENT_INSTRUCTION`. Otherwise
-`AGENT_INSTRUCTION` is a separate, unmissable field — never buried inside
-`notes` — and means this response is queued as feedback-pending; do not skip
-it. Pass `verbose: true` only if you genuinely need the raw evidence payload
-(per-fact snippets, tags, retrieval metadata); the default response is the signal.
+are still gated by `KB_FEEDBACK_SAMPLE_RATE` (default off). Form elicitation is
+on by default (`KB_MCP_ELICITATION=false` to disable): the user may answer
+yes/partial/no in a UI and the payload carries `feedback.via=elicitation`
+instead of `AGENT_INSTRUCTION`. Otherwise `AGENT_INSTRUCTION` is a separate,
+unmissable field — never buried inside `notes` — and means this response is
+queued as feedback-pending; do not skip it. Pass `verbose: true` only if you
+genuinely need the raw evidence payload (per-fact snippets, tags, retrieval
+metadata); the default response is the signal.
 
 Loop: ask → read cited paths → confirm or correct → ask again for gaps → only
 then minimal grep/read outside citations.

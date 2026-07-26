@@ -5,6 +5,7 @@ import {
   parseElicitedHelped,
   truncateForElicit,
 } from '@kb/server/mcp-feedback-elicitation.js'
+import { isMcpElicitationEnvEnabled } from '@kb/server/mcp-server.js'
 
 describe('mcp-feedback-elicitation helpers', () => {
   it('treats empty elicitation capability as form mode (spec back-compat)', () => {
@@ -38,5 +39,12 @@ describe('mcp-feedback-elicitation helpers', () => {
     expect(parseElicitedHelped('no')).toBe('no')
     expect(parseElicitedHelped('kinda')).toBeUndefined()
     expect(parseElicitedHelped(1)).toBeUndefined()
+  })
+
+  it('KB_MCP_ELICITATION defaults to true; only false opts out', () => {
+    expect(isMcpElicitationEnvEnabled(undefined)).toBe(true)
+    expect(isMcpElicitationEnvEnabled('')).toBe(true)
+    expect(isMcpElicitationEnvEnabled('true')).toBe(true)
+    expect(isMcpElicitationEnvEnabled('false')).toBe(false)
   })
 })

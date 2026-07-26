@@ -7,15 +7,14 @@
  * `mcp-session-id`, GET opens the SSE stream (needed for server→client
  * elicitation), and DELETE tears the session down.
  *
- * Default POST responses stay JSON (`enableJsonResponse: true`) so existing
- * clients/httpyac keep working. Set `KB_MCP_ELICITATION=true` to switch the
- * session to SSE POST streams so sampled feedback can `elicitInput` mid-call
- * (requires a client that declared the `elicitation` capability).
+ * `KB_MCP_ELICITATION` defaults to `true` (SSE POST streams so sampled feedback
+ * can `elicitInput` mid-call). Set `KB_MCP_ELICITATION=false` for JSON-only
+ * POST responses (no server→client elicitation).
  */
 
 import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { isEnvTrue } from '@kb/core/config/env-boolean.js'
+import { parseBooleanEnv } from '@kb/core/config/env-boolean.js'
 import type { KbService } from '@kb/core/service/kb-service.js'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -63,21 +62,24 @@ function sendJsonRpcError(res: ServerResponse, status: number, message: string):
   res.end(payload)
 }
 
-function readElicitationEnabled(): boolean {
-  return isEnvTrue(process.env.KB_MCP_ELICITATION)
+/** Default on — opt out with `KB_MCP_ELICITATION=false`. */
+export function isMcpElicitationEnvEnabled(
+  value: string | undefined = process.env.KB_MCP_ELICITATION
+): boolean {
+  return parseBooleanEnv(value, true)
 }
 
 async function createSession(service: KbService, opts: McpDispatchOptions): Promise<McpSession> {
   // Shared mutable opts so each HTTP request can refresh requestId.
-  const elicitationEnabled = opts.elicitationEnabled ?? readElicitationEnabled()
+  const elicitationEnabled = opts.elicitationEnabled ?? isMcpElicitationEnvEnabled()
   const sessionOpts: McpDispatchOptions = { ...opts, elicitationEnabled }
   // Holder so onsessioninitialized can close over the session before the
   // const binding is initialized (callback runs later, during initialize).
   const holder: { session?: McpSession } = {}
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
-    // JSON POST responses by default; SSE when elicitation is opted in so
-    // elicitation/create can ride the in-flight tool-call stream.
+    // SSE when elicitation is on (default) so elicitation/create can ride the
+    // in-flight tool-call stream; JSON when explicitly disabled.
     enableJsonResponse: !elicitationEnabled,
     onsessioninitialized: sessionId => {
       if (holder.session) sessions.set(sessionId, holder.session)

@@ -182,8 +182,8 @@ export interface McpDispatchOptions {
   elicitFeedback?: (ctx: FeedbackElicitContext) => Promise<FeedbackElicitOutcome>
   /**
    * When true, wire live `server.elicitInput` for sampled feedback and use SSE
-   * POST streams (`KB_MCP_ELICITATION=true`). Default false — JSON responses +
-   * AGENT_INSTRUCTION fallback only.
+   * POST streams. Defaults to on (`KB_MCP_ELICITATION` unset/`true`); set
+   * `KB_MCP_ELICITATION=false` for JSON-only responses + AGENT_INSTRUCTION path.
    */
   elicitationEnabled?: boolean
 }

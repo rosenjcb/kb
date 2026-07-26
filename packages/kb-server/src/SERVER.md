@@ -148,7 +148,8 @@ entirely for general feedback not tied to a query. To sample feedback asks, set
 
 Sampling still decides *whether* to ask (`KB_FEEDBACK_SAMPLE_RATE`); elicitation
 only changes *how*. On a sampled trimmed `kb_query`, if the client declared
-`elicitation` **and** `KB_MCP_ELICITATION=true`, prefer MCP
+`elicitation` and `KB_MCP_ELICITATION` is on (default `true`; set `false` to
+opt out), prefer MCP
 [form elicitation](https://modelcontextprotocol.io/specification/draft/client/elicitation)
 — a yes/partial/no (+ optional notes) form shown to the *user* — record on
 accept, skip the agent nudge. Decline/cancel records nothing. If elicitation
@@ -163,10 +164,10 @@ is end-of-session: `kb skills install` registers a Claude Code hook
 session stop) to drain `get_feedback_requests`.
 
 **MCP transport:** `/mcp` is stateful Streamable HTTP (`mcp-session-id` on
-initialize; subsequent POST/GET/DELETE must send it). Default POST responses
-are JSON. `KB_MCP_ELICITATION=true` switches sessions to SSE POST streams so
-`elicitation/create` can ride the in-flight tool call (clients must also open
-the GET SSE stream).
+initialize; subsequent POST/GET/DELETE must send it). With elicitation on
+(default), POST responses are SSE so `elicitation/create` can ride the
+in-flight tool call (clients should also open the GET SSE stream). Set
+`KB_MCP_ELICITATION=false` for JSON-only POST responses.
 
 ### Endpoints (`kb-server start [--with-mcp] [--with-slack]`)
 
@@ -248,8 +249,8 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 - `reindex` is single-flight (`isReindexing()`).
 - MCP HTTP is **stateful** — initialize returns `mcp-session-id`; subsequent
   POST/GET/DELETE reuse that session's server+transport (required for
-  elicitation). Default POST responses are JSON; `KB_MCP_ELICITATION=true`
-  switches to SSE POST streams.
+  elicitation). `KB_MCP_ELICITATION` defaults to `true` (SSE POST streams);
+  set `false` for JSON-only responses.
 - Fresh-volume bootstrap runs after `listen()` so startup probes can pass during long first indexing.
 - **503 on query/chat/MCP only when `health.indexing` (bootstrap)** — never solely because `reindexing` is true.
 - Empty `apiKeys` ⇒ authorize all protected routes; non-empty ⇒ Bearer / `X-Api-Key` required.

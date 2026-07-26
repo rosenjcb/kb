@@ -210,12 +210,12 @@ paths:
         POST/GET/DELETE must send that header. Tools are `kb_query`,
         `submit_feedback` (one string `requestId` per call — not an array), and
         `get_feedback_requests`. Sampled feedback asks are gated by
-        `KB_FEEDBACK_SAMPLE_RATE`; with `KB_MCP_ELICITATION=true` and a client
-        that declared form elicitation, the ask is a user form, otherwise a
-        top-level `AGENT_INSTRUCTION` on the kb_query payload. Not a normal
-        REST resource — use an MCP client or the examples in `http/server.http`.
-        Requires `Accept: application/json, text/event-stream`. Only available
-        when the server runs with `--with-mcp`.
+        `KB_FEEDBACK_SAMPLE_RATE`; when `KB_MCP_ELICITATION` is on (default
+        `true`) and the client declared form elicitation, the ask is a user
+        form, otherwise a top-level `AGENT_INSTRUCTION` on the kb_query payload.
+        Not a normal REST resource — use an MCP client or the examples in
+        `http/server.http`. Requires `Accept: application/json, text/event-stream`.
+        Only available when the server runs with `--with-mcp`.
       parameters:
         - in: header
           name: mcp-session-id
@@ -293,8 +293,8 @@ paths:
       summary: MCP session SSE stream (server→client messages)
       description: >
         Opens the standalone SSE stream for an existing MCP session. Required
-        for server-initiated requests such as form elicitation when
-        `KB_MCP_ELICITATION=true`. Requires `mcp-session-id` and
+        for server-initiated requests such as form elicitation (on by default;
+        `KB_MCP_ELICITATION=false` disables). Requires `mcp-session-id` and
         `Accept: text/event-stream`.
       parameters:
         - in: header
