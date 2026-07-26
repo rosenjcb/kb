@@ -5,7 +5,7 @@ sources: [./, ./mcp-tools.ts, ./mcp-server.ts, ./mcp-feedback-elicitation.ts, ./
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-07-26T22:25:00Z
+timestamp: 2026-07-26T23:20:00Z
 ---
 
 ### Intro
@@ -53,6 +53,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-20 | [UPDATED] Queue each sampled `AGENT_INSTRUCTION` nudge's `requestId`/`query` as a pending-feedback entry (in-memory, TTL-capped, process-local) and expose it read-only via `get_feedback_requests`; an entry is removed once `submit_feedback` reports on its `requestId`; successful elicitation (FR-21 accept) records feedback immediately and does not enqueue |
 | FR-21 | [NEW] When a sampled kb_query has an `elicitFeedback` hook (wired when `KB_MCP_ELICITATION` is on — default `true`, opt out with `false`): accept records durable feedback and sets `feedback.via=elicitation` without `AGENT_INSTRUCTION`/pending; decline/cancel sets `feedback.status` without recording or nudging; `unavailable` falls back to FR-19's `AGENT_INSTRUCTION` + FR-20 queue |
 | FR-22 | [NEW] MCP `/mcp` is stateful Streamable HTTP: initialize returns `mcp-session-id` and subsequent POST/GET/DELETE must send it; when elicitation is on (FR-21 default) POST responses use SSE so `elicitation/create` can ride the tool-call stream, and `KB_MCP_ELICITATION=false` uses JSON-only POST responses |
+| FR-23 | [NEW] `createServerElicitFeedback`, bound to a live MCP `Server`, is the `elicitFeedback` hook consumed by FR-21: it checks the client's declared `elicitation` capability before asking (declining to ask at all when unsupported), dispatches a form-mode `elicitation/create` request (message + the flat helped/notes schema) via `elicitInput` when the client declared explicit `form` support or a raw `server.request()` fallback for the spec-back-compat empty-object case, maps the client's response to accepted/dismissed/unavailable, and never throws — a rejected/erroring request also resolves to `unavailable` |
 
 ### Known issues
 
@@ -208,6 +209,15 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-143 | FR-21 | sampled kb_query with elicitFeedback unavailable falls back to AGENT_INSTRUCTION + pending | pass |
 | TC-144 | FR-21 | KB_MCP_ELICITATION defaults to true (unset/empty/`true`); only `false` opts out | pass |
 | TC-145 | FR-22 | MCP POST without session (non-initialize) or GET without `mcp-session-id` returns 400 | pass |
+| TC-146 | FR-23 | no elicitation capability declared: resolves unavailable without calling elicitInput or request | pass |
+| TC-147 | FR-23 | client declares only url-mode capability (no form): resolves unavailable without asking | pass |
+| TC-148 | FR-23 | client declares empty `elicitation: {}` (back-compat form-only): dispatches via the raw `server.request()` fallback, not `elicitInput` | pass |
+| TC-149 | FR-23 | client declares explicit `elicitation: { form: {} }`: dispatches via `server.elicitInput()` | pass |
+| TC-150 | FR-23 | client responds accept with a valid helped value: resolves accepted with helped/notes | pass |
+| TC-151 | FR-23 | client responds accept with a missing or invalid helped value: resolves unavailable | pass |
+| TC-152 | FR-23 | client responds decline: resolves dismissed with action decline | pass |
+| TC-153 | FR-23 | client responds cancel: resolves dismissed with action cancel | pass |
+| TC-154 | FR-23 | the client request rejects: resolves unavailable instead of throwing | pass |
 
 ### Related docs
 
