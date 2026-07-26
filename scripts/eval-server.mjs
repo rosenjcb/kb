@@ -3,7 +3,7 @@
  *
  * Pre-server phases (init/scan via scripts/eval-index.ts) use buildEvalOfflineEnv() to clear
  * remote connection vars. Query phases use buildKbRemoteEnv() / session.kbEnv() with
- * KB_SERVER_URL + KB_SERVER_API_KEY (or KB_EVAL_SERVER_URL when attaching).
+ * KB_HOST + KB_PORT + KB_SERVER_API_KEY (or KB_EVAL_SERVER_URL when attaching).
  *
  * Multi-suite batches share one multi-base kb-server (psql/postmaster model): the parent
  * spawns once, children attach via KB_EVAL_SERVER_URL and select `eval-{suite}` per request
@@ -69,9 +69,10 @@ export function allocateFreePort(host = '127.0.0.1') {
  */
 export function buildEvalOfflineEnv({ kbHome } = {}) {
   const env = { ...process.env }
-  env.KB_SERVER_URL = undefined
   env.KB_HOST = undefined
   env.KB_PORT = undefined
+  env.KB_SSLMODE = undefined
+  env.KB_CONNECTION_STRING = undefined
   env.KB_SERVER_API_KEY = undefined
   env.NODE_PATH = undefined
   if (kbHome) env.KB_HOME = kbHome
@@ -94,14 +95,21 @@ export function buildKbRemoteEnv({
   const env = { ...process.env }
   env.NODE_PATH = undefined
 
-  const resolvedUrl = url?.trim()
-    ? url.trim().replace(/\/$/, '')
-    : `http://${host}:${port}`
+  let resolvedHost = host
+  let resolvedPort = port !== undefined ? String(port) : undefined
+  let resolvedSslmode
 
-  env.KB_SERVER_URL = resolvedUrl
+  if (url?.trim()) {
+    const parsed = new URL(url.trim())
+    resolvedHost = parsed.hostname
+    resolvedPort = parsed.port || undefined
+    resolvedSslmode = parsed.protocol === 'https:' ? 'require' : 'disable'
+  }
+
+  env.KB_HOST = resolvedHost
+  env.KB_PORT = resolvedPort
+  env.KB_SSLMODE = resolvedSslmode
   env.KB_SERVER_API_KEY = apiKey
-  env.KB_HOST = undefined
-  env.KB_PORT = undefined
 
   if (base?.trim()) env.KB_BASE = base.trim()
   else env.KB_BASE = undefined

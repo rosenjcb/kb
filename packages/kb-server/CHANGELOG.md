@@ -1,5 +1,12 @@
 # kb-server
 
+## 1.5.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @kb/core@1.5.11
+
 ## 1.5.0
 
 ### Minor Changes

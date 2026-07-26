@@ -29,12 +29,19 @@ sequenceDiagram
 
 ## Resolution order
 
+The connection is always decomposed into **host + port + sslmode** (no URL-shaped
+env var) — mirroring libpq's `PGHOST`/`PGPORT`/`PGSSLMODE`. `--host`/`KB_HOST` and
+`kb://` connection strings funnel through the *same* scheme/port inference
+(`buildServerUrl` in `connection-string.ts`), so a bare hostname resolves
+identically no matter which surface set it.
+
 | Priority | Source | Effect |
 |----------|--------|--------|
-| 1 | `--connection-string` / `KB_CONNECTION_STRING` | `kb://apikey@host:port/base` expands into `KB_SERVER_URL` (+ `KB_SERVER_API_KEY`, `KB_BASE`) (`cli-global-flags.ts`) |
-| 2 | `--host` + `--base` on this invocation | `--host` sets `KB_SERVER_URL` or `KB_HOST`/`KB_PORT`; `--base` sets `KB_BASE` (refine an explicit connection string) |
-| 3 | `KB_SERVER_URL` | Full URL (wins over host+port) |
-| 4 | `KB_HOST` + `KB_PORT` | Default `localhost:38117` |
+| 1 | `--connection-string` / `KB_CONNECTION_STRING` | `kb://apikey@host:port/base` expands into `KB_HOST`/`KB_PORT`/`KB_SSLMODE` (+ `KB_SERVER_API_KEY`, `KB_BASE`) (`cli-global-flags.ts`) |
+| 2 | `--host` on this invocation | Full `scheme://` URL decomposes into `KB_HOST`/`KB_PORT`/`KB_SSLMODE` (explicit scheme ⇒ explicit `sslmode`); `host:port` or bare `host` sets `KB_HOST`/`KB_PORT` only |
+| 3 | `--port` / `--sslmode` / `--api-key` (`--key`) / `--base` | Each individually refines whatever `--host`/a connection string set — `KB_PORT` / `KB_SSLMODE` / `KB_SERVER_API_KEY` / `KB_BASE` |
+| 4 | `KB_HOST` + `KB_PORT` + `KB_SSLMODE` | Scheme inferred via `buildServerUrl` (default `sslmode=prefer`: TLS for remote hosts, plaintext for loopback) |
+| 5 | default | `http://localhost:38117` |
 
 Auth: `KB_SERVER_API_KEY` → Bearer on every request (`kb-api-client.ts`). The client always uses HTTP.
 
@@ -70,7 +77,13 @@ The MCP URL follows the same connection profile as the CLI/TUI (`resolveServerCo
 | Normal `kb` / TUI startup | **No** MCP rewrite — opt-in via `kb mcp install` / `kb skills install` only |
 | `kb mcp uninstall` / `kb skills uninstall` | Removes managed `kb` entries only |
 
-Host resolution: `--host` → `KB_SERVER_URL` → `KB_HOST`+`KB_PORT` → `config.server.host` → `localhost` (same as CLI/TUI). TUI `/skills install` therefore points MCP at whatever host the session is connected to.
+`mcp install` has no flag parser of its own — `--host`/`--port`/`--sslmode`/
+`--api-key`/`--key`/`--base`/`--connection-string` are global flags stripped by
+`parseGlobalCliFlags` before dispatch reaches the `mcp install` handler, which
+just syncs from the already-applied ambient connection (same as every other
+remote command).
+
+Host resolution: `--host` → `KB_HOST`+`KB_PORT`+`KB_SSLMODE` → `KB_CONNECTION_STRING` → `config.server.host` → `localhost` (same as CLI/TUI). TUI `/skills install` therefore points MCP at whatever host the session is connected to.
 
 Writes `mcpServers.kb` with Bearer header from `--key`/`--api-key`, else `KB_SERVER_API_KEY` / `config.server.apiKey` (the flag wins when both are set; clears a stale Bearer when none is set). Merges into existing JSON; never clobbers other servers. Inspect with `kb mcp status`.
 
@@ -108,7 +121,7 @@ Unreachable server → `KbConnectionError` with `kb-server start` and `--host` /
 | Concern | Where |
 |---|---|
 | Git clone, scan, reindex | **kb-server** — `KB_GIT_REPOS`, `KB_REINDEX_INTERVAL` |
-| Connection profile | **Environment** — `KB_HOST`, `KB_PORT`, `KB_SERVER_URL`, API keys |
+| Connection profile | **Environment** — `KB_HOST`, `KB_PORT`, `KB_SSLMODE`, `KB_CONNECTION_STRING`, API keys |
 
 Operator guide copy lives in `INDEXING_SERVER_MANAGED_NOTICE` (`@kb/core/config/indexing-notice.ts`) when indexing setup is needed.
 

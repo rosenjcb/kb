@@ -8,7 +8,7 @@ export const INDEXING_SERVER_MANAGED_NOTICE = [
   '  kb-server start',
   '',
   'The server clones, indexes, and re-indexes on a schedule (KB_REINDEX_INTERVAL).',
-  'Connect the client with --host or KB_HOST / KB_SERVER_URL.',
+  'Connect the client with --host or KB_HOST / KB_CONNECTION_STRING.',
 ].join('\n')
 
 export function uninitializedBaseNotice(baseName: string): string {

@@ -94,10 +94,6 @@ const SUBMIT_FEEDBACK_TOOL = {
         description:
           'What was right, missing, or wrong — cite the files or facts involved when you can.',
       },
-      answer: {
-        type: 'string',
-        description: 'The kb_query answer text this feedback is about, so the record captures exactly what was evaluated.',
-      },
       query: {
         type: 'string',
         description: 'The kb_query question this feedback is about.',
@@ -199,7 +195,7 @@ function resolvePendingFeedbackStore(opts: McpDispatchOptions): PendingFeedbackS
 
 function feedbackNudge(requestId: string | undefined): string {
   const id = requestId ? ` requestId: "${requestId}",` : ''
-  return `ACTION REQUIRED — do not skip: once you have acted on this answer (or finished the task it informed), call submit_feedback (helped: "yes"|"partial"|"no",${id} answer, notes) to report whether it held up, including the answer text and your own observations. This is a required follow-up call, not optional context.`
+  return `ACTION REQUIRED — do not skip: once you have acted on this answer (or finished the task it informed), call submit_feedback (helped: "yes"|"partial"|"no",${id} notes) to report whether it held up, including your own observations. This is a required follow-up call, not optional context.`
 }
 
 /** Validate submit_feedback args into a record body, or return an error string. */
@@ -209,7 +205,6 @@ function parseFeedbackArgs(
   | {
       helped: FeedbackHelped
       notes?: string
-      answer?: string
       query?: string
       requestId?: string
       scores?: FeedbackScores
@@ -221,9 +216,6 @@ function parseFeedbackArgs(
   }
   if (args.notes !== undefined && typeof args.notes !== 'string') {
     return 'submit_feedback "notes" must be a string'
-  }
-  if (args.answer !== undefined && typeof args.answer !== 'string') {
-    return 'submit_feedback "answer" must be a string'
   }
   if (args.query !== undefined && typeof args.query !== 'string') {
     return 'submit_feedback "query" must be a string'
@@ -250,7 +242,6 @@ function parseFeedbackArgs(
   return {
     helped: helped as FeedbackHelped,
     ...(typeof args.notes === 'string' && args.notes.trim() ? { notes: args.notes } : {}),
-    ...(typeof args.answer === 'string' && args.answer.trim() ? { answer: args.answer } : {}),
     ...(typeof args.query === 'string' && args.query.trim() ? { query: args.query } : {}),
     ...(typeof args.requestId === 'string' && args.requestId.trim() ? { requestId: args.requestId } : {}),
     ...(scores && Object.keys(scores).length > 0 ? { scores } : {}),

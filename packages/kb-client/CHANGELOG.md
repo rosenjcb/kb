@@ -1,5 +1,13 @@
 # @kb/client
 
+## 1.3.19
+
+### Patch Changes
+
+- Consolidate connection resolution: remove `KB_SERVER_URL` in favor of decomposed `KB_HOST`/`KB_PORT`/`KB_SSLMODE` (or `KB_CONNECTION_STRING`), so a bare hostname resolves the same scheme/port whether it arrives via `--host` or a `kb://` connection string. Add `--port`, `--sslmode`, and `--api-key`/`--key` as global CLI flags. `kb mcp install` no longer hand-rolls its own flag parser. The CLI banner now auto-discovers the server's default base for display when no local base is selected.
+- Updated dependencies
+  - @kb/core@1.5.11
+
 ## 1.3.18
 
 ### Patch Changes

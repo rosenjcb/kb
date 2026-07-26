@@ -3,10 +3,10 @@ import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
 /** Canonical KB client/server environment variables (see README). */
 export const KB_ENV = {
   HOME: 'KB_HOME',
-  SERVER_URL: 'KB_SERVER_URL',
   CONNECTION_STRING: 'KB_CONNECTION_STRING',
   HOST: 'KB_HOST',
   PORT: 'KB_PORT',
+  SSLMODE: 'KB_SSLMODE',
   SERVER_API_KEY: 'KB_SERVER_API_KEY',
   BASE: 'KB_BASE',
   ACTIVE_BASE: 'KB_ACTIVE_BASE',
@@ -15,11 +15,16 @@ export const KB_ENV = {
 } as const
 
 export function readEnvHost(): string | undefined {
-  return process.env.KB_HOST?.trim() || process.env.KBHOST?.trim() || undefined
+  return process.env.KB_HOST?.trim() || undefined
+}
+
+/** Explicit `KB_PORT` only — no default applied. Callers needing a concrete bind/connect port use `readEnvPort`. */
+export function readEnvPortRaw(): string | undefined {
+  return process.env.KB_PORT?.trim() || undefined
 }
 
 export function readEnvPort(): number {
-  const raw = process.env.KB_PORT?.trim() || process.env.KBPORT?.trim()
+  const raw = readEnvPortRaw()
   if (!raw) return DEFAULT_KB_SERVER_PORT
   const port = Number.parseInt(raw, 10)
   if (!Number.isFinite(port) || port <= 0) {

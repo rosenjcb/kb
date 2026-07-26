@@ -43,8 +43,8 @@ Deep dive on HTTP wiring → [`src/api/CONNECTION.md`](./src/api/CONNECTION.md).
 | Input | Purpose |
 |-------|---------|
 | `kb --host <host:port\|url>` | Per-invocation server override (preferred for ad-hoc remote) |
-| `KB_HOST` / `KB_PORT` | Persistent default (e.g. `localhost` / `38117`) |
-| `KB_SERVER_URL` | Full URL; wins over host+port |
+| `KB_HOST` / `KB_PORT` / `KB_SSLMODE` | Persistent default (e.g. `localhost` / `38117` / `prefer`) |
+| `KB_CONNECTION_STRING` | `kb://[apikey@]host[:port]/[base][?sslmode=]`; expands into the above |
 | `KB_SERVER_API_KEY` | Bearer token when server auth is enabled |
 | `KB_BASE` / `KB_ACTIVE_BASE` | Default base name hints |
 | `~/.kb/state/active-base` | Session base (written by `kb base use`) |
@@ -56,7 +56,7 @@ Deep dive on HTTP wiring → [`src/api/CONNECTION.md`](./src/api/CONNECTION.md).
 **Humans** (CLI/TUI):
 
 ```bash
-export KB_SERVER_URL=https://kb.acme.internal:38117
+export KB_CONNECTION_STRING=kb://kb.acme.internal:38117
 export KB_SERVER_API_KEY=<token>
 kb query "how does auth work?"
 # or: kb --host https://kb.acme.internal:38117 query "…"
@@ -75,7 +75,7 @@ Indexing happens on the server via `KB_GIT_REPOS` — not `kb init` on the lapto
 
 ## Always a host
 
-The client always uses HTTP to a kb-server (`localhost:38117` by default, or `--host` / `KB_SERVER_URL`).
+The client always uses HTTP to a kb-server (`localhost:38117` by default, or `--host` / `KB_CONNECTION_STRING`).
 
 | Concern | Where |
 |---|---|

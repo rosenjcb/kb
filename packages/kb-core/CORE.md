@@ -54,7 +54,7 @@ Heavy native deps (tree-sitter, ast-grep, optional transformers) live **only her
 | Concern | Where |
 |---|---|
 | LLM keys, retrieval features | `KB_*` env vars on the server process |
-| Client connection profile | `KB_HOST`, `KB_PORT`, `KB_SERVER_URL`, etc. |
+| Client connection profile | `KB_HOST`, `KB_PORT`, `KB_SSLMODE`, `KB_CONNECTION_STRING`, etc. |
 
 ## Invariants
 

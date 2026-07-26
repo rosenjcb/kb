@@ -1,7 +1,7 @@
 /**
  * Keep agent MCP client configs pointed at the same kb-server the CLI/TUI uses.
  *
- * Host sources (same as CLI): `--host` / `KB_SERVER_URL` / `KB_HOST`+`KB_PORT`
+ * Host sources (same as CLI): `--host` / `KB_HOST`+`KB_PORT` / `KB_CONNECTION_STRING`
  * / `config.server.host`, falling back to `localhost` (same as
  * `resolveServerConnection`). Bearer from `KB_SERVER_API_KEY` /
  * `config.server.apiKey`.
@@ -15,8 +15,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
-import { KB_ENV, readEnvHost } from '@kb/core/config/kb-env.js'
-import { resolveServerConnection } from '../api/server-connection.js'
+import { hasExplicitConnectionOverride, resolveServerConnection } from '../api/server-connection.js'
 import { applyHostCliOverride } from './cli-global-flags.js'
 
 export const KB_MCP_SERVER_NAME = 'kb'
@@ -41,8 +40,8 @@ export interface SyncKbMcpOptions {
   host?: string
   /**
    * When true, refuse to write configs unless `host` is passed or
-   * `KB_SERVER_URL` / `KB_HOST` / `config.server.host` is set. Default is
-   * false — MCP install follows `resolveServerConnection` (localhost when
+   * `KB_HOST` / `KB_CONNECTION_STRING` / `config.server.host` is set. Default
+   * is false — MCP install follows `resolveServerConnection` (localhost when
    * unset), matching the CLI/TUI connection banner.
    */
   requireExplicitHost?: boolean
@@ -66,10 +65,7 @@ function isPlainObject(value: unknown): value is JsonObject {
  * not the implicit localhost default from `resolveServerConnection`.
  */
 export function hasExplicitServerHost(config?: KbConfig): boolean {
-  if (process.env[KB_ENV.SERVER_URL]?.trim()) return true
-  if (readEnvHost()) return true
-  if (config?.server?.host?.trim()) return true
-  return false
+  return hasExplicitConnectionOverride(config ?? {})
 }
 
 /** `${serverUrl}/mcp` with no trailing slash on the server root. */
@@ -213,7 +209,7 @@ function needsHostResult(): McpSyncResult[] {
       agent: 'all',
       action: 'needs-host',
       detail:
-        'Set KB_SERVER_URL or KB_HOST, or pass --host <host[:port]|url> (local or remote). Refusing to default MCP to localhost.',
+        'Set KB_HOST or KB_CONNECTION_STRING, or pass --host <host[:port]|url> (local or remote). Refusing to default MCP to localhost.',
     },
   ]
 }
@@ -345,7 +341,7 @@ export function formatMcpStatusReport(
   lines.push(
     status.explicitEnvHost
       ? `  env host:   ${status.resolvedServerUrl ?? '(set)'}`
-      : '  env host:   (unset — set KB_SERVER_URL / KB_HOST or pass --host)'
+      : '  env host:   (unset — set KB_HOST / KB_CONNECTION_STRING or pass --host)'
   )
   for (const e of status.entries) {
     lines.push(

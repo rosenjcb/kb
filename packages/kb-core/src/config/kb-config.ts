@@ -174,17 +174,16 @@ function buildConfigFromEnv(bases: {
 
   if (
     host ||
-    process.env.KB_SERVER_URL?.trim() ||
-    process.env.KB_SERVER_API_KEY?.trim() ||
-    process.env.KB_BASE?.trim() ||
-    process.env.KB_PORT?.trim() ||
-    process.env.KBPORT?.trim()
+    process.env[KB_ENV.PORT]?.trim() ||
+    process.env[KB_ENV.SSLMODE]?.trim() ||
+    process.env[KB_ENV.SERVER_API_KEY]?.trim() ||
+    process.env[KB_ENV.BASE]?.trim()
   ) {
     config.server = {
       host: host ?? 'localhost',
       port: readEnvPort(),
-      apiKey: process.env.KB_SERVER_API_KEY?.trim(),
-      base: process.env.KB_BASE?.trim(),
+      apiKey: process.env[KB_ENV.SERVER_API_KEY]?.trim(),
+      base: process.env[KB_ENV.BASE]?.trim(),
     }
   }
 

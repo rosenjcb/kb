@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  discoverRemoteDefaultBase,
   dispatchRemoteChatStreamEvent,
   isClientLocalCommand,
 } from '@kb/client/cli/remote-commands.js'
@@ -23,6 +24,30 @@ describe('isClientLocalCommand', () => {
     expect(isClientLocalCommand(['base', 'list'])).toBe(false)
     expect(isClientLocalCommand(['base', 'delete', 'x', '--force'])).toBe(false)
     expect(isClientLocalCommand(['docs', 'list'])).toBe(false)
+  })
+})
+
+describe('discoverRemoteDefaultBase', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('[TC-52] returns the base reported by the server health probe', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ ok: true, base: 'raylib' }), { status: 200 })),
+    )
+    await expect(discoverRemoteDefaultBase({})).resolves.toBe('raylib')
+  })
+
+  it('[TC-53] returns undefined when the server is unreachable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('ECONNREFUSED')
+      }),
+    )
+    await expect(discoverRemoteDefaultBase({})).resolves.toBeUndefined()
   })
 })
 
