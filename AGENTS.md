@@ -87,11 +87,16 @@ from the repo root. Standard dev commands live in
   entry as an `Authorization` header — run `kb mcp install` from a shell without
   it for a key-free entry. Re-point/remove with `kb mcp install --host <url>` /
   `kb mcp uninstall`; inspect with `kb mcp status`. The `kb_query` MCP tool takes
-  arg `q` (not `query`). A second MCP tool, `submit_feedback` (`helped` =
-  `yes`/`partial`/`no`, optional `notes`/`query`/`requestIds`/`scores`), records
-  answer-quality feedback to `~/.kb/feedback/` on the server; `kb_query`
+  arg `q` (not `query`). Two more MCP tools close the feedback loop:
+  `submit_feedback` (`helped` = `yes`/`partial`/`no`, optional
+  `notes`/`answer`/`query`/`requestId`/`scores` — one `requestId` per call, no
+  array batching; omit it for general feedback) records answer-quality feedback
+  to `~/.kb/feedback/` on the server and echoes the full record back; `kb_query`
   responses echo a `requestId` to reference in it, and `KB_FEEDBACK_SAMPLE_RATE`
-  (server-side, default 0) makes a sampled fraction of responses ask for it.
+  (server-side, default 0) sets a top-level `AGENT_INSTRUCTION` key (not buried
+  in `notes`) on a sampled fraction of responses asking for it, queuing that
+  `requestId` in an in-memory pending store; `get_feedback_requests` lists
+  what's still outstanding in that queue.
 - **`kb skills install` is the fuller setup** (see
   `packages/kb-client/src/cli/skill-installer.ts`): it also installs the
   `kb:*` skill files, a profile blurb (`~/.claude/CLAUDE.md` etc.), and the
@@ -99,9 +104,10 @@ from the repo root. Standard dev commands live in
   hook in `~/.claude/settings.json` — nudges agents to call `kb_query` before
   `grep`/`rg`/`find`/`Grep`/`Glob`) and the **end-of-session feedback hook**
   (`~/.kb/hooks/kb-feedback.sh`, Claude Code only: tracks kb_query use per
-  session, then asks once for `submit_feedback` at the first `git push` — or by
-  blocking the first Stop — after the work is validated; opt out with
-  `KB_FEEDBACK_REMINDER=false`). It **re-syncs MCP config to localhost by
+  session, then asks once — at the first `git push`, or by blocking the first
+  Stop — to call `get_feedback_requests` and resolve what it returns via
+  `submit_feedback`; opt out with `KB_FEEDBACK_REMINDER=false`). It **re-syncs
+  MCP config to localhost by
   default**, so run it as `kb --host https://kb-demo.fly.dev skills install`
   (host flag goes before the subcommand) to keep the remote entry. Reverse with
   `kb skills uninstall`.

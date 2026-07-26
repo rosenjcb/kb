@@ -32,15 +32,15 @@ export interface QueryFeedbackRecord {
   /** Where the feedback arrived from. MCP is the only writer today. */
   source: 'mcp'
   /** requestId of the submit_feedback call itself (joins its own RunReport line). */
-  requestId?: string
+  feedbackRequestId?: string
   helped: FeedbackHelped
   notes?: string
   /** The kb_query answer text this feedback is about, as echoed by the agent. */
   answer?: string
-  /** The kb_query question(s) this feedback is about, as echoed by the agent. */
+  /** The kb_query question this feedback is about, as echoed by the agent. */
   query?: string
-  /** requestId values echoed from earlier kb_query responses (joins their RunReport lines). */
-  requestIds?: string[]
+  /** requestId of the specific kb_query response this feedback answers, if any (joins its RunReport line). */
+  requestId?: string
   scores?: FeedbackScores
 }
 

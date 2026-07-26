@@ -4,16 +4,23 @@
  * `kb_query` is an **agent-to-agent** channel: a coding agent asks the knowledge
  * base a direct question in plain terms and gets a direct, synthesized answer
  * plus compact source citations (`path (symbol)`) — not a raw fact dump to grep
- * through. The MCP surface is exactly two tools — `kb_query` and its feedback
- * channel `submit_feedback` — and kb_query always synthesizes; the citations
- * are physical file paths so the caller knows exactly what to open. The full
- * evidence payload (per-fact snippets, tags, retrieval metadata) is opt-in via
- * `verbose: true`. (A fact-id drill-down tool may return later.)
+ * through. The MCP surface is exactly three tools — `kb_query`, its feedback
+ * channel `submit_feedback`, and `get_feedback_requests` — and kb_query always
+ * synthesizes; the citations are physical file paths so the caller knows
+ * exactly what to open. The full evidence payload (per-fact snippets, tags,
+ * retrieval metadata) is opt-in via `verbose: true`. (A fact-id drill-down tool
+ * may return later.)
  *
  * `submit_feedback` closes the loop: agents report whether a kb_query answer
- * held up once they acted on it. A sampled nudge (KB_FEEDBACK_SAMPLE_RATE) is
- * appended to kb_query responses to prompt the call, and every kb_query payload
+ * held up once they acted on it, one `requestId` per call (no batching — a call
+ * with no `requestId` is general feedback not tied to a specific query). A
+ * sampled nudge (KB_FEEDBACK_SAMPLE_RATE) sets a top-level `AGENT_INSTRUCTION`
+ * key on kb_query responses to prompt the call, and every kb_query payload
  * carries the server `requestId` so feedback joins the RunReport telemetry.
+ * Each sampled nudge also queues its `requestId` in `PendingFeedbackStore`;
+ * `get_feedback_requests` lists what's still outstanding so a session can defer
+ * feedback to a natural checkpoint and drain the queue precisely instead of
+ * answering immediately or re-scraping past responses for ids.
  */
 
 import type { KbService } from '@kb/core/service/kb-service.js'
@@ -24,6 +31,7 @@ import {
   type CallToolResult,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
+import { PendingFeedbackStore } from './pending-feedback-store.js'
 import {
   type FeedbackHelped,
   type FeedbackScores,
@@ -69,17 +77,17 @@ const FEEDBACK_SCORE_AXES = [
 const SUBMIT_FEEDBACK_TOOL = {
   name: 'submit_feedback',
   description:
-    'Report whether a kb_query answer held up once you acted on it. Call this after ' +
-    'finishing the work the answer informed — especially when a kb_query response asked ' +
-    'for feedback. One call can cover several queries: echo their requestIds, include the ' +
-    'answer text, and say what was right, missing, or wrong in notes.',
+    'Report whether a kb_query answer held up once you acted on it. Pass requestId to answer ' +
+    'a specific query — one returned by get_feedback_requests, or echoed by a kb_query ' +
+    'response — or omit it for general feedback not tied to one query. One call reports on ' +
+    'exactly one requestId (no batching); call it again for another.',
   inputSchema: {
     type: 'object',
     properties: {
       helped: {
         type: 'string',
         enum: ['yes', 'partial', 'no'],
-        description: 'Did the kb_query answer(s) help you complete the task?',
+        description: 'Did the kb_query answer help you complete the task?',
       },
       notes: {
         type: 'string',
@@ -92,12 +100,13 @@ const SUBMIT_FEEDBACK_TOOL = {
       },
       query: {
         type: 'string',
-        description: 'The kb_query question(s) this feedback is about.',
+        description: 'The kb_query question this feedback is about.',
       },
-      requestIds: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'requestId values echoed from the kb_query responses this feedback covers.',
+      requestId: {
+        type: 'string',
+        description:
+          'requestId of the specific kb_query response this feedback answers — from ' +
+          'get_feedback_requests or echoed by that response. Omit for general feedback.',
       },
       scores: {
         type: 'object',
@@ -113,6 +122,19 @@ const SUBMIT_FEEDBACK_TOOL = {
       },
     },
     required: ['helped'],
+    additionalProperties: false,
+  },
+} as const
+
+const GET_FEEDBACK_REQUESTS_TOOL = {
+  name: 'get_feedback_requests',
+  description:
+    'List kb_query answers still awaiting feedback (sampled via a prior AGENT_INSTRUCTION). ' +
+    'Call this at a natural checkpoint — e.g. once the work is validated — then resolve each ' +
+    'entry with its own submit_feedback call (requestId + helped).',
+  inputSchema: {
+    type: 'object',
+    properties: {},
     additionalProperties: false,
   },
 } as const
@@ -138,6 +160,8 @@ export interface McpDispatchOptions {
   random?: () => number
   /** Overrides the default on-disk feedback store (tests). */
   feedbackStore?: QueryFeedbackStore
+  /** Overrides the default in-memory pending-feedback store (tests). */
+  pendingFeedbackStore?: PendingFeedbackStore
 }
 
 function textResult(payload: unknown): McpToolCallResult {
@@ -165,9 +189,17 @@ function resolveFeedbackStore(opts: McpDispatchOptions): QueryFeedbackStore {
   return sharedFeedbackStore
 }
 
+let sharedPendingFeedbackStore: PendingFeedbackStore | undefined
+
+function resolvePendingFeedbackStore(opts: McpDispatchOptions): PendingFeedbackStore {
+  if (opts.pendingFeedbackStore) return opts.pendingFeedbackStore
+  sharedPendingFeedbackStore ??= new PendingFeedbackStore()
+  return sharedPendingFeedbackStore
+}
+
 function feedbackNudge(requestId: string | undefined): string {
-  const ids = requestId ? ` requestIds: ["${requestId}"],` : ''
-  return `ACTION REQUIRED — do not skip: once you have acted on this answer (or finished the task it informed), call submit_feedback (helped: "yes"|"partial"|"no",${ids} answer, notes) to report whether it held up, including the answer text and your own observations. This is a required follow-up call, not optional context.`
+  const id = requestId ? ` requestId: "${requestId}",` : ''
+  return `ACTION REQUIRED — do not skip: once you have acted on this answer (or finished the task it informed), call submit_feedback (helped: "yes"|"partial"|"no",${id} answer, notes) to report whether it held up, including the answer text and your own observations. This is a required follow-up call, not optional context.`
 }
 
 /** Validate submit_feedback args into a record body, or return an error string. */
@@ -179,7 +211,7 @@ function parseFeedbackArgs(
       notes?: string
       answer?: string
       query?: string
-      requestIds?: string[]
+      requestId?: string
       scores?: FeedbackScores
     }
   | string {
@@ -196,12 +228,8 @@ function parseFeedbackArgs(
   if (args.query !== undefined && typeof args.query !== 'string') {
     return 'submit_feedback "query" must be a string'
   }
-  let requestIds: string[] | undefined
-  if (args.requestIds !== undefined) {
-    if (!Array.isArray(args.requestIds) || args.requestIds.some(id => typeof id !== 'string')) {
-      return 'submit_feedback "requestIds" must be an array of strings'
-    }
-    requestIds = args.requestIds as string[]
+  if (args.requestId !== undefined && typeof args.requestId !== 'string') {
+    return 'submit_feedback "requestId" must be a string'
   }
   let scores: FeedbackScores | undefined
   if (args.scores !== undefined) {
@@ -224,16 +252,17 @@ function parseFeedbackArgs(
     ...(typeof args.notes === 'string' && args.notes.trim() ? { notes: args.notes } : {}),
     ...(typeof args.answer === 'string' && args.answer.trim() ? { answer: args.answer } : {}),
     ...(typeof args.query === 'string' && args.query.trim() ? { query: args.query } : {}),
-    ...(requestIds && requestIds.length > 0 ? { requestIds } : {}),
+    ...(typeof args.requestId === 'string' && args.requestId.trim() ? { requestId: args.requestId } : {}),
     ...(scores && Object.keys(scores).length > 0 ? { scores } : {}),
   }
 }
 
-/** Build the MCP tool list — the agent-to-agent `kb_query` tool plus `submit_feedback`. */
+/** Build the MCP tool list — kb_query plus its feedback channel and queue. */
 export function buildMcpToolList(_service: KbService): McpToolDescriptor[] {
   return [
     { ...KB_QUERY_TOOL, inputSchema: { ...KB_QUERY_TOOL.inputSchema } },
     { ...SUBMIT_FEEDBACK_TOOL, inputSchema: { ...SUBMIT_FEEDBACK_TOOL.inputSchema } },
+    { ...GET_FEEDBACK_REQUESTS_TOOL, inputSchema: { ...GET_FEEDBACK_REQUESTS_TOOL.inputSchema } },
   ]
 }
 
@@ -245,16 +274,20 @@ export async function dispatchMcpToolCall(
   opts: McpDispatchOptions = {}
 ): Promise<McpToolCallResult> {
   try {
+    if (name === GET_FEEDBACK_REQUESTS_TOOL.name) {
+      return textResult({ pending: resolvePendingFeedbackStore(opts).list() })
+    }
     if (name === SUBMIT_FEEDBACK_TOOL.name) {
       const parsed = parseFeedbackArgs(args)
       if (typeof parsed === 'string') return errorResult(parsed)
       const record: QueryFeedbackRecord = {
         ts: new Date().toISOString(),
         source: 'mcp',
-        ...(opts.requestId ? { requestId: opts.requestId } : {}),
+        ...(opts.requestId ? { feedbackRequestId: opts.requestId } : {}),
         ...parsed,
       }
       await resolveFeedbackStore(opts).append(record)
+      if (parsed.requestId) resolvePendingFeedbackStore(opts).resolve(parsed.requestId)
       // Echo the recorded feedback back verbatim so the caller can confirm what was
       // actually captured, not just that the call succeeded.
       return textResult({
@@ -288,6 +321,7 @@ export async function dispatchMcpToolCall(
       const random = opts.random ?? Math.random
       if (rate > 0 && random() < rate) {
         body.AGENT_INSTRUCTION = feedbackNudge(opts.requestId)
+        if (opts.requestId) resolvePendingFeedbackStore(opts).add(opts.requestId, q)
       }
     }
     return textResult(body)

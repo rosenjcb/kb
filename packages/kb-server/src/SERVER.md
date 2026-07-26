@@ -122,10 +122,11 @@ claude mcp add --transport http -s user kb http://localhost:38117/mcp \
   --header "Authorization: Bearer ${KB_SERVER_API_KEY}"
 ```
 
-**Tools exposed:** `kb_query` plus its feedback channel `submit_feedback`
-(nothing else). `kb_query` is an **agent-to-agent** channel: the client asks a
-direct natural-language question and always gets an answer-first response. The
-**default payload is trimmed** to `answer` + `sources` (compact citations,
+**Tools exposed:** `kb_query`, its feedback channel `submit_feedback`, and the
+pending-feedback queue `get_feedback_requests` (nothing else). `kb_query` is an
+**agent-to-agent** channel: the client asks a direct natural-language question
+and always gets an answer-first response. The **default payload is trimmed**
+to `query` (echoed back) + `answer` + `sources` (compact citations,
 `path (symbol)`, deduped per file and capped at 5) plus `confidence`,
 `requestId` (for feedback correlation — it matches the `x-request-id` header
 and the RunReport `sessionId` in `~/.kb/logs/`), and optional `notes` — a
@@ -136,16 +137,25 @@ snippets, tags, `retrieval` metadata) is opt-in via `verbose: true`. No
 later.
 
 **Feedback loop:** `submit_feedback` (args: `helped` = `yes`/`partial`/`no`,
-optional `notes`, `query`, `requestIds`, and 0–4 `scores` on the evaluation
-axes) appends one NDJSON line per call to `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl`
-(`~/.kb/feedback/` by default); writes never fail the response. To prompt
-agents, set `KB_FEEDBACK_SAMPLE_RATE` (float `0`–`1`, default `0` = off): that
-fraction of trimmed `kb_query` responses carries a `notes` entry asking the
-agent to call `submit_feedback` with the response's `requestId`. The stronger
-signal is end-of-session: `kb skills install` registers a Claude Code hook
-(`~/.kb/hooks/kb-feedback.sh`) that tracks kb_query use per agent session and
-asks once for `submit_feedback` at the first `git push` (or when the session
-stops) — after the work has been validated, when the judgment is trustworthy.
+optional `notes`, `answer`, `query`, `requestId`, and 0–4 `scores` on the
+evaluation axes) appends one NDJSON line per call to
+`$KB_HOME/feedback/<YYYY-MM-DD>.jsonl` (`~/.kb/feedback/` by default) and
+echoes the full recorded feedback back in its response for confirmation;
+writes never fail the response. `requestId` answers one specific `kb_query`
+response — no array batching, one call per `requestId` — or is omitted
+entirely for general feedback not tied to a query. To prompt agents, set
+`KB_FEEDBACK_SAMPLE_RATE` (float `0`–`1`, default `0` = off): that fraction of
+trimmed `kb_query` responses carries a top-level `AGENT_INSTRUCTION` key (never
+buried in `notes`, which stays advisory-only) asking the agent to call
+`submit_feedback` with the response's `requestId`, and queues that `requestId`
+in an in-memory, TTL-capped pending-feedback store. `get_feedback_requests`
+lists what's still outstanding in that queue, so a session can defer feedback
+to a checkpoint and resolve precisely what was actually sampled instead of
+re-scraping past responses for ids. The stronger signal is end-of-session:
+`kb skills install` registers a Claude Code hook (`~/.kb/hooks/kb-feedback.sh`)
+that tracks kb_query use per agent session and — at the first `git push` (or
+when the session stops), after the work has been validated — nudges the agent
+once to call `get_feedback_requests` and resolve what it returns.
 
 ### Endpoints (`kb-server start [--with-mcp] [--with-slack]`)
 

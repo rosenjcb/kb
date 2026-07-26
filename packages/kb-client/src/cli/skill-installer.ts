@@ -367,8 +367,11 @@ export const CLAUDE_KB_FEEDBACK_MCP_MATCHER = 'mcp__kb__kb_query|mcp__kb__submit
  * End-of-session feedback hook (Claude Code only — it is the only provider here
  * with PostToolUse/Stop JSON hook semantics). Immediate post-query judgment is
  * too early to be trustworthy, so this waits until the work is validated:
- * - PostToolUse on the kb MCP tools records per-session kb_query requestIds
- *   (and a done-marker once submit_feedback is called);
+ * - PostToolUse on the kb MCP tools records per-session kb_query use (and a
+ *   done-marker once submit_feedback is called) — it does not itself track
+ *   which requestIds are outstanding; that queue lives server-side
+ *   (PendingFeedbackStore) behind the get_feedback_requests MCP tool, so the
+ *   nudge below just points the agent at it instead of re-scraping ids;
  * - PreToolUse on Bash injects one submit_feedback reminder at the first
  *   `git push` — the moment the answers have been proven out;
  * - Stop blocks once, as a fallback for sessions that never push.
@@ -415,23 +418,9 @@ def touch(marker, text=""):
     except OSError:
         pass  # unwritable state dir must not break the hook
 
-def walk_strings(x, out):
-    if isinstance(x, str):
-        out.append(x)
-    elif isinstance(x, dict):
-        for v in x.values():
-            walk_strings(v, out)
-    elif isinstance(x, list):
-        for v in x:
-            walk_strings(v, out)
-
 if event == "PostToolUse":
     if tool.endswith("__kb_query"):
-        chunks = []
-        walk_strings(d.get("tool_response") or d.get("toolResponse") or {}, chunks)
-        q = chr(34)
-        ids = re.findall(q + "requestId" + q + ": *" + q + "([^" + q + "]+)" + q, chr(10).join(chunks))
-        touch(used_marker, "".join(i + chr(10) for i in ids[:3]))
+        touch(used_marker)
     elif tool.endswith("__submit_feedback"):
         touch(done_marker)
     sys.exit(0)
@@ -443,27 +432,14 @@ if not os.path.exists(used_marker):
 if os.path.exists(done_marker) or os.path.exists(nudged_marker):
     sys.exit(0)
 
-def request_ids():
-    try:
-        with open(used_marker) as f:
-            ids = [line.strip() for line in f if line.strip()]
-    except OSError:
-        return []
-    seen = []
-    for i in ids:
-        if i not in seen:
-            seen.append(i)
-    return seen[-10:]
-
 def build_msg():
-    ids = request_ids()
-    idpart = ""
-    if ids:
-        idpart = " Echo requestIds " + json.dumps(ids) + " so the feedback joins those queries."
     return (
         "You used the kb MCP tool kb_query this session. Now that the work is done, "
-        "call submit_feedback once: helped (yes|partial|no) plus notes on what the "
-        "answers got right or missed." + idpart
+        "call get_feedback_requests to see which of your queries are still waiting on "
+        "feedback, then resolve each entry with its own submit_feedback call "
+        "(requestId + helped yes|partial|no plus notes) -- one requestId per call, no "
+        "batching. If nothing is pending, a single general submit_feedback call (no "
+        "requestId) covering the session is still welcome."
     )
 
 if event == "PreToolUse":

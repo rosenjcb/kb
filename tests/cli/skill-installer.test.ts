@@ -629,6 +629,7 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
     const content = await readFile(scriptPath, 'utf8')
     expect(content).toContain('#!/usr/bin/env bash')
     expect(content).toContain('submit_feedback')
+    expect(content).toContain('get_feedback_requests')
 
     const raw = await readFile(path.join(fakeHome, '.claude', 'settings.json'), 'utf8')
     const settings = JSON.parse(raw)
@@ -648,7 +649,7 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
     expect(stop).toBeDefined()
   })
 
-  it('[TC-635] Given a kb_query PostToolUse event, then records the requestId marker and stays silent', async () => {
+  it('[TC-635] Given a kb_query PostToolUse event, then records the used marker and stays silent', async () => {
     const scriptPath = await installedFeedbackScript()
     const stateDir = path.join(tempDir, 'fb-state-record')
     const stdout = await runFeedback(scriptPath, kbQueryEvent('s1'), stateDir)
@@ -657,10 +658,9 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
     const files = await readdir(stateDir)
     const used = files.find(f => f.startsWith('kb-feedback-used-'))
     expect(used).toBeDefined()
-    expect(await readFile(path.join(stateDir, used as string), 'utf8')).toContain('req-abc')
   })
 
-  it('[TC-636] Given git push after kb_query use, then injects a submit_feedback reminder with the recorded requestIds', async () => {
+  it('[TC-636] Given git push after kb_query use, then injects a submit_feedback reminder pointing at get_feedback_requests', async () => {
     const scriptPath = await installedFeedbackScript()
     const stateDir = path.join(tempDir, 'fb-state-push')
     await runFeedback(scriptPath, kbQueryEvent('s1'), stateDir)
@@ -676,7 +676,7 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
     )
     const parsed = JSON.parse(stdout)
     expect(parsed.hookSpecificOutput.additionalContext).toContain('submit_feedback')
-    expect(parsed.hookSpecificOutput.additionalContext).toContain('req-abc')
+    expect(parsed.hookSpecificOutput.additionalContext).toContain('get_feedback_requests')
 
     // Non-push Bash stays silent even with the marker set (fresh session key).
     await runFeedback(scriptPath, kbQueryEvent('s2'), stateDir)
