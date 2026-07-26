@@ -5,7 +5,7 @@ sources: [./]
 tests: [./server.http, ./slack.http]
 description: Black-box HTTP and Slack contract tests for kb-server via httpyac
 tags: [spec, http, integration]
-timestamp: 2026-07-26T22:15:00Z
+timestamp: 2026-07-26T22:25:00Z
 ---
 
 ### Intro
@@ -34,7 +34,7 @@ Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md).
 | FR-3 | Query rejects missing or invalid API keys |
 | FR-4 | Chat endpoint streams multi-turn SSE sessions |
 | FR-5 | Index stays fresh via `KB_REINDEX_INTERVAL` and/or offline `kb-server scan` |
-| FR-6 | MCP Streamable HTTP exposes initialize, tools/list, and tools/call for `kb_query` / `submit_feedback` / `get_feedback_requests` over stateful sessions (`mcp-session-id`); `submit_feedback` takes a single string `requestId` (not `requestIds[]`) |
+| FR-6 | [UPDATED] MCP Streamable HTTP exposes initialize, tools/list, and tools/call for `kb_query` / `submit_feedback` / `get_feedback_requests` over stateful sessions (`mcp-session-id` after initialize); `submit_feedback` takes a single string `requestId` (not `requestIds[]`); responses may be JSON or SSE depending on `KB_MCP_ELICITATION` (default on → SSE) |
 | FR-7 | Slack webhook verifies signatures and acks events |
 
 ### QA Test Cases

@@ -41,7 +41,7 @@ describe('mcp-feedback-elicitation helpers', () => {
     expect(parseElicitedHelped(1)).toBeUndefined()
   })
 
-  it('KB_MCP_ELICITATION defaults to true; only false opts out', () => {
+  it('[TC-144] KB_MCP_ELICITATION defaults to true; only false opts out', () => {
     expect(isMcpElicitationEnvEnabled(undefined)).toBe(true)
     expect(isMcpElicitationEnvEnabled('')).toBe(true)
     expect(isMcpElicitationEnvEnabled('true')).toBe(true)
