@@ -1,16 +1,10 @@
 # @kb/client
 
-## 1.4.1
+## 1.3.18
 
 ### Patch Changes
 
-- Rework the end-of-session `kb-feedback.sh` hook: instead of scraping and echoing kb_query requestIds, it now points agents at the new `get_feedback_requests` MCP tool and its singular, non-batched `submit_feedback` requestId.
-
-## 1.4.0
-
-### Minor Changes
-
-- `kb skills install` now also registers an end-of-session feedback hook for Claude Code (`~/.kb/hooks/kb-feedback.sh`): it records each session's kb_query requestIds via PostToolUse, then reminds the agent once to call the `submit_feedback` MCP tool — at the first `git push`, or by blocking the first Stop as a fallback — so answer-quality feedback arrives after the work is validated instead of right after the query. Silent once feedback is submitted, after one nudge, when kb_query was never used, or with `KB_FEEDBACK_REMINDER=false`; `kb skills uninstall` removes the hook entries.
+- `kb skills install` now also registers an end-of-session feedback hook for Claude Code (`~/.kb/hooks/kb-feedback.sh`): it records that the session used kb_query via PostToolUse, then reminds the agent once — at the first `git push`, or by blocking the first Stop as a fallback — to call the new `get_feedback_requests` MCP tool and resolve what it returns via `submit_feedback` (one `requestId` per call, no batching), so answer-quality feedback arrives after the work is validated instead of right after the query. Silent once feedback is submitted, after one nudge, when kb_query was never used, or with `KB_FEEDBACK_REMINDER=false`; `kb skills uninstall` removes the hook entries.
 
 ## 1.3.17
 
