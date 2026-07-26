@@ -246,7 +246,10 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 
 - Retrieval via `runQueryPipeline` or `streamChatTurn` only.
 - `reindex` is single-flight (`isReindexing()`).
-- MCP HTTP is stateless — fresh server + transport per request.
+- MCP HTTP is **stateful** — initialize returns `mcp-session-id`; subsequent
+  POST/GET/DELETE reuse that session's server+transport (required for
+  elicitation). Default POST responses are JSON; `KB_MCP_ELICITATION=true`
+  switches to SSE POST streams.
 - Fresh-volume bootstrap runs after `listen()` so startup probes can pass during long first indexing.
 - **503 on query/chat/MCP only when `health.indexing` (bootstrap)** — never solely because `reindexing` is true.
 - Empty `apiKeys` ⇒ authorize all protected routes; non-empty ⇒ Bearer / `X-Api-Key` required.

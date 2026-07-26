@@ -4,7 +4,7 @@ title: HTTP Collection and Integration Suite
 description: httpyac requests, OpenAPI spec, and env config for the kb server REST + MCP surface.
 resource: ./http
 tags: [http, httpyac, integration-test, openapi, server, slack]
-timestamp: 2026-06-24T00:00:00Z
+timestamp: 2026-07-26T22:15:00Z
 ---
 
 # HTTP Collection and Integration Suite

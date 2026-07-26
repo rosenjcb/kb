@@ -54,7 +54,8 @@ function seedBase(kbHome: string, name: string, marker = 'INDEX'): string {
   return baseDir
 }
 
-describe('kb-server export / import', () => {
+// VACUUM INTO + git seed is slow under full-suite parallel load; keep above 5s default.
+describe('kb-server export / import', { timeout: 30_000 }, () => {
   let kbHome: string
   let bundle: string
   const prevHome = process.env.KB_HOME
