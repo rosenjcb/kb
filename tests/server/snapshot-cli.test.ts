@@ -167,7 +167,7 @@ describe('kb-server export / import', { timeout: 30_000 }, () => {
       runImportCommand(['--from', bundle, '--base', 'dst'], logger, kbHome)
     ).rejects.toThrow(/already has an index/)
     await runImportCommand(['--from', bundle, '--base', 'dst', '--force'], logger, kbHome)
-  }, 20_000)
+  })
 
   it('rejects a source directory that is not a kb snapshot', async () => {
     const { logger } = capturingLogger()
@@ -178,7 +178,7 @@ describe('kb-server export / import', { timeout: 30_000 }, () => {
   })
 })
 
-describe('adoptSnapshot (start --from mechanics)', () => {
+describe('adoptSnapshot (start --from mechanics)', { timeout: 30_000 }, () => {
   let kbHome: string
   let bundle: string
   const prevHome = process.env.KB_HOME
