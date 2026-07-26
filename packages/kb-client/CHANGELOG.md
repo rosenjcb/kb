@@ -1,5 +1,11 @@
 # @kb/client
 
+## 1.4.1
+
+### Patch Changes
+
+- Rework the end-of-session `kb-feedback.sh` hook: instead of scraping and echoing kb_query requestIds, it now points agents at the new `get_feedback_requests` MCP tool and its singular, non-batched `submit_feedback` requestId.
+
 ## 1.4.0
 
 ### Minor Changes
