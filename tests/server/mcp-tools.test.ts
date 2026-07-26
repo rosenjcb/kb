@@ -135,7 +135,7 @@ describe('submit_feedback and feedback nudge', () => {
     return { dir, store: new QueryFeedbackStore(dir) }
   }
 
-  it('[TC-129] records helped/notes/query/requestIds/scores as an NDJSON record and returns ok', async () => {
+  it('[TC-129] records helped/notes/answer/query/requestIds/scores as an NDJSON record and returns ok', async () => {
     const { dir, store } = makeTempStore()
     const result = await dispatchMcpToolCall(
       makeStubService(),
@@ -143,6 +143,7 @@ describe('submit_feedback and feedback nudge', () => {
       {
         helped: 'partial',
         notes: 'answer cited the right file but missed the retry path',
+        answer: 'Retries use exponential backoff via retryWithBackoff().',
         query: 'how does auth retry work?',
         requestIds: ['req-1', 'req-2'],
         scores: { correctness: 3, usefulness: 2 },
@@ -158,6 +159,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(record.requestId).toBe('req-9')
     expect(record.helped).toBe('partial')
     expect(record.notes).toContain('missed the retry path')
+    expect(record.answer).toBe('Retries use exponential backoff via retryWithBackoff().')
     expect(record.query).toBe('how does auth retry work?')
     expect(record.requestIds).toEqual(['req-1', 'req-2'])
     expect(record.scores).toEqual({ correctness: 3, usefulness: 2 })
@@ -189,7 +191,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(JSON.parse(result.content[0].text).requestId).toBe('req-42')
   })
 
-  it('[TC-132] appends the sampled feedback nudge to notes when the sampling gate passes', async () => {
+  it('[TC-132] sets a top-level AGENT_INSTRUCTION nudge (not buried in notes) when the sampling gate passes', async () => {
     const result = await dispatchMcpToolCall(
       makeStubService(),
       'kb_query',
@@ -197,26 +199,89 @@ describe('submit_feedback and feedback nudge', () => {
       { requestId: 'req-7', feedbackSampleRate: 1, random: () => 0 }
     )
     const body = JSON.parse(result.content[0].text)
-    expect(Array.isArray(body.notes)).toBe(true)
-    const nudge = body.notes.at(-1)
-    expect(nudge).toContain('submit_feedback')
-    expect(nudge).toContain('req-7')
+    expect(typeof body.AGENT_INSTRUCTION).toBe('string')
+    expect(body.AGENT_INSTRUCTION).toContain('submit_feedback')
+    expect(body.AGENT_INSTRUCTION).toContain('req-7')
+    if (Array.isArray(body.notes)) {
+      expect(body.notes.some((n: string) => n.includes('submit_feedback'))).toBe(false)
+    }
   })
 
-  it('[TC-133] appends no nudge when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off)', async () => {
+  it('[TC-133] sets no AGENT_INSTRUCTION when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off)', async () => {
     vi.stubEnv('KB_FEEDBACK_SAMPLE_RATE', '')
     try {
       const unset = await dispatchMcpToolCall(makeStubService(), 'kb_query', { q: 'auth' })
-      expect(unset.content[0].text).not.toContain('submit_feedback')
+      expect(JSON.parse(unset.content[0].text).AGENT_INSTRUCTION).toBeUndefined()
       const zero = await dispatchMcpToolCall(
         makeStubService(),
         'kb_query',
         { q: 'auth' },
         { feedbackSampleRate: 0, random: () => 0 }
       )
-      expect(zero.content[0].text).not.toContain('submit_feedback')
+      expect(JSON.parse(zero.content[0].text).AGENT_INSTRUCTION).toBeUndefined()
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+
+  it('[TC-134] kb_query response echoes back the original query text', async () => {
+    const result = await dispatchMcpToolCall(makeStubService(), 'kb_query', { q: 'how does auth retry work?' })
+    expect(result.isError).toBeUndefined()
+    expect(JSON.parse(result.content[0].text).query).toBe('how does auth retry work?')
+  })
+
+  it('[TC-135] submit_feedback response echoes back the submitted query when provided, omits it when absent', async () => {
+    const { store } = makeTempStore()
+    const withQuery = await dispatchMcpToolCall(
+      makeStubService(),
+      'submit_feedback',
+      { helped: 'yes', query: 'how does auth retry work?' },
+      { feedbackStore: store }
+    )
+    expect(JSON.parse(withQuery.content[0].text).query).toBe('how does auth retry work?')
+
+    const withoutQuery = await dispatchMcpToolCall(
+      makeStubService(),
+      'submit_feedback',
+      { helped: 'yes' },
+      { feedbackStore: store }
+    )
+    expect(JSON.parse(withoutQuery.content[0].text).query).toBeUndefined()
+  })
+
+  it('[TC-136] submit_feedback records and echoes back the submitted answer text when provided', async () => {
+    const { dir, store } = makeTempStore()
+    const result = await dispatchMcpToolCall(
+      makeStubService(),
+      'submit_feedback',
+      { helped: 'yes', answer: 'Retries use exponential backoff via retryWithBackoff().' },
+      { feedbackStore: store }
+    )
+    expect(JSON.parse(result.content[0].text).answer).toBe(
+      'Retries use exponential backoff via retryWithBackoff().'
+    )
+    const date = new Date().toISOString().slice(0, 10)
+    const line = readFileSync(path.join(dir, `${date}.jsonl`), 'utf-8').trim()
+    expect(JSON.parse(line).answer).toBe('Retries use exponential backoff via retryWithBackoff().')
+  })
+
+  it('[TC-137] submit_feedback response echoes the full recorded feedback, not just query/answer', async () => {
+    const { store } = makeTempStore()
+    const result = await dispatchMcpToolCall(
+      makeStubService(),
+      'submit_feedback',
+      {
+        helped: 'partial',
+        notes: 'missed the retry path',
+        requestIds: ['req-1', 'req-2'],
+        scores: { correctness: 3 },
+      },
+      { feedbackStore: store }
+    )
+    const body = JSON.parse(result.content[0].text)
+    expect(body.helped).toBe('partial')
+    expect(body.notes).toBe('missed the retry path')
+    expect(body.requestIds).toEqual(['req-1', 'req-2'])
+    expect(body.scores).toEqual({ correctness: 3 })
   })
 })

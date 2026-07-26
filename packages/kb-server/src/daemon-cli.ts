@@ -66,6 +66,53 @@ function pidIsKbServer(pid: number): boolean | undefined {
   return /kb-server/.test(command)
 }
 
+/** Pids with an open listening socket on `port` (best-effort; `[]` if `lsof` is unavailable). */
+function pidsListeningOnPort(port: number): number[] {
+  const result = spawnSync('lsof', ['-ti', `:${port}`], { encoding: 'utf8' })
+  if (result.error || (result.stdout ?? '').trim() === '') return []
+  return (result.stdout ?? '')
+    .split('\n')
+    .map(line => Number.parseInt(line.trim(), 10))
+    .filter(pid => Number.isInteger(pid) && pid > 0)
+}
+
+/**
+ * Kill any process still listening on `port` that the pid-file handling above
+ * didn't already deal with — e.g. a prior daemon that crashed or was reparented
+ * before writing/clearing its pid file. Guarded by the same `pidIsKbServer`
+ * ownership check so an unrelated process is never signalled.
+ */
+async function killOrphansOnPort(port: number, out: ServerLogger): Promise<void> {
+  const targets = pidsListeningOnPort(port).filter(pid => pidIsKbServer(pid) !== false)
+  if (targets.length === 0) return
+
+  for (const pid of targets) {
+    try {
+      process.kill(pid, 'SIGTERM')
+    } catch {
+      // gone already
+    }
+  }
+
+  const deadline = Date.now() + 5_000
+  while (Date.now() < deadline && targets.some(isProcessAlive)) {
+    await sleep(200)
+  }
+
+  for (const pid of targets) {
+    if (!isProcessAlive(pid)) continue
+    try {
+      process.kill(pid, 'SIGKILL')
+    } catch {
+      // gone between checks
+    }
+  }
+
+  for (const pid of targets) {
+    out.log(`▶ cleaned up orphaned kb-server (pid ${pid}) still listening on :${port}.`)
+  }
+}
+
 /** Read the pid file. Returns `null` when absent, unreadable, or stale (dead pid). */
 export function readLivePid(): number | null {
   let raw: string
@@ -164,12 +211,19 @@ export async function runServerStartDaemon(args: string[], out: ServerLogger): P
   process.exitCode = 1
 }
 
-/** `kb-server stop`: SIGTERM the running server, escalate to SIGKILL, clear the pid file. */
-export async function runServerStop(out: ServerLogger): Promise<void> {
+/**
+ * `kb-server stop`: SIGTERM the running server, escalate to SIGKILL, clear the
+ * pid file, then sweep the port for orphans the pid file didn't know about
+ * (e.g. a prior daemon that crashed or got reparented before it could write or
+ * clear its pid file).
+ */
+export async function runServerStop(out: ServerLogger, args: string[] = []): Promise<void> {
+  const port = resolveDaemonPort(args)
   const pid = readLivePid()
   if (pid === null) {
     out.log('kb-server is not running.')
     removePidFile()
+    await killOrphansOnPort(port, out)
     return
   }
   // Guard against pid reuse: if the live pid clearly isn't kb-server, the pid
@@ -177,6 +231,7 @@ export async function runServerStop(out: ServerLogger): Promise<void> {
   if (pidIsKbServer(pid) === false) {
     out.error(`⚠  pid ${pid} is not kb-server (stale pid file); not stopping it.`)
     removePidFile()
+    await killOrphansOnPort(port, out)
     return
   }
   try {
@@ -184,6 +239,7 @@ export async function runServerStop(out: ServerLogger): Promise<void> {
   } catch {
     removePidFile()
     out.log('kb-server is not running.')
+    await killOrphansOnPort(port, out)
     return
   }
   const deadline = Date.now() + 10_000
@@ -191,6 +247,7 @@ export async function runServerStop(out: ServerLogger): Promise<void> {
     if (!isProcessAlive(pid)) {
       removePidFile()
       out.log(`▶ kb-server stopped (pid ${pid}).`)
+      await killOrphansOnPort(port, out)
       return
     }
     await sleep(200)
@@ -203,6 +260,7 @@ export async function runServerStop(out: ServerLogger): Promise<void> {
   }
   removePidFile()
   out.log(`▶ kb-server force-stopped (pid ${pid}).`)
+  await killOrphansOnPort(port, out)
 }
 
 /** `kb-server status`: report running/stopped, with base + version when reachable. */
@@ -230,6 +288,6 @@ export async function runServerStatus(args: string[], out: ServerLogger): Promis
 
 /** `kb-server restart`: stop (if running) then start detached. */
 export async function runServerRestart(args: string[], out: ServerLogger): Promise<void> {
-  await runServerStop(out)
+  await runServerStop(out, args)
   await runServerStartDaemon(args, out)
 }

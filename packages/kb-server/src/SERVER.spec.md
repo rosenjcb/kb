@@ -5,7 +5,7 @@ sources: [./]
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-07-26T00:00:00Z
+timestamp: 2026-07-26T11:20:00Z
 ---
 
 ### Intro
@@ -31,7 +31,7 @@ See companion doc for full vocabulary where applicable.
 | FR-1 | Stream chat synthesis over SSE |
 | FR-2 | Expose authenticated REST routes for query, chat, and health; `/healthz` is liveness (HTTP 200 when reachable) with readiness in body (`ok` / `indexing`); includes `version.server` (not `@kb/core`); empty API-key list allows open access |
 | FR-3 | KbService reads facts, reports health (`indexing` / `bootstrapProgress` / `reindexing`), and serializes reindex |
-| FR-4 | Expose an answer-first MCP tool (`kb_query`) that always synthesizes and — together with `submit_feedback` (FR-19) — never exposes other tools; the default payload is trimmed to answer + source citations, with the full evidence dump behind `verbose: true` |
+| FR-4 | Expose an answer-first MCP tool (`kb_query`) that always synthesizes and — together with `submit_feedback` (FR-19) — never exposes other tools; the default payload is trimmed to the original query + answer + source citations, with the full evidence dump behind `verbose: true` |
 | FR-5 | Parse and run periodic reindex scheduler |
 | FR-6 | Serialize IntentResult to REST JSON, and to the trimmed MCP payload (answer + deduped/capped citations + verify/grounding notes) |
 | FR-7 | Resolve bootstrap base, repos, branch, and ignore patterns from env and flags |
@@ -46,7 +46,7 @@ See companion doc for full vocabulary where applicable.
 | FR-16 | Browser CORS: reflect allow-listed `Origin` (or `*`); omit headers when CORS off / origin not listed; answer preflight `OPTIONS` with 204 without auth for allowed origins |
 | FR-17 | First-boot bootstrap (`health.indexing`) returns 503 on `/v1/query`, `/v1/chat`, and `/mcp` with progress; scheduled reindex (`health.reindexing`) does **not** block those routes |
 | FR-18 | One-shot `kb-server refresh` builds a fresh local snapshot dir for one base, from either a previous local snapshot (`--from`: adopt, re-clone/hydrate repos from `--repos`/`--branch`, incremental reindex) or bare repos with no previous snapshot (`--repos` only: full clone + index); `--from`/`--out` are local paths only (never object storage — no `gs://`/`s3://` awareness, no bucket credentials — matching the existing invariant `scan`/`export`/`import` already hold), while `--repos` is a plain `url[#branch]` list (the `KB_GIT_REPOS` convention). It manages its own throwaway bootstrap child process (spawn, health-poll, SIGTERM-then-SIGKILL on completion or timeout) internally so callers no longer hand-roll that in shell. The child's stdout/stderr are routed into this process's own stderr (fd 2) rather than discarded, so a long-running cold index of a large repo stays observable live in `docker logs`/the container's own log stream instead of silently vanishing; `--json` emits an ok/error summary on stdout, same contract style as `scan`, and is unaffected since the child's output never touches this process's own stdout (fd 1) |
-| FR-19 | Expose a `submit_feedback` MCP tool that records agent feedback (`helped` = yes/partial/no plus optional notes/query/requestIds/0–4 axis scores) as NDJSON under `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl` without ever failing the response; echo the server `requestId` in kb_query MCP payloads for correlation; and append a sampled feedback-nudge note to trimmed kb_query responses gated by `KB_FEEDBACK_SAMPLE_RATE` (float 0–1, default 0 = off) |
+| FR-19 | Expose a `submit_feedback` MCP tool that records agent feedback (`helped` = yes/partial/no plus optional notes/answer/query/requestIds/0–4 axis scores) as NDJSON under `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl` without ever failing the response, echoing the full recorded feedback (helped/notes/answer/query/requestIds/scores) back in its response for confirmation; echo the server `requestId` in kb_query MCP payloads for correlation; and set a sampled feedback nudge on a dedicated top-level `AGENT_INSTRUCTION` key (never buried inside `notes`, which stays advisory-only) on trimmed kb_query responses gated by `KB_FEEDBACK_SAMPLE_RATE` (float 0–1, default 0 = off) |
 
 ### Known issues
 
@@ -185,11 +185,15 @@ See companion doc for full vocabulary where applicable.
 | TC-126 | FR-18 | rejects `gs://`/`s3://`-scheme values for `--from`/`--out` (local-paths-only invariant; `--repos` legitimately holds `https://`/`git@` git URLs and is exempt) | pass |
 | TC-127 | FR-18 | terminates its bootstrap child process (no orphan) after both success and timeout | pass |
 | TC-128 | FR-18 | routes the bootstrap child's stdout/stderr into this process's own stderr (fd 2) instead of `stdio: 'ignore'` | pass |
-| TC-129 | FR-19 | submit_feedback records helped/notes/query/requestIds/scores as an NDJSON feedback record and returns ok | pass |
+| TC-129 | FR-19 | submit_feedback records helped/notes/answer/query/requestIds/scores as an NDJSON feedback record and returns ok | pass |
 | TC-130 | FR-19 | submit_feedback errors when helped is missing or not yes/partial/no | pass |
 | TC-131 | FR-19 | kb_query MCP payload echoes the server requestId for feedback correlation | pass |
-| TC-132 | FR-19 | appends the sampled feedback-nudge note to kb_query notes when the sampling gate passes | pass |
-| TC-133 | FR-19 | appends no nudge when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off) | pass |
+| TC-132 | FR-19 | sets a top-level AGENT_INSTRUCTION nudge (not buried in notes) when the sampling gate passes | pass |
+| TC-133 | FR-19 | sets no AGENT_INSTRUCTION when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off) | pass |
+| TC-134 | FR-4 | kb_query response echoes back the original query text | pass |
+| TC-135 | FR-19 | submit_feedback response echoes back the submitted query when provided, omits it when absent | pass |
+| TC-136 | FR-19 | submit_feedback records and echoes back the submitted answer text when provided | pass |
+| TC-137 | FR-19 | submit_feedback response echoes the full recorded feedback (helped/notes/requestIds/scores), not just query/answer | pass |
 
 ### Related docs
 

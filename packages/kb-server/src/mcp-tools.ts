@@ -16,14 +16,14 @@
  * carries the server `requestId` so feedback joins the RunReport telemetry.
  */
 
+import type { KbService } from '@kb/core/service/kb-service.js'
+import { serializeMcpQueryResult, serializeQueryResult } from '@kb/core/service/serialize.js'
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import {
-  type CallToolResult,
   CallToolRequestSchema,
+  type CallToolResult,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
-import { serializeMcpQueryResult, serializeQueryResult } from '@kb/core/service/serialize.js'
-import type { KbService } from '@kb/core/service/kb-service.js'
 import {
   type FeedbackHelped,
   type FeedbackScores,
@@ -71,8 +71,8 @@ const SUBMIT_FEEDBACK_TOOL = {
   description:
     'Report whether a kb_query answer held up once you acted on it. Call this after ' +
     'finishing the work the answer informed — especially when a kb_query response asked ' +
-    'for feedback. One call can cover several queries: echo their requestIds and say what ' +
-    'was right, missing, or wrong in notes.',
+    'for feedback. One call can cover several queries: echo their requestIds, include the ' +
+    'answer text, and say what was right, missing, or wrong in notes.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -85,6 +85,10 @@ const SUBMIT_FEEDBACK_TOOL = {
         type: 'string',
         description:
           'What was right, missing, or wrong — cite the files or facts involved when you can.',
+      },
+      answer: {
+        type: 'string',
+        description: 'The kb_query answer text this feedback is about, so the record captures exactly what was evaluated.',
       },
       query: {
         type: 'string',
@@ -163,19 +167,31 @@ function resolveFeedbackStore(opts: McpDispatchOptions): QueryFeedbackStore {
 
 function feedbackNudge(requestId: string | undefined): string {
   const ids = requestId ? ` requestIds: ["${requestId}"],` : ''
-  return `Feedback requested: after acting on this answer, call submit_feedback (helped: "yes"|"partial"|"no",${ids} notes) to report whether it held up.`
+  return `ACTION REQUIRED — do not skip: once you have acted on this answer (or finished the task it informed), call submit_feedback (helped: "yes"|"partial"|"no",${ids} answer, notes) to report whether it held up, including the answer text and your own observations. This is a required follow-up call, not optional context.`
 }
 
 /** Validate submit_feedback args into a record body, or return an error string. */
 function parseFeedbackArgs(
   args: Record<string, unknown>
-): { helped: FeedbackHelped; notes?: string; query?: string; requestIds?: string[]; scores?: FeedbackScores } | string {
+):
+  | {
+      helped: FeedbackHelped
+      notes?: string
+      answer?: string
+      query?: string
+      requestIds?: string[]
+      scores?: FeedbackScores
+    }
+  | string {
   const helped = args.helped
   if (typeof helped !== 'string' || !FEEDBACK_HELPED_VALUES.includes(helped as FeedbackHelped)) {
     return 'submit_feedback requires "helped": one of "yes", "partial", "no"'
   }
   if (args.notes !== undefined && typeof args.notes !== 'string') {
     return 'submit_feedback "notes" must be a string'
+  }
+  if (args.answer !== undefined && typeof args.answer !== 'string') {
+    return 'submit_feedback "answer" must be a string'
   }
   if (args.query !== undefined && typeof args.query !== 'string') {
     return 'submit_feedback "query" must be a string'
@@ -206,6 +222,7 @@ function parseFeedbackArgs(
   return {
     helped: helped as FeedbackHelped,
     ...(typeof args.notes === 'string' && args.notes.trim() ? { notes: args.notes } : {}),
+    ...(typeof args.answer === 'string' && args.answer.trim() ? { answer: args.answer } : {}),
     ...(typeof args.query === 'string' && args.query.trim() ? { query: args.query } : {}),
     ...(requestIds && requestIds.length > 0 ? { requestIds } : {}),
     ...(scores && Object.keys(scores).length > 0 ? { scores } : {}),
@@ -238,7 +255,13 @@ export async function dispatchMcpToolCall(
         ...parsed,
       }
       await resolveFeedbackStore(opts).append(record)
-      return textResult({ status: 'ok', message: 'Feedback recorded — thank you.' })
+      // Echo the recorded feedback back verbatim so the caller can confirm what was
+      // actually captured, not just that the call succeeded.
+      return textResult({
+        status: 'ok',
+        message: 'Feedback recorded — thank you.',
+        ...parsed,
+      })
     }
     if (name !== KB_QUERY_TOOL.name) {
       return errorResult(`Unknown or unavailable tool: ${name}`)
@@ -251,17 +274,20 @@ export async function dispatchMcpToolCall(
     // Default is the trimmed agent payload (answer + citations + notes); the full
     // fact dump and retrieval metadata are opt-in via verbose.
     const body: Record<string, unknown> = {
+      query: q,
       ...(verbose ? serializeQueryResult(result) : serializeMcpQueryResult(result)),
     }
     if (opts.requestId) body.requestId = opts.requestId
     // Sampled feedback nudge — trimmed payload only; the verbose payload has no
     // notes channel and verbose callers are debugging, not acting on answers.
+    // Lives in its own shouty top-level key rather than inside `notes`: it's a
+    // required follow-up action, not an advisory caveat, and burying it among
+    // confidence/citation notes is exactly why agents were skipping it.
     if (!verbose) {
       const rate = opts.feedbackSampleRate ?? readFeedbackSampleRate()
       const random = opts.random ?? Math.random
       if (rate > 0 && random() < rate) {
-        const notes = Array.isArray(body.notes) ? (body.notes as string[]) : []
-        body.notes = [...notes, feedbackNudge(opts.requestId)]
+        body.AGENT_INSTRUCTION = feedbackNudge(opts.requestId)
       }
     }
     return textResult(body)

@@ -35,6 +35,8 @@ export interface QueryFeedbackRecord {
   requestId?: string
   helped: FeedbackHelped
   notes?: string
+  /** The kb_query answer text this feedback is about, as echoed by the agent. */
+  answer?: string
   /** The kb_query question(s) this feedback is about, as echoed by the agent. */
   query?: string
   /** requestId values echoed from earlier kb_query responses (joins their RunReport lines). */

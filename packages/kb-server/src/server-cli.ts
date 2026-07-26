@@ -636,7 +636,7 @@ export async function runServerMain(argv: string[]): Promise<void> {
       await runServerCommand(rest, out, config)
       return
     case 'stop':
-      await runServerStop(out)
+      await runServerStop(out, rest)
       return
     case 'status':
       await runServerStatus(rest, out)
