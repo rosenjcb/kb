@@ -111,7 +111,7 @@ repo. Latest run: ~24% faster init on the kb self-check, ~46% on raylib
 (`db0870f`), with fact/doc/code-fact/docs counts identical across builds. Headline
 numbers live in `research/tables/results.tex` (see `research/README.md`).
 
-## Memory scaling on large cold indexes (issue #191)
+## Memory scaling on large cold indexes (issues #191, #196)
 
 The Fly builder (`scripts/fly/refresh.sh` → `kb-server refresh`, see
 `FLY_ORCHESTRATION.md`) OOM-killed on a cold index of the `brew`
@@ -196,10 +196,31 @@ changing them):
 - **`deleteFactsByRepo` (`tools/sqlite-kb-index.ts`)** `SELECT`s every fact id for
   a repo into memory before deleting. Only runs when a repo is removed from a
   base (not on the cold-index path this issue is about), so left as-is.
+- **`LocalEmbedder`'s one-time model load (`core/embeddings.ts`, issue #196).**
+  The default embedder backend lazily imports `@huggingface/transformers` and
+  loads the ONNX runtime + `Xenova/all-MiniLM-L6-v2` weights on the *first*
+  real `.embed()` call — which happens inside this same trailing
+  `reconcileCrossRepoEdges()` + `embedAllFacts()` block, on top of whatever the
+  process has already accumulated getting there. Measured in isolation
+  (`scripts/bench/local-embedder-load-bench.sh`, run in a real Linux
+  container — the `onnxruntime-node` native binding has no darwin/x64
+  prebuilt, so this can't be measured on every dev host): baseline ~43 MiB →
+  ~250 MiB RSS after the model is loaded, i.e. **~200 MiB** attributable to
+  the local embedder's first call, independent of (and additive with) the
+  now-bounded per-fact `embedAllFacts` cost above. This is a one-time,
+  fixed-size cost, not a leak — it doesn't grow with repo size or repeat on
+  later calls — but it lands at the same trailing point as the other
+  still-open items on this list, so on a cold build of a large enough repo it
+  can be the last straw that tips a near-the-cap process over. `KB_EMBEDDER=none`
+  (or `=gemini` with a `GEMINI_API_KEY`, which has no local model to load)
+  already exists as an escape hatch (`createEmbedder`) for memory-constrained
+  builders — e.g. the Fly builder's `brew` base — but nothing sets it
+  automatically today; enabling it per-base is an operational choice, not a
+  default-behavior change made here.
 
 ### Regression benchmark
 
-Two complementary scripts, both manual/on-demand (not wired into `pnpm test`)
+Three complementary scripts, all manual/on-demand (not wired into `pnpm test`)
 — run them after touching anything in this file's "Fixed"/"Known, not fixed"
 lists above:
 
@@ -225,6 +246,17 @@ lists above:
   observed; memory stayed flat (~215–250 MiB) through code-index and well into
   document-facts, consistent with the `embed-all-facts-fetch-bench.mjs` result
   above.
+- **`scripts/bench/local-embedder-load-bench.sh`** — isolated RSS check for
+  `LocalEmbedder`'s model load specifically (issue #196). Installs
+  `@huggingface/transformers` fresh inside a Linux container (needed because
+  the native `onnxruntime-node` binding is platform-specific — no darwin/x64
+  prebuilt, for example) and samples RSS before/after `pipeline('feature-extraction',
+  ...)` and the first `.embed()` call. Real run: baseline 43.4 MiB → 250.7 MiB
+  after model load (~207 MiB), 252.3 MiB after the first embed call. This is
+  the direct, isolated measurement issue #196's original investigation
+  couldn't get (no native binding on that dev host) — it confirms the
+  hypothesis: the local embedder's one-time load is a real, ~200 MiB fixed
+  cost, separate from the now-bounded per-fact cost above.
 
 ## Upfront Questions
 

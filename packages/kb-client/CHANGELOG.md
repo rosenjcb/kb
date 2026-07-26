@@ -1,5 +1,12 @@
 # @kb/client
 
+## 1.3.17
+
+### Patch Changes
+
+- Updated dependencies
+  - @kb/core@1.5.10
+
 ## 1.3.16
 
 ### Patch Changes

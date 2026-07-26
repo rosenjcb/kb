@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.5.10
+
+### Patch Changes
+
+- Confirm and document LocalEmbedder's one-time model-load memory cost (issue #196) in INIT.md's memory-scaling notes, with a new isolated regression bench (`scripts/bench/local-embedder-load-bench.sh`).
+
 ## 1.5.9
 
 ### Patch Changes
