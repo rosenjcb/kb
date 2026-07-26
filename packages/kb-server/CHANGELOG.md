@@ -1,5 +1,11 @@
 # kb-server
 
+## 1.6.0
+
+### Minor Changes
+
+- Prefer MCP form elicitation (yes/partial/no) for sampled kb_query feedback when `KB_MCP_ELICITATION=true` and the client supports it; fall back to AGENT_INSTRUCTION. MCP `/mcp` is now stateful (`mcp-session-id`).
+
 ## 1.5.0
 
 ### Minor Changes

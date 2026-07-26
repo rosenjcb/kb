@@ -14,10 +14,12 @@
  * `submit_feedback` closes the loop: agents report whether a kb_query answer
  * held up once they acted on it, one `requestId` per call (no batching — a call
  * with no `requestId` is general feedback not tied to a specific query). A
- * sampled nudge (KB_FEEDBACK_SAMPLE_RATE) sets a top-level `AGENT_INSTRUCTION`
- * key on kb_query responses to prompt the call, and every kb_query payload
- * carries the server `requestId` so feedback joins the RunReport telemetry.
- * Each sampled nudge also queues its `requestId` in `PendingFeedbackStore`;
+ * sampled nudge (KB_FEEDBACK_SAMPLE_RATE) prefers MCP form elicitation when the
+ * client declared that capability — asking the *user* yes/partial/no directly —
+ * and otherwise sets a top-level `AGENT_INSTRUCTION` key on kb_query responses
+ * so the agent can call `submit_feedback` later. Every kb_query payload carries
+ * the server `requestId` so feedback joins the RunReport telemetry. Each
+ * AGENT_INSTRUCTION nudge also queues its `requestId` in `PendingFeedbackStore`;
  * `get_feedback_requests` lists what's still outstanding so a session can defer
  * feedback to a natural checkpoint and drain the queue precisely instead of
  * answering immediately or re-scraping past responses for ids.
@@ -29,8 +31,19 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import {
   CallToolRequestSchema,
   type CallToolResult,
+  type ElicitRequestFormParams,
+  ElicitResultSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
+import {
+  FEEDBACK_ELICITATION_SCHEMA,
+  FEEDBACK_HELPED_VALUES,
+  type FeedbackElicitContext,
+  type FeedbackElicitOutcome,
+  clientSupportsFormElicitation,
+  feedbackElicitationMessage,
+  parseElicitedHelped,
+} from './mcp-feedback-elicitation.js'
 import { PendingFeedbackStore } from './pending-feedback-store.js'
 import {
   type FeedbackHelped,
@@ -64,8 +77,6 @@ const KB_QUERY_TOOL = {
   },
 } as const
 
-const FEEDBACK_HELPED_VALUES: readonly FeedbackHelped[] = ['yes', 'partial', 'no']
-
 const FEEDBACK_SCORE_AXES = [
   'correctness',
   'usefulness',
@@ -96,7 +107,8 @@ const SUBMIT_FEEDBACK_TOOL = {
       },
       answer: {
         type: 'string',
-        description: 'The kb_query answer text this feedback is about, so the record captures exactly what was evaluated.',
+        description:
+          'The kb_query answer text this feedback is about, so the record captures exactly what was evaluated.',
       },
       query: {
         type: 'string',
@@ -162,6 +174,18 @@ export interface McpDispatchOptions {
   feedbackStore?: QueryFeedbackStore
   /** Overrides the default in-memory pending-feedback store (tests). */
   pendingFeedbackStore?: PendingFeedbackStore
+  /**
+   * Prefer form elicitation for a sampled feedback ask. Return `unavailable` to
+   * fall back to AGENT_INSTRUCTION + pending queue. Injected in production from
+   * the live MCP `Server` when `elicitationEnabled` is true; overridden in unit tests.
+   */
+  elicitFeedback?: (ctx: FeedbackElicitContext) => Promise<FeedbackElicitOutcome>
+  /**
+   * When true, wire live `server.elicitInput` for sampled feedback and use SSE
+   * POST streams (`KB_MCP_ELICITATION=true`). Default false — JSON responses +
+   * AGENT_INSTRUCTION fallback only.
+   */
+  elicitationEnabled?: boolean
 }
 
 function textResult(payload: unknown): McpToolCallResult {
@@ -203,9 +227,7 @@ function feedbackNudge(requestId: string | undefined): string {
 }
 
 /** Validate submit_feedback args into a record body, or return an error string. */
-function parseFeedbackArgs(
-  args: Record<string, unknown>
-):
+function parseFeedbackArgs(args: Record<string, unknown>):
   | {
       helped: FeedbackHelped
       notes?: string
@@ -252,7 +274,9 @@ function parseFeedbackArgs(
     ...(typeof args.notes === 'string' && args.notes.trim() ? { notes: args.notes } : {}),
     ...(typeof args.answer === 'string' && args.answer.trim() ? { answer: args.answer } : {}),
     ...(typeof args.query === 'string' && args.query.trim() ? { query: args.query } : {}),
-    ...(typeof args.requestId === 'string' && args.requestId.trim() ? { requestId: args.requestId } : {}),
+    ...(typeof args.requestId === 'string' && args.requestId.trim()
+      ? { requestId: args.requestId }
+      : {}),
     ...(scores && Object.keys(scores).length > 0 ? { scores } : {}),
   }
 }
@@ -311,17 +335,15 @@ export async function dispatchMcpToolCall(
       ...(verbose ? serializeQueryResult(result) : serializeMcpQueryResult(result)),
     }
     if (opts.requestId) body.requestId = opts.requestId
-    // Sampled feedback nudge — trimmed payload only; the verbose payload has no
-    // notes channel and verbose callers are debugging, not acting on answers.
-    // Lives in its own shouty top-level key rather than inside `notes`: it's a
-    // required follow-up action, not an advisory caveat, and burying it among
-    // confidence/citation notes is exactly why agents were skipping it.
+    // Sampled feedback ask — trimmed payload only; verbose callers are debugging.
+    // Prefer MCP form elicitation (user-facing yes/partial/no) when the client
+    // supports it; otherwise keep the AGENT_INSTRUCTION + pending-queue path so
+    // the agent can submit_feedback later.
     if (!verbose) {
       const rate = opts.feedbackSampleRate ?? readFeedbackSampleRate()
       const random = opts.random ?? Math.random
       if (rate > 0 && random() < rate) {
-        body.AGENT_INSTRUCTION = feedbackNudge(opts.requestId)
-        if (opts.requestId) resolvePendingFeedbackStore(opts).add(opts.requestId, q)
+        await applySampledFeedbackAsk(body, q, opts)
       }
     }
     return textResult(body)
@@ -331,14 +353,107 @@ export async function dispatchMcpToolCall(
 }
 
 /**
+ * Sampled feedback: try elicitation first, fall back to AGENT_INSTRUCTION.
+ * Mutates `body` in place; may append a durable feedback record on accept.
+ */
+async function applySampledFeedbackAsk(
+  body: Record<string, unknown>,
+  query: string,
+  opts: McpDispatchOptions
+): Promise<void> {
+  const answer = typeof body.answer === 'string' ? body.answer : ''
+  if (opts.elicitFeedback) {
+    const outcome = await opts.elicitFeedback({
+      query,
+      answer,
+      requestId: opts.requestId,
+    })
+    if (outcome.kind === 'accepted') {
+      const record: QueryFeedbackRecord = {
+        ts: new Date().toISOString(),
+        source: 'mcp',
+        helped: outcome.helped,
+        query,
+        ...(answer.trim() ? { answer } : {}),
+        ...(outcome.notes ? { notes: outcome.notes } : {}),
+        ...(opts.requestId ? { requestId: opts.requestId } : {}),
+      }
+      await resolveFeedbackStore(opts).append(record)
+      body.feedback = {
+        status: 'recorded',
+        via: 'elicitation',
+        helped: outcome.helped,
+        ...(outcome.notes ? { notes: outcome.notes } : {}),
+      }
+      return
+    }
+    if (outcome.kind === 'dismissed') {
+      body.feedback = { status: outcome.action, via: 'elicitation' }
+      return
+    }
+    // unavailable → fall through to AGENT_INSTRUCTION
+  }
+  body.AGENT_INSTRUCTION = feedbackNudge(opts.requestId)
+  if (opts.requestId) resolvePendingFeedbackStore(opts).add(opts.requestId, query)
+}
+
+/** Build an `elicitFeedback` callback bound to a live MCP `Server`. */
+export function createServerElicitFeedback(
+  server: Server
+): (ctx: FeedbackElicitContext) => Promise<FeedbackElicitOutcome> {
+  return async ctx => {
+    const elicitation = server.getClientCapabilities()?.elicitation
+    if (!clientSupportsFormElicitation(elicitation)) return { kind: 'unavailable' }
+    try {
+      // SDK's elicitInput requires an explicit `form: {}` capability; empty
+      // `elicitation: {}` is form-mode per spec, so fall back to a raw request
+      // when only the empty object was declared.
+      const params: ElicitRequestFormParams = {
+        mode: 'form',
+        message: feedbackElicitationMessage(ctx),
+        requestedSchema: FEEDBACK_ELICITATION_SCHEMA,
+      }
+      const result =
+        elicitation?.form !== undefined
+          ? await server.elicitInput(params)
+          : await server.request({ method: 'elicitation/create', params }, ElicitResultSchema)
+      if (result.action === 'accept') {
+        const helped = parseElicitedHelped(result.content?.helped)
+        if (!helped) return { kind: 'unavailable' }
+        const notes =
+          typeof result.content?.notes === 'string' && result.content.notes.trim()
+            ? result.content.notes.trim()
+            : undefined
+        return { kind: 'accepted', helped, ...(notes ? { notes } : {}) }
+      }
+      if (result.action === 'decline' || result.action === 'cancel') {
+        return { kind: 'dismissed', action: result.action }
+      }
+      return { kind: 'unavailable' }
+    } catch {
+      return { kind: 'unavailable' }
+    }
+  }
+}
+
+/**
  * Register `tools/list` and `tools/call` handlers backed by a `KbService`.
  * `kb_query` is `kb_`-prefixed to avoid collisions in multi-server clients.
+ *
+ * Handlers close over the same `opts` object so a stateful MCP session can
+ * refresh per-request fields (e.g. `requestId`) before each `handleRequest`.
  */
 export function registerKbMcpHandlers(
   server: Server,
   service: KbService,
   opts: McpDispatchOptions = {}
 ): void {
+  // Live elicitation only when the session opted in (SSE transport). Unit tests
+  // inject `elicitFeedback` directly without flipping the flag.
+  if (opts.elicitationEnabled) {
+    opts.elicitFeedback ??= createServerElicitFeedback(server)
+  }
+
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: buildMcpToolList(service),
   }))

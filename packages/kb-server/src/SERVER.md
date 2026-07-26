@@ -143,19 +143,30 @@ evaluation axes) appends one NDJSON line per call to
 echoes the full recorded feedback back in its response for confirmation;
 writes never fail the response. `requestId` answers one specific `kb_query`
 response — no array batching, one call per `requestId` — or is omitted
-entirely for general feedback not tied to a query. To prompt agents, set
-`KB_FEEDBACK_SAMPLE_RATE` (float `0`–`1`, default `0` = off): that fraction of
-trimmed `kb_query` responses carries a top-level `AGENT_INSTRUCTION` key (never
-buried in `notes`, which stays advisory-only) asking the agent to call
-`submit_feedback` with the response's `requestId`, and queues that `requestId`
-in an in-memory, TTL-capped pending-feedback store. `get_feedback_requests`
-lists what's still outstanding in that queue, so a session can defer feedback
-to a checkpoint and resolve precisely what was actually sampled instead of
-re-scraping past responses for ids. The stronger signal is end-of-session:
-`kb skills install` registers a Claude Code hook (`~/.kb/hooks/kb-feedback.sh`)
-that tracks kb_query use per agent session and — at the first `git push` (or
-when the session stops), after the work has been validated — nudges the agent
-once to call `get_feedback_requests` and resolve what it returns.
+entirely for general feedback not tied to a query. To sample feedback asks, set
+`KB_FEEDBACK_SAMPLE_RATE` (float `0`–`1`, default `0` = off).
+
+Sampling still decides *whether* to ask (`KB_FEEDBACK_SAMPLE_RATE`); elicitation
+only changes *how*. On a sampled trimmed `kb_query`, if the client declared
+`elicitation` **and** `KB_MCP_ELICITATION=true`, prefer MCP
+[form elicitation](https://modelcontextprotocol.io/specification/draft/client/elicitation)
+— a yes/partial/no (+ optional notes) form shown to the *user* — record on
+accept, skip the agent nudge. Decline/cancel records nothing. If elicitation
+is unavailable (flag off, no client capability, or round-trip fails), the
+legacy path applies: a top-level `AGENT_INSTRUCTION` key (never buried in
+`notes`) asks the agent to call `submit_feedback` with the response's
+`requestId`, and queues that id in an in-memory, TTL-capped pending-feedback
+store. `get_feedback_requests` lists what's still outstanding
+so a session can defer feedback to a checkpoint. The stronger deferred signal
+is end-of-session: `kb skills install` registers a Claude Code hook
+(`~/.kb/hooks/kb-feedback.sh`) that nudges once at the first `git push` (or
+session stop) to drain `get_feedback_requests`.
+
+**MCP transport:** `/mcp` is stateful Streamable HTTP (`mcp-session-id` on
+initialize; subsequent POST/GET/DELETE must send it). Default POST responses
+are JSON. `KB_MCP_ELICITATION=true` switches sessions to SSE POST streams so
+`elicitation/create` can ride the in-flight tool call (clients must also open
+the GET SSE stream).
 
 ### Endpoints (`kb-server start [--with-mcp] [--with-slack]`)
 

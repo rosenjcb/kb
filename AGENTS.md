@@ -93,10 +93,12 @@ from the repo root. Standard dev commands live in
   array batching; omit it for general feedback) records answer-quality feedback
   to `~/.kb/feedback/` on the server and echoes the full record back; `kb_query`
   responses echo a `requestId` to reference in it, and `KB_FEEDBACK_SAMPLE_RATE`
-  (server-side, default 0) sets a top-level `AGENT_INSTRUCTION` key (not buried
-  in `notes`) on a sampled fraction of responses asking for it, queuing that
-  `requestId` in an in-memory pending store; `get_feedback_requests` lists
-  what's still outstanding in that queue.
+  (server-side, default 0) still gates *whether* to ask on a sampled fraction of
+  responses. When `KB_MCP_ELICITATION=true` and the client supports form
+  elicitation, that ask is a yes/partial/no user form; otherwise a top-level
+  `AGENT_INSTRUCTION` key (not buried in `notes`) asks the agent to call
+  `submit_feedback`, queuing that `requestId` in an in-memory pending store;
+  `get_feedback_requests` lists what's still outstanding in that queue.
 - **`kb skills install` is the fuller setup** (see
   `packages/kb-client/src/cli/skill-installer.ts`): it also installs the
   `kb:*` skill files, a profile blurb (`~/.claude/CLAUDE.md` etc.), and the

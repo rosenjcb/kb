@@ -5,7 +5,7 @@ sources: [./]
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-07-26T11:35:00Z
+timestamp: 2026-07-26T22:10:00Z
 ---
 
 ### Intro
@@ -46,8 +46,9 @@ See companion doc for full vocabulary where applicable.
 | FR-16 | Browser CORS: reflect allow-listed `Origin` (or `*`); omit headers when CORS off / origin not listed; answer preflight `OPTIONS` with 204 without auth for allowed origins |
 | FR-17 | First-boot bootstrap (`health.indexing`) returns 503 on `/v1/query`, `/v1/chat`, and `/mcp` with progress; scheduled reindex (`health.reindexing`) does **not** block those routes |
 | FR-18 | One-shot `kb-server refresh` builds a fresh local snapshot dir for one base, from either a previous local snapshot (`--from`: adopt, re-clone/hydrate repos from `--repos`/`--branch`, incremental reindex) or bare repos with no previous snapshot (`--repos` only: full clone + index); `--from`/`--out` are local paths only (never object storage — no `gs://`/`s3://` awareness, no bucket credentials — matching the existing invariant `scan`/`export`/`import` already hold), while `--repos` is a plain `url[#branch]` list (the `KB_GIT_REPOS` convention). It manages its own throwaway bootstrap child process (spawn, health-poll, SIGTERM-then-SIGKILL on completion or timeout) internally so callers no longer hand-roll that in shell. The child's stdout/stderr are routed into this process's own stderr (fd 2) rather than discarded, so a long-running cold index of a large repo stays observable live in `docker logs`/the container's own log stream instead of silently vanishing; `--json` emits an ok/error summary on stdout, same contract style as `scan`, and is unaffected since the child's output never touches this process's own stdout (fd 1) |
-| FR-19 | Expose a `submit_feedback` MCP tool that records agent feedback (`helped` = yes/partial/no plus optional notes/answer/query/requestId/0–4 axis scores — one `requestId` per call, no array batching; omit it for general feedback not tied to a specific query) as NDJSON under `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl` without ever failing the response, echoing the full recorded feedback (helped/notes/answer/query/requestId/scores) back in its response for confirmation and resolving any matching pending-feedback entry (FR-20); echo the server `requestId` in kb_query MCP payloads for correlation; and set a sampled feedback nudge on a dedicated top-level `AGENT_INSTRUCTION` key (never buried inside `notes`, which stays advisory-only) on trimmed kb_query responses gated by `KB_FEEDBACK_SAMPLE_RATE` (float 0–1, default 0 = off) |
-| FR-20 | Queue each sampled `AGENT_INSTRUCTION` nudge's `requestId`/`query` as a pending-feedback entry (in-memory, TTL-capped, process-local) and expose it read-only via `get_feedback_requests`, so a session can defer feedback to a checkpoint and drain what's actually outstanding instead of re-scraping past kb_query responses; an entry is removed once `submit_feedback` reports on its `requestId` |
+| FR-19 | Expose a `submit_feedback` MCP tool that records agent feedback (`helped` = yes/partial/no plus optional notes/answer/query/requestId/0–4 axis scores — one `requestId` per call, no array batching; omit it for general feedback not tied to a specific query) as NDJSON under `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl` without ever failing the response, echoing the full recorded feedback (helped/notes/answer/query/requestId/scores) back in its response for confirmation and resolving any matching pending-feedback entry (FR-20); echo the server `requestId` in kb_query MCP payloads for correlation; and on a sampled fraction of trimmed kb_query responses (`KB_FEEDBACK_SAMPLE_RATE`, float 0–1, default 0 = off) prefer MCP form elicitation (yes/partial/no + optional notes) when wired, else set a top-level `AGENT_INSTRUCTION` key (never buried inside `notes`, which stays advisory-only) |
+| FR-20 | Queue each sampled `AGENT_INSTRUCTION` nudge's `requestId`/`query` as a pending-feedback entry (in-memory, TTL-capped, process-local) and expose it read-only via `get_feedback_requests`, so a session can defer feedback to a checkpoint and drain what's actually outstanding instead of re-scraping past kb_query responses; an entry is removed once `submit_feedback` reports on its `requestId`; successful elicitation records feedback immediately and does not enqueue |
+| FR-21 | [NEW] When a sampled kb_query has an `elicitFeedback` hook: accept records durable feedback and sets `feedback.via=elicitation` without `AGENT_INSTRUCTION`/pending; decline/cancel sets `feedback.status` without recording or nudging; `unavailable` falls back to FR-19's `AGENT_INSTRUCTION` + FR-20 queue |
 
 ### Known issues
 
@@ -198,6 +199,9 @@ See companion doc for full vocabulary where applicable.
 | TC-138 | FR-19 | submit_feedback rejects a non-string requestId (no array batching) | pass |
 | TC-139 | FR-20 | get_feedback_requests lists a pending entry queued by a sampled nudge, and submit_feedback resolves it | pass |
 | TC-140 | FR-20 | submit_feedback with no requestId is valid general feedback and leaves the pending queue untouched | pass |
+| TC-141 | FR-21 | sampled kb_query with elicitFeedback accept records feedback via elicitation and skips AGENT_INSTRUCTION/pending | pass |
+| TC-142 | FR-21 | sampled kb_query with elicitFeedback decline/cancel skips recording, AGENT_INSTRUCTION, and pending | pass |
+| TC-143 | FR-21 | sampled kb_query with elicitFeedback unavailable falls back to AGENT_INSTRUCTION + pending | pass |
 
 ### Related docs
 

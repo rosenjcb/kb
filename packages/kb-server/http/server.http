@@ -157,7 +157,7 @@ Accept: text/event-stream
 
 # ---------------------------------------------------------------------------
 # MCP (Streamable HTTP) — requires `kb-server start --with-mcp` (Docker CMD uses this).
-# JSON-RPC 2.0; stateless (each request is independent).
+# JSON-RPC 2.0; stateful sessions (mcp-session-id) so elicitation can round-trip.
 # ---------------------------------------------------------------------------
 # @name mcpInitialize
 POST {{baseUrl}}/mcp
@@ -183,6 +183,9 @@ Accept: application/json, text/event-stream
     assert.strictEqual(response.parsedBody.jsonrpc, '2.0');
     assert.ok(response.parsedBody.result?.protocolVersion);
   });
+  // Capture session id for subsequent MCP calls (stateful Streamable HTTP).
+  const sid = response.headers['mcp-session-id'];
+  if (sid) exports.mcpSessionId = Array.isArray(sid) ? sid[0] : sid;
 }}
 
 ###
@@ -193,6 +196,7 @@ POST {{baseUrl}}/mcp
 Authorization: Bearer {{apiKey}}
 Content-Type: application/json
 Accept: application/json, text/event-stream
+mcp-session-id: {{mcpSessionId}}
 
 {
   "jsonrpc": "2.0",
@@ -224,6 +228,7 @@ POST {{baseUrl}}/mcp
 Authorization: Bearer {{apiKey}}
 Content-Type: application/json
 Accept: application/json, text/event-stream
+mcp-session-id: {{mcpSessionId}}
 
 {
   "jsonrpc": "2.0",
@@ -258,6 +263,7 @@ POST {{baseUrl}}/mcp
 Authorization: Bearer {{apiKey}}
 Content-Type: application/json
 Accept: application/json, text/event-stream
+mcp-session-id: {{mcpSessionId}}
 
 {
   "jsonrpc": "2.0",
