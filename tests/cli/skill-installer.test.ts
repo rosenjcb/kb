@@ -312,8 +312,10 @@ describe('installHooks', () => {
     const results = await installHooks()
     expect(results.find(r => r.provider === 'claude')?.action).toBe('installed')
     expect(results.find(r => r.provider === 'antigravity-cli')?.action).toBe('installed')
+    expect(results.find(r => r.provider === 'claude-feedback')?.action).toBe('installed')
+    const managed = ['claude', 'antigravity-cli', 'claude-feedback']
     expect(
-      results.filter(r => r.provider !== 'claude' && r.provider !== 'antigravity-cli').every(r => r.action === 'not-installed')
+      results.filter(r => !managed.includes(r.provider)).every(r => r.action === 'not-installed')
     ).toBe(true)
   })
 
@@ -575,6 +577,193 @@ describe('installHooks', () => {
   })
 })
 
+describe('feedback hooks (end-of-session submit_feedback)', () => {
+  let fakeHome: string
+  let origHome: string | undefined
+
+  beforeEach(async () => {
+    fakeHome = path.join(tempDir, 'home')
+    await mkdir(fakeHome)
+    origHome = process.env.HOME
+    process.env.HOME = fakeHome
+  })
+
+  afterEach(() => {
+    process.env.HOME = origHome
+  })
+
+  async function installedFeedbackScript(): Promise<string> {
+    await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
+    await installHooks()
+    return path.join(fakeHome, '.kb', 'hooks', 'kb-feedback.sh')
+  }
+
+  /** Run the feedback hook with a caller-owned state dir (markers persist across calls). */
+  async function runFeedback(
+    scriptPath: string,
+    input: Record<string, unknown>,
+    stateDir: string,
+    env: Record<string, string> = {}
+  ): Promise<string> {
+    const { spawnSync } = await import('node:child_process')
+    const ran = spawnSync(scriptPath, [], {
+      input: JSON.stringify(input),
+      encoding: 'utf8',
+      env: { ...process.env, KB_HOOK_STATE_DIR: stateDir, ...env },
+    })
+    expect(ran.status).toBe(0)
+    return (ran.stdout ?? '').trim()
+  }
+
+  const kbQueryEvent = (session: string) => ({
+    hook_event_name: 'PostToolUse',
+    tool_name: 'mcp__kb__kb_query',
+    session_id: session,
+    tool_response: {
+      content: [{ type: 'text', text: '{\n  "answer": "x",\n  "requestId": "req-abc"\n}' }],
+    },
+  })
+
+  it('[TC-634] Given kb skills install, then registers kb-feedback.sh for Claude PostToolUse, PreToolUse, and Stop', async () => {
+    const scriptPath = await installedFeedbackScript()
+    const content = await readFile(scriptPath, 'utf8')
+    expect(content).toContain('#!/usr/bin/env bash')
+    expect(content).toContain('submit_feedback')
+
+    const raw = await readFile(path.join(fakeHome, '.claude', 'settings.json'), 'utf8')
+    const settings = JSON.parse(raw)
+    const post = settings.hooks.PostToolUse.find(
+      (g: { matcher: string }) => g.matcher === 'mcp__kb__kb_query|mcp__kb__submit_feedback'
+    )
+    expect(post.hooks[0].command).toContain('kb-feedback.sh')
+    const pre = settings.hooks.PreToolUse.find(
+      (g: { matcher: string; hooks: Array<{ command: string }> }) =>
+        g.hooks.some(h => h.command.endsWith('kb-feedback.sh'))
+    )
+    expect(pre.matcher).toBe('Bash')
+    const stop = settings.hooks.Stop.find(
+      (g: { hooks: Array<{ command: string }> }) =>
+        g.hooks.some(h => h.command.endsWith('kb-feedback.sh'))
+    )
+    expect(stop).toBeDefined()
+  })
+
+  it('[TC-635] Given a kb_query PostToolUse event, then records the requestId marker and stays silent', async () => {
+    const scriptPath = await installedFeedbackScript()
+    const stateDir = path.join(tempDir, 'fb-state-record')
+    const stdout = await runFeedback(scriptPath, kbQueryEvent('s1'), stateDir)
+    expect(stdout).toBe('')
+    const { readdir } = await import('node:fs/promises')
+    const files = await readdir(stateDir)
+    const used = files.find(f => f.startsWith('kb-feedback-used-'))
+    expect(used).toBeDefined()
+    expect(await readFile(path.join(stateDir, used as string), 'utf8')).toContain('req-abc')
+  })
+
+  it('[TC-636] Given git push after kb_query use, then injects a submit_feedback reminder with the recorded requestIds', async () => {
+    const scriptPath = await installedFeedbackScript()
+    const stateDir = path.join(tempDir, 'fb-state-push')
+    await runFeedback(scriptPath, kbQueryEvent('s1'), stateDir)
+    const stdout = await runFeedback(
+      scriptPath,
+      {
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Bash',
+        session_id: 's1',
+        tool_input: { command: 'git push -u origin main' },
+      },
+      stateDir
+    )
+    const parsed = JSON.parse(stdout)
+    expect(parsed.hookSpecificOutput.additionalContext).toContain('submit_feedback')
+    expect(parsed.hookSpecificOutput.additionalContext).toContain('req-abc')
+
+    // Non-push Bash stays silent even with the marker set (fresh session key).
+    await runFeedback(scriptPath, kbQueryEvent('s2'), stateDir)
+    const quiet = await runFeedback(
+      scriptPath,
+      {
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Bash',
+        session_id: 's2',
+        tool_input: { command: 'git status' },
+      },
+      stateDir
+    )
+    expect(quiet).toBe('')
+  })
+
+  it('[TC-637] Given Stop after kb_query use without feedback, then blocks once with a submit_feedback reason', async () => {
+    const scriptPath = await installedFeedbackScript()
+    const stateDir = path.join(tempDir, 'fb-state-stop')
+    await runFeedback(scriptPath, kbQueryEvent('s1'), stateDir)
+    const stop = { hook_event_name: 'Stop', session_id: 's1' }
+    const stdout = await runFeedback(scriptPath, stop, stateDir)
+    const parsed = JSON.parse(stdout)
+    expect(parsed.decision).toBe('block')
+    expect(parsed.reason).toContain('submit_feedback')
+    // Second Stop (post-nudge) passes through silently — no block loop.
+    expect(await runFeedback(scriptPath, stop, stateDir)).toBe('')
+    // A Stop resumed from a stop hook never re-blocks.
+    await runFeedback(scriptPath, kbQueryEvent('s3'), stateDir)
+    expect(
+      await runFeedback(
+        scriptPath,
+        { hook_event_name: 'Stop', session_id: 's3', stop_hook_active: true },
+        stateDir
+      )
+    ).toBe('')
+  })
+
+  it('[TC-638] Given submit_feedback already called or a prior nudge, then push reminder and Stop stay silent', async () => {
+    const scriptPath = await installedFeedbackScript()
+    const stateDir = path.join(tempDir, 'fb-state-done')
+    await runFeedback(scriptPath, kbQueryEvent('s1'), stateDir)
+    await runFeedback(
+      scriptPath,
+      { hook_event_name: 'PostToolUse', tool_name: 'mcp__kb__submit_feedback', session_id: 's1' },
+      stateDir
+    )
+    const push = {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Bash',
+      session_id: 's1',
+      tool_input: { command: 'git push' },
+    }
+    expect(await runFeedback(scriptPath, push, stateDir)).toBe('')
+    expect(await runFeedback(scriptPath, { hook_event_name: 'Stop', session_id: 's1' }, stateDir)).toBe('')
+
+    // One nudge per session: a push reminder consumes the Stop fallback too.
+    await runFeedback(scriptPath, kbQueryEvent('s2'), stateDir)
+    const nudged = await runFeedback(scriptPath, { ...push, session_id: 's2' }, stateDir)
+    expect(nudged).toContain('submit_feedback')
+    expect(await runFeedback(scriptPath, { hook_event_name: 'Stop', session_id: 's2' }, stateDir)).toBe('')
+  })
+
+  it('[TC-639] Given no kb_query use or KB_FEEDBACK_REMINDER=false, then all feedback events stay silent', async () => {
+    const scriptPath = await installedFeedbackScript()
+    const stateDir = path.join(tempDir, 'fb-state-off')
+    const push = {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Bash',
+      session_id: 's1',
+      tool_input: { command: 'git push' },
+    }
+    expect(await runFeedback(scriptPath, push, stateDir)).toBe('')
+    expect(await runFeedback(scriptPath, { hook_event_name: 'Stop', session_id: 's1' }, stateDir)).toBe('')
+
+    await runFeedback(scriptPath, kbQueryEvent('s1'), stateDir)
+    expect(
+      await runFeedback(scriptPath, push, stateDir, { KB_FEEDBACK_REMINDER: 'false' })
+    ).toBe('')
+    expect(
+      await runFeedback(scriptPath, { hook_event_name: 'Stop', session_id: 's1' }, stateDir, {
+        KB_FEEDBACK_REMINDER: 'false',
+      })
+    ).toBe('')
+  })
+})
+
 describe('uninstallHooks', () => {
   let fakeHome: string
   let origHome: string | undefined
@@ -662,6 +851,24 @@ describe('uninstallHooks', () => {
     expect(group).toBeDefined()
     expect(group.hooks.length).toBe(1)
     expect(group.hooks[0].command).toBe('/other/hook.sh')
+  })
+
+  it('[TC-640] Given installed feedback hooks, then uninstall removes them from all three Claude events', async () => {
+    await mkdir(path.join(fakeHome, '.claude'), { recursive: true })
+    await installHooks()
+
+    const results = await uninstallHooks()
+    expect(results.find(r => r.provider === 'claude-feedback')?.action).toBe('updated')
+
+    const raw = await readFile(path.join(fakeHome, '.claude', 'settings.json'), 'utf8')
+    const settings = JSON.parse(raw)
+    for (const event of ['PostToolUse', 'PreToolUse', 'Stop']) {
+      const groups: Array<{ hooks: Array<{ command: string }> }> = settings.hooks?.[event] ?? []
+      expect(
+        groups.some(g => g.hooks.some(h => h.command.endsWith('kb-feedback.sh'))),
+        event
+      ).toBe(false)
+    }
   })
 })
 

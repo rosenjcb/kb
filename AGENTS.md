@@ -97,7 +97,11 @@ from the repo root. Standard dev commands live in
   `kb:*` skill files, a profile blurb (`~/.claude/CLAUDE.md` etc.), and the
   kb-first **hook** (`~/.kb/hooks/kb-reminder.sh`, registered as a `PreToolUse`
   hook in `~/.claude/settings.json` — nudges agents to call `kb_query` before
-  `grep`/`rg`/`find`/`Grep`/`Glob`). It **re-syncs MCP config to localhost by
+  `grep`/`rg`/`find`/`Grep`/`Glob`) and the **end-of-session feedback hook**
+  (`~/.kb/hooks/kb-feedback.sh`, Claude Code only: tracks kb_query use per
+  session, then asks once for `submit_feedback` at the first `git push` — or by
+  blocking the first Stop — after the work is validated; opt out with
+  `KB_FEEDBACK_REMINDER=false`). It **re-syncs MCP config to localhost by
   default**, so run it as `kb --host https://kb-demo.fly.dev skills install`
   (host flag goes before the subcommand) to keep the remote entry. Reverse with
   `kb skills uninstall`.

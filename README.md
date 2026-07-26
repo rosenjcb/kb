@@ -253,7 +253,7 @@ kb mcp status
 
 **Local laptop server:** same commands with `--host localhost:38117`.
 
-After sync, reload MCP so `kb_query` appears. If the agent shells out to Grep/`kb query`, the Claude PreToolUse hook reminds it to use MCP.
+After sync, reload MCP so `kb_query` appears. If the agent shells out to Grep/`kb query`, the Claude PreToolUse hook reminds it to use MCP. A second Claude hook closes the quality loop at the *end* of the session: once `kb_query` was used, it asks the agent one time — at the first `git push`, or when the session stops — to call `submit_feedback` on how the answers held up.
 
 Deep dive: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md) · [`packages/kb-client/src/api/CONNECTION.md`](packages/kb-client/src/api/CONNECTION.md) · [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md).
 

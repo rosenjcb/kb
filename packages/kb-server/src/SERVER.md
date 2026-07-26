@@ -141,7 +141,11 @@ axes) appends one NDJSON line per call to `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl`
 (`~/.kb/feedback/` by default); writes never fail the response. To prompt
 agents, set `KB_FEEDBACK_SAMPLE_RATE` (float `0`–`1`, default `0` = off): that
 fraction of trimmed `kb_query` responses carries a `notes` entry asking the
-agent to call `submit_feedback` with the response's `requestId`.
+agent to call `submit_feedback` with the response's `requestId`. The stronger
+signal is end-of-session: `kb skills install` registers a Claude Code hook
+(`~/.kb/hooks/kb-feedback.sh`) that tracks kb_query use per agent session and
+asks once for `submit_feedback` at the first `git push` (or when the session
+stops) — after the work has been validated, when the judgment is trustworthy.
 
 ### Endpoints (`kb-server start [--with-mcp] [--with-slack]`)
 
