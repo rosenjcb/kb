@@ -79,3 +79,21 @@ from the repo root. Standard dev commands live in
 - **Server runs as a detached daemon.** `pnpm run server:start` backgrounds it;
   logs at `~/.kb/logs/kb-server.{out,err}.log`; manage via `pnpm run
   server:status` / `server:stop`. Health: `curl localhost:38117/healthz`.
+- **kb MCP entry is registered (user scope, not in-repo).** `kb mcp install
+  --host https://kb-demo.fly.dev` writes `mcpServers.kb → <host>/mcp` into
+  `~/.cursor/mcp.json`, `~/.claude.json`, and the Antigravity configs (see
+  `packages/kb-client/src/api/mcp-config-sync.ts`); the hosted demo needs no
+  bearer key. Gotcha: an exported `KB_SERVER_API_KEY` leaks into the written
+  entry as an `Authorization` header — run `kb mcp install` from a shell without
+  it for a key-free entry. Re-point/remove with `kb mcp install --host <url>` /
+  `kb mcp uninstall`; inspect with `kb mcp status`. The `kb_query` MCP tool takes
+  arg `q` (not `query`).
+- **`kb skills install` is the fuller setup** (see
+  `packages/kb-client/src/cli/skill-installer.ts`): it also installs the
+  `kb:*` skill files, a profile blurb (`~/.claude/CLAUDE.md` etc.), and the
+  kb-first **hook** (`~/.kb/hooks/kb-reminder.sh`, registered as a `PreToolUse`
+  hook in `~/.claude/settings.json` — nudges agents to call `kb_query` before
+  `grep`/`rg`/`find`/`Grep`/`Glob`). It **re-syncs MCP config to localhost by
+  default**, so run it as `kb --host https://kb-demo.fly.dev skills install`
+  (host flag goes before the subcommand) to keep the remote entry. Reverse with
+  `kb skills uninstall`.
