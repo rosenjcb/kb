@@ -1,5 +1,11 @@
 # kb-server
 
+## 1.5.0
+
+### Minor Changes
+
+- Add a `submit_feedback` MCP tool so agents can report whether kb_query answers held up (`helped` = yes/partial/no plus optional notes, query, requestIds, and 0–4 evaluation-axis scores). Feedback is appended as NDJSON to `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl` and never fails the response. kb_query MCP payloads now echo the server `requestId` for correlation with RunReport telemetry, and `KB_FEEDBACK_SAMPLE_RATE` (float 0–1, default 0 = off) makes a sampled fraction of trimmed kb_query responses carry a notes entry asking the agent to call `submit_feedback`.
+
 ## 1.4.18
 
 ### Patch Changes

@@ -226,7 +226,7 @@ kb sync
 | Who | How |
 |-----|-----|
 | **Humans** | `kb` CLI / TUI → REST (`/v1/query`, chat) |
-| **Agents** | MCP only (`kb_query`, …) → `POST /mcp` |
+| **Agents** | MCP only (`kb_query` + `submit_feedback`) → `POST /mcp` |
 
 **`kb mcp install` configures MCP for:**
 

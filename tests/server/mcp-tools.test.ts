@@ -1,6 +1,10 @@
+import { mkdtempSync, readFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { ToolDefinition } from '@kb/core/core/types.js'
 import { buildMcpToolList, dispatchMcpToolCall } from '@kb/server/mcp-tools.js'
+import { QueryFeedbackStore } from '@kb/server/query-feedback-store.js'
 import type { KbService } from '@kb/core/service/kb-service.js'
 
 const registryTools: ToolDefinition[] = [
@@ -52,10 +56,10 @@ function makeStubService(overrides: Partial<KbService> = {}): KbService {
 }
 
 describe('buildMcpToolList', () => {
-  it('[TC-21] exposes kb_query only, never exposes allowlist tools or upsert_fact', () => {
+  it('[TC-21] exposes exactly kb_query and submit_feedback, never allowlist tools or upsert_fact', () => {
     const tools = buildMcpToolList(makeStubService())
     const names = tools.map(t => t.name)
-    expect(names).toEqual(['kb_query'])
+    expect(names).toEqual(['kb_query', 'submit_feedback'])
   })
 })
 
@@ -122,5 +126,97 @@ describe('dispatchMcpToolCall', () => {
     const result = await dispatchMcpToolCall(makeStubService(), 'kb_upsert_fact', { factText: 'x' })
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('unavailable')
+  })
+})
+
+describe('submit_feedback and feedback nudge', () => {
+  function makeTempStore() {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'kb-feedback-'))
+    return { dir, store: new QueryFeedbackStore(dir) }
+  }
+
+  it('[TC-635] records helped/notes/query/requestIds/scores as an NDJSON record and returns ok', async () => {
+    const { dir, store } = makeTempStore()
+    const result = await dispatchMcpToolCall(
+      makeStubService(),
+      'submit_feedback',
+      {
+        helped: 'partial',
+        notes: 'answer cited the right file but missed the retry path',
+        query: 'how does auth retry work?',
+        requestIds: ['req-1', 'req-2'],
+        scores: { correctness: 3, usefulness: 2 },
+      },
+      { requestId: 'req-9', feedbackStore: store }
+    )
+    expect(result.isError).toBeUndefined()
+    expect(JSON.parse(result.content[0].text).status).toBe('ok')
+    const date = new Date().toISOString().slice(0, 10)
+    const line = readFileSync(path.join(dir, `${date}.jsonl`), 'utf-8').trim()
+    const record = JSON.parse(line)
+    expect(record.source).toBe('mcp')
+    expect(record.requestId).toBe('req-9')
+    expect(record.helped).toBe('partial')
+    expect(record.notes).toContain('missed the retry path')
+    expect(record.query).toBe('how does auth retry work?')
+    expect(record.requestIds).toEqual(['req-1', 'req-2'])
+    expect(record.scores).toEqual({ correctness: 3, usefulness: 2 })
+    expect(record.ts).toBeTruthy()
+  })
+
+  it('[TC-636] errors when helped is missing or not yes/partial/no', async () => {
+    const { store } = makeTempStore()
+    const missing = await dispatchMcpToolCall(makeStubService(), 'submit_feedback', {}, { feedbackStore: store })
+    expect(missing.isError).toBe(true)
+    const invalid = await dispatchMcpToolCall(
+      makeStubService(),
+      'submit_feedback',
+      { helped: 'kinda' },
+      { feedbackStore: store }
+    )
+    expect(invalid.isError).toBe(true)
+    expect(invalid.content[0].text).toContain('helped')
+  })
+
+  it('[TC-637] kb_query payload echoes the server requestId for feedback correlation', async () => {
+    const result = await dispatchMcpToolCall(
+      makeStubService(),
+      'kb_query',
+      { q: 'auth' },
+      { requestId: 'req-42' }
+    )
+    expect(result.isError).toBeUndefined()
+    expect(JSON.parse(result.content[0].text).requestId).toBe('req-42')
+  })
+
+  it('[TC-638] appends the sampled feedback nudge to notes when the sampling gate passes', async () => {
+    const result = await dispatchMcpToolCall(
+      makeStubService(),
+      'kb_query',
+      { q: 'auth' },
+      { requestId: 'req-7', feedbackSampleRate: 1, random: () => 0 }
+    )
+    const body = JSON.parse(result.content[0].text)
+    expect(Array.isArray(body.notes)).toBe(true)
+    const nudge = body.notes.at(-1)
+    expect(nudge).toContain('submit_feedback')
+    expect(nudge).toContain('req-7')
+  })
+
+  it('[TC-639] appends no nudge when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off)', async () => {
+    vi.stubEnv('KB_FEEDBACK_SAMPLE_RATE', '')
+    try {
+      const unset = await dispatchMcpToolCall(makeStubService(), 'kb_query', { q: 'auth' })
+      expect(unset.content[0].text).not.toContain('submit_feedback')
+      const zero = await dispatchMcpToolCall(
+        makeStubService(),
+        'kb_query',
+        { q: 'auth' },
+        { feedbackSampleRate: 0, random: () => 0 }
+      )
+      expect(zero.content[0].text).not.toContain('submit_feedback')
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

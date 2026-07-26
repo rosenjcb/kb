@@ -87,7 +87,11 @@ from the repo root. Standard dev commands live in
   entry as an `Authorization` header — run `kb mcp install` from a shell without
   it for a key-free entry. Re-point/remove with `kb mcp install --host <url>` /
   `kb mcp uninstall`; inspect with `kb mcp status`. The `kb_query` MCP tool takes
-  arg `q` (not `query`).
+  arg `q` (not `query`). A second MCP tool, `submit_feedback` (`helped` =
+  `yes`/`partial`/`no`, optional `notes`/`query`/`requestIds`/`scores`), records
+  answer-quality feedback to `~/.kb/feedback/` on the server; `kb_query`
+  responses echo a `requestId` to reference in it, and `KB_FEEDBACK_SAMPLE_RATE`
+  (server-side, default 0) makes a sampled fraction of responses ask for it.
 - **`kb skills install` is the fuller setup** (see
   `packages/kb-client/src/cli/skill-installer.ts`): it also installs the
   `kb:*` skill files, a profile blurb (`~/.claude/CLAUDE.md` etc.), and the

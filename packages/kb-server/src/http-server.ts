@@ -814,7 +814,8 @@ async function handleMcpRequest(
 
   log.info('mcp request', { requestId: ctx.requestId, rpcMethod })
   try {
-    await handleMcpHttpRequest(service, req, res, body)
+    // requestId rides into kb_query payloads so submit_feedback can reference this call.
+    await handleMcpHttpRequest(service, req, res, body, { requestId: ctx.requestId })
     log.info('mcp complete', {
       requestId: ctx.requestId,
       rpcMethod,

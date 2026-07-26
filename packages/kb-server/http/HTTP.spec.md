@@ -52,6 +52,8 @@ Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md).
 | TC-10 | FR-6 | jsonrpc result | pass (packages/kb-server/http/server.http) |
 | TC-11 | FR-6 | tools include kb_query | pass (packages/kb-server/http/server.http) |
 | TC-12 | FR-6 | tool returns content | pass (packages/kb-server/http/server.http) |
+| TC-13 | FR-6 | tools include submit_feedback | pass (packages/kb-server/http/server.http) |
+| TC-14 | FR-6 | submit_feedback call returns ok | pass (packages/kb-server/http/server.http) |
 
 ### Related docs
 

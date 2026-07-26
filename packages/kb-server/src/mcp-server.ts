@@ -7,17 +7,17 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { registerKbMcpHandlers } from './mcp-tools.js'
+import { type McpDispatchOptions, registerKbMcpHandlers } from './mcp-tools.js'
 import { resolveServerVersion } from './version.js'
 import type { KbService } from '@kb/core/service/kb-service.js'
 
 /** Construct an MCP `Server` with KB tool handlers registered. */
-export function createKbMcpServer(service: KbService): Server {
+export function createKbMcpServer(service: KbService, opts: McpDispatchOptions = {}): Server {
   const server = new Server(
     { name: 'kb', version: resolveServerVersion() },
     { capabilities: { tools: {} } }
   )
-  registerKbMcpHandlers(server, service)
+  registerKbMcpHandlers(server, service, opts)
   return server
 }
 
@@ -29,9 +29,10 @@ export async function handleMcpHttpRequest(
   service: KbService,
   req: IncomingMessage,
   res: ServerResponse,
-  parsedBody: unknown
+  parsedBody: unknown,
+  opts: McpDispatchOptions = {}
 ): Promise<void> {
-  const server = createKbMcpServer(service)
+  const server = createKbMcpServer(service, opts)
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,

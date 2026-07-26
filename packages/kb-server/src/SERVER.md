@@ -122,15 +122,26 @@ claude mcp add --transport http -s user kb http://localhost:38117/mcp \
   --header "Authorization: Bearer ${KB_SERVER_API_KEY}"
 ```
 
-**Tool exposed:** a single `kb_query` (`kb_`-prefixed on the wire). It is an
-**agent-to-agent** channel: the client asks a direct natural-language question
-and always gets an answer-first response. The **default payload is trimmed** to
-`answer` + `sources` (compact citations, `path (symbol)`, deduped per file and
-capped at 5) plus `confidence` and optional `notes` — a verify hint when
-confidence is below 0.7, and a warning when the prose names a file absent from
-the cited sources. The full evidence payload (per-fact snippets, tags,
-`retrieval` metadata) is opt-in via `verbose: true`. No `synthesize` flag; it
-always synthesizes. A fact-id drill-down tool may return later.
+**Tools exposed:** `kb_query` plus its feedback channel `submit_feedback`
+(nothing else). `kb_query` is an **agent-to-agent** channel: the client asks a
+direct natural-language question and always gets an answer-first response. The
+**default payload is trimmed** to `answer` + `sources` (compact citations,
+`path (symbol)`, deduped per file and capped at 5) plus `confidence`,
+`requestId` (for feedback correlation — it matches the `x-request-id` header
+and the RunReport `sessionId` in `~/.kb/logs/`), and optional `notes` — a
+verify hint when confidence is below 0.7, and a warning when the prose names a
+file absent from the cited sources. The full evidence payload (per-fact
+snippets, tags, `retrieval` metadata) is opt-in via `verbose: true`. No
+`synthesize` flag; it always synthesizes. A fact-id drill-down tool may return
+later.
+
+**Feedback loop:** `submit_feedback` (args: `helped` = `yes`/`partial`/`no`,
+optional `notes`, `query`, `requestIds`, and 0–4 `scores` on the evaluation
+axes) appends one NDJSON line per call to `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl`
+(`~/.kb/feedback/` by default); writes never fail the response. To prompt
+agents, set `KB_FEEDBACK_SAMPLE_RATE` (float `0`–`1`, default `0` = off): that
+fraction of trimmed `kb_query` responses carries a `notes` entry asking the
+agent to call `submit_feedback` with the response's `requestId`.
 
 ### Endpoints (`kb-server start [--with-mcp] [--with-slack]`)
 

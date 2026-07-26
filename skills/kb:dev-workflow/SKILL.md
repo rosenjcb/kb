@@ -54,6 +54,10 @@ snippets, tags, retrieval metadata); the default response is the signal.
 Loop: ask → read cited paths → confirm or correct → ask again for gaps → only
 then minimal grep/read outside citations.
 
+When a `notes` entry asks for feedback, call **`submit_feedback`** once you know
+whether the answer held up (`helped`: `yes`/`partial`/`no`, plus what was right
+or missing in `notes`, echoing the response's `requestId` in `requestIds`).
+
 ## When
 
 On every coding task, before broad exploration:

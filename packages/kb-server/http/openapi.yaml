@@ -225,6 +225,17 @@ paths:
                   params:
                     name: "kb_query"
                     arguments: { q: "what enforces rate limiting?", synthesize: false }
+              callSubmitFeedback:
+                value:
+                  jsonrpc: "2.0"
+                  id: 3
+                  method: "tools/call"
+                  params:
+                    name: "submit_feedback"
+                    arguments:
+                      helped: "partial"
+                      notes: "right file, but the answer missed the retry path"
+                      requestIds: ["<x-request-id from a kb_query response>"]
       responses:
         "200":
           description: JSON-RPC response

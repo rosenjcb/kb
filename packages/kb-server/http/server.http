@@ -209,6 +209,45 @@ Accept: application/json, text/event-stream
     assert.ok(Array.isArray(tools));
     assert.ok(tools.some(t => t.name === 'kb_query'));
   });
+  test('[TC-13] tools include submit_feedback', () => {
+    const tools = response.parsedBody.result?.tools;
+    assert.ok(Array.isArray(tools));
+    assert.ok(tools.some(t => t.name === 'submit_feedback'));
+  });
+}}
+
+###
+
+# MCP — submit feedback on earlier kb_query answers (no LLM required)
+# @name mcpSubmitFeedback
+POST {{baseUrl}}/mcp
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "submit_feedback",
+    "arguments": {
+      "helped": "yes",
+      "query": "integration smoke feedback",
+      "notes": "httpyac contract test submission"
+    }
+  }
+}
+
+{{
+  const assert = require('assert');
+  test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
+  test('[TC-14] submit_feedback call returns ok', () => {
+    const content = response.parsedBody.result?.content;
+    assert.ok(Array.isArray(content));
+    const body = JSON.parse(content[0].text);
+    assert.strictEqual(body.status, 'ok');
+  });
 }}
 
 ###
