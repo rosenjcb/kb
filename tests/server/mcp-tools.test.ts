@@ -135,7 +135,7 @@ describe('submit_feedback and feedback nudge', () => {
     return { dir, store: new QueryFeedbackStore(dir) }
   }
 
-  it('[TC-635] records helped/notes/query/requestIds/scores as an NDJSON record and returns ok', async () => {
+  it('[TC-129] records helped/notes/query/requestIds/scores as an NDJSON record and returns ok', async () => {
     const { dir, store } = makeTempStore()
     const result = await dispatchMcpToolCall(
       makeStubService(),
@@ -164,7 +164,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(record.ts).toBeTruthy()
   })
 
-  it('[TC-636] errors when helped is missing or not yes/partial/no', async () => {
+  it('[TC-130] errors when helped is missing or not yes/partial/no', async () => {
     const { store } = makeTempStore()
     const missing = await dispatchMcpToolCall(makeStubService(), 'submit_feedback', {}, { feedbackStore: store })
     expect(missing.isError).toBe(true)
@@ -178,7 +178,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(invalid.content[0].text).toContain('helped')
   })
 
-  it('[TC-637] kb_query payload echoes the server requestId for feedback correlation', async () => {
+  it('[TC-131] kb_query payload echoes the server requestId for feedback correlation', async () => {
     const result = await dispatchMcpToolCall(
       makeStubService(),
       'kb_query',
@@ -189,7 +189,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(JSON.parse(result.content[0].text).requestId).toBe('req-42')
   })
 
-  it('[TC-638] appends the sampled feedback nudge to notes when the sampling gate passes', async () => {
+  it('[TC-132] appends the sampled feedback nudge to notes when the sampling gate passes', async () => {
     const result = await dispatchMcpToolCall(
       makeStubService(),
       'kb_query',
@@ -203,7 +203,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(nudge).toContain('req-7')
   })
 
-  it('[TC-639] appends no nudge when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off)', async () => {
+  it('[TC-133] appends no nudge when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off)', async () => {
     vi.stubEnv('KB_FEEDBACK_SAMPLE_RATE', '')
     try {
       const unset = await dispatchMcpToolCall(makeStubService(), 'kb_query', { q: 'auth' })

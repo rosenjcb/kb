@@ -5,7 +5,7 @@ sources: [./]
 tests: [./server.http, ./slack.http]
 description: Black-box HTTP and Slack contract tests for kb-server via httpyac
 tags: [spec, http, integration]
-timestamp: 2026-06-28T04:05:11Z
+timestamp: 2026-07-26T00:00:00Z
 ---
 
 ### Intro
@@ -49,11 +49,11 @@ Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md).
 | TC-6 | FR-4 | sse content type | pass (packages/kb-server/http/server.http) |
 | TC-7 | FR-4 | sse stream has session + terminal events | pass (packages/kb-server/http/server.http) |
 | TC-8 | FR-4 | answered | pass (packages/kb-server/http/server.http) |
-| TC-10 | FR-6 | jsonrpc result | pass (packages/kb-server/http/server.http) |
-| TC-11 | FR-6 | tools include kb_query | pass (packages/kb-server/http/server.http) |
-| TC-12 | FR-6 | tool returns content | pass (packages/kb-server/http/server.http) |
-| TC-13 | FR-6 | tools include submit_feedback | pass (packages/kb-server/http/server.http) |
-| TC-14 | FR-6 | submit_feedback call returns ok | pass (packages/kb-server/http/server.http) |
+| TC-9 | FR-6 | jsonrpc result | pass (packages/kb-server/http/server.http) |
+| TC-10 | FR-6 | tools include kb_query | pass (packages/kb-server/http/server.http) |
+| TC-11 | FR-6 | tool returns content | pass (packages/kb-server/http/server.http) |
+| TC-12 | FR-6 | tools include submit_feedback | pass (packages/kb-server/http/server.http) |
+| TC-13 | FR-6 | submit_feedback call returns ok | pass (packages/kb-server/http/server.http) |
 
 ### Related docs
 

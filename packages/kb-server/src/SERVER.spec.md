@@ -5,7 +5,7 @@ sources: [./]
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-07-25T00:00:00Z
+timestamp: 2026-07-26T00:00:00Z
 ---
 
 ### Intro
@@ -50,6 +50,7 @@ See companion doc for full vocabulary where applicable.
 
 ### Known issues
 
+- **Id-sequence debt**: the QA table carries pre-existing violations of the contiguous-ascending id rule (`TC-3b`, `TC-109b`, and a missing `TC-9`), so `spec-md lint --strict` fails on this file. The repair is a full renumber to `TC-1..TC-n` with matching `[TC-N]` tag updates across `tests/server/` — deferred to a dedicated change to keep feature diffs reviewable.
 - **Scope boundary**: `refresh` deliberately does *not* replace the object-store pull/push/pointer-flip/prune steps in `scripts/gcp/refresh.sh` / `scripts/fly/refresh.sh` — those stay in the shell layer by design, so this FR only covers the "build one fresh snapshot dir" portion of the builder flow, not the whole publish pipeline.
 
 ### QA Test Cases
@@ -183,12 +184,12 @@ See companion doc for full vocabulary where applicable.
 | TC-125 | FR-18 | `--json` emits `{ ok: false, error }` on stdout before the process exits non-zero on failure | pass |
 | TC-126 | FR-18 | rejects `gs://`/`s3://`-scheme values for `--from`/`--out` (local-paths-only invariant; `--repos` legitimately holds `https://`/`git@` git URLs and is exempt) | pass |
 | TC-127 | FR-18 | terminates its bootstrap child process (no orphan) after both success and timeout | pass |
-| TC-634 | FR-18 | routes the bootstrap child's stdout/stderr into this process's own stderr (fd 2) instead of `stdio: 'ignore'` | pass |
-| TC-635 | FR-19 | submit_feedback records helped/notes/query/requestIds/scores as an NDJSON feedback record and returns ok | pass |
-| TC-636 | FR-19 | submit_feedback errors when helped is missing or not yes/partial/no | pass |
-| TC-637 | FR-19 | kb_query MCP payload echoes the server requestId for feedback correlation | pass |
-| TC-638 | FR-19 | appends the sampled feedback-nudge note to kb_query notes when the sampling gate passes | pass |
-| TC-639 | FR-19 | appends no nudge when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off) | pass |
+| TC-128 | FR-18 | routes the bootstrap child's stdout/stderr into this process's own stderr (fd 2) instead of `stdio: 'ignore'` | pass |
+| TC-129 | FR-19 | submit_feedback records helped/notes/query/requestIds/scores as an NDJSON feedback record and returns ok | pass |
+| TC-130 | FR-19 | submit_feedback errors when helped is missing or not yes/partial/no | pass |
+| TC-131 | FR-19 | kb_query MCP payload echoes the server requestId for feedback correlation | pass |
+| TC-132 | FR-19 | appends the sampled feedback-nudge note to kb_query notes when the sampling gate passes | pass |
+| TC-133 | FR-19 | appends no nudge when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off) | pass |
 
 ### Related docs
 

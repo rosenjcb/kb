@@ -179,7 +179,7 @@ Accept: application/json, text/event-stream
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-10] jsonrpc result', () => {
+  test('[TC-9] jsonrpc result', () => {
     assert.strictEqual(response.parsedBody.jsonrpc, '2.0');
     assert.ok(response.parsedBody.result?.protocolVersion);
   });
@@ -204,12 +204,12 @@ Accept: application/json, text/event-stream
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-11] tools include kb_query', () => {
+  test('[TC-10] tools include kb_query', () => {
     const tools = response.parsedBody.result?.tools;
     assert.ok(Array.isArray(tools));
     assert.ok(tools.some(t => t.name === 'kb_query'));
   });
-  test('[TC-13] tools include submit_feedback', () => {
+  test('[TC-12] tools include submit_feedback', () => {
     const tools = response.parsedBody.result?.tools;
     assert.ok(Array.isArray(tools));
     assert.ok(tools.some(t => t.name === 'submit_feedback'));
@@ -242,7 +242,7 @@ Accept: application/json, text/event-stream
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-14] submit_feedback call returns ok', () => {
+  test('[TC-13] submit_feedback call returns ok', () => {
     const content = response.parsedBody.result?.content;
     assert.ok(Array.isArray(content));
     const body = JSON.parse(content[0].text);
@@ -272,5 +272,5 @@ Accept: application/json, text/event-stream
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-12] tool returns content', () => assert.ok(Array.isArray(response.parsedBody.result?.content)));
+  test('[TC-11] tool returns content', () => assert.ok(Array.isArray(response.parsedBody.result?.content)));
 }}
