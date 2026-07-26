@@ -262,7 +262,7 @@ describe('kb-server refresh (builder orchestration)', () => {
     expect(killSpy).toHaveBeenCalledWith(DEAD_PID, 'SIGTERM')
   }, 30_000)
 
-  it('[TC-634] routes the bootstrap child stdout/stderr into this process\'s own stderr instead of discarding it (#195)', async () => {
+  it('[TC-128] routes the bootstrap child stdout/stderr into this process\'s own stderr instead of discarding it (#195)', async () => {
     const origin = makeOrigin(root, 'log-src')
     const outDir = path.join(root, 'out')
     fakeBootstrapChild(fetchMock, () => {

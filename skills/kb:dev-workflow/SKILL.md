@@ -45,14 +45,27 @@ Thin answer → ask a **narrower** follow-up. Do not switch to broad grep yet.
 | Synthesized **answer** | Working hypothesis / plan |
 | **sources[]** citations (`path (symbol)`) | Open *only* these files next |
 | **notes[]** | Verify hints — act on them before relying on the answer |
+| **AGENT_INSTRUCTION** (rare, sampled) | A required follow-up: resolve it via `submit_feedback`, don't just read it |
 
 `notes` may warn that confidence is mid/low or that the prose named a file not
-in the sources — when it does, trust `sources` over prose paths. Pass
+in the sources — when it does, trust `sources` over prose paths. `AGENT_INSTRUCTION`
+is a separate, unmissable field — never buried inside `notes` — and means this
+specific response is queued as feedback-pending; do not skip it. Pass
 `verbose: true` only if you genuinely need the raw evidence payload (per-fact
 snippets, tags, retrieval metadata); the default response is the signal.
 
 Loop: ask → read cited paths → confirm or correct → ask again for gaps → only
 then minimal grep/read outside citations.
+
+At the end of the task — once the work is validated (tests pass, change pushed)
+— call **`get_feedback_requests`** to see which of your queries are still
+pending, then resolve each with its own **`submit_feedback`** call: `helped`
+(`yes`/`partial`/`no`), what the answer got right or missed in `notes`, and its
+`requestId` — one `requestId` per call, no batching several into one. If
+nothing is pending, a single general `submit_feedback` call (no `requestId`) is
+still welcome. Do this when an `AGENT_INSTRUCTION` or an end-of-session
+reminder asks, and judge the answers by how they held up, not by first
+impression.
 
 ## When
 
