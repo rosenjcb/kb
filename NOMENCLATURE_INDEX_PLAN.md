@@ -22,10 +22,12 @@ on token overlap, which *rewards* the collision instead of resolving it.
 The fix is not a smarter prompt. It is a **new indexing layer**: a canonical
 **entity registry** (domains → services → surfaces → repos → modules) with
 aliases, collision detection, and fact↔entity links — built at scan time, then
-used at query time to **resolve mentions before retrieving**, scope the walk to
-the resolved entity, and *say which interpretation the answer took*. Repo-level
-scoping already proved the pattern (land → exhaust → walk edges); this plan
-generalizes it from "which repo" to "which named thing."
+used at query time as a **scope-inference first step**: infer which
+domain/service/api the question is about *before retrieving*, land the walk in
+that partition, and **rule out** the partitions it is provably not about, so
+the walk never spends budget in the wrong neighborhood. Repo-level scoping
+already proved the pattern (land → exhaust → walk edges); this plan generalizes
+it from "which repo" to "which named thing" — and adds the negative direction.
 
 ---
 
@@ -200,30 +202,76 @@ substring / edit-distance screen); the LLM only writes the human-grade gloss.
 
 ---
 
-## 5. Query-time: resolve, then retrieve
+## 5. Query-time: infer scope first, then retrieve
 
-The through-line: **every query passes an entity-resolution gate before any
-fuzzy retrieval runs**, and the resolution outcome travels with the query.
+The through-line: **the first step of every query is scope inference** — work
+out which domain / service / api / surface the question is about *before any
+fuzzy retrieval runs* — and use the verdict both ways: land the walk in the
+right partition, and **rule out** the partitions the question is provably not
+about. `entity_links` is what makes rule-out possible at all: it partitions the
+fact pool by entity, so "not about Internal Services" becomes a set of fact ids
+the walk never has to visit.
+
+### Stage 0 — scope inference
+
+Two tiers, cheap-first:
+
+1. **Deterministic mention resolution** — `resolveQueryMentions()`:
+   longest-alias match of the query text against `entity_aliases.normalized`.
+   Free, exact, catches every query that names a known thing.
+2. **LLM scope classifier** — when nothing matched (or matches collide), one
+   bounded routing call over the **entity catalog** — kinds, canonical names,
+   one-line glosses; a compact routing table, not the fact store. It returns
+   candidate scopes *with confidence* plus explicit rule-outs ("this is a
+   deploy question about the payments domain; it is not about the platform-ui
+   surface"). Cached by `query_fingerprint`, logged like lane-routing events —
+   the same shape as the existing `retrieval_lane_routing_events` machinery.
+
+The verdict is `{ inScope: entityIds, ruledOut: entityIds, unresolved }` and
+travels with the query envelope.
+
+### Rule-out semantics (the pruning, done safely)
+
+Confidence-tiered, because a wrong rule-out is worse than no rule-out:
+
+| Verdict confidence | Effect on retrieval |
+|---|---|
+| **High** (exact alias hit, or classifier is unambiguous) | Hard prune: excluded partitions are filtered out of all five candidate streams — FTS hits linked to ruled-out entities are dropped, the BFS frontier never crosses into a ruled-out partition, ponds don't seed there |
+| **Medium** | Soft prune: ruled-out partitions take a score penalty instead of a filter — reachable if evidence insists |
+| **Low / unresolved** | No prune; today's path unchanged |
+
+**Un-pruning is the safety valve:** if the walk ends `insufficient` or the
+sufficiency judge balks, exclusions lift progressively (hard → soft → none) and
+the walk resumes — a wrong scope verdict costs iterations, never the answer.
+Scope verdicts and any un-pruning are recorded out-of-band and shown in
+`--trace`.
 
 ```mermaid
 flowchart TD
-  Q([user question]) --> ER["resolveQueryMentions()\nlongest-alias match over query"]
-  ER -->|no entity mentions| STD["today's path, unchanged"]
-  ER -->|one resolution| SCOPE["entity-scoped retrieval\nland → exhaust entity pool → walk entity_edges"]
-  ER -->|collision: N candidates| AMB{surface?}
+  Q([user question]) --> S0["stage 0: scope inference\n1. alias match (free, exact)\n2. LLM scope classifier over entity catalog"]
+  S0 -->|unresolved| STD["today's path, unchanged"]
+  S0 -->|one scope + rule-outs| SCOPE["entity-scoped retrieval\nland → exhaust entity pool → walk entity_edges\nruled-out partitions pruned from every stream"]
+  S0 -->|collision: N candidates| AMB{surface?}
   AMB -->|chat| ASK["clarifying turn:\n'internal — the payments service,\nor the Internal Services surface?'"]
-  AMB -->|kb query| LANES["one interpretation lane per candidate\npick winner by evidence coherence\nreport the loser existed"]
+  AMB -->|kb query| LANES["one interpretation lane per candidate\neach lane prunes the other candidates' partitions\npick winner by evidence coherence"]
+  SCOPE -->|insufficient| UNPRUNE["lift exclusions\nhard → soft → none"] --> SCOPE
   SCOPE --> SYN
   LANES --> SYN["synthesis names its interpretation:\n'Answering for service `internal` (payments-core).\nNot the Internal Services surface — see also …'"]
   ASK --> SCOPE
 ```
 
-Concrete changes, mapped to existing seams:
+Note what ambiguity lanes become under this framing: each candidate's lane
+**prunes the other candidates' partitions**, so the two interpretations of
+"internal" retrieve from disjoint evidence pools and the coherence comparison
+is honest — today they'd raid each other's facts and both look plausible.
+
+### Concrete changes, mapped to existing seams
 
 | Seam | Change |
 |---|---|
 | **`expandQueryWithGraph()`** (`graph-query-expansion.ts`) | Becomes **entity-guarded**: when a mention resolves, expansion draws only from the resolved entity's `entity_links` neighborhood — the `LIKE '%internal%'` blowup dies here. Unresolved queries keep today's behavior. |
-| **Deep walk** (`facts-query-research-orchestrator.ts`) | Landing generalizes from `git_repo` to **entity scope**: land in the resolved entity's fact pool, exhaust it, then walk `entity_edges` (then repo edges) outward. Ponds seeded from the entity's aliases instead of raw token pairs. |
+| **Deep walk** (`facts-query-research-orchestrator.ts`) | Landing generalizes from `git_repo` to **entity scope**: land in the resolved entity's fact pool, exhaust it, then walk `entity_edges` (then repo edges) outward. Ponds seeded from the entity's aliases instead of raw token pairs. Ruled-out partitions are pruned from all five candidate streams per the confidence tiers above, with progressive un-pruning on insufficiency. |
+| **Scope classifier** (new, stage 0) | One bounded LLM routing call over the entity catalog when alias matching comes up empty or collides; verdict `{inScope, ruledOut}` with confidence, cached by `query_fingerprint`, logged alongside `retrieval_lane_routing_events`. No catalog → skipped entirely. |
 | **Ambiguity lanes** | A detected collision spawns one retrieval lane per candidate — this reuses the existing hypothesis/lane machinery (`retrieval-lane-router.ts`, `retrieval_hypotheses`) rather than inventing a new loop. Winner picked by evidence coherence (score mass, graph connectivity); the losing interpretation is reported out-of-band and named in the answer. |
 | **Scoring** | New term for entity-linked facts: `entityMatchScore` (1.0 exact canonical/alias binding to the resolved entity, 0 for facts linked to a `distinct_from` sibling) folded into the doc-fact formula; substring overlap with a *different* entity's name stops counting as relevance and starts counting **against**. |
 | **Fact curator** (`fact-curator.ts`) | Gains an **entity-consistency check**: facts linked to a `distinct_from` sibling of the resolved entity are flagged for the judge with the contrastive gloss in the verdict prompt — the exact evidence it needs to hard-drop the wrong half of a conflated pool. Decisions stay out-of-band on `retrieval.curation`, per the existing rule. |
@@ -255,7 +303,7 @@ Concrete changes, mapped to existing seams:
 |---|---|---|
 | **1 — entity spine** | Migration (4 tables), `entity-index` + `entity-link` cycles, backfill on scan | none (data only) |
 | **2 — nomenclature audit** | Collision detection, `distinct_from` + glosses, `kb entities` CLI | none — but operators can already *see* the #167 collisions |
-| **3 — guarded retrieval** | `resolveQueryMentions()`, entity-guarded expansion, entity-scoped landing, interpretation named in answers | conflation drops on resolvable queries |
+| **3 — scope inference + guarded retrieval** | `resolveQueryMentions()`, LLM scope classifier over the entity catalog, entity-guarded expansion, entity-scoped landing, partition rule-out with confidence tiers + un-pruning, interpretation named in answers | conflation drops on resolvable queries; walks stop spending budget in ruled-out partitions |
 | **4 — ambiguity lanes** | Per-candidate lanes on collisions, chat clarifying turns, entity-aware curator, `entityMatchScore` | collisions handled explicitly, never silently |
 | **5 — ontology assembly** | LLM consolidation, domain grouping, per-entity "card" rollup facts, publish disambiguation pages | domain-level questions get first-class answers |
 | **6 — eval axis** | Nomenclature-collision eval suite: fixtures with seeded confusable names ("internal" vs "Internal Services"), a **conflation-rate** metric (answers mixing facts across `distinct_from` pairs), wired into the harness + dogfood | regression guard on all of the above |
