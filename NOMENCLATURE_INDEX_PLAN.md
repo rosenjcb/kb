@@ -200,6 +200,48 @@ flowchart TB
 Collision detection is cheap and deterministic at candidate level (normalized
 substring / edit-distance screen); the LLM only writes the human-grade gloss.
 
+### 4a. Ecosystem harvesters — the `entity-index` internals, TS first
+
+`entity-index` is a registry of per-ecosystem **harvesters**, the same shape as
+`LANG_CONFIGS` in the tree-sitter indexer: a routing map in front, declarative
+deterministic extraction behind, one entry per ecosystem. `LANG_CONFIGS`
+answers "what symbols does this *file* declare"; a harvester answers "what
+*deployable things* does this repo declare." The contract is small and pure:
+
+```ts
+harvest(fileSet) → { candidates, aliases, edges }   // deterministic, no LLM
+```
+
+Signal tiers, strongest first — each tier degrades to the one below when its
+inputs are missing, bottoming out at repo-level (today's behavior):
+
+| Tier | Signal | Language-dependence |
+|---|---|---|
+| 1 | Deploy/infra manifests: compose service keys, k8s names, Backstage `catalog-info.yaml`, `fly.toml`, Procfiles | **None** — ops artifacts converged even though web frameworks didn't |
+| 2 | Package manifests: `package.json`, `go.mod`, `Cargo.toml`, `pyproject.toml` | Small fixed set per ecosystem |
+| 3 | Interface contracts: OpenAPI, protobuf `service` blocks, GraphQL schemas | None, when present |
+| 4 | In-code route/decorator AST queries | Per-framework, **optional enrichment only** — best-effort, low-confidence, never load-bearing; frameworks it can't parse lose endpoint granularity, nothing else |
+
+**TypeScript harvester (first entry).** In order: workspace topology
+(`pnpm-workspace.yaml` / `workspaces` / turbo / nx) enumerates packages — the
+candidate atoms; `package.json` supplies identity (`name`), gloss material
+(`description`), and classification features (`bin` ⇒ cli, server frameworks in
+deps + `start` script ⇒ service, `react`/`next` ⇒ surface, `exports` only ⇒
+library) fed to a deterministic kind rubric — a decision table, not an LLM;
+then the **infra join**: a compose/k8s entry whose build context contains a
+package is the *same entity* — merged aliases, raised confidence — which
+resolves most multi-name cases before assembly ever runs. Optional tier-4
+enrichment adds NestJS decorator / literal-route queries to the existing TS
+grammar config. Everything emits with provenance and per-file content hashes.
+
+**Dogfood acceptance test:** run against this monorepo, the harvester must
+emit `@kb/client` (cli, alias `kb`), `@kb/server` (service, alias
+`kb-server`), `@kb/core` (library) — ground truth we already know.
+
+Support will be uneven across ecosystems, by design: a language with no
+harvester simply never resolves past repo level and keeps today's behavior.
+That asymmetry is acceptable because of the additivity contract (§8a).
+
 ---
 
 ## 5. Query-time: infer scope first, then retrieve
@@ -328,7 +370,7 @@ is honest — today they'd raid each other's facts and both look plausible.
 | **3 — scope inference + guarded retrieval** | `resolveQueryMentions()`, LLM scope classifier over the entity catalog, multiclass confidence gates, entity-guarded expansion, entity-scoped landing, partition rule-out + un-pruning, interpretation named in answers | conflation drops on resolvable queries; walks stop spending budget in ruled-out partitions |
 | **4 — ambiguity lanes** | Per-candidate lanes on collisions, chat clarifying turns, entity-aware curator, `entityMatchScore` | collisions handled explicitly, never silently |
 | **5 — ontology assembly** | LLM consolidation, domain grouping, per-entity "card" rollup facts, publish disambiguation pages | domain-level questions get first-class answers |
-| **6 — eval axis** | Nomenclature-collision eval suite: fixtures with seeded confusable names ("internal" vs "Internal Services"), a **conflation-rate** metric (answers mixing facts across `distinct_from` pairs), wired into the harness + dogfood | regression guard on all of the above |
+| **6 — eval axis** | Nomenclature-collision eval suite: fixtures with seeded confusable names ("internal" vs "Internal Services"), a **conflation-rate** metric (answers mixing facts across `distinct_from` pairs), entity-on vs entity-off baseline comparison enforcing the additivity contract (§8a), label-calibration checks (seeded off-scope queries must land `unsure`, not `certainly_incorrect`), wired into the harness + dogfood | regression guard on all of the above |
 
 Each phase is independently shippable and inert without the next; phase 2 alone
 already pays for itself as an audit tool.
@@ -336,6 +378,36 @@ already pays for itself as an audit tool.
 ---
 
 ## 8. Invariants & risks
+
+### 8a. Additivity contract
+
+The whole layer must **enrich answers or leave them unchanged — never degrade
+them**. That is a property we enforce, not one the design gets for free. The
+gates in §5 already make the *classifier* fail toward inaction; the remaining
+hazard is **partial-registry confidence**: a harvested TS service `billing`
+binds a query cleanly while an un-harvested Python service `billing` is
+invisible — a wrong binding caused by registry incompleteness, not classifier
+error, which no confidence label can catch. Four rules close it:
+
+1. **Unlinked facts are never prunable.** Only facts explicitly linked to an
+   entity labeled `certainly_incorrect` may be excluded. Facts with no
+   `entity_links` row — the entire un-harvested world — remain reachable by
+   every candidate stream, always. Registry blind spots may slow an answer;
+   they can never hide one.
+2. **Coverage-aware confidence caps.** When harvest coverage for a base is low
+   (few entities relative to repos / fact volume), resolutions cap at
+   `confident` — soft penalties only, no hard pruning — until the registry has
+   earned trust.
+3. **Collisions screen against the unresolved pool.** A registry name that
+   also appears as a frequent *unresolved* subject elsewhere in the fact store
+   likely has an un-harvested twin: flag it and withhold `very_confident`
+   binding instead of trusting it.
+4. **The conflation-rate eval is the enforcement mechanism.** Phase 6's suite
+   runs entity-on vs entity-off on the same fixtures; any query the layer
+   answers *worse* than baseline is a regression, and the gate fails. Additive
+   stays additive because CI says so, not because the design intends it.
+
+### 8b. General invariants
 
 - **Backward compatible:** empty ontology → byte-for-byte today's retrieval.
 - **Precision over recall at the resolution gate:** a wrong entity binding is
