@@ -1,5 +1,13 @@
 # @kb/client
 
+## 1.3.21
+
+### Patch Changes
+
+- Organizational Ontology Index (issue #167): entity registry tables (entities, aliases, edges, fact links), deterministic ecosystem harvesters (TS workspaces, compose, fly.toml, Backstage) wired into init/scan as an entity-index cycle, stage-0 query scope inference with multiclass confidence gates and partition pruning under the additivity contract, and a `kb entities` CLI (list, show, collisions).
+- Updated dependencies
+  - @kb/core@1.5.12
+
 ## 1.3.20
 
 ### Patch Changes

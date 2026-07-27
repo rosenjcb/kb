@@ -493,6 +493,67 @@ const MIGRATIONS: Migration[] = [
       DROP TABLE IF EXISTS fact_categories;
     `,
   },
+  {
+    // Organizational Ontology Index (NOMENCLATURE_INDEX_PLAN.md): canonical named
+    // things (services, surfaces, domains, repos, …) with aliases, typed edges
+    // (`distinct_from` is the anti-conflation edge), and fact↔entity links that
+    // partition the fact pool for query-time scope inference. All four tables are
+    // inert until an entity-index scan cycle populates them.
+    version: 17,
+    name: 'add_entity_registry',
+    sql: `
+      CREATE TABLE IF NOT EXISTS entities (
+        id             TEXT PRIMARY KEY,
+        kind           TEXT NOT NULL,
+        canonical_name TEXT NOT NULL,
+        gloss          TEXT,
+        git_repo       TEXT,
+        source_kind    TEXT NOT NULL,
+        content_hash   TEXT,
+        confidence     REAL NOT NULL DEFAULT 0.9,
+        tombstoned_at  TEXT,
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_kind_name_live
+        ON entities(kind, canonical_name)
+        WHERE tombstoned_at IS NULL;
+
+      CREATE TABLE IF NOT EXISTS entity_aliases (
+        entity_id  TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        alias      TEXT NOT NULL,
+        normalized TEXT NOT NULL,
+        source     TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 0.8,
+        PRIMARY KEY (entity_id, normalized)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_entity_aliases_normalized
+        ON entity_aliases(normalized);
+
+      CREATE TABLE IF NOT EXISTS entity_edges (
+        from_entity_id TEXT NOT NULL,
+        to_entity_id   TEXT NOT NULL,
+        edge_type      TEXT NOT NULL,
+        gloss          TEXT,
+        weight         REAL NOT NULL DEFAULT 1.0,
+        created_at     TEXT NOT NULL,
+        PRIMARY KEY (from_entity_id, to_entity_id, edge_type)
+      );
+
+      CREATE TABLE IF NOT EXISTS entity_links (
+        fact_id    TEXT NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
+        entity_id  TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        role       TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 0.8,
+        PRIMARY KEY (fact_id, entity_id, role)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_entity_links_entity
+        ON entity_links(entity_id);
+    `,
+  },
 ]
 
 /**

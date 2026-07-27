@@ -19,6 +19,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  init        Build a KB from one or more git remotes',
     '  scan        Refresh a KB by re-indexing its tracked git repos',
     '  graph       Inspect or edit the knowledge graph',
+  '  entities    Inspect harvested entities (services, surfaces) and name collisions',
     '  docs        Browse KB documents',
     '  facts       List, search, or show KB facts',
     '  publish     Publish KB docs',

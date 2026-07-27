@@ -21,6 +21,7 @@ import { tombstoneRemovedDocSourceFiles } from '@kb/core/core/doc-fact-writer.js
 import { tombstoneRemovedCodeFiles } from '@kb/core/tools/code-fact-writer.js'
 import { DOC_TYPES } from '@kb/core/core/doc-taxonomy.js'
 import { ingestIntegrationSignals } from '@kb/core/core/integration-ingest.js'
+import { runEntityIndexCycle } from '@kb/core/core/entity-index-cycle.js'
 import {
   type ScanFactIngestProgress,
   ingestSourceMarkdownFilesAsFacts,
@@ -899,6 +900,26 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       if (options.stopAfter === 'document-facts') throw new InitPausedError('document-facts')
     } else {
       progress.finish('document-facts', 'reused from checkpoint')
+    }
+
+    // Entity ontology harvest + fact linking (NOMENCLATURE_INDEX_PLAN.md). Runs after
+    // document-facts so both code and doc facts exist for linking. Best-effort and
+    // idempotent — a failed harvest never fails init/scan, and empty registries leave
+    // query behavior untouched.
+    progress.start('entity-index', 'harvesting entity ontology…')
+    try {
+      const entityStats = await runEntityIndexCycle({
+        baseDir,
+        scanDir,
+        ...(gitRepoSlug ? { gitRepo: gitRepoSlug } : {}),
+      })
+      progress.finish(
+        'entity-index',
+        `${entityStats.entitiesUpserted} entities, ${entityStats.factsLinked} fact links, ${entityStats.collisions} collisions`
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      progress.finish('entity-index', `skipped (${message.slice(0, 80)})`)
     }
 
     if (!checkpoint.completedCycles.includes('import-docs')) {

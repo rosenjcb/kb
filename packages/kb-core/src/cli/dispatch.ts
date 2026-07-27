@@ -48,6 +48,12 @@ import {
   printGraphHelp,
   runGraphCommand,
 } from '@kb/core/cli/graph-cli.js'
+import {
+  EntitiesCommandError,
+  parseEntitiesCommand,
+  printEntitiesHelp,
+  runEntitiesCommand,
+} from '@kb/core/cli/entities-cli.js'
 import { runLogsCommand } from '@kb/core/cli/logs-cli.js'
 import { parsePublishCommand, runPublishCommand } from '@kb/core/cli/publish-cli.js'
 import {
@@ -235,6 +241,33 @@ export async function runServerCommandWithOutput(
 
   if (firstArg === 'docs') {
     return runServerDocsCommand(args.slice(1), out, config, mode)
+  }
+
+  if (firstArg === 'entities') {
+    try {
+      const entitiesTail = args.slice(1)
+      let kbStorageDir: string
+      try {
+        kbStorageDir = await resolveKbStorageDirFromArgs(entitiesTail)
+      } catch {
+        out.error('No KB base configured on the server.')
+        return 1
+      }
+      const opts = parseEntitiesCommand(stripCliFlagWithValue(entitiesTail, '--base'), mode)
+      await runEntitiesCommand(kbStorageDir, opts, out)
+      return 0
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (error instanceof EntitiesCommandError && error.exitCode === 0) {
+        out.log(message)
+        return 0
+      }
+      out.error(`❌ ${message}`)
+      if (!(error instanceof EntitiesCommandError)) {
+        out.error(printEntitiesHelp(mode))
+      }
+      return error instanceof EntitiesCommandError ? error.exitCode : 1
+    }
   }
 
   if (firstArg === 'graph') {

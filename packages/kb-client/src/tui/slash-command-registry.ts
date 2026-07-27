@@ -22,6 +22,7 @@ export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
   { path: ['docs'], description: 'browse or generate KB documents', contexts: ['idle'] },
   { path: ['facts'], description: 'list, search, or show KB facts', contexts: ['idle'] },
   { path: ['graph'], description: 'inspect or edit the knowledge graph', contexts: ['idle'] },
+  { path: ['entities'], description: 'inspect harvested entities and name collisions', contexts: ['idle'] },
   { path: ['publish'], description: 'publish docs to the external sink', contexts: ['idle'] },
   { path: ['sync'], description: 'install the latest published KB release', contexts: ['idle'] },
   { path: ['uninstall'], description: 'remove the kb client binary and client runtime', contexts: ['idle'] },
