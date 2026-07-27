@@ -1,10 +1,17 @@
 # @kb/client
 
+## 1.3.20
+
+### Patch Changes
+
+- Bump forward after merging main: main independently published `@kb/client@1.3.19` and `@kb/server@1.5.1` with different content than this branch's own patch bumps to the same version numbers, so both need one more patch step to avoid a version collision.
+
 ## 1.3.19
 
 ### Patch Changes
 
 - Consolidate connection resolution: remove `KB_SERVER_URL` in favor of decomposed `KB_HOST`/`KB_PORT`/`KB_SSLMODE` (or `KB_CONNECTION_STRING`), so a bare hostname resolves the same scheme/port whether it arrives via `--host` or a `kb://` connection string. Add `--port`, `--sslmode`, and `--api-key`/`--key` as global CLI flags. `kb mcp install` no longer hand-rolls its own flag parser. The CLI banner now auto-discovers the server's default base for display when no local base is selected.
+- Clarify end-of-session feedback hook docs: outstanding feedback uses singular `requestId`, not a `requestIds` array.
 - Updated dependencies
   - @kb/core@1.5.11
 

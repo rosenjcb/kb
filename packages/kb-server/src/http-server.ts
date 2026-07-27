@@ -6,7 +6,7 @@
  *  - `GET  /healthz`     liveness (unauthenticated; always 200 when reachable)
  *  - `POST /v1/query`    one-shot request/response synthesized answer (apps wanting a single call)
  *  - `POST /v1/chat`     multi-turn chat loop, streamed over SSE — also the path Slack uses (via `service.chat`)
- *  - `POST /mcp`         MCP Streamable HTTP (when enabled)
+ *  - `POST|GET|DELETE /mcp`  MCP Streamable HTTP sessions (when enabled)
  *
  * Index refresh is **not** an HTTP route — use `KB_REINDEX_INTERVAL` (scheduler)
  * or `kb-server scan` offline. `/v1/*` and `/mcp` require a bearer API key when
@@ -79,9 +79,10 @@ const MAX_BODY_BYTES = 1 << 20 // 1 MiB
 const QUERY_LOG_MAX = 300      // truncate logged query/message text at this many chars
 
 /** Request headers a browser may send to the API (echoed in preflight). */
-const CORS_ALLOW_HEADERS = 'authorization, content-type, x-api-key, x-kb-base'
-/** Methods the API exposes to browsers. */
-const CORS_ALLOW_METHODS = 'GET, POST, OPTIONS'
+const CORS_ALLOW_HEADERS =
+  'authorization, content-type, x-api-key, x-kb-base, mcp-session-id, mcp-protocol-version'
+/** Methods the API exposes to browsers (DELETE terminates an MCP session). */
+const CORS_ALLOW_METHODS = 'GET, POST, DELETE, OPTIONS'
 /** Cache the preflight result for 24h to avoid an OPTIONS on every call. */
 const CORS_MAX_AGE = '86400'
 

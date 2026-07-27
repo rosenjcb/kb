@@ -369,7 +369,7 @@ export const CLAUDE_KB_FEEDBACK_MCP_MATCHER = 'mcp__kb__kb_query|mcp__kb__submit
  * too early to be trustworthy, so this waits until the work is validated:
  * - PostToolUse on the kb MCP tools records per-session kb_query use (and a
  *   done-marker once submit_feedback is called) — it does not itself track
- *   which requestIds are outstanding; that queue lives server-side
+ *   which requestId values are outstanding; that queue lives server-side
  *   (PendingFeedbackStore) behind the get_feedback_requests MCP tool, so the
  *   nudge below just points the agent at it instead of re-scraping ids;
  * - PreToolUse on Bash injects one submit_feedback reminder at the first

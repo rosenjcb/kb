@@ -332,4 +332,87 @@ describe('submit_feedback and feedback nudge', () => {
       expect.objectContaining({ requestId: 'req-6' }),
     ])
   })
+
+  it('[TC-141] elicitFeedback accept records feedback via elicitation and skips AGENT_INSTRUCTION/pending', async () => {
+    const pendingFeedbackStore = new PendingFeedbackStore()
+    const { dir, store: feedbackStore } = makeTempStore()
+    const result = await dispatchMcpToolCall(
+      makeStubService(),
+      'kb_query',
+      { q: 'how does auth retry work?' },
+      {
+        requestId: 'req-elicit-1',
+        feedbackSampleRate: 1,
+        random: () => 0,
+        pendingFeedbackStore,
+        feedbackStore,
+        elicitFeedback: async () => ({
+          kind: 'accepted',
+          helped: 'partial',
+          notes: 'missed the retry path',
+        }),
+      }
+    )
+    const body = JSON.parse(result.content[0].text)
+    expect(body.AGENT_INSTRUCTION).toBeUndefined()
+    expect(body.feedback).toEqual({
+      status: 'recorded',
+      via: 'elicitation',
+      helped: 'partial',
+      notes: 'missed the retry path',
+    })
+    expect(pendingFeedbackStore.list()).toEqual([])
+    const date = new Date().toISOString().slice(0, 10)
+    const record = JSON.parse(readFileSync(path.join(dir, `${date}.jsonl`), 'utf-8').trim())
+    expect(record.helped).toBe('partial')
+    expect(record.requestId).toBe('req-elicit-1')
+    expect(record.query).toBe('how does auth retry work?')
+    expect(record.notes).toBe('missed the retry path')
+  })
+
+  it('[TC-142] elicitFeedback decline/cancel skips recording, AGENT_INSTRUCTION, and pending', async () => {
+    const pendingFeedbackStore = new PendingFeedbackStore()
+    const { dir, store: feedbackStore } = makeTempStore()
+    const declined = await dispatchMcpToolCall(
+      makeStubService(),
+      'kb_query',
+      { q: 'auth' },
+      {
+        requestId: 'req-elicit-2',
+        feedbackSampleRate: 1,
+        random: () => 0,
+        pendingFeedbackStore,
+        feedbackStore,
+        elicitFeedback: async () => ({ kind: 'dismissed', action: 'decline' }),
+      }
+    )
+    const body = JSON.parse(declined.content[0].text)
+    expect(body.AGENT_INSTRUCTION).toBeUndefined()
+    expect(body.feedback).toEqual({ status: 'decline', via: 'elicitation' })
+    expect(pendingFeedbackStore.list()).toEqual([])
+    const date = new Date().toISOString().slice(0, 10)
+    expect(() => readFileSync(path.join(dir, `${date}.jsonl`), 'utf-8')).toThrow()
+  })
+
+  it('[TC-143] elicitFeedback unavailable falls back to AGENT_INSTRUCTION + pending', async () => {
+    const pendingFeedbackStore = new PendingFeedbackStore()
+    const result = await dispatchMcpToolCall(
+      makeStubService(),
+      'kb_query',
+      { q: 'auth' },
+      {
+        requestId: 'req-elicit-3',
+        feedbackSampleRate: 1,
+        random: () => 0,
+        pendingFeedbackStore,
+        elicitFeedback: async () => ({ kind: 'unavailable' }),
+      }
+    )
+    const body = JSON.parse(result.content[0].text)
+    expect(body.AGENT_INSTRUCTION).toContain('submit_feedback')
+    expect(body.feedback).toBeUndefined()
+    expect(pendingFeedbackStore.list()).toEqual([
+      expect.objectContaining({ requestId: 'req-elicit-3' }),
+    ])
+  })
 })

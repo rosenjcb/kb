@@ -24,7 +24,7 @@ pnpm run integration:test
 
 ```bash
 export KB_SERVER_API_KEY=testkey   # match http/.httpyac.js apiKey
-pnpm run server:start              # local REST + POST /mcp (required for full suite)
+pnpm run server:start              # local REST + stateful /mcp (required for full suite)
 pnpm exec httpyac send packages/kb-server/http/server.http --all --env local
 ```
 
