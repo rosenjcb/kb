@@ -1,34 +1,47 @@
 import type { KbConfig } from '@kb/core/config/kb-config.js'
-import { readEnvHost, readEnvPort } from '@kb/core/config/kb-env.js'
+import { KB_ENV, readEnvHost, readEnvPortRaw } from '@kb/core/config/kb-env.js'
+import { buildServerUrl, type SslMode } from './connection-string.js'
 import type { ServerConnection } from './types.js'
 
 const DEFAULT_HOST = 'localhost'
 
+function readEnvSslMode(): SslMode | undefined {
+  const raw = process.env[KB_ENV.SSLMODE]?.trim().toLowerCase()
+  if (!raw) return undefined
+  if (raw === 'require' || raw === 'prefer' || raw === 'disable') return raw
+  throw new Error(`Invalid ${KB_ENV.SSLMODE}: ${raw} (use require, prefer, or disable)`)
+}
+
+/**
+ * The one connection resolver. Host/port/sslmode funnel through `buildServerUrl` —
+ * the same inference `kb://` connection strings use — so `--host`/`KB_HOST` and
+ * `--connection-string`/`KB_CONNECTION_STRING` can never disagree on scheme or
+ * default port for the same bare hostname.
+ */
 export function resolveServerConnection(config: KbConfig): ServerConnection {
-  const urlOverride = process.env.KB_SERVER_URL?.trim()
-  if (urlOverride) {
-    return {
-      url: urlOverride.replace(/\/$/, ''),
-      apiKey: resolveApiKey(config),
-      base: resolveConnectionBase(config),
-    }
-  }
-
   const host = readEnvHost() || config.server?.host?.trim() || DEFAULT_HOST
-  const port = readEnvPort()
-
-  const scheme = host.includes('://') ? '' : 'http://'
-  const hostPart = host.includes('://') ? host : `${scheme}${host}:${port}`
+  const port = readEnvPortRaw()
+  const sslmode = readEnvSslMode()
 
   return {
-    url: hostPart.replace(/\/$/, ''),
+    url: buildServerUrl(host, port, sslmode),
     apiKey: resolveApiKey(config),
     base: resolveConnectionBase(config),
   }
 }
 
+/** True when the operator explicitly configured a connection (not the implicit localhost default). */
+export function hasExplicitConnectionOverride(config: KbConfig): boolean {
+  if (process.env[KB_ENV.CONNECTION_STRING]?.trim()) return true
+  if (readEnvHost()) return true
+  if (readEnvPortRaw()) return true
+  if (process.env[KB_ENV.SSLMODE]?.trim()) return true
+  if (config.server?.host?.trim()) return true
+  return false
+}
+
 function resolveApiKey(config: KbConfig): string | undefined {
-  return process.env.KB_SERVER_API_KEY?.trim() || config.server?.apiKey?.trim() || undefined
+  return process.env[KB_ENV.SERVER_API_KEY]?.trim() || config.server?.apiKey?.trim() || undefined
 }
 
 /**
@@ -38,8 +51,8 @@ function resolveApiKey(config: KbConfig): string | undefined {
  */
 function resolveConnectionBase(config: KbConfig): string | undefined {
   return (
-    process.env.KB_BASE?.trim() ||
-    process.env.KB_ACTIVE_BASE?.trim() ||
+    process.env[KB_ENV.BASE]?.trim() ||
+    process.env[KB_ENV.ACTIVE_BASE]?.trim() ||
     config.server?.base?.trim() ||
     undefined
   )

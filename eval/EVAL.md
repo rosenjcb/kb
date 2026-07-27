@@ -198,7 +198,7 @@ flowchart LR
 | `--skip-scan` | n/a | Skip eval-index scan when reusing built indexes (fresh init still scans) |
 
 1. **Init/scan** — offline via `scripts/eval-index.ts` (`@kb/core` directly) before attach, so SQLite writes do not race the shared server. Subprocess env from `buildEvalOfflineEnv()` clears remote connection vars.
-2. **Query phase** — remote: `KB_SERVER_URL` + API key + `--base`. docs/graph/logs also run remote after attach.
+2. **Query phase** — remote: `KB_HOST`/`KB_PORT` + API key + `--base`. docs/graph/logs also run remote after attach.
 3. **MOEL** (`moel-run.mjs`) — still one server per condition (`moel-{suite}-{N|K|O}`); init/scan also goes through `eval-index.ts`.
 
 Logs: `<run-dir>/eval-server.log` (single) or `~/.kb/evaluations/_batch-*/eval-server.log` (shared batch).

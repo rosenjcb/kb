@@ -26,7 +26,7 @@ answers:
     SQLite-backed knowledge base. **kb-server** owns indexing: configure git repos on the server
     (`KB_GIT_REPOS`, optional `KB_BASE`), run `kb-server start`, and the server clones, indexes code
     and docs, and re-indexes on a schedule. The **kb client** connects with `kb --host` or
-    `KB_HOST` / `KB_PORT` / `KB_SERVER_URL` and asks natural-language questions via `kb query` or
+    `KB_HOST` / `KB_PORT` / `KB_CONNECTION_STRING` and asks natural-language questions via `kb query` or
     interactive chat (`kb`). Bases are managed with `kb base`; repo membership and ignore patterns
     are declared on the server via `KB_SERVER_BASE_GIT_REPOS` and `KB_SERVER_IGNORE`. Supporting
     commands expose facts, documents, graph, publishing, and installed skills. The core user loop

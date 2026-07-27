@@ -56,6 +56,11 @@ release) — it does not version, because the versions already landed on the bra
 Pick the bump type by impact: `patch` for fixes, `minor` for new or removed
 features / behavior changes, `major` for intentional breaking changes (1.0+).
 
+**Agents default to `patch`.** Do not infer `minor`/`major` from your own
+assessment of impact (e.g. "this removes a public env var, so it's breaking") —
+use `patch` unless the user explicitly asks for a different bump type in that
+conversation.
+
 ## Common commands
 
 - `pnpm run type-check` — TypeScript type check (all packages)

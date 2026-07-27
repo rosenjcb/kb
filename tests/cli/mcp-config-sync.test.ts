@@ -13,6 +13,19 @@ import {
   syncKbMcpConfigs,
   uninstallKbMcpConfigs,
 } from '@kb/client/api/mcp-config-sync.js'
+import { runMainWithOutput } from '@kb/client/cli/index.js'
+
+function makeOut() {
+  const lines: string[] = []
+  return {
+    out: {
+      log: (m: string) => lines.push(m),
+      error: (m: string) => lines.push(m),
+      write: (m: string) => lines.push(m),
+    },
+    lines,
+  }
+}
 
 let tempDir: string
 let fakeHome: string
@@ -37,10 +50,10 @@ beforeEach(async () => {
   await mkdir(fakeHome)
   origHome = process.env.HOME
   process.env.HOME = fakeHome
-  snapshotEnv(['KB_HOST', 'KB_PORT', 'KB_SERVER_URL', 'KB_SERVER_API_KEY'])
+  snapshotEnv(['KB_HOST', 'KB_PORT', 'KB_SSLMODE', 'KB_CONNECTION_STRING', 'KB_SERVER_API_KEY'])
   delete process.env.KB_HOST
   delete process.env.KB_PORT
-  delete process.env.KB_SERVER_URL
+  delete process.env.KB_SSLMODE
   delete process.env.KB_SERVER_API_KEY
 })
 
@@ -78,14 +91,14 @@ describe('build*KbMcpEntry', () => {
 })
 
 describe('hasExplicitServerHost', () => {
-  it('[TC-23] false when env unset; true for KB_HOST, KB_SERVER_URL, or config.server.host', () => {
+  it('[TC-23] false when env unset; true for KB_HOST, KB_CONNECTION_STRING, or config.server.host', () => {
     expect(hasExplicitServerHost()).toBe(false)
     process.env.KB_HOST = 'localhost'
     expect(hasExplicitServerHost()).toBe(true)
     delete process.env.KB_HOST
-    process.env.KB_SERVER_URL = 'https://kb.example.com'
+    process.env.KB_CONNECTION_STRING = 'kb://kb.example.com'
     expect(hasExplicitServerHost()).toBe(true)
-    delete process.env.KB_SERVER_URL
+    delete process.env.KB_CONNECTION_STRING
     expect(hasExplicitServerHost({ server: { host: 'kb.internal' } })).toBe(true)
   })
 })
@@ -112,8 +125,10 @@ describe('syncKbMcpConfigs', () => {
     ])
   })
 
-  it('[TC-16] Given KB_SERVER_URL, points MCP at that host /mcp', async () => {
-    process.env.KB_SERVER_URL = 'https://kb.example.com:8443'
+  it('[TC-16] Given KB_HOST/KB_PORT/KB_SSLMODE, points MCP at that host /mcp', async () => {
+    process.env.KB_HOST = 'kb.example.com'
+    process.env.KB_PORT = '8443'
+    process.env.KB_SSLMODE = 'require'
     process.env.KB_SERVER_API_KEY = 'prod'
     const results = await syncKbMcpConfigs()
     expect(results.every(r => r.url === 'https://kb.example.com:8443/mcp')).toBe(true)
@@ -123,17 +138,17 @@ describe('syncKbMcpConfigs', () => {
     expect(cursor.mcpServers.kb.url).toBe('https://kb.example.com:8443/mcp')
   })
 
-  it('[TC-30] Given only config.server.host + apiKey, installs with Bearer', async () => {
+  it('[TC-30] Given only config.server.host + apiKey, installs with Bearer (bare non-loopback host infers https)', async () => {
     const results = await syncKbMcpConfigs({
       requireExplicitHost: true,
       config: { server: { host: 'kb.internal', apiKey: 'from-config' } },
     })
     expect(results.every(r => r.action === 'installed')).toBe(true)
-    expect(results.every(r => r.url === 'http://kb.internal:38117/mcp')).toBe(true)
+    expect(results.every(r => r.url === 'https://kb.internal/mcp')).toBe(true)
 
     const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
     expect(cursor.mcpServers.kb).toEqual({
-      url: 'http://kb.internal:38117/mcp',
+      url: 'https://kb.internal/mcp',
       headers: { Authorization: 'Bearer from-config' },
     })
   })
@@ -185,7 +200,8 @@ describe('syncKbMcpConfigs', () => {
   })
 
   it('[TC-17] Given matching entry, action is skipped', async () => {
-    process.env.KB_SERVER_URL = 'http://remote:38117'
+    process.env.KB_HOST = 'remote'
+    process.env.KB_PORT = '38117'
     process.env.KB_SERVER_API_KEY = 'k'
     await syncKbMcpConfigs()
     const second = await syncKbMcpConfigs()
@@ -204,7 +220,9 @@ describe('syncKbMcpConfigs', () => {
       }),
       'utf8'
     )
-    process.env.KB_SERVER_URL = 'http://new:38117'
+    process.env.KB_HOST = 'new'
+    process.env.KB_PORT = '38117'
+    process.env.KB_SSLMODE = 'disable'
     process.env.KB_SERVER_API_KEY = 'newkey'
     const results = await syncKbMcpConfigs()
     const cursor = results.find(r => r.agent === 'cursor')
@@ -232,7 +250,9 @@ describe('syncKbMcpConfigs', () => {
       }),
       'utf8'
     )
-    process.env.KB_SERVER_URL = 'http://remote:38117'
+    process.env.KB_HOST = 'remote'
+    process.env.KB_PORT = '38117'
+    process.env.KB_SSLMODE = 'disable'
     const results = await syncKbMcpConfigs()
     expect(results.find(r => r.agent === 'cursor')?.action).toBe('updated')
 
@@ -314,10 +334,10 @@ describe('formatMcpSyncReport / status', () => {
 
   it('[TC-25] formats needs-host warning', () => {
     const report = formatMcpSyncReport([
-      { agent: 'all', action: 'needs-host', detail: 'Set KB_SERVER_URL' },
+      { agent: 'all', action: 'needs-host', detail: 'Set KB_HOST' },
     ])
     expect(report).toContain('needs host')
-    expect(report).toContain('KB_SERVER_URL')
+    expect(report).toContain('KB_HOST')
   })
 
   it('[TC-26] readKbMcpStatus reports missing entries when unset', async () => {
@@ -326,5 +346,23 @@ describe('formatMcpSyncReport / status', () => {
     expect(status.entries.every(e => !e.present)).toBe(true)
     const report = formatMcpStatusReport(status)
     expect(report).toContain('unset')
+  })
+})
+
+describe('cli/index.ts mcp install dispatch (no duplicate flag parser)', () => {
+  it('[TC-61] Given zero extra args, mcp install syncs from the already-applied ambient connection', async () => {
+    process.env.KB_HOST = 'kb.internal'
+    process.env.KB_SSLMODE = 'disable'
+    process.env.KB_PORT = '9000'
+    process.env.KB_SERVER_API_KEY = 'testkey'
+    const { out, lines } = makeOut()
+    await runMainWithOutput(['mcp', 'install'], out, {} as never)
+    expect(lines.join('\n')).toContain('http://kb.internal:9000/mcp')
+  })
+
+  it('[TC-62] Given a leftover unrecognized arg, mcp install still errors', async () => {
+    const { out, lines } = makeOut()
+    await runMainWithOutput(['mcp', 'install', 'bogus'], out, {} as never)
+    expect(lines.join('\n')).toContain('Unknown argument: bogus')
   })
 })

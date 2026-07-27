@@ -192,15 +192,14 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-126 | FR-18 | rejects `gs://`/`s3://`-scheme values for `--from`/`--out` (local-paths-only invariant; `--repos` legitimately holds `https://`/`git@` git URLs and is exempt) | pass |
 | TC-127 | FR-18 | terminates its bootstrap child process (no orphan) after both success and timeout | pass |
 | TC-128 | FR-18 | routes the bootstrap child's stdout/stderr into this process's own stderr (fd 2) instead of `stdio: 'ignore'` | pass |
-| TC-129 | FR-19 | submit_feedback records helped/notes/answer/query/requestId/scores as an NDJSON feedback record and returns ok | pass |
+| TC-129 | FR-19 | submit_feedback records helped/notes/query/requestId/scores as an NDJSON feedback record and returns ok | pass |
 | TC-130 | FR-19 | submit_feedback errors when helped is missing or not yes/partial/no | pass |
 | TC-131 | FR-19 | kb_query MCP payload echoes the server requestId for feedback correlation | pass |
 | TC-132 | FR-19 | sets a top-level AGENT_INSTRUCTION nudge (not buried in notes) when the sampling gate passes | pass |
 | TC-133 | FR-19 | sets no AGENT_INSTRUCTION when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off) | pass |
 | TC-134 | FR-4 | kb_query response echoes back the original query text | pass |
 | TC-135 | FR-19 | submit_feedback response echoes back the submitted query when provided, omits it when absent | pass |
-| TC-136 | FR-19 | submit_feedback records and echoes back the submitted answer text when provided | pass |
-| TC-137 | FR-19 | submit_feedback response echoes the full recorded feedback (helped/notes/requestId/scores), not just query/answer | pass |
+| TC-137 | FR-19 | submit_feedback response echoes the full recorded feedback (helped/notes/requestId/scores), not just query | pass |
 | TC-138 | FR-19 | submit_feedback rejects a non-string requestId (no array batching) | pass |
 | TC-139 | FR-20 | get_feedback_requests lists a pending entry queued by a sampled nudge, and submit_feedback resolves it | pass |
 | TC-140 | FR-20 | submit_feedback with no requestId is valid general feedback and leaves the pending queue untouched | pass |

@@ -45,7 +45,7 @@ import {
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
-import { isClientLocalCommand, runRemoteCliCommand } from './remote-commands.js'
+import { discoverRemoteDefaultBase, isClientLocalCommand, runRemoteCliCommand } from './remote-commands.js'
 import {
   resolveServerConnection,
   formatServerAddress,
@@ -94,7 +94,10 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     `  kb [--host <host[:port]|url>] ${cmd('<intent-command>', mode)} "<input>" [options]`,
     '',
     'Global flags:',
-    '  --host <host[:port]|url>   kb-server to use (else KB_HOST / KB_SERVER_URL env)',
+    '  --host <host[:port]|url>   kb-server to use (else KB_HOST env)',
+    '  --port <port>              kb-server port, refines --host (else KB_PORT)',
+    '  --sslmode <mode>           require|prefer|disable (else KB_SSLMODE, default prefer)',
+    '  --api-key <key>            Bearer for the server (alias --key; else KB_SERVER_API_KEY)',
     '  --base <slug>             server-side base to use (sent as X-KB-Base; else KB_BASE)',
     '  --connection-string <uri>  kb://[apikey@]host[:port]/[base][?sslmode=] (else KB_CONNECTION_STRING)',
     '',
@@ -142,11 +145,11 @@ function printMcpHelp(): string {
     '(localhost or remote). Agents use MCP only; humans use the kb CLI/TUI.',
     '',
     'Subcommands:',
-    '  install [--host <host[:port]|url>] [--key <api-key>]',
-    '                                      Write mcpServers.kb → ${server}/mcp',
-    '                                      Host from --host, else active connection',
-    '                                      (KB_SERVER_URL / KB_HOST / localhost).',
-    '                                      Bearer from --key, else KB_SERVER_API_KEY.',
+    '  install                              Write mcpServers.kb → ${server}/mcp',
+    '                                      Host from the active connection —',
+    '                                      --host / --connection-string / --api-key',
+    '                                      (or KB_HOST / KB_CONNECTION_STRING /',
+    '                                      KB_SERVER_API_KEY), else localhost.',
     '  status                              Show env host + current MCP kb URLs',
     '  uninstall                           Remove managed kb MCP entries',
     '',
@@ -154,7 +157,7 @@ function printMcpHelp(): string {
     '  kb mcp install',
     '  kb mcp install --host localhost:38117',
     '  kb mcp install --host https://kb.example.com:38117 --key <api-key>',
-    '  export KB_SERVER_URL=http://remote:38117 && kb mcp install',
+    '  export KB_CONNECTION_STRING=kb://remote:38117 && kb mcp install',
     '  kb mcp status',
     '  kb mcp uninstall',
   ].join('\n')
@@ -353,35 +356,14 @@ export async function runMainWithOutput(
     const subcommand = args[1]
     if (subcommand === 'install') {
       try {
-        let host: string | undefined
-        let apiKey: string | undefined
-        for (let i = 2; i < args.length; i += 1) {
-          const token = args[i]
-          if (token === '--host') {
-            host = args[i + 1]?.trim()
-            if (!host) throw new Error('--host requires a value (host:port, hostname, or URL)')
-            i += 1
-            continue
-          }
-          if (token?.startsWith('--host=')) {
-            host = token.slice('--host='.length).trim()
-            if (!host) throw new Error('--host requires a value')
-            continue
-          }
-          if (token === '--key' || token === '--api-key') {
-            apiKey = args[i + 1]?.trim()
-            if (!apiKey) throw new Error(`${token} requires a value (the server API key)`)
-            i += 1
-            continue
-          }
-          if (token?.startsWith('--key=') || token?.startsWith('--api-key=')) {
-            apiKey = token.slice(token.indexOf('=') + 1).trim()
-            if (!apiKey) throw new Error('--key requires a value')
-            continue
-          }
-          throw new Error(`Unknown argument: ${token}\n\n${printMcpHelp()}`)
+        // --host / --api-key / --key / --connection-string / --port / --sslmode /
+        // --base are all global flags, already stripped and applied to the ambient
+        // connection by `applyConnectionOverrides` before dispatch reached here.
+        const extra = args.slice(2)
+        if (extra.length > 0) {
+          throw new Error(`Unknown argument: ${extra[0]}\n\n${printMcpHelp()}`)
         }
-        const results = await syncKbMcpConfigs({ host, apiKey, config })
+        const results = await syncKbMcpConfigs({ config })
         const report = formatMcpSyncReport(results)
         if (report) out.log(report)
       } catch (error) {
@@ -456,7 +438,8 @@ async function main() {
     try {
       sessionBase = (await resolveEffectiveBaseDir()).baseName
     } catch {
-      // no base selected yet
+      // no base selected locally — ask the server which base it defaults to
+      sessionBase = await discoverRemoteDefaultBase(kbConfig)
     }
     startupNotices.unshift(formatConnectionContext(kbConfig, sessionBase))
     const { launchTui } = await import('../tui/index.js')
@@ -481,7 +464,8 @@ async function main() {
     try {
       cliBase = (await resolveEffectiveBaseDir()).baseName
     } catch {
-      // no base yet
+      // no base selected locally — ask the server which base it defaults to
+      cliBase = await discoverRemoteDefaultBase(kbConfig)
     }
     console.log(formatConnectionContext(kbConfig, cliBase))
     console.log('')

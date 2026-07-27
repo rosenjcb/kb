@@ -9,7 +9,7 @@ import {
 } from '../scripts/eval-server.mjs'
 
 describe('eval-server helpers', () => {
-  it('[TC-526][TC-242] buildKbRemoteEnv sets KB_SERVER_URL, KB_BASE, and clears host/port', () => {
+  it('[TC-526][TC-242] buildKbRemoteEnv decomposes a url into KB_HOST/KB_PORT/KB_SSLMODE, sets KB_BASE', () => {
     const prevNodePath = process.env.NODE_PATH
     process.env.NODE_PATH = '/tmp/node_path'
     try {
@@ -18,12 +18,12 @@ describe('eval-server helpers', () => {
         apiKey: 'test-key',
         base: 'eval-raylib',
       })
-      expect(env.KB_SERVER_URL).toBe('http://127.0.0.1:4242')
+      expect(env.KB_HOST).toBe('127.0.0.1')
+      expect(env.KB_PORT).toBe('4242')
+      expect(env.KB_SSLMODE).toBe('disable')
       expect(env.KB_SERVER_API_KEY).toBe('test-key')
       expect(env.KB_BASE).toBe('eval-raylib')
       expect(env.NODE_PATH).toBeUndefined()
-      expect(env.KB_HOST).toBeUndefined()
-      expect(env.KB_PORT).toBeUndefined()
     } finally {
       if (prevNodePath === undefined) delete process.env.NODE_PATH
       else process.env.NODE_PATH = prevNodePath
@@ -40,27 +40,32 @@ describe('eval-server helpers', () => {
   })
 
   it('[TC-531] buildEvalOfflineEnv clears remote connection vars', () => {
-    const prevUrl = process.env.KB_SERVER_URL
     const prevHost = process.env.KB_HOST
     const prevPort = process.env.KB_PORT
+    const prevSslmode = process.env.KB_SSLMODE
+    const prevConnectionString = process.env.KB_CONNECTION_STRING
     const prevKey = process.env.KB_SERVER_API_KEY
-    process.env.KB_SERVER_URL = 'http://127.0.0.1:9999'
     process.env.KB_HOST = '127.0.0.1'
     process.env.KB_PORT = '9999'
+    process.env.KB_SSLMODE = 'disable'
+    process.env.KB_CONNECTION_STRING = 'kb://127.0.0.1:9999'
     process.env.KB_SERVER_API_KEY = 'stale-key'
     try {
       const env = buildEvalOfflineEnv()
-      expect(env.KB_SERVER_URL).toBeUndefined()
       expect(env.KB_HOST).toBeUndefined()
       expect(env.KB_PORT).toBeUndefined()
+      expect(env.KB_SSLMODE).toBeUndefined()
+      expect(env.KB_CONNECTION_STRING).toBeUndefined()
       expect(env.KB_SERVER_API_KEY).toBeUndefined()
     } finally {
-      if (prevUrl === undefined) delete process.env.KB_SERVER_URL
-      else process.env.KB_SERVER_URL = prevUrl
       if (prevHost === undefined) delete process.env.KB_HOST
       else process.env.KB_HOST = prevHost
       if (prevPort === undefined) delete process.env.KB_PORT
       else process.env.KB_PORT = prevPort
+      if (prevSslmode === undefined) delete process.env.KB_SSLMODE
+      else process.env.KB_SSLMODE = prevSslmode
+      if (prevConnectionString === undefined) delete process.env.KB_CONNECTION_STRING
+      else process.env.KB_CONNECTION_STRING = prevConnectionString
       if (prevKey === undefined) delete process.env.KB_SERVER_API_KEY
       else process.env.KB_SERVER_API_KEY = prevKey
     }
@@ -70,9 +75,10 @@ describe('eval-server helpers', () => {
     expect(DEFAULT_KB_SERVER_PORT).toBe(38117)
   })
 
-  it('[TC-530] buildKbRemoteEnv derives URL from host and default port', () => {
+  it('[TC-530] buildKbRemoteEnv passes through host and default port', () => {
     const env = buildKbRemoteEnv({ host: '127.0.0.1', port: DEFAULT_KB_SERVER_PORT, apiKey: defaultEvalApiKey() })
-    expect(env.KB_SERVER_URL).toBe('http://127.0.0.1:38117')
+    expect(env.KB_HOST).toBe('127.0.0.1')
+    expect(env.KB_PORT).toBe('38117')
   })
 
   it('[TC-528] allocateFreePort returns a positive integer', async () => {

@@ -136,7 +136,7 @@ describe('submit_feedback and feedback nudge', () => {
     return { dir, store: new QueryFeedbackStore(dir) }
   }
 
-  it('[TC-129] records helped/notes/answer/query/requestId/scores as an NDJSON record and returns ok', async () => {
+  it('[TC-129] records helped/notes/query/requestId/scores as an NDJSON record and returns ok', async () => {
     const { dir, store } = makeTempStore()
     const result = await dispatchMcpToolCall(
       makeStubService(),
@@ -144,7 +144,6 @@ describe('submit_feedback and feedback nudge', () => {
       {
         helped: 'partial',
         notes: 'answer cited the right file but missed the retry path',
-        answer: 'Retries use exponential backoff via retryWithBackoff().',
         query: 'how does auth retry work?',
         requestId: 'req-1',
         scores: { correctness: 3, usefulness: 2 },
@@ -160,7 +159,6 @@ describe('submit_feedback and feedback nudge', () => {
     expect(record.feedbackRequestId).toBe('req-9')
     expect(record.helped).toBe('partial')
     expect(record.notes).toContain('missed the retry path')
-    expect(record.answer).toBe('Retries use exponential backoff via retryWithBackoff().')
     expect(record.query).toBe('how does auth retry work?')
     expect(record.requestId).toBe('req-1')
     expect(record.scores).toEqual({ correctness: 3, usefulness: 2 })
@@ -250,23 +248,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(JSON.parse(withoutQuery.content[0].text).query).toBeUndefined()
   })
 
-  it('[TC-136] submit_feedback records and echoes back the submitted answer text when provided', async () => {
-    const { dir, store } = makeTempStore()
-    const result = await dispatchMcpToolCall(
-      makeStubService(),
-      'submit_feedback',
-      { helped: 'yes', answer: 'Retries use exponential backoff via retryWithBackoff().' },
-      { feedbackStore: store }
-    )
-    expect(JSON.parse(result.content[0].text).answer).toBe(
-      'Retries use exponential backoff via retryWithBackoff().'
-    )
-    const date = new Date().toISOString().slice(0, 10)
-    const line = readFileSync(path.join(dir, `${date}.jsonl`), 'utf-8').trim()
-    expect(JSON.parse(line).answer).toBe('Retries use exponential backoff via retryWithBackoff().')
-  })
-
-  it('[TC-137] submit_feedback response echoes the full recorded feedback, not just query/answer', async () => {
+  it('[TC-137] submit_feedback response echoes the full recorded feedback, not just query', async () => {
     const { store } = makeTempStore()
     const result = await dispatchMcpToolCall(
       makeStubService(),

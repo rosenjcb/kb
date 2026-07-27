@@ -26,7 +26,7 @@ beforeEach(async () => {
   process.env.KB_HOME = kbHomeDir
   delete process.env.KB_HOST
   delete process.env.KB_PORT
-  delete process.env.KB_SERVER_URL
+  delete process.env.KB_SSLMODE
   delete process.env.KB_LLM_PROVIDER
   delete process.env.ANTHROPIC_API_KEY
   delete process.env.OPENAI_API_KEY
@@ -38,7 +38,7 @@ afterEach(async () => {
   delete process.env.KB_HOME
   delete process.env.KB_HOST
   delete process.env.KB_PORT
-  delete process.env.KB_SERVER_URL
+  delete process.env.KB_SSLMODE
   delete process.env.KB_LLM_PROVIDER
   delete process.env.ANTHROPIC_API_KEY
   delete process.env.OPENAI_API_KEY

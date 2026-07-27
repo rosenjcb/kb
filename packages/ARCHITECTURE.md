@@ -18,7 +18,7 @@ KB 1.0 is three workspace packages: **`@kb/client`** (`kb`), **`@kb/server`** (`
 | Server daemon | `kb-server` |
 | CLI / TUI client | `kb` |
 | Data home | `KB_HOME` (default `~/.kb`) |
-| Host / port | `KB_HOST` / `KB_PORT` / `KB_SERVER_URL` / `kb --host` |
+| Host / port | `KB_HOST` / `KB_PORT` / `KB_CONNECTION_STRING` / `kb --host` |
 | Client settings | `KB_*` env vars + `~/.kb/state/` base files |
 
 ## Stack

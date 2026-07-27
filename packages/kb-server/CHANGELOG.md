@@ -1,10 +1,18 @@
 # kb-server
 
+## 1.5.2
+
+### Patch Changes
+
+- Bump forward after merging main: main independently published `@kb/client@1.3.19` and `@kb/server@1.5.1` with different content than this branch's own patch bumps to the same version numbers, so both need one more patch step to avoid a version collision.
+
 ## 1.5.1
 
 ### Patch Changes
 
 - Prefer MCP form elicitation (yes/partial/no) for sampled kb_query feedback when the client supports it (`KB_MCP_ELICITATION` defaults to `true`; set `false` to opt out); fall back to AGENT_INSTRUCTION. MCP `/mcp` is now stateful (`mcp-session-id`).
+- Updated dependencies
+  - @kb/core@1.5.11
 
 ## 1.5.0
 

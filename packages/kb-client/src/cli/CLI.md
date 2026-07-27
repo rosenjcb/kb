@@ -53,7 +53,7 @@ kb --host http://remote:38117/docs list
 kb --host staging:38117          # TUI when no other args
 ```
 
-Parsed in `main()` before subcommand dispatch. Equivalent to setting `KB_SERVER_URL` or `KB_HOST`/`KB_PORT` for one process.
+Parsed in `main()` before subcommand dispatch. Equivalent to setting `KB_HOST`/`KB_PORT`/`KB_SSLMODE` for one process.
 
 ## Command style (noun → verb)
 

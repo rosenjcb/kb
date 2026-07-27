@@ -92,7 +92,7 @@ block chat — see [`src/SERVER.md`](./src/SERVER.md).
 | Client | Setting |
 |--------|---------|
 | Pages demo (`demo/`) | Settings → server URL `https://kb-demo.fly.dev`; leave API key blank (unless you set one). CORS allow-lists `https://rosenjcb.github.io` and local `http://localhost:8000`. |
-| `kb` CLI / MCP | optional; `--host https://kb-demo.fly.dev` or `KB_SERVER_URL=https://kb-demo.fly.dev` |
+| `kb` CLI / MCP | optional; `--host https://kb-demo.fly.dev` or `KB_CONNECTION_STRING=kb://kb-demo.fly.dev` |
 
 Slack stays off this host — run a separate server if you need Events later.
 

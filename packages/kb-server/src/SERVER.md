@@ -84,7 +84,7 @@ Start the server with MCP enabled (same `KB_SERVER_API_KEY` on server and client
 ```bash
 export KB_SERVER_API_KEY=testkey
 # Point the thin client at this node (remote example):
-# export KB_SERVER_URL=https://kb.example.com:38117
+# export KB_CONNECTION_STRING=kb://kb.example.com:38117
 kb-server start --with-mcp
 ```
 
@@ -100,7 +100,7 @@ kb mcp install --host localhost:38117
 kb mcp install --host https://kb.example.com:38117
 
 # Or set session env, then:
-export KB_SERVER_URL=https://kb.example.com:38117
+export KB_CONNECTION_STRING=kb://kb.example.com:38117
 export KB_SERVER_API_KEY=testkey
 kb mcp install
 kb mcp status
@@ -113,7 +113,7 @@ That writes/updates the `kb` entry in:
 | Cursor | `~/.cursor/mcp.json` | `{ "url": "<server>/mcp", "headers": { "Authorization": "Bearer …" } }` |
 | Claude Code | `~/.claude.json` (`mcpServers`) | `{ "type": "http", "url": "<server>/mcp", "headers": { … } }` |
 
-URL follows the same host resolution as the CLI/TUI (`--host` / `KB_SERVER_URL` / `KB_HOST` / localhost default). Other MCP servers in those files are left alone. Reload MCP in the agent after sync, then use `kb_query` (agents: MCP connection only; humans: CLI/TUI). Verify with `claude mcp list` / `agent mcp list-tools kb` / `kb mcp status`.
+URL follows the same host resolution as the CLI/TUI (`--host` / `KB_CONNECTION_STRING` / `KB_HOST` / localhost default). Other MCP servers in those files are left alone. Reload MCP in the agent after sync, then use `kb_query` (agents: MCP connection only; humans: CLI/TUI). Verify with `claude mcp list` / `agent mcp list-tools kb` / `kb mcp status`.
 
 **Manual fallback** (only if you cannot run the client):
 

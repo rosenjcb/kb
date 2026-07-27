@@ -144,7 +144,7 @@ The image starts with `--with-mcp`, so agents can reach `POST /mcp` out of the b
 Then point any client at it with two env vars. Everything in [Quick start](#quick-start) and [Connect agents](#connect-agents-claude--cursor) works unchanged — only the address differs:
 
 ```bash
-export KB_SERVER_URL=https://kb.acme.internal:38117
+export KB_CONNECTION_STRING=kb://kb.acme.internal:38117
 export KB_SERVER_API_KEY=<same-token>
 
 kb query "how does auth work?"    # humans: CLI / TUI
@@ -153,7 +153,7 @@ kb                                # chat against the team server
 
 Prefer not to export? One-shot with `kb --host https://kb.acme.internal:38117 query "…"`. Agents (Claude Code / Cursor) use the same URL over MCP — see [Connect agents](#connect-agents-claude--cursor).
 
-**All client env vars:** `KB_HOST`, `KB_PORT`, `KB_SERVER_URL`, `KB_SERVER_API_KEY`, `KB_BASE`, `KB_ACTIVE_BASE`. Full reference: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md).
+**All client env vars:** `KB_HOST`, `KB_PORT`, `KB_SSLMODE`, `KB_CONNECTION_STRING`, `KB_SERVER_API_KEY`, `KB_BASE`, `KB_ACTIVE_BASE`. Full reference: [`packages/kb-client/CLIENT.md`](packages/kb-client/CLIENT.md).
 
 ### Build once, serve cheap
 
@@ -183,7 +183,7 @@ kb-server uninstall --purge --yes
 Global flag (any command):
 
 ```
-kb --host <host:port|url>   …   # overrides KB_HOST / KB_SERVER_URL for this invocation
+kb --host <host:port|url>   …   # overrides KB_HOST / KB_PORT / KB_SSLMODE for this invocation
 ```
 
 ### Query
@@ -242,7 +242,7 @@ kb sync
 **Team remote (typical):**
 
 ```bash
-export KB_SERVER_URL=https://kb.acme.internal:38117
+export KB_CONNECTION_STRING=kb://kb.acme.internal:38117
 export KB_SERVER_API_KEY=<token>
 
 kb skills install                                    # skill + Claude hooks

@@ -33,6 +33,10 @@ and rewrites `research/version.tex`. Do not hand-edit those version files.
 
 **`@kb/core` version is internal-only.** Still bump via changesets when core source changes. Never print it on user-facing surfaces (CLI/TUI, `kb-server` start/`--version`, `/healthz`, MCP metadata, operator logs) — those show `@kb/client` / `@kb/server` only. Core semver is for workspace dependency tracking and snapshot manifest provenance.
 
+**Agents default to `patch`.** Do not infer `minor`/`major` from your own impact
+assessment — use `patch` unless the user explicitly asks for a different bump
+type in that conversation.
+
 ## Boolean environment variables
 
 Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in

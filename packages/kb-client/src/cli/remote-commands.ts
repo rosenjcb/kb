@@ -40,6 +40,22 @@ export async function ensureServerReady(config: KbConfig): Promise<void> {
   await client.connect()
 }
 
+/**
+ * Discover the server's own default base for display when no base was resolved
+ * locally (no `--base`, `.kb` file, active/default base). Best-effort: an
+ * unreachable server just leaves the caller's existing "(none)" display as-is —
+ * the actual command still gets a real connection error later.
+ */
+export async function discoverRemoteDefaultBase(config: KbConfig): Promise<string | undefined> {
+  try {
+    const client = createKbApiClient(resolveServerConnection(config))
+    const health = await client.connect()
+    return health.base || undefined
+  } catch {
+    return undefined
+  }
+}
+
 export async function runRemoteAdminCli(
   args: string[],
   out: CliOutput,

@@ -22,7 +22,7 @@ export function formatConnectionError(connection: ServerConnection, cause?: unkn
     '  Or point the client at a remote server:',
     '    kb --host <host:port>',
     '    # or: export KB_HOST=<host>  export KB_PORT=<port>',
-    '    # or: export KB_SERVER_URL=http://<host>:<port>',
+    '    # or: export KB_CONNECTION_STRING=kb://<host>:<port>',
   ]
   if (cause instanceof Error && cause.message && !cause.message.includes('fetch failed')) {
     lines.push('', `  Detail: ${cause.message}`)

@@ -9,24 +9,52 @@ describe('server-connection', () => {
     const prevPort = process.env.KB_PORT
     delete process.env.KB_HOST
     delete process.env.KB_PORT
-    delete process.env.KB_SERVER_URL
     const conn = resolveServerConnection({})
     expect(conn.url).toBe('http://localhost:38117')
     if (prevHost) process.env.KB_HOST = prevHost
     if (prevPort) process.env.KB_PORT = prevPort
   })
 
-  it('[TC-2] prefers KB_SERVER_URL override', () => {
-    const prev = process.env.KB_SERVER_URL
-    process.env.KB_SERVER_URL = 'https://kb.example.com/'
+  it('[TC-2] bare remote hostname infers https under default sslmode (parity with kb://)', () => {
+    const prevHost = process.env.KB_HOST
+    const prevSslmode = process.env.KB_SSLMODE
+    delete process.env.KB_SSLMODE
+    process.env.KB_HOST = 'kb.example.com'
     const conn = resolveServerConnection({})
     expect(conn.url).toBe('https://kb.example.com')
-    if (prev) process.env.KB_SERVER_URL = prev
-    else delete process.env.KB_SERVER_URL
+    if (prevHost === undefined) delete process.env.KB_HOST
+    else process.env.KB_HOST = prevHost
+    if (prevSslmode === undefined) delete process.env.KB_SSLMODE
+    else process.env.KB_SSLMODE = prevSslmode
+  })
+
+  it('[TC-54] KB_SSLMODE=disable forces plaintext even for a remote host', () => {
+    const prevHost = process.env.KB_HOST
+    const prevSslmode = process.env.KB_SSLMODE
+    process.env.KB_HOST = 'kb.example.com'
+    process.env.KB_SSLMODE = 'disable'
+    const conn = resolveServerConnection({})
+    expect(conn.url).toBe('http://kb.example.com:38117')
+    if (prevHost === undefined) delete process.env.KB_HOST
+    else process.env.KB_HOST = prevHost
+    if (prevSslmode === undefined) delete process.env.KB_SSLMODE
+    else process.env.KB_SSLMODE = prevSslmode
+  })
+
+  it('[TC-55] KB_PORT is honored as an explicit port alongside an inferred scheme', () => {
+    const prevHost = process.env.KB_HOST
+    const prevPort = process.env.KB_PORT
+    process.env.KB_HOST = 'kb.example.com'
+    process.env.KB_PORT = '9443'
+    const conn = resolveServerConnection({})
+    expect(conn.url).toBe('https://kb.example.com:9443')
+    if (prevHost === undefined) delete process.env.KB_HOST
+    else process.env.KB_HOST = prevHost
+    if (prevPort === undefined) delete process.env.KB_PORT
+    else process.env.KB_PORT = prevPort
   })
 
   it('[TC-10] formatConnectionContext shows host and base', () => {
-    delete process.env.KB_SERVER_URL
     const line = formatConnectionContext({}, 'dogfood')
     expect(line).toContain('host: localhost:38117')
     expect(line).toContain('base: dogfood')
@@ -34,7 +62,6 @@ describe('server-connection', () => {
 
   it('[TC-50] resolveServerConnection carries KB_BASE as the wire base', () => {
     const prevBase = process.env.KB_BASE
-    delete process.env.KB_SERVER_URL
     process.env.KB_BASE = 'raylib'
     const conn = resolveServerConnection({})
     expect(conn.base).toBe('raylib')
@@ -101,7 +128,7 @@ describe('KbApiClient', () => {
     const msg = formatConnectionError({ url: 'http://localhost:38117' })
     expect(msg).toContain('kb-server start')
     expect(msg).toContain('KB_HOST')
-    expect(msg).toContain('KB_SERVER_URL')
+    expect(msg).toContain('KB_CONNECTION_STRING')
     expect(msg).toContain('--host')
     expect(msg).not.toContain('pnpm run server:up')
     expect(msg).not.toContain('kb-server install')

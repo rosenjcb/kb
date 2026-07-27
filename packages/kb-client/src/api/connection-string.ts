@@ -12,9 +12,15 @@ import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
  * - **TLS** is chosen by `sslmode` (default `prefer`: TLS for remote hosts,
  *   plaintext for loopback), not by the scheme — so there is a single `kb://`.
  */
+export type SslMode = 'require' | 'prefer' | 'disable'
+
 export interface ParsedConnectionString {
-  /** Resolved base URL without trailing slash, e.g. `http://localhost:38117`. */
+  /** Resolved base URL without trailing slash, e.g. `http://localhost:38117`. Convenience/display only. */
   url: string
+  hostname: string
+  /** Explicit port only — omitted means "apply the scheme's default." */
+  port?: string
+  sslmode: SslMode
   /** API key from the userinfo slot, when present. */
   apiKey?: string
   /** Base slug from the path segment, when present. */
@@ -23,8 +29,36 @@ export interface ParsedConnectionString {
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
 
+/** TLS for remote hosts, plaintext for loopback, under the default `sslmode=prefer`. */
+export function isSecureConnection(hostname: string, sslmode: SslMode = 'prefer'): boolean {
+  if (sslmode === 'require') return true
+  if (sslmode === 'disable') return false
+  return !LOOPBACK_HOSTS.has(hostname)
+}
+
 /**
- * Parse a `kb://…` connection string into `{ url, apiKey?, base? }`.
+ * Build a full base URL from decomposed host/port/sslmode — the single place that
+ * decides scheme and default port, shared by `--host` and `kb://` resolution so the
+ * two can never disagree.
+ */
+export function buildServerUrl(hostname: string, explicitPort: string | undefined, sslmode: SslMode = 'prefer'): string {
+  const secure = isSecureConnection(hostname, sslmode)
+  const scheme = secure ? 'https' : 'http'
+  // Keep an explicit port when given. Otherwise default: plaintext falls back to
+  // the KB server port; TLS uses the implicit 443.
+  const port = explicitPort || (secure ? '' : String(DEFAULT_KB_SERVER_PORT))
+  const authority = port ? `${hostname}:${port}` : hostname
+  return `${scheme}://${authority}`
+}
+
+function parseSslMode(raw: string, sourceForError: string): SslMode {
+  const sslmode = raw.toLowerCase()
+  if (sslmode === 'require' || sslmode === 'prefer' || sslmode === 'disable') return sslmode
+  throw new Error(`Invalid sslmode "${sslmode}" (use require, prefer, or disable): ${sourceForError}`)
+}
+
+/**
+ * Parse a `kb://…` connection string into its decomposed connection parts.
  * Throws on a non-`kb://` scheme or a missing host.
  */
 export function parseKbConnectionString(raw: string): ParsedConnectionString {
@@ -55,20 +89,16 @@ export function parseKbConnectionString(raw: string): ParsedConnectionString {
 
   const base = decodeURIComponent(parsed.pathname.replace(/^\/+/, '')).trim() || undefined
 
-  const sslmode = (parsed.searchParams.get('sslmode') || 'prefer').toLowerCase()
-  const isLoopback = LOOPBACK_HOSTS.has(hostname)
-  let secure: boolean
-  if (sslmode === 'require') secure = true
-  else if (sslmode === 'disable') secure = false
-  else if (sslmode === 'prefer') secure = !isLoopback
-  else throw new Error(`Invalid sslmode "${sslmode}" (use require, prefer, or disable): ${raw}`)
+  const sslmode = parseSslMode(parsed.searchParams.get('sslmode') || 'prefer', raw)
+  const port = parsed.port || undefined
+  const url = buildServerUrl(hostname, port, sslmode)
 
-  const scheme = secure ? 'https' : 'http'
-  // Keep an explicit port when given. Otherwise default: plaintext falls back to
-  // the KB server port; TLS uses the implicit 443.
-  const port = parsed.port || (secure ? '' : String(DEFAULT_KB_SERVER_PORT))
-  const authority = port ? `${hostname}:${port}` : hostname
-  const url = `${scheme}://${authority}`
-
-  return { url, ...(apiKey ? { apiKey } : {}), ...(base ? { base } : {}) }
+  return {
+    url,
+    hostname,
+    sslmode,
+    ...(port ? { port } : {}),
+    ...(apiKey ? { apiKey } : {}),
+    ...(base ? { base } : {}),
+  }
 }
