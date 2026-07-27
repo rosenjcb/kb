@@ -222,29 +222,51 @@ Two tiers, cheap-first:
 2. **LLM scope classifier** — when nothing matched (or matches collide), one
    bounded routing call over the **entity catalog** — kinds, canonical names,
    one-line glosses; a compact routing table, not the fact store. It returns
-   candidate scopes *with confidence* plus explicit rule-outs ("this is a
-   deploy question about the payments domain; it is not about the platform-ui
+   a verbal confidence label per candidate scope ("this is a deploy question
+   about the payments domain; it is certainly not about the platform-ui
    surface"). Cached by `query_fingerprint`, logged like lane-routing events —
    the same shape as the existing `retrieval_lane_routing_events` machinery.
 
-The verdict is `{ inScope: entityIds, ruledOut: entityIds, unresolved }` and
-travels with the query envelope.
+The classifier does **not** emit numeric confidence — LLM probability numbers
+are noise. It emits a **multiclass verbal label per candidate scope**, and a
+deterministic gate maps labels to actions.
 
-### Rule-out semantics (the pruning, done safely)
+### Confidence gates (multiclass labels, not scores)
 
-Confidence-tiered, because a wrong rule-out is worse than no rule-out:
+Each candidate entity in the verdict gets exactly one label:
 
-| Verdict confidence | Effect on retrieval |
-|---|---|
-| **High** (exact alias hit, or classifier is unambiguous) | Hard prune: excluded partitions are filtered out of all five candidate streams — FTS hits linked to ruled-out entities are dropped, the BFS frontier never crosses into a ruled-out partition, ponds don't seed there |
-| **Medium** | Soft prune: ruled-out partitions take a score penalty instead of a filter — reachable if evidence insists |
-| **Low / unresolved** | No prune; today's path unchanged |
+| Label | Meaning | Effect on retrieval |
+|---|---|---|
+| `very_confident` | The query is about this scope | Land here; **hard-prune** partitions labeled `certainly_incorrect`; soft-penalize the rest |
+| `confident` | Probably this scope | Land here; **soft prune only** (score penalty on non-scope partitions) — no hard exclusion anywhere |
+| `unsure` | Can't tell | No scoping effect from this candidate |
+| `very_unsure` | Probably not, but can't rule out | No scoping effect — explicitly **not** an exclusion signal |
+| `certainly_incorrect` | The query is provably not about this scope (e.g. it names a `distinct_from` sibling) | Eligible for hard exclusion — but **only** when some other candidate is `very_confident` |
+
+The verdict travels with the query envelope as
+`{ candidates: [{entityId, label}], unresolved }`.
+
+Two rules make the gate safe, and they are the whole point:
+
+- **No positive identification → no exclusions.** If nothing reaches
+  `very_confident`/`confident` — the classifier couldn't sniff out the initial
+  surface(s) — the verdict is discarded wholesale and retrieval runs exactly
+  today's path. `certainly_incorrect` labels alone never prune anything: ruling
+  out requires first ruling *in*.
+- **Hard pruning needs both ends:** a `very_confident` landing *and* a
+  `certainly_incorrect` exclusion. Anything softer than that pair degrades to
+  score penalties, which evidence can overcome.
+
+Deterministic alias hits skip the classifier and enter the gate as
+`very_confident` (exact unique match) or as a collision (N candidates → §lanes).
 
 **Un-pruning is the safety valve:** if the walk ends `insufficient` or the
 sufficiency judge balks, exclusions lift progressively (hard → soft → none) and
 the walk resumes — a wrong scope verdict costs iterations, never the answer.
-Scope verdicts and any un-pruning are recorded out-of-band and shown in
-`--trace`.
+Scope verdicts, per-candidate labels, and any un-pruning are recorded
+out-of-band and shown in `--trace`. Label calibration gets its own eval check
+(§rollout phase 6): seeded off-scope queries must land `unsure`, not
+`certainly_incorrect`.
 
 ```mermaid
 flowchart TD
@@ -271,7 +293,7 @@ is honest — today they'd raid each other's facts and both look plausible.
 |---|---|
 | **`expandQueryWithGraph()`** (`graph-query-expansion.ts`) | Becomes **entity-guarded**: when a mention resolves, expansion draws only from the resolved entity's `entity_links` neighborhood — the `LIKE '%internal%'` blowup dies here. Unresolved queries keep today's behavior. |
 | **Deep walk** (`facts-query-research-orchestrator.ts`) | Landing generalizes from `git_repo` to **entity scope**: land in the resolved entity's fact pool, exhaust it, then walk `entity_edges` (then repo edges) outward. Ponds seeded from the entity's aliases instead of raw token pairs. Ruled-out partitions are pruned from all five candidate streams per the confidence tiers above, with progressive un-pruning on insufficiency. |
-| **Scope classifier** (new, stage 0) | One bounded LLM routing call over the entity catalog when alias matching comes up empty or collides; verdict `{inScope, ruledOut}` with confidence, cached by `query_fingerprint`, logged alongside `retrieval_lane_routing_events`. No catalog → skipped entirely. |
+| **Scope classifier** (new, stage 0) | One bounded LLM routing call over the entity catalog when alias matching comes up empty or collides; emits a multiclass label per candidate (`very_confident` … `certainly_incorrect`), gated deterministically per §confidence-gates, cached by `query_fingerprint`, logged alongside `retrieval_lane_routing_events`. No catalog → skipped entirely. |
 | **Ambiguity lanes** | A detected collision spawns one retrieval lane per candidate — this reuses the existing hypothesis/lane machinery (`retrieval-lane-router.ts`, `retrieval_hypotheses`) rather than inventing a new loop. Winner picked by evidence coherence (score mass, graph connectivity); the losing interpretation is reported out-of-band and named in the answer. |
 | **Scoring** | New term for entity-linked facts: `entityMatchScore` (1.0 exact canonical/alias binding to the resolved entity, 0 for facts linked to a `distinct_from` sibling) folded into the doc-fact formula; substring overlap with a *different* entity's name stops counting as relevance and starts counting **against**. |
 | **Fact curator** (`fact-curator.ts`) | Gains an **entity-consistency check**: facts linked to a `distinct_from` sibling of the resolved entity are flagged for the judge with the contrastive gloss in the verdict prompt — the exact evidence it needs to hard-drop the wrong half of a conflated pool. Decisions stay out-of-band on `retrieval.curation`, per the existing rule. |
@@ -303,7 +325,7 @@ is honest — today they'd raid each other's facts and both look plausible.
 |---|---|---|
 | **1 — entity spine** | Migration (4 tables), `entity-index` + `entity-link` cycles, backfill on scan | none (data only) |
 | **2 — nomenclature audit** | Collision detection, `distinct_from` + glosses, `kb entities` CLI | none — but operators can already *see* the #167 collisions |
-| **3 — scope inference + guarded retrieval** | `resolveQueryMentions()`, LLM scope classifier over the entity catalog, entity-guarded expansion, entity-scoped landing, partition rule-out with confidence tiers + un-pruning, interpretation named in answers | conflation drops on resolvable queries; walks stop spending budget in ruled-out partitions |
+| **3 — scope inference + guarded retrieval** | `resolveQueryMentions()`, LLM scope classifier over the entity catalog, multiclass confidence gates, entity-guarded expansion, entity-scoped landing, partition rule-out + un-pruning, interpretation named in answers | conflation drops on resolvable queries; walks stop spending budget in ruled-out partitions |
 | **4 — ambiguity lanes** | Per-candidate lanes on collisions, chat clarifying turns, entity-aware curator, `entityMatchScore` | collisions handled explicitly, never silently |
 | **5 — ontology assembly** | LLM consolidation, domain grouping, per-entity "card" rollup facts, publish disambiguation pages | domain-level questions get first-class answers |
 | **6 — eval axis** | Nomenclature-collision eval suite: fixtures with seeded confusable names ("internal" vs "Internal Services"), a **conflation-rate** metric (answers mixing facts across `distinct_from` pairs), wired into the harness + dogfood | regression guard on all of the above |
@@ -317,8 +339,10 @@ already pays for itself as an audit tool.
 
 - **Backward compatible:** empty ontology → byte-for-byte today's retrieval.
 - **Precision over recall at the resolution gate:** a wrong entity binding is
-  *worse* than no binding — thresholds favor "unresolved, fall through to
-  today's path." Alias matching is exact/longest-match, never fuzzy.
+  *worse* than no binding. Alias matching is exact/longest-match, never fuzzy;
+  classifier output is verbal multiclass labels gated deterministically — no
+  positive identification means no exclusions, ever, and `certainly_incorrect`
+  alone never prunes without a `very_confident` counterpart.
 - **Incremental or bust:** all three cycles key on content hashes; ontology
   assembly never re-LLMs an unchanged base.
 - **Out-of-band stays out-of-band:** resolution traces, lane losers, and
