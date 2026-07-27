@@ -4,11 +4,11 @@ info:
   version: 0.13.0
   description: >
     HTTP + MCP surface for the kb knowledge base service (`kb-server start`).
-    `/v1/*` is a plain REST API for apps and the Slack integration; `/mcp` is an
-    MCP (Model Context Protocol) Streamable HTTP endpoint for LLM clients and is
-    only mounted when the server runs with `--with-mcp`. All `/v1/*` and `/mcp`
-    requests require a bearer API key (`KB_SERVER_API_KEY`); `/health` and
-    `/healthz` are open.
+    `/v1/*` is a plain REST API for apps and the Slack integration; `/mcp` is a
+    stateful MCP (Model Context Protocol) Streamable HTTP endpoint for LLM
+    clients (`mcp-session-id` after initialize) and is only mounted when the
+    server runs with `--with-mcp`. All `/v1/*` and `/mcp` requests require a
+    bearer API key (`KB_SERVER_API_KEY`); `/health` and `/healthz` are open.
 
 
     One server process can serve many bases (psql-style). Select the base per
@@ -205,49 +205,123 @@ paths:
       summary: MCP Streamable HTTP endpoint (JSON-RPC 2.0)
       description: >
         Speaks the Model Context Protocol over JSON-RPC 2.0 (methods
-        `initialize`, `tools/list`, `tools/call`). Not a normal REST resource —
-        use an MCP client or the examples in `http/server.http`. Requires the
-        `Accept: application/json, text/event-stream` header. Only available when
-        the server runs with `--with-mcp`.
+        `initialize`, `tools/list`, `tools/call`). Stateful sessions: the
+        initialize response returns `mcp-session-id`; every subsequent
+        POST/GET/DELETE must send that header. Tools are `kb_query`,
+        `submit_feedback` (one string `requestId` per call — not an array), and
+        `get_feedback_requests`. Sampled feedback asks are gated by
+        `KB_FEEDBACK_SAMPLE_RATE`; when `KB_MCP_ELICITATION` is on (default
+        `true`) and the client declared form elicitation, the ask is a user
+        form, otherwise a top-level `AGENT_INSTRUCTION` on the kb_query payload.
+        Not a normal REST resource — use an MCP client or the examples in
+        `http/server.http`. Requires `Accept: application/json, text/event-stream`.
+        Only available when the server runs with `--with-mcp`.
+      parameters:
+        - in: header
+          name: mcp-session-id
+          required: false
+          schema: { type: string, format: uuid }
+          description: >
+            Required on every request after initialize. Omitted only for the
+            initial `initialize` call, which returns this header on the response.
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/JsonRpcRequest" }
             examples:
+              initialize:
+                value:
+                  jsonrpc: "2.0"
+                  id: 1
+                  method: "initialize"
+                  params:
+                    protocolVersion: "2025-06-18"
+                    capabilities: {}
+                    clientInfo: { name: "example", version: "1.0" }
               toolsList:
-                value: { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }
+                value: { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }
               callKbQuery:
                 value:
                   jsonrpc: "2.0"
-                  id: 2
+                  id: 3
                   method: "tools/call"
                   params:
                     name: "kb_query"
-                    arguments: { q: "what enforces rate limiting?", synthesize: false }
+                    arguments: { q: "what enforces rate limiting?" }
               callSubmitFeedback:
                 value:
                   jsonrpc: "2.0"
-                  id: 3
+                  id: 4
                   method: "tools/call"
                   params:
                     name: "submit_feedback"
                     arguments:
                       helped: "partial"
                       notes: "right file, but the answer missed the retry path"
-                      requestIds: ["<x-request-id from a kb_query response>"]
+                      answer: "Retries use exponential backoff via retryWithBackoff()."
+                      query: "how does auth retry work?"
+                      requestId: "<requestId from a kb_query response / x-request-id>"
+              callGetFeedbackRequests:
+                value:
+                  jsonrpc: "2.0"
+                  id: 5
+                  method: "tools/call"
+                  params:
+                    name: "get_feedback_requests"
+                    arguments: {}
       responses:
         "200":
-          description: JSON-RPC response
+          description: JSON-RPC response (includes `mcp-session-id` on initialize)
+          headers:
+            mcp-session-id:
+              schema: { type: string, format: uuid }
+              description: Session id to send on subsequent MCP requests
           content:
             application/json:
               schema: { $ref: "#/components/schemas/JsonRpcResponse" }
+        "400":
+          description: Missing/invalid MCP session id (after initialize)
         "401": { $ref: "#/components/responses/Unauthorized" }
         "503":
           description: Bootstrap indexing is still in progress or failed
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+    get:
+      tags: [mcp]
+      summary: MCP session SSE stream (server→client messages)
+      description: >
+        Opens the standalone SSE stream for an existing MCP session. Required
+        for server-initiated requests such as form elicitation (on by default;
+        `KB_MCP_ELICITATION=false` disables). Requires `mcp-session-id` and
+        `Accept: text/event-stream`.
+      parameters:
+        - in: header
+          name: mcp-session-id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: SSE stream (`text/event-stream`)
+        "400":
+          description: Invalid or missing MCP session id
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      tags: [mcp]
+      summary: Terminate an MCP session
+      description: Tears down the server+transport pair for `mcp-session-id`.
+      parameters:
+        - in: header
+          name: mcp-session-id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Session closed
+        "400":
+          description: Invalid or missing MCP session id
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /slack/events:
     post:

@@ -1,10 +1,16 @@
 # kb-server
 
+## 1.5.1
+
+### Patch Changes
+
+- Prefer MCP form elicitation (yes/partial/no) for sampled kb_query feedback when the client supports it (`KB_MCP_ELICITATION` defaults to `true`; set `false` to opt out); fall back to AGENT_INSTRUCTION. MCP `/mcp` is now stateful (`mcp-session-id`).
+
 ## 1.5.0
 
 ### Minor Changes
 
-- Add a `submit_feedback` MCP tool so agents can report whether kb_query answers held up (`helped` = yes/partial/no plus optional notes, query, requestIds, and 0–4 evaluation-axis scores). Feedback is appended as NDJSON to `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl` and never fails the response. kb_query MCP payloads now echo the server `requestId` for correlation with RunReport telemetry, and `KB_FEEDBACK_SAMPLE_RATE` (float 0–1, default 0 = off) makes a sampled fraction of trimmed kb_query responses carry a notes entry asking the agent to call `submit_feedback`.
+- Add a `submit_feedback` MCP tool so agents can report whether kb_query answers held up (`helped` = yes/partial/no plus optional notes, answer, query, a single string `requestId` — one per call, no array batching — and 0–4 evaluation-axis scores). Feedback is appended as NDJSON to `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl` and never fails the response. kb_query MCP payloads now echo the server `requestId` for correlation with RunReport telemetry, and `KB_FEEDBACK_SAMPLE_RATE` (float 0–1, default 0 = off) makes a sampled fraction of trimmed kb_query responses carry a top-level `AGENT_INSTRUCTION` key (not buried in `notes`) asking the agent to call `submit_feedback`, queuing that id for `get_feedback_requests`.
 
 ## 1.4.18
 

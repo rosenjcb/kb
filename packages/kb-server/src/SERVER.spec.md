@@ -1,11 +1,11 @@
 ---
 type: Spec
 title: "Spec: KB HTTP, MCP, and Slack Server"
-sources: [./]
+sources: [./, ./mcp-tools.ts, ./mcp-server.ts, ./mcp-feedback-elicitation.ts, ./pending-feedback-store.ts, ./query-feedback-store.ts]
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-07-26T11:35:00Z
+timestamp: 2026-07-26T23:20:00Z
 ---
 
 ### Intro
@@ -14,7 +14,10 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 
 ### Definitions
 
-See companion doc for full vocabulary where applicable.
+- **requestId** — singular server-assigned id on a `kb_query` payload / `x-request-id`; `submit_feedback` accepts one string `requestId` (never a `requestIds` array)
+- **AGENT_INSTRUCTION** — top-level sampled feedback nudge on a trimmed `kb_query` payload (not inside `notes`)
+- **KB_MCP_ELICITATION** — env flag; default `true` enables form elicitation + SSE POST; `false` opts out to JSON-only
+- **KB_FEEDBACK_SAMPLE_RATE** — float 0–1; gates *whether* a trimmed `kb_query` asks for feedback (default `0` = off)
 
 ### Scope
 
@@ -22,7 +25,7 @@ See companion doc for full vocabulary where applicable.
 - Unit-tested behaviors in the FR/TC tables below
 
 ## Out of Scope
-- Black-box HTTP contract tests — see [`HTTP.spec.md`](../../packages/kb-server/http/HTTP.spec.md)
+- Black-box HTTP contract tests — see [`HTTP.spec.md`](../http/HTTP.spec.md)
 
 ### Functional Requirements
 
@@ -46,8 +49,11 @@ See companion doc for full vocabulary where applicable.
 | FR-16 | Browser CORS: reflect allow-listed `Origin` (or `*`); omit headers when CORS off / origin not listed; answer preflight `OPTIONS` with 204 without auth for allowed origins |
 | FR-17 | First-boot bootstrap (`health.indexing`) returns 503 on `/v1/query`, `/v1/chat`, and `/mcp` with progress; scheduled reindex (`health.reindexing`) does **not** block those routes |
 | FR-18 | One-shot `kb-server refresh` builds a fresh local snapshot dir for one base, from either a previous local snapshot (`--from`: adopt, re-clone/hydrate repos from `--repos`/`--branch`, incremental reindex) or bare repos with no previous snapshot (`--repos` only: full clone + index); `--from`/`--out` are local paths only (never object storage — no `gs://`/`s3://` awareness, no bucket credentials — matching the existing invariant `scan`/`export`/`import` already hold), while `--repos` is a plain `url[#branch]` list (the `KB_GIT_REPOS` convention). It manages its own throwaway bootstrap child process (spawn, health-poll, SIGTERM-then-SIGKILL on completion or timeout) internally so callers no longer hand-roll that in shell. The child's stdout/stderr are routed into this process's own stderr (fd 2) rather than discarded, so a long-running cold index of a large repo stays observable live in `docker logs`/the container's own log stream instead of silently vanishing; `--json` emits an ok/error summary on stdout, same contract style as `scan`, and is unaffected since the child's output never touches this process's own stdout (fd 1) |
-| FR-19 | Expose a `submit_feedback` MCP tool that records agent feedback (`helped` = yes/partial/no plus optional notes/answer/query/requestId/0–4 axis scores — one `requestId` per call, no array batching; omit it for general feedback not tied to a specific query) as NDJSON under `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl` without ever failing the response, echoing the full recorded feedback (helped/notes/answer/query/requestId/scores) back in its response for confirmation and resolving any matching pending-feedback entry (FR-20); echo the server `requestId` in kb_query MCP payloads for correlation; and set a sampled feedback nudge on a dedicated top-level `AGENT_INSTRUCTION` key (never buried inside `notes`, which stays advisory-only) on trimmed kb_query responses gated by `KB_FEEDBACK_SAMPLE_RATE` (float 0–1, default 0 = off) |
-| FR-20 | Queue each sampled `AGENT_INSTRUCTION` nudge's `requestId`/`query` as a pending-feedback entry (in-memory, TTL-capped, process-local) and expose it read-only via `get_feedback_requests`, so a session can defer feedback to a checkpoint and drain what's actually outstanding instead of re-scraping past kb_query responses; an entry is removed once `submit_feedback` reports on its `requestId` |
+| FR-19 | [UPDATED] Expose a `submit_feedback` MCP tool that records agent feedback (`helped` = yes/partial/no plus optional notes/answer/query/requestId/0–4 axis scores — one string `requestId` per call, no `requestIds` array; omit it for general feedback) as NDJSON under `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl` without ever failing the response, echoing the full recorded feedback back for confirmation and resolving any matching pending-feedback entry (FR-20); echo the server `requestId` in kb_query MCP payloads for correlation; and on a sampled fraction of trimmed kb_query responses (`KB_FEEDBACK_SAMPLE_RATE`, float 0–1, default 0 = off) prefer MCP form elicitation when FR-21 applies, else set a top-level `AGENT_INSTRUCTION` key (never buried inside `notes`) |
+| FR-20 | [UPDATED] Queue each sampled `AGENT_INSTRUCTION` nudge's `requestId`/`query` as a pending-feedback entry (in-memory, TTL-capped, process-local) and expose it read-only via `get_feedback_requests`; an entry is removed once `submit_feedback` reports on its `requestId`; successful elicitation (FR-21 accept) records feedback immediately and does not enqueue |
+| FR-21 | [NEW] When a sampled kb_query has an `elicitFeedback` hook (wired when `KB_MCP_ELICITATION` is on — default `true`, opt out with `false`): accept records durable feedback and sets `feedback.via=elicitation` without `AGENT_INSTRUCTION`/pending; decline/cancel sets `feedback.status` without recording or nudging; `unavailable` falls back to FR-19's `AGENT_INSTRUCTION` + FR-20 queue |
+| FR-22 | [NEW] MCP `/mcp` is stateful Streamable HTTP: initialize returns `mcp-session-id` and subsequent POST/GET/DELETE must send it; when elicitation is on (FR-21 default) POST responses use SSE so `elicitation/create` can ride the tool-call stream, and `KB_MCP_ELICITATION=false` uses JSON-only POST responses |
+| FR-23 | [NEW] `createServerElicitFeedback`, bound to a live MCP `Server`, is the `elicitFeedback` hook consumed by FR-21: it checks the client's declared `elicitation` capability before asking (declining to ask at all when unsupported), dispatches a form-mode `elicitation/create` request (message + the flat helped/notes schema) via `elicitInput` when the client declared explicit `form` support or a raw `server.request()` fallback for the spec-back-compat empty-object case, maps the client's response to accepted/dismissed/unavailable, and never throws — a rejected/erroring request also resolves to `unavailable` |
 
 ### Known issues
 
@@ -198,6 +204,20 @@ See companion doc for full vocabulary where applicable.
 | TC-138 | FR-19 | submit_feedback rejects a non-string requestId (no array batching) | pass |
 | TC-139 | FR-20 | get_feedback_requests lists a pending entry queued by a sampled nudge, and submit_feedback resolves it | pass |
 | TC-140 | FR-20 | submit_feedback with no requestId is valid general feedback and leaves the pending queue untouched | pass |
+| TC-141 | FR-21 | sampled kb_query with elicitFeedback accept records feedback via elicitation and skips AGENT_INSTRUCTION/pending | pass |
+| TC-142 | FR-21 | sampled kb_query with elicitFeedback decline/cancel skips recording, AGENT_INSTRUCTION, and pending | pass |
+| TC-143 | FR-21 | sampled kb_query with elicitFeedback unavailable falls back to AGENT_INSTRUCTION + pending | pass |
+| TC-144 | FR-21 | KB_MCP_ELICITATION defaults to true (unset/empty/`true`); only `false` opts out | pass |
+| TC-145 | FR-22 | MCP POST without session (non-initialize) or GET without `mcp-session-id` returns 400 | pass |
+| TC-146 | FR-23 | no elicitation capability declared: resolves unavailable without calling elicitInput or request | pass |
+| TC-147 | FR-23 | client declares only url-mode capability (no form): resolves unavailable without asking | pass |
+| TC-148 | FR-23 | client declares empty `elicitation: {}` (back-compat form-only): dispatches via the raw `server.request()` fallback, not `elicitInput` | pass |
+| TC-149 | FR-23 | client declares explicit `elicitation: { form: {} }`: dispatches via `server.elicitInput()` | pass |
+| TC-150 | FR-23 | client responds accept with a valid helped value: resolves accepted with helped/notes | pass |
+| TC-151 | FR-23 | client responds accept with a missing or invalid helped value: resolves unavailable | pass |
+| TC-152 | FR-23 | client responds decline: resolves dismissed with action decline | pass |
+| TC-153 | FR-23 | client responds cancel: resolves dismissed with action cancel | pass |
+| TC-154 | FR-23 | the client request rejects: resolves unavailable instead of throwing | pass |
 
 ### Related docs
 

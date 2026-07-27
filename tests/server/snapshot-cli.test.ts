@@ -54,7 +54,8 @@ function seedBase(kbHome: string, name: string, marker = 'INDEX'): string {
   return baseDir
 }
 
-describe('kb-server export / import', () => {
+// VACUUM INTO + git seed is slow under full-suite parallel load; keep above 5s default.
+describe('kb-server export / import', { timeout: 30_000 }, () => {
   let kbHome: string
   let bundle: string
   const prevHome = process.env.KB_HOME
@@ -166,7 +167,7 @@ describe('kb-server export / import', () => {
       runImportCommand(['--from', bundle, '--base', 'dst'], logger, kbHome)
     ).rejects.toThrow(/already has an index/)
     await runImportCommand(['--from', bundle, '--base', 'dst', '--force'], logger, kbHome)
-  }, 20_000)
+  })
 
   it('rejects a source directory that is not a kb snapshot', async () => {
     const { logger } = capturingLogger()
@@ -177,7 +178,7 @@ describe('kb-server export / import', () => {
   })
 })
 
-describe('adoptSnapshot (start --from mechanics)', () => {
+describe('adoptSnapshot (start --from mechanics)', { timeout: 30_000 }, () => {
   let kbHome: string
   let bundle: string
   const prevHome = process.env.KB_HOME

@@ -157,7 +157,7 @@ Accept: text/event-stream
 
 # ---------------------------------------------------------------------------
 # MCP (Streamable HTTP) — requires `kb-server start --with-mcp` (Docker CMD uses this).
-# JSON-RPC 2.0; stateless (each request is independent).
+# JSON-RPC 2.0; stateful sessions (mcp-session-id) so elicitation can round-trip.
 # ---------------------------------------------------------------------------
 # @name mcpInitialize
 POST {{baseUrl}}/mcp
@@ -178,11 +178,25 @@ Accept: application/json, text/event-stream
 
 {{
   const assert = require('assert');
+  // Elicitation-on (default) returns SSE; JSON mode when KB_MCP_ELICITATION=false.
+  const mcpJson = (res) => {
+    if (res.parsedBody && res.parsedBody.jsonrpc) return res.parsedBody;
+    const raw = typeof res.body === 'string' ? res.body : (res.rawBody || '');
+    const matches = String(raw).match(/^data:\s*(.+)$/gm);
+    if (matches && matches.length) {
+      return JSON.parse(matches[matches.length - 1].replace(/^data:\s*/, ''));
+    }
+    return res.parsedBody;
+  };
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
   test('[TC-9] jsonrpc result', () => {
-    assert.strictEqual(response.parsedBody.jsonrpc, '2.0');
-    assert.ok(response.parsedBody.result?.protocolVersion);
+    const body = mcpJson(response);
+    assert.strictEqual(body.jsonrpc, '2.0');
+    assert.ok(body.result?.protocolVersion);
   });
+  // Capture session id for subsequent MCP calls (stateful Streamable HTTP).
+  const sid = response.headers['mcp-session-id'];
+  if (sid) exports.mcpSessionId = Array.isArray(sid) ? sid[0] : sid;
 }}
 
 ###
@@ -193,6 +207,7 @@ POST {{baseUrl}}/mcp
 Authorization: Bearer {{apiKey}}
 Content-Type: application/json
 Accept: application/json, text/event-stream
+mcp-session-id: {{mcpSessionId}}
 
 {
   "jsonrpc": "2.0",
@@ -203,14 +218,23 @@ Accept: application/json, text/event-stream
 
 {{
   const assert = require('assert');
+  const mcpJson = (res) => {
+    if (res.parsedBody && res.parsedBody.jsonrpc) return res.parsedBody;
+    const raw = typeof res.body === 'string' ? res.body : (res.rawBody || '');
+    const matches = String(raw).match(/^data:\s*(.+)$/gm);
+    if (matches && matches.length) {
+      return JSON.parse(matches[matches.length - 1].replace(/^data:\s*/, ''));
+    }
+    return res.parsedBody;
+  };
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
   test('[TC-10] tools include kb_query', () => {
-    const tools = response.parsedBody.result?.tools;
+    const tools = mcpJson(response).result?.tools;
     assert.ok(Array.isArray(tools));
     assert.ok(tools.some(t => t.name === 'kb_query'));
   });
   test('[TC-12] tools include submit_feedback', () => {
-    const tools = response.parsedBody.result?.tools;
+    const tools = mcpJson(response).result?.tools;
     assert.ok(Array.isArray(tools));
     assert.ok(tools.some(t => t.name === 'submit_feedback'));
   });
@@ -224,6 +248,7 @@ POST {{baseUrl}}/mcp
 Authorization: Bearer {{apiKey}}
 Content-Type: application/json
 Accept: application/json, text/event-stream
+mcp-session-id: {{mcpSessionId}}
 
 {
   "jsonrpc": "2.0",
@@ -241,9 +266,18 @@ Accept: application/json, text/event-stream
 
 {{
   const assert = require('assert');
+  const mcpJson = (res) => {
+    if (res.parsedBody && res.parsedBody.jsonrpc) return res.parsedBody;
+    const raw = typeof res.body === 'string' ? res.body : (res.rawBody || '');
+    const matches = String(raw).match(/^data:\s*(.+)$/gm);
+    if (matches && matches.length) {
+      return JSON.parse(matches[matches.length - 1].replace(/^data:\s*/, ''));
+    }
+    return res.parsedBody;
+  };
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
   test('[TC-13] submit_feedback call returns ok', () => {
-    const content = response.parsedBody.result?.content;
+    const content = mcpJson(response).result?.content;
     assert.ok(Array.isArray(content));
     const body = JSON.parse(content[0].text);
     assert.strictEqual(body.status, 'ok');
@@ -258,6 +292,7 @@ POST {{baseUrl}}/mcp
 Authorization: Bearer {{apiKey}}
 Content-Type: application/json
 Accept: application/json, text/event-stream
+mcp-session-id: {{mcpSessionId}}
 
 {
   "jsonrpc": "2.0",
@@ -271,6 +306,15 @@ Accept: application/json, text/event-stream
 
 {{
   const assert = require('assert');
+  const mcpJson = (res) => {
+    if (res.parsedBody && res.parsedBody.jsonrpc) return res.parsedBody;
+    const raw = typeof res.body === 'string' ? res.body : (res.rawBody || '');
+    const matches = String(raw).match(/^data:\s*(.+)$/gm);
+    if (matches && matches.length) {
+      return JSON.parse(matches[matches.length - 1].replace(/^data:\s*/, ''));
+    }
+    return res.parsedBody;
+  };
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-11] tool returns content', () => assert.ok(Array.isArray(response.parsedBody.result?.content)));
+  test('[TC-11] tool returns content', () => assert.ok(Array.isArray(mcpJson(response).result?.content)));
 }}

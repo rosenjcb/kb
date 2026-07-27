@@ -1,5 +1,11 @@
 # @kb/client
 
+## 1.3.19
+
+### Patch Changes
+
+- Clarify end-of-session feedback hook docs: outstanding feedback uses singular `requestId`, not a `requestIds` array.
+
 ## 1.3.18
 
 ### Patch Changes
