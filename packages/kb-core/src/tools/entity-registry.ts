@@ -2,14 +2,18 @@
  * Organizational Ontology Index — entity registry store.
  *
  * Canonical named things (services, surfaces, domains, repos, …) with aliases,
- * typed edges, and fact↔entity links, per NOMENCLATURE_INDEX_PLAN.md §3. The
- * registry partitions the fact pool via `entity_links` so query-time scope
- * inference (`src/query/scope-inference.ts`) can land in the right partition
- * and rule out provably-wrong ones.
+ * typed edges, and fact↔entity links, per NOMENCLATURE_INDEX_PLAN.md §3.
+ *
+ * This is an **indexing-only** layer today: it records what things are called
+ * and how they nest, and `entity_links` partitions the fact pool by entity.
+ * Nothing in the query path reads it yet — consuming these signals during
+ * retrieval (scope inference, partition rule-out) is deliberately a separate
+ * change, because how a scope verdict should affect results is a policy
+ * decision with real blast radius.
  *
  * Alias matching is exact/longest-match over normalized text — never fuzzy —
- * because entity resolution must be higher-precision than the fuzzy retrieval
- * channels it disambiguates.
+ * because entity resolution must be higher-precision than any fuzzy retrieval
+ * channel that eventually consumes it.
  */
 
 import { createHash } from 'node:crypto'

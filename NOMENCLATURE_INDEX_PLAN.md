@@ -9,7 +9,16 @@ timestamp: 2026-07-27T00:00:00Z
 
 # Organizational Ontology Index — nomenclature & disambiguation
 
-**Status:** Proposed · **Motivating issue:** [#167 — KB conflates issues](https://github.com/rosenjcb/kb/issues/167)
+**Status:** Phases 1–2 implemented (indexing only) · **Motivating issue:** [#167 — KB conflates issues](https://github.com/rosenjcb/kb/issues/167)
+
+> **Implementation status.** The **indexing** half of this plan has shipped:
+> registry tables, ecosystem harvesters, the `entity-index` scan cycle, collision
+> detection, and `kb entities`. **Retrieval is untouched** — nothing in the query
+> path reads these tables. Everything from §5 onward (scope inference, confidence
+> gates, partition rule-out, ambiguity lanes) is a **separate ticket**, on purpose:
+> the index is inert data, while how a scope verdict should change which results
+> come back is a policy decision with real blast radius and several viable answers.
+> Build the signal first, decide how to spend it second.
 
 ## TL;DR
 
@@ -365,8 +374,8 @@ is honest — today they'd raid each other's facts and both look plausible.
 
 | Phase | Ships | Query behavior change |
 |---|---|---|
-| **1 — entity spine** | Migration (4 tables), `entity-index` + `entity-link` cycles, backfill on scan | none (data only) |
-| **2 — nomenclature audit** | Collision detection, `distinct_from` + glosses, `kb entities` CLI | none — but operators can already *see* the #167 collisions |
+| **1 — entity spine** ✅ | Migration (4 tables), `entity-index` + `entity-link` cycles, backfill on scan | none (data only) |
+| **2 — nomenclature audit** ✅ | Collision detection, `distinct_from` + glosses, `kb entities` CLI | none — but operators can already *see* the #167 collisions |
 | **3 — scope inference + guarded retrieval** | `resolveQueryMentions()`, LLM scope classifier over the entity catalog, multiclass confidence gates, entity-guarded expansion, entity-scoped landing, partition rule-out + un-pruning, interpretation named in answers | conflation drops on resolvable queries; walks stop spending budget in ruled-out partitions |
 | **4 — ambiguity lanes** | Per-candidate lanes on collisions, chat clarifying turns, entity-aware curator, `entityMatchScore` | collisions handled explicitly, never silently |
 | **5 — ontology assembly** | LLM consolidation, domain grouping, per-entity "card" rollup facts, publish disambiguation pages | domain-level questions get first-class answers |

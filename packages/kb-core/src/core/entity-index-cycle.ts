@@ -14,6 +14,7 @@
 
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { isEnvFalse } from '../config/env-boolean.js'
 import { harvestRepoEntities } from '../tools/ecosystem-harvesters.js'
 import { EntityRegistry, normalizeEntityName } from '../tools/entity-registry.js'
 
@@ -30,7 +31,15 @@ export interface EntityIndexResult {
   collisions: number
 }
 
+/** Kill switch: KB_ENTITY_INDEX=false skips the harvest entirely. */
+export function isEntityIndexEnabled(): boolean {
+  return !isEnvFalse(process.env.KB_ENTITY_INDEX)
+}
+
 export async function runEntityIndexCycle(input: EntityIndexInput): Promise<EntityIndexResult> {
+  if (!isEntityIndexEnabled()) {
+    return { entitiesUpserted: 0, factsLinked: 0, collisions: 0 }
+  }
   const dbPath = path.join(input.baseDir, '.kb-index.sqlite')
   const registry = new EntityRegistry(dbPath)
   const result: EntityIndexResult = { entitiesUpserted: 0, factsLinked: 0, collisions: 0 }

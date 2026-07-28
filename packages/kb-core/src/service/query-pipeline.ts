@@ -30,7 +30,6 @@ import {
   type ReadDocumentsResultData,
 } from '@kb/core/query/intent-cli.js'
 import { runQueryTruthRetrieval } from '@kb/core/query/query-truth-retrieval.js'
-import { inferQueryScope, type ScopeVerdict } from '@kb/core/query/scope-inference.js'
 
 export interface QueryPipelineDeps {
   toolExecutor: ToolExecutor
@@ -127,41 +126,14 @@ export async function runQueryPipeline(
   // not the graph-expanded retrieval payload.
   const synthesisQuestion = getIntentQuestion(parsed).trim() || query
 
-  // Stage 0 — scope inference (best-effort): infer which entity (service /
-  // surface / domain) the question is about before any fuzzy retrieval runs.
-  // Inert when the registry is empty, unresolved, or KB_ENTITY_SCOPE=false.
-  let scope: ScopeVerdict | undefined
-  if (!allFacts) {
-    try {
-      const verdict = await inferQueryScope({
-        dbPath: kbIndexDbPath(baseDir),
-        query,
-        ...(llmProvider ? { llm: llmProvider } : {}),
-      })
-      if (!verdict.unresolved) scope = verdict
-    } catch {
-      // Scope inference is best-effort; never block the query.
-    }
-  }
-
   // Graph augmentation (best-effort): expand the retrieval query with neighboring
-  // concepts and capture a relation-path block for relational questions. When scope
-  // resolved with entity-guarded terms, expansion draws from the resolved entity's
-  // aliases instead of the generic LIKE widening — the generic path is exactly what
-  // pulls colliding neighborhoods into the query string.
+  // concepts and capture a relation-path block for relational questions.
   let graphRelationContext: string | undefined
   if (!allFacts) {
     try {
       const db = new DatabaseSync(kbIndexDbPath(baseDir), { readOnly: true })
       try {
-        if (scope?.expansionTerms && scope.expansionTerms.length > 0) {
-          const extra = scope.expansionTerms
-            .filter(term => !query.toLowerCase().includes(term.toLowerCase()))
-            .slice(0, 8)
-          ;(parsed.envelope.payload as { query?: string }).query = [query, ...extra].join(' ')
-        } else {
-          ;(parsed.envelope.payload as { query?: string }).query = expandQueryWithGraph(query, db)
-        }
+        ;(parsed.envelope.payload as { query?: string }).query = expandQueryWithGraph(query, db)
         try {
           const block = formatGraphRelationBlockFromQuestion(db, query)
           if (block) graphRelationContext = block
@@ -176,13 +148,6 @@ export async function runQueryPipeline(
     }
   }
 
-  // Hard pruning under the confidence gates: exclusions are only ever fact ids
-  // linked to `certainly_incorrect` entities (unlinked facts are never prunable).
-  const appliedExclusions = scope !== undefined && scope.excludedFactIds.length > 0
-  if (appliedExclusions && scope) {
-    ;(parsed.envelope.payload as { excludeIds?: string[] }).excludeIds = scope.excludedFactIds
-  }
-
   let aligned = await runQueryTruthRetrieval({
     parsed,
     toolExecutor,
@@ -190,32 +155,6 @@ export async function runQueryPipeline(
     kbStorageDir: baseDir,
     collector: params.collector,
   })
-
-  // Un-pruning safety valve: a wrong scope verdict costs a retry, never the
-  // answer. If pruned retrieval came back empty, lift exclusions and re-run.
-  if (appliedExclusions && isReadFactsResult(aligned)) {
-    const data = (aligned.data ?? {}) as ReadDocumentsResultData
-    const resultCount = Array.isArray(data.results) ? data.results.length : 0
-    if (resultCount === 0) {
-      ;(parsed.envelope.payload as { excludeIds?: string[] }).excludeIds = undefined
-      aligned = await runQueryTruthRetrieval({
-        parsed,
-        toolExecutor,
-        llmProvider,
-        kbStorageDir: baseDir,
-        collector: params.collector,
-      })
-    }
-  }
-
-  // Disclose the interpretation to synthesis — always, whenever resolution
-  // happened. Silent disambiguation is how trust dies.
-  if (scope?.disclosure) {
-    const disclosureBlock = `Scope interpretation: ${scope.disclosure}`
-    graphRelationContext = graphRelationContext
-      ? `${disclosureBlock}\n\n${graphRelationContext}`
-      : disclosureBlock
-  }
 
   // LLM-driven graph RAG: extract entities from the question, re-rank retrieved
   // facts by graph connectivity.
