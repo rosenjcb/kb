@@ -3,6 +3,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  loadInfraEcosystemConfig,
+  loadTypescriptEcosystemConfig,
+} from '@kb/core/tools/ecosystem-config.js'
+import {
   classifyPackageKind,
   harvestInfraManifests,
   harvestRepoEntities,
@@ -24,8 +28,35 @@ async function writePackage(dir: string, pkg: Record<string, unknown>): Promise<
   await writeFile(path.join(dir, 'package.json'), JSON.stringify(pkg))
 }
 
+describe('ecosystem YAML configs', () => {
+  it('[TC-1] Given typescript.yaml, when loaded, then frameworks, kind_rules, and symbol/route gaps are present', () => {
+    const ts = loadTypescriptEcosystemConfig()
+    expect(ts.id).toBe('typescript')
+    expect(ts.frameworks.server).toContain('express')
+    expect(ts.frameworks.frontend).toContain('react')
+    expect(ts.frameworks.cli).toContain('commander')
+    expect(ts.kind_rules.length).toBeGreaterThanOrEqual(5)
+    expect(ts.symbols.status).toBe('not_implemented')
+    expect(ts.routes.status).toBe('not_implemented')
+  })
+
+  it('[TC-2] Given infra.yaml, when loaded, then compose, fly, and Backstage paths are configured', () => {
+    const infra = loadInfraEcosystemConfig()
+    expect(infra.id).toBe('infra')
+    expect(infra.compose.files).toContain('docker-compose.yml')
+    expect(infra.fly.file).toBe('fly.toml')
+    expect(infra.backstage.file).toBe('catalog-info.yaml')
+  })
+
+  it('[TC-9] Given typescript coverage sections, when inspected, then symbols and routes are not_implemented', () => {
+    const ts = loadTypescriptEcosystemConfig()
+    expect(ts.symbols.status).toBe('not_implemented')
+    expect(ts.routes.status).toBe('not_implemented')
+  })
+})
+
 describe('classifyPackageKind', () => {
-  it('applies the deterministic kind rubric', () => {
+  it('[TC-3] Given package.json features, when classified, then YAML kind rubric maps to service/cli/surface/library', () => {
     expect(classifyPackageKind({ dependencies: { express: '4' } }).kind).toBe('service')
     expect(classifyPackageKind({ bin: { kb: './bin/kb' } }).kind).toBe('cli')
     expect(classifyPackageKind({ dependencies: { react: '18' } }).kind).toBe('surface')
@@ -35,7 +66,7 @@ describe('classifyPackageKind', () => {
 })
 
 describe('harvestTypeScriptEcosystem', () => {
-  it('enumerates pnpm workspace packages with identity, aliases, and kinds', async () => {
+  it('[TC-4] Given a pnpm workspace, when harvested, then packages get identity, aliases, kinds, and part_of edges', async () => {
     await writeFile(path.join(scanDir, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n')
     await writePackage(scanDir, { name: 'acme-monorepo', private: true })
     await writePackage(path.join(scanDir, 'packages', 'client'), {
@@ -72,7 +103,7 @@ describe('harvestTypeScriptEcosystem', () => {
     })
   })
 
-  it('falls back to the root package for single-package repos and to nothing without manifests', async () => {
+  it('[TC-5] Given a solo package or empty dir, when harvested, then root-only or zero candidates', async () => {
     await writePackage(scanDir, { name: 'solo-svc', dependencies: { fastify: '4' } })
     const single = await harvestTypeScriptEcosystem(scanDir)
     expect(single.candidates).toHaveLength(1)
@@ -90,7 +121,7 @@ describe('harvestTypeScriptEcosystem', () => {
 })
 
 describe('harvestInfraManifests', () => {
-  it('reads compose service keys, fly.toml app names, and Backstage catalog entries', async () => {
+  it('[TC-6] Given compose, fly, and Backstage manifests, when harvested, then service/app/catalog candidates and belongs_to', async () => {
     await writeFile(
       path.join(scanDir, 'docker-compose.yml'),
       ['services:', '  payments-svc:', '    image: acme/payments', '  internal:', '    image: acme/internal'].join('\n')
@@ -117,7 +148,7 @@ describe('harvestInfraManifests', () => {
     expect(result.edges).toContainEqual({ fromName: 'payments', toName: 'commerce', edgeType: 'belongs_to' })
   })
 
-  it('is inert on malformed manifests', async () => {
+  it('[TC-7] Given malformed compose YAML, when harvested, then zero candidates', async () => {
     await writeFile(path.join(scanDir, 'docker-compose.yml'), '{{ not yaml')
     const result = await harvestInfraManifests(scanDir)
     expect(result.candidates).toHaveLength(0)
@@ -125,7 +156,7 @@ describe('harvestInfraManifests', () => {
 })
 
 describe('harvestRepoEntities', () => {
-  it('merges ecosystem and infra tiers', async () => {
+  it('[TC-8] Given package and fly declaring the same name, when merged, then two candidates for registry merge', async () => {
     await writePackage(scanDir, { name: 'edge-worker', dependencies: { koa: '2' } })
     await writeFile(path.join(scanDir, 'fly.toml'), 'app = "edge-worker"\n')
     const result = await harvestRepoEntities(scanDir)

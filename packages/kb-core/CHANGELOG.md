@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.5.13
+
+### Patch Changes
+
+- Move ecosystem harvester coverage (frameworks, kind rubric, infra manifests, declared symbol/route gaps) into reviewable per-ecosystem YAML under tools/ecosystems/.
+
 ## 1.5.12
 
 ### Patch Changes

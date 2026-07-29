@@ -1,0 +1,87 @@
+# TypeScript / JavaScript ecosystem harvester coverage.
+# Inference lives in ecosystem-harvesters.ts; this file is the reviewable scope.
+#
+# Emits: one entity per package.json (workspace members or root).
+# Does not emit: HTTP routes, Nest controllers, or in-code symbols (see symbols/).
+
+id: typescript
+display_name: TypeScript / JavaScript
+
+package_manifest: package.json
+
+workspace:
+  # Globs supported by the loader: `dir/*` and exact paths. Negations / nested * skipped.
+  sources:
+    - path: pnpm-workspace.yaml
+      packages_key: packages
+    - path: package.json
+      workspaces_key: workspaces
+
+# Named dependency groups — referenced by kind_rules.match.any_dependency_group.
+frameworks:
+  server:
+    - express
+    - fastify
+    - koa
+    - "@nestjs/core"
+    - hapi
+    - "@hapi/hapi"
+    - restify
+  frontend:
+    - react
+    - next
+    - vue
+    - svelte
+    - "@angular/core"
+  cli:
+    - commander
+    - yargs
+    - oclif
+    - meow
+    - ink
+
+# First matching rule wins. Confidence drops when the signal is weak.
+kind_rules:
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server
+  - kind: service
+    confidence: 0.6
+    match:
+      any_script: [start, serve]
+      without_bin: true
+  - kind: cli
+    confidence: 0.85
+    match:
+      has_bin: true
+  - kind: surface
+    confidence: 0.75
+    match:
+      any_dependency_group: frontend
+  - kind: cli
+    confidence: 0.6
+    match:
+      any_dependency_group: cli
+  - kind: library
+    confidence: 0.8
+    match:
+      has_entry: true # package.json main or exports
+  - kind: library
+    confidence: 0.4
+    match: {} # fallback
+
+# Declared coverage gaps — not harvested yet (tier-4 in NOMENCLATURE_INDEX_PLAN §4a).
+symbols:
+  status: not_implemented
+  note: >
+    Code symbols stay in the tree-sitter code-index cycle. This harvester does
+    not promote symbols to entity candidates.
+  planned: []
+
+routes:
+  status: not_implemented
+  note: >
+    Optional Nest decorator / literal-route AST enrichment is planned; absent
+    frameworks simply lose endpoint granularity.
+  planned_frameworks: []
