@@ -4,10 +4,10 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   classifyPackageKind,
-  harvestInfraManifests,
+  harvestInfra,
   harvestRepoEntities,
-  harvestTypeScriptEcosystem,
-} from '@kb/core/tools/ecosystem-harvesters.js'
+  harvestJavaScript,
+} from '@kb/core/tools/harvesters/index.js'
 
 let scanDir: string
 
@@ -34,7 +34,7 @@ describe('classifyPackageKind', () => {
   })
 })
 
-describe('harvestTypeScriptEcosystem', () => {
+describe('harvestJavaScript', () => {
   it('enumerates pnpm workspace packages with identity, aliases, and kinds', async () => {
     await writeFile(path.join(scanDir, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n')
     await writePackage(scanDir, { name: 'acme-monorepo', private: true })
@@ -54,7 +54,7 @@ describe('harvestTypeScriptEcosystem', () => {
       main: 'dist/index.js',
     })
 
-    const result = await harvestTypeScriptEcosystem(scanDir)
+    const result = await harvestJavaScript(scanDir)
     const byName = new Map(result.candidates.map(c => [c.canonicalName, c]))
 
     expect(byName.get('@acme/client')?.kind).toBe('cli')
@@ -74,14 +74,14 @@ describe('harvestTypeScriptEcosystem', () => {
 
   it('falls back to the root package for single-package repos and to nothing without manifests', async () => {
     await writePackage(scanDir, { name: 'solo-svc', dependencies: { fastify: '4' } })
-    const single = await harvestTypeScriptEcosystem(scanDir)
+    const single = await harvestJavaScript(scanDir)
     expect(single.candidates).toHaveLength(1)
     expect(single.candidates[0]?.canonicalName).toBe('solo-svc')
     expect(single.candidates[0]?.kind).toBe('service')
 
     const emptyDir = await mkdtemp(path.join(os.tmpdir(), 'kb-harvester-empty-'))
     try {
-      const empty = await harvestTypeScriptEcosystem(emptyDir)
+      const empty = await harvestJavaScript(emptyDir)
       expect(empty.candidates).toHaveLength(0)
     } finally {
       await rm(emptyDir, { recursive: true, force: true })
@@ -89,7 +89,7 @@ describe('harvestTypeScriptEcosystem', () => {
   })
 })
 
-describe('harvestInfraManifests', () => {
+describe('harvestInfra', () => {
   it('reads compose service keys, fly.toml app names, and Backstage catalog entries', async () => {
     await writeFile(
       path.join(scanDir, 'docker-compose.yml'),
@@ -110,7 +110,7 @@ describe('harvestInfraManifests', () => {
       ].join('\n')
     )
 
-    const result = await harvestInfraManifests(scanDir)
+    const result = await harvestInfra(scanDir)
     const names = result.candidates.map(c => c.canonicalName).sort()
     expect(names).toEqual(['acme-edge', 'internal', 'payments', 'payments-svc'])
     expect(result.candidates.every(c => c.sourceKind === 'manifest')).toBe(true)
@@ -119,7 +119,7 @@ describe('harvestInfraManifests', () => {
 
   it('is inert on malformed manifests', async () => {
     await writeFile(path.join(scanDir, 'docker-compose.yml'), '{{ not yaml')
-    const result = await harvestInfraManifests(scanDir)
+    const result = await harvestInfra(scanDir)
     expect(result.candidates).toHaveLength(0)
   })
 })
